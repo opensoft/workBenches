@@ -1,0 +1,10 @@
+# Embedded git repositories - to be handled as submodules later
+devBench/FlutterBench/
+spec-kit/
+
+# Common ignores
+.DS_Store
+*.log
+*.tmp
+node_modules/
+.env
