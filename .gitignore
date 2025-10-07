@@ -1,5 +1,9 @@
-# Embedded git repositories - to be handled as submodules later
+# Separate git repositories - each has their own repo
+adminBench/
 devBench/FlutterBench/
+devBench/JavaBench/
+devBench/dotNetBench/
+devBench/PythonBench/
 spec-kit/
 
 # Common ignores
@@ -8,3 +12,14 @@ spec-kit/
 *.tmp
 node_modules/
 .env
+*.bak
+*.swp
+*.swo
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+
+# OS files
+Thumbs.db
