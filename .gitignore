@@ -1,10 +1,10 @@
 # Separate git repositories - each has their own repo
 adminBench/
-devBench/FlutterBench/
-devBench/JavaBench/
+devBench/flutterBench/
+devBench/javaBench/
 devBench/dotNetBench/
-devBench/PythonBench/
-spec-kit/
+devBench/pythonBench/
+specKit/
 
 # Common ignores
 .DS_Store
