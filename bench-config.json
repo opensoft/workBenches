@@ -1,0 +1,55 @@
+{
+  "infrastructure": {
+    "specKit": {
+      "url": "git@github.com:github/spec-kit.git",
+      "path": "specKit",
+      "description": "Infrastructure and specification kit - always installed"
+    }
+  },
+  "benches": {
+    "adminBench": {
+      "url": "git@github.com:opensoft/adminBench.git",
+      "path": "adminBench",
+      "description": "Administrative tools and utilities bench"
+    },
+    "pythonBench": {
+      "url": "git@github.com:opensoft/pythonBench.git", 
+      "path": "devBench/pythonBench",
+      "description": "Python development environment and tools"
+    },
+    "javaBench": {
+      "url": "git@github.com:opensoft/javaBench.git",
+      "path": "devBench/javaBench", 
+      "description": "Java development environment and tools"
+    },
+    "dotNetBench": {
+      "url": "git@github.com:opensoft/dotNetBench.git",
+      "path": "devBench/dotNetBench",
+      "description": ".NET development environment and tools"
+    },
+    "flutterBench": {
+      "url": "git@github.com:opensoft/flutterBench.git",
+      "path": "devBench/flutterBench", 
+      "description": "Flutter/Dart development environment and tools",
+      "project_scripts": [
+        {
+          "name": "flutter",
+          "script": "scripts/new-flutter-project.sh",
+          "description": "Create a new Flutter project with DevContainer setup",
+          "includes_speckit": true
+        },
+        {
+          "name": "dartwing",
+          "script": "scripts/new-dartwing-project.sh",
+          "description": "Create a new DartWing project with specialized configuration",
+          "includes_speckit": true
+        }
+      ]
+    },
+    "cppBench": {
+      "url": "git@github.com:opensoft/cppBench.git",
+      "path": "devBench/cppBench",
+      "description": "C++ development environment and tools"
+    }
+  }
+}

@@ -1,10 +1,15 @@
 # Separate git repositories - each has their own repo
 adminBench/
+devBench/cppBench/
 devBench/flutterBench/
 devBench/javaBench/
 devBench/dotNetBench/
 devBench/pythonBench/
 specKit/
+
+# Installation tracking (local only)
+.installed-benches.json
+bench-config.json.backup
 
 # Common ignores
 .DS_Store
