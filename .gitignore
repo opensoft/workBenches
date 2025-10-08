@@ -1,7 +1,7 @@
 # Individual bench repositories (separate git repos)
-# devBench/ is organizational folder (NOT ignored)
-# adminBench/ is a single bench repo (ignored)
-adminBench/
+# devBench/ and adminBench/ are organizational folders (NOT ignored)
+# Only the actual bench repos within them are ignored
+adminBench/cloudAdmin/
 devBench/cppBench/
 devBench/flutterBench/
 devBench/javaBench/

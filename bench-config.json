@@ -7,10 +7,10 @@
     }
   },
   "benches": {
-    "adminBench": {
-      "url": "git@github.com:opensoft/adminBench.git",
-      "path": "adminBench",
-      "description": "Administrative tools and utilities bench"
+    "cloudAdmin": {
+      "url": "git@github.com:opensoft/cloudAdmin.git",
+      "path": "adminBench/cloudAdmin",
+      "description": "Cloud infrastructure and database administration tools"
     },
     "pythonBench": {
       "url": "git@github.com:opensoft/pythonBench.git", 
