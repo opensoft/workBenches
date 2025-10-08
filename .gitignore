@@ -1,4 +1,6 @@
-# Separate git repositories - each has their own repo
+# Individual bench repositories (separate git repos)
+# devBench/ is organizational folder (NOT ignored)
+# adminBench/ is a single bench repo (ignored)
 adminBench/
 devBench/cppBench/
 devBench/flutterBench/
