@@ -5,7 +5,7 @@
   "workspaceFolder": "/workspace",
 
   "initializeCommand": {
-    "adb": "${localWorkspaceFolder}/../../../infrastructure/mobile/android/adb/scripts/start-adb-if-needed.sh"
+    "adb": "ADB_INFRASTRUCTURE_PROJECT_NAME=dartwingers ${localWorkspaceFolder}/../../../infrastructure/mobile/android/adb/scripts/start-adb-if-needed.sh"
   },
 
   "onCreateCommand": {
