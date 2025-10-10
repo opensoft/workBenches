@@ -867,8 +867,45 @@ update_project() {
     else
         local exit_code=$?
         log_error "❌ $bench_category project update failed with exit code: $exit_code"
-        provide_ai_advice "$found_script" "$project_path" "$exit_code"
-        return $exit_code
+        
+        # Handle exit code 2 specifically for uncommitted changes auto-commit
+        if [ $exit_code -eq 2 ]; then
+            log_info "🔍 Detected uncommitted changes (exit code 2)"
+            echo ""
+            
+            # Get git status from project
+            local git_status=""
+            if [ -d "$project_path/.git" ]; then
+                cd "$project_path" 2>/dev/null
+                git_status=$(git status --porcelain 2>/dev/null)
+                cd - >/dev/null 2>&1
+            fi
+            
+            if [ -n "$git_status" ]; then
+                echo -e "${CYAN}📝 Uncommitted changes found - triggering auto-commit workflow${NC}"
+                echo ""
+                
+                # Extract script name for auto-commit function
+                local script_name=$(basename "$found_script")
+                
+                # Call the auto-commit workflow directly
+                if auto_commit_and_update "$project_path" "$script_name"; then
+                    log_success "✅ Auto-commit and update completed successfully!"
+                    return 0
+                else
+                    log_error "❌ Auto-commit or update failed"
+                    return 1
+                fi
+            else
+                log_warning "Exit code 2 but no uncommitted changes found - continuing with standard advice"
+                provide_ai_advice "$found_script" "$project_path" "$exit_code"
+                return $exit_code
+            fi
+        else
+            # Standard error handling for other exit codes
+            provide_ai_advice "$found_script" "$project_path" "$exit_code"
+            return $exit_code
+        fi
     fi
 }
 
