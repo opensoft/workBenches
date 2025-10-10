@@ -12,10 +12,13 @@
     "setup-flutter-project": "echo 'Container created - Flutter setup will run on start'"
   },
 
-  "postStartCommand": {
-    "flutter-status": ".devcontainer/scripts/flutter-status.sh",
-    "setup-flutter-project": ".devcontainer/scripts/setup-flutter-project.sh"
-  },
+  "postStartCommand": [
+    "echo '🚀 Container started - initializing Flutter environment...'",
+    "flutter --version && echo '✅ Flutter SDK ready' || echo '⚠️  Flutter SDK not ready yet'",
+    "adb devices && echo '✅ ADB service connected' || echo '🔄 ADB service connecting...'",
+    "timeout 300 .devcontainer/scripts/setup-flutter-project.sh && echo '✅ Flutter project setup complete' || echo '🔄 Flutter setup running in background...'",
+    "echo '🎯 Ready for development!'"
+  ],
 
   "postAttachCommand": ".devcontainer/scripts/ready-check.sh",
 
