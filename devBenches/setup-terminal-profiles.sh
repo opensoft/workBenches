@@ -38,7 +38,7 @@ Version=1.0
 Type=Application
 Name=DevJava
 Comment=JavaBench Development Container
-Exec=gnome-terminal --title="DevJava" -- /home/brett/projects/DevBench/JavaBench/launch-devbench.sh
+Exec=gnome-terminal --title="DevJava" -- /home/brett/projects/workBenches/devBenches/javaBench/scripts/launch-devbench.sh
 Icon=applications-development
 Terminal=false
 Categories=Development;
@@ -52,7 +52,7 @@ Version=1.0
 Type=Application
 Name=DevDotNet
 Comment=dotNetBench Development Container
-Exec=gnome-terminal --title="DevDotNet" -- /home/brett/projects/DevBench/dotNetBench/launch-devbench.sh
+Exec=gnome-terminal --title="DevDotNet" -- /home/brett/projects/workBenches/devBenches/dotNetBench/scripts/launch-devbench.sh
 Icon=applications-development
 Terminal=false
 Categories=Development;
@@ -66,7 +66,7 @@ Version=1.0
 Type=Application
 Name=DevFlutter
 Comment=FlutterBench Development Container
-Exec=gnome-terminal --title="DevFlutter" -- /home/brett/projects/DevBench/FlutterBench/launch-devbench.sh
+Exec=gnome-terminal --title="DevFlutter" -- /home/brett/projects/workBenches/devBenches/flutterBench/scripts/launch-devbench.sh
 Icon=applications-development
 Terminal=false
 Categories=Development;
@@ -99,9 +99,9 @@ if [[ -n "$SHELL_RC" ]]; then
     cat >> "$SHELL_RC" << 'EOF'
 
 # DevBench Container Aliases
-alias devjava='/home/brett/projects/DevBench/JavaBench/launch-devbench.sh'
-alias devdotnet='/home/brett/projects/DevBench/dotNetBench/launch-devbench.sh'
-alias devflutter='/home/brett/projects/DevBench/FlutterBench/launch-devbench.sh'
+alias devjava='/home/brett/projects/workBenches/devBenches/javaBench/scripts/launch-devbench.sh'
+alias devdotnet='/home/brett/projects/workBenches/devBenches/dotNetBench/scripts/launch-devbench.sh'
+alias devflutter='/home/brett/projects/workBenches/devBenches/flutterBench/scripts/launch-devbench.sh'
 alias devbench-status='docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(java_bench|dot_net_bench|flutter_bench)"'
 alias devbench-stop='docker stop java_bench dot_net_bench flutter_bench 2>/dev/null || true'
 # End DevBench Aliases
@@ -129,7 +129,7 @@ if command -v code &> /dev/null; then
         {
             "label": "Launch DevJava",
             "type": "shell",
-            "command": "/home/brett/projects/DevBench/JavaBench/launch-devbench.sh",
+            "command": "/home/brett/projects/workBenches/devBenches/javaBench/scripts/launch-devbench.sh",
             "group": "build",
             "presentation": {
                 "echo": true,
@@ -141,7 +141,7 @@ if command -v code &> /dev/null; then
         {
             "label": "Launch DevDotNet", 
             "type": "shell",
-            "command": "/home/brett/projects/DevBench/dotNetBench/launch-devbench.sh",
+            "command": "/home/brett/projects/workBenches/devBenches/dotNetBench/scripts/launch-devbench.sh",
             "group": "build",
             "presentation": {
                 "echo": true,
@@ -153,7 +153,7 @@ if command -v code &> /dev/null; then
         {
             "label": "Launch DevFlutter",
             "type": "shell", 
-            "command": "/home/brett/projects/DevBench/FlutterBench/launch-devbench.sh",
+            "command": "/home/brett/projects/workBenches/devBenches/flutterBench/scripts/launch-devbench.sh",
             "group": "build",
             "presentation": {
                 "echo": true,

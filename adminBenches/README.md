@@ -1,4 +1,4 @@
-# adminBench - Administrative Workbenches
+# adminBenches - Administrative Workbenches
 
 This folder contains individual administrative workbenches for different infrastructure and database management systems.
 
@@ -22,7 +22,7 @@ Each subfolder is a separate git repository containing administrative tools and 
 ### Direct Access
 ```bash
 # Navigate to specific admin bench
-cd adminBench/cloudAdmin
+cd adminBenches/cloudAdmin
 # Use administrative tools and configurations
 ```
 
@@ -42,7 +42,7 @@ This can create additional administrative benches such as:
 
 ## Organization
 
-- **This folder** (`adminBench/`) is part of the main workBenches repository
+- **This folder** (`adminBenches/`) is part of the main workBenches repository
 - **Individual benches** are separate git repositories
 - **Each bench** provides specialized administrative tools for specific infrastructure domains
 

@@ -7,7 +7,7 @@ A collection of development workbenches and tools for various projects.
 To set up workBenches on a new system, run:
 
 ```bash
-./setup-workbenches.sh
+./scripts/setup-workbenches.sh
 ```
 
 This script will:
@@ -28,7 +28,7 @@ The script automatically detects already installed benches and can be re-run to 
 To create a new project using installed benches, run:
 
 ```bash
-./new-project.sh
+./scripts/new-project.sh
 ```
 
 This script will:
@@ -39,9 +39,9 @@ This script will:
 
 ### Examples:
 ```bash
-./new-project.sh                    # Interactive mode
-./new-project.sh myapp               # Interactive type selection for 'myapp'
-./new-project.sh myapp ~/custom/path # Interactive type selection with custom path
+./scripts/new-project.sh                    # Interactive mode
+./scripts/new-project.sh myapp               # Interactive type selection for 'myapp'
+./scripts/new-project.sh myapp ~/custom/path # Interactive type selection with custom path
 ```
 
 The script discovers and uses project creation scripts from installed benches, making it easy to create properly configured projects for any development stack you have installed.
@@ -51,7 +51,7 @@ The script discovers and uses project creation scripts from installed benches, m
 To create a new development bench (workspace for a specific technology), run:
 
 ```bash
-./new-bench.sh
+./scripts/new-bench.sh
 ```
 
 This script will:
@@ -68,14 +68,14 @@ Set API keys for current technology information:
 ```bash
 # Using OpenAI
 export OPENAI_API_KEY="your-key-here"
-./new-bench.sh
+./scripts/new-bench.sh
 
 # Using Claude
 export ANTHROPIC_API_KEY="your-key-here"
-./new-bench.sh
+./scripts/new-bench.sh
 
 # Without API keys (uses built-in tech stacks)
-./new-bench.sh
+./scripts/new-bench.sh
 ```
 
 The script supports creating benches for any technology and will generate:
@@ -87,22 +87,22 @@ The script supports creating benches for any technology and will generate:
 
 ## Configuration Management
 
-The workBenches system uses `bench-config.json` to track benches and their capabilities. You can manage this configuration:
+The workBenches system uses `config/bench-config.json` to track benches and their capabilities.
 
 ### Automatic Discovery
 ```bash
-./update-bench-config.sh
+./scripts/update-bench-config.sh
 ```
 
 This script will:
 - Auto-discover all installed benches (directories with .git repositories)
 - Scan for project creation scripts in each bench
 - Detect if scripts handle specKit copying
-- Update `bench-config.json` with current state
+- Update `config/bench-config.json` with current state
 - Backup the existing configuration
 
 ### Manual Configuration
-You can also manually edit `bench-config.json` to:
+You can also manually edit `config/bench-config.json` to:
 - Add repository URLs for benches
 - Define custom project script descriptions
 - Control specKit inclusion behavior
@@ -112,8 +112,8 @@ You can also manually edit `bench-config.json` to:
 
 **All workbenches are maintained as separate repositories:**
 
-- **adminBench** - Administrative tools and utilities → [opensoft/adminBench](https://github.com/opensoft/adminBench)
-- **devBench** - Development environment collection:
+- **adminBenches** - Administrative tools and utilities → [opensoft/adminBench](https://github.com/opensoft/adminBench)
+- **devBenches** - Development environment collection:
   - **flutterBench** → [opensoft/flutterBench](https://github.com/opensoft/flutterBench)
   - **javaBench** → [opensoft/javaBench](https://github.com/opensoft/javaBench)
   - **dotNetBench** → [opensoft/dotNetBench](https://github.com/opensoft/dotNetBench)
@@ -126,7 +126,7 @@ All workbenches are maintained as separate repositories:
 
 | Workbench | Repository | Description |
 |-----------|------------|-------------|
-| adminBench | [opensoft/adminBench](https://github.com/opensoft/adminBench) | Administrative tools and Kubernetes configs |
+|| adminBenches | [opensoft/adminBench](https://github.com/opensoft/adminBench) | Administrative tools and Kubernetes configs |
 | flutterBench | [opensoft/flutterBench](https://github.com/opensoft/flutterBench) | Flutter development environment with devcontainers |
 | javaBench | [opensoft/javaBench](https://github.com/opensoft/javaBench) | Java development environment and tools |
 | dotNetBench | [opensoft/dotNetBench](https://github.com/opensoft/dotNetBench) | .NET development environment with devcontainers |
@@ -147,7 +147,7 @@ This is a public repository. Feel free to contribute improvements and suggestion
 
 Each workbench is maintained in its own repository. Please contribute directly to the specific repository you want to improve:
 
-- **adminBench**: [opensoft/adminBench](https://github.com/opensoft/adminBench)
+- **adminBenches**: [opensoft/adminBench](https://github.com/opensoft/adminBench)
 - **flutterBench**: [opensoft/flutterBench](https://github.com/opensoft/flutterBench)
 - **javaBench**: [opensoft/javaBench](https://github.com/opensoft/javaBench)
 - **dotNetBench**: [opensoft/dotNetBench](https://github.com/opensoft/dotNetBench)

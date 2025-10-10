@@ -1,5 +1,5 @@
 {
-	"name": "Flutter DevBench Container - The Monster",
+	"name": "Flutter DevBench Container",
 	"dockerComposeFile": "docker-compose.yml",
 	"service": "flutter_bench",
 	"workspaceFolder": "/workspace",

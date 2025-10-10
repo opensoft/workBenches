@@ -30,9 +30,76 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
+# ====================================
+# Help/Usage Display
+# ====================================
+
+# Show usage if help requested
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    echo "Usage: $0 [project-path]"
+    echo ""
+    echo "Updates an existing Flutter project with the latest devcontainer template."
+    echo ""
+    echo "Arguments:"
+    echo "  project-path    Path to Flutter project (default: current directory)"
+    echo ""
+    echo "This script will:"
+    echo "  1. Create a new branch (devcontainer-config-latest)"
+    echo "  2. Apply the latest template files"
+    echo "  3. Configure environment variables automatically"
+    echo "  4. Clean up legacy DevContainer files from project root"
+    echo "  5. Analyze and resolve conflicts with AI assistance"
+    echo "  6. Create a pull request for review"
+    echo "  7. Optionally auto-merge changes back to source branch"
+    echo ""
+    echo "Requirements:"
+    echo "  - Git repository with no uncommitted changes"
+    echo "  - Flutter project (pubspec.yaml present)"
+    echo "  - Latest devcontainer template available"
+    echo ""
+    exit 0
+fi
+
+# ====================================
+# Project Name Normalization
+# ====================================
+
+normalize_project_name() {
+    local raw_name="$1"
+    local normalized="$raw_name"
+    
+    # For Dartwingers projects, remove app/service prefixes
+    # appDartwing -> dartwing
+    # serviceDartwing -> dartwing
+    # appLedgerLinc -> ledgerlinc
+    # serviceLedgerLinc -> ledgerlinc
+    
+    # Remove 'app' prefix (case insensitive)
+    if [[ "$normalized" =~ ^[Aa][Pp][Pp](.+)$ ]]; then
+        normalized="${BASH_REMATCH[1]}"
+    fi
+    
+    # Remove 'service' prefix (case insensitive) 
+    if [[ "$normalized" =~ ^[Ss][Ee][Rr][Vv][Ii][Cc][Ee](.+)$ ]]; then
+        normalized="${BASH_REMATCH[1]}"
+    fi
+    
+    # Convert to lowercase for consistency
+    normalized=$(echo "$normalized" | tr '[:upper:]' '[:lower:]')
+    
+    echo "$normalized"
+}
+
 # Project path (default to current directory)
 PROJECT_PATH="${1:-$(pwd)}"
-PROJECT_NAME=$(basename "$PROJECT_PATH")
+PROJECT_NAME_RAW=$(basename "$PROJECT_PATH")
+# Normalize project name (remove app/service prefixes for Dartwingers projects)
+PROJECT_NAME=$(normalize_project_name "$PROJECT_NAME_RAW")
+
+# Log normalization if name changed
+if [ "$PROJECT_NAME" != "$PROJECT_NAME_RAW" ]; then
+    echo -e "${BLUE}📝 Normalized project name: $PROJECT_NAME_RAW → $PROJECT_NAME${NC}" >&2
+fi
 TEMPLATE_BRANCH="devcontainer-config-latest"
 BACKUP_DIR=""
 
@@ -89,10 +156,10 @@ validate_project() {
         exit 1
     fi
     
-    # Check for uncommitted changes
-    if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+    # Check for uncommitted changes (both tracked and untracked)
+    local git_status=$(git status --porcelain)
+    if [ -n "$git_status" ]; then
         log_warning "Uncommitted changes detected. Offering auto-commit option..."
-        local git_status=$(git status --porcelain)
         echo "$git_status"
         echo ""
         
@@ -144,8 +211,12 @@ Timestamp: $(date '+%Y-%m-%d %H:%M:%S')"
                         ;;
                 esac
                 
-                # Commit the changes
-                if git add . && git commit -m "$commit_message"; then
+                # Commit the changes (with handling for no changes case)
+                git add . 2>/dev/null || true
+                if git diff --cached --quiet; then
+                    # No staged changes after git add
+                    log_info "No changes to commit (working tree is already clean)"
+                elif git commit -m "$commit_message"; then
                     log_success "Changes committed successfully!"
                     echo ""
                 else
@@ -480,14 +551,11 @@ apply_template_files() {
         "scripts"
     )
     
-    # Always copy .env.example
-    cp "$TEMPLATE_DIR/.devcontainer/.env.example" .
-    log_info "Copied: .env.example"
-    
-    # Create .env if it doesn't exist
-    if [ ! -f ".env" ]; then
-        cp ".env.example" ".env"
-        log_info "Created: .env from .env.example"
+    # .env.example is already in .devcontainer from template copy - no need to copy to root
+    # Create .env in .devcontainer if it doesn't exist
+    if [ ! -f ".devcontainer/.env" ]; then
+        cp ".devcontainer/.env.example" ".devcontainer/.env"
+        log_info "Created: .devcontainer/.env from .devcontainer/.env.example"
     fi
     
     for file in "${template_files[@]}"; do
@@ -500,6 +568,21 @@ apply_template_files() {
     # Note: Skip copying template README.md as DEVCONTAINER_README.md
     # The devcontainer documentation is already available in .devcontainer/docs/
     # Copying it to root creates duplicates that clutter the project structure
+    
+    # Update devcontainer name to use actual project name (after template application)
+    if [ -f ".devcontainer/devcontainer.json" ]; then
+        if grep -q "PROJECT_NAME Flutter Dev" .devcontainer/devcontainer.json; then
+            log_info "Updating devcontainer display name to use project name"
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                # macOS
+                sed -i '' "s/PROJECT_NAME Flutter Dev/${PROJECT_NAME} Flutter Dev/g" .devcontainer/devcontainer.json
+            else
+                # Linux
+                sed -i "s/PROJECT_NAME Flutter Dev/${PROJECT_NAME} Flutter Dev/g" .devcontainer/devcontainer.json
+            fi
+            log_info "DevContainer name updated to '${PROJECT_NAME} Flutter Dev'"
+        fi
+    fi
     
     log_success "Template files applied"
 }
@@ -526,8 +609,8 @@ get_env_value() {
 analyze_env_changes() {
     log_section "🔍 Analyzing Environment Configuration Changes"
     
-    if [ ! -f ".env" ]; then
-        log_error ".env file not found"
+    if [ ! -f ".devcontainer/.env" ]; then
+        log_error ".devcontainer/.env file not found"
         return 1
     fi
     
@@ -536,18 +619,22 @@ analyze_env_changes() {
     local current_gid=$(id -g)
     local current_user=$(whoami)
     
-    # Detect parent directory for compose project name
-    local parent_dir=$(basename "$(dirname "$PROJECT_PATH")")
+    # Detect compose project name based on project path
     local new_compose_project_name="flutter"
-    if [[ "$parent_dir" == "dartwingers" ]]; then
+    
+    # Check if the project path contains 'dartwingers' anywhere
+    if [[ "$PROJECT_PATH" == *"/dartwingers/"* ]]; then
+        new_compose_project_name="dartwingers"
+    # Also check immediate parent for backward compatibility
+    elif [[ "$(basename "$(dirname "$PROJECT_PATH")")" == "dartwingers" ]]; then
         new_compose_project_name="dartwingers"
     fi
     
-    # Get current values from .env
-    local current_project_name=$(get_env_value ".env" "PROJECT_NAME")
-    local current_uid_env=$(get_env_value ".env" "USER_UID")
-    local current_gid_env=$(get_env_value ".env" "USER_GID")
-    local current_compose_name=$(get_env_value ".env" "COMPOSE_PROJECT_NAME")
+    # Get current values from .devcontainer/.env
+    local current_project_name=$(get_env_value ".devcontainer/.env" "PROJECT_NAME")
+    local current_uid_env=$(get_env_value ".devcontainer/.env" "USER_UID")
+    local current_gid_env=$(get_env_value ".devcontainer/.env" "USER_GID")
+    local current_compose_name=$(get_env_value ".devcontainer/.env" "COMPOSE_PROJECT_NAME")
     
     # Analyze what would change
     local changes_detected=false
@@ -678,16 +765,16 @@ prompt_selective_updates() {
         echo ""
         case $change in
             "PROJECT_NAME")
-                echo -e "${BLUE}PROJECT_NAME:${NC} $(get_env_value ".env" "PROJECT_NAME") → ${GREEN}$DETECTED_PROJECT_NAME${NC}"
+                echo -e "${BLUE}PROJECT_NAME:${NC} $(get_env_value ".devcontainer/.env" "PROJECT_NAME") → ${GREEN}$DETECTED_PROJECT_NAME${NC}"
                 ;;
             "USER_UID")
-                echo -e "${BLUE}USER_UID:${NC} $(get_env_value ".env" "USER_UID") → ${GREEN}$DETECTED_UID${NC}"
+                echo -e "${BLUE}USER_UID:${NC} $(get_env_value ".devcontainer/.env" "USER_UID") → ${GREEN}$DETECTED_UID${NC}"
                 ;;
             "USER_GID")
-                echo -e "${BLUE}USER_GID:${NC} $(get_env_value ".env" "USER_GID") → ${GREEN}$DETECTED_GID${NC}"
+                echo -e "${BLUE}USER_GID:${NC} $(get_env_value ".devcontainer/.env" "USER_GID") → ${GREEN}$DETECTED_GID${NC}"
                 ;;
             "COMPOSE_PROJECT_NAME")
-                echo -e "${BLUE}COMPOSE_PROJECT_NAME:${NC} $(get_env_value ".env" "COMPOSE_PROJECT_NAME") → ${GREEN}$DETECTED_COMPOSE_NAME${NC}"
+                echo -e "${BLUE}COMPOSE_PROJECT_NAME:${NC} $(get_env_value ".devcontainer/.env" "COMPOSE_PROJECT_NAME") → ${GREEN}$DETECTED_COMPOSE_NAME${NC}"
                 ;;
         esac
         
@@ -735,44 +822,43 @@ apply_env_updates() {
         case $update in
             "PROJECT_NAME")
                 if [[ "$OSTYPE" == "darwin"* ]]; then
-                    sed -i '' "s/PROJECT_NAME=.*/PROJECT_NAME=$DETECTED_PROJECT_NAME/g" .env
+                    sed -i '' "s/PROJECT_NAME=.*/PROJECT_NAME=$DETECTED_PROJECT_NAME/g" .devcontainer/.env
                 else
-                    sed -i "s/PROJECT_NAME=.*/PROJECT_NAME=$DETECTED_PROJECT_NAME/g" .env
+                    sed -i "s/PROJECT_NAME=.*/PROJECT_NAME=$DETECTED_PROJECT_NAME/g" .devcontainer/.env
                 fi
                 updates_applied+=("PROJECT_NAME=$DETECTED_PROJECT_NAME")
                 ;;
             "USER_UID")
                 if [[ "$OSTYPE" == "darwin"* ]]; then
-                    sed -i '' "s/USER_UID=.*/USER_UID=$DETECTED_UID/g" .env
+                    sed -i '' "s/USER_UID=.*/USER_UID=$DETECTED_UID/g" .devcontainer/.env
                 else
-                    sed -i "s/USER_UID=.*/USER_UID=$DETECTED_UID/g" .env
+                    sed -i "s/USER_UID=.*/USER_UID=$DETECTED_UID/g" .devcontainer/.env
                 fi
                 updates_applied+=("USER_UID=$DETECTED_UID")
                 ;;
             "USER_GID")
                 if [[ "$OSTYPE" == "darwin"* ]]; then
-                    sed -i '' "s/USER_GID=.*/USER_GID=$DETECTED_GID/g" .env
+                    sed -i '' "s/USER_GID=.*/USER_GID=$DETECTED_GID/g" .devcontainer/.env
                 else
-                    sed -i "s/USER_GID=.*/USER_GID=$DETECTED_GID/g" .env
+                    sed -i "s/USER_GID=.*/USER_GID=$DETECTED_GID/g" .devcontainer/.env
                 fi
                 updates_applied+=("USER_GID=$DETECTED_GID")
                 ;;
             "COMPOSE_PROJECT_NAME")
                 if [[ "$OSTYPE" == "darwin"* ]]; then
-                    sed -i '' "s/COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=$DETECTED_COMPOSE_NAME/g" .env
+                    sed -i '' "s/COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=$DETECTED_COMPOSE_NAME/g" .devcontainer/.env
                 else
-                    sed -i "s/COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=$DETECTED_COMPOSE_NAME/g" .env
+                    sed -i "s/COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=$DETECTED_COMPOSE_NAME/g" .devcontainer/.env
                 fi
                 updates_applied+=("COMPOSE_PROJECT_NAME=$DETECTED_COMPOSE_NAME")
                 ;;
         esac
     done
     
-    # Remove .env.example from project root (it's now available in .devcontainer/.env.example)
-    if [ -f ".env.example" ]; then
-        rm .env.example
-        log_info "Removed .env.example (available in .devcontainer/.env.example for reference)"
-    fi
+    # Note: .env.example removal is now handled by cleanup_legacy_devcontainer_files()
+    # .env and .env.example should both be in .devcontainer/ per user rules
+    
+    # Note: DevContainer name update is handled by apply_template_files() after template application
     
     log_success "Applied ${#updates_applied[@]} environment updates:"
     for update in "${updates_applied[@]}"; do
@@ -807,6 +893,7 @@ cleanup_legacy_devcontainer_files() {
     # Files that should now be in .devcontainer/ directory
     # Only remove files from project root if they exist in .devcontainer/
     local devcontainer_files=(
+        ".env"
         ".env.example"
         "Dockerfile"
         "docker-compose.yml"
@@ -1597,32 +1684,6 @@ main() {
 # ====================================
 # Script Execution
 # ====================================
-
-# Show usage if help requested
-if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    echo "Usage: $0 [project-path]"
-    echo ""
-    echo "Updates an existing Flutter project with the latest devcontainer template."
-    echo ""
-    echo "Arguments:"
-    echo "  project-path    Path to Flutter project (default: current directory)"
-    echo ""
-    echo "This script will:"
-    echo "  1. Create a new branch (devcontainer-config-latest)"
-    echo "  2. Apply the latest template files"
-    echo "  3. Configure environment variables automatically"
-    echo "  4. Clean up legacy DevContainer files from project root"
-    echo "  5. Analyze and resolve conflicts with AI assistance"
-    echo "  6. Create a pull request for review"
-    echo "  7. Optionally auto-merge changes back to source branch"
-    echo ""
-    echo "Requirements:"
-    echo "  - Git repository with no uncommitted changes"
-    echo "  - Flutter project (pubspec.yaml present)"
-    echo "  - Latest devcontainer template available"
-    echo ""
-    exit 0
-fi
 
 # Run main function
 main "$@"

@@ -4,8 +4,11 @@
   "service": "app",
   "workspaceFolder": "/workspace",
 
+  "overrideCommand": false,
+
   "initializeCommand": {
-    "adb": "ADB_INFRASTRUCTURE_PROJECT_NAME=dartwingers ${localWorkspaceFolder}/../../../infrastructure/mobile/android/adb/scripts/start-adb-if-needed.sh"
+    "adb": "bash -c 'source .devcontainer/.env && ADB_INFRASTRUCTURE_PROJECT_NAME=$ADB_INFRASTRUCTURE_PROJECT_NAME ${localWorkspaceFolder}/../../../infrastructure/mobile/android/adb/scripts/start-adb-if-needed.sh'",
+    "dartwingers-check": "${localWorkspaceFolder}/../../../infrastructure/mobile/android/adb/scripts/check-dartwingers-service.sh"
   },
 
   "onCreateCommand": {
@@ -14,6 +17,7 @@
 
   "postStartCommand": [
     "echo '🚀 Container started - initializing Flutter environment...'",
+    "echo '🔧 Ensuring Dartwingers service dependency...' && ../../../infrastructure/mobile/android/adb/scripts/start-dartwingers-service-if-needed-minimal.sh",
     "flutter --version && echo '✅ Flutter SDK ready' || echo '⚠️  Flutter SDK not ready yet'",
     "adb devices && echo '✅ ADB service connected' || echo '🔄 ADB service connecting...'",
     "timeout 300 .devcontainer/scripts/setup-flutter-project.sh && echo '✅ Flutter project setup complete' || echo '🔄 Flutter setup running in background...'",
