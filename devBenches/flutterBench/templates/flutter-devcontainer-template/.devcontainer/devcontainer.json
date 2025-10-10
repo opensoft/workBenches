@@ -13,11 +13,11 @@
   },
 
   "postStartCommand": {
-    "flutter-status": "./.devcontainer/scripts/flutter-status.sh",
-    "setup-flutter-project": "./.devcontainer/scripts/setup-flutter-project.sh"
+    "flutter-status": ".devcontainer/scripts/flutter-status.sh",
+    "setup-flutter-project": ".devcontainer/scripts/setup-flutter-project.sh"
   },
 
-  "postAttachCommand": "./.devcontainer/scripts/ready-check.sh",
+  "postAttachCommand": ".devcontainer/scripts/ready-check.sh",
 
   "customizations": {
     "vscode": {
