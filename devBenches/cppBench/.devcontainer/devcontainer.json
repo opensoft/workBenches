@@ -1,0 +1,102 @@
+{
+    "name": "C++ Heavy Development Environment",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".",
+        "args": {
+            "USERNAME": "vscode",
+            "USER_UID": "1000",
+            "USER_GID": "1000"
+        }
+    },
+    "runArgs": [
+        "--cap-add=SYS_PTRACE",
+        "--security-opt", 
+        "seccomp=unconfined",
+        "--ulimit", 
+        "core=-1"
+    ],
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "terminal.integrated.defaultProfile.linux": "bash",
+                "cmake.configureOnOpen": false,
+                "C_Cpp.default.cppStandard": "c++20",
+                "C_Cpp.default.cStandard": "c17",
+                "C_Cpp.default.compilerPath": "/usr/bin/g++",
+                "C_Cpp.default.intelliSenseMode": "linux-gcc-x64",
+                "C_Cpp.clang_format_fallbackStyle": "Google",
+                "editor.formatOnSave": true,
+                "files.associations": {
+                    "*.h": "cpp",
+                    "*.hpp": "cpp",
+                    "*.cpp": "cpp",
+                    "*.cc": "cpp",
+                    "*.cxx": "cpp",
+                    "CMakeLists.txt": "cmake",
+                    "*.cmake": "cmake"
+                }
+            },
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.cpptools-extension-pack",
+                "ms-vscode.cmake-tools",
+                "twxs.cmake",
+                "ms-vscode.cpptools-themes",
+                "xaver.clang-format",
+                "jbenden.c-cpp-flylint",
+                "vadimcn.vscode-lldb",
+                "ms-python.python",
+                "ms-python.flake8",
+                "ms-python.black-formatter",
+                "formulahendry.code-runner",
+                "gruntfuggly.todo-tree",
+                "streetsidesoftware.code-spell-checker",
+                "ms-vscode.hexeditor",
+                "ms-vsliveshare.vsliveshare",
+                "github.copilot",
+                "github.copilot-chat",
+                "eamodio.gitlens",
+                "mhutchie.git-graph",
+                "shd101wyy.markdown-preview-enhanced",
+                "yzhang.markdown-all-in-one"
+            ]
+        }
+    },
+    "containerEnv": {
+        "VCPKG_ROOT": "/opt/vcpkg",
+        "CC": "/usr/bin/gcc-12",
+        "CXX": "/usr/bin/g++-12"
+    },
+    "remoteUser": "vscode",
+    "workspaceFolder": "/workspace",
+    "mounts": [
+        "source=cppbench-bashhistory,target=/home/vscode/.bash_history,type=volume",
+        "source=cppbench-vscode,target=/home/vscode/.vscode-server,type=volume"
+    ],
+    "postCreateCommand": ".devcontainer/post-create.sh",
+    "features": {
+        "ghcr.io/devcontainers/features/git:1": {
+            "version": "latest",
+            "ppa": true
+        },
+        "ghcr.io/devcontainers/features/github-cli:1": {
+            "version": "latest"
+        }
+    },
+    "forwardPorts": [8000, 8080, 3000, 5000, 9090],
+    "portsAttributes": {
+        "8000": {
+            "label": "HTTP Server",
+            "onAutoForward": "notify"
+        },
+        "8080": {
+            "label": "Development Server", 
+            "onAutoForward": "notify"
+        },
+        "3000": {
+            "label": "Web App",
+            "onAutoForward": "openBrowser"
+        }
+    }
+}

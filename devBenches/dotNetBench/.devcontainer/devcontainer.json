@@ -1,0 +1,79 @@
+{
+	"name": ".NET DevBench Container - The Monster",
+	"dockerComposeFile": "docker-compose.yml",
+	"service": "dot_net_bench",
+	"workspaceFolder": "/workspace",
+	
+	// Mount host home directory directly for seamless config/SSH access
+	"mounts": [
+		// Current workspace (already in docker-compose.yml but good to be explicit)
+		"source=${localWorkspaceFolder}/..,target=/workspace,type=bind,consistency=cached",
+		// Host home directory mounted directly - gives access to SSH, configs, dotfiles
+		"source=${localEnv:HOME},target=/home/${localEnv:USER},type=bind,consistency=cached"
+	],
+	
+	// Container environment variables
+	"containerEnv": {
+		"USERNAME": "${localEnv:USER}",
+		"USER_UID": "${localEnv:UID:-1000}",
+		"USER_GID": "${localEnv:GID:-1000}",
+		"DEBUG": "false"
+	},
+	
+	// Features are now built into the Dockerfile
+
+	// Configure tool-specific properties
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-dotnettools.csharp",
+				"ms-dotnettools.csdevkit",
+				"ms-dotnettools.vscode-dotnet-runtime",
+				"ms-dotnettools.blazorwasm-companion",
+				"ms-vscode.vscode-json",
+				"bradlc.vscode-tailwindcss",
+				"ms-vscode.powershell",
+				"ms-azuretools.vscode-azurefunctions",
+				"ms-azuretools.vscode-docker",
+				"GitHub.copilot",
+				"GitHub.copilot-chat",
+				"ms-vscode.remote-containers",
+				"esbenp.prettier-vscode",
+				"humao.rest-client",
+				"ms-playwright.playwright",
+				"ms-vscode-remote.remote-ssh",
+				"ms-vscode.test-adapter-converter",
+				"formulahendry.dotnet-test-explorer",
+				"jmrog.vscode-nuget-package-manager",
+				"k--kato.docomment",
+				"kreativ-software.csharpextensions"
+			],
+			"settings": {
+				"terminal.integrated.defaultProfile.linux": "zsh",
+				"dotnet.completion.showCompletionItemsFromUnimportedNamespaces": true,
+				"dotnet.inlayHints.enableInlayHintsForParameters": true,
+				"dotnet.inlayHints.enableInlayHintsForLiteralParameters": true,
+				"dotnet.inlayHints.enableInlayHintsForIndexerParameters": true,
+				"dotnet.inlayHints.enableInlayHintsForObjectCreationParameters": true,
+				"dotnet.inlayHints.enableInlayHintsForOtherParameters": true,
+				"dotnet.inlayHints.suppressInlayHintsForParametersThatDifferOnlyBySuffix": true,
+				"dotnet.inlayHints.suppressInlayHintsForParametersThatMatchMethodIntent": true,
+				"dotnet.inlayHints.suppressInlayHintsForParametersThatMatchArgumentName": true,
+				"dotnet.inlayHints.enableInlayHintsForTypes": true,
+				"dotnet.inlayHints.enableInlayHintsForImplicitVariableTypes": true,
+				"dotnet.inlayHints.enableInlayHintsForLambdaParameterTypes": true,
+				"dotnet.inlayHints.enableInlayHintsForImplicitObjectCreation": true,
+				"omnisharp.enableEditorConfigSupport": true,
+				"omnisharp.enableRoslynAnalyzers": true
+			}
+		}
+	},
+
+	// Use 'forwardPorts' to make a list of ports inside the container available locally
+	"forwardPorts": [5000, 5001, 7071, 8080],
+
+	// All setup is done in the Dockerfile
+
+	// Comment out to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root
+	"remoteUser": "${localEnv:USER}"
+}

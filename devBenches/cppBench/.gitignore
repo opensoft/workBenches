@@ -1,0 +1,199 @@
+# C++ Heavy Development Environment .gitignore
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# CMake generated files
+CMakeLists.txt.user
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps
+
+# Build directories
+build/
+builds/
+out/
+bin/
+lib/
+Debug/
+Release/
+x64/
+x86/
+MinSizeRel/
+RelWithDebInfo/
+
+# Ninja
+.ninja_deps
+.ninja_log
+build.ninja
+
+# Qt-related
+*.pro.user
+*.pro.user.*
+*.qbs.user
+*.qbs.user.*
+*.moc
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+
+# QtCreator
+*.autosave
+*.creator
+*.creator.*
+*.files
+*.includes
+*.config
+*.cflags
+*.cxxflags
+
+# Visual Studio / Visual Studio Code
+.vs/
+.vscode/
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# CLion
+.idea/
+cmake-build-*/
+
+# Code::Blocks
+*.depend
+*.layout
+*.cbp
+
+# Conan
+conanfile.txt
+conandata.yml
+conaninfo.txt
+conanbuild.txt
+conanrunenv.txt
+graph_info.json
+.conan/
+
+# vcpkg
+vcpkg_installed/
+.vcpkg-root
+
+# Package managers
+*.cmake.in
+*-config.cmake
+*-config-version.cmake
+
+# Testing
+CTestTestfile.cmake
+Testing/
+test_results/
+*.xml
+
+# Profiling
+*.prof
+gmon.out
+*.gcda
+*.gcno
+*.gcov
+callgrind.out.*
+cachegrind.out.*
+massif.out.*
+
+# Debugging
+core
+*.dSYM/
+*.pdb
+
+# Static analysis
+*.sarif
+cppcheck-*.xml
+scan-build-*/
+
+# Documentation
+doc/
+docs/html/
+docs/latex/
+Doxygen/
+
+# Backup files
+*~
+*.orig
+*.bak
+*.swp
+*.swo
+*.tmp
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.production
+.envrc
+
+# Logs
+*.log
+logs/
+
+# IDE and editor files
+*.kate-swp
+.project
+.cproject
+.settings/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# Ignore installed packages from vcpkg
+packages/

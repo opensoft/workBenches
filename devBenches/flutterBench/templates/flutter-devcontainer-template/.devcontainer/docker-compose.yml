@@ -1,0 +1,78 @@
+# Compose project name for Docker Desktop grouping (set in .env)
+# This groups all containers under the same stack name
+name: ${COMPOSE_PROJECT_NAME:-flutter}
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Build-time arguments from .env with readable defaults
+        USER_NAME: ${USER_NAME:-vscode}
+        USER_UID: ${USER_UID:-1000}
+        USER_GID: ${USER_GID:-1000}
+        FLUTTER_VERSION: ${FLUTTER_VERSION:-3.24.0}
+        ANDROID_HOME: ${ANDROID_HOME:-/home/vscode/android-sdk}
+        DEBUG_MODE: ${DEBUG_MODE:-false}
+    
+    # Container configuration from .env
+    container_name: ${PROJECT_NAME:-myproject}_app
+    
+    # Run as user specified in .env with defaults
+    user: "${USER_UID:-1000}:${USER_GID:-1000}"
+    
+    # Runtime environment variables
+    environment:
+      - ADB_SERVER_SOCKET=tcp:${ADB_SERVER_HOST:-shared-adb-server}:${ADB_SERVER_PORT:-5037}
+      - FLUTTER_VERSION=${FLUTTER_VERSION:-3.24.0}
+      - ANDROID_HOME=${ANDROID_HOME:-/home/vscode/android-sdk}
+      - FLUTTER_PUB_CACHE=${FLUTTER_PUB_CACHE:-/home/vscode/.pub-cache}
+      - DEBUG_MODE=${DEBUG_MODE:-false}
+    
+    # Network configuration
+    networks:
+      - dartnet
+    
+    # Volume mounts
+    volumes:
+      - .:${WORKSPACE_PATH:-/workspace}
+      # Persist pub cache per project
+      - flutter-pub-cache:${FLUTTER_PUB_CACHE:-/home/vscode/.pub-cache}
+      # Persist gradle cache per project
+      - flutter-gradle-cache:/home/${USER_NAME:-vscode}/.gradle
+    
+    # Port mappings for development
+    ports:
+      - "${HOT_RELOAD_PORT:-8080}:8080"     # Hot reload
+      - "${DEVTOOLS_PORT:-9100}:9100"       # Flutter DevTools
+    
+    # Resource limits (optional)
+    deploy:
+      resources:
+        limits:
+          memory: ${CONTAINER_MEMORY:-4g}
+          cpus: '${CONTAINER_CPUS:-2}'
+    
+    # Working directory
+    working_dir: ${WORKSPACE_PATH:-/workspace}
+    
+    # Keep container running
+    command: sleep infinity
+    
+    # Restart policy
+    restart: unless-stopped
+
+# External network (managed by shared infrastructure)
+networks:
+  dartnet:
+    external: true
+    name: ${NETWORK_NAME:-dartnet}
+
+# Named volumes for caching
+# Note: Volume keys cannot use variable substitution, but names can
+volumes:
+  flutter-pub-cache:
+    name: flutter-pub-cache-${PROJECT_NAME:-myproject}
+  flutter-gradle-cache:
+    name: flutter-gradle-cache-${PROJECT_NAME:-myproject}

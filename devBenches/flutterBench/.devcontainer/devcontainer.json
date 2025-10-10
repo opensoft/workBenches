@@ -1,0 +1,71 @@
+{
+	"name": "Flutter DevBench Container - The Monster",
+	"dockerComposeFile": "docker-compose.yml",
+	"service": "flutter_bench",
+	"workspaceFolder": "/workspace",
+	
+	// Mount host home directory directly for seamless config/SSH access
+	"mounts": [
+		// Projects folder mounted to workspace - gives access to all bench projects
+		"source=${localEnv:HOME}/projects,target=/workspace,type=bind,consistency=cached",
+		// Host home directory mounted directly - gives access to SSH, configs, dotfiles
+		"source=${localEnv:HOME},target=/home/brett,type=bind,consistency=cached"
+	],
+	
+	// Features are now built into the Dockerfile
+
+	// Configure tool-specific properties
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"dart-code.dart-code",
+				"dart-code.flutter",
+				"alexisvt.flutter-snippets",
+				"Nash.awesome-flutter-snippets",
+				"jeroen-meijer.pubspec-assist",
+				"robert-brunhage.flutter-riverpod-snippets",
+				"localizely.flutter-intl",
+				"ms-vscode.vscode-json",
+				"ms-azuretools.vscode-docker",
+				"GitHub.copilot",
+				"GitHub.copilot-chat",
+				"ms-vscode.remote-containers",
+				"esbenp.prettier-vscode",
+				"humao.rest-client",
+				"ms-playwright.playwright",
+				"ms-vscode-remote.remote-ssh",
+				"ms-vscode.test-adapter-converter",
+				"sonarsource.sonarlint-vscode",
+				"bradlc.vscode-tailwindcss",
+				"formulahendry.auto-rename-tag",
+				"christian-kohler.path-intellisense",
+				"usernamehw.errorlens"
+			],
+			"settings": {
+				"terminal.integrated.defaultProfile.linux": "zsh",
+				"dart.flutterSdkPath": "/opt/flutter",
+				"dart.sdkPath": "/opt/flutter/bin/cache/dart-sdk",
+				"dart.checkForSdkUpdates": false,
+				"dart.openDevTools": "flutter",
+				"dart.previewLsp": true,
+				"dart.lineLength": 120,
+				"dart.hotReloadOnSave": "allIfDirty",
+				"dart.showTodos": true,
+				"flutter.experimentalRefactors": true,
+				"flutter.showWebRecorderButton": true,
+				"sonarlint.pathToNodeExecutable": "/usr/bin/node",
+				"files.associations": {
+					"*.dart": "dart"
+				}
+			}
+		}
+	},
+
+	// Use 'forwardPorts' to make a list of ports inside the container available locally
+	"forwardPorts": [3000, 8080, 8000, 5037, 5554, 5555],
+
+	// All setup is done in the Dockerfile
+
+	// Comment out to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root
+	"remoteUser": "brett"
+}
