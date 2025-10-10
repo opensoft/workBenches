@@ -1,0 +1,105 @@
+{
+  "infrastructure": {
+    "specKit": {
+      "url": "git@github.com:opensoft/specKit.git",
+      "path": "specKit",
+      "description": "Infrastructure and specification kit - always installed"
+    }
+  },
+  "benches": {
+    "cloudAdmin": {
+      "url": "git@github.com:opensoft/cloudAdmin.git",
+      "path": "adminBenches/cloudAdmin",
+      "description": "Cloud infrastructure and database administration tools",
+      "ai_keywords": ["cloud", "infrastructure", "devops", "kubernetes", "docker", "deployment", "admin", "monitoring", "logging"]
+    },
+    "pythonBench": {
+      "url": "git@github.com:opensoft/pythonBench.git", 
+      "path": "devBenches/pythonBench",
+      "description": "Python development environment and tools",
+      "ai_keywords": ["python", "django", "flask", "fastapi", "pandas", "numpy", "machine learning", "ml", "data science", "AI", "artificial intelligence", "web scraping"],
+      "project_scripts": [
+        {
+          "name": "python",
+          "script": "scripts/new-python-project.sh",
+          "description": "Create a new Python project with DevContainer setup",
+          "includes_speckit": true
+        }
+      ]
+    },
+    "javaBench": {
+      "url": "git@github.com:opensoft/javaBench.git",
+      "path": "devBenches/javaBench",
+      "description": "Java development environment and tools",
+      "ai_keywords": ["java", "spring", "springboot", "hibernate", "maven", "gradle", "jvm", "enterprise", "microservices"],
+      "project_scripts": [
+        {
+          "name": "java",
+          "script": "scripts/new-java-project.sh",
+          "description": "Create a new Java project with DevContainer setup",
+          "includes_speckit": true
+        }
+      ]
+    },
+    "dotNetBench": {
+      "url": "git@github.com:opensoft/dotNetBench.git",
+      "path": "devBenches/dotNetBench",
+      "description": ".NET development environment and tools",
+      "ai_keywords": ["dotnet", ".net", "c#", "csharp", "asp.net", "core", "blazor", "entity framework", "microsoft", "visual studio"],
+      "project_scripts": [
+        {
+          "name": "dotnet",
+          "script": "scripts/new-dotnet-project.sh",
+          "description": "Create a new .NET project with DevContainer setup",
+          "includes_speckit": true
+        }
+      ]
+    },
+    "flutterBench": {
+      "url": "git@github.com:opensoft/flutterBench.git",
+      "path": "devBenches/flutterBench",
+      "description": "Flutter/Dart development environment and tools",
+      "ai_keywords": ["flutter", "dart", "mobile app", "android", "ios", "cross-platform", "widget", "material design", "cupertino"],
+      "project_scripts": [
+        {
+          "name": "flutter",
+          "script": "scripts/new-flutter-project.sh",
+          "description": "Create a new Flutter project with DevContainer setup",
+          "includes_speckit": true
+        },
+        {
+          "name": "dartwing",
+          "script": "scripts/new-dartwing-project.sh",
+          "description": "Create a new DartWing project with specialized configuration",
+          "includes_speckit": true
+        },
+        {
+          "name": "update-flutter",
+          "script": "scripts/update-flutter-project.sh",
+          "description": "Update existing Flutter project with latest devcontainer template",
+          "includes_speckit": false
+        },
+        {
+          "name": "update-dartwing",
+          "script": "scripts/update-dartwing-project.sh",
+          "description": "Update existing DartWing project with latest devcontainer template",
+          "includes_speckit": false
+        }
+      ]
+    },
+    "cppBench": {
+      "url": "git@github.com:opensoft/cppBench.git",
+      "path": "devBenches/cppBench",
+      "description": "C++ development environment and tools",
+      "ai_keywords": ["c++", "cpp", "cmake", "makefile", "gcc", "clang", "system programming", "embedded", "game development", "native performance"],
+      "project_scripts": [
+        {
+          "name": "cpp",
+          "script": "scripts/new-cpp-project.sh",
+          "description": "Create a new C++ project with DevContainer setup",
+          "includes_speckit": true
+        }
+      ]
+    }
+  }
+}

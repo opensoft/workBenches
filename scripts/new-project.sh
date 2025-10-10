@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # WorkBenches New Project Script
-# Lists installed benches and creates projects using bench-specific scripts
+# Uses AI to determine project type and creates projects using bench-specific scripts
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/bench-config.json"
+CONFIG_FILE="$SCRIPT_DIR/../config/bench-config.json"
 
 # Colors for output
 RED='\033[0;31m'
@@ -24,11 +24,155 @@ check_dependencies() {
         missing_deps+=("jq")
     fi
     
+    if ! command -v curl &> /dev/null; then
+        missing_deps+=("curl")
+    fi
+    
     if [ ${#missing_deps[@]} -ne 0 ]; then
         echo -e "${RED}Error: Missing required dependencies: ${missing_deps[*]}${NC}"
         echo "Please install the missing dependencies and run again."
         exit 1
     fi
+}
+
+# AI-powered project type detection
+analyze_project_with_ai() {
+    local project_description="$1"
+    local available_benches="$2"
+    
+    echo -e "${CYAN}🤖 Analyzing project requirements with AI...${NC}" >&2
+    
+    # Prepare AI prompt
+    local ai_prompt="Based on the following project description, determine which development environment would be most suitable:
+
+Project Description: $project_description
+
+Available environments:
+$available_benches
+
+Please respond with ONLY the bench name (like 'flutterBench', 'pythonBench', etc.) that best matches the project requirements. If uncertain, respond with 'UNCERTAIN'."
+    
+    # Try to get AI response using Warp AI or fallback methods
+    local ai_response=""
+    
+    # Method 1: Try using Warp AI through environment variables if available
+    if command -v warp &> /dev/null && [ -n "$WARP_AI_API_KEY" ]; then
+        ai_response=$(echo "$ai_prompt" | warp ai --stdin 2>/dev/null | tail -n1 | tr -d '\n' || echo "")
+    fi
+    
+    # Method 2: Try Claude API if available
+    if [ -z "$ai_response" ] && [ -n "$CLAUDE_API_KEY" ]; then
+        ai_response=$(curl -s -X POST "https://api.anthropic.com/v1/messages" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $CLAUDE_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "{
+                \"model\": \"claude-3-haiku-20240307\",
+                \"max_tokens\": 50,
+                \"messages\": [
+                    {\"role\": \"user\", \"content\": \"$ai_prompt\"}
+                ]
+            }" | jq -r '.content[0].text' 2>/dev/null || echo "")
+    fi
+    
+    # Method 3: Simple keyword matching as fallback
+    if [ -z "$ai_response" ] || [ "$ai_response" = "null" ]; then
+        ai_response=$(analyze_project_keywords "$project_description")
+    fi
+    
+    # Clean up the response
+    ai_response=$(echo "$ai_response" | tr -d '"' | tr -d "'" | xargs)
+    
+    echo "$ai_response"
+}
+
+# Fallback keyword-based analysis
+analyze_project_keywords() {
+    local description="$1"
+    local desc_lower=$(echo "$description" | tr '[:upper:]' '[:lower:]')
+    
+    # Check each bench's keywords
+    while IFS= read -r bench_name; do
+        if is_bench_installed "$bench_name"; then
+            local keywords
+            keywords=$(jq -r ".benches.${bench_name}.ai_keywords[]?" "$CONFIG_FILE" 2>/dev/null)
+            
+            if [ -n "$keywords" ]; then
+                while IFS= read -r keyword; do
+                    if [[ "$desc_lower" == *"$keyword"* ]]; then
+                        echo "$bench_name"
+                        return 0
+                    fi
+                done <<< "$keywords"
+            fi
+        fi
+    done < <(jq -r '.benches | keys[]' "$CONFIG_FILE" 2>/dev/null)
+    
+    echo "UNCERTAIN"
+}
+
+# Get available benches for AI prompt
+get_available_benches_for_ai() {
+    local bench_list=""
+    
+    while IFS= read -r bench_name; do
+        if is_bench_installed "$bench_name"; then
+            local description
+            local keywords
+            description=$(jq -r ".benches.${bench_name}.description" "$CONFIG_FILE")
+            keywords=$(jq -r ".benches.${bench_name}.ai_keywords[]?" "$CONFIG_FILE" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+            
+            bench_list+="- $bench_name: $description"
+            if [ -n "$keywords" ]; then
+                bench_list+="\n  Keywords: $keywords"
+            fi
+            bench_list+="\n"
+        fi
+    done < <(jq -r '.benches | keys[]' "$CONFIG_FILE" 2>/dev/null)
+    
+    echo -e "$bench_list"
+}
+
+# Get project description from user
+get_project_description() {
+    echo -e "${YELLOW}Project Analysis:${NC}"
+    echo "Describe what kind of project you want to create."
+    echo "Examples:"
+    echo "  - 'A mobile app for iOS and Android with beautiful UI'"
+    echo "  - 'A Python web application with machine learning features'"
+    echo "  - 'A Java microservice with Spring Boot'"
+    echo "  - 'A C++ game engine with high performance'"
+    echo ""
+    
+    local description=""
+    while [ -z "$description" ]; do
+        read -p "Project description: " description
+        if [ -z "$description" ]; then
+            echo -e "${RED}Please provide a project description.${NC}"
+        fi
+    done
+    
+    echo "$description"
+}
+
+# Determine project type using AI
+determine_project_type() {
+    local project_description="$1"
+    
+    # Get available benches for AI analysis
+    local available_benches
+    available_benches=$(get_available_benches_for_ai)
+    
+    if [ -z "$available_benches" ]; then
+        echo -e "${RED}No installed benches found for project creation.${NC}"
+        return 1
+    fi
+    
+    # Use AI to analyze the project
+    local suggested_bench
+    suggested_bench=$(analyze_project_with_ai "$project_description" "$available_benches")
+    
+    echo "$suggested_bench"
 }
 
 # Check if a bench is installed
@@ -304,26 +448,38 @@ create_project() {
 show_usage() {
     echo "Usage: $0 [project-name] [target-directory]"
     echo ""
+    echo "This AI-powered script analyzes your project description and automatically"
+    echo "suggests the most appropriate development environment."
+    echo ""
     echo "Arguments:"
     echo "  project-name      Optional: Name of the project to create"
     echo "  target-directory  Optional: Directory where project should be created"
     echo ""
     echo "Examples:"
-    echo "  $0                          # Interactive mode"
-    echo "  $0 myapp                    # Interactive type selection for 'myapp'"
-    echo "  $0 myapp ~/custom/path      # Interactive type selection with custom path"
+    echo "  $0                          # Interactive mode with AI analysis"
+    echo "  $0 myapp                    # AI analysis then create 'myapp'"
+    echo "  $0 myapp ~/custom/path      # AI analysis with custom path"
+    echo ""
+    echo "AI Detection Methods:"
+    echo "  1. Warp AI (if WARP_AI_API_KEY is set)"
+    echo "  2. Claude API (if CLAUDE_API_KEY is set)"
+    echo "  3. Keyword matching (fallback)"
     echo ""
     echo "This script will:"
-    echo "  1. Show available project types from installed benches"
-    echo "  2. Let you select the project type"
-    echo "  3. Delegate to the appropriate bench-specific script"
+    echo "  1. Ask you to describe your project"
+    echo "  2. Analyze the description using AI"
+    echo "  3. Suggest the best development environment"
+    echo "  4. Create the project using the appropriate bench-specific script"
+    echo "  5. Include specKit for spec-driven development"
+    echo ""
+    echo "Supported project types: Flutter/Dart, Python, Java, .NET/C#, C++"
     echo ""
 }
 
 # Main function
 main() {
-    echo -e "${BLUE}WorkBenches New Project Script${NC}"
-    echo "=============================="
+    echo -e "${BLUE}WorkBenches New Project Script (AI-Powered)${NC}"
+    echo "=============================================="
     echo ""
     
     # Check for help flag
@@ -340,18 +496,75 @@ main() {
         exit 1
     fi
     
-    # Show available project types
-    if ! show_available_project_types; then
-        exit 1
+    # Get project description for AI analysis
+    local project_description
+    project_description=$(get_project_description)
+    
+    echo ""
+    echo -e "${CYAN}🧠 Analyzing your project requirements...${NC}"
+    
+    # Determine project type using AI
+    local suggested_bench
+    suggested_bench=$(determine_project_type "$project_description")
+    
+    local bench_name=""
+    local script_name=""
+    
+    # Handle AI response
+    if [ "$suggested_bench" = "UNCERTAIN" ] || [ -z "$suggested_bench" ]; then
+        echo -e "${YELLOW}AI analysis was uncertain. Showing available options...${NC}"
+        echo ""
+        
+        # Fallback to manual selection
+        if ! show_available_project_types; then
+            exit 1
+        fi
+        
+        echo "Which type of project would you like to create?"
+        local selected_type
+        selected_type=$(prompt_project_type)
+        
+        bench_name="${selected_type%%:*}"
+        script_name="${selected_type##*:}"
+    else
+        # AI suggested a bench, find the appropriate script
+        bench_name="$suggested_bench"
+        
+        # Get the first available project script for this bench
+        script_name=$(jq -r ".benches.${bench_name}.project_scripts[0].name" "$CONFIG_FILE" 2>/dev/null)
+        
+        if [ "$script_name" = "null" ] || [ -z "$script_name" ]; then
+            echo -e "${RED}Error: No project creation script found for $bench_name${NC}"
+            exit 1
+        fi
+        
+        echo -e "${GREEN}✅ AI Recommendation: $script_name project (from $bench_name)${NC}"
+        
+        # Confirm with user
+        local script_desc
+        script_desc=$(jq -r ".benches.${bench_name}.project_scripts[] | select(.name==\"$script_name\") | .description" "$CONFIG_FILE")
+        echo -e "   ${script_desc}"
+        echo ""
+        
+        read -p "Proceed with this recommendation? [Y/n]: " confirm
+        case $confirm in
+            [Nn]* )
+                echo ""
+                echo -e "${YELLOW}Showing all available options...${NC}"
+                
+                if ! show_available_project_types; then
+                    exit 1
+                fi
+                
+                echo "Which type of project would you like to create?"
+                local selected_type
+                selected_type=$(prompt_project_type)
+                
+                bench_name="${selected_type%%:*}"
+                script_name="${selected_type##*:}"
+                ;;
+        esac
     fi
-    
-    # Get project type selection
-    echo "Which type of project would you like to create?"
-    local selected_type
-    selected_type=$(prompt_project_type)
-    
-    local bench_name="${selected_type%%:*}"
-    local script_name="${selected_type##*:}"
     
     echo ""
     echo -e "${GREEN}Selected: $script_name project (from $bench_name)${NC}"

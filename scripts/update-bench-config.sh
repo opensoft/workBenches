@@ -6,7 +6,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/bench-config.json"
+CONFIG_FILE="$SCRIPT_DIR/../config/bench-config.json"
 BACKUP_FILE="$CONFIG_FILE.backup"
 
 # Colors
@@ -219,7 +219,7 @@ generate_config() {
 get_bench_description() {
     local bench_name="$1"
     case "$bench_name" in
-        adminBench) echo "Administrative tools and utilities bench" ;;
+        adminBenches) echo "Administrative tools and utilities bench" ;;
         pythonBench) echo "Python development environment and tools" ;;
         javaBench) echo "Java development environment and tools" ;;
         dotNetBench) echo ".NET development environment and tools" ;;

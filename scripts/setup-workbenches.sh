@@ -6,8 +6,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/bench-config.json"
-INSTALLED_FILE="$SCRIPT_DIR/.installed-benches.json"
+CONFIG_FILE="$SCRIPT_DIR/../config/bench-config.json"
+INSTALLED_FILE="$SCRIPT_DIR/../.installed-benches.json"
 
 # Colors for output
 RED='\033[0;31m'
@@ -68,7 +68,7 @@ is_installed() {
     local bench_path
     bench_path=$(jq -r ".benches.${bench_name}.path // .infrastructure.${bench_name}.path" "$CONFIG_FILE" 2>/dev/null)
     
-    if [ "$bench_path" != "null" ] && [ -d "$SCRIPT_DIR/$bench_path" ]; then
+    if [ "$bench_path" != "null" ] && [ -d "$SCRIPT_DIR/../$bench_path" ]; then
         return 0
     fi
     return 1
@@ -85,12 +85,12 @@ clone_repo() {
     
     # Create parent directory if needed
     local parent_dir
-    parent_dir=$(dirname "$SCRIPT_DIR/$path")
-    if [ "$parent_dir" != "$SCRIPT_DIR" ]; then
+    parent_dir=$(dirname "$SCRIPT_DIR/../$path")
+    if [ "$parent_dir" != "$SCRIPT_DIR/.." ]; then
         mkdir -p "$parent_dir"
     fi
     
-    if git clone "$url" "$SCRIPT_DIR/$path"; then
+    if git clone "$url" "$SCRIPT_DIR/../$path"; then
         echo -e "${GREEN}✓ Successfully cloned $name${NC}"
         # Update installed tracking
         local current_time
@@ -120,6 +120,54 @@ install_onp_command() {
         echo -e "${YELLOW}⚠ Failed to install onp command${NC}"
         echo "You can manually copy it later: cp onp ~/.local/bin/ && chmod +x ~/.local/bin/onp"
     fi
+    echo ""
+}
+
+# Install workBenches commands globally
+install_workbench_commands() {
+    echo -e "${YELLOW}Global Commands Installation${NC}"
+    echo "Install key workBenches commands globally for easy access?"
+    echo ""
+    echo -e "${BLUE}Commands to be installed:${NC}"
+    echo "• launchBench     - Universal bench launcher with AI routing"
+    echo "• onp             - Quick project creation"
+    echo "• setup-workbenches - WorkBenches setup and configuration"
+    echo "• update-bench-config - Auto-discover and update configuration"
+    echo "• new-bench       - Create new development benches"
+    echo ""
+    
+    while true; do
+        read -p "Install workBenches commands globally? [Y/n]: " install_choice
+        case $install_choice in
+            [Yy]* | "" )
+                if [ -f "$SCRIPT_DIR/install-workbench-commands.sh" ]; then
+                    "$SCRIPT_DIR/install-workbench-commands.sh" --install
+                    if [ $? -eq 0 ]; then
+                        echo -e "${GREEN}✓ WorkBenches commands installed successfully!${NC}"
+                        echo "You can now use these commands from anywhere:"
+                        echo "  • launchBench"
+                        echo "  • onp"
+                        echo "  • setup-workbenches"
+                        echo "  • update-bench-config"
+                        echo "  • new-bench"
+                    else
+                        echo -e "${YELLOW}⚠ Some commands may not have been installed correctly${NC}"
+                    fi
+                else
+                    echo -e "${RED}✗ install-workbench-commands.sh not found${NC}"
+                fi
+                break
+                ;;
+            [Nn]* )
+                echo -e "${YELLOW}Skipping global commands installation${NC}"
+                echo "You can install them later with: ./install-workbench-commands.sh --install"
+                break
+                ;;
+            * )
+                echo "Please answer yes or no."
+                ;;
+        esac
+    done
     echo ""
 }
 
@@ -495,6 +543,7 @@ main() {
     prompt_bench_selection
     setup_ai_features
     install_onp_command
+    install_workbench_commands
     show_summary
     
     echo ""
@@ -502,13 +551,17 @@ main() {
     echo "You can re-run this script at any time to install additional benches."
     echo ""
     echo -e "${BLUE}Next steps:${NC}"
-    echo "• Create projects: onp (or ./new-project.sh)"
+    echo "• Launch any bench: launchBench (with AI routing)"
+    echo "• Create projects: onp (quick project creation)"
     if [ -n "$OPENAI_API_KEY" ] || [ -n "$ANTHROPIC_API_KEY" ]; then
-        echo "• Create AI-powered benches: ./new-bench.sh"
+        echo "• Create AI-powered benches: new-bench"
     else
-        echo "• Create benches: ./new-bench.sh (basic mode)"
+        echo "• Create benches: new-bench (basic mode)"
     fi
-    echo "• Update configuration: ./update-bench-config.sh"
+    echo "• Update configuration: update-bench-config"
+    echo ""
+    echo -e "${YELLOW}Note:${NC} If commands aren't available globally, restart your shell or run:"
+    echo "  source ~/.zshrc  # or ~/.bashrc"
 }
 
 # Run main function

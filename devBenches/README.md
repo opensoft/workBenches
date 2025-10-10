@@ -1,4 +1,4 @@
-# devBench - Development Workbenches
+# devBenches - Development Workbenches
 
 This folder contains individual development workbenches for different programming languages and technologies.
 
@@ -17,13 +17,13 @@ Each subfolder is a separate git repository containing a complete development en
 ### Using WorkBenches (Recommended)
 ```bash
 # From workBenches root directory
-./new-project.sh
+./scripts/new-project.sh
 ```
 
 ### Direct Access
 ```bash
 # Navigate to specific bench
-cd devBench/flutterBench
+cd devBenches/flutterBench
 code .  # Open in VS Code with DevContainer
 ```
 
@@ -32,7 +32,7 @@ code .  # Open in VS Code with DevContainer
 Use the workBenches new-bench script:
 ```bash
 # From workBenches root
-./new-bench.sh
+./scripts/new-bench.sh
 ```
 
 This will create a new development bench with:
@@ -43,6 +43,6 @@ This will create a new development bench with:
 
 ## Organization
 
-- **This folder** (`devBench/`) is part of the main workBenches repository
+- **This folder** (`devBenches/`) is part of the main workBenches repository
 - **Individual benches** are separate git repositories
 - **Each bench** provides a complete development environment for its technology

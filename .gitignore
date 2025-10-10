@@ -1,17 +1,17 @@
 # Individual bench repositories (separate git repos)
-# devBench/ and adminBench/ are organizational folders (NOT ignored)
+# devBenches/ and adminBenches/ are organizational folders (NOT ignored)
 # Only the actual bench repos within them are ignored
-adminBench/cloudAdmin/
-devBench/cppBench/
-devBench/flutterBench/
-devBench/javaBench/
-devBench/dotNetBench/
-devBench/pythonBench/
+adminBenches/cloudAdmin/
+devBenches/cppBench/
+devBenches/flutterBench/
+devBenches/javaBench/
+devBenches/dotNetBench/
+devBenches/pythonBench/
 specKit/
 
 # Installation tracking (local only)
 .installed-benches.json
-bench-config.json.backup
+config/bench-config.json.backup
 
 # Common ignores
 .DS_Store

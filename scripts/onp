@@ -7,11 +7,11 @@
 WORKBENCHES_DIR="/home/brett/projects/workBenches"
 
 # Check if the new-project.sh script exists
-if [ ! -f "$WORKBENCHES_DIR/new-project.sh" ]; then
-    echo "Error: workBenches new-project.sh not found at $WORKBENCHES_DIR/new-project.sh"
+if [ ! -f "$WORKBENCHES_DIR/scripts/new-project.sh" ]; then
+    echo "Error: workBenches new-project.sh not found at $WORKBENCHES_DIR/scripts/new-project.sh"
     echo "Please ensure workBenches is properly installed."
     exit 1
 fi
 
 # Execute new-project.sh with all forwarded arguments
-exec "$WORKBENCHES_DIR/new-project.sh" "$@"
+exec "$WORKBENCHES_DIR/scripts/new-project.sh" "$@"
