@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  cppbench:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USERNAME: vscode
+        USER_UID: 1000
+        USER_GID: 1000
+    
+    volumes:
+      - ../..:/workspace:cached
+      - cppbench-vscode-server:/home/vscode/.vscode-server
+      - cppbench-bash-history:/home/vscode/.bash_history
+      - cppbench-conan:/home/vscode/.conan2
+    
+    # Overrides default command so things don't shut down after the process ends
+    command: sleep infinity
+    
+    # Use "forwardPorts" in **devcontainer.json** to forward an app port locally
+    ports:
+      - "8000:8000"
+      - "8080:8080"
+      - "3000:3000"
+      - "5000:5000"
+      - "9090:9090"
+    
+    # Security and debugging settings
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+    
+    # Environment variables
+    environment:
+      - VCPKG_ROOT=/opt/vcpkg
+      - CC=/usr/bin/gcc-12
+      - CXX=/usr/bin/g++-12
+    
+    # Keep container running
+    tty: true
+
+volumes:
+  cppbench-vscode-server:
+  cppbench-bash-history:
+  cppbench-conan:

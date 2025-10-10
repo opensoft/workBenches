@@ -1,0 +1,157 @@
+# ====================================
+# Environment Variables
+# ====================================
+# Never commit actual .env files - they may contain sensitive information
+.env
+.env.local
+.env.*.local
+
+# Keep .env.example - this is safe to commit
+# !.env.example
+
+# ====================================
+# Flutter
+# ====================================
+# Files and directories created by pub
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+
+# Avoid committing generated files:
+*.g.dart
+*.mocks.dart
+*.config.dart
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# ====================================
+# IDE & Editor
+# ====================================
+# VS Code
+.vscode/launch.json
+.vscode/settings.json
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea/libraries/
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+
+# ====================================
+# OS Generated Files
+# ====================================
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# ====================================
+# Docker & DevContainer
+# ====================================
+# Docker override files (user-specific configurations)
+docker-compose.override.yml
+docker-compose.*.yml
+
+# DevContainer build cache
+.devcontainer/docker-compose.override.yml
+
+# ====================================
+# Logs
+# ====================================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ====================================
+# Build & Distribution
+# ====================================
+/build/
+/dist/
+/web/build/
+
+# Android
+android/.gradle/
+android/gradle/
+android/gradlew
+android/gradlew.bat
+android/local.properties
+android/key.properties
+android/app/*.jks
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/app.flx
+ios/Flutter/app.zip
+ios/Flutter/flutter_assets/
+ios/ServiceDefinitions.json
+ios/Runner/GeneratedPluginRegistrant.*
+
+# ====================================
+# Testing
+# ====================================
+/test/coverage/
+coverage/
+*.coverage
+
+# ====================================
+# Temporary Files
+# ====================================
+*.tmp
+*.temp
+.temp/
+.tmp/
+
+# ====================================
+# Database
+# ====================================
+*.sqlite
+*.sqlite3
+*.db
+
+# ====================================
+# Cache
+# ====================================
+.cache/
+*.cache
+
+# ====================================
+# Backup Files
+# ====================================
+*.backup
+*.bak
+*.orig
