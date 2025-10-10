@@ -104,8 +104,8 @@ echo "⚙️  Setting up environment configuration..."
 # Create .env in .devcontainer folder from .env.example
 cp "$TEMPLATE_DIR/.devcontainer/.env.example" .devcontainer/.env
 
-# Copy README for reference
-cp "$TEMPLATE_DIR/README.md" "DEVCONTAINER_README.md"
+# Note: Skip copying template README.md as DEVCONTAINER_README.md
+# The devcontainer documentation is already available in .devcontainer/docs/
 
 # Replace placeholders in .env
 echo "🔧 Configuring project environment..."
@@ -250,7 +250,7 @@ echo "   2. cd $PROJECT_PATH"
 echo "   3. code ."
 echo "   4. When prompted, click 'Reopen in Container'"
 echo ""
-echo "📚 For detailed information, see: DEVCONTAINER_README.md"
+echo "📚 For detailed information, see: .devcontainer/docs/DEVCONTAINER_README.md"
 echo "📚 For environment variables, see: .devcontainer/.env.example"
 echo "📚 For spec-driven development, see: README.md and spec-driven.md"
 echo ""

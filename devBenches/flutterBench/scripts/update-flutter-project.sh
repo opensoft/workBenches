@@ -497,11 +497,9 @@ apply_template_files() {
         fi
     done
     
-    # Copy README as reference
-    if [ -f "$TEMPLATE_DIR/README.md" ]; then
-        cp "$TEMPLATE_DIR/README.md" "DEVCONTAINER_README.md"
-        log_info "Copied: README.md → DEVCONTAINER_README.md"
-    fi
+    # Note: Skip copying template README.md as DEVCONTAINER_README.md
+    # The devcontainer documentation is already available in .devcontainer/docs/
+    # Copying it to root creates duplicates that clutter the project structure
     
     log_success "Template files applied"
 }
@@ -510,40 +508,265 @@ apply_template_files() {
 # Configuration Merging Functions
 # ====================================
 
-configure_env_file() {
-    log_section "Configuring Environment File"
+# ====================================
+# Environment File Analysis Functions
+# ====================================
+
+get_env_value() {
+    local env_file="$1"
+    local key="$2"
+    
+    if [ -f "$env_file" ]; then
+        grep "^${key}=" "$env_file" 2>/dev/null | cut -d'=' -f2- || echo "(not set)"
+    else
+        echo "(not set)"
+    fi
+}
+
+analyze_env_changes() {
+    log_section "🔍 Analyzing Environment Configuration Changes"
     
     if [ ! -f ".env" ]; then
-        log_error ".env file not found after template application"
+        log_error ".env file not found"
         return 1
     fi
     
-    # Auto-detect configuration values
+    # Auto-detect new configuration values
     local current_uid=$(id -u)
     local current_gid=$(id -g)
     local current_user=$(whoami)
     
     # Detect parent directory for compose project name
     local parent_dir=$(basename "$(dirname "$PROJECT_PATH")")
-    local compose_project_name="flutter"
+    local new_compose_project_name="flutter"
     if [[ "$parent_dir" == "dartwingers" ]]; then
-        compose_project_name="dartwingers"
+        new_compose_project_name="dartwingers"
     fi
     
-    # Apply automatic replacements
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        sed -i '' "s/PROJECT_NAME=myproject/PROJECT_NAME=$PROJECT_NAME/g" .env
-        sed -i '' "s/USER_UID=1000/USER_UID=$current_uid/g" .env
-        sed -i '' "s/USER_GID=1000/USER_GID=$current_gid/g" .env
-        sed -i '' "s/COMPOSE_PROJECT_NAME=flutter/COMPOSE_PROJECT_NAME=$compose_project_name/g" .env
-    else
-        # Linux
-        sed -i "s/PROJECT_NAME=myproject/PROJECT_NAME=$PROJECT_NAME/g" .env
-        sed -i "s/USER_UID=1000/USER_UID=$current_uid/g" .env
-        sed -i "s/USER_GID=1000/USER_GID=$current_gid/g" .env
-        sed -i "s/COMPOSE_PROJECT_NAME=flutter/COMPOSE_PROJECT_NAME=$compose_project_name/g" .env
+    # Get current values from .env
+    local current_project_name=$(get_env_value ".env" "PROJECT_NAME")
+    local current_uid_env=$(get_env_value ".env" "USER_UID")
+    local current_gid_env=$(get_env_value ".env" "USER_GID")
+    local current_compose_name=$(get_env_value ".env" "COMPOSE_PROJECT_NAME")
+    
+    # Analyze what would change
+    local changes_detected=false
+    local changes=()
+    
+    if [ "$current_project_name" != "$PROJECT_NAME" ]; then
+        changes+=("PROJECT_NAME")
+        changes_detected=true
     fi
+    
+    if [ "$current_uid_env" != "$current_uid" ]; then
+        changes+=("USER_UID")
+        changes_detected=true
+    fi
+    
+    if [ "$current_gid_env" != "$current_gid" ]; then
+        changes+=("USER_GID")
+        changes_detected=true
+    fi
+    
+    if [ "$current_compose_name" != "$new_compose_project_name" ]; then
+        changes+=("COMPOSE_PROJECT_NAME")
+        changes_detected=true
+    fi
+    
+    if [ "$changes_detected" = false ]; then
+        log_success "No environment configuration changes needed"
+        log_info "Current configuration is already correct:"
+        echo "   • PROJECT_NAME: $current_project_name"
+        echo "   • USER_UID: $current_uid_env"
+        echo "   • USER_GID: $current_gid_env"
+        echo "   • COMPOSE_PROJECT_NAME: $current_compose_name"
+        return 0
+    fi
+    
+    # Show proposed changes
+    log_warning "Environment configuration changes detected"
+    echo ""
+    echo -e "${YELLOW}📋 Proposed .env file changes:${NC}"
+    echo "══════════════════════════════════════════════════════════"
+    echo ""
+    
+    if [[ " ${changes[*]} " =~ " PROJECT_NAME " ]]; then
+        echo -e "${BLUE}PROJECT_NAME:${NC}"
+        echo -e "  Current: ${RED}$current_project_name${NC}"
+        echo -e "  New:     ${GREEN}$PROJECT_NAME${NC}"
+        echo -e "  Impact:  Container names will be ${GREEN}${PROJECT_NAME}_app${NC} and ${GREEN}${PROJECT_NAME}_service${NC}"
+        echo ""
+    fi
+    
+    if [[ " ${changes[*]} " =~ " USER_UID " ]]; then
+        echo -e "${BLUE}USER_UID:${NC}"
+        echo -e "  Current: ${RED}$current_uid_env${NC}"
+        echo -e "  New:     ${GREEN}$current_uid${NC}"
+        echo -e "  Impact:  File permissions will match your current user"
+        echo ""
+    fi
+    
+    if [[ " ${changes[*]} " =~ " USER_GID " ]]; then
+        echo -e "${BLUE}USER_GID:${NC}"
+        echo -e "  Current: ${RED}$current_gid_env${NC}"
+        echo -e "  New:     ${GREEN}$current_gid${NC}"
+        echo -e "  Impact:  File permissions will match your current group"
+        echo ""
+    fi
+    
+    if [[ " ${changes[*]} " =~ " COMPOSE_PROJECT_NAME " ]]; then
+        echo -e "${BLUE}COMPOSE_PROJECT_NAME:${NC}"
+        echo -e "  Current: ${RED}$current_compose_name${NC}"
+        echo -e "  New:     ${GREEN}$new_compose_project_name${NC}"
+        echo -e "  Impact:  Docker stack will be grouped under ${GREEN}$new_compose_project_name${NC}"
+        echo ""
+    fi
+    
+    # Store values for later use
+    export DETECTED_PROJECT_NAME="$PROJECT_NAME"
+    export DETECTED_UID="$current_uid"
+    export DETECTED_GID="$current_gid"
+    export DETECTED_COMPOSE_NAME="$new_compose_project_name"
+    export DETECTED_CHANGES=("${changes[@]}")
+    
+    return 0
+}
+
+prompt_env_updates() {
+    log_section "🤝 Environment Configuration Update Options"
+    
+    echo -e "${CYAN}Choose which environment variables to update:${NC}"
+    echo ""
+    echo "  1) Update all detected changes (recommended)"
+    echo "  2) Select individual changes to update"
+    echo "  3) Skip all environment updates (keep current values)"
+    echo ""
+    
+    local choice
+    while true; do
+        read -p "Enter your choice (1-3): " choice
+        case $choice in
+            1)
+                # Update all
+                apply_env_updates "all"
+                return $?
+                ;;
+            2)
+                # Selective updates
+                prompt_selective_updates
+                return $?
+                ;;
+            3)
+                # Skip updates
+                log_info "Skipping environment file updates - keeping current values"
+                return 0
+                ;;
+            *)
+                echo -e "${RED}Invalid choice. Please enter 1, 2, or 3.${NC}"
+                ;;
+        esac
+    done
+}
+
+prompt_selective_updates() {
+    log_section "🎯 Selective Environment Updates"
+    
+    local updates_to_apply=()
+    
+    # Check each detected change
+    for change in "${DETECTED_CHANGES[@]}"; do
+        echo ""
+        case $change in
+            "PROJECT_NAME")
+                echo -e "${BLUE}PROJECT_NAME:${NC} $(get_env_value ".env" "PROJECT_NAME") → ${GREEN}$DETECTED_PROJECT_NAME${NC}"
+                ;;
+            "USER_UID")
+                echo -e "${BLUE}USER_UID:${NC} $(get_env_value ".env" "USER_UID") → ${GREEN}$DETECTED_UID${NC}"
+                ;;
+            "USER_GID")
+                echo -e "${BLUE}USER_GID:${NC} $(get_env_value ".env" "USER_GID") → ${GREEN}$DETECTED_GID${NC}"
+                ;;
+            "COMPOSE_PROJECT_NAME")
+                echo -e "${BLUE}COMPOSE_PROJECT_NAME:${NC} $(get_env_value ".env" "COMPOSE_PROJECT_NAME") → ${GREEN}$DETECTED_COMPOSE_NAME${NC}"
+                ;;
+        esac
+        
+        read -p "Update $change? [Y/n]: " update_choice
+        case $update_choice in
+            [Nn]* )
+                log_info "Skipping $change update"
+                ;;
+            * )
+                updates_to_apply+=("$change")
+                log_info "Will update $change"
+                ;;
+        esac
+    done
+    
+    if [ ${#updates_to_apply[@]} -eq 0 ]; then
+        log_info "No updates selected - keeping all current values"
+        return 0
+    fi
+    
+    # Apply selected updates
+    apply_env_updates "selective" "${updates_to_apply[@]}"
+    return $?
+}
+
+apply_env_updates() {
+    local update_mode="$1"
+    shift
+    local selected_updates=("$@")
+    
+    log_section "📝 Applying Environment Configuration Updates"
+    
+    local updates_applied=()
+    
+    # Determine which updates to apply
+    local updates_to_process=()
+    if [ "$update_mode" = "all" ]; then
+        updates_to_process=("${DETECTED_CHANGES[@]}")
+    else
+        updates_to_process=("${selected_updates[@]}")
+    fi
+    
+    # Apply the updates
+    for update in "${updates_to_process[@]}"; do
+        case $update in
+            "PROJECT_NAME")
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    sed -i '' "s/PROJECT_NAME=.*/PROJECT_NAME=$DETECTED_PROJECT_NAME/g" .env
+                else
+                    sed -i "s/PROJECT_NAME=.*/PROJECT_NAME=$DETECTED_PROJECT_NAME/g" .env
+                fi
+                updates_applied+=("PROJECT_NAME=$DETECTED_PROJECT_NAME")
+                ;;
+            "USER_UID")
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    sed -i '' "s/USER_UID=.*/USER_UID=$DETECTED_UID/g" .env
+                else
+                    sed -i "s/USER_UID=.*/USER_UID=$DETECTED_UID/g" .env
+                fi
+                updates_applied+=("USER_UID=$DETECTED_UID")
+                ;;
+            "USER_GID")
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    sed -i '' "s/USER_GID=.*/USER_GID=$DETECTED_GID/g" .env
+                else
+                    sed -i "s/USER_GID=.*/USER_GID=$DETECTED_GID/g" .env
+                fi
+                updates_applied+=("USER_GID=$DETECTED_GID")
+                ;;
+            "COMPOSE_PROJECT_NAME")
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    sed -i '' "s/COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=$DETECTED_COMPOSE_NAME/g" .env
+                else
+                    sed -i "s/COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=$DETECTED_COMPOSE_NAME/g" .env
+                fi
+                updates_applied+=("COMPOSE_PROJECT_NAME=$DETECTED_COMPOSE_NAME")
+                ;;
+        esac
+    done
     
     # Remove .env.example from project root (it's now available in .devcontainer/.env.example)
     if [ -f ".env.example" ]; then
@@ -551,11 +774,27 @@ configure_env_file() {
         log_info "Removed .env.example (available in .devcontainer/.env.example for reference)"
     fi
     
-    log_success "Environment file configured"
-    log_info "PROJECT_NAME: $PROJECT_NAME"
-    log_info "USER_UID: $current_uid"
-    log_info "USER_GID: $current_gid"
-    log_info "COMPOSE_PROJECT_NAME: $compose_project_name"
+    log_success "Applied ${#updates_applied[@]} environment updates:"
+    for update in "${updates_applied[@]}"; do
+        echo "   • $update"
+    done
+    
+    return 0
+}
+
+configure_env_file() {
+    # Analyze what would change
+    if ! analyze_env_changes; then
+        return 1
+    fi
+    
+    # If changes were detected, prompt user
+    if [ ${#DETECTED_CHANGES[@]} -gt 0 ]; then
+        prompt_env_updates
+        return $?
+    fi
+    
+    return 0
 }
 
 # ====================================
