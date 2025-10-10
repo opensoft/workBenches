@@ -36,7 +36,7 @@ services:
     
     # Volume mounts
     volumes:
-      - .:${WORKSPACE_PATH:-/workspace}
+      - ../:${WORKSPACE_PATH:-/workspace}
       # Persist pub cache per project
       - flutter-pub-cache:${FLUTTER_PUB_CACHE:-/home/vscode/.pub-cache}
       # Persist gradle cache per project
