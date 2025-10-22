@@ -10,8 +10,57 @@
 
 set -e
 
+# ====================================
+# Project Name Normalization (same as update-flutter-project.sh)
+# ====================================
+
+normalize_project_name() {
+    local raw_name="$1"
+    local normalized="$raw_name"
+    
+    # For Dartwingers projects, remove app/service prefixes
+    # app -> dartwing
+    # serviceDartwing -> dartwing
+    # appLedgerLinc -> ledgerlinc
+    # serviceLedgerLinc -> ledgerlinc
+    
+    # Remove 'app' prefix (case insensitive)
+    if [[ "$normalized" =~ ^[Aa][Pp][Pp](.+)$ ]]; then
+        normalized="${BASH_REMATCH[1]}"
+    fi
+    
+    # Remove 'service' prefix (case insensitive) 
+    if [[ "$normalized" =~ ^[Ss][Ee][Rr][Vv][Ii][Cc][Ee](.+)$ ]]; then
+        normalized="${BASH_REMATCH[1]}"
+    fi
+    
+    # Convert to lowercase for consistency
+    normalized=$(echo "$normalized" | tr '[:upper:]' '[:lower:]')
+    
+    echo "$normalized"
+}
+
 PROJECT_PATH="${1:-$(pwd)}"
-PROJECT_NAME=$(basename "$PROJECT_PATH")
+PROJECT_NAME_RAW=$(basename "$PROJECT_PATH")
+
+# Special handling for Dartwingers orchestrator subdirectories
+# For Dartwingers projects, use format: <parent-dir-name>-<current-dir-name>
+if [[ "$PROJECT_NAME_RAW" =~ ^(app|gatekeeper|lib)$ ]]; then
+    parent_dir=$(basename "$(dirname "$PROJECT_PATH")")
+    grandparent_dir=$(basename "$(dirname "$(dirname "$PROJECT_PATH")")")  
+    # Check if this is a Dartwingers project (parent dir contains dartwing or grandparent is dartwingers)
+    if [[ -f "$(dirname "$PROJECT_PATH")/setup-dartwing-project.sh" ]] || [[ "$parent_dir" =~ dartwing ]] || [[ "$grandparent_dir" == "dartwingers" ]]; then
+        PROJECT_NAME_RAW="${parent_dir}-${PROJECT_NAME_RAW}"
+    fi
+fi
+
+# Normalize project name (remove app/service prefixes for Dartwingers projects)
+PROJECT_NAME=$(normalize_project_name "$PROJECT_NAME_RAW")
+
+# Log normalization if name changed
+if [ "$PROJECT_NAME" != "$PROJECT_NAME_RAW" ]; then
+    echo -e "${BLUE}📝 Normalized project name: $PROJECT_NAME_RAW → $PROJECT_NAME${NC}" >&2
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -111,6 +160,119 @@ validate_dartwing_project() {
 }
 
 # ====================================
+# Dartwing Environment Configuration Functions
+# ====================================
+
+get_dartwing_env_value() {
+    local env_file="$1"
+    local key="$2"
+    
+    if [ -f "$env_file" ]; then
+        grep "^${key}=" "$env_file" 2>/dev/null | cut -d'=' -f2- || echo "(not set)"
+    else
+        echo "(not set)"
+    fi
+}
+
+check_dartwing_env_updates() {
+    log_section "🎯 Checking Dartwing-Specific Environment Configuration"
+    
+    if [ ! -f ".devcontainer/.env" ]; then
+        log_warning "No .devcontainer/.env file found - this should have been handled by the base Flutter update"
+        return 0
+    fi
+    
+    # Get current COMPOSE_PROJECT_NAME and SERVICE_CONTAINER_SUFFIX
+    local current_compose_name=$(get_dartwing_env_value ".devcontainer/.env" "COMPOSE_PROJECT_NAME")
+    local expected_compose_name="dartwingers"
+    local current_service_suffix=$(get_dartwing_env_value ".devcontainer/.env" "SERVICE_CONTAINER_SUFFIX")
+    local expected_service_suffix="gateway"
+    
+    # Check if COMPOSE_PROJECT_NAME needs to be updated for Dartwing
+    local needs_compose_update=false
+    local needs_suffix_update=false
+    
+    if [ "$current_compose_name" != "$expected_compose_name" ]; then
+        needs_compose_update=true
+    fi
+    
+    if [ "$current_service_suffix" != "$expected_service_suffix" ]; then
+        needs_suffix_update=true
+    fi
+    
+    if [ "$needs_compose_update" = true ] || [ "$needs_suffix_update" = true ]; then
+        log_warning "Dartwing-specific environment configuration needs updating"
+        echo ""
+        echo -e "${YELLOW}📋 Dartwing Environment Configuration:${NC}"
+        echo "══════════════════════════════════════════════════════════"
+        echo ""
+        
+        if [ "$needs_compose_update" = true ]; then
+            echo -e "${BLUE}COMPOSE_PROJECT_NAME:${NC}"
+            echo -e "  Current: ${RED}$current_compose_name${NC}"
+            echo -e "  Expected: ${GREEN}$expected_compose_name${NC}"
+            echo -e "  Impact: Docker stack will be grouped under '${GREEN}dartwingers${NC}' for proper Dartwing integration"
+            echo ""
+        fi
+        
+        if [ "$needs_suffix_update" = true ]; then
+            echo -e "${BLUE}SERVICE_CONTAINER_SUFFIX:${NC}"
+            echo -e "  Current: ${RED}$current_service_suffix${NC}"
+            echo -e "  Expected: ${GREEN}$expected_service_suffix${NC}"
+            echo -e "  Impact: Service container will be named '${PROJECT_NAME}-${GREEN}gateway${NC}' instead of '${PROJECT_NAME}-service'"
+            echo ""
+        fi
+        
+        # Prompt user
+        echo -e "${CYAN}Update Dartwing environment configuration?${NC}"
+        read -p "Update? [Y/n]: " update_choice
+        
+        case $update_choice in
+            [Nn]* )
+                log_info "Skipping Dartwing environment updates"
+                if [ "$needs_compose_update" = true ]; then
+                    log_warning "Note: COMPOSE_PROJECT_NAME='$current_compose_name' may cause issues with Dartwing multi-service setup"
+                fi
+                if [ "$needs_suffix_update" = true ]; then
+                    log_warning "Note: SERVICE_CONTAINER_SUFFIX='$current_service_suffix' - container will be named '${PROJECT_NAME}-$current_service_suffix'"
+                fi
+                ;;
+            * )
+                # Apply updates
+                local updates_applied=()
+                
+                if [ "$needs_compose_update" = true ]; then
+                    if [[ "$OSTYPE" == "darwin"* ]]; then
+                        sed -i '' "s/COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=dartwingers/g" .devcontainer/.env
+                    else
+                        sed -i "s/COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=dartwingers/g" .devcontainer/.env
+                    fi
+                    updates_applied+=("COMPOSE_PROJECT_NAME=dartwingers")
+                fi
+                
+                if [ "$needs_suffix_update" = true ]; then
+                    if [[ "$OSTYPE" == "darwin"* ]]; then
+                        sed -i '' "s/SERVICE_CONTAINER_SUFFIX=.*/SERVICE_CONTAINER_SUFFIX=gateway/g" .devcontainer/.env
+                    else
+                        sed -i "s/SERVICE_CONTAINER_SUFFIX=.*/SERVICE_CONTAINER_SUFFIX=gateway/g" .devcontainer/.env
+                    fi
+                    updates_applied+=("SERVICE_CONTAINER_SUFFIX=gateway")
+                fi
+                
+                log_success "Updated Dartwing environment configuration in .devcontainer/.env:"
+                for update in "${updates_applied[@]}"; do
+                    echo "   • $update"
+                done
+                ;;
+        esac
+    else
+        log_success "Dartwing environment configuration is correct"
+        log_info "COMPOSE_PROJECT_NAME: $current_compose_name ✓"
+        log_info "SERVICE_CONTAINER_SUFFIX: $current_service_suffix ✓"
+    fi
+}
+
+# ====================================
 # Dartwing-Specific Customizations
 # ====================================
 
@@ -129,18 +291,8 @@ apply_dartwing_customizations() {
     cp "$TEMPLATE_DIR/.devcontainer/docker-compose.override.yml" .devcontainer/docker-compose.override.yml
     log_success "Applied Dartwingers docker-compose override configuration"
     
-    # Ensure .env has dartwingers compose project name
-    if [ -f ".env" ]; then
-        log_info "Ensuring COMPOSE_PROJECT_NAME is set to 'dartwingers'..."
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            # macOS
-            sed -i '' "s/COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=dartwingers/g" .env
-        else
-            # Linux  
-            sed -i "s/COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=dartwingers/g" .env
-        fi
-        log_success "Updated COMPOSE_PROJECT_NAME=dartwingers in .env"
-    fi
+    # Check and prompt for Dartwing-specific environment updates
+    check_dartwing_env_updates
     
     log_success "Dartwingers customizations applied"
 }
@@ -156,9 +308,20 @@ analyze_dartwing_changes() {
     log_info "🎯 Dartwing Project Update Summary:"
     echo ""
     
+    # Get the current service and app suffixes for display
+    local service_suffix=$(get_dartwing_env_value ".devcontainer/.env" "SERVICE_CONTAINER_SUFFIX")
+    if [ "$service_suffix" = "(not set)" ]; then
+        service_suffix="service"  # default
+    fi
+    
+    local app_suffix=$(get_dartwing_env_value ".devcontainer/.env" "APP_CONTAINER_SUFFIX")
+    if [ "$app_suffix" = "(not set)" ]; then
+        app_suffix="app"  # default
+    fi
+    
     echo "📦 Container Architecture:"
-    echo "   • Flutter App Container: ${PROJECT_NAME}_app"
-    echo "   • .NET Service Container: ${PROJECT_NAME}_service"  
+    echo "   • Flutter App Container: ${PROJECT_NAME}-${app_suffix}"
+    echo "   • .NET Service Container: ${PROJECT_NAME}-${service_suffix}"
     echo "   • Stack Name: dartwingers"
     echo "   • Network: dartnet (shared)"
     echo ""
@@ -230,6 +393,38 @@ main() {
     
     # Apply Dartwing-specific customizations
     apply_dartwing_customizations
+    
+    # Generate workspace file for proper status bar naming
+    local template_dir="$(dirname "$(dirname "$SCRIPT_DIR")")/../templates/flutter-devcontainer-template"
+    if [ -f "$template_dir/PROJECT_NAME.code-workspace.template" ]; then
+        log_info "Creating VS Code workspace file for Dartwing project"
+        
+        # Get app container suffix from .env or use default
+        local app_suffix="app"
+        if [ -f ".devcontainer/.env" ]; then
+            app_suffix=$(get_dartwing_env_value ".devcontainer/.env" "APP_CONTAINER_SUFFIX")
+            if [ "$app_suffix" = "(not set)" ]; then
+                app_suffix="app"
+            fi
+        fi
+        
+        # Create workspace file with proper naming
+        local workspace_file="${PROJECT_NAME}-${app_suffix}.code-workspace"
+        
+        # Replace placeholders in template
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS
+            sed "s/PROJECT_NAME-APP_CONTAINER_SUFFIX/${PROJECT_NAME}-${app_suffix}/g" \
+                "$template_dir/PROJECT_NAME.code-workspace.template" > "$workspace_file"
+        else
+            # Linux
+            sed "s/PROJECT_NAME-APP_CONTAINER_SUFFIX/${PROJECT_NAME}-${app_suffix}/g" \
+                "$template_dir/PROJECT_NAME.code-workspace.template" > "$workspace_file"
+        fi
+        
+        log_success "Created workspace file: $workspace_file"
+        log_info "Open with: code $workspace_file (shows '$PROJECT_NAME-$app_suffix' in status bar)"
+    fi
     
     # Provide Dartwing-specific analysis
     analyze_dartwing_changes

@@ -138,6 +138,30 @@ This script:
 - ✅ Debugging container issues
 - ✅ You need maximum control over the setup process
 
+## ⚙️ Centralized Configuration Philosophy
+
+**Key Principle: The `.env` file is the single source of truth for ALL project and user-specific configuration.**
+
+### What This Means:
+- ✅ **Template files remain untouched** - `devcontainer.json`, `docker-compose.yml`, etc. are never modified
+- ✅ **All customization via environment variables** - container names, user settings, versions, ports
+- ✅ **Project-specific settings isolated** - each project has its own `.env` file
+- ✅ **Easy template updates** - template improvements don't conflict with your settings
+
+### Configuration Examples:
+
+```bash
+# .env file controls everything:
+PROJECT_NAME=dartwing
+APP_CONTAINER_SUFFIX=app           # Results in: dartwing-app
+SERVICE_CONTAINER_SUFFIX=gateway   # Results in: dartwing-gateway  
+USER_UID=1000
+FLUTTER_VERSION=3.24.0
+COMPOSE_PROJECT_NAME=dartwingers
+```
+
+**Result**: Template files use `${PROJECT_NAME}-${APP_CONTAINER_SUFFIX}` → resolves to `dartwing-app`
+
 ## 🚀 Next Steps After Setup
 
 Regardless of which setup method you used:
@@ -172,7 +196,9 @@ Regardless of which setup method you used:
 The DevContainer template includes:
 
 - 🐳 **Lightweight container** (~500MB vs 2GB+ FlutterBench)
-- 🔧 **Environment-driven configuration** (`.env` files)  
+- 🔧 **Centralized configuration** - ALL project and user settings in `.env` file only
+- 📝 **No template file modification** - template files remain untouched, use environment variables
+- 🏷️ **Configurable container naming** - customize app and service container names via `.env`
 - 📱 **Shared ADB infrastructure** (connects to external ADB server)
 - ⚙️ **VS Code integration** (tasks, launch configs, extensions)
 - 🏗️ **Proper user permissions** (UID/GID matching)

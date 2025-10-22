@@ -311,35 +311,45 @@ projects/
 │       ├── templates/
 │       │   └── flutter-devcontainer-template/
 │       │       ├── .devcontainer/
-│       │       │   └── devcontainer.json
+│       │       │   ├── devcontainer.json
+│       │       │   ├── docker-compose.yml
+│       │       │   ├── docker-compose.override.yml
+│       │       │   ├── Dockerfile
+│       │       │   ├── .env.base            # Template (in git)
+│       │       │   ├── .env                 # Project config (not in git)
+│       │       │   ├── docs/               # Documentation
+│       │       │   ├── scripts/            # Startup scripts
+│       │       │   └── adb-service/        # ADB configuration
 │       │       ├── .vscode/
 │       │       │   └── tasks.json
-│       │       ├── .env.example
-│       │       ├── docker-compose.yml
-│       │       ├── Dockerfile
-│       │       └── .gitignore
+│       │       ├── .github/                # GitHub workflows
+│       │       ├── scripts/                # Project scripts
+│       │       ├── .gitignore
+│       │       ├── README.md
+│       │       └── WARP.md
 │       ├── scripts/
-│       │   ├── cleanup-all-containers.sh
-│       │   └── rebuild-all-images.sh
-│       └── documentation/                   # All docs go here
-│           ├── master-implementation-guide.md
+│       │   ├── new-flutter-project.sh
+│       │   ├── update-flutter-project.sh
+│       │   └── new-dartwing-project.sh
+│       └── docs/                           # FlutterBench docs
+│           ├── env-file-docker-compose-guide.md
+│           ├── template-configuration-guide.md
 │           ├── flutter-infrastructure-architecture.md
 │           ├── infrastructure-qa-and-setup.md
-│           ├── vscode-tasks-snippets.md
 │           ├── path-pinning-verification.md
-│           ├── env-file-docker-compose-guide.md
 │           └── document-index.md (this file)
 │
 ├── Dartwingers/
 │   ├── ledgerlinc/
 │   │   ├── .devcontainer/
-│   │   │   └── devcontainer.json
+│   │   │   ├── devcontainer.json
+│   │   │   ├── docker-compose.yml
+│   │   │   ├── Dockerfile
+│   │   │   ├── .env                 # Project config (not in git)
+│   │   │   ├── docs/                # Project docs
+│   │   │   └── scripts/             # Project scripts
 │   │   ├── .vscode/
 │   │   │   └── tasks.json
-│   │   ├── .env                             # Not in git
-│   │   ├── .env.example                     # In git
-│   │   ├── docker-compose.yml
-│   │   ├── Dockerfile
 │   │   └── lib/
 │   │
 │   ├── lablinc/                             # Same structure

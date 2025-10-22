@@ -1,23 +1,43 @@
 {
-  "name": "PROJECT_NAME Flutter Dev",
+  // COPILOT RULE: The "name" field should read PROJECT_NAME from .env file  
+  // SOLUTION: Docker Compose loads .env and sets PROJECT_NAME as container environment variable
+  // We use ${containerEnv:PROJECT_NAME} to read it from the running container
+  // Fallback to generic name if container env is not available yet (cannot use nested variables)
+  "name": "${containerEnv:PROJECT_NAME:Flutter DevContainer}",
+  "_devcontainer_version": "1.1.0",
+  "_template_version": "flutter-devcontainer-1.1.0",
   "dockerComposeFile": "docker-compose.yml",
   "service": "app",
   "workspaceFolder": "/workspace",
 
+  "mounts": [
+    // Make local Claude CLI config available inside the container
+    "source=${localEnv:HOME}/.claude,target=/root/.claude,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.codex,target=/root/.codex,type=bind,consistency=cached"
+  ],
+
+  "overrideCommand": false,
+
   "initializeCommand": {
-    "adb": "${localWorkspaceFolder}/../../../infrastructure/mobile/android/adb/scripts/start-adb-if-needed.sh"
+    "adb": "bash -c 'source ${localWorkspaceFolder}/.devcontainer/.env && ${localWorkspaceFolder}/../../../infrastructure/mobile/android/adb/scripts/start-adb-if-needed.sh'",
+    "dartwingers-check": "${localWorkspaceFolder}/../../../infrastructure/mobile/android/adb/scripts/check-dartwingers-service.sh"
   },
 
   "onCreateCommand": {
     "setup-flutter-project": "echo 'Container created - Flutter setup will run on start'"
   },
 
-  "postStartCommand": {
-    "flutter-status": "./scripts/flutter-status.sh",
-    "setup-flutter-project": "./scripts/setup-flutter-project.sh"
-  },
+  "postStartCommand": ".devcontainer/scripts/startup.sh",
 
-  "postAttachCommand": "./scripts/ready-check.sh",
+  "postAttachCommand": ".devcontainer/scripts/ready-check.sh",
+
+  "containerEnv": {
+    "SHELL": "/bin/zsh",
+    "TERM_PROGRAM": "${localEnv:TERM_PROGRAM}",
+    "WARP_HONOR_PS1": "1",
+    "WARP_USE_SSH_WRAPPER": "${localEnv:WARP_USE_SSH_WRAPPER}",
+    "WARP_IS_LOCAL_SHELL_SESSION": "${localEnv:WARP_IS_LOCAL_SHELL_SESSION}"
+  },
 
   "customizations": {
     "vscode": {
@@ -25,9 +45,11 @@
         "Dart-Code.dart-code",
         "Dart-Code.flutter",
         "ms-azuretools.vscode-docker",
-        "ms-vscode.vscode-json",
         "bradlc.vscode-tailwindcss",
-        "esbenp.prettier-vscode"
+        "esbenp.prettier-vscode",
+        "anthropic.claude-code",
+        "openai.chatgpt",
+        "eamodio.gitlens"
       ],
       "settings": {
         "dart.flutterSdkPath": "/flutter",
@@ -36,6 +58,11 @@
         "editor.formatOnSave": true,
         "editor.codeActionsOnSave": {
           "source.fixAll": "explicit"
+        },
+        "terminal.integrated.shell.linux": "/bin/zsh",
+        "terminal.integrated.automationProfile.linux": {
+          "path": "/bin/zsh",
+          "args": ["-l"]
         }
       }
     }

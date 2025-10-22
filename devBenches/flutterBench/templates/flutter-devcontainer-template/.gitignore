@@ -6,8 +6,8 @@
 .env.local
 .env.*.local
 
-# Keep .env.example - this is safe to commit
-# !.env.example
+# Keep .env.base - this is the base template and safe to commit
+# !.env.base
 
 # ====================================
 # Flutter
@@ -38,6 +38,9 @@
 # VS Code
 .vscode/launch.json
 .vscode/settings.json
+
+# VS Code Workspace Files (optional - uncomment to exclude from git)
+# *.code-workspace
 
 # Android Studio / IntelliJ
 .idea/

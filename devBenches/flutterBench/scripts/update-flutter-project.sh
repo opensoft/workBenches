@@ -30,9 +30,88 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
+# ====================================
+# Help/Usage Display
+# ====================================
+
+# Show usage if help requested
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    echo "Usage: $0 [project-path]"
+    echo ""
+    echo "Updates an existing Flutter project with the latest devcontainer template."
+    echo ""
+    echo "Arguments:"
+    echo "  project-path    Path to Flutter project (default: current directory)"
+    echo ""
+    echo "This script will:"
+    echo "  1. Create a new branch (devcontainer-config-latest)"
+    echo "  2. Apply the latest template files"
+    echo "  3. Configure environment variables automatically"
+    echo "  4. Clean up legacy DevContainer files from project root"
+    echo "  5. Analyze and resolve conflicts with AI assistance"
+    echo "  6. Create a pull request for review"
+    echo "  7. Optionally auto-merge changes back to source branch"
+    echo ""
+    echo "Requirements:"
+    echo "  - Git repository with no uncommitted changes"
+    echo "  - Flutter project (pubspec.yaml present)"
+    echo "  - Latest devcontainer template available"
+    echo ""
+    exit 0
+fi
+
+# ====================================
+# Project Name Normalization
+# ====================================
+
+normalize_project_name() {
+    local raw_name="$1"
+    local normalized="$raw_name"
+    
+    # For Dartwingers projects, remove app/service prefixes
+    # app -> dartwing
+    # serviceDartwing -> dartwing
+    # appLedgerLinc -> ledgerlinc
+    # serviceLedgerLinc -> ledgerlinc
+    
+    # Remove 'app' prefix (case insensitive)
+    if [[ "$normalized" =~ ^[Aa][Pp][Pp](.+)$ ]]; then
+        normalized="${BASH_REMATCH[1]}"
+    fi
+    
+    # Remove 'service' prefix (case insensitive) 
+    if [[ "$normalized" =~ ^[Ss][Ee][Rr][Vv][Ii][Cc][Ee](.+)$ ]]; then
+        normalized="${BASH_REMATCH[1]}"
+    fi
+    
+    # Convert to lowercase for consistency
+    normalized=$(echo "$normalized" | tr '[:upper:]' '[:lower:]')
+    
+    echo "$normalized"
+}
+
 # Project path (default to current directory)
 PROJECT_PATH="${1:-$(pwd)}"
-PROJECT_NAME=$(basename "$PROJECT_PATH")
+PROJECT_NAME_RAW=$(basename "$PROJECT_PATH")
+
+# Special handling for Dartwingers orchestrator subdirectories
+# For Dartwingers projects, use format: <parent-dir-name>-<current-dir-name>
+if [[ "$PROJECT_NAME_RAW" =~ ^(app|gatekeeper|lib)$ ]]; then
+    parent_dir=$(basename "$(dirname "$PROJECT_PATH")")
+    grandparent_dir=$(basename "$(dirname "$(dirname "$PROJECT_PATH")")")  
+    # Check if this is a Dartwingers project (parent dir contains dartwing or grandparent is dartwingers)
+    if [[ -f "$(dirname "$PROJECT_PATH")/setup-dartwing-project.sh" ]] || [[ "$parent_dir" =~ dartwing ]] || [[ "$grandparent_dir" == "dartwingers" ]]; then
+        PROJECT_NAME_RAW="${parent_dir}-${PROJECT_NAME_RAW}"
+    fi
+fi
+
+# Normalize project name (remove app/service prefixes for Dartwingers projects)
+PROJECT_NAME=$(normalize_project_name "$PROJECT_NAME_RAW")
+
+# Log normalization if name changed
+if [ "$PROJECT_NAME" != "$PROJECT_NAME_RAW" ]; then
+    echo -e "${BLUE}📝 Normalized project name: $PROJECT_NAME_RAW → $PROJECT_NAME${NC}" >&2
+fi
 TEMPLATE_BRANCH="devcontainer-config-latest"
 BACKUP_DIR=""
 
@@ -89,10 +168,10 @@ validate_project() {
         exit 1
     fi
     
-    # Check for uncommitted changes
-    if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+    # Check for uncommitted changes (both tracked and untracked)
+    local git_status=$(git status --porcelain)
+    if [ -n "$git_status" ]; then
         log_warning "Uncommitted changes detected. Offering auto-commit option..."
-        local git_status=$(git status --porcelain)
         echo "$git_status"
         echo ""
         
@@ -144,8 +223,12 @@ Timestamp: $(date '+%Y-%m-%d %H:%M:%S')"
                         ;;
                 esac
                 
-                # Commit the changes
-                if git add . && git commit -m "$commit_message"; then
+                # Commit the changes (with handling for no changes case)
+                git add . 2>/dev/null || true
+                if git diff --cached --quiet; then
+                    # No staged changes after git add
+                    log_info "No changes to commit (working tree is already clean)"
+                elif git commit -m "$commit_message"; then
                     log_success "Changes committed successfully!"
                     echo ""
                 else
@@ -173,7 +256,7 @@ validate_template() {
     local essential_files=(
         ".devcontainer/devcontainer.json"
         ".devcontainer/docker-compose.yml"
-        ".devcontainer/.env.example"
+        ".devcontainer/.env.base"
         ".devcontainer/Dockerfile"
     )
     
@@ -212,7 +295,7 @@ detect_project_type() {
     local dartwing_patterns=(
         # Exact matches (95% confidence)
         "^dartwing$:95:exact match"
-        "^appDartwing$:95:exact app prefix match"
+        "^app$:95:exact app prefix match"
         "^DartWing$:95:exact capitalized match"
         "^DartWingApp$:95:exact capitalized app match"
         
@@ -476,31 +559,106 @@ apply_template_files() {
     local template_files=(
         ".devcontainer"
         ".vscode"
+        ".github"
         ".gitignore"
         "scripts"
+        "README.md"
+        "WARP.md"
     )
     
-    # Always copy .env.example
-    cp "$TEMPLATE_DIR/.devcontainer/.env.example" .
-    log_info "Copied: .env.example"
-    
-    # Create .env if it doesn't exist
-    if [ ! -f ".env" ]; then
-        cp ".env.example" ".env"
-        log_info "Created: .env from .env.example"
-    fi
+    # .env.base is already in .devcontainer from template copy - no need to copy to root
+    # Create .env in .devcontainer if it doesn't exist (after template files are copied)
+    # This ensures we use the updated template's .env.base with dynamic user configuration
     
     for file in "${template_files[@]}"; do
         if [ -e "$TEMPLATE_DIR/$file" ]; then
-            cp -r "$TEMPLATE_DIR/$file" .
-            log_info "Copied: $file"
+            if [ "$file" = "README.md" ]; then
+                # Copy template README as DEVCONTAINER_README.md to avoid overwriting project README
+                cp "$TEMPLATE_DIR/$file" "DEVCONTAINER_README.md"
+                log_info "Copied: $file -> DEVCONTAINER_README.md"
+            else
+                cp -r "$TEMPLATE_DIR/$file" .
+                log_info "Copied: $file"
+            fi
         fi
     done
     
-    # Copy README as reference
-    if [ -f "$TEMPLATE_DIR/README.md" ]; then
-        cp "$TEMPLATE_DIR/README.md" "DEVCONTAINER_README.md"
-        log_info "Copied: README.md → DEVCONTAINER_README.md"
+    # Create temporary updated .env file with current user values for comparison
+    local temp_env="/tmp/env-update-$(date +%s)"
+    cp ".devcontainer/.env.base" "$temp_env"
+    
+    # Apply current user configuration to temp file
+    local current_uid=$(id -u)
+    local current_gid=$(id -g)
+    local current_user=$(whoami)
+    
+    # Detect project-specific configuration
+    local compose_project_name="flutter"
+    if [[ "$PROJECT_PATH" == *"/dartwingers/"* ]] || [[ "$(basename "$(dirname "$PROJECT_PATH")")" == "dartwingers" ]]; then
+        compose_project_name="dartwingers"
+    fi
+    
+    # Replace dynamic shell commands with concrete values in temp file
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS
+        sed -i '' "s/USER_NAME=\$(whoami)/USER_NAME=$current_user/g" "$temp_env"
+        sed -i '' "s/USER_UID=\$(id -u)/USER_UID=$current_uid/g" "$temp_env"
+        sed -i '' "s/USER_GID=\$(id -g)/USER_GID=$current_gid/g" "$temp_env"
+        sed -i '' "s|FLUTTER_PUB_CACHE=/home/\$(whoami)/.pub-cache|FLUTTER_PUB_CACHE=/home/$current_user/.pub-cache|g" "$temp_env"
+        sed -i '' "s|ANDROID_HOME=/home/\$(whoami)/android-sdk|ANDROID_HOME=/home/$current_user/android-sdk|g" "$temp_env"
+        sed -i '' "s/PROJECT_NAME=myproject/PROJECT_NAME=$PROJECT_NAME/g" "$temp_env"
+        sed -i '' "s/COMPOSE_PROJECT_NAME=flutter/COMPOSE_PROJECT_NAME=$compose_project_name/g" "$temp_env"
+    else
+        # Linux
+        sed -i "s/USER_NAME=\$(whoami)/USER_NAME=$current_user/g" "$temp_env"
+        sed -i "s/USER_UID=\$(id -u)/USER_UID=$current_uid/g" "$temp_env"
+        sed -i "s/USER_GID=\$(id -g)/USER_GID=$current_gid/g" "$temp_env"
+        sed -i "s|FLUTTER_PUB_CACHE=/home/\$(whoami)/.pub-cache|FLUTTER_PUB_CACHE=/home/$current_user/.pub-cache|g" "$temp_env"
+        sed -i "s|ANDROID_HOME=/home/\$(whoami)/android-sdk|ANDROID_HOME=/home/$current_user/android-sdk|g" "$temp_env"
+        sed -i "s/PROJECT_NAME=myproject/PROJECT_NAME=$PROJECT_NAME/g" "$temp_env"
+        sed -i "s/COMPOSE_PROJECT_NAME=flutter/COMPOSE_PROJECT_NAME=$compose_project_name/g" "$temp_env"
+    fi
+    
+    # Perform interactive merge
+    merge_env_file "$temp_env"
+    
+    # Clean up temp file
+    rm -f "$temp_env"
+    
+    # Note: Skip copying template README.md as DEVCONTAINER_README.md
+    # The devcontainer documentation is already available in .devcontainer/docs/
+    # Copying it to root creates duplicates that clutter the project structure
+    
+    # Note: DevContainer name is now handled via environment variable substitution
+    # The template uses "name": "${localEnv:PROJECT_NAME}" which reads from .env file
+    # No direct modification of devcontainer.json is needed
+    
+    # Generate VS Code workspace file for proper status bar naming
+    if [ -f "$TEMPLATE_DIR/PROJECT_NAME.code-workspace.template" ]; then
+        log_info "Creating VS Code workspace file for proper status bar naming"
+        
+        # Get app container suffix from .env or use default
+        local app_suffix="app"
+        if [ -f ".devcontainer/.env" ]; then
+            app_suffix=$(grep "^APP_CONTAINER_SUFFIX=" .devcontainer/.env 2>/dev/null | cut -d'=' -f2 || echo "app")
+        fi
+        
+        # Create workspace file with proper naming
+        local workspace_file="${PROJECT_NAME}-${app_suffix}.code-workspace"
+        
+        # Replace placeholders in template
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS
+            sed "s/PROJECT_NAME-APP_CONTAINER_SUFFIX/${PROJECT_NAME}-${app_suffix}/g" \
+                "$TEMPLATE_DIR/PROJECT_NAME.code-workspace.template" > "$workspace_file"
+        else
+            # Linux
+            sed "s/PROJECT_NAME-APP_CONTAINER_SUFFIX/${PROJECT_NAME}-${app_suffix}/g" \
+                "$TEMPLATE_DIR/PROJECT_NAME.code-workspace.template" > "$workspace_file"
+        fi
+        
+        log_success "Created workspace file: $workspace_file"
+        log_info "Open with: code $workspace_file (this will show correct name in status bar)"
     fi
     
     log_success "Template files applied"
@@ -510,52 +668,447 @@ apply_template_files() {
 # Configuration Merging Functions
 # ====================================
 
-configure_env_file() {
-    log_section "Configuring Environment File"
+merge_env_file() {
+    local new_env_file="$1"
+    local current_env=".devcontainer/.env"
     
-    if [ ! -f ".env" ]; then
-        log_error ".env file not found after template application"
+    log_section "🔀 Environment File Merge"
+    
+    # Check if current .env exists
+    if [ ! -f "$current_env" ]; then
+        log_info "No existing .env file found, using new template"
+        cp "$new_env_file" "$current_env"
+        log_success "Created .devcontainer/.env from template"
+        return 0
+    fi
+    
+    # Compare files to see if there are any differences
+    if diff -q "$current_env" "$new_env_file" > /dev/null 2>&1; then
+        log_success "Current .env file is already up to date!"
+        return 0
+    fi
+    
+    # Show differences
+    log_info "Found differences between current and updated .env configuration:"
+    echo ""
+    echo -e "${YELLOW}📋 Changes Preview:${NC}"
+    echo "═══════════════════════════════════════════════════════════════"
+    
+    # Use diff with color if available, fallback to basic diff
+    if command -v colordiff &> /dev/null; then
+        diff -u "$current_env" "$new_env_file" | colordiff | tail -n +3
+    elif diff --color=auto -u "$current_env" "$new_env_file" &> /dev/null; then
+        diff --color=auto -u "$current_env" "$new_env_file" | tail -n +3
+    else
+        echo -e "${RED}--- Current .env${NC}"
+        echo -e "${GREEN}+++ Updated .env${NC}"
+        diff -u "$current_env" "$new_env_file" | tail -n +3
+    fi
+    
+    echo "═══════════════════════════════════════════════════════════════"
+    echo ""
+    
+    # Prompt user for action
+    echo -e "${CYAN}🤝 How would you like to proceed?${NC}"
+    echo ""
+    echo "  1) Accept all changes (replace current .env)"
+    echo "  2) Keep current .env (no changes)"
+    echo "  3) View detailed diff and decide"
+    echo "  4) Open both files in editor for manual merge"
+    echo ""
+    
+    while true; do
+        read -p "Choose an option (1-4): " choice
+        case $choice in
+            1)
+                cp "$new_env_file" "$current_env"
+                log_success "✅ Updated .env file with latest template"
+                log_info "Applied: Latest template with current user configuration"
+                return 0
+                ;;
+            2)
+                log_info "📝 Keeping current .env file unchanged"
+                log_warning "Note: You may miss out on latest template improvements"
+                return 0
+                ;;
+            3)
+                show_detailed_env_diff "$current_env" "$new_env_file"
+                echo ""
+                echo "After reviewing, choose 1 to accept or 2 to keep current:"
+                ;;
+            4)
+                log_info "🔧 Opening files for manual merge..."
+                echo "Current: $current_env"
+                echo "Updated: $new_env_file"
+                
+                if command -v code &> /dev/null; then
+                    code --diff "$current_env" "$new_env_file"
+                    echo "Press Enter after you've finished editing..."
+                    read
+                elif command -v vimdiff &> /dev/null; then
+                    vimdiff "$current_env" "$new_env_file"
+                else
+                    log_warning "No diff editor found. Files are:"
+                    echo "  Current: $current_env"
+                    echo "  Updated: $new_env_file"
+                    echo "Please manually merge them and press Enter..."
+                    read
+                fi
+                
+                log_success "✅ Manual merge completed"
+                return 0
+                ;;
+            *)
+                echo -e "${RED}Invalid choice. Please enter 1, 2, 3, or 4.${NC}"
+                ;;
+        esac
+    done
+}
+
+show_detailed_env_diff() {
+    local current="$1"
+    local new="$2"
+    
+    echo -e "${BLUE}📊 Detailed Environment Variable Comparison:${NC}"
+    echo "════════════════════════════════════════════════════════════════"
+    
+    # Extract and compare key variables
+    local vars=("PROJECT_NAME" "USER_NAME" "USER_UID" "USER_GID" "COMPOSE_PROJECT_NAME" "ADB_INFRASTRUCTURE_PROJECT_NAME" "FLUTTER_PUB_CACHE" "ANDROID_HOME")
+    
+    for var in "${vars[@]}"; do
+        local current_val=$(grep "^$var=" "$current" 2>/dev/null | cut -d'=' -f2- || echo "(not set)")
+        local new_val=$(grep "^$var=" "$new" 2>/dev/null | cut -d'=' -f2- || echo "(not set)")
+        
+        if [ "$current_val" != "$new_val" ]; then
+            echo -e "${YELLOW}$var:${NC}"
+            echo -e "  Current: ${RED}$current_val${NC}"
+            echo -e "  Updated: ${GREEN}$new_val${NC}"
+            echo ""
+        fi
+    done
+}
+
+# ====================================
+# Environment File Analysis Functions
+# ====================================
+
+get_env_value() {
+    local env_file="$1"
+    local key="$2"
+    
+    if [ -f "$env_file" ]; then
+        grep "^${key}=" "$env_file" 2>/dev/null | cut -d'=' -f2- || echo "(not set)"
+    else
+        echo "(not set)"
+    fi
+}
+
+analyze_env_changes() {
+    log_section "🔍 Analyzing Environment Configuration Changes"
+    
+    if [ ! -f ".devcontainer/.env" ]; then
+        log_error ".devcontainer/.env file not found"
         return 1
     fi
     
-    # Auto-detect configuration values
+    # Auto-detect new configuration values
     local current_uid=$(id -u)
     local current_gid=$(id -g)
     local current_user=$(whoami)
     
-    # Detect parent directory for compose project name
-    local parent_dir=$(basename "$(dirname "$PROJECT_PATH")")
-    local compose_project_name="flutter"
-    if [[ "$parent_dir" == "dartwingers" ]]; then
-        compose_project_name="dartwingers"
+    # Detect compose project name based on project path
+    local new_compose_project_name="flutter"
+    # Always recommend infrastructure stack for ADB, regardless of project type
+    local new_adb_infrastructure_name="infrastructure"
+    
+    # Check if the project path contains 'dartwingers' anywhere
+    if [[ "$PROJECT_PATH" == *"/dartwingers/"* ]]; then
+        new_compose_project_name="dartwingers"
+        # Still recommend infrastructure for ADB even in dartwingers projects
+    # Also check immediate parent for backward compatibility
+    elif [[ "$(basename "$(dirname "$PROJECT_PATH")")" == "dartwingers" ]]; then
+        new_compose_project_name="dartwingers"
+        # Still recommend infrastructure for ADB even in dartwingers projects
     fi
     
-    # Apply automatic replacements
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        sed -i '' "s/PROJECT_NAME=myproject/PROJECT_NAME=$PROJECT_NAME/g" .env
-        sed -i '' "s/USER_UID=1000/USER_UID=$current_uid/g" .env
-        sed -i '' "s/USER_GID=1000/USER_GID=$current_gid/g" .env
-        sed -i '' "s/COMPOSE_PROJECT_NAME=flutter/COMPOSE_PROJECT_NAME=$compose_project_name/g" .env
+    # Get current values from .devcontainer/.env
+    local current_project_name=$(get_env_value ".devcontainer/.env" "PROJECT_NAME")
+    local current_uid_env=$(get_env_value ".devcontainer/.env" "USER_UID")
+    local current_gid_env=$(get_env_value ".devcontainer/.env" "USER_GID")
+    local current_compose_name=$(get_env_value ".devcontainer/.env" "COMPOSE_PROJECT_NAME")
+    local current_adb_infrastructure_name=$(get_env_value ".devcontainer/.env" "ADB_INFRASTRUCTURE_PROJECT_NAME")
+    
+    # Analyze what would change
+    local changes_detected=false
+    local changes=()
+    
+    if [ "$current_project_name" != "$PROJECT_NAME" ]; then
+        changes+=("PROJECT_NAME")
+        changes_detected=true
+    fi
+    
+    if [ "$current_uid_env" != "$current_uid" ]; then
+        changes+=("USER_UID")
+        changes_detected=true
+    fi
+    
+    if [ "$current_gid_env" != "$current_gid" ]; then
+        changes+=("USER_GID")
+        changes_detected=true
+    fi
+    
+    if [ "$current_compose_name" != "$new_compose_project_name" ]; then
+        changes+=("COMPOSE_PROJECT_NAME")
+        changes_detected=true
+    fi
+    
+    if [ "$current_adb_infrastructure_name" != "$new_adb_infrastructure_name" ]; then
+        changes+=("ADB_INFRASTRUCTURE_PROJECT_NAME")
+        changes_detected=true
+    fi
+    
+    if [ "$changes_detected" = false ]; then
+        log_success "No environment configuration changes needed"
+        log_info "Current configuration is already correct:"
+        echo "   • PROJECT_NAME: $current_project_name"
+        echo "   • USER_UID: $current_uid_env"
+        echo "   • USER_GID: $current_gid_env"
+        echo "   • COMPOSE_PROJECT_NAME: $current_compose_name"
+        echo "   • ADB_INFRASTRUCTURE_PROJECT_NAME: $current_adb_infrastructure_name"
+        return 0
+    fi
+    
+    # Show proposed changes
+    log_warning "Environment configuration changes detected"
+    echo ""
+    echo -e "${YELLOW}📋 Proposed .env file changes:${NC}"
+    echo "══════════════════════════════════════════════════════════"
+    echo ""
+    
+    if [[ " ${changes[*]} " =~ " PROJECT_NAME " ]]; then
+        echo -e "${BLUE}PROJECT_NAME:${NC}"
+        echo -e "  Current: ${RED}$current_project_name${NC}"
+        echo -e "  New:     ${GREEN}$PROJECT_NAME${NC}"
+        echo -e "  Impact:  Container names will be ${GREEN}${PROJECT_NAME}_app${NC} and ${GREEN}${PROJECT_NAME}_service${NC}"
+        echo ""
+    fi
+    
+    if [[ " ${changes[*]} " =~ " USER_UID " ]]; then
+        echo -e "${BLUE}USER_UID:${NC}"
+        echo -e "  Current: ${RED}$current_uid_env${NC}"
+        echo -e "  New:     ${GREEN}$current_uid${NC}"
+        echo -e "  Impact:  File permissions will match your current user"
+        echo ""
+    fi
+    
+    if [[ " ${changes[*]} " =~ " USER_GID " ]]; then
+        echo -e "${BLUE}USER_GID:${NC}"
+        echo -e "  Current: ${RED}$current_gid_env${NC}"
+        echo -e "  New:     ${GREEN}$current_gid${NC}"
+        echo -e "  Impact:  File permissions will match your current group"
+        echo ""
+    fi
+    
+    if [[ " ${changes[*]} " =~ " COMPOSE_PROJECT_NAME " ]]; then
+        echo -e "${BLUE}COMPOSE_PROJECT_NAME:${NC}"
+        echo -e "  Current: ${RED}$current_compose_name${NC}"
+        echo -e "  New:     ${GREEN}$new_compose_project_name${NC}"
+        echo -e "  Impact:  Docker stack will be grouped under ${GREEN}$new_compose_project_name${NC}"
+        echo ""
+    fi
+    
+    if [[ " ${changes[*]} " =~ " ADB_INFRASTRUCTURE_PROJECT_NAME " ]]; then
+        echo -e "${BLUE}ADB_INFRASTRUCTURE_PROJECT_NAME:${NC}"
+        echo -e "  Current: ${RED}$current_adb_infrastructure_name${NC}"
+        echo -e "  New:     ${GREEN}$new_adb_infrastructure_name${NC}"
+        echo -e "  Impact:  ADB server will run under ${GREEN}$new_adb_infrastructure_name${NC} stack"
+        echo ""
+    fi
+    
+    # Store values for later use
+    export DETECTED_PROJECT_NAME="$PROJECT_NAME"
+    export DETECTED_UID="$current_uid"
+    export DETECTED_GID="$current_gid"
+    export DETECTED_COMPOSE_NAME="$new_compose_project_name"
+    export DETECTED_ADB_INFRASTRUCTURE_NAME="$new_adb_infrastructure_name"
+    export DETECTED_CHANGES=("${changes[@]}")
+    
+    return 0
+}
+
+prompt_env_updates() {
+    log_section "🤝 Environment Configuration Update Options"
+    
+    echo -e "${CYAN}Choose which environment variables to update:${NC}"
+    echo ""
+    echo "  1) Update all detected changes (recommended)"
+    echo "  2) Select individual changes to update"
+    echo "  3) Skip all environment updates (keep current values)"
+    echo ""
+    
+    local choice
+    while true; do
+        read -p "Enter your choice (1-3): " choice
+        case $choice in
+            1)
+                # Update all
+                apply_env_updates "all"
+                return $?
+                ;;
+            2)
+                # Selective updates
+                prompt_selective_updates
+                return $?
+                ;;
+            3)
+                # Skip updates
+                log_info "Skipping environment file updates - keeping current values"
+                return 0
+                ;;
+            *)
+                echo -e "${RED}Invalid choice. Please enter 1, 2, or 3.${NC}"
+                ;;
+        esac
+    done
+}
+
+prompt_selective_updates() {
+    log_section "🎯 Selective Environment Updates"
+    
+    local updates_to_apply=()
+    
+    # Check each detected change
+    for change in "${DETECTED_CHANGES[@]}"; do
+        echo ""
+        case $change in
+            "PROJECT_NAME")
+                echo -e "${BLUE}PROJECT_NAME:${NC} $(get_env_value ".devcontainer/.env" "PROJECT_NAME") → ${GREEN}$DETECTED_PROJECT_NAME${NC}"
+                ;;
+            "USER_UID")
+                echo -e "${BLUE}USER_UID:${NC} $(get_env_value ".devcontainer/.env" "USER_UID") → ${GREEN}$DETECTED_UID${NC}"
+                ;;
+            "USER_GID")
+                echo -e "${BLUE}USER_GID:${NC} $(get_env_value ".devcontainer/.env" "USER_GID") → ${GREEN}$DETECTED_GID${NC}"
+                ;;
+            "COMPOSE_PROJECT_NAME")
+                echo -e "${BLUE}COMPOSE_PROJECT_NAME:${NC} $(get_env_value ".devcontainer/.env" "COMPOSE_PROJECT_NAME") → ${GREEN}$DETECTED_COMPOSE_NAME${NC}"
+                ;;
+            "ADB_INFRASTRUCTURE_PROJECT_NAME")
+                echo -e "${BLUE}ADB_INFRASTRUCTURE_PROJECT_NAME:${NC} $(get_env_value ".devcontainer/.env" "ADB_INFRASTRUCTURE_PROJECT_NAME") → ${GREEN}$DETECTED_ADB_INFRASTRUCTURE_NAME${NC}"
+                ;;
+        esac
+        
+        read -p "Update $change? [Y/n]: " update_choice
+        case $update_choice in
+            [Nn]* )
+                log_info "Skipping $change update"
+                ;;
+            * )
+                updates_to_apply+=("$change")
+                log_info "Will update $change"
+                ;;
+        esac
+    done
+    
+    if [ ${#updates_to_apply[@]} -eq 0 ]; then
+        log_info "No updates selected - keeping all current values"
+        return 0
+    fi
+    
+    # Apply selected updates
+    apply_env_updates "selective" "${updates_to_apply[@]}"
+    return $?
+}
+
+apply_env_updates() {
+    local update_mode="$1"
+    shift
+    local selected_updates=("$@")
+    
+    log_section "📝 Applying Environment Configuration Updates"
+    
+    local updates_applied=()
+    
+    # Determine which updates to apply
+    local updates_to_process=()
+    if [ "$update_mode" = "all" ]; then
+        updates_to_process=("${DETECTED_CHANGES[@]}")
     else
-        # Linux
-        sed -i "s/PROJECT_NAME=myproject/PROJECT_NAME=$PROJECT_NAME/g" .env
-        sed -i "s/USER_UID=1000/USER_UID=$current_uid/g" .env
-        sed -i "s/USER_GID=1000/USER_GID=$current_gid/g" .env
-        sed -i "s/COMPOSE_PROJECT_NAME=flutter/COMPOSE_PROJECT_NAME=$compose_project_name/g" .env
+        updates_to_process=("${selected_updates[@]}")
     fi
     
-    # Remove .env.example from project root (it's now available in .devcontainer/.env.example)
-    if [ -f ".env.example" ]; then
-        rm .env.example
-        log_info "Removed .env.example (available in .devcontainer/.env.example for reference)"
+    # Apply the updates
+    for update in "${updates_to_process[@]}"; do
+        case $update in
+            "PROJECT_NAME")
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    sed -i '' "s/PROJECT_NAME=.*/PROJECT_NAME=$DETECTED_PROJECT_NAME/g" .devcontainer/.env
+                else
+                    sed -i "s/PROJECT_NAME=.*/PROJECT_NAME=$DETECTED_PROJECT_NAME/g" .devcontainer/.env
+                fi
+                updates_applied+=("PROJECT_NAME=$DETECTED_PROJECT_NAME")
+                ;;
+            "USER_UID")
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    sed -i '' "s/USER_UID=.*/USER_UID=$DETECTED_UID/g" .devcontainer/.env
+                else
+                    sed -i "s/USER_UID=.*/USER_UID=$DETECTED_UID/g" .devcontainer/.env
+                fi
+                updates_applied+=("USER_UID=$DETECTED_UID")
+                ;;
+            "USER_GID")
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    sed -i '' "s/USER_GID=.*/USER_GID=$DETECTED_GID/g" .devcontainer/.env
+                else
+                    sed -i "s/USER_GID=.*/USER_GID=$DETECTED_GID/g" .devcontainer/.env
+                fi
+                updates_applied+=("USER_GID=$DETECTED_GID")
+                ;;
+            "COMPOSE_PROJECT_NAME")
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    sed -i '' "s/COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=$DETECTED_COMPOSE_NAME/g" .devcontainer/.env
+                else
+                    sed -i "s/COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=$DETECTED_COMPOSE_NAME/g" .devcontainer/.env
+                fi
+                updates_applied+=("COMPOSE_PROJECT_NAME=$DETECTED_COMPOSE_NAME")
+                ;;
+            "ADB_INFRASTRUCTURE_PROJECT_NAME")
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    sed -i '' "s/ADB_INFRASTRUCTURE_PROJECT_NAME=.*/ADB_INFRASTRUCTURE_PROJECT_NAME=$DETECTED_ADB_INFRASTRUCTURE_NAME/g" .devcontainer/.env
+                else
+                    sed -i "s/ADB_INFRASTRUCTURE_PROJECT_NAME=.*/ADB_INFRASTRUCTURE_PROJECT_NAME=$DETECTED_ADB_INFRASTRUCTURE_NAME/g" .devcontainer/.env
+                fi
+                updates_applied+=("ADB_INFRASTRUCTURE_PROJECT_NAME=$DETECTED_ADB_INFRASTRUCTURE_NAME")
+                ;;
+        esac
+    done
+    
+    # Note: .env.base is the template file in .devcontainer/
+    # .env files are created from .env.base and should be in .devcontainer/ per user rules
+    
+    # Note: DevContainer name update is handled by apply_template_files() after template application
+    
+    log_success "Applied ${#updates_applied[@]} environment updates:"
+    for update in "${updates_applied[@]}"; do
+        echo "   • $update"
+    done
+    
+    return 0
+}
+
+configure_env_file() {
+    # Analyze what would change
+    if ! analyze_env_changes; then
+        return 1
     fi
     
-    log_success "Environment file configured"
-    log_info "PROJECT_NAME: $PROJECT_NAME"
-    log_info "USER_UID: $current_uid"
-    log_info "USER_GID: $current_gid"
-    log_info "COMPOSE_PROJECT_NAME: $compose_project_name"
+    # If changes were detected, prompt user
+    if [ ${#DETECTED_CHANGES[@]} -gt 0 ]; then
+        prompt_env_updates
+        return $?
+    fi
+    
+    return 0
 }
 
 # ====================================
@@ -568,7 +1121,9 @@ cleanup_legacy_devcontainer_files() {
     # Files that should now be in .devcontainer/ directory
     # Only remove files from project root if they exist in .devcontainer/
     local devcontainer_files=(
+        ".env"
         ".env.example"
+        ".env.base"
         "Dockerfile"
         "docker-compose.yml"
         "docker-compose.override.yml"
@@ -1188,7 +1743,7 @@ show_summary() {
     echo "   • .devcontainer/ - Updated with latest template (includes Docker files)"
     echo "   • .vscode/ - Updated tasks and settings"
     echo "   • .env - Project-specific settings"
-    echo "   • .env.example - Template for other projects (from .devcontainer/.env.example)"
+    echo "   • .env.base - Template for other projects (from .devcontainer/.env.base)"
     echo ""
     
     echo "💾 Backup location: $BACKUP_DIR"
@@ -1226,7 +1781,7 @@ show_summary_merged() {
     echo "   • .devcontainer/ - Updated with latest template (includes Docker files)"
     echo "   • .vscode/ - Updated tasks and settings"
     echo "   • .env - Project-specific settings"
-    echo "   • .env.example - Template for other projects (from .devcontainer/.env.example)"
+    echo "   • .env.base - Template for other projects (from .devcontainer/.env.base)"
     echo ""
     
     echo "💾 Backup location: $BACKUP_DIR"
@@ -1266,7 +1821,7 @@ main() {
     # Re-run confidence calculation for delegation decision
     local max_confidence=0
     local dartwing_patterns=(
-        "^dartwing$:95" "^appDartwing$:95" "^DartWing$:95" "^DartWingApp$:95"
+        "^dartwing$:95" "^app$:95" "^DartWing$:95" "^DartWingApp$:95"
         "^dartwingapp$:92" "^appdartwing$:92" "^dartWingApp$:88" "^DARTWING$:85"
     )
     
@@ -1358,32 +1913,6 @@ main() {
 # ====================================
 # Script Execution
 # ====================================
-
-# Show usage if help requested
-if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    echo "Usage: $0 [project-path]"
-    echo ""
-    echo "Updates an existing Flutter project with the latest devcontainer template."
-    echo ""
-    echo "Arguments:"
-    echo "  project-path    Path to Flutter project (default: current directory)"
-    echo ""
-    echo "This script will:"
-    echo "  1. Create a new branch (devcontainer-config-latest)"
-    echo "  2. Apply the latest template files"
-    echo "  3. Configure environment variables automatically"
-    echo "  4. Clean up legacy DevContainer files from project root"
-    echo "  5. Analyze and resolve conflicts with AI assistance"
-    echo "  6. Create a pull request for review"
-    echo "  7. Optionally auto-merge changes back to source branch"
-    echo ""
-    echo "Requirements:"
-    echo "  - Git repository with no uncommitted changes"
-    echo "  - Flutter project (pubspec.yaml present)"
-    echo "  - Latest devcontainer template available"
-    echo ""
-    exit 0
-fi
 
 # Run main function
 main "$@"

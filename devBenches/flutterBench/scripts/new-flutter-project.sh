@@ -97,15 +97,19 @@ cd "$PROJECT_NAME"
 echo "📋 Copying DevContainer configuration..."
 cp -r "$TEMPLATE_DIR/.devcontainer" .
 cp -r "$TEMPLATE_DIR/.vscode" .
+cp -r "$TEMPLATE_DIR/.github" .
+cp -r "$TEMPLATE_DIR/scripts" .
 cp "$TEMPLATE_DIR/.gitignore" .
+cp "$TEMPLATE_DIR/README.md" "DEVCONTAINER_README.md"
+cp "$TEMPLATE_DIR/WARP.md" .
 
 # Copy and setup environment files
 echo "⚙️  Setting up environment configuration..."
-# Create .env in .devcontainer folder from .env.example
-cp "$TEMPLATE_DIR/.devcontainer/.env.example" .devcontainer/.env
+# Create .env in .devcontainer folder from .env.base
+cp "$TEMPLATE_DIR/.devcontainer/.env.base" .devcontainer/.env
 
-# Copy README for reference
-cp "$TEMPLATE_DIR/README.md" "DEVCONTAINER_README.md"
+# Note: Skip copying template README.md as DEVCONTAINER_README.md
+# The devcontainer documentation is already available in .devcontainer/docs/
 
 # Replace placeholders in .env
 echo "🔧 Configuring project environment..."
@@ -115,13 +119,65 @@ CURRENT_UID=$(id -u)
 CURRENT_GID=$(id -g)
 CURRENT_USER=$(whoami)
 
-# Detect stack naming based on parent directory
-PARENT_DIR_NAME=$(basename "$TARGET_DIR")
-if [[ "$PARENT_DIR_NAME" == "dartwingers" ]]; then
-    COMPOSE_PROJECT_NAME="dartwingers"
+# Prompt user for ADB infrastructure stack preference
+echo ""
+echo "🎯 ADB Infrastructure Stack Selection:"
+echo ""
+echo "  1) infrastructure - Centralized ADB infrastructure (recommended)"
+echo "  2) dartwingers - Dartwingers-specific stack (if needed)"
+echo "  3) shared-adb-infrastructure - Legacy fallback"
+echo "  4) auto-detect - Based on project path (previous behavior)"
+echo ""
+
+# Default based on project path for auto-detect
+if [[ "$TARGET_DIR" == *"/dartwingers"* ]] || [[ "$TARGET_DIR" == *"/dartwingers/"* ]]; then
+    DEFAULT_STACK="dartwingers"
+elif [[ "$(basename "$TARGET_DIR")" == "dartwingers" ]]; then
+    DEFAULT_STACK="dartwingers"
 else
-    COMPOSE_PROJECT_NAME="flutter"
+    DEFAULT_STACK="flutter"
 fi
+# Always default ADB to infrastructure for centralized management
+DEFAULT_ADB_STACK="infrastructure"
+
+while true; do
+    read -p "Choose ADB stack (1-4, or press Enter for auto-detect): " stack_choice
+    
+    # Default to auto-detect if no choice
+    if [ -z "$stack_choice" ]; then
+        stack_choice=4
+    fi
+    
+    case $stack_choice in
+        1)
+            COMPOSE_PROJECT_NAME="flutter"
+            ADB_INFRASTRUCTURE_PROJECT_NAME="infrastructure"
+            echo "📦 Selected: infrastructure stack (recommended)"
+            break
+            ;;
+        2)
+            COMPOSE_PROJECT_NAME="dartwingers"
+            ADB_INFRASTRUCTURE_PROJECT_NAME="dartwingers"
+            echo "📦 Selected: dartwingers stack"
+            break
+            ;;
+        3)
+            COMPOSE_PROJECT_NAME="flutter"
+            ADB_INFRASTRUCTURE_PROJECT_NAME="shared-adb-infrastructure"
+            echo "📦 Selected: shared-adb-infrastructure stack (legacy)"
+            break
+            ;;
+        4)
+            COMPOSE_PROJECT_NAME="$DEFAULT_STACK"
+            ADB_INFRASTRUCTURE_PROJECT_NAME="infrastructure"
+            echo "📦 Auto-detected: $DEFAULT_STACK compose / infrastructure ADB (recommended)"
+            break
+            ;;
+        *)
+            echo "❌ Invalid choice. Please enter 1, 2, 3, or 4."
+            ;;
+    esac
+done
 
 # Replace PROJECT_NAME, user settings, and stack naming in .devcontainer/.env
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -136,6 +192,39 @@ else
     sed -i "s/USER_UID=1000/USER_UID=$CURRENT_UID/g" .devcontainer/.env
     sed -i "s/USER_GID=1000/USER_GID=$CURRENT_GID/g" .devcontainer/.env
     sed -i "s/COMPOSE_PROJECT_NAME=flutter/COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME/g" .devcontainer/.env
+fi
+
+# Add ADB infrastructure project name to .env file
+echo "" >> .devcontainer/.env
+echo "# ADB Infrastructure Configuration" >> .devcontainer/.env
+echo "ADB_INFRASTRUCTURE_PROJECT_NAME=$ADB_INFRASTRUCTURE_PROJECT_NAME" >> .devcontainer/.env
+
+# Generate VS Code workspace file for proper status bar naming
+echo "🔧 Creating VS Code workspace file..."
+if [ -f "$TEMPLATE_DIR/PROJECT_NAME.code-workspace.template" ]; then
+    # Get app container suffix from .env or use default
+    app_suffix="app"
+    if [ -f ".devcontainer/.env" ]; then
+        app_suffix=$(grep "^APP_CONTAINER_SUFFIX=" .devcontainer/.env 2>/dev/null | cut -d'=' -f2 || echo "app")
+    fi
+    
+    # Create workspace file with proper naming
+    workspace_file="${PROJECT_NAME}-${app_suffix}.code-workspace"
+    
+    # Replace placeholders in template
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS
+        sed "s/PROJECT_NAME-APP_CONTAINER_SUFFIX/${PROJECT_NAME}-${app_suffix}/g" \
+            "$TEMPLATE_DIR/PROJECT_NAME.code-workspace.template" > "$workspace_file"
+    else
+        # Linux
+        sed "s/PROJECT_NAME-APP_CONTAINER_SUFFIX/${PROJECT_NAME}-${app_suffix}/g" \
+            "$TEMPLATE_DIR/PROJECT_NAME.code-workspace.template" > "$workspace_file"
+    fi
+    
+    echo "✓ Created workspace file: $workspace_file"
+else
+    echo "⚠️  Workspace template not found - skipping workspace file creation"
 fi
 
 echo "✓ Environment configuration created in .devcontainer/.env"
@@ -219,7 +308,8 @@ echo "✅ Project created successfully: $PROJECT_PATH"
 echo ""
 echo "📝 Next steps:"
 echo "   1. cd $PROJECT_PATH"
-echo "   2. code ."
+echo "   2a. code . (opens folder - shows folder name in status bar)"
+echo "   2b. code ${PROJECT_NAME}-app.code-workspace (opens workspace - shows '${PROJECT_NAME}-app' in status bar)"
 echo "   3. When prompted, click 'Reopen in Container'"
 echo "   4. Wait for container build (first time: ~5-10 minutes)"
 echo "   5. Container will automatically:"
@@ -231,15 +321,17 @@ echo ""
 echo "🔧 Configuration summary:"
 echo "   - Container name: ${PROJECT_NAME}_app"
 echo "   - Stack name: $COMPOSE_PROJECT_NAME"
+echo "   - ADB infrastructure stack: $ADB_INFRASTRUCTURE_PROJECT_NAME"
 echo "   - Network: dartnet (shared)"
 echo "   - ADB server: shared-adb-server:5037"
 echo "   - Infrastructure path: $INFRA_PATH"
 echo "   - User UID/GID: $CURRENT_UID:$CURRENT_GID"
-echo "   - Environment file: .devcontainer/.env (customized from .devcontainer/.env.example)"
+echo "   - Environment file: .devcontainer/.env (customized from .devcontainer/.env.base)"
 echo ""
 echo "⚙️  Environment configuration:"
 echo "   - PROJECT_NAME=$PROJECT_NAME (in .devcontainer/.env)"
 echo "   - COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME (in .devcontainer/.env)"
+echo "   - ADB_INFRASTRUCTURE_PROJECT_NAME=$ADB_INFRASTRUCTURE_PROJECT_NAME (in .devcontainer/.env)"
 echo "   - USER_UID=$CURRENT_UID (in .devcontainer/.env)"
 echo "   - USER_GID=$CURRENT_GID (in .devcontainer/.env)"
 echo "   - FLUTTER_VERSION=3.24.0 (in .devcontainer/.env)"
@@ -250,8 +342,8 @@ echo "   2. cd $PROJECT_PATH"
 echo "   3. code ."
 echo "   4. When prompted, click 'Reopen in Container'"
 echo ""
-echo "📚 For detailed information, see: DEVCONTAINER_README.md"
-echo "📚 For environment variables, see: .devcontainer/.env.example"
+echo "📚 For detailed information, see: .devcontainer/docs/DEVCONTAINER_README.md"
+echo "📚 For environment variables, see: .devcontainer/.env.base"
 echo "📚 For spec-driven development, see: README.md and spec-driven.md"
 echo ""
 echo "🎯 Happy Flutter Development with Spec-Driven Development!"
