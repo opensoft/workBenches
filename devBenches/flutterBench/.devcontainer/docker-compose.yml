@@ -1,6 +1,6 @@
 # Project name for organizing all DevBench containers in Docker Desktop
-# This creates the flutter project
-name: flutter
+# This creates the dev-bench project with flutter_bench, java_bench, etc.
+name: dev-bench
 
 services:
   flutter_bench:
@@ -57,13 +57,12 @@ services:
       - ANDROID_HOME=/opt/android-sdk
       - ADB_SERVER_SOCKET=tcp:host.docker.internal:5037
     
-    # Connect to shared dartnet network
+    # Connect to shared DevBench network
     networks:
-      - dartnet
+      - dev_bench
 
 # Shared network for all DevBench containers
 networks:
-  dartnet:
-    name: dartnet
+  dev_bench:
+    name: dev_bench
     driver: bridge
-    external: true

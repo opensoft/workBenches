@@ -54,7 +54,7 @@ The container is configured with:
 - **Workspace**: `/workspace` (mounted from parent directory)
 - **Ports**: 5000, 5001, 7071, 8080, 3000, 4200
 - **Docker access**: Privileged mode with docker socket mounted
-- **Network**: Connected to shared `dartnet` network
+- **Network**: Connected to shared `dev_bench` network
 
 ## Build Progress
 

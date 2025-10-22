@@ -50,6 +50,7 @@ echo -e "${BLUE}💡 Quick commands:${NC}"
 echo "  • flutter run          - Start development"
 echo "  • flutter doctor        - Check environment"
 echo "  • ./.devcontainer/scripts/flutter-status.sh - Full status"
+echo "  • ./.devcontainer/scripts/version-check.sh - Check template versions"
 
 if [ -f "docker-compose.override.yml" ]; then
     echo "  • docker-compose up -d service - Start .NET service"

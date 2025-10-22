@@ -1,3 +1,10 @@
+# ====================================
+# Flutter DevContainer Docker Compose Configuration
+# Version: 2.0.1
+# Template: flutter-devcontainer-2.0.1
+# Architecture: Centralized Configuration (.env only)
+# COPILOT: Auto-increment version on file changes (PATCH for fixes, MINOR for features, MAJOR for breaking changes)
+# ====================================
 # Compose project name for Docker Desktop grouping (set in .env)
 # This groups all containers under the same stack name
 name: ${COMPOSE_PROJECT_NAME:-flutter}
@@ -17,17 +24,22 @@ services:
         DEBUG_MODE: ${DEBUG_MODE:-false}
     
     # Container configuration from .env
-    container_name: ${PROJECT_NAME:-myproject}_app
+    container_name: ${PROJECT_NAME:-Flutter-Dev}-${APP_CONTAINER_SUFFIX:-app}
+    
+    # Labels for devcontainer metadata
+    labels:
+      - "devcontainer.metadata.project_name=${PROJECT_NAME:-Flutter-Dev}"
     
     # Run as user specified in .env with defaults
     user: "${USER_UID:-1000}:${USER_GID:-1000}"
     
     # Runtime environment variables
     environment:
+      - PROJECT_NAME=${PROJECT_NAME:-Flutter-Dev}
       - ADB_SERVER_SOCKET=tcp:${ADB_SERVER_HOST:-shared-adb-server}:${ADB_SERVER_PORT:-5037}
       - FLUTTER_VERSION=${FLUTTER_VERSION:-3.24.0}
-      - ANDROID_HOME=${ANDROID_HOME:-/home/vscode/android-sdk}
-      - FLUTTER_PUB_CACHE=${FLUTTER_PUB_CACHE:-/home/vscode/.pub-cache}
+      - ANDROID_HOME=${ANDROID_HOME:-/home/${USER_NAME:-vscode}/android-sdk}
+      - FLUTTER_PUB_CACHE=${FLUTTER_PUB_CACHE:-/home/${USER_NAME:-vscode}/.pub-cache}
       - DEBUG_MODE=${DEBUG_MODE:-false}
     
     # Network configuration
@@ -38,7 +50,7 @@ services:
     volumes:
       - ../:${WORKSPACE_PATH:-/workspace}
       # Persist pub cache per project
-      - flutter-pub-cache:${FLUTTER_PUB_CACHE:-/home/vscode/.pub-cache}
+      - flutter-pub-cache:${FLUTTER_PUB_CACHE:-/home/${USER_NAME:-vscode}/.pub-cache}
       # Persist gradle cache per project
       - flutter-gradle-cache:/home/${USER_NAME:-vscode}/.gradle
     

@@ -99,8 +99,23 @@ find_projects_by_name() {
             echo -e "${BLUE}   Searching in: $search_dir${NC}" >&2
             
             # Find directories with matching names (case insensitive)
+            # Exclude submodules, build artifacts, and cache directories
             while IFS= read -r -d '' project_path; do
                 if [ -d "$project_path" ]; then
+                    # Skip if path contains build artifacts, git internals, or cache directories
+                    if [[ "$project_path" =~ /\.git/modules/ ]] || \
+                       [[ "$project_path" =~ /build/app/intermediates/ ]] || \
+                       [[ "$project_path" =~ /build/.*/(assets|flutter_assets)/ ]] || \
+                       [[ "$project_path" =~ /build/unit_test_assets/ ]] || \
+                       [[ "$project_path" =~ /build/.*/(debug|release)/ ]] || \
+                       [[ "$project_path" =~ /node_modules/ ]] || \
+                       [[ "$project_path" =~ /\.gradle/ ]] || \
+                       [[ "$project_path" =~ /\.pub-cache/ ]] || \
+                       [[ "$project_path" =~ /target/(debug|release)/ ]] || \
+                       [[ "$project_path" =~ /__pycache__/ ]] || \
+                       [[ "$project_path" =~ /\.dart_tool/ ]]; then
+                        continue  # Skip this path
+                    fi
                     found_projects+=("$project_path")
                 fi
             done < <(find "$search_dir" -type d -iname "*$project_name*" -print0 2>/dev/null)

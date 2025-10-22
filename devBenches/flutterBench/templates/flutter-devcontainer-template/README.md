@@ -1,6 +1,29 @@
 # Flutter DevContainer Template
 
-This template provides a **lightweight Flutter project container** with shared ADB infrastructure support.
+This template provides a **lightweight Flutter project container** with **centralized configuration** and shared ADB infrastructure support.
+
+## ⚙️ Centralized Configuration Architecture
+
+**Key Principle: The `.env` file is the ONLY place for project and user-specific configuration.**
+
+### What This Means:
+- 🚫 **Template files are NEVER modified** - All `.devcontainer`, `.vscode`, Docker files remain untouched
+- ✅ **All customization via `.env` file** - Container names, user settings, versions, ports
+- ✅ **Perfect reusability** - Same template works for unlimited projects
+- ✅ **Conflict-free updates** - Template improvements never break your settings
+- ✅ **Configurable container naming** - Control both app and service container names
+
+### Container Naming Examples:
+```bash
+# .env file:
+PROJECT_NAME=dartwing
+APP_CONTAINER_SUFFIX=app
+SERVICE_CONTAINER_SUFFIX=gateway
+
+# Results in containers:
+# - dartwing-app (Flutter container)
+# - dartwing-gateway (Service container)
+```
 
 ## 🎯 Container Philosophy
 
@@ -126,7 +149,10 @@ cp .env.example .env
 ### Key Variables
 
 #### **Project Configuration**
-- `PROJECT_NAME`: Container name, volume names (e.g., `myapp-dev`)
+- `PROJECT_NAME`: Base name for containers and volumes
+- `APP_CONTAINER_SUFFIX`: Suffix for app container (default: `app`) → Results in `PROJECT_NAME-app`
+- `SERVICE_CONTAINER_SUFFIX`: Suffix for service container (default: `service`, `gateway` for Dartwing) → Results in `PROJECT_NAME-service`
+- `COMPOSE_PROJECT_NAME`: Docker Compose stack name (default: `flutter`, `dartwingers` for Dartwingers projects)
 - `NETWORK_NAME`: Docker network (default: `dartnet`)
 
 #### **User Configuration**
@@ -205,12 +231,13 @@ projects/
 - 3 levels deep: `../../../infrastructure/mobile/android/adb/scripts/start-adb-if-needed.sh`
 - 4 levels deep: `../../../../infrastructure/mobile/android/adb/scripts/start-adb-if-needed.sh`
 
-### Customization Placeholders
+### Template Files Use Environment Variables
 
-Before using, replace these placeholders:
+Template files use environment variable substitution - **no manual editing required**:
 
-- **`PROJECT_NAME`** in `devcontainer.json` → Your project display name
-- **`PROJECT_NAME`** in `docker-compose.yml` → Your container and volume names
+- **`devcontainer.json`** uses `"name": "${localEnv:PROJECT_NAME}"` to read from `.env`
+- **`docker-compose.yml`** uses `${PROJECT_NAME}-${APP_CONTAINER_SUFFIX}` for container names
+- **All configuration** comes from your `.env` file automatically
 
 ## 🎯 Features Included
 
