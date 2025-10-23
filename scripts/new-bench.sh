@@ -121,7 +121,7 @@ query_openai_api() {
         -H "Authorization: Bearer $api_key" \
         -H "Content-Type: application/json" \
         -d "{
-            \"model\": \"gpt-4o-mini\",
+            \"model\": \"gpt-5-nano\",
             \"messages\": [
                 {
                     \"role\": \"system\",
