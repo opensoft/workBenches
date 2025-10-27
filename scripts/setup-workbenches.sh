@@ -397,7 +397,7 @@ setup_openai_key() {
                 -d '{
                     "model": "gpt-5-nano",
                     "messages": [{"role": "user", "content": "Hi"}],
-                    "max_tokens": 5
+                    "max_completion_tokens": 5
                 }' 2>/dev/null)
             
             if echo "$test_response" | jq -e '.choices[0].message.content' >/dev/null 2>&1; then
