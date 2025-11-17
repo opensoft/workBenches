@@ -338,7 +338,7 @@ setup_ai_features() {
 setup_ai_api_keys() {
     echo -e "${BLUE}AI API Key Setup${NC}"
     echo "Choose your preferred AI service:"
-    echo "  1) OpenAI (GPT-5-Nano) - Requires OpenAI API key"
+    echo "  1) OpenAI (GPT-4) - Requires OpenAI API key"
     echo "  2) Anthropic (Claude) - Requires Anthropic API key"
     echo "  3) Both - Set up both services"
     echo "  4) Skip - I'll set up manually later"
@@ -395,9 +395,9 @@ setup_openai_key() {
                 -H "Authorization: Bearer $openai_key" \
                 -H "Content-Type: application/json" \
                 -d '{
-                    "model": "gpt-5-nano",
+                    "model": "gpt-4o-mini",
                     "messages": [{"role": "user", "content": "Hi"}],
-                    "max_completion_tokens": 5
+                    "max_tokens": 5
                 }' 2>/dev/null)
             
             if echo "$test_response" | jq -e '.choices[0].message.content' >/dev/null 2>&1; then

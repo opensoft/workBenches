@@ -367,230 +367,88 @@ services:
 ```
 DevBench/FlutterBench/templates/flutter-devcontainer-template/
 ├── .devcontainer/
-│   ├── devcontainer.json
-│   ├── docker-compose.yml       # Uses ${VARIABLES}
-│   ├── docker-compose.override.yml
-│   ├── Dockerfile               # Receives ARGs
-│   ├── .env.base                # Template (checked into git)
-│   ├── .env                     # Created from .env.base (NOT in git)
-│   ├── docs/                    # Documentation
-│   ├── scripts/                 # Startup and helper scripts
-│   └── adb-service/             # ADB service configuration
+│   └── devcontainer.json
 ├── .vscode/
 │   └── tasks.json
-├── .github/                     # GitHub workflows
-├── .gitignore                   # Excludes .env
-├── scripts/                     # Project-level scripts
-├── README.md
-└── WARP.md
+├── .env.example          # Template (checked into git)
+├── .gitignore            # Excludes .env
+├── docker-compose.yml    # Uses ${VARIABLES}
+├── Dockerfile            # Receives ARGs
+└── README.md
 ```
 
 ### Template Files
 
-#### `.env.example` (or `.env.base` in template)
+#### `.env.example`
 
 ```bash
 # ====================================
-# Flutter DevContainer Base Configuration
-# Version: 2.0.0
-# Template: flutter-devcontainer-2.0.0
-# Architecture: Centralized Configuration
+# Flutter DevContainer Configuration
 # ====================================
-# This is the base configuration template for Flutter DevContainer projects
 # Copy this file to .env and customize for your project
-# IMPORTANT: Never commit .env to git - it may contain sensitive information
 
 # ====================================
 # Project Configuration
 # ====================================
-# PROJECT_NAME: Used for container name, volume names, and identification
-# Must be unique across all projects on this machine
-# Examples: ledgerlinc, lablinc, dartwing, davincidesigner
 PROJECT_NAME=myproject
 
-# APP_CONTAINER_SUFFIX: Suffix for app container name
-# Default: app (results in PROJECT_NAME-app)
-APP_CONTAINER_SUFFIX=app
-
-# COMPOSE_PROJECT_NAME: Docker Compose stack name (groups containers in Docker Desktop)
-# Values: dartwingers (for dartwingers projects), flutter (for other Flutter projects)
-# This is auto-detected based on parent folder name
-COMPOSE_PROJECT_NAME=flutter
+# Container naming configuration
+APP_CONTAINER_SUFFIX=app              # Results in: PROJECT_NAME-app
+SERVICE_CONTAINER_SUFFIX=service      # Results in: PROJECT_NAME-service (or gateway for Dartwing)
 
 # ====================================
 # User Configuration
 # ====================================
-# These should match your host user for proper file permissions
-# Run 'id' in your terminal to check your current values
-
-# USER_NAME: Username inside the container (should match host user)
-USER_NAME=$(whoami)
-
-# USER_UID: User ID - should match your host UID for file permission consistency
-# Run 'id -u' to check your UID
-USER_UID=$(id -u)
-
-# USER_GID: Group ID - should match your host GID for file permission consistency  
-# Run 'id -g' to check your GID
-USER_GID=$(id -g)
+# These should match your WSL2 user for proper file permissions
+USER_NAME=developer
+USER_UID=1000
+USER_GID=1000
 
 # ====================================
 # Flutter Configuration
 # ====================================
-# FLUTTER_VERSION: Flutter SDK version to install
-# Examples: 3.27.0, 3.24.0, stable, beta, dev
-# Note: Using 'stable' to get the latest stable Flutter with recent Dart SDK
-# Specific versions: Flutter 3.27+ includes Dart 3.6+, need 3.7+ for mobile_scanner ^7.0
-FLUTTER_VERSION=stable
+FLUTTER_VERSION=3.24.0
 
 # ====================================
-# Container Resources (Optional)
+# Container Resources (optional)
 # ====================================
-# CONTAINER_MEMORY: Memory limit for the container
-# Examples: 2g, 4g, 8g, 512m
-# Default: 4g (4 gigabytes)
 CONTAINER_MEMORY=4g
-
-# CONTAINER_CPUS: CPU limit for the container
-# Examples: 1, 2, 4, 0.5
-# Default: 2 cores
 CONTAINER_CPUS=2
 
 # ====================================
 # ADB Configuration
 # ====================================
-# ADB_SERVER_HOST: Hostname of shared ADB server
-# Default: shared-adb-server (from shared infrastructure)
 ADB_SERVER_HOST=shared-adb-server
-
-# ADB_SERVER_PORT: Port of shared ADB server
-# Default: 5037 (standard ADB port)
 ADB_SERVER_PORT=5037
-
-# ADB_INFRASTRUCTURE_PROJECT_NAME: Docker stack name for ADB infrastructure
-# Values: dartwingers, infrastructure, shared-adb-infrastructure, custom
-# This controls which Docker stack the shared ADB server runs under
-# Default: infrastructure (centralized infrastructure stack)
-ADB_INFRASTRUCTURE_PROJECT_NAME=infrastructure
-
-# ====================================
-# Development Environment (Optional)
-# ====================================
-# WORKSPACE_PATH: Path inside container where code is mounted
-# Default: /workspace
-WORKSPACE_PATH=/workspace
-
-# FLUTTER_PUB_CACHE: Path for Flutter pub cache inside container
-# Updated to use correct user home directory
-FLUTTER_PUB_CACHE=/home/$(whoami)/.pub-cache
-
-# ANDROID_HOME: Android SDK location inside container
-# Updated to use correct user home directory
-ANDROID_HOME=/home/$(whoami)/android-sdk
-
-# ====================================
-# Shell Configuration (Built-in)
-# ====================================
-# The devcontainer is configured to use zsh as the default shell:
-# - Container environment variable: SHELL=/bin/zsh
-# - VS Code terminal settings force zsh for all terminal types
-# - Bash profile override redirects bash calls to zsh
-# - User shell is explicitly set to zsh via chsh
-# This ensures consistent zsh experience across all terminal usage
-
-# ====================================
-# Network Configuration (Advanced)
-# ====================================
-# NETWORK_NAME: Docker network name for shared infrastructure
-# Default: dartnet (created by shared infrastructure)
-NETWORK_NAME=dartnet
-
-# ====================================
-# Debugging & Development (Optional)
-# ====================================
-# DEBUG_MODE: Enable verbose output and debugging tools
-# Values: true, false
-# Default: false
-DEBUG_MODE=false
-
-# HOT_RELOAD_PORT: Port for Flutter hot reload
-# Default: 8080
-HOT_RELOAD_PORT=8080
-
-# DEVTOOLS_PORT: Port for Flutter DevTools
-# Default: 9100
-DEVTOOLS_PORT=9100
-
-# ====================================
-# .NET Service Configuration (Dartwingers Only)
-# ====================================
-# SERVICE_CONTAINER_SUFFIX: Suffix for service container name
-# Default: service (results in PROJECT_NAME-service)
-# For Dartwing projects: gateway (results in PROJECT_NAME-gateway)
-SERVICE_CONTAINER_SUFFIX=service
-
-# SERVICE_PORT: Port for .NET Web API service
-# Default: 5000
-SERVICE_PORT=5000
-
-# SERVICE_DEBUG_PORT: Port for .NET HTTPS debugging
-# Default: 5001
-SERVICE_DEBUG_PORT=5001
-
-# SERVICE_MEMORY: Memory limit for .NET service container
-# Default: 2g
-SERVICE_MEMORY=2g
-
-# SERVICE_CPUS: CPU limit for .NET service container
-# Default: 1
-SERVICE_CPUS=1
 ```
 
 #### `docker-compose.yml`
 
 ```yaml
-# ====================================
-# Flutter DevContainer Docker Compose Configuration
-# Version: 2.0.1
-# Template: flutter-devcontainer-2.0.1
-# Architecture: Centralized Configuration (.env only)
-# ====================================
-# Compose project name for Docker Desktop grouping (set in .env)
-# This groups all containers under the same stack name
-name: ${COMPOSE_PROJECT_NAME:-flutter}
+version: '3.8'
 
 services:
-  app:
+  flutter-dev:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        # Build-time arguments from .env with readable defaults
-        USER_NAME: ${USER_NAME:-vscode}
+        # Build-time arguments from .env
+        USER_NAME: ${USER_NAME:-developer}
         USER_UID: ${USER_UID:-1000}
         USER_GID: ${USER_GID:-1000}
         FLUTTER_VERSION: ${FLUTTER_VERSION:-3.24.0}
-        ANDROID_HOME: ${ANDROID_HOME:-/home/vscode/android-sdk}
-        DEBUG_MODE: ${DEBUG_MODE:-false}
     
     # Container configuration from .env
-    container_name: ${PROJECT_NAME:-Flutter-Dev}-${APP_CONTAINER_SUFFIX:-app}
+    container_name: ${PROJECT_NAME:-myproject}-dev
     
-    # Labels for devcontainer metadata
-    labels:
-      - "devcontainer.metadata.project_name=${PROJECT_NAME:-Flutter-Dev}"
-    
-    # Run as user specified in .env with defaults
+    # Run as user specified in .env
     user: "${USER_UID:-1000}:${USER_GID:-1000}"
     
     # Runtime environment variables
     environment:
-      - PROJECT_NAME=${PROJECT_NAME:-Flutter-Dev}
       - ADB_SERVER_SOCKET=tcp:${ADB_SERVER_HOST:-shared-adb-server}:${ADB_SERVER_PORT:-5037}
       - FLUTTER_VERSION=${FLUTTER_VERSION:-3.24.0}
-      - ANDROID_HOME=${ANDROID_HOME:-/home/${USER_NAME:-vscode}/android-sdk}
-      - FLUTTER_PUB_CACHE=${FLUTTER_PUB_CACHE:-/home/${USER_NAME:-vscode}/.pub-cache}
-      - DEBUG_MODE=${DEBUG_MODE:-false}
     
     # Network configuration
     networks:
@@ -598,16 +456,9 @@ services:
     
     # Volume mounts
     volumes:
-      - ../:${WORKSPACE_PATH:-/workspace}
+      - .:/workspace
       # Persist pub cache per project
-      - flutter-pub-cache:${FLUTTER_PUB_CACHE:-/home/${USER_NAME:-vscode}/.pub-cache}
-      # Persist gradle cache per project
-      - flutter-gradle-cache:/home/${USER_NAME:-vscode}/.gradle
-    
-    # Port mappings for development
-    ports:
-      - "${HOT_RELOAD_PORT:-8080}:8080"     # Hot reload
-      - "${DEVTOOLS_PORT:-9100}:9100"       # Flutter DevTools
+      - flutter-pub-cache-${PROJECT_NAME:-myproject}:/home/${USER_NAME:-developer}/.pub-cache
     
     # Resource limits (optional)
     deploy:
@@ -616,28 +467,20 @@ services:
           memory: ${CONTAINER_MEMORY:-4g}
           cpus: '${CONTAINER_CPUS:-2}'
     
-    # Working directory
-    working_dir: ${WORKSPACE_PATH:-/workspace}
-    
-    # Keep container running
     command: sleep infinity
     
-    # Restart policy
     restart: unless-stopped
 
-# External network (managed by shared infrastructure)
+# External network (managed by infrastructure)
 networks:
   dartnet:
     external: true
-    name: ${NETWORK_NAME:-dartnet}
+    name: dartnet
 
-# Named volumes for caching
-# Note: Volume keys cannot use variable substitution, but names can
+# Named volume for pub cache
 volumes:
-  flutter-pub-cache:
+  flutter-pub-cache-${PROJECT_NAME:-myproject}:
     name: flutter-pub-cache-${PROJECT_NAME:-myproject}
-  flutter-gradle-cache:
-    name: flutter-gradle-cache-${PROJECT_NAME:-myproject}
 ```
 
 #### `Dockerfile`

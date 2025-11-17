@@ -6,7 +6,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/../config/bench-config.json"
+CONFIG_FILE="$SCRIPT_DIR/bench-config.json"
 
 # Colors for output
 RED='\033[0;31m'
@@ -321,8 +321,8 @@ process_selected_stack() {
     bench_name="${bench_name:-$default_bench_name}"
     
     # Determine bench path
-    local bench_path="devBenches/$bench_name"
-    if [ -d "$SCRIPT_DIR/../$bench_path" ]; then
+    local bench_path="devBench/$bench_name"
+    if [ -d "$SCRIPT_DIR/$bench_path" ]; then
         echo -e "${RED}Error: Bench already exists at $bench_path${NC}"
         exit 1
     fi
@@ -355,9 +355,9 @@ create_bench_structure() {
     
     # Create directory structure
     echo -e "${CYAN}📁 Creating directory structure...${NC}"
-    mkdir -p "$SCRIPT_DIR/../$bench_path"/{.devcontainer,.vscode,scripts,templates,docs}
+    mkdir -p "$SCRIPT_DIR/$bench_path"/{.devcontainer,.vscode,scripts,templates,docs}
     
-    cd "$SCRIPT_DIR/../$bench_path"
+    cd "$SCRIPT_DIR/$bench_path"
     
     # Initialize git repository
     echo -e "${CYAN}📦 Initializing git repository...${NC}"

@@ -48,7 +48,7 @@ else
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TEMPLATE_DIR="$SCRIPT_DIR/../templates/flutter-devcontainer-template"
+TEMPLATE_DIR="$SCRIPT_DIR/../template"
 CONFIG_SCRIPT="$SCRIPT_DIR/../../../scripts/workbench-config.sh"
 METADATA_HELPER="$SCRIPT_DIR/../../../scripts/metadata-helper.sh"
 
@@ -63,7 +63,7 @@ fi
 # Validate template directory exists
 if [ ! -d "$TEMPLATE_DIR" ]; then
     echo "❌ Error: Template directory not found at $TEMPLATE_DIR"
-    echo "Please ensure the flutter-devcontainer-template exists."
+    echo "Please ensure the template directory exists."
     exit 1
 fi
 
@@ -97,11 +97,7 @@ cd "$PROJECT_NAME"
 echo "📋 Copying DevContainer configuration..."
 cp -r "$TEMPLATE_DIR/.devcontainer" .
 cp -r "$TEMPLATE_DIR/.vscode" .
-cp -r "$TEMPLATE_DIR/.github" .
-cp -r "$TEMPLATE_DIR/scripts" .
 cp "$TEMPLATE_DIR/.gitignore" .
-cp "$TEMPLATE_DIR/README.md" "DEVCONTAINER_README.md"
-cp "$TEMPLATE_DIR/WARP.md" .
 
 # Copy and setup environment files
 echo "⚙️  Setting up environment configuration..."
@@ -199,32 +195,14 @@ echo "" >> .devcontainer/.env
 echo "# ADB Infrastructure Configuration" >> .devcontainer/.env
 echo "ADB_INFRASTRUCTURE_PROJECT_NAME=$ADB_INFRASTRUCTURE_PROJECT_NAME" >> .devcontainer/.env
 
-# Generate VS Code workspace file for proper status bar naming
-echo "🔧 Creating VS Code workspace file..."
-if [ -f "$TEMPLATE_DIR/PROJECT_NAME.code-workspace.template" ]; then
-    # Get app container suffix from .env or use default
-    app_suffix="app"
-    if [ -f ".devcontainer/.env" ]; then
-        app_suffix=$(grep "^APP_CONTAINER_SUFFIX=" .devcontainer/.env 2>/dev/null | cut -d'=' -f2 || echo "app")
-    fi
-    
-    # Create workspace file with proper naming
-    workspace_file="${PROJECT_NAME}-${app_suffix}.code-workspace"
-    
-    # Replace placeholders in template
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        sed "s/PROJECT_NAME-APP_CONTAINER_SUFFIX/${PROJECT_NAME}-${app_suffix}/g" \
-            "$TEMPLATE_DIR/PROJECT_NAME.code-workspace.template" > "$workspace_file"
-    else
-        # Linux
-        sed "s/PROJECT_NAME-APP_CONTAINER_SUFFIX/${PROJECT_NAME}-${app_suffix}/g" \
-            "$TEMPLATE_DIR/PROJECT_NAME.code-workspace.template" > "$workspace_file"
-    fi
-    
-    echo "✓ Created workspace file: $workspace_file"
+# Replace PROJECT_NAME placeholder in devcontainer.json
+echo "🔧 Updating devcontainer display name..."
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS
+    sed -i '' "s/PROJECT_NAME Flutter Dev/${PROJECT_NAME} Flutter Dev/g" .devcontainer/devcontainer.json
 else
-    echo "⚠️  Workspace template not found - skipping workspace file creation"
+    # Linux
+    sed -i "s/PROJECT_NAME Flutter Dev/${PROJECT_NAME} Flutter Dev/g" .devcontainer/devcontainer.json
 fi
 
 echo "✓ Environment configuration created in .devcontainer/.env"
@@ -308,8 +286,7 @@ echo "✅ Project created successfully: $PROJECT_PATH"
 echo ""
 echo "📝 Next steps:"
 echo "   1. cd $PROJECT_PATH"
-echo "   2a. code . (opens folder - shows folder name in status bar)"
-echo "   2b. code ${PROJECT_NAME}-app.code-workspace (opens workspace - shows '${PROJECT_NAME}-app' in status bar)"
+echo "   2. code ."
 echo "   3. When prompted, click 'Reopen in Container'"
 echo "   4. Wait for container build (first time: ~5-10 minutes)"
 echo "   5. Container will automatically:"

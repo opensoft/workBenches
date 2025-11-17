@@ -18,7 +18,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TEMPLATE_DIR="$SCRIPT_DIR/../templates/flutter-devcontainer-template"
+TEMPLATE_DIR="$SCRIPT_DIR/../template"
 WORKBENCHES_DIR="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 
 # Colors for output
@@ -559,11 +559,8 @@ apply_template_files() {
     local template_files=(
         ".devcontainer"
         ".vscode"
-        ".github"
         ".gitignore"
         "scripts"
-        "README.md"
-        "WARP.md"
     )
     
     # .env.base is already in .devcontainer from template copy - no need to copy to root
@@ -572,14 +569,8 @@ apply_template_files() {
     
     for file in "${template_files[@]}"; do
         if [ -e "$TEMPLATE_DIR/$file" ]; then
-            if [ "$file" = "README.md" ]; then
-                # Copy template README as DEVCONTAINER_README.md to avoid overwriting project README
-                cp "$TEMPLATE_DIR/$file" "DEVCONTAINER_README.md"
-                log_info "Copied: $file -> DEVCONTAINER_README.md"
-            else
-                cp -r "$TEMPLATE_DIR/$file" .
-                log_info "Copied: $file"
-            fi
+            cp -r "$TEMPLATE_DIR/$file" .
+            log_info "Copied: $file"
         fi
     done
     
@@ -632,34 +623,6 @@ apply_template_files() {
     # Note: DevContainer name is now handled via environment variable substitution
     # The template uses "name": "${localEnv:PROJECT_NAME}" which reads from .env file
     # No direct modification of devcontainer.json is needed
-    
-    # Generate VS Code workspace file for proper status bar naming
-    if [ -f "$TEMPLATE_DIR/PROJECT_NAME.code-workspace.template" ]; then
-        log_info "Creating VS Code workspace file for proper status bar naming"
-        
-        # Get app container suffix from .env or use default
-        local app_suffix="app"
-        if [ -f ".devcontainer/.env" ]; then
-            app_suffix=$(grep "^APP_CONTAINER_SUFFIX=" .devcontainer/.env 2>/dev/null | cut -d'=' -f2 || echo "app")
-        fi
-        
-        # Create workspace file with proper naming
-        local workspace_file="${PROJECT_NAME}-${app_suffix}.code-workspace"
-        
-        # Replace placeholders in template
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            # macOS
-            sed "s/PROJECT_NAME-APP_CONTAINER_SUFFIX/${PROJECT_NAME}-${app_suffix}/g" \
-                "$TEMPLATE_DIR/PROJECT_NAME.code-workspace.template" > "$workspace_file"
-        else
-            # Linux
-            sed "s/PROJECT_NAME-APP_CONTAINER_SUFFIX/${PROJECT_NAME}-${app_suffix}/g" \
-                "$TEMPLATE_DIR/PROJECT_NAME.code-workspace.template" > "$workspace_file"
-        fi
-        
-        log_success "Created workspace file: $workspace_file"
-        log_info "Open with: code $workspace_file (this will show correct name in status bar)"
-    fi
     
     log_success "Template files applied"
 }

@@ -7,4 +7,4 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Call the main setup script
-"${SCRIPT_DIR}/scripts/setup-workbenches.sh"
+"${SCRIPT_DIR}/scripts/setup-workbenches"

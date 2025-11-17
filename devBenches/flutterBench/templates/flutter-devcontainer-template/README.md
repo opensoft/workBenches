@@ -251,6 +251,7 @@ Template files use environment variable substitution - **no manual editing requi
 - ✅ **Minimal Android SDK** (platform-tools for ADB debugging)
 - ✅ **Java 17 JDK** (OpenJDK)
 - ✅ **Essential tools only**: git, curl, nano, jq, tree, zsh, Oh My Zsh
+- ✅ **ImageMagick** (with full comparison support, PDF/Ghostscript, and fonts)
 - ✅ **Pre-configured VS Code extensions** for Flutter/Dart
 - ✅ **Optimized for project debugging** - not heavy development
 - ✅ **Fast container startup** (~2-3 minutes vs 10+ for FlutterBench)
@@ -286,6 +287,55 @@ Template files use environment variable substitution - **no manual editing requi
    - Container auto-starts with ADB connectivity
    - Use Command Palette → Tasks to run Flutter commands
    - Use F5 to debug, or Run/Debug buttons in VS Code
+
+## 🖼️ ImageMagick Image Comparison
+
+The container includes **ImageMagick** with full support for image comparison operations, ideal for visual regression testing and screenshot comparisons.
+
+### Available Commands
+
+```bash
+# Compare two images and generate a diff
+magick compare -metric RMSE baseline.png candidate.png diff.png
+
+# Compare with absolute error count
+magick compare -metric AE baseline.png candidate.png diff.png
+
+# Get normalized cross-correlation (similarity score)
+magick compare -metric NCC baseline.png candidate.png null:
+
+# Show version and available delegates
+magick identify -version
+```
+
+### Included Components
+
+- ✅ **ImageMagick CLI tools** (`magick`, `compare`, `identify`, `convert`)
+- ✅ **MagickCore & MagickWand libraries** for language bindings
+- ✅ **Ghostscript** for PDF comparison and rasterization
+- ✅ **DejaVu fonts** to prevent missing-glyph errors in text overlays
+
+### Usage Tips
+
+- **Store comparison outputs** in `/workspace/tmp` or similar to persist results
+- **Use metrics**: `RMSE` (root mean square error), `AE` (absolute error), `NCC` (normalized cross-correlation)
+- **Validate installation** runs automatically on container creation via `postCreateCommand`
+
+### Example Workflow
+
+```bash
+# 1. Take baseline screenshots
+flutter test --update-goldens
+
+# 2. Make UI changes
+
+# 3. Generate new screenshots
+flutter test
+
+# 4. Compare with ImageMagick
+mkdir -p tmp
+magick compare -metric RMSE test/goldens/widget_old.png test/goldens/widget_new.png tmp/diff.png
+```
 
 ## 🔍 Troubleshooting
 

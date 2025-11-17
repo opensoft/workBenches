@@ -40,7 +40,7 @@ fi
 
 # Post-process for Dartwingers: Add docker-compose.override.yml for .NET service
 PROJECT_PATH="$TARGET_DIR/$PROJECT_NAME"
-TEMPLATE_DIR="$SCRIPT_DIR/../templates/flutter-devcontainer-template"
+TEMPLATE_DIR="$SCRIPT_DIR/../template"
 METADATA_HELPER="$SCRIPT_DIR/../../../scripts/metadata-helper.sh"
 
 echo "🔧 Configuring Dartwingers-specific setup..."

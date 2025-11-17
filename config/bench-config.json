@@ -1,7 +1,7 @@
 {
   "infrastructure": {
     "specKit": {
-      "url": "git@github.com:opensoft/spec-kit.git",
+      "url": "git@github.com:opensoft/specKit.git",
       "path": "specKit",
       "description": "Infrastructure and specification kit - always installed"
     }

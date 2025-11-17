@@ -254,13 +254,13 @@ Copy this file to `.vscode/tasks.json` in each Flutter project:
 
 ## Complete devcontainer.json Template
 
-Copy this to `.devcontainer/devcontainer.json` in each Flutter project:
+Copy this to `.devcontainer/devcontainer.json` in each Flutter project (adjust PROJECT_NAME):
 
 ```json
 {
-  "name": "${containerEnv:PROJECT_NAME:Flutter DevContainer}",
-  "dockerComposeFile": "docker-compose.yml",
-  "service": "app",
+  "name": "PROJECT_NAME Flutter Dev",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "flutter-dev",
   "workspaceFolder": "/workspace",
 
   // ========================================
@@ -394,20 +394,19 @@ Copy this to `.devcontainer/devcontainer.json` in each Flutter project:
 
 ## Complete docker-compose.yml Template
 
-Copy this to `.devcontainer/docker-compose.yml` in each Flutter project:
+Copy this to `docker-compose.yml` in each Flutter project (adjust container name):
 
 ```yaml
-# Compose project name (set in .env)
-name: ${COMPOSE_PROJECT_NAME:-flutter}
+version: '3.8'
 
 services:
-  app:
+  flutter-dev:
     build:
       context: .
       dockerfile: Dockerfile
     
-    # Container name from .env
-    container_name: ${PROJECT_NAME:-Flutter-Dev}-${APP_CONTAINER_SUFFIX:-app}
+    # Change to your project name: projectname-dev
+    container_name: PROJECT_NAME-dev
     
     # Environment variables
     environment:
@@ -456,7 +455,7 @@ networks:
 
 ## Complete Dockerfile Template
 
-Copy this to `.devcontainer/Dockerfile` in each Flutter project:
+Copy this to `Dockerfile` in each Flutter project:
 
 ```dockerfile
 FROM ubuntu:22.04
@@ -731,25 +730,17 @@ adb devices
 ```
 DevBench/FlutterBench/templates/flutter-devcontainer-template/
 ├── .devcontainer/
-│   ├── devcontainer.json       # ← Complete config with all lifecycle hooks
-│   ├── docker-compose.yml      # ← Container definition
-│   ├── Dockerfile              # ← Image with Flutter + ADB client
-│   ├── .env.base               # ← Environment template (in git)
-│   ├── .env                    # ← Project config (not in git)
-│   ├── docs/                  # ← DevContainer documentation
-│   ├── scripts/               # ← Startup and helper scripts
-│   └── adb-service/           # ← ADB service configuration
+│   └── devcontainer.json       # ← Complete config with all lifecycle hooks
 ├── .vscode/
 │   ├── tasks.json              # ← All ADB and Flutter tasks
 │   ├── launch.json             # ← Flutter debug configurations
 │   └── settings.json           # ← Editor settings
-├── .github/                    # ← GitHub workflows
-├── scripts/                    # ← Project-level scripts
-├── README.md                   # ← Usage instructions
-└── WARP.md                     # ← Warp AI context
+├── docker-compose.yml          # ← Container definition
+├── Dockerfile                  # ← Image with Flutter + ADB client
+└── README.md                   # ← Usage instructions
 ```
 
-Copy these files to new projects - configuration handled via .env file:
-1. Copy .env.base to .env and customize PROJECT_NAME, user settings
-2. All container names, versions, resources configured in .env
-3. No need to modify template files
+Copy these files to new projects and update:
+1. Project name in devcontainer.json
+2. Container name in docker-compose.yml
+3. Path levels (`../../` vs `../../../`) if nested differently

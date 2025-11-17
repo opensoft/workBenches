@@ -39,9 +39,6 @@
 .vscode/launch.json
 .vscode/settings.json
 
-# VS Code Workspace Files (optional - uncomment to exclude from git)
-# *.code-workspace
-
 # Android Studio / IntelliJ
 .idea/
 *.iml

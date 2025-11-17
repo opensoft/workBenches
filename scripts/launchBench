@@ -191,7 +191,7 @@ Categories:
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $OPENAI_API_KEY" \
             -d "{
-                \"model\": \"gpt-5-nano\",
+                \"model\": \"gpt-4o-mini\",
                 \"messages\": [{\"role\": \"user\", \"content\": \"$prompt\"}],
                 \"max_tokens\": 200,
                 \"temperature\": 0.2
