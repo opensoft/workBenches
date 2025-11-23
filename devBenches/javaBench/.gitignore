@@ -90,3 +90,5 @@ spring.log
 *.bak
 *.swp
 *~.nib
+# DevContainer override files
+.devcontainer/docker-compose.override.yml
