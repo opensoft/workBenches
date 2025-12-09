@@ -10,18 +10,30 @@ To set up workBenches on a new system, run:
 ./scripts/setup-workbenches.sh
 ```
 
-This script will:
-1. Always clone the infrastructure repository (specKit)
-2. Prompt you to choose which benches to install:
-   - Install all benches at once
-   - Select benches individually (y/n for each)
-   - Skip bench installation
+The setup script provides an interactive menu with status-driven UI:
 
-### Setup Script Requirements
-- `git` - for cloning repositories
-- `jq` - for JSON processing
+**Status Display** (shown first):
+- ✓ Required dependencies (git, jq, curl) with versions
+- ✓ AI credentials configuration status
+- ✓ AI coding assistant CLIs (Claude Code, Copilot, Codex, Gemini, OpenCode)
+- ✓ Spec-driven development tools status
 
-The script automatically detects already installed benches and can be re-run to install additional components.
+**Interactive Menu**:
+1. **Interactive Selection (TUI)** - Visual multi-select interface
+2. Install/update benches
+3. Setup/update AI credentials
+4. Install spec-driven development tools
+5. Install commands (onp, launchBench, workbench)
+6. View setup summary
+7. Exit setup
+
+### Features
+- **Status-First UI** - See what's installed before making changes
+- **Selective Updates** - Update only what you need
+- **Auto-Install** - Dependencies installed automatically based on OS
+- **Re-runnable** - Safe to run multiple times to add components
+
+For detailed UI flow and examples, see [Setup Script UI Guide](docs/setup-script-ui.md)
 
 ## Creating New Projects
 
@@ -59,7 +71,7 @@ This script will:
 2. Show interactive menu of popular technologies (Go, Rust, Node.js, PHP, Ruby, etc.)
 3. Allow custom tech stack creation
 4. Generate complete bench structure with DevContainer setup
-5. Create project creation scripts with specKit integration
+5. Create project creation scripts
 6. Update workBenches configuration automatically
 
 ### AI-Powered Tech Stack Discovery
@@ -70,11 +82,15 @@ Set API keys for current technology information:
 export OPENAI_API_KEY="your-key-here"
 ./scripts/new-bench.sh
 
-# Using Claude
+# Using Claude API
 export ANTHROPIC_API_KEY="your-key-here"
 ./scripts/new-bench.sh
 
-# Without API keys (uses built-in tech stacks)
+# Using Claude Session (browser-based auth)
+# Run setup to configure: ./scripts/setup-workbenches.sh
+# Session stored in ~/.claude/config.json
+
+# Without AI keys (uses built-in tech stacks)
 ./scripts/new-bench.sh
 ```
 
@@ -84,6 +100,104 @@ The script supports creating benches for any technology and will generate:
 - Project creation scripts
 - Documentation and templates
 - Git repository initialization
+
+## AI Credentials Management
+
+### Check Credentials Status
+
+View the status of all configured AI services with color-coded indicators:
+
+```bash
+# Show status of all credentials
+./scripts/check-ai-credentials.sh
+
+# Interactive menu to update credentials
+./scripts/check-ai-credentials.sh interactive
+```
+
+**Features:**
+- 🟢 **Green**: Configured and valid
+- 🔴 **Red**: Not configured or invalid
+- Shows location of each credential
+- Preview of API keys (first/last 4 chars)
+- Interactive update menu
+
+## Claude Session Authentication
+
+workBenches supports Claude session authentication for seamless CLI access across all projects:
+
+### Setup
+```bash
+./scripts/setup-workbenches.sh
+# Select option 3: "Claude Session Token"
+```
+
+### Features
+- **Centralized authentication**: One setup for all projects on your machine
+- **Browser-based login**: Use your existing Claude account
+- **Secure storage**: Session tokens stored in `~/.claude/config.json` with restricted permissions
+- **Easy management**: Helper script for accessing session in your projects
+
+### Usage
+```bash
+# Check session status
+./scripts/claude-session-helper.sh info
+
+# Get session key
+./scripts/claude-session-helper.sh get
+
+# Use in scripts
+source ./scripts/claude-session-helper.sh
+if has_claude_session; then
+    SESSION_KEY=$(get_claude_session_key)
+    # Use SESSION_KEY in your application
+fi
+```
+
+For detailed instructions, see [Claude Session Setup Guide](docs/claude-session-setup.md)
+
+## Spec-Driven Development Tools
+
+workBenches supports spec-driven development with **spec-kit** (GitHub) and **OpenSpec** (Fission AI) for better AI collaboration:
+
+### Setup
+```bash
+./scripts/setup-workbenches.sh
+# Setup will check and offer to install both tools
+```
+
+### What Are These Tools?
+
+**spec-kit (GitHub Spec Kit)**
+- Python-based tool for spec-driven development
+- Creates structured specs, plans, and tasks
+- Works with Claude Code, GitHub Copilot, Cursor, and other AI assistants
+- Installation: `uvx --from git+https://github.com/github/spec-kit.git specify init <project>`
+- [GitHub Repository](https://github.com/github/spec-kit)
+
+**OpenSpec (Fission AI)**
+- Node.js-based lightweight spec framework
+- Manages proposals, tasks, and spec changes
+- Brownfield-first: great for existing projects (1→n)
+- Installation: `npm install -g @fission-ai/openspec@latest`
+- [GitHub Repository](https://github.com/Fission-AI/OpenSpec) | [Official Site](https://openspec.dev/)
+
+### Benefits
+- 📋 **Structured Planning**: Define what to build before coding
+- 🤝 **AI Alignment**: Keep AI assistants on track with explicit requirements
+- 📝 **Living Documentation**: Specs evolve with your project
+- 🔄 **Iterative Refinement**: Review and adjust plans before implementation
+
+### How It Works
+
+1. **Specify** - Write down what you're building (requirements, constraints)
+2. **Plan** - Create technical implementation plan
+3. **Tasks** - Break down into actionable tasks
+4. **Implement** - AI codes according to the spec
+
+Both tools keep requirements explicit and auditable, reducing miscommunication between humans and AI coding assistants.
+
+For detailed documentation, see [Spec-Driven Development Guide](docs/spec-driven-development.md)
 
 ## Configuration Management
 
@@ -97,7 +211,6 @@ The workBenches system uses `config/bench-config.json` to track benches and thei
 This script will:
 - Auto-discover all installed benches (directories with .git repositories)
 - Scan for project creation scripts in each bench
-- Detect if scripts handle specKit copying
 - Update `config/bench-config.json` with current state
 - Backup the existing configuration
 
@@ -105,7 +218,6 @@ This script will:
 You can also manually edit `config/bench-config.json` to:
 - Add repository URLs for benches
 - Define custom project script descriptions
-- Control specKit inclusion behavior
 - Add new bench types
 
 ## Structure
@@ -118,7 +230,6 @@ You can also manually edit `config/bench-config.json` to:
   - **javaBench** → [opensoft/javaBench](https://github.com/opensoft/javaBench)
   - **dotNetBench** → [opensoft/dotNetBench](https://github.com/opensoft/dotNetBench)
   - **pythonBench** → [opensoft/pythonBench](https://github.com/opensoft/pythonBench)
-- **specKit** - Specification-driven development toolkit → [opensoft/specKit](https://github.com/opensoft/specKit)
 
 ## Separate Repositories
 
@@ -126,12 +237,11 @@ All workbenches are maintained as separate repositories:
 
 | Workbench | Repository | Description |
 |-----------|------------|-------------|
-|| adminBenches | [opensoft/adminBench](https://github.com/opensoft/adminBench) | Administrative tools and Kubernetes configs |
+| adminBenches | [opensoft/adminBench](https://github.com/opensoft/adminBench) | Administrative tools and Kubernetes configs |
 | flutterBench | [opensoft/flutterBench](https://github.com/opensoft/flutterBench) | Flutter development environment with devcontainers |
 | javaBench | [opensoft/javaBench](https://github.com/opensoft/javaBench) | Java development environment and tools |
 | dotNetBench | [opensoft/dotNetBench](https://github.com/opensoft/dotNetBench) | .NET development environment with devcontainers |
 | pythonBench | [opensoft/pythonBench](https://github.com/opensoft/pythonBench) | Python development environment and tools |
-| specKit | [opensoft/specKit](https://github.com/opensoft/specKit) | Specification-driven development toolkit |
 
 To work with these, clone them separately or use git submodules.
 
@@ -152,4 +262,3 @@ Each workbench is maintained in its own repository. Please contribute directly t
 - **javaBench**: [opensoft/javaBench](https://github.com/opensoft/javaBench)
 - **dotNetBench**: [opensoft/dotNetBench](https://github.com/opensoft/dotNetBench)
 - **pythonBench**: [opensoft/pythonBench](https://github.com/opensoft/pythonBench)
-- **specKit**: [opensoft/specKit](https://github.com/opensoft/specKit)

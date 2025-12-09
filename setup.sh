@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Setup script for workBenches
-# This script calls the main setup script located in the scripts directory
+# This script launches the interactive configuration manager
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Call the main setup script
-"${SCRIPT_DIR}/scripts/setup-workbenches"
+# Call the interactive setup script
+"${SCRIPT_DIR}/scripts/interactive-setup.sh"

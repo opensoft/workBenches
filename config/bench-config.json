@@ -1,11 +1,5 @@
 {
-  "infrastructure": {
-    "specKit": {
-      "url": "git@github.com:opensoft/specKit.git",
-      "path": "specKit",
-      "description": "Infrastructure and specification kit - always installed"
-    }
-  },
+  "infrastructure": {},
   "benches": {
     "cloudAdmin": {
       "url": "git@github.com:opensoft/cloudAdmin.git",
@@ -97,6 +91,20 @@
           "name": "cpp",
           "script": "scripts/new-cpp-project.sh",
           "description": "Create a new C++ project with DevContainer setup",
+          "includes_speckit": true
+        }
+      ]
+    },
+    "frappeBench": {
+      "url": "git@github.com:opensoft/frappeBench.git",
+      "path": "devBenches/frappeBench",
+      "description": "Frappe/ERPNext development environment and tools",
+      "ai_keywords": ["frappe", "erpnext", "erp", "business software", "python", "mariadb", "redis", "web framework", "accounting", "crm", "hrms"],
+      "project_scripts": [
+        {
+          "name": "frappe",
+          "script": "scripts/new-frappe-project.sh",
+          "description": "Create a new Frappe project with DevContainer setup",
           "includes_speckit": true
         }
       ]

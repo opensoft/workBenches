@@ -16,7 +16,7 @@ Each subfolder is a separate git repository containing administrative tools and 
 ### Using WorkBenches (Recommended)
 ```bash
 # From workBenches root directory
-./new-project.sh
+./scripts/new-project.sh
 ```
 
 ### Direct Access
@@ -31,7 +31,7 @@ cd adminBench/cloudAdmin
 Use the workBenches new-bench script:
 ```bash
 # From workBenches root
-./new-bench.sh
+./scripts/new-bench.sh
 ```
 
 This can create additional administrative benches such as:

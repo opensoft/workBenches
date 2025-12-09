@@ -7,7 +7,6 @@ devBenches/flutterBench/
 devBenches/javaBench/
 devBenches/dotNetBench/
 devBenches/pythonBench/
-specKit/
 
 # Installation tracking (local only)
 .installed-benches.json

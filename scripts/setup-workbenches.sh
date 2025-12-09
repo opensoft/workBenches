@@ -16,34 +16,190 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Auto-install missing dependencies
+auto_install_dependencies() {
+    local deps=("$@")
+    
+    echo -e "${CYAN}Attempting to install missing dependencies: ${deps[*]}${NC}"
+    echo ""
+    
+    # Detect OS and package manager
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS=$ID
+    else
+        OS=$(uname -s)
+    fi
+    
+    case "$OS" in
+        ubuntu|debian|pop)
+            echo "Detected Ubuntu/Debian-based system"
+            echo "Running: sudo apt update && sudo apt install -y ${deps[*]}"
+            if sudo apt update && sudo apt install -y "${deps[@]}"; then
+                echo -e "${GREEN}✓ Successfully installed dependencies${NC}"
+                return 0
+            else
+                echo -e "${RED}✗ Failed to install dependencies${NC}"
+                return 1
+            fi
+            ;;
+        fedora|rhel|centos)
+            echo "Detected Red Hat-based system"
+            echo "Running: sudo yum install -y ${deps[*]}"
+            if sudo yum install -y "${deps[@]}"; then
+                echo -e "${GREEN}✓ Successfully installed dependencies${NC}"
+                return 0
+            else
+                echo -e "${RED}✗ Failed to install dependencies${NC}"
+                return 1
+            fi
+            ;;
+        alpine)
+            echo "Detected Alpine Linux"
+            echo "Running: apk add ${deps[*]}"
+            if sudo apk add "${deps[@]}"; then
+                echo -e "${GREEN}✓ Successfully installed dependencies${NC}"
+                return 0
+            else
+                echo -e "${RED}✗ Failed to install dependencies${NC}"
+                return 1
+            fi
+            ;;
+        Darwin|darwin|macos)
+            echo "Detected macOS"
+            if command -v brew &> /dev/null; then
+                echo "Running: brew install ${deps[*]}"
+                if brew install "${deps[@]}"; then
+                    echo -e "${GREEN}✓ Successfully installed dependencies${NC}"
+                    return 0
+                else
+                    echo -e "${RED}✗ Failed to install dependencies${NC}"
+                    return 1
+                fi
+            else
+                echo -e "${RED}Homebrew not found. Please install Homebrew first:${NC}"
+                echo "  /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+                return 1
+            fi
+            ;;
+        *)
+            echo -e "${YELLOW}Unknown OS: $OS${NC}"
+            echo "Please install manually: ${deps[*]}"
+            return 1
+            ;;
+    esac
+}
+
 # Check if required tools are available
 check_dependencies() {
-    local missing_deps=()
+    echo -e "${YELLOW}Checking Required Dependencies${NC}"
+    echo ""
     
-    if ! command -v git &> /dev/null; then
+    local missing_deps=()
+    local installed_deps=()
+    
+    # Check git
+    if command -v git &> /dev/null; then
+        local git_version=$(git --version | awk '{print $3}')
+        echo -e "  ${GREEN}✓ git${NC} - installed (version: $git_version)"
+        installed_deps+=("git")
+    else
+        echo -e "  ${RED}✗ git${NC} - not installed"
         missing_deps+=("git")
     fi
     
-    if ! command -v jq &> /dev/null; then
+    # Check jq
+    if command -v jq &> /dev/null; then
+        local jq_version=$(jq --version 2>&1 | sed 's/jq-//')
+        echo -e "  ${GREEN}✓ jq${NC} - installed (version: $jq_version)"
+        installed_deps+=("jq")
+    else
+        echo -e "  ${RED}✗ jq${NC} - not installed"
         missing_deps+=("jq")
     fi
     
-    if ! command -v curl &> /dev/null; then
+    # Check curl
+    if command -v curl &> /dev/null; then
+        local curl_version=$(curl --version | head -n1 | awk '{print $2}')
+        echo -e "  ${GREEN}✓ curl${NC} - installed (version: $curl_version)"
+        installed_deps+=("curl")
+    else
+        echo -e "  ${RED}✗ curl${NC} - not installed"
         missing_deps+=("curl")
     fi
     
+    # Check Node.js (recommended for AI CLI tools)
+    if command -v node &> /dev/null; then
+        local node_version=$(node --version | sed 's/v//')
+        local node_major=$(echo $node_version | cut -d'.' -f1)
+        if [ "$node_major" -ge 18 ]; then
+            echo -e "  ${GREEN}✓ node${NC} - installed (version: v$node_version)"
+            installed_deps+=("node")
+        else
+            echo -e "  ${YELLOW}⚠ node${NC} - installed but outdated (version: v$node_version, recommended: 22+)"
+        fi
+    else
+        echo -e "  ${YELLOW}⚠ node${NC} - not installed (recommended for Codex, Copilot, OpenSpec)"
+        echo -e "     Install from: ${BLUE}https://nodejs.org/${NC}"
+    fi
+    
+    # Check npm (comes with Node.js)
+    if command -v npm &> /dev/null; then
+        local npm_version=$(npm --version)
+        echo -e "  ${GREEN}✓ npm${NC} - installed (version: $npm_version)"
+        installed_deps+=("npm")
+    fi
+    
+    echo ""
+    
     if [ ${#missing_deps[@]} -ne 0 ]; then
-        echo -e "${RED}Error: Missing required dependencies: ${missing_deps[*]}${NC}"
-        echo "Please install the missing dependencies and run this script again."
+        echo -e "${RED}⚠️  Missing required dependencies: ${missing_deps[*]}${NC}"
+        echo -e "${YELLOW}These tools are required to run workBenches setup.${NC}"
         echo ""
-        echo -e "${YELLOW}Installation commands:${NC}"
-        echo "  Ubuntu/Debian: sudo apt update && sudo apt install ${missing_deps[*]}"
-        echo "  macOS:         brew install ${missing_deps[*]}"
-        echo "  Alpine:        apk add ${missing_deps[*]}"
-        echo "  CentOS/RHEL:   sudo yum install ${missing_deps[*]}"
-        echo ""
-        echo "After installation, re-run: ./setup-workbenches.sh"
-        exit 1
+        
+        # Ask user if they want to auto-install
+        while true; do
+            read -p "Would you like to attempt automatic installation? [Y/n]: " install_choice
+            case $install_choice in
+                [Yy]* | "" )
+                    echo ""
+                    if auto_install_dependencies "${missing_deps[@]}"; then
+                        echo ""
+                        echo -e "${GREEN}Dependencies installed successfully!${NC}"
+                        echo "Continuing with setup..."
+                        echo ""
+                        sleep 1
+                        return 0
+                    else
+                        echo ""
+                        echo -e "${RED}Automatic installation failed.${NC}"
+                        echo ""
+                        echo -e "${YELLOW}Please install manually:${NC}"
+                        echo "  Ubuntu/Debian: sudo apt update && sudo apt install ${missing_deps[*]}"
+                        echo "  macOS:         brew install ${missing_deps[*]}"
+                        echo "  Alpine:        apk add ${missing_deps[*]}"
+                        echo "  CentOS/RHEL:   sudo yum install ${missing_deps[*]}"
+                        echo ""
+                        echo "After installation, re-run: ./setup-workbenches.sh"
+                        exit 1
+                    fi
+                    ;;
+                [Nn]* )
+                    echo ""
+                    echo -e "${YELLOW}Manual installation required:${NC}"
+                    echo "  Ubuntu/Debian: sudo apt update && sudo apt install ${missing_deps[*]}"
+                    echo "  macOS:         brew install ${missing_deps[*]}"
+                    echo "  Alpine:        apk add ${missing_deps[*]}"
+                    echo "  CentOS/RHEL:   sudo yum install ${missing_deps[*]}"
+                    echo ""
+                    echo "After installation, re-run: ./setup-workbenches.sh"
+                    exit 1
+                    ;;
+                * )
+                    echo "Please answer yes or no."
+                    ;;
+            esac
+        done
     fi
 }
 
@@ -300,6 +456,34 @@ select_benches_individually() {
     done
 }
 
+# Show AI credentials status
+show_ai_credentials_status() {
+    echo -e "${YELLOW}AI Credentials Status${NC}"
+    
+    # Check OpenAI
+    if [ -n "$OPENAI_API_KEY" ]; then
+        echo -e "  ${GREEN}✓ OpenAI API Key${NC} - configured"
+    else
+        echo -e "  ${RED}✗ OpenAI API Key${NC} - not configured"
+    fi
+    
+    # Check Anthropic
+    if [ -n "$ANTHROPIC_API_KEY" ]; then
+        echo -e "  ${GREEN}✓ Anthropic API Key${NC} - configured"
+    else
+        echo -e "  ${RED}✗ Anthropic API Key${NC} - not configured"
+    fi
+    
+    # Check Claude Session
+    if [ -f "$HOME/.claude/config.json" ]; then
+        echo -e "  ${GREEN}✓ Claude Session Token${NC} - configured"
+    else
+        echo -e "  ${RED}✗ Claude Session Token${NC} - not configured"
+    fi
+    
+    echo ""
+}
+
 # Setup AI features (optional)
 setup_ai_features() {
     echo -e "${YELLOW}AI-Powered Features Setup${NC}"
@@ -312,18 +496,17 @@ setup_ai_features() {
     echo ""
     
     while true; do
-        read -p "Would you like to enable AI-powered features? [y/N]: " ai_choice
+        read -p "Would you like to setup or update AI credentials now? [y/N]: " ai_choice
         case $ai_choice in
             [Yy]* )
                 setup_ai_api_keys
                 break
                 ;;
             [Nn]* | "" )
-                echo -e "${YELLOW}Skipping AI setup. You can enable AI features later by setting environment variables.${NC}"
-                echo -e "${BLUE}To enable later:${NC}"
-                echo "  export OPENAI_API_KEY='your-openai-key'"
-                echo "  # OR"
-                echo "  export ANTHROPIC_API_KEY='your-claude-key'"
+                echo -e "${YELLOW}Skipping AI setup.${NC}"
+                echo "You can setup credentials later:"
+                echo "  - Run: ./scripts/check-ai-credentials.sh --interactive"
+                echo "  - Or manually set environment variables"
                 break
                 ;;
             * )
@@ -339,13 +522,14 @@ setup_ai_api_keys() {
     echo -e "${BLUE}AI API Key Setup${NC}"
     echo "Choose your preferred AI service:"
     echo "  1) OpenAI (GPT-4) - Requires OpenAI API key"
-    echo "  2) Anthropic (Claude) - Requires Anthropic API key"
-    echo "  3) Both - Set up both services"
-    echo "  4) Skip - I'll set up manually later"
+    echo "  2) Anthropic Claude API - Requires Anthropic API key"
+    echo "  3) Claude Session Token - For Claude CLI access"
+    echo "  4) All services - Set up all available services"
+    echo "  5) Skip - I'll set up manually later"
     echo ""
     
     while true; do
-        read -p "Enter your choice (1-4): " api_choice
+        read -p "Enter your choice (1-5): " api_choice
         case $api_choice in
             1)
                 setup_openai_key
@@ -356,16 +540,21 @@ setup_ai_api_keys() {
                 break
                 ;;
             3)
-                setup_openai_key
-                setup_anthropic_key
+                setup_claude_session
                 break
                 ;;
             4)
+                setup_openai_key
+                setup_anthropic_key
+                setup_claude_session
+                break
+                ;;
+            5)
                 echo -e "${YELLOW}Skipping API key setup.${NC}"
                 break
                 ;;
             *)
-                echo -e "${RED}Invalid choice. Please enter 1-4.${NC}"
+                echo -e "${RED}Invalid choice. Please enter 1-5.${NC}"
                 ;;
         esac
     done
@@ -456,6 +645,115 @@ setup_anthropic_key() {
     done
 }
 
+# Setup Claude session token
+setup_claude_session() {
+    echo ""
+    echo -e "${BLUE}Claude Session Token Setup${NC}"
+    echo -e "${CYAN}This will set up Claude CLI session access for all your projects.${NC}"
+    echo ""
+    echo -e "${YELLOW}📋 Instructions:${NC}"
+    echo "  1. Visit: https://claude.ai/"
+    echo "  2. Log in to your Claude account"
+    echo "  3. Open browser DevTools (F12 or Right-click → Inspect)"
+    echo "  4. Go to Application/Storage → Cookies → https://claude.ai"
+    echo "  5. Find the 'sessionKey' cookie and copy its value"
+    echo ""
+    echo -e "${BLUE}Alternative method:${NC}"
+    echo "  1. In DevTools Console, run: document.cookie"
+    echo "  2. Find and copy the sessionKey value"
+    echo ""
+    
+    # Ask if user wants to proceed or get help
+    while true; do
+        echo -e "${YELLOW}Options:${NC}"
+        echo "  1) I have my session key ready - let me paste it"
+        echo "  2) Open browser instructions in a new window (if available)"
+        echo "  3) Skip - I'll set this up later"
+        echo ""
+        read -p "Enter your choice (1-3): " session_choice
+        
+        case $session_choice in
+            1)
+                # Proceed to get session key
+                break
+                ;;
+            2)
+                # Try to open browser with instructions
+                echo -e "${CYAN}Opening Claude login page...${NC}"
+                if command -v xdg-open &> /dev/null; then
+                    xdg-open "https://claude.ai/" &>/dev/null &
+                elif command -v open &> /dev/null; then
+                    open "https://claude.ai/" &>/dev/null &
+                else
+                    echo -e "${YELLOW}Could not auto-open browser. Please manually visit: https://claude.ai/${NC}"
+                fi
+                echo ""
+                echo -e "${YELLOW}Press Enter when you have your session key ready...${NC}"
+                read
+                break
+                ;;
+            3)
+                echo -e "${YELLOW}Skipping Claude session setup.${NC}"
+                return 0
+                ;;
+            *)
+                echo -e "${RED}Invalid choice. Please enter 1-3.${NC}"
+                ;;
+        esac
+    done
+    
+    # Get session key from user
+    echo ""
+    echo -e "${BLUE}Enter your Claude session key:${NC}"
+    echo -e "${CYAN}(It should be a long alphanumeric string starting with 'sk-ant-sid')${NC}"
+    echo ""
+    
+    local session_key
+    while true; do
+        read -p "Session key (or 'skip' to skip): " session_key
+        
+        if [ "$session_key" = "skip" ]; then
+            echo -e "${YELLOW}Skipping Claude session setup.${NC}"
+            return 0
+        elif [ -z "$session_key" ]; then
+            echo -e "${RED}Session key cannot be empty. Enter 'skip' to skip this step.${NC}"
+        elif [[ ! "$session_key" =~ ^sk-ant-sid ]]; then
+            echo -e "${YELLOW}⚠️  Warning: Session key format doesn't match expected pattern (sk-ant-sid...).${NC}"
+            read -p "Continue anyway? [y/N]: " continue_anyway
+            if [[ "$continue_anyway" =~ ^[Yy] ]]; then
+                break
+            fi
+        else
+            break
+        fi
+    done
+    
+    # Create .claude directory structure
+    echo -e "${CYAN}Setting up ~/.claude directory...${NC}"
+    mkdir -p "$HOME/.claude"
+    
+    # Save session key to config file
+    cat > "$HOME/.claude/config.json" << EOF
+{
+  "sessionKey": "$session_key",
+  "createdAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+  "createdBy": "workBenches setup"
+}
+EOF
+    
+    # Set appropriate permissions (readable only by user)
+    chmod 600 "$HOME/.claude/config.json"
+    
+    echo -e "${GREEN}✓ Claude session key saved to ~/.claude/config.json${NC}"
+    echo -e "${BLUE}Session key is accessible to all projects on this machine.${NC}"
+    echo ""
+    echo -e "${YELLOW}📝 Note:${NC}"
+    echo "  - Session keys may expire after a period of inactivity"
+    echo "  - You can update the key anytime by re-running this setup"
+    echo "  - The config file has restricted permissions (600) for security"
+    echo ""
+}
+
 # Save API key to shell profile
 save_api_key() {
     local key_name="$1"
@@ -491,6 +789,76 @@ save_api_key() {
     
     echo -e "${BLUE}API key saved to $shell_profile${NC}"
     echo -e "${YELLOW}Note: Restart your terminal or run 'source $shell_profile' to use the key in new sessions.${NC}"
+}
+
+# Show AI coding assistants CLI status (no prompts)
+show_ai_assistants_status() {
+    echo -e "${YELLOW}AI Coding Assistant CLIs${NC}"
+    
+    # Check if Claude Code CLI is installed
+    if command -v claude &> /dev/null; then
+        local claude_version=$(claude --version 2>/dev/null | head -n1 || echo "unknown")
+        echo -e "  ${GREEN}✓ Claude Code CLI${NC} - installed (version: $claude_version)"
+    else
+        echo -e "  ${RED}✗ Claude Code CLI${NC} - not installed"
+    fi
+    
+    # Check if GitHub Copilot CLI is installed
+    if command -v copilot &> /dev/null; then
+        local copilot_version=$(copilot --version 2>/dev/null || echo "unknown")
+        echo -e "  ${GREEN}✓ GitHub Copilot CLI${NC} - installed (version: $copilot_version)"
+    else
+        echo -e "  ${RED}✗ GitHub Copilot CLI${NC} - not installed"
+    fi
+    
+    # Check if Codex CLI is installed
+    if command -v codex &> /dev/null; then
+        local codex_version=$(codex --version 2>/dev/null || echo "unknown")
+        echo -e "  ${GREEN}✓ Codex CLI${NC} - installed (version: $codex_version)"
+    else
+        echo -e "  ${RED}✗ Codex CLI${NC} - not installed"
+    fi
+    
+    # Check if Gemini CLI is installed
+    if command -v gemini &> /dev/null; then
+        local gemini_version=$(gemini --version 2>/dev/null || echo "unknown")
+        echo -e "  ${GREEN}✓ Gemini CLI${NC} - installed (version: $gemini_version)"
+    else
+        echo -e "  ${RED}✗ Gemini CLI${NC} - not installed"
+    fi
+    
+    # Check if OpenCode CLI is installed
+    if command -v opencode &> /dev/null; then
+        local opencode_version=$(opencode --version 2>/dev/null || echo "unknown")
+        echo -e "  ${GREEN}✓ OpenCode CLI${NC} - installed (version: $opencode_version)"
+    else
+        echo -e "  ${RED}✗ OpenCode CLI${NC} - not installed"
+    fi
+    
+    echo ""
+}
+
+# Show spec-driven development tools status (no prompts)
+show_spec_tools_status() {
+    echo -e "${YELLOW}Spec-Driven Development Tools${NC}"
+    
+    # Check if spec-kit is installed
+    if command -v specify &> /dev/null; then
+        local spec_kit_version=$(specify --version 2>/dev/null || echo "unknown")
+        echo -e "  ${GREEN}✓ spec-kit${NC} (GitHub Spec Kit) - installed (version: $spec_kit_version)"
+    else
+        echo -e "  ${RED}✗ spec-kit${NC} (GitHub Spec Kit) - not installed"
+    fi
+    
+    # Check if OpenSpec is installed
+    if command -v openspec &> /dev/null; then
+        local openspec_version=$(openspec --version 2>/dev/null || echo "unknown")
+        echo -e "  ${GREEN}✓ OpenSpec${NC} - installed (version: $openspec_version)"
+    else
+        echo -e "  ${RED}✗ OpenSpec${NC} - not installed"
+    fi
+    
+    echo ""
 }
 
 # Show summary
@@ -529,6 +897,207 @@ show_summary() {
     echo -e "${BLUE}Total: $installed_count/$total_count components installed${NC}"
 }
 
+# Check and install spec-driven development tools
+check_spec_tools() {
+    echo -e "${YELLOW}Spec-Driven Development Tools${NC}"
+    echo "WorkBenches supports spec-driven development with spec-kit and OpenSpec."
+    echo ""
+    
+    local spec_kit_installed=false
+    local openspec_installed=false
+    
+    # Check if spec-kit is installed
+    if command -v specify &> /dev/null; then
+        spec_kit_installed=true
+        local spec_kit_version=$(specify --version 2>/dev/null || echo "unknown")
+        echo -e "  ${GREEN}✓ spec-kit${NC} (GitHub Spec Kit) - installed (version: $spec_kit_version)"
+    else
+        echo -e "  ${RED}✗ spec-kit${NC} (GitHub Spec Kit) - not installed"
+    fi
+    
+    # Check if OpenSpec is installed
+    if command -v openspec &> /dev/null; then
+        openspec_installed=true
+        local openspec_version=$(openspec --version 2>/dev/null || echo "unknown")
+        echo -e "  ${GREEN}✓ OpenSpec${NC} - installed (version: $openspec_version)"
+    else
+        echo -e "  ${RED}✗ OpenSpec${NC} - not installed"
+    fi
+    
+    echo ""
+    
+    # If both are installed, no need to prompt
+    if [ "$spec_kit_installed" = true ] && [ "$openspec_installed" = true ]; then
+        echo -e "${GREEN}Both spec-driven development tools are installed.${NC}"
+        echo ""
+        return 0
+    fi
+    
+    # Ask if user wants to install missing tools
+    while true; do
+        read -p "Would you like to install the missing spec-driven development tools? [Y/n]: " install_choice
+        case $install_choice in
+            [Yy]* | "" )
+                echo ""
+                install_spec_tools "$spec_kit_installed" "$openspec_installed"
+                break
+                ;;
+            [Nn]* )
+                echo -e "${YELLOW}Skipping spec-driven development tools installation.${NC}"
+                echo "You can install them later:"
+                if [ "$spec_kit_installed" = false ]; then
+                    echo "  spec-kit: uvx --from git+https://github.com/github/spec-kit.git specify --help"
+                fi
+                if [ "$openspec_installed" = false ]; then
+                    echo "  OpenSpec: npm install -g @fission-ai/openspec@latest"
+                fi
+                break
+                ;;
+            * )
+                echo "Please answer yes or no."
+                ;;
+        esac
+    done
+    echo ""
+}
+
+# Install spec-driven development tools
+install_spec_tools() {
+    local spec_kit_installed="$1"
+    local openspec_installed="$2"
+    local success_count=0
+    local total_count=0
+    
+    # Install spec-kit if needed
+    if [ "$spec_kit_installed" = false ]; then
+        ((total_count++))
+        echo -e "${CYAN}Installing spec-kit (GitHub Spec Kit)...${NC}"
+        echo "This requires Python 3.11+ and uv package manager."
+        echo ""
+        
+        # Check if uv is installed
+        if ! command -v uvx &> /dev/null; then
+            echo -e "${YELLOW}uv package manager not found. Installing uv...${NC}"
+            if curl -LsSf https://astral.sh/uv/install.sh | sh; then
+                echo -e "${GREEN}✓ uv installed successfully${NC}"
+                # Source the environment to make uvx available
+                export PATH="$HOME/.cargo/bin:$PATH"
+            else
+                echo -e "${RED}✗ Failed to install uv${NC}"
+                echo "Please install uv manually: https://docs.astral.sh/uv/"
+            fi
+        fi
+        
+        # Try to install spec-kit
+        if command -v uvx &> /dev/null; then
+            echo "Installing spec-kit via uvx..."
+            if uvx --from git+https://github.com/github/spec-kit.git specify --help &> /dev/null; then
+                echo -e "${GREEN}✓ spec-kit installed successfully${NC}"
+                ((success_count++))
+            else
+                echo -e "${RED}✗ Failed to install spec-kit${NC}"
+                echo "You can try manually: uvx --from git+https://github.com/github/spec-kit.git specify init <project>"
+            fi
+        fi
+        echo ""
+    fi
+    
+    # Install OpenSpec if needed
+    if [ "$openspec_installed" = false ]; then
+        ((total_count++))
+        echo -e "${CYAN}Installing OpenSpec...${NC}"
+        echo "This requires Node.js and npm."
+        echo ""
+        
+        # Check if npm is installed
+        if ! command -v npm &> /dev/null; then
+            echo -e "${RED}✗ npm not found${NC}"
+            echo "Please install Node.js and npm first: https://nodejs.org/"
+        else
+            echo "Installing OpenSpec via npm..."
+            if npm install -g @fission-ai/openspec@latest; then
+                echo -e "${GREEN}✓ OpenSpec installed successfully${NC}"
+                ((success_count++))
+            else
+                echo -e "${RED}✗ Failed to install OpenSpec${NC}"
+                echo "You can try manually: npm install -g @fission-ai/openspec@latest"
+            fi
+        fi
+        echo ""
+    fi
+    
+    # Summary
+    if [ $total_count -gt 0 ]; then
+        if [ $success_count -eq $total_count ]; then
+            echo -e "${GREEN}All spec-driven development tools installed successfully!${NC}"
+        elif [ $success_count -gt 0 ]; then
+            echo -e "${YELLOW}$success_count of $total_count tools installed successfully.${NC}"
+        else
+            echo -e "${RED}Installation failed for all tools.${NC}"
+        fi
+    fi
+}
+
+# Show setup menu
+show_setup_menu() {
+    while true; do
+        echo ""
+        echo -e "${BLUE}=== WorkBenches Setup Menu ===${NC}"
+        echo "1) Interactive Selection (TUI) - Select multiple components"
+        echo "2) Install/update benches"
+        echo "3) Setup/update AI credentials"
+        echo "4) Install spec-driven development tools"
+        echo "5) Install commands (onp, launchBench, workbench)"
+        echo "6) View setup summary"
+        echo "7) Exit setup"
+        echo ""
+        read -p "Enter your choice (1-7): " menu_choice
+        
+        case $menu_choice in
+            1)
+                echo ""
+                # Launch interactive TUI
+                if [ -f "$SCRIPT_DIR/interactive-setup.sh" ]; then
+                    "$SCRIPT_DIR/interactive-setup.sh"
+                else
+                    echo -e "${RED}Interactive setup not found at: $SCRIPT_DIR/interactive-setup.sh${NC}"
+                fi
+                ;;
+            2)
+                echo ""
+                setup_infrastructure
+                prompt_bench_selection
+                ;;
+            3)
+                echo ""
+                show_ai_credentials_status
+                setup_ai_features
+                ;;
+            4)
+                echo ""
+                check_spec_tools
+                ;;
+            5)
+                echo ""
+                install_onp_command
+                install_workbench_commands
+                ;;
+            6)
+                echo ""
+                show_summary
+                ;;
+            7)
+                echo ""
+                echo -e "${GREEN}Exiting setup.${NC}"
+                break
+                ;;
+            *)
+                echo -e "${RED}Invalid choice. Please enter 1-7.${NC}"
+                ;;
+        esac
+    done
+}
+
 # Main function
 main() {
     echo -e "${BLUE}WorkBenches Setup Script${NC}"
@@ -536,29 +1105,26 @@ main() {
     echo ""
     
     check_dependencies
+    show_ai_credentials_status
+    show_ai_assistants_status
+    show_spec_tools_status
+    
     load_config
     init_installed_file
     
-    setup_infrastructure
-    prompt_bench_selection
-    setup_ai_features
-    install_onp_command
-    install_workbench_commands
-    show_summary
+    # Show interactive menu
+    show_setup_menu
     
     echo ""
     echo -e "${GREEN}Setup complete!${NC}"
-    echo "You can re-run this script at any time to install additional benches."
+    echo "You can re-run this script at any time to make changes."
     echo ""
-    echo -e "${BLUE}Next steps:${NC}"
-    echo "• Launch any bench: launchBench (with AI routing)"
-    echo "• Create projects: onp (quick project creation)"
-    if [ -n "$OPENAI_API_KEY" ] || [ -n "$ANTHROPIC_API_KEY" ]; then
-        echo "• Create AI-powered benches: new-bench"
-    else
-        echo "• Create benches: new-bench (basic mode)"
-    fi
-    echo "• Update configuration: update-bench-config"
+    echo -e "${BLUE}Available commands:${NC}"
+    echo "• launchBench - Launch benches with AI routing"
+    echo "• onp - Quick project creation"
+    echo "• new-bench - Create new development benches"
+    echo "• update-bench-config - Update configuration"
+    echo "• check-ai-credentials - Manage AI credentials"
     echo ""
     echo -e "${YELLOW}Note:${NC} If commands aren't available globally, restart your shell or run:"
     echo "  source ~/.zshrc  # or ~/.bashrc"
