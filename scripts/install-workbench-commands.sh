@@ -221,6 +221,9 @@ install_commands() {
             "launchBench")
                 source_script="$SCRIPT_DIR/launchBench"
                 ;;
+            "new-workspace")
+                source_script="$SCRIPT_DIR/new-workspace.sh"
+                ;;
             "onp")
                 source_script="$SCRIPT_DIR/onp"
                 ;;
