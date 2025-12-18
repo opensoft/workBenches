@@ -285,11 +285,12 @@ install_workbench_commands() {
     echo "Install key workBenches commands globally for easy access?"
     echo ""
     echo -e "${BLUE}Commands to be installed:${NC}"
-    echo "• launchBench     - Universal bench launcher with AI routing"
-    echo "• onp             - Quick project creation"
+    echo "• launchBench      - Universal bench launcher with AI routing"
+    echo "• new-workspace    - Intelligent workspace creator (Frappe, Flutter, .NET, etc.)"
+    echo "• onp              - Quick project creation"
     echo "• setup-workbenches - WorkBenches setup and configuration"
     echo "• update-bench-config - Auto-discover and update configuration"
-    echo "• new-bench       - Create new development benches"
+    echo "• new-bench        - Create new development benches"
     echo ""
     
     while true; do
@@ -302,6 +303,7 @@ install_workbench_commands() {
                         echo -e "${GREEN}✓ WorkBenches commands installed successfully!${NC}"
                         echo "You can now use these commands from anywhere:"
                         echo "  • launchBench"
+                        echo "  • new-workspace"
                         echo "  • onp"
                         echo "  • setup-workbenches"
                         echo "  • update-bench-config"
