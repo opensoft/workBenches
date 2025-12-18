@@ -26,6 +26,7 @@ print_error() { echo -e "${RED}❌ $1${NC}"; }
 declare -A COMMANDS=(
     ["launchBench"]="Universal bench launcher with AI-powered routing"
     ["onp"]="Opensoft New Project - Quick project creation command"
+    ["new-workspace"]="Intelligent workspace creator - routes to Frappe, Flutter, .NET, etc."
     ["setup-workbenches"]="WorkBenches setup and configuration"
     ["update-bench-config"]="Auto-discover and update bench configuration"
     ["new-bench"]="Create new development benches with AI assistance"
