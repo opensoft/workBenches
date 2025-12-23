@@ -1,0 +1,21 @@
+name: devbench-test
+
+services:
+  test:
+    image: devbench-base:${USER:-brett}
+    container_name: devbench-test
+    
+    user: "${UID:-1000}:${GID:-1000}"
+    
+    volumes:
+      # Mount test script
+      - .:/test:cached
+      
+    command: sleep infinity
+    
+    environment:
+      # Basic environment
+      - USER=${USER:-brett}
+      - HOME=/home/${USER:-brett}
+      # PATH for dev tools
+      - PATH=/home/${USER:-brett}/.local/bin:/home/${USER:-brett}/.npm-global/bin:/home/${USER:-brett}/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

@@ -1,0 +1,60 @@
+{
+  "name": "${containerEnv:PROJECT_NAME:Bench Development} - WORKSPACE_NAME",
+
+  "dockerComposeFile": ["docker-compose.yml", "docker-compose.override.yml"],
+  "service": "dev",
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+
+  "initializeCommand": "docker rm -f ${CONTAINER_NAME:-bench-dev} 2>/dev/null || true",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // Python extensions
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        "ms-python.isort",
+        // Infrastructure extensions
+        "redhat.vscode-yaml",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint",
+        "ms-azuretools.vscode-docker",
+        "bradlc.vscode-tailwindcss",
+        "eamodio.gitlens",
+        "codeviz.codeviz",
+        // AI assistance extensions
+        "anthropic.claude-dev",
+        "anthropic.claude-code",
+        "andrepimenta.claude-code-chat",
+        "vadbeg.vsclaude",
+        "openai.chatgpt",
+        "GitHub.copilot",
+        "GitHub.copilot-chat",
+        "Google.geminicodeassist",
+        "google.gemini-cli-vscode-ide-companion",
+        "d3j.gemini-cli-on-vscode"
+      ],
+      "settings": {
+        "python.linting.enabled": true,
+        "python.linting.pylintEnabled": false,
+        "python.linting.flake8Enabled": true,
+        "python.formatting.provider": "black",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.organizeImports": true
+        },
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.cwd": "/workspace"
+      }
+    }
+  },
+
+  "remoteUser": "${localEnv:USER}",
+  "updateRemoteUserUID": false,
+
+  "postCreateCommand": "~/.local/bin/uv tool install specify-cli --from git+https://github.com/github/spec-kit.git || echo 'Failed to install spec-kit'; echo 'Development environment ready'",
+  "postStartCommand": "bash -l /workspace/scripts/post-start.sh || true",
+  "postAttachCommand": "echo 'Connected to development workspace'"
+}

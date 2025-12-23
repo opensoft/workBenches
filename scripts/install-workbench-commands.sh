@@ -27,6 +27,8 @@ declare -A COMMANDS=(
     ["launchBench"]="Universal bench launcher with AI-powered routing"
     ["onp"]="Opensoft New Project - Quick project creation command"
     ["new-workspace"]="Intelligent workspace creator - routes to Frappe, Flutter, .NET, etc."
+    ["update-workspace"]="Intelligent workspace updater - routes to appropriate updater"
+    ["delete-workspace"]="Intelligent workspace deleter - routes to appropriate deleter"
     ["setup-workbenches"]="WorkBenches setup and configuration"
     ["update-bench-config"]="Auto-discover and update bench configuration"
     ["new-bench"]="Create new development benches with AI assistance"
@@ -223,6 +225,12 @@ install_commands() {
                 ;;
             "new-workspace")
                 source_script="$SCRIPT_DIR/new-workspace.sh"
+                ;;
+            "update-workspace")
+                source_script="$SCRIPT_DIR/update-workspace.sh"
+                ;;
+            "delete-workspace")
+                source_script="$SCRIPT_DIR/delete-workspace.sh"
                 ;;
             "onp")
                 source_script="$SCRIPT_DIR/onp"

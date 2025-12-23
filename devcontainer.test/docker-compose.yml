@@ -1,0 +1,19 @@
+name: workbench-test
+
+services:
+  test:
+    image: workbench-base:${USER:-brett}
+    container_name: workbench-test
+    
+    user: "${UID:-1000}:${GID:-1000}"
+    
+    volumes:
+      # Mount test script
+      - .:/test:cached
+      
+    command: sleep infinity
+    
+    environment:
+      # Basic environment
+      - USER=${USER:-vscode}
+      - HOME=/home/${USER:-vscode}

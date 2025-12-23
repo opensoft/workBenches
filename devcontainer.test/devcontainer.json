@@ -1,0 +1,13 @@
+{
+  "name": "WorkBench Layer 0 Test",
+  "dockerComposeFile": ["docker-compose.yml"],
+  "service": "test",
+  "workspaceFolder": "/test",
+  "shutdownAction": "stopCompose",
+  
+  "customizations": {
+    "vscode": {
+      "extensions": []
+    }
+  }
+}
