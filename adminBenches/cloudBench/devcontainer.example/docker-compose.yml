@@ -1,0 +1,15 @@
+services:
+  workspace:
+    image: cloud-bench:brett
+    command: sleep infinity
+    volumes:
+      - .:/workspace
+      - ~/.aws:/home/brett/.aws:ro
+      - ~/.azure:/home/brett/.azure:ro
+      - ~/.config/gcloud:/home/brett/.config/gcloud:ro
+      - ~/.kube:/home/brett/.kube:ro
+      - ~/.ssh:/home/brett/.ssh:ro
+    working_dir: /workspace
+    environment:
+      - USER=brett
+    network_mode: host

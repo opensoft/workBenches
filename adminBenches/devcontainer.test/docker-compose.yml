@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  test:
+    image: adminbench-base:${USER:-brett}
+    container_name: adminbench-test
+    command: sleep infinity
+    volumes:
+      - ./test.sh:/test/test.sh:ro
+    working_dir: /workspace
+    environment:
+      - USER=${USER:-brett}
+      - UID=${UID:-1000}
+      - GID=${GID:-1000}

@@ -1,0 +1,7 @@
+{
+  "name": "AdminBench Test Environment",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "test",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "brett"
+}
