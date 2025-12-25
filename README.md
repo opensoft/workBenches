@@ -220,6 +220,23 @@ You can also manually edit `config/bench-config.json` to:
 - Define custom project script descriptions
 - Add new bench types
 
+## Container Architecture
+
+WorkBenches uses a **multi-layer Docker image architecture** for efficiency and reusability:
+
+- **Layer 0**: System base (Ubuntu + core utilities)
+- **Layer 1a**: Development tools (Python, Node.js, AI CLIs)
+- **Layer 1b**: Admin tools (Kubernetes, Cloud CLIs)
+- **Layer 2**: Specialized bench tools (Frappe, Flutter, .NET, etc.)
+
+**Benefits**:
+- ⚡ Fast workspace creation (< 10 seconds with pre-built images)
+- 🔄 Efficient rebuilds (only changed layers rebuild)
+- 🎯 Clear separation of concerns
+- 🔒 Security layers (read-only vs. action tools)
+
+For complete documentation, see [Container Architecture Guide](CONTAINER-ARCHITECTURE.md)
+
 ## Structure
 
 **All workbenches are maintained as separate repositories:**
