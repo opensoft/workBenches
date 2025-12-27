@@ -220,7 +220,7 @@ docker-compose exec your-service codex --version
 ## Related Documentation
 
 - [AI Provider Setup](../scripts/AI-PROVIDER-SETUP.md)
-- [AI Credentials Mounts](../devcontainer.example/AI-CREDENTIALS-MOUNTS.md)
+- [AI Credentials Reference](./AI-CREDENTIALS-REFERENCE.md)
 - [DevContainer Best Practices](../docs/DEVCONTAINER-BEST-PRACTICES.md)
 
 ## Maintenance Schedule

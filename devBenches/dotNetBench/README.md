@@ -4,6 +4,16 @@
 
 This is the **ultimate .NET development container** - a massive, comprehensive Ubuntu 24.04-based devcontainer that includes **EVERYTHING** you could possibly need for modern .NET development, with perfect user ID matching to your host system.
 
+## 🧱 Container Architecture (Layered)
+
+dotNetBench is standardizing on the layered workBenches model:
+- **Layer 0**: `workbench-base:{user}`
+- **Layer 1a**: `devbench-base:{user}`
+- **Layer 2**: `dotnet-bench:{user}` (bench-specific tools)
+
+### Legacy Note
+The `.devcontainer/` directory in this repo is a **legacy monolithic setup** and is deprecated. The layered images are the source of truth going forward.
+
 ## 🎯 **Key Features**
 
 ### ✅ **Perfect User Management**
@@ -13,8 +23,8 @@ This is the **ultimate .NET development container** - a massive, comprehensive U
 
 ### 🏗️ **Based on Ubuntu 24.04**
 - Latest Ubuntu LTS with all the newest packages
-- Built from scratch as a custom Dockerfile (not a pre-built image)
-- Full control over every component
+- Delivered via layered images (no monolithic Dockerfile build at startup)
+- Full control via Layer 0/1a/2 build scripts
 
 ## �️ **THE MONSTER INCLUDES**
 
@@ -61,7 +71,7 @@ This is the **ultimate .NET development container** - a massive, comprehensive U
 ### **Option 1: VS Code (Recommended)**
 1. Open this folder in VS Code
 2. When prompted, click **"Reopen in Container"**
-3. ☕ Grab coffee (first build takes 10-15 minutes)
+3. ☕ Grab coffee (image build may take 10-15 minutes if missing)
 4. 🎉 Start coding in your monster environment!
 
 ### **Option 2: Manual Docker Compose**
@@ -69,7 +79,7 @@ This is the **ultimate .NET development container** - a massive, comprehensive U
 # Run the helper script to get your UID/GID
 ./scripts/start-monster.sh
 
-# Or manually with docker-compose
+# Legacy monolithic path (deprecated)
 export UID=$(id -u) GID=$(id -g) USER=$(whoami)
 docker-compose -f .devcontainer/docker-compose.yml up -d --build
 ```

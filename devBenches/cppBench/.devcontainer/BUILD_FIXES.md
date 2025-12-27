@@ -1,4 +1,6 @@
-# C++ Development Environment - Build Fixes and Troubleshooting
+# C++ Development Environment - Build Fixes and Troubleshooting (Legacy)
+
+This document applies to the **legacy monolithic .devcontainer** build and is deprecated. The current standard is the layered image system (`workbench-base` → `devbench-base` → `cpp-bench`). Keep this for historical reference only.
 
 This document contains common build issues and their solutions for the C++ Heavy Development Environment.
 

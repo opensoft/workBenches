@@ -16,21 +16,17 @@ workBenches/
 │   ├── install-ai-clis.sh              ← SOURCE OF TRUTH for AI CLI installations
 │   └── docker-compose.override.yml     ← SOURCE OF TRUTH for AI credential mounts
 │
-├── devcontainer.example/
-│   └── Dockerfile                       ← References ../devcontainer-shared/install-ai-clis.sh
-│
 └── devBenches/
-    ├── frappeBench/devcontainer.example/
-    │   └── Dockerfile                   ← References ../../../devcontainer-shared/install-ai-clis.sh
-    ├── dotNetBench/.devcontainer/
-    │   └── Dockerfile                   ← References ../../../devcontainer-shared/install-ai-clis.sh
-    └── flutterBench/.devcontainer/
-        └── Dockerfile                   ← References ../../../devcontainer-shared/install-ai-clis.sh
+    ├── base-image/
+    │   ├── install-ai-clis.sh           ← Copied/synced from devcontainer-shared
+    │   └── Dockerfile                   ← Runs install-ai-clis.sh (Layer 1a)
+    └── frappeBench/
+        └── Dockerfile.layer2            ← Uses devbench-base image (Layer 2)
 ```
 
 ## Usage in Dockerfiles
 
-### In Any Bench's Dockerfile
+### In Layer 1a Dockerfile (devbench-base)
 
 Replace the AI CLI installation section with:
 
@@ -38,15 +34,13 @@ Replace the AI CLI installation section with:
 # USERNAME: Installing AI CLI tools from shared script
 # This maintains a single source of truth for AI CLI installations
 # See: devcontainer-shared/install-ai-clis.sh for the full list
-COPY --chown=$USERNAME:$USERNAME ../devcontainer-shared/install-ai-clis.sh /tmp/
+COPY --chown=$USERNAME:$USERNAME install-ai-clis.sh /tmp/
 RUN bash /tmp/install-ai-clis.sh && rm /tmp/install-ai-clis.sh
 ```
 
 **Path variations by location:**
-- `workBenches/devcontainer.example/`: `../devcontainer-shared/`
-- `devBenches/frappeBench/`: `../../../devcontainer-shared/`
-- `devBenches/dotNetBench/`: `../../../devcontainer-shared/`
-- `devBenches/flutterBench/`: `../../../devcontainer-shared/`
+- `devBenches/base-image/`: `install-ai-clis.sh` is in the build context
+- If a Layer 2 Dockerfile needs it, copy from `../../devcontainer-shared/`
 
 ## Installed AI CLIs
 
@@ -99,9 +93,13 @@ Edit `devcontainer-shared/docker-compose.override.yml`:
 ### Step 3: Rebuild Containers
 
 ```bash
-cd your-project/devcontainer.example/
-docker-compose build
-docker-compose up -d
+# Rebuild Layer 1a (devbench-base)
+cd workBenches/devBenches/base-image
+./build.sh brett  # replace with your username
+
+# Rebuild Layer 2 (frappe-bench)
+cd workBenches/devBenches/frappeBench
+./build-layer2.sh --user brett
 ```
 
 **That's it!** All projects now have the new AI tool.
@@ -118,8 +116,12 @@ docker-compose up -d
 # Add new AI tool
 vim devcontainer-shared/install-ai-clis.sh
 
-# Rebuild affected containers
-docker-compose build
+# Rebuild affected images
+cd workBenches/devBenches/base-image
+./build.sh brett  # replace with your username
+
+cd workBenches/devBenches/frappeBench
+./build-layer2.sh --user brett
 ```
 
 ### ✅ Version Control
@@ -166,8 +168,8 @@ RUN bash /tmp/install-ai-clis.sh && rm /tmp/install-ai-clis.sh
 
 1. **Locate AI installation section** in your Dockerfile
 2. **Replace with COPY + RUN** (adjust path as needed)
-3. **Test build**: `docker-compose build`
-4. **Verify tools installed**: `docker-compose run service claude --version`
+3. **Test build**: rebuild the image (e.g., `./build.sh <user>` or `./build-layer2.sh --user <user>`)
+4. **Verify tools installed**: run in a container, e.g. `docker exec <container> claude --version`
 
 ## Troubleshooting
 
@@ -178,9 +180,9 @@ RUN bash /tmp/install-ai-clis.sh && rm /tmp/install-ai-clis.sh
 **Fix**: Check relative path from Dockerfile location:
 ```bash
 # From Dockerfile location, verify:
-ls -la ../devcontainer-shared/install-ai-clis.sh
-# or
-ls -la ../../../devcontainer-shared/install-ai-clis.sh
+ls -la install-ai-clis.sh
+# or, if copying from devcontainer-shared:
+ls -la ../../devcontainer-shared/install-ai-clis.sh
 ```
 
 ### Permission Denied
@@ -216,7 +218,7 @@ RUN echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.zshrc
 
 ## Examples
 
-### frappeBench Dockerfile
+### devbench-base Dockerfile (Layer 1a)
 
 ```dockerfile
 # ... earlier sections ...
@@ -227,7 +229,7 @@ USER $USERNAME
 RUN mkdir -p $HOME/.npm-global && npm config set prefix $HOME/.npm-global
 
 # Install AI CLIs from shared script
-COPY --chown=$USERNAME:$USERNAME ../../../devcontainer-shared/install-ai-clis.sh /tmp/
+COPY --chown=$USERNAME:$USERNAME install-ai-clis.sh /tmp/
 RUN bash /tmp/install-ai-clis.sh && rm /tmp/install-ai-clis.sh
 
 # ... rest of Dockerfile ...
@@ -244,10 +246,14 @@ echo '- ~/.example-ai:/home/${USER:-vscode}/.example-ai:ro' \
   >> devcontainer-shared/docker-compose.override.yml
 
 # 3. Test in one project
-cd workBenches/devcontainer.example/
-docker-compose build
-docker-compose up -d
-docker-compose exec service example-ai --version
+cd workBenches/devBenches/base-image
+./build.sh brett  # replace with your username
+
+cd ../frappeBench
+./build-layer2.sh --user brett
+
+docker compose -f devcontainer.example/docker-compose.yml up -d
+docker exec frappe-bench example-ai --version
 
 # 4. If successful, commit changes
 git add devcontainer-shared/

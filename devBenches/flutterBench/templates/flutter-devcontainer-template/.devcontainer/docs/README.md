@@ -2,6 +2,10 @@
 
 This directory contains documentation for the DevContainer development environment setup and configuration.
 
+## Layered Images (Current Standard)
+
+FlutterBench is moving to the layered workBenches model (`workbench-base` → `devbench-base` → `flutter-bench`). Any references to monolithic `.devcontainer/Dockerfile` builds in these docs are legacy and should be treated as deprecated.
+
 ## 📚 Documentation Files
 
 ### Android Development Setup
@@ -20,7 +24,7 @@ This directory contains documentation for the DevContainer development environme
 
 The current DevContainer uses:
 - **Shared ADB Infrastructure** (not individual ADB services)
-- **Root-level container files** (docker-compose.yml, Dockerfile)
+- **Root-level container files** (docker-compose.yml; Dockerfile is legacy)
 - **Template-managed scripts** (scripts/ folder)
 
 These documentation files are primarily for reference and troubleshooting legacy configurations or alternative setups.
@@ -33,7 +37,7 @@ The active DevContainer configuration consists of:
 - `.devcontainer/devcontainer.json` - VS Code DevContainer configuration
 - `docker-compose.yml` - Flutter container definition
 - `docker-compose.override.yml` - Dartwing .NET service addition  
-- `Dockerfile` - Container build instructions
+- `Dockerfile` - Legacy monolithic build instructions (deprecated)
 - `scripts/` - Template-managed setup and status scripts
 
 ## 📖 Usage

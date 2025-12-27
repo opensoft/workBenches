@@ -12,6 +12,17 @@ Each subfolder is a separate git repository containing a complete development en
 - **`javaBench/`** - Java development environment with DevContainer
 - **`pythonBench/`** - Python development environment with DevContainer
 
+## Layered Containers (Current Standard)
+
+All benches are moving to the layered image model described in `workBenches/CONTAINER-ARCHITECTURE.md`:
+- **Layer 0**: `workbench-base:{user}`
+- **Layer 1a**: `devbench-base:{user}`
+- **Layer 2**: `<bench>-bench:{user}` (bench-specific tools)
+
+## Legacy Monolithic DevContainers (Deprecated)
+
+Some benches still include a `.devcontainer/` directory with a monolithic Dockerfile. These are **legacy** and should not be used as the source of truth. Use the layered images and bench-level build scripts instead; treat monolithic Dockerfiles as deprecated artifacts until removed.
+
 ## Usage
 
 ### Using WorkBenches (Recommended)

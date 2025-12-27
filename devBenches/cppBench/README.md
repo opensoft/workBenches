@@ -2,6 +2,16 @@
 
 A comprehensive, containerized C++ development environment designed for serious C++ development with modern toolchains, package managers, and debugging tools.
 
+## 🧱 Container Architecture (Layered)
+
+cppBench follows the layered workBenches model:
+- **Layer 0**: `workbench-base:{user}`
+- **Layer 1a**: `devbench-base:{user}`
+- **Layer 2**: `cpp-bench:{user}` (bench-specific tools)
+
+### Legacy Note
+The `.devcontainer/` directory in this repo is a **legacy monolithic setup** and is deprecated. The layered images are the source of truth going forward.
+
 ## 🚀 Features
 
 ### Compilers & Standards
@@ -49,8 +59,8 @@ A comprehensive, containerized C++ development environment designed for serious 
 
 ```
 cppBench/
-├── .devcontainer/          # Development container configuration
-│   ├── Dockerfile          # Container definition with all tools
+├── .devcontainer/          # Legacy monolithic devcontainer (deprecated)
+│   ├── Dockerfile          # Legacy container definition
 │   ├── devcontainer.json   # VS Code devcontainer settings
 │   ├── docker-compose.yml  # Multi-container orchestration
 │   ├── post-create.sh      # Post-creation setup script
@@ -103,7 +113,7 @@ cd cppBench
 
 ### First Run
 
-1. **Container Build** - First launch will build the container (~10-15 minutes)
+1. **Image Build** - Build the layered images if they are missing
 2. **VS Code Integration** - Extensions will install automatically
 3. **Sample Project** - Ready-to-use C++20 sample project included
 4. **Environment Setup** - All tools pre-configured and ready

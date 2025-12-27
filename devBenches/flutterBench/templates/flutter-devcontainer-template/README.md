@@ -2,6 +2,10 @@
 
 This template provides a **lightweight Flutter project container** with **centralized configuration** and shared ADB infrastructure support.
 
+## 🧱 Layered Images (Current Standard)
+
+FlutterBench is moving to the layered workBenches model (`workbench-base` → `devbench-base` → `flutter-bench`). Any monolithic `.devcontainer/Dockerfile` in this template is **legacy** and should be treated as deprecated.
+
 ## ⚙️ Centralized Configuration Architecture
 
 **Key Principle: The `.env` file is the ONLY place for project and user-specific configuration.**
@@ -47,14 +51,12 @@ This container is designed for **individual Flutter projects** and follows the p
 
 2. **Copy template files**:
    ```bash
-   cp -r ../../DevBench/FlutterBench/templates/flutter-devcontainer-template/.devcontainer .
-   cp -r ../../DevBench/FlutterBench/templates/flutter-devcontainer-template/.vscode .
-   cp -r ../../DevBench/FlutterBench/templates/flutter-devcontainer-template/scripts .
-   cp ../../DevBench/FlutterBench/templates/flutter-devcontainer-template/docker-compose.yml .
-   cp ../../DevBench/FlutterBench/templates/flutter-devcontainer-template/Dockerfile .
-   cp ../../DevBench/FlutterBench/templates/flutter-devcontainer-template/.env.example .
-   cp ../../DevBench/FlutterBench/templates/flutter-devcontainer-template/.gitignore .
-   ```
+cp -r ../../DevBench/FlutterBench/templates/flutter-devcontainer-template/.devcontainer .
+cp -r ../../DevBench/FlutterBench/templates/flutter-devcontainer-template/.vscode .
+cp -r ../../DevBench/FlutterBench/templates/flutter-devcontainer-template/scripts .
+cp ../../DevBench/FlutterBench/templates/flutter-devcontainer-template/.env.example .
+cp ../../DevBench/FlutterBench/templates/flutter-devcontainer-template/.gitignore .
+```
 
 3. **Set up environment configuration**:
    ```bash
@@ -110,13 +112,9 @@ cd Bench/DevBench/FlutterBench/scripts
   - Persistent pub and gradle caches per project
   - Resource limits configurable via `.env`
   - Port mappings for hot reload and DevTools
-- **`Dockerfile`**: 
-  - **Lightweight Ubuntu 24.04** base (much smaller than FlutterBench)
-  - **Configurable Flutter SDK** version via `FLUTTER_VERSION` in `.env`
-  - **Minimal Android SDK** - only platform-tools for debugging
-  - **Essential tools only** - git, curl, nano, jq, tree, zsh
-  - **User creation** matching host UID/GID for proper file permissions
-  - **~300MB smaller** than the FlutterBench monster container
+- **`Dockerfile`** (legacy, deprecated): 
+  - Monolithic build instructions (kept for reference only)
+  - Prefer layered images for new work
 
 ### Environment Configuration (`.env`)
 - **`.env.example`**: Template with all available configuration options

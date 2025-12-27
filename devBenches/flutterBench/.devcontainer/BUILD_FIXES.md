@@ -1,4 +1,6 @@
-# DevContainer Build Fixes - October 2, 2025
+# DevContainer Build Fixes - October 2, 2025 (Legacy)
+
+This document applies to the **legacy monolithic .devcontainer** build and is deprecated. The current standard is the layered image system (`workbench-base` → `devbench-base` → `flutter-bench`). Keep this for historical reference only.
 
 ## Issues Fixed
 

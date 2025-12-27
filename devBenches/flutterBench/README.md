@@ -2,6 +2,16 @@
 
 A comprehensive Flutter development environment with DevContainer templates and project creation tools.
 
+## 🧱 Container Architecture (Layered)
+
+FlutterBench is standardizing on the layered workBenches model:
+- **Layer 0**: `workbench-base:{user}`
+- **Layer 1a**: `devbench-base:{user}`
+- **Layer 2**: `flutter-bench:{user}` (bench-specific tools)
+
+### Legacy Note
+Any monolithic `.devcontainer/` Dockerfiles are **deprecated**. The layered images are the source of truth going forward.
+
 ## 🎯 Purpose
 
 FlutterBench provides two ways to create Flutter projects with DevContainer support:
@@ -26,9 +36,7 @@ flutterBench/
 │       ├── scripts/
 │       │   ├── manual-setup-project.sh  # Manual setup validation
 │       │   └── README.md             # Script usage guide
-│       ├── docker-compose.yml        # Container orchestration
-│       ├── Dockerfile               # Container definition
-│       ├── .env.example            # Environment template
+│       ├── .env.example             # Environment template
 │       └── README.md               # Template documentation
 └── docs/                           # Additional documentation
 ```
@@ -73,8 +81,6 @@ TEMPLATE_PATH="/path/to/workBenches/devBenches/flutterBench/templates/flutter-de
 cp -r "$TEMPLATE_PATH/.devcontainer" .
 cp -r "$TEMPLATE_PATH/.vscode" .
 cp -r "$TEMPLATE_PATH/scripts" .
-cp "$TEMPLATE_PATH/docker-compose.yml" .
-cp "$TEMPLATE_PATH/Dockerfile" .
 cp "$TEMPLATE_PATH/.env.example" .
 
 # 3. Set up environment configuration

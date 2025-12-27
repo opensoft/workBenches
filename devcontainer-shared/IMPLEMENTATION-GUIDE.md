@@ -119,21 +119,20 @@ services:
 ### Option B: Copy from Reference
 
 ```bash
-# Use workBenches/devcontainer.example as reference
+# Use frappeBench template as reference
 cd devBenches/yourBench/devcontainer.example
 # or
 cd devBenches/yourBench/.devcontainer
 
 # Compare with reference
-diff docker-compose.yml ../../../devcontainer.example/docker-compose.yml
+diff docker-compose.yml ../frappeBench/devcontainer.example/docker-compose.yml
 ```
 
 ## Current Status
 
 ### ✅ Already Updated
 
-- `workBenches/devcontainer.example/` - Main template
-- `devBenches/frappeBench/devcontainer.example/` - Frappe bench template
+- `devBenches/frappeBench/devcontainer.example/` - Frappe bench template (layered)
 
 ### ⏳ Need Updates
 
@@ -205,5 +204,5 @@ services:
 ## Questions?
 
 - Check [README.md](./README.md) for detailed information
-- See reference implementation in `workBenches/devcontainer.example/`
-- Compare your config with `frappeBench/devcontainer.example/`
+- See reference implementation in `devBenches/frappeBench/devcontainer.example/`
+- Compare your config with `devBenches/frappeBench/devcontainer.example/`

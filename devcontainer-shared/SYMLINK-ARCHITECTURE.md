@@ -11,22 +11,18 @@ workBenches/
 ├── devcontainer-shared/
 │   └── docker-compose.override.yml  ← SOURCE OF TRUTH for AI credentials
 │
-├── devcontainer.example/            ← Workspace template (connects to existing infra)
-│   ├── docker-compose.yml
-│   ├── docker-compose.override.yml  → SYMLINK to ../devcontainer-shared/
-│   ├── Dockerfile
-│   └── devcontainer.json
-│
 └── devBenches/
-    └── frappeBench/
-        └── devcontainer.example/    ← Full infrastructure template
+    └── <bench>/
+        ├── Dockerfile.layer2        ← Layer 2 image build
+        ├── build-layer2.sh
+        └── devcontainer.example/    ← Bench template (layered)
             ├── docker-compose.yml
-            ├── docker-compose.override.yml  → SYMLINK to ../../../devcontainer-shared/
-            ├── Dockerfile
-            └── devcontainer.json
+            ├── docker-compose.override.yml  → SYMLINK to ../../devcontainer-shared/
+            ├── devcontainer.json
+            └── Dockerfile.old-monolithic    ← Archived (not used)
 
-dartwing/frappe/
-└── devcontainer.example/            → SYMLINK to ../../workBenches/devcontainer.example/
+<project>/
+└── devcontainer.example/            → SYMLINK to ../../workBenches/devBenches/<bench>/devcontainer.example/
 ```
 
 ## Hierarchy Levels
@@ -39,13 +35,12 @@ dartwing/frappe/
 
 ### Level 2: Bench Templates
 **Locations**:
-- `workBenches/devcontainer.example/` - Workspace template (lightweight)
-- `workBenches/devBenches/frappeBench/devcontainer.example/` - Full infrastructure
+- `workBenches/devBenches/<bench>/devcontainer.example/` - Bench template (layered)
 
 **Each contains**:
 - Own `docker-compose.yml` (bench-specific configuration)
 - **Symlink** `docker-compose.override.yml` → points to `devcontainer-shared/`
-- Own `Dockerfile`, `devcontainer.json`, etc.
+- `devcontainer.json` and related configs (no Dockerfile; Layer 2 lives in bench root)
 
 ### Level 3: Project Instances
 **Example**: `dartwing/frappe/devcontainer.example/`
@@ -73,7 +68,7 @@ Each bench type can have its own `docker-compose.yml`:
 ```
 Edit devcontainer-shared/
     ↓
-Symlink in workBenches/devcontainer.example/
+Symlink in workBenches/devBenches/<bench>/devcontainer.example/
     ↓
 Symlink in dartwing/frappe/devcontainer.example/
     ↓
@@ -82,7 +77,7 @@ Changes automatically available!
 
 ## Template Types
 
-### Workspace Template (workBenches/devcontainer.example/)
+### Workspace Template (workBenches/devBenches/<bench>/devcontainer.example/)
 **Used for**: Projects that connect to existing Frappe infrastructure
 **Characteristics**:
 - Single service container
@@ -94,16 +89,15 @@ Changes automatically available!
 - `dartwing/frappe/`
 - Any workspace in `workBenches/devBenches/frappeBench/workspaces/*/`
 
-### Infrastructure Template (frappeBench/devcontainer.example/)
-**Used for**: Full Frappe development environment
+### Infrastructure Stack (frappeBench/infrastructure/)
+**Used for**: Shared MariaDB + Redis services for all workspaces
 **Characteristics**:
-- Multiple services (frappe, mariadb, redis, workers)
-- Complete infrastructure
-- Self-contained development environment
+- Separate compose stack (not a devcontainer template)
+- Provides `frappe-network` services
+- Started once, reused by all workspaces
 
 **Projects using this**:
-- New standalone Frappe projects
-- Full infrastructure deployments
+- All Frappe workspaces (shared infra)
 
 ## Creating New Projects
 
@@ -111,22 +105,19 @@ Changes automatically available!
 
 ```bash
 cd your-project/
-ln -s ../../workBenches/devcontainer.example .
+ln -s ../../workBenches/devBenches/<bench>/devcontainer.example .
 
 # That's it! You now have:
 # - Latest docker-compose.yml
 # - Latest AI credential mounts (via symlink)
-# - Latest Dockerfile and configs
+# - Latest devcontainer configs and layered image usage
 ```
 
-### Using Infrastructure Template
+### Starting Infrastructure Stack
 
 ```bash
-cd your-project/
-cp -r ../../workBenches/devBenches/frappeBench/devcontainer.example .
-
-# Edit docker-compose.yml for project-specific settings
-# The override (AI credentials) is still a symlink, so you get updates
+cd /path/to/workBenches/devBenches/frappeBench/infrastructure
+docker compose up -d
 ```
 
 ## Updating AI Credentials
@@ -150,7 +141,7 @@ cp -r ../../workBenches/devBenches/frappeBench/devcontainer.example .
 
 ```bash
 # Check workspace template
-cat workBenches/devcontainer.example/docker-compose.override.yml | grep newai
+cat workBenches/devBenches/<bench>/devcontainer.example/docker-compose.override.yml | grep newai
 
 # Check project
 cat dartwing/frappe/devcontainer.example/docker-compose.override.yml | grep newai
@@ -168,7 +159,7 @@ cd dartwing/frappe/
 
 # Check first-level symlink
 ls -la devcontainer.example
-# Output: devcontainer.example -> ../../workBenches/devcontainer.example
+# Output: devcontainer.example -> ../../workBenches/devBenches/<bench>/devcontainer.example
 
 # Check second-level symlink
 ls -la devcontainer.example/docker-compose.override.yml
@@ -196,7 +187,7 @@ docker-compose config | grep -A 5 "claude"
 - Changing common mount paths
 - Adding new common configurations (shell, git, etc.)
 
-**Update bench template** (`workBenches/devcontainer.example/docker-compose.yml`):
+**Update bench template** (`workBenches/devBenches/<bench>/devcontainer.example/docker-compose.yml`):
 - Changing service configuration
 - Updating port mappings
 - Modifying network settings
@@ -221,7 +212,7 @@ cp workBenches/devcontainer-shared/docker-compose.override.yml \
 ```bash
 cd your-project/
 rm devcontainer.example
-ln -s ../../workBenches/devcontainer.example .
+ln -s ../../workBenches/devBenches/<bench>/devcontainer.example .
 ```
 
 ### Override Not Found
@@ -230,7 +221,7 @@ ln -s ../../workBenches/devcontainer.example .
 
 **Fix**:
 ```bash
-cd workBenches/devcontainer.example/
+cd workBenches/devBenches/<bench>/devcontainer.example/
 ls -la docker-compose.override.yml
 # If it's not a symlink, recreate it:
 rm docker-compose.override.yml
@@ -253,7 +244,7 @@ readlink -f docker-compose.override.yml
 ### ✅ Implemented
 
 - `workBenches/devcontainer-shared/docker-compose.override.yml` - Source
-- `workBenches/devcontainer.example/docker-compose.override.yml` - Symlink ✓
+- `workBenches/devBenches/<bench>/devcontainer.example/docker-compose.override.yml` - Symlink ✓
 - `workBenches/devBenches/frappeBench/devcontainer.example/docker-compose.override.yml` - Symlink ✓
 - `dartwing/frappe/devcontainer.example/` - Symlink to entire template ✓
 
@@ -262,7 +253,7 @@ readlink -f docker-compose.override.yml
 Any project needing the workspace template:
 ```bash
 cd project-directory/
-ln -s ../../workBenches/devcontainer.example .
+ln -s ../../workBenches/devBenches/<bench>/devcontainer.example .
 ```
 
 ## Related Documentation
