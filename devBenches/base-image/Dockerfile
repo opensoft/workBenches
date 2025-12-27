@@ -23,6 +23,7 @@ ARG USERNAME=brett
 # OpenCode plugin versions
 ARG OC_OMO_VERSION=latest
 ARG OC_CODEX_AUTH_VERSION=4.2.0
+ARG YARN_VERSION=1.22.22
 
 # ========================================
 # PYTHON & NODE.JS
@@ -41,6 +42,9 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Enable Corepack shims (requires root for /usr/bin)
+RUN corepack enable || true
+
 # Install Python development tools
 RUN pip install --break-system-packages \
     black \
@@ -49,9 +53,6 @@ RUN pip install --break-system-packages \
     pylint \
     pytest \
     ipython
-
-# Enable Yarn
-RUN corepack enable && corepack prepare yarn@stable --activate || true
 
 # ========================================
 # DEVELOPER TOOLS SETUP
@@ -73,6 +74,14 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 # Configure npm for user-local global installs
 RUN mkdir -p $HOME/.npm-global && \
     npm config set prefix $HOME/.npm-global
+
+# Ensure npm globals are available for non-interactive shells
+ENV NPM_CONFIG_PREFIX=/home/$USERNAME/.npm-global
+ENV PATH="/home/$USERNAME/.npm-global/bin:/home/$USERNAME/.local/bin:/home/$USERNAME/.cargo/bin:${PATH}"
+
+# Use a user-scoped Corepack cache to avoid runtime prompts
+ENV COREPACK_HOME=/home/$USERNAME/.corepack
+RUN corepack prepare "yarn@${YARN_VERSION}" --activate
 
 # ========================================
 # AI CLI TOOLS
