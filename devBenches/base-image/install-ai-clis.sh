@@ -41,6 +41,11 @@ echo "Installing OpenCode AI..."
 # OpenCode: open source AI coding agent (https://github.com/sst/opencode)
 npm install -g opencode-ai@latest
 
+echo "Installing OpenAgents for OpenCode..."
+# OpenAgents: agent pack for OpenCode (https://github.com/darrenhinde/OpenAgents)
+# Use a profile to avoid interactive prompt during Docker build
+curl -fsSL https://raw.githubusercontent.com/darrenhinde/OpenAgents/main/install.sh | bash -s essential
+
 echo "Installing Letta Code..."
 # Letta Code: memory-first coding agent (https://github.com/letta-ai/letta-code)
 npm install -g @letta-ai/letta-code
