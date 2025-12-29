@@ -91,15 +91,29 @@ RUN corepack prepare "yarn@${YARN_VERSION}" --activate
 COPY --chown=$USERNAME:$USERNAME install-ai-clis.sh /tmp/
 RUN bash /tmp/install-ai-clis.sh && rm /tmp/install-ai-clis.sh
 
-# Configure OpenCode plugins
-# First create user config directory
-RUN mkdir -p /home/$USERNAME/.config/opencode
+# Configure OpenCode with full OMO setup
+# Create user config directory structure
+RUN mkdir -p /home/$USERNAME/.config/opencode/agent/core \
+    && mkdir -p /home/$USERNAME/.config/opencode/context/skills
+
+# Copy OpenCode configuration files
 COPY --chown=$USERNAME:$USERNAME files/opencode/opencode.json /home/$USERNAME/.config/opencode/
+COPY --chown=$USERNAME:$USERNAME files/opencode/oh-my-opencode.json /home/$USERNAME/.config/opencode/
+
+# Copy agent files (primary agents for Tab completion)
+COPY --chown=$USERNAME:$USERNAME files/opencode/agent/ /home/$USERNAME/.config/opencode/agent/
+
+# Copy context/skills (agent skill contexts)
+COPY --chown=$USERNAME:$USERNAME files/opencode/context/ /home/$USERNAME/.config/opencode/context/
 
 # Create system-wide template for new users (needs root)
 USER root
-RUN mkdir -p /etc/skel/.config/opencode
+RUN mkdir -p /etc/skel/.config/opencode/agent/core \
+    && mkdir -p /etc/skel/.config/opencode/context/skills
 COPY --chown=root:root files/opencode/opencode.json /etc/skel/.config/opencode/
+COPY --chown=root:root files/opencode/oh-my-opencode.json /etc/skel/.config/opencode/
+COPY --chown=root:root files/opencode/agent/ /etc/skel/.config/opencode/agent/
+COPY --chown=root:root files/opencode/context/ /etc/skel/.config/opencode/context/
 USER $USERNAME
 
 # Pre-fetch OpenCode plugins (optional, speeds up first run)
@@ -110,11 +124,13 @@ RUN opencode --version || echo "OpenCode plugin pre-fetch skipped (non-fatal)"
 # ZSH SETUP
 # ========================================
 
-# Update PATH for local bins
-RUN echo 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"' >> ~/.bashrc && \
+# Update PATH for local bins (including bun for OpenCode plugins)
+RUN echo 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$PATH"' >> ~/.bashrc && \
     echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.bashrc && \
-    echo 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"' >> ~/.zshrc && \
-    echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.zshrc
+    echo 'export BUN_INSTALL="$HOME/.bun"' >> ~/.bashrc && \
+    echo 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$PATH"' >> ~/.zshrc && \
+    echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.zshrc && \
+    echo 'export BUN_INSTALL="$HOME/.bun"' >> ~/.zshrc
 
 # Install Oh My Zsh
 RUN curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh | sh -s -- --unattended || \

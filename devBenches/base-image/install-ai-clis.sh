@@ -1,6 +1,6 @@
 #!/bin/bash
 # Shared AI CLI Installation Script
-# Version: 1.0.0
+# Version: 1.1.0
 #
 # This script installs all AI CLI tools for devcontainers.
 # Source this from Dockerfiles to maintain a single source of truth.
@@ -18,6 +18,14 @@ echo "========================================="
 # Ensure npm global directory exists
 mkdir -p $HOME/.npm-global
 npm config set prefix $HOME/.npm-global
+
+# ========================================
+# BUN RUNTIME (for OpenCode plugins)
+# ========================================
+echo "Installing Bun runtime..."
+curl -fsSL https://bun.sh/install | bash
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
 
 echo "Installing OpenSpec..."
 npm install -g @fission-ai/openspec@latest
@@ -37,14 +45,34 @@ npm install -g @githubnext/github-copilot-cli
 echo "Installing Grok CLI (xAI)..."
 npm install -g @xai-org/grok-cli || echo "Grok CLI not yet available via npm, manual install required"
 
-echo "Installing OpenCode AI..."
-# OpenCode: open source AI coding agent (https://github.com/sst/opencode)
-npm install -g opencode-ai@latest
+echo "Installing OpenCode AI (from Opensoft fork)..."
+# OpenCode: open source AI coding agent (https://github.com/Opensoft/opencode)
+# Install from Opensoft fork instead of npm (sst version)
+git clone --depth 1 https://github.com/Opensoft/opencode.git /tmp/opencode
+cd /tmp/opencode
+bun install
+bun run --cwd packages/opencode build
+npm link -g --prefix $HOME/.npm-global /tmp/opencode/packages/opencode
+cd -
 
 echo "Installing OpenAgents for OpenCode..."
 # OpenAgents: agent pack for OpenCode (https://github.com/darrenhinde/OpenAgents)
 # Use a profile to avoid interactive prompt during Docker build
 curl -fsSL https://raw.githubusercontent.com/darrenhinde/OpenAgents/main/install.sh | bash -s essential
+
+# ========================================
+# OH-MY-OPENCODE (OMO) PLUGIN SETUP
+# ========================================
+echo "Pre-installing OpenCode plugins via Bun..."
+# OpenCode uses ~/.opencode/plugin for plugins
+mkdir -p $HOME/.opencode/plugin
+
+# Install OMO and auth plugins (these are the plugins declared in opencode.json)
+cd $HOME/.opencode/plugin
+bun add oh-my-opencode@latest 2>/dev/null || echo "OMO plugin install deferred to first run"
+bun add opencode-gemini-auth@1.3.6 2>/dev/null || echo "Gemini auth plugin install deferred"
+bun add opencode-openai-codex-auth@4.2.0 2>/dev/null || echo "Codex auth plugin install deferred"
+cd -
 
 echo "Installing Letta Code..."
 # Letta Code: memory-first coding agent (https://github.com/letta-ai/letta-code)
@@ -61,6 +89,6 @@ echo "  - OpenAI Codex (codex)"
 echo "  - Google Gemini (gemini)"
 echo "  - GitHub Copilot (copilot)"
 echo "  - Grok (grok)"
-echo "  - OpenCode (opencode)"
+echo "  - OpenCode (opencode) + OMO plugins"
 echo "  - Letta Code (letta)"
 echo ""
