@@ -39,6 +39,9 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     net-tools \
     # Utilities
     jq \
+    ripgrep \
+    fd-find \
+    unzip \
     zsh \
     tmux \
     screen \
@@ -54,6 +57,9 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Provide fd alias for Ubuntu's fdfind
+RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd
 
 # ========================================
 # GITHUB CLI
@@ -120,7 +126,13 @@ RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master
 RUN echo 'eval "$(zoxide init zsh)"' >> ~/.zshrc \
     && echo 'alias cat="batcat"' >> ~/.zshrc \
     && echo 'alias ls="ls --color=auto"' >> ~/.zshrc \
-    && echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+    && echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc \
+    && echo 'eval "$(zoxide init bash)"' >> ~/.bashrc
+
+# Add zoxide to default bash profile for future users
+USER root
+RUN echo 'eval "$(zoxide init bash)"' >> /etc/skel/.bashrc
+USER $USERNAME
 
 # Default command
 CMD ["sleep", "infinity"]

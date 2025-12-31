@@ -52,7 +52,7 @@ git clone --depth 1 https://github.com/Opensoft/opencode.git /tmp/opencode
 cd /tmp/opencode
 bun install
 bun run --cwd packages/opencode build
-npm link -g --prefix $HOME/.npm-global /tmp/opencode/packages/opencode
+npm install -g /tmp/opencode/packages/opencode
 cd -
 
 echo "Installing OpenAgents for OpenCode..."
