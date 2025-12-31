@@ -8,7 +8,6 @@
   "provider": {
     "anthropic": {
       "name": "Anthropic",
-      "api": "anthropic",
       "models": {
         "claude-opus-4-5": {
           "name": "Claude Opus 4.5",
@@ -78,7 +77,6 @@
     },
     "openai": {
       "name": "OpenAI",
-      "api": "codex",
       "models": {
         "gpt-5.2": {
           "name": "GPT-5.2"
