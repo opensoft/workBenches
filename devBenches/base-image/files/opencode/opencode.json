@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "default_agent": "build",
+  "default_agent": "openagent",
   "plugin": [
     "oh-my-opencode",
     "opencode-gemini-auth@1.3.6",
