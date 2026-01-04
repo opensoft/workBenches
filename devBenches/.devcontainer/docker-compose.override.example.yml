@@ -33,6 +33,7 @@ services:
       # Anthropic Claude Code CLI Authentication
       # Required for: VS Code Claude Code extension, Claude CLI tools
       # - ~/.claude:/home/${USER:-vscode}/.claude:cached
+      # - ~/.claude.json:/home/${USER:-vscode}/.claude.json:cached
       # - ~/.cache/claude-code:/home/${USER:-vscode}/.cache/claude-code:cached
       
       # Google Gemini CLI Authentication

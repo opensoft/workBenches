@@ -20,6 +20,7 @@ services:
       
       # Anthropic Claude
       - ~/.claude:/home/${USER:-vscode}/.claude:cached
+      - ~/.claude.json:/home/${USER:-vscode}/.claude.json:cached
       - ~/.anthropic:/home/${USER:-vscode}/.anthropic:cached
       - ~/.cache/claude-code:/home/${USER:-vscode}/.cache/claude-code:cached
       
