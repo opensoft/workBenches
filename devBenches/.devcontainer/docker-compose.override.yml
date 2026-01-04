@@ -24,6 +24,8 @@ services:
       
       # Google Gemini
       - ~/.gemini:/home/${USER:-vscode}/.gemini:cached
+      - ~/.gemini/.env:/home/${USER:-vscode}/.gemini/.env:cached
+      - ~/.cache/goog-gemini:/home/${USER:-vscode}/.cache/goog-gemini:cached
       - ~/.google:/home/${USER:-vscode}/.google:cached
       - ~/.cache:/home/${USER:-vscode}/.cache:cached
       
