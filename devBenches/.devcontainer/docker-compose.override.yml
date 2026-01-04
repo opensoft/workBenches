@@ -12,6 +12,7 @@ services:
       
       # OpenCode Configuration
       - ~/.config/opencode:/home/${USER:-vscode}/.config/opencode:cached
+      - ~/.local/share/opencode:/home/${USER:-vscode}/.local/share/opencode:cached
       
       # OpenAI/Codex
       - ~/.codex:/home/${USER:-vscode}/.codex:cached

@@ -24,6 +24,7 @@ services:
       # OpenCode Configuration
       # Primary AI coding framework with oh-my-opencode plugin
       # - ~/.config/opencode:/home/${USER:-vscode}/.config/opencode:cached
+      # - ~/.local/share/opencode:/home/${USER:-vscode}/.local/share/opencode:cached
 
       # OpenAI Codex CLI Authentication
       # Required for: VS Code Codex extension, OpenAI CLI tools
