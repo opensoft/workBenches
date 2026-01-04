@@ -21,8 +21,9 @@ USER root
 ARG USERNAME=brett
 
 # OpenCode plugin versions
-ARG OC_OMO_VERSION=latest
+# Note: oh-my-opencode is installed from git (darrenhinde/oh-my-opencode fork)
 ARG OC_CODEX_AUTH_VERSION=4.2.0
+ARG OC_GEMINI_AUTH_VERSION=1.3.6
 ARG YARN_VERSION=1.22.22
 
 # ========================================
@@ -88,10 +89,11 @@ RUN corepack prepare "yarn@${YARN_VERSION}" --activate
 # ========================================
 
 # Copy and run AI CLI installation script
+# Installs: OpenCode, oh-my-opencode (from git: darrenhinde fork), auth plugins
 COPY --chown=$USERNAME:$USERNAME install-ai-clis.sh /tmp/
 RUN bash /tmp/install-ai-clis.sh && rm /tmp/install-ai-clis.sh
 
-# Configure OpenCode with full OMO setup
+# Configure OpenCode with oh-my-opencode
 # Create user config directory structure
 RUN mkdir -p /home/$USERNAME/.config/opencode/agent/core \
     && mkdir -p /home/$USERNAME/.config/opencode/context/skills
@@ -100,7 +102,8 @@ RUN mkdir -p /home/$USERNAME/.config/opencode/agent/core \
 COPY --chown=$USERNAME:$USERNAME files/opencode/opencode.json /home/$USERNAME/.config/opencode/
 COPY --chown=$USERNAME:$USERNAME files/opencode/oh-my-opencode.json /home/$USERNAME/.config/opencode/
 
-# Copy agent files (primary agents for Tab completion)
+# Copy agent files from OpenAgents
+# Only openagent.md and opencoder.md - other agents provided by oh-my-opencode plugin
 COPY --chown=$USERNAME:$USERNAME files/opencode/agent/ /home/$USERNAME/.config/opencode/agent/
 
 # Copy context/skills (agent skill contexts)

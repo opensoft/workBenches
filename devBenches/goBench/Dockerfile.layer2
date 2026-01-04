@@ -1,0 +1,140 @@
+# Layer 2: Go Bench Image
+# Extends Layer 1a (devbench-base) with Go-specific tools
+# Includes: Go 1.22+, gopls, delve, golangci-lint, and 25+ Go tools
+# For Go cloud-native development: microservices, APIs, CLI tools
+
+ARG BASE_IMAGE=devbench-base:brett
+FROM ${BASE_IMAGE}
+
+# Container version labels
+LABEL layer="2"
+LABEL layer.name="go-bench"
+LABEL layer.version="1.0.0"
+LABEL layer.description="Go development with gopls, delve, and cloud-native tools"
+LABEL bench.type="go"
+
+# Build arguments
+ARG USERNAME=brett
+ARG GO_VERSION=1.22.0
+
+# Switch to root for Go installation
+USER root
+
+# ========================================
+# GO INSTALLATION
+# ========================================
+
+# Install Go from official repository (base version)
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get -y install --no-install-recommends \
+    golang-go \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install latest Go version manually
+RUN wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz && \
+    rm -rf /usr/local/go && \
+    tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz && \
+    rm go${GO_VERSION}.linux-amd64.tar.gz
+
+# Set Go environment variables
+ENV PATH=$PATH:/usr/local/go/bin
+ENV GOPATH=/go
+ENV GOBIN=/go/bin
+ENV PATH=$PATH:$GOBIN
+
+# Create Go directories
+RUN mkdir -p /go/bin /go/src /go/pkg && \
+    chown -R ${USERNAME}:${USERNAME} /go
+
+# ========================================
+# GO DEVELOPMENT TOOLS
+# ========================================
+
+# Switch to user for Go tool installation
+USER ${USERNAME}
+
+# Install Go language server and debugging tools
+RUN go install golang.org/x/tools/gopls@latest && \
+    go install github.com/go-delve/delve/cmd/dlv@latest
+
+# Install linting and analysis tools
+RUN go install honnef.co/go/tools/cmd/staticcheck@latest && \
+    go install golang.org/x/lint/golint@latest && \
+    go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest && \
+    go install github.com/kisielk/errcheck@latest
+
+# Install code generation and manipulation tools
+RUN go install golang.org/x/tools/cmd/goimports@latest && \
+    go install github.com/fatih/gomodifytags@latest && \
+    go install github.com/cweill/gotests/...@latest && \
+    go install github.com/josharian/impl@latest
+
+# Install development productivity tools
+RUN go install github.com/cosmtrek/air@latest && \
+    go install github.com/swaggo/swag/cmd/swag@latest && \
+    go install github.com/google/wire/cmd/wire@latest
+
+# Install formatting tools
+RUN go install mvdan.cc/gofumpt@latest && \
+    go install github.com/segmentio/golines@latest
+
+# Install cloud-native and Kubernetes tools
+RUN go install github.com/google/ko@latest && \
+    go install sigs.k8s.io/kind@latest && \
+    go install github.com/tektoncd/cli/cmd/tkn@latest
+
+# Install gRPC and Protocol Buffer tools
+RUN go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest && \
+    go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+# Install testing and performance tools
+RUN go install github.com/rakyll/hey@latest
+
+# Install release and build tools
+RUN go install github.com/goreleaser/goreleaser@latest
+
+# Install additional utilities
+RUN go install github.com/mikefarah/yq/v4@latest
+
+# ========================================
+# ADDITIONAL CLOUD-NATIVE TOOLS
+# ========================================
+
+USER root
+
+# Install Protocol Buffers compiler
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get -y install --no-install-recommends \
+    protobuf-compiler \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ========================================
+# USER CONFIGURATION
+# ========================================
+
+USER ${USERNAME}
+WORKDIR /workspace
+
+# Add Go development aliases to zshrc
+RUN echo '' >> ~/.zshrc && \
+    echo '# Go development aliases' >> ~/.zshrc && \
+    echo 'alias got="go test ./..."' >> ~/.zshrc && \
+    echo 'alias gotv="go test -v ./..."' >> ~/.zshrc && \
+    echo 'alias gotc="go test -cover ./..."' >> ~/.zshrc && \
+    echo 'alias gob="go build"' >> ~/.zshrc && \
+    echo 'alias gor="go run"' >> ~/.zshrc && \
+    echo 'alias gom="go mod tidy"' >> ~/.zshrc && \
+    echo 'alias gofmt="goimports -w ."' >> ~/.zshrc && \
+    echo 'alias golint="golangci-lint run"' >> ~/.zshrc && \
+    echo 'alias air-init="air init"' >> ~/.zshrc
+
+# Update PATH in shell configs
+RUN echo 'export PATH="$PATH:/go/bin"' >> ~/.zshrc && \
+    echo 'export GOPATH=/go' >> ~/.zshrc && \
+    echo 'export GOBIN=/go/bin' >> ~/.zshrc
+
+# Default command
+CMD ["sleep", "infinity"]

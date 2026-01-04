@@ -1,0 +1,75 @@
+{
+  "name": "DevBench Base (Generic)",
+  "dockerComposeFile": ["docker-compose.yml", "docker-compose.override.yml"],
+  "service": "devbench",
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+  
+  "forwardPorts": [1455],
+  "portsAttributes": {
+    "1455": {
+      "label": "AI Auth Callback",
+      "onAutoForward": "silent"
+    }
+  },
+  
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        "ms-python.isort",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "anthropic.claude-code",
+        "openai.chatgpt",
+        "GitHub.copilot",
+        "GitHub.copilot-chat",
+        "Google.geminicodeassist",
+        "ms-vscode.makefile-tools",
+        "editorconfig.editorconfig",
+        "usernamehw.errorlens",
+        "eamodio.gitlens",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "/bin/zsh",
+            "args": ["-l"]
+          },
+          "OpenCode": {
+            "path": "/bin/zsh",
+            "args": ["-c", "opencode cmd; exec zsh"]
+          },
+          "Claude Code": {
+            "path": "/bin/zsh",
+            "args": ["-c", "claude cmd; exec zsh"]
+          },
+          "Codex": {
+            "path": "/bin/zsh",
+            "args": ["-c", "codex cmd; exec zsh"]
+          }
+        },
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.organizeImports": true
+        }
+      }
+    }
+  },
+  
+  "features": {},
+  
+  "remoteUser": "brett",
+  
+  "containerEnv": {
+    "SHELL": "/bin/zsh",
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "64000"
+  },
+  
+  "postCreateCommand": "cp --update=none .devcontainer/.env.example .devcontainer/.env || true",
+  "postAttachCommand": "echo 'Connected to DevBench development environment'"
+}

@@ -1,0 +1,41 @@
+name: devbench-base
+
+services:
+  devbench:
+    image: devbench-base:${USER:-vscode}
+    container_name: devbench-base
+    
+    # Match host user for file permissions
+    user: "${UID:-1000}:${GID:-1000}"
+    
+    volumes:
+      # Mount workspace
+      - ~/projects:/workspace:cached
+      
+      # Shell history (persistent volume)
+      - devbench-zsh-history:/home/${USER:-vscode}/.zsh_history_volume
+      
+      # Personal mounts (AI creds, git, SSH, shell configs) defined in override file
+      
+    command: sleep infinity
+    
+    environment:
+      # User environment
+      - USER=${USER:-vscode}
+      - HOME=/home/${USER:-vscode}
+      
+      # PATH for all dev tools
+      - PATH=/home/${USER:-vscode}/.local/bin:/home/${USER:-vscode}/.npm-global/bin:/home/${USER:-vscode}/.cargo/bin:/home/${USER:-vscode}/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      
+      # Bun
+      - BUN_INSTALL=/home/${USER:-vscode}/.bun
+      
+      # NPM
+      - NPM_CONFIG_PREFIX=/home/${USER:-vscode}/.npm-global
+      
+      # Corepack
+      - COREPACK_HOME=/home/${USER:-vscode}/.corepack
+
+volumes:
+  devbench-zsh-history:
+    name: devbench-zsh-history

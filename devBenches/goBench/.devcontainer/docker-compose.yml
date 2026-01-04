@@ -1,0 +1,58 @@
+# Project name for organizing all DevBench containers in Docker Desktop
+# This creates the dev-bench project with go_bench, dot_net_bench, java_bench, etc.
+name: dev-bench
+
+services:
+  go_bench:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USERNAME: ${USER}
+        USER_UID: ${UID:-1000}
+        USER_GID: ${GID:-1000}
+        DEBUG: false
+    
+    container_name: go_bench
+    
+    # Mount your workspace
+    volumes:
+      - ../:/workspace:cached
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ~/.gitconfig:/home/${USER}/.gitconfig:ro
+      - ~/.ssh:/home/${USER}/.ssh:ro
+    
+    # Forward common ports
+    ports:
+      - "8082:8080"  # changed host port to avoid conflict
+      - "8083:8081"  # changed host port to avoid conflict
+      - "9092:9090"  # changed host port to avoid conflict
+      - "3002:3000"  # changed host port to avoid conflict
+    
+    # Keep container running
+    command: sleep infinity
+    
+    # Allow privileged for Docker
+    privileged: true
+    
+    # Set working directory
+    working_dir: /workspace
+    
+    # Set user
+    user: "1000:1000"
+    
+    # Environment variables
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - GOPATH=/go
+      - GOBIN=/go/bin
+    
+    # Connect to shared DevBench network
+    networks:
+      - dev_bench
+
+# Shared network for all DevBench containers
+networks:
+  dev_bench:
+    name: dev_bench
+    driver: bridge

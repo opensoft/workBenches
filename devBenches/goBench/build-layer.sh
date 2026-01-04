@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build Layer 1a (devbench-base)
+# Build Layer 2 (go-bench)
 
 set -e
 
@@ -10,4 +10,4 @@ if [ "$USERNAME" = "--user" ]; then
     USERNAME="${2:-$(whoami)}"
 fi
 
-exec "${SCRIPT_DIR}/base-image/build.sh" --user "$USERNAME"
+exec "${SCRIPT_DIR}/build-layer2.sh" --user "$USERNAME"
