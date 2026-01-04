@@ -1,0 +1,89 @@
+# Docker Compose Override File Example
+# ===========================================
+# This file enables AI coding assistants and personal configurations
+# to work automatically inside your devcontainer.
+#
+# SETUP INSTRUCTIONS:
+# 1. Copy this file to: docker-compose.override.yml
+#    cp docker-compose.override.example.yml docker-compose.override.yml
+#
+# 2. The docker-compose.override.yml file is gitignored and will not be committed
+#
+# 3. Uncomment the volume mounts below for the tools you use
+#
+# 4. Restart your devcontainer for changes to take effect
+
+services:
+  devbench:
+    volumes:
+      # ========================================
+      # AI Coding Assistant Configurations
+      # ========================================
+      # Uncomment the lines below to enable auto-login for AI assistants
+
+      # OpenCode Configuration
+      # Primary AI coding framework with oh-my-opencode plugin
+      # - ~/.config/opencode:/home/${USER:-vscode}/.config/opencode:cached
+
+      # OpenAI Codex CLI Authentication
+      # Required for: VS Code Codex extension, OpenAI CLI tools
+      # - ~/.codex:/home/${USER:-vscode}/.codex:cached
+
+      # Anthropic Claude Code CLI Authentication
+      # Required for: VS Code Claude Code extension, Claude CLI tools
+      # - ~/.claude:/home/${USER:-vscode}/.claude:cached
+      # - ~/.cache/claude-code:/home/${USER:-vscode}/.cache/claude-code:cached
+      
+      # Google Gemini CLI Authentication
+      # Required for: VS Code Gemini extension, Gemini CLI tools
+      # - ~/.gemini:/home/${USER:-vscode}/.gemini:cached
+      # - ~/.google:/home/${USER:-vscode}/.google:cached
+      # - ~/.cache:/home/${USER:-vscode}/.cache:cached
+
+      # GitHub Copilot (uses git credentials)
+
+      # ========================================
+      # Git & SSH Configurations
+      # ========================================
+      # Uncomment to mount your git and SSH configs
+
+      # Git configuration (user, email, aliases)
+      # - ~/.gitconfig:/home/${USER:-vscode}/.gitconfig:ro
+
+      # SSH keys and configuration
+      # Option 1: Mount specific keys (more secure)
+      # - ~/.ssh/config:/home/${USER:-vscode}/.ssh/config:ro
+      # - ~/.ssh/id_ed25519:/home/${USER:-vscode}/.ssh/id_ed25519:ro
+      # - ~/.ssh/id_ed25519.pub:/home/${USER:-vscode}/.ssh/id_ed25519.pub:ro
+      # - ~/.ssh/known_hosts:/home/${USER:-vscode}/.ssh/known_hosts:ro
+      
+      # Option 2: Mount entire SSH directory (for agent persistence)
+      # - ~/.ssh:/home/${USER:-vscode}/.ssh:cached
+
+      # ========================================
+      # Shell & Terminal Configurations (Optional)
+      # ========================================
+      # Uncomment to use your personal shell config inside the container
+
+      # Zsh configuration
+      # - ~/.zshrc:/home/${USER:-vscode}/.zshrc:ro
+      # - ~/.oh-my-zsh:/home/${USER:-vscode}/.oh-my-zsh:ro
+      # - ~/.p10k.zsh:/home/${USER:-vscode}/.p10k.zsh:ro
+
+      # Bash configuration
+      # - ~/.bashrc:/home/${USER:-vscode}/.bashrc:ro
+      # - ~/.bash_aliases:/home/${USER:-vscode}/.bash_aliases:ro
+
+      # ========================================
+      # Additional Personal Configurations (Optional)
+      # ========================================
+      # Add other personal mounts as needed
+
+      # Example: AWS credentials
+      # - ~/.aws:/home/${USER:-vscode}/.aws:ro
+
+      # Example: Azure credentials
+      # - ~/.azure:/home/${USER:-vscode}/.azure:ro
+
+      # Example: Docker config (for docker-in-docker)
+      # - ~/.docker:/home/${USER:-vscode}/.docker:ro
