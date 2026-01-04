@@ -89,10 +89,10 @@ run_with_timeout "$COMMAND_TIMEOUT" "npm config set prefix" npm config set prefi
 # BUN RUNTIME (for OpenCode plugins)
 # ========================================
 log_info "Installing Bun runtime..."
-if run_with_timeout "$COMMAND_TIMEOUT" "Bun runtime download" curl -fsSL https://bun.sh/install; then
-    bash /dev/stdin <<< "$(cat)" || log_error "Bun installation may have failed"
+if run_with_timeout "$COMMAND_TIMEOUT" "Bun runtime download and install" bash -c 'curl -fsSL https://bun.sh/install | bash'; then
+    log_debug "Bun installation completed"
 else
-    log_error "Failed to download Bun. Continuing without Bun support."
+    log_error "Failed to download or install Bun. Continuing without Bun support."
 fi
 
 export BUN_INSTALL="$HOME/.bun"
