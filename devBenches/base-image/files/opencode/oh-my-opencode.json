@@ -12,13 +12,13 @@
       "model": "anthropic/claude-sonnet-4-5"
     },
     "frontend-ui-ux-engineer": {
-      "model": "google/gemini-3-pro-high"
+      "model": "google/gemini-3-pro-preview"
     },
     "document-writer": {
-      "model": "google/gemini-3-flash"
+      "model": "google/gemini-3-flash-preview"
     },
     "multimodal-looker": {
-      "model": "google/gemini-3-flash"
+      "model": "google/gemini-3-flash-preview"
     }
   }
 }

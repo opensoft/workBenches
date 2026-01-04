@@ -69,6 +69,7 @@
         },
         "gemini-3-flash-preview": {
           "name": "Gemini 3 Flash (Preview)",
+          "thinking": false,
           "attachment": true,
           "temperature": 0.1,
           "limit": {
