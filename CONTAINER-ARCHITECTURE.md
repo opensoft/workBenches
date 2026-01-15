@@ -115,6 +115,7 @@ Layer 1 splits into two branches based on use case:
 - OpenCode AI (`opencode-ai`)
 - Letta Code (`@letta-ai/letta-code`)
 - OpenSpec (`@fission-ai/openspec`)
+Note: WorkBenches exclusively uses the layered architecture for AI CLI installation. Alternative approaches have been deprecated.
 
 ✅ **Shell enhancements**:
 - PATH configuration for `~/.npm-global/bin`, `~/.local/bin`, `~/.cargo/bin`
@@ -504,7 +505,6 @@ docker run --rm frappe-bench:brett psql --version
 ## Related Documentation
 
 - [frappeBench Architecture](devBenches/frappeBench/docs/ARCHITECTURE.md) - Layer 2 Frappe-specific docs
-- [AI CLI Installation](devcontainer-shared/DOCKERFILE-INHERITANCE.md) - AI tools management
 - [Admin Tools Philosophy](adminBenches/README.md) - Discovery vs. Action
 
 ---

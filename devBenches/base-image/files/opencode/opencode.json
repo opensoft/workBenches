@@ -55,7 +55,25 @@
       "models": {
         "gemini-3-pro-preview": {
           "name": "Gemini 3 Pro (Preview)",
-          "thinking": true,
+          "attachment": true,
+          "temperature": 0.1,
+          "limit": {
+            "context": 1048576,
+            "output": 65535
+          },
+          "modalities": {
+            "input": ["text", "image", "pdf"],
+            "output": ["text"]
+          },
+          "options": {
+            "thinkingConfig": {
+              "thinkingLevel": "high",
+              "includeThoughts": true
+            }
+          }
+        },
+        "gemini-3-pro-preview-no-thinking": {
+          "name": "Gemini 3 Pro (Preview)",
           "attachment": true,
           "temperature": 0.1,
           "limit": {
@@ -69,7 +87,25 @@
         },
         "gemini-3-flash-preview": {
           "name": "Gemini 3 Flash (Preview)",
-          "thinking": false,
+          "attachment": true,
+          "temperature": 0.1,
+          "limit": {
+            "context": 1048576,
+            "output": 32000
+          },
+          "modalities": {
+            "input": ["text", "image", "pdf"],
+            "output": ["text"]
+          },
+          "options": {
+            "thinkingConfig": {
+              "thinkingLevel": "low",
+              "includeThoughts": true
+            }
+          }
+        },
+        "gemini-3-flash-preview-no-thinking": {
+          "name": "Gemini 3 Flash (Preview)",
           "attachment": true,
           "temperature": 0.1,
           "limit": {
