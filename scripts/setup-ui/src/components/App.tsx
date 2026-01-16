@@ -1,11 +1,9 @@
-import { createSignal, For, type Component as SolidComponent } from 'solid-js';
-import { useKeyboard, useRenderer } from '@opentui/solid';
+import { createSignal, onMount, createMemo, Show, type Component as SolidComponent } from 'solid-js';
+import { useRenderer, useKeyboard } from '@opentui/solid';
 import type { Component } from '../types';
 import { initializeComponents } from '../utils/config';
 import { loadAllStatuses } from '../utils/statusChecks';
-import { useNavigation } from '../hooks/useNavigation';
 import { Header } from './Header';
-import { SectionColumn } from './SectionColumn';
 import { StatusBar } from './StatusBar';
 import { processSelections } from '../utils/installers';
 import { writeFileSync } from 'fs';
@@ -22,73 +20,41 @@ function debugLog(msg: string) {
 }
 
 /**
- * Main App component - orchestrates the setup UI
+ * Format component for select option display
+ */
+function formatOption(comp: Component): { name: string; description: string; value: Component } {
+  const checkbox = comp.checked
+    ? (comp.action === 'uninstall' ? '[X]' : '[✓]')
+    : '[ ]';
+  const status = comp.status === 'installed' ? '✓'
+    : comp.status === 'needs_creds' ? '⚠'
+    : '✗';
+  return {
+    name: `${checkbox} ${status} ${comp.name}`,
+    description: comp.status === 'installed' ? 'Installed'
+      : comp.status === 'needs_creds' ? 'Needs credentials'
+      : 'Not installed',
+    value: comp,
+  };
+}
+
+/**
+ * Main App component - uses native OpenTUI select for keyboard navigation
  */
 export const App: SolidComponent = () => {
-  // Debug: confirm component is rendering
   debugLog('=== APP COMPONENT RENDERING ===');
 
   const [benches, setBenches] = createSignal<Component[]>([]);
   const [aiTools, setAiTools] = createSignal<Component[]>([]);
   const [tools, setTools] = createSignal<Component[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
-  const [renderTrigger, setRenderTrigger] = createSignal(0);
+  const [activeColumn, setActiveColumn] = createSignal(0);
 
-  /**
-   * Toggle item selection and determine action
-   */
-  const handleToggle = (section: number, index: number) => {
-    const updateItem = (items: Component[], idx: number): Component[] => {
-      const newItems = [...items];
-      const item = { ...newItems[idx] };
+  const renderer = useRenderer();
+  debugLog(`Renderer obtained: ${!!renderer}`);
+  debugLog('Setting up onMount callback...');
 
-      const isInstalled = item.status === 'installed' || item.status === 'needs_creds';
-
-      if (item.checked) {
-        // Currently checked
-        if (isInstalled) {
-          // Installed item: toggle to uninstall
-          item.action = 'uninstall';
-          // Keep checked but marked for uninstall
-        } else {
-          // Not installed: uncheck (cancel install)
-          item.checked = false;
-          item.action = null;
-        }
-      } else {
-        // Currently unchecked
-        item.checked = true;
-        if (isInstalled) {
-          // Installed item: mark to keep (cancel uninstall)
-          item.action = null;
-        } else {
-          // Not installed: mark to install
-          item.action = 'install';
-        }
-      }
-
-      newItems[idx] = item;
-      return newItems;
-    };
-
-    switch (section) {
-      case 0:
-        setBenches(updateItem(benches(), index));
-        break;
-      case 1:
-        setAiTools(updateItem(aiTools(), index));
-        break;
-      case 2:
-        setTools(updateItem(tools(), index));
-        break;
-    }
-  };
-
-  /**
-   * Handle confirmation - process selected items
-   */
   const handleConfirm = async () => {
-    // Exit the UI and process selections
     console.log('\n╔══════════════════════════════════════════════════════════════════════════════╗');
     console.log('║               Applying Configuration Changes                                 ║');
     console.log('╚══════════════════════════════════════════════════════════════════════════════╝\n');
@@ -97,341 +63,199 @@ export const App: SolidComponent = () => {
     process.exit(0);
   };
 
-  /**
-   * Handle quit action
-   */
-  const handleQuit = () => {
-    console.log('\nExiting without changes.');
-    process.exit(0);
+  // Handle selection change in a column
+  const handleSelectionChange = (column: number, index: number) => {
+    debugLog(`Selection changed: column=${column}, index=${index}`);
   };
 
-  // Queue for keypresses that come in before initialization is complete
-  const keyPressQueue: Array<{ key: string; ctrl: boolean; shift: boolean }> = [];
-  let isInitComplete = false;
+  // Handle item selected (space/enter pressed)
+  const handleItemSelected = (column: number, index: number) => {
+    debugLog(`Item selected: column=${column}, index=${index}`);
 
-  // Get renderer reference early so we can force re-renders
-  debugLog('=== Getting renderer for requestRender ===');
-  let rendererRef: any = null;
-  try {
-    rendererRef = useRenderer();
-    debugLog(`Renderer for requestRender: ${rendererRef ? 'obtained' : 'null'}`);
-  } catch (e) {
-    debugLog(`Failed to get renderer for requestRender: ${e}`);
-  }
+    const toggleItem = (items: Component[], idx: number): Component[] => {
+      const newItems = [...items];
+      const item = { ...newItems[idx] };
+      const isInstalled = item.status === 'installed' || item.status === 'needs_creds';
 
-  // Function to force renderer to redraw
-  const forceRender = () => {
-    debugLog('🔄 forceRender called');
-    // Increment render trigger to force Solid reactivity
-    setRenderTrigger(prev => prev + 1);
-    debugLog(`  renderTrigger updated to ${renderTrigger() + 1}`);
-    if (rendererRef?.root) {
-      debugLog('  Calling root.requestRender()');
-      rendererRef.root.requestRender();
-    } else if (rendererRef?._root) {
-      debugLog('  Calling _root.requestRender()');
-      rendererRef._root.requestRender();
-    } else {
-      debugLog('  No root found on renderer');
+      if (item.checked) {
+        if (isInstalled) {
+          item.action = 'uninstall';
+        } else {
+          item.checked = false;
+          item.action = null;
+        }
+      } else {
+        item.checked = true;
+        item.action = isInstalled ? null : 'install';
+      }
+
+      newItems[idx] = item;
+      return newItems;
+    };
+
+    switch (column) {
+      case 0:
+        setBenches(toggleItem(benches(), index));
+        break;
+      case 1:
+        setAiTools(toggleItem(aiTools(), index));
+        break;
+      case 2:
+        setTools(toggleItem(tools(), index));
+        break;
     }
   };
 
-  // Navigation hook - must be called at component level FIRST
-  // Pass functions instead of values so navigation always works with current data
-  const navigation = useNavigation({
-    benches: benches,
-    aiTools: aiTools,
-    tools: tools,
-    onToggle: handleToggle,
-    onConfirm: handleConfirm,
-    onQuit: handleQuit,
-    requestRender: forceRender,
-  });
-
-  // Initialize components immediately
-  let initPromise: Promise<void> | null = null;
-  debugLog('=== Starting immediate component initialization ===');
-
-  initPromise = (async () => {
+  // Initialize components immediately (don't wait for onMount)
+  debugLog('Starting immediate initialization...');
+  (async () => {
     try {
-      debugLog('Calling initializeComponents (IMMEDIATE)...');
+      debugLog('Calling initializeComponents...');
       const { benches: b, aiTools: ai, tools: t } = await initializeComponents();
-      debugLog(`initializeComponents returned: ${b.length} benches, ${ai.length} aiTools, ${t.length} tools`);
+      debugLog(`Loaded: ${b.length} benches, ${ai.length} aiTools, ${t.length} tools`);
 
-      debugLog('Calling loadAllStatuses (IMMEDIATE)...');
+      debugLog('Calling loadAllStatuses...');
       await loadAllStatuses(b, ai, t);
       debugLog('loadAllStatuses completed');
 
-      debugLog('Setting state with loaded components (IMMEDIATE)...');
-      debugLog(`  Before setState: benches()=${benches().length}, aiTools()=${aiTools().length}, tools()=${tools().length}`);
       setBenches(b);
       setAiTools(ai);
       setTools(t);
       setIsLoading(false);
+      
+      // Force a re-render after data loads
+      debugLog('Requesting render after data load');
+      renderer?.requestRender();
 
-      // Force a small delay to allow SolidJS to update signals
-      await new Promise(resolve => setTimeout(resolve, 10));
-      debugLog(`  After setState: benches()=${benches().length}, aiTools()=${aiTools().length}, tools()=${tools().length}`);
-
-      // Mark initialization as complete
-      isInitComplete = true;
-      debugLog('=== IMMEDIATE initialization COMPLETED - Components loaded! ===');
-
-      // Process any queued keypresses
-      debugLog(`Queue length: ${keyPressQueue.length}`);
-      if (keyPressQueue.length > 0) {
-        debugLog(`Processing ${keyPressQueue.length} queued keypresses...`);
-        while (keyPressQueue.length > 0) {
-          const queued = keyPressQueue.shift()!;
-          debugLog(`  About to replay queued: key='${queued.key}', available items: benches()=${benches().length}, aiTools()=${aiTools().length}, tools()=${tools().length}`);
-          navigation.handleKeyPress(queued.key, queued.ctrl, queued.shift);
-          debugLog(`  After replay: key='${queued.key}'`);
-        }
-      } else {
-        debugLog('No queued keypresses to process');
-      }
+      debugLog('=== Initialization COMPLETE ===');
     } catch (error) {
-      debugLog(`=== IMMEDIATE initialization FAILED: ${error} ===`);
+      debugLog(`Initialization FAILED: ${error}`);
       console.error('Failed to initialize:', error);
       setIsLoading(false);
-      isInitComplete = true; // Mark as complete even on error to unblock queue
     }
   })();
 
-  // Buffer for escape sequences
-  let escapeBuffer = '';
+  // Handle keyboard for column switching and quit using proper hook
+  useKeyboard((event) => {
+    const key = event?.name?.toLowerCase() || '';
+    debugLog(`Key pressed: ${key}`);
 
-  // Use the renderer we already obtained to attach keyboard handler
-  debugLog('=== Attaching keyboard handler to renderer ===');
-  if (rendererRef) {
-    debugLog(`Renderer type: ${rendererRef.constructor?.name}`);
-
-    // Try to access keyboard handler
-    if ((rendererRef as any)._keyHandler) {
-      debugLog(`Found _keyHandler on renderer`);
-      const keyHandler = (rendererRef as any)._keyHandler;
-
-      // Try to listen to keypress events using onInternal for InternalKeyHandler
-      try {
-        const handler = (event: any) => {
-          let key = event?.name?.toLowerCase?.() || '';
-          let ctrl = !!event?.ctrl;
-          let shift = !!event?.shift;
-
-          debugLog(`🎹 RAW EVENT from _keyHandler: name='${key}', shift=${shift}, isInitComplete=${isInitComplete}, queueLen=${keyPressQueue.length}`);
-
-          // Handle escape sequences for arrow keys
-          // Arrow keys come as ESC [ [modifiers] letter where:
-          // - letter is a/b/c/d (case-insensitive) for up/down/right/left
-          // - modifiers can be numeric codes and semicolons (e.g., "4;" for Shift)
-          // - OR terminal may pre-process and send the arrow name directly
-          if (key === '[') {
-            // Start of escape sequence
-            escapeBuffer = '[';
-            debugLog(`   Escape sequence started`);
-            return;
-          } else if (escapeBuffer.startsWith('[')) {
-            // We're in an escape sequence
-            if (key.length === 1 && /[abcd]/i.test(key)) {
-              // Found the arrow key letter - complete the sequence
-              const normalizedKey = key.toLowerCase();
-              const arrowMap: Record<string, string> = {
-                'a': 'up',    // ESC [ A = up
-                'b': 'down',  // ESC [ B = down
-                'c': 'right', // ESC [ C = right
-                'd': 'left',  // ESC [ D = left
-              };
-              key = arrowMap[normalizedKey] || key;
-              escapeBuffer = '';
-              debugLog(`   Escape sequence complete: ${normalizedKey} -> ${key}`);
-            } else if (['up', 'down', 'left', 'right'].includes(key)) {
-              // Terminal pre-processed the arrow key - accept it
-              escapeBuffer = '';
-              debugLog(`   Escape sequence complete (pre-processed): ${key}`);
-            } else if (key.length === 1 && /[0-9;]/.test(key)) {
-              // Modifier characters - accumulate and skip
-              escapeBuffer += key;
-              debugLog(`   Escape sequence accumulating modifiers: '${escapeBuffer}'`);
-              return;
-            } else {
-              // Unexpected character - cancel sequence
-              debugLog(`   Escape sequence cancelled (unexpected: ${key})`);
-              escapeBuffer = '';
-              return;
-            }
-          }
-
-          // Normalize other key names
-          const keyMap: Record<string, string> = {
-            'arrowup': 'up',
-            'arrowdown': 'down',
-            'arrowleft': 'left',
-            'arrowright': 'right',
-            'up': 'up',
-            'down': 'down',
-            'left': 'left',
-            'right': 'right',
-            'return': 'enter',
-            'enter': 'enter',
-            'space': ' ',
-            ' ': ' ',
-            'q': 'q',
-            'i': 'i',
-            'j': 'j',
-            'k': 'k',
-            'l': 'l',
-            'u': 'u',
-            'o': 'o',
-            'h': 'h',
-          };
-
-          if (keyMap[key]) {
-            key = keyMap[key];
-          }
-
-          if (key) {
-            debugLog(`⌨️ KEY: '${key}', ctrl=${ctrl}, shift=${shift}`);
-            navigation.handleKeyPress(key, ctrl, shift);
-          }
-        };
-
-        // Try onInternal first (for InternalKeyHandler)
-        if (keyHandler.onInternal) {
-          keyHandler.onInternal('keypress', handler);
-          debugLog(`Attached keypress listener using onInternal`);
-        } else if (keyHandler.on) {
-          keyHandler.on('keypress', handler);
-          debugLog(`Attached keypress listener using on`);
-        }
-      } catch (e) {
-        debugLog(`Failed to attach keypress listener: ${e}`);
-      }
-    }
-  }
-
-  // Set up keyboard input directly using OpenTUI's useKeyboard hook
-  // This MUST be called at the component level during render
-  debugLog('=== Setting up useKeyboard hook ===');
-  useKeyboard((event: any) => {
-    debugLog(`🎹 KEYBOARD EVENT FIRED!!! (isInitComplete=${isInitComplete})`);
-    debugLog(`   Full event: ${JSON.stringify(event)}`);
-    debugLog(`   event.name: ${event?.name}`);
-    debugLog(`   event.ctrl: ${event?.ctrl}`);
-    debugLog(`   event.shift: ${event?.shift}`);
-    debugLog(`   Queue length: ${keyPressQueue.length}`);
-
-    // Extract key name - KeyEvent structure has name directly
-    let key = event?.name?.toLowerCase?.() || '';
-    let ctrl = !!event?.ctrl;
-    let shift = !!event?.shift;
-
-    debugLog(`   Raw extracted key: '${key}'`);
-
-    // Normalize arrow key names from OpenTUI format
-    const keyMap: Record<string, string> = {
-      'arrowup': 'up',
-      'arrowdown': 'down',
-      'arrowleft': 'left',
-      'arrowright': 'right',
-      'up': 'up',
-      'down': 'down',
-      'left': 'left',
-      'right': 'right',
-      'return': 'enter',
-      'enter': 'enter',
-      'space': ' ',
-      ' ': ' ',
-      'q': 'q',
-      'i': 'i',
-      'j': 'j',
-      'k': 'k',
-      'l': 'l',
-      'u': 'u',
-      'o': 'o',
-      'h': 'h',
-    };
-
-    const mappedKey = keyMap[key];
-    if (mappedKey) {
-      debugLog(`   Mapped: '${key}' → '${mappedKey}'`);
-      key = mappedKey;
-    } else {
-      debugLog(`   No mapping for: '${key}'`);
+    if (key === 'q') {
+      console.log('\nExiting without changes.');
+      process.exit(0);
     }
 
-    // Skip empty keys
-    if (!key) {
-      debugLog('   ⚠️  SKIPPING: Empty key!');
-      return;
+    if (key === 'return' || key === 'enter') {
+      handleConfirm();
     }
 
-    debugLog(`⌨️  Key mapped to: '${key}', ctrl: ${ctrl}, shift: ${shift}`);
-
-    // If initialization is not complete yet, queue this keypress for later replay
-    if (!isInitComplete) {
-      debugLog(`   ⏳ Initialization not complete, queueing keypress: '${key}'`);
-      keyPressQueue.push({ key, ctrl, shift });
-      return;
+    // Tab or right arrow to switch columns
+    if (key === 'tab' || key === 'right' || key === 'l') {
+      setActiveColumn(c => {
+        const newCol = (c + 1) % 3;
+        debugLog(`Switched to column ${newCol}`);
+        return newCol;
+      });
     }
 
-    // Call the navigation handler
-    navigation.handleKeyPress(key, ctrl, shift);
+    // Shift+tab or left arrow to switch columns back
+    if (key === 'left' || key === 'h') {
+      setActiveColumn(c => {
+        const newCol = (c + 2) % 3;
+        debugLog(`Switched to column ${newCol}`);
+        return newCol;
+      });
+    }
   });
 
-
-  if (isLoading()) {
-    return (
-      <box flexDirection="column">
-        <Header />
-        <text fg="#FFFF6B">Loading components...</text>
-      </box>
-    );
-  }
-
-  // Access renderTrigger to ensure component reacts to navigation changes
-  const _trigger = renderTrigger();
+  // Convert components to select options using createMemo for reactivity
+  const benchOptions = createMemo(() => benches().map(formatOption));
+  const aiOptions = createMemo(() => aiTools().filter(t => !t.isSeparator).map(formatOption));
+  const toolOptions = createMemo(() => tools().map(formatOption));
 
   return (
     <box flexDirection="column" height="100%" width="100%">
-      {/* Header with banner and navigation help */}
       <Header />
 
-      {/* Three-column layout */}
-      <box flexDirection="row" gap={6}>
-        {/* Dev Benches */}
-        <SectionColumn
-          title="DEV BENCHES"
-          items={benches()}
-          currentIndex={() => navigation.currentSection() === 0 ? navigation.currentIndex() : -1}
-          isActive={() => navigation.currentSection() === 0}
-          width={24}
-        />
+      <Show
+        when={!isLoading()}
+        fallback={
+          <text fg="#FFFF6B">Loading components...</text>
+        }
+      >
+        <text fg="#888888">Use ↑↓/jk to navigate, Tab/←→ to switch columns, Space to toggle, Enter to confirm, Q to quit</text>
 
-        {/* AI Assistants */}
-        <SectionColumn
-          title="AI ASSISTANTS"
-          items={aiTools()}
-          currentIndex={() => navigation.currentSection() === 1 ? navigation.currentIndex() : -1}
-          isActive={() => navigation.currentSection() === 1}
-          width={24}
-        />
+        <box flexDirection="row" gap={2} marginTop={1}>
+          {/* Column 1: Dev Benches */}
+          <box flexDirection="column" width={28}>
+            <text fg={activeColumn() === 0 ? '#FFFF6B' : '#888888'}>
+              {activeColumn() === 0 ? '▶ DEV BENCHES ◀' : '─── DEV BENCHES ───'}
+            </text>
+            <select
+              key={`benches-${benches().length}`}
+              focused={activeColumn() === 0}
+              options={benchOptions()}
+              height={10}
+              width={26}
+              showDescription={false}
+              textColor="#FFFFFF"
+              focusedTextColor="#000000"
+              focusedBackgroundColor="#FFFF6B"
+              selectedTextColor="#69FF94"
+              onChange={(index) => handleSelectionChange(0, index)}
+              onSelect={(index) => handleItemSelected(0, index)}
+            />
+          </box>
 
-        {/* Tools */}
-        <SectionColumn
-          title="TOOLS"
-          items={tools()}
-          currentIndex={() => navigation.currentSection() === 2 ? navigation.currentIndex() : -1}
-          isActive={() => navigation.currentSection() === 2}
-          width={24}
-        />
-      </box>
+          {/* Column 2: AI Assistants */}
+          <box flexDirection="column" width={28}>
+            <text fg={activeColumn() === 1 ? '#FFFF6B' : '#888888'}>
+              {activeColumn() === 1 ? '▶ AI ASSISTANTS ◀' : '─── AI ASSISTANTS ───'}
+            </text>
+            <select
+              key={`aitools-${aiTools().length}`}
+              focused={activeColumn() === 1}
+              options={aiOptions()}
+              height={10}
+              width={26}
+              showDescription={false}
+              textColor="#FFFFFF"
+              focusedTextColor="#000000"
+              focusedBackgroundColor="#FFFF6B"
+              selectedTextColor="#69FF94"
+              onChange={(index) => handleSelectionChange(1, index)}
+              onSelect={(index) => handleItemSelected(1, index)}
+            />
+          </box>
 
-      {/* Status bar */}
-      <StatusBar
-        benches={benches()}
-        aiTools={aiTools()}
-        tools={tools()}
-      />
+          {/* Column 3: Tools */}
+          <box flexDirection="column" width={28}>
+            <text fg={activeColumn() === 2 ? '#FFFF6B' : '#888888'}>
+              {activeColumn() === 2 ? '▶ TOOLS ◀' : '─── TOOLS ───'}
+            </text>
+            <select
+              key={`tools-${tools().length}`}
+              focused={activeColumn() === 2}
+              options={toolOptions()}
+              height={10}
+              width={26}
+              showDescription={false}
+              textColor="#FFFFFF"
+              focusedTextColor="#000000"
+              focusedBackgroundColor="#FFFF6B"
+              selectedTextColor="#69FF94"
+              onChange={(index) => handleSelectionChange(2, index)}
+              onSelect={(index) => handleItemSelected(2, index)}
+            />
+          </box>
+        </box>
+
+        <StatusBar
+          benches={benches()}
+          aiTools={aiTools()}
+          tools={tools()}
+        />
+      </Show>
     </box>
   );
 };
