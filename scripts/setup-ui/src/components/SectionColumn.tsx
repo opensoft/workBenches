@@ -5,10 +5,14 @@ import { SelectableItem } from './SelectableItem';
 interface SectionColumnProps {
   title: string;
   items: ComponentType[];
-  currentIndex: number;
-  isActive: boolean;
+  currentIndex: number | (() => number);
+  isActive: boolean | (() => boolean);
   width?: number;
 }
+
+// Helper to resolve a value that might be a getter function
+const resolve = <T,>(val: T | (() => T)): T =>
+  typeof val === 'function' ? (val as () => T)() : val;
 
 /**
  * SectionColumn component - renders a bordered column with selectable items
@@ -31,7 +35,11 @@ export const SectionColumn: Component<SectionColumnProps> = (props) => {
     return titleWithPadding + '─'.repeat(Math.max(0, remainingDashes));
   };
 
-  const borderColor = () => props.isActive ? '#FFFF6B' : '#888888';
+  // Create reactive getters that resolve the prop values
+  const isActive = () => resolve(props.isActive);
+  const currentIndex = () => resolve(props.currentIndex);
+
+  const borderColor = () => isActive() ? '#FFFF6B' : '#888888';
 
   return (
     <box flexDirection="column" width={width()}>
@@ -45,8 +53,8 @@ export const SectionColumn: Component<SectionColumnProps> = (props) => {
         {(item, index) => (
           <SelectableItem
             component={item}
-            isSelected={index() === props.currentIndex}
-            isActive={props.isActive}
+            isSelected={() => index() === currentIndex()}
+            isActive={isActive}
             width={width()}
           />
         )}

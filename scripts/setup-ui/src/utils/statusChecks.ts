@@ -6,9 +6,14 @@ import { getProjectRoot, AI_CLI_DEFINITIONS } from './config';
  * Check if running in WSL environment
  */
 export function isWSL(): boolean {
-  return !!process.env.WSL_DISTRO_NAME ||
-         (process.platform === 'linux' &&
-          Bun.file('/proc/version').exists() !== false);
+  if (process.env.WSL_DISTRO_NAME) return true;
+  if (process.platform !== 'linux') return false;
+  // Check for /proc/version synchronously if available
+  try {
+    return require('fs').existsSync('/proc/version');
+  } catch {
+    return false;
+  }
 }
 
 /**

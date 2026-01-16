@@ -32,6 +32,7 @@ export const App: SolidComponent = () => {
   const [aiTools, setAiTools] = createSignal<Component[]>([]);
   const [tools, setTools] = createSignal<Component[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
+  const [renderTrigger, setRenderTrigger] = createSignal(0);
 
   /**
    * Toggle item selection and determine action
@@ -121,6 +122,9 @@ export const App: SolidComponent = () => {
   // Function to force renderer to redraw
   const forceRender = () => {
     debugLog('🔄 forceRender called');
+    // Increment render trigger to force Solid reactivity
+    setRenderTrigger(prev => prev + 1);
+    debugLog(`  renderTrigger updated to ${renderTrigger() + 1}`);
     if (rendererRef?.root) {
       debugLog('  Calling root.requestRender()');
       rendererRef.root.requestRender();
@@ -217,30 +221,44 @@ export const App: SolidComponent = () => {
           debugLog(`🎹 RAW EVENT from _keyHandler: name='${key}', shift=${shift}, isInitComplete=${isInitComplete}, queueLen=${keyPressQueue.length}`);
 
           // Handle escape sequences for arrow keys
-          // Arrow keys come as: [ (escape) followed by a/b/c/d (case-insensitive)
+          // Arrow keys come as ESC [ [modifiers] letter where:
+          // - letter is a/b/c/d (case-insensitive) for up/down/right/left
+          // - modifiers can be numeric codes and semicolons (e.g., "4;" for Shift)
+          // - OR terminal may pre-process and send the arrow name directly
           if (key === '[') {
             // Start of escape sequence
             escapeBuffer = '[';
             debugLog(`   Escape sequence started`);
             return;
-          } else if (escapeBuffer === '[' && key.length === 1 && /[abcd]/i.test(key)) {
-            // Complete escape sequence (normalize to lowercase)
-            const normalizedKey = key.toLowerCase();
-            const arrowMap: Record<string, string> = {
-              'a': 'up',    // ESC [ A = up
-              'b': 'down',  // ESC [ B = down
-              'c': 'right', // ESC [ C = right
-              'd': 'left',  // ESC [ D = left
-            };
-            key = arrowMap[normalizedKey] || key;
-            escapeBuffer = '';
-            debugLog(`   Escape sequence complete: [${normalizedKey} -> ${key}`);
-          } else {
-            // Not part of escape sequence, clear buffer
-            if (escapeBuffer) {
-              debugLog(`   Escape sequence cancelled (got: ${key})`);
+          } else if (escapeBuffer.startsWith('[')) {
+            // We're in an escape sequence
+            if (key.length === 1 && /[abcd]/i.test(key)) {
+              // Found the arrow key letter - complete the sequence
+              const normalizedKey = key.toLowerCase();
+              const arrowMap: Record<string, string> = {
+                'a': 'up',    // ESC [ A = up
+                'b': 'down',  // ESC [ B = down
+                'c': 'right', // ESC [ C = right
+                'd': 'left',  // ESC [ D = left
+              };
+              key = arrowMap[normalizedKey] || key;
+              escapeBuffer = '';
+              debugLog(`   Escape sequence complete: ${normalizedKey} -> ${key}`);
+            } else if (['up', 'down', 'left', 'right'].includes(key)) {
+              // Terminal pre-processed the arrow key - accept it
+              escapeBuffer = '';
+              debugLog(`   Escape sequence complete (pre-processed): ${key}`);
+            } else if (key.length === 1 && /[0-9;]/.test(key)) {
+              // Modifier characters - accumulate and skip
+              escapeBuffer += key;
+              debugLog(`   Escape sequence accumulating modifiers: '${escapeBuffer}'`);
+              return;
+            } else {
+              // Unexpected character - cancel sequence
+              debugLog(`   Escape sequence cancelled (unexpected: ${key})`);
+              escapeBuffer = '';
+              return;
             }
-            escapeBuffer = '';
           }
 
           // Normalize other key names
@@ -369,6 +387,9 @@ export const App: SolidComponent = () => {
       </box>
     );
   }
+
+  // Access renderTrigger to ensure component reacts to navigation changes
+  const _trigger = renderTrigger();
 
   return (
     <box flexDirection="column" height="100%" width="100%">

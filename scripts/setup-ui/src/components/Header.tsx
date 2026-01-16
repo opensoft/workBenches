@@ -46,13 +46,13 @@ export const Header: Component = () => {
       {/* Navigation Instructions */}
       <box flexDirection="row">
         <text fg="#6BFFFF">{'Navigation:'}</text>
-        <text fg="#FFFFFF">{' ↑/↓ Move  '}</text>
-        <text fg="#6BFFFF">{'←/→:'}</text>
-        <text fg="#FFFFFF">{' Switch Section  '}</text>
+        <text fg="#FFFFFF">{' ↑/↓/j/k or I Move  '}</text>
+        <text fg="#6BFFFF">{'←/→/h/l or U/O:'}</text>
+        <text fg="#FFFFFF">{' Switch  '}</text>
         <text fg="#6BFFFF">{'Space:'}</text>
         <text fg="#FFFFFF">{' Toggle  '}</text>
         <text fg="#6BFFFF">{'Enter:'}</text>
-        <text fg="#FFFFFF">{' Apply Changes  '}</text>
+        <text fg="#FFFFFF">{' Apply  '}</text>
         <text fg="#6BFFFF">{'Q:'}</text>
         <text fg="#FFFFFF">{' Quit'}</text>
       </box>

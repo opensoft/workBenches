@@ -3,10 +3,14 @@ import type { Component as ComponentType, COLORS, SYMBOLS } from '../types';
 
 interface SelectableItemProps {
   component: ComponentType;
-  isSelected: boolean;
-  isActive: boolean;
+  isSelected: boolean | (() => boolean);
+  isActive: boolean | (() => boolean);
   width?: number;
 }
+
+// Helper to resolve a value that might be a getter function
+const resolve = <T,>(val: T | (() => T)): T =>
+  typeof val === 'function' ? (val as () => T)() : val;
 
 /**
  * Get checkbox display based on checked state and action
@@ -81,6 +85,10 @@ export const SelectableItem: Component<SelectableItemProps> = (props) => {
   const statusColor = () => getStatusColor(props.component.status);
   const checkboxColor = () => getCheckboxColor(props.component);
 
+  // Create reactive getters for props that might be functions
+  const isSelected = () => resolve(props.isSelected);
+  const isActive = () => resolve(props.isActive);
+
   // Handle separator
   if (props.component.isSeparator) {
     return (
@@ -94,13 +102,13 @@ export const SelectableItem: Component<SelectableItemProps> = (props) => {
   }
 
   // Build the display string
-  const prefix = () => props.isSelected && props.isActive ? '▶ ' : '  ';
+  const prefix = () => isSelected() && isActive() ? '▶ ' : '  ';
   const name = () => props.component.name.slice(0, 16).padEnd(16);
 
   return (
     <box flexDirection="row" width={props.width || 24}>
       {/* Selection indicator */}
-      <text fg={props.isSelected && props.isActive ? '#6BFFFF' : '#FFFFFF'}>
+      <text fg={isSelected() && isActive() ? '#6BFFFF' : '#FFFFFF'}>
         {prefix()}
       </text>
 
@@ -121,7 +129,7 @@ export const SelectableItem: Component<SelectableItemProps> = (props) => {
       <text fg="#FFFFFF">{' '}</text>
 
       {/* Component name */}
-      <text fg={props.isActive ? '#FFFFFF' : '#888888'}>
+      <text fg={isActive() ? '#FFFFFF' : '#888888'}>
         {name()}
       </text>
     </box>

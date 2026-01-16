@@ -13,6 +13,7 @@ interface UseNavigationOptions {
   onToggle: (section: number, index: number) => void;
   onConfirm: () => void;
   onQuit: () => void;
+  requestRender?: () => void;  // Optional callback to force renderer update
 }
 
 /**
@@ -21,6 +22,19 @@ interface UseNavigationOptions {
 export function useNavigation(options: UseNavigationOptions) {
   const [currentSection, setCurrentSection] = createSignal(0);
   const [currentIndex, setCurrentIndex] = createSignal(0);
+
+  // Debug logging
+  const debugLog = (msg: string) => {
+    try {
+      require('fs').writeFileSync(
+        '/home/brett/setup-ui-debug.log',
+        `[${new Date().toISOString()}] ${msg}\n`,
+        { flag: 'a' }
+      );
+    } catch (e) {
+      // Silently fail
+    }
+  };
 
   /**
    * Get the items for the current section
@@ -51,7 +65,7 @@ export function useNavigation(options: UseNavigationOptions) {
    */
   const isOnSeparator = (index: number): boolean => {
     if (currentSection() !== 1) return false;
-    const item = options.aiTools[index];
+    const item = options.aiTools()[index];
     return item?.isSeparator ?? false;
   };
 
@@ -59,6 +73,7 @@ export function useNavigation(options: UseNavigationOptions) {
    * Move up, skipping separators
    */
   const moveUp = () => {
+    debugLog(`moveUp called: currentIndex=${currentIndex()}`);
     let newIndex = currentIndex() - 1;
 
     // Skip separators
@@ -67,7 +82,12 @@ export function useNavigation(options: UseNavigationOptions) {
     }
 
     if (newIndex >= 0) {
+      debugLog(`  setCurrentIndex(${newIndex})`);
       setCurrentIndex(newIndex);
+      debugLog(`  After setCurrentIndex: currentIndex()=${currentIndex()}`);
+      options.requestRender?.();
+    } else {
+      debugLog(`  newIndex=${newIndex} is out of bounds`);
     }
   };
 
@@ -75,6 +95,7 @@ export function useNavigation(options: UseNavigationOptions) {
    * Move down, skipping separators
    */
   const moveDown = () => {
+    debugLog(`moveDown called: currentIndex=${currentIndex()}`);
     const maxIdx = getMaxIndex();
     let newIndex = currentIndex() + 1;
 
@@ -84,7 +105,12 @@ export function useNavigation(options: UseNavigationOptions) {
     }
 
     if (newIndex <= maxIdx) {
+      debugLog(`  setCurrentIndex(${newIndex})`);
       setCurrentIndex(newIndex);
+      debugLog(`  After setCurrentIndex: currentIndex()=${currentIndex()}`);
+      options.requestRender?.();
+    } else {
+      debugLog(`  newIndex=${newIndex} exceeds maxIdx=${maxIdx}`);
     }
   };
 
@@ -92,9 +118,15 @@ export function useNavigation(options: UseNavigationOptions) {
    * Switch to previous section
    */
   const moveLeft = () => {
+    debugLog(`moveLeft called: currentSection=${currentSection()}`);
     if (currentSection() > 0) {
+      debugLog(`  setCurrentSection(${currentSection() - 1})`);
       setCurrentSection(currentSection() - 1);
       setCurrentIndex(0);
+      debugLog(`  After move: section=${currentSection()}, index=${currentIndex()}`);
+      options.requestRender?.();
+    } else {
+      debugLog(`  Already at first section`);
     }
   };
 
@@ -102,9 +134,15 @@ export function useNavigation(options: UseNavigationOptions) {
    * Switch to next section
    */
   const moveRight = () => {
+    debugLog(`moveRight called: currentSection=${currentSection()}`);
     if (currentSection() < 2) {
+      debugLog(`  setCurrentSection(${currentSection() + 1})`);
       setCurrentSection(currentSection() + 1);
       setCurrentIndex(0);
+      debugLog(`  After move: section=${currentSection()}, index=${currentIndex()}`);
+      options.requestRender?.();
+    } else {
+      debugLog(`  Already at last section`);
     }
   };
 
@@ -119,62 +157,77 @@ export function useNavigation(options: UseNavigationOptions) {
     if (item?.isSeparator) return;
 
     options.onToggle(currentSection(), currentIndex());
+    options.requestRender?.();
   };
 
   /**
    * Handle keyboard input
    */
   const handleKeyPress = (key: string, ctrl: boolean, shift: boolean) => {
-    console.log(`\n📍 handleKeyPress: key='${key}', section=${currentSection()}, index=${currentIndex()}`);
+    debugLog(`📍 handleKeyPress: key='${key}', section=${currentSection()}, index=${currentIndex()}`);
+
+    // Check if components are loaded before allowing navigation
+    const items = getCurrentItems();
+    if (items.length === 0) {
+      debugLog('   ⚠️  No items available yet (components still loading)');
+      return;
+    }
 
     // Quit
     if (key === 'q' || key === 'Q') {
-      console.log('❌ Quit requested');
+      debugLog('❌ Quit requested');
       options.onQuit();
       return;
     }
 
     // Confirm
     if (key === 'enter' || key === 'return') {
-      console.log('✅ Confirm requested');
+      debugLog('✅ Confirm requested');
       options.onConfirm();
       return;
     }
 
     // Toggle
     if (key === ' ' || key === 'space') {
-      console.log('🔄 Toggle requested');
+      debugLog('🔄 Toggle requested');
       toggleCurrent();
-      console.log(`   After toggle: section=${currentSection()}, index=${currentIndex()}`);
+      debugLog(`   After toggle: section=${currentSection()}, index=${currentIndex()}`);
       return;
     }
 
-    // Navigation
+    // Navigation - Support arrow keys, vim-style (hjkl), and IJKL
+    // Vim keys: h=left, j=down, k=up, l=right
+    // IJKL layout: i=up, j=left, k=down, l=right
     switch (key) {
       case 'up':
       case 'k':
-        console.log('⬆️  Move up');
+      case 'i':
+        debugLog('⬆️  Move up');
         moveUp();
-        console.log(`   After moveUp: section=${currentSection()}, index=${currentIndex()}`);
+        debugLog(`   After moveUp: section=${currentSection()}, index=${currentIndex()}`);
         break;
       case 'down':
       case 'j':
-        console.log('⬇️  Move down');
+        debugLog('⬇️  Move down');
         moveDown();
-        console.log(`   After moveDown: section=${currentSection()}, index=${currentIndex()}`);
+        debugLog(`   After moveDown: section=${currentSection()}, index=${currentIndex()}`);
         break;
       case 'left':
       case 'h':
-        console.log('⬅️  Move left');
+      case 'u':
+        debugLog('⬅️  Move left');
         moveLeft();
-        console.log(`   After moveLeft: section=${currentSection()}, index=${currentIndex()}`);
+        debugLog(`   After moveLeft: section=${currentSection()}, index=${currentIndex()}`);
         break;
       case 'right':
       case 'l':
-        console.log('➡️  Move right');
+      case 'o':
+        debugLog('➡️  Move right');
         moveRight();
-        console.log(`   After moveRight: section=${currentSection()}, index=${currentIndex()}`);
+        debugLog(`   After moveRight: section=${currentSection()}, index=${currentIndex()}`);
         break;
+      default:
+        debugLog(`   Unknown key: ${key}`);
     }
   };
 
