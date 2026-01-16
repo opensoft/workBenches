@@ -1,0 +1,4 @@
+# Bun configuration for OpenTUI + SolidJS setup UI
+
+[env]
+NODE_ENV = "production"
