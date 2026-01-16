@@ -1,9 +1,9 @@
 import { createSignal, onMount, For, type Component as SolidComponent } from 'solid-js';
+import { useKeyboard } from '@opentui/solid';
 import type { Component } from '../types';
 import { initializeComponents } from '../utils/config';
 import { loadAllStatuses } from '../utils/statusChecks';
 import { useNavigation } from '../hooks/useNavigation';
-import { useKeyboardNavigation } from '../hooks/useKeyboardNavigation';
 import { Header } from './Header';
 import { SectionColumn } from './SectionColumn';
 import { StatusBar } from './StatusBar';
@@ -99,8 +99,84 @@ export const App: SolidComponent = () => {
     onQuit: handleQuit,
   });
 
-  // Set up keyboard navigation
-  useKeyboardNavigation(navigation);
+  // Set up keyboard input directly using OpenTUI's useKeyboard hook
+  // This MUST be called at the component level during render
+  useKeyboard((event: any) => {
+    let key = '';
+    let ctrl = false;
+    let shift = false;
+
+    // Debug: log raw event structure
+    if (event) {
+      console.log('🎹 Keyboard event:', {
+        keys: Object.keys(event),
+        key: event.key,
+        name: event.name,
+        char: event.char,
+      });
+    }
+
+    // Extract key information from OpenTUI's KeyEvent structure
+    if (event) {
+      // Try multiple ways to get the key name
+      if (event.key) {
+        const keyInfo = event.key;
+
+        // Get the key name
+        if (keyInfo.name) {
+          key = keyInfo.name.toLowerCase();
+        } else if (keyInfo.char) {
+          key = keyInfo.char.toLowerCase();
+        }
+
+        // Check modifiers
+        ctrl = !!(keyInfo.ctrl || keyInfo.meta);
+        shift = !!keyInfo.shift;
+      } else if (event.name) {
+        // Direct name property
+        key = event.name.toLowerCase();
+        ctrl = !!event.ctrl;
+        shift = !!event.shift;
+      } else if (event.char) {
+        // Direct char property
+        key = event.char.toLowerCase();
+      } else if (typeof event === 'string') {
+        // String directly
+        key = event.toLowerCase();
+      }
+    }
+
+    // Normalize arrow key names from OpenTUI format
+    const keyMap: Record<string, string> = {
+      'arrowup': 'up',
+      'arrowdown': 'down',
+      'arrowleft': 'left',
+      'arrowright': 'right',
+      'up': 'up',
+      'down': 'down',
+      'left': 'left',
+      'right': 'right',
+      'return': 'enter',
+      'enter': 'enter',
+      'space': ' ',
+      ' ': ' ',
+      'q': 'q',
+    };
+
+    if (keyMap[key]) {
+      key = keyMap[key];
+    }
+
+    // Skip empty keys
+    if (!key) {
+      return;
+    }
+
+    console.log(`⌨️  Key mapped to: '${key}', ctrl: ${ctrl}, shift: ${shift}`);
+
+    // Call the navigation handler
+    navigation.handleKeyPress(key, ctrl, shift);
+  });
 
   // Initialize components on mount
   onMount(async () => {
