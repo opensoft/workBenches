@@ -80,7 +80,40 @@ if ! docker image inspect "workbench-base:$USERNAME" >/dev/null 2>&1; then
 fi
 
 # Call the interactive setup script
-"${SCRIPT_DIR}/scripts/interactive-setup.sh"
+# Use TypeScript/OpenTUI version if Bun is available, otherwise fall back to Bash
+run_interactive_setup() {
+    local setup_ui_dir="${SCRIPT_DIR}/scripts/setup-ui"
+
+    # Check if Bun is installed and setup-ui exists
+    if command -v bun >/dev/null 2>&1 && [ -f "$setup_ui_dir/package.json" ]; then
+        echo "Starting interactive setup (OpenTUI)..."
+
+        # Install dependencies if needed
+        if [ ! -d "$setup_ui_dir/node_modules" ]; then
+            echo "Installing dependencies..."
+            (cd "$setup_ui_dir" && bun install) || {
+                echo "Failed to install dependencies, falling back to Bash UI..."
+                "${SCRIPT_DIR}/scripts/interactive-setup.sh"
+                return
+            }
+        fi
+
+        # Run the TypeScript version
+        (cd "$setup_ui_dir" && bun run start) || {
+            echo "TypeScript UI failed, falling back to Bash UI..."
+            "${SCRIPT_DIR}/scripts/interactive-setup.sh"
+        }
+    else
+        # Fall back to Bash version
+        if ! command -v bun >/dev/null 2>&1; then
+            echo "Bun not found. Using Bash UI."
+            echo "For the modern UI experience, install Bun: curl -fsSL https://bun.sh/install | bash"
+        fi
+        "${SCRIPT_DIR}/scripts/interactive-setup.sh"
+    fi
+}
+
+run_interactive_setup
 
 # If any dev benches are installed, build the Layer 1a base image
 if command -v jq >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/config/bench-config.json" ]; then
