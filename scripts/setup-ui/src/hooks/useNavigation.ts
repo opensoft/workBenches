@@ -7,9 +7,9 @@ interface NavigationState {
 }
 
 interface UseNavigationOptions {
-  benches: Component[];
-  aiTools: Component[];
-  tools: Component[];
+  benches: () => Component[];
+  aiTools: () => Component[];
+  tools: () => Component[];
   onToggle: (section: number, index: number) => void;
   onConfirm: () => void;
   onQuit: () => void;
@@ -24,15 +24,16 @@ export function useNavigation(options: UseNavigationOptions) {
 
   /**
    * Get the items for the current section
+   * Calls the functions to get fresh data every time
    */
   const getCurrentItems = (): Component[] => {
     switch (currentSection()) {
       case 0:
-        return options.benches;
+        return options.benches();
       case 1:
-        return options.aiTools;
+        return options.aiTools();
       case 2:
-        return options.tools;
+        return options.tools();
       default:
         return [];
     }
@@ -124,21 +125,27 @@ export function useNavigation(options: UseNavigationOptions) {
    * Handle keyboard input
    */
   const handleKeyPress = (key: string, ctrl: boolean, shift: boolean) => {
+    console.log(`\n📍 handleKeyPress: key='${key}', section=${currentSection()}, index=${currentIndex()}`);
+
     // Quit
     if (key === 'q' || key === 'Q') {
+      console.log('❌ Quit requested');
       options.onQuit();
       return;
     }
 
     // Confirm
     if (key === 'enter' || key === 'return') {
+      console.log('✅ Confirm requested');
       options.onConfirm();
       return;
     }
 
     // Toggle
     if (key === ' ' || key === 'space') {
+      console.log('🔄 Toggle requested');
       toggleCurrent();
+      console.log(`   After toggle: section=${currentSection()}, index=${currentIndex()}`);
       return;
     }
 
@@ -146,19 +153,27 @@ export function useNavigation(options: UseNavigationOptions) {
     switch (key) {
       case 'up':
       case 'k':
+        console.log('⬆️  Move up');
         moveUp();
+        console.log(`   After moveUp: section=${currentSection()}, index=${currentIndex()}`);
         break;
       case 'down':
       case 'j':
+        console.log('⬇️  Move down');
         moveDown();
+        console.log(`   After moveDown: section=${currentSection()}, index=${currentIndex()}`);
         break;
       case 'left':
       case 'h':
+        console.log('⬅️  Move left');
         moveLeft();
+        console.log(`   After moveLeft: section=${currentSection()}, index=${currentIndex()}`);
         break;
       case 'right':
       case 'l':
+        console.log('➡️  Move right');
         moveRight();
+        console.log(`   After moveRight: section=${currentSection()}, index=${currentIndex()}`);
         break;
     }
   };

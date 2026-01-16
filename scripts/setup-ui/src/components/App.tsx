@@ -89,11 +89,12 @@ export const App: SolidComponent = () => {
     process.exit(0);
   };
 
-  // Navigation hook
+  // Navigation hook - must be called at component level
+  // Pass functions instead of values so navigation always works with current data
   const navigation = useNavigation({
-    benches: benches(),
-    aiTools: aiTools(),
-    tools: tools(),
+    benches: benches,
+    aiTools: aiTools,
+    tools: tools,
     onToggle: handleToggle,
     onConfirm: handleConfirm,
     onQuit: handleQuit,
