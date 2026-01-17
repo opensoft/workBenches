@@ -1,4 +1,4 @@
-import { createSignal, onMount, createMemo, Show, type Component as SolidComponent } from 'solid-js';
+import { createSignal, onMount, createMemo, createEffect, batch, type Component as SolidComponent } from 'solid-js';
 import { useRenderer, useKeyboard } from '@opentui/solid';
 import type { Component } from '../types';
 import { initializeComponents } from '../utils/config';
@@ -7,6 +7,7 @@ import { Header } from './Header';
 import { StatusBar } from './StatusBar';
 import { processSelections } from '../utils/installers';
 import { writeFileSync } from 'fs';
+import type { KeyEvent } from '@opentui/core';
 
 const DEBUG_FILE = '/home/brett/setup-ui-debug.log';
 
@@ -52,7 +53,33 @@ export const App: SolidComponent = () => {
 
   const renderer = useRenderer();
   debugLog(`Renderer obtained: ${!!renderer}`);
-  debugLog('Setting up onMount callback...');
+  debugLog(`keyInput exists: ${!!renderer?.keyInput}`);
+  debugLog(`Renderer controlState: ${(renderer as any)?.controlState}`);
+
+  // Track the current selected index per column
+  const [selectedIndices, setSelectedIndices] = createSignal<[number, number, number]>([0, 0, 0]);
+
+  // Direct keyboard event listener for comprehensive debugging
+  onMount(() => {
+    debugLog('onMount fired - setting up keyboard handlers');
+    const keyInput = renderer?.keyInput;
+    if (keyInput) {
+      debugLog('keyInput EventEmitter found, registering handler');
+      debugLog(`keyInput listeners before: ${keyInput.listenerCount?.('keypress') ?? 'unknown'}`);
+
+      // Also check the internal key input
+      const internalKeyInput = (renderer as any)?._internalKeyInput;
+      debugLog(`_internalKeyInput exists: ${!!internalKeyInput}`);
+    } else {
+      debugLog('ERROR: keyInput is null/undefined');
+    }
+
+    // Check stdin state
+    debugLog(`stdin.isTTY: ${process.stdin.isTTY}`);
+    debugLog(`stdin.isRaw: ${(process.stdin as any).isRaw}`);
+  });
+
+  debugLog('Setting up component...');
 
   const handleConfirm = async () => {
     console.log('\n╔══════════════════════════════════════════════════════════════════════════════╗');
@@ -135,36 +162,91 @@ export const App: SolidComponent = () => {
     }
   })();
 
-  // Handle keyboard for column switching and quit using proper hook
-  useKeyboard((event) => {
+  // Handle ALL keyboard events - the select's native handling isn't working reliably
+  useKeyboard((event: KeyEvent) => {
     const key = event?.name?.toLowerCase() || '';
-    debugLog(`Key pressed: ${key}`);
+    const sequence = event?.sequence || '';
+    debugLog(`🎹 Key: "${key}", sequence: "${sequence.replace(/\x1b/g, 'ESC')}", ctrl: ${event?.ctrl}, shift: ${event?.shift}`);
 
+    // Quit
     if (key === 'q') {
       console.log('\nExiting without changes.');
       process.exit(0);
     }
 
+    // Confirm
     if (key === 'return' || key === 'enter') {
       handleConfirm();
+      return;
     }
 
-    // Tab or right arrow to switch columns
-    if (key === 'tab' || key === 'right' || key === 'l') {
-      setActiveColumn(c => {
-        const newCol = (c + 1) % 3;
-        debugLog(`Switched to column ${newCol}`);
-        return newCol;
+    // Toggle selection with space
+    if (key === 'space' || key === ' ') {
+      const col = activeColumn();
+      const indices = selectedIndices();
+      handleItemSelected(col, indices[col]);
+      renderer?.requestRender();
+      return;
+    }
+
+    // Tab / Shift+Tab to switch columns
+    if (key === 'tab') {
+      batch(() => {
+        if (event?.shift) {
+          setActiveColumn(c => (c + 2) % 3); // Go backwards
+        } else {
+          setActiveColumn(c => (c + 1) % 3);
+        }
       });
+      renderer?.requestRender();
+      event?.preventDefault?.();
+      return;
     }
 
-    // Shift+tab or left arrow to switch columns back
+    // Left/Right arrows to switch columns
     if (key === 'left' || key === 'h') {
-      setActiveColumn(c => {
-        const newCol = (c + 2) % 3;
-        debugLog(`Switched to column ${newCol}`);
-        return newCol;
+      batch(() => {
+        setActiveColumn(c => (c + 2) % 3);
       });
+      renderer?.requestRender();
+      event?.preventDefault?.();
+      return;
+    }
+    if (key === 'right' || key === 'l') {
+      batch(() => {
+        setActiveColumn(c => (c + 1) % 3);
+      });
+      renderer?.requestRender();
+      event?.preventDefault?.();
+      return;
+    }
+
+    // Up/Down arrows for navigation within column
+    if (key === 'up' || key === 'k') {
+      const col = activeColumn();
+      const maxItems = col === 0 ? benches().length : col === 1 ? aiTools().filter(t => !t.isSeparator).length : tools().length;
+      setSelectedIndices(prev => {
+        const newIndices = [...prev] as [number, number, number];
+        newIndices[col] = Math.max(0, prev[col] - 1);
+        debugLog(`Up: column=${col}, index=${prev[col]} -> ${newIndices[col]}`);
+        return newIndices;
+      });
+      renderer?.requestRender();
+      event?.preventDefault?.();
+      return;
+    }
+    if (key === 'down' || key === 'j') {
+      const col = activeColumn();
+      const maxItems = col === 0 ? benches().length : col === 1 ? aiTools().filter(t => !t.isSeparator).length : tools().length;
+      setSelectedIndices(prev => {
+        const newIndices = [...prev] as [number, number, number];
+        newIndices[col] = Math.min(maxItems - 1, prev[col] + 1);
+        debugLog(`Down: column=${col}, index=${prev[col]} -> ${newIndices[col]}, max=${maxItems}`);
+        return newIndices;
+      });
+      renderer?.requestRender();
+      event?.preventDefault?.();
+      return;
     }
   });
 
@@ -177,14 +259,13 @@ export const App: SolidComponent = () => {
     <box flexDirection="column" height="100%" width="100%">
       <Header />
 
-      <Show
-        when={!isLoading()}
-        fallback={
-          <text fg="#FFFF6B">Loading components...</text>
-        }
-      >
-        <text fg="#888888">Use ↑↓/jk to navigate, Tab/←→ to switch columns, Space to toggle, Enter to confirm, Q to quit</text>
+      {isLoading() ? (
+        <text fg="#FFFF6B">Loading components...</text>
+      ) : (
+        <text fg="#888888">Use ↑↓/jk to navigate, Tab to switch columns, Space to toggle, Enter to confirm, Q to quit</text>
+      )}
 
+      {!isLoading() && (
         <box flexDirection="row" gap={2} marginTop={1}>
           {/* Column 1: Dev Benches */}
           <box flexDirection="column" width={28}>
@@ -192,9 +273,9 @@ export const App: SolidComponent = () => {
               {activeColumn() === 0 ? '▶ DEV BENCHES ◀' : '─── DEV BENCHES ───'}
             </text>
             <select
-              key={`benches-${benches().length}`}
               focused={activeColumn() === 0}
               options={benchOptions()}
+              selectedIndex={selectedIndices()[0]}
               height={10}
               width={26}
               showDescription={false}
@@ -202,8 +283,15 @@ export const App: SolidComponent = () => {
               focusedTextColor="#000000"
               focusedBackgroundColor="#FFFF6B"
               selectedTextColor="#69FF94"
-              onChange={(index) => handleSelectionChange(0, index)}
-              onSelect={(index) => handleItemSelected(0, index)}
+              onChange={(index: number) => {
+                handleSelectionChange(0, index);
+                setSelectedIndices(prev => {
+                  const newIndices = [...prev] as [number, number, number];
+                  newIndices[0] = index;
+                  return newIndices;
+                });
+              }}
+              onSelect={(index: number) => handleItemSelected(0, index)}
             />
           </box>
 
@@ -213,9 +301,9 @@ export const App: SolidComponent = () => {
               {activeColumn() === 1 ? '▶ AI ASSISTANTS ◀' : '─── AI ASSISTANTS ───'}
             </text>
             <select
-              key={`aitools-${aiTools().length}`}
               focused={activeColumn() === 1}
               options={aiOptions()}
+              selectedIndex={selectedIndices()[1]}
               height={10}
               width={26}
               showDescription={false}
@@ -223,8 +311,15 @@ export const App: SolidComponent = () => {
               focusedTextColor="#000000"
               focusedBackgroundColor="#FFFF6B"
               selectedTextColor="#69FF94"
-              onChange={(index) => handleSelectionChange(1, index)}
-              onSelect={(index) => handleItemSelected(1, index)}
+              onChange={(index: number) => {
+                handleSelectionChange(1, index);
+                setSelectedIndices(prev => {
+                  const newIndices = [...prev] as [number, number, number];
+                  newIndices[1] = index;
+                  return newIndices;
+                });
+              }}
+              onSelect={(index: number) => handleItemSelected(1, index)}
             />
           </box>
 
@@ -234,9 +329,9 @@ export const App: SolidComponent = () => {
               {activeColumn() === 2 ? '▶ TOOLS ◀' : '─── TOOLS ───'}
             </text>
             <select
-              key={`tools-${tools().length}`}
               focused={activeColumn() === 2}
               options={toolOptions()}
+              selectedIndex={selectedIndices()[2]}
               height={10}
               width={26}
               showDescription={false}
@@ -244,18 +339,27 @@ export const App: SolidComponent = () => {
               focusedTextColor="#000000"
               focusedBackgroundColor="#FFFF6B"
               selectedTextColor="#69FF94"
-              onChange={(index) => handleSelectionChange(2, index)}
-              onSelect={(index) => handleItemSelected(2, index)}
+              onChange={(index: number) => {
+                handleSelectionChange(2, index);
+                setSelectedIndices(prev => {
+                  const newIndices = [...prev] as [number, number, number];
+                  newIndices[2] = index;
+                  return newIndices;
+                });
+              }}
+              onSelect={(index: number) => handleItemSelected(2, index)}
             />
           </box>
         </box>
+      )}
 
+      {!isLoading() && (
         <StatusBar
           benches={benches()}
           aiTools={aiTools()}
           tools={tools()}
         />
-      </Show>
+      )}
     </box>
   );
 };
