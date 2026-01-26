@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "bun run index.tsx",
-    "dev": "bun --watch run index.tsx"
+    "start": "bun --conditions=browser index.tsx",
+    "dev": "bun --conditions=browser --watch index.tsx"
   },
   "dependencies": {
     "@opentui/core": "^0.1.0",

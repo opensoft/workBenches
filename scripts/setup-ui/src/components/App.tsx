@@ -10,6 +10,8 @@ import { writeFileSync } from 'fs';
 import type { KeyEvent } from '@opentui/core';
 
 const DEBUG_FILE = '/home/brett/setup-ui-debug.log';
+let rendererStarted = false;
+let keyInputInitialized = false;
 
 function debugLog(msg: string) {
   try {
@@ -55,6 +57,27 @@ export const App: SolidComponent = () => {
   debugLog(`Renderer obtained: ${!!renderer}`);
   debugLog(`keyInput exists: ${!!renderer?.keyInput}`);
   debugLog(`Renderer controlState: ${(renderer as any)?.controlState}`);
+  debugLog(`solid onMount impl: ${onMount.toString().replace(/\s+/g, ' ').slice(0, 80)}...`);
+  debugLog(`stdin.isTTY: ${process.stdin.isTTY}`);
+  debugLog(`stdin.isRaw: ${(process.stdin as any).isRaw}`);
+
+  if (!rendererStarted) {
+    rendererStarted = true;
+    debugLog('Ensuring renderer is running');
+    if (!renderer.isRunning) {
+      renderer.start();
+    }
+  }
+
+  if (!keyInputInitialized) {
+    keyInputInitialized = true;
+    debugLog('Registering direct keyInput logger');
+    renderer.keyInput.on('keypress', (event) => {
+      const key = event?.name || '';
+      const sequence = event?.sequence || '';
+      debugLog(`(direct) keypress: "${key}" seq="${sequence.replace(/\x1b/g, 'ESC')}"`);
+    });
+  }
 
   // Track the current selected index per column
   const [selectedIndices, setSelectedIndices] = createSignal<[number, number, number]>([0, 0, 0]);
@@ -77,6 +100,12 @@ export const App: SolidComponent = () => {
     // Check stdin state
     debugLog(`stdin.isTTY: ${process.stdin.isTTY}`);
     debugLog(`stdin.isRaw: ${(process.stdin as any).isRaw}`);
+
+    // Ensure the renderer runs so key-driven updates repaint immediately.
+    if (!renderer.isRunning) {
+      debugLog('Renderer was idle; starting render loop');
+      renderer.start();
+    }
   });
 
   debugLog('Setting up component...');
@@ -221,33 +250,7 @@ export const App: SolidComponent = () => {
       return;
     }
 
-    // Up/Down arrows for navigation within column
-    if (key === 'up' || key === 'k') {
-      const col = activeColumn();
-      const maxItems = col === 0 ? benches().length : col === 1 ? aiTools().filter(t => !t.isSeparator).length : tools().length;
-      setSelectedIndices(prev => {
-        const newIndices = [...prev] as [number, number, number];
-        newIndices[col] = Math.max(0, prev[col] - 1);
-        debugLog(`Up: column=${col}, index=${prev[col]} -> ${newIndices[col]}`);
-        return newIndices;
-      });
-      renderer?.requestRender();
-      event?.preventDefault?.();
-      return;
-    }
-    if (key === 'down' || key === 'j') {
-      const col = activeColumn();
-      const maxItems = col === 0 ? benches().length : col === 1 ? aiTools().filter(t => !t.isSeparator).length : tools().length;
-      setSelectedIndices(prev => {
-        const newIndices = [...prev] as [number, number, number];
-        newIndices[col] = Math.min(maxItems - 1, prev[col] + 1);
-        debugLog(`Down: column=${col}, index=${prev[col]} -> ${newIndices[col]}, max=${maxItems}`);
-        return newIndices;
-      });
-      renderer?.requestRender();
-      event?.preventDefault?.();
-      return;
-    }
+    // Up/Down navigation is handled by the focused select renderable.
   });
 
   // Convert components to select options using createMemo for reactivity
