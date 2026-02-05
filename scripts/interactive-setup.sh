@@ -1153,70 +1153,123 @@ process_selections() {
                     fi
                     echo ""
                 else
-                    # Install from scratch
+                    # Install from scratch (or fetch if directory exists)
                     echo -e "${BOLD}${CYAN}▶ Installing: $bench${NC}"
                     
                     # Get bench info from config
                     if [ -f "$config_file" ]; then
                         local bench_url=$(jq -r ".benches.${bench}.url // \"\"" "$config_file")
                         local bench_path=$(jq -r ".benches.${bench}.path // \"$bench\"" "$config_file")
+                        local full_bench_path="$script_dir/../$bench_path"
                         
                         if [ -n "$bench_url" ] && [ "$bench_url" != "null" ]; then
-                            echo -e "  ${YELLOW}Cloning from: $bench_url${NC}"
-                            log "Cloning $bench from $bench_url"
-                            
-                            # Clone in background with spinner
-                            (
-                                git clone "$bench_url" "$script_dir/../$bench_path" >> "$LOG_FILE" 2>&1
-                                echo $? > /tmp/clone_status_$$
-                            ) &
-                            local clone_pid=$!
-                            show_spinner $clone_pid "Cloning $bench"
-                            
-                            local clone_status=$(cat /tmp/clone_status_$$ 2>/dev/null || echo "1")
-                            rm -f /tmp/clone_status_$$
-                            
-                            if [ "$clone_status" -eq 0 ]; then
-                                log "Successfully cloned $bench"
-                                echo -e "  ${GREEN}✓ Successfully cloned $bench${NC}"
-                                
-                                # Check for and run setup script
-                                local setup_script="$script_dir/../$bench_path/setup.sh"
-                                if [ -f "$setup_script" ]; then
-                                    echo -e "  ${YELLOW}Running setup script...${NC}"
-                                    echo -e "  ${DIM}This may take several minutes...${NC}"
-                                    log "Running setup script for $bench"
+                            # Check if directory already exists
+                            if [ -d "$full_bench_path" ]; then
+                                # Directory exists - check if it has git
+                                if [ -d "$full_bench_path/.git" ] || [ -f "$full_bench_path/.git" ]; then
+                                    # Has git repo, do a fetch instead
+                                    echo -e "  ${YELLOW}Directory exists, fetching updates from: $bench_url${NC}"
+                                    log "Fetching updates for $bench from $bench_url"
                                     
-                                    # Run setup in background with spinner
+                                    # Fetch in background with spinner
                                     (
-                                        bash "$setup_script" >> "$LOG_FILE" 2>&1
-                                        echo $? > /tmp/setup_status_$$
+                                        cd "$full_bench_path" && git fetch --all >> "$LOG_FILE" 2>&1
+                                        echo $? > /tmp/fetch_status_$$
                                     ) &
-                                    local setup_pid=$!
-                                    show_spinner $setup_pid "Setting up $bench"
+                                    local fetch_pid=$!
+                                    show_spinner $fetch_pid "Fetching $bench"
                                     
-                                    local setup_status=$(cat /tmp/setup_status_$$ 2>/dev/null || echo "1")
-                                    rm -f /tmp/setup_status_$$
+                                    local fetch_status=$(cat /tmp/fetch_status_$$ 2>/dev/null || echo "1")
+                                    rm -f /tmp/fetch_status_$$
                                     
-                                    if [ "$setup_status" -eq 0 ]; then
-                                        log "Successfully set up $bench"
-                                        echo -e "  ${GREEN}✓ Successfully set up $bench${NC}"
-                                        ((success_count++))
+                                    if [ "$fetch_status" -eq 0 ]; then
+                                        log "Successfully fetched updates for $bench"
+                                        echo -e "  ${GREEN}✓ Successfully fetched updates for $bench${NC}"
                                     else
-                                        log "WARNING: Setup failed for $bench"
-                                        echo -e "  ${YELLOW}⚠ Cloned but setup failed${NC}"
-                                        echo -e "  ${DIM}You may need to run setup manually: $setup_script${NC}"
-                                        ((success_count++))
+                                        log "ERROR: Failed to fetch updates for $bench"
+                                        echo -e "  ${RED}✗ Failed to fetch updates${NC}"
+                                        ((fail_count++))
+                                        echo ""
+                                        continue
                                     fi
                                 else
-                                    echo -e "  ${YELLOW}⚠ No setup script found${NC}"
-                                    echo -e "  ${DIM}Bench may require manual setup${NC}"
+                                    # Directory exists but no git - cannot safely proceed
+                                    echo -e "  ${RED}✗ Directory exists but is not a git repository${NC}"
+                                    log "ERROR: $full_bench_path exists but has no .git directory"
+                                    echo -e "  ${YELLOW}⚠ Cannot safely clone - directory may contain important files${NC}"
+                                    echo ""
+                                    echo -e "  ${CYAN}To resolve, manually:${NC}"
+                                    echo -e "  ${DIM}1. Backup any important files from: $full_bench_path${NC}"
+                                    echo -e "  ${DIM}2. Remove the directory: rm -rf $full_bench_path${NC}"
+                                    echo -e "  ${DIM}3. Run this setup again${NC}"
+                                    echo ""
+                                    echo -e "  ${DIM}Or initialize as git repo:${NC}"
+                                    echo -e "  ${DIM}cd $full_bench_path && git init && git remote add origin $bench_url && git fetch && git checkout -f origin/main${NC}"
+                                    echo ""
+                                    ((fail_count++))
+                                    echo ""
+                                    continue
+                                fi
+                            else
+                                # Directory doesn't exist, clone it
+                                echo -e "  ${YELLOW}Cloning from: $bench_url${NC}"
+                                log "Cloning $bench from $bench_url"
+                                
+                                # Clone in background with spinner
+                                (
+                                    git clone "$bench_url" "$full_bench_path" >> "$LOG_FILE" 2>&1
+                                    echo $? > /tmp/clone_status_$$
+                                ) &
+                                local clone_pid=$!
+                                show_spinner $clone_pid "Cloning $bench"
+                                
+                                local clone_status=$(cat /tmp/clone_status_$$ 2>/dev/null || echo "1")
+                                rm -f /tmp/clone_status_$$
+                                
+                                if [ "$clone_status" -ne 0 ]; then
+                                    log "ERROR: Failed to clone $bench"
+                                    echo -e "  ${RED}✗ Failed to clone $bench${NC}"
+                                    ((fail_count++))
+                                    echo ""
+                                    continue
+                                fi
+                                log "Successfully cloned $bench"
+                                echo -e "  ${GREEN}✓ Successfully cloned $bench${NC}"
+                            fi
+                            
+                            # At this point, the repo is ready (either cloned or fetched)
+                            # Check for and run setup script
+                            local setup_script="$script_dir/../$bench_path/setup.sh"
+                            if [ -f "$setup_script" ]; then
+                                echo -e "  ${YELLOW}Running setup script...${NC}"
+                                echo -e "  ${DIM}This may take several minutes...${NC}"
+                                log "Running setup script for $bench"
+                                
+                                # Run setup in background with spinner
+                                (
+                                    bash "$setup_script" >> "$LOG_FILE" 2>&1
+                                    echo $? > /tmp/setup_status_$$
+                                ) &
+                                local setup_pid=$!
+                                show_spinner $setup_pid "Setting up $bench"
+                                
+                                local setup_status=$(cat /tmp/setup_status_$$ 2>/dev/null || echo "1")
+                                rm -f /tmp/setup_status_$$
+                                
+                                if [ "$setup_status" -eq 0 ]; then
+                                    log "Successfully set up $bench"
+                                    echo -e "  ${GREEN}✓ Successfully set up $bench${NC}"
+                                    ((success_count++))
+                                else
+                                    log "WARNING: Setup failed for $bench"
+                                    echo -e "  ${YELLOW}⚠ Setup failed${NC}"
+                                    echo -e "  ${DIM}You may need to run setup manually: $setup_script${NC}"
                                     ((success_count++))
                                 fi
                             else
-                                log "ERROR: Failed to clone $bench"
-                                echo -e "  ${RED}✗ Failed to clone $bench${NC}"
-                                ((fail_count++))
+                                echo -e "  ${YELLOW}⚠ No setup script found${NC}"
+                                echo -e "  ${DIM}Bench may require manual setup${NC}"
+                                ((success_count++))
                             fi
                         else
                             echo -e "  ${RED}✗ No repository URL found for $bench${NC}"
