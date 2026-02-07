@@ -181,7 +181,7 @@ check_component_status() {
         claude_cli)
             if command -v claude &> /dev/null; then
                 # Check if credentials exist
-                if [ -n "$ANTHROPIC_API_KEY" ] || [ -f "$HOME/.claude/config.json" ]; then
+                if [ -n "$ANTHROPIC_API_KEY" ] || [ -f "$HOME/.claude.json" ]; then
                     echo "installed"
                 else
                     echo "needs creds"

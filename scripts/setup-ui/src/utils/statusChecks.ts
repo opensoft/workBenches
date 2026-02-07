@@ -85,7 +85,7 @@ async function checkClaudeCli(): Promise<ComponentStatus> {
 
   // Check for credentials
   const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
-  const hasConfig = await fileExists(`${process.env.HOME}/.claude/config.json`);
+  const hasConfig = await fileExists(`${process.env.HOME}/.claude.json`);
 
   if (hasApiKey || hasConfig) {
     return 'installed';
