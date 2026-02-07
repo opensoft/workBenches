@@ -357,8 +357,8 @@ load_statuses() {
         local status=$(check_component_status "$key")
         component_status["$key"]="$status"
         
-        # Auto-check if installed
-        if [[ "$status" == "installed" ]]; then
+        # Auto-check if installed or needs creds
+        if [[ "$status" == "installed" || "$status" == "needs creds" ]]; then
             component_checked["$key"]=true
         fi
     done
@@ -410,6 +410,9 @@ draw_component() {
     if [[ "$status" == "installed" || "$status" == "configured" ]]; then
         status_color="$GREEN"
         status_symbol="✓"
+    elif [[ "$status" == "needs creds" ]]; then
+        status_color="$YELLOW"
+        status_symbol="⚠"
     fi
     
     # Selection highlight
