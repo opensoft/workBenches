@@ -1069,6 +1069,50 @@ save_to_profile() {
     echo -e "${BLUE}  Saved to $shell_profile${NC}"
 }
 
+# Check if a directory is empty or contains only safe temp files that can be auto-removed
+check_dir_safe_to_replace() {
+    local dir="$1"
+    
+    if [ ! -d "$dir" ]; then
+        # Directory doesn't exist, safe to clone
+        return 0
+    fi
+    
+    # Get list of files (excluding . and ..)
+    local files
+    files=$(ls -A "$dir" 2>/dev/null)
+    
+    if [ -z "$files" ]; then
+        # Directory is empty, safe to replace
+        return 0
+    fi
+    
+    # Check if only safe-to-remove files exist
+    # Safe files: .DS_Store, Zone.Identifier files, desktop.ini, Thumbs.db
+    local safe_patterns=(".DS_Store" "*:Zone.Identifier" "desktop.ini" "Thumbs.db")
+    local has_unsafe=false
+    
+    for file in $files; do
+        local is_safe=false
+        for pattern in "${safe_patterns[@]}"; do
+            if [[ "$file" == $pattern ]]; then
+                is_safe=true
+                break
+            fi
+        done
+        if [ "$is_safe" = false ]; then
+            has_unsafe=true
+            break
+        fi
+    done
+    
+    if [ "$has_unsafe" = true ]; then
+        return 1
+    fi
+    
+    return 0
+}
+
 # Process selected items
 process_selections() {
     log "Processing selections - applying configuration changes"
@@ -1196,22 +1240,55 @@ process_selections() {
                                         continue
                                     fi
                                 else
-                                    # Directory exists but no git - cannot safely proceed
-                                    echo -e "  ${RED}✗ Directory exists but is not a git repository${NC}"
-                                    log "ERROR: $full_bench_path exists but has no .git directory"
-                                    echo -e "  ${YELLOW}⚠ Cannot safely clone - directory may contain important files${NC}"
-                                    echo ""
-                                    echo -e "  ${CYAN}To resolve, manually:${NC}"
-                                    echo -e "  ${DIM}1. Backup any important files from: $full_bench_path${NC}"
-                                    echo -e "  ${DIM}2. Remove the directory: rm -rf $full_bench_path${NC}"
-                                    echo -e "  ${DIM}3. Run this setup again${NC}"
-                                    echo ""
-                                    echo -e "  ${DIM}Or initialize as git repo:${NC}"
-                                    echo -e "  ${DIM}cd $full_bench_path && git init && git remote add origin $bench_url && git fetch && git checkout -f origin/main${NC}"
-                                    echo ""
-                                    ((fail_count++))
-                                    echo ""
-                                    continue
+                                    # Directory exists but no git - check if safe to replace
+                                    if check_dir_safe_to_replace "$full_bench_path"; then
+                                        # Directory is empty or only has temp files, safe to remove and clone
+                                        echo -e "  ${YELLOW}Directory exists but is empty/safe to replace. Removing...${NC}"
+                                        log "Removing safe-to-replace directory: $full_bench_path"
+                                        rm -rf "$full_bench_path"
+                                        
+                                        # Now clone
+                                        echo -e "  ${YELLOW}Cloning from: $bench_url${NC}"
+                                        log "Cloning $bench from $bench_url"
+                                        
+                                        # Clone in background with spinner
+                                        (
+                                            git clone "$bench_url" "$full_bench_path" >> "$LOG_FILE" 2>&1
+                                            echo $? > /tmp/clone_status_$$
+                                        ) &
+                                        local clone_pid=$!
+                                        show_spinner $clone_pid "Cloning $bench"
+                                        
+                                        local clone_status=$(cat /tmp/clone_status_$$ 2>/dev/null || echo "1")
+                                        rm -f /tmp/clone_status_$$
+                                        
+                                        if [ "$clone_status" -ne 0 ]; then
+                                            log "ERROR: Failed to clone $bench"
+                                            echo -e "  ${RED}✗ Failed to clone $bench${NC}"
+                                            ((fail_count++))
+                                            echo ""
+                                            continue
+                                        fi
+                                        log "Successfully cloned $bench"
+                                        echo -e "  ${GREEN}✓ Successfully cloned $bench${NC}"
+                                    else
+                                        # Directory has real files - cannot safely proceed
+                                        echo -e "  ${RED}✗ Directory exists but is not a git repository${NC}"
+                                        log "ERROR: $full_bench_path exists but has no .git directory"
+                                        echo -e "  ${YELLOW}⚠ Cannot safely clone - directory may contain important files${NC}"
+                                        echo ""
+                                        echo -e "  ${CYAN}To resolve, manually:${NC}"
+                                        echo -e "  ${DIM}1. Backup any important files from: $full_bench_path${NC}"
+                                        echo -e "  ${DIM}2. Remove the directory: rm -rf $full_bench_path${NC}"
+                                        echo -e "  ${DIM}3. Run this setup again${NC}"
+                                        echo ""
+                                        echo -e "  ${DIM}Or initialize as git repo:${NC}"
+                                        echo -e "  ${DIM}cd $full_bench_path && git init && git remote add origin $bench_url && git fetch && git checkout -f origin/main${NC}"
+                                        echo ""
+                                        ((fail_count++))
+                                        echo ""
+                                        continue
+                                    fi
                                 fi
                             else
                                 # Directory doesn't exist, clone it
