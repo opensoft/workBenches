@@ -1069,9 +1069,14 @@ save_to_profile() {
     echo -e "${BLUE}  Saved to $shell_profile${NC}"
 }
 
-# Check if a directory is empty or contains only safe temp files that can be auto-removed
+# Check if a directory is safe for cloning a repo into
+# Returns:
+#   0 = Safe to remove and clone (empty or only temp files)
+#   10 = Safe to clone alongside (no conflicts with existing files)
+#   1 = NOT safe (has conflicts or important files)
 check_dir_safe_to_replace() {
     local dir="$1"
+    local repo_url="$2"  # Optional: URL of repo being cloned
     
     if [ ! -d "$dir" ]; then
         # Directory doesn't exist, safe to clone
@@ -1083,7 +1088,7 @@ check_dir_safe_to_replace() {
     files=$(ls -A "$dir" 2>/dev/null)
     
     if [ -z "$files" ]; then
-        # Directory is empty, safe to replace
+        # Directory is empty, safe to remove and replace
         return 0
     fi
     
@@ -1106,11 +1111,48 @@ check_dir_safe_to_replace() {
         fi
     done
     
-    if [ "$has_unsafe" = true ]; then
-        return 1
+    if [ "$has_unsafe" = false ]; then
+        # Only safe temp files, OK to remove and replace
+        return 0
     fi
     
-    return 0
+    # Has real files - if repo URL provided, check for conflicts
+    if [ -n "$repo_url" ] && [ "$repo_url" != "null" ]; then
+        log "Checking for file conflicts between existing directory and repo"
+        
+        # Clone to temp location to see what files would be created
+        local temp_dir=$(mktemp -d)
+        if git clone --depth=1 --quiet "$repo_url" "$temp_dir" 2>/dev/null; then
+            # Get list of files/folders that would be created (top-level only)
+            local repo_items
+            repo_items=$(cd "$temp_dir" && ls -A | grep -v "^\.git$")
+            
+            # Check if any existing files/folders would conflict
+            local has_conflict=false
+            for item in $repo_items; do
+                if [ -e "$dir/$item" ]; then
+                    log "Conflict found: $item exists in both locations"
+                    has_conflict=true
+                    break
+                fi
+            done
+            
+            # Cleanup temp directory
+            rm -rf "$temp_dir"
+            
+            if [ "$has_conflict" = false ]; then
+                # No conflicts - safe to clone alongside existing files
+                log "No file conflicts detected, can clone alongside"
+                return 10  # Special code: clone alongside
+            fi
+        else
+            # Failed to clone to temp - fall back to blocking
+            rm -rf "$temp_dir" 2>/dev/null
+        fi
+    fi
+    
+    # Has unsafe files or conflicts - not safe
+    return 1
 }
 
 # Process selected items
@@ -1241,11 +1283,21 @@ process_selections() {
                                     fi
                                 else
                                     # Directory exists but no git - check if safe to replace
-                                    if check_dir_safe_to_replace "$full_bench_path"; then
-                                        # Directory is empty or only has temp files, safe to remove and clone
-                                        echo -e "  ${YELLOW}Directory exists but is empty/safe to replace. Removing...${NC}"
-                                        log "Removing safe-to-replace directory: $full_bench_path"
-                                        rm -rf "$full_bench_path"
+                                    check_dir_safe_to_replace "$full_bench_path" "$bench_url"
+                                    local safe_status=$?
+                                    
+                                    if [ $safe_status -eq 0 ] || [ $safe_status -eq 10 ]; then
+                                        # Safe to proceed - either remove+clone or clone alongside
+                                        if [ $safe_status -eq 0 ]; then
+                                            # Empty or only temp files - remove and clone
+                                            echo -e "  ${YELLOW}Directory is empty/has only temp files. Removing and cloning...${NC}"
+                                            log "Removing safe-to-replace directory: $full_bench_path"
+                                            rm -rf "$full_bench_path"
+                                        else
+                                            # Has files but no conflicts - clone alongside
+                                            echo -e "  ${YELLOW}Directory has files but no conflicts. Cloning alongside...${NC}"
+                                            log "Cloning alongside existing files: $full_bench_path"
+                                        fi
                                         
                                         # Now clone
                                         echo -e "  ${YELLOW}Cloning from: $bench_url${NC}"
