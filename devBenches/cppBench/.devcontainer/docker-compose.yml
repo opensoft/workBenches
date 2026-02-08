@@ -2,13 +2,9 @@ version: '3.8'
 
 services:
   cppbench:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        USERNAME: vscode
-        USER_UID: 1000
-        USER_GID: 1000
+    env_file: ../.env
+    image: cpp-bench:${USER}
+    container_name: cpp_bench
     
     volumes:
       - ../..:/workspace:cached
