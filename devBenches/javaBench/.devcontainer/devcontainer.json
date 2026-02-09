@@ -1,0 +1,35 @@
+{
+  "name": "Java Development Bench",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "java_bench",
+  "workspaceFolder": "/workspace",
+  
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "vscjava.vscode-spring-initializr",
+        "vscjava.vscode-spring-boot-dashboard",
+        "vmware.vscode-spring-boot",
+        "vscjava.vscode-maven",
+        "vscjava.vscode-gradle",
+        "redhat.java",
+        "redhat.vscode-xml"
+      ],
+      "settings": {
+        "java.home": "/usr/lib/jvm/java-21-openjdk-amd64",
+        "java.configuration.runtimes": [
+          {
+            "name": "JavaSE-21",
+            "path": "/usr/lib/jvm/java-21-openjdk-amd64"
+          }
+        ],
+        "maven.executable.path": "/usr/bin/mvn",
+        "maven.terminal.useJavaHome": true,
+        "java.jdt.ls.java.home": "/usr/lib/jvm/java-21-openjdk-amd64"
+      }
+    }
+  },
+  
+  "remoteUser": "brett"
+}

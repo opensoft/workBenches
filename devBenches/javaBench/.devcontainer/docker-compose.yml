@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  java_bench:
+    env_file: ../.env
+    image: java-bench:${USER}
+    container_name: java_bench
+    
+    volumes:
+      - ../..:/workspace:cached
+      - ~/.gitconfig:/home/${USER}/.gitconfig:ro
+      - ~/.ssh:/home/${USER}/.ssh:ro
+      - m2-cache:/workspace/m2repo
+      - gradle-cache:/workspace/.gradle
+    
+    ports:
+      - "8080:8080"   # Spring Boot default
+      - "8081:8081"   # Alternative web port
+      - "5005:5005"   # Java debug port
+      - "9090:9090"   # Metrics/actuator
+    
+    command: sleep infinity
+    
+    working_dir: ${WORKING_DIR:-/workspace}
+    
+    environment:
+      - JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+      - GRADLE_HOME=/opt/gradle/gradle-8.5
+      - MAVEN_OPTS=-Dmaven.repo.local=/workspace/m2repo
+    
+    tty: true
+
+volumes:
+  m2-cache:
+  gradle-cache:

@@ -1,0 +1,120 @@
+# Layer 2: Java Bench Image
+# Extends Layer 1 (devbench-base) with Java specific tools
+# Includes: OpenJDK 21, Maven, Gradle, Spring CLI, Java tools
+
+ARG BASE_IMAGE=devbench-base:brett
+FROM ${BASE_IMAGE}
+
+# Container version labels
+LABEL layer="2"
+LABEL layer.name="java-bench"
+LABEL layer.version="1.0.0"
+LABEL layer.description="Java development tools and JDK"
+LABEL bench.type="java"
+
+ARG USERNAME=brett
+
+# Switch to root for Java installation
+USER root
+
+# ========================================
+# JAVA JDK
+# ========================================
+
+# Install OpenJDK 21 (LTS)
+RUN apt-get update && apt-get install -y \
+    openjdk-21-jdk \
+    openjdk-21-jre \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set JAVA_HOME
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+ENV PATH="$JAVA_HOME/bin:$PATH"
+
+# ========================================
+# BUILD TOOLS
+# ========================================
+
+# Install Maven
+RUN apt-get update && apt-get install -y \
+    maven \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Gradle
+RUN wget https://services.gradle.org/distributions/gradle-8.5-bin.zip -P /tmp \
+    && unzip -d /opt/gradle /tmp/gradle-8.5-bin.zip \
+    && rm /tmp/gradle-8.5-bin.zip \
+    && ln -s /opt/gradle/gradle-8.5/bin/gradle /usr/local/bin/gradle
+
+ENV GRADLE_HOME=/opt/gradle/gradle-8.5
+ENV PATH="$GRADLE_HOME/bin:$PATH"
+
+# ========================================
+# JAVA DEVELOPMENT TOOLS
+# ========================================
+
+# Install SDKMan for Java version management
+USER $USERNAME
+RUN curl -s "https://get.sdkman.io" | bash \
+    && bash -c "source $HOME/.sdkman/bin/sdkman-init.sh"
+
+USER root
+
+# Install Spring Boot CLI
+RUN wget https://repo.spring.io/release/org/springframework/boot/spring-boot-cli/3.2.0/spring-boot-cli-3.2.0-bin.tar.gz -P /tmp \
+    && tar -xzf /tmp/spring-boot-cli-3.2.0-bin.tar.gz -C /opt \
+    && rm /tmp/spring-boot-cli-3.2.0-bin.tar.gz \
+    && ln -s /opt/spring-3.2.0/bin/spring /usr/local/bin/spring
+
+# ========================================
+# CODE QUALITY TOOLS
+# ========================================
+
+# Install Checkstyle, SpotBugs, PMD via Maven plugins
+# These will be available through project builds
+
+# ========================================
+# USER CONFIGURATION
+# ========================================
+
+USER $USERNAME
+
+# Create common Java project directories
+RUN mkdir -p /workspace/projects \
+    && mkdir -p /workspace/m2repo \
+    && mkdir -p /workspace/.gradle
+
+# Configure Maven to use workspace m2repo
+RUN mkdir -p ~/.m2 \
+    && echo '<?xml version="1.0" encoding="UTF-8"?>' > ~/.m2/settings.xml \
+    && echo '<settings>' >> ~/.m2/settings.xml \
+    && echo '  <localRepository>/workspace/m2repo</localRepository>' >> ~/.m2/settings.xml \
+    && echo '</settings>' >> ~/.m2/settings.xml
+
+# Add Java development aliases and environment to .zshrc
+RUN echo '' >> ~/.zshrc && \
+    echo '# Java Development Environment' >> ~/.zshrc && \
+    echo 'export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64' >> ~/.zshrc && \
+    echo 'export GRADLE_HOME=/opt/gradle/gradle-8.5' >> ~/.zshrc && \
+    echo 'export PATH="$JAVA_HOME/bin:$GRADLE_HOME/bin:$PATH"' >> ~/.zshrc && \
+    echo '' >> ~/.zshrc && \
+    echo '# Java Build aliases' >> ~/.zshrc && \
+    echo 'alias mvn-clean="mvn clean"' >> ~/.zshrc && \
+    echo 'alias mvn-package="mvn clean package"' >> ~/.zshrc && \
+    echo 'alias mvn-install="mvn clean install"' >> ~/.zshrc && \
+    echo 'alias mvn-test="mvn test"' >> ~/.zshrc && \
+    echo 'alias gradle-build="gradle build"' >> ~/.zshrc && \
+    echo 'alias gradle-clean="gradle clean"' >> ~/.zshrc && \
+    echo 'alias gradle-test="gradle test"' >> ~/.zshrc && \
+    echo 'alias spring-run="./mvnw spring-boot:run"' >> ~/.zshrc
+
+# Add SDKMan initialization
+RUN echo '' >> ~/.zshrc && \
+    echo '# SDKMan initialization' >> ~/.zshrc && \
+    echo 'export SDKMAN_DIR="$HOME/.sdkman"' >> ~/.zshrc && \
+    echo '[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"' >> ~/.zshrc
+
+WORKDIR /workspace
+
+# Default command
+CMD ["sleep", "infinity"]
