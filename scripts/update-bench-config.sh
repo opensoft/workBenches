@@ -107,9 +107,9 @@ discover_project_scripts() {
             esac
             
             if [ -n "$script_type" ]; then
-                # Check if script handles specKit by looking for specKit in content
+                # Check if script handles spec-kit init by looking for specify init calls
                 local includes_speckit="false"
-                if grep -q "specKit\|spec-kit" "$script_file" 2>/dev/null; then
+                if grep -q "specify init\|init_speckit\|spec-kit" "$script_file" 2>/dev/null; then
                     includes_speckit="true"
                 fi
                 
@@ -132,9 +132,9 @@ generate_config() {
     # Start with infrastructure (preserved from existing config or default)
     local infrastructure='{
   "specKit": {
-    "url": "git@github.com:github/spec-kit.git",
-    "path": "specKit",
-    "description": "Infrastructure and specification kit - always installed"
+    "install": "uv tool install specify-cli --from git+https://github.com/github/spec-kit.git",
+    "run": "uvx --from git+https://github.com/github/spec-kit.git specify init --here",
+    "description": "GitHub Spec Kit - installed via uvx (always fetches latest)"
   }
 }'
     

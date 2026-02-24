@@ -156,3 +156,24 @@ if command -v jq >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/config/bench-config.json" 
         "$SCRIPT_DIR/adminBenches/setup.sh" --user "$USERNAME"
     fi
 fi
+
+# If any bio benches are installed, build the Layer 1c base image
+if command -v jq >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/config/bench-config.json" ]; then
+    bio_installed=false
+    while IFS= read -r bench_path; do
+        case "$bench_path" in
+            bioBenches/*)
+                if [ -d "$SCRIPT_DIR/$bench_path" ]; then
+                    bio_installed=true
+                    break
+                fi
+                ;;
+        esac
+    done < <(jq -r '.benches | to_entries[] | .value.path // empty' "$SCRIPT_DIR/config/bench-config.json")
+
+    if [ "$bio_installed" = true ] && [ -x "$SCRIPT_DIR/bioBenches/setup.sh" ]; then
+        echo ""
+        echo "Bio benches detected. Building Layer 1c base image..."
+        "$SCRIPT_DIR/bioBenches/setup.sh" --user "$USERNAME"
+    fi
+fi

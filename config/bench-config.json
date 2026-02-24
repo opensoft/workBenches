@@ -1,5 +1,11 @@
 {
-  "infrastructure": {},
+  "infrastructure": {
+    "specKit": {
+      "install": "uv tool install specify-cli --from git+https://github.com/github/spec-kit.git",
+      "run": "uvx --from git+https://github.com/github/spec-kit.git specify init --here",
+      "description": "GitHub Spec Kit - installed via uvx (always fetches latest)"
+    }
+  },
   "benches": {
     "cloudAdmin": {
       "url": "git@github.com:opensoft/cloudAdmin.git",
@@ -108,6 +114,18 @@
           "includes_speckit": true
         }
       ]
+    },
+    "gentecBench": {
+      "url": "git@github.com:opensoft/gentecBench.git",
+      "path": "bioBenches/gentecBench",
+      "description": "Genetics and genomics workbench with BaseSpace CLI",
+      "ai_keywords": ["genetics", "genomics", "bioinformatics", "sequencing", "illumina", "basespace", "dna", "rna", "variant calling"]
+    },
+    "simBench": {
+      "url": "git@github.com:opensoft/simBench.git",
+      "path": "bioBenches/simBench",
+      "description": "Molecular simulation workbench with ESMFold and AlphaFold",
+      "ai_keywords": ["simulation", "protein", "esm", "esmfold", "alphafold", "molecular dynamics", "structure prediction", "folding"]
     }
   }
 }

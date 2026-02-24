@@ -952,7 +952,7 @@ check_spec_tools() {
                 echo -e "${YELLOW}Skipping spec-driven development tools installation.${NC}"
                 echo "You can install them later:"
                 if [ "$spec_kit_installed" = false ]; then
-                    echo "  spec-kit: uvx --from git+https://github.com/github/spec-kit.git specify --help"
+                    echo "  spec-kit: uv tool install specify-cli --from git+https://github.com/github/spec-kit.git"
                 fi
                 if [ "$openspec_installed" = false ]; then
                     echo "  OpenSpec: npm install -g @fission-ai/openspec@latest"
@@ -994,15 +994,15 @@ install_spec_tools() {
             fi
         fi
         
-        # Try to install spec-kit
-        if command -v uvx &> /dev/null; then
-            echo "Installing spec-kit via uvx..."
-            if uvx --from git+https://github.com/github/spec-kit.git specify --help &> /dev/null; then
+        # Try to install spec-kit persistently
+        if command -v uv &> /dev/null; then
+            echo "Installing spec-kit via uv tool install (persistent)..."
+            if uv tool install specify-cli --from git+https://github.com/github/spec-kit.git; then
                 echo -e "${GREEN}✓ spec-kit installed successfully${NC}"
                 ((success_count++))
             else
                 echo -e "${RED}✗ Failed to install spec-kit${NC}"
-                echo "You can try manually: uvx --from git+https://github.com/github/spec-kit.git specify init <project>"
+                echo "You can try manually: uv tool install specify-cli --from git+https://github.com/github/spec-kit.git"
             fi
         fi
         echo ""

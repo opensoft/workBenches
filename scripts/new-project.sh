@@ -338,36 +338,33 @@ get_project_details() {
     echo "${project_name}|${target_dir}"
 }
 
-# Copy specKit to a project directory
-copy_speckit_to_project() {
+# Initialize spec-kit in a project directory using uvx (always fetches latest)
+init_speckit_in_project() {
     local project_path="$1"
-    local speckit_source="$SCRIPT_DIR/specKit"
     
-    echo -e "${CYAN}📋 Copying specKit for spec-driven development...${NC}"
-    
-    if [ ! -d "$speckit_source" ]; then
-        echo -e "${RED}Error: specKit not found at $speckit_source${NC}"
-        echo "Run ./setup-workbenches.sh to install specKit"
-        return 1
-    fi
+    echo -e "${CYAN}📋 Initializing spec-kit for spec-driven development...${NC}"
     
     if [ ! -d "$project_path" ]; then
         echo -e "${RED}Error: Project directory not found: $project_path${NC}"
         return 1
     fi
     
-    # Copy specKit contents (excluding .git)
-    if cp -r "$speckit_source"/* "$project_path/" 2>/dev/null; then
-        # Copy hidden files, ignore errors for files that don't exist
-        cp -r "$speckit_source"/.[^.]* "$project_path/" 2>/dev/null || true
-        
-        # Remove git-related files if they were copied
-        rm -rf "$project_path/.git" 2>/dev/null || true
-        
-        echo -e "${GREEN}✓ specKit copied successfully to project${NC}"
+    # Check if uvx is available
+    if ! command -v uvx &> /dev/null; then
+        echo -e "${RED}Error: uvx not found. Install uv first:${NC}"
+        echo "  curl -LsSf https://astral.sh/uv/install.sh | sh"
+        echo "Then run manually in your project:"
+        echo "  uvx --from git+https://github.com/github/spec-kit.git specify init --here"
+        return 1
+    fi
+    
+    # Run specify init --here inside the project directory
+    if (cd "$project_path" && uvx --from git+https://github.com/github/spec-kit.git specify init --here); then
+        echo -e "${GREEN}✓ spec-kit initialized successfully (latest version)${NC}"
         return 0
     else
-        echo -e "${RED}Error: Failed to copy specKit to project${NC}"
+        echo -e "${RED}Error: Failed to initialize spec-kit${NC}"
+        echo "You can try manually: cd $project_path && uvx --from git+https://github.com/github/spec-kit.git specify init --here"
         return 1
     fi
 }
@@ -421,14 +418,14 @@ create_project() {
         script_exit_code=$?
     fi
     
-    # Check if the bench script includes specKit copying
+    # Check if the bench script already handles spec-kit init
     local includes_speckit
     includes_speckit=$(jq -r ".benches.${bench_name}.project_scripts[] | select(.name==\"$script_name\") | .includes_speckit // false" "$CONFIG_FILE")
     
-    # If the script succeeded and doesn't include specKit, copy it ourselves
+    # If the script succeeded and doesn't handle spec-kit, initialize it ourselves
     if [ $script_exit_code -eq 0 ] && [ "$includes_speckit" != "true" ]; then
         echo ""
-        echo -e "${YELLOW}Adding specKit for spec-driven development...${NC}"
+        echo -e "${YELLOW}Initializing spec-kit for spec-driven development...${NC}"
         
         # Determine the project path
         local project_path
@@ -438,7 +435,7 @@ create_project() {
             project_path="$HOME/projects/$project_name"
         fi
         
-        copy_speckit_to_project "$project_path"
+        init_speckit_in_project "$project_path"
     fi
     
     return $script_exit_code
@@ -470,7 +467,7 @@ show_usage() {
     echo "  2. Analyze the description using AI"
     echo "  3. Suggest the best development environment"
     echo "  4. Create the project using the appropriate bench-specific script"
-    echo "  5. Include specKit for spec-driven development"
+    echo "  5. Initialize spec-kit (latest version via uvx) for spec-driven development"
     echo ""
     echo "Supported project types: Flutter/Dart, Python, Java, .NET/C#, C++"
     echo ""

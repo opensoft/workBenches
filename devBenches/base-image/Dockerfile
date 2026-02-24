@@ -11,7 +11,7 @@ FROM workbench-base:${USERNAME}
 # Container version labels
 LABEL layer="1"
 LABEL layer.name="devbench-base"
-LABEL layer.version="1.0.0"
+LABEL layer.version="1.1.0"
 LABEL layer.description="Developer base with Python, Node.js, and AI tools"
 
 # Switch to root for installation
@@ -69,8 +69,7 @@ RUN python3 --version && pip --version
 # Configure git credential helper
 RUN git config --global credential.helper gh
 
-# Install uv (fast Python package installer)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# uv is inherited from Layer 0 (workbench-base)
 
 # Configure npm for user-local global installs
 RUN mkdir -p $HOME/.npm-global && \

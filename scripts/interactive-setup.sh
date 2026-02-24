@@ -469,11 +469,11 @@ update_section_headers() {
     local ai_active=$( [ $CURRENT_SECTION -eq 1 ] && echo "true" || echo "false" )
     local tools_active=$( [ $CURRENT_SECTION -eq 2 ] && echo "true" || echo "false" )
     
-    local bench_header="${DIM}┌─── DEV BENCHES ───────┐${NC}"
+    local bench_header="${DIM}┌────── BENCHES ────────┐${NC}"
     local ai_header="${DIM}┌─── AI ASSISTANTS ─────┐${NC}"
     local tools_header="${DIM}┌─────── TOOLS ─────────┐${NC}"
     
-    [ "$benches_active" = "true" ] && bench_header="${BOLD}${YELLOW}┌─── DEV BENCHES ───────┐${NC}"
+    [ "$benches_active" = "true" ] && bench_header="${BOLD}${YELLOW}┌────── BENCHES ────────┐${NC}"
     [ "$ai_active" = "true" ] && ai_header="${BOLD}${YELLOW}┌─── AI ASSISTANTS ─────┐${NC}"
     [ "$tools_active" = "true" ] && tools_header="${BOLD}${YELLOW}┌─────── TOOLS ─────────┐${NC}"
     
@@ -642,11 +642,11 @@ draw_three_sections() {
     local tools_active=$( [ $CURRENT_SECTION -eq 2 ] && echo "true" || echo "false" )
     
     # Section headers (borders adjusted to match content)
-    local bench_header="${DIM}┌─── DEV BENCHES ───────┐${NC}"
+    local bench_header="${DIM}┌────── BENCHES ────────┐${NC}"
     local ai_header="${DIM}┌─── AI ASSISTANTS ─────┐${NC}"
     local tools_header="${DIM}┌─────── TOOLS ─────────┐${NC}"
     
-    [ "$benches_active" = "true" ] && bench_header="${BOLD}${YELLOW}┌─── DEV BENCHES ───────┐${NC}"
+    [ "$benches_active" = "true" ] && bench_header="${BOLD}${YELLOW}┌────── BENCHES ────────┐${NC}"
     [ "$ai_active" = "true" ] && ai_header="${BOLD}${YELLOW}┌─── AI ASSISTANTS ─────┐${NC}"
     [ "$tools_active" = "true" ] && tools_header="${BOLD}${YELLOW}┌─────── TOOLS ─────────┐${NC}"
     
@@ -1743,9 +1743,9 @@ process_selections() {
                         fi
                     fi
                     
-                    if command -v uvx &> /dev/null; then
-                        # Test spec-kit by running help
-                        if uvx --from git+https://github.com/github/spec-kit.git specify --help &> /dev/null; then
+                    if command -v uv &> /dev/null; then
+                        # Install spec-kit persistently
+                        if uv tool install specify-cli --from git+https://github.com/github/spec-kit.git &> /dev/null; then
                             echo -e "  ${GREEN}✓ spec-kit installed${NC}"
                             ((success_count++))
                         else

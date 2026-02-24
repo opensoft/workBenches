@@ -8,7 +8,7 @@ FROM ubuntu:24.04
 # Container version labels
 LABEL layer="0"
 LABEL layer.name="workbench-base"
-LABEL layer.version="1.1.0"
+LABEL layer.version="1.2.0"
 LABEL layer.description="System base for all workBenches"
 
 # Switch to root for system package installation
@@ -126,13 +126,24 @@ RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master
 RUN echo 'eval "$(zoxide init zsh)"' >> ~/.zshrc \
     && echo 'alias cat="batcat"' >> ~/.zshrc \
     && echo 'alias ls="ls --color=auto"' >> ~/.zshrc \
-    && echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc \
-    && echo 'eval "$(zoxide init bash)"' >> ~/.bashrc
+    && echo 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"' >> ~/.zshrc \
+    && echo 'eval "$(zoxide init bash)"' >> ~/.bashrc \
+    && echo 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
 
 # Add zoxide to default bash profile for future users
 USER root
 RUN echo 'eval "$(zoxide init bash)"' >> /etc/skel/.bashrc
 USER $USERNAME
+
+# ========================================
+# UV & SPEC-KIT
+# ========================================
+
+# Install uv (fast Python package manager + uvx runner)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install spec-kit (GitHub Spec Kit) persistently via uv
+RUN $HOME/.cargo/bin/uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
 
 # Default command
 CMD ["sleep", "infinity"]
