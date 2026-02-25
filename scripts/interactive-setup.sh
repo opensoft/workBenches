@@ -1207,7 +1207,36 @@ process_selections() {
                     log "Setting up bench: $bench"
                     echo -e "${BOLD}${CYAN}▶ Setting up: $bench${NC}"
                     local bench_path=$(jq -r ".benches.${bench}.path // \"$bench\"" "$config_file" 2>/dev/null)
-                    local setup_script="$script_dir/../$bench_path/setup.sh"
+                    local full_bench_path="$script_dir/../$bench_path"
+                    local setup_script="$full_bench_path/setup.sh"
+                    
+                    # If it's a git repo, fetch latest updates first
+                    if [ -d "$full_bench_path/.git" ] || [ -f "$full_bench_path/.git" ]; then
+                        local bench_url=$(jq -r ".benches.${bench}.url // \"\"" "$config_file" 2>/dev/null)
+                        if [ -n "$bench_url" ] && [ "$bench_url" != "null" ]; then
+                            echo -e "  ${YELLOW}Fetching latest updates from: $bench_url${NC}"
+                            log "Fetching updates for $bench before setup"
+                            
+                            # Fetch in background with spinner
+                            (
+                                cd "$full_bench_path" && git fetch --all >> "$LOG_FILE" 2>&1 && git pull >> "$LOG_FILE" 2>&1
+                                echo $? > /tmp/fetch_status_$$
+                            ) &
+                            local fetch_pid=$!
+                            show_spinner $fetch_pid "Fetching updates for $bench"
+                            
+                            local fetch_status=$(cat /tmp/fetch_status_$$ 2>/dev/null || echo "1")
+                            rm -f /tmp/fetch_status_$$
+                            
+                            if [ "$fetch_status" -eq 0 ]; then
+                                log "Successfully fetched and pulled updates for $bench"
+                                echo -e "  ${GREEN}✓ Updated to latest version${NC}"
+                            else
+                                log "WARNING: Failed to fetch updates for $bench"
+                                echo -e "  ${YELLOW}⚠ Failed to fetch updates, continuing with current version${NC}"
+                            fi
+                        fi
+                    fi
                     
                     if [ -f "$setup_script" ]; then
                         log "Running setup script: $setup_script"
@@ -1256,26 +1285,26 @@ process_selections() {
                             if [ -d "$full_bench_path" ]; then
                                 # Directory exists - check if it has git
                                 if [ -d "$full_bench_path/.git" ] || [ -f "$full_bench_path/.git" ]; then
-                                    # Has git repo, do a fetch instead
+                                    # Has git repo, do a fetch and pull
                                     echo -e "  ${YELLOW}Directory exists, fetching updates from: $bench_url${NC}"
-                                    log "Fetching updates for $bench from $bench_url"
+                                    log "Fetching and pulling updates for $bench from $bench_url"
                                     
-                                    # Fetch in background with spinner
+                                    # Fetch and pull in background with spinner
                                     (
-                                        cd "$full_bench_path" && git fetch --all >> "$LOG_FILE" 2>&1
+                                        cd "$full_bench_path" && git fetch --all >> "$LOG_FILE" 2>&1 && git pull >> "$LOG_FILE" 2>&1
                                         echo $? > /tmp/fetch_status_$$
                                     ) &
                                     local fetch_pid=$!
-                                    show_spinner $fetch_pid "Fetching $bench"
+                                    show_spinner $fetch_pid "Updating $bench"
                                     
                                     local fetch_status=$(cat /tmp/fetch_status_$$ 2>/dev/null || echo "1")
                                     rm -f /tmp/fetch_status_$$
                                     
                                     if [ "$fetch_status" -eq 0 ]; then
-                                        log "Successfully fetched updates for $bench"
-                                        echo -e "  ${GREEN}✓ Successfully fetched updates for $bench${NC}"
+                                        log "Successfully fetched and pulled updates for $bench"
+                                        echo -e "  ${GREEN}✓ Successfully updated to latest version${NC}"
                                     else
-                                        log "ERROR: Failed to fetch updates for $bench"
+                                        log "ERROR: Failed to fetch/pull updates for $bench"
                                         echo -e "  ${RED}✗ Failed to fetch updates${NC}"
                                         ((fail_count++))
                                         echo ""

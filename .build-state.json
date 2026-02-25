@@ -1,3 +1,5 @@
 {
-  "devbench-base": "fec6cfa8b5d1ffe5e12f559e4e98edba3ea93541e31ad867be4b7dbd59e6cd72"
+  "adminbench-base": "eaa45890be6433372b95cb3762770d97ee8b8abb137f8714d8ac0b1900521a60",
+  "biobench-base": "d17561e56bc939775927090c4ef317dc48dd15e90d1e5f8c4f665000322d99d5",
+  "devbench-base": "d6479af6a13177725b40c17b86b018a6c636a4a25f46b3fd17f0e3c0f1d1d639"
 }

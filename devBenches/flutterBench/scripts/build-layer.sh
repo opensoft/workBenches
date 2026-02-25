@@ -9,15 +9,20 @@ echo "🚀 Building Flutter Bench Layer 2"
 echo "   User: $USER"
 echo ""
 
-# Check if devbench-base exists
+# Check if devbench-base exists, build it if missing
 if ! docker image inspect "devbench-base:$USER" >/dev/null 2>&1; then
-    echo "❌ Error: Base image 'devbench-base:$USER' not found!"
+    echo "⚠ Base image 'devbench-base:$USER' not found. Building automatically..."
     echo ""
-    echo "You need to build the base image first:"
-    echo "  cd ../base-image"
-    echo "  ./build-base.sh"
+
+    LAYER1_BUILD="$SCRIPT_DIR/../../base-image/build.sh"
+    if [ ! -f "$LAYER1_BUILD" ]; then
+        echo "❌ Error: Layer 1 build script not found: ${LAYER1_BUILD}"
+        exit 1
+    fi
+
+    # Layer 1 build script will check for Layer 0 and error if missing
+    "$LAYER1_BUILD" --user "$USER"
     echo ""
-    exit 1
 fi
 
 echo "✓ Base image 'devbench-base:$USER' found"

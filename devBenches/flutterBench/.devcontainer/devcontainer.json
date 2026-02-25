@@ -3,6 +3,7 @@
 	"dockerComposeFile": "docker-compose.yml",
 	"service": "flutter_bench",
 	"workspaceFolder": "/workspace",
+	"initializeCommand": "bash scripts/ensure-images.sh",
 	
 	// Mount host home directory directly for seamless config/SSH access
 	"mounts": [
