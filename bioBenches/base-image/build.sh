@@ -1,11 +1,11 @@
 #!/bin/bash
-# Build script for Layer 1c: Bioinformatics Base Image
+# Build script for Layer 1: bioBench Base Image
 # Creates: biobench-base:$USERNAME
 
 set -e
 
 echo "=========================================="
-echo "Building Layer 1c: Bioinformatics Base"
+echo "Building Layer 1: bioBench Base"
 echo "=========================================="
 echo ""
 
@@ -40,9 +40,9 @@ docker build \
     .
 
 echo ""
-echo "✓ Layer 1c built successfully!"
+echo "✓ Layer 1 built successfully!"
 echo "  Image: biobench-base:$USERNAME"
 echo ""
 echo "Next step: Build bench-specific images"
 echo "  cd ../gentecBench"
-echo "  ./setup.sh --user $USERNAME"
+echo "  docker compose -f .devcontainer/docker-compose.yml build"

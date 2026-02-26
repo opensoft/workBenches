@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build script for Layer 1c: Bioinformatics Base Image (biobench-base)
+# Build script for Layer 1c: Bio Base Image (biobench-base)
 
 set -e
 

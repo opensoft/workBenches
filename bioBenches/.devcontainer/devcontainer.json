@@ -1,0 +1,8 @@
+{
+	"name": "Bioinformatics Workspace",
+	"extensions": [
+		"abhinavsns.bam-reader",
+		"jfan.biofmt",
+		"mubashir-ali.biocoder"
+	]
+}

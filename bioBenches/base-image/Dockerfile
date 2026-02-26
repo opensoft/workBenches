@@ -1,7 +1,6 @@
-# Layer 1c: Bioinformatics Base Image
-# Extends Layer 0 with Miniconda, scientific Python, and bio libraries
-# User-specific build (matches host UID/GID)
-# Used by ALL bio benches (gentecBench, simBench, etc.)
+# Layer 1: bioBench Base Image
+# Extends Layer 0 with Miniconda + bioconda/conda-forge channels
+# Used by ALL bio benches (geneBench, simBenches, etc.)
 
 # Build arguments must be declared before FROM to use in FROM
 ARG USERNAME=brett
@@ -9,40 +8,23 @@ ARG USERNAME=brett
 FROM workbench-base:${USERNAME}
 
 # Container version labels
-LABEL layer="1c"
+LABEL layer="1"
 LABEL layer.name="biobench-base"
 LABEL layer.version="1.0.0"
-LABEL layer.description="Bioinformatics base with Miniconda, scientific Python, and Jupyter"
+LABEL layer.description="Bio base with Miniconda, bioconda and conda-forge channels"
 
-# Switch to root for installation
 USER root
 
 # Build arguments
 ARG USERNAME=brett
 
 # ========================================
-# SYSTEM LIBRARY DEPENDENCIES
+# SYSTEM DEPENDENCIES
 # ========================================
 
-# Libraries needed by many bioinformatics tools and native extensions
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
-    # HDF5 support (common bio data format)
-    libhdf5-dev \
-    # Compression libraries (BAM, gzipped FASTA, etc.)
-    zlib1g-dev \
-    libbz2-dev \
-    liblzma-dev \
-    # Network and parsing
-    libcurl4-openssl-dev \
-    libssl-dev \
-    libxml2-dev \
-    # Build tools for compiling bio software
-    cmake \
-    gfortran \
-    # Needed by many conda packages
-    libgl1 \
-    libglib2.0-0 \
+    sudo \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -51,82 +33,56 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 # ========================================
 
 ENV CONDA_DIR=/opt/conda
-ENV PATH="${CONDA_DIR}/bin:${PATH}"
 
-# Install Miniconda
-RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh \
+RUN curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh \
     && bash /tmp/miniconda.sh -b -p ${CONDA_DIR} \
     && rm /tmp/miniconda.sh \
     && ${CONDA_DIR}/bin/conda clean -afy
 
-# Configure channels (conda-forge + bioconda only, no defaults)
-RUN conda config --system --remove channels defaults 2>/dev/null || true \
-    && conda config --system --add channels bioconda \
-    && conda config --system --add channels conda-forge \
+ENV PATH="${CONDA_DIR}/bin:${PATH}"
+
+# Accept ToS and configure channels for bioinformatics
+RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main \
+    && conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r \
+    && conda config --system --prepend channels conda-forge \
+    && conda config --system --prepend channels bioconda \
     && conda config --system --set channel_priority strict
 
-# Update conda base (using conda-forge only)
-RUN conda update -n base -y -c conda-forge conda \
-    && conda clean -afy
-
 # ========================================
-# CORE SCIENTIFIC PYTHON STACK
+# USER SETUP
 # ========================================
 
-# Install foundational packages in the base conda environment
-RUN conda install -n base -y \
-    # Numerical / data fundamentals
-    numpy \
-    scipy \
-    pandas \
-    # Visualization
-    matplotlib \
-    seaborn \
-    # Machine learning basics
-    scikit-learn \
-    # Core bioinformatics library
-    biopython \
-    # HDF5 data format
-    h5py \
-    && conda clean -afy
+RUN set -eux && \
+    if ! id -u "${USERNAME}" >/dev/null 2>&1; then \
+        if getent passwd "1000" >/dev/null; then \
+            existing_user=$(getent passwd "1000" | cut -d: -f1) && \
+            userdel --force --remove $existing_user 2>/dev/null || true; \
+        fi && \
+        if getent group "1000" >/dev/null; then \
+            existing_group=$(getent group "1000" | cut -d: -f1) && \
+            groupmod -n ${USERNAME} $existing_group 2>/dev/null || true; \
+        else \
+            groupadd --gid 1000 "${USERNAME}" 2>/dev/null || true; \
+        fi && \
+        useradd --uid 1000 --gid "${USERNAME}" -m -s /bin/zsh "${USERNAME}" 2>/dev/null || true; \
+    fi && \
+    mkdir -p /etc/sudoers.d && \
+    echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} && \
+    chmod 0440 /etc/sudoers.d/${USERNAME}
 
-# ========================================
-# JUPYTER
-# ========================================
-
-RUN conda install -n base -y \
-    jupyter \
-    jupyterlab \
-    && conda clean -afy
-
-# ========================================
-# CONDA OWNERSHIP & USER SETUP
-# ========================================
-
-# Ensure the conda directory is owned by the user
+# Make conda owned by user
 RUN chown -R ${USERNAME}:${USERNAME} ${CONDA_DIR}
 
 # ========================================
-# SHELL INTEGRATION
+# SHELL CONFIGURATION
 # ========================================
 
 USER ${USERNAME}
 WORKDIR /home/${USERNAME}
 
-# Initialize conda for both bash and zsh
-RUN conda init bash \
-    && conda init zsh
-
-# ========================================
-# WORKSPACE SETUP
-# ========================================
-
-USER root
-RUN mkdir -p /workspace \
-    && chown -R ${USERNAME}:${USERNAME} /workspace
-
-USER ${USERNAME}
-WORKDIR /workspace
+# Initialize conda for zsh and bash
+RUN conda init zsh \
+    && conda init bash
 
 # Default command
 CMD ["sleep", "infinity"]

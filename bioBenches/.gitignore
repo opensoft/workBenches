@@ -1,0 +1,11 @@
+# Nested bench repositories (separate git repos)
+gentecBench/
+simBench/
+
+# Nextflow runtime
+.nextflow/
+.nextflow.log*
+work/
+
+# Large data directories
+basespace_data/
