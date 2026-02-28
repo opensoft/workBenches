@@ -1,7 +1,6 @@
 {
     "name": "C++ Heavy Development Environment",
     "image": "cpp-bench:brett",
-    "workspaceFolder": "/workspace",
     "runArgs": [
         "--cap-add=SYS_PTRACE",
         "--security-opt", 
@@ -13,11 +12,7 @@
         "vscode": {
             "settings": {
                 "terminal.integrated.defaultProfile.linux": "zsh",
-                "terminal.integrated.profiles.linux": {
-                    "zsh": {
-                        "path": "/bin/zsh"
-                    }
-                },
+                "terminal.integrated.fontFamily": "'MesloLGS NF', 'Hack Nerd Font', 'FiraCode Nerd Font', monospace",
                 "cmake.configureOnOpen": false,
                 "C_Cpp.default.cppStandard": "c++20",
                 "C_Cpp.default.cStandard": "c17",
@@ -38,12 +33,18 @@
             "extensions": [
                 "ms-vscode.cpptools",
                 "ms-vscode.cpptools-extension-pack",
+                "llvm-vs-code-extensions.vscode-clangd",
                 "ms-vscode.cmake-tools",
                 "twxs.cmake",
                 "ms-vscode.cpptools-themes",
                 "xaver.clang-format",
+                "notskm.clang-tidy",
                 "jbenden.c-cpp-flylint",
                 "vadimcn.vscode-lldb",
+                "jeff-hykin.better-cpp-syntax",
+                "cschlosser.doxdocgen",
+                "ms-vscode.test-adapter-converter",
+                "matepek.vscode-catch2-test-adapter",
                 "ms-python.python",
                 "ms-python.flake8",
                 "ms-python.black-formatter",
@@ -67,31 +68,52 @@
         "CC": "/usr/bin/gcc-12",
         "CXX": "/usr/bin/g++-12"
     },
-    "remoteUser": "brett",
-    "updateRemoteUserUID": false,
+    "remoteUser": "${localEnv:USER}",
+    "workspaceFolder": "/workspace",
     "mounts": [
-        "source=${localEnv:HOME}/projects,target=/workspace,type=bind,consistency=cached",
-        "source=cppbench-vscode-server,target=/home/brett/.vscode-server,type=volume",
-        "source=cppbench-bash-history,target=/home/brett/.bash_history,type=volume",
-        "source=cppbench-conan,target=/home/brett/.conan2,type=volume",
-        "source=${localEnv:HOME}/.claude,target=/home/brett/.claude,type=bind,consistency=cached",
-        "source=${localEnv:HOME}/.local/share/claude,target=/home/brett/.local/share/claude,type=bind,consistency=cached",
-        "source=${localEnv:HOME}/.local/state/claude,target=/home/brett/.local/state/claude,type=bind,consistency=cached",
-        "source=${localEnv:HOME}/.codex,target=/home/brett/.codex,type=bind,consistency=cached",
-        "source=${localEnv:HOME}/.gemini,target=/home/brett/.gemini,type=bind,consistency=cached",
-        "source=${localEnv:HOME}/.cursor,target=/home/brett/.cursor,type=bind,consistency=cached",
-        "source=${localEnv:HOME}/.copilot,target=/home/brett/.copilot,type=bind,consistency=cached",
-        "source=${localEnv:HOME}/.opencode,target=/home/brett/.opencode,type=bind,consistency=cached",
-        "source=${localEnv:HOME}/.letta,target=/home/brett/.letta,type=bind,consistency=cached",
-        "source=${localEnv:HOME}/.config/opencode,target=/home/brett/.config/opencode,type=bind,consistency=cached",
-        "source=${localEnv:HOME}/.config/gh,target=/home/brett/.config/gh,type=bind,consistency=cached,readonly",
-        "source=${localEnv:HOME}/.gitconfig,target=/home/brett/.gitconfig,type=bind,readonly",
-        "source=${localEnv:HOME}/.git-credentials,target=/home/brett/.git-credentials,type=bind,readonly",
-        "source=${localEnv:HOME}/.ssh,target=/home/brett/.ssh,type=bind,readonly",
-        "source=${localEnv:HOME}/.p10k.zsh,target=/home/brett/.p10k.zsh,type=bind,consistency=cached"
+        "source=cppbench-zshhistory,target=/home/${localEnv:USER}/.zsh_history,type=volume",
+        "source=${localEnv:HOME}/projects,target=/workspace/projects,type=bind",
+
+        // Shell configurations
+        "source=${localEnv:HOME}/.zshrc,target=/home/${localEnv:USER}/.zshrc,type=bind,readonly",
+        "source=${localEnv:HOME}/.oh-my-zsh,target=/home/${localEnv:USER}/.oh-my-zsh,type=bind,readonly",
+        "source=${localEnv:HOME}/.p10k.zsh,target=/home/${localEnv:USER}/.p10k.zsh,type=bind,readonly",
+        "source=${localEnv:HOME}/.bashrc,target=/home/${localEnv:USER}/.bashrc,type=bind,readonly",
+
+        // Git configuration
+        "source=${localEnv:HOME}/.gitconfig,target=/home/${localEnv:USER}/.gitconfig,type=bind,readonly",
+
+        // SSH keys and configuration
+        "source=${localEnv:HOME}/.ssh,target=/home/${localEnv:USER}/.ssh,type=bind,readonly",
+
+        // GitHub CLI configuration
+        "source=${localEnv:HOME}/.config/gh,target=/home/${localEnv:USER}/.config/gh,type=bind,readonly",
+
+        // AI Agent Credentials
+        // Claude (Anthropic)
+        "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.claude.json,target=/home/${localEnv:USER}/.claude.json,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.claude/.credentials.json,target=/home/${localEnv:USER}/.claude/.credentials.json,type=bind,consistency=cached",
+        // Codex (OpenAI)
+        "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex,type=bind,consistency=cached",
+        // Gemini (Google)
+        "source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini,type=bind,consistency=cached",
+        // Grok (xAI)
+        "source=${localEnv:HOME}/.grok,target=/home/${localEnv:USER}/.grok,type=bind,readonly",
+        // GitHub Copilot CLI
+        "source=${localEnv:HOME}/.copilot-cli,target=/home/${localEnv:USER}/.copilot-cli,type=bind,readonly"
     ],
-    "postStartCommand": "sudo chown -R brett:brett ~/.vscode-server ~/.bash_history || true",
-    "forwardPorts": [8000, 8080, 3200, 5200, 9090],
+    // "postCreateCommand": "bash ${containerWorkspaceFolder}/.devcontainer/post-create.sh",
+    "features": {
+        "ghcr.io/devcontainers/features/git:1": {
+            "version": "latest",
+            "ppa": true
+        },
+        "ghcr.io/devcontainers/features/github-cli:1": {
+            "version": "latest"
+        }
+    },
+    "forwardPorts": [8000, 8080, 3000, 5000, 9090],
     "portsAttributes": {
         "8000": {
             "label": "HTTP Server",

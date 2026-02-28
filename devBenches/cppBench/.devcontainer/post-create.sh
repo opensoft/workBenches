@@ -7,6 +7,11 @@ set -e
 
 echo "🔧 Setting up C++ Heavy Development Environment..."
 
+# Fix permissions for .vscode-server directory
+if [ -d "$HOME/.vscode-server" ]; then
+    sudo chown -R $(whoami):$(whoami) "$HOME/.vscode-server" || true
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -71,9 +76,6 @@ fi
 # Create sample project structure
 print_status "Creating sample project structure..."
 mkdir -p /workspace/projects/sample-cpp
-mkdir -p /workspace/builds
-mkdir -p /workspace/install
-mkdir -p /workspace/tests
 
 # Create a sample CMakeLists.txt
 cat > /workspace/projects/sample-cpp/CMakeLists.txt << 'EOF'
@@ -222,15 +224,16 @@ cat > /workspace/projects/sample-cpp/build.sh << 'EOF'
 #!/bin/bash
 set -e
 
-BUILD_DIR="../builds/sample-cpp"
-INSTALL_DIR="../install/sample-cpp"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD_DIR="$PROJECT_DIR/build"
+INSTALL_DIR="$PROJECT_DIR/install"
 
 # Create build directory
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
 # Configure
-cmake ../../projects/sample-cpp \
+cmake "$PROJECT_DIR" \
     -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON

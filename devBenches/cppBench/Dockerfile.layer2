@@ -8,7 +8,7 @@ FROM ${BASE_IMAGE}
 # Container version labels
 LABEL layer="2"
 LABEL layer.name="cpp-bench"
-LABEL layer.version="1.0.0"
+LABEL layer.version="1.2.0"
 LABEL layer.description="C++ development tools and compilers"
 LABEL bench.type="cpp"
 
@@ -16,6 +16,16 @@ ARG USERNAME=brett
 
 # Switch to root for C++ installation
 USER root
+
+# ========================================
+# FIX APT SOURCES (Ubuntu mirror issues)
+# ========================================
+
+# Switch to mirrors that work (archive.ubuntu.com is returning 403)
+RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://us.archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || \
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://us.archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+RUN sed -i 's|http://security.ubuntu.com/ubuntu|http://security.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || \
+    sed -i 's|http://security.ubuntu.com/ubuntu|http://security.ubuntu.com/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
 
 # ========================================
 # C++ COMPILERS AND BUILD TOOLS
@@ -33,6 +43,11 @@ RUN apt-get update && apt-get install -y \
     autoconf \
     libtool \
     pkg-config \
+    # Archive tools (needed for vcpkg)
+    zip \
+    unzip \
+    tar \
+    curl \
     # Modern GCC
     gcc-12 \
     g++-12 \
@@ -58,9 +73,12 @@ RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100 \
 
 RUN apt-get update && apt-get install -y \
     gdb \
+    lldb \
     valgrind \
     strace \
     ltrace \
+    linux-tools-generic \
+    heaptrack \
     && rm -rf /var/lib/apt/lists/*
 
 # ========================================
@@ -72,6 +90,9 @@ RUN apt-get update && apt-get install -y \
     vera++ \
     doxygen \
     graphviz \
+    ccache \
+    mold \
+    iwyu \
     && rm -rf /var/lib/apt/lists/*
 
 # ========================================
@@ -85,9 +106,7 @@ RUN apt-get update && apt-get install -y \
     libeigen3-dev \
     libgtest-dev \
     libgmock-dev \
-    zip \
-    unzip \
-    tar \
+    libbenchmark-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # ========================================
@@ -108,6 +127,7 @@ RUN pip3 install --break-system-packages \
     cpplint \
     cmake-format \
     cmakelang \
+    lizard \
     || echo "⚠️  Some Python C++ tools failed, skipping"
 
 # ========================================
@@ -119,6 +139,7 @@ ENV VCPKG_ROOT=/opt/vcpkg
 ENV PATH="$VCPKG_ROOT:$PATH"
 ENV CC=/usr/bin/gcc-12
 ENV CXX=/usr/bin/g++-12
+ENV PATH="/usr/lib/ccache:$PATH"
 
 # ========================================
 # USER CONFIGURATION
@@ -126,11 +147,8 @@ ENV CXX=/usr/bin/g++-12
 
 USER $USERNAME
 
-# Create common project directories
-RUN mkdir -p /workspace/projects \
-    && mkdir -p /workspace/builds \
-    && mkdir -p /workspace/install \
-    && mkdir -p /workspace/tests
+# Create workspace directory (projects will be mounted here)
+RUN mkdir -p /workspace
 
 # Add C++ development aliases and environment to .zshrc
 RUN echo '' >> ~/.zshrc && \
