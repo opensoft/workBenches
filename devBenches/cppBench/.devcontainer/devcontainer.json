@@ -1,14 +1,7 @@
 {
     "name": "C++ Heavy Development Environment",
-    "build": {
-        "dockerfile": "Dockerfile",
-        "context": ".",
-        "args": {
-            "USERNAME": "vscode",
-            "USER_UID": "1000",
-            "USER_GID": "1000"
-        }
-    },
+    "image": "cpp-bench:brett",
+    "workspaceFolder": "/workspace",
     "runArgs": [
         "--cap-add=SYS_PTRACE",
         "--security-opt", 
@@ -19,7 +12,12 @@
     "customizations": {
         "vscode": {
             "settings": {
-                "terminal.integrated.defaultProfile.linux": "bash",
+                "terminal.integrated.defaultProfile.linux": "zsh",
+                "terminal.integrated.profiles.linux": {
+                    "zsh": {
+                        "path": "/bin/zsh"
+                    }
+                },
                 "cmake.configureOnOpen": false,
                 "C_Cpp.default.cppStandard": "c++20",
                 "C_Cpp.default.cStandard": "c17",
@@ -64,27 +62,36 @@
         }
     },
     "containerEnv": {
+        "SHELL": "/bin/zsh",
         "VCPKG_ROOT": "/opt/vcpkg",
         "CC": "/usr/bin/gcc-12",
         "CXX": "/usr/bin/g++-12"
     },
-    "remoteUser": "vscode",
-    "workspaceFolder": "/workspace",
+    "remoteUser": "brett",
+    "updateRemoteUserUID": false,
     "mounts": [
-        "source=cppbench-bashhistory,target=/home/vscode/.bash_history,type=volume",
-        "source=cppbench-vscode,target=/home/vscode/.vscode-server,type=volume"
+        "source=${localEnv:HOME}/projects,target=/workspace,type=bind,consistency=cached",
+        "source=cppbench-vscode-server,target=/home/brett/.vscode-server,type=volume",
+        "source=cppbench-bash-history,target=/home/brett/.bash_history,type=volume",
+        "source=cppbench-conan,target=/home/brett/.conan2,type=volume",
+        "source=${localEnv:HOME}/.claude,target=/home/brett/.claude,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.local/share/claude,target=/home/brett/.local/share/claude,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.local/state/claude,target=/home/brett/.local/state/claude,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.codex,target=/home/brett/.codex,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.gemini,target=/home/brett/.gemini,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.cursor,target=/home/brett/.cursor,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.copilot,target=/home/brett/.copilot,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.opencode,target=/home/brett/.opencode,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.letta,target=/home/brett/.letta,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.config/opencode,target=/home/brett/.config/opencode,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.config/gh,target=/home/brett/.config/gh,type=bind,consistency=cached,readonly",
+        "source=${localEnv:HOME}/.gitconfig,target=/home/brett/.gitconfig,type=bind,readonly",
+        "source=${localEnv:HOME}/.git-credentials,target=/home/brett/.git-credentials,type=bind,readonly",
+        "source=${localEnv:HOME}/.ssh,target=/home/brett/.ssh,type=bind,readonly",
+        "source=${localEnv:HOME}/.p10k.zsh,target=/home/brett/.p10k.zsh,type=bind,consistency=cached"
     ],
-    "postCreateCommand": ".devcontainer/post-create.sh",
-    "features": {
-        "ghcr.io/devcontainers/features/git:1": {
-            "version": "latest",
-            "ppa": true
-        },
-        "ghcr.io/devcontainers/features/github-cli:1": {
-            "version": "latest"
-        }
-    },
-    "forwardPorts": [8000, 8080, 3000, 5000, 9090],
+    "postStartCommand": "sudo chown -R brett:brett ~/.vscode-server ~/.bash_history || true",
+    "forwardPorts": [8000, 8080, 3200, 5200, 9090],
     "portsAttributes": {
         "8000": {
             "label": "HTTP Server",

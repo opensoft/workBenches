@@ -70,6 +70,12 @@ if [ "$USERNAME" = "--user" ]; then
     USERNAME="${2:-$(whoami)}"
 fi
 
+# Shell environment setup (zsh + Powerlevel10k + Oh My Zsh)
+if [ -x "${SCRIPT_DIR}/scripts/setup-shell.sh" ]; then
+    "${SCRIPT_DIR}/scripts/setup-shell.sh"
+    echo ""
+fi
+
 # Docker prerequisite
 ensure_docker
 

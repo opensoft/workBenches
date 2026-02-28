@@ -1,0 +1,644 @@
+# OPENSPEC:START
+# OpenSpec shell completions configuration
+fpath=("/home/brett/.oh-my-zsh/custom/completions" $fpath)
+autoload -Uz compinit
+compinit
+# OPENSPEC:END
+
+# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
+# Initialization code that may require console input (password prompts, [y/n]
+# confirmations, etc.) must go above this block; everything else may go below.
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
+# Wave Terminal Auto-Connect to Docker Container
+# Only run if inside Wave Terminal (detected via WAVETERM_JWT)
+if [[ -n "$WAVETERM_JWT" ]]; then
+    _waveterm_log() {
+        [[ -n "$WAVETERM_DEBUG" ]] && print -r -- "$*"
+    }
+
+    _waveterm_echo() {
+        print -r -- "$*"
+    }
+
+    _waveterm_log "[DEBUG] Inside Wave Terminal block"
+
+    wtab() {
+        if [[ -z "$WAVETERM_TABID" ]]; then
+            echo "wtab: WAVETERM_TABID not set"
+            return 1
+        fi
+        local name="$*"
+        local tab_dir="$HOME/.waveterm/tabnames"
+        local tab_file="$tab_dir/$WAVETERM_TABID"
+        mkdir -p "$tab_dir"
+        if [[ -z "$name" ]]; then
+            if [[ -f "$tab_file" ]]; then
+                local current
+                current=$(<"$tab_file")
+                current="${current//$'\n'/}"
+                if [[ -n "$current" ]]; then
+                    echo "$current"
+                    return 0
+                fi
+            fi
+            echo "Usage: wtab <name>"
+            return 1
+        fi
+        printf '%s' "$name" > "$tab_file"
+        wsh setmeta -b this "tab:name=$name" >/dev/null 2>&1 || true
+        RAW_TAB_NAME="$name"
+        TAB_NAME="${name:l}"
+        echo "Tab name set to '$name'"
+    }
+
+    wblockautoconnect() {
+        if [[ -z "$WAVETERM_BLOCKID" ]]; then
+            echo "wblockautoconnect: WAVETERM_BLOCKID not set"
+            return 1
+        fi
+        local block_dir="$HOME/.waveterm/blockflags"
+        local flag_file="$block_dir/$WAVETERM_BLOCKID.autoconn"
+        mkdir -p "$block_dir"
+        case "${1:-status}" in
+            on|enable|1)
+                printf '1' > "$flag_file"
+                echo "Auto-connect enabled for block"
+                ;;
+            off|disable|0)
+                printf '0' > "$flag_file"
+                echo "Auto-connect disabled for block"
+                ;;
+            status)
+                if [[ -f "$flag_file" ]]; then
+                    local val
+                    val=$(<"$flag_file")
+                    val="${val//$'\n'/}"
+                    echo "Auto-connect is ${val:-0} for block"
+                else
+                    echo "Auto-connect is 0 for block (default)"
+                fi
+                ;;
+            *)
+                echo "Usage: wblockautoconnect {on|off|status}"
+                return 1
+                ;;
+        esac
+    }
+
+    wconnect() {
+        wblockautoconnect on || return 1
+
+        local name=""
+        local explicit_name="$*"
+        if [[ -n "$explicit_name" ]]; then
+            name="$explicit_name"
+        else
+            if [[ -n "$WAVETERM_TABID" ]]; then
+                local name_file="$HOME/.waveterm/tabnames/$WAVETERM_TABID"
+                if [[ -f "$name_file" ]]; then
+                    name=$(<"$name_file")
+                    name="${name//$'\n'/}"
+                fi
+            fi
+            if [[ -z "$name" ]]; then
+                name="$TAB_NAME"
+            fi
+        fi
+
+        if [[ -z "$name" || "$name" == "no name" ]]; then
+            echo "wconnect: tab name not set; run wtab <name> or wconnect <name>"
+            return 1
+        fi
+
+        if [[ ! -o interactive || ! -t 0 || ! -t 1 ]]; then
+            echo "wconnect: no TTY, cannot connect"
+            return 1
+        fi
+
+        if [[ -n "$explicit_name" ]]; then
+            local explicit_lc="${explicit_name:l}"
+            local default_candidate=""
+            if [[ "$explicit_lc" == *-bench ]]; then
+                default_candidate="$explicit_name"
+            else
+                default_candidate="${explicit_name}-bench"
+            fi
+            _waveterm_connect_by_name "$name" verbose "$default_candidate"
+        else
+            _waveterm_connect_by_name "$name" verbose
+        fi
+    }
+
+    # Extract tab/block ids from WAVETERM_JWT for context if available.
+    if [[ -n "$WAVETERM_JWT" && -n "$(command -v python3)" ]]; then
+        JWT_INFO=$(python3 - <<'PY' "$WAVETERM_JWT"
+import base64
+import json
+import sys
+
+jwt = sys.argv[1]
+parts = jwt.split(".")
+if len(parts) < 2:
+    print("\t")
+    sys.exit(0)
+payload = parts[1].replace("-", "+").replace("_", "/")
+payload += "=" * (-len(payload) % 4)
+try:
+    data = json.loads(base64.b64decode(payload).decode("utf-8"))
+    print(f"{data.get('tabid','')}\t{data.get('blockid','')}")
+except Exception:
+    print("\t")
+PY
+)
+        TAB_ID="${JWT_INFO%%$'\t'*}"
+        BLOCK_ID="${JWT_INFO#*$'\t'}"
+        _waveterm_log "[DEBUG] TAB_ID='$TAB_ID'"
+        _waveterm_log "[DEBUG] BLOCK_ID='$BLOCK_ID'"
+        if [[ -n "$TAB_ID" ]]; then
+            export WAVETERM_TABID="$TAB_ID"
+        fi
+        if [[ -n "$BLOCK_ID" ]]; then
+            export WAVETERM_BLOCKID="$BLOCK_ID"
+        fi
+    fi
+
+    # 1. Get Tab Name and Lowercase it
+    # Prefer stored per-tab name, then fall back to wsh metadata.
+    RAW_TAB_NAME=""
+    if [[ -n "$TAB_ID" ]]; then
+        TAB_NAME_FILE="$HOME/.waveterm/tabnames/$TAB_ID"
+        if [[ -f "$TAB_NAME_FILE" ]]; then
+            RAW_TAB_NAME=$(<"$TAB_NAME_FILE")
+            RAW_TAB_NAME="${RAW_TAB_NAME//$'\n'/}"
+            _waveterm_log "[DEBUG] RAW_TAB_NAME (tab file)='$RAW_TAB_NAME'"
+        fi
+    fi
+
+    AUTO_CONNECT_ENABLED=0
+    if [[ -n "$BLOCK_ID" ]]; then
+        AUTO_CONNECT_FILE="$HOME/.waveterm/blockflags/$BLOCK_ID.autoconn"
+        if [[ -f "$AUTO_CONNECT_FILE" ]]; then
+            AUTO_CONNECT_ENABLED=$(<"$AUTO_CONNECT_FILE")
+            AUTO_CONNECT_ENABLED="${AUTO_CONNECT_ENABLED//$'\n'/}"
+        fi
+    fi
+
+    # wsh getmeta takes keys; use --raw for the current tab name when available.
+    META_BLOCK_FLAG=()
+    if [[ -n "$BLOCK_ID" ]]; then
+        META_BLOCK_FLAG=(-b "$BLOCK_ID")
+    fi
+
+    if [[ -z "$RAW_TAB_NAME" ]]; then
+        RAW_TAB_NAME=$(wsh getmeta "${META_BLOCK_FLAG[@]}" --raw name 2>/dev/null)
+    fi
+    if [[ "$RAW_TAB_NAME" == "null" ]]; then
+        RAW_TAB_NAME=""
+    fi
+    _waveterm_log "[DEBUG] RAW_TAB_NAME='$RAW_TAB_NAME'"
+    if [[ -z "$RAW_TAB_NAME" ]]; then
+        RAW_TAB_NAME=$(wsh getmeta "${META_BLOCK_FLAG[@]}" --raw 'tab:name' 2>/dev/null)
+        if [[ "$RAW_TAB_NAME" == "null" ]]; then
+            RAW_TAB_NAME=""
+        fi
+        _waveterm_log "[DEBUG] RAW_TAB_NAME (tab:name)='$RAW_TAB_NAME'"
+    fi
+    if [[ -z "$RAW_TAB_NAME" ]]; then
+        RAW_TAB_NAME=$(wsh getmeta "${META_BLOCK_FLAG[@]}" --raw 'name:tab' 2>/dev/null)
+        if [[ "$RAW_TAB_NAME" == "null" ]]; then
+            RAW_TAB_NAME=""
+        fi
+        _waveterm_log "[DEBUG] RAW_TAB_NAME (name:tab)='$RAW_TAB_NAME'"
+    fi
+    if [[ -z "$RAW_TAB_NAME" ]]; then
+        RAW_JSON=$(wsh getmeta "${META_BLOCK_FLAG[@]}" 'name:*' 2>/dev/null)
+        _waveterm_log "[DEBUG] RAW_JSON='$RAW_JSON'"
+        RAW_TAB_NAME=$(echo "$RAW_JSON" | jq -r '."tab:name" // ."name:tab" // empty' 2>/dev/null)
+        _waveterm_log "[DEBUG] RAW_TAB_NAME (name:*)='$RAW_TAB_NAME'"
+    fi
+    if [[ -z "$RAW_TAB_NAME" && -n "$TAB_ID" ]]; then
+        BLOCKS_JSON=$(wsh blocks list --json --tab "$TAB_ID" 2>/dev/null)
+        RAW_TAB_NAME=$(echo "$BLOCKS_JSON" | jq -r --arg tabid "$TAB_ID" '
+            def pickname(o): o.name // o.title // o.tabname // o.tab_name // empty;
+            if type=="array" then
+                (.[0].tab // .[0] // empty) as $t | pickname($t)
+            elif type=="object" then
+                (.tabs? // .tab? // .window?.tabs? // .workspace?.tabs? // empty) as $tabs |
+                if ($tabs | type) == "array" then
+                    ($tabs[] | select(.tabid==$tabid or .id==$tabid) | pickname(.)) | first
+                elif ($tabs | type) == "object" then
+                    if ($tabs.tabid==$tabid or $tabs.id==$tabid) then pickname($tabs) else empty end
+                else empty end
+            else empty end
+        ' 2>/dev/null)
+        _waveterm_log "[DEBUG] RAW_TAB_NAME (blocks list)='$RAW_TAB_NAME'"
+    fi
+    TAB_NAME="${RAW_TAB_NAME:l}" # zsh-specific lowercase modifier
+    _waveterm_log "[DEBUG] TAB_NAME (lowercase)='$TAB_NAME'"
+
+    # Only auto-connect from interactive shells with a TTY.
+    AUTO_CONNECT_OK=1
+    if [[ ! -o interactive || ! -t 0 || ! -t 1 ]]; then
+        AUTO_CONNECT_OK=0
+        _waveterm_log "[DEBUG] Non-interactive or no TTY, skipping auto-connect"
+    fi
+
+    _waveterm_exec_shell() {
+        local container="$1"
+        local -a env_args
+        [[ -n "$TERM" ]] && env_args+=(-e "TERM=$TERM")
+        [[ -n "$COLORTERM" ]] && env_args+=(-e "COLORTERM=$COLORTERM")
+        [[ -n "$TERM_PROGRAM" ]] && env_args+=(-e "TERM_PROGRAM=$TERM_PROGRAM")
+        [[ -n "$TERM_PROGRAM_VERSION" ]] && env_args+=(-e "TERM_PROGRAM_VERSION=$TERM_PROGRAM_VERSION")
+        env_args+=(-e "WAVETERM_CONTAINER_NAME=$container")
+        docker exec -it "${env_args[@]}" "$container" /bin/sh -lc 'if command -v zsh >/dev/null 2>&1; then exec zsh -l; elif command -v bash >/dev/null 2>&1; then exec bash -l; else exec sh -l; fi'
+    }
+
+    _waveterm_connect_by_name() {
+        local name="$1"
+        local mode="${2:-}"
+        local default_name="${3:-}"
+        local name_lc="${name:l}"
+        local default_lc=""
+        local default_match=""
+        local -a matches
+        local -a select_matches
+
+        if [[ -n "$default_name" ]]; then
+            default_lc="${default_name:l}"
+        fi
+
+        if [[ "$mode" == "verbose" ]]; then
+            _waveterm_echo "Searching for containers matching '$name_lc'..."
+        else
+            _waveterm_log "[DEBUG] Searching for containers matching '$name_lc'..."
+        fi
+
+        matches=(${(f)"$(docker ps --format '{{.Names}}' | grep -i "$name_lc")"})
+
+        if [[ "$mode" == "verbose" ]]; then
+            _waveterm_echo "Matches: ${#matches[@]} ${matches[*]}"
+        else
+            _waveterm_log "[DEBUG] MATCHES count=${#matches[@]}, values='${matches[*]}'"
+        fi
+
+        if [[ -n "$default_lc" ]]; then
+            local m
+            for m in "${matches[@]}"; do
+                if [[ "${m:l}" == "$default_lc" ]]; then
+                    default_match="$m"
+                    break
+                fi
+            done
+        fi
+
+        if [[ ${#matches[@]} -eq 0 || -z "${matches[1]}" ]]; then
+            if [[ "$mode" == "verbose" ]]; then
+                _waveterm_echo "No running containers found matching '$name_lc'"
+            else
+                _waveterm_log "No running containers found matching '$name_lc'"
+            fi
+        elif [[ ${#matches[@]} -eq 1 ]]; then
+            if [[ "$mode" == "verbose" ]]; then
+                _waveterm_echo "Connecting to ${matches[1]}..."
+            else
+                _waveterm_log "Connecting to ${matches[1]}..."
+            fi
+            _waveterm_exec_shell "${matches[1]}"
+            exit
+        else
+            local -a other_matches
+            local idx=1
+            local reply=""
+
+            if [[ -n "$default_match" ]]; then
+                for m in "${matches[@]}"; do
+                    if [[ "$m" != "$default_match" ]]; then
+                        other_matches+=("$m")
+                    fi
+                done
+                _waveterm_echo "Multiple containers found for '$name_lc'."
+                _waveterm_echo "0 - $default_match (default)"
+                for m in "${other_matches[@]}"; do
+                    _waveterm_echo "$idx - $m"
+                    idx=$((idx + 1))
+                done
+                while true; do
+                    read -r "reply?Select container [0] (or 'q' to quit): "
+                    reply="${reply:-0}"
+                    if [[ "$reply" == "q" ]]; then
+                        break
+                    elif [[ "$reply" == "0" ]]; then
+                        _waveterm_exec_shell "$default_match"
+                        exit
+                    elif [[ "$reply" == <-> && "$reply" -ge 1 && "$reply" -le ${#other_matches[@]} ]]; then
+                        _waveterm_exec_shell "${other_matches[$reply]}"
+                        exit
+                    else
+                        _waveterm_echo "Invalid selection."
+                    fi
+                done
+            else
+                _waveterm_echo "Multiple containers found for '$name_lc'."
+                for m in "${matches[@]}"; do
+                    _waveterm_echo "$idx - $m"
+                    idx=$((idx + 1))
+                done
+                while true; do
+                    read -r "reply?Select container (1-${#matches[@]}) (or 'q' to quit): "
+                    if [[ "$reply" == "q" ]]; then
+                        break
+                    elif [[ "$reply" == <-> && "$reply" -ge 1 && "$reply" -le ${#matches[@]} ]]; then
+                        _waveterm_exec_shell "${matches[$reply]}"
+                        exit
+                    else
+                        _waveterm_echo "Invalid selection."
+                    fi
+                done
+            fi
+        fi
+    }
+
+    # If tab is unnamed or "No Name", don't run
+    if [[ -z "$TAB_NAME" || "$TAB_NAME" == "no name" ]]; then
+        _waveterm_log "[DEBUG] Tab is unnamed or 'no name', skipping auto-connect"
+    elif [[ "$AUTO_CONNECT_OK" -eq 1 && "$AUTO_CONNECT_ENABLED" -eq 1 ]]; then
+        _waveterm_connect_by_name "$TAB_NAME"
+    fi
+fi
+
+# If you come from bash you might have to change your $PATH.
+# export PATH=$HOME/bin:$HOME/.local/bin:/usr/local/bin:$PATH
+
+# Path to your Oh My Zsh installation.
+export ZSH="$HOME/.oh-my-zsh"
+
+# Set name of the theme to load --- if set to "random", it will
+# load a random theme each time Oh My Zsh is loaded, in which case,
+# to know which specific one was loaded, run: echo $RANDOM_THEME
+# See https://github.com/ohmyzsh/ohmyzsh/wiki/Themes
+ZSH_THEME="powerlevel10k/powerlevel10k"
+
+# Set list of themes to pick from when loading at random
+# Setting this variable when ZSH_THEME=random will cause zsh to load
+# a theme from this variable instead of looking in $ZSH/themes/
+# If set to an empty array, this variable will have no effect.
+# ZSH_THEME_RANDOM_CANDIDATES=( "robbyrussell" "agnoster" )
+
+# Uncomment the following line to use case-sensitive completion.
+# CASE_SENSITIVE="true"
+
+# Uncomment the following line to use hyphen-insensitive completion.
+# Case-sensitive completion must be off. _ and - will be interchangeable.
+# HYPHEN_INSENSITIVE="true"
+
+# Uncomment one of the following lines to change the auto-update behavior
+# zstyle ':omz:update' mode disabled  # disable automatic updates
+# zstyle ':omz:update' mode auto      # update automatically without asking
+# zstyle ':omz:update' mode reminder  # just remind me to update when it's time
+
+# Uncomment the following line to change how often to auto-update (in days).
+# zstyle ':omz:update' frequency 13
+
+# Uncomment the following line if pasting URLs and other text is messed up.
+# DISABLE_MAGIC_FUNCTIONS="true"
+
+# Uncomment the following line to disable colors in ls.
+# DISABLE_LS_COLORS="true"
+
+# Uncomment the following line to disable auto-setting terminal title.
+# DISABLE_AUTO_TITLE="true"
+
+# Uncomment the following line to enable command auto-correction.
+# ENABLE_CORRECTION="true"
+
+# Uncomment the following line to display red dots whilst waiting for completion.
+# You can also set it to another string to have that shown instead of the default red dots.
+# e.g. COMPLETION_WAITING_DOTS="%F{yellow}waiting...%f"
+# Caution: this setting can cause issues with multiline prompts in zsh < 5.7.1 (see #5765)
+# COMPLETION_WAITING_DOTS="true"
+
+# Uncomment the following line if you want to disable marking untracked files
+# under VCS as dirty. This makes repository status check for large repositories
+# much, much faster.
+# DISABLE_UNTRACKED_FILES_DIRTY="true"
+
+# Uncomment the following line if you want to change the command execution time
+# stamp shown in the history command output.
+# You can set one of the optional three formats:
+# "mm/dd/yyyy"|"dd.mm.yyyy"|"yyyy-mm-dd"
+# or set a custom format using the strftime function format specifications,
+# see 'man strftime' for details.
+# HIST_STAMPS="mm/dd/yyyy"
+
+# Would you like to use another custom folder than $ZSH/custom?
+# ZSH_CUSTOM=/path/to/new-custom-folder
+
+# Which plugins would you like to load?
+# Standard plugins can be found in $ZSH/plugins/
+# Custom plugins may be added to $ZSH_CUSTOM/plugins/
+# Example format: plugins=(rails git textmate ruby lighthouse)
+# Add wisely, as too many plugins slow down shell startup.
+plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
+
+source $ZSH/oh-my-zsh.sh
+
+# User configuration
+
+# export MANPATH="/usr/local/man:$MANPATH"
+
+# You may need to manually set your language environment
+# export LANG=en_US.UTF-8
+
+# Preferred editor for local and remote sessions
+# if [[ -n $SSH_CONNECTION ]]; then
+#   export EDITOR='vim'
+# else
+#   export EDITOR='nvim'
+# fi
+
+# Compilation flags
+# export ARCHFLAGS="-arch $(uname -m)"
+
+# Set personal aliases, overriding those provided by Oh My Zsh libs,
+# plugins, and themes. Aliases can be placed here, though Oh My Zsh
+# users are encouraged to define aliases within a top-level file in
+# the $ZSH_CUSTOM folder, with .zsh extension. Examples:
+# - $ZSH_CUSTOM/aliases.zsh
+# - $ZSH_CUSTOM/macos.zsh
+# For a full list of active aliases, run `alias`.
+#
+# Example aliases
+# alias zshconfig="mate ~/.zshrc"
+# alias ohmyzsh="mate ~/.oh-my-zsh"
+
+# Enhanced autosuggestions configuration
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=8"
+ZSH_AUTOSUGGEST_STRATEGY=(history completion)
+ZSH_AUTOSUGGEST_USE_ASYNC=true
+# Disable tab key binding for autosuggestions
+ZSH_AUTOSUGGEST_ACCEPT_WIDGETS=()
+
+# Accept autosuggestion with Right arrow (disabled Tab to allow partial completion)
+# bindkey '^I' autosuggest-accept
+
+# Configure partial path completion for cd command
+zstyle ':completion:*' special-dirs true
+zstyle ':completion:*' squeeze-slashes true
+zstyle ':completion:*' accept-exact '*(N)'
+zstyle ':completion:*:cd:*' tag-order local-directories directory-stack path-directories
+
+# Enable partial completion and list completion on first tab
+zstyle ':completion:*' list-prompt '%SAt %p: Hit TAB for more, or the character to insert%s'
+zstyle ':completion:*' select-prompt '%SScrolling active: current selection at %p%s'
+
+# Enable incremental completion (complete one segment at a time)
+setopt AUTO_LIST
+setopt AUTO_MENU
+setopt COMPLETE_IN_WORD
+
+
+# Enable advanced tab completion
+autoload -Uz compinit && compinit
+zstyle ':completion:*' menu select
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}' 'r:|[._-]=* r:|=*' 'l:|=* r:|=*'
+zstyle ':completion:*' list-colors ''
+zstyle ':completion:*' group-name ''
+zstyle ':completion:*:descriptions' format '%F{yellow}-- %d --%f'
+
+# History configuration for better suggestions
+HISTSIZE=10000
+SAVEHIST=10000
+setopt SHARE_HISTORY
+setopt HIST_IGNORE_DUPS
+setopt HIST_IGNORE_ALL_DUPS
+setopt HIST_FIND_NO_DUPS
+setopt HIST_SAVE_NO_DUPS
+export PATH="$HOME/.local/bin:$PATH"
+
+# >>> dcz helper >>>
+dcz() {
+  local workspace="${1:-.}"
+  
+  # Check if devcontainer is running
+  if ! devcontainer exec --workspace-folder "$workspace" echo "Container check" >/dev/null 2>&1; then
+    echo "🚀 Starting devcontainer..."
+    devcontainer up --workspace-folder "$workspace"
+  fi
+  
+  # Prefer zsh, fallback to bash, ensure interactive and Warp-friendly
+  if devcontainer exec --workspace-folder "$workspace" command -v zsh >/dev/null 2>&1; then
+    echo "🔗 Connecting to devcontainer with zsh..."
+    devcontainer exec --workspace-folder "$workspace" zsh -i
+  else
+    echo "🔗 Connecting to devcontainer with bash..."
+    devcontainer exec --workspace-folder "$workspace" bash -i
+  fi
+}
+
+# Quick alias for current directory
+alias dcz.='dcz .'
+# Yolo codex shortcut
+alias yodex='codex --dangerously-bypass-approvals-and-sandbox'
+# Gemini CLI auto-approve all tools
+alias gemi='gemini --approval-mode yolo'
+# <<< dcz helper <<<
+
+# SSH Agent auto-start (skip in devcontainers)
+if [ -z "$DISABLE_AUTO_SSH_AGENT" ]; then
+    # Use ~/.ssh if writable, otherwise fall back to /tmp (e.g. containers with ro .ssh mount)
+    if [ -w "$HOME/.ssh" ]; then
+        SSH_ENV="$HOME/.ssh/agent-environment"
+    else
+        SSH_ENV="/tmp/ssh-agent-environment-$(id -u)"
+    fi
+
+    function start_agent {
+        /usr/bin/ssh-agent | sed 's/^echo/#echo/' > "${SSH_ENV}"
+        chmod 600 "${SSH_ENV}" 2>/dev/null
+        . "${SSH_ENV}" > /dev/null
+        /usr/bin/ssh-add ~/.ssh/id_ed25519 2>/dev/null
+        /usr/bin/ssh-add ~/.ssh/id_rsa_ado 2>/dev/null
+    }
+
+    # Source SSH settings, if applicable
+    if [ -f "${SSH_ENV}" ]; then
+        . "${SSH_ENV}" > /dev/null
+        #ps ${SSH_AGENT_PID} doesn't work under cygwin
+        ps -ef | grep ${SSH_AGENT_PID} | grep ssh-agent$ > /dev/null || {
+            start_agent;
+        }
+    else
+        start_agent;
+    fi
+fi
+export KUBECONFIG=/home/brett/projects/adminbench/brett-heap.kubeconfig
+export PATH="/usr/bin:$PATH"
+export NODE_PATH=/usr/bin/node
+export NODE_VERSION=22.20.0
+export NODEJS_HOME=/usr/bin
+
+# Claude Code Node.js configuration
+export CLAUDE_NODE_PATH=/usr/bin/node
+export CLAUDE_NODEJS_PATH=/usr/bin/node
+export AI_NODE_PATH=/usr/bin/node
+export VSCODE_NODE_PATH=/usr/bin/node
+export EXTENSION_NODE_PATH=/usr/bin/node
+export CLAUDE_CODE_MAX_OUTPUT_TOKENS=64000
+
+# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+export LS_COLORS="${LS_COLORS}:ow=01;34:tw=01;34"
+
+# Bind Tab to accept autosuggestion partially (word by word)
+# Bind Shift+Tab to accept full autosuggestion
+# Bind Ctrl+Space to open completion menu
+# This must be at the end to override plugin bindings
+bindkey '^I' forward-word  # Tab moves cursor right one word
+bindkey '^[[Z' autosuggest-accept  # Shift+Tab accepts full suggestion
+bindkey '^ ' expand-or-complete  # Ctrl+Space for completion menu
+
+# DevBench Container Aliases
+alias devjava='/home/brett/projects/DevBench/JavaBench/launch-devbench.sh'
+alias devdotnet='/home/brett/projects/DevBench/dotNetBench/launch-devbench.sh'
+alias devflutter='/home/brett/projects/DevBench/FlutterBench/launch-devbench.sh'
+alias devbench-status='docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(java_bench|dot_net_bench|flutter_bench)"'
+alias devbench-stop='docker stop java_bench dot_net_bench flutter_bench 2>/dev/null || true'
+# End DevBench Aliases
+
+# Claude alias
+alias yolo="claude --dangerously-skip-permissions --teammate-mode tmux"
+export PATH="$HOME/.npm-global/bin:$PATH"
+export PATH="/workspace/.venv/bin:$PATH"
+
+# bun completions
+[ -s "/home/brett/.bun/_bun" ] && source "/home/brett/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# opencode
+export PATH=/home/brett/.opencode/bin:$PATH
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+export PATH=$PATH:/opt/rocm/bin
+
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+__conda_setup="$('/opt/conda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
+if [ $? -eq 0 ]; then
+    eval "$__conda_setup"
+else
+    if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
+        . "/opt/conda/etc/profile.d/conda.sh"
+    else
+        export PATH="/opt/conda/bin:$PATH"
+    fi
+fi
+unset __conda_setup
+# <<< conda initialize <<<
+

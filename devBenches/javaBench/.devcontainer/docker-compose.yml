@@ -7,9 +7,9 @@ services:
     container_name: java_bench
     
     volumes:
+      # Mount full host home directory
+      - ~:/home/${USER}:cached
       - ../..:/workspace:cached
-      - ~/.gitconfig:/home/${USER}/.gitconfig:ro
-      - ~/.ssh:/home/${USER}/.ssh:ro
       - m2-cache:/workspace/m2repo
       - gradle-cache:/workspace/.gradle
     

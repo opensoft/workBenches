@@ -1,156 +1,69 @@
-# Heavy C++ Development Environment
-# Based on Ubuntu 22.04 with comprehensive C++ toolchain
-FROM ubuntu:22.04
+# Layer 3: User Personalization
+# Thin layer on top of Layer 2 (cpp-bench) pulled from registry
+# Only handles: user creation, UID/GID matching, default shell
+# All configs (shell, creds, SSH) are mounted at runtime via docker-compose.yml
 
-# Avoid prompts from apt
-ENV DEBIAN_FRONTEND=noninteractive
+ARG BASE_IMAGE=cpp-bench:latest
+FROM ${BASE_IMAGE}
 
-# Set timezone
-ENV TZ=UTC
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+LABEL layer="3"
+LABEL layer.name="cpp-bench-user"
+LABEL layer.description="User personalization for cpp-bench"
 
-# Create development user
-ARG USERNAME=vscode
+# Build args - passed from docker-compose.yml
+ARG USERNAME=brett
 ARG USER_UID=1000
-ARG USER_GID=$USER_UID
+ARG USER_GID=1000
 
-# Update and install system dependencies
-RUN apt-get update && apt-get install -y \
-    # Essential build tools
-    build-essential \
-    cmake \
-    ninja-build \
-    make \
-    autotools-dev \
-    automake \
-    autoconf \
-    libtool \
-    pkg-config \
-    # Modern C++ compilers
-    gcc-12 \
-    g++-12 \
-    clang-15 \
-    clang++-15 \
-    clang-tools-15 \
-    clang-tidy-15 \
-    clang-format-15 \
-    # LLVM tools
-    llvm-15 \
-    llvm-15-dev \
-    # Debuggers and profilers
-    gdb \
-    valgrind \
-    strace \
-    ltrace \
-    # Static analysis tools
-    cppcheck \
-    vera++ \
-    # Documentation tools
-    doxygen \
-    graphviz \
-    # Version control
-    git \
-    git-lfs \
-    # Network tools
-    curl \
-    wget \
-    # Text editors and utilities
-    vim \
-    nano \
-    tree \
-    htop \
-    # Python for scripting and tools
-    python3 \
-    python3-pip \
-    # Development libraries
-    libssl-dev \
-    libcurl4-openssl-dev \
-    libboost-all-dev \
-    libeigen3-dev \
-    libgtest-dev \
-    libgmock-dev \
-    # Compression and archiving
-    zip \
-    unzip \
-    tar \
-    gzip \
-    # Additional utilities
-    jq \
-    bat \
-    fd-find \
-    ripgrep \
-    && rm -rf /var/lib/apt/lists/*
+USER root
 
-# Install vcpkg (C++ package manager)
-RUN git clone https://github.com/Microsoft/vcpkg.git /opt/vcpkg \
-    && cd /opt/vcpkg \
-    && ./bootstrap-vcpkg.sh \
-    && ln -s /opt/vcpkg/vcpkg /usr/local/bin/vcpkg
+# ========================================
+# USER MANAGEMENT
+# ========================================
 
-# Install Conan (Alternative C++ package manager)
-RUN pip3 install conan
+# Remove existing user/group with target UID/GID if they conflict,
+# then create the host user with matching UID/GID
+RUN set -eux && \
+    # Remove existing user with target UID if it's not our user
+    if getent passwd "$USER_UID" >/dev/null; then \
+        existing_user=$(getent passwd "$USER_UID" | cut -d: -f1) && \
+        if [ "$existing_user" != "$USERNAME" ]; then \
+            userdel --force --remove "$existing_user" 2>/dev/null || true; \
+        fi; \
+    fi && \
+    # Handle existing group with target GID
+    if getent group "$USER_GID" >/dev/null; then \
+        existing_group=$(getent group "$USER_GID" | cut -d: -f1) && \
+        if [ "$existing_group" != "$USERNAME" ]; then \
+            groupmod -n "$USERNAME" "$existing_group" 2>/dev/null || true; \
+        fi; \
+    else \
+        groupadd --gid "$USER_GID" "$USERNAME" 2>/dev/null || true; \
+    fi && \
+    # Create user if it doesn't exist
+    if ! getent passwd "$USERNAME" >/dev/null; then \
+        useradd --uid "$USER_UID" --gid "$USERNAME" -m -s /bin/zsh "$USERNAME" 2>/dev/null || true; \
+    fi && \
+    # Ensure user has correct UID/GID and shell
+    usermod -u "$USER_UID" -g "$USER_GID" -s /bin/zsh "$USERNAME" 2>/dev/null || true && \
+    # Add to sudo and docker groups
+    usermod -aG sudo "$USERNAME" 2>/dev/null || true && \
+    usermod -aG docker "$USERNAME" 2>/dev/null || true && \
+    # Passwordless sudo
+    echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/$USERNAME" && \
+    chmod 0440 "/etc/sudoers.d/$USERNAME" && \
+    # Ensure home directory ownership
+    mkdir -p "/home/$USERNAME" && \
+    chown -R "$USERNAME:$USERNAME" "/home/$USERNAME" && \
+    # Ensure workspace ownership
+    mkdir -p /workspace && \
+    chown "$USERNAME:$USERNAME" /workspace
 
-# Install additional modern C++ tools
-RUN pip3 install \
-    conan \
-    pre-commit \
-    cpplint \
-    cmake-format \
-    cmakelang
+# Set SHELL environment variable
+ENV SHELL=/bin/zsh
 
-# Set up alternatives for compilers
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100 \
-    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100 \
-    && update-alternatives --install /usr/bin/clang clang /usr/bin/clang-15 100 \
-    && update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-15 100
-
-# Create user
-RUN groupadd --gid $USER_GID $USERNAME \
-    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
-    && apt-get update \
-    && apt-get install -y sudo \
-    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
-    && chmod 0440 /etc/sudoers.d/$USERNAME \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set up development workspace
-RUN mkdir -p /workspace \
-    && chown -R $USERNAME:$USERNAME /workspace \
-    && chmod -R 755 /workspace
-
-# Configure git (will be overridden by user)
-RUN git config --system user.name "Developer" \
-    && git config --system user.email "developer@example.com" \
-    && git config --system init.defaultBranch main
-
-# Set up environment variables
-ENV VCPKG_ROOT=/opt/vcpkg
-ENV PATH="$VCPKG_ROOT:$PATH"
-ENV CC=/usr/bin/gcc-12
-ENV CXX=/usr/bin/g++-12
-
-# Create common project directories
-RUN mkdir -p /workspace/projects \
-    && mkdir -p /workspace/builds \
-    && mkdir -p /workspace/install \
-    && mkdir -p /workspace/tests \
-    && chown -R $USERNAME:$USERNAME /workspace
-
-# Switch to development user
+# Switch to the host user
 USER $USERNAME
-
-# Set up user-specific configurations
-RUN echo 'alias ll="ls -alF"' >> ~/.bashrc \
-    && echo 'alias la="ls -A"' >> ~/.bashrc \
-    && echo 'alias l="ls -CF"' >> ~/.bashrc \
-    && echo 'export PATH="$PATH:/opt/vcpkg"' >> ~/.bashrc \
-    && echo 'export VCPKG_ROOT=/opt/vcpkg' >> ~/.bashrc
-
-# Set working directory
 WORKDIR /workspace
 
-# Expose common development ports
-EXPOSE 8000 8080 3000 5000 9090
-
-# Default command
-CMD ["/bin/bash"]
+CMD ["sleep", "infinity"]

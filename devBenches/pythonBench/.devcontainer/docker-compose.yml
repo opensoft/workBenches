@@ -5,6 +5,8 @@ services:
     image: python-bench:${USER}
     container_name: python_bench
     volumes:
+      # Mount full host home directory
+      - ~:/home/${USER}:cached
       - ../..:/workspace:cached
     ports:
       - "8000:8000"

@@ -987,7 +987,7 @@ install_spec_tools() {
             if curl -LsSf https://astral.sh/uv/install.sh | sh; then
                 echo -e "${GREEN}✓ uv installed successfully${NC}"
                 # Source the environment to make uvx available
-                export PATH="$HOME/.cargo/bin:$PATH"
+                export PATH="$HOME/.local/bin:$PATH"
             else
                 echo -e "${RED}✗ Failed to install uv${NC}"
                 echo "Please install uv manually: https://docs.astral.sh/uv/"

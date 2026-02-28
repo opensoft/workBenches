@@ -1,0 +1,13 @@
+# Environment files
+.env
+.devcontainer/.env
+
+# OS
+.DS_Store
+*Zone.Identifier
+
+# Go
+/vendor/
+*.exe
+*.test
+*.out

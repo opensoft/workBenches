@@ -115,7 +115,8 @@ fi
 log_info "Installing Claude Code CLI (native installer)..."
 # Native installer is now the recommended method (npm is deprecated)
 # Installs to ~/.local/bin/claude, auto-updates in background, no Node.js dependency
-if ! run_with_timeout "$COMMAND_TIMEOUT" "Claude Code native install" bash -c 'curl -fsSL https://claude.ai/install.sh | bash'; then
+# Claude installer needs more time for download, use 5 minutes
+if ! run_with_timeout "300" "Claude Code native install" bash -c 'curl -fsSL https://claude.ai/install.sh | bash'; then
     log_error "Claude Code native installation failed (continuing)"
 fi
 
@@ -279,7 +280,7 @@ log_info "=========================================="
 log_info ""
 log_info "Installed tools:"
 log_info "  - OpenSpec"
-log_info "  - Claude Code (claude)"
+log_info "  - Claude Code (claude) [native installer]"
 log_info "  - OpenAI Codex (codex)"
 log_info "  - Google Gemini (gemini)"
 log_info "  - GitHub Copilot (copilot)"

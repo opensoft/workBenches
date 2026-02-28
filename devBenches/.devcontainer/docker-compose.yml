@@ -9,13 +9,14 @@ services:
     user: "${UID:-1000}:${GID:-1000}"
     
     volumes:
+      # Mount full host home directory
+      - ~:/home/${USER:-vscode}:cached
+      
       # Mount workspace
       - ~/projects:/workspace:cached
       
       # Shell history (persistent volume)
       - devbench-zsh-history:/home/${USER:-vscode}/.zsh_history_volume
-      
-      # Personal mounts (AI creds, git, SSH, shell configs) defined in override file
       
     command: sleep infinity
     
@@ -25,7 +26,7 @@ services:
       - HOME=/home/${USER:-vscode}
       
       # PATH for all dev tools
-      - PATH=/home/${USER:-vscode}/.local/bin:/home/${USER:-vscode}/.npm-global/bin:/home/${USER:-vscode}/.cargo/bin:/home/${USER:-vscode}/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      - PATH=/home/${USER:-vscode}/.local/bin:/home/${USER:-vscode}/.npm-global/bin:/home/${USER:-vscode}/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       
       # Bun
       - BUN_INSTALL=/home/${USER:-vscode}/.bun

@@ -17,10 +17,10 @@ services:
     
     # Mount your workspace
     volumes:
+      # Mount full host home directory
+      - ~:/home/${USER}:cached
       - ../:/workspace:cached
       - /var/run/docker.sock:/var/run/docker.sock
-      - ~/.gitconfig:/home/${USER}/.gitconfig:ro
-      - ~/.ssh:/home/${USER}/.ssh:ro
     
     # Forward common ports
     ports:

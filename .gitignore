@@ -12,6 +12,8 @@ devBenches/pythonBench/
 # Installation tracking (local only)
 .installed-benches.json
 config/bench-config.json.backup
+config/registry.env
+config/version-manifest.json
 
 # Common ignores
 .DS_Store

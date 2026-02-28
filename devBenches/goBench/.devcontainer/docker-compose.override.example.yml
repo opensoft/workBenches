@@ -1,7 +1,7 @@
 # Docker Compose Override File Example
 # ===========================================
-# This file enables AI coding assistants (Codex, Claude Code, Gemini) to authenticate
-# automatically inside your devcontainer.
+# Full host home directory is mounted in docker-compose.yml, so all
+# personal configs (AI creds, git, SSH, shell) are available automatically.
 #
 # SETUP INSTRUCTIONS:
 # 1. Copy this file to: docker-compose.override.yml
@@ -9,69 +9,7 @@
 #
 # 2. The docker-compose.override.yml file is gitignored and will not be committed
 #
-# 3. Uncomment the volume mounts below for the AI tools you use
-#
-# 4. Restart your devcontainer for changes to take effect
-#
-# For detailed setup instructions, see: AI_SETUP.md
+# 3. Use this file only for additional non-home volume overrides
 
 services:
-  # Note: Replace 'app' with your actual service name from docker-compose.yml
-  # Common service names: app, web, dev, service, etc.
-  go_bench:
-    volumes:
-      # ========================================
-      # AI Coding Assistant Configurations
-      # ========================================
-      # Uncomment the lines below to enable auto-login for AI assistants
-      
-      # OpenAI Codex CLI Authentication
-      # Required for: VS Code Codex extension, OpenAI CLI tools
-      # Location: ~/.codex/ contains authentication tokens
-      # - ~/.codex:/home/${USER:-vscode}/.codex:cached
-      
-      # Anthropic Claude Code CLI Authentication  
-      # Required for: VS Code Claude Code extension, Claude CLI tools
-      # Location: ~/.claude/ contains API keys and session data
-      # - ~/.claude:/home/${USER:-vscode}/.claude:cached
-      
-      # Google Gemini CLI Authentication
-      # Required for: VS Code Gemini extension, Gemini CLI tools
-      # Location: ~/.gemini/ contains authentication credentials
-      # - ~/.gemini:/home/${USER:-vscode}/.gemini:cached
-
-      # ========================================
-      # Shell & Terminal Configurations (Optional)
-      # ========================================
-      # Uncomment to use your personal shell config inside the container
-      
-      # Zsh configuration
-      # - ~/.zshrc:/home/${USER:-vscode}/.zshrc:ro
-      # - ~/.oh-my-zsh:/home/${USER:-vscode}/.oh-my-zsh:ro
-      # - ~/.p10k.zsh:/home/${USER:-vscode}/.p10k.zsh:ro
-      
-      # Bash configuration
-      # - ~/.bashrc:/home/${USER:-vscode}/.bashrc:ro
-
-      # ========================================
-      # SSH Keys & Configuration (Optional)
-      # ========================================
-      # Uncomment the SSH keys you have configured
-      
-      # - ~/.ssh/config:/home/${USER:-vscode}/.ssh/config:ro
-      # - ~/.ssh/id_ed25519:/home/${USER:-vscode}/.ssh/id_ed25519:ro
-      # - ~/.ssh/id_ed25519.pub:/home/${USER:-vscode}/.ssh/id_ed25519.pub:ro
-      # - ~/.ssh/id_rsa_ado:/home/${USER:-vscode}/.ssh/id_rsa_ado:ro
-      # - ~/.ssh/id_rsa_ado.pub:/home/${USER:-vscode}/.ssh/id_rsa_ado.pub:ro
-      # - ~/.ssh/known_hosts:/home/${USER:-vscode}/.ssh/known_hosts:ro
-
-      # ========================================
-      # Additional Personal Configurations (Optional)
-      # ========================================
-      # You can add other personal mounts here as needed
-      
-      # Example: Additional SSH keys
-      # - ~/.ssh/id_custom:/home/${USER:-vscode}/.ssh/id_custom:ro
-      
-      # Example: Custom shell aliases
-      # - ~/.bash_aliases:/home/${USER:-vscode}/.bash_aliases:ro
+  go_bench: {}

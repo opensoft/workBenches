@@ -99,9 +99,9 @@ If you haven't authenticated with the AI tools on your host machine yet, follow 
 
 ### Claude Code Setup
 
-1. Install Claude Code CLI on your host:
+1. Install Claude Code CLI on your host (native installer, npm is deprecated):
    ```bash
-   npm install -g @anthropic-ai/claude-code
+   curl -fsSL https://claude.ai/install.sh | bash
    ```
 
 2. Authenticate:
@@ -109,7 +109,7 @@ If you haven't authenticated with the AI tools on your host machine yet, follow 
    claude login
    ```
 
-3. Enter your API key when prompted
+3. Follow the browser authentication flow (OAuth — no API key needed)
 
 ### Gemini Setup
 

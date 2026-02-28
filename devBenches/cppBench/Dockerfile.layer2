@@ -85,6 +85,9 @@ RUN apt-get update && apt-get install -y \
     libeigen3-dev \
     libgtest-dev \
     libgmock-dev \
+    zip \
+    unzip \
+    tar \
     && rm -rf /var/lib/apt/lists/*
 
 # ========================================

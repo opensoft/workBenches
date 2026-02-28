@@ -166,7 +166,7 @@ openspec show <change-id>               # Review details
 ```bash
 # Install uv manually
 curl -LsSf https://astral.sh/uv/install.sh | sh
-export PATH="$HOME/.cargo/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 **Python version too old**:

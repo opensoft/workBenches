@@ -18,4 +18,4 @@ services:
       - USER=${USER:-brett}
       - HOME=/home/${USER:-brett}
       # PATH for dev tools
-      - PATH=/home/${USER:-brett}/.local/bin:/home/${USER:-brett}/.npm-global/bin:/home/${USER:-brett}/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      - PATH=/home/${USER:-brett}/.local/bin:/home/${USER:-brett}/.npm-global/bin:/home/${USER:-brett}/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

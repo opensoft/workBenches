@@ -1,0 +1,83 @@
+# Shared Mount Configuration for All WorkBenches
+# This file defines standard volume mounts for AI credentials and other shared resources
+# Usage: Include this in your bench-specific docker-compose.yml or use with docker-compose -f
+
+# To use this in your bench:
+# Option 1: docker-compose -f docker-compose.yml -f ../../docker-compose.mounts.yml up
+# Option 2: Reference as an extension in your docker-compose.yml (see example below)
+
+version: '3.8'
+
+# Extension field - reusable mount definitions
+x-standard-mounts: &standard-mounts
+  # Workspace (workBenches directory)
+  - ../..:/workspace:cached
+  
+  # User projects (access to all projects)
+  - ~/projects:/projects:cached
+  
+  # VSCode Server persistence
+  - ${BENCH_NAME:-bench}-vscode-server:/home/${USER}/.vscode-server
+  - ${BENCH_NAME:-bench}-bash-history:/home/${USER}/.bash_history
+  
+  # AI Coding Assistant Credentials (from Layer 0)
+  # These directories are mounted from the host to provide authentication
+  - ~/.claude:/home/${USER}/.claude:cached
+  - ~/.local/share/claude:/home/${USER}/.local/share/claude:cached
+  - ~/.local/state/claude:/home/${USER}/.local/state/claude:cached
+  - ~/.codex:/home/${USER}/.codex:cached
+  - ~/.gemini:/home/${USER}/.gemini:cached
+  - ~/.cursor:/home/${USER}/.cursor:cached
+  - ~/.copilot:/home/${USER}/.copilot:cached
+  - ~/.opencode:/home/${USER}/.opencode:cached
+  - ~/.letta:/home/${USER}/.letta:cached
+  - ~/.config/opencode:/home/${USER}/.config/opencode:cached
+  
+  # GitHub CLI credentials
+  - ~/.config/gh:/home/${USER}/.config/gh:ro
+  
+  # Git credentials (if using credential helper)
+  - ~/.gitconfig:/home/${USER}/.gitconfig:ro
+  - ~/.git-credentials:/home/${USER}/.git-credentials:ro
+  
+  # SSH keys (read-only for security)
+  - ~/.ssh:/home/${USER}/.ssh:ro
+  
+  # Optional Layer 1 credentials (uncomment if needed)
+  # Python package publishing (PyPI)
+  # - ~/.pypirc:/home/${USER}/.pypirc:ro
+  # - ~/.pip/pip.conf:/home/${USER}/.pip/pip.conf:ro
+  
+  # Node.js private registries
+  # - ~/.npmrc:/home/${USER}/.npmrc:ro
+  
+  # Bun runtime
+  # - ~/.bun:/home/${USER}/.bun:cached
+
+# Example service template (not used directly, but shows the pattern)
+services:
+  example-service:
+    volumes: *standard-mounts
+
+# AI Tools Installed in Layer 0 (workbench-base)
+# Reference: workBenches/base-image/install-ai-clis.sh
+# 
+# Installed AI CLIs:
+# - @anthropic-ai/claude-code (via npm)
+# - @openai/codex (via npm) 
+# - @githubnext/github-copilot-cli (via npm)
+# - @google/gemini-cli (via npm)
+# - opencode-ai (via npm)
+# - @letta-ai/letta-code (via npm)
+# - @fission-ai/openspec (via npm)
+# - cursor (if available)
+#
+# Configuration locations:
+# - Claude Code: ~/.claude/
+# - OpenAI Codex: ~/.codex/
+# - GitHub Copilot: ~/.copilot/
+# - Google Gemini: ~/.gemini/
+# - Cursor: ~/.cursor/
+# - OpenCode: ~/.opencode/ and ~/.config/opencode/
+# - Letta: ~/.letta/
+# - OpenSpec: ~/.openspec/

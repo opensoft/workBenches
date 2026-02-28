@@ -1,6 +1,6 @@
-# Layer 1: Developer Base Image
-# Extends Layer 0 with Python, Node.js, AI CLIs
-# User-specific build (matches host UID/GID)
+# Layer 1a: Developer Base Image
+# Extends Layer 0 with Python, Node.js LTS, and dev tools
+# AI CLIs are inherited from Layer 0 (workbench-base)
 # Used by ALL developer benches (Frappe, Flutter, .NET, etc.)
 
 # Build arguments must be declared before FROM to use in FROM
@@ -11,8 +11,8 @@ FROM workbench-base:${USERNAME}
 # Container version labels
 LABEL layer="1"
 LABEL layer.name="devbench-base"
-LABEL layer.version="1.1.0"
-LABEL layer.description="Developer base with Python, Node.js, and AI tools"
+LABEL layer.version="1.2.0"
+LABEL layer.description="Developer base with Python, Node.js LTS, and dev tools"
 
 # Switch to root for installation
 USER root
@@ -20,10 +20,6 @@ USER root
 # Build arguments
 ARG USERNAME=brett
 
-# OpenCode plugin versions
-# Note: oh-my-opencode is installed from git (darrenhinde/oh-my-opencode fork)
-ARG OC_CODEX_AUTH_VERSION=4.2.0
-ARG OC_GEMINI_AUTH_VERSION=1.3.6
 ARG YARN_VERSION=1.22.22
 
 # ========================================
@@ -69,70 +65,17 @@ RUN python3 --version && pip --version
 # Configure git credential helper
 RUN git config --global credential.helper gh
 
-# uv is inherited from Layer 0 (workbench-base)
-
-# Configure npm for user-local global installs
-RUN mkdir -p $HOME/.npm-global && \
-    npm config set prefix $HOME/.npm-global
-
-# Ensure npm globals are available for non-interactive shells
-ENV NPM_CONFIG_PREFIX=/home/$USERNAME/.npm-global
-ENV PATH="/home/$USERNAME/.npm-global/bin:/home/$USERNAME/.local/bin:/home/$USERNAME/.cargo/bin:${PATH}"
+# uv, npm-global, and AI CLIs are inherited from Layer 0 (workbench-base)
 
 # Use a user-scoped Corepack cache to avoid runtime prompts
 ENV COREPACK_HOME=/home/$USERNAME/.corepack
 RUN corepack prepare "yarn@${YARN_VERSION}" --activate
 
-# ========================================
-# AI CLI TOOLS
-# ========================================
-
-# Copy and run AI CLI installation script
-# Installs: OpenCode, oh-my-opencode (from git: darrenhinde fork), auth plugins
-COPY --chown=$USERNAME:$USERNAME install-ai-clis.sh /tmp/
-RUN bash /tmp/install-ai-clis.sh && rm /tmp/install-ai-clis.sh
-
-# Configure OpenCode with oh-my-opencode
-# Create user config directory structure
-RUN mkdir -p /home/$USERNAME/.config/opencode/agent/core \
-    && mkdir -p /home/$USERNAME/.config/opencode/context/skills
-
-# Copy OpenCode configuration files
-COPY --chown=$USERNAME:$USERNAME files/opencode/opencode.json /home/$USERNAME/.config/opencode/
-COPY --chown=$USERNAME:$USERNAME files/opencode/oh-my-opencode.json /home/$USERNAME/.config/opencode/
-
-# Copy agent files from OpenAgents
-# Only openagent.md and opencoder.md - other agents provided by oh-my-opencode plugin
-COPY --chown=$USERNAME:$USERNAME files/opencode/agent/ /home/$USERNAME/.config/opencode/agent/
-
-# Copy context/skills (agent skill contexts)
-COPY --chown=$USERNAME:$USERNAME files/opencode/context/ /home/$USERNAME/.config/opencode/context/
-
-# Create system-wide template for new users (needs root)
-USER root
-RUN mkdir -p /etc/skel/.config/opencode/agent/core \
-    && mkdir -p /etc/skel/.config/opencode/context/skills
-COPY --chown=root:root files/opencode/opencode.json /etc/skel/.config/opencode/
-COPY --chown=root:root files/opencode/oh-my-opencode.json /etc/skel/.config/opencode/
-COPY --chown=root:root files/opencode/agent/ /etc/skel/.config/opencode/agent/
-COPY --chown=root:root files/opencode/context/ /etc/skel/.config/opencode/context/
-USER $USERNAME
-
-# Pre-fetch OpenCode plugins (optional, speeds up first run)
-# Run a simple OpenCode command to trigger plugin installation
-RUN opencode --version || echo "OpenCode plugin pre-fetch skipped (non-fatal)"
+# AI CLIs and OpenCode config are inherited from Layer 0
 
 # ========================================
 # ZSH SETUP
 # ========================================
-
-# Update PATH for local bins (including bun for OpenCode plugins)
-RUN echo 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$PATH"' >> ~/.bashrc && \
-    echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.bashrc && \
-    echo 'export BUN_INSTALL="$HOME/.bun"' >> ~/.bashrc && \
-    echo 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$PATH"' >> ~/.zshrc && \
-    echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.zshrc && \
-    echo 'export BUN_INSTALL="$HOME/.bun"' >> ~/.zshrc
 
 # Install Oh My Zsh
 RUN curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh | sh -s -- --unattended || \

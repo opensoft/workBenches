@@ -19,8 +19,8 @@ WorkBenches uses a **3-layer Docker image architecture** to minimize build times
 │ ┌──────────────────────┐ ┌──────────────────────────────┐  │
 │ │ Layer 1a: devBench   │ │ Layer 1b: adminBench         │  │
 │ │ - Python & Node.js   │ │ - Admin & DevOps tools       │  │
-│ │ - AI coding CLIs     │ │ - Read-only inspection       │  │
-│ │ - Dev tools          │ │ - "Discovery & Connection"   │  │
+│ │ - Dev tools          │ │ - Read-only inspection       │  │
+│ │ - Yarn, Corepack     │ │ - "Discovery & Connection"   │  │
 │ └──────────────────────┘ └──────────────────────────────┘  │
 │ Base Image: Layer 0                                         │
 └─────────────────────────────────────────────────────────────┘
@@ -30,6 +30,7 @@ WorkBenches uses a **3-layer Docker image architecture** to minimize build times
 │ - Ubuntu 24.04                                              │
 │ - System utilities (git, vim, curl)                        │
 │ - Modern CLI tools (zoxide, fzf, bat)                      │
+│ - AI coding CLIs (Claude, Codex, Gemini, Copilot, etc.)   │
 │ - User setup (matched UID/GID)                             │
 │ - Zsh with Oh-My-Zsh                                        │
 │ Base Image: ubuntu:24.04                                    │
@@ -44,7 +45,7 @@ WorkBenches uses a **3-layer Docker image architecture** to minimize build times
 **Location**: `workBenches/base-image/`  
 **Image**: `workbench-base:{USERNAME}`  
 **Base**: `ubuntu:24.04`  
-**Size**: ~1.8GB
+**Size**: ~5GB
 
 ### What Belongs Here
 
@@ -56,16 +57,25 @@ WorkBenches uses a **3-layer Docker image architecture** to minimize build times
 - Data tools: `jq`, `yq`
 - Modern CLI enhancements: `zoxide`, `bat`, `tldr`
 
+✅ **AI coding assistants** (shared across ALL benches):
+- Claude Code CLI (`@anthropic-ai/claude-code`)
+- OpenAI Codex (`@openai/codex`)
+- GitHub Copilot CLI (`@githubnext/github-copilot-cli`)
+- Google Gemini CLI (`@google/gemini-cli`)
+- OpenCode AI (`opencode-ai`)
+- Letta Code (`@letta-ai/letta-code`)
+- OpenSpec (`@fission-ai/openspec`)
+
 ✅ **User configuration**:
 - Match host UID/GID for seamless file permissions
 - Oh-My-Zsh with plugins (autosuggestions, syntax highlighting)
+- npm global directory setup (`~/.npm-global`)
 - Default shell: zsh
 
 ### What Does NOT Belong Here
 
-❌ Programming languages (Python, Node.js, Go, etc.)  
-❌ Language-specific tools (pip, npm, cargo)  
-❌ AI coding assistants  
+❌ Programming languages (Python, Node.js LTS, Go, etc.)  
+❌ Language-specific tools (pip, cargo)  
 ❌ Admin/DevOps tools  
 ❌ Technology-specific utilities
 
@@ -77,8 +87,9 @@ cd workBenches/base-image
 ```
 
 **Build Once**: This image rarely changes. Rebuild only when:
-- Adding new system utilities
+- Adding new system utilities or AI CLIs
 - Upgrading base OS version
+- Updating AI coding assistants to latest versions
 - Changing user configuration approach
 
 ---
@@ -107,19 +118,10 @@ Layer 1 splits into two branches based on use case:
 - uv (fast Python package installer)
 - Git credential helper integration
 
-✅ **AI coding assistants** (shared across all dev benches):
-- Claude Code CLI (`@anthropic-ai/claude-code`)
-- OpenAI Codex (`@openai/codex`)
-- GitHub Copilot CLI (`@githubnext/github-copilot-cli`)
-- Google Gemini CLI (`@google/gemini-cli`)
-- OpenCode AI (`opencode-ai`)
-- Letta Code (`@letta-ai/letta-code`)
-- OpenSpec (`@fission-ai/openspec`)
-Note: WorkBenches exclusively uses the layered architecture for AI CLI installation. Alternative approaches have been deprecated.
-
 ✅ **Shell enhancements**:
-- PATH configuration for `~/.npm-global/bin`, `~/.local/bin`, `~/.cargo/bin`
 - Force zsh when bash is requested
+
+Note: AI coding assistants are inherited from Layer 0 (workbench-base) and available in all benches.
 
 #### What Does NOT Belong Here
 
@@ -136,7 +138,6 @@ cd workBenches/devBenches/base-image
 ```
 
 **Rebuild When**:
-- Adding new AI coding assistant
 - Updating Python or Node.js versions
 - Adding universal dev tools
 
@@ -303,10 +304,15 @@ Is it a system utility everyone needs?
     ↓ YES
     Layer 0: workbench-base
 
+Is it an AI coding CLI?
+(Claude, Codex, Gemini, Copilot, etc.)
+    ↓ YES
+    Layer 0: workbench-base
+
 Is it for software development?
     ↓ YES
-    Is it language/runtime/AI CLI?
-    (Python, Node.js, Claude, Copilot)
+    Is it a language/runtime?
+    (Python, Node.js)
         ↓ YES
         Layer 1a: devbench-base
     
@@ -378,14 +384,14 @@ cloud-bench:brett           # Layer 2
 
 ### When to Rebuild
 
-**Layer 0** (rare):
+**Layer 0** (rare → occasional):
 - Ubuntu security updates
 - Adding system utilities
+- AI CLI version updates
 - Changing user setup approach
 
 **Layer 1a/1b** (occasional):
-- New AI coding assistant
-- Language version updates
+- Language version updates (Python, Node.js)
 - New admin tools
 
 **Layer 2** (frequent):
@@ -513,8 +519,8 @@ docker run --rm frappe-bench:brett psql --version
 
 | Layer | Purpose | Build Frequency | Typical Size |
 |-------|---------|----------------|--------------|
-| Layer 0 | System base | Rare (months) | ~1.8GB |
-| Layer 1a | Dev tools | Occasional (weeks) | +4GB = ~5.8GB |
+| Layer 0 | System base + AI CLIs | Occasional (weeks) | ~5GB |
+| Layer 1a | Dev tools | Occasional (weeks) | +1GB = ~6GB |
 | Layer 1b | Admin tools | Occasional (weeks) | +2.7GB = ~4.5GB |
 | Layer 2 | Specialized | Frequent (days) | +0.3GB = ~6.1GB |
 

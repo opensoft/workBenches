@@ -98,7 +98,7 @@ echo ""
 echo "=== PATH Configuration ==="
 test_tool "~/.local/bin in PATH" "echo \$PATH | grep -q '.local/bin'"
 test_tool "~/.npm-global/bin in PATH" "echo \$PATH | grep -q '.npm-global/bin'"
-test_tool "~/.cargo/bin in PATH" "echo \$PATH | grep -q '.cargo/bin'"
+test_tool "~/.bun/bin in PATH" "echo \$PATH | grep -q '.bun/bin'"
 
 echo ""
 echo "=== Git Configuration ==="

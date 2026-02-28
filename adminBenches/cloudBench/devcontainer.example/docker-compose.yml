@@ -3,12 +3,9 @@ services:
     image: cloud-bench:brett
     command: sleep infinity
     volumes:
+      # Mount full host home directory
+      - ~:/home/brett:cached
       - .:/workspace
-      - ~/.aws:/home/brett/.aws:ro
-      - ~/.azure:/home/brett/.azure:ro
-      - ~/.config/gcloud:/home/brett/.config/gcloud:ro
-      - ~/.kube:/home/brett/.kube:ro
-      - ~/.ssh:/home/brett/.ssh:ro
     working_dir: /workspace
     environment:
       - USER=brett

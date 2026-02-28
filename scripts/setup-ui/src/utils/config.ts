@@ -39,10 +39,10 @@ export const AI_CLI_DEFINITIONS: AICliDefinition[] = [
   {
     id: 'claude_cli',
     name: 'Claude Code CLI',
-    description: 'Anthropic Claude Code terminal assistant',
+    description: 'Anthropic Claude Code terminal assistant (native installer)',
     command: 'claude',
-    installCmd: 'npm install -g @anthropic-ai/claude-code',
-    uninstallCmd: 'npm uninstall -g @anthropic-ai/claude-code',
+    installCmd: 'curl -fsSL https://claude.ai/install.sh | bash',
+    uninstallCmd: 'rm -f ~/.local/bin/claude && rm -rf ~/.local/share/claude',
   },
   {
     id: 'copilot_cli',

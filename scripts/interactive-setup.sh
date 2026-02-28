@@ -1526,60 +1526,36 @@ process_selections() {
                 claude_cli)
                     if [ "$is_installed" = true ]; then
                         echo -e "  ${YELLOW}Checking Claude Code CLI version...${NC}"
-                        echo -e "  ${DIM}Claude CLI updates automatically, no action needed${NC}"
+                        echo -e "  ${DIM}Claude CLI auto-updates in the background (native installer)${NC}"
                         echo -e "  ${GREEN}✓ Claude Code CLI is up to date${NC}"
                         ((success_count++))
                     else
-                        # Check if npm is available
-                        if ! command -v npm &> /dev/null; then
-                            echo -e "  ${RED}✗ npm not found - Node.js required${NC}"
-                            echo -e "  ${DIM}Install Node.js: https://nodejs.org/${NC}"
-                            log "ERROR: npm not found, cannot install Claude CLI"
-                            ((fail_count++))
+                        echo -e "  ${YELLOW}Installing Claude Code CLI (native installer)...${NC}"
+                        echo -e "  ${DIM}This may take a few minutes...${NC}"
+                        echo -e "  ${BOLD}${RED}Please do not interrupt the installation (Ctrl+C)${NC}"
+                        log "Starting Claude CLI installation via native installer"
+                        
+                        # Install Claude Code CLI via native installer (npm method is deprecated)
+                        # Native installer: no Node.js dependency, auto-updates, installs to ~/.local/bin
+                        trap '' INT
+                        (
+                            curl -fsSL https://claude.ai/install.sh | bash >> "$LOG_FILE" 2>&1
+                        ) &
+                        local install_pid=$!
+                        
+                        if show_spinner $install_pid "Installing Claude CLI" 180; then
+                            trap - INT
+                            log "Claude CLI installed successfully via native installer"
+                            echo -e "  ${GREEN}✓ Claude Code CLI installed${NC}"
+                            echo -e "  ${DIM}Run 'claude' to start using it${NC}"
+                            ((success_count++))
+                            items_needing_creds+=("claude")
                         else
-                            echo -e "  ${YELLOW}Installing Claude Code CLI...${NC}"
-                            echo -e "  ${DIM}This may take a few minutes...${NC}"
-                            echo -e "  ${BOLD}${RED}Please do not interrupt the installation (Ctrl+C)${NC}"
-                            log "Starting Claude CLI installation via npm"
-                            
-                            # Check if npm prefix is in user directory
-                            local npm_prefix=$(npm config get prefix 2>/dev/null)
-                            local needs_sudo=false
-                            
-                            # Check if prefix is a system directory (not in home directory)
-                            if [[ "$npm_prefix" != "$HOME"* ]]; then
-                                needs_sudo=true
-                                log "npm prefix is in system directory ($npm_prefix), using sudo"
-                            else
-                                log "npm prefix is in user directory ($npm_prefix), no sudo needed"
-                            fi
-                            
-                            # Install Claude Code CLI via npm in background with spinner
-                            # Temporarily ignore interrupts during installation
-                            trap '' INT
-                            (
-                                if [ "$needs_sudo" = true ]; then
-                                    sudo npm install -g @anthropic-ai/claude-code >> "$LOG_FILE" 2>&1
-                                else
-                                    npm install -g @anthropic-ai/claude-code >> "$LOG_FILE" 2>&1
-                                fi
-                            ) &
-                            local install_pid=$!
-                            
-                            if show_spinner $install_pid "Installing Claude CLI" 180; then
-                                trap - INT
-                                log "Claude CLI installed successfully via npm"
-                                echo -e "  ${GREEN}✓ Claude Code CLI installed${NC}"
-                                echo -e "  ${DIM}Run 'claude' to start using it${NC}"
-                                ((success_count++))
-                                items_needing_creds+=("claude")
-                            else
-                                trap - INT
-                                log "ERROR: Claude CLI installation failed"
-                                echo -e "  ${RED}✗ Failed to install Claude Code CLI${NC}"
-                                echo -e "  ${DIM}Manual install: sudo npm install -g @anthropic-ai/claude-code${NC}"
-                                ((fail_count++))
-                            fi
+                            trap - INT
+                            log "ERROR: Claude CLI installation failed"
+                            echo -e "  ${RED}✗ Failed to install Claude Code CLI${NC}"
+                            echo -e "  ${DIM}Manual install: curl -fsSL https://claude.ai/install.sh | bash${NC}"
+                            ((fail_count++))
                         fi
                     fi
                     ;;
@@ -1760,11 +1736,11 @@ process_selections() {
                             log "uv installed successfully"
                             # Source shell config to pick up PATH changes
                             if [ -n "$ZSH_VERSION" ]; then
-                                source "$HOME/.zshrc" 2>/dev/null || export PATH="$HOME/.cargo/bin:$PATH"
+                                source "$HOME/.zshrc" 2>/dev/null || export PATH="$HOME/.local/bin:$PATH"
                             elif [ -n "$BASH_VERSION" ]; then
-                                source "$HOME/.bashrc" 2>/dev/null || export PATH="$HOME/.cargo/bin:$PATH"
+                                source "$HOME/.bashrc" 2>/dev/null || export PATH="$HOME/.local/bin:$PATH"
                             else
-                                export PATH="$HOME/.cargo/bin:$PATH"
+                                export PATH="$HOME/.local/bin:$PATH"
                             fi
                         else
                             log "ERROR: uv installation failed"

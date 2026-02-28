@@ -1,70 +1,7 @@
 # Docker Compose Override - Personal Configuration
 # =================================================
-# This file contains all personal mounts (AI credentials, git, SSH, shell configs)
-# Modify this file to customize what gets mounted into your container
+# Full host home directory is now mounted in docker-compose.yml
+# This file is for any additional non-home volume overrides only
 
 services:
-  devbench:
-    volumes:
-      # ========================================
-      # AI Coding Assistant Credentials
-      # ========================================
-      
-      # OpenCode Configuration
-      - ~/.config/opencode:/home/${USER:-vscode}/.config/opencode:cached
-      - ~/.local/share/opencode:/home/${USER:-vscode}/.local/share/opencode:cached
-      
-      # OpenAI/Codex
-      - ~/.codex:/home/${USER:-vscode}/.codex:cached
-      - ~/.openai:/home/${USER:-vscode}/.openai:cached
-      
-      # Anthropic Claude
-      - ~/.claude:/home/${USER:-vscode}/.claude:cached
-      - ~/.claude.json:/home/${USER:-vscode}/.claude.json:cached
-      - ~/.anthropic:/home/${USER:-vscode}/.anthropic:cached
-      - ~/.cache/claude-code:/home/${USER:-vscode}/.cache/claude-code:cached
-      
-      # Google Gemini
-      - ~/.gemini:/home/${USER:-vscode}/.gemini:cached
-      - ~/.gemini/.env:/home/${USER:-vscode}/.gemini/.env:cached
-      - ~/.cache/goog-gemini:/home/${USER:-vscode}/.cache/goog-gemini:cached
-      - ~/.google:/home/${USER:-vscode}/.google:cached
-      - ~/.cache:/home/${USER:-vscode}/.cache:cached
-      
-      # ========================================
-      # Git & SSH Configuration
-      # ========================================
-      
-      # Git configuration
-      - ~/.gitconfig:/home/${USER:-vscode}/.gitconfig:ro
-      
-      # SSH keys and config (full directory for agent forwarding)
-      - ~/.ssh:/home/${USER:-vscode}/.ssh:cached
-      
-      # ========================================
-      # Shell Configuration (Optional)
-      # ========================================
-      # Uncomment if you want to use your host shell config
-      
-      # Zsh (uncommented to use host powerline config)
-      - ~/.zshrc:/home/${USER:-vscode}/.zshrc:ro
-      - ~/.oh-my-zsh:/home/${USER:-vscode}/.oh-my-zsh:ro
-      - ~/.p10k.zsh:/home/${USER:-vscode}/.p10k.zsh:ro
-      
-      # Bash
-      # - ~/.bashrc:/home/${USER:-vscode}/.bashrc:ro
-      # - ~/.bash_aliases:/home/${USER:-vscode}/.bash_aliases:ro
-      
-      # ========================================
-      # Additional Credentials (Optional)
-      # ========================================
-      # Uncomment as needed
-      
-      # AWS credentials
-      # - ~/.aws:/home/${USER:-vscode}/.aws:ro
-      
-      # Azure credentials  
-      # - ~/.azure:/home/${USER:-vscode}/.azure:ro
-      
-      # Docker config
-      # - ~/.docker:/home/${USER:-vscode}/.docker:ro
+  devbench: {}
