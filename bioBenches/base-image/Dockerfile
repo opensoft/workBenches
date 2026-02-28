@@ -25,8 +25,22 @@ ARG USERNAME=brett
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
     sudo \
+    curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# ========================================
+# NODE.JS (for husky/commitlint)
+# ========================================
+
+RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+    && apt-get update \
+    && apt-get install -y nodejs \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Enable Corepack
+RUN corepack enable || true
 
 # ========================================
 # MINICONDA
@@ -79,6 +93,19 @@ RUN chown -R ${USERNAME}:${USERNAME} ${CONDA_DIR}
 
 USER ${USERNAME}
 WORKDIR /home/${USERNAME}
+
+# Set up npm global directory
+RUN mkdir -p $HOME/.npm-global \
+    && npm config set prefix $HOME/.npm-global
+
+ENV NPM_CONFIG_PREFIX=/home/${USERNAME}/.npm-global
+ENV PATH="/home/${USERNAME}/.npm-global/bin:${PATH}"
+
+# Install Node.js development tools (husky, commitlint)
+RUN npm install -g \
+    husky \
+    @commitlint/cli \
+    @commitlint/config-conventional
 
 # Initialize conda for zsh and bash
 RUN conda init zsh \

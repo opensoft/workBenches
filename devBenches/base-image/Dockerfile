@@ -51,6 +51,12 @@ RUN pip install --break-system-packages \
     pytest \
     ipython
 
+# Install Node.js development tools (husky, commitlint)
+RUN npm install -g \
+    husky \
+    @commitlint/cli \
+    @commitlint/config-conventional
+
 # ========================================
 # DEVELOPER TOOLS SETUP
 # ========================================
