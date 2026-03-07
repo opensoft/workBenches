@@ -113,7 +113,7 @@ print_layer_header() {
 # ========================================
 
 check_layer0() {
-    local image="workbench-base:$USERNAME"
+    local image="workbench-base:latest"
 
     if ! docker image inspect "$image" >/dev/null 2>&1; then
         echo "  Layer 0 image ($image) not found — skipping"
@@ -153,12 +153,12 @@ check_layer0() {
         "0"
 
     report_tool "uv" \
-        "$(container_version "$image" "\$HOME/.local/bin/uv --version 2>/dev/null || uv --version")" \
+        "$(container_version "$image" "uv --version")" \
         "$(github_latest "astral-sh/uv")" \
         "0"
 
     report_tool "spec-kit" \
-        "$(container_version "$image" "\$HOME/.local/bin/uv tool list 2>/dev/null | grep specify-cli | head -1 || echo n/a")" \
+        "$(container_version "$image" "uv tool list 2>/dev/null | grep specify-cli | head -1 || echo n/a")" \
         "$(github_latest "github/spec-kit")" \
         "0"
 
@@ -179,32 +179,32 @@ check_layer0() {
 
     # AI CLIs (installed in Layer 0 for all benches)
     report_tool "claude-code" \
-        "$(container_version "$image" "\$HOME/.local/bin/claude --version 2>/dev/null || \$HOME/.npm-global/bin/claude --version 2>/dev/null || claude --version 2>/dev/null || echo n/a")" \
+        "$(container_version "$image" "claude --version 2>/dev/null || echo n/a")" \
         "$(npm_latest "@anthropic-ai/claude-code")" \
         "0"
 
     report_tool "codex" \
-        "$(container_version "$image" "\$HOME/.npm-global/bin/codex --version 2>/dev/null || codex --version 2>/dev/null || echo n/a")" \
+        "$(container_version "$image" "codex --version 2>/dev/null || echo n/a")" \
         "$(npm_latest "@openai/codex")" \
         "0"
 
     report_tool "gemini" \
-        "$(container_version "$image" "\$HOME/.npm-global/bin/gemini --version 2>/dev/null || gemini --version 2>/dev/null || echo n/a")" \
+        "$(container_version "$image" "gemini --version 2>/dev/null || echo n/a")" \
         "$(npm_latest "@google/gemini-cli")" \
         "0"
 
     report_tool "copilot" \
-        "$(container_version "$image" "\$HOME/.npm-global/bin/github-copilot-cli --version 2>/dev/null || echo n/a")" \
+        "$(container_version "$image" "github-copilot-cli --version 2>/dev/null || echo n/a")" \
         "$(npm_latest "@githubnext/github-copilot-cli")" \
         "0"
 
     report_tool "openspec" \
-        "$(container_version "$image" "\$HOME/.npm-global/bin/openspec --version 2>/dev/null || echo n/a")" \
+        "$(container_version "$image" "openspec --version 2>/dev/null || echo n/a")" \
         "$(npm_latest "@fission-ai/openspec")" \
         "0"
 
     report_tool "letta-code" \
-        "$(container_version "$image" "\$HOME/.npm-global/bin/letta --version 2>/dev/null || echo n/a")" \
+        "$(container_version "$image" "letta --version 2>/dev/null || echo n/a")" \
         "$(npm_latest "@letta-ai/letta-code")" \
         "0"
 }
@@ -214,7 +214,7 @@ check_layer0() {
 # ========================================
 
 check_layer1a() {
-    local image="devbench-base:$USERNAME"
+    local image="devbench-base:latest"
 
     if ! docker image inspect "$image" >/dev/null 2>&1; then
         echo "  Layer 1a image ($image) not found — skipping"
@@ -241,7 +241,7 @@ check_layer1a() {
         "1a"
 
     report_tool "bun" \
-        "$(container_version "$image" "\$HOME/.bun/bin/bun --version 2>/dev/null || bun --version")" \
+        "$(container_version "$image" "bun --version 2>/dev/null || echo n/a")" \
         "$(github_latest "oven-sh/bun")" \
         "1a"
 
@@ -256,7 +256,7 @@ check_layer1a() {
 # ========================================
 
 check_layer1b() {
-    local image="adminbench-base:$USERNAME"
+    local image="adminbench-base:latest"
 
     if ! docker image inspect "$image" >/dev/null 2>&1; then
         echo "  Layer 1b image ($image) not found — skipping"
@@ -331,7 +331,7 @@ check_layer1b() {
 # ========================================
 
 check_layer1c() {
-    local image="biobench-base:$USERNAME"
+    local image="biobench-base:latest"
 
     if ! docker image inspect "$image" >/dev/null 2>&1; then
         echo "  Layer 1c image ($image) not found — skipping"

@@ -39,7 +39,7 @@ infracost --version
 # Install manually if needed: pip install prowler checkov
 
 echo "Installing Trivy..."
-curl -L "https://github.com/aquasecurity/trivy/releases/download/v0.58.2/trivy_0.58.2_Linux-64bit.tar.gz" -o /tmp/trivy.tar.gz
+curl -L "https://github.com/aquasecurity/trivy/releases/download/v0.69.3/trivy_0.69.3_Linux-64bit.tar.gz" -o /tmp/trivy.tar.gz
 tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
 rm /tmp/trivy.tar.gz
 chmod +x /usr/local/bin/trivy

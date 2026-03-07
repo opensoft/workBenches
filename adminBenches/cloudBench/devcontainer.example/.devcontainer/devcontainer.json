@@ -3,7 +3,7 @@
   "dockerComposeFile": "../docker-compose.yml",
   "service": "workspace",
   "workspaceFolder": "/workspace",
-  "remoteUser": "brett",
+  "remoteUser": "${localEnv:USER}",
   "customizations": {
     "vscode": {
       "extensions": [

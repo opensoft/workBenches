@@ -1,22 +1,18 @@
-# Layer 1: bioBench Base Image
+# Layer 1c: bioBench Base Image
 # Extends Layer 0 with Miniconda + bioconda/conda-forge channels
 # Used by ALL bio benches (geneBench, simBenches, etc.)
+# USER-AGNOSTIC: No user creation — Layer 3 handles user setup
 
-# Build arguments must be declared before FROM to use in FROM
-ARG USERNAME=brett
-
-FROM workbench-base:${USERNAME}
+FROM workbench-base:latest
 
 # Container version labels
-LABEL layer="1"
+LABEL layer="1c"
 LABEL layer.name="biobench-base"
-LABEL layer.version="1.0.0"
-LABEL layer.description="Bio base with Miniconda, bioconda and conda-forge channels"
+LABEL layer.version="2.0.0"
+LABEL layer.description="Bio base with Miniconda, bioconda and conda-forge channels (user-agnostic)"
 
+# Everything runs as root
 USER root
-
-# Build arguments
-ARG USERNAME=brett
 
 # ========================================
 # SYSTEM DEPENDENCIES
@@ -42,6 +38,12 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
 # Enable Corepack
 RUN corepack enable || true
 
+# Install Node.js development tools (husky, commitlint)
+RUN npm install -g \
+    husky \
+    @commitlint/cli \
+    @commitlint/config-conventional
+
 # ========================================
 # MINICONDA
 # ========================================
@@ -63,53 +65,11 @@ RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkg
     && conda config --system --set channel_priority strict
 
 # ========================================
-# USER SETUP
+# SHELL CONFIGURATION (into /etc/skel)
 # ========================================
 
-RUN set -eux && \
-    if ! id -u "${USERNAME}" >/dev/null 2>&1; then \
-        if getent passwd "1000" >/dev/null; then \
-            existing_user=$(getent passwd "1000" | cut -d: -f1) && \
-            userdel --force --remove $existing_user 2>/dev/null || true; \
-        fi && \
-        if getent group "1000" >/dev/null; then \
-            existing_group=$(getent group "1000" | cut -d: -f1) && \
-            groupmod -n ${USERNAME} $existing_group 2>/dev/null || true; \
-        else \
-            groupadd --gid 1000 "${USERNAME}" 2>/dev/null || true; \
-        fi && \
-        useradd --uid 1000 --gid "${USERNAME}" -m -s /bin/zsh "${USERNAME}" 2>/dev/null || true; \
-    fi && \
-    mkdir -p /etc/sudoers.d && \
-    echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} && \
-    chmod 0440 /etc/sudoers.d/${USERNAME}
-
-# Make conda owned by user
-RUN chown -R ${USERNAME}:${USERNAME} ${CONDA_DIR}
-
-# ========================================
-# SHELL CONFIGURATION
-# ========================================
-
-USER ${USERNAME}
-WORKDIR /home/${USERNAME}
-
-# Set up npm global directory
-RUN mkdir -p $HOME/.npm-global \
-    && npm config set prefix $HOME/.npm-global
-
-ENV NPM_CONFIG_PREFIX=/home/${USERNAME}/.npm-global
-ENV PATH="/home/${USERNAME}/.npm-global/bin:${PATH}"
-
-# Install Node.js development tools (husky, commitlint)
-RUN npm install -g \
-    husky \
-    @commitlint/cli \
-    @commitlint/config-conventional
-
-# Initialize conda for zsh and bash
-RUN conda init zsh \
-    && conda init bash
+# Initialize conda for zsh and bash in /etc/skel
+RUN conda init --system zsh && conda init --system bash
 
 # Default command
 CMD ["sleep", "infinity"]

@@ -1,9 +1,12 @@
 #!/bin/bash
 # Shared AI CLI Installation Script
-# Version: 1.3.0
+# Version: 2.0.2
 #
-# This script installs all AI CLI tools for devcontainers.
-# Source this from Dockerfiles to maintain a single source of truth.
+# USER-AGNOSTIC: Runs as root, installs to system-wide paths.
+# All npm globals go to /usr/local (default root prefix).
+# Bun is expected at /opt/bun (set via BUN_INSTALL env in Dockerfile).
+# OpenCode plugin goes to /opt/opencode.
+# Claude Code goes to /usr/local/bin.
 #
 # Installs:
 #   - OpenCode (from Opensoft/opencode fork)
@@ -17,7 +20,7 @@
 #       Dockerfile, not installed by this script
 #
 # Usage in Dockerfile:
-#   COPY --chown=$USERNAME:$USERNAME install-ai-clis.sh /tmp/
+#   COPY install-ai-clis.sh /tmp/
 #   RUN bash /tmp/install-ai-clis.sh
 
 set -e
@@ -81,30 +84,21 @@ log_info ""
 
 check_system_resources
 
-# Ensure npm global directory exists
-log_debug "Creating npm global directory"
-mkdir -p $HOME/.npm-global
-run_with_timeout "$COMMAND_TIMEOUT" "npm config set prefix" npm config set prefix $HOME/.npm-global || true
-
 # ========================================
-# BUN RUNTIME (for OpenCode plugins)
+# SYSTEM PATH SETUP
 # ========================================
-log_info "Installing Bun runtime..."
-if run_with_timeout "$COMMAND_TIMEOUT" "Bun runtime download and install" bash -c 'curl -fsSL https://bun.sh/install | bash'; then
-    log_debug "Bun installation completed"
-else
-    log_error "Failed to download or install Bun. Continuing without Bun support."
-fi
+# npm globals install to /usr/local by default when running as root
+# Bun is pre-installed at /opt/bun by Dockerfile
 
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
+export BUN_INSTALL="${BUN_INSTALL:-/opt/bun}"
+export PATH="/opt/bun/bin:$PATH"
 
 log_debug "Verifying Bun installation"
 if which bun >/dev/null 2>&1; then
     log_debug "Bun found at: $(which bun)"
     log_debug "Bun version: $(bun --version)"
 else
-    log_error "Bun not found in PATH after installation"
+    log_error "Bun not found in PATH (expected at /opt/bun/bin)"
 fi
 
 log_info "Installing OpenSpec..."
@@ -113,11 +107,29 @@ if ! run_with_timeout "$COMMAND_TIMEOUT" "OpenSpec npm install" npm install -g @
 fi
 
 log_info "Installing Claude Code CLI (native installer)..."
-# Native installer is now the recommended method (npm is deprecated)
-# Installs to ~/.local/bin/claude, auto-updates in background, no Node.js dependency
+# Native installer downloads to $HOME/.claude/downloads/ then runs 'claude install'
+# which places a launcher in ~/.local/bin/. Since we run as root, we need to
+# find the binary and copy it to /usr/local/bin ourselves.
 # Claude installer needs more time for download, use 5 minutes
-if ! run_with_timeout "300" "Claude Code native install" bash -c 'curl -fsSL https://claude.ai/install.sh | bash'; then
-    log_error "Claude Code native installation failed (continuing)"
+run_with_timeout "300" "Claude Code native install" bash -c 'curl -fsSL https://claude.ai/install.sh | bash' || true
+
+# Find the claude binary wherever the installer put it and copy to /usr/local/bin
+CLAUDE_BIN=""
+if [ -f "$HOME/.local/bin/claude" ]; then
+    CLAUDE_BIN="$HOME/.local/bin/claude"
+elif ls $HOME/.claude/downloads/claude-*-linux-* 2>/dev/null; then
+    # Installer downloaded but 'claude install' failed — grab the binary directly
+    CLAUDE_BIN=$(ls -t $HOME/.claude/downloads/claude-*-linux-* 2>/dev/null | head -1)
+fi
+
+if [ -n "$CLAUDE_BIN" ] && [ -f "$CLAUDE_BIN" ]; then
+    cp "$CLAUDE_BIN" /usr/local/bin/claude
+    chmod +x /usr/local/bin/claude
+    log_info "Claude Code installed to /usr/local/bin/claude"
+    # Clean up downloads
+    rm -rf "$HOME/.claude/downloads"
+else
+    log_error "Claude Code binary not found after installation (continuing)"
 fi
 
 log_info "Installing OpenAI Codex CLI..."
@@ -152,50 +164,30 @@ else
     log_debug "Directory contents: $(ls -la | head -20)"
     
     log_info "Running bun install for OpenCode..."
+    OPENCODE_BUILD_TIMEOUT=900  # 15 minutes for single-target compile
     if command -v bun >/dev/null 2>&1; then
         log_debug "Bun is available, using it for installation"
         if run_with_timeout "$BUN_OPERATIONS_TIMEOUT" "OpenCode bun install" bun install; then
-            log_info "Building OpenCode..."
-            if ! run_with_timeout "$BUN_OPERATIONS_TIMEOUT" "OpenCode bun build" bun run --cwd packages/opencode build; then
+            log_info "Building OpenCode (single target: linux-x64)..."
+            # --single builds only for the current platform instead of all 8+ targets
+            if ! run_with_timeout "$OPENCODE_BUILD_TIMEOUT" "OpenCode bun build --single" bun run --cwd packages/opencode build --single; then
                 log_error "OpenCode build failed"
             fi
         else
-            log_error "OpenCode bun install timeout, trying npm fallback"
-            if run_with_timeout "$COMMAND_TIMEOUT" "OpenCode npm install" npm install; then
-                log_info "Building with npm..."
-                run_with_timeout "$COMMAND_TIMEOUT" "OpenCode npm build" npm run --prefix packages/opencode build || log_error "npm build failed"
-            fi
+            log_error "OpenCode bun install failed (continuing)"
         fi
     else
-        log_debug "Bun not available, using npm fallback"
-        if run_with_timeout "$COMMAND_TIMEOUT" "OpenCode npm install" npm install; then
-            log_info "Building with npm..."
-            run_with_timeout "$COMMAND_TIMEOUT" "OpenCode npm build" npm run --prefix packages/opencode build || log_error "npm build failed"
-        else
-            log_error "OpenCode npm install failed"
-        fi
+        log_error "Bun not available, cannot build OpenCode (requires bun)"
     fi
     
-    log_info "Installing OpenCode package globally..."
-    if run_with_timeout "$COMMAND_TIMEOUT" "OpenCode npm install -g" npm install -g /tmp/opencode/packages/opencode; then
-        # Replace the Node.js wrapper with a bash wrapper that directly calls the platform binary
-        log_info "Creating OpenCode wrapper script..."
-        rm -f $HOME/.npm-global/bin/opencode
-        cat > $HOME/.npm-global/bin/opencode << 'EOF'
-#!/bin/bash
-# OpenCode wrapper - calls platform binary directly using absolute path
-OPENCODE_BIN="$HOME/.npm-global/lib/node_modules/opencode/dist/opencode-linux-x64/bin/opencode"
-if [ -x "$OPENCODE_BIN" ]; then
-    exec "$OPENCODE_BIN" "$@"
-else
-    echo "Error: OpenCode platform binary not found at $OPENCODE_BIN"
-    exit 1
-fi
-EOF
-        chmod +x $HOME/.npm-global/bin/opencode
-        log_debug "OpenCode wrapper created at $HOME/.npm-global/bin/opencode"
+    # Find the compiled binary and install it directly
+    OPENCODE_BIN=$(find /tmp/opencode/packages/opencode/dist -name "opencode" -type f -executable 2>/dev/null | head -1)
+    if [ -n "$OPENCODE_BIN" ] && [ -x "$OPENCODE_BIN" ]; then
+        cp "$OPENCODE_BIN" /usr/local/bin/opencode
+        chmod +x /usr/local/bin/opencode
+        log_info "OpenCode installed to /usr/local/bin/opencode"
     else
-        log_error "Failed to install OpenCode globally"
+        log_error "OpenCode binary not found after build (continuing)"
     fi
     
     cd -
@@ -243,9 +235,9 @@ else
     fi
     
     log_debug "Installing oh-my-opencode plugin..."
-    mkdir -p $HOME/.opencode/plugin
-    cp -r /tmp/oh-my-opencode $HOME/.opencode/plugin/oh-my-opencode
-    cd $HOME/.opencode/plugin/oh-my-opencode
+    mkdir -p /opt/opencode/plugin
+    cp -r /tmp/oh-my-opencode /opt/opencode/plugin/oh-my-opencode
+    cd /opt/opencode/plugin/oh-my-opencode
     
     log_debug "Running bun install in plugin directory..."
     if command -v bun >/dev/null 2>&1; then
@@ -256,7 +248,7 @@ else
     cd -
     
     log_info "Installing auth plugins..."
-    cd $HOME/.opencode/plugin
+    cd /opt/opencode/plugin
     if command -v bun >/dev/null 2>&1; then
         log_debug "Installing Gemini auth plugin via bun..."
         run_with_timeout "$COMMAND_TIMEOUT" "Gemini auth plugin" bun add opencode-gemini-auth@1.3.6 || log_error "Gemini auth plugin install failed"
@@ -266,12 +258,38 @@ else
         log_debug "Bun not available for auth plugins, skipping"
     fi
     cd -
+
+    # Also create symlink in /etc/skel so users get plugin dir
+    mkdir -p /etc/skel/.opencode
+    ln -sf /opt/opencode/plugin /etc/skel/.opencode/plugin
 fi
 
 log_info "Installing Letta Code..."
 # Letta Code: memory-first coding agent (https://github.com/letta-ai/letta-code)
 if ! run_with_timeout "$COMMAND_TIMEOUT" "Letta Code npm install" npm install -g @letta-ai/letta-code; then
     log_error "Letta Code installation failed (continuing)"
+fi
+
+log_info "Installing NotebookLM tools..."
+# notebooklm-py: Python CLI + API for NotebookLM (notebooklm command)
+# Base install only — no browser deps needed in container; auth mounted from host
+if run_with_timeout "$COMMAND_TIMEOUT" "notebooklm-py install" uv tool install notebooklm-py --python-preference system; then
+    [ -f "$HOME/.local/bin/notebooklm" ] && ln -sf "$HOME/.local/bin/notebooklm" /usr/local/bin/notebooklm
+    log_info "notebooklm-py CLI installed (notebooklm)"
+else
+    log_error "notebooklm-py installation failed (continuing)"
+fi
+
+# notebooklm-mcp-cli: MCP server + nlm CLI for AI agent integration
+# Auth is done on the host (requires browser); tokens mounted into container
+# uv tool install puts binaries in ~/.local/bin (root), so symlink to /usr/local/bin
+if run_with_timeout "$COMMAND_TIMEOUT" "NotebookLM MCP CLI install" uv tool install notebooklm-mcp-cli --python-preference system; then
+    for bin in nlm notebooklm-mcp; do
+        [ -f "$HOME/.local/bin/$bin" ] && ln -sf "$HOME/.local/bin/$bin" "/usr/local/bin/$bin"
+    done
+    log_info "NotebookLM MCP CLI installed (nlm, notebooklm-mcp)"
+else
+    log_error "NotebookLM MCP CLI installation failed (continuing)"
 fi
 
 log_info "=========================================="
@@ -288,6 +306,8 @@ log_info "  - Grok (grok)"
 log_info "  - OpenCode (opencode)"
 log_info "  - oh-my-opencode (darrenhinde fork with built-in agents)"
 log_info "  - Letta Code (letta)"
+log_info "  - NotebookLM CLI (notebooklm) [auth via host browser]"
+log_info "  - NotebookLM MCP CLI (nlm) [auth via host browser]"
 log_info ""
 log_info "Agent files (openagent.md, opencoder.md) provided via Dockerfile COPY"
 log_info ""

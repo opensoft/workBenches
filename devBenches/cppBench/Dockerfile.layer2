@@ -1,20 +1,18 @@
 # Layer 2: C++ Bench Image
 # Extends Layer 1 (devbench-base) with C++ specific tools
 # Includes: GCC, Clang, CMake, vcpkg, Conan, debuggers, analyzers
+# USER-AGNOSTIC: No user creation — Layer 3 handles user setup
 
-ARG BASE_IMAGE=devbench-base:brett
-FROM ${BASE_IMAGE}
+FROM devbench-base:latest
 
 # Container version labels
 LABEL layer="2"
 LABEL layer.name="cpp-bench"
-LABEL layer.version="1.2.0"
-LABEL layer.description="C++ development tools and compilers"
+LABEL layer.version="2.0.0"
+LABEL layer.description="C++ development tools and compilers (user-agnostic)"
 LABEL bench.type="cpp"
 
-ARG USERNAME=brett
-
-# Switch to root for C++ installation
+# Everything runs as root
 USER root
 
 # ========================================
@@ -117,8 +115,7 @@ RUN apt-get update && apt-get install -y \
 RUN git clone https://github.com/Microsoft/vcpkg.git /opt/vcpkg \
     && cd /opt/vcpkg \
     && ./bootstrap-vcpkg.sh \
-    && ln -s /opt/vcpkg/vcpkg /usr/local/bin/vcpkg \
-    && chown -R ${USERNAME}:${USERNAME} /opt/vcpkg
+    && ln -s /opt/vcpkg/vcpkg /usr/local/bin/vcpkg
 
 # Install Conan and related Python tools
 RUN pip3 install --break-system-packages \
@@ -142,30 +139,23 @@ ENV CXX=/usr/bin/g++-12
 ENV PATH="/usr/lib/ccache:$PATH"
 
 # ========================================
-# USER CONFIGURATION
+# SHELL CONFIGURATION (into /etc/skel)
 # ========================================
 
-USER $USERNAME
-
-# Create workspace directory (projects will be mounted here)
-RUN mkdir -p /workspace
-
-# Add C++ development aliases and environment to .zshrc
-RUN echo '' >> ~/.zshrc && \
-    echo '# C++ Development Environment' >> ~/.zshrc && \
-    echo 'export VCPKG_ROOT=/opt/vcpkg' >> ~/.zshrc && \
-    echo 'export PATH="$PATH:/opt/vcpkg"' >> ~/.zshrc && \
-    echo 'export CC=/usr/bin/gcc-12' >> ~/.zshrc && \
-    echo 'export CXX=/usr/bin/g++-12' >> ~/.zshrc && \
-    echo '' >> ~/.zshrc && \
-    echo '# C++ Build aliases' >> ~/.zshrc && \
-    echo 'alias cmake-debug="cmake -DCMAKE_BUILD_TYPE=Debug"' >> ~/.zshrc && \
-    echo 'alias cmake-release="cmake -DCMAKE_BUILD_TYPE=Release"' >> ~/.zshrc && \
-    echo 'alias ninja-build="cmake --build . -- -j$(nproc)"' >> ~/.zshrc && \
-    echo 'alias cppclean="find . -name \"*.o\" -o -name \"*.a\" -o -name \"*.so\" | xargs rm -f"' >> ~/.zshrc && \
-    echo 'alias valgrind-leak="valgrind --leak-check=full --show-leak-kinds=all"' >> ~/.zshrc
-
-WORKDIR /workspace
+# Add C++ development aliases and environment to /etc/skel/.zshrc
+RUN echo '' >> /etc/skel/.zshrc && \
+    echo '# C++ Development Environment' >> /etc/skel/.zshrc && \
+    echo 'export VCPKG_ROOT=/opt/vcpkg' >> /etc/skel/.zshrc && \
+    echo 'export PATH="$PATH:/opt/vcpkg"' >> /etc/skel/.zshrc && \
+    echo 'export CC=/usr/bin/gcc-12' >> /etc/skel/.zshrc && \
+    echo 'export CXX=/usr/bin/g++-12' >> /etc/skel/.zshrc && \
+    echo '' >> /etc/skel/.zshrc && \
+    echo '# C++ Build aliases' >> /etc/skel/.zshrc && \
+    echo 'alias cmake-debug="cmake -DCMAKE_BUILD_TYPE=Debug"' >> /etc/skel/.zshrc && \
+    echo 'alias cmake-release="cmake -DCMAKE_BUILD_TYPE=Release"' >> /etc/skel/.zshrc && \
+    echo 'alias ninja-build="cmake --build . -- -j$(nproc)"' >> /etc/skel/.zshrc && \
+    echo 'alias cppclean="find . -name \"*.o\" -o -name \"*.a\" -o -name \"*.so\" | xargs rm -f"' >> /etc/skel/.zshrc && \
+    echo 'alias valgrind-leak="valgrind --leak-check=full --show-leak-kinds=all"' >> /etc/skel/.zshrc
 
 # Default command
 CMD ["sleep", "infinity"]

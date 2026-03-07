@@ -1,82 +1,114 @@
 {
-	"name": "Go DevBench Container - The Monster",
-	"dockerComposeFile": "docker-compose.yml",
-	"service": "go_bench",
-	"workspaceFolder": "/workspace",
-	
-	// Mount host home directory directly for seamless config/SSH access
-	"mounts": [
-		// Current workspace (already in docker-compose.yml but good to be explicit)
-		"source=${localWorkspaceFolder}/..,target=/workspace,type=bind,consistency=cached",
-		// Host home directory mounted directly - gives access to SSH, configs, dotfiles
-		"source=${localEnv:HOME},target=/home/${localEnv:USER},type=bind,consistency=cached"
-	],
-	
-	// Container environment variables
-	"containerEnv": {
-		"USERNAME": "${localEnv:USER}",
-		"USER_UID": "${localEnv:UID:-1000}",
-		"USER_GID": "${localEnv:GID:-1000}",
-		"DEBUG": "false"
-	},
-	
-	// Features are now built into the Dockerfile
+    "name": "Go DevBench Container",
+    "initializeCommand": "bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base go-bench:latest --chown /go",
+    "image": "go-bench:${localEnv:USER}",
+    "runArgs": [
+        "--cap-add=SYS_PTRACE",
+        "--security-opt",
+        "seccomp=unconfined",
+        "--privileged"
+    ],
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "golang.go",
+                "GitHub.copilot",
+                "ms-azuretools.vscode-docker",
+                "ms-kubernetes-tools.vscode-kubernetes-tools",
+                "eamodio.gitlens",
+                "esbenp.prettier-vscode",
+                "humao.rest-client",
+                "redhat.vscode-yaml",
+                "hashicorp.terraform",
+                "tamasfe.even-better-toml",
+                "premparihar.gotestexplorer"
+            ],
+            "settings": {
+                "terminal.integrated.defaultProfile.linux": "zsh",
+                "go.toolsManagement.autoUpdate": true,
+                "go.useLanguageServer": true,
+                "go.lintTool": "golangci-lint",
+                "go.lintOnSave": "workspace",
+                "go.formatTool": "goimports",
+                "go.autocompleteUnimportedPackages": true,
+                "go.gocodePackageLookupMode": "go",
+                "go.gotoSymbol.includeImports": true,
+                "go.docsTool": "gogetdoc",
+                "go.testTimeout": "30s",
+                "[go]": {
+                    "editor.formatOnSave": true,
+                    "editor.codeActionsOnSave": {
+                        "source.organizeImports": "explicit"
+                    }
+                },
+                "gopls": {
+                    "ui.semanticTokens": true,
+                    "ui.completion.usePlaceholders": true,
+                    "ui.diagnostic.analyses": {
+                        "composites": false,
+                        "unusedparams": true,
+                        "unusedwrite": true
+                    }
+                }
+            }
+        }
+    },
+    "containerEnv": {
+        "SHELL": "/bin/zsh",
+        "GOPATH": "/go",
+        "GOBIN": "/go/bin",
+        "DOCKER_HOST": "unix:///var/run/docker.sock"
+    },
+    "remoteUser": "${localEnv:USER}",
+    "workspaceFolder": "/workspace",
+    "mounts": [
+        "source=gobench-zshhistory,target=/home/${localEnv:USER}/.zsh_history,type=volume",
+        "source=${localEnv:HOME}/projects,target=/workspace/projects,type=bind",
 
-	// Configure tool-specific properties
-	"customizations": {
-		"vscode": {
-			"extensions": [
-				"golang.go",
-				"GitHub.copilot",
-				"GitHub.copilot-chat",
-				"ms-azuretools.vscode-docker",
-				"ms-kubernetes-tools.vscode-kubernetes-tools",
-				"ms-vscode.remote-containers",
-				"eamodio.gitlens",
-				"esbenp.prettier-vscode",
-				"humao.rest-client",
-				"ms-vscode-remote.remote-ssh",
-				"redhat.vscode-yaml",
-				"hashicorp.terraform",
-				"tamasfe.even-better-toml",
-				"premparihar.gotestexplorer"
-			],
-			"settings": {
-				"terminal.integrated.defaultProfile.linux": "zsh",
-				"go.toolsManagement.autoUpdate": true,
-				"go.useLanguageServer": true,
-				"go.lintTool": "golangci-lint",
-				"go.lintOnSave": "workspace",
-				"go.formatTool": "goimports",
-				"go.autocompleteUnimportedPackages": true,
-				"go.gocodePackageLookupMode": "go",
-				"go.gotoSymbol.includeImports": true,
-				"go.docsTool": "gogetdoc",
-				"go.testTimeout": "30s",
-				"[go]": {
-					"editor.formatOnSave": true,
-					"editor.codeActionsOnSave": {
-						"source.organizeImports": "explicit"
-					}
-				},
-				"gopls": {
-					"ui.semanticTokens": true,
-					"ui.completion.usePlaceholders": true,
-					"ui.diagnostic.analyses": {
-						"composites": false,
-						"unusedparams": true,
-						"unusedwrite": true
-					}
-				}
-			}
-		}
-	},
+        // Shell configurations
+        "source=${localEnv:HOME}/.zshrc,target=/home/${localEnv:USER}/.zshrc,type=bind,readonly",
+        "source=${localEnv:HOME}/.oh-my-zsh,target=/home/${localEnv:USER}/.oh-my-zsh,type=bind,readonly",
+        "source=${localEnv:HOME}/.p10k.zsh,target=/home/${localEnv:USER}/.p10k.zsh,type=bind,readonly",
+        "source=${localEnv:HOME}/.bashrc,target=/home/${localEnv:USER}/.bashrc,type=bind,readonly",
 
-	// Use 'forwardPorts' to make a list of ports inside the container available locally
-	"forwardPorts": [8080, 8081, 9090, 3000],
+        // Git configuration
+        "source=${localEnv:HOME}/.gitconfig,target=/home/${localEnv:USER}/.gitconfig,type=bind,readonly",
 
-	// All setup is done in the Dockerfile
+        // SSH keys and configuration
+        "source=${localEnv:HOME}/.ssh,target=/home/${localEnv:USER}/.ssh,type=bind,readonly",
 
-	// Comment out to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root
-	"remoteUser": "${localEnv:USER}"
+        // GitHub CLI configuration
+        "source=${localEnv:HOME}/.config/gh,target=/home/${localEnv:USER}/.config/gh,type=bind,readonly",
+
+        // Docker socket
+        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
+
+        // AI Agent Credentials
+        "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.claude.json,target=/home/${localEnv:USER}/.claude.json,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini,type=bind,consistency=cached",
+        // Grok (xAI)
+        "source=${localEnv:HOME}/.grok,target=/home/${localEnv:USER}/.grok,type=bind,readonly",
+        // GitHub Copilot CLI
+        "source=${localEnv:HOME}/.copilot-cli,target=/home/${localEnv:USER}/.copilot-cli,type=bind,readonly",
+        // NotebookLM (auth tokens from host)
+        "source=${localEnv:HOME}/.notebooklm,target=/home/${localEnv:USER}/.notebooklm,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.notebooklm-mcp-cli,target=/home/${localEnv:USER}/.notebooklm-mcp-cli,type=bind,consistency=cached"
+    ],
+    "forwardPorts": [8080, 9090, 3000],
+    "portsAttributes":
+        "8080": {
+            "label": "HTTP Server",
+            "onAutoForward": "notify"
+        },
+        "9090": {
+            "label": "gRPC / Metrics",
+            "onAutoForward": "notify"
+        },
+        "3000": {
+            "label": "Web App",
+            "onAutoForward": "openBrowser"
+        }
+    }
 }

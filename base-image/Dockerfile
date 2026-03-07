@@ -2,22 +2,18 @@
 # Ubuntu 24.04 with system tools and AI coding CLIs
 # Used by ALL benches (Frappe, Flutter, .NET, Bio, Admin, etc.)
 # Build once, use everywhere
+# USER-AGNOSTIC: No user creation — Layer 3 handles user setup
 
 FROM ubuntu:24.04
 
 # Container version labels
 LABEL layer="0"
 LABEL layer.name="workbench-base"
-LABEL layer.version="1.3.1"
-LABEL layer.description="System base with AI CLIs for all workBenches"
+LABEL layer.version="2.0.0"
+LABEL layer.description="System base with AI CLIs for all workBenches (user-agnostic)"
 
-# Switch to root for system package installation
+# Everything runs as root — no user in this layer
 USER root
-
-# Build arguments for user customization
-ARG USERNAME=vscode
-ARG USER_UID=1000
-ARG USER_GID=1000
 
 # ========================================
 # SYSTEM PACKAGES
@@ -49,6 +45,7 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     cron \
     fzf \
     bat \
+    sudo \
     # Build tools
     build-essential \
     pkg-config \
@@ -90,116 +87,80 @@ RUN apt-get update && apt-get install -y npm \
     && rm -rf /var/lib/apt/lists/*
 
 # ========================================
-# USER SETUP - Match host user
+# UV (system-wide)
 # ========================================
 
-# Remove existing user/group with target UID/GID and create new user
-RUN set -eux && \
-    # Remove existing user with target UID if exists
-    if getent passwd "$USER_UID" >/dev/null; then \
-        existing_user=$(getent passwd "$USER_UID" | cut -d: -f1) && \
-        userdel --force --remove $existing_user 2>/dev/null || true; \
-    fi && \
-    # Handle existing group with target GID
-    if getent group "$USER_GID" >/dev/null; then \
-        existing_group=$(getent group "$USER_GID" | cut -d: -f1) && \
-        groupmod -n $USERNAME $existing_group 2>/dev/null || true; \
-    else \
-        groupadd --gid $USER_GID $USERNAME 2>/dev/null || true; \
-    fi && \
-    # Create new user if it doesn't exist
-    if ! getent passwd "$USERNAME" >/dev/null; then \
-        useradd --uid $USER_UID --gid $USERNAME -m -s /bin/zsh $USERNAME 2>/dev/null || true; \
-    fi
+# Install uv to /usr/local/bin (system-wide)
+RUN curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh
+
+# Install spec-kit system-wide
+RUN uv tool install specify-cli --from git+https://github.com/github/spec-kit.git --python-preference system \
+    || echo "spec-kit installation skipped (non-fatal)"
 
 # ========================================
-# ZSH CONFIGURATION
+# BUN RUNTIME (system-wide at /opt/bun)
 # ========================================
 
-# Install Oh-My-Zsh for the user
-USER $USERNAME
-WORKDIR /home/$USERNAME
-
-RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-
-# Install Powerlevel10k theme
-RUN git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/.oh-my-zsh/custom/themes/powerlevel10k
-
-# Configure zsh with modern tools and powerlevel10k theme
-RUN sed -i 's/ZSH_THEME="robbyrussell"/ZSH_THEME="powerlevel10k\/powerlevel10k"/' ~/.zshrc \
-    && echo 'eval "$(zoxide init zsh)"' >> ~/.zshrc \
-    && echo 'alias cat="batcat"' >> ~/.zshrc \
-    && echo 'alias ls="ls --color=auto"' >> ~/.zshrc \
-    && echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc \
-    && echo '' >> ~/.zshrc \
-    && echo '# Powerlevel10k instant prompt' >> ~/.zshrc \
-    && echo '[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh' >> ~/.zshrc \
-    && echo 'eval "$(zoxide init bash)"' >> ~/.bashrc \
-    && echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-
-# Add zoxide to default bash profile for future users
-USER root
-RUN echo 'eval "$(zoxide init bash)"' >> /etc/skel/.bashrc
-USER $USERNAME
+ENV BUN_INSTALL=/opt/bun
+RUN curl -fsSL https://bun.sh/install | bash \
+    && chmod -R a+rx /opt/bun
+ENV PATH="/opt/bun/bin:${PATH}"
 
 # ========================================
-# UV & SPEC-KIT
-# ========================================
-
-# Install uv (fast Python package manager + uvx runner)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Install spec-kit (GitHub Spec Kit) persistently via uv
-RUN $HOME/.local/bin/uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
-
-# ========================================
-# NPM GLOBAL SETUP
-# ========================================
-
-# Configure npm for user-local global installs
-RUN mkdir -p $HOME/.npm-global && \
-    npm config set prefix $HOME/.npm-global
-
-ENV NPM_CONFIG_PREFIX=/home/$USERNAME/.npm-global
-ENV PATH="/home/$USERNAME/.npm-global/bin:/home/$USERNAME/.local/bin:${PATH}"
-
-# ========================================
-# AI CLI TOOLS
+# AI CLI TOOLS (installed as root to system paths)
 # ========================================
 
 # Copy and run AI CLI installation script
-# Installs: Claude Code, Codex, Gemini, Copilot, OpenCode, oh-my-opencode, Letta, OpenSpec
-COPY --chown=$USERNAME:$USERNAME install-ai-clis.sh /tmp/
+COPY install-ai-clis.sh /tmp/
 RUN bash /tmp/install-ai-clis.sh && rm /tmp/install-ai-clis.sh
 
-# Configure OpenCode with oh-my-opencode
-RUN mkdir -p /home/$USERNAME/.config/opencode/agent/core \
-    && mkdir -p /home/$USERNAME/.config/opencode/context/skills
+# ========================================
+# ZSH CONFIGURATION (into /etc/skel for future users)
+# ========================================
 
-# Copy OpenCode configuration files
-COPY --chown=$USERNAME:$USERNAME files/opencode/opencode.json /home/$USERNAME/.config/opencode/
-COPY --chown=$USERNAME:$USERNAME files/opencode/oh-my-opencode.json /home/$USERNAME/.config/opencode/
-COPY --chown=$USERNAME:$USERNAME files/opencode/agent/ /home/$USERNAME/.config/opencode/agent/
-COPY --chown=$USERNAME:$USERNAME files/opencode/context/ /home/$USERNAME/.config/opencode/context/
+# Install Oh-My-Zsh into /etc/skel
+RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended \
+    && mv /root/.oh-my-zsh /etc/skel/.oh-my-zsh \
+    && rm -f /root/.zshrc
 
-# Create system-wide template for new users (needs root)
-USER root
+# Install Powerlevel10k theme
+RUN git clone --depth=1 https://github.com/romkatv/powerlevel10k.git /etc/skel/.oh-my-zsh/custom/themes/powerlevel10k
+
+# Create /etc/skel/.zshrc template
+RUN echo 'export ZSH="$HOME/.oh-my-zsh"' > /etc/skel/.zshrc && \
+    echo 'ZSH_THEME="powerlevel10k/powerlevel10k"' >> /etc/skel/.zshrc && \
+    echo 'plugins=(git)' >> /etc/skel/.zshrc && \
+    echo 'source $ZSH/oh-my-zsh.sh' >> /etc/skel/.zshrc && \
+    echo '' >> /etc/skel/.zshrc && \
+    echo '# Modern CLI tools' >> /etc/skel/.zshrc && \
+    echo 'eval "$(zoxide init zsh)"' >> /etc/skel/.zshrc && \
+    echo 'alias cat="batcat"' >> /etc/skel/.zshrc && \
+    echo 'alias ls="ls --color=auto"' >> /etc/skel/.zshrc && \
+    echo 'export PATH="$HOME/.local/bin:/opt/bun/bin:$PATH"' >> /etc/skel/.zshrc && \
+    echo '' >> /etc/skel/.zshrc && \
+    echo '# Powerlevel10k instant prompt' >> /etc/skel/.zshrc && \
+    echo '[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh' >> /etc/skel/.zshrc
+
+# Create /etc/skel/.bashrc template
+RUN echo 'eval "$(zoxide init bash)"' >> /etc/skel/.bashrc && \
+    echo 'export PATH="$HOME/.local/bin:/opt/bun/bin:$PATH"' >> /etc/skel/.bashrc
+
+# ========================================
+# OPENCODE CONFIGURATION (into /etc/skel)
+# ========================================
+
 RUN mkdir -p /etc/skel/.config/opencode/agent/core \
     && mkdir -p /etc/skel/.config/opencode/context/skills
-COPY --chown=root:root files/opencode/opencode.json /etc/skel/.config/opencode/
-COPY --chown=root:root files/opencode/oh-my-opencode.json /etc/skel/.config/opencode/
-COPY --chown=root:root files/opencode/agent/ /etc/skel/.config/opencode/agent/
-COPY --chown=root:root files/opencode/context/ /etc/skel/.config/opencode/context/
-USER $USERNAME
+COPY files/opencode/opencode.json /etc/skel/.config/opencode/
+COPY files/opencode/oh-my-opencode.json /etc/skel/.config/opencode/
+COPY files/opencode/agent/ /etc/skel/.config/opencode/agent/
+COPY files/opencode/context/ /etc/skel/.config/opencode/context/
 
-# Pre-fetch OpenCode plugins (optional, speeds up first run)
-RUN opencode --version || echo "OpenCode plugin pre-fetch skipped (non-fatal)"
+# ========================================
+# WORKSPACE DIRECTORY
+# ========================================
 
-# Update PATH for bun (installed by install-ai-clis.sh)
-RUN echo 'export PATH="$HOME/.bun/bin:$HOME/.npm-global/bin:$PATH"' >> ~/.zshrc && \
-    echo 'export BUN_INSTALL="$HOME/.bun"' >> ~/.zshrc && \
-    echo 'export PATH="$HOME/.bun/bin:$HOME/.npm-global/bin:$PATH"' >> ~/.bashrc && \
-    echo 'export BUN_INSTALL="$HOME/.bun"' >> ~/.bashrc
+RUN mkdir -p /workspace
 
 # Default command
 CMD ["sleep", "infinity"]

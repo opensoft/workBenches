@@ -235,7 +235,7 @@ WorkBenches uses a **multi-layer Docker image architecture** for efficiency and 
 - 🎯 Clear separation of concerns
 - 🔒 Security layers (read-only vs. action tools)
 
-For complete documentation, see [Container Architecture Guide](CONTAINER-ARCHITECTURE.md)
+For complete documentation, see [Container Architecture Guide](docs/CONTAINER-ARCHITECTURE.md)
 
 ## Structure
 

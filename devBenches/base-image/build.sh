@@ -1,48 +1,49 @@
 #!/bin/bash
-# Build script for Layer 1: Developer Base Image
-# Creates: devbench-base:$USERNAME
+# Build script for Layer 1a: Developer Base Image
+# Creates: devbench-base:latest (user-agnostic)
 
 set -e
 
 echo "=========================================="
-echo "Building Layer 1: Developer Base"
+echo "Building Layer 1a: Developer Base (user-agnostic)"
 echo "=========================================="
 echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Parse arguments
-USERNAME=${1:-$(whoami)}
-if [ "$USERNAME" = "--user" ]; then
-    USERNAME="${2:-$(whoami)}"
-fi
+# Parse arguments (--user is accepted but ignored for backward compat)
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --user) shift 2 ;;
+        *) shift ;;
+    esac
+done
 
 echo "Configuration:"
-echo "  Username: $USERNAME"
+echo "  Tag: devbench-base:latest (user-agnostic)"
 echo ""
 
 # Check if Layer 0 exists
-if ! docker image inspect "workbench-base:$USERNAME" >/dev/null 2>&1; then
-    echo "❌ Error: Layer 0 (workbench-base:$USERNAME) not found!"
+if ! docker image inspect "workbench-base:latest" >/dev/null 2>&1; then
+    echo "❌ Error: Layer 0 (workbench-base:latest) not found!"
     echo ""
     echo "Please build Layer 0 first:"
     echo "  cd ../../base-image"
-    echo "  ./build.sh --user $USERNAME"
+    echo "  ./build.sh"
     exit 1
 fi
 
 # Build the image
-echo "Building devbench-base:$USERNAME..."
+echo "Building devbench-base:latest..."
 docker build \
-    --build-arg USERNAME="$USERNAME" \
-    -t "devbench-base:$USERNAME" \
+    -t "devbench-base:latest" \
     .
 
 echo ""
-echo "✓ Layer 1 built successfully!"
-echo "  Image: devbench-base:$USERNAME"
+echo "✓ Layer 1a built successfully!"
+echo "  Image: devbench-base:latest"
 echo ""
 echo "Next step: Build bench-specific images"
-echo "  cd ../frappeBench"
-echo "  ./build.sh --user $USERNAME"
+echo "  cd ../cppBench"
+echo "  ./scripts/build-layer.sh"

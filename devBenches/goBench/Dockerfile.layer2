@@ -3,21 +3,19 @@
 # Includes: Go 1.22+, gopls, delve, golangci-lint, and 25+ Go tools
 # For Go cloud-native development: microservices, APIs, CLI tools
 
-ARG BASE_IMAGE=devbench-base:brett
-FROM ${BASE_IMAGE}
+FROM devbench-base:latest
 
 # Container version labels
 LABEL layer="2"
 LABEL layer.name="go-bench"
-LABEL layer.version="1.0.0"
-LABEL layer.description="Go development with gopls, delve, and cloud-native tools"
+LABEL layer.version="2.0.0"
+LABEL layer.description="Go development with gopls, delve, and cloud-native tools (user-agnostic)"
 LABEL bench.type="go"
 
 # Build arguments
-ARG USERNAME=brett
 ARG GO_VERSION=1.22.0
 
-# Switch to root for Go installation
+# Everything runs as root
 USER root
 
 # ========================================
@@ -44,15 +42,13 @@ ENV GOBIN=/go/bin
 ENV PATH=$PATH:$GOBIN
 
 # Create Go directories
-RUN mkdir -p /go/bin /go/src /go/pkg && \
-    chown -R ${USERNAME}:${USERNAME} /go
+RUN mkdir -p /go/bin /go/src /go/pkg
 
 # ========================================
 # GO DEVELOPMENT TOOLS
 # ========================================
 
-# Switch to user for Go tool installation
-USER ${USERNAME}
+# Install Go tools as root (GOPATH=/go is writable)
 
 # Install Go language server and debugging tools
 RUN go install golang.org/x/tools/gopls@latest && \
@@ -71,7 +67,7 @@ RUN go install golang.org/x/tools/cmd/goimports@latest && \
     go install github.com/josharian/impl@latest
 
 # Install development productivity tools
-RUN go install github.com/cosmtrek/air@latest && \
+RUN go install github.com/air-verse/air@latest && \
     go install github.com/swaggo/swag/cmd/swag@latest && \
     go install github.com/google/wire/cmd/wire@latest
 
@@ -81,8 +77,13 @@ RUN go install mvdan.cc/gofumpt@latest && \
 
 # Install cloud-native and Kubernetes tools
 RUN go install github.com/google/ko@latest && \
-    go install sigs.k8s.io/kind@latest && \
-    go install github.com/tektoncd/cli/cmd/tkn@latest
+    go install sigs.k8s.io/kind@latest
+
+# Install Tekton CLI (tkn) from release binary — can't use go install due to replace directives
+RUN TKN_VERSION=$(curl -s https://api.github.com/repos/tektoncd/cli/releases/latest | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/') && \
+    curl -LO "https://github.com/tektoncd/cli/releases/download/v${TKN_VERSION}/tkn_${TKN_VERSION}_Linux_x86_64.tar.gz" && \
+    tar xzf "tkn_${TKN_VERSION}_Linux_x86_64.tar.gz" -C /usr/local/bin tkn && \
+    rm -f "tkn_${TKN_VERSION}_Linux_x86_64.tar.gz"
 
 # Install gRPC and Protocol Buffer tools
 RUN go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest && \
@@ -112,29 +113,26 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && rm -rf /var/lib/apt/lists/*
 
 # ========================================
-# USER CONFIGURATION
+# SHELL CONFIGURATION (into /etc/skel)
 # ========================================
 
-USER ${USERNAME}
-WORKDIR /workspace
+# Add Go development aliases to /etc/skel/.zshrc
+RUN echo '' >> /etc/skel/.zshrc && \
+    echo '# Go development aliases' >> /etc/skel/.zshrc && \
+    echo 'alias got="go test ./..."' >> /etc/skel/.zshrc && \
+    echo 'alias gotv="go test -v ./..."' >> /etc/skel/.zshrc && \
+    echo 'alias gotc="go test -cover ./..."' >> /etc/skel/.zshrc && \
+    echo 'alias gob="go build"' >> /etc/skel/.zshrc && \
+    echo 'alias gor="go run"' >> /etc/skel/.zshrc && \
+    echo 'alias gom="go mod tidy"' >> /etc/skel/.zshrc && \
+    echo 'alias gofmt="goimports -w ."' >> /etc/skel/.zshrc && \
+    echo 'alias golint="golangci-lint run"' >> /etc/skel/.zshrc && \
+    echo 'alias air-init="air init"' >> /etc/skel/.zshrc
 
-# Add Go development aliases to zshrc
-RUN echo '' >> ~/.zshrc && \
-    echo '# Go development aliases' >> ~/.zshrc && \
-    echo 'alias got="go test ./..."' >> ~/.zshrc && \
-    echo 'alias gotv="go test -v ./..."' >> ~/.zshrc && \
-    echo 'alias gotc="go test -cover ./..."' >> ~/.zshrc && \
-    echo 'alias gob="go build"' >> ~/.zshrc && \
-    echo 'alias gor="go run"' >> ~/.zshrc && \
-    echo 'alias gom="go mod tidy"' >> ~/.zshrc && \
-    echo 'alias gofmt="goimports -w ."' >> ~/.zshrc && \
-    echo 'alias golint="golangci-lint run"' >> ~/.zshrc && \
-    echo 'alias air-init="air init"' >> ~/.zshrc
-
-# Update PATH in shell configs
-RUN echo 'export PATH="$PATH:/go/bin"' >> ~/.zshrc && \
-    echo 'export GOPATH=/go' >> ~/.zshrc && \
-    echo 'export GOBIN=/go/bin' >> ~/.zshrc
+# Update PATH in /etc/skel shell configs
+RUN echo 'export PATH="$PATH:/go/bin"' >> /etc/skel/.zshrc && \
+    echo 'export GOPATH=/go' >> /etc/skel/.zshrc && \
+    echo 'export GOBIN=/go/bin' >> /etc/skel/.zshrc
 
 # Default command
 CMD ["sleep", "infinity"]

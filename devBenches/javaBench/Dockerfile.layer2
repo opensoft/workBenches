@@ -2,29 +2,27 @@
 # Extends Layer 1 (devbench-base) with Java specific tools
 # Includes: OpenJDK 21, Maven, Gradle, Spring CLI, Java tools
 
-ARG BASE_IMAGE=devbench-base:brett
-FROM ${BASE_IMAGE}
+FROM devbench-base:latest
 
 # Container version labels
 LABEL layer="2"
 LABEL layer.name="java-bench"
-LABEL layer.version="1.0.0"
-LABEL layer.description="Java development tools and JDK"
+LABEL layer.version="2.2.0"
+LABEL layer.description="Java development tools and JDK (user-agnostic)"
 LABEL bench.type="java"
 
-ARG USERNAME=brett
-
-# Switch to root for Java installation
+# Everything runs as root
 USER root
 
 # ========================================
 # JAVA JDK
 # ========================================
 
-# Install OpenJDK 21 (LTS)
+# Install OpenJDK 21 (LTS) and zip (required by SDKMAN)
 RUN apt-get update && apt-get install -y \
     openjdk-21-jdk \
     openjdk-21-jre \
+    zip \
     && rm -rf /var/lib/apt/lists/*
 
 # Set JAVA_HOME
@@ -53,68 +51,174 @@ ENV PATH="$GRADLE_HOME/bin:$PATH"
 # JAVA DEVELOPMENT TOOLS
 # ========================================
 
-# Install SDKMan for Java version management
-USER $USERNAME
+# Install SDKMan system-wide
 RUN curl -s "https://get.sdkman.io" | bash \
-    && bash -c "source $HOME/.sdkman/bin/sdkman-init.sh"
+    && bash -c "source $HOME/.sdkman/bin/sdkman-init.sh" \
+    && mv /root/.sdkman /opt/sdkman \
+    && chmod -R a+rx /opt/sdkman
 
-USER root
+ENV SDKMAN_DIR=/opt/sdkman
 
-# Install Spring Boot CLI
-RUN wget https://repo.spring.io/release/org/springframework/boot/spring-boot-cli/3.2.0/spring-boot-cli-3.2.0-bin.tar.gz -P /tmp \
-    && tar -xzf /tmp/spring-boot-cli-3.2.0-bin.tar.gz -C /opt \
-    && rm /tmp/spring-boot-cli-3.2.0-bin.tar.gz \
-    && ln -s /opt/spring-3.2.0/bin/spring /usr/local/bin/spring
-
-# ========================================
-# CODE QUALITY TOOLS
-# ========================================
-
-# Install Checkstyle, SpotBugs, PMD via Maven plugins
-# These will be available through project builds
+# Install Spring Boot CLI via SDKMAN
+RUN bash -c "source /opt/sdkman/bin/sdkman-init.sh && sdk install springboot" || true
 
 # ========================================
-# USER CONFIGURATION
+# CONTAINER TOOLING
 # ========================================
 
-USER $USERNAME
+# Install Docker CLI (client only, daemon runs on host via socket mount)
+RUN apt-get update && apt-get install -y \
+    ca-certificates gnupg lsb-release \
+    && install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+    && chmod a+r /etc/apt/keyrings/docker.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list \
+    && apt-get update && apt-get install -y docker-ce-cli docker-compose-plugin \
+    && rm -rf /var/lib/apt/lists/*
+
+# ========================================
+# DATABASE CLIENTS
+# ========================================
+
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    default-mysql-client \
+    sqlite3 \
+    redis-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# ========================================
+# CODE QUALITY / STATIC ANALYSIS TOOLS
+# ========================================
+
+# Checkstyle
+RUN mkdir -p /opt/checkstyle \
+    && curl -fsSL https://github.com/checkstyle/checkstyle/releases/download/checkstyle-10.21.4/checkstyle-10.21.4-all.jar \
+       -o /opt/checkstyle/checkstyle.jar
+
+# SpotBugs
+RUN curl -fsSL https://github.com/spotbugs/spotbugs/releases/download/4.8.6/spotbugs-4.8.6.tgz \
+       -o /tmp/spotbugs.tgz \
+    && tar -xzf /tmp/spotbugs.tgz -C /opt \
+    && chmod +x /opt/spotbugs-4.8.6/bin/spotbugs \
+    && ln -s /opt/spotbugs-4.8.6/bin/spotbugs /usr/local/bin/spotbugs \
+    && rm /tmp/spotbugs.tgz
+
+# PMD
+RUN curl -fsSL https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.9.0/pmd-dist-7.9.0-bin.zip \
+       -o /tmp/pmd.zip \
+    && unzip -q /tmp/pmd.zip -d /opt \
+    && ln -s /opt/pmd-bin-7.9.0/bin/pmd /usr/local/bin/pmd \
+    && rm /tmp/pmd.zip
+
+# SonarQube Scanner CLI
+RUN curl -fsSL https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.2.1.4610-linux-x64.zip \
+       -o /tmp/sonar-scanner.zip \
+    && unzip -q /tmp/sonar-scanner.zip -d /opt \
+    && ln -s /opt/sonar-scanner-6.2.1.4610-linux-x64/bin/sonar-scanner /usr/local/bin/sonar-scanner \
+    && rm /tmp/sonar-scanner.zip
+
+# ========================================
+# JVM COMPANION LANGUAGES
+# ========================================
+
+# Install Kotlin, Groovy, Scala via SDKMAN
+RUN bash -c "source /opt/sdkman/bin/sdkman-init.sh \
+    && sdk install kotlin \
+    && sdk install groovy \
+    && sdk install scala" || true
+
+# ========================================
+# SYSTEM UTILITIES
+# ========================================
+
+RUN apt-get update && apt-get install -y \
+    htop \
+    tree \
+    less \
+    ant \
+    && rm -rf /var/lib/apt/lists/*
+
+# ========================================
+# FRAMEWORK CLIs
+# ========================================
+
+# Install Quarkus and Micronaut CLIs via SDKMAN
+# (Spring Boot CLI already installed above)
+RUN bash -c "source /opt/sdkman/bin/sdkman-init.sh \
+    && sdk install quarkus \
+    && sdk install micronaut" || true
+
+# ========================================
+# PERFORMANCE TESTING
+# ========================================
+
+# Apache JMeter 5.6.3
+RUN curl -fsSL https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz \
+       -o /tmp/jmeter.tgz \
+    && tar -xzf /tmp/jmeter.tgz -C /opt \
+    && ln -s /opt/apache-jmeter-5.6.3/bin/jmeter /usr/local/bin/jmeter \
+    && rm /tmp/jmeter.tgz
+
+ENV JMETER_HOME=/opt/apache-jmeter-5.6.3
+
+# Gatling 3.10.5 (last traditional standalone bundle)
+RUN curl -fsSL https://repo1.maven.org/maven2/io/gatling/highcharts/gatling-charts-highcharts-bundle/3.10.5/gatling-charts-highcharts-bundle-3.10.5-bundle.zip \
+       -o /tmp/gatling.zip \
+    && unzip -q /tmp/gatling.zip -d /opt \
+    && chmod +x /opt/gatling-charts-highcharts-bundle-3.10.5/bin/*.sh \
+    && ln -s /opt/gatling-charts-highcharts-bundle-3.10.5/bin/gatling.sh /usr/local/bin/gatling \
+    && ln -s /opt/gatling-charts-highcharts-bundle-3.10.5/bin/recorder.sh /usr/local/bin/gatling-recorder \
+    && rm /tmp/gatling.zip
+
+ENV GATLING_HOME=/opt/gatling-charts-highcharts-bundle-3.10.5
+
+# ========================================
+# WORKSPACE SETUP
+# ========================================
 
 # Create common Java project directories
 RUN mkdir -p /workspace/projects \
     && mkdir -p /workspace/m2repo \
     && mkdir -p /workspace/.gradle
 
-# Configure Maven to use workspace m2repo
-RUN mkdir -p ~/.m2 \
-    && echo '<?xml version="1.0" encoding="UTF-8"?>' > ~/.m2/settings.xml \
-    && echo '<settings>' >> ~/.m2/settings.xml \
-    && echo '  <localRepository>/workspace/m2repo</localRepository>' >> ~/.m2/settings.xml \
-    && echo '</settings>' >> ~/.m2/settings.xml
+# Configure Maven to use workspace m2repo (in /etc/skel)
+RUN mkdir -p /etc/skel/.m2 \
+    && echo '<?xml version="1.0" encoding="UTF-8"?>' > /etc/skel/.m2/settings.xml \
+    && echo '<settings>' >> /etc/skel/.m2/settings.xml \
+    && echo '  <localRepository>/workspace/m2repo</localRepository>' >> /etc/skel/.m2/settings.xml \
+    && echo '</settings>' >> /etc/skel/.m2/settings.xml
 
-# Add Java development aliases and environment to .zshrc
-RUN echo '' >> ~/.zshrc && \
-    echo '# Java Development Environment' >> ~/.zshrc && \
-    echo 'export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64' >> ~/.zshrc && \
-    echo 'export GRADLE_HOME=/opt/gradle/gradle-8.5' >> ~/.zshrc && \
-    echo 'export PATH="$JAVA_HOME/bin:$GRADLE_HOME/bin:$PATH"' >> ~/.zshrc && \
-    echo '' >> ~/.zshrc && \
-    echo '# Java Build aliases' >> ~/.zshrc && \
-    echo 'alias mvn-clean="mvn clean"' >> ~/.zshrc && \
-    echo 'alias mvn-package="mvn clean package"' >> ~/.zshrc && \
-    echo 'alias mvn-install="mvn clean install"' >> ~/.zshrc && \
-    echo 'alias mvn-test="mvn test"' >> ~/.zshrc && \
-    echo 'alias gradle-build="gradle build"' >> ~/.zshrc && \
-    echo 'alias gradle-clean="gradle clean"' >> ~/.zshrc && \
-    echo 'alias gradle-test="gradle test"' >> ~/.zshrc && \
-    echo 'alias spring-run="./mvnw spring-boot:run"' >> ~/.zshrc
+# ========================================
+# SHELL CONFIGURATION (into /etc/skel)
+# ========================================
+
+# Add Java development aliases and environment to /etc/skel/.zshrc
+RUN echo '' >> /etc/skel/.zshrc && \
+    echo '# Java Development Environment' >> /etc/skel/.zshrc && \
+    echo 'export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64' >> /etc/skel/.zshrc && \
+    echo 'export GRADLE_HOME=/opt/gradle/gradle-8.5' >> /etc/skel/.zshrc && \
+    echo 'export PATH="$JAVA_HOME/bin:$GRADLE_HOME/bin:$PATH"' >> /etc/skel/.zshrc && \
+    echo '' >> /etc/skel/.zshrc && \
+    echo '# Java Build aliases' >> /etc/skel/.zshrc && \
+    echo 'alias mvn-clean="mvn clean"' >> /etc/skel/.zshrc && \
+    echo 'alias mvn-package="mvn clean package"' >> /etc/skel/.zshrc && \
+    echo 'alias mvn-install="mvn clean install"' >> /etc/skel/.zshrc && \
+    echo 'alias mvn-test="mvn test"' >> /etc/skel/.zshrc && \
+    echo 'alias gradle-build="gradle build"' >> /etc/skel/.zshrc && \
+    echo 'alias gradle-clean="gradle clean"' >> /etc/skel/.zshrc && \
+    echo 'alias gradle-test="gradle test"' >> /etc/skel/.zshrc && \
+    echo 'alias spring-run="./mvnw spring-boot:run"' >> /etc/skel/.zshrc && \
+    echo '' >> /etc/skel/.zshrc && \
+    echo '# Performance Testing aliases' >> /etc/skel/.zshrc && \
+    echo 'alias jmeter-cli="jmeter -n"' >> /etc/skel/.zshrc && \
+    echo 'alias jmeter-report="jmeter -g"' >> /etc/skel/.zshrc
 
 # Add SDKMan initialization
-RUN echo '' >> ~/.zshrc && \
-    echo '# SDKMan initialization' >> ~/.zshrc && \
-    echo 'export SDKMAN_DIR="$HOME/.sdkman"' >> ~/.zshrc && \
-    echo '[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"' >> ~/.zshrc
-
-WORKDIR /workspace
+RUN echo '' >> /etc/skel/.zshrc && \
+    echo '# SDKMan initialization' >> /etc/skel/.zshrc && \
+    echo 'export SDKMAN_DIR="/opt/sdkman"' >> /etc/skel/.zshrc && \
+    echo '[[ -s "/opt/sdkman/bin/sdkman-init.sh" ]] && source "/opt/sdkman/bin/sdkman-init.sh"' >> /etc/skel/.zshrc
 
 # Default command
 CMD ["sleep", "infinity"]

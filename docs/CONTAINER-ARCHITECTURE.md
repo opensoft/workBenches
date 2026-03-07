@@ -52,25 +52,40 @@ WorkBenches uses a **3-layer Docker image architecture** to minimize build times
 ✅ **System utilities** that every developer needs:
 - Version control: `git`, `gh` (GitHub CLI)
 - Editors: `vim`, `neovim`, `nano`
-- Network tools: `curl`, `wget`, `ping`, `netstat`
-- Shell utilities: `zsh`, `tmux`, `screen`, `fzf`
+- Network tools: `curl`, `wget`, `iputils-ping`, `net-tools`
+- Shell utilities: `zsh`, `tmux`, `screen`, `fzf`, `openssh-client`
+- Search tools: `ripgrep`, `fd-find`
 - Data tools: `jq`, `yq`
 - Modern CLI enhancements: `zoxide`, `bat`, `tldr`
+- Build tools: `build-essential`, `pkg-config`
+- System: `sudo`, `cron`, `unzip`, `gpg`, `ca-certificates`
+
+✅ **Runtimes & package tools** (system-wide):
+- `npm` (from apt, used to install AI CLIs)
+- `bun` runtime (`/opt/bun`)
+- `uv` (fast Python package installer, `/usr/local/bin`)
+- `spec-kit` / `specify-cli` (via uv)
 
 ✅ **AI coding assistants** (shared across ALL benches):
-- Claude Code CLI (`@anthropic-ai/claude-code`)
-- OpenAI Codex (`@openai/codex`)
-- GitHub Copilot CLI (`@githubnext/github-copilot-cli`)
-- Google Gemini CLI (`@google/gemini-cli`)
-- OpenCode AI (`opencode-ai`)
-- Letta Code (`@letta-ai/letta-code`)
-- OpenSpec (`@fission-ai/openspec`)
+- Claude Code (native installer → `/usr/local/bin/claude`)
+- OpenAI Codex (`@openai/codex` via npm)
+- Google Gemini (`@google/gemini-cli` via npm)
+- GitHub Copilot CLI (`@githubnext/github-copilot-cli` via npm)
+- Grok (`@xai-org/grok-cli` via npm)
+- OpenCode (built from source, Opensoft/opencode fork → `/usr/local/bin/opencode`)
+- oh-my-opencode (darrenhinde fork, plugin at `/opt/opencode/plugin`)
+- opencode-gemini-auth & opencode-openai-codex-auth (auth plugins)
+- Letta Code (`@letta-ai/letta-code` via npm)
+- OpenSpec (`@fission-ai/openspec` via npm)
+- NotebookLM CLI (`notebooklm-py` via uv → `/usr/local/bin/notebooklm`)
+- NotebookLM MCP CLI (`notebooklm-mcp-cli` via uv → `/usr/local/bin/nlm`, `/usr/local/bin/notebooklm-mcp`)
 
-✅ **User configuration**:
-- Match host UID/GID for seamless file permissions
-- Oh-My-Zsh with plugins (autosuggestions, syntax highlighting)
-- npm global directory setup (`~/.npm-global`)
+✅ **Shell & user configuration** (into `/etc/skel` for Layer 3):
+- Oh-My-Zsh with Powerlevel10k theme
+- zoxide, bat aliases
+- OpenCode agent configs (`/etc/skel/.config/opencode/`)
 - Default shell: zsh
+- User creation deferred to Layer 3 (user-agnostic)
 
 ### What Does NOT Belong Here
 

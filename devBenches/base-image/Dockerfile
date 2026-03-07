@@ -2,23 +2,18 @@
 # Extends Layer 0 with Python, Node.js LTS, and dev tools
 # AI CLIs are inherited from Layer 0 (workbench-base)
 # Used by ALL developer benches (Frappe, Flutter, .NET, etc.)
+# USER-AGNOSTIC: No user creation — Layer 3 handles user setup
 
-# Build arguments must be declared before FROM to use in FROM
-ARG USERNAME=brett
-
-FROM workbench-base:${USERNAME}
+FROM workbench-base:latest
 
 # Container version labels
 LABEL layer="1"
 LABEL layer.name="devbench-base"
-LABEL layer.version="1.2.0"
-LABEL layer.description="Developer base with Python, Node.js LTS, and dev tools"
+LABEL layer.version="2.0.0"
+LABEL layer.description="Developer base with Python, Node.js LTS, and dev tools (user-agnostic)"
 
-# Switch to root for installation
+# Everything runs as root
 USER root
-
-# Build arguments
-ARG USERNAME=brett
 
 ARG YARN_VERSION=1.22.22
 
@@ -60,60 +55,39 @@ RUN npm install -g \
 # ========================================
 # DEVELOPER TOOLS SETUP
 # ========================================
-# User is already set up in Layer 0
-
-USER $USERNAME
-WORKDIR /home/$USERNAME
 
 # Verify Python and pip
 RUN python3 --version && pip --version
 
-# Configure git credential helper
-RUN git config --global credential.helper gh
+# uv, AI CLIs are inherited from Layer 0 (workbench-base)
 
-# uv, npm-global, and AI CLIs are inherited from Layer 0 (workbench-base)
-
-# Use a user-scoped Corepack cache to avoid runtime prompts
-ENV COREPACK_HOME=/home/$USERNAME/.corepack
-RUN corepack prepare "yarn@${YARN_VERSION}" --activate
-
-# AI CLIs and OpenCode config are inherited from Layer 0
+# System-wide Corepack cache
+ENV COREPACK_HOME=/opt/corepack
+RUN mkdir -p /opt/corepack && \
+    corepack prepare "yarn@${YARN_VERSION}" --activate
 
 # ========================================
-# ZSH SETUP
+# ZSH PLUGINS (into /etc/skel)
 # ========================================
 
-# Install Oh My Zsh
-RUN curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh | sh -s -- --unattended || \
-    echo "Oh My Zsh installation failed, using default zsh"
+# Install Oh My Zsh plugins into /etc/skel (oh-my-zsh itself is from Layer 0)
+RUN git clone https://github.com/zsh-users/zsh-autosuggestions /etc/skel/.oh-my-zsh/plugins/zsh-autosuggestions && \
+    git clone https://github.com/zsh-users/zsh-syntax-highlighting /etc/skel/.oh-my-zsh/plugins/zsh-syntax-highlighting
 
-# Install Oh My Zsh plugins
-RUN git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/plugins/zsh-autosuggestions && \
-    git clone https://github.com/zsh-users/zsh-syntax-highlighting ~/.oh-my-zsh/plugins/zsh-syntax-highlighting
+# Update /etc/skel/.zshrc to include plugins
+RUN sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' /etc/skel/.zshrc
 
-# Force zsh when bash is requested
-RUN echo '# Force zsh when bash is requested' >> ~/.bash_profile && \
-    echo 'if [ -n "$PS1" ] && [ -z "$ZSH_VERSION" ]; then' >> ~/.bash_profile && \
-    echo '    exec /bin/zsh -l' >> ~/.bash_profile && \
-    echo 'fi' >> ~/.bash_profile && \
-    echo '' >> ~/.bash_profile && \
-    echo '# Fallback: source bashrc if we somehow end up in bash' >> ~/.bash_profile && \
-    echo '[ -f ~/.bashrc ] && source ~/.bashrc' >> ~/.bash_profile
+# Add bash_profile to /etc/skel (force zsh when bash is requested)
+RUN echo '# Force zsh when bash is requested' > /etc/skel/.bash_profile && \
+    echo 'if [ -n "$PS1" ] && [ -z "$ZSH_VERSION" ]; then' >> /etc/skel/.bash_profile && \
+    echo '    exec /bin/zsh -l' >> /etc/skel/.bash_profile && \
+    echo 'fi' >> /etc/skel/.bash_profile && \
+    echo '' >> /etc/skel/.bash_profile && \
+    echo '# Fallback: source bashrc if we somehow end up in bash' >> /etc/skel/.bash_profile && \
+    echo '[ -f ~/.bashrc ] && source ~/.bashrc' >> /etc/skel/.bash_profile
 
-# Set zsh as default shell
-USER root
-RUN chsh -s /bin/zsh $USERNAME
-
-# ========================================
-# WORKSPACE SETUP
-# ========================================
-
-# Create workspace directory
-RUN mkdir -p /workspace && \
-    chown -R $USERNAME:$USERNAME /workspace
-
-USER $USERNAME
-WORKDIR /workspace
+# Add git credential helper to /etc/skel/.gitconfig
+RUN git config --system credential.helper gh
 
 # Default command
 CMD ["sleep", "infinity"]

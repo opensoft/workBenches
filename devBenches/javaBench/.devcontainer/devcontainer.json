@@ -1,35 +1,92 @@
 {
-  "name": "Java Development Bench",
-  "dockerComposeFile": "docker-compose.yml",
-  "service": "java_bench",
-  "workspaceFolder": "/workspace",
-  
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "vscjava.vscode-java-pack",
-        "vscjava.vscode-spring-initializr",
-        "vscjava.vscode-spring-boot-dashboard",
-        "vmware.vscode-spring-boot",
-        "vscjava.vscode-maven",
-        "vscjava.vscode-gradle",
-        "redhat.java",
-        "redhat.vscode-xml"
-      ],
-      "settings": {
-        "java.home": "/usr/lib/jvm/java-21-openjdk-amd64",
-        "java.configuration.runtimes": [
-          {
-            "name": "JavaSE-21",
-            "path": "/usr/lib/jvm/java-21-openjdk-amd64"
-          }
-        ],
-        "maven.executable.path": "/usr/bin/mvn",
-        "maven.terminal.useJavaHome": true,
-        "java.jdt.ls.java.home": "/usr/lib/jvm/java-21-openjdk-amd64"
-      }
+    "name": "Java Development Bench",
+    "initializeCommand": "bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base java-bench:latest",
+    "image": "java-bench:${localEnv:USER}",
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "terminal.integrated.defaultProfile.linux": "zsh",
+                "java.home": "/usr/lib/jvm/java-21-openjdk-amd64",
+                "java.configuration.runtimes": [
+                    {
+                        "name": "JavaSE-21",
+                        "path": "/usr/lib/jvm/java-21-openjdk-amd64"
+                    }
+                ],
+                "maven.executable.path": "/usr/bin/mvn",
+                "maven.terminal.useJavaHome": true,
+                "java.jdt.ls.java.home": "/usr/lib/jvm/java-21-openjdk-amd64"
+            },
+            "extensions": [
+                "vscjava.vscode-java-pack",
+                "vscjava.vscode-spring-initializr",
+                "vscjava.vscode-spring-boot-dashboard",
+                "vmware.vscode-spring-boot",
+                "vscjava.vscode-maven",
+                "vscjava.vscode-gradle",
+                "redhat.java",
+                "redhat.vscode-xml",
+                "github.copilot",
+                "eamodio.gitlens"
+            ]
+        }
+    },
+    "containerEnv": {
+        "SHELL": "/bin/zsh",
+        "JAVA_HOME": "/usr/lib/jvm/java-21-openjdk-amd64",
+        "GRADLE_HOME": "/opt/gradle/gradle-8.5",
+        "MAVEN_OPTS": "-Dmaven.repo.local=/workspace/m2repo"
+    },
+    "remoteUser": "${localEnv:USER}",
+    "workspaceFolder": "/workspace",
+    "mounts": [
+        "source=javabench-zshhistory,target=/home/${localEnv:USER}/.zsh_history,type=volume",
+        "source=javabench-m2cache,target=/workspace/m2repo,type=volume",
+        "source=javabench-gradlecache,target=/workspace/.gradle,type=volume",
+        "source=${localEnv:HOME}/projects,target=/workspace/projects,type=bind",
+
+        // Shell configurations
+        "source=${localEnv:HOME}/.zshrc,target=/home/${localEnv:USER}/.zshrc,type=bind,readonly",
+        "source=${localEnv:HOME}/.oh-my-zsh,target=/home/${localEnv:USER}/.oh-my-zsh,type=bind,readonly",
+        "source=${localEnv:HOME}/.p10k.zsh,target=/home/${localEnv:USER}/.p10k.zsh,type=bind,readonly",
+        "source=${localEnv:HOME}/.bashrc,target=/home/${localEnv:USER}/.bashrc,type=bind,readonly",
+
+        // Git configuration
+        "source=${localEnv:HOME}/.gitconfig,target=/home/${localEnv:USER}/.gitconfig,type=bind,readonly",
+
+        // SSH keys and configuration
+        "source=${localEnv:HOME}/.ssh,target=/home/${localEnv:USER}/.ssh,type=bind,readonly",
+
+        // GitHub CLI configuration
+        "source=${localEnv:HOME}/.config/gh,target=/home/${localEnv:USER}/.config/gh,type=bind,readonly",
+
+        // AI Agent Credentials
+        "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.claude.json,target=/home/${localEnv:USER}/.claude.json,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.grok,target=/home/${localEnv:USER}/.grok,type=bind,readonly",
+        "source=${localEnv:HOME}/.copilot-cli,target=/home/${localEnv:USER}/.copilot-cli,type=bind,readonly",
+        // NotebookLM (auth tokens from host)
+        "source=${localEnv:HOME}/.notebooklm,target=/home/${localEnv:USER}/.notebooklm,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.notebooklm-mcp-cli,target=/home/${localEnv:USER}/.notebooklm-mcp-cli,type=bind,consistency=cached",
+
+        // Docker socket
+        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+    ],
+    "forwardPorts": [8080, 8081, 5005, 9090],
+    "portsAttributes": {
+        "8080": {
+            "label": "Spring Boot",
+            "onAutoForward": "notify"
+        },
+        "5005": {
+            "label": "Java Debug",
+            "onAutoForward": "silent"
+        },
+        "9090": {
+            "label": "Metrics/Actuator",
+            "onAutoForward": "notify"
+        }
     }
-  },
-  
-  "remoteUser": "brett"
 }

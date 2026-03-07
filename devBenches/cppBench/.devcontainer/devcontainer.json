@@ -1,6 +1,7 @@
 {
     "name": "C++ Heavy Development Environment",
-    "image": "cpp-bench:brett",
+    "initializeCommand": "bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base cpp-bench:latest --chown /opt/vcpkg",
+    "image": "cpp-bench:${localEnv:USER}",
     "runArgs": [
         "--cap-add=SYS_PTRACE",
         "--security-opt", 
@@ -31,30 +32,21 @@
                 }
             },
             "extensions": [
-                "ms-vscode.cpptools",
                 "ms-vscode.cpptools-extension-pack",
-                "llvm-vs-code-extensions.vscode-clangd",
-                "ms-vscode.cmake-tools",
                 "twxs.cmake",
-                "ms-vscode.cpptools-themes",
                 "xaver.clang-format",
-                "notskm.clang-tidy",
                 "jbenden.c-cpp-flylint",
                 "vadimcn.vscode-lldb",
                 "jeff-hykin.better-cpp-syntax",
                 "cschlosser.doxdocgen",
                 "ms-vscode.test-adapter-converter",
                 "matepek.vscode-catch2-test-adapter",
-                "ms-python.python",
-                "ms-python.flake8",
-                "ms-python.black-formatter",
                 "formulahendry.code-runner",
                 "gruntfuggly.todo-tree",
                 "streetsidesoftware.code-spell-checker",
                 "ms-vscode.hexeditor",
                 "ms-vsliveshare.vsliveshare",
                 "github.copilot",
-                "github.copilot-chat",
                 "eamodio.gitlens",
                 "mhutchie.git-graph",
                 "shd101wyy.markdown-preview-enhanced",
@@ -93,7 +85,6 @@
         // Claude (Anthropic)
         "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind,consistency=cached",
         "source=${localEnv:HOME}/.claude.json,target=/home/${localEnv:USER}/.claude.json,type=bind,consistency=cached",
-        "source=${localEnv:HOME}/.claude/.credentials.json,target=/home/${localEnv:USER}/.claude/.credentials.json,type=bind,consistency=cached",
         // Codex (OpenAI)
         "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex,type=bind,consistency=cached",
         // Gemini (Google)
@@ -101,18 +92,12 @@
         // Grok (xAI)
         "source=${localEnv:HOME}/.grok,target=/home/${localEnv:USER}/.grok,type=bind,readonly",
         // GitHub Copilot CLI
-        "source=${localEnv:HOME}/.copilot-cli,target=/home/${localEnv:USER}/.copilot-cli,type=bind,readonly"
+        "source=${localEnv:HOME}/.copilot-cli,target=/home/${localEnv:USER}/.copilot-cli,type=bind,readonly",
+        // NotebookLM (auth tokens from host)
+        "source=${localEnv:HOME}/.notebooklm,target=/home/${localEnv:USER}/.notebooklm,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.notebooklm-mcp-cli,target=/home/${localEnv:USER}/.notebooklm-mcp-cli,type=bind,consistency=cached"
     ],
     // "postCreateCommand": "bash ${containerWorkspaceFolder}/.devcontainer/post-create.sh",
-    "features": {
-        "ghcr.io/devcontainers/features/git:1": {
-            "version": "latest",
-            "ppa": true
-        },
-        "ghcr.io/devcontainers/features/github-cli:1": {
-            "version": "latest"
-        }
-    },
     "forwardPorts": [8000, 8080, 3000, 5000, 9090],
     "portsAttributes": {
         "8000": {

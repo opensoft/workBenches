@@ -1,18 +1,18 @@
 # Layer 2: Cloud Admin Bench Image
 # Extends Layer 1b (adminbench-base) with action-oriented cloud tools
 # Philosophy: "Action & Change" - tools that modify infrastructure state
+# USER-AGNOSTIC: No user creation — Layer 3 handles user setup
 
-ARG BASE_IMAGE=adminbench-base:brett
-FROM ${BASE_IMAGE}
+FROM adminbench-base:latest
 
 # Container version labels
 LABEL layer="2"
 LABEL layer.name="cloud-bench"
-LABEL layer.version="1.0.0"
-LABEL layer.description="Cloud admin action tools for infrastructure changes"
+LABEL layer.version="2.0.0"
+LABEL layer.description="Cloud admin action tools for infrastructure changes (user-agnostic)"
 LABEL bench.type="cloud-admin"
 
-# Switch to root for tool installation
+# Everything runs as root
 USER root
 
 # ========================================
@@ -30,14 +30,6 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 # Install cloud tools (minimal core set)
 COPY install-cloud-tools-minimal.sh /tmp/
 RUN bash /tmp/install-cloud-tools-minimal.sh && rm /tmp/install-cloud-tools-minimal.sh
-
-# ========================================
-# USER CONFIGURATION
-# ========================================
-
-ARG USERNAME=brett
-USER $USERNAME
-WORKDIR /workspace
 
 # Default command
 CMD ["sleep", "infinity"]

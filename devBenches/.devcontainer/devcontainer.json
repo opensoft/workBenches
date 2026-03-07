@@ -63,7 +63,7 @@
   
   "features": {},
   
-  "remoteUser": "brett",
+  "remoteUser": "${localEnv:USER}",
   
   "containerEnv": {
     "SHELL": "/bin/zsh",

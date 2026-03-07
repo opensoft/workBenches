@@ -6,10 +6,13 @@
 # Usage:
 #   ./update-and-rebuild.sh --layer 0              # Rebuild Layer 0 only
 #   ./update-and-rebuild.sh --layer 1a             # Rebuild Layer 1a only
-#   ./update-and-rebuild.sh --all                  # Rebuild all layers in order
+#   ./update-and-rebuild.sh --all                  # Rebuild all layers 0-2 in order
 #   ./update-and-rebuild.sh --all --push           # Rebuild all + push to registry
 #   ./update-and-rebuild.sh --layer 0 --cascade    # Rebuild Layer 0 + all downstream
 #   ./update-and-rebuild.sh --layer 1a --cascade   # Rebuild Layer 1a + Layer 2 benches using it
+#   ./update-and-rebuild.sh --layer 3 --base cpp-bench:latest --chown /opt/vcpkg  # User layer
+#
+# Layers 0-2 are user-agnostic (tagged :latest). Layer 3 adds user personalization.
 
 set -euo pipefail
 
@@ -21,6 +24,8 @@ PUSH=false
 BUILD_ALL=false
 CASCADE=false
 DATE_TAG=$(date '+%Y%m%d')
+LAYER3_BASE=""
+LAYER3_CHOWN=""
 
 # Registry config
 REGISTRY_ENV="$REPO_DIR/config/registry.env"
@@ -45,15 +50,19 @@ while [[ $# -gt 0 ]]; do
         --push) PUSH=true; shift ;;
         --cascade) CASCADE=true; shift ;;
         --user) USERNAME="$2"; shift 2 ;;
+        --base) LAYER3_BASE="$2"; shift 2 ;;
+        --chown) LAYER3_CHOWN="$2"; shift 2 ;;
         -h|--help)
-            echo "Usage: $0 [--layer 0|1a|1b|1c] [--all] [--push] [--cascade] [--user USERNAME]"
+            echo "Usage: $0 [--layer 0|1a|1b|1c|3] [--all] [--push] [--cascade] [--user USERNAME]"
             echo ""
             echo "Options:"
-            echo "  --layer LAYER   Rebuild a specific layer (0, 1a, 1b, 1c)"
-            echo "  --all           Rebuild all layers in dependency order"
+            echo "  --layer LAYER   Rebuild a specific layer (0, 1a, 1b, 1c, 3)"
+            echo "  --all           Rebuild all layers 0-2 in dependency order (user-agnostic)"
             echo "  --push          Push rebuilt images to Docker Hub ($REGISTRY)"
             echo "  --cascade       Also rebuild all downstream layers that depend on the rebuilt layer"
-            echo "  --user NAME     Username for image tags (default: $(whoami))"
+            echo "  --user NAME     Username for Layer 3 image tags (default: $(whoami))"
+            echo "  --base IMAGE    Base image for Layer 3 (e.g. cpp-bench:latest)"
+            echo "  --chown DIRS    Extra dirs to chown in Layer 3 (e.g. /opt/vcpkg)"
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -134,8 +143,9 @@ find_downstream_benches() {
             if [[ "$dockerfile" == */base-image/* ]]; then
                 continue
             fi
-            # Check if FROM references the base image
-            if grep -qE "^FROM\s+${base_image}" "$dockerfile" 2>/dev/null; then
+            # Check if FROM references the base image (literal or via ARG default)
+            if grep -qE "^FROM\s+(\\$\{[^}]+:-)?${base_image}" "$dockerfile" 2>/dev/null || \
+               grep -qE "^FROM\s+${base_image}" "$dockerfile" 2>/dev/null; then
                 local bench_dir
                 bench_dir=$(dirname "$dockerfile")
                 # If Dockerfile is inside .devcontainer, go up one level
@@ -187,7 +197,7 @@ build_layer2_bench() {
             build_timer_start
             local context_dir
             context_dir=$(dirname "$dockerfile")
-            docker build --build-arg USERNAME="$USERNAME" -t "${bench_name,,}:$USERNAME" -f "$dockerfile" "$context_dir"
+            docker build -t "${bench_name,,}:latest" -f "$dockerfile" "$context_dir"
             build_timer_end "Layer 2: $bench_name"
         else
             echo -e "${YELLOW}  No build script or Dockerfile found in $bench_dir — skipping${NC}"
@@ -226,10 +236,10 @@ cascade_rebuild() {
 
 build_layer0() {
     local build_dir="$REPO_DIR/base-image"
-    local image="workbench-base:$USERNAME"
+    local image="workbench-base:latest"
 
     echo ""
-    echo -e "${BOLD}${CYAN}═══ Building Layer 0: System Base ═══${NC}"
+    echo -e "${BOLD}${CYAN}═══ Building Layer 0: System Base (user-agnostic) ═══${NC}"
 
     if [ ! -f "$build_dir/build.sh" ]; then
         echo -e "${RED}✗ $build_dir/build.sh not found${NC}"
@@ -237,7 +247,7 @@ build_layer0() {
     fi
 
     build_timer_start
-    "$build_dir/build.sh" --user "$USERNAME"
+    "$build_dir/build.sh"
     build_timer_end "Layer 0"
 
     push_image "$image" "workbench-base"
@@ -245,13 +255,13 @@ build_layer0() {
 
 build_layer1a() {
     local build_dir="$REPO_DIR/devBenches/base-image"
-    local image="devbench-base:$USERNAME"
+    local image="devbench-base:latest"
 
     echo ""
-    echo -e "${BOLD}${CYAN}═══ Building Layer 1a: Developer Base ═══${NC}"
+    echo -e "${BOLD}${CYAN}═══ Building Layer 1a: Developer Base (user-agnostic) ═══${NC}"
 
     # Check dependency
-    if ! docker image inspect "workbench-base:$USERNAME" >/dev/null 2>&1; then
+    if ! docker image inspect "workbench-base:latest" >/dev/null 2>&1; then
         echo -e "${YELLOW}Layer 0 not found. Building it first...${NC}"
         build_layer0
     fi
@@ -262,7 +272,7 @@ build_layer1a() {
     fi
 
     build_timer_start
-    "$build_dir/build.sh" --user "$USERNAME"
+    "$build_dir/build.sh"
     build_timer_end "Layer 1a"
 
     push_image "$image" "devbench-base"
@@ -270,13 +280,13 @@ build_layer1a() {
 
 build_layer1b() {
     local build_dir="$REPO_DIR/adminBenches/base-image"
-    local image="adminbench-base:$USERNAME"
+    local image="adminbench-base:latest"
 
     echo ""
-    echo -e "${BOLD}${CYAN}═══ Building Layer 1b: Admin/DevOps Base ═══${NC}"
+    echo -e "${BOLD}${CYAN}═══ Building Layer 1b: Admin/DevOps Base (user-agnostic) ═══${NC}"
 
     # Check dependency
-    if ! docker image inspect "workbench-base:$USERNAME" >/dev/null 2>&1; then
+    if ! docker image inspect "workbench-base:latest" >/dev/null 2>&1; then
         echo -e "${YELLOW}Layer 0 not found. Building it first...${NC}"
         build_layer0
     fi
@@ -287,7 +297,7 @@ build_layer1b() {
     fi
 
     build_timer_start
-    "$build_dir/build.sh" --user "$USERNAME"
+    "$build_dir/build.sh"
     build_timer_end "Layer 1b"
 
     push_image "$image" "adminbench-base"
@@ -295,13 +305,13 @@ build_layer1b() {
 
 build_layer1c() {
     local build_dir="$REPO_DIR/bioBenches/base-image"
-    local image="biobench-base:$USERNAME"
+    local image="biobench-base:latest"
 
     echo ""
-    echo -e "${BOLD}${CYAN}═══ Building Layer 1c: Bio Base ═══${NC}"
+    echo -e "${BOLD}${CYAN}═══ Building Layer 1c: Bio Base (user-agnostic) ═══${NC}"
 
     # Check dependency
-    if ! docker image inspect "workbench-base:$USERNAME" >/dev/null 2>&1; then
+    if ! docker image inspect "workbench-base:latest" >/dev/null 2>&1; then
         echo -e "${YELLOW}Layer 0 not found. Building it first...${NC}"
         build_layer0
     fi
@@ -312,10 +322,36 @@ build_layer1c() {
     fi
 
     build_timer_start
-    "$build_dir/build.sh" --user "$USERNAME"
+    "$build_dir/build.sh"
     build_timer_end "Layer 1c"
 
     push_image "$image" "biobench-base"
+}
+
+build_layer3() {
+    local user_layer_dir="$REPO_DIR/user-layer"
+
+    echo ""
+    echo -e "${BOLD}${CYAN}═══ Building Layer 3: User Personalization ($USERNAME) ═══${NC}"
+
+    if [ -z "$LAYER3_BASE" ]; then
+        echo -e "${RED}✗ --base is required for Layer 3${NC}"
+        echo "  Example: $0 --layer 3 --base cpp-bench:latest --chown /opt/vcpkg"
+        return 1
+    fi
+
+    if [ ! -f "$user_layer_dir/build.sh" ]; then
+        echo -e "${RED}✗ $user_layer_dir/build.sh not found${NC}"
+        return 1
+    fi
+
+    build_timer_start
+    local chown_args=""
+    if [ -n "$LAYER3_CHOWN" ]; then
+        chown_args="--chown $LAYER3_CHOWN"
+    fi
+    "$user_layer_dir/build.sh" --base "$LAYER3_BASE" --user "$USERNAME" $chown_args
+    build_timer_end "Layer 3"
 }
 
 # ========================================
@@ -349,9 +385,9 @@ if [ "$BUILD_ALL" = true ]; then
     build_layer1b
     build_layer1c
     if [ "$CASCADE" = true ]; then
-        cascade_rebuild "devbench-base"
-        cascade_rebuild "adminbench-base"
-        cascade_rebuild "biobench-base"
+    cascade_rebuild "devbench-base:latest"
+        cascade_rebuild "adminbench-base:latest"
+        cascade_rebuild "biobench-base:latest"
     fi
 else
     case "$LAYER" in
@@ -385,9 +421,12 @@ else
                 cascade_rebuild "biobench-base"
             fi
             ;;
+        3)
+            build_layer3
+            ;;
         *)
             echo "Unknown layer: $LAYER"
-            echo "Valid layers: 0, 1a, 1b, 1c"
+            echo "Valid layers: 0, 1a, 1b, 1c, 3"
             exit 1
             ;;
     esac

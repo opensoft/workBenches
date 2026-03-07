@@ -1,83 +1,73 @@
 # Shared Mount Configuration for All WorkBenches
-# This file defines standard volume mounts for AI credentials and other shared resources
-# Usage: Include this in your bench-specific docker-compose.yml or use with docker-compose -f
-
-# To use this in your bench:
-# Option 1: docker-compose -f docker-compose.yml -f ../../docker-compose.mounts.yml up
-# Option 2: Reference as an extension in your docker-compose.yml (see example below)
+# Reference template for volume mounts — see docs/MOUNTS-README.md for canonical docs
+#
+# Note: Most benches now use devcontainer.json "mounts" instead of docker-compose.
+# This file remains as a reference template for benches still using docker-compose
+# (e.g. frappeBench) and as a quick-copy source.
 
 version: '3.8'
 
 # Extension field - reusable mount definitions
 x-standard-mounts: &standard-mounts
-  # Workspace (workBenches directory)
+  # Workspace
   - ../..:/workspace:cached
-  
-  # User projects (access to all projects)
   - ~/projects:/projects:cached
-  
-  # VSCode Server persistence
-  - ${BENCH_NAME:-bench}-vscode-server:/home/${USER}/.vscode-server
-  - ${BENCH_NAME:-bench}-bash-history:/home/${USER}/.bash_history
-  
-  # AI Coding Assistant Credentials (from Layer 0)
-  # These directories are mounted from the host to provide authentication
-  - ~/.claude:/home/${USER}/.claude:cached
-  - ~/.local/share/claude:/home/${USER}/.local/share/claude:cached
-  - ~/.local/state/claude:/home/${USER}/.local/state/claude:cached
-  - ~/.codex:/home/${USER}/.codex:cached
-  - ~/.gemini:/home/${USER}/.gemini:cached
-  - ~/.cursor:/home/${USER}/.cursor:cached
-  - ~/.copilot:/home/${USER}/.copilot:cached
-  - ~/.opencode:/home/${USER}/.opencode:cached
-  - ~/.letta:/home/${USER}/.letta:cached
-  - ~/.config/opencode:/home/${USER}/.config/opencode:cached
-  
-  # GitHub CLI credentials
-  - ~/.config/gh:/home/${USER}/.config/gh:ro
-  
-  # Git credentials (if using credential helper)
-  - ~/.gitconfig:/home/${USER}/.gitconfig:ro
-  - ~/.git-credentials:/home/${USER}/.git-credentials:ro
-  
-  # SSH keys (read-only for security)
-  - ~/.ssh:/home/${USER}/.ssh:ro
-  
-  # Optional Layer 1 credentials (uncomment if needed)
-  # Python package publishing (PyPI)
-  # - ~/.pypirc:/home/${USER}/.pypirc:ro
-  # - ~/.pip/pip.conf:/home/${USER}/.pip/pip.conf:ro
-  
-  # Node.js private registries
-  # - ~/.npmrc:/home/${USER}/.npmrc:ro
-  
-  # Bun runtime
-  # - ~/.bun:/home/${USER}/.bun:cached
 
-# Example service template (not used directly, but shows the pattern)
+  # Zsh history persistence
+  - ${BENCH_NAME:-bench}-zshhistory:/home/${USER}/.zsh_history
+
+  # Shell configurations (readonly — host user's actual config)
+  - ~/.zshrc:/home/${USER}/.zshrc:ro
+  - ~/.oh-my-zsh:/home/${USER}/.oh-my-zsh:ro
+  - ~/.p10k.zsh:/home/${USER}/.p10k.zsh:ro
+  - ~/.bashrc:/home/${USER}/.bashrc:ro
+
+  # Development credentials (readonly)
+  - ~/.gitconfig:/home/${USER}/.gitconfig:ro
+  - ~/.ssh:/home/${USER}/.ssh:ro
+  - ~/.config/gh:/home/${USER}/.config/gh:ro
+
+  # AI Coding Assistant Credentials (from Layer 0)
+  # See docs/MOUNTS-README.md for full details per tool
+  #
+  # Claude Code (native installer)
+  - ~/.claude:/home/${USER}/.claude:cached
+  - ~/.claude.json:/home/${USER}/.claude.json:cached
+  # OpenAI Codex (@openai/codex via npm)
+  - ~/.codex:/home/${USER}/.codex:cached
+  # Google Gemini (@google/gemini-cli via npm)
+  - ~/.gemini:/home/${USER}/.gemini:cached
+  # Grok (@xai-org/grok-cli via npm)
+  - ~/.grok:/home/${USER}/.grok:ro
+  # GitHub Copilot (@githubnext/github-copilot-cli via npm)
+  - ~/.copilot-cli:/home/${USER}/.copilot-cli:ro
+  # NotebookLM CLI (notebooklm-py via uv, auth on host browser)
+  - ~/.notebooklm:/home/${USER}/.notebooklm:cached
+  # NotebookLM MCP CLI (notebooklm-mcp-cli via uv, auth on host browser)
+  - ~/.notebooklm-mcp-cli:/home/${USER}/.notebooklm-mcp-cli:cached
+
+  # Optional: Docker socket (only for benches with Docker CLI)
+  # - /var/run/docker.sock:/var/run/docker.sock
+
+# Example service template
 services:
   example-service:
     volumes: *standard-mounts
 
 # AI Tools Installed in Layer 0 (workbench-base)
-# Reference: workBenches/base-image/install-ai-clis.sh
-# 
-# Installed AI CLIs:
-# - @anthropic-ai/claude-code (via npm)
-# - @openai/codex (via npm) 
-# - @githubnext/github-copilot-cli (via npm)
-# - @google/gemini-cli (via npm)
-# - opencode-ai (via npm)
-# - @letta-ai/letta-code (via npm)
-# - @fission-ai/openspec (via npm)
-# - cursor (if available)
+# Source of truth: base-image/install-ai-clis.sh
+# Mount reference: docs/MOUNTS-README.md
 #
-# Configuration locations:
-# - Claude Code: ~/.claude/
-# - OpenAI Codex: ~/.codex/
-# - GitHub Copilot: ~/.copilot/
-# - Google Gemini: ~/.gemini/
-# - Cursor: ~/.cursor/
-# - OpenCode: ~/.opencode/ and ~/.config/opencode/
-# - Letta: ~/.letta/
-# - OpenSpec: ~/.openspec/
+# Installed AI CLIs and credential paths:
+#   Claude Code     (native installer)                  → ~/.claude/, ~/.claude.json
+#   OpenAI Codex    (@openai/codex via npm)              → ~/.codex/
+#   Google Gemini   (@google/gemini-cli via npm)         → ~/.gemini/
+#   Grok            (@xai-org/grok-cli via npm)          → ~/.grok/
+#   GitHub Copilot  (@githubnext/github-copilot-cli npm) → ~/.copilot-cli/
+#   OpenCode        (Opensoft fork, built from source)   → config in image (/etc/skel)
+#   oh-my-opencode  (darrenhinde fork, built)            → plugin at /opt/opencode/plugin
+#   Letta Code      (@letta-ai/letta-code via npm)       → env vars / interactive
+#   OpenSpec        (@fission-ai/openspec via npm)       → no credentials
+#   spec-kit        (specify-cli via uv)                 → no credentials
+#   NotebookLM CLI  (notebooklm-py via uv)               → ~/.notebooklm/
+#   NotebookLM MCP  (notebooklm-mcp-cli via uv)          → ~/.notebooklm-mcp-cli/
