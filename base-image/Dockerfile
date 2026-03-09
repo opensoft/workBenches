@@ -157,6 +157,19 @@ COPY files/opencode/agent/ /etc/skel/.config/opencode/agent/
 COPY files/opencode/context/ /etc/skel/.config/opencode/context/
 
 # ========================================
+# OPSX COMMANDS & SKILLS (Claude Code, into /etc/skel)
+# ========================================
+# Upgraded OpenSpec workflows with agent team orchestration.
+# Uses opsx-* / opsx: prefix — openspec init/update won't overwrite these.
+
+RUN mkdir -p /etc/skel/.claude/commands/opsx \
+    && mkdir -p /etc/skel/.claude/skills/opsx-clarify \
+    && mkdir -p /etc/skel/.claude/skills/opsx-analyze
+COPY files/claude/commands/opsx/ /etc/skel/.claude/commands/opsx/
+COPY files/claude/skills/opsx-clarify/ /etc/skel/.claude/skills/opsx-clarify/
+COPY files/claude/skills/opsx-analyze/ /etc/skel/.claude/skills/opsx-analyze/
+
+# ========================================
 # WORKSPACE DIRECTORY
 # ========================================
 
