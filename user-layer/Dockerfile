@@ -18,8 +18,8 @@ FROM ${BASE_IMAGE}
 # Container version labels
 LABEL layer="3"
 LABEL layer.name="user-layer"
-LABEL layer.version="1.0.0"
-LABEL layer.description="User personalization layer"
+LABEL layer.version="1.1.0"
+LABEL layer.description="User personalization layer with browser for testing tools"
 
 # Build arguments
 ARG USERNAME=brett
@@ -75,6 +75,16 @@ RUN chown -R $USERNAME:$USERNAME /workspace
 RUN if [ -n "$EXTRA_CHOWN_DIRS" ]; then \
         usermod -aG root $USERNAME; \
     fi
+
+# ========================================
+# BROWSER FOR TESTING TOOLS
+# ========================================
+
+# Install Chromium browser for Playwright MCP and Chrome DevTools MCP
+# (MCP servers are installed in Layer 1a; browser installed here in Layer 3
+#  so Layer 2 registry images stay lean and browser is ready at container start)
+RUN npx playwright install --with-deps chromium \
+    || echo "⚠️  Playwright Chromium install failed, skipping"
 
 # ========================================
 # USER-SPECIFIC CONFIGURATION

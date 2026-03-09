@@ -9,8 +9,8 @@ FROM workbench-base:latest
 # Container version labels
 LABEL layer="1"
 LABEL layer.name="devbench-base"
-LABEL layer.version="2.0.0"
-LABEL layer.description="Developer base with Python, Node.js LTS, and dev tools (user-agnostic)"
+LABEL layer.version="2.1.0"
+LABEL layer.description="Developer base with Python, Node.js LTS, dev tools, and generic testing tools (user-agnostic)"
 
 # Everything runs as root
 USER root
@@ -65,6 +65,16 @@ RUN python3 --version && pip --version
 ENV COREPACK_HOME=/opt/corepack
 RUN mkdir -p /opt/corepack && \
     corepack prepare "yarn@${YARN_VERSION}" --activate
+
+# ========================================
+# GENERIC TESTING TOOLS
+# ========================================
+
+# Install tech-stack-independent testing tools (MCP servers, API testing,
+# load testing, security scanning, accessibility, code quality, utilities)
+# NOTE: Browser binaries are NOT installed here — deferred to Layer 3 setup
+COPY install-testing-tools.sh /tmp/
+RUN bash /tmp/install-testing-tools.sh && rm -f /tmp/install-testing-tools.sh
 
 # ========================================
 # ZSH PLUGINS (into /etc/skel)
