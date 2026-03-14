@@ -170,6 +170,26 @@ COPY files/claude/skills/opsx-clarify/ /etc/skel/.claude/skills/opsx-clarify/
 COPY files/claude/skills/opsx-analyze/ /etc/skel/.claude/skills/opsx-analyze/
 
 # ========================================
+# SPECKIT SKILLS (Claude Code, into /etc/skel)
+# ========================================
+# Agent-team-enhanced Speckit workflows. Each skill upgrades the corresponding
+# project-level /speckit.* command with parallel specialist agents.
+# Uses speckit-* prefix — speckit init/update won't overwrite these.
+
+RUN mkdir -p /etc/skel/.claude/skills/speckit-specify \
+    && mkdir -p /etc/skel/.claude/skills/speckit-clarify \
+    && mkdir -p /etc/skel/.claude/skills/speckit-plan \
+    && mkdir -p /etc/skel/.claude/skills/speckit-tasks \
+    && mkdir -p /etc/skel/.claude/skills/speckit-analyze \
+    && mkdir -p /etc/skel/.claude/skills/speckit-implement
+COPY files/claude/skills/speckit-specify/ /etc/skel/.claude/skills/speckit-specify/
+COPY files/claude/skills/speckit-clarify/ /etc/skel/.claude/skills/speckit-clarify/
+COPY files/claude/skills/speckit-plan/ /etc/skel/.claude/skills/speckit-plan/
+COPY files/claude/skills/speckit-tasks/ /etc/skel/.claude/skills/speckit-tasks/
+COPY files/claude/skills/speckit-analyze/ /etc/skel/.claude/skills/speckit-analyze/
+COPY files/claude/skills/speckit-implement/ /etc/skel/.claude/skills/speckit-implement/
+
+# ========================================
 # WORKSPACE DIRECTORY
 # ========================================
 
