@@ -30,6 +30,10 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     apt-transport-https \
     lsb-release \
     gnupg \
+    # Network diagnostics
+    nmap \
+    dnsutils \
+    netcat-openbsd \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
