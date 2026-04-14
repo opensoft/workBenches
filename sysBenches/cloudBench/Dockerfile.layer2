@@ -1,9 +1,10 @@
 # Layer 2: Cloud Admin Bench Image
-# Extends Layer 1b (adminbench-base) with action-oriented cloud tools
+# Extends Layer 1b (sys-bench-base) with action-oriented cloud tools
 # Philosophy: "Action & Change" - tools that modify infrastructure state
 # USER-AGNOSTIC: No user creation — Layer 3 handles user setup
 
-FROM adminbench-base:latest
+ARG BASE_IMAGE=sys-bench-base:latest
+FROM ${BASE_IMAGE}
 
 # Container version labels
 LABEL layer="2"

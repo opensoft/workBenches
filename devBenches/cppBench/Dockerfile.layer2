@@ -1,9 +1,10 @@
 # Layer 2: C++ Bench Image
-# Extends Layer 1 (devbench-base) with C++ specific tools
+# Extends Layer 1 (dev-bench-base) with C++ specific tools
 # Includes: GCC, Clang, CMake, vcpkg, Conan, debuggers, analyzers
 # USER-AGNOSTIC: No user creation — Layer 3 handles user setup
 
-FROM devbench-base:latest
+ARG BASE_IMAGE=dev-bench-base:latest
+FROM ${BASE_IMAGE}
 
 # Container version labels
 LABEL layer="2"

@@ -2,7 +2,7 @@ name: devbench-test
 
 services:
   test:
-    image: devbench-base:${USER:-brett}
+    image: dev-bench-base:${USER:-brett}
     container_name: devbench-test
     
     user: "${UID:-1000}:${GID:-1000}"

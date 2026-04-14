@@ -7,7 +7,7 @@ FROM workbench-base:latest
 
 # Container version labels
 LABEL layer="1c"
-LABEL layer.name="biobench-base"
+LABEL layer.name="bio-bench-base"
 LABEL layer.version="2.0.0"
 LABEL layer.description="Bio base with Miniconda, bioconda and conda-forge channels (user-agnostic)"
 

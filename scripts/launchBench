@@ -58,8 +58,8 @@ discover_all_benches() {
     local benches=()
     
     # Admin benches
-    if [ -d "$SCRIPT_DIR/../adminBenches" ]; then
-        for bench_dir in "$SCRIPT_DIR/../adminBenches"/*; do
+    if [ -d "$SCRIPT_DIR/../sysBenches" ]; then
+        for bench_dir in "$SCRIPT_DIR/../sysBenches"/*; do
             if [ -d "$bench_dir" ]; then
                 local bench_name=$(basename "$bench_dir")
                 local description=$(get_bench_description_from_config "$bench_name" || echo "Administrative tools and utilities")
@@ -236,11 +236,11 @@ delegate_to_launcher() {
     
     case "$category" in
         admin)
-            if [ -f "$SCRIPT_DIR/../adminBenches/scripts/launchAdminBench" ]; then
-                "$SCRIPT_DIR/../adminBenches/scripts/launchAdminBench" "$bench_name"
+            if [ -f "$SCRIPT_DIR/../sysBenches/scripts/launchAdminBench" ]; then
+                "$SCRIPT_DIR/../sysBenches/scripts/launchAdminBench" "$bench_name"
             else
                 print_error "Admin bench launcher not found"
-                print_info "Expected: $SCRIPT_DIR/../adminBenches/scripts/launchAdminBench"
+                print_info "Expected: $SCRIPT_DIR/../sysBenches/scripts/launchAdminBench"
                 return 1
             fi
             ;;
@@ -323,7 +323,7 @@ ${YELLOW}ARGUMENTS:${NC}
                                 "Design a mobile app interface"
                                 "Debug a Python web application"
     
-    BENCH_NAME        Direct bench selection (admin:cloudAdmin, dev:flutter, etc.)
+    BENCH_NAME        Direct bench selection (admin:cloudBench, dev:flutter, etc.)
 
 ${YELLOW}OPTIONS:${NC}
     --list            List all available benches across categories
@@ -342,7 +342,7 @@ ${YELLOW}AI EXAMPLES:${NC}
     ${GREEN}launchBench "design user interface mockups"${NC}        → Design category
 
 ${YELLOW}DIRECT EXAMPLES:${NC}
-    ${GREEN}launchBench admin:cloudAdmin${NC}                       → Launch cloud admin tools
+    ${GREEN}launchBench admin:cloudBench${NC}                       → Launch cloud bench tools
     ${GREEN}launchBench dev:flutter${NC}                            → Launch Flutter dev environment
     ${GREEN}launchBench --categories${NC}                           → Show category menu
 
@@ -505,7 +505,7 @@ main() {
             else
                 print_error "Natural language processing requires AI (OpenAI API key)"
                 print_info "Use --categories for interactive menu or specify directly:"
-                print_info "  admin:cloudAdmin, dev:flutter, etc."
+                print_info "  admin:cloudBench, dev:flutter, etc."
                 exit 1
             fi
             ;;

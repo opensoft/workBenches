@@ -167,8 +167,28 @@ else
     OPENCODE_BUILD_TIMEOUT=900  # 15 minutes for single-target compile
     if command -v bun >/dev/null 2>&1; then
         log_debug "Bun is available, using it for installation"
-        if run_with_timeout "$BUN_OPERATIONS_TIMEOUT" "OpenCode bun install" bun install; then
-            log_info "Building OpenCode (single target: linux-x64)..."
+        case "$(uname -m)" in
+            x86_64|amd64)
+                OPENCODE_BUN_CPU="x64"
+                ;;
+            aarch64|arm64)
+                OPENCODE_BUN_CPU="arm64"
+                ;;
+            armv7l|armv6l)
+                OPENCODE_BUN_CPU="arm"
+                ;;
+            *)
+                OPENCODE_BUN_CPU="$(uname -m)"
+                ;;
+        esac
+        log_debug "Installing the OpenCode CLI and app workspaces for linux/${OPENCODE_BUN_CPU}"
+        if run_with_timeout "$BUN_OPERATIONS_TIMEOUT" "OpenCode bun install" \
+            bun install \
+                --filter=./packages/opencode \
+                --filter=./packages/app \
+                --os=linux \
+                --cpu="${OPENCODE_BUN_CPU}"; then
+            log_info "Building OpenCode for linux/${OPENCODE_BUN_CPU}..."
             # --single builds only for the current platform instead of all 8+ targets
             if ! run_with_timeout "$OPENCODE_BUILD_TIMEOUT" "OpenCode bun build --single" bun run --cwd packages/opencode build --single; then
                 log_error "OpenCode build failed"
@@ -296,6 +316,20 @@ log_info "=========================================="
 log_info "AI CLI Tools Installation Complete!"
 log_info "=========================================="
 log_info ""
+
+required_clis=(claude codex gemini opencode)
+missing_clis=()
+for cli in "${required_clis[@]}"; do
+    if ! command -v "$cli" >/dev/null 2>&1; then
+        missing_clis+=("$cli")
+    fi
+done
+
+if [ "${#missing_clis[@]}" -gt 0 ]; then
+    log_error "Missing required AI CLIs after installation: ${missing_clis[*]}"
+    exit 1
+fi
+
 log_info "Installed tools:"
 log_info "  - OpenSpec"
 log_info "  - Claude Code (claude) [native installer]"

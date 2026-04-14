@@ -1,10 +1,10 @@
 # DevBench Base Generic Container
 
-A fast-launching generic development environment using the pre-built `devbench-base` image.
+A fast-launching generic development environment using the pre-built `dev-bench-base` image.
 
 ## What's Included
 
-**Pre-installed in devbench-base image:**
+**Pre-installed in dev-bench-base image:**
 - Python 3 with development tools (black, flake8, pytest, etc.)
 - Node.js LTS with npm and yarn
 - AI CLI tools (OpenCode, Claude Code, Codex, Gemini, Copilot)

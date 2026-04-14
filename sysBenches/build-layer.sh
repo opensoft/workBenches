@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build Layer 1b (adminbench-base)
+# Build Layer 1b (sys-bench-base)
 
 set -e
 

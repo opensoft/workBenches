@@ -1,9 +1,13 @@
 {
-  "name": "Cloud Admin Workspace",
+  "name": "sysBenches / cloudBench",
   "dockerComposeFile": "../docker-compose.yml",
-  "service": "workspace",
+  "service": "cloud-bench",
   "workspaceFolder": "/workspace",
   "remoteUser": "${localEnv:USER}",
+  "updateRemoteUserUID": false,
+  "containerEnv": {
+    "DOCKER_HOST": "unix:///var/run/docker.sock"
+  },
   "customizations": {
     "vscode": {
       "extensions": [

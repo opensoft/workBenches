@@ -35,3 +35,7 @@ Thumbs.db
 
 # Bio bench repositories
 bioBenches/gentecBench/
+logs/
+.codex
+.codex/
+sysBenches/opsBench/

@@ -18,13 +18,14 @@ FROM ${BASE_IMAGE}
 # Container version labels
 LABEL layer="3"
 LABEL layer.name="user-layer"
-LABEL layer.version="1.1.0"
-LABEL layer.description="User personalization layer with browser for testing tools"
+LABEL layer.version="1.2.0"
+LABEL layer.description="User personalization layer"
 
 # Build arguments
 ARG USERNAME=brett
 ARG USER_UID=1000
 ARG USER_GID=1000
+ARG DOCKER_SOCKET_GID=""
 ARG EXTRA_CHOWN_DIRS=""
 
 USER root
@@ -56,6 +57,22 @@ RUN set -eux && \
     echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME && \
     chmod 0440 /etc/sudoers.d/$USERNAME
 
+# If the host Docker socket is mounted later, give the user a matching group in
+# the image so non-root Docker access works without manual fixes.
+RUN if [ -n "$DOCKER_SOCKET_GID" ] && [ "$DOCKER_SOCKET_GID" != "$USER_GID" ]; then \
+        if getent group "$DOCKER_SOCKET_GID" >/dev/null; then \
+            docker_group=$(getent group "$DOCKER_SOCKET_GID" | cut -d: -f1); \
+        else \
+            docker_group=docker-host; \
+            if getent group "$docker_group" >/dev/null; then \
+                groupmod -g "$DOCKER_SOCKET_GID" "$docker_group"; \
+            else \
+                groupadd --gid "$DOCKER_SOCKET_GID" "$docker_group"; \
+            fi; \
+        fi; \
+        usermod -aG "$docker_group" "$USERNAME"; \
+    fi
+
 # Set default shell to zsh
 RUN chsh -s /bin/zsh $USERNAME
 
@@ -63,8 +80,9 @@ RUN chsh -s /bin/zsh $USERNAME
 # DIRECTORY OWNERSHIP
 # ========================================
 
-# Chown workspace
-RUN chown -R $USERNAME:$USERNAME /workspace
+# Ensure the workspace exists even if the base image tag is stale, then hand it
+# to the runtime user.
+RUN mkdir -p /workspace && chown -R $USERNAME:$USERNAME /workspace
 
 # Grant user write access to bench-specific directories (e.g. /opt/flutter, /opt/android-sdk)
 # IMPORTANT: No recursive chown/chmod here! Recursive metadata changes on multi-GB
@@ -77,16 +95,6 @@ RUN if [ -n "$EXTRA_CHOWN_DIRS" ]; then \
     fi
 
 # ========================================
-# BROWSER FOR TESTING TOOLS
-# ========================================
-
-# Install Chromium browser for Playwright MCP and Chrome DevTools MCP
-# (MCP servers are installed in Layer 1a; browser installed here in Layer 3
-#  so Layer 2 registry images stay lean and browser is ready at container start)
-RUN npx playwright install --with-deps chromium \
-    || echo "⚠️  Playwright Chromium install failed, skipping"
-
-# ========================================
 # USER-SPECIFIC CONFIGURATION
 # ========================================
 
@@ -97,6 +105,11 @@ RUN mkdir -p /home/$USERNAME/.vscode-server/extensions
 
 # Configure git credential helper
 RUN git config --global credential.helper gh
+
+# Avoid first-run Flutter telemetry prompts in images that include Flutter.
+RUN if command -v flutter >/dev/null 2>&1; then \
+        flutter config --no-analytics || true; \
+    fi
 
 WORKDIR /workspace
 

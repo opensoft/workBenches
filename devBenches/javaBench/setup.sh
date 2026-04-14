@@ -1,24 +1,27 @@
 #!/bin/bash
 
+set -euo pipefail
+
 # Get current user info
 export USER=$(whoami)
 
 echo "🚀 Starting the Java DevBench Container"
 echo "   User: $USER"
 
-# Check if the java-bench image exists
-if ! docker image inspect "java-bench:$USER" >/dev/null 2>&1; then
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+LAYER2_IMAGE="java-bench:latest"
+USER_IMAGE="java-bench:$USER"
+
+if ! docker image inspect "$LAYER2_IMAGE" >/dev/null 2>&1; then
     echo ""
-    echo "❌ Error: Docker image 'java-bench:$USER' not found!"
+    echo "🔧 Docker image not found. Building java-bench:latest..."
+    "$SCRIPT_DIR/scripts/build-layer.sh"
+else
+    echo "✓ Base image '$LAYER2_IMAGE' found"
     echo ""
-    echo "You need to build the Java bench image first:"
-    echo "  ./scripts/build-layer.sh"
-    echo ""
-    echo "This will:"
-    echo "  1. Check that devbench-base:$USER exists (build ../base-image if needed)"
-    echo "  2. Build the Java-specific layer on top of it"
-    echo "  3. Install OpenJDK 21, Maven, Gradle, Spring CLI, and SDKMan"
-    exit 1
+    echo "🔧 Ensuring user image '$USER_IMAGE'..."
+    "$REPO_DIR/scripts/ensure-layer3.sh" --base "$LAYER2_IMAGE" --user "$USER"
 fi
 
 # Validate we have the required info
@@ -31,9 +34,7 @@ fi
 echo "🔧 Starting container with user mapping..."
 
 # Start the container with proper user mapping (no --build since using pre-built image)
-docker-compose -f .devcontainer/docker-compose.yml up -d
-
-if [ $? -eq 0 ]; then
+if docker-compose -f "$SCRIPT_DIR/.devcontainer/docker-compose.yml" up -d; then
     echo "✅ Container started successfully!"
     echo ""
     echo "🎯 Next steps:"

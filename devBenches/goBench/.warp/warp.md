@@ -220,7 +220,7 @@ docker-compose up -d --build
 
 ### Build Times
 - **Layer 0** (workbench-base): 10-15 minutes (once)
-- **Layer 1** (devbench-base): 5-10 minutes (once)
+- **Layer 1** (dev-bench-base): 5-10 minutes (once)
 - **Layer 2** (go-bench): 5-8 minutes (rebuild as needed)
 - **Subsequent starts**: < 30 seconds
 

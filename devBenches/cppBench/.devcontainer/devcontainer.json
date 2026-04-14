@@ -1,14 +1,9 @@
 {
-    "name": "C++ Heavy Development Environment",
+    "name": "devBenches / cppBench",
     "initializeCommand": "bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base cpp-bench:latest --chown /opt/vcpkg",
-    "image": "cpp-bench:${localEnv:USER}",
-    "runArgs": [
-        "--cap-add=SYS_PTRACE",
-        "--security-opt", 
-        "seccomp=unconfined",
-        "--ulimit", 
-        "core=-1"
-    ],
+    "dockerComposeFile": "docker-compose.yml",
+    "service": "cpp-bench",
+    "shutdownAction": "stopCompose",
     "customizations": {
         "vscode": {
             "settings": {
@@ -61,6 +56,7 @@
         "CXX": "/usr/bin/g++-12"
     },
     "remoteUser": "${localEnv:USER}",
+    "updateRemoteUserUID": false,
     "workspaceFolder": "/workspace",
     "mounts": [
         "source=cppbench-zshhistory,target=/home/${localEnv:USER}/.zsh_history,type=volume",

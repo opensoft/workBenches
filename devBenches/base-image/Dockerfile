@@ -8,14 +8,18 @@ FROM workbench-base:latest
 
 # Container version labels
 LABEL layer="1"
-LABEL layer.name="devbench-base"
-LABEL layer.version="2.1.0"
-LABEL layer.description="Developer base with Python, Node.js LTS, dev tools, and generic testing tools (user-agnostic)"
+LABEL layer.name="dev-bench-base"
+LABEL layer.version="2.2.0"
+LABEL layer.description="Developer base with Python, Node.js LTS, dev tools, Playwright browsers, and generic testing tools (user-agnostic)"
 
 # Everything runs as root
 USER root
 
 ARG YARN_VERSION=1.22.22
+
+# Shared Playwright browser cache for all dev benches.
+# Using a fixed path avoids per-user installs under ~/.cache/ms-playwright.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 # ========================================
 # PYTHON & NODE.JS
@@ -72,7 +76,7 @@ RUN mkdir -p /opt/corepack && \
 
 # Install tech-stack-independent testing tools (MCP servers, API testing,
 # load testing, security scanning, accessibility, code quality, utilities)
-# NOTE: Browser binaries are NOT installed here — deferred to Layer 3 setup
+# and preload Chromium into the shared Playwright cache for all dev benches.
 COPY install-testing-tools.sh /tmp/
 RUN bash /tmp/install-testing-tools.sh && rm -f /tmp/install-testing-tools.sh
 
@@ -83,6 +87,14 @@ RUN bash /tmp/install-testing-tools.sh && rm -f /tmp/install-testing-tools.sh
 # Install Oh My Zsh plugins into /etc/skel (oh-my-zsh itself is from Layer 0)
 RUN git clone https://github.com/zsh-users/zsh-autosuggestions /etc/skel/.oh-my-zsh/plugins/zsh-autosuggestions && \
     git clone https://github.com/zsh-users/zsh-syntax-highlighting /etc/skel/.oh-my-zsh/plugins/zsh-syntax-highlighting
+
+# Ensure .zshrc exists (Layer 0 should provide it, but handle missing/stale cache)
+RUN if [ ! -f /etc/skel/.zshrc ]; then \
+        echo 'export ZSH="$HOME/.oh-my-zsh"' > /etc/skel/.zshrc && \
+        echo 'ZSH_THEME="powerlevel10k/powerlevel10k"' >> /etc/skel/.zshrc && \
+        echo 'plugins=(git)' >> /etc/skel/.zshrc && \
+        echo 'source $ZSH/oh-my-zsh.sh' >> /etc/skel/.zshrc; \
+    fi
 
 # Update /etc/skel/.zshrc to include plugins
 RUN sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' /etc/skel/.zshrc

@@ -1,5 +1,5 @@
 {
-  "name": "AdminBench Test Environment",
+  "name": "SysBench Test Environment",
   "dockerComposeFile": "docker-compose.yml",
   "service": "test",
   "workspaceFolder": "/workspace",

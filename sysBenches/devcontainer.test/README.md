@@ -1,6 +1,6 @@
-# Layer 1b Admin Bench Test Environment
+# Layer 1b Sys Bench Test Environment
 
-Test harness for the `adminbench-base:brett` image. This validates all admin/DevOps tools are properly installed.
+Test harness for the `sys-bench-base:$USER` image. This validates the Layer 1b tools inside a real user shell environment.
 
 ## Tools Tested
 
@@ -21,6 +21,7 @@ Test harness for the `adminbench-base:brett` image. This validates all admin/Dev
 - gcloud CLI
 
 ### Monitoring & Utilities
+- Docker CLI / host daemon access
 - promtool
 - yq
 - lazydocker
@@ -48,8 +49,9 @@ Open this directory in VSCode and reopen in the container. The test.sh script wi
 
 ## Requirements
 
-The `adminbench-base:brett` image must be built first:
+The `sys-bench-base:$USER` image must be built first:
 ```bash
 cd ../base-image
-./build.sh --user brett
+./build.sh
+bash ../../scripts/ensure-layer3.sh --base sys-bench-base:latest
 ```

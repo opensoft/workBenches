@@ -5,9 +5,10 @@ A comprehensive, containerized C++ development environment designed for serious 
 ## 🧱 Container Architecture (Layered)
 
 cppBench follows the layered workBenches model:
-- **Layer 0**: `workbench-base:{user}`
-- **Layer 1a**: `devbench-base:{user}`
-- **Layer 2**: `cpp-bench:{user}` (bench-specific tools)
+- **Layer 0**: `workbench-base:latest`
+- **Layer 1a**: `dev-bench-base:latest`
+- **Layer 2**: `cpp-bench:latest` (bench-specific tools)
+- **Layer 3**: `cpp-bench:{user}` (user image built from Layer 2)
 
 ### Legacy Note
 The `.devcontainer/` directory in this repo is a **legacy monolithic setup** and is deprecated. The layered images are the source of truth going forward.

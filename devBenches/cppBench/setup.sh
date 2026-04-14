@@ -1,31 +1,24 @@
 #!/bin/bash
 
-# Get current user info
+set -euo pipefail
+
 export USER=$(whoami)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+LAYER2_IMAGE="cpp-bench:latest"
+USER_IMAGE="cpp-bench:$USER"
 
 echo "🚀 Starting the C++ DevBench Container"
 echo "   User: $USER"
 
-# Check if the cpp-bench image exists
-if ! docker image inspect "cpp-bench:$USER" >/dev/null 2>&1; then
+if ! docker image inspect "$LAYER2_IMAGE" >/dev/null 2>&1; then
     echo ""
-    echo "❌ Error: Docker image 'cpp-bench:$USER' not found!"
-    echo ""
-    echo "You need to build the C++ bench image first:"
-    echo "  ./scripts/build-layer.sh"
-    echo ""
-    echo "This will:"
-    echo "  1. Check that devbench-base:$USER exists (build ../base-image if needed)"
-    echo "  2. Build the C++-specific layer on top of it"
-    echo "  3. Install GCC 12, Clang 15, CMake, vcpkg, Conan, and analyzers"
-    exit 1
-fi
-
-# Validate we have the required info
-if [ -z "$USER" ]; then
-    echo "❌ Error: Could not determine user info"
-    echo "   USER=$USER"
-    exit 1
+    echo "🔧 Docker image not found. Building $LAYER2_IMAGE..."
+    "$SCRIPT_DIR/scripts/build-layer.sh"
+else
+    echo "✓ Base image '$LAYER2_IMAGE' found"
+    echo "🔧 Ensuring user image '$USER_IMAGE'..."
+    "$REPO_DIR/scripts/ensure-layer3.sh" --base "$LAYER2_IMAGE" --user "$USER" --chown "/opt/vcpkg"
 fi
 
 echo "🔧 Starting container with user mapping..."

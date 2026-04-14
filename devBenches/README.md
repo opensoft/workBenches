@@ -15,9 +15,10 @@ Each subfolder is a separate git repository containing a complete development en
 ## Layered Containers (Current Standard)
 
 All benches are moving to the layered image model described in `workBenches/docs/CONTAINER-ARCHITECTURE.md`:
-- **Layer 0**: `workbench-base:{user}`
-- **Layer 1a**: `devbench-base:{user}`
-- **Layer 2**: `<bench>-bench:{user}` (bench-specific tools)
+- **Layer 0**: `workbench-base:latest`
+- **Layer 1a**: `dev-bench-base:latest`
+- **Layer 2**: `<bench>-bench:latest`
+- **Layer 3**: `<bench>-bench:{user}` (user personalization)
 
 ## Legacy Monolithic DevContainers (Deprecated)
 

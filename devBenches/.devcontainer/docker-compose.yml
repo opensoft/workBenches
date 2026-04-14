@@ -1,9 +1,9 @@
-name: devbench-base
+name: dev-bench-base
 
 services:
   devbench:
-    image: devbench-base:${USER:-vscode}
-    container_name: devbench-base
+    image: dev-bench-base:latest
+    container_name: dev-bench-base
     
     # Match host user for file permissions
     user: "${UID:-1000}:${GID:-1000}"
@@ -16,7 +16,7 @@ services:
       - ~/projects:/workspace:cached
       
       # Shell history (persistent volume)
-      - devbench-zsh-history:/home/${USER:-vscode}/.zsh_history_volume
+      - dev-bench-zsh-history:/home/${USER:-vscode}/.zsh_history_volume
       
     command: sleep infinity
     
@@ -38,5 +38,5 @@ services:
       - COREPACK_HOME=/home/${USER:-vscode}/.corepack
 
 volumes:
-  devbench-zsh-history:
-    name: devbench-zsh-history
+  dev-bench-zsh-history:
+    name: dev-bench-zsh-history

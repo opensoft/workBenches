@@ -32,8 +32,9 @@ A comprehensive Java development environment using layered Docker containers.
 ```
 
 This will:
-- Check for `devbench-base:${USER}` (build if needed)
-- Build the Java-specific layer (`java-bench:${USER}`)
+- Check for `dev-bench-base:latest` (build if needed)
+- Build the Java-specific layer (`java-bench:latest`)
+- Refresh the user image (`java-bench:${USER}`)
 
 ### 2. Start the Container
 
@@ -52,7 +53,7 @@ Then select "Reopen in Container" from the command palette.
 ## Architecture
 
 ### Layered Build System
-- **Layer 1** (`devbench-base`): Common development tools
+- **Layer 1** (`dev-bench-base`): Common development tools
 - **Layer 2** (`java-bench`): Java-specific packages and tools
 
 Benefits:
@@ -148,7 +149,7 @@ Maven is configured to use `/workspace/m2repo` for the local repository, persist
 # Check if image exists
 docker images | grep java-bench
 
-# Rebuild if needed
+# Rebuild Layer 2 and Layer 3 if needed
 ./scripts/build-layer.sh
 ```
 
@@ -173,7 +174,7 @@ echo $JAVA_HOME
 ## Version Information
 
 - Container Version: 1.0.0
-- Base Image: devbench-base
+- Base Image: dev-bench-base
 - JDK Version: OpenJDK 21
 - Maven Version: (from apt)
 - Gradle Version: 8.5

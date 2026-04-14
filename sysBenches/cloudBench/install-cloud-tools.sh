@@ -1,6 +1,6 @@
 #!/bin/bash
 # Layer 2 Cloud Admin Tools Installation Script
-# Installs action-oriented cloud tools on top of adminbench-base (Layer 1b)
+# Installs action-oriented cloud tools on top of sys-bench-base (Layer 1b)
 
 set -e
 

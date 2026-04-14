@@ -284,7 +284,7 @@ detect_bench_category() {
     
     if [ $admin_indicators -gt $max_confidence ]; then
         max_confidence=$admin_indicators
-        best_category="adminBenches"
+        best_category="sysBenches"
     fi
     
     if [ $designer_indicators -gt $max_confidence ]; then
@@ -818,13 +818,13 @@ update_project() {
                 "$workbenches_root/devBenches/scripts/update-devBench-project.sh"
             )
             ;;
-        "adminBenches")
+        "sysBenches")
             echo -e "${YELLOW}⚙️ Admin/Infrastructure project detected${NC}"
-            echo -e "${CYAN}📋 Delegating to adminBench update script${NC}"
+            echo -e "${CYAN}📋 Delegating to sysBench update script${NC}"
             script_patterns=(
-                "$workbenches_root/adminBenches/scripts/update-adminBench-project.sh"
-                "$workbenches_root/adminBenches/scripts/update-admin-project.sh"
-                "$workbenches_root/adminBenches/scripts/update-project.sh"
+                "$workbenches_root/sysBenches/scripts/update-adminBench-project.sh"
+                "$workbenches_root/sysBenches/scripts/update-admin-project.sh"
+                "$workbenches_root/sysBenches/scripts/update-project.sh"
             )
             ;;
         "designerBenches")
@@ -947,7 +947,7 @@ show_usage() {
     echo ""
     echo "Bench Categories:"
     echo "  🔧 devBenches: Development projects (Flutter, Python, Java, .NET, C++)"
-    echo "  ⚙️ adminBenches: Administrative/Infrastructure projects (Ansible, Terraform)"
+    echo "  ⚙️ sysBenches: Administrative/Infrastructure projects (Ansible, Terraform)"
     echo "  🎨 designerBenches: Designer/Creative projects (Design files, Assets)"
     echo ""
     echo "AI Detection Methods:"
@@ -1035,7 +1035,7 @@ main() {
         "devBenches")
             echo -e "   🔧 Development projects (Flutter, Python, Java, .NET, C++)"
             ;;
-        "adminBenches")
+        "sysBenches")
             echo -e "   ⚙️ Administrative/Infrastructure projects (Ansible, Terraform, Docker)"
             ;;
         "designerBenches")

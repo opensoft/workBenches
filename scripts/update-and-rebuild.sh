@@ -18,6 +18,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/lib/image-names.sh"
 USERNAME="${USERNAME:-$(whoami)}"
 LAYER=""
 PUSH=false
@@ -103,15 +104,15 @@ push_image() {
     echo -e "${CYAN}Pushing $remote_name...${NC}"
 
     # Tag with date and latest
-    docker tag "$local_image" "$REGISTRY/$remote_name:${USERNAME}-${DATE_TAG}"
-    docker tag "$local_image" "$REGISTRY/$remote_name:${USERNAME}-latest"
+    docker tag "$local_image" "$REGISTRY/$remote_name:${DATE_TAG}"
+    docker tag "$local_image" "$REGISTRY/$remote_name:latest"
 
     # Push both tags
-    docker push "$REGISTRY/$remote_name:${USERNAME}-${DATE_TAG}"
-    docker push "$REGISTRY/$remote_name:${USERNAME}-latest"
+    docker push "$REGISTRY/$remote_name:${DATE_TAG}"
+    docker push "$REGISTRY/$remote_name:latest"
 
-    echo -e "${GREEN}✓ Pushed $REGISTRY/$remote_name:${USERNAME}-${DATE_TAG}${NC}"
-    echo -e "${GREEN}✓ Pushed $REGISTRY/$remote_name:${USERNAME}-latest${NC}"
+    echo -e "${GREEN}✓ Pushed $REGISTRY/$remote_name:${DATE_TAG}${NC}"
+    echo -e "${GREEN}✓ Pushed $REGISTRY/$remote_name:latest${NC}"
 }
 
 build_timer_start() {
@@ -130,22 +131,37 @@ build_timer_end() {
 # CASCADE: Discover and rebuild downstream Layer 2 benches
 # ========================================
 
+dockerfile_uses_base_image() {
+    local dockerfile="$1"
+    local base_image="$2"
+
+    if grep -qE "^[[:space:]]*FROM[[:space:]]+(\\$\{[^}]+:-)?${base_image}([[:space:]]|$)" "$dockerfile" 2>/dev/null || \
+       grep -qE "^[[:space:]]*FROM[[:space:]]+${base_image}([[:space:]]|$)" "$dockerfile" 2>/dev/null; then
+        return 0
+    fi
+
+    if grep -qE "^[[:space:]]*ARG[[:space:]]+BASE_IMAGE=${base_image}([[:space:]]|$)" "$dockerfile" 2>/dev/null && \
+       grep -qE "^[[:space:]]*FROM[[:space:]]+\\\$\\{BASE_IMAGE\\}([[:space:]]|$)" "$dockerfile" 2>/dev/null; then
+        return 0
+    fi
+
+    return 1
+}
+
 # Scan Dockerfiles for FROM lines to find benches that depend on a given base image
 find_downstream_benches() {
     local base_image="$1"
     local -a found=()
 
     # Search all bench directories for Dockerfiles referencing this base image
-    for search_dir in "$REPO_DIR/devBenches" "$REPO_DIR/adminBenches" "$REPO_DIR/bioBenches"; do
+    for search_dir in "$REPO_DIR/devBenches" "$REPO_DIR/sysBenches" "$REPO_DIR/bioBenches"; do
         [ -d "$search_dir" ] || continue
         while IFS= read -r -d '' dockerfile; do
             # Skip base-image directories (those are Layer 1, not Layer 2)
             if [[ "$dockerfile" == */base-image/* ]]; then
                 continue
             fi
-            # Check if FROM references the base image (literal or via ARG default)
-            if grep -qE "^FROM\s+(\\$\{[^}]+:-)?${base_image}" "$dockerfile" 2>/dev/null || \
-               grep -qE "^FROM\s+${base_image}" "$dockerfile" 2>/dev/null; then
+            if dockerfile_uses_base_image "$dockerfile" "$base_image"; then
                 local bench_dir
                 bench_dir=$(dirname "$dockerfile")
                 # If Dockerfile is inside .devcontainer, go up one level
@@ -172,7 +188,13 @@ build_layer2_bench() {
 
     # Look for a build script
     local build_script=""
-    for candidate in "$bench_dir/build-layer2.sh" "$bench_dir/build-layer.sh" "$bench_dir/build.sh" "$bench_dir/.devcontainer/build.sh"; do
+    for candidate in \
+        "$bench_dir/build-layer2.sh" \
+        "$bench_dir/scripts/build-layer2.sh" \
+        "$bench_dir/build-layer.sh" \
+        "$bench_dir/scripts/build-layer.sh" \
+        "$bench_dir/build.sh" \
+        "$bench_dir/.devcontainer/build.sh"; do
         if [ -x "$candidate" ]; then
             build_script="$candidate"
             break
@@ -196,8 +218,10 @@ build_layer2_bench() {
         if [ -n "$dockerfile" ]; then
             build_timer_start
             local context_dir
+            local image_repo
             context_dir=$(dirname "$dockerfile")
-            docker build -t "${bench_name,,}:latest" -f "$dockerfile" "$context_dir"
+            image_repo=$(bench_dir_to_image_repo "$bench_name")
+            docker build -t "${image_repo}:latest" -f "$dockerfile" "$context_dir"
             build_timer_end "Layer 2: $bench_name"
         else
             echo -e "${YELLOW}  No build script or Dockerfile found in $bench_dir — skipping${NC}"
@@ -255,7 +279,8 @@ build_layer0() {
 
 build_layer1a() {
     local build_dir="$REPO_DIR/devBenches/base-image"
-    local image="devbench-base:latest"
+    local image
+    image=$(family_base_image dev)
 
     echo ""
     echo -e "${BOLD}${CYAN}═══ Building Layer 1a: Developer Base (user-agnostic) ═══${NC}"
@@ -275,15 +300,16 @@ build_layer1a() {
     "$build_dir/build.sh"
     build_timer_end "Layer 1a"
 
-    push_image "$image" "devbench-base"
+    push_image "$image" "$(family_base_repo dev)"
 }
 
 build_layer1b() {
-    local build_dir="$REPO_DIR/adminBenches/base-image"
-    local image="adminbench-base:latest"
+    local build_dir="$REPO_DIR/sysBenches/base-image"
+    local image
+    image=$(family_base_image sys)
 
     echo ""
-    echo -e "${BOLD}${CYAN}═══ Building Layer 1b: Admin/DevOps Base (user-agnostic) ═══${NC}"
+    echo -e "${BOLD}${CYAN}═══ Building Layer 1b: Sys/DevOps Base (user-agnostic) ═══${NC}"
 
     # Check dependency
     if ! docker image inspect "workbench-base:latest" >/dev/null 2>&1; then
@@ -300,12 +326,13 @@ build_layer1b() {
     "$build_dir/build.sh"
     build_timer_end "Layer 1b"
 
-    push_image "$image" "adminbench-base"
+    push_image "$image" "$(family_base_repo sys)"
 }
 
 build_layer1c() {
     local build_dir="$REPO_DIR/bioBenches/base-image"
-    local image="biobench-base:latest"
+    local image
+    image=$(family_base_image bio)
 
     echo ""
     echo -e "${BOLD}${CYAN}═══ Building Layer 1c: Bio Base (user-agnostic) ═══${NC}"
@@ -325,7 +352,7 @@ build_layer1c() {
     "$build_dir/build.sh"
     build_timer_end "Layer 1c"
 
-    push_image "$image" "biobench-base"
+    push_image "$image" "$(family_base_repo bio)"
 }
 
 build_layer3() {
@@ -385,9 +412,9 @@ if [ "$BUILD_ALL" = true ]; then
     build_layer1b
     build_layer1c
     if [ "$CASCADE" = true ]; then
-    cascade_rebuild "devbench-base:latest"
-        cascade_rebuild "adminbench-base:latest"
-        cascade_rebuild "biobench-base:latest"
+        cascade_rebuild "$(family_base_image dev)"
+        cascade_rebuild "$(family_base_image sys)"
+        cascade_rebuild "$(family_base_image bio)"
     fi
 else
     case "$LAYER" in
@@ -398,27 +425,27 @@ else
                 build_layer1a
                 build_layer1b
                 build_layer1c
-                cascade_rebuild "devbench-base"
-                cascade_rebuild "adminbench-base"
-                cascade_rebuild "biobench-base"
+                cascade_rebuild "$(family_base_image dev)"
+                cascade_rebuild "$(family_base_image sys)"
+                cascade_rebuild "$(family_base_image bio)"
             fi
             ;;
         1a)
             build_layer1a
             if [ "$CASCADE" = true ]; then
-                cascade_rebuild "devbench-base"
+                cascade_rebuild "$(family_base_image dev)"
             fi
             ;;
         1b)
             build_layer1b
             if [ "$CASCADE" = true ]; then
-                cascade_rebuild "adminbench-base"
+                cascade_rebuild "$(family_base_image sys)"
             fi
             ;;
         1c)
             build_layer1c
             if [ "$CASCADE" = true ]; then
-                cascade_rebuild "biobench-base"
+                cascade_rebuild "$(family_base_image bio)"
             fi
             ;;
         3)

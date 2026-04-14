@@ -20,6 +20,7 @@ EXTRA_CHOWN=""
 USERNAME=$(whoami)
 USER_UID=$(id -u)
 USER_GID=$(id -g)
+DOCKER_SOCKET_GID=""
 FORCE=false
 
 # Colors
@@ -59,6 +60,10 @@ if [ -z "$BASE_IMAGE" ]; then
     exit 1
 fi
 
+if [ -S /var/run/docker.sock ]; then
+    DOCKER_SOCKET_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || true)
+fi
+
 # Derive the user image name: replace tag with username
 # e.g. cpp-bench:latest -> cpp-bench:brett
 BASE_NAME="${BASE_IMAGE%%:*}"
@@ -83,8 +88,12 @@ if [ "$FORCE" = false ] && docker image inspect "$USER_IMAGE" >/dev/null 2>&1; t
         if [[ "$USER_CREATED" > "$BASE_CREATED" ]]; then
             # Verify the user actually exists inside the image
             if docker run --rm "$USER_IMAGE" getent passwd "$USERNAME" >/dev/null 2>&1; then
-                echo -e "${GREEN}✓ ${USER_IMAGE} is up-to-date (newer than ${BASE_IMAGE})${NC}"
-                exit 0
+                if [ -n "$DOCKER_SOCKET_GID" ] && ! docker run --rm --entrypoint "" "$USER_IMAGE" sh -c "id -G $USERNAME | tr ' ' '\n' | grep -qx '$DOCKER_SOCKET_GID'" >/dev/null 2>&1; then
+                    echo -e "${YELLOW}⟳ Docker socket group '$DOCKER_SOCKET_GID' missing from ${USER_IMAGE}, rebuilding...${NC}"
+                else
+                    echo -e "${GREEN}✓ ${USER_IMAGE} is up-to-date (newer than ${BASE_IMAGE})${NC}"
+                    exit 0
+                fi
             else
                 echo -e "${YELLOW}⟳ User '$USERNAME' missing from ${USER_IMAGE}, rebuilding...${NC}"
             fi
@@ -109,6 +118,9 @@ if [ ! -x "$BUILD_SCRIPT" ]; then
 fi
 
 BUILD_ARGS=(--base "$BASE_IMAGE" --user "$USERNAME" --uid "$USER_UID" --gid "$USER_GID")
+if [ -n "$DOCKER_SOCKET_GID" ]; then
+    BUILD_ARGS+=(--docker-gid "$DOCKER_SOCKET_GID")
+fi
 if [ -n "$EXTRA_CHOWN" ]; then
     BUILD_ARGS+=(--chown "$EXTRA_CHOWN")
 fi

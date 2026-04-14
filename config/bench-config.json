@@ -7,10 +7,10 @@
     }
   },
   "benches": {
-    "cloudAdmin": {
-      "url": "git@github.com:opensoft/cloudAdmin.git",
-      "path": "adminBenches/cloudAdmin",
-      "description": "Cloud infrastructure and database administration tools",
+    "cloudBench": {
+      "url": "git@github.com:opensoft/cloudBench.git",
+      "path": "sysBenches/cloudBench",
+      "description": "Cloud infrastructure and operations tools",
       "ai_keywords": ["cloud", "infrastructure", "devops", "kubernetes", "docker", "deployment", "admin", "monitoring", "logging"]
     },
     "pythonBench": {

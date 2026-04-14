@@ -1,15 +1,22 @@
-# adminBenches - Administrative Workbenches
+# sysBenches - Systems and Operations Workbenches
 
-This folder contains individual administrative workbenches for different infrastructure and database management systems.
+This folder contains individual systems and operations workbenches for infrastructure, cloud, deployment, and security workflows.
 
 ## Structure
 
-Each subfolder is a separate git repository containing administrative tools and utilities:
+Each subfolder is a separate git repository containing systems and operations tools:
 
-- **`cloudAdmin/`** - Cloud infrastructure and Kubernetes administration
+- **`cloudBench/`** - Cloud infrastructure and Kubernetes operations
   - Azure Kubernetes Service (AKS) management
   - Kubernetes cluster configuration and tools
-  - Database administration tools (SQL Server, PostgreSQL)
+  - Database operations tools (SQL Server, PostgreSQL)
+- **`opsBench/`** - Deployment, CI/CD, security, and GitOps operations
+
+## Canonical Images
+
+- **Layer 1b family base**: `sys-bench-base:latest`
+- **Layer 2 benches**: `cloud-bench:latest`, `ops-bench:latest`
+- **Layer 3 user images**: `<bench>:<user>` via `scripts/ensure-layer3.sh`
 
 ## Usage
 
@@ -21,12 +28,12 @@ Each subfolder is a separate git repository containing administrative tools and 
 
 ### Direct Access
 ```bash
-# Navigate to specific admin bench
-cd adminBenches/cloudAdmin
-# Use administrative tools and configurations
+# Navigate to a specific sys bench
+cd sysBenches/cloudBench
+./build-layer.sh
 ```
 
-## Adding New Administrative Benches
+## Adding New Sys Benches
 
 Use the workBenches new-bench script:
 ```bash
@@ -34,7 +41,7 @@ Use the workBenches new-bench script:
 ./scripts/new-bench.sh
 ```
 
-This can create additional administrative benches such as:
+This can create additional systems and operations benches such as:
 - Network administration tools
 - Security management utilities  
 - Monitoring and logging systems
@@ -42,15 +49,15 @@ This can create additional administrative benches such as:
 
 ## Organization
 
-- **This folder** (`adminBenches/`) is part of the main workBenches repository
+- **This folder** (`sysBenches/`) is part of the main workBenches repository
 - **Individual benches** are separate git repositories
-- **Each bench** provides specialized administrative tools for specific infrastructure domains
+- **Each bench** provides specialized systems and operations tools for specific infrastructure domains
 
-## Administrative Domains
+## Systems & Ops Domains
 
-Administrative benches can cover various domains:
+Systems and operations benches can cover various domains:
 - **Cloud Infrastructure** - AWS, Azure, GCP management
-- **Database Administration** - SQL Server, PostgreSQL, MongoDB
+- **Database Operations** - SQL Server, PostgreSQL, MongoDB
 - **Container Orchestration** - Kubernetes, Docker Swarm
 - **Networking** - DNS, load balancers, firewalls
 - **Security** - Identity management, certificates, secrets

@@ -110,7 +110,23 @@ export const App: SolidComponent = () => {
 
   debugLog('Setting up component...');
 
+  let confirmInProgress = false;
   const handleConfirm = async () => {
+    if (confirmInProgress) return; // Prevent double-fire
+    confirmInProgress = true;
+
+    // Kill OpenTUI's hold on the terminal immediately:
+    // 1. Pause stdin — stops the event loop from waiting on input
+    // 2. Restore cooked mode — keypresses work normally again
+    // 3. Show cursor — TUI hides it
+    // Do NOT call renderer.stop() — it triggers cleanup that can hang
+    process.stdin.pause();
+    process.stdin.removeAllListeners();
+    if (process.stdin.isTTY && (process.stdin as any).setRawMode) {
+      (process.stdin as any).setRawMode(false);
+    }
+    process.stdout.write('\x1b[?25h\x1b[2J\x1b[H'); // Show cursor, clear screen, home
+
     console.log('\n╔══════════════════════════════════════════════════════════════════════════════╗');
     console.log('║               Applying Configuration Changes                                 ║');
     console.log('╚══════════════════════════════════════════════════════════════════════════════╝\n');

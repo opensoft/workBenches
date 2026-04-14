@@ -1,11 +1,15 @@
 #!/bin/bash
-# Build script for Layer 1: Developer Base Image (devbench-base)
+# Build script for Layer 1: Developer Base Image (dev-bench-base)
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$REPO_DIR/scripts/lib/image-names.sh"
 STATE_FILE="$SCRIPT_DIR/../.build-state.json"
-STATE_KEY="devbench-base"
+STATE_KEY="$(family_base_state_key dev)"
+LEGACY_STATE_KEY="$(legacy_family_base_state_key dev)"
+BASE_IMAGE="$(family_base_image dev)"
 
 # Ensure Docker is installed and running
 ensure_docker() {
@@ -158,16 +162,19 @@ echo "Building Layer 1a: DevBenches Base"
 echo "=========================================="
 echo ""
 echo "Configuration:"
-echo "  Username: $USERNAME"
+echo "  Tag: $BASE_IMAGE (user-agnostic)"
 echo ""
 
 current_hash=$(calc_hash)
 stored_hash=$(read_state "$STATE_KEY")
+if [ -z "$stored_hash" ] && [ -n "$LEGACY_STATE_KEY" ] && [ "$LEGACY_STATE_KEY" != "$STATE_KEY" ]; then
+    stored_hash=$(read_state "$LEGACY_STATE_KEY")
+fi
 if [ -z "$current_hash" ]; then
     echo "Warning: sha256sum/shasum not found; skipping change detection."
 fi
 image_exists=0
-if docker image inspect "devbench-base:$USERNAME" >/dev/null 2>&1; then
+if docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
     image_exists=1
 fi
 
@@ -180,16 +187,16 @@ fi
 
 if [ "$rebuild" -eq 1 ]; then
     if [ "$FORCE_REBUILD" -eq 1 ]; then
-        echo "Forcing rebuild of devbench-base:$USERNAME..."
+        echo "Forcing rebuild of $BASE_IMAGE..."
     elif [ "$image_exists" -eq 0 ]; then
-        echo "devbench-base:$USERNAME not found. Building..."
+        echo "$BASE_IMAGE not found. Building..."
     else
-        echo "Detected base-image changes. Rebuilding devbench-base:$USERNAME..."
+        echo "Detected base-image changes. Rebuilding $BASE_IMAGE..."
     fi
     "$SCRIPT_DIR/base-image/build.sh" --user "$USERNAME"
     if [ -n "$current_hash" ]; then
         write_state "$STATE_KEY" "$current_hash"
     fi
 else
-    echo "devbench-base:$USERNAME is up to date."
+    echo "$BASE_IMAGE is up to date."
 fi

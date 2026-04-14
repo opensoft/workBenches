@@ -69,6 +69,23 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | g
     && rm -rf /var/lib/apt/lists/*
 
 # ========================================
+# DOCKER CLI & COMPOSE
+# ========================================
+
+# Install the Docker client only. Benches talk to the host daemon via a
+# mounted docker.sock; they do not run dockerd inside the container.
+RUN install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+    && chmod a+r /etc/apt/keyrings/docker.gpg \
+    && echo \
+        "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" \
+        > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y docker-ce-cli docker-compose-plugin \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ========================================
 # MODERN CLI UTILITIES
 # ========================================
 
@@ -80,9 +97,18 @@ RUN YQ_VERSION=$(curl -s https://api.github.com/repos/mikefarah/yq/releases/late
 # Install zoxide (smarter cd) - install to /usr/local/bin
 RUN curl -sS https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash -s -- --bin-dir /usr/local/bin
 
+# Install Node.js 22 for modern AI CLI builds and npm-based tools.
+RUN apt-get update \
+    && export DEBIAN_FRONTEND=noninteractive \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable || true
+
 # Install tldr (simplified man pages) - using npm version
-RUN apt-get update && apt-get install -y npm \
-    && npm install -g tldr \
+RUN npm install -g tldr \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -101,8 +127,9 @@ RUN uv tool install specify-cli --from git+https://github.com/github/spec-kit.gi
 # BUN RUNTIME (system-wide at /opt/bun)
 # ========================================
 
+ARG BUN_VERSION=1.3.5
 ENV BUN_INSTALL=/opt/bun
-RUN curl -fsSL https://bun.sh/install | bash \
+RUN curl -fsSL https://bun.sh/install | BUN_VERSION=${BUN_VERSION} bash \
     && chmod -R a+rx /opt/bun
 ENV PATH="/opt/bun/bin:${PATH}"
 
@@ -144,6 +171,15 @@ RUN echo 'export ZSH="$HOME/.oh-my-zsh"' > /etc/skel/.zshrc && \
 # Create /etc/skel/.bashrc template
 RUN echo 'eval "$(zoxide init bash)"' >> /etc/skel/.bashrc && \
     echo 'export PATH="$HOME/.local/bin:/opt/bun/bin:$PATH"' >> /etc/skel/.bashrc
+
+# Provide AI helper aliases system-wide so all benches inherit them even when
+# a workspace does not mount a host shell profile.
+RUN echo '' >> /etc/zsh/zshrc && \
+    echo '# WorkBench AI helpers' >> /etc/zsh/zshrc && \
+    echo 'alias yolo="claude --dangerously-skip-permissions --teammate-mode tmux"' >> /etc/zsh/zshrc && \
+    echo '' >> /etc/bash.bashrc && \
+    echo '# WorkBench AI helpers' >> /etc/bash.bashrc && \
+    echo 'alias yolo="claude --dangerously-skip-permissions --teammate-mode tmux"' >> /etc/bash.bashrc
 
 # ========================================
 # OPENCODE CONFIGURATION (into /etc/skel)

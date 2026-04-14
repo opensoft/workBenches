@@ -5,6 +5,7 @@
 
 # Setup logging
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/image-names.sh"
 LOG_DIR="$SCRIPT_DIR/../logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/setup-$(date +%Y%m%d-%H%M%S).log"
@@ -42,13 +43,13 @@ show_spinner() {
     local spinner="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
     local i=0
     local elapsed=0
-    
+
     while kill -0 $pid 2>/dev/null; do
         i=$(( (i+1) % 10 ))
         printf "\r  ${YELLOW}${spinner:$i:1}${NC} ${message}"
         sleep 0.1
         elapsed=$((elapsed + 1))
-        
+
         # Timeout check (elapsed is in deciseconds)
         if [ $elapsed -ge $((timeout * 10)) ]; then
             printf "\r"
@@ -57,7 +58,7 @@ show_spinner() {
             return 1
         fi
     done
-    
+
     # Wait for process to fully complete and get exit status
     wait $pid 2>/dev/null
     local exit_status=$?
@@ -101,7 +102,7 @@ init_components() {
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local config_file="$script_dir/../config/bench-config.json"
     log "Config file: $config_file"
-    
+
     if [ -f "$config_file" ]; then
         # Get bench names from config
         while IFS= read -r bench_name; do
@@ -110,7 +111,7 @@ init_components() {
             component_description["bench_$bench_name"]="$bench_name"
         done < <(jq -r '.benches | keys[]' "$config_file" 2>/dev/null)
     fi
-    
+
     # If no benches found, add some defaults
     if [ ${#bench_items[@]} -eq 0 ]; then
         bench_items=("flutterBench" "javaBench" "dotNetBench" "pythonBench")
@@ -119,7 +120,7 @@ init_components() {
             component_description["bench_$bench"]="$bench"
         done
     fi
-    
+
     # AI Assistants (CLIs + spec tools)
     ai_items=(
         "claude_cli"
@@ -131,43 +132,43 @@ init_components() {
         "spec_kit"
         "openspec"
     )
-    
+
     # Initialize AI items
     component_checked["claude_cli"]=false
     component_description["claude_cli"]="Claude Code CLI"
-    
+
     component_checked["copilot_cli"]=false
     component_description["copilot_cli"]="GitHub Copilot CLI"
-    
+
     component_checked["codex_cli"]=false
     component_description["codex_cli"]="Codex CLI"
-    
+
     component_checked["gemini_cli"]=false
     component_description["gemini_cli"]="Gemini CLI"
-    
+
     component_checked["opencode_cli"]=false
     component_description["opencode_cli"]="OpenCode CLI"
-    
+
     component_checked["spec_kit"]=false
     component_description["spec_kit"]="spec-kit"
-    
+
     component_checked["openspec"]=false
     component_description["openspec"]="OpenSpec"
-    
+
     # Tools
     tool_items=(
         "vscode"
         "warp"
         "wave"
     )
-    
+
     # Initialize tool items
     component_checked["vscode"]=false
     component_description["vscode"]="Visual Studio Code"
-    
+
     component_checked["warp"]=false
     component_description["warp"]="Warp Terminal"
-    
+
     component_checked["wave"]=false
     component_description["wave"]="Wave Terminal"
 }
@@ -176,7 +177,7 @@ init_components() {
 check_component_status() {
     local component="$1"
     log "Checking status: $component"
-    
+
     case "$component" in
         claude_cli)
             if command -v claude &> /dev/null; then
@@ -239,7 +240,7 @@ check_component_status() {
                         # Check if Dev Containers extension is installed on Windows side
                         local windows_user=$(powershell.exe -c "[Environment]::UserName" 2>/dev/null | tr -d '\r')
                         local windows_ext_file="/mnt/c/Users/$windows_user/.vscode/extensions/extensions.json"
-                        
+
                         if [ -f "$windows_ext_file" ] && grep -q "ms-vscode-remote.remote-containers" "$windows_ext_file" 2>/dev/null; then
                             echo "installed"
                         else
@@ -298,18 +299,18 @@ check_component_status() {
             local bench_name="${component#bench_}"
             local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
             local config_file="$script_dir/../config/bench-config.json"
-            
+
             # Get the path and URL from config
             local bench_path=$(jq -r ".benches.${bench_name}.path // \"\"" "$config_file" 2>/dev/null)
             local bench_url=$(jq -r ".benches.${bench_name}.url // \"\"" "$config_file" 2>/dev/null)
-            
+
             if [ -z "$bench_path" ] || [ "$bench_path" = "null" ]; then
                 # Fallback: check root directory
                 bench_path="$bench_name"
             fi
-            
+
             local full_path="$script_dir/../$bench_path"
-            
+
             # Check if directory exists
             if [ -d "$full_path" ]; then
                 # Check if it has a git remote
@@ -318,16 +319,16 @@ check_component_status() {
                     if [ -n "$bench_url" ] && [ "$bench_url" != "null" ]; then
                         local current_remote=$(cd "$full_path" && git remote get-url origin 2>/dev/null)
                         if [ "$current_remote" = "$bench_url" ]; then
-                            # Bench is installed with correct remote, check if set up
-                            # Look for new-<bench>-project command
-                            local expected_command="new-${bench_name}-project"
-                            # Convert camelCase to kebab-case for command name
-                            expected_command=$(echo "$expected_command" | sed 's/\([A-Z]\)/-\L\1/g' | sed 's/^-//')
-                            
-                            if command -v "$expected_command" &> /dev/null; then
-                                echo "installed"  # Fully set up
+                            # Bench is installed with correct remote, check if it has infrastructure
+                            if [ -d "$full_path/.devcontainer" ] || \
+                               [ -d "$full_path/devcontainer.example" ] || \
+                               [ -f "$full_path/Dockerfile.layer2" ] || \
+                               [ -f "$full_path/setup.sh" ] || \
+                               [ -f "$full_path/build-layer.sh" ] || \
+                               [ -f "$full_path/scripts/build-layer.sh" ]; then
+                                echo "installed"
                             else
-                                echo "needs creds"  # Installed but not set up (using needs creds for warning state)
+                                echo "needs creds"  # Repo cloned but no bench infrastructure
                             fi
                         else
                             echo "not installed"  # Wrong remote
@@ -356,13 +357,13 @@ load_statuses() {
         local key="bench_$bench"
         local status=$(check_component_status "$key")
         component_status["$key"]="$status"
-        
+
         # Auto-check if installed or needs creds
         if [[ "$status" == "installed" || "$status" == "needs creds" ]]; then
             component_checked["$key"]=true
         fi
     done
-    
+
     # Load statuses for AI items
     for item in "${ai_items[@]}"; do
         if [[ "$item" == separator* ]]; then
@@ -370,18 +371,18 @@ load_statuses() {
         fi
         local status=$(check_component_status "$item")
         component_status["$item"]="$status"
-        
+
         # Auto-check if installed or needs creds
         if [[ "$status" == "installed" || "$status" == "needs creds" ]]; then
             component_checked["$item"]=true
         fi
     done
-    
+
     # Load statuses for tool items
     for item in "${tool_items[@]}"; do
         local status=$(check_component_status "$item")
         component_status["$item"]="$status"
-        
+
         # Auto-check if installed
         if [[ "$status" == "installed" ]]; then
             component_checked["$item"]=true
@@ -397,13 +398,13 @@ draw_component() {
     local status="${component_status[$component]}"
     local checked="${component_checked[$component]}"
     local desc="${component_description[$component]}"
-    
+
     # Determine checkbox state
     local checkbox="[ ]"
     if [ "$checked" = true ]; then
         checkbox="[${GREEN}✓${NC}]"
     fi
-    
+
     # Determine status color
     local status_color="$RED"
     local status_symbol="✗"
@@ -414,7 +415,7 @@ draw_component() {
         status_color="$YELLOW"
         status_symbol="⚠"
     fi
-    
+
     # Selection highlight
     local line_prefix="  "
     local line_suffix=""
@@ -422,7 +423,7 @@ draw_component() {
         line_prefix="${CYAN}▶ "
         line_suffix="${NC}"
     fi
-    
+
     echo -e "${line_prefix}${checkbox} ${status_color}${status_symbol}${NC} ${desc}${line_suffix}"
 }
 
@@ -431,7 +432,7 @@ draw_block_header() {
     local block_num="$1"
     local is_current=$2
     local block_name="${block_names[$block_num]}"
-    
+
     if [ "$is_current" = true ]; then
         echo -e "\n${BOLD}${YELLOW}┌─ ${block_name} ─┐${NC}"
     else
@@ -464,19 +465,19 @@ update_section_headers() {
     # Position cursor at header line (banner=7, header box=3, nav=2 = line 13)
     tput cup 13 0
     tput el  # Clear to end of line
-    
+
     local benches_active=$( [ $CURRENT_SECTION -eq 0 ] && echo "true" || echo "false" )
     local ai_active=$( [ $CURRENT_SECTION -eq 1 ] && echo "true" || echo "false" )
     local tools_active=$( [ $CURRENT_SECTION -eq 2 ] && echo "true" || echo "false" )
-    
+
     local bench_header="${DIM}┌────── BENCHES ────────┐${NC}"
     local ai_header="${DIM}┌─── AI ASSISTANTS ─────┐${NC}"
     local tools_header="${DIM}┌─────── TOOLS ─────────┐${NC}"
-    
+
     [ "$benches_active" = "true" ] && bench_header="${BOLD}${YELLOW}┌────── BENCHES ────────┐${NC}"
     [ "$ai_active" = "true" ] && ai_header="${BOLD}${YELLOW}┌─── AI ASSISTANTS ─────┐${NC}"
     [ "$tools_active" = "true" ] && tools_header="${BOLD}${YELLOW}┌─────── TOOLS ─────────┐${NC}"
-    
+
     echo -e "${bench_header}      ${ai_header}      ${tools_header}"
 }
 
@@ -484,7 +485,7 @@ update_section_headers() {
 draw_three_sections_only() {
     # Position cursor at first content line after header (line 14)
     tput cup 14 0
-    
+
     draw_three_sections
 }
 
@@ -494,10 +495,10 @@ update_selection_lines() {
     local old_sect=$2
     local new_sel=$3
     local new_sect=$4
-    
+
     # Calculate base line offset (banner=7, header=4, nav=2 = 13 lines)
     local base_line=14
-    
+
     # If section changed, just update headers and cursor lines
     if [ $old_sect -ne $new_sect ]; then
         update_section_headers
@@ -507,24 +508,24 @@ update_selection_lines() {
         draw_three_sections_only
         return
     fi
-    
+
     # For vertical movement within same section, redraw both affected rows
     # Since we have 3 columns, we need to redraw the entire row
-    
+
     # Redraw old row
     if [ $old_sel -ge 0 ]; then
         tput cup $((base_line + old_sel)) 0
         tput el  # Clear to end of line
         echo -ne "$(draw_row $old_sel)"
     fi
-    
+
     # Redraw new row
     if [ $new_sel -ge 0 ]; then
         tput cup $((base_line + new_sel)) 0
         tput el  # Clear to end of line
         echo -ne "$(draw_row $new_sel)"
     fi
-    
+
     # Return cursor to invisible position
     tput cup $((base_line + new_sel + 5)) 0
 }
@@ -534,7 +535,7 @@ draw_item_for_section() {
     local sect=$1
     local idx=$2
     local selected=$3
-    
+
     local key=""
     if [ $sect -eq 0 ]; then
         local bench="${bench_items[$idx]}"
@@ -547,18 +548,18 @@ draw_item_for_section() {
         local item="${tool_items[$idx]}"
         key="$item"
     fi
-    
+
     draw_item_compact "$key" "$selected" "true"
 }
 
 # Draw a complete row (all 3 columns) for a given index
 draw_row() {
     local i=$1
-    
+
     local benches_active=$( [ $CURRENT_SECTION -eq 0 ] && echo "true" || echo "false" )
     local ai_active=$( [ $CURRENT_SECTION -eq 1 ] && echo "true" || echo "false" )
     local tools_active=$( [ $CURRENT_SECTION -eq 2 ] && echo "true" || echo "false" )
-    
+
     # Left column (Benches) - 24 chars wide
     local left_content="                        "
     if [ $i -lt ${#bench_items[@]} ]; then
@@ -566,7 +567,7 @@ draw_row() {
         local is_selected=$( [ $CURRENT_SECTION -eq 0 ] && [ $i -eq $current_selection ] && echo "true" || echo "false" )
         left_content=$(draw_item_compact "bench_$bench" "$is_selected" "$benches_active")
     fi
-    
+
     # Middle column (AI) - 24 chars wide
     local middle_content="                        "
     if [ $i -lt ${#ai_items[@]} ]; then
@@ -578,7 +579,7 @@ draw_row() {
             middle_content=$(draw_item_compact "$item" "$is_selected" "$ai_active")
         fi
     fi
-    
+
     # Right column (Tools) - 24 chars wide
     local right_content="                        "
     if [ $i -lt ${#tool_items[@]} ]; then
@@ -586,7 +587,7 @@ draw_row() {
         local is_selected=$( [ $CURRENT_SECTION -eq 2 ] && [ $i -eq $current_selection ] && echo "true" || echo "false" )
         right_content=$(draw_item_compact "$item" "$is_selected" "$tools_active")
     fi
-    
+
     echo -e "${left_content}      ${middle_content}      ${right_content}"
 }
 
@@ -595,7 +596,7 @@ draw_ui() {
     tput clear
     tput cup 0 0
     echo -e "${HIDE_CURSOR}"
-    
+
     # Opensoft Banner
     echo -e "${BOLD}${CYAN}"
     echo "   ___                            __ _   "
@@ -613,12 +614,16 @@ draw_ui() {
     echo ""
     echo -e "${CYAN}Navigation:${NC} ↑/↓ Move  ${CYAN}←/→:${NC} Switch Section  ${CYAN}Space:${NC} Toggle  ${CYAN}Enter:${NC} Apply Changes  ${CYAN}Q:${NC} Quit"
     echo ""
-    
+
     # Draw three sections side by side
     draw_three_sections
-    
+
     echo ""
-    
+
+    # Status legend
+    echo -e "${GREEN}✓${NC} Installed  ${DIM}│${NC}  ${YELLOW}⚠${NC} Needs setup ${DIM}(repo cloned but bench commands not configured — run setup)${NC}  ${DIM}│${NC}  ${RED}✗${NC} Not installed"
+    echo ""
+
     # Show selected count
     local selected_count=0
     for bench in "${bench_items[@]}"; do
@@ -630,7 +635,7 @@ draw_ui() {
     for item in "${tool_items[@]}"; do
         [ "${component_checked[$item]}" = true ] && ((selected_count++))
     done
-    
+
     echo -e "${MAGENTA}Changes selected: $selected_count${NC}"
 }
 
@@ -640,23 +645,23 @@ draw_three_sections() {
     local benches_active=$( [ $CURRENT_SECTION -eq 0 ] && echo "true" || echo "false" )
     local ai_active=$( [ $CURRENT_SECTION -eq 1 ] && echo "true" || echo "false" )
     local tools_active=$( [ $CURRENT_SECTION -eq 2 ] && echo "true" || echo "false" )
-    
+
     # Section headers (borders adjusted to match content)
     local bench_header="${DIM}┌────── BENCHES ────────┐${NC}"
     local ai_header="${DIM}┌─── AI ASSISTANTS ─────┐${NC}"
     local tools_header="${DIM}┌─────── TOOLS ─────────┐${NC}"
-    
+
     [ "$benches_active" = "true" ] && bench_header="${BOLD}${YELLOW}┌────── BENCHES ────────┐${NC}"
     [ "$ai_active" = "true" ] && ai_header="${BOLD}${YELLOW}┌─── AI ASSISTANTS ─────┐${NC}"
     [ "$tools_active" = "true" ] && tools_header="${BOLD}${YELLOW}┌─────── TOOLS ─────────┐${NC}"
-    
+
     echo -e "${bench_header}      ${ai_header}      ${tools_header}"
-    
+
     # Draw items in all three columns
     local max_items=${#bench_items[@]}
     [ ${#ai_items[@]} -gt $max_items ] && max_items=${#ai_items[@]}
     [ ${#tool_items[@]} -gt $max_items ] && max_items=${#tool_items[@]}
-    
+
     for ((i=0; i<$max_items; i++)); do
         # Left column (Benches) - 24 chars wide
         local left_content="                        "
@@ -665,7 +670,7 @@ draw_three_sections() {
             local is_selected=$( [ $CURRENT_SECTION -eq 0 ] && [ $i -eq $current_selection ] && echo "true" || echo "false" )
             left_content=$(draw_item_compact "bench_$bench" "$is_selected" "$benches_active")
         fi
-        
+
         # Middle column (AI) - 24 chars wide
         local middle_content="                        "
         if [ $i -lt ${#ai_items[@]} ]; then
@@ -677,7 +682,7 @@ draw_three_sections() {
                 middle_content=$(draw_item_compact "$item" "$is_selected" "$ai_active")
             fi
         fi
-        
+
         # Right column (Tools) - 24 chars wide
         local right_content="                        "
         if [ $i -lt ${#tool_items[@]} ]; then
@@ -685,19 +690,19 @@ draw_three_sections() {
             local is_selected=$( [ $CURRENT_SECTION -eq 2 ] && [ $i -eq $current_selection ] && echo "true" || echo "false" )
             right_content=$(draw_item_compact "$item" "$is_selected" "$tools_active")
         fi
-        
+
         echo -e "${left_content}      ${middle_content}      ${right_content}"
     done
-    
+
     # Section footers (borders adjusted to match content)
     local bench_footer="${DIM}└───────────────────────┘${NC}"
     local ai_footer="${DIM}└───────────────────────┘${NC}"
     local tools_footer="${DIM}└───────────────────────┘${NC}"
-    
+
     [ "$benches_active" = "true" ] && bench_footer="${BOLD}${YELLOW}└───────────────────────┘${NC}"
     [ "$ai_active" = "true" ] && ai_footer="${BOLD}${YELLOW}└───────────────────────┘${NC}"
     [ "$tools_active" = "true" ] && tools_footer="${BOLD}${YELLOW}└───────────────────────┘${NC}"
-    
+
     echo -e "${bench_footer}      ${ai_footer}      ${tools_footer}"
 }
 
@@ -706,15 +711,15 @@ draw_item_compact() {
     local key="$1"
     local is_selected="$2"
     local section_active="$3"
-    
+
     local checked="${component_checked[$key]}"
     local desc="${component_description[$key]}"
     local status=$(check_component_status "$key")
-    
+
     # Checkbox with action indicator
     local checkbox="[ ]"
     local action="${component_action[$key]}"
-    
+
     if [ "$checked" = true ]; then
         if [[ "$action" == "uninstall" ]]; then
             checkbox="[${RED}X${NC}]"
@@ -722,11 +727,11 @@ draw_item_compact() {
             checkbox="[${GREEN}✓${NC}]"
         fi
     fi
-    
+
     # Status indicator
     local status_color="$RED"
     local status_symbol="✗"
-    
+
     if [[ "$status" == "installed" || "$status" == "configured" ]]; then
         status_color="$GREEN"
         status_symbol="✓"
@@ -734,13 +739,13 @@ draw_item_compact() {
         status_color="$YELLOW"
         status_symbol="⚠"
     fi
-    
+
     # Selection highlight
     local prefix="  "
     if [ "$is_selected" = "true" ] && [ "$section_active" = "true" ]; then
         prefix="${CYAN}▶ "
     fi
-    
+
     # Format with proper width (24 chars total for each column)
     # Using 16 chars for description to reach total of 24 visible chars
     # Breakdown: prefix(2) + checkbox(3) + space(1) + status(1) + space(1) + desc(16) = 24
@@ -750,10 +755,10 @@ draw_item_compact() {
 # Handle keyboard input
 handle_input() {
     local key
-    
+
     # Read single character
     IFS= read -rsn1 key
-    
+
     # Handle escape sequences (arrow keys, etc.)
     if [[ $key == $'\x1b' ]]; then
         read -rsn2 -t 0.1 key
@@ -780,7 +785,7 @@ handle_input() {
                 else
                     max_idx=$((${#tool_items[@]} - 1))
                 fi
-                
+
                 if [ $current_selection -lt $max_idx ]; then
                     ((current_selection++))
                     # Skip separators in AI section
@@ -823,12 +828,12 @@ handle_input() {
                     local item="${tool_items[$current_selection]}"
                     key="$item"
                 fi
-                
+
                 # Determine action based on current status
                 local status="${component_status[$key]}"
                 local is_installed=false
                 [[ "$status" == "installed" || "$status" == "needs creds" ]] && is_installed=true
-                
+
                 if [ "${component_checked[$key]}" = true ]; then
                     # Currently checked
                     if [ "$is_installed" = true ]; then
@@ -852,7 +857,7 @@ handle_input() {
                     fi
                 fi
                 ;;
-            '') # Enter - confirm and process
+            ''|$'\r'|$'\n') # Enter - confirm and process
                 return 1
                 ;;
             'q'|'Q') # Quit
@@ -860,7 +865,7 @@ handle_input() {
                 ;;
         esac
     fi
-    
+
     return 0
 }
 
@@ -882,14 +887,14 @@ setup_openai_key_interactive() {
     echo ""
     echo -e "${YELLOW}③ Paste your API key below:${NC}"
     echo ""
-    
+
     while true; do
         echo -e "${CYAN}┌────────────────────────────────────────────────────────────┐${NC}"
         echo -e "${CYAN}│ ${BOLD}OpenAI API Key:${NC}${CYAN}                                             │${NC}"
         echo -e "${CYAN}└────────────────────────────────────────────────────────────┘${NC}"
         read -p "  sk-" openai_key
         openai_key="sk-$openai_key"
-        
+
         if [ -z "$openai_key" ]; then
             echo -e "${RED}✗ API key cannot be empty.${NC}"
             read -p "Try again? [Y/n]: " retry
@@ -909,7 +914,7 @@ setup_openai_key_interactive() {
                     "messages": [{"role": "user", "content": "Hi"}],
                     "max_tokens": 5
                 }' 2>/dev/null)
-            
+
             if echo "$test_response" | grep -q '"choices"'; then
                 echo -e "${GREEN}✓ OpenAI API key validated successfully!${NC}"
                 export OPENAI_API_KEY="$openai_key"
@@ -945,14 +950,14 @@ setup_anthropic_key_interactive() {
     echo ""
     echo -e "${YELLOW}③ Paste your API key below:${NC}"
     echo ""
-    
+
     while true; do
         echo -e "${CYAN}┌────────────────────────────────────────────────────────────┐${NC}"
         echo -e "${CYAN}│ ${BOLD}Anthropic API Key:${NC}${CYAN}                                          │${NC}"
         echo -e "${CYAN}└────────────────────────────────────────────────────────────┘${NC}"
         read -p "  sk-" anthropic_key
         anthropic_key="sk-$anthropic_key"
-        
+
         if [ -z "$anthropic_key" ]; then
             echo -e "${RED}✗ API key cannot be empty.${NC}"
             read -p "Try again? [Y/n]: " retry
@@ -973,7 +978,7 @@ setup_anthropic_key_interactive() {
                     "max_tokens": 5,
                     "messages": [{"role": "user", "content": "Hi"}]
                 }' 2>/dev/null)
-            
+
             if echo "$test_response" | grep -q '"content"'; then
                 echo -e "${GREEN}✓ Anthropic API key validated successfully!${NC}"
                 export ANTHROPIC_API_KEY="$anthropic_key"
@@ -1009,13 +1014,13 @@ setup_claude_session_interactive() {
     echo ""
     echo -e "${YELLOW}③ Paste your session key below:${NC}"
     echo ""
-    
+
     while true; do
         echo -e "${CYAN}┌────────────────────────────────────────────────────────────┐${NC}"
         echo -e "${CYAN}│ ${BOLD}Claude Session Key:${NC}${CYAN}                                         │${NC}"
         echo -e "${CYAN}└────────────────────────────────────────────────────────────┘${NC}"
         read -p "  " session_key
-        
+
         if [ -z "$session_key" ]; then
             echo -e "${RED}✗ Session key cannot be empty.${NC}"
             read -p "Try again? [Y/n]: " retry
@@ -1025,7 +1030,7 @@ setup_claude_session_interactive() {
             read -p "Continue anyway? [y/N]: " continue_anyway
             [[ ! "$continue_anyway" =~ ^[Yy] ]] && continue
         fi
-        
+
         mkdir -p "$HOME/.claude"
         cat > "$HOME/.claude/config.json" << EOF
 {
@@ -1045,7 +1050,7 @@ save_to_profile() {
     local key_name="$1"
     local key_value="$2"
     local shell_profile
-    
+
     if [ -n "$ZSH_VERSION" ]; then
         shell_profile="$HOME/.zshrc"
     elif [ -n "$BASH_VERSION" ]; then
@@ -1053,7 +1058,7 @@ save_to_profile() {
     else
         shell_profile="$HOME/.profile"
     fi
-    
+
     if grep -q "^export $key_name=" "$shell_profile" 2>/dev/null; then
         if [[ "$OSTYPE" == "darwin"* ]]; then
             sed -i "" "s/^export $key_name=.*/export $key_name='$key_value'/" "$shell_profile"
@@ -1065,7 +1070,7 @@ save_to_profile() {
         echo "# workBenches AI API Key" >> "$shell_profile"
         echo "export $key_name='$key_value'" >> "$shell_profile"
     fi
-    
+
     echo -e "${BLUE}  Saved to $shell_profile${NC}"
 }
 
@@ -1077,26 +1082,26 @@ save_to_profile() {
 check_dir_safe_to_replace() {
     local dir="$1"
     local repo_url="$2"  # Optional: URL of repo being cloned
-    
+
     if [ ! -d "$dir" ]; then
         # Directory doesn't exist, safe to clone
         return 0
     fi
-    
+
     # Get list of files (excluding . and ..)
     local files
     files=$(ls -A "$dir" 2>/dev/null)
-    
+
     if [ -z "$files" ]; then
         # Directory is empty, safe to remove and replace
         return 0
     fi
-    
+
     # Check if only safe-to-remove files exist
     # Safe files: .DS_Store, Zone.Identifier files, desktop.ini, Thumbs.db
     local safe_patterns=(".DS_Store" "*:Zone.Identifier" "desktop.ini" "Thumbs.db")
     local has_unsafe=false
-    
+
     for file in $files; do
         local is_safe=false
         for pattern in "${safe_patterns[@]}"; do
@@ -1110,23 +1115,23 @@ check_dir_safe_to_replace() {
             break
         fi
     done
-    
+
     if [ "$has_unsafe" = false ]; then
         # Only safe temp files, OK to remove and replace
         return 0
     fi
-    
+
     # Has real files - if repo URL provided, check for conflicts
     if [ -n "$repo_url" ] && [ "$repo_url" != "null" ]; then
         log "Checking for file conflicts between existing directory and repo"
-        
+
         # Clone to temp location to see what files would be created
         local temp_dir=$(mktemp -d)
         if git clone --depth=1 --quiet "$repo_url" "$temp_dir" 2>/dev/null; then
             # Get list of files/folders that would be created (top-level only)
             local repo_items
             repo_items=$(cd "$temp_dir" && ls -A | grep -v "^\.git$")
-            
+
             # Check if any existing files/folders would conflict
             local has_conflict=false
             for item in $repo_items; do
@@ -1136,10 +1141,10 @@ check_dir_safe_to_replace() {
                     break
                 fi
             done
-            
+
             # Cleanup temp directory
             rm -rf "$temp_dir"
-            
+
             if [ "$has_conflict" = false ]; then
                 # No conflicts - safe to clone alongside existing files
                 log "No file conflicts detected, can clone alongside"
@@ -1150,7 +1155,7 @@ check_dir_safe_to_replace() {
             rm -rf "$temp_dir" 2>/dev/null
         fi
     fi
-    
+
     # Has unsafe files or conflicts - not safe
     return 1
 }
@@ -1160,27 +1165,75 @@ process_selections() {
     log "Processing selections - applying configuration changes"
     echo -e "${SHOW_CURSOR}"
     clear
-    
+
     echo -e "${BOLD}${BLUE}════════════════════════════════════════════════════════════════════════════${NC}"
     echo -e "${BOLD}${BLUE}  Applying Configuration Changes${NC}"
     echo -e "${BOLD}${BLUE}════════════════════════════════════════════════════════════════════════════${NC}"
     echo ""
-    
+
     local any_selected=false
     local success_count=0
     local fail_count=0
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local config_file="$script_dir/../config/bench-config.json"
     local -a items_needing_creds=()
-    
+
     # Process benches
     for bench in "${bench_items[@]}"; do
         local key="bench_$bench"
         if [ "${component_checked[$key]}" = true ]; then
             local action="${component_action[$key]}"
             local status="${component_status[$key]}"
+
+            # Installed benches with no pending action: check Layer 2/3 images, skip if current
+            if [[ "$status" == "installed" && -z "$action" ]]; then
+                local bench_path=$(jq -r ".benches.${bench}.path // \"$bench\"" "$config_file" 2>/dev/null)
+                local full_bench_path="$script_dir/../$bench_path"
+                local image_repo
+                image_repo=$(bench_dir_to_image_repo "$bench")
+                local l2_image="${image_repo}:latest"
+                local l3_image="${image_repo}:$(whoami)"
+
+                local l2_exists=false
+                local l3_exists=false
+                docker image inspect "$l2_image" >/dev/null 2>&1 && l2_exists=true
+                docker image inspect "$l3_image" >/dev/null 2>&1 && l3_exists=true
+
+                # Also check docker-compose-style names (e.g. sim-bench-gene_bench:latest)
+                # These are complete images — no separate Layer 3 needed
+                if [ "$l2_exists" = false ] && [ "$l3_exists" = false ]; then
+                    local compose_match=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -i "^${image_repo}" | head -1)
+                    if [ -n "$compose_match" ]; then
+                        l3_image="$compose_match"
+                        l3_exists=true
+                    fi
+                fi
+
+                if [ "$l2_exists" = true ] && [ "$l3_exists" = true ]; then
+                    echo -e "${BOLD}${CYAN}▶ $bench${NC} ${GREEN}✓ up to date${NC} ${DIM}($l2_image + $l3_image)${NC}"
+                    log "$bench: Layer 2 and Layer 3 images present, skipping"
+                    ((success_count++))
+                    continue
+                elif [ "$l2_exists" = true ] && [ "$l3_exists" = false ]; then
+                    echo -e "${BOLD}${CYAN}▶ $bench${NC} ${YELLOW}⚠ Layer 3 image missing${NC} ${DIM}(run: ensure-layer3.sh --base $l2_image)${NC}"
+                    log "$bench: Layer 2 exists but Layer 3 ($l3_image) missing"
+                    ((success_count++))
+                    continue
+                elif [ "$l2_exists" = false ] && [ "$l3_exists" = true ]; then
+                    # Old-style :$USER image exists but no :latest — still functional
+                    echo -e "${BOLD}${CYAN}▶ $bench${NC} ${GREEN}✓ up to date${NC} ${DIM}($l3_image)${NC}"
+                    log "$bench: Layer 3 image present (legacy naming), skipping"
+                    ((success_count++))
+                    continue
+                else
+                    # No images at all — needs build, fall through to install path
+                    echo -e "${BOLD}${CYAN}▶ $bench${NC} ${YELLOW}⚠ no Docker image found, will build${NC}"
+                    log "$bench: no images found, falling through to install"
+                fi
+            fi
+
             any_selected=true
-            
+
             if [[ "$action" == "uninstall" ]]; then
                 log "Uninstalling bench: $bench"
                 echo -e "${BOLD}${CYAN}▶ Uninstalling: $bench${NC}"
@@ -1209,14 +1262,14 @@ process_selections() {
                     local bench_path=$(jq -r ".benches.${bench}.path // \"$bench\"" "$config_file" 2>/dev/null)
                     local full_bench_path="$script_dir/../$bench_path"
                     local setup_script="$full_bench_path/setup.sh"
-                    
+
                     # If it's a git repo, fetch latest updates first
                     if [ -d "$full_bench_path/.git" ] || [ -f "$full_bench_path/.git" ]; then
                         local bench_url=$(jq -r ".benches.${bench}.url // \"\"" "$config_file" 2>/dev/null)
                         if [ -n "$bench_url" ] && [ "$bench_url" != "null" ]; then
                             echo -e "  ${YELLOW}Fetching latest updates from: $bench_url${NC}"
                             log "Fetching updates for $bench before setup"
-                            
+
                             # Fetch in background with spinner
                             (
                                 cd "$full_bench_path" && git fetch --all >> "$LOG_FILE" 2>&1 && git pull >> "$LOG_FILE" 2>&1
@@ -1224,10 +1277,10 @@ process_selections() {
                             ) &
                             local fetch_pid=$!
                             show_spinner $fetch_pid "Fetching updates for $bench"
-                            
+
                             local fetch_status=$(cat /tmp/fetch_status_$$ 2>/dev/null || echo "1")
                             rm -f /tmp/fetch_status_$$
-                            
+
                             if [ "$fetch_status" -eq 0 ]; then
                                 log "Successfully fetched and pulled updates for $bench"
                                 echo -e "  ${GREEN}✓ Updated to latest version${NC}"
@@ -1237,23 +1290,23 @@ process_selections() {
                             fi
                         fi
                     fi
-                    
+
                     if [ -f "$setup_script" ]; then
                         log "Running setup script: $setup_script"
                         echo -e "  ${YELLOW}Running setup script...${NC}"
                         echo -e "  ${DIM}This may take several minutes...${NC}"
-                        
-                        # Run setup in background with spinner
+
+                        # Run setup in background with spinner (cd to bench dir first)
                         (
-                            bash "$setup_script" >> "$LOG_FILE" 2>&1
+                            cd "$(dirname "$setup_script")" && bash "$setup_script" >> "$LOG_FILE" 2>&1
                             echo $? > /tmp/setup_status_$$
                         ) &
                         local setup_pid=$!
-                        show_spinner $setup_pid "Setting up $bench"
-                        
+                        show_spinner $setup_pid "Setting up $bench" 1200
+
                         local setup_status=$(cat /tmp/setup_status_$$ 2>/dev/null || echo "1")
                         rm -f /tmp/setup_status_$$
-                        
+
                         if [ "$setup_status" -eq 0 ]; then
                             log "Successfully set up $bench"
                             echo -e "  ${GREEN}✓ Successfully set up $bench${NC}"
@@ -1265,21 +1318,56 @@ process_selections() {
                             ((fail_count++))
                         fi
                     else
-                        echo -e "  ${YELLOW}⚠ No setup script found at: $setup_script${NC}"
-                        echo -e "  ${DIM}Please manually set up $bench by running its setup script${NC}"
-                        ((fail_count++))
+                        # No setup.sh — try inline setup: look for build-layer.sh
+                        local build_script=""
+                        if [ -f "$full_bench_path/scripts/build-layer.sh" ]; then
+                            build_script="$full_bench_path/scripts/build-layer.sh"
+                        elif [ -f "$full_bench_path/build-layer.sh" ]; then
+                            build_script="$full_bench_path/build-layer.sh"
+                        fi
+
+                        if [ -n "$build_script" ]; then
+                            log "No setup.sh found, running build-layer.sh inline for $bench"
+                            echo -e "  ${YELLOW}No setup.sh — building bench image...${NC}"
+
+                            (
+                                cd "$(dirname "$build_script")" && bash "$build_script" >> "$LOG_FILE" 2>&1
+                                echo $? > /tmp/setup_status_$$
+                            ) &
+                            local build_pid=$!
+                            show_spinner $build_pid "Building $bench image" 1200
+
+                            local build_status=$(cat /tmp/setup_status_$$ 2>/dev/null || echo "1")
+                            rm -f /tmp/setup_status_$$
+
+                            if [ "$build_status" -eq 0 ]; then
+                                log "Successfully built image for $bench"
+                                echo -e "  ${GREEN}✓ Image built for $bench${NC}"
+                                ((success_count++))
+                            else
+                                log "ERROR: build-layer.sh failed for $bench"
+                                echo -e "  ${RED}✗ Image build failed for $bench${NC}"
+                                ((fail_count++))
+                            fi
+                        else
+                            # No setup.sh and no build-layer.sh — repo is cloned, that's sufficient
+                            log "No setup.sh or build-layer.sh for $bench — repo cloned, ready for VS Code"
+                            echo -e "  ${GREEN}✓ $bench repo is up to date${NC}"
+                            echo -e "  ${DIM}Open in VS Code with Dev Containers to complete setup${NC}"
+                            ((success_count++))
+                        fi
                     fi
                     echo ""
                 else
                     # Install from scratch (or fetch if directory exists)
                     echo -e "${BOLD}${CYAN}▶ Installing: $bench${NC}"
-                    
+
                     # Get bench info from config
                     if [ -f "$config_file" ]; then
                         local bench_url=$(jq -r ".benches.${bench}.url // \"\"" "$config_file")
                         local bench_path=$(jq -r ".benches.${bench}.path // \"$bench\"" "$config_file")
                         local full_bench_path="$script_dir/../$bench_path"
-                        
+
                         if [ -n "$bench_url" ] && [ "$bench_url" != "null" ]; then
                             # Check if directory already exists
                             if [ -d "$full_bench_path" ]; then
@@ -1288,7 +1376,7 @@ process_selections() {
                                     # Has git repo, do a fetch and pull
                                     echo -e "  ${YELLOW}Directory exists, fetching updates from: $bench_url${NC}"
                                     log "Fetching and pulling updates for $bench from $bench_url"
-                                    
+
                                     # Fetch and pull in background with spinner
                                     (
                                         cd "$full_bench_path" && git fetch --all >> "$LOG_FILE" 2>&1 && git pull >> "$LOG_FILE" 2>&1
@@ -1296,10 +1384,10 @@ process_selections() {
                                     ) &
                                     local fetch_pid=$!
                                     show_spinner $fetch_pid "Updating $bench"
-                                    
+
                                     local fetch_status=$(cat /tmp/fetch_status_$$ 2>/dev/null || echo "1")
                                     rm -f /tmp/fetch_status_$$
-                                    
+
                                     if [ "$fetch_status" -eq 0 ]; then
                                         log "Successfully fetched and pulled updates for $bench"
                                         echo -e "  ${GREEN}✓ Successfully updated to latest version${NC}"
@@ -1314,7 +1402,7 @@ process_selections() {
                                     # Directory exists but no git - check if safe to replace
                                     check_dir_safe_to_replace "$full_bench_path" "$bench_url"
                                     local safe_status=$?
-                                    
+
                                     if [ $safe_status -eq 0 ] || [ $safe_status -eq 10 ]; then
                                         # Safe to proceed - either remove+clone or clone alongside
                                         if [ $safe_status -eq 0 ]; then
@@ -1327,11 +1415,11 @@ process_selections() {
                                             echo -e "  ${YELLOW}Directory has files but no conflicts. Cloning alongside...${NC}"
                                             log "Cloning alongside existing files: $full_bench_path"
                                         fi
-                                        
+
                                         # Now clone
                                         echo -e "  ${YELLOW}Cloning from: $bench_url${NC}"
                                         log "Cloning $bench from $bench_url"
-                                        
+
                                         # Clone in background with spinner
                                         (
                                             git clone "$bench_url" "$full_bench_path" >> "$LOG_FILE" 2>&1
@@ -1339,10 +1427,10 @@ process_selections() {
                                         ) &
                                         local clone_pid=$!
                                         show_spinner $clone_pid "Cloning $bench"
-                                        
+
                                         local clone_status=$(cat /tmp/clone_status_$$ 2>/dev/null || echo "1")
                                         rm -f /tmp/clone_status_$$
-                                        
+
                                         if [ "$clone_status" -ne 0 ]; then
                                             log "ERROR: Failed to clone $bench"
                                             echo -e "  ${RED}✗ Failed to clone $bench${NC}"
@@ -1375,7 +1463,7 @@ process_selections() {
                                 # Directory doesn't exist, clone it
                                 echo -e "  ${YELLOW}Cloning from: $bench_url${NC}"
                                 log "Cloning $bench from $bench_url"
-                                
+
                                 # Clone in background with spinner
                                 (
                                     git clone "$bench_url" "$full_bench_path" >> "$LOG_FILE" 2>&1
@@ -1383,10 +1471,10 @@ process_selections() {
                                 ) &
                                 local clone_pid=$!
                                 show_spinner $clone_pid "Cloning $bench"
-                                
+
                                 local clone_status=$(cat /tmp/clone_status_$$ 2>/dev/null || echo "1")
                                 rm -f /tmp/clone_status_$$
-                                
+
                                 if [ "$clone_status" -ne 0 ]; then
                                     log "ERROR: Failed to clone $bench"
                                     echo -e "  ${RED}✗ Failed to clone $bench${NC}"
@@ -1397,7 +1485,7 @@ process_selections() {
                                 log "Successfully cloned $bench"
                                 echo -e "  ${GREEN}✓ Successfully cloned $bench${NC}"
                             fi
-                            
+
                             # At this point, the repo is ready (either cloned or fetched)
                             # Check for and run setup script
                             local setup_script="$script_dir/../$bench_path/setup.sh"
@@ -1405,18 +1493,18 @@ process_selections() {
                                 echo -e "  ${YELLOW}Running setup script...${NC}"
                                 echo -e "  ${DIM}This may take several minutes...${NC}"
                                 log "Running setup script for $bench"
-                                
-                                # Run setup in background with spinner
+
+                                # Run setup in background with spinner (cd to bench dir first)
                                 (
-                                    bash "$setup_script" >> "$LOG_FILE" 2>&1
+                                    cd "$(dirname "$setup_script")" && bash "$setup_script" >> "$LOG_FILE" 2>&1
                                     echo $? > /tmp/setup_status_$$
                                 ) &
                                 local setup_pid=$!
-                                show_spinner $setup_pid "Setting up $bench"
-                                
+                                show_spinner $setup_pid "Setting up $bench" 1200
+
                                 local setup_status=$(cat /tmp/setup_status_$$ 2>/dev/null || echo "1")
                                 rm -f /tmp/setup_status_$$
-                                
+
                                 if [ "$setup_status" -eq 0 ]; then
                                     log "Successfully set up $bench"
                                     echo -e "  ${GREEN}✓ Successfully set up $bench${NC}"
@@ -1428,9 +1516,43 @@ process_selections() {
                                     ((success_count++))
                                 fi
                             else
-                                echo -e "  ${YELLOW}⚠ No setup script found${NC}"
-                                echo -e "  ${DIM}Bench may require manual setup${NC}"
-                                ((success_count++))
+                                # No setup.sh — try inline: build-layer.sh
+                                local build_script=""
+                                if [ -f "$full_bench_path/scripts/build-layer.sh" ]; then
+                                    build_script="$full_bench_path/scripts/build-layer.sh"
+                                elif [ -f "$full_bench_path/build-layer.sh" ]; then
+                                    build_script="$full_bench_path/build-layer.sh"
+                                fi
+
+                                if [ -n "$build_script" ]; then
+                                    log "No setup.sh, running build-layer.sh inline for $bench"
+                                    echo -e "  ${YELLOW}Building bench image...${NC}"
+
+                                    (
+                                        cd "$(dirname "$build_script")" && bash "$build_script" >> "$LOG_FILE" 2>&1
+                                        echo $? > /tmp/setup_status_$$
+                                    ) &
+                                    local build_pid=$!
+                                    show_spinner $build_pid "Building $bench image" 1200
+
+                                    local build_status=$(cat /tmp/setup_status_$$ 2>/dev/null || echo "1")
+                                    rm -f /tmp/setup_status_$$
+
+                                    if [ "$build_status" -eq 0 ]; then
+                                        log "Successfully built image for $bench"
+                                        echo -e "  ${GREEN}✓ Image built for $bench${NC}"
+                                        ((success_count++))
+                                    else
+                                        log "ERROR: build-layer.sh failed for $bench"
+                                        echo -e "  ${YELLOW}⚠ Image build failed${NC}"
+                                        echo -e "  ${DIM}You may need to run manually: $build_script${NC}"
+                                        ((success_count++))
+                                    fi
+                                else
+                                    echo -e "  ${GREEN}✓ $bench cloned and ready${NC}"
+                                    echo -e "  ${DIM}Open in VS Code with Dev Containers to complete setup${NC}"
+                                    ((success_count++))
+                                fi
                             fi
                         else
                             echo -e "  ${RED}✗ No repository URL found for $bench${NC}"
@@ -1445,22 +1567,22 @@ process_selections() {
             fi
         fi
     done
-    
+
     # Process AI items
     for item in "${ai_items[@]}"; do
         if [[ "$item" == separator* ]]; then
             continue
         fi
-        
+
         if [ "${component_checked[$item]}" = true ]; then
             any_selected=true
             local desc="${component_description[$item]}"
             local action="${component_action[$item]}"
-            
+
             # Handle uninstallation
             if [[ "$action" == "uninstall" ]]; then
                 echo -e "${BOLD}${CYAN}▶ Uninstalling: $desc${NC}"
-                
+
                 case "$item" in
                     claude_cli)
                         if command -v claude &> /dev/null; then
@@ -1472,7 +1594,7 @@ process_selections() {
                         ;;
                     copilot_cli)
                         if command -v npm &> /dev/null; then
-                            if sudo npm uninstall -g @github/copilot 2>/dev/null; then
+                            if npm uninstall -g @github/copilot 2>/dev/null; then
                                 echo -e "  ${GREEN}✓ GitHub Copilot CLI uninstalled${NC}"
                                 ((success_count++))
                             else
@@ -1483,7 +1605,7 @@ process_selections() {
                         ;;
                     codex_cli)
                         if command -v npm &> /dev/null; then
-                            if sudo npm uninstall -g @openai/codex 2>/dev/null; then
+                            if npm uninstall -g @openai/codex 2>/dev/null; then
                                 echo -e "  ${GREEN}✓ Codex CLI uninstalled${NC}"
                                 ((success_count++))
                             else
@@ -1494,7 +1616,7 @@ process_selections() {
                         ;;
                     openspec)
                         if command -v npm &> /dev/null; then
-                            if sudo npm uninstall -g @fission-ai/openspec 2>/dev/null; then
+                            if npm uninstall -g @fission-ai/openspec 2>/dev/null; then
                                 echo -e "  ${GREEN}✓ OpenSpec uninstalled${NC}"
                                 ((success_count++))
                             else
@@ -1510,18 +1632,18 @@ process_selections() {
                 echo ""
                 continue
             fi
-            
+
             # Handle installation or update
             local status="${component_status[$item]}"
             local is_installed=false
             [[ "$status" == "installed" || "$status" == "needs creds" ]] && is_installed=true
-            
+
             if [ "$is_installed" = true ]; then
                 echo -e "${BOLD}${CYAN}▶ Checking for updates: $desc${NC}"
             else
                 echo -e "${BOLD}${CYAN}▶ Installing: $desc${NC}"
             fi
-            
+
             case "$item" in
                 claude_cli)
                     if [ "$is_installed" = true ]; then
@@ -1534,7 +1656,7 @@ process_selections() {
                         echo -e "  ${DIM}This may take a few minutes...${NC}"
                         echo -e "  ${BOLD}${RED}Please do not interrupt the installation (Ctrl+C)${NC}"
                         log "Starting Claude CLI installation via native installer"
-                        
+
                         # Install Claude Code CLI via native installer (npm method is deprecated)
                         # Native installer: no Node.js dependency, auto-updates, installs to ~/.local/bin
                         trap '' INT
@@ -1542,7 +1664,7 @@ process_selections() {
                             curl -fsSL https://claude.ai/install.sh | bash >> "$LOG_FILE" 2>&1
                         ) &
                         local install_pid=$!
-                        
+
                         if show_spinner $install_pid "Installing Claude CLI" 180; then
                             trap - INT
                             log "Claude CLI installed successfully via native installer"
@@ -1559,13 +1681,13 @@ process_selections() {
                         fi
                     fi
                     ;;
-                    
+
                 copilot_cli)
                     if command -v npm &> /dev/null; then
                         if [ "$is_installed" = true ]; then
                             echo -e "  ${YELLOW}Checking for Copilot CLI updates...${NC}"
                             # Check if update available
-                            local update_output=$(sudo npm update -g @github/copilot 2>&1)
+                            local update_output=$(npm update -g @github/copilot 2>&1)
                             if echo "$update_output" | grep -q "up to date\|unchanged"; then
                                 echo -e "  ${GREEN}✓ GitHub Copilot CLI is already up to date${NC}"
                                 ((success_count++))
@@ -1575,7 +1697,7 @@ process_selections() {
                             fi
                         else
                             echo -e "  ${YELLOW}Installing GitHub Copilot CLI...${NC}"
-                            if sudo npm install -g @github/copilot; then
+                            if npm install -g @github/copilot; then
                                 echo -e "  ${GREEN}✓ GitHub Copilot CLI installed${NC}"
                                 ((success_count++))
                                 items_needing_creds+=("copilot")
@@ -1590,7 +1712,7 @@ process_selections() {
                         ((fail_count++))
                     fi
                     ;;
-                    
+
                 codex_cli)
                     if command -v npm &> /dev/null; then
                         # Check Node.js version
@@ -1599,7 +1721,7 @@ process_selections() {
                             if [ "$is_installed" = true ]; then
                                 echo -e "  ${YELLOW}Checking for Codex CLI updates...${NC}"
                                 # Check if update available
-                                local update_output=$(sudo npm update -g @openai/codex 2>&1)
+                                local update_output=$(npm update -g @openai/codex 2>&1)
                                 if echo "$update_output" | grep -q "up to date\|unchanged"; then
                                     echo -e "  ${GREEN}✓ Codex CLI is already up to date${NC}"
                                     ((success_count++))
@@ -1609,7 +1731,7 @@ process_selections() {
                                 fi
                             else
                                 echo -e "  ${YELLOW}Installing OpenAI Codex CLI...${NC}"
-                                if sudo npm install -g @openai/codex; then
+                                if npm install -g @openai/codex; then
                                     echo -e "  ${GREEN}✓ OpenAI Codex CLI installed${NC}"
                                     ((success_count++))
                                     items_needing_creds+=("codex")
@@ -1630,7 +1752,7 @@ process_selections() {
                         ((fail_count++))
                     fi
                     ;;
-                    
+
                 gemini_cli)
                     if command -v npm &> /dev/null; then
                         # Check Node.js version
@@ -1639,7 +1761,7 @@ process_selections() {
                             if [ "$is_installed" = true ]; then
                                 echo -e "  ${YELLOW}Checking for Gemini CLI updates...${NC}"
                                 # Check if update available
-                                local update_output=$(sudo npm update -g @google/gemini-cli 2>&1)
+                                local update_output=$(npm update -g @google/gemini-cli 2>&1)
                                 if echo "$update_output" | grep -q "up to date\|unchanged"; then
                                     echo -e "  ${GREEN}✓ Gemini CLI is already up to date${NC}"
                                     ((success_count++))
@@ -1652,11 +1774,11 @@ process_selections() {
                                 echo -e "  ${DIM}This may take a few minutes...${NC}"
                                 echo -e "  ${BOLD}${RED}Please do not interrupt the installation (Ctrl+C)${NC}"
                                 log "Starting Gemini CLI installation via npm"
-                                
+
                                 # Check if npm prefix is in user directory
                                 local npm_prefix=$(npm config get prefix 2>/dev/null)
                                 local needs_sudo=false
-                                
+
                                 # Check if prefix is a system directory (not in home directory)
                                 if [[ "$npm_prefix" != "$HOME"* ]]; then
                                     needs_sudo=true
@@ -1664,19 +1786,19 @@ process_selections() {
                                 else
                                     log "npm prefix is in user directory ($npm_prefix), no sudo needed"
                                 fi
-                                
+
                                 # Install Gemini CLI via npm in background with spinner
                                 # Temporarily ignore interrupts during installation
                                 trap '' INT
                                 (
                                     if [ "$needs_sudo" = true ]; then
-                                        sudo npm install -g @google/gemini-cli >> "$LOG_FILE" 2>&1
+                                        npm install -g @google/gemini-cli >> "$LOG_FILE" 2>&1
                                     else
                                         npm install -g @google/gemini-cli >> "$LOG_FILE" 2>&1
                                     fi
                                 ) &
                                 local install_pid=$!
-                                
+
                                 if show_spinner $install_pid "Installing Gemini CLI" 180; then
                                     # Restore interrupt handling
                                     trap - INT
@@ -1707,12 +1829,12 @@ process_selections() {
                         ((fail_count++))
                     fi
                     ;;
-                    
+
                 opencode_cli)
                     echo -e "  ${YELLOW}Installing OpenCode CLI...${NC}"
                     echo -e "  ${DIM}Note: OpenCode may require additional setup${NC}"
                     ;;
-                    
+
                 spec_kit)
                     echo -e "  ${YELLOW}Installing spec-kit (GitHub Spec Kit)...${NC}"
                     # Check for uv
@@ -1720,7 +1842,7 @@ process_selections() {
                         echo -e "  ${YELLOW}Installing uv package manager...${NC}"
                         echo -e "  ${DIM}This may take a minute...${NC}"
                         log "Starting uv installation"
-                        
+
                         # Install uv in background with spinner
                         (
                             curl -LsSf https://astral.sh/uv/install.sh 2>&1 | sh >> "$LOG_FILE" 2>&1
@@ -1728,10 +1850,10 @@ process_selections() {
                         ) &
                         local uv_pid=$!
                         show_spinner $uv_pid "Installing uv"
-                        
+
                         local uv_status=$(cat /tmp/uv_install_status_$$ 2>/dev/null || echo "1")
                         rm -f /tmp/uv_install_status_$$
-                        
+
                         if [ "$uv_status" -eq 0 ]; then
                             log "uv installed successfully"
                             # Source shell config to pick up PATH changes
@@ -1747,7 +1869,7 @@ process_selections() {
                             echo -e "  ${RED}✗ uv installation failed${NC}"
                         fi
                     fi
-                    
+
                     if command -v uv &> /dev/null; then
                         # Install spec-kit persistently
                         if uv tool install specify-cli --from git+https://github.com/github/spec-kit.git &> /dev/null; then
@@ -1764,13 +1886,13 @@ process_selections() {
                         ((fail_count++))
                     fi
                     ;;
-                    
+
                 openspec)
                     if command -v npm &> /dev/null; then
                         if [ "$is_installed" = true ]; then
                             echo -e "  ${YELLOW}Checking for OpenSpec updates...${NC}"
                             # Check if update available
-                            local update_output=$(sudo npm update -g @fission-ai/openspec 2>&1)
+                            local update_output=$(npm update -g @fission-ai/openspec 2>&1)
                             if echo "$update_output" | grep -q "up to date\|unchanged"; then
                                 echo -e "  ${GREEN}✓ OpenSpec is already up to date${NC}"
                                 ((success_count++))
@@ -1780,7 +1902,7 @@ process_selections() {
                             fi
                         else
                             echo -e "  ${YELLOW}Installing OpenSpec...${NC}"
-                            if sudo npm install -g @fission-ai/openspec@latest; then
+                            if npm install -g @fission-ai/openspec@latest; then
                                 echo -e "  ${GREEN}✓ OpenSpec installed${NC}"
                                 ((success_count++))
                             else
@@ -1798,7 +1920,7 @@ process_selections() {
             echo ""
         fi
     done
-    
+
     # Process tool items
     for item in "${tool_items[@]}"; do
         if [ "${component_checked[$item]}" = true ]; then
@@ -1808,7 +1930,7 @@ process_selections() {
             local status="${component_status[$item]}"
             local is_installed=false
             [[ "$status" == "installed" ]] && is_installed=true
-            
+
             # Handle uninstallation
             if [[ "$action" == "uninstall" ]]; then
                 echo -e "${BOLD}${CYAN}▶ Uninstalling: $desc${NC}"
@@ -1816,7 +1938,7 @@ process_selections() {
                 echo ""
                 continue
             fi
-            
+
             # Handle installation
             if [ "$is_installed" = true ]; then
                 echo -e "${BOLD}${CYAN}▶ Checking: $desc${NC}"
@@ -1824,7 +1946,7 @@ process_selections() {
                 ((success_count++))
             else
                 echo -e "${BOLD}${CYAN}▶ Installing: $desc${NC}"
-                
+
                 case "$item" in
                     vscode)
                         # Check if running in WSL
@@ -1836,7 +1958,7 @@ process_selections() {
                                     # Check if Dev Containers extension is installed on Windows side
                                     local windows_user=$(powershell.exe -c "[Environment]::UserName" 2>/dev/null | tr -d '\r')
                                     local windows_ext_file="/mnt/c/Users/$windows_user/.vscode/extensions/extensions.json"
-                                    
+
                                     if [ -f "$windows_ext_file" ] && grep -q "ms-vscode-remote.remote-containers" "$windows_ext_file" 2>/dev/null; then
                                         echo -e "  ${GREEN}✓ VS Code with WSL and Dev Containers extensions are installed${NC}"
                                         ((success_count++))
@@ -1939,18 +2061,18 @@ process_selections() {
             echo ""
         fi
     done
-    
+
     # Summary
     echo ""
     echo -e "${BOLD}${BLUE}────────────────────────────────────────────────────────────────────────────${NC}"
-    
+
     if [ "$any_selected" = false ]; then
         echo -e "${YELLOW}No items were selected.${NC}"
     else
         echo -e "${BOLD}Installation Summary:${NC}"
         [ $success_count -gt 0 ] && echo -e "  ${GREEN}✓ Successful: $success_count${NC}"
         [ $fail_count -gt 0 ] && echo -e "  ${RED}✗ Failed: $fail_count${NC}"
-        
+
         if [ $success_count -gt 0 ] && [ $fail_count -eq 0 ]; then
             echo -e "\n${GREEN}${BOLD}✓ All installations completed successfully!${NC}"
         elif [ $success_count -gt 0 ]; then
@@ -1959,22 +2081,22 @@ process_selections() {
             echo -e "\n${RED}✗ All installations failed.${NC}"
         fi
     fi
-    
+
     echo ""
-    
+
     # Handle credential setup for newly installed CLIs
     if [ ${#items_needing_creds[@]} -gt 0 ]; then
         echo -e "${BOLD}${BLUE}────────────────────────────────────────────────────────────────────────────${NC}"
         echo -e "${BOLD}${YELLOW}Setting up Credentials${NC}"
         echo -e "${BOLD}${BLUE}────────────────────────────────────────────────────────────────────────────${NC}"
         echo ""
-        
+
         for cli in "${items_needing_creds[@]}"; do
             case "$cli" in
                 codex)
                     echo -e "${CYAN}▶ Setting up Codex CLI authentication...${NC}"
                     echo ""
-                    
+
                     # Check if already authenticated
                     if [ -f "$HOME/.codex/auth.json" ] || [ -n "$OPENAI_API_KEY" ]; then
                         echo -e "${GREEN}✓ Codex CLI already has credentials configured${NC}"
@@ -1983,7 +2105,7 @@ process_selections() {
                         echo -e "${YELLOW}Codex needs authentication to work.${NC}"
                         echo -e "${DIM}You can sign in with your ChatGPT account or use an API key.${NC}"
                         echo ""
-                        
+
                         while true; do
                             read -p "Launch Codex authentication now? [Y/n]: " launch_codex
                             case $launch_codex in
@@ -1993,7 +2115,7 @@ process_selections() {
                                     echo -e "${DIM}Follow the prompts to authenticate.${NC}"
                                     echo ""
                                     sleep 2
-                                    
+
                                     # Launch codex login - handles authentication only
                                     if command -v codex &> /dev/null; then
                                         codex login
@@ -2014,11 +2136,11 @@ process_selections() {
                         done
                     fi
                     ;;
-                    
+
                 claude)
                     echo -e "${CYAN}▶ Setting up Claude CLI authentication...${NC}"
                     echo ""
-                    
+
                     # Display important billing warning
                     echo -e "${BOLD}${YELLOW}⚠️  IMPORTANT BILLING INFORMATION${NC}"
                     echo -e "${BOLD}${BLUE}────────────────────────────────────────${NC}"
@@ -2041,7 +2163,7 @@ process_selections() {
                     echo ""
                     echo -e "${BOLD}${BLUE}────────────────────────────────────────${NC}"
                     echo ""
-                    
+
                     if command -v claude &> /dev/null; then
                         # Check if already has credentials
                         if [ -f "$HOME/.claude/config.json" ] || [ -n "$ANTHROPIC_API_KEY" ]; then
@@ -2052,7 +2174,7 @@ process_selections() {
                             echo -e "  ${BOLD}${GREEN}Recommended:${NC} Run ${CYAN}claude${NC} (uses Pro/Max subscription)${NC}"
                             echo -e "  ${DIM}Alternative: Set ANTHROPIC_API_KEY (separate billing)${NC}"
                             echo ""
-                            
+
                             while true; do
                                 read -p "Launch Claude CLI authentication now? [Y/n]: " launch_claude
                                 case $launch_claude in
@@ -2062,7 +2184,7 @@ process_selections() {
                                         echo -e "${DIM}Follow the prompts to choose your authentication method.${NC}"
                                         echo ""
                                         sleep 2
-                                        
+
                                         # Launch claude - will prompt for authentication
                                         claude
                                         echo ""
@@ -2082,11 +2204,11 @@ process_selections() {
                         fi
                     fi
                     ;;
-                    
+
                 gemini)
                     echo -e "${CYAN}▶ Setting up Gemini CLI authentication...${NC}"
                     echo ""
-                    
+
                     echo -e "${BOLD}${GREEN}✨ Gemini CLI Free Tier${NC}"
                     echo -e "${BOLD}${BLUE}────────────────────────────────────────${NC}"
                     echo ""
@@ -2102,7 +2224,7 @@ process_selections() {
                     echo ""
                     echo -e "${BOLD}${BLUE}────────────────────────────────────────${NC}"
                     echo ""
-                    
+
                     if command -v gemini &> /dev/null; then
                         # Check if already has credentials
                         if [ -f "$HOME/.gemini/config.json" ] || [ -n "$GEMINI_API_KEY" ]; then
@@ -2113,7 +2235,7 @@ process_selections() {
                             echo -e "  ${BOLD}${GREEN}Recommended:${NC} Run ${CYAN}gemini${NC} and login with Google${NC}"
                             echo -e "  ${DIM}Alternative: Set GEMINI_API_KEY from AI Studio${NC}"
                             echo ""
-                            
+
                             while true; do
                                 read -p "Launch Gemini CLI authentication now? [Y/n]: " launch_gemini
                                 case $launch_gemini in
@@ -2123,7 +2245,7 @@ process_selections() {
                                         echo -e "${DIM}Select 'Login with Google' when prompted for best experience.${NC}"
                                         echo ""
                                         sleep 2
-                                        
+
                                         # Launch gemini - will prompt for authentication
                                         gemini
                                         echo ""
@@ -2143,7 +2265,7 @@ process_selections() {
                         fi
                     fi
                     ;;
-                    
+
                 copilot)
                     echo -e "${CYAN}▶ Setting up GitHub Copilot CLI authentication...${NC}"
                     echo ""
@@ -2155,10 +2277,10 @@ process_selections() {
                     ;;
             esac
         done
-        
+
         echo -e "${BOLD}${BLUE}────────────────────────────────────────────────────────────────────────────${NC}"
     fi
-    
+
     echo -e "${BLUE}Note: You may need to restart your shell for changes to take effect.${NC}"
     echo ""
     read -p "Press Enter to continue..."
@@ -2170,7 +2292,7 @@ install_nodejs() {
     echo -e "${BOLD}${BLUE}  Installing Node.js${NC}"
     echo -e "${BOLD}${BLUE}════════════════════════════════════════════════════════════════${NC}"
     echo ""
-    
+
     # Detect OS and install Node.js
     if [ -f /etc/os-release ]; then
         . /etc/os-release
@@ -2178,7 +2300,7 @@ install_nodejs() {
     else
         OS=$(uname -s)
     fi
-    
+
     case "$OS" in
         ubuntu|debian|pop)
             echo -e "${CYAN}Installing Node.js via NodeSource repository...${NC}"
@@ -2249,9 +2371,9 @@ check_and_install_dependencies() {
     echo -e "${BOLD}${BLUE}  Checking System Dependencies${NC}"
     echo -e "${BOLD}${BLUE}════════════════════════════════════════════════════════════════${NC}"
     echo ""
-    
+
     local all_ok=true
-    
+
     # Check git
     if command -v git &> /dev/null; then
         local git_version=$(git --version | awk '{print $3}')
@@ -2260,7 +2382,7 @@ check_and_install_dependencies() {
         echo -e "  ${RED}✗ git${NC} - not installed (required)"
         all_ok=false
     fi
-    
+
     # Check jq
     if command -v jq &> /dev/null; then
         local jq_version=$(jq --version 2>&1 | sed 's/jq-//')
@@ -2269,7 +2391,7 @@ check_and_install_dependencies() {
         echo -e "  ${RED}✗ jq${NC} - not installed (required)"
         all_ok=false
     fi
-    
+
     # Check curl
     if command -v curl &> /dev/null; then
         local curl_version=$(curl --version | head -n1 | awk '{print $2}')
@@ -2278,9 +2400,9 @@ check_and_install_dependencies() {
         echo -e "  ${RED}✗ curl${NC} - not installed (required)"
         all_ok=false
     fi
-    
+
     echo ""
-    
+
     # Check Node.js (important for many AI CLIs)
     local node_needs_install=false
     if command -v node &> /dev/null; then
@@ -2300,9 +2422,9 @@ check_and_install_dependencies() {
         echo -e "  ${YELLOW}⚠ Node.js${NC} - not installed (required for Codex, Copilot, OpenSpec)"
         node_needs_install=true
     fi
-    
+
     echo ""
-    
+
     # Handle missing core dependencies
     if [ "$all_ok" = false ]; then
         echo -e "${RED}Missing required core dependencies.${NC}"
@@ -2313,7 +2435,7 @@ check_and_install_dependencies() {
         read -p "Press Enter to exit..."
         exit 1
     fi
-    
+
     # Offer to install Node.js if needed
     if [ "$node_needs_install" = true ]; then
         echo -e "${YELLOW}Node.js is required for several AI coding assistants.${NC}"
@@ -2356,35 +2478,35 @@ check_and_install_dependencies() {
 # Main function
 main() {
     log "Main function started"
-    
+
     # Check and install dependencies first
     log "Checking dependencies..."
     check_and_install_dependencies
-    
+
     # Initialize
     log "Initializing components and loading statuses..."
     init_components
     load_statuses
-    
+
     # Main loop
     log "Entering main UI loop"
-    
+
     # Initial full draw
     draw_ui
-    
+
     # Store initial state
     local prev_sel=$current_selection
     local prev_sect=$CURRENT_SECTION
     local prev_state=$(get_checked_state)
-    
+
     while true; do
         handle_input
         local result=$?
-        
+
         # Simple approach: just redraw on any change
         # This is more reliable than selective updates
         local current_state=$(get_checked_state)
-        
+
         # Check if anything changed (selection or checkboxes)
         if [ $current_selection -ne $prev_sel ] || [ $CURRENT_SECTION -ne $prev_sect ] || [ "$current_state" != "$prev_state" ]; then
             draw_ui
@@ -2392,7 +2514,7 @@ main() {
             prev_sect=$CURRENT_SECTION
             prev_state="$current_state"
         fi
-        
+
         if [ $result -eq 1 ]; then
             # Enter pressed - process selections
             log "User pressed Enter - processing selections"
@@ -2408,7 +2530,7 @@ main() {
             exit 0
         fi
     done
-    
+
     echo -e "${SHOW_CURSOR}"
     log "=== Setup script completed ==="
 }

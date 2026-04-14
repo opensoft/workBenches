@@ -21,6 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 USERNAME=$(whoami)
 USER_UID=$(id -u)
 USER_GID=$(id -g)
+DOCKER_SOCKET_GID=""
 BASE_IMAGE=""
 EXTRA_CHOWN_DIRS=""
 
@@ -31,6 +32,7 @@ while [[ $# -gt 0 ]]; do
         --user) USERNAME="$2"; shift 2 ;;
         --uid) USER_UID="$2"; shift 2 ;;
         --gid) USER_GID="$2"; shift 2 ;;
+        --docker-gid) DOCKER_SOCKET_GID="$2"; shift 2 ;;
         --chown) EXTRA_CHOWN_DIRS="$2"; shift 2 ;;
         -h|--help)
             echo "Usage: $0 --base <image:latest> [--user USERNAME] [--chown \"dir1 dir2\"]"
@@ -61,6 +63,7 @@ echo "  Base image:  $BASE_IMAGE"
 echo "  Output:      $OUTPUT_IMAGE"
 echo "  Username:    $USERNAME"
 echo "  UID/GID:     $USER_UID/$USER_GID"
+echo "  Docker GID:  ${DOCKER_SOCKET_GID:-none}"
 echo "  Extra chown: ${EXTRA_CHOWN_DIRS:-none}"
 echo ""
 
@@ -79,6 +82,7 @@ docker build \
     --build-arg USERNAME="$USERNAME" \
     --build-arg USER_UID="$USER_UID" \
     --build-arg USER_GID="$USER_GID" \
+    --build-arg DOCKER_SOCKET_GID="$DOCKER_SOCKET_GID" \
     --build-arg EXTRA_CHOWN_DIRS="$EXTRA_CHOWN_DIRS" \
     -t "$OUTPUT_IMAGE" \
     -f "$SCRIPT_DIR/Dockerfile" \

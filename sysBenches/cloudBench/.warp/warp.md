@@ -1,7 +1,7 @@
 # CloudBench Layer 2 Architecture
 
 ## Overview
-CloudBench is a Layer 2 specialized bench for cloud administration tasks. It extends the adminbench-base (Layer 1b) with action-oriented tools focused on modifying infrastructure state.
+CloudBench is a Layer 2 specialized bench for cloud administration tasks. It extends the sys-bench-base (Layer 1b) with action-oriented tools focused on modifying infrastructure state.
 
 ## Layer Philosophy
 
@@ -9,17 +9,17 @@ CloudBench is a Layer 2 specialized bench for cloud administration tasks. It ext
 - Location: `workBenches/base-image/`
 - Purpose: System tools and modern CLI utilities
 - Tools: zsh, Oh-My-Zsh, tmux, fzf, bat, zoxide, tldr, neovim, jq, yq
-- User: Configured with host user (brett)
+- User: User creation is deferred to Layer 3 (`cloud-bench:${USER}`)
 
 ### Layer 1b: Admin Visibility ("Discovery & Connection")
-- Location: `adminBenches/base-image/`
+- Location: `sysBenches/base-image/`
 - Purpose: Read-only troubleshooting and inspection
 - Philosophy: "The container you spin up at 2 AM"
 - Tools: Terraform (show/plan), kubectl (get/describe), stern (logs), k9s (monitoring), cloud CLIs (verification), Ansible (ad-hoc)
 - Security: Does NOT need write permissions to cloud resources
 
 ### Layer 2: Cloud Admin ("Action & Change")
-- Location: `adminBenches/cloudBench/`
+- Location: `sysBenches/cloudBench/`
 - Purpose: Infrastructure modifications and stateful operations
 - Philosophy: "Tools that change infrastructure state"
 - Tools: IaC execution, cost optimization, security scanning, cluster management
@@ -54,8 +54,11 @@ CloudBench is a Layer 2 specialized bench for cloud administration tasks. It ext
 
 ### 1. Build Layer 2 Image (One Time)
 ```bash
-cd /home/brett/projects/workBenches/adminBenches/cloudBench
-./build-layer2.sh --user brett
+cd /home/brett/projects/workBenches/sysBenches/cloudBench
+./build-layer2.sh
+
+# Build the user image used by workspaces
+bash ../../scripts/ensure-layer3.sh --base cloud-bench:latest --user $(whoami)
 ```
 
 ### 2. Create New Workspace
@@ -148,13 +151,16 @@ tsh kube login my-cluster
 Layer 0 (workbench-base)
     System Foundation
     ↓
-Layer 1b (adminbench-base)
+Layer 1b (sys-bench-base)
     Admin Visibility (Read-Only)
     Tools: kubectl, stern, terraform show, cloud CLIs
     ↓
-Layer 2 (cloud-bench)
+Layer 2 (cloud-bench:latest)
     Cloud Admin (Action & Change)
     Tools: Terragrunt, Pulumi, Infracost, Security, Helm
+    ↓
+Layer 3 (cloud-bench:${USER})
+    Host-matched user image for workspace use
     ↓
 Workspaces
     Project-specific cloud admin work

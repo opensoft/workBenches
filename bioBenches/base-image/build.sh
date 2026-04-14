@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build script for Layer 1c: bioBench Base Image
-# Creates: biobench-base:latest (user-agnostic)
+# Creates: bio-bench-base:latest (user-agnostic)
 
 set -e
 
@@ -10,6 +10,11 @@ echo "=========================================="
 echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$REPO_DIR/scripts/lib/image-names.sh"
+
+CANONICAL_IMAGE="$(family_base_image bio)"
+LEGACY_IMAGE="$(legacy_family_base_image bio)"
 cd "$SCRIPT_DIR"
 
 # Parse arguments (--user is accepted but ignored for backward compat)
@@ -21,7 +26,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "Configuration:"
-echo "  Tag: biobench-base:latest (user-agnostic)"
+echo "  Tag: $CANONICAL_IMAGE (user-agnostic)"
+echo "  Legacy alias: $LEGACY_IMAGE"
 echo ""
 
 # Check if Layer 0 exists
@@ -35,13 +41,15 @@ if ! docker image inspect "workbench-base:latest" >/dev/null 2>&1; then
 fi
 
 # Build the image
-echo "Building biobench-base:latest..."
+echo "Building $CANONICAL_IMAGE..."
 docker build \
-    -t "biobench-base:latest" \
+    -t "$CANONICAL_IMAGE" \
     .
+tag_family_base_legacy_alias bio
 
 echo ""
 echo "✓ Layer 1c built successfully!"
-echo "  Image: biobench-base:latest"
+echo "  Image: $CANONICAL_IMAGE"
+echo "  Legacy alias: $LEGACY_IMAGE"
 echo ""
 echo "Next step: Build bench-specific images"

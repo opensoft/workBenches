@@ -2,11 +2,12 @@
 # Generic Testing Tools Installation Script
 # Version: 1.0.0
 #
-# Installs tech-stack-independent testing tools into the devbench-base image
+# Installs tech-stack-independent testing tools into the dev-bench-base image
 # (Layer 1a) so all benches inherit them.
 #
-# NOTE: Browser binaries (Chromium) are NOT installed here.
-#       Each bench's Layer 3 setup installs browsers as needed.
+# NOTE: Browser binaries are installed into a shared global cache path
+#       ($PLAYWRIGHT_BROWSERS_PATH, default /ms-playwright) so all dev benches
+#       inherit Chromium without putting the download in Layer 3.
 #
 # Categories:
 #   1. Browser Automation MCP Servers (npm) — no browsers, just the servers
@@ -29,6 +30,7 @@ set -e
 # ========================================
 DEBUG="${DEBUG:-1}"
 COMMAND_TIMEOUT="${COMMAND_TIMEOUT:-120}"  # 2 minutes per command
+PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.58.1}"
 
 log_debug() {
     if [ "$DEBUG" = "1" ]; then
@@ -126,6 +128,11 @@ fi
 log_info "Installing npm global packages..."
 
 # --- Browser Automation MCP Servers (no browsers) ---
+log_info "  Installing Playwright CLI ${PLAYWRIGHT_VERSION}..."
+if ! run_with_timeout "$COMMAND_TIMEOUT" "Playwright npm install" npm install -g "playwright@${PLAYWRIGHT_VERSION}"; then
+    log_error "Playwright CLI installation failed (continuing)"
+fi
+
 log_info "  Installing Playwright MCP server..."
 if ! run_with_timeout "$COMMAND_TIMEOUT" "Playwright MCP npm install" npm install -g @playwright/mcp@latest; then
     log_error "Playwright MCP installation failed (continuing)"
@@ -134,6 +141,14 @@ fi
 log_info "  Installing Chrome DevTools MCP server..."
 if ! run_with_timeout "$COMMAND_TIMEOUT" "Chrome DevTools MCP npm install" npm install -g chrome-devtools-mcp@latest; then
     log_error "Chrome DevTools MCP installation failed (continuing)"
+fi
+
+log_info "  Installing shared Chromium browser cache..."
+if run_with_timeout 900 "Playwright Chromium install" bash -c \
+    'mkdir -p "${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}" && chmod 1777 "${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}" && playwright install --with-deps chromium'; then
+    log_info "  ✓ Playwright Chromium installed to ${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}"
+else
+    log_error "Playwright Chromium installation failed (continuing)"
 fi
 
 # --- API Testing ---
@@ -326,9 +341,11 @@ log_info "  Contract / Mock Testing:"
 log_info "    - Pact CLI (pact)"
 log_info "    - Mockoon CLI (mockoon-cli)"
 log_info ""
-log_info "NOTE: Browser binaries (Chromium) are NOT installed."
-log_info "      Each bench's Layer 3 setup should run:"
-log_info "        npx playwright install --with-deps chromium"
+log_info "Playwright browsers path:"
+log_info "  - ${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}"
+log_info "Chromium is preinstalled in dev-bench-base."
+log_info "Projects that need a different Playwright version can still run:"
+log_info "  playwright install chromium"
 log_info ""
 log_info "Final system resource check:"
 check_system_resources

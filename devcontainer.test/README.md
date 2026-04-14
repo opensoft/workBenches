@@ -53,9 +53,9 @@ Run these tests:
 
 ```
 Layer 0: workbench-base (THIS LAYER)
-    ├─→ Layer 1a: devbench-base (Python, Node.js, AI CLIs)
-    ├─→ Layer 1b: adminbench-base (Ansible, Terraform)
-    └─→ Layer 1c: designbench-base (Design tools)
+    ├─→ Layer 1a: dev-bench-base (Python, Node.js, AI CLIs)
+    ├─→ Layer 1b: sys-bench-base (Ansible, Terraform)
+    └─→ Layer 1c: bio-bench-base (Bioinformatics tools)
 ```
 
 ## Exit Codes

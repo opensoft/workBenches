@@ -2,13 +2,15 @@ version: '3.8'
 
 services:
   test:
-    image: adminbench-base:${USER:-brett}
-    container_name: adminbench-test
+    image: sys-bench-base:${USER:-brett}
+    container_name: sysbench-test
     command: sleep infinity
     volumes:
       - ./test.sh:/test/test.sh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     working_dir: /workspace
     environment:
       - USER=${USER:-brett}
       - UID=${UID:-1000}
       - GID=${GID:-1000}
+      - DOCKER_HOST=unix:///var/run/docker.sock

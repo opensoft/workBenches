@@ -8,6 +8,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/lib/image-names.sh"
 USERNAME="${USERNAME:-$(whoami)}"
 LAYER="all"
 JSON_OUTPUT=false
@@ -210,13 +211,14 @@ check_layer0() {
 }
 
 # ========================================
-# LAYER 1a: devbench-base
+# LAYER 1a: dev-bench-base
 # ========================================
 
 check_layer1a() {
-    local image="devbench-base:latest"
+    local image
+    image=$(resolve_existing_image "$(family_base_image dev)" "$(legacy_family_base_image dev 2>/dev/null || true)" || true)
 
-    if ! docker image inspect "$image" >/dev/null 2>&1; then
+    if [ -z "$image" ]; then
         echo "  Layer 1a image ($image) not found — skipping"
         return
     fi
@@ -252,18 +254,19 @@ check_layer1a() {
 }
 
 # ========================================
-# LAYER 1b: adminbench-base
+# LAYER 1b: sys-bench-base
 # ========================================
 
 check_layer1b() {
-    local image="adminbench-base:latest"
+    local image
+    image=$(resolve_existing_image "$(family_base_image sys)" "$(legacy_family_base_image sys 2>/dev/null || true)" || true)
 
-    if ! docker image inspect "$image" >/dev/null 2>&1; then
+    if [ -z "$image" ]; then
         echo "  Layer 1b image ($image) not found — skipping"
         return
     fi
 
-    print_layer_header "Layer 1b: Admin/DevOps Base" "$image"
+    print_layer_header "Layer 1b: Sys/DevOps Base" "$image"
 
     report_tool "terraform" \
         "$(container_version "$image" "terraform version | head -1")" \
@@ -327,13 +330,14 @@ check_layer1b() {
 }
 
 # ========================================
-# LAYER 1c: biobench-base
+# LAYER 1c: bio-bench-base
 # ========================================
 
 check_layer1c() {
-    local image="biobench-base:latest"
+    local image
+    image=$(resolve_existing_image "$(family_base_image bio)" "$(legacy_family_base_image bio 2>/dev/null || true)" || true)
 
-    if ! docker image inspect "$image" >/dev/null 2>&1; then
+    if [ -z "$image" ]; then
         echo "  Layer 1c image ($image) not found — skipping"
         return
     fi

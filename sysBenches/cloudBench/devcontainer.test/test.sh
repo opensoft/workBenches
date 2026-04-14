@@ -50,7 +50,7 @@ check "Teleport tsh" "tsh version"
 check "Teleport tctl" "tctl version"
 
 echo
-echo "Layer 1b Tools (from adminbench-base):"
+echo "Layer 1b Tools (from sys-bench-base):"
 check "Terraform" "terraform version"
 check "kubectl" "kubectl version --client"
 check "AWS CLI" "aws --version"

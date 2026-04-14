@@ -1,6 +1,6 @@
 #!/bin/bash
 # Layer 1a Test Script
-# Tests devbench-base image for developer tools
+# Tests dev-bench-base Layer 3 image for developer tools
 
 set -e
 

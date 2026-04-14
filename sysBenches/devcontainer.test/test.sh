@@ -22,7 +22,7 @@ check() {
 }
 
 echo "=========================================="
-echo "Layer 1b Admin Bench Test Suite"
+echo "Layer 1b Sys Bench Test Suite"
 echo "=========================================="
 echo
 
@@ -46,10 +46,20 @@ check "gcloud CLI" "gcloud version"
 
 echo
 echo "Monitoring & Utilities:"
+check "Docker CLI" "docker --version"
+check "Docker daemon" "docker version"
 check "promtool" "promtool --version"
 check "yq" "yq --version"
 check "lazydocker" "lazydocker --version"
 check "jq" "jq --version"
+
+echo
+echo "Inherited AI Tooling:"
+check "Claude Code" "command -v claude"
+check "Codex" "command -v codex"
+check "Gemini" "command -v gemini"
+check "OpenCode" "command -v opencode"
+check "yolo alias" "zsh -ic 'alias yolo' | grep -q 'claude --dangerously-skip-permissions --teammate-mode tmux'"
 
 echo
 echo "User & Environment:"

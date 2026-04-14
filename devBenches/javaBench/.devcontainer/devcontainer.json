@@ -1,7 +1,9 @@
 {
-    "name": "Java Development Bench",
+    "name": "devBenches / javaBench",
     "initializeCommand": "bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base java-bench:latest",
-    "image": "java-bench:${localEnv:USER}",
+    "dockerComposeFile": "docker-compose.yml",
+    "service": "java-bench",
+    "shutdownAction": "stopCompose",
     "customizations": {
         "vscode": {
             "settings": {
@@ -38,6 +40,7 @@
         "MAVEN_OPTS": "-Dmaven.repo.local=/workspace/m2repo"
     },
     "remoteUser": "${localEnv:USER}",
+    "updateRemoteUserUID": false,
     "workspaceFolder": "/workspace",
     "mounts": [
         "source=javabench-zshhistory,target=/home/${localEnv:USER}/.zsh_history,type=volume",

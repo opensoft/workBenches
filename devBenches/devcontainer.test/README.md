@@ -1,6 +1,6 @@
 # Layer 1a Test Environment
 
-Test harness for `devbench-base:$USER` - the developer tools layer extending Layer 0.
+Test harness for `dev-bench-base:$USER` - the Layer 3 user image built on top of the developer tools layer.
 
 ## What This Tests
 
@@ -19,8 +19,10 @@ Layer 1a adds developer tools on top of Layer 0:
 # 1. Create .env file
 cp .env.example .env
 
-# 2. Ensure Layer 1 image exists
-cd ../../base-image && ./build.sh --user brett && cd ../../devcontainer.test
+# 2. Ensure the Layer 3 test image exists
+cd ../../base-image && ./build.sh
+bash ../../scripts/ensure-layer3.sh --base dev-bench-base:latest
+cd ../devcontainer.test
 
 # 3. Start test container
 docker compose up -d
@@ -47,7 +49,8 @@ The `test.sh` script validates:
 ## When to Use
 
 Run these tests:
-- After rebuilding Layer 1: `cd devBenches/base-image && ./build.sh --user brett`
+- After rebuilding Layer 1a: `cd devBenches/base-image && ./build.sh`
+- After rebuilding the user test layer: `bash scripts/ensure-layer3.sh --base dev-bench-base:latest`
 - Before making changes to developer tools
 - To validate AI CLI installations
 - When troubleshooting development tool issues
@@ -57,7 +60,7 @@ Run these tests:
 
 ```
 Layer 0: workbench-base (system tools)
-    └─→ Layer 1a: devbench-base (THIS LAYER)
+    └─→ Layer 1a: dev-bench-base (THIS LAYER)
             ├─→ Layer 2: frappe-bench
             ├─→ Layer 2: java-bench
             └─→ Layer 2: flutter-bench
@@ -70,7 +73,7 @@ Layer 0: workbench-base (system tools)
 
 ## Notes
 
-- This container uses the pre-built `devbench-base:$USER` image
+- This container uses the pre-built `dev-bench-base:$USER` image
 - No building occurs during testing
 - Tests run quickly (<15 seconds)
 - User must match host UID/GID in .env

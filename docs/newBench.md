@@ -10,7 +10,7 @@ All benches use a layered Docker image system with runtime user mounts:
 
 ```
 Layer 0: workbench-base:latest     — Ubuntu 24.04, system tools, AI CLIs
-Layer 1: devbench-base:latest      — Python, Node.js, dev tools
+Layer 1: dev-bench-base:latest     — Python, Node.js, dev tools
 Layer 2: {name}-bench:latest       — Bench-specific tools (user-agnostic)
 Layer 3: {name}-bench:{username}   — User creation (built automatically)
 Runtime: devcontainer.json mounts  — User credentials, shell config, AI auth
@@ -47,8 +47,8 @@ Location: `devBenches/{yourBench}/Dockerfile.layer2`
 
 ```dockerfile
 # Layer 2: {Your} Bench Image
-# Extends Layer 1 (devbench-base) with {your}-specific tools
-FROM devbench-base:latest
+# Extends Layer 1 (dev-bench-base) with {your}-specific tools
+FROM dev-bench-base:latest
 
 # Container version labels
 LABEL layer="2"
@@ -124,6 +124,7 @@ Copy the complete template below — do not remove any standard mount:
         "SHELL": "/bin/zsh"
     },
     "remoteUser": "${localEnv:USER}",
+    "updateRemoteUserUID": false,
     "workspaceFolder": "/workspace",
     "mounts": [
         // =============================================
@@ -217,6 +218,7 @@ Include:
 4. **Never use docker-compose for single-service benches** — use `image` + `mounts` pattern
 5. **Always include `initializeCommand`** — this triggers Layer 3 build
 6. **Always match host user** — `remoteUser` must be `${localEnv:USER}`
+7. **Always disable VS Code UID rewriting** — set `"updateRemoteUserUID": false` when using Layer 3
 7. **Put shell config in /etc/skel/** — Layer 3's `useradd -m` copies it to user home
 
 ## Common Mistakes

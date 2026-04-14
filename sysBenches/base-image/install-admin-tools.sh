@@ -1,14 +1,14 @@
 #!/bin/bash
-# Admin/DevOps Tools Installation Script
+# Sys/DevOps Tools Installation Script
 # Version: 1.0.0
 #
 # This script installs all sysadmin and DevOps CLI tools
-# for adminbench-base image.
+# for sys-bench-base image.
 
 set -e
 
 echo "========================================="
-echo "Installing Admin/DevOps Tools"
+echo "Installing Sys/DevOps Tools"
 echo "========================================="
 
 # ========================================
@@ -93,12 +93,6 @@ apt-get update && apt-get install -y ansible
 ansible --version
 
 # ========================================
-# CONTAINER & ORCHESTRATION
-# ========================================
-
-echo "Skipping docker-compose (docker already provides this)..."
-
-# ========================================
 # MONITORING & OBSERVABILITY
 # ========================================
 
@@ -131,7 +125,7 @@ rm lazydocker_${LAZYDOCKER_VERSION}_Linux_x86_64.tar.gz
 lazydocker --version
 
 echo "========================================="
-echo "Admin/DevOps Tools Installation Complete!"
+echo "Sys/DevOps Tools Installation Complete!"
 echo "========================================="
 echo ""
 echo "Installed tools:"
@@ -144,7 +138,6 @@ echo "  - AWS CLI $(aws --version)"
 echo "  - Azure CLI"
 echo "  - Google Cloud SDK"
 echo "  - Ansible $(ansible --version | head -1)"
-echo "  - docker-compose"
 echo "  - promtool"
 echo "  - yq"
 echo "  - lazydocker"

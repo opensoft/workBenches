@@ -212,7 +212,7 @@ async function checkBench(benchName: string, expectedUrl?: string): Promise<Comp
   const possiblePaths = [
     resolve(projectRoot, benchName),
     resolve(projectRoot, `devBenches/${benchName}`),
-    resolve(projectRoot, `adminBenches/${benchName}`),
+    resolve(projectRoot, `sysBenches/${benchName}`),
   ];
 
   for (const benchPath of possiblePaths) {
@@ -228,15 +228,18 @@ async function checkBench(benchName: string, expectedUrl?: string): Promise<Comp
           }
         }
 
-        // Check if setup commands exist
-        const benchNameLower = benchName.toLowerCase().replace('bench', '');
-        const expectedCommand = `new-${benchNameLower}-project`;
-        const hasCommand = await commandExists(expectedCommand);
+        // Check if bench has been set up (has devcontainer infrastructure or Docker image)
+        const hasDevcontainer = await dirExists(resolve(benchPath, '.devcontainer'))
+          || await dirExists(resolve(benchPath, 'devcontainer.example'));
+        const hasDockerfile = await fileExists(resolve(benchPath, 'Dockerfile.layer2'));
+        const hasSetupScript = await fileExists(resolve(benchPath, 'setup.sh'))
+          || await fileExists(resolve(benchPath, 'build-layer.sh'))
+          || await fileExists(resolve(benchPath, 'scripts/build-layer.sh'));
 
-        if (hasCommand) {
+        if (hasDevcontainer || hasDockerfile || hasSetupScript) {
           return 'installed';
         }
-        return 'needs_creds'; // Installed but not set up
+        return 'needs_creds'; // Repo cloned but no bench infrastructure found
       }
     }
   }

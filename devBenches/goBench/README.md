@@ -167,7 +167,7 @@ Auto-forwarded ports: `3000`, `8080`, `8081`, `9090`
 
 ## 🔧 **Container Specs**
 - **Base**: Ubuntu 24.04 LTS (via workbench-base)
-- **Layer 1**: devbench-base (Python, Node.js, AI tools)
+- **Layer 1**: dev-bench-base (Python, Node.js, AI tools)
 - **Layer 2**: go-bench (Go 1.22+ and tools)
 - **Size**: ~4GB (Layer 2 only)
 - **Build time**: 5-8 minutes (Layer 2 only)

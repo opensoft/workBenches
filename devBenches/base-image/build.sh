@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build script for Layer 1a: Developer Base Image
-# Creates: devbench-base:latest (user-agnostic)
+# Creates: dev-bench-base:latest (user-agnostic)
 
 set -e
 
@@ -10,6 +10,11 @@ echo "=========================================="
 echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$REPO_DIR/scripts/lib/image-names.sh"
+
+CANONICAL_IMAGE="$(family_base_image dev)"
+LEGACY_IMAGE="$(legacy_family_base_image dev)"
 cd "$SCRIPT_DIR"
 
 # Parse arguments (--user is accepted but ignored for backward compat)
@@ -21,7 +26,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "Configuration:"
-echo "  Tag: devbench-base:latest (user-agnostic)"
+echo "  Tag: $CANONICAL_IMAGE (user-agnostic)"
+echo "  Legacy alias: $LEGACY_IMAGE"
 echo ""
 
 # Check if Layer 0 exists
@@ -35,14 +41,16 @@ if ! docker image inspect "workbench-base:latest" >/dev/null 2>&1; then
 fi
 
 # Build the image
-echo "Building devbench-base:latest..."
+echo "Building $CANONICAL_IMAGE..."
 docker build \
-    -t "devbench-base:latest" \
+    -t "$CANONICAL_IMAGE" \
     .
+tag_family_base_legacy_alias dev
 
 echo ""
 echo "✓ Layer 1a built successfully!"
-echo "  Image: devbench-base:latest"
+echo "  Image: $CANONICAL_IMAGE"
+echo "  Legacy alias: $LEGACY_IMAGE"
 echo ""
 echo "Next step: Build bench-specific images"
 echo "  cd ../cppBench"

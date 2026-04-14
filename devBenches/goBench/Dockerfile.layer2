@@ -1,9 +1,10 @@
 # Layer 2: Go Bench Image
-# Extends Layer 1a (devbench-base) with Go-specific tools
+# Extends Layer 1a (dev-bench-base) with Go-specific tools
 # Includes: Go 1.22+, gopls, delve, golangci-lint, and 25+ Go tools
 # For Go cloud-native development: microservices, APIs, CLI tools
 
-FROM devbench-base:latest
+ARG BASE_IMAGE=dev-bench-base:latest
+FROM ${BASE_IMAGE}
 
 # Container version labels
 LABEL layer="2"

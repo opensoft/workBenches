@@ -2,26 +2,39 @@
 
 ## Overview
 
-WorkBenches uses a **3-layer Docker image architecture** to minimize build times, maximize reusability, and maintain clear separation of concerns. Each layer builds upon the previous one, creating a dependency chain from system tools → category-specific tools → specialized bench tools.
+WorkBenches uses a **4-layer logical Docker image architecture** to minimize build times, maximize reusability, and maintain clear separation of concerns. Layers 0-2 are shared, user-agnostic images tagged `:latest`. Layer 3 is a thin per-user image built on top of any Layer 2 bench.
 
 ```
+┌─────────────────────────────────────────────────────────────┐
+│ Layer 3: User Personalization                              │
+│ (<bench>:<username>)                                       │
+│ - Host-matched user account (UID/GID)                      │
+│ - Home directory from /etc/skel                            │
+│ - User-specific ownership fixes                            │
+│ Base Image: Specific Layer 2 image                         │
+└─────────────────────────────────────────────────────────────┘
+                          │
 ┌─────────────────────────────────────────────────────────────┐
 │ Layer 2: Specific Bench Tools                              │
 │ (frappeBench, cloudBench, etc.)                             │
 │ - Technology-specific tools                                 │
 │ - Diagnostic utilities                                      │
 │ - Workspace-specific configurations                         │
-│ Base Image: Layer 1a or 1b                                  │
+│ Base Image: Layer 1a, 1b, or 1c                             │
 └─────────────────────────────────────────────────────────────┘
                           │
 ┌─────────────────────────────────────────────────────────────┐
 │ Layer 1: Category Base Images                              │
 │ ┌──────────────────────┐ ┌──────────────────────────────┐  │
-│ │ Layer 1a: devBench   │ │ Layer 1b: adminBench         │  │
+│ │ Layer 1a: devBench   │ │ Layer 1b: sysBench           │  │
 │ │ - Python & Node.js   │ │ - Admin & DevOps tools       │  │
 │ │ - Dev tools          │ │ - Read-only inspection       │  │
 │ │ - Yarn, Corepack     │ │ - "Discovery & Connection"   │  │
-│ └──────────────────────┘ └──────────────────────────────┘  │
+│ └──────────────────────┘ ┌──────────────────────────────┐  │
+│                          │ Layer 1c: bioBench           │  │
+│                          │ - Bioinformatics base tools  │  │
+│                          │ - Miniconda + Node.js        │  │
+│                          └──────────────────────────────┘  │
 │ Base Image: Layer 0                                         │
 └─────────────────────────────────────────────────────────────┘
                           │
@@ -31,7 +44,7 @@ WorkBenches uses a **3-layer Docker image architecture** to minimize build times
 │ - System utilities (git, vim, curl)                        │
 │ - Modern CLI tools (zoxide, fzf, bat)                      │
 │ - AI coding CLIs (Claude, Codex, Gemini, Copilot, etc.)   │
-│ - User setup (matched UID/GID)                             │
+│ - Shell defaults staged into /etc/skel                     │
 │ - Zsh with Oh-My-Zsh                                        │
 │ Base Image: ubuntu:24.04                                    │
 └─────────────────────────────────────────────────────────────┘
@@ -41,10 +54,10 @@ WorkBenches uses a **3-layer Docker image architecture** to minimize build times
 
 ## Layer 0: System Base (`workbench-base`)
 
-**Purpose**: Universal system foundation for all workbenches  
-**Location**: `workBenches/base-image/`  
-**Image**: `workbench-base:{USERNAME}`  
-**Base**: `ubuntu:24.04`  
+**Purpose**: Universal system foundation for all workbenches
+**Location**: `workBenches/base-image/`
+**Image**: `workbench-base:latest`
+**Base**: `ubuntu:24.04`
 **Size**: ~5GB
 
 ### What Belongs Here
@@ -98,7 +111,7 @@ WorkBenches uses a **3-layer Docker image architecture** to minimize build times
 
 ```bash
 cd workBenches/base-image
-./build.sh brett  # Replace with your username
+./build.sh
 ```
 
 **Build Once**: This image rarely changes. Rebuild only when:
@@ -113,12 +126,12 @@ cd workBenches/base-image
 
 Layer 1 splits into two branches based on use case:
 
-### Layer 1a: Development Base (`devbench-base`)
+### Layer 1a: Development Base (`dev-bench-base`)
 
 **Purpose**: Tools for software development  
 **Location**: `workBenches/devBenches/base-image/`  
-**Image**: `devbench-base:{USERNAME}`  
-**Base**: `workbench-base:{USERNAME}`  
+**Image**: `dev-bench-base:latest`
+**Base**: `workbench-base:latest`
 **Size**: ~5.8GB
 
 #### What Belongs Here
@@ -132,6 +145,7 @@ Layer 1 splits into two branches based on use case:
 - Node: Global package manager setup
 - uv (fast Python package installer)
 - Git credential helper integration
+- Shared Playwright Chromium cache at `/ms-playwright`
 
 ✅ **Shell enhancements**:
 - Force zsh when bash is requested
@@ -149,7 +163,7 @@ Note: AI coding assistants are inherited from Layer 0 (workbench-base) and avail
 
 ```bash
 cd workBenches/devBenches/base-image
-./build.sh brett  # Replace with your username
+./build.sh
 ```
 
 **Rebuild When**:
@@ -158,13 +172,13 @@ cd workBenches/devBenches/base-image
 
 ---
 
-### Layer 1b: Admin Base (`adminbench-base`)
+### Layer 1b: Sys Base (`sys-bench-base`)
 
 **Purpose**: Administrative and DevOps visibility tools  
 **Philosophy**: **"Discovery & Connection"** - Read-only troubleshooting at 2 AM  
-**Location**: `workBenches/adminBenches/base-image/`  
-**Image**: `adminbench-base:{USERNAME}`  
-**Base**: `workbench-base:{USERNAME}`  
+**Location**: `workBenches/sysBenches/base-image/`
+**Image**: `sys-bench-base:latest`
+**Base**: `workbench-base:latest`
 **Size**: ~4.5GB
 
 #### What Belongs Here
@@ -207,8 +221,8 @@ cd workBenches/devBenches/base-image
 #### Building Layer 1b
 
 ```bash
-cd workBenches/adminBenches/base-image
-./build.sh brett  # Replace with your username
+cd workBenches/sysBenches/base-image
+./build.sh
 ```
 
 **Rebuild When**:
@@ -221,16 +235,16 @@ cd workBenches/adminBenches/base-image
 ## Layer 2: Specialized Bench Tools
 
 **Purpose**: Technology-specific and diagnostic tools  
-**Builds On**: Layer 1a (dev) or Layer 1b (admin)  
+**Builds On**: Layer 1a (dev) or Layer 1b (sys/ops)  
 **Size**: Adds ~200-500MB to base image
 
 ### Development Benches (Layer 1a + Layer 2)
 
 #### frappeBench Example
 
-**Location**: `workBenches/devBenches/frappeBench/`  
-**Image**: `frappe-bench:{USERNAME}`  
-**Base**: `devbench-base:{USERNAME}`  
+**Location**: `workBenches/devBenches/frappeBench/`
+**Image**: `frappe-bench:latest`
+**Base**: `dev-bench-base:latest`
 **Adds**:
 
 ```dockerfile
@@ -279,9 +293,9 @@ nginx-debug, frappe-doctor, redis-monitor, check-workers
 
 #### cloudBench Example
 
-**Location**: `workBenches/adminBenches/cloudBench/`  
-**Image**: `cloud-bench:{USERNAME}`  
-**Base**: `adminbench-base:{USERNAME}`  
+**Location**: `workBenches/sysBenches/cloudBench/`
+**Image**: `cloud-bench:latest`
+**Base**: `sys-bench-base:latest`
 **Philosophy**: **"Action & Change"** - Tools that modify infrastructure  
 **Adds**:
 
@@ -329,7 +343,7 @@ Is it for software development?
     Is it a language/runtime?
     (Python, Node.js)
         ↓ YES
-        Layer 1a: devbench-base
+        Layer 1a: dev-bench-base
     
     Is it specific to one tech stack?
     (Frappe, Flutter, .NET tools)
@@ -341,12 +355,38 @@ Is it for infrastructure/DevOps?
     Is it read-only inspection?
     (kubectl get, terraform show, aws s3 ls)
         ↓ YES
-        Layer 1b: adminbench-base
+        Layer 1b: sys-bench-base
     
     Does it modify infrastructure?
     (terraform apply, kubectl apply, helm install)
         ↓ YES
         Layer 2: Specific bench (cloudBench, etc.)
+```
+
+User-specific accounts, home directories, and UID/GID matching do not belong in Layers 0-2. Those are handled by Layer 3.
+
+---
+
+## Layer 3: User Personalization
+
+**Purpose**: Thin user-specific wrapper for any Layer 2 bench
+**Location**: `workBenches/user-layer/`
+**Image**: `<bench>:<username>`
+**Base**: `<bench>:latest`
+**Size**: Adds ~100-300MB
+
+### What Belongs Here
+
+✅ Host-matched user and group creation (`UID`, `GID`, username)
+✅ Home directory creation and shell defaults copied from `/etc/skel`
+✅ User-specific shell home and ownership fixes
+✅ Optional ownership fixes for bench-specific directories
+
+### Build Layer 3
+
+```bash
+cd workBenches
+bash scripts/ensure-layer3.sh --base frappe-bench:latest --user "$(whoami)"
 ```
 
 ---
@@ -360,38 +400,43 @@ Images must be built in dependency order:
 ```bash
 # 1. Build Layer 0 (once)
 cd workBenches/base-image
-./build.sh brett
+./build.sh
 
 # 2. Build Layer 1a OR 1b (based on need)
 # For development:
 cd workBenches/devBenches/base-image
-./build.sh brett
+./build.sh
 
-# For admin:
-cd workBenches/adminBenches/base-image
-./build.sh brett
+# For sys benches:
+cd workBenches/sysBenches/base-image
+./build.sh
 
-# 3. Build Layer 2 (your specific bench)
+# 3. Build your bench
 cd workBenches/devBenches/frappeBench
+./build-layer.sh      # builds Layer 2 and ensures Layer 3
+
+# Or rebuild only Layer 2 when you do not need a user-layer refresh
 ./build-layer2.sh
 ```
 
 ### Image Tags
 
-All images are tagged with your username to allow parallel development:
+Layers 0-2 are shared images tagged `:latest`. Layer 3 uses `:<username>`:
 
 ```bash
-workbench-base:brett        # Layer 0
-devbench-base:brett         # Layer 1a
-adminbench-base:brett       # Layer 1b
-frappe-bench:brett          # Layer 2
-cloud-bench:brett           # Layer 2
+workbench-base:latest       # Layer 0
+dev-bench-base:latest       # Layer 1a
+sys-bench-base:latest       # Layer 1b
+frappe-bench:latest         # Layer 2
+cloud-bench:latest          # Layer 2
+frappe-bench:brett          # Layer 3
+cloud-bench:brett           # Layer 3
 ```
 
-**Why username tags?**
-- Multiple developers can work on different image versions
-- Test changes without affecting teammates
-- Easy to identify who built what
+**Why Layer 3 username tags?**
+- Multiple developers can share the same Layer 2 image while keeping separate users and home directories
+- User-specific ownership stays correct without duplicating the heavier Layers 0-2
+- Devcontainers can rebuild only the thin user layer when the host user changes
 
 ---
 
@@ -407,7 +452,7 @@ cloud-bench:brett           # Layer 2
 
 **Layer 1a/1b** (occasional):
 - Language version updates (Python, Node.js)
-- New admin tools
+- New sys/ops tools
 
 **Layer 2** (frequent):
 - Framework updates
@@ -420,13 +465,16 @@ Docker caches layers, so rebuilding is fast:
 
 ```bash
 # Only Layer 2 rebuilds if base hasn't changed
-cd frappeBench
+cd workBenches/devBenches/frappeBench
 ./build-layer2.sh  # ~2-3 minutes
 
+# Full bench rebuild (Layer 2 + Layer 3)
+./build-layer.sh
+
 # Full stack rebuild
-cd ../../base-image && ./build.sh brett      # ~8 minutes
-cd ../devBenches/base-image && ./build.sh brett  # ~5 minutes
-cd ../frappeBench && ./build-layer2.sh       # ~2 minutes
+cd workBenches/base-image && ./build.sh
+cd ../devBenches/base-image && ./build.sh
+cd ../frappeBench && ./build-layer.sh
 ```
 
 ---
@@ -445,7 +493,7 @@ cd workBenches/devBenches/devcontainer.test
 ./test-layer1.sh
 
 # Test Layer 1b
-cd workBenches/adminBenches/devcontainer.test
+cd workBenches/sysBenches/devcontainer.test
 ./test-layer1.sh
 
 # Test Layer 2 (example)
@@ -463,25 +511,27 @@ Tests verify:
 
 ## Adding New Tools
 
-### Example: Adding a New AI CLI (Layer 1a)
+### Example: Adding a New AI CLI (Layer 0)
 
 ```bash
 # 1. Edit installation script
-vim workBenches/devBenches/base-image/install-ai-clis.sh
+vim workBenches/base-image/install-ai-clis.sh
 
 # Add:
 echo "Installing NewAI CLI..."
 npm install -g @newai/cli
 
-# 2. Rebuild Layer 1a
-cd workBenches/devBenches/base-image
-./build.sh brett
+# 2. Rebuild Layer 0, then dependent layers
+cd workBenches/base-image
+./build.sh
+cd ../devBenches/base-image
+./build.sh
 
 # 3. Test
-docker run --rm devbench-base:brett newai --version
+docker run --rm workbench-base:latest newai --version
 
-# 4. All Layer 2 images inherit it automatically
-cd ../../frappeBench
+# 4. Rebuild any Layer 2 images that should inherit it
+cd ../frappeBench
 ./build-layer2.sh  # Now includes NewAI CLI
 ```
 
@@ -498,7 +548,7 @@ vim workBenches/devBenches/frappeBench/Dockerfile.layer2
 ./build-layer2.sh
 
 # 3. Test
-docker run --rm frappe-bench:brett psql --version
+docker run --rm frappe-bench:latest psql --version
 ```
 
 ---
@@ -509,14 +559,14 @@ docker run --rm frappe-bench:brett psql --version
 
 - Put universal tools in lower layers (Layer 0/1)
 - Put specialized tools in Layer 2
-- Use username tags for parallel development
+- Use `:<username>` only for Layer 3 user images
 - Test each layer independently
 - Document new tools in layer-specific README
 
 ### ❌ DON'T
 
 - Install framework-specific tools in Layer 0
-- Mix dev and admin tools in same layer
+- Mix dev and sys/ops tools in same layer
 - Skip testing after rebuilds
 - Modify lower layers frequently (causes cascading rebuilds)
 - Use `latest` tags in production
@@ -526,7 +576,7 @@ docker run --rm frappe-bench:brett psql --version
 ## Related Documentation
 
 - [frappeBench Architecture](devBenches/frappeBench/docs/ARCHITECTURE.md) - Layer 2 Frappe-specific docs
-- [Admin Tools Philosophy](adminBenches/README.md) - Discovery vs. Action
+- [Sys Tools Philosophy](sysBenches/README.md) - Discovery vs. Action
 
 ---
 
@@ -538,6 +588,7 @@ docker run --rm frappe-bench:brett psql --version
 | Layer 1a | Dev tools | Occasional (weeks) | +1GB = ~6GB |
 | Layer 1b | Admin tools | Occasional (weeks) | +2.7GB = ~4.5GB |
 | Layer 2 | Specialized | Frequent (days) | +0.3GB = ~6.1GB |
+| Layer 3 | User personalization | Frequent (seconds/minutes) | +0.1GB = ~6.2GB |
 
 **Total workspace startup**: < 10 seconds (using pre-built images)  
 **Build from scratch**: ~15-20 minutes (all layers)  

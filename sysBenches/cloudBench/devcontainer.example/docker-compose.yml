@@ -1,12 +1,18 @@
+name: sys-benches
+
 services:
-  workspace:
-    image: cloud-bench:brett
+  cloud-bench:
+    image: cloud-bench:${USER:-brett}
+    container_name: cloud-bench
     command: sleep infinity
     volumes:
       # Mount full host home directory
-      - ~:/home/brett:cached
+      - ~:/home/${USER:-brett}:cached
       - .:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
     working_dir: /workspace
     environment:
-      - USER=brett
+      - USER=${USER:-brett}
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    privileged: true
     network_mode: host

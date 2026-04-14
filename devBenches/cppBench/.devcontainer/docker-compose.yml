@@ -1,81 +1,20 @@
-version: '3.8'
+name: dev-benches
 
 services:
-  cppbench:
+  cpp-bench:
     env_file: ../.env
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BASE_IMAGE: cpp-bench:${USER}
-        USERNAME: ${USER}
-        USER_UID: ${UID:-1000}
-        USER_GID: ${GID:-1000}
-    image: cpp-bench:${USER}
-    container_name: cpp_bench
-    
-    volumes:
-      # User projects as main workspace
-      - ~/projects:/workspace:cached
-      
-      # VSCode Server persistence
-      - cppbench-vscode-server:/home/${USER}/.vscode-server
-      - cppbench-bash-history:/home/${USER}/.bash_history
-      
-      # Shell configurations
-      - ~/.zshrc:/home/${USER}/.zshrc:ro
-      - ~/.bashrc:/home/${USER}/.bashrc:ro
-      - ~/.oh-my-zsh:/home/${USER}/.oh-my-zsh:ro
-      - ~/.p10k.zsh:/home/${USER}/.p10k.zsh:ro
-      
-      # C++ specific
-      - cppbench-conan:/home/${USER}/.conan2
-      
-      # AI Coding Assistant Credentials (centralized in workBenches/docker-compose.mounts.yml)
-      - ~/.claude:/home/${USER}/.claude:cached
-      - ~/.codex:/home/${USER}/.codex:cached
-      - ~/.gemini:/home/${USER}/.gemini:cached
-      - ~/.cursor:/home/${USER}/.cursor:cached
-      - ~/.copilot:/home/${USER}/.copilot:cached
-      - ~/.opencode:/home/${USER}/.opencode:cached
-      - ~/.letta:/home/${USER}/.letta:cached
-      - ~/.config/opencode:/home/${USER}/.config/opencode:cached
-      
-      # GitHub CLI & Git credentials
-      - ~/.config/gh:/home/${USER}/.config/gh:ro
-      - ~/.gitconfig:/home/${USER}/.gitconfig:ro
-      - ~/.git-credentials:/home/${USER}/.git-credentials:ro
-      
-      # SSH keys (read-only)
-      - ~/.ssh:/home/${USER}/.ssh:ro
-    
-    # Overrides default command so things don't shut down after the process ends
+    image: cpp-bench:${USER:-brett}
+    container_name: cpp-bench
     command: sleep infinity
-    
-    # Use "forwardPorts" in **devcontainer.json** to forward an app port locally
-    ports:
-      - "8000:8000"
-      - "8080:8080"
-      - "3200:3000"
-      - "5200:5000"
-      - "9090:9090"
-    
-    # Security and debugging settings
+    working_dir: /workspace
+    tty: true
     cap_add:
       - SYS_PTRACE
     security_opt:
       - seccomp:unconfined
-    
-    # Environment variables
+    ulimits:
+      core: -1
     environment:
       - VCPKG_ROOT=/opt/vcpkg
       - CC=/usr/bin/gcc-12
       - CXX=/usr/bin/g++-12
-    
-    # Keep container running
-    tty: true
-
-volumes:
-  cppbench-vscode-server:
-  cppbench-bash-history:
-  cppbench-conan:

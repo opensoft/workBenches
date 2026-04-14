@@ -51,6 +51,19 @@ export const StatusBar: Component<StatusBarProps> = (props) => {
       {/* Empty line */}
       <text></text>
 
+      {/* Status legend */}
+      <box flexDirection="row">
+        <text fg="#69FF94">{'✓ Installed'}</text>
+        <text fg="#888888">{'  │  '}</text>
+        <text fg="#FFFF6B">{'⚠ Needs setup'}</text>
+        <text fg="#888888">{' (repo cloned but bench commands not configured — run setup)'}</text>
+        <text fg="#888888">{'  │  '}</text>
+        <text fg="#FF6B6B">{'✗ Not installed'}</text>
+      </box>
+
+      {/* Empty line */}
+      <text></text>
+
       {/* Status line */}
       <box flexDirection="row">
         <text fg="#FF6BFF">

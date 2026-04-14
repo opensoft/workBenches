@@ -141,7 +141,7 @@ async function uninstallBench(benchName: string): Promise<InstallResult> {
   const possiblePaths = [
     resolve(projectRoot, benchName),
     resolve(projectRoot, `devBenches/${benchName}`),
-    resolve(projectRoot, `adminBenches/${benchName}`),
+    resolve(projectRoot, `sysBenches/${benchName}`),
   ];
 
   for (const path of possiblePaths) {
