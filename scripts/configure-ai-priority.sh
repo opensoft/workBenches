@@ -24,7 +24,6 @@ DEFAULT_PROVIDERS=(
     "claude"
     "gemini"
     "copilot"
-    "grok"
     "meta"
     "kimi2"
     "deepseek"
@@ -36,7 +35,6 @@ declare -A PROVIDER_NAMES=(
     ["claude"]="Claude (Anthropic)"
     ["gemini"]="Google Gemini"
     ["copilot"]="GitHub Copilot"
-    ["grok"]="xAI Grok"
     ["meta"]="Meta Llama"
     ["kimi2"]="Moonshot Kimi 2"
     ["deepseek"]="DeepSeek"
@@ -48,7 +46,6 @@ declare -A PROVIDER_CLI=(
     ["claude"]="claude"
     ["gemini"]="gemini"
     ["copilot"]="copilot"
-    ["grok"]="grok"
     ["meta"]="llama"
     ["kimi2"]="kimi"
     ["deepseek"]="deepseek"
@@ -80,7 +77,18 @@ get_status_symbol() {
 # Load current priority configuration
 load_priority_config() {
     if [ -f "$PRIORITY_CONFIG" ]; then
-        mapfile -t CURRENT_PRIORITY < "$PRIORITY_CONFIG"
+        local -a configured_priority
+        local provider
+
+        mapfile -t configured_priority < "$PRIORITY_CONFIG"
+        CURRENT_PRIORITY=()
+
+        # Keep only providers that are still supported.
+        for provider in "${configured_priority[@]}"; do
+            if printf '%s\n' "${DEFAULT_PROVIDERS[@]}" | grep -q "^${provider}$"; then
+                CURRENT_PRIORITY+=("$provider")
+            fi
+        done
         
         # Validate and merge with defaults
         # Add any new providers not in config

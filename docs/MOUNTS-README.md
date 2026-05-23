@@ -4,7 +4,7 @@
 
 **This is the canonical reference** for all volume mounts used across workBench containers.
 
-Every bench's `devcontainer.json` should include the **Standard Mount Set** below, plus any bench-specific mounts. When adding a new AI CLI to Layer 0, update this file, `docker-compose.mounts.yml`, and all bench `devcontainer.json` files.
+Every bench's `devcontainer.json` should include the **Standard Mount Set** below, plus any bench-specific mounts. When adding a new AI/spec CLI to a base image, update this file, `docker-compose.mounts.yml`, and all bench `devcontainer.json` files.
 
 All mounts use devcontainer.json `mounts` syntax with `${localEnv:USER}` and `${localEnv:HOME}` variables.
 
@@ -47,9 +47,12 @@ Overrides the /etc/skel defaults from Layer 0 with the host user's actual shell 
 
 ### AI Credential Mounts
 
-Each AI CLI is installed in Layer 0 but stores credentials on the host. These mounts provide authentication inside the container.
+AI/spec CLIs are installed in the appropriate base image and store credentials on the host. These mounts provide authentication inside the container.
 
 ```jsonc
+// Shared agent workflow rules and skills
+"source=${localEnv:HOME}/.agents,target=/home/${localEnv:USER}/.agents,type=bind,consistency=cached",
+
 // Claude Code (Anthropic) — native installer
 // Auth: ~/.claude/ (session, config), ~/.claude.json (legacy config)
 "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind,consistency=cached",
@@ -60,9 +63,6 @@ Each AI CLI is installed in Layer 0 but stores credentials on the host. These mo
 
 // Google Gemini — @google/gemini-cli (npm)
 "source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini,type=bind,consistency=cached",
-
-// Grok (xAI) — @xai-org/grok-cli (npm)
-"source=${localEnv:HOME}/.grok,target=/home/${localEnv:USER}/.grok,type=bind,readonly",
 
 // GitHub Copilot — @githubnext/github-copilot-cli (npm)
 "source=${localEnv:HOME}/.copilot-cli,target=/home/${localEnv:USER}/.copilot-cli,type=bind,readonly",
@@ -87,20 +87,20 @@ Each AI CLI is installed in Layer 0 but stores credentials on the host. These mo
 
 ## AI Credential Summary
 
-Reference mapping each Layer 0 AI CLI to its credential path and mount type.
+Reference mapping each installed AI/spec CLI to its credential path and mount type.
 
 **CLI** → **Install Method** → **Credential Path** → **Mount Type**
 
+- Shared agent workflow → host-managed files → `~/.agents/` → cached
 - Claude Code → native installer → `~/.claude/`, `~/.claude.json` → cached
 - OpenAI Codex → npm (`@openai/codex`) → `~/.codex/` → cached
 - Google Gemini → npm (`@google/gemini-cli`) → `~/.gemini/` → cached
-- Grok → npm (`@xai-org/grok-cli`) → `~/.grok/` → readonly
 - GitHub Copilot → npm (`@githubnext/github-copilot-cli`) → `~/.copilot-cli/` → readonly
-- OpenCode → built from source (Opensoft/opencode fork) → config baked into image via `/etc/skel` → no mount needed
+- OpenCode → built from upstream source → config baked into image via `/etc/skel` → no mount needed
 - oh-my-opencode → built from source (darrenhinde fork) → plugin at `/opt/opencode/plugin` → no mount needed
 - Letta Code → npm (`@letta-ai/letta-code`) → uses env vars or interactive auth → no mount needed
-- OpenSpec → npm (`@fission-ai/openspec`) → no credential mount needed
-- spec-kit → uv (`specify-cli`) → no credential mount needed
+- OpenSpec → npm (`@fission-ai/openspec`) in Layer 1a dev benches → no credential mount needed
+- spec-kit → uv (`specify-cli`) in Layer 1a dev benches → no credential mount needed
 - NotebookLM CLI → uv (`notebooklm-py`) → `~/.notebooklm/` → cached (auth on host via browser)
 - NotebookLM MCP → uv (`notebooklm-mcp-cli`) → `~/.notebooklm-mcp-cli/` → cached (auth on host via browser)
 
@@ -111,8 +111,8 @@ These tools are fully installed in the image and either use API keys from enviro
 - **OpenCode** — config copied to `/etc/skel/.config/opencode/` during build
 - **oh-my-opencode** — plugin installed at `/opt/opencode/plugin/`
 - **Letta Code** — uses environment variable or interactive auth
-- **OpenSpec** — no persistent credentials
-- **spec-kit** — no persistent credentials
+- **OpenSpec** — no persistent credentials (developer benches only)
+- **spec-kit** — no persistent credentials (developer benches only)
 
 ### Environment Variable Auth (inherited from host shell profile)
 
@@ -145,7 +145,7 @@ Also sets `containerEnv`: `"DOCKER_HOST": "unix:///var/run/docker.sock"`
 ### frappeBench
 Uses docker-compose (multi-service architecture with MariaDB, Redis, Nginx). Mounts defined in `docker-compose.yml`.
 
-### cppBench, goBench, pythonBench, flutterBench, gentecBench
+### cppBench, goBench, pyBench, flutterBench, gentecBench
 No additional bench-specific mounts beyond the standard set.
 
 ---
@@ -157,12 +157,12 @@ Credentials and configs that should never be written from inside the container:
 - Git config (`.gitconfig`)
 - SSH keys (`.ssh`)
 - GitHub CLI (`.config/gh`)
-- Grok credentials (`.grok`)
 - Copilot credentials (`.copilot-cli`)
 - Shell configs (`.zshrc`, `.oh-my-zsh`, `.p10k.zsh`, `.bashrc`)
 
 ### Cached Mounts
 AI tool credentials use `consistency=cached` for performance — frequently accessed, rarely modified:
+- Shared agent workflow (`.agents/`)
 - Claude (`.claude/`, `.claude.json`)
 - Codex (`.codex/`)
 - Gemini (`.gemini/`)
@@ -172,14 +172,14 @@ AI tool credentials use `consistency=cached` for performance — frequently acce
 
 ## Adding a New AI CLI
 
-When a new AI CLI is added to Layer 0 (`base-image/install-ai-clis.sh`):
+When a new AI/spec CLI is added to a base image:
 
-1. **Install** the CLI in `install-ai-clis.sh`
+1. **Install** the CLI in the owning base image (`base-image/install-ai-clis.sh` or `devBenches/base-image/Dockerfile`)
 2. **Determine** if it needs a credential mount (check where it stores auth)
 3. **Update this file** — add to AI Credential Summary and Standard Mount Set
 4. **Update** `docker-compose.mounts.yml` (reference template)
 5. **Update** every bench `devcontainer.json` with the new mount
-6. **Update** `CONTAINER-ARCHITECTURE.md` Layer 0 section
+6. **Update** `CONTAINER-ARCHITECTURE.md` for the correct layer
 
 ---
 
@@ -212,7 +212,7 @@ Otherwise the container may fail to start with a file-not-found error.
 
 ## Related Documentation
 
-- `CONTAINER-ARCHITECTURE.md` — Layer 0 tool inventory and overall architecture
+- `CONTAINER-ARCHITECTURE.md` — base-image tool inventory and overall architecture
 - `ai-credentials-management.md` — Credential setup and rotation
 - `scripts/AI-PROVIDER-SETUP.md` — AI provider priority configuration
-- `base-image/install-ai-clis.sh` — AI CLI installation script (source of truth for what's installed)
+- `base-image/install-ai-clis.sh` and `devBenches/base-image/Dockerfile` — install sources of truth

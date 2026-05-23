@@ -1,6 +1,6 @@
 #!/bin/bash
 # Shared AI CLI Installation Script
-# Version: 2.0.2
+# Version: 2.0.3
 #
 # USER-AGNOSTIC: Runs as root, installs to system-wide paths.
 # All npm globals go to /usr/local (default root prefix).
@@ -9,11 +9,12 @@
 # Claude Code goes to /usr/local/bin.
 #
 # Installs:
-#   - OpenCode (from Opensoft/opencode fork)
+#   - OpenCode (built from the upstream anomalyco/opencode repository)
 #   - oh-my-opencode plugin (from git: darrenhinde/oh-my-opencode)
 #     Includes built-in agents: Sisyphus, oracle, librarian, explore, frontend, etc.
 #   - Auth plugins (opencode-gemini-auth, opencode-openai-codex-auth)
 #   - Other AI CLIs (Codex, Gemini, Copilot, etc.)
+#   - Google Antigravity CLI (agy)
 #   - Claude Code (via native installer, not npm)
 #
 # Note: OpenAgents agent files (openagent.md, opencoder.md) are copied via
@@ -69,6 +70,22 @@ run_with_timeout() {
     fi
 }
 
+ensure_system_uv_tool_paths() {
+    mkdir -p "$SYSTEM_UV_TOOL_DIR" "$SYSTEM_UV_TOOL_BIN_DIR" /root/.local/share/uv
+    ln -sfn "$SYSTEM_UV_TOOL_DIR" /root/.local/share/uv/tools
+}
+
+run_system_uv_tool_install() {
+    local description="$1"
+    shift
+
+    ensure_system_uv_tool_paths
+    run_with_timeout "$COMMAND_TIMEOUT" "$description" env \
+        UV_TOOL_BIN_DIR="$SYSTEM_UV_TOOL_BIN_DIR" \
+        UV_TOOL_DIR="$SYSTEM_UV_TOOL_DIR" \
+        uv tool install "$@" --python-preference system
+}
+
 check_system_resources() {
     log_debug "Checking system resources..."
     log_debug "Memory: $(free -h | head -2)"
@@ -92,6 +109,8 @@ check_system_resources
 
 export BUN_INSTALL="${BUN_INSTALL:-/opt/bun}"
 export PATH="/opt/bun/bin:$PATH"
+SYSTEM_UV_TOOL_DIR="${SYSTEM_UV_TOOL_DIR:-/opt/uv/tools}"
+SYSTEM_UV_TOOL_BIN_DIR="${SYSTEM_UV_TOOL_BIN_DIR:-/usr/local/bin}"
 
 log_debug "Verifying Bun installation"
 if which bun >/dev/null 2>&1; then
@@ -99,11 +118,6 @@ if which bun >/dev/null 2>&1; then
     log_debug "Bun version: $(bun --version)"
 else
     log_error "Bun not found in PATH (expected at /opt/bun/bin)"
-fi
-
-log_info "Installing OpenSpec..."
-if ! run_with_timeout "$COMMAND_TIMEOUT" "OpenSpec npm install" npm install -g @fission-ai/openspec@latest; then
-    log_error "OpenSpec installation failed (continuing)"
 fi
 
 log_info "Installing Claude Code CLI (native installer)..."
@@ -142,21 +156,27 @@ if ! run_with_timeout "$COMMAND_TIMEOUT" "Gemini npm install" npm install -g @go
     log_error "Gemini CLI installation failed (continuing)"
 fi
 
+log_info "Installing Google Antigravity CLI..."
+if run_with_timeout "300" "Antigravity CLI install" bash -c 'curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin'; then
+    if [ -x "$HOME/.local/bin/agy" ] && [ ! -x /usr/local/bin/agy ]; then
+        cp "$HOME/.local/bin/agy" /usr/local/bin/agy
+        chmod +x /usr/local/bin/agy
+    fi
+    log_info "Antigravity CLI installed to $(command -v agy || printf '/usr/local/bin/agy')"
+else
+    log_error "Antigravity CLI installation failed (continuing)"
+fi
+
 log_info "Installing GitHub Copilot CLI..."
 if ! run_with_timeout "$COMMAND_TIMEOUT" "GitHub Copilot npm install" npm install -g @githubnext/github-copilot-cli; then
     log_error "GitHub Copilot installation failed (continuing)"
 fi
 
-log_info "Installing Grok CLI (xAI)..."
-if ! run_with_timeout "$COMMAND_TIMEOUT" "Grok npm install" npm install -g @xai-org/grok-cli; then
-    log_error "Grok CLI not available via npm (skipping)"
-fi
-
-log_info "Installing OpenCode AI (from Opensoft fork)..."
-# OpenCode: open source AI coding agent (https://github.com/Opensoft/opencode)
-# Install from Opensoft fork instead of npm (sst version)
-log_debug "Cloning OpenCode repository from Opensoft..."
-if ! run_with_timeout "$COMMAND_TIMEOUT" "OpenCode git clone" git clone --depth 1 https://github.com/Opensoft/opencode.git /tmp/opencode; then
+log_info "Installing OpenCode AI (from upstream source)..."
+# OpenCode: open source AI coding agent (https://github.com/anomalyco/opencode)
+# Build directly from upstream source.
+log_debug "Cloning OpenCode repository from upstream..."
+if ! run_with_timeout "$COMMAND_TIMEOUT" "OpenCode git clone" git clone --depth 1 https://github.com/anomalyco/opencode.git /tmp/opencode; then
     log_error "Failed to clone OpenCode repository (skipping OpenCode installation)"
 else
     cd /tmp/opencode
@@ -270,10 +290,13 @@ else
     log_info "Installing auth plugins..."
     cd /opt/opencode/plugin
     if command -v bun >/dev/null 2>&1; then
+        # Use bare package names. The OpenCode plugin loader has had issues
+        # with dist-tag suffixes like @latest; pin concrete versions only if
+        # the current release regresses.
         log_debug "Installing Gemini auth plugin via bun..."
-        run_with_timeout "$COMMAND_TIMEOUT" "Gemini auth plugin" bun add opencode-gemini-auth@1.3.6 || log_error "Gemini auth plugin install failed"
+        run_with_timeout "$COMMAND_TIMEOUT" "Gemini auth plugin" bun add opencode-gemini-auth || log_error "Gemini auth plugin install failed"
         log_debug "Installing Codex auth plugin via bun..."
-        run_with_timeout "$COMMAND_TIMEOUT" "Codex auth plugin" bun add opencode-openai-codex-auth@4.2.0 || log_error "Codex auth plugin install failed"
+        run_with_timeout "$COMMAND_TIMEOUT" "Codex auth plugin" bun add opencode-openai-codex-auth || log_error "Codex auth plugin install failed"
     else
         log_debug "Bun not available for auth plugins, skipping"
     fi
@@ -293,8 +316,7 @@ fi
 log_info "Installing NotebookLM tools..."
 # notebooklm-py: Python CLI + API for NotebookLM (notebooklm command)
 # Base install only — no browser deps needed in container; auth mounted from host
-if run_with_timeout "$COMMAND_TIMEOUT" "notebooklm-py install" uv tool install notebooklm-py --python-preference system; then
-    [ -f "$HOME/.local/bin/notebooklm" ] && ln -sf "$HOME/.local/bin/notebooklm" /usr/local/bin/notebooklm
+if run_system_uv_tool_install "notebooklm-py install" notebooklm-py; then
     log_info "notebooklm-py CLI installed (notebooklm)"
 else
     log_error "notebooklm-py installation failed (continuing)"
@@ -302,11 +324,9 @@ fi
 
 # notebooklm-mcp-cli: MCP server + nlm CLI for AI agent integration
 # Auth is done on the host (requires browser); tokens mounted into container
-# uv tool install puts binaries in ~/.local/bin (root), so symlink to /usr/local/bin
-if run_with_timeout "$COMMAND_TIMEOUT" "NotebookLM MCP CLI install" uv tool install notebooklm-mcp-cli --python-preference system; then
-    for bin in nlm notebooklm-mcp; do
-        [ -f "$HOME/.local/bin/$bin" ] && ln -sf "$HOME/.local/bin/$bin" "/usr/local/bin/$bin"
-    done
+# Install into a shared uv tools directory instead of root's home so bench
+# users can execute the launchers from /usr/local/bin.
+if run_system_uv_tool_install "NotebookLM MCP CLI install" notebooklm-mcp-cli; then
     log_info "NotebookLM MCP CLI installed (nlm, notebooklm-mcp)"
 else
     log_error "NotebookLM MCP CLI installation failed (continuing)"
@@ -317,7 +337,7 @@ log_info "AI CLI Tools Installation Complete!"
 log_info "=========================================="
 log_info ""
 
-required_clis=(claude codex gemini opencode)
+required_clis=(claude codex gemini agy opencode)
 missing_clis=()
 for cli in "${required_clis[@]}"; do
     if ! command -v "$cli" >/dev/null 2>&1; then
@@ -331,12 +351,11 @@ if [ "${#missing_clis[@]}" -gt 0 ]; then
 fi
 
 log_info "Installed tools:"
-log_info "  - OpenSpec"
 log_info "  - Claude Code (claude) [native installer]"
 log_info "  - OpenAI Codex (codex)"
 log_info "  - Google Gemini (gemini)"
-log_info "  - GitHub Copilot (copilot)"
-log_info "  - Grok (grok)"
+log_info "  - Google Antigravity CLI (agy)"
+log_info "  - GitHub Copilot CLI (github-copilot-cli)"
 log_info "  - OpenCode (opencode)"
 log_info "  - oh-my-opencode (darrenhinde fork with built-in agents)"
 log_info "  - Letta Code (letta)"
