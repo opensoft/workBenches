@@ -10,7 +10,8 @@ Each subfolder is a separate git repository containing a complete development en
 - **`dotNetBench/`** - .NET development environment with DevContainer  
 - **`flutterBench/`** - Flutter/Dart development environment with DevContainer
 - **`javaBench/`** - Java development environment with DevContainer
-- **`pythonBench/`** - Python development environment with DevContainer
+- **`phpBench/`** - PHP development environment with DevContainer
+- **`pyBench/`** - Python development environment with DevContainer
 
 ## Layered Containers (Current Standard)
 
@@ -19,6 +20,10 @@ All benches are moving to the layered image model described in `workBenches/docs
 - **Layer 1a**: `dev-bench-base:latest`
 - **Layer 2**: `<bench>-bench:latest`
 - **Layer 3**: `<bench>-bench:{user}` (user personalization)
+
+Layer 1a carries the shared developer tooling used by all devBenches, including:
+- `sonar-scanner` - SonarScanner CLI for project analysis uploads to SonarQube Server or SonarQube Cloud
+- `sonar` - SonarQube CLI for issue/project workflows, secrets scanning, and agent integrations
 
 ## Legacy Monolithic DevContainers (Deprecated)
 

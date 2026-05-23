@@ -114,7 +114,7 @@ init_components() {
 
     # If no benches found, add some defaults
     if [ ${#bench_items[@]} -eq 0 ]; then
-        bench_items=("flutterBench" "javaBench" "dotNetBench" "pythonBench")
+        bench_items=("flutterBench" "javaBench" "dotNetBench" "pyBench")
         for bench in "${bench_items[@]}"; do
             component_checked["bench_$bench"]=false
             component_description["bench_$bench"]="$bench"

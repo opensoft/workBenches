@@ -12,9 +12,9 @@
       "path": "sysBenches/cloudBench",
       "description": "Cloud infrastructure and operations tools"
     },
-    "pythonBench": {
+    "pyBench": {
       "url": "git@github.com:opensoft/pythonBench.git", 
-      "path": "devBench/pythonBench",
+      "path": "devBenches/pyBench",
       "description": "Python development environment and tools"
     },
     "javaBench": {

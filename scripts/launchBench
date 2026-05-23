@@ -128,6 +128,9 @@ get_dev_bench_description() {
         cpp)
             echo "C++ development environment with GCC, CMake, debugging tools, and performance profilers"
             ;;
+        php)
+            echo "PHP development environment with Composer, PHPUnit, Xdebug, and static analysis tools"
+            ;;
         *)
             echo "Development environment for $bench_type"
             ;;

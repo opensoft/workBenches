@@ -50,7 +50,7 @@ Project Description: $project_description
 Available environments:
 $available_benches
 
-Please respond with ONLY the bench name (like 'flutterBench', 'pythonBench', etc.) that best matches the project requirements. If uncertain, respond with 'UNCERTAIN'."
+Please respond with ONLY the bench name (like 'flutterBench', 'pyBench', etc.) that best matches the project requirements. If uncertain, respond with 'UNCERTAIN'."
     
     # Try to get AI response using Warp AI or fallback methods
     local ai_response=""

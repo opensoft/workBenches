@@ -125,6 +125,7 @@ analyze_project_structure() {
     local java_confidence=0
     local dotnet_confidence=0
     local cpp_confidence=0
+    local php_confidence=0
     
     # Flutter/Dart indicators
     if [ -f "$project_path/pubspec.yaml" ]; then
@@ -161,6 +162,20 @@ analyze_project_structure() {
     if [ -f "$project_path/manage.py" ] || [ -f "$project_path/wsgi.py" ]; then
         python_confidence=$((python_confidence + 20))
         log_info "   🌐 Django/Flask indicators found: +20 confidence" >&2
+    fi
+    
+    # PHP indicators
+    if [ -f "$project_path/composer.json" ]; then
+        php_confidence=95
+        log_info "PHP Composer project detected: 95% confidence" >&2
+    elif [ -f "$project_path/phpunit.xml" ] || [ -f "$project_path/phpunit.xml.dist" ]; then
+        php_confidence=85
+        log_info "PHP PHPUnit project detected: 85% confidence" >&2
+    fi
+    
+    if [ -d "$project_path/src" ] && find "$project_path/src" -name "*.php" -type f | head -1 >/dev/null 2>&1; then
+        php_confidence=$((php_confidence + 15))
+        log_info "   PHP source structure found: +15 confidence" >&2
     fi
     
     # Java indicators
@@ -216,7 +231,12 @@ analyze_project_structure() {
     
     if [ $python_confidence -gt $max_confidence ]; then
         max_confidence=$python_confidence
-        best_bench="pythonBench"
+        best_bench="pyBench"
+    fi
+    
+    if [ $php_confidence -gt $max_confidence ]; then
+        max_confidence=$php_confidence
+        best_bench="phpBench"
     fi
     
     if [ $java_confidence -gt $max_confidence ]; then
@@ -239,6 +259,7 @@ analyze_project_structure() {
     log_section "📊 Analysis Results" >&2
     echo "   🎯 Flutter/Dart: ${flutter_confidence}%" >&2
     echo "   🐍 Python: ${python_confidence}%" >&2
+    echo "   PHP: ${php_confidence}%" >&2
     echo "   ☕ Java: ${java_confidence}%" >&2
     echo "   🔷 .NET: ${dotnet_confidence}%" >&2
     echo "   ⚙️ C++: ${cpp_confidence}%" >&2
@@ -377,7 +398,7 @@ if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo ""
     echo "Supported project types:"
     echo "  - flutterBench: Flutter/Dart projects"
-    echo "  - pythonBench: Python projects"
+    echo "  - pyBench: Python projects"
     echo "  - javaBench: Java/Maven/Gradle projects"
     echo "  - dotNetBench: .NET/C# projects"
     echo "  - cppBench: C++/CMake projects"

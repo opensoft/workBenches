@@ -110,6 +110,9 @@ get_bench_description() {
         cpp)
             echo "C++ development environment with GCC, CMake, debugging tools, and performance profilers"
             ;;
+        php)
+            echo "PHP development environment with Composer, PHPUnit, Xdebug, and static analysis tools"
+            ;;
         *)
             echo "Development environment for $bench_type"
             ;;
@@ -190,6 +193,8 @@ analyze_environment() {
     # Project type detection
     if [ -f "pubspec.yaml" ]; then
         analysis+="Project type: Flutter (pubspec.yaml detected)\n"
+    elif [ -f "composer.json" ] || [ -f "phpunit.xml" ] || [ -n "$(find . -maxdepth 2 -name "*.php" -type f 2>/dev/null | head -1)" ]; then
+        analysis+="Project type: PHP (Composer/PHP files detected)\n"
     elif [ -f "package.json" ]; then
         analysis+="Project type: Node.js/JavaScript (package.json detected)\n"
     elif [ -f "*.csproj" ] || [ -f "*.sln" ]; then
@@ -323,7 +328,7 @@ ${YELLOW}USAGE:${NC}
     launchDevBench [BENCH_TYPE|REQUEST] [OPTIONS]
 
 ${YELLOW}ARGUMENTS:${NC}
-    BENCH_TYPE        Direct bench selection (flutter, dotnet, python, java, cpp)
+    BENCH_TYPE        Direct bench selection (flutter, dotnet, python, java, cpp, php)
     REQUEST           Natural language request (AI mode only)
                       Examples: "I want to work on Flutter mobile app"
                                 "Debug a .NET API with database"
