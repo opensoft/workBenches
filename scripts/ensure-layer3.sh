@@ -78,6 +78,90 @@ if ! docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
     exit 1
 fi
 
+copy_image_file() {
+    local image="$1"
+    local file="$2"
+    local output="$3"
+    local safe_image
+    local check_name
+    local status=0
+
+    safe_image="${image//[^a-zA-Z0-9_.-]/-}"
+    check_name="ensure-layer3-check-${safe_image}-$$-${RANDOM}"
+
+    if ! timeout 30s docker create --name "$check_name" "$image" >/dev/null; then
+        status=1
+    elif ! timeout 30s docker cp "$check_name:$file" "$output" >/dev/null 2>&1; then
+        status=1
+    fi
+
+    docker rm -f "$check_name" >/dev/null 2>&1 || true
+    return "$status"
+}
+
+image_has_passwd_user() {
+    local image="$1"
+    local username="$2"
+    local passwd_file
+    local status
+
+    passwd_file="$(mktemp)"
+    if copy_image_file "$image" "/etc/passwd" "$passwd_file"; then
+        awk -F: -v username="$username" '$1 == username { found = 1 } END { exit !found }' "$passwd_file"
+        status=$?
+    else
+        status=1
+    fi
+    rm -f "$passwd_file"
+    return "$status"
+}
+
+image_user_primary_gid_matches() {
+    local image="$1"
+    local username="$2"
+    local gid="$3"
+    local passwd_file
+    local status
+
+    passwd_file="$(mktemp)"
+    if copy_image_file "$image" "/etc/passwd" "$passwd_file"; then
+        awk -F: -v username="$username" -v gid="$gid" '$1 == username && $4 == gid { found = 1 } END { exit !found }' "$passwd_file"
+        status=$?
+    else
+        status=1
+    fi
+    rm -f "$passwd_file"
+    return "$status"
+}
+
+image_group_gid_has_member() {
+    local image="$1"
+    local gid="$2"
+    local username="$3"
+    local group_file
+    local status
+
+    group_file="$(mktemp)"
+    if copy_image_file "$image" "/etc/group" "$group_file"; then
+        awk -F: -v gid="$gid" -v username="$username" '
+            $3 == gid {
+                split($4, members, ",")
+                for (i in members) {
+                    if (members[i] == username) {
+                        found = 1
+                    }
+                }
+            }
+            END { exit !found }
+        ' "$group_file"
+        status=$?
+    else
+        status=1
+    fi
+    rm -f "$group_file"
+    return "$status"
+}
+
 # Fast path: check if user image exists and is newer than base
 if [ "$FORCE" = false ] && docker image inspect "$USER_IMAGE" >/dev/null 2>&1; then
     BASE_CREATED=$(docker inspect --format '{{.Created}}' "$BASE_IMAGE" 2>/dev/null)
@@ -87,8 +171,10 @@ if [ "$FORCE" = false ] && docker image inspect "$USER_IMAGE" >/dev/null 2>&1; t
         # Compare timestamps (ISO 8601 strings sort lexicographically)
         if [[ "$USER_CREATED" > "$BASE_CREATED" ]]; then
             # Verify the user actually exists inside the image
-            if docker run --rm "$USER_IMAGE" getent passwd "$USERNAME" >/dev/null 2>&1; then
-                if [ -n "$DOCKER_SOCKET_GID" ] && ! docker run --rm --entrypoint "" "$USER_IMAGE" sh -c "id -G $USERNAME | tr ' ' '\n' | grep -qx '$DOCKER_SOCKET_GID'" >/dev/null 2>&1; then
+            if image_has_passwd_user "$USER_IMAGE" "$USERNAME"; then
+                if [ -n "$DOCKER_SOCKET_GID" ] && \
+                    ! image_user_primary_gid_matches "$USER_IMAGE" "$USERNAME" "$DOCKER_SOCKET_GID" && \
+                    ! image_group_gid_has_member "$USER_IMAGE" "$DOCKER_SOCKET_GID" "$USERNAME"; then
                     echo -e "${YELLOW}⟳ Docker socket group '$DOCKER_SOCKET_GID' missing from ${USER_IMAGE}, rebuilding...${NC}"
                 else
                     echo -e "${GREEN}✓ ${USER_IMAGE} is up-to-date (newer than ${BASE_IMAGE})${NC}"

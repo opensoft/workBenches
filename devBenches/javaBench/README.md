@@ -16,6 +16,8 @@ A comprehensive Java development environment using layered Docker containers.
 - VS Code Java extension pack support
 - Maven and Gradle caching for faster builds
 - Persistent M2 repository at `/workspace/m2repo`
+- SonarScanner CLI and SonarQube CLI from the shared devBench base
+- JaCoCo CLI/agent plus Maven and Gradle Sonar coverage helpers
 
 ### Ports
 - `8080` - Spring Boot default port
@@ -89,6 +91,46 @@ gradle-build  # alias for: gradle build
 gradle-test
 ```
 
+### SonarCloud With Coverage
+
+Store `SONARQUBE_TOKEN` outside `.codex`, for example in
+`~/.config/sonarqube/sonar.env`. The Java helpers read the same file
+used by the Codex MCP setup and export `SONAR_TOKEN` for scanner tools.
+
+For Maven projects, run from the project root:
+
+```bash
+sonarcloud-java-maven
+```
+
+This runs JaCoCo `prepare-agent`, `verify`, JaCoCo `report`, and the Sonar Maven
+scanner. The default JaCoCo XML path is `target/site/jacoco/jacoco.xml`, which
+SonarCloud detects automatically.
+
+For Gradle projects, the project must apply both plugins:
+
+```groovy
+plugins {
+    id "jacoco"
+    id "org.sonarqube" version "7.3.0.8198"
+}
+
+jacocoTestReport {
+    reports {
+        xml.required = true
+    }
+}
+```
+
+Then run:
+
+```bash
+sonarcloud-java-gradle
+```
+
+This runs `test`, `jacocoTestReport`, and `sonarqube` using `./gradlew` when it
+exists, otherwise the system `gradle`.
+
 ### Spring Boot Projects
 
 ```bash
@@ -137,9 +179,11 @@ Maven is configured to use `/workspace/m2repo` for the local repository, persist
 - `mvn-package` - Clean and package
 - `mvn-install` - Clean and install
 - `mvn-test` - Run tests
+- `mvn-sonar-coverage` - Run Maven tests, JaCoCo XML coverage, and Sonar scan
 - `gradle-build` - Build Gradle project
 - `gradle-clean` - Clean Gradle project
 - `gradle-test` - Run Gradle tests
+- `gradle-sonar-coverage` - Run Gradle tests, JaCoCo XML coverage, and Sonar scan
 - `spring-run` - Run Spring Boot app
 
 ## Troubleshooting

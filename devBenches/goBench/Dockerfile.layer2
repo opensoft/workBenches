@@ -9,7 +9,7 @@ FROM ${BASE_IMAGE}
 # Container version labels
 LABEL layer="2"
 LABEL layer.name="go-bench"
-LABEL layer.version="2.0.0"
+LABEL layer.version="2.0.1"
 LABEL layer.description="Go development with gopls, delve, and cloud-native tools (user-agnostic)"
 LABEL bench.type="go"
 
@@ -94,6 +94,9 @@ RUN go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest && \
 # Install testing and performance tools
 RUN go install github.com/rakyll/hey@latest
 
+COPY files/sonarcloud-go-coverage /usr/local/bin/sonarcloud-go-coverage
+RUN chmod +x /usr/local/bin/sonarcloud-go-coverage
+
 # Install release and build tools
 RUN go install github.com/goreleaser/goreleaser@latest
 
@@ -123,6 +126,7 @@ RUN echo '' >> /etc/skel/.zshrc && \
     echo 'alias got="go test ./..."' >> /etc/skel/.zshrc && \
     echo 'alias gotv="go test -v ./..."' >> /etc/skel/.zshrc && \
     echo 'alias gotc="go test -cover ./..."' >> /etc/skel/.zshrc && \
+    echo 'alias go-sonar-coverage="sonarcloud-go-coverage"' >> /etc/skel/.zshrc && \
     echo 'alias gob="go build"' >> /etc/skel/.zshrc && \
     echo 'alias gor="go run"' >> /etc/skel/.zshrc && \
     echo 'alias gom="go mod tidy"' >> /etc/skel/.zshrc && \

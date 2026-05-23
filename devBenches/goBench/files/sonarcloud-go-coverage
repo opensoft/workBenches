@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SECRETS_FILE="${SONARQUBE_ENV_FILE:-$HOME/.config/sonarqube/sonar.env}"
+if [[ ! -f "$SECRETS_FILE" && -f "$HOME/.config/ledgerlinc/secrets/sonar.env" ]]; then
+    SECRETS_FILE="$HOME/.config/ledgerlinc/secrets/sonar.env"
+fi
+
+if [[ -f "$SECRETS_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$SECRETS_FILE"
+    set +a
+fi
+
+if [[ -z "${SONAR_TOKEN:-}" && -n "${SONARQUBE_TOKEN:-}" ]]; then
+    export SONAR_TOKEN="$SONARQUBE_TOKEN"
+fi
+
+if [[ -z "${SONAR_HOST_URL:-}" && -n "${SONARQUBE_URL:-}" ]]; then
+    export SONAR_HOST_URL="$SONARQUBE_URL"
+fi
+
+export SONAR_HOST_URL="${SONAR_HOST_URL:-https://sonarcloud.io}"
+
+REPORT="${SONAR_GO_COVERAGE_REPORT:-coverage.out}"
+
+if [[ -z "${SONAR_TOKEN:-}" ]]; then
+    echo "Missing SONAR_TOKEN or SONARQUBE_TOKEN." >&2
+    echo "Put it in $SECRETS_FILE or export it before running this command." >&2
+    exit 2
+fi
+
+if ! command -v sonar-scanner >/dev/null 2>&1; then
+    echo "sonar-scanner is not on PATH. Rebuild/reopen the devBench base image first." >&2
+    exit 2
+fi
+
+if [[ "${SONAR_SKIP_TESTS:-0}" != "1" ]]; then
+    IFS=' ' read -r -a packages <<< "${SONAR_GO_TEST_PACKAGES:-./...}"
+    IFS=' ' read -r -a extra_args <<< "${SONAR_GO_TEST_ARGS:-}"
+    go test "${packages[@]}" \
+        -covermode="${SONAR_GO_COVERMODE:-atomic}" \
+        -coverprofile="$REPORT" \
+        "${extra_args[@]}"
+elif [[ ! -f "$REPORT" ]]; then
+    echo "SONAR_SKIP_TESTS=1 was set, but $REPORT does not exist." >&2
+    exit 2
+fi
+
+sonar-scanner -Dsonar.go.coverage.reportPaths="$REPORT" "$@"

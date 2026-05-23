@@ -44,6 +44,7 @@ This is the **ultimate Go development container** - a massive, comprehensive Ubu
 - **Network tools**: nmap, netcat, tcpdump
 - **Database clients**: PostgreSQL, MySQL, Redis, SQLite
 - **Testing tools**: k6 load testing
+- **SonarCloud coverage helper**: standard `go test -coverprofile` workflow
 - **Code quality**: staticcheck, golangci-lint, errcheck
 
 ### **VS Code Integration**
@@ -137,6 +138,7 @@ k6         # Load testing
 # Go shortcuts
 # (alias examples - these would be configured in shell)
 go run, go build, go test, go mod, etc.
+go-sonar-coverage              # go test coverage.out + sonar-scanner
 
 # Docker & Kubernetes  
 d / dc / k                   # docker/docker-compose/kubectl
@@ -147,6 +149,23 @@ ll / la / ls                # exa variants (better ls)
 cat                         # bat (syntax highlighted)
 find / grep                 # fd / ripgrep (faster)
 cd                          # zoxide (smarter)
+```
+
+## SonarCloud Coverage
+
+`sonarcloud-go-coverage` reads `SONARQUBE_TOKEN` from
+`~/.config/sonarqube/sonar.env`, runs:
+
+```bash
+go test ./... -covermode=atomic -coverprofile=coverage.out
+sonar-scanner -Dsonar.go.coverage.reportPaths=coverage.out
+```
+
+Override packages or arguments when needed:
+
+```bash
+SONAR_GO_TEST_PACKAGES="./cmd/... ./internal/..." sonarcloud-go-coverage
+SONAR_GO_TEST_ARGS="-race" sonarcloud-go-coverage
 ```
 
 ## 🌐 **Port Forwarding**
@@ -196,7 +215,7 @@ This goBench is part of the workBenches family:
 - **dotNetBench** - .NET development
 - **javaBench** - Java development
 - **frappeBench** - Frappe/ERPNext development
-- **pythonBench** - Python development
+- **pyBench** - Python development
 - **flutterBench** - Flutter development
 
 All benches share the same network and can communicate with each other!

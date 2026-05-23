@@ -15,7 +15,7 @@
 #   3. Load / Performance Testing (k6, artillery, wrk)
 #   4. Security / Vulnerability Scanning (semgrep, snyk)
 #   5. Accessibility Testing (pa11y, axe-core)
-#   6. Code Quality (shellcheck, hadolint, actionlint)
+#   6. Code Quality (shellcheck, hadolint, actionlint, SonarQube CLI, SonarScanner CLI)
 #   7. General Utilities (jq, yq, mkcert, websocat, json-server)
 #   8. Contract / Mock Testing (pact, mockoon)
 #
@@ -30,7 +30,9 @@ set -e
 # ========================================
 DEBUG="${DEBUG:-1}"
 COMMAND_TIMEOUT="${COMMAND_TIMEOUT:-120}"  # 2 minutes per command
-PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.58.1}"
+PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.60.0}"
+SONAR_SCANNER_VERSION="${SONAR_SCANNER_VERSION:-8.0.1.6346}"
+SONARQUBE_CLI_VERSION="${SONARQUBE_CLI_VERSION:-0.10.0.1266}"
 
 log_debug() {
     if [ "$DEBUG" = "1" ]; then
@@ -97,12 +99,13 @@ check_system_resources
 # ========================================
 # APT PACKAGES
 # ========================================
-log_info "Installing apt packages (jq, shellcheck, wrk)..."
+log_info "Installing apt packages (jq, shellcheck, wrk, unzip)..."
 if run_with_timeout "$COMMAND_TIMEOUT" "apt packages install" bash -c \
-    'apt-get update && export DEBIAN_FRONTEND=noninteractive && apt-get -y install --no-install-recommends jq shellcheck wrk && apt-get clean && rm -rf /var/lib/apt/lists/*'; then
+    'apt-get update && export DEBIAN_FRONTEND=noninteractive && apt-get -y install --no-install-recommends jq shellcheck wrk unzip && apt-get clean && rm -rf /var/lib/apt/lists/*'; then
     log_info "  ✓ jq $(jq --version 2>/dev/null || echo 'installed')"
     log_info "  ✓ shellcheck $(shellcheck --version 2>/dev/null | head -2 | tail -1 || echo 'installed')"
     log_info "  ✓ wrk installed"
+    log_info "  ✓ unzip installed"
 else
     log_error "apt packages installation failed (continuing)"
 fi
@@ -196,9 +199,47 @@ fi
 # ========================================
 log_info "Installing binary tools from GitHub releases..."
 
+# --- SonarScanner CLI (SonarQube Cloud / Server project analysis) ---
+log_info "  Installing SonarScanner CLI..."
+SONAR_SCANNER_PLATFORM=""
+case "$ARCH" in
+    x86_64)        SONAR_SCANNER_PLATFORM="linux-x64" ;;
+    aarch64|arm64) SONAR_SCANNER_PLATFORM="linux-aarch64" ;;
+    *)             log_error "Unsupported architecture for SonarScanner CLI: $ARCH" ;;
+esac
+
+if [ -n "$SONAR_SCANNER_PLATFORM" ] && run_with_timeout "$COMMAND_TIMEOUT" "SonarScanner CLI download" bash -c \
+    "curl -fsSL -o /tmp/sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-${SONAR_SCANNER_PLATFORM}.zip"; then
+    rm -rf /opt/sonar-scanner /opt/sonar-scanner-${SONAR_SCANNER_VERSION}-${SONAR_SCANNER_PLATFORM}
+    unzip -q /tmp/sonar-scanner.zip -d /opt
+    ln -sfn /opt/sonar-scanner-${SONAR_SCANNER_VERSION}-${SONAR_SCANNER_PLATFORM} /opt/sonar-scanner
+    ln -sfn /opt/sonar-scanner/bin/sonar-scanner /usr/local/bin/sonar-scanner
+    rm -f /tmp/sonar-scanner.zip
+    log_info "  ✓ SonarScanner CLI $(sonar-scanner --version 2>/dev/null | head -1 || echo $SONAR_SCANNER_VERSION)"
+else
+    log_error "SonarScanner CLI installation failed (continuing)"
+fi
+
+# --- SonarQube CLI beta (issue explorer, secrets scanning, agent workflows) ---
+log_info "  Installing SonarQube CLI..."
+SONARQUBE_CLI_PLATFORM=""
+case "$ARCH" in
+    x86_64)        SONARQUBE_CLI_PLATFORM="linux-x86-64" ;;
+    aarch64|arm64) SONARQUBE_CLI_PLATFORM="linux-arm64" ;;
+    *)             log_error "Unsupported architecture for SonarQube CLI: $ARCH" ;;
+esac
+
+if [ -n "$SONARQUBE_CLI_PLATFORM" ] && run_with_timeout "$COMMAND_TIMEOUT" "SonarQube CLI download" bash -c \
+    "curl -fsSL -o /usr/local/bin/sonar https://binaries.sonarsource.com/Distribution/sonarqube-cli/${SONARQUBE_CLI_VERSION}/linux/sonarqube-cli-${SONARQUBE_CLI_VERSION}-${SONARQUBE_CLI_PLATFORM}.exe"; then
+    chmod +x /usr/local/bin/sonar
+    log_info "  ✓ SonarQube CLI $(sonar --version 2>/dev/null | head -1 || echo $SONARQUBE_CLI_VERSION)"
+else
+    log_error "SonarQube CLI installation failed (continuing)"
+fi
+
 # --- Hurl (HTTP request runner) ---
 log_info "  Installing Hurl..."
-HURL_VERSION="6.0.0"
+HURL_VERSION="8.0.1"
 if run_with_timeout "$COMMAND_TIMEOUT" "Hurl download" bash -c \
     "curl -fsSL https://github.com/Orange-OpenSource/hurl/releases/download/${HURL_VERSION}/hurl-${HURL_VERSION}-${ARCH_HURL}-unknown-linux-gnu.tar.gz | tar xz -C /tmp"; then
     cp /tmp/hurl-${HURL_VERSION}-${ARCH_HURL}-unknown-linux-gnu/bin/hurl /usr/local/bin/hurl
@@ -212,7 +253,7 @@ fi
 
 # --- k6 (load testing) ---
 log_info "  Installing k6..."
-K6_VERSION="v0.56.0"
+K6_VERSION="v2.0.0"
 if run_with_timeout "$COMMAND_TIMEOUT" "k6 download" bash -c \
     "curl -fsSL https://github.com/grafana/k6/releases/download/${K6_VERSION}/k6-${K6_VERSION}-linux-${ARCH_ALT}.tar.gz | tar xz -C /tmp"; then
     cp /tmp/k6-${K6_VERSION}-linux-${ARCH_ALT}/k6 /usr/local/bin/k6
@@ -225,10 +266,14 @@ fi
 
 # --- Hadolint (Dockerfile linter) ---
 log_info "  Installing Hadolint..."
-HADOLINT_VERSION="v2.12.0"
-HADOLINT_ARCH="$ARCH"
+HADOLINT_VERSION="v2.14.0"
+case "$ARCH" in
+    x86_64)        HADOLINT_ARCH="x86_64" ;;
+    aarch64|arm64) HADOLINT_ARCH="arm64" ;;
+    *)             HADOLINT_ARCH="$ARCH" ;;
+esac
 if run_with_timeout "$COMMAND_TIMEOUT" "Hadolint download" bash -c \
-    "curl -fsSL -o /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/hadolint-Linux-${HADOLINT_ARCH}"; then
+    "curl -fsSL -o /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/hadolint-linux-${HADOLINT_ARCH}"; then
     chmod +x /usr/local/bin/hadolint
     log_info "  ✓ Hadolint $(hadolint --version 2>/dev/null || echo $HADOLINT_VERSION)"
 else
@@ -237,7 +282,7 @@ fi
 
 # --- actionlint (GitHub Actions linter) ---
 log_info "  Installing actionlint..."
-ACTIONLINT_VERSION="1.7.7"
+ACTIONLINT_VERSION="1.7.12"
 if run_with_timeout "$COMMAND_TIMEOUT" "actionlint download" bash -c \
     "curl -fsSL https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_${ARCH_ALT}.tar.gz | tar xz -C /tmp actionlint"; then
     mv /tmp/actionlint /usr/local/bin/actionlint
@@ -249,7 +294,7 @@ fi
 
 # --- yq (YAML processor) ---
 log_info "  Installing yq..."
-YQ_VERSION="v4.44.6"
+YQ_VERSION="v4.53.2"
 if run_with_timeout "$COMMAND_TIMEOUT" "yq download" bash -c \
     "curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${ARCH_ALT}"; then
     chmod +x /usr/local/bin/yq
@@ -271,7 +316,7 @@ fi
 
 # --- websocat (WebSocket testing) ---
 log_info "  Installing websocat..."
-WEBSOCAT_VERSION="v1.13.0"
+WEBSOCAT_VERSION="v1.14.1"
 WEBSOCAT_ARCH="$ARCH"
 if run_with_timeout "$COMMAND_TIMEOUT" "websocat download" bash -c \
     "curl -fsSL -o /usr/local/bin/websocat https://github.com/vi/websocat/releases/download/${WEBSOCAT_VERSION}/websocat.${WEBSOCAT_ARCH}-unknown-linux-musl"; then
@@ -283,9 +328,14 @@ fi
 
 # --- Pact CLI (contract testing) ---
 log_info "  Installing Pact CLI..."
-PACT_VERSION="2.4.7"
+PACT_VERSION="2.6.0"
+case "$ARCH" in
+    x86_64)        PACT_ARCH="x86_64" ;;
+    aarch64|arm64) PACT_ARCH="arm64" ;;
+    *)             PACT_ARCH="$ARCH_HURL" ;;
+esac
 if run_with_timeout "$COMMAND_TIMEOUT" "Pact CLI download" bash -c \
-    "curl -fsSL https://github.com/pact-foundation/pact-ruby-standalone/releases/download/v${PACT_VERSION}/pact-${PACT_VERSION}-linux-${ARCH_HURL}.tar.gz | tar xz -C /opt"; then
+    "curl -fsSL https://github.com/pact-foundation/pact-ruby-standalone/releases/download/v${PACT_VERSION}/pact-${PACT_VERSION}-linux-${PACT_ARCH}.tar.gz | tar xz -C /opt"; then
     # Pact extracts to /opt/pact — symlink binaries
     for bin in /opt/pact/bin/*; do
         ln -sf "$bin" "/usr/local/bin/$(basename "$bin")" 2>/dev/null || true
@@ -299,7 +349,7 @@ fi
 # CLEANUP
 # ========================================
 log_info "Cleaning up temporary files..."
-rm -rf /tmp/hurl-* /tmp/k6-* /tmp/actionlint* 2>/dev/null || true
+rm -rf /tmp/hurl-* /tmp/k6-* /tmp/actionlint* /tmp/sonar-scanner.zip 2>/dev/null || true
 
 # ========================================
 # SUMMARY
@@ -331,6 +381,8 @@ log_info "  Code Quality:"
 log_info "    - ShellCheck (shellcheck)"
 log_info "    - Hadolint (hadolint)"
 log_info "    - actionlint"
+log_info "    - SonarScanner CLI (sonar-scanner)"
+log_info "    - SonarQube CLI (sonar)"
 log_info "  General Utilities:"
 log_info "    - jq"
 log_info "    - yq"
