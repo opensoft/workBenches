@@ -1,6 +1,8 @@
-# Source this file from zsh to enable LedgerLinc Speckit worktree helpers.
+# Source this file from zsh to enable Speckit worktree helpers.
 #
 # Example:
-#   source /home/brett/projects/ledgerlinc/ledgerlinc-model-ocr-pipeline/.specify/shell/ct.zsh
+#   source .specify/shell/ct.zsh
 
-source /home/brett/projects/ledgerlinc/ledgerlinc-model-ocr-pipeline/.specify/shell/worktrees.sh
+_speckit_ct_dir="${${(%):-%x}:A:h}"
+source "$_speckit_ct_dir/worktrees.sh"
+unset _speckit_ct_dir

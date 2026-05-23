@@ -138,7 +138,7 @@ k6         # Load testing
 # Go shortcuts
 # (alias examples - these would be configured in shell)
 go run, go build, go test, go mod, etc.
-go-sonar-coverage              # go test coverage.out + sonar-scanner
+go-sonar-coverage              # alias for sonarcloud-go-coverage
 
 # Docker & Kubernetes  
 d / dc / k                   # docker/docker-compose/kubectl
