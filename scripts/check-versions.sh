@@ -42,20 +42,28 @@ declare -a JSON_ENTRIES=()
 # Get latest npm package version
 npm_latest() {
     local pkg="$1"
-    curl -s "https://registry.npmjs.org/$pkg/latest" 2>/dev/null | jq -r '.version // empty' 2>/dev/null || echo "unknown"
+    curl -fsSL --connect-timeout 10 --max-time 20 "https://registry.npmjs.org/$pkg/latest" 2>/dev/null \
+        | jq -r '.version // empty' 2>/dev/null || echo "unknown"
 }
 
 # Get latest GitHub release version (strips leading 'v')
 github_latest() {
     local repo="$1"
-    curl -s "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null | jq -r '.tag_name // empty' 2>/dev/null | sed 's/^v//'
+    curl -fsSL --connect-timeout 10 --max-time 20 "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \
+        | jq -r '.tag_name // empty' 2>/dev/null | sed 's/^v//'
 }
 
 # Get version from inside a container
 container_version() {
     local image="$1"
     local cmd="$2"
-    docker run --rm --entrypoint="" "$image" sh -c "$cmd" 2>/dev/null | head -1 || echo "not installed"
+    local timeout_seconds="${CONTAINER_VERSION_TIMEOUT:-90}"
+    local output
+    if output=$(timeout "${timeout_seconds}s" docker run --rm --entrypoint="" "$image" sh -c "$cmd" 2>/dev/null); then
+        printf '%s\n' "$output" | head -1
+    else
+        echo "not installed"
+    fi
 }
 
 # Extract just the version number from a version string
@@ -250,6 +258,11 @@ check_layer1a() {
     report_tool "yarn" \
         "$(container_version "$image" "yarn --version 2>/dev/null || echo n/a")" \
         "$(npm_latest "yarn")" \
+        "1a"
+
+    report_tool "gt" \
+        "$(container_version "$image" "gt --version 2>/dev/null || echo n/a")" \
+        "$(npm_latest "@withgraphite/graphite-cli")" \
         "1a"
 }
 

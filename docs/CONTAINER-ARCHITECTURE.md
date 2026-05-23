@@ -145,6 +145,7 @@ Layer 1 splits into two branches based on use case:
 - OpenSpec (`@fission-ai/openspec` via npm)
 - OpenSpec/Speckit bootstrapper (`setup-openspeckit`) for repo and user-global agent context files
 - Project-agnostic Speckit worktree helpers (`ct`, `ctp`, `ctlist`, `cta`, `ctc`, `ctg`, `cts`) via global shell startup
+- Graphite CLI (`gt`) for stacked pull request workflows
 - SonarScanner CLI (`sonar-scanner`) for SonarQube Server / Cloud project analysis
 - SonarQube CLI (`sonar`) for issue/project workflows, secrets scanning, and agent integrations
 - Git credential helper integration

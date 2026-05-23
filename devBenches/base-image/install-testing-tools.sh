@@ -29,7 +29,7 @@ set -e
 # DEBUG AND TIMEOUT CONFIGURATION
 # ========================================
 DEBUG="${DEBUG:-1}"
-COMMAND_TIMEOUT="${COMMAND_TIMEOUT:-120}"  # 2 minutes per command
+COMMAND_TIMEOUT="${COMMAND_TIMEOUT:-300}"  # 5 minutes per command; large CLI/browser downloads are network-sensitive
 PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.60.0}"
 SONAR_SCANNER_VERSION="${SONAR_SCANNER_VERSION:-8.0.1.6346}"
 SONARQUBE_CLI_VERSION="${SONARQUBE_CLI_VERSION:-0.10.0.1266}"
