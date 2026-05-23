@@ -60,10 +60,27 @@ EOF
     chmod +x "$BIN_DIR/$cli"
 done
 
+cat > "$BIN_DIR/tmux" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:-}" in
+    set-option)
+        exit 0
+        ;;
+    *)
+        echo "unexpected tmux command: $*" >&2
+        exit 1
+        ;;
+esac
+EOF
+chmod +x "$BIN_DIR/tmux"
+
 export PATH="$BIN_DIR:$PATH"
+export TMUX="${TMUX:-test-tmux}"
 
 # shellcheck source=/dev/null
-source /usr/local/share/ct/ct-functions.zsh
+source "${CT_FUNCTIONS_FILE:-/usr/local/share/ct/ct-functions.zsh}"
 
 cd "$REPO_ROOT"
 cta --claude-extra

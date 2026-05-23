@@ -402,6 +402,7 @@ if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo "  - javaBench: Java/Maven/Gradle projects"
     echo "  - dotNetBench: .NET/C# projects"
     echo "  - cppBench: C++/CMake projects"
+    echo "  - phpBench: PHP/Composer/PHPUnit projects"
     echo ""
     echo "Project metadata files (optional):"
     echo "  - .workbench"

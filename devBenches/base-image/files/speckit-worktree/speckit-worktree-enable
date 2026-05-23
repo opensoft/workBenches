@@ -124,19 +124,64 @@ write_extensions_yml() {
     fi
 
     backup_file "$path"
+    if [ -f "$path" ]; then
+        python3 - "$path" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines()
+
+hook = [
+    "- extension: git",
+    "  command: speckit.git.feature",
+    "  enabled: true",
+    "  optional: false",
+    "  prompt: Execute speckit.git.feature?",
+    "  description: Create feature checkout before specification",
+    "  condition: null",
+]
+
+def indent_of(line: str) -> str:
+    return line[: len(line) - len(line.lstrip(" "))]
+
+for index, line in enumerate(lines):
+    if line.strip() == "before_specify:":
+        child_indent = indent_of(line) + "  "
+        lines[index + 1:index + 1] = [child_indent + item for item in hook]
+        break
+else:
+    for index, line in enumerate(lines):
+        if line.strip() == "hooks:":
+            child_indent = indent_of(line) + "  "
+            lines[index + 1:index + 1] = (
+                [child_indent + "before_specify:"]
+                + [child_indent + "  " + item for item in hook]
+            )
+            break
+    else:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.extend(["hooks:", "  before_specify:"] + ["    " + item for item in hook])
+
+path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
+        return 0
+    fi
+
     cat > "$path" <<'EOF'
 installed: []
 settings:
   auto_execute_hooks: true
 hooks:
   before_specify:
-  - extension: git
-    command: speckit.git.feature
-    enabled: true
-    optional: false
-    prompt: Execute speckit.git.feature?
-    description: Create feature checkout before specification
-    condition: null
+    - extension: git
+      command: speckit.git.feature
+      enabled: true
+      optional: false
+      prompt: Execute speckit.git.feature?
+      description: Create feature checkout before specification
+      condition: null
 EOF
 }
 
@@ -144,6 +189,12 @@ write_git_config() {
     local path="$repo_root/.specify/extensions/git/git-config.yml"
 
     mkdir -p "$(dirname "$path")"
+    if [ "${GIT_CONFIG_EXISTED:-false}" = true ] && [ "$force" != true ]; then
+        echo "kept existing $path (use --force to replace)"
+        return 0
+    fi
+
+    backup_file "$path"
     cat > "$path" <<EOF
 # Git Branching Workflow Extension Configuration
 # Managed by speckit-worktree-enable. Rerun after Speckit upgrades.
@@ -166,6 +217,9 @@ auto_commit:
   default: false
 EOF
 }
+
+GIT_CONFIG_EXISTED=false
+[ -f "$repo_root/.specify/extensions/git/git-config.yml" ] && GIT_CONFIG_EXISTED=true
 
 copy_overlay_dir "$template_root/specify/extensions/git" "$repo_root/.specify/extensions/git"
 copy_overlay_dir "$template_root/specify/shell" "$repo_root/.specify/shell"

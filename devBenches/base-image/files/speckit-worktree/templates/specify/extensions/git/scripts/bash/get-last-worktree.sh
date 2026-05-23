@@ -160,7 +160,7 @@ fi
 WORKTREE_ROOT=$(resolve_worktree_root "$REPO_ROOT")
 LATEST_WORKTREE=""
 if [ -d "$WORKTREE_ROOT" ]; then
-    LATEST_WORKTREE=$(find "$WORKTREE_ROOT" -maxdepth 1 -mindepth 1 -type d -printf '%T@ %p\n' 2>/dev/null | sort -nr | awk 'NR == 1 {print $2}')
+    LATEST_WORKTREE=$(find "$WORKTREE_ROOT" -maxdepth 1 -mindepth 1 -type d -printf '%T@ %p\n' 2>/dev/null | sort -nr | sed -n '1{s/^[^ ]* //;p;}')
 fi
 
 if [ -n "$LATEST_WORKTREE" ] && [ -d "$LATEST_WORKTREE" ]; then
