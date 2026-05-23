@@ -1,0 +1,399 @@
+#!/usr/bin/env python3
+"""Install shared OpenSpec/Speckit pointers and agent helpers in a repo."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+START = "<!-- OPENSPEC-SPECKIT-GLOBAL:START -->"
+END = "<!-- OPENSPEC-SPECKIT-GLOBAL:END -->"
+
+SKILLS = [
+    "openspec-apply-change",
+    "openspec-archive-change",
+    "openspec-explore",
+    "openspec-propose",
+    "speckit-analyze",
+    "speckit-checklist",
+    "speckit-clarify",
+    "speckit-constitution",
+    "speckit-git-commit",
+    "speckit-git-feature",
+    "speckit-git-initialize",
+    "speckit-git-remote",
+    "speckit-git-validate",
+    "speckit-implement",
+    "speckit-plan",
+    "speckit-specify",
+    "speckit-tasks",
+    "speckit-taskstoissues",
+    "ct",
+    "ctp",
+    "claude-session-driver",
+    "speckit-claude-driver",
+]
+
+SUPPORTED_AGENT_CONTEXT_FILES = [
+    ("agy", "AGENTS.md"),
+    ("amp", "AGENTS.md"),
+    ("auggie", ".augment/rules/specify-rules.md"),
+    ("bob", "AGENTS.md"),
+    ("claude", "CLAUDE.md"),
+    ("codebuddy", "CODEBUDDY.md"),
+    ("codex", "AGENTS.md"),
+    ("copilot", ".github/copilot-instructions.md"),
+    ("cursor-agent", ".cursor/rules/specify-rules.mdc"),
+    ("forge", "AGENTS.md"),
+    ("gemini", "GEMINI.md"),
+    ("generic", "AGENTS.md"),
+    ("goose", "AGENTS.md"),
+    ("iflow", "IFLOW.md"),
+    ("junie", ".junie/AGENTS.md"),
+    ("kilocode", ".kilocode/rules/specify-rules.md"),
+    ("kimi", "KIMI.md"),
+    ("kiro-cli", "AGENTS.md"),
+    ("opencode", "AGENTS.md"),
+    ("pi", "AGENTS.md"),
+    ("qodercli", "QODER.md"),
+    ("qwen", "QWEN.md"),
+    ("roo", ".roo/rules/specify-rules.md"),
+    ("shai", "SHAI.md"),
+    ("tabnine", "TABNINE.md"),
+    ("trae", ".trae/rules/project_rules.md"),
+    ("vibe", ".vibe/agents/specify-agents.md"),
+    ("windsurf", ".windsurf/rules/specify-rules.md"),
+]
+
+USER_GLOBAL_AGENT_POINTER_FILES = [
+    # Primary user-global agent entrypoints. /home/brett/.agents/AGENTS.md is
+    # the source file itself, so it is maintained separately.
+    ".codex/AGENTS.md",
+    ".claude/CLAUDE.md",
+    ".config/opencode/AGENTS.md",
+    # Speckit-supported agent context conventions with practical global homes.
+    ".augment/rules/specify-rules.md",
+    ".cursor/rules/specify-rules.mdc",
+    ".gemini/GEMINI.md",
+    ".github/copilot-instructions.md",
+    ".junie/AGENTS.md",
+    ".kilocode/rules/specify-rules.md",
+    ".kimi/KIMI.md",
+    ".qoder/QODER.md",
+    ".qwen/QWEN.md",
+    ".roo/rules/specify-rules.md",
+    ".shai/SHAI.md",
+    ".tabnine/TABNINE.md",
+    ".trae/rules/project_rules.md",
+    ".vibe/agents/specify-agents.md",
+    ".windsurf/rules/specify-rules.md",
+]
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Prepare a repo for the shared OpenSpec/Speckit agent workflow."
+    )
+    parser.add_argument("--repo", type=Path, help="Repository root. Defaults to git root.")
+    parser.add_argument("--dry-run", action="store_true", help="Print planned changes only.")
+    parser.add_argument("--force", action="store_true", help="Overwrite existing copied helpers.")
+    parser.add_argument(
+        "--preserve-readmes",
+        action="store_true",
+        help="Do not rewrite openspec/README.md or .specify/README.md.",
+    )
+    parser.add_argument(
+        "--skip-init",
+        action="store_true",
+        help="Do not create minimal openspec/.specify scaffolding.",
+    )
+    parser.add_argument(
+        "--no-skill-links",
+        action="store_true",
+        help="Do not link global skills into repo-local agent folders.",
+    )
+    parser.add_argument(
+        "--no-global-agent-pointers",
+        action="store_true",
+        help="Do not update user-global agent entrypoint files.",
+    )
+    parser.add_argument(
+        "--no-repo-agent-pointers",
+        action="store_true",
+        help="Do not update repo-local context files for supported agents.",
+    )
+    return parser.parse_args()
+
+
+def log(message: str) -> None:
+    print(message)
+
+
+def git_root() -> Path:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise SystemExit(
+            "Could not determine repo root. Run inside a git repo or pass --repo."
+        ) from exc
+    return Path(result.stdout.strip()).resolve()
+
+
+def write_text(path: Path, text: str, dry_run: bool) -> None:
+    if path.exists() and path.read_text(encoding="utf-8") == text:
+        log(f"unchanged {path}")
+        return
+    if dry_run:
+        log(f"would write {path}")
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    log(f"wrote {path}")
+
+
+def touch(path: Path, dry_run: bool) -> None:
+    if path.exists():
+        return
+    if dry_run:
+        log(f"would create {path}")
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch()
+    log(f"created {path}")
+
+
+def upsert_block(path: Path, block_body: str, dry_run: bool) -> None:
+    block = f"{START}\n{block_body.rstrip()}\n{END}\n"
+    if path.exists():
+        text = path.read_text(encoding="utf-8")
+    else:
+        text = "# Agent Instructions\n\n"
+
+    if START in text and END in text:
+        before, remainder = text.split(START, 1)
+        _, after = remainder.split(END, 1)
+        after = after.lstrip("\n")
+        separator = "\n" if after else ""
+        new_text = before.rstrip() + "\n\n" + block + separator + after
+    else:
+        marker = "\n## "
+        index = text.find(marker)
+        if index == -1:
+            new_text = text.rstrip() + "\n\n" + block
+        else:
+            new_text = text[:index].rstrip() + "\n\n" + block + "\n" + text[index + 1 :]
+
+    write_text(path, new_text, dry_run)
+
+
+def copy_missing_tree(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
+    if not src.exists():
+        return
+    for source in sorted(src.rglob("*")):
+        if source.is_dir():
+            continue
+        target = dst / source.relative_to(src)
+        if target.exists() and not force:
+            log(f"kept existing {target}")
+            continue
+        if dry_run:
+            log(f"would copy {source} -> {target}")
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        log(f"copied {source} -> {target}")
+
+
+def link_or_copy_skill(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
+    if not src.exists():
+        return
+    if dst.exists() or dst.is_symlink():
+        if not force:
+            log(f"kept existing {dst}")
+            return
+        if dry_run:
+            log(f"would replace {dst}")
+            return
+        if dst.is_symlink() or dst.is_file():
+            dst.unlink()
+        else:
+            shutil.rmtree(dst)
+    if dry_run:
+        log(f"would link {src} -> {dst}")
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        dst.symlink_to(src, target_is_directory=True)
+        log(f"linked {src} -> {dst}")
+    except OSError:
+        shutil.copytree(src, dst)
+        log(f"copied {src} -> {dst}")
+
+
+def can_write_path_or_parent(path: Path) -> bool:
+    if path.exists():
+        return os.access(path, os.W_OK)
+    parent = path.parent
+    while not parent.exists() and parent != parent.parent:
+        parent = parent.parent
+    return os.access(parent, os.W_OK)
+
+
+def agent_block(agent_root: Path) -> str:
+    return f"""## Shared OpenSpec/Speckit Protocol
+
+This repo uses the user-global OpenSpec/Speckit workflow instead of duplicating
+process rules in every repository.
+
+- Global agent entrypoint: `{agent_root / "AGENTS.md"}`
+- Workflow protocol: `{agent_root / "protocols" / "openspec-speckit-workflow.md"}`
+- Bootstrap contract: `{agent_root / "protocols" / "project-agent-bootstrap.md"}`
+
+Repo-local sections below remain authoritative for project-specific commands,
+runtime prerequisites, source-of-truth docs, tests, and deployment constraints."""
+
+
+def global_pointer_block(agent_root: Path) -> str:
+    return f"""## Shared Agent Protocols
+
+Read `{agent_root / "AGENTS.md"}` for user-global workflow rules, including the
+OpenSpec/Speckit protocol and project bootstrap contract."""
+
+
+def openspec_readme(agent_root: Path) -> str:
+    return f"""# OpenSpec Workflow
+
+This directory contains repo-local OpenSpec changes and spec deltas.
+
+The authoritative shared workflow is maintained globally:
+
+- `{agent_root / "AGENTS.md"}`
+- `{agent_root / "protocols" / "openspec-speckit-workflow.md"}`
+- `{agent_root / "protocols" / "project-agent-bootstrap.md"}`
+
+Keep repo-specific product, runtime, and test constraints in this repository's
+agent files and docs.
+"""
+
+
+def specify_readme(agent_root: Path) -> str:
+    return f"""# Speckit Workflow
+
+This directory contains repo-local Speckit configuration, memory, scripts, and
+feature-worktree helpers.
+
+The authoritative shared OpenSpec/Speckit workflow is maintained globally:
+
+- `{agent_root / "AGENTS.md"}`
+- `{agent_root / "protocols" / "openspec-speckit-workflow.md"}`
+- `{agent_root / "protocols" / "project-agent-bootstrap.md"}`
+
+Repo-local `.specify/extensions/git/git-config.yml` controls branch/worktree
+behavior when present.
+"""
+
+
+def ensure_scaffold(repo: Path, dry_run: bool, skip_init: bool) -> None:
+    if skip_init:
+        return
+    for directory in [
+        repo / "openspec" / "changes" / "archive",
+        repo / "openspec" / "specs",
+        repo / ".specify",
+    ]:
+        if dry_run:
+            if not directory.exists():
+                log(f"would create directory {directory}")
+        else:
+            directory.mkdir(parents=True, exist_ok=True)
+    touch(repo / "openspec" / "changes" / "archive" / ".gitkeep", dry_run)
+    touch(repo / "openspec" / "specs" / ".gitkeep", dry_run)
+
+
+def ensure_skills(repo: Path, dry_run: bool, force: bool) -> None:
+    homes = {
+        ".claude": Path.home() / ".claude" / "skills",
+        ".codex": Path.home() / ".codex" / "skills",
+        ".agents": Path.home() / ".agents" / "skills",
+    }
+    for agent_dir, source_root in homes.items():
+        for skill in SKILLS:
+            link_or_copy_skill(
+                source_root / skill,
+                repo / agent_dir / "skills" / skill,
+                dry_run,
+                force,
+            )
+
+
+def ensure_repo_agent_pointers(repo: Path, agent_root: Path, dry_run: bool) -> None:
+    seen: set[str] = set()
+    for _, relative_path in SUPPORTED_AGENT_CONTEXT_FILES:
+        if relative_path in seen:
+            continue
+        seen.add(relative_path)
+        upsert_block(repo / relative_path, agent_block(agent_root), dry_run)
+
+
+def ensure_global_agent_pointers(agent_root: Path, dry_run: bool) -> None:
+    for relative_path in USER_GLOBAL_AGENT_POINTER_FILES:
+        path = Path.home() / relative_path
+        if dry_run and not can_write_path_or_parent(path):
+            log(f"skipped {path}: permission denied")
+            continue
+        try:
+            upsert_block(path, global_pointer_block(agent_root), dry_run)
+        except PermissionError as exc:
+            log(f"skipped {path}: permission denied ({exc})")
+        except OSError as exc:
+            log(f"skipped {path}: {exc}")
+
+
+def main() -> int:
+    args = parse_args()
+    repo = (args.repo.resolve() if args.repo else git_root())
+    agent_root = Path(os.environ.get("AGENT_PROTOCOL_ROOT", Path.home() / ".agents")).resolve()
+
+    log(f"repo: {repo}")
+    log(f"agent root: {agent_root}")
+
+    ensure_scaffold(repo, args.dry_run, args.skip_init)
+
+    if not args.no_repo_agent_pointers:
+        ensure_repo_agent_pointers(repo, agent_root, args.dry_run)
+
+    if not args.preserve_readmes:
+        write_text(repo / "openspec" / "README.md", openspec_readme(agent_root), args.dry_run)
+        write_text(repo / ".specify" / "README.md", specify_readme(agent_root), args.dry_run)
+
+    template_root = agent_root / "templates" / "claude" / "commands" / "opsx"
+    copy_missing_tree(
+        template_root,
+        repo / ".claude" / "commands" / "opsx",
+        args.dry_run,
+        args.force,
+    )
+
+    if not args.no_skill_links:
+        ensure_skills(repo, args.dry_run, args.force)
+
+    if not args.no_global_agent_pointers:
+        ensure_global_agent_pointers(agent_root, args.dry_run)
+
+    log("done")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -2,7 +2,7 @@
 # Layer 1a Test Script
 # Tests dev-bench-base Layer 3 image for developer tools
 
-set -e
+set -uo pipefail
 
 echo "=========================================="
 echo "Testing Layer 1a: DevBench Base"
@@ -32,7 +32,7 @@ test_tool() {
     else
         echo -e "${RED}✗${NC} $name"
         fail_count=$((fail_count + 1))
-        return 1
+        return 0
     fi
 }
 
@@ -49,7 +49,7 @@ test_tool_output() {
     else
         echo -e "${RED}✗${NC} $name"
         fail_count=$((fail_count + 1))
-        return 1
+        return 0
     fi
 }
 
@@ -68,11 +68,18 @@ echo "=== Node.js Development ==="
 test_tool_output "Node.js" "node --version"
 test_tool_output "npm" "npm --version"
 test_tool_output "yarn" "yarn --version"
-test_tool "npm-global" "test -d ~/.npm-global"
+test_tool "/usr/local/bin in PATH" "echo \$PATH | grep -q '/usr/local/bin'"
 
 echo ""
 echo "=== Python Package Managers ==="
 test_tool_output "uv" "uv --version"
+
+echo ""
+echo "=== Spec-Driven Development Tools ==="
+test_tool "specify" "command -v specify"
+test_tool "openspec" "command -v openspec"
+test_tool "speckit-worktree-enable" "command -v speckit-worktree-enable"
+test_tool "Speckit worktree bootstrap" "bash -lc 'tmpdir=\$(mktemp -d); repo=\"\$tmpdir/repo\"; trap \"rm -rf \\\"\$tmpdir\\\"\" EXIT; git init -q \"\$repo\"; mkdir -p \"\$repo/.specify/templates\"; cd \"\$repo\"; speckit-worktree-enable >/dev/null; test -f .specify/extensions.yml; grep -q \"speckit.git.feature\" .specify/extensions.yml; grep -q \"checkout_mode: worktree\" .specify/extensions/git/git-config.yml; grep -q \"worktree_root: ../repo-worktrees\" .specify/extensions/git/git-config.yml; test -x .specify/extensions/git/scripts/bash/create-new-feature.sh; test -x .specify/shell/select-worktree.sh; test -f .claude/skills/speckit-specify/SKILL.md; test -f .claude/skills/speckit-git-feature/SKILL.md'"
 
 echo ""
 echo "=== AI CLI Tools ==="
@@ -80,6 +87,11 @@ test_tool "claude" "command -v claude"
 test_tool "codex" "command -v codex"
 test_tool "gemini" "command -v gemini"
 test_tool_output "opencode" "opencode --version"
+
+echo ""
+echo "=== Code Quality Tools ==="
+test_tool_output "SonarScanner CLI" "sonar-scanner --version | grep 'SonarScanner CLI'"
+test_tool_output "SonarQube CLI" "sonar --version"
 
 echo ""
 echo "=== OpenCode Configuration ==="
@@ -93,11 +105,14 @@ test_tool_output "zsh" "zsh --version"
 test_tool "oh-my-zsh" "test -d ~/.oh-my-zsh"
 test_tool "zsh-autosuggestions" "test -d ~/.oh-my-zsh/plugins/zsh-autosuggestions"
 test_tool "zsh-syntax-highlighting" "test -d ~/.oh-my-zsh/plugins/zsh-syntax-highlighting"
+test_tool "ct helper file" "test -f /usr/local/share/ct/ct-functions.zsh"
+test_tool "ct helpers in interactive zsh" "zsh -ic 'for fn in ct ctp ctlist cta ctc ctg cts; do whence -w \"\$fn\" | grep -q \"function\" || exit 1; done'"
+test_tool "ctlist outside Speckit repo errors cleanly" "bash -lc 'tmpdir=\$(mktemp -d); outfile=\$(mktemp); cd \"\$tmpdir\"; if zsh -ic \"ctlist\" >\"\$outfile\" 2>&1; then rm -rf \"\$tmpdir\" \"\$outfile\"; exit 1; fi; grep -Eq \"ct: not inside a Git repository|ct: \\.specify/ not found in repo root\" \"\$outfile\"; status=\$?; rm -rf \"\$tmpdir\" \"\$outfile\"; exit \$status'"
+test_tool "ct launchers apply permissive CLI defaults" "/test/test-ct-launchers.sh"
 
 echo ""
 echo "=== PATH Configuration ==="
 test_tool "~/.local/bin in PATH" "echo \$PATH | grep -q '.local/bin'"
-test_tool "~/.npm-global/bin in PATH" "echo \$PATH | grep -q '.npm-global/bin'"
 test_tool "~/.bun/bin in PATH" "echo \$PATH | grep -q '.bun/bin'"
 
 echo ""

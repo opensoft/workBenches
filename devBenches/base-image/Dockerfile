@@ -1,6 +1,6 @@
 # Layer 1a: Developer Base Image
-# Extends Layer 0 with Python, Node.js LTS, and dev tools
-# AI CLIs are inherited from Layer 0 (workbench-base)
+# Extends Layer 0 with Python, Node.js LTS, dev tools, and spec CLIs
+# Most AI CLIs are inherited from Layer 0 (workbench-base)
 # Used by ALL developer benches (Frappe, Flutter, .NET, etc.)
 # USER-AGNOSTIC: No user creation — Layer 3 handles user setup
 
@@ -9,7 +9,7 @@ FROM workbench-base:latest
 # Container version labels
 LABEL layer="1"
 LABEL layer.name="dev-bench-base"
-LABEL layer.version="2.2.0"
+LABEL layer.version="2.2.3"
 LABEL layer.description="Developer base with Python, Node.js LTS, dev tools, Playwright browsers, and generic testing tools (user-agnostic)"
 
 # Everything runs as root
@@ -63,7 +63,49 @@ RUN npm install -g \
 # Verify Python and pip
 RUN python3 --version && pip --version
 
-# uv, AI CLIs are inherited from Layer 0 (workbench-base)
+# uv and most AI CLIs are inherited from Layer 0 (workbench-base)
+
+# ========================================
+# SPEC-DRIVEN DEVELOPMENT TOOLS
+# ========================================
+
+# Remove any inherited copies so Layer 1a is the clear owner of these tools.
+RUN npm uninstall -g @fission-ai/openspec || true \
+    && rm -f /usr/bin/openspec /usr/local/bin/openspec \
+    && rm -rf /usr/lib/node_modules/@fission-ai/openspec /usr/local/lib/node_modules/@fission-ai/openspec \
+    && uv tool uninstall specify-cli || true \
+    && env UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv/tools uv tool uninstall specify-cli || true \
+    && rm -f /root/.local/bin/specify /usr/local/bin/specify \
+    && rm -rf /root/.local/share/uv/tools/specify-cli /opt/uv/tools/specify-cli
+
+# Install spec-driven CLIs only in developer benches, not every bench family.
+RUN mkdir -p /opt/uv/tools /root/.local/share/uv \
+    && UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv/tools \
+       uv tool install specify-cli --from git+https://github.com/github/spec-kit.git --python-preference system \
+    && ln -sfn /opt/uv/tools /root/.local/share/uv/tools \
+    || echo "spec-kit installation skipped (non-fatal)"
+
+RUN npm install -g @fission-ai/openspec@latest \
+    || echo "OpenSpec installation skipped (non-fatal)"
+
+# Shared OpenSpec/Speckit project bootstrapper. Keep it with the spec-driven
+# CLIs so every developer bench can initialize the same agent context files.
+COPY files/openspeckit/setup-openspeckit /usr/local/bin/setup-openspeckit
+RUN chmod 0755 /usr/local/bin/setup-openspeckit \
+    && ln -sfn setup-openspeckit /usr/local/bin/setup-openspec-speckit-project
+
+# Shared, project-agnostic Speckit worktree helpers for all developer benches.
+COPY files/ct/ct-functions.zsh /usr/local/share/ct/ct-functions.zsh
+RUN chmod 0644 /usr/local/share/ct/ct-functions.zsh
+
+# Speckit worktree bootstrap. This installs a stable command outside Speckit
+# itself so generated Speckit files can be refreshed and the worktree workflow
+# can be reapplied afterwards.
+COPY files/speckit-worktree/templates /usr/local/share/speckit-worktree/templates
+COPY files/speckit-worktree/speckit-worktree-enable /usr/local/bin/speckit-worktree-enable
+RUN chmod 0755 /usr/local/bin/speckit-worktree-enable && \
+    find /usr/local/share/speckit-worktree/templates -type f \( -name '*.sh' -o -name '*.zsh' -o -name '*.ps1' \) -exec chmod 0755 {} + && \
+    find /usr/local/share/speckit-worktree/templates -type f ! \( -name '*.sh' -o -name '*.zsh' -o -name '*.ps1' \) -exec chmod 0644 {} +
 
 # System-wide Corepack cache
 ENV COREPACK_HOME=/opt/corepack
@@ -98,6 +140,11 @@ RUN if [ ! -f /etc/skel/.zshrc ]; then \
 
 # Update /etc/skel/.zshrc to include plugins
 RUN sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' /etc/skel/.zshrc
+
+# Source Speckit worktree helpers from global shell startup so they remain
+# available even when benches mount a host ~/.zshrc over the generated one.
+RUN printf '\n# DevBench Speckit worktree helpers\n[[ -f /usr/local/share/ct/ct-functions.zsh ]] && source /usr/local/share/ct/ct-functions.zsh\n' >> /etc/zsh/zshrc && \
+    printf '\n# DevBench Speckit worktree helpers\n[ -f /usr/local/share/ct/ct-functions.zsh ] && . /usr/local/share/ct/ct-functions.zsh\n' >> /etc/bash.bashrc
 
 # Add bash_profile to /etc/skel (force zsh when bash is requested)
 RUN echo '# Force zsh when bash is requested' > /etc/skel/.bash_profile && \
