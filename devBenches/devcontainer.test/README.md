@@ -12,7 +12,7 @@ Layer 1a adds developer tools on top of Layer 0:
 - Speckit worktree bootstrap (`speckit-worktree-enable`)
 - Speckit worktree helpers (`ct`, `ctp`, `ctlist`, `cta`, `ctc`, `ctg`, `cts`)
 - AI CLI tools (claude, codex, gemini, opencode)
-- Code quality tools (`sonar-scanner`, `sonar`)
+- Code quality and PR workflow tools (`sonar-scanner`, `sonar`, `sonar-env`, `gt`)
 - OpenCode configuration with plugins (oh-my-opencode, opencode-openai-codex-auth)
 - Zsh and oh-my-zsh with plugins
 - PATH configuration for all dev tools
@@ -49,7 +49,7 @@ The `test.sh` script validates:
 - ✅ Global `ct*` helper availability in interactive zsh
 - ✅ Clean failure outside non-Speckit directories
 - ✅ AI CLI tools (claude, codex, gemini, opencode)
-- ✅ SonarScanner CLI and SonarQube CLI availability
+- ✅ SonarScanner CLI, SonarQube CLI, Sonar environment helper, and Graphite CLI availability
 - ✅ OpenCode configuration and plugins
 - ✅ Shell environment (zsh, oh-my-zsh, plugins)
 - ✅ PATH configuration

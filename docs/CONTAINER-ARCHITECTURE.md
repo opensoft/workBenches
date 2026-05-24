@@ -148,6 +148,7 @@ Layer 1 splits into two branches based on use case:
 - Graphite CLI (`gt`) for stacked pull request workflows
 - SonarScanner CLI (`sonar-scanner`) for SonarQube Server / Cloud project analysis
 - SonarQube CLI (`sonar`) for issue/project workflows, secrets scanning, and agent integrations
+- SonarQube CLI environment helper (`sonar-env`) with file-backed keychain defaults for headless containers
 - Git credential helper integration
 - Shared Playwright Chromium cache at `/ms-playwright`
 

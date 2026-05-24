@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ENV_FILE="/usr/local/share/sonarqube/sonarqube-cli-env.sh"
+
+if [[ ! -f "$ENV_FILE" ]]; then
+    echo "Missing $ENV_FILE. Rebuild dev-bench-base before using sonar-env." >&2
+    exit 2
+fi
+
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+
+usage() {
+    cat <<'USAGE'
+Usage:
+  sonar-env --check
+  sonar-env --login
+  sonar-env --status
+  sonar-env -- <command> [args...]
+  sonar-env <command> [args...]
+
+Loads ~/.config/sonarqube/sonar.env when present, sets scanner and SonarQube
+CLI token aliases, and forces the SonarQube CLI to use a writable file-backed
+keychain instead of a desktop keychain.
+
+To load the current shell instead of a child command:
+  source /usr/local/share/sonarqube/sonarqube-cli-env.sh
+USAGE
+}
+
+has_token() {
+    [[ -n "${SONAR_TOKEN:-}" || -n "${SONARQUBE_TOKEN:-}" ]]
+}
+
+print_check() {
+    local token_status="missing"
+    local env_status="missing"
+
+    if [[ -f "${SONARQUBE_ENV_FILE:-}" ]]; then
+        env_status="present"
+    fi
+
+    if has_token; then
+        token_status="loaded"
+    fi
+
+    printf 'SONARQUBE_ENV_FILE=%s (%s)\n' "${SONARQUBE_ENV_FILE:-unset}" "$env_status"
+    printf 'SONAR_HOST_URL=%s\n' "${SONAR_HOST_URL:-unset}"
+    printf 'SONAR_ORGANIZATION=%s\n' "${SONAR_ORGANIZATION:-${SONARQUBE_ORG:-unset}}"
+    printf 'SONARQUBE_CLI_DIR=%s\n' "${SONARQUBE_CLI_DIR:-unset}"
+    printf 'SONARQUBE_CLI_KEYCHAIN_FILE=%s\n' "${SONARQUBE_CLI_KEYCHAIN_FILE:-unset}"
+    printf 'SONAR_TOKEN=%s\n' "$token_status"
+}
+
+login() {
+    local token="${SONAR_TOKEN:-${SONARQUBE_TOKEN:-}}"
+    local server="${SONAR_HOST_URL:-https://sonarcloud.io}"
+    local org="${SONAR_ORGANIZATION:-${SONARQUBE_ORG:-}}"
+    local args=(auth login --server "$server" --with-token "$token")
+
+    if [[ -z "$token" ]]; then
+        echo "Missing SONAR_TOKEN or SONARQUBE_TOKEN." >&2
+        echo "Put it in ${SONARQUBE_ENV_FILE:-$HOME/.config/sonarqube/sonar.env} or export it before running sonar-env --login." >&2
+        exit 2
+    fi
+
+    if [[ -n "$org" ]]; then
+        args+=(--org "$org")
+    fi
+
+    sonar "${args[@]}"
+}
+
+case "${1:-}" in
+    ""|-h|--help)
+        usage
+        ;;
+    --check)
+        print_check
+        ;;
+    --login)
+        login
+        ;;
+    --status)
+        sonar auth status
+        ;;
+    --)
+        shift
+        if [[ $# -eq 0 ]]; then
+            usage
+            exit 2
+        fi
+        exec "$@"
+        ;;
+    *)
+        exec "$@"
+        ;;
+esac

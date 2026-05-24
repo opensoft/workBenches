@@ -24,6 +24,13 @@ All benches are moving to the layered image model described in `workBenches/docs
 Layer 1a carries the shared developer tooling used by all devBenches, including:
 - `sonar-scanner` - SonarScanner CLI for project analysis uploads to SonarQube Server or SonarQube Cloud
 - `sonar` - SonarQube CLI for issue/project workflows, secrets scanning, and agent integrations
+- `sonar-env` - container-safe Sonar environment loader that reads `~/.config/sonarqube/sonar.env`
+- `gt` - Graphite CLI for stacked pull request workflows
+
+Devcontainers should mount `~/.config/sonarqube` read-only or mount the full host
+home directory. The shared `sonar-env` helper then loads tokens at runtime and
+sets `SONARQUBE_CLI_KEYCHAIN_FILE` to a writable file-backed keychain so `sonar`
+does not depend on a desktop keychain service inside containers.
 
 ## Legacy Monolithic DevContainers (Deprecated)
 
