@@ -2,24 +2,42 @@
 #
 # Defines: ct, ctp, ctlist, cta, ctc, ctg, cts.
 #
-# Each function resolves the current Git repo at call time via
-# `git rev-parse --show-toplevel`, then dispatches to per-repo helper scripts
-# under `.specify/`. Errors cleanly if you're not inside a Git repo or the
-# repo does not contain a `.specify/` tree.
+# Each function resolves the current Git repo at call time, then dispatches to
+# per-repo helper scripts under `.specify/`. When a worktree's Git metadata is
+# container-relative, it falls back to the nearest `.specify/` checkout.
+
+_ct_find_specify_root_from_pwd() {
+    local dir
+
+    dir=$(pwd -P 2>/dev/null || pwd)
+    while [ -n "$dir" ] && [ "$dir" != "/" ]; do
+        if [ -d "$dir/.specify" ]; then
+            printf '%s\n' "$dir"
+            return 0
+        fi
+        dir=$(dirname "$dir")
+    done
+
+    return 1
+}
 
 _ct_repo_root() {
     local root
 
-    root=$(git rev-parse --show-toplevel 2>/dev/null) || {
-        echo "ct: not inside a Git repository" >&2
-        return 1
-    }
-
-    if [ ! -d "$root/.specify" ]; then
-        echo "ct: .specify/ not found in repo root: $root" >&2
-        return 1
+    root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+    if [ -z "$root" ]; then
+        root=$(_ct_find_specify_root_from_pwd) || {
+            echo "ct: not inside a Git repository or Speckit checkout" >&2
+            return 1
+        }
     fi
 
+    if [ ! -d "$root/.specify" ]; then
+        root=$(_ct_find_specify_root_from_pwd) || {
+            echo "ct: .specify/ not found in repo root: $root" >&2
+            return 1
+        }
+    fi
     printf '%s\n' "$root"
 }
 
