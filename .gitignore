@@ -41,4 +41,6 @@ bioBenches/gentecBench/
 logs/
 .codex
 .codex/
+.claude/dashboard.md
+.claude/speckit-history.md
 sysBenches/opsBench/

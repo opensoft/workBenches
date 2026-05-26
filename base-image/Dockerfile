@@ -194,7 +194,8 @@ _yolo_shell_quote() {
 
 unalias yolo 2>/dev/null || true
 yolo() {
-  local session_name command_string dashboard_pane
+  local session_name command_string prompt_file
+  local -a prompt_args
 
   if ! command -v claude >/dev/null 2>&1; then
     echo "yolo: Claude CLI not found on PATH" >&2
@@ -206,11 +207,14 @@ yolo() {
     return 1
   fi
 
+  prompt_file="$HOME/.claude/prompts/speckit-dashboard-bootstrap.md"
+  prompt_args=()
+  if [ -r "$prompt_file" ]; then
+    prompt_args=(--append-system-prompt-file "$prompt_file")
+  fi
+
   if [ -n "${TMUX:-}" ]; then
-    if [ -x "$HOME/.claude/speckit-dash-toggle.sh" ]; then
-      tmux bind-key D run-shell "$HOME/.claude/speckit-dash-toggle.sh" >/dev/null 2>&1 || true
-    fi
-    claude --dangerously-skip-permissions --teammate-mode tmux "$@"
+    claude --dangerously-skip-permissions --teammate-mode tmux "${prompt_args[@]}" "$@"
     return $?
   fi
 
@@ -219,25 +223,13 @@ yolo() {
     claude \
     --dangerously-skip-permissions \
     --teammate-mode tmux \
+    "${prompt_args[@]}" \
     "$@") || return 1
 
   tmux new-session -d -s "$session_name" -c "$PWD" "exec $command_string" || {
     echo "yolo: failed to start tmux session" >&2
     return 1
   }
-
-  if [ -x "$HOME/.claude/speckit-dashboard.sh" ]; then
-    dashboard_pane=$(tmux split-window -P -F '#{pane_id}' -h -l 68 -t "$session_name:0.0" -c "$PWD" \
-      "bash $(_yolo_shell_quote "$HOME/.claude/speckit-dashboard.sh") --loop" 2>/dev/null || true)
-    if [ -n "$dashboard_pane" ]; then
-      tmux select-pane -t "$dashboard_pane" -T speckit-dash >/dev/null 2>&1 || true
-      tmux select-pane -t "$session_name:0.0" >/dev/null 2>&1 || true
-    fi
-  fi
-
-  if [ -x "$HOME/.claude/speckit-dash-toggle.sh" ]; then
-    tmux bind-key D run-shell "$HOME/.claude/speckit-dash-toggle.sh" >/dev/null 2>&1 || true
-  fi
 
   tmux set-option -g mouse on >/dev/null 2>&1 || true
   tmux attach-session -t "$session_name"
@@ -259,7 +251,8 @@ _yolo_shell_quote() {
 
 unalias yolo 2>/dev/null || true
 yolo() {
-  local session_name command_string dashboard_pane
+  local session_name command_string prompt_file
+  local -a prompt_args
 
   if ! command -v claude >/dev/null 2>&1; then
     echo "yolo: Claude CLI not found on PATH" >&2
@@ -271,11 +264,14 @@ yolo() {
     return 1
   fi
 
+  prompt_file="$HOME/.claude/prompts/speckit-dashboard-bootstrap.md"
+  prompt_args=()
+  if [ -r "$prompt_file" ]; then
+    prompt_args=(--append-system-prompt-file "$prompt_file")
+  fi
+
   if [ -n "${TMUX:-}" ]; then
-    if [ -x "$HOME/.claude/speckit-dash-toggle.sh" ]; then
-      tmux bind-key D run-shell "$HOME/.claude/speckit-dash-toggle.sh" >/dev/null 2>&1 || true
-    fi
-    claude --dangerously-skip-permissions --teammate-mode tmux "$@"
+    claude --dangerously-skip-permissions --teammate-mode tmux "${prompt_args[@]}" "$@"
     return $?
   fi
 
@@ -284,25 +280,13 @@ yolo() {
     claude \
     --dangerously-skip-permissions \
     --teammate-mode tmux \
+    "${prompt_args[@]}" \
     "$@") || return 1
 
   tmux new-session -d -s "$session_name" -c "$PWD" "exec $command_string" || {
     echo "yolo: failed to start tmux session" >&2
     return 1
   }
-
-  if [ -x "$HOME/.claude/speckit-dashboard.sh" ]; then
-    dashboard_pane=$(tmux split-window -P -F '#{pane_id}' -h -l 68 -t "$session_name:0.0" -c "$PWD" \
-      "bash $(_yolo_shell_quote "$HOME/.claude/speckit-dashboard.sh") --loop" 2>/dev/null || true)
-    if [ -n "$dashboard_pane" ]; then
-      tmux select-pane -t "$dashboard_pane" -T speckit-dash >/dev/null 2>&1 || true
-      tmux select-pane -t "$session_name:0.0" >/dev/null 2>&1 || true
-    fi
-  fi
-
-  if [ -x "$HOME/.claude/speckit-dash-toggle.sh" ]; then
-    tmux bind-key D run-shell "$HOME/.claude/speckit-dash-toggle.sh" >/dev/null 2>&1 || true
-  fi
 
   tmux set-option -g mouse on >/dev/null 2>&1 || true
   tmux attach-session -t "$session_name"

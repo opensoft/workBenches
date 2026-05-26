@@ -97,7 +97,21 @@ RUN chmod 0755 /usr/local/bin/setup-openspeckit \
 
 # Shared, project-agnostic Speckit worktree helpers for all developer benches.
 COPY files/ct/ct-functions.zsh /usr/local/share/ct/ct-functions.zsh
-RUN chmod 0644 /usr/local/share/ct/ct-functions.zsh
+COPY files/ct/claude/ /usr/local/share/ct/claude/
+RUN chmod 0644 /usr/local/share/ct/ct-functions.zsh \
+    && chmod 0755 /usr/local/share/ct/claude/speckit-dashboard.sh \
+        /usr/local/share/ct/claude/speckit-dashboard-sync.sh \
+        /usr/local/share/ct/claude/speckit-dash-toggle.sh \
+    && chmod 0644 /usr/local/share/ct/claude/prompts/speckit-dashboard-full.md \
+    && mkdir -p /etc/skel/.claude/prompts \
+    && cp /usr/local/share/ct/claude/speckit-dashboard.sh /etc/skel/.claude/speckit-dashboard.sh \
+    && cp /usr/local/share/ct/claude/speckit-dashboard-sync.sh /etc/skel/.claude/speckit-dashboard-sync.sh \
+    && cp /usr/local/share/ct/claude/speckit-dash-toggle.sh /etc/skel/.claude/speckit-dash-toggle.sh \
+    && cp /usr/local/share/ct/claude/prompts/speckit-dashboard-full.md /etc/skel/.claude/prompts/speckit-dashboard-full.md \
+    && chmod 0755 /etc/skel/.claude/speckit-dashboard.sh \
+        /etc/skel/.claude/speckit-dashboard-sync.sh \
+        /etc/skel/.claude/speckit-dash-toggle.sh \
+    && chmod 0644 /etc/skel/.claude/prompts/speckit-dashboard-full.md
 
 # Speckit worktree bootstrap. This installs a stable command outside Speckit
 # itself so generated Speckit files can be refreshed and the worktree workflow

@@ -171,6 +171,70 @@ _ct_start_claude() {
         "$@"
 }
 
+_ct_dashboard_prompt_file() {
+    local prompt_file
+
+    for prompt_file in \
+        "$HOME/.claude/prompts/speckit-dashboard-full.md" \
+        "/usr/local/share/ct/claude/prompts/speckit-dashboard-full.md"; do
+        if [ -r "$prompt_file" ]; then
+            printf '%s\n' "$prompt_file"
+            return 0
+        fi
+    done
+
+    echo "cta: required dashboard prompt not found in ~/.claude or /usr/local/share/ct/claude" >&2
+    return 1
+}
+
+_ct_dashboard_script() {
+    local script
+
+    for script in \
+        "$HOME/.claude/speckit-dashboard.sh" \
+        "/usr/local/share/ct/claude/speckit-dashboard.sh"; do
+        if [ -x "$script" ]; then
+            printf '%s\n' "$script"
+            return 0
+        fi
+    done
+
+    echo "cta: required dashboard script not found in ~/.claude or /usr/local/share/ct/claude" >&2
+    return 1
+}
+
+_ct_dashboard_toggle_script() {
+    local script
+
+    for script in \
+        "$HOME/.claude/speckit-dash-toggle.sh" \
+        "/usr/local/share/ct/claude/speckit-dash-toggle.sh"; do
+        if [ -x "$script" ]; then
+            printf '%s\n' "$script"
+            return 0
+        fi
+    done
+
+    echo "cta: required dashboard toggle script not found in ~/.claude or /usr/local/share/ct/claude" >&2
+    return 1
+}
+
+_ct_start_claude_with_dashboard() {
+    local target="$1"
+    local prompt_file
+
+    shift || true
+    prompt_file=$(_ct_dashboard_prompt_file) || return 1
+
+    _ct_start_cli claude "$target" \
+        --model opus \
+        --dangerously-skip-permissions \
+        --permission-mode bypassPermissions \
+        --teammate-mode tmux \
+        --append-system-prompt-file "$prompt_file" \
+        "$@"
+}
+
 _ct_shell_quote() {
     local quoted=()
     local arg
@@ -188,31 +252,179 @@ _ct_enable_tmux_mouse_copy_mode() {
     tmux set-option -g mouse on >/dev/null 2>&1
 }
 
-_ct_start_claude_in_tmux() {
+_ct_dashboard_command() {
     local target="$1"
-    local session_name command_string
+    local dashboard_file="$target/.claude/dashboard.md"
+    local dashboard_script
 
-    shift || true
+    dashboard_script=$(_ct_dashboard_script) || return 1
 
-    if [ -n "${TMUX:-}" ]; then
-        _ct_enable_tmux_mouse_copy_mode || {
-            echo "cta: failed to enable tmux mouse mode" >&2
-            return 1
-        }
-        _ct_start_claude "$target" "$@"
-        return $?
+    printf 'SPECKIT_DASHBOARD_FILE=%s SPECKIT_DASHBOARD_CWD=%s bash %s --loop\n' \
+        "$(_ct_shell_quote "$dashboard_file")" \
+        "$(_ct_shell_quote "$target")" \
+        "$(_ct_shell_quote "$dashboard_script")"
+}
+
+_ct_bind_dashboard_toggle() {
+    local toggle_script
+
+    toggle_script=$(_ct_dashboard_toggle_script) || return 1
+    tmux bind-key D run-shell "bash $(_ct_shell_quote "$toggle_script")" >/dev/null 2>&1
+}
+
+_ct_append_gitignore_entry() {
+    local gitignore="$1"
+    local entry="$2"
+
+    if grep -qxF "$entry" "$gitignore" 2>/dev/null; then
+        return 0
     fi
 
-    session_name="cta-$(date +%Y%m%d%H%M%S)-$$"
+    if [ -s "$gitignore" ] && [ -n "$(tail -c 1 "$gitignore" 2>/dev/null)" ]; then
+        printf '\n' >> "$gitignore" || return 1
+    fi
+
+    printf '%s\n' "$entry" >> "$gitignore"
+}
+
+_ct_ensure_dashboard_gitignore() {
+    local target="$1"
+    local gitignore="$target/.gitignore"
+
+    if [ -e "$gitignore" ] && [ ! -f "$gitignore" ]; then
+        echo "cta: .gitignore exists but is not a file: $gitignore" >&2
+        return 1
+    fi
+
+    touch "$gitignore" || {
+        echo "cta: failed to update gitignore: $gitignore" >&2
+        return 1
+    }
+
+    _ct_append_gitignore_entry "$gitignore" ".claude/dashboard.md" || return 1
+    _ct_append_gitignore_entry "$gitignore" ".claude/speckit-history.md" || return 1
+}
+
+_ct_write_initial_dashboard() {
+    local target="$1"
+    local dashboard_dir="$target/.claude"
+    local dashboard_file="$dashboard_dir/dashboard.md"
+
+    _ct_ensure_dashboard_gitignore "$target" || return 1
+
+    mkdir -p "$dashboard_dir" || {
+        echo "cta: failed to create dashboard directory: $dashboard_dir" >&2
+        return 1
+    }
+
+    cat > "$dashboard_file" <<'EOF'
+══════════════════════════════════════════════════════════════
+ Speckit Dashboard
+══════════════════════════════════════════════════════════════
+ RECENT ACTIVITY             latest: cta started
+   cta  dashboard pane started
+──────────────────────────────────────────────────────────────
+ SPEC KIT WORKFLOW           ▶ starting 0%
+      command                %done  runs
+   ○  /speckit.constitution      0%   0
+   ○  /speckit.specify           0%   0
+   ○  /speckit.clarify           0%   0
+   ○  /speckit.checklist         0%   0   (pre-plan)
+   ○  /speckit.plan              0%   0
+   ○  /speckit.checklist         0%   0   (post-plan)
+   ○  /speckit.tasks             0%   0
+   ○  /speckit.checklist         0%   0   (post-tasks)
+   ○  /speckit.analyze           0%   0
+   ○  /speckit.checklist         0%   0   (post-analyze)
+   ○  /speckit.implement         0%   0
+──────────────────────────────────────────────────────────────
+ TASKS                       waiting for feature
+   Waiting for active feature detection.
+──────────────────────────────────────────────────────────────
+ PHASES                      waiting for phases
+   Waiting for phase / user-story detection.
+──────────────────────────────────────────────────────────────
+ LAST COMMAND                cta started
+   cta started Claude with dashboard-only output mode.
+──────────────────────────────────────────────────────────────
+ NEXT COMMANDS               ⭐ constitution/specify
+   ⭐ Start with /speckit.constitution or /speckit.specify as needed.
+──────────────────────────────────────────────────────────────
+ LAST 3 PROMPTS              none yet
+   (none yet this cta session)
+══════════════════════════════════════════════════════════════
+EOF
+}
+
+_ct_open_dashboard_pane() {
+    local target="$1"
+    local tmux_target="$2"
+    local focus_pane="$3"
+    local dashboard_command dashboard_pane existing_pane
+
+    dashboard_command=$(_ct_dashboard_command "$target") || return 1
+    existing_pane=$(tmux list-panes -t "$tmux_target" -F '#{pane_id} #{pane_title}' \
+        | awk '$2 == "speckit-dash" { print $1; exit }')
+    if [ -n "$existing_pane" ]; then
+        tmux kill-pane -t "$existing_pane" >/dev/null 2>&1 || true
+    fi
+
+    dashboard_pane=$(tmux split-window -P -F '#{pane_id}' -h -l 68 -t "$tmux_target" -c "$target" "$dashboard_command") || {
+        echo "cta: failed to open dashboard pane" >&2
+        return 1
+    }
+
+    tmux select-pane -t "$dashboard_pane" -T speckit-dash >/dev/null 2>&1 || true
+    tmux select-pane -t "$focus_pane" >/dev/null 2>&1 || true
+}
+
+_ct_claude_dashboard_command_string() {
+    local prompt_file command_string extra_args
+
+    prompt_file=$(_ct_dashboard_prompt_file) || return 1
     command_string=$(_ct_shell_quote \
         claude \
         --model opus \
         --dangerously-skip-permissions \
         --permission-mode bypassPermissions \
         --teammate-mode tmux \
-        "$@") || return 1
+        --append-system-prompt-file "$prompt_file") || return 1
 
-    tmux new-session -d -s "$session_name" -c "$target" "exec $command_string" || {
+    if [ "$#" -gt 0 ]; then
+        extra_args=$(_ct_shell_quote "$@") || return 1
+        command_string="$command_string $extra_args"
+    fi
+
+    printf '%s\n' "$command_string"
+}
+
+_ct_start_claude_in_tmux() {
+    local target="$1"
+    local session_name command_string current_pane
+
+    shift || true
+    _ct_write_initial_dashboard "$target" || return 1
+    command_string=$(_ct_claude_dashboard_command_string "$@") || return 1
+
+    if [ -n "${TMUX:-}" ]; then
+        _ct_enable_tmux_mouse_copy_mode || {
+            echo "cta: failed to enable tmux mouse mode" >&2
+            return 1
+        }
+
+        current_pane=$(tmux display-message -p '#{pane_id}') || {
+            echo "cta: failed to resolve current tmux pane" >&2
+            return 1
+        }
+        _ct_bind_dashboard_toggle || return 1
+        _ct_open_dashboard_pane "$target" "$current_pane" "$current_pane" || return 1
+        _ct_start_claude_with_dashboard "$target" "$@"
+        return $?
+    fi
+
+    session_name="cta-$(date +%Y%m%d%H%M%S)-$$"
+
+    tmux new-session -d -s "$session_name" -c "$target" || {
         echo "cta: failed to start tmux" >&2
         return 1
     }
@@ -220,6 +432,22 @@ _ct_start_claude_in_tmux() {
     _ct_enable_tmux_mouse_copy_mode || {
         tmux kill-session -t "$session_name" >/dev/null 2>&1 || true
         echo "cta: failed to enable tmux mouse mode" >&2
+        return 1
+    }
+
+    _ct_bind_dashboard_toggle || {
+        tmux kill-session -t "$session_name" >/dev/null 2>&1 || true
+        return 1
+    }
+
+    _ct_open_dashboard_pane "$target" "$session_name:0.0" "$session_name:0.0" || {
+        tmux kill-session -t "$session_name" >/dev/null 2>&1 || true
+        return 1
+    }
+
+    tmux send-keys -t "$session_name:0.0" "exec $command_string" C-m || {
+        tmux kill-session -t "$session_name" >/dev/null 2>&1 || true
+        echo "cta: failed to start Claude in tmux" >&2
         return 1
     }
 

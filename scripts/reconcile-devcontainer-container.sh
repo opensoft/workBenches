@@ -6,6 +6,9 @@ set -euo pipefail
 
 CONTAINER_NAME=""
 EXPECTED_IMAGE=""
+EXPECTED_PROJECT=""
+EXPECTED_SERVICE=""
+REPLACE_EXISTING=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -17,8 +20,20 @@ while [[ $# -gt 0 ]]; do
             EXPECTED_IMAGE="${2:-}"
             shift 2
             ;;
+        --project)
+            EXPECTED_PROJECT="${2:-}"
+            shift 2
+            ;;
+        --service)
+            EXPECTED_SERVICE="${2:-}"
+            shift 2
+            ;;
+        --replace-existing)
+            REPLACE_EXISTING=true
+            shift
+            ;;
         -h|--help)
-            echo "Usage: $0 --container <name> --image <image:tag>"
+            echo "Usage: $0 --container <name> --image <image:tag> [--project <compose-project> --service <compose-service>] [--replace-existing]"
             exit 0
             ;;
         *)
@@ -45,6 +60,34 @@ fi
 CURRENT_IMAGE_ID="$(docker inspect --format '{{.Image}}' "$CONTAINER_NAME")"
 CURRENT_CONFIG_IMAGE="$(docker inspect --format '{{.Config.Image}}' "$CONTAINER_NAME")"
 EXPECTED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$EXPECTED_IMAGE")"
+
+if [[ "$REPLACE_EXISTING" == true ]]; then
+    echo "Removing existing devcontainer '$CONTAINER_NAME' (${CURRENT_CONFIG_IMAGE}) so the caller can recreate it"
+    docker rm -f "$CONTAINER_NAME" >/dev/null
+    exit 0
+fi
+
+if [[ -n "$EXPECTED_PROJECT" || -n "$EXPECTED_SERVICE" ]]; then
+    CURRENT_PROJECT="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$CONTAINER_NAME" 2>/dev/null || true)"
+    CURRENT_SERVICE="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.service" }}' "$CONTAINER_NAME" 2>/dev/null || true)"
+    CURRENT_PROJECT="${CURRENT_PROJECT//<no value>/}"
+    CURRENT_SERVICE="${CURRENT_SERVICE//<no value>/}"
+
+    PROJECT_MATCH=true
+    SERVICE_MATCH=true
+    if [[ -n "$EXPECTED_PROJECT" && "$CURRENT_PROJECT" != "$EXPECTED_PROJECT" ]]; then
+        PROJECT_MATCH=false
+    fi
+    if [[ -n "$EXPECTED_SERVICE" && "$CURRENT_SERVICE" != "$EXPECTED_SERVICE" ]]; then
+        SERVICE_MATCH=false
+    fi
+
+    if [[ "$PROJECT_MATCH" != true || "$SERVICE_MATCH" != true ]]; then
+        echo "Removing existing devcontainer '$CONTAINER_NAME' (${CURRENT_CONFIG_IMAGE}): not managed by expected compose service '${EXPECTED_PROJECT}/${EXPECTED_SERVICE}'"
+        docker rm -f "$CONTAINER_NAME" >/dev/null
+        exit 0
+    fi
+fi
 
 REMOVE_REASON=""
 if ! docker image inspect "$CURRENT_IMAGE_ID" >/dev/null 2>&1; then

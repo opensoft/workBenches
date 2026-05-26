@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -110,7 +111,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-init",
         action="store_true",
-        help="Do not create minimal openspec/.specify scaffolding.",
+        help="Do not create minimal openspec/.specify scaffolding or run specify init.",
+    )
+    parser.add_argument(
+        "--integration",
+        help="Spec Kit integration to install when initialization is needed. Defaults to existing integration or claude.",
+    )
+    parser.add_argument(
+        "--no-speckit-registration",
+        action="store_true",
+        help="Do not register the Spec Kit git extension or bundled speckit workflow.",
+    )
+    parser.add_argument(
+        "--no-worktrees",
+        action="store_true",
+        help="Do not install the Speckit worktree overlay.",
+    )
+    parser.add_argument(
+        "--base-branch",
+        help="Base branch for new Speckit worktrees. Defaults to main when present, otherwise current branch.",
+    )
+    parser.add_argument(
+        "--worktree-root",
+        help="Worktree parent path, relative to repo root unless absolute. Defaults to ../<repo-name>-worktrees.",
     )
     parser.add_argument(
         "--no-skill-links",
@@ -134,6 +157,24 @@ def log(message: str) -> None:
     print(message)
 
 
+def run_command(command: list[str], cwd: Path, dry_run: bool) -> None:
+    printable = " ".join(shlex_quote(part) for part in command)
+    if dry_run:
+        log(f"would run ({cwd}): {printable}")
+        return
+    log(f"running ({cwd}): {printable}")
+    subprocess.run(command, cwd=cwd, check=True)
+
+
+def shlex_quote(value: str) -> str:
+    if not value:
+        return "''"
+    safe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_+-=.,/:@%"
+    if all(char in safe for char in value):
+        return value
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
 def git_root() -> Path:
     try:
         result = subprocess.run(
@@ -148,6 +189,88 @@ def git_root() -> Path:
             "Could not determine repo root. Run inside a git repo or pass --repo."
         ) from exc
     return Path(result.stdout.strip()).resolve()
+
+
+def read_json(path: Path) -> dict[str, object]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def existing_integration(repo: Path) -> str | None:
+    integration_state = read_json(repo / ".specify" / "integration.json")
+    value = integration_state.get("integration") or integration_state.get("default_integration")
+    if isinstance(value, str) and value:
+        return value
+
+    init_options = read_json(repo / ".specify" / "init-options.json")
+    value = init_options.get("integration") or init_options.get("ai")
+    if isinstance(value, str) and value:
+        return value
+
+    return None
+
+
+def needs_speckit_init(repo: Path) -> bool:
+    required = [
+        repo / ".specify" / "init-options.json",
+        repo / ".specify" / "integration.json",
+        repo / ".specify" / "templates" / "spec-template.md",
+    ]
+    return any(not path.exists() for path in required)
+
+
+def ensure_speckit_initialized(
+    repo: Path,
+    integration: str,
+    dry_run: bool,
+    skip_init: bool,
+) -> None:
+    if skip_init or not needs_speckit_init(repo):
+        return
+
+    command = [
+        "specify",
+        "init",
+        "--here",
+        "--force",
+        "--integration",
+        integration,
+        "--script",
+        "sh",
+        "--ai-skills",
+        "--ignore-agent-tools",
+    ]
+    run_command(command, repo, dry_run)
+
+
+def git_extension_registered(repo: Path) -> bool:
+    registry = read_json(repo / ".specify" / "extensions" / ".registry")
+    extensions = registry.get("extensions")
+    if not isinstance(extensions, dict):
+        return False
+    git_extension = extensions.get("git")
+    return isinstance(git_extension, dict) and git_extension.get("enabled") is True
+
+
+def speckit_workflow_registered(repo: Path) -> bool:
+    registry = read_json(repo / ".specify" / "workflows" / "workflow-registry.json")
+    workflows = registry.get("workflows")
+    return isinstance(workflows, dict) and "speckit" in workflows
+
+
+def ensure_speckit_registration(repo: Path, dry_run: bool, skip_registration: bool) -> None:
+    if skip_registration:
+        return
+    if not git_extension_registered(repo):
+        run_command(["specify", "extension", "add", "git"], repo, dry_run)
+    else:
+        log("unchanged Speckit git extension registration")
+    if not speckit_workflow_registered(repo):
+        run_command(["specify", "workflow", "add", "speckit"], repo, dry_run)
+    else:
+        log("unchanged Speckit workflow registration")
 
 
 def write_text(path: Path, text: str, dry_run: bool) -> None:
@@ -239,6 +362,26 @@ def link_or_copy_skill(src: Path, dst: Path, dry_run: bool, force: bool) -> None
     except OSError:
         shutil.copytree(src, dst)
         log(f"copied {src} -> {dst}")
+
+
+def copy_overlay_tree(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
+    if not src.exists():
+        return
+    for source in sorted(src.rglob("*")):
+        if source.is_dir():
+            continue
+        target = dst / source.relative_to(src)
+        if target.exists() and target.read_bytes() == source.read_bytes():
+            log(f"unchanged {target}")
+            continue
+        if dry_run:
+            log(f"would copy {source} -> {target}")
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        if target.suffix in {".sh", ".zsh", ".ps1"}:
+            target.chmod(0o755)
+        log(f"copied {source} -> {target}")
 
 
 def can_write_path_or_parent(path: Path) -> bool:
@@ -360,15 +503,215 @@ def ensure_global_agent_pointers(agent_root: Path, dry_run: bool) -> None:
             log(f"skipped {path}: {exc}")
 
 
+def worktree_template_root() -> Path | None:
+    candidates: list[Path] = []
+    env_root = os.environ.get("SPECKIT_WORKTREE_TEMPLATE_ROOT")
+    if env_root:
+        candidates.append(Path(env_root))
+    candidates.append(Path("/usr/local/share/speckit-worktree/templates"))
+
+    script_path = Path(__file__).resolve()
+    candidates.append(script_path.parent.parent / "speckit-worktree" / "templates")
+    candidates.append(
+        Path.home()
+        / "projects"
+        / "workBenches"
+        / "devBenches"
+        / "base-image"
+        / "files"
+        / "speckit-worktree"
+        / "templates"
+    )
+
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def default_base_branch(repo: Path) -> str:
+    for ref in ["refs/heads/main", "refs/remotes/origin/main"]:
+        if subprocess.run(
+            ["git", "-C", str(repo), "show-ref", "--verify", "--quiet", ref],
+            check=False,
+        ).returncode == 0:
+            return "main"
+
+    result = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--abbrev-ref", "HEAD"],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    branch = result.stdout.strip()
+    if result.returncode == 0 and branch and branch != "HEAD":
+        return branch
+    return "main"
+
+
+def set_top_level_yml_values(path: Path, values: dict[str, str], dry_run: bool) -> None:
+    if path.exists():
+        lines = path.read_text(encoding="utf-8").splitlines()
+    else:
+        lines = [
+            "# Git Branching Workflow Extension Configuration",
+            "# Managed by setup-openspeckit. Rerun after Speckit upgrades.",
+            "",
+            "# Branch numbering strategy: \"sequential\" (001, 002, ...) or \"timestamp\" (YYYYMMDD-HHMMSS)",
+            "branch_numbering: sequential",
+            "",
+            "# Feature checkout strategy: \"branch\" keeps work in the current checkout,",
+            "# \"worktree\" creates a sibling worktree rooted from base_branch.",
+            "checkout_mode: worktree",
+            "",
+            "# Base branch for new worktree-backed features. Ignored in branch mode.",
+            "base_branch: main",
+            "",
+            "# Parent directory for linked worktrees. Relative paths resolve from the repo root.",
+            "worktree_root: ../example-worktrees",
+            "",
+            "# Auto-commit before/after core commands. Disabled by default.",
+            "auto_commit:",
+            "  default: false",
+        ]
+
+    seen: set[str] = set()
+    updated: list[str] = []
+    for line in lines:
+        stripped = line.lstrip()
+        indent = len(line) - len(stripped)
+        replaced = False
+        if indent == 0 and ":" in stripped:
+            key = stripped.split(":", 1)[0].strip()
+            if key in values:
+                updated.append(f"{key}: {values[key]}")
+                seen.add(key)
+                replaced = True
+        if not replaced:
+            updated.append(line)
+
+    missing = [key for key in values if key not in seen]
+    if missing:
+        insertion = [f"{key}: {values[key]}" for key in missing]
+        if updated and updated[-1].strip():
+            updated.append("")
+        updated.extend(insertion)
+
+    write_text(path, "\n".join(updated) + "\n", dry_run)
+
+
+def ensure_extensions_hook(repo: Path, dry_run: bool) -> None:
+    path = repo / ".specify" / "extensions.yml"
+    hook_text = "speckit.git.feature"
+    if path.exists() and hook_text in path.read_text(encoding="utf-8"):
+        log(f"unchanged {path}")
+        return
+
+    if path.exists():
+        lines = path.read_text(encoding="utf-8").splitlines()
+    else:
+        lines = [
+            "installed:",
+            "- git",
+            "settings:",
+            "  auto_execute_hooks: true",
+            "hooks:",
+        ]
+
+    hook = [
+        "- extension: git",
+        "  command: speckit.git.feature",
+        "  enabled: true",
+        "  optional: false",
+        "  prompt: Execute speckit.git.feature?",
+        "  description: Create feature checkout before specification",
+        "  condition: null",
+    ]
+
+    for index, line in enumerate(lines):
+        if line.strip() == "before_specify:":
+            child_indent = line[: len(line) - len(line.lstrip(" "))] + "  "
+            lines[index + 1 : index + 1] = [child_indent + item for item in hook]
+            write_text(path, "\n".join(lines) + "\n", dry_run)
+            return
+
+    for index, line in enumerate(lines):
+        if line.strip() == "hooks:":
+            child_indent = line[: len(line) - len(line.lstrip(" "))] + "  "
+            lines[index + 1 : index + 1] = (
+                [child_indent + "before_specify:"]
+                + [child_indent + "  " + item for item in hook]
+            )
+            write_text(path, "\n".join(lines) + "\n", dry_run)
+            return
+
+    if lines and lines[-1].strip():
+        lines.append("")
+    lines.extend(["hooks:", "  before_specify:"] + ["    " + item for item in hook])
+    write_text(path, "\n".join(lines) + "\n", dry_run)
+
+
+def ensure_worktree_overlay(
+    repo: Path,
+    dry_run: bool,
+    force: bool,
+    base_branch: str | None,
+    worktree_root: str | None,
+    skip_worktrees: bool,
+) -> None:
+    if skip_worktrees:
+        return
+
+    template_root = worktree_template_root()
+    if template_root is None:
+        raise SystemExit("Speckit worktree template root not found.")
+
+    copy_overlay_tree(template_root / "specify" / "extensions" / "git", repo / ".specify" / "extensions" / "git", dry_run, force)
+    copy_overlay_tree(template_root / "specify" / "shell", repo / ".specify" / "shell", dry_run, force)
+    copy_overlay_tree(template_root / "agents" / "skills" / "speckit-specify", repo / ".agents" / "skills" / "speckit-specify", dry_run, force)
+    copy_overlay_tree(template_root / "agents" / "skills" / "speckit-git-feature", repo / ".agents" / "skills" / "speckit-git-feature", dry_run, force)
+    copy_overlay_tree(template_root / "claude" / "skills" / "speckit-specify", repo / ".claude" / "skills" / "speckit-specify", dry_run, force)
+    copy_overlay_tree(template_root / "claude" / "skills" / "speckit-git-feature", repo / ".claude" / "skills" / "speckit-git-feature", dry_run, force)
+    copy_overlay_tree(template_root / "codex" / "skills" / "speckit-specify", repo / ".codex" / "skills" / "speckit-specify", dry_run, force)
+    copy_overlay_tree(template_root / "codex" / "skills" / "speckit-git-feature", repo / ".codex" / "skills" / "speckit-git-feature", dry_run, force)
+
+    resolved_base_branch = base_branch or default_base_branch(repo)
+    resolved_worktree_root = worktree_root or f"../{repo.name}-worktrees"
+    set_top_level_yml_values(
+        repo / ".specify" / "extensions" / "git" / "git-config.yml",
+        {
+            "branch_numbering": "sequential",
+            "checkout_mode": "worktree",
+            "base_branch": resolved_base_branch,
+            "worktree_root": resolved_worktree_root,
+        },
+        dry_run,
+    )
+    ensure_extensions_hook(repo, dry_run)
+
+
 def main() -> int:
     args = parse_args()
     repo = (args.repo.resolve() if args.repo else git_root())
     agent_root = Path(os.environ.get("AGENT_PROTOCOL_ROOT", Path.home() / ".agents")).resolve()
+    integration = args.integration or existing_integration(repo) or "claude"
 
     log(f"repo: {repo}")
     log(f"agent root: {agent_root}")
+    log(f"integration: {integration}")
 
     ensure_scaffold(repo, args.dry_run, args.skip_init)
+    ensure_speckit_initialized(repo, integration, args.dry_run, args.skip_init)
+    ensure_speckit_registration(repo, args.dry_run, args.no_speckit_registration)
+    ensure_worktree_overlay(
+        repo,
+        args.dry_run,
+        args.force,
+        args.base_branch,
+        args.worktree_root,
+        args.no_worktrees,
+    )
 
     if not args.no_repo_agent_pointers:
         ensure_repo_agent_pointers(repo, agent_root, args.dry_run)

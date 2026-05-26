@@ -67,6 +67,7 @@
         "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind,consistency=cached",
         "source=${localEnv:HOME}/.claude.json,target=/home/${localEnv:USER}/.claude.json,type=bind,consistency=cached",
         "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.pi,target=/home/${localEnv:USER}/.pi,type=bind,consistency=cached",
         "source=${localEnv:HOME}/.config/sonarqube,target=/home/${localEnv:USER}/.config/sonarqube,type=bind,readonly",
         "source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini,type=bind,consistency=cached",
         "source=${localEnv:HOME}/.grok,target=/home/${localEnv:USER}/.grok,type=bind,readonly",
