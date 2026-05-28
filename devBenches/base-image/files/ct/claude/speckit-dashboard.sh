@@ -337,9 +337,12 @@ trap cleanup INT TERM
 printf '%s' "${esc}[?1049h${esc}[?25l${esc}[?7l${esc}[?1000h${esc}[?1006h"
 
 read_escape_tail() {
-  local seq="" ch
+  local seq="" ch timeout="${SPECKIT_DASHBOARD_ESCAPE_TIMEOUT:-0.15}"
 
-  while IFS= read -rsn1 -t 0.03 ch; do
+  # Mouse and arrow key input arrives as escape sequences. Some benches can
+  # deliver those bytes with small gaps under load, so do not assume a tight
+  # 30ms packet.
+  while IFS= read -rsn1 -t "$timeout" ch; do
     seq+="$ch"
     case "$seq" in
       '[A'|'[B'|'[5~'|'[6~')
@@ -438,7 +441,7 @@ mouse_click_section() {
 
   line="${lines[$line_index]}"
   clean="$(printf '%s\n' "$line" | strip_ansi)"
-  if [[ "$clean" =~ ^[▾▸][[:space:]]*([1-9])([[:space:]]|$) ]]; then
+  if [[ "$clean" =~ ^[^[:space:]]+[[:space:]]*([1-9])([[:space:]]|$) ]]; then
     printf '%s\n' "${BASH_REMATCH[1]}"
     return 0
   fi
