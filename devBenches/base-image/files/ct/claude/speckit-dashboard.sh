@@ -11,7 +11,7 @@
 #
 # Keys (while the pane is focused — click it, tmux mouse is on):
 #   1-9  fold / unfold that section      a  expand all
-#   c    collapse all                    click section headers to toggle
+#   c    collapse all                    click section / phase rows to toggle
 #   mouse wheel / ↑/↓ / j/k scroll
 #   PgUp/PgDn page scroll                q  quit
 #
@@ -48,6 +48,7 @@ c_white="${esc}[38;5;255m";  c_black="${esc}[38;5;16m"
 c_bg_cyan="${esc}[48;5;45m"
 
 declare -A folded=()          # folded[N]=1  ->  section N is collapsed
+declare -A phase_expanded=()  # phase_expanded[N]=1  ->  phase tasks are shown
 
 sync_dashboard() {
   local reason="${1:-loop}"
@@ -216,7 +217,7 @@ render_body() {
     return
   fi
 
-  local line section="" secnum=0 skip=0 ind col in_banner=1
+  local line section="" secnum=0 skip=0 ind col in_banner=1 phase_index=0 phase_skip=0
   while IFS= read -r line || [[ -n "$line" ]]; do
     if (( in_banner )); then
       if [[ "$line" == *"SESSION DASHBOARD"* || "$line" == *"Speckit Dashboard"* ]]; then
@@ -237,12 +238,33 @@ render_body() {
     if [[ "$line" =~ ^[[:space:]][A-Z] ]]; then            # section header
       secnum=$(( secnum + 1 ))
       section="${line#" "}"
+      phase_index=0
+      phase_skip=0
       if [[ -n "${folded[$secnum]:-}" ]]; then skip=1; ind="▸"
       else                                     skip=0; ind="▾"; fi
       printf '%s\n' "${c_bold}${c_white}${ind} ${secnum} ${line}${c_reset}"
       continue
     fi
     (( skip )) && continue                                  # folded section body
+    if [[ "$section" == PHASES* ]]; then
+      if [[ "$line" =~ ^[[:space:]]{6}.+T[0-9]+[A-Za-z]?[[:space:]] ]]; then
+        (( phase_skip )) && continue
+      elif [[ "$line" == "   🎯 "* || "$line" == "   🛡 "* ]]; then
+        phase_skip=0
+      elif [[ "$line" =~ ^[[:space:]]{3}([^[:space:]]+|○)[[:space:]]+.+[[:space:]][0-9]+/[0-9]+$ ]]; then
+        phase_index=$(( phase_index + 1 ))
+        if [[ -n "${phase_expanded[$phase_index]:-}" ]]; then
+          ind="▾"
+          phase_skip=0
+        else
+          ind="▸"
+          phase_skip=1
+        fi
+        line="   ${ind} ${line#   }"
+      else
+        phase_skip=0
+      fi
+    fi
     col="$(line_colour "$section" "$line")"
     if [[ -n "$col" ]]; then printf '%s\n' "${col}${line}${c_reset}"
     else                     printf '%s\n' "$line"; fi
@@ -256,6 +278,20 @@ render() {                    # one-shot dump
 
 section_count() {
   [[ -f "$FILE" ]] && grep -cE '^[[:space:]][A-Z]' "$FILE" || echo 0
+}
+
+phase_count() {
+  [[ -f "$FILE" ]] || {
+    echo 0
+    return
+  }
+
+  awk '
+    /^[[:space:]]PHASES/ { in_phases = 1; next }
+    /^[[:space:]][A-Z]/ { if (in_phases) exit }
+    in_phases && /^   / && $0 !~ /^      / && $0 !~ /^   🎯/ && $0 !~ /^   🛡/ && $0 ~ /[0-9]+\/[0-9]+$/ { count++ }
+    END { print count + 0 }
+  ' "$FILE"
 }
 
 pane_rows() {
@@ -318,9 +354,9 @@ render_window() {
 
   clear_line
   if (( max_scroll > 0 )); then
-    printf '%s\n' "${c_dim}  click header · wheel/↑↓ · 1-9 fold · a/c · q · ${scroll_offset}/${max_scroll}${c_reset}"
+    printf '%s\n' "${c_dim}  click header/phase · wheel/↑↓ · 1-9 fold · a/c · q · ${scroll_offset}/${max_scroll}${c_reset}"
   else
-    printf '%s\n' "${c_dim}  1-9 fold · a expand · c collapse · q quit${c_reset}"
+    printf '%s\n' "${c_dim}  click phase · 1-9 fold · a expand · c collapse · q quit${c_reset}"
   fi
 }
 
@@ -397,13 +433,24 @@ toggle_section() {
   fi
 }
 
+toggle_phase() {
+  local phase="$1"
+
+  [[ "$phase" =~ ^[0-9]+$ && "$phase" -gt 0 ]] || return 1
+  if [[ -n "${phase_expanded[$phase]:-}" ]]; then
+    unset "phase_expanded[$phase]"
+  else
+    phase_expanded[$phase]=1
+  fi
+}
+
 strip_ansi() {
   sed -E $'s/\x1B\\[[0-9;]*[A-Za-z]//g'
 }
 
-mouse_click_section() {
+mouse_click_target() {
   local seq="$1" code payload rest x y first_ord second_ord third_ord
-  local line_index line clean
+  local line_index line clean i phase=0
   local -a lines
 
   case "$seq" in
@@ -442,8 +489,20 @@ mouse_click_section() {
   line="${lines[$line_index]}"
   clean="$(printf '%s\n' "$line" | strip_ansi)"
   if [[ "$clean" =~ ^[^[:space:]]+[[:space:]]*([1-9])([[:space:]]|$) ]]; then
-    printf '%s\n' "${BASH_REMATCH[1]}"
+    printf 'section:%s\n' "${BASH_REMATCH[1]}"
     return 0
+  fi
+  if [[ "$clean" == "   ▸ "* || "$clean" == "   ▾ "* ]]; then
+    for ((i=0; i<=line_index; i++)); do
+      clean="$(printf '%s\n' "${lines[$i]}" | strip_ansi)"
+      if [[ "$clean" == "   ▸ "* || "$clean" == "   ▾ "* ]]; then
+        phase=$(( phase + 1 ))
+      fi
+    done
+    if (( phase > 0 )); then
+      printf 'phase:%s\n' "$phase"
+      return 0
+    fi
   fi
 
   return 1
@@ -499,7 +558,7 @@ while true; do
     sync_dashboard "loop"
   fi
 
-  sig="$(file_signature)|${!folded[*]}|$scroll_offset|$(pane_rows)x$(pane_cols)"
+  sig="$(file_signature)|${!folded[*]}|${!phase_expanded[*]}|$scroll_offset|$(pane_rows)x$(pane_cols)"
   if [[ "$sig" != "$last_sig" ]]; then                      # redraw only on change
     printf '%s' "${esc}[H${esc}[2J"                         # home + clear visible window
     render_window
@@ -508,14 +567,17 @@ while true; do
   read -rsn1 -t 2 key || continue                           # 2s poll for a keypress
 	  case "$key" in
 	    [1-9]) toggle_section "$key" ;;
-	    a)     folded=() ;;
-	    c)     n="$(section_count)"; for ((i=1; i<=n; i++)); do folded[$i]=1; done ;;
+	    a)     folded=(); n="$(phase_count)"; for ((i=1; i<=n; i++)); do phase_expanded[$i]=1; done ;;
+	    c)     n="$(section_count)"; for ((i=1; i<=n; i++)); do folded[$i]=1; done; phase_expanded=() ;;
 	    j)     scroll_offset=$(( scroll_offset + 1 )) ;;
 	    k)     scroll_offset=$(( scroll_offset - 1 )) ;;
 	    $'\033')
 	           rest="$(read_escape_tail)"
-	           if section="$(mouse_click_section "$rest")"; then
-	             toggle_section "$section"
+	           if target="$(mouse_click_target "$rest")"; then
+	             case "$target" in
+	               section:*) toggle_section "${target#section:}" ;;
+	               phase:*)   toggle_phase "${target#phase:}" ;;
+	             esac
 	           elif delta="$(mouse_scroll_delta "$rest")"; then
 	             scroll_offset=$(( scroll_offset + delta ))
 	           else

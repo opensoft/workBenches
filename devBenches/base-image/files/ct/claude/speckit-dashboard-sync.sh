@@ -215,8 +215,13 @@ bar_fixed() {
 }
 
 task_title() {
-  sed -E 's/^- \[[ xX]\] (T[0-9]+)[^*A-Za-z0-9]*(.*)$/\1 \2/' \
-    | sed -E 's/`//g; s/[*#]//g; s/  +/ /g; s/^(.{0,56}).*/\1/'
+  local width="${1:-56}"
+
+  sed -E \
+    -e 's/^- \[[ xX]\][[:space:]]*(T[0-9]+[A-Za-z]?)[[:space:]]*/\1 /' \
+    -e 's/[[:space:]]*\[P\][[:space:]]*/ /g' \
+    -e 's/`//g; s/[*#]//g; s/  +/ /g; s/[[:space:]]+$//' \
+    | awk -v width="$width" '{ if (length($0) > width) print substr($0, 1, width); else print }'
 }
 
 append_history() {
@@ -278,8 +283,8 @@ git_summary="$(git_status_summary)"
 should_sync "$log_file" "$command" || exit 0
 
 feature_name="$(basename "$feature_dir")"
-task_total="$(grep -cE '^- \[[ xX]\] T[0-9]+' "$tasks_file" || true)"
-task_done="$(grep -cE '^- \[[xX]\] T[0-9]+' "$tasks_file" || true)"
+task_total="$(grep -cE '^- \[[ xX]\][[:space:]]+T[0-9]+[A-Za-z]?' "$tasks_file" || true)"
+task_done="$(grep -cE '^- \[[xX]\][[:space:]]+T[0-9]+[A-Za-z]?' "$tasks_file" || true)"
 task_pct="$(percent "$task_done" "$task_total")"
 task_bar="$(bar_fixed "$task_done" "$task_total" 10)"
 
@@ -302,16 +307,17 @@ if [ "$SYNC_REASON" != "timer" ] && [ "$SYNC_REASON" != "loop" ] && [ "$SYNC_REA
 fi
 
 tmp_open="$(mktemp)"
-grep -E '^- \[ \] T[0-9]+' "$tasks_file" | head -5 > "$tmp_open" || true
+grep -E '^- \[ \][[:space:]]+T[0-9]+[A-Za-z]?' "$tasks_file" | head -5 > "$tmp_open" || true
 open_more=$(( task_total - task_done ))
 [ "$open_more" -lt 0 ] && open_more=0
 
 phase_file="$(mktemp)"
-awk '
+phase_tasks_file="$(mktemp)"
+awk -v summary="$phase_file" -v details="$phase_tasks_file" '
 function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
 function emit() {
   if (phase != "" && total > 0) {
-    print group "\t" phase "\t" done "\t" total
+    print group "\t" phase "\t" done "\t" total >> summary
   }
 }
 /^## Phase [0-9]+:/ {
@@ -327,7 +333,7 @@ function emit() {
   else if (phase ~ /User Story/) {
     us=phase
     sub(/^.*User Story[[:space:]]*/, "US", us)
-    sub(/[[:space:]]*-.*$/, "", us)
+    sub(/[[:space:]]*[-—].*$/, "", us)
     pr="P?"
     if (raw ~ /Priority:[[:space:]]*P1/) { pr="P1"; group="MVP" }
     else if (raw ~ /Priority:[[:space:]]*P2/) { pr="P2"; group="POST" }
@@ -340,14 +346,25 @@ function emit() {
   total=0
   next
 }
-/^- \[[ xX]\] T[0-9]+/ {
+/^- \[[ xX]\][[:space:]]+T[0-9]+[A-Za-z]?/ {
   if (phase != "") {
+    task=$0
+    task_label=task
+    sub(/^- \[[ xX]\][[:space:]]*/, "", task_label)
+    gsub(/`/, "", task_label)
+    gsub(/[*#]/, "", task_label)
+    gsub(/[[:space:]]+/, " ", task_label)
+    task_label=trim(task_label)
+    task_marker="○ "
+    if (task ~ /^- \[[xX]\]/) task_marker="🟢"
+    else if (tolower(task) ~ /blocked|upstream|operator|depends/) task_marker="🔴"
+    print phase "\t" task_marker "\t" task_label >> details
     total++
     if ($0 ~ /^- \[[xX]\]/) done++
   }
 }
 END { emit() }
-' "$tasks_file" > "$phase_file"
+' "$tasks_file"
 
 mvp_done="$(awk -F '\t' '$1=="MVP"{d+=$3} END{print d+0}' "$phase_file")"
 mvp_total="$(awk -F '\t' '$1=="MVP"{t+=$4} END{print t+0}' "$phase_file")"
@@ -426,6 +443,10 @@ fi
     awk -F '\t' '$1=="MVP"{print $2 "\t" $3 "\t" $4}' "$phase_file" | while IFS=$'\t' read -r name done total; do
       if [ "$done" -eq "$total" ]; then marker='🟢'; else marker='🔵'; fi
       printf '   %s %-13s %s  %s/%s\n' "$marker" "$name" "$(bar_fixed "$done" "$total" 24)" "$done" "$total"
+      awk -F '\t' -v phase="$name" '$1==phase{print $2 "\t" $3}' "$phase_tasks_file" \
+        | while IFS=$'\t' read -r task_marker task_name; do
+            printf '      %s %s\n' "$task_marker" "$(printf '%s\n' "$task_name" | task_title 48)"
+          done
     done
   fi
   if [ "$post_total" -gt 0 ]; then
@@ -433,6 +454,10 @@ fi
     awk -F '\t' '$1=="POST"{print $2 "\t" $3 "\t" $4}' "$phase_file" | while IFS=$'\t' read -r name done total; do
       if [ "$done" -eq "$total" ]; then marker='🟢'; elif [ "$done" -gt 0 ]; then marker='🔵'; else marker='○ '; fi
       printf '   %s %-13s %s  %s/%s\n' "$marker" "$name" "$(bar_fixed "$done" "$total" 24)" "$done" "$total"
+      awk -F '\t' -v phase="$name" '$1==phase{print $2 "\t" $3}' "$phase_tasks_file" \
+        | while IFS=$'\t' read -r task_marker task_name; do
+            printf '      %s %s\n' "$task_marker" "$(printf '%s\n' "$task_name" | task_title 48)"
+          done
     done
   fi
   printf '──────────────────────────────────────────────────────────────\n'
@@ -447,7 +472,7 @@ fi
   fi
   printf '──────────────────────────────────────────────────────────────\n'
   printf ' NEXT COMMANDS               ⭐ next open task / remediation\n'
-  first_open="$(head -1 "$tmp_open" | task_title)"
+  first_open="$(head -1 "$tmp_open" | task_title 32)"
   if [ -n "$first_open" ]; then
     printf '   ⭐ /speckit.implement %s\n' "$first_open"
   else
@@ -460,4 +485,4 @@ fi
   printf '══════════════════════════════════════════════════════════════\n'
 } > "$OUT.tmp" && mv "$OUT.tmp" "$OUT"
 
-rm -f "$tmp_open" "$phase_file"
+rm -f "$tmp_open" "$phase_file" "$phase_tasks_file"

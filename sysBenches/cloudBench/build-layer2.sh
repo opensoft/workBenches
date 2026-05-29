@@ -15,10 +15,15 @@ source "$REPO_DIR/scripts/lib/image-names.sh"
 cd "$SCRIPT_DIR"
 
 BASE_IMAGE="$(resolve_existing_image "$(family_base_image sys)" "$(legacy_family_base_image sys 2>/dev/null || true)" || true)"
+DOCKER_BUILD_ARGS=()
+if [ "${DOCKER_BUILD_NO_CACHE:-0}" = "1" ]; then
+    DOCKER_BUILD_ARGS+=(--no-cache)
+fi
 
 echo "Configuration:"
 echo "  Tag: cloud-bench:latest (user-agnostic)"
 echo "  Base image: ${BASE_IMAGE:-$(family_base_image sys)}"
+echo "  No cache: ${DOCKER_BUILD_NO_CACHE:-0}"
 echo ""
 
 # Check if Layer 1b exists
@@ -34,6 +39,7 @@ fi
 # Build the image
 echo "Building cloud-bench:latest..."
 docker build \
+    "${DOCKER_BUILD_ARGS[@]}" \
     --build-arg BASE_IMAGE="$BASE_IMAGE" \
     -f Dockerfile.layer2 \
     -t "cloud-bench:latest" \

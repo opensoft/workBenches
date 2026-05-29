@@ -24,6 +24,7 @@ USER_GID=$(id -g)
 DOCKER_SOCKET_GID=""
 BASE_IMAGE=""
 EXTRA_CHOWN_DIRS=""
+NO_CACHE="${NO_CACHE:-false}"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -34,8 +35,9 @@ while [[ $# -gt 0 ]]; do
         --gid) USER_GID="$2"; shift 2 ;;
         --docker-gid) DOCKER_SOCKET_GID="$2"; shift 2 ;;
         --chown) EXTRA_CHOWN_DIRS="$2"; shift 2 ;;
+        --no-cache) NO_CACHE=true; shift ;;
         -h|--help)
-            echo "Usage: $0 --base <image:latest> [--user USERNAME] [--chown \"dir1 dir2\"]"
+            echo "Usage: $0 --base <image:latest> [--user USERNAME] [--chown \"dir1 dir2\"] [--no-cache]"
             echo ""
             echo "Options:"
             echo "  --base IMAGE    Base Layer 2 image (required). e.g. cpp-bench:latest"
@@ -43,6 +45,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --uid UID       User UID (default: \$(id -u))"
             echo "  --gid GID       User GID (default: \$(id -g))"
             echo "  --chown DIRS    Space-separated dirs to chown to user (e.g. \"/opt/vcpkg /go\")"
+            echo "  --no-cache      Force Docker to rebuild without cached layers"
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -65,6 +68,7 @@ echo "  Username:    $USERNAME"
 echo "  UID/GID:     $USER_UID/$USER_GID"
 echo "  Docker GID:  ${DOCKER_SOCKET_GID:-none}"
 echo "  Extra chown: ${EXTRA_CHOWN_DIRS:-none}"
+echo "  No cache:    $NO_CACHE"
 echo ""
 
 # Check if base image exists
@@ -78,6 +82,7 @@ fi
 # Build Layer 3
 echo "Building $OUTPUT_IMAGE..."
 docker build \
+    $([ "$NO_CACHE" = true ] && printf '%s\n' "--no-cache") \
     --build-arg BASE_IMAGE="$BASE_IMAGE" \
     --build-arg USERNAME="$USERNAME" \
     --build-arg USER_UID="$USER_UID" \

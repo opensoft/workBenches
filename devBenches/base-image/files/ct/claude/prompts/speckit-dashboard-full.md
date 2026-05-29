@@ -212,6 +212,9 @@ each heading.
   - ○ not started
 - Phase row body: phase name, proportional bar, `done/total`, and `◀ next` on
   the next phase to work.
+- Under each phase row, include one indented task detail line per task in that
+  phase: six spaces, status marker, `Txxx`, and a trimmed title. The side-pane
+  renderer hides these lines until the user clicks the phase row.
 - Proportional bar: one cell per task, `▰` for done and `▱` for remaining. If
   the largest phase exceeds 24 tasks, scale every bar so the largest is 24.
 
