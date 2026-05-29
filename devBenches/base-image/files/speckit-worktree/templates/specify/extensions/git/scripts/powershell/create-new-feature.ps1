@@ -412,6 +412,11 @@ if ($env:GIT_BRANCH_NAME) {
         $branchSuffix = Get-BranchName -Description $featureDesc
     }
 
+    if ([string]::IsNullOrWhiteSpace($branchSuffix)) {
+        Write-Error "Error: Feature branch name must include at least one alphanumeric slug word. Provide -ShortName with letters or digits."
+        exit 1
+    }
+
     if ($Timestamp -and $Number -ne 0) {
         Write-Warning "[specify] Warning: -Number is ignored when -Timestamp is used"
         $Number = 0

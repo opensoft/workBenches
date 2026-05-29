@@ -477,6 +477,11 @@ else
         BRANCH_SUFFIX=$(generate_branch_name "$FEATURE_DESCRIPTION")
     fi
 
+    if [ -z "$BRANCH_SUFFIX" ]; then
+        >&2 echo "Error: Feature branch name must include at least one alphanumeric slug word. Provide --short-name with letters or digits."
+        exit 1
+    fi
+
     # Warn if --number and --timestamp are both specified
     if [ "$USE_TIMESTAMP" = true ] && [ -n "$BRANCH_NUMBER" ]; then
         >&2 echo "[specify] Warning: --number is ignored when --timestamp is used"

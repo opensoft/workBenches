@@ -126,7 +126,22 @@ resolve_worktree_root() {
     local main_root
     main_root=$(resolve_main_repo_root "$repo_root")
 
+    local default_root="../$(basename "$main_root")-worktrees"
+    local raw_root
+    raw_root=$(resolve_config_value "$main_root" "worktree_root" "$default_root")
+
     local candidate
+    candidate=$(resolve_path_from_root "$main_root" "$raw_root")
+    if [ -d "$candidate" ]; then
+        (cd "$candidate" && pwd -P)
+        return 0
+    fi
+
+    if [ "$raw_root" != "$default_root" ]; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+
     for candidate in "$(resolve_path_from_root "$main_root" "worktrees")" "$(resolve_path_from_root "$main_root" ".worktrees")"; do
         if worktree_root_has_entries "$candidate"; then
             (cd "$candidate" && pwd -P)
@@ -134,11 +149,7 @@ resolve_worktree_root() {
         fi
     done
 
-    local default_root="../$(basename "$main_root")-worktrees"
-    local raw_root
-    raw_root=$(resolve_config_value "$main_root" "worktree_root" "$default_root")
-    candidate=$(resolve_path_from_root "$main_root" "$raw_root")
-    printf '%s\n' "$candidate"
+    printf '%s\n' "$(resolve_path_from_root "$main_root" "$default_root")"
 }
 
 MODE="prompt"

@@ -35,6 +35,8 @@ x-standard-mounts: &standard-mounts
   - ~/.claude.json:/home/${USER}/.claude.json:cached
   # OpenAI Codex (@openai/codex via npm)
   - ~/.codex:/home/${USER}/.codex:cached
+  # Shared AI agent protocols and skills
+  - ~/.agents:/home/${USER}/.agents:cached
   # Google Gemini (@google/gemini-cli via npm)
   - ~/.gemini:/home/${USER}/.gemini:cached
   # GitHub Copilot (@githubnext/github-copilot-cli via npm)
@@ -59,6 +61,7 @@ services:
 # Installed AI CLIs and credential paths:
 #   Claude Code     (native installer)                  → ~/.claude/, ~/.claude.json
 #   OpenAI Codex    (@openai/codex via npm)              → ~/.codex/
+#   Shared Agents   (protocols and global skills)        → ~/.agents/
 #   Google Gemini   (@google/gemini-cli via npm)         → ~/.gemini/
 #   GitHub Copilot  (@githubnext/github-copilot-cli npm) → ~/.copilot-cli/
 #   OpenCode        (upstream source build)              → config in image (/etc/skel)
