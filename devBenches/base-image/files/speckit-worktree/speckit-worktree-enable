@@ -104,6 +104,7 @@ backup_file() {
 copy_overlay_dir() {
     local source="$1"
     local target="$2"
+    local preserved_git_config=""
 
     [ -d "$source" ] || return 0
 
@@ -113,10 +114,16 @@ copy_overlay_dir() {
     fi
 
     mkdir -p "$target"
-    if [ "$force" = true ]; then
-        cp -a "$source/." "$target/"
-    else
-        cp -an "$source/." "$target/"
+    if [ "$force" != true ] && [ -f "$target/git-config.yml" ] && [ -f "$source/git-config.yml" ]; then
+        preserved_git_config=$(mktemp)
+        cp -a "$target/git-config.yml" "$preserved_git_config"
+    fi
+
+    cp -a "$source/." "$target/"
+
+    if [ -n "$preserved_git_config" ]; then
+        cp -a "$preserved_git_config" "$target/git-config.yml"
+        rm -f "$preserved_git_config"
     fi
 }
 

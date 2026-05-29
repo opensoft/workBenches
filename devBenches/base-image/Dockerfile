@@ -95,6 +95,14 @@ COPY files/openspeckit/setup-openspeckit /usr/local/bin/setup-openspeckit
 RUN chmod 0755 /usr/local/bin/setup-openspeckit \
     && ln -sfn setup-openspeckit /usr/local/bin/setup-openspec-speckit-project
 
+# OpenSpec Claude commands and skills live with the devBench OpenSpec CLI.
+RUN mkdir -p /etc/skel/.claude/commands/opsx \
+    && mkdir -p /etc/skel/.claude/skills/opsx-clarify \
+    && mkdir -p /etc/skel/.claude/skills/opsx-analyze
+COPY files/claude/commands/opsx/ /etc/skel/.claude/commands/opsx/
+COPY files/claude/skills/opsx-clarify/ /etc/skel/.claude/skills/opsx-clarify/
+COPY files/claude/skills/opsx-analyze/ /etc/skel/.claude/skills/opsx-analyze/
+
 # Shared, project-agnostic Speckit worktree helpers for all developer benches.
 COPY files/ct/ct-functions.zsh /usr/local/share/ct/ct-functions.zsh
 COPY files/ct/claude/ /usr/local/share/ct/claude/

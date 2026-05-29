@@ -119,6 +119,17 @@ get_bench_description() {
     esac
 }
 
+normalize_bench_type() {
+    case "$1" in
+        python)
+            printf '%s\n' "py"
+            ;;
+        *)
+            printf '%s\n' "$1"
+            ;;
+    esac
+}
+
 # AI-enhanced bench recommendation
 ai_recommend_bench() {
     local request="$1"
@@ -215,11 +226,7 @@ launch_bench() {
     local bench_type="$1"
     local bench_path=""
 
-    case "$bench_type" in
-        python)
-            bench_type="py"
-            ;;
-    esac
+    bench_type=$(normalize_bench_type "$bench_type")
     
     # Find bench path
     while IFS=':' read -r name path; do
@@ -462,8 +469,10 @@ main() {
         *)
             # Check if it's a direct bench type or AI request
             local bench_exists=false
+            local requested_bench
+            requested_bench=$(normalize_bench_type "$1")
             while IFS=':' read -r name path; do
-                if [ "$name" = "$1" ]; then
+                if [ "$name" = "$requested_bench" ]; then
                     bench_exists=true
                     break
                 fi
@@ -471,7 +480,7 @@ main() {
             
             if [ "$bench_exists" = true ]; then
                 # Direct bench launch
-                launch_bench "$1"
+                launch_bench "$requested_bench"
                 exit $?
             else
                 # Try AI interpretation

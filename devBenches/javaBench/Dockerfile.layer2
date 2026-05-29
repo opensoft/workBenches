@@ -133,7 +133,7 @@ RUN mkdir -p /opt/jacoco \
     && chmod +x /usr/local/bin/jacoco-cli /usr/local/bin/sonarcloud-java-maven /usr/local/bin/sonarcloud-java-gradle
 
 # SonarScanner CLI is inherited from dev-bench-base.
-RUN sonar-scanner --version || echo "SonarScanner CLI unavailable until dev-bench-base is rebuilt"
+RUN sonar-scanner --version
 
 # ========================================
 # JVM COMPANION LANGUAGES

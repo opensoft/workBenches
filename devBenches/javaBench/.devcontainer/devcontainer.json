@@ -1,6 +1,6 @@
 {
     "name": "devBenches / javaBench",
-    "initializeCommand": "mkdir -p \"${localEnv:HOME}/.agents\" \"${localEnv:HOME}/.pi\" \"${localEnv:HOME}/.config/sonarqube\" && bash ${localWorkspaceFolder}/../scripts/ensure-sonarqube-mcp.sh && bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base java-bench:latest --user ${localEnv:USER} && bash ${localWorkspaceFolder}/../../scripts/reconcile-devcontainer-container.sh --container java-bench --image java-bench:${localEnv:USER}",
+    "initializeCommand": "USER_NAME=\"$(id -un 2>/dev/null || whoami)\" && mkdir -p \"${localEnv:HOME}/.agents\" \"${localEnv:HOME}/.pi\" \"${localEnv:HOME}/.config/sonarqube\" && bash ${localWorkspaceFolder}/../scripts/ensure-sonarqube-mcp.sh && bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base java-bench:latest --user \"$USER_NAME\" && bash ${localWorkspaceFolder}/../../scripts/reconcile-devcontainer-container.sh --container java-bench --image java-bench:\"$USER_NAME\"",
     "dockerComposeFile": "docker-compose.yml",
     "service": "java-bench",
     "shutdownAction": "stopCompose",
