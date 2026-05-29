@@ -164,7 +164,8 @@ if run_with_timeout "300" "Antigravity CLI install" bash -c 'curl -fsSL https://
     fi
     log_info "Antigravity CLI installed to $(command -v agy || printf '/usr/local/bin/agy')"
 else
-    log_error "Antigravity CLI installation failed (continuing)"
+    log_error "Antigravity CLI installation failed"
+    exit 1
 fi
 
 log_info "Installing GitHub Copilot CLI..."

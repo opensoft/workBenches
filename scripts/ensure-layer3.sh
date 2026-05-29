@@ -89,9 +89,17 @@ copy_image_file() {
     safe_image="${image//[^a-zA-Z0-9_.-]/-}"
     check_name="ensure-layer3-check-${safe_image}-$$-${RANDOM}"
 
-    if ! timeout 30s docker create --name "$check_name" "$image" >/dev/null; then
+    run_docker_probe() {
+        if command -v timeout >/dev/null 2>&1; then
+            timeout 30s "$@"
+        else
+            "$@"
+        fi
+    }
+
+    if ! run_docker_probe docker create --name "$check_name" "$image" >/dev/null; then
         status=1
-    elif ! timeout 30s docker cp "$check_name:$file" "$output" >/dev/null 2>&1; then
+    elif ! run_docker_probe docker cp "$check_name:$file" "$output" >/dev/null 2>&1; then
         status=1
     fi
 

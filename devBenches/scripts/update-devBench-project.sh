@@ -173,7 +173,7 @@ analyze_project_structure() {
         log_info "PHP PHPUnit project detected: 85% confidence" >&2
     fi
     
-    if [ -d "$project_path/src" ] && find "$project_path/src" -name "*.php" -type f | head -1 >/dev/null 2>&1; then
+    if [ -d "$project_path/src" ] && find "$project_path/src" -name "*.php" -type f -print -quit 2>/dev/null | grep -q .; then
         php_confidence=$((php_confidence + 15))
         log_info "   PHP source structure found: +15 confidence" >&2
     fi

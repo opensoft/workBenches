@@ -65,7 +65,19 @@ cat > "$BIN_DIR/tmux" <<'EOF'
 set -euo pipefail
 
 case "${1:-}" in
+    display-message)
+        if [ "${2:-}" = "-p" ]; then
+            printf '%%1\n'
+        fi
+        exit 0
+        ;;
     set-option)
+        exit 0
+        ;;
+    bind-key|split-window|select-pane)
+        exit 0
+        ;;
+    list-panes)
         exit 0
         ;;
     *)

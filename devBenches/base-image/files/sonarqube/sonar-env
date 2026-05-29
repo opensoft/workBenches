@@ -15,7 +15,7 @@ usage() {
     cat <<'USAGE'
 Usage:
   sonar-env --check
-  sonar-env --login
+  sonar-env --login   # disabled; use env-token scanner/API workflows instead
   sonar-env --status
   sonar-env -- <command> [args...]
   sonar-env <command> [args...]
@@ -54,22 +54,9 @@ print_check() {
 }
 
 login() {
-    local token="${SONAR_TOKEN:-${SONARQUBE_TOKEN:-}}"
-    local server="${SONAR_HOST_URL:-https://sonarcloud.io}"
-    local org="${SONAR_ORGANIZATION:-${SONARQUBE_ORG:-}}"
-    local args=(auth login --server "$server" --with-token "$token")
-
-    if [[ -z "$token" ]]; then
-        echo "Missing SONAR_TOKEN or SONARQUBE_TOKEN." >&2
-        echo "Put it in ${SONARQUBE_ENV_FILE:-$HOME/.config/sonarqube/sonar.env} or export it before running sonar-env --login." >&2
-        exit 2
-    fi
-
-    if [[ -n "$org" ]]; then
-        args+=(--org "$org")
-    fi
-
-    sonar "${args[@]}"
+    echo "sonar-env --login is disabled because sonar auth login requires passing the token as a process argument." >&2
+    echo "Use sonar-scanner, curl, or SonarQube REST calls with SONAR_TOKEN/SONARQUBE_TOKEN loaded from the env file." >&2
+    exit 2
 }
 
 case "${1:-}" in

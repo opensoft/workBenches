@@ -44,12 +44,24 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 0
 fi
 
+COMPOSE_CMD=()
+if docker compose version >/dev/null 2>&1; then
+  COMPOSE_CMD=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+  COMPOSE_CMD=(docker-compose)
+else
+  log "Docker Compose is not available; skipping reusable SonarQube MCP startup."
+  exit 0
+fi
+
 if [[ -f "$SECRET_FILE" ]]; then
   set -a
   # shellcheck disable=SC1090
   source "$SECRET_FILE"
   set +a
 fi
+
+SONARQUBE_TOKEN="${SONARQUBE_TOKEN:-${SONAR_TOKEN:-}}"
 
 if [[ -z "${SONARQUBE_TOKEN:-}" ]]; then
   log "SONARQUBE_TOKEN is not set; skipping reusable SonarQube MCP startup."
@@ -87,7 +99,7 @@ ensure_compose_services() {
   export SONARQUBE_ORG
   export SONARQUBE_TOKEN
 
-  COMPOSE_IGNORE_ORPHANS=True docker compose \
+  COMPOSE_IGNORE_ORPHANS=True "${COMPOSE_CMD[@]}" \
     -p "$COMPOSE_PROJECT_NAME" \
     -f "$COMPOSE_FILE" \
     up -d

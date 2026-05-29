@@ -1,6 +1,6 @@
 {
     "name": "devBenches / javaBench",
-    "initializeCommand": "bash ${localWorkspaceFolder}/../scripts/ensure-sonarqube-mcp.sh && bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base java-bench:latest --user ${localEnv:USER} && bash ${localWorkspaceFolder}/../../scripts/reconcile-devcontainer-container.sh --container java-bench --image java-bench:${localEnv:USER}",
+    "initializeCommand": "mkdir -p \"${localEnv:HOME}/.agents\" \"${localEnv:HOME}/.pi\" \"${localEnv:HOME}/.config/sonarqube\" && bash ${localWorkspaceFolder}/../scripts/ensure-sonarqube-mcp.sh && bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base java-bench:latest --user ${localEnv:USER} && bash ${localWorkspaceFolder}/../../scripts/reconcile-devcontainer-container.sh --container java-bench --image java-bench:${localEnv:USER}",
     "dockerComposeFile": "docker-compose.yml",
     "service": "java-bench",
     "shutdownAction": "stopCompose",
@@ -67,10 +67,10 @@
         "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind,consistency=cached",
         "source=${localEnv:HOME}/.claude.json,target=/home/${localEnv:USER}/.claude.json,type=bind,consistency=cached",
         "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.agents,target=/home/${localEnv:USER}/.agents,type=bind,consistency=cached",
         "source=${localEnv:HOME}/.pi,target=/home/${localEnv:USER}/.pi,type=bind,consistency=cached",
         "source=${localEnv:HOME}/.config/sonarqube,target=/home/${localEnv:USER}/.config/sonarqube,type=bind,readonly",
         "source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini,type=bind,consistency=cached",
-        "source=${localEnv:HOME}/.grok,target=/home/${localEnv:USER}/.grok,type=bind,readonly",
         "source=${localEnv:HOME}/.copilot-cli,target=/home/${localEnv:USER}/.copilot-cli,type=bind,readonly",
         // NotebookLM (auth tokens from host)
         "source=${localEnv:HOME}/.notebooklm,target=/home/${localEnv:USER}/.notebooklm,type=bind,consistency=cached",

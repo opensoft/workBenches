@@ -1,6 +1,6 @@
 {
     "name": "devBenches / cppBench",
-    "initializeCommand": "bash ${localWorkspaceFolder}/../scripts/ensure-sonarqube-mcp.sh && bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base cpp-bench:latest --chown /opt/vcpkg --user ${localEnv:USER} && bash ${localWorkspaceFolder}/../../scripts/reconcile-devcontainer-container.sh --container cpp-bench --image cpp-bench:${localEnv:USER}",
+    "initializeCommand": "mkdir -p \"${localEnv:HOME}/.agents\" \"${localEnv:HOME}/.pi\" \"${localEnv:HOME}/.config/sonarqube\" && bash ${localWorkspaceFolder}/../scripts/ensure-sonarqube-mcp.sh && bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base cpp-bench:latest --chown /opt/vcpkg --user ${localEnv:USER} && bash ${localWorkspaceFolder}/../../scripts/reconcile-devcontainer-container.sh --container cpp-bench --image cpp-bench:${localEnv:USER}",
     "dockerComposeFile": "docker-compose.yml",
     "service": "cpp-bench",
     "shutdownAction": "stopCompose",
@@ -83,13 +83,13 @@
         "source=${localEnv:HOME}/.claude.json,target=/home/${localEnv:USER}/.claude.json,type=bind,consistency=cached",
         // Codex (OpenAI)
         "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex,type=bind,consistency=cached",
+        // Shared agent protocols and skills
+        "source=${localEnv:HOME}/.agents,target=/home/${localEnv:USER}/.agents,type=bind,consistency=cached",
         // Pi coding agent
         "source=${localEnv:HOME}/.pi,target=/home/${localEnv:USER}/.pi,type=bind,consistency=cached",
         "source=${localEnv:HOME}/.config/sonarqube,target=/home/${localEnv:USER}/.config/sonarqube,type=bind,readonly",
         // Gemini (Google)
         "source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini,type=bind,consistency=cached",
-        // Grok (xAI)
-        "source=${localEnv:HOME}/.grok,target=/home/${localEnv:USER}/.grok,type=bind,readonly",
         // GitHub Copilot CLI
         "source=${localEnv:HOME}/.copilot-cli,target=/home/${localEnv:USER}/.copilot-cli,type=bind,readonly",
         // NotebookLM (auth tokens from host)

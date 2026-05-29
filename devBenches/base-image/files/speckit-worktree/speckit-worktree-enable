@@ -113,7 +113,11 @@ copy_overlay_dir() {
     fi
 
     mkdir -p "$target"
-    cp -a "$source/." "$target/"
+    if [ "$force" = true ]; then
+        cp -a "$source/." "$target/"
+    else
+        cp -an "$source/." "$target/"
+    fi
 }
 
 write_extensions_yml() {

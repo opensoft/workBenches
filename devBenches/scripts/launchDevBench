@@ -101,7 +101,7 @@ get_bench_description() {
         dotnet)
             echo ".NET Core development environment with Entity Framework, SQL tools, and debugging support"
             ;;
-        python)
+        py|python)
             echo "Python development environment with popular frameworks, data science tools, and debugging"
             ;;
         java)
@@ -214,6 +214,12 @@ analyze_environment() {
 launch_bench() {
     local bench_type="$1"
     local bench_path=""
+
+    case "$bench_type" in
+        python)
+            bench_type="py"
+            ;;
+    esac
     
     # Find bench path
     while IFS=':' read -r name path; do
@@ -328,7 +334,7 @@ ${YELLOW}USAGE:${NC}
     launchDevBench [BENCH_TYPE|REQUEST] [OPTIONS]
 
 ${YELLOW}ARGUMENTS:${NC}
-    BENCH_TYPE        Direct bench selection (flutter, dotnet, python, java, cpp, php)
+    BENCH_TYPE        Direct bench selection (flutter, dotnet, py, python, java, cpp, php)
     REQUEST           Natural language request (AI mode only)
                       Examples: "I want to work on Flutter mobile app"
                                 "Debug a .NET API with database"

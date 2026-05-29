@@ -374,6 +374,9 @@ def copy_overlay_tree(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
         if target.exists() and target.read_bytes() == source.read_bytes():
             log(f"unchanged {target}")
             continue
+        if target.exists() and not force:
+            log(f"kept existing {target} (use --force to replace)")
+            continue
         if dry_run:
             log(f"would copy {source} -> {target}")
             continue
