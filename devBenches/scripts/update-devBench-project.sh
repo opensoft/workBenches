@@ -59,6 +59,16 @@ log_section() {
     echo "$(printf '=%.0s' {1..50})"
 }
 
+bench_has_update_script() {
+    local bench_type="$1"
+    local bench_name="${2:-${bench_type%Bench}}"
+
+    [ -f "$DEVBENCHES_DIR/${bench_type}/scripts/update-${bench_name}-project.sh" ] ||
+        [ -f "$DEVBENCHES_DIR/${bench_type}/scripts/update-project.sh" ] ||
+        [ -f "$DEVBENCHES_DIR/${bench_type}/update-${bench_name}-project.sh" ] ||
+        [ -f "$DEVBENCHES_DIR/${bench_type}/update-project.sh" ]
+}
+
 # ====================================
 # Metadata Detection Functions
 # ====================================
@@ -235,8 +245,12 @@ analyze_project_structure() {
     fi
     
     if [ $php_confidence -gt $max_confidence ]; then
-        max_confidence=$php_confidence
-        best_bench="phpBench"
+        if bench_has_update_script "phpBench" "php"; then
+            max_confidence=$php_confidence
+            best_bench="phpBench"
+        else
+            log_warning "PHP project detected, but phpBench update support is not installed; skipping phpBench selection" >&2
+        fi
     fi
     
     if [ $java_confidence -gt $max_confidence ]; then
@@ -287,6 +301,9 @@ delegate_to_bench_script() {
     
     # Map bench types to script patterns
     local bench_name="${bench_type%Bench}"  # Remove 'Bench' suffix if present
+    case "$bench_type" in
+        pyBench) bench_name="python" ;;
+    esac
     local script_patterns=(
         "$DEVBENCHES_DIR/${bench_type}/scripts/update-${bench_name}-project.sh"
         "$DEVBENCHES_DIR/${bench_type}/scripts/update-project.sh"

@@ -190,6 +190,6 @@ npm global packages install to `~/.npm-global` (no sudo required).
 | goBench | [opensoft/goBench](https://github.com/opensoft/goBench) |
 | javaBench | [opensoft/javaBench](https://github.com/opensoft/javaBench) |
 | phpBench | [opensoft/phpBench](https://github.com/opensoft/phpBench) |
-| pyBench | [source repo](https://github.com/opensoft/pythonBench) |
+| pyBench | [opensoft/pyBench](https://github.com/opensoft/pyBench) |
 | gentecBench | [opensoft/gentecBench](https://github.com/opensoft/gentecBench) |
 | simBench | [opensoft/simBench](https://github.com/opensoft/simBench) |

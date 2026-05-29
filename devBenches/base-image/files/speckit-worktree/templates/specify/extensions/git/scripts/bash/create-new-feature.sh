@@ -406,6 +406,8 @@ SPECS_DIR="$REPO_ROOT/specs"
 DEFAULT_WORKTREE_ROOT="../$(basename "$REPO_ROOT")-worktrees"
 CHECKOUT_MODE=$(get_config_value "checkout_mode" "branch" "SPECKIT_GIT_CHECKOUT_MODE")
 CHECKOUT_MODE=$(printf '%s' "$CHECKOUT_MODE" | tr '[:upper:]' '[:lower:]')
+BRANCH_NUMBERING=$(get_config_value "branch_numbering" "sequential" "SPECKIT_GIT_BRANCH_NUMBERING")
+BRANCH_NUMBERING=$(printf '%s' "$BRANCH_NUMBERING" | tr '[:upper:]' '[:lower:]')
 BASE_BRANCH=$(get_config_value "base_branch" "main" "SPECKIT_GIT_BASE_BRANCH")
 WORKTREE_ROOT_RAW=$(get_config_value "worktree_root" "$DEFAULT_WORKTREE_ROOT" "SPECKIT_GIT_WORKTREE_ROOT")
 WORKTREE_ROOT=$(resolve_path_from_repo_root "$WORKTREE_ROOT_RAW")
@@ -413,6 +415,15 @@ WORKTREE_ROOT=$(resolve_path_from_repo_root "$WORKTREE_ROOT_RAW")
 if [ "$CHECKOUT_MODE" != "branch" ] && [ "$CHECKOUT_MODE" != "worktree" ]; then
     echo "Error: checkout_mode must be 'branch' or 'worktree' (got '$CHECKOUT_MODE')" >&2
     exit 1
+fi
+
+if [ "$BRANCH_NUMBERING" != "sequential" ] && [ "$BRANCH_NUMBERING" != "timestamp" ]; then
+    echo "Error: branch_numbering must be 'sequential' or 'timestamp' (got '$BRANCH_NUMBERING')" >&2
+    exit 1
+fi
+
+if [ "$BRANCH_NUMBERING" = "timestamp" ]; then
+    USE_TIMESTAMP=true
 fi
 
 # Function to generate branch name with stop word filtering

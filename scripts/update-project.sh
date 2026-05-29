@@ -461,6 +461,9 @@ preview_update_script() {
     else
         # Standard patterns for other bench types
         local bench_short="${bench_name%Bench}"
+        case "$bench_name" in
+            pyBench) bench_short="python" ;;
+        esac
         update_type="$bench_short project"
         script_patterns=(
             "$workbenches_root/$bench_path/scripts/update-${bench_short}-project.sh"

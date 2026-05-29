@@ -345,12 +345,21 @@ Set-Location $repoRoot
 $specsDir = Join-Path $repoRoot 'specs'
 $defaultWorktreeRoot = "../$((Split-Path $repoRoot -Leaf))-worktrees"
 $checkoutMode = (Get-GitExtensionConfigValue -Key 'checkout_mode' -DefaultValue 'branch' -EnvOverrideName 'SPECKIT_GIT_CHECKOUT_MODE').ToLowerInvariant()
+$branchNumbering = (Get-GitExtensionConfigValue -Key 'branch_numbering' -DefaultValue 'sequential' -EnvOverrideName 'SPECKIT_GIT_BRANCH_NUMBERING').ToLowerInvariant()
 $baseBranch = Get-GitExtensionConfigValue -Key 'base_branch' -DefaultValue 'main' -EnvOverrideName 'SPECKIT_GIT_BASE_BRANCH'
 $worktreeRootRaw = Get-GitExtensionConfigValue -Key 'worktree_root' -DefaultValue $defaultWorktreeRoot -EnvOverrideName 'SPECKIT_GIT_WORKTREE_ROOT'
 $worktreeRoot = Resolve-PathFromRepoRoot -RawPath $worktreeRootRaw
 
 if ($checkoutMode -notin @('branch', 'worktree')) {
     throw "checkout_mode must be 'branch' or 'worktree' (got '$checkoutMode')"
+}
+
+if ($branchNumbering -notin @('sequential', 'timestamp')) {
+    throw "branch_numbering must be 'sequential' or 'timestamp' (got '$branchNumbering')"
+}
+
+if ($branchNumbering -eq 'timestamp') {
+    $Timestamp = $true
 }
 
 function Get-BranchName {

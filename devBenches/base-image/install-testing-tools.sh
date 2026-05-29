@@ -335,7 +335,7 @@ case "$ARCH" in
     *)             PACT_ARCH="$ARCH_HURL" ;;
 esac
 if run_with_timeout "$COMMAND_TIMEOUT" "Pact CLI download" bash -c \
-    "curl -fsSL https://github.com/pact-foundation/pact-ruby-standalone/releases/download/v${PACT_VERSION}/pact-${PACT_VERSION}-linux-${PACT_ARCH}.tar.gz | tar xz -C /opt"; then
+    "curl -fsSL https://github.com/pact-foundation/pact-standalone/releases/download/v${PACT_VERSION}/pact-${PACT_VERSION}-linux-${PACT_ARCH}.tar.gz | tar xz -C /opt"; then
     # Pact extracts to /opt/pact — symlink binaries
     for bin in /opt/pact/bin/*; do
         ln -sf "$bin" "/usr/local/bin/$(basename "$bin")" 2>/dev/null || true
