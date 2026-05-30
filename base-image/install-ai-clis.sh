@@ -157,7 +157,7 @@ if ! run_with_timeout "$COMMAND_TIMEOUT" "Gemini npm install" npm install -g @go
 fi
 
 log_info "Installing Google Antigravity CLI..."
-if run_with_timeout "300" "Antigravity CLI install" bash -c 'curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin'; then
+if run_with_timeout "300" "Antigravity CLI install" bash -c 'curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --skip-aliases --skip-path'; then
     if [ -x "$HOME/.local/bin/agy" ] && [ ! -x /usr/local/bin/agy ]; then
         cp "$HOME/.local/bin/agy" /usr/local/bin/agy
         chmod +x /usr/local/bin/agy
