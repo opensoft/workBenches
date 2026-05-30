@@ -2,10 +2,10 @@
 # Workspace Type Detector - Heuristic analysis and interactive TUI
 # Version: 1.0.0
 # Manual fallback when no AI provider is available
-# Shared across all bench types (frappe, flutter, dotnet)
+# Shared across all bench types (frappe, flutter, dotnet, php)
 
 # Prevent double-sourcing
-if [ -n "$_WORKSPACE_TYPE_DETECTOR_SOURCED" ]; then
+if [ -n "${_WORKSPACE_TYPE_DETECTOR_SOURCED:-}" ]; then
     return 0
 fi
 _WORKSPACE_TYPE_DETECTOR_SOURCED=1
@@ -160,6 +160,7 @@ get_all_detections() {
     echo "frappe=$(detect_frappe_indicators "$search_dir")"
     echo "flutter=$(detect_flutter_indicators "$search_dir")"
     echo "dotnet=$(detect_dotnet_indicators "$search_dir")"
+    echo "php=$(detect_php_indicators "$search_dir")"
 }
 
 # Find workspace type with highest confidence
@@ -177,6 +178,9 @@ get_recommended_type() {
     
     local dotnet_result=$(detect_dotnet_indicators "$search_dir")
     local dotnet_conf=$(echo "$dotnet_result" | cut -d'|' -f1)
+
+    local php_result=$(detect_php_indicators "$search_dir")
+    local php_conf=$(echo "$php_result" | cut -d'|' -f1)
     
     # Find highest confidence (priority: HIGH > MEDIUM > LOW > NONE)
     if [ "$frappe_conf" = "$CONFIDENCE_HIGH" ]; then
@@ -188,6 +192,9 @@ get_recommended_type() {
     elif [ "$dotnet_conf" = "$CONFIDENCE_HIGH" ]; then
         best_type="dotnet"
         best_confidence="$CONFIDENCE_HIGH"
+    elif [ "$php_conf" = "$CONFIDENCE_HIGH" ]; then
+        best_type="php"
+        best_confidence="$CONFIDENCE_HIGH"
     elif [ "$frappe_conf" = "$CONFIDENCE_MEDIUM" ]; then
         best_type="frappe"
         best_confidence="$CONFIDENCE_MEDIUM"
@@ -197,6 +204,9 @@ get_recommended_type() {
     elif [ "$dotnet_conf" = "$CONFIDENCE_MEDIUM" ]; then
         best_type="dotnet"
         best_confidence="$CONFIDENCE_MEDIUM"
+    elif [ "$php_conf" = "$CONFIDENCE_MEDIUM" ]; then
+        best_type="php"
+        best_confidence="$CONFIDENCE_MEDIUM"
     elif [ "$frappe_conf" = "$CONFIDENCE_LOW" ]; then
         best_type="frappe"
         best_confidence="$CONFIDENCE_LOW"
@@ -205,6 +215,9 @@ get_recommended_type() {
         best_confidence="$CONFIDENCE_LOW"
     elif [ "$dotnet_conf" = "$CONFIDENCE_LOW" ]; then
         best_type="dotnet"
+        best_confidence="$CONFIDENCE_LOW"
+    elif [ "$php_conf" = "$CONFIDENCE_LOW" ]; then
+        best_type="php"
         best_confidence="$CONFIDENCE_LOW"
     fi
     
@@ -245,6 +258,10 @@ show_workspace_selection_tui() {
     local dotnet_result=$(detect_dotnet_indicators "$search_dir")
     local dotnet_conf=$(echo "$dotnet_result" | cut -d'|' -f1)
     local dotnet_indicators=$(echo "$dotnet_result" | cut -d'|' -f2)
+
+    local php_result=$(detect_php_indicators "$search_dir")
+    local php_conf=$(echo "$php_result" | cut -d'|' -f1)
+    local php_indicators=$(echo "$php_result" | cut -d'|' -f2)
     
     # Get recommendation
     local recommended=$(get_recommended_type "$search_dir")
@@ -303,10 +320,21 @@ show_workspace_selection_tui() {
         echo -e "     ${COLOR_RED}Found: (none)${COLOR_NC}"
     fi
     echo ""
+
+    # Display PHP option
+    local php_marker=""
+    [ "$recommended_type" = "php" ] && php_marker="${COLOR_CYAN} ← Recommended${COLOR_NC}"
+    echo -e "  ${COLOR_BOLD}4. PHP${COLOR_NC}      [$(format_confidence "$php_conf") confidence]$php_marker"
+    if [ -n "$php_indicators" ]; then
+        echo -e "     ${COLOR_BLUE}Found:${COLOR_NC} $php_indicators"
+    else
+        echo -e "     ${COLOR_RED}Found: (none)${COLOR_NC}"
+    fi
+    echo ""
     
     echo -e "${COLOR_BLUE}==========================================${COLOR_NC}"
     echo ""
-    echo -ne "${COLOR_YELLOW}Select workspace type [1-3] (or 'q' to quit): ${COLOR_NC}"
+    echo -ne "${COLOR_YELLOW}Select workspace type [1-4] (or 'q' to quit): ${COLOR_NC}"
     read -r choice
     
     case "$choice" in
@@ -320,6 +348,10 @@ show_workspace_selection_tui() {
             ;;
         3)
             echo "dotnet"
+            return 0
+            ;;
+        4)
+            echo "php"
             return 0
             ;;
         q|Q)

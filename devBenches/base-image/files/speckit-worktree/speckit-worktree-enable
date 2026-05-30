@@ -255,6 +255,6 @@ Repository:    $repo_root
 Base branch:   $base_branch
 Worktree root: $worktree_root
 
-Run /speckit-specify from the root checkout. New features will create a branch
+Run /speckit.specify from the root checkout. New features will create a branch
 and linked worktree, then write the feature spec into that worktree.
 EOF

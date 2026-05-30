@@ -328,7 +328,7 @@ fi
 
 # --- Pact CLI (contract testing) ---
 log_info "  Installing Pact CLI..."
-PACT_VERSION="2.6.0"
+PACT_VERSION="2.5.7"
 case "$ARCH" in
     x86_64)        PACT_ARCH="x86_64" ;;
     aarch64|arm64) PACT_ARCH="arm64" ;;

@@ -72,8 +72,8 @@ SUPPORTED_AGENT_CONTEXT_FILES = [
 ]
 
 USER_GLOBAL_AGENT_POINTER_FILES = [
-    # Primary user-global agent entrypoints. /home/brett/.agents/AGENTS.md is
-    # the source file itself, so it is maintained separately.
+    # Primary user-global agent entrypoints. ~/.agents/AGENTS.md is the source
+    # file itself, so it is maintained separately.
     ".codex/AGENTS.md",
     ".claude/CLAUDE.md",
     ".config/opencode/AGENTS.md",

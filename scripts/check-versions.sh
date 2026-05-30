@@ -55,8 +55,16 @@ npm_latest() {
 # Get latest GitHub release version (strips leading 'v')
 github_latest() {
     local repo="$1"
-    curl -fsSL --connect-timeout 10 --max-time 20 "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \
-        | jq -r '.tag_name // empty' 2>/dev/null | sed 's/^v//'
+    local tag
+    if tag=$(curl -fsSL --connect-timeout 10 --max-time 20 "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \
+        | jq -r '.tag_name // empty' 2>/dev/null); then
+        tag="${tag#v}"
+        if [ -n "$tag" ]; then
+            echo "$tag"
+            return 0
+        fi
+    fi
+    echo "unknown"
 }
 
 # Get version from inside a container
