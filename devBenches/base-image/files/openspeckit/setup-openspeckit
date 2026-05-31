@@ -285,6 +285,13 @@ def write_text(path: Path, text: str, dry_run: bool) -> None:
     log(f"wrote {path}")
 
 
+def write_text_if_missing(path: Path, text: str, dry_run: bool) -> None:
+    if path.exists():
+        log(f"kept existing {path}")
+        return
+    write_text(path, text, dry_run)
+
+
 def touch(path: Path, dry_run: bool) -> None:
     if path.exists():
         return
@@ -416,6 +423,179 @@ def can_write_path_or_parent(path: Path) -> bool:
     while not parent.exists() and parent != parent.parent:
         parent = parent.parent
     return os.access(parent, os.W_OK)
+
+
+def global_agent_entrypoint(agent_root: Path) -> str:
+    return f"""# Global Agent Instructions
+
+This file is the user-level entrypoint for shared agent workflow rules across
+Codex, Claude, opencode, and other local coding agents. Repository files such as
+`AGENTS.md`, `CLAUDE.md`, `openspec/README.md`, and `.specify/README.md` should
+point here instead of duplicating global process instructions.
+
+## OpenSpec + Speckit
+
+Read the shared protocol before creating or implementing governed features:
+
+- `{agent_root / "protocols" / "openspec-speckit-workflow.md"}`
+- `{agent_root / "protocols" / "project-agent-bootstrap.md"}`
+
+Core rule:
+
+- OpenSpec is the change-governance layer.
+- Speckit is the implementation layer.
+- Use OpenSpec before implementation when the work changes product,
+  architecture, artifact contracts, runtime/model orchestration, routing/review
+  policy, edge constraints, or the development workflow.
+- Use Speckit for the implementation feature branch/worktree and its
+  specify/clarify/plan/tasks/analyze/implement lifecycle.
+- Do not duplicate task lists: OpenSpec records governance and handoff; Speckit
+  owns implementation tasks.
+
+## Repository Overrides
+
+Repo-local instructions remain authoritative for project-specific details such
+as package commands, runtime prerequisites, test commands, source-of-truth docs,
+and deployment constraints.
+"""
+
+
+def openspec_speckit_protocol(agent_root: Path) -> str:
+    return f"""# OpenSpec and Speckit Shared Workflow
+
+This protocol is the shared source of truth for using OpenSpec and Speckit
+together across local coding agents. Repo-local files should reference this file
+instead of copying the same process text into each project.
+
+## Authority
+
+Repo-local instructions remain authoritative for product facts, package
+commands, runtime prerequisites, source-of-truth docs, test commands, deployment
+constraints, and repo-specific safety rules.
+
+This global protocol is authoritative for common OpenSpec/Speckit mechanics
+unless a repo-local file explicitly marks a narrower override for that repo.
+
+## Tool Roles
+
+OpenSpec is the change-governance layer. It captures intent, scope, design
+decisions, spec deltas, and approval state before non-trivial implementation.
+
+Speckit is the implementation layer. It owns the feature branch/worktree,
+`spec.md`, `plan.md`, design artifacts, `tasks.md`, analysis, implementation,
+and verification.
+
+Do not duplicate task lists between the two systems. OpenSpec records the
+governed decision and handoff. Speckit owns executable implementation tasks.
+
+## When To Use OpenSpec
+
+Create or update an OpenSpec change before implementation when the work changes
+product behavior, architecture, artifact contracts, runtime/model orchestration,
+routing/review policy, edge constraints, or development workflow rules.
+
+Skip OpenSpec for small implementation-only fixes where an existing Speckit
+feature already defines the behavior and no product, architecture, or governance
+decision is being made.
+
+## Lifecycle
+
+1. OpenSpec proposal or exploration captures the decision.
+2. OpenSpec apply work keeps proposal, design notes, and spec deltas current.
+3. The OpenSpec change hands off to exactly one Speckit feature.
+4. Speckit creates or updates the implementation branch/worktree and artifacts.
+5. Implementation happens from the Speckit feature worktree.
+6. Review and verification happen on the implementation branch or PR.
+7. Archive the OpenSpec change only after the corresponding Speckit work and PR
+   have landed, or after the change is explicitly abandoned.
+
+## Worktree Rules
+
+Run `/speckit.specify` only from the root checkout on the repo base branch
+unless the repo explicitly documents a different creation path.
+
+After `/speckit.specify` creates a worktree, run follow-on Speckit commands from
+that generated worktree, not from the root checkout:
+
+- `/speckit.clarify`
+- `/speckit.checklist`
+- `/speckit.plan`
+- `/speckit.tasks`
+- `/speckit.analyze`
+- `/speckit.implement`
+
+If a requested follow-on command targets a worktree that does not exist, stop
+and report that. Do not silently fall back to the root checkout.
+
+See `{agent_root / "AGENTS.md"}` for the user-level entrypoint.
+"""
+
+
+def project_agent_bootstrap_protocol(agent_root: Path) -> str:
+    return f"""# Project Agent Bootstrap
+
+`setup-openspeckit` prepares a repository so Codex, Claude, opencode, and other
+local coding agents can find the same OpenSpec/Speckit workflow without copying
+long process docs into every repo.
+
+## What It Updates
+
+The bootstrap script is idempotent and marker-based. It can be re-run safely.
+
+It updates or creates:
+
+- repo-local context files for Speckit-supported agent integrations
+- `openspec/README.md` and `.specify/README.md` as thin pointers to the global
+  workflow
+- `.claude/commands/opsx/*` from global templates when missing
+- `.claude/skills`, `.codex/skills`, and `.agents/skills` links for available
+  global OpenSpec/Speckit skills
+- minimal `openspec/changes/archive`, `openspec/specs`, and `.specify/`
+  scaffolding when those directories are absent
+- user-global agent entrypoint pointers for practical global agent homes
+
+## Idempotency Rules
+
+Generated sections are bounded by:
+
+```md
+<!-- OPENSPEC-SPECKIT-GLOBAL:START -->
+<!-- OPENSPEC-SPECKIT-GLOBAL:END -->
+```
+
+Existing hand-written content outside those markers is preserved. Existing skill
+directories and command files are not overwritten unless `--force` is passed.
+
+## Usage
+
+From inside a repo:
+
+```bash
+setup-openspeckit
+```
+
+From anywhere:
+
+```bash
+setup-openspeckit --repo /path/to/repo
+```
+
+The shared global entrypoint is `{agent_root / "AGENTS.md"}`.
+"""
+
+
+def ensure_agent_protocol_files(agent_root: Path, dry_run: bool) -> None:
+    write_text_if_missing(agent_root / "AGENTS.md", global_agent_entrypoint(agent_root), dry_run)
+    write_text_if_missing(
+        agent_root / "protocols" / "openspec-speckit-workflow.md",
+        openspec_speckit_protocol(agent_root),
+        dry_run,
+    )
+    write_text_if_missing(
+        agent_root / "protocols" / "project-agent-bootstrap.md",
+        project_agent_bootstrap_protocol(agent_root),
+        dry_run,
+    )
 
 
 def agent_block(agent_root: Path) -> str:
@@ -730,6 +910,7 @@ def main() -> int:
     log(f"agent root: {agent_root}")
     log(f"integration: {integration}")
 
+    ensure_agent_protocol_files(agent_root, args.dry_run)
     ensure_scaffold(repo, args.dry_run, args.skip_init)
     ensure_speckit_initialized(repo, integration, args.dry_run, args.skip_init)
     ensure_speckit_registration(repo, args.dry_run, args.no_speckit_registration)

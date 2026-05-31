@@ -35,6 +35,8 @@ repo_arg="."
 base_branch=""
 worktree_root=""
 force=false
+base_branch_override=false
+worktree_root_override=false
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -46,11 +48,13 @@ while [ "$#" -gt 0 ]; do
         --base-branch)
             [ "$#" -ge 2 ] || die "--base-branch requires a value"
             base_branch="$2"
+            base_branch_override=true
             shift 2
             ;;
         --worktree-root)
             [ "$#" -ge 2 ] || die "--worktree-root requires a value"
             worktree_root="$2"
+            worktree_root_override=true
             shift 2
             ;;
         --force)
@@ -145,10 +149,94 @@ needs_worktree_git_overlay() {
     return 0
 }
 
+ensure_extensions_installed_git() {
+    local path="$repo_root/.specify/extensions.yml"
+
+    [ -f "$path" ] || return 0
+    python3 - "$path" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines()
+
+
+def indent_len(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def is_git_item(value: str) -> bool:
+    return value.strip() in {"- git", "- 'git'", '- "git"'}
+
+
+def inline_installed_has_git(value: str) -> bool:
+    value = value.strip()
+    if value.startswith("[") and value.endswith("]"):
+        entries = value[1:-1].split(",")
+        return any(entry.strip().strip("'\"") == "git" for entry in entries)
+    return value.strip("'\"") == "git"
+
+
+changed = False
+for index, line in enumerate(lines):
+    stripped = line.strip()
+    if not stripped.startswith("installed:"):
+        continue
+
+    indent = line[: len(line) - len(line.lstrip(" "))]
+    suffix = stripped.split(":", 1)[1].strip()
+    if inline_installed_has_git(suffix):
+        break
+
+    if suffix == "[]":
+        lines[index] = indent + "installed:"
+        lines.insert(index + 1, indent + "- git")
+        changed = True
+        break
+
+    if suffix:
+        lines[index] = indent + "installed:"
+        lines.insert(index + 1, indent + "- git")
+        changed = True
+        break
+
+    found_git = False
+    insert_at = index + 1
+    while insert_at < len(lines):
+        candidate = lines[insert_at]
+        candidate_stripped = candidate.strip()
+        if (
+            candidate_stripped
+            and indent_len(candidate) <= len(indent)
+            and not candidate_stripped.startswith("-")
+        ):
+            break
+        if is_git_item(candidate_stripped):
+            found_git = True
+            break
+        if candidate_stripped.startswith("-"):
+            insert_at += 1
+            continue
+        break
+
+    if not found_git:
+        lines.insert(index + 1, indent + "- git")
+        changed = True
+    break
+else:
+    lines[:0] = ["installed:", "- git", ""]
+    changed = True
+
+if changed:
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+PY
+}
+
 write_extensions_yml() {
     local path="$repo_root/.specify/extensions.yml"
 
     if [ -f "$path" ] && grep -q 'speckit\.git\.feature' "$path"; then
+        ensure_extensions_installed_git
         return 0
     fi
 
@@ -195,11 +283,13 @@ else:
 
 path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 PY
+        ensure_extensions_installed_git
         return 0
     fi
 
     cat > "$path" <<'EOF'
-installed: []
+installed:
+- git
 settings:
   auto_execute_hooks: true
 hooks:
@@ -214,11 +304,65 @@ hooks:
 EOF
 }
 
+update_existing_git_config() {
+    local path="$1"
+
+    python3 - "$path" "$base_branch_override" "$base_branch" "$worktree_root_override" "$worktree_root" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+base_branch_override = sys.argv[2] == "true"
+base_branch = sys.argv[3]
+worktree_root_override = sys.argv[4] == "true"
+worktree_root = sys.argv[5]
+
+updates = {"checkout_mode": "worktree"}
+if base_branch_override:
+    updates["base_branch"] = base_branch
+if worktree_root_override:
+    updates["worktree_root"] = worktree_root
+
+lines = path.read_text(encoding="utf-8").splitlines()
+seen: set[str] = set()
+updated: list[str] = []
+changed = False
+
+for line in lines:
+    stripped = line.lstrip()
+    indent = len(line) - len(stripped)
+    if indent == 0 and ":" in stripped:
+        key = stripped.split(":", 1)[0].strip()
+        if key in updates:
+            replacement = f"{key}: {updates[key]}"
+            updated.append(replacement)
+            seen.add(key)
+            changed = changed or replacement != line
+            continue
+    updated.append(line)
+
+missing = [key for key in updates if key not in seen]
+if missing:
+    if updated and updated[-1].strip():
+        updated.append("")
+    updated.extend(f"{key}: {updates[key]}" for key in missing)
+    changed = True
+
+if changed:
+    path.write_text("\n".join(updated).rstrip() + "\n", encoding="utf-8")
+PY
+}
+
 write_git_config() {
     local path="$repo_root/.specify/extensions/git/git-config.yml"
 
     mkdir -p "$(dirname "$path")"
     if [ "${GIT_CONFIG_EXISTED:-false}" = true ] && [ "$force" != true ] && [ "${GIT_OVERLAY_FORCE:-false}" != true ]; then
+        if [ "$base_branch_override" = true ] || [ "$worktree_root_override" = true ]; then
+            update_existing_git_config "$path"
+            echo "updated $path"
+            return 0
+        fi
         echo "kept existing $path (use --force to replace)"
         return 0
     fi
