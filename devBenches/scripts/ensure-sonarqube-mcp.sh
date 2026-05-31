@@ -67,6 +67,7 @@ if [[ -z "${SONARQUBE_TOKEN:-}" ]]; then
 fi
 
 SONARQUBE_ORG="${SONARQUBE_ORG:-opensoft}"
+SONARQUBE_URL="${SONARQUBE_URL:-${SONAR_HOST_URL:-${SONARQUBE_CLOUD_URL:-https://sonarcloud.io}}}"
 
 ensure_network() {
   if ! docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
@@ -96,6 +97,7 @@ ensure_compose_services() {
   export SONARQUBE_MCP_HOST_BIND="$HOST_BIND"
   export SONARQUBE_ORG
   export SONARQUBE_TOKEN
+  export SONARQUBE_URL
 
   COMPOSE_IGNORE_ORPHANS=True "${COMPOSE_CMD[@]}" \
     -p "$COMPOSE_PROJECT_NAME" \

@@ -2,7 +2,7 @@ name: dev-benches
 
 services:
   cpp-bench:
-    env_file: ../.env
+    env_file: .env
     image: cpp-bench:${USER:-brett}
     container_name: cpp-bench
     command: sleep infinity

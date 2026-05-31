@@ -11,6 +11,7 @@ services:
     environment:
       SONARQUBE_TOKEN: ${SONARQUBE_TOKEN}
       SONARQUBE_ORG: ${SONARQUBE_ORG:-opensoft}
+      SONARQUBE_URL: ${SONARQUBE_URL:-https://sonarcloud.io}
       SONARQUBE_TRANSPORT: http
       SONARQUBE_HTTP_HOST: 0.0.0.0
       SONARQUBE_HTTP_PORT: ${SONARQUBE_MCP_BACKEND_PORT:-64131}

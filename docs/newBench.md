@@ -151,6 +151,8 @@ Copy the complete template below — do not remove any standard mount:
         // AI Agent Credentials
         // Shared agent workflow rules and skills
         "source=${localEnv:HOME}/.agents,target=/home/${localEnv:USER}/.agents,type=bind,consistency=cached",
+        // Project Intelligence and local agent metadata
+        "source=${localEnv:HOME}/.pi,target=/home/${localEnv:USER}/.pi,type=bind,consistency=cached",
         // Claude (Anthropic) — native installer
         "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind,consistency=cached",
         "source=${localEnv:HOME}/.claude.json,target=/home/${localEnv:USER}/.claude.json,type=bind,consistency=cached",
@@ -162,7 +164,9 @@ Copy the complete template below — do not remove any standard mount:
         "source=${localEnv:HOME}/.copilot-cli,target=/home/${localEnv:USER}/.copilot-cli,type=bind,readonly",
         // NotebookLM (auth tokens from host browser)
         "source=${localEnv:HOME}/.notebooklm,target=/home/${localEnv:USER}/.notebooklm,type=bind,consistency=cached",
-        "source=${localEnv:HOME}/.notebooklm-mcp-cli,target=/home/${localEnv:USER}/.notebooklm-mcp-cli,type=bind,consistency=cached"
+        "source=${localEnv:HOME}/.notebooklm-mcp-cli,target=/home/${localEnv:USER}/.notebooklm-mcp-cli,type=bind,consistency=cached",
+        // SonarCloud / SonarQube tokens for scanners and MCP integration
+        "source=${localEnv:HOME}/.config/sonarqube,target=/home/${localEnv:USER}/.config/sonarqube,type=bind,readonly"
 
         // =============================================
         // BENCH-SPECIFIC MOUNTS — add yours below

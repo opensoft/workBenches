@@ -104,18 +104,19 @@ backup_file() {
 copy_overlay_dir() {
     local source="$1"
     local target="$2"
+    local copy_force="${3:-$force}"
     local item rel dest
 
     [ -d "$source" ] || return 0
 
-    if [ "$force" = true ] && [ -e "$target" ]; then
+    if [ "$copy_force" = true ] && [ -e "$target" ]; then
         backup_file "$target"
         rm -rf "$target"
     fi
 
     mkdir -p "$target"
 
-    if [ "$force" = true ]; then
+    if [ "$copy_force" = true ]; then
         cp -a "$source/." "$target/"
         return 0
     fi
@@ -130,6 +131,18 @@ copy_overlay_dir() {
             cp -a "$item" "$dest"
         fi
     done < <(find "$source" -mindepth 1 -print0)
+}
+
+needs_worktree_git_overlay() {
+    local feature_script="$repo_root/.specify/extensions/git/scripts/bash/create-new-feature.sh"
+
+    [ -f "$feature_script" ] || return 1
+    grep -q 'CHECKOUT_MODE' "$feature_script" &&
+        grep -q 'WORKTREE_PATH' "$feature_script" &&
+        grep -q 'git worktree' "$feature_script" &&
+        return 1
+
+    return 0
 }
 
 write_extensions_yml() {
@@ -205,7 +218,7 @@ write_git_config() {
     local path="$repo_root/.specify/extensions/git/git-config.yml"
 
     mkdir -p "$(dirname "$path")"
-    if [ "${GIT_CONFIG_EXISTED:-false}" = true ] && [ "$force" != true ]; then
+    if [ "${GIT_CONFIG_EXISTED:-false}" = true ] && [ "$force" != true ] && [ "${GIT_OVERLAY_FORCE:-false}" != true ]; then
         echo "kept existing $path (use --force to replace)"
         return 0
     fi
@@ -236,8 +249,15 @@ EOF
 
 GIT_CONFIG_EXISTED=false
 [ -f "$repo_root/.specify/extensions/git/git-config.yml" ] && GIT_CONFIG_EXISTED=true
+GIT_OVERLAY_FORCE=false
+if [ "$force" = true ] || needs_worktree_git_overlay; then
+    GIT_OVERLAY_FORCE=true
+fi
+if [ "$GIT_OVERLAY_FORCE" = true ] && [ "$force" != true ]; then
+    echo "replacing stock Speckit git extension with worktree-aware overlay"
+fi
 
-copy_overlay_dir "$template_root/specify/extensions/git" "$repo_root/.specify/extensions/git"
+copy_overlay_dir "$template_root/specify/extensions/git" "$repo_root/.specify/extensions/git" "$GIT_OVERLAY_FORCE"
 copy_overlay_dir "$template_root/specify/shell" "$repo_root/.specify/shell"
 copy_overlay_dir "$template_root/agents/skills/speckit-specify" "$repo_root/.agents/skills/speckit-specify"
 copy_overlay_dir "$template_root/agents/skills/speckit-git-feature" "$repo_root/.agents/skills/speckit-git-feature"
