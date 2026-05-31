@@ -47,10 +47,8 @@ fi
 COMPOSE_CMD=()
 if docker compose version >/dev/null 2>&1; then
   COMPOSE_CMD=(docker compose)
-elif command -v docker-compose >/dev/null 2>&1; then
-  COMPOSE_CMD=(docker-compose)
 else
-  log "Docker Compose is not available; skipping reusable SonarQube MCP startup."
+  log "Docker Compose v2 plugin is not available; skipping reusable SonarQube MCP startup."
   exit 0
 fi
 

@@ -50,7 +50,8 @@ Overrides the /etc/skel defaults from Layer 0 with the host user's actual shell 
 AI/spec CLIs are installed in the appropriate base image and store credentials on the host. These mounts provide authentication inside the container.
 
 ```jsonc
-// Shared agent workflow rules and skills
+// Shared agent workflow rules and skills. Keep this together with the
+// Project Intelligence and Sonar mounts below when copying the standard set.
 "source=${localEnv:HOME}/.agents,target=/home/${localEnv:USER}/.agents,type=bind,consistency=cached",
 
 // Project Intelligence and local agent metadata

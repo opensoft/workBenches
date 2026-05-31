@@ -7,7 +7,7 @@ description: "Codex wrapper for the Speckit git feature workflow."
 
 Slash label: `/speckit.git.feature`.
 
-Use `../../../agents/skills/speckit-git-feature/SKILL.md` as the source workflow.
+Use `../../../.agents/skills/speckit-git-feature/SKILL.md` as the source workflow.
 
 Rules:
 - Read the source skill before doing anything else.

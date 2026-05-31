@@ -1,6 +1,6 @@
 {
     "name": "devBenches / cppBench",
-    "initializeCommand": "USER_NAME=\"$(id -un 2>/dev/null || whoami)\" && mkdir -p \"${localEnv:HOME}/.agents\" \"${localEnv:HOME}/.pi\" \"${localEnv:HOME}/.config/sonarqube\" && bash ${localWorkspaceFolder}/../scripts/ensure-sonarqube-mcp.sh && bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base cpp-bench:latest --chown /opt/vcpkg --user \"$USER_NAME\" && bash ${localWorkspaceFolder}/../../scripts/reconcile-devcontainer-container.sh --container cpp-bench --image cpp-bench:\"$USER_NAME\"",
+    "initializeCommand": "USER_NAME=\"$(id -un 2>/dev/null || whoami)\" && bash ${localWorkspaceFolder}/../scripts/write-devcontainer-user-env.sh ${localWorkspaceFolder}/.devcontainer/.env \"$USER_NAME\" && mkdir -p \"${localEnv:HOME}/.agents\" \"${localEnv:HOME}/.pi\" \"${localEnv:HOME}/.config/sonarqube\" && bash ${localWorkspaceFolder}/../scripts/ensure-sonarqube-mcp.sh && bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base cpp-bench:latest --chown /opt/vcpkg --user \"$USER_NAME\" && bash ${localWorkspaceFolder}/../../scripts/reconcile-devcontainer-container.sh --container cpp-bench --image cpp-bench:\"$USER_NAME\"",
     "dockerComposeFile": "docker-compose.yml",
     "service": "cpp-bench",
     "shutdownAction": "stopCompose",

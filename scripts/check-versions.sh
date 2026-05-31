@@ -149,6 +149,15 @@ print_layer_header() {
     fi
 }
 
+skip_layer() {
+    local message="$1"
+    if [ "$JSON_OUTPUT" = false ]; then
+        echo "$message"
+    else
+        echo "$message" >&2
+    fi
+}
+
 # ========================================
 # LAYER 0: workbench-base
 # ========================================
@@ -157,7 +166,7 @@ check_layer0() {
     local image="workbench-base:latest"
 
     if ! docker image inspect "$image" >/dev/null 2>&1; then
-        echo "  Layer 0 image ($image) not found — skipping"
+        skip_layer "  Layer 0 image ($image) not found — skipping"
         return
     fi
 
@@ -254,7 +263,7 @@ check_layer1a() {
     image=$(resolve_existing_image "$(family_base_image dev)" "$(legacy_family_base_image dev 2>/dev/null || true)" || true)
 
     if [ -z "$image" ]; then
-        echo "  Layer 1a image ($image) not found — skipping"
+        skip_layer "  Layer 1a image ($image) not found — skipping"
         return
     fi
 
@@ -312,7 +321,7 @@ check_layer1b() {
     image=$(resolve_existing_image "$(family_base_image sys)" "$(legacy_family_base_image sys 2>/dev/null || true)" || true)
 
     if [ -z "$image" ]; then
-        echo "  Layer 1b image ($image) not found — skipping"
+        skip_layer "  Layer 1b image ($image) not found — skipping"
         return
     fi
 
@@ -388,7 +397,7 @@ check_layer1c() {
     image=$(resolve_existing_image "$(family_base_image bio)" "$(legacy_family_base_image bio 2>/dev/null || true)" || true)
 
     if [ -z "$image" ]; then
-        echo "  Layer 1c image ($image) not found — skipping"
+        skip_layer "  Layer 1c image ($image) not found — skipping"
         return
     fi
 

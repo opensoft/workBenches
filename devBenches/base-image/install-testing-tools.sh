@@ -273,7 +273,7 @@ case "$ARCH" in
     *)             HADOLINT_ARCH="$ARCH" ;;
 esac
 if run_with_timeout "$COMMAND_TIMEOUT" "Hadolint download" bash -c \
-    "curl -fsSL -o /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/hadolint-linux-${HADOLINT_ARCH}"; then
+    "curl -fsSL -o /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/hadolint-Linux-${HADOLINT_ARCH}"; then
     chmod +x /usr/local/bin/hadolint
     log_info "  ✓ Hadolint $(hadolint --version 2>/dev/null || echo $HADOLINT_VERSION)"
 else

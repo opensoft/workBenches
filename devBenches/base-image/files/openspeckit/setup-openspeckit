@@ -391,6 +391,24 @@ def copy_overlay_tree(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
         log(f"copied {source} -> {target}")
 
 
+def needs_worktree_git_overlay(repo: Path) -> bool:
+    feature_script = (
+        repo
+        / ".specify"
+        / "extensions"
+        / "git"
+        / "scripts"
+        / "bash"
+        / "create-new-feature.sh"
+    )
+    if not feature_script.exists():
+        return False
+
+    script_text = feature_script.read_text(encoding="utf-8", errors="ignore")
+    required_markers = ("CHECKOUT_MODE", "WORKTREE_PATH", "git worktree")
+    return not all(marker in script_text for marker in required_markers)
+
+
 def can_write_path_or_parent(path: Path) -> bool:
     if path.exists():
         return os.access(path, os.W_OK)
@@ -674,7 +692,11 @@ def ensure_worktree_overlay(
     if template_root is None:
         raise SystemExit("Speckit worktree template root not found.")
 
-    copy_overlay_tree(template_root / "specify" / "extensions" / "git", repo / ".specify" / "extensions" / "git", dry_run, force)
+    git_overlay_force = force or needs_worktree_git_overlay(repo)
+    if git_overlay_force and not force:
+        log("replacing stock Spec Kit git extension with worktree-aware overlay")
+
+    copy_overlay_tree(template_root / "specify" / "extensions" / "git", repo / ".specify" / "extensions" / "git", dry_run, git_overlay_force)
     copy_overlay_tree(template_root / "specify" / "shell", repo / ".specify" / "shell", dry_run, force)
     copy_overlay_tree(template_root / "agents" / "skills" / "speckit-specify", repo / ".agents" / "skills" / "speckit-specify", dry_run, force)
     copy_overlay_tree(template_root / "agents" / "skills" / "speckit-git-feature", repo / ".agents" / "skills" / "speckit-git-feature", dry_run, force)
