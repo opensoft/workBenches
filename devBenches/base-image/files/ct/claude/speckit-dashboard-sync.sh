@@ -311,6 +311,34 @@ grep -E '^- \[ \][[:space:]]+T[0-9]+[A-Za-z]?' "$tasks_file" | head -5 > "$tmp_o
 open_more=$(( task_total - task_done ))
 [ "$open_more" -lt 0 ] && open_more=0
 
+# Set of completed task IDs (sentinel-wrapped: " T001 T002 ... ") used by
+# mark_open() to decide whether an open task's declared dependencies are met.
+DONE_IDS=" $(grep -oE '^- \[[xX]\][[:space:]]+T[0-9]+[A-Za-z]?' "$tasks_file" 2>/dev/null | grep -oE 'T[0-9]+[A-Za-z]?' | tr '\n' ' ')"
+
+# Marker for an OPEN task. 🔴 (blocked) only when the task explicitly depends on
+# a task that is not yet done, or carries a manual ⛔ / BLOCKED: tag. Otherwise
+# ○ (not started). Avoid substring matches against task descriptions.
+mark_open() {
+  local task="$1"
+  local deps dep
+
+  case "$task" in
+    *'⛔'*|*'BLOCKED:'*) printf '🔴'; return ;;
+  esac
+
+  deps="$(printf '%s\n' "$task" | grep -oiE 'depends on[^.]*' | grep -oE 'T[0-9]+[A-Za-z]?')"
+  [ -n "$deps" ] || { printf '○ '; return; }
+
+  for dep in $deps; do
+    case "$DONE_IDS" in
+      *" $dep "*) ;;
+      *) printf '🔴'; return ;;
+    esac
+  done
+
+  printf '○ '
+}
+
 phase_file="$(mktemp)"
 phase_tasks_file="$(mktemp)"
 awk -v summary="$phase_file" -v details="$phase_tasks_file" '
@@ -357,7 +385,8 @@ function emit() {
     task_label=trim(task_label)
     task_marker="○ "
     if (task ~ /^- \[[xX]\]/) task_marker="🟢"
-    else if (tolower(task) ~ /blocked|upstream|operator|depends/) task_marker="🔴"
+    # Open-task blocked status is resolved in the shell consumer via
+    # mark_open() (dependency-aware), not by a substring match here.
     print phase "\t" task_marker "\t" task_label >> details
     total++
     if ($0 ~ /^- \[[xX]\]/) done++
@@ -425,11 +454,7 @@ fi
   printf ' TASKS                                        %s/%s done · %s%%\n' "$task_done" "$task_total" "$task_pct"
   printf '   %s\n' "$task_bar"
   while IFS= read -r line; do
-    if printf '%s\n' "$line" | grep -qiE 'blocked|upstream|operator|depends'; then
-      marker='🔴'
-    else
-      marker='○ '
-    fi
+    marker="$(mark_open "$line")"
     printf '   %s %s\n' "$marker" "$(printf '%s\n' "$line" | task_title)"
   done < "$tmp_open"
   if [ "$open_more" -gt 5 ]; then
@@ -445,6 +470,7 @@ fi
       printf '   %s %-13s %s  %s/%s\n' "$marker" "$name" "$(bar_fixed "$done" "$total" 24)" "$done" "$total"
       awk -F '\t' -v phase="$name" '$1==phase{print $2 "\t" $3}' "$phase_tasks_file" \
         | while IFS=$'\t' read -r task_marker task_name; do
+            [ "$task_marker" = "🟢" ] || task_marker="$(mark_open "$task_name")"
             printf '      %s %s\n' "$task_marker" "$(printf '%s\n' "$task_name" | task_title 48)"
           done
     done
@@ -456,6 +482,7 @@ fi
       printf '   %s %-13s %s  %s/%s\n' "$marker" "$name" "$(bar_fixed "$done" "$total" 24)" "$done" "$total"
       awk -F '\t' -v phase="$name" '$1==phase{print $2 "\t" $3}' "$phase_tasks_file" \
         | while IFS=$'\t' read -r task_marker task_name; do
+            [ "$task_marker" = "🟢" ] || task_marker="$(mark_open "$task_name")"
             printf '      %s %s\n' "$task_marker" "$(printf '%s\n' "$task_name" | task_title 48)"
           done
     done
