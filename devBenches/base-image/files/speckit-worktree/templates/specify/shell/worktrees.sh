@@ -110,6 +110,18 @@ _speckit_worktree_start_cli() {
   "$cli_command" "$@"
 }
 
+_speckit_worktree_start_claude() {
+  local target="$1"
+  shift || true
+
+  _speckit_worktree_start_cli claude "$target" \
+    --model opus \
+    --dangerously-skip-permissions \
+    --permission-mode bypassPermissions \
+    --teammate-mode tmux \
+    "$@"
+}
+
 _speckit_worktree_start_codex() {
   local target="$1"
   shift || true
@@ -167,7 +179,7 @@ cta() {
   fi
 
   target=$(_speckit_worktree_select_worktree) || return 1
-  _speckit_worktree_start_cli claude "$target" "$@"
+  _speckit_worktree_start_claude "$target" "$@"
 }
 
 ctc() {
@@ -202,7 +214,7 @@ cts() {
   cli_command=$(_speckit_worktree_prompt_cli) || return 1
   case "$cli_command" in
     claude)
-      _speckit_worktree_start_cli claude "$target" "$@"
+      _speckit_worktree_start_claude "$target" "$@"
       ;;
     codex)
       _speckit_worktree_start_codex "$target" "$@"

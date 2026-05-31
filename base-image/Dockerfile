@@ -207,9 +207,18 @@ yolo() {
     return 1
   fi
 
-  prompt_file="$HOME/.claude/prompts/speckit-dashboard-bootstrap.md"
+  prompt_file=""
+  for candidate_prompt_file in \
+    "$HOME/.claude/prompts/speckit-dashboard-full.md" \
+    "/usr/local/share/ct/claude/prompts/speckit-dashboard-full.md" \
+    "$HOME/.claude/prompts/speckit-dashboard-bootstrap.md"; do
+    if [ -r "$candidate_prompt_file" ]; then
+      prompt_file="$candidate_prompt_file"
+      break
+    fi
+  done
   prompt_args=()
-  if [ -r "$prompt_file" ]; then
+  if [ -n "$prompt_file" ]; then
     prompt_args=(--append-system-prompt-file "$prompt_file")
   fi
 
@@ -264,9 +273,18 @@ yolo() {
     return 1
   fi
 
-  prompt_file="$HOME/.claude/prompts/speckit-dashboard-bootstrap.md"
+  prompt_file=""
+  for candidate_prompt_file in \
+    "$HOME/.claude/prompts/speckit-dashboard-full.md" \
+    "/usr/local/share/ct/claude/prompts/speckit-dashboard-full.md" \
+    "$HOME/.claude/prompts/speckit-dashboard-bootstrap.md"; do
+    if [ -r "$candidate_prompt_file" ]; then
+      prompt_file="$candidate_prompt_file"
+      break
+    fi
+  done
   prompt_args=()
-  if [ -r "$prompt_file" ]; then
+  if [ -n "$prompt_file" ]; then
     prompt_args=(--append-system-prompt-file "$prompt_file")
   fi
 

@@ -132,3 +132,38 @@ grep -Fx "arg=yolo" "$LOG_DIR/gemini.log" >/dev/null
 grep -Fx "arg=--model" "$LOG_DIR/gemini.log" >/dev/null
 grep -Fx "arg=gemini-2.5-pro" "$LOG_DIR/gemini.log" >/dev/null
 grep -Fx "arg=--gemini-extra" "$LOG_DIR/gemini.log" >/dev/null
+
+FALLBACK_REPO="$TMPDIR_ROOT/fallback-repo"
+FALLBACK_TARGET="$TMPDIR_ROOT/fallback-target"
+FALLBACK_TEMPLATE="${SPECKIT_WORKTREE_FALLBACK_FILE:-/usr/local/share/speckit-worktree/templates/specify/shell/worktrees.sh}"
+mkdir -p "$FALLBACK_REPO/.specify/shell" "$FALLBACK_TARGET"
+git init -q "$FALLBACK_REPO"
+cp "$FALLBACK_TEMPLATE" "$FALLBACK_REPO/.specify/shell/worktrees.sh"
+cat > "$FALLBACK_REPO/.specify/shell/select-worktree.sh" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$FALLBACK_TARGET"
+EOF
+chmod +x "$FALLBACK_REPO/.specify/shell/select-worktree.sh"
+
+# shellcheck source=/dev/null
+source "$FALLBACK_REPO/.specify/shell/worktrees.sh"
+
+cd "$FALLBACK_REPO"
+cta --fallback-claude-extra
+cd "$FALLBACK_REPO"
+_speckit_worktree_prompt_cli() {
+    printf 'claude\n'
+}
+cts --fallback-cts-extra
+
+grep -Fx "pwd=$FALLBACK_TARGET" "$LOG_DIR/claude.log" >/dev/null
+[ "$(grep -c '^arg=--model$' "$LOG_DIR/claude.log")" -eq 3 ]
+[ "$(grep -c '^arg=opus$' "$LOG_DIR/claude.log")" -eq 3 ]
+[ "$(grep -c '^arg=--dangerously-skip-permissions$' "$LOG_DIR/claude.log")" -eq 3 ]
+[ "$(grep -c '^arg=--permission-mode$' "$LOG_DIR/claude.log")" -eq 3 ]
+[ "$(grep -c '^arg=bypassPermissions$' "$LOG_DIR/claude.log")" -eq 3 ]
+[ "$(grep -c '^arg=--teammate-mode$' "$LOG_DIR/claude.log")" -eq 3 ]
+[ "$(grep -c '^arg=tmux$' "$LOG_DIR/claude.log")" -eq 3 ]
+grep -Fx "arg=--fallback-claude-extra" "$LOG_DIR/claude.log" >/dev/null
+grep -Fx "arg=--fallback-cts-extra" "$LOG_DIR/claude.log" >/dev/null
