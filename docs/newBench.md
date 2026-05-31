@@ -106,7 +106,7 @@ Copy the complete template below — do not remove any standard mount:
 ```jsonc
 {
     "name": "{Your} Development Bench",
-    "initializeCommand": "bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base {name}-bench:latest",
+    "initializeCommand": "mkdir -p \"${localEnv:HOME}/.agents\" \"${localEnv:HOME}/.pi\" \"${localEnv:HOME}/.config/sonarqube\" && bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base {name}-bench:latest",
     "image": "{name}-bench:${localEnv:USER}",
     "customizations": {
         "vscode": {
@@ -188,7 +188,7 @@ If the bench installs Docker CLI, also add to `containerEnv`:
 
 If the bench needs `--chown` for directories (e.g., `/opt/something`), add to `initializeCommand`:
 ```jsonc
-"initializeCommand": "bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base {name}-bench:latest --chown /opt/something"
+"initializeCommand": "mkdir -p \"${localEnv:HOME}/.agents\" \"${localEnv:HOME}/.pi\" \"${localEnv:HOME}/.config/sonarqube\" && bash ${localWorkspaceFolder}/../../scripts/ensure-layer3.sh --base {name}-bench:latest --chown /opt/something"
 ```
 
 ## Step 4: Create README.md

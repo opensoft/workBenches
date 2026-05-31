@@ -74,6 +74,32 @@ get_status_symbol() {
     fi
 }
 
+is_supported_provider() {
+    local provider="$1"
+    local supported_provider
+
+    for supported_provider in "${DEFAULT_PROVIDERS[@]}"; do
+        if [ "$supported_provider" = "$provider" ]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+priority_contains() {
+    local provider="$1"
+    local configured_provider
+
+    for configured_provider in "${CURRENT_PRIORITY[@]}"; do
+        if [ "$configured_provider" = "$provider" ]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 # Load current priority configuration
 load_priority_config() {
     if [ -f "$PRIORITY_CONFIG" ]; then
@@ -85,7 +111,7 @@ load_priority_config() {
 
         # Keep only providers that are still supported.
         for provider in "${configured_priority[@]}"; do
-            if printf '%s\n' "${DEFAULT_PROVIDERS[@]}" | grep -q "^${provider}$"; then
+            if is_supported_provider "$provider"; then
                 CURRENT_PRIORITY+=("$provider")
             fi
         done
@@ -93,7 +119,7 @@ load_priority_config() {
         # Validate and merge with defaults
         # Add any new providers not in config
         for provider in "${DEFAULT_PROVIDERS[@]}"; do
-            if ! printf '%s\n' "${CURRENT_PRIORITY[@]}" | grep -q "^${provider}$"; then
+            if ! priority_contains "$provider"; then
                 CURRENT_PRIORITY+=("$provider")
             fi
         done
