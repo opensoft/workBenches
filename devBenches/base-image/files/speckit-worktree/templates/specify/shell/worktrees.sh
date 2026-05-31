@@ -1,7 +1,7 @@
 # Source this file from bash or zsh to enable Speckit worktree helpers.
 #
-# NOTE: Prefer the container-wide `ctinit` command (defined in /etc/skel/.zshrc)
-# which loads project-agnostic helpers from /usr/local/share/ct/ct-functions.zsh.
+# NOTE: In devBench containers, prefer the globally sourced ct helpers from
+# /usr/local/share/ct/ct-functions.zsh.
 # This file is kept as a per-repo fallback for environments without the
 # container-level helpers.
 
@@ -110,6 +110,28 @@ _speckit_worktree_start_cli() {
   "$cli_command" "$@"
 }
 
+_speckit_worktree_start_codex() {
+  local target="$1"
+  shift || true
+
+  _speckit_worktree_start_cli codex "$target" \
+    --dangerously-bypass-approvals-and-sandbox \
+    -m gpt-5.4 \
+    -c 'model_reasoning_effort="high"' \
+    "$@"
+}
+
+_speckit_worktree_start_gemini() {
+  local target="$1"
+  shift || true
+
+  _speckit_worktree_start_cli gemini "$target" \
+    --yolo \
+    --approval-mode yolo \
+    --model gemini-2.5-pro \
+    "$@"
+}
+
 ct() {
   local target
 
@@ -157,7 +179,7 @@ ctc() {
   fi
 
   target=$(_speckit_worktree_select_worktree) || return 1
-  _speckit_worktree_start_cli codex "$target" "$@"
+  _speckit_worktree_start_codex "$target" "$@"
 }
 
 ctg() {
@@ -169,7 +191,7 @@ ctg() {
   fi
 
   target=$(_speckit_worktree_select_worktree) || return 1
-  _speckit_worktree_start_cli gemini "$target" "$@"
+  _speckit_worktree_start_gemini "$target" "$@"
 }
 
 cts() {
@@ -178,7 +200,21 @@ cts() {
 
   target=$(_speckit_worktree_select_worktree) || return 1
   cli_command=$(_speckit_worktree_prompt_cli) || return 1
-  _speckit_worktree_start_cli "$cli_command" "$target" "$@"
+  case "$cli_command" in
+    claude)
+      _speckit_worktree_start_cli claude "$target" "$@"
+      ;;
+    codex)
+      _speckit_worktree_start_codex "$target" "$@"
+      ;;
+    gemini)
+      _speckit_worktree_start_gemini "$target" "$@"
+      ;;
+    *)
+      echo "cts: unsupported CLI selection: $cli_command" >&2
+      return 1
+      ;;
+  esac
 }
 
 ctlist() {
