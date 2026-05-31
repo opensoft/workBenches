@@ -7,7 +7,7 @@ description: "Codex wrapper for the Speckit specification workflow."
 
 Slash label: `/speckit.specify`.
 
-Use `../../../.agents/skills/speckit-specify/SKILL.md` as the source workflow.
+Use `../../../agents/skills/speckit-specify/SKILL.md` as the source workflow.
 
 Rules:
 - Read the source skill before doing anything else.

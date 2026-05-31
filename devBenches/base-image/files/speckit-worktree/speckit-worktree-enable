@@ -104,7 +104,7 @@ backup_file() {
 copy_overlay_dir() {
     local source="$1"
     local target="$2"
-    local preserved_git_config=""
+    local item rel dest
 
     [ -d "$source" ] || return 0
 
@@ -114,17 +114,22 @@ copy_overlay_dir() {
     fi
 
     mkdir -p "$target"
-    if [ "$force" != true ] && [ -f "$target/git-config.yml" ] && [ -f "$source/git-config.yml" ]; then
-        preserved_git_config=$(mktemp)
-        cp -a "$target/git-config.yml" "$preserved_git_config"
+
+    if [ "$force" = true ]; then
+        cp -a "$source/." "$target/"
+        return 0
     fi
 
-    cp -a "$source/." "$target/"
-
-    if [ -n "$preserved_git_config" ]; then
-        cp -a "$preserved_git_config" "$target/git-config.yml"
-        rm -f "$preserved_git_config"
-    fi
+    while IFS= read -r -d '' item; do
+        rel="${item#"$source"/}"
+        dest="$target/$rel"
+        if [ -d "$item" ] && [ ! -L "$item" ]; then
+            mkdir -p "$dest"
+        elif [ ! -e "$dest" ] && [ ! -L "$dest" ]; then
+            mkdir -p "$(dirname "$dest")"
+            cp -a "$item" "$dest"
+        fi
+    done < <(find "$source" -mindepth 1 -print0)
 }
 
 write_extensions_yml() {

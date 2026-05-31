@@ -3,8 +3,8 @@
   "default_agent": "openagent",
   "plugin": [
     "oh-my-opencode",
-    "opencode-gemini-auth",
-    "opencode-openai-codex-auth"
+    "opencode-gemini-auth@1.3.6",
+    "opencode-openai-codex-auth@4.2.0"
   ],
   "provider": {
     "anthropic": {

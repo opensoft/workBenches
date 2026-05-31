@@ -236,14 +236,20 @@ _ct_start_claude_with_dashboard() {
 }
 
 _ct_shell_quote() {
-    local quoted=()
+    local joined=""
+    local quoted
     local arg
 
     for arg in "$@"; do
-        quoted+=("$(printf '%q' "$arg")")
+        quoted="$(printf '%q' "$arg")"
+        if [ -n "$joined" ]; then
+            joined="$joined $quoted"
+        else
+            joined="$quoted"
+        fi
     done
 
-    printf '%s\n' "${quoted[*]}"
+    printf '%s\n' "$joined"
 }
 
 _ct_enable_tmux_mouse_copy_mode() {

@@ -310,12 +310,16 @@ def upsert_block(path: Path, block_body: str, dry_run: bool) -> None:
         separator = "\n" if after else ""
         new_text = before.rstrip() + "\n\n" + block + separator + after
     else:
-        marker = "\n## "
-        index = text.find(marker)
-        if index == -1:
-            new_text = text.rstrip() + "\n\n" + block
+        if text.startswith("## "):
+            new_text = block + "\n" + text
         else:
-            new_text = text[:index].rstrip() + "\n\n" + block + "\n" + text[index + 1 :]
+            marker = "\n## "
+            index = text.find(marker)
+            if index == -1:
+                new_text = text.rstrip() + "\n\n" + block
+            else:
+                # index points at the newline before the first section heading.
+                new_text = text[:index].rstrip() + "\n\n" + block + "\n" + text[index + 1 :]
 
     write_text(path, new_text, dry_run)
 

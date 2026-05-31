@@ -54,47 +54,63 @@ if [ -f "$_config_file" ]; then
     _in_auto_commit=false
     _in_event=false
     _default_enabled=false
+    _event_seen=false
+    _event_indent=0
 
-    while IFS= read -r _line; do
-        # Detect auto_commit: section
-        if echo "$_line" | grep -q '^auto_commit:'; then
+    while IFS= read -r _line || [ -n "$_line" ]; do
+        _trimmed="${_line#"${_line%%[![:space:]]*}"}"
+        [ -n "$_trimmed" ] || continue
+        case "$_trimmed" in
+            \#*) continue ;;
+        esac
+
+        _indent="${_line%%[![:space:]]*}"
+        _indent_len=${#_indent}
+        _key="${_trimmed%%:*}"
+        [ "$_trimmed" != "$_key" ] || continue
+        _value="${_trimmed#*:}"
+        _value="${_value#"${_value%%[![:space:]]*}"}"
+
+        # Detect auto_commit: section.
+        if [ "$_indent_len" -eq 0 ] && [ "$_key" = "auto_commit" ]; then
             _in_auto_commit=true
             _in_event=false
             continue
         fi
 
-        # Exit auto_commit section on next top-level key
-        if $_in_auto_commit && echo "$_line" | grep -Eq '^[a-z]'; then
+        # Exit auto_commit section on any later top-level YAML key.
+        if $_in_auto_commit && [ "$_indent_len" -eq 0 ]; then
             break
         fi
 
         if $_in_auto_commit; then
-            # Check default key
-            if echo "$_line" | grep -Eq "^[[:space:]]+default:[[:space:]]"; then
-                _val=$(echo "$_line" | sed 's/^[^:]*:[[:space:]]*//' | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+            if $_in_event && [ "$_indent_len" -le "$_event_indent" ] && [ "$_key" != "$EVENT_NAME" ]; then
+                _in_event=false
+            fi
+
+            # Check default key.
+            if [ "$_key" = "default" ]; then
+                _val=$(printf '%s\n' "$_value" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
                 [ "$_val" = "true" ] && _default_enabled=true
             fi
 
-            # Detect our event subsection
-            if echo "$_line" | grep -Eq "^[[:space:]]+${EVENT_NAME}:"; then
+            # Detect our event subsection using a literal key comparison.
+            if [ "$_key" = "$EVENT_NAME" ]; then
                 _in_event=true
+                _event_seen=true
+                _event_indent=$_indent_len
                 continue
             fi
 
-            # Inside our event subsection
+            # Inside our event subsection.
             if $_in_event; then
-                # Exit on next sibling key (same indent level as event name)
-                if echo "$_line" | grep -Eq '^[[:space:]]{2}[a-z]' && ! echo "$_line" | grep -Eq '^[[:space:]]{4}'; then
-                    _in_event=false
-                    continue
-                fi
-                if echo "$_line" | grep -Eq '[[:space:]]+enabled:'; then
-                    _val=$(echo "$_line" | sed 's/^[^:]*:[[:space:]]*//' | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+                if [ "$_key" = "enabled" ]; then
+                    _val=$(printf '%s\n' "$_value" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
                     [ "$_val" = "true" ] && _enabled=true
                     [ "$_val" = "false" ] && _enabled=false
                 fi
-                if echo "$_line" | grep -Eq '[[:space:]]+message:'; then
-                    _commit_msg=$(echo "$_line" | sed 's/^[^:]*:[[:space:]]*//' | sed 's/^["'\'']//' | sed 's/["'\'']*$//')
+                if [ "$_key" = "message" ]; then
+                    _commit_msg=$(printf '%s\n' "$_value" | sed 's/^["'\'']//' | sed 's/["'\'']*$//')
                 fi
             fi
         fi
@@ -102,9 +118,8 @@ if [ -f "$_config_file" ]; then
 
     # If event-specific key not found, use default
     if [ "$_enabled" = "false" ] && [ "$_default_enabled" = "true" ]; then
-        # Only use default if the event wasn't explicitly set to false
-        # Check if event section existed at all
-        if ! grep -q "^[[:space:]]*${EVENT_NAME}:" "$_config_file" 2>/dev/null; then
+        # Only use default if the event wasn't explicitly set to false.
+        if ! $_event_seen; then
             _enabled=true
         fi
     fi

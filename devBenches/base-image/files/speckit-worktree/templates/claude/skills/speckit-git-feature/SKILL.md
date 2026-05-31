@@ -69,15 +69,15 @@ Run the appropriate script based on your platform:
 - Do NOT pass `--number` — the script determines the correct next number automatically
 - Always include the JSON flag (`--json` for Bash, `-Json` for PowerShell) so the output can be parsed reliably
 - You must only ever run this script once per feature
-- The JSON output will always contain `BRANCH_NAME` and `FEATURE_NUM`
-- In worktree mode it also contains `BASE_BRANCH` and `WORKTREE_PATH`
+- The JSON output will always contain `BRANCH_NAME`, `FEATURE_NUM`, and `CHECKOUT_MODE`
+- In worktree mode the JSON output also contains `BASE_BRANCH` and `WORKTREE_PATH`
 - A linked worktree does **not** change the user's current shell directory automatically
 
 ## Graceful Degradation
 
 If Git is not installed or the current directory is not a Git repository:
 - Checkout creation is skipped with a warning: `[specify] Warning: Git repository not detected; skipped checkout creation`
-- The script still outputs `BRANCH_NAME` and `FEATURE_NUM` so the caller can reference them
+- The script still outputs `BRANCH_NAME`, `FEATURE_NUM`, and `CHECKOUT_MODE` so the caller can reference them
 
 ## Output
 
@@ -85,5 +85,5 @@ The script outputs JSON with:
 - `BRANCH_NAME`: The branch name (e.g., `003-user-auth` or `20260319-143022-user-auth`)
 - `FEATURE_NUM`: The numeric or timestamp prefix used
 - `CHECKOUT_MODE`: `branch` or `worktree`
-- `BASE_BRANCH`: included in worktree mode
-- `WORKTREE_PATH`: included in worktree mode
+- `BASE_BRANCH`: the configured worktree base branch when `CHECKOUT_MODE=worktree`
+- `WORKTREE_PATH`: the linked worktree root when `CHECKOUT_MODE=worktree`

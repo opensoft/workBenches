@@ -14,7 +14,7 @@
 #     Includes built-in agents: Sisyphus, oracle, librarian, explore, frontend, etc.
 #   - Auth plugins (opencode-gemini-auth, opencode-openai-codex-auth)
 #   - Other AI CLIs (Codex, Gemini, Copilot, etc.)
-#   - Google Antigravity CLI (agy)
+#   - Google Antigravity CLI (agy), checksum-gated opt-in
 #   - Claude Code (via native installer, not npm)
 #
 # Note: OpenAgents agent files (openagent.md, opencoder.md) are copied via
@@ -32,6 +32,9 @@ set -e
 DEBUG="${DEBUG:-1}"
 COMMAND_TIMEOUT="${COMMAND_TIMEOUT:-120}"  # 2 minutes per command
 BUN_OPERATIONS_TIMEOUT="${BUN_OPERATIONS_TIMEOUT:-180}"  # 3 minutes for bun ops
+INSTALL_ANTIGRAVITY_CLI="${INSTALL_ANTIGRAVITY_CLI:-0}"
+ANTIGRAVITY_INSTALL_URL="${ANTIGRAVITY_INSTALL_URL:-https://antigravity.google/cli/install.sh}"
+ANTIGRAVITY_INSTALL_SHA256="${ANTIGRAVITY_INSTALL_SHA256:-}"
 
 log_debug() {
     if [ "$DEBUG" = "1" ]; then
@@ -156,16 +159,28 @@ if ! run_with_timeout "$COMMAND_TIMEOUT" "Gemini npm install" npm install -g @go
     log_error "Gemini CLI installation failed (continuing)"
 fi
 
-log_info "Installing Google Antigravity CLI..."
-if run_with_timeout "300" "Antigravity CLI install" bash -c 'curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --skip-aliases --skip-path'; then
-    if [ -x "$HOME/.local/bin/agy" ] && [ ! -x /usr/local/bin/agy ]; then
-        cp "$HOME/.local/bin/agy" /usr/local/bin/agy
-        chmod +x /usr/local/bin/agy
+if [ "$INSTALL_ANTIGRAVITY_CLI" = "1" ] || [ "$INSTALL_ANTIGRAVITY_CLI" = "true" ]; then
+    log_info "Installing Google Antigravity CLI..."
+    if [ -z "$ANTIGRAVITY_INSTALL_SHA256" ]; then
+        log_error "Antigravity install requested but ANTIGRAVITY_INSTALL_SHA256 is not set (skipping)"
+    else
+        antigravity_installer="$(mktemp)"
+        if run_with_timeout "120" "Antigravity installer download" \
+            curl -fsSL "$ANTIGRAVITY_INSTALL_URL" -o "$antigravity_installer" &&
+           printf '%s  %s\n' "$ANTIGRAVITY_INSTALL_SHA256" "$antigravity_installer" | sha256sum -c - >/dev/null 2>&1 &&
+           run_with_timeout "300" "Antigravity CLI install" bash "$antigravity_installer" --skip-aliases --skip-path; then
+            if [ -x "$HOME/.local/bin/agy" ] && [ ! -x /usr/local/bin/agy ]; then
+                cp "$HOME/.local/bin/agy" /usr/local/bin/agy
+                chmod +x /usr/local/bin/agy
+            fi
+            log_info "Antigravity CLI installed to $(command -v agy || printf '/usr/local/bin/agy')"
+        else
+            log_error "Antigravity CLI installation failed or checksum verification failed (continuing)"
+        fi
+        rm -f "$antigravity_installer"
     fi
-    log_info "Antigravity CLI installed to $(command -v agy || printf '/usr/local/bin/agy')"
 else
-    log_error "Antigravity CLI installation failed"
-    exit 1
+    log_info "Skipping Google Antigravity CLI install; set INSTALL_ANTIGRAVITY_CLI=1 and ANTIGRAVITY_INSTALL_SHA256 to enable"
 fi
 
 log_info "Installing GitHub Copilot CLI..."
@@ -291,13 +306,10 @@ else
     log_info "Installing auth plugins..."
     cd /opt/opencode/plugin
     if command -v bun >/dev/null 2>&1; then
-        # Use bare package names. The OpenCode plugin loader has had issues
-        # with dist-tag suffixes like @latest; pin concrete versions only if
-        # the current release regresses.
         log_debug "Installing Gemini auth plugin via bun..."
-        run_with_timeout "$COMMAND_TIMEOUT" "Gemini auth plugin" bun add opencode-gemini-auth || log_error "Gemini auth plugin install failed"
+        run_with_timeout "$COMMAND_TIMEOUT" "Gemini auth plugin" bun add opencode-gemini-auth@1.3.6 || log_error "Gemini auth plugin install failed"
         log_debug "Installing Codex auth plugin via bun..."
-        run_with_timeout "$COMMAND_TIMEOUT" "Codex auth plugin" bun add opencode-openai-codex-auth || log_error "Codex auth plugin install failed"
+        run_with_timeout "$COMMAND_TIMEOUT" "Codex auth plugin" bun add opencode-openai-codex-auth@4.2.0 || log_error "Codex auth plugin install failed"
     else
         log_debug "Bun not available for auth plugins, skipping"
     fi
@@ -338,7 +350,7 @@ log_info "AI CLI Tools Installation Complete!"
 log_info "=========================================="
 log_info ""
 
-required_clis=(claude codex gemini agy opencode)
+required_clis=(claude codex gemini opencode)
 missing_clis=()
 for cli in "${required_clis[@]}"; do
     if ! command -v "$cli" >/dev/null 2>&1; then
@@ -355,7 +367,11 @@ log_info "Installed tools:"
 log_info "  - Claude Code (claude) [native installer]"
 log_info "  - OpenAI Codex (codex)"
 log_info "  - Google Gemini (gemini)"
-log_info "  - Google Antigravity CLI (agy)"
+if command -v agy >/dev/null 2>&1; then
+    log_info "  - Google Antigravity CLI (agy)"
+else
+    log_info "  - Google Antigravity CLI (agy) [checksum-gated opt-in, skipped]"
+fi
 log_info "  - GitHub Copilot CLI (github-copilot-cli)"
 log_info "  - OpenCode (opencode)"
 log_info "  - oh-my-opencode (darrenhinde fork with built-in agents)"

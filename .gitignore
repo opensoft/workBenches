@@ -24,7 +24,13 @@ __pycache__/
 *.tmp
 node_modules/
 .env
+.env.*
+*.env
+sonar.env
+*.backup
 *.bak
+*.bak.*
+secrets/
 *.swp
 *.swo
 

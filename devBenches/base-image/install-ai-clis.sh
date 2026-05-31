@@ -252,13 +252,10 @@ else
     log_info "Installing auth plugins..."
     cd $HOME/.opencode/plugin
     if command -v bun >/dev/null 2>&1; then
-        # Use bare package names. The OpenCode plugin loader has had issues
-        # with dist-tag suffixes like @latest; pin concrete versions only if
-        # the current release regresses.
         log_debug "Installing Gemini auth plugin via bun..."
-        run_with_timeout "$COMMAND_TIMEOUT" "Gemini auth plugin" bun add opencode-gemini-auth || log_error "Gemini auth plugin install failed"
+        run_with_timeout "$COMMAND_TIMEOUT" "Gemini auth plugin" bun add opencode-gemini-auth@1.3.6 || log_error "Gemini auth plugin install failed"
         log_debug "Installing Codex auth plugin via bun..."
-        run_with_timeout "$COMMAND_TIMEOUT" "Codex auth plugin" bun add opencode-openai-codex-auth || log_error "Codex auth plugin install failed"
+        run_with_timeout "$COMMAND_TIMEOUT" "Codex auth plugin" bun add opencode-openai-codex-auth@4.2.0 || log_error "Codex auth plugin install failed"
     else
         log_debug "Bun not available for auth plugins, skipping"
     fi

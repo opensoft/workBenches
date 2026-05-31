@@ -50,4 +50,4 @@ if ! grep -Eq 'org\.sonarqube|sonarqube' build.gradle* 2>/dev/null; then
     echo "Use plugin version ${SONAR_GRADLE_PLUGIN_VERSION} unless the project pins another version." >&2
 fi
 
-exec "${GRADLE_CMD[@]}" test jacocoTestReport "${SONAR_GRADLE_TASK:-sonarqube}" "$@"
+exec "${GRADLE_CMD[@]}" test jacocoTestReport "${SONAR_GRADLE_TASK:-sonar}" "$@"
