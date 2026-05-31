@@ -67,13 +67,24 @@ github_latest() {
     echo "unknown"
 }
 
+run_with_optional_timeout() {
+    local timeout_seconds="$1"
+    shift
+
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "${timeout_seconds}s" "$@"
+    else
+        "$@"
+    fi
+}
+
 # Get version from inside a container
 container_version() {
     local image="$1"
     local cmd="$2"
     local timeout_seconds="${CONTAINER_VERSION_TIMEOUT:-90}"
     local output
-    if output=$(timeout "${timeout_seconds}s" docker run --rm --entrypoint="" "$image" sh -c "$cmd" 2>/dev/null); then
+    if output=$(run_with_optional_timeout "$timeout_seconds" docker run --rm --entrypoint="" "$image" sh -c "$cmd" 2>/dev/null); then
         printf '%s\n' "$output" | head -1
     else
         echo "not installed"

@@ -37,6 +37,8 @@ x-standard-mounts: &standard-mounts
   - ~/.codex:/home/${USER}/.codex:cached
   # Shared AI agent protocols and skills
   - ~/.agents:/home/${USER}/.agents:cached
+  # Project Intelligence and local agent metadata
+  - ~/.pi:/home/${USER}/.pi:cached
   # Google Gemini (@google/gemini-cli via npm)
   - ~/.gemini:/home/${USER}/.gemini:cached
   # GitHub Copilot (@githubnext/github-copilot-cli via npm)
@@ -45,6 +47,8 @@ x-standard-mounts: &standard-mounts
   - ~/.notebooklm:/home/${USER}/.notebooklm:cached
   # NotebookLM MCP CLI (notebooklm-mcp-cli via uv, auth on host browser)
   - ~/.notebooklm-mcp-cli:/home/${USER}/.notebooklm-mcp-cli:cached
+  # SonarCloud / SonarQube scanner and MCP tokens
+  - ~/.config/sonarqube:/home/${USER}/.config/sonarqube:ro
 
   # Optional: Docker socket (only for benches with Docker CLI)
   # - /var/run/docker.sock:/var/run/docker.sock
@@ -62,6 +66,7 @@ services:
 #   Claude Code     (native installer)                  → ~/.claude/, ~/.claude.json
 #   OpenAI Codex    (@openai/codex via npm)              → ~/.codex/
 #   Shared Agents   (protocols and global skills)        → ~/.agents/
+#   Project Intel   (local agent metadata)                → ~/.pi/
 #   Google Gemini   (@google/gemini-cli via npm)         → ~/.gemini/
 #   GitHub Copilot  (@githubnext/github-copilot-cli npm) → ~/.copilot-cli/
 #   OpenCode        (upstream source build)              → config in image (/etc/skel)
@@ -71,3 +76,4 @@ services:
 #   spec-kit        (specify-cli via uv, Layer 1a)       → no credentials
 #   NotebookLM CLI  (notebooklm-py via uv)               → ~/.notebooklm/
 #   NotebookLM MCP  (notebooklm-mcp-cli via uv)          → ~/.notebooklm-mcp-cli/
+#   SonarCloud      (scanner/MCP tokens)                  → ~/.config/sonarqube/

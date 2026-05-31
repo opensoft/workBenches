@@ -53,6 +53,9 @@ AI/spec CLIs are installed in the appropriate base image and store credentials o
 // Shared agent workflow rules and skills
 "source=${localEnv:HOME}/.agents,target=/home/${localEnv:USER}/.agents,type=bind,consistency=cached",
 
+// Project Intelligence and local agent metadata
+"source=${localEnv:HOME}/.pi,target=/home/${localEnv:USER}/.pi,type=bind,consistency=cached",
+
 // Claude Code (Anthropic) — native installer
 // Auth: ~/.claude/ (session, config), ~/.claude.json (legacy config)
 "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind,consistency=cached",
@@ -72,6 +75,9 @@ AI/spec CLIs are installed in the appropriate base image and store credentials o
 
 // NotebookLM MCP CLI — notebooklm-mcp-cli (uv), auth via host browser
 "source=${localEnv:HOME}/.notebooklm-mcp-cli,target=/home/${localEnv:USER}/.notebooklm-mcp-cli,type=bind,consistency=cached",
+
+// SonarCloud / SonarQube tokens for scanners and MCP integration
+"source=${localEnv:HOME}/.config/sonarqube,target=/home/${localEnv:USER}/.config/sonarqube,type=bind,readonly",
 ```
 
 ### Infrastructure Mounts (conditional)
@@ -92,6 +98,7 @@ Reference mapping each installed AI/spec CLI to its credential path and mount ty
 **CLI** → **Install Method** → **Credential Path** → **Mount Type**
 
 - Shared agent workflow → host-managed files → `~/.agents/` → cached
+- Project Intelligence metadata → host-managed files → `~/.pi/` → cached
 - Claude Code → native installer → `~/.claude/`, `~/.claude.json` → cached
 - OpenAI Codex → npm (`@openai/codex`) → `~/.codex/` → cached
 - Google Gemini → npm (`@google/gemini-cli`) → `~/.gemini/` → cached
@@ -103,6 +110,7 @@ Reference mapping each installed AI/spec CLI to its credential path and mount ty
 - spec-kit → uv (`specify-cli`) in Layer 1a dev benches → no credential mount needed
 - NotebookLM CLI → uv (`notebooklm-py`) → `~/.notebooklm/` → cached (auth on host via browser)
 - NotebookLM MCP → uv (`notebooklm-mcp-cli`) → `~/.notebooklm-mcp-cli/` → cached (auth on host via browser)
+- SonarCloud / SonarQube → scanner CLI and MCP tooling → `~/.config/sonarqube/` → readonly
 
 ### Tools with No Credential Mount Required
 
