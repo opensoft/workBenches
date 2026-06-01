@@ -101,7 +101,7 @@ get_bench_description() {
         dotnet)
             echo ".NET Core development environment with Entity Framework, SQL tools, and debugging support"
             ;;
-        python)
+        py|python)
             echo "Python development environment with popular frameworks, data science tools, and debugging"
             ;;
         java)
@@ -110,8 +110,22 @@ get_bench_description() {
         cpp)
             echo "C++ development environment with GCC, CMake, debugging tools, and performance profilers"
             ;;
+        php)
+            echo "PHP development environment with Composer, PHPUnit, Xdebug, and static analysis tools"
+            ;;
         *)
             echo "Development environment for $bench_type"
+            ;;
+    esac
+}
+
+normalize_bench_type() {
+    case "$1" in
+        python)
+            printf '%s\n' "py"
+            ;;
+        *)
+            printf '%s\n' "$1"
             ;;
     esac
 }
@@ -190,6 +204,8 @@ analyze_environment() {
     # Project type detection
     if [ -f "pubspec.yaml" ]; then
         analysis+="Project type: Flutter (pubspec.yaml detected)\n"
+    elif [ -f "composer.json" ] || [ -f "phpunit.xml" ] || [ -n "$(find . -maxdepth 2 -name "*.php" -type f 2>/dev/null | head -1)" ]; then
+        analysis+="Project type: PHP (Composer/PHP files detected)\n"
     elif [ -f "package.json" ]; then
         analysis+="Project type: Node.js/JavaScript (package.json detected)\n"
     elif [ -f "*.csproj" ] || [ -f "*.sln" ]; then
@@ -209,6 +225,8 @@ analyze_environment() {
 launch_bench() {
     local bench_type="$1"
     local bench_path=""
+
+    bench_type=$(normalize_bench_type "$bench_type")
     
     # Find bench path
     while IFS=':' read -r name path; do
@@ -323,7 +341,7 @@ ${YELLOW}USAGE:${NC}
     launchDevBench [BENCH_TYPE|REQUEST] [OPTIONS]
 
 ${YELLOW}ARGUMENTS:${NC}
-    BENCH_TYPE        Direct bench selection (flutter, dotnet, python, java, cpp)
+    BENCH_TYPE        Direct bench selection (flutter, dotnet, py, python, java, cpp, php)
     REQUEST           Natural language request (AI mode only)
                       Examples: "I want to work on Flutter mobile app"
                                 "Debug a .NET API with database"
@@ -451,8 +469,10 @@ main() {
         *)
             # Check if it's a direct bench type or AI request
             local bench_exists=false
+            local requested_bench
+            requested_bench=$(normalize_bench_type "$1")
             while IFS=':' read -r name path; do
-                if [ "$name" = "$1" ]; then
+                if [ "$name" = "$requested_bench" ]; then
                     bench_exists=true
                     break
                 fi
@@ -460,7 +480,7 @@ main() {
             
             if [ "$bench_exists" = true ]; then
                 # Direct bench launch
-                launch_bench "$1"
+                launch_bench "$requested_bench"
                 exit $?
             else
                 # Try AI interpretation

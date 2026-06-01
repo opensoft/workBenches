@@ -24,7 +24,6 @@ DEFAULT_PROVIDERS=(
     "claude"
     "gemini"
     "copilot"
-    "grok"
     "meta"
     "kimi2"
     "deepseek"
@@ -36,7 +35,6 @@ declare -A PROVIDER_NAMES=(
     ["claude"]="Claude (Anthropic)"
     ["gemini"]="Google Gemini"
     ["copilot"]="GitHub Copilot"
-    ["grok"]="xAI Grok"
     ["meta"]="Meta Llama"
     ["kimi2"]="Moonshot Kimi 2"
     ["deepseek"]="DeepSeek"
@@ -48,7 +46,6 @@ declare -A PROVIDER_CLI=(
     ["claude"]="claude"
     ["gemini"]="gemini"
     ["copilot"]="copilot"
-    ["grok"]="grok"
     ["meta"]="llama"
     ["kimi2"]="kimi"
     ["deepseek"]="deepseek"
@@ -77,15 +74,52 @@ get_status_symbol() {
     fi
 }
 
+is_supported_provider() {
+    local provider="$1"
+    local supported_provider
+
+    for supported_provider in "${DEFAULT_PROVIDERS[@]}"; do
+        if [ "$supported_provider" = "$provider" ]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+priority_contains() {
+    local provider="$1"
+    local configured_provider
+
+    for configured_provider in "${CURRENT_PRIORITY[@]}"; do
+        if [ "$configured_provider" = "$provider" ]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 # Load current priority configuration
 load_priority_config() {
     if [ -f "$PRIORITY_CONFIG" ]; then
-        mapfile -t CURRENT_PRIORITY < "$PRIORITY_CONFIG"
+        local -a configured_priority
+        local provider
+
+        mapfile -t configured_priority < "$PRIORITY_CONFIG"
+        CURRENT_PRIORITY=()
+
+        # Keep only providers that are still supported.
+        for provider in "${configured_priority[@]}"; do
+            if is_supported_provider "$provider"; then
+                CURRENT_PRIORITY+=("$provider")
+            fi
+        done
         
         # Validate and merge with defaults
         # Add any new providers not in config
         for provider in "${DEFAULT_PROVIDERS[@]}"; do
-            if ! printf '%s\n' "${CURRENT_PRIORITY[@]}" | grep -q "^${provider}$"; then
+            if ! priority_contains "$provider"; then
                 CURRENT_PRIORITY+=("$provider")
             fi
         done

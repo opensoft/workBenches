@@ -6,7 +6,7 @@
 # Source this from Dockerfiles to maintain a single source of truth.
 #
 # Installs:
-#   - OpenCode (from Opensoft/opencode fork)
+#   - OpenCode (built from the upstream anomalyco/opencode repository)
 #   - oh-my-opencode plugin (from git: darrenhinde/oh-my-opencode)
 #     Includes built-in agents: Sisyphus, oracle, librarian, explore, frontend, etc.
 #   - Auth plugins (opencode-gemini-auth, opencode-openai-codex-auth)
@@ -134,16 +134,11 @@ if ! run_with_timeout "$COMMAND_TIMEOUT" "GitHub Copilot npm install" npm instal
     log_error "GitHub Copilot installation failed (continuing)"
 fi
 
-log_info "Installing Grok CLI (xAI)..."
-if ! run_with_timeout "$COMMAND_TIMEOUT" "Grok npm install" npm install -g @xai-org/grok-cli; then
-    log_error "Grok CLI not available via npm (skipping)"
-fi
-
-log_info "Installing OpenCode AI (from Opensoft fork)..."
-# OpenCode: open source AI coding agent (https://github.com/Opensoft/opencode)
-# Install from Opensoft fork instead of npm (sst version)
-log_debug "Cloning OpenCode repository from Opensoft..."
-if ! run_with_timeout "$COMMAND_TIMEOUT" "OpenCode git clone" git clone --depth 1 https://github.com/Opensoft/opencode.git /tmp/opencode; then
+log_info "Installing OpenCode AI (from upstream source)..."
+# OpenCode: open source AI coding agent (https://github.com/anomalyco/opencode)
+# Build directly from upstream source.
+log_debug "Cloning OpenCode repository from upstream..."
+if ! run_with_timeout "$COMMAND_TIMEOUT" "OpenCode git clone" git clone --depth 1 https://github.com/anomalyco/opencode.git /tmp/opencode; then
     log_error "Failed to clone OpenCode repository (skipping OpenCode installation)"
 else
     cd /tmp/opencode
@@ -283,7 +278,6 @@ log_info "  - Claude Code (claude)"
 log_info "  - OpenAI Codex (codex)"
 log_info "  - Google Gemini (gemini)"
 log_info "  - GitHub Copilot (copilot)"
-log_info "  - Grok (grok)"
 log_info "  - OpenCode (opencode)"
 log_info "  - oh-my-opencode (darrenhinde fork with built-in agents)"
 log_info "  - Letta Code (letta)"

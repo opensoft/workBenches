@@ -9,7 +9,7 @@ FROM ${BASE_IMAGE}
 # Container version labels
 LABEL layer="2"
 LABEL layer.name="cpp-bench"
-LABEL layer.version="2.0.0"
+LABEL layer.version="2.0.1"
 LABEL layer.description="C++ development tools and compilers (user-agnostic)"
 LABEL bench.type="cpp"
 
@@ -92,6 +92,7 @@ RUN apt-get update && apt-get install -y \
     ccache \
     mold \
     iwyu \
+    lcov \
     && rm -rf /var/lib/apt/lists/*
 
 # ========================================
@@ -119,6 +120,8 @@ RUN git clone https://github.com/Microsoft/vcpkg.git /opt/vcpkg \
     && ln -s /opt/vcpkg/vcpkg /usr/local/bin/vcpkg
 
 # Install Conan and related Python tools
+RUN pip3 install --break-system-packages gcovr
+
 RUN pip3 install --break-system-packages \
     conan \
     pre-commit \
@@ -127,6 +130,9 @@ RUN pip3 install --break-system-packages \
     cmakelang \
     lizard \
     || echo "⚠️  Some Python C++ tools failed, skipping"
+
+COPY files/sonarcloud-cpp-gcovr /usr/local/bin/sonarcloud-cpp-gcovr
+RUN chmod +x /usr/local/bin/sonarcloud-cpp-gcovr
 
 # ========================================
 # ENVIRONMENT SETUP
@@ -155,6 +161,7 @@ RUN echo '' >> /etc/skel/.zshrc && \
     echo 'alias cmake-debug="cmake -DCMAKE_BUILD_TYPE=Debug"' >> /etc/skel/.zshrc && \
     echo 'alias cmake-release="cmake -DCMAKE_BUILD_TYPE=Release"' >> /etc/skel/.zshrc && \
     echo 'alias ninja-build="cmake --build . -- -j$(nproc)"' >> /etc/skel/.zshrc && \
+    echo 'alias cpp-sonar-coverage="sonarcloud-cpp-gcovr"' >> /etc/skel/.zshrc && \
     echo 'alias cppclean="find . -name \"*.o\" -o -name \"*.a\" -o -name \"*.so\" | xargs rm -f"' >> /etc/skel/.zshrc && \
     echo 'alias valgrind-leak="valgrind --leak-check=full --show-leak-kinds=all"' >> /etc/skel/.zshrc
 

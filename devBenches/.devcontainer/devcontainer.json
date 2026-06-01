@@ -3,6 +3,7 @@
   "dockerComposeFile": ["docker-compose.yml", "docker-compose.override.yml"],
   "service": "devbench",
   "workspaceFolder": "/workspace",
+  "initializeCommand": "bash ${localWorkspaceFolder}/scripts/ensure-sonarqube-mcp.sh",
   "shutdownAction": "stopCompose",
   
   "forwardPorts": [1455],

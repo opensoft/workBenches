@@ -90,7 +90,7 @@ test_tool "claude" "command -v claude"
 test_tool "codex" "command -v codex"
 test_tool "gemini" "command -v gemini"
 test_tool "opencode" "command -v opencode"
-test_tool "yolo alias" "zsh -ic 'alias yolo' | grep -q 'claude --dangerously-skip-permissions --teammate-mode tmux'"
+test_tool "yolo function" "zsh -ic 'functions yolo' | grep -q 'tmux new-session' && zsh -ic 'functions yolo' | grep -q -- '--teammate-mode tmux'"
 
 echo ""
 echo "=== Build Tools ==="

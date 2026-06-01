@@ -63,7 +63,6 @@ claude
 codex
 gemini
 copilot
-grok
 meta
 kimi2
 deepseek
@@ -77,7 +76,6 @@ deepseek
 | claude | Claude (Anthropic) | `claude` | CLI OAuth + API key |
 | gemini | Google Gemini | `gemini` | CLI OAuth |
 | copilot | GitHub Copilot | `github-copilot-cli` | CLI OAuth |
-| grok | xAI Grok | `grok` | CLI OAuth |
 | meta | Meta Llama | `llama` | CLI OAuth |
 | kimi2 | Moonshot Kimi 2 | `kimi` | CLI OAuth |
 | deepseek | DeepSeek | `deepseek` | CLI OAuth |
@@ -88,10 +86,9 @@ deepseek
 2. **claude** (Claude - Anthropic)
 3. **gemini** (Google Gemini)
 4. **copilot** (GitHub Copilot)
-5. **grok** (xAI Grok)
-6. **meta** (Meta Llama)
-7. **kimi2** (Moonshot Kimi 2)
-8. **deepseek** (DeepSeek)
+5. **meta** (Meta Llama)
+6. **kimi2** (Moonshot Kimi 2)
+7. **deepseek** (DeepSeek)
 
 ## How It Works
 

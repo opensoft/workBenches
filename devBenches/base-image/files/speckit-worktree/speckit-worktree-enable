@@ -1,0 +1,430 @@
+#!/usr/bin/env bash
+# Enable Opensoft's Speckit worktree workflow in the current repository.
+#
+# This intentionally lives outside Speckit itself. Speckit upgrades may refresh
+# generated command/skill files; rerunning this command reapplies the worktree
+# extension and worktree-aware command skills.
+
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: speckit-worktree-enable [options]
+
+Enable the Speckit git worktree extension for the current repository.
+
+Options:
+  --repo PATH            Repository path. Defaults to the current directory.
+  --base-branch NAME     Base branch for new worktrees. Defaults to main when present.
+  --worktree-root PATH   Worktree parent path, relative to repo root unless absolute.
+                         Defaults to ../<repo-name>-worktrees.
+  --force                Replace existing managed Speckit worktree files.
+  -h, --help             Show this help.
+
+Environment:
+  SPECKIT_WORKTREE_TEMPLATE_ROOT  Override template root for testing.
+EOF
+}
+
+die() {
+    echo "speckit-worktree-enable: $*" >&2
+    exit 1
+}
+
+repo_arg="."
+base_branch=""
+worktree_root=""
+force=false
+base_branch_override=false
+worktree_root_override=false
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --repo)
+            [ "$#" -ge 2 ] || die "--repo requires a value"
+            repo_arg="$2"
+            shift 2
+            ;;
+        --base-branch)
+            [ "$#" -ge 2 ] || die "--base-branch requires a value"
+            base_branch="$2"
+            base_branch_override=true
+            shift 2
+            ;;
+        --worktree-root)
+            [ "$#" -ge 2 ] || die "--worktree-root requires a value"
+            worktree_root="$2"
+            worktree_root_override=true
+            shift 2
+            ;;
+        --force)
+            force=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            die "unknown argument: $1"
+            ;;
+    esac
+done
+
+repo_root=$(git -C "$repo_arg" rev-parse --show-toplevel 2>/dev/null) || {
+    die "not inside a git repository: $repo_arg"
+}
+
+[ -d "$repo_root/.specify" ] || {
+    die ".specify/ not found in repo root: $repo_root. Run Speckit initialization first."
+}
+
+template_root="${SPECKIT_WORKTREE_TEMPLATE_ROOT:-/usr/local/share/speckit-worktree/templates}"
+[ -d "$template_root" ] || die "template root not found: $template_root"
+command -v python3 >/dev/null 2>&1 || die "python3 is required to update .specify/extensions.yml"
+
+repo_name=$(basename "$repo_root")
+if [ -z "$base_branch" ]; then
+    if git -C "$repo_root" show-ref --verify --quiet refs/heads/main ||
+       git -C "$repo_root" show-ref --verify --quiet refs/remotes/origin/main; then
+        base_branch="main"
+    else
+        base_branch=$(git -C "$repo_root" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+        [ -n "$base_branch" ] && [ "$base_branch" != "HEAD" ] || base_branch="main"
+    fi
+fi
+
+if [ -z "$worktree_root" ]; then
+    worktree_root="../${repo_name}-worktrees"
+fi
+
+backup_file() {
+    local path="$1"
+
+    if [ -e "$path" ]; then
+        cp -a "$path" "${path}.bak.$(date +%Y%m%d%H%M%S)"
+    fi
+}
+
+copy_overlay_dir() {
+    local source="$1"
+    local target="$2"
+    local copy_force="${3:-$force}"
+    local item rel dest
+
+    [ -d "$source" ] || return 0
+
+    if [ "$copy_force" = true ] && [ -e "$target" ]; then
+        backup_file "$target"
+        rm -rf "$target"
+    fi
+
+    mkdir -p "$target"
+
+    if [ "$copy_force" = true ]; then
+        cp -a "$source/." "$target/"
+        return 0
+    fi
+
+    while IFS= read -r -d '' item; do
+        rel="${item#"$source"/}"
+        dest="$target/$rel"
+        if [ -d "$item" ] && [ ! -L "$item" ]; then
+            mkdir -p "$dest"
+        elif [ ! -e "$dest" ] && [ ! -L "$dest" ]; then
+            mkdir -p "$(dirname "$dest")"
+            cp -a "$item" "$dest"
+        fi
+    done < <(find "$source" -mindepth 1 -print0)
+}
+
+needs_worktree_git_overlay() {
+    local feature_script="$repo_root/.specify/extensions/git/scripts/bash/create-new-feature.sh"
+
+    [ -f "$feature_script" ] || return 1
+    grep -q 'CHECKOUT_MODE' "$feature_script" &&
+        grep -q 'WORKTREE_PATH' "$feature_script" &&
+        grep -q 'git worktree' "$feature_script" &&
+        return 1
+
+    return 0
+}
+
+ensure_extensions_installed_git() {
+    local path="$repo_root/.specify/extensions.yml"
+
+    [ -f "$path" ] || return 0
+    python3 - "$path" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines()
+
+
+def indent_len(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def is_git_item(value: str) -> bool:
+    return value.strip() in {"- git", "- 'git'", '- "git"'}
+
+
+def inline_installed_has_git(value: str) -> bool:
+    value = value.strip()
+    if value.startswith("[") and value.endswith("]"):
+        entries = value[1:-1].split(",")
+        return any(entry.strip().strip("'\"") == "git" for entry in entries)
+    return value.strip("'\"") == "git"
+
+
+changed = False
+for index, line in enumerate(lines):
+    stripped = line.strip()
+    if not stripped.startswith("installed:"):
+        continue
+
+    indent = line[: len(line) - len(line.lstrip(" "))]
+    suffix = stripped.split(":", 1)[1].strip()
+    if inline_installed_has_git(suffix):
+        break
+
+    if suffix == "[]":
+        lines[index] = indent + "installed:"
+        lines.insert(index + 1, indent + "- git")
+        changed = True
+        break
+
+    if suffix:
+        lines[index] = indent + "installed:"
+        lines.insert(index + 1, indent + "- git")
+        changed = True
+        break
+
+    found_git = False
+    insert_at = index + 1
+    while insert_at < len(lines):
+        candidate = lines[insert_at]
+        candidate_stripped = candidate.strip()
+        if (
+            candidate_stripped
+            and indent_len(candidate) <= len(indent)
+            and not candidate_stripped.startswith("-")
+        ):
+            break
+        if is_git_item(candidate_stripped):
+            found_git = True
+            break
+        if candidate_stripped.startswith("-"):
+            insert_at += 1
+            continue
+        break
+
+    if not found_git:
+        lines.insert(index + 1, indent + "- git")
+        changed = True
+    break
+else:
+    lines[:0] = ["installed:", "- git", ""]
+    changed = True
+
+if changed:
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+PY
+}
+
+write_extensions_yml() {
+    local path="$repo_root/.specify/extensions.yml"
+
+    if [ -f "$path" ] && grep -q 'speckit\.git\.feature' "$path"; then
+        ensure_extensions_installed_git
+        return 0
+    fi
+
+    backup_file "$path"
+    if [ -f "$path" ]; then
+        python3 - "$path" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines()
+
+hook = [
+    "- extension: git",
+    "  command: speckit.git.feature",
+    "  enabled: true",
+    "  optional: false",
+    "  prompt: Execute speckit.git.feature?",
+    "  description: Create feature checkout before specification",
+    "  condition: null",
+]
+
+def indent_of(line: str) -> str:
+    return line[: len(line) - len(line.lstrip(" "))]
+
+for index, line in enumerate(lines):
+    if line.strip() == "before_specify:":
+        child_indent = indent_of(line) + "  "
+        lines[index + 1:index + 1] = [child_indent + item for item in hook]
+        break
+else:
+    for index, line in enumerate(lines):
+        if line.strip() == "hooks:":
+            child_indent = indent_of(line) + "  "
+            lines[index + 1:index + 1] = (
+                [child_indent + "before_specify:"]
+                + [child_indent + "  " + item for item in hook]
+            )
+            break
+    else:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.extend(["hooks:", "  before_specify:"] + ["    " + item for item in hook])
+
+path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
+        ensure_extensions_installed_git
+        return 0
+    fi
+
+    cat > "$path" <<'EOF'
+installed:
+- git
+settings:
+  auto_execute_hooks: true
+hooks:
+  before_specify:
+    - extension: git
+      command: speckit.git.feature
+      enabled: true
+      optional: false
+      prompt: Execute speckit.git.feature?
+      description: Create feature checkout before specification
+      condition: null
+EOF
+}
+
+update_existing_git_config() {
+    local path="$1"
+
+    python3 - "$path" "$base_branch_override" "$base_branch" "$worktree_root_override" "$worktree_root" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+base_branch_override = sys.argv[2] == "true"
+base_branch = sys.argv[3]
+worktree_root_override = sys.argv[4] == "true"
+worktree_root = sys.argv[5]
+
+updates = {"checkout_mode": "worktree"}
+if base_branch_override:
+    updates["base_branch"] = base_branch
+if worktree_root_override:
+    updates["worktree_root"] = worktree_root
+
+lines = path.read_text(encoding="utf-8").splitlines()
+seen: set[str] = set()
+updated: list[str] = []
+changed = False
+
+for line in lines:
+    stripped = line.lstrip()
+    indent = len(line) - len(stripped)
+    if indent == 0 and ":" in stripped:
+        key = stripped.split(":", 1)[0].strip()
+        if key in updates:
+            replacement = f"{key}: {updates[key]}"
+            updated.append(replacement)
+            seen.add(key)
+            changed = changed or replacement != line
+            continue
+    updated.append(line)
+
+missing = [key for key in updates if key not in seen]
+if missing:
+    if updated and updated[-1].strip():
+        updated.append("")
+    updated.extend(f"{key}: {updates[key]}" for key in missing)
+    changed = True
+
+if changed:
+    path.write_text("\n".join(updated).rstrip() + "\n", encoding="utf-8")
+PY
+}
+
+write_git_config() {
+    local path="$repo_root/.specify/extensions/git/git-config.yml"
+
+    mkdir -p "$(dirname "$path")"
+    if [ "${GIT_CONFIG_EXISTED:-false}" = true ] && [ "$force" != true ] && [ "${GIT_OVERLAY_FORCE:-false}" != true ]; then
+        if [ "$base_branch_override" = true ] || [ "$worktree_root_override" = true ]; then
+            update_existing_git_config "$path"
+            echo "updated $path"
+            return 0
+        fi
+        echo "kept existing $path (use --force to replace)"
+        return 0
+    fi
+
+    backup_file "$path"
+    cat > "$path" <<EOF
+# Git Branching Workflow Extension Configuration
+# Managed by speckit-worktree-enable. Rerun after Speckit upgrades.
+
+# Branch numbering strategy: "sequential" (001, 002, ...) or "timestamp" (YYYYMMDD-HHMMSS)
+branch_numbering: sequential
+
+# Feature checkout strategy: "branch" keeps work in the current checkout,
+# "worktree" creates a sibling worktree rooted from base_branch.
+checkout_mode: worktree
+
+# Base branch for new worktree-backed features. Ignored in branch mode.
+base_branch: ${base_branch}
+
+# Parent directory for linked worktrees. Relative paths resolve from the repo root.
+worktree_root: ${worktree_root}
+
+# Auto-commit before/after core commands. Disabled by default.
+auto_commit:
+  default: false
+EOF
+}
+
+GIT_CONFIG_EXISTED=false
+[ -f "$repo_root/.specify/extensions/git/git-config.yml" ] && GIT_CONFIG_EXISTED=true
+GIT_OVERLAY_FORCE=false
+if [ "$force" = true ] || needs_worktree_git_overlay; then
+    GIT_OVERLAY_FORCE=true
+fi
+if [ "$GIT_OVERLAY_FORCE" = true ] && [ "$force" != true ]; then
+    echo "replacing stock Speckit git extension with worktree-aware overlay"
+fi
+
+copy_overlay_dir "$template_root/specify/extensions/git" "$repo_root/.specify/extensions/git" "$GIT_OVERLAY_FORCE"
+copy_overlay_dir "$template_root/specify/shell" "$repo_root/.specify/shell"
+copy_overlay_dir "$template_root/agents/skills/speckit-specify" "$repo_root/.agents/skills/speckit-specify" "$GIT_OVERLAY_FORCE"
+copy_overlay_dir "$template_root/agents/skills/speckit-git-feature" "$repo_root/.agents/skills/speckit-git-feature" "$GIT_OVERLAY_FORCE"
+copy_overlay_dir "$template_root/claude/skills/speckit-specify" "$repo_root/.claude/skills/speckit-specify" "$GIT_OVERLAY_FORCE"
+copy_overlay_dir "$template_root/claude/skills/speckit-git-feature" "$repo_root/.claude/skills/speckit-git-feature" "$GIT_OVERLAY_FORCE"
+copy_overlay_dir "$template_root/codex/skills/speckit-specify" "$repo_root/.codex/skills/speckit-specify" "$GIT_OVERLAY_FORCE"
+copy_overlay_dir "$template_root/codex/skills/speckit-git-feature" "$repo_root/.codex/skills/speckit-git-feature" "$GIT_OVERLAY_FORCE"
+
+write_extensions_yml
+write_git_config
+
+find "$repo_root/.specify/extensions/git/scripts" "$repo_root/.specify/shell" \
+    -type f \( -name '*.sh' -o -name '*.zsh' -o -name '*.ps1' \) \
+    -exec chmod 0755 {} + 2>/dev/null || true
+
+cat <<EOF
+Speckit worktree workflow enabled.
+
+Repository:    $repo_root
+Base branch:   $base_branch
+Worktree root: $worktree_root
+
+Run /speckit.specify from the root checkout. New features will create a branch
+and linked worktree, then write the feature spec into that worktree.
+EOF

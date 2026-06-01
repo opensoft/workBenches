@@ -49,6 +49,7 @@ The `.devcontainer/` directory in this repo is a **legacy monolithic setup** and
 - **Google Test (GTest)** - Unit testing framework
 - **Google Mock (GMock)** - Mocking framework
 - **CTest** - CMake integrated testing
+- **gcovr/lcov** - Coverage report generation for SonarCloud imports
 
 ### Development Tools
 - **VS Code Extensions** - Full C++ development suite
@@ -173,6 +174,24 @@ ctest --output-on-failure
 # Direct execution
 ./your_test_executable
 ```
+
+#### SonarCloud Coverage
+`sonarcloud-cpp-gcovr` uses `SONAR_TOKEN` when already exported, or reads
+`SONARQUBE_TOKEN` from `~/.config/sonarqube/sonar.env` and aliases it to
+`SONAR_TOKEN`. It builds/tests a CMake project with GCC coverage flags, writes
+`coverage.xml` in Sonar generic coverage format, and runs `sonar-scanner`.
+
+```bash
+sonarcloud-cpp-gcovr
+```
+
+For non-CMake projects, provide your own clean coverage build/test command:
+
+```bash
+SONAR_CPP_TEST_COMMAND="./scripts/coverage.sh" sonarcloud-cpp-gcovr
+```
+
+The shell alias `cpp-sonar-coverage` points to the same command.
 
 #### Debugging Tests
 ```bash

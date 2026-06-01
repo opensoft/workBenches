@@ -2,7 +2,7 @@ name: dev-benches
 
 services:
   java-bench:
-    env_file: ../.env
+    env_file: .env
     image: java-bench:${USER:-brett}
     container_name: java-bench
     command: sleep infinity

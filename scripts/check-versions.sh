@@ -9,7 +9,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/image-names.sh"
-USERNAME="${USERNAME:-$(whoami)}"
+# Windows shells often export USERNAME with different casing (e.g. Brett).
+# Default to the actual WSL/container user; use --user for an explicit override.
+USERNAME="$(whoami)"
 LAYER="all"
 JSON_OUTPUT=false
 MANIFEST_FILE="$REPO_DIR/config/version-manifest.json"
@@ -42,20 +44,58 @@ declare -a JSON_ENTRIES=()
 # Get latest npm package version
 npm_latest() {
     local pkg="$1"
-    curl -s "https://registry.npmjs.org/$pkg/latest" 2>/dev/null | jq -r '.version // empty' 2>/dev/null || echo "unknown"
+    local registry_path="$pkg"
+    if [[ "$pkg" == @*/* ]]; then
+        registry_path="${pkg/\//%2F}"
+    fi
+    curl -fsSL --connect-timeout 10 --max-time 20 "https://registry.npmjs.org/$registry_path/latest" 2>/dev/null \
+        | jq -r '.version // empty' 2>/dev/null || echo "unknown"
 }
 
 # Get latest GitHub release version (strips leading 'v')
 github_latest() {
     local repo="$1"
-    curl -s "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null | jq -r '.tag_name // empty' 2>/dev/null | sed 's/^v//'
+    local tag
+    if tag=$(curl -fsSL --connect-timeout 10 --max-time 20 "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \
+        | jq -r '.tag_name // empty' 2>/dev/null); then
+        tag="${tag#v}"
+        if [ -n "$tag" ]; then
+            echo "$tag"
+            return 0
+        fi
+    fi
+    echo "unknown"
+}
+
+run_with_optional_timeout() {
+    local timeout_seconds="$1"
+    shift
+
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "${timeout_seconds}s" "$@"
+    else
+        "$@"
+    fi
 }
 
 # Get version from inside a container
 container_version() {
     local image="$1"
     local cmd="$2"
-    docker run --rm --entrypoint="" "$image" sh -c "$cmd" 2>/dev/null | head -1 || echo "not installed"
+    local timeout_seconds="${CONTAINER_VERSION_TIMEOUT:-90}"
+    local output
+    if output=$(run_with_optional_timeout "$timeout_seconds" docker run --rm --entrypoint="" "$image" sh -c "$cmd" 2>/dev/null); then
+        printf '%s\n' "$output" | head -1
+    else
+        echo "not installed"
+    fi
+}
+
+# Antigravity does not currently publish through npm. Its CLI changelog exposes
+# the newest available version, so use that as the upstream latest signal.
+antigravity_latest() {
+    local image="$1"
+    container_version "$image" "agy changelog 2>/dev/null | sed -n '1{s/:$//;p;q}' || echo unknown"
 }
 
 # Extract just the version number from a version string
@@ -109,6 +149,15 @@ print_layer_header() {
     fi
 }
 
+skip_layer() {
+    local message="$1"
+    if [ "$JSON_OUTPUT" = false ]; then
+        echo "$message"
+    else
+        echo "$message" >&2
+    fi
+}
+
 # ========================================
 # LAYER 0: workbench-base
 # ========================================
@@ -117,7 +166,7 @@ check_layer0() {
     local image="workbench-base:latest"
 
     if ! docker image inspect "$image" >/dev/null 2>&1; then
-        echo "  Layer 0 image ($image) not found — skipping"
+        skip_layer "  Layer 0 image ($image) not found — skipping"
         return
     fi
 
@@ -158,11 +207,6 @@ check_layer0() {
         "$(github_latest "astral-sh/uv")" \
         "0"
 
-    report_tool "spec-kit" \
-        "$(container_version "$image" "uv tool list 2>/dev/null | grep specify-cli | head -1 || echo n/a")" \
-        "$(github_latest "github/spec-kit")" \
-        "0"
-
     report_tool "fzf" \
         "$(container_version "$image" "fzf --version")" \
         "$(github_latest "junegunn/fzf")" \
@@ -174,7 +218,7 @@ check_layer0() {
         "0"
 
     report_tool "tldr" \
-        "$(container_version "$image" "tldr --version 2>/dev/null || echo n/a")" \
+        "$(container_version "$image" "node -p 'require(\"/usr/lib/node_modules/tldr/package.json\").version' 2>/dev/null || tldr --version 2>/dev/null || echo n/a")" \
         "$(npm_latest "tldr")" \
         "0"
 
@@ -194,14 +238,14 @@ check_layer0() {
         "$(npm_latest "@google/gemini-cli")" \
         "0"
 
+    report_tool "agy" \
+        "$(container_version "$image" "agy --version 2>/dev/null || echo n/a")" \
+        "$(antigravity_latest "$image")" \
+        "0"
+
     report_tool "copilot" \
         "$(container_version "$image" "github-copilot-cli --version 2>/dev/null || echo n/a")" \
         "$(npm_latest "@githubnext/github-copilot-cli")" \
-        "0"
-
-    report_tool "openspec" \
-        "$(container_version "$image" "openspec --version 2>/dev/null || echo n/a")" \
-        "$(npm_latest "@fission-ai/openspec")" \
         "0"
 
     report_tool "letta-code" \
@@ -219,7 +263,7 @@ check_layer1a() {
     image=$(resolve_existing_image "$(family_base_image dev)" "$(legacy_family_base_image dev 2>/dev/null || true)" || true)
 
     if [ -z "$image" ]; then
-        echo "  Layer 1a image ($image) not found — skipping"
+        skip_layer "  Layer 1a image ($image) not found — skipping"
         return
     fi
 
@@ -251,6 +295,21 @@ check_layer1a() {
         "$(container_version "$image" "yarn --version 2>/dev/null || echo n/a")" \
         "$(npm_latest "yarn")" \
         "1a"
+
+    report_tool "gt" \
+        "$(container_version "$image" "gt --version 2>/dev/null || echo n/a")" \
+        "$(npm_latest "@withgraphite/graphite-cli")" \
+        "1a"
+
+    report_tool "spec-kit" \
+        "$(container_version "$image" "specify --version 2>/dev/null || uv tool list 2>/dev/null | grep specify-cli | head -1 || echo n/a")" \
+        "$(github_latest "github/spec-kit")" \
+        "1a"
+
+    report_tool "openspec" \
+        "$(container_version "$image" "openspec --version 2>/dev/null || echo n/a")" \
+        "$(npm_latest "@fission-ai/openspec")" \
+        "1a"
 }
 
 # ========================================
@@ -262,7 +321,7 @@ check_layer1b() {
     image=$(resolve_existing_image "$(family_base_image sys)" "$(legacy_family_base_image sys 2>/dev/null || true)" || true)
 
     if [ -z "$image" ]; then
-        echo "  Layer 1b image ($image) not found — skipping"
+        skip_layer "  Layer 1b image ($image) not found — skipping"
         return
     fi
 
@@ -338,7 +397,7 @@ check_layer1c() {
     image=$(resolve_existing_image "$(family_base_image bio)" "$(legacy_family_base_image bio 2>/dev/null || true)" || true)
 
     if [ -z "$image" ]; then
-        echo "  Layer 1c image ($image) not found — skipping"
+        skip_layer "  Layer 1c image ($image) not found — skipping"
         return
     fi
 
@@ -354,11 +413,13 @@ check_layer1c() {
 # MAIN
 # ========================================
 
-echo "=========================================="
-echo "workBenches Version Check"
-echo "=========================================="
-echo "User: $USERNAME"
-echo "Date: $(date '+%Y-%m-%d %H:%M:%S')"
+if [ "$JSON_OUTPUT" = false ]; then
+    echo "=========================================="
+    echo "workBenches Version Check"
+    echo "=========================================="
+    echo "User: $USERNAME"
+    echo "Date: $(date '+%Y-%m-%d %H:%M:%S')"
+fi
 
 case "$LAYER" in
     0)   check_layer0 ;;
@@ -378,8 +439,6 @@ case "$LAYER" in
         ;;
 esac
 
-echo ""
-
 # Count outdated
 outdated_count=0
 for entry in "${JSON_ENTRIES[@]}"; do
@@ -389,6 +448,7 @@ for entry in "${JSON_ENTRIES[@]}"; do
 done
 
 if [ "$JSON_OUTPUT" = false ]; then
+    echo ""
     echo -e "${BOLD}Summary:${NC} ${#JSON_ENTRIES[@]} tools checked, ${outdated_count} outdated"
     if [ "$outdated_count" -gt 0 ]; then
         echo -e "${YELLOW}Run scripts/update-and-rebuild.sh to update outdated layers${NC}"
@@ -412,7 +472,7 @@ echo "}" >> "$MANIFEST_FILE"
 
 if [ "$JSON_OUTPUT" = true ]; then
     cat "$MANIFEST_FILE"
+else
+    echo ""
+    echo "Version manifest written to config/version-manifest.json"
 fi
-
-echo ""
-echo "Version manifest written to config/version-manifest.json"

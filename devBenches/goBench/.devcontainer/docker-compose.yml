@@ -4,7 +4,7 @@ name: dev-benches
 
 services:
   go-bench:
-    env_file: ../.env
+    env_file: .env
     image: go-bench:${USER:-brett}
     container_name: go-bench
     command: sleep infinity

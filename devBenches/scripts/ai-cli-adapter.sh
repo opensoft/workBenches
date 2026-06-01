@@ -21,8 +21,29 @@ if [ -f "$PRIORITY_CONFIG" ]; then
     mapfile -t PROVIDER_PRIORITY < "$PRIORITY_CONFIG"
 else
     # Default provider priority order
-    PROVIDER_PRIORITY=("codex" "claude" "gemini" "copilot" "grok" "meta" "kimi2" "deepseek")
+    PROVIDER_PRIORITY=("codex" "claude" "gemini" "copilot" "meta" "kimi2" "deepseek")
 fi
+
+filter_supported_providers() {
+    local -a filtered=()
+    local provider
+
+    for provider in "${PROVIDER_PRIORITY[@]}"; do
+        case "$provider" in
+            codex|claude|gemini|copilot|meta|kimi2|deepseek)
+                filtered+=("$provider")
+                ;;
+        esac
+    done
+
+    if [ ${#filtered[@]} -gt 0 ]; then
+        PROVIDER_PRIORITY=("${filtered[@]}")
+    else
+        PROVIDER_PRIORITY=("codex" "claude" "gemini" "copilot" "meta" "kimi2" "deepseek")
+    fi
+}
+
+filter_supported_providers
 
 # Timeout for CLI probes (seconds)
 readonly PROBE_TIMEOUT=10
@@ -119,27 +140,6 @@ check_gemini_status() {
     return 1
 }
 
-# Check if Grok CLI is installed and authenticated
-check_grok_status() {
-    # Check if CLI is installed
-    if ! command -v grok >/dev/null 2>&1; then
-        echo "$CLI_NOT_INSTALLED"
-        return 1
-    fi
-    
-    # Check if config directory exists with API key
-    if [ -f "$HOME/.grok/api-key" ]; then
-        # Verify the key file is not empty
-        if [ -s "$HOME/.grok/api-key" ]; then
-            echo "$CLI_AUTHENTICATED"
-            return 0
-        fi
-    fi
-    
-    echo "$CLI_INSTALLED_NOT_AUTH"
-    return 1
-}
-
 # Check if Copilot CLI is installed and authenticated
 check_copilot_status() {
     # Check if CLI is installed (try both command names)
@@ -212,9 +212,6 @@ get_all_cli_status() {
             gemini)
                 cli_status_map["gemini"]=$(check_gemini_status)
                 ;;
-            grok)
-                cli_status_map["grok"]=$(check_grok_status)
-                ;;
             copilot)
                 cli_status_map["copilot"]=$(check_copilot_status)
                 ;;
@@ -249,9 +246,6 @@ get_authenticated_cli() {
                 ;;
             gemini)
                 cli_status=$(check_gemini_status)
-                ;;
-            grok)
-                cli_status=$(check_grok_status)
                 ;;
             copilot)
                 cli_status=$(check_copilot_status)
@@ -291,9 +285,6 @@ get_unauthenticated_clis() {
                 ;;
             gemini)
                 cli_status=$(check_gemini_status)
-                ;;
-            grok)
-                cli_status=$(check_grok_status)
                 ;;
             copilot)
                 cli_status=$(check_copilot_status)

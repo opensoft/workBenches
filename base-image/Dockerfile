@@ -9,7 +9,7 @@ FROM ubuntu:24.04
 # Container version labels
 LABEL layer="0"
 LABEL layer.name="workbench-base"
-LABEL layer.version="2.0.0"
+LABEL layer.version="2.0.1"
 LABEL layer.description="System base with AI CLIs for all workBenches (user-agnostic)"
 
 # Everything runs as root — no user in this layer
@@ -119,9 +119,14 @@ RUN npm install -g tldr \
 # Install uv to /usr/local/bin (system-wide)
 RUN curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh
 
-# Install spec-kit system-wide
-RUN uv tool install specify-cli --from git+https://github.com/github/spec-kit.git --python-preference system \
-    || echo "spec-kit installation skipped (non-fatal)"
+# Ensure spec-driven CLIs are not inherited from cached Layer 0 state.
+RUN npm uninstall -g @fission-ai/openspec || true \
+    && rm -f /usr/bin/openspec /usr/local/bin/openspec \
+    && rm -rf /usr/lib/node_modules/@fission-ai/openspec /usr/local/lib/node_modules/@fission-ai/openspec \
+    && uv tool uninstall specify-cli || true \
+    && env UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv/tools uv tool uninstall specify-cli || true \
+    && rm -f /root/.local/bin/specify /usr/local/bin/specify \
+    && rm -rf /root/.local/share/uv/tools/specify-cli /opt/uv/tools/specify-cli
 
 # ========================================
 # BUN RUNTIME (system-wide at /opt/bun)
@@ -172,14 +177,139 @@ RUN echo 'export ZSH="$HOME/.oh-my-zsh"' > /etc/skel/.zshrc && \
 RUN echo 'eval "$(zoxide init bash)"' >> /etc/skel/.bashrc && \
     echo 'export PATH="$HOME/.local/bin:/opt/bun/bin:$PATH"' >> /etc/skel/.bashrc
 
-# Provide AI helper aliases system-wide so all benches inherit them even when
+# Provide AI helpers system-wide so all benches inherit them even when
 # a workspace does not mount a host shell profile.
-RUN echo '' >> /etc/zsh/zshrc && \
-    echo '# WorkBench AI helpers' >> /etc/zsh/zshrc && \
-    echo 'alias yolo="claude --dangerously-skip-permissions --teammate-mode tmux"' >> /etc/zsh/zshrc && \
-    echo '' >> /etc/bash.bashrc && \
-    echo '# WorkBench AI helpers' >> /etc/bash.bashrc && \
-    echo 'alias yolo="claude --dangerously-skip-permissions --teammate-mode tmux"' >> /etc/bash.bashrc
+RUN cat <<'EOF' >> /etc/zsh/zshrc
+
+# WorkBench AI helpers
+_yolo_shell_quote() {
+  local quoted="" arg
+
+  for arg in "$@"; do
+    quoted="${quoted} $(printf '%q' "$arg")"
+  done
+
+  printf '%s\n' "${quoted# }"
+}
+
+unalias yolo 2>/dev/null || true
+yolo() {
+  local session_name command_string prompt_file
+  local -a prompt_args
+
+  if ! command -v claude >/dev/null 2>&1; then
+    echo "yolo: Claude CLI not found on PATH" >&2
+    return 1
+  fi
+
+  if ! command -v tmux >/dev/null 2>&1; then
+    echo "yolo: tmux not found on PATH" >&2
+    return 1
+  fi
+
+  prompt_file=""
+  for candidate_prompt_file in \
+    "$HOME/.claude/prompts/speckit-dashboard-full.md" \
+    "/usr/local/share/ct/claude/prompts/speckit-dashboard-full.md" \
+    "$HOME/.claude/prompts/speckit-dashboard-bootstrap.md"; do
+    if [ -r "$candidate_prompt_file" ]; then
+      prompt_file="$candidate_prompt_file"
+      break
+    fi
+  done
+  prompt_args=()
+  if [ -n "$prompt_file" ]; then
+    prompt_args=(--append-system-prompt-file "$prompt_file")
+  fi
+
+  if [ -n "${TMUX:-}" ]; then
+    claude --dangerously-skip-permissions --teammate-mode tmux "${prompt_args[@]}" "$@"
+    return $?
+  fi
+
+  session_name="yolo-$(date +%Y%m%d%H%M%S)-$$"
+  command_string=$(_yolo_shell_quote \
+    claude \
+    --dangerously-skip-permissions \
+    --teammate-mode tmux \
+    "${prompt_args[@]}" \
+    "$@") || return 1
+
+  tmux new-session -d -s "$session_name" -c "$PWD" "exec $command_string" || {
+    echo "yolo: failed to start tmux session" >&2
+    return 1
+  }
+
+  tmux set-option -t "$session_name" mouse on >/dev/null 2>&1 || true
+  tmux attach-session -t "$session_name"
+}
+EOF
+
+RUN cat <<'EOF' >> /etc/bash.bashrc
+
+# WorkBench AI helpers
+_yolo_shell_quote() {
+  local quoted="" arg
+
+  for arg in "$@"; do
+    quoted="${quoted} $(printf '%q' "$arg")"
+  done
+
+  printf '%s\n' "${quoted# }"
+}
+
+unalias yolo 2>/dev/null || true
+yolo() {
+  local session_name command_string prompt_file
+  local -a prompt_args
+
+  if ! command -v claude >/dev/null 2>&1; then
+    echo "yolo: Claude CLI not found on PATH" >&2
+    return 1
+  fi
+
+  if ! command -v tmux >/dev/null 2>&1; then
+    echo "yolo: tmux not found on PATH" >&2
+    return 1
+  fi
+
+  prompt_file=""
+  for candidate_prompt_file in \
+    "$HOME/.claude/prompts/speckit-dashboard-full.md" \
+    "/usr/local/share/ct/claude/prompts/speckit-dashboard-full.md" \
+    "$HOME/.claude/prompts/speckit-dashboard-bootstrap.md"; do
+    if [ -r "$candidate_prompt_file" ]; then
+      prompt_file="$candidate_prompt_file"
+      break
+    fi
+  done
+  prompt_args=()
+  if [ -n "$prompt_file" ]; then
+    prompt_args=(--append-system-prompt-file "$prompt_file")
+  fi
+
+  if [ -n "${TMUX:-}" ]; then
+    claude --dangerously-skip-permissions --teammate-mode tmux "${prompt_args[@]}" "$@"
+    return $?
+  fi
+
+  session_name="yolo-$(date +%Y%m%d%H%M%S)-$$"
+  command_string=$(_yolo_shell_quote \
+    claude \
+    --dangerously-skip-permissions \
+    --teammate-mode tmux \
+    "${prompt_args[@]}" \
+    "$@") || return 1
+
+  tmux new-session -d -s "$session_name" -c "$PWD" "exec $command_string" || {
+    echo "yolo: failed to start tmux session" >&2
+    return 1
+  }
+
+  tmux set-option -t "$session_name" mouse on >/dev/null 2>&1 || true
+  tmux attach-session -t "$session_name"
+}
+EOF
 
 # ========================================
 # OPENCODE CONFIGURATION (into /etc/skel)
@@ -193,21 +323,10 @@ COPY files/opencode/agent/ /etc/skel/.config/opencode/agent/
 COPY files/opencode/context/ /etc/skel/.config/opencode/context/
 
 # ========================================
-# OPSX COMMANDS & SKILLS (Claude Code, into /etc/skel)
-# ========================================
-# Upgraded OpenSpec workflows with agent team orchestration.
-# Uses opsx-* / opsx: prefix — openspec init/update won't overwrite these.
-
-RUN mkdir -p /etc/skel/.claude/commands/opsx \
-    && mkdir -p /etc/skel/.claude/skills/opsx-clarify \
-    && mkdir -p /etc/skel/.claude/skills/opsx-analyze
-COPY files/claude/commands/opsx/ /etc/skel/.claude/commands/opsx/
-COPY files/claude/skills/opsx-clarify/ /etc/skel/.claude/skills/opsx-clarify/
-COPY files/claude/skills/opsx-analyze/ /etc/skel/.claude/skills/opsx-analyze/
-
-# ========================================
 # SPECKIT SKILLS (Claude Code, into /etc/skel)
 # ========================================
+# OpenSpec/opsx commands are installed with the devBench OpenSpec layer, where
+# the openspec CLI is present. Layer 0 keeps only non-OpenSpec Claude defaults.
 # Agent-team-enhanced Speckit workflows. Each skill upgrades the corresponding
 # project-level /speckit.* command with parallel specialist agents.
 # Uses speckit-* prefix — speckit init/update won't overwrite these.

@@ -21,10 +21,15 @@ if [ "$USERNAME" = "--user" ]; then
 fi
 
 BASE_IMAGE="$(resolve_family_base_image dev "$USERNAME" || true)"
+DOCKER_BUILD_ARGS=()
+if [ "${DOCKER_BUILD_NO_CACHE:-0}" = "1" ]; then
+    DOCKER_BUILD_ARGS+=(--no-cache)
+fi
 
 echo "Configuration:"
 echo "  Tag: go-bench:latest (user-agnostic)"
 echo "  Base image: ${BASE_IMAGE:-$(family_base_image dev)}"
+echo "  No cache: ${DOCKER_BUILD_NO_CACHE:-0}"
 echo ""
 
 # Check if Layer 1 exists
@@ -40,6 +45,7 @@ fi
 # Build the image
 echo "Building go-bench:latest..."
 docker build \
+    "${DOCKER_BUILD_ARGS[@]}" \
     --build-arg BASE_IMAGE="$BASE_IMAGE" \
     --build-arg USERNAME="$USERNAME" \
     -f Dockerfile.layer2 \

@@ -59,6 +59,30 @@ log_section() {
     echo "$(printf '=%.0s' {1..50})"
 }
 
+bench_has_update_script() {
+    local bench_type="$1"
+    local bench_name="${2:-${bench_type%Bench}}"
+
+    [ -f "$DEVBENCHES_DIR/${bench_type}/scripts/update-${bench_name}-project.sh" ] ||
+        [ -f "$DEVBENCHES_DIR/${bench_type}/scripts/update-project.sh" ] ||
+        [ -f "$DEVBENCHES_DIR/${bench_type}/update-${bench_name}-project.sh" ] ||
+        [ -f "$DEVBENCHES_DIR/${bench_type}/update-project.sh" ]
+}
+
+normalize_bench_type() {
+    case "$1" in
+        python|pythonBench|py)
+            echo "pyBench"
+            ;;
+        php)
+            echo "phpBench"
+            ;;
+        *)
+            echo "$1"
+            ;;
+    esac
+}
+
 # ====================================
 # Metadata Detection Functions
 # ====================================
@@ -88,8 +112,10 @@ detect_bench_metadata() {
                 if command -v jq >/dev/null 2>&1; then
                     local bench_type=$(jq -r '.bench_type // .benchType // .type // empty' "$full_path" 2>/dev/null)
                     if [ -n "$bench_type" ] && [ "$bench_type" != "null" ]; then
-                        log_success "Detected bench type from metadata: $bench_type" >&2
-                        echo "$bench_type"
+                        local normalized_bench_type
+                        normalized_bench_type=$(normalize_bench_type "$bench_type")
+                        log_success "Detected bench type from metadata: $normalized_bench_type" >&2
+                        echo "$normalized_bench_type"
                         return 0
                     fi
                 fi
@@ -97,8 +123,10 @@ detect_bench_metadata() {
                 # Plain text metadata
                 local bench_type=$(grep -i "bench_type\|benchType\|type" "$full_path" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d ' "')
                 if [ -n "$bench_type" ]; then
-                    log_success "Detected bench type from metadata: $bench_type" >&2
-                    echo "$bench_type"
+                    local normalized_bench_type
+                    normalized_bench_type=$(normalize_bench_type "$bench_type")
+                    log_success "Detected bench type from metadata: $normalized_bench_type" >&2
+                    echo "$normalized_bench_type"
                     return 0
                 fi
             fi
@@ -125,6 +153,7 @@ analyze_project_structure() {
     local java_confidence=0
     local dotnet_confidence=0
     local cpp_confidence=0
+    local php_confidence=0
     
     # Flutter/Dart indicators
     if [ -f "$project_path/pubspec.yaml" ]; then
@@ -137,7 +166,7 @@ analyze_project_structure() {
         fi
     fi
     
-    if [ -d "$project_path/lib" ] && find "$project_path/lib" -name "*.dart" -type f | head -1 >/dev/null 2>&1; then
+    if [ -d "$project_path/lib" ] && find "$project_path/lib" -name "*.dart" -type f -print -quit 2>/dev/null | grep -q .; then
         flutter_confidence=$((flutter_confidence + 20))
         log_info "   📁 Dart lib directory found: +20 confidence" >&2
     fi
@@ -153,7 +182,7 @@ analyze_project_structure() {
         log_info "🐍 Python project detected (requirements/setup files): 90% confidence" >&2
     fi
     
-    if [ -d "$project_path/src" ] && [ -d "$project_path/tests" ] && find "$project_path" -name "*.py" -type f | head -1 >/dev/null 2>&1; then
+    if [ -d "$project_path/src" ] && [ -d "$project_path/tests" ] && find "$project_path" -name "*.py" -type f -print -quit 2>/dev/null | grep -q .; then
         python_confidence=$((python_confidence + 15))
         log_info "   📁 Python project structure found: +15 confidence" >&2
     fi
@@ -161,6 +190,20 @@ analyze_project_structure() {
     if [ -f "$project_path/manage.py" ] || [ -f "$project_path/wsgi.py" ]; then
         python_confidence=$((python_confidence + 20))
         log_info "   🌐 Django/Flask indicators found: +20 confidence" >&2
+    fi
+    
+    # PHP indicators
+    if [ -f "$project_path/composer.json" ]; then
+        php_confidence=95
+        log_info "PHP Composer project detected: 95% confidence" >&2
+    elif [ -f "$project_path/phpunit.xml" ] || [ -f "$project_path/phpunit.xml.dist" ]; then
+        php_confidence=85
+        log_info "PHP PHPUnit project detected: 85% confidence" >&2
+    fi
+    
+    if [ -d "$project_path/src" ] && find "$project_path/src" -name "*.php" -type f -print -quit 2>/dev/null | grep -q .; then
+        php_confidence=$((php_confidence + 15))
+        log_info "   PHP source structure found: +15 confidence" >&2
     fi
     
     # Java indicators
@@ -178,7 +221,7 @@ analyze_project_structure() {
     fi
     
     # .NET indicators
-    if find "$project_path" -name "*.csproj" -o -name "*.sln" -o -name "*.fsproj" -o -name "*.vbproj" | head -1 >/dev/null 2>&1; then
+    if find "$project_path" \( -name "*.csproj" -o -name "*.sln" -o -name "*.fsproj" -o -name "*.vbproj" \) -type f -print -quit 2>/dev/null | grep -q .; then
         dotnet_confidence=95
         log_info "🔷 .NET project detected (project files): 95% confidence" >&2
     fi
@@ -200,7 +243,7 @@ analyze_project_structure() {
         log_info "⚙️ C++ Meson project detected: 80% confidence" >&2
     fi
     
-    if [ -d "$project_path/src" ] && [ -d "$project_path/include" ] && find "$project_path" -name "*.cpp" -o -name "*.hpp" -o -name "*.h" | head -1 >/dev/null 2>&1; then
+    if [ -d "$project_path/src" ] && [ -d "$project_path/include" ] && find "$project_path" \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" \) -type f -print -quit 2>/dev/null | grep -q .; then
         cpp_confidence=$((cpp_confidence + 15))
         log_info "   📁 C++ project structure found: +15 confidence" >&2
     fi
@@ -215,8 +258,21 @@ analyze_project_structure() {
     fi
     
     if [ $python_confidence -gt $max_confidence ]; then
-        max_confidence=$python_confidence
-        best_bench="pythonBench"
+        if bench_has_update_script "pyBench" "python"; then
+            max_confidence=$python_confidence
+            best_bench="pyBench"
+        else
+            log_warning "Python project detected, but pyBench update support is not installed; skipping pyBench selection" >&2
+        fi
+    fi
+    
+    if [ $php_confidence -gt $max_confidence ]; then
+        if bench_has_update_script "phpBench" "php"; then
+            max_confidence=$php_confidence
+            best_bench="phpBench"
+        else
+            log_warning "PHP project detected, but phpBench update support is not installed; skipping phpBench selection" >&2
+        fi
     fi
     
     if [ $java_confidence -gt $max_confidence ]; then
@@ -239,6 +295,7 @@ analyze_project_structure() {
     log_section "📊 Analysis Results" >&2
     echo "   🎯 Flutter/Dart: ${flutter_confidence}%" >&2
     echo "   🐍 Python: ${python_confidence}%" >&2
+    echo "   PHP: ${php_confidence}%" >&2
     echo "   ☕ Java: ${java_confidence}%" >&2
     echo "   🔷 .NET: ${dotnet_confidence}%" >&2
     echo "   ⚙️ C++: ${cpp_confidence}%" >&2
@@ -259,13 +316,17 @@ analyze_project_structure() {
 
 # Find and execute the appropriate bench-specific update script
 delegate_to_bench_script() {
-    local bench_type="$1"
+    local bench_type
+    bench_type=$(normalize_bench_type "$1")
     local project_path="$2"
     
     log_section "🚀 Delegating to $bench_type Update Script"
     
     # Map bench types to script patterns
     local bench_name="${bench_type%Bench}"  # Remove 'Bench' suffix if present
+    case "$bench_type" in
+        pyBench) bench_name="python" ;;
+    esac
     local script_patterns=(
         "$DEVBENCHES_DIR/${bench_type}/scripts/update-${bench_name}-project.sh"
         "$DEVBENCHES_DIR/${bench_type}/scripts/update-project.sh"
@@ -377,10 +438,11 @@ if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo ""
     echo "Supported project types:"
     echo "  - flutterBench: Flutter/Dart projects"
-    echo "  - pythonBench: Python projects"
+    echo "  - pyBench: Python projects"
     echo "  - javaBench: Java/Maven/Gradle projects"
     echo "  - dotNetBench: .NET/C# projects"
     echo "  - cppBench: C++/CMake projects"
+    echo "  - phpBench: PHP/Composer/PHPUnit projects"
     echo ""
     echo "Project metadata files (optional):"
     echo "  - .workbench"

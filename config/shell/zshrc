@@ -609,8 +609,69 @@ alias devbench-status='docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Por
 alias devbench-stop='docker stop java_bench dot_net_bench flutter_bench 2>/dev/null || true'
 # End DevBench Aliases
 
-# Claude alias
-alias yolo="claude --dangerously-skip-permissions --teammate-mode tmux"
+# Claude helper. Runs the main Claude session inside tmux so another operator
+# can capture and drive it, while still letting Claude use tmux for teammates.
+_yolo_shell_quote() {
+  local quoted="" arg
+
+  for arg in "$@"; do
+    quoted="${quoted} $(printf '%q' "$arg")"
+  done
+
+  printf '%s\n' "${quoted# }"
+}
+
+unalias yolo 2>/dev/null || true
+yolo() {
+  local session_name command_string prompt_file
+  local -a prompt_args
+
+  if ! command -v claude >/dev/null 2>&1; then
+    echo "yolo: Claude CLI not found on PATH" >&2
+    return 1
+  fi
+
+  if ! command -v tmux >/dev/null 2>&1; then
+    echo "yolo: tmux not found on PATH" >&2
+    return 1
+  fi
+
+  prompt_file=""
+  for candidate_prompt_file in \
+    "$HOME/.claude/prompts/speckit-dashboard-full.md" \
+    "/usr/local/share/ct/claude/prompts/speckit-dashboard-full.md" \
+    "$HOME/.claude/prompts/speckit-dashboard-bootstrap.md"; do
+    if [ -r "$candidate_prompt_file" ]; then
+      prompt_file="$candidate_prompt_file"
+      break
+    fi
+  done
+  prompt_args=()
+  if [ -n "$prompt_file" ]; then
+    prompt_args=(--append-system-prompt-file "$prompt_file")
+  fi
+
+  if [ -n "${TMUX:-}" ]; then
+    claude --dangerously-skip-permissions --teammate-mode tmux "${prompt_args[@]}" "$@"
+    return $?
+  fi
+
+  session_name="yolo-$(date +%Y%m%d%H%M%S)-$$"
+  command_string=$(_yolo_shell_quote \
+    claude \
+    --dangerously-skip-permissions \
+    --teammate-mode tmux \
+    "${prompt_args[@]}" \
+    "$@") || return 1
+
+  tmux new-session -d -s "$session_name" -c "$PWD" "exec $command_string" || {
+    echo "yolo: failed to start tmux session" >&2
+    return 1
+  }
+
+  tmux set-option -t "$session_name" mouse on >/dev/null 2>&1 || true
+  tmux attach-session -t "$session_name"
+}
 export PATH="$HOME/.npm-global/bin:$PATH"
 export PATH="/workspace/.venv/bin:$PATH"
 
@@ -641,4 +702,3 @@ else
 fi
 unset __conda_setup
 # <<< conda initialize <<<
-

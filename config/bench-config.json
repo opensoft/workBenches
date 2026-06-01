@@ -13,9 +13,9 @@
       "description": "Cloud infrastructure and operations tools",
       "ai_keywords": ["cloud", "infrastructure", "devops", "kubernetes", "docker", "deployment", "admin", "monitoring", "logging"]
     },
-    "pythonBench": {
-      "url": "git@github.com:opensoft/pythonBench.git", 
-      "path": "devBenches/pythonBench",
+    "pyBench": {
+      "url": "git@github.com:opensoft/pyBench.git",
+      "path": "devBenches/pyBench",
       "description": "Python development environment and tools",
       "ai_keywords": ["python", "django", "flask", "fastapi", "pandas", "numpy", "machine learning", "ml", "data science", "AI", "artificial intelligence", "web scraping"],
       "project_scripts": [
@@ -24,6 +24,20 @@
           "script": "scripts/new-python-project.sh",
           "description": "Create a new Python project with DevContainer setup",
           "includes_speckit": true
+        }
+      ]
+    },
+    "phpBench": {
+      "url": "git@github.com:opensoft/phpBench.git",
+      "path": "devBenches/phpBench",
+      "description": "PHP development environment and tools",
+      "ai_keywords": ["php", "composer", "phpunit", "laravel", "symfony", "wordpress", "drupal", "xdebug", "web application"],
+      "project_scripts": [
+        {
+          "name": "php",
+          "script": "scripts/new-php-project.sh",
+          "description": "Create a new PHP project with Composer, PHPUnit, and SonarCloud coverage setup",
+          "includes_speckit": false
         }
       ]
     },

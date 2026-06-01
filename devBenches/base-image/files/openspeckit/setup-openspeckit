@@ -1,0 +1,961 @@
+#!/usr/bin/env python3
+"""Install shared OpenSpec/Speckit pointers and agent helpers in a repo."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+START = "<!-- OPENSPEC-SPECKIT-GLOBAL:START -->"
+END = "<!-- OPENSPEC-SPECKIT-GLOBAL:END -->"
+
+SKILLS = [
+    "openspec-apply-change",
+    "openspec-archive-change",
+    "openspec-explore",
+    "openspec-propose",
+    "speckit-analyze",
+    "speckit-checklist",
+    "speckit-clarify",
+    "speckit-constitution",
+    "speckit-git-commit",
+    "speckit-git-feature",
+    "speckit-git-initialize",
+    "speckit-git-remote",
+    "speckit-git-validate",
+    "speckit-implement",
+    "speckit-plan",
+    "speckit-specify",
+    "speckit-tasks",
+    "speckit-taskstoissues",
+    "ct",
+    "ctp",
+    "claude-session-driver",
+    "speckit-claude-driver",
+]
+
+SUPPORTED_AGENT_CONTEXT_FILES = [
+    ("agy", "AGENTS.md"),
+    ("amp", "AGENTS.md"),
+    ("auggie", ".augment/rules/specify-rules.md"),
+    ("bob", "AGENTS.md"),
+    ("claude", "CLAUDE.md"),
+    ("codebuddy", "CODEBUDDY.md"),
+    ("codex", "AGENTS.md"),
+    ("copilot", ".github/copilot-instructions.md"),
+    ("cursor-agent", ".cursor/rules/specify-rules.mdc"),
+    ("forge", "AGENTS.md"),
+    ("gemini", "GEMINI.md"),
+    ("generic", "AGENTS.md"),
+    ("goose", "AGENTS.md"),
+    ("iflow", "IFLOW.md"),
+    ("junie", ".junie/AGENTS.md"),
+    ("kilocode", ".kilocode/rules/specify-rules.md"),
+    ("kimi", "KIMI.md"),
+    ("kiro-cli", "AGENTS.md"),
+    ("opencode", "AGENTS.md"),
+    ("pi", "AGENTS.md"),
+    ("qodercli", "QODER.md"),
+    ("qwen", "QWEN.md"),
+    ("roo", ".roo/rules/specify-rules.md"),
+    ("shai", "SHAI.md"),
+    ("tabnine", "TABNINE.md"),
+    ("trae", ".trae/rules/project_rules.md"),
+    ("vibe", ".vibe/agents/specify-agents.md"),
+    ("windsurf", ".windsurf/rules/specify-rules.md"),
+]
+
+USER_GLOBAL_AGENT_POINTER_FILES = [
+    # Primary user-global agent entrypoints. ~/.agents/AGENTS.md is the source
+    # file itself, so it is maintained separately.
+    ".codex/AGENTS.md",
+    ".claude/CLAUDE.md",
+    ".config/opencode/AGENTS.md",
+    # Speckit-supported agent context conventions with practical global homes.
+    ".augment/rules/specify-rules.md",
+    ".cursor/rules/specify-rules.mdc",
+    ".gemini/GEMINI.md",
+    ".github/copilot-instructions.md",
+    ".junie/AGENTS.md",
+    ".kilocode/rules/specify-rules.md",
+    ".kimi/KIMI.md",
+    ".qoder/QODER.md",
+    ".qwen/QWEN.md",
+    ".roo/rules/specify-rules.md",
+    ".shai/SHAI.md",
+    ".tabnine/TABNINE.md",
+    ".trae/rules/project_rules.md",
+    ".vibe/agents/specify-agents.md",
+    ".windsurf/rules/specify-rules.md",
+]
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Prepare a repo for the shared OpenSpec/Speckit agent workflow."
+    )
+    parser.add_argument("--repo", type=Path, help="Repository root. Defaults to git root.")
+    parser.add_argument("--dry-run", action="store_true", help="Print planned changes only.")
+    parser.add_argument("--force", action="store_true", help="Overwrite existing copied helpers.")
+    parser.add_argument(
+        "--preserve-readmes",
+        action="store_true",
+        help="Do not rewrite openspec/README.md or .specify/README.md.",
+    )
+    parser.add_argument(
+        "--skip-init",
+        action="store_true",
+        help="Do not create minimal openspec/.specify scaffolding or run specify init.",
+    )
+    parser.add_argument(
+        "--integration",
+        help="Spec Kit integration to install when initialization is needed. Defaults to existing integration or claude.",
+    )
+    parser.add_argument(
+        "--no-speckit-registration",
+        action="store_true",
+        help="Do not register the Spec Kit git extension or bundled speckit workflow.",
+    )
+    parser.add_argument(
+        "--no-worktrees",
+        action="store_true",
+        help="Do not install the Speckit worktree overlay.",
+    )
+    parser.add_argument(
+        "--base-branch",
+        help="Base branch for new Speckit worktrees. Defaults to main when present, otherwise current branch.",
+    )
+    parser.add_argument(
+        "--worktree-root",
+        help="Worktree parent path, relative to repo root unless absolute. Defaults to ../<repo-name>-worktrees.",
+    )
+    parser.add_argument(
+        "--no-skill-links",
+        action="store_true",
+        help="Do not link global skills into repo-local agent folders.",
+    )
+    parser.add_argument(
+        "--no-global-agent-pointers",
+        action="store_true",
+        help="Do not update user-global agent entrypoint files.",
+    )
+    parser.add_argument(
+        "--no-repo-agent-pointers",
+        action="store_true",
+        help="Do not update repo-local context files for supported agents.",
+    )
+    return parser.parse_args()
+
+
+def log(message: str) -> None:
+    print(message)
+
+
+def run_command(command: list[str], cwd: Path, dry_run: bool) -> None:
+    printable = " ".join(shlex_quote(part) for part in command)
+    if dry_run:
+        log(f"would run ({cwd}): {printable}")
+        return
+    log(f"running ({cwd}): {printable}")
+    subprocess.run(command, cwd=cwd, check=True)
+
+
+def shlex_quote(value: str) -> str:
+    if not value:
+        return "''"
+    safe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_+-=.,/:@%"
+    if all(char in safe for char in value):
+        return value
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
+def git_root() -> Path:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise SystemExit(
+            "Could not determine repo root. Run inside a git repo or pass --repo."
+        ) from exc
+    return Path(result.stdout.strip()).resolve()
+
+
+def read_json(path: Path) -> dict[str, object]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def existing_integration(repo: Path) -> str | None:
+    integration_state = read_json(repo / ".specify" / "integration.json")
+    value = integration_state.get("integration") or integration_state.get("default_integration")
+    if isinstance(value, str) and value:
+        return value
+
+    init_options = read_json(repo / ".specify" / "init-options.json")
+    value = init_options.get("integration") or init_options.get("ai")
+    if isinstance(value, str) and value:
+        return value
+
+    return None
+
+
+def needs_speckit_init(repo: Path) -> bool:
+    required = [
+        repo / ".specify" / "init-options.json",
+        repo / ".specify" / "integration.json",
+        repo / ".specify" / "templates" / "spec-template.md",
+    ]
+    return any(not path.exists() for path in required)
+
+
+def ensure_speckit_initialized(
+    repo: Path,
+    integration: str,
+    dry_run: bool,
+    skip_init: bool,
+) -> None:
+    if skip_init or not needs_speckit_init(repo):
+        return
+
+    command = [
+        "specify",
+        "init",
+        "--here",
+        "--force",
+        "--integration",
+        integration,
+        "--script",
+        "sh",
+        "--ai-skills",
+        "--ignore-agent-tools",
+    ]
+    run_command(command, repo, dry_run)
+
+
+def git_extension_registered(repo: Path) -> bool:
+    registry = read_json(repo / ".specify" / "extensions" / ".registry")
+    extensions = registry.get("extensions")
+    if not isinstance(extensions, dict):
+        return False
+    git_extension = extensions.get("git")
+    return isinstance(git_extension, dict) and git_extension.get("enabled") is True
+
+
+def speckit_workflow_registered(repo: Path) -> bool:
+    registry = read_json(repo / ".specify" / "workflows" / "workflow-registry.json")
+    workflows = registry.get("workflows")
+    return isinstance(workflows, dict) and "speckit" in workflows
+
+
+def ensure_speckit_registration(repo: Path, dry_run: bool, skip_registration: bool) -> None:
+    if skip_registration:
+        return
+    if not git_extension_registered(repo):
+        run_command(["specify", "extension", "add", "git"], repo, dry_run)
+    else:
+        log("unchanged Speckit git extension registration")
+    if not speckit_workflow_registered(repo):
+        run_command(["specify", "workflow", "add", "speckit"], repo, dry_run)
+    else:
+        log("unchanged Speckit workflow registration")
+
+
+def write_text(path: Path, text: str, dry_run: bool) -> None:
+    if path.exists() and path.read_text(encoding="utf-8") == text:
+        log(f"unchanged {path}")
+        return
+    if dry_run:
+        log(f"would write {path}")
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    log(f"wrote {path}")
+
+
+def write_text_if_missing(path: Path, text: str, dry_run: bool) -> None:
+    if path.exists():
+        log(f"kept existing {path}")
+        return
+    write_text(path, text, dry_run)
+
+
+def touch(path: Path, dry_run: bool) -> None:
+    if path.exists():
+        return
+    if dry_run:
+        log(f"would create {path}")
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch()
+    log(f"created {path}")
+
+
+def upsert_block(path: Path, block_body: str, dry_run: bool) -> None:
+    block = f"{START}\n{block_body.rstrip()}\n{END}\n"
+    if path.exists():
+        text = path.read_text(encoding="utf-8")
+    else:
+        text = "# Agent Instructions\n\n"
+
+    if START in text and END in text:
+        before, remainder = text.split(START, 1)
+        _, after = remainder.split(END, 1)
+        after = after.lstrip("\n")
+        separator = "\n" if after else ""
+        new_text = before.rstrip() + "\n\n" + block + separator + after
+    else:
+        if text.startswith("## "):
+            new_text = block + "\n" + text
+        else:
+            marker = "\n## "
+            index = text.find(marker)
+            if index == -1:
+                new_text = text.rstrip() + "\n\n" + block
+            else:
+                # index points at the newline before the first section heading.
+                new_text = text[:index].rstrip() + "\n\n" + block + "\n" + text[index + 1 :]
+
+    write_text(path, new_text, dry_run)
+
+
+def copy_missing_tree(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
+    if not src.exists():
+        return
+    for source in sorted(src.rglob("*")):
+        if source.is_dir():
+            continue
+        target = dst / source.relative_to(src)
+        if target.exists() and not force:
+            log(f"kept existing {target}")
+            continue
+        if dry_run:
+            log(f"would copy {source} -> {target}")
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        log(f"copied {source} -> {target}")
+
+
+def link_or_copy_skill(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
+    if not src.exists():
+        return
+    if dst.exists() or dst.is_symlink():
+        if not force:
+            log(f"kept existing {dst}")
+            return
+        if dry_run:
+            log(f"would replace {dst}")
+            return
+        if dst.is_symlink() or dst.is_file():
+            dst.unlink()
+        else:
+            shutil.rmtree(dst)
+    if dry_run:
+        log(f"would copy {src} -> {dst}")
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, dst)
+    log(f"copied {src} -> {dst}")
+
+
+def copy_overlay_tree(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
+    if not src.exists():
+        return
+    for source in sorted(src.rglob("*")):
+        if source.is_dir():
+            continue
+        target = dst / source.relative_to(src)
+        if target.exists() and target.read_bytes() == source.read_bytes():
+            log(f"unchanged {target}")
+            continue
+        if target.exists() and not force:
+            log(f"kept existing {target} (use --force to replace)")
+            continue
+        if dry_run:
+            log(f"would copy {source} -> {target}")
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        if target.suffix in {".sh", ".zsh", ".ps1"}:
+            target.chmod(0o755)
+        log(f"copied {source} -> {target}")
+
+
+def needs_worktree_git_overlay(repo: Path) -> bool:
+    feature_script = (
+        repo
+        / ".specify"
+        / "extensions"
+        / "git"
+        / "scripts"
+        / "bash"
+        / "create-new-feature.sh"
+    )
+    if not feature_script.exists():
+        return False
+
+    script_text = feature_script.read_text(encoding="utf-8", errors="ignore")
+    required_markers = ("CHECKOUT_MODE", "WORKTREE_PATH", "git worktree")
+    return not all(marker in script_text for marker in required_markers)
+
+
+def can_write_path_or_parent(path: Path) -> bool:
+    if path.exists():
+        return os.access(path, os.W_OK)
+    parent = path.parent
+    while not parent.exists() and parent != parent.parent:
+        parent = parent.parent
+    return os.access(parent, os.W_OK)
+
+
+def global_agent_entrypoint(agent_root: Path) -> str:
+    return f"""# Global Agent Instructions
+
+This file is the user-level entrypoint for shared agent workflow rules across
+Codex, Claude, opencode, and other local coding agents. Repository files such as
+`AGENTS.md`, `CLAUDE.md`, `openspec/README.md`, and `.specify/README.md` should
+point here instead of duplicating global process instructions.
+
+## OpenSpec + Speckit
+
+Read the shared protocol before creating or implementing governed features:
+
+- `{agent_root / "protocols" / "openspec-speckit-workflow.md"}`
+- `{agent_root / "protocols" / "project-agent-bootstrap.md"}`
+
+Core rule:
+
+- OpenSpec is the change-governance layer.
+- Speckit is the implementation layer.
+- Use OpenSpec before implementation when the work changes product,
+  architecture, artifact contracts, runtime/model orchestration, routing/review
+  policy, edge constraints, or the development workflow.
+- Use Speckit for the implementation feature branch/worktree and its
+  specify/clarify/plan/tasks/analyze/implement lifecycle.
+- Do not duplicate task lists: OpenSpec records governance and handoff; Speckit
+  owns implementation tasks.
+
+## Repository Overrides
+
+Repo-local instructions remain authoritative for project-specific details such
+as package commands, runtime prerequisites, test commands, source-of-truth docs,
+and deployment constraints.
+"""
+
+
+def openspec_speckit_protocol(agent_root: Path) -> str:
+    return f"""# OpenSpec and Speckit Shared Workflow
+
+This protocol is the shared source of truth for using OpenSpec and Speckit
+together across local coding agents. Repo-local files should reference this file
+instead of copying the same process text into each project.
+
+## Authority
+
+Repo-local instructions remain authoritative for product facts, package
+commands, runtime prerequisites, source-of-truth docs, test commands, deployment
+constraints, and repo-specific safety rules.
+
+This global protocol is authoritative for common OpenSpec/Speckit mechanics
+unless a repo-local file explicitly marks a narrower override for that repo.
+
+## Tool Roles
+
+OpenSpec is the change-governance layer. It captures intent, scope, design
+decisions, spec deltas, and approval state before non-trivial implementation.
+
+Speckit is the implementation layer. It owns the feature branch/worktree,
+`spec.md`, `plan.md`, design artifacts, `tasks.md`, analysis, implementation,
+and verification.
+
+Do not duplicate task lists between the two systems. OpenSpec records the
+governed decision and handoff. Speckit owns executable implementation tasks.
+
+## When To Use OpenSpec
+
+Create or update an OpenSpec change before implementation when the work changes
+product behavior, architecture, artifact contracts, runtime/model orchestration,
+routing/review policy, edge constraints, or development workflow rules.
+
+Skip OpenSpec for small implementation-only fixes where an existing Speckit
+feature already defines the behavior and no product, architecture, or governance
+decision is being made.
+
+## Lifecycle
+
+1. OpenSpec proposal or exploration captures the decision.
+2. OpenSpec apply work keeps proposal, design notes, and spec deltas current.
+3. The OpenSpec change hands off to exactly one Speckit feature.
+4. Speckit creates or updates the implementation branch/worktree and artifacts.
+5. Implementation happens from the Speckit feature worktree.
+6. Review and verification happen on the implementation branch or PR.
+7. Archive the OpenSpec change only after the corresponding Speckit work and PR
+   have landed, or after the change is explicitly abandoned.
+
+## Worktree Rules
+
+Run `/speckit.specify` only from the root checkout on the repo base branch
+unless the repo explicitly documents a different creation path.
+
+After `/speckit.specify` creates a worktree, run follow-on Speckit commands from
+that generated worktree, not from the root checkout:
+
+- `/speckit.clarify`
+- `/speckit.checklist`
+- `/speckit.plan`
+- `/speckit.tasks`
+- `/speckit.analyze`
+- `/speckit.implement`
+
+If a requested follow-on command targets a worktree that does not exist, stop
+and report that. Do not silently fall back to the root checkout.
+
+See `{agent_root / "AGENTS.md"}` for the user-level entrypoint.
+"""
+
+
+def project_agent_bootstrap_protocol(agent_root: Path) -> str:
+    return f"""# Project Agent Bootstrap
+
+`setup-openspeckit` prepares a repository so Codex, Claude, opencode, and other
+local coding agents can find the same OpenSpec/Speckit workflow without copying
+long process docs into every repo.
+
+## What It Updates
+
+The bootstrap script is idempotent and marker-based. It can be re-run safely.
+
+It updates or creates:
+
+- repo-local context files for Speckit-supported agent integrations
+- `openspec/README.md` and `.specify/README.md` as thin pointers to the global
+  workflow
+- `.claude/commands/opsx/*` from global templates when missing
+- `.claude/skills`, `.codex/skills`, and `.agents/skills` links for available
+  global OpenSpec/Speckit skills
+- minimal `openspec/changes/archive`, `openspec/specs`, and `.specify/`
+  scaffolding when those directories are absent
+- user-global agent entrypoint pointers for practical global agent homes
+
+## Idempotency Rules
+
+Generated sections are bounded by:
+
+```md
+<!-- OPENSPEC-SPECKIT-GLOBAL:START -->
+<!-- OPENSPEC-SPECKIT-GLOBAL:END -->
+```
+
+Existing hand-written content outside those markers is preserved. Existing skill
+directories and command files are not overwritten unless `--force` is passed.
+
+## Usage
+
+From inside a repo:
+
+```bash
+setup-openspeckit
+```
+
+From anywhere:
+
+```bash
+setup-openspeckit --repo /path/to/repo
+```
+
+The shared global entrypoint is `{agent_root / "AGENTS.md"}`.
+"""
+
+
+def ensure_agent_protocol_files(agent_root: Path, dry_run: bool) -> None:
+    write_text_if_missing(agent_root / "AGENTS.md", global_agent_entrypoint(agent_root), dry_run)
+    write_text_if_missing(
+        agent_root / "protocols" / "openspec-speckit-workflow.md",
+        openspec_speckit_protocol(agent_root),
+        dry_run,
+    )
+    write_text_if_missing(
+        agent_root / "protocols" / "project-agent-bootstrap.md",
+        project_agent_bootstrap_protocol(agent_root),
+        dry_run,
+    )
+
+
+def agent_block(agent_root: Path) -> str:
+    return f"""## Shared OpenSpec/Speckit Protocol
+
+This repo uses the user-global OpenSpec/Speckit workflow instead of duplicating
+process rules in every repository.
+
+- Global agent entrypoint: `{agent_root / "AGENTS.md"}`
+- Workflow protocol: `{agent_root / "protocols" / "openspec-speckit-workflow.md"}`
+- Bootstrap contract: `{agent_root / "protocols" / "project-agent-bootstrap.md"}`
+
+Repo-local sections below remain authoritative for project-specific commands,
+runtime prerequisites, source-of-truth docs, tests, and deployment constraints."""
+
+
+def global_pointer_block(agent_root: Path) -> str:
+    return f"""## Shared Agent Protocols
+
+Read `{agent_root / "AGENTS.md"}` for user-global workflow rules, including the
+OpenSpec/Speckit protocol and project bootstrap contract."""
+
+
+def openspec_readme(agent_root: Path) -> str:
+    return f"""# OpenSpec Workflow
+
+This directory contains repo-local OpenSpec changes and spec deltas.
+
+The authoritative shared workflow is maintained globally:
+
+- `{agent_root / "AGENTS.md"}`
+- `{agent_root / "protocols" / "openspec-speckit-workflow.md"}`
+- `{agent_root / "protocols" / "project-agent-bootstrap.md"}`
+
+Keep repo-specific product, runtime, and test constraints in this repository's
+agent files and docs.
+"""
+
+
+def specify_readme(agent_root: Path) -> str:
+    return f"""# Speckit Workflow
+
+This directory contains repo-local Speckit configuration, memory, scripts, and
+feature-worktree helpers.
+
+The authoritative shared OpenSpec/Speckit workflow is maintained globally:
+
+- `{agent_root / "AGENTS.md"}`
+- `{agent_root / "protocols" / "openspec-speckit-workflow.md"}`
+- `{agent_root / "protocols" / "project-agent-bootstrap.md"}`
+
+Repo-local `.specify/extensions/git/git-config.yml` controls branch/worktree
+behavior when present.
+"""
+
+
+def ensure_scaffold(repo: Path, dry_run: bool, skip_init: bool) -> None:
+    if skip_init:
+        return
+    for directory in [
+        repo / "openspec" / "changes" / "archive",
+        repo / "openspec" / "specs",
+        repo / ".specify",
+    ]:
+        if dry_run:
+            if not directory.exists():
+                log(f"would create directory {directory}")
+        else:
+            directory.mkdir(parents=True, exist_ok=True)
+    touch(repo / "openspec" / "changes" / "archive" / ".gitkeep", dry_run)
+    touch(repo / "openspec" / "specs" / ".gitkeep", dry_run)
+
+
+def ensure_skills(repo: Path, dry_run: bool, force: bool) -> None:
+    homes = {
+        ".claude": Path.home() / ".claude" / "skills",
+        ".codex": Path.home() / ".codex" / "skills",
+        ".agents": Path.home() / ".agents" / "skills",
+    }
+    for agent_dir, source_root in homes.items():
+        for skill in SKILLS:
+            link_or_copy_skill(
+                source_root / skill,
+                repo / agent_dir / "skills" / skill,
+                dry_run,
+                force,
+            )
+
+
+def ensure_repo_agent_pointers(repo: Path, agent_root: Path, dry_run: bool) -> None:
+    seen: set[str] = set()
+    for _, relative_path in SUPPORTED_AGENT_CONTEXT_FILES:
+        if relative_path in seen:
+            continue
+        seen.add(relative_path)
+        upsert_block(repo / relative_path, agent_block(agent_root), dry_run)
+
+
+def ensure_global_agent_pointers(agent_root: Path, dry_run: bool) -> None:
+    for relative_path in USER_GLOBAL_AGENT_POINTER_FILES:
+        path = Path.home() / relative_path
+        if dry_run and not can_write_path_or_parent(path):
+            log(f"skipped {path}: permission denied")
+            continue
+        try:
+            upsert_block(path, global_pointer_block(agent_root), dry_run)
+        except PermissionError as exc:
+            log(f"skipped {path}: permission denied ({exc})")
+        except OSError as exc:
+            log(f"skipped {path}: {exc}")
+
+
+def worktree_template_root() -> Path | None:
+    candidates: list[Path] = []
+    env_root = os.environ.get("SPECKIT_WORKTREE_TEMPLATE_ROOT")
+    if env_root:
+        candidates.append(Path(env_root))
+    candidates.append(Path("/usr/local/share/speckit-worktree/templates"))
+
+    script_path = Path(__file__).resolve()
+    candidates.append(script_path.parent.parent / "speckit-worktree" / "templates")
+
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def opsx_command_template_root(agent_root: Path) -> Path | None:
+    candidates: list[Path] = []
+    env_root = os.environ.get("OPSX_COMMAND_TEMPLATE_ROOT")
+    if env_root:
+        candidates.append(Path(env_root))
+    candidates.extend(
+        [
+            Path.home() / ".claude" / "commands" / "opsx",
+            Path("/etc/skel/.claude/commands/opsx"),
+            Path(__file__).resolve().parent.parent / "claude" / "commands" / "opsx",
+            agent_root / "templates" / "claude" / "commands" / "opsx",
+        ]
+    )
+
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def default_base_branch(repo: Path) -> str:
+    for ref in ["refs/heads/main", "refs/remotes/origin/main"]:
+        if subprocess.run(
+            ["git", "-C", str(repo), "show-ref", "--verify", "--quiet", ref],
+            check=False,
+        ).returncode == 0:
+            return "main"
+
+    result = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--abbrev-ref", "HEAD"],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    branch = result.stdout.strip()
+    if result.returncode == 0 and branch and branch != "HEAD":
+        return branch
+    return "main"
+
+
+def set_top_level_yml_values(path: Path, values: dict[str, str], dry_run: bool) -> None:
+    if path.exists():
+        lines = path.read_text(encoding="utf-8").splitlines()
+    else:
+        lines = [
+            "# Git Branching Workflow Extension Configuration",
+            "# Managed by setup-openspeckit. Rerun after Speckit upgrades.",
+            "",
+            "# Branch numbering strategy: \"sequential\" (001, 002, ...) or \"timestamp\" (YYYYMMDD-HHMMSS)",
+            "branch_numbering: sequential",
+            "",
+            "# Feature checkout strategy: \"branch\" keeps work in the current checkout,",
+            "# \"worktree\" creates a sibling worktree rooted from base_branch.",
+            "checkout_mode: worktree",
+            "",
+            "# Base branch for new worktree-backed features. Ignored in branch mode.",
+            "base_branch: main",
+            "",
+            "# Parent directory for linked worktrees. Relative paths resolve from the repo root.",
+            "worktree_root: ../example-worktrees",
+            "",
+            "# Auto-commit before/after core commands. Disabled by default.",
+            "auto_commit:",
+            "  default: false",
+        ]
+
+    seen: set[str] = set()
+    updated: list[str] = []
+    for line in lines:
+        stripped = line.lstrip()
+        indent = len(line) - len(stripped)
+        replaced = False
+        if indent == 0 and ":" in stripped:
+            key = stripped.split(":", 1)[0].strip()
+            if key in values:
+                updated.append(f"{key}: {values[key]}")
+                seen.add(key)
+                replaced = True
+        if not replaced:
+            updated.append(line)
+
+    missing = [key for key in values if key not in seen]
+    if missing:
+        insertion = [f"{key}: {values[key]}" for key in missing]
+        if updated and updated[-1].strip():
+            updated.append("")
+        updated.extend(insertion)
+
+    write_text(path, "\n".join(updated) + "\n", dry_run)
+
+
+def ensure_extensions_hook(repo: Path, dry_run: bool) -> None:
+    path = repo / ".specify" / "extensions.yml"
+    hook_text = "speckit.git.feature"
+    if path.exists() and hook_text in path.read_text(encoding="utf-8"):
+        log(f"unchanged {path}")
+        return
+
+    if path.exists():
+        lines = path.read_text(encoding="utf-8").splitlines()
+    else:
+        lines = [
+            "installed:",
+            "- git",
+            "settings:",
+            "  auto_execute_hooks: true",
+            "hooks:",
+        ]
+
+    hook = [
+        "- extension: git",
+        "  command: speckit.git.feature",
+        "  enabled: true",
+        "  optional: false",
+        "  prompt: Execute speckit.git.feature?",
+        "  description: Create feature checkout before specification",
+        "  condition: null",
+    ]
+
+    for index, line in enumerate(lines):
+        if line.strip() == "before_specify:":
+            child_indent = line[: len(line) - len(line.lstrip(" "))] + "  "
+            lines[index + 1 : index + 1] = [child_indent + item for item in hook]
+            write_text(path, "\n".join(lines) + "\n", dry_run)
+            return
+
+    for index, line in enumerate(lines):
+        if line.strip() == "hooks:":
+            child_indent = line[: len(line) - len(line.lstrip(" "))] + "  "
+            lines[index + 1 : index + 1] = (
+                [child_indent + "before_specify:"]
+                + [child_indent + "  " + item for item in hook]
+            )
+            write_text(path, "\n".join(lines) + "\n", dry_run)
+            return
+
+    if lines and lines[-1].strip():
+        lines.append("")
+    lines.extend(["hooks:", "  before_specify:"] + ["    " + item for item in hook])
+    write_text(path, "\n".join(lines) + "\n", dry_run)
+
+
+def ensure_worktree_overlay(
+    repo: Path,
+    dry_run: bool,
+    force: bool,
+    base_branch: str | None,
+    worktree_root: str | None,
+    skip_worktrees: bool,
+) -> None:
+    if skip_worktrees:
+        return
+
+    template_root = worktree_template_root()
+    if template_root is None:
+        raise SystemExit("Speckit worktree template root not found.")
+
+    git_overlay_force = force or needs_worktree_git_overlay(repo)
+    if git_overlay_force and not force:
+        log("replacing stock Spec Kit git extension with worktree-aware overlay")
+
+    copy_overlay_tree(template_root / "specify" / "extensions" / "git", repo / ".specify" / "extensions" / "git", dry_run, git_overlay_force)
+    copy_overlay_tree(template_root / "specify" / "shell", repo / ".specify" / "shell", dry_run, force)
+    copy_overlay_tree(template_root / "agents" / "skills" / "speckit-specify", repo / ".agents" / "skills" / "speckit-specify", dry_run, force)
+    copy_overlay_tree(template_root / "agents" / "skills" / "speckit-git-feature", repo / ".agents" / "skills" / "speckit-git-feature", dry_run, force)
+    copy_overlay_tree(template_root / "claude" / "skills" / "speckit-specify", repo / ".claude" / "skills" / "speckit-specify", dry_run, force)
+    copy_overlay_tree(template_root / "claude" / "skills" / "speckit-git-feature", repo / ".claude" / "skills" / "speckit-git-feature", dry_run, force)
+    copy_overlay_tree(template_root / "codex" / "skills" / "speckit-specify", repo / ".codex" / "skills" / "speckit-specify", dry_run, force)
+    copy_overlay_tree(template_root / "codex" / "skills" / "speckit-git-feature", repo / ".codex" / "skills" / "speckit-git-feature", dry_run, force)
+
+    resolved_base_branch = base_branch or default_base_branch(repo)
+    resolved_worktree_root = worktree_root or f"../{repo.name}-worktrees"
+    set_top_level_yml_values(
+        repo / ".specify" / "extensions" / "git" / "git-config.yml",
+        {
+            "branch_numbering": "sequential",
+            "checkout_mode": "worktree",
+            "base_branch": resolved_base_branch,
+            "worktree_root": resolved_worktree_root,
+        },
+        dry_run,
+    )
+    ensure_extensions_hook(repo, dry_run)
+
+
+def main() -> int:
+    args = parse_args()
+    repo = (args.repo.resolve() if args.repo else git_root())
+    agent_root = Path(os.environ.get("AGENT_PROTOCOL_ROOT", Path.home() / ".agents")).resolve()
+    integration = args.integration or existing_integration(repo) or "claude"
+
+    log(f"repo: {repo}")
+    log(f"agent root: {agent_root}")
+    log(f"integration: {integration}")
+
+    ensure_agent_protocol_files(agent_root, args.dry_run)
+    ensure_scaffold(repo, args.dry_run, args.skip_init)
+    ensure_speckit_initialized(repo, integration, args.dry_run, args.skip_init)
+    ensure_speckit_registration(repo, args.dry_run, args.no_speckit_registration)
+    ensure_worktree_overlay(
+        repo,
+        args.dry_run,
+        args.force,
+        args.base_branch,
+        args.worktree_root,
+        args.no_worktrees,
+    )
+
+    if not args.no_repo_agent_pointers:
+        ensure_repo_agent_pointers(repo, agent_root, args.dry_run)
+
+    if not args.preserve_readmes:
+        write_text(repo / "openspec" / "README.md", openspec_readme(agent_root), args.dry_run)
+        write_text(repo / ".specify" / "README.md", specify_readme(agent_root), args.dry_run)
+
+    template_root = opsx_command_template_root(agent_root)
+    if template_root:
+        copy_missing_tree(
+            template_root,
+            repo / ".claude" / "commands" / "opsx",
+            args.dry_run,
+            args.force,
+        )
+    else:
+        log("skipped opsx command templates: no template root found")
+
+    if not args.no_skill_links:
+        ensure_skills(repo, args.dry_run, args.force)
+
+    if not args.no_global_agent_pointers:
+        ensure_global_agent_pointers(agent_root, args.dry_run)
+
+    log("done")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

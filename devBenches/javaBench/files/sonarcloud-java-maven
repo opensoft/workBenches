@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SECRETS_FILE="${SONARQUBE_ENV_FILE:-$HOME/.config/sonarqube/sonar.env}"
+if [[ ! -f "$SECRETS_FILE" && -f "$HOME/.config/ledgerlinc/secrets/sonar.env" ]]; then
+    SECRETS_FILE="$HOME/.config/ledgerlinc/secrets/sonar.env"
+fi
+
+if [[ -f "$SECRETS_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$SECRETS_FILE"
+    set +a
+fi
+
+if [[ -z "${SONAR_TOKEN:-}" && -n "${SONARQUBE_TOKEN:-}" ]]; then
+    export SONAR_TOKEN="$SONARQUBE_TOKEN"
+fi
+
+if [[ -z "${SONAR_HOST_URL:-}" && -n "${SONARQUBE_URL:-}" ]]; then
+    export SONAR_HOST_URL="$SONARQUBE_URL"
+fi
+
+export SONAR_HOST_URL="${SONAR_HOST_URL:-https://sonarcloud.io}"
+export JACOCO_VERSION="${JACOCO_VERSION:-0.8.14}"
+export SONAR_MAVEN_PLUGIN_VERSION="${SONAR_MAVEN_PLUGIN_VERSION:-5.6.0.6792}"
+
+if [[ -z "${SONAR_TOKEN:-}" ]]; then
+    echo "Missing SONAR_TOKEN or SONARQUBE_TOKEN." >&2
+    echo "Put it in $SECRETS_FILE or export it before running this command." >&2
+    exit 2
+fi
+
+if [[ ! -f pom.xml ]]; then
+    echo "pom.xml not found. Run this from the Maven project root." >&2
+    exit 2
+fi
+
+exec mvn -B \
+    "org.jacoco:jacoco-maven-plugin:${JACOCO_VERSION}:prepare-agent" \
+    verify \
+    "org.jacoco:jacoco-maven-plugin:${JACOCO_VERSION}:report" \
+    "org.sonarsource.scanner.maven:sonar-maven-plugin:${SONAR_MAVEN_PLUGIN_VERSION}:sonar" \
+    "$@"

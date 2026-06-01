@@ -7,7 +7,8 @@ devBenches/flutterBench/
 devBenches/frappeBench/
 devBenches/javaBench/
 devBenches/dotNetBench/
-devBenches/pythonBench/
+devBenches/pyBench/
+devBenches/phpBench/
 
 # Installation tracking (local only)
 .installed-benches.json
@@ -17,11 +18,23 @@ config/version-manifest.json
 
 # Common ignores
 .DS_Store
+__pycache__/
+*.py[cod]
 *.log
 *.tmp
 node_modules/
+
+# Secret and machine-local environment files. Keep template examples tracked.
 .env
+.env.*
+*.env
+!.env.example
+!.env.sample
+!.env.template
+*.backup
 *.bak
+*.bak.*
+secrets/
 *.swp
 *.swo
 
@@ -38,4 +51,6 @@ bioBenches/gentecBench/
 logs/
 .codex
 .codex/
+.claude/dashboard.md
+.claude/speckit-history.md
 sysBenches/opsBench/
