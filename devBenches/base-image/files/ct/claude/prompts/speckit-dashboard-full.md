@@ -1,10 +1,10 @@
-# CTA Speckit Dashboard Mode
+# CTA Opensoft Speckit Dashboard Mode
 
 You are running under the `cta` launcher in a tmux session that already has a
 right-side dashboard pane. The normal Claude pane is for conversation, findings,
 commands, questions, and decisions only.
 
-## Session Dashboard — write to a file every turn
+## Opensoft Speckit Dashboard — write to a file every turn
 
 At the end of every response, write the Session Dashboard to
 `.claude/dashboard.md` in the project root, creating `.claude/` if missing and
@@ -22,7 +22,7 @@ surrounding Markdown code fences:
 
 ```text
 ══════════════════════════════════════════════════════════════
- Speckit Dashboard
+ Opensoft Speckit Dashboard
 ══════════════════════════════════════════════════════════════
  RECENT ACTIVITY             latest: implement T012
    15  /speckit.analyze     clean
@@ -43,6 +43,7 @@ surrounding Markdown code fences:
    🟢 /speckit.analyze         100%   1
    ○  /speckit.checklist         0%   0   (post-analyze)
    🔵 /speckit.implement        71%   2   ◀ just ran ✅
+   🔵 Pull Request             PR #17 rev 2 fix 1
 ──────────────────────────────────────────────────────────────
  TASKS                                          12/17 done · 71%
    ▰▰▰▰▰▰▰▱▱▱
@@ -60,27 +61,27 @@ surrounding Markdown code fences:
    🛡 Post-MVP ─────────────────────────────────  0/2
    ○  Polish        ▱▱  0/2
 ──────────────────────────────────────────────────────────────
- LAST COMMAND                🟢 implement T012
-   🟢 /speckit.implement T012 — clean
+ PROMPTS                     implement T012
+   1. /speckit.implement T012
+   2. /speckit.implement T011
+   3. /speckit.analyze
+   4. tighten dashboard phase rows
+   5. update PR review summary
 ──────────────────────────────────────────────────────────────
  NEXT COMMANDS               ⭐ implement T013
    ⭐ /speckit.implement T013   next open task
       /speckit.analyze          rerun after implementation
       git push                  2 commits unpushed
-──────────────────────────────────────────────────────────────
- LAST 3 PROMPTS              latest: implement T012
-   1. /speckit.implement T012
-   2. /speckit.implement T011
-   3. /speckit.analyze
 ══════════════════════════════════════════════════════════════
 ```
 
 Keep the horizontal rules and headers exactly as shown. Do not add a right-side
-border. The box rule lines are 62 columns wide; keep every content line within
-that same 62-column width so nothing overhangs the box. The pane renderer
-prepends a 4-column fold marker (`▾ N `) to each section header, so section
-header lines must stay within 58 columns. Truncate with `…` if needed. Emoji
-count as two columns wide.
+border. The rendered tmux pane hard-caps output at 75 columns. The box rule
+lines are 62 columns wide; keep every authored content line within that same
+62-column width so nothing overhangs the box. The pane renderer prepends a
+4-column fold marker (`▾ N `) to each section header, so section header lines
+must stay within 58 columns. Truncate with `…` if needed. Emoji count as two
+columns wide.
 
 Every section header must carry a one-glance summary because folded dashboard
 sections show only the header line. Use this pattern:
@@ -89,9 +90,8 @@ sections show only the header line. Use this pattern:
 - `SPEC KIT WORKFLOW           ▶ <current gate> <pct>%`
 - `TASKS                       <done>/<total> done · <pct>%`
 - `PHASES — <feature name>     <done>/<total> · <pct>%`
-- `LAST COMMAND                <severity dot> <command summary>`
+- `PROMPTS                     <current or latest prompt>`
 - `NEXT COMMANDS               ⭐ <best next step>`
-- `LAST 3 PROMPTS              latest: <newest prompt summary>`
 
 ### Color Legend
 
@@ -134,10 +134,10 @@ and aborted runs. Never rewrite or collapse past lines.
 
 ### Filling SPEC KIT WORKFLOW
 
-Render this as an 11-row table, one row per Spec Kit gate in workflow order:
+Render this as a 12-row table, one row per Spec Kit gate in workflow order:
 constitution, specify, clarify, checklist (pre-plan), plan, checklist
 (post-plan), tasks, checklist (post-tasks), analyze, checklist (post-analyze),
-implement.
+implement, pull request.
 
 `/speckit.checklist` appears four times. Each checklist row carries a trailing
 stage tag so the four are distinguishable, and its dot, percent, and run count
@@ -151,6 +151,10 @@ The columns are status dot, command, percent done, and run count.
   `implement`; `0%` if it has not run.
 - Runs: how many times that command has been invoked at that stage, counted from
   `.claude/speckit-history.md`.
+- Pull Request row: always appears after `/speckit.implement`. Show the PR
+  number as `PR #N` when a PR exists, otherwise `PR --`. Then show review/fix
+  rounds as `rev N fix N`: `rev` is the count of submitted GitHub PR reviews
+  and `fix` is the count of commits pushed after the first review.
 
 On the row of the most recently executed command, append ` ◀ just ran ✅` if the
 command completed successfully, or ` ◀ just ran ❌` if it errored or was
@@ -171,6 +175,8 @@ Detect status from the repo, not memory:
   task is checked off; ○ if none are done. This completion rule overrides the
   `just ran` legend: a fully complete implement row is
   `🟢 /speckit.implement  100%  N  ◀ just ran ✅`, never 🔵.
+- pull request: 🔵 when an open PR exists, 🟢 when it is merged, 🔴 when it is
+  closed without merge, and ○ when no PR is detected.
 
 The active feature is the `specs/NNN-*/` folder matching the current git branch,
 or the most recently modified one. If `.specify/` does not exist, replace the
@@ -221,12 +227,19 @@ each heading.
 - Proportional bar: one cell per task, `▰` for done and `▱` for remaining. If
   the largest phase exceeds 24 tasks, scale every bar so the largest is 24.
 
-### Filling LAST COMMAND
+### Filling PROMPTS
 
-Show the most recent `/speckit.*` command or significant action. Prefix it with
-the worst severity marker: 🟢 clean/no issues, 🟡 low, 🟠 medium, 🔴 high or
-critical. For `/speckit.analyze`, include its severity tally and short finding
-labels. If none yet, show: `   (none yet this session)`.
+This section replaces the old `LAST COMMAND` and `LAST 3 PROMPTS` sections.
+The section header must show the actual current running prompt as soon as it is
+available. If no prompt is currently running, show the latest prompt summary.
+Keep the header summary short enough to fit the folded section line.
+
+When expanded, list the last five actual user prompts, newest first. Ignore
+tool-result echoes, command output, permission attachments, reminders, and other
+machine-generated user-role messages. If a slash command wrapper is present,
+prefer the command name such as `/speckit.analyze` over the verbose wrapper
+text. If fewer than five prompts exist, show only the available prompts. If none
+exist, show: `   (none yet this cta session)`.
 
 ### Filling NEXT COMMANDS
 
@@ -245,11 +258,6 @@ Default recommendation order:
 - tasks analyzed and clean, open tasks remain -> ⭐ `/speckit.implement <next task>`
 
 Include `/speckit.taskstoissues` as an option once `tasks.md` exists.
-
-### Filling LAST 3 PROMPTS
-
-Show the user's last three messages, most recent first, each trimmed to one line
-around 60 characters. Show fewer if the session has fewer than three.
 
 Remember: the side pane owns every dashboard element. The normal Claude pane must
 not contain the dashboard.

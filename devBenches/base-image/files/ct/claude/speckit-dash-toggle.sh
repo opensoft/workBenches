@@ -51,6 +51,13 @@ else
   cwd="${SPECKIT_DASHBOARD_CWD:-$(tmux display-message -p '#{pane_current_path}')}"
   dashboard_file="${SPECKIT_DASHBOARD_FILE:-}"
   script="$(dashboard_script)" || exit 1
+  dashboard_width="${SPECKIT_DASHBOARD_WIDTH:-75}"
+  case "$dashboard_width" in
+    ''|*[!0-9]*) dashboard_width=75 ;;
+  esac
+  if [ "$dashboard_width" -gt 75 ]; then
+    dashboard_width=75
+  fi
 
   if [ -z "$dashboard_file" ]; then
     root=$(find_dashboard_root "$cwd" || true)
@@ -66,7 +73,8 @@ else
     command="bash $(printf '%q' "$script") --loop"
   fi
 
-  tmux split-window -h -l 68 -c "$cwd" \
+  tmux set-option mouse on >/dev/null 2>&1 || true
+  tmux split-window -h -l "$dashboard_width" -c "$cwd" \
        "$command"
   tmux select-pane -T "$title"
   tmux select-pane -t "$current_pane"

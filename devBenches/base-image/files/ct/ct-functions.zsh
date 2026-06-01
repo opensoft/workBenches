@@ -257,8 +257,8 @@ _ct_shell_quote() {
 _ct_enable_tmux_mouse_copy_mode() {
     local target="${1:-}"
 
-    # Turn on tmux mouse handling so drag/scroll interactions go through tmux
-    # copy mode instead of the terminal swallowing them.
+    # Turn on tmux mouse handling so dashboard scroll/click events and pane
+    # border dragging go through tmux instead of the terminal swallowing them.
     if [ -n "$target" ]; then
         tmux set-option -t "$target" mouse on >/dev/null 2>&1
     else
@@ -333,7 +333,7 @@ _ct_write_initial_dashboard() {
 
     cat > "$dashboard_file" <<'EOF'
 ══════════════════════════════════════════════════════════════
- Speckit Dashboard
+ Opensoft Speckit Dashboard
 ══════════════════════════════════════════════════════════════
  RECENT ACTIVITY             latest: cta started
    cta  dashboard pane started
@@ -351,6 +351,7 @@ _ct_write_initial_dashboard() {
    ○  /speckit.analyze           0%   0
    ○  /speckit.checklist         0%   0   (post-analyze)
    ○  /speckit.implement         0%   0
+   ○  Pull Request             PR -- rev 0 fix 0
 ──────────────────────────────────────────────────────────────
  TASKS                       waiting for feature
    Waiting for active feature detection.
@@ -358,14 +359,11 @@ _ct_write_initial_dashboard() {
  PHASES                      waiting for phases
    Waiting for phase / user-story detection.
 ──────────────────────────────────────────────────────────────
- LAST COMMAND                cta started
-   cta started Claude with dashboard-only output mode.
+ PROMPTS                     cta started
+   1. cta started Claude with dashboard-only output mode.
 ──────────────────────────────────────────────────────────────
  NEXT COMMANDS               ⭐ constitution/specify
    ⭐ Start with /speckit.constitution or /speckit.specify as needed.
-──────────────────────────────────────────────────────────────
- LAST 3 PROMPTS              none yet
-   (none yet this cta session)
 ══════════════════════════════════════════════════════════════
 EOF
 }
@@ -374,16 +372,21 @@ _ct_open_dashboard_pane() {
     local target="$1"
     local tmux_target="$2"
     local focus_pane="$3"
-    local dashboard_command dashboard_pane existing_pane
+    local dashboard_command dashboard_pane existing_pane dashboard_width
 
     dashboard_command=$(_ct_dashboard_command "$target") || return 1
+    dashboard_width="${SPECKIT_DASHBOARD_WIDTH:-75}"
+    case "$dashboard_width" in
+        ''|*[!0-9]*) dashboard_width=75 ;;
+    esac
+    [ "$dashboard_width" -gt 75 ] && dashboard_width=75
     existing_pane=$(tmux list-panes -t "$tmux_target" -F '#{pane_id} #{pane_title}' \
         | awk '$2 == "speckit-dash" { print $1; exit }')
     if [ -n "$existing_pane" ]; then
         tmux kill-pane -t "$existing_pane" >/dev/null 2>&1 || true
     fi
 
-    dashboard_pane=$(tmux split-window -P -F '#{pane_id}' -h -l 68 -t "$tmux_target" -c "$target" "$dashboard_command") || {
+    dashboard_pane=$(tmux split-window -P -F '#{pane_id}' -h -l "$dashboard_width" -t "$tmux_target" -c "$target" "$dashboard_command") || {
         echo "cta: failed to open dashboard pane" >&2
         return 1
     }

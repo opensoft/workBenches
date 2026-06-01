@@ -164,34 +164,149 @@ git_status_summary() {
   fi
 }
 
-last_prompt_summary() {
-  local log="$1"
-  local summary snapshot
+pull_request_workflow_row() {
+  local pr_data pr_number pr_state review_count fix_count marker gh_timeout
 
-  [ -n "$log" ] && [ -r "$log" ] || {
-    snapshot="$(pane_snapshot || true)"
-    if [ -n "$snapshot" ]; then
-      printf '%.58s\n' "$(printf '%s\n' "$snapshot" | grep -v '^[[:space:]]*$' | tail -1)"
-    else
-      printf 'none yet'
-    fi
+  if [ "${SPECKIT_DASHBOARD_PR:-1}" = "0" ] || ! command -v gh >/dev/null 2>&1; then
+    printf '   ○  Pull Request             PR -- rev 0 fix 0\n'
     return
-  }
-
-  summary="$(tail -c 800000 "$log" \
-    | grep -ao '"lastPrompt":"[^"]*"' \
-    | tail -1 \
-    | sed -E 's/^"lastPrompt":"//; s/"$//; s/\\n/ /g; s/\\"/"/g' || true)"
-
-  if [ -z "$summary" ]; then
-    summary="$(tail -c 800000 "$log" \
-      | grep -ao '<command-name>[^<]*</command-name>' \
-      | tail -1 \
-      | sed -E 's#</?command-name>##g' || true)"
   fi
 
-  [ -n "$summary" ] || summary="none yet"
-  printf '%.58s\n' "$summary"
+  gh_timeout="${SPECKIT_DASHBOARD_GH_TIMEOUT:-6}"
+  case "$gh_timeout" in
+    ''|*[!0-9]*) gh_timeout=6 ;;
+  esac
+
+  if command -v timeout >/dev/null 2>&1; then
+    pr_data="$(GH_PROMPT_DISABLED=1 timeout "$gh_timeout" gh pr view \
+      --json number,state,reviews,commits \
+      --jq '([.reviews[].submittedAt] | map(select(. != null)) | sort | .[0] // "") as $first_review | "\(.number)\t\(.state)\t\(.reviews|length)\t\(if $first_review == "" then 0 else ([.commits[].committedDate] | map(select(. > $first_review)) | length) end)"' \
+      2>/dev/null || true)"
+  else
+    pr_data="$(GH_PROMPT_DISABLED=1 gh pr view \
+      --json number,state,reviews,commits \
+      --jq '([.reviews[].submittedAt] | map(select(. != null)) | sort | .[0] // "") as $first_review | "\(.number)\t\(.state)\t\(.reviews|length)\t\(if $first_review == "" then 0 else ([.commits[].committedDate] | map(select(. > $first_review)) | length) end)"' \
+      2>/dev/null || true)"
+  fi
+
+  if [ -z "$pr_data" ]; then
+    printf '   ○  Pull Request             PR -- rev 0 fix 0\n'
+    return
+  fi
+
+  IFS=$'\t' read -r pr_number pr_state review_count fix_count <<EOF
+$pr_data
+EOF
+
+  case "$pr_state" in
+    MERGED) marker='🟢' ;;
+    CLOSED) marker='🔴' ;;
+    *) marker='🔵' ;;
+  esac
+
+  printf '   %s Pull Request             PR #%s rev %s fix %s\n' \
+    "$marker" "${pr_number:---}" "${review_count:-0}" "${fix_count:-0}"
+}
+
+prompt_summaries() {
+  local log="$1"
+  local count="${2:-5}"
+  local width="${3:-54}"
+  local snapshot
+
+  case "$count" in ''|*[!0-9]*) count=5 ;; esac
+  case "$width" in ''|*[!0-9]*) width=54 ;; esac
+
+  if [ -n "$log" ] && [ -r "$log" ] && command -v python3 >/dev/null 2>&1; then
+    python3 - "$log" "$count" "$width" <<'PY' 2>/dev/null && return 0
+import json
+import re
+import sys
+
+path, count, width = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+items = []
+by_prompt_id = {}
+seen_text = set()
+
+def clean(text):
+    if not text:
+        return ""
+    text = str(text)
+    command = re.search(r"<command-name>(.*?)</command-name>", text, re.S)
+    if command:
+        return command.group(1).strip()
+    text = re.sub(r"<command-message>.*?</command-message>", " ", text, flags=re.S)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+def add_prompt(prompt_id, summary):
+    summary = clean(summary)
+    if not summary or summary == "Structured output provided successfully":
+        return
+    if prompt_id in by_prompt_id:
+        idx = by_prompt_id[prompt_id]
+        if not items[idx].startswith("/") and summary.startswith("/"):
+            seen_text.discard(items[idx])
+            items[idx] = summary
+            seen_text.add(summary)
+        return
+    if summary in seen_text:
+        return
+    by_prompt_id[prompt_id] = len(items)
+    seen_text.add(summary)
+    items.append(summary)
+
+with open(path, "r", encoding="utf-8", errors="replace") as fh:
+    for line in fh:
+        try:
+            obj = json.loads(line)
+        except Exception:
+            continue
+        if obj.get("type") != "user":
+            continue
+        msg = obj.get("message") or {}
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content")
+        prompt_id = obj.get("promptId") or obj.get("uuid")
+        if isinstance(content, str):
+            add_prompt(prompt_id, content)
+        elif isinstance(content, list):
+            parts = []
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                if part.get("type") == "tool_result" or "tool_use_id" in part:
+                    continue
+                if part.get("type") == "text":
+                    parts.append(part.get("text", ""))
+            add_prompt(prompt_id, "\n".join(parts))
+
+recent = list(reversed(items[-count:]))
+if not recent:
+    sys.exit(1)
+for idx, item in enumerate(recent, 1):
+    if len(item) > width:
+        item = item[: max(width - 1, 1)] + "…"
+    print(f"{idx}. {item}")
+PY
+  fi
+
+  snapshot="$(pane_snapshot || true)"
+  if [ -n "$snapshot" ]; then
+    printf '1. %.54s\n' "$(printf '%s\n' "$snapshot" | grep -v '^[[:space:]]*$' | tail -1)"
+  fi
+}
+
+current_prompt_summary() {
+  local log="$1"
+  local width="${2:-29}"
+  local first
+
+  first="$(prompt_summaries "$log" 1 "$width" | sed -E 's/^[0-9]+\. //' | head -1)"
+  [ -n "$first" ] || first="none yet"
+  printf '%s\n' "$first"
 }
 
 should_sync() {
@@ -307,7 +422,8 @@ else
     command="$(pane_command || true)"
   fi
 fi
-prompt_summary="$(last_prompt_summary "$log_file")"
+prompt_summary="$(current_prompt_summary "$log_file" 29)"
+prompt_lines="$(prompt_summaries "$log_file" 5 54)"
 git_summary="$(git_status_summary)"
 
 should_sync "$log_file" "$command" || exit 0
@@ -448,7 +564,7 @@ fi
 
 {
   printf '══════════════════════════════════════════════════════════════\n'
-  printf ' Speckit Dashboard\n'
+  printf ' Opensoft Speckit Dashboard\n'
   printf '══════════════════════════════════════════════════════════════\n'
   printf ' RECENT ACTIVITY             latest: %s\n' "$latest_label"
   if [ "$history_just_ran" = "1" ]; then
@@ -485,6 +601,7 @@ fi
   else
     printf '   %s /speckit.implement       %3s%%   ?\n' "$impl_dot" "$task_pct"
   fi
+  pull_request_workflow_row
   printf '──────────────────────────────────────────────────────────────\n'
   printf ' TASKS                                        %s/%s done · %s%%\n' "$task_done" "$task_total" "$task_pct"
   printf '   %s\n' "$task_bar"
@@ -523,14 +640,11 @@ fi
     done
   fi
   printf '──────────────────────────────────────────────────────────────\n'
-  printf ' LAST COMMAND                %s\n' "$last_command"
-  if [ "$last_command" = "git status" ]; then
-    printf '   🟢 %s — Git metadata changed; dashboard synced from repo state\n' "$git_summary"
+  printf ' PROMPTS                     %s\n' "$prompt_summary"
+  if [ -n "$prompt_lines" ]; then
+    printf '%s\n' "$prompt_lines" | sed 's/^/   /'
   else
-    printf '   🟢 %s — dashboard synced from repo state\n' "$last_command"
-  fi
-  if [ "$last_command" = "/speckit.analyze" ]; then
-    printf '   See Claude pane for the read-only analysis findings.\n'
+    printf '   (none yet this cta session)\n'
   fi
   printf '──────────────────────────────────────────────────────────────\n'
   printf ' NEXT COMMANDS               ⭐ next open task / remediation\n'
@@ -541,9 +655,6 @@ fi
     printf '   ⭐ git status              verify clean feature state\n'
   fi
   printf '      /speckit.analyze         rerun after edits land\n'
-  printf '──────────────────────────────────────────────────────────────\n'
-  printf ' LAST 3 PROMPTS              latest: %s\n' "$prompt_summary"
-  printf '   1. %s\n' "$prompt_summary"
   printf '══════════════════════════════════════════════════════════════\n'
 } > "$OUT.tmp" && mv "$OUT.tmp" "$OUT"
 

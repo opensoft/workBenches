@@ -28,6 +28,16 @@ if [[ "${1:-}" == --file ]]; then
   shift 2
 fi
 
+DASHBOARD_TITLE="${SPECKIT_DASHBOARD_TITLE:-Opensoft Speckit Dashboard}"
+DASHBOARD_HARD_MAX_COLS=75
+DASHBOARD_MAX_COLS="${SPECKIT_DASHBOARD_MAX_COLS:-$DASHBOARD_HARD_MAX_COLS}"
+case "$DASHBOARD_MAX_COLS" in
+  ''|*[!0-9]*) DASHBOARD_MAX_COLS="$DASHBOARD_HARD_MAX_COLS" ;;
+esac
+if (( DASHBOARD_MAX_COLS <= 0 || DASHBOARD_MAX_COLS > DASHBOARD_HARD_MAX_COLS )); then
+  DASHBOARD_MAX_COLS="$DASHBOARD_HARD_MAX_COLS"
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P || pwd)"
 
 dashboard_sync_script() {
@@ -210,12 +220,12 @@ line_colour() {               # echo an ANSI colour for a body line, else nothin
       case "$line" in
         *"🎯"*|*"🛡"*) printf %s "${c_bold}${c_white}" ;;
       esac ;;
-    "LAST 3 PROMPTS"*) printf %s "$c_dim" ;;
+    "PROMPTS"*|"LAST 3 PROMPTS"*) printf %s "$c_dim" ;;
   esac
 }
 
 render_title() {
-  printf '%s\n' "${c_bold}${c_cyan}Speckit Dashboard${c_reset}"
+  printf '%s\n' "${c_bold}${c_cyan}${DASHBOARD_TITLE}${c_reset}"
 }
 
 render_body() {
@@ -227,7 +237,7 @@ render_body() {
   local line section="" secnum=0 skip=0 ind col in_banner=1 phase_index=0 phase_skip=0
   while IFS= read -r line || [[ -n "$line" ]]; do
     if (( in_banner )); then
-      if [[ "$line" == *"SESSION DASHBOARD"* || "$line" == *"Speckit Dashboard"* ]]; then
+      if [[ "$line" == *"SESSION DASHBOARD"* || "$line" == *"Speckit Dashboard"* || "$line" == *"$DASHBOARD_TITLE"* ]]; then
         continue
       fi
       if [[ "$line" == *══* ]]; then
@@ -321,16 +331,66 @@ pane_cols() {
   printf '%s\n' "$cols"
 }
 
+dashboard_cols() {
+  local cols
+
+  cols="$(pane_cols)"
+  case "$cols" in
+    ''|*[!0-9]*) cols="$DASHBOARD_MAX_COLS" ;;
+  esac
+  if (( cols > DASHBOARD_MAX_COLS )); then
+    cols="$DASHBOARD_MAX_COLS"
+  fi
+  (( cols < 1 )) && cols=1
+  printf '%s\n' "$cols"
+}
+
+strip_ansi() {
+  sed -E $'s/\x1B\\[[0-9;]*[A-Za-z]//g'
+}
+
+shorten_plain() {
+  local text="$1" width="$2" start
+
+  (( width <= 0 )) && return
+  if (( ${#text} <= width )); then
+    printf '%s' "$text"
+  elif (( width <= 3 )); then
+    printf '%s' "${text:0:width}"
+  else
+    start=$(( ${#text} - width + 3 ))
+    printf '...%s' "${text:start}"
+  fi
+}
+
+fit_line() {
+  local line="$1" width="$2" plain
+
+  (( width <= 0 )) && {
+    printf '\n'
+    return
+  }
+
+  plain="$(printf '%s\n' "$line" | strip_ansi)"
+  if (( ${#plain} <= width )); then
+    printf '%s\n' "$line"
+  elif (( width == 1 )); then
+    printf '…\n'
+  else
+    printf '%s…\n' "${plain:0:width-1}"
+  fi
+}
+
 clear_line() {
   printf '%s' "${esc}[2K"
 }
 
 render_window() {
-  local rows cols body_height total max_scroll i line
+  local rows cols body_height total max_scroll i line_index title_plain path_width path_label footer
   local -a lines
 
   rows="$(pane_rows)"
-  cols="$(pane_cols)"
+  cols="$(dashboard_cols)"
   body_height=$(( rows - 4 ))
   (( body_height < 1 )) && body_height=1
 
@@ -343,8 +403,13 @@ render_window() {
 
   printf '%s' "${esc}[H"
   clear_line
-  printf '%s' "${c_bold}${c_bg_cyan}${c_black} Speckit Dashboard ${c_reset}"
-  printf ' %s' "${c_grey}${FILE}${c_reset}"
+  title_plain=" ${DASHBOARD_TITLE} "
+  printf '%s' "${c_bold}${c_bg_cyan}${c_black}${title_plain}${c_reset}"
+  path_width=$(( cols - ${#title_plain} - 1 ))
+  if (( path_width > 0 )); then
+    path_label="$(shorten_plain "$FILE" "$path_width")"
+    printf ' %s' "${c_grey}${path_label}${c_reset}"
+  fi
   printf '\n'
   clear_line
   printf '%s\n' "${c_cyan}$(printf '%*s' "$cols" '' | tr ' ' '─')${c_reset}"
@@ -353,7 +418,7 @@ render_window() {
     clear_line
     line_index=$(( scroll_offset + i ))
     if (( line_index < total )); then
-      printf '%s\n' "${lines[$line_index]}"
+      fit_line "${lines[$line_index]}" "$cols"
     else
       printf '\n'
     fi
@@ -361,10 +426,11 @@ render_window() {
 
   clear_line
   if (( max_scroll > 0 )); then
-    printf '%s\n' "${c_dim}  click header/phase · wheel/↑↓ · 1-9 fold · a/c · q · ${scroll_offset}/${max_scroll}${c_reset}"
+    footer="  click header/phase · wheel/↑↓ · 1-9 fold · a/c · q · ${scroll_offset}/${max_scroll}"
   else
-    printf '%s\n' "${c_dim}  click phase · 1-9 fold · a expand · c collapse · q quit${c_reset}"
+    footer="  click phase · 1-9 fold · a expand · c collapse · q quit"
   fi
+  fit_line "${c_dim}${footer}${c_reset}" "$cols"
 }
 
 # ---- one-shot mode ----------------------------------------------------------
@@ -459,10 +525,6 @@ toggle_phase() {
   else
     phase_expanded[$phase]=1
   fi
-}
-
-strip_ansi() {
-  sed -E $'s/\x1B\\[[0-9;]*[A-Za-z]//g'
 }
 
 mouse_click_target() {
