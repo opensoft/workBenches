@@ -22,7 +22,7 @@ _ct_find_specify_root_from_pwd() {
 }
 
 _ct_repo_root() {
-    local root
+    local root git_root fallback_root
 
     root=$(git rev-parse --show-toplevel 2>/dev/null || true)
     if [ -z "$root" ]; then
@@ -33,10 +33,12 @@ _ct_repo_root() {
     fi
 
     if [ ! -d "$root/.specify" ]; then
-        root=$(_ct_find_specify_root_from_pwd) || {
-            echo "ct: .specify/ not found in repo root: $root" >&2
+        git_root="$root"
+        fallback_root=$(_ct_find_specify_root_from_pwd) || {
+            echo "ct: .specify/ not found in repo root or parent directories: $git_root" >&2
             return 1
         }
+        root="$fallback_root"
     fi
     printf '%s\n' "$root"
 }
@@ -253,9 +255,15 @@ _ct_shell_quote() {
 }
 
 _ct_enable_tmux_mouse_copy_mode() {
+    local target="${1:-}"
+
     # Turn on tmux mouse handling so drag/scroll interactions go through tmux
     # copy mode instead of the terminal swallowing them.
-    tmux set-option -g mouse on >/dev/null 2>&1
+    if [ -n "$target" ]; then
+        tmux set-option -t "$target" mouse on >/dev/null 2>&1
+    else
+        tmux set-option mouse on >/dev/null 2>&1
+    fi
 }
 
 _ct_dashboard_command() {
@@ -413,7 +421,7 @@ _ct_start_claude_in_tmux() {
     command_string=$(_ct_claude_dashboard_command_string "$@") || return 1
 
     if [ -n "${TMUX:-}" ]; then
-        _ct_enable_tmux_mouse_copy_mode || {
+        _ct_enable_tmux_mouse_copy_mode "$(tmux display-message -p '#S')" || {
             echo "cta: failed to enable tmux mouse mode" >&2
             return 1
         }
@@ -435,7 +443,7 @@ _ct_start_claude_in_tmux() {
         return 1
     }
 
-    _ct_enable_tmux_mouse_copy_mode || {
+    _ct_enable_tmux_mouse_copy_mode "$session_name" || {
         tmux kill-session -t "$session_name" >/dev/null 2>&1 || true
         echo "cta: failed to enable tmux mouse mode" >&2
         return 1

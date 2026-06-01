@@ -111,7 +111,7 @@ workBenches/
 │   ├── goBench/                ← Go bench (opensoft/goBench)
 │   ├── javaBench/              ← Java bench (opensoft/javaBench)
 │   ├── phpBench/               ← PHP bench (opensoft/phpBench)
-│   └── pyBench/                ← Python bench
+│   └── pyBench/                ← Python bench (opensoft/pyBench)
 ├── sysBenches/
 │   ├── base-image/             ← Layer 1b: sys-bench-base Dockerfile
 │   ├── cloudBench/             ← Cloud admin bench (opensoft/cloudBench)

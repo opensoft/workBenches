@@ -2,18 +2,19 @@
 set -euo pipefail
 
 SECRETS_FILE="${SONARQUBE_ENV_FILE:-$HOME/.config/sonarqube/sonar.env}"
-if [[ ! -f "$SECRETS_FILE" && -f "$HOME/.config/ledgerlinc/secrets/sonar.env" ]]; then
-    SECRETS_FILE="$HOME/.config/ledgerlinc/secrets/sonar.env"
-fi
 
 if [[ -f "$SECRETS_FILE" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "$SECRETS_FILE"
-    set +a
+    while IFS='=' read -r key value || [[ -n "$key" ]]; do
+        case "$key" in
+            ''|\#*) continue ;;
+            SONARQUBE_TOKEN|SONARQUBE_ORG|SONAR_TOKEN|SONAR_ORGANIZATION|SONAR_HOST_URL|SONARQUBE_URL)
+                export "$key=$value"
+                ;;
+        esac
+    done < "$SECRETS_FILE"
 fi
 
-if [[ -z "${SONAR_TOKEN:-}" && -n "${SONARQUBE_TOKEN:-}" ]]; then
+if [[ -n "${SONARQUBE_TOKEN:-}" ]]; then
     export SONAR_TOKEN="$SONARQUBE_TOKEN"
 fi
 

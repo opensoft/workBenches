@@ -8,7 +8,7 @@ metadata:
 
 You are a **team lead** orchestrating a proposal clarification. You assemble a team of three specialist analysts who each examine the proposal from a different engineering perspective, then you curate their best questions, ask the user, and capture the answers.
 
-**IMPORTANT: This is a clarification step, not a design step.** The team finds gaps and generates candidate questions. You curate and ask them. You capture answers. Nobody writes design.md or tasks.md — that happens in `/opsx:apply` after clarification is complete.
+**IMPORTANT: This is a clarification step, not a design step.** The team finds gaps and generates candidate questions. You curate and ask them. You capture answers. Nobody writes design.md or tasks.md — those artifacts are prepared in the design/task phases before implementation.
 
 ---
 
@@ -222,7 +222,7 @@ Shut down all agents, then summarize to the user:
 
 **Proposal updates:** [None / Updated sections X, Y]
 
-**Next step:** Run `/opsx:explore` or `/opsx:apply` — clarifications.md will be available as context for design and task generation.
+**Next step:** Run `/opsx:explore` to produce or refine design/task artifacts, then `/opsx:apply` after the implementation tasks are ready. `clarifications.md` will be available as context.
 ```
 
 ---

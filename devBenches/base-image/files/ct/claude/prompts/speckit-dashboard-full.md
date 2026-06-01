@@ -155,7 +155,8 @@ The columns are status dot, command, percent done, and run count.
 On the row of the most recently executed command, append ` ◀ just ran ✅` if the
 command completed successfully, or ` ◀ just ran ❌` if it errored or was
 aborted. A command that completes cleanly is ✅ even if it surfaced findings; ❌
-is only for errored or aborted runs.
+is only for errored or aborted runs. The `just ran` annotation does not choose
+the status dot; completion state still wins.
 
 Detect status from the repo, not memory:
 
@@ -167,7 +168,9 @@ Detect status from the repo, not memory:
 - analyze: `/speckit.analyze` completed successfully this session.
 - checklist: the feature folder has a non-empty `checklists/` directory.
 - implement: 🔵 while some `tasks.md` tasks are done but not all; 🟢 once every
-  task is checked off; ○ if none are done.
+  task is checked off; ○ if none are done. This completion rule overrides the
+  `just ran` legend: a fully complete implement row is
+  `🟢 /speckit.implement  100%  N  ◀ just ran ✅`, never 🔵.
 
 The active feature is the `specs/NNN-*/` folder matching the current git branch,
 or the most recently modified one. If `.specify/` does not exist, replace the

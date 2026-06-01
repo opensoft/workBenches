@@ -240,7 +240,7 @@ yolo() {
     return 1
   }
 
-  tmux set-option -g mouse on >/dev/null 2>&1 || true
+  tmux set-option -t "$session_name" mouse on >/dev/null 2>&1 || true
   tmux attach-session -t "$session_name"
 }
 EOF
@@ -306,7 +306,7 @@ yolo() {
     return 1
   }
 
-  tmux set-option -g mouse on >/dev/null 2>&1 || true
+  tmux set-option -t "$session_name" mouse on >/dev/null 2>&1 || true
   tmux attach-session -t "$session_name"
 }
 EOF

@@ -145,24 +145,6 @@ RUN mkdir -p /opt/corepack && \
 COPY install-testing-tools.sh /tmp/
 RUN bash /tmp/install-testing-tools.sh && rm -f /tmp/install-testing-tools.sh
 
-# SonarQube CLI is required by all devBench-derived containers. The generic
-# tool installer is best-effort for many tools, so make this one explicit.
-ARG SONARQUBE_CLI_VERSION=0.10.0.1266
-RUN set -eux; \
-    arch="$(uname -m)"; \
-    case "$arch" in \
-        x86_64) sonar_platform="linux-x86-64" ;; \
-        aarch64|arm64) sonar_platform="linux-arm64" ;; \
-        *) echo "Unsupported architecture for SonarQube CLI: $arch" >&2; exit 1 ;; \
-    esac; \
-    if ! command -v sonar >/dev/null 2>&1; then \
-        curl --fail --silent --show-error --location --retry 5 --retry-delay 10 --connect-timeout 30 --max-time 900 \
-            -o /usr/local/bin/sonar \
-            "https://binaries.sonarsource.com/Distribution/sonarqube-cli/${SONARQUBE_CLI_VERSION}/linux/sonarqube-cli-${SONARQUBE_CLI_VERSION}-${sonar_platform}.exe"; \
-        chmod 0755 /usr/local/bin/sonar; \
-    fi; \
-    sonar --version
-
 # Container-safe SonarQube/SonarCloud environment. These helpers make auth
 # usable without libsecret.
 COPY files/sonarqube/sonarqube-cli-env.sh /usr/local/share/sonarqube/sonarqube-cli-env.sh

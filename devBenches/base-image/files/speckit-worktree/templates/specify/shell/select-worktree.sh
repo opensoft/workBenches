@@ -12,6 +12,24 @@ trim() {
     printf '%s' "$value"
 }
 
+normalize_config_value() {
+    local value="$1"
+
+    value="${value%%[[:space:]]#*}"
+    value="$(trim "$value")"
+    case "$value" in
+        \"*\")
+            value="${value#\"}"
+            value="${value%\"}"
+            ;;
+        \'*\')
+            value="${value#\'}"
+            value="${value%\'}"
+            ;;
+    esac
+    printf '%s' "$value"
+}
+
 resolve_config_value() {
     local repo_root="$1"
     local key="$2"
@@ -25,12 +43,34 @@ resolve_config_value() {
 
     local raw_value
     raw_value=$(awk -F':' -v key="$key" '$1 == key {sub(/^[^:]*:[[:space:]]*/, "", $0); print $0; exit}' "$config_file")
-    raw_value=$(trim "${raw_value:-}")
+    raw_value=$(normalize_config_value "${raw_value:-}")
     if [ -z "$raw_value" ]; then
         printf '%s\n' "$default_value"
     else
         printf '%s\n' "$raw_value"
     fi
+}
+
+mtime_for_path() {
+    if stat -c %Y "$1" >/dev/null 2>&1; then
+        stat -c %Y "$1"
+    else
+        stat -f %m "$1"
+    fi
+}
+
+list_worktree_dirs_by_mtime() {
+    local root="$1"
+    local path mtime
+
+    find "$root" -maxdepth 1 -mindepth 1 -type d -print 2>/dev/null |
+        while IFS= read -r path; do
+            mtime="$(mtime_for_path "$path" 2>/dev/null || true)"
+            [ -n "$mtime" ] || continue
+            printf '%s\t%s\n' "$mtime" "$path"
+        done |
+        sort -rn |
+        sed -n $'s/^[^\t]*\t//p'
 }
 
 resolve_path_from_root() {
@@ -168,23 +208,20 @@ if [ ! -d "$WORKTREE_ROOT" ]; then
     exit 1
 fi
 
-mapfile -t WORKTREE_LINES < <(find "$WORKTREE_ROOT" -maxdepth 1 -mindepth 1 -type d -printf '%T@|%f|%p\n' 2>/dev/null | sort -t'|' -k1,1nr)
-if [ "${#WORKTREE_LINES[@]}" -eq 0 ]; then
+PATHS=()
+BRANCHES=()
+while IFS= read -r worktree_path; do
+    [ -n "$worktree_path" ] || continue
+    if [ -d "$worktree_path" ]; then
+        PATHS+=("$(cd "$worktree_path" && pwd -P)")
+        BRANCHES+=("$(basename "$worktree_path")")
+    fi
+done < <(list_worktree_dirs_by_mtime "$WORKTREE_ROOT")
+
+if [ "${#PATHS[@]}" -eq 0 ]; then
     echo "No Speckit worktrees found under: $WORKTREE_ROOT" >&2
     exit 1
 fi
-
-PATHS=()
-BRANCHES=()
-for line in "${WORKTREE_LINES[@]}"; do
-    branch_name=${line#*|}
-    branch_name=${branch_name%%|*}
-    worktree_path=${line##*|}
-    if [ -d "$worktree_path" ]; then
-        PATHS+=("$(cd "$worktree_path" && pwd -P)")
-        BRANCHES+=("$branch_name")
-    fi
-done
 
 if [ "${#PATHS[@]}" -eq 0 ]; then
     echo "No usable Speckit worktrees found under: $WORKTREE_ROOT" >&2

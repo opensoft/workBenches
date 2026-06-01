@@ -210,12 +210,16 @@ esac
 
 if [ -n "$SONAR_SCANNER_PLATFORM" ] && run_with_timeout "$COMMAND_TIMEOUT" "SonarScanner CLI download" bash -c \
     "curl -fsSL -o /tmp/sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-${SONAR_SCANNER_PLATFORM}.zip"; then
-    rm -rf /opt/sonar-scanner /opt/sonar-scanner-${SONAR_SCANNER_VERSION}-${SONAR_SCANNER_PLATFORM}
-    unzip -q /tmp/sonar-scanner.zip -d /opt
-    ln -sfn /opt/sonar-scanner-${SONAR_SCANNER_VERSION}-${SONAR_SCANNER_PLATFORM} /opt/sonar-scanner
-    ln -sfn /opt/sonar-scanner/bin/sonar-scanner /usr/local/bin/sonar-scanner
-    rm -f /tmp/sonar-scanner.zip
-    log_info "  ✓ SonarScanner CLI $(sonar-scanner --version 2>/dev/null | head -1 || echo $SONAR_SCANNER_VERSION)"
+    if rm -rf /opt/sonar-scanner /opt/sonar-scanner-${SONAR_SCANNER_VERSION}-${SONAR_SCANNER_PLATFORM} \
+        && unzip -q /tmp/sonar-scanner.zip -d /opt \
+        && ln -sfn /opt/sonar-scanner-${SONAR_SCANNER_VERSION}-${SONAR_SCANNER_PLATFORM} /opt/sonar-scanner \
+        && ln -sfn /opt/sonar-scanner/bin/sonar-scanner /usr/local/bin/sonar-scanner; then
+        rm -f /tmp/sonar-scanner.zip
+        log_info "  ✓ SonarScanner CLI $(sonar-scanner --version 2>/dev/null | head -1 || echo $SONAR_SCANNER_VERSION)"
+    else
+        rm -f /tmp/sonar-scanner.zip
+        log_error "SonarScanner CLI extraction or install failed (continuing)"
+    fi
 else
     log_error "SonarScanner CLI installation failed (continuing)"
 fi
@@ -231,7 +235,7 @@ esac
 
 if [ -n "$SONARQUBE_CLI_PLATFORM" ] && run_with_timeout "$COMMAND_TIMEOUT" "SonarQube CLI download" bash -c \
     "curl -fsSL -o /usr/local/bin/sonar https://binaries.sonarsource.com/Distribution/sonarqube-cli/${SONARQUBE_CLI_VERSION}/linux/sonarqube-cli-${SONARQUBE_CLI_VERSION}-${SONARQUBE_CLI_PLATFORM}.exe"; then
-    chmod +x /usr/local/bin/sonar
+    chmod 0755 /usr/local/bin/sonar
     log_info "  ✓ SonarQube CLI $(sonar --version 2>/dev/null | head -1 || echo $SONARQUBE_CLI_VERSION)"
 else
     log_error "SonarQube CLI installation failed (continuing)"

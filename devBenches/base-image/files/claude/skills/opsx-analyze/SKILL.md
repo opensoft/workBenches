@@ -49,7 +49,8 @@ Before spawning the team, gather and read ALL context yourself. You need to brie
 
 ## Phase 2: Assemble the Audit Team
 
-Create a team and spawn **4 specialist agents in parallel**. Each agent runs specific analysis passes and reports findings back to you.
+Create a team and spawn **4 specialist teammates in parallel**. Each teammate
+runs specific analysis passes and reports findings back to you.
 
 ### Team Structure
 
@@ -73,7 +74,12 @@ Pass 5   Pass 7    Pass 4       Pass 8             │
 
 ### Spawning Instructions
 
-Use the **Agent tool** to spawn all 4 agents **in a single message** (parallel launch). Each agent should use `subagent_type: general-purpose` since they need to read files and search the codebase. Use `run_in_background: false` so you wait for results.
+Use the team subagent mechanism to spawn all 4 teammates in parallel. Each
+teammate should use `subagent_type: general-purpose` since they need to read
+files and search the codebase. Use `run_in_background: false` so you wait for
+results, and include the `team_name` plus a stable teammate `name` on each
+launch. Do not use plain one-shot Agent subagents here; they are not team
+members and cannot be shut down as part of the team.
 
 **CRITICAL: Each agent prompt must include:**
 1. The change name and path to all artifacts
@@ -372,4 +378,4 @@ Check that the design and tasks account for resource cleanup:
 - **No false positives** — If you're not sure something is an issue, mark it INFO, not CRITICAL.
 - **Framework-agnostic checks** — All passes adapt to whatever tech stack the project uses. Read the stack, don't assume it.
 - **Don't fix, report** — This skill produces an audit report. Fixes happen separately via a fix team.
-- **Shut down agents** — After collecting all results, send shutdown requests to all team agents and clean up the team.
+- **Shut down teammates** — After collecting all results, send shutdown requests to all team members and clean up the team.

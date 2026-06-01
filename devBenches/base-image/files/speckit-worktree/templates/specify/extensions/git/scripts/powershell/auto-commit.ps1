@@ -49,11 +49,24 @@ $configFile = Join-Path $repoRoot ".specify/extensions/git/git-config.yml"
 $enabled = $false
 $commitMsg = ""
 
+function Normalize-YamlScalar {
+    param([string]$Value)
+
+    $normalized = ($Value -replace '\s+#.*$', '').Trim()
+    if (($normalized.StartsWith('"') -and $normalized.EndsWith('"')) -or
+        ($normalized.StartsWith("'") -and $normalized.EndsWith("'"))) {
+        $normalized = $normalized.Substring(1, $normalized.Length - 2)
+    }
+    return $normalized
+}
+
 if (Test-Path $configFile) {
     # Parse YAML to find auto_commit section
     $inAutoCommit = $false
     $inEvent = $false
     $defaultEnabled = $false
+    $eventSeen = $false
+    $eventPattern = [regex]::Escape($EventName)
 
     foreach ($line in Get-Content $configFile) {
         # Detect auto_commit: section
@@ -71,13 +84,14 @@ if (Test-Path $configFile) {
         if ($inAutoCommit) {
             # Check default key
             if ($line -match '^\s+default:\s*(.+)$') {
-                $val = $matches[1].Trim().ToLower()
+                $val = (Normalize-YamlScalar $matches[1]).ToLower()
                 if ($val -eq 'true') { $defaultEnabled = $true }
             }
 
             # Detect our event subsection
-            if ($line -match "^\s+${EventName}:") {
+            if ($line -match "^\s{2}${eventPattern}:") {
                 $inEvent = $true
+                $eventSeen = $true
                 continue
             }
 
@@ -89,12 +103,12 @@ if (Test-Path $configFile) {
                     continue
                 }
                 if ($line -match '\s+enabled:\s*(.+)$') {
-                    $val = $matches[1].Trim().ToLower()
+                    $val = (Normalize-YamlScalar $matches[1]).ToLower()
                     if ($val -eq 'true') { $enabled = $true }
                     if ($val -eq 'false') { $enabled = $false }
                 }
                 if ($line -match '\s+message:\s*(.+)$') {
-                    $commitMsg = $matches[1].Trim() -replace '^["'']' -replace '["'']$'
+                    $commitMsg = Normalize-YamlScalar $matches[1]
                 }
             }
         }
@@ -102,8 +116,7 @@ if (Test-Path $configFile) {
 
     # If event-specific key not found, use default
     if (-not $enabled -and $defaultEnabled) {
-        $hasEventKey = Select-String -Path $configFile -Pattern "^\s*${EventName}:" -Quiet
-        if (-not $hasEventKey) {
+        if (-not $eventSeen) {
             $enabled = $true
         }
     }

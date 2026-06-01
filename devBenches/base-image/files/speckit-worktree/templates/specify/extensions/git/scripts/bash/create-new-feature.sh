@@ -511,7 +511,7 @@ else
                 HIGHEST=$(get_highest_from_specs "$SPECS_DIR")
                 BRANCH_NUMBER=$((HIGHEST + 1))
             elif [ "$HAS_GIT" = true ]; then
-                BRANCH_NUMBER=$(check_existing_branches "$SPECS_DIR")
+                BRANCH_NUMBER=$(check_existing_branches "$SPECS_DIR" true)
             else
                 HIGHEST=$(get_highest_from_specs "$SPECS_DIR")
                 BRANCH_NUMBER=$((HIGHEST + 1))

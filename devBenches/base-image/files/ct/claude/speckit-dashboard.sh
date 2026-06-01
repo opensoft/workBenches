@@ -19,7 +19,14 @@
 set -u
 
 FILE="${SPECKIT_DASHBOARD_FILE:-.claude/dashboard.md}"
-[[ "${1:-}" == --file ]] && { FILE="$2"; shift 2; }
+if [[ "${1:-}" == --file ]]; then
+  if [[ -z "${2:-}" ]]; then
+    printf 'speckit-dashboard.sh: --file requires a path\n' >&2
+    exit 2
+  fi
+  FILE="$2"
+  shift 2
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P || pwd)"
 
@@ -77,8 +84,8 @@ find_claude_pane() {
   [[ -n "${TMUX:-}" ]] || return 1
 
   local current="${TMUX_PANE:-}"
-  tmux list-panes -F '#{pane_id} #{pane_title} #{pane_current_command}' 2>/dev/null \
-    | awk -v current="$current" '
+  tmux list-panes -F '#{pane_id}	#{pane_title}	#{pane_current_command}' 2>/dev/null \
+    | awk -F '\t' -v current="$current" '
         $1 == current { next }
         $2 == "speckit-dash" { next }
         $3 == "claude" { print $1; found = 1; exit }
@@ -368,8 +375,18 @@ if [[ "${1:-}" != --loop ]]; then
 fi
 
 # ---- interactive pane mode --------------------------------------------------
-cleanup() { printf '%s' "${c_reset}${esc}[?1006l${esc}[?1000l${esc}[?7h${esc}[?25h${esc}[?1049l"; exit 0; }
-trap cleanup INT TERM
+cleaned_up=0
+cleanup() {
+  (( cleaned_up )) && return 0
+  cleaned_up=1
+  printf '%s' "${c_reset}${esc}[?1006l${esc}[?1000l${esc}[?7h${esc}[?25h${esc}[?1049l"
+}
+cleanup_and_exit() {
+  cleanup
+  exit 0
+}
+trap cleanup EXIT
+trap cleanup_and_exit HUP INT TERM
 printf '%s' "${esc}[?1049h${esc}[?25l${esc}[?7l${esc}[?1000h${esc}[?1006h"
 
 read_escape_tail() {
@@ -528,7 +545,7 @@ last_sync=0
 claude_pane="$(find_claude_pane || true)"
 last_pane_sig="$(pane_signature "$claude_pane")"
 last_git_sig="$(git_signature "$root")"
-sync_dashboard "startup"
+SPECKIT_DASHBOARD_CLAUDE_PANE="$claude_pane" sync_dashboard "startup"
 scroll_offset=0
 
 while true; do

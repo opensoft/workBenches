@@ -6,39 +6,31 @@ if [ -n "${HOME:-}" ]; then
         export SONARQUBE_ENV_FILE="$HOME/.config/sonarqube/sonar.env"
     fi
 
-    if [ ! -f "$SONARQUBE_ENV_FILE" ] && [ -f "$HOME/.config/ledgerlinc/secrets/sonar.env" ]; then
-        export SONARQUBE_ENV_FILE="$HOME/.config/ledgerlinc/secrets/sonar.env"
-    fi
-
     if [ -z "${SONARQUBE_CLI_DIR:-}" ]; then
         export SONARQUBE_CLI_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/sonarqube-cli"
     fi
 
     mkdir -p "$SONARQUBE_CLI_DIR" 2>/dev/null || true
+    chmod 700 "$SONARQUBE_CLI_DIR" 2>/dev/null || true
 
     if [ -z "${SONARQUBE_CLI_KEYCHAIN_FILE:-}" ]; then
         export SONARQUBE_CLI_KEYCHAIN_FILE="$SONARQUBE_CLI_DIR/keychain.json"
     fi
 
     if [ -f "$SONARQUBE_ENV_FILE" ]; then
-        _sonar_restore_allexport=0
-        case $- in
-            *a*) _sonar_restore_allexport=1 ;;
-        esac
-
-        set -a
-        # shellcheck disable=SC1090
-        . "$SONARQUBE_ENV_FILE"
-        if [ "$_sonar_restore_allexport" = "1" ]; then
-            set -a
-        else
-            set +a
-        fi
-        unset _sonar_restore_allexport
+        while IFS='=' read -r _sonar_key _sonar_value || [ -n "$_sonar_key" ]; do
+            case "$_sonar_key" in
+                ''|\#*) continue ;;
+                SONARQUBE_TOKEN|SONARQUBE_ORG|SONAR_TOKEN|SONAR_ORGANIZATION|SONAR_HOST_URL|SONARQUBE_URL)
+                    export "$_sonar_key=$_sonar_value"
+                    ;;
+            esac
+        done < "$SONARQUBE_ENV_FILE"
+        unset _sonar_key _sonar_value
     fi
 fi
 
-if [ -z "${SONAR_TOKEN:-}" ] && [ -n "${SONARQUBE_TOKEN:-}" ]; then
+if [ -n "${SONARQUBE_TOKEN:-}" ]; then
     export SONAR_TOKEN="$SONARQUBE_TOKEN"
 fi
 
@@ -46,7 +38,7 @@ if [ -z "${SONARQUBE_TOKEN:-}" ] && [ -n "${SONAR_TOKEN:-}" ]; then
     export SONARQUBE_TOKEN="$SONAR_TOKEN"
 fi
 
-if [ -z "${SONARQUBE_CLI_TOKEN:-}" ] && [ -n "${SONARQUBE_TOKEN:-}" ]; then
+if [ -n "${SONARQUBE_TOKEN:-}" ]; then
     export SONARQUBE_CLI_TOKEN="$SONARQUBE_TOKEN"
 fi
 
@@ -76,4 +68,8 @@ fi
 
 if [ -z "${SONARQUBE_CLI_ORG:-}" ] && [ -n "${SONARQUBE_ORG:-}" ]; then
     export SONARQUBE_CLI_ORG="$SONARQUBE_ORG"
+fi
+
+if [ -n "${SONARQUBE_CLI_KEYCHAIN_FILE:-}" ] && [ -f "$SONARQUBE_CLI_KEYCHAIN_FILE" ]; then
+    chmod 600 "$SONARQUBE_CLI_KEYCHAIN_FILE" 2>/dev/null || true
 fi

@@ -28,10 +28,39 @@ fi
 mkdir -p "$ROOT/.claude" || exit 0
 
 feature_dir_for_root() {
-  local branch specs
+  local branch specs feature_json feature_path
 
   specs="$ROOT/specs"
   [ -d "$specs" ] || return 1
+
+  feature_json="$ROOT/.specify/feature.json"
+  if [ -r "$feature_json" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      feature_path="$(jq -r '.feature_directory // empty' "$feature_json" 2>/dev/null || true)"
+    elif command -v python3 >/dev/null 2>&1; then
+      feature_path="$(python3 - "$feature_json" <<'PY' 2>/dev/null || true
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
+    print(json.load(fh).get("feature_directory", ""))
+PY
+)"
+    else
+      feature_path="$(sed -nE 's/.*"feature_directory"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$feature_json" | head -1)"
+    fi
+
+    if [ -n "$feature_path" ]; then
+      case "$feature_path" in
+        /*) ;;
+        *) feature_path="$ROOT/$feature_path" ;;
+      esac
+      if [ -d "$feature_path" ]; then
+        printf '%s\n' "$feature_path"
+        return 0
+      fi
+    fi
+  fi
 
   branch="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
   if [ -n "$branch" ] && [ -d "$specs/$branch" ]; then
@@ -49,6 +78,7 @@ encoded_project_dir() {
 
   encoded="-${path#/}"
   encoded="${encoded//\//-}"
+  encoded="${encoded//./-}"
   printf '%s/.claude/projects/%s\n' "$HOME" "$encoded"
 }
 
@@ -129,7 +159,7 @@ git_status_summary() {
     printf '%s %s changed' "$branch" "$changed"
   fi
 
-  if [ -n "$ahead" ] || [ -n "$behind" ]; then
+  if [ "${ahead:-0}" -ne 0 ] || [ "${behind:-0}" -ne 0 ]; then
     printf ' (%s ahead, %s behind)' "${ahead:-0}" "${behind:-0}"
   fi
 }
@@ -445,10 +475,15 @@ fi
     printf '   🟢 /speckit.analyze         100%%   ?\n'
   fi
   printf '   ○  /speckit.checklist         0%%   0   (post-analyze)\n'
-  if [ "$last_command" = "/speckit.implement" ]; then
-    printf '   🔵 /speckit.implement       %3s%%   ?   ◀ just ran ✅\n' "$task_pct"
+  if [ "$task_total" -gt 0 ] && [ "$task_done" -eq "$task_total" ]; then
+    impl_dot='🟢'
   else
-    printf '   🔵 /speckit.implement       %3s%%   ?\n' "$task_pct"
+    impl_dot='🔵'
+  fi
+  if [ "$last_command" = "/speckit.implement" ]; then
+    printf '   %s /speckit.implement       %3s%%   ?   ◀ just ran ✅\n' "$impl_dot" "$task_pct"
+  else
+    printf '   %s /speckit.implement       %3s%%   ?\n' "$impl_dot" "$task_pct"
   fi
   printf '──────────────────────────────────────────────────────────────\n'
   printf ' TASKS                                        %s/%s done · %s%%\n' "$task_done" "$task_total" "$task_pct"

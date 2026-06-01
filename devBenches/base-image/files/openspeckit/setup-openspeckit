@@ -364,15 +364,11 @@ def link_or_copy_skill(src: Path, dst: Path, dry_run: bool, force: bool) -> None
         else:
             shutil.rmtree(dst)
     if dry_run:
-        log(f"would link {src} -> {dst}")
+        log(f"would copy {src} -> {dst}")
         return
     dst.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        dst.symlink_to(src, target_is_directory=True)
-        log(f"linked {src} -> {dst}")
-    except OSError:
-        shutil.copytree(src, dst)
-        log(f"copied {src} -> {dst}")
+    shutil.copytree(src, dst)
+    log(f"copied {src} -> {dst}")
 
 
 def copy_overlay_tree(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
@@ -717,15 +713,25 @@ def worktree_template_root() -> Path | None:
 
     script_path = Path(__file__).resolve()
     candidates.append(script_path.parent.parent / "speckit-worktree" / "templates")
-    candidates.append(
-        Path.home()
-        / "projects"
-        / "workBenches"
-        / "devBenches"
-        / "base-image"
-        / "files"
-        / "speckit-worktree"
-        / "templates"
+
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def opsx_command_template_root(agent_root: Path) -> Path | None:
+    candidates: list[Path] = []
+    env_root = os.environ.get("OPSX_COMMAND_TEMPLATE_ROOT")
+    if env_root:
+        candidates.append(Path(env_root))
+    candidates.extend(
+        [
+            Path.home() / ".claude" / "commands" / "opsx",
+            Path("/etc/skel/.claude/commands/opsx"),
+            Path(__file__).resolve().parent.parent / "claude" / "commands" / "opsx",
+            agent_root / "templates" / "claude" / "commands" / "opsx",
+        ]
     )
 
     for candidate in candidates:
@@ -930,13 +936,16 @@ def main() -> int:
         write_text(repo / "openspec" / "README.md", openspec_readme(agent_root), args.dry_run)
         write_text(repo / ".specify" / "README.md", specify_readme(agent_root), args.dry_run)
 
-    template_root = agent_root / "templates" / "claude" / "commands" / "opsx"
-    copy_missing_tree(
-        template_root,
-        repo / ".claude" / "commands" / "opsx",
-        args.dry_run,
-        args.force,
-    )
+    template_root = opsx_command_template_root(agent_root)
+    if template_root:
+        copy_missing_tree(
+            template_root,
+            repo / ".claude" / "commands" / "opsx",
+            args.dry_run,
+            args.force,
+        )
+    else:
+        log("skipped opsx command templates: no template root found")
 
     if not args.no_skill_links:
         ensure_skills(repo, args.dry_run, args.force)

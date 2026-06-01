@@ -441,7 +441,7 @@ if ($env:GIT_BRANCH_NAME) {
             } elseif ($DryRun) {
                 $Number = (Get-HighestNumberFromSpecs -SpecsDir $specsDir) + 1
             } elseif ($hasGit) {
-                $Number = Get-NextBranchNumber -SpecsDir $specsDir
+                $Number = Get-NextBranchNumber -SpecsDir $specsDir -SkipFetch
             } else {
                 $Number = (Get-HighestNumberFromSpecs -SpecsDir $specsDir) + 1
             }
@@ -452,20 +452,43 @@ if ($env:GIT_BRANCH_NAME) {
     }
 }
 
-$maxBranchLength = 244
-if ($branchName.Length -gt $maxBranchLength) {
-    $prefixLength = $featureNum.Length + 1
-    $maxSuffixLength = $maxBranchLength - $prefixLength
+function Get-Utf8ByteCount {
+    param([string]$Value)
+    return [System.Text.Encoding]::UTF8.GetByteCount($Value)
+}
 
-    $truncatedSuffix = $branchSuffix.Substring(0, [Math]::Min($branchSuffix.Length, $maxSuffixLength))
+function Limit-Utf8Bytes {
+    param(
+        [string]$Value,
+        [int]$MaxBytes
+    )
+
+    $builder = New-Object System.Text.StringBuilder
+    $textElements = [System.Globalization.StringInfo]::GetTextElementEnumerator($Value)
+    while ($textElements.MoveNext()) {
+        $element = $textElements.GetTextElement()
+        $candidate = $builder.ToString() + $element
+        if ((Get-Utf8ByteCount $candidate) -gt $MaxBytes) { break }
+        [void]$builder.Append($element)
+    }
+    return $builder.ToString()
+}
+
+$maxBranchLength = 244
+$branchNameUtf8ByteCount = Get-Utf8ByteCount $branchName
+if ($branchNameUtf8ByteCount -gt $maxBranchLength) {
+    $prefix = "$featureNum-"
+    $maxSuffixBytes = $maxBranchLength - (Get-Utf8ByteCount $prefix)
+
+    $truncatedSuffix = Limit-Utf8Bytes -Value $branchSuffix -MaxBytes $maxSuffixBytes
     $truncatedSuffix = $truncatedSuffix -replace '-$', ''
 
     $originalBranchName = $branchName
     $branchName = "$featureNum-$truncatedSuffix"
 
     Write-Warning "[specify] Branch name exceeded GitHub's 244-byte limit"
-    Write-Warning "[specify] Original: $originalBranchName ($($originalBranchName.Length) bytes)"
-    Write-Warning "[specify] Truncated to: $branchName ($($branchName.Length) bytes)"
+    Write-Warning "[specify] Original: $originalBranchName ($branchNameUtf8ByteCount bytes)"
+    Write-Warning "[specify] Truncated to: $branchName ($(Get-Utf8ByteCount $branchName) bytes)"
 }
 
 $worktreePath = $null

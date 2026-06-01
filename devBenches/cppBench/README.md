@@ -176,10 +176,10 @@ ctest --output-on-failure
 ```
 
 #### SonarCloud Coverage
-`sonarcloud-cpp-gcovr` reads `SONARQUBE_TOKEN` from
-`~/.config/sonarqube/sonar.env`, builds/tests a CMake project with GCC
-coverage flags, writes `coverage.xml` in Sonar generic coverage format, and
-runs `sonar-scanner`.
+`sonarcloud-cpp-gcovr` uses `SONAR_TOKEN` when already exported, or reads
+`SONARQUBE_TOKEN` from `~/.config/sonarqube/sonar.env` and aliases it to
+`SONAR_TOKEN`. It builds/tests a CMake project with GCC coverage flags, writes
+`coverage.xml` in Sonar generic coverage format, and runs `sonar-scanner`.
 
 ```bash
 sonarcloud-cpp-gcovr

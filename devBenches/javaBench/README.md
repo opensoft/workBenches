@@ -128,8 +128,10 @@ Then run:
 sonarcloud-java-gradle
 ```
 
-This runs `test`, `jacocoTestReport`, and `sonarqube` using `./gradlew` when it
-exists, otherwise the system `gradle`.
+This runs `test`, `jacocoTestReport`, and `${SONAR_GRADLE_TASK:-sonar}` using
+`./gradlew` when it exists, otherwise the system `gradle`. Set
+`SONAR_GRADLE_TASK=sonarqube` for projects that still expose the older task
+name.
 
 ### Spring Boot Projects
 

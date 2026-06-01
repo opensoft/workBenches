@@ -104,8 +104,23 @@ Use **TaskCreate** for each work package. Include:
 - Context: which design.md sections and spec scenarios are relevant
 - Dependencies on other packages (use `addBlockedBy` if needed)
 
-### Spawn agents
-Use the **Agent tool** to spawn one `general-purpose` agent per work package **in a single message** (parallel launch). Each agent prompt must include:
+### Spawn teammates
+Use the team subagent mechanism to spawn one `general-purpose` teammate per
+work package, in parallel. Each teammate must be launched into the team created
+above, for example:
+
+```text
+Task({
+  team_name: "apply-<change-name>",
+  name: "<work-package-name>",
+  subagent_type: "general-purpose",
+  run_in_background: true
+})
+```
+
+Do not use plain one-shot Agent subagents for this phase. They cannot claim
+team tasks, receive inbox messages, or participate in shutdown. Each teammate
+prompt must include:
 
 1. The team name
 2. The task ID to claim
@@ -128,7 +143,7 @@ Use the **Agent tool** to spawn one `general-purpose` agent per work package **i
 
 ### Shutdown
 After all packages complete:
-- Send **shutdown_request** to all agents
+- Send **shutdown_request** to all teammates
 - **TeamDelete** to clean up
 
 ---

@@ -19,9 +19,6 @@ COMPOSE_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sonarqube-mcp.compos
 LEGACY_CONTAINER_NAME="devbench-sonarqube-mcp"
 LEGACY_PROXY_CONTAINER_NAME="devbench-sonarqube-mcp-proxy"
 SECRET_FILE="${SONARQUBE_ENV_FILE:-$HOME/.config/sonarqube/sonar.env}"
-if [[ ! -f "$SECRET_FILE" && -f "$HOME/.config/ledgerlinc/secrets/sonar.env" ]]; then
-  SECRET_FILE="$HOME/.config/ledgerlinc/secrets/sonar.env"
-fi
 
 case "${1:-}" in
   --stop)
@@ -53,10 +50,14 @@ else
 fi
 
 if [[ -f "$SECRET_FILE" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "$SECRET_FILE"
-  set +a
+  while IFS='=' read -r key value || [[ -n "$key" ]]; do
+    case "$key" in
+      ''|\#*) continue ;;
+      SONARQUBE_TOKEN|SONARQUBE_ORG|SONAR_TOKEN|SONAR_ORGANIZATION|SONAR_HOST_URL|SONARQUBE_URL|SONARQUBE_CLOUD_URL)
+        export "$key=$value"
+        ;;
+    esac
+  done < "$SECRET_FILE"
 fi
 
 SONARQUBE_TOKEN="${SONARQUBE_TOKEN:-${SONAR_TOKEN:-}}"

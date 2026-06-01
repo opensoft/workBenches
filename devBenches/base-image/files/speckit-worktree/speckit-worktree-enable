@@ -81,6 +81,7 @@ repo_root=$(git -C "$repo_arg" rev-parse --show-toplevel 2>/dev/null) || {
 
 template_root="${SPECKIT_WORKTREE_TEMPLATE_ROOT:-/usr/local/share/speckit-worktree/templates}"
 [ -d "$template_root" ] || die "template root not found: $template_root"
+command -v python3 >/dev/null 2>&1 || die "python3 is required to update .specify/extensions.yml"
 
 repo_name=$(basename "$repo_root")
 if [ -z "$base_branch" ]; then
@@ -403,12 +404,12 @@ fi
 
 copy_overlay_dir "$template_root/specify/extensions/git" "$repo_root/.specify/extensions/git" "$GIT_OVERLAY_FORCE"
 copy_overlay_dir "$template_root/specify/shell" "$repo_root/.specify/shell"
-copy_overlay_dir "$template_root/agents/skills/speckit-specify" "$repo_root/.agents/skills/speckit-specify"
-copy_overlay_dir "$template_root/agents/skills/speckit-git-feature" "$repo_root/.agents/skills/speckit-git-feature"
-copy_overlay_dir "$template_root/claude/skills/speckit-specify" "$repo_root/.claude/skills/speckit-specify"
-copy_overlay_dir "$template_root/claude/skills/speckit-git-feature" "$repo_root/.claude/skills/speckit-git-feature"
-copy_overlay_dir "$template_root/codex/skills/speckit-specify" "$repo_root/.codex/skills/speckit-specify"
-copy_overlay_dir "$template_root/codex/skills/speckit-git-feature" "$repo_root/.codex/skills/speckit-git-feature"
+copy_overlay_dir "$template_root/agents/skills/speckit-specify" "$repo_root/.agents/skills/speckit-specify" "$GIT_OVERLAY_FORCE"
+copy_overlay_dir "$template_root/agents/skills/speckit-git-feature" "$repo_root/.agents/skills/speckit-git-feature" "$GIT_OVERLAY_FORCE"
+copy_overlay_dir "$template_root/claude/skills/speckit-specify" "$repo_root/.claude/skills/speckit-specify" "$GIT_OVERLAY_FORCE"
+copy_overlay_dir "$template_root/claude/skills/speckit-git-feature" "$repo_root/.claude/skills/speckit-git-feature" "$GIT_OVERLAY_FORCE"
+copy_overlay_dir "$template_root/codex/skills/speckit-specify" "$repo_root/.codex/skills/speckit-specify" "$GIT_OVERLAY_FORCE"
+copy_overlay_dir "$template_root/codex/skills/speckit-git-feature" "$repo_root/.codex/skills/speckit-git-feature" "$GIT_OVERLAY_FORCE"
 
 write_extensions_yml
 write_git_config

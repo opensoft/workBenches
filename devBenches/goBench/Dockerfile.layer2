@@ -91,17 +91,13 @@ RUN go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest && \
     go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
     go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
-# Install testing and performance tools
-RUN go install github.com/rakyll/hey@latest
+# Install testing, release, and utility tools
+RUN go install github.com/rakyll/hey@latest && \
+    go install github.com/goreleaser/goreleaser@latest && \
+    go install github.com/mikefarah/yq/v4@latest
 
 COPY files/sonarcloud-go-coverage /usr/local/bin/sonarcloud-go-coverage
 RUN chmod +x /usr/local/bin/sonarcloud-go-coverage
-
-# Install release and build tools
-RUN go install github.com/goreleaser/goreleaser@latest
-
-# Install additional utilities
-RUN go install github.com/mikefarah/yq/v4@latest
 
 # ========================================
 # ADDITIONAL CLOUD-NATIVE TOOLS

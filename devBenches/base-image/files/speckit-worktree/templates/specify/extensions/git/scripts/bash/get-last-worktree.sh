@@ -17,6 +17,24 @@ trim() {
     printf '%s' "$value"
 }
 
+normalize_config_value() {
+    local value="$1"
+
+    value="${value%%[[:space:]]#*}"
+    value="$(trim "$value")"
+    case "$value" in
+        \"*\")
+            value="${value#\"}"
+            value="${value%\"}"
+            ;;
+        \'*\')
+            value="${value#\'}"
+            value="${value%\'}"
+            ;;
+    esac
+    printf '%s' "$value"
+}
+
 resolve_config_value() {
     local repo_root="$1"
     local key="$2"
@@ -30,12 +48,34 @@ resolve_config_value() {
 
     local raw_value
     raw_value=$(awk -F':' -v key="$key" '$1 == key {sub(/^[^:]*:[[:space:]]*/, "", $0); print $0; exit}' "$config_file")
-    raw_value=$(trim "${raw_value:-}")
+    raw_value=$(normalize_config_value "${raw_value:-}")
     if [ -z "$raw_value" ]; then
         printf '%s\n' "$default_value"
     else
         printf '%s\n' "$raw_value"
     fi
+}
+
+mtime_for_path() {
+    if stat -c %Y "$1" >/dev/null 2>&1; then
+        stat -c %Y "$1"
+    else
+        stat -f %m "$1"
+    fi
+}
+
+latest_worktree_dir() {
+    local root="$1"
+    local path mtime
+
+    find "$root" -maxdepth 1 -mindepth 1 -type d -print 2>/dev/null |
+        while IFS= read -r path; do
+            mtime="$(mtime_for_path "$path" 2>/dev/null || true)"
+            [ -n "$mtime" ] || continue
+            printf '%s\t%s\n' "$mtime" "$path"
+        done |
+        sort -rn |
+        sed -n $'1{s/^[^\t]*\t//;p;}'
 }
 
 resolve_path_from_root() {
@@ -263,7 +303,7 @@ fi
 WORKTREE_ROOT=$(resolve_worktree_root "$REPO_ROOT")
 LATEST_WORKTREE=""
 if [ -d "$WORKTREE_ROOT" ]; then
-    LATEST_WORKTREE=$(find "$WORKTREE_ROOT" -maxdepth 1 -mindepth 1 -type d -printf '%T@\t%p\n' 2>/dev/null | sort -nr | sed -n $'1{s/^[^\t]*\t//;p;}')
+    LATEST_WORKTREE=$(latest_worktree_dir "$WORKTREE_ROOT")
 fi
 
 if [ -n "$LATEST_WORKTREE" ] && [ -d "$LATEST_WORKTREE" ]; then

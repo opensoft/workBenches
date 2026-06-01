@@ -166,6 +166,7 @@ Credentials and configs that should never be written from inside the container:
 - Git config (`.gitconfig`)
 - SSH keys (`.ssh`)
 - GitHub CLI (`.config/gh`)
+- SonarQube/SonarCloud credentials (`.config/sonarqube`)
 - Copilot credentials (`.copilot-cli`)
 - Shell configs (`.zshrc`, `.oh-my-zsh`, `.p10k.zsh`, `.bashrc`)
 
@@ -175,6 +176,7 @@ AI tool credentials use `consistency=cached` for performance — frequently acce
 - Claude (`.claude/`, `.claude.json`)
 - Codex (`.codex/`)
 - Gemini (`.gemini/`)
+- Project intelligence (`.pi/`)
 - NotebookLM (`.notebooklm/`, `.notebooklm-mcp-cli/`)
 
 ---

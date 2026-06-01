@@ -47,6 +47,25 @@ _config_file="$REPO_ROOT/.specify/extensions/git/git-config.yml"
 _enabled=false
 _commit_msg=""
 
+_normalize_yaml_scalar() {
+    local value="$1"
+
+    value="${value%%[[:space:]]#*}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    case "$value" in
+        \"*\")
+            value="${value#\"}"
+            value="${value%\"}"
+            ;;
+        \'*\')
+            value="${value#\'}"
+            value="${value%\'}"
+            ;;
+    esac
+    printf '%s\n' "$value"
+}
+
 if [ -f "$_config_file" ]; then
     # Parse the auto_commit section for this event.
     # Look for auto_commit.<event_name>.enabled and .message
@@ -70,6 +89,7 @@ if [ -f "$_config_file" ]; then
         [ "$_trimmed" != "$_key" ] || continue
         _value="${_trimmed#*:}"
         _value="${_value#"${_value%%[![:space:]]*}"}"
+        _value="$(_normalize_yaml_scalar "$_value")"
 
         # Detect auto_commit: section.
         if [ "$_indent_len" -eq 0 ] && [ "$_key" = "auto_commit" ]; then
@@ -110,7 +130,7 @@ if [ -f "$_config_file" ]; then
                     [ "$_val" = "false" ] && _enabled=false
                 fi
                 if [ "$_key" = "message" ]; then
-                    _commit_msg=$(printf '%s\n' "$_value" | sed 's/^["'\'']//' | sed 's/["'\'']*$//')
+                    _commit_msg="$_value"
                 fi
             fi
         fi

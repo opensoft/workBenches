@@ -57,8 +57,8 @@ if ! docker image inspect "$EXPECTED_IMAGE" >/dev/null 2>&1; then
     exit 1
 fi
 
-CURRENT_IMAGE_ID="$(docker inspect --format '{{.Image}}' "$CONTAINER_NAME")"
-CURRENT_CONFIG_IMAGE="$(docker inspect --format '{{.Config.Image}}' "$CONTAINER_NAME")"
+CURRENT_IMAGE_ID="$(docker inspect --format '{{.Image}}' "$CONTAINER_NAME" 2>/dev/null)" || exit 0
+CURRENT_CONFIG_IMAGE="$(docker inspect --format '{{.Config.Image}}' "$CONTAINER_NAME" 2>/dev/null)" || exit 0
 EXPECTED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$EXPECTED_IMAGE")"
 
 if [[ "$REPLACE_EXISTING" == true ]]; then

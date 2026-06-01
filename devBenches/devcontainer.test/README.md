@@ -47,7 +47,7 @@ The `test.sh` script validates:
 - ✅ Spec-driven tools (`specify`, `openspec`)
 - ✅ Worktree-mode Speckit bootstrap installation
 - ✅ Global `ct*` helper availability in interactive zsh
-- ✅ Clean failure outside non-Speckit directories
+- ✅ Clean failure from non-Speckit directories
 - ✅ AI CLI tools (claude, codex, gemini, opencode)
 - ✅ SonarScanner CLI, SonarQube CLI, Sonar environment helper, and Graphite CLI availability
 - ✅ OpenCode configuration and plugins
