@@ -1114,7 +1114,15 @@ main() {
     show_ai_credentials_status
     show_ai_assistants_status
     show_spec_tools_status
-    
+
+    if [ -x "$SCRIPT_DIR/setup-claude-workflows.sh" ]; then
+        echo -e "${YELLOW}Claude Workflows${NC}"
+        if ! "$SCRIPT_DIR/setup-claude-workflows.sh"; then
+            echo -e "${YELLOW}Claude workflow setup skipped or failed${NC}"
+        fi
+        echo ""
+    fi
+
     load_config
     init_installed_file
     

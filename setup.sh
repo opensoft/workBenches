@@ -117,6 +117,14 @@ if [ -x "${SCRIPT_DIR}/scripts/setup-shell.sh" ]; then
     echo ""
 fi
 
+# Claude workflow setup is host-user state. The benches bind-mount ~/.claude, so
+# seed it before any container build without overwriting existing user workflows.
+log_header "CLAUDE WORKFLOW SETUP"
+if [ -x "${SCRIPT_DIR}/scripts/setup-claude-workflows.sh" ]; then
+    "${SCRIPT_DIR}/scripts/setup-claude-workflows.sh" || echo "⚠ Claude workflow setup skipped or failed"
+    echo ""
+fi
+
 # Docker prerequisite
 log_header "DOCKER CHECK"
 ensure_docker
