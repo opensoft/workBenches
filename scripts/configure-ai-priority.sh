@@ -22,7 +22,7 @@ PRIORITY_CONFIG="${CONFIG_DIR}/ai-provider-priority.conf"
 DEFAULT_PROVIDERS=(
     "codex"
     "claude"
-    "gemini"
+    "antigravity"
     "copilot"
     "grok"
     "meta"
@@ -34,7 +34,7 @@ DEFAULT_PROVIDERS=(
 declare -A PROVIDER_NAMES=(
     ["codex"]="GitHub Codex"
     ["claude"]="Claude (Anthropic)"
-    ["gemini"]="Google Gemini"
+    ["antigravity"]="Google Antigravity"
     ["copilot"]="GitHub Copilot"
     ["grok"]="xAI Grok"
     ["meta"]="Meta Llama"
@@ -46,7 +46,7 @@ declare -A PROVIDER_NAMES=(
 declare -A PROVIDER_CLI=(
     ["codex"]="codex"
     ["claude"]="claude"
-    ["gemini"]="gemini"
+    ["antigravity"]="agy"
     ["copilot"]="copilot"
     ["grok"]="grok"
     ["meta"]="llama"

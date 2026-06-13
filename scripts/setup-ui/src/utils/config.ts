@@ -61,12 +61,12 @@ export const AI_CLI_DEFINITIONS: AICliDefinition[] = [
     uninstallCmd: 'npm uninstall -g @openai/codex',
   },
   {
-    id: 'gemini_cli',
-    name: 'Gemini CLI',
-    description: 'Google Gemini terminal assistant',
-    command: 'gemini',
-    installCmd: 'npm install -g @google/gemini-cli',
-    uninstallCmd: 'npm uninstall -g @google/gemini-cli',
+    id: 'antigravity_cli',
+    name: 'Antigravity CLI',
+    description: 'Google Antigravity terminal assistant',
+    command: 'agy',
+    installCmd: 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
+    uninstallCmd: 'rm -f ~/.local/bin/agy',
   },
   {
     id: 'opencode_cli',

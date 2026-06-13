@@ -543,8 +543,8 @@ dcz() {
 alias dcz.='dcz .'
 # Yolo codex shortcut
 alias yodex='codex --dangerously-bypass-approvals-and-sandbox'
-# Gemini CLI auto-approve all tools
-alias gemi='gemini --approval-mode yolo'
+# Antigravity CLI shortcut
+alias ag='agy'
 # <<< dcz helper <<<
 
 # SSH Agent auto-start (skip in devcontainers)
@@ -641,4 +641,3 @@ else
 fi
 unset __conda_setup
 # <<< conda initialize <<<
-

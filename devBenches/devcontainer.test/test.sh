@@ -78,7 +78,7 @@ echo ""
 echo "=== AI CLI Tools ==="
 test_tool "claude" "command -v claude"
 test_tool "codex" "command -v codex"
-test_tool "gemini" "command -v gemini"
+test_tool "agy" "command -v agy"
 test_tool_output "opencode" "opencode --version"
 
 echo ""

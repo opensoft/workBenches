@@ -271,7 +271,7 @@ export async function checkComponentStatus(component: Component): Promise<Compon
     case 'codex_cli':
       return checkCodexCli();
     case 'copilot_cli':
-    case 'gemini_cli':
+    case 'antigravity_cli':
     case 'opencode_cli':
     case 'spec_kit':
     case 'openspec': {

@@ -192,7 +192,7 @@ async function installAiCli(id: string): Promise<InstallResult> {
     return {
       success: true,
       message: `Installed ${def.name}`,
-      needsCredentials: ['claude_cli', 'codex_cli', 'copilot_cli', 'gemini_cli'].includes(id),
+      needsCredentials: ['claude_cli', 'codex_cli', 'copilot_cli', 'antigravity_cli'].includes(id),
     };
   }
 
@@ -348,8 +348,8 @@ export async function processSelections(
         case 'copilot_cli':
           console.log('    - Copilot CLI: Run `copilot auth login`');
           break;
-        case 'gemini_cli':
-          console.log('    - Gemini CLI: Run `gemini` and follow Google login prompts');
+        case 'antigravity_cli':
+          console.log('    - Antigravity CLI: Run `agy` and follow Google sign-in prompts');
           break;
       }
     }

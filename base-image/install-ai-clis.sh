@@ -13,7 +13,7 @@
 #   - oh-my-opencode plugin (from git: darrenhinde/oh-my-opencode)
 #     Includes built-in agents: Sisyphus, oracle, librarian, explore, frontend, etc.
 #   - Auth plugins (opencode-gemini-auth, opencode-openai-codex-auth)
-#   - Other AI CLIs (Codex, Gemini, Copilot, etc.)
+#   - Other AI CLIs (Codex, Antigravity, Copilot, etc.)
 #   - Claude Code (via native installer, not npm)
 #
 # Note: OpenAgents agent files (openagent.md, opencoder.md) are copied via
@@ -29,7 +29,7 @@ set -e
 # DEBUG AND TIMEOUT CONFIGURATION
 # ========================================
 DEBUG="${DEBUG:-1}"
-COMMAND_TIMEOUT="${COMMAND_TIMEOUT:-120}"  # 2 minutes per command
+COMMAND_TIMEOUT="${COMMAND_TIMEOUT:-300}"  # 5 minutes per command
 BUN_OPERATIONS_TIMEOUT="${BUN_OPERATIONS_TIMEOUT:-180}"  # 3 minutes for bun ops
 
 log_debug() {
@@ -91,7 +91,39 @@ check_system_resources
 # Bun is pre-installed at /opt/bun by Dockerfile
 
 export BUN_INSTALL="${BUN_INSTALL:-/opt/bun}"
-export PATH="/opt/bun/bin:$PATH"
+export PATH="/opt/bun/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
+
+ensure_cli_on_path() {
+    local cli="$1"
+    shift
+
+    if command -v "$cli" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local candidate
+    for candidate in "$@"; do
+        if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+            ln -sf "$candidate" "/usr/local/bin/$cli"
+            log_info "Linked $cli to /usr/local/bin/$cli"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+install_opencode_npm_fallback() {
+    log_info "Falling back to npm package opencode-ai..."
+    if run_with_timeout "$COMMAND_TIMEOUT" "OpenCode npm fallback install" npm install -g opencode-ai; then
+        ensure_cli_on_path opencode \
+            "$(npm config get prefix 2>/dev/null)/bin/opencode" \
+            "$HOME/.npm-global/bin/opencode" \
+            "$HOME/.local/bin/opencode" || log_error "OpenCode npm fallback installed but opencode is not on PATH"
+    else
+        log_error "OpenCode npm fallback failed (continuing)"
+    fi
+}
 
 log_debug "Verifying Bun installation"
 if which bun >/dev/null 2>&1; then
@@ -136,11 +168,18 @@ log_info "Installing OpenAI Codex CLI..."
 if ! run_with_timeout "$COMMAND_TIMEOUT" "Codex npm install" npm install -g @openai/codex; then
     log_error "Codex installation failed (continuing)"
 fi
+ensure_cli_on_path codex \
+    "$(npm config get prefix 2>/dev/null)/bin/codex" \
+    "$HOME/.npm-global/bin/codex" \
+    "$HOME/.local/bin/codex" || true
 
-log_info "Installing Google Gemini CLI..."
-if ! run_with_timeout "$COMMAND_TIMEOUT" "Gemini npm install" npm install -g @google/gemini-cli; then
-    log_error "Gemini CLI installation failed (continuing)"
+log_info "Installing Antigravity CLI..."
+if ! run_with_timeout "$COMMAND_TIMEOUT" "Antigravity CLI install" bash -c 'curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin'; then
+    log_error "Antigravity CLI installation failed (continuing)"
 fi
+ensure_cli_on_path agy \
+    "/usr/local/bin/agy" \
+    "$HOME/.local/bin/agy" || true
 
 log_info "Installing GitHub Copilot CLI..."
 if ! run_with_timeout "$COMMAND_TIMEOUT" "GitHub Copilot npm install" npm install -g @githubnext/github-copilot-cli; then
@@ -158,13 +197,14 @@ log_info "Installing OpenCode AI (from Opensoft fork)..."
 log_debug "Cloning OpenCode repository from Opensoft..."
 if ! run_with_timeout "$COMMAND_TIMEOUT" "OpenCode git clone" git clone --depth 1 https://github.com/Opensoft/opencode.git /tmp/opencode; then
     log_error "Failed to clone OpenCode repository (skipping OpenCode installation)"
+    install_opencode_npm_fallback
 else
     cd /tmp/opencode
     log_debug "Current directory: $(pwd)"
     log_debug "Directory contents: $(ls -la | head -20)"
     
     log_info "Running bun install for OpenCode..."
-    OPENCODE_BUILD_TIMEOUT=900  # 15 minutes for single-target compile
+    OPENCODE_BUILD_TIMEOUT="${OPENCODE_BUILD_TIMEOUT:-300}"  # fall back to npm if the source build drags
     if command -v bun >/dev/null 2>&1; then
         log_debug "Bun is available, using it for installation"
         case "$(uname -m)" in
@@ -207,7 +247,8 @@ else
         chmod +x /usr/local/bin/opencode
         log_info "OpenCode installed to /usr/local/bin/opencode"
     else
-        log_error "OpenCode binary not found after build (continuing)"
+        log_error "OpenCode binary not found after build"
+        install_opencode_npm_fallback
     fi
     
     cd -
@@ -317,9 +358,13 @@ log_info "AI CLI Tools Installation Complete!"
 log_info "=========================================="
 log_info ""
 
-required_clis=(claude codex gemini opencode)
+required_clis=(claude codex agy opencode)
 missing_clis=()
 for cli in "${required_clis[@]}"; do
+    ensure_cli_on_path "$cli" \
+        "$(npm config get prefix 2>/dev/null)/bin/$cli" \
+        "$HOME/.npm-global/bin/$cli" \
+        "$HOME/.local/bin/$cli" || true
     if ! command -v "$cli" >/dev/null 2>&1; then
         missing_clis+=("$cli")
     fi
@@ -334,7 +379,7 @@ log_info "Installed tools:"
 log_info "  - OpenSpec"
 log_info "  - Claude Code (claude) [native installer]"
 log_info "  - OpenAI Codex (codex)"
-log_info "  - Google Gemini (gemini)"
+log_info "  - Antigravity CLI (agy)"
 log_info "  - GitHub Copilot (copilot)"
 log_info "  - Grok (grok)"
 log_info "  - OpenCode (opencode)"

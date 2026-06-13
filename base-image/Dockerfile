@@ -145,13 +145,22 @@ RUN bash /tmp/install-ai-clis.sh && rm /tmp/install-ai-clis.sh
 # ZSH CONFIGURATION (into /etc/skel for future users)
 # ========================================
 
-# Install Oh-My-Zsh into /etc/skel
-RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended \
-    && mv /root/.oh-my-zsh /etc/skel/.oh-my-zsh \
-    && rm -f /root/.zshrc
+# Install Oh-My-Zsh into /etc/skel. Use direct clones because the installer
+# wraps git clone and gives us no retry control in flaky networks.
+RUN for attempt in 1 2 3; do \
+        git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh.git /etc/skel/.oh-my-zsh && break; \
+        rm -rf /etc/skel/.oh-my-zsh; \
+        if [ "$attempt" = "3" ]; then exit 1; fi; \
+        sleep $((attempt * 5)); \
+    done
 
 # Install Powerlevel10k theme
-RUN git clone --depth=1 https://github.com/romkatv/powerlevel10k.git /etc/skel/.oh-my-zsh/custom/themes/powerlevel10k
+RUN for attempt in 1 2 3; do \
+        git clone --depth=1 https://github.com/romkatv/powerlevel10k.git /etc/skel/.oh-my-zsh/custom/themes/powerlevel10k && break; \
+        rm -rf /etc/skel/.oh-my-zsh/custom/themes/powerlevel10k; \
+        if [ "$attempt" = "3" ]; then exit 1; fi; \
+        sleep $((attempt * 5)); \
+    done
 
 # Create /etc/skel/.zshrc template
 RUN echo 'export ZSH="$HOME/.oh-my-zsh"' > /etc/skel/.zshrc && \

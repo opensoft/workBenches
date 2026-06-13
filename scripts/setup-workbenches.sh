@@ -825,12 +825,12 @@ show_ai_assistants_status() {
         echo -e "  ${RED}✗ Codex CLI${NC} - not installed"
     fi
     
-    # Check if Gemini CLI is installed
-    if command -v gemini &> /dev/null; then
-        local gemini_version=$(gemini --version 2>/dev/null || echo "unknown")
-        echo -e "  ${GREEN}✓ Gemini CLI${NC} - installed (version: $gemini_version)"
+    # Check if Antigravity CLI is installed
+    if command -v agy &> /dev/null; then
+        local antigravity_version=$(agy --version 2>/dev/null || echo "unknown")
+        echo -e "  ${GREEN}✓ Antigravity CLI${NC} - installed (version: $antigravity_version)"
     else
-        echo -e "  ${RED}✗ Gemini CLI${NC} - not installed"
+        echo -e "  ${RED}✗ Antigravity CLI${NC} - not installed"
     fi
     
     # Check if OpenCode CLI is installed

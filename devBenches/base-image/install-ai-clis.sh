@@ -124,9 +124,9 @@ if ! run_with_timeout "$COMMAND_TIMEOUT" "Codex npm install" npm install -g @ope
     log_error "Codex installation failed (continuing)"
 fi
 
-log_info "Installing Google Gemini CLI..."
-if ! run_with_timeout "$COMMAND_TIMEOUT" "Gemini npm install" npm install -g @google/gemini-cli; then
-    log_error "Gemini CLI installation failed (continuing)"
+log_info "Installing Antigravity CLI..."
+if ! run_with_timeout "$COMMAND_TIMEOUT" "Antigravity CLI install" bash -c 'curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin'; then
+    log_error "Antigravity CLI installation failed (continuing)"
 fi
 
 log_info "Installing GitHub Copilot CLI..."
@@ -281,7 +281,7 @@ log_info "Installed tools:"
 log_info "  - OpenSpec"
 log_info "  - Claude Code (claude)"
 log_info "  - OpenAI Codex (codex)"
-log_info "  - Google Gemini (gemini)"
+log_info "  - Antigravity CLI (agy)"
 log_info "  - GitHub Copilot (copilot)"
 log_info "  - Grok (grok)"
 log_info "  - OpenCode (opencode)"

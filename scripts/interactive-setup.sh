@@ -126,7 +126,7 @@ init_components() {
         "claude_cli"
         "copilot_cli"
         "codex_cli"
-        "gemini_cli"
+        "antigravity_cli"
         "opencode_cli"
         "separator1"
         "spec_kit"
@@ -143,8 +143,8 @@ init_components() {
     component_checked["codex_cli"]=false
     component_description["codex_cli"]="Codex CLI"
 
-    component_checked["gemini_cli"]=false
-    component_description["gemini_cli"]="Gemini CLI"
+    component_checked["antigravity_cli"]=false
+    component_description["antigravity_cli"]="Antigravity CLI"
 
     component_checked["opencode_cli"]=false
     component_description["opencode_cli"]="OpenCode CLI"
@@ -210,8 +210,8 @@ check_component_status() {
                 echo "not installed"
             fi
             ;;
-        gemini_cli)
-            if command -v gemini &> /dev/null; then
+        antigravity_cli)
+            if command -v agy &> /dev/null; then
                 echo "installed"
             else
                 echo "not installed"
@@ -1753,80 +1753,45 @@ process_selections() {
                     fi
                     ;;
 
-                gemini_cli)
-                    if command -v npm &> /dev/null; then
-                        # Check Node.js version
-                        local node_version=$(node --version 2>/dev/null | cut -d'v' -f2 | cut -d'.' -f1)
-                        if [ -n "$node_version" ] && [ "$node_version" -ge 18 ]; then
-                            if [ "$is_installed" = true ]; then
-                                echo -e "  ${YELLOW}Checking for Gemini CLI updates...${NC}"
-                                # Check if update available
-                                local update_output=$(npm update -g @google/gemini-cli 2>&1)
-                                if echo "$update_output" | grep -q "up to date\|unchanged"; then
-                                    echo -e "  ${GREEN}✓ Gemini CLI is already up to date${NC}"
-                                    ((success_count++))
-                                else
-                                    echo -e "  ${GREEN}✓ Gemini CLI updated${NC}"
-                                    ((success_count++))
-                                fi
+                antigravity_cli)
+                    if [ "$is_installed" = true ]; then
+                        echo -e "  ${GREEN}✓ Antigravity CLI is already installed${NC}"
+                        echo -e "  ${DIM}Antigravity CLI self-updates during regular runs${NC}"
+                        ((success_count++))
+                    else
+                        echo -e "  ${YELLOW}Installing Antigravity CLI...${NC}"
+                        echo -e "  ${DIM}This installs the 'agy' command from antigravity.google${NC}"
+                        echo -e "  ${BOLD}${RED}Please do not interrupt the installation (Ctrl+C)${NC}"
+                        log "Starting Antigravity CLI installation via official installer"
+
+                        trap '' INT
+                        (
+                            curl -fsSL https://antigravity.google/cli/install.sh | bash >> "$LOG_FILE" 2>&1
+                        ) &
+                        local install_pid=$!
+
+                        if show_spinner $install_pid "Installing Antigravity CLI" 180; then
+                            trap - INT
+                            export PATH="$HOME/.local/bin:$PATH"
+                            if command -v agy &> /dev/null; then
+                                log "Antigravity CLI installed successfully"
+                                echo -e "  ${GREEN}✓ Antigravity CLI installed${NC}"
+                                echo -e "  ${DIM}Run 'agy' to start using it${NC}"
+                                ((success_count++))
+                                items_needing_creds+=("antigravity")
                             else
-                                echo -e "  ${YELLOW}Installing Google Gemini CLI...${NC}"
-                                echo -e "  ${DIM}This may take a few minutes...${NC}"
-                                echo -e "  ${BOLD}${RED}Please do not interrupt the installation (Ctrl+C)${NC}"
-                                log "Starting Gemini CLI installation via npm"
-
-                                # Check if npm prefix is in user directory
-                                local npm_prefix=$(npm config get prefix 2>/dev/null)
-                                local needs_sudo=false
-
-                                # Check if prefix is a system directory (not in home directory)
-                                if [[ "$npm_prefix" != "$HOME"* ]]; then
-                                    needs_sudo=true
-                                    log "npm prefix is in system directory ($npm_prefix), using sudo"
-                                else
-                                    log "npm prefix is in user directory ($npm_prefix), no sudo needed"
-                                fi
-
-                                # Install Gemini CLI via npm in background with spinner
-                                # Temporarily ignore interrupts during installation
-                                trap '' INT
-                                (
-                                    if [ "$needs_sudo" = true ]; then
-                                        npm install -g @google/gemini-cli >> "$LOG_FILE" 2>&1
-                                    else
-                                        npm install -g @google/gemini-cli >> "$LOG_FILE" 2>&1
-                                    fi
-                                ) &
-                                local install_pid=$!
-
-                                if show_spinner $install_pid "Installing Gemini CLI" 180; then
-                                    # Restore interrupt handling
-                                    trap - INT
-                                    log "Gemini CLI installed successfully via npm"
-                                    echo -e "  ${GREEN}✓ Gemini CLI installed${NC}"
-                                    echo -e "  ${DIM}Run 'gemini' to start using it${NC}"
-                                    echo -e "  ${CYAN}✨ Free tier: 60 requests/min, 1000/day with Google login${NC}"
-                                    ((success_count++))
-                                    items_needing_creds+=("gemini")
-                                else
-                                    # Restore interrupt handling even on failure
-                                    trap - INT
-                                    log "ERROR: Gemini CLI installation failed"
-                                    echo -e "  ${RED}✗ Failed to install Gemini CLI${NC}"
-                                    echo -e "  ${DIM}Manual install: npm install -g @google/gemini-cli${NC}"
-                                    ((fail_count++))
-                                fi
+                                log "ERROR: Antigravity CLI installer completed but agy is not on PATH"
+                                echo -e "  ${RED}✗ Antigravity CLI installed but 'agy' is not on PATH${NC}"
+                                echo -e "  ${DIM}Add ~/.local/bin to PATH or run: ~/.local/bin/agy${NC}"
+                                ((fail_count++))
                             fi
                         else
-                            echo -e "  ${RED}✗ Node.js 18+ required (current: v$node_version)${NC}"
-                            echo -e "  ${DIM}Recommended: Node.js 22+${NC}"
-                            echo -e "  ${DIM}Install/Update Node.js: https://nodejs.org/${NC}"
+                            trap - INT
+                            log "ERROR: Antigravity CLI installation failed"
+                            echo -e "  ${RED}✗ Failed to install Antigravity CLI${NC}"
+                            echo -e "  ${DIM}Manual install: curl -fsSL https://antigravity.google/cli/install.sh | bash${NC}"
                             ((fail_count++))
                         fi
-                    else
-                        echo -e "  ${RED}✗ npm not found - Node.js required${NC}"
-                        echo -e "  ${DIM}Install Node.js 22+: https://nodejs.org/${NC}"
-                        ((fail_count++))
                     fi
                     ;;
 
@@ -2205,64 +2170,53 @@ process_selections() {
                     fi
                     ;;
 
-                gemini)
-                    echo -e "${CYAN}▶ Setting up Gemini CLI authentication...${NC}"
+                antigravity)
+                    echo -e "${CYAN}▶ Setting up Antigravity CLI authentication...${NC}"
                     echo ""
 
-                    echo -e "${BOLD}${GREEN}✨ Gemini CLI Free Tier${NC}"
+                    echo -e "${BOLD}${GREEN}✨ Antigravity CLI${NC}"
                     echo -e "${BOLD}${BLUE}────────────────────────────────────────${NC}"
                     echo ""
-                    echo -e "${YELLOW}Gemini CLI offers generous free tier access:${NC}"
-                    echo -e "  ${DIM}• 60 requests per minute${NC}"
-                    echo -e "  ${DIM}• 1,000 requests per day${NC}"
-                    echo -e "  ${DIM}• Access to Gemini 2.5 Pro (1M token context)${NC}"
-                    echo -e "  ${DIM}• No credit card required${NC}"
-                    echo ""
-                    echo -e "${CYAN}Authentication options:${NC}"
-                    echo -e "  ${BOLD}${GREEN}1. Login with Google${NC} ${DIM}(Recommended - Free tier)${NC}"
-                    echo -e "  ${CYAN}2. API Key${NC} ${DIM}(For higher limits or enterprise)${NC}"
+                    echo -e "${YELLOW}Antigravity CLI uses the 'agy' command.${NC}"
+                    echo -e "  ${DIM}• Run agy to start the terminal UI${NC}"
+                    echo -e "  ${DIM}• Sign in with your Google account or Google Cloud project when prompted${NC}"
+                    echo -e "  ${DIM}• The CLI self-updates during regular runs${NC}"
                     echo ""
                     echo -e "${BOLD}${BLUE}────────────────────────────────────────${NC}"
                     echo ""
 
-                    if command -v gemini &> /dev/null; then
-                        # Check if already has credentials
-                        if [ -f "$HOME/.gemini/config.json" ] || [ -n "$GEMINI_API_KEY" ]; then
-                            echo -e "${GREEN}✓ Gemini CLI already has credentials configured${NC}"
-                            echo ""
-                        else
-                            echo -e "${YELLOW}To authenticate Gemini CLI:${NC}"
-                            echo -e "  ${BOLD}${GREEN}Recommended:${NC} Run ${CYAN}gemini${NC} and login with Google${NC}"
-                            echo -e "  ${DIM}Alternative: Set GEMINI_API_KEY from AI Studio${NC}"
-                            echo ""
+                    if command -v agy &> /dev/null; then
+                        echo -e "${YELLOW}To authenticate Antigravity CLI:${NC}"
+                        echo -e "  ${BOLD}${GREEN}Recommended:${NC} Run ${CYAN}agy${NC} and follow the sign-in prompts${NC}"
+                        echo ""
 
-                            while true; do
-                                read -p "Launch Gemini CLI authentication now? [Y/n]: " launch_gemini
-                                case $launch_gemini in
-                                    [Yy]* | "" )
-                                        echo ""
-                                        echo -e "${YELLOW}Launching 'gemini'...${NC}"
-                                        echo -e "${DIM}Select 'Login with Google' when prompted for best experience.${NC}"
-                                        echo ""
-                                        sleep 2
+                        while true; do
+                            read -p "Launch Antigravity CLI authentication now? [Y/n]: " launch_antigravity
+                            case $launch_antigravity in
+                                [Yy]* | "" )
+                                    echo ""
+                                    echo -e "${YELLOW}Launching 'agy'...${NC}"
+                                    echo -e "${DIM}Follow the prompts to authenticate.${NC}"
+                                    echo ""
+                                    sleep 2
 
-                                        # Launch gemini - will prompt for authentication
-                                        gemini
-                                        echo ""
-                                        break
-                                        ;;
-                                    [Nn]* )
-                                        echo ""
-                                        echo -e "${YELLOW}Skipped. Run 'gemini' anytime to authenticate.${NC}"
-                                        echo ""
-                                        break
-                                        ;;
-                                    * )
-                                        echo "Please answer yes or no."
-                                        ;;
-                                esac
-                            done
-                        fi
+                                    agy
+                                    echo ""
+                                    break
+                                    ;;
+                                [Nn]* )
+                                    echo ""
+                                    echo -e "${YELLOW}Skipped. Run 'agy' anytime to authenticate.${NC}"
+                                    echo ""
+                                    break
+                                    ;;
+                                * )
+                                    echo "Please answer yes or no."
+                                    ;;
+                            esac
+                        done
+                    else
+                        echo -e "${YELLOW}Antigravity CLI not found. Install it first.${NC}"
                     fi
                     ;;
 
