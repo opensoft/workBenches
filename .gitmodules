@@ -1,0 +1,3 @@
+[submodule "sysBenches/cloudBench"]
+	path = sysBenches/cloudBench
+	url = git@github.com:opensoft/cloudBench.git
