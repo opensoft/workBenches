@@ -692,23 +692,18 @@ echo "📋 Copying DevContainer configuration..."
 cp -r "\$BENCH_DIR/.devcontainer" .
 cp -r "\$BENCH_DIR/.vscode" .
 
-# Copy specKit from workBenches
-echo "📋 Copying specKit for spec-driven development..."
-WORKBENCHES_DIR="\$(dirname "\$(dirname "\$BENCH_DIR")")"
-SPECKIT_SOURCE="\$WORKBENCHES_DIR/specKit"
-
-if [ -d "\$SPECKIT_SOURCE" ]; then
-    # Copy specKit contents (excluding .git)
-    cp -r "\$SPECKIT_SOURCE"/* .
-    cp -r "\$SPECKIT_SOURCE"/.[^.]* . 2>/dev/null || true  # Copy hidden files, ignore errors
-    
-    # Remove git-related files if they were copied
-    rm -rf .git 2>/dev/null || true
-    
-    echo "✓ specKit copied successfully"
+# Initialize spec-kit from upstream
+echo "📋 Initializing spec-kit for spec-driven development..."
+if command -v uvx >/dev/null 2>&1; then
+    if uvx --from git+https://github.com/github/spec-kit.git specify init --here; then
+        echo "✓ spec-kit initialized successfully"
+    else
+        echo "⚠️  Warning: spec-kit initialization failed"
+        echo "   You can try manually: uvx --from git+https://github.com/github/spec-kit.git specify init --here"
+    fi
 else
-    echo "⚠️  Warning: specKit not found at \$SPECKIT_SOURCE"
-    echo "   Run setup-workbenches.sh to install specKit"
+    echo "⚠️  Warning: uvx not found; skipping spec-kit initialization"
+    echo "   Install uv, then run: uvx --from git+https://github.com/github/spec-kit.git specify init --here"
 fi
 
 # Initialize git repository
