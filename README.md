@@ -178,6 +178,8 @@ scripts/amnezia-endpoint patch --config ~/vpn/amnezia.conf
 
 See `docs/amnezia-endpoint-wrapper.md` for the full workflow.
 
+For GL.iNet/LuCI router setup, see `docs/glinet-luci-amnezia-router.md`.
+
 ## Logging
 
 - Logs written to `logs/setup-YYYYMMDD-HHMMSS.log`
