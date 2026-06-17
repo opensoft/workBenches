@@ -162,6 +162,22 @@ Installed and updated via the setup TUI:
 
 npm global packages install to `~/.npm-global` (no sudo required).
 
+## Amnezia Endpoint Wrapper
+
+The shared host-side Amnezia endpoint wrapper lives at
+`scripts/amnezia-endpoint`. It fetches the CloudBench-published endpoint
+manifest, keeps host-local state under `~/.workbenches/amnezia-endpoint/`,
+selects usable VPN endpoints, and can patch exported WireGuard/Amnezia-style
+configs.
+
+```bash
+scripts/amnezia-endpoint list
+scripts/amnezia-endpoint select --strategy round-robin --format env
+scripts/amnezia-endpoint patch --config ~/vpn/amnezia.conf
+```
+
+See `docs/amnezia-endpoint-wrapper.md` for the full workflow.
+
 ## Logging
 
 - Logs written to `logs/setup-YYYYMMDD-HHMMSS.log`

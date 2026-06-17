@@ -34,6 +34,7 @@ declare -A COMMANDS=(
     ["new-bench"]="Create new development benches with AI assistance"
     ["workbench-config"]="Shared configuration manager for all workbench types"
     ["update-project"]="AI-powered universal project updater for all bench types"
+    ["amnezia-endpoint"]="Amnezia endpoint manifest client wrapper"
 )
 
 # Check if running with sufficient privileges
@@ -80,11 +81,13 @@ is_in_path() {
 add_to_path() {
     local dir="$1"
     local shell_profile=""
+    local login_shell
+    login_shell="$(basename "${SHELL:-}")"
     
     # Determine shell profile file
-    if [ -n "$ZSH_VERSION" ]; then
+    if [ "$login_shell" = "zsh" ] || [ -n "$ZSH_VERSION" ]; then
         shell_profile="$HOME/.zshrc"
-    elif [ -n "$BASH_VERSION" ]; then
+    elif [ "$login_shell" = "bash" ] || [ -n "$BASH_VERSION" ]; then
         if [ -f "$HOME/.bashrc" ]; then
             shell_profile="$HOME/.bashrc"
         else
@@ -250,6 +253,9 @@ install_commands() {
             "update-project")
                 source_script="$SCRIPT_DIR/update-project.sh"
                 ;;
+            "amnezia-endpoint")
+                source_script="$SCRIPT_DIR/amnezia-endpoint"
+                ;;
         esac
         
         # Verify source script exists
@@ -398,6 +404,7 @@ USAGE AFTER INSTALLATION:
     setup-workbenches            # Setup and configure workBenches
     update-bench-config          # Update bench configuration
     new-bench                    # Create new development benches
+    amnezia-endpoint list        # List current Amnezia VPN endpoints
 
 REQUIREMENTS:
     - workBenches must be properly set up
