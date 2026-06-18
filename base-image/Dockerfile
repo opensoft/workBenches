@@ -46,6 +46,9 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     fzf \
     bat \
     sudo \
+    # Sandbox runtime used by Codex; without this, Codex falls back to its
+    # bundled bubblewrap and prints a startup warning.
+    bubblewrap \
     # Build tools
     build-essential \
     pkg-config \
@@ -62,9 +65,21 @@ RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd
 # GITHUB CLI
 # ========================================
 
-RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+RUN for attempt in 1 2 3; do \
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /tmp/githubcli-archive-keyring.gpg && break; \
+        if [ "$attempt" = "3" ]; then exit 1; fi; \
+        sleep $((attempt * 5)); \
+    done \
+    && gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg /tmp/githubcli-archive-keyring.gpg \
+    && rm -f /tmp/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages focal main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-    && apt-get update && apt-get -y install gh \
+    && for attempt in 1 2 3; do \
+        apt-get update \
+        && apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60 -y install gh \
+        && break; \
+        if [ "$attempt" = "3" ]; then exit 1; fi; \
+        sleep $((attempt * 10)); \
+    done \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -90,12 +105,12 @@ RUN install -m 0755 -d /etc/apt/keyrings \
 # ========================================
 
 # Install yq (YAML processor)
-RUN YQ_VERSION=$(curl -s https://api.github.com/repos/mikefarah/yq/releases/latest | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/') \
-    && curl -L "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" -o /usr/local/bin/yq \
+RUN YQ_VERSION=$(curl --retry 5 --retry-all-errors --connect-timeout 30 -fsSL https://api.github.com/repos/mikefarah/yq/releases/latest | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/') \
+    && curl --retry 5 --retry-all-errors --connect-timeout 30 -fL "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" -o /usr/local/bin/yq \
     && chmod +x /usr/local/bin/yq
 
 # Install zoxide (smarter cd) - install to /usr/local/bin
-RUN curl -sS https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash -s -- --bin-dir /usr/local/bin
+RUN curl --retry 5 --retry-all-errors --connect-timeout 30 -fsSL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash -s -- --bin-dir /usr/local/bin
 
 # Install Node.js 22 for modern AI CLI builds and npm-based tools.
 RUN apt-get update \
@@ -139,6 +154,8 @@ ENV PATH="/opt/bun/bin:${PATH}"
 
 # Copy and run AI CLI installation script
 COPY install-ai-clis.sh /tmp/
+ARG AI_CLI_REFRESH=2026-06-18
+RUN echo "AI CLI refresh marker: ${AI_CLI_REFRESH}"
 RUN bash /tmp/install-ai-clis.sh && rm /tmp/install-ai-clis.sh
 
 # ========================================
