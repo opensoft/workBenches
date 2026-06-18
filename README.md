@@ -10,10 +10,11 @@ A layered Docker-based development environment system. Each "bench" is a self-co
 
 This single command:
 1. Configures your shell (zsh + Oh My Zsh + Powerlevel10k)
-2. Ensures Docker is running and Layer 0 base image exists
-3. Opens an interactive TUI to select benches and AI tools
-4. Builds Docker images for selected benches
-5. Installs AI coding CLIs (Claude, Copilot, Codex, Gemini, etc.)
+2. Checks workstation VPN clients and patches 0dcloud TUN MTU for large Git/Docker transfers
+3. Ensures Docker is running and Layer 0 base image exists
+4. Opens an interactive TUI to select benches, AI tools, and workstation tools
+5. Builds Docker images for selected benches
+6. Installs AI coding CLIs (Claude, Copilot, Codex, Gemini, etc.)
 
 After setup, open any bench in VS Code → "Reopen in Container" to start developing.
 
@@ -65,6 +66,7 @@ bash scripts/ensure-layer3.sh --base java-bench:latest
 ```
 setup.sh
   ├── Shell setup (zsh + Oh My Zsh + Powerlevel10k)
+  ├── VPN setup (AmneziaVPN + 0dcloud checks, 0dcloud MTU patch)
   ├── Docker check (is daemon running?)
   ├── Layer 0 check (build workbench-base:latest if missing)
   ├── Interactive TUI (scripts/interactive-setup.sh)
@@ -99,6 +101,7 @@ workBenches/
 ├── scripts/
 │   ├── interactive-setup.sh    ← Bash TUI for bench/tool selection
 │   ├── ensure-layer3.sh        ← Build Layer 3 user image if needed
+│   ├── setup-vpn.sh            ← VPN client checks and 0dcloud MTU patch
 │   ├── setup-shell.sh          ← Shell environment (zsh, p10k, plugins)
 │   └── setup-ui/               ← OpenTUI TypeScript TUI (disabled, needs Bun upgrade)
 ├── devBenches/
@@ -120,8 +123,20 @@ workBenches/
 │   └── simBench/               ← Molecular simulation bench (opensoft/simBench)
 ├── logs/                       ← Setup logs (gitignored)
 └── docs/
-    └── setup-input-troubleshooting.md
+    ├── amnezia-vpn-architecture.md
+    ├── setup-input-troubleshooting.md
+    └── vpn-setup.md
 ```
+
+## VPN Setup
+
+`setup.sh` runs `scripts/setup-vpn.sh` before Docker and Git-heavy setup steps.
+The script installs/checks AmneziaVPN, detects 0dcloud, and patches the 0dcloud
+TUN MTU/GSO settings to `1400` to avoid large Git pack transfer stalls on routed
+hotel/VPN networks. The TUI also exposes this as **Tools → VPN Clients**.
+
+See `docs/vpn-setup.md` for manual install steps, 0dcloud GitHub DIRECT rules,
+and troubleshooting commands.
 
 ## Bench Configuration
 

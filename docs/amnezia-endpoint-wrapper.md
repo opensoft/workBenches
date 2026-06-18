@@ -13,8 +13,20 @@ replacing the `Endpoint = host:port` line.
 Default manifest URL:
 
 ```text
-https://amneziamanifest13bd.blob.core.windows.net/manifest/endpoints.json
+https://fhnet.blob.core.windows.net/amnezia-manifest/endpoints.json
 ```
+
+The publisher tries storage account names in this order:
+
+```text
+fhnet
+fhnetamnezia
+fhnetvpnmanifest
+```
+
+If Azure cannot use the preferred `fhnet` storage account, use the URL printed
+by `sysBenches/cloudBench/scripts/amnezia-ip-pool.sh publish` as
+`AMNEZIA_ENDPOINT_MANIFEST_URL`.
 
 Override it when needed:
 

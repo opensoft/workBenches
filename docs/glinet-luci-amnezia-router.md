@@ -19,7 +19,7 @@ The target outcome is:
 Manifest URL:
 
 ```text
-https://amneziamanifest13bd.blob.core.windows.net/manifest/endpoints.json
+https://fhnet.blob.core.windows.net/amnezia-manifest/endpoints.json
 ```
 
 Host-side endpoint helper:
@@ -37,6 +37,9 @@ amnezia-endpoint
 The manifest is the source of truth for usable VPN endpoints. The primary
 management IP `20.237.172.123` is intentionally not a VPN endpoint and should
 not be used in router VPN profiles.
+
+For the full server/IP model, including what is safe to publish in the manifest,
+see `docs/amnezia-vpn-architecture.md`.
 
 ## Compatibility Decision
 
@@ -303,7 +306,7 @@ ssh root@$ROUTER 'cat > /usr/bin/amnezia-endpoint-refresh << "EOF"
 #!/bin/sh
 set -eu
 
-MANIFEST_URL="${MANIFEST_URL:-https://amneziamanifest13bd.blob.core.windows.net/manifest/endpoints.json}"
+MANIFEST_URL="${MANIFEST_URL:-https://fhnet.blob.core.windows.net/amnezia-manifest/endpoints.json}"
 STATE_DIR="${STATE_DIR:-/etc/amnezia-endpoint}"
 IFACE="${IFACE:-awg0}"
 PEER_SECTION="${PEER_SECTION:-}"

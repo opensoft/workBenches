@@ -117,6 +117,17 @@ if [ -x "${SCRIPT_DIR}/scripts/setup-shell.sh" ]; then
     echo ""
 fi
 
+# Workstation VPN setup (best-effort): installs/checks VPN clients and patches
+# 0dcloud TUN MTU so large Git/Docker transfers do not stall on routed networks.
+log_header "VPN SETUP"
+if [ -x "${SCRIPT_DIR}/scripts/setup-vpn.sh" ]; then
+    "${SCRIPT_DIR}/scripts/setup-vpn.sh" || {
+        echo "⚠ VPN setup completed with warnings; continuing setup."
+        echo "  See docs/vpn-setup.md for manual steps."
+    }
+    echo ""
+fi
+
 # Docker prerequisite
 log_header "DOCKER CHECK"
 ensure_docker

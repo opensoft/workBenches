@@ -19,7 +19,7 @@ from typing import Any
 
 
 DEFAULT_MANIFEST_URL = (
-    "https://amneziamanifest13bd.blob.core.windows.net/manifest/endpoints.json"
+    "https://fhnet.blob.core.windows.net/amnezia-manifest/endpoints.json"
 )
 DEFAULT_STATE_DIR = Path.home() / ".workbenches" / "amnezia-endpoint"
 STATE_FILE = "state.json"
