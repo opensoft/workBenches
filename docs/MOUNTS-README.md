@@ -145,7 +145,7 @@ Also sets `containerEnv`: `"DOCKER_HOST": "unix:///var/run/docker.sock"`
 ### frappeBench
 Uses docker-compose (multi-service architecture with MariaDB, Redis, Nginx). Mounts defined in `docker-compose.yml`.
 
-### cppBench, goBench, pythonBench, flutterBench, gentecBench
+### cppBench, goBench, pyBench, flutterBench, gentecBench
 No additional bench-specific mounts beyond the standard set.
 
 ---

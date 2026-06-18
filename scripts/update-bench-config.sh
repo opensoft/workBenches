@@ -220,7 +220,7 @@ get_bench_description() {
     local bench_name="$1"
     case "$bench_name" in
         sysBenches) echo "Systems and operations tools bench" ;;
-        pythonBench) echo "Python development environment and tools" ;;
+        pyBench) echo "Python development environment and tools" ;;
         javaBench) echo "Java development environment and tools" ;;
         dotNetBench) echo ".NET development environment and tools" ;;
         flutterBench) echo "Flutter/Dart development environment and tools" ;;

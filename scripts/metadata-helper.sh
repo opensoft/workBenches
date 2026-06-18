@@ -263,7 +263,7 @@ analyze_sibling_projects() {
             if [ -f "$potential_sibling/pubspec.yaml" ]; then
                 sibling_bench_type="flutterBench"
             elif [ -f "$potential_sibling/requirements.txt" ] || [ -f "$potential_sibling/setup.py" ]; then
-                sibling_bench_type="pythonBench"
+                sibling_bench_type="pyBench"
             elif [ -f "$potential_sibling/pom.xml" ] || [ -f "$potential_sibling/build.gradle" ]; then
                 sibling_bench_type="javaBench"
             elif find "$potential_sibling" -name "*.csproj" -o -name "*.sln" | head -1 >/dev/null 2>&1; then

@@ -39,6 +39,17 @@ print_error() { echo -e "${RED}${ICON_ERROR} $1${NC}"; }
 print_ai() { echo -e "${PURPLE}${ICON_AI} $1${NC}"; }
 print_router() { echo -e "${CYAN}${ICON_ROUTER} $1${NC}"; }
 
+normalize_dev_bench_name() {
+    case "$1" in
+        python)
+            echo "py"
+            ;;
+        *)
+            echo "$1"
+            ;;
+    esac
+}
+
 # Check if AI is available
 check_ai_availability() {
     # Check for OpenAI API key
@@ -119,7 +130,7 @@ get_dev_bench_description() {
         dotnet)
             echo ".NET Core development environment with Entity Framework, SQL tools, and debugging support"
             ;;
-        python)
+        py|python)
             echo "Python development environment with popular frameworks, data science tools, and debugging"
             ;;
         java)
@@ -255,6 +266,7 @@ delegate_to_launcher() {
             ;;
         dev)
             if [ -f "$SCRIPT_DIR/../devBenches/scripts/launchDevBench" ]; then
+                bench_name=$(normalize_dev_bench_name "$bench_name")
                 "$SCRIPT_DIR/../devBenches/scripts/launchDevBench" "$bench_name"
             else
                 print_error "Dev bench launcher not found"

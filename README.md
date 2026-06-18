@@ -32,7 +32,7 @@ Layer 0: workbench-base:latest          — Ubuntu 24.04 + git, zsh, curl, AI CL
   │    ├─ Layer 2: flutter-bench:latest — Flutter SDK, Dart, Android tools
   │    ├─ Layer 2: frappe-bench:latest  — MariaDB client, Redis, Nginx, bench CLI (Node.js 20)
   │    ├─ Layer 2: java-bench:latest    — OpenJDK 21, Maven, Gradle, Spring CLI
-  │    ├─ Layer 2: python-bench:latest  — Python dev tools (thin layer on 1a)
+  │    ├─ Layer 2: py-bench:latest      — Python dev tools (thin layer on 1a)
   │    └─ Layer 2: go-bench:latest      — Go toolchain
   ├─ Layer 1b: sys-bench-base:latest    — Kubernetes, Terraform, cloud CLIs
   │    └─ Layer 2: cloud-bench:latest   — Cloud admin tools
@@ -112,7 +112,7 @@ workBenches/
 │   ├── frappeBench/            ← Frappe/ERPNext bench (opensoft/frappeBench)
 │   ├── goBench/                ← Go bench (opensoft/goBench)
 │   ├── javaBench/              ← Java bench (opensoft/javaBench)
-│   └── pythonBench/            ← Python bench (opensoft/pythonBench)
+│   └── pyBench/                ← Python bench (opensoft/pyBench)
 ├── sysBenches/
 │   ├── base-image/             ← Layer 1b: sys-bench-base Dockerfile
 │   ├── cloudBench/             ← Cloud admin bench (opensoft/cloudBench)
@@ -220,6 +220,6 @@ For GL.iNet/LuCI router setup, see `docs/glinet-luci-amnezia-router.md`.
 | frappeBench | [opensoft/frappeBench](https://github.com/opensoft/frappeBench) |
 | goBench | [opensoft/goBench](https://github.com/opensoft/goBench) |
 | javaBench | [opensoft/javaBench](https://github.com/opensoft/javaBench) |
-| pythonBench | [opensoft/pythonBench](https://github.com/opensoft/pythonBench) |
+| pyBench | [opensoft/pyBench](https://github.com/opensoft/pyBench) |
 | gentecBench | [opensoft/gentecBench](https://github.com/opensoft/gentecBench) |
 | simBench | [opensoft/simBench](https://github.com/opensoft/simBench) |

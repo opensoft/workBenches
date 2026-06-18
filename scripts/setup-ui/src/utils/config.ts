@@ -156,7 +156,7 @@ export async function initializeComponents(): Promise<{
 
   // If no benches found, use defaults
   if (benches.length === 0) {
-    const defaultBenches = ['flutterBench', 'javaBench', 'dotNetBench', 'pythonBench'];
+    const defaultBenches = ['flutterBench', 'javaBench', 'dotNetBench', 'pyBench'];
     benches.push(...defaultBenches.map(name => ({
       id: `bench_${name}`,
       name,

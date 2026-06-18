@@ -216,7 +216,7 @@ analyze_project_structure() {
     
     if [ $python_confidence -gt $max_confidence ]; then
         max_confidence=$python_confidence
-        best_bench="pythonBench"
+        best_bench="pyBench"
     fi
     
     if [ $java_confidence -gt $max_confidence ]; then
@@ -377,7 +377,7 @@ if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo ""
     echo "Supported project types:"
     echo "  - flutterBench: Flutter/Dart projects"
-    echo "  - pythonBench: Python projects"
+    echo "  - pyBench: Python projects"
     echo "  - javaBench: Java/Maven/Gradle projects"
     echo "  - dotNetBench: .NET/C# projects"
     echo "  - cppBench: C++/CMake projects"

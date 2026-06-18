@@ -356,7 +356,7 @@ $project_info
 Available environments:
 $available_benches
 
-Please respond with ONLY the bench name (like 'flutterBench', 'pythonBench', etc.) that best matches this project. If uncertain, respond with 'UNCERTAIN'."
+Please respond with ONLY the bench name (like 'flutterBench', 'pyBench', etc.) that best matches this project. If uncertain, respond with 'UNCERTAIN'."
     
     # Try to get AI response using various methods
     local ai_response=""

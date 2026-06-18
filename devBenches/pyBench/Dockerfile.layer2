@@ -4,7 +4,7 @@ ARG BASE_IMAGE=dev-bench-base:latest
 FROM ${BASE_IMAGE}
 
 LABEL layer="2"
-LABEL layer.name="python-bench"
+LABEL layer.name="py-bench"
 LABEL layer.version="2.0.0"
 LABEL layer.description="Python development tools (user-agnostic)"
 LABEL bench.type="python"

@@ -10,7 +10,7 @@ Each subfolder is a separate git repository containing a complete development en
 - **`dotNetBench/`** - .NET development environment with DevContainer  
 - **`flutterBench/`** - Flutter/Dart development environment with DevContainer
 - **`javaBench/`** - Java development environment with DevContainer
-- **`pythonBench/`** - Python development environment with DevContainer
+- **`pyBench/`** - Python development environment with DevContainer
 
 ## Layered Containers (Current Standard)
 

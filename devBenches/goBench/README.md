@@ -196,7 +196,7 @@ This goBench is part of the workBenches family:
 - **dotNetBench** - .NET development
 - **javaBench** - Java development
 - **frappeBench** - Frappe/ERPNext development
-- **pythonBench** - Python development
+- **pyBench** - Python development
 - **flutterBench** - Flutter development
 
 All benches share the same network and can communicate with each other!
