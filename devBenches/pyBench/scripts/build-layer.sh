@@ -11,5 +11,10 @@ if [ "$USERNAME" = "--user" ]; then
     USERNAME="${2:-$(whoami)}"
 fi
 
-"${SCRIPT_DIR}/build-layer2.sh" --user "$USERNAME"
+if docker image inspect "py-bench:latest" >/dev/null 2>&1; then
+    echo "Layer 2 image py-bench:latest already exists; skipping rebuild."
+else
+    "${SCRIPT_DIR}/build-layer2.sh" --user "$USERNAME"
+fi
+
 exec "${REPO_DIR}/scripts/ensure-layer3.sh" --base "py-bench:latest" --user "$USERNAME"
