@@ -195,8 +195,8 @@ See `docs/amnezia-endpoint-wrapper.md` for the full workflow.
 
 For GL.iNet/LuCI router setup, see `docs/glinet-luci-amnezia-router.md`.
 
-For the server-local Amnezia endpoint pool runbook, see
-`docs/amnezia-server-runbook.md`.
+Server-side Amnezia operations docs are owned by the cloudBench submodule at
+`sysBenches/cloudBench/docs/amnezia-server-runbook.md`.
 
 ## Logging
 
