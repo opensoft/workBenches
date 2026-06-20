@@ -195,8 +195,13 @@ See `docs/amnezia-endpoint-wrapper.md` for the full workflow.
 
 For GL.iNet/LuCI router setup, see `docs/glinet-luci-amnezia-router.md`.
 
-Server-side Amnezia operations docs are owned by the cloudBench submodule at
-`sysBenches/cloudBench/docs/amnezia-server-runbook.md`.
+Server-side Amnezia rebuild and operations docs are owned by the cloudBench
+submodule:
+
+```text
+sysBenches/cloudBench/docs/amnezia-server-rebuild.md
+sysBenches/cloudBench/docs/amnezia-server-runbook.md
+```
 
 ## Logging
 
