@@ -55,31 +55,51 @@ $body = @{ tun = @{ enable = $true; mtu = 1400; 'gso-max-size' = 1400 } } | Conv
 Invoke-RestMethod -Uri 'http://127.0.0.1:9090/configs' -Method Patch -ContentType 'application/json' -Body $body
 ```
 
-## 0dcloud GitHub Rules
+## 0dcloud Routing Rules
 
-Add these as `DIRECT` or bypass rules above any broader GitHub proxy rule:
+Do not add GitHub-specific `DIRECT` rules. GitHub works best through the normal
+0dcloud proxy path; `github.com`, `githubassets.com`, `githubusercontent.com`,
+and `github.io` do not need split-tunnel bypass rules. In testing, GitHub
+`DIRECT` rules made browsers, Docker builds, and release downloads slow or
+flaky, while allowing GitHub to fall through to a `Proxy` rule was stable.
+
+0dcloud includes bundled Microsoft rules that may not show in the custom-rule
+GUI. In particular, the active runtime rules can include:
 
 ```text
-DOMAIN-SUFFIX,github.com,DIRECT
-DOMAIN-SUFFIX,githubusercontent.com,DIRECT
-DOMAIN-SUFFIX,githubassets.com,DIRECT
-DOMAIN-SUFFIX,github.io,DIRECT
+DOMAIN-SUFFIX,microsoft.com,DIRECT
+DOMAIN-KEYWORD,officecdn,DIRECT
 ```
 
-Verify active rules:
+Those built-in rules mean deleting a visible custom `microsoft.com` rule may
+not make Microsoft traffic fall through to `Match,Proxy`. Always verify the
+runtime rules with the local controller instead of relying only on the GUI:
 
 ```bash
-curl -s http://127.0.0.1:9090/rules
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '& {
+  $rules=(Invoke-RestMethod http://127.0.0.1:9090/rules).rules
+  for ($i=0; $i -lt $rules.Count; $i++) {
+    if ($rules[$i].payload -match "github|microsoft|officecdn") {
+      [PSCustomObject]@{
+        index=$i
+        type=$rules[$i].type
+        payload=$rules[$i].payload
+        proxy=$rules[$i].proxy
+      }
+    }
+  }
+} | ConvertTo-Json -Depth 4'
 ```
 
-During a Git connection, the controller should show:
+If Microsoft account pages feel slow, a narrow top-priority rule can be tested:
 
 ```text
-host: github.com
-chains: DIRECT
-rule: DomainSuffix
-payload: github.com
+DOMAIN-SUFFIX,account.microsoft.com,DIRECT
 ```
+
+Keep that rule narrow. Do not replace it with broad GitHub or broad Microsoft
+bypass rules unless fresh route tests show they are needed on the current
+network.
 
 ## Installation Notes
 

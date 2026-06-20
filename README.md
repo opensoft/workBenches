@@ -135,8 +135,8 @@ The script installs/checks AmneziaVPN, detects 0dcloud, and patches the 0dcloud
 TUN MTU/GSO settings to `1400` to avoid large Git pack transfer stalls on routed
 hotel/VPN networks. The TUI also exposes this as **Tools → VPN Clients**.
 
-See `docs/vpn-setup.md` for manual install steps, 0dcloud GitHub DIRECT rules,
-and troubleshooting commands.
+See `docs/vpn-setup.md` for manual install steps, 0dcloud routing guidance, and
+troubleshooting commands.
 
 ## Bench Configuration
 
