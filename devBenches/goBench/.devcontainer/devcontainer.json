@@ -84,6 +84,8 @@
         "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind,consistency=cached",
         "source=${localEnv:HOME}/.claude.json,target=/home/${localEnv:USER}/.claude.json,type=bind,consistency=cached",
         "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex,type=bind,consistency=cached",
+        // Omnigent (AI meta-harness, wraps Codex/Claude)
+        "source=${localEnv:HOME}/.omnigent,target=/home/${localEnv:USER}/.omnigent,type=bind,consistency=cached",
         "source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini,type=bind,consistency=cached",
         // Grok (xAI)
         "source=${localEnv:HOME}/.grok,target=/home/${localEnv:USER}/.grok,type=bind,readonly",
@@ -94,7 +96,7 @@
         "source=${localEnv:HOME}/.notebooklm-mcp-cli,target=/home/${localEnv:USER}/.notebooklm-mcp-cli,type=bind,consistency=cached"
     ],
     "forwardPorts": [8080, 9090, 3000],
-    "portsAttributes":
+    "portsAttributes": {
         "8080": {
             "label": "HTTP Server",
             "onAutoForward": "notify"
