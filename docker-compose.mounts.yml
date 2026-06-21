@@ -35,6 +35,8 @@ x-standard-mounts: &standard-mounts
   - ~/.claude.json:/home/${USER}/.claude.json:cached
   # OpenAI Codex (@openai/codex via npm)
   - ~/.codex:/home/${USER}/.codex:cached
+  # Omnigent (AI meta-harness, wraps Codex/Claude)
+  - ~/.omnigent:/home/${USER}/.omnigent:cached
   # Google Gemini (@google/gemini-cli via npm)
   - ~/.gemini:/home/${USER}/.gemini:cached
   # Grok (@xai-org/grok-cli via npm)
