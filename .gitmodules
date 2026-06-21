@@ -16,3 +16,6 @@
 [submodule "devBenches/dotNetBench"]
 	path = devBenches/dotNetBench
 	url = git@github.com:opensoft/dotNetBench.git
+[submodule "sysBenches/365Bench"]
+	path = sysBenches/365Bench
+	url = git@github.com:opensoft/365Bench.git
