@@ -1,8 +1,0 @@
-name: dev-benches
-services:
-  py-bench:
-    env_file: ../.env
-    image: py-bench:${USER:-brett}
-    container_name: py_bench
-    command: sleep infinity
-    working_dir: /workspace

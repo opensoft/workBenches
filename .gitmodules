@@ -1,3 +1,18 @@
 [submodule "sysBenches/cloudBench"]
 	path = sysBenches/cloudBench
 	url = git@github.com:opensoft/cloudBench.git
+[submodule "devBenches/pyBench"]
+	path = devBenches/pyBench
+	url = git@github.com:opensoft/pyBench.git
+[submodule "devBenches/goBench"]
+	path = devBenches/goBench
+	url = git@github.com:opensoft/goBench.git
+[submodule "devBenches/cppBench"]
+	path = devBenches/cppBench
+	url = git@github.com:opensoft/cppBench.git
+[submodule "devBenches/javaBench"]
+	path = devBenches/javaBench
+	url = git@github.com:opensoft/javaBench.git
+[submodule "devBenches/dotNetBench"]
+	path = devBenches/dotNetBench
+	url = git@github.com:opensoft/dotNetBench.git
