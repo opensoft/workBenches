@@ -160,7 +160,8 @@ init_components() {
         "vscode"
         "warp"
         "wave"
-        "vpn_clients"
+        "amnezia_vpn"
+        "0dcloud_vpn"
     )
 
     # Initialize tool items
@@ -173,8 +174,11 @@ init_components() {
     component_checked["wave"]=false
     component_description["wave"]="Wave Terminal"
 
-    component_checked["vpn_clients"]=false
-    component_description["vpn_clients"]="VPN Clients"
+    component_checked["amnezia_vpn"]=false
+    component_description["amnezia_vpn"]="AmneziaVPN"
+
+    component_checked["0dcloud_vpn"]=false
+    component_description["0dcloud_vpn"]="0dcloud VPN"
 }
 
 # Check current installation status
@@ -298,21 +302,21 @@ check_component_status() {
                 fi
             fi
             ;;
-        vpn_clients)
+        amnezia_vpn)
             if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
-                local has_0dcloud=false
-                local has_amnezia=false
-                if powershell.exe -NoProfile -Command "if (Test-Path 'C:\Program Files\0dcloud\0dcloud.exe') { 'yes' }" 2>/dev/null | tr -d '\r' | grep -q '^yes$'; then
-                    has_0dcloud=true
-                fi
                 if powershell.exe -NoProfile -Command "if ((Test-Path 'C:\Program Files\AmneziaVPN\AmneziaVPN.exe') -or (Test-Path 'C:\Program Files\AmneziaVPN.ORG\AmneziaVPN\AmneziaVPN.exe')) { 'yes' }" 2>/dev/null | tr -d '\r' | grep -q '^yes$'; then
-                    has_amnezia=true
-                fi
-
-                if [ "$has_0dcloud" = true ] && [ "$has_amnezia" = true ]; then
                     echo "installed"
-                elif [ "$has_0dcloud" = true ] || [ "$has_amnezia" = true ]; then
-                    echo "needs creds"
+                else
+                    echo "not installed"
+                fi
+            else
+                echo "not installed"
+            fi
+            ;;
+        0dcloud_vpn)
+            if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
+                if powershell.exe -NoProfile -Command "if (Test-Path 'C:\Program Files\0dcloud\0dcloud.exe') { 'yes' }" 2>/dev/null | tr -d '\r' | grep -q '^yes$'; then
+                    echo "installed"
                 else
                     echo "not installed"
                 fi
@@ -1930,16 +1934,31 @@ process_selections() {
                 continue
             fi
 
+            if [ "$is_installed" = true ]; then
+                echo -e "${BOLD}${CYAN}▶ Checking: $desc${NC}"
+                echo -e "  ${GREEN}✓ $desc is already installed${NC}"
+                ((success_count++))
+                echo ""
+                continue
+            fi
+
             # Handle installation
-            if [ "$item" = "vpn_clients" ]; then
+            if [ "$item" = "amnezia_vpn" ] || [ "$item" = "0dcloud_vpn" ]; then
                 echo -e "${BOLD}${CYAN}▶ Configuring: $desc${NC}"
                 if [ -x "$script_dir/setup-vpn.sh" ]; then
-                    echo -e "  ${YELLOW}Installing/checking VPN clients and patching 0dcloud MTU...${NC}"
-                    if "$script_dir/setup-vpn.sh"; then
-                        echo -e "  ${GREEN}✓ VPN setup completed${NC}"
+                    local vpn_target="amnezia"
+                    local vpn_message="Installing/checking AmneziaVPN..."
+                    if [ "$item" = "0dcloud_vpn" ]; then
+                        vpn_target="0dcloud"
+                        vpn_message="Installing/checking 0dcloud and patching TUN MTU..."
+                    fi
+
+                    echo -e "  ${YELLOW}${vpn_message}${NC}"
+                    if "$script_dir/setup-vpn.sh" "$vpn_target"; then
+                        echo -e "  ${GREEN}✓ $desc setup completed${NC}"
                         ((success_count++))
                     else
-                        echo -e "  ${YELLOW}⚠ VPN setup completed with warnings${NC}"
+                        echo -e "  ${YELLOW}⚠ $desc setup completed with warnings${NC}"
                         echo -e "  ${DIM}See docs/vpn-setup.md for manual install steps${NC}"
                         ((success_count++))
                     fi

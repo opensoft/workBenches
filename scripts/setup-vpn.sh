@@ -36,6 +36,15 @@ windows_file_exists() {
     run_powershell "if (Test-Path -LiteralPath '$path') { 'yes' } else { 'no' }" 2>/dev/null | grep -q '^yes$'
 }
 
+usage() {
+    cat <<'USAGE'
+Usage: setup-vpn.sh [amnezia|0dcloud|patch|all]...
+
+Installs/checks selected Windows VPN clients from WSL. Selecting 0dcloud also
+applies the 0dcloud TUN MTU patch after the client check.
+USAGE
+}
+
 install_windows_amnezia() {
     echo "Checking AmneziaVPN..."
     log "Checking AmneziaVPN"
@@ -134,13 +143,45 @@ main() {
         exit 0
     fi
 
+    local targets=("$@")
+    if [ "${#targets[@]}" -eq 0 ]; then
+        targets=("all")
+    fi
+
     local failed=0
-    install_windows_amnezia || failed=1
-    echo ""
-    install_windows_0dcloud || failed=1
-    echo ""
-    patch_0dcloud_mtu || failed=1
-    echo ""
+    local target
+    for target in "${targets[@]}"; do
+        case "$target" in
+            all)
+                install_windows_amnezia || failed=1
+                echo ""
+                install_windows_0dcloud || failed=1
+                echo ""
+                patch_0dcloud_mtu || failed=1
+                ;;
+            amnezia|amnezia_vpn|amneziavpn)
+                install_windows_amnezia || failed=1
+                ;;
+            0dcloud|odcloud)
+                install_windows_0dcloud || failed=1
+                echo ""
+                patch_0dcloud_mtu || failed=1
+                ;;
+            patch|patch_0dcloud_mtu)
+                patch_0dcloud_mtu || failed=1
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                echo "Unknown VPN setup target: $target"
+                usage
+                failed=1
+                ;;
+        esac
+        echo ""
+    done
 
     if [ "$failed" -eq 0 ]; then
         echo "✓ VPN setup complete"

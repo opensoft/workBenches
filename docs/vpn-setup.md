@@ -9,7 +9,8 @@ pack transfers stall.
 - **0dcloud** for routed access from the workstation.
 - **AmneziaVPN** for Amnezia/AmneziaWG client access and router workflows.
 
-The WorkBenches installer includes `scripts/setup-vpn.sh`, which:
+The WorkBenches TUI exposes **AmneziaVPN** and **0dcloud VPN** as separate
+Tools-column selections. It uses `scripts/setup-vpn.sh`, which:
 
 - installs/checks AmneziaVPN on Windows via `winget`;
 - detects 0dcloud on Windows;
@@ -45,7 +46,7 @@ gso-max-size: 1400
 Run:
 
 ```bash
-./scripts/setup-vpn.sh
+./scripts/setup-vpn.sh 0dcloud
 ```
 
 Or patch manually:
@@ -113,11 +114,11 @@ winget install -e --id AmneziaVPN.AmneziaVPN --accept-package-agreements --accep
 is not already installed, download it, then rerun:
 
 ```bash
-./scripts/setup-vpn.sh
+./scripts/setup-vpn.sh 0dcloud
 ```
 
 For unattended installs, provide a local installer path:
 
 ```bash
-WORKBENCHES_0DCLOUD_INSTALLER=/mnt/c/Users/me/Downloads/0dcloud.exe ./scripts/setup-vpn.sh
+WORKBENCHES_0DCLOUD_INSTALLER=/mnt/c/Users/me/Downloads/0dcloud.exe ./scripts/setup-vpn.sh 0dcloud
 ```

@@ -130,10 +130,10 @@ workBenches/
 
 ## VPN Setup
 
-`setup.sh` runs `scripts/setup-vpn.sh` before Docker and Git-heavy setup steps.
-The script installs/checks AmneziaVPN, detects 0dcloud, and patches the 0dcloud
-TUN MTU/GSO settings to `1400` to avoid large Git pack transfer stalls on routed
-hotel/VPN networks. The TUI also exposes this as **Tools → VPN Clients**.
+`setup.sh` offers VPN setup from the TUI Tools column. Users can select
+**AmneziaVPN** and **0dcloud VPN** independently; selecting 0dcloud also patches
+the 0dcloud TUN MTU/GSO settings to `1400` to avoid large Git pack transfer
+stalls on routed hotel/VPN networks.
 
 See `docs/vpn-setup.md` for manual install steps, 0dcloud routing guidance, and
 troubleshooting commands.
