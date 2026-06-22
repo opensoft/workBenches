@@ -15,6 +15,41 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
 }
 
+is_wsl_windows() {
+    [ -n "${WSL_DISTRO_NAME:-}" ] || grep -qi microsoft /proc/version 2>/dev/null
+}
+
+run_windows_powershell() {
+    local command="$1"
+    if command -v powershell.exe >/dev/null 2>&1; then
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$command" | tr -d '\r'
+    elif command -v pwsh.exe >/dev/null 2>&1; then
+        pwsh.exe -NoProfile -ExecutionPolicy Bypass -Command "$command" | tr -d '\r'
+    else
+        return 127
+    fi
+}
+
+ps_quote() {
+    printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"
+}
+
+windows_file_exists() {
+    local path="$1"
+    run_windows_powershell "if (Test-Path -LiteralPath $(ps_quote "$path")) { 'yes' } else { 'no' }" 2>/dev/null | grep -q '^yes$'
+}
+
+windows_env_file_exists() {
+    local env_name="$1"
+    local suffix="$2"
+    run_windows_powershell "\$base = [Environment]::GetEnvironmentVariable($(ps_quote "$env_name")); if (\$base -and (Test-Path -LiteralPath (Join-Path \$base $(ps_quote "$suffix")))) { 'yes' } else { 'no' }" 2>/dev/null | grep -q '^yes$'
+}
+
+windows_command_exists() {
+    local command="$1"
+    run_windows_powershell "if (Get-Command $(ps_quote "$command") -ErrorAction SilentlyContinue) { 'yes' } else { 'no' }" 2>/dev/null | grep -q '^yes$'
+}
+
 # Log script start
 log "=== Setup script started ==="
 log "User: $USER"
@@ -160,6 +195,7 @@ init_components() {
         "vscode"
         "warp"
         "wave"
+        "pi_terminal"
         "amnezia_vpn"
         "0dcloud_vpn"
     )
@@ -173,6 +209,9 @@ init_components() {
 
     component_checked["wave"]=false
     component_description["wave"]="Wave Terminal"
+
+    component_checked["pi_terminal"]=false
+    component_description["pi_terminal"]="Pi Terminal"
 
     component_checked["amnezia_vpn"]=false
     component_description["amnezia_vpn"]="AmneziaVPN"
@@ -240,13 +279,15 @@ check_component_status() {
             ;;
         vscode)
             # Check for VS Code - on WSL, check for Windows version
-            if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
+            if is_wsl_windows; then
                 # WSL: Check for Windows VS Code and WSL extension
-                if command -v code &> /dev/null || [ -f "/mnt/c/Program Files/Microsoft VS Code/Code.exe" ] || [ -f "/mnt/c/Users/*/AppData/Local/Programs/Microsoft VS Code/Code.exe" ]; then
+                if command -v code &> /dev/null ||
+                   windows_file_exists "C:\\Program Files\\Microsoft VS Code\\Code.exe" ||
+                   windows_env_file_exists "LOCALAPPDATA" "Programs\\Microsoft VS Code\\Code.exe"; then
                     # VS Code is installed, check for WSL extension by checking vscode-server directory
                     if [ -d "$HOME/.vscode-server" ]; then
                         # Check if Dev Containers extension is installed on Windows side
-                        local windows_user=$(powershell.exe -c "[Environment]::UserName" 2>/dev/null | tr -d '\r')
+                        local windows_user=$(run_windows_powershell "[Environment]::UserName" 2>/dev/null)
                         local windows_ext_file="/mnt/c/Users/$windows_user/.vscode/extensions/extensions.json"
 
                         if [ -f "$windows_ext_file" ] && grep -q "ms-vscode-remote.remote-containers" "$windows_ext_file" 2>/dev/null; then
@@ -267,9 +308,10 @@ check_component_status() {
             ;;
         warp)
             # Check for warp - on WSL, check for Windows version
-            if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
+            if is_wsl_windows; then
                 # WSL: Check for Windows Warp
-                if [ -f "/mnt/c/Program Files/Warp/Warp.exe" ] || [ -f "/mnt/c/Users/"*/AppData/Local/Programs/Warp/Warp.exe 2>/dev/null ]; then
+                if windows_file_exists "C:\\Program Files\\Warp\\Warp.exe" ||
+                   windows_env_file_exists "LOCALAPPDATA" "Programs\\Warp\\Warp.exe"; then
                     echo "installed"
                 else
                     echo "not installed"
@@ -285,10 +327,11 @@ check_component_status() {
             ;;
         wave)
             # Check for wave terminal - on WSL, check for Windows version
-            if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
+            if is_wsl_windows; then
                 # WSL: Check for Windows Wave in common locations
-                if [ -f "/mnt/c/Program Files/Wave/Wave.exe" ] || \
-                   find /mnt/c/Users/*/AppData/Local/Programs/waveterm/Wave.exe -type f 2>/dev/null | grep -q .; then
+                if windows_file_exists "C:\\Program Files\\Wave\\Wave.exe" ||
+                   windows_env_file_exists "LOCALAPPDATA" "Programs\\waveterm\\Wave.exe" ||
+                   windows_env_file_exists "LOCALAPPDATA" "Programs\\Wave\\Wave.exe"; then
                     echo "installed"
                 else
                     echo "not installed"
@@ -302,9 +345,21 @@ check_component_status() {
                 fi
             fi
             ;;
+        pi_terminal)
+            if command -v pi &> /dev/null || { is_wsl_windows && { windows_command_exists "pi" || windows_env_file_exists "APPDATA" "npm\\pi.cmd"; }; }; then
+                if [ -d "$HOME/.pi" ]; then
+                    echo "installed"
+                else
+                    echo "needs creds"
+                fi
+            else
+                echo "not installed"
+            fi
+            ;;
         amnezia_vpn)
             if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
-                if powershell.exe -NoProfile -Command "if ((Test-Path 'C:\Program Files\AmneziaVPN\AmneziaVPN.exe') -or (Test-Path 'C:\Program Files\AmneziaVPN.ORG\AmneziaVPN\AmneziaVPN.exe')) { 'yes' }" 2>/dev/null | tr -d '\r' | grep -q '^yes$'; then
+                if windows_file_exists "C:\\Program Files\\AmneziaVPN\\AmneziaVPN.exe" ||
+                   windows_file_exists "C:\\Program Files\\AmneziaVPN.ORG\\AmneziaVPN\\AmneziaVPN.exe"; then
                     echo "installed"
                 else
                     echo "not installed"
@@ -315,7 +370,7 @@ check_component_status() {
             ;;
         0dcloud_vpn)
             if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
-                if powershell.exe -NoProfile -Command "if (Test-Path 'C:\Program Files\0dcloud\0dcloud.exe') { 'yes' }" 2>/dev/null | tr -d '\r' | grep -q '^yes$'; then
+                if windows_file_exists "C:\\Program Files\\0dcloud\\0dcloud.exe"; then
                     echo "installed"
                 else
                     echo "not installed"
@@ -1981,53 +2036,15 @@ process_selections() {
                     vscode)
                         # Check if running in WSL
                         if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
-                            # Check if VS Code is installed
-                            if command -v code &> /dev/null; then
-                                # VS Code is installed, check for WSL extension by checking vscode-server directory
-                                if [ -d "$HOME/.vscode-server" ]; then
-                                    # Check if Dev Containers extension is installed on Windows side
-                                    local windows_user=$(powershell.exe -c "[Environment]::UserName" 2>/dev/null | tr -d '\r')
-                                    local windows_ext_file="/mnt/c/Users/$windows_user/.vscode/extensions/extensions.json"
-
-                                    if [ -f "$windows_ext_file" ] && grep -q "ms-vscode-remote.remote-containers" "$windows_ext_file" 2>/dev/null; then
-                                        echo -e "  ${GREEN}✓ VS Code with WSL and Dev Containers extensions are installed${NC}"
-                                        ((success_count++))
-                                    else
-                                        echo -e "  ${YELLOW}⚠ VS Code is installed but Dev Containers extension is missing${NC}"
-                                        echo ""
-                                        echo -e "  ${CYAN}${BOLD}Install the Dev Containers extension:${NC}"
-                                        echo -e "  ${DIM}Run the following command from WSL:${NC}"
-                                        echo -e "  ${BLUE}code --install-extension ms-vscode-remote.remote-containers${NC}"
-                                        echo ""
-                                        echo -e "  ${DIM}Or open VS Code and search for 'Dev Containers' in the Extensions panel${NC}"
-                                        echo -e "  ${DIM}The Dev Containers extension is essential for devcontainer support${NC}"
-                                        echo ""
-                                    fi
+                            if [ -f "$script_dir/setup-windows-tools.sh" ]; then
+                                if bash "$script_dir/setup-windows-tools.sh" vscode; then
+                                    ((success_count++))
                                 else
-                                    echo -e "  ${YELLOW}⚠ VS Code is installed but WSL extension is not set up${NC}"
-                                    echo ""
-                                    echo -e "  ${CYAN}${BOLD}Set up WSL integration:${NC}"
-                                    echo -e "  ${DIM}Run the following command from WSL to initialize:${NC}"
-                                    echo -e "  ${BLUE}code .${NC}"
-                                    echo ""
-                                    echo -e "  ${DIM}This will install the VS Code Server in WSL${NC}"
-                                    echo -e "  ${DIM}After WSL is set up, install the Dev Containers extension:${NC}"
-                                    echo -e "  ${BLUE}code --install-extension ms-vscode-remote.remote-containers${NC}"
-                                    echo ""
+                                    ((fail_count++))
                                 fi
                             else
-                                echo -e "  ${YELLOW}WSL detected - Please install Windows version of VS Code${NC}"
-                                echo ""
-                                echo -e "  ${CYAN}${BOLD}Download VS Code for Windows:${NC}"
-                                echo -e "  ${BLUE}https://code.visualstudio.com/download${NC}"
-                                echo ""
-                                echo -e "  ${YELLOW}Instructions:${NC}"
-                                echo -e "  ${DIM}1. Download and install VS Code for Windows${NC}"
-                                echo -e "  ${DIM}2. After installing, run 'code .' from WSL to set up integration${NC}"
-                                echo -e "  ${DIM}3. Install required extensions:${NC}"
-                                echo -e "  ${BLUE}   code --install-extension ms-vscode-remote.remote-wsl${NC}"
-                                echo -e "  ${BLUE}   code --install-extension ms-vscode-remote.remote-containers${NC}"
-                                echo ""
+                                echo -e "  ${RED}✗ setup-windows-tools.sh not found${NC}"
+                                ((fail_count++))
                             fi
                         else
                             echo -e "  ${YELLOW}Installing Visual Studio Code for Linux...${NC}"
@@ -2050,17 +2067,16 @@ process_selections() {
                     warp)
                         # Check if running in WSL
                         if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
-                            echo -e "  ${YELLOW}WSL detected - Please install Windows version of Warp Terminal${NC}"
-                            echo ""
-                            echo -e "  ${CYAN}${BOLD}Download Warp for Windows:${NC}"
-                            echo -e "  ${BLUE}https://warp.dev${NC}"
-                            echo ""
-                            echo -e "  ${YELLOW}Instructions:${NC}"
-                            echo -e "  ${DIM}1. Visit warp.dev and click 'Download for Windows'${NC}"
-                            echo -e "  ${DIM}2. Run the Windows installer (.exe)${NC}"
-                            echo -e "  ${DIM}3. Launch Warp from Windows to use with WSL${NC}"
-                            echo -e "  ${DIM}   Or use: winget install Warp.Warp${NC}"
-                            echo ""
+                            if [ -f "$script_dir/setup-windows-tools.sh" ]; then
+                                if bash "$script_dir/setup-windows-tools.sh" warp; then
+                                    ((success_count++))
+                                else
+                                    ((fail_count++))
+                                fi
+                            else
+                                echo -e "  ${RED}✗ setup-windows-tools.sh not found${NC}"
+                                ((fail_count++))
+                            fi
                         else
                             echo -e "  ${YELLOW}Installing Warp Terminal for Linux...${NC}"
                             echo -e "  ${DIM}Visit: https://warp.dev${NC}"
@@ -2070,20 +2086,50 @@ process_selections() {
                     wave)
                         # Check if running in WSL
                         if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
-                            echo -e "  ${YELLOW}WSL detected - Please install Windows version of Wave Terminal${NC}"
-                            echo ""
-                            echo -e "  ${CYAN}${BOLD}Download Wave Terminal for Windows:${NC}"
-                            echo -e "  ${BLUE}https://waveterm.dev${NC}"
-                            echo ""
-                            echo -e "  ${YELLOW}Instructions:${NC}"
-                            echo -e "  ${DIM}1. Visit waveterm.dev${NC}"
-                            echo -e "  ${DIM}2. Download the Windows installer${NC}"
-                            echo -e "  ${DIM}3. Run the installer and launch Wave from Windows${NC}"
-                            echo ""
+                            if [ -f "$script_dir/setup-windows-tools.sh" ]; then
+                                if bash "$script_dir/setup-windows-tools.sh" wave; then
+                                    ((success_count++))
+                                else
+                                    ((fail_count++))
+                                fi
+                            else
+                                echo -e "  ${RED}✗ setup-windows-tools.sh not found${NC}"
+                                ((fail_count++))
+                            fi
                         else
                             echo -e "  ${YELLOW}Installing Wave Terminal for Linux...${NC}"
                             echo -e "  ${DIM}Visit: https://waveterm.dev${NC}"
                             echo -e "  ${YELLOW}Download and install from website${NC}"
+                        fi
+                        ;;
+                    pi_terminal)
+                        if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
+                            if [ -f "$script_dir/setup-windows-tools.sh" ]; then
+                                if bash "$script_dir/setup-windows-tools.sh" pi_terminal; then
+                                    ((success_count++))
+                                else
+                                    ((fail_count++))
+                                fi
+                            else
+                                echo -e "  ${RED}✗ setup-windows-tools.sh not found${NC}"
+                                ((fail_count++))
+                            fi
+                        elif command -v npm &> /dev/null; then
+                            echo -e "  ${YELLOW}Installing Pi Coding Agent...${NC}"
+                            echo -e "  ${DIM}Package: @earendil-works/pi-coding-agent${NC}"
+                            if npm install -g --ignore-scripts @earendil-works/pi-coding-agent; then
+                                echo -e "  ${GREEN}✓ Pi Terminal installed${NC}"
+                                echo -e "  ${DIM}Run 'pi' in a project, then use /login to configure a provider${NC}"
+                                ((success_count++))
+                            else
+                                echo -e "  ${RED}✗ Failed to install Pi Terminal${NC}"
+                                echo -e "  ${DIM}Manual install: npm install -g --ignore-scripts @earendil-works/pi-coding-agent${NC}"
+                                ((fail_count++))
+                            fi
+                        else
+                            echo -e "  ${RED}✗ npm not found - Node.js required${NC}"
+                            echo -e "  ${DIM}Install Node.js 22+: https://nodejs.org/${NC}"
+                            ((fail_count++))
                         fi
                         ;;
                 esac

@@ -14,7 +14,7 @@ This single command:
 3. Ensures Docker is running and Layer 0 base image exists
 4. Opens an interactive TUI to select benches, AI tools, and workstation tools
 5. Builds Docker images for selected benches
-6. Installs AI coding CLIs (Claude, Copilot, Codex, Gemini, etc.)
+6. Installs AI coding CLIs and workstation tools (Claude, Copilot, Codex, Pi, etc.)
 
 After setup, open any bench in VS Code → "Reopen in Container" to start developing.
 
@@ -176,6 +176,23 @@ Installed and updated via the setup TUI:
 | OpenSpec | npm | None |
 
 npm global packages install to `~/.npm-global` (no sudo required).
+
+## Workstation Tools
+
+The TUI Tools column includes editor, terminal, and local agent tooling:
+
+| Tool | Install Method | Notes |
+|------|---------------|-------|
+| Visual Studio Code | Windows/WSL winget, Linux/manual fallback | Dev Containers and WSL extension checks |
+| Warp Terminal | Windows/WSL winget, Linux/manual fallback | Windows terminal |
+| Wave Terminal | Windows/WSL winget, Linux/manual fallback | AI terminal |
+| Pi Terminal | Windows npm from WSL, WSL/Linux npm fallback | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`; run `pi` then `/login` |
+| AmneziaVPN | Windows/WSL winget | Amnezia/AmneziaWG client access |
+| 0dcloud VPN | local installer/manual + local patch | 0dcloud detection and MTU fix |
+
+On a Windows workstation running setup from WSL, the TUI calls
+`scripts/setup-windows-tools.sh` so Windows apps are installed into Windows
+rather than into the Linux distro.
 
 ## Amnezia Endpoint Wrapper
 
