@@ -189,14 +189,17 @@ RUN echo 'export ZSH="$HOME/.oh-my-zsh"' > /etc/skel/.zshrc && \
     echo 'eval "$(zoxide init zsh)"' >> /etc/skel/.zshrc && \
     echo 'alias cat="batcat"' >> /etc/skel/.zshrc && \
     echo 'alias ls="ls --color=auto"' >> /etc/skel/.zshrc && \
-    echo 'export PATH="$HOME/.local/bin:/opt/bun/bin:$PATH"' >> /etc/skel/.zshrc && \
+    echo 'export PATH="/opt/grok/bin:$HOME/.local/bin:/opt/bun/bin:$PATH"' >> /etc/skel/.zshrc && \
+    echo 'fpath=(/opt/grok/completions/zsh $fpath)' >> /etc/skel/.zshrc && \
+    echo 'autoload -Uz compinit && compinit -C' >> /etc/skel/.zshrc && \
     echo '' >> /etc/skel/.zshrc && \
     echo '# Powerlevel10k instant prompt' >> /etc/skel/.zshrc && \
     echo '[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh' >> /etc/skel/.zshrc
 
 # Create /etc/skel/.bashrc template
 RUN echo 'eval "$(zoxide init bash)"' >> /etc/skel/.bashrc && \
-    echo 'export PATH="$HOME/.local/bin:/opt/bun/bin:$PATH"' >> /etc/skel/.bashrc
+    echo 'export PATH="/opt/grok/bin:$HOME/.local/bin:/opt/bun/bin:$PATH"' >> /etc/skel/.bashrc && \
+    echo '[[ -r /opt/grok/completions/bash/grok.bash ]] && source /opt/grok/completions/bash/grok.bash' >> /etc/skel/.bashrc
 
 # Provide AI helper aliases system-wide so all benches inherit them even when
 # a workspace does not mount a host shell profile.

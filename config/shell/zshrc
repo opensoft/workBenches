@@ -614,6 +614,15 @@ alias yolo="claude --dangerously-skip-permissions --teammate-mode tmux"
 export PATH="$HOME/.npm-global/bin:$PATH"
 export PATH="/workspace/.venv/bin:$PATH"
 
+# Grok CLI
+export PATH="/opt/grok/bin:$HOME/.grok/bin:$PATH"
+if [[ -d /opt/grok/completions/zsh ]]; then
+  fpath=(/opt/grok/completions/zsh $fpath)
+elif [[ -d "$HOME/.grok/completions/zsh" ]]; then
+  fpath=("$HOME/.grok/completions/zsh" $fpath)
+fi
+autoload -Uz compinit && compinit -C
+
 # bun completions
 [ -s "/home/brett/.bun/_bun" ] && source "/home/brett/.bun/_bun"
 

@@ -187,8 +187,23 @@ if ! run_with_timeout "$COMMAND_TIMEOUT" "GitHub Copilot npm install" npm instal
 fi
 
 log_info "Installing Grok CLI (xAI)..."
-if ! run_with_timeout "$COMMAND_TIMEOUT" "Grok npm install" npm install -g @xai-org/grok-cli; then
-    log_error "Grok CLI not available via npm (skipping)"
+mkdir -p /opt/grok/bin
+if run_with_timeout "$COMMAND_TIMEOUT" "Grok native install" bash -o pipefail -c 'curl -fsSL https://x.ai/cli/install.sh | GROK_BIN_DIR=/opt/grok/bin bash'; then
+    mkdir -p /opt/grok/completions
+    if [ -d "$HOME/.grok/completions" ]; then
+        cp -a "$HOME/.grok/completions/." /opt/grok/completions/
+    fi
+    chmod -R a+rX /opt/grok
+    ensure_cli_on_path grok \
+        "/opt/grok/bin/grok" \
+        "/usr/local/bin/grok" \
+        "$HOME/.grok/bin/grok" || log_error "Grok installed but grok is not on PATH"
+    ensure_cli_on_path agent \
+        "/opt/grok/bin/agent" \
+        "/usr/local/bin/agent" \
+        "$HOME/.grok/bin/agent" || true
+else
+    log_error "Grok CLI native installation failed (continuing)"
 fi
 
 log_info "Installing OpenCode AI (from Opensoft fork)..."
