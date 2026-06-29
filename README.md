@@ -138,6 +138,17 @@ stalls on routed hotel/VPN networks.
 See `docs/vpn-setup.md` for manual install steps, 0dcloud routing guidance, and
 troubleshooting commands.
 
+## OpenSoft Azure
+
+See `docs/opensoft-aks-prod-test-plan.md` for the AKS production-candidate test
+plan, including the current PlanA1 node-pool shape, costs, validation findings,
+and build/test/destroy loop. See `docs/nopcommerce-aks-install-research.md` for
+the nopCommerce-on-AKS install research, including SQL connectivity, Redis, Blob
+storage, and disk strategy. See `docs/opensoft-nopcommerce-dr-runbook.md` for
+the cross-tenant disaster-recovery test plan, and
+`docs/opensoft-nopcommerce-backup-system-design.md` for the backup system that
+feeds that restore.
+
 ## Bench Configuration
 
 Benches are registered in `config/bench-config.json`:
