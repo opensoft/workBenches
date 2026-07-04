@@ -688,12 +688,75 @@ Important follow-ups:
 - The GPS Helm chart was still not available in `cloudBench`, so this restore
   applied minimal Kubernetes resources reconstructed from the backup metadata.
   The next iteration should deploy through the real chart.
+- The checked-in minimal-manifest restore path is
+  `scripts/render-nopcommerce-dr-k8s-manifests.py`. It renders the restored
+  Deployment with `ConnectionStrings__ConnectionString` coming from
+  `valueFrom.secretKeyRef`, not a literal environment variable.
 - Each restored production hostname still needs the certificate policy applied
   before DNS/browser cutover: use a preserved Key Vault certificate when one is
   available, otherwise issue with cert-manager.
 - SQL databases were imported at service objective `S6` for speed and remained
   at `S6` after the smoke test. Scale them down before leaving the environment
   running for low-cost QA testing.
+
+### Secret-backed Minimal App Restore
+
+In a real DR, the app connection strings come from the SOPS escrow stored in Git
+and are decrypted with the age identity recovered from 1Password. The restore
+operator should decrypt only long enough to restore the value into the target
+secret system, then delete the local plaintext file.
+
+Example for one restored site:
+
+```bash
+export SOPS_AGE_KEY_FILE=/home/brett/.ssh/opensoft-dr-age-brett.txt
+tmp_conn=$(mktemp)
+
+sops -d --output-type json /path/to/Opensoft-Tenant/escrow/farheap/davincisite-production/secrets.sops.yaml \
+  | python3 -c '
+import json, sys
+site = "vds1-qa-davincisite-com"
+data = json.load(sys.stdin)
+for item in data["secrets"]:
+    if item["namespace"] == site:
+        sys.stdout.write(item["values"]["ConnectionStrings__ConnectionString"])
+        break
+else:
+    raise SystemExit(f"missing escrowed connection string for {site}")
+' \
+  > "$tmp_conn"
+
+./scripts/render-nopcommerce-dr-k8s-manifests.py \
+  --backup-site-dir /restore/backups/vds1-qa-davincisite-com \
+  --namespace vds1-qa-davincisite-com \
+  --host vds1.davinci-designer.com \
+  --nfs-server stosnopdrqa01.file.core.windows.net \
+  --nfs-path /stosnopdrqa01/nopcommerce-qa/vds1-qa-davincisite-com \
+  --secret-name vds1-qa-davincisite-com-app-secrets \
+  --connection-string-file "$tmp_conn" \
+  --apply
+
+shred -u "$tmp_conn"
+```
+
+The script writes only non-secret Kubernetes restore manifests under
+`restore-manifests/<site>/`. When `--apply` is used with
+`--connection-string-file`, it creates or updates the Kubernetes Secret directly
+through `kubectl`; the decrypted value is not written into the rendered manifest
+file. If the Secret has already been restored by another step, pass
+`--existing-secret-name` instead.
+
+After restore, verify that no literal SQL connection string remains in the
+Deployment spec:
+
+```bash
+kubectl -n vds1-qa-davincisite-com get deploy vds1-qa-davincisite-com-gps -o json \
+  | jq '.spec.template.spec.containers[0].env[]
+        | select(.name == "ConnectionStrings__ConnectionString")'
+```
+
+The expected output contains `valueFrom.secretKeyRef` and does not contain a
+`value` field.
 
 ### Post-Restore Homepage Warm and Prefetch
 

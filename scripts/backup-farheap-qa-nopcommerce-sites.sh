@@ -170,6 +170,39 @@ def helm_json(args):
     except Exception:
         return []
 
+def resolve_connection_string(namespace, env):
+    item = next((e for e in env if e.get("name") == "ConnectionStrings__ConnectionString"), None)
+    if not item:
+        return "", {"type": "missing"}
+    if "value" in item:
+        return item.get("value", ""), {"type": "literalEnv"}
+    secret_ref = item.get("valueFrom", {}).get("secretKeyRef", {})
+    secret_name = secret_ref.get("name")
+    secret_key = secret_ref.get("key")
+    optional = bool(secret_ref.get("optional", False))
+    if secret_name and secret_key:
+        try:
+            secret = kjson(["-n", namespace, "get", "secret", secret_name, "-o", "json"])
+            encoded = secret.get("data", {}).get(secret_key, "")
+            if encoded:
+                import base64
+                return base64.b64decode(encoded).decode("utf-8"), {
+                    "type": "secretKeyRef",
+                    "secretName": secret_name,
+                    "secretKey": secret_key,
+                    "optional": optional,
+                }
+        except Exception:
+            if not optional:
+                raise
+    return "", {
+        "type": "secretKeyRef",
+        "secretName": secret_name or "",
+        "secretKey": secret_key or "",
+        "optional": optional,
+        "status": "unresolved",
+    }
+
 def conn_parts(conn):
     out = {}
     for part in (conn or "").split(";"):
@@ -204,8 +237,9 @@ for deploy in deploys:
         continue
 
     env = containers[0].get("env", [])
-    conn = next((e.get("value", "") for e in env if e.get("name") == "ConnectionStrings__ConnectionString"), "")
+    conn, conn_source = resolve_connection_string(namespace, env)
     db = conn_parts(conn)
+    conn = ""
     ns_ingresses = [i for i in ingresses if i["metadata"].get("namespace") == namespace]
     hosts = []
     ingress_names = []
@@ -242,6 +276,7 @@ for deploy in deploys:
         "strategy": deploy.get("spec", {}).get("strategy", {}).get("type", ""),
         "image": image,
         "database": db,
+        "connectionStringSource": conn_source,
         "ingresses": ingress_names,
         "hosts": sorted(set(hosts)),
         "primaryHost": sorted(set(hosts))[0] if hosts else "",
@@ -264,6 +299,63 @@ normalize_connection_string() {
     *) conn="${conn};TrustServerCertificate=False" ;;
   esac
   printf '%s' "$conn"
+}
+
+get_connection_string() {
+  local namespace="$1"
+  local deployment="$2"
+  local deployment_json
+
+  deployment_json=$(kubectl -n "$namespace" get deploy "$deployment" -o json)
+  DEPLOYMENT_JSON="$deployment_json" python3 - "$namespace" <<'PY'
+import base64
+import json
+import os
+import subprocess
+import sys
+
+namespace = sys.argv[1]
+deployment = json.loads(os.environ["DEPLOYMENT_JSON"])
+containers = deployment.get("spec", {}).get("template", {}).get("spec", {}).get("containers", [])
+if not containers:
+    raise SystemExit("deployment has no containers")
+
+env = containers[0].get("env", [])
+item = next((row for row in env if row.get("name") == "ConnectionStrings__ConnectionString"), None)
+if not item:
+    raise SystemExit("ConnectionStrings__ConnectionString is missing")
+
+if "value" in item:
+    sys.stdout.write(item.get("value", ""))
+    raise SystemExit(0)
+
+secret_ref = item.get("valueFrom", {}).get("secretKeyRef", {})
+secret_name = secret_ref.get("name")
+secret_key = secret_ref.get("key")
+optional = bool(secret_ref.get("optional", False))
+if not secret_name or not secret_key:
+    raise SystemExit("ConnectionStrings__ConnectionString is not a literal value or secretKeyRef")
+
+try:
+    secret = json.loads(
+        subprocess.check_output(
+            ["kubectl", "-n", namespace, "get", "secret", secret_name, "-o", "json"],
+            text=True,
+        )
+    )
+except Exception as exc:
+    if optional:
+        raise SystemExit(0)
+    raise SystemExit(f"failed to read Secret/{secret_name}: {exc}")
+
+encoded = secret.get("data", {}).get(secret_key)
+if not encoded:
+    if optional:
+        raise SystemExit(0)
+    raise SystemExit(f"Secret/{secret_name} is missing key {secret_key}")
+
+sys.stdout.write(base64.b64decode(encoded).decode("utf-8").rstrip("\r\n"))
+PY
 }
 
 prepare_sql_runner() {
@@ -865,7 +957,8 @@ manifest = {
     },
     "secrets": {
         "includedInBackup": False,
-        "notes": "Live deployment currently stores connection strings in env; backup artifacts redact them.",
+        "connectionStringSource": site.get("connectionStringSource", {"type": "unknown"}),
+        "notes": "Connection strings are resolved at backup runtime from literal env or secretKeyRef and are redacted from backup artifacts.",
     },
 }
 print(json.dumps(manifest, indent=2))
@@ -908,7 +1001,10 @@ backup_site() {
   original_replicas="${original_replicas:-1}"
   printf 'original_replicas=%s\n' "$original_replicas" >> "${site_dir}/cold-backup.log"
 
-  conn=$(kubectl -n "$namespace" get deploy "$deployment" -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="ConnectionStrings__ConnectionString")].value}')
+  conn=$(get_connection_string "$namespace" "$deployment")
+  if [ -z "$conn" ]; then
+    die "Could not resolve ConnectionStrings__ConnectionString for ${namespace}/${deployment}"
+  fi
   normalized_conn=$(normalize_connection_string "$conn")
   unset conn
 
