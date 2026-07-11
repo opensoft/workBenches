@@ -511,7 +511,7 @@ setup_ai_features() {
             [Nn]* | "" )
                 echo -e "${YELLOW}Skipping AI setup.${NC}"
                 echo "You can setup credentials later:"
-                echo "  - Run: ./scripts/check-ai-credentials.sh --interactive"
+                echo "  - Set AI_HARNESS_ACCOUNT_REPO, then run: ./scripts/check-ai-credentials.sh"
                 echo "  - Or manually set environment variables"
                 break
                 ;;
@@ -1138,7 +1138,7 @@ main() {
     echo "• onp - Quick project creation"
     echo "• new-bench - Create new development benches"
     echo "• update-bench-config - Update configuration"
-    echo "• check-ai-credentials - Manage AI credentials"
+    echo "• check-ai-credentials - Manage multiple AI harness accounts"
     echo ""
     echo -e "${YELLOW}Note:${NC} If commands aren't available globally, restart your shell or run:"
     echo "  source ~/.zshrc  # or ~/.bashrc"

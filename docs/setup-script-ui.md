@@ -342,6 +342,7 @@ The UI follows these principles:
 
 ## Additional Resources
 
-- **AI Credentials Management**: Run `./scripts/check-ai-credentials.sh --interactive`
+- **AI Harness Account Management**: Set `AI_HARNESS_ACCOUNT_REPO` to a private
+  account-registry clone, then run `./scripts/check-ai-credentials.sh`.
 - **Spec Tools Guide**: See [docs/spec-driven-development.md](spec-driven-development.md)
 - **Claude Session Setup**: See [docs/claude-session-setup.md](claude-session-setup.md)
