@@ -61,14 +61,23 @@ AI/spec CLIs are installed in the appropriate base image and store credentials o
 // Auth: ~/.claude/ (session, config), ~/.claude.json (legacy config)
 "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind,consistency=cached",
 "source=${localEnv:HOME}/.claude.json,target=/home/${localEnv:USER}/.claude.json,type=bind,consistency=cached",
+// Multiple isolated Claude logins and family-shared session state
+"source=${localEnv:HOME}/.claude-profiles,target=/home/${localEnv:USER}/.claude-profiles,type=bind,consistency=cached",
 
-// OpenAI Codex — @openai/codex (npm)
+// ChatGPT accounts used by Codex CLI
 "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex,type=bind,consistency=cached",
+"source=${localEnv:HOME}/.chatgpt-profiles,target=/home/${localEnv:USER}/.chatgpt-profiles,type=bind,consistency=cached",
 
-// Google Gemini — @google/gemini-cli (npm)
+// Grok Build — isolated through GROK_HOME
+"source=${localEnv:HOME}/.grok-profiles,target=/home/${localEnv:USER}/.grok-profiles,type=bind,consistency=cached",
+
+// Google Antigravity / legacy Gemini settings; keyring tokens are not mounted
 "source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini,type=bind,consistency=cached",
 
-// GitHub Copilot — @githubnext/github-copilot-cli (npm)
+// Abacus AI settings; API key values remain in an external secret manager
+"source=${localEnv:HOME}/.abacusai,target=/home/${localEnv:USER}/.abacusai,type=bind,consistency=cached",
+
+// GitHub Copilot — @github/copilot (npm)
 "source=${localEnv:HOME}/.copilot-cli,target=/home/${localEnv:USER}/.copilot-cli,type=bind,readonly",
 
 // NotebookLM CLI — notebooklm-py (uv), auth via host browser
@@ -100,10 +109,12 @@ Reference mapping each installed AI/spec CLI to its credential path and mount ty
 
 - Shared agent workflow → host-managed files → `~/.agents/` → cached
 - Project Intelligence metadata → host-managed files → `~/.pi/` → cached
-- Claude Code → native installer → `~/.claude/`, `~/.claude.json` → cached
-- OpenAI Codex → npm (`@openai/codex`) → `~/.codex/` → cached
-- Google Gemini → npm (`@google/gemini-cli`) → `~/.gemini/` → cached
-- GitHub Copilot → npm (`@githubnext/github-copilot-cli`) → `~/.copilot-cli/` → readonly
+- Claude Code → native installer → `~/.claude/`, `~/.claude.json`, `~/.claude-profiles/` → cached
+- ChatGPT/Codex CLI → `~/.codex/`, `~/.chatgpt-profiles/` → cached
+- Grok Build → `~/.grok-profiles/` via `GROK_HOME` → cached
+- Google Antigravity → settings under `~/.gemini/`; authentication remains in the host keyring
+- Abacus AI → settings under `~/.abacusai/`; API keys remain external
+- GitHub Copilot → npm (`@github/copilot`) → `~/.copilot-cli/` → readonly
 - OpenCode → built from upstream source → config baked into image via `/etc/skel` → no mount needed
 - oh-my-opencode → built from source (darrenhinde fork) → plugin at `/opt/opencode/plugin` → no mount needed
 - Letta Code → npm (`@letta-ai/letta-code`) → uses env vars or interactive auth → no mount needed

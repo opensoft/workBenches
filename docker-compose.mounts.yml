@@ -33,15 +33,22 @@ x-standard-mounts: &standard-mounts
   # Claude Code (native installer)
   - ~/.claude:/home/${USER}/.claude:cached
   - ~/.claude.json:/home/${USER}/.claude.json:cached
-  # OpenAI Codex (@openai/codex via npm)
+  - ~/.claude-profiles:/home/${USER}/.claude-profiles:cached
+  # ChatGPT accounts used by Codex CLI
   - ~/.codex:/home/${USER}/.codex:cached
+  - ~/.chatgpt-profiles:/home/${USER}/.chatgpt-profiles:cached
+  # Grok Build isolated account homes
+  - ~/.grok-profiles:/home/${USER}/.grok-profiles:cached
   # Shared AI agent protocols and skills
   - ~/.agents:/home/${USER}/.agents:cached
   # Project Intelligence and local agent metadata
   - ~/.pi:/home/${USER}/.pi:cached
-  # Google Gemini (@google/gemini-cli via npm)
+  # Google Antigravity / legacy Gemini settings. Antigravity login tokens remain
+  # in the host OS keyring and are not portable through this mount.
   - ~/.gemini:/home/${USER}/.gemini:cached
-  # GitHub Copilot (@githubnext/github-copilot-cli via npm)
+  # Abacus AI settings. API key values stay in an external secret manager.
+  - ~/.abacusai:/home/${USER}/.abacusai:cached
+  # GitHub Copilot (@github/copilot via npm)
   - ~/.copilot-cli:/home/${USER}/.copilot-cli:ro
   # NotebookLM CLI (notebooklm-py via uv, auth on host browser)
   - ~/.notebooklm:/home/${USER}/.notebooklm:cached
@@ -67,8 +74,9 @@ services:
 #   OpenAI Codex    (@openai/codex via npm)              → ~/.codex/
 #   Shared Agents   (protocols and global skills)        → ~/.agents/
 #   Project Intel   (local agent metadata)                → ~/.pi/
-#   Google Gemini   (@google/gemini-cli via npm)         → ~/.gemini/
-#   GitHub Copilot  (@githubnext/github-copilot-cli npm) → ~/.copilot-cli/
+#   Antigravity     (settings only; auth in host keyring) → ~/.gemini/
+#   Abacus AI       (settings; API keys externally held)  → ~/.abacusai/
+#   GitHub Copilot  (@github/copilot npm) → ~/.copilot-cli/
 #   OpenCode        (upstream source build)              → config in image (/etc/skel)
 #   oh-my-opencode  (darrenhinde fork, built)            → plugin at /opt/opencode/plugin
 #   Letta Code      (@letta-ai/letta-code via npm)       → env vars / interactive
