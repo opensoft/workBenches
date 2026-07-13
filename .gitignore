@@ -52,5 +52,6 @@ reports/cache-pilot/
 .codex/
 .claude/dashboard.md
 .claude/speckit-history.md
+.claude/settings.local.json
 sysBenches/opsBench/
 .worktrees/
