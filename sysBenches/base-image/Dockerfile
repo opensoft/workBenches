@@ -49,7 +49,7 @@ RUN bash /tmp/install-admin-tools.sh && rm /tmp/install-admin-tools.sh
 # is stale so downstream benches do not build without the expected tools.
 RUN command -v claude >/dev/null \
     && command -v codex >/dev/null \
-    && command -v agy >/dev/null \
+    && command -v gemini >/dev/null \
     && command -v opencode >/dev/null \
     || (echo "Missing inherited AI CLIs from workbench-base:latest. Rebuild Layer 0, then rebuild sys-bench-base." >&2 && exit 1)
 
