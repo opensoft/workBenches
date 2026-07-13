@@ -11,10 +11,11 @@ A layered Docker-based development environment system. Each "bench" is a self-co
 This single command:
 1. Configures your shell (zsh + Oh My Zsh + Powerlevel10k)
 2. Checks workstation VPN clients and patches 0dcloud TUN MTU for large Git/Docker transfers
-3. Ensures Docker is running and Layer 0 base image exists
-4. Opens an interactive TUI to select benches, AI tools, and workstation tools
-5. Builds Docker images for selected benches
-6. Installs AI coding CLIs and workstation tools (Claude, Copilot, Codex, Pi, etc.)
+3. Installs or updates Wave Terminal widgets for workBenches
+4. Ensures Docker is running and Layer 0 base image exists
+5. Opens an interactive TUI to select benches, AI tools, and workstation tools
+6. Builds Docker images for selected benches
+7. Installs AI coding CLIs and workstation tools (Claude, Copilot, Codex, Pi, etc.)
 
 After setup, open any bench in VS Code → "Reopen in Container" to start developing.
 
@@ -68,6 +69,7 @@ bash scripts/ensure-layer3.sh --base java-bench:latest
 setup.sh
   ├── Shell setup (zsh + Oh My Zsh + Powerlevel10k)
   ├── VPN setup (AmneziaVPN + 0dcloud checks, 0dcloud MTU patch)
+  ├── Wave Terminal widgets (terminal, projects, and workBench containers)
   ├── Docker check (is daemon running?)
   ├── Layer 0 check (build workbench-base:latest if missing)
   ├── Interactive TUI (scripts/interactive-setup.sh)
@@ -79,6 +81,32 @@ setup.sh
   ├── Layer 1 builds (dev-bench-base, sys-bench-base, bio-bench-base)
   └── Summary + log file path
 ```
+
+## Wave Terminal Widgets
+
+`setup.sh` runs the Wave Terminal installer as a best-effort host setup step so
+all workBenches checkouts get the same desktop shortcuts. The installer comes
+from `opensoft/Install-Wave-Terminal`; setup prefers a sibling
+`../Install-Wave-Terminal` checkout when present, then falls back to cloning it
+into `~/.cache/workbenches/Install-Wave-Terminal`.
+
+Installed widgets include:
+
+| Widget | Behavior |
+|--------|----------|
+| `terminal` | Overrides Wave's built-in terminal to open `wsl://Ubuntu-24.04` instead of PowerShell |
+| `projects` | Opens the Wave files view at `$HOME/projects` on the WSL connection |
+| `pyBench` | Starts or repairs `py-bench`, then opens an interactive shell |
+| `flutterBench` | Starts or repairs `flutter-bench`, then opens an interactive shell |
+| `C++Bench` | Starts or repairs `cpp-bench`, then opens an interactive shell |
+| `cloudBench` | Starts or repairs `cloud-bench`, then opens an interactive shell |
+
+Multi-account Claude Code setups are supported through a portable profile
+manifest. See [Claude multi-account profiles](docs/claude-multi-account-profiles.md).
+
+The WSL connection defaults to `wsl://Ubuntu-24.04` and the projects widget
+defaults to `$HOME/projects`. Override them with `WAVE_WSL_CONNECTION` and
+`WAVE_PROJECTS_ROOT`. Set `WORKBENCHES_SKIP_WAVE_WIDGETS=1` to skip this step.
 
 ### Bench Processing Logic
 

@@ -104,6 +104,63 @@ ensure_docker() {
     fi
 }
 
+# Install or update Wave Terminal widgets for this workBenches checkout.
+# This is best-effort because Wave is a desktop convenience, not a build
+# prerequisite.
+install_wave_terminal_widgets() {
+    if [ "${WORKBENCHES_SKIP_WAVE_WIDGETS:-}" = "1" ]; then
+        echo "Wave Terminal widget setup skipped by WORKBENCHES_SKIP_WAVE_WIDGETS=1."
+        return 0
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "Wave Terminal widget setup skipped: python3 is not available."
+        return 0
+    fi
+
+    local installer_repo="${WAVE_TERMINAL_INSTALLER_REPO:-https://github.com/opensoft/Install-Wave-Terminal.git}"
+    local sibling_installer_dir
+    sibling_installer_dir="$(cd "$SCRIPT_DIR/.." && pwd)/Install-Wave-Terminal"
+    local installer_dir
+    if [ -z "${WAVE_TERMINAL_INSTALLER_DIR:-}" ] && [ -x "$sibling_installer_dir/scripts/install-workbenches-widgets.sh" ]; then
+        installer_dir="$sibling_installer_dir"
+    else
+        installer_dir="${WAVE_TERMINAL_INSTALLER_DIR:-$HOME/.cache/workbenches/Install-Wave-Terminal}"
+    fi
+    local installer_script="$installer_dir/scripts/install-workbenches-widgets.sh"
+    local projects_root="${WAVE_PROJECTS_ROOT:-${PROJECTS_ROOT:-$HOME/projects}}"
+    local wsl_connection="${WAVE_WSL_CONNECTION:-wsl://Ubuntu-24.04}"
+
+    if [ ! -x "$installer_script" ]; then
+        if [ -e "$installer_dir" ]; then
+            echo "Wave Terminal widget setup skipped: $installer_dir exists but does not contain the installer."
+            return 0
+        fi
+
+        if ! command -v git >/dev/null 2>&1; then
+            echo "Wave Terminal widget setup skipped: git is not available."
+            return 0
+        fi
+
+        mkdir -p "$(dirname "$installer_dir")"
+        if ! git clone --depth 1 "$installer_repo" "$installer_dir"; then
+            echo "Wave Terminal widget setup skipped: failed to clone $installer_repo."
+            return 0
+        fi
+    elif [ -d "$installer_dir/.git" ] && command -v git >/dev/null 2>&1; then
+        git -C "$installer_dir" pull --ff-only --quiet || \
+            echo "Wave Terminal installer update skipped; using existing checkout at $installer_dir."
+    fi
+
+    "$installer_script" \
+        --workbenches-root "$SCRIPT_DIR" \
+        --projects-root "$projects_root" \
+        --wsl-connection "$wsl_connection" || {
+            echo "Wave Terminal widget setup failed; continuing workBenches setup."
+            return 0
+        }
+}
+
 # Parse arguments
 USERNAME=${1:-$(whoami)}
 if [ "$USERNAME" = "--user" ]; then
@@ -142,6 +199,12 @@ elif [ -t 0 ]; then
         [Yy]*) "${SCRIPT_DIR}/scripts/setup-claude-profiles.sh" --interactive || echo "⚠ Claude profile setup failed" ;;
     esac
 fi
+echo ""
+
+# Wave Terminal widgets are host-user state. Install them before any image
+# builds so the desktop terminal shortcuts track the current checkout.
+log_header "WAVE TERMINAL WIDGET SETUP"
+install_wave_terminal_widgets
 echo ""
 
 # Docker prerequisite
