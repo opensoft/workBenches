@@ -16,7 +16,7 @@ echo "========================================="
 # ========================================
 
 echo "Installing Terraform..."
-TERRAFORM_VERSION="1.15.7"
+TERRAFORM_VERSION="1.15.8"
 cd /tmp
 wget -q https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
 unzip -q terraform_${TERRAFORM_VERSION}_linux_amd64.zip
@@ -26,7 +26,10 @@ terraform version
 
 echo "Installing OpenTofu..."
 # OpenTofu - open source Terraform alternative
-curl -fsSL https://get.opentofu.org/install-opentofu.sh | bash -s -- --install-method standalone
+OPENTOFU_VERSION="1.12.3"
+curl -fsSL https://get.opentofu.org/install-opentofu.sh | bash -s -- \
+    --install-method standalone \
+    --opentofu-version "${OPENTOFU_VERSION}"
 tofu version || echo "OpenTofu installed (tofu command)"
 
 # ========================================
