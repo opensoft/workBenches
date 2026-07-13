@@ -1827,13 +1827,13 @@ process_selections() {
                             fi
                         else
                             echo -e "  ${RED}✗ Node.js 18+ required (current: v$node_version)${NC}"
-                            echo -e "  ${DIM}Recommended: Node.js 22+${NC}"
+                            echo -e "  ${DIM}Recommended: Node.js 24+${NC}"
                             echo -e "  ${DIM}Install/Update Node.js: https://nodejs.org/${NC}"
                             ((fail_count++))
                         fi
                     else
                         echo -e "  ${RED}✗ npm not found - Node.js required${NC}"
-                        echo -e "  ${DIM}Install Node.js 22+: https://nodejs.org/${NC}"
+                        echo -e "  ${DIM}Install Node.js 24+: https://nodejs.org/${NC}"
                         ((fail_count++))
                     fi
                     ;;
@@ -2128,7 +2128,7 @@ process_selections() {
                             fi
                         else
                             echo -e "  ${RED}✗ npm not found - Node.js required${NC}"
-                            echo -e "  ${DIM}Install Node.js 22+: https://nodejs.org/${NC}"
+                            echo -e "  ${DIM}Install Node.js 24+: https://nodejs.org/${NC}"
                             ((fail_count++))
                         fi
                         ;;
@@ -2370,8 +2370,8 @@ install_nodejs() {
         ubuntu|debian|pop)
             echo -e "${CYAN}Installing Node.js via NodeSource repository...${NC}"
             echo ""
-            # Install Node.js 22.x LTS
-            if curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
+            # Install Node.js 24.x LTS
+            if curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash - && \
                sudo apt-get install -y nodejs; then
                 echo ""
                 echo -e "${GREEN}✓ Node.js installed successfully!${NC}"
@@ -2386,7 +2386,7 @@ install_nodejs() {
         fedora|rhel|centos)
             echo -e "${CYAN}Installing Node.js via NodeSource repository...${NC}"
             echo ""
-            if curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash - && \
+            if curl -fsSL https://rpm.nodesource.com/setup_24.x | sudo bash - && \
                sudo yum install -y nodejs; then
                 echo ""
                 echo -e "${GREEN}✓ Node.js installed successfully!${NC}"

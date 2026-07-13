@@ -578,7 +578,7 @@ fi
 export KUBECONFIG=/home/brett/projects/adminbench/brett-heap.kubeconfig
 export PATH="/usr/bin:$PATH"
 export NODE_PATH=/usr/bin/node
-export NODE_VERSION=22.20.0
+export NODE_VERSION=24.18.0
 export NODEJS_HOME=/usr/bin
 
 # Claude Code Node.js configuration

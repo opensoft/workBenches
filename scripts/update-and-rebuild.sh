@@ -506,10 +506,11 @@ echo "=========================================="
 echo -e "${GREEN}✓ Build complete in ${TOTAL_MINS}m ${TOTAL_SECS}s${NC}"
 echo "=========================================="
 
-# Run version check after build
+# Run version check after build. A cascade touches multiple layers, so audit the
+# full stack rather than only the initially requested layer.
 echo ""
 echo -e "${CYAN}Running version check on rebuilt images...${NC}"
-if [ "$BUILD_ALL" = true ]; then
+if [ "$BUILD_ALL" = true ] || [ "$CASCADE" = true ]; then
     "$SCRIPT_DIR/check-versions.sh" --user "$USERNAME"
 else
     "$SCRIPT_DIR/check-versions.sh" --layer "$LAYER" --user "$USERNAME"

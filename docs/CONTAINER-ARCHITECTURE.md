@@ -82,7 +82,7 @@ WorkBenches uses a **4-layer logical Docker image architecture** to minimize bui
 - Claude Code (native installer → `/usr/local/bin/claude`)
 - OpenAI Codex (`@openai/codex` via npm)
 - Google Gemini (`@google/gemini-cli` via npm)
-- GitHub Copilot CLI (`@githubnext/github-copilot-cli` via npm)
+- GitHub Copilot CLI (`@github/copilot` via npm)
 - OpenCode (built from upstream source → `/usr/local/bin/opencode`)
 - oh-my-opencode (darrenhinde fork, plugin at `/opt/opencode/plugin`)
 - opencode-gemini-auth & opencode-openai-codex-auth (auth plugins)

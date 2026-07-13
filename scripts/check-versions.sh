@@ -98,9 +98,33 @@ antigravity_latest() {
     container_version "$image" "agy changelog 2>/dev/null | sed -n '1{s/:$//;p;q}' || echo unknown"
 }
 
+claude_code_runnable_latest() {
+    local native_latest
+    native_latest=$(curl --http1.1 -fsSL --retry 2 --connect-timeout 10 --max-time 20 \
+        https://downloads.claude.ai/claude-code-releases/latest 2>/dev/null || true)
+    if echo "$native_latest" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+'; then
+        printf '%s\n' "$native_latest"
+        return 0
+    fi
+
+    curl --http1.1 -fsSL --retry 2 --connect-timeout 10 --max-time 120 \
+        https://registry.npmjs.org/@anthropic-ai%2fclaude-code 2>/dev/null \
+        | jq -r '.versions | to_entries[] | select(.value.bin.claude == "cli.js") | .key' 2>/dev/null \
+        | sort -V \
+        | tail -1
+}
+
 # Extract just the version number from a version string
 extract_version() {
-    echo "$1" | grep -oE '[0-9]+\.[0-9]+[0-9.]*' | head -1
+    echo "$1" | grep -oE '[0-9]+\.[0-9]+[0-9.]*' | head -1 | sed 's/[.]*$//'
+}
+
+version_at_least() {
+    local installed="$1"
+    local latest="$2"
+
+    [ "$installed" = "$latest" ] && return 0
+    [ "$(printf '%s\n%s\n' "$latest" "$installed" | sort -V | head -1)" = "$latest" ]
 }
 
 # Compare and print versions
@@ -125,7 +149,7 @@ report_tool() {
     if [ "$installed" = "n/a" ]; then
         status="✗"
         color="$RED"
-    elif [ "$latest" != "unknown" ] && [ "$installed" != "$latest" ]; then
+    elif [ "$latest" != "unknown" ] && ! version_at_least "$installed" "$latest"; then
         status="⬆"
         color="$YELLOW"
     fi
@@ -136,6 +160,32 @@ report_tool() {
 
     # Accumulate JSON
     JSON_ENTRIES+=("{\"tool\":\"$tool\",\"layer\":\"$layer\",\"installed\":\"$installed\",\"latest\":\"$latest\",\"status\":\"$([ "$status" = "✓" ] && echo "current" || ([ "$status" = "⬆" ] && echo "outdated" || echo "missing"))\"}")
+}
+
+report_optional_tool() {
+    local tool="$1"
+    local installed_raw="$2"
+    local latest_raw="$3"
+    local layer="$4"
+
+    local installed=$(extract_version "$installed_raw")
+    local latest=$(extract_version "$latest_raw")
+
+    if [ -z "$installed" ] || [ "$installed" = "not installed" ]; then
+        installed="optional"
+    fi
+    if [ -z "$latest" ]; then
+        latest="unknown"
+    fi
+
+    if [ "$installed" = "optional" ] && [ "$latest" = "unknown" ]; then
+        if [ "$JSON_OUTPUT" = false ]; then
+            printf "  ${GREEN}%-3s${NC} %-25s %-18s %-18s\n" "✓" "$tool" "$installed" "$latest"
+        fi
+        JSON_ENTRIES+=("{\"tool\":\"$tool\",\"layer\":\"$layer\",\"installed\":\"$installed\",\"latest\":\"$latest\",\"status\":\"optional\"}")
+    else
+        report_tool "$tool" "$installed_raw" "$latest_raw" "$layer"
+    fi
 }
 
 print_layer_header() {
@@ -225,7 +275,7 @@ check_layer0() {
     # AI CLIs (installed in Layer 0 for all benches)
     report_tool "claude-code" \
         "$(container_version "$image" "claude --version 2>/dev/null || echo n/a")" \
-        "$(npm_latest "@anthropic-ai/claude-code")" \
+        "$(claude_code_runnable_latest)" \
         "0"
 
     report_tool "codex" \
@@ -238,14 +288,14 @@ check_layer0() {
         "n/a" \
         "0"
 
-    report_tool "agy" \
+    report_optional_tool "agy" \
         "$(container_version "$image" "agy --version 2>/dev/null || echo n/a")" \
         "$(antigravity_latest "$image")" \
         "0"
 
     report_tool "copilot" \
-        "$(container_version "$image" "github-copilot-cli --version 2>/dev/null || echo n/a")" \
-        "$(npm_latest "@githubnext/github-copilot-cli")" \
+        "$(container_version "$image" "copilot --version 2>/dev/null || github-copilot-cli --version 2>/dev/null || echo n/a")" \
+        "$(npm_latest "@github/copilot")" \
         "0"
 
     report_tool "letta-code" \
@@ -373,7 +423,7 @@ check_layer1b() {
         "1b"
 
     report_tool "ansible" \
-        "$(container_version "$image" "ansible --version | head -1")" \
+        "$(container_version "$image" "python3 -m pip show ansible 2>/dev/null | awk '/^Version:/{print \$2}' || ansible --version | head -1")" \
         "$(pip index versions ansible 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo unknown)" \
         "1b"
 
