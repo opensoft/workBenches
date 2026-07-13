@@ -8,7 +8,7 @@ FROM workbench-base:latest
 # Container version labels
 LABEL layer="1b"
 LABEL layer.name="sys-bench-base"
-LABEL layer.version="2.0.0"
+LABEL layer.version="2.0.1"
 LABEL layer.description="Sys/DevOps base with infrastructure and cloud tools (user-agnostic)"
 
 # Everything runs as root

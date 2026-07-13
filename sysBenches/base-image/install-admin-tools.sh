@@ -1,6 +1,6 @@
 #!/bin/bash
 # Sys/DevOps Tools Installation Script
-# Version: 1.0.0
+# Version: 1.0.2
 #
 # This script installs all sysadmin and DevOps CLI tools
 # for sys-bench-base image.
@@ -16,7 +16,7 @@ echo "========================================="
 # ========================================
 
 echo "Installing Terraform..."
-TERRAFORM_VERSION="1.6.6"
+TERRAFORM_VERSION="1.15.7"
 cd /tmp
 wget -q https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
 unzip -q terraform_${TERRAFORM_VERSION}_linux_amd64.zip
@@ -41,7 +41,12 @@ rm kubectl
 kubectl version --client
 
 echo "Installing Helm..."
-curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+HELM_TAG=$(curl -fsSL https://api.github.com/repos/helm/helm/releases/latest | grep '"tag_name"' | sed -E 's/.*"(v[^"]+)".*/\1/' | head -1)
+cd /tmp
+curl -fsSL "https://get.helm.sh/helm-${HELM_TAG}-linux-amd64.tar.gz" -o "helm-${HELM_TAG}-linux-amd64.tar.gz"
+tar xzf "helm-${HELM_TAG}-linux-amd64.tar.gz"
+install -o root -g root -m 0755 linux-amd64/helm /usr/local/bin/helm
+rm -rf linux-amd64 "helm-${HELM_TAG}-linux-amd64.tar.gz"
 helm version
 
 echo "Installing k9s..."
@@ -89,7 +94,8 @@ gcloud version
 # ========================================
 
 echo "Installing Ansible..."
-apt-get update && apt-get install -y ansible
+apt-get update && apt-get install -y python3-pip
+python3 -m pip install --break-system-packages --upgrade ansible
 ansible --version
 
 # ========================================
