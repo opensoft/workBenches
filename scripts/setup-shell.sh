@@ -138,15 +138,30 @@ echo ""
 # --- 6. Set default shell to zsh ---
 CURRENT_SHELL=$(getent passwd "$(whoami)" | cut -d: -f7)
 ZSH_PATH=$(command -v zsh)
+CURRENT_USER=$(whoami)
 
 if [ "$CURRENT_SHELL" = "$ZSH_PATH" ]; then
     echo "✓ Default shell is already zsh"
 else
     echo "Setting default shell to zsh..."
-    if chsh -s "$ZSH_PATH" 2>/dev/null; then
+    # Try non-interactively first (passwordless/cached sudo) so we can never hang.
+    # NOTE: do not call a bare `chsh` here — it blocks on a password prompt, and
+    # redirecting stderr only hides the prompt (which is what caused the hang).
+    if sudo -n chsh -s "$ZSH_PATH" "$CURRENT_USER" 2>/dev/null; then
         echo "✓ Default shell set to zsh"
+        echo "  Restart your terminal (or log out and back in) for it to take effect."
+    elif [ -t 0 ]; then
+        # Interactive terminal available: prompt visibly so it can't look like a hang.
+        echo "  Authentication required to change your login shell."
+        if chsh -s "$ZSH_PATH"; then
+            echo "✓ Default shell set to zsh"
+            echo "  Restart your terminal (or log out and back in) for it to take effect."
+        else
+            echo "  Could not set default shell automatically."
+            echo "  Run manually: chsh -s $ZSH_PATH"
+        fi
     else
-        echo "  Could not set default shell automatically."
+        echo "  Skipped: no terminal available to authenticate."
         echo "  Run manually: chsh -s $ZSH_PATH"
     fi
 fi

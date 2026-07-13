@@ -1,6 +1,7 @@
 import { resolve } from 'path';
 import type { Component, InstallResult } from '../types';
 import { getProjectRoot, AI_CLI_DEFINITIONS, TOOL_DEFINITIONS } from './config';
+import { isWSL } from './statusChecks';
 
 /**
  * Run a shell command and return result
@@ -192,7 +193,7 @@ async function installAiCli(id: string): Promise<InstallResult> {
     return {
       success: true,
       message: `Installed ${def.name}`,
-      needsCredentials: ['claude_cli', 'codex_cli', 'copilot_cli', 'gemini_cli'].includes(id),
+      needsCredentials: ['claude_cli', 'codex_cli', 'copilot_cli', 'antigravity_cli'].includes(id),
     };
   }
 
@@ -236,6 +237,39 @@ async function installTool(id: string): Promise<InstallResult> {
   const def = TOOL_DEFINITIONS.find(d => d.id === id);
   if (!def) {
     return { success: false, message: `Unknown tool: ${id}` };
+  }
+
+  if (isWSL() && ['vscode', 'warp', 'wave', 'pi_terminal'].includes(id)) {
+    const scriptPath = resolve(getProjectRoot(), 'scripts/setup-windows-tools.sh');
+    console.log(`\n  Installing/checking ${def.name} on Windows...`);
+    const result = await withSpinner(
+      `Configuring ${def.name}`,
+      () => runCommand(['bash', scriptPath, id])
+    );
+
+    return {
+      success: result.success,
+      message: result.success
+        ? `Configured ${def.name} on Windows`
+        : `Failed to configure ${def.name}: ${result.output}`,
+      needsCredentials: id === 'pi_terminal' && result.success,
+    };
+  }
+
+  if (id === 'pi_terminal') {
+    console.log('\n  Installing Pi Terminal...');
+    const result = await withSpinner(
+      'Installing Pi Terminal',
+      () => runCommand(['npm', 'install', '-g', '--ignore-scripts', '@earendil-works/pi-coding-agent'])
+    );
+
+    return {
+      success: result.success,
+      message: result.success
+        ? 'Installed Pi Terminal'
+        : `Failed to install Pi Terminal: ${result.output}`,
+      needsCredentials: result.success,
+    };
   }
 
   console.log(`\n  ${def.name} Installation:`);
@@ -348,8 +382,8 @@ export async function processSelections(
         case 'copilot_cli':
           console.log('    - Copilot CLI: Run `copilot auth login`');
           break;
-        case 'gemini_cli':
-          console.log('    - Gemini CLI: Run `gemini` and follow Google login prompts');
+        case 'antigravity_cli':
+          console.log('    - Antigravity CLI: Run `agy` and follow Google sign-in prompts');
           break;
       }
     }

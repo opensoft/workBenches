@@ -9,8 +9,8 @@ FROM workbench-base:latest
 # Container version labels
 LABEL layer="1"
 LABEL layer.name="dev-bench-base"
-LABEL layer.version="2.2.3"
-LABEL layer.description="Developer base with Python, Node.js LTS, dev tools, Playwright browsers, and generic testing tools (user-agnostic)"
+LABEL layer.version="2.3.1"
+LABEL layer.description="Developer base with Python, Node.js LTS, dev tools, Playwright browsers, generic testing tools, and the Omnigent meta-harness (user-agnostic)"
 
 # Everything runs as root
 USER root
@@ -130,6 +130,33 @@ RUN chmod 0755 /usr/local/bin/speckit-worktree-enable && \
     find /usr/local/share/speckit-worktree/templates -type f \( -name '*.sh' -o -name '*.zsh' -o -name '*.ps1' \) -exec chmod 0755 {} + && \
     find /usr/local/share/speckit-worktree/templates -type f ! \( -name '*.sh' -o -name '*.zsh' -o -name '*.ps1' \) -exec chmod 0644 {} +
 
+# ========================================
+# AI META-HARNESS (OMNIGENT)
+# ========================================
+# Omnigent wraps the Layer 0 codex/claude CLIs behind one CLI + web UI.
+# Installed as a system-wide uv tool: executables land in /usr/local/bin (on
+# PATH for every user) and the tool venv under /opt/uv-tools (readable by the
+# Layer 3 non-root user, not root-only /root). The published wheel bundles the
+# prebuilt web UI, so no npm build runs here. Prereqs (uv, Node 22, tmux,
+# bubblewrap, codex, claude) are all inherited from Layer 0.
+RUN UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin \
+    uv tool install --python-preference system "omnigent==0.1.1" \
+    && chmod -R a+rX /opt/uv-tools \
+    && omnigent --version
+
+# Install Grok CLI with xAI's native installer if the inherited base image does
+# not already provide it. Install into /opt so the later non-root user can run it
+# from zsh without relying on root's ~/.grok/bin.
+RUN if ! command -v grok >/dev/null 2>&1; then \
+        mkdir -p /opt/grok/bin \
+        && bash -o pipefail -c 'curl -fsSL https://x.ai/cli/install.sh | GROK_BIN_DIR=/opt/grok/bin bash' \
+        && mkdir -p /opt/grok/completions \
+        && if [ -d /root/.grok/completions ]; then cp -a /root/.grok/completions/. /opt/grok/completions/; fi \
+        && chmod -R a+rX /opt/grok \
+        && ln -sf /opt/grok/bin/grok /usr/local/bin/grok \
+        && if [ -x /opt/grok/bin/agent ]; then ln -sf /opt/grok/bin/agent /usr/local/bin/agent; fi; \
+    fi
+
 # System-wide Corepack cache
 ENV COREPACK_HOME=/opt/corepack
 RUN mkdir -p /opt/corepack && \
@@ -157,9 +184,23 @@ RUN chmod 0644 /usr/local/share/sonarqube/sonarqube-cli-env.sh \
 # ZSH PLUGINS (into /etc/skel)
 # ========================================
 
-# Install Oh My Zsh plugins into /etc/skel (oh-my-zsh itself is from Layer 0)
-RUN git clone https://github.com/zsh-users/zsh-autosuggestions /etc/skel/.oh-my-zsh/plugins/zsh-autosuggestions && \
-    git clone https://github.com/zsh-users/zsh-syntax-highlighting /etc/skel/.oh-my-zsh/plugins/zsh-syntax-highlighting
+# Install Oh My Zsh plugins into /etc/skel (oh-my-zsh itself is from Layer 0).
+# Use Ubuntu packages instead of a GitHub `git clone`: the build network may
+# route github.com through a VPN tunnel whose MTU breaks TLS during the clone,
+# while the apt mirror is direct and reliable. Symlink the packaged scripts
+# into the layout Oh My Zsh expects (<plugin>/<plugin>.plugin.zsh).
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get -y install --no-install-recommends \
+    zsh-autosuggestions \
+    zsh-syntax-highlighting \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /etc/skel/.oh-my-zsh/plugins/zsh-autosuggestions \
+               /etc/skel/.oh-my-zsh/plugins/zsh-syntax-highlighting \
+    && ln -sf /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh \
+              /etc/skel/.oh-my-zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.plugin.zsh \
+    && ln -sf /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh \
+              /etc/skel/.oh-my-zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.plugin.zsh
 
 # Ensure .zshrc exists (Layer 0 should provide it, but handle missing/stale cache)
 RUN if [ ! -f /etc/skel/.zshrc ]; then \
@@ -180,6 +221,21 @@ RUN printf '\n# DevBench Speckit worktree helpers\n[[ -f /usr/local/share/ct/ct-
 # Source SonarQube CLI env defaults from global interactive shell startup.
 RUN printf '\n# DevBench SonarQube CLI environment\n[ -f /usr/local/share/sonarqube/sonarqube-cli-env.sh ] && . /usr/local/share/sonarqube/sonarqube-cli-env.sh\n' >> /etc/zsh/zshrc && \
     printf '\n# DevBench SonarQube CLI environment\n[ -f /usr/local/share/sonarqube/sonarqube-cli-env.sh ] && . /usr/local/share/sonarqube/sonarqube-cli-env.sh\n' >> /etc/bash.bashrc
+
+# Make Grok available in zsh and bash shells created from /etc/skel.
+RUN if ! grep -q '/opt/grok/bin' /etc/skel/.zshrc; then \
+        echo '' >> /etc/skel/.zshrc && \
+        echo '# Grok CLI' >> /etc/skel/.zshrc && \
+        echo 'export PATH="/opt/grok/bin:$HOME/.grok/bin:$PATH"' >> /etc/skel/.zshrc && \
+        echo 'if [[ -d /opt/grok/completions/zsh ]]; then fpath=(/opt/grok/completions/zsh $fpath); fi' >> /etc/skel/.zshrc && \
+        echo 'autoload -Uz compinit && compinit -C' >> /etc/skel/.zshrc; \
+    fi && \
+    if ! grep -q '/opt/grok/bin' /etc/skel/.bashrc; then \
+        echo '' >> /etc/skel/.bashrc && \
+        echo '# Grok CLI' >> /etc/skel/.bashrc && \
+        echo 'export PATH="/opt/grok/bin:$HOME/.grok/bin:$PATH"' >> /etc/skel/.bashrc && \
+        echo '[[ -r /opt/grok/completions/bash/grok.bash ]] && source /opt/grok/completions/bash/grok.bash' >> /etc/skel/.bashrc; \
+    fi
 
 # Add bash_profile to /etc/skel (force zsh when bash is requested)
 RUN echo '# Force zsh when bash is requested' > /etc/skel/.bash_profile && \

@@ -45,6 +45,9 @@ x-standard-mounts: &standard-mounts
   - ~/.pi:/home/${USER}/.pi:cached
   # Google Antigravity / legacy Gemini settings. Antigravity login tokens remain
   # in the host OS keyring and are not portable through this mount.
+  # Omnigent (AI meta-harness, wraps Codex/Claude)
+  - ~/.omnigent:/home/${USER}/.omnigent:cached
+  # Google Gemini (@google/gemini-cli via npm)
   - ~/.gemini:/home/${USER}/.gemini:cached
   # Abacus AI settings. API key values stay in an external secret manager.
   - ~/.abacusai:/home/${USER}/.abacusai:cached

@@ -1,4 +1,5 @@
 import { resolve } from 'path';
+import { readFileSync } from 'fs';
 import type { ComponentStatus, Component } from '../types';
 import { getProjectRoot, AI_CLI_DEFINITIONS } from './config';
 
@@ -8,9 +9,8 @@ import { getProjectRoot, AI_CLI_DEFINITIONS } from './config';
 export function isWSL(): boolean {
   if (process.env.WSL_DISTRO_NAME) return true;
   if (process.platform !== 'linux') return false;
-  // Check for /proc/version synchronously if available
   try {
-    return require('fs').existsSync('/proc/version');
+    return readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft');
   } catch {
     return false;
   }
@@ -27,6 +27,40 @@ async function commandExists(command: string): Promise<boolean> {
     });
     const exitCode = await proc.exited;
     return exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if a Windows command exists from WSL.
+ */
+async function windowsCommandExists(command: string): Promise<boolean> {
+  try {
+    const ps = `if (Get-Command '${command.replace(/'/g, "''")}' -ErrorAction SilentlyContinue) { 'yes' } else { 'no' }`;
+    const proc = Bun.spawn(['powershell.exe', '-NoProfile', '-Command', ps], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const output = await new Response(proc.stdout).text();
+    return (await proc.exited) === 0 && output.replace(/\r/g, '').trim() === 'yes';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check for a file under a Windows environment directory from WSL.
+ */
+async function windowsEnvFileExists(envName: string, suffix: string): Promise<boolean> {
+  try {
+    const ps = `$base = [Environment]::GetEnvironmentVariable('${envName.replace(/'/g, "''")}'); if ($base -and (Test-Path -LiteralPath (Join-Path $base '${suffix.replace(/'/g, "''")}'))) { 'yes' } else { 'no' }`;
+    const proc = Bun.spawn(['powershell.exe', '-NoProfile', '-Command', ps], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const output = await new Response(proc.stdout).text();
+    return (await proc.exited) === 0 && output.replace(/\r/g, '').trim() === 'yes';
   } catch {
     return false;
   }
@@ -203,6 +237,23 @@ async function checkWave(): Promise<ComponentStatus> {
 }
 
 /**
+ * Check Pi Coding Agent status.
+ */
+async function checkPiTerminal(): Promise<ComponentStatus> {
+  const hasPi = await commandExists('pi');
+  const hasWindowsPi = isWSL()
+    ? await windowsCommandExists('pi') || await windowsEnvFileExists('APPDATA', 'npm\\pi.cmd')
+    : false;
+
+  if (!hasPi && !hasWindowsPi) {
+    return 'not_installed';
+  }
+
+  const hasPiDir = await dirExists(`${process.env.HOME}/.pi`);
+  return hasPiDir ? 'installed' : 'needs_creds';
+}
+
+/**
  * Check bench installation status
  */
 async function checkBench(benchName: string, expectedUrl?: string): Promise<ComponentStatus> {
@@ -271,7 +322,7 @@ export async function checkComponentStatus(component: Component): Promise<Compon
     case 'codex_cli':
       return checkCodexCli();
     case 'copilot_cli':
-    case 'gemini_cli':
+    case 'antigravity_cli':
     case 'opencode_cli':
     case 'spec_kit':
     case 'openspec': {
@@ -294,6 +345,8 @@ export async function checkComponentStatus(component: Component): Promise<Compon
       return checkWarp();
     case 'wave':
       return checkWave();
+    case 'pi_terminal':
+      return checkPiTerminal();
     default:
       return 'unknown';
   }

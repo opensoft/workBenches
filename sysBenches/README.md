@@ -11,11 +11,15 @@ Each subfolder is a separate git repository containing systems and operations to
   - Kubernetes cluster configuration and tools
   - Database operations tools (SQL Server, PostgreSQL)
 - **`opsBench/`** - Deployment, CI/CD, security, and GitOps operations
+- **`365Bench/`** - Microsoft 365 business-stack administration (user/tenant admin)
+  - Entra ID (Azure AD), Exchange Online, Teams, SharePoint/OneDrive
+  - PowerShell 7 + Microsoft.Graph / Microsoft.Entra modules, `m365` & `mgc` CLIs
+  - User/tenant admin only — NOT Azure infrastructure / AKS (use cloudBench)
 
 ## Canonical Images
 
 - **Layer 1b family base**: `sys-bench-base:latest`
-- **Layer 2 benches**: `cloud-bench:latest`, `ops-bench:latest`
+- **Layer 2 benches**: `cloud-bench:latest`, `ops-bench:latest`, `m365-bench:latest`
 - **Layer 3 user images**: `<bench>:<user>` via `scripts/ensure-layer3.sh`
 
 ## Usage

@@ -233,9 +233,9 @@ check_layer0() {
         "$(npm_latest "@openai/codex")" \
         "0"
 
-    report_tool "gemini" \
-        "$(container_version "$image" "gemini --version 2>/dev/null || echo n/a")" \
-        "$(npm_latest "@google/gemini-cli")" \
+    report_tool "antigravity-cli" \
+        "$(container_version "$image" "agy --version 2>/dev/null || echo n/a")" \
+        "n/a" \
         "0"
 
     report_tool "agy" \

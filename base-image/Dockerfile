@@ -46,6 +46,9 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     fzf \
     bat \
     sudo \
+    # Sandbox runtime used by Codex; without this, Codex falls back to its
+    # bundled bubblewrap and prints a startup warning.
+    bubblewrap \
     # Build tools
     build-essential \
     pkg-config \
@@ -62,9 +65,21 @@ RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd
 # GITHUB CLI
 # ========================================
 
-RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+RUN for attempt in 1 2 3; do \
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /tmp/githubcli-archive-keyring.gpg && break; \
+        if [ "$attempt" = "3" ]; then exit 1; fi; \
+        sleep $((attempt * 5)); \
+    done \
+    && gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg /tmp/githubcli-archive-keyring.gpg \
+    && rm -f /tmp/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages focal main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-    && apt-get update && apt-get -y install gh \
+    && for attempt in 1 2 3; do \
+        apt-get update \
+        && apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60 -y install gh \
+        && break; \
+        if [ "$attempt" = "3" ]; then exit 1; fi; \
+        sleep $((attempt * 10)); \
+    done \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -90,12 +105,12 @@ RUN install -m 0755 -d /etc/apt/keyrings \
 # ========================================
 
 # Install yq (YAML processor)
-RUN YQ_VERSION=$(curl -s https://api.github.com/repos/mikefarah/yq/releases/latest | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/') \
-    && curl -L "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" -o /usr/local/bin/yq \
+RUN YQ_VERSION=$(curl --retry 5 --retry-all-errors --connect-timeout 30 -fsSL https://api.github.com/repos/mikefarah/yq/releases/latest | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/') \
+    && curl --retry 5 --retry-all-errors --connect-timeout 30 -fL "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" -o /usr/local/bin/yq \
     && chmod +x /usr/local/bin/yq
 
 # Install zoxide (smarter cd) - install to /usr/local/bin
-RUN curl -sS https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash -s -- --bin-dir /usr/local/bin
+RUN curl --retry 5 --retry-all-errors --connect-timeout 30 -fsSL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash -s -- --bin-dir /usr/local/bin
 
 # Install Node.js 22 for modern AI CLI builds and npm-based tools.
 RUN apt-get update \
@@ -144,19 +159,30 @@ ENV PATH="/opt/bun/bin:${PATH}"
 
 # Copy and run AI CLI installation script
 COPY install-ai-clis.sh /tmp/
+ARG AI_CLI_REFRESH=2026-06-18
+RUN echo "AI CLI refresh marker: ${AI_CLI_REFRESH}"
 RUN bash /tmp/install-ai-clis.sh && rm /tmp/install-ai-clis.sh
 
 # ========================================
 # ZSH CONFIGURATION (into /etc/skel for future users)
 # ========================================
 
-# Install Oh-My-Zsh into /etc/skel
-RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended \
-    && mv /root/.oh-my-zsh /etc/skel/.oh-my-zsh \
-    && rm -f /root/.zshrc
+# Install Oh-My-Zsh into /etc/skel. Use direct clones because the installer
+# wraps git clone and gives us no retry control in flaky networks.
+RUN for attempt in 1 2 3; do \
+        git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh.git /etc/skel/.oh-my-zsh && break; \
+        rm -rf /etc/skel/.oh-my-zsh; \
+        if [ "$attempt" = "3" ]; then exit 1; fi; \
+        sleep $((attempt * 5)); \
+    done
 
 # Install Powerlevel10k theme
-RUN git clone --depth=1 https://github.com/romkatv/powerlevel10k.git /etc/skel/.oh-my-zsh/custom/themes/powerlevel10k
+RUN for attempt in 1 2 3; do \
+        git clone --depth=1 https://github.com/romkatv/powerlevel10k.git /etc/skel/.oh-my-zsh/custom/themes/powerlevel10k && break; \
+        rm -rf /etc/skel/.oh-my-zsh/custom/themes/powerlevel10k; \
+        if [ "$attempt" = "3" ]; then exit 1; fi; \
+        sleep $((attempt * 5)); \
+    done
 
 # Create /etc/skel/.zshrc template
 RUN echo 'export ZSH="$HOME/.oh-my-zsh"' > /etc/skel/.zshrc && \
@@ -168,14 +194,17 @@ RUN echo 'export ZSH="$HOME/.oh-my-zsh"' > /etc/skel/.zshrc && \
     echo 'eval "$(zoxide init zsh)"' >> /etc/skel/.zshrc && \
     echo 'alias cat="batcat"' >> /etc/skel/.zshrc && \
     echo 'alias ls="ls --color=auto"' >> /etc/skel/.zshrc && \
-    echo 'export PATH="$HOME/.local/bin:/opt/bun/bin:$PATH"' >> /etc/skel/.zshrc && \
+    echo 'export PATH="/opt/grok/bin:$HOME/.local/bin:/opt/bun/bin:$PATH"' >> /etc/skel/.zshrc && \
+    echo 'fpath=(/opt/grok/completions/zsh $fpath)' >> /etc/skel/.zshrc && \
+    echo 'autoload -Uz compinit && compinit -C' >> /etc/skel/.zshrc && \
     echo '' >> /etc/skel/.zshrc && \
     echo '# Powerlevel10k instant prompt' >> /etc/skel/.zshrc && \
     echo '[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh' >> /etc/skel/.zshrc
 
 # Create /etc/skel/.bashrc template
 RUN echo 'eval "$(zoxide init bash)"' >> /etc/skel/.bashrc && \
-    echo 'export PATH="$HOME/.local/bin:/opt/bun/bin:$PATH"' >> /etc/skel/.bashrc
+    echo 'export PATH="/opt/grok/bin:$HOME/.local/bin:/opt/bun/bin:$PATH"' >> /etc/skel/.bashrc && \
+    echo '[[ -r /opt/grok/completions/bash/grok.bash ]] && source /opt/grok/completions/bash/grok.bash' >> /etc/skel/.bashrc
 
 # Provide AI helpers system-wide so all benches inherit them even when
 # a workspace does not mount a host shell profile.

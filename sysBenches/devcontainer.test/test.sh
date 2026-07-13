@@ -57,7 +57,7 @@ echo
 echo "Inherited AI Tooling:"
 check "Claude Code" "command -v claude"
 check "Codex" "command -v codex"
-check "Gemini" "command -v gemini"
+check "Antigravity" "command -v agy"
 check "OpenCode" "command -v opencode"
 check "yolo function" "zsh -ic 'functions yolo' | grep -q 'tmux new-session' && zsh -ic 'functions yolo' | grep -q -- '--teammate-mode tmux'"
 

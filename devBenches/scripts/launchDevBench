@@ -36,6 +36,17 @@ print_warning() { echo -e "${YELLOW}${ICON_WARNING} $1${NC}"; }
 print_error() { echo -e "${RED}${ICON_ERROR} $1${NC}"; }
 print_ai() { echo -e "${PURPLE}${ICON_AI} $1${NC}"; }
 
+normalize_bench_name() {
+    case "$1" in
+        python)
+            echo "py"
+            ;;
+        *)
+            echo "$1"
+            ;;
+    esac
+}
+
 # Check if AI is available
 check_ai_availability() {
     # Check for OpenAI API key
@@ -223,7 +234,8 @@ analyze_environment() {
 
 # Launch specific bench
 launch_bench() {
-    local bench_type="$1"
+    local bench_type
+    bench_type=$(normalize_bench_name "$1")
     local bench_path=""
 
     bench_type=$(normalize_bench_type "$bench_type")
@@ -279,8 +291,24 @@ launch_bench() {
             print_error "Container failed to start properly"
             return 1
         fi
+    elif [ -f ".devcontainer/docker-compose.yml" ]; then
+        print_info "Starting container using .devcontainer/docker-compose.yml..."
+        docker compose -f .devcontainer/docker-compose.yml up -d
+
+        # Wait for container to be ready
+        sleep 3
+
+        # Connect to container
+        if docker ps --format "table {{.Names}}" | grep -q "^${container_name}$"; then
+            print_success "Container started successfully!"
+            print_info "Connecting to container..."
+            docker exec -it "$container_name" zsh
+        else
+            print_error "Container failed to start properly"
+            return 1
+        fi
     else
-        print_error "start-monster.sh not found in bench directory (checked both scripts/ and root)"
+        print_error "No supported bench launcher found (checked scripts/start-monster.sh, start-monster.sh, and .devcontainer/docker-compose.yml)"
         return 1
     fi
 }
@@ -355,6 +383,8 @@ ${YELLOW}OPTIONS:${NC}
     --version, -v     Show version information
 
 ${YELLOW}EXAMPLES:${NC}
+    ${GREEN}launchDevBench py${NC}                Launch Python development bench
+    ${GREEN}launchDevBench python${NC}            Alias for py
     ${GREEN}launchDevBench flutter${NC}           Launch Flutter development bench
     ${GREEN}launchDevBench${NC}                  Show interactive bench selection menu
     ${GREEN}launchDevBench --list${NC}           List available benches without launching

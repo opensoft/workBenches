@@ -125,6 +125,11 @@ if [ -x "${SCRIPT_DIR}/scripts/setup-claude-workflows.sh" ]; then
     echo ""
 fi
 
+# Workstation VPN setup is offered in the interactive selector so users can
+# choose AmneziaVPN and 0dcloud independently.
+log_header "VPN SETUP"
+echo "VPN client setup is available from the interactive selector." >> "$LOG_FILE"
+
 # Docker prerequisite
 log_header "DOCKER CHECK"
 ensure_docker

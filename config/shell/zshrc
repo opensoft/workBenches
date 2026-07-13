@@ -543,8 +543,8 @@ dcz() {
 alias dcz.='dcz .'
 # Yolo codex shortcut
 alias yodex='codex --dangerously-bypass-approvals-and-sandbox'
-# Gemini CLI auto-approve all tools
-alias gemi='gemini --approval-mode yolo'
+# Antigravity CLI shortcut
+alias ag='agy'
 # <<< dcz helper <<<
 
 # SSH Agent auto-start (skip in devcontainers)
@@ -674,6 +674,15 @@ yolo() {
 }
 export PATH="$HOME/.npm-global/bin:$PATH"
 export PATH="/workspace/.venv/bin:$PATH"
+
+# Grok CLI
+export PATH="/opt/grok/bin:$HOME/.grok/bin:$PATH"
+if [[ -d /opt/grok/completions/zsh ]]; then
+  fpath=(/opt/grok/completions/zsh $fpath)
+elif [[ -d "$HOME/.grok/completions/zsh" ]]; then
+  fpath=("$HOME/.grok/completions/zsh" $fpath)
+fi
+autoload -Uz compinit && compinit -C
 
 # bun completions
 [ -s "/home/brett/.bun/_bun" ] && source "/home/brett/.bun/_bun"

@@ -61,12 +61,12 @@ export const AI_CLI_DEFINITIONS: AICliDefinition[] = [
     uninstallCmd: 'npm uninstall -g @openai/codex',
   },
   {
-    id: 'gemini_cli',
-    name: 'Gemini CLI',
-    description: 'Google Gemini terminal assistant',
-    command: 'gemini',
-    installCmd: 'npm install -g @google/gemini-cli',
-    uninstallCmd: 'npm uninstall -g @google/gemini-cli',
+    id: 'antigravity_cli',
+    name: 'Antigravity CLI',
+    description: 'Google Antigravity terminal assistant',
+    command: 'agy',
+    installCmd: 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
+    uninstallCmd: 'rm -f ~/.local/bin/agy',
   },
   {
     id: 'opencode_cli',
@@ -115,21 +115,28 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       // Will be implemented in statusChecks.ts
       return false;
     },
-    installInstructions: 'Install VS Code from https://code.visualstudio.com/',
+    installInstructions: 'Windows/WSL: winget install -e --id Microsoft.VisualStudioCode; Linux: install from https://code.visualstudio.com/',
   },
   {
     id: 'warp',
     name: 'Warp Terminal',
     description: 'Modern terminal with AI features',
     checkInstalled: async () => false,
-    installInstructions: 'Install Warp from https://www.warp.dev/',
+    installInstructions: 'Windows/WSL: winget install -e --id Warp.Warp; otherwise install from https://www.warp.dev/',
   },
   {
     id: 'wave',
     name: 'Wave Terminal',
     description: 'Open source AI terminal',
     checkInstalled: async () => false,
-    installInstructions: 'Install Wave from https://www.waveterm.dev/',
+    installInstructions: 'Windows/WSL: winget install -e --id CommandLine.Wave; otherwise install from https://www.waveterm.dev/',
+  },
+  {
+    id: 'pi_terminal',
+    name: 'Pi Terminal',
+    description: 'Pi terminal coding agent',
+    checkInstalled: async () => false,
+    installInstructions: 'Windows/WSL: install with Windows npm; otherwise npm install -g --ignore-scripts @earendil-works/pi-coding-agent',
   },
 ];
 

@@ -15,6 +15,41 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
 }
 
+is_wsl_windows() {
+    [ -n "${WSL_DISTRO_NAME:-}" ] || grep -qi microsoft /proc/version 2>/dev/null
+}
+
+run_windows_powershell() {
+    local command="$1"
+    if command -v powershell.exe >/dev/null 2>&1; then
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$command" | tr -d '\r'
+    elif command -v pwsh.exe >/dev/null 2>&1; then
+        pwsh.exe -NoProfile -ExecutionPolicy Bypass -Command "$command" | tr -d '\r'
+    else
+        return 127
+    fi
+}
+
+ps_quote() {
+    printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"
+}
+
+windows_file_exists() {
+    local path="$1"
+    run_windows_powershell "if (Test-Path -LiteralPath $(ps_quote "$path")) { 'yes' } else { 'no' }" 2>/dev/null | grep -q '^yes$'
+}
+
+windows_env_file_exists() {
+    local env_name="$1"
+    local suffix="$2"
+    run_windows_powershell "\$base = [Environment]::GetEnvironmentVariable($(ps_quote "$env_name")); if (\$base -and (Test-Path -LiteralPath (Join-Path \$base $(ps_quote "$suffix")))) { 'yes' } else { 'no' }" 2>/dev/null | grep -q '^yes$'
+}
+
+windows_command_exists() {
+    local command="$1"
+    run_windows_powershell "if (Get-Command $(ps_quote "$command") -ErrorAction SilentlyContinue) { 'yes' } else { 'no' }" 2>/dev/null | grep -q '^yes$'
+}
+
 # Log script start
 log "=== Setup script started ==="
 log "User: $USER"
@@ -126,7 +161,7 @@ init_components() {
         "claude_cli"
         "copilot_cli"
         "codex_cli"
-        "gemini_cli"
+        "antigravity_cli"
         "opencode_cli"
         "separator1"
         "spec_kit"
@@ -143,8 +178,8 @@ init_components() {
     component_checked["codex_cli"]=false
     component_description["codex_cli"]="Codex CLI"
 
-    component_checked["gemini_cli"]=false
-    component_description["gemini_cli"]="Gemini CLI"
+    component_checked["antigravity_cli"]=false
+    component_description["antigravity_cli"]="Antigravity CLI"
 
     component_checked["opencode_cli"]=false
     component_description["opencode_cli"]="OpenCode CLI"
@@ -160,6 +195,9 @@ init_components() {
         "vscode"
         "warp"
         "wave"
+        "pi_terminal"
+        "amnezia_vpn"
+        "0dcloud_vpn"
     )
 
     # Initialize tool items
@@ -171,6 +209,15 @@ init_components() {
 
     component_checked["wave"]=false
     component_description["wave"]="Wave Terminal"
+
+    component_checked["pi_terminal"]=false
+    component_description["pi_terminal"]="Pi Terminal"
+
+    component_checked["amnezia_vpn"]=false
+    component_description["amnezia_vpn"]="AmneziaVPN"
+
+    component_checked["0dcloud_vpn"]=false
+    component_description["0dcloud_vpn"]="0dcloud VPN"
 }
 
 # Check current installation status
@@ -210,8 +257,8 @@ check_component_status() {
                 echo "not installed"
             fi
             ;;
-        gemini_cli)
-            if command -v gemini &> /dev/null; then
+        antigravity_cli)
+            if command -v agy &> /dev/null; then
                 echo "installed"
             else
                 echo "not installed"
@@ -232,13 +279,15 @@ check_component_status() {
             ;;
         vscode)
             # Check for VS Code - on WSL, check for Windows version
-            if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
+            if is_wsl_windows; then
                 # WSL: Check for Windows VS Code and WSL extension
-                if command -v code &> /dev/null || [ -f "/mnt/c/Program Files/Microsoft VS Code/Code.exe" ] || [ -f "/mnt/c/Users/*/AppData/Local/Programs/Microsoft VS Code/Code.exe" ]; then
+                if command -v code &> /dev/null ||
+                   windows_file_exists "C:\\Program Files\\Microsoft VS Code\\Code.exe" ||
+                   windows_env_file_exists "LOCALAPPDATA" "Programs\\Microsoft VS Code\\Code.exe"; then
                     # VS Code is installed, check for WSL extension by checking vscode-server directory
                     if [ -d "$HOME/.vscode-server" ]; then
                         # Check if Dev Containers extension is installed on Windows side
-                        local windows_user=$(powershell.exe -c "[Environment]::UserName" 2>/dev/null | tr -d '\r')
+                        local windows_user=$(run_windows_powershell "[Environment]::UserName" 2>/dev/null)
                         local windows_ext_file="/mnt/c/Users/$windows_user/.vscode/extensions/extensions.json"
 
                         if [ -f "$windows_ext_file" ] && grep -q "ms-vscode-remote.remote-containers" "$windows_ext_file" 2>/dev/null; then
@@ -259,9 +308,10 @@ check_component_status() {
             ;;
         warp)
             # Check for warp - on WSL, check for Windows version
-            if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
+            if is_wsl_windows; then
                 # WSL: Check for Windows Warp
-                if [ -f "/mnt/c/Program Files/Warp/Warp.exe" ] || [ -f "/mnt/c/Users/"*/AppData/Local/Programs/Warp/Warp.exe 2>/dev/null ]; then
+                if windows_file_exists "C:\\Program Files\\Warp\\Warp.exe" ||
+                   windows_env_file_exists "LOCALAPPDATA" "Programs\\Warp\\Warp.exe"; then
                     echo "installed"
                 else
                     echo "not installed"
@@ -277,10 +327,11 @@ check_component_status() {
             ;;
         wave)
             # Check for wave terminal - on WSL, check for Windows version
-            if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
+            if is_wsl_windows; then
                 # WSL: Check for Windows Wave in common locations
-                if [ -f "/mnt/c/Program Files/Wave/Wave.exe" ] || \
-                   find /mnt/c/Users/*/AppData/Local/Programs/waveterm/Wave.exe -type f 2>/dev/null | grep -q .; then
+                if windows_file_exists "C:\\Program Files\\Wave\\Wave.exe" ||
+                   windows_env_file_exists "LOCALAPPDATA" "Programs\\waveterm\\Wave.exe" ||
+                   windows_env_file_exists "LOCALAPPDATA" "Programs\\Wave\\Wave.exe"; then
                     echo "installed"
                 else
                     echo "not installed"
@@ -292,6 +343,40 @@ check_component_status() {
                 else
                     echo "not installed"
                 fi
+            fi
+            ;;
+        pi_terminal)
+            if command -v pi &> /dev/null || { is_wsl_windows && { windows_command_exists "pi" || windows_env_file_exists "APPDATA" "npm\\pi.cmd"; }; }; then
+                if [ -d "$HOME/.pi" ]; then
+                    echo "installed"
+                else
+                    echo "needs creds"
+                fi
+            else
+                echo "not installed"
+            fi
+            ;;
+        amnezia_vpn)
+            if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
+                if windows_file_exists "C:\\Program Files\\AmneziaVPN\\AmneziaVPN.exe" ||
+                   windows_file_exists "C:\\Program Files\\AmneziaVPN.ORG\\AmneziaVPN\\AmneziaVPN.exe"; then
+                    echo "installed"
+                else
+                    echo "not installed"
+                fi
+            else
+                echo "not installed"
+            fi
+            ;;
+        0dcloud_vpn)
+            if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
+                if windows_file_exists "C:\\Program Files\\0dcloud\\0dcloud.exe"; then
+                    echo "installed"
+                else
+                    echo "not installed"
+                fi
+            else
+                echo "not installed"
             fi
             ;;
         bench_*)
@@ -1753,80 +1838,45 @@ process_selections() {
                     fi
                     ;;
 
-                gemini_cli)
-                    if command -v npm &> /dev/null; then
-                        # Check Node.js version
-                        local node_version=$(node --version 2>/dev/null | cut -d'v' -f2 | cut -d'.' -f1)
-                        if [ -n "$node_version" ] && [ "$node_version" -ge 18 ]; then
-                            if [ "$is_installed" = true ]; then
-                                echo -e "  ${YELLOW}Checking for Gemini CLI updates...${NC}"
-                                # Check if update available
-                                local update_output=$(npm update -g @google/gemini-cli 2>&1)
-                                if echo "$update_output" | grep -q "up to date\|unchanged"; then
-                                    echo -e "  ${GREEN}✓ Gemini CLI is already up to date${NC}"
-                                    ((success_count++))
-                                else
-                                    echo -e "  ${GREEN}✓ Gemini CLI updated${NC}"
-                                    ((success_count++))
-                                fi
+                antigravity_cli)
+                    if [ "$is_installed" = true ]; then
+                        echo -e "  ${GREEN}✓ Antigravity CLI is already installed${NC}"
+                        echo -e "  ${DIM}Antigravity CLI self-updates during regular runs${NC}"
+                        ((success_count++))
+                    else
+                        echo -e "  ${YELLOW}Installing Antigravity CLI...${NC}"
+                        echo -e "  ${DIM}This installs the 'agy' command from antigravity.google${NC}"
+                        echo -e "  ${BOLD}${RED}Please do not interrupt the installation (Ctrl+C)${NC}"
+                        log "Starting Antigravity CLI installation via official installer"
+
+                        trap '' INT
+                        (
+                            curl -fsSL https://antigravity.google/cli/install.sh | bash >> "$LOG_FILE" 2>&1
+                        ) &
+                        local install_pid=$!
+
+                        if show_spinner $install_pid "Installing Antigravity CLI" 180; then
+                            trap - INT
+                            export PATH="$HOME/.local/bin:$PATH"
+                            if command -v agy &> /dev/null; then
+                                log "Antigravity CLI installed successfully"
+                                echo -e "  ${GREEN}✓ Antigravity CLI installed${NC}"
+                                echo -e "  ${DIM}Run 'agy' to start using it${NC}"
+                                ((success_count++))
+                                items_needing_creds+=("antigravity")
                             else
-                                echo -e "  ${YELLOW}Installing Google Gemini CLI...${NC}"
-                                echo -e "  ${DIM}This may take a few minutes...${NC}"
-                                echo -e "  ${BOLD}${RED}Please do not interrupt the installation (Ctrl+C)${NC}"
-                                log "Starting Gemini CLI installation via npm"
-
-                                # Check if npm prefix is in user directory
-                                local npm_prefix=$(npm config get prefix 2>/dev/null)
-                                local needs_sudo=false
-
-                                # Check if prefix is a system directory (not in home directory)
-                                if [[ "$npm_prefix" != "$HOME"* ]]; then
-                                    needs_sudo=true
-                                    log "npm prefix is in system directory ($npm_prefix), using sudo"
-                                else
-                                    log "npm prefix is in user directory ($npm_prefix), no sudo needed"
-                                fi
-
-                                # Install Gemini CLI via npm in background with spinner
-                                # Temporarily ignore interrupts during installation
-                                trap '' INT
-                                (
-                                    if [ "$needs_sudo" = true ]; then
-                                        npm install -g @google/gemini-cli >> "$LOG_FILE" 2>&1
-                                    else
-                                        npm install -g @google/gemini-cli >> "$LOG_FILE" 2>&1
-                                    fi
-                                ) &
-                                local install_pid=$!
-
-                                if show_spinner $install_pid "Installing Gemini CLI" 180; then
-                                    # Restore interrupt handling
-                                    trap - INT
-                                    log "Gemini CLI installed successfully via npm"
-                                    echo -e "  ${GREEN}✓ Gemini CLI installed${NC}"
-                                    echo -e "  ${DIM}Run 'gemini' to start using it${NC}"
-                                    echo -e "  ${CYAN}✨ Free tier: 60 requests/min, 1000/day with Google login${NC}"
-                                    ((success_count++))
-                                    items_needing_creds+=("gemini")
-                                else
-                                    # Restore interrupt handling even on failure
-                                    trap - INT
-                                    log "ERROR: Gemini CLI installation failed"
-                                    echo -e "  ${RED}✗ Failed to install Gemini CLI${NC}"
-                                    echo -e "  ${DIM}Manual install: npm install -g @google/gemini-cli${NC}"
-                                    ((fail_count++))
-                                fi
+                                log "ERROR: Antigravity CLI installer completed but agy is not on PATH"
+                                echo -e "  ${RED}✗ Antigravity CLI installed but 'agy' is not on PATH${NC}"
+                                echo -e "  ${DIM}Add ~/.local/bin to PATH or run: ~/.local/bin/agy${NC}"
+                                ((fail_count++))
                             fi
                         else
-                            echo -e "  ${RED}✗ Node.js 18+ required (current: v$node_version)${NC}"
-                            echo -e "  ${DIM}Recommended: Node.js 22+${NC}"
-                            echo -e "  ${DIM}Install/Update Node.js: https://nodejs.org/${NC}"
+                            trap - INT
+                            log "ERROR: Antigravity CLI installation failed"
+                            echo -e "  ${RED}✗ Failed to install Antigravity CLI${NC}"
+                            echo -e "  ${DIM}Manual install: curl -fsSL https://antigravity.google/cli/install.sh | bash${NC}"
                             ((fail_count++))
                         fi
-                    else
-                        echo -e "  ${RED}✗ npm not found - Node.js required${NC}"
-                        echo -e "  ${DIM}Install Node.js 22+: https://nodejs.org/${NC}"
-                        ((fail_count++))
                     fi
                     ;;
 
@@ -1939,7 +1989,42 @@ process_selections() {
                 continue
             fi
 
+            if [ "$is_installed" = true ]; then
+                echo -e "${BOLD}${CYAN}▶ Checking: $desc${NC}"
+                echo -e "  ${GREEN}✓ $desc is already installed${NC}"
+                ((success_count++))
+                echo ""
+                continue
+            fi
+
             # Handle installation
+            if [ "$item" = "amnezia_vpn" ] || [ "$item" = "0dcloud_vpn" ]; then
+                echo -e "${BOLD}${CYAN}▶ Configuring: $desc${NC}"
+                if [ -x "$script_dir/setup-vpn.sh" ]; then
+                    local vpn_target="amnezia"
+                    local vpn_message="Installing/checking AmneziaVPN..."
+                    if [ "$item" = "0dcloud_vpn" ]; then
+                        vpn_target="0dcloud"
+                        vpn_message="Installing/checking 0dcloud and patching TUN MTU..."
+                    fi
+
+                    echo -e "  ${YELLOW}${vpn_message}${NC}"
+                    if "$script_dir/setup-vpn.sh" "$vpn_target"; then
+                        echo -e "  ${GREEN}✓ $desc setup completed${NC}"
+                        ((success_count++))
+                    else
+                        echo -e "  ${YELLOW}⚠ $desc setup completed with warnings${NC}"
+                        echo -e "  ${DIM}See docs/vpn-setup.md for manual install steps${NC}"
+                        ((success_count++))
+                    fi
+                else
+                    echo -e "  ${RED}✗ setup-vpn.sh not found${NC}"
+                    ((fail_count++))
+                fi
+                echo ""
+                continue
+            fi
+
             if [ "$is_installed" = true ]; then
                 echo -e "${BOLD}${CYAN}▶ Checking: $desc${NC}"
                 echo -e "  ${GREEN}✓ $desc is already installed${NC}"
@@ -1951,53 +2036,15 @@ process_selections() {
                     vscode)
                         # Check if running in WSL
                         if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
-                            # Check if VS Code is installed
-                            if command -v code &> /dev/null; then
-                                # VS Code is installed, check for WSL extension by checking vscode-server directory
-                                if [ -d "$HOME/.vscode-server" ]; then
-                                    # Check if Dev Containers extension is installed on Windows side
-                                    local windows_user=$(powershell.exe -c "[Environment]::UserName" 2>/dev/null | tr -d '\r')
-                                    local windows_ext_file="/mnt/c/Users/$windows_user/.vscode/extensions/extensions.json"
-
-                                    if [ -f "$windows_ext_file" ] && grep -q "ms-vscode-remote.remote-containers" "$windows_ext_file" 2>/dev/null; then
-                                        echo -e "  ${GREEN}✓ VS Code with WSL and Dev Containers extensions are installed${NC}"
-                                        ((success_count++))
-                                    else
-                                        echo -e "  ${YELLOW}⚠ VS Code is installed but Dev Containers extension is missing${NC}"
-                                        echo ""
-                                        echo -e "  ${CYAN}${BOLD}Install the Dev Containers extension:${NC}"
-                                        echo -e "  ${DIM}Run the following command from WSL:${NC}"
-                                        echo -e "  ${BLUE}code --install-extension ms-vscode-remote.remote-containers${NC}"
-                                        echo ""
-                                        echo -e "  ${DIM}Or open VS Code and search for 'Dev Containers' in the Extensions panel${NC}"
-                                        echo -e "  ${DIM}The Dev Containers extension is essential for devcontainer support${NC}"
-                                        echo ""
-                                    fi
+                            if [ -f "$script_dir/setup-windows-tools.sh" ]; then
+                                if bash "$script_dir/setup-windows-tools.sh" vscode; then
+                                    ((success_count++))
                                 else
-                                    echo -e "  ${YELLOW}⚠ VS Code is installed but WSL extension is not set up${NC}"
-                                    echo ""
-                                    echo -e "  ${CYAN}${BOLD}Set up WSL integration:${NC}"
-                                    echo -e "  ${DIM}Run the following command from WSL to initialize:${NC}"
-                                    echo -e "  ${BLUE}code .${NC}"
-                                    echo ""
-                                    echo -e "  ${DIM}This will install the VS Code Server in WSL${NC}"
-                                    echo -e "  ${DIM}After WSL is set up, install the Dev Containers extension:${NC}"
-                                    echo -e "  ${BLUE}code --install-extension ms-vscode-remote.remote-containers${NC}"
-                                    echo ""
+                                    ((fail_count++))
                                 fi
                             else
-                                echo -e "  ${YELLOW}WSL detected - Please install Windows version of VS Code${NC}"
-                                echo ""
-                                echo -e "  ${CYAN}${BOLD}Download VS Code for Windows:${NC}"
-                                echo -e "  ${BLUE}https://code.visualstudio.com/download${NC}"
-                                echo ""
-                                echo -e "  ${YELLOW}Instructions:${NC}"
-                                echo -e "  ${DIM}1. Download and install VS Code for Windows${NC}"
-                                echo -e "  ${DIM}2. After installing, run 'code .' from WSL to set up integration${NC}"
-                                echo -e "  ${DIM}3. Install required extensions:${NC}"
-                                echo -e "  ${BLUE}   code --install-extension ms-vscode-remote.remote-wsl${NC}"
-                                echo -e "  ${BLUE}   code --install-extension ms-vscode-remote.remote-containers${NC}"
-                                echo ""
+                                echo -e "  ${RED}✗ setup-windows-tools.sh not found${NC}"
+                                ((fail_count++))
                             fi
                         else
                             echo -e "  ${YELLOW}Installing Visual Studio Code for Linux...${NC}"
@@ -2020,17 +2067,16 @@ process_selections() {
                     warp)
                         # Check if running in WSL
                         if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
-                            echo -e "  ${YELLOW}WSL detected - Please install Windows version of Warp Terminal${NC}"
-                            echo ""
-                            echo -e "  ${CYAN}${BOLD}Download Warp for Windows:${NC}"
-                            echo -e "  ${BLUE}https://warp.dev${NC}"
-                            echo ""
-                            echo -e "  ${YELLOW}Instructions:${NC}"
-                            echo -e "  ${DIM}1. Visit warp.dev and click 'Download for Windows'${NC}"
-                            echo -e "  ${DIM}2. Run the Windows installer (.exe)${NC}"
-                            echo -e "  ${DIM}3. Launch Warp from Windows to use with WSL${NC}"
-                            echo -e "  ${DIM}   Or use: winget install Warp.Warp${NC}"
-                            echo ""
+                            if [ -f "$script_dir/setup-windows-tools.sh" ]; then
+                                if bash "$script_dir/setup-windows-tools.sh" warp; then
+                                    ((success_count++))
+                                else
+                                    ((fail_count++))
+                                fi
+                            else
+                                echo -e "  ${RED}✗ setup-windows-tools.sh not found${NC}"
+                                ((fail_count++))
+                            fi
                         else
                             echo -e "  ${YELLOW}Installing Warp Terminal for Linux...${NC}"
                             echo -e "  ${DIM}Visit: https://warp.dev${NC}"
@@ -2040,20 +2086,50 @@ process_selections() {
                     wave)
                         # Check if running in WSL
                         if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
-                            echo -e "  ${YELLOW}WSL detected - Please install Windows version of Wave Terminal${NC}"
-                            echo ""
-                            echo -e "  ${CYAN}${BOLD}Download Wave Terminal for Windows:${NC}"
-                            echo -e "  ${BLUE}https://waveterm.dev${NC}"
-                            echo ""
-                            echo -e "  ${YELLOW}Instructions:${NC}"
-                            echo -e "  ${DIM}1. Visit waveterm.dev${NC}"
-                            echo -e "  ${DIM}2. Download the Windows installer${NC}"
-                            echo -e "  ${DIM}3. Run the installer and launch Wave from Windows${NC}"
-                            echo ""
+                            if [ -f "$script_dir/setup-windows-tools.sh" ]; then
+                                if bash "$script_dir/setup-windows-tools.sh" wave; then
+                                    ((success_count++))
+                                else
+                                    ((fail_count++))
+                                fi
+                            else
+                                echo -e "  ${RED}✗ setup-windows-tools.sh not found${NC}"
+                                ((fail_count++))
+                            fi
                         else
                             echo -e "  ${YELLOW}Installing Wave Terminal for Linux...${NC}"
                             echo -e "  ${DIM}Visit: https://waveterm.dev${NC}"
                             echo -e "  ${YELLOW}Download and install from website${NC}"
+                        fi
+                        ;;
+                    pi_terminal)
+                        if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
+                            if [ -f "$script_dir/setup-windows-tools.sh" ]; then
+                                if bash "$script_dir/setup-windows-tools.sh" pi_terminal; then
+                                    ((success_count++))
+                                else
+                                    ((fail_count++))
+                                fi
+                            else
+                                echo -e "  ${RED}✗ setup-windows-tools.sh not found${NC}"
+                                ((fail_count++))
+                            fi
+                        elif command -v npm &> /dev/null; then
+                            echo -e "  ${YELLOW}Installing Pi Coding Agent...${NC}"
+                            echo -e "  ${DIM}Package: @earendil-works/pi-coding-agent${NC}"
+                            if npm install -g --ignore-scripts @earendil-works/pi-coding-agent; then
+                                echo -e "  ${GREEN}✓ Pi Terminal installed${NC}"
+                                echo -e "  ${DIM}Run 'pi' in a project, then use /login to configure a provider${NC}"
+                                ((success_count++))
+                            else
+                                echo -e "  ${RED}✗ Failed to install Pi Terminal${NC}"
+                                echo -e "  ${DIM}Manual install: npm install -g --ignore-scripts @earendil-works/pi-coding-agent${NC}"
+                                ((fail_count++))
+                            fi
+                        else
+                            echo -e "  ${RED}✗ npm not found - Node.js required${NC}"
+                            echo -e "  ${DIM}Install Node.js 22+: https://nodejs.org/${NC}"
+                            ((fail_count++))
                         fi
                         ;;
                 esac
@@ -2205,64 +2281,53 @@ process_selections() {
                     fi
                     ;;
 
-                gemini)
-                    echo -e "${CYAN}▶ Setting up Gemini CLI authentication...${NC}"
+                antigravity)
+                    echo -e "${CYAN}▶ Setting up Antigravity CLI authentication...${NC}"
                     echo ""
 
-                    echo -e "${BOLD}${GREEN}✨ Gemini CLI Free Tier${NC}"
+                    echo -e "${BOLD}${GREEN}✨ Antigravity CLI${NC}"
                     echo -e "${BOLD}${BLUE}────────────────────────────────────────${NC}"
                     echo ""
-                    echo -e "${YELLOW}Gemini CLI offers generous free tier access:${NC}"
-                    echo -e "  ${DIM}• 60 requests per minute${NC}"
-                    echo -e "  ${DIM}• 1,000 requests per day${NC}"
-                    echo -e "  ${DIM}• Access to Gemini 2.5 Pro (1M token context)${NC}"
-                    echo -e "  ${DIM}• No credit card required${NC}"
-                    echo ""
-                    echo -e "${CYAN}Authentication options:${NC}"
-                    echo -e "  ${BOLD}${GREEN}1. Login with Google${NC} ${DIM}(Recommended - Free tier)${NC}"
-                    echo -e "  ${CYAN}2. API Key${NC} ${DIM}(For higher limits or enterprise)${NC}"
+                    echo -e "${YELLOW}Antigravity CLI uses the 'agy' command.${NC}"
+                    echo -e "  ${DIM}• Run agy to start the terminal UI${NC}"
+                    echo -e "  ${DIM}• Sign in with your Google account or Google Cloud project when prompted${NC}"
+                    echo -e "  ${DIM}• The CLI self-updates during regular runs${NC}"
                     echo ""
                     echo -e "${BOLD}${BLUE}────────────────────────────────────────${NC}"
                     echo ""
 
-                    if command -v gemini &> /dev/null; then
-                        # Check if already has credentials
-                        if [ -f "$HOME/.gemini/config.json" ] || [ -n "$GEMINI_API_KEY" ]; then
-                            echo -e "${GREEN}✓ Gemini CLI already has credentials configured${NC}"
-                            echo ""
-                        else
-                            echo -e "${YELLOW}To authenticate Gemini CLI:${NC}"
-                            echo -e "  ${BOLD}${GREEN}Recommended:${NC} Run ${CYAN}gemini${NC} and login with Google${NC}"
-                            echo -e "  ${DIM}Alternative: Set GEMINI_API_KEY from AI Studio${NC}"
-                            echo ""
+                    if command -v agy &> /dev/null; then
+                        echo -e "${YELLOW}To authenticate Antigravity CLI:${NC}"
+                        echo -e "  ${BOLD}${GREEN}Recommended:${NC} Run ${CYAN}agy${NC} and follow the sign-in prompts${NC}"
+                        echo ""
 
-                            while true; do
-                                read -p "Launch Gemini CLI authentication now? [Y/n]: " launch_gemini
-                                case $launch_gemini in
-                                    [Yy]* | "" )
-                                        echo ""
-                                        echo -e "${YELLOW}Launching 'gemini'...${NC}"
-                                        echo -e "${DIM}Select 'Login with Google' when prompted for best experience.${NC}"
-                                        echo ""
-                                        sleep 2
+                        while true; do
+                            read -p "Launch Antigravity CLI authentication now? [Y/n]: " launch_antigravity
+                            case $launch_antigravity in
+                                [Yy]* | "" )
+                                    echo ""
+                                    echo -e "${YELLOW}Launching 'agy'...${NC}"
+                                    echo -e "${DIM}Follow the prompts to authenticate.${NC}"
+                                    echo ""
+                                    sleep 2
 
-                                        # Launch gemini - will prompt for authentication
-                                        gemini
-                                        echo ""
-                                        break
-                                        ;;
-                                    [Nn]* )
-                                        echo ""
-                                        echo -e "${YELLOW}Skipped. Run 'gemini' anytime to authenticate.${NC}"
-                                        echo ""
-                                        break
-                                        ;;
-                                    * )
-                                        echo "Please answer yes or no."
-                                        ;;
-                                esac
-                            done
-                        fi
+                                    agy
+                                    echo ""
+                                    break
+                                    ;;
+                                [Nn]* )
+                                    echo ""
+                                    echo -e "${YELLOW}Skipped. Run 'agy' anytime to authenticate.${NC}"
+                                    echo ""
+                                    break
+                                    ;;
+                                * )
+                                    echo "Please answer yes or no."
+                                    ;;
+                            esac
+                        done
+                    else
+                        echo -e "${YELLOW}Antigravity CLI not found. Install it first.${NC}"
                     fi
                     ;;
 

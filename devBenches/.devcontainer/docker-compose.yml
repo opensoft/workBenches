@@ -37,6 +37,11 @@ services:
       # Corepack
       - COREPACK_HOME=/home/${USER:-vscode}/.corepack
 
+networks:
+  default:
+    driver_opts:
+      com.docker.network.driver.mtu: "1400"
+
 volumes:
   dev-bench-zsh-history:
     name: dev-bench-zsh-history
