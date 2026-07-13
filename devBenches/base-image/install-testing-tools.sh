@@ -1,6 +1,6 @@
 #!/bin/bash
 # Generic Testing Tools Installation Script
-# Version: 1.0.0
+# Version: 1.0.4
 #
 # Installs tech-stack-independent testing tools into the dev-bench-base image
 # (Layer 1a) so all benches inherit them.
@@ -30,9 +30,10 @@ set -e
 # ========================================
 DEBUG="${DEBUG:-1}"
 COMMAND_TIMEOUT="${COMMAND_TIMEOUT:-300}"  # 5 minutes per command; large CLI/browser downloads are network-sensitive
-PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.60.0}"
-SONAR_SCANNER_VERSION="${SONAR_SCANNER_VERSION:-8.0.1.6346}"
-SONARQUBE_CLI_VERSION="${SONARQUBE_CLI_VERSION:-0.10.0.1266}"
+PYTHON_TOOLS_TIMEOUT="${PYTHON_TOOLS_TIMEOUT:-1800}"  # Semgrep is large and pip resolution can be slow on constrained networks
+PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.61.1}"
+SONAR_SCANNER_VERSION="${SONAR_SCANNER_VERSION:-8.1.0.6389}"
+SONARQUBE_CLI_VERSION="${SONARQUBE_CLI_VERSION:-1.2.0.3278}"
 
 log_debug() {
     if [ "$DEBUG" = "1" ]; then
@@ -113,16 +114,31 @@ fi
 # ========================================
 # PIP PACKAGES
 # ========================================
-log_info "Installing pip packages (httpie, semgrep)..."
+log_info "Installing Python testing tools (httpie, semgrep)..."
 
-log_info "  Installing HTTPie..."
-if ! run_with_timeout "$COMMAND_TIMEOUT" "HTTPie pip install" pip install --break-system-packages httpie; then
-    log_error "HTTPie installation failed (continuing)"
-fi
+if command -v uv >/dev/null 2>&1; then
+    if ! run_with_timeout "$PYTHON_TOOLS_TIMEOUT" "Python testing tools uv install" uv pip install --system --break-system-packages httpie semgrep; then
+        log_error "Python testing tools uv installation failed; falling back to pip"
+        log_info "  Installing HTTPie with pip..."
+        if ! run_with_timeout "$COMMAND_TIMEOUT" "HTTPie pip install" pip install --break-system-packages httpie; then
+            log_error "HTTPie installation failed (continuing)"
+        fi
 
-log_info "  Installing Semgrep..."
-if ! run_with_timeout "$COMMAND_TIMEOUT" "Semgrep pip install" pip install --break-system-packages semgrep; then
-    log_error "Semgrep installation failed (continuing)"
+        log_info "  Installing Semgrep with pip..."
+        if ! run_with_timeout "$PYTHON_TOOLS_TIMEOUT" "Semgrep pip install" pip install --break-system-packages semgrep; then
+            log_error "Semgrep installation failed (continuing)"
+        fi
+    fi
+else
+    log_info "  Installing HTTPie with pip..."
+    if ! run_with_timeout "$COMMAND_TIMEOUT" "HTTPie pip install" pip install --break-system-packages httpie; then
+        log_error "HTTPie installation failed (continuing)"
+    fi
+
+    log_info "  Installing Semgrep with pip..."
+    if ! run_with_timeout "$PYTHON_TOOLS_TIMEOUT" "Semgrep pip install" pip install --break-system-packages semgrep; then
+        log_error "Semgrep installation failed (continuing)"
+    fi
 fi
 
 # ========================================
@@ -234,7 +250,7 @@ case "$ARCH" in
 esac
 
 if [ -n "$SONARQUBE_CLI_PLATFORM" ] && run_with_timeout "$COMMAND_TIMEOUT" "SonarQube CLI download" bash -c \
-    "curl -fsSL -o /usr/local/bin/sonar https://binaries.sonarsource.com/Distribution/sonarqube-cli/${SONARQUBE_CLI_VERSION}/linux/sonarqube-cli-${SONARQUBE_CLI_VERSION}-${SONARQUBE_CLI_PLATFORM}.exe"; then
+    "curl -fsSL -o /usr/local/bin/sonar https://binaries.sonarsource.com/Distribution/sonarqube-cli/${SONARQUBE_CLI_VERSION}/linux/sonarqube-cli-${SONARQUBE_CLI_VERSION}-${SONARQUBE_CLI_PLATFORM}.bin || curl -fsSL -o /usr/local/bin/sonar https://binaries.sonarsource.com/Distribution/sonarqube-cli/${SONARQUBE_CLI_VERSION}/linux/sonarqube-cli-${SONARQUBE_CLI_VERSION}-${SONARQUBE_CLI_PLATFORM}.exe"; then
     chmod 0755 /usr/local/bin/sonar
     log_info "  ✓ SonarQube CLI $(sonar --version 2>/dev/null | head -1 || echo $SONARQUBE_CLI_VERSION)"
 else
@@ -257,7 +273,7 @@ fi
 
 # --- k6 (load testing) ---
 log_info "  Installing k6..."
-K6_VERSION="v2.0.0"
+K6_VERSION="v2.1.0"
 if run_with_timeout "$COMMAND_TIMEOUT" "k6 download" bash -c \
     "curl -fsSL https://github.com/grafana/k6/releases/download/${K6_VERSION}/k6-${K6_VERSION}-linux-${ARCH_ALT}.tar.gz | tar xz -C /tmp"; then
     cp /tmp/k6-${K6_VERSION}-linux-${ARCH_ALT}/k6 /usr/local/bin/k6
@@ -298,7 +314,7 @@ fi
 
 # --- yq (YAML processor) ---
 log_info "  Installing yq..."
-YQ_VERSION="v4.53.2"
+YQ_VERSION="v4.53.3"
 if run_with_timeout "$COMMAND_TIMEOUT" "yq download" bash -c \
     "curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${ARCH_ALT}"; then
     chmod +x /usr/local/bin/yq
@@ -332,7 +348,7 @@ fi
 
 # --- Pact CLI (contract testing) ---
 log_info "  Installing Pact CLI..."
-PACT_VERSION="2.5.7"
+PACT_VERSION="2.6.4"
 case "$ARCH" in
     x86_64)        PACT_ARCH="x86_64" ;;
     aarch64|arm64) PACT_ARCH="arm64" ;;
@@ -344,6 +360,25 @@ if run_with_timeout "$COMMAND_TIMEOUT" "Pact CLI download" bash -c \
     for bin in /opt/pact/bin/*; do
         ln -sf "$bin" "/usr/local/bin/$(basename "$bin")" 2>/dev/null || true
     done
+    printf '%s\n' \
+        '#!/usr/bin/env bash' \
+        'set -euo pipefail' \
+        'case "${1:-}" in' \
+        '  --version|-v|version)' \
+        '    cat /opt/pact/lib/app/VERSION' \
+        '    ;;' \
+        '  ""|--help|-h|help)' \
+        '    echo "Pact standalone $(cat /opt/pact/lib/app/VERSION)"' \
+        '    echo "Commands: pact-broker, pact-message, pact-mock-service, pact-provider-verifier, pact-publish, pact-stub-service, pactflow"' \
+        '    ;;' \
+        '  *)' \
+        '    echo "Unknown pact command: $1" >&2' \
+        '    echo "Use pact --help to list installed standalone commands." >&2' \
+        '    exit 64' \
+        '    ;;' \
+        'esac' \
+        > /usr/local/bin/pact
+    chmod +x /usr/local/bin/pact
     log_info "  ✓ Pact CLI $PACT_VERSION"
 else
     log_error "Pact CLI installation failed (continuing)"

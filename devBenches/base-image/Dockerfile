@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # Layer 1a: Developer Base Image
 # Extends Layer 0 with Python, Node.js LTS, dev tools, and spec CLIs
 # Most AI CLIs are inherited from Layer 0 (workbench-base)
@@ -9,7 +10,7 @@ FROM workbench-base:latest
 # Container version labels
 LABEL layer="1"
 LABEL layer.name="dev-bench-base"
-LABEL layer.version="2.3.1"
+LABEL layer.version="2.3.2"
 LABEL layer.description="Developer base with Python, Node.js LTS, dev tools, Playwright browsers, generic testing tools, and the Omnigent meta-harness (user-agnostic)"
 
 # Everything runs as root
@@ -80,10 +81,13 @@ RUN npm uninstall -g @fission-ai/openspec || true \
     && rm -rf /root/.local/share/uv/tools/specify-cli /opt/uv/tools/specify-cli
 
 # Install spec-driven CLIs only in developer benches, not every bench family.
+# Clone explicitly so slow GitHub transfers are bounded and visible.
 RUN mkdir -p /opt/uv/tools /root/.local/share/uv \
+    && timeout 1800s git -c http.version=HTTP/1.1 clone --depth 1 --filter=blob:none https://github.com/github/spec-kit.git /tmp/spec-kit \
     && UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv/tools \
-       uv tool install specify-cli --from git+https://github.com/github/spec-kit.git --python-preference system \
+       uv tool install specify-cli --from /tmp/spec-kit --python-preference system \
     && ln -sfn /opt/uv/tools /root/.local/share/uv/tools \
+    && rm -rf /tmp/spec-kit \
     || echo "spec-kit installation skipped (non-fatal)"
 
 RUN npm install -g @fission-ai/openspec@latest \
@@ -170,7 +174,10 @@ RUN mkdir -p /opt/corepack && \
 # load testing, security scanning, accessibility, code quality, utilities)
 # and preload Chromium into the shared Playwright cache for all dev benches.
 COPY install-testing-tools.sh /tmp/
-RUN bash /tmp/install-testing-tools.sh && rm -f /tmp/install-testing-tools.sh
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/root/.npm \
+    bash /tmp/install-testing-tools.sh && rm -f /tmp/install-testing-tools.sh
 
 # Container-safe SonarQube/SonarCloud environment. These helpers make auth
 # usable without libsecret.
