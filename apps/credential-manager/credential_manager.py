@@ -73,8 +73,9 @@ def git_repo_url(repo: Path) -> str:
 def load_accounts(repo: Path) -> list[Account]:
     accounts: list[Account] = []
     seen: set[tuple[str, str]] = set()
+    config = repo / "config" if (repo / "config").is_dir() else repo
 
-    unified = repo / "config/ai-harness-accounts.json"
+    unified = config / "ai-harness-accounts.json"
     if unified.exists():
         data = json.loads(unified.read_text())
         for item in data.get("accounts", []):
@@ -94,11 +95,11 @@ def load_accounts(repo: Path) -> list[Account]:
             seen.add((account.provider, account.name))
 
     legacy_specs = (
-        ("claude", repo / "config/claude-profiles.json", "profiles"),
-        ("chatgpt", repo / "config/openai-profiles.json", "profiles"),
-        ("grok", repo / "config/grok-profiles.json", "profiles"),
-        ("antigravity", repo / "config/antigravity-accounts.json", "accounts"),
-        ("abacus", repo / "config/abacus-accounts.json", "accounts"),
+        ("claude", config / "claude-profiles.json", "profiles"),
+        ("chatgpt", config / "openai-profiles.json", "profiles"),
+        ("grok", config / "grok-profiles.json", "profiles"),
+        ("antigravity", config / "antigravity-accounts.json", "accounts"),
+        ("abacus", config / "abacus-accounts.json", "accounts"),
     )
     for provider, path, key in legacy_specs:
         if not path.exists():
@@ -290,7 +291,7 @@ def main():
     parser.add_argument(
         "--source-repo",
         type=Path,
-        required=True,
+        default=Path(os.environ.get("AI_HARNESS_ACCOUNT_REPO", Path.home() / ".config/workbenches")),
         help="Local clone containing config/ai-harness-accounts.json or a legacy split manifest",
     )
     parser.add_argument("--port", type=int, default=8765)

@@ -187,17 +187,15 @@ fi
 log_header "VPN SETUP"
 echo "VPN client setup is available from the interactive selector." >> "$LOG_FILE"
 
-# Provision optional multi-account Claude profiles. Existing manifests are
-# applied automatically; first-time interactive setup is opt-in.
+# Provision per-user Claude credential profiles. Existing manifests are applied
+# automatically; first-time interactive setup collects personal and work
+# identities without collecting or copying credential material.
 log_header "CLAUDE PROFILE SETUP"
 claude_profile_manifest="${CLAUDE_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/claude-profiles.json}"
 if [ -f "$claude_profile_manifest" ]; then
     "${SCRIPT_DIR}/scripts/setup-claude-profiles.sh" || echo "⚠ Claude profile setup failed"
 elif [ -t 0 ]; then
-    read -p "Configure multiple Claude login profiles? [y/N]: " configure_claude_profiles
-    case "$configure_claude_profiles" in
-        [Yy]*) "${SCRIPT_DIR}/scripts/setup-claude-profiles.sh" --interactive || echo "⚠ Claude profile setup failed" ;;
-    esac
+    "${SCRIPT_DIR}/scripts/setup-claude-profiles.sh" --interactive || echo "⚠ Claude profile setup failed"
 fi
 echo ""
 

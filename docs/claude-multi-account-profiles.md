@@ -25,6 +25,22 @@ Alternatively, collect or confirm each email interactively:
 ./scripts/setup-claude-profiles.sh --interactive
 ```
 
+On first-run `setup.sh`, this questionnaire runs automatically. It asks for a
+personal Claude login email, whether the workstation is used for company work,
+the number of companies, and each company's name and work login email. It
+creates `personal` plus one stable `work-<company>` profile per company. The
+answers are account inventory only; passwords, OAuth tokens, and API keys are
+never requested or written to the manifest.
+
+After setup, launch the local credential manager with:
+
+```bash
+./scripts/check-ai-credentials.sh
+```
+
+The manager reads `~/.config/workbenches/claude-profiles.json` by default and
+can start or verify each profile's isolated Claude login.
+
 The manifest contains email addresses but no credentials. Claude stores OAuth
 credentials inside each directory under `~/.claude-profiles/profiles/`.
 The installer marks the profile's CLI onboarding as complete because login is
@@ -44,10 +60,10 @@ The setup creates this per-user structure:
 ```text
 ~/.claude-profiles/
 |-- profiles/
-|   |-- work/       # Work login, settings, plugins, and cache
+|   |-- work-acme/  # One company's login, settings, plugins, and cache
 |   `-- personal/   # Personal login, settings, plugins, and cache
 |-- state/
-|   |-- work/       # Work-only history, projects, plans, and tasks
+|   |-- work-acme/  # Company-only history, projects, plans, and tasks
 |   `-- personal/   # Personal-only history, projects, plans, and tasks
 `-- shared/         # Status panel, skills, agents, commands, and rules
 ```

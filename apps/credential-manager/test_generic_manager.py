@@ -40,6 +40,26 @@ class GenericManagerTest(unittest.TestCase):
         self.assertEqual(MANAGER.canonical_provider("codex"), "chatgpt")
         self.assertEqual(MANAGER.canonical_provider("gemini"), "antigravity")
 
+    def test_direct_workstation_config_directory_is_supported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory)
+            (config / "claude-profiles.json").write_text(
+                json.dumps({
+                    "version": 1,
+                    "profiles": [{
+                        "name": "work-example",
+                        "family": "work-example",
+                        "email": "user@example.org",
+                    }],
+                })
+            )
+            accounts = MANAGER.load_accounts(config)
+
+        self.assertEqual(
+            [(account.provider, account.name) for account in accounts],
+            [("claude", "work-example")],
+        )
+
     def test_example_contains_no_secret_values(self):
         data = json.loads(
             (REPO / "config/ai-harness-accounts.example.json").read_text()

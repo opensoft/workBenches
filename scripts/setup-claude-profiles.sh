@@ -38,14 +38,66 @@ fi
 if [[ "$interactive" == true ]]; then
   tmp="$(mktemp)"
   trap 'rm -f "$tmp"' EXIT
-  cp "$manifest" "$tmp"
-  while IFS=$'\t' read -r name email; do
-    read -r -p "Claude email for $name [$email]: " answer </dev/tty || true
-    [[ -n "${answer:-}" ]] || continue
-    jq --arg name "$name" --arg email "$answer" \
-      '(.profiles[] | select(.name == $name) | .email) = $email' "$tmp" > "$tmp.next"
-    mv "$tmp.next" "$tmp"
-  done < <(jq -r '.profiles[] | [.name, .email] | @tsv' "$manifest")
+
+  prompt_email() {
+    local prompt="$1" value
+    while true; do
+      read -r -p "$prompt: " value </dev/tty
+      if [[ $value == *@*.* ]]; then
+        printf '%s\n' "$value"
+        return
+      fi
+      echo "Enter a valid email address." >/dev/tty
+    done
+  }
+
+  slugify() {
+    local value="$1"
+    value=$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
+    printf '%s\n' "${value:-company}"
+  }
+
+  personal_email=$(prompt_email "Personal Claude login email")
+  jq -n --arg email "$personal_email" '{
+    version: 1,
+    profiles: [{name: "personal", family: "personal", email: $email}]
+  }' > "$tmp"
+
+  read -r -p "Do you use this workstation for work for one or more companies? [y/N]: " uses_work </dev/tty
+  case "$uses_work" in
+    [Yy]*)
+      while true; do
+        read -r -p "How many companies? " company_count </dev/tty
+        [[ $company_count =~ ^[1-9][0-9]*$ ]] && break
+        echo "Enter a whole number greater than zero." >/dev/tty
+      done
+
+      for ((index = 1; index <= company_count; index++)); do
+        while true; do
+          read -r -p "Company $index name: " company_name </dev/tty
+          [[ -n $company_name ]] && break
+          echo "Company name is required." >/dev/tty
+        done
+        company_email=$(prompt_email "Claude login email for $company_name")
+        company_slug=$(slugify "$company_name")
+        profile_name="work-$company_slug"
+        if jq -e --arg name "$profile_name" '.profiles[] | select(.name == $name)' "$tmp" >/dev/null; then
+          profile_name="$profile_name-$index"
+        fi
+        jq --arg name "$profile_name" --arg family "$profile_name" \
+          --arg email "$company_email" --arg workspace "$company_name" '
+          .profiles += [{
+            name: $name,
+            family: $family,
+            email: $email,
+            workspace: $workspace
+          }]
+        ' "$tmp" > "$tmp.next"
+        mv "$tmp.next" "$tmp"
+      done
+      ;;
+  esac
+
   install -m 600 "$tmp" "$manifest"
 fi
 
@@ -146,3 +198,4 @@ ln -sfn "$repo_dir/scripts/claude-profile" "$HOME/.local/bin/pclaude"
 echo "Claude profiles configured under $base"
 echo "Run: claude-profile list"
 echo "Then: claude-profile login PROFILE"
+echo "Manage credentials: $repo_dir/scripts/check-ai-credentials.sh"

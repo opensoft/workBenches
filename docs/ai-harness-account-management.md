@@ -54,6 +54,10 @@ python3 apps/credential-manager/credential_manager.py \
   --source-repo ~/account-registry
 ```
 
+For profiles collected during `setup.sh`, run
+`./scripts/check-ai-credentials.sh`. It defaults to the workstation inventory
+in `~/.config/workbenches`.
+
 Open `http://127.0.0.1:8765`. The server binds only to loopback. It displays
 the source repository URL, verifies supported local profiles, and can start
 vendor login flows. It does not read, return, copy, or commit credential

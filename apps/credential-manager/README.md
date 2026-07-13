@@ -21,6 +21,14 @@ python3 apps/credential-manager/credential_manager.py \
   --source-repo ~/account-registry
 ```
 
+Profiles created by `setup.sh` need no separate registry argument:
+
+```bash
+./scripts/check-ai-credentials.sh
+```
+
+This reads `~/.config/workbenches/claude-profiles.json` by default.
+
 Open `http://127.0.0.1:8765`. The server binds only to loopback. It reads
 non-secret account metadata, derives the source clone's Git remote, verifies
 supported profiles, and starts supported vendor login commands.
