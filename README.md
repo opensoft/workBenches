@@ -32,7 +32,7 @@ Layer 0: workbench-base:latest          — Ubuntu 24.04 + git, zsh, curl, share
   │    ├─ Layer 2: dotnet-bench:latest  — .NET SDK 8/9
   │    ├─ Layer 2: flutter-bench:latest — Flutter SDK, Dart, Android tools
   │    ├─ Layer 2: frappe-bench:latest  — MariaDB client, Redis, Nginx, bench CLI (Node.js 20)
-  │    ├─ Layer 2: java-bench:latest    — OpenJDK 21, Maven, Gradle, Spring CLI
+  │    ├─ Layer 2: java-bench:latest    — OpenJDK 25, Maven, Gradle, Spring CLI
   │    ├─ Layer 2: php-bench:latest     — PHP 8.3, Composer, PHPUnit, Xdebug
   │    ├─ Layer 2: py-bench:latest      — Python dev tools (thin layer on 1a)
   │    └─ Layer 2: go-bench:latest      — Go toolchain
