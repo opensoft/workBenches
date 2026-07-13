@@ -237,23 +237,6 @@ async function checkWave(): Promise<ComponentStatus> {
 }
 
 /**
- * Check Pi Coding Agent status.
- */
-async function checkPiTerminal(): Promise<ComponentStatus> {
-  const hasPi = await commandExists('pi');
-  const hasWindowsPi = isWSL()
-    ? await windowsCommandExists('pi') || await windowsEnvFileExists('APPDATA', 'npm\\pi.cmd')
-    : false;
-
-  if (!hasPi && !hasWindowsPi) {
-    return 'not_installed';
-  }
-
-  const hasPiDir = await dirExists(`${process.env.HOME}/.pi`);
-  return hasPiDir ? 'installed' : 'needs_creds';
-}
-
-/**
  * Check bench installation status
  */
 async function checkBench(benchName: string, expectedUrl?: string): Promise<ComponentStatus> {
@@ -345,8 +328,6 @@ export async function checkComponentStatus(component: Component): Promise<Compon
       return checkWarp();
     case 'wave':
       return checkWave();
-    case 'pi_terminal':
-      return checkPiTerminal();
     default:
       return 'unknown';
   }
