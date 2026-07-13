@@ -56,6 +56,14 @@ class GenericManagerTest(unittest.TestCase):
         for account in data["accounts"]:
             self.assertTrue(forbidden_fields.isdisjoint(key.lower() for key in account))
 
+    def test_claude_example_provides_work_and_personal_profiles(self):
+        data = json.loads(
+            (REPO / "config/claude-profiles.example.json").read_text()
+        )
+        profiles = {(profile["name"], profile["family"]) for profile in data["profiles"]}
+        self.assertIn(("work", "work"), profiles)
+        self.assertIn(("personal", "personal"), profiles)
+
     def test_public_account_surface_has_no_private_identifiers(self):
         targets = [
             REPO / "apps/credential-manager",

@@ -137,6 +137,60 @@ rate_segment() {
     printf '%s%s [%s%s] %s%%%s%s' "$color" "$label" "$bar" "$empty_bar" "$pct" "$reset" "$reset_text"
 }
 
+repeat_char() {
+    local char=$1 count=$2 value
+    (( count <= 0 )) && return
+    printf -v value '%*s' "$count" ''
+    printf '%s' "${value// /$char}"
+}
+
+countdown_segment() {
+    local label=$1 reset_at=$2 window_seconds=$3 unit=$4
+    local now remaining elapsed bar_width marker_pos bar color amount reset_text
+
+    bar_width=$(( columns >= 100 ? 8 : 6 ))
+    if [[ ! $reset_at =~ ^[0-9]+$ ]]; then
+        bar=$(repeat_char '-' "$bar_width")
+        printf '%s%s [%s] waiting%s' "$dim" "$label" "$bar" "$reset"
+        return
+    fi
+
+    now=$(date +%s)
+    remaining=$(( reset_at - now ))
+    (( remaining < 0 )) && remaining=0
+    elapsed=$(( window_seconds - remaining ))
+    (( elapsed < 0 )) && elapsed=0
+    (( elapsed > window_seconds )) && elapsed=$window_seconds
+    marker_pos=$(( elapsed * (bar_width - 1) / window_seconds ))
+    bar="$(repeat_char '=' "$marker_pos")>$(repeat_char '-' "$((bar_width - marker_pos - 1))")"
+
+    if (( remaining * 100 <= window_seconds * 15 )); then
+        color=$red
+    elif (( remaining * 100 <= window_seconds * 40 )); then
+        color=$yellow
+    else
+        color=$green
+    fi
+
+    if [[ $unit == minutes ]]; then
+        amount="$(( (remaining + 59) / 60 ))m"
+        reset_text=$(TZ="${STATUSLINE_TZ:-America/Los_Angeles}" date -d "@$reset_at" '+%-I:%M%p %Z' 2>/dev/null || true)
+    else
+        if (( remaining >= 86400 )); then
+            amount="$(( remaining / 86400 ))d"
+        else
+            amount="$(( (remaining + 3599) / 3600 ))h"
+        fi
+        if (( columns >= 100 )); then
+            reset_text=$(TZ="${STATUSLINE_TZ:-America/Los_Angeles}" date -d "@$reset_at" '+%a %b %d %-I:%M%p %Z' 2>/dev/null || true)
+        else
+            reset_text=$(TZ="${STATUSLINE_TZ:-America/Los_Angeles}" date -d "@$reset_at" '+%b %d %-I:%M%p' 2>/dev/null || true)
+        fi
+    fi
+
+    printf '%s%s [%s] %s left%s %s@ %s%s' "$color" "$label" "$bar" "$amount" "$reset" "$dim" "$reset_text" "$reset"
+}
+
 fable_weekly_limit() {
     local config_dir credentials cache now modified token tmp response_pct response_reset
 
@@ -280,25 +334,24 @@ elif [[ -n $session_name ]]; then
 elif [[ -n $worktree_name ]]; then
     identity="wt:$worktree_name"
 fi
-line4_parts=()
+runtime_target=""
 # AgentTower needs the exact tmux session name for `tmux attach -t`.
 if [[ -n ${TMUX:-} ]] && command -v tmux >/dev/null 2>&1; then
     tmux_session=$(tmux display-message -p '#S' 2>/dev/null || true)
     if [[ -n $tmux_session ]]; then
-        line4_parts=("${dim}[TMUX]${reset}" "${blue}${tmux_session}${reset}")
-        [[ -n ${TMUX_PANE:-} ]] && line4_parts+=("${blue}pane:${TMUX_PANE}${reset}")
+        runtime_target="tmux:${tmux_session}"
+        [[ -n ${TMUX_PANE:-} ]] && runtime_target+="/${TMUX_PANE}"
     fi
 fi
-if (( ${#line4_parts[@]} == 0 )); then
-    line4_parts=("${dim}[RUN]${reset}" "${blue}${identity:-standalone}${reset}")
-fi
+[[ -z $runtime_target && -n $identity ]] && runtime_target=$identity
+[[ -n $runtime_target ]] && line1_parts+=("${blue}${runtime_target}${reset}")
 
-# Permission state is shown only when Claude explicitly supplies it.
-if [[ -n $permission_mode ]]; then
-    permission_color=$yellow
-    [[ $permission_mode == bypassPermissions ]] && permission_color=$red
-    line4_parts+=("${permission_color}${permission_mode}${reset}")
-fi
+weekly_reset=${fable_weekly_reset:-$seven_day_reset}
+line4_parts=(
+    "${dim}[RESET]${reset}"
+    "$(countdown_segment '5h' "$five_hour_reset" 18000 minutes)"
+    "$(countdown_segment '7d' "$weekly_reset" 604800 days)"
+)
 
 printf '%s\n' "$(join_parts "${line1_parts[@]}")"
 printf '%s\n' "$(join_parts "${line2_parts[@]}")"

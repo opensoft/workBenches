@@ -1,9 +1,7 @@
 {
   "version": 1,
   "profiles": [
-    { "name": "personal-primary", "family": "personal", "email": "user@example.com" },
-    { "name": "company-premium-1", "family": "company", "email": "claude-premium-1@example.org", "aliases": ["cp1"] },
-    { "name": "company-standard-1", "family": "company", "email": "claude-standard-1@example.org" },
-    { "name": "client-max-1", "family": "client", "email": "claude-max-1@client.example" }
+    { "name": "work", "family": "work", "email": "user@company.example" },
+    { "name": "personal", "family": "personal", "email": "user@example.com" }
   ]
 }
