@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+manifest="${CLAUDE_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/claude-profiles.json}"
+base="${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}"
+command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
+
+configure_profile_runtime() {
+  local config_dir="$1" statusline_source statusline_link settings settings_tmp statusline_command
+
+  statusline_source="$base/shared/statusline-command.sh"
+  if [[ ! -f "$statusline_source" && -f /usr/local/share/workbenches/claude/statusline-command.sh ]]; then
+    statusline_source=/usr/local/share/workbenches/claude/statusline-command.sh
+  fi
+
+  if [[ -f "$statusline_source" ]]; then
+    statusline_link="$config_dir/statusline-command.sh"
+    if [[ -L "$statusline_link" || ! -e "$statusline_link" ]]; then
+      ln -sfn "$statusline_source" "$statusline_link"
+    fi
+  fi
+
+  settings="$config_dir/settings.json"
+  if [[ -e "$settings" ]] && ! jq -e 'type == "object"' "$settings" >/dev/null 2>&1; then
+    echo "Claude profile settings are not valid JSON: $settings" >&2
+    return 1
+  fi
+
+  statusline_command='bash "${CLAUDE_CONFIG_DIR}/statusline-command.sh"'
+  settings_tmp="$(mktemp "$config_dir/.settings.XXXXXX.tmp")"
+  if [[ -f "$settings" ]]; then
+    jq --arg command "$statusline_command" '
+      .statusLine = {type: "command", command: $command, refreshInterval: 10}
+      | .permissions = (.permissions // {})
+      | .permissions.defaultMode = "bypassPermissions"
+      | .effortLevel = (.effortLevel // "xhigh")
+    ' "$settings" > "$settings_tmp"
+  else
+    jq -n --arg command "$statusline_command" '{
+      statusLine: {type: "command", command: $command, refreshInterval: 10},
+      permissions: {defaultMode: "bypassPermissions"},
+      effortLevel: "xhigh"
+    }' > "$settings_tmp"
+  fi
+  chmod 600 "$settings_tmp"
+  mv -f "$settings_tmp" "$settings"
+}
+
+claude_bin="${CLAUDE_BIN:-$(command -v claude || true)}"
+if [[ -z "$claude_bin" && -x "$HOME/.local/bin/claude" ]]; then
+  claude_bin="$HOME/.local/bin/claude"
+fi
+
+# Native Claude records ~/.local/bin/claude as its expected installation path.
+# Bench images install the immutable CLI in /usr/local/bin, so provide a
+# per-user compatibility link to keep Claude's installer health check accurate.
+if [[ "$claude_bin" == "/usr/local/bin/claude" ]]; then
+  if mkdir -p "$HOME/.local/bin" 2>/dev/null; then
+    if [[ ! -e "$HOME/.local/bin/claude" && ! -L "$HOME/.local/bin/claude" ]]; then
+      ln -s /usr/local/bin/claude "$HOME/.local/bin/claude"
+    elif [[ -L "$HOME/.local/bin/claude" && ! -e "$HOME/.local/bin/claude" ]]; then
+      ln -sfn /usr/local/bin/claude "$HOME/.local/bin/claude"
+    fi
+  fi
+fi
+
+profile_metadata() {
+  local requested="$1" normalized row metadata candidate
+  normalized="$(printf '%s' "$requested" | tr '[:upper:]' '[:lower:]')"
+  if [[ -f "$manifest" ]]; then
+    row="$(jq -r --arg name "$normalized" \
+      '.profiles[]
+       | select(
+           ((.name | ascii_downcase) == $name)
+           or any(.aliases[]?; (ascii_downcase == $name))
+         )
+       | [.name,.email,.family] | @tsv' \
+      "$manifest" | head -n 1)"
+    if [[ -n "$row" ]]; then
+      printf '%s\n' "$row"
+      return 0
+    fi
+  fi
+
+  for metadata in "$base"/profiles/*/.profile.json; do
+    [[ -f "$metadata" ]] || continue
+    candidate="$(jq -r --arg name "$normalized" '
+      if (((.name // "") | ascii_downcase) == $name)
+         or any(.aliases[]?; (ascii_downcase == $name))
+      then "match" else empty end
+    ' "$metadata")"
+    if [[ "$candidate" == "match" ]]; then
+      jq -r '[.name,.email,.family] | @tsv' "$metadata"
+      return 0
+    fi
+  done
+  return 1
+}
+
+action="${1:-list}"
+if [[ "$action" == "list" || "$action" == "login" || "$action" == "status" || "$action" == "run" ]]; then
+  [[ $# -eq 0 ]] || shift
+else
+  action="run"
+fi
+
+case "$action" in
+  list)
+    {
+      if [[ -f "$manifest" ]]; then
+        jq -r '.profiles[] | [.name, .family, .email, ((.aliases // []) | join(","))] | @tsv' "$manifest"
+      fi
+      for metadata in "$base"/profiles/*/.profile.json; do
+        [[ -f "$metadata" ]] || continue
+        jq -r '[.name,.family,.email,((.aliases // []) | join(","))] | @tsv' "$metadata"
+      done
+    } | awk -F '\t' '!seen[tolower($1)]++'
+    ;;
+  login|status|run)
+    profile="${1:?Usage: claude-profile $action PROFILE [arguments]}"; shift
+    row="$(profile_metadata "$profile" || true)"
+    [[ -n "$row" ]] || { echo "Unknown Claude profile: $profile" >&2; exit 2; }
+    IFS=$'\t' read -r profile email family <<<"$row"
+    config_dir="$base/profiles/$profile"
+    [[ -n "$claude_bin" ]] || { echo "Claude CLI not found." >&2; exit 1; }
+    configure_profile_runtime "$config_dir"
+    case "$action" in
+      login) CLAUDE_CONFIG_DIR="$config_dir" "$claude_bin" auth login --claudeai --email "$email" "$@" ;;
+      status) CLAUDE_CONFIG_DIR="$config_dir" "$claude_bin" auth status "${@---text}" ;;
+      run) CLAUDE_CONFIG_DIR="$config_dir" exec "$claude_bin" \
+        --allow-dangerously-skip-permissions \
+        --dangerously-skip-permissions \
+        --permission-mode bypassPermissions \
+        "$@" ;;
+    esac
+    ;;
+  *) echo "Usage: claude-profile {list|login|status|run} [PROFILE]" >&2; exit 2 ;;
+esac

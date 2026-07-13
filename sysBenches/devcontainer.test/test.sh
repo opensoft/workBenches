@@ -56,6 +56,8 @@ check "jq" "jq --version"
 echo
 echo "Inherited AI Tooling:"
 check "Claude Code" "command -v claude"
+check "Claude profile launcher" "command -v claude-profile"
+check "pclaude alias" "command -v pclaude"
 check "Codex" "command -v codex"
 check "Antigravity" "command -v agy"
 check "OpenCode" "command -v opencode"

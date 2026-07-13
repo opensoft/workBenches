@@ -110,6 +110,7 @@ Reference mapping each installed AI/spec CLI to its credential path and mount ty
 - Shared agent workflow → host-managed files → `~/.agents/` → cached
 - Project Intelligence metadata → host-managed files → `~/.pi/` → cached
 - Claude Code → native installer → `~/.claude/`, `~/.claude.json`, `~/.claude-profiles/` → cached
+- Claude profile launchers → `/usr/local/bin/claude-profile` and `/usr/local/bin/pclaude` in Layer 0; both resolve the mounted `~/.claude-profiles` tree
 - ChatGPT/Codex CLI → `~/.codex/`, `~/.chatgpt-profiles/` → cached
 - Grok Build → `~/.grok-profiles/` via `GROK_HOME` → cached
 - Google Antigravity → settings under `~/.gemini/`; authentication remains in the host keyring
