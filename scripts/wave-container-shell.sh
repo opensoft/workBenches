@@ -110,6 +110,10 @@ ensure_host_sources() {
         "$home_dir/.claude" \
         "$home_dir/.claude-profiles" \
         "$home_dir/.codex" \
+        "$home_dir/.chatgpt-profiles" \
+        "$home_dir/.gemini-profiles" \
+        "$home_dir/.grok-profiles" \
+        "$home_dir/.glm-profiles" \
         "$home_dir/.omnigent" \
         "$home_dir/.agents" \
         "$home_dir/.pi" \
@@ -154,6 +158,10 @@ services:
       - ${home_dir}/.claude.json:/home/${container_user}/.claude.json:cached
       - ${home_dir}/.claude-profiles:/home/${container_user}/.claude-profiles:cached
       - ${home_dir}/.codex:/home/${container_user}/.codex:cached
+      - ${home_dir}/.chatgpt-profiles:/home/${container_user}/.chatgpt-profiles:cached
+      - ${home_dir}/.gemini-profiles:/home/${container_user}/.gemini-profiles:cached
+      - ${home_dir}/.grok-profiles:/home/${container_user}/.grok-profiles:cached
+      - ${home_dir}/.glm-profiles:/home/${container_user}/.glm-profiles:cached
       - ${home_dir}/.omnigent:/home/${container_user}/.omnigent:cached
       - ${home_dir}/.agents:/home/${container_user}/.agents:cached
       - ${home_dir}/.pi:/home/${container_user}/.pi:cached
@@ -213,6 +221,10 @@ container_missing_required_mounts() {
         "/home/${container_user}/.oh-my-zsh"
         "/home/${container_user}/.p10k.zsh"
         "/home/${container_user}/.claude-profiles"
+        "/home/${container_user}/.chatgpt-profiles"
+        "/home/${container_user}/.gemini-profiles"
+        "/home/${container_user}/.grok-profiles"
+        "/home/${container_user}/.glm-profiles"
     )
 
     local mount
@@ -255,24 +267,39 @@ if [[ "$(docker container inspect -f '{{.State.Running}}' "$container")" != "tru
     docker start "$container" >/dev/null
 fi
 
-install_claude_profile_launcher() {
-    local launcher="$workbenches_root/base-image/files/claude-profile"
-    [[ -f "$launcher" ]] || return 0
+install_ai_profile_launchers() {
+    local claude_launcher="$workbenches_root/base-image/files/claude-profile"
+    local codex_launcher="$workbenches_root/base-image/files/codex-profile"
+    local provider_launcher="$workbenches_root/base-image/files/provider-profile"
+    [[ -f "$claude_launcher" ]] || return 0
 
-    docker cp "$launcher" "$container:/usr/local/bin/claude-profile"
+    docker cp "$claude_launcher" "$container:/usr/local/bin/claude-profile"
     docker exec --user root "$container" sh -c \
         'chmod 0755 /usr/local/bin/claude-profile && ln -sfn claude-profile /usr/local/bin/pclaude'
+    if [[ -f "$codex_launcher" ]]; then
+        docker cp "$codex_launcher" "$container:/usr/local/bin/codex-profile"
+        docker exec --user root "$container" sh -c \
+            'chmod 0755 /usr/local/bin/codex-profile && ln -sfn codex-profile /usr/local/bin/pcodex'
+    fi
+    if [[ -f "$provider_launcher" ]]; then
+        docker cp "$provider_launcher" "$container:/usr/local/bin/provider-profile"
+        docker exec --user root "$container" sh -c \
+            'chmod 0755 /usr/local/bin/provider-profile
+             for name in gemini-profile pgemini grok-profile pgrok glm-profile zai-profile pglm pzai; do
+               ln -sfn provider-profile "/usr/local/bin/$name"
+             done'
+    fi
     docker exec --user root "$container" sh -c \
         "mkdir -p '/home/${container_user}/.local/bin' && chown '${container_user}:${container_user}' '/home/${container_user}/.local' '/home/${container_user}/.local/bin'"
     docker exec --user "$container_user" "$container" sh -c \
         'if [ ! -e "$HOME/.local/bin/claude" ]; then ln -s /usr/local/bin/claude "$HOME/.local/bin/claude"; fi'
 }
 
-install_claude_profile_launcher
+install_ai_profile_launchers
 
 if [[ "$check_only" == true ]]; then
     docker exec --user "$container_user" --workdir "$workdir" "$container" "$shell_path" -lc \
-        'printf "%s\n" "wave-container-shell-ok"; whoami; pwd; command -v claude-profile; command -v pclaude; test -d "$HOME/.claude-profiles"'
+        'printf "%s\n" "wave-container-shell-ok"; whoami; pwd; command -v claude-profile; command -v pclaude; command -v codex-profile; command -v pcodex; command -v pgemini; command -v pgrok; command -v pglm; test -d "$HOME/.claude-profiles"; test -d "$HOME/.chatgpt-profiles"; test -d "$HOME/.gemini-profiles"; test -d "$HOME/.grok-profiles"; test -d "$HOME/.glm-profiles"'
     exit 0
 fi
 

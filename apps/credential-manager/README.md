@@ -27,7 +27,8 @@ Profiles created by `setup.sh` need no separate registry argument:
 ./scripts/check-ai-credentials.sh
 ```
 
-This reads `~/.config/workbenches/claude-profiles.json` by default.
+This reads supported manifests in `~/.config/workbenches` by default, including
+the Claude, OpenAI, Gemini, Grok, and GLM profile manifests.
 
 Open `http://127.0.0.1:8765`. The server binds only to loopback. It reads
 non-secret account metadata, derives the source clone's Git remote, verifies

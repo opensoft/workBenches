@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+manifest="${CODEX_PROFILES_MANIFEST:-${CHATGPT_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/openai-profiles.json}}"
+base="${CODEX_PROFILES_HOME:-${CHATGPT_PROFILES_HOME:-$HOME/.chatgpt-profiles}}"
+command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
+
+codex_bin="${CODEX_BIN:-$(command -v codex || true)}"
+if [[ -z "$codex_bin" && -x "$HOME/.local/bin/codex" ]]; then
+  codex_bin="$HOME/.local/bin/codex"
+fi
+
+profile_metadata() {
+  local requested="$1" normalized row metadata candidate
+  normalized="$(printf '%s' "$requested" | tr '[:upper:]' '[:lower:]')"
+  if [[ -f "$manifest" ]]; then
+    row="$(jq -r --arg name "$normalized" \
+      '.profiles[]
+       | select(
+           ((.name | ascii_downcase) == $name)
+           or any(.aliases[]?; (ascii_downcase == $name))
+         )
+       | [.name,.email,.family] | @tsv' \
+      "$manifest" | head -n 1)"
+    if [[ -n "$row" ]]; then
+      printf '%s\n' "$row"
+      return 0
+    fi
+  fi
+
+  for metadata in "$base"/profiles/*/.profile.json; do
+    [[ -f "$metadata" ]] || continue
+    candidate="$(jq -r --arg name "$normalized" '
+      if (((.name // "") | ascii_downcase) == $name)
+         or any(.aliases[]?; (ascii_downcase == $name))
+      then "match" else empty end
+    ' "$metadata")"
+    if [[ "$candidate" == "match" ]]; then
+      jq -r '[.name,.email,.family] | @tsv' "$metadata"
+      return 0
+    fi
+  done
+  return 1
+}
+
+action="${1:-list}"
+if [[ "$action" == "list" || "$action" == "login" || "$action" == "status" || "$action" == "logout" || "$action" == "run" ]]; then
+  [[ $# -eq 0 ]] || shift
+else
+  action="run"
+fi
+
+case "$action" in
+  list)
+    {
+      if [[ -f "$manifest" ]]; then
+        jq -r '.profiles[] | [.name, .family, .email, ((.aliases // []) | join(","))] | @tsv' "$manifest"
+      fi
+      for metadata in "$base"/profiles/*/.profile.json; do
+        [[ -f "$metadata" ]] || continue
+        jq -r '[.name,.family,.email,((.aliases // []) | join(","))] | @tsv' "$metadata"
+      done
+    } | awk -F '\t' '!seen[tolower($1)]++'
+    ;;
+  login|status|logout|run)
+    profile="${1:?Usage: codex-profile $action PROFILE [arguments]}"; shift
+    row="$(profile_metadata "$profile" || true)"
+    [[ -n "$row" ]] || { echo "Unknown Codex profile: $profile" >&2; exit 2; }
+    IFS=$'\t' read -r profile email family <<<"$row"
+    config_dir="$base/profiles/$profile"
+    [[ -d "$config_dir" ]] || { echo "Codex profile is not configured: $config_dir" >&2; exit 2; }
+    [[ -n "$codex_bin" ]] || { echo "Codex CLI not found." >&2; exit 1; }
+
+    export CODEX_PROFILE_NAME="$profile"
+    export CODEX_PROFILE_EMAIL="$email"
+    export CODEX_PROFILE_FAMILY="$family"
+    codex_auth_config=(
+      -c 'forced_login_method="chatgpt"'
+      -c 'cli_auth_credentials_store="file"'
+    )
+
+    case "$action" in
+      login)
+        printf 'Starting ChatGPT login for %s (%s).\n' "$profile" "$email" >&2
+        CODEX_HOME="$config_dir" "$codex_bin" "${codex_auth_config[@]}" login "$@"
+        ;;
+      status)
+        CODEX_HOME="$config_dir" "$codex_bin" "${codex_auth_config[@]}" login status "$@"
+        ;;
+      logout)
+        CODEX_HOME="$config_dir" "$codex_bin" "${codex_auth_config[@]}" logout "$@"
+        ;;
+      run)
+        CODEX_HOME="$config_dir" exec "$codex_bin" "${codex_auth_config[@]}" "$@"
+        ;;
+    esac
+    ;;
+  *) echo "Usage: codex-profile {list|login|status|logout|run} [PROFILE]" >&2; exit 2 ;;
+esac

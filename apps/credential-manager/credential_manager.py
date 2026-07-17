@@ -37,13 +37,16 @@ class Account:
 PROVIDER_ALIASES = {
     "codex": "chatgpt",
     "openai": "chatgpt",
-    "gemini": "antigravity",
+    "zai": "glm",
+    "z.ai": "glm",
 }
 
 PROVIDER_CLIS = {
     "claude": "claude",
     "chatgpt": "codex",
     "grok": "grok",
+    "gemini": "gemini",
+    "glm": "opencode",
     "antigravity": "agy",
     "abacus": "abacusai",
 }
@@ -98,6 +101,8 @@ def load_accounts(repo: Path) -> list[Account]:
         ("claude", config / "claude-profiles.json", "profiles"),
         ("chatgpt", config / "openai-profiles.json", "profiles"),
         ("grok", config / "grok-profiles.json", "profiles"),
+        ("gemini", config / "gemini-profiles.json", "profiles"),
+        ("glm", config / "glm-profiles.json", "profiles"),
         ("antigravity", config / "antigravity-accounts.json", "accounts"),
         ("abacus", config / "abacus-accounts.json", "accounts"),
     )
@@ -134,6 +139,10 @@ def profile_home(account: Account) -> Path | None:
         return legacy if legacy.exists() and not current.exists() else current
     if account.provider == "grok":
         return HOME / ".grok-profiles/profiles" / account.name
+    if account.provider == "gemini":
+        return HOME / ".gemini-profiles/profiles" / account.name
+    if account.provider == "glm":
+        return HOME / ".glm-profiles/profiles" / account.name
     return None
 
 
@@ -203,6 +212,18 @@ def verify(account: Account) -> dict:
     elif account.provider == "grok" and directory:
         command = ["grok", "models"]
         env_key = "GROK_HOME"
+    elif account.provider == "gemini" and directory:
+        credential = directory / ".gemini/oauth_creds.json"
+        result["authenticated"] = credential.is_file() and credential.stat().st_size > 0
+        result["detail"] = (
+            "Credential cache present; launch pgemini and run /about to verify"
+            if result["authenticated"]
+            else "Launch pgemini login PROFILE to sign in"
+        )
+        return result
+    elif account.provider == "glm" and directory:
+        result["detail"] = "Use pglm login PROFILE and select Z.AI Coding Plan"
+        return result
     elif account.provider == "antigravity":
         result["detail"] = "Session is managed by the operating-system keyring; launch agy to verify or switch accounts"
         return result

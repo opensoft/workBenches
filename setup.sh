@@ -199,6 +199,23 @@ elif [ -t 0 ]; then
 fi
 echo ""
 
+# Provision per-user Codex credential profiles when a ChatGPT account manifest
+# exists. Browser login remains an explicit per-profile action.
+log_header "CODEX PROFILE SETUP"
+codex_profile_manifest="${CODEX_PROFILES_MANIFEST:-${CHATGPT_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/openai-profiles.json}}"
+if [ -f "$codex_profile_manifest" ]; then
+    "${SCRIPT_DIR}/scripts/setup-codex-profiles.sh" || echo "⚠ Codex profile setup failed"
+fi
+for provider in gemini grok glm; do
+    provider_manifest="${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/${provider}-profiles.json"
+    if [ -f "$provider_manifest" ]; then
+        "${SCRIPT_DIR}/scripts/setup-provider-profiles.sh" \
+            --provider "$provider" --manifest "$provider_manifest" \
+            || echo "⚠ ${provider} profile setup failed"
+    fi
+done
+echo ""
+
 # Wave Terminal widgets are host-user state. Install them before any image
 # builds so the desktop terminal shortcuts track the current checkout.
 log_header "WAVE TERMINAL WIDGET SETUP"

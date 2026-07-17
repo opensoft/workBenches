@@ -12,8 +12,15 @@ import tempfile
 from typing import Any
 
 
-PROVIDERS = {"claude": "claude-profiles.json", "openai": "openai-profiles.json"}
+PROVIDERS = {
+    "claude": "claude-profiles.json",
+    "openai": "openai-profiles.json",
+    "gemini": "gemini-profiles.json",
+    "grok": "grok-profiles.json",
+    "glm": "glm-profiles.json",
+}
 SOURCE_KIND = "workbenches-ai-profile-source"
+PARITY_FIELDS = ("email", "family", "aliases")
 
 
 class ProfileError(ValueError):
@@ -74,6 +81,55 @@ def is_allowed(name: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatchcase(name, pattern) for pattern in patterns)
 
 
+def validate_provider_parity(source: dict[str, Any], path: pathlib.Path) -> None:
+    rules = source.get("providerParity", [])
+    if not isinstance(rules, list):
+        raise ProfileError(f"invalid providerParity in {path}")
+    profiles = source.get("profiles", {})
+    for rule in rules:
+        if not isinstance(rule, dict):
+            raise ProfileError(f"invalid provider parity rule in {path}")
+        providers = rule.get("providers", [])
+        patterns = rule.get("profiles", [])
+        if (
+            not isinstance(providers, list)
+            or len(providers) < 2
+            or any(provider not in PROVIDERS for provider in providers)
+        ):
+            raise ProfileError(f"invalid provider list in parity rule: {path}")
+        if not isinstance(patterns, list) or any(not isinstance(pattern, str) for pattern in patterns):
+            raise ProfileError(f"invalid profile patterns in parity rule: {path}")
+
+        baseline_provider = providers[0]
+        baseline: dict[str, dict[str, Any]] | None = None
+        for provider in providers:
+            raw_profiles = profiles.get(provider, [])
+            if not isinstance(raw_profiles, list):
+                raise ProfileError(f"invalid {provider} profiles in {path}")
+            selected: dict[str, dict[str, Any]] = {}
+            for raw_profile in raw_profiles:
+                profile = validate_profile(raw_profile, provider, path)
+                if is_allowed(profile["name"], patterns):
+                    normalized = {field: profile[field] for field in PARITY_FIELDS}
+                    normalized["aliases"] = sorted(normalized["aliases"])
+                    selected[profile["name"]] = normalized
+            if baseline is None:
+                baseline = selected
+                continue
+            if selected.keys() != baseline.keys():
+                missing = sorted(baseline.keys() - selected.keys())
+                extra = sorted(selected.keys() - baseline.keys())
+                raise ProfileError(
+                    f"{path}: {provider} profile parity differs from {baseline_provider}; "
+                    f"missing={missing}, extra={extra}"
+                )
+            for name in baseline:
+                if selected[name] != baseline[name]:
+                    raise ProfileError(
+                        f"{path}: {provider} profile {name} identity differs from {baseline_provider}"
+                    )
+
+
 def atomic_json(path: pathlib.Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
@@ -116,6 +172,7 @@ def compose(sources: list[str], user: str) -> dict[str, list[dict[str, Any]]]:
         profiles = source.get("profiles", {})
         if not isinstance(profiles, dict):
             raise ProfileError(f"invalid profiles object in {path}")
+        validate_provider_parity(source, path)
         for provider in PROVIDERS:
             provider_profiles = profiles.get(provider, [])
             if not isinstance(provider_profiles, list):

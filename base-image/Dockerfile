@@ -171,13 +171,27 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/root/.npm \
     bash /tmp/install-ai-clis.sh && rm /tmp/install-ai-clis.sh
 
-# Multi-account Claude launcher. Credential profiles are host state mounted at
-# ~/.claude-profiles; only the provider-neutral launcher belongs in the image.
+# Provider-specific multi-account launchers. Credential profiles are host state
+# mounted under provider-specific profile roots; only launchers belong in the
+# image.
 COPY files/claude-profile /usr/local/bin/claude-profile
+COPY files/codex-profile /usr/local/bin/codex-profile
+COPY files/provider-profile /usr/local/bin/provider-profile
 COPY files/claude-statusline-command.sh /usr/local/share/workbenches/claude/statusline-command.sh
 RUN chmod 0755 /usr/local/bin/claude-profile \
+    /usr/local/bin/codex-profile \
+    /usr/local/bin/provider-profile \
     /usr/local/share/workbenches/claude/statusline-command.sh \
     && ln -sfn claude-profile /usr/local/bin/pclaude \
+    && ln -sfn codex-profile /usr/local/bin/pcodex \
+    && ln -sfn provider-profile /usr/local/bin/gemini-profile \
+    && ln -sfn provider-profile /usr/local/bin/pgemini \
+    && ln -sfn provider-profile /usr/local/bin/grok-profile \
+    && ln -sfn provider-profile /usr/local/bin/pgrok \
+    && ln -sfn provider-profile /usr/local/bin/glm-profile \
+    && ln -sfn provider-profile /usr/local/bin/zai-profile \
+    && ln -sfn provider-profile /usr/local/bin/pglm \
+    && ln -sfn provider-profile /usr/local/bin/pzai \
     && mkdir -p /etc/skel/.local/bin \
     && ln -sfn /usr/local/bin/claude /etc/skel/.local/bin/claude
 

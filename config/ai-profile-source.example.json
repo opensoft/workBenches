@@ -24,6 +24,10 @@
         "workspace": "personal",
         "status": "active"
       }
-    ]
-  }
+    ],
+    "gemini": [],
+    "grok": [],
+    "glm": []
+  },
+  "providerParity": []
 }

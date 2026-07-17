@@ -35,7 +35,7 @@ class ProfileComposerTest(unittest.TestCase):
             tenant = self.write_source(
                 root,
                 "tenant",
-                "opensoft",
+                "example-tenant",
                 {
                     "claude": [
                         {"name": "team-001", "email": "team-001@example.com", "family": "company"},
@@ -46,11 +46,11 @@ class ProfileComposerTest(unittest.TestCase):
             )
             grant = tenant / "grants" / "users"
             grant.mkdir(parents=True)
-            (grant / "brettheap.json").write_text(
+            (grant / "engineer.json").write_text(
                 json.dumps(
                     {
                         "version": 1,
-                        "user": "brettheap",
+                        "user": "engineer",
                         "profiles": {"claude": ["team-*"], "openai": []},
                     }
                 ),
@@ -59,16 +59,16 @@ class ProfileComposerTest(unittest.TestCase):
             personal = self.write_source(
                 root,
                 "user",
-                "brettheap",
+                "engineer",
                 {
                     "claude": [
-                        {"name": "personal-1", "email": "brett@example.com", "family": "personal"}
+                        {"name": "personal-1", "email": "engineer@example.com", "family": "personal"}
                     ],
                     "openai": [],
                 },
             )
 
-            result = MODULE.compose([str(tenant), str(personal)], "brettheap")
+            result = MODULE.compose([str(tenant), str(personal)], "engineer")
 
             self.assertEqual([profile["name"] for profile in result["claude"]], ["team-001", "personal-1"])
 
@@ -78,7 +78,7 @@ class ProfileComposerTest(unittest.TestCase):
             personal = self.write_source(
                 root,
                 "user",
-                "brettheap",
+                "engineer",
                 {
                     "claude": [
                         {"name": "one", "email": "one@example.com", "family": "personal", "aliases": ["shared"]},
@@ -89,7 +89,33 @@ class ProfileComposerTest(unittest.TestCase):
             )
 
             with self.assertRaises(MODULE.ProfileError):
-                MODULE.compose([str(personal)], "brettheap")
+                MODULE.compose([str(personal)], "engineer")
+
+    def test_five_provider_parity_is_enforced(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            profile = {
+                "name": "team-001",
+                "email": "team-001@example.com",
+                "family": "company",
+                "aliases": ["team001"],
+            }
+            profiles = {provider: [dict(profile)] for provider in MODULE.PROVIDERS}
+            source = self.write_source(root, "user", "engineer", profiles)
+            source_json = source / "source.json"
+            payload = json.loads(source_json.read_text())
+            payload["providerParity"] = [
+                {"providers": list(MODULE.PROVIDERS), "profiles": ["team-*"]}
+            ]
+            source_json.write_text(json.dumps(payload), encoding="utf-8")
+
+            result = MODULE.compose([str(source)], "engineer")
+            self.assertTrue(all(len(result[provider]) == 1 for provider in MODULE.PROVIDERS))
+
+            payload["profiles"]["glm"][0]["email"] = "wrong@example.com"
+            source_json.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaises(MODULE.ProfileError):
+                MODULE.compose([str(source)], "engineer")
 
 
 if __name__ == "__main__":

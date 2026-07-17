@@ -17,13 +17,15 @@ The supported harness families are:
 |---|---|---|---|---|
 | `claude` | Claude Code | `claude` | One `CLAUDE_CONFIG_DIR` per account | Login and verification |
 | `chatgpt` | ChatGPT account used by Codex CLI | `codex` | One `CODEX_HOME` per account | Login and verification |
+| `gemini` | Google Gemini CLI | `gemini` | One `GEMINI_CLI_HOME` per account | Login and local credential presence |
 | `grok` | Grok Build | `grok` | One `GROK_HOME` per account | Login and verification |
+| `glm` | Z.AI GLM Coding Plan through OpenCode | `opencode` | Profile-specific XDG directories | Login and verification |
 | `antigravity` | Google Antigravity, the Gemini CLI migration target | `agy` | Operating-system secure keyring | Inventory and manual verification |
 | `abacus` | Abacus AI CLI | `abacusai` | Provider login or per-process API key | Inventory and manual verification |
 
-`openai` and `codex` are accepted as legacy aliases for `chatgpt`. `gemini` is
-accepted as a legacy inventory alias for `antigravity`. The executable names
-remain the vendor-provided names shown above.
+`openai` and `codex` are accepted as legacy aliases for `chatgpt`. `zai` and
+`z.ai` are accepted as aliases for `glm`. The executable names remain the
+vendor-provided names shown above.
 
 ## Source-of-truth manifest
 
@@ -41,7 +43,7 @@ OAuth tokens, API-key values, browser cookies, or encryption private keys.
 
 Important fields:
 
-- `provider`: one of the five provider IDs above.
+- `provider`: one of the supported provider IDs above.
 - `name`: stable machine-safe profile name.
 - `family`: accounts that may intentionally share non-secret history or rules.
 - `email`: expected login identity.
@@ -93,15 +95,16 @@ The product/account label is ChatGPT; the official terminal executable remains
 under `CODEX_HOME` (or the operating-system credential store):
 
 ```bash
-profile="$HOME/.chatgpt-profiles/profiles/company-chatgpt-1"
-mkdir -p "$profile"
-CODEX_HOME="$profile" codex login
-CODEX_HOME="$profile" codex login status
-CODEX_HOME="$profile" codex
+./scripts/setup-codex-profiles.sh --manifest /path/to/openai-profiles.json
+codex-profile login company-chatgpt-1
+codex-profile status company-chatgpt-1
+pcodex company-chatgpt-1
 ```
 
 The dashboard writes a profile-local `config.toml` that selects ChatGPT login
 and file credential storage. Treat each profile's `auth.json` like a password.
+The `codex-profile` and `pcodex` launchers provide the same isolation from the
+terminal; see [Codex multi-account profiles](codex-multi-account-profiles.md).
 OpenAI documents the browser flow, local cache, and automatic refresh in
 [Authentication](https://learn.chatgpt.com/docs/auth) and the command details
 in [Developer commands](https://learn.chatgpt.com/docs/developer-commands#codex-login).
@@ -127,6 +130,35 @@ GROK_HOME="$profile" grok login --device-auth
 
 See xAI's [CLI reference](https://docs.x.ai/build/cli/reference) and
 [settings documentation](https://docs.x.ai/build/settings).
+
+### Google Gemini CLI
+
+Gemini CLI supports an isolated user-state root with `GEMINI_CLI_HOME`.
+workBenches materializes one root per canonical identity:
+
+```bash
+pgemini login team001
+pgemini status team001
+pgemini team001
+```
+
+The login command opens Gemini's interactive Google sign-in. The status command
+only reports whether the profile-local credential cache exists; use `/about`
+inside Gemini to verify the selected Google account.
+
+### Z.AI GLM Coding Plan
+
+GLM profiles use OpenCode with isolated XDG config, data, cache, and state
+directories. Authentication is a separate Z.AI API key for every profile:
+
+```bash
+pglm login team001  # select Z.AI Coding Plan
+pglm status team001
+pglm team001
+```
+
+`pzai` is an alias for `pglm`. The profile manifest records the expected email
+but never contains the API key.
 
 ### Google Antigravity
 

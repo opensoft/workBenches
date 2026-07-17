@@ -112,7 +112,10 @@ Reference mapping each installed AI/spec CLI to its credential path and mount ty
 - Claude Code → native installer → `~/.claude/`, `~/.claude.json`, `~/.claude-profiles/` → cached
 - Claude profile launchers → `/usr/local/bin/claude-profile` and `/usr/local/bin/pclaude` in Layer 0; both resolve the mounted `~/.claude-profiles` tree
 - ChatGPT/Codex CLI → `~/.codex/`, `~/.chatgpt-profiles/` → cached
-- Grok Build → `~/.grok-profiles/` via `GROK_HOME` → cached
+- Codex profile launchers → `/usr/local/bin/codex-profile` and `/usr/local/bin/pcodex` in Layer 0; both resolve the mounted `~/.chatgpt-profiles` tree
+- Gemini profile launcher → `/usr/local/bin/pgemini`; resolves mounted `~/.gemini-profiles/` through `GEMINI_CLI_HOME`
+- Grok profile launcher → `/usr/local/bin/pgrok`; resolves mounted `~/.grok-profiles/` through `GROK_HOME`
+- Z.AI GLM profile launcher → `/usr/local/bin/pglm`; resolves mounted `~/.glm-profiles/` through profile-specific XDG directories
 - Google Antigravity → settings under `~/.gemini/`; authentication remains in the host keyring
 - Abacus AI → settings under `~/.abacusai/`; API keys remain external
 - GitHub Copilot → npm (`@github/copilot`) → `~/.copilot-cli/` → readonly

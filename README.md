@@ -212,9 +212,10 @@ Installed and updated via the setup TUI:
 |------|---------------|------|
 | Claude Code CLI | Native installer | `claude login` |
 | GitHub Copilot CLI | npm | `copilot auth login` |
-| OpenAI Codex CLI | npm | `OPENAI_API_KEY` or `codex login` |
-| Google Gemini CLI | npm | Google login (free tier: 60 req/min) |
-| OpenCode CLI | Manual | Additional setup required |
+| OpenAI Codex CLI | npm | `OPENAI_API_KEY`, `codex login`, or isolated `pcodex PROFILE` logins |
+| Google Gemini CLI | npm | Google login or isolated `pgemini PROFILE` login |
+| Grok Build | Native installer | Isolated `pgrok PROFILE` login |
+| OpenCode CLI with Z.AI GLM | Manual | Isolated `pglm PROFILE` Z.AI Coding Plan key |
 | spec-kit | uv (pip) | None |
 | OpenSpec | npm | None |
 
