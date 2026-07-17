@@ -1,5 +1,9 @@
 # Multiple AI harness account management
 
+For the repository ownership model used by product, tenant, engineer, and
+agent-stack credentials, read
+[AI credential ownership and profile composition](ai-credential-ownership.md).
+
 workBenches provides a local account dashboard and profile conventions for
 people who use more than one account across multiple AI coding and agent
 harnesses. An account can be personal, belong to a company workspace, or use a

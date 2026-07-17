@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "kind": "workbenches-ai-profile-source",
+  "owner": {
+    "type": "user",
+    "id": "example-engineer"
+  },
+  "profiles": {
+    "claude": [
+      {
+        "name": "personal-claude-1",
+        "email": "engineer@example.com",
+        "family": "personal",
+        "aliases": ["personal-claude"]
+      }
+    ],
+    "openai": [
+      {
+        "name": "personal-chatgpt-1",
+        "email": "engineer@example.com",
+        "family": "personal",
+        "aliases": ["personal-chatgpt"],
+        "plan": "plus",
+        "workspace": "personal",
+        "status": "active"
+      }
+    ]
+  }
+}

@@ -103,6 +103,8 @@ Installed widgets include:
 
 Multi-account Claude Code setups are supported through a portable profile
 manifest. See [Claude multi-account profiles](docs/claude-multi-account-profiles.md).
+The cross-provider ownership and composition model is documented in
+[AI credential ownership and profile composition](docs/ai-credential-ownership.md).
 
 The WSL connection defaults to `wsl://Ubuntu-24.04` and the projects widget
 defaults to `$HOME/projects`. Override them with `WAVE_WSL_CONNECTION` and
