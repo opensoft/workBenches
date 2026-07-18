@@ -2158,11 +2158,55 @@ process_selections() {
         echo -e "${BOLD}${BLUE}────────────────────────────────────────────────────────────────────────────${NC}"
         echo ""
 
+        guide_isolated_profile_logins() {
+            local provider="$1" manifest="$2" launcher="$3"
+            local profile_count name email answer
+
+            [[ -f "$manifest" ]] || return 1
+            command -v jq >/dev/null 2>&1 || return 1
+            profile_count="$(jq '.profiles | length' "$manifest" 2>/dev/null)" || return 1
+            [[ "$profile_count" =~ ^[0-9]+$ ]] || return 1
+
+            echo -e "${GREEN}✓ Isolated ${provider} profiles are configured${NC}"
+            jq -r '.profiles[] | "  \(.name)  <\(.email)>"' "$manifest"
+            echo -e "${DIM}Each profile has its own credential home; the default login is preserved separately.${NC}"
+            echo ""
+
+            if ! command -v "$launcher" >/dev/null 2>&1; then
+                echo -e "${YELLOW}Profile launcher '${launcher}' is not on PATH yet. Open a new shell, then run '${launcher} login <profile>'.${NC}"
+                echo ""
+                return 0
+            fi
+
+            read -r -p "Walk through login for these ${provider} profiles now? [y/N]: " answer
+            [[ "$answer" =~ ^[Yy] ]] || {
+                echo -e "${YELLOW}Skipped. Use '${launcher} login <profile>' when ready.${NC}"
+                echo ""
+                return 0
+            }
+
+            while IFS=$'\t' read -r name email; do
+                read -r -p "Login ${name} (${email}) now? [y/N]: " answer
+                if [[ "$answer" =~ ^[Yy] ]]; then
+                    "$launcher" login "$name"
+                    echo ""
+                fi
+            done < <(jq -r '.profiles[] | [.name, .email] | @tsv' "$manifest")
+            return 0
+        }
+
         for cli in "${items_needing_creds[@]}"; do
             case "$cli" in
                 codex)
                     echo -e "${CYAN}▶ Setting up Codex CLI authentication...${NC}"
                     echo ""
+
+                    if guide_isolated_profile_logins \
+                        "Codex" \
+                        "${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/openai-profiles.json" \
+                        "pcodex"; then
+                        continue
+                    fi
 
                     # Check if already authenticated
                     if [ -f "$HOME/.codex/auth.json" ] || [ -n "$OPENAI_API_KEY" ]; then
@@ -2207,6 +2251,13 @@ process_selections() {
                 claude)
                     echo -e "${CYAN}▶ Setting up Claude CLI authentication...${NC}"
                     echo ""
+
+                    if guide_isolated_profile_logins \
+                        "Claude" \
+                        "${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/claude-profiles.json" \
+                        "pclaude"; then
+                        continue
+                    fi
 
                     # Display important billing warning
                     echo -e "${BOLD}${YELLOW}⚠️  IMPORTANT BILLING INFORMATION${NC}"

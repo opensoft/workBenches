@@ -47,7 +47,10 @@ ai/
   "owner": {"type": "tenant", "id": "example"},
   "profiles": {
     "claude": [],
-    "openai": []
+    "openai": [],
+    "gemini": [],
+    "grok": [],
+    "glm": []
   }
 }
 ```
@@ -65,7 +68,10 @@ Grants contain provider-specific profile-name patterns:
   "user": "engineer",
   "profiles": {
     "claude": ["team-*", "max-*"],
-    "openai": ["team-*", "max-*"]
+    "openai": ["team-*", "max-*"],
+    "gemini": ["team-*", "max-*"],
+    "grok": ["team-*", "max-*"],
+    "glm": ["team-*", "max-*"]
   }
 }
 ```
@@ -92,11 +98,37 @@ the existing launcher manifests atomically with mode `0600`:
 ```text
 ~/.config/workbenches/claude-profiles.json
 ~/.config/workbenches/openai-profiles.json
+~/.config/workbenches/gemini-profiles.json
+~/.config/workbenches/grok-profiles.json
+~/.config/workbenches/glm-profiles.json
 ```
 
-Run `scripts/setup-claude-profiles.sh` and
-`scripts/setup-codex-profiles.sh` after composition to materialize the local
-profile homes.
+Run `scripts/setup-ai-profiles.sh --apply-existing` after composition to
+materialize every provider's local profile homes.
+
+## First-run onboarding
+
+`setup.sh` invokes `scripts/setup-ai-profiles.sh` when no profile manifests
+exist. Before querying GitHub or writing profile metadata, it asks whether the
+user consents to work/personal profile setup. It then collects:
+
+- the personal GitHub username;
+- company count, company name, company login email, and company GitHub org;
+- personal AI subscription emails and the providers used by each account; and
+- the personal GitHub user or org that owns the personal credential registry.
+
+For each GitHub owner, onboarding searches accessible repositories whose names
+look like AI credential registries and verifies `ai/source.json` exists. The
+user selects a result, enters a repository URL/local path, or chooses a local
+manual profile. Discovery also recognizes a published credential-registry
+feature branch when the source has not reached the default branch. Manual
+profiles are workstation metadata only and are marked
+`sourceMode: manual-workstation`; they do not become a tenant source of truth.
+
+The consent and selections are recorded with mode `0600` at
+`~/.config/workbenches/ai-profile-onboarding.json`. Existing standard provider
+credential homes are detected and preserved, never copied automatically into
+isolated profiles.
 
 ## Secret handling
 

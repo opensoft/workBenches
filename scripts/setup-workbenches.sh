@@ -495,6 +495,12 @@ setup_ai_features() {
     echo -e "${YELLOW}AI-Powered Features Setup${NC}"
     echo "workBenches supports AI-powered bench creation with current tech stack information."
     echo ""
+
+    if [ -x "$SCRIPT_DIR/setup-ai-profiles.sh" ]; then
+        "$SCRIPT_DIR/setup-ai-profiles.sh" --interactive \
+            || echo -e "${YELLOW}AI profile onboarding did not complete.${NC}"
+        echo ""
+    fi
     echo -e "${BLUE}AI Features include:${NC}"
     echo "• Current technology and framework discovery"
     echo "• Up-to-date best practices and tools"
@@ -511,7 +517,8 @@ setup_ai_features() {
             [Nn]* | "" )
                 echo -e "${YELLOW}Skipping AI setup.${NC}"
                 echo "You can setup credentials later:"
-                echo "  - Set AI_HARNESS_ACCOUNT_REPO, then run: ./scripts/check-ai-credentials.sh"
+                echo "  - Run ./scripts/setup-ai-profiles.sh --interactive"
+                echo "  - Or set AI_HARNESS_ACCOUNT_REPO, then run: ./scripts/check-ai-credentials.sh"
                 echo "  - Or manually set environment variables"
                 break
                 ;;

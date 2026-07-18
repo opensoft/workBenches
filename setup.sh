@@ -187,33 +187,20 @@ fi
 log_header "VPN SETUP"
 echo "VPN client setup is available from the interactive selector." >> "$LOG_FILE"
 
-# Provision per-user Claude credential profiles. Existing manifests are applied
-# automatically; first-time interactive setup collects personal and work
-# identities without collecting or copying credential material.
-log_header "CLAUDE PROFILE SETUP"
-claude_profile_manifest="${CLAUDE_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/claude-profiles.json}"
-if [ -f "$claude_profile_manifest" ]; then
-    "${SCRIPT_DIR}/scripts/setup-claude-profiles.sh" || echo "⚠ Claude profile setup failed"
-elif [ -t 0 ]; then
-    "${SCRIPT_DIR}/scripts/setup-claude-profiles.sh" --interactive || echo "⚠ Claude profile setup failed"
+# Apply existing provider profiles or obtain consent and collect the user's
+# work/personal ownership model on first setup. Standard provider credential
+# homes are detected and preserved; credentials are never copied implicitly.
+log_header "AI PROFILE SETUP"
+profile_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/workbenches"
+if find "$profile_config_dir" -maxdepth 1 -name '*-profiles.json' -print -quit 2>/dev/null | grep -q .; then
+    "${SCRIPT_DIR}/scripts/setup-ai-profiles.sh" --apply-existing \
+        || echo "⚠ Existing AI profile setup failed"
+elif [ -t 0 ] && [ -t 1 ]; then
+    "${SCRIPT_DIR}/scripts/setup-ai-profiles.sh" --interactive \
+        || echo "⚠ Interactive AI profile setup failed"
+else
+    echo "AI profile onboarding skipped because no interactive terminal is available."
 fi
-echo ""
-
-# Provision per-user Codex credential profiles when a ChatGPT account manifest
-# exists. Browser login remains an explicit per-profile action.
-log_header "CODEX PROFILE SETUP"
-codex_profile_manifest="${CODEX_PROFILES_MANIFEST:-${CHATGPT_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/openai-profiles.json}}"
-if [ -f "$codex_profile_manifest" ]; then
-    "${SCRIPT_DIR}/scripts/setup-codex-profiles.sh" || echo "⚠ Codex profile setup failed"
-fi
-for provider in gemini grok glm; do
-    provider_manifest="${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/${provider}-profiles.json"
-    if [ -f "$provider_manifest" ]; then
-        "${SCRIPT_DIR}/scripts/setup-provider-profiles.sh" \
-            --provider "$provider" --manifest "$provider_manifest" \
-            || echo "⚠ ${provider} profile setup failed"
-    fi
-done
 echo ""
 
 # Wave Terminal widgets are host-user state. Install them before any image

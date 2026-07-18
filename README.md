@@ -101,8 +101,11 @@ Installed widgets include:
 | `C++Bench` | Starts or repairs `cpp-bench`, then opens an interactive shell |
 | `cloudBench` | Starts or repairs `cloud-bench`, then opens an interactive shell |
 
-Multi-account Claude Code setups are supported through a portable profile
-manifest. See [Claude multi-account profiles](docs/claude-multi-account-profiles.md).
+First-run setup offers consent-based work and personal AI profile onboarding,
+including GitHub credential-registry discovery and a local manual fallback.
+See [Shared AI provider profiles](docs/multi-provider-profiles.md).
+Multi-account Claude details remain in
+[Claude multi-account profiles](docs/claude-multi-account-profiles.md).
 The cross-provider ownership and composition model is documented in
 [AI credential ownership and profile composition](docs/ai-credential-ownership.md).
 

@@ -340,6 +340,35 @@ The UI follows these principles:
 5. **Informative** - Clear feedback at every step
 6. **Accessible** - Color coding + text indicators for clarity
 
+## First-run AI profile onboarding
+
+When `./setup.sh` finds no provider profile manifests, it first explains that
+standard provider logins may already exist and asks for consent to create
+isolated work and personal profiles. If accepted, it collects company and
+personal subscription identities, GitHub ownership, and registry selection.
+
+The discovery sequence is:
+
+1. Ask for the personal GitHub username.
+2. Ask how many companies use the workstation.
+3. For each company, ask its name, the user's company email, AI providers, and
+   GitHub organization.
+4. Ask for each personal AI subscription email and its providers.
+5. Ask which personal GitHub user or org owns the personal registry.
+6. Search each owner for repositories that look like credential registries and
+   verify that `ai/source.json` exists.
+7. Let the user select a result, enter a URL/local path, or fill profile
+   metadata manually.
+8. Compose and install Claude, Codex, Gemini, Grok, and GLM profiles.
+
+No password, OAuth token, API key, or decrypted SOPS value is requested.
+Existing standard CLI logins are detected and preserved; their OAuth caches
+are never copied into a profile. When the installer later reaches Claude or
+Codex authentication, it lists the isolated profiles and can walk through
+their logins with `pclaude login <profile>` or `pcodex login <profile>`.
+The legacy unprofiled login prompt appears only when no matching manifest
+exists.
+
 ## Additional Resources
 
 - **AI Harness Account Management**: Set `AI_HARNESS_ACCOUNT_REPO` to a private
