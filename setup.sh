@@ -130,6 +130,7 @@ install_wave_terminal_widgets() {
     local installer_script="$installer_dir/scripts/install-workbenches-widgets.sh"
     local projects_root="${WAVE_PROJECTS_ROOT:-${PROJECTS_ROOT:-$HOME/projects}}"
     local wsl_connection="${WAVE_WSL_CONNECTION:-wsl://Ubuntu-24.04}"
+    local font_size="${WAVE_WIDGET_FONT_SIZE:-16}"
 
     if [ ! -x "$installer_script" ]; then
         if [ -e "$installer_dir" ]; then
@@ -155,6 +156,7 @@ install_wave_terminal_widgets() {
     "$installer_script" \
         --workbenches-root "$SCRIPT_DIR" \
         --projects-root "$projects_root" \
+        --font-size "$font_size" \
         --wsl-connection "$wsl_connection" || {
             echo "Wave Terminal widget setup failed; continuing workBenches setup."
             return 0

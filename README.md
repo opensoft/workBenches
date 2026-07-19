@@ -111,7 +111,9 @@ The cross-provider ownership and composition model is documented in
 
 The WSL connection defaults to `wsl://Ubuntu-24.04` and the projects widget
 defaults to `$HOME/projects`. Override them with `WAVE_WSL_CONNECTION` and
-`WAVE_PROJECTS_ROOT`. Set `WORKBENCHES_SKIP_WAVE_WIDGETS=1` to skip this step.
+`WAVE_PROJECTS_ROOT`. Widget font size defaults to `16`; override it with
+`WAVE_WIDGET_FONT_SIZE`. Set `WORKBENCHES_SKIP_WAVE_WIDGETS=1` to skip this
+step.
 
 ### Bench Processing Logic
 
