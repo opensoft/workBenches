@@ -6,7 +6,7 @@ base="${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}"
 command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
 
 configure_profile_runtime() {
-  local config_dir="$1" statusline_source statusline_link settings settings_tmp statusline_command
+  local config_dir="$1" statusline_source statusline_link settings settings_tmp statusline_command default_model
 
   statusline_source="$base/shared/statusline-command.sh"
   if [[ ! -f "$statusline_source" && -f /usr/local/share/workbenches/claude/statusline-command.sh ]]; then
@@ -27,19 +27,22 @@ configure_profile_runtime() {
   fi
 
   statusline_command='bash "${CLAUDE_CONFIG_DIR}/statusline-command.sh"'
+  default_model='claude-fable-5'
   settings_tmp="$(mktemp "$config_dir/.settings.XXXXXX.tmp")"
   if [[ -f "$settings" ]]; then
-    jq --arg command "$statusline_command" '
+    jq --arg command "$statusline_command" --arg model "$default_model" '
       .statusLine = {type: "command", command: $command, refreshInterval: 10}
       | .permissions = (.permissions // {})
       | .permissions.defaultMode = "bypassPermissions"
       | .effortLevel = (.effortLevel // "xhigh")
+      | .model = $model
     ' "$settings" > "$settings_tmp"
   else
-    jq -n --arg command "$statusline_command" '{
+    jq -n --arg command "$statusline_command" --arg model "$default_model" '{
       statusLine: {type: "command", command: $command, refreshInterval: 10},
       permissions: {defaultMode: "bypassPermissions"},
-      effortLevel: "xhigh"
+      effortLevel: "xhigh",
+      model: $model
     }' > "$settings_tmp"
   fi
   chmod 600 "$settings_tmp"

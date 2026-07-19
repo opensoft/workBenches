@@ -169,28 +169,44 @@ while IFS=$'\t' read -r name family; do
   settings="$profile_dir/settings.json"
   settings_tmp="$(mktemp "$profile_dir/.settings.XXXXXX.tmp")"
   statusline_command='bash "${CLAUDE_CONFIG_DIR}/statusline-command.sh"'
+  default_model='claude-fable-5'
   if [[ -e "$settings" ]] && ! jq -e 'type == "object"' "$settings" >/dev/null 2>&1; then
     echo "Claude profile settings are not valid JSON: $settings" >&2
     rm -f "$settings_tmp"
     exit 1
   fi
   if [[ -f "$settings" ]]; then
-    jq --arg command "$statusline_command" '
+    jq --arg command "$statusline_command" --arg model "$default_model" '
       .statusLine = {type: "command", command: $command, refreshInterval: 10}
       | .permissions = (.permissions // {})
       | .permissions.defaultMode = "bypassPermissions"
       | .effortLevel = (.effortLevel // "xhigh")
+      | .model = $model
     ' "$settings" > "$settings_tmp"
   else
-    jq -n --arg command "$statusline_command" '{
+    jq -n --arg command "$statusline_command" --arg model "$default_model" '{
       statusLine: {type: "command", command: $command, refreshInterval: 10},
       permissions: {defaultMode: "bypassPermissions"},
-      effortLevel: "xhigh"
+      effortLevel: "xhigh",
+      model: $model
     }' > "$settings_tmp"
   fi
   chmod 600 "$settings_tmp"
   mv -f "$settings_tmp" "$settings"
 done < <(jq -r '.profiles[] | [.name, .family] | @tsv' "$manifest")
+
+# Profiles retained from older manifests remain launchable through their local
+# metadata. Keep their startup model aligned with the active manifest profiles.
+while IFS= read -r -d '' settings; do
+  if ! jq -e 'type == "object"' "$settings" >/dev/null 2>&1; then
+    echo "Claude profile settings are not valid JSON: $settings" >&2
+    exit 1
+  fi
+  settings_tmp="$(mktemp "$(dirname "$settings")/.settings.XXXXXX.tmp")"
+  jq --arg model 'claude-fable-5' '.model = $model' "$settings" > "$settings_tmp"
+  chmod 600 "$settings_tmp"
+  mv -f "$settings_tmp" "$settings"
+done < <(find "$base/profiles" -mindepth 2 -maxdepth 2 -type f -name settings.json -print0)
 
 mkdir -p "$HOME/.local/bin"
 ln -sfn "$repo_dir/scripts/claude-profile" "$HOME/.local/bin/claude-profile"
