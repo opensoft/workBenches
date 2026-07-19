@@ -19,6 +19,9 @@ case "$provider" in
   grok)
     manifest="${GROK_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/grok-profiles.json}"
     base="${GROK_PROFILES_HOME:-$HOME/.grok-profiles}"
+    if [[ -z "${GROK_PROFILES_HOME:-}" && -e "$base" && ! -w "$base" ]]; then
+      base="${XDG_DATA_HOME:-$HOME/.local/share}/workbenches/grok-profiles"
+    fi
     cli="${GROK_BIN:-$(command -v grok || true)}"
     label="Grok"
     ;;

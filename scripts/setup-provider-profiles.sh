@@ -28,6 +28,10 @@ case "$provider" in
   grok)
     filename=grok-profiles.json
     base="${GROK_PROFILES_HOME:-$HOME/.grok-profiles}"
+    if [[ -z "${GROK_PROFILES_HOME:-}" && -e "$base" && ! -w "$base" ]]; then
+      base="${XDG_DATA_HOME:-$HOME/.local/share}/workbenches/grok-profiles"
+      printf 'Default Grok profile root is not writable; using %s\n' "$base" >&2
+    fi
     launchers=(grok-profile pgrok)
     ;;
   glm)
