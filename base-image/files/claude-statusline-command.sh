@@ -56,6 +56,14 @@ magenta=$'\033[35m'
 blue=$'\033[34m'
 green=$'\033[32m'
 red=$'\033[31m'
+countdown_red=$'\033[38;5;196m'
+countdown_red_orange=$'\033[38;5;202m'
+countdown_orange=$'\033[38;5;208m'
+countdown_amber=$'\033[38;5;214m'
+countdown_yellow=$'\033[38;5;220m'
+countdown_green_yellow=$'\033[38;5;154m'
+countdown_light_green=$'\033[38;5;120m'
+countdown_dark_green=$'\033[38;5;22m'
 sep="${dim}|${reset}"
 
 join_parts() {
@@ -144,6 +152,42 @@ repeat_char() {
     printf '%s' "${value// /$char}"
 }
 
+countdown_color() {
+    local remaining=$1 window_seconds=$2
+
+    # A reset getting closer is good: move from red toward green. The five-hour
+    # window gets human-friendly hourly steps plus finer final thresholds.
+    if (( remaining <= 0 )); then
+        printf '%s' "$countdown_dark_green"
+    elif (( remaining <= 300 )); then
+        printf '%s' "$countdown_light_green"
+    elif (( remaining <= 1800 )); then
+        printf '%s' "$countdown_green_yellow"
+    elif (( remaining <= 3600 )); then
+        printf '%s' "$countdown_yellow"
+    elif (( remaining <= 7200 )); then
+        printf '%s' "$countdown_amber"
+    elif (( remaining <= 10800 )); then
+        printf '%s' "$countdown_orange"
+    elif (( remaining <= 14400 )); then
+        printf '%s' "$countdown_red_orange"
+    elif (( window_seconds <= 18000 )); then
+        printf '%s' "$countdown_red"
+    elif (( remaining * 100 <= window_seconds * 15 )); then
+        printf '%s' "$countdown_green_yellow"
+    elif (( remaining * 100 <= window_seconds * 35 )); then
+        printf '%s' "$countdown_yellow"
+    elif (( remaining * 100 <= window_seconds * 55 )); then
+        printf '%s' "$countdown_amber"
+    elif (( remaining * 100 <= window_seconds * 75 )); then
+        printf '%s' "$countdown_orange"
+    elif (( remaining * 100 <= window_seconds * 90 )); then
+        printf '%s' "$countdown_red_orange"
+    else
+        printf '%s' "$countdown_red"
+    fi
+}
+
 countdown_segment() {
     local label=$1 reset_at=$2 window_seconds=$3 unit=$4
     local now remaining elapsed bar_width marker_pos bar color amount reset_text
@@ -164,13 +208,7 @@ countdown_segment() {
     marker_pos=$(( elapsed * (bar_width - 1) / window_seconds ))
     bar="$(repeat_char '=' "$marker_pos")>$(repeat_char '-' "$((bar_width - marker_pos - 1))")"
 
-    if (( remaining * 100 <= window_seconds * 15 )); then
-        color=$red
-    elif (( remaining * 100 <= window_seconds * 40 )); then
-        color=$yellow
-    else
-        color=$green
-    fi
+    color=$(countdown_color "$remaining" "$window_seconds")
 
     if [[ $unit == minutes ]]; then
         amount="$(( (remaining + 59) / 60 ))m"
