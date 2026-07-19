@@ -163,6 +163,7 @@ init_components() {
         "codex_cli"
         "antigravity_cli"
         "opencode_cli"
+        "pi_cli"
         "separator1"
         "spec_kit"
         "openspec"
@@ -184,6 +185,9 @@ init_components() {
     component_checked["opencode_cli"]=false
     component_description["opencode_cli"]="OpenCode CLI"
 
+    component_checked["pi_cli"]=false
+    component_description["pi_cli"]="Pi Coding Agent"
+
     component_checked["spec_kit"]=false
     component_description["spec_kit"]="spec-kit"
 
@@ -195,7 +199,6 @@ init_components() {
         "vscode"
         "warp"
         "wave"
-        "pi_terminal"
         "amnezia_vpn"
         "0dcloud_vpn"
     )
@@ -209,9 +212,6 @@ init_components() {
 
     component_checked["wave"]=false
     component_description["wave"]="Wave Terminal"
-
-    component_checked["pi_terminal"]=false
-    component_description["pi_terminal"]="Pi Terminal"
 
     component_checked["amnezia_vpn"]=false
     component_description["amnezia_vpn"]="AmneziaVPN"
@@ -266,7 +266,14 @@ check_component_status() {
             ;;
         opencode_cli)
             if command -v opencode &> /dev/null; then
-                echo "installed"
+                [[ -s "$HOME/.local/share/opencode/auth.json" ]] && echo "installed" || echo "needs creds"
+            else
+                echo "not installed"
+            fi
+            ;;
+        pi_cli)
+            if command -v pi &>/dev/null; then
+                [[ -f "$HOME/.pi/agent/auth.json" ]] && echo "installed" || echo "needs creds"
             else
                 echo "not installed"
             fi
@@ -343,17 +350,6 @@ check_component_status() {
                 else
                     echo "not installed"
                 fi
-            fi
-            ;;
-        pi_terminal)
-            if command -v pi &> /dev/null || { is_wsl_windows && { windows_command_exists "pi" || windows_env_file_exists "APPDATA" "npm\\pi.cmd"; }; }; then
-                if [ -d "$HOME/.pi" ]; then
-                    echo "installed"
-                else
-                    echo "needs creds"
-                fi
-            else
-                echo "not installed"
             fi
             ;;
         amnezia_vpn)
@@ -1827,13 +1823,13 @@ process_selections() {
                             fi
                         else
                             echo -e "  ${RED}✗ Node.js 18+ required (current: v$node_version)${NC}"
-                            echo -e "  ${DIM}Recommended: Node.js 22+${NC}"
+                            echo -e "  ${DIM}Recommended: Node.js 24+${NC}"
                             echo -e "  ${DIM}Install/Update Node.js: https://nodejs.org/${NC}"
                             ((fail_count++))
                         fi
                     else
                         echo -e "  ${RED}✗ npm not found - Node.js required${NC}"
-                        echo -e "  ${DIM}Install Node.js 22+: https://nodejs.org/${NC}"
+                        echo -e "  ${DIM}Install Node.js 24+: https://nodejs.org/${NC}"
                         ((fail_count++))
                     fi
                     ;;
@@ -1881,8 +1877,31 @@ process_selections() {
                     ;;
 
                 opencode_cli)
-                    echo -e "  ${YELLOW}Installing OpenCode CLI...${NC}"
-                    echo -e "  ${DIM}Note: OpenCode may require additional setup${NC}"
+                    if [ "$is_installed" = true ]; then
+                        echo -e "  ${GREEN}✓ OpenCode CLI is installed${NC}"
+                        ((success_count++))
+                    elif command -v npm &>/dev/null && npm install -g opencode-ai; then
+                        echo -e "  ${GREEN}✓ OpenCode CLI installed${NC}"
+                        ((success_count++))
+                    else
+                        echo -e "  ${RED}✗ Failed to install OpenCode CLI${NC}"
+                        ((fail_count++))
+                    fi
+                    command -v opencode &>/dev/null && items_needing_creds+=("opencode")
+                    ;;
+
+                pi_cli)
+                    if [ "$is_installed" = true ]; then
+                        echo -e "  ${GREEN}✓ Pi Coding Agent is installed${NC}"
+                        ((success_count++))
+                    elif command -v npm &>/dev/null && npm install -g --ignore-scripts @earendil-works/pi-coding-agent; then
+                        echo -e "  ${GREEN}✓ Pi Coding Agent installed${NC}"
+                        ((success_count++))
+                    else
+                        echo -e "  ${RED}✗ Failed to install Pi Coding Agent${NC}"
+                        ((fail_count++))
+                    fi
+                    command -v pi &>/dev/null && items_needing_creds+=("pi")
                     ;;
 
                 spec_kit)
@@ -2082,6 +2101,7 @@ process_selections() {
                             echo -e "  ${DIM}Visit: https://warp.dev${NC}"
                             echo -e "  ${YELLOW}Download and install .deb package from website${NC}"
                         fi
+                        items_needing_creds+=("warp")
                         ;;
                     wave)
                         # Check if running in WSL
@@ -2101,36 +2121,7 @@ process_selections() {
                             echo -e "  ${DIM}Visit: https://waveterm.dev${NC}"
                             echo -e "  ${YELLOW}Download and install from website${NC}"
                         fi
-                        ;;
-                    pi_terminal)
-                        if [ -n "$WSL_DISTRO_NAME" ] || grep -qi microsoft /proc/version 2>/dev/null; then
-                            if [ -f "$script_dir/setup-windows-tools.sh" ]; then
-                                if bash "$script_dir/setup-windows-tools.sh" pi_terminal; then
-                                    ((success_count++))
-                                else
-                                    ((fail_count++))
-                                fi
-                            else
-                                echo -e "  ${RED}✗ setup-windows-tools.sh not found${NC}"
-                                ((fail_count++))
-                            fi
-                        elif command -v npm &> /dev/null; then
-                            echo -e "  ${YELLOW}Installing Pi Coding Agent...${NC}"
-                            echo -e "  ${DIM}Package: @earendil-works/pi-coding-agent${NC}"
-                            if npm install -g --ignore-scripts @earendil-works/pi-coding-agent; then
-                                echo -e "  ${GREEN}✓ Pi Terminal installed${NC}"
-                                echo -e "  ${DIM}Run 'pi' in a project, then use /login to configure a provider${NC}"
-                                ((success_count++))
-                            else
-                                echo -e "  ${RED}✗ Failed to install Pi Terminal${NC}"
-                                echo -e "  ${DIM}Manual install: npm install -g --ignore-scripts @earendil-works/pi-coding-agent${NC}"
-                                ((fail_count++))
-                            fi
-                        else
-                            echo -e "  ${RED}✗ npm not found - Node.js required${NC}"
-                            echo -e "  ${DIM}Install Node.js 22+: https://nodejs.org/${NC}"
-                            ((fail_count++))
-                        fi
+                        items_needing_creds+=("wave")
                         ;;
                 esac
             fi
@@ -2167,11 +2158,55 @@ process_selections() {
         echo -e "${BOLD}${BLUE}────────────────────────────────────────────────────────────────────────────${NC}"
         echo ""
 
+        guide_isolated_profile_logins() {
+            local provider="$1" manifest="$2" launcher="$3"
+            local profile_count name email answer
+
+            [[ -f "$manifest" ]] || return 1
+            command -v jq >/dev/null 2>&1 || return 1
+            profile_count="$(jq '.profiles | length' "$manifest" 2>/dev/null)" || return 1
+            [[ "$profile_count" =~ ^[0-9]+$ ]] || return 1
+
+            echo -e "${GREEN}✓ Isolated ${provider} profiles are configured${NC}"
+            jq -r '.profiles[] | "  \(.name)  <\(.email)>"' "$manifest"
+            echo -e "${DIM}Each profile has its own credential home; the default login is preserved separately.${NC}"
+            echo ""
+
+            if ! command -v "$launcher" >/dev/null 2>&1; then
+                echo -e "${YELLOW}Profile launcher '${launcher}' is not on PATH yet. Open a new shell, then run '${launcher} login <profile>'.${NC}"
+                echo ""
+                return 0
+            fi
+
+            read -r -p "Walk through login for these ${provider} profiles now? [y/N]: " answer
+            [[ "$answer" =~ ^[Yy] ]] || {
+                echo -e "${YELLOW}Skipped. Use '${launcher} login <profile>' when ready.${NC}"
+                echo ""
+                return 0
+            }
+
+            while IFS=$'\t' read -r name email; do
+                read -r -p "Login ${name} (${email}) now? [y/N]: " answer
+                if [[ "$answer" =~ ^[Yy] ]]; then
+                    "$launcher" login "$name"
+                    echo ""
+                fi
+            done < <(jq -r '.profiles[] | [.name, .email] | @tsv' "$manifest")
+            return 0
+        }
+
         for cli in "${items_needing_creds[@]}"; do
             case "$cli" in
                 codex)
                     echo -e "${CYAN}▶ Setting up Codex CLI authentication...${NC}"
                     echo ""
+
+                    if guide_isolated_profile_logins \
+                        "Codex" \
+                        "${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/openai-profiles.json" \
+                        "pcodex"; then
+                        continue
+                    fi
 
                     # Check if already authenticated
                     if [ -f "$HOME/.codex/auth.json" ] || [ -n "$OPENAI_API_KEY" ]; then
@@ -2216,6 +2251,13 @@ process_selections() {
                 claude)
                     echo -e "${CYAN}▶ Setting up Claude CLI authentication...${NC}"
                     echo ""
+
+                    if guide_isolated_profile_logins \
+                        "Claude" \
+                        "${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/claude-profiles.json" \
+                        "pclaude"; then
+                        continue
+                    fi
 
                     # Display important billing warning
                     echo -e "${BOLD}${YELLOW}⚠️  IMPORTANT BILLING INFORMATION${NC}"
@@ -2331,6 +2373,59 @@ process_selections() {
                     fi
                     ;;
 
+                opencode)
+                    echo -e "${CYAN}▶ Setting up OpenCode provider authentication...${NC}"
+                    read -p "Launch 'opencode auth login' now? [Y/n]: " launch_opencode
+                    if [[ ! $launch_opencode =~ ^[Nn] ]]; then
+                        opencode auth login
+                    else
+                        echo -e "${YELLOW}Skipped. Run 'opencode auth login' anytime.${NC}"
+                    fi
+                    echo ""
+                    ;;
+
+                pi)
+                    echo -e "${CYAN}▶ Setting up Pi Coding Agent authentication...${NC}"
+                    echo -e "${DIM}Pi uses /login inside its interactive terminal.${NC}"
+                    read -p "Launch Pi now? [Y/n]: " launch_pi
+                    if [[ ! $launch_pi =~ ^[Nn] ]]; then
+                        echo -e "${YELLOW}Run /login, choose a provider, then exit Pi when finished.${NC}"
+                        pi
+                    else
+                        echo -e "${YELLOW}Skipped. Run 'pi' and enter /login anytime.${NC}"
+                    fi
+                    echo ""
+                    ;;
+
+                warp)
+                    echo -e "${CYAN}▶ Setting up Warp account authentication...${NC}"
+                    echo -e "${DIM}Warp login is optional, but required for AI and collaboration features.${NC}"
+                    read -p "Open the Warp login page now? [Y/n]: " launch_warp
+                    if [[ ! $launch_warp =~ ^[Nn] ]]; then
+                        if is_wsl_windows; then
+                            powershell.exe -NoProfile -Command 'Start-Process "https://app.warp.dev/login"' >/dev/null 2>&1 || true
+                        elif command -v xdg-open &>/dev/null; then
+                            xdg-open https://app.warp.dev/login >/dev/null 2>&1 || true
+                        fi
+                        echo -e "${YELLOW}Complete login in Warp using the selected personal or work identity.${NC}"
+                    fi
+                    echo ""
+                    ;;
+
+                wave)
+                    echo -e "${CYAN}▶ Setting up Wave AI credentials...${NC}"
+                    echo -e "${DIM}Wave itself requires no account login. Provider keys belong in Wave's encrypted secrets store.${NC}"
+                    read -p "Open Wave's secrets UI now? [Y/n]: " launch_wave_secrets
+                    if [[ ! $launch_wave_secrets =~ ^[Nn] ]]; then
+                        if command -v wsh &>/dev/null; then
+                            wsh secret ui || true
+                        else
+                            echo -e "${YELLOW}Open Wave, then choose Settings > Secrets.${NC}"
+                        fi
+                    fi
+                    echo ""
+                    ;;
+
                 copilot)
                     echo -e "${CYAN}▶ Setting up GitHub Copilot CLI authentication...${NC}"
                     echo ""
@@ -2370,8 +2465,8 @@ install_nodejs() {
         ubuntu|debian|pop)
             echo -e "${CYAN}Installing Node.js via NodeSource repository...${NC}"
             echo ""
-            # Install Node.js 22.x LTS
-            if curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
+            # Install Node.js 24.x LTS
+            if curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash - && \
                sudo apt-get install -y nodejs; then
                 echo ""
                 echo -e "${GREEN}✓ Node.js installed successfully!${NC}"
@@ -2386,7 +2481,7 @@ install_nodejs() {
         fedora|rhel|centos)
             echo -e "${CYAN}Installing Node.js via NodeSource repository...${NC}"
             echo ""
-            if curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash - && \
+            if curl -fsSL https://rpm.nodesource.com/setup_24.x | sudo bash - && \
                sudo yum install -y nodejs; then
                 echo ""
                 echo -e "${GREEN}✓ Node.js installed successfully!${NC}"

@@ -1,6 +1,6 @@
 # Spec-Driven Development Tools
 
-workBenches supports two popular spec-driven development frameworks: **spec-kit** (GitHub) and **OpenSpec** (Fission AI).
+workBenches developer benches support two popular spec-driven development frameworks: **spec-kit** (GitHub) and **OpenSpec** (Fission AI).
 
 ## Overview
 

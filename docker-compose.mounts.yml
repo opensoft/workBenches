@@ -33,20 +33,32 @@ x-standard-mounts: &standard-mounts
   # Claude Code (native installer)
   - ~/.claude:/home/${USER}/.claude:cached
   - ~/.claude.json:/home/${USER}/.claude.json:cached
-  # OpenAI Codex (@openai/codex via npm)
+  - ~/.claude-profiles:/home/${USER}/.claude-profiles:cached
+  # ChatGPT accounts used by Codex CLI
   - ~/.codex:/home/${USER}/.codex:cached
+  - ~/.chatgpt-profiles:/home/${USER}/.chatgpt-profiles:cached
+  # Grok Build isolated account homes
+  - ~/.grok-profiles:/home/${USER}/.grok-profiles:cached
+  # Shared AI agent protocols and skills
+  - ~/.agents:/home/${USER}/.agents:cached
+  # Project Intelligence and local agent metadata
+  - ~/.pi:/home/${USER}/.pi:cached
+  # Google Antigravity / legacy Gemini settings. Antigravity login tokens remain
+  # in the host OS keyring and are not portable through this mount.
   # Omnigent (AI meta-harness, wraps Codex/Claude)
   - ~/.omnigent:/home/${USER}/.omnigent:cached
   # Google Gemini (@google/gemini-cli via npm)
   - ~/.gemini:/home/${USER}/.gemini:cached
-  # Grok (@xai-org/grok-cli via npm)
-  - ~/.grok:/home/${USER}/.grok:ro
-  # GitHub Copilot (@githubnext/github-copilot-cli via npm)
+  # Abacus AI settings. API key values stay in an external secret manager.
+  - ~/.abacusai:/home/${USER}/.abacusai:cached
+  # GitHub Copilot (@github/copilot via npm)
   - ~/.copilot-cli:/home/${USER}/.copilot-cli:ro
   # NotebookLM CLI (notebooklm-py via uv, auth on host browser)
   - ~/.notebooklm:/home/${USER}/.notebooklm:cached
   # NotebookLM MCP CLI (notebooklm-mcp-cli via uv, auth on host browser)
   - ~/.notebooklm-mcp-cli:/home/${USER}/.notebooklm-mcp-cli:cached
+  # SonarCloud / SonarQube scanner and MCP tokens
+  - ~/.config/sonarqube:/home/${USER}/.config/sonarqube:ro
 
   # Optional: Docker socket (only for benches with Docker CLI)
   # - /var/run/docker.sock:/var/run/docker.sock
@@ -56,20 +68,23 @@ services:
   example-service:
     volumes: *standard-mounts
 
-# AI Tools Installed in Layer 0 (workbench-base)
-# Source of truth: base-image/install-ai-clis.sh
+# AI Tools Installed in Base Images
+# Source of truth: base-image/install-ai-clis.sh and devBenches/base-image/Dockerfile
 # Mount reference: docs/MOUNTS-README.md
 #
 # Installed AI CLIs and credential paths:
 #   Claude Code     (native installer)                  → ~/.claude/, ~/.claude.json
 #   OpenAI Codex    (@openai/codex via npm)              → ~/.codex/
-#   Google Gemini   (@google/gemini-cli via npm)         → ~/.gemini/
-#   Grok            (@xai-org/grok-cli via npm)          → ~/.grok/
-#   GitHub Copilot  (@githubnext/github-copilot-cli npm) → ~/.copilot-cli/
-#   OpenCode        (Opensoft fork, built from source)   → config in image (/etc/skel)
+#   Shared Agents   (protocols and global skills)        → ~/.agents/
+#   Project Intel   (local agent metadata)                → ~/.pi/
+#   Antigravity     (settings only; auth in host keyring) → ~/.gemini/
+#   Abacus AI       (settings; API keys externally held)  → ~/.abacusai/
+#   GitHub Copilot  (@github/copilot npm) → ~/.copilot-cli/
+#   OpenCode        (upstream source build)              → config in image (/etc/skel)
 #   oh-my-opencode  (darrenhinde fork, built)            → plugin at /opt/opencode/plugin
 #   Letta Code      (@letta-ai/letta-code via npm)       → env vars / interactive
-#   OpenSpec        (@fission-ai/openspec via npm)       → no credentials
-#   spec-kit        (specify-cli via uv)                 → no credentials
+#   OpenSpec        (@fission-ai/openspec via npm, Layer 1a) → no credentials
+#   spec-kit        (specify-cli via uv, Layer 1a)       → no credentials
 #   NotebookLM CLI  (notebooklm-py via uv)               → ~/.notebooklm/
 #   NotebookLM MCP  (notebooklm-mcp-cli via uv)          → ~/.notebooklm-mcp-cli/
+#   SonarCloud      (scanner/MCP tokens)                  → ~/.config/sonarqube/

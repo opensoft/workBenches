@@ -8,7 +8,7 @@ FROM workbench-base:latest
 # Container version labels
 LABEL layer="1b"
 LABEL layer.name="sys-bench-base"
-LABEL layer.version="2.0.0"
+LABEL layer.version="2.0.1"
 LABEL layer.description="Sys/DevOps base with infrastructure and cloud tools (user-agnostic)"
 
 # Everything runs as root
@@ -49,7 +49,7 @@ RUN bash /tmp/install-admin-tools.sh && rm /tmp/install-admin-tools.sh
 # is stale so downstream benches do not build without the expected tools.
 RUN command -v claude >/dev/null \
     && command -v codex >/dev/null \
-    && command -v agy >/dev/null \
+    && command -v gemini >/dev/null \
     && command -v opencode >/dev/null \
     || (echo "Missing inherited AI CLIs from workbench-base:latest. Rebuild Layer 0, then rebuild sys-bench-base." >&2 && exit 1)
 

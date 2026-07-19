@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "kind": "workbenches-ai-profile-source",
+  "owner": {
+    "type": "user",
+    "id": "example-engineer"
+  },
+  "credentialContractVersion": 1,
+  "profiles": {
+    "claude": [
+      {
+        "name": "personal-claude-1",
+        "email": "engineer@example.com",
+        "family": "personal",
+        "aliases": ["personal-claude"],
+        "accountId": "example-engineer.claude.personal-claude-1.account",
+        "credentialId": "example-engineer.claude.personal-claude-1.credential",
+        "authentication": {
+          "type": "subscription_oauth",
+          "credentialRef": "ai/secrets/claude/personal-claude-1.credentials.sops.yaml",
+          "escrowStatus": "not-escrowed"
+        }
+      }
+    ],
+    "openai": [
+      {
+        "name": "personal-chatgpt-1",
+        "email": "engineer@example.com",
+        "family": "personal",
+        "aliases": ["personal-chatgpt"],
+        "plan": "plus",
+        "workspace": "personal",
+        "status": "active",
+        "accountId": "example-engineer.openai.personal-chatgpt-1.account",
+        "credentialId": "example-engineer.openai.personal-chatgpt-1.credential",
+        "authentication": {
+          "type": "workspace_access_token",
+          "credentialRef": "ai/secrets/openai/personal-chatgpt-1.credentials.sops.yaml",
+          "escrowStatus": "not-escrowed"
+        }
+      }
+    ],
+    "gemini": [],
+    "grok": [],
+    "glm": []
+  },
+  "providerParity": []
+}

@@ -225,6 +225,7 @@ get_bench_description() {
         dotNetBench) echo ".NET development environment and tools" ;;
         flutterBench) echo "Flutter/Dart development environment and tools" ;;
         cppBench) echo "C++ development environment and tools" ;;
+        phpBench) echo "PHP development environment and tools" ;;
         *) echo "Development tools and utilities" ;;
     esac
 }

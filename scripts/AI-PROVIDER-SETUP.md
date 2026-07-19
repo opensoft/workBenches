@@ -1,5 +1,11 @@
 # AI Provider Priority Configuration
 
+> This document covers legacy provider-selection priority, not account or
+> credential management. For current multi-account workflows across Claude,
+> ChatGPT/Codex, Grok, Antigravity, and Abacus, use
+> [`docs/ai-harness-account-management.md`](../docs/ai-harness-account-management.md).
+> Never extract browser cookies or session keys for provider detection.
+
 ## Overview
 
 The workBenches system now supports configurable AI provider priority with automatic detection of CLI tools (OAuth/subscription-based) and fallback to API keys.
@@ -17,7 +23,7 @@ The workBenches system now supports configurable AI provider priority with autom
 └────────────────┬────────────────────────┘
                  │
                  ├─ Load user priority: ~/.config/workbenches/ai-provider-priority.conf
-                 ├─ Check CLI tools (OAuth): claude, codex, gemini, etc.
+                 ├─ Check configured vendor CLI tools
                  ├─ Fallback to API keys: ANTHROPIC_API_KEY, etc.
                  │
                  ▼
@@ -63,7 +69,6 @@ claude
 codex
 gemini
 copilot
-grok
 meta
 kimi2
 deepseek
@@ -73,25 +78,23 @@ deepseek
 
 | Provider | Display Name | CLI Command | Auth Type |
 |----------|--------------|-------------|-----------|
-| codex | GitHub Codex | `codex` | CLI OAuth |
+| codex | ChatGPT account / Codex CLI | `codex` | CLI OAuth |
 | claude | Claude (Anthropic) | `claude` | CLI OAuth + API key |
-| gemini | Google Gemini | `gemini` | CLI OAuth |
-| copilot | GitHub Copilot | `github-copilot-cli` | CLI OAuth |
-| grok | xAI Grok | `grok` | CLI OAuth |
+| gemini | Legacy Gemini CLI ID; migrate to Antigravity | `gemini` | CLI OAuth |
+| copilot | GitHub Copilot | `copilot` | CLI OAuth |
 | meta | Meta Llama | `llama` | CLI OAuth |
 | kimi2 | Moonshot Kimi 2 | `kimi` | CLI OAuth |
 | deepseek | DeepSeek | `deepseek` | CLI OAuth |
 
 ## Default Priority Order
 
-1. **codex** (GitHub Codex)
+1. **codex** (ChatGPT account / Codex CLI)
 2. **claude** (Claude - Anthropic)
-3. **gemini** (Google Gemini)
+3. **gemini** (legacy ID; Google Antigravity is the migration target)
 4. **copilot** (GitHub Copilot)
-5. **grok** (xAI Grok)
-6. **meta** (Meta Llama)
-7. **kimi2** (Moonshot Kimi 2)
-8. **deepseek** (DeepSeek)
+5. **meta** (Meta Llama)
+6. **kimi2** (Moonshot Kimi 2)
+7. **deepseek** (DeepSeek)
 
 ## How It Works
 
@@ -126,19 +129,18 @@ Bench-specific scripts inherit the detected provider without re-detection, ensur
 For each provider, the system checks in this order:
 
 1. **CLI tool** (OAuth/subscription auth)
-   - Example: `~/.claude/` config for Claude Desktop
+   - Use the vendor CLI's supported status command or keyring UI.
    - Requires CLI command to be installed and authenticated
    
 2. **API key** (fallback)
    - Environment variables: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.
    - Config files: `~/.anthropic/`, `~/.config/anthropic/`, etc.
 
-## Claude Desktop Integration
+## Credential boundary
 
-The system automatically detects Claude Desktop credentials from:
-- CLI: `claude` command with OAuth from `~/.claude/`
-- Session key: `~/.claude.json` sessionKey field
-- API key: Environment variable `ANTHROPIC_API_KEY`
+Provider selection must not parse credential files, browser sessions, or
+keyring entries. Use the Multiple AI Harness Account Manager for account-level
+verification and vendor-supported login flows.
 
 ## Example Usage
 

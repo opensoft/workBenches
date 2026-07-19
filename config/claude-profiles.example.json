@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "profiles": [
+    { "name": "work", "family": "work", "email": "user@company.example" },
+    { "name": "personal", "family": "personal", "email": "user@example.com" }
+  ]
+}

@@ -56,10 +56,17 @@ check "jq" "jq --version"
 echo
 echo "Inherited AI Tooling:"
 check "Claude Code" "command -v claude"
+check "Claude profile launcher" "command -v claude-profile"
+check "pclaude alias" "command -v pclaude"
 check "Codex" "command -v codex"
+check "Codex profile launcher" "command -v codex-profile"
+check "pcodex alias" "command -v pcodex"
+check "pgemini alias" "command -v pgemini"
+check "pgrok alias" "command -v pgrok"
+check "pglm alias" "command -v pglm"
 check "Antigravity" "command -v agy"
 check "OpenCode" "command -v opencode"
-check "yolo alias" "zsh -ic 'alias yolo' | grep -q 'claude --dangerously-skip-permissions --teammate-mode tmux'"
+check "yolo function" "zsh -ic 'functions yolo' | grep -q 'tmux new-session' && zsh -ic 'functions yolo' | grep -q -- '--teammate-mode tmux'"
 
 echo
 echo "User & Environment:"

@@ -5,10 +5,12 @@
 #
 # Usage:
 #   ./update-and-rebuild.sh --layer 0              # Rebuild Layer 0 only
+#   ./update-and-rebuild.sh --layer 0 --no-cache   # Reinstall floating/latest tools
 #   ./update-and-rebuild.sh --layer 1a             # Rebuild Layer 1a only
-#   ./update-and-rebuild.sh --all                  # Rebuild all layers 0-2 in order
-#   ./update-and-rebuild.sh --all --push           # Rebuild all + push to registry
-#   ./update-and-rebuild.sh --layer 0 --cascade    # Rebuild Layer 0 + all downstream
+#   ./update-and-rebuild.sh --all                  # Rebuild Layer 0 + family base layers
+#   ./update-and-rebuild.sh --all --cascade        # Rebuild Layer 0 + family bases + Layer 2 benches
+#   ./update-and-rebuild.sh --all --push           # Rebuild family bases + push to registry
+#   ./update-and-rebuild.sh --layer 0 --cascade    # Rebuild Layer 0 + all downstream family/bench layers
 #   ./update-and-rebuild.sh --layer 1a --cascade   # Rebuild Layer 1a + Layer 2 benches using it
 #   ./update-and-rebuild.sh --layer 3 --base cpp-bench:latest --chown /opt/vcpkg  # User layer
 #
@@ -19,11 +21,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/image-names.sh"
-USERNAME="${USERNAME:-$(whoami)}"
+# Windows shells often export USERNAME with different casing (e.g. Brett).
+# Default to the actual WSL/container user; use --user for an explicit override.
+USERNAME="$(whoami)"
 LAYER=""
 PUSH=false
 BUILD_ALL=false
 CASCADE=false
+NO_CACHE=false
 DATE_TAG=$(date '+%Y%m%d')
 LAYER3_BASE=""
 LAYER3_CHOWN=""
@@ -50,17 +55,19 @@ while [[ $# -gt 0 ]]; do
         --all) BUILD_ALL=true; shift ;;
         --push) PUSH=true; shift ;;
         --cascade) CASCADE=true; shift ;;
+        --no-cache) NO_CACHE=true; shift ;;
         --user) USERNAME="$2"; shift 2 ;;
         --base) LAYER3_BASE="$2"; shift 2 ;;
         --chown) LAYER3_CHOWN="$2"; shift 2 ;;
         -h|--help)
-            echo "Usage: $0 [--layer 0|1a|1b|1c|3] [--all] [--push] [--cascade] [--user USERNAME]"
+            echo "Usage: $0 [--layer 0|1a|1b|1c|3] [--all] [--push] [--cascade] [--no-cache] [--user USERNAME]"
             echo ""
             echo "Options:"
             echo "  --layer LAYER   Rebuild a specific layer (0, 1a, 1b, 1c, 3)"
-            echo "  --all           Rebuild all layers 0-2 in dependency order (user-agnostic)"
+            echo "  --all           Rebuild Layer 0 plus family base layers (1a/1b/1c)"
             echo "  --push          Push rebuilt images to Docker Hub ($REGISTRY)"
             echo "  --cascade       Also rebuild all downstream layers that depend on the rebuilt layer"
+            echo "  --no-cache      Force Docker to rerun install layers and pick up latest floating tools"
             echo "  --user NAME     Username for Layer 3 image tags (default: $(whoami))"
             echo "  --base IMAGE    Base image for Layer 3 (e.g. cpp-bench:latest)"
             echo "  --chown DIRS    Extra dirs to chown in Layer 3 (e.g. /opt/vcpkg)"
@@ -203,7 +210,13 @@ build_layer2_bench() {
 
     if [ -n "$build_script" ]; then
         build_timer_start
-        "$build_script" --user "$USERNAME" 2>/dev/null || "$build_script" "$USERNAME" 2>/dev/null || "$build_script"
+        if [ "$NO_CACHE" = true ]; then
+            DOCKER_BUILD_NO_CACHE=1 "$build_script" --user "$USERNAME" 2>/dev/null || \
+                DOCKER_BUILD_NO_CACHE=1 "$build_script" "$USERNAME" 2>/dev/null || \
+                DOCKER_BUILD_NO_CACHE=1 "$build_script"
+        else
+            "$build_script" --user "$USERNAME" 2>/dev/null || "$build_script" "$USERNAME" 2>/dev/null || "$build_script"
+        fi
         build_timer_end "Layer 2: $bench_name"
     else
         # Fall back to docker build if there's a Dockerfile
@@ -221,7 +234,11 @@ build_layer2_bench() {
             local image_repo
             context_dir=$(dirname "$dockerfile")
             image_repo=$(bench_dir_to_image_repo "$bench_name")
-            docker build -t "${image_repo}:latest" -f "$dockerfile" "$context_dir"
+            docker build \
+                $([ "$NO_CACHE" = true ] && printf '%s\n' "--no-cache") \
+                -t "${image_repo}:latest" \
+                -f "$dockerfile" \
+                "$context_dir"
             build_timer_end "Layer 2: $bench_name"
         else
             echo -e "${YELLOW}  No build script or Dockerfile found in $bench_dir — skipping${NC}"
@@ -271,7 +288,11 @@ build_layer0() {
     fi
 
     build_timer_start
-    "$build_dir/build.sh"
+    if [ "$NO_CACHE" = true ]; then
+        "$build_dir/build.sh" --no-cache
+    else
+        "$build_dir/build.sh"
+    fi
     build_timer_end "Layer 0"
 
     push_image "$image" "workbench-base"
@@ -297,7 +318,11 @@ build_layer1a() {
     fi
 
     build_timer_start
-    "$build_dir/build.sh"
+    if [ "$NO_CACHE" = true ]; then
+        "$build_dir/build.sh" --no-cache
+    else
+        "$build_dir/build.sh"
+    fi
     build_timer_end "Layer 1a"
 
     push_image "$image" "$(family_base_repo dev)"
@@ -323,7 +348,11 @@ build_layer1b() {
     fi
 
     build_timer_start
-    "$build_dir/build.sh"
+    if [ "$NO_CACHE" = true ]; then
+        "$build_dir/build.sh" --no-cache
+    else
+        "$build_dir/build.sh"
+    fi
     build_timer_end "Layer 1b"
 
     push_image "$image" "$(family_base_repo sys)"
@@ -349,7 +378,11 @@ build_layer1c() {
     fi
 
     build_timer_start
-    "$build_dir/build.sh"
+    if [ "$NO_CACHE" = true ]; then
+        "$build_dir/build.sh" --no-cache
+    else
+        "$build_dir/build.sh"
+    fi
     build_timer_end "Layer 1c"
 
     push_image "$image" "$(family_base_repo bio)"
@@ -377,7 +410,11 @@ build_layer3() {
     if [ -n "$LAYER3_CHOWN" ]; then
         chown_args="--chown $LAYER3_CHOWN"
     fi
-    "$user_layer_dir/build.sh" --base "$LAYER3_BASE" --user "$USERNAME" $chown_args
+    local no_cache_args=""
+    if [ "$NO_CACHE" = true ]; then
+        no_cache_args="--no-cache"
+    fi
+    "$user_layer_dir/build.sh" --base "$LAYER3_BASE" --user "$USERNAME" $chown_args $no_cache_args
     build_timer_end "Layer 3"
 }
 
@@ -391,6 +428,7 @@ echo "=========================================="
 echo "User: $USERNAME"
 echo "Registry: $REGISTRY"
 echo "Push: $PUSH"
+echo "No cache: $NO_CACHE"
 echo "Date: $(date '+%Y-%m-%d %H:%M:%S')"
 
 # Check Docker
@@ -468,10 +506,11 @@ echo "=========================================="
 echo -e "${GREEN}✓ Build complete in ${TOTAL_MINS}m ${TOTAL_SECS}s${NC}"
 echo "=========================================="
 
-# Run version check after build
+# Run version check after build. A cascade touches multiple layers, so audit the
+# full stack rather than only the initially requested layer.
 echo ""
 echo -e "${CYAN}Running version check on rebuilt images...${NC}"
-if [ "$BUILD_ALL" = true ]; then
+if [ "$BUILD_ALL" = true ] || [ "$CASCADE" = true ]; then
     "$SCRIPT_DIR/check-versions.sh" --user "$USERNAME"
 else
     "$SCRIPT_DIR/check-versions.sh" --layer "$LAYER" --user "$USERNAME"

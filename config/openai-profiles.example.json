@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "profiles": [
+    {
+      "name": "work-chatgpt-1",
+      "family": "work",
+      "email": "user@company.example",
+      "aliases": ["work1"]
+    },
+    {
+      "name": "personal-chatgpt-1",
+      "family": "personal",
+      "email": "user@example.com",
+      "aliases": ["personal1"]
+    }
+  ]
+}

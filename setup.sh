@@ -104,6 +104,65 @@ ensure_docker() {
     fi
 }
 
+# Install or update Wave Terminal widgets for this workBenches checkout.
+# This is best-effort because Wave is a desktop convenience, not a build
+# prerequisite.
+install_wave_terminal_widgets() {
+    if [ "${WORKBENCHES_SKIP_WAVE_WIDGETS:-}" = "1" ]; then
+        echo "Wave Terminal widget setup skipped by WORKBENCHES_SKIP_WAVE_WIDGETS=1."
+        return 0
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "Wave Terminal widget setup skipped: python3 is not available."
+        return 0
+    fi
+
+    local installer_repo="${WAVE_TERMINAL_INSTALLER_REPO:-https://github.com/opensoft/Install-Wave-Terminal.git}"
+    local sibling_installer_dir
+    sibling_installer_dir="$(cd "$SCRIPT_DIR/.." && pwd)/Install-Wave-Terminal"
+    local installer_dir
+    if [ -z "${WAVE_TERMINAL_INSTALLER_DIR:-}" ] && [ -x "$sibling_installer_dir/scripts/install-workbenches-widgets.sh" ]; then
+        installer_dir="$sibling_installer_dir"
+    else
+        installer_dir="${WAVE_TERMINAL_INSTALLER_DIR:-$HOME/.cache/workbenches/Install-Wave-Terminal}"
+    fi
+    local installer_script="$installer_dir/scripts/install-workbenches-widgets.sh"
+    local projects_root="${WAVE_PROJECTS_ROOT:-${PROJECTS_ROOT:-$HOME/projects}}"
+    local wsl_connection="${WAVE_WSL_CONNECTION:-wsl://Ubuntu-24.04}"
+    local font_size="${WAVE_WIDGET_FONT_SIZE:-16}"
+
+    if [ ! -x "$installer_script" ]; then
+        if [ -e "$installer_dir" ]; then
+            echo "Wave Terminal widget setup skipped: $installer_dir exists but does not contain the installer."
+            return 0
+        fi
+
+        if ! command -v git >/dev/null 2>&1; then
+            echo "Wave Terminal widget setup skipped: git is not available."
+            return 0
+        fi
+
+        mkdir -p "$(dirname "$installer_dir")"
+        if ! git clone --depth 1 "$installer_repo" "$installer_dir"; then
+            echo "Wave Terminal widget setup skipped: failed to clone $installer_repo."
+            return 0
+        fi
+    elif [ -d "$installer_dir/.git" ] && command -v git >/dev/null 2>&1; then
+        git -C "$installer_dir" pull --ff-only --quiet || \
+            echo "Wave Terminal installer update skipped; using existing checkout at $installer_dir."
+    fi
+
+    "$installer_script" \
+        --workbenches-root "$SCRIPT_DIR" \
+        --projects-root "$projects_root" \
+        --font-size "$font_size" \
+        --wsl-connection "$wsl_connection" || {
+            echo "Wave Terminal widget setup failed; continuing workBenches setup."
+            return 0
+        }
+}
+
 # Parse arguments
 USERNAME=${1:-$(whoami)}
 if [ "$USERNAME" = "--user" ]; then
@@ -117,10 +176,40 @@ if [ -x "${SCRIPT_DIR}/scripts/setup-shell.sh" ]; then
     echo ""
 fi
 
+# Claude workflow setup is host-user state. The benches bind-mount ~/.claude, so
+# seed it before any container build without overwriting existing user workflows.
+log_header "CLAUDE WORKFLOW SETUP"
+if [ -x "${SCRIPT_DIR}/scripts/setup-claude-workflows.sh" ]; then
+    "${SCRIPT_DIR}/scripts/setup-claude-workflows.sh" || echo "⚠ Claude workflow setup skipped or failed"
+    echo ""
+fi
+
 # Workstation VPN setup is offered in the interactive selector so users can
 # choose AmneziaVPN and 0dcloud independently.
 log_header "VPN SETUP"
 echo "VPN client setup is available from the interactive selector." >> "$LOG_FILE"
+
+# Apply existing provider profiles or obtain consent and collect the user's
+# work/personal ownership model on first setup. Standard provider credential
+# homes are detected and preserved; credentials are never copied implicitly.
+log_header "AI PROFILE SETUP"
+profile_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/workbenches"
+if find "$profile_config_dir" -maxdepth 1 -name '*-profiles.json' -print -quit 2>/dev/null | grep -q .; then
+    "${SCRIPT_DIR}/scripts/setup-ai-profiles.sh" --apply-existing \
+        || echo "⚠ Existing AI profile setup failed"
+elif [ -t 0 ] && [ -t 1 ]; then
+    "${SCRIPT_DIR}/scripts/setup-ai-profiles.sh" --interactive \
+        || echo "⚠ Interactive AI profile setup failed"
+else
+    echo "AI profile onboarding skipped because no interactive terminal is available."
+fi
+echo ""
+
+# Wave Terminal widgets are host-user state. Install them before any image
+# builds so the desktop terminal shortcuts track the current checkout.
+log_header "WAVE TERMINAL WIDGET SETUP"
+install_wave_terminal_widgets
+echo ""
 
 # Docker prerequisite
 log_header "DOCKER CHECK"

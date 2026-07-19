@@ -8,7 +8,11 @@ Layer 1a adds developer tools on top of Layer 0:
 - Python 3.x with pip and development tools (black, flake8, isort, pylint, pytest, ipython)
 - Node.js LTS with npm and yarn
 - Python package managers (uv)
+- Spec-driven tools (`specify`, `openspec`)
+- Speckit worktree bootstrap (`speckit-worktree-enable`)
+- Speckit worktree helpers (`ct`, `ctp`, `ctlist`, `cta`, `ctc`, `ctg`, `cts`)
 - AI CLI tools (claude, codex, gemini, opencode)
+- Code quality and PR workflow tools (`sonar-scanner`, `sonar`, `sonar-env`, `gt`)
 - OpenCode configuration with plugins (oh-my-opencode, opencode-openai-codex-auth)
 - Zsh and oh-my-zsh with plugins
 - PATH configuration for all dev tools
@@ -40,7 +44,12 @@ The `test.sh` script validates:
 - ✅ Python development tools
 - ✅ Node.js development tools
 - ✅ Python package managers (uv)
+- ✅ Spec-driven tools (`specify`, `openspec`)
+- ✅ Worktree-mode Speckit bootstrap installation
+- ✅ Global `ct*` helper availability in interactive zsh
+- ✅ Clean failure from non-Speckit directories
 - ✅ AI CLI tools (claude, codex, gemini, opencode)
+- ✅ SonarScanner CLI, SonarQube CLI, Sonar environment helper, and Graphite CLI availability
 - ✅ OpenCode configuration and plugins
 - ✅ Shell environment (zsh, oh-my-zsh, plugins)
 - ✅ PATH configuration

@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+invoked_as="$(basename "$0")"
+case "$invoked_as" in
+  pgemini|gemini-profile) provider=gemini ;;
+  pgrok|grok-profile) provider=grok ;;
+  pglm|pzai|glm-profile|zai-profile) provider=glm ;;
+  *) provider="${AI_PROFILE_PROVIDER:-}" ;;
+esac
+
+case "$provider" in
+  gemini)
+    manifest="${GEMINI_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/gemini-profiles.json}"
+    base="${GEMINI_PROFILES_HOME:-$HOME/.gemini-profiles}"
+    cli="${GEMINI_BIN:-$(command -v gemini || true)}"
+    label="Gemini"
+    ;;
+  grok)
+    manifest="${GROK_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/grok-profiles.json}"
+    base="${GROK_PROFILES_HOME:-$HOME/.grok-profiles}"
+    if [[ -z "${GROK_PROFILES_HOME:-}" && -e "$base" && ! -w "$base" ]]; then
+      base="${XDG_DATA_HOME:-$HOME/.local/share}/workbenches/grok-profiles"
+    fi
+    cli="${GROK_BIN:-$(command -v grok || true)}"
+    label="Grok"
+    ;;
+  glm)
+    manifest="${GLM_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/glm-profiles.json}"
+    base="${GLM_PROFILES_HOME:-$HOME/.glm-profiles}"
+    cli="${OPENCODE_BIN:-$(command -v opencode || true)}"
+    label="Z.AI GLM"
+    ;;
+  *)
+    echo "Invoke as pgemini, pgrok, or pglm." >&2
+    exit 2
+    ;;
+esac
+
+command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
+
+profile_metadata() {
+  local requested="$1" normalized
+  normalized="$(printf '%s' "$requested" | tr '[:upper:]' '[:lower:]')"
+  jq -r --arg name "$normalized" '
+    .profiles[]
+    | select(
+        ((.name | ascii_downcase) == $name)
+        or any(.aliases[]?; (ascii_downcase == $name))
+      )
+    | [.name,.email,.family] | @tsv
+  ' "$manifest" | head -n 1
+}
+
+configure_environment() {
+  local profile_dir="$1"
+  export AI_PROFILE_NAME="$profile"
+  export AI_PROFILE_EMAIL="$email"
+  export AI_PROFILE_FAMILY="$family"
+  case "$provider" in
+    gemini) export GEMINI_CLI_HOME="$profile_dir" ;;
+    grok) export GROK_HOME="$profile_dir" ;;
+    glm)
+      export XDG_CONFIG_HOME="$profile_dir/xdg/config"
+      export XDG_DATA_HOME="$profile_dir/xdg/data"
+      export XDG_CACHE_HOME="$profile_dir/xdg/cache"
+      export XDG_STATE_HOME="$profile_dir/xdg/state"
+      ;;
+  esac
+}
+
+action="${1:-list}"
+if [[ "$action" == "list" || "$action" == "login" || "$action" == "status" || "$action" == "logout" || "$action" == "run" || "$action" == "path" ]]; then
+  [[ $# -eq 0 ]] || shift
+else
+  action=run
+fi
+
+case "$action" in
+  list)
+    jq -r '.profiles[] | [.name,.family,.email,((.aliases // []) | join(",")),(.status // "active")] | @tsv' "$manifest"
+    ;;
+  login|status|logout|run|path)
+    profile_requested="${1:?Usage: $invoked_as $action PROFILE [arguments]}"; shift
+    row="$(profile_metadata "$profile_requested")"
+    [[ -n "$row" ]] || { echo "Unknown $label profile: $profile_requested" >&2; exit 2; }
+    IFS=$'\t' read -r profile email family <<<"$row"
+    profile_dir="$base/profiles/$profile"
+    [[ -d "$profile_dir" ]] || { echo "$label profile is not configured: $profile_dir" >&2; exit 2; }
+    [[ "$action" == path ]] && { printf '%s\n' "$profile_dir"; exit 0; }
+    [[ -n "$cli" ]] || { echo "$label CLI not found." >&2; exit 1; }
+    configure_environment "$profile_dir"
+
+    case "$provider:$action" in
+      gemini:login)
+        printf 'Starting Gemini sign-in for %s (%s). Complete the Google flow in Gemini.\n' "$profile" "$email" >&2
+        exec "$cli" "$@"
+        ;;
+      gemini:status)
+        if [[ -s "$profile_dir/.gemini/oauth_creds.json" ]]; then
+          echo "Gemini credential cache is present for $profile. Launch pgemini $profile and run /about to verify the account."
+        else
+          echo "Gemini credentials are not present for $profile."
+          exit 1
+        fi
+        ;;
+      gemini:logout) exec "$cli" auth logout "$@" ;;
+      gemini:run) exec "$cli" "$@" ;;
+      grok:login) exec "$cli" login "$@" ;;
+      grok:status) exec "$cli" models "$@" ;;
+      grok:logout) exec "$cli" logout "$@" ;;
+      grok:run) exec "$cli" "$@" ;;
+      glm:login)
+        echo "Select Z.AI Coding Plan when OpenCode asks for the provider." >&2
+        exec "$cli" auth login "$@"
+        ;;
+      glm:status) exec "$cli" auth list "$@" ;;
+      glm:logout) exec "$cli" auth logout "$@" ;;
+      glm:run) exec "$cli" "$@" ;;
+    esac
+    ;;
+  *) echo "Usage: $invoked_as {list|login|status|logout|run|path} [PROFILE]" >&2; exit 2 ;;
+esac
