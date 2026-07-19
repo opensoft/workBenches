@@ -45,6 +45,7 @@ ai/
   "version": 1,
   "kind": "workbenches-ai-profile-source",
   "owner": {"type": "tenant", "id": "example"},
+  "credentialContractVersion": 1,
   "profiles": {
     "claude": [],
     "openai": [],
@@ -54,6 +55,29 @@ ai/
   }
 }
 ```
+
+Every versioned provider profile represents one provider account and declares
+its credential separately:
+
+```json
+{
+  "name": "team-001",
+  "email": "team-001@example.com",
+  "family": "company-team",
+  "accountId": "example.openai.team-001.account",
+  "credentialId": "example.openai.team-001.credential",
+  "authentication": {
+    "type": "workspace_access_token",
+    "credentialRef": "ai/secrets/openai/team-001.credentials.sops.yaml",
+    "escrowStatus": "not-escrowed"
+  }
+}
+```
+
+The same canonical profile name may exist for several providers, but each
+provider has a distinct account, authentication method, and ciphertext. Use
+`scripts/normalize-ai-provider-accounts.py` to add or refresh this contract in
+an existing registry.
 
 Supported owner types are `tenant`, `user`, and `product`. Product sources are
 requirements-only and do not materialize workstation profiles. A tenant source
@@ -141,6 +165,13 @@ isolated profiles.
   approved agent stack.
 - Interactive subscription OAuth credentials should not be used for unattended
   automation unless the provider and tenant policy explicitly allow it.
+
+Use `scripts/provider-credential-escrow` for operator-invoked Claude or Codex
+backup, verification, and restoration. The command resolves the encrypted path
+from `source.json`, validates the provider-specific plaintext shape, performs
+an encrypted round-trip canonical-payload hash check during backup, and never prints credential
+values. Backup requires the matching recovery identity so ciphertext cannot be
+committed without proving it can be recovered.
 
 An agent stack may bind one credential to several surfaces, but the encrypted
 credential has one owner and one source of truth. For example, a personal model

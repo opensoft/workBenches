@@ -117,6 +117,41 @@ class ProfileComposerTest(unittest.TestCase):
             with self.assertRaises(MODULE.ProfileError):
                 MODULE.compose([str(source)], "engineer")
 
+    def test_versioned_credential_contract_requires_account_and_secret_reference(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            personal = self.write_source(
+                root,
+                "user",
+                "engineer",
+                {
+                    "claude": [
+                        {
+                            "name": "personal-1",
+                            "email": "engineer@example.com",
+                            "family": "personal",
+                            "accountId": "engineer.claude.personal-1.account",
+                            "credentialId": "engineer.claude.personal-1.credential",
+                            "authentication": {
+                                "type": "subscription_oauth",
+                                "credentialRef": "ai/secrets/claude/personal-1.credentials.sops.yaml",
+                                "escrowStatus": "not-escrowed",
+                            },
+                        }
+                    ],
+                    "openai": [],
+                },
+            )
+            payload = json.loads((personal / "source.json").read_text())
+            payload["credentialContractVersion"] = 1
+            (personal / "source.json").write_text(json.dumps(payload))
+            self.assertEqual(MODULE.compose([str(personal)], "engineer")["claude"][0]["name"], "personal-1")
+
+            del payload["profiles"]["claude"][0]["authentication"]
+            (personal / "source.json").write_text(json.dumps(payload))
+            with self.assertRaises(MODULE.ProfileError):
+                MODULE.compose([str(personal)], "engineer")
+
 
 if __name__ == "__main__":
     unittest.main()

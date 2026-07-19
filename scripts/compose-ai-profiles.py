@@ -21,6 +21,8 @@ PROVIDERS = {
 }
 SOURCE_KIND = "workbenches-ai-profile-source"
 PARITY_FIELDS = ("email", "family", "aliases")
+CREDENTIAL_CONTRACT_VERSION = 1
+ESCROW_STATES = {"available", "not-escrowed", "external-vault"}
 
 
 class ProfileError(ValueError):
@@ -57,7 +59,49 @@ def validate_profile(profile: Any, provider: str, source: pathlib.Path) -> dict[
     if not isinstance(aliases, list) or any(not isinstance(alias, str) or not alias for alias in aliases):
         raise ProfileError(f"{source}: {provider} profile {result['name']} has invalid aliases")
     result["aliases"] = aliases
+    authentication = result.get("authentication")
+    if authentication is not None:
+        if not isinstance(authentication, dict):
+            raise ProfileError(f"{source}: {provider} profile {result['name']} has invalid authentication")
+        for field in ("type", "credentialRef", "escrowStatus"):
+            if not isinstance(authentication.get(field), str) or not authentication[field]:
+                raise ProfileError(
+                    f"{source}: {provider} profile {result['name']} authentication lacks {field}"
+                )
+        if authentication["escrowStatus"] not in ESCROW_STATES:
+            raise ProfileError(
+                f"{source}: {provider} profile {result['name']} has invalid escrowStatus"
+            )
+        credential_ref = pathlib.PurePosixPath(authentication["credentialRef"])
+        expected_root = pathlib.PurePosixPath("ai/secrets") / provider
+        if credential_ref.is_absolute() or ".." in credential_ref.parts or expected_root not in credential_ref.parents:
+            raise ProfileError(
+                f"{source}: {provider} profile {result['name']} credentialRef escapes {expected_root}"
+            )
     return result
+
+
+def validate_credential_contract(source: dict[str, Any], path: pathlib.Path) -> None:
+    version = source.get("credentialContractVersion")
+    if version is None:
+        return
+    if version != CREDENTIAL_CONTRACT_VERSION:
+        raise ProfileError(f"unsupported credential contract version in {path}: {version}")
+    accounts: set[str] = set()
+    credentials: set[str] = set()
+    profiles = source.get("profiles", {})
+    for provider in PROVIDERS:
+        for raw_profile in profiles.get(provider, []):
+            profile = validate_profile(raw_profile, provider, path)
+            for field, seen in (("accountId", accounts), ("credentialId", credentials)):
+                value = profile.get(field)
+                if not isinstance(value, str) or not value:
+                    raise ProfileError(f"{path}: {provider} profile {profile['name']} lacks {field}")
+                if value in seen:
+                    raise ProfileError(f"{path}: duplicate {field}: {value}")
+                seen.add(value)
+            if "authentication" not in profile:
+                raise ProfileError(f"{path}: {provider} profile {profile['name']} lacks authentication")
 
 
 def allowed_names(source: pathlib.Path, owner_type: str, user: str, provider: str) -> list[str]:
@@ -172,6 +216,7 @@ def compose(sources: list[str], user: str) -> dict[str, list[dict[str, Any]]]:
         profiles = source.get("profiles", {})
         if not isinstance(profiles, dict):
             raise ProfileError(f"invalid profiles object in {path}")
+        validate_credential_contract(source, path)
         validate_provider_parity(source, path)
         for provider in PROVIDERS:
             provider_profiles = profiles.get(provider, [])
