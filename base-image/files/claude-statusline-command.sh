@@ -50,6 +50,7 @@ columns=${COLUMNS:-120}
 
 reset=$'\033[0m'
 dim=$'\033[2m'
+blink=$'\033[5m'
 cyan=$'\033[36m'
 yellow=$'\033[33m'
 magenta=$'\033[35m'
@@ -123,7 +124,7 @@ context_segment() {
 }
 
 rate_segment() {
-    local label=$1 raw_pct=$2 reset_at=$3 pct color reset_text="" bar_width filled empty bar empty_bar
+    local label=$1 raw_pct=$2 reset_at=$3 pct color effect="" reset_text="" bar_width filled empty bar empty_bar
     bar_width=$(( columns >= 100 ? 10 : 8 ))
     if [[ -z $raw_pct ]]; then
         printf -v empty_bar '%*s' "$bar_width" ''
@@ -133,6 +134,9 @@ rate_segment() {
     fi
     pct=$(pct_integer "$raw_pct")
     color=$(pct_color "$pct")
+    if (( pct >= 95 && pct < 100 )); then
+        effect=$blink
+    fi
     filled=$(( pct * bar_width / 100 ))
     empty=$(( bar_width - filled ))
     printf -v bar '%*s' "$filled" ''
@@ -142,7 +146,7 @@ rate_segment() {
     if (( pct >= 80 )) && [[ $reset_at =~ ^[0-9]+$ ]]; then
         reset_text=$(date -d "@$reset_at" '+ %H:%M' 2>/dev/null || true)
     fi
-    printf '%s%s [%s%s] %s%%%s%s' "$color" "$label" "$bar" "$empty_bar" "$pct" "$reset" "$reset_text"
+    printf '%s%s%s [%s%s] %s%%%s%s' "$color" "$effect" "$label" "$bar" "$empty_bar" "$pct" "$reset" "$reset_text"
 }
 
 repeat_char() {
@@ -190,7 +194,7 @@ countdown_color() {
 
 countdown_segment() {
     local label=$1 reset_at=$2 window_seconds=$3 unit=$4
-    local now remaining elapsed bar_width marker_pos bar color amount reset_text
+    local now remaining elapsed bar_width marker_pos bar color effect="" amount reset_text
 
     bar_width=$(( columns >= 100 ? 8 : 6 ))
     if [[ ! $reset_at =~ ^[0-9]+$ ]]; then
@@ -209,6 +213,9 @@ countdown_segment() {
     bar="$(repeat_char '=' "$marker_pos")>$(repeat_char '-' "$((bar_width - marker_pos - 1))")"
 
     color=$(countdown_color "$remaining" "$window_seconds")
+    if (( remaining > 0 && remaining < 120 )); then
+        effect=$blink
+    fi
 
     if [[ $unit == minutes ]]; then
         amount="$(( (remaining + 59) / 60 ))m"
@@ -226,7 +233,7 @@ countdown_segment() {
         fi
     fi
 
-    printf '%s%s [%s] %s left%s %s@ %s%s' "$color" "$label" "$bar" "$amount" "$reset" "$dim" "$reset_text" "$reset"
+    printf '%s%s%s [%s] %s left%s %s@ %s%s' "$color" "$effect" "$label" "$bar" "$amount" "$reset" "$dim" "$reset_text" "$reset"
 }
 
 fable_weekly_limit() {
