@@ -86,14 +86,23 @@ fi
 
 run_devcontainer_up() {
     local remove_flag=()
+    local devcontainer_timeout="${WAVE_DEVCONTAINER_UP_TIMEOUT:-25s}"
     if [[ "${1:-}" == "--remove-existing-container" ]]; then
         remove_flag=(--remove-existing-container)
     fi
 
+    run_with_timeout() {
+        if command -v timeout >/dev/null 2>&1; then
+            timeout --foreground "$devcontainer_timeout" "$@"
+        else
+            "$@"
+        fi
+    }
+
     if command -v devcontainer >/dev/null 2>&1; then
-        devcontainer up --workspace-folder "$bench_dir" "${remove_flag[@]}"
+        run_with_timeout devcontainer up --workspace-folder "$bench_dir" "${remove_flag[@]}"
     elif command -v npx >/dev/null 2>&1; then
-        npx -y @devcontainers/cli up --workspace-folder "$bench_dir" "${remove_flag[@]}"
+        run_with_timeout npx -y @devcontainers/cli up --workspace-folder "$bench_dir" "${remove_flag[@]}"
     else
         return 127
     fi
@@ -203,6 +212,12 @@ create_with_compose() {
     docker compose -f "$compose_file" -f "$override_file" up -d "$container"
 }
 
+recreate_with_compose() {
+    echo "Recreating $container with Wave compose mounts..."
+    docker rm -f "$container" >/dev/null 2>&1 || true
+    create_with_compose
+}
+
 mount_destination_covers() {
     local mount_destination="$1"
     local required_path="$2"
@@ -238,7 +253,7 @@ container_missing_required_mounts() {
             fi
         done <<<"$mount_destinations"
 
-        if [[ "$found" != true ]] || ! docker exec --user "$container_user" "$container" test -e "$mount" 2>/dev/null; then
+        if [[ "$found" != true ]]; then
             return 0
         fi
     done
@@ -249,17 +264,16 @@ container_missing_required_mounts() {
 if ! docker container inspect "$container" >/dev/null 2>&1; then
     if [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]]; then
         echo "Creating $container with Dev Containers CLI..."
-        run_devcontainer_up || create_with_compose
+        if ! run_devcontainer_up; then
+            echo "Dev Containers CLI did not complete; creating $container with Wave compose mounts." >&2
+            docker rm -f "$container" >/dev/null 2>&1 || true
+            create_with_compose
+        fi
     else
         create_with_compose
     fi
 elif [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]] && container_missing_required_mounts; then
-    echo "Recreating $container with Dev Containers CLI so required mounts are applied..."
-    if ! run_devcontainer_up --remove-existing-container; then
-        echo "Dev Containers CLI failed; recreating $container with Wave compose mounts." >&2
-        docker rm -f "$container" >/dev/null 2>&1 || true
-        create_with_compose
-    fi
+    recreate_with_compose
 fi
 
 if [[ "$(docker container inspect -f '{{.State.Running}}' "$container")" != "true" ]]; then
