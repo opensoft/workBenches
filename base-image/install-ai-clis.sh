@@ -210,6 +210,12 @@ if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Gemini npm install" npm install -g
     log_error "Gemini CLI installation failed (continuing)"
 fi
 
+log_info "Installing Pi Coding Agent..."
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Pi Coding Agent npm install" \
+    npm install -g --ignore-scripts @earendil-works/pi-coding-agent; then
+    log_error "Pi Coding Agent installation failed (continuing)"
+fi
+
 if [ "$INSTALL_ANTIGRAVITY_CLI" = "1" ] || [ "$INSTALL_ANTIGRAVITY_CLI" = "true" ]; then
     log_info "Installing Google Antigravity CLI..."
     if [ -z "$ANTIGRAVITY_INSTALL_SHA256" ]; then

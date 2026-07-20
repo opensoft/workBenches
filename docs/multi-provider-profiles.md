@@ -29,6 +29,7 @@ The standard launchers are:
 |---|---|---|
 | Claude | `pclaude` | `CLAUDE_CONFIG_DIR` |
 | ChatGPT/Codex | `pcodex` | `CODEX_HOME` |
+| Pi harness | `ppi` | `PI_CODING_AGENT_DIR` |
 | Gemini | `pgemini` | `GEMINI_CLI_HOME` |
 | Grok | `pgrok` | `GROK_HOME` |
 | Z.AI GLM through OpenCode | `pglm` or `pzai` | profile-specific XDG directories |
@@ -39,10 +40,17 @@ provider:
 ```bash
 pclaude team001
 pcodex team001
+ppi team001
 pgemini team001
 pgrok team001
 pglm team001
 ```
+
+Pi profiles are derived from the same canonical identities and may contain
+several Pi-specific provider logins. Use `ppi login team001`, then `/login`
+inside Pi and select the provider. Pi OAuth credentials are harness-specific;
+workBenches never copies Claude Code or Codex CLI tokens into Pi implicitly.
+See [Pi multi-account profiles](pi-multi-account-profiles.md).
 
 Login and status operations use the same pattern:
 

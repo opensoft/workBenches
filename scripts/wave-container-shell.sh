@@ -126,6 +126,7 @@ ensure_host_sources() {
         "$home_dir/.omnigent" \
         "$home_dir/.agents" \
         "$home_dir/.pi" \
+        "$home_dir/.pi-profiles" \
         "$home_dir/.config/sonarqube" \
         "$home_dir/.gemini" \
         "$home_dir/.grok" \
@@ -174,6 +175,7 @@ services:
       - ${home_dir}/.omnigent:/home/${container_user}/.omnigent:cached
       - ${home_dir}/.agents:/home/${container_user}/.agents:cached
       - ${home_dir}/.pi:/home/${container_user}/.pi:cached
+      - ${home_dir}/.pi-profiles:/home/${container_user}/.pi-profiles:cached
       - ${home_dir}/.config/sonarqube:/home/${container_user}/.config/sonarqube:ro
       - ${home_dir}/.gemini:/home/${container_user}/.gemini:cached
       - ${home_dir}/.grok:/home/${container_user}/.grok:ro
@@ -285,6 +287,7 @@ install_ai_profile_launchers() {
     local claude_launcher="$workbenches_root/base-image/files/claude-profile"
     local codex_launcher="$workbenches_root/base-image/files/codex-profile"
     local provider_launcher="$workbenches_root/base-image/files/provider-profile"
+    local pi_launcher="$workbenches_root/base-image/files/pi-profile"
     [[ -f "$claude_launcher" ]] || return 0
 
     docker cp "$claude_launcher" "$container:/usr/local/bin/claude-profile"
@@ -303,6 +306,11 @@ install_ai_profile_launchers() {
                ln -sfn provider-profile "/usr/local/bin/$name"
              done'
     fi
+    if [[ -f "$pi_launcher" ]]; then
+        docker cp "$pi_launcher" "$container:/usr/local/bin/pi-profile"
+        docker exec --user root "$container" sh -c \
+            'chmod 0755 /usr/local/bin/pi-profile && ln -sfn pi-profile /usr/local/bin/ppi'
+    fi
     docker exec --user root "$container" sh -c \
         "mkdir -p '/home/${container_user}/.local/bin' && chown '${container_user}:${container_user}' '/home/${container_user}/.local' '/home/${container_user}/.local/bin'"
     docker exec --user "$container_user" "$container" sh -c \
@@ -313,7 +321,7 @@ install_ai_profile_launchers
 
 if [[ "$check_only" == true ]]; then
     docker exec --user "$container_user" --workdir "$workdir" "$container" "$shell_path" -lc \
-        'printf "%s\n" "wave-container-shell-ok"; whoami; pwd; command -v claude-profile; command -v pclaude; command -v codex-profile; command -v pcodex; command -v pgemini; command -v pgrok; command -v pglm; test -d "$HOME/.claude-profiles"; test -d "$HOME/.chatgpt-profiles"; test -d "$HOME/.gemini-profiles"; test -d "$HOME/.grok-profiles"; test -d "$HOME/.glm-profiles"'
+        'printf "%s\n" "wave-container-shell-ok"; whoami; pwd; command -v claude-profile; command -v pclaude; command -v codex-profile; command -v pcodex; command -v ppi; command -v pgemini; command -v pgrok; command -v pglm; test -d "$HOME/.claude-profiles"; test -d "$HOME/.chatgpt-profiles"; test -d "$HOME/.pi-profiles"; test -d "$HOME/.gemini-profiles"; test -d "$HOME/.grok-profiles"; test -d "$HOME/.glm-profiles"'
     exit 0
 fi
 

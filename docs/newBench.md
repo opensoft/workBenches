@@ -153,6 +153,7 @@ Copy the complete template below — do not remove any standard mount:
         "source=${localEnv:HOME}/.agents,target=/home/${localEnv:USER}/.agents,type=bind,consistency=cached",
         // Project Intelligence and local agent metadata
         "source=${localEnv:HOME}/.pi,target=/home/${localEnv:USER}/.pi,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.pi-profiles,target=/home/${localEnv:USER}/.pi-profiles,type=bind,consistency=cached",
         // Claude (Anthropic) — native installer
         "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind,consistency=cached",
         "source=${localEnv:HOME}/.claude.json,target=/home/${localEnv:USER}/.claude.json,type=bind,consistency=cached",
