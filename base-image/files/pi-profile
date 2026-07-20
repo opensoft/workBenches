@@ -4,6 +4,7 @@ umask 077
 
 manifest="${PI_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/pi-profiles.json}"
 base="${PI_PROFILES_HOME:-$HOME/.pi-profiles}"
+[[ -d "$HOME/.local/bin" ]] && export PATH="$HOME/.local/bin:$PATH"
 pi_bin="${PI_BIN:-$(command -v pi || true)}"
 if [[ -z "$pi_bin" && -x "$HOME/.npm-global/bin/pi" ]]; then
   pi_bin="$HOME/.npm-global/bin/pi"
@@ -44,6 +45,10 @@ case "$action" in
     export PI_PROFILE_NAME="$profile"
     export PI_PROFILE_EMAIL="$email"
     export PI_PROFILE_FAMILY="$family"
+    claude_config_dir="${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}/profiles/$profile"
+    if [[ ",$providers," == *,claude,* && -d "$claude_config_dir" ]]; then
+      export CLAUDE_CONFIG_DIR="$claude_config_dir"
+    fi
     case "$action" in
       login)
         [[ -n "$pi_bin" ]] || { echo "Pi CLI not found. Run workBenches tool setup first." >&2; exit 1; }
@@ -51,16 +56,15 @@ case "$action" in
         exec "$pi_bin" "$@"
         ;;
       status)
-        if [[ ! -f "$auth_file" ]]; then
-          printf '%s\t%s\t%s\n' "$profile" "$email" 'not-authenticated'
-          exit 0
+        configured=""
+        if [[ -f "$auth_file" ]]; then
+          configured="$(jq -r 'if type == "object" then (keys | sort | join(",")) else error("invalid Pi auth file") end' "$auth_file")"
         fi
-        jq -r --arg profile "$profile" --arg email "$email" '
-          if type != "object" then error("invalid Pi auth file") else
-            (keys | sort | join(",")) as $providers
-            | [$profile,$email,(if $providers == "" then "not-authenticated" else $providers end)] | @tsv
-          end
-        ' "$auth_file"
+        claude_bin="$(command -v claude || true)"
+        if [[ -n ${CLAUDE_CONFIG_DIR:-} && -n "$claude_bin" ]] && "$claude_bin" auth status >/dev/null 2>&1; then
+          configured="${configured:+$configured,}pi-claude-cli(proxy-ready)"
+        fi
+        printf '%s\t%s\t%s\n' "$profile" "$email" "${configured:-not-authenticated}"
         ;;
       logout)
         provider="${1:?Usage: pi-profile logout PROFILE PI_PROVIDER}"; shift

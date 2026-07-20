@@ -32,6 +32,17 @@ credentials. Setup never copies them automatically. This matters especially
 for subscription products: support and billing in a third-party harness may
 differ from the first-party CLI.
 
+Claude-backed profiles deliberately use the pinned
+`@ramarivera/pi-claude-cli@0.3.1` proxy extension. `ppi` exports the matching
+profile's `CLAUDE_CONFIG_DIR`; the extension then spawns `claude -p` and uses
+that Claude Code profile's Pro/Max subscription. It does not copy the Claude
+OAuth token into Pi. These profiles default to
+`pi-claude-cli/claude-fable-5`.
+
+Profile setup also records the working npm executable in Pi's `npmCommand`
+setting so package installation does not accidentally use a broken or shadowed
+npm shim.
+
 `ppi status PROFILE` prints the profile, expected email, and configured Pi
 provider names without exposing secrets. Remove only one Pi provider with:
 

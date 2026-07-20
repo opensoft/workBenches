@@ -36,6 +36,8 @@ class PiProfilesTest(unittest.TestCase):
             fake_pi = root / "pi"
             fake_pi.write_text('#!/bin/sh\nprintf "%s" "$PI_CODING_AGENT_DIR" > "$CAPTURE"\n')
             fake_pi.chmod(0o755)
+            claude_home = home / ".claude-profiles/profiles/team-001"
+            claude_home.mkdir(parents=True)
             env = {
                 **os.environ,
                 "HOME": str(home),
@@ -57,6 +59,18 @@ class PiProfilesTest(unittest.TestCase):
                 json.loads(pi_manifest.read_text())["profiles"][0]["providers"],
                 ["claude", "openai", "gemini", "grok", "glm"],
             )
+            settings = json.loads((expected / "settings.json").read_text())
+            self.assertEqual(settings["defaultProvider"], "pi-claude-cli")
+            self.assertEqual(settings["defaultModel"], "claude-fable-5")
+            self.assertIn("npm:@ramarivera/pi-claude-cli@0.3.1", settings["packages"])
+
+            env_capture = root / "env-capture"
+            fake_pi.write_text(
+                '#!/bin/sh\nprintf "%s\n%s\n" "$PI_CODING_AGENT_DIR" "$CLAUDE_CONFIG_DIR" > "$ENV_CAPTURE"\n'
+            )
+            env["ENV_CAPTURE"] = str(env_capture)
+            subprocess.run([str(launcher), "team001"], env=env, check=True)
+            self.assertEqual(env_capture.read_text().splitlines(), [str(expected), str(claude_home)])
 
     def test_composition_rejects_cross_provider_identity_mismatch(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
