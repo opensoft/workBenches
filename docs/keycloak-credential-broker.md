@@ -345,12 +345,114 @@ Built new:
   secret-free. Only credential values remain in SOPS and are held in memory by
   the broker.
 
+## Phased delivery
+
+The phases are sequenced so the riskiest assumptions are proven first: that the
+existing escrow logic ports cleanly to Python, and that the full
+authenticate → authorize → decrypt → materialize loop works end to end. Each
+phase is independently shippable.
+
+Two implementation facts shape phase 0 and 1. First, `provider-credential-escrow`
+is Bash (jq plus the `sops` CLI), so the broker does not import it; it
+re-implements the same `validate_plaintext` shapes and `credentialRef` guard in
+Python and shells out to the already-installed `sops` binary with
+`SOPS_AGE_KEY_FILE` set per request. Second, one age key file per tenant is held
+by the broker at mode `0600` and selected by the caller's tenant group.
+
+### Phase 0 — Broker core, no Keycloak
+
+Prove the SOPS-side plumbing in isolation.
+
+- Scaffold `apps/credential-broker/` (Python, FastAPI) with a shared
+  `escrow_core.py`: the per-provider validators, `credentialRef` resolution and
+  path-traversal guard, and the `profile_root`/`credential_name` →
+  `materialization` mapping, all ported from `provider-credential-escrow`.
+- Registry-access module: read-only clone plus `git pull`, per-tenant age key,
+  `sops decrypt`.
+- `POST /credentials:fetch` behind a dev bearer token with a hardcoded identity;
+  no OIDC yet.
+
+Exit criteria: against a fixture registry and test age key, fetching
+`claude/team-001` returns a shape-valid credential; unit tests green.
+
+### Phase 1 — Vertical slice: real Keycloak, one tenant, `pclaude` only (MVP)
+
+The whole authenticate → release loop working for one engineer.
+
+- Stand up `Install-Keycloak`: compose (Keycloak plus Postgres),
+  `realm-workbenches.json` (`/tenants/opensoft`, the `workbench-launcher`
+  device + PKCE client, the `workbench-broker` bearer-only client, the
+  `broker-audience` scope and mapper, and the GitHub IdP stub), and
+  `bootstrap.sh`.
+- Broker: OIDC validation (JWKS, issuer, `aud`, `exp`), identity and tenant
+  extraction, authorization against `grants/users/<github_login>.json`, TLS, and
+  audit logging without values.
+- Resolver wired into `pclaude` only: device-code flow, cached refresh token
+  (mode `0600`), atomic write, and the `provider-credential-escrow restore`
+  break-glass fallback.
+
+Exit criteria: an engineer runs `pclaude team001`, authenticates via GitHub
+through Keycloak's device flow, and the profile materializes from the broker;
+removing the grant yields `403`.
+
+### Phase 2 — Breadth: all providers and multi-tenant
+
+- Extend to `codex`/`openai`, `gemini`, `grok`, `glm`, and `pi`, porting each
+  provider's validator and materialization target.
+- Add a second tenant (`/tenants/farheap`, its own age identity and deploy key)
+  and `GET /entitlements` intersecting membership with grants across accessible
+  tenants.
+- Wire the resolver into the remaining `p*` launchers.
+
+Exit criteria: any engineer, any granted provider profile, across both tenants.
+
+### Phase 3 — Unattended agents
+
+- `agent-<name>` confidential clients (`client_credentials`),
+  `grants/agents/<agent>.json`, and resolver detection of
+  `WORKBENCH_AGENT_CLIENT_ID` and its secret to skip the device flow.
+- Short materialization TTL plus re-fetch for agents.
+
+Exit criteria: a headless agent fetches only its granted credentials, and
+disabling its Keycloak client revokes access instantly.
+
+### Phase 4 — Broaden cred kinds: `git`, `mcp`, then federated `cloud`
+
+- Generalize the `secrets/` tree to typed entries; `kind: git` and `kind: mcp`
+  reuse the same fetch path.
+- `kind: cloud` with `mode: federated`: Keycloak-to-AWS/GCP/Azure OIDC
+  workload-identity federation, where the broker performs the STS exchange and
+  returns short-lived credentials, storing no long-lived cloud key in SOPS.
+
+Exit criteria: an AI in a bench pulls git and MCP tokens; cloud is served by
+federation where the provider supports it.
+
+### Phase 5 — Hardening and operability
+
+- Lease renewal and active revocation endpoints, per-identity rate limiting,
+  audit shipping to a central log, metrics and health, rotation and break-glass
+  runbooks, and a threat-model review.
+- Optional: a broker-served read-only entitlements view that replaces
+  `credential_manager.py`'s local inspection for shared-server deployments.
+
+The minimum viable milestone is the end of phase 1 — the smallest change that
+removes the age recovery identity from a workstation. Phases 2 through 4 add
+breadth; phase 5 is production readiness, though minimal TLS and audit are
+already required in phase 1.
+
+## Resolved decisions
+
+- Lease semantics: the first version issues opaque TTLs only; tracked leases and
+  active revocation arrive in phase 5. A released vendor token cannot be
+  recalled regardless, so tracked leases mainly serve audit and forced
+  re-authentication, which are hardening concerns. The `leaseId` is returned
+  from the first version so the contract does not change later.
+- Federated cloud credentials are not in the first version; they arrive in phase
+  4. The first version covers the SOPS-backed `ai-provider` kinds, which add no
+  new trust relationships.
+
 ## Open questions
 
-- Lease renewal semantics and whether the broker tracks outstanding leases for
-  active revalidation or only issues opaque TTLs.
-- Whether federated cloud credentials (`mode: federated`) ship in the first
-  version or after the SOPS-backed `kind`s.
 - Whether the broker should also serve the read-only `credential-manager`
   dashboard's verification view directly, replacing its local-only inspection
-  for shared-server deployments.
+  for shared-server deployments (targeted for phase 5).
