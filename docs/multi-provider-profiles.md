@@ -12,9 +12,11 @@ Run the onboarding directly with:
 ./scripts/setup-ai-profiles.sh --interactive
 ```
 
-The flow asks for consent, work companies, company emails and GitHub orgs,
-personal subscription emails, and the personal GitHub owner. It searches each
-owner's accessible repositories for a credential registry containing
+The flow asks for consent, then for each work company an email and GitHub org
+(the company name defaults to the email domain's first label, e.g.
+`you@acme.com` suggests `acme`, and can be edited), personal subscription
+emails, and the personal GitHub owner. It searches each owner's accessible
+repositories for a credential registry containing
 `ai/source.json`. When none is found, the user may enter a registry URL or
 create local manual profile metadata.
 

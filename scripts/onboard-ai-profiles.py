@@ -75,6 +75,11 @@ def slugify(value: str) -> str:
     return slug or "account"
 
 
+def company_name_from_email(email: str) -> str:
+    domain = email.rsplit("@", 1)[-1]
+    return domain.split(".")[0]
+
+
 def parse_providers(value: str | list[str] | None) -> list[str]:
     if value is None or value == "" or value == "all":
         return list(PROVIDERS)
@@ -314,11 +319,11 @@ def interactive_answers() -> dict[str, Any]:
     companies: list[dict[str, Any]] = []
     for index in range(1, company_count + 1):
         print(f"\nCompany {index}")
-        name = ask("Company name")
+        email = ask_email("Company login email")
+        name = ask("Company name", company_name_from_email(email))
         if not name:
             raise RuntimeError("company name is required")
-        email = ask_email(f"Your login email at {name}")
-        org = ask(f"GitHub organization for {name}")
+        org = ask(f"GitHub organization for {name}", name)
         if not org:
             raise RuntimeError("company GitHub organization is required")
         providers = parse_providers(

@@ -137,7 +137,8 @@ exist. Before querying GitHub or writing profile metadata, it asks whether the
 user consents to work/personal profile setup. It then collects:
 
 - the personal GitHub username;
-- company count, company name, company login email, and company GitHub org;
+- company count, company login email (company name defaults to the email
+  domain's first label and is editable), and company GitHub org;
 - personal AI subscription emails and the providers used by each account; and
 - the personal GitHub user or org that owns the personal credential registry.
 
