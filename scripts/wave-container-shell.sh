@@ -73,6 +73,8 @@ done
 
 workbenches_root="${workbenches_root%/}"
 resolve_bench_defaults
+container_history_dir="/home/${container_user}/.workbenches-history"
+container_history_file="${container_history_dir}/.zsh_history"
 
 if [[ ! -d "$workbenches_root" ]]; then
     echo "workBenches root does not exist: $workbenches_root" >&2
@@ -153,7 +155,7 @@ services:
   $container:
     volumes:
       - ${home_dir}/projects:/workspace/projects:cached
-      - ${history_volume}:/home/${container_user}/.zsh_history
+      - ${history_volume}:${container_history_dir}
       - ${home_dir}/.zshrc:/home/${container_user}/.zshrc:ro
       - ${home_dir}/.oh-my-zsh:/home/${container_user}/.oh-my-zsh:ro
       - ${home_dir}/.p10k.zsh:/home/${container_user}/.p10k.zsh:ro
@@ -234,11 +236,13 @@ container_missing_required_mounts() {
     local required_mounts=()
     required_mounts=(
         "/workspace/projects"
+        "$container_history_dir"
         "/home/${container_user}/.zshrc"
         "/home/${container_user}/.oh-my-zsh"
         "/home/${container_user}/.p10k.zsh"
         "/home/${container_user}/.claude-profiles"
         "/home/${container_user}/.chatgpt-profiles"
+        "/home/${container_user}/.pi-profiles"
         "/home/${container_user}/.gemini-profiles"
         "/home/${container_user}/.grok-profiles"
         "/home/${container_user}/.glm-profiles"
@@ -283,6 +287,11 @@ if [[ "$(docker container inspect -f '{{.State.Running}}' "$container")" != "tru
     docker start "$container" >/dev/null
 fi
 
+ensure_container_history() {
+    docker exec --user root "$container" sh -c \
+        "mkdir -p '$container_history_dir' && touch '$container_history_file' && chown -R '${container_user}:${container_user}' '$container_history_dir'"
+}
+
 install_ai_profile_launchers() {
     local claude_launcher="$workbenches_root/base-image/files/claude-profile"
     local codex_launcher="$workbenches_root/base-image/files/codex-profile"
@@ -317,11 +326,12 @@ install_ai_profile_launchers() {
         'if [ ! -e "$HOME/.local/bin/claude" ]; then ln -s /usr/local/bin/claude "$HOME/.local/bin/claude"; fi'
 }
 
+ensure_container_history
 install_ai_profile_launchers
 
 if [[ "$check_only" == true ]]; then
-    docker exec --user "$container_user" --workdir "$workdir" "$container" "$shell_path" -lc \
-        'printf "%s\n" "wave-container-shell-ok"; whoami; pwd; command -v claude-profile; command -v pclaude; command -v codex-profile; command -v pcodex; command -v ppi; command -v pgemini; command -v pgrok; command -v pglm; test -d "$HOME/.claude-profiles"; test -d "$HOME/.chatgpt-profiles"; test -d "$HOME/.pi-profiles"; test -d "$HOME/.gemini-profiles"; test -d "$HOME/.grok-profiles"; test -d "$HOME/.glm-profiles"'
+    docker exec --user "$container_user" --env "HISTFILE=$container_history_file" --workdir "$workdir" "$container" "$shell_path" -lc \
+        'printf "%s\n" "wave-container-shell-ok"; whoami; pwd; test "$HISTFILE" = "$HOME/.workbenches-history/.zsh_history"; command -v claude-profile; command -v pclaude; command -v codex-profile; command -v pcodex; command -v ppi; command -v pgemini; command -v pgrok; command -v pglm; test -d "$HOME/.claude-profiles"; test -d "$HOME/.chatgpt-profiles"; test -d "$HOME/.pi-profiles"; test -d "$HOME/.gemini-profiles"; test -d "$HOME/.grok-profiles"; test -d "$HOME/.glm-profiles"'
     exit 0
 fi
 
@@ -357,6 +367,7 @@ exec docker exec "${tty_args[@]}" \
     --env "COLORTERM=$color_term" \
     --env "CLICOLOR=1" \
     --env "FORCE_COLOR=1" \
+    --env "HISTFILE=$container_history_file" \
     --user "$container_user" \
     --workdir "$workdir" \
     "$container" \

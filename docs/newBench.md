@@ -121,7 +121,8 @@ Copy the complete template below — do not remove any standard mount:
         }
     },
     "containerEnv": {
-        "SHELL": "/bin/zsh"
+        "SHELL": "/bin/zsh",
+        "HISTFILE": "/home/${localEnv:USER}/.workbenches-history/.zsh_history"
     },
     "remoteUser": "${localEnv:USER}",
     "updateRemoteUserUID": false,
@@ -134,7 +135,7 @@ Copy the complete template below — do not remove any standard mount:
         // =============================================
 
         // Workspace & history
-        "source={namebench}-zshhistory,target=/home/${localEnv:USER}/.zsh_history,type=volume",
+        "source={namebench}-zshhistory,target=/home/${localEnv:USER}/.workbenches-history,type=volume",
         "source=${localEnv:HOME}/projects,target=/workspace/projects,type=bind",
 
         // Shell configurations (bind, readonly)

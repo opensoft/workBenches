@@ -20,8 +20,12 @@ Every bench must include these mounts. Copy this block into new bench `devcontai
 // Projects directory
 "source=${localEnv:HOME}/projects,target=/workspace/projects,type=bind",
 // Zsh history (named volume per bench)
-"source={benchname}-zshhistory,target=/home/${localEnv:USER}/.zsh_history,type=volume",
+"source={benchname}-zshhistory,target=/home/${localEnv:USER}/.workbenches-history,type=volume",
 ```
+
+Set `HISTFILE=/home/${localEnv:USER}/.workbenches-history/.zsh_history`
+through the container environment or shell launcher. Docker named volumes are
+directories, so they must not be mounted directly onto the `.zsh_history` file.
 
 ### Shell Configuration (bind, readonly)
 
