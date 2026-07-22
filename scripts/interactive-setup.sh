@@ -795,7 +795,11 @@ draw_item_compact() {
 
     local checked="${component_checked[$key]}"
     local desc="${component_description[$key]}"
-    local status=$(check_component_status "$key")
+    local status="${component_status[$key]}"
+    if [ -z "$status" ]; then
+        status=$(check_component_status "$key")
+        component_status["$key"]="$status"
+    fi
 
     # Checkbox with action indicator
     local checkbox="[ ]"
