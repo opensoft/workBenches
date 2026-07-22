@@ -67,8 +67,22 @@ if [[ -z "${SONARQUBE_TOKEN:-}" ]]; then
   exit 0
 fi
 
-SONARQUBE_ORG="${SONARQUBE_ORG:-opensoft}"
 SONARQUBE_URL="${SONARQUBE_URL:-${SONAR_HOST_URL:-${SONARQUBE_CLOUD_URL:-https://sonarcloud.io}}}"
+SONARQUBE_ORG="${SONARQUBE_ORG:-${SONAR_ORGANIZATION:-}}"
+
+# The SonarQube MCP server uses the presence of SONARQUBE_ORG to select Cloud
+# mode. Preserve the existing Opensoft default for the supported Cloud
+# endpoints, but leave the variable unset for self-hosted SonarQube Server.
+if [[ -z "$SONARQUBE_ORG" ]]; then
+  case "${SONARQUBE_URL%/}" in
+    https://sonarcloud.io|https://sonarqube.us)
+      SONARQUBE_ORG="opensoft"
+      ;;
+    *)
+      unset SONARQUBE_ORG
+      ;;
+  esac
+fi
 
 ensure_network() {
   if ! docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
@@ -96,7 +110,11 @@ ensure_compose_services() {
   export SONARQUBE_MCP_BACKEND_PORT="$BACKEND_PORT"
   export SONARQUBE_MCP_PORT="$PROXY_PORT"
   export SONARQUBE_MCP_HOST_BIND="$HOST_BIND"
-  export SONARQUBE_ORG
+  if [[ -n "${SONARQUBE_ORG:-}" ]]; then
+    export SONARQUBE_ORG
+  else
+    unset SONARQUBE_ORG
+  fi
   export SONARQUBE_TOKEN
   export SONARQUBE_URL
 
