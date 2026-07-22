@@ -137,7 +137,8 @@ exist. Before querying GitHub or writing profile metadata, it asks whether the
 user consents to work/personal profile setup. It then collects:
 
 - the personal GitHub username;
-- company count, company name, company login email, and company GitHub org;
+- company count, company login email (company name defaults to the email
+  domain's first label and is editable), and company GitHub org;
 - personal AI subscription emails and the providers used by each account; and
 - the personal GitHub user or org that owns the personal credential registry.
 
@@ -177,3 +178,12 @@ An agent stack may bind one credential to several surfaces, but the encrypted
 credential has one owner and one source of truth. For example, a personal model
 credential can be materialized for `pclaude` on a workstation and injected into
 a personal VPS agent runtime without being copied into the Agents repository.
+
+For teams that want to stop distributing the age recovery identity to
+workstations, the optional
+[Keycloak-gated credential broker](keycloak-credential-broker.md) puts a shared
+identity server and a Python broker in front of these same SOPS registries. It
+gates the existing grants without replacing them: Keycloak proves identity, the
+grant files remain authoritative for authorization, SOPS remains the at-rest
+store, and the broker holds one age identity per tenant so no decryption key
+reaches a workstation or agent.

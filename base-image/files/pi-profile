@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+manifest="${PI_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/pi-profiles.json}"
+base="${PI_PROFILES_HOME:-$HOME/.pi-profiles}"
+[[ -d "$HOME/.local/bin" ]] && export PATH="$HOME/.local/bin:$PATH"
+pi_bin="${PI_BIN:-$(command -v pi || true)}"
+if [[ -z "$pi_bin" && -x "$HOME/.npm-global/bin/pi" ]]; then
+  pi_bin="$HOME/.npm-global/bin/pi"
+fi
+command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
+
+profile_metadata() {
+  local requested normalized
+  requested="$1"
+  normalized="$(printf '%s' "$requested" | tr '[:upper:]' '[:lower:]')"
+  jq -r --arg name "$normalized" '
+    .profiles[]
+    | select(((.name | ascii_downcase) == $name) or any(.aliases[]?; ascii_downcase == $name))
+    | [.name,.email,.family,((.providers // []) | join(","))] | @tsv
+  ' "$manifest" | head -n 1
+}
+
+action="${1:-list}"
+if [[ "$action" =~ ^(list|login|status|logout|run)$ ]]; then
+  [[ $# -eq 0 ]] || shift
+else
+  action=run
+fi
+
+case "$action" in
+  list)
+    jq -r '.profiles[] | [.name,.family,.email,((.aliases // [])|join(",")),((.providers // [])|join(","))] | @tsv' "$manifest"
+    ;;
+  login|status|logout|run)
+    profile="${1:?Usage: pi-profile $action PROFILE [arguments]}"; shift
+    row="$(profile_metadata "$profile")"
+    [[ -n "$row" ]] || { echo "Unknown Pi profile: $profile" >&2; exit 2; }
+    IFS=$'\t' read -r profile email family providers <<<"$row"
+    agent_dir="$base/profiles/$profile/agent"
+    auth_file="$agent_dir/auth.json"
+    [[ -d "$agent_dir" ]] || { echo "Pi profile is not configured: $agent_dir" >&2; exit 2; }
+    export PI_CODING_AGENT_DIR="$agent_dir"
+    export PI_PROFILE_NAME="$profile"
+    export PI_PROFILE_EMAIL="$email"
+    export PI_PROFILE_FAMILY="$family"
+    claude_config_dir="${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}/profiles/$profile"
+    if [[ ",$providers," == *,claude,* && -d "$claude_config_dir" ]]; then
+      export CLAUDE_CONFIG_DIR="$claude_config_dir"
+    fi
+    case "$action" in
+      login)
+        [[ -n "$pi_bin" ]] || { echo "Pi CLI not found. Run workBenches tool setup first." >&2; exit 1; }
+        printf 'Starting Pi login for %s (%s). Use /login; expected account providers: %s.\n' "$profile" "$email" "$providers" >&2
+        exec "$pi_bin" "$@"
+        ;;
+      status)
+        configured=""
+        if [[ -f "$auth_file" ]]; then
+          configured="$(jq -r 'if type == "object" then (keys | sort | join(",")) else error("invalid Pi auth file") end' "$auth_file")"
+        fi
+        claude_bin="$(command -v claude || true)"
+        if [[ -n ${CLAUDE_CONFIG_DIR:-} && -n "$claude_bin" ]] && "$claude_bin" auth status >/dev/null 2>&1; then
+          configured="${configured:+$configured,}pi-claude-cli(proxy-ready)"
+        fi
+        printf '%s\t%s\t%s\n' "$profile" "$email" "${configured:-not-authenticated}"
+        ;;
+      logout)
+        provider="${1:?Usage: pi-profile logout PROFILE PI_PROVIDER}"; shift
+        [[ -f "$auth_file" ]] || { echo "Pi profile is not authenticated: $profile" >&2; exit 1; }
+        tmp="$(mktemp "$agent_dir/.auth.XXXXXX.tmp")"
+        jq --arg provider "$provider" 'del(.[$provider])' "$auth_file" > "$tmp"
+        chmod 600 "$tmp"
+        mv -f "$tmp" "$auth_file"
+        printf 'Removed Pi provider credential: %s/%s\n' "$profile" "$provider"
+        ;;
+      run)
+        [[ -n "$pi_bin" ]] || { echo "Pi CLI not found. Run workBenches tool setup first." >&2; exit 1; }
+        exec "$pi_bin" "$@"
+        ;;
+    esac
+    ;;
+esac

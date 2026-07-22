@@ -76,6 +76,8 @@ and state migration rather than by renaming directories.
 
 All profiles share `skills`, `agents`, `commands`, and `rules`. Profiles in the
 same family share transcripts, prompt history, file history, plans, and tasks.
+Use a unique family for each personal login when personal histories must remain
+separate.
 Credentials, settings, plugins, caches, and daemon state remain per profile.
 
 Every profile receives the shared four-line Claude status panel. It reports the
