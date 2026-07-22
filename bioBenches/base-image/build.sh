@@ -18,9 +18,11 @@ LEGACY_IMAGE="$(legacy_family_base_image bio)"
 cd "$SCRIPT_DIR"
 
 # Parse arguments (--user is accepted but ignored for backward compat)
+NO_CACHE="${NO_CACHE:-false}"
 while [[ $# -gt 0 ]]; do
     case $1 in
         --user) shift 2 ;;
+        --no-cache) NO_CACHE=true; shift ;;
         *) shift ;;
     esac
 done
@@ -28,6 +30,7 @@ done
 echo "Configuration:"
 echo "  Tag: $CANONICAL_IMAGE (user-agnostic)"
 echo "  Legacy alias: $LEGACY_IMAGE"
+echo "  No cache: $NO_CACHE"
 echo ""
 
 # Check if Layer 0 exists
@@ -43,6 +46,7 @@ fi
 # Build the image
 echo "Building $CANONICAL_IMAGE..."
 docker build \
+    $([ "$NO_CACHE" = true ] && printf '%s\n' "--no-cache") \
     -t "$CANONICAL_IMAGE" \
     .
 tag_family_base_legacy_alias bio

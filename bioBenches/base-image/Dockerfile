@@ -8,7 +8,7 @@ FROM workbench-base:latest
 # Container version labels
 LABEL layer="1c"
 LABEL layer.name="bio-bench-base"
-LABEL layer.version="2.0.0"
+LABEL layer.version="2.0.2"
 LABEL layer.description="Bio base with Miniconda, bioconda and conda-forge channels (user-agnostic)"
 
 # Everything runs as root
@@ -62,7 +62,10 @@ RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkg
     && conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r \
     && conda config --system --prepend channels conda-forge \
     && conda config --system --prepend channels bioconda \
-    && conda config --system --set channel_priority strict
+    && conda config --system --set channel_priority strict \
+    && CONDA_VERSION="$(curl -fsSL https://api.github.com/repos/conda/conda/releases/latest | jq -r '.tag_name')" \
+    && conda install -n base -y --override-channels -c conda-forge "conda=${CONDA_VERSION}" \
+    && conda clean -afy
 
 # ========================================
 # SHELL CONFIGURATION (into /etc/skel)

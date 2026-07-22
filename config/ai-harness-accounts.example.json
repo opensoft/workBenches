@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "accounts": [
+    {
+      "provider": "claude",
+      "name": "personal-claude-1",
+      "family": "personal",
+      "email": "user@example.com",
+      "plan": "max",
+      "workspace": "personal",
+      "authMode": "browser",
+      "status": "active"
+    },
+    {
+      "provider": "chatgpt",
+      "name": "company-chatgpt-1",
+      "family": "company",
+      "email": "developer@company.example",
+      "plan": "business",
+      "workspace": "company",
+      "authMode": "browser",
+      "status": "active"
+    },
+    {
+      "provider": "grok",
+      "name": "personal-grok-1",
+      "family": "personal",
+      "email": "user@example.com",
+      "plan": "supergrok",
+      "workspace": "personal",
+      "authMode": "browser",
+      "status": "active"
+    },
+    {
+      "provider": "antigravity",
+      "name": "personal-antigravity-1",
+      "family": "personal",
+      "email": "user@gmail.com",
+      "plan": "individual",
+      "workspace": "personal",
+      "authMode": "keyring",
+      "status": "active"
+    },
+    {
+      "provider": "abacus",
+      "name": "company-abacus-1",
+      "family": "company",
+      "email": "developer@company.example",
+      "plan": "team",
+      "workspace": "company",
+      "authMode": "api-key",
+      "secretEnv": "ABACUS_API_KEY_COMPANY_1",
+      "status": "active"
+    }
+  ]
+}

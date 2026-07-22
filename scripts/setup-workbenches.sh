@@ -495,6 +495,12 @@ setup_ai_features() {
     echo -e "${YELLOW}AI-Powered Features Setup${NC}"
     echo "workBenches supports AI-powered bench creation with current tech stack information."
     echo ""
+
+    if [ -x "$SCRIPT_DIR/setup-ai-profiles.sh" ]; then
+        "$SCRIPT_DIR/setup-ai-profiles.sh" --interactive \
+            || echo -e "${YELLOW}AI profile onboarding did not complete.${NC}"
+        echo ""
+    fi
     echo -e "${BLUE}AI Features include:${NC}"
     echo "• Current technology and framework discovery"
     echo "• Up-to-date best practices and tools"
@@ -511,7 +517,8 @@ setup_ai_features() {
             [Nn]* | "" )
                 echo -e "${YELLOW}Skipping AI setup.${NC}"
                 echo "You can setup credentials later:"
-                echo "  - Run: ./scripts/check-ai-credentials.sh --interactive"
+                echo "  - Run ./scripts/setup-ai-profiles.sh --interactive"
+                echo "  - Or set AI_HARNESS_ACCOUNT_REPO, then run: ./scripts/check-ai-credentials.sh"
                 echo "  - Or manually set environment variables"
                 break
                 ;;
@@ -1114,7 +1121,15 @@ main() {
     show_ai_credentials_status
     show_ai_assistants_status
     show_spec_tools_status
-    
+
+    if [ -x "$SCRIPT_DIR/setup-claude-workflows.sh" ]; then
+        echo -e "${YELLOW}Claude Workflows${NC}"
+        if ! "$SCRIPT_DIR/setup-claude-workflows.sh"; then
+            echo -e "${YELLOW}Claude workflow setup skipped or failed${NC}"
+        fi
+        echo ""
+    fi
+
     load_config
     init_installed_file
     
@@ -1130,7 +1145,7 @@ main() {
     echo "• onp - Quick project creation"
     echo "• new-bench - Create new development benches"
     echo "• update-bench-config - Update configuration"
-    echo "• check-ai-credentials - Manage AI credentials"
+    echo "• check-ai-credentials - Manage multiple AI harness accounts"
     echo ""
     echo -e "${YELLOW}Note:${NC} If commands aren't available globally, restart your shell or run:"
     echo "  source ~/.zshrc  # or ~/.bashrc"

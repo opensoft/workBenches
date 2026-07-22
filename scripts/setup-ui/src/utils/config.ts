@@ -73,8 +73,16 @@ export const AI_CLI_DEFINITIONS: AICliDefinition[] = [
     name: 'OpenCode CLI',
     description: 'OpenCode terminal assistant',
     command: 'opencode',
-    installCmd: 'npm install -g opencode',
-    uninstallCmd: 'npm uninstall -g opencode',
+    installCmd: 'npm install -g opencode-ai',
+    uninstallCmd: 'npm uninstall -g opencode-ai',
+  },
+  {
+    id: 'pi_cli',
+    name: 'Pi Coding Agent',
+    description: 'Minimal terminal coding harness with provider login support',
+    command: 'pi',
+    installCmd: 'npm install -g --ignore-scripts @earendil-works/pi-coding-agent',
+    uninstallCmd: 'npm uninstall -g @earendil-works/pi-coding-agent',
   },
   // Separator marker
   {
@@ -130,13 +138,6 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     description: 'Open source AI terminal',
     checkInstalled: async () => false,
     installInstructions: 'Windows/WSL: winget install -e --id CommandLine.Wave; otherwise install from https://www.waveterm.dev/',
-  },
-  {
-    id: 'pi_terminal',
-    name: 'Pi Terminal',
-    description: 'Pi terminal coding agent',
-    checkInstalled: async () => false,
-    installInstructions: 'Windows/WSL: install with Windows npm; otherwise npm install -g --ignore-scripts @earendil-works/pi-coding-agent',
   },
 ];
 

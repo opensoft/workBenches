@@ -4,6 +4,7 @@
 adminBenches/cloudAdmin/
 devBenches/flutterBench/
 devBenches/frappeBench/
+devBenches/phpBench/
 devBenches/pythonBench/
 
 # Installation tracking (local only)
@@ -14,11 +15,23 @@ config/version-manifest.json
 
 # Common ignores
 .DS_Store
+__pycache__/
+*.py[cod]
 *.log
 *.tmp
 node_modules/
+
+# Secret and machine-local environment files. Keep template examples tracked.
 .env
+.env.*
+*.env
+!.env.example
+!.env.sample
+!.env.template
+*.backup
 *.bak
+*.bak.*
+secrets/
 *.swp
 *.swo
 
@@ -32,8 +45,13 @@ Thumbs.db
 
 # Bio bench repositories
 bioBenches/gentecBench/
+bioBenches/simBench/
 logs/
 reports/cache-pilot/
 .codex
 .codex/
+.claude/dashboard.md
+.claude/speckit-history.md
+.claude/settings.local.json
 sysBenches/opsBench/
+.worktrees/

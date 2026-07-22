@@ -77,19 +77,16 @@ WorkBenches uses a **4-layer logical Docker image architecture** to minimize bui
 - `npm` (from apt, used to install AI CLIs)
 - `bun` runtime (`/opt/bun`)
 - `uv` (fast Python package installer, `/usr/local/bin`)
-- `spec-kit` / `specify-cli` (via uv)
 
 ✅ **AI coding assistants** (shared across ALL benches):
 - Claude Code (native installer → `/usr/local/bin/claude`)
 - OpenAI Codex (`@openai/codex` via npm)
 - Google Gemini (`@google/gemini-cli` via npm)
-- GitHub Copilot CLI (`@githubnext/github-copilot-cli` via npm)
-- Grok (`@xai-org/grok-cli` via npm)
-- OpenCode (built from source, Opensoft/opencode fork → `/usr/local/bin/opencode`)
+- GitHub Copilot CLI (`@github/copilot` via npm)
+- OpenCode (built from upstream source → `/usr/local/bin/opencode`)
 - oh-my-opencode (darrenhinde fork, plugin at `/opt/opencode/plugin`)
 - opencode-gemini-auth & opencode-openai-codex-auth (auth plugins)
 - Letta Code (`@letta-ai/letta-code` via npm)
-- OpenSpec (`@fission-ai/openspec` via npm)
 - NotebookLM CLI (`notebooklm-py` via uv → `/usr/local/bin/notebooklm`)
 - NotebookLM MCP CLI (`notebooklm-mcp-cli` via uv → `/usr/local/bin/nlm`, `/usr/local/bin/notebooklm-mcp`)
 
@@ -144,13 +141,21 @@ Layer 1 splits into two branches based on use case:
 - Python: black, flake8, isort, pylint, pytest, ipython
 - Node: Global package manager setup
 - uv (fast Python package installer)
+- spec-kit / `specify` (via uv)
+- OpenSpec (`@fission-ai/openspec` via npm)
+- OpenSpec/Speckit bootstrapper (`setup-openspeckit`) for repo and user-global agent context files
+- Project-agnostic Speckit worktree helpers (`ct`, `ctp`, `ctlist`, `cta`, `ctc`, `ctg`, `cts`) via global shell startup
+- Graphite CLI (`gt`) for stacked pull request workflows
+- SonarScanner CLI (`sonar-scanner`) for SonarQube Server / Cloud project analysis
+- SonarQube CLI (`sonar`) for issue/project workflows, secrets scanning, and agent integrations
+- SonarQube CLI environment helper (`sonar-env`) with file-backed keychain defaults for headless containers
 - Git credential helper integration
 - Shared Playwright Chromium cache at `/ms-playwright`
 
 ✅ **Shell enhancements**:
 - Force zsh when bash is requested
 
-Note: AI coding assistants are inherited from Layer 0 (workbench-base) and available in all benches.
+Note: Most AI coding assistants are inherited from Layer 0. `specify` and `openspec` are installed in Layer 1a, so they are available in developer benches but not in sys/bio base images.
 
 #### What Does NOT Belong Here
 

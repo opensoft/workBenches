@@ -216,6 +216,7 @@ detect_multi_bench_project() {
                 if [ -f "$potential_sibling/pubspec.yaml" ] || \
                    [ -f "$potential_sibling/package.json" ] || \
                    [ -f "$potential_sibling/requirements.txt" ] || \
+                   [ -f "$potential_sibling/composer.json" ] || \
                    [ -f "$potential_sibling/pom.xml" ] || \
                    find "$potential_sibling" -name "*.csproj" -o -name "*.sln" | head -1 >/dev/null 2>&1; then
                     
@@ -262,6 +263,8 @@ analyze_sibling_projects() {
             # Detect bench type of sibling
             if [ -f "$potential_sibling/pubspec.yaml" ]; then
                 sibling_bench_type="flutterBench"
+            elif [ -f "$potential_sibling/composer.json" ] || [ -f "$potential_sibling/phpunit.xml" ] || [ -f "$potential_sibling/phpunit.xml.dist" ]; then
+                sibling_bench_type="phpBench"
             elif [ -f "$potential_sibling/requirements.txt" ] || [ -f "$potential_sibling/setup.py" ]; then
                 sibling_bench_type="pyBench"
             elif [ -f "$potential_sibling/pom.xml" ] || [ -f "$potential_sibling/build.gradle" ]; then

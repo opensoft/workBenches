@@ -14,7 +14,7 @@
       "ai_keywords": ["cloud", "infrastructure", "devops", "kubernetes", "docker", "deployment", "admin", "monitoring", "logging"]
     },
     "pyBench": {
-      "url": "git@github.com:opensoft/pyBench.git", 
+      "url": "git@github.com:opensoft/pyBench.git",
       "path": "devBenches/pyBench",
       "description": "Python development environment and tools",
       "ai_keywords": ["python", "django", "flask", "fastapi", "pandas", "numpy", "machine learning", "ml", "data science", "AI", "artificial intelligence", "web scraping"],

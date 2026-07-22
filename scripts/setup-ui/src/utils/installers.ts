@@ -193,7 +193,7 @@ async function installAiCli(id: string): Promise<InstallResult> {
     return {
       success: true,
       message: `Installed ${def.name}`,
-      needsCredentials: ['claude_cli', 'codex_cli', 'copilot_cli', 'antigravity_cli'].includes(id),
+      needsCredentials: ['claude_cli', 'codex_cli', 'copilot_cli', 'antigravity_cli', 'opencode_cli', 'pi_cli'].includes(id),
     };
   }
 
@@ -239,7 +239,7 @@ async function installTool(id: string): Promise<InstallResult> {
     return { success: false, message: `Unknown tool: ${id}` };
   }
 
-  if (isWSL() && ['vscode', 'warp', 'wave', 'pi_terminal'].includes(id)) {
+  if (isWSL() && ['vscode', 'warp', 'wave'].includes(id)) {
     const scriptPath = resolve(getProjectRoot(), 'scripts/setup-windows-tools.sh');
     console.log(`\n  Installing/checking ${def.name} on Windows...`);
     const result = await withSpinner(
@@ -252,23 +252,7 @@ async function installTool(id: string): Promise<InstallResult> {
       message: result.success
         ? `Configured ${def.name} on Windows`
         : `Failed to configure ${def.name}: ${result.output}`,
-      needsCredentials: id === 'pi_terminal' && result.success,
-    };
-  }
-
-  if (id === 'pi_terminal') {
-    console.log('\n  Installing Pi Terminal...');
-    const result = await withSpinner(
-      'Installing Pi Terminal',
-      () => runCommand(['npm', 'install', '-g', '--ignore-scripts', '@earendil-works/pi-coding-agent'])
-    );
-
-    return {
-      success: result.success,
-      message: result.success
-        ? 'Installed Pi Terminal'
-        : `Failed to install Pi Terminal: ${result.output}`,
-      needsCredentials: result.success,
+      needsCredentials: ['warp', 'wave'].includes(id) && result.success,
     };
   }
 
@@ -278,6 +262,7 @@ async function installTool(id: string): Promise<InstallResult> {
   return {
     success: true,
     message: `See instructions above for ${def.name}`,
+    needsCredentials: ['warp', 'wave'].includes(id),
   };
 }
 
@@ -360,6 +345,9 @@ export async function processSelections(
       const result = await installTool(item.id);
       if (result.success) {
         successCount++;
+        if (result.needsCredentials) {
+          needsCreds.push(item.id);
+        }
       }
     }
   }
@@ -384,6 +372,18 @@ export async function processSelections(
           break;
         case 'antigravity_cli':
           console.log('    - Antigravity CLI: Run `agy` and follow Google sign-in prompts');
+          break;
+        case 'opencode_cli':
+          console.log('    - OpenCode CLI: Run `opencode auth login`');
+          break;
+        case 'pi_cli':
+          console.log('    - Pi Coding Agent: Run `pi`, then enter `/login`');
+          break;
+        case 'warp':
+          console.log('    - Warp Terminal: Sign in at https://app.warp.dev/login');
+          break;
+        case 'wave':
+          console.log('    - Wave Terminal: No account login; configure provider keys with `wsh secret ui`');
           break;
       }
     }

@@ -1,6 +1,7 @@
+# syntax=docker/dockerfile:1.7
 # Layer 1a: Developer Base Image
-# Extends Layer 0 with Python, Node.js LTS, and dev tools
-# AI CLIs are inherited from Layer 0 (workbench-base)
+# Extends Layer 0 with Python, Node.js LTS, dev tools, and spec CLIs
+# Most AI CLIs are inherited from Layer 0 (workbench-base)
 # Used by ALL developer benches (Frappe, Flutter, .NET, etc.)
 # USER-AGNOSTIC: No user creation — Layer 3 handles user setup
 
@@ -9,7 +10,7 @@ FROM workbench-base:latest
 # Container version labels
 LABEL layer="1"
 LABEL layer.name="dev-bench-base"
-LABEL layer.version="2.3.1"
+LABEL layer.version="2.3.2"
 LABEL layer.description="Developer base with Python, Node.js LTS, dev tools, Playwright browsers, generic testing tools, and the Omnigent meta-harness (user-agnostic)"
 
 # Everything runs as root
@@ -50,11 +51,12 @@ RUN pip install --break-system-packages \
     pytest \
     ipython
 
-# Install Node.js development tools (husky, commitlint)
+# Install Node.js development tools and cross-repo workflow CLIs.
 RUN npm install -g \
     husky \
     @commitlint/cli \
-    @commitlint/config-conventional
+    @commitlint/config-conventional \
+    @withgraphite/graphite-cli@stable
 
 # ========================================
 # DEVELOPER TOOLS SETUP
@@ -63,7 +65,74 @@ RUN npm install -g \
 # Verify Python and pip
 RUN python3 --version && pip --version
 
-# uv, AI CLIs are inherited from Layer 0 (workbench-base)
+# uv and most AI CLIs are inherited from Layer 0 (workbench-base)
+
+# ========================================
+# SPEC-DRIVEN DEVELOPMENT TOOLS
+# ========================================
+
+# Remove any inherited copies so Layer 1a is the clear owner of these tools.
+RUN npm uninstall -g @fission-ai/openspec || true \
+    && rm -f /usr/bin/openspec /usr/local/bin/openspec \
+    && rm -rf /usr/lib/node_modules/@fission-ai/openspec /usr/local/lib/node_modules/@fission-ai/openspec \
+    && uv tool uninstall specify-cli || true \
+    && env UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv/tools uv tool uninstall specify-cli || true \
+    && rm -f /root/.local/bin/specify /usr/local/bin/specify \
+    && rm -rf /root/.local/share/uv/tools/specify-cli /opt/uv/tools/specify-cli
+
+# Install spec-driven CLIs only in developer benches, not every bench family.
+# Clone explicitly so slow GitHub transfers are bounded and visible.
+RUN mkdir -p /opt/uv/tools /root/.local/share/uv \
+    && timeout 1800s git -c http.version=HTTP/1.1 clone --depth 1 --filter=blob:none https://github.com/github/spec-kit.git /tmp/spec-kit \
+    && UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv/tools \
+       uv tool install specify-cli --from /tmp/spec-kit --python-preference system \
+    && ln -sfn /opt/uv/tools /root/.local/share/uv/tools \
+    && rm -rf /tmp/spec-kit \
+    || echo "spec-kit installation skipped (non-fatal)"
+
+RUN npm install -g @fission-ai/openspec@latest \
+    || echo "OpenSpec installation skipped (non-fatal)"
+
+# Shared OpenSpec/Speckit project bootstrapper. Keep it with the spec-driven
+# CLIs so every developer bench can initialize the same agent context files.
+COPY files/openspeckit/setup-openspeckit /usr/local/bin/setup-openspeckit
+RUN chmod 0755 /usr/local/bin/setup-openspeckit \
+    && ln -sfn setup-openspeckit /usr/local/bin/setup-openspec-speckit-project
+
+# OpenSpec Claude commands and skills live with the devBench OpenSpec CLI.
+RUN mkdir -p /etc/skel/.claude/commands/opsx \
+    && mkdir -p /etc/skel/.claude/skills/opsx-clarify \
+    && mkdir -p /etc/skel/.claude/skills/opsx-analyze
+COPY files/claude/commands/opsx/ /etc/skel/.claude/commands/opsx/
+COPY files/claude/skills/opsx-clarify/ /etc/skel/.claude/skills/opsx-clarify/
+COPY files/claude/skills/opsx-analyze/ /etc/skel/.claude/skills/opsx-analyze/
+
+# Shared, project-agnostic Speckit worktree helpers for all developer benches.
+COPY files/ct/ct-functions.zsh /usr/local/share/ct/ct-functions.zsh
+COPY files/ct/claude/ /usr/local/share/ct/claude/
+RUN chmod 0644 /usr/local/share/ct/ct-functions.zsh \
+    && chmod 0755 /usr/local/share/ct/claude/speckit-dashboard.sh \
+        /usr/local/share/ct/claude/speckit-dashboard-sync.sh \
+        /usr/local/share/ct/claude/speckit-dash-toggle.sh \
+    && chmod 0644 /usr/local/share/ct/claude/prompts/speckit-dashboard-full.md \
+    && mkdir -p /etc/skel/.claude/prompts \
+    && cp /usr/local/share/ct/claude/speckit-dashboard.sh /etc/skel/.claude/speckit-dashboard.sh \
+    && cp /usr/local/share/ct/claude/speckit-dashboard-sync.sh /etc/skel/.claude/speckit-dashboard-sync.sh \
+    && cp /usr/local/share/ct/claude/speckit-dash-toggle.sh /etc/skel/.claude/speckit-dash-toggle.sh \
+    && cp /usr/local/share/ct/claude/prompts/speckit-dashboard-full.md /etc/skel/.claude/prompts/speckit-dashboard-full.md \
+    && chmod 0755 /etc/skel/.claude/speckit-dashboard.sh \
+        /etc/skel/.claude/speckit-dashboard-sync.sh \
+        /etc/skel/.claude/speckit-dash-toggle.sh \
+    && chmod 0644 /etc/skel/.claude/prompts/speckit-dashboard-full.md
+
+# Speckit worktree bootstrap. This installs a stable command outside Speckit
+# itself so generated Speckit files can be refreshed and the worktree workflow
+# can be reapplied afterwards.
+COPY files/speckit-worktree/templates /usr/local/share/speckit-worktree/templates
+COPY files/speckit-worktree/speckit-worktree-enable /usr/local/bin/speckit-worktree-enable
+RUN chmod 0755 /usr/local/bin/speckit-worktree-enable && \
+    find /usr/local/share/speckit-worktree/templates -type f \( -name '*.sh' -o -name '*.zsh' -o -name '*.ps1' \) -exec chmod 0755 {} + && \
+    find /usr/local/share/speckit-worktree/templates -type f ! \( -name '*.sh' -o -name '*.zsh' -o -name '*.ps1' \) -exec chmod 0644 {} +
 
 # ========================================
 # AI META-HARNESS (OMNIGENT)
@@ -105,7 +174,18 @@ RUN mkdir -p /opt/corepack && \
 # load testing, security scanning, accessibility, code quality, utilities)
 # and preload Chromium into the shared Playwright cache for all dev benches.
 COPY install-testing-tools.sh /tmp/
-RUN bash /tmp/install-testing-tools.sh && rm -f /tmp/install-testing-tools.sh
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/root/.npm \
+    bash /tmp/install-testing-tools.sh && rm -f /tmp/install-testing-tools.sh
+
+# Container-safe SonarQube/SonarCloud environment. These helpers make auth
+# usable without libsecret.
+COPY files/sonarqube/sonarqube-cli-env.sh /usr/local/share/sonarqube/sonarqube-cli-env.sh
+COPY files/sonarqube/sonar-env /usr/local/bin/sonar-env
+RUN chmod 0644 /usr/local/share/sonarqube/sonarqube-cli-env.sh \
+    && chmod 0755 /usr/local/bin/sonar-env \
+    && ln -sfn /usr/local/share/sonarqube/sonarqube-cli-env.sh /etc/profile.d/sonarqube-cli.sh
 
 # ========================================
 # ZSH PLUGINS (into /etc/skel)
@@ -139,6 +219,15 @@ RUN if [ ! -f /etc/skel/.zshrc ]; then \
 
 # Update /etc/skel/.zshrc to include plugins
 RUN sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' /etc/skel/.zshrc
+
+# Source Speckit worktree helpers from global shell startup so they remain
+# available even when benches mount a host ~/.zshrc over the generated one.
+RUN printf '\n# DevBench Speckit worktree helpers\n[[ -f /usr/local/share/ct/ct-functions.zsh ]] && source /usr/local/share/ct/ct-functions.zsh\n' >> /etc/zsh/zshrc && \
+    printf '\n# DevBench Speckit worktree helpers\n[ -f /usr/local/share/ct/ct-functions.zsh ] && . /usr/local/share/ct/ct-functions.zsh\n' >> /etc/bash.bashrc
+
+# Source SonarQube CLI env defaults from global interactive shell startup.
+RUN printf '\n# DevBench SonarQube CLI environment\n[ -f /usr/local/share/sonarqube/sonarqube-cli-env.sh ] && . /usr/local/share/sonarqube/sonarqube-cli-env.sh\n' >> /etc/zsh/zshrc && \
+    printf '\n# DevBench SonarQube CLI environment\n[ -f /usr/local/share/sonarqube/sonarqube-cli-env.sh ] && . /usr/local/share/sonarqube/sonarqube-cli-env.sh\n' >> /etc/bash.bashrc
 
 # Make Grok available in zsh and bash shells created from /etc/skel.
 RUN if ! grep -q '/opt/grok/bin' /etc/skel/.zshrc; then \

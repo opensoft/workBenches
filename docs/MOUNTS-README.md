@@ -4,7 +4,7 @@
 
 **This is the canonical reference** for all volume mounts used across workBench containers.
 
-Every bench's `devcontainer.json` should include the **Standard Mount Set** below, plus any bench-specific mounts. When adding a new AI CLI to Layer 0, update this file, `docker-compose.mounts.yml`, and all bench `devcontainer.json` files.
+Every bench's `devcontainer.json` should include the **Standard Mount Set** below, plus any bench-specific mounts. When adding a new AI/spec CLI to a base image, update this file, `docker-compose.mounts.yml`, and all bench `devcontainer.json` files.
 
 All mounts use devcontainer.json `mounts` syntax with `${localEnv:USER}` and `${localEnv:HOME}` variables.
 
@@ -47,24 +47,37 @@ Overrides the /etc/skel defaults from Layer 0 with the host user's actual shell 
 
 ### AI Credential Mounts
 
-Each AI CLI is installed in Layer 0 but stores credentials on the host. These mounts provide authentication inside the container.
+AI/spec CLIs are installed in the appropriate base image and store credentials on the host. These mounts provide authentication inside the container.
 
 ```jsonc
+// Shared agent workflow rules and skills. Keep this together with the
+// Project Intelligence and Sonar mounts below when copying the standard set.
+"source=${localEnv:HOME}/.agents,target=/home/${localEnv:USER}/.agents,type=bind,consistency=cached",
+
+// Project Intelligence and local agent metadata
+"source=${localEnv:HOME}/.pi,target=/home/${localEnv:USER}/.pi,type=bind,consistency=cached",
+
 // Claude Code (Anthropic) — native installer
 // Auth: ~/.claude/ (session, config), ~/.claude.json (legacy config)
 "source=${localEnv:HOME}/.claude,target=/home/${localEnv:USER}/.claude,type=bind,consistency=cached",
 "source=${localEnv:HOME}/.claude.json,target=/home/${localEnv:USER}/.claude.json,type=bind,consistency=cached",
+// Multiple isolated Claude logins and family-shared session state
+"source=${localEnv:HOME}/.claude-profiles,target=/home/${localEnv:USER}/.claude-profiles,type=bind,consistency=cached",
 
-// OpenAI Codex — @openai/codex (npm)
+// ChatGPT accounts used by Codex CLI
 "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex,type=bind,consistency=cached",
+"source=${localEnv:HOME}/.chatgpt-profiles,target=/home/${localEnv:USER}/.chatgpt-profiles,type=bind,consistency=cached",
 
-// Google Gemini — @google/gemini-cli (npm)
+// Grok Build — isolated through GROK_HOME
+"source=${localEnv:HOME}/.grok-profiles,target=/home/${localEnv:USER}/.grok-profiles,type=bind,consistency=cached",
+
+// Google Antigravity / legacy Gemini settings; keyring tokens are not mounted
 "source=${localEnv:HOME}/.gemini,target=/home/${localEnv:USER}/.gemini,type=bind,consistency=cached",
 
-// Grok (xAI) — @xai-org/grok-cli (npm)
-"source=${localEnv:HOME}/.grok,target=/home/${localEnv:USER}/.grok,type=bind,readonly",
+// Abacus AI settings; API key values remain in an external secret manager
+"source=${localEnv:HOME}/.abacusai,target=/home/${localEnv:USER}/.abacusai,type=bind,consistency=cached",
 
-// GitHub Copilot — @githubnext/github-copilot-cli (npm)
+// GitHub Copilot — @github/copilot (npm)
 "source=${localEnv:HOME}/.copilot-cli,target=/home/${localEnv:USER}/.copilot-cli,type=bind,readonly",
 
 // NotebookLM CLI — notebooklm-py (uv), auth via host browser
@@ -72,6 +85,9 @@ Each AI CLI is installed in Layer 0 but stores credentials on the host. These mo
 
 // NotebookLM MCP CLI — notebooklm-mcp-cli (uv), auth via host browser
 "source=${localEnv:HOME}/.notebooklm-mcp-cli,target=/home/${localEnv:USER}/.notebooklm-mcp-cli,type=bind,consistency=cached",
+
+// SonarCloud / SonarQube tokens for scanners and MCP integration
+"source=${localEnv:HOME}/.config/sonarqube,target=/home/${localEnv:USER}/.config/sonarqube,type=bind,readonly",
 ```
 
 ### Infrastructure Mounts (conditional)
@@ -87,22 +103,30 @@ Each AI CLI is installed in Layer 0 but stores credentials on the host. These mo
 
 ## AI Credential Summary
 
-Reference mapping each Layer 0 AI CLI to its credential path and mount type.
+Reference mapping each installed AI/spec CLI to its credential path and mount type.
 
 **CLI** → **Install Method** → **Credential Path** → **Mount Type**
 
-- Claude Code → native installer → `~/.claude/`, `~/.claude.json` → cached
-- OpenAI Codex → npm (`@openai/codex`) → `~/.codex/` → cached
-- Google Gemini → npm (`@google/gemini-cli`) → `~/.gemini/` → cached
-- Grok → npm (`@xai-org/grok-cli`) → `~/.grok/` → readonly
-- GitHub Copilot → npm (`@githubnext/github-copilot-cli`) → `~/.copilot-cli/` → readonly
-- OpenCode → built from source (Opensoft/opencode fork) → config baked into image via `/etc/skel` → no mount needed
+- Shared agent workflow → host-managed files → `~/.agents/` → cached
+- Project Intelligence metadata → host-managed files → `~/.pi/` → cached
+- Claude Code → native installer → `~/.claude/`, `~/.claude.json`, `~/.claude-profiles/` → cached
+- Claude profile launchers → `/usr/local/bin/claude-profile` and `/usr/local/bin/pclaude` in Layer 0; both resolve the mounted `~/.claude-profiles` tree
+- ChatGPT/Codex CLI → `~/.codex/`, `~/.chatgpt-profiles/` → cached
+- Codex profile launchers → `/usr/local/bin/codex-profile` and `/usr/local/bin/pcodex` in Layer 0; both resolve the mounted `~/.chatgpt-profiles` tree
+- Gemini profile launcher → `/usr/local/bin/pgemini`; resolves mounted `~/.gemini-profiles/` through `GEMINI_CLI_HOME`
+- Grok profile launcher → `/usr/local/bin/pgrok`; resolves mounted `~/.grok-profiles/` through `GROK_HOME`
+- Z.AI GLM profile launcher → `/usr/local/bin/pglm`; resolves mounted `~/.glm-profiles/` through profile-specific XDG directories
+- Google Antigravity → settings under `~/.gemini/`; authentication remains in the host keyring
+- Abacus AI → settings under `~/.abacusai/`; API keys remain external
+- GitHub Copilot → npm (`@github/copilot`) → `~/.copilot-cli/` → readonly
+- OpenCode → built from upstream source → config baked into image via `/etc/skel` → no mount needed
 - oh-my-opencode → built from source (darrenhinde fork) → plugin at `/opt/opencode/plugin` → no mount needed
 - Letta Code → npm (`@letta-ai/letta-code`) → uses env vars or interactive auth → no mount needed
-- OpenSpec → npm (`@fission-ai/openspec`) → no credential mount needed
-- spec-kit → uv (`specify-cli`) → no credential mount needed
+- OpenSpec → npm (`@fission-ai/openspec`) in Layer 1a dev benches → no credential mount needed
+- spec-kit → uv (`specify-cli`) in Layer 1a dev benches → no credential mount needed
 - NotebookLM CLI → uv (`notebooklm-py`) → `~/.notebooklm/` → cached (auth on host via browser)
 - NotebookLM MCP → uv (`notebooklm-mcp-cli`) → `~/.notebooklm-mcp-cli/` → cached (auth on host via browser)
+- SonarCloud / SonarQube → scanner CLI and MCP tooling → `~/.config/sonarqube/` → readonly
 
 ### Tools with No Credential Mount Required
 
@@ -111,8 +135,8 @@ These tools are fully installed in the image and either use API keys from enviro
 - **OpenCode** — config copied to `/etc/skel/.config/opencode/` during build
 - **oh-my-opencode** — plugin installed at `/opt/opencode/plugin/`
 - **Letta Code** — uses environment variable or interactive auth
-- **OpenSpec** — no persistent credentials
-- **spec-kit** — no persistent credentials
+- **OpenSpec** — no persistent credentials (developer benches only)
+- **spec-kit** — no persistent credentials (developer benches only)
 
 ### Environment Variable Auth (inherited from host shell profile)
 
@@ -157,29 +181,31 @@ Credentials and configs that should never be written from inside the container:
 - Git config (`.gitconfig`)
 - SSH keys (`.ssh`)
 - GitHub CLI (`.config/gh`)
-- Grok credentials (`.grok`)
+- SonarQube/SonarCloud credentials (`.config/sonarqube`)
 - Copilot credentials (`.copilot-cli`)
 - Shell configs (`.zshrc`, `.oh-my-zsh`, `.p10k.zsh`, `.bashrc`)
 
 ### Cached Mounts
 AI tool credentials use `consistency=cached` for performance — frequently accessed, rarely modified:
+- Shared agent workflow (`.agents/`)
 - Claude (`.claude/`, `.claude.json`)
 - Codex (`.codex/`)
 - Gemini (`.gemini/`)
+- Project intelligence (`.pi/`)
 - NotebookLM (`.notebooklm/`, `.notebooklm-mcp-cli/`)
 
 ---
 
 ## Adding a New AI CLI
 
-When a new AI CLI is added to Layer 0 (`base-image/install-ai-clis.sh`):
+When a new AI/spec CLI is added to a base image:
 
-1. **Install** the CLI in `install-ai-clis.sh`
+1. **Install** the CLI in the owning base image (`base-image/install-ai-clis.sh` or `devBenches/base-image/Dockerfile`)
 2. **Determine** if it needs a credential mount (check where it stores auth)
 3. **Update this file** — add to AI Credential Summary and Standard Mount Set
 4. **Update** `docker-compose.mounts.yml` (reference template)
 5. **Update** every bench `devcontainer.json` with the new mount
-6. **Update** `CONTAINER-ARCHITECTURE.md` Layer 0 section
+6. **Update** `CONTAINER-ARCHITECTURE.md` for the correct layer
 
 ---
 
@@ -212,7 +238,7 @@ Otherwise the container may fail to start with a file-not-found error.
 
 ## Related Documentation
 
-- `CONTAINER-ARCHITECTURE.md` — Layer 0 tool inventory and overall architecture
+- `CONTAINER-ARCHITECTURE.md` — base-image tool inventory and overall architecture
 - `ai-credentials-management.md` — Credential setup and rotation
 - `scripts/AI-PROVIDER-SETUP.md` — AI provider priority configuration
-- `base-image/install-ai-clis.sh` — AI CLI installation script (source of truth for what's installed)
+- `base-image/install-ai-clis.sh` and `devBenches/base-image/Dockerfile` — install sources of truth

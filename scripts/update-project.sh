@@ -219,7 +219,7 @@ detect_bench_category() {
     local designer_indicators=0
     
     # Development project indicators
-    if [ -f "$project_path/pubspec.yaml" ] || [ -f "$project_path/package.json" ] || [ -f "$project_path/requirements.txt" ] || 
+    if [ -f "$project_path/pubspec.yaml" ] || [ -f "$project_path/package.json" ] || [ -f "$project_path/requirements.txt" ] || [ -f "$project_path/composer.json" ] ||
        [ -f "$project_path/pom.xml" ] || [ -f "$project_path/build.gradle" ] || find "$project_path" -name "*.csproj" | head -1 >/dev/null 2>&1 || 
        [ -f "$project_path/CMakeLists.txt" ] || [ -f "$project_path/Makefile" ]; then
         dev_indicators=$((dev_indicators + 90))
@@ -329,6 +329,7 @@ analyze_project_with_ai() {
         local key_files=(
             "package.json" "pubspec.yaml" "requirements.txt" "pom.xml" "build.gradle" 
             "CMakeLists.txt" "Makefile" "*.csproj" "*.sln" "setup.py" "pyproject.toml"
+            "composer.json" "phpunit.xml" "phpunit.xml.dist"
             "Dockerfile" "docker-compose.yml" ".devcontainer/devcontainer.json"
         )
         
@@ -460,6 +461,9 @@ preview_update_script() {
     else
         # Standard patterns for other bench types
         local bench_short="${bench_name%Bench}"
+        case "$bench_name" in
+            pyBench) bench_short="python" ;;
+        esac
         update_type="$bench_short project"
         script_patterns=(
             "$workbenches_root/$bench_path/scripts/update-${bench_short}-project.sh"
