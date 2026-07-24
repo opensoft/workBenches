@@ -43,6 +43,9 @@ can start or verify each profile's isolated Claude login.
 
 The manifest contains email addresses but no credentials. Claude stores OAuth
 credentials inside each directory under `~/.claude-profiles/profiles/`.
+An optional `profilePath`, such as `company-one/team/team-001` or
+`company-one/max/max-001`, groups profile directories by company and account
+class without changing the name accepted by `pclaude`.
 The installer marks the profile's CLI onboarding as complete because login is
 performed explicitly with `claude-profile login`; this prevents Claude's
 first-run wizard from starting a second, redundant browser login.
@@ -60,10 +63,21 @@ The setup creates this per-user structure:
 ```text
 ~/.claude-profiles/
 |-- profiles/
-|   |-- work-acme/  # One company's login, settings, plugins, and cache
+|   |-- company-one/
+|   |   |-- team/
+|   |   |   `-- team-001/  # One login, settings, plugins, and cache
+|   |   |-- max/
+|   |   |   `-- max-001/   # A separately authenticated Max login
+|   |   `-- xfactor/
+|   |       `-- xfactor-001/
+|   |-- company-two/
+|   |   |-- team/
+|   |   |-- max/
+|   |   `-- xfactor/
 |   `-- personal/   # Personal login, settings, plugins, and cache
 |-- state/
-|   |-- work-acme/  # Company-only history, projects, plans, and tasks
+|   |-- company-one/ # Company-only history, projects, plans, and tasks
+|   |-- company-two/
 |   `-- personal/   # Personal-only history, projects, plans, and tasks
 `-- shared/         # Status panel, skills, agents, commands, and rules
 ```

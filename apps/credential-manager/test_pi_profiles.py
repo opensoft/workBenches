@@ -19,7 +19,8 @@ class PiProfilesTest(unittest.TestCase):
             profile = {
                 "name": "team-001",
                 "email": "team-001@example.com",
-                "family": "company",
+                "family": "example-company",
+                "profilePath": "example-company/team/team-001",
                 "aliases": ["team001"],
             }
             for provider in ("claude", "openai", "gemini", "grok", "glm"):
@@ -36,8 +37,11 @@ class PiProfilesTest(unittest.TestCase):
             fake_pi = root / "pi"
             fake_pi.write_text('#!/bin/sh\nprintf "%s" "$PI_CODING_AGENT_DIR" > "$CAPTURE"\n')
             fake_pi.chmod(0o755)
-            claude_home = home / ".claude-profiles/profiles/team-001"
+            claude_home = home / ".claude-profiles/profiles/example-company/team/team-001"
             claude_home.mkdir(parents=True)
+            (claude_home / ".profile.json").write_text(
+                json.dumps(profile), encoding="utf-8"
+            )
             env = {
                 **os.environ,
                 "HOME": str(home),
@@ -50,7 +54,7 @@ class PiProfilesTest(unittest.TestCase):
                 subprocess.run([str(setup), "--manifest", str(pi_manifest)], env=env, check=True, capture_output=True, text=True)
             launcher = home / ".local/bin/ppi"
             subprocess.run([str(launcher), "team001"], env=env, check=True)
-            expected = home / ".pi-profiles/profiles/team-001/agent"
+            expected = home / ".pi-profiles/profiles/example-company/team/team-001/agent"
             self.assertEqual((root / "capture").read_text(), str(expected))
             self.assertEqual(expected.stat().st_mode & 0o777, 0o700)
             self.assertEqual((expected / "settings.json").stat().st_mode & 0o777, 0o600)
@@ -63,6 +67,13 @@ class PiProfilesTest(unittest.TestCase):
             self.assertEqual(settings["defaultProvider"], "pi-claude-cli")
             self.assertEqual(settings["defaultModel"], "claude-fable-5")
             self.assertIn("npm:@ramarivera/pi-claude-cli@0.3.1", settings["packages"])
+            for category in ("team", "max", "xfactor"):
+                self.assertTrue(
+                    (home / f".pi-profiles/profiles/example-company/{category}").is_dir()
+                )
+            self.assertTrue(
+                (home / ".pi-profiles/state/example-company/sessions").is_dir()
+            )
 
             env_capture = root / "env-capture"
             fake_pi.write_text(

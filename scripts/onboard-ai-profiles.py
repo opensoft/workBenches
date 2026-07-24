@@ -315,7 +315,7 @@ def interactive_answers() -> dict[str, Any]:
     if not github_user:
         raise RuntimeError("a personal GitHub username is required")
 
-    company_count = ask_count("How many companies do you use this workstation for?")
+    company_count = ask_count("How many companies do you work for using this workstation?")
     companies: list[dict[str, Any]] = []
     for index in range(1, company_count + 1):
         print(f"\nCompany {index}")
@@ -366,11 +366,18 @@ def normalize_answers(payload: dict[str, Any]) -> dict[str, Any]:
     personal = payload.get("personal", {})
     if not isinstance(companies, list) or not isinstance(personal, dict):
         raise ValueError("companies and personal must be valid objects")
+    company_slugs: set[str] = set()
     for company in companies:
         if not all(str(company.get(field, "")).strip() for field in ("name", "email", "githubOrg")):
             raise ValueError("each company requires name, email, and githubOrg")
         if not EMAIL_RE.match(company["email"]):
             raise ValueError(f"invalid company email: {company['email']}")
+        company_slug = slugify(company["name"])
+        if company_slug == "personal":
+            raise ValueError("company name cannot use the reserved personal profile scope")
+        if company_slug in company_slugs:
+            raise ValueError(f"company names produce the same profile scope: {company_slug}")
+        company_slugs.add(company_slug)
         company["providers"] = parse_providers(company.get("providers"))
         company["registry"] = company.get("registry") or "manual"
     accounts = personal.get("accounts", [])
@@ -397,6 +404,7 @@ def add_manual_profile(
     preferred_name: str,
     email: str,
     family: str,
+    profile_path: str,
     workspace: str,
     aliases: list[str],
 ) -> None:
@@ -421,12 +429,45 @@ def add_manual_profile(
                 "name": name,
                 "email": email,
                 "family": family,
+                "profilePath": f"{profile_path}/{name}",
                 "aliases": provider_aliases,
                 "workspace": workspace,
                 "status": "active",
                 "sourceMode": "manual-workstation",
             }
         )
+
+
+def company_profile_category(profile: dict[str, Any]) -> str:
+    path_parts = str(profile.get("profilePath", "")).lower().split("/")
+    for category in ("team", "max", "xfactor"):
+        if category in path_parts:
+            return category
+    name = str(profile["name"]).lower()
+    if name == "team" or name.startswith("team-"):
+        return "team"
+    if name == "max" or name.startswith("max-"):
+        return "max"
+    return "xfactor"
+
+
+def apply_scope_layout(
+    output: dict[str, list[dict[str, Any]]],
+    scoped: dict[str, list[dict[str, Any]]],
+    family: str,
+    workspace: str,
+) -> None:
+    for provider, profiles in scoped.items():
+        by_name = {profile["name"]: profile for profile in output[provider]}
+        for source_profile in profiles:
+            target = by_name[source_profile["name"]]
+            target["family"] = family
+            target["workspace"] = workspace
+            if family == "personal":
+                target["profilePath"] = f"personal/{target['name']}"
+            else:
+                category = company_profile_category(source_profile)
+                target["profilePath"] = f"{family}/{category}/{target['name']}"
 
 
 def main() -> int:
@@ -452,6 +493,7 @@ def main() -> int:
             return 0
 
         source_paths: list[pathlib.Path] = []
+        company_sources: list[tuple[dict[str, Any], pathlib.Path]] = []
         selected: dict[str, Any] = {}
         for company in answers["companies"]:
             registry = company["registry"]
@@ -459,6 +501,8 @@ def main() -> int:
             selected[f"company:{company['githubOrg']}"] = registry
             if source and source not in source_paths:
                 source_paths.append(source)
+            if source:
+                company_sources.append((company, source))
         personal_registry = answers["personal"]["registry"]
         personal_source = materialize_registry(personal_registry, args.registry_root)
         selected[f"personal:{answers['personal']['githubOrg']}"] = personal_registry
@@ -468,6 +512,30 @@ def main() -> int:
         output = COMPOSER.compose([str(path) for path in source_paths], answers["githubUser"]) if source_paths else {
             provider: [] for provider in PROVIDERS
         }
+        assigned: dict[tuple[str, str], str] = {}
+        for company, source in company_sources:
+            family = slugify(company["name"])
+            scoped = COMPOSER.compose([str(source)], answers["githubUser"])
+            for provider, profiles in scoped.items():
+                for profile in profiles:
+                    key = (provider, profile["name"])
+                    previous = assigned.get(key)
+                    if previous and previous != family:
+                        raise RuntimeError(
+                            f"{provider} profile {profile['name']} is assigned to multiple companies"
+                        )
+                    assigned[key] = family
+            apply_scope_layout(output, scoped, family, company["name"])
+        if personal_source:
+            scoped = COMPOSER.compose([str(personal_source)], answers["githubUser"])
+            for provider, profiles in scoped.items():
+                for profile in profiles:
+                    key = (provider, profile["name"])
+                    if key in assigned:
+                        raise RuntimeError(
+                            f"{provider} profile {profile['name']} is assigned to company and personal registries"
+                        )
+            apply_scope_layout(output, scoped, "personal", "personal")
 
         for company in answers["companies"]:
             if not registry_is_manual(company["registry"]):
@@ -478,7 +546,8 @@ def main() -> int:
                 company["providers"],
                 f"work-{slug}",
                 company["email"],
-                f"work-{slug}",
+                slug,
+                f"{slug}/xfactor",
                 company["name"],
                 [slug],
             )
@@ -491,12 +560,18 @@ def main() -> int:
                     account["email"],
                     "personal",
                     "personal",
+                    "personal",
                     [f"personal-{slugify(account['email'].split('@')[0])}"],
                 )
 
         args.output_dir.mkdir(parents=True, exist_ok=True)
+        families = [slugify(company["name"]) for company in answers["companies"]]
+        families.append("personal")
         for provider, filename in COMPOSER.PROVIDERS.items():
-            COMPOSER.atomic_json(args.output_dir / filename, {"version": 1, "profiles": output[provider]})
+            COMPOSER.atomic_json(
+                args.output_dir / filename,
+                {"version": 1, "families": families, "profiles": output[provider]},
+            )
         if source_paths and not any(output.values()):
             print(
                 "Warning: registries were found, but none granted profiles to the supplied GitHub username.",

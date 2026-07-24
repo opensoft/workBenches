@@ -11,7 +11,7 @@ import tempfile
 
 
 PROVIDERS = ("claude", "openai", "gemini", "grok", "glm")
-IDENTITY_FIELDS = ("email", "family", "aliases")
+IDENTITY_FIELDS = ("email", "family", "aliases", "profilePath")
 
 
 def atomic_json(path: pathlib.Path, payload: dict) -> None:
@@ -35,6 +35,7 @@ def add_profile(profiles: dict[str, dict], provider: str, raw: dict, source: pat
         "email": raw["email"],
         "family": raw["family"],
         "aliases": sorted(raw.get("aliases") or []),
+        "profilePath": raw.get("profilePath", raw["name"]),
     }
     existing = profiles.get(raw["name"])
     if existing is None:
@@ -60,9 +61,34 @@ def compose(config_dir: pathlib.Path, profile_roots: dict[str, pathlib.Path] | N
     for provider, root in (profile_roots or {}).items():
         if provider not in PROVIDERS or not root.exists():
             continue
-        for metadata in sorted(root.glob("*/.profile.json")):
-            add_profile(profiles, provider, json.loads(metadata.read_text(encoding="utf-8")), metadata)
+        selected: dict[str, tuple[int, pathlib.Path, dict]] = {}
+        for metadata in sorted(root.rglob(".profile.json")):
+            raw = json.loads(metadata.read_text(encoding="utf-8"))
+            relative_profile = metadata.parent.relative_to(root)
+            depth = len(relative_profile.parts)
+            score = depth + (100 if raw.get("profilePath") else 0)
+            current = selected.get(raw.get("name", ""))
+            if current is None or score > current[0]:
+                selected[raw.get("name", "")] = (score, metadata, raw)
+        for _, metadata, raw in selected.values():
+            add_profile(profiles, provider, raw, metadata)
     return [profiles[name] for name in sorted(profiles)]
+
+
+def compose_families(config_dir: pathlib.Path, profiles: list[dict]) -> list[str]:
+    families = {profile["family"] for profile in profiles}
+    for provider in PROVIDERS:
+        manifest = config_dir / f"{provider}-profiles.json"
+        if not manifest.exists():
+            continue
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+        declared = payload.get("families", [])
+        if not isinstance(declared, list) or any(
+            not isinstance(family, str) or not family for family in declared
+        ):
+            raise ValueError(f"invalid family inventory: {manifest}")
+        families.update(declared)
+    return sorted(families)
 
 
 def main() -> int:
@@ -80,10 +106,14 @@ def main() -> int:
                 raise ValueError(f"invalid --profile-root: {value}")
             profile_roots[provider] = pathlib.Path(path).expanduser().resolve()
         result = compose(args.config_dir.expanduser().resolve(), profile_roots)
+        families = compose_families(args.config_dir.expanduser().resolve(), result)
         if not args.check:
             if args.output is None:
                 parser.error("--output is required unless --check is used")
-            atomic_json(args.output.expanduser().resolve(), {"version": 1, "profiles": result})
+            atomic_json(
+                args.output.expanduser().resolve(),
+                {"version": 1, "families": families, "profiles": result},
+            )
         print(f"Pi profile composition valid: profiles={len(result)}")
         return 0
     except (OSError, json.JSONDecodeError, ValueError) as exc:

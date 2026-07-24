@@ -12,14 +12,39 @@ fi
 command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
 
 profile_metadata() {
-  local requested normalized
+  local requested normalized row metadata candidate profile_path fallback_row
+  local preferred_row preferred_depth=-1 path_depth
   requested="$1"
   normalized="$(printf '%s' "$requested" | tr '[:upper:]' '[:lower:]')"
-  jq -r --arg name "$normalized" '
-    .profiles[]
-    | select(((.name | ascii_downcase) == $name) or any(.aliases[]?; ascii_downcase == $name))
-    | [.name,.email,.family,((.providers // []) | join(","))] | @tsv
-  ' "$manifest" | head -n 1
+  if [[ -f "$manifest" ]]; then
+    row="$(jq -r --arg name "$normalized" '
+      .profiles[]
+      | select(((.name | ascii_downcase) == $name) or any(.aliases[]?; ascii_downcase == $name))
+      | [.name,.email,.family,((.providers // []) | join(",")),(.profilePath // .name)] | @tsv
+    ' "$manifest" | head -n 1)"
+    if [[ -n "$row" ]]; then printf '%s\n' "$row"; return 0; fi
+  fi
+  while IFS= read -r -d '' metadata; do
+    candidate="$(jq -r --arg name "$normalized" '
+      if (((.name // "") | ascii_downcase) == $name)
+         or any(.aliases[]?; ascii_downcase == $name)
+      then "match" else empty end
+    ' "$metadata")"
+    if [[ "$candidate" == match ]]; then
+      profile_path="${metadata#"$base/profiles/"}"
+      profile_path="${profile_path%/.profile.json}"
+      row="$(jq -r --arg path "$profile_path" '[.name,.email,.family,((.providers // []) | join(",")),$path] | @tsv' "$metadata")"
+      if jq -e '(.profilePath // "") | length > 0' "$metadata" >/dev/null; then
+        path_depth="$(awk -F/ '{print NF}' <<<"$profile_path")"
+        if (( path_depth > preferred_depth )); then preferred_row="$row"; preferred_depth="$path_depth"; fi
+      elif [[ -z "${fallback_row:-}" ]]; then
+        fallback_row="$row"
+      fi
+    fi
+  done < <(find "$base/profiles" -mindepth 2 -type f -name .profile.json -print0)
+  [[ -n "${preferred_row:-}" ]] && { printf '%s\n' "$preferred_row"; return 0; }
+  [[ -n "${fallback_row:-}" ]] && { printf '%s\n' "$fallback_row"; return 0; }
+  return 1
 }
 
 action="${1:-list}"
@@ -37,15 +62,28 @@ case "$action" in
     profile="${1:?Usage: pi-profile $action PROFILE [arguments]}"; shift
     row="$(profile_metadata "$profile")"
     [[ -n "$row" ]] || { echo "Unknown Pi profile: $profile" >&2; exit 2; }
-    IFS=$'\t' read -r profile email family providers <<<"$row"
-    agent_dir="$base/profiles/$profile/agent"
+    IFS=$'\t' read -r profile email family providers profile_path <<<"$row"
+    agent_dir="$base/profiles/$profile_path/agent"
     auth_file="$agent_dir/auth.json"
     [[ -d "$agent_dir" ]] || { echo "Pi profile is not configured: $agent_dir" >&2; exit 2; }
     export PI_CODING_AGENT_DIR="$agent_dir"
     export PI_PROFILE_NAME="$profile"
     export PI_PROFILE_EMAIL="$email"
     export PI_PROFILE_FAMILY="$family"
-    claude_config_dir="${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}/profiles/$profile"
+    claude_profiles_root="${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}/profiles"
+    claude_config_dir="$claude_profiles_root/$profile"
+    claude_profile_depth=-1
+    while IFS= read -r -d '' claude_profile_candidate; do
+      if [[ -f "$claude_profile_candidate/.profile.json" ]] \
+        && jq -e --arg name "$profile" '.name == $name' "$claude_profile_candidate/.profile.json" >/dev/null; then
+        claude_profile_relative="${claude_profile_candidate#"$claude_profiles_root/"}"
+        candidate_depth="$(awk -F/ '{print NF}' <<<"$claude_profile_relative")"
+        if (( candidate_depth > claude_profile_depth )); then
+          claude_config_dir="$claude_profile_candidate"
+          claude_profile_depth="$candidate_depth"
+        fi
+      fi
+    done < <(find "$claude_profiles_root" -mindepth 1 -type d -name "$profile" -print0)
     if [[ ",$providers," == *,claude,* && -d "$claude_config_dir" ]]; then
       export CLAUDE_CONFIG_DIR="$claude_config_dir"
     fi

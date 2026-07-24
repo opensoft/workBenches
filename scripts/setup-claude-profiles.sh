@@ -60,10 +60,10 @@ if [[ "$interactive" == true ]]; then
   personal_email=$(prompt_email "Personal Claude login email")
   jq -n --arg email "$personal_email" '{
     version: 1,
-    profiles: [{name: "personal", family: "personal", email: $email}]
+    profiles: [{name: "personal", profilePath: "personal/personal", family: "personal", email: $email}]
   }' > "$tmp"
 
-  read -r -p "Do you use this workstation for work for one or more companies? [y/N]: " uses_work </dev/tty
+  read -r -p "Do you work for one or more companies using this workstation? [y/N]: " uses_work </dev/tty
   case "$uses_work" in
     [Yy]*)
       while true; do
@@ -84,10 +84,12 @@ if [[ "$interactive" == true ]]; then
         if jq -e --arg name "$profile_name" '.profiles[] | select(.name == $name)' "$tmp" >/dev/null; then
           profile_name="$profile_name-$index"
         fi
-        jq --arg name "$profile_name" --arg family "$profile_name" \
+        jq --arg name "$profile_name" --arg family "$company_slug" \
+          --arg profile_path "$company_slug/xfactor/$profile_name" \
           --arg email "$company_email" --arg workspace "$company_name" '
           .profiles += [{
             name: $name,
+            profilePath: $profile_path,
             family: $family,
             email: $email,
             workspace: $workspace
@@ -104,12 +106,20 @@ fi
 jq -e '
   .version == 1
   and (.profiles | type == "array")
+  and ((.families // []) | type == "array")
+  and all(.families[]?; type == "string" and test("^[a-z0-9][a-z0-9-]*$"))
   and all(.profiles[];
     (.name | length) > 0
-    and (.family | length) > 0
+    and (.family | test("^[a-z0-9][a-z0-9-]*$"))
     and (.email | length) > 0
     and ((.aliases // []) | type == "array")
     and all(.aliases[]?; type == "string" and length > 0)
+    and ((.profilePath // .name) |
+      type == "string"
+      and length > 0
+      and (startswith("/") | not)
+      and (split("/") | all(.[]; length > 0 and . != "." and . != ".."))
+    )
   )
 ' "$manifest" >/dev/null
 
@@ -127,23 +137,38 @@ fi
 
 mkdir -p "$base/shared" "$base/state" "$base/profiles"
 for item in skills agents commands rules; do mkdir -p "$base/shared/$item"; done
+while IFS= read -r family; do
+  mkdir -p "$base/state/$family"
+  if [[ "$family" == personal ]]; then
+    mkdir -p "$base/profiles/personal"
+  else
+    mkdir -p "$base/profiles/$family"/{team,max,xfactor}
+  fi
+done < <(jq -r '[(.families[]?), .profiles[].family] | unique[]' "$manifest")
 install -m 0755 "$repo_dir/base-image/files/claude-statusline-command.sh" \
   "$base/shared/statusline-command.sh"
 
 link_path() {
   local target="$1" link="$2"
+  local relative_target
+  relative_target="$(realpath -m --relative-to="$(dirname "$link")" "$target")"
   if [[ -L "$link" ]]; then
-    ln -sfn "$target" "$link"
+    ln -sfn "$relative_target" "$link"
   elif [[ -e "$link" ]]; then
     echo "Preserving existing path (migration required): $link" >&2
   else
-    ln -s "$target" "$link"
+    ln -s "$relative_target" "$link"
   fi
 }
 
-while IFS=$'\t' read -r name family; do
-  profile_dir="$base/profiles/$name"
+while IFS=$'\t' read -r name family profile_path; do
+  profile_dir="$base/profiles/$profile_path"
+  legacy_profile_dir="$base/profiles/$name"
   state_dir="$base/state/$family"
+  if [[ "$profile_path" != "$name" && -d "$legacy_profile_dir" && ! -e "$profile_dir" ]]; then
+    mkdir -p "$(dirname "$profile_dir")"
+    cp -a "$legacy_profile_dir" "$profile_dir"
+  fi
   mkdir -p "$profile_dir" "$state_dir"
   metadata="$profile_dir/.claude.json"
   if [[ ! -e "$metadata" ]]; then
@@ -154,17 +179,19 @@ while IFS=$'\t' read -r name family; do
   email="$(jq -r --arg name "$name" '.profiles[] | select(.name == $name) | .email' "$manifest")"
   aliases="$(jq -c --arg name "$name" '.profiles[] | select(.name == $name) | (.aliases // [])' "$manifest")"
   profile_info_tmp="$(mktemp "$profile_dir/.profile.XXXXXX.tmp")"
-  jq -n --arg name "$name" --arg family "$family" --arg email "$email" --argjson aliases "$aliases" \
-    '{name: $name, family: $family, email: $email, aliases: $aliases}' > "$profile_info_tmp"
+  jq -n --arg name "$name" --arg family "$family" --arg email "$email" \
+    --arg profile_path "$profile_path" --argjson aliases "$aliases" \
+    '{name: $name, profilePath: $profile_path, family: $family, email: $email, aliases: $aliases}' \
+    > "$profile_info_tmp"
   chmod 600 "$profile_info_tmp"
   mv -f "$profile_info_tmp" "$profile_info"
   for item in projects file-history plans tasks todos; do mkdir -p "$state_dir/$item"; done
   touch "$state_dir/history.jsonl"
   chmod 600 "$state_dir/history.jsonl"
-  for item in skills agents commands rules; do link_path "../../shared/$item" "$profile_dir/$item"; done
-  link_path "../../shared/statusline-command.sh" "$profile_dir/statusline-command.sh"
-  for item in projects file-history plans tasks todos; do link_path "../../state/$family/$item" "$profile_dir/$item"; done
-  link_path "../../state/$family/history.jsonl" "$profile_dir/history.jsonl"
+  for item in skills agents commands rules; do link_path "$base/shared/$item" "$profile_dir/$item"; done
+  link_path "$base/shared/statusline-command.sh" "$profile_dir/statusline-command.sh"
+  for item in projects file-history plans tasks todos; do link_path "$state_dir/$item" "$profile_dir/$item"; done
+  link_path "$state_dir/history.jsonl" "$profile_dir/history.jsonl"
 
   settings="$profile_dir/settings.json"
   settings_tmp="$(mktemp "$profile_dir/.settings.XXXXXX.tmp")"
@@ -193,7 +220,7 @@ while IFS=$'\t' read -r name family; do
   fi
   chmod 600 "$settings_tmp"
   mv -f "$settings_tmp" "$settings"
-done < <(jq -r '.profiles[] | [.name, .family] | @tsv' "$manifest")
+done < <(jq -r '.profiles[] | [.name, .family, (.profilePath // .name)] | @tsv' "$manifest")
 
 # Profiles retained from older manifests remain launchable through their local
 # metadata. Keep their startup model aligned with the active manifest profiles.
@@ -206,7 +233,7 @@ while IFS= read -r -d '' settings; do
   jq --arg model 'claude-fable-5' '.model = $model' "$settings" > "$settings_tmp"
   chmod 600 "$settings_tmp"
   mv -f "$settings_tmp" "$settings"
-done < <(find "$base/profiles" -mindepth 2 -maxdepth 2 -type f -name settings.json -print0)
+done < <(find "$base/profiles" -mindepth 2 -type f -name settings.json -print0)
 
 mkdir -p "$HOME/.local/bin"
 ln -sfn "$repo_dir/scripts/claude-profile" "$HOME/.local/bin/claude-profile"

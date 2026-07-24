@@ -36,6 +36,27 @@ The standard launchers are:
 | Grok | `pgrok` | `GROK_HOME` |
 | Z.AI GLM through OpenCode | `pglm` or `pzai` | profile-specific XDG directories |
 
+Every managed provider root supports the same company-first layout:
+
+```text
+profiles/
+|-- company-one/
+|   |-- team/
+|   |-- max/
+|   `-- xfactor/
+|-- company-two/
+|   |-- team/
+|   |-- max/
+|   `-- xfactor/
+`-- personal/
+```
+
+`setup.sh` derives `company-one` and `company-two` by slugging the company
+names entered during onboarding. Where a harness has portable conversation
+state, its state root contains one directory for each entered company plus
+`personal`. Authentication, caches, provider databases, installation identity,
+and settings remain profile-local.
+
 For example, `team001` resolves to the canonical `team-001` profile for every
 provider:
 

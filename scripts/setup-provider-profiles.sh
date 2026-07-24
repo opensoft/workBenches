@@ -48,30 +48,53 @@ command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
 jq -e '
   .version == 1
   and (.profiles | type == "array")
+  and ((.families // []) | type == "array")
+  and all(.families[]?; type == "string" and test("^[a-z0-9][a-z0-9-]*$"))
   and all(.profiles[];
     (.name | type == "string" and length > 0)
     and (.email | type == "string" and length > 0)
-    and (.family | type == "string" and length > 0)
+    and (.family | type == "string" and test("^[a-z0-9][a-z0-9-]*$"))
     and ((.aliases // []) | type == "array")
+    and ((.profilePath // .name) |
+      type == "string"
+      and length > 0
+      and (startswith("/") | not)
+      and (split("/") | all(.[]; length > 0 and . != "." and . != ".."))
+    )
   )
 ' "$manifest" >/dev/null
 
-mkdir -p "$base/profiles" "$HOME/.local/bin"
+mkdir -p "$base/profiles" "$base/state" "$HOME/.local/bin"
+while IFS= read -r family; do
+  mkdir -p "$base/state/$family"
+  if [[ "$family" == personal ]]; then
+    mkdir -p "$base/profiles/personal"
+  else
+    mkdir -p "$base/profiles/$family"/{team,max,xfactor}
+  fi
+done < <(jq -r '[(.families[]?), .profiles[].family] | unique[]' "$manifest")
 chmod 700 "$base" "$base/profiles"
-while IFS=$'\t' read -r name email family aliases; do
-  profile_dir="$base/profiles/$name"
+while IFS=$'\t' read -r name email family profile_path aliases; do
+  profile_dir="$base/profiles/$profile_path"
+  legacy_profile_dir="$base/profiles/$name"
+  if [[ "$profile_path" != "$name" && -d "$legacy_profile_dir" && ! -e "$profile_dir" ]]; then
+    mkdir -p "$(dirname "$profile_dir")"
+    cp -a "$legacy_profile_dir" "$profile_dir"
+  fi
   mkdir -p "$profile_dir"
   chmod 700 "$profile_dir"
   metadata_tmp="$(mktemp "$profile_dir/.profile.XXXXXX.tmp")"
-  jq -n --arg name "$name" --arg email "$email" --arg family "$family" --argjson aliases "$aliases" \
-    '{name: $name, email: $email, family: $family, aliases: $aliases}' > "$metadata_tmp"
+  jq -n --arg name "$name" --arg email "$email" --arg family "$family" \
+    --arg profile_path "$profile_path" --argjson aliases "$aliases" \
+    '{name: $name, profilePath: $profile_path, email: $email, family: $family, aliases: $aliases}' \
+    > "$metadata_tmp"
   chmod 600 "$metadata_tmp"
   mv -f "$metadata_tmp" "$profile_dir/.profile.json"
   case "$provider" in
     gemini) mkdir -p "$profile_dir/.gemini" ;;
     glm) mkdir -p "$profile_dir/xdg"/{config,data,cache,state} ;;
   esac
-done < <(jq -r '.profiles[] | [.name,.email,.family,((.aliases // []) | tojson)] | @tsv' "$manifest")
+done < <(jq -r '.profiles[] | [.name,.email,.family,(.profilePath // .name),((.aliases // []) | tojson)] | @tsv' "$manifest")
 
 for launcher in "${launchers[@]}"; do
   ln -sfn "$repo_dir/base-image/files/provider-profile" "$HOME/.local/bin/$launcher"
