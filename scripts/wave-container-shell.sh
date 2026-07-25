@@ -27,6 +27,11 @@ resolve_bench_defaults() {
             bench_dir="$workbenches_root/devBenches/cppBench"
             compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             ;;
+        rustBench|rust-bench)
+            container="rust-bench"
+            bench_dir="$workbenches_root/devBenches/rustBench"
+            compose_file="$bench_dir/.devcontainer/docker-compose.yml"
+            ;;
         flutterBench|flutter-bench)
             container="flutter-bench"
             bench_dir="$workbenches_root/devBenches/flutterBench"
