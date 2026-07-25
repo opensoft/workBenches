@@ -377,7 +377,7 @@ export async function processSelections(
           console.log('    - OpenCode CLI: Run `opencode auth login`');
           break;
         case 'pi_cli':
-          console.log('    - Pi Coding Agent: Run `pi`, then enter `/login`');
+          console.log('    - Pi Coding Agent: Run `ppi login PROFILE`, then enter `/login`');
           break;
         case 'warp':
           console.log('    - Warp Terminal: Sign in at https://app.warp.dev/login');

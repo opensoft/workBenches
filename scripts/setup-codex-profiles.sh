@@ -12,8 +12,9 @@ usage() {
   cat <<'EOF'
 Usage: setup-codex-profiles.sh [--manifest PATH]
 
-Creates isolated ChatGPT credential profiles for Codex CLI. The manifest
-stores profile names and login emails, never OAuth credentials or API keys.
+Creates isolated ChatGPT credential profiles for Codex CLI with conversation
+history shared per family. The manifest stores profile names and login emails,
+never OAuth credentials or API keys.
 EOF
 }
 
@@ -38,12 +39,20 @@ fi
 jq -e '
   .version == 1
   and (.profiles | type == "array")
+  and ((.families // []) | type == "array")
+  and all(.families[]?; type == "string" and test("^[a-z0-9][a-z0-9-]*$"))
   and all(.profiles[];
     (.name | length) > 0
-    and (.family | length) > 0
+    and (.family | test("^[a-z0-9][a-z0-9-]*$"))
     and (.email | length) > 0
     and ((.aliases // []) | type == "array")
     and all(.aliases[]?; type == "string" and length > 0)
+    and ((.profilePath // .name) |
+      type == "string"
+      and length > 0
+      and (startswith("/") | not)
+      and (split("/") | all(.[]; length > 0 and . != "." and . != ".."))
+    )
   )
 ' "$manifest" >/dev/null
 
@@ -56,17 +65,84 @@ if [[ "$(realpath -m "$manifest")" != "$(realpath -m "$default_manifest")" ]]; t
   fi
 fi
 
-mkdir -p "$base/profiles"
-chmod 700 "$base" "$base/profiles"
+mkdir -p "$base/profiles" "$base/state"
+while IFS= read -r family; do
+  mkdir -p "$base/state/$family"
+  if [[ "$family" == personal ]]; then
+    mkdir -p "$base/profiles/personal"
+  else
+    mkdir -p "$base/profiles/$family"/{team,max,xfactor}
+  fi
+done < <(jq -r '[(.families[]?), .profiles[].family] | unique[]' "$manifest")
+chmod 700 "$base" "$base/profiles" "$base/state"
 
 link_path() {
   local target="$1" link="$2"
+  local relative_target
+  relative_target="$(realpath -m --relative-to="$(dirname "$link")" "$target")"
   if [[ -L "$link" ]]; then
-    ln -sfn "$target" "$link"
+    ln -sfn "$relative_target" "$link"
   elif [[ -e "$link" ]]; then
     echo "Preserving existing path: $link" >&2
   else
-    ln -s "$target" "$link"
+    ln -s "$relative_target" "$link"
+  fi
+}
+
+next_backup_path() {
+  local path="$1" candidate suffix=1
+  candidate="${path}.pre-shared-state"
+  while [[ -e "$candidate" || -L "$candidate" ]]; do
+    candidate="${path}.pre-shared-state.$suffix"
+    suffix=$((suffix + 1))
+  done
+  printf '%s\n' "$candidate"
+}
+
+share_state_directory() {
+  local profile_path="$1" state_path="$2" target="$3" backup
+  target="$(realpath -m --relative-to="$(dirname "$profile_path")" "$target")"
+  mkdir -p "$state_path"
+  chmod 700 "$state_path"
+  if [[ -L "$profile_path" ]]; then
+    ln -sfn "$target" "$profile_path"
+  elif [[ -d "$profile_path" ]]; then
+    # Session rollout names contain UUIDs. Never overwrite an existing shared
+    # rollout during migration, and retain the original tree as a recovery copy.
+    cp -a -n "$profile_path/." "$state_path/"
+    backup="$(next_backup_path "$profile_path")"
+    mv "$profile_path" "$backup"
+    ln -s "$target" "$profile_path"
+  elif [[ -e "$profile_path" ]]; then
+    echo "Cannot share Codex state directory over non-directory: $profile_path" >&2
+    return 1
+  else
+    ln -s "$target" "$profile_path"
+  fi
+}
+
+share_state_file() {
+  local profile_path="$1" state_path="$2" target="$3" backup
+  target="$(realpath -m --relative-to="$(dirname "$profile_path")" "$target")"
+  mkdir -p "$(dirname "$state_path")"
+  touch "$state_path"
+  chmod 600 "$state_path"
+  if [[ -L "$profile_path" ]]; then
+    ln -sfn "$target" "$profile_path"
+  elif [[ -f "$profile_path" ]]; then
+    # Prompt history and the portable session index are append-only JSONL.
+    # Preserve every existing line while keeping a recovery copy.
+    if [[ -s "$profile_path" ]]; then
+      cat "$profile_path" >> "$state_path"
+    fi
+    backup="$(next_backup_path "$profile_path")"
+    mv "$profile_path" "$backup"
+    ln -s "$target" "$profile_path"
+  elif [[ -e "$profile_path" ]]; then
+    echo "Cannot share Codex state file over unsupported path: $profile_path" >&2
+    return 1
+  else
+    ln -s "$target" "$profile_path"
   fi
 }
 
@@ -178,17 +254,27 @@ PY
   mv -f "$tmp" "$config"
 }
 
-while IFS=$'\t' read -r name family; do
-  profile_dir="$base/profiles/$name"
+while IFS=$'\t' read -r name family profile_path; do
+  profile_dir="$base/profiles/$profile_path"
+  legacy_profile_dir="$base/profiles/$name"
+  state_dir="$base/state/$family"
+  if [[ "$profile_path" != "$name" && -d "$legacy_profile_dir" && ! -e "$profile_dir" ]]; then
+    mkdir -p "$(dirname "$profile_dir")"
+    cp -a "$legacy_profile_dir" "$profile_dir"
+  fi
   mkdir -p "$profile_dir"
   chmod 700 "$profile_dir"
+  mkdir -p "$state_dir"
+  chmod 700 "$state_dir"
 
   email="$(jq -r --arg name "$name" '.profiles[] | select(.name == $name) | .email' "$manifest")"
   aliases="$(jq -c --arg name "$name" '.profiles[] | select(.name == $name) | (.aliases // [])' "$manifest")"
   profile_info="$profile_dir/.profile.json"
   profile_info_tmp="$(mktemp "$profile_dir/.profile.XXXXXX.tmp")"
-  jq -n --arg name "$name" --arg family "$family" --arg email "$email" --argjson aliases "$aliases" \
-    '{name: $name, family: $family, email: $email, aliases: $aliases}' > "$profile_info_tmp"
+  jq -n --arg name "$name" --arg family "$family" --arg email "$email" \
+    --arg profile_path "$profile_path" --argjson aliases "$aliases" \
+    '{name: $name, profilePath: $profile_path, family: $family, email: $email, aliases: $aliases}' \
+    > "$profile_info_tmp"
   chmod 600 "$profile_info_tmp"
   mv -f "$profile_info_tmp" "$profile_info"
 
@@ -204,13 +290,22 @@ while IFS=$'\t' read -r name family; do
   configure_auth_storage "$settings"
   configure_tui_status_line "$settings"
 
+  for item in sessions archived_sessions; do
+    share_state_directory \
+      "$profile_dir/$item" "$state_dir/$item" "$state_dir/$item"
+  done
+  for item in history.jsonl session_index.jsonl; do
+    share_state_file \
+      "$profile_dir/$item" "$state_dir/$item" "$state_dir/$item"
+  done
+
   for item in skills prompts policy; do
-    [[ -e "$HOME/.codex/$item" ]] && link_path "../../../.codex/$item" "$profile_dir/$item"
+    [[ -e "$HOME/.codex/$item" ]] && link_path "$HOME/.codex/$item" "$profile_dir/$item"
   done
   for item in AGENTS.md tmux.conf; do
-    [[ -e "$HOME/.codex/$item" ]] && link_path "../../../.codex/$item" "$profile_dir/$item"
+    [[ -e "$HOME/.codex/$item" ]] && link_path "$HOME/.codex/$item" "$profile_dir/$item"
   done
-done < <(jq -r '.profiles[] | [.name, .family] | @tsv' "$manifest")
+done < <(jq -r '.profiles[] | [.name, .family, (.profilePath // .name)] | @tsv' "$manifest")
 
 mkdir -p "$HOME/.local/bin"
 ln -sfn "$repo_dir/scripts/codex-profile" "$HOME/.local/bin/codex-profile"

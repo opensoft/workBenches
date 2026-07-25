@@ -350,7 +350,7 @@ personal subscription identities, GitHub ownership, and registry selection.
 The discovery sequence is:
 
 1. Ask for the personal GitHub username.
-2. Ask how many companies use the workstation.
+2. Ask how many companies the user works for using this workstation.
 3. For each company, ask its name, the user's company email, AI providers, and
    GitHub organization.
 4. Ask for each personal AI subscription email and its providers.
@@ -359,7 +359,11 @@ The discovery sequence is:
    verify that `ai/source.json` exists.
 7. Let the user select a result, enter a URL/local path, or fill profile
    metadata manually.
-8. Compose and install Claude, Codex, Gemini, Grok, and GLM profiles.
+8. Slug each entered company name and use it as that company's profile and
+   shared-state root.
+9. Create `team`, `max`, and `xfactor` profile groups for every company, plus
+   the separate `personal` group.
+10. Compose and install Claude, Codex, Pi, Gemini, Grok, and GLM profiles.
 
 No password, OAuth token, API key, or decrypted SOPS value is requested.
 Existing standard CLI logins are detected and preserved; their OAuth caches

@@ -13,8 +13,9 @@ x-standard-mounts: &standard-mounts
   - ../..:/workspace:cached
   - ~/projects:/projects:cached
 
-  # Zsh history persistence
-  - ${BENCH_NAME:-bench}-zshhistory:/home/${USER}/.zsh_history
+  # Zsh history persistence. Mount the named volume as a directory; Docker named
+  # volumes are directories and cannot safely target the ~/.zsh_history file.
+  - ${BENCH_NAME:-bench}-zshhistory:/home/${USER}/.workbenches-history
 
   # Shell configurations (readonly — host user's actual config)
   - ~/.zshrc:/home/${USER}/.zshrc:ro
@@ -43,6 +44,7 @@ x-standard-mounts: &standard-mounts
   - ~/.agents:/home/${USER}/.agents:cached
   # Project Intelligence and local agent metadata
   - ~/.pi:/home/${USER}/.pi:cached
+  - ~/.pi-profiles:/home/${USER}/.pi-profiles:cached
   # Google Antigravity / legacy Gemini settings. Antigravity login tokens remain
   # in the host OS keyring and are not portable through this mount.
   # Omnigent (AI meta-harness, wraps Codex/Claude)
@@ -77,6 +79,7 @@ services:
 #   OpenAI Codex    (@openai/codex via npm)              → ~/.codex/
 #   Shared Agents   (protocols and global skills)        → ~/.agents/
 #   Project Intel   (local agent metadata)                → ~/.pi/
+#   Pi profiles     (isolated auth, settings, sessions)   → ~/.pi-profiles/
 #   Antigravity     (settings only; auth in host keyring) → ~/.gemini/
 #   Abacus AI       (settings; API keys externally held)  → ~/.abacusai/
 #   GitHub Copilot  (@github/copilot npm) → ~/.copilot-cli/

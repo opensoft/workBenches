@@ -12,6 +12,7 @@ Each subfolder is a separate git repository containing a complete development en
 - **`javaBench/`** - Java development environment with DevContainer
 - **`phpBench/`** - PHP development environment with DevContainer
 - **`pyBench/`** - Python development environment with DevContainer
+- **`rustBench/`** - Rust development, analysis, cross-compilation, and WebAssembly environment
 
 ## Layered Containers (Current Standard)
 

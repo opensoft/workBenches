@@ -1,14 +1,17 @@
 {
   "version": 1,
+  "families": ["company", "personal"],
   "profiles": [
     {
       "name": "work-chatgpt-1",
-      "family": "work",
+      "profilePath": "company/xfactor/work-chatgpt-1",
+      "family": "company",
       "email": "user@company.example",
       "aliases": ["work1"]
     },
     {
       "name": "personal-chatgpt-1",
+      "profilePath": "personal/personal-chatgpt-1",
       "family": "personal",
       "email": "user@example.com",
       "aliases": ["personal1"]

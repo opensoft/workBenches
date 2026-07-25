@@ -235,7 +235,7 @@ The TUI Tools column includes editor, terminal, and local agent tooling:
 | Visual Studio Code | Windows/WSL winget, Linux/manual fallback | Dev Containers and WSL extension checks |
 | Warp Terminal | Windows/WSL winget, Linux/manual fallback | Windows terminal |
 | Wave Terminal | Windows/WSL winget, Linux/manual fallback | AI terminal |
-| Pi Terminal | Windows npm from WSL, WSL/Linux npm fallback | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`; run `pi` then `/login` |
+| Pi Terminal | Windows and WSL/Linux npm | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`; use isolated `ppi PROFILE` or standard `pi` |
 | AmneziaVPN | Windows/WSL winget | Amnezia/AmneziaWG client access |
 | 0dcloud VPN | local installer/manual + local patch | 0dcloud detection and MTU fix |
 

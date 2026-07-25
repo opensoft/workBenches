@@ -68,7 +68,8 @@ if [[ "$claude_bin" == "/usr/local/bin/claude" ]]; then
 fi
 
 profile_metadata() {
-  local requested="$1" normalized row metadata candidate
+  local requested="$1" normalized row metadata candidate profile_path fallback_row
+  local preferred_row preferred_depth=-1 path_depth
   normalized="$(printf '%s' "$requested" | tr '[:upper:]' '[:lower:]')"
   if [[ -f "$manifest" ]]; then
     row="$(jq -r --arg name "$normalized" \
@@ -77,7 +78,7 @@ profile_metadata() {
            ((.name | ascii_downcase) == $name)
            or any(.aliases[]?; (ascii_downcase == $name))
          )
-       | [.name,.email,.family] | @tsv' \
+       | [.name,.email,.family,(.profilePath // .name)] | @tsv' \
       "$manifest" | head -n 1)"
     if [[ -n "$row" ]]; then
       printf '%s\n' "$row"
@@ -85,18 +86,35 @@ profile_metadata() {
     fi
   fi
 
-  for metadata in "$base"/profiles/*/.profile.json; do
-    [[ -f "$metadata" ]] || continue
+  while IFS= read -r -d '' metadata; do
     candidate="$(jq -r --arg name "$normalized" '
       if (((.name // "") | ascii_downcase) == $name)
          or any(.aliases[]?; (ascii_downcase == $name))
       then "match" else empty end
     ' "$metadata")"
     if [[ "$candidate" == "match" ]]; then
-      jq -r '[.name,.email,.family] | @tsv' "$metadata"
-      return 0
+      profile_path="${metadata#"$base/profiles/"}"
+      profile_path="${profile_path%/.profile.json}"
+      row="$(jq -r --arg path "$profile_path" '[.name,.email,.family,$path] | @tsv' "$metadata")"
+      if jq -e '(.profilePath // "") | length > 0' "$metadata" >/dev/null; then
+        path_depth="$(awk -F/ '{print NF}' <<<"$profile_path")"
+        if (( path_depth > preferred_depth )); then
+          preferred_row="$row"
+          preferred_depth="$path_depth"
+        fi
+      elif [[ -z "${fallback_row:-}" ]]; then
+        fallback_row="$row"
+      fi
     fi
-  done
+  done < <(find "$base/profiles" -mindepth 2 -type f -name .profile.json -print0)
+  if [[ -n "${preferred_row:-}" ]]; then
+    printf '%s\n' "$preferred_row"
+    return 0
+  fi
+  if [[ -n "${fallback_row:-}" ]]; then
+    printf '%s\n' "$fallback_row"
+    return 0
+  fi
   return 1
 }
 
@@ -113,18 +131,18 @@ case "$action" in
       if [[ -f "$manifest" ]]; then
         jq -r '.profiles[] | [.name, .family, .email, ((.aliases // []) | join(","))] | @tsv' "$manifest"
       fi
-      for metadata in "$base"/profiles/*/.profile.json; do
-        [[ -f "$metadata" ]] || continue
+      while IFS= read -r -d '' metadata; do
         jq -r '[.name,.family,.email,((.aliases // []) | join(","))] | @tsv' "$metadata"
-      done
+      done < <(find "$base/profiles" -mindepth 2 -type f -name .profile.json -print0)
     } | awk -F '\t' '!seen[tolower($1)]++'
     ;;
   login|status|run)
     profile="${1:?Usage: claude-profile $action PROFILE [arguments]}"; shift
     row="$(profile_metadata "$profile" || true)"
     [[ -n "$row" ]] || { echo "Unknown Claude profile: $profile" >&2; exit 2; }
-    IFS=$'\t' read -r profile email family <<<"$row"
-    config_dir="$base/profiles/$profile"
+    IFS=$'\t' read -r profile email family profile_path <<<"$row"
+    config_dir="$base/profiles/$profile_path"
+    [[ -d "$config_dir" ]] || { echo "Claude profile is not configured: $config_dir" >&2; exit 2; }
     [[ -n "$claude_bin" ]] || { echo "Claude CLI not found." >&2; exit 1; }
     configure_profile_runtime "$config_dir"
     case "$action" in

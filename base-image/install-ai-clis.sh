@@ -9,6 +9,8 @@
 # Claude Code goes to /usr/local/bin.
 #
 # Installs:
+#   - Herdr terminal workspace manager
+#   - Pi Coding Agent
 #   - OpenCode (installed from the official npm platform package)
 #   - oh-my-opencode plugin (installed from the published npm package)
 #     Includes built-in agents: Sisyphus, oracle, librarian, explore, frontend, etc.
@@ -39,6 +41,7 @@ UV_TOOL_INSTALL_TIMEOUT="${UV_TOOL_INSTALL_TIMEOUT:-3600}"  # 60 minutes for Pyt
 INSTALL_ANTIGRAVITY_CLI="${INSTALL_ANTIGRAVITY_CLI:-0}"
 ANTIGRAVITY_INSTALL_URL="${ANTIGRAVITY_INSTALL_URL:-https://antigravity.google/cli/install.sh}"
 ANTIGRAVITY_INSTALL_SHA256="${ANTIGRAVITY_INSTALL_SHA256:-}"
+HERDR_INSTALL_URL="${HERDR_INSTALL_URL:-https://herdr.dev/install.sh}"
 
 log_debug() {
     if [ "$DEBUG" = "1" ]; then
@@ -209,6 +212,26 @@ log_info "Installing Google Gemini CLI..."
 if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Gemini npm install" npm install -g @google/gemini-cli; then
     log_error "Gemini CLI installation failed (continuing)"
 fi
+
+log_info "Installing Pi Coding Agent..."
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Pi Coding Agent npm install" \
+    npm install -g --ignore-scripts @earendil-works/pi-coding-agent; then
+    log_error "Pi Coding Agent installation failed (continuing)"
+fi
+
+log_info "Installing Herdr terminal workspace manager..."
+herdr_installer="$(mktemp)"
+if run_with_timeout "$RELEASE_DOWNLOAD_TIMEOUT" "Herdr installer download" \
+    curl -fsSL --retry 3 --connect-timeout 10 --max-time 60 \
+        -o "$herdr_installer" "$HERDR_INSTALL_URL"; then
+    if ! run_with_timeout "$RELEASE_DOWNLOAD_TIMEOUT" "Herdr install" \
+        env HERDR_INSTALL_DIR=/usr/local/bin sh "$herdr_installer"; then
+        log_error "Herdr installation failed (continuing)"
+    fi
+else
+    log_error "Herdr installer download failed (continuing)"
+fi
+rm -f "$herdr_installer"
 
 if [ "$INSTALL_ANTIGRAVITY_CLI" = "1" ] || [ "$INSTALL_ANTIGRAVITY_CLI" = "true" ]; then
     log_info "Installing Google Antigravity CLI..."
@@ -544,7 +567,7 @@ log_info "AI CLI Tools Installation Complete!"
 log_info "=========================================="
 log_info ""
 
-required_clis=(claude codex gemini copilot opencode omo letta notebooklm nlm)
+required_clis=(claude codex gemini pi herdr copilot opencode omo letta notebooklm nlm)
 missing_clis=()
 for cli in "${required_clis[@]}"; do
     if ! command -v "$cli" >/dev/null 2>&1; then
@@ -565,6 +588,8 @@ log_info "Installed tools:"
 log_info "  - Claude Code (claude) [native installer]"
 log_info "  - OpenAI Codex (codex)"
 log_info "  - Google Gemini (gemini)"
+log_info "  - Pi Coding Agent (pi)"
+log_info "  - Herdr terminal workspace manager (herdr)"
 if command -v agy >/dev/null 2>&1; then
     log_info "  - Google Antigravity CLI (agy)"
 else
