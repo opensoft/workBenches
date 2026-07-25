@@ -126,8 +126,11 @@ RUN if [ -n "$EXTRA_CHOWN_DIRS" ]; then \
 
 USER $USERNAME
 
-# Pre-create .vscode-server so volume mounts inherit correct ownership
-RUN mkdir -p /home/$USERNAME/.vscode-server/extensions
+# Pre-create user-owned cache roots so first-use named volumes inherit the
+# runtime user's ownership instead of becoming root-only.
+RUN mkdir -p \
+        /home/$USERNAME/.vscode-server/extensions \
+        /home/$USERNAME/.cargo
 
 # Configure git credential helper
 RUN git config --global credential.helper gh
