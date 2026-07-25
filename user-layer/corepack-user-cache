@@ -25,4 +25,11 @@ case "${COREPACK_HOME:-}" in
 esac
 
 mkdir -p "$COREPACK_HOME"
-exec "/usr/bin/$command_name" "$@"
+
+original_command="/usr/local/libexec/workbenches-corepack-original/$command_name"
+if [ ! -x "$original_command" ]; then
+    echo "Original Corepack command is unavailable: $original_command" >&2
+    exit 1
+fi
+
+exec "$original_command" "$@"

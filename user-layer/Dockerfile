@@ -18,7 +18,7 @@ FROM ${BASE_IMAGE}
 # Container version labels
 LABEL layer="3"
 LABEL layer.name="user-layer"
-LABEL layer.version="1.2.1"
+LABEL layer.version="1.2.2"
 LABEL layer.description="User personalization layer"
 
 # Build arguments
@@ -32,11 +32,28 @@ USER root
 
 # Corepack's shared base-layer cache is root-owned. Route Corepack and its
 # package-manager shims through a runtime wrapper that selects a writable cache
-# from the effective user's passwd home, including for non-interactive calls.
+# from the effective user's passwd home. Preserve the original Corepack entry
+# points before intercepting both common PATH locations; mounted shell configs
+# may put /usr/bin ahead of /usr/local/bin.
 COPY corepack-user-cache /usr/local/libexec/workbenches-corepack-user-cache
-RUN chmod 0755 /usr/local/libexec/workbenches-corepack-user-cache && \
+RUN set -eux && \
+    chmod 0755 /usr/local/libexec/workbenches-corepack-user-cache && \
+    mkdir -p /usr/local/libexec/workbenches-corepack-original && \
     for command in corepack pnpm pnpx yarn yarnpkg; do \
+        if [ -e "/usr/bin/$command" ] || [ -L "/usr/bin/$command" ]; then \
+            original_command="/usr/bin/$command"; \
+        elif [ -e "/usr/local/bin/$command" ] || [ -L "/usr/local/bin/$command" ]; then \
+            original_command="/usr/local/bin/$command"; \
+        else \
+            echo "Required Corepack command is unavailable: $command" >&2; \
+            exit 1; \
+        fi; \
+        preserved_command="${original_command}.workbenches-original"; \
+        mv "$original_command" "$preserved_command"; \
+        test -x "$preserved_command"; \
+        ln -sfn "$preserved_command" "/usr/local/libexec/workbenches-corepack-original/$command"; \
         ln -sfn /usr/local/libexec/workbenches-corepack-user-cache "/usr/local/bin/$command"; \
+        ln -sfn /usr/local/libexec/workbenches-corepack-user-cache "/usr/bin/$command"; \
     done
 
 # ========================================

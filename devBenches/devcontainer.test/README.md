@@ -18,7 +18,8 @@ Layer 1a adds developer tools on top of Layer 0:
 - PATH configuration for all dev tools
 
 The Layer 3 user image adds the effective-user Corepack cache exercised by the
-unprivileged pnpm checks in this harness.
+unprivileged pnpm checks in this harness, including shells that place
+`/usr/bin` before `/usr/local/bin`.
 
 ## Quick Start
 
