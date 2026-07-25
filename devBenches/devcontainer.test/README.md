@@ -6,7 +6,7 @@ Test harness for `dev-bench-base:$USER` - the Layer 3 user image built on top of
 
 Layer 1a adds developer tools on top of Layer 0:
 - Python 3.x with pip and development tools (black, flake8, isort, pylint, pytest, ipython)
-- Node.js LTS with npm and yarn
+- Node.js LTS with npm, yarn, and a user-writable Corepack cache for pnpm
 - Python package managers (uv)
 - Spec-driven tools (`specify`, `openspec`)
 - Speckit worktree bootstrap (`speckit-worktree-enable`)
@@ -42,7 +42,7 @@ docker compose down
 
 The `test.sh` script validates:
 - ✅ Python development tools
-- ✅ Node.js development tools
+- ✅ Node.js development tools and unprivileged pnpm/Corepack operation
 - ✅ Python package managers (uv)
 - ✅ Spec-driven tools (`specify`, `openspec`)
 - ✅ Worktree-mode Speckit bootstrap installation

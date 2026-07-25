@@ -68,6 +68,9 @@ echo "=== Node.js Development ==="
 test_tool_output "Node.js" "node --version"
 test_tool_output "npm" "npm --version"
 test_tool_output "yarn" "yarn --version"
+test_tool_output "pnpm as unprivileged user" "pnpm --version"
+test_tool "Corepack cache is user-owned and writable" \
+    "test \"\$COREPACK_HOME\" = \"\$HOME/.cache/corepack\" && test -d \"\$COREPACK_HOME\" && test -w \"\$COREPACK_HOME\""
 test_tool "/usr/local/bin in PATH" "echo \$PATH | grep -q '/usr/local/bin'"
 
 echo ""
