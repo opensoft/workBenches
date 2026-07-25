@@ -28,6 +28,11 @@ ARG USER_GID=1000
 ARG DOCKER_SOCKET_GID=""
 ARG EXTRA_CHOWN_DIRS=""
 
+# Corepack downloads package-manager shims and versions on demand. Keep its
+# mutable cache in the Layer 3 user's home rather than the root-owned cache
+# inherited from a shared base image.
+ENV COREPACK_HOME=/home/${USERNAME}/.cache/corepack
+
 USER root
 
 # Corepack's shared base-layer cache is root-owned. Route Corepack and its
@@ -108,6 +113,10 @@ RUN if [ -n "$EXTRA_CHOWN_DIRS" ]; then \
 # ========================================
 
 USER $USERNAME
+
+# Pre-create the user-owned Corepack cache so pnpm/yarn work immediately in
+# interactive and non-interactive bench sessions.
+RUN mkdir -p "$COREPACK_HOME"
 
 # Pre-create .vscode-server so volume mounts inherit correct ownership
 RUN mkdir -p /home/$USERNAME/.vscode-server/extensions
