@@ -78,6 +78,8 @@ done
 
 workbenches_root="${workbenches_root%/}"
 resolve_bench_defaults
+container_history_dir="/home/${container_user}/.workbenches-history"
+container_history_file="${container_history_dir}/.zsh_history"
 
 if [[ ! -d "$workbenches_root" ]]; then
     echo "workBenches root does not exist: $workbenches_root" >&2
@@ -87,6 +89,11 @@ fi
 if ! command -v docker >/dev/null 2>&1; then
     echo "docker was not found in this WSL distro." >&2
     exit 1
+fi
+
+if [[ "$check_only" != true ]]; then
+    printf '\033]0;%s\007' "$block_title"
+    echo "Opening '$block_title' container shell..."
 fi
 
 run_devcontainer_up() {
@@ -131,6 +138,7 @@ ensure_host_sources() {
         "$home_dir/.omnigent" \
         "$home_dir/.agents" \
         "$home_dir/.pi" \
+        "$home_dir/.pi-profiles" \
         "$home_dir/.config/sonarqube" \
         "$home_dir/.gemini" \
         "$home_dir/.grok" \
@@ -157,7 +165,7 @@ services:
   $container:
     volumes:
       - ${home_dir}/projects:/workspace/projects:cached
-      - ${history_volume}:/home/${container_user}/.zsh_history
+      - ${history_volume}:${container_history_dir}
       - ${home_dir}/.zshrc:/home/${container_user}/.zshrc:ro
       - ${home_dir}/.oh-my-zsh:/home/${container_user}/.oh-my-zsh:ro
       - ${home_dir}/.p10k.zsh:/home/${container_user}/.p10k.zsh:ro
@@ -179,6 +187,7 @@ services:
       - ${home_dir}/.omnigent:/home/${container_user}/.omnigent:cached
       - ${home_dir}/.agents:/home/${container_user}/.agents:cached
       - ${home_dir}/.pi:/home/${container_user}/.pi:cached
+      - ${home_dir}/.pi-profiles:/home/${container_user}/.pi-profiles:cached
       - ${home_dir}/.config/sonarqube:/home/${container_user}/.config/sonarqube:ro
       - ${home_dir}/.gemini:/home/${container_user}/.gemini:cached
       - ${home_dir}/.grok:/home/${container_user}/.grok:ro
@@ -237,11 +246,13 @@ container_missing_required_mounts() {
     local required_mounts=()
     required_mounts=(
         "/workspace/projects"
+        "$container_history_dir"
         "/home/${container_user}/.zshrc"
         "/home/${container_user}/.oh-my-zsh"
         "/home/${container_user}/.p10k.zsh"
         "/home/${container_user}/.claude-profiles"
         "/home/${container_user}/.chatgpt-profiles"
+        "/home/${container_user}/.pi-profiles"
         "/home/${container_user}/.gemini-profiles"
         "/home/${container_user}/.grok-profiles"
         "/home/${container_user}/.glm-profiles"
@@ -286,11 +297,41 @@ if [[ "$(docker container inspect -f '{{.State.Running}}' "$container")" != "tru
     docker start "$container" >/dev/null
 fi
 
+ensure_container_history() {
+    docker exec --user root "$container" sh -c \
+        "mkdir -p '$container_history_dir' && touch '$container_history_file' && chown -R '${container_user}:${container_user}' '$container_history_dir'"
+}
+
 install_ai_profile_launchers() {
     local claude_launcher="$workbenches_root/base-image/files/claude-profile"
     local codex_launcher="$workbenches_root/base-image/files/codex-profile"
     local provider_launcher="$workbenches_root/base-image/files/provider-profile"
+    local pi_launcher="$workbenches_root/base-image/files/pi-profile"
     [[ -f "$claude_launcher" ]] || return 0
+
+    local marker="/usr/local/share/workbenches/profile-launchers.sha256"
+    local launchers=(
+        "$claude_launcher"
+        "$codex_launcher"
+        "$provider_launcher"
+        "$pi_launcher"
+    )
+    local bundle_hash
+    bundle_hash="$(
+        for launcher in "${launchers[@]}"; do
+            if [[ -f "$launcher" ]]; then
+                sha256sum "$launcher" | awk '{print $1}'
+            else
+                printf '%s\n' missing
+            fi
+        done | sha256sum | awk '{print $1}'
+    )"
+
+    local installed_hash
+    installed_hash="$(docker exec --user root "$container" sh -c "cat '$marker' 2>/dev/null" || true)"
+    if [[ "$installed_hash" == "$bundle_hash" ]]; then
+        return 0
+    fi
 
     docker cp "$claude_launcher" "$container:/usr/local/bin/claude-profile"
     docker exec --user root "$container" sh -c \
@@ -308,17 +349,25 @@ install_ai_profile_launchers() {
                ln -sfn provider-profile "/usr/local/bin/$name"
              done'
     fi
+    if [[ -f "$pi_launcher" ]]; then
+        docker cp "$pi_launcher" "$container:/usr/local/bin/pi-profile"
+        docker exec --user root "$container" sh -c \
+            'chmod 0755 /usr/local/bin/pi-profile && ln -sfn pi-profile /usr/local/bin/ppi'
+    fi
     docker exec --user root "$container" sh -c \
         "mkdir -p '/home/${container_user}/.local/bin' && chown '${container_user}:${container_user}' '/home/${container_user}/.local' '/home/${container_user}/.local/bin'"
     docker exec --user "$container_user" "$container" sh -c \
         'if [ ! -e "$HOME/.local/bin/claude" ]; then ln -s /usr/local/bin/claude "$HOME/.local/bin/claude"; fi'
+    docker exec --user root "$container" sh -c \
+        "mkdir -p '$(dirname "$marker")' && printf '%s\n' '$bundle_hash' > '$marker'"
 }
 
+ensure_container_history
 install_ai_profile_launchers
 
 if [[ "$check_only" == true ]]; then
-    docker exec --user "$container_user" --workdir "$workdir" "$container" "$shell_path" -lc \
-        'printf "%s\n" "wave-container-shell-ok"; whoami; pwd; command -v claude-profile; command -v pclaude; command -v codex-profile; command -v pcodex; command -v pgemini; command -v pgrok; command -v pglm; test -d "$HOME/.claude-profiles"; test -d "$HOME/.chatgpt-profiles"; test -d "$HOME/.gemini-profiles"; test -d "$HOME/.grok-profiles"; test -d "$HOME/.glm-profiles"'
+    docker exec --user "$container_user" --env "HISTFILE=$container_history_file" --workdir "$workdir" "$container" "$shell_path" -lc \
+        'printf "%s\n" "wave-container-shell-ok"; whoami; pwd; test "$HISTFILE" = "$HOME/.workbenches-history/.zsh_history"; command -v claude-profile; command -v pclaude; command -v codex-profile; command -v pcodex; command -v ppi; command -v pgemini; command -v pgrok; command -v pglm; test -d "$HOME/.claude-profiles"; test -d "$HOME/.chatgpt-profiles"; test -d "$HOME/.pi-profiles"; test -d "$HOME/.gemini-profiles"; test -d "$HOME/.grok-profiles"; test -d "$HOME/.glm-profiles"'
     exit 0
 fi
 
@@ -354,6 +403,7 @@ exec docker exec "${tty_args[@]}" \
     --env "COLORTERM=$color_term" \
     --env "CLICOLOR=1" \
     --env "FORCE_COLOR=1" \
+    --env "HISTFILE=$container_history_file" \
     --user "$container_user" \
     --workdir "$workdir" \
     "$container" \
