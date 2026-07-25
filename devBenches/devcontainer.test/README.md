@@ -17,6 +17,9 @@ Layer 1a adds developer tools on top of Layer 0:
 - Zsh and oh-my-zsh with plugins
 - PATH configuration for all dev tools
 
+The Layer 3 user image adds the effective-user Corepack cache exercised by the
+unprivileged pnpm checks in this harness.
+
 ## Quick Start
 
 ```bash
@@ -42,7 +45,7 @@ docker compose down
 
 The `test.sh` script validates:
 - ✅ Python development tools
-- ✅ Node.js development tools
+- ✅ Node.js development tools and unprivileged pnpm/Corepack operation
 - ✅ Python package managers (uv)
 - ✅ Spec-driven tools (`specify`, `openspec`)
 - ✅ Worktree-mode Speckit bootstrap installation
