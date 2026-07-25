@@ -224,9 +224,20 @@ create_with_compose() {
     fi
 
     local override_file
+    local compose_args
     override_file="$(write_wave_compose_override)"
+    compose_args=(-f "$compose_file")
+    if [[ "$container" == "rust-bench" && -d /mnt/wslg ]]; then
+        local wslg_compose_file="$bench_dir/.devcontainer/docker-compose.wslg.yml"
+        if [[ ! -f "$wslg_compose_file" ]]; then
+            echo "rustBench WSLg override is missing: $wslg_compose_file" >&2
+            exit 1
+        fi
+        compose_args+=(-f "$wslg_compose_file")
+    fi
+    compose_args+=(-f "$override_file")
     echo "Creating $container with docker compose..."
-    docker compose -f "$compose_file" -f "$override_file" up -d "$container"
+    docker compose "${compose_args[@]}" up -d "$container"
 }
 
 recreate_with_compose() {
@@ -260,6 +271,12 @@ container_missing_required_mounts() {
         "/home/${container_user}/.grok-profiles"
         "/home/${container_user}/.glm-profiles"
     )
+    if [[ "$container" == "rust-bench" ]]; then
+        required_mounts+=("/home/${container_user}/.cargo")
+        if [[ -d /mnt/wslg ]]; then
+            required_mounts+=("/mnt/wslg")
+        fi
+    fi
 
     local mount
     local destination
@@ -291,7 +308,9 @@ if ! docker container inspect "$container" >/dev/null 2>&1; then
     else
         create_with_compose
     fi
-elif [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]] && container_missing_required_mounts; then
+fi
+
+if [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]] && container_missing_required_mounts; then
     recreate_with_compose
 fi
 
@@ -303,6 +322,12 @@ fi
 ensure_container_history() {
     docker exec --user root "$container" sh -c \
         "mkdir -p '$container_history_dir' && touch '$container_history_file' && chown -R '${container_user}:${container_user}' '$container_history_dir'"
+}
+
+ensure_user_cargo_cache() {
+    [[ "$container" == "rust-bench" ]] || return 0
+    docker exec --user root "$container" sh -c \
+        "mkdir -p '/home/${container_user}/.cargo' && chown -R '${container_user}:${container_user}' '/home/${container_user}/.cargo'"
 }
 
 claude_launcher="$workbenches_root/base-image/files/claude-profile"
@@ -373,6 +398,7 @@ install_ai_profile_launchers() {
     fi
 }
 
+ensure_user_cargo_cache
 ensure_container_history
 install_ai_profile_launchers
 
