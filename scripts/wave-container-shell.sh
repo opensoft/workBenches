@@ -364,9 +364,9 @@ install_ai_profile_launchers() {
             "mkdir -p '$(dirname "$profile_launcher_marker")' && printf '%s\n' '$bundle_hash' > '$profile_launcher_marker'"
     fi
 
+    docker exec --user root "$container" sh -c \
+        "mkdir -p '/home/${container_user}/.local/bin' && chown '${container_user}:${container_user}' '/home/${container_user}/.local' '/home/${container_user}/.local/bin'"
     if [[ -f "$claude_launcher" ]]; then
-        docker exec --user root "$container" sh -c \
-            "mkdir -p '/home/${container_user}/.local/bin' && chown '${container_user}:${container_user}' '/home/${container_user}/.local' '/home/${container_user}/.local/bin'"
         docker exec --user "$container_user" "$container" sh -c \
             'ln -sfn /usr/local/bin/claude "$HOME/.local/bin/claude"'
     fi
