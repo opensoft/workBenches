@@ -6,7 +6,7 @@ Test harness for `dev-bench-base:$USER` - the Layer 3 user image built on top of
 
 Layer 1a adds developer tools on top of Layer 0:
 - Python 3.x with pip and development tools (black, flake8, isort, pylint, pytest, ipython)
-- Node.js LTS with npm, yarn, and a user-writable Corepack cache for pnpm
+- Node.js LTS with npm and yarn
 - Python package managers (uv)
 - Spec-driven tools (`specify`, `openspec`)
 - Speckit worktree bootstrap (`speckit-worktree-enable`)
@@ -16,6 +16,9 @@ Layer 1a adds developer tools on top of Layer 0:
 - OpenCode configuration with plugins (oh-my-opencode, opencode-openai-codex-auth)
 - Zsh and oh-my-zsh with plugins
 - PATH configuration for all dev tools
+
+The Layer 3 user image adds the effective-user Corepack cache exercised by the
+unprivileged pnpm checks in this harness.
 
 ## Quick Start
 
