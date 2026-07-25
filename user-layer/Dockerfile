@@ -40,8 +40,14 @@ RUN set -eux && \
     chmod 0755 /usr/local/libexec/workbenches-corepack-user-cache && \
     mkdir -p /usr/local/libexec/workbenches-corepack-original && \
     for command in corepack pnpm pnpx yarn yarnpkg; do \
-        original_command="$(readlink -f "/usr/bin/$command")"; \
-        test -x "$original_command"; \
+        original_command="$(readlink -f "/usr/bin/$command" 2>/dev/null || true)"; \
+        if [ ! -x "$original_command" ]; then \
+            original_command="$(readlink -f "/usr/local/bin/$command" 2>/dev/null || true)"; \
+        fi; \
+        if [ ! -x "$original_command" ]; then \
+            echo "Required Corepack command is unavailable: $command" >&2; \
+            exit 1; \
+        fi; \
         ln -sfn "$original_command" "/usr/local/libexec/workbenches-corepack-original/$command"; \
         ln -sfn /usr/local/libexec/workbenches-corepack-user-cache "/usr/local/bin/$command"; \
         ln -sfn /usr/local/libexec/workbenches-corepack-user-cache "/usr/bin/$command"; \
