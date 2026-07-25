@@ -18,7 +18,7 @@ FROM ${BASE_IMAGE}
 # Container version labels
 LABEL layer="3"
 LABEL layer.name="user-layer"
-LABEL layer.version="1.2.1"
+LABEL layer.version="1.2.2"
 LABEL layer.description="User personalization layer"
 
 # Build arguments
@@ -32,11 +32,19 @@ USER root
 
 # Corepack's shared base-layer cache is root-owned. Route Corepack and its
 # package-manager shims through a runtime wrapper that selects a writable cache
-# from the effective user's passwd home, including for non-interactive calls.
+# from the effective user's passwd home. Preserve the original Corepack entry
+# points before intercepting both common PATH locations; mounted shell configs
+# may put /usr/bin ahead of /usr/local/bin.
 COPY corepack-user-cache /usr/local/libexec/workbenches-corepack-user-cache
-RUN chmod 0755 /usr/local/libexec/workbenches-corepack-user-cache && \
+RUN set -eux && \
+    chmod 0755 /usr/local/libexec/workbenches-corepack-user-cache && \
+    mkdir -p /usr/local/libexec/workbenches-corepack-original && \
     for command in corepack pnpm pnpx yarn yarnpkg; do \
+        original_command="$(readlink -f "/usr/bin/$command")"; \
+        test -x "$original_command"; \
+        ln -sfn "$original_command" "/usr/local/libexec/workbenches-corepack-original/$command"; \
         ln -sfn /usr/local/libexec/workbenches-corepack-user-cache "/usr/local/bin/$command"; \
+        ln -sfn /usr/local/libexec/workbenches-corepack-user-cache "/usr/bin/$command"; \
     done
 
 # ========================================
