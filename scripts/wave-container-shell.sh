@@ -310,7 +310,12 @@ install_ai_profile_launchers() {
     local codex_launcher="$workbenches_root/base-image/files/codex-profile"
     local provider_launcher="$workbenches_root/base-image/files/provider-profile"
     local pi_launcher="$workbenches_root/base-image/files/pi-profile"
-    [[ -f "$claude_launcher" ]] || return 0
+    if [[ ! -f "$claude_launcher" \
+        && ! -f "$codex_launcher" \
+        && ! -f "$provider_launcher" \
+        && ! -f "$pi_launcher" ]]; then
+        return 0
+    fi
 
     local launchers=(
         "$claude_launcher"
@@ -332,9 +337,11 @@ install_ai_profile_launchers() {
     local installed_hash
     installed_hash="$(docker exec --user root "$container" sh -c "cat '$profile_launcher_marker' 2>/dev/null" || true)"
     if [[ "$installed_hash" != "$bundle_hash" ]]; then
-        docker cp "$claude_launcher" "$container:/usr/local/bin/claude-profile"
-        docker exec --user root "$container" sh -c \
-            'chmod 0755 /usr/local/bin/claude-profile && ln -sfn claude-profile /usr/local/bin/pclaude'
+        if [[ -f "$claude_launcher" ]]; then
+            docker cp "$claude_launcher" "$container:/usr/local/bin/claude-profile"
+            docker exec --user root "$container" sh -c \
+                'chmod 0755 /usr/local/bin/claude-profile && ln -sfn claude-profile /usr/local/bin/pclaude'
+        fi
         if [[ -f "$codex_launcher" ]]; then
             docker cp "$codex_launcher" "$container:/usr/local/bin/codex-profile"
             docker exec --user root "$container" sh -c \
@@ -357,10 +364,12 @@ install_ai_profile_launchers() {
             "mkdir -p '$(dirname "$profile_launcher_marker")' && printf '%s\n' '$bundle_hash' > '$profile_launcher_marker'"
     fi
 
-    docker exec --user root "$container" sh -c \
-        "mkdir -p '/home/${container_user}/.local/bin' && chown '${container_user}:${container_user}' '/home/${container_user}/.local' '/home/${container_user}/.local/bin'"
-    docker exec --user "$container_user" "$container" sh -c \
-        'ln -sfn /usr/local/bin/claude "$HOME/.local/bin/claude"'
+    if [[ -f "$claude_launcher" ]]; then
+        docker exec --user root "$container" sh -c \
+            "mkdir -p '/home/${container_user}/.local/bin' && chown '${container_user}:${container_user}' '/home/${container_user}/.local' '/home/${container_user}/.local/bin'"
+        docker exec --user "$container_user" "$container" sh -c \
+            'ln -sfn /usr/local/bin/claude "$HOME/.local/bin/claude"'
+    fi
 }
 
 ensure_container_history
