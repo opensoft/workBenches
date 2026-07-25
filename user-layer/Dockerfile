@@ -40,15 +40,18 @@ RUN set -eux && \
     chmod 0755 /usr/local/libexec/workbenches-corepack-user-cache && \
     mkdir -p /usr/local/libexec/workbenches-corepack-original && \
     for command in corepack pnpm pnpx yarn yarnpkg; do \
-        original_command="$(readlink -f "/usr/bin/$command" 2>/dev/null || true)"; \
-        if [ ! -x "$original_command" ]; then \
-            original_command="$(readlink -f "/usr/local/bin/$command" 2>/dev/null || true)"; \
-        fi; \
-        if [ ! -x "$original_command" ]; then \
+        if [ -e "/usr/bin/$command" ] || [ -L "/usr/bin/$command" ]; then \
+            original_command="/usr/bin/$command"; \
+        elif [ -e "/usr/local/bin/$command" ] || [ -L "/usr/local/bin/$command" ]; then \
+            original_command="/usr/local/bin/$command"; \
+        else \
             echo "Required Corepack command is unavailable: $command" >&2; \
             exit 1; \
         fi; \
-        ln -sfn "$original_command" "/usr/local/libexec/workbenches-corepack-original/$command"; \
+        preserved_command="${original_command}.workbenches-original"; \
+        mv "$original_command" "$preserved_command"; \
+        test -x "$preserved_command"; \
+        ln -sfn "$preserved_command" "/usr/local/libexec/workbenches-corepack-original/$command"; \
         ln -sfn /usr/local/libexec/workbenches-corepack-user-cache "/usr/local/bin/$command"; \
         ln -sfn /usr/local/libexec/workbenches-corepack-user-cache "/usr/bin/$command"; \
     done
