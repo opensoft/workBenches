@@ -382,7 +382,9 @@ if [[ "$check_only" == true ]]; then
 fi
 
 set_wave_title() {
-    printf '\033]0;%s\007' "$block_title"
+    if [[ -t 1 ]]; then
+        printf '\033]0;%s\007' "$block_title"
+    fi
 
     if command -v wsh >/dev/null 2>&1; then
         wsh setmeta -b this "frame:title=$block_title" "frame:text=$block_title" >/dev/null 2>&1 || true
