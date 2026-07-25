@@ -19,3 +19,6 @@
 [submodule "sysBenches/365Bench"]
 	path = sysBenches/365Bench
 	url = git@github.com:opensoft/365Bench.git
+[submodule "devBenches/rustBench"]
+	path = devBenches/rustBench
+	url = git@github.com:opensoft/rustBench.git
