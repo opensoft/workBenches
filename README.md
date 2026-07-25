@@ -99,6 +99,7 @@ Installed widgets include:
 | `pyBench` | Starts or repairs `py-bench`, then opens an interactive shell |
 | `flutterBench` | Starts or repairs `flutter-bench`, then opens an interactive shell |
 | `C++Bench` | Starts or repairs `cpp-bench`, then opens an interactive shell |
+| `rustBench` | Starts or repairs `rust-bench`, then opens an interactive shell |
 | `cloudBench` | Starts or repairs `cloud-bench`, then opens an interactive shell |
 
 First-run setup offers consent-based work and personal AI profile onboarding,
