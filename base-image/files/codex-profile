@@ -95,6 +95,13 @@ case "$action" in
       -c 'forced_login_method="chatgpt"'
       -c 'cli_auth_credentials_store="file"'
     )
+    codex_runtime_config=()
+    if [[ -n "${CODEX_SONARQUBE_MCP_URL:-}" ]]; then
+      sonarqube_mcp_url_toml="$(jq -Rn --arg value "$CODEX_SONARQUBE_MCP_URL" '$value')"
+      codex_runtime_config=(
+        -c "mcp_servers.sonarqube.url=$sonarqube_mcp_url_toml"
+      )
+    fi
 
     case "$action" in
       login)
@@ -108,7 +115,10 @@ case "$action" in
         CODEX_HOME="$config_dir" "$codex_bin" "${codex_auth_config[@]}" logout "$@"
         ;;
       run)
-        CODEX_HOME="$config_dir" exec "$codex_bin" "${codex_auth_config[@]}" "$@"
+        CODEX_HOME="$config_dir" exec "$codex_bin" \
+          "${codex_auth_config[@]}" \
+          "${codex_runtime_config[@]}" \
+          "$@"
         ;;
     esac
     ;;

@@ -13,3 +13,7 @@ OpenSpec/Speckit protocol and project bootstrap contract.
 - Each bench under `devBenches/` is a separate repository and submodule.
 - Run image, container, and Docker validation through the declared bench tooling.
 - Preserve unrelated changes in the parent checkout and in bench submodules.
+
+<!-- SPECKIT START -->
+Active implementation plan: `specs/001-pybench-sonarqube-mcp/plan.md`
+<!-- SPECKIT END -->
