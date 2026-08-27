@@ -19,10 +19,6 @@ END = "<!-- OPENSPEC-SPECKIT-GLOBAL:END -->"
 REPO_AGENT_ROOT: Final = "$HOME/.agents"
 
 SKILLS = [
-    "openspec-apply-change",
-    "openspec-archive-change",
-    "openspec-explore",
-    "openspec-propose",
     "speckit-analyze",
     "speckit-checklist",
     "speckit-clarify",
@@ -39,9 +35,27 @@ SKILLS = [
     "speckit-taskstoissues",
     "ct",
     "ctp",
-    "claude-session-driver",
-    "speckit-claude-driver",
 ]
+
+OPEN_SPEC_SKILLS = {
+    "openspec-apply-change": "apply",
+    "openspec-archive-change": "archive",
+    "openspec-explore": "explore",
+    "openspec-propose": "propose",
+}
+
+DECLARATIVE_SKILL_SUFFIXES: Final = {".md", ".yaml", ".yml", ".json"}
+
+CLARIFY_QUOTA_REPLACEMENTS: Final = (
+    ("up to 5 highly targeted clarification questions", "up to 25 highly targeted clarification questions"),
+    ("candidate clarification questions (maximum 5)", "candidate clarification questions (maximum 25)"),
+    ("Maximum of 5 total questions", "Maximum of 25 total questions"),
+    ("If more than 5 categories remain unresolved, select the top 5", "If more than 25 categories remain unresolved, select the top 25"),
+    ("reach 5 asked questions", "reach 25 asked questions"),
+    ("Total asked (accepted) questions ≤ 5", "Total asked (accepted) questions ≤ 25"),
+    ("Total asked questions ≤ 5", "Total asked questions ≤ 25"),
+    ("Never exceed 5 total asked questions", "Never exceed 25 total asked questions"),
+)
 
 SUPPORTED_AGENT_CONTEXT_FILES = [
     ("agy", "AGENTS.md"),
@@ -376,7 +390,82 @@ def link_or_copy_skill(src: Path, dst: Path, dry_run: bool, force: bool) -> None
         return
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(src, dst)
+    if dst.name == "speckit-clarify":
+        skill_file = dst / "SKILL.md"
+        if skill_file.is_file():
+            text = skill_file.read_text(encoding="utf-8")
+            for old, new in CLARIFY_QUOTA_REPLACEMENTS:
+                text = text.replace(old, new)
+            if "one question at a time" not in text.lower():
+                text += "\n## Shared Clarify Contract\n\nAsk one question at a time.\n"
+            skill_file.write_text(text, encoding="utf-8")
+    for directory in [dst, *(path for path in dst.rglob("*") if path.is_dir())]:
+        directory.chmod(0o755)
+    for copied_file in (path for path in dst.rglob("*") if path.is_file()):
+        if copied_file.suffix.lower() in DECLARATIVE_SKILL_SUFFIXES:
+            copied_file.chmod(0o644)
     log(f"copied {src} -> {dst}")
+
+
+def openspec_skill_wrapper(skill: str, action: str, command_path: str) -> str:
+    return f"""---
+name: {skill}
+description: Delegate to the governed OPSX {action} source workflow
+---
+
+# Governed OPSX Delegate
+
+The canonical command at [`{command_path}`]({command_path}) is the source workflow.
+Load that command and follow it exactly; do not recreate or summarize its procedure here.
+
+Do not execute implementation tasks from OpenSpec artifacts. OpenSpec records
+governance and handoff only; the linked Speckit `specs/<feature>/tasks.md` owns
+executable implementation work.
+"""
+
+
+def ensure_openspec_skill_wrapper(
+    repo: Path,
+    agent_dir: str,
+    skill: str,
+    action: str,
+    dry_run: bool,
+    force: bool,
+) -> None:
+    destination = repo / agent_dir / "skills" / skill
+    command_path = (
+        f"../../commands/opsx/{action}.md"
+        if agent_dir == ".claude"
+        else f"../../../.claude/commands/opsx/{action}.md"
+    )
+    wrapper = openspec_skill_wrapper(skill, action, command_path)
+    skill_file = destination / "SKILL.md"
+    is_current = (
+        destination.is_dir()
+        and not destination.is_symlink()
+        and sorted(path.name for path in destination.iterdir()) == ["SKILL.md"]
+        and skill_file.read_text(encoding="utf-8") == wrapper
+        and destination.stat().st_mode & 0o777 == 0o755
+        and skill_file.stat().st_mode & 0o777 == 0o644
+    )
+    if is_current:
+        log(f"unchanged {destination}")
+        return
+    if destination.is_dir() and not destination.is_symlink() and not force:
+        log(f"kept existing {destination}")
+        return
+    if dry_run:
+        log(f"would write governed OpenSpec wrapper {destination}")
+        return
+    if destination.is_symlink() or destination.is_file():
+        destination.unlink()
+    elif destination.exists():
+        shutil.rmtree(destination)
+    destination.mkdir(parents=True, mode=0o755)
+    skill_file.write_text(wrapper, encoding="utf-8")
+    destination.chmod(0o755)
+    skill_file.chmod(0o644)
+    log(f"wrote governed OpenSpec wrapper {destination}")
 
 
 def copy_overlay_tree(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
@@ -699,6 +788,8 @@ def ensure_skills(repo: Path, dry_run: bool, force: bool) -> None:
         ".agents": Path.home() / ".agents" / "skills",
     }
     for agent_dir, source_root in homes.items():
+        for skill, action in OPEN_SPEC_SKILLS.items():
+            ensure_openspec_skill_wrapper(repo, agent_dir, skill, action, dry_run, force)
         for skill in SKILLS:
             link_or_copy_skill(
                 source_root / skill,

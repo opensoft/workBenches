@@ -22,6 +22,8 @@ WORKFLOW_PROTOCOL="$AGENT_PROTOCOL_ROOT/protocols/openspec-speckit-workflow.md"
 BOOTSTRAP_PROTOCOL="$AGENT_PROTOCOL_ROOT/protocols/project-agent-bootstrap.md"
 FIRST_SNAPSHOT="$TMPDIR_ROOT/first.snapshot"
 SECOND_SNAPSHOT="$TMPDIR_ROOT/second.snapshot"
+FIRST_MODE_SNAPSHOT="$TMPDIR_ROOT/first-mode.snapshot"
+SECOND_MODE_SNAPSHOT="$TMPDIR_ROOT/second-mode.snapshot"
 FIRST_LOG="$TMPDIR_ROOT/first.log"
 SECOND_LOG="$TMPDIR_ROOT/second.log"
 
@@ -89,6 +91,27 @@ assert_regular_directory() {
     fi
 }
 
+assert_not_exists() {
+    local path="$1"
+    local label="$2"
+    if [[ ! -e "$path" && ! -L "$path" ]]; then
+        pass "$label"
+    else
+        fail "$label: unexpected path $path"
+    fi
+}
+
+assert_mode() {
+    local path="$1"
+    local expected="$2"
+    local label="$3"
+    if [[ -e "$path" ]]; then
+        assert_equal "$(stat -c '%a' "$path")" "$expected" "$label"
+    else
+        fail "$label: missing $path"
+    fi
+}
+
 snapshot_repo() {
     local repo="$1"
     (
@@ -96,6 +119,14 @@ snapshot_repo() {
         while IFS= read -r -d '' path; do
             sha256sum "$path"
         done < <(find . -path './.git' -prune -o -type f -print0 | sort -z)
+    )
+}
+
+snapshot_repo_modes() {
+    local repo="$1"
+    (
+        cd "$repo"
+        find . -path './.git' -prune -o \( -type d -o -type f \) -printf '%m %y %p\n' | sort
     )
 }
 
@@ -107,7 +138,48 @@ mkdir -p \
     "$REPO_DIR"
 
 for skill_home in .claude .codex .agents; do
-    printf '%s\n' 'fixture skill' > "$FIXTURE_HOME/$skill_home/skills/ct/SKILL.md"
+    skill_root="$FIXTURE_HOME/$skill_home/skills"
+    mkdir -p \
+        "$skill_root/ct/bin" \
+        "$skill_root/speckit-clarify" \
+        "$skill_root/claude-session-driver" \
+        "$skill_root/speckit-claude-driver"
+    printf '%s\n' 'fixture skill' > "$skill_root/ct/SKILL.md"
+    printf '%s\n' 'fixture: yaml' > "$skill_root/ct/config.yaml"
+    printf '%s\n' 'fixture: yml' > "$skill_root/ct/config.yml"
+    printf '%s\n' '{"fixture": "json"}' > "$skill_root/ct/config.json"
+    printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\\n" "skill script ran"' > "$skill_root/ct/bin/run.sh"
+    chmod 0777 \
+        "$skill_root/ct" \
+        "$skill_root/ct/bin" \
+        "$skill_root/ct/SKILL.md" \
+        "$skill_root/ct/config.yaml" \
+        "$skill_root/ct/config.yml" \
+        "$skill_root/ct/config.json" \
+        "$skill_root/ct/bin/run.sh"
+
+    cat > "$skill_root/speckit-clarify/SKILL.md" <<'EOF'
+---
+description: Ask up to 5 highly targeted clarification questions.
+---
+Generate a prioritized queue of candidate clarification questions (maximum 5).
+- Maximum of 5 total questions across the whole session.
+- Use 2–5 distinct, mutually exclusive options.
+- Constrain short answers to "Answer in <=5 words".
+- If more than 5 categories remain unresolved, select the top 5.
+- Present EXACTLY ONE question at a time.
+- Stop when you reach 5 asked questions.
+- Total asked questions ≤ 5.
+- Never exceed 5 total asked questions.
+EOF
+
+    printf '%s\n' 'DANGEROUS DRIVER MUST NOT BE COPIED' > "$skill_root/claude-session-driver/SKILL.md"
+    printf '%s\n' 'DANGEROUS DRIVER MUST NOT BE COPIED' > "$skill_root/speckit-claude-driver/SKILL.md"
+
+    for action in apply-change archive-change explore propose; do
+        mkdir -p "$skill_root/openspec-$action"
+        printf '%s\n' 'DIRECT OPEN SPEC IMPLEMENTATION MUST NOT BE COPIED' > "$skill_root/openspec-$action/SKILL.md"
+    done
 done
 
 printf '%s\n' '# Fixture Repository' 'hand-written content must survive bootstrap' > "$REPO_DIR/AGENTS.md"
@@ -231,9 +303,61 @@ for skill_home in .claude .codex .agents; do
     skill_path="$REPO_DIR/$skill_home/skills/ct"
     assert_regular_directory "$skill_path" "skill is a regular directory: $skill_home"
     assert_file "$skill_path/SKILL.md" "skill contents are copied: $skill_home"
+    assert_mode "$skill_path" 755 "copied skill directory is portable: $skill_home"
+    assert_mode "$skill_path/bin" 755 "copied nested skill directory is portable: $skill_home"
+    for declarative_file in SKILL.md config.yaml config.yml config.json; do
+        assert_mode "$skill_path/$declarative_file" 644 "copied declarative file is portable: $skill_home/$declarative_file"
+    done
+    if [[ -x "$skill_path/bin/run.sh" ]]; then
+        pass "copied executable script stays executable: $skill_home"
+    else
+        fail "copied executable script stays executable: $skill_home"
+    fi
+    assert_equal "$("$skill_path/bin/run.sh")" 'skill script ran' "copied executable script runs: $skill_home"
+
+    clarify_path="$REPO_DIR/$skill_home/skills/speckit-clarify/SKILL.md"
+    assert_file "$clarify_path" "clarify skill is copied: $skill_home"
+    assert_contains "$clarify_path" 'up to 25 highly targeted clarification questions' "clarify description uses shared quota: $skill_home"
+    assert_contains "$clarify_path" 'maximum 25' "clarify queue uses shared quota: $skill_home"
+    assert_contains "$clarify_path" 'Maximum of 25 total questions' "clarify session uses shared quota: $skill_home"
+    assert_contains "$clarify_path" 'If more than 25 categories remain unresolved, select the top 25' "clarify prioritization uses shared quota: $skill_home"
+    assert_contains "$clarify_path" 'Present EXACTLY ONE question at a time' "clarify asks one question at a time: $skill_home"
+    assert_contains "$clarify_path" 'reach 25 asked questions' "clarify stop condition uses shared quota: $skill_home"
+    assert_contains "$clarify_path" 'Total asked questions ≤ 25' "clarify validation uses shared quota: $skill_home"
+    assert_contains "$clarify_path" 'Never exceed 25 total asked questions' "clarify behavior rule uses shared quota: $skill_home"
+    assert_contains "$clarify_path" '2–5 distinct, mutually exclusive options' "clarify preserves option-count limit: $skill_home"
+    assert_contains "$clarify_path" 'Answer in <=5 words' "clarify preserves answer-length limit: $skill_home"
+
+    assert_not_exists "$REPO_DIR/$skill_home/skills/claude-session-driver" "Claude session driver is excluded: $skill_home"
+    assert_not_exists "$REPO_DIR/$skill_home/skills/speckit-claude-driver" "Speckit Claude driver is excluded: $skill_home"
+done
+
+OPEN_SPEC_SKILLS=(
+    'apply-change:apply'
+    'archive-change:archive'
+    'explore:explore'
+    'propose:propose'
+)
+for skill_home in .claude .codex .agents; do
+    if [[ "$skill_home" == '.claude' ]]; then
+        command_prefix='../../commands/opsx'
+    else
+        command_prefix='../../../.claude/commands/opsx'
+    fi
+    for skill_mapping in "${OPEN_SPEC_SKILLS[@]}"; do
+        skill_name="${skill_mapping%%:*}"
+        action="${skill_mapping##*:}"
+        wrapper="$REPO_DIR/$skill_home/skills/openspec-$skill_name/SKILL.md"
+        assert_file "$wrapper" "OpenSpec skill wrapper exists: $skill_home/$action"
+        assert_contains "$wrapper" "$command_prefix/$action.md" "OpenSpec wrapper uses portable canonical path: $skill_home/$action"
+        assert_contains "$wrapper" 'source workflow' "OpenSpec wrapper names the command as source workflow: $skill_home/$action"
+        assert_contains "$wrapper" 'Do not execute implementation tasks from OpenSpec artifacts' "OpenSpec wrapper rejects OpenSpec executable task authority: $skill_home/$action"
+        assert_not_contains "$wrapper" 'DIRECT OPEN SPEC IMPLEMENTATION MUST NOT BE COPIED' "OpenSpec wrapper does not copy stale implementation: $skill_home/$action"
+    done
 done
 
 snapshot_repo "$REPO_DIR" > "$FIRST_SNAPSHOT"
+snapshot_repo_modes "$REPO_DIR" > "$FIRST_MODE_SNAPSHOT"
 
 if ! python3 "$SETUP_SCRIPT" "${BOOTSTRAP_FLAGS[@]}" > "$SECOND_LOG" 2>&1; then
     printf '%s\n' 'FAIL: second bootstrap invocation failed:'
@@ -242,12 +366,50 @@ if ! python3 "$SETUP_SCRIPT" "${BOOTSTRAP_FLAGS[@]}" > "$SECOND_LOG" 2>&1; then
 fi
 
 snapshot_repo "$REPO_DIR" > "$SECOND_SNAPSHOT"
+snapshot_repo_modes "$REPO_DIR" > "$SECOND_MODE_SNAPSHOT"
 
 if cmp -s "$FIRST_SNAPSHOT" "$SECOND_SNAPSHOT"; then
     pass 'second bootstrap preserves repository file hashes'
 else
     fail 'second bootstrap changes repository file hashes'
 fi
+
+if cmp -s "$FIRST_MODE_SNAPSHOT" "$SECOND_MODE_SNAPSHOT"; then
+    pass 'second bootstrap preserves repository modes'
+else
+    fail 'second bootstrap changes repository modes'
+fi
+
+assert_equal "$(grep -Fc '<!-- OPENSPEC-SPECKIT-GLOBAL:START -->' "$REPO_DIR/AGENTS.md")" 1 'second bootstrap keeps one managed start marker'
+assert_equal "$(grep -Fc '<!-- OPENSPEC-SPECKIT-GLOBAL:END -->' "$REPO_DIR/AGENTS.md")" 1 'second bootstrap keeps one managed end marker'
+assert_contains "$REPO_DIR/AGENTS.md" 'hand-written content must survive bootstrap' 'second bootstrap preserves content outside managed markers'
+
+printf '%s\n' 'Given: a generated OpenSpec wrapper is replaced by a repository customization'
+CUSTOM_WRAPPER="$REPO_DIR/.codex/skills/openspec-propose/SKILL.md"
+printf '%s\n' 'repository-specific OpenSpec proposal customization' > "$CUSTOM_WRAPPER"
+
+printf '%s\n' 'When: bootstrap reruns without --force'
+if ! python3 "$SETUP_SCRIPT" "${BOOTSTRAP_FLAGS[@]}" > "$TMPDIR_ROOT/custom-wrapper.log" 2>&1; then
+    printf '%s\n' 'FAIL: customized-wrapper bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/custom-wrapper.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: the repository customization is preserved'
+assert_contains "$CUSTOM_WRAPPER" 'repository-specific OpenSpec proposal customization' 'normal rerun preserves customized OpenSpec skill'
+assert_not_contains "$CUSTOM_WRAPPER" 'source workflow' 'normal rerun does not replace customized OpenSpec skill'
+
+printf '%s\n' 'When: bootstrap reruns with --force'
+if ! python3 "$SETUP_SCRIPT" "${BOOTSTRAP_FLAGS[@]}" --force > "$TMPDIR_ROOT/forced-wrapper.log" 2>&1; then
+    printf '%s\n' 'FAIL: forced customized-wrapper bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/forced-wrapper.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: the governed wrapper is restored'
+assert_contains "$CUSTOM_WRAPPER" '../../../.claude/commands/opsx/propose.md' '--force restores the portable canonical command path'
+assert_contains "$CUSTOM_WRAPPER" 'source workflow' '--force restores the governed OpenSpec wrapper'
+assert_not_contains "$CUSTOM_WRAPPER" 'repository-specific OpenSpec proposal customization' '--force removes the repository customization'
 
 printf '%s\n' 'Given: a fresh repository and protocol root with sentinel files'
 DRY_RUN_HOME="$TMPDIR_ROOT/dry-run-home"
