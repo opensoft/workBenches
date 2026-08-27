@@ -26,8 +26,8 @@ Validate only the branch name's final path segment. Namespace segments before th
 
 The final segment must start with one of these patterns:
 
-1. **Sequential**: `^[0-9]{3,}-` (e.g., `001-feature-name`, `042-fix-bug`, `feature/1000-big-feature`)
-2. **Timestamp**: `^[0-9]{8}-[0-9]{6}-` (e.g., `20260319-143022-feature-name`, `release/20260319-143022-feature-name`)
+1. **Sequential**: `^[0-9]{3,}-.+` (e.g., `001-feature-name`, `042-fix-bug`, `feature/1000-big-feature`)
+2. **Timestamp**: `^[0-9]{8}-[0-9]{6}-.+` (e.g., `20260319-143022-feature-name`, `release/20260319-143022-feature-name`)
 
 ## Execution
 
