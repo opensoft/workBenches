@@ -16,6 +16,7 @@ AGENT_PROTOCOL_ROOT="$TMPDIR_ROOT/agent-protocol"
 REPO_DIR="$TMPDIR_ROOT/repo"
 REPO_SKILL_PATH="$REPO_DIR/.agents/skills/ct"
 EXPLORE_COMMAND="$REPO_DIR/.claude/commands/opsx/explore.md"
+APPLY_COMMAND="$REPO_DIR/.claude/commands/opsx/apply.md"
 REGISTRY_PATH="$REPO_DIR/.specify/extensions/.registry"
 EXTENSION_MANIFEST="$REPO_DIR/.specify/extensions/git/extension.yml"
 WORKFLOW_PROTOCOL="$AGENT_PROTOCOL_ROOT/protocols/openspec-speckit-workflow.md"
@@ -277,6 +278,11 @@ else
 fi
 assert_contains "$EXPLORE_COMMAND" 'governance/handoff milestones only' 'explore limits OpenSpec tasks to governance handoff'
 assert_not_contains "$EXPLORE_COMMAND" '| New work identified | `tasks.md` |' 'explore rejects direct OpenSpec task routing'
+assert_file "$APPLY_COMMAND" 'generated apply command exists'
+assert_contains "$APPLY_COMMAND" 'Only the lead may edit the linked Speckit `tasks.md`' 'apply reserves the shared task ledger for the lead'
+assert_contains "$APPLY_COMMAND" 'Do not edit the linked Speckit `tasks.md`' 'apply forbids teammate writes to the shared task ledger'
+assert_contains "$APPLY_COMMAND" 'completed task IDs, changed files, tests run, and blockers' 'apply requires structured teammate evidence'
+assert_contains "$APPLY_COMMAND" 'verify each package result before marking' 'apply requires lead verification before task completion'
 assert_file "$EXTENSION_MANIFEST" 'installed Git extension manifest exists'
 assert_file "$REGISTRY_PATH" 'extension registry exists'
 

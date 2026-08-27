@@ -87,6 +87,9 @@ Group independent tasks into **work packages**, where each package:
 - Has **zero file overlap** with other packages
 - Has its internal tasks ordered by dependency
 
+The linked Speckit `tasks.md` is lead-owned coordination state, not a package
+file. Only the lead may edit the linked Speckit `tasks.md`.
+
 Example grouping:
 ```
 Package A (buffer-service):     Tasks 1.1, 1.2, 1.3, 2.1, 2.2 → touches buffer_service.dart, buffer_manifest.dart
@@ -134,17 +137,18 @@ prompt must include:
 3. Full file paths for all context files (proposal, design, specs, clarifications)
 4. The specific tasks to implement, in order
 5. The files they own (create/modify only these)
-6. Instruction to mark tasks complete with `- [ ]` → `- [x]` in the linked Speckit `tasks.md` — **but only their assigned tasks**
-7. Instruction to report back when done or blocked
+6. Instruction: Do not edit the linked Speckit `tasks.md`
+7. Instruction to report completed task IDs, changed files, tests run, and blockers
 
 **CRITICAL file ownership rules:**
 - Each agent ONLY modifies files in its assigned package
-- Speckit `tasks.md` checkbox updates: each agent updates ONLY its own task checkboxes
+- The linked Speckit `tasks.md` is excluded from every teammate's file ownership
 - Agents never add implementation tasks or completion checkboxes to the OpenSpec governance record
 - If an agent discovers it needs to modify a file owned by another agent, it reports the dependency instead of making the change
 
 ### Monitor & coordinate
 - Wait for agents to complete or report blockers
+- For every teammate report, verify each package result before marking its reported task IDs complete in the linked Speckit `tasks.md`
 - If an agent is blocked on another package, check if the blocking package is done
 - When a wave completes, check for newly-unblocked packages and spawn the next wave
 - Handle conflicts: if two agents report needing the same file, reassign one
