@@ -1,5 +1,5 @@
 #!/bin/bash
-# Verify ct launcher helpers apply the expected permissive defaults per CLI.
+# Verify ct launcher helpers use safe defaults while preserving explicit args.
 
 set -euo pipefail
 
@@ -111,13 +111,13 @@ cts --cts-extra
 grep -Fx "pwd=$TARGET_DIR" "$LOG_DIR/claude.log" >/dev/null
 grep -Fx "arg=--model" "$LOG_DIR/claude.log" >/dev/null
 grep -Fx "arg=opus" "$LOG_DIR/claude.log" >/dev/null
-grep -Fx "arg=--dangerously-skip-permissions" "$LOG_DIR/claude.log" >/dev/null
-grep -Fx "arg=--permission-mode" "$LOG_DIR/claude.log" >/dev/null
-grep -Fx "arg=bypassPermissions" "$LOG_DIR/claude.log" >/dev/null
+! grep -Fx "arg=--dangerously-skip-permissions" "$LOG_DIR/claude.log" >/dev/null
+! grep -Fx "arg=--permission-mode" "$LOG_DIR/claude.log" >/dev/null
+! grep -Fx "arg=bypassPermissions" "$LOG_DIR/claude.log" >/dev/null
 grep -Fx "arg=--claude-extra" "$LOG_DIR/claude.log" >/dev/null
 
 grep -Fx "pwd=$TARGET_DIR" "$LOG_DIR/codex.log" >/dev/null
-[ "$(grep -c '^arg=--dangerously-bypass-approvals-and-sandbox$' "$LOG_DIR/codex.log")" -eq 2 ]
+[ "$(grep -c '^arg=--dangerously-bypass-approvals-and-sandbox$' "$LOG_DIR/codex.log")" -eq 0 ]
 [ "$(grep -c '^arg=-m$' "$LOG_DIR/codex.log")" -eq 2 ]
 [ "$(grep -c '^arg=gpt-5.4$' "$LOG_DIR/codex.log")" -eq 2 ]
 [ "$(grep -c '^arg=-c$' "$LOG_DIR/codex.log")" -eq 2 ]
@@ -126,9 +126,9 @@ grep -Fx "arg=--codex-extra" "$LOG_DIR/codex.log" >/dev/null
 grep -Fx "arg=--cts-extra" "$LOG_DIR/codex.log" >/dev/null
 
 grep -Fx "pwd=$TARGET_DIR" "$LOG_DIR/gemini.log" >/dev/null
-grep -Fx "arg=--yolo" "$LOG_DIR/gemini.log" >/dev/null
-grep -Fx "arg=--approval-mode" "$LOG_DIR/gemini.log" >/dev/null
-grep -Fx "arg=yolo" "$LOG_DIR/gemini.log" >/dev/null
+! grep -Fx "arg=--yolo" "$LOG_DIR/gemini.log" >/dev/null
+! grep -Fx "arg=--approval-mode" "$LOG_DIR/gemini.log" >/dev/null
+! grep -Fx "arg=yolo" "$LOG_DIR/gemini.log" >/dev/null
 grep -Fx "arg=--model" "$LOG_DIR/gemini.log" >/dev/null
 grep -Fx "arg=gemini-2.5-pro" "$LOG_DIR/gemini.log" >/dev/null
 grep -Fx "arg=--gemini-extra" "$LOG_DIR/gemini.log" >/dev/null
@@ -160,9 +160,9 @@ cts --fallback-cts-extra
 grep -Fx "pwd=$FALLBACK_TARGET" "$LOG_DIR/claude.log" >/dev/null
 [ "$(grep -c '^arg=--model$' "$LOG_DIR/claude.log")" -eq 3 ]
 [ "$(grep -c '^arg=opus$' "$LOG_DIR/claude.log")" -eq 3 ]
-[ "$(grep -c '^arg=--dangerously-skip-permissions$' "$LOG_DIR/claude.log")" -eq 3 ]
-[ "$(grep -c '^arg=--permission-mode$' "$LOG_DIR/claude.log")" -eq 3 ]
-[ "$(grep -c '^arg=bypassPermissions$' "$LOG_DIR/claude.log")" -eq 3 ]
+[ "$(grep -c '^arg=--dangerously-skip-permissions$' "$LOG_DIR/claude.log")" -eq 0 ]
+[ "$(grep -c '^arg=--permission-mode$' "$LOG_DIR/claude.log")" -eq 0 ]
+[ "$(grep -c '^arg=bypassPermissions$' "$LOG_DIR/claude.log")" -eq 0 ]
 [ "$(grep -c '^arg=--teammate-mode$' "$LOG_DIR/claude.log")" -eq 3 ]
 [ "$(grep -c '^arg=tmux$' "$LOG_DIR/claude.log")" -eq 3 ]
 grep -Fx "arg=--fallback-claude-extra" "$LOG_DIR/claude.log" >/dev/null

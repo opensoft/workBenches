@@ -116,8 +116,6 @@ _speckit_worktree_start_claude() {
 
   _speckit_worktree_start_cli claude "$target" \
     --model opus \
-    --dangerously-skip-permissions \
-    --permission-mode bypassPermissions \
     --teammate-mode tmux \
     "$@"
 }
@@ -127,7 +125,6 @@ _speckit_worktree_start_codex() {
   shift || true
 
   _speckit_worktree_start_cli codex "$target" \
-    --dangerously-bypass-approvals-and-sandbox \
     -m gpt-5.4 \
     -c 'model_reasoning_effort="high"' \
     "$@"
@@ -138,8 +135,6 @@ _speckit_worktree_start_gemini() {
   shift || true
 
   _speckit_worktree_start_cli gemini "$target" \
-    --yolo \
-    --approval-mode yolo \
     --model gemini-2.5-pro \
     "$@"
 }
