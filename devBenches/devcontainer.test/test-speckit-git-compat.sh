@@ -120,7 +120,7 @@ test_namespaced_branch_validator() {
         printf 'assertion failed: valid namespaced branch rejected\n' >&2
         return 1
     fi
-    for malformed_branch in 'feature/008' 'feature/next'; do
+    for malformed_branch in 'feature/008' 'feature/next' 'feature/008-' 'release/20260319-143022-'; do
         if check_feature_branch "$malformed_branch" true >/dev/null 2>&1; then
             printf 'assertion failed: malformed branch accepted: %s\n' "$malformed_branch" >&2
             return 1

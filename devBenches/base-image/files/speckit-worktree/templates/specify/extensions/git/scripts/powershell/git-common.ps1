@@ -39,8 +39,10 @@ function Test-FeatureBranch {
     }
 
     # Accept sequential (>=3 digits followed by hyphen) or timestamp (YYYYMMDD-HHMMSS-*)
-    $isSequential = ($featureSegment -match '^[0-9]{3,}-') -and (-not $hasMalformedTimestamp)
-    $isTimestamp = $featureSegment -match '^\d{8}-\d{6}-'
+    $isSequential = ($featureSegment -match '^[0-9]{3,}-.+') -and
+                    ($featureSegment -notmatch '^\d{8}-\d{6}-') -and
+                    (-not $hasMalformedTimestamp)
+    $isTimestamp = $featureSegment -match '^\d{8}-\d{6}-.+'
 
     if ($isSequential -or $isTimestamp) {
         return $true

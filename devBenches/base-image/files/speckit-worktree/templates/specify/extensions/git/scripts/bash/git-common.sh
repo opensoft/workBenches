@@ -32,7 +32,8 @@ check_feature_branch() {
     fi
 
     # Accept sequential (>=3 digits followed by hyphen) or timestamp (YYYYMMDD-HHMMSS-*)
-    if [[ "$feature_segment" =~ ^[0-9]{3,}- ]] || [[ "$feature_segment" =~ ^[0-9]{8}-[0-9]{6}- ]]; then
+    if { [[ "$feature_segment" =~ ^[0-9]{3,}-.+ ]] && [[ ! "$feature_segment" =~ ^[0-9]{8}-[0-9]{6}- ]]; } \
+        || [[ "$feature_segment" =~ ^[0-9]{8}-[0-9]{6}-.+ ]]; then
         return 0
     fi
 
