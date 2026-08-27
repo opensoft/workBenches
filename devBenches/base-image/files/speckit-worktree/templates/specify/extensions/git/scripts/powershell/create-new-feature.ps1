@@ -603,13 +603,23 @@ function Get-Utf8ByteCount {
     return [System.Text.Encoding]::UTF8.GetByteCount($Value)
 }
 
+function Remove-LastTextElement {
+    param([string]$Value)
+
+    $textElementStarts = [System.Globalization.StringInfo]::ParseCombiningCharacters($Value)
+    if ($textElementStarts.Length -le 1) {
+        return ''
+    }
+    return $Value.Substring(0, $textElementStarts[$textElementStarts.Length - 1])
+}
+
 $maxBranchLength = 244
 $branchNameUtf8ByteCount = Get-Utf8ByteCount $branchName
 if ($branchNameUtf8ByteCount -gt $maxBranchLength) {
     $originalBranchName = $branchName
     $truncatedSuffix = $branchSuffix
     while ((Get-Utf8ByteCount -Value $branchName) -gt $maxBranchLength -and $truncatedSuffix.Length -gt 0) {
-        $truncatedSuffix = $truncatedSuffix.Substring(0, $truncatedSuffix.Length - 1) -replace '-$', ''
+        $truncatedSuffix = (Remove-LastTextElement -Value $truncatedSuffix) -replace '-$', ''
         $branchName = New-BranchName -FeatureNum $featureNum -BranchSuffix $truncatedSuffix
     }
     if ((Get-Utf8ByteCount -Value $branchName) -gt $maxBranchLength) {
