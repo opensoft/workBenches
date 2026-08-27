@@ -204,6 +204,7 @@ test_branch_truncation_rejects_empty_slug() {
     fi
 }
 test_powershell_repository_and_truncation_source_safety() {
+    local negative_guard_line timestamp_number_line mutation_line
     # Given: PowerShell is unavailable, so its critical boundaries are inspected as source.
     # When: repository detection and truncation guards are located.
     # Then: Git detection is rooted explicitly and truncation cannot emit an empty slug.
@@ -218,6 +219,20 @@ test_powershell_repository_and_truncation_source_safety() {
     if ! grep -Fq 'if ([string]::IsNullOrWhiteSpace($truncatedSuffix)) {' "$POWERSHELL_FEATURE_SCRIPT" \
         || ! grep -Fq 'Branch name truncation removed the feature slug' "$POWERSHELL_FEATURE_SCRIPT"; then
         printf 'assertion failed: PowerShell truncation lacks a nonempty slug guard\n' >&2
+        return 1
+    fi
+    negative_guard_line="$(grep -nF "if (\$PSBoundParameters.ContainsKey('Number') -and \$Number -lt 0) {" "$POWERSHELL_FEATURE_SCRIPT" | cut -d: -f1)"
+    timestamp_number_line="$(grep -nF "if (\$Timestamp -and \$PSBoundParameters.ContainsKey('Number')) {" "$POWERSHELL_FEATURE_SCRIPT" | cut -d: -f1)"
+    mutation_line="$(grep -nF 'Set-Location $repoRoot' "$POWERSHELL_FEATURE_SCRIPT" | cut -d: -f1)"
+    if [ -z "$negative_guard_line" ] \
+        || ! grep -Fq -- '-Number must be zero or greater' "$POWERSHELL_FEATURE_SCRIPT"; then
+        printf 'assertion failed: PowerShell lacks an explicit negative -Number guard\n' >&2
+        return 1
+    fi
+    if [ -z "$timestamp_number_line" ] || [ -z "$mutation_line" ] \
+        || [ "$negative_guard_line" -ge "$timestamp_number_line" ] \
+        || [ "$negative_guard_line" -ge "$mutation_line" ]; then
+        printf 'assertion failed: PowerShell negative -Number guard does not precede timestamp handling and mutation\n' >&2
         return 1
     fi
 }

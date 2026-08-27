@@ -42,6 +42,11 @@ if ($Help) {
     exit 0
 }
 
+if ($PSBoundParameters.ContainsKey('Number') -and $Number -lt 0) {
+    Write-Error "Error: -Number must be zero or greater"
+    exit 1
+}
+
 if (-not $FeatureDescription -or $FeatureDescription.Count -eq 0) {
     Write-Error "Usage: ./create-new-feature.ps1 [-Json] [-DryRun] [-AllowExistingBranch] [-ShortName <name>] [-Number N] [-Timestamp] <feature description>"
     exit 1
