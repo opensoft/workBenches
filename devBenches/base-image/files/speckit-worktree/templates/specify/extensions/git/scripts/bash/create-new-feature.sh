@@ -373,6 +373,17 @@ resolve_branch_template() {
 validate_branch_template() {
     local template="$1"
     local feature_segment="${template##*/}"
+    local unsupported="$template"
+    unsupported=${unsupported//\{author\}/}
+    unsupported=${unsupported//\{app\}/}
+    unsupported=${unsupported//\{number\}/}
+    unsupported=${unsupported//\{slug\}/}
+    case "$unsupported" in
+        *"{"*|*"}"*)
+            >&2 echo "Error: branch_template contains an unsupported token; supported tokens are {author}, {app}, {number}, and {slug}."
+            exit 1
+            ;;
+    esac
     case "$template" in
         *"{number}"*) ;;
         *)

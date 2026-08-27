@@ -346,6 +346,13 @@ function Expand-BranchTemplate {
 function Assert-BranchTemplateValid {
     param([string]$Template)
 
+    $unsupported = $Template
+    foreach ($token in @('{author}', '{app}', '{number}', '{slug}')) {
+        $unsupported = $unsupported.Replace($token, '')
+    }
+    if ($unsupported.Contains('{') -or $unsupported.Contains('}')) {
+        throw "branch_template contains an unsupported token; supported tokens are {author}, {app}, {number}, and {slug}."
+    }
     if (-not $Template.Contains('{number}')) {
         throw "branch_template must include the {number} token so generated branches remain valid feature branches."
     }

@@ -95,6 +95,22 @@ test_exact_branch_override() {
     assert_equal "$expected_path" "$worktree_path" 'exact override worktree' || return 1
     assert_worktree "$branch" "$worktree_path"
 }
+
+test_unsupported_template_token() {
+    local repo="$FIXTURE_ROOT/unsupported-token" config=$'checkout_mode: worktree\nbase_branch: main\nworktree_root: ../unsupported-worktrees\nbranch_template: {number}-{slgu}' stderr_file="$FIXTURE_ROOT/unsupported-token.stderr"
+    # Given: a branch template contains a misspelled, unsupported token.
+    initialize_fixture "$repo" "$config" || return 1
+    # When: feature creation evaluates the template.
+    if invoke_feature "$repo" 'Reject unsupported token' "$stderr_file"; then
+        printf 'assertion failed: unsupported template token unexpectedly succeeded\n' >&2
+        return 1
+    fi
+    # Then: configuration validation fails before creating a branch or worktree.
+    if ! grep -q 'unsupported token' "$stderr_file" || [ -e "$FIXTURE_ROOT/unsupported-worktrees" ]; then
+        printf 'assertion failed: unsupported token was not rejected before mutation\n' >&2
+        return 1
+    fi
+}
 test_namespaced_branch_validator() {
     # Given: the bundled Bash Git common functions are loaded.
     # When: valid and malformed namespaced final segments are checked.
@@ -210,6 +226,7 @@ run_scenario() {
 }
 run_scenario 'branch prefix traversal is rejected' test_branch_prefix_traversal
 run_scenario 'exact branch override ignores invalid template' test_exact_branch_override
+run_scenario 'unsupported template token is rejected' test_unsupported_template_token
 run_scenario 'namespaced branch validator' test_namespaced_branch_validator
 run_scenario '244-byte branch truncation' test_branch_truncation
 run_scenario 'dry-run non-mutation' test_dry_run_non_mutation
