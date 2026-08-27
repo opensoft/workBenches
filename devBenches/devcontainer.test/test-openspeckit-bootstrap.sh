@@ -283,6 +283,8 @@ assert_contains "$APPLY_COMMAND" 'Only the lead may edit the linked Speckit `tas
 assert_contains "$APPLY_COMMAND" 'Do not edit the linked Speckit `tasks.md`' 'apply forbids teammate writes to the shared task ledger'
 assert_contains "$APPLY_COMMAND" 'completed task IDs, changed files, tests run, and blockers' 'apply requires structured teammate evidence'
 assert_contains "$APPLY_COMMAND" 'verify each package result before marking' 'apply requires lead verification before task completion'
+assert_contains "$APPLY_COMMAND" 'Only the lead may edit or check off the linked Speckit `tasks.md`' 'apply guardrails reserve task edits and checkoffs for the lead'
+assert_not_contains "$APPLY_COMMAND" 'Each agent only checks off its own assigned Speckit tasks' 'apply contains no teammate task-checkoff contradiction'
 assert_file "$EXTENSION_MANIFEST" 'installed Git extension manifest exists'
 assert_file "$REGISTRY_PATH" 'extension registry exists'
 

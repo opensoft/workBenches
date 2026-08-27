@@ -226,7 +226,7 @@ What would you like to do?
 - **Analyze before parallelizing** — Don't blindly spawn agents. Build the dependency graph first.
 - **Zero file overlap between agents** — This is the #1 rule. If two packages share a file, merge them into one package.
 - **Single task authority** — Only the linked Speckit `tasks.md` contains executable implementation tasks. OpenSpec contains governance and handoff state only.
-- **Speckit tasks.md ownership** — Each agent only checks off its own assigned Speckit tasks. The lead can check off Speckit integration tasks.
+- **Speckit tasks.md ownership** — Only the lead may edit or check off the linked Speckit `tasks.md`, after verifying the implementation and evidence reported for each task.
 - **Keep going until done or blocked** — Don't stop between tasks unless there's a reason.
 - **Read all context before starting** — Agents must read the design, specs, and clarifications relevant to their package.
 - **Pause on ambiguity** — Don't guess. Pause and ask.
