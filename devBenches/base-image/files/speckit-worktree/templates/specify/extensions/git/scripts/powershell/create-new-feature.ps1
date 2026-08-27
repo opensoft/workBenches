@@ -226,18 +226,11 @@ if (Get-Command Get-RepoRoot -ErrorAction SilentlyContinue) {
     throw "Could not determine repository root."
 }
 
-# Check if git is available
-if (Get-Command Test-HasGit -ErrorAction SilentlyContinue) {
-    # Call without parameters for compatibility with core common.ps1 (no -RepoRoot param)
-    # and git-common.ps1 (has -RepoRoot param with default).
-    $hasGit = Test-HasGit
-} else {
-    try {
-        git -C $repoRoot rev-parse --is-inside-work-tree 2>$null | Out-Null
-        $hasGit = ($LASTEXITCODE -eq 0)
-    } catch {
-        $hasGit = $false
-    }
+try {
+    git -C $repoRoot rev-parse --is-inside-work-tree 2>$null | Out-Null
+    $hasGit = ($LASTEXITCODE -eq 0)
+} catch {
+    $hasGit = $false
 }
 
 $configFile = Join-Path $repoRoot '.specify/extensions/git/git-config.yml'
@@ -621,6 +614,13 @@ if ($branchNameUtf8ByteCount -gt $maxBranchLength) {
     while ((Get-Utf8ByteCount -Value $branchName) -gt $maxBranchLength -and $truncatedSuffix.Length -gt 0) {
         $truncatedSuffix = (Remove-LastTextElement -Value $truncatedSuffix) -replace '-$', ''
         $branchName = New-BranchName -FeatureNum $featureNum -BranchSuffix $truncatedSuffix
+    }
+    $featureSegment = ($branchName -split '/')[-1]
+    if ([string]::IsNullOrWhiteSpace($truncatedSuffix)) {
+        throw "Branch name truncation removed the feature slug; shorten branch_prefix or branch_template."
+    }
+    if ($featureSegment -eq "$featureNum-") {
+        throw "Branch name truncation left the generated branch ending at the number separator; shorten branch_prefix or branch_template."
     }
     if ((Get-Utf8ByteCount -Value $branchName) -gt $maxBranchLength) {
         throw "Branch template prefix exceeds GitHub's 244-byte branch name limit."

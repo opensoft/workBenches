@@ -8,10 +8,11 @@ if [ ! -d "$TEMPLATE_ROOT" ]; then
     TEMPLATE_ROOT="/usr/local/share/speckit-worktree/templates"
 fi
 FEATURE_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/bash/create-new-feature.sh"
+POWERSHELL_FEATURE_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/powershell/create-new-feature.ps1"
 GIT_COMMON_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/bash/git-common.sh"
 FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/speckit-git-compat.XXXXXX")"
 trap 'rm -rf "$FIXTURE_ROOT"' EXIT
-if [ ! -x "$FEATURE_SCRIPT" ] || [ ! -f "$GIT_COMMON_SCRIPT" ]; then
+if [ ! -x "$FEATURE_SCRIPT" ] || [ ! -f "$POWERSHELL_FEATURE_SCRIPT" ] || [ ! -f "$GIT_COMMON_SCRIPT" ]; then
     printf 'Speckit Git templates are missing: %s\n' "$TEMPLATE_ROOT" >&2
     exit 1
 fi
@@ -127,6 +128,39 @@ test_namespaced_branch_validator() {
         fi
     done
 }
+test_unknown_option_rejected_before_mutation() {
+    local repo="$FIXTURE_ROOT/unknown-option" config=$'checkout_mode: worktree\nbase_branch: main\nworktree_root: ../unknown-option-worktrees' stderr_file="$FIXTURE_ROOT/unknown-option.stderr"
+    # Given: a clean worktree fixture with no feature branches.
+    initialize_fixture "$repo" "$config" || return 1
+    # When: feature creation receives an unrecognized option.
+    if (cd "$repo" && env -u GIT_BRANCH_NAME bash "$FEATURE_SCRIPT" --json --bogus 'Reject unknown option' 2>"$stderr_file"); then
+        printf 'assertion failed: unknown option unexpectedly succeeded\n' >&2
+        return 1
+    fi
+    # Then: the option is identified and no branch or worktree is created.
+    if ! grep -q 'unknown option.*--bogus' "$stderr_file"; then
+        printf 'assertion failed: unknown option error was not reported\n' >&2
+        return 1
+    fi
+    assert_equal 'main' "$(git -C "$repo" for-each-ref --format='%(refname:short)' refs/heads)" 'branches after unknown option' || return 1
+    if [ -e "$FIXTURE_ROOT/unknown-option-worktrees" ]; then
+        printf 'assertion failed: unknown option created a worktree root\n' >&2
+        return 1
+    fi
+}
+test_description_option_sentinel() {
+    local repo="$FIXTURE_ROOT/description-sentinel" config=$'checkout_mode: worktree\nbase_branch: main\nworktree_root: ../description-sentinel-worktrees' stderr_file="$FIXTURE_ROOT/description-sentinel.stderr" branch
+    # Given: a fixture where description text begins with an option-shaped word.
+    initialize_fixture "$repo" "$config" || return 1
+    # When: -- ends option parsing before the description.
+    if ! FEATURE_OUTPUT="$(cd "$repo" && env -u GIT_BRANCH_NAME bash "$FEATURE_SCRIPT" --json --dry-run -- --timestamp remains-description 2>"$stderr_file")"; then
+        printf 'description sentinel invocation failed: %s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    # Then: all following arguments contribute to a sequential dry-run description.
+    branch="$(json_field "$FEATURE_OUTPUT" BRANCH_NAME)" || return 1
+    assert_equal '001-timestamp-remains-description' "$branch" 'description after option sentinel'
+}
 test_branch_truncation() {
     local repo="$FIXTURE_ROOT/truncation" config=$'checkout_mode: worktree\nbase_branch: main\nworktree_root: ../truncation-worktrees' stderr_file="$FIXTURE_ROOT/truncation.stderr" long_slug branch worktree_path branch_bytes
     # Given: a worktree fixture and a short-name longer than GitHub's branch limit.
@@ -146,6 +180,46 @@ test_branch_truncation() {
         return 1
     fi
     assert_worktree "$branch" "$worktree_path"
+}
+test_branch_truncation_rejects_empty_slug() {
+    local repo="$FIXTURE_ROOT/empty-truncation" prefix config stderr_file="$FIXTURE_ROOT/empty-truncation.stderr"
+    prefix="$(printf 'p%.0s' {1..239})"
+    config="$(printf 'checkout_mode: worktree\nbase_branch: main\nworktree_root: ../empty-truncation-worktrees\nbranch_prefix: %s\n' "$prefix")"
+    # Given: a disposable dry-run fixture whose prefix leaves no bytes for a slug.
+    initialize_fixture "$repo" "$config" || return 1
+    # When: branch truncation would reduce the generated name to prefix/001-.
+    if invoke_feature "$repo" 'Reject empty truncation slug' "$stderr_file" --dry-run --short-name slug; then
+        printf 'assertion failed: truncation that erased the slug unexpectedly succeeded\n' >&2
+        return 1
+    fi
+    # Then: creation fails with the slug boundary identified and leaves Git untouched.
+    if ! grep -q 'truncation.*slug' "$stderr_file"; then
+        printf 'assertion failed: empty truncation slug error was not reported\n' >&2
+        return 1
+    fi
+    assert_equal 'main' "$(git -C "$repo" for-each-ref --format='%(refname:short)' refs/heads)" 'branches after empty truncation' || return 1
+    if [ -e "$FIXTURE_ROOT/empty-truncation-worktrees" ] || [ -e "$repo/.git/speckit-last-worktree.json" ]; then
+        printf 'assertion failed: empty truncation dry-run mutated state\n' >&2
+        return 1
+    fi
+}
+test_powershell_repository_and_truncation_source_safety() {
+    # Given: PowerShell is unavailable, so its critical boundaries are inspected as source.
+    # When: repository detection and truncation guards are located.
+    # Then: Git detection is rooted explicitly and truncation cannot emit an empty slug.
+    if ! grep -Fq 'git -C $repoRoot rev-parse --is-inside-work-tree' "$POWERSHELL_FEATURE_SCRIPT"; then
+        printf 'assertion failed: PowerShell Git detection is not rooted at repoRoot\n' >&2
+        return 1
+    fi
+    if grep -Eq '\$hasGit[[:space:]]*=[[:space:]]*Test-HasGit' "$POWERSHELL_FEATURE_SCRIPT"; then
+        printf 'assertion failed: PowerShell Git detection still depends on Test-HasGit signatures\n' >&2
+        return 1
+    fi
+    if ! grep -Fq 'if ([string]::IsNullOrWhiteSpace($truncatedSuffix)) {' "$POWERSHELL_FEATURE_SCRIPT" \
+        || ! grep -Fq 'Branch name truncation removed the feature slug' "$POWERSHELL_FEATURE_SCRIPT"; then
+        printf 'assertion failed: PowerShell truncation lacks a nonempty slug guard\n' >&2
+        return 1
+    fi
 }
 test_dry_run_non_mutation() {
     local repo="$FIXTURE_ROOT/dry-run" config=$'checkout_mode: worktree\nbase_branch: main\nworktree_root: ../dry-run-worktrees' stderr_file="$FIXTURE_ROOT/dry-run.stderr" head_before status_before branch worktree_path
@@ -228,7 +302,11 @@ run_scenario 'branch prefix traversal is rejected' test_branch_prefix_traversal
 run_scenario 'exact branch override ignores invalid template' test_exact_branch_override
 run_scenario 'unsupported template token is rejected' test_unsupported_template_token
 run_scenario 'namespaced branch validator' test_namespaced_branch_validator
+run_scenario 'unknown Bash option is rejected before mutation' test_unknown_option_rejected_before_mutation
+run_scenario 'Bash description option sentinel' test_description_option_sentinel
 run_scenario '244-byte branch truncation' test_branch_truncation
+run_scenario 'branch truncation rejects an empty slug' test_branch_truncation_rejects_empty_slug
+run_scenario 'PowerShell repository and truncation source safety' test_powershell_repository_and_truncation_source_safety
 run_scenario 'dry-run non-mutation' test_dry_run_non_mutation
 run_scenario 'branch checkout mode' test_branch_checkout_mode
 run_scenario 'allow-existing-branch idempotency' test_allow_existing_branch_idempotency

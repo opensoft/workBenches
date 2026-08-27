@@ -59,6 +59,14 @@ while [ $i -le $# ]; do
         --timestamp)
             USE_TIMESTAMP=true
             ;;
+        --)
+            i=$((i + 1))
+            while [ $i -le $# ]; do
+                ARGS+=("${!i}")
+                i=$((i + 1))
+            done
+            break
+            ;;
         --help|-h)
             echo "Usage: $0 [--json] [--dry-run] [--allow-existing-branch] [--short-name <name>] [--number N] [--timestamp] <feature_description>"
             echo ""
@@ -86,6 +94,10 @@ while [ $i -le $# ]; do
             echo "  $0 --timestamp --short-name 'user-auth' 'Add user authentication'"
             echo "  GIT_BRANCH_NAME=my-branch $0 'feature description'"
             exit 0
+            ;;
+        -*)
+            echo "Error: unknown option: $arg" >&2
+            exit 1
             ;;
         *)
             ARGS+=("$arg")
@@ -690,6 +702,10 @@ elif [ "$BRANCH_BYTE_LEN" -gt $MAX_BRANCH_LENGTH ]; then
         TRUNCATED_SUFFIX="${TRUNCATED_SUFFIX%-}"
         BRANCH_NAME=$(build_branch_name "$FEATURE_NUM" "$TRUNCATED_SUFFIX")
     done
+    if [ -z "$TRUNCATED_SUFFIX" ] || [ "${BRANCH_NAME##*/}" = "$FEATURE_NUM-" ]; then
+        >&2 echo "Error: Branch name truncation removed the feature slug; shorten branch_prefix or branch_template."
+        exit 1
+    fi
     if [ "$(_byte_length "$BRANCH_NAME")" -gt "$MAX_BRANCH_LENGTH" ]; then
         >&2 echo "Error: Branch template prefix exceeds GitHub's 244-byte branch name limit."
         exit 1
