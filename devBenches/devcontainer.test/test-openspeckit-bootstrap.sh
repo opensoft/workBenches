@@ -127,7 +127,7 @@ snapshot_repo_modes() {
     local repo="$1"
     (
         cd "$repo"
-        find . -path './.git' -prune -o \( -type d -o -type f \) -printf '%m %y %p\n' | sort
+        find . -path './.git' -prune -o \( -type d -o -type f -o -type l \) -printf '%m %y %p %l\n' | sort
     )
 }
 
@@ -143,21 +143,33 @@ for skill_home in .claude .codex .agents; do
     mkdir -p \
         "$skill_root/ct/bin" \
         "$skill_root/speckit-clarify" \
+        "$skill_root/speckit-specify" \
+        "$skill_root/speckit-git-feature" \
         "$skill_root/claude-session-driver" \
         "$skill_root/speckit-claude-driver"
     printf '%s\n' 'fixture skill' > "$skill_root/ct/SKILL.md"
     printf '%s\n' 'fixture: yaml' > "$skill_root/ct/config.yaml"
     printf '%s\n' 'fixture: yml' > "$skill_root/ct/config.yml"
     printf '%s\n' '{"fixture": "json"}' > "$skill_root/ct/config.json"
+    printf '%s\n' 'fixture text' > "$skill_root/ct/notes.txt"
+    printf '%s\n' 'fixture binary data' > "$skill_root/ct/bin/data.bin"
     printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\\n" "skill script ran"' > "$skill_root/ct/bin/run.sh"
+    printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\\n" "extensionless runner ran"' > "$skill_root/ct/bin/runner"
     chmod 0777 \
         "$skill_root/ct" \
         "$skill_root/ct/bin" \
+        "$skill_root/ct/bin/run.sh" \
+        "$skill_root/ct/bin/runner"
+    chmod 0666 \
         "$skill_root/ct/SKILL.md" \
         "$skill_root/ct/config.yaml" \
         "$skill_root/ct/config.yml" \
         "$skill_root/ct/config.json" \
-        "$skill_root/ct/bin/run.sh"
+        "$skill_root/ct/notes.txt" \
+        "$skill_root/ct/bin/data.bin"
+
+    printf '%s\n' 'GLOBAL SKILL MUST NOT OVERRIDE WORKTREE OVERLAY' > "$skill_root/speckit-specify/SKILL.md"
+    printf '%s\n' 'GLOBAL SKILL MUST NOT OVERRIDE WORKTREE OVERLAY' > "$skill_root/speckit-git-feature/SKILL.md"
 
     cat > "$skill_root/speckit-clarify/SKILL.md" <<'EOF'
 ---
@@ -316,12 +328,17 @@ for skill_home in .claude .codex .agents; do
     for declarative_file in SKILL.md config.yaml config.yml config.json; do
         assert_mode "$skill_path/$declarative_file" 644 "copied declarative file is portable: $skill_home/$declarative_file"
     done
+    assert_mode "$skill_path/notes.txt" 644 "copied non-declarative file is portable: $skill_home/notes.txt"
+    assert_mode "$skill_path/bin/data.bin" 644 "copied nested non-executable file is portable: $skill_home/bin/data.bin"
+    assert_mode "$skill_path/bin/run.sh" 755 "copied executable script mode is portable: $skill_home/bin/run.sh"
+    assert_mode "$skill_path/bin/runner" 755 "copied extensionless executable mode is portable: $skill_home/bin/runner"
     if [[ -x "$skill_path/bin/run.sh" ]]; then
         pass "copied executable script stays executable: $skill_home"
     else
         fail "copied executable script stays executable: $skill_home"
     fi
     assert_equal "$("$skill_path/bin/run.sh")" 'skill script ran' "copied executable script runs: $skill_home"
+    assert_equal "$("$skill_path/bin/runner")" 'extensionless runner ran' "copied extensionless executable runs: $skill_home"
 
     clarify_path="$REPO_DIR/$skill_home/skills/speckit-clarify/SKILL.md"
     assert_file "$clarify_path" "clarify skill is copied: $skill_home"
@@ -419,6 +436,401 @@ assert_contains "$CUSTOM_WRAPPER" '../../../.claude/commands/opsx/propose.md' '-
 assert_contains "$CUSTOM_WRAPPER" 'source workflow' '--force restores the governed OpenSpec wrapper'
 assert_not_contains "$CUSTOM_WRAPPER" 'repository-specific OpenSpec proposal customization' '--force removes the repository customization'
 
+for overlay_mapping in \
+    '.agents:agents' \
+    '.claude:claude' \
+    '.codex:codex'; do
+    repo_agent_dir="${overlay_mapping%%:*}"
+    template_agent_dir="${overlay_mapping##*:}"
+    for overlay_skill in speckit-specify speckit-git-feature; do
+        overlay_source="$WORKTREE_TEMPLATE_ROOT/$template_agent_dir/skills/$overlay_skill/SKILL.md"
+        overlay_destination="$REPO_DIR/$repo_agent_dir/skills/$overlay_skill/SKILL.md"
+        if cmp -s "$overlay_source" "$overlay_destination"; then
+            pass "--force preserves checked-in worktree overlay: $repo_agent_dir/$overlay_skill"
+        else
+            fail "--force replaced checked-in worktree overlay: $repo_agent_dir/$overlay_skill"
+        fi
+        assert_not_contains \
+            "$overlay_destination" \
+            'GLOBAL SKILL MUST NOT OVERRIDE WORKTREE OVERLAY' \
+            "global skill does not override worktree overlay: $repo_agent_dir/$overlay_skill"
+    done
+done
+
+printf '%s\n' 'Given: an OPSX command source tree containing a file symlink'
+UNSAFE_COMMAND_ROOT="$TMPDIR_ROOT/unsafe-command-source"
+UNSAFE_COMMAND_REPO="$TMPDIR_ROOT/unsafe-command-repo"
+UNSAFE_COMMAND_PROTOCOL_ROOT="$TMPDIR_ROOT/unsafe-command-protocol"
+UNSAFE_COMMAND_TARGET="$TMPDIR_ROOT/unsafe-command-target.md"
+mkdir -p "$UNSAFE_COMMAND_ROOT" "$UNSAFE_COMMAND_REPO"
+printf '%s\n' 'safe command copied before the symlink without preflight' > "$UNSAFE_COMMAND_ROOT/00-safe.md"
+printf '%s\n' 'outside command target must never be materialized' > "$UNSAFE_COMMAND_TARGET"
+ln -s "$UNSAFE_COMMAND_TARGET" "$UNSAFE_COMMAND_ROOT/99-linked.md"
+git init -q "$UNSAFE_COMMAND_REPO"
+
+printf '%s\n' 'When: bootstrap encounters the unsafe command source tree'
+export OPSX_COMMAND_TEMPLATE_ROOT="$UNSAFE_COMMAND_ROOT"
+export AGENT_PROTOCOL_ROOT="$UNSAFE_COMMAND_PROTOCOL_ROOT"
+if python3 "$SETUP_SCRIPT" \
+    --repo "$UNSAFE_COMMAND_REPO" \
+    --skip-init \
+    --no-speckit-registration \
+    --no-global-agent-pointers \
+    --no-skill-links \
+    --no-worktrees > "$TMPDIR_ROOT/unsafe-command.log" 2>&1; then
+    fail 'bootstrap rejects an OPSX command source tree containing a symlink'
+else
+    pass 'bootstrap rejects an OPSX command source tree containing a symlink'
+fi
+
+printf '%s\n' 'Then: the unsafe command tree is rejected before any of it is copied'
+assert_contains "$TMPDIR_ROOT/unsafe-command.log" 'symlink' 'unsafe command rejection identifies the symlink'
+assert_not_exists "$UNSAFE_COMMAND_REPO/.claude/commands/opsx/00-safe.md" 'unsafe command preflight leaves no partial safe file'
+assert_not_exists "$UNSAFE_COMMAND_REPO/.claude/commands/opsx/99-linked.md" 'unsafe command target is never materialized'
+
+printf '%s\n' 'Given: a global skill source tree containing a directory symlink'
+UNSAFE_SKILL_HOME="$TMPDIR_ROOT/unsafe-skill-home"
+UNSAFE_SKILL_REPO="$TMPDIR_ROOT/unsafe-skill-repo"
+UNSAFE_SKILL_PROTOCOL_ROOT="$TMPDIR_ROOT/unsafe-skill-protocol"
+UNSAFE_SKILL_EXTERNAL_DIR="$TMPDIR_ROOT/unsafe-skill-external"
+mkdir -p \
+    "$UNSAFE_SKILL_HOME/.agents/skills/ct" \
+    "$UNSAFE_SKILL_REPO" \
+    "$UNSAFE_SKILL_EXTERNAL_DIR"
+printf '%s\n' 'safe skill file copied before the symlink without preflight' > "$UNSAFE_SKILL_HOME/.agents/skills/ct/00-safe.txt"
+printf '%s\n' 'outside skill target must never be materialized' > "$UNSAFE_SKILL_EXTERNAL_DIR/secret.txt"
+ln -s "$UNSAFE_SKILL_EXTERNAL_DIR" "$UNSAFE_SKILL_HOME/.agents/skills/ct/99-linked-dir"
+git init -q "$UNSAFE_SKILL_REPO"
+
+printf '%s\n' 'When: bootstrap encounters the unsafe skill source tree'
+export HOME="$UNSAFE_SKILL_HOME"
+export AGENT_PROTOCOL_ROOT="$UNSAFE_SKILL_PROTOCOL_ROOT"
+export OPSX_COMMAND_TEMPLATE_ROOT="$COMMAND_TEMPLATE_ROOT"
+if python3 "$SETUP_SCRIPT" \
+    --repo "$UNSAFE_SKILL_REPO" \
+    --skip-init \
+    --no-speckit-registration \
+    --no-global-agent-pointers \
+    --no-worktrees > "$TMPDIR_ROOT/unsafe-skill.log" 2>&1; then
+    fail 'bootstrap rejects a skill source tree containing a symlink'
+else
+    pass 'bootstrap rejects a skill source tree containing a symlink'
+fi
+
+printf '%s\n' 'Then: the unsafe skill tree is rejected before any of it is copied'
+assert_contains "$TMPDIR_ROOT/unsafe-skill.log" 'symlink' 'unsafe skill rejection identifies the symlink'
+assert_not_exists "$UNSAFE_SKILL_REPO/.agents/skills/ct/00-safe.txt" 'unsafe skill preflight leaves no partial safe file'
+assert_not_exists "$UNSAFE_SKILL_REPO/.agents/skills/ct/99-linked-dir" 'unsafe skill directory target is never materialized'
+
+printf '%s\n' 'Given: isolated copy-helper destinations with symlinks, collisions, and restrictive modes'
+if python3 - "$SETUP_SCRIPT" "$TMPDIR_ROOT/copy-helper-safety" <<'PY'
+from pathlib import Path
+import runpy
+import stat
+import sys
+
+namespace = runpy.run_path(sys.argv[1], run_name="setup_openspeckit_test")
+copy_missing_tree = namespace["copy_missing_tree"]
+copy_overlay_tree = namespace["copy_overlay_tree"]
+is_usable_skill_tree = namespace["is_usable_skill_tree"]
+link_or_copy_skill = namespace["link_or_copy_skill"]
+skill_tree_will_be_usable = namespace["skill_tree_will_be_usable"]
+fixture_root = Path(sys.argv[2])
+fixture_root.mkdir()
+failures = 0
+
+
+def check(condition, label):
+    global failures
+    if condition:
+        print(f"PASS: {label}")
+    else:
+        print(f"FAIL: {label}")
+        failures += 1
+
+
+def expect_refusal(action, label):
+    global failures
+    try:
+        action()
+    except SystemExit:
+        print(f"PASS: {label}")
+    except OSError as exc:
+        print(f"FAIL: {label}: unexpected {type(exc).__name__}: {exc}")
+        failures += 1
+    else:
+        print(f"FAIL: {label}: unsafe destination was accepted")
+        failures += 1
+
+
+def make_incremental_source(case_root):
+    source = case_root / "source"
+    (source / "nested").mkdir(parents=True)
+    (source / "00-safe.txt").write_text("safe\n", encoding="utf-8")
+    (source / "nested" / "payload.txt").write_text("new\n", encoding="utf-8")
+    return source
+
+
+def exercise_incremental_copy(name, copier):
+    case_root = fixture_root / name
+
+    retained_root_case = case_root / "retained-root-file-collision"
+    source = make_incremental_source(retained_root_case)
+    destination = retained_root_case / "destination"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text("local\n", encoding="utf-8")
+    destination.chmod(0o600)
+    copier(source, destination, False, False)
+    check(destination.is_file(), f"{name}: no-force preserves a root file collision")
+    check(destination.read_text(encoding="utf-8") == "local\n", f"{name}: no-force preserves root file content")
+    check(stat.S_IMODE(destination.stat().st_mode) == 0o600, f"{name}: no-force preserves root file mode")
+
+    forced_root_case = case_root / "forced-root-file-collision"
+    source = make_incremental_source(forced_root_case)
+    destination = forced_root_case / "destination"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text("local\n", encoding="utf-8")
+    try:
+        copier(source, destination, False, True)
+    except OSError as exc:
+        check(False, f"{name}: force replaces a root file with the source directory ({type(exc).__name__}: {exc})")
+    else:
+        check((destination / "nested" / "payload.txt").read_text(encoding="utf-8") == "new\n", f"{name}: force replaces a root file with the source directory")
+
+    retained_directory_case = case_root / "retained-directory-file-collision"
+    source = make_incremental_source(retained_directory_case)
+    destination = retained_directory_case / "destination"
+    destination.mkdir(parents=True)
+    retained_directory = destination / "nested"
+    retained_directory.write_text("local\n", encoding="utf-8")
+    retained_directory.chmod(0o600)
+    copier(source, destination, False, False)
+    check(retained_directory.is_file(), f"{name}: no-force preserves a nested directory-to-file collision")
+    check(retained_directory.read_text(encoding="utf-8") == "local\n", f"{name}: no-force preserves nested file content")
+    check(stat.S_IMODE(retained_directory.stat().st_mode) == 0o600, f"{name}: no-force preserves nested file mode")
+
+    forced_directory_case = case_root / "forced-directory-file-collision"
+    source = make_incremental_source(forced_directory_case)
+    destination = forced_directory_case / "destination"
+    destination.mkdir(parents=True)
+    (destination / "nested").write_text("local\n", encoding="utf-8")
+    try:
+        copier(source, destination, False, True)
+    except OSError as exc:
+        check(False, f"{name}: force replaces a nested file with the source directory ({type(exc).__name__}: {exc})")
+    else:
+        check((destination / "nested" / "payload.txt").read_text(encoding="utf-8") == "new\n", f"{name}: force replaces a nested file with the source directory")
+
+    valid_case = case_root / "valid-leaf-force"
+    source = make_incremental_source(valid_case)
+    destination = valid_case / "destination"
+    (destination / "nested").mkdir(parents=True)
+    external = valid_case / "external.txt"
+    external.write_text("old\n", encoding="utf-8")
+    external.chmod(0o600)
+    (destination / "nested" / "payload.txt").symlink_to(external)
+    copier(source, destination, False, True)
+    copied_leaf = destination / "nested" / "payload.txt"
+    check(copied_leaf.is_file() and not copied_leaf.is_symlink(), f"{name}: force replaces a valid leaf symlink")
+    check(external.read_text(encoding="utf-8") == "old\n", f"{name}: valid leaf symlink target content is untouched")
+    check(stat.S_IMODE(external.stat().st_mode) == 0o600, f"{name}: valid leaf symlink target mode is untouched")
+
+    broken_case = case_root / "broken-leaf-no-force"
+    source = make_incremental_source(broken_case)
+    destination = broken_case / "destination"
+    (destination / "nested").mkdir(parents=True)
+    missing_external = broken_case / "missing-external.txt"
+    broken_leaf = destination / "nested" / "payload.txt"
+    broken_leaf.symlink_to(missing_external)
+    copier(source, destination, False, False)
+    check(broken_leaf.is_symlink(), f"{name}: no-force preserves a broken leaf symlink")
+    check(not missing_external.exists(), f"{name}: broken leaf symlink target is not created")
+
+    parent_case = case_root / "symlinked-parent"
+    source = make_incremental_source(parent_case)
+    destination = parent_case / "destination"
+    destination.mkdir(parents=True)
+    external_directory = parent_case / "external-directory"
+    external_directory.mkdir()
+    (destination / "nested").symlink_to(external_directory, target_is_directory=True)
+    expect_refusal(
+        lambda: copier(source, destination, False, False),
+        f"{name}: symlinked destination parent fails closed",
+    )
+    check(not (destination / "00-safe.txt").exists(), f"{name}: destination preflight prevents a partial safe copy")
+    check(not (external_directory / "payload.txt").exists(), f"{name}: symlinked parent receives no copied file")
+
+    mode_case = case_root / "retained-modes"
+    source = make_incremental_source(mode_case)
+    destination = mode_case / "destination"
+    (destination / "nested").mkdir(parents=True)
+    destination.chmod(0o700)
+    (destination / "nested").chmod(0o700)
+    copier(source, destination, False, False)
+    check(stat.S_IMODE(destination.stat().st_mode) == 0o700, f"{name}: retained root directory stays 0700")
+    check(stat.S_IMODE((destination / "nested").stat().st_mode) == 0o700, f"{name}: retained nested directory stays 0700")
+
+    retained_collision_case = case_root / "retained-file-directory-collision"
+    source = make_incremental_source(retained_collision_case)
+    destination = retained_collision_case / "destination"
+    retained_collision = destination / "nested" / "payload.txt"
+    retained_collision.mkdir(parents=True)
+    retained_collision.chmod(0o700)
+    copier(source, destination, False, False)
+    check(retained_collision.is_dir(), f"{name}: no-force preserves a leaf directory collision")
+    check(stat.S_IMODE(retained_collision.stat().st_mode) == 0o700, f"{name}: no-force preserves a colliding directory mode")
+    check(not (retained_collision / "payload.txt").exists(), f"{name}: no-force does not copy inside a colliding directory")
+
+    collision_case = case_root / "forced-file-directory-collision"
+    source = make_incremental_source(collision_case)
+    destination = collision_case / "destination"
+    collision = destination / "nested" / "payload.txt"
+    collision.mkdir(parents=True)
+    try:
+        copier(source, destination, False, True)
+    except OSError as exc:
+        check(False, f"{name}: force replaces a leaf directory with a regular file ({type(exc).__name__}: {exc})")
+    else:
+        check(collision.is_file() and not collision.is_symlink(), f"{name}: force replaces a leaf directory with a regular file")
+    if collision.is_dir():
+        collision.chmod(0o700)
+
+
+exercise_incremental_copy("copy-missing", copy_missing_tree)
+exercise_incremental_copy("copy-overlay", copy_overlay_tree)
+
+overlay_file_root_case = fixture_root / "overlay-file-root"
+overlay_source = overlay_file_root_case / "source"
+overlay_source.mkdir(parents=True)
+(overlay_source / "SKILL.md").write_text("overlay\n", encoding="utf-8")
+overlay_destination = overlay_file_root_case / "destination"
+overlay_destination.write_text("local\n", encoding="utf-8")
+copy_overlay_tree(overlay_source, overlay_destination, False, False)
+check(not is_usable_skill_tree(overlay_destination), "copy-overlay: file destination root is not a usable skill tree")
+check(not skill_tree_will_be_usable(overlay_destination, False), "copy-overlay: file destination root permits no-force fallback planning")
+check(skill_tree_will_be_usable(overlay_destination, True), "copy-overlay: file destination root permits forced replacement planning")
+
+source_symlink_case = fixture_root / "overlay-source-symlink"
+source = make_incremental_source(source_symlink_case)
+(source / "linked.txt").symlink_to(source_symlink_case / "outside.txt")
+overlay_destination = source_symlink_case / "destination"
+expect_refusal(
+    lambda: copy_overlay_tree(source, overlay_destination, False, True),
+    "copy-overlay: source symlink fails closed",
+)
+check(not overlay_destination.exists(), "copy-overlay: unsafe source leaves no partial destination")
+
+skill_source_root = fixture_root / "skill-source"
+(skill_source_root / "nested").mkdir(parents=True)
+(skill_source_root / "SKILL.md").write_text("fixture skill\n", encoding="utf-8")
+(skill_source_root / "nested" / "data.txt").write_text("data\n", encoding="utf-8")
+
+broken_skill_case = fixture_root / "skill-broken-top-level"
+broken_skill_destination = broken_skill_case / "destination"
+broken_skill_case.mkdir()
+broken_skill_destination.symlink_to(broken_skill_case / "missing-skill", target_is_directory=True)
+link_or_copy_skill(skill_source_root, broken_skill_destination, False, False)
+check(broken_skill_destination.is_dir() and not broken_skill_destination.is_symlink(), "copy-skill: approved broken top-level symlink becomes a regular directory")
+
+skill_parent_case = fixture_root / "skill-symlinked-parent"
+skill_parent_case.mkdir()
+skill_external_directory = skill_parent_case / "external-directory"
+skill_external_directory.mkdir()
+skill_parent = skill_parent_case / "linked-parent"
+skill_parent.symlink_to(skill_external_directory, target_is_directory=True)
+expect_refusal(
+    lambda: link_or_copy_skill(skill_source_root, skill_parent / "ct", False, True),
+    "copy-skill: symlinked destination parent fails closed",
+)
+check(not (skill_external_directory / "ct").exists(), "copy-skill: symlinked parent receives no skill tree")
+
+nested_skill_case = fixture_root / "skill-nested-symlink"
+nested_skill_destination = nested_skill_case / "destination"
+nested_skill_destination.mkdir(parents=True)
+skill_external_file = nested_skill_case / "external.txt"
+skill_external_file.write_text("old\n", encoding="utf-8")
+(nested_skill_destination / "linked.txt").symlink_to(skill_external_file)
+expect_refusal(
+    lambda: link_or_copy_skill(skill_source_root, nested_skill_destination, False, True),
+    "copy-skill: nested destination symlink fails closed under force",
+)
+check(skill_external_file.read_text(encoding="utf-8") == "old\n", "copy-skill: nested symlink target is untouched")
+
+retained_skill_case = fixture_root / "skill-retained-no-force"
+retained_skill_destination = retained_skill_case / "destination"
+retained_skill_destination.mkdir(parents=True)
+retained_skill_destination.chmod(0o700)
+(retained_skill_destination / "local.txt").write_text("local\n", encoding="utf-8")
+link_or_copy_skill(skill_source_root, retained_skill_destination, False, False)
+check(stat.S_IMODE(retained_skill_destination.stat().st_mode) == 0o700, "copy-skill: retained no-force directory stays 0700")
+
+skill_file_collision_case = fixture_root / "skill-file-collision"
+skill_file_collision_case.mkdir()
+retained_skill_file = skill_file_collision_case / "retained"
+retained_skill_file.write_text("local\n", encoding="utf-8")
+retained_skill_file.chmod(0o600)
+link_or_copy_skill(skill_source_root, retained_skill_file, False, False)
+check(retained_skill_file.read_text(encoding="utf-8") == "local\n", "copy-skill: no-force preserves a file collision")
+check(stat.S_IMODE(retained_skill_file.stat().st_mode) == 0o600, "copy-skill: no-force preserves a colliding file mode")
+replaced_skill_file = skill_file_collision_case / "replaced"
+replaced_skill_file.write_text("local\n", encoding="utf-8")
+link_or_copy_skill(skill_source_root, replaced_skill_file, False, True)
+check(replaced_skill_file.is_dir() and not replaced_skill_file.is_symlink(), "copy-skill: force replaces a file collision with a skill directory")
+
+raise SystemExit(1 if failures else 0)
+PY
+then
+    pass 'copy helpers reject destination escapes and handle collisions and retained modes'
+else
+    fail 'copy helpers reject destination escapes and handle collisions and retained modes'
+fi
+
+printf '%s\n' 'Given: missing, empty, and incomplete worktree skill overlay sources with global fallbacks'
+INCOMPLETE_TEMPLATE_ROOT="$TMPDIR_ROOT/incomplete-overlay-templates"
+INCOMPLETE_OVERLAY_REPO="$TMPDIR_ROOT/incomplete-overlay-repo"
+INCOMPLETE_OVERLAY_PROTOCOL="$TMPDIR_ROOT/incomplete-overlay-protocol"
+mkdir -p "$INCOMPLETE_TEMPLATE_ROOT" "$INCOMPLETE_OVERLAY_REPO"
+cp -a "$WORKTREE_TEMPLATE_ROOT/." "$INCOMPLETE_TEMPLATE_ROOT/"
+rm -rf "$INCOMPLETE_TEMPLATE_ROOT/agents/skills/speckit-specify"
+rm -rf "$INCOMPLETE_TEMPLATE_ROOT/claude/skills/speckit-specify"
+mkdir -p "$INCOMPLETE_TEMPLATE_ROOT/claude/skills/speckit-specify"
+rm -f "$INCOMPLETE_TEMPLATE_ROOT/codex/skills/speckit-specify/SKILL.md"
+git init -q "$INCOMPLETE_OVERLAY_REPO"
+
+printf '%s\n' 'When: forced bootstrap runs with the incomplete overlay template root'
+export HOME="$FIXTURE_HOME"
+export AGENT_PROTOCOL_ROOT="$INCOMPLETE_OVERLAY_PROTOCOL"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$INCOMPLETE_TEMPLATE_ROOT"
+export OPSX_COMMAND_TEMPLATE_ROOT="$COMMAND_TEMPLATE_ROOT"
+if ! python3 "$SETUP_SCRIPT" \
+    --repo "$INCOMPLETE_OVERLAY_REPO" \
+    --skip-init \
+    --no-speckit-registration \
+    --no-global-agent-pointers \
+    --force > "$TMPDIR_ROOT/incomplete-overlay.log" 2>&1; then
+    printf '%s\n' 'FAIL: incomplete-overlay bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/incomplete-overlay.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: incomplete overlays defer to global skills while complete overlays remain authoritative'
+for skill_mapping in '.agents:agents' '.claude:claude' '.codex:codex'; do
+    repo_agent_dir="${skill_mapping%%:*}"
+    template_agent_dir="${skill_mapping##*:}"
+    fallback_skill="$INCOMPLETE_OVERLAY_REPO/$repo_agent_dir/skills/speckit-specify/SKILL.md"
+    assert_contains \
+        "$fallback_skill" \
+        'GLOBAL SKILL MUST NOT OVERRIDE WORKTREE OVERLAY' \
+        "incomplete $template_agent_dir overlay allows global fallback"
+    complete_overlay_source="$INCOMPLETE_TEMPLATE_ROOT/$template_agent_dir/skills/speckit-git-feature/SKILL.md"
+    complete_overlay_destination="$INCOMPLETE_OVERLAY_REPO/$repo_agent_dir/skills/speckit-git-feature/SKILL.md"
+    if cmp -s "$complete_overlay_source" "$complete_overlay_destination"; then
+        pass "complete $template_agent_dir overlay remains authoritative under --force"
+    else
+        fail "complete $template_agent_dir overlay lost authority under --force"
+    fi
+done
+
 printf '%s\n' 'Given: a fresh repository and protocol root with sentinel files'
 DRY_RUN_HOME="$TMPDIR_ROOT/dry-run-home"
 DRY_RUN_PROTOCOL_ROOT="$TMPDIR_ROOT/dry-run-agent-protocol"
@@ -427,13 +839,22 @@ DRY_RUN_REPO_SNAPSHOT_BEFORE="$TMPDIR_ROOT/dry-run-repo.before"
 DRY_RUN_REPO_SNAPSHOT_AFTER="$TMPDIR_ROOT/dry-run-repo.after"
 DRY_RUN_PROTOCOL_SNAPSHOT_BEFORE="$TMPDIR_ROOT/dry-run-protocol.before"
 DRY_RUN_PROTOCOL_SNAPSHOT_AFTER="$TMPDIR_ROOT/dry-run-protocol.after"
+DRY_RUN_REPO_MODES_BEFORE="$TMPDIR_ROOT/dry-run-repo-modes.before"
+DRY_RUN_REPO_MODES_AFTER="$TMPDIR_ROOT/dry-run-repo-modes.after"
+DRY_RUN_PROTOCOL_MODES_BEFORE="$TMPDIR_ROOT/dry-run-protocol-modes.before"
+DRY_RUN_PROTOCOL_MODES_AFTER="$TMPDIR_ROOT/dry-run-protocol-modes.after"
 mkdir -p "$DRY_RUN_HOME/.agents/skills/ct" "$DRY_RUN_PROTOCOL_ROOT" "$DRY_RUN_REPO"
 printf '%s\n' 'dry-run skill fixture' > "$DRY_RUN_HOME/.agents/skills/ct/SKILL.md"
 printf '%s\n' 'repo sentinel' > "$DRY_RUN_REPO/.dry-run-sentinel"
 printf '%s\n' 'protocol sentinel' > "$DRY_RUN_PROTOCOL_ROOT/.dry-run-sentinel"
+mkdir "$DRY_RUN_REPO/.restricted-directory"
+chmod 0700 "$DRY_RUN_REPO/.restricted-directory"
+ln -s '.dry-run-sentinel' "$DRY_RUN_REPO/.dry-run-symlink"
 git init -q "$DRY_RUN_REPO"
 snapshot_repo "$DRY_RUN_REPO" > "$DRY_RUN_REPO_SNAPSHOT_BEFORE"
 snapshot_repo "$DRY_RUN_PROTOCOL_ROOT" > "$DRY_RUN_PROTOCOL_SNAPSHOT_BEFORE"
+snapshot_repo_modes "$DRY_RUN_REPO" > "$DRY_RUN_REPO_MODES_BEFORE"
+snapshot_repo_modes "$DRY_RUN_PROTOCOL_ROOT" > "$DRY_RUN_PROTOCOL_MODES_BEFORE"
 
 printf '%s\n' 'When: bootstrap runs with --dry-run against the fresh fixture'
 DRY_RUN_FLAGS=(
@@ -454,6 +875,8 @@ fi
 printf '%s\n' 'Then: --dry-run leaves both fresh fixture trees byte-for-byte unchanged'
 snapshot_repo "$DRY_RUN_REPO" > "$DRY_RUN_REPO_SNAPSHOT_AFTER"
 snapshot_repo "$DRY_RUN_PROTOCOL_ROOT" > "$DRY_RUN_PROTOCOL_SNAPSHOT_AFTER"
+snapshot_repo_modes "$DRY_RUN_REPO" > "$DRY_RUN_REPO_MODES_AFTER"
+snapshot_repo_modes "$DRY_RUN_PROTOCOL_ROOT" > "$DRY_RUN_PROTOCOL_MODES_AFTER"
 if cmp -s "$DRY_RUN_REPO_SNAPSHOT_BEFORE" "$DRY_RUN_REPO_SNAPSHOT_AFTER"; then
     pass '--dry-run preserves fresh repository paths and hashes'
 else
@@ -463,6 +886,16 @@ if cmp -s "$DRY_RUN_PROTOCOL_SNAPSHOT_BEFORE" "$DRY_RUN_PROTOCOL_SNAPSHOT_AFTER"
     pass '--dry-run preserves fresh protocol-root paths and hashes'
 else
     fail '--dry-run changes fresh protocol-root paths or hashes'
+fi
+if cmp -s "$DRY_RUN_REPO_MODES_BEFORE" "$DRY_RUN_REPO_MODES_AFTER"; then
+    pass '--dry-run preserves repository path types, symlinks, and modes'
+else
+    fail '--dry-run changes repository path types, symlinks, or modes'
+fi
+if cmp -s "$DRY_RUN_PROTOCOL_MODES_BEFORE" "$DRY_RUN_PROTOCOL_MODES_AFTER"; then
+    pass '--dry-run preserves protocol-root path types, symlinks, and modes'
+else
+    fail '--dry-run changes protocol-root path types, symlinks, or modes'
 fi
 
 if (( failures == 0 )); then

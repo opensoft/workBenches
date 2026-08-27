@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -43,8 +44,6 @@ OPEN_SPEC_SKILLS = {
     "openspec-explore": "explore",
     "openspec-propose": "propose",
 }
-
-DECLARATIVE_SKILL_SUFFIXES: Final = {".md", ".yaml", ".yml", ".json"}
 
 CLARIFY_QUOTA_REPLACEMENTS: Final = (
     ("up to 5 highly targeted clarification questions", "up to 25 highly targeted clarification questions"),
@@ -348,46 +347,187 @@ def upsert_block(path: Path, block_body: str, dry_run: bool) -> None:
     write_text(path, new_text, dry_run)
 
 
-def copy_missing_tree(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
+def safe_source_tree_entries(src: Path) -> list[Path]:
+    if src.is_symlink():
+        raise SystemExit(
+            f"Refusing to copy unsafe source tree {src}: symlink found at {src}"
+        )
+    if not src.exists():
+        return []
+    entries = sorted(src.rglob("*"))
+    for entry in entries:
+        if entry.is_symlink():
+            raise SystemExit(
+                f"Refusing to copy unsafe source tree {src}: symlink found at {entry}"
+            )
+    return entries
+
+
+def normalized_regular_file_mode(source: Path) -> int:
+    return 0o755 if source.stat().st_mode & 0o111 else 0o644
+
+
+def mode_without_following(path: Path) -> int | None:
+    try:
+        return path.lstat().st_mode
+    except FileNotFoundError:
+        return None
+
+
+def mode_after_directory_replacements(
+    path: Path, directories_to_replace: set[Path]
+) -> int | None:
+    if any(directory in path.parents for directory in directories_to_replace):
+        return None
+    return mode_without_following(path)
+
+
+def ensure_safe_destination_parent(path: Path, safe_directories: set[Path]) -> None:
+    current = path.parent
+    while current not in safe_directories:
+        mode = mode_without_following(current)
+        if mode is not None:
+            if stat.S_ISLNK(mode):
+                raise SystemExit(
+                    f"Refusing unsafe destination path {path}: symlink parent at {current}"
+                )
+            if not stat.S_ISDIR(mode):
+                raise SystemExit(
+                    f"Refusing unsafe destination path {path}: non-directory parent at {current}"
+                )
+        if current.parent == current:
+            return
+        current = current.parent
+
+
+def ensure_safe_destination_tree(path: Path) -> None:
+    for entry in sorted(path.rglob("*")):
+        if entry.is_symlink():
+            raise SystemExit(
+                f"Refusing unsafe destination tree {path}: symlink found at {entry}"
+            )
+
+
+def remove_destination_without_following(path: Path) -> None:
+    mode = mode_without_following(path)
+    if mode is None:
+        return
+    if stat.S_ISDIR(mode):
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+
+
+def copy_tree_contents(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
+    entries = safe_source_tree_entries(src)
     if not src.exists():
         return
-    for source in sorted(src.rglob("*")):
-        if source.is_dir():
+
+    safe_directories: set[Path] = set()
+    blocked_source_directories: set[Path] = set()
+    directories_to_create: list[Path] = []
+    directories_to_replace: set[Path] = set()
+
+    ensure_safe_destination_parent(dst, safe_directories)
+    destination_mode = mode_without_following(dst)
+    if destination_mode is None:
+        directories_to_create.append(dst)
+    elif stat.S_ISLNK(destination_mode):
+        raise SystemExit(f"Refusing unsafe destination tree: symlink at {dst}")
+    elif stat.S_ISDIR(destination_mode):
+        pass
+    elif force:
+        directories_to_replace.add(dst)
+        directories_to_create.append(dst)
+    else:
+        log(f"kept existing {dst}")
+        return
+    safe_directories.add(dst)
+
+    for source in (entry for entry in entries if entry.is_dir()):
+        if any(blocked in source.parents for blocked in blocked_source_directories):
             continue
         target = dst / source.relative_to(src)
-        if target.exists() and not force:
+        ensure_safe_destination_parent(target, safe_directories)
+        target_mode = mode_after_directory_replacements(target, directories_to_replace)
+        if target_mode is None:
+            directories_to_create.append(target)
+        elif stat.S_ISLNK(target_mode):
+            raise SystemExit(
+                f"Refusing unsafe destination tree {dst}: symlink directory at {target}"
+            )
+        elif stat.S_ISDIR(target_mode):
+            pass
+        elif force:
+            directories_to_replace.add(target)
+            directories_to_create.append(target)
+        else:
+            blocked_source_directories.add(source)
             log(f"kept existing {target}")
             continue
-        if dry_run:
-            log(f"would copy {source} -> {target}")
+        safe_directories.add(target)
+
+    files_to_copy: list[tuple[Path, Path]] = []
+    files_to_replace: set[Path] = set()
+    for source in (entry for entry in entries if not entry.is_dir()):
+        if any(blocked in source.parents for blocked in blocked_source_directories):
             continue
-        target.parent.mkdir(parents=True, exist_ok=True)
+        target = dst / source.relative_to(src)
+        ensure_safe_destination_parent(target, safe_directories)
+        target_mode = mode_after_directory_replacements(target, directories_to_replace)
+        if target_mode is not None and not force:
+            log(f"kept existing {target}")
+            continue
+        if target_mode is not None:
+            if stat.S_ISDIR(target_mode):
+                ensure_safe_destination_tree(target)
+            files_to_replace.add(target)
+        files_to_copy.append((source, target))
+
+    if dry_run:
+        for directory in directories_to_create:
+            action = "replace" if directory in directories_to_replace else "create"
+            log(f"would {action} directory {directory}")
+        for source, target in files_to_copy:
+            log(f"would copy {source} -> {target}")
+        return
+
+    for directory in sorted(directories_to_create, key=lambda path: len(path.parts)):
+        if directory in directories_to_replace:
+            remove_destination_without_following(directory)
+        directory.mkdir(parents=directory == dst)
+        directory.chmod(0o755)
+
+    for source, target in files_to_copy:
+        if target in files_to_replace:
+            remove_destination_without_following(target)
         shutil.copy2(source, target)
+        target.chmod(normalized_regular_file_mode(source))
         log(f"copied {source} -> {target}")
 
 
+def copy_missing_tree(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
+    copy_tree_contents(src, dst, dry_run, force)
+
+
 def link_or_copy_skill(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
+    entries = safe_source_tree_entries(src)
     if not src.exists():
         return
-    if dst.is_symlink():
-        if dry_run:
-            log(f"would replace symlink {dst} with copied directory from {src}")
-            return
-        dst.unlink()
-    elif dst.exists():
+    ensure_safe_destination_parent(dst, set())
+    destination_mode = mode_without_following(dst)
+    if destination_mode is not None and not stat.S_ISLNK(destination_mode):
         if not force:
             log(f"kept existing {dst}")
             return
-        if dry_run:
-            log(f"would replace {dst}")
-            return
-        if dst.is_file():
-            dst.unlink()
-        else:
-            shutil.rmtree(dst)
+        if stat.S_ISDIR(destination_mode):
+            ensure_safe_destination_tree(dst)
     if dry_run:
-        log(f"would copy {src} -> {dst}")
+        action = "replace" if destination_mode is not None else "copy"
+        log(f"would {action} {dst} with copied directory from {src}")
         return
+    if destination_mode is not None:
+        remove_destination_without_following(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(src, dst)
     if dst.name == "speckit-clarify":
@@ -399,11 +539,13 @@ def link_or_copy_skill(src: Path, dst: Path, dry_run: bool, force: bool) -> None
             if "one question at a time" not in text.lower():
                 text += "\n## Shared Clarify Contract\n\nAsk one question at a time.\n"
             skill_file.write_text(text, encoding="utf-8")
-    for directory in [dst, *(path for path in dst.rglob("*") if path.is_dir())]:
-        directory.chmod(0o755)
-    for copied_file in (path for path in dst.rglob("*") if path.is_file()):
-        if copied_file.suffix.lower() in DECLARATIVE_SKILL_SUFFIXES:
-            copied_file.chmod(0o644)
+    dst.chmod(0o755)
+    for source in entries:
+        copied_path = dst / source.relative_to(src)
+        if source.is_dir():
+            copied_path.chmod(0o755)
+        else:
+            copied_path.chmod(normalized_regular_file_mode(source))
     log(f"copied {src} -> {dst}")
 
 
@@ -469,26 +611,25 @@ def ensure_openspec_skill_wrapper(
 
 
 def copy_overlay_tree(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
-    if not src.exists():
-        return
-    for source in sorted(src.rglob("*")):
-        if source.is_dir():
-            continue
-        target = dst / source.relative_to(src)
-        if target.exists() and target.read_bytes() == source.read_bytes():
-            log(f"unchanged {target}")
-            continue
-        if target.exists() and not force:
-            log(f"kept existing {target} (use --force to replace)")
-            continue
-        if dry_run:
-            log(f"would copy {source} -> {target}")
-            continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
-        if target.suffix in {".sh", ".zsh", ".ps1"}:
-            target.chmod(0o755)
-        log(f"copied {source} -> {target}")
+    copy_tree_contents(src, dst, dry_run, force)
+
+
+def is_usable_skill_tree(path: Path) -> bool:
+    root_mode = mode_without_following(path)
+    if root_mode is None or not stat.S_ISDIR(root_mode):
+        return False
+    skill_mode = mode_without_following(path / "SKILL.md")
+    return skill_mode is not None and stat.S_ISREG(skill_mode)
+
+
+def skill_tree_will_be_usable(path: Path, force: bool) -> bool:
+    root_mode = mode_without_following(path)
+    if root_mode is None:
+        return True
+    if not stat.S_ISDIR(root_mode):
+        return force
+    skill_mode = mode_without_following(path / "SKILL.md")
+    return skill_mode is None or stat.S_ISREG(skill_mode) or force
 
 
 def needs_worktree_git_overlay(repo: Path) -> bool:
@@ -781,7 +922,12 @@ def ensure_scaffold(repo: Path, dry_run: bool, skip_init: bool) -> None:
     touch(repo / "openspec" / "specs" / ".gitkeep", dry_run)
 
 
-def ensure_skills(repo: Path, dry_run: bool, force: bool) -> None:
+def ensure_skills(
+    repo: Path,
+    dry_run: bool,
+    force: bool,
+    overlay_owned_destinations: set[Path],
+) -> None:
     homes = {
         ".claude": Path.home() / ".claude" / "skills",
         ".codex": Path.home() / ".codex" / "skills",
@@ -791,9 +937,13 @@ def ensure_skills(repo: Path, dry_run: bool, force: bool) -> None:
         for skill, action in OPEN_SPEC_SKILLS.items():
             ensure_openspec_skill_wrapper(repo, agent_dir, skill, action, dry_run, force)
         for skill in SKILLS:
+            destination = repo / agent_dir / "skills" / skill
+            if destination in overlay_owned_destinations:
+                log(f"kept worktree overlay {destination}")
+                continue
             link_or_copy_skill(
                 source_root / skill,
-                repo / agent_dir / "skills" / skill,
+                destination,
                 dry_run,
                 force,
             )
@@ -1013,9 +1163,9 @@ def ensure_worktree_overlay(
     base_branch: str | None,
     worktree_root: str | None,
     skip_worktrees: bool,
-) -> None:
+) -> set[Path]:
     if skip_worktrees:
-        return
+        return set()
 
     template_root = worktree_template_root()
     if template_root is None:
@@ -1027,12 +1177,43 @@ def ensure_worktree_overlay(
 
     copy_overlay_tree(template_root / "specify" / "extensions" / "git", repo / ".specify" / "extensions" / "git", dry_run, git_overlay_force)
     copy_overlay_tree(template_root / "specify" / "shell", repo / ".specify" / "shell", dry_run, force)
-    copy_overlay_tree(template_root / "agents" / "skills" / "speckit-specify", repo / ".agents" / "skills" / "speckit-specify", dry_run, force)
-    copy_overlay_tree(template_root / "agents" / "skills" / "speckit-git-feature", repo / ".agents" / "skills" / "speckit-git-feature", dry_run, force)
-    copy_overlay_tree(template_root / "claude" / "skills" / "speckit-specify", repo / ".claude" / "skills" / "speckit-specify", dry_run, force)
-    copy_overlay_tree(template_root / "claude" / "skills" / "speckit-git-feature", repo / ".claude" / "skills" / "speckit-git-feature", dry_run, force)
-    copy_overlay_tree(template_root / "codex" / "skills" / "speckit-specify", repo / ".codex" / "skills" / "speckit-specify", dry_run, force)
-    copy_overlay_tree(template_root / "codex" / "skills" / "speckit-git-feature", repo / ".codex" / "skills" / "speckit-git-feature", dry_run, force)
+    skill_overlays = (
+        (
+            template_root / "agents" / "skills" / "speckit-specify",
+            repo / ".agents" / "skills" / "speckit-specify",
+        ),
+        (
+            template_root / "agents" / "skills" / "speckit-git-feature",
+            repo / ".agents" / "skills" / "speckit-git-feature",
+        ),
+        (
+            template_root / "claude" / "skills" / "speckit-specify",
+            repo / ".claude" / "skills" / "speckit-specify",
+        ),
+        (
+            template_root / "claude" / "skills" / "speckit-git-feature",
+            repo / ".claude" / "skills" / "speckit-git-feature",
+        ),
+        (
+            template_root / "codex" / "skills" / "speckit-specify",
+            repo / ".codex" / "skills" / "speckit-specify",
+        ),
+        (
+            template_root / "codex" / "skills" / "speckit-git-feature",
+            repo / ".codex" / "skills" / "speckit-git-feature",
+        ),
+    )
+    overlay_owned_destinations: set[Path] = set()
+    for source, destination in skill_overlays:
+        safe_source_tree_entries(source)
+        if not is_usable_skill_tree(source):
+            log(f"skipped unusable worktree skill overlay {source}")
+            continue
+        copy_overlay_tree(source, destination, dry_run, force)
+        if is_usable_skill_tree(destination) or (
+            dry_run and skill_tree_will_be_usable(destination, force)
+        ):
+            overlay_owned_destinations.add(destination)
 
     resolved_base_branch = base_branch or default_base_branch(repo)
     resolved_worktree_root = worktree_root or f"../{repo.name}-worktrees"
@@ -1058,6 +1239,7 @@ def ensure_worktree_overlay(
         manifest_to_hash,
         dry_run,
     )
+    return overlay_owned_destinations
 
 
 def main() -> int:
@@ -1074,7 +1256,7 @@ def main() -> int:
     ensure_scaffold(repo, args.dry_run, args.skip_init)
     ensure_speckit_initialized(repo, integration, args.dry_run, args.skip_init)
     ensure_speckit_registration(repo, args.dry_run, args.no_speckit_registration)
-    ensure_worktree_overlay(
+    overlay_owned_destinations = ensure_worktree_overlay(
         repo,
         args.dry_run,
         args.force,
@@ -1102,7 +1284,7 @@ def main() -> int:
         log("skipped opsx command templates: no template root found")
 
     if not args.no_skill_links:
-        ensure_skills(repo, args.dry_run, args.force)
+        ensure_skills(repo, args.dry_run, args.force, overlay_owned_destinations)
 
     if not args.no_global_agent_pointers:
         ensure_global_agent_pointers(agent_root, args.dry_run)
