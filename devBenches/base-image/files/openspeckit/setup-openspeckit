@@ -4,16 +4,19 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Final
 
 
 START = "<!-- OPENSPEC-SPECKIT-GLOBAL:START -->"
 END = "<!-- OPENSPEC-SPECKIT-GLOBAL:END -->"
+REPO_AGENT_ROOT: Final = "$HOME/.agents"
 
 SKILLS = [
     "openspec-apply-change",
@@ -111,7 +114,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-init",
         action="store_true",
-        help="Do not create minimal openspec/.specify scaffolding or run specify init.",
+        help="Do not create optional scaffolding or run specify init; openspec/config.yaml is still ensured.",
     )
     parser.add_argument(
         "--integration",
@@ -352,14 +355,19 @@ def copy_missing_tree(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
 def link_or_copy_skill(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
     if not src.exists():
         return
-    if dst.exists() or dst.is_symlink():
+    if dst.is_symlink():
+        if dry_run:
+            log(f"would replace symlink {dst} with copied directory from {src}")
+            return
+        dst.unlink()
+    elif dst.exists():
         if not force:
             log(f"kept existing {dst}")
             return
         if dry_run:
             log(f"would replace {dst}")
             return
-        if dst.is_symlink() or dst.is_file():
+        if dst.is_file():
             dst.unlink()
         else:
             shutil.rmtree(dst)
@@ -523,6 +531,20 @@ that generated worktree, not from the root checkout:
 If a requested follow-on command targets a worktree that does not exist, stop
 and report that. Do not silently fall back to the root checkout.
 
+## Speckit Clarify Rules
+
+When running or prompting `/speckit.clarify`, use a maximum of **25** accepted
+clarification questions per clarify round, not the vanilla Spec Kit default of
+5. This override applies to Codex skill-driven clarify work, Claude
+slash-command prompts, and handoff prompts written for another agent.
+Ask one question at a time and stop earlier when all material ambiguities are
+resolved.
+
+Clarification answers must be recorded inline in the feature's clarification
+file when one exists, such as `clarify-questions.md`, and must also be applied
+directly to the relevant sections of `spec.md`. Do not create a separate
+answers file unless the user explicitly asks for one.
+
 See `{agent_root / "AGENTS.md"}` for the user-level entrypoint.
 """
 
@@ -544,8 +566,8 @@ It updates or creates:
 - `openspec/README.md` and `.specify/README.md` as thin pointers to the global
   workflow
 - `.claude/commands/opsx/*` from global templates when missing
-- `.claude/skills`, `.codex/skills`, and `.agents/skills` links for available
-  global OpenSpec/Speckit skills
+- copied directories under `.claude/skills`, `.codex/skills`, and
+  `.agents/skills` for available global OpenSpec/Speckit skills
 - minimal `openspec/changes/archive`, `openspec/specs`, and `.specify/`
   scaffolding when those directories are absent
 - user-global agent entrypoint pointers for practical global agent homes
@@ -594,15 +616,15 @@ def ensure_agent_protocol_files(agent_root: Path, dry_run: bool) -> None:
     )
 
 
-def agent_block(agent_root: Path) -> str:
+def agent_block() -> str:
     return f"""## Shared OpenSpec/Speckit Protocol
 
 This repo uses the user-global OpenSpec/Speckit workflow instead of duplicating
 process rules in every repository.
 
-- Global agent entrypoint: `{agent_root / "AGENTS.md"}`
-- Workflow protocol: `{agent_root / "protocols" / "openspec-speckit-workflow.md"}`
-- Bootstrap contract: `{agent_root / "protocols" / "project-agent-bootstrap.md"}`
+- Global agent entrypoint: `{REPO_AGENT_ROOT}/AGENTS.md`
+- Workflow protocol: `{REPO_AGENT_ROOT}/protocols/openspec-speckit-workflow.md`
+- Bootstrap contract: `{REPO_AGENT_ROOT}/protocols/project-agent-bootstrap.md`
 
 Repo-local sections below remain authoritative for project-specific commands,
 runtime prerequisites, source-of-truth docs, tests, and deployment constraints."""
@@ -615,23 +637,23 @@ Read `{agent_root / "AGENTS.md"}` for user-global workflow rules, including the
 OpenSpec/Speckit protocol and project bootstrap contract."""
 
 
-def openspec_readme(agent_root: Path) -> str:
+def openspec_readme() -> str:
     return f"""# OpenSpec Workflow
 
 This directory contains repo-local OpenSpec changes and spec deltas.
 
 The authoritative shared workflow is maintained globally:
 
-- `{agent_root / "AGENTS.md"}`
-- `{agent_root / "protocols" / "openspec-speckit-workflow.md"}`
-- `{agent_root / "protocols" / "project-agent-bootstrap.md"}`
+- `{REPO_AGENT_ROOT}/AGENTS.md`
+- `{REPO_AGENT_ROOT}/protocols/openspec-speckit-workflow.md`
+- `{REPO_AGENT_ROOT}/protocols/project-agent-bootstrap.md`
 
 Keep repo-specific product, runtime, and test constraints in this repository's
 agent files and docs.
 """
 
 
-def specify_readme(agent_root: Path) -> str:
+def specify_readme() -> str:
     return f"""# Speckit Workflow
 
 This directory contains repo-local Speckit configuration, memory, scripts, and
@@ -639,9 +661,9 @@ feature-worktree helpers.
 
 The authoritative shared OpenSpec/Speckit workflow is maintained globally:
 
-- `{agent_root / "AGENTS.md"}`
-- `{agent_root / "protocols" / "openspec-speckit-workflow.md"}`
-- `{agent_root / "protocols" / "project-agent-bootstrap.md"}`
+- `{REPO_AGENT_ROOT}/AGENTS.md`
+- `{REPO_AGENT_ROOT}/protocols/openspec-speckit-workflow.md`
+- `{REPO_AGENT_ROOT}/protocols/project-agent-bootstrap.md`
 
 Repo-local `.specify/extensions/git/git-config.yml` controls branch/worktree
 behavior when present.
@@ -649,6 +671,11 @@ behavior when present.
 
 
 def ensure_scaffold(repo: Path, dry_run: bool, skip_init: bool) -> None:
+    write_text_if_missing(
+        repo / "openspec" / "config.yaml",
+        "schema: spec-driven\n",
+        dry_run,
+    )
     if skip_init:
         return
     for directory in [
@@ -681,13 +708,13 @@ def ensure_skills(repo: Path, dry_run: bool, force: bool) -> None:
             )
 
 
-def ensure_repo_agent_pointers(repo: Path, agent_root: Path, dry_run: bool) -> None:
+def ensure_repo_agent_pointers(repo: Path, dry_run: bool) -> None:
     seen: set[str] = set()
     for _, relative_path in SUPPORTED_AGENT_CONTEXT_FILES:
         if relative_path in seen:
             continue
         seen.add(relative_path)
-        upsert_block(repo / relative_path, agent_block(agent_root), dry_run)
+        upsert_block(repo / relative_path, agent_block(), dry_run)
 
 
 def ensure_global_agent_pointers(agent_root: Path, dry_run: bool) -> None:
@@ -863,6 +890,31 @@ def ensure_extensions_hook(repo: Path, dry_run: bool) -> None:
     write_text(path, "\n".join(lines) + "\n", dry_run)
 
 
+def refresh_git_extension_manifest_hash(
+    repo: Path,
+    manifest: Path,
+    dry_run: bool,
+) -> None:
+    registry_path = repo / ".specify" / "extensions" / ".registry"
+    registry = read_json(registry_path)
+    extensions = registry.get("extensions")
+    if not isinstance(extensions, dict):
+        return
+    git_extension = extensions.get("git")
+    if not isinstance(git_extension, dict):
+        return
+
+    if not manifest.exists():
+        return
+
+    manifest_hash = f"sha256:{hashlib.sha256(manifest.read_bytes()).hexdigest()}"
+    if git_extension.get("manifest_hash") == manifest_hash:
+        log(f"unchanged Git extension manifest hash in {registry_path}")
+        return
+    git_extension["manifest_hash"] = manifest_hash
+    write_text(registry_path, json.dumps(registry, indent=2) + "\n", dry_run)
+
+
 def ensure_worktree_overlay(
     repo: Path,
     dry_run: bool,
@@ -904,6 +956,17 @@ def ensure_worktree_overlay(
         dry_run,
     )
     ensure_extensions_hook(repo, dry_run)
+    installed_manifest = repo / ".specify" / "extensions" / "git" / "extension.yml"
+    manifest_to_hash = (
+        template_root / "specify" / "extensions" / "git" / "extension.yml"
+        if dry_run and (git_overlay_force or not installed_manifest.exists())
+        else installed_manifest
+    )
+    refresh_git_extension_manifest_hash(
+        repo,
+        manifest_to_hash,
+        dry_run,
+    )
 
 
 def main() -> int:
@@ -930,11 +993,11 @@ def main() -> int:
     )
 
     if not args.no_repo_agent_pointers:
-        ensure_repo_agent_pointers(repo, agent_root, args.dry_run)
+        ensure_repo_agent_pointers(repo, args.dry_run)
 
     if not args.preserve_readmes:
-        write_text(repo / "openspec" / "README.md", openspec_readme(agent_root), args.dry_run)
-        write_text(repo / ".specify" / "README.md", specify_readme(agent_root), args.dry_run)
+        write_text(repo / "openspec" / "README.md", openspec_readme(), args.dry_run)
+        write_text(repo / ".specify" / "README.md", specify_readme(), args.dry_run)
 
     template_root = opsx_command_template_root(agent_root)
     if template_root:
