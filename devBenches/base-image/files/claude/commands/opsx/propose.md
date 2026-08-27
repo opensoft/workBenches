@@ -1,16 +1,16 @@
 ---
 name: "OPSX: Propose"
-description: Propose a new change with alignment review and council debate before generating design and tasks
+description: Propose a governed change with alignment review, council debate, and one Speckit handoff
 category: Workflow
 tags: [workflow, artifacts, experimental, teams]
 ---
 
-Propose a new change. After drafting the proposal, two review gates run before design/tasks are generated:
+Propose a new governed change. After drafting the proposal, two review gates run before design and the Speckit handoff are generated:
 
 1. **Alignment Review** — An architect and QA lead verify the proposal against your architecture docs and requirements docs, fixing mismatches before anyone debates the proposal.
 2. **Council Debate** — Three agents argue about the *aligned* proposal from product, architecture, and adversary perspectives.
 
-Only after both gates does the lead generate design.md and tasks.md — built on a proposal that's both doc-aligned and battle-tested.
+Only after both gates does the lead generate design.md and any schema-required governance artifacts. OpenSpec records decisions and the handoff; one linked Speckit feature owns executable implementation tasks.
 
 ```
 Flow:
@@ -19,8 +19,8 @@ Flow:
     → fix mismatches in proposal
     → COUNCIL DEBATES THE ALIGNED PROPOSAL (3 agents in parallel)
     → resolve verdicts → update proposal / create clarifications.md
-    → generate design.md → generate tasks.md
-    → "Ready for implementation!"
+    → generate design.md → record one Speckit handoff
+    → "Ready for Speckit feature creation!"
 ```
 
 ---
@@ -351,9 +351,11 @@ For each concern, assign one of:
 
 ---
 
-## Phase 6: Generate Remaining Artifacts
+## Phase 6: Generate Remaining Artifacts And Handoff
 
-Now generate design.md and tasks.md (and any other schema-required artifacts) using the updated proposal and clarifications as context.
+Now generate design.md and any other schema-required artifacts using the updated proposal and clarifications as context.
+
+OpenSpec artifacts MUST NOT duplicate Speckit's executable implementation task list. If the schema requires `tasks.md`, use it only as a governance and handoff record. It may track approval, the single Speckit feature link, verification/landing state, and archival readiness. It must not contain code-level implementation steps.
 
 Loop through remaining artifacts in dependency order:
 
@@ -363,7 +365,8 @@ Loop through remaining artifacts in dependency order:
      openspec instructions <artifact-id> --change "<name>" --json
      ```
    - Read completed dependency files **including `clarifications.md`** — this is critical, the design must account for council-identified constraints
-   - Create the artifact file using template
+   - Create the artifact file using the template
+   - For a schema-required `tasks.md`, replace implementation detail with governance/handoff milestones and a `## Speckit Handoff` section containing exactly one feature identifier, branch, and repo-relative task path (`specs/<feature>/tasks.md`) once known
    - Show brief progress: "Created <artifact-id>"
 
 2. Continue until all `applyRequires` artifacts are complete
@@ -373,6 +376,12 @@ Loop through remaining artifacts in dependency order:
 3. If an artifact requires user input:
    - Use **AskUserQuestion** to clarify
    - Then continue
+
+4. **Prepare exactly one Speckit handoff**
+   - If a linked Speckit feature already exists, validate that there is exactly one and record its feature identifier, branch, and repo-relative `tasks.md` path
+   - If none exists, stop after governance artifacts are complete and direct the user to create one with `/speckit.specify`; do not invent a branch or duplicate the implementation plan in OpenSpec
+   - If multiple candidates exist, ask the user which single feature owns implementation
+   - Do not declare the change ready for `/opsx:apply` until the handoff identifies exactly one Speckit feature
 
 ---
 
@@ -386,8 +395,9 @@ Summarize:
 - Change name and location
 - Council results recap (N valid, N noted, N dismissed)
 - List of artifacts created with brief descriptions
-- "All artifacts created! Ready for implementation."
-- "Run `/opsx:apply` to start implementing, or `/opsx:analyze` for a deep audit first."
+- Whether the single Speckit handoff is linked or still required
+- If linked: "Governance complete. Run `/opsx:apply` to execute the linked Speckit tasks, or `/opsx:analyze` for a deep audit first."
+- If not linked: "Governance complete. Run `/speckit.specify` once, record that feature in the handoff, then run `/opsx:apply`."
 
 ---
 
@@ -408,7 +418,8 @@ Summarize:
 - **Council is mandatory** — Always run the council after generating proposal.md. Don't skip it.
 - **Council is read-only** — Agents analyze and argue. Only the lead modifies files.
 - **VALID = must fix** — Don't skip VALID verdicts. Update the proposal before generating design.
-- **Design reads clarifications** — When generating design.md and tasks.md, always read clarifications.md. The whole point of the council is to feed constraints into downstream artifacts.
+- **Design reads clarifications** — When generating design.md and governance/handoff artifacts, always read clarifications.md. The whole point of the council is to feed constraints into downstream artifacts.
+- **One implementation authority** — OpenSpec records governance and exactly one Speckit handoff. Only `specs/<feature>/tasks.md` may contain executable implementation tasks.
 - **Shut down agents** — After collecting results, shutdown all council agents.
 - **Don't over-edit** — Apply VALID verdicts surgically. Don't rewrite the entire proposal.
 - **If a change already exists** — Ask if the user wants to continue it or create a new one. If continuing, skip to where they left off.
