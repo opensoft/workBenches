@@ -17,6 +17,7 @@ REPO_DIR="$TMPDIR_ROOT/repo"
 REPO_SKILL_PATH="$REPO_DIR/.agents/skills/ct"
 EXPLORE_COMMAND="$REPO_DIR/.claude/commands/opsx/explore.md"
 APPLY_COMMAND="$REPO_DIR/.claude/commands/opsx/apply.md"
+PROPOSE_COMMAND="$REPO_DIR/.claude/commands/opsx/propose.md"
 REGISTRY_PATH="$REPO_DIR/.specify/extensions/.registry"
 EXTENSION_MANIFEST="$REPO_DIR/.specify/extensions/git/extension.yml"
 WORKFLOW_PROTOCOL="$AGENT_PROTOCOL_ROOT/protocols/openspec-speckit-workflow.md"
@@ -145,6 +146,7 @@ for skill_home in .claude .codex .agents; do
         "$skill_root/speckit-clarify" \
         "$skill_root/speckit-specify" \
         "$skill_root/speckit-git-feature" \
+        "$skill_root/speckit-git-validate" \
         "$skill_root/claude-session-driver" \
         "$skill_root/speckit-claude-driver"
     printf '%s\n' 'fixture skill' > "$skill_root/ct/SKILL.md"
@@ -170,6 +172,7 @@ for skill_home in .claude .codex .agents; do
 
     printf '%s\n' 'GLOBAL SKILL MUST NOT OVERRIDE WORKTREE OVERLAY' > "$skill_root/speckit-specify/SKILL.md"
     printf '%s\n' 'GLOBAL SKILL MUST NOT OVERRIDE WORKTREE OVERLAY' > "$skill_root/speckit-git-feature/SKILL.md"
+    printf '%s\n' 'GLOBAL STALE VALIDATOR MUST NOT OVERRIDE WORKTREE OVERLAY' > "$skill_root/speckit-git-validate/SKILL.md"
 
     cat > "$skill_root/speckit-clarify/SKILL.md" <<'EOF'
 ---
@@ -297,6 +300,8 @@ assert_contains "$APPLY_COMMAND" 'completed task IDs, changed files, tests run, 
 assert_contains "$APPLY_COMMAND" 'verify each package result before marking' 'apply requires lead verification before task completion'
 assert_contains "$APPLY_COMMAND" 'Only the lead may edit or check off the linked Speckit `tasks.md`' 'apply guardrails reserve task edits and checkoffs for the lead'
 assert_not_contains "$APPLY_COMMAND" 'Each agent only checks off its own assigned Speckit tasks' 'apply contains no teammate task-checkoff contradiction'
+assert_file "$PROPOSE_COMMAND" 'generated propose command exists'
+assert_not_contains "$PROPOSE_COMMAND" '/opsx:analyze' 'propose recommends only installed OPSX commands'
 assert_file "$EXTENSION_MANIFEST" 'installed Git extension manifest exists'
 assert_file "$REGISTRY_PATH" 'extension registry exists'
 
@@ -442,7 +447,7 @@ for overlay_mapping in \
     '.codex:codex'; do
     repo_agent_dir="${overlay_mapping%%:*}"
     template_agent_dir="${overlay_mapping##*:}"
-    for overlay_skill in speckit-specify speckit-git-feature; do
+    for overlay_skill in speckit-specify speckit-git-feature speckit-git-validate; do
         overlay_source="$WORKTREE_TEMPLATE_ROOT/$template_agent_dir/skills/$overlay_skill/SKILL.md"
         overlay_destination="$REPO_DIR/$repo_agent_dir/skills/$overlay_skill/SKILL.md"
         if cmp -s "$overlay_source" "$overlay_destination"; then
@@ -454,6 +459,25 @@ for overlay_mapping in \
             "$overlay_destination" \
             'GLOBAL SKILL MUST NOT OVERRIDE WORKTREE OVERLAY' \
             "global skill does not override worktree overlay: $repo_agent_dir/$overlay_skill"
+        assert_not_contains \
+            "$overlay_destination" \
+            'GLOBAL STALE VALIDATOR MUST NOT OVERRIDE WORKTREE OVERLAY' \
+            "stale global validator does not override worktree overlay: $repo_agent_dir/$overlay_skill"
+        if [[ "$overlay_skill" == 'speckit-git-validate' && "$repo_agent_dir" == '.codex' ]]; then
+            assert_contains \
+                "$overlay_destination" \
+                '../../../.agents/skills/speckit-git-validate/SKILL.md' \
+                'Codex validator delegates to the canonical Agents workflow'
+        elif [[ "$overlay_skill" == 'speckit-git-validate' ]]; then
+            assert_contains \
+                "$overlay_destination" \
+                "final path segment" \
+                "validator supports namespaced feature branches: $repo_agent_dir"
+            assert_contains \
+                "$overlay_destination" \
+                '.specify/feature.json' \
+                "validator honors the authoritative feature mapping: $repo_agent_dir"
+        fi
     done
 done
 

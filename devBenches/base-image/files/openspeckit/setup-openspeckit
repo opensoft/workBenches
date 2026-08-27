@@ -1187,6 +1187,10 @@ def ensure_worktree_overlay(
             repo / ".agents" / "skills" / "speckit-git-feature",
         ),
         (
+            template_root / "agents" / "skills" / "speckit-git-validate",
+            repo / ".agents" / "skills" / "speckit-git-validate",
+        ),
+        (
             template_root / "claude" / "skills" / "speckit-specify",
             repo / ".claude" / "skills" / "speckit-specify",
         ),
@@ -1195,12 +1199,20 @@ def ensure_worktree_overlay(
             repo / ".claude" / "skills" / "speckit-git-feature",
         ),
         (
+            template_root / "claude" / "skills" / "speckit-git-validate",
+            repo / ".claude" / "skills" / "speckit-git-validate",
+        ),
+        (
             template_root / "codex" / "skills" / "speckit-specify",
             repo / ".codex" / "skills" / "speckit-specify",
         ),
         (
             template_root / "codex" / "skills" / "speckit-git-feature",
             repo / ".codex" / "skills" / "speckit-git-feature",
+        ),
+        (
+            template_root / "codex" / "skills" / "speckit-git-validate",
+            repo / ".codex" / "skills" / "speckit-git-validate",
         ),
     )
     overlay_owned_destinations: set[Path] = set()
