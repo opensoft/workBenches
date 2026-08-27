@@ -73,6 +73,12 @@ while [ $i -le $# ]; do
             echo ""
             echo "Environment variables:"
             echo "  GIT_BRANCH_NAME     Use this exact branch name, bypassing all prefix/suffix generation"
+            echo "  SPECKIT_GIT_BRANCH_TEMPLATE  Override branch_template"
+            echo "  SPECKIT_GIT_BRANCH_PREFIX    Override branch_prefix"
+            echo ""
+            echo "Configuration:"
+            echo "  branch_template     Optional template with {author}, {app}, {number}, {slug}"
+            echo "  branch_prefix       Optional namespace prepended to branch_template"
             echo ""
             echo "Examples:"
             echo "  $0 'Add user authentication system' --short-name 'user-auth'"
@@ -94,8 +100,7 @@ if [ -z "$FEATURE_DESCRIPTION" ]; then
     exit 1
 fi
 
-# Trim whitespace and validate description is not empty
-FEATURE_DESCRIPTION=$(echo "$FEATURE_DESCRIPTION" | xargs)
+FEATURE_DESCRIPTION=$(printf '%s' "$FEATURE_DESCRIPTION" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
 if [ -z "$FEATURE_DESCRIPTION" ]; then
     echo "Error: Feature description cannot be empty or contain only whitespace" >&2
     exit 1
@@ -126,16 +131,28 @@ get_highest_from_specs() {
 
 # Function to get highest number from git branches
 get_highest_from_branches() {
-    git branch -a 2>/dev/null | sed 's/^[+* ]*//; s|^remotes/[^/]*/||' | _extract_highest_number
+    local scope_prefix="${1:-}"
+    git branch -a 2>/dev/null | sed -E 's/^[+*][[:space:]]+//; s/^[[:space:]]+//; s|^remotes/[^/]*/||' | _extract_highest_number "$scope_prefix"
 }
 
 # Extract the highest sequential feature number from a list of ref names (one per line).
 _extract_highest_number() {
+    local scope_prefix="${1:-}"
     local highest=0
     while IFS= read -r name; do
         [ -z "$name" ] && continue
-        if echo "$name" | grep -Eq '^[0-9]{3,}-' && ! echo "$name" | grep -Eq '^[0-9]{8}-[0-9]{6}-'; then
-            number=$(echo "$name" | grep -Eo '^[0-9]+' || echo "0")
+        if [ -n "$scope_prefix" ]; then
+            case "$name" in
+                "$scope_prefix"*) name="${name#"$scope_prefix"}" ;;
+                *) continue ;;
+            esac
+        fi
+        name="${name##*/}"
+        if echo "$name" | grep -Eq '^[0-9]{3,}-' \
+            && ! echo "$name" | grep -Eq '^[0-9]{8}-[0-9]{6}-' \
+            && ! echo "$name" | grep -Eq '^[0-9]{7}-[0-9]{6}-' \
+            && ! echo "$name" | grep -Eq '^[0-9]{7,8}-[0-9]{6}$'; then
+            number=$(echo "$name" | grep -Eo '^[0-9]{3,}-' | sed -E 's/-$//' || echo "0")
             number=$((10#$number))
             if [ "$number" -gt "$highest" ]; then
                 highest=$number
@@ -147,11 +164,12 @@ _extract_highest_number() {
 
 # Function to get highest number from remote branches without fetching (side-effect-free)
 get_highest_from_remote_refs() {
+    local scope_prefix="${1:-}"
     local highest=0
 
     for remote in $(git remote 2>/dev/null); do
         local remote_highest
-        remote_highest=$(GIT_TERMINAL_PROMPT=0 git ls-remote --heads "$remote" 2>/dev/null | sed 's|.*refs/heads/||' | _extract_highest_number)
+        remote_highest=$(GIT_TERMINAL_PROMPT=0 git ls-remote --heads "$remote" 2>/dev/null | sed 's|.*refs/heads/||' | _extract_highest_number "$scope_prefix")
         if [ "$remote_highest" -gt "$highest" ]; then
             highest=$remote_highest
         fi
@@ -164,19 +182,23 @@ get_highest_from_remote_refs() {
 check_existing_branches() {
     local specs_dir="$1"
     local skip_fetch="${2:-false}"
+    local scope_prefix="${3:-}"
 
     if [ "$skip_fetch" = true ]; then
-        local highest_remote=$(get_highest_from_remote_refs)
-        local highest_branch=$(get_highest_from_branches)
+        local highest_remote=$(get_highest_from_remote_refs "$scope_prefix")
+        local highest_branch=$(get_highest_from_branches "$scope_prefix")
         if [ "$highest_remote" -gt "$highest_branch" ]; then
             highest_branch=$highest_remote
         fi
     else
         git fetch --all --prune >/dev/null 2>&1 || true
-        local highest_branch=$(get_highest_from_branches)
+        local highest_branch=$(get_highest_from_branches "$scope_prefix")
     fi
 
-    local highest_spec=$(get_highest_from_specs "$specs_dir")
+    local highest_spec=0
+    if [ -z "$scope_prefix" ]; then
+        highest_spec=$(get_highest_from_specs "$specs_dir")
+    fi
 
     local max_num=$highest_branch
     if [ "$highest_spec" -gt "$max_num" ]; then
@@ -288,6 +310,120 @@ get_config_value() {
     fi
 
     printf '%s\n' "$default_value"
+}
+
+branch_token() {
+    local value="$1"
+    local fallback="$2"
+    local cleaned
+    cleaned=$(clean_branch_name "$value")
+    if [ -n "$cleaned" ]; then
+        printf '%s\n' "$cleaned"
+    else
+        printf '%s\n' "$fallback"
+    fi
+}
+
+get_author_token() {
+    local author=""
+    if command -v git >/dev/null 2>&1; then
+        author=$(git config user.name 2>/dev/null || true)
+        if [ -z "$author" ]; then
+            author=$(git config user.email 2>/dev/null | sed 's/@.*$//' || true)
+        fi
+    fi
+    if [ -z "$author" ]; then
+        author="${USER:-unknown}"
+    fi
+    branch_token "$author" "unknown"
+}
+
+get_app_token() {
+    branch_token "$(basename "$REPO_ROOT")" "app"
+}
+
+render_branch_template() {
+    local template="$1"
+    local feature_num="$2"
+    local branch_suffix="$3"
+    local rendered="$template"
+    rendered=${rendered//\{author\}/$AUTHOR_TOKEN}
+    rendered=${rendered//\{app\}/$APP_TOKEN}
+    rendered=${rendered//\{number\}/$feature_num}
+    rendered=${rendered//\{slug\}/$branch_suffix}
+    printf '%s\n' "$rendered"
+}
+
+resolve_branch_template() {
+    local template="$1"
+    local prefix="$2"
+    while [[ "$prefix" == */ ]]; do
+        prefix="${prefix%/}"
+    done
+    if [ -z "$prefix" ]; then
+        printf '%s\n' "$template"
+        return
+    fi
+    case "$template" in
+        "$prefix"|"$prefix"/*) printf '%s\n' "$template" ;;
+        *) printf '%s/%s\n' "$prefix" "$template" ;;
+    esac
+}
+
+validate_branch_template() {
+    local template="$1"
+    local feature_segment="${template##*/}"
+    case "$template" in
+        *"{number}"*) ;;
+        *)
+            >&2 echo "Error: branch_template must include the {number} token so generated branches remain valid feature branches."
+            exit 1
+            ;;
+    esac
+    case "$template" in
+        *"{slug}"*"{number}"*)
+            >&2 echo "Error: branch_template must not place {slug} before {number}; use {slug} only in the final feature segment."
+            exit 1
+            ;;
+    esac
+    case "$feature_segment" in
+        "{number}-"*) ;;
+        *)
+            >&2 echo "Error: branch_template must put {number}- at the start of the final path segment so generated branches remain valid feature branches."
+            exit 1
+            ;;
+    esac
+}
+
+build_branch_name() {
+    render_branch_template "$BRANCH_TEMPLATE" "$1" "$2"
+}
+
+branch_scope_prefix() {
+    local prefix="$BRANCH_TEMPLATE"
+    case "$prefix" in
+        *"{number}"*) prefix="${prefix%%\{number\}*}" ;;
+        *"{slug}"*) prefix="${prefix%%\{slug\}*}" ;;
+        *) return 0 ;;
+    esac
+    render_branch_template "$prefix" "" "$BRANCH_SUFFIX"
+}
+
+extract_feature_num_from_branch() {
+    local branch_name="$1"
+    local feature_segment="${branch_name##*/}"
+    local match
+    match=$(printf '%s\n' "$feature_segment" | grep -Eo '^[0-9]{8}-[0-9]{6}-' | head -n 1 || true)
+    if [ -n "$match" ]; then
+        printf '%s\n' "${match%-}"
+        return
+    fi
+    match=$(printf '%s\n' "$feature_segment" | grep -Eo '^[0-9]+-' | head -n 1 || true)
+    if [ -n "$match" ]; then
+        printf '%s\n' "${match%-}"
+        return
+    fi
+    printf '%s\n' "$branch_name"
 }
 
 resolve_path_from_repo_root() {
@@ -411,7 +547,6 @@ BRANCH_NUMBERING=$(printf '%s' "$BRANCH_NUMBERING" | tr '[:upper:]' '[:lower:]')
 BASE_BRANCH=$(get_config_value "base_branch" "main" "SPECKIT_GIT_BASE_BRANCH")
 WORKTREE_ROOT_RAW=$(get_config_value "worktree_root" "$DEFAULT_WORKTREE_ROOT" "SPECKIT_GIT_WORKTREE_ROOT")
 WORKTREE_ROOT=$(resolve_path_from_repo_root "$WORKTREE_ROOT_RAW")
-
 if [ "$CHECKOUT_MODE" != "branch" ] && [ "$CHECKOUT_MODE" != "worktree" ]; then
     echo "Error: checkout_mode must be 'branch' or 'worktree' (got '$CHECKOUT_MODE')" >&2
     exit 1
@@ -440,7 +575,7 @@ generate_branch_name() {
         if ! echo "$word" | grep -qiE "$stop_words"; then
             if [ ${#word} -ge 3 ]; then
                 meaningful_words+=("$word")
-            elif echo "$description" | grep -qw -- "${word^^}"; then
+            elif printf '%s' "$description" | grep -qw -- "$(printf '%s' "$word" | tr '[:lower:]' '[:upper:]')"; then
                 meaningful_words+=("$word")
             fi
         fi
@@ -468,19 +603,16 @@ generate_branch_name() {
 # Check for GIT_BRANCH_NAME env var override (exact branch name, no prefix/suffix)
 if [ -n "${GIT_BRANCH_NAME:-}" ]; then
     BRANCH_NAME="$GIT_BRANCH_NAME"
-    # Extract FEATURE_NUM from the branch name if it starts with a numeric prefix
-    # Check timestamp pattern first (YYYYMMDD-HHMMSS-) since it also matches the simpler ^[0-9]+ pattern
-    if echo "$BRANCH_NAME" | grep -Eq '^[0-9]{8}-[0-9]{6}-'; then
-        FEATURE_NUM=$(echo "$BRANCH_NAME" | grep -Eo '^[0-9]{8}-[0-9]{6}')
-        BRANCH_SUFFIX="${BRANCH_NAME#${FEATURE_NUM}-}"
-    elif echo "$BRANCH_NAME" | grep -Eq '^[0-9]+-'; then
-        FEATURE_NUM=$(echo "$BRANCH_NAME" | grep -Eo '^[0-9]+')
-        BRANCH_SUFFIX="${BRANCH_NAME#${FEATURE_NUM}-}"
-    else
-        FEATURE_NUM="$BRANCH_NAME"
-        BRANCH_SUFFIX="$BRANCH_NAME"
-    fi
+    FEATURE_NUM=$(extract_feature_num_from_branch "$BRANCH_NAME")
+    BRANCH_SUFFIX="$BRANCH_NAME"
 else
+    BRANCH_TEMPLATE_RAW=$(get_config_value "branch_template" "{number}-{slug}" "SPECKIT_GIT_BRANCH_TEMPLATE")
+    BRANCH_PREFIX=$(get_config_value "branch_prefix" "" "SPECKIT_GIT_BRANCH_PREFIX")
+    AUTHOR_TOKEN=$(get_author_token)
+    APP_TOKEN=$(get_app_token)
+    BRANCH_TEMPLATE=$(resolve_branch_template "$BRANCH_TEMPLATE_RAW" "$BRANCH_PREFIX")
+    validate_branch_template "$BRANCH_TEMPLATE"
+
     # Generate branch name
     if [ -n "$SHORT_NAME" ]; then
         BRANCH_SUFFIX=$(clean_branch_name "$SHORT_NAME")
@@ -502,24 +634,33 @@ else
     # Determine branch prefix
     if [ "$USE_TIMESTAMP" = true ]; then
         FEATURE_NUM=$(date +%Y%m%d-%H%M%S)
-        BRANCH_NAME="${FEATURE_NUM}-${BRANCH_SUFFIX}"
+        BRANCH_NAME=$(build_branch_name "$FEATURE_NUM" "$BRANCH_SUFFIX")
     else
+        BRANCH_SCOPE_PREFIX=$(branch_scope_prefix)
         if [ -z "$BRANCH_NUMBER" ]; then
             if [ "$DRY_RUN" = true ] && [ "$HAS_GIT" = true ]; then
-                BRANCH_NUMBER=$(check_existing_branches "$SPECS_DIR" true)
+                BRANCH_NUMBER=$(check_existing_branches "$SPECS_DIR" true "$BRANCH_SCOPE_PREFIX")
             elif [ "$DRY_RUN" = true ]; then
-                HIGHEST=$(get_highest_from_specs "$SPECS_DIR")
+                if [ -n "$BRANCH_SCOPE_PREFIX" ]; then
+                    HIGHEST=0
+                else
+                    HIGHEST=$(get_highest_from_specs "$SPECS_DIR")
+                fi
                 BRANCH_NUMBER=$((HIGHEST + 1))
             elif [ "$HAS_GIT" = true ]; then
-                BRANCH_NUMBER=$(check_existing_branches "$SPECS_DIR" true)
+                BRANCH_NUMBER=$(check_existing_branches "$SPECS_DIR" true "$BRANCH_SCOPE_PREFIX")
             else
-                HIGHEST=$(get_highest_from_specs "$SPECS_DIR")
+                if [ -n "$BRANCH_SCOPE_PREFIX" ]; then
+                    HIGHEST=0
+                else
+                    HIGHEST=$(get_highest_from_specs "$SPECS_DIR")
+                fi
                 BRANCH_NUMBER=$((HIGHEST + 1))
             fi
         fi
 
         FEATURE_NUM=$(printf "%03d" "$((10#$BRANCH_NUMBER))")
-        BRANCH_NAME="${FEATURE_NUM}-${BRANCH_SUFFIX}"
+        BRANCH_NAME=$(build_branch_name "$FEATURE_NUM" "$BRANCH_SUFFIX")
     fi
 fi
 
@@ -531,18 +672,26 @@ if [ -n "${GIT_BRANCH_NAME:-}" ] && [ "$BRANCH_BYTE_LEN" -gt $MAX_BRANCH_LENGTH 
     >&2 echo "Error: GIT_BRANCH_NAME must be 244 bytes or fewer in UTF-8. Provided value is ${BRANCH_BYTE_LEN} bytes."
     exit 1
 elif [ "$BRANCH_BYTE_LEN" -gt $MAX_BRANCH_LENGTH ]; then
-    PREFIX_LENGTH=$(( ${#FEATURE_NUM} + 1 ))
-    MAX_SUFFIX_LENGTH=$((MAX_BRANCH_LENGTH - PREFIX_LENGTH))
-
-    TRUNCATED_SUFFIX=$(echo "$BRANCH_SUFFIX" | cut -c1-$MAX_SUFFIX_LENGTH)
-    TRUNCATED_SUFFIX=$(echo "$TRUNCATED_SUFFIX" | sed 's/-$//')
-
     ORIGINAL_BRANCH_NAME="$BRANCH_NAME"
-    BRANCH_NAME="${FEATURE_NUM}-${TRUNCATED_SUFFIX}"
+    TRUNCATED_SUFFIX="$BRANCH_SUFFIX"
+    while [ "$(_byte_length "$BRANCH_NAME")" -gt "$MAX_BRANCH_LENGTH" ] && [ -n "$TRUNCATED_SUFFIX" ]; do
+        TRUNCATED_SUFFIX="${TRUNCATED_SUFFIX%?}"
+        TRUNCATED_SUFFIX="${TRUNCATED_SUFFIX%-}"
+        BRANCH_NAME=$(build_branch_name "$FEATURE_NUM" "$TRUNCATED_SUFFIX")
+    done
+    if [ "$(_byte_length "$BRANCH_NAME")" -gt "$MAX_BRANCH_LENGTH" ]; then
+        >&2 echo "Error: Branch template prefix exceeds GitHub's 244-byte branch name limit."
+        exit 1
+    fi
 
     >&2 echo "[specify] Warning: Branch name exceeded GitHub's 244-byte limit"
-    >&2 echo "[specify] Original: $ORIGINAL_BRANCH_NAME (${#ORIGINAL_BRANCH_NAME} bytes)"
-    >&2 echo "[specify] Truncated to: $BRANCH_NAME (${#BRANCH_NAME} bytes)"
+    >&2 echo "[specify] Original: $ORIGINAL_BRANCH_NAME ($(_byte_length "$ORIGINAL_BRANCH_NAME") bytes)"
+    >&2 echo "[specify] Truncated to: $BRANCH_NAME ($(_byte_length "$BRANCH_NAME") bytes)"
+fi
+
+if command -v git >/dev/null 2>&1 && ! git check-ref-format --branch "$BRANCH_NAME" >/dev/null 2>&1; then
+    >&2 echo "Error: Invalid Git branch name: $BRANCH_NAME"
+    exit 1
 fi
 
 WORKTREE_PATH=""
@@ -570,7 +719,7 @@ if [ "$DRY_RUN" != true ]; then
                         >&2 echo "Error: Worktree path '$WORKTREE_PATH' already exists. Please remove it or configure a different worktree_root."
                         exit 1
                     fi
-                    mkdir -p "$WORKTREE_ROOT"
+                    mkdir -p "$(dirname "$WORKTREE_PATH")"
                     if ! worktree_error=$(git worktree add "$WORKTREE_PATH" "$BRANCH_NAME" 2>&1); then
                         >&2 echo "Error: Failed to add worktree '$WORKTREE_PATH' for existing branch '$BRANCH_NAME'."
                         >&2 printf '%s\n' "$worktree_error"
@@ -592,7 +741,7 @@ if [ "$DRY_RUN" != true ]; then
                     >&2 echo "Error: Worktree path '$WORKTREE_PATH' already exists. Please remove it or configure a different worktree_root."
                     exit 1
                 fi
-                mkdir -p "$WORKTREE_ROOT"
+                mkdir -p "$(dirname "$WORKTREE_PATH")"
                 if ! worktree_error=$(git worktree add -b "$BRANCH_NAME" "$WORKTREE_PATH" "$base_ref" 2>&1); then
                     >&2 echo "Error: Failed to create feature worktree '$WORKTREE_PATH' from '$base_ref'."
                     >&2 printf '%s\n' "$worktree_error"

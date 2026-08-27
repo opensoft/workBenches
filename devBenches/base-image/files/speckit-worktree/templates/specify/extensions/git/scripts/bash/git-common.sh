@@ -16,6 +16,7 @@ has_git() {
 check_feature_branch() {
     local branch="$1"
     local has_git_repo="$2"
+    local feature_segment="${branch##*/}"
 
     # For non-git repos, we can't enforce branch naming but still provide output
     if [[ "$has_git_repo" != "true" ]]; then
@@ -24,18 +25,18 @@ check_feature_branch() {
     fi
 
     # Reject malformed timestamps (7-digit date, 8-digit date without trailing slug, or 7-digit with slug)
-    if [[ "$branch" =~ ^[0-9]{7}-[0-9]{6} ]] || [[ "$branch" =~ ^[0-9]{8}-[0-9]{6}$ ]]; then
+    if [[ "$feature_segment" =~ ^[0-9]{7}-[0-9]{6}- ]] || [[ "$feature_segment" =~ ^[0-9]{7,8}-[0-9]{6}$ ]]; then
         echo "ERROR: Not on a feature branch. Current branch: $branch" >&2
-        echo "Feature branches should be named like: 001-feature-name or 20260319-143022-feature-name" >&2
+        echo "Feature branches should be named like: 001-feature-name, 20260319-143022-feature-name, or <namespace>/001-feature-name" >&2
         return 1
     fi
 
     # Accept sequential (>=3 digits followed by hyphen) or timestamp (YYYYMMDD-HHMMSS-*)
-    if [[ "$branch" =~ ^[0-9]{3,}- ]] || [[ "$branch" =~ ^[0-9]{8}-[0-9]{6}- ]]; then
+    if [[ "$feature_segment" =~ ^[0-9]{3,}- ]] || [[ "$feature_segment" =~ ^[0-9]{8}-[0-9]{6}- ]]; then
         return 0
     fi
 
     echo "ERROR: Not on a feature branch. Current branch: $branch" >&2
-    echo "Feature branches should be named like: 001-feature-name or 20260319-143022-feature-name" >&2
+    echo "Feature branches should be named like: 001-feature-name, 20260319-143022-feature-name, or <namespace>/001-feature-name" >&2
     return 1
 }
