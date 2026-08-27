@@ -396,7 +396,7 @@ Summarize:
 - Council results recap (N valid, N noted, N dismissed)
 - List of artifacts created with brief descriptions
 - Whether the single Speckit handoff is linked or still required
-- If linked: "Governance complete. Run `/opsx:apply` to execute the linked Speckit tasks, or `/opsx:analyze` for a deep audit first."
+- If linked: "Governance complete. Run `/opsx:apply` to execute the linked Speckit tasks."
 - If not linked: "Governance complete. Run `/speckit.specify` once, record that feature in the handoff, then run `/opsx:apply`."
 
 ---
