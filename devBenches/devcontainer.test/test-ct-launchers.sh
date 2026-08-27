@@ -117,7 +117,7 @@ grep -Fx "arg=opus" "$LOG_DIR/claude.log" >/dev/null
 grep -Fx "arg=--claude-extra" "$LOG_DIR/claude.log" >/dev/null
 
 grep -Fx "pwd=$TARGET_DIR" "$LOG_DIR/codex.log" >/dev/null
-[ "$(grep -c '^arg=--dangerously-bypass-approvals-and-sandbox$' "$LOG_DIR/codex.log")" -eq 0 ]
+! grep -Fx "arg=--dangerously-bypass-approvals-and-sandbox" "$LOG_DIR/codex.log" >/dev/null
 [ "$(grep -c '^arg=-m$' "$LOG_DIR/codex.log")" -eq 2 ]
 [ "$(grep -c '^arg=gpt-5.4$' "$LOG_DIR/codex.log")" -eq 2 ]
 [ "$(grep -c '^arg=-c$' "$LOG_DIR/codex.log")" -eq 2 ]
@@ -160,9 +160,9 @@ cts --fallback-cts-extra
 grep -Fx "pwd=$FALLBACK_TARGET" "$LOG_DIR/claude.log" >/dev/null
 [ "$(grep -c '^arg=--model$' "$LOG_DIR/claude.log")" -eq 3 ]
 [ "$(grep -c '^arg=opus$' "$LOG_DIR/claude.log")" -eq 3 ]
-[ "$(grep -c '^arg=--dangerously-skip-permissions$' "$LOG_DIR/claude.log")" -eq 0 ]
-[ "$(grep -c '^arg=--permission-mode$' "$LOG_DIR/claude.log")" -eq 0 ]
-[ "$(grep -c '^arg=bypassPermissions$' "$LOG_DIR/claude.log")" -eq 0 ]
+! grep -Fx "arg=--dangerously-skip-permissions" "$LOG_DIR/claude.log" >/dev/null
+! grep -Fx "arg=--permission-mode" "$LOG_DIR/claude.log" >/dev/null
+! grep -Fx "arg=bypassPermissions" "$LOG_DIR/claude.log" >/dev/null
 [ "$(grep -c '^arg=--teammate-mode$' "$LOG_DIR/claude.log")" -eq 3 ]
 [ "$(grep -c '^arg=tmux$' "$LOG_DIR/claude.log")" -eq 3 ]
 grep -Fx "arg=--fallback-claude-extra" "$LOG_DIR/claude.log" >/dev/null
