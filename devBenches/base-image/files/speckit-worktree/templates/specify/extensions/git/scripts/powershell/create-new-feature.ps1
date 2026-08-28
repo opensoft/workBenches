@@ -84,6 +84,9 @@ function Get-HighestNumberFromNames {
 
     [long]$highest = 0
     foreach ($name in $Names) {
+        if (-not $ScopePrefix -and $name.Contains('/')) {
+            continue
+        }
         if ($ScopePrefix -and -not $name.StartsWith($ScopePrefix, [System.StringComparison]::Ordinal)) {
             continue
         }

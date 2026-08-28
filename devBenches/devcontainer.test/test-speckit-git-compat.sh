@@ -221,6 +221,10 @@ test_powershell_repository_and_truncation_source_safety() {
         printf 'assertion failed: PowerShell truncation lacks a nonempty slug guard\n' >&2
         return 1
     fi
+    if ! grep -Fq "if (-not \$ScopePrefix -and \$name.Contains('/')) {" "$POWERSHELL_FEATURE_SCRIPT"; then
+        printf 'assertion failed: PowerShell root numbering does not exclude namespaced refs\n' >&2
+        return 1
+    fi
     negative_guard_line="$(grep -nF "if (\$PSBoundParameters.ContainsKey('Number') -and \$Number -lt 0) {" "$POWERSHELL_FEATURE_SCRIPT" | cut -d: -f1)"
     timestamp_number_line="$(grep -nF "if (\$Timestamp -and \$PSBoundParameters.ContainsKey('Number')) {" "$POWERSHELL_FEATURE_SCRIPT" | cut -d: -f1)"
     mutation_line="$(grep -nF 'Set-Location $repoRoot' "$POWERSHELL_FEATURE_SCRIPT" | cut -d: -f1)"
