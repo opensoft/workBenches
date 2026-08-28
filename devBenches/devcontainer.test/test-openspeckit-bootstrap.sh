@@ -491,6 +491,52 @@ for overlay_mapping in \
     done
 done
 
+printf '%s\n' 'Given: a repository whose openspec directory is a symlink to an external directory'
+UNSAFE_SCAFFOLD_REPO="$TMPDIR_ROOT/unsafe-scaffold-repo"
+UNSAFE_SCAFFOLD_PROTOCOL_ROOT="$TMPDIR_ROOT/unsafe-scaffold-protocol"
+UNSAFE_SCAFFOLD_EXTERNAL_DIR="$TMPDIR_ROOT/unsafe-scaffold-external"
+UNSAFE_SCAFFOLD_SNAPSHOT_BEFORE="$TMPDIR_ROOT/unsafe-scaffold.before"
+UNSAFE_SCAFFOLD_SNAPSHOT_AFTER="$TMPDIR_ROOT/unsafe-scaffold.after"
+UNSAFE_SCAFFOLD_MODES_BEFORE="$TMPDIR_ROOT/unsafe-scaffold-modes.before"
+UNSAFE_SCAFFOLD_MODES_AFTER="$TMPDIR_ROOT/unsafe-scaffold-modes.after"
+mkdir -p "$UNSAFE_SCAFFOLD_REPO" "$UNSAFE_SCAFFOLD_EXTERNAL_DIR"
+printf '%s\n' 'external scaffold sentinel' > "$UNSAFE_SCAFFOLD_EXTERNAL_DIR/sentinel.txt"
+ln -s "$UNSAFE_SCAFFOLD_EXTERNAL_DIR" "$UNSAFE_SCAFFOLD_REPO/openspec"
+snapshot_repo "$UNSAFE_SCAFFOLD_EXTERNAL_DIR" > "$UNSAFE_SCAFFOLD_SNAPSHOT_BEFORE"
+snapshot_repo_modes "$UNSAFE_SCAFFOLD_EXTERNAL_DIR" > "$UNSAFE_SCAFFOLD_MODES_BEFORE"
+
+printf '%s\n' 'When: bootstrap runs with --skip-init against the symlinked openspec directory'
+export AGENT_PROTOCOL_ROOT="$UNSAFE_SCAFFOLD_PROTOCOL_ROOT"
+if python3 "$SETUP_SCRIPT" \
+    --repo "$UNSAFE_SCAFFOLD_REPO" \
+    --skip-init \
+    --preserve-readmes \
+    --no-speckit-registration \
+    --no-worktrees \
+    --no-repo-agent-pointers \
+    --no-skill-links \
+    --no-global-agent-pointers > "$TMPDIR_ROOT/unsafe-scaffold.log" 2>&1; then
+    fail 'bootstrap rejects a symlinked openspec scaffold directory'
+else
+    pass 'bootstrap rejects a symlinked openspec scaffold directory'
+fi
+
+printf '%s\n' 'Then: scaffold rejection leaves the external directory byte-for-byte unchanged'
+snapshot_repo "$UNSAFE_SCAFFOLD_EXTERNAL_DIR" > "$UNSAFE_SCAFFOLD_SNAPSHOT_AFTER"
+snapshot_repo_modes "$UNSAFE_SCAFFOLD_EXTERNAL_DIR" > "$UNSAFE_SCAFFOLD_MODES_AFTER"
+assert_contains "$TMPDIR_ROOT/unsafe-scaffold.log" 'symlink parent' 'unsafe scaffold rejection identifies the symlinked parent'
+assert_not_exists "$UNSAFE_SCAFFOLD_EXTERNAL_DIR/config.yaml" 'unsafe scaffold does not create external config.yaml'
+if cmp -s "$UNSAFE_SCAFFOLD_SNAPSHOT_BEFORE" "$UNSAFE_SCAFFOLD_SNAPSHOT_AFTER"; then
+    pass 'unsafe scaffold preserves external file paths and hashes'
+else
+    fail 'unsafe scaffold changes external file paths or hashes'
+fi
+if cmp -s "$UNSAFE_SCAFFOLD_MODES_BEFORE" "$UNSAFE_SCAFFOLD_MODES_AFTER"; then
+    pass 'unsafe scaffold preserves external path types and modes'
+else
+    fail 'unsafe scaffold changes external path types or modes'
+fi
+
 printf '%s\n' 'Given: an OPSX command source tree containing a file symlink'
 UNSAFE_COMMAND_ROOT="$TMPDIR_ROOT/unsafe-command-source"
 UNSAFE_COMMAND_REPO="$TMPDIR_ROOT/unsafe-command-repo"

@@ -909,6 +909,7 @@ behavior when present.
 
 
 def ensure_scaffold(repo: Path, dry_run: bool, skip_init: bool) -> None:
+    ensure_safe_destination_parent(repo / "openspec" / "config.yaml", set())
     write_text_if_missing(
         repo / "openspec" / "config.yaml",
         "schema: spec-driven\n",
