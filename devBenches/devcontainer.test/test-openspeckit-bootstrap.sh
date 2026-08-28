@@ -7,6 +7,15 @@ WORKBENCH_ROOT="$(cd -- "$TEST_DIR/../.." && pwd -P)"
 SETUP_SCRIPT="$WORKBENCH_ROOT/devBenches/base-image/files/openspeckit/setup-openspeckit"
 WORKTREE_TEMPLATE_ROOT="$WORKBENCH_ROOT/devBenches/base-image/files/speckit-worktree/templates"
 COMMAND_TEMPLATE_ROOT="$WORKBENCH_ROOT/devBenches/base-image/files/claude/commands/opsx"
+if [[ ! -f "$SETUP_SCRIPT" ]]; then
+    SETUP_SCRIPT="/usr/local/bin/setup-openspeckit"
+fi
+if [[ ! -d "$WORKTREE_TEMPLATE_ROOT" ]]; then
+    WORKTREE_TEMPLATE_ROOT="/usr/local/share/speckit-worktree/templates"
+fi
+if [[ ! -d "$COMMAND_TEMPLATE_ROOT" ]]; then
+    COMMAND_TEMPLATE_ROOT="/etc/skel/.claude/commands/opsx"
+fi
 
 TMPDIR_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_ROOT"' EXIT
@@ -162,11 +171,12 @@ for skill_home in .claude .codex .agents; do
         "$skill_root/ct/bin" \
         "$skill_root/ct/bin/run.sh" \
         "$skill_root/ct/bin/runner"
-    chmod 0666 \
+    chmod 0777 \
         "$skill_root/ct/SKILL.md" \
         "$skill_root/ct/config.yaml" \
         "$skill_root/ct/config.yml" \
-        "$skill_root/ct/config.json" \
+        "$skill_root/ct/config.json"
+    chmod 0666 \
         "$skill_root/ct/notes.txt" \
         "$skill_root/ct/bin/data.bin"
 
@@ -331,7 +341,7 @@ for skill_home in .claude .codex .agents; do
     assert_mode "$skill_path" 755 "copied skill directory is portable: $skill_home"
     assert_mode "$skill_path/bin" 755 "copied nested skill directory is portable: $skill_home"
     for declarative_file in SKILL.md config.yaml config.yml config.json; do
-        assert_mode "$skill_path/$declarative_file" 644 "copied declarative file is portable: $skill_home/$declarative_file"
+        assert_mode "$skill_path/$declarative_file" 644 "copied executable-source declarative file normalizes to 0644: $skill_home/$declarative_file"
     done
     assert_mode "$skill_path/notes.txt" 644 "copied non-declarative file is portable: $skill_home/notes.txt"
     assert_mode "$skill_path/bin/data.bin" 644 "copied nested non-executable file is portable: $skill_home/bin/data.bin"
@@ -559,6 +569,7 @@ copy_overlay_tree = namespace["copy_overlay_tree"]
 ensure_openspec_skill_wrapper = namespace["ensure_openspec_skill_wrapper"]
 is_usable_skill_tree = namespace["is_usable_skill_tree"]
 link_or_copy_skill = namespace["link_or_copy_skill"]
+openspec_skill_wrapper = namespace["openspec_skill_wrapper"]
 skill_tree_will_be_usable = namespace["skill_tree_will_be_usable"]
 fixture_root = Path(sys.argv[2])
 fixture_root.mkdir()
@@ -891,6 +902,50 @@ check(
     wrapper_symlink_external.is_file()
     and wrapper_symlink_external.read_text(encoding="utf-8") == "external wrapper\n",
     "openspec-wrapper: no-force leaves the symlink external target untouched",
+)
+
+wrapper_skill_symlink_case = fixture_root / "openspec-wrapper-matching-skill-symlink"
+wrapper_skill_symlink_repo = wrapper_skill_symlink_case / "repo"
+wrapper_skill_symlink_destination = (
+    wrapper_skill_symlink_repo / ".agents" / "skills" / "openspec-propose"
+)
+wrapper_skill_symlink_destination.mkdir(parents=True)
+wrapper_skill_symlink_destination.chmod(0o755)
+wrapper_skill_symlink_external = wrapper_skill_symlink_case / "external-SKILL.md"
+wrapper_skill_symlink_external.write_text(
+    openspec_skill_wrapper(
+        "openspec-propose",
+        "propose",
+        "../../../.claude/commands/opsx/propose.md",
+    ),
+    encoding="utf-8",
+)
+wrapper_skill_symlink_external.chmod(0o644)
+(wrapper_skill_symlink_destination / "SKILL.md").symlink_to(
+    wrapper_skill_symlink_external
+)
+ensure_openspec_skill_wrapper(
+    wrapper_skill_symlink_repo,
+    ".agents",
+    "openspec-propose",
+    "propose",
+    False,
+    True,
+)
+wrapper_skill_file = wrapper_skill_symlink_destination / "SKILL.md"
+check(
+    wrapper_skill_file.is_file() and not wrapper_skill_file.is_symlink(),
+    "openspec-wrapper: force replaces a matching-content SKILL.md symlink",
+)
+check(
+    wrapper_skill_symlink_external.is_file()
+    and wrapper_skill_symlink_external.read_text(encoding="utf-8")
+    == openspec_skill_wrapper(
+        "openspec-propose",
+        "propose",
+        "../../../.claude/commands/opsx/propose.md",
+    ),
+    "openspec-wrapper: matching-content SKILL.md symlink target is untouched",
 )
 
 raise SystemExit(1 if failures else 0)
