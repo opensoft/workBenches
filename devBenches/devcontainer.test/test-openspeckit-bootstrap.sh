@@ -546,7 +546,7 @@ assert_contains "$TMPDIR_ROOT/unsafe-skill.log" 'symlink' 'unsafe skill rejectio
 assert_not_exists "$UNSAFE_SKILL_REPO/.agents/skills/ct/00-safe.txt" 'unsafe skill preflight leaves no partial safe file'
 assert_not_exists "$UNSAFE_SKILL_REPO/.agents/skills/ct/99-linked-dir" 'unsafe skill directory target is never materialized'
 
-printf '%s\n' 'Given: isolated copy-helper destinations with symlinks, collisions, and restrictive modes'
+printf '%s\n' 'Given: isolated copy and wrapper-helper destinations with symlinks, collisions, and restrictive modes'
 if python3 - "$SETUP_SCRIPT" "$TMPDIR_ROOT/copy-helper-safety" <<'PY'
 from pathlib import Path
 import runpy
@@ -556,6 +556,7 @@ import sys
 namespace = runpy.run_path(sys.argv[1], run_name="setup_openspeckit_test")
 copy_missing_tree = namespace["copy_missing_tree"]
 copy_overlay_tree = namespace["copy_overlay_tree"]
+ensure_openspec_skill_wrapper = namespace["ensure_openspec_skill_wrapper"]
 is_usable_skill_tree = namespace["is_usable_skill_tree"]
 link_or_copy_skill = namespace["link_or_copy_skill"]
 skill_tree_will_be_usable = namespace["skill_tree_will_be_usable"]
@@ -801,12 +802,103 @@ replaced_skill_file.write_text("local\n", encoding="utf-8")
 link_or_copy_skill(skill_source_root, replaced_skill_file, False, True)
 check(replaced_skill_file.is_dir() and not replaced_skill_file.is_symlink(), "copy-skill: force replaces a file collision with a skill directory")
 
+wrapper_parent_case = fixture_root / "openspec-wrapper-symlinked-parent"
+wrapper_parent_repo = wrapper_parent_case / "repo"
+wrapper_parent_external = wrapper_parent_case / "external-skills"
+(wrapper_parent_repo / ".agents").mkdir(parents=True)
+wrapper_parent_external.mkdir(parents=True)
+wrapper_parent_sentinel = wrapper_parent_external / "sentinel.txt"
+wrapper_parent_sentinel.write_text("external\n", encoding="utf-8")
+(wrapper_parent_repo / ".agents" / "skills").symlink_to(
+    wrapper_parent_external,
+    target_is_directory=True,
+)
+wrapper_parent_entries = sorted(
+    path.relative_to(wrapper_parent_external).as_posix()
+    for path in wrapper_parent_external.rglob("*")
+)
+expect_refusal(
+    lambda: ensure_openspec_skill_wrapper(
+        wrapper_parent_repo,
+        ".agents",
+        "openspec-propose",
+        "propose",
+        False,
+        False,
+    ),
+    "openspec-wrapper: symlinked parent skill directory is refused",
+)
+check(
+    sorted(
+        path.relative_to(wrapper_parent_external).as_posix()
+        for path in wrapper_parent_external.rglob("*")
+    )
+    == wrapper_parent_entries
+    and wrapper_parent_sentinel.read_text(encoding="utf-8") == "external\n",
+    "openspec-wrapper: symlinked parent leaves the external target untouched",
+)
+
+wrapper_file_case = fixture_root / "openspec-wrapper-retained-file"
+wrapper_file_repo = wrapper_file_case / "repo"
+wrapper_file_destination = wrapper_file_repo / ".agents" / "skills" / "openspec-propose"
+wrapper_file_destination.parent.mkdir(parents=True)
+wrapper_file_destination.write_text("local wrapper file\n", encoding="utf-8")
+ensure_openspec_skill_wrapper(
+    wrapper_file_repo,
+    ".agents",
+    "openspec-propose",
+    "propose",
+    False,
+    False,
+)
+check(
+    wrapper_file_destination.is_file() and not wrapper_file_destination.is_symlink(),
+    "openspec-wrapper: no-force preserves an existing regular-file destination",
+)
+check(
+    wrapper_file_destination.is_file()
+    and not wrapper_file_destination.is_symlink()
+    and wrapper_file_destination.read_text(encoding="utf-8") == "local wrapper file\n",
+    "openspec-wrapper: no-force preserves existing regular-file content",
+)
+
+wrapper_symlink_case = fixture_root / "openspec-wrapper-retained-symlink"
+wrapper_symlink_repo = wrapper_symlink_case / "repo"
+wrapper_symlink_destination = wrapper_symlink_repo / ".agents" / "skills" / "openspec-propose"
+wrapper_symlink_destination.parent.mkdir(parents=True)
+wrapper_symlink_external = wrapper_symlink_case / "external-wrapper.txt"
+wrapper_symlink_external.write_text("external wrapper\n", encoding="utf-8")
+wrapper_symlink_destination.symlink_to(wrapper_symlink_external)
+wrapper_symlink_target = wrapper_symlink_destination.readlink()
+ensure_openspec_skill_wrapper(
+    wrapper_symlink_repo,
+    ".agents",
+    "openspec-propose",
+    "propose",
+    False,
+    False,
+)
+check(
+    wrapper_symlink_destination.is_symlink(),
+    "openspec-wrapper: no-force preserves an existing symlink destination",
+)
+check(
+    wrapper_symlink_destination.is_symlink()
+    and wrapper_symlink_destination.readlink() == wrapper_symlink_target,
+    "openspec-wrapper: no-force preserves the existing symlink target",
+)
+check(
+    wrapper_symlink_external.is_file()
+    and wrapper_symlink_external.read_text(encoding="utf-8") == "external wrapper\n",
+    "openspec-wrapper: no-force leaves the symlink external target untouched",
+)
+
 raise SystemExit(1 if failures else 0)
 PY
 then
-    pass 'copy helpers reject destination escapes and handle collisions and retained modes'
+    pass 'copy and wrapper helpers reject destination escapes and handle collisions and retained modes'
 else
-    fail 'copy helpers reject destination escapes and handle collisions and retained modes'
+    fail 'copy and wrapper helpers reject destination escapes and handle collisions and retained modes'
 fi
 
 printf '%s\n' 'Given: missing, empty, and incomplete worktree skill overlay sources with global fallbacks'

@@ -575,6 +575,8 @@ def ensure_openspec_skill_wrapper(
     force: bool,
 ) -> None:
     destination = repo / agent_dir / "skills" / skill
+    ensure_safe_destination_parent(destination, set())
+    destination_mode = mode_without_following(destination)
     command_path = (
         f"../../commands/opsx/{action}.md"
         if agent_dir == ".claude"
@@ -583,26 +585,23 @@ def ensure_openspec_skill_wrapper(
     wrapper = openspec_skill_wrapper(skill, action, command_path)
     skill_file = destination / "SKILL.md"
     is_current = (
-        destination.is_dir()
-        and not destination.is_symlink()
+        destination_mode is not None
+        and stat.S_ISDIR(destination_mode)
         and sorted(path.name for path in destination.iterdir()) == ["SKILL.md"]
         and skill_file.read_text(encoding="utf-8") == wrapper
-        and destination.stat().st_mode & 0o777 == 0o755
+        and destination_mode & 0o777 == 0o755
         and skill_file.stat().st_mode & 0o777 == 0o644
     )
     if is_current:
         log(f"unchanged {destination}")
         return
-    if destination.is_dir() and not destination.is_symlink() and not force:
+    if destination_mode is not None and not force:
         log(f"kept existing {destination}")
         return
     if dry_run:
         log(f"would write governed OpenSpec wrapper {destination}")
         return
-    if destination.is_symlink() or destination.is_file():
-        destination.unlink()
-    elif destination.exists():
-        shutil.rmtree(destination)
+    remove_destination_without_following(destination)
     destination.mkdir(parents=True, mode=0o755)
     skill_file.write_text(wrapper, encoding="utf-8")
     destination.chmod(0o755)
