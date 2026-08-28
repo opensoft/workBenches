@@ -168,6 +168,25 @@ test_namespaced_numbering() {
     assert_worktree "$branch" "$worktree_path"
 }
 
+test_root_numbering_ignores_namespaces() {
+    local repo="$FIXTURE_ROOT/root-numbering"
+    local config=$'checkout_mode: worktree\nbase_branch: main\nworktree_root: ../root-numbering-worktrees'
+    local stderr_file="$FIXTURE_ROOT/root-numbering.stderr"
+    local branch
+
+    # Given: only an unrelated namespaced feature branch has a high number.
+    initialize_fixture "$repo" "$config" || return 1
+    git -C "$repo" branch team/099-other || return 1
+    # When: root-scoped sequential numbering is computed.
+    if ! invoke_feature "$repo" 'Create root feature' "$stderr_file"; then
+        printf 'root numbering invocation failed: %s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    # Then: the unrelated namespace does not advance the root counter.
+    branch="$(json_field "$FEATURE_OUTPUT" BRANCH_NAME)" || return 1
+    assert_equal '001-create-root-feature' "$branch" 'root-scoped branch number'
+}
+
 test_explicit_configuration() {
     local repo="$FIXTURE_ROOT/explicit"
     local config=$'branch_numbering: timestamp\ncheckout_mode: worktree\nbase_branch: develop\nworktree_root: ../explicit-worktrees\nbranch_prefix: release/\nbranch_template: {number}-{slug}'
@@ -222,6 +241,7 @@ run_scenario() {
 run_scenario 'default sequential worktree with apostrophe description' test_default_sequential_worktree
 run_scenario 'branch_template with {number}-{slug} final segment' test_branch_template
 run_scenario 'namespaced sequential numbering' test_namespaced_numbering
+run_scenario 'root numbering ignores namespaced branches' test_root_numbering_ignores_namespaces
 run_scenario 'preservation of explicit configuration' test_explicit_configuration
 
 if [ "$failures" -ne 0 ]; then

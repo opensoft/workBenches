@@ -158,6 +158,8 @@ _extract_highest_number() {
                 "$scope_prefix"*) name="${name#"$scope_prefix"}" ;;
                 *) continue ;;
             esac
+        elif [[ "$name" == */* ]]; then
+            continue
         fi
         name="${name##*/}"
         if echo "$name" | grep -Eq '^[0-9]{3,}-' \
