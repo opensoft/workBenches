@@ -402,6 +402,13 @@ def ensure_safe_destination_parent(path: Path, safe_directories: set[Path]) -> N
         current = current.parent
 
 
+def ensure_safe_destination_file(path: Path, safe_directories: set[Path]) -> None:
+    ensure_safe_destination_parent(path, safe_directories)
+    mode = mode_without_following(path)
+    if mode is not None and stat.S_ISLNK(mode):
+        raise SystemExit(f"Refusing unsafe destination path {path}: symlink leaf")
+
+
 def ensure_safe_destination_tree(path: Path) -> None:
     for entry in sorted(path.rglob("*")):
         if entry.is_symlink():
@@ -909,7 +916,7 @@ behavior when present.
 
 
 def ensure_scaffold(repo: Path, dry_run: bool, skip_init: bool) -> None:
-    ensure_safe_destination_parent(repo / "openspec" / "config.yaml", set())
+    ensure_safe_destination_file(repo / "openspec" / "config.yaml", set())
     write_text_if_missing(
         repo / "openspec" / "config.yaml",
         "schema: spec-driven\n",
@@ -1146,6 +1153,7 @@ def refresh_git_extension_manifest_hash(
     dry_run: bool,
 ) -> None:
     registry_path = repo / ".specify" / "extensions" / ".registry"
+    ensure_safe_destination_file(registry_path, set())
     registry = read_json(registry_path)
     extensions = registry.get("extensions")
     if not isinstance(extensions, dict):

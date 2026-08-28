@@ -537,6 +537,65 @@ else
     fail 'unsafe scaffold changes external path types or modes'
 fi
 
+printf '%s\n' 'Given: openspec/config.yaml is a broken symlink to an external file'
+BROKEN_CONFIG_REPO="$TMPDIR_ROOT/broken-config-repo"
+BROKEN_CONFIG_PROTOCOL_ROOT="$TMPDIR_ROOT/broken-config-protocol"
+BROKEN_CONFIG_EXTERNAL="$TMPDIR_ROOT/broken-config-external.yaml"
+mkdir -p "$BROKEN_CONFIG_REPO/openspec"
+ln -s "$BROKEN_CONFIG_EXTERNAL" "$BROKEN_CONFIG_REPO/openspec/config.yaml"
+git init -q "$BROKEN_CONFIG_REPO"
+
+printf '%s\n' 'When: bootstrap ensures the OpenSpec config'
+export AGENT_PROTOCOL_ROOT="$BROKEN_CONFIG_PROTOCOL_ROOT"
+if python3 "$SETUP_SCRIPT" \
+    --repo "$BROKEN_CONFIG_REPO" \
+    --skip-init \
+    --no-speckit-registration \
+    --no-global-agent-pointers \
+    --no-skill-links \
+    --no-worktrees > "$TMPDIR_ROOT/broken-config.log" 2>&1; then
+    fail 'bootstrap rejects a broken OpenSpec config symlink'
+else
+    pass 'bootstrap rejects a broken OpenSpec config symlink'
+fi
+
+printf '%s\n' 'Then: config rejection leaves the external target absent'
+assert_contains "$TMPDIR_ROOT/broken-config.log" 'symlink' 'broken config rejection identifies the symlink'
+assert_not_exists "$BROKEN_CONFIG_EXTERNAL" 'broken config symlink does not create its external target'
+
+printf '%s\n' 'Given: the Git extension registry is a symlink to an external JSON file'
+SYMLINK_REGISTRY_REPO="$TMPDIR_ROOT/symlink-registry-repo"
+SYMLINK_REGISTRY_PROTOCOL_ROOT="$TMPDIR_ROOT/symlink-registry-protocol"
+SYMLINK_REGISTRY_EXTERNAL="$TMPDIR_ROOT/symlink-registry-external.json"
+SYMLINK_REGISTRY_SNAPSHOT="$TMPDIR_ROOT/symlink-registry.snapshot"
+mkdir -p "$SYMLINK_REGISTRY_REPO/.specify/extensions" "$SYMLINK_REGISTRY_REPO/openspec"
+printf '%s\n' '{"extensions":{"git":{"enabled":true,"manifest_hash":"sha256:external"}}}' > "$SYMLINK_REGISTRY_EXTERNAL"
+cp "$SYMLINK_REGISTRY_EXTERNAL" "$SYMLINK_REGISTRY_SNAPSHOT"
+ln -s "$SYMLINK_REGISTRY_EXTERNAL" "$SYMLINK_REGISTRY_REPO/.specify/extensions/.registry"
+printf '%s\n' 'schema: spec-driven' > "$SYMLINK_REGISTRY_REPO/openspec/config.yaml"
+git init -q "$SYMLINK_REGISTRY_REPO"
+
+printf '%s\n' 'When: bootstrap refreshes the Git extension manifest hash'
+export AGENT_PROTOCOL_ROOT="$SYMLINK_REGISTRY_PROTOCOL_ROOT"
+if python3 "$SETUP_SCRIPT" \
+    --repo "$SYMLINK_REGISTRY_REPO" \
+    --skip-init \
+    --no-speckit-registration \
+    --no-global-agent-pointers \
+    --no-skill-links > "$TMPDIR_ROOT/symlink-registry.log" 2>&1; then
+    fail 'bootstrap rejects a symlinked extension registry'
+else
+    pass 'bootstrap rejects a symlinked extension registry'
+fi
+
+printf '%s\n' 'Then: registry rejection leaves the external JSON unchanged'
+assert_contains "$TMPDIR_ROOT/symlink-registry.log" 'symlink' 'symlinked registry rejection identifies the symlink'
+if cmp -s "$SYMLINK_REGISTRY_SNAPSHOT" "$SYMLINK_REGISTRY_EXTERNAL"; then
+    pass 'symlinked registry preserves the external JSON bytes'
+else
+    fail 'symlinked registry changes the external JSON bytes'
+fi
+
 printf '%s\n' 'Given: an OPSX command source tree containing a file symlink'
 UNSAFE_COMMAND_ROOT="$TMPDIR_ROOT/unsafe-command-source"
 UNSAFE_COMMAND_REPO="$TMPDIR_ROOT/unsafe-command-repo"
