@@ -179,7 +179,25 @@ workflow_event_path_count() {
     ' "$workflow"
 }
 
-CLARIFY_SKILL_WORKFLOW_PATH='devBenches/base-image/files/claude/skills/speckit-clarify/SKILL.md'
+frontmatter_name() {
+    local source="$1"
+    awk '
+        NR == 1 && $0 == "---" {
+            in_frontmatter = 1
+            next
+        }
+        in_frontmatter && $0 == "---" { exit }
+        in_frontmatter && $0 ~ /^name:[[:space:]]*/ {
+            sub(/^name:[[:space:]]*/, "")
+            print
+            exit
+        }
+    ' "$source"
+}
+
+CLARIFY_SKILL_WORKFLOW_PATH='base-image/files/claude/skills/speckit-clarify/SKILL.md'
+PHANTOM_CLARIFY_SKILL_WORKFLOW_PATH='devBenches/base-image/files/claude/skills/speckit-clarify/SKILL.md'
+CLARIFY_SKILL_SOURCE="$WORKBENCH_ROOT/$CLARIFY_SKILL_WORKFLOW_PATH"
 BASH_WORKFLOW="$WORKBENCH_ROOT/.github/workflows/speckit-git-bash.yml"
 POWERSHELL_WORKFLOW="$WORKBENCH_ROOT/.github/workflows/speckit-git-powershell.yml"
 
@@ -189,6 +207,13 @@ if [[ ! -e "$BASH_WORKFLOW" && ! -e "$POWERSHELL_WORKFLOW" ]]; then
 elif [[ ! -f "$BASH_WORKFLOW" || ! -f "$POWERSHELL_WORKFLOW" ]]; then
     fail 'source workflow contract requires both workflow files when either is available'
 else
+    assert_file "$CLARIFY_SKILL_SOURCE" 'published clarify skill source exists'
+    if [[ -f "$CLARIFY_SKILL_SOURCE" ]]; then
+        assert_equal \
+            "$(frontmatter_name "$CLARIFY_SKILL_SOURCE")" \
+            'speckit-clarify' \
+            'published clarify skill frontmatter has the expected machine identity'
+    fi
     printf '%s\n' 'Then: each workflow filters clarify-skill changes for push and pull requests'
     for workflow in "$BASH_WORKFLOW" "$POWERSHELL_WORKFLOW"; do
         workflow_name="${workflow##*/}"
@@ -204,6 +229,10 @@ else
             "$(workflow_event_path_count "$workflow" pull_request "$CLARIFY_SKILL_WORKFLOW_PATH")" \
             1 \
             "$workflow_name filters clarify-skill changes in pull_request.paths"
+        assert_equal \
+            "$(workflow_path_count "$workflow" "$PHANTOM_CLARIFY_SKILL_WORKFLOW_PATH")" \
+            0 \
+            "$workflow_name contains no phantom clarify-skill path filters"
     done
 fi
 

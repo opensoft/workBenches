@@ -26,6 +26,7 @@ $sourceCommonScript = Join-Path $sourceScriptRoot 'git-common.ps1'
 $sourceBashScriptRoot = Join-Path $templateRoot 'specify/extensions/git/scripts/bash'
 $sourceBashFeatureScript = Join-Path $sourceBashScriptRoot 'create-new-feature.sh'
 $sourceBashCommonScript = Join-Path $sourceBashScriptRoot 'git-common.sh'
+$clarifySkillSource = Join-Path $repoRoot 'base-image/files/claude/skills/speckit-clarify/SKILL.md'
 $fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) "speckit-git-powershell.$([guid]::NewGuid().ToString('N'))"
 
 $requiredScripts = @($sourceFeatureScript, $sourceCommonScript)
@@ -72,6 +73,28 @@ function Assert-Contains {
         throw "assertion failed: $Label (missing '$ExpectedText')"
     }
 }
+
+function Get-FrontmatterName {
+    param([string]$Path)
+
+    $lines = [System.IO.File]::ReadAllLines($Path)
+    if ($lines.Count -lt 3 -or $lines[0] -ne '---') {
+        throw "Skill frontmatter is missing: $Path"
+    }
+    for ($index = 1; $index -lt $lines.Count; $index++) {
+        if ($lines[$index] -eq '---') {
+            break
+        }
+        if ($lines[$index] -match '^name:\s*(?<name>[A-Za-z0-9][A-Za-z0-9-]*)\s*$') {
+            return $Matches.name
+        }
+    }
+    throw "Skill frontmatter name is missing: $Path"
+}
+
+Assert-True (Test-Path -LiteralPath $clarifySkillSource -PathType Leaf) 'published clarify skill source exists'
+Assert-Equal 'speckit-clarify' (Get-FrontmatterName -Path $clarifySkillSource) 'published clarify skill frontmatter has the expected machine identity'
+Write-Output 'PASS: published clarify skill source frontmatter identity'
 
 function Get-GitObjectHash {
     param(

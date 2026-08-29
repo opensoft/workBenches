@@ -8,7 +8,7 @@ on:
       - devBenches/base-image/files/speckit-worktree/templates/specify/extensions/git/config-template.yml
       - devBenches/base-image/files/speckit-worktree/templates/specify/extensions/git/scripts/powershell/**
       - devBenches/base-image/files/speckit-worktree/templates/specify/extensions/git/scripts/bash/**
-      - devBenches/base-image/files/claude/skills/speckit-clarify/SKILL.md
+      - base-image/files/claude/skills/speckit-clarify/SKILL.md
   pull_request:
     paths:
       - .github/workflows/speckit-git-powershell.yml
@@ -16,7 +16,7 @@ on:
       - devBenches/base-image/files/speckit-worktree/templates/specify/extensions/git/config-template.yml
       - devBenches/base-image/files/speckit-worktree/templates/specify/extensions/git/scripts/powershell/**
       - devBenches/base-image/files/speckit-worktree/templates/specify/extensions/git/scripts/bash/**
-      - devBenches/base-image/files/claude/skills/speckit-clarify/SKILL.md
+      - base-image/files/claude/skills/speckit-clarify/SKILL.md
   workflow_dispatch:
 
 permissions:
