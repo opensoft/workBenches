@@ -12,6 +12,8 @@ ALLOW_EXISTING=false
 SHORT_NAME=""
 BRANCH_NUMBER=""
 USE_TIMESTAMP=false
+OWNED_NUMBER_RESERVATION_REF=""
+OWNED_NUMBER_RESERVATION_OID=""
 ARGS=()
 i=1
 while [ $i -le $# ]; do
@@ -85,7 +87,7 @@ while [ $i -le $# ]; do
             echo "  SPECKIT_GIT_BRANCH_PREFIX    Override branch_prefix"
             echo ""
             echo "Configuration:"
-            echo "  branch_template     Optional template with {author}, {app}, {number}, {slug}"
+            echo "  branch_template     Optional template with exactly one {number}; also supports {author}, {app}, {slug}"
             echo "  branch_prefix       Optional namespace prepended to branch_template"
             echo ""
             echo "Examples:"
@@ -222,6 +224,87 @@ check_existing_branches() {
     echo $((max_num + 1))
 }
 
+cleanup_owned_number_reservation() {
+    local exit_status=$?
+
+    if [ -n "$OWNED_NUMBER_RESERVATION_REF" ]; then
+        git update-ref -d "$OWNED_NUMBER_RESERVATION_REF" \
+            "$OWNED_NUMBER_RESERVATION_OID" >/dev/null 2>&1 || true
+    fi
+    return "$exit_status"
+}
+
+release_owned_number_reservation() {
+    local delete_error=""
+
+    [ -n "$OWNED_NUMBER_RESERVATION_REF" ] || return 0
+    if ! delete_error=$(git update-ref -d "$OWNED_NUMBER_RESERVATION_REF" \
+        "$OWNED_NUMBER_RESERVATION_OID" 2>&1); then
+        >&2 echo "Error: Failed to release owned feature number reservation '$OWNED_NUMBER_RESERVATION_REF'."
+        if [ -n "$delete_error" ]; then
+            >&2 printf '%s\n' "$delete_error"
+        fi
+        return 1
+    fi
+    OWNED_NUMBER_RESERVATION_REF=""
+    OWNED_NUMBER_RESERVATION_OID=""
+    trap - EXIT
+}
+
+reserve_next_branch_number() {
+    local specs_dir="$1"
+    local scope_prefix="$2"
+    local candidate scope_hash owner_nonce owner_oid reservation_number reservation_ref update_error visible_candidate
+
+    if ! scope_hash=$(printf '%s' "$scope_prefix" | git hash-object --stdin); then
+        >&2 echo "Error: Failed to hash the sequential branch scope."
+        return 1
+    fi
+    owner_nonce="speckit-number-reservation-owner pid=$$ ppid=${PPID:-0} time=$(date +%s) seconds=${SECONDS:-0} random=$RANDOM-$RANDOM"
+    if ! owner_oid=$(printf '%s\n' "$owner_nonce" | git hash-object -w --stdin); then
+        >&2 echo "Error: Failed to create the sequential feature number reservation owner object."
+        return 1
+    fi
+    if [ -z "$owner_oid" ]; then
+        >&2 echo "Error: Failed to create the sequential feature number reservation owner object: Git returned an empty object ID."
+        return 1
+    fi
+    candidate=$(check_existing_branches "$specs_dir" true "$scope_prefix")
+
+    while :; do
+        reservation_number=$(printf '%03d' "$candidate")
+        reservation_ref="refs/speckit/number-reservations/v1/$scope_hash/$reservation_number"
+        update_error=""
+        if update_error=$(LC_ALL=C git update-ref "$reservation_ref" "$owner_oid" "" 2>&1); then
+            OWNED_NUMBER_RESERVATION_REF="$reservation_ref"
+            OWNED_NUMBER_RESERVATION_OID="$owner_oid"
+            trap cleanup_owned_number_reservation EXIT
+            visible_candidate=$(check_existing_branches "$specs_dir" true "$scope_prefix")
+            if [ "$visible_candidate" -gt "$candidate" ]; then
+                if ! release_owned_number_reservation; then
+                    return 1
+                fi
+                candidate="$visible_candidate"
+                continue
+            fi
+            BRANCH_NUMBER="$candidate"
+            return 0
+        fi
+
+        if git show-ref --verify --quiet "$reservation_ref" \
+            || [[ "$update_error" == *"reference already exists"* ]]; then
+            candidate=$((candidate + 1))
+            continue
+        fi
+
+        >&2 echo "Error: Failed to reserve sequential feature number $reservation_number."
+        if [ -n "$update_error" ]; then
+            >&2 printf '%s\n' "$update_error"
+        fi
+        return 1
+    done
+}
+
 # Function to clean and format a branch name
 clean_branch_name() {
     local name="$1"
@@ -229,12 +312,12 @@ clean_branch_name() {
 }
 
 # ---------------------------------------------------------------------------
-# Source common.sh for resolve_template, json_escape, get_repo_root, has_git.
+# Source optional core helpers, then the required Git extension helpers.
 #
 # Search locations in priority order:
 #  1. .specify/scripts/bash/common.sh under the project root (installed project)
 #  2. scripts/bash/common.sh under the project root (source checkout fallback)
-#  3. git-common.sh next to this script (minimal fallback — lacks resolve_template)
+# git-common.sh next to this script is always loaded for Git-specific behavior.
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -260,9 +343,14 @@ if [ -n "$_PROJECT_ROOT" ] && [ -f "$_PROJECT_ROOT/.specify/scripts/bash/common.
 elif [ -n "$_PROJECT_ROOT" ] && [ -f "$_PROJECT_ROOT/scripts/bash/common.sh" ]; then
     source "$_PROJECT_ROOT/scripts/bash/common.sh"
     _common_loaded=true
-elif [ -f "$SCRIPT_DIR/git-common.sh" ]; then
+fi
+
+if [ -f "$SCRIPT_DIR/git-common.sh" ]; then
     source "$SCRIPT_DIR/git-common.sh"
     _common_loaded=true
+else
+    echo "Error: Could not locate git-common.sh next to create-new-feature.sh." >&2
+    exit 1
 fi
 
 if [ "$_common_loaded" != "true" ]; then
@@ -388,6 +476,9 @@ validate_branch_template() {
     local template="$1"
     local feature_segment="${template##*/}"
     local unsupported="$template"
+    local without_number
+    local number_token_count
+    local number_token="{number}"
     unsupported=${unsupported//\{author\}/}
     unsupported=${unsupported//\{app\}/}
     unsupported=${unsupported//\{number\}/}
@@ -398,13 +489,12 @@ validate_branch_template() {
             exit 1
             ;;
     esac
-    case "$template" in
-        *"{number}"*) ;;
-        *)
-            >&2 echo "Error: branch_template must include the {number} token so generated branches remain valid feature branches."
-            exit 1
-            ;;
-    esac
+    without_number=${template//\{number\}/}
+    number_token_count=$(((${#template} - ${#without_number}) / ${#number_token}))
+    if [ "$number_token_count" -ne 1 ]; then
+        >&2 echo "Error: branch_template must include exactly one {number} token so generated branches remain valid feature branches."
+        exit 1
+    fi
     case "$template" in
         *"{slug}"*"{number}"*)
             >&2 echo "Error: branch_template must not place {slug} before {number}; use {slug} only in the final feature segment."
@@ -503,61 +593,142 @@ resolve_base_ref() {
 
 find_worktree_for_branch() {
     local target_branch="$1"
-    local current_worktree=""
+    local index
 
-    while IFS= read -r line; do
-        case "$line" in
-            worktree\ *)
-                current_worktree="${line#worktree }"
-                ;;
-            branch\ refs/heads/*)
-                if [ "${line#branch refs/heads/}" = "$target_branch" ]; then
-                    printf '%s\n' "$current_worktree"
-                    return 0
-                fi
-                ;;
-        esac
-    done < <(git worktree list --porcelain 2>/dev/null)
+    GIT_WORKTREE_RESULT_PATH=""
+    if ! load_git_worktrees "$REPO_ROOT"; then
+        return 2
+    fi
+    index=0
+    while [ "$index" -lt "${#GIT_WORKTREE_PATHS[@]}" ]; do
+        if verify_git_worktree_candidate "$REPO_ROOT" "$WORKTREE_ROOT" \
+            "${GIT_WORKTREE_PATHS[$index]}" "${GIT_WORKTREE_HEADS[$index]}" \
+            "${GIT_WORKTREE_BRANCH_REFS[$index]}" "${GIT_WORKTREE_DETACHED[$index]}" \
+            && [ "$GIT_WORKTREE_VERIFIED_BRANCH_REF" = "refs/heads/$target_branch" ]; then
+            GIT_WORKTREE_RESULT_PATH="$GIT_WORKTREE_VERIFIED_PATH"
+            return 0
+        fi
+        index=$((index + 1))
+    done
 
     return 1
+}
+
+select_json_encoder() {
+    if command -v jq >/dev/null 2>&1; then
+        printf '%s\n' jq
+    elif [ "$(type -t json_escape 2>/dev/null || true)" = "function" ]; then
+        printf '%s\n' json_escape
+    elif command -v python3 >/dev/null 2>&1; then
+        printf '%s\n' python3
+    else
+        return 1
+    fi
+}
+
+assert_state_file_safe() {
+    local state_file="$1"
+
+    if [ -L "$state_file" ] || { [ -e "$state_file" ] && [ ! -f "$state_file" ]; }; then
+        printf 'Error: Speckit state path must be a regular file or missing: %s\n' "$state_file" >&2
+        return 1
+    fi
 }
 
 write_last_worktree_state() {
     local branch_name="$1"
     local worktree_path="$2"
     local base_branch="$3"
-    local common_dir
+    local state_file="$STATE_FILE"
 
-    common_dir=$(resolve_git_common_dir) || return 0
-    local state_file="$common_dir/speckit-last-worktree.json"
+    [ -n "$state_file" ] || return 0
+    local common_dir="${state_file%/*}"
     local updated_at
     updated_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")
 
-    if command -v jq >/dev/null 2>&1; then
-        jq -cn \
-            --arg branch_name "$branch_name" \
-            --arg worktree_path "$worktree_path" \
-            --arg base_branch "$base_branch" \
-            --arg repo_root "$REPO_ROOT" \
-            --arg updated_at "$updated_at" \
-            '{BRANCH_NAME:$branch_name,WORKTREE_PATH:$worktree_path,BASE_BRANCH:$base_branch,REPO_ROOT:$repo_root,UPDATED_AT:$updated_at}' \
-            > "$state_file"
-    else
-        if type json_escape >/dev/null 2>&1; then
-            _je_branch=$(json_escape "$branch_name")
-            _je_worktree=$(json_escape "$worktree_path")
-            _je_base=$(json_escape "$base_branch")
-            _je_repo=$(json_escape "$REPO_ROOT")
-            _je_updated=$(json_escape "$updated_at")
-        else
-            _je_branch="$branch_name"
-            _je_worktree="$worktree_path"
-            _je_base="$base_branch"
-            _je_repo="$REPO_ROOT"
-            _je_updated="$updated_at"
-        fi
-        printf '{"BRANCH_NAME":"%s","WORKTREE_PATH":"%s","BASE_BRANCH":"%s","REPO_ROOT":"%s","UPDATED_AT":"%s"}\n' \
-            "$_je_branch" "$_je_worktree" "$_je_base" "$_je_repo" "$_je_updated" > "$state_file"
+    if ! python3 - "$common_dir" "${state_file##*/}" "$branch_name" "$worktree_path" "$base_branch" "$REPO_ROOT" "$updated_at" <<'PY'
+import errno
+import json
+import os
+import secrets
+import stat
+import sys
+from contextlib import ExitStack
+
+common_dir = sys.argv[1]
+state_name = sys.argv[2]
+payload = {
+    "BRANCH_NAME": sys.argv[3],
+    "WORKTREE_PATH": sys.argv[4],
+    "BASE_BRANCH": sys.argv[5],
+    "REPO_ROOT": sys.argv[6],
+    "UPDATED_AT": sys.argv[7],
+}
+serialized = (json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
+directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+temporary_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+
+with ExitStack() as descriptors:
+    directory_fd = os.open("/", directory_flags)
+    descriptors.callback(os.close, directory_fd)
+    for component in common_dir.split("/"):
+        if component in ("", "."):
+            continue
+        directory_fd = os.open(component, directory_flags, dir_fd=directory_fd)
+        descriptors.callback(os.close, directory_fd)
+
+    temporary_name = ""
+    temporary_fd = -1
+    temporary_identity = None
+    try:
+        for _ in range(128):
+            temporary_name = ".speckit-last-worktree.json.tmp." + secrets.token_hex(8)
+            try:
+                temporary_fd = os.open(temporary_name, temporary_flags, 0o600, dir_fd=directory_fd)
+                break
+            except FileExistsError:
+                continue
+        else:
+            raise FileExistsError(errno.EEXIST, "could not create a unique state temporary")
+
+        descriptors.callback(os.close, temporary_fd)
+        temporary_identity = os.fstat(temporary_fd)
+        offset = 0
+        while offset < len(serialized):
+            offset += os.write(temporary_fd, serialized[offset:])
+        os.fchmod(temporary_fd, 0o600)
+        os.fsync(temporary_fd)
+
+        temporary_leaf = os.stat(temporary_name, dir_fd=directory_fd, follow_symlinks=False)
+        if not stat.S_ISREG(temporary_leaf.st_mode) or (
+            temporary_leaf.st_dev,
+            temporary_leaf.st_ino,
+        ) != (temporary_identity.st_dev, temporary_identity.st_ino):
+            raise OSError(errno.EPERM, "state temporary was replaced before publication")
+
+        try:
+            state_leaf = os.stat(state_name, dir_fd=directory_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            state_leaf = None
+        if state_leaf is not None and not stat.S_ISREG(state_leaf.st_mode):
+            raise OSError(errno.EPERM, "Speckit state path must be a regular file or missing")
+
+        os.replace(temporary_name, state_name, src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
+        temporary_name = ""
+    finally:
+        if temporary_name and temporary_identity is not None:
+            try:
+                temporary_leaf = os.stat(temporary_name, dir_fd=directory_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                temporary_leaf = None
+            if temporary_leaf is not None and (
+                temporary_leaf.st_dev,
+                temporary_leaf.st_ino,
+            ) == (temporary_identity.st_dev, temporary_identity.st_ino):
+                os.unlink(temporary_name, dir_fd=directory_fd)
+PY
+    then
+        return 1
     fi
 }
 
@@ -579,6 +750,18 @@ fi
 
 if [ "$BRANCH_NUMBERING" != "sequential" ] && [ "$BRANCH_NUMBERING" != "timestamp" ]; then
     echo "Error: branch_numbering must be 'sequential' or 'timestamp' (got '$BRANCH_NUMBERING')" >&2
+    exit 1
+fi
+
+JSON_ENCODER=""
+if [ "$JSON_MODE" = true ] || { [ "$CHECKOUT_MODE" = "worktree" ] && [ "$DRY_RUN" != true ]; }; then
+    if ! JSON_ENCODER=$(select_json_encoder); then
+        echo "Error: JSON output requires jq, a trusted json_escape function, or Python 3; no JSON encoder is available." >&2
+        exit 1
+    fi
+fi
+if [ "$CHECKOUT_MODE" = "worktree" ] && [ "$DRY_RUN" != true ] && ! command -v python3 >/dev/null 2>&1; then
+    echo "Error: Non-dry-run worktree creation requires Python 3 for safe state publication." >&2
     exit 1
 fi
 
@@ -673,7 +856,9 @@ else
                 fi
                 BRANCH_NUMBER=$((HIGHEST + 1))
             elif [ "$HAS_GIT" = true ]; then
-                BRANCH_NUMBER=$(check_existing_branches "$SPECS_DIR" true "$BRANCH_SCOPE_PREFIX")
+                if ! reserve_next_branch_number "$SPECS_DIR" "$BRANCH_SCOPE_PREFIX"; then
+                    exit 1
+                fi
             else
                 if [ -n "$BRANCH_SCOPE_PREFIX" ]; then
                     HIGHEST=0
@@ -728,11 +913,29 @@ if [ "$CHECKOUT_MODE" = "worktree" ]; then
     WORKTREE_PATH="$WORKTREE_ROOT/$BRANCH_NAME"
 fi
 
+STATE_FILE=""
+if [ "$DRY_RUN" != true ] && [ "$HAS_GIT" = true ] && [ "$CHECKOUT_MODE" = "worktree" ]; then
+    if ! STATE_COMMON_DIR=$(resolve_git_common_dir); then
+        >&2 echo "Error: Failed to resolve the Git common directory."
+        exit 1
+    fi
+    STATE_FILE="$STATE_COMMON_DIR/speckit-last-worktree.json"
+    if ! assert_state_file_safe "$STATE_FILE"; then
+        exit 1
+    fi
+fi
+
 if [ "$DRY_RUN" != true ]; then
     if [ "$HAS_GIT" = true ]; then
         if [ "$CHECKOUT_MODE" = "worktree" ]; then
-            existing_worktree=$(find_worktree_for_branch "$BRANCH_NAME" || true)
-            if [ -n "$existing_worktree" ]; then
+            existing_worktree=""
+            find_worktree_status=0
+            find_worktree_for_branch "$BRANCH_NAME" || find_worktree_status=$?
+            if [ "$find_worktree_status" -eq 2 ]; then
+                >&2 echo "Error: Failed to list Git worktrees."
+                exit 1
+            elif [ "$find_worktree_status" -eq 0 ]; then
+                existing_worktree="$GIT_WORKTREE_RESULT_PATH"
                 if [ "$ALLOW_EXISTING" = true ]; then
                     WORKTREE_PATH="$existing_worktree"
                 elif [ "$USE_TIMESTAMP" = true ]; then
@@ -776,6 +979,9 @@ if [ "$DRY_RUN" != true ]; then
                     >&2 printf '%s\n' "$worktree_error"
                     exit 1
                 fi
+                if ! release_owned_number_reservation; then
+                    exit 1
+                fi
             fi
         else
             branch_create_error=""
@@ -808,6 +1014,8 @@ if [ "$DRY_RUN" != true ]; then
                     fi
                     exit 1
                 fi
+            elif ! release_owned_number_reservation; then
+                exit 1
             fi
         fi
     else
@@ -822,7 +1030,7 @@ if [ "$DRY_RUN" != true ]; then
 fi
 
 if $JSON_MODE; then
-    if command -v jq >/dev/null 2>&1; then
+    if [ "$JSON_ENCODER" = jq ]; then
         jq -cn \
             --arg branch_name "$BRANCH_NAME" \
             --arg feature_num "$FEATURE_NUM" \
@@ -834,20 +1042,12 @@ if $JSON_MODE; then
             '({BRANCH_NAME:$branch_name,FEATURE_NUM:$feature_num,CHECKOUT_MODE:$checkout_mode,HAS_GIT:($has_git == "true")}
               + (if $checkout_mode == "worktree" then {BASE_BRANCH:$base_branch,WORKTREE_PATH:$worktree_path} else {} end)
               + (if $dry_run == "true" then {DRY_RUN:true} else {} end))'
-    else
-        if type json_escape >/dev/null 2>&1; then
-            _je_branch=$(json_escape "$BRANCH_NAME")
-            _je_num=$(json_escape "$FEATURE_NUM")
-            _je_mode=$(json_escape "$CHECKOUT_MODE")
-            _je_base=$(json_escape "$BASE_BRANCH")
-            _je_worktree=$(json_escape "$WORKTREE_PATH")
-        else
-            _je_branch="$BRANCH_NAME"
-            _je_num="$FEATURE_NUM"
-            _je_mode="$CHECKOUT_MODE"
-            _je_base="$BASE_BRANCH"
-            _je_worktree="$WORKTREE_PATH"
-        fi
+    elif [ "$JSON_ENCODER" = json_escape ]; then
+        _je_branch=$(json_escape "$BRANCH_NAME")
+        _je_num=$(json_escape "$FEATURE_NUM")
+        _je_mode=$(json_escape "$CHECKOUT_MODE")
+        _je_base=$(json_escape "$BASE_BRANCH")
+        _je_worktree=$(json_escape "$WORKTREE_PATH")
         if [ "$DRY_RUN" = true ]; then
             if [ "$CHECKOUT_MODE" = "worktree" ]; then
                 printf '{"BRANCH_NAME":"%s","FEATURE_NUM":"%s","CHECKOUT_MODE":"%s","HAS_GIT":%s,"BASE_BRANCH":"%s","WORKTREE_PATH":"%s","DRY_RUN":true}\n' \
@@ -865,6 +1065,25 @@ if $JSON_MODE; then
                     "$_je_branch" "$_je_num" "$_je_mode" "$HAS_GIT"
             fi
         fi
+    else
+        python3 - "$BRANCH_NAME" "$FEATURE_NUM" "$CHECKOUT_MODE" "$HAS_GIT" "$BASE_BRANCH" "$WORKTREE_PATH" "$DRY_RUN" <<'PY'
+import json
+import sys
+
+payload = {
+    "BRANCH_NAME": sys.argv[1],
+    "FEATURE_NUM": sys.argv[2],
+    "CHECKOUT_MODE": sys.argv[3],
+    "HAS_GIT": sys.argv[4] == "true",
+}
+if sys.argv[3] == "worktree":
+    payload["BASE_BRANCH"] = sys.argv[5]
+    payload["WORKTREE_PATH"] = sys.argv[6]
+if sys.argv[7] == "true":
+    payload["DRY_RUN"] = True
+json.dump(payload, sys.stdout, ensure_ascii=False, separators=(",", ":"))
+sys.stdout.write("\n")
+PY
     fi
 else
     echo "BRANCH_NAME: $BRANCH_NAME"
