@@ -73,21 +73,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: Install runtime prerequisites
+      - name: Run Git 2.34.1 feature and compatibility suites
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends git jq python3 zsh
-
-      - name: Verify Git 2.34.1
-        run: |
-          test "$(git --version)" = "git version 2.34.1"
-          git --version
-
-      - name: Run feature suite
-        run: bash ./devBenches/devcontainer.test/test-speckit-git-feature.sh
-
-      - name: Run compatibility suite
-        run: bash ./devBenches/devcontainer.test/test-speckit-git-compat.sh
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace:ro" \
+            --workdir /workspace \
+            ubuntu:22.04@sha256:2edbbc5dc405e9612ba3584ce95480277e3eb374407b5505fe26f17df77c7dbc \
+            bash -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends git=1:2.34.1-1ubuntu1 git-man=1:2.34.1-1ubuntu1 jq python3 zsh ca-certificates && git --version && test "$(git --version)" = "git version 2.34.1" && bash ./devBenches/devcontainer.test/test-speckit-git-feature.sh && bash ./devBenches/devcontainer.test/test-speckit-git-compat.sh'
 
   bash-3-2:
     runs-on: ubuntu-24.04
