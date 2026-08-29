@@ -1061,7 +1061,7 @@ function Assert-WindowsStatePublicationUsesHeldHandles {
     Assert-True ([string]::IsNullOrWhiteSpace($preflightCall.Groups['arguments'].Value) -or $preflightCall.Groups['arguments'].Value.Contains('parentHandle', [System.StringComparison]::Ordinal)) 'constructor preflight uses the transaction authenticated parent handle'
     $preflightName = $preflightCall.Groups['method'].Value
     $preflight = Get-CSharpMemberExtent -Source $transactionSource -SignaturePattern ('(?:private|public)\s+(?:static\s+)?void\s+' + [regex]::Escape($preflightName) + '\s*\(') -Label 'Windows state capability preflight'
-    $probeCreates = [regex]::Matches($preflight, '(?<handle>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*CreateCapabilityProbe\s*\(\s*parentHandle\s*,\s*"(?<role>source|destination)"\s*,\s*(?<share>FileShareDelete|ShareAll)\s*,\s*out\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\)')
+    $probeCreates = [regex]::Matches($preflight, '(?<handle>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*CreateCapabilityProbe\s*\(\s*parentHandle\s*,\s*"(?<role>source|destination)"\s*,\s*(?<share>0|ShareAll)\s*,\s*out\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\)')
     Assert-Equal 2 $probeCreates.Count 'capability preflight creates private source and destination scratches'
     $sourceProbe = $probeCreates | Where-Object { $_.Groups['role'].Value -eq 'source' }
     $destinationProbe = $probeCreates | Where-Object { $_.Groups['role'].Value -eq 'destination' }
@@ -1070,7 +1070,7 @@ function Assert-WindowsStatePublicationUsesHeldHandles {
     $sourceName = $sourceProbe.Groups['name'].Value
     $destinationHandle = $destinationProbe.Groups['handle'].Value
     $destinationName = $destinationProbe.Groups['name'].Value
-    Assert-Equal 'FileShareDelete' $sourceProbe.Groups['share'].Value 'capability source permits rename without permitting readers or writers'
+    Assert-Equal '0' $sourceProbe.Groups['share'].Value 'capability source remains exclusive'
     Assert-Equal 'ShareAll' $destinationProbe.Groups['share'].Value 'capability destination permits POSIX replacement while held open'
     $sourceValidationIndex = $preflight.IndexOf("ValidateTemporarySecurity($sourceHandle)", [System.StringComparison]::Ordinal)
     $destinationValidationIndex = $preflight.IndexOf("ValidateTemporarySecurity($destinationHandle)", [System.StringComparison]::Ordinal)
@@ -1118,8 +1118,7 @@ function Assert-WindowsStatePublicationUsesHeldHandles {
     $productionRelativeCreate = [regex]::Match($productionCreateMember, 'CreateRelative\s*\(\s*parentHandle\s*,\s*TemporaryName\s*,\s*out\s+temporaryHandle\s*\)')
     Assert-True $productionRelativeCreate.Success 'production temporary is created relative to the same authenticated parent handle'
     $createRelative = Get-CSharpMemberExtent -Source $transactionSource -SignaturePattern 'private\s+static\s+int\s+CreateRelative\s*\(' -Label 'relative temporary creation helper'
-    Assert-True ($transactionSource.Contains('private const uint FileShareDelete = 0x00000004;', [System.StringComparison]::Ordinal)) 'native source sharing declares the delete-only share mask'
-    Assert-True ($createRelative.Contains('uint shareAccess = FileShareDelete', [System.StringComparison]::Ordinal)) 'production relative creation defaults to delete-only sharing'
+    Assert-True ($createRelative.Contains('uint shareAccess = 0', [System.StringComparison]::Ordinal)) 'production relative creation defaults to exclusive sharing'
     $descriptorFactoryCall = [regex]::Match($createRelative, '(?<variable>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<method>(?:Create|Build)[A-Za-z0-9_]*SecurityDescriptor[A-Za-z0-9_]*)\s*\(')
     Assert-True $descriptorFactoryCall.Success 'relative temporary creation builds a creation-time security descriptor'
     $relativeNtCreateCall = [regex]::Match($createRelative, '(?s)NtCreateRelative\s*\((?<arguments>.*?)\)\s*;')
@@ -1181,8 +1180,12 @@ function Test-WindowsStateTransactionStructure {
 
     $temporaryAttackWrapper = ${function:Test-WindowsStateTemporaryLeafReplacementAttack}.ToString()
     Assert-True ($temporaryAttackWrapper.Contains('if (-not $IsWindows)', [System.StringComparison]::Ordinal) -and $temporaryAttackWrapper.Contains('Test-StateTemporaryLeafReplacementAttackCore', [System.StringComparison]::Ordinal)) 'Windows temporary attack selector gates native behavior and invokes the shared attack core'
+    $temporaryAttackCore = ${function:Test-StateTemporaryLeafReplacementAttackCore}.ToString()
+    Assert-True ($temporaryAttackCore.Contains('$script:TemporaryReplacementCompleted = $false', [System.StringComparison]::Ordinal) -and $temporaryAttackCore.Contains('$script:TemporaryReplacementCompleted = $true', [System.StringComparison]::Ordinal)) 'Windows temporary attack tracks whether pathname replacement completed'
     $parentSwapWrapper = ${function:Test-WindowsStateAuthenticatedParentSwap}.ToString()
     Assert-True ($parentSwapWrapper.Contains('if (-not $IsWindows)', [System.StringComparison]::Ordinal) -and $parentSwapWrapper.Contains('Test-StateParentSwapPublishesOnlyToAuthenticatedParent', [System.StringComparison]::Ordinal)) 'Windows parent-swap selector gates native behavior and invokes the authenticated-parent regression'
+    $parentSwapCore = ${function:Test-StateParentSwapPublishesOnlyToAuthenticatedParent}.ToString()
+    Assert-True ($parentSwapCore.Contains("Assert-Equal `$false `$script:ParentSwapCompleted 'live temporary blocks parent-directory rename'", [System.StringComparison]::Ordinal) -and $parentSwapCore.Contains("Assert-Equal `$null `$cleanupError 'blocked parent swap cleans its temporary'", [System.StringComparison]::Ordinal)) 'Windows parent-swap regression requires blocked rename and successful cleanup'
 
     $defaultStateBundle = ${function:Test-StateTemporaryLeafReplacementFailsClosed}.ToString()
     foreach ($bundledTest in @(
@@ -1343,6 +1346,7 @@ function Test-StateTemporaryLeafReplacementAttackCore {
             $null
         }
         $script:TemporarySecondOpenBlocked = $null
+        $script:TemporaryReplacementCompleted = $false
         $replacement = {
             param($TemporaryPath)
             if ($IsWindows) {
@@ -1365,6 +1369,7 @@ function Test-StateTemporaryLeafReplacementAttackCore {
             }
             Remove-Item -LiteralPath $TemporaryPath -Force
             New-Item -ItemType HardLink -Path $TemporaryPath -Target $SentinelPath | Out-Null
+            $script:TemporaryReplacementCompleted = $true
         }
 
         $primaryError = $null
@@ -1387,6 +1392,8 @@ function Test-StateTemporaryLeafReplacementAttackCore {
         Assert-Equal $null $cleanupError 'temporary-leaf replacement captures cleanup errors separately'
         if ($IsWindows) {
             Assert-Equal $true $script:TemporarySecondOpenBlocked 'production state temporary denies a second open while its held handle is live'
+            Assert-Equal $false $script:TemporaryReplacementCompleted 'production state temporary cannot be removed and replaced while live'
+            Assert-Equal 0 @(Get-ChildItem -LiteralPath ([System.IO.Path]::GetDirectoryName($StatePath)) -Filter '.speckit-last-worktree.json.tmp.*' -Force).Count 'temporary-leaf attack leaves no production temporary'
         }
         Assert-True ([System.Linq.Enumerable]::SequenceEqual[byte]($StateBefore, [System.IO.File]::ReadAllBytes($StatePath))) 'temporary-leaf replacement preserves prior state bytes'
         Assert-True ([System.Linq.Enumerable]::SequenceEqual[byte]($SentinelBefore, [System.IO.File]::ReadAllBytes($SentinelPath))) 'temporary-leaf replacement preserves external sentinel bytes'
@@ -1463,6 +1470,7 @@ function Test-StateParentSwapPublishesOnlyToAuthenticatedParent {
         }
 
         $publicationError = $null
+        $cleanupError = $null
         try {
             Write-LastWorktreeState -BranchName '052-parent-swap' -WorktreePath '/tmp/worktree' -BaseBranch 'main' -BeforePublish $swapParent -WindowsTransaction $windowsTransaction
         } catch {
@@ -1472,29 +1480,34 @@ function Test-StateParentSwapPublishesOnlyToAuthenticatedParent {
                 try {
                     $windowsTransaction.Dispose()
                 } catch {
-                    if ($null -eq $publicationError) {
-                        throw
-                    }
+                    $cleanupError = $_.Exception
                 }
             }
         }
-        Assert-True $script:ParentSwapCompleted 'parent swap race hook completed'
 
-        $publishedStatePath = Join-Path $AuthenticatedParent 'speckit-last-worktree.json'
-        if ($null -ne $publicationError) {
-            throw "assertion failed: parent swap publication through authenticated parent succeeds: $($publicationError.Message)"
-        }
-        $publishedState = [System.IO.File]::ReadAllText($publishedStatePath, [System.Text.UTF8Encoding]::new($false, $true)) | ConvertFrom-Json
-        Assert-Equal '052-parent-swap' $publishedState.BRANCH_NAME 'parent swap publishes trusted JSON to authenticated parent'
-        Assert-Equal 0 @(Get-ChildItem -LiteralPath $AuthenticatedParent -Filter '.speckit-last-worktree.json.tmp.*' -Force).Count 'parent swap leaves no temporary in authenticated parent'
-        Assert-True ([System.Linq.Enumerable]::SequenceEqual[byte]($SentinelBefore, [System.IO.File]::ReadAllBytes($StatePath))) 'parent swap leaves replacement-parent state bytes unchanged'
-        Assert-True ([System.Linq.Enumerable]::SequenceEqual[byte]($SentinelBefore, [System.IO.File]::ReadAllBytes($SentinelPath))) 'parent swap preserves external sentinel bytes'
-        if (-not $IsWindows) {
+        if ($IsWindows) {
+            Assert-Equal $false $script:ParentSwapCompleted 'live temporary blocks parent-directory rename'
+            Assert-True ($null -ne $publicationError) 'blocked parent swap fails publication closed'
+            Assert-Equal $null $cleanupError 'blocked parent swap cleans its temporary'
+            Assert-True (Test-Path -LiteralPath $StateParent -PathType Container) 'authenticated parent remains at its original path'
+            Assert-True (-not (Test-Path -LiteralPath $AuthenticatedParent)) 'blocked parent swap creates no moved parent'
+            Assert-True (-not (Test-Path -LiteralPath $ReplacementParent)) 'blocked parent swap creates no replacement parent'
+            Assert-Equal 'trusted previous state' ([System.IO.File]::ReadAllText($StatePath, [System.Text.UTF8Encoding]::new($false, $true))) 'blocked parent swap preserves prior state'
+            Assert-Equal 0 @(Get-ChildItem -LiteralPath $StateParent -Filter '.speckit-last-worktree.json.tmp.*' -Force).Count 'blocked parent swap leaves no temporary'
+            Assert-True ([System.Linq.Enumerable]::SequenceEqual[byte]($SentinelBefore, [System.IO.File]::ReadAllBytes($SentinelPath))) 'blocked parent swap preserves external sentinel bytes'
+            Assert-Equal $SentinelAclBefore (Get-WindowsAclSddl -LiteralPath $SentinelPath) 'blocked parent swap preserves external sentinel ACL'
+        } else {
+            Assert-True $script:ParentSwapCompleted 'parent swap race hook completed'
+            Assert-Equal $null $publicationError 'parent swap publication through authenticated parent succeeds'
+            Assert-Equal $null $cleanupError 'parent swap cleanup succeeds'
+            $publishedStatePath = Join-Path $AuthenticatedParent 'speckit-last-worktree.json'
+            $publishedState = [System.IO.File]::ReadAllText($publishedStatePath, [System.Text.UTF8Encoding]::new($false, $true)) | ConvertFrom-Json
+            Assert-Equal '052-parent-swap' $publishedState.BRANCH_NAME 'parent swap publishes trusted JSON to authenticated parent'
+            Assert-Equal 0 @(Get-ChildItem -LiteralPath $AuthenticatedParent -Filter '.speckit-last-worktree.json.tmp.*' -Force).Count 'parent swap leaves no temporary in authenticated parent'
+            Assert-True ([System.Linq.Enumerable]::SequenceEqual[byte]($SentinelBefore, [System.IO.File]::ReadAllBytes($StatePath))) 'parent swap leaves replacement-parent state bytes unchanged'
+            Assert-True ([System.Linq.Enumerable]::SequenceEqual[byte]($SentinelBefore, [System.IO.File]::ReadAllBytes($SentinelPath))) 'parent swap preserves external sentinel bytes'
             Assert-Equal $SentinelModeBefore ([System.IO.File]::GetUnixFileMode($StatePath)) 'parent swap leaves replacement-parent state mode unchanged'
             Assert-Equal $SentinelModeBefore ([System.IO.File]::GetUnixFileMode($SentinelPath)) 'parent swap preserves external sentinel mode'
-        } else {
-            Assert-Equal $SentinelAclBefore (Get-WindowsAclSddl -LiteralPath $StatePath) 'parent junction leaves replacement-parent state ACL unchanged'
-            Assert-Equal $SentinelAclBefore (Get-WindowsAclSddl -LiteralPath $SentinelPath) 'parent junction preserves external sentinel ACL'
         }
     } $definitions $stateParent $authenticatedParent $replacementParent $statePath $sentinelPath $sentinelBefore $sentinelModeBefore $sentinelAclBefore
 }

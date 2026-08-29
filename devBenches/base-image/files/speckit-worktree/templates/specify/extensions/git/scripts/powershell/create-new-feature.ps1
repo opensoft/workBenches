@@ -1054,7 +1054,6 @@ namespace Speckit
         private const uint ReadControl = 0x00020000;
         private const uint Synchronize = 0x00100000;
         private const uint GenericWrite = 0x40000000;
-        private const uint FileShareDelete = 0x00000004;
         private const uint ShareAll = 0x00000007;
         private const uint OpenExisting = 3;
         private const uint FileAttributeNormal = 0x00000080;
@@ -1275,7 +1274,7 @@ namespace Speckit
 
             try
             {
-                sourceHandle = CreateCapabilityProbe(parentHandle, "source", FileShareDelete, out sourceName);
+                sourceHandle = CreateCapabilityProbe(parentHandle, "source", 0, out sourceName);
                 destinationHandle = CreateCapabilityProbe(parentHandle, "destination", ShareAll, out destinationName);
                 ValidateTemporarySecurity(sourceHandle);
                 ValidateTemporarySecurity(destinationHandle);
@@ -1554,7 +1553,7 @@ namespace Speckit
             SafeFileHandle directoryHandle,
             string name,
             out SafeFileHandle fileHandle,
-            uint shareAccess = FileShareDelete)
+            uint shareAccess = 0)
         {
             IntPtr securityDescriptor = CreateCurrentUserSecurityDescriptor();
             try
