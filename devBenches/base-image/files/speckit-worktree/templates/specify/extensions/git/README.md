@@ -54,8 +54,9 @@ Configuration is stored in `.specify/extensions/git/git-config.yml`:
 branch_numbering: sequential
 
 # Optional branch name template. Leave empty for the default "{number}-{slug}".
-# Supported tokens: {author}, {app}, {number}, {slug}; {slug} must not appear
-# before {number}, and the final path segment must start with {number}-.
+# Supported tokens: {author}, {app}, {number}, {slug}; include exactly one
+# {number}. {slug} must not appear before {number}, and the final path segment
+# must start with {number}-.
 branch_template: ""
 
 # Optional namespace prepended to branch_template unless already present.
@@ -82,7 +83,7 @@ auto_commit:
     message: "[Spec Kit] Add specification"
 ```
 
-`{author}` is derived from Git config and sanitized for branch names. `{app}` is derived from the repository root name. `{number}` is either a zero-padded sequential number or a timestamp, and `{slug}` is the generated short feature name. The effective template defaults to `{number}-{slug}`. Custom templates must keep `{number}-` at the start of the final path segment, so a branch such as `feature/007-existing` participates in sequential numbering and the next branch in that namespace becomes `feature/008-...`.
+`{author}` is derived from Git config and sanitized for branch names. `{app}` is derived from the repository root name. `{number}` is either a zero-padded sequential number or a timestamp, and `{slug}` is the generated short feature name. The effective template defaults to `{number}-{slug}`. Custom templates must contain exactly one `{number}` and keep `{number}-` at the start of the final path segment, so a branch such as `feature/007-existing` participates in sequential numbering and the next branch in that namespace becomes `feature/008-...`.
 
 `branch_prefix` prepends a namespace to the effective template. A trailing slash is optional, and the prefix is not duplicated when `branch_template` already starts with that namespace. Worktree paths use the complete rendered branch name, including namespace segments.
 
@@ -113,7 +114,7 @@ When Git is not installed or the directory is not a Git repository:
 
 ## Scripts
 
-When `checkout_mode: worktree`, `speckit.git.feature` creates the new feature branch from `base_branch` and adds a linked worktree under `worktree_root`. The JSON result includes `WORKTREE_PATH`, which callers should use as the repo root for subsequent `/speckit.*` commands.
+When `checkout_mode: worktree`, `speckit.git.feature` creates the new feature branch from `base_branch` and adds a linked worktree under `worktree_root`. The JSON result includes `WORKTREE_PATH`, which callers should use as the repo root for subsequent `/speckit.*` commands. The Bash implementation requires Python 3 for authenticated, atomic state publication during non-dry-run worktree creation.
 
 Temporary overrides are also available through environment variables:
 

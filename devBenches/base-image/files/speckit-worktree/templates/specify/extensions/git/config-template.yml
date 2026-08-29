@@ -5,7 +5,7 @@
 branch_numbering: sequential
 
 # Optional branch name template. Leave empty for the default "{number}-{slug}".
-# Supported tokens: {author}, {app}, {number}, {slug}
+# Supported tokens: {author}, {app}, {number}, {slug}; include exactly one {number}.
 # {slug} must not appear before {number}; final path segment must start with {number}-.
 # Example for monorepos: "{author}/{app}/{number}-{slug}"
 branch_template: ""
