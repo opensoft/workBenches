@@ -1061,7 +1061,7 @@ function Assert-WindowsStatePublicationUsesHeldHandles {
     Assert-True ([string]::IsNullOrWhiteSpace($preflightCall.Groups['arguments'].Value) -or $preflightCall.Groups['arguments'].Value.Contains('parentHandle', [System.StringComparison]::Ordinal)) 'constructor preflight uses the transaction authenticated parent handle'
     $preflightName = $preflightCall.Groups['method'].Value
     $preflight = Get-CSharpMemberExtent -Source $transactionSource -SignaturePattern ('(?:private|public)\s+(?:static\s+)?void\s+' + [regex]::Escape($preflightName) + '\s*\(') -Label 'Windows state capability preflight'
-    $probeCreates = [regex]::Matches($preflight, '(?<handle>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*CreateCapabilityProbe\s*\(\s*parentHandle\s*,\s*"(?<role>source|destination)"\s*,\s*out\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\)')
+    $probeCreates = [regex]::Matches($preflight, '(?<handle>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*CreateCapabilityProbe\s*\(\s*parentHandle\s*,\s*"(?<role>source|destination)"\s*,\s*(?<share>0|ShareAll)\s*,\s*out\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\)')
     Assert-Equal 2 $probeCreates.Count 'capability preflight creates private source and destination scratches'
     $sourceProbe = $probeCreates | Where-Object { $_.Groups['role'].Value -eq 'source' }
     $destinationProbe = $probeCreates | Where-Object { $_.Groups['role'].Value -eq 'destination' }
@@ -1070,6 +1070,8 @@ function Assert-WindowsStatePublicationUsesHeldHandles {
     $sourceName = $sourceProbe.Groups['name'].Value
     $destinationHandle = $destinationProbe.Groups['handle'].Value
     $destinationName = $destinationProbe.Groups['name'].Value
+    Assert-Equal '0' $sourceProbe.Groups['share'].Value 'capability source remains exclusive'
+    Assert-Equal 'ShareAll' $destinationProbe.Groups['share'].Value 'capability destination permits POSIX replacement while held open'
     $sourceValidationIndex = $preflight.IndexOf("ValidateTemporarySecurity($sourceHandle)", [System.StringComparison]::Ordinal)
     $destinationValidationIndex = $preflight.IndexOf("ValidateTemporarySecurity($destinationHandle)", [System.StringComparison]::Ordinal)
     $renameCall = [regex]::Match($preflight, '(?<method>(?:Rename[A-Za-z0-9_]*|[A-Za-z_][A-Za-z0-9_]*Rename[A-Za-z0-9_]*))\s*\(\s*' + [regex]::Escape($sourceHandle) + '\s*,\s*parentHandle\s*,\s*' + [regex]::Escape($destinationName) + '\s*,\s*"replace state capability probe"\s*\)')
@@ -1116,6 +1118,7 @@ function Assert-WindowsStatePublicationUsesHeldHandles {
     $productionRelativeCreate = [regex]::Match($productionCreateMember, 'CreateRelative\s*\(\s*parentHandle\s*,\s*TemporaryName\s*,\s*out\s+temporaryHandle\s*\)')
     Assert-True $productionRelativeCreate.Success 'production temporary is created relative to the same authenticated parent handle'
     $createRelative = Get-CSharpMemberExtent -Source $transactionSource -SignaturePattern 'private\s+static\s+int\s+CreateRelative\s*\(' -Label 'relative temporary creation helper'
+    Assert-True ($createRelative.Contains('uint shareAccess = 0', [System.StringComparison]::Ordinal)) 'production relative creation defaults to exclusive sharing'
     $descriptorFactoryCall = [regex]::Match($createRelative, '(?<variable>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<method>(?:Create|Build)[A-Za-z0-9_]*SecurityDescriptor[A-Za-z0-9_]*)\s*\(')
     Assert-True $descriptorFactoryCall.Success 'relative temporary creation builds a creation-time security descriptor'
     $relativeNtCreateCall = [regex]::Match($createRelative, '(?s)NtCreateRelative\s*\((?<arguments>.*?)\)\s*;')
@@ -1135,7 +1138,7 @@ function Assert-WindowsStatePublicationUsesHeldHandles {
     $shareParameter = [regex]::Match($ntCreateRelative, 'uint\s+(?<name>(?:[A-Za-z_][A-Za-z0-9_]*)?shareAccess[A-Za-z0-9_]*)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
     Assert-True $shareParameter.Success 'NtCreateRelative accepts explicit share access'
     Assert-True ([regex]::IsMatch($ntCreateRelative, 'FileAttributeNormal\s*,\s*' + [regex]::Escape($shareParameter.Groups['name'].Value) + '\s*,\s*disposition')) 'NtCreateRelative passes explicit sharing to NtCreateFile'
-    Assert-True ([regex]::IsMatch($createRelative, '(?s)NtCreateRelative\s*\(.*?\b0\s*,\s*FileCreate\s*,\s*securityDescriptor')) 'probe and production temporaries are created with ShareAccess=0'
+    Assert-True ([regex]::IsMatch($createRelative, '(?s)NtCreateRelative\s*\(.*?\bshareAccess\s*,\s*FileCreate\s*,\s*securityDescriptor')) 'relative temporary creation passes its explicit share contract to NtCreateFile'
     $openRelative = Get-CSharpMemberExtent -Source $transactionSource -SignaturePattern 'private\s+static\s+int\s+OpenRelative\s*\(' -Label 'relative inspection helper'
     Assert-True ([regex]::IsMatch($openRelative, '(?s)NtCreateRelative\s*\(.*?ShareAll\s*,\s*FileOpen\s*,\s*IntPtr\.Zero')) 'destination inspection and absence verification use ShareAll'
 
@@ -1168,7 +1171,7 @@ function Test-WindowsStateTransactionStructure {
     Assert-WindowsStatePublicationUsesHeldHandles
 
     $heldReaderRegression = ${function:Test-WindowsStateReplacesExistingFileWithHeldReader}.ToString()
-    Assert-True ($heldReaderRegression.Contains('[System.IO.FileShare]::Read', [System.StringComparison]::Ordinal) -and $heldReaderRegression.Contains('Write-LastWorktreeState', [System.StringComparison]::Ordinal)) 'native Windows regression holds an ordinary reader while replacing existing state'
+    Assert-True ($heldReaderRegression.Contains('[System.IO.FileShare]::Read', [System.StringComparison]::Ordinal) -and $heldReaderRegression.Contains('[System.IO.FileShare]::Delete', [System.StringComparison]::Ordinal) -and $heldReaderRegression.Contains('Write-LastWorktreeState', [System.StringComparison]::Ordinal)) 'native Windows regression holds a delete-sharing reader while replacing existing state'
 
     $primaryFailureRegression = ${function:Test-WindowsStatePrimaryFailurePreservesErrorAndCleansTemporary}.ToString()
     Assert-True ($primaryFailureRegression.Contains('$primaryError = $null', [System.StringComparison]::Ordinal) -and $primaryFailureRegression.Contains('$cleanupError = $null', [System.StringComparison]::Ordinal)) 'forced-failure regression captures primary and cleanup errors separately'
@@ -1213,7 +1216,8 @@ function Test-WindowsStateReplacesExistingFileWithHeldReader {
         $script:stateFile = $StatePath
         $script:repoRoot = Split-Path (Split-Path $StatePath -Parent) -Parent
         Initialize-SafeStateNativeApi
-        $reader = [System.IO.File]::Open($StatePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+        $readerShare = [System.IO.FileShare]::Read -bor [System.IO.FileShare]::Delete
+        $reader = [System.IO.File]::Open($StatePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, $readerShare)
         $windowsTransaction = $null
         $publicationError = $null
         $cleanupError = $null

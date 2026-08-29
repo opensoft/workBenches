@@ -1274,8 +1274,8 @@ namespace Speckit
 
             try
             {
-                sourceHandle = CreateCapabilityProbe(parentHandle, "source", out sourceName);
-                destinationHandle = CreateCapabilityProbe(parentHandle, "destination", out destinationName);
+                sourceHandle = CreateCapabilityProbe(parentHandle, "source", 0, out sourceName);
+                destinationHandle = CreateCapabilityProbe(parentHandle, "destination", ShareAll, out destinationName);
                 ValidateTemporarySecurity(sourceHandle);
                 ValidateTemporarySecurity(destinationHandle);
                 RenameRelative(sourceHandle, parentHandle, destinationName, "replace state capability probe");
@@ -1328,6 +1328,7 @@ namespace Speckit
         private static SafeFileHandle CreateCapabilityProbe(
             SafeFileHandle parentHandle,
             string role,
+            uint shareAccess,
             out string name)
         {
             byte[] random = new byte[8];
@@ -1340,7 +1341,7 @@ namespace Speckit
                     + "."
                     + role;
                 SafeFileHandle probeHandle;
-                int status = CreateRelative(parentHandle, name, out probeHandle);
+                int status = CreateRelative(parentHandle, name, out probeHandle, shareAccess);
                 if (status >= 0)
                 {
                     return probeHandle;
@@ -1551,7 +1552,8 @@ namespace Speckit
         private static int CreateRelative(
             SafeFileHandle directoryHandle,
             string name,
-            out SafeFileHandle fileHandle)
+            out SafeFileHandle fileHandle,
+            uint shareAccess = 0)
         {
             IntPtr securityDescriptor = CreateCurrentUserSecurityDescriptor();
             try
@@ -1560,7 +1562,7 @@ namespace Speckit
                     directoryHandle,
                     name,
                     GenericWrite | DeleteAccess | ReadControl | FileReadAttributes | Synchronize,
-                    0,
+                    shareAccess,
                     FileCreate,
                     securityDescriptor,
                     out fileHandle);
