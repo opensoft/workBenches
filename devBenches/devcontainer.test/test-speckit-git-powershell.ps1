@@ -1096,6 +1096,10 @@ function Assert-WindowsStatePublicationUsesHeldHandles {
 
     $renameMember = Get-CSharpMemberExtent -Source $transactionSource -SignaturePattern ('(?:private|public)\s+(?:static\s+)?[A-Za-z0-9_<>,\.\[\]]+\s+' + [regex]::Escape($renameCall.Groups['method'].Value) + '\s*\(') -Label 'shared replacement helper'
     Assert-True ($renameMember.Contains('SetFileInformationByHandle(', [System.StringComparison]::Ordinal) -and $renameMember.Contains('FileRenameInfoEx', [System.StringComparison]::Ordinal) -and $renameMember.Contains('FileRenameReplaceIfExists | FileRenamePosixSemantics', [System.StringComparison]::Ordinal)) 'preflight replacement uses production FileRenameInfoEx flags'
+    $renameBufferSize = [regex]::Match($renameMember, 'int\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*checked\(nameOffset\s*\+\s*sizeof\(uint\)\s*\+\s*nameBytes\.Length\)\s*;')
+    Assert-True $renameBufferSize.Success 'FILE_RENAME_INFO native structure size includes four bytes beyond FileName offset before adding the filename bytes'
+    $renameBufferVariable = $renameBufferSize.Groups['name'].Value
+    Assert-True ([regex]::IsMatch($renameMember, 'AllocHGlobal\(\s*' + [regex]::Escape($renameBufferVariable) + '\s*\)') -and [regex]::IsMatch($renameMember, 'for\s*\([^)]*' + [regex]::Escape($renameBufferVariable) + '\s*;') -and [regex]::IsMatch($renameMember, 'unchecked\(\(uint\)\s*\(\s*' + [regex]::Escape($renameBufferVariable) + '\s*\)\s*\)')) 'FileRenameInfoEx allocation, zeroing, and SetFileInformationByHandle use the checked buffer size while preserving filename offset and length'
     $renameTemporary = Get-CSharpMemberExtent -Source $transactionSource -SignaturePattern 'private\s+void\s+RenameTemporary\s*\(' -Label 'production rename wrapper'
     Assert-True ($renameTemporary.Contains($renameCall.Groups['method'].Value + '(temporaryHandle, parentHandle, stateName, "publish state file")', [System.StringComparison]::Ordinal)) 'preflight and publication use the same replacement helper'
     $cleanupMember = Get-CSharpMemberExtent -Source $transactionSource -SignaturePattern 'private\s+static\s+void\s+CleanupProbeHandle\s*\(' -Label 'held scratch cleanup helper'

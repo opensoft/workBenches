@@ -1451,11 +1451,12 @@ namespace Speckit
             int rootOffset = IntPtr.Size == 8 ? 8 : 4;
             int nameLengthOffset = rootOffset + IntPtr.Size;
             int nameOffset = nameLengthOffset + sizeof(uint);
-            IntPtr buffer = Marshal.AllocHGlobal(nameOffset + nameBytes.Length);
+            int bufferSize = checked(nameOffset + sizeof(uint) + nameBytes.Length);
+            IntPtr buffer = Marshal.AllocHGlobal(bufferSize);
             bool addedRef = false;
             try
             {
-                for (int index = 0; index < nameOffset + nameBytes.Length; index++)
+                for (int index = 0; index < bufferSize; index++)
                 {
                     Marshal.WriteByte(buffer, index, 0);
                 }
@@ -1468,7 +1469,7 @@ namespace Speckit
                     sourceHandle,
                     FileRenameInfoEx,
                     buffer,
-                    unchecked((uint)(nameOffset + nameBytes.Length))))
+                    unchecked((uint)(bufferSize))))
                 {
                     ThrowLastWin32WithCapability(operation, "FileRenameInfoEx");
                 }
