@@ -1563,17 +1563,36 @@ decision is being made.
 
 1. OpenSpec proposal or exploration captures the decision.
 2. OpenSpec apply work keeps proposal, design notes, and spec deltas current.
-3. The OpenSpec change hands off to exactly one Speckit feature.
-4. Speckit creates or updates the implementation branch/worktree and artifacts.
+3. The OpenSpec change hands off to exactly one Speckit feature under
+   `specs/NNN-*`.
+4. Speckit creates or updates the implementation worktree and artifacts.
 5. Implementation happens from the Speckit feature worktree.
 6. Review and verification happen on the implementation branch or PR.
 7. Archive the OpenSpec change only after the corresponding Speckit work and PR
    have landed, or after the change is explicitly abandoned.
 
+For shipped-feature amendments, do not silently rewrite history. Capture the
+new interpretation as an OpenSpec change first, then update docs/specs/code
+through the normal handoff.
+
 ## Worktree Rules
 
 Run `/speckit.specify` only from the root checkout on the repo base branch
 unless the repo explicitly documents a different creation path.
+
+Before running `/speckit.specify`, verify from the same shell/container:
+
+```bash
+git status -sb
+git branch --show-current
+```
+
+If the root checkout is not on the intended base branch or has unintended dirty
+work, stop and preserve or commit that work before creating a new Speckit
+feature.
+
+Do not pre-create agent-prefixed branches for Speckit features. Let Speckit's
+feature/worktree hook create the canonical `NNN-feature-name` branch/worktree.
 
 After `/speckit.specify` creates a worktree, run follow-on Speckit commands from
 that generated worktree, not from the root checkout:
@@ -1829,24 +1848,26 @@ def worktree_template_root() -> Path | None:
 
 
 def opsx_command_template_root(agent_root: Path) -> Path | None:
-    candidates: list[Path] = []
     env_root = os.environ.get("OPSX_COMMAND_TEMPLATE_ROOT")
     if env_root:
         configured_root = Path(env_root)
-        if mode_without_following(configured_root) is not None:
-            safe_source_tree_entries(configured_root)
-        candidates.append(configured_root)
-    candidates.extend(
-        [
-            Path.home() / ".claude" / "commands" / "opsx",
-            Path("/etc/skel/.claude/commands/opsx"),
-            Path(__file__).resolve().parent.parent / "claude" / "commands" / "opsx",
-            agent_root / "templates" / "claude" / "commands" / "opsx",
-        ]
-    )
+        if mode_without_following(configured_root) is None:
+            raise SystemExit(
+                f"OPSX command template root not found: {configured_root}"
+            )
+        safe_source_tree_entries(configured_root)
+        return configured_root
+
+    candidates = [
+        Path("/etc/skel/.claude/commands/opsx"),
+        Path(__file__).resolve().parent.parent / "claude" / "commands" / "opsx",
+        agent_root / "templates" / "claude" / "commands" / "opsx",
+        Path.home() / ".claude" / "commands" / "opsx",
+    ]
 
     for candidate in candidates:
         if candidate.is_dir():
+            safe_source_tree_entries(candidate)
             return candidate
     return None
 

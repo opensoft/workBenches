@@ -5,10 +5,14 @@ set -euo pipefail
 TEST_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 WORKBENCH_ROOT="$(cd -- "$TEST_DIR/../.." && pwd -P)"
 SETUP_SCRIPT="$WORKBENCH_ROOT/devBenches/base-image/files/openspeckit/setup-openspeckit"
+WORKTREE_ENABLE_SCRIPT="$WORKBENCH_ROOT/devBenches/base-image/files/speckit-worktree/speckit-worktree-enable"
 WORKTREE_TEMPLATE_ROOT="$WORKBENCH_ROOT/devBenches/base-image/files/speckit-worktree/templates"
 COMMAND_TEMPLATE_ROOT="$WORKBENCH_ROOT/devBenches/base-image/files/claude/commands/opsx"
 if [[ ! -f "$SETUP_SCRIPT" ]]; then
     SETUP_SCRIPT="/usr/local/bin/setup-openspeckit"
+fi
+if [[ ! -f "$WORKTREE_ENABLE_SCRIPT" ]]; then
+    WORKTREE_ENABLE_SCRIPT="/usr/local/bin/speckit-worktree-enable"
 fi
 if [[ ! -d "$WORKTREE_TEMPLATE_ROOT" ]]; then
     WORKTREE_TEMPLATE_ROOT="/usr/local/share/speckit-worktree/templates"
@@ -140,6 +144,283 @@ snapshot_repo_modes() {
         find . -path './.git' -prune -o \( -type d -o -type f -o -type l \) -printf '%m %y %p %l\n' | sort
     )
 }
+
+workflow_path_count() {
+    local workflow="$1"
+    local expected_path="$2"
+    awk -v expected="      - $expected_path" \
+        '$0 == expected { count++ } END { print count + 0 }' \
+        "$workflow"
+}
+
+workflow_event_path_count() {
+    local workflow="$1"
+    local event="$2"
+    local expected_path="$3"
+    awk -v event="$event" -v expected="      - $expected_path" '
+        $0 == "  " event ":" {
+            in_event = 1
+            in_paths = 0
+            next
+        }
+        in_event && $0 ~ /^  [^[:space:]]/ {
+            in_event = 0
+            in_paths = 0
+        }
+        in_event && $0 == "    paths:" {
+            in_paths = 1
+            next
+        }
+        in_paths && $0 ~ /^    [^[:space:]]/ {
+            in_paths = 0
+        }
+        in_paths && $0 == expected { count++ }
+        END { print count + 0 }
+    ' "$workflow"
+}
+
+CLARIFY_SKILL_WORKFLOW_PATH='devBenches/base-image/files/claude/skills/speckit-clarify/SKILL.md'
+BASH_WORKFLOW="$WORKBENCH_ROOT/.github/workflows/speckit-git-bash.yml"
+POWERSHELL_WORKFLOW="$WORKBENCH_ROOT/.github/workflows/speckit-git-powershell.yml"
+
+printf '%s\n' 'Given: source workflow files are available together or absent from an installed harness'
+if [[ ! -e "$BASH_WORKFLOW" && ! -e "$POWERSHELL_WORKFLOW" ]]; then
+    printf '%s\n' 'SKIP: source workflow files unavailable in the installed test harness'
+elif [[ ! -f "$BASH_WORKFLOW" || ! -f "$POWERSHELL_WORKFLOW" ]]; then
+    fail 'source workflow contract requires both workflow files when either is available'
+else
+    printf '%s\n' 'Then: each workflow filters clarify-skill changes for push and pull requests'
+    for workflow in "$BASH_WORKFLOW" "$POWERSHELL_WORKFLOW"; do
+        workflow_name="${workflow##*/}"
+        assert_equal \
+            "$(workflow_path_count "$workflow" "$CLARIFY_SKILL_WORKFLOW_PATH")" \
+            2 \
+            "$workflow_name contains exactly two clarify-skill path filters"
+        assert_equal \
+            "$(workflow_event_path_count "$workflow" push "$CLARIFY_SKILL_WORKFLOW_PATH")" \
+            1 \
+            "$workflow_name filters clarify-skill changes in push.paths"
+        assert_equal \
+            "$(workflow_event_path_count "$workflow" pull_request "$CLARIFY_SKILL_WORKFLOW_PATH")" \
+            1 \
+            "$workflow_name filters clarify-skill changes in pull_request.paths"
+    done
+fi
+
+printf '%s\n' 'Given: the compatibility alias and a recording setup-openspeckit sibling'
+ALIAS_INSTALL_DIR="$TMPDIR_ROOT/alias-install/bin"
+ALIAS_DECOY_DIR="$TMPDIR_ROOT/alias-decoy/bin"
+ALIAS_REPO="$TMPDIR_ROOT/alias repo with spaces"
+ALIAS_ARGV_LOG="$TMPDIR_ROOT/alias-argv.json"
+ALIAS_STDOUT="$TMPDIR_ROOT/alias.stdout"
+ALIAS_STDERR="$TMPDIR_ROOT/alias.stderr"
+mkdir -p "$ALIAS_INSTALL_DIR" "$ALIAS_DECOY_DIR" "$ALIAS_REPO/.specify"
+cp "$WORKTREE_ENABLE_SCRIPT" "$ALIAS_INSTALL_DIR/speckit-worktree-enable"
+cat > "$ALIAS_INSTALL_DIR/setup-openspeckit" <<'PY'
+#!/usr/bin/env python3
+import json
+import os
+import sys
+
+if sys.argv[1:] == ["--help"]:
+    print("sibling setup help stdout")
+    print("sibling setup help stderr", file=sys.stderr)
+    raise SystemExit(0)
+
+with open(os.environ["DELEGATE_ARGV_LOG"], "w", encoding="utf-8") as stream:
+    json.dump(sys.argv[1:], stream)
+print("sibling setup stdout")
+print("sibling setup stderr", file=sys.stderr)
+raise SystemExit(int(os.environ.get("DELEGATE_EXIT_STATUS", "0")))
+PY
+cat > "$ALIAS_DECOY_DIR/setup-openspeckit" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' 'PATH decoy setup must not run'
+exit 99
+EOF
+chmod 0755 \
+    "$ALIAS_INSTALL_DIR/speckit-worktree-enable" \
+    "$ALIAS_INSTALL_DIR/setup-openspeckit" \
+    "$ALIAS_DECOY_DIR/setup-openspeckit"
+printf '%s\n' 'alias repository sentinel' > "$ALIAS_REPO/.specify/sentinel.txt"
+git init -q "$ALIAS_REPO"
+
+printf '%s\n' 'When: the alias receives successful arguments containing spaces'
+if PATH="$ALIAS_DECOY_DIR:/usr/bin:/bin" \
+    DELEGATE_ARGV_LOG="$ALIAS_ARGV_LOG" \
+    DELEGATE_EXIT_STATUS=0 \
+    SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT" \
+    "$ALIAS_INSTALL_DIR/speckit-worktree-enable" \
+        --repo "$ALIAS_REPO" \
+        --base-branch 'release branch with spaces' \
+        --worktree-root '../worktree root with spaces' \
+        > "$ALIAS_STDOUT" 2> "$ALIAS_STDERR"; then
+    pass 'compatibility alias delegates a successful invocation'
+else
+    fail 'compatibility alias delegates a successful invocation'
+fi
+
+printf '%s\n' 'Then: the installed sibling receives exact arguments and owns all publication'
+if python3 - "$ALIAS_ARGV_LOG" "$ALIAS_REPO" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    actual = json.load(stream)
+expected = [
+    "--repo",
+    sys.argv[2],
+    "--base-branch",
+    "release branch with spaces",
+    "--worktree-root",
+    "../worktree root with spaces",
+]
+raise SystemExit(0 if actual == expected else 1)
+PY
+then
+    pass 'compatibility alias preserves every argument including values with spaces'
+else
+    fail 'compatibility alias preserves every argument including values with spaces'
+fi
+assert_equal "$(<"$ALIAS_STDOUT")" 'sibling setup stdout' 'compatibility alias propagates sibling stdout'
+assert_equal "$(<"$ALIAS_STDERR")" 'sibling setup stderr' 'compatibility alias propagates sibling stderr'
+assert_not_exists "$ALIAS_REPO/.specify/extensions" 'compatibility alias performs no independent Speckit publication'
+assert_not_exists "$ALIAS_REPO/.agents" 'compatibility alias performs no independent Agents publication'
+assert_not_exists "$ALIAS_REPO/.claude" 'compatibility alias performs no independent Claude publication'
+assert_not_exists "$ALIAS_REPO/.codex" 'compatibility alias performs no independent Codex publication'
+assert_contains "$ALIAS_REPO/.specify/sentinel.txt" 'alias repository sentinel' 'compatibility alias leaves repository sentinel content unchanged'
+
+printf '%s\n' 'When: the sibling writes both streams and exits with a failure status'
+if PATH="$ALIAS_DECOY_DIR:/usr/bin:/bin" \
+    DELEGATE_ARGV_LOG="$ALIAS_ARGV_LOG" \
+    DELEGATE_EXIT_STATUS=37 \
+    SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT" \
+    "$ALIAS_INSTALL_DIR/speckit-worktree-enable" --repo "$ALIAS_REPO" \
+        > "$ALIAS_STDOUT" 2> "$ALIAS_STDERR"; then
+    ALIAS_FAILURE_STATUS=0
+else
+    ALIAS_FAILURE_STATUS=$?
+fi
+assert_equal "$ALIAS_FAILURE_STATUS" 37 'compatibility alias propagates sibling failure status'
+assert_equal "$(<"$ALIAS_STDOUT")" 'sibling setup stdout' 'compatibility alias preserves failure stdout'
+assert_equal "$(<"$ALIAS_STDERR")" 'sibling setup stderr' 'compatibility alias preserves failure stderr'
+
+printf '%s\n' 'When: --help is requested through the alias'
+if PATH="$ALIAS_DECOY_DIR:/usr/bin:/bin" \
+    "$ALIAS_INSTALL_DIR/speckit-worktree-enable" --help \
+        > "$ALIAS_STDOUT" 2> "$ALIAS_STDERR"; then
+    pass 'compatibility alias propagates sibling --help status'
+else
+    fail 'compatibility alias propagates sibling --help status'
+fi
+assert_equal "$(<"$ALIAS_STDOUT")" 'sibling setup help stdout' 'compatibility alias delegates --help stdout'
+assert_equal "$(<"$ALIAS_STDERR")" 'sibling setup help stderr' 'compatibility alias delegates --help stderr'
+assert_not_contains "$ALIAS_STDOUT" 'PATH decoy' 'compatibility alias resolves setup-openspeckit beside itself instead of through PATH'
+
+printf '%s\n' 'Given: an installed alias beside the canonical setup and checked-in worktree templates'
+CANONICAL_ALIAS_INSTALL_DIR="$TMPDIR_ROOT/canonical-alias-install/bin"
+CANONICAL_ALIAS_HOME="$TMPDIR_ROOT/canonical-alias-home"
+CANONICAL_ALIAS_PROTOCOL_ROOT="$TMPDIR_ROOT/canonical-alias-protocol"
+CANONICAL_ALIAS_REPO="$TMPDIR_ROOT/canonical alias repo with spaces"
+mkdir -p "$CANONICAL_ALIAS_INSTALL_DIR" "$CANONICAL_ALIAS_HOME" "$CANONICAL_ALIAS_REPO"
+cp "$WORKTREE_ENABLE_SCRIPT" "$CANONICAL_ALIAS_INSTALL_DIR/speckit-worktree-enable"
+cp "$SETUP_SCRIPT" "$CANONICAL_ALIAS_INSTALL_DIR/setup-openspeckit"
+chmod 0755 \
+    "$CANONICAL_ALIAS_INSTALL_DIR/speckit-worktree-enable" \
+    "$CANONICAL_ALIAS_INSTALL_DIR/setup-openspeckit"
+git init -q "$CANONICAL_ALIAS_REPO"
+
+printf '%s\n' 'When: the compatibility alias bootstraps the repository through its canonical sibling'
+if HOME="$CANONICAL_ALIAS_HOME" \
+    AGENT_PROTOCOL_ROOT="$CANONICAL_ALIAS_PROTOCOL_ROOT" \
+    SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT" \
+    OPSX_COMMAND_TEMPLATE_ROOT="$COMMAND_TEMPLATE_ROOT" \
+    "$CANONICAL_ALIAS_INSTALL_DIR/speckit-worktree-enable" \
+        --repo "$CANONICAL_ALIAS_REPO" \
+        --skip-init \
+        --no-speckit-registration \
+        --no-global-agent-pointers \
+        --no-repo-agent-pointers \
+        --preserve-readmes \
+        --no-skill-links \
+        > "$TMPDIR_ROOT/canonical-alias.log" 2>&1; then
+    pass 'compatibility alias reaches canonical setup-openspeckit'
+else
+    fail 'compatibility alias reaches canonical setup-openspeckit'
+    cat "$TMPDIR_ROOT/canonical-alias.log"
+fi
+
+printf '%s\n' 'Then: canonical setup installs all three speckit-git-validate overlays through the alias'
+for overlay_mapping in '.agents:agents' '.claude:claude' '.codex:codex'; do
+    repo_agent_dir="${overlay_mapping%%:*}"
+    template_agent_dir="${overlay_mapping##*:}"
+    overlay_source="$WORKTREE_TEMPLATE_ROOT/$template_agent_dir/skills/speckit-git-validate/SKILL.md"
+    overlay_destination="$CANONICAL_ALIAS_REPO/$repo_agent_dir/skills/speckit-git-validate/SKILL.md"
+    assert_file "$overlay_destination" "alias installs validator overlay: $repo_agent_dir"
+    if cmp -s "$overlay_source" "$overlay_destination"; then
+        pass "alias installs exact checked-in validator overlay: $repo_agent_dir"
+    else
+        fail "alias installs exact checked-in validator overlay: $repo_agent_dir"
+    fi
+done
+
+printf '%s\n' 'Given: the alias targets a repository whose .specify is a symlink to external sentinel data'
+ALIAS_UNSAFE_REPO="$TMPDIR_ROOT/alias-unsafe-repo"
+ALIAS_UNSAFE_EXTERNAL="$TMPDIR_ROOT/alias-unsafe-external"
+ALIAS_UNSAFE_BEFORE="$TMPDIR_ROOT/alias-unsafe.before"
+ALIAS_UNSAFE_AFTER="$TMPDIR_ROOT/alias-unsafe.after"
+ALIAS_UNSAFE_MODES_BEFORE="$TMPDIR_ROOT/alias-unsafe-modes.before"
+ALIAS_UNSAFE_MODES_AFTER="$TMPDIR_ROOT/alias-unsafe-modes.after"
+mkdir -p "$ALIAS_UNSAFE_REPO" "$ALIAS_UNSAFE_EXTERNAL/nested"
+printf 'external alias sentinel\000\377\n' > "$ALIAS_UNSAFE_EXTERNAL/sentinel.bin"
+printf '%s\n' 'nested alias sentinel' > "$ALIAS_UNSAFE_EXTERNAL/nested/sentinel.txt"
+chmod 0700 "$ALIAS_UNSAFE_EXTERNAL"
+chmod 0710 "$ALIAS_UNSAFE_EXTERNAL/nested"
+chmod 0600 "$ALIAS_UNSAFE_EXTERNAL/sentinel.bin"
+chmod 0640 "$ALIAS_UNSAFE_EXTERNAL/nested/sentinel.txt"
+ln -s "$ALIAS_UNSAFE_EXTERNAL" "$ALIAS_UNSAFE_REPO/.specify"
+git init -q "$ALIAS_UNSAFE_REPO"
+snapshot_repo "$ALIAS_UNSAFE_EXTERNAL" > "$ALIAS_UNSAFE_BEFORE"
+snapshot_repo_modes "$ALIAS_UNSAFE_EXTERNAL" > "$ALIAS_UNSAFE_MODES_BEFORE"
+
+printf '%s\n' 'When: the alias delegates bootstrap against the symlinked .specify directory'
+if HOME="$CANONICAL_ALIAS_HOME" \
+    AGENT_PROTOCOL_ROOT="$CANONICAL_ALIAS_PROTOCOL_ROOT" \
+    SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT" \
+    OPSX_COMMAND_TEMPLATE_ROOT="$COMMAND_TEMPLATE_ROOT" \
+    "$CANONICAL_ALIAS_INSTALL_DIR/speckit-worktree-enable" \
+        --repo "$ALIAS_UNSAFE_REPO" \
+        --skip-init \
+        --no-speckit-registration \
+        --no-global-agent-pointers \
+        --no-repo-agent-pointers \
+        --preserve-readmes \
+        --no-skill-links \
+        > "$TMPDIR_ROOT/alias-unsafe.log" 2>&1; then
+    fail 'compatibility alias rejects a symlinked .specify directory'
+else
+    pass 'compatibility alias rejects a symlinked .specify directory'
+fi
+
+printf '%s\n' 'Then: delegated no-follow rejection preserves external bytes, types, and modes'
+snapshot_repo "$ALIAS_UNSAFE_EXTERNAL" > "$ALIAS_UNSAFE_AFTER"
+snapshot_repo_modes "$ALIAS_UNSAFE_EXTERNAL" > "$ALIAS_UNSAFE_MODES_AFTER"
+assert_contains "$TMPDIR_ROOT/alias-unsafe.log" 'symlink leaf' 'alias no-follow rejection identifies symlinked .specify'
+if [[ -L "$ALIAS_UNSAFE_REPO/.specify" ]]; then
+    pass 'alias no-follow rejection preserves the .specify symlink type'
+else
+    fail 'alias no-follow rejection changes the .specify symlink type'
+fi
+if cmp -s "$ALIAS_UNSAFE_BEFORE" "$ALIAS_UNSAFE_AFTER"; then
+    pass 'alias no-follow rejection preserves external sentinel bytes'
+else
+    fail 'alias no-follow rejection changes external sentinel bytes'
+fi
+if cmp -s "$ALIAS_UNSAFE_MODES_BEFORE" "$ALIAS_UNSAFE_MODES_AFTER"; then
+    pass 'alias no-follow rejection preserves external path types and modes'
+else
+    fail 'alias no-follow rejection changes external path types or modes'
+fi
 
 printf '%s\n' 'Given: an isolated HOME, protocol root, and checked-in template roots'
 mkdir -p \
@@ -290,6 +571,10 @@ assert_file "$REPO_DIR/openspec/config.yaml" 'OpenSpec config exists'
 assert_contains "$REPO_DIR/openspec/config.yaml" 'schema: spec-driven' 'OpenSpec config selects spec-driven schema'
 assert_file "$REPO_DIR/.claude/commands/opsx/apply.md" 'command template comes from isolated template root'
 assert_file "$WORKFLOW_PROTOCOL" 'generated workflow protocol exists'
+assert_contains "$WORKFLOW_PROTOCOL" 'specs/NNN-*' 'workflow protocol uses the canonical one-feature handoff path'
+assert_contains "$WORKFLOW_PROTOCOL" 'git status -sb' 'workflow protocol checks root checkout status before specify'
+assert_contains "$WORKFLOW_PROTOCOL" 'git branch --show-current' 'workflow protocol checks the root checkout branch before specify'
+assert_contains "$WORKFLOW_PROTOCOL" 'NNN-feature-name' 'workflow protocol reserves canonical feature creation for Speckit'
 assert_contains "$WORKFLOW_PROTOCOL" 'maximum of **25** accepted' 'workflow protocol carries the 25-question clarify limit'
 assert_contains "$WORKFLOW_PROTOCOL" 'Ask one question at a time' 'workflow protocol carries one-question-at-a-time clarify rule'
 assert_file "$BOOTSTRAP_PROTOCOL" 'generated bootstrap protocol exists'
@@ -1091,6 +1376,228 @@ if cmp -s "$SYMLINK_REGISTRY_SNAPSHOT" "$SYMLINK_REGISTRY_EXTERNAL"; then
 else
     fail 'symlinked registry changes the external JSON bytes'
 fi
+
+printf '%s\n' 'Given: stale HOME and agent-root OPSX templates with distinct machine-readable source hashes'
+OPSX_PRECEDENCE_HOME="$TMPDIR_ROOT/opsx-precedence-home"
+OPSX_PRECEDENCE_AGENT_ROOT="$TMPDIR_ROOT/opsx-precedence-agent-root"
+OPSX_PRECEDENCE_REPO="$TMPDIR_ROOT/opsx-precedence-repo"
+OPSX_PRECEDENCE_EMPTY_ENV_REPO="$TMPDIR_ROOT/opsx-precedence-empty-env-repo"
+OPSX_PACKAGED_APPLY="$COMMAND_TEMPLATE_ROOT/apply.md"
+OPSX_STALE_HOME_APPLY="$OPSX_PRECEDENCE_HOME/.claude/commands/opsx/apply.md"
+OPSX_AGENT_ROOT_APPLY="$OPSX_PRECEDENCE_AGENT_ROOT/templates/claude/commands/opsx/apply.md"
+mkdir -p \
+    "$(dirname "$OPSX_STALE_HOME_APPLY")" \
+    "$(dirname "$OPSX_AGENT_ROOT_APPLY")" \
+    "$OPSX_PRECEDENCE_REPO" \
+    "$OPSX_PRECEDENCE_EMPTY_ENV_REPO"
+printf '%s\n' '{"fixture_source":"home-stale-v1"}' > "$OPSX_STALE_HOME_APPLY"
+printf '%s\n' '{"fixture_source":"agent-root-fallback-v1"}' > "$OPSX_AGENT_ROOT_APPLY"
+OPSX_PACKAGED_HASH="$(sha256sum "$OPSX_PACKAGED_APPLY")"
+OPSX_PACKAGED_HASH="${OPSX_PACKAGED_HASH%% *}"
+OPSX_STALE_HOME_HASH="$(sha256sum "$OPSX_STALE_HOME_APPLY")"
+OPSX_STALE_HOME_HASH="${OPSX_STALE_HOME_HASH%% *}"
+OPSX_AGENT_ROOT_HASH="$(sha256sum "$OPSX_AGENT_ROOT_APPLY")"
+OPSX_AGENT_ROOT_HASH="${OPSX_AGENT_ROOT_HASH%% *}"
+if [[ "$OPSX_PACKAGED_HASH" != "$OPSX_STALE_HOME_HASH" \
+    && "$OPSX_PACKAGED_HASH" != "$OPSX_AGENT_ROOT_HASH" \
+    && "$OPSX_STALE_HOME_HASH" != "$OPSX_AGENT_ROOT_HASH" ]]; then
+    pass 'OPSX precedence fixtures have distinct source hashes'
+else
+    fail 'OPSX precedence fixtures have distinct source hashes'
+fi
+
+printf '%s\n' 'When: bootstrap resolves OPSX templates with no explicit override'
+if env -u OPSX_COMMAND_TEMPLATE_ROOT \
+    HOME="$OPSX_PRECEDENCE_HOME" \
+    AGENT_PROTOCOL_ROOT="$OPSX_PRECEDENCE_AGENT_ROOT" \
+    SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT" \
+    python3 "$SETUP_SCRIPT" \
+        --repo "$OPSX_PRECEDENCE_REPO" \
+        --skip-init \
+        --no-speckit-registration \
+        --no-worktrees \
+        --no-repo-agent-pointers \
+        --no-skill-links \
+        --no-global-agent-pointers \
+        --preserve-readmes > "$TMPDIR_ROOT/opsx-precedence.log" 2>&1; then
+    pass 'bootstrap resolves a default OPSX command source'
+else
+    fail 'bootstrap resolves a default OPSX command source'
+    cat "$TMPDIR_ROOT/opsx-precedence.log"
+fi
+
+printf '%s\n' 'Then: packaged OPSX templates beat stale HOME and agent-root fallbacks'
+OPSX_INSTALLED_APPLY="$OPSX_PRECEDENCE_REPO/.claude/commands/opsx/apply.md"
+assert_file "$OPSX_INSTALLED_APPLY" 'default OPSX source installs apply.md'
+if [[ -f "$OPSX_INSTALLED_APPLY" ]]; then
+    OPSX_INSTALLED_HASH="$(sha256sum "$OPSX_INSTALLED_APPLY")"
+    OPSX_INSTALLED_HASH="${OPSX_INSTALLED_HASH%% *}"
+    assert_equal "$OPSX_INSTALLED_HASH" "$OPSX_PACKAGED_HASH" 'default OPSX source matches the packaged template hash'
+fi
+
+printf '%s\n' 'When: OPSX_COMMAND_TEMPLATE_ROOT is present but empty'
+if HOME="$OPSX_PRECEDENCE_HOME" \
+    AGENT_PROTOCOL_ROOT="$OPSX_PRECEDENCE_AGENT_ROOT" \
+    OPSX_COMMAND_TEMPLATE_ROOT='' \
+    SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT" \
+    python3 "$SETUP_SCRIPT" \
+        --repo "$OPSX_PRECEDENCE_EMPTY_ENV_REPO" \
+        --skip-init \
+        --no-speckit-registration \
+        --no-worktrees \
+        --no-repo-agent-pointers \
+        --no-skill-links \
+        --no-global-agent-pointers \
+        --preserve-readmes > "$TMPDIR_ROOT/opsx-empty-env.log" 2>&1; then
+    pass 'empty OPSX override is treated as unset'
+else
+    fail 'empty OPSX override is treated as unset'
+    cat "$TMPDIR_ROOT/opsx-empty-env.log"
+fi
+OPSX_EMPTY_ENV_APPLY="$OPSX_PRECEDENCE_EMPTY_ENV_REPO/.claude/commands/opsx/apply.md"
+assert_file "$OPSX_EMPTY_ENV_APPLY" 'empty OPSX override installs default apply.md'
+if [[ -f "$OPSX_EMPTY_ENV_APPLY" ]]; then
+    OPSX_EMPTY_ENV_HASH="$(sha256sum "$OPSX_EMPTY_ENV_APPLY")"
+    OPSX_EMPTY_ENV_HASH="${OPSX_EMPTY_ENV_HASH%% *}"
+    assert_equal "$OPSX_EMPTY_ENV_HASH" "$OPSX_PACKAGED_HASH" 'empty OPSX override selects the packaged template hash'
+fi
+
+printf '%s\n' 'Given: an explicit OPSX override with a unique machine-readable marker'
+OPSX_EXPLICIT_ROOT="$TMPDIR_ROOT/opsx-explicit-root"
+OPSX_EXPLICIT_REPO="$TMPDIR_ROOT/opsx-explicit-repo"
+OPSX_EXPLICIT_MARKER="$OPSX_EXPLICIT_ROOT/source-id.json"
+mkdir -p "$OPSX_EXPLICIT_ROOT" "$OPSX_EXPLICIT_REPO"
+printf '%s\n' '{"fixture_source":"explicit-override-v1"}' > "$OPSX_EXPLICIT_MARKER"
+OPSX_EXPLICIT_HASH="$(sha256sum "$OPSX_EXPLICIT_MARKER")"
+OPSX_EXPLICIT_HASH="${OPSX_EXPLICIT_HASH%% *}"
+
+printf '%s\n' 'When: bootstrap receives the valid non-empty explicit override'
+if HOME="$OPSX_PRECEDENCE_HOME" \
+    AGENT_PROTOCOL_ROOT="$OPSX_PRECEDENCE_AGENT_ROOT" \
+    OPSX_COMMAND_TEMPLATE_ROOT="$OPSX_EXPLICIT_ROOT" \
+    SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT" \
+    python3 "$SETUP_SCRIPT" \
+        --repo "$OPSX_EXPLICIT_REPO" \
+        --skip-init \
+        --no-speckit-registration \
+        --no-worktrees \
+        --no-repo-agent-pointers \
+        --no-skill-links \
+        --no-global-agent-pointers \
+        --preserve-readmes > "$TMPDIR_ROOT/opsx-explicit.log" 2>&1; then
+    pass 'valid explicit OPSX override is accepted'
+else
+    fail 'valid explicit OPSX override is accepted'
+    cat "$TMPDIR_ROOT/opsx-explicit.log"
+fi
+
+printf '%s\n' 'Then: the explicit marker is installed without packaged fallback content'
+OPSX_INSTALLED_EXPLICIT_MARKER="$OPSX_EXPLICIT_REPO/.claude/commands/opsx/source-id.json"
+assert_file "$OPSX_INSTALLED_EXPLICIT_MARKER" 'explicit OPSX marker is installed'
+if [[ -f "$OPSX_INSTALLED_EXPLICIT_MARKER" ]]; then
+    OPSX_INSTALLED_EXPLICIT_HASH="$(sha256sum "$OPSX_INSTALLED_EXPLICIT_MARKER")"
+    OPSX_INSTALLED_EXPLICIT_HASH="${OPSX_INSTALLED_EXPLICIT_HASH%% *}"
+    assert_equal "$OPSX_INSTALLED_EXPLICIT_HASH" "$OPSX_EXPLICIT_HASH" 'explicit OPSX marker hash is preserved'
+fi
+assert_not_exists "$OPSX_EXPLICIT_REPO/.claude/commands/opsx/apply.md" 'explicit OPSX override suppresses packaged fallback commands'
+
+printf '%s\n' 'Given: an existing empty and symlink-free explicit OPSX directory'
+OPSX_EMPTY_ROOT="$TMPDIR_ROOT/opsx-empty-root"
+OPSX_EMPTY_REPO="$TMPDIR_ROOT/opsx-empty-repo"
+mkdir -p "$OPSX_EMPTY_ROOT" "$OPSX_EMPTY_REPO"
+
+printf '%s\n' 'When: bootstrap receives the empty safe explicit directory'
+if HOME="$OPSX_PRECEDENCE_HOME" \
+    AGENT_PROTOCOL_ROOT="$OPSX_PRECEDENCE_AGENT_ROOT" \
+    OPSX_COMMAND_TEMPLATE_ROOT="$OPSX_EMPTY_ROOT" \
+    SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT" \
+    python3 "$SETUP_SCRIPT" \
+        --repo "$OPSX_EMPTY_REPO" \
+        --skip-init \
+        --no-speckit-registration \
+        --no-worktrees \
+        --no-repo-agent-pointers \
+        --no-skill-links \
+        --no-global-agent-pointers \
+        --preserve-readmes > "$TMPDIR_ROOT/opsx-empty-root.log" 2>&1; then
+    pass 'empty safe explicit OPSX directory is accepted'
+else
+    fail 'empty safe explicit OPSX directory is accepted'
+    cat "$TMPDIR_ROOT/opsx-empty-root.log"
+fi
+assert_not_exists "$OPSX_EMPTY_REPO/.claude/commands/opsx/apply.md" 'empty explicit OPSX directory suppresses packaged fallback commands'
+assert_not_exists "$OPSX_EMPTY_REPO/.claude/commands/opsx/source-id.json" 'empty explicit OPSX directory installs no marker'
+
+printf '%s\n' 'Given: missing, file, root-symlink, and descendant-symlink explicit OPSX overrides'
+OPSX_INVALID_HOME="$TMPDIR_ROOT/opsx-invalid-home"
+OPSX_INVALID_AGENT_ROOT_BASE="$TMPDIR_ROOT/opsx-invalid-agent-roots"
+OPSX_INVALID_ROOT="$TMPDIR_ROOT/opsx-invalid-roots"
+OPSX_INVALID_EXTERNAL="$TMPDIR_ROOT/opsx-invalid-external"
+mkdir -p \
+    "$OPSX_INVALID_HOME/.claude/commands/opsx" \
+    "$OPSX_INVALID_AGENT_ROOT_BASE" \
+    "$OPSX_INVALID_ROOT/descendant-symlink" \
+    "$OPSX_INVALID_EXTERNAL/root-target" \
+    "$OPSX_INVALID_EXTERNAL/descendant-target"
+printf '%s\n' '{"fixture_source":"invalid-home-fallback-v1"}' > "$OPSX_INVALID_HOME/.claude/commands/opsx/source-id.json"
+printf '%s\n' '{"fixture_source":"regular-file-invalid-v1"}' > "$OPSX_INVALID_ROOT/regular-file"
+printf '%s\n' '{"fixture_source":"root-target-v1"}' > "$OPSX_INVALID_EXTERNAL/root-target/source-id.json"
+printf '%s\n' '{"fixture_source":"descendant-target-v1"}' > "$OPSX_INVALID_EXTERNAL/descendant-target/source-id.json"
+printf '%s\n' '{"fixture_source":"descendant-safe-v1"}' > "$OPSX_INVALID_ROOT/descendant-symlink/00-safe.json"
+ln -s "$OPSX_INVALID_EXTERNAL/root-target" "$OPSX_INVALID_ROOT/root-symlink"
+ln -s "$OPSX_INVALID_EXTERNAL/descendant-target" "$OPSX_INVALID_ROOT/descendant-symlink/99-linked"
+
+for invalid_override_kind in missing regular-file root-symlink descendant-symlink; do
+    OPSX_INVALID_REPO="$TMPDIR_ROOT/opsx-invalid-$invalid_override_kind-repo"
+    OPSX_INVALID_AGENT_ROOT="$OPSX_INVALID_AGENT_ROOT_BASE/$invalid_override_kind"
+    OPSX_INVALID_LOG="$TMPDIR_ROOT/opsx-invalid-$invalid_override_kind.log"
+    mkdir -p \
+        "$OPSX_INVALID_REPO" \
+        "$OPSX_INVALID_AGENT_ROOT/templates/claude/commands/opsx"
+    printf '{"fixture_source":"invalid-agent-fallback-%s-v1"}\n' \
+        "$invalid_override_kind" \
+        > "$OPSX_INVALID_AGENT_ROOT/templates/claude/commands/opsx/source-id.json"
+    case "$invalid_override_kind" in
+        missing)
+            OPSX_INVALID_OVERRIDE="$OPSX_INVALID_ROOT/missing"
+            ;;
+        regular-file)
+            OPSX_INVALID_OVERRIDE="$OPSX_INVALID_ROOT/regular-file"
+            ;;
+        root-symlink)
+            OPSX_INVALID_OVERRIDE="$OPSX_INVALID_ROOT/root-symlink"
+            ;;
+        descendant-symlink)
+            OPSX_INVALID_OVERRIDE="$OPSX_INVALID_ROOT/descendant-symlink"
+            ;;
+    esac
+
+    printf 'When: bootstrap preflights the %s explicit OPSX override\n' "$invalid_override_kind"
+    if HOME="$OPSX_INVALID_HOME" \
+        AGENT_PROTOCOL_ROOT="$OPSX_INVALID_AGENT_ROOT" \
+        OPSX_COMMAND_TEMPLATE_ROOT="$OPSX_INVALID_OVERRIDE" \
+        SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT" \
+        python3 "$SETUP_SCRIPT" \
+            --repo "$OPSX_INVALID_REPO" \
+            --skip-init \
+            --no-speckit-registration \
+            --no-worktrees \
+            --no-repo-agent-pointers \
+            --no-skill-links \
+            --no-global-agent-pointers \
+            --preserve-readmes > "$OPSX_INVALID_LOG" 2>&1; then
+        fail "bootstrap rejects the $invalid_override_kind explicit OPSX override"
+    else
+        pass "bootstrap rejects the $invalid_override_kind explicit OPSX override"
+    fi
+
+    printf 'Then: %s override rejection precedes repository or protocol mutation\n' "$invalid_override_kind"
+    assert_not_exists "$OPSX_INVALID_REPO/openspec" "$invalid_override_kind OPSX override creates no OpenSpec destination"
+    assert_not_exists "$OPSX_INVALID_REPO/.specify" "$invalid_override_kind OPSX override creates no Speckit destination"
+    assert_not_exists "$OPSX_INVALID_REPO/.claude" "$invalid_override_kind OPSX override creates no command destination"
+    assert_not_exists "$OPSX_INVALID_AGENT_ROOT/AGENTS.md" "$invalid_override_kind OPSX override creates no protocol entrypoint"
+    assert_not_exists "$OPSX_INVALID_AGENT_ROOT/protocols" "$invalid_override_kind OPSX override creates no protocol directory"
+done
 
 printf '%s\n' 'Given: an OPSX command source tree containing a file symlink'
 UNSAFE_COMMAND_ROOT="$TMPDIR_ROOT/unsafe-command-source"
