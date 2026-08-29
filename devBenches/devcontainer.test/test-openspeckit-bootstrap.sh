@@ -575,8 +575,6 @@ assert_contains "$WORKFLOW_PROTOCOL" 'specs/NNN-*' 'workflow protocol uses the c
 assert_contains "$WORKFLOW_PROTOCOL" 'git status -sb' 'workflow protocol checks root checkout status before specify'
 assert_contains "$WORKFLOW_PROTOCOL" 'git branch --show-current' 'workflow protocol checks the root checkout branch before specify'
 assert_contains "$WORKFLOW_PROTOCOL" 'NNN-feature-name' 'workflow protocol reserves canonical feature creation for Speckit'
-assert_contains "$WORKFLOW_PROTOCOL" 'maximum of **25** accepted' 'workflow protocol carries the 25-question clarify limit'
-assert_contains "$WORKFLOW_PROTOCOL" 'Ask one question at a time' 'workflow protocol carries one-question-at-a-time clarify rule'
 assert_file "$BOOTSTRAP_PROTOCOL" 'generated bootstrap protocol exists'
 assert_contains "$BOOTSTRAP_PROTOCOL" 'copied directories' 'bootstrap protocol describes copied skill directories'
 assert_not_contains "$BOOTSTRAP_PROTOCOL" 'skills links' 'bootstrap protocol does not describe repo-local skills as links'

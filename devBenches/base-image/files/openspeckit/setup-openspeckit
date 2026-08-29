@@ -1521,8 +1521,8 @@ and deployment constraints.
 """
 
 
-def openspec_speckit_protocol(agent_root: Path) -> str:
-    return f"""# OpenSpec and Speckit Shared Workflow
+def openspec_speckit_protocol() -> str:
+    return """# OpenSpec and Speckit Shared Workflow
 
 This protocol is the shared source of truth for using OpenSpec and Speckit
 together across local coding agents. Repo-local files should reference this file
@@ -1534,7 +1534,7 @@ Repo-local instructions remain authoritative for product facts, package
 commands, runtime prerequisites, source-of-truth docs, test commands, deployment
 constraints, and repo-specific safety rules.
 
-This global protocol is authoritative for common OpenSpec/Speckit mechanics
+This global protocol is authoritative for the common OpenSpec/Speckit mechanics
 unless a repo-local file explicitly marks a narrower override for that repo.
 
 ## Tool Roles
@@ -1547,13 +1547,20 @@ Speckit is the implementation layer. It owns the feature branch/worktree,
 and verification.
 
 Do not duplicate task lists between the two systems. OpenSpec records the
-governed decision and handoff. Speckit owns executable implementation tasks.
+governed decision and handoff. Speckit owns the executable implementation tasks.
 
 ## When To Use OpenSpec
 
 Create or update an OpenSpec change before implementation when the work changes
-product behavior, architecture, artifact contracts, runtime/model orchestration,
-routing/review policy, edge constraints, or development workflow rules.
+one of these boundaries:
+
+- product behavior or architecture
+- artifact schemas, folder contracts, or durable data contracts
+- runtime, container, model, GPU, or deployment orchestration
+- consensus, routing, review, escalation, or acceptance policy
+- edge or device deployment constraints
+- development workflow, agent workflow, or repo governance rules
+- interpretation of behavior from an already shipped feature/spec
 
 Skip OpenSpec for small implementation-only fixes where an existing Speckit
 feature already defines the behavior and no product, architecture, or governance
@@ -1612,16 +1619,80 @@ and report that. Do not silently fall back to the root checkout.
 When running or prompting `/speckit.clarify`, use a maximum of **25** accepted
 clarification questions per clarify round, not the vanilla Spec Kit default of
 5. This override applies to Codex skill-driven clarify work, Claude
-slash-command prompts, and handoff prompts written for another agent.
-Ask one question at a time and stop earlier when all material ambiguities are
-resolved.
+slash-command prompts, and handoff prompts written for another agent. Ask one
+question at a time and stop earlier when all material ambiguities are resolved.
 
 Clarification answers must be recorded inline in the feature's clarification
 file when one exists, such as `clarify-questions.md`, and must also be applied
 directly to the relevant sections of `spec.md`. Do not create a separate
 answers file unless the user explicitly asks for one.
 
-See `{agent_root / "AGENTS.md"}` for the user-level entrypoint.
+## Agent Command Map
+
+Claude:
+
+- `/opsx:explore` for OpenSpec exploration
+- `/opsx:propose` for OpenSpec proposals
+- `/opsx:apply` for implementation through an OpenSpec change
+- `/opsx:archive` for completed OpenSpec changes
+- `/speckit.specify`, `/speckit.clarify`, `/speckit.plan`, `/speckit.tasks`,
+  `/speckit.analyze`, and `/speckit.implement` for the Speckit lifecycle
+
+Codex:
+
+- Use the matching OpenSpec and Speckit skills when they are available.
+- If a skill is missing, follow this protocol directly and use the repo-local
+  command artifacts as the source of truth.
+
+Shell:
+
+- Use `openspec` where the repo says that CLI is installed.
+- Use Speckit CLI or slash-command equivalents where the repo has initialized
+  Speckit.
+- Use repo worktree helpers such as `ct`, `ctp`, `cta`, `ctc`, or `cts` only
+  after confirming they point at the intended repo and feature.
+
+## Claude Model Roles and Usage Budget
+
+Claude sessions running this protocol pair it with the model-roles protocol
+(canonical memory: `speckit-model-roles` + `usage-balance-95-protocol` in the
+xFactory project memory; mirrored per-project as sessions adopt it):
+
+- **Fable** (the main session) thinks and orchestrates only — it does not
+  write code directly.
+- **Opus** manages, reviews, and writes the DIFFICULT tasks through the
+  Speckit flow (plan authoring, hard implementation slices, review passes).
+- **Sonnet** writes small, well-scoped tasks.
+- Delegate via the Agent tool with explicit `model` overrides; Fable tokens
+  are the scarcest budget, so judgment stays in the main loop and writing
+  goes to subagents.
+- Before any substantial task or agent fan-out, check the token balance
+  (`claude-usage`; when the script is missing from the current shell, ask
+  Brett to run `! claude-usage` instead of silently skipping). At ≥95% of
+  the 5-hour window or the Fable weekly bucket: stop at a breakpoint, write
+  or refresh the handoff doc, then small-tasks-only.
+
+This section is Claude-specific; other agents follow their own runtime's
+equivalent and the rest of this protocol unchanged.
+
+## OpenSpec Runtime Placement
+
+OpenSpec may live in a bench/workbench container rather than the product runtime
+container. Follow the repo-local instruction for where `openspec` is on `PATH`.
+Do not add OpenSpec into a lightweight runtime container unless the repo
+explicitly requires that.
+
+## Bootstrap
+
+Use this command in new or existing repositories:
+
+```bash
+setup-openspeckit
+```
+
+That command installs managed pointers to this protocol and links common
+agent-facing OpenSpec/Speckit skills and command wrappers without overwriting
+repo-specific guidance outside managed blocks.
 """
 
 
@@ -1682,7 +1753,7 @@ def ensure_agent_protocol_files(agent_root: Path, dry_run: bool) -> None:
     write_text_if_missing(agent_root / "AGENTS.md", global_agent_entrypoint(agent_root), dry_run)
     write_text_if_missing(
         agent_root / "protocols" / "openspec-speckit-workflow.md",
-        openspec_speckit_protocol(agent_root),
+        openspec_speckit_protocol(),
         dry_run,
     )
     write_text_if_missing(
