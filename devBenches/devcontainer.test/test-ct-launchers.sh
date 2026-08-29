@@ -12,6 +12,7 @@ ONE_LF_TARGET="$TMPDIR_ROOT/worktree-one"$'\n'
 TWO_LF_TARGET="$TMPDIR_ROOT/worktree-two"$'\n\n'
 BIN_DIR="$TMPDIR_ROOT/bin"
 LOG_DIR="$TMPDIR_ROOT/logs"
+export HOME="$TMPDIR_ROOT/home"
 
 mkdir -p \
     "$REPO_ROOT/.specify/extensions/git/scripts/bash" \
@@ -20,7 +21,19 @@ mkdir -p \
     "$ONE_LF_TARGET" \
     "$TWO_LF_TARGET" \
     "$BIN_DIR" \
-    "$LOG_DIR"
+    "$LOG_DIR" \
+    "$HOME/.claude/prompts"
+
+printf '%s\n' 'dashboard test prompt' > "$HOME/.claude/prompts/speckit-dashboard-full.md"
+cat > "$HOME/.claude/speckit-dashboard.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+cat > "$HOME/.claude/speckit-dash-toggle.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$HOME/.claude/speckit-dashboard.sh" "$HOME/.claude/speckit-dash-toggle.sh"
 
 git init -q "$REPO_ROOT"
 
@@ -129,10 +142,13 @@ source "${CT_FUNCTIONS_FILE:-/usr/local/share/ct/ct-functions.zsh}"
 
 cd "$REPO_ROOT"
 cta --claude-extra
+assert_bytes_equal "$TARGET_DIR" "$LOG_DIR/claude.pwd" 'cta initial path'
 cd "$REPO_ROOT"
 ctc --codex-extra
+assert_bytes_equal "$TARGET_DIR" "$LOG_DIR/codex.pwd" 'ctc initial path'
 cd "$REPO_ROOT"
 ctg --gemini-extra
+assert_bytes_equal "$TARGET_DIR" "$LOG_DIR/gemini.pwd" 'ctg initial path'
 cd "$REPO_ROOT"
 
 _ct_prompt_cli() {
@@ -140,6 +156,7 @@ _ct_prompt_cli() {
 }
 
 cts --cts-extra
+assert_bytes_equal "$TARGET_DIR" "$LOG_DIR/codex.pwd" 'cts initial path'
 
 grep -Fx "pwd=$TARGET_DIR" "$LOG_DIR/claude.log" >/dev/null
 grep -Fx "arg=--model" "$LOG_DIR/claude.log" >/dev/null
