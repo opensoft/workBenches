@@ -277,7 +277,7 @@ POINTER_FILES=(
 for pointer_file in "${POINTER_FILES[@]}"; do
     pointer_path="$REPO_DIR/$pointer_file"
     assert_file "$pointer_path" "generated pointer exists: $pointer_file"
-    assert_contains "$pointer_path" '$HOME/.agents' "pointer uses literal HOME agent root: $pointer_file"
+    assert_contains "$pointer_path" '${AGENT_PROTOCOL_ROOT:-$HOME/.agents}' "pointer uses portable protocol root fallback: $pointer_file"
     assert_not_contains "$pointer_path" "$FIXTURE_HOME" "pointer omits fixture absolute HOME: $pointer_file"
     assert_not_contains "$pointer_path" "$AGENT_PROTOCOL_ROOT" "pointer omits fixture protocol root: $pointer_file"
 done
@@ -314,6 +314,12 @@ assert_file "$PROPOSE_COMMAND" 'generated propose command exists'
 assert_not_contains "$PROPOSE_COMMAND" '/opsx:analyze' 'propose recommends only installed OPSX commands'
 assert_file "$EXTENSION_MANIFEST" 'installed Git extension manifest exists'
 assert_file "$REGISTRY_PATH" 'extension registry exists'
+FRESH_GIT_CONFIG="$REPO_DIR/.specify/extensions/git/git-config.yml"
+assert_file "$FRESH_GIT_CONFIG" 'newly copied Git overlay config exists'
+assert_contains "$FRESH_GIT_CONFIG" 'branch_numbering: sequential' 'newly copied Git overlay uses sequential numbering'
+assert_contains "$FRESH_GIT_CONFIG" 'checkout_mode: worktree' 'newly copied Git overlay uses worktree checkout mode'
+assert_contains "$FRESH_GIT_CONFIG" 'base_branch: main' 'newly copied Git overlay uses the resolved base branch'
+assert_contains "$FRESH_GIT_CONFIG" 'worktree_root: ../repo-worktrees' 'newly copied Git overlay uses the repository worktree root'
 
 EXTENSION_DIGEST="$(sha256sum "$EXTENSION_MANIFEST")"
 EXTENSION_DIGEST="${EXTENSION_DIGEST%% *}"
@@ -371,6 +377,224 @@ for skill_home in .claude .codex .agents; do
     assert_not_exists "$REPO_DIR/$skill_home/skills/claude-session-driver" "Claude session driver is excluded: $skill_home"
     assert_not_exists "$REPO_DIR/$skill_home/skills/speckit-claude-driver" "Speckit Claude driver is excluded: $skill_home"
 done
+
+printf '%s\n' 'Given: a fresh repository and a current Specify CLI without --ai-skills'
+FRESH_INIT_REPO="$TMPDIR_ROOT/fresh-init-repo"
+FRESH_INIT_BIN="$TMPDIR_ROOT/fresh-init-bin"
+FRESH_INIT_LOG="$TMPDIR_ROOT/fresh-init.log"
+mkdir -p "$FRESH_INIT_REPO" "$FRESH_INIT_BIN"
+cat > "$FRESH_INIT_BIN/specify" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "$FRESH_INIT_LOG"
+for argument in "$@"; do
+    if [[ "$argument" == '--ai-skills' ]]; then
+        printf '%s\n' 'No such option: --ai-skills' >&2
+        exit 2
+    fi
+done
+mkdir -p .specify/templates .claude
+printf '%s\n' '{"integration":"claude"}' > .specify/init-options.json
+printf '%s\n' '{"integration":"claude"}' > .specify/integration.json
+printf '%s\n' '# Spec template' > .specify/templates/spec-template.md
+printf '%s\n' '# Agent instructions' > .claude/AGENTS.md
+EOF
+chmod 0755 "$FRESH_INIT_BIN/specify"
+git init -q "$FRESH_INIT_REPO"
+
+printf '%s\n' 'When: bootstrap initializes the fresh repository with a supported current Specify CLI'
+if PATH="$FRESH_INIT_BIN:/usr/bin:/bin" FRESH_INIT_LOG="$FRESH_INIT_LOG" python3 "$SETUP_SCRIPT" \
+    --repo "$FRESH_INIT_REPO" \
+    --integration claude \
+    --no-speckit-registration \
+    --no-worktrees \
+    --no-repo-agent-pointers \
+    --no-skill-links \
+    --no-global-agent-pointers > "$TMPDIR_ROOT/fresh-init-bootstrap.log" 2>&1; then
+    pass 'fresh bootstrap accepts a current Specify CLI'
+else
+    fail 'fresh bootstrap accepts a current Specify CLI'
+    cat "$TMPDIR_ROOT/fresh-init-bootstrap.log"
+fi
+
+printf '%s\n' 'Then: initialization preserves supported arguments and creates expected outputs'
+assert_file "$FRESH_INIT_LOG" 'fresh bootstrap records the Specify invocation'
+assert_not_contains "$FRESH_INIT_LOG" '--ai-skills' 'fresh bootstrap does not pass the removed Specify option'
+for preserved_argument in --here --force --integration --script sh --ignore-agent-tools; do
+    assert_contains "$FRESH_INIT_LOG" "$preserved_argument" "fresh bootstrap preserves Specify argument: $preserved_argument"
+done
+assert_file "$FRESH_INIT_REPO/.specify/init-options.json" 'fresh initialization creates init options'
+assert_file "$FRESH_INIT_REPO/.specify/integration.json" 'fresh initialization creates integration state'
+assert_file "$FRESH_INIT_REPO/.specify/templates/spec-template.md" 'fresh initialization creates expected template'
+assert_file "$FRESH_INIT_REPO/.claude/AGENTS.md" 'fresh initialization creates expected integration output'
+
+printf '%s\n' 'Given: a stock-like Git overlay whose feature script has legacy compatibility markers but whose helper lacks load_git_worktrees'
+STOCK_OVERLAY_REPO="$TMPDIR_ROOT/stock-overlay-repo"
+STOCK_OVERLAY_PROTOCOL_ROOT="$TMPDIR_ROOT/stock-overlay-protocol"
+STOCK_GIT_OVERLAY="$STOCK_OVERLAY_REPO/.specify/extensions/git"
+mkdir -p "$STOCK_GIT_OVERLAY"
+cp -a "$WORKTREE_TEMPLATE_ROOT/specify/extensions/git/." "$STOCK_GIT_OVERLAY/"
+cat > "$STOCK_GIT_OVERLAY/scripts/bash/git-common.sh" <<'EOF'
+#!/usr/bin/env bash
+has_git() {
+    command -v git >/dev/null 2>&1
+}
+EOF
+git init -q "$STOCK_OVERLAY_REPO"
+
+printf '%s\n' 'When: bootstrap runs normally without --force against the incompatible stock-like overlay'
+export AGENT_PROTOCOL_ROOT="$STOCK_OVERLAY_PROTOCOL_ROOT"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT"
+if ! python3 "$SETUP_SCRIPT" \
+    --repo "$STOCK_OVERLAY_REPO" \
+    --skip-init \
+    --no-speckit-registration \
+    --no-repo-agent-pointers \
+    --no-skill-links \
+    --no-global-agent-pointers > "$TMPDIR_ROOT/stock-overlay.log" 2>&1; then
+    printf '%s\n' 'FAIL: stock-overlay bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/stock-overlay.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: normal setup replaces every managed file with the complete checked-in Git overlay'
+STOCK_OVERLAY_MISMATCHES=0
+while IFS= read -r -d '' overlay_source; do
+    overlay_relative_path="${overlay_source#"$WORKTREE_TEMPLATE_ROOT/specify/extensions/git/"}"
+    if ! cmp -s "$overlay_source" "$STOCK_GIT_OVERLAY/$overlay_relative_path"; then
+        printf 'FAIL: normal setup did not restore managed Git overlay file: %s\n' "$overlay_relative_path"
+        STOCK_OVERLAY_MISMATCHES=$((STOCK_OVERLAY_MISMATCHES + 1))
+    fi
+done < <(find "$WORKTREE_TEMPLATE_ROOT/specify/extensions/git" -type f -print0)
+assert_equal "$STOCK_OVERLAY_MISMATCHES" 0 'normal setup restores the complete checked-in Git overlay without --force'
+assert_contains \
+    "$STOCK_GIT_OVERLAY/scripts/bash/git-common.sh" \
+    'load_git_worktrees()' \
+    'normal setup restores the helper required by create-new-feature.sh'
+
+printf '%s\n' '# repository-specific complete overlay customization' >> "$STOCK_GIT_OVERLAY/scripts/bash/git-common.sh"
+if ! python3 "$SETUP_SCRIPT" \
+    --repo "$STOCK_OVERLAY_REPO" \
+    --skip-init \
+    --no-speckit-registration \
+    --no-repo-agent-pointers \
+    --no-skill-links \
+    --no-global-agent-pointers > "$TMPDIR_ROOT/custom-complete-overlay.log" 2>&1; then
+    printf '%s\n' 'FAIL: complete customized overlay bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/custom-complete-overlay.log"
+    exit 1
+fi
+assert_contains \
+    "$STOCK_GIT_OVERLAY/scripts/bash/git-common.sh" \
+    'repository-specific complete overlay customization' \
+    'normal setup preserves a structurally complete customized Git overlay'
+
+printf '%s\n' 'Given: an existing Git workflow config with customized top-level values, comments, and nested YAML'
+CUSTOM_GIT_CONFIG="$STOCK_GIT_OVERLAY/git-config.yml"
+CUSTOM_GIT_CONFIG_BEFORE="$TMPDIR_ROOT/custom-git-config.before"
+cat > "$CUSTOM_GIT_CONFIG" <<'EOF'
+# repository-specific Git workflow configuration
+branch_numbering: timestamp
+branch_template: "{author}/{number}-{slug}"
+branch_prefix: "teams/{app}"
+checkout_mode: branch
+base_branch: integration
+worktree_root: ../custom-worktrees
+repository_extension: retained
+nested_extension:
+  enabled: true
+EOF
+cp "$CUSTOM_GIT_CONFIG" "$CUSTOM_GIT_CONFIG_BEFORE"
+
+printf '%s\n' 'When: bootstrap reruns normally without Git workflow overrides'
+if ! python3 "$SETUP_SCRIPT" \
+    --repo "$STOCK_OVERLAY_REPO" \
+    --skip-init \
+    --no-speckit-registration \
+    --no-repo-agent-pointers \
+    --no-skill-links \
+    --no-global-agent-pointers > "$TMPDIR_ROOT/custom-git-config.log" 2>&1; then
+    printf '%s\n' 'FAIL: customized Git workflow config bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/custom-git-config.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: every customized value and the original YAML shape survive the normal rerun'
+if cmp -s "$CUSTOM_GIT_CONFIG_BEFORE" "$CUSTOM_GIT_CONFIG"; then
+    pass 'normal rerun preserves the complete customized Git workflow config'
+else
+    fail 'normal rerun changes the customized Git workflow config'
+fi
+
+printf '%s\n' 'When: bootstrap reruns with explicit base branch and worktree root overrides'
+if ! python3 "$SETUP_SCRIPT" \
+    --repo "$STOCK_OVERLAY_REPO" \
+    --skip-init \
+    --base-branch release \
+    --worktree-root ../release-worktrees \
+    --no-speckit-registration \
+    --no-repo-agent-pointers \
+    --no-skill-links \
+    --no-global-agent-pointers > "$TMPDIR_ROOT/overridden-git-config.log" 2>&1; then
+    printf '%s\n' 'FAIL: overridden Git workflow config bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/overridden-git-config.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: explicit overrides change only their respective Git workflow values'
+assert_contains "$CUSTOM_GIT_CONFIG" 'branch_numbering: timestamp' 'explicit overrides preserve customized branch numbering'
+assert_contains "$CUSTOM_GIT_CONFIG" 'branch_template: "{author}/{number}-{slug}"' 'explicit overrides preserve customized branch template'
+assert_contains "$CUSTOM_GIT_CONFIG" 'branch_prefix: "teams/{app}"' 'explicit overrides preserve customized branch prefix'
+assert_contains "$CUSTOM_GIT_CONFIG" 'checkout_mode: branch' 'explicit overrides preserve customized checkout mode'
+assert_contains "$CUSTOM_GIT_CONFIG" 'base_branch: release' 'explicit base branch overrides the customized value'
+assert_contains "$CUSTOM_GIT_CONFIG" 'worktree_root: ../release-worktrees' 'explicit worktree root overrides the customized value'
+assert_contains "$CUSTOM_GIT_CONFIG" '# repository-specific Git workflow configuration' 'explicit overrides preserve comments'
+assert_contains "$CUSTOM_GIT_CONFIG" 'repository_extension: retained' 'explicit overrides preserve unknown top-level values'
+assert_contains "$CUSTOM_GIT_CONFIG" '  enabled: true' 'explicit overrides preserve nested YAML'
+
+printf '%s\n' 'Given: an existing Git workflow config missing the required worktree keys'
+INCOMPLETE_GIT_CONFIG_REPO="$TMPDIR_ROOT/incomplete-git-config-repo"
+INCOMPLETE_GIT_CONFIG_PROTOCOL_ROOT="$TMPDIR_ROOT/incomplete-git-config-protocol"
+INCOMPLETE_GIT_OVERLAY="$INCOMPLETE_GIT_CONFIG_REPO/.specify/extensions/git"
+mkdir -p "$INCOMPLETE_GIT_OVERLAY"
+cp -a "$WORKTREE_TEMPLATE_ROOT/specify/extensions/git/." "$INCOMPLETE_GIT_OVERLAY/"
+cat > "$INCOMPLETE_GIT_OVERLAY/git-config.yml" <<'EOF'
+# incomplete repository-specific Git workflow configuration
+branch_template: "{app}/{number}-{slug}"
+branch_prefix: feature
+repository_extension: retained
+nested_extension:
+  enabled: true
+EOF
+GIT_MASTER=1 git init -q -b fixture-base "$INCOMPLETE_GIT_CONFIG_REPO"
+GIT_MASTER=1 git -C "$INCOMPLETE_GIT_CONFIG_REPO" \
+    -c user.name='Bootstrap Test' \
+    -c user.email='bootstrap-test@example.invalid' \
+    commit -q --allow-empty -m 'fixture base'
+
+printf '%s\n' 'When: bootstrap reruns without overrides against the incomplete Git workflow config'
+export AGENT_PROTOCOL_ROOT="$INCOMPLETE_GIT_CONFIG_PROTOCOL_ROOT"
+if ! python3 "$SETUP_SCRIPT" \
+    --repo "$INCOMPLETE_GIT_CONFIG_REPO" \
+    --skip-init \
+    --no-speckit-registration \
+    --no-repo-agent-pointers \
+    --no-skill-links \
+    --no-global-agent-pointers > "$TMPDIR_ROOT/incomplete-git-config.log" 2>&1; then
+    printf '%s\n' 'FAIL: incomplete Git workflow config bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/incomplete-git-config.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: missing required keys receive defaults while existing YAML content survives'
+INCOMPLETE_GIT_CONFIG="$INCOMPLETE_GIT_OVERLAY/git-config.yml"
+assert_contains "$INCOMPLETE_GIT_CONFIG" 'branch_numbering: sequential' 'missing branch numbering receives the sequential default'
+assert_contains "$INCOMPLETE_GIT_CONFIG" 'checkout_mode: worktree' 'missing checkout mode receives the worktree default'
+assert_contains "$INCOMPLETE_GIT_CONFIG" 'base_branch: fixture-base' 'missing base branch receives the resolved repository default'
+assert_contains "$INCOMPLETE_GIT_CONFIG" 'worktree_root: ../incomplete-git-config-repo-worktrees' 'missing worktree root receives the repository default'
+assert_contains "$INCOMPLETE_GIT_CONFIG" 'branch_template: "{app}/{number}-{slug}"' 'missing-key initialization preserves branch template'
+assert_contains "$INCOMPLETE_GIT_CONFIG" 'branch_prefix: feature' 'missing-key initialization preserves branch prefix'
+assert_contains "$INCOMPLETE_GIT_CONFIG" 'repository_extension: retained' 'missing-key initialization preserves unknown top-level values'
+assert_contains "$INCOMPLETE_GIT_CONFIG" '  enabled: true' 'missing-key initialization preserves nested YAML'
 
 OPEN_SPEC_SKILLS=(
     'apply-change:apply'
@@ -537,6 +761,278 @@ else
     fail 'unsafe scaffold changes external path types or modes'
 fi
 
+printf '%s\n' 'Given: .specify is a symlink to an external directory and registration is enabled'
+SYMLINK_SPECIFY_REPO="$TMPDIR_ROOT/symlink-specify-repo"
+SYMLINK_SPECIFY_PROTOCOL_ROOT="$TMPDIR_ROOT/symlink-specify-protocol"
+SYMLINK_SPECIFY_EXTERNAL_DIR="$TMPDIR_ROOT/symlink-specify-external"
+SYMLINK_SPECIFY_BIN="$TMPDIR_ROOT/symlink-specify-bin"
+SYMLINK_SPECIFY_SNAPSHOT_BEFORE="$TMPDIR_ROOT/symlink-specify.before"
+SYMLINK_SPECIFY_SNAPSHOT_AFTER="$TMPDIR_ROOT/symlink-specify.after"
+SYMLINK_SPECIFY_MODES_BEFORE="$TMPDIR_ROOT/symlink-specify-modes.before"
+SYMLINK_SPECIFY_MODES_AFTER="$TMPDIR_ROOT/symlink-specify-modes.after"
+mkdir -p \
+    "$SYMLINK_SPECIFY_REPO" \
+    "$SYMLINK_SPECIFY_EXTERNAL_DIR" \
+    "$SYMLINK_SPECIFY_BIN"
+printf '%s\n' 'external Speckit sentinel' > "$SYMLINK_SPECIFY_EXTERNAL_DIR/sentinel.txt"
+printf '\377' > "$SYMLINK_SPECIFY_EXTERNAL_DIR/integration.json"
+chmod 0700 "$SYMLINK_SPECIFY_EXTERNAL_DIR"
+chmod 0600 \
+    "$SYMLINK_SPECIFY_EXTERNAL_DIR/integration.json" \
+    "$SYMLINK_SPECIFY_EXTERNAL_DIR/sentinel.txt"
+ln -s "$SYMLINK_SPECIFY_EXTERNAL_DIR" "$SYMLINK_SPECIFY_REPO/.specify"
+cat > "$SYMLINK_SPECIFY_BIN/specify" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' 'external registration mutation' > .specify/registration-mutated.txt
+chmod 0777 .specify
+chmod 0666 .specify/registration-mutated.txt
+EOF
+chmod 0755 "$SYMLINK_SPECIFY_BIN/specify"
+git init -q "$SYMLINK_SPECIFY_REPO"
+snapshot_repo "$SYMLINK_SPECIFY_EXTERNAL_DIR" > "$SYMLINK_SPECIFY_SNAPSHOT_BEFORE"
+snapshot_repo_modes "$SYMLINK_SPECIFY_EXTERNAL_DIR" > "$SYMLINK_SPECIFY_MODES_BEFORE"
+
+printf '%s\n' 'When: bootstrap runs registration with --skip-init'
+export AGENT_PROTOCOL_ROOT="$SYMLINK_SPECIFY_PROTOCOL_ROOT"
+if PATH="$SYMLINK_SPECIFY_BIN:/usr/bin:/bin" python3 "$SETUP_SCRIPT" \
+    --repo "$SYMLINK_SPECIFY_REPO" \
+    --skip-init \
+    --preserve-readmes \
+    --no-worktrees \
+    --no-repo-agent-pointers \
+    --no-skill-links \
+    --no-global-agent-pointers > "$TMPDIR_ROOT/symlink-specify.log" 2>&1; then
+    fail 'bootstrap rejects a symlinked .specify registration parent'
+else
+    pass 'bootstrap rejects a symlinked .specify registration parent'
+fi
+
+printf '%s\n' 'Then: registration rejection occurs before external bytes, types, or modes change'
+snapshot_repo "$SYMLINK_SPECIFY_EXTERNAL_DIR" > "$SYMLINK_SPECIFY_SNAPSHOT_AFTER"
+snapshot_repo_modes "$SYMLINK_SPECIFY_EXTERNAL_DIR" > "$SYMLINK_SPECIFY_MODES_AFTER"
+assert_contains "$TMPDIR_ROOT/symlink-specify.log" 'symlink leaf' 'symlinked .specify rejection identifies the symlink'
+assert_not_contains "$TMPDIR_ROOT/symlink-specify.log" 'UnicodeDecodeError' 'symlinked .specify rejection precedes integration discovery'
+if cmp -s "$SYMLINK_SPECIFY_SNAPSHOT_BEFORE" "$SYMLINK_SPECIFY_SNAPSHOT_AFTER"; then
+    pass 'symlinked .specify preserves external file paths and hashes'
+else
+    fail 'symlinked .specify changes external file paths or hashes'
+fi
+if cmp -s "$SYMLINK_SPECIFY_MODES_BEFORE" "$SYMLINK_SPECIFY_MODES_AFTER"; then
+    pass 'symlinked .specify preserves external path types and modes'
+else
+    fail 'symlinked .specify changes external path types or modes'
+fi
+
+for registration_descendant in extensions workflows; do
+    printf 'Given: .specify is safe and .specify/%s is a symlink to an external directory\n' "$registration_descendant"
+    SYMLINK_REGISTRATION_REPO="$TMPDIR_ROOT/symlink-registration-$registration_descendant-repo"
+    SYMLINK_REGISTRATION_PROTOCOL_ROOT="$TMPDIR_ROOT/symlink-registration-$registration_descendant-protocol"
+    SYMLINK_REGISTRATION_EXTERNAL_DIR="$TMPDIR_ROOT/symlink-registration-$registration_descendant-external"
+    SYMLINK_REGISTRATION_BIN="$TMPDIR_ROOT/symlink-registration-$registration_descendant-bin"
+    SYMLINK_REGISTRATION_SNAPSHOT_BEFORE="$TMPDIR_ROOT/symlink-registration-$registration_descendant.before"
+    SYMLINK_REGISTRATION_SNAPSHOT_AFTER="$TMPDIR_ROOT/symlink-registration-$registration_descendant.after"
+    SYMLINK_REGISTRATION_MODES_BEFORE="$TMPDIR_ROOT/symlink-registration-$registration_descendant-modes.before"
+    SYMLINK_REGISTRATION_MODES_AFTER="$TMPDIR_ROOT/symlink-registration-$registration_descendant-modes.after"
+    mkdir -p \
+        "$SYMLINK_REGISTRATION_REPO/.specify" \
+        "$SYMLINK_REGISTRATION_EXTERNAL_DIR" \
+        "$SYMLINK_REGISTRATION_BIN"
+    printf '%s\n' 'external registration sentinel' > "$SYMLINK_REGISTRATION_EXTERNAL_DIR/sentinel.txt"
+    chmod 0700 "$SYMLINK_REGISTRATION_EXTERNAL_DIR"
+    chmod 0600 "$SYMLINK_REGISTRATION_EXTERNAL_DIR/sentinel.txt"
+    ln -s \
+        "$SYMLINK_REGISTRATION_EXTERNAL_DIR" \
+        "$SYMLINK_REGISTRATION_REPO/.specify/$registration_descendant"
+    cat > "$SYMLINK_REGISTRATION_BIN/specify" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+    extension) destination='.specify/extensions' ;;
+    workflow) destination='.specify/workflows' ;;
+    *) exit 2 ;;
+esac
+mkdir -p "$destination"
+printf '%s\n' 'external registration mutation' > "$destination/registration-mutated.txt"
+chmod 0777 "$destination"
+chmod 0666 "$destination/registration-mutated.txt"
+EOF
+    chmod 0755 "$SYMLINK_REGISTRATION_BIN/specify"
+    git init -q "$SYMLINK_REGISTRATION_REPO"
+    snapshot_repo "$SYMLINK_REGISTRATION_EXTERNAL_DIR" > "$SYMLINK_REGISTRATION_SNAPSHOT_BEFORE"
+    snapshot_repo_modes "$SYMLINK_REGISTRATION_EXTERNAL_DIR" > "$SYMLINK_REGISTRATION_MODES_BEFORE"
+
+    printf 'When: bootstrap runs registration with --skip-init and symlinked .specify/%s\n' "$registration_descendant"
+    export AGENT_PROTOCOL_ROOT="$SYMLINK_REGISTRATION_PROTOCOL_ROOT"
+    if PATH="$SYMLINK_REGISTRATION_BIN:/usr/bin:/bin" python3 "$SETUP_SCRIPT" \
+        --repo "$SYMLINK_REGISTRATION_REPO" \
+        --skip-init \
+        --preserve-readmes \
+        --no-worktrees \
+        --no-repo-agent-pointers \
+        --no-skill-links \
+        --no-global-agent-pointers > "$TMPDIR_ROOT/symlink-registration-$registration_descendant.log" 2>&1; then
+        fail "bootstrap rejects a symlinked .specify/$registration_descendant registration descendant"
+    else
+        pass "bootstrap rejects a symlinked .specify/$registration_descendant registration descendant"
+    fi
+
+    printf 'Then: .specify/%s rejection occurs before external bytes, types, or modes change\n' "$registration_descendant"
+    snapshot_repo "$SYMLINK_REGISTRATION_EXTERNAL_DIR" > "$SYMLINK_REGISTRATION_SNAPSHOT_AFTER"
+    snapshot_repo_modes "$SYMLINK_REGISTRATION_EXTERNAL_DIR" > "$SYMLINK_REGISTRATION_MODES_AFTER"
+    assert_contains \
+        "$TMPDIR_ROOT/symlink-registration-$registration_descendant.log" \
+        "symlink found at $SYMLINK_REGISTRATION_REPO/.specify/$registration_descendant" \
+        "symlinked .specify/$registration_descendant rejection identifies the descendant"
+    if cmp -s "$SYMLINK_REGISTRATION_SNAPSHOT_BEFORE" "$SYMLINK_REGISTRATION_SNAPSHOT_AFTER"; then
+        pass "symlinked .specify/$registration_descendant preserves external file paths and hashes"
+    else
+        fail "symlinked .specify/$registration_descendant changes external file paths or hashes"
+    fi
+    if cmp -s "$SYMLINK_REGISTRATION_MODES_BEFORE" "$SYMLINK_REGISTRATION_MODES_AFTER"; then
+        pass "symlinked .specify/$registration_descendant preserves external path types and modes"
+    else
+        fail "symlinked .specify/$registration_descendant changes external path types or modes"
+    fi
+done
+
+printf '%s\n' 'Given: AGENTS.md is a symlink to an external file'
+SYMLINK_AGENT_REPO="$TMPDIR_ROOT/symlink-agent-repo"
+SYMLINK_AGENT_PROTOCOL_ROOT="$TMPDIR_ROOT/symlink-agent-protocol"
+SYMLINK_AGENT_EXTERNAL_DIR="$TMPDIR_ROOT/symlink-agent-external"
+SYMLINK_AGENT_EXTERNAL="$SYMLINK_AGENT_EXTERNAL_DIR/AGENTS.md"
+SYMLINK_AGENT_SNAPSHOT_BEFORE="$TMPDIR_ROOT/symlink-agent.before"
+SYMLINK_AGENT_SNAPSHOT_AFTER="$TMPDIR_ROOT/symlink-agent.after"
+SYMLINK_AGENT_MODES_BEFORE="$TMPDIR_ROOT/symlink-agent-modes.before"
+SYMLINK_AGENT_MODES_AFTER="$TMPDIR_ROOT/symlink-agent-modes.after"
+mkdir -p "$SYMLINK_AGENT_REPO" "$SYMLINK_AGENT_EXTERNAL_DIR"
+printf '%s\n' 'external agent instructions' > "$SYMLINK_AGENT_EXTERNAL"
+ln -s "$SYMLINK_AGENT_EXTERNAL" "$SYMLINK_AGENT_REPO/AGENTS.md"
+git init -q "$SYMLINK_AGENT_REPO"
+snapshot_repo "$SYMLINK_AGENT_EXTERNAL_DIR" > "$SYMLINK_AGENT_SNAPSHOT_BEFORE"
+snapshot_repo_modes "$SYMLINK_AGENT_EXTERNAL_DIR" > "$SYMLINK_AGENT_MODES_BEFORE"
+
+printf '%s\n' 'When: bootstrap updates repository agent pointers'
+export AGENT_PROTOCOL_ROOT="$SYMLINK_AGENT_PROTOCOL_ROOT"
+if python3 "$SETUP_SCRIPT" \
+    --repo "$SYMLINK_AGENT_REPO" \
+    --skip-init \
+    --preserve-readmes \
+    --no-speckit-registration \
+    --no-worktrees \
+    --no-skill-links \
+    --no-global-agent-pointers > "$TMPDIR_ROOT/symlink-agent.log" 2>&1; then
+    fail 'bootstrap rejects a symlinked AGENTS.md leaf'
+else
+    pass 'bootstrap rejects a symlinked AGENTS.md leaf'
+fi
+
+printf '%s\n' 'Then: agent pointer rejection leaves the external file unchanged'
+snapshot_repo "$SYMLINK_AGENT_EXTERNAL_DIR" > "$SYMLINK_AGENT_SNAPSHOT_AFTER"
+snapshot_repo_modes "$SYMLINK_AGENT_EXTERNAL_DIR" > "$SYMLINK_AGENT_MODES_AFTER"
+assert_contains "$TMPDIR_ROOT/symlink-agent.log" 'symlink leaf' 'symlinked AGENTS.md rejection identifies the symlink leaf'
+if cmp -s "$SYMLINK_AGENT_SNAPSHOT_BEFORE" "$SYMLINK_AGENT_SNAPSHOT_AFTER"; then
+    pass 'symlinked AGENTS.md preserves external file paths and hashes'
+else
+    fail 'symlinked AGENTS.md changes external file paths or hashes'
+fi
+if cmp -s "$SYMLINK_AGENT_MODES_BEFORE" "$SYMLINK_AGENT_MODES_AFTER"; then
+    pass 'symlinked AGENTS.md preserves external path types and modes'
+else
+    fail 'symlinked AGENTS.md changes external path types or modes'
+fi
+
+printf '%s\n' 'Given: openspec/README.md is a symlink to an external file'
+SYMLINK_README_REPO="$TMPDIR_ROOT/symlink-readme-repo"
+SYMLINK_README_PROTOCOL_ROOT="$TMPDIR_ROOT/symlink-readme-protocol"
+SYMLINK_README_EXTERNAL_DIR="$TMPDIR_ROOT/symlink-readme-external"
+SYMLINK_README_EXTERNAL="$SYMLINK_README_EXTERNAL_DIR/README.md"
+SYMLINK_README_SNAPSHOT_BEFORE="$TMPDIR_ROOT/symlink-readme.before"
+SYMLINK_README_SNAPSHOT_AFTER="$TMPDIR_ROOT/symlink-readme.after"
+SYMLINK_README_MODES_BEFORE="$TMPDIR_ROOT/symlink-readme-modes.before"
+SYMLINK_README_MODES_AFTER="$TMPDIR_ROOT/symlink-readme-modes.after"
+mkdir -p "$SYMLINK_README_REPO/openspec" "$SYMLINK_README_EXTERNAL_DIR"
+printf '%s\n' 'external README content' > "$SYMLINK_README_EXTERNAL"
+ln -s "$SYMLINK_README_EXTERNAL" "$SYMLINK_README_REPO/openspec/README.md"
+git init -q "$SYMLINK_README_REPO"
+snapshot_repo "$SYMLINK_README_EXTERNAL_DIR" > "$SYMLINK_README_SNAPSHOT_BEFORE"
+snapshot_repo_modes "$SYMLINK_README_EXTERNAL_DIR" > "$SYMLINK_README_MODES_BEFORE"
+
+printf '%s\n' 'When: bootstrap writes generated workflow READMEs'
+export AGENT_PROTOCOL_ROOT="$SYMLINK_README_PROTOCOL_ROOT"
+if python3 "$SETUP_SCRIPT" \
+    --repo "$SYMLINK_README_REPO" \
+    --skip-init \
+    --no-speckit-registration \
+    --no-worktrees \
+    --no-repo-agent-pointers \
+    --no-skill-links \
+    --no-global-agent-pointers > "$TMPDIR_ROOT/symlink-readme.log" 2>&1; then
+    fail 'bootstrap rejects a symlinked generated README leaf'
+else
+    pass 'bootstrap rejects a symlinked generated README leaf'
+fi
+
+printf '%s\n' 'Then: README rejection leaves the external file unchanged'
+snapshot_repo "$SYMLINK_README_EXTERNAL_DIR" > "$SYMLINK_README_SNAPSHOT_AFTER"
+snapshot_repo_modes "$SYMLINK_README_EXTERNAL_DIR" > "$SYMLINK_README_MODES_AFTER"
+assert_contains "$TMPDIR_ROOT/symlink-readme.log" 'symlink leaf' 'symlinked README rejection identifies the symlink leaf'
+if cmp -s "$SYMLINK_README_SNAPSHOT_BEFORE" "$SYMLINK_README_SNAPSHOT_AFTER"; then
+    pass 'symlinked README preserves external file paths and hashes'
+else
+    fail 'symlinked README changes external file paths or hashes'
+fi
+if cmp -s "$SYMLINK_README_MODES_BEFORE" "$SYMLINK_README_MODES_AFTER"; then
+    pass 'symlinked README preserves external path types and modes'
+else
+    fail 'symlinked README changes external path types or modes'
+fi
+
+for scaffold_parent in changes specs; do
+    printf 'Given: openspec/%s is a symlink to an external directory\n' "$scaffold_parent"
+    NESTED_SCAFFOLD_REPO="$TMPDIR_ROOT/nested-scaffold-$scaffold_parent-repo"
+    NESTED_SCAFFOLD_PROTOCOL_ROOT="$TMPDIR_ROOT/nested-scaffold-$scaffold_parent-protocol"
+    NESTED_SCAFFOLD_EXTERNAL_DIR="$TMPDIR_ROOT/nested-scaffold-$scaffold_parent-external"
+    NESTED_SCAFFOLD_SNAPSHOT_BEFORE="$TMPDIR_ROOT/nested-scaffold-$scaffold_parent.before"
+    NESTED_SCAFFOLD_SNAPSHOT_AFTER="$TMPDIR_ROOT/nested-scaffold-$scaffold_parent.after"
+    NESTED_SCAFFOLD_MODES_BEFORE="$TMPDIR_ROOT/nested-scaffold-$scaffold_parent-modes.before"
+    NESTED_SCAFFOLD_MODES_AFTER="$TMPDIR_ROOT/nested-scaffold-$scaffold_parent-modes.after"
+    mkdir -p "$NESTED_SCAFFOLD_REPO/openspec" "$NESTED_SCAFFOLD_EXTERNAL_DIR"
+    printf '%s\n' 'external nested scaffold sentinel' > "$NESTED_SCAFFOLD_EXTERNAL_DIR/sentinel.txt"
+    ln -s "$NESTED_SCAFFOLD_EXTERNAL_DIR" "$NESTED_SCAFFOLD_REPO/openspec/$scaffold_parent"
+    git init -q "$NESTED_SCAFFOLD_REPO"
+    snapshot_repo "$NESTED_SCAFFOLD_EXTERNAL_DIR" > "$NESTED_SCAFFOLD_SNAPSHOT_BEFORE"
+    snapshot_repo_modes "$NESTED_SCAFFOLD_EXTERNAL_DIR" > "$NESTED_SCAFFOLD_MODES_BEFORE"
+
+    printf 'When: bootstrap creates the nested OpenSpec %s scaffold\n' "$scaffold_parent"
+    export AGENT_PROTOCOL_ROOT="$NESTED_SCAFFOLD_PROTOCOL_ROOT"
+    if python3 "$SETUP_SCRIPT" \
+        --repo "$NESTED_SCAFFOLD_REPO" \
+        --preserve-readmes \
+        --no-speckit-registration \
+        --no-worktrees \
+        --no-repo-agent-pointers \
+        --no-skill-links \
+        --no-global-agent-pointers > "$TMPDIR_ROOT/nested-scaffold-$scaffold_parent.log" 2>&1; then
+        fail "bootstrap rejects a symlinked openspec/$scaffold_parent scaffold path"
+    else
+        pass "bootstrap rejects a symlinked openspec/$scaffold_parent scaffold path"
+    fi
+
+    printf 'Then: nested %s rejection leaves the external directory unchanged\n' "$scaffold_parent"
+    snapshot_repo "$NESTED_SCAFFOLD_EXTERNAL_DIR" > "$NESTED_SCAFFOLD_SNAPSHOT_AFTER"
+    snapshot_repo_modes "$NESTED_SCAFFOLD_EXTERNAL_DIR" > "$NESTED_SCAFFOLD_MODES_AFTER"
+    assert_contains "$TMPDIR_ROOT/nested-scaffold-$scaffold_parent.log" 'symlink' "nested $scaffold_parent rejection identifies the symlink"
+    if cmp -s "$NESTED_SCAFFOLD_SNAPSHOT_BEFORE" "$NESTED_SCAFFOLD_SNAPSHOT_AFTER"; then
+        pass "nested $scaffold_parent preserves external file paths and hashes"
+    else
+        fail "nested $scaffold_parent changes external file paths or hashes"
+    fi
+    if cmp -s "$NESTED_SCAFFOLD_MODES_BEFORE" "$NESTED_SCAFFOLD_MODES_AFTER"; then
+        pass "nested $scaffold_parent preserves external path types and modes"
+    else
+        fail "nested $scaffold_parent changes external path types or modes"
+    fi
+done
+
 printf '%s\n' 'Given: openspec/config.yaml is a broken symlink to an external file'
 BROKEN_CONFIG_REPO="$TMPDIR_ROOT/broken-config-repo"
 BROKEN_CONFIG_PROTOCOL_ROOT="$TMPDIR_ROOT/broken-config-protocol"
@@ -626,6 +1122,35 @@ printf '%s\n' 'Then: the unsafe command tree is rejected before any of it is cop
 assert_contains "$TMPDIR_ROOT/unsafe-command.log" 'symlink' 'unsafe command rejection identifies the symlink'
 assert_not_exists "$UNSAFE_COMMAND_REPO/.claude/commands/opsx/00-safe.md" 'unsafe command preflight leaves no partial safe file'
 assert_not_exists "$UNSAFE_COMMAND_REPO/.claude/commands/opsx/99-linked.md" 'unsafe command target is never materialized'
+
+printf '%s\n' 'Given: the configured OPSX command source root is a regular file'
+REGULAR_COMMAND_SOURCE="$TMPDIR_ROOT/regular-command-source"
+REGULAR_COMMAND_REPO="$TMPDIR_ROOT/regular-command-repo"
+REGULAR_COMMAND_PROTOCOL_ROOT="$TMPDIR_ROOT/regular-command-protocol"
+printf '%s\n' 'not a source directory' > "$REGULAR_COMMAND_SOURCE"
+mkdir -p "$REGULAR_COMMAND_REPO"
+git init -q "$REGULAR_COMMAND_REPO"
+
+printf '%s\n' 'When: bootstrap preflights the regular-file source root'
+export OPSX_COMMAND_TEMPLATE_ROOT="$REGULAR_COMMAND_SOURCE"
+export AGENT_PROTOCOL_ROOT="$REGULAR_COMMAND_PROTOCOL_ROOT"
+if python3 "$SETUP_SCRIPT" \
+    --repo "$REGULAR_COMMAND_REPO" \
+    --skip-init \
+    --no-speckit-registration \
+    --no-worktrees \
+    --no-repo-agent-pointers \
+    --no-skill-links \
+    --no-global-agent-pointers > "$TMPDIR_ROOT/regular-command.log" 2>&1; then
+    fail 'bootstrap rejects a regular-file OPSX command source root'
+else
+    pass 'bootstrap rejects a regular-file OPSX command source root'
+fi
+
+printf '%s\n' 'Then: source rejection occurs before any bootstrap destination is created'
+assert_contains "$TMPDIR_ROOT/regular-command.log" 'not a directory' 'regular-file source rejection identifies its type'
+assert_not_exists "$REGULAR_COMMAND_REPO/openspec" 'regular-file source rejection leaves no repository destination'
+assert_not_exists "$REGULAR_COMMAND_PROTOCOL_ROOT" 'regular-file source rejection leaves no protocol destination'
 
 printf '%s\n' 'Given: a global skill source tree containing a directory symlink'
 UNSAFE_SKILL_HOME="$TMPDIR_ROOT/unsafe-skill-home"
@@ -861,6 +1386,17 @@ expect_refusal(
 )
 check(not overlay_destination.exists(), "copy-overlay: unsafe source leaves no partial destination")
 
+source_file_case = fixture_root / "overlay-source-regular-file"
+source_file_case.mkdir()
+source = source_file_case / "source"
+source.write_text("not a tree\n", encoding="utf-8")
+overlay_destination = source_file_case / "destination"
+expect_refusal(
+    lambda: copy_overlay_tree(source, overlay_destination, False, True),
+    "copy-overlay: regular-file source root fails closed",
+)
+check(not overlay_destination.exists(), "copy-overlay: regular-file source leaves no destination")
+
 skill_source_root = fixture_root / "skill-source"
 (skill_source_root / "nested").mkdir(parents=True)
 (skill_source_root / "SKILL.md").write_text("fixture skill\n", encoding="utf-8")
@@ -1061,6 +1597,376 @@ else
     fail 'copy and wrapper helpers reject destination escapes and handle collisions and retained modes'
 fi
 
+printf '%s\n' 'Given: checked destination directories are replaced by symlinks at deterministic publication seams'
+if python3 - "$SETUP_SCRIPT" "$TMPDIR_ROOT/pathname-swap-safety" <<'PY'
+from contextlib import contextmanager
+from pathlib import Path
+import os
+import runpy
+import stat
+import sys
+
+namespace = runpy.run_path(sys.argv[1], run_name="setup_openspeckit_test")
+copy_missing_tree = namespace["copy_missing_tree"]
+ensure_speckit_registration = namespace["ensure_speckit_registration"]
+link_or_copy_skill = namespace["link_or_copy_skill"]
+write_text = namespace["write_text"]
+bootstrap_globals = write_text.__globals__
+fixture_root = Path(sys.argv[2])
+fixture_root.mkdir()
+failures = 0
+
+
+def check(condition, label):
+    global failures
+    if condition:
+        print(f"PASS: {label}")
+    else:
+        print(f"FAIL: {label}")
+        failures += 1
+
+
+def tree_bytes(root):
+    return {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and not path.is_symlink()
+    }
+
+
+def tree_modes(root):
+    paths = [root, *sorted(root.rglob("*"))]
+    return {
+        "." if path == root else path.relative_to(root).as_posix(): (
+            stat.S_IFMT(path.lstat().st_mode),
+            stat.S_IMODE(path.lstat().st_mode),
+            os.readlink(path) if path.is_symlink() else None,
+        )
+        for path in paths
+    }
+
+
+def make_external(case_root):
+    external = case_root / "external"
+    (external / "sentinels").mkdir(parents=True)
+    (external / "sentinel.txt").write_bytes(b"external sentinel\x00\xff\n")
+    (external / "sentinels" / "nested.txt").write_bytes(b"nested sentinel\n")
+    external.chmod(0o700)
+    (external / "sentinels").chmod(0o711)
+    (external / "sentinel.txt").chmod(0o600)
+    (external / "sentinels" / "nested.txt").chmod(0o640)
+    return external
+
+
+def swap_directory(checked_directory, original_directory, external):
+    checked_directory.rename(original_directory)
+    checked_directory.symlink_to(external, target_is_directory=True)
+
+
+def run_action(action):
+    try:
+        action()
+    except (OSError, SystemExit):
+        return True
+    return False
+
+
+generated_case = fixture_root / "generated-text"
+generated_parent = generated_case / "checked-parent"
+generated_original = generated_case / "original-parent"
+generated_destination = generated_parent / "generated.txt"
+generated_external = make_external(generated_case)
+generated_parent.mkdir()
+generated_bytes_before = tree_bytes(generated_external)
+generated_modes_before = tree_modes(generated_external)
+generated_swapped = False
+original_file_check = bootstrap_globals["ensure_safe_destination_file"]
+
+
+def swap_after_generated_check(path, safe_directories):
+    global generated_swapped
+    result = original_file_check(path, safe_directories)
+    if path == generated_destination and not generated_swapped:
+        swap_directory(generated_parent, generated_original, generated_external)
+        generated_swapped = True
+    return result
+
+
+bootstrap_globals["ensure_safe_destination_file"] = swap_after_generated_check
+try:
+    generated_refused = run_action(
+        lambda: write_text(generated_destination, "managed generated text\n", False)
+    )
+finally:
+    bootstrap_globals["ensure_safe_destination_file"] = original_file_check
+
+generated_written_to_original = (
+    (generated_original / "generated.txt").is_file()
+    and (generated_original / "generated.txt").read_bytes()
+    == b"managed generated text\n"
+)
+check(generated_swapped, "generated text: deterministic swap seam was reached")
+check(
+    generated_refused or generated_written_to_original,
+    "generated text: swap fails closed or writes through the checked original directory",
+)
+check(
+    tree_bytes(generated_external) == generated_bytes_before,
+    "generated text: external sentinel tree remains byte-for-byte unchanged",
+)
+check(
+    tree_modes(generated_external) == generated_modes_before,
+    "generated text: external sentinel tree remains mode-for-mode unchanged",
+)
+
+regular_case = fixture_root / "copied-regular"
+regular_source = regular_case / "source"
+regular_destination = regular_case / "checked-destination"
+regular_original = regular_case / "original-destination"
+regular_external = make_external(regular_case)
+regular_source.mkdir(parents=True)
+regular_destination.mkdir()
+(regular_source / "payload.bin").write_bytes(b"copied regular payload\x00\xff\n")
+(regular_source / "payload.bin").chmod(0o640)
+regular_target = regular_destination / "payload.bin"
+regular_bytes_before = tree_bytes(regular_external)
+regular_modes_before = tree_modes(regular_external)
+regular_swapped = False
+original_parent_check = bootstrap_globals["ensure_safe_destination_parent"]
+
+
+def swap_after_regular_parent_check(path, safe_directories):
+    global regular_swapped
+    result = original_parent_check(path, safe_directories)
+    if path == regular_target and not regular_swapped:
+        swap_directory(regular_destination, regular_original, regular_external)
+        regular_swapped = True
+    return result
+
+
+bootstrap_globals["ensure_safe_destination_parent"] = swap_after_regular_parent_check
+try:
+    regular_refused = run_action(
+        lambda: copy_missing_tree(regular_source, regular_destination, False, False)
+    )
+finally:
+    bootstrap_globals["ensure_safe_destination_parent"] = original_parent_check
+
+regular_written_to_original = (
+    (regular_original / "payload.bin").is_file()
+    and (regular_original / "payload.bin").read_bytes()
+    == b"copied regular payload\x00\xff\n"
+)
+check(regular_swapped, "copied regular file: deterministic swap seam was reached")
+check(
+    regular_refused or regular_written_to_original,
+    "copied regular file: swap fails closed or publishes through the checked original directory",
+)
+check(
+    tree_bytes(regular_external) == regular_bytes_before,
+    "copied regular file: external sentinel tree remains byte-for-byte unchanged",
+)
+check(
+    tree_modes(regular_external) == regular_modes_before,
+    "copied regular file: external sentinel tree remains mode-for-mode unchanged",
+)
+
+source_swap_case = fixture_root / "substituted-source-file"
+source_swap_root = source_swap_case / "source"
+source_swap_destination = source_swap_case / "destination"
+source_swap_original = source_swap_case / "preflighted-payload.bin"
+source_swap_file = source_swap_root / "payload.bin"
+source_swap_root.mkdir(parents=True)
+source_swap_file.write_bytes(b"preflighted source payload\x00\xff\n")
+source_swap_file.chmod(0o640)
+substituted_source_bytes = b"substituted source payload must not copy\x00\xff\n"
+source_swapped = False
+original_directory_descriptor = bootstrap_globals["directory_descriptor"]
+
+
+@contextmanager
+def swap_source_file_before_open(path, create=False):
+    global source_swapped
+    if path == source_swap_root and not source_swapped:
+        source_swap_file.rename(source_swap_original)
+        source_swap_file.write_bytes(substituted_source_bytes)
+        source_swap_file.chmod(0o755)
+        source_swapped = True
+    with original_directory_descriptor(path, create) as descriptor:
+        yield descriptor
+
+
+bootstrap_globals["directory_descriptor"] = swap_source_file_before_open
+try:
+    source_substitution_refused = run_action(
+        lambda: copy_missing_tree(
+            source_swap_root,
+            source_swap_destination,
+            False,
+            False,
+        )
+    )
+finally:
+    bootstrap_globals["directory_descriptor"] = original_directory_descriptor
+
+source_swap_target = source_swap_destination / "payload.bin"
+check(source_swapped, "source regular file: deterministic substitution seam was reached")
+check(
+    source_substitution_refused,
+    "source regular file: substituted object identity fails closed",
+)
+check(
+    not source_swap_target.exists()
+    or source_swap_target.read_bytes() != substituted_source_bytes,
+    "source regular file: substituted bytes never reach the destination",
+)
+
+tree_case = fixture_root / "copied-tree"
+tree_source = tree_case / "source-skill"
+tree_parent = tree_case / "checked-parent"
+tree_original = tree_case / "original-parent"
+tree_destination = tree_parent / "copied-skill"
+tree_external = make_external(tree_case)
+(tree_source / "nested").mkdir(parents=True)
+(tree_source / "SKILL.md").write_text("copied tree skill\n", encoding="utf-8")
+(tree_source / "nested" / "payload.bin").write_bytes(b"copied tree payload\x00\xff\n")
+tree_parent.mkdir()
+tree_bytes_before = tree_bytes(tree_external)
+tree_modes_before = tree_modes(tree_external)
+tree_swapped = False
+
+
+def swap_after_tree_parent_check(path, safe_directories):
+    global tree_swapped
+    result = original_parent_check(path, safe_directories)
+    if path == tree_destination and not tree_swapped:
+        swap_directory(tree_parent, tree_original, tree_external)
+        tree_swapped = True
+    return result
+
+
+bootstrap_globals["ensure_safe_destination_parent"] = swap_after_tree_parent_check
+try:
+    tree_refused = run_action(
+        lambda: link_or_copy_skill(tree_source, tree_destination, False, False)
+    )
+finally:
+    bootstrap_globals["ensure_safe_destination_parent"] = original_parent_check
+
+tree_written_to_original = (
+    (tree_original / "copied-skill" / "SKILL.md").is_file()
+    and (tree_original / "copied-skill" / "SKILL.md").read_text(encoding="utf-8")
+    == "copied tree skill\n"
+    and (tree_original / "copied-skill" / "nested" / "payload.bin").read_bytes()
+    == b"copied tree payload\x00\xff\n"
+)
+check(tree_swapped, "copied tree: deterministic swap seam was reached")
+check(
+    tree_refused or tree_written_to_original,
+    "copied tree: swap fails closed or publishes through the checked original directory",
+)
+check(
+    tree_bytes(tree_external) == tree_bytes_before,
+    "copied tree: external sentinel tree remains byte-for-byte unchanged",
+)
+check(
+    tree_modes(tree_external) == tree_modes_before,
+    "copied tree: external sentinel tree remains mode-for-mode unchanged",
+)
+
+registration_case = fixture_root / "external-specify"
+registration_parent = registration_case / "checked-parent"
+registration_original_parent = registration_case / "original-parent"
+registration_repo = registration_parent / "repo"
+registration_external_parent = registration_case / "external-parent"
+registration_external_repo = registration_external_parent / "repo"
+(registration_repo / ".specify").mkdir(parents=True)
+(registration_external_repo / ".specify" / "sentinels").mkdir(parents=True)
+(registration_external_repo / ".specify" / "sentinel.bin").write_bytes(
+    b"external specify sentinel\x00\xff\n"
+)
+(registration_external_repo / ".specify" / "sentinels" / "nested.txt").write_text(
+    "nested external specify sentinel\n",
+    encoding="utf-8",
+)
+registration_external_repo.chmod(0o700)
+(registration_external_repo / ".specify").chmod(0o711)
+(registration_external_repo / ".specify" / "sentinels").chmod(0o750)
+(registration_external_repo / ".specify" / "sentinel.bin").chmod(0o600)
+(registration_external_repo / ".specify" / "sentinels" / "nested.txt").chmod(0o640)
+registration_bytes_before = tree_bytes(registration_external_parent)
+registration_modes_before = tree_modes(registration_external_parent)
+registration_swapped = False
+original_run_command = bootstrap_globals["run_command"]
+
+
+def staged_specify_with_parent_swap(command, cwd, dry_run):
+    global registration_swapped
+    if not registration_swapped:
+        swap_directory(
+            registration_parent,
+            registration_original_parent,
+            registration_external_parent,
+        )
+        registration_swapped = True
+    if command[1] == "extension":
+        destination = cwd / ".specify" / "extensions"
+        destination.mkdir(parents=True, exist_ok=True)
+        (destination / ".registry").write_text(
+            '{"extensions":{"git":{"enabled":true}}}\n',
+            encoding="utf-8",
+        )
+    elif command[1] == "workflow":
+        destination = cwd / ".specify" / "workflows"
+        destination.mkdir(parents=True, exist_ok=True)
+        (destination / "workflow-registry.json").write_text(
+            '{"workflows":{"speckit":{}}}\n',
+            encoding="utf-8",
+        )
+    else:
+        raise AssertionError(f"unexpected command: {command}")
+
+
+bootstrap_globals["run_command"] = staged_specify_with_parent_swap
+try:
+    registration_refused = run_action(
+        lambda: ensure_speckit_registration(registration_repo, False, False)
+    )
+finally:
+    bootstrap_globals["run_command"] = original_run_command
+
+registration_original_repo = registration_original_parent / "repo"
+registration_imported = (
+    (registration_original_repo / ".specify" / "extensions" / ".registry").is_file()
+    and (
+        registration_original_repo
+        / ".specify"
+        / "workflows"
+        / "workflow-registry.json"
+    ).is_file()
+)
+check(registration_swapped, "external specify: deterministic repository-parent swap seam was reached")
+check(
+    registration_refused or registration_imported,
+    "external specify: swap fails closed or imports through the checked original repository",
+)
+check(
+    tree_bytes(registration_external_parent) == registration_bytes_before,
+    "external specify: external sentinel tree remains byte-for-byte unchanged",
+)
+check(
+    tree_modes(registration_external_parent) == registration_modes_before,
+    "external specify: external sentinel tree remains mode-for-mode unchanged",
+)
+
+raise SystemExit(1 if failures else 0)
+PY
+then
+    pass 'pathname swaps cannot redirect generated text, regular files, or copied trees'
+else
+    fail 'pathname swaps redirected generated text or copied content outside the checked directory'
+fi
+
 printf '%s\n' 'Given: missing, empty, and incomplete worktree skill overlay sources with global fallbacks'
 INCOMPLETE_TEMPLATE_ROOT="$TMPDIR_ROOT/incomplete-overlay-templates"
 INCOMPLETE_OVERLAY_REPO="$TMPDIR_ROOT/incomplete-overlay-repo"
@@ -1105,6 +2011,61 @@ for skill_mapping in '.agents:agents' '.claude:claude' '.codex:codex'; do
     else
         fail "complete $template_agent_dir overlay lost authority under --force"
     fi
+done
+
+printf '%s\n' 'Given: a hostile umask and pre-existing generated control file with a restrictive mode'
+UMASK_HOME="$TMPDIR_ROOT/umask-home"
+UMASK_PROTOCOL_ROOT="$TMPDIR_ROOT/umask-agent-protocol"
+UMASK_REPO="$TMPDIR_ROOT/umask-repo"
+mkdir -p "$UMASK_HOME" "$UMASK_REPO/.specify/templates"
+printf '%s\n' '# Existing agent instructions' > "$UMASK_REPO/AGENTS.md"
+chmod 0600 "$UMASK_REPO/AGENTS.md"
+printf '%s\n' '{"integration":"claude"}' > "$UMASK_REPO/.specify/integration.json"
+printf '%s\n' '{"integration":"claude"}' > "$UMASK_REPO/.specify/init-options.json"
+printf '%s\n' '# Existing template' > "$UMASK_REPO/.specify/templates/spec-template.md"
+git init -q "$UMASK_REPO"
+
+printf '%s\n' 'When: bootstrap creates shared control files and directories under umask 077'
+export HOME="$UMASK_HOME"
+export AGENT_PROTOCOL_ROOT="$UMASK_PROTOCOL_ROOT"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT"
+export OPSX_COMMAND_TEMPLATE_ROOT="$COMMAND_TEMPLATE_ROOT"
+if ! (
+    umask 077
+    python3 "$SETUP_SCRIPT" \
+        --repo "$UMASK_REPO" \
+        --no-speckit-registration \
+        --no-worktrees \
+        --no-skill-links \
+        --no-global-agent-pointers > "$TMPDIR_ROOT/umask.log" 2>&1
+); then
+    printf '%s\n' 'FAIL: hostile-umask bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/umask.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: new shared control modes are stable and the existing file mode is preserved'
+assert_mode "$UMASK_REPO/AGENTS.md" 600 'hostile umask preserves an existing generated control file mode'
+for generated_file in \
+    "$UMASK_REPO/CLAUDE.md" \
+    "$UMASK_REPO/openspec/config.yaml" \
+    "$UMASK_REPO/openspec/README.md" \
+    "$UMASK_REPO/openspec/changes/archive/.gitkeep" \
+    "$UMASK_REPO/openspec/specs/.gitkeep" \
+    "$UMASK_REPO/.specify/README.md" \
+    "$UMASK_PROTOCOL_ROOT/AGENTS.md" \
+    "$UMASK_PROTOCOL_ROOT/protocols/openspec-speckit-workflow.md" \
+    "$UMASK_PROTOCOL_ROOT/protocols/project-agent-bootstrap.md"; do
+    assert_mode "$generated_file" 644 "hostile umask creates shared control file as 0644: $generated_file"
+done
+for generated_directory in \
+    "$UMASK_REPO/openspec" \
+    "$UMASK_REPO/openspec/changes" \
+    "$UMASK_REPO/openspec/changes/archive" \
+    "$UMASK_REPO/openspec/specs" \
+    "$UMASK_PROTOCOL_ROOT" \
+    "$UMASK_PROTOCOL_ROOT/protocols"; do
+    assert_mode "$generated_directory" 755 "hostile umask creates shared control directory as 0755: $generated_directory"
 done
 
 printf '%s\n' 'Given: a fresh repository and protocol root with sentinel files'

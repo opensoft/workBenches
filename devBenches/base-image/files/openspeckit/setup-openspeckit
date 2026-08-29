@@ -4,20 +4,59 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
 import hashlib
 import json
 import os
-import shutil
+import re
+import secrets
 import stat
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Final
 
 
 START = "<!-- OPENSPEC-SPECKIT-GLOBAL:START -->"
 END = "<!-- OPENSPEC-SPECKIT-GLOBAL:END -->"
-REPO_AGENT_ROOT: Final = "$HOME/.agents"
+REPO_AGENT_ROOT: Final = "${AGENT_PROTOCOL_ROOT:-$HOME/.agents}"
+DIRECTORY_OPEN_FLAGS: Final = (
+    os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+)
+REGULAR_FILE_OPEN_FLAGS: Final = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+WORKTREE_GIT_OVERLAY_REQUIRED_FILES: Final = (
+    "extension.yml",
+    "commands/speckit.git.commit.md",
+    "commands/speckit.git.feature.md",
+    "commands/speckit.git.initialize.md",
+    "commands/speckit.git.remote.md",
+    "commands/speckit.git.validate.md",
+    "scripts/bash/auto-commit.sh",
+    "scripts/bash/create-new-feature.sh",
+    "scripts/bash/get-last-worktree.sh",
+    "scripts/bash/git-common.sh",
+    "scripts/bash/initialize-repo.sh",
+    "scripts/powershell/auto-commit.ps1",
+    "scripts/powershell/create-new-feature.ps1",
+    "scripts/powershell/git-common.ps1",
+    "scripts/powershell/initialize-repo.ps1",
+)
+LOAD_GIT_WORKTREES_DEFINITION: Final = re.compile(
+    r"(?m)^[ \t]*(?:load_git_worktrees[ \t]*\(\)|"
+    r"function[ \t]+load_git_worktrees(?:[ \t]*\(\))?)[ \t]*\{"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class SourceTreeEntry:
+    path: Path
+    mode: int
+    device: int
+    inode: int
+
 
 SKILLS = [
     "speckit-analyze",
@@ -111,6 +150,21 @@ USER_GLOBAL_AGENT_POINTER_FILES = [
     ".windsurf/rules/specify-rules.md",
 ]
 
+SPECIFY_INTEGRATION_TOOL_ROOTS: Final = {
+    "claude": ".claude",
+    "codex": ".codex",
+    "copilot": ".github",
+    "cursor-agent": ".cursor",
+    "gemini": ".gemini",
+    "junie": ".junie",
+    "kilocode": ".kilocode",
+    "kiro-cli": ".kiro",
+    "roo": ".roo",
+    "trae": ".trae",
+    "vibe": ".vibe",
+    "windsurf": ".windsurf",
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -174,6 +228,7 @@ def log(message: str) -> None:
 
 
 def run_command(command: list[str], cwd: Path, dry_run: bool) -> None:
+    """Run a trusted external command whose internal writes cannot share our descriptors."""
     printable = " ".join(shlex_quote(part) for part in command)
     if dry_run:
         log(f"would run ({cwd}): {printable}")
@@ -209,8 +264,9 @@ def git_root() -> Path:
 
 def read_json(path: Path) -> dict[str, object]:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        text = read_destination_text(path)
+        return json.loads(text) if text is not None else {}
+    except json.JSONDecodeError:
         return {}
 
 
@@ -255,10 +311,18 @@ def ensure_speckit_initialized(
         integration,
         "--script",
         "sh",
-        "--ai-skills",
         "--ignore-agent-tools",
     ]
-    run_command(command, repo, dry_run)
+    expected_outputs = {Path(".specify")}
+    expected_outputs.update(
+        Path(relative_path)
+        for agent, relative_path in SUPPORTED_AGENT_CONTEXT_FILES
+        if agent == integration
+    )
+    tool_root = SPECIFY_INTEGRATION_TOOL_ROOTS.get(integration)
+    if tool_root is not None:
+        expected_outputs.add(Path(tool_root))
+    run_specify_commands(repo, [command], dry_run, expected_outputs)
 
 
 def git_extension_registered(repo: Path) -> bool:
@@ -276,55 +340,291 @@ def speckit_workflow_registered(repo: Path) -> bool:
     return isinstance(workflows, dict) and "speckit" in workflows
 
 
+def ensure_safe_specify_destination(repo: Path) -> None:
+    specify_root = repo / ".specify"
+    ensure_safe_destination_file(specify_root, set())
+    ensure_safe_destination_tree(specify_root)
+
+
 def ensure_speckit_registration(repo: Path, dry_run: bool, skip_registration: bool) -> None:
     if skip_registration:
         return
+    ensure_safe_specify_destination(repo)
+    commands: list[list[str]] = []
     if not git_extension_registered(repo):
-        run_command(["specify", "extension", "add", "git"], repo, dry_run)
+        commands.append(["specify", "extension", "add", "git"])
     else:
         log("unchanged Speckit git extension registration")
     if not speckit_workflow_registered(repo):
-        run_command(["specify", "workflow", "add", "speckit"], repo, dry_run)
+        commands.append(["specify", "workflow", "add", "speckit"])
     else:
         log("unchanged Speckit workflow registration")
+    run_specify_commands(repo, commands, dry_run)
+
+
+@contextmanager
+def managed_descriptor(descriptor: int) -> Iterator[int]:
+    try:
+        yield descriptor
+    finally:
+        os.close(descriptor)
+
+
+@contextmanager
+def directory_descriptor(path: Path, create: bool = False) -> Iterator[int]:
+    absolute_path = Path(os.path.abspath(path))
+    with ExitStack() as descriptors:
+        descriptor = descriptors.enter_context(
+            managed_descriptor(os.open(absolute_path.anchor, DIRECTORY_OPEN_FLAGS))
+        )
+        for component in absolute_path.relative_to(absolute_path.anchor).parts:
+            created = False
+            try:
+                child_descriptor = os.open(
+                    component,
+                    DIRECTORY_OPEN_FLAGS,
+                    dir_fd=descriptor,
+                )
+            except FileNotFoundError:
+                if not create:
+                    raise
+                os.mkdir(component, mode=0o755, dir_fd=descriptor)
+                created = True
+                child_descriptor = os.open(
+                    component,
+                    DIRECTORY_OPEN_FLAGS,
+                    dir_fd=descriptor,
+                )
+            if created:
+                os.fchmod(child_descriptor, 0o755)
+            descriptor = descriptors.enter_context(managed_descriptor(child_descriptor))
+        yield descriptor
+
+
+@contextmanager
+def destination_file_parent(path: Path, create: bool) -> Iterator[int]:
+    with ExitStack() as descriptors:
+        try:
+            descriptor = descriptors.enter_context(
+                directory_descriptor(path.parent, create)
+            )
+        except NotADirectoryError:
+            ensure_safe_destination_file(path, set())
+            raise
+        ensure_safe_destination_file(path, set())
+        yield descriptor
+
+
+@contextmanager
+def destination_tree_parent(path: Path, create: bool) -> Iterator[int]:
+    with ExitStack() as descriptors:
+        try:
+            descriptor = descriptors.enter_context(
+                directory_descriptor(path.parent, create)
+            )
+        except NotADirectoryError:
+            ensure_safe_destination_parent(path, set())
+            raise
+        ensure_safe_destination_parent(path, set())
+        yield descriptor
+
+
+def mode_at(parent_descriptor: int, name: str) -> int | None:
+    try:
+        return os.stat(
+            name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        ).st_mode
+    except FileNotFoundError:
+        return None
+
+
+def read_regular_text_at(parent_descriptor: int, name: str) -> str:
+    descriptor = os.open(
+        name,
+        REGULAR_FILE_OPEN_FLAGS,
+        dir_fd=parent_descriptor,
+    )
+    with os.fdopen(descriptor, encoding="utf-8") as file:
+        if not stat.S_ISREG(os.fstat(file.fileno()).st_mode):
+            raise OSError(f"Refusing to read non-regular destination file {name}")
+        return file.read()
+
+
+def read_regular_bytes_at(parent_descriptor: int, name: str) -> bytes:
+    descriptor = os.open(
+        name,
+        REGULAR_FILE_OPEN_FLAGS,
+        dir_fd=parent_descriptor,
+    )
+    with os.fdopen(descriptor, "rb") as file:
+        if not stat.S_ISREG(os.fstat(file.fileno()).st_mode):
+            raise OSError(f"Refusing to read non-regular destination file {name}")
+        return file.read()
+
+
+def temporary_regular_file(parent_descriptor: int, name: str) -> tuple[str, int]:
+    while True:
+        temporary_name = f".{name}.tmp-{secrets.token_hex(8)}"
+        try:
+            descriptor = os.open(
+                temporary_name,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+                dir_fd=parent_descriptor,
+            )
+        except FileExistsError:
+            continue
+        os.fchmod(descriptor, 0o600)
+        return temporary_name, descriptor
+
+
+def write_all(descriptor: int, content: bytes) -> None:
+    remaining = memoryview(content)
+    while remaining:
+        written = os.write(descriptor, remaining)
+        remaining = remaining[written:]
+
+
+def publish_text_at(
+    parent_descriptor: int,
+    name: str,
+    text: str,
+    mode: int | None,
+) -> None:
+    temporary_name, descriptor = temporary_regular_file(parent_descriptor, name)
+    try:
+        with os.fdopen(descriptor, "wb") as file:
+            write_all(file.fileno(), text.encode("utf-8"))
+            if mode is not None:
+                os.fchmod(file.fileno(), mode)
+        os.replace(
+            temporary_name,
+            name,
+            src_dir_fd=parent_descriptor,
+            dst_dir_fd=parent_descriptor,
+        )
+    finally:
+        try:
+            os.unlink(temporary_name, dir_fd=parent_descriptor)
+        except FileNotFoundError:
+            pass
+
+
+def read_destination_text(path: Path) -> str | None:
+    try:
+        with destination_file_parent(path, False) as parent_descriptor:
+            if mode_at(parent_descriptor, path.name) is None:
+                return None
+            return read_regular_text_at(parent_descriptor, path.name)
+    except FileNotFoundError:
+        ensure_safe_destination_file(path, set())
+        return None
+
+
+def destination_mode(path: Path) -> int | None:
+    try:
+        with destination_file_parent(path, False) as parent_descriptor:
+            return mode_at(parent_descriptor, path.name)
+    except FileNotFoundError:
+        ensure_safe_destination_file(path, set())
+        return None
+
+
+def read_destination_bytes(path: Path) -> bytes | None:
+    try:
+        with destination_file_parent(path, False) as parent_descriptor:
+            if mode_at(parent_descriptor, path.name) is None:
+                return None
+            return read_regular_bytes_at(parent_descriptor, path.name)
+    except FileNotFoundError:
+        ensure_safe_destination_file(path, set())
+        return None
 
 
 def write_text(path: Path, text: str, dry_run: bool) -> None:
-    if path.exists() and path.read_text(encoding="utf-8") == text:
-        log(f"unchanged {path}")
-        return
     if dry_run:
+        if read_destination_text(path) == text:
+            log(f"unchanged {path}")
+            return
         log(f"would write {path}")
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    with destination_file_parent(path, True) as parent_descriptor:
+        destination_mode = mode_at(parent_descriptor, path.name)
+        if destination_mode is not None:
+            if read_regular_text_at(parent_descriptor, path.name) == text:
+                log(f"unchanged {path}")
+                return
+            file_mode = stat.S_IMODE(destination_mode)
+        else:
+            file_mode = 0o644
+        publish_text_at(parent_descriptor, path.name, text, file_mode)
     log(f"wrote {path}")
 
 
 def write_text_if_missing(path: Path, text: str, dry_run: bool) -> None:
-    if path.exists():
-        log(f"kept existing {path}")
+    if dry_run:
+        if destination_mode(path) is not None:
+            log(f"kept existing {path}")
+            return
+        log(f"would write {path}")
         return
-    write_text(path, text, dry_run)
+    with destination_file_parent(path, True) as parent_descriptor:
+        if mode_at(parent_descriptor, path.name) is not None:
+            log(f"kept existing {path}")
+            return
+        publish_text_at(parent_descriptor, path.name, text, 0o644)
+    log(f"wrote {path}")
 
 
 def touch(path: Path, dry_run: bool) -> None:
-    if path.exists():
-        return
     if dry_run:
+        if destination_mode(path) is not None:
+            return
         log(f"would create {path}")
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.touch()
+    with destination_file_parent(path, True) as parent_descriptor:
+        if mode_at(parent_descriptor, path.name) is not None:
+            return
+        descriptor = os.open(
+            path.name,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o666,
+            dir_fd=parent_descriptor,
+        )
+        with managed_descriptor(descriptor):
+            os.fchmod(descriptor, 0o644)
     log(f"created {path}")
 
 
+def ensure_destination_directory(path: Path) -> None:
+    with destination_tree_parent(path, True) as parent_descriptor:
+        mode = mode_at(parent_descriptor, path.name)
+        if mode is None:
+            os.mkdir(path.name, mode=0o755, dir_fd=parent_descriptor)
+            descriptor = os.open(
+                path.name,
+                DIRECTORY_OPEN_FLAGS,
+                dir_fd=parent_descriptor,
+            )
+            with managed_descriptor(descriptor):
+                os.fchmod(descriptor, 0o755)
+        elif not stat.S_ISDIR(mode):
+            raise FileExistsError(path)
+
+
 def upsert_block(path: Path, block_body: str, dry_run: bool) -> None:
+    ensure_safe_destination_file(path, set())
     block = f"{START}\n{block_body.rstrip()}\n{END}\n"
-    if path.exists():
-        text = path.read_text(encoding="utf-8")
-    else:
-        text = "# Agent Instructions\n\n"
+    existing_text = read_destination_text(path)
+    text = "# Agent Instructions\n\n" if existing_text is None else existing_text
 
     if START in text and END in text:
         before, remainder = text.split(START, 1)
@@ -347,26 +647,45 @@ def upsert_block(path: Path, block_body: str, dry_run: bool) -> None:
     write_text(path, new_text, dry_run)
 
 
-def safe_source_tree_entries(src: Path) -> list[Path]:
-    if src.is_symlink():
+def safe_source_tree_entries(src: Path) -> list[SourceTreeEntry]:
+    source_mode = mode_without_following(src)
+    if source_mode is None:
+        return []
+    if stat.S_ISLNK(source_mode):
         raise SystemExit(
             f"Refusing to copy unsafe source tree {src}: symlink found at {src}"
         )
-    if not src.exists():
-        return []
-    entries = sorted(src.rglob("*"))
-    for entry in entries:
-        if entry.is_symlink():
+    if not stat.S_ISDIR(source_mode):
+        raise SystemExit(
+            f"Refusing to copy unsafe source tree {src}: source root is not a directory"
+        )
+    entries: list[SourceTreeEntry] = []
+    for entry in sorted(src.rglob("*")):
+        entry_stat = entry.lstat()
+        entry_mode = entry_stat.st_mode
+        if stat.S_ISLNK(entry_mode):
             raise SystemExit(
                 f"Refusing to copy unsafe source tree {src}: symlink found at {entry}"
             )
+        if not stat.S_ISDIR(entry_mode) and not stat.S_ISREG(entry_mode):
+            raise SystemExit(
+                f"Refusing to copy unsafe source tree {src}: non-regular entry at {entry}"
+            )
+        entries.append(
+            SourceTreeEntry(
+                path=entry,
+                mode=entry_mode,
+                device=entry_stat.st_dev,
+                inode=entry_stat.st_ino,
+            )
+        )
     return entries
 
 
-def normalized_regular_file_mode(source: Path) -> int:
+def normalized_regular_file_mode(source: Path, source_mode: int) -> int:
     if source.suffix.lower() in {".json", ".md", ".yaml", ".yml"}:
         return 0o644
-    return 0o755 if source.stat().st_mode & 0o111 else 0o644
+    return 0o755 if source_mode & 0o111 else 0o644
 
 
 def mode_without_following(path: Path) -> int | None:
@@ -418,18 +737,281 @@ def ensure_safe_destination_tree(path: Path) -> None:
 
 
 def remove_destination_without_following(path: Path) -> None:
-    mode = mode_without_following(path)
+    with ExitStack() as descriptors:
+        try:
+            parent_descriptor = descriptors.enter_context(
+                destination_tree_parent(path, False)
+            )
+        except FileNotFoundError:
+            ensure_safe_destination_parent(path, set())
+            return
+        remove_entry_at(parent_descriptor, path.name)
+
+
+def remove_entry_at(parent_descriptor: int, name: str) -> None:
+    mode = mode_at(parent_descriptor, name)
     if mode is None:
         return
     if stat.S_ISDIR(mode):
-        shutil.rmtree(path)
+        descriptor = os.open(name, DIRECTORY_OPEN_FLAGS, dir_fd=parent_descriptor)
+        with managed_descriptor(descriptor):
+            for child_name in os.listdir(descriptor):
+                remove_entry_at(descriptor, child_name)
+        os.rmdir(name, dir_fd=parent_descriptor)
     else:
-        path.unlink()
+        os.unlink(name, dir_fd=parent_descriptor)
+
+
+@contextmanager
+def relative_directory_descriptor(
+    root_descriptor: int,
+    components: tuple[str, ...],
+) -> Iterator[int]:
+    with ExitStack() as descriptors:
+        descriptor = descriptors.enter_context(managed_descriptor(os.dup(root_descriptor)))
+        for component in components:
+            descriptor = descriptors.enter_context(
+                managed_descriptor(
+                    os.open(component, DIRECTORY_OPEN_FLAGS, dir_fd=descriptor)
+                )
+            )
+        yield descriptor
+
+
+def relative_mode(root_descriptor: int, components: tuple[str, ...]) -> int | None:
+    if not components:
+        return os.fstat(root_descriptor).st_mode
+    try:
+        with relative_directory_descriptor(
+            root_descriptor,
+            components[:-1],
+        ) as parent_descriptor:
+            return mode_at(parent_descriptor, components[-1])
+    except FileNotFoundError:
+        return None
+
+
+def ensure_relative_directory(
+    root_descriptor: int,
+    components: tuple[str, ...],
+    replace: bool,
+) -> None:
+    with ExitStack() as descriptors:
+        descriptor = descriptors.enter_context(managed_descriptor(os.dup(root_descriptor)))
+        for index, component in enumerate(components):
+            mode = mode_at(descriptor, component)
+            if mode is not None and not stat.S_ISDIR(mode):
+                if not replace or index != len(components) - 1:
+                    raise NotADirectoryError(component)
+                remove_entry_at(descriptor, component)
+                mode = None
+            if mode is None:
+                os.mkdir(component, mode=0o755, dir_fd=descriptor)
+                created = True
+            else:
+                created = False
+            descriptor = descriptors.enter_context(
+                managed_descriptor(
+                    os.open(component, DIRECTORY_OPEN_FLAGS, dir_fd=descriptor)
+                )
+            )
+            if created:
+                os.fchmod(descriptor, 0o755)
+
+
+def copy_regular_file_at(
+    source: SourceTreeEntry,
+    parent_descriptor: int,
+    name: str,
+    destination_mode: int | None = None,
+) -> None:
+    with directory_descriptor(source.path.parent) as source_parent_descriptor:
+        source_descriptor = os.open(
+            source.path.name,
+            REGULAR_FILE_OPEN_FLAGS,
+            dir_fd=source_parent_descriptor,
+        )
+        with managed_descriptor(source_descriptor):
+            source_stat = os.fstat(source_descriptor)
+            if (source_stat.st_dev, source_stat.st_ino) != (
+                source.device,
+                source.inode,
+            ):
+                raise OSError(f"Refusing substituted source file {source.path}")
+            source_mode = source_stat.st_mode
+            if not stat.S_ISREG(source_mode):
+                raise OSError(f"Refusing to copy non-regular source file {source.path}")
+            temporary_name, destination_descriptor = temporary_regular_file(
+                parent_descriptor,
+                name,
+            )
+            try:
+                with managed_descriptor(destination_descriptor):
+                    while True:
+                        chunk = os.read(source_descriptor, 1024 * 1024)
+                        if not chunk:
+                            break
+                        write_all(destination_descriptor, chunk)
+                    os.fchmod(
+                        destination_descriptor,
+                        destination_mode
+                        if destination_mode is not None
+                        else normalized_regular_file_mode(source.path, source_mode),
+                    )
+                os.replace(
+                    temporary_name,
+                    name,
+                    src_dir_fd=parent_descriptor,
+                    dst_dir_fd=parent_descriptor,
+                )
+            finally:
+                try:
+                    os.unlink(temporary_name, dir_fd=parent_descriptor)
+                except FileNotFoundError:
+                    pass
+
+
+def copy_tree_contents_with_descriptors(
+    src: Path,
+    dst: Path,
+    entries: list[SourceTreeEntry],
+    force: bool,
+) -> None:
+    safe_directories: set[Path] = set()
+    blocked_source_directories: set[Path] = set()
+    directories_to_create: list[Path] = []
+    directories_to_replace: set[Path] = set()
+
+    with destination_tree_parent(dst, True) as destination_parent_descriptor:
+        destination_mode = mode_at(destination_parent_descriptor, dst.name)
+        root_descriptor: int | None = None
+        if destination_mode is None:
+            directories_to_create.append(dst)
+        elif stat.S_ISLNK(destination_mode):
+            raise SystemExit(f"Refusing unsafe destination tree: symlink at {dst}")
+        elif stat.S_ISDIR(destination_mode):
+            root_descriptor = os.open(
+                dst.name,
+                DIRECTORY_OPEN_FLAGS,
+                dir_fd=destination_parent_descriptor,
+            )
+        elif force:
+            directories_to_replace.add(dst)
+            directories_to_create.append(dst)
+        else:
+            log(f"kept existing {dst}")
+            return
+        safe_directories.add(dst)
+
+        try:
+            for source in (
+                entry for entry in entries if stat.S_ISDIR(entry.mode)
+            ):
+                if any(
+                    blocked in source.path.parents
+                    for blocked in blocked_source_directories
+                ):
+                    continue
+                target = dst / source.path.relative_to(src)
+                ensure_safe_destination_parent(target, safe_directories)
+                relative_parts = target.relative_to(dst).parts
+                target_mode = (
+                    None
+                    if root_descriptor is None
+                    or any(directory in target.parents for directory in directories_to_replace)
+                    else relative_mode(root_descriptor, relative_parts)
+                )
+                if target_mode is None:
+                    directories_to_create.append(target)
+                elif stat.S_ISLNK(target_mode):
+                    raise SystemExit(
+                        f"Refusing unsafe destination tree {dst}: symlink directory at {target}"
+                    )
+                elif stat.S_ISDIR(target_mode):
+                    pass
+                elif force:
+                    directories_to_replace.add(target)
+                    directories_to_create.append(target)
+                else:
+                    blocked_source_directories.add(source.path)
+                    log(f"kept existing {target}")
+                    continue
+                safe_directories.add(target)
+
+            files_to_copy: list[tuple[SourceTreeEntry, Path]] = []
+            files_to_replace: set[Path] = set()
+            for source in (
+                entry for entry in entries if not stat.S_ISDIR(entry.mode)
+            ):
+                if any(
+                    blocked in source.path.parents
+                    for blocked in blocked_source_directories
+                ):
+                    continue
+                target = dst / source.path.relative_to(src)
+                ensure_safe_destination_parent(target, safe_directories)
+                relative_parts = target.relative_to(dst).parts
+                target_mode = (
+                    None
+                    if root_descriptor is None
+                    or any(directory in target.parents for directory in directories_to_replace)
+                    else relative_mode(root_descriptor, relative_parts)
+                )
+                if target_mode is not None and not force:
+                    log(f"kept existing {target}")
+                    continue
+                if target_mode is not None:
+                    if stat.S_ISDIR(target_mode):
+                        ensure_safe_destination_tree(target)
+                    files_to_replace.add(target)
+                files_to_copy.append((source, target))
+
+            if dst in directories_to_replace:
+                remove_entry_at(destination_parent_descriptor, dst.name)
+            if dst in directories_to_create:
+                os.mkdir(dst.name, mode=0o755, dir_fd=destination_parent_descriptor)
+                root_descriptor = os.open(
+                    dst.name,
+                    DIRECTORY_OPEN_FLAGS,
+                    dir_fd=destination_parent_descriptor,
+                )
+                os.fchmod(root_descriptor, 0o755)
+            if root_descriptor is None:
+                raise RuntimeError(f"Destination root descriptor unavailable for {dst}")
+
+            for directory in sorted(
+                (path for path in directories_to_create if path != dst),
+                key=lambda path: len(path.parts),
+            ):
+                ensure_relative_directory(
+                    root_descriptor,
+                    directory.relative_to(dst).parts,
+                    directory in directories_to_replace,
+                )
+
+            for source, target in files_to_copy:
+                relative_parts = target.relative_to(dst).parts
+                with relative_directory_descriptor(
+                    root_descriptor,
+                    relative_parts[:-1],
+                ) as parent_descriptor:
+                    if target in files_to_replace and stat.S_ISDIR(
+                        mode_at(parent_descriptor, relative_parts[-1]) or 0
+                    ):
+                        remove_entry_at(parent_descriptor, relative_parts[-1])
+                    copy_regular_file_at(source, parent_descriptor, relative_parts[-1])
+                log(f"copied {source.path} -> {target}")
+        finally:
+            if root_descriptor is not None:
+                os.close(root_descriptor)
 
 
 def copy_tree_contents(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
     entries = safe_source_tree_entries(src)
     if not src.exists():
+        return
+    if not dry_run:
+        copy_tree_contents_with_descriptors(src, dst, entries, force)
         return
 
     safe_directories: set[Path] = set()
@@ -453,10 +1035,10 @@ def copy_tree_contents(src: Path, dst: Path, dry_run: bool, force: bool) -> None
         return
     safe_directories.add(dst)
 
-    for source in (entry for entry in entries if entry.is_dir()):
-        if any(blocked in source.parents for blocked in blocked_source_directories):
+    for source in (entry for entry in entries if stat.S_ISDIR(entry.mode)):
+        if any(blocked in source.path.parents for blocked in blocked_source_directories):
             continue
-        target = dst / source.relative_to(src)
+        target = dst / source.path.relative_to(src)
         ensure_safe_destination_parent(target, safe_directories)
         target_mode = mode_after_directory_replacements(target, directories_to_replace)
         if target_mode is None:
@@ -471,17 +1053,17 @@ def copy_tree_contents(src: Path, dst: Path, dry_run: bool, force: bool) -> None
             directories_to_replace.add(target)
             directories_to_create.append(target)
         else:
-            blocked_source_directories.add(source)
+            blocked_source_directories.add(source.path)
             log(f"kept existing {target}")
             continue
         safe_directories.add(target)
 
-    files_to_copy: list[tuple[Path, Path]] = []
+    files_to_copy: list[tuple[SourceTreeEntry, Path]] = []
     files_to_replace: set[Path] = set()
-    for source in (entry for entry in entries if not entry.is_dir()):
-        if any(blocked in source.parents for blocked in blocked_source_directories):
+    for source in (entry for entry in entries if not stat.S_ISDIR(entry.mode)):
+        if any(blocked in source.path.parents for blocked in blocked_source_directories):
             continue
-        target = dst / source.relative_to(src)
+        target = dst / source.path.relative_to(src)
         ensure_safe_destination_parent(target, safe_directories)
         target_mode = mode_after_directory_replacements(target, directories_to_replace)
         if target_mode is not None and not force:
@@ -493,26 +1075,203 @@ def copy_tree_contents(src: Path, dst: Path, dry_run: bool, force: bool) -> None
             files_to_replace.add(target)
         files_to_copy.append((source, target))
 
+    for directory in directories_to_create:
+        action = "replace" if directory in directories_to_replace else "create"
+        log(f"would {action} directory {directory}")
+    for source, target in files_to_copy:
+        log(f"would copy {source.path} -> {target}")
+
+
+def import_regular_tree_at(
+    src: Path,
+    destination_root_descriptor: int,
+    destination_components: tuple[str, ...],
+) -> None:
+    entries = safe_source_tree_entries(src)
+    ensure_relative_directory(
+        destination_root_descriptor,
+        destination_components,
+        False,
+    )
+    for source in (entry for entry in entries if stat.S_ISDIR(entry.mode)):
+        relative_parts = destination_components + source.path.relative_to(src).parts
+        existing_mode = relative_mode(destination_root_descriptor, relative_parts)
+        if existing_mode is not None and not stat.S_ISDIR(existing_mode):
+            raise SystemExit(
+                f"Refusing unsafe destination tree: non-directory at {'/'.join(relative_parts)}"
+            )
+        ensure_relative_directory(destination_root_descriptor, relative_parts, False)
+
+    for source in (entry for entry in entries if stat.S_ISREG(entry.mode)):
+        relative_parts = destination_components + source.path.relative_to(src).parts
+        with relative_directory_descriptor(
+            destination_root_descriptor,
+            relative_parts[:-1],
+        ) as parent_descriptor:
+            existing_mode = mode_at(parent_descriptor, relative_parts[-1])
+            if existing_mode is not None and not stat.S_ISREG(existing_mode):
+                raise SystemExit(
+                    f"Refusing unsafe destination tree: non-regular file at {'/'.join(relative_parts)}"
+                )
+            preserved_mode = (
+                stat.S_IMODE(existing_mode) if existing_mode is not None else None
+            )
+            copy_regular_file_at(
+                source,
+                parent_descriptor,
+                relative_parts[-1],
+                preserved_mode,
+            )
+
+
+def preflight_regular_tree_import_at(
+    src: Path,
+    destination_root_descriptor: int,
+    destination_components: tuple[str, ...],
+) -> None:
+    entries = safe_source_tree_entries(src)
+    root_mode = relative_mode(destination_root_descriptor, destination_components)
+    if root_mode is not None and not stat.S_ISDIR(root_mode):
+        raise SystemExit(
+            f"Refusing unsafe destination tree {'/'.join(destination_components)}"
+        )
+    for source in entries:
+        relative_parts = destination_components + source.path.relative_to(src).parts
+        destination_mode = relative_mode(destination_root_descriptor, relative_parts)
+        if destination_mode is None:
+            continue
+        source_mode = source.mode
+        if stat.S_ISDIR(source_mode) and not stat.S_ISDIR(destination_mode):
+            raise SystemExit(
+                f"Refusing unsafe destination tree: non-directory at {'/'.join(relative_parts)}"
+            )
+        if stat.S_ISREG(source_mode) and not stat.S_ISREG(destination_mode):
+            raise SystemExit(
+                f"Refusing unsafe destination tree: non-regular file at {'/'.join(relative_parts)}"
+            )
+
+
+def import_regular_file_at(
+    source: Path,
+    destination_root_descriptor: int,
+    destination_components: tuple[str, ...],
+) -> None:
+    try:
+        source_stat = source.lstat()
+    except FileNotFoundError:
+        return
+    source_mode = source_stat.st_mode
+    if not stat.S_ISREG(source_mode):
+        raise SystemExit(f"Refusing non-regular staged output {source}")
+    source_entry = SourceTreeEntry(
+        path=source,
+        mode=source_mode,
+        device=source_stat.st_dev,
+        inode=source_stat.st_ino,
+    )
+    ensure_relative_directory(
+        destination_root_descriptor,
+        destination_components[:-1],
+        False,
+    )
+    with relative_directory_descriptor(
+        destination_root_descriptor,
+        destination_components[:-1],
+    ) as parent_descriptor:
+        existing_mode = mode_at(parent_descriptor, destination_components[-1])
+        if existing_mode is not None and not stat.S_ISREG(existing_mode):
+            raise SystemExit(
+                f"Refusing unsafe destination file {'/'.join(destination_components)}"
+            )
+        preserved_mode = stat.S_IMODE(existing_mode) if existing_mode is not None else None
+        copy_regular_file_at(
+            source_entry,
+            parent_descriptor,
+            destination_components[-1],
+            preserved_mode,
+        )
+
+
+def run_specify_commands(
+    repo: Path,
+    commands: list[list[str]],
+    dry_run: bool,
+    expected_outputs: set[Path] | None = None,
+) -> None:
+    if not commands:
+        return
     if dry_run:
-        for directory in directories_to_create:
-            action = "replace" if directory in directories_to_replace else "create"
-            log(f"would {action} directory {directory}")
-        for source, target in files_to_copy:
-            log(f"would copy {source} -> {target}")
+        for command in commands:
+            run_command(command, repo, True)
         return
 
-    for directory in sorted(directories_to_create, key=lambda path: len(path.parts)):
-        if directory in directories_to_replace:
-            remove_destination_without_following(directory)
-        directory.mkdir(parents=directory == dst)
-        directory.chmod(0o755)
-
-    for source, target in files_to_copy:
-        if target in files_to_replace:
-            remove_destination_without_following(target)
-        shutil.copy2(source, target)
-        target.chmod(normalized_regular_file_mode(source))
-        log(f"copied {source} -> {target}")
+    ensure_safe_specify_destination(repo)
+    with directory_descriptor(repo) as repo_descriptor:
+        with tempfile.TemporaryDirectory(prefix="setup-openspeckit-") as temporary_root:
+            staging_repo = Path(temporary_root) / "repo"
+            staging_repo.mkdir(mode=0o755)
+            staging_repo.chmod(0o755)
+            subprocess.run(
+                ["git", "init", "-q", str(staging_repo)],
+                check=True,
+            )
+            specify_source = repo / ".specify"
+            specify_source_mode = mode_without_following(specify_source)
+            specify_entries = safe_source_tree_entries(specify_source)
+            if specify_source_mode is not None:
+                copy_tree_contents_with_descriptors(
+                    specify_source,
+                    staging_repo / ".specify",
+                    specify_entries,
+                    True,
+                )
+            for command in commands:
+                run_command(command, staging_repo, False)
+            outputs = expected_outputs or {Path(".specify")}
+            tree_outputs: set[Path] = set()
+            file_outputs: set[Path] = set()
+            for relative_path in outputs:
+                output_mode = mode_without_following(staging_repo / relative_path)
+                if output_mode is None:
+                    continue
+                if stat.S_ISDIR(output_mode):
+                    safe_source_tree_entries(staging_repo / relative_path)
+                    tree_outputs.add(relative_path)
+                elif stat.S_ISREG(output_mode):
+                    file_outputs.add(relative_path)
+                else:
+                    raise SystemExit(
+                        f"Refusing non-regular staged output {staging_repo / relative_path}"
+                    )
+            file_outputs = {
+                path
+                for path in file_outputs
+                if not any(parent in tree_outputs for parent in path.parents)
+            }
+            for relative_path in tree_outputs:
+                preflight_regular_tree_import_at(
+                    staging_repo / relative_path,
+                    repo_descriptor,
+                    relative_path.parts,
+                )
+            for relative_path in file_outputs:
+                destination_mode = relative_mode(repo_descriptor, relative_path.parts)
+                if destination_mode is not None and not stat.S_ISREG(destination_mode):
+                    raise SystemExit(
+                        f"Refusing unsafe destination file {relative_path}"
+                    )
+            for relative_path in sorted(tree_outputs, key=lambda path: len(path.parts)):
+                import_regular_tree_at(
+                    staging_repo / relative_path,
+                    repo_descriptor,
+                    relative_path.parts,
+                )
+            for relative_path in sorted(file_outputs):
+                import_regular_file_at(
+                    staging_repo / relative_path,
+                    repo_descriptor,
+                    relative_path.parts,
+                )
 
 
 def copy_missing_tree(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
@@ -523,38 +1282,62 @@ def link_or_copy_skill(src: Path, dst: Path, dry_run: bool, force: bool) -> None
     entries = safe_source_tree_entries(src)
     if not src.exists():
         return
-    ensure_safe_destination_parent(dst, set())
-    destination_mode = mode_without_following(dst)
-    if destination_mode is not None and not stat.S_ISLNK(destination_mode):
-        if not force:
-            log(f"kept existing {dst}")
-            return
-        if stat.S_ISDIR(destination_mode):
-            ensure_safe_destination_tree(dst)
     if dry_run:
+        ensure_safe_destination_parent(dst, set())
+        destination_mode = mode_without_following(dst)
+        if destination_mode is not None and not stat.S_ISLNK(destination_mode):
+            if not force:
+                log(f"kept existing {dst}")
+                return
+            if stat.S_ISDIR(destination_mode):
+                ensure_safe_destination_tree(dst)
         action = "replace" if destination_mode is not None else "copy"
         log(f"would {action} {dst} with copied directory from {src}")
         return
-    if destination_mode is not None:
-        remove_destination_without_following(dst)
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(src, dst)
-    if dst.name == "speckit-clarify":
-        skill_file = dst / "SKILL.md"
-        if skill_file.is_file():
-            text = skill_file.read_text(encoding="utf-8")
-            for old, new in CLARIFY_QUOTA_REPLACEMENTS:
-                text = text.replace(old, new)
-            if "one question at a time" not in text.lower():
-                text += "\n## Shared Clarify Contract\n\nAsk one question at a time.\n"
-            skill_file.write_text(text, encoding="utf-8")
-    dst.chmod(0o755)
-    for source in entries:
-        copied_path = dst / source.relative_to(src)
-        if source.is_dir():
-            copied_path.chmod(0o755)
-        else:
-            copied_path.chmod(normalized_regular_file_mode(source))
+    with destination_tree_parent(dst, True) as destination_parent_descriptor:
+        destination_mode = mode_at(destination_parent_descriptor, dst.name)
+        if destination_mode is not None and not stat.S_ISLNK(destination_mode):
+            if not force:
+                log(f"kept existing {dst}")
+                return
+            if stat.S_ISDIR(destination_mode):
+                ensure_safe_destination_tree(dst)
+        if destination_mode is not None:
+            remove_entry_at(destination_parent_descriptor, dst.name)
+        os.mkdir(dst.name, mode=0o755, dir_fd=destination_parent_descriptor)
+        root_descriptor = os.open(
+            dst.name,
+            DIRECTORY_OPEN_FLAGS,
+            dir_fd=destination_parent_descriptor,
+        )
+        with managed_descriptor(root_descriptor):
+            os.fchmod(root_descriptor, 0o755)
+            for source in (
+                entry for entry in entries if stat.S_ISDIR(entry.mode)
+            ):
+                ensure_relative_directory(
+                    root_descriptor,
+                    source.path.relative_to(src).parts,
+                    False,
+                )
+            for source in (
+                entry for entry in entries if not stat.S_ISDIR(entry.mode)
+            ):
+                relative_parts = source.path.relative_to(src).parts
+                with relative_directory_descriptor(
+                    root_descriptor,
+                    relative_parts[:-1],
+                ) as parent_descriptor:
+                    copy_regular_file_at(source, parent_descriptor, relative_parts[-1])
+            if dst.name == "speckit-clarify":
+                skill_mode = mode_at(root_descriptor, "SKILL.md")
+                if skill_mode is not None and stat.S_ISREG(skill_mode):
+                    text = read_regular_text_at(root_descriptor, "SKILL.md")
+                    for old, new in CLARIFY_QUOTA_REPLACEMENTS:
+                        text = text.replace(old, new)
+                    if "one question at a time" not in text.lower():
+                        text += "\n## Shared Clarify Contract\n\nAsk one question at a time.\n"
+                    publish_text_at(root_descriptor, "SKILL.md", text, 0o644)
     log(f"copied {src} -> {dst}")
 
 
@@ -584,44 +1367,74 @@ def ensure_openspec_skill_wrapper(
     force: bool,
 ) -> None:
     destination = repo / agent_dir / "skills" / skill
-    ensure_safe_destination_parent(destination, set())
-    destination_mode = mode_without_following(destination)
     command_path = (
         f"../../commands/opsx/{action}.md"
         if agent_dir == ".claude"
         else f"../../../.claude/commands/opsx/{action}.md"
     )
     wrapper = openspec_skill_wrapper(skill, action, command_path)
-    skill_file = destination / "SKILL.md"
-    skill_mode = (
-        mode_without_following(skill_file)
-        if destination_mode is not None and stat.S_ISDIR(destination_mode)
-        else None
-    )
-    is_current = (
-        destination_mode is not None
-        and stat.S_ISDIR(destination_mode)
-        and sorted(path.name for path in destination.iterdir()) == ["SKILL.md"]
-        and skill_mode is not None
-        and stat.S_ISREG(skill_mode)
-        and skill_file.read_text(encoding="utf-8") == wrapper
-        and destination_mode & 0o777 == 0o755
-        and skill_mode & 0o777 == 0o644
-    )
-    if is_current:
-        log(f"unchanged {destination}")
-        return
-    if destination_mode is not None and not force:
-        log(f"kept existing {destination}")
-        return
     if dry_run:
+        ensure_safe_destination_parent(destination, set())
+        destination_mode = mode_without_following(destination)
+        skill_file = destination / "SKILL.md"
+        skill_mode = (
+            mode_without_following(skill_file)
+            if destination_mode is not None and stat.S_ISDIR(destination_mode)
+            else None
+        )
+        is_current = (
+            destination_mode is not None
+            and stat.S_ISDIR(destination_mode)
+            and sorted(path.name for path in destination.iterdir()) == ["SKILL.md"]
+            and skill_mode is not None
+            and stat.S_ISREG(skill_mode)
+            and skill_file.read_text(encoding="utf-8") == wrapper
+            and destination_mode & 0o777 == 0o755
+            and skill_mode & 0o777 == 0o644
+        )
+        if is_current:
+            log(f"unchanged {destination}")
+            return
+        if destination_mode is not None and not force:
+            log(f"kept existing {destination}")
+            return
         log(f"would write governed OpenSpec wrapper {destination}")
         return
-    remove_destination_without_following(destination)
-    destination.mkdir(parents=True, mode=0o755)
-    skill_file.write_text(wrapper, encoding="utf-8")
-    destination.chmod(0o755)
-    skill_file.chmod(0o644)
+    with destination_tree_parent(destination, True) as parent_descriptor:
+        destination_mode = mode_at(parent_descriptor, destination.name)
+        is_current = False
+        if destination_mode is not None and stat.S_ISDIR(destination_mode):
+            destination_descriptor = os.open(
+                destination.name,
+                DIRECTORY_OPEN_FLAGS,
+                dir_fd=parent_descriptor,
+            )
+            with managed_descriptor(destination_descriptor):
+                skill_mode = mode_at(destination_descriptor, "SKILL.md")
+                is_current = (
+                    sorted(os.listdir(destination_descriptor)) == ["SKILL.md"]
+                    and skill_mode is not None
+                    and stat.S_ISREG(skill_mode)
+                    and read_regular_text_at(destination_descriptor, "SKILL.md") == wrapper
+                    and destination_mode & 0o777 == 0o755
+                    and skill_mode & 0o777 == 0o644
+                )
+        if is_current:
+            log(f"unchanged {destination}")
+            return
+        if destination_mode is not None and not force:
+            log(f"kept existing {destination}")
+            return
+        remove_entry_at(parent_descriptor, destination.name)
+        os.mkdir(destination.name, mode=0o755, dir_fd=parent_descriptor)
+        destination_descriptor = os.open(
+            destination.name,
+            DIRECTORY_OPEN_FLAGS,
+            dir_fd=parent_descriptor,
+        )
+        with managed_descriptor(destination_descriptor):
+            os.fchmod(destination_descriptor, 0o755)
+            publish_text_at(destination_descriptor, "SKILL.md", wrapper, 0o644)
     log(f"wrote governed OpenSpec wrapper {destination}")
 
 
@@ -647,22 +1460,21 @@ def skill_tree_will_be_usable(path: Path, force: bool) -> bool:
     return skill_mode is None or stat.S_ISREG(skill_mode) or force
 
 
-def needs_worktree_git_overlay(repo: Path) -> bool:
-    feature_script = (
-        repo
-        / ".specify"
-        / "extensions"
-        / "git"
-        / "scripts"
-        / "bash"
-        / "create-new-feature.sh"
-    )
-    if not feature_script.exists():
+def has_compatible_worktree_git_overlay(repo: Path) -> bool:
+    overlay_root = repo / ".specify" / "extensions" / "git"
+    contents: dict[str, str] = {}
+    try:
+        for relative_path in WORKTREE_GIT_OVERLAY_REQUIRED_FILES:
+            content = read_destination_text(overlay_root / relative_path)
+            if content is None:
+                return False
+            contents[relative_path] = content
+    except (OSError, UnicodeError):
         return False
 
-    script_text = feature_script.read_text(encoding="utf-8", errors="ignore")
-    required_markers = ("CHECKOUT_MODE", "WORKTREE_PATH", "git worktree")
-    return not all(marker in script_text for marker in required_markers)
+    return LOAD_GIT_WORKTREES_DEFINITION.search(
+        contents["scripts/bash/git-common.sh"]
+    ) is not None
 
 
 def can_write_path_or_parent(path: Path) -> bool:
@@ -916,26 +1728,35 @@ behavior when present.
 
 
 def ensure_scaffold(repo: Path, dry_run: bool, skip_init: bool) -> None:
-    ensure_safe_destination_file(repo / "openspec" / "config.yaml", set())
+    config = repo / "openspec" / "config.yaml"
+    directories = [
+        repo / "openspec" / "changes" / "archive",
+        repo / "openspec" / "specs",
+        repo / ".specify",
+    ]
+    keep_files = [
+        repo / "openspec" / "changes" / "archive" / ".gitkeep",
+        repo / "openspec" / "specs" / ".gitkeep",
+    ]
+    ensure_safe_destination_file(config, set())
+    if not skip_init:
+        for path in [*directories, *keep_files]:
+            ensure_safe_destination_file(path, set())
     write_text_if_missing(
-        repo / "openspec" / "config.yaml",
+        config,
         "schema: spec-driven\n",
         dry_run,
     )
     if skip_init:
         return
-    for directory in [
-        repo / "openspec" / "changes" / "archive",
-        repo / "openspec" / "specs",
-        repo / ".specify",
-    ]:
+    for directory in directories:
         if dry_run:
             if not directory.exists():
                 log(f"would create directory {directory}")
         else:
-            directory.mkdir(parents=True, exist_ok=True)
-    touch(repo / "openspec" / "changes" / "archive" / ".gitkeep", dry_run)
-    touch(repo / "openspec" / "specs" / ".gitkeep", dry_run)
+            ensure_destination_directory(directory)
+    for keep_file in keep_files:
+        touch(keep_file, dry_run)
 
 
 def ensure_skills(
@@ -992,7 +1813,10 @@ def worktree_template_root() -> Path | None:
     candidates: list[Path] = []
     env_root = os.environ.get("SPECKIT_WORKTREE_TEMPLATE_ROOT")
     if env_root:
-        candidates.append(Path(env_root))
+        configured_root = Path(env_root)
+        if mode_without_following(configured_root) is not None:
+            safe_source_tree_entries(configured_root)
+        candidates.append(configured_root)
     candidates.append(Path("/usr/local/share/speckit-worktree/templates"))
 
     script_path = Path(__file__).resolve()
@@ -1008,7 +1832,10 @@ def opsx_command_template_root(agent_root: Path) -> Path | None:
     candidates: list[Path] = []
     env_root = os.environ.get("OPSX_COMMAND_TEMPLATE_ROOT")
     if env_root:
-        candidates.append(Path(env_root))
+        configured_root = Path(env_root)
+        if mode_without_following(configured_root) is not None:
+            safe_source_tree_entries(configured_root)
+        candidates.append(configured_root)
     candidates.extend(
         [
             Path.home() / ".claude" / "commands" / "opsx",
@@ -1022,6 +1849,34 @@ def opsx_command_template_root(agent_root: Path) -> Path | None:
         if candidate.is_dir():
             return candidate
     return None
+
+
+def preflight_source_roots(
+    agent_root: Path,
+    skip_worktrees: bool,
+    skip_skill_links: bool,
+) -> tuple[Path | None, Path | None]:
+    template_root: Path | None = None
+    if not skip_worktrees:
+        template_root = worktree_template_root()
+        if template_root is None:
+            raise SystemExit("Speckit worktree template root not found.")
+        safe_source_tree_entries(template_root)
+
+    command_template_root = opsx_command_template_root(agent_root)
+    if command_template_root is not None:
+        safe_source_tree_entries(command_template_root)
+
+    if not skip_skill_links:
+        skill_roots = (
+            Path.home() / ".claude" / "skills",
+            Path.home() / ".codex" / "skills",
+            Path.home() / ".agents" / "skills",
+        )
+        for source_root in skill_roots:
+            for skill in SKILLS:
+                safe_source_tree_entries(source_root / skill)
+    return template_root, command_template_root
 
 
 def default_base_branch(repo: Path) -> str:
@@ -1046,9 +1901,9 @@ def default_base_branch(repo: Path) -> str:
 
 
 def set_top_level_yml_values(path: Path, values: dict[str, str], dry_run: bool) -> None:
-    if path.exists():
-        lines = path.read_text(encoding="utf-8").splitlines()
-    else:
+    ensure_safe_destination_file(path, set())
+    existing_text = read_destination_text(path)
+    if existing_text is None:
         lines = [
             "# Git Branching Workflow Extension Configuration",
             "# Managed by setup-openspeckit. Rerun after Speckit upgrades.",
@@ -1070,6 +1925,8 @@ def set_top_level_yml_values(path: Path, values: dict[str, str], dry_run: bool) 
             "auto_commit:",
             "  default: false",
         ]
+    else:
+        lines = existing_text.splitlines()
 
     seen: set[str] = set()
     updated: list[str] = []
@@ -1098,14 +1955,14 @@ def set_top_level_yml_values(path: Path, values: dict[str, str], dry_run: bool) 
 
 def ensure_extensions_hook(repo: Path, dry_run: bool) -> None:
     path = repo / ".specify" / "extensions.yml"
+    ensure_safe_destination_file(path, set())
     hook_text = "speckit.git.feature"
-    if path.exists() and hook_text in path.read_text(encoding="utf-8"):
+    existing_text = read_destination_text(path)
+    if existing_text is not None and hook_text in existing_text:
         log(f"unchanged {path}")
         return
 
-    if path.exists():
-        lines = path.read_text(encoding="utf-8").splitlines()
-    else:
+    if existing_text is None:
         lines = [
             "installed:",
             "- git",
@@ -1113,6 +1970,8 @@ def ensure_extensions_hook(repo: Path, dry_run: bool) -> None:
             "  auto_execute_hooks: true",
             "hooks:",
         ]
+    else:
+        lines = existing_text.splitlines()
 
     hook = [
         "- extension: git",
@@ -1162,10 +2021,11 @@ def refresh_git_extension_manifest_hash(
     if not isinstance(git_extension, dict):
         return
 
-    if not manifest.exists():
+    manifest_content = read_destination_bytes(manifest)
+    if manifest_content is None:
         return
 
-    manifest_hash = f"sha256:{hashlib.sha256(manifest.read_bytes()).hexdigest()}"
+    manifest_hash = f"sha256:{hashlib.sha256(manifest_content).hexdigest()}"
     if git_extension.get("manifest_hash") == manifest_hash:
         log(f"unchanged Git extension manifest hash in {registry_path}")
         return
@@ -1175,6 +2035,7 @@ def refresh_git_extension_manifest_hash(
 
 def ensure_worktree_overlay(
     repo: Path,
+    template_root: Path | None,
     dry_run: bool,
     force: bool,
     base_branch: str | None,
@@ -1184,13 +2045,12 @@ def ensure_worktree_overlay(
     if skip_worktrees:
         return set()
 
-    template_root = worktree_template_root()
     if template_root is None:
         raise SystemExit("Speckit worktree template root not found.")
 
-    git_overlay_force = force or needs_worktree_git_overlay(repo)
+    git_overlay_force = force or not has_compatible_worktree_git_overlay(repo)
     if git_overlay_force and not force:
-        log("replacing stock Spec Kit git extension with worktree-aware overlay")
+        log("replacing incompatible Spec Kit git extension with worktree-aware overlay")
 
     copy_overlay_tree(template_root / "specify" / "extensions" / "git", repo / ".specify" / "extensions" / "git", dry_run, git_overlay_force)
     copy_overlay_tree(template_root / "specify" / "shell", repo / ".specify" / "shell", dry_run, force)
@@ -1244,16 +2104,31 @@ def ensure_worktree_overlay(
         ):
             overlay_owned_destinations.add(destination)
 
-    resolved_base_branch = base_branch or default_base_branch(repo)
-    resolved_worktree_root = worktree_root or f"../{repo.name}-worktrees"
+    config_path = repo / ".specify" / "extensions" / "git" / "git-config.yml"
+    existing_config = read_destination_text(config_path)
+    existing_keys: set[str] = set()
+    if existing_config is not None:
+        for line in existing_config.splitlines():
+            stripped = line.lstrip()
+            if len(line) == len(stripped) and ":" in stripped:
+                existing_keys.add(stripped.split(":", 1)[0].strip())
+
+    required_values = {
+        "branch_numbering": "sequential",
+        "checkout_mode": "worktree",
+        "base_branch": default_base_branch(repo),
+        "worktree_root": f"../{repo.name}-worktrees",
+    }
+    values = {
+        key: value for key, value in required_values.items() if key not in existing_keys
+    }
+    if base_branch is not None:
+        values["base_branch"] = base_branch
+    if worktree_root is not None:
+        values["worktree_root"] = worktree_root
     set_top_level_yml_values(
-        repo / ".specify" / "extensions" / "git" / "git-config.yml",
-        {
-            "branch_numbering": "sequential",
-            "checkout_mode": "worktree",
-            "base_branch": resolved_base_branch,
-            "worktree_root": resolved_worktree_root,
-        },
+        config_path,
+        values,
         dry_run,
     )
     ensure_extensions_hook(repo, dry_run)
@@ -1274,7 +2149,13 @@ def ensure_worktree_overlay(
 def main() -> int:
     args = parse_args()
     repo = (args.repo.resolve() if args.repo else git_root())
+    ensure_safe_specify_destination(repo)
     agent_root = Path(os.environ.get("AGENT_PROTOCOL_ROOT", Path.home() / ".agents")).resolve()
+    worktree_templates, command_templates = preflight_source_roots(
+        agent_root,
+        args.no_worktrees,
+        args.no_skill_links,
+    )
     integration = args.integration or existing_integration(repo) or "claude"
 
     log(f"repo: {repo}")
@@ -1287,6 +2168,7 @@ def main() -> int:
     ensure_speckit_registration(repo, args.dry_run, args.no_speckit_registration)
     overlay_owned_destinations = ensure_worktree_overlay(
         repo,
+        worktree_templates,
         args.dry_run,
         args.force,
         args.base_branch,
@@ -1301,10 +2183,9 @@ def main() -> int:
         write_text(repo / "openspec" / "README.md", openspec_readme(), args.dry_run)
         write_text(repo / ".specify" / "README.md", specify_readme(), args.dry_run)
 
-    template_root = opsx_command_template_root(agent_root)
-    if template_root:
+    if command_templates:
         copy_missing_tree(
-            template_root,
+            command_templates,
             repo / ".claude" / "commands" / "opsx",
             args.dry_run,
             args.force,
