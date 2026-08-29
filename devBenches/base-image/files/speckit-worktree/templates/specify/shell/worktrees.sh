@@ -5,13 +5,53 @@
 # This file is kept as a per-repo fallback for environments without the
 # container-level helpers.
 
+_speckit_worktree_capture_path() {
+  local frame='__SPECKIT_PATH_CAPTURE_FRAME_7D3A9C__'
+  local captured capture_status producer_status
+
+  _SPECKIT_WORKTREE_CAPTURED_PATH=""
+  if captured="$(
+    if "$@"; then
+      producer_status=0
+    else
+      producer_status=$?
+    fi
+    printf '%s' "$frame"
+    exit "$producer_status"
+  )"; then
+    capture_status=0
+  else
+    capture_status=$?
+  fi
+
+  case "$captured" in
+    *"$frame") captured="${captured%"$frame"}" ;;
+    *) [ "$capture_status" -ne 0 ] && return "$capture_status"; return 1 ;;
+  esac
+  [ "$capture_status" -eq 0 ] || return "$capture_status"
+  case "$captured" in
+    *$'\n') captured="${captured%$'\n'}" ;;
+  esac
+  _SPECKIT_WORKTREE_CAPTURED_PATH="$captured"
+}
+
+_speckit_worktree_print_repo_root() {
+  local script_path script_dir
+
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    CDPATH="" cd "${${(%):-%x}:A:h}/../.." 2>/dev/null && pwd
+  else
+    script_path="${BASH_SOURCE[0]:-$0}"
+    script_dir="${script_path%/*}"
+    [ "$script_dir" != "$script_path" ] || script_dir=.
+    CDPATH="" cd "$script_dir/../.." 2>/dev/null && pwd
+  fi
+}
+
 # Auto-detect repo root from this script's own location so the file is
 # relocatable and does not embed a host-specific absolute path.
-if [ -n "${ZSH_VERSION:-}" ]; then
-  SPECKIT_WORKTREE_REPO_ROOT="$(CDPATH="" cd "${${(%):-%x}:A:h}/../.." 2>/dev/null && pwd)"
-else
-  SPECKIT_WORKTREE_REPO_ROOT="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." 2>/dev/null && pwd)"
-fi
+_speckit_worktree_capture_path _speckit_worktree_print_repo_root || return $?
+SPECKIT_WORKTREE_REPO_ROOT="$_SPECKIT_WORKTREE_CAPTURED_PATH"
 SPECKIT_WORKTREE_LAST_WORKTREE_SCRIPT="$SPECKIT_WORKTREE_REPO_ROOT/.specify/extensions/git/scripts/bash/get-last-worktree.sh"
 SPECKIT_WORKTREE_SELECT_WORKTREE_SCRIPT="$SPECKIT_WORKTREE_REPO_ROOT/.specify/shell/select-worktree.sh"
 
@@ -85,14 +125,15 @@ _speckit_worktree_prompt_cli() {
 }
 
 _speckit_worktree_select_worktree() {
-  local target
+  local target _SPECKIT_WORKTREE_CAPTURED_PATH
 
   if [ ! -f "$SPECKIT_WORKTREE_SELECT_WORKTREE_SCRIPT" ]; then
     echo "worktree selector not found: $SPECKIT_WORKTREE_SELECT_WORKTREE_SCRIPT" >&2
     return 1
   fi
 
-  target=$(bash "$SPECKIT_WORKTREE_SELECT_WORKTREE_SCRIPT" --path) || return 1
+  _speckit_worktree_capture_path bash "$SPECKIT_WORKTREE_SELECT_WORKTREE_SCRIPT" --path || return 1
+  target="$_SPECKIT_WORKTREE_CAPTURED_PATH"
   if [ -z "$target" ]; then
     echo "no Speckit worktree selected" >&2
     return 1
@@ -140,14 +181,15 @@ _speckit_worktree_start_gemini() {
 }
 
 ct() {
-  local target
+  local target _SPECKIT_WORKTREE_CAPTURED_PATH
 
   if [ ! -f "$SPECKIT_WORKTREE_LAST_WORKTREE_SCRIPT" ]; then
     echo "ct: helper script not found: $SPECKIT_WORKTREE_LAST_WORKTREE_SCRIPT" >&2
     return 1
   fi
 
-  target=$(bash "$SPECKIT_WORKTREE_LAST_WORKTREE_SCRIPT") || return 1
+  _speckit_worktree_capture_path bash "$SPECKIT_WORKTREE_LAST_WORKTREE_SCRIPT" || return 1
+  target="$_SPECKIT_WORKTREE_CAPTURED_PATH"
   if [ -z "$target" ]; then
     echo "ct: no Speckit worktree path returned" >&2
     return 1
@@ -166,46 +208,51 @@ ctp() {
 }
 
 cta() {
-  local target
+  local target _SPECKIT_WORKTREE_CAPTURED_PATH
 
   if ! command -v claude >/dev/null 2>&1; then
     echo "cta: Claude CLI not found on PATH" >&2
     return 1
   fi
 
-  target=$(_speckit_worktree_select_worktree) || return 1
+  _speckit_worktree_capture_path _speckit_worktree_select_worktree || return 1
+  target="$_SPECKIT_WORKTREE_CAPTURED_PATH"
   _speckit_worktree_start_claude "$target" "$@"
 }
 
 ctc() {
-  local target
+  local target _SPECKIT_WORKTREE_CAPTURED_PATH
 
   if ! command -v codex >/dev/null 2>&1; then
     echo "ctc: Codex CLI not found on PATH" >&2
     return 1
   fi
 
-  target=$(_speckit_worktree_select_worktree) || return 1
+  _speckit_worktree_capture_path _speckit_worktree_select_worktree || return 1
+  target="$_SPECKIT_WORKTREE_CAPTURED_PATH"
   _speckit_worktree_start_codex "$target" "$@"
 }
 
 ctg() {
-  local target
+  local target _SPECKIT_WORKTREE_CAPTURED_PATH
 
   if ! command -v gemini >/dev/null 2>&1; then
     echo "ctg: Gemini CLI not found on PATH" >&2
     return 1
   fi
 
-  target=$(_speckit_worktree_select_worktree) || return 1
+  _speckit_worktree_capture_path _speckit_worktree_select_worktree || return 1
+  target="$_SPECKIT_WORKTREE_CAPTURED_PATH"
   _speckit_worktree_start_gemini "$target" "$@"
 }
 
 cts() {
   local target
   local cli_command
+  local _SPECKIT_WORKTREE_CAPTURED_PATH
 
-  target=$(_speckit_worktree_select_worktree) || return 1
+  _speckit_worktree_capture_path _speckit_worktree_select_worktree || return 1
+  target="$_SPECKIT_WORKTREE_CAPTURED_PATH"
   cli_command=$(_speckit_worktree_prompt_cli) || return 1
   case "$cli_command" in
     claude)
