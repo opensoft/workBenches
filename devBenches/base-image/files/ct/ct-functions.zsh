@@ -6,47 +6,90 @@
 # per-repo helper scripts under `.specify/`. When a worktree's Git metadata is
 # container-relative, it falls back to the nearest `.specify/` checkout.
 
-_ct_find_specify_root_from_pwd() {
-    local dir
+_ct_capture_path() {
+    local frame='__SPECKIT_PATH_CAPTURE_FRAME_7D3A9C__'
+    local captured capture_status producer_status
 
-    dir=$(pwd -P 2>/dev/null || pwd)
+    _CT_CAPTURED_PATH=""
+    if captured="$(
+        if "$@"; then
+            producer_status=0
+        else
+            producer_status=$?
+        fi
+        printf '%s' "$frame"
+        exit "$producer_status"
+    )"; then
+        capture_status=0
+    else
+        capture_status=$?
+    fi
+
+    case "$captured" in
+        *"$frame") captured="${captured%"$frame"}" ;;
+        *) [ "$capture_status" -ne 0 ] && return "$capture_status"; return 1 ;;
+    esac
+    [ "$capture_status" -eq 0 ] || return "$capture_status"
+    case "$captured" in
+        *$'\n') captured="${captured%$'\n'}" ;;
+    esac
+    _CT_CAPTURED_PATH="$captured"
+}
+
+_ct_print_pwd() {
+    pwd -P 2>/dev/null || pwd
+}
+
+_ct_find_specify_root_from_pwd() {
+    local dir _CT_CAPTURED_PATH
+
+    _ct_capture_path _ct_print_pwd || return 1
+    dir="$_CT_CAPTURED_PATH"
     while [ -n "$dir" ] && [ "$dir" != "/" ]; do
         if [ -d "$dir/.specify" ]; then
             printf '%s\n' "$dir"
             return 0
         fi
-        dir=$(dirname "$dir")
+        _ct_capture_path dirname "$dir" || return 1
+        dir="$_CT_CAPTURED_PATH"
     done
 
     return 1
 }
 
 _ct_repo_root() {
-    local root git_root fallback_root
+    local root git_root fallback_root _CT_CAPTURED_PATH
 
-    root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+    if _ct_capture_path git rev-parse --show-toplevel 2>/dev/null; then
+        root="$_CT_CAPTURED_PATH"
+    else
+        root=""
+    fi
     if [ -z "$root" ]; then
-        root=$(_ct_find_specify_root_from_pwd) || {
+        _ct_capture_path _ct_find_specify_root_from_pwd || {
             echo "ct: not inside a Git repository or Speckit checkout" >&2
             return 1
         }
+        root="$_CT_CAPTURED_PATH"
     fi
 
     if [ ! -d "$root/.specify" ]; then
         git_root="$root"
-        fallback_root=$(_ct_find_specify_root_from_pwd) || {
+        _ct_capture_path _ct_find_specify_root_from_pwd || {
             echo "ct: .specify/ not found in repo root or parent directories: $git_root" >&2
             return 1
         }
+        fallback_root="$_CT_CAPTURED_PATH"
         root="$fallback_root"
     fi
     printf '%s\n' "$root"
 }
 
 _ct_last_worktree_script() {
-    local root script
+    local root script _CT_CAPTURED_PATH
 
-    root=$(_ct_repo_root) || return 1
+    _ct_capture_path _ct_repo_root || return 1
+    root="$_CT_CAPTURED_PATH"
     script="$root/.specify/extensions/git/scripts/bash/get-last-worktree.sh"
 
     if [ ! -f "$script" ]; then
@@ -58,9 +101,10 @@ _ct_last_worktree_script() {
 }
 
 _ct_select_worktree_script() {
-    local root script
+    local root script _CT_CAPTURED_PATH
 
-    root=$(_ct_repo_root) || return 1
+    _ct_capture_path _ct_repo_root || return 1
+    root="$_CT_CAPTURED_PATH"
     script="$root/.specify/shell/select-worktree.sh"
 
     if [ ! -f "$script" ]; then
@@ -72,10 +116,12 @@ _ct_select_worktree_script() {
 }
 
 _ct_select_worktree() {
-    local script target
+    local script target _CT_CAPTURED_PATH
 
-    script=$(_ct_select_worktree_script) || return 1
-    target=$(bash "$script" --path) || return 1
+    _ct_capture_path _ct_select_worktree_script || return 1
+    script="$_CT_CAPTURED_PATH"
+    _ct_capture_path bash "$script" --path || return 1
+    target="$_CT_CAPTURED_PATH"
 
     if [ -z "$target" ]; then
         echo "ct: no Speckit worktree selected" >&2
@@ -167,8 +213,6 @@ _ct_start_claude() {
     shift || true
     _ct_start_cli claude "$target" \
         --model opus \
-        --dangerously-skip-permissions \
-        --permission-mode bypassPermissions \
         --teammate-mode tmux \
         "$@"
 }
@@ -223,15 +267,14 @@ _ct_dashboard_toggle_script() {
 
 _ct_start_claude_with_dashboard() {
     local target="$1"
-    local prompt_file
+    local prompt_file _CT_CAPTURED_PATH
 
     shift || true
-    prompt_file=$(_ct_dashboard_prompt_file) || return 1
+    _ct_capture_path _ct_dashboard_prompt_file || return 1
+    prompt_file="$_CT_CAPTURED_PATH"
 
     _ct_start_cli claude "$target" \
         --model opus \
-        --dangerously-skip-permissions \
-        --permission-mode bypassPermissions \
         --teammate-mode tmux \
         --append-system-prompt-file "$prompt_file" \
         "$@"
@@ -269,9 +312,10 @@ _ct_enable_tmux_mouse_copy_mode() {
 _ct_dashboard_command() {
     local target="$1"
     local dashboard_file="$target/.claude/dashboard.md"
-    local dashboard_script
+    local dashboard_script _CT_CAPTURED_PATH
 
-    dashboard_script=$(_ct_dashboard_script) || return 1
+    _ct_capture_path _ct_dashboard_script || return 1
+    dashboard_script="$_CT_CAPTURED_PATH"
 
     printf 'SPECKIT_DASHBOARD_FILE=%s SPECKIT_DASHBOARD_CWD=%s bash %s --loop\n' \
         "$(_ct_shell_quote "$dashboard_file")" \
@@ -280,9 +324,10 @@ _ct_dashboard_command() {
 }
 
 _ct_bind_dashboard_toggle() {
-    local toggle_script
+    local toggle_script _CT_CAPTURED_PATH
 
-    toggle_script=$(_ct_dashboard_toggle_script) || return 1
+    _ct_capture_path _ct_dashboard_toggle_script || return 1
+    toggle_script="$_CT_CAPTURED_PATH"
     tmux bind-key D run-shell "bash $(_ct_shell_quote "$toggle_script")" >/dev/null 2>&1
 }
 
@@ -396,14 +441,13 @@ _ct_open_dashboard_pane() {
 }
 
 _ct_claude_dashboard_command_string() {
-    local prompt_file command_string extra_args
+    local prompt_file command_string extra_args _CT_CAPTURED_PATH
 
-    prompt_file=$(_ct_dashboard_prompt_file) || return 1
+    _ct_capture_path _ct_dashboard_prompt_file || return 1
+    prompt_file="$_CT_CAPTURED_PATH"
     command_string=$(_ct_shell_quote \
         claude \
         --model opus \
-        --dangerously-skip-permissions \
-        --permission-mode bypassPermissions \
         --teammate-mode tmux \
         --append-system-prompt-file "$prompt_file") || return 1
 
@@ -476,7 +520,6 @@ _ct_start_codex() {
 
     shift || true
     _ct_start_cli codex "$target" \
-        --dangerously-bypass-approvals-and-sandbox \
         -m gpt-5.4 \
         -c 'model_reasoning_effort="high"' \
         "$@"
@@ -487,17 +530,17 @@ _ct_start_gemini() {
 
     shift || true
     _ct_start_cli gemini "$target" \
-        --yolo \
-        --approval-mode yolo \
         --model gemini-2.5-pro \
         "$@"
 }
 
 ct() {
-    local script target
+    local script target _CT_CAPTURED_PATH
 
-    script=$(_ct_last_worktree_script) || return 1
-    target=$(bash "$script") || return 1
+    _ct_capture_path _ct_last_worktree_script || return 1
+    script="$_CT_CAPTURED_PATH"
+    _ct_capture_path bash "$script" || return 1
+    target="$_CT_CAPTURED_PATH"
 
     if [ -z "$target" ]; then
         echo "ct: no Speckit worktree path returned" >&2
@@ -508,21 +551,23 @@ ct() {
 }
 
 ctp() {
-    local script
+    local script _CT_CAPTURED_PATH
 
-    script=$(_ct_last_worktree_script) || return 1
+    _ct_capture_path _ct_last_worktree_script || return 1
+    script="$_CT_CAPTURED_PATH"
     bash "$script" --json
 }
 
 ctlist() {
-    local script
+    local script _CT_CAPTURED_PATH
 
-    script=$(_ct_select_worktree_script) || return 1
+    _ct_capture_path _ct_select_worktree_script || return 1
+    script="$_CT_CAPTURED_PATH"
     bash "$script" --list
 }
 
 cta() {
-    local target
+    local target _CT_CAPTURED_PATH
 
     if ! command -v claude >/dev/null 2>&1; then
         echo "cta: Claude CLI not found on PATH" >&2
@@ -534,38 +579,42 @@ cta() {
         return 1
     fi
 
-    target=$(_ct_select_worktree) || return 1
+    _ct_capture_path _ct_select_worktree || return 1
+    target="$_CT_CAPTURED_PATH"
     _ct_start_claude_in_tmux "$target" "$@"
 }
 
 ctc() {
-    local target
+    local target _CT_CAPTURED_PATH
 
     if ! command -v codex >/dev/null 2>&1; then
         echo "ctc: Codex CLI not found on PATH" >&2
         return 1
     fi
 
-    target=$(_ct_select_worktree) || return 1
+    _ct_capture_path _ct_select_worktree || return 1
+    target="$_CT_CAPTURED_PATH"
     _ct_start_codex "$target" "$@"
 }
 
 ctg() {
-    local target
+    local target _CT_CAPTURED_PATH
 
     if ! command -v gemini >/dev/null 2>&1; then
         echo "ctg: Gemini CLI not found on PATH" >&2
         return 1
     fi
 
-    target=$(_ct_select_worktree) || return 1
+    _ct_capture_path _ct_select_worktree || return 1
+    target="$_CT_CAPTURED_PATH"
     _ct_start_gemini "$target" "$@"
 }
 
 cts() {
-    local target cli_command
+    local target cli_command _CT_CAPTURED_PATH
 
-    target=$(_ct_select_worktree) || return 1
+    _ct_capture_path _ct_select_worktree || return 1
+    target="$_CT_CAPTURED_PATH"
     cli_command=$(_ct_prompt_cli) || return 1
 
     case "$cli_command" in

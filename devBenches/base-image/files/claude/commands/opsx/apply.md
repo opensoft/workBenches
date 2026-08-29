@@ -1,11 +1,11 @@
 ---
 name: "OPSX: Apply"
-description: Implement tasks from an OpenSpec change using agent teams for parallel execution
+description: Execute the one Speckit feature linked from an OpenSpec change
 category: Workflow
 tags: [workflow, artifacts, experimental, teams]
 ---
 
-Implement tasks from an OpenSpec change. Uses agent teams to parallelize independent tasks across non-overlapping file groups.
+Apply a governed OpenSpec change by executing the tasks in its one linked Speckit feature. OpenSpec remains the decision and handoff record; `specs/<feature>/tasks.md` is the only executable task authority.
 
 **Input**: Optionally specify a change name (e.g., `/opsx:apply add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
@@ -26,23 +26,30 @@ Implement tasks from an OpenSpec change. Uses agent teams to parallelize indepen
    ```bash
    openspec status --change "<name>" --json
    ```
-   Parse `schemaName`, artifact status, and which artifact contains tasks.
+   Parse `schemaName`, artifact status, and which artifact contains the governance/handoff record.
 
 3. **Get apply instructions**
    ```bash
    openspec instructions apply --change "<name>" --json
    ```
    - If `state: "blocked"` (missing artifacts): show message, suggest `/opsx:propose`
-   - If `state: "all_done"`: congratulate, suggest `/opsx:archive`
+   - If `state: "all_done"`: OpenSpec governance is complete; continue to resolve and execute the linked Speckit feature. Do not infer implementation completion or suggest archive from this state.
    - Otherwise: proceed
 
 4. **Read context files**
 
-   Read ALL files from `contextFiles` in the apply instructions output (proposal, design, specs, tasks, clarifications if present).
+   Read ALL files from `contextFiles` in the apply instructions output (proposal, design, specs, governance tasks, clarifications if present).
 
-5. **Show progress**
+5. **Resolve the Speckit handoff**
+   - Read the OpenSpec handoff and identify exactly one Speckit feature identifier, branch, and repo-relative task path
+   - Resolve its worktree using the repository's Speckit worktree helpers; do not assume a host-absolute path from a committed artifact
+   - Read `specs/<feature>/spec.md`, `plan.md`, design artifacts, and `tasks.md` from that worktree
+   - If the link is missing, stale, or ambiguous, stop with a precise error and direct the user to create or repair the single handoff. Do not implement from OpenSpec's governance checklist.
+
+6. **Show progress**
    - Schema being used
-   - "N/M tasks complete"
+   - Linked Speckit feature and worktree
+   - "N/M Speckit tasks complete"
    - Remaining tasks overview
 
 ---
@@ -53,7 +60,7 @@ Before implementing, analyze the pending tasks to determine the execution strate
 
 ### Step 1: Build the task dependency graph
 
-For each pending task, determine:
+For each pending task in `specs/<feature>/tasks.md`, determine:
 - **Which files it will create or modify** (infer from the task description and design.md)
 - **Which tasks it depends on** (does it reference output from another task?)
 - **Which tasks are independent** (no shared files, no dependency)
@@ -79,6 +86,9 @@ Group independent tasks into **work packages**, where each package:
 - Contains tasks that share related files (same service, same model, same test file)
 - Has **zero file overlap** with other packages
 - Has its internal tasks ordered by dependency
+
+The linked Speckit `tasks.md` is lead-owned coordination state, not a package
+file. Only the lead may edit the linked Speckit `tasks.md`.
 
 Example grouping:
 ```
@@ -127,16 +137,18 @@ prompt must include:
 3. Full file paths for all context files (proposal, design, specs, clarifications)
 4. The specific tasks to implement, in order
 5. The files they own (create/modify only these)
-6. Instruction to mark tasks complete with `- [ ]` → `- [x]` in tasks.md — **but only their assigned tasks**
-7. Instruction to report back when done or blocked
+6. Instruction: Do not edit the linked Speckit `tasks.md`
+7. Instruction to report completed task IDs, changed files, tests run, and blockers
 
 **CRITICAL file ownership rules:**
 - Each agent ONLY modifies files in its assigned package
-- `tasks.md` checkbox updates: each agent updates ONLY its own task checkboxes
+- The linked Speckit `tasks.md` is excluded from every teammate's file ownership
+- Agents never add implementation tasks or completion checkboxes to the OpenSpec governance record
 - If an agent discovers it needs to modify a file owned by another agent, it reports the dependency instead of making the change
 
 ### Monitor & coordinate
 - Wait for agents to complete or report blockers
+- For every teammate report, verify each package result before marking its reported task IDs complete in the linked Speckit `tasks.md`
 - If an agent is blocked on another package, check if the blocking package is done
 - When a wave completes, check for newly-unblocked packages and spawn the next wave
 - Handle conflicts: if two agents report needing the same file, reassign one
@@ -150,11 +162,11 @@ After all packages complete:
 
 ## Phase 4: Sequential Execution (Fallback)
 
-For each pending task:
+For each pending Speckit task:
 - Show which task is being worked on
 - Make the code changes required
 - Keep changes minimal and focused
-- Mark task complete: `- [ ]` → `- [x]`
+- Mark the linked Speckit task complete: `- [ ]` → `- [x]`
 - Continue to next task
 
 **Pause if:**
@@ -175,14 +187,15 @@ For each pending task:
 **Change:** <change-name>
 **Schema:** <schema-name>
 **Strategy:** [Sequential | Parallel — N agents, M waves]
-**Progress:** N/N tasks complete
+**Speckit feature:** <feature-id>
+**Progress:** N/N Speckit tasks complete
 
 ### Completed This Session
 - [x] Task 1.1 — description
 - [x] Task 1.2 — description
 ...
 
-All tasks complete! Run `/opsx:archive` to archive this change.
+All linked Speckit tasks complete and verified. Record landing state in the OpenSpec handoff, then run `/opsx:archive` after the implementation has landed.
 ```
 
 ### On pause (issue encountered)
@@ -192,7 +205,8 @@ All tasks complete! Run `/opsx:archive` to archive this change.
 
 **Change:** <change-name>
 **Schema:** <schema-name>
-**Progress:** N/M tasks complete
+**Speckit feature:** <feature-id>
+**Progress:** N/M Speckit tasks complete
 
 ### Issue Encountered
 <description of the issue>
@@ -211,7 +225,8 @@ What would you like to do?
 
 - **Analyze before parallelizing** — Don't blindly spawn agents. Build the dependency graph first.
 - **Zero file overlap between agents** — This is the #1 rule. If two packages share a file, merge them into one package.
-- **tasks.md ownership** — Each agent only checks off its own tasks. The lead can check off integration tasks.
+- **Single task authority** — Only the linked Speckit `tasks.md` contains executable implementation tasks. OpenSpec contains governance and handoff state only.
+- **Speckit tasks.md ownership** — Only the lead may edit or check off the linked Speckit `tasks.md`, after verifying the implementation and evidence reported for each task.
 - **Keep going until done or blocked** — Don't stop between tasks unless there's a reason.
 - **Read all context before starting** — Agents must read the design, specs, and clarifications relevant to their package.
 - **Pause on ambiguity** — Don't guess. Pause and ask.
@@ -223,4 +238,4 @@ What would you like to do?
 This command supports the "actions on a change" model:
 - Can be invoked anytime: before all artifacts are done (if tasks exist), after partial implementation, interleaved with other actions
 - Allows artifact updates: if implementation reveals design issues, suggest updating artifacts
-- Re-running `/opsx:apply` picks up where it left off (reads checkboxes to find remaining tasks)
+- Re-running `/opsx:apply` picks up where it left off by reading the linked Speckit task checkboxes

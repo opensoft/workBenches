@@ -27,24 +27,28 @@ function Test-FeatureBranch {
         return $true
     }
 
+    $featureSegment = ($Branch -split '/')[-1]
+
     # Reject malformed timestamps (7-digit date or no trailing slug)
-    $hasMalformedTimestamp = ($Branch -match '^[0-9]{7}-[0-9]{6}-') -or
-                            ($Branch -match '^(?:\d{7}|\d{8})-\d{6}$')
+    $hasMalformedTimestamp = ($featureSegment -match '^[0-9]{7}-[0-9]{6}-') -or
+                            ($featureSegment -match '^(?:\d{7}|\d{8})-\d{6}$')
     if ($hasMalformedTimestamp) {
         Write-Output "ERROR: Not on a feature branch. Current branch: $Branch"
-        Write-Output "Feature branches should be named like: 001-feature-name or 20260319-143022-feature-name"
+        Write-Output "Feature branches should be named like: 001-feature-name, 20260319-143022-feature-name, or <namespace>/001-feature-name"
         return $false
     }
 
     # Accept sequential (>=3 digits followed by hyphen) or timestamp (YYYYMMDD-HHMMSS-*)
-    $isSequential = ($Branch -match '^[0-9]{3,}-') -and (-not $hasMalformedTimestamp)
-    $isTimestamp = $Branch -match '^\d{8}-\d{6}-'
+    $isSequential = ($featureSegment -match '^[0-9]{3,}-.+') -and
+                    ($featureSegment -notmatch '^\d{8}-\d{6}-') -and
+                    (-not $hasMalformedTimestamp)
+    $isTimestamp = $featureSegment -match '^\d{8}-\d{6}-.+'
 
     if ($isSequential -or $isTimestamp) {
         return $true
     }
 
     Write-Output "ERROR: Not on a feature branch. Current branch: $Branch"
-    Write-Output "Feature branches should be named like: 001-feature-name or 20260319-143022-feature-name"
+    Write-Output "Feature branches should be named like: 001-feature-name, 20260319-143022-feature-name, or <namespace>/001-feature-name"
     return $false
 }

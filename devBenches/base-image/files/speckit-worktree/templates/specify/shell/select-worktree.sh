@@ -2,8 +2,58 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(CDPATH="" cd "$SCRIPT_DIR/../.." && pwd)"
+capture_path() {
+    local frame='__SPECKIT_PATH_CAPTURE_FRAME_7D3A9C__'
+    local captured capture_status producer_status
+
+    CAPTURED_PATH=""
+    if captured="$(
+        if "$@"; then
+            producer_status=0
+        else
+            producer_status=$?
+        fi
+        printf '%s' "$frame"
+        exit "$producer_status"
+    )"; then
+        capture_status=0
+    else
+        capture_status=$?
+    fi
+
+    case "$captured" in
+        *"$frame") captured="${captured%"$frame"}" ;;
+        *) [ "$capture_status" -ne 0 ] && return "$capture_status"; return 1 ;;
+    esac
+    [ "$capture_status" -eq 0 ] || return "$capture_status"
+    case "$captured" in
+        *$'\n') captured="${captured%$'\n'}" ;;
+    esac
+    CAPTURED_PATH="$captured"
+}
+
+print_script_dir() {
+    local script_path="${BASH_SOURCE[0]}"
+    local script_dir="${script_path%/*}"
+
+    [ "$script_dir" != "$script_path" ] || script_dir=.
+    CDPATH="" cd "$script_dir" && pwd
+}
+
+print_canonical_dir() {
+    CDPATH="" cd "$1" && pwd -P
+}
+
+capture_path print_script_dir
+SCRIPT_DIR="$CAPTURED_PATH"
+capture_path print_canonical_dir "$SCRIPT_DIR/../.."
+REPO_ROOT="$CAPTURED_PATH"
+GIT_COMMON_SCRIPT="$SCRIPT_DIR/../extensions/git/scripts/bash/git-common.sh"
+if [ ! -f "$GIT_COMMON_SCRIPT" ]; then
+    echo "Error: Could not locate the Git extension git-common.sh." >&2
+    exit 1
+fi
+source "$GIT_COMMON_SCRIPT"
 
 trim() {
     local value="$1"
@@ -59,24 +109,77 @@ mtime_for_path() {
     fi
 }
 
-list_worktree_dirs_by_mtime() {
-    local root="$1"
-    local path mtime
+REGISTERED_WORKTREE_PATHS=()
+REGISTERED_WORKTREE_BRANCHES=()
+REGISTERED_WORKTREE_MTIMES=()
 
-    find "$root" -maxdepth 1 -mindepth 1 -type d -print 2>/dev/null |
-        while IFS= read -r path; do
-            mtime="$(mtime_for_path "$path" 2>/dev/null || true)"
-            [ -n "$mtime" ] || continue
-            printf '%s\t%s\n' "$mtime" "$path"
-        done |
-        sort -rn |
-        sed -n $'s/^[^\t]*\t//p'
+insert_registered_worktree() {
+    local root="$1"
+    local main_root="$2"
+    local path="$3"
+    local branch="$4"
+    local head="$5"
+    local detached="$6"
+    local canonical_path mtime
+    local candidate_count insert_at index previous_index
+
+    verify_git_worktree_candidate "$main_root" "$root" "$path" "$head" "$branch" "$detached" || return 0
+    canonical_path="$GIT_WORKTREE_VERIFIED_PATH"
+    branch="$GIT_WORKTREE_VERIFIED_BRANCH_REF"
+    mtime="$(mtime_for_path "$canonical_path" 2>/dev/null || true)"
+    [ -n "$mtime" ] || return 0
+    branch="${branch#refs/heads/}"
+    [ -n "$branch" ] || branch="(detached)"
+
+    candidate_count=${#REGISTERED_WORKTREE_PATHS[@]}
+    insert_at=$candidate_count
+    index=0
+    while [ "$index" -lt "$candidate_count" ]; do
+        if [ "$mtime" -gt "${REGISTERED_WORKTREE_MTIMES[$index]}" ]; then
+            insert_at=$index
+            break
+        fi
+        index=$((index + 1))
+    done
+
+    REGISTERED_WORKTREE_PATHS+=("")
+    REGISTERED_WORKTREE_BRANCHES+=("")
+    REGISTERED_WORKTREE_MTIMES+=("")
+    index=$candidate_count
+    while [ "$index" -gt "$insert_at" ]; do
+        previous_index=$((index - 1))
+        REGISTERED_WORKTREE_PATHS[$index]="${REGISTERED_WORKTREE_PATHS[$previous_index]}"
+        REGISTERED_WORKTREE_BRANCHES[$index]="${REGISTERED_WORKTREE_BRANCHES[$previous_index]}"
+        REGISTERED_WORKTREE_MTIMES[$index]="${REGISTERED_WORKTREE_MTIMES[$previous_index]}"
+        index=$previous_index
+    done
+    REGISTERED_WORKTREE_PATHS[$insert_at]="$canonical_path"
+    REGISTERED_WORKTREE_BRANCHES[$insert_at]="$branch"
+    REGISTERED_WORKTREE_MTIMES[$insert_at]="$mtime"
+}
+
+load_registered_worktrees_by_mtime() {
+    local root="$1"
+    local main_root="$2"
+    local index
+
+    REGISTERED_WORKTREE_PATHS=()
+    REGISTERED_WORKTREE_BRANCHES=()
+    REGISTERED_WORKTREE_MTIMES=()
+    load_git_worktrees "$main_root" || return 1
+    index=0
+    while [ "$index" -lt "${#GIT_WORKTREE_PATHS[@]}" ]; do
+        insert_registered_worktree "$root" "$main_root" \
+            "${GIT_WORKTREE_PATHS[$index]}" "${GIT_WORKTREE_BRANCH_REFS[$index]}" \
+            "${GIT_WORKTREE_HEADS[$index]}" "${GIT_WORKTREE_DETACHED[$index]}"
+        index=$((index + 1))
+    done
 }
 
 resolve_path_from_root() {
     local repo_root="$1"
     local raw_path="$2"
-    local combined
+    local combined parent_dir leaf_name canonical_parent CAPTURED_PATH
 
     if [[ "$raw_path" = /* ]]; then
         combined="$raw_path"
@@ -84,12 +187,14 @@ resolve_path_from_root() {
         combined="$repo_root/$raw_path"
     fi
 
-    local parent_dir
-    parent_dir=$(dirname "$combined")
-    local leaf_name
-    leaf_name=$(basename "$combined")
+    capture_path dirname "$combined" || return 1
+    parent_dir="$CAPTURED_PATH"
+    capture_path basename "$combined" || return 1
+    leaf_name="$CAPTURED_PATH"
     if [ -d "$parent_dir" ]; then
-        printf '%s/%s\n' "$(cd "$parent_dir" && pwd -P)" "$leaf_name"
+        capture_path print_canonical_dir "$parent_dir" || return 1
+        canonical_parent="$CAPTURED_PATH"
+        printf '%s/%s\n' "$canonical_parent" "$leaf_name"
     else
         printf '%s\n' "$combined"
     fi
@@ -98,7 +203,7 @@ resolve_path_from_root() {
 resolve_main_repo_root() {
     local repo_root="$1"
 
-    local inferred_root
+    local inferred_root worktree_parent worktree_parent_name common_dir common_name main_root CAPTURED_PATH
     case "$repo_root" in
         */.worktrees/*)
             inferred_root="${repo_root%%/.worktrees/*}"
@@ -116,20 +221,24 @@ resolve_main_repo_root() {
             ;;
     esac
 
-    local worktree_parent
-    worktree_parent=$(dirname "$repo_root")
-    local worktree_parent_name
-    worktree_parent_name=$(basename "$worktree_parent")
+    capture_path dirname "$repo_root" || return 1
+    worktree_parent="$CAPTURED_PATH"
+    capture_path basename "$worktree_parent" || return 1
+    worktree_parent_name="$CAPTURED_PATH"
     if [[ "$worktree_parent_name" == *-worktrees ]]; then
-        inferred_root="$(dirname "$worktree_parent")/${worktree_parent_name%-worktrees}"
+        capture_path dirname "$worktree_parent" || return 1
+        inferred_root="$CAPTURED_PATH/${worktree_parent_name%-worktrees}"
         if [ -d "$inferred_root/.specify" ]; then
             (cd "$inferred_root" && pwd -P)
             return 0
         fi
     fi
 
-    local common_dir
-    common_dir=$(git -C "$repo_root" rev-parse --git-common-dir 2>/dev/null || true)
+    if capture_path git -C "$repo_root" rev-parse --git-common-dir 2>/dev/null; then
+        common_dir="$CAPTURED_PATH"
+    else
+        common_dir=""
+    fi
 
     if [ -z "$common_dir" ]; then
         printf '%s\n' "$repo_root"
@@ -140,9 +249,11 @@ resolve_main_repo_root() {
         common_dir="$repo_root/$common_dir"
     fi
 
-    if [ "$(basename "$common_dir")" = ".git" ]; then
-        local main_root
-        main_root=$(dirname "$common_dir")
+    capture_path basename "$common_dir" || return 1
+    common_name="$CAPTURED_PATH"
+    if [ "$common_name" = ".git" ]; then
+        capture_path dirname "$common_dir" || return 1
+        main_root="$CAPTURED_PATH"
         if [ -d "$main_root" ]; then
             (cd "$main_root" && pwd -P)
             return 0
@@ -152,29 +263,40 @@ resolve_main_repo_root() {
     printf '%s\n' "$repo_root"
 }
 
-worktree_root_has_entries() {
+worktree_root_has_registered_worktrees() {
     local candidate="$1"
-    local first
+    local main_root="$2"
 
     [ -d "$candidate" ] || return 1
-    first=$(find "$candidate" -maxdepth 1 -mindepth 1 -type d -print -quit 2>/dev/null || true)
-    [ -n "$first" ]
+    load_registered_worktrees_by_mtime "$candidate" "$main_root" || return 2
+    [ "${#REGISTERED_WORKTREE_PATHS[@]}" -gt 0 ]
 }
 
 resolve_worktree_root() {
     local repo_root="$1"
-    local main_root
-    main_root=$(resolve_main_repo_root "$repo_root")
+    local main_root main_root_name raw_root candidate
+    local legacy_worktrees_candidate legacy_hidden_candidate CAPTURED_PATH
+    capture_path resolve_main_repo_root "$repo_root" || return 1
+    main_root="$CAPTURED_PATH"
 
-    local default_root="../$(basename "$main_root")-worktrees"
-    local raw_root
-    raw_root=$(resolve_config_value "$main_root" "worktree_root" "$default_root")
+    capture_path basename "$main_root" || return 1
+    main_root_name="$CAPTURED_PATH"
+    local default_root="../$main_root_name-worktrees"
+    capture_path resolve_config_value "$main_root" "worktree_root" "$default_root" || return 1
+    raw_root="$CAPTURED_PATH"
 
-    local candidate
-    candidate=$(resolve_path_from_root "$main_root" "$raw_root")
+    capture_path resolve_path_from_root "$main_root" "$raw_root" || return 1
+    candidate="$CAPTURED_PATH"
     if [ -d "$candidate" ]; then
-        (cd "$candidate" && pwd -P)
-        return 0
+        if [ "$raw_root" != "$default_root" ]; then
+            (cd "$candidate" && pwd -P)
+            return 0
+        elif worktree_root_has_registered_worktrees "$candidate" "$main_root"; then
+            (cd "$candidate" && pwd -P)
+            return 0
+        elif [ "$?" -eq 2 ]; then
+            return 1
+        fi
     fi
 
     if [ "$raw_root" != "$default_root" ]; then
@@ -182,14 +304,21 @@ resolve_worktree_root() {
         return 0
     fi
 
-    for candidate in "$(resolve_path_from_root "$main_root" "worktrees")" "$(resolve_path_from_root "$main_root" ".worktrees")"; do
-        if worktree_root_has_entries "$candidate"; then
+    capture_path resolve_path_from_root "$main_root" "worktrees" || return 1
+    legacy_worktrees_candidate="$CAPTURED_PATH"
+    capture_path resolve_path_from_root "$main_root" ".worktrees" || return 1
+    legacy_hidden_candidate="$CAPTURED_PATH"
+    for candidate in "$legacy_worktrees_candidate" "$legacy_hidden_candidate"; do
+        if worktree_root_has_registered_worktrees "$candidate" "$main_root"; then
             (cd "$candidate" && pwd -P)
             return 0
+        elif [ "$?" -eq 2 ]; then
+            return 1
         fi
     done
 
-    printf '%s\n' "$(resolve_path_from_root "$main_root" "$default_root")"
+    capture_path resolve_path_from_root "$main_root" "$default_root" || return 1
+    printf '%s\n' "$CAPTURED_PATH"
 }
 
 MODE="prompt"
@@ -202,7 +331,13 @@ elif [ $# -gt 0 ]; then
     exit 1
 fi
 
-WORKTREE_ROOT=$(resolve_worktree_root "$REPO_ROOT")
+capture_path resolve_main_repo_root "$REPO_ROOT"
+MAIN_REPO_ROOT="$CAPTURED_PATH"
+if ! capture_path resolve_worktree_root "$REPO_ROOT"; then
+    echo "Error: Failed to list Git worktrees." >&2
+    exit 1
+fi
+WORKTREE_ROOT="$CAPTURED_PATH"
 if [ ! -d "$WORKTREE_ROOT" ]; then
     echo "No Speckit worktree root found at: $WORKTREE_ROOT" >&2
     exit 1
@@ -210,18 +345,16 @@ fi
 
 PATHS=()
 BRANCHES=()
-while IFS= read -r worktree_path; do
-    [ -n "$worktree_path" ] || continue
-    if [ -d "$worktree_path" ]; then
-        PATHS+=("$(cd "$worktree_path" && pwd -P)")
-        BRANCHES+=("$(basename "$worktree_path")")
-    fi
-done < <(list_worktree_dirs_by_mtime "$WORKTREE_ROOT")
-
-if [ "${#PATHS[@]}" -eq 0 ]; then
+if ! load_registered_worktrees_by_mtime "$WORKTREE_ROOT" "$MAIN_REPO_ROOT"; then
+    echo "Error: Failed to list Git worktrees." >&2
+    exit 1
+fi
+if [ "${#REGISTERED_WORKTREE_PATHS[@]}" -eq 0 ]; then
     echo "No Speckit worktrees found under: $WORKTREE_ROOT" >&2
     exit 1
 fi
+PATHS=("${REGISTERED_WORKTREE_PATHS[@]}")
+BRANCHES=("${REGISTERED_WORKTREE_BRANCHES[@]}")
 
 if [ "${#PATHS[@]}" -eq 0 ]; then
     echo "No usable Speckit worktrees found under: $WORKTREE_ROOT" >&2

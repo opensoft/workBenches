@@ -4,6 +4,17 @@
 # Branch numbering strategy: "sequential" (001, 002, ...) or "timestamp" (YYYYMMDD-HHMMSS)
 branch_numbering: sequential
 
+# Optional branch name template. Leave empty for the default "{number}-{slug}".
+# Supported tokens: {author}, {app}, {number}, {slug}; include exactly one {number}.
+# {slug} must not appear before {number}; final path segment must start with {number}-.
+# Example for monorepos: "{author}/{app}/{number}-{slug}"
+branch_template: ""
+
+# Optional namespace prepended to branch_template unless the template already starts with it.
+# Example: "features/{app}" with the default template produces
+# "features/{app}/{number}-{slug}".
+branch_prefix: ""
+
 # Feature checkout strategy: "branch" keeps work in the current checkout,
 # "worktree" creates a sibling worktree rooted from base_branch.
 checkout_mode: worktree
