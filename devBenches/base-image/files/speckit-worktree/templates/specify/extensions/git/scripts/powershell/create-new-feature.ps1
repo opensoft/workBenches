@@ -1074,7 +1074,7 @@ namespace Speckit
         private const int FileAttributeTagInfo = 9;
         private const int FileIdInfo = 18;
         private const int FileDispositionInfoEx = 21;
-        private const int FileRenameInfoEx = 22;
+        private const int FileRenameInformationEx = 65;
         private const uint FileDispositionDelete = 0x00000001;
         private const uint FileDispositionPosixSemantics = 0x00000002;
         private const uint FileRenameReplaceIfExists = 0x00000001;
@@ -1465,13 +1465,16 @@ namespace Speckit
                 Marshal.WriteIntPtr(buffer, rootOffset, parentHandle.DangerousGetHandle());
                 Marshal.WriteInt32(buffer, nameLengthOffset, nameBytes.Length);
                 Marshal.Copy(nameBytes, 0, IntPtr.Add(buffer, nameOffset), nameBytes.Length);
-                if (!SetFileInformationByHandle(
+                IoStatusBlock ioStatus;
+                int status = NtSetInformationFile(
                     sourceHandle,
-                    FileRenameInfoEx,
+                    out ioStatus,
                     buffer,
-                    unchecked((uint)(bufferSize))))
+                    unchecked((uint)(bufferSize)),
+                    FileRenameInformationEx);
+                if (status < 0)
                 {
-                    ThrowLastWin32WithCapability(operation, "FileRenameInfoEx");
+                    ThrowNtStatusWithCapability(status, operation, "FileRenameInformationEx");
                 }
             }
             finally
@@ -1852,7 +1855,17 @@ namespace Speckit
 
         private static void ThrowLastWin32WithCapability(string operation, string capability)
         {
-            int errorCode = Marshal.GetLastWin32Error();
+            ThrowWin32WithCapability(Marshal.GetLastWin32Error(), operation, capability);
+        }
+
+        private static void ThrowNtStatusWithCapability(int status, string operation, string capability)
+        {
+            int errorCode = unchecked((int)RtlNtStatusToDosError(unchecked((uint)status)));
+            ThrowWin32WithCapability(errorCode, operation, capability);
+        }
+
+        private static void ThrowWin32WithCapability(int errorCode, string operation, string capability)
+        {
             Win32Exception error = new Win32Exception(errorCode, operation);
             if (errorCode == ErrorInvalidFunction
                 || errorCode == ErrorNotSupported
@@ -1912,6 +1925,14 @@ namespace Speckit
             uint createOptions,
             IntPtr eaBuffer,
             uint eaLength);
+
+        [DllImport("ntdll.dll")]
+        private static extern int NtSetInformationFile(
+            SafeFileHandle fileHandle,
+            out IoStatusBlock ioStatusBlock,
+            IntPtr fileInformation,
+            uint length,
+            int fileInformationClass);
 
         [DllImport("ntdll.dll")]
         private static extern uint RtlNtStatusToDosError(uint status);
