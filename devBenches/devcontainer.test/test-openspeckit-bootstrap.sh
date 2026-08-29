@@ -1528,6 +1528,108 @@ fi
 assert_not_exists "$OPSX_EMPTY_REPO/.claude/commands/opsx/apply.md" 'empty explicit OPSX directory suppresses packaged fallback commands'
 assert_not_exists "$OPSX_EMPTY_REPO/.claude/commands/opsx/source-id.json" 'empty explicit OPSX directory installs no marker'
 
+printf '%s\n' 'Given: an explicit OPSX source root beneath a symlinked ancestor'
+OPSX_ANCESTOR_BASE="$TMPDIR_ROOT/opsx-ancestor-source"
+OPSX_ANCESTOR_REAL_ROOT="$OPSX_ANCESTOR_BASE/real"
+OPSX_ANCESTOR_LINK="$OPSX_ANCESTOR_BASE/link"
+OPSX_ANCESTOR_OVERRIDE="$OPSX_ANCESTOR_LINK/commands"
+OPSX_ANCESTOR_REPO="$TMPDIR_ROOT/opsx-ancestor-repo"
+OPSX_ANCESTOR_PROTOCOL_ROOT="$TMPDIR_ROOT/opsx-ancestor-protocol"
+OPSX_ANCESTOR_REPO_BEFORE="$TMPDIR_ROOT/opsx-ancestor-repo.before"
+OPSX_ANCESTOR_REPO_AFTER="$TMPDIR_ROOT/opsx-ancestor-repo.after"
+OPSX_ANCESTOR_REPO_MODES_BEFORE="$TMPDIR_ROOT/opsx-ancestor-repo-modes.before"
+OPSX_ANCESTOR_REPO_MODES_AFTER="$TMPDIR_ROOT/opsx-ancestor-repo-modes.after"
+OPSX_ANCESTOR_PROTOCOL_BEFORE="$TMPDIR_ROOT/opsx-ancestor-protocol.before"
+OPSX_ANCESTOR_PROTOCOL_AFTER="$TMPDIR_ROOT/opsx-ancestor-protocol.after"
+OPSX_ANCESTOR_PROTOCOL_MODES_BEFORE="$TMPDIR_ROOT/opsx-ancestor-protocol-modes.before"
+OPSX_ANCESTOR_PROTOCOL_MODES_AFTER="$TMPDIR_ROOT/opsx-ancestor-protocol-modes.after"
+OPSX_ANCESTOR_EXTERNAL_BEFORE="$TMPDIR_ROOT/opsx-ancestor-external.before"
+OPSX_ANCESTOR_EXTERNAL_AFTER="$TMPDIR_ROOT/opsx-ancestor-external.after"
+OPSX_ANCESTOR_EXTERNAL_MODES_BEFORE="$TMPDIR_ROOT/opsx-ancestor-external-modes.before"
+OPSX_ANCESTOR_EXTERNAL_MODES_AFTER="$TMPDIR_ROOT/opsx-ancestor-external-modes.after"
+mkdir -p \
+    "$OPSX_ANCESTOR_REAL_ROOT/commands" \
+    "$OPSX_ANCESTOR_REPO" \
+    "$OPSX_ANCESTOR_PROTOCOL_ROOT"
+printf '%s\n' 'ancestor source sentinel' > "$OPSX_ANCESTOR_REAL_ROOT/commands/apply.md"
+printf '%s\n' 'repository sentinel' > "$OPSX_ANCESTOR_REPO/sentinel.txt"
+printf '%s\n' 'protocol sentinel' > "$OPSX_ANCESTOR_PROTOCOL_ROOT/sentinel.txt"
+chmod 0700 "$OPSX_ANCESTOR_REAL_ROOT"
+chmod 0710 "$OPSX_ANCESTOR_REAL_ROOT/commands"
+chmod 0600 "$OPSX_ANCESTOR_REAL_ROOT/commands/apply.md"
+chmod 0700 "$OPSX_ANCESTOR_REPO" "$OPSX_ANCESTOR_PROTOCOL_ROOT"
+chmod 0600 "$OPSX_ANCESTOR_REPO/sentinel.txt" "$OPSX_ANCESTOR_PROTOCOL_ROOT/sentinel.txt"
+ln -s "$OPSX_ANCESTOR_REAL_ROOT" "$OPSX_ANCESTOR_LINK"
+git init -q "$OPSX_ANCESTOR_REPO"
+snapshot_repo "$OPSX_ANCESTOR_REPO" > "$OPSX_ANCESTOR_REPO_BEFORE"
+snapshot_repo_modes "$OPSX_ANCESTOR_REPO" > "$OPSX_ANCESTOR_REPO_MODES_BEFORE"
+snapshot_repo "$OPSX_ANCESTOR_PROTOCOL_ROOT" > "$OPSX_ANCESTOR_PROTOCOL_BEFORE"
+snapshot_repo_modes "$OPSX_ANCESTOR_PROTOCOL_ROOT" > "$OPSX_ANCESTOR_PROTOCOL_MODES_BEFORE"
+snapshot_repo "$OPSX_ANCESTOR_REAL_ROOT" > "$OPSX_ANCESTOR_EXTERNAL_BEFORE"
+snapshot_repo_modes "$OPSX_ANCESTOR_REAL_ROOT" > "$OPSX_ANCESTOR_EXTERNAL_MODES_BEFORE"
+
+printf '%s\n' 'When: bootstrap preflights the explicit OPSX source root'
+if HOME="$OPSX_PRECEDENCE_HOME" \
+    AGENT_PROTOCOL_ROOT="$OPSX_ANCESTOR_PROTOCOL_ROOT" \
+    OPSX_COMMAND_TEMPLATE_ROOT="$OPSX_ANCESTOR_OVERRIDE" \
+    SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT" \
+    python3 "$SETUP_SCRIPT" \
+        --repo "$OPSX_ANCESTOR_REPO" \
+        --skip-init \
+        --no-speckit-registration \
+        --no-worktrees \
+        --no-repo-agent-pointers \
+        --no-skill-links \
+        --no-global-agent-pointers \
+        --preserve-readmes > "$TMPDIR_ROOT/opsx-ancestor.log" 2>&1; then
+    fail 'bootstrap rejects an explicit OPSX source beneath a symlinked ancestor'
+else
+    pass 'bootstrap rejects an explicit OPSX source beneath a symlinked ancestor'
+fi
+
+printf '%s\n' 'Then: rejection precedes repository, protocol, or external mutation'
+snapshot_repo "$OPSX_ANCESTOR_REPO" > "$OPSX_ANCESTOR_REPO_AFTER"
+snapshot_repo_modes "$OPSX_ANCESTOR_REPO" > "$OPSX_ANCESTOR_REPO_MODES_AFTER"
+snapshot_repo "$OPSX_ANCESTOR_PROTOCOL_ROOT" > "$OPSX_ANCESTOR_PROTOCOL_AFTER"
+snapshot_repo_modes "$OPSX_ANCESTOR_PROTOCOL_ROOT" > "$OPSX_ANCESTOR_PROTOCOL_MODES_AFTER"
+snapshot_repo "$OPSX_ANCESTOR_REAL_ROOT" > "$OPSX_ANCESTOR_EXTERNAL_AFTER"
+snapshot_repo_modes "$OPSX_ANCESTOR_REAL_ROOT" > "$OPSX_ANCESTOR_EXTERNAL_MODES_AFTER"
+if cmp -s "$OPSX_ANCESTOR_REPO_BEFORE" "$OPSX_ANCESTOR_REPO_AFTER"; then
+    pass 'ancestor-symlink rejection preserves repository bytes and paths'
+else
+    fail 'ancestor-symlink rejection changes repository bytes or paths'
+fi
+if cmp -s "$OPSX_ANCESTOR_REPO_MODES_BEFORE" "$OPSX_ANCESTOR_REPO_MODES_AFTER"; then
+    pass 'ancestor-symlink rejection preserves repository types and modes'
+else
+    fail 'ancestor-symlink rejection changes repository types or modes'
+fi
+if cmp -s "$OPSX_ANCESTOR_PROTOCOL_BEFORE" "$OPSX_ANCESTOR_PROTOCOL_AFTER"; then
+    pass 'ancestor-symlink rejection preserves protocol bytes and paths'
+else
+    fail 'ancestor-symlink rejection changes protocol bytes or paths'
+fi
+if cmp -s "$OPSX_ANCESTOR_PROTOCOL_MODES_BEFORE" "$OPSX_ANCESTOR_PROTOCOL_MODES_AFTER"; then
+    pass 'ancestor-symlink rejection preserves protocol types and modes'
+else
+    fail 'ancestor-symlink rejection changes protocol types or modes'
+fi
+if cmp -s "$OPSX_ANCESTOR_EXTERNAL_BEFORE" "$OPSX_ANCESTOR_EXTERNAL_AFTER"; then
+    pass 'ancestor-symlink rejection preserves external bytes and paths'
+else
+    fail 'ancestor-symlink rejection changes external bytes or paths'
+fi
+if cmp -s "$OPSX_ANCESTOR_EXTERNAL_MODES_BEFORE" "$OPSX_ANCESTOR_EXTERNAL_MODES_AFTER"; then
+    pass 'ancestor-symlink rejection preserves external types and modes'
+else
+    fail 'ancestor-symlink rejection changes external types or modes'
+fi
+if [[ -L "$OPSX_ANCESTOR_LINK" ]]; then
+    pass 'ancestor-symlink rejection preserves the source ancestor symlink'
+else
+    fail 'ancestor-symlink rejection changes the source ancestor symlink'
+fi
+
 printf '%s\n' 'Given: missing, file, root-symlink, and descendant-symlink explicit OPSX overrides'
 OPSX_INVALID_HOME="$TMPDIR_ROOT/opsx-invalid-home"
 OPSX_INVALID_AGENT_ROOT_BASE="$TMPDIR_ROOT/opsx-invalid-agent-roots"

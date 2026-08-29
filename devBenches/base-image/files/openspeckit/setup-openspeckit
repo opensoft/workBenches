@@ -1855,6 +1855,18 @@ def opsx_command_template_root(agent_root: Path) -> Path | None:
             raise SystemExit(
                 f"OPSX command template root not found: {configured_root}"
             )
+        try:
+            with directory_descriptor(configured_root):
+                pass
+        except NotADirectoryError as exc:
+            raise SystemExit(
+                f"Unsafe OPSX command template root: {configured_root}: "
+                "not a directory or has a symlinked ancestor"
+            ) from exc
+        except OSError as exc:
+            raise SystemExit(
+                f"Unsafe OPSX command template root: {configured_root}: {exc}"
+            ) from exc
         safe_source_tree_entries(configured_root)
         return configured_root
 
