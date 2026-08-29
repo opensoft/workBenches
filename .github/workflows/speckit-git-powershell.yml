@@ -1,0 +1,47 @@
+name: Speckit Git PowerShell
+
+on:
+  push:
+    paths:
+      - .github/workflows/speckit-git-powershell.yml
+      - devBenches/devcontainer.test/test-speckit-git-powershell.ps1
+      - devBenches/base-image/files/speckit-worktree/templates/specify/extensions/git/config-template.yml
+      - devBenches/base-image/files/speckit-worktree/templates/specify/extensions/git/scripts/powershell/**
+      - devBenches/base-image/files/speckit-worktree/templates/specify/extensions/git/scripts/bash/**
+  pull_request:
+    paths:
+      - .github/workflows/speckit-git-powershell.yml
+      - devBenches/devcontainer.test/test-speckit-git-powershell.ps1
+      - devBenches/base-image/files/speckit-worktree/templates/specify/extensions/git/config-template.yml
+      - devBenches/base-image/files/speckit-worktree/templates/specify/extensions/git/scripts/powershell/**
+      - devBenches/base-image/files/speckit-worktree/templates/specify/extensions/git/scripts/bash/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    strategy:
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Verify Git and PowerShell
+        run: |
+          git --version
+          pwsh --version
+
+      - name: Run full PowerShell regression suite
+        if: runner.os == 'Linux'
+        run: pwsh -NoLogo -NoProfile -File ./devBenches/devcontainer.test/test-speckit-git-powershell.ps1
+
+      - name: Run native Windows state regressions
+        if: runner.os == 'Windows'
+        run: pwsh -NoLogo -NoProfile -File ./devBenches/devcontainer.test/test-speckit-git-powershell.ps1 -WindowsStateOnly

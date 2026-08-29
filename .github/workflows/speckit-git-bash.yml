@@ -1,0 +1,105 @@
+name: OpenSpeckit Bash
+
+on:
+  push:
+    paths:
+      - .github/workflows/speckit-git-bash.yml
+      - devBenches/devcontainer.test/test-openspeckit-bootstrap.sh
+      - devBenches/devcontainer.test/test-speckit-git-feature.sh
+      - devBenches/devcontainer.test/test-speckit-git-compat.sh
+      - devBenches/devcontainer.test/test-ct-launchers.sh
+      - devBenches/base-image/files/openspeckit/setup-openspeckit
+      - devBenches/base-image/files/speckit-worktree/**
+      - devBenches/base-image/files/claude/commands/opsx/**
+      - devBenches/base-image/files/ct/ct-functions.zsh
+  pull_request:
+    paths:
+      - .github/workflows/speckit-git-bash.yml
+      - devBenches/devcontainer.test/test-openspeckit-bootstrap.sh
+      - devBenches/devcontainer.test/test-speckit-git-feature.sh
+      - devBenches/devcontainer.test/test-speckit-git-compat.sh
+      - devBenches/devcontainer.test/test-ct-launchers.sh
+      - devBenches/base-image/files/openspeckit/setup-openspeckit
+      - devBenches/base-image/files/speckit-worktree/**
+      - devBenches/base-image/files/claude/commands/opsx/**
+      - devBenches/base-image/files/ct/ct-functions.zsh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CT_FUNCTIONS_FILE: ${{ github.workspace }}/devBenches/base-image/files/ct/ct-functions.zsh
+  SPECKIT_WORKTREE_FALLBACK_FILE: ${{ github.workspace }}/devBenches/base-image/files/speckit-worktree/templates/specify/shell/worktrees.sh
+
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Ensure zsh is available
+        run: |
+          if ! command -v zsh >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends zsh
+          fi
+
+      - name: Verify runtime prerequisites
+        run: |
+          git --version
+          bash --version | sed -n '1p'
+          python3 --version
+          zsh --version
+
+      - name: Run bootstrap suite
+        run: bash ./devBenches/devcontainer.test/test-openspeckit-bootstrap.sh
+
+      - name: Run feature suite
+        run: bash ./devBenches/devcontainer.test/test-speckit-git-feature.sh
+
+      - name: Run compatibility suite
+        run: bash ./devBenches/devcontainer.test/test-speckit-git-compat.sh
+
+      - name: Run ct launcher suite
+        run: bash ./devBenches/devcontainer.test/test-ct-launchers.sh
+
+  git-2-34-1:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install runtime prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends git jq python3 zsh
+
+      - name: Verify Git 2.34.1
+        run: |
+          test "$(git --version)" = "git version 2.34.1"
+          git --version
+
+      - name: Run feature suite
+        run: bash ./devBenches/devcontainer.test/test-speckit-git-feature.sh
+
+      - name: Run compatibility suite
+        run: bash ./devBenches/devcontainer.test/test-speckit-git-compat.sh
+
+  bash-3-2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Run feature and compatibility suites with Bash 3.2
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace:ro" \
+            --workdir /workspace \
+            bash:3.2@sha256:241dd7ed99aa1f458b6a74cd200a49dca934d9e29d7a9b7636fe712db275a02b \
+            -c 'apk add --no-cache git python3 coreutils jq >/dev/null && bash --version | sed -n "1p" && jq --version && bash ./devBenches/devcontainer.test/test-speckit-git-feature.sh && bash ./devBenches/devcontainer.test/test-speckit-git-compat.sh'
