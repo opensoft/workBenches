@@ -1061,7 +1061,7 @@ function Assert-WindowsStatePublicationUsesHeldHandles {
     Assert-True ([string]::IsNullOrWhiteSpace($preflightCall.Groups['arguments'].Value) -or $preflightCall.Groups['arguments'].Value.Contains('parentHandle', [System.StringComparison]::Ordinal)) 'constructor preflight uses the transaction authenticated parent handle'
     $preflightName = $preflightCall.Groups['method'].Value
     $preflight = Get-CSharpMemberExtent -Source $transactionSource -SignaturePattern ('(?:private|public)\s+(?:static\s+)?void\s+' + [regex]::Escape($preflightName) + '\s*\(') -Label 'Windows state capability preflight'
-    $probeCreates = [regex]::Matches($preflight, '(?<handle>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*CreateCapabilityProbe\s*\(\s*parentHandle\s*,\s*"(?<role>source|destination)"\s*,\s*(?<share>0|ShareAll)\s*,\s*out\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\)')
+    $probeCreates = [regex]::Matches($preflight, '(?<handle>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*CreateCapabilityProbe\s*\(\s*parentHandle\s*,\s*"(?<role>source|destination)"\s*,\s*(?<share>FileShareDelete|ShareAll)\s*,\s*out\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\)')
     Assert-Equal 2 $probeCreates.Count 'capability preflight creates private source and destination scratches'
     $sourceProbe = $probeCreates | Where-Object { $_.Groups['role'].Value -eq 'source' }
     $destinationProbe = $probeCreates | Where-Object { $_.Groups['role'].Value -eq 'destination' }
@@ -1070,7 +1070,7 @@ function Assert-WindowsStatePublicationUsesHeldHandles {
     $sourceName = $sourceProbe.Groups['name'].Value
     $destinationHandle = $destinationProbe.Groups['handle'].Value
     $destinationName = $destinationProbe.Groups['name'].Value
-    Assert-Equal '0' $sourceProbe.Groups['share'].Value 'capability source remains exclusive'
+    Assert-Equal 'FileShareDelete' $sourceProbe.Groups['share'].Value 'capability source permits rename without permitting readers or writers'
     Assert-Equal 'ShareAll' $destinationProbe.Groups['share'].Value 'capability destination permits POSIX replacement while held open'
     $sourceValidationIndex = $preflight.IndexOf("ValidateTemporarySecurity($sourceHandle)", [System.StringComparison]::Ordinal)
     $destinationValidationIndex = $preflight.IndexOf("ValidateTemporarySecurity($destinationHandle)", [System.StringComparison]::Ordinal)
@@ -1118,7 +1118,8 @@ function Assert-WindowsStatePublicationUsesHeldHandles {
     $productionRelativeCreate = [regex]::Match($productionCreateMember, 'CreateRelative\s*\(\s*parentHandle\s*,\s*TemporaryName\s*,\s*out\s+temporaryHandle\s*\)')
     Assert-True $productionRelativeCreate.Success 'production temporary is created relative to the same authenticated parent handle'
     $createRelative = Get-CSharpMemberExtent -Source $transactionSource -SignaturePattern 'private\s+static\s+int\s+CreateRelative\s*\(' -Label 'relative temporary creation helper'
-    Assert-True ($createRelative.Contains('uint shareAccess = 0', [System.StringComparison]::Ordinal)) 'production relative creation defaults to exclusive sharing'
+    Assert-True ($transactionSource.Contains('private const uint FileShareDelete = 0x00000004;', [System.StringComparison]::Ordinal)) 'native source sharing declares the delete-only share mask'
+    Assert-True ($createRelative.Contains('uint shareAccess = FileShareDelete', [System.StringComparison]::Ordinal)) 'production relative creation defaults to delete-only sharing'
     $descriptorFactoryCall = [regex]::Match($createRelative, '(?<variable>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<method>(?:Create|Build)[A-Za-z0-9_]*SecurityDescriptor[A-Za-z0-9_]*)\s*\(')
     Assert-True $descriptorFactoryCall.Success 'relative temporary creation builds a creation-time security descriptor'
     $relativeNtCreateCall = [regex]::Match($createRelative, '(?s)NtCreateRelative\s*\((?<arguments>.*?)\)\s*;')
