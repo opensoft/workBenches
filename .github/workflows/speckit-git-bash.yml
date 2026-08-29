@@ -11,6 +11,7 @@ on:
       - devBenches/base-image/files/openspeckit/setup-openspeckit
       - devBenches/base-image/files/speckit-worktree/**
       - devBenches/base-image/files/claude/commands/opsx/**
+      - devBenches/base-image/files/claude/skills/speckit-clarify/SKILL.md
       - devBenches/base-image/files/ct/ct-functions.zsh
   pull_request:
     paths:
@@ -22,6 +23,7 @@ on:
       - devBenches/base-image/files/openspeckit/setup-openspeckit
       - devBenches/base-image/files/speckit-worktree/**
       - devBenches/base-image/files/claude/commands/opsx/**
+      - devBenches/base-image/files/claude/skills/speckit-clarify/SKILL.md
       - devBenches/base-image/files/ct/ct-functions.zsh
   workflow_dispatch:
 
