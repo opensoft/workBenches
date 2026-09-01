@@ -138,27 +138,39 @@ install_wave() {
 
 install_pi_terminal() {
     echo "Checking Pi Terminal..."
+    local windows_pi=false
     if windows_command_exists "pi" || windows_env_file_exists "APPDATA" "npm\\pi.cmd"; then
         echo "  ✓ Pi Terminal is installed for Windows"
-        return 0
+        windows_pi=true
     fi
 
-    if windows_command_exists "npm"; then
+    if [ "$windows_pi" = false ] && windows_command_exists "npm"; then
         echo "  Installing Pi Terminal with Windows npm..."
         if run_powershell "npm install -g --ignore-scripts $(ps_quote "$PI_NPM_PACKAGE")"; then
             echo "  ✓ Pi Terminal installed for Windows"
-            echo "    Run 'pi' from a project, then use /login to configure a provider."
+            windows_pi=true
+        fi
+    fi
+
+    if command -v pi >/dev/null 2>&1; then
+        echo "  ✓ Pi Terminal is installed for WSL/Linux"
+        return 0
+    elif command -v npm >/dev/null 2>&1; then
+        echo "  Installing Pi Terminal in WSL/Linux for ppi and devBench use..."
+        local wsl_npm
+        wsl_npm="$(command -v npm)"
+        [[ -x /usr/bin/npm ]] && wsl_npm=/usr/bin/npm
+        if "$wsl_npm" install -g --ignore-scripts "$PI_NPM_PACKAGE"; then
+            echo "  ✓ Pi Terminal installed for WSL/Linux"
+            echo "    Run 'ppi login PROFILE' to configure an isolated provider login."
             return 0
         fi
     fi
 
-    if command -v npm >/dev/null 2>&1; then
-        echo "  Windows npm was not available; installing Pi Terminal in WSL..."
-        if npm install -g --ignore-scripts "$PI_NPM_PACKAGE"; then
-            echo "  ✓ Pi Terminal installed in WSL"
-            echo "    Run 'pi' from a project, then use /login to configure a provider."
-            return 0
-        fi
+    if [ "$windows_pi" = true ]; then
+        echo "  ✗ Pi Terminal is available only in Windows; WSL/Linux Pi is required for ppi and devBenches"
+        echo "    Install Node.js/npm in WSL, then rerun this setup."
+        return 1
     fi
 
     echo "  ✗ Node.js/npm not found in Windows or WSL"

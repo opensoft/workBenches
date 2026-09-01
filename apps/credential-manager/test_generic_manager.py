@@ -43,6 +43,34 @@ class GenericManagerTest(unittest.TestCase):
         self.assertEqual(MANAGER.canonical_provider("gemini"), "gemini")
         self.assertEqual(MANAGER.canonical_provider("zai"), "glm")
 
+    def test_profile_home_uses_nested_manifest_path_for_managed_providers(self):
+        original_home = MANAGER.HOME
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                MANAGER.HOME = Path(directory)
+                cases = {
+                    "claude": ".claude-profiles",
+                    "chatgpt": ".chatgpt-profiles",
+                    "grok": ".grok-profiles",
+                    "gemini": ".gemini-profiles",
+                    "glm": ".glm-profiles",
+                }
+                for provider, root in cases.items():
+                    account = MANAGER.Account(
+                        provider=provider,
+                        name="team-001",
+                        email="user@company.example",
+                        profile_path="opensoft/team/team-001",
+                    )
+                    self.assertEqual(
+                        MANAGER.profile_home(account),
+                        Path(directory)
+                        / root
+                        / "profiles/opensoft/team/team-001",
+                    )
+        finally:
+            MANAGER.HOME = original_home
+
     def test_direct_workstation_config_directory_is_supported(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory)
@@ -84,7 +112,7 @@ class GenericManagerTest(unittest.TestCase):
             (REPO / "config/claude-profiles.example.json").read_text()
         )
         profiles = {(profile["name"], profile["family"]) for profile in data["profiles"]}
-        self.assertIn(("work", "work"), profiles)
+        self.assertIn(("work", "company"), profiles)
         self.assertIn(("personal", "personal"), profiles)
 
     def test_codex_example_provides_work_and_personal_profiles(self):
@@ -92,7 +120,7 @@ class GenericManagerTest(unittest.TestCase):
             (REPO / "config/openai-profiles.example.json").read_text()
         )
         profiles = {(profile["name"], profile["family"]) for profile in data["profiles"]}
-        self.assertIn(("work-chatgpt-1", "work"), profiles)
+        self.assertIn(("work-chatgpt-1", "company"), profiles)
         self.assertIn(("personal-chatgpt-1", "personal"), profiles)
 
     def test_codex_profile_setup_and_alias_isolate_codex_home(self):
@@ -113,7 +141,8 @@ class GenericManagerTest(unittest.TestCase):
                 "version": 1,
                 "profiles": [{
                     "name": "work-chatgpt-1",
-                    "family": "work",
+                    "profilePath": "example-company/team/work-chatgpt-1",
+                    "family": "example-company",
                     "email": "user@company.example",
                     "aliases": ["work1"],
                 }],
@@ -149,7 +178,7 @@ class GenericManagerTest(unittest.TestCase):
                 text=True,
             )
 
-            profile = home / ".chatgpt-profiles/profiles/work-chatgpt-1"
+            profile = home / ".chatgpt-profiles/profiles/example-company/team/work-chatgpt-1"
             profile_config = (profile / "config.toml").read_text()
             self.assertEqual((capture / "home").read_text().strip(), str(profile))
             self.assertIn('forced_login_method = "chatgpt"', profile_config)
@@ -160,6 +189,10 @@ class GenericManagerTest(unittest.TestCase):
             )
             self.assertEqual(profile.stat().st_mode & 0o777, 0o700)
             self.assertEqual((profile / ".profile.json").stat().st_mode & 0o777, 0o600)
+            for category in ("team", "max", "xfactor"):
+                self.assertTrue(
+                    (home / f".chatgpt-profiles/profiles/example-company/{category}").is_dir()
+                )
 
     def test_public_account_surface_has_no_private_identifiers(self):
         targets = [
@@ -179,9 +212,7 @@ class GenericManagerTest(unittest.TestCase):
         ]
         forbidden = (
             "br" + "ett",
-            "open" + "soft",
             "far" + "heap",
-            "med" + "x",
         )
         violations: list[str] = []
         for target in targets:

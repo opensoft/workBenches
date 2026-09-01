@@ -272,8 +272,12 @@ check_component_status() {
             fi
             ;;
         pi_cli)
-            if command -v pi &>/dev/null; then
-                [[ -f "$HOME/.pi/agent/auth.json" ]] && echo "installed" || echo "needs creds"
+            if command -v pi &>/dev/null || [[ -x "$HOME/.npm-global/bin/pi" ]]; then
+                if [[ -f "$HOME/.pi/agent/auth.json" ]] || find "$HOME/.pi-profiles/profiles" -mindepth 3 -maxdepth 6 -type f -name auth.json -print -quit 2>/dev/null | grep -q .; then
+                    echo "installed"
+                else
+                    echo "needs creds"
+                fi
             else
                 echo "not installed"
             fi
@@ -1898,6 +1902,9 @@ process_selections() {
                     if [ "$is_installed" = true ]; then
                         echo -e "  ${GREEN}✓ Pi Coding Agent is installed${NC}"
                         ((success_count++))
+                    elif [[ -x /usr/bin/npm ]] && /usr/bin/npm install -g --ignore-scripts @earendil-works/pi-coding-agent; then
+                        echo -e "  ${GREEN}✓ Pi Coding Agent installed${NC}"
+                        ((success_count++))
                     elif command -v npm &>/dev/null && npm install -g --ignore-scripts @earendil-works/pi-coding-agent; then
                         echo -e "  ${GREEN}✓ Pi Coding Agent installed${NC}"
                         ((success_count++))
@@ -1905,7 +1912,7 @@ process_selections() {
                         echo -e "  ${RED}✗ Failed to install Pi Coding Agent${NC}"
                         ((fail_count++))
                     fi
-                    command -v pi &>/dev/null && items_needing_creds+=("pi")
+                    { command -v pi &>/dev/null || [[ -x "$HOME/.npm-global/bin/pi" ]]; } && items_needing_creds+=("pi")
                     ;;
 
                 spec_kit)
@@ -2390,13 +2397,24 @@ process_selections() {
 
                 pi)
                     echo -e "${CYAN}▶ Setting up Pi Coding Agent authentication...${NC}"
-                    echo -e "${DIM}Pi uses /login inside its interactive terminal.${NC}"
-                    read -p "Launch Pi now? [Y/n]: " launch_pi
+                    echo -e "${DIM}Pi credentials are isolated by canonical profile through ppi.${NC}"
+                    read -p "Launch a Pi profile login now? [Y/n]: " launch_pi
                     if [[ ! $launch_pi =~ ^[Nn] ]]; then
-                        echo -e "${YELLOW}Run /login, choose a provider, then exit Pi when finished.${NC}"
-                        pi
+                        read -r -p "Pi profile name or alias: " pi_profile
+                        echo -e "${YELLOW}Run /login, choose a provider, verify the matching identity, then exit Pi.${NC}"
+                        if command -v ppi >/dev/null 2>&1; then
+                            ppi login "$pi_profile"
+                        elif [[ -x "$HOME/.local/bin/ppi" ]]; then
+                            "$HOME/.local/bin/ppi" login "$pi_profile"
+                        else
+                            echo -e "${YELLOW}No isolated Pi profile launcher is configured; using the standard Pi login flow.${NC}"
+                            pi_command="$(command -v pi || true)"
+                            [[ -n "$pi_command" ]] || pi_command="$HOME/.npm-global/bin/pi"
+                            [[ -x "$pi_command" ]] || { echo -e "${RED}Pi CLI is not available.${NC}"; continue; }
+                            "$pi_command"
+                        fi
                     else
-                        echo -e "${YELLOW}Skipped. Run 'pi' and enter /login anytime.${NC}"
+                        echo -e "${YELLOW}Skipped. Run 'ppi login PROFILE' anytime.${NC}"
                     fi
                     echo ""
                     ;;

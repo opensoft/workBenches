@@ -20,8 +20,12 @@ Every bench must include these mounts. Copy this block into new bench `devcontai
 // Projects directory
 "source=${localEnv:HOME}/projects,target=/workspace/projects,type=bind",
 // Zsh history (named volume per bench)
-"source={benchname}-zshhistory,target=/home/${localEnv:USER}/.zsh_history,type=volume",
+"source={benchname}-zshhistory,target=/home/${localEnv:USER}/.workbenches-history,type=volume",
 ```
+
+Set `HISTFILE=/home/${localEnv:USER}/.workbenches-history/.zsh_history`
+through the container environment or shell launcher. Docker named volumes are
+directories, so they must not be mounted directly onto the `.zsh_history` file.
 
 ### Shell Configuration (bind, readonly)
 
@@ -56,6 +60,7 @@ AI/spec CLIs are installed in the appropriate base image and store credentials o
 
 // Project Intelligence and local agent metadata
 "source=${localEnv:HOME}/.pi,target=/home/${localEnv:USER}/.pi,type=bind,consistency=cached",
+"source=${localEnv:HOME}/.pi-profiles,target=/home/${localEnv:USER}/.pi-profiles,type=bind,consistency=cached",
 
 // Claude Code (Anthropic) — native installer
 // Auth: ~/.claude/ (session, config), ~/.claude.json (legacy config)
@@ -109,6 +114,7 @@ Reference mapping each installed AI/spec CLI to its credential path and mount ty
 
 - Shared agent workflow → host-managed files → `~/.agents/` → cached
 - Project Intelligence metadata → host-managed files → `~/.pi/` → cached
+- Pi isolated profiles → host-managed files → `~/.pi-profiles/` → cached
 - Claude Code → native installer → `~/.claude/`, `~/.claude.json`, `~/.claude-profiles/` → cached
 - Claude profile launchers → `/usr/local/bin/claude-profile` and `/usr/local/bin/pclaude` in Layer 0; both resolve the mounted `~/.claude-profiles` tree
 - ChatGPT/Codex CLI → `~/.codex/`, `~/.chatgpt-profiles/` → cached

@@ -32,6 +32,7 @@ class Account:
     status: str = "active"
     auth_mode: str = "browser"
     secret_env: str = ""
+    profile_path: str = ""
 
 
 PROVIDER_ALIASES = {
@@ -93,6 +94,7 @@ def load_accounts(repo: Path) -> list[Account]:
                 status=item.get("status", "active"),
                 auth_mode=item.get("authMode", "browser"),
                 secret_env=item.get("secretEnv", ""),
+                profile_path=item.get("profilePath", ""),
             )
             accounts.append(account)
             seen.add((account.provider, account.name))
@@ -124,6 +126,7 @@ def load_accounts(repo: Path) -> list[Account]:
                 status=item.get("status", "active"),
                 auth_mode=item.get("authMode", "browser"),
                 secret_env=item.get("secretEnv", ""),
+                profile_path=item.get("profilePath", ""),
             )
             accounts.append(account)
             seen.add(identity)
@@ -132,17 +135,25 @@ def load_accounts(repo: Path) -> list[Account]:
 
 def profile_home(account: Account) -> Path | None:
     if account.provider == "claude":
-        return HOME / ".claude-profiles/profiles" / account.name
+        return HOME / ".claude-profiles/profiles" / (account.profile_path or account.name)
     if account.provider == "chatgpt":
-        current = HOME / ".chatgpt-profiles/profiles" / account.name
+        current = HOME / ".chatgpt-profiles/profiles" / (
+            account.profile_path or account.name
+        )
         legacy = HOME / ".openai-profiles/profiles" / account.name
         return legacy if legacy.exists() and not current.exists() else current
     if account.provider == "grok":
-        return HOME / ".grok-profiles/profiles" / account.name
+        return HOME / ".grok-profiles/profiles" / (
+            account.profile_path or account.name
+        )
     if account.provider == "gemini":
-        return HOME / ".gemini-profiles/profiles" / account.name
+        return HOME / ".gemini-profiles/profiles" / (
+            account.profile_path or account.name
+        )
     if account.provider == "glm":
-        return HOME / ".glm-profiles/profiles" / account.name
+        return HOME / ".glm-profiles/profiles" / (
+            account.profile_path or account.name
+        )
     return None
 
 

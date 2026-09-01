@@ -40,16 +40,47 @@ esac
 command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
 
 profile_metadata() {
-  local requested="$1" normalized
+  local requested="$1" normalized row metadata candidate profile_path fallback_row
+  local preferred_row preferred_depth=-1 path_depth
   normalized="$(printf '%s' "$requested" | tr '[:upper:]' '[:lower:]')"
-  jq -r --arg name "$normalized" '
-    .profiles[]
-    | select(
-        ((.name | ascii_downcase) == $name)
-        or any(.aliases[]?; (ascii_downcase == $name))
-      )
-    | [.name,.email,.family] | @tsv
-  ' "$manifest" | head -n 1
+  if [[ -f "$manifest" ]]; then
+    row="$(jq -r --arg name "$normalized" '
+      .profiles[]
+      | select(
+          ((.name | ascii_downcase) == $name)
+          or any(.aliases[]?; (ascii_downcase == $name))
+        )
+      | [.name,.email,.family,(.profilePath // .name)] | @tsv
+    ' "$manifest" | head -n 1)"
+    if [[ -n "$row" ]]; then
+      printf '%s\n' "$row"
+      return 0
+    fi
+  fi
+  while IFS= read -r -d '' metadata; do
+    candidate="$(jq -r --arg name "$normalized" '
+      if (((.name // "") | ascii_downcase) == $name)
+         or any(.aliases[]?; (ascii_downcase == $name))
+      then "match" else empty end
+    ' "$metadata")"
+    if [[ "$candidate" == match ]]; then
+      profile_path="${metadata#"$base/profiles/"}"
+      profile_path="${profile_path%/.profile.json}"
+      row="$(jq -r --arg path "$profile_path" '[.name,.email,.family,$path] | @tsv' "$metadata")"
+      if jq -e '(.profilePath // "") | length > 0' "$metadata" >/dev/null; then
+        path_depth="$(awk -F/ '{print NF}' <<<"$profile_path")"
+        if (( path_depth > preferred_depth )); then
+          preferred_row="$row"
+          preferred_depth="$path_depth"
+        fi
+      elif [[ -z "${fallback_row:-}" ]]; then
+        fallback_row="$row"
+      fi
+    fi
+  done < <(find "$base/profiles" -mindepth 2 -type f -name .profile.json -print0 2>/dev/null)
+  [[ -n "${preferred_row:-}" ]] && { printf '%s\n' "$preferred_row"; return 0; }
+  [[ -n "${fallback_row:-}" ]] && { printf '%s\n' "$fallback_row"; return 0; }
+  return 1
 }
 
 configure_environment() {
@@ -84,8 +115,8 @@ case "$action" in
     profile_requested="${1:?Usage: $invoked_as $action PROFILE [arguments]}"; shift
     row="$(profile_metadata "$profile_requested")"
     [[ -n "$row" ]] || { echo "Unknown $label profile: $profile_requested" >&2; exit 2; }
-    IFS=$'\t' read -r profile email family <<<"$row"
-    profile_dir="$base/profiles/$profile"
+    IFS=$'\t' read -r profile email family profile_path <<<"$row"
+    profile_dir="$base/profiles/$profile_path"
     [[ -d "$profile_dir" ]] || { echo "$label profile is not configured: $profile_dir" >&2; exit 2; }
     [[ "$action" == path ]] && { printf '%s\n' "$profile_dir"; exit 0; }
     [[ -n "$cli" ]] || { echo "$label CLI not found." >&2; exit 1; }

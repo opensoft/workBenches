@@ -12,9 +12,11 @@ Run the onboarding directly with:
 ./scripts/setup-ai-profiles.sh --interactive
 ```
 
-The flow asks for consent, work companies, company emails and GitHub orgs,
-personal subscription emails, and the personal GitHub owner. It searches each
-owner's accessible repositories for a credential registry containing
+The flow asks for consent, then for each work company an email and GitHub org
+(the company name defaults to the email domain's first label, e.g.
+`you@acme.com` suggests `acme`, and can be edited), personal subscription
+emails, and the personal GitHub owner. It searches each owner's accessible
+repositories for a credential registry containing
 `ai/source.json`. When none is found, the user may enter a registry URL or
 create local manual profile metadata.
 
@@ -29,9 +31,31 @@ The standard launchers are:
 |---|---|---|
 | Claude | `pclaude` | `CLAUDE_CONFIG_DIR` |
 | ChatGPT/Codex | `pcodex` | `CODEX_HOME` |
+| Pi harness | `ppi` | `PI_CODING_AGENT_DIR` |
 | Gemini | `pgemini` | `GEMINI_CLI_HOME` |
 | Grok | `pgrok` | `GROK_HOME` |
 | Z.AI GLM through OpenCode | `pglm` or `pzai` | profile-specific XDG directories |
+
+Every managed provider root supports the same company-first layout:
+
+```text
+profiles/
+|-- company-one/
+|   |-- team/
+|   |-- max/
+|   `-- xfactor/
+|-- company-two/
+|   |-- team/
+|   |-- max/
+|   `-- xfactor/
+`-- personal/
+```
+
+`setup.sh` derives `company-one` and `company-two` by slugging the company
+names entered during onboarding. Where a harness has portable conversation
+state, its state root contains one directory for each entered company plus
+`personal`. Authentication, caches, provider databases, installation identity,
+and settings remain profile-local.
 
 For example, `team001` resolves to the canonical `team-001` profile for every
 provider:
@@ -39,10 +63,17 @@ provider:
 ```bash
 pclaude team001
 pcodex team001
+ppi team001
 pgemini team001
 pgrok team001
 pglm team001
 ```
+
+Pi profiles are derived from the same canonical identities and may contain
+several Pi-specific provider logins. Use `ppi login team001`, then `/login`
+inside Pi and select the provider. Pi OAuth credentials are harness-specific;
+workBenches never copies Claude Code or Codex CLI tokens into Pi implicitly.
+See [Pi multi-account profiles](pi-multi-account-profiles.md).
 
 Login and status operations use the same pattern:
 

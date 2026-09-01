@@ -166,6 +166,7 @@ ENV PATH="/opt/bun/bin:${PATH}"
 # Copy and run AI CLI installation script
 COPY install-ai-clis.sh /tmp/
 ARG AI_CLI_REFRESH=2026-07-12
+ARG HERDR_INSTALL_SHA256=""
 RUN echo "AI CLI refresh marker: ${AI_CLI_REFRESH}"
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/root/.npm \
@@ -177,13 +178,16 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY files/claude-profile /usr/local/bin/claude-profile
 COPY files/codex-profile /usr/local/bin/codex-profile
 COPY files/provider-profile /usr/local/bin/provider-profile
+COPY files/pi-profile /usr/local/bin/pi-profile
 COPY files/claude-statusline-command.sh /usr/local/share/workbenches/claude/statusline-command.sh
 RUN chmod 0755 /usr/local/bin/claude-profile \
     /usr/local/bin/codex-profile \
     /usr/local/bin/provider-profile \
+    /usr/local/bin/pi-profile \
     /usr/local/share/workbenches/claude/statusline-command.sh \
     && ln -sfn claude-profile /usr/local/bin/pclaude \
     && ln -sfn codex-profile /usr/local/bin/pcodex \
+    && ln -sfn pi-profile /usr/local/bin/ppi \
     && ln -sfn provider-profile /usr/local/bin/gemini-profile \
     && ln -sfn provider-profile /usr/local/bin/pgemini \
     && ln -sfn provider-profile /usr/local/bin/grok-profile \

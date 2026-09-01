@@ -1,7 +1,18 @@
 {
   "version": 1,
+  "families": ["company", "personal"],
   "profiles": [
-    { "name": "work", "family": "work", "email": "user@company.example" },
-    { "name": "personal", "family": "personal", "email": "user@example.com" }
+    {
+      "name": "work",
+      "profilePath": "company/xfactor/work",
+      "family": "company",
+      "email": "user@company.example"
+    },
+    {
+      "name": "personal",
+      "profilePath": "personal/personal",
+      "family": "personal",
+      "email": "user@example.com"
+    }
   ]
 }

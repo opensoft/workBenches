@@ -37,8 +37,9 @@ class ProviderProfilesTest(unittest.TestCase):
                             "profiles": [
                                 {
                                     "name": "team-001",
+                                    "profilePath": "example-company/team/team-001",
                                     "email": "team-001@example.com",
-                                    "family": "company",
+                                    "family": "example-company",
                                     "aliases": ["team001"],
                                 }
                             ],
@@ -72,14 +73,33 @@ class ProviderProfilesTest(unittest.TestCase):
                     capture_output=True,
                     text=True,
                 )
-                profile = home / f".{provider}-profiles/profiles/team-001"
+                profile = home / f".{provider}-profiles/profiles/example-company/team/team-001"
                 expected = profile if expected_env != "XDG_DATA_HOME" else profile / "xdg/data"
+                self.assertEqual((root / f"{provider}.capture").read_text().strip(), str(expected))
+                env[f"{provider.upper()}_PROFILES_MANIFEST"] = str(root / "missing.json")
+                subprocess.run(
+                    [str(home / ".local/bin" / launcher), "team001"],
+                    env=env,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
                 self.assertEqual((root / f"{provider}.capture").read_text().strip(), str(expected))
                 self.assertEqual(profile.stat().st_mode & 0o777, 0o700, provider)
                 self.assertEqual(
                     (profile / ".profile.json").stat().st_mode & 0o777,
                     0o600,
                     provider,
+                )
+                provider_root = home / f".{provider}-profiles"
+                for category in ("team", "max", "xfactor"):
+                    self.assertTrue(
+                        (provider_root / f"profiles/example-company/{category}").is_dir(),
+                        f"{provider} missing {category} scaffold",
+                    )
+                self.assertTrue(
+                    (provider_root / "state/example-company").is_dir(),
+                    f"{provider} missing company state",
                 )
 
 
