@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Two-line Claude Code status line. Claude supplies session data as JSON on stdin.
+# Four-line Claude Code status panel. Claude supplies session data as JSON on stdin.
 
 input=$(cat)
 if ! jq -e . >/dev/null 2>&1 <<<"$input"; then
@@ -88,6 +88,16 @@ truncate_middle() {
     fi
     side=$(( (max - 3) / 2 ))
     printf '%s...%s' "${value:0:side}" "${value: -side}"
+}
+
+profile_display_name() {
+    local value=$1
+    case "$value" in
+        team-[0-9]*) printf 'Team%s' "${value#team-}" ;;
+        max-[0-9]*) printf 'Max%s' "${value#max-}" ;;
+        xfactor-[0-9]*) printf 'xFactory%s' "${value#xfactor-}" ;;
+        *) printf '%s' "$value" ;;
+    esac
 }
 
 pct_integer() {
@@ -339,7 +349,26 @@ if [[ -n $cwd ]]; then
     fi
 fi
 
-line1_parts=("${dim}[WORK]${reset}" "${cyan}${short_cwd}${reset}")
+runtime_target=""
+tmux_session=${WORKBENCHES_TMUX_SESSION:-}
+tmux_pane=${WORKBENCHES_TMUX_PANE:-${TMUX_PANE:-}}
+# Prefer the identity exported by pclaude. Fall back to querying tmux for bare
+# Claude/yolo launches that predate the profile-aware launcher.
+if [[ -z $tmux_session && -n ${TMUX:-} ]] && command -v tmux >/dev/null 2>&1; then
+    tmux_session=$(tmux display-message -p '#S' 2>/dev/null || true)
+fi
+if [[ -n $tmux_session ]]; then
+    runtime_target="tmux:${tmux_session}"
+    [[ -n $tmux_pane ]] && runtime_target+="/${tmux_pane}"
+fi
+
+line1_parts=("${dim}[TMUX]${reset}")
+if [[ -n $runtime_target ]]; then
+    line1_parts+=("${blue}${runtime_target}${reset}")
+else
+    line1_parts+=("${dim}none${reset}")
+fi
+line1_parts+=("${dim}[WORK]${reset}" "${cyan}${short_cwd}${reset}")
 if [[ -n $git_branch ]]; then
     branch_max=$(( columns >= 100 ? 30 : 18 ))
     git_branch=$(truncate_middle "$git_branch" "$branch_max")
@@ -351,7 +380,15 @@ if [[ -n $pr_number && $columns -ge 80 ]]; then
     line1_parts+=("${blue}${pr_text}${reset}")
 fi
 
-line2_parts=("${dim}[MODEL]${reset}")
+profile_name=${CLAUDE_PROFILE_NAME:-}
+if [[ -z $profile_name && -r ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.profile.json ]]; then
+    profile_name=$(jq -r '.name // empty' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.profile.json" 2>/dev/null)
+fi
+profile_label=$(profile_display_name "$profile_name")
+
+line2_parts=()
+[[ -n $profile_label ]] && line2_parts+=("${dim}[PROFILE]${reset}" "${cyan}${profile_label}${reset}")
+line2_parts+=("${dim}[MODEL]${reset}")
 model_text=$model
 [[ -n $effort ]] && model_text+=" $effort"
 [[ $thinking == true && $columns -ge 100 ]] && model_text+=" think"
@@ -379,17 +416,7 @@ elif [[ -n $session_name ]]; then
 elif [[ -n $worktree_name ]]; then
     identity="wt:$worktree_name"
 fi
-runtime_target=""
-# AgentTower needs the exact tmux session name for `tmux attach -t`.
-if [[ -n ${TMUX:-} ]] && command -v tmux >/dev/null 2>&1; then
-    tmux_session=$(tmux display-message -p '#S' 2>/dev/null || true)
-    if [[ -n $tmux_session ]]; then
-        runtime_target="tmux:${tmux_session}"
-        [[ -n ${TMUX_PANE:-} ]] && runtime_target+="/${TMUX_PANE}"
-    fi
-fi
-[[ -z $runtime_target && -n $identity ]] && runtime_target=$identity
-[[ -n $runtime_target ]] && line1_parts+=("${blue}${runtime_target}${reset}")
+[[ -z $runtime_target && -n $identity ]] && line2_parts+=("${blue}${identity}${reset}")
 
 weekly_reset=${fable_weekly_reset:-$seven_day_reset}
 line4_parts=(

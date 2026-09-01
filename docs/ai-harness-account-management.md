@@ -109,6 +109,28 @@ OpenAI documents the browser flow, local cache, and automatic refresh in
 [Authentication](https://learn.chatgpt.com/docs/auth) and the command details
 in [Developer commands](https://learn.chatgpt.com/docs/developer-commands#codex-login).
 
+### ChatGPT account with OpenCode
+
+The host-side OpenCode profile extension is not yet a provider type supported
+by the credential-manager dashboard or unified manifest. It uses a separate
+`opencode-profiles.json` manifest and the `popencode` launcher. Unlike
+`pcodex`, it preserves one
+shared OpenCode project/session database and isolates only the selected OpenAI
+OAuth record:
+
+```bash
+popencode login work1
+popencode status work1
+popencode work1
+```
+
+Shared OMO configuration and supporting API-key providers therefore remain
+available after switching from `work1` to `work2`. A profile without its own
+OpenAI credential is treated as logged out and cannot fall back to the other
+profile. See
+[OpenCode multi-account OpenAI profiles](opencode-openai-multi-account-profiles.md)
+for the state layout, runtime contract, and verification procedure.
+
 ### Grok Build
 
 Grok officially supports changing its home directory with `GROK_HOME`, so each

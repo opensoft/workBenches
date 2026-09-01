@@ -73,6 +73,12 @@ AI/spec CLIs are installed in the appropriate base image and store credentials o
 "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USER}/.codex,type=bind,consistency=cached",
 "source=${localEnv:HOME}/.chatgpt-profiles,target=/home/${localEnv:USER}/.chatgpt-profiles,type=bind,consistency=cached",
 
+// OpenCode OpenAI profile isolation and profile-aware runtime
+"source=${localEnv:HOME}/.opencode-profiles,target=/home/${localEnv:USER}/.opencode-profiles,type=bind,consistency=cached",
+"source=${localEnv:HOME}/.config/workbenches,target=/home/${localEnv:USER}/.config/workbenches,type=bind,readonly",
+"source=${localEnv:HOME}/.local/lib/workbenches,target=/home/${localEnv:USER}/.local/lib/workbenches,type=bind,readonly",
+"source=${localEnv:HOME}/.local/state/workbenches,target=/home/${localEnv:USER}/.local/state/workbenches,type=bind,consistency=cached",
+
 // Grok Build — isolated through GROK_HOME
 "source=${localEnv:HOME}/.grok-profiles,target=/home/${localEnv:USER}/.grok-profiles,type=bind,consistency=cached",
 
@@ -119,13 +125,14 @@ Reference mapping each installed AI/spec CLI to its credential path and mount ty
 - Claude profile launchers → `/usr/local/bin/claude-profile` and `/usr/local/bin/pclaude` in Layer 0; both resolve the mounted `~/.claude-profiles` tree
 - ChatGPT/Codex CLI → `~/.codex/`, `~/.chatgpt-profiles/` → cached
 - Codex profile launchers → `/usr/local/bin/codex-profile` and `/usr/local/bin/pcodex` in Layer 0; both resolve the mounted `~/.chatgpt-profiles` tree
+- OpenCode profile launchers → `/usr/local/bin/opencode-profile` and `/usr/local/bin/popencode` in Layer 0; both resolve the mounted `~/.opencode-profiles` tree using the readonly manifest/runtime mounts and shared `~/.local/state/workbenches` selection state
 - Gemini profile launcher → `/usr/local/bin/pgemini`; resolves mounted `~/.gemini-profiles/` through `GEMINI_CLI_HOME`
 - Grok profile launcher → `/usr/local/bin/pgrok`; resolves mounted `~/.grok-profiles/` through `GROK_HOME`
 - Z.AI GLM profile launcher → `/usr/local/bin/pglm`; resolves mounted `~/.glm-profiles/` through profile-specific XDG directories
 - Google Antigravity → settings under `~/.gemini/`; authentication remains in the host keyring
 - Abacus AI → settings under `~/.abacusai/`; API keys remain external
 - GitHub Copilot → npm (`@github/copilot`) → `~/.copilot-cli/` → readonly
-- OpenCode → built from upstream source → config baked into image via `/etc/skel` → no mount needed
+- OpenCode → built from upstream source → config baked into image via `/etc/skel`; `popencode` additionally uses the host-managed profile mounts above
 - oh-my-opencode → built from source (darrenhinde fork) → plugin at `/opt/opencode/plugin` → no mount needed
 - Letta Code → npm (`@letta-ai/letta-code`) → uses env vars or interactive auth → no mount needed
 - OpenSpec → npm (`@fission-ai/openspec`) in Layer 1a dev benches → no credential mount needed

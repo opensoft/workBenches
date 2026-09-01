@@ -24,9 +24,17 @@ run_launcher_case() {
     local fake_root="$case_root/workBenches"
     local mock_bin="$case_root/bin"
     local docker_log="$case_root/docker.log"
-    mkdir -p "$fake_home" "$fake_root/devBenches/pyBench/.devcontainer" "$mock_bin"
+    local prepare_log="$case_root/prepare.log"
+    mkdir -p "$fake_home" "$fake_root/devBenches/pyBench/.devcontainer" "$fake_root/scripts" "$mock_bin"
     : > "$fake_root/devBenches/pyBench/.devcontainer/devcontainer.json"
     : > "$fake_root/devBenches/pyBench/.devcontainer/docker-compose.yml"
+
+    cat > "$fake_root/scripts/prepare-bench-start.sh" <<'PREPARE'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$MOCK_PREPARE_LOG"
+PREPARE
+    chmod +x "$fake_root/scripts/prepare-bench-start.sh"
 
     cat > "$mock_bin/docker" <<'MOCK'
 #!/usr/bin/env bash
@@ -53,6 +61,10 @@ if [[ "${1:-}" == "container" && "${2:-}" == "inspect" ]]; then
 /home/tester/.p10k.zsh
 /home/tester/.claude-profiles
 /home/tester/.chatgpt-profiles
+/home/tester/.opencode-profiles
+/home/tester/.config/workbenches
+/home/tester/.local/lib/workbenches
+/home/tester/.local/state/workbenches
 /home/tester/.pi-profiles
 /home/tester/.gemini-profiles
 /home/tester/.grok-profiles
@@ -83,6 +95,7 @@ MOCK
             USER=tester \
             PATH="$mock_bin:$PATH" \
             MOCK_DOCKER_LOG="$docker_log" \
+            MOCK_PREPARE_LOG="$prepare_log" \
             MOCK_RUNNING="$running" \
             MOCK_MOUNTS="$mounts" \
             MOCK_RM_REFUSE="$rm_refuse" \
@@ -102,6 +115,7 @@ MOCK
 
     CASE_OUTPUT="$output"
     CASE_DOCKER_LOG="$(cat "$docker_log")"
+    CASE_PREPARE_LOG="$(cat "$prepare_log")"
     rm -rf "$case_root"
 }
 
@@ -109,6 +123,8 @@ bash -n "$launcher"
 "$launcher" --help | grep -q -- '--repair' || fail "help does not document --repair"
 
 run_launcher_case preserve-running true missing true true
+grep -q -- '--container py-bench --base py-bench:latest --user tester --project dev-benches --service py-bench' <<<"$CASE_PREPARE_LOG" \
+    || fail "safe startup helper did not receive the pyBench lifecycle contract"
 grep -q 'preserving the live container' <<<"$CASE_OUTPUT" || fail "running container was not preserved with a warning"
 if grep -q '^rm -f py-bench$' <<<"$CASE_DOCKER_LOG"; then
     fail "normal launch removed a running container"

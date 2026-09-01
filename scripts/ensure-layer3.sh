@@ -71,11 +71,37 @@ USER_IMAGE="${BASE_NAME}:${USERNAME}"
 
 echo -e "${CYAN}ensure-layer3: Checking ${USER_IMAGE}...${NC}"
 
+running_container_for_image() {
+    local container_id
+    local configured_image
+
+    while IFS= read -r container_id; do
+        [[ -n "$container_id" ]] || continue
+        configured_image="$(docker container inspect --format '{{.Config.Image}}' "$container_id" 2>/dev/null || true)"
+        if [[ "$configured_image" == "$USER_IMAGE" ]]; then
+            docker container inspect --format '{{.Name}}' "$container_id" 2>/dev/null | sed 's#^/##'
+            return 0
+        fi
+    done < <(docker container ls --quiet)
+
+    return 1
+}
+
 # Check if base image exists
 if ! docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
     echo -e "${RED}✗ Base image '$BASE_IMAGE' not found!${NC}"
     echo "  Build the Layer 2 image first, or run a cascade rebuild."
     exit 1
+fi
+
+# Automatic refreshes must never replace the image tag beneath a live bench.
+# Once the container is stopped, the next managed startup will rebuild Layer 3.
+if [ "$FORCE" = false ]; then
+    RUNNING_CONTAINER="$(running_container_for_image || true)"
+    if [[ -n "$RUNNING_CONTAINER" ]]; then
+        echo -e "${YELLOW}↷ ${USER_IMAGE} is in use by running container '${RUNNING_CONTAINER}'; deferring Layer 3 refresh until its next startup${NC}"
+        exit 0
+    fi
 fi
 
 copy_image_file() {

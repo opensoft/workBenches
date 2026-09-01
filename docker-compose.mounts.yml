@@ -39,6 +39,11 @@ x-standard-mounts: &standard-mounts
   # ChatGPT accounts used by Codex CLI
   - ~/.codex:/home/${USER}/.codex:cached
   - ~/.chatgpt-profiles:/home/${USER}/.chatgpt-profiles:cached
+  # OpenCode OpenAI profiles, manifest, and profile-aware runtime
+  - ~/.opencode-profiles:/home/${USER}/.opencode-profiles:cached
+  - ~/.config/workbenches:/home/${USER}/.config/workbenches:ro
+  - ~/.local/lib/workbenches:/home/${USER}/.local/lib/workbenches:ro
+  - ~/.local/state/workbenches:/home/${USER}/.local/state/workbenches:cached
   # Grok Build isolated account homes
   - ~/.grok-profiles:/home/${USER}/.grok-profiles:cached
   # Shared AI agent protocols and skills
@@ -81,6 +86,7 @@ services:
 #   Shared Agents   (protocols and global skills)        → ~/.agents/
 #   Project Intel   (local agent metadata)                → ~/.pi/
 #   Pi profiles     (isolated auth, settings, sessions)   → ~/.pi-profiles/
+#   OpenCode profiles (isolated OpenAI auth)              → ~/.opencode-profiles/
 #   Antigravity     (settings only; auth in host keyring) → ~/.gemini/
 #   Abacus AI       (settings; API keys externally held)  → ~/.abacusai/
 #   GitHub Copilot  (@github/copilot npm) → ~/.copilot-cli/

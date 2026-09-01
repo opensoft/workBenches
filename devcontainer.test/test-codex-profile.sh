@@ -56,6 +56,8 @@ run_launcher() {
         "CODEX_PROFILES_HOME=$PROFILE_BASE"
         "CODEX_PROFILES_MANIFEST=$MANIFEST"
         "FAKE_CODEX_LOG=$FAKE_CODEX_LOG"
+        "WORKBENCHES_SHARED_MCP_HOME=$TEST_ROOT/shared-mcp"
+        "WORKBENCHES_DISABLE_DEFAULT_VIBE_MCP=1"
     )
     if [[ "$runtime_url" == "__UNSET__" ]]; then
         env -u CODEX_SONARQUBE_MCP_URL "${common_env[@]}" "$@"

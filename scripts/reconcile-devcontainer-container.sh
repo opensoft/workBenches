@@ -57,6 +57,11 @@ if ! docker image inspect "$EXPECTED_IMAGE" >/dev/null 2>&1; then
     exit 1
 fi
 
+if [[ "$(docker container inspect --format '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null || true)" == "true" ]]; then
+    echo "Deferring reconciliation for running devcontainer '$CONTAINER_NAME'; it will be refreshed after it is stopped"
+    exit 0
+fi
+
 CURRENT_IMAGE_ID="$(docker inspect --format '{{.Image}}' "$CONTAINER_NAME" 2>/dev/null)" || exit 0
 CURRENT_CONFIG_IMAGE="$(docker inspect --format '{{.Config.Image}}' "$CONTAINER_NAME" 2>/dev/null)" || exit 0
 EXPECTED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$EXPECTED_IMAGE")"

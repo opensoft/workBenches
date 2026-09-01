@@ -7,6 +7,7 @@ command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
 
 configure_profile_runtime() {
   local config_dir="$1" statusline_source statusline_link settings settings_tmp statusline_command default_model
+  local guard_source guard_link guard_command guard_ok
 
   statusline_source="$base/shared/statusline-command.sh"
   if [[ ! -f "$statusline_source" && -f /usr/local/share/workbenches/claude/statusline-command.sh ]]; then
@@ -20,6 +21,23 @@ configure_profile_runtime() {
     fi
   fi
 
+  # usage/context guard hook (shared, symlinked like the status line). The
+  # model cannot read its own context or rate limits; this hook injects them
+  # when a threshold is crossed. Gated per project by
+  # <cwd>/.claude/usage-guard.on, so it is silent unless armed.
+  guard_source="$base/shared/usage-guard.sh"
+  if [[ ! -f "$guard_source" && -f /usr/local/share/workbenches/claude/usage-guard.sh ]]; then
+    guard_source=/usr/local/share/workbenches/claude/usage-guard.sh
+  fi
+  guard_ok=false
+  if [[ -f "$guard_source" ]]; then
+    guard_link="$config_dir/usage-guard.sh"
+    if [[ -L "$guard_link" || ! -e "$guard_link" ]]; then
+      ln -sfn "$guard_source" "$guard_link"
+    fi
+    guard_ok=true
+  fi
+
   settings="$config_dir/settings.json"
   if [[ -e "$settings" ]] && ! jq -e 'type == "object"' "$settings" >/dev/null 2>&1; then
     echo "Claude profile settings are not valid JSON: $settings" >&2
@@ -28,31 +46,139 @@ configure_profile_runtime() {
 
   statusline_command='bash "${CLAUDE_CONFIG_DIR}/statusline-command.sh"'
   default_model='claude-fable-5'
+  guard_command='bash "${CLAUDE_CONFIG_DIR}/usage-guard.sh"'
   settings_tmp="$(mktemp "$config_dir/.settings.XXXXXX.tmp")"
   if [[ -f "$settings" ]]; then
-    jq --arg command "$statusline_command" --arg model "$default_model" '
+    jq --arg command "$statusline_command" --arg model "$default_model" \
+       --arg guard "$guard_command" --argjson guard_ok "$guard_ok" '
       .statusLine = {type: "command", command: $command, refreshInterval: 10}
       | .permissions = (.permissions // {})
       | .permissions.defaultMode = "bypassPermissions"
       | .effortLevel = (.effortLevel // "xhigh")
       | .model = $model
+      | (if $guard_ok then
+            .hooks = (.hooks // {})
+            | .hooks.UserPromptSubmit = [{hooks: [{type: "command", command: $guard, timeout: 5}]}]
+         else . end)
     ' "$settings" > "$settings_tmp"
   else
-    jq -n --arg command "$statusline_command" --arg model "$default_model" '{
+    jq -n --arg command "$statusline_command" --arg model "$default_model" \
+       --arg guard "$guard_command" --argjson guard_ok "$guard_ok" '{
       statusLine: {type: "command", command: $command, refreshInterval: 10},
       permissions: {defaultMode: "bypassPermissions"},
       effortLevel: "xhigh",
       model: $model
-    }' > "$settings_tmp"
+    }
+    | (if $guard_ok then
+          .hooks = {UserPromptSubmit: [{hooks: [{type: "command", command: $guard, timeout: 5}]}]}
+       else . end)' > "$settings_tmp"
   fi
   chmod 600 "$settings_tmp"
   mv -f "$settings_tmp" "$settings"
+}
+
+load_profile_setup_token() {
+  local config_dir="$1" token_file mode
+  token_file="$config_dir/.setup-token"
+  [[ -e "$token_file" ]] || return 0
+  [[ -f "$token_file" && ! -L "$token_file" ]] || {
+    echo "Claude profile setup token must be a regular file: $token_file" >&2
+    return 1
+  }
+  mode="$(stat -c '%a' "$token_file")"
+  [[ "$mode" == 600 ]] || {
+    echo "Claude profile setup token must have mode 0600: $token_file" >&2
+    return 1
+  }
+  IFS= read -r CLAUDE_CODE_OAUTH_TOKEN < "$token_file"
+  [[ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]] || {
+    echo "Claude profile setup token is empty: $token_file" >&2
+    return 1
+  }
+  export CLAUDE_CODE_OAUTH_TOKEN
 }
 
 claude_bin="${CLAUDE_BIN:-$(command -v claude || true)}"
 if [[ -z "$claude_bin" && -x "$HOME/.local/bin/claude" ]]; then
   claude_bin="$HOME/.local/bin/claude"
 fi
+mcp_sync="${WORKBENCHES_MCP_SYNC_BIN:-$(command -v workbenches-mcp-sync || true)}"
+if [[ -z "$mcp_sync" ]]; then
+  launcher_dir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+  [[ -x "$launcher_dir/workbenches-mcp-sync" ]] && mcp_sync="$launcher_dir/workbenches-mcp-sync"
+fi
+
+family_uses_shared_mcp() {
+  local family="$1"
+  local configured=",${WORKBENCHES_SHARED_MCP_FAMILIES:-opensoft},"
+  [[ "$configured" == *",$family,"* ]]
+}
+
+claude_mcp_snapshot() {
+  local metadata="$1" output="$2"
+  if [[ -f "$metadata" ]]; then
+    jq '{mcpServers: (.mcpServers // {})}' "$metadata" >"$output"
+  else
+    printf '%s\n' '{"mcpServers":{}}' >"$output"
+  fi
+  chmod 0600 "$output"
+}
+
+claude_add_has_scope() {
+  local argument
+  for argument in "$@"; do
+    [[ "$argument" == --scope || "$argument" == -s || "$argument" == --scope=* ]] && return 0
+  done
+  return 1
+}
+
+claude_run_is_interactive() {
+  [[ -t 0 && -t 1 ]] || return 1
+  [[ "${WORKBENCHES_CLAUDE_TMUX:-auto}" != off ]] || return 1
+  [[ -z "${WORKBENCHES_CLAUDE_TMUX_CHILD:-}" ]] || return 1
+  [[ -z "${TMUX:-}" ]] || return 1
+
+  case "${1:-}" in
+    mcp|plugin|plugins|doctor|install|update|--help|-h|--version|-v|--print|-p)
+      return 1
+      ;;
+  esac
+  return 0
+}
+
+start_profile_tmux() {
+  local profile="$1"
+  shift
+  local launcher session_name command_string="" argument
+
+  command -v tmux >/dev/null 2>&1 || {
+    echo "pclaude: tmux is required for interactive profile launches." >&2
+    return 1
+  }
+  launcher="$(readlink -f "${BASH_SOURCE[0]}")"
+  session_name="claude-${profile//[^a-zA-Z0-9_-]/-}-$(date +%Y%m%d%H%M%S)-$$"
+  for argument in env WORKBENCHES_CLAUDE_TMUX_CHILD=1 "$launcher" run "$profile" "$@"; do
+    printf -v argument '%q' "$argument"
+    command_string+="${command_string:+ }$argument"
+  done
+
+  tmux new-session -d -s "$session_name" -c "$PWD" "$command_string" || {
+    echo "pclaude: failed to start tmux session $session_name" >&2
+    return 1
+  }
+  tmux set-option -t "$session_name" mouse on >/dev/null 2>&1 || true
+  exec tmux attach-session -t "$session_name"
+}
+
+export_tmux_identity() {
+  local session pane
+  [[ -n "${TMUX:-}" ]] || return 0
+  command -v tmux >/dev/null 2>&1 || return 0
+  session="$(tmux display-message -p '#S' 2>/dev/null || true)"
+  pane="$(tmux display-message -p '#{pane_id}' 2>/dev/null || true)"
+  [[ -n "$session" ]] && export WORKBENCHES_TMUX_SESSION="$session"
+  [[ -n "$pane" ]] && export WORKBENCHES_TMUX_PANE="$pane"
+}
 
 # Native Claude records ~/.local/bin/claude as its expected installation path.
 # Bench images install the immutable CLI in /usr/local/bin, so provide a
@@ -144,15 +270,60 @@ case "$action" in
     config_dir="$base/profiles/$profile_path"
     [[ -d "$config_dir" ]] || { echo "Claude profile is not configured: $config_dir" >&2; exit 2; }
     [[ -n "$claude_bin" ]] || { echo "Claude CLI not found." >&2; exit 1; }
+    export CLAUDE_PROFILE_NAME="$profile"
     configure_profile_runtime "$config_dir"
+    load_profile_setup_token "$config_dir"
+    shared_mcp=false
+    if family_uses_shared_mcp "$family" && [[ -n "$mcp_sync" && -x "$mcp_sync" ]]; then
+      shared_mcp=true
+      "$mcp_sync" sync-claude-profile "$family" "$config_dir/.claude.json"
+    fi
     case "$action" in
       login) CLAUDE_CONFIG_DIR="$config_dir" "$claude_bin" auth login --claudeai --email "$email" "$@" ;;
       status) CLAUDE_CONFIG_DIR="$config_dir" "$claude_bin" auth status "${@---text}" ;;
-      run) CLAUDE_CONFIG_DIR="$config_dir" exec "$claude_bin" \
-        --allow-dangerously-skip-permissions \
-        --dangerously-skip-permissions \
-        --permission-mode bypassPermissions \
-        "$@" ;;
+      run)
+        if claude_run_is_interactive "$@"; then
+          start_profile_tmux "$profile" "$@"
+        fi
+        export_tmux_identity
+        if [[ "$shared_mcp" == true && "${1:-}" == mcp \
+          && ( "${2:-}" == add || "${2:-}" == add-json ) ]]; then
+          metadata="$config_dir/.claude.json"
+          before="$(mktemp "$config_dir/.mcp-before.XXXXXX.json")"
+          after="$(mktemp "$config_dir/.mcp-after.XXXXXX.json")"
+          claude_mcp_snapshot "$metadata" "$before"
+          managed_args=("$@")
+          if ! claude_add_has_scope "$@"; then
+            managed_args=(mcp "$2" --scope user "${@:3}")
+          fi
+          set +e
+          CLAUDE_CONFIG_DIR="$config_dir" "$claude_bin" \
+            --allow-dangerously-skip-permissions \
+            --dangerously-skip-permissions \
+            --permission-mode bypassPermissions \
+            "${managed_args[@]}"
+          command_status=$?
+          set -e
+          if [[ "$command_status" -eq 0 ]]; then
+            claude_mcp_snapshot "$metadata" "$after"
+            "$mcp_sync" import-claude-diff "$family" "$profile" "$before" "$after"
+            "$mcp_sync" sync-claude-profile "$family" "$metadata"
+          fi
+          find "$before" "$after" -delete
+          exit "$command_status"
+        fi
+        if [[ "$shared_mcp" == true && "${1:-}" == mcp && "${2:-}" == remove && -n "${3:-}" ]] \
+          && "$mcp_sync" has "$family" "$3"; then
+          "$mcp_sync" remove "$family" "$3"
+          "$mcp_sync" sync-claude-profile "$family" "$config_dir/.claude.json"
+          exit 0
+        fi
+        CLAUDE_CONFIG_DIR="$config_dir" exec "$claude_bin" \
+          --allow-dangerously-skip-permissions \
+          --dangerously-skip-permissions \
+          --permission-mode bypassPermissions \
+          "$@"
+        ;;
     esac
     ;;
   *) echo "Usage: claude-profile {list|login|status|run} [PROFILE]" >&2; exit 2 ;;

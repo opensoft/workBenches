@@ -394,6 +394,18 @@ cd workBenches
 bash scripts/ensure-layer3.sh --base frappe-bench:latest --user "$(whoami)"
 ```
 
+### Deferred Layer 3 Refresh
+
+Managed bench startup refreshes Layer 3 only when the bench is stopped. If a
+running container still uses an older `:<username>` image, the shared Layers
+0-2 can be rebuilt without interrupting it. On the next Wave or Dev Containers
+startup, `prepare-bench-start.sh` rebuilds the stale Layer 3 image, removes the
+stopped stale container, and lets the launcher recreate it from the new image.
+
+`docker restart <container>` only restarts the existing container and cannot
+adopt a newer image. Use the workBenches Wave or Dev Containers startup path
+when an image refresh is expected.
+
 ---
 
 ## Building Images

@@ -31,6 +31,7 @@ The standard launchers are:
 |---|---|---|
 | Claude | `pclaude` | `CLAUDE_CONFIG_DIR` |
 | ChatGPT/Codex | `pcodex` | `CODEX_HOME` |
+| OpenAI through OpenCode | `popencode` | OpenAI OAuth record only; project state is shared |
 | Pi harness | `ppi` | `PI_CODING_AGENT_DIR` |
 | Gemini | `pgemini` | `GEMINI_CLI_HOME` |
 | Grok | `pgrok` | `GROK_HOME` |
@@ -68,6 +69,12 @@ pgemini team001
 pgrok team001
 pglm team001
 ```
+
+OpenCode's OpenAI account-switching workflow is intentionally different from
+the provider-wide isolation shown above. `popencode work1` and
+`popencode work2` share repository sessions, OMO configuration, and supporting
+API-key providers while keeping each OpenAI OAuth login separate. See
+[OpenCode multi-account OpenAI profiles](opencode-openai-multi-account-profiles.md).
 
 Pi profiles are derived from the same canonical identities and may contain
 several Pi-specific provider logins. Use `ppi login team001`, then `/login`

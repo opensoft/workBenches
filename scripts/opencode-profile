@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+manifest="${OPENCODE_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/opencode-profiles.json}"
+base="${OPENCODE_PROFILES_HOME:-$HOME/.opencode-profiles}"
+last_profile_file="${OPENCODE_LAST_PROFILE_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/workbenches/opencode-last-profile}"
+default_profile="${OPENCODE_DEFAULT_PROFILE:-max-002}"
+opencode_bin="${OPENCODE_PROFILE_BIN:-$HOME/.local/lib/workbenches/opencode-profile}"
+if [[ ! -x "$opencode_bin" ]]; then
+  opencode_bin="${OPENCODE_BIN:-$(command -v opencode || true)}"
+fi
+if [[ -z "$opencode_bin" && -x "$HOME/.opencode/bin/opencode" ]]; then
+  opencode_bin="$HOME/.opencode/bin/opencode"
+fi
+
+command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
+[[ -f "$manifest" ]] || { echo "OpenCode profile manifest not found: $manifest" >&2; exit 1; }
+[[ -n "$opencode_bin" ]] || { echo "OpenCode CLI not found." >&2; exit 1; }
+
+profile_metadata() {
+  local requested normalized
+  requested="$1"
+  normalized="$(printf '%s' "$requested" | tr '[:upper:]' '[:lower:]')"
+  jq -r --arg name "$normalized" '
+    .profiles[]
+    | select(
+        ((.name | ascii_downcase) == $name)
+        or any(.aliases[]?; (ascii_downcase == $name))
+      )
+    | [.name,.email,(.profilePath // .name),(.expectedAccountId // "")] | @tsv
+  ' "$manifest" | head -n 1
+}
+
+record_last_profile() {
+  local state_dir state_tmp
+  state_dir="$(dirname "$last_profile_file")"
+  state_tmp="${last_profile_file}.tmp.$$"
+  mkdir -p "$state_dir"
+  printf '%s\n' "$profile" > "$state_tmp"
+  chmod 600 "$state_tmp"
+  mv -f "$state_tmp" "$last_profile_file"
+}
+
+action="${1:-list}"
+if [[ "$action" == "list" || "$action" == "login" || "$action" == "status" || "$action" == "logout" || "$action" == "run" ]]; then
+  [[ $# -eq 0 ]] || shift
+else
+  action="run"
+fi
+
+if [[ "$action" == "list" ]]; then
+  jq -r '.profiles[] | [.name,.email,((.aliases // []) | join(","))] | @tsv' "$manifest"
+  exit 0
+fi
+
+[[ $# -gt 0 ]] || { echo "Usage: popencode {list|login|status|logout|run} {PROFILE|last} [arguments]" >&2; exit 2; }
+requested="$1"
+shift
+if [[ "${requested,,}" == "last" ]]; then
+  requested="$default_profile"
+  if [[ -s "$last_profile_file" ]]; then
+    IFS= read -r requested < "$last_profile_file"
+  fi
+fi
+row="$(profile_metadata "$requested")"
+[[ -n "$row" ]] || { echo "Unknown OpenCode profile: $requested" >&2; exit 2; }
+IFS=$'\t' read -r profile email profile_path expected_account_id <<<"$row"
+
+profile_root="$base/profiles/$profile_path"
+auth_file="$profile_root/openai-auth.json"
+mkdir -p "$profile_root"
+chmod 700 "$profile_root"
+
+export OPENCODE_PROFILE_NAME="$profile"
+export OPENCODE_PROFILE_EMAIL="$email"
+export OPENCODE_AUTH_PROFILE_PROVIDER="openai"
+export OPENCODE_AUTH_PROFILE_FILE="$auth_file"
+export OPENCODE_DISABLE_AUTOUPDATE=1
+
+case "$action" in
+  login)
+    printf 'Starting OpenAI login for %s (%s).\n' "$profile" "$email" >&2
+    login_method_args=(--method "ChatGPT Pro/Plus (browser)")
+    for arg in "$@"; do
+      if [[ "$arg" == "--method" || "$arg" == -m || "$arg" == --method=* ]]; then
+        login_method_args=()
+        break
+      fi
+    done
+    "$opencode_bin" auth login --provider openai "${login_method_args[@]}" "$@"
+    record_last_profile
+    ;;
+  logout)
+    "$opencode_bin" auth logout openai "$@"
+    ;;
+  status)
+    printf 'Profile: %s\nExpected email: %s\n' "$profile" "$email"
+    if [[ ! -f "$auth_file" ]]; then
+      echo 'OpenAI login: missing'
+      exit 1
+    fi
+    account_id="$(jq -r '.openai.accountId // ""' "$auth_file")"
+    if [[ -z "$account_id" ]]; then
+      echo 'OpenAI login: missing'
+      exit 1
+    fi
+    if [[ -n "$expected_account_id" && "$account_id" != "$expected_account_id" ]]; then
+      echo 'OpenAI login: account mismatch'
+      exit 1
+    fi
+    echo 'OpenAI login: verified'
+    ;;
+  run)
+    record_last_profile
+    # This profile-aware build predates the CLI --auto flag. The global
+    # permission policy in opencode.json provides non-interactive operation.
+    exec "$opencode_bin" "$@"
+    ;;
+esac

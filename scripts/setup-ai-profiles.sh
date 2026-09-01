@@ -65,6 +65,14 @@ if [[ -f "$config_dir/pi-profiles.json" ]]; then
 fi
 
 if [[ "$applied" == true ]]; then
+  if [[ -x "$repo_dir/scripts/workbenches-mcp-sync" ]]; then
+    {
+      jq -r '.families[]?, .profiles[].family' "$config_dir/claude-profiles.json" 2>/dev/null || true
+      jq -r '.families[]?, .profiles[].family' "$config_dir/openai-profiles.json" 2>/dev/null || true
+    } | sort -u | while IFS= read -r family; do
+      [[ -n "$family" ]] && "$repo_dir/scripts/workbenches-mcp-sync" ensure "$family"
+    done
+  fi
   echo "AI profile setup complete. Provider credentials remain isolated and require their own login."
 else
   echo "No AI profile manifests were created or applied."
