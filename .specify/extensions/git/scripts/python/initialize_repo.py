@@ -38,7 +38,7 @@ def _read_commit_message(repo_root: Path) -> str:
         return default
     for line in lines:
         if line.startswith("init_commit_message:"):
-            value = re.sub(r"^init_commit_message:\s*", "", line)
+            value = re.sub(r"^init_commit_message:\s*", "", line).strip()
             value = re.sub(r"^[\"']", "", value)
             value = re.sub(r"[\"']*$", "", value)
             if value:

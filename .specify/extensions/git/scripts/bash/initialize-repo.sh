@@ -28,7 +28,7 @@ cd "$REPO_ROOT"
 COMMIT_MSG="[Spec Kit] Initial commit"
 _config_file="$REPO_ROOT/.specify/extensions/git/git-config.yml"
 if [ -f "$_config_file" ]; then
-    _msg=$(grep '^init_commit_message:' "$_config_file" 2>/dev/null | sed 's/^init_commit_message:[[:space:]]*//' | sed 's/^["'\'']//' | sed 's/["'\'']*$//')
+    _msg=$(grep '^init_commit_message:' "$_config_file" 2>/dev/null | sed 's/^init_commit_message:[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/^["'\'']//' | sed 's/["'\'']*$//')
     if [ -n "$_msg" ]; then
         COMMIT_MSG="$_msg"
     fi

@@ -79,5 +79,5 @@ auto_commit:
     message: "[Spec Kit] Sync tasks to issues"
 
 checkout_mode: worktree
-base_branch: sonarqube-mcp-runtime-base
+base_branch: main
 worktree_root: ../speckit-worktrees
