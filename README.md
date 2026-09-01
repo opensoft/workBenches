@@ -99,7 +99,14 @@ Installed widgets include:
 | `pyBench` | Starts or repairs `py-bench`, then opens an interactive shell |
 | `flutterBench` | Starts or repairs `flutter-bench`, then opens an interactive shell |
 | `C++Bench` | Starts or repairs `cpp-bench`, then opens an interactive shell |
+| `rustBench` | Starts or repairs `rust-bench`, then opens an interactive shell |
 | `cloudBench` | Starts or repairs `cloud-bench`, then opens an interactive shell |
+
+Opening a widget never recreates an already-running bench when mount
+requirements drift. The launcher warns and preserves the live container. Use
+`scripts/wave-container-shell.sh --repair <bench>` only when it is safe to
+recreate that container; stopped containers with missing mounts are repaired
+automatically.
 
 First-run setup offers consent-based work and personal AI profile onboarding,
 including GitHub credential-registry discovery and a local manual fallback.

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Verify ct launcher helpers apply the expected permissive defaults per CLI.
+# Verify ct launcher helpers use safe defaults while preserving explicit args.
 
 set -euo pipefail
 
@@ -8,15 +8,32 @@ trap 'rm -rf "$TMPDIR_ROOT"' EXIT
 
 REPO_ROOT="$TMPDIR_ROOT/repo"
 TARGET_DIR="$TMPDIR_ROOT/worktree-target"
+ONE_LF_TARGET="$TMPDIR_ROOT/worktree-one"$'\n'
+TWO_LF_TARGET="$TMPDIR_ROOT/worktree-two"$'\n\n'
 BIN_DIR="$TMPDIR_ROOT/bin"
 LOG_DIR="$TMPDIR_ROOT/logs"
+export HOME="$TMPDIR_ROOT/home"
 
 mkdir -p \
     "$REPO_ROOT/.specify/extensions/git/scripts/bash" \
     "$REPO_ROOT/.specify/shell" \
     "$TARGET_DIR" \
+    "$ONE_LF_TARGET" \
+    "$TWO_LF_TARGET" \
     "$BIN_DIR" \
-    "$LOG_DIR"
+    "$LOG_DIR" \
+    "$HOME/.claude/prompts"
+
+printf '%s\n' 'dashboard test prompt' > "$HOME/.claude/prompts/speckit-dashboard-full.md"
+cat > "$HOME/.claude/speckit-dashboard.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+cat > "$HOME/.claude/speckit-dash-toggle.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$HOME/.claude/speckit-dashboard.sh" "$HOME/.claude/speckit-dash-toggle.sh"
 
 git init -q "$REPO_ROOT"
 
@@ -26,7 +43,7 @@ set -euo pipefail
 if [ "\${1:-}" = "--json" ]; then
     printf '{"WORKTREE_PATH":"%s"}\n' "$TARGET_DIR"
 else
-    printf '%s\n' "$TARGET_DIR"
+    printf '%s\n' "\${CT_TEST_LAST_TARGET:-$TARGET_DIR}"
 fi
 EOF
 
@@ -37,7 +54,7 @@ if [ "\${1:-}" = "--list" ]; then
     printf '1. fake-branch [default]\n'
     printf '   %s\n' "$TARGET_DIR"
 else
-    printf '%s\n' "$TARGET_DIR"
+    printf '%s\n' "\${CT_TEST_SELECT_TARGET:-$TARGET_DIR}"
 fi
 EOF
 
@@ -49,6 +66,10 @@ for cli in claude codex gemini; do
     cat > "$BIN_DIR/$cli" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
+printf '%s' "\$PWD" > "$LOG_DIR/$cli.pwd"
+if [ "\${CT_TEST_PWD_ONLY:-}" = 1 ]; then
+    exit 0
+fi
 {
     printf 'pwd=%s\n' "\$PWD"
     for arg in "\$@"; do
@@ -59,6 +80,31 @@ set -euo pipefail
 EOF
     chmod +x "$BIN_DIR/$cli"
 done
+
+assert_bytes_equal() {
+    local expected="$1"
+    local actual_file="$2"
+    local label="$3"
+    local expected_file="$TMPDIR_ROOT/expected-pwd"
+
+    printf '%s' "$expected" > "$expected_file"
+    if ! cmp -s "$expected_file" "$actual_file"; then
+        printf 'assertion failed: %s PWD bytes differ\nexpected: ' "$label" >&2
+        od -An -tx1 "$expected_file" >&2
+        printf 'actual:   ' >&2
+        od -An -tx1 "$actual_file" >&2
+        return 1
+    fi
+}
+
+assert_current_pwd() {
+    local expected="$1"
+    local label="$2"
+    local actual_file="$TMPDIR_ROOT/current-pwd"
+
+    printf '%s' "$PWD" > "$actual_file"
+    assert_bytes_equal "$expected" "$actual_file" "$label"
+}
 
 cat > "$BIN_DIR/tmux" <<'EOF'
 #!/usr/bin/env bash
@@ -96,10 +142,13 @@ source "${CT_FUNCTIONS_FILE:-/usr/local/share/ct/ct-functions.zsh}"
 
 cd "$REPO_ROOT"
 cta --claude-extra
+assert_bytes_equal "$TARGET_DIR" "$LOG_DIR/claude.pwd" 'cta initial path'
 cd "$REPO_ROOT"
 ctc --codex-extra
+assert_bytes_equal "$TARGET_DIR" "$LOG_DIR/codex.pwd" 'ctc initial path'
 cd "$REPO_ROOT"
 ctg --gemini-extra
+assert_bytes_equal "$TARGET_DIR" "$LOG_DIR/gemini.pwd" 'ctg initial path'
 cd "$REPO_ROOT"
 
 _ct_prompt_cli() {
@@ -107,17 +156,18 @@ _ct_prompt_cli() {
 }
 
 cts --cts-extra
+assert_bytes_equal "$TARGET_DIR" "$LOG_DIR/codex.pwd" 'cts initial path'
 
 grep -Fx "pwd=$TARGET_DIR" "$LOG_DIR/claude.log" >/dev/null
 grep -Fx "arg=--model" "$LOG_DIR/claude.log" >/dev/null
 grep -Fx "arg=opus" "$LOG_DIR/claude.log" >/dev/null
-grep -Fx "arg=--dangerously-skip-permissions" "$LOG_DIR/claude.log" >/dev/null
-grep -Fx "arg=--permission-mode" "$LOG_DIR/claude.log" >/dev/null
-grep -Fx "arg=bypassPermissions" "$LOG_DIR/claude.log" >/dev/null
+! grep -Fx "arg=--dangerously-skip-permissions" "$LOG_DIR/claude.log" >/dev/null
+! grep -Fx "arg=--permission-mode" "$LOG_DIR/claude.log" >/dev/null
+! grep -Fx "arg=bypassPermissions" "$LOG_DIR/claude.log" >/dev/null
 grep -Fx "arg=--claude-extra" "$LOG_DIR/claude.log" >/dev/null
 
 grep -Fx "pwd=$TARGET_DIR" "$LOG_DIR/codex.log" >/dev/null
-[ "$(grep -c '^arg=--dangerously-bypass-approvals-and-sandbox$' "$LOG_DIR/codex.log")" -eq 2 ]
+! grep -Fx "arg=--dangerously-bypass-approvals-and-sandbox" "$LOG_DIR/codex.log" >/dev/null
 [ "$(grep -c '^arg=-m$' "$LOG_DIR/codex.log")" -eq 2 ]
 [ "$(grep -c '^arg=gpt-5.4$' "$LOG_DIR/codex.log")" -eq 2 ]
 [ "$(grep -c '^arg=-c$' "$LOG_DIR/codex.log")" -eq 2 ]
@@ -126,25 +176,55 @@ grep -Fx "arg=--codex-extra" "$LOG_DIR/codex.log" >/dev/null
 grep -Fx "arg=--cts-extra" "$LOG_DIR/codex.log" >/dev/null
 
 grep -Fx "pwd=$TARGET_DIR" "$LOG_DIR/gemini.log" >/dev/null
-grep -Fx "arg=--yolo" "$LOG_DIR/gemini.log" >/dev/null
-grep -Fx "arg=--approval-mode" "$LOG_DIR/gemini.log" >/dev/null
-grep -Fx "arg=yolo" "$LOG_DIR/gemini.log" >/dev/null
+! grep -Fx "arg=--yolo" "$LOG_DIR/gemini.log" >/dev/null
+! grep -Fx "arg=--approval-mode" "$LOG_DIR/gemini.log" >/dev/null
+! grep -Fx "arg=yolo" "$LOG_DIR/gemini.log" >/dev/null
 grep -Fx "arg=--model" "$LOG_DIR/gemini.log" >/dev/null
 grep -Fx "arg=gemini-2.5-pro" "$LOG_DIR/gemini.log" >/dev/null
 grep -Fx "arg=--gemini-extra" "$LOG_DIR/gemini.log" >/dev/null
 
+export CT_TEST_PWD_ONLY=1
+export CT_TEST_LAST_TARGET="$ONE_LF_TARGET"
+cd "$REPO_ROOT"
+ct
+assert_current_pwd "$ONE_LF_TARGET" 'global ct one-LF path'
+export CT_TEST_LAST_TARGET="$TWO_LF_TARGET"
+cd "$REPO_ROOT"
+ct
+assert_current_pwd "$TWO_LF_TARGET" 'global ct two-LF path'
+
+export CT_TEST_SELECT_TARGET="$ONE_LF_TARGET"
+cd "$REPO_ROOT"
+ctc
+assert_bytes_equal "$ONE_LF_TARGET" "$LOG_DIR/codex.pwd" 'global selector one-LF path'
+export CT_TEST_SELECT_TARGET="$TWO_LF_TARGET"
+cd "$REPO_ROOT"
+ctc
+assert_bytes_equal "$TWO_LF_TARGET" "$LOG_DIR/codex.pwd" 'global selector two-LF path'
+unset CT_TEST_LAST_TARGET CT_TEST_SELECT_TARGET CT_TEST_PWD_ONLY
+
 FALLBACK_REPO="$TMPDIR_ROOT/fallback-repo"
 FALLBACK_TARGET="$TMPDIR_ROOT/fallback-target"
 FALLBACK_TEMPLATE="${SPECKIT_WORKTREE_FALLBACK_FILE:-/usr/local/share/speckit-worktree/templates/specify/shell/worktrees.sh}"
-mkdir -p "$FALLBACK_REPO/.specify/shell" "$FALLBACK_TARGET"
+mkdir -p \
+    "$FALLBACK_REPO/.specify/extensions/git/scripts/bash" \
+    "$FALLBACK_REPO/.specify/shell" \
+    "$FALLBACK_TARGET"
 git init -q "$FALLBACK_REPO"
 cp "$FALLBACK_TEMPLATE" "$FALLBACK_REPO/.specify/shell/worktrees.sh"
+cat > "$FALLBACK_REPO/.specify/extensions/git/scripts/bash/get-last-worktree.sh" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "\${CT_TEST_LAST_TARGET:-$FALLBACK_TARGET}"
+EOF
 cat > "$FALLBACK_REPO/.specify/shell/select-worktree.sh" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "$FALLBACK_TARGET"
+printf '%s\n' "\${CT_TEST_SELECT_TARGET:-$FALLBACK_TARGET}"
 EOF
-chmod +x "$FALLBACK_REPO/.specify/shell/select-worktree.sh"
+chmod +x \
+    "$FALLBACK_REPO/.specify/extensions/git/scripts/bash/get-last-worktree.sh" \
+    "$FALLBACK_REPO/.specify/shell/select-worktree.sh"
 
 # shellcheck source=/dev/null
 source "$FALLBACK_REPO/.specify/shell/worktrees.sh"
@@ -160,10 +240,29 @@ cts --fallback-cts-extra
 grep -Fx "pwd=$FALLBACK_TARGET" "$LOG_DIR/claude.log" >/dev/null
 [ "$(grep -c '^arg=--model$' "$LOG_DIR/claude.log")" -eq 3 ]
 [ "$(grep -c '^arg=opus$' "$LOG_DIR/claude.log")" -eq 3 ]
-[ "$(grep -c '^arg=--dangerously-skip-permissions$' "$LOG_DIR/claude.log")" -eq 3 ]
-[ "$(grep -c '^arg=--permission-mode$' "$LOG_DIR/claude.log")" -eq 3 ]
-[ "$(grep -c '^arg=bypassPermissions$' "$LOG_DIR/claude.log")" -eq 3 ]
+! grep -Fx "arg=--dangerously-skip-permissions" "$LOG_DIR/claude.log" >/dev/null
+! grep -Fx "arg=--permission-mode" "$LOG_DIR/claude.log" >/dev/null
+! grep -Fx "arg=bypassPermissions" "$LOG_DIR/claude.log" >/dev/null
 [ "$(grep -c '^arg=--teammate-mode$' "$LOG_DIR/claude.log")" -eq 3 ]
 [ "$(grep -c '^arg=tmux$' "$LOG_DIR/claude.log")" -eq 3 ]
 grep -Fx "arg=--fallback-claude-extra" "$LOG_DIR/claude.log" >/dev/null
 grep -Fx "arg=--fallback-cts-extra" "$LOG_DIR/claude.log" >/dev/null
+
+export CT_TEST_PWD_ONLY=1
+export CT_TEST_LAST_TARGET="$ONE_LF_TARGET"
+cd "$FALLBACK_REPO"
+ct
+assert_current_pwd "$ONE_LF_TARGET" 'fallback ct one-LF path'
+export CT_TEST_LAST_TARGET="$TWO_LF_TARGET"
+cd "$FALLBACK_REPO"
+ct
+assert_current_pwd "$TWO_LF_TARGET" 'fallback ct two-LF path'
+
+export CT_TEST_SELECT_TARGET="$ONE_LF_TARGET"
+cd "$FALLBACK_REPO"
+cta
+assert_bytes_equal "$ONE_LF_TARGET" "$LOG_DIR/claude.pwd" 'fallback selector one-LF path'
+export CT_TEST_SELECT_TARGET="$TWO_LF_TARGET"
+cd "$FALLBACK_REPO"
+cta
+assert_bytes_equal "$TWO_LF_TARGET" "$LOG_DIR/claude.pwd" 'fallback selector two-LF path'

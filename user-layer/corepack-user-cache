@@ -1,0 +1,35 @@
+#!/bin/sh
+set -eu
+
+command_name=${0##*/}
+case "$command_name" in
+    corepack|pnpm|pnpx|yarn|yarnpkg) ;;
+    *)
+        echo "Unsupported Corepack command: $command_name" >&2
+        exit 64
+        ;;
+esac
+
+# Respect an explicit caller override. Replace only the shared image default,
+# which is root-owned and therefore unusable by Layer 3 runtime users.
+case "${COREPACK_HOME:-}" in
+    ""|/opt/corepack)
+        runtime_home=$(getent passwd "$(id -u)" | cut -d: -f6)
+        if [ -z "$runtime_home" ]; then
+            echo "Could not determine the effective user's home directory" >&2
+            exit 1
+        fi
+        COREPACK_HOME="$runtime_home/.cache/corepack"
+        export COREPACK_HOME
+        ;;
+esac
+
+mkdir -p "$COREPACK_HOME"
+
+original_command="/usr/local/libexec/workbenches-corepack-original/$command_name"
+if [ ! -x "$original_command" ]; then
+    echo "Original Corepack command is unavailable: $original_command" >&2
+    exit 1
+fi
+
+exec "$original_command" "$@"

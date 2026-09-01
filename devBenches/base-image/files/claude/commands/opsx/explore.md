@@ -195,7 +195,8 @@ If the user mentions a change or you detect one is relevant:
    | Requirement changed | `specs/<capability>/spec.md` |
    | Design decision made | `design.md` |
    | Scope changed | `proposal.md` |
-   | New work identified | `tasks.md` |
+   | Governance or handoff milestone identified | OpenSpec `tasks.md` (governance/handoff milestones only) |
+   | Executable work identified | Linked Speckit `specs/<feature>/tasks.md` |
    | Assumption invalidated | Relevant artifact |
    | Ambiguity resolved | `clarifications.md` |
 
@@ -203,6 +204,9 @@ If the user mentions a change or you detect one is relevant:
    - "That's a design decision. Capture it in design.md?"
    - "This is a new requirement. Add it to specs?"
    - "This changes scope. Update the proposal?"
+
+   Route executable work exclusively to the one linked Speckit `specs/<feature>/tasks.md`.
+   Never add code-level implementation tasks to the OpenSpec governance checklist.
 
 4. **The user decides** - Offer and move on. Don't pressure. Don't auto-capture.
 

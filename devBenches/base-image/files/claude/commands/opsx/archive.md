@@ -33,20 +33,26 @@ Archive a completed change in the experimental workflow.
    - Prompt user for confirmation to continue
    - Proceed if user confirms
 
-3. **Check task completion status**
+3. **Resolve the single Speckit handoff**
 
-   Read the tasks file (typically `tasks.md`) to check for incomplete tasks.
+   Read the OpenSpec governance/handoff artifact and resolve exactly one linked Speckit feature, branch, and repo-relative task path (`specs/<feature>/tasks.md`). Resolve the current worktree through Speckit helpers rather than a committed host-absolute path.
 
-   Count tasks marked with `- [ ]` (incomplete) vs `- [x]` (complete).
+   **If the link is missing, stale, or ambiguous:** stop and require the handoff to be repaired. Do not infer implementation completion from OpenSpec governance checkboxes.
 
-   **If incomplete tasks found:**
-   - Display warning showing count of incomplete tasks
-   - Prompt user for confirmation to continue
-   - Proceed if user confirms
+4. **Check Speckit implementation and landing status**
 
-   **If no tasks file exists:** Proceed without task-related warning.
+   Read the linked Speckit `tasks.md` and count `- [ ]` (incomplete) vs `- [x]` (complete). Verify the handoff records one of these terminal outcomes:
+   - the implementation branch/PR landed and verification passed
+   - the implementation was explicitly abandoned with a recorded decision
 
-4. **Assess delta spec sync state**
+   **If incomplete Speckit tasks or no terminal outcome is recorded:**
+   - Display the incomplete count and missing landing/abandonment evidence
+   - Stop while the work remains active
+   - If the user chooses to abandon the work, first record that explicit terminal decision in the OpenSpec handoff; only then may archive continue
+
+   **If the linked Speckit task file does not exist:** stop. A missing implementation authority is not equivalent to zero tasks.
+
+5. **Assess delta spec sync state**
 
    Check for delta specs at `openspec/changes/<name>/specs/`. If none exist, proceed without sync prompt.
 
@@ -61,7 +67,7 @@ Archive a completed change in the experimental workflow.
 
    If user chooses sync, apply the delta specs directly using the standard OpenSpec delta rules. Update the corresponding files under `openspec/specs/<capability>/spec.md`, then proceed to archive. Do not invoke a separate sync skill or command unless it exists in the current project.
 
-5. **Perform the archive**
+6. **Perform the archive**
 
    Create the archive directory if it doesn't exist:
    ```bash
@@ -78,14 +84,15 @@ Archive a completed change in the experimental workflow.
    mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
    ```
 
-6. **Display summary**
+7. **Display summary**
 
    Show archive completion summary including:
    - Change name
    - Schema that was used
    - Archive location
    - Spec sync status (synced / sync skipped / no delta specs)
-   - Note about any warnings (incomplete artifacts/tasks)
+   - Linked Speckit feature and terminal outcome
+   - Note about any warnings (incomplete artifacts or Speckit tasks)
 
 **Output On Success**
 
@@ -150,7 +157,9 @@ Target archive directory already exists.
 **Guardrails**
 - Always prompt for change selection if not provided
 - Use artifact graph (openspec status --json) for completion checking
-- Don't block archive on warnings - just inform and confirm
+- Never treat OpenSpec governance checkboxes as implementation completion
+- Require exactly one linked Speckit feature; block if the handoff or task file is missing or ambiguous
+- Block unfinished active work. An explicitly abandoned change may proceed only after the terminal abandonment decision is recorded in the handoff.
 - Preserve any files that actually exist inside the change directory when moving it to archive.
 - Show clear summary of what happened
 - If sync is requested, update the main specs directly from the delta specs before archiving.
