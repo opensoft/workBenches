@@ -161,6 +161,37 @@ link_path() {
   fi
 }
 
+# Bare `claude` and the `yolo` helper use ~/.claude rather than a named profile.
+# Keep that compatibility path on the same renderer so its panel cannot drift.
+default_claude_dir="${WORKBENCHES_DEFAULT_CLAUDE_HOME:-$HOME/.claude}"
+mkdir -p "$default_claude_dir"
+default_statusline="$default_claude_dir/statusline-command.sh"
+if [[ -e "$default_statusline" && ! -L "$default_statusline" ]]; then
+  default_statusline_backup="$default_statusline.pre-workbenches-shared"
+  [[ -e "$default_statusline_backup" ]] || cp -p "$default_statusline" "$default_statusline_backup"
+fi
+default_statusline_relative="$(realpath -m --relative-to="$default_claude_dir" "$base/shared/statusline-command.sh")"
+ln -sfn "$default_statusline_relative" "$default_statusline"
+
+default_settings="$default_claude_dir/settings.json"
+if [[ -e "$default_settings" ]] && ! jq -e 'type == "object"' "$default_settings" >/dev/null 2>&1; then
+  echo "Claude default settings are not valid JSON: $default_settings" >&2
+  exit 1
+fi
+default_settings_tmp="$(mktemp "$default_claude_dir/.settings.XXXXXX.tmp")"
+default_statusline_command="bash $default_statusline"
+if [[ -f "$default_settings" ]]; then
+  jq --arg command "$default_statusline_command" \
+    '.statusLine = {type: "command", command: $command, refreshInterval: 10}' \
+    "$default_settings" > "$default_settings_tmp"
+else
+  jq -n --arg command "$default_statusline_command" \
+    '{statusLine: {type: "command", command: $command, refreshInterval: 10}}' \
+    > "$default_settings_tmp"
+fi
+chmod 600 "$default_settings_tmp"
+mv -f "$default_settings_tmp" "$default_settings"
+
 while IFS=$'\t' read -r name family profile_path; do
   profile_dir="$base/profiles/$profile_path"
   legacy_profile_dir="$base/profiles/$name"
@@ -238,6 +269,7 @@ done < <(find "$base/profiles" -mindepth 2 -type f -name settings.json -print0)
 mkdir -p "$HOME/.local/bin"
 ln -sfn "$repo_dir/scripts/claude-profile" "$HOME/.local/bin/claude-profile"
 ln -sfn "$repo_dir/scripts/claude-profile" "$HOME/.local/bin/pclaude"
+ln -sfn "$repo_dir/scripts/workbenches-mcp-sync" "$HOME/.local/bin/workbenches-mcp-sync"
 echo "Claude profiles configured under $base"
 echo "Run: claude-profile list"
 echo "Then: claude-profile login PROFILE"

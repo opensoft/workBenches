@@ -310,6 +310,7 @@ done < <(jq -r '.profiles[] | [.name, .family, (.profilePath // .name)] | @tsv' 
 mkdir -p "$HOME/.local/bin"
 ln -sfn "$repo_dir/scripts/codex-profile" "$HOME/.local/bin/codex-profile"
 ln -sfn "$repo_dir/scripts/codex-profile" "$HOME/.local/bin/pcodex"
+ln -sfn "$repo_dir/scripts/workbenches-mcp-sync" "$HOME/.local/bin/workbenches-mcp-sync"
 echo "Codex profiles configured under $base"
 echo "Run: codex-profile list"
 echo "Then: codex-profile login PROFILE"

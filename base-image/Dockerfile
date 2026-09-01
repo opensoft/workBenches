@@ -176,16 +176,21 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # image.
 COPY files/claude-profile /usr/local/bin/claude-profile
 COPY files/codex-profile /usr/local/bin/codex-profile
+COPY files/opencode-profile /usr/local/bin/opencode-profile
+COPY files/workbenches-mcp-sync /usr/local/bin/workbenches-mcp-sync
 COPY files/provider-profile /usr/local/bin/provider-profile
 COPY files/pi-profile /usr/local/bin/pi-profile
 COPY files/claude-statusline-command.sh /usr/local/share/workbenches/claude/statusline-command.sh
 RUN chmod 0755 /usr/local/bin/claude-profile \
     /usr/local/bin/codex-profile \
+    /usr/local/bin/opencode-profile \
+    /usr/local/bin/workbenches-mcp-sync \
     /usr/local/bin/provider-profile \
     /usr/local/bin/pi-profile \
     /usr/local/share/workbenches/claude/statusline-command.sh \
     && ln -sfn claude-profile /usr/local/bin/pclaude \
     && ln -sfn codex-profile /usr/local/bin/pcodex \
+    && ln -sfn opencode-profile /usr/local/bin/popencode \
     && ln -sfn pi-profile /usr/local/bin/ppi \
     && ln -sfn provider-profile /usr/local/bin/gemini-profile \
     && ln -sfn provider-profile /usr/local/bin/pgemini \
@@ -195,7 +200,7 @@ RUN chmod 0755 /usr/local/bin/claude-profile \
     && ln -sfn provider-profile /usr/local/bin/zai-profile \
     && ln -sfn provider-profile /usr/local/bin/pglm \
     && ln -sfn provider-profile /usr/local/bin/pzai \
-    && mkdir -p /etc/skel/.local/bin \
+    && mkdir -p /etc/skel/.local/bin /etc/skel/.local/state \
     && ln -sfn /usr/local/bin/claude /etc/skel/.local/bin/claude
 
 # ========================================

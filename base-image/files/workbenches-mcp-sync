@@ -1,0 +1,555 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+usage() {
+  cat <<'EOF'
+Usage: workbenches-mcp-sync COMMAND ARGUMENTS
+
+Commands:
+  ensure FAMILY
+  put-http FAMILY NAME URL [CONTAINER_URL]
+  import-codex-diff FAMILY PROFILE BEFORE_JSON AFTER_JSON
+  import-claude-diff FAMILY PROFILE BEFORE_JSON AFTER_JSON
+  sync-claude-profile FAMILY CLAUDE_JSON
+  strip-claude FAMILY CLAUDE_JSON
+  remove FAMILY NAME
+  has FAMILY NAME
+  codex-args FAMILY
+  claude-config FAMILY
+  list FAMILY
+
+The registry contains shared MCP definitions, not provider login grants. It is
+stored under the shared workBenches project state with owner-only permissions.
+EOF
+}
+
+die() {
+  printf 'workbenches-mcp-sync: %s\n' "$*" >&2
+  exit 1
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || die "$1 is required"
+}
+
+validate_family() {
+  [[ "$1" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "invalid family: $1"
+}
+
+validate_name() {
+  [[ "$1" =~ ^[A-Za-z0-9_-]+$ ]] || die "invalid portable MCP server name: $1"
+}
+
+shared_root() {
+  if [[ -n "${WORKBENCHES_SHARED_MCP_HOME:-}" ]]; then
+    printf '%s\n' "$WORKBENCHES_SHARED_MCP_HOME"
+  elif [[ -f /.dockerenv && -d /workspace/projects ]]; then
+    printf '%s\n' /workspace/projects/.workbenches/mcp
+  else
+    printf '%s\n' "${WORKBENCHES_PROJECTS_ROOT:-$HOME/projects}/.workbenches/mcp"
+  fi
+}
+
+family_dir() {
+  printf '%s/%s\n' "$(shared_root)" "$1"
+}
+
+registry_path() {
+  printf '%s/registry.json\n' "$(family_dir "$1")"
+}
+
+context_name() {
+  if [[ -n "${WORKBENCHES_MCP_CONTEXT:-}" ]]; then
+    printf '%s\n' "$WORKBENCHES_MCP_CONTEXT"
+  elif [[ -f /.dockerenv ]]; then
+    printf '%s\n' container
+  else
+    printf '%s\n' host
+  fi
+}
+
+claude_config_path() {
+  printf '%s/claude.%s.mcp.json\n' "$(family_dir "$1")" "$(context_name)"
+}
+
+ensure_registry() {
+  local family="$1" dir registry tmp
+  validate_family "$family"
+  dir="$(family_dir "$family")"
+  registry="$(registry_path "$family")"
+  mkdir -p "$dir"
+  chmod 0700 "$dir"
+  if [[ ! -f "$registry" ]]; then
+    tmp="$(mktemp "$dir/.registry.XXXXXX.tmp")"
+    jq -n --arg family "$family" '{version: 1, family: $family, servers: {}}' >"$tmp"
+    chmod 0600 "$tmp"
+    mv -f -- "$tmp" "$registry"
+  fi
+  [[ ! -L "$registry" ]] || die "registry must not be a symlink: $registry"
+  [[ "$(stat -c '%u' "$registry")" == "$(id -u)" ]] || die "registry is not owned by the current user"
+  [[ "$((8#$(stat -c '%a' "$registry") & 077))" == 0 ]] || die "registry must be owner-only"
+  jq -e --arg family "$family" '
+    .version == 1
+    and .family == $family
+    and (.servers | type == "object")
+  ' "$registry" >/dev/null || die "invalid registry: $registry"
+}
+
+with_lock() {
+  local family="$1"
+  ensure_registry "$family"
+  exec 9>"$(family_dir "$family")/.registry.lock"
+  flock 9
+}
+
+atomic_jq() {
+  local target="$1"
+  shift
+  local dir tmp
+  dir="$(dirname "$target")"
+  tmp="$(mktemp "$dir/.mcp-json.XXXXXX.tmp")"
+  jq "$@" >"$tmp"
+  chmod 0600 "$tmp"
+  mv -f -- "$tmp" "$target"
+}
+
+merge_imports() {
+  local family="$1" imports="$2" registry
+  registry="$(registry_path "$family")"
+  atomic_jq "$registry" --slurpfile imports "$imports" '
+    .servers = (.servers * $imports[0])
+  ' "$registry"
+}
+
+render_claude_config() {
+  local family="$1" registry output is_container
+  registry="$(registry_path "$family")"
+  output="$(claude_config_path "$family")"
+  if [[ "$(context_name)" == container ]]; then
+    is_container=true
+  else
+    is_container=false
+  fi
+  atomic_jq "$output" --argjson container "$is_container" '
+    def env_value($name): "${" + $name + "}";
+    def effective_url:
+      if $container and ((.containerUrl // "") | length > 0)
+      then .containerUrl else .url end;
+    def stdio_definition:
+      . as $definition
+      | (reduce ($definition.envFrom // [])[] as $name
+          (($definition.env // {}); .[$name] = env_value($name))) as $env
+      | {
+          type: "stdio",
+          command: $definition.command,
+          args: ($definition.args // []),
+          env: $env
+        };
+    def remote_definition:
+      . as $definition
+      | (reduce (($definition.envHeaders // {}) | to_entries[]) as $header
+          (($definition.headers // {}); .[$header.key] = env_value($header.value))) as $headers
+      | (if (($definition.bearerTokenEnvVar // "") | length) > 0
+         then $headers + {Authorization: ("Bearer " + env_value($definition.bearerTokenEnvVar))}
+         else $headers end) as $headers
+      | {
+          type: ($definition.type // "http"),
+          url: ($definition | effective_url),
+          headers: $headers
+        };
+    {
+      mcpServers: (
+        .servers
+        | to_entries
+        | map(
+            select(.value.definition.enabled != false)
+            | {
+                key: .key,
+                value: (
+                  if .value.definition.type == "stdio"
+                  then (.value.definition | stdio_definition)
+                  else (.value.definition | remote_definition)
+                  end
+                )
+              }
+          )
+        | from_entries
+      )
+    }
+  ' "$registry"
+  printf '%s\n' "$output"
+}
+
+command_ensure() {
+  local family="$1"
+  with_lock "$family"
+  render_claude_config "$family" >/dev/null
+}
+
+command_put_http() {
+  local family="$1" name="$2" url="$3" container_url="${4:-}" registry now tmp
+  validate_name "$name"
+  with_lock "$family"
+  registry="$(registry_path "$family")"
+  now="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+  tmp="$(mktemp "$(family_dir "$family")/.imports.XXXXXX.json")"
+  jq -n \
+    --arg name "$name" \
+    --arg url "$url" \
+    --arg containerUrl "$container_url" \
+    --arg updatedAt "$now" '
+      {
+        ($name): {
+          definition: (
+            {type: "http", url: $url, enabled: true}
+            + if ($containerUrl | length) > 0 then {containerUrl: $containerUrl} else {} end
+          ),
+          source: {provider: "workbenches", profile: "shared", updatedAt: $updatedAt}
+        }
+      }
+    ' >"$tmp"
+  merge_imports "$family" "$tmp"
+  render_claude_config "$family" >/dev/null
+  find "$tmp" -delete
+  printf 'Shared MCP %s/%s updated.\n' "$family" "$name"
+}
+
+command_import_codex_diff() {
+  local family="$1" profile="$2" before="$3" after="$4" now imports unsupported
+  [[ -f "$before" && -f "$after" ]] || die "Codex before/after JSON files are required"
+  jq -e 'type == "array"' "$before" >/dev/null || die "invalid Codex before JSON"
+  jq -e 'type == "array"' "$after" >/dev/null || die "invalid Codex after JSON"
+  with_lock "$family"
+  now="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+  unsupported="$(jq -r --slurpfile before "$before" '
+    def safe_name: test("^[A-Za-z0-9_-]+$");
+    def safe_keys($value): (($value // {}) | keys | all(safe_name));
+    def portable:
+      (.name | safe_name)
+      and (
+        if .transport.type == "streamable_http" then
+          safe_keys(.transport.http_headers) and safe_keys(.transport.env_http_headers)
+        elif .transport.type == "stdio" then
+          safe_keys(.transport.env) and ((.transport.env_vars // []) | all(safe_name))
+        else false end
+      );
+    ($before[0] | map({key: .name, value: .}) | from_entries) as $old
+    | .[]
+    | select(($old[.name] // null) != .)
+    | select(portable | not)
+    | .name
+  ' "$after" | paste -sd, -)"
+  [[ -z "$unsupported" ]] || printf 'Skipped non-portable Codex MCP transports: %s\n' "$unsupported" >&2
+  imports="$(mktemp "$(family_dir "$family")/.imports.XXXXXX.json")"
+  jq \
+    --slurpfile before "$before" \
+    --arg profile "$profile" \
+    --arg updatedAt "$now" '
+      def compact:
+        with_entries(select(.value != null and .value != {} and .value != [] and .value != ""));
+      def safe_name: test("^[A-Za-z0-9_-]+$");
+      def safe_keys($value): (($value // {}) | keys | all(safe_name));
+      def portable:
+        (.name | safe_name)
+        and (
+          if .transport.type == "streamable_http" then
+            safe_keys(.transport.http_headers) and safe_keys(.transport.env_http_headers)
+          elif .transport.type == "stdio" then
+            safe_keys(.transport.env) and ((.transport.env_vars // []) | all(safe_name))
+          else false end
+        );
+      def definition:
+        . as $server
+        | .transport as $transport
+        | if $transport.type == "streamable_http" then
+            ({
+              type: "http",
+              url: $transport.url,
+              headers: ($transport.http_headers // {}),
+              envHeaders: ($transport.env_http_headers // {}),
+              bearerTokenEnvVar: $transport.bearer_token_env_var,
+              startupTimeoutSec: $server.startup_timeout_sec,
+              toolTimeoutSec: $server.tool_timeout_sec,
+              enabled: $server.enabled
+            } | compact)
+          elif $transport.type == "stdio" then
+            ({
+              type: "stdio",
+              command: $transport.command,
+              args: ($transport.args // []),
+              env: ($transport.env // {}),
+              envFrom: ($transport.env_vars // []),
+              cwd: $transport.cwd,
+              startupTimeoutSec: $server.startup_timeout_sec,
+              toolTimeoutSec: $server.tool_timeout_sec,
+              enabled: $server.enabled
+            } | compact)
+          else empty end;
+      ($before[0] | map({key: .name, value: .}) | from_entries) as $old
+      | [
+          .[]
+          | select(($old[.name] // null) != .)
+          | select(portable)
+          | {
+              key: .name,
+              value: {
+                definition: definition,
+                source: {provider: "codex", profile: $profile, updatedAt: $updatedAt}
+              }
+            }
+        ]
+      | from_entries
+    ' "$after" >"$imports"
+  merge_imports "$family" "$imports"
+  render_claude_config "$family" >/dev/null
+  count="$(jq 'length' "$imports")"
+  find "$imports" -delete
+  printf 'Imported %s Codex MCP definition(s) into family %s.\n' "$count" "$family"
+}
+
+command_import_claude_diff() {
+  local family="$1" profile="$2" before="$3" after="$4" now imports unsupported
+  [[ -f "$before" && -f "$after" ]] || die "Claude before/after JSON files are required"
+  jq -e '(.mcpServers // {}) | type == "object"' "$before" >/dev/null || die "invalid Claude before JSON"
+  jq -e '(.mcpServers // {}) | type == "object"' "$after" >/dev/null || die "invalid Claude after JSON"
+  with_lock "$family"
+  now="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+  unsupported="$(jq -r --slurpfile before "$before" '
+    def safe_name: test("^[A-Za-z0-9_-]+$");
+    def safe_keys($value): (($value // {}) | keys | all(safe_name));
+    def portable($entry):
+      ($entry.key | safe_name)
+      and (
+        ($entry.value.type // (if $entry.value.url then "http" else "stdio" end)) as $type
+        | ($type == "http" or $type == "sse" or $type == "stdio")
+      )
+      and safe_keys($entry.value.headers)
+      and safe_keys($entry.value.env);
+    ($before[0].mcpServers // {}) as $old
+    | (.mcpServers // {})
+    | to_entries[]
+    | select(($old[.key] // null) != .value)
+    | select(portable(.) | not)
+    | .key
+  ' "$after" | paste -sd, -)"
+  [[ -z "$unsupported" ]] || printf 'Skipped non-portable Claude MCP transports: %s\n' "$unsupported" >&2
+  imports="$(mktemp "$(family_dir "$family")/.imports.XXXXXX.json")"
+  jq \
+    --slurpfile before "$before" \
+    --arg profile "$profile" \
+    --arg updatedAt "$now" '
+      def compact:
+        with_entries(select(.value != null and .value != {} and .value != [] and .value != ""));
+      def safe_name: test("^[A-Za-z0-9_-]+$");
+      def safe_keys($value): (($value // {}) | keys | all(safe_name));
+      def portable($entry):
+        ($entry.key | safe_name)
+        and (
+          ($entry.value.type // (if $entry.value.url then "http" else "stdio" end)) as $type
+          | ($type == "http" or $type == "sse" or $type == "stdio")
+        )
+        and safe_keys($entry.value.headers)
+        and safe_keys($entry.value.env);
+      ($before[0].mcpServers // {}) as $old
+      | (.mcpServers // {})
+      | to_entries
+      | map(
+          . as $entry
+          | ($entry.value.type // (if $entry.value.url then "http" else "stdio" end)) as $type
+          | select(($old[$entry.key] // null) != $entry.value)
+          | select(portable($entry))
+          | {
+              key: $entry.key,
+              value: {
+                definition: (
+                  if $type == "stdio" then
+                    ({
+                      type: "stdio",
+                      command: $entry.value.command,
+                      args: ($entry.value.args // []),
+                      env: ($entry.value.env // {}),
+                      enabled: true
+                    } | compact)
+                  else
+                    ({
+                      type: $type,
+                      url: $entry.value.url,
+                      headers: ($entry.value.headers // {}),
+                      enabled: true
+                    } | compact)
+                  end
+                ),
+                source: {provider: "claude", profile: $profile, updatedAt: $updatedAt}
+              }
+            }
+        )
+      | from_entries
+    ' "$after" >"$imports"
+  merge_imports "$family" "$imports"
+  render_claude_config "$family" >/dev/null
+  count="$(jq 'length' "$imports")"
+  find "$imports" -delete
+  printf 'Imported %s Claude MCP definition(s) into family %s.\n' "$count" "$family"
+}
+
+command_strip_claude() {
+  local family="$1" target="$2" registry
+  [[ -f "$target" && ! -L "$target" ]] || die "Claude configuration is not a regular file: $target"
+  with_lock "$family"
+  registry="$(registry_path "$family")"
+  atomic_jq "$target" --slurpfile registry "$registry" '
+    .mcpServers = (
+      (.mcpServers // {})
+      | with_entries(select($registry[0].servers[.key] == null))
+    )
+  ' "$target"
+}
+
+command_sync_claude_profile() {
+  local family="$1" target="$2" shared sidecar old_names dir tmp
+  [[ -f "$target" && ! -L "$target" ]] || die "Claude configuration is not a regular file: $target"
+  with_lock "$family"
+  shared="$(render_claude_config "$family")"
+  dir="$(dirname "$target")"
+  sidecar="$dir/.workbenches-shared-mcp-names.json"
+  old_names="$(mktemp "$dir/.mcp-old-names.XXXXXX.json")"
+  if [[ -f "$sidecar" ]] && jq -e 'type == "array" and all(.[]; type == "string")' "$sidecar" >/dev/null 2>&1; then
+    cp -- "$sidecar" "$old_names"
+  else
+    printf '%s\n' '[]' >"$old_names"
+  fi
+  atomic_jq "$target" --slurpfile old "$old_names" --slurpfile shared "$shared" '
+    .mcpServers = (
+      (
+        (.mcpServers // {})
+        | with_entries(.key as $name | select(($old[0] | index($name)) == null))
+      )
+      * $shared[0].mcpServers
+    )
+  ' "$target"
+  tmp="$(mktemp "$dir/.mcp-shared-names.XXXXXX.tmp")"
+  jq '.mcpServers | keys' "$shared" >"$tmp"
+  chmod 0600 "$tmp"
+  mv -f -- "$tmp" "$sidecar"
+  find "$old_names" -delete
+}
+
+command_remove() {
+  local family="$1" name="$2" registry
+  validate_name "$name"
+  with_lock "$family"
+  registry="$(registry_path "$family")"
+  jq -e --arg name "$name" '.servers[$name] != null' "$registry" >/dev/null || return 1
+  atomic_jq "$registry" --arg name "$name" 'del(.servers[$name])' "$registry"
+  render_claude_config "$family" >/dev/null
+  printf 'Removed shared MCP %s/%s.\n' "$family" "$name"
+}
+
+command_has() {
+  local family="$1" name="$2"
+  validate_name "$name"
+  ensure_registry "$family"
+  jq -e --arg name "$name" '.servers[$name] != null' "$(registry_path "$family")" >/dev/null
+}
+
+command_codex_args() {
+  local family="$1" registry is_container
+  ensure_registry "$family"
+  registry="$(registry_path "$family")"
+  if [[ "$(context_name)" == container ]]; then is_container=true; else is_container=false; fi
+  jq -r --argjson container "$is_container" '
+    def safe_key:
+      if test("^[A-Za-z0-9_-]+$") then . else error("non-portable MCP key: " + .) end;
+    def key($server; $field): "mcp_servers." + ($server | safe_key) + "." + $field;
+    def setting($key; $value): "-c", ($key + "=" + ($value | tojson));
+    def env_reference: (capture("^\\$\\{(?<name>[A-Za-z_][A-Za-z0-9_]*)\\}$") // {name: null}) | .name;
+    def bearer_reference: (capture("^Bearer \\$\\{(?<name>[A-Za-z_][A-Za-z0-9_]*)\\}$") // {name: null}) | .name;
+    def effective_url($definition):
+      if $container and (($definition.containerUrl // "") | length > 0)
+      then $definition.containerUrl else $definition.url end;
+    .servers
+    | to_entries[]
+    | select(.value.definition.enabled != false)
+    | .key as $name
+    | .value.definition as $definition
+    | if $definition.type == "stdio" then
+        setting(key($name; "command"); $definition.command),
+        (if (($definition.args // []) | length) > 0
+         then setting(key($name; "args"); $definition.args) else empty end),
+        (($definition.env // {}) | to_entries[]
+          | (.value | env_reference) as $envName
+          | if $envName then empty
+            else setting(key($name; "env." + (.key | safe_key)); .value) end),
+        ([
+          ($definition.envFrom // [])[],
+          (($definition.env // {}) | to_entries[] | (.value | env_reference))
+        ] | map(select(. != null)) | unique) as $envFrom
+        | (if ($envFrom | length) > 0
+           then setting(key($name; "env_vars"); $envFrom) else empty end),
+        (if (($definition.cwd // "") | length) > 0
+         then setting(key($name; "cwd"); $definition.cwd) else empty end)
+      elif ($definition.type == "http" or $definition.type == "sse") then
+        setting(key($name; "url"); effective_url($definition)),
+        (if (($definition.bearerTokenEnvVar // "") | length) > 0
+         then setting(key($name; "bearer_token_env_var"); $definition.bearerTokenEnvVar) else empty end),
+        (($definition.envHeaders // {}) | to_entries[]
+          | setting(key($name; "env_http_headers." + (.key | safe_key)); .value)),
+        (($definition.headers // {}) | to_entries[]
+          | (.value | bearer_reference) as $bearer
+          | (.value | env_reference) as $envHeader
+          | if ($bearer and .key == "Authorization") then
+              setting(key($name; "bearer_token_env_var"); $bearer)
+            elif $envHeader then
+              setting(key($name; "env_http_headers." + (.key | safe_key)); $envHeader)
+            else
+              setting(key($name; "http_headers." + (.key | safe_key)); .value)
+            end)
+      else empty end,
+      (if ($definition.startupTimeoutSec // null) != null
+       then "-c", (key($name; "startup_timeout_sec") + "=" + ($definition.startupTimeoutSec | tostring)) else empty end),
+      (if ($definition.toolTimeoutSec // null) != null
+       then "-c", (key($name; "tool_timeout_sec") + "=" + ($definition.toolTimeoutSec | tostring)) else empty end)
+  ' "$registry"
+}
+
+command_claude_config() {
+  local family="$1"
+  with_lock "$family"
+  render_claude_config "$family"
+}
+
+command_list() {
+  local family="$1"
+  ensure_registry "$family"
+  jq -r '
+    .servers
+    | to_entries[]
+    | [.key, .value.definition.type, .value.source.provider, .value.source.profile]
+    | @tsv
+  ' "$(registry_path "$family")"
+}
+
+require_command jq
+require_command flock
+require_command stat
+
+command="${1:-}"
+[[ -n "$command" ]] || { usage >&2; exit 2; }
+shift
+
+case "$command" in
+  ensure) [[ $# -eq 1 ]] || die "ensure requires FAMILY"; command_ensure "$@" ;;
+  put-http) [[ $# -ge 3 && $# -le 4 ]] || die "put-http requires FAMILY NAME URL [CONTAINER_URL]"; command_put_http "$@" ;;
+  import-codex-diff) [[ $# -eq 4 ]] || die "import-codex-diff requires FAMILY PROFILE BEFORE AFTER"; command_import_codex_diff "$@" ;;
+  import-claude-diff) [[ $# -eq 4 ]] || die "import-claude-diff requires FAMILY PROFILE BEFORE AFTER"; command_import_claude_diff "$@" ;;
+  sync-claude-profile) [[ $# -eq 2 ]] || die "sync-claude-profile requires FAMILY CLAUDE_JSON"; command_sync_claude_profile "$@" ;;
+  strip-claude) [[ $# -eq 2 ]] || die "strip-claude requires FAMILY CLAUDE_JSON"; command_strip_claude "$@" ;;
+  remove) [[ $# -eq 2 ]] || die "remove requires FAMILY NAME"; command_remove "$@" ;;
+  has) [[ $# -eq 2 ]] || die "has requires FAMILY NAME"; command_has "$@" ;;
+  codex-args) [[ $# -eq 1 ]] || die "codex-args requires FAMILY"; command_codex_args "$@" ;;
+  claude-config) [[ $# -eq 1 ]] || die "claude-config requires FAMILY"; command_claude_config "$@" ;;
+  list) [[ $# -eq 1 ]] || die "list requires FAMILY"; command_list "$@" ;;
+  -h|--help|help) usage ;;
+  *) die "unknown command: $command" ;;
+esac
