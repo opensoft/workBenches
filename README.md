@@ -99,6 +99,7 @@ Installed widgets include:
 | `pyBench` | Starts or repairs `py-bench`, then opens an interactive shell |
 | `flutterBench` | Starts or repairs `flutter-bench`, then opens an interactive shell |
 | `C++Bench` | Starts or repairs `cpp-bench`, then opens an interactive shell |
+| `rustBench` | Starts or repairs `rust-bench`, then opens an interactive shell |
 | `cloudBench` | Starts or repairs `cloud-bench`, then opens an interactive shell |
 
 First-run setup offers consent-based work and personal AI profile onboarding,
@@ -106,6 +107,9 @@ including GitHub credential-registry discovery and a local manual fallback.
 See [Shared AI provider profiles](docs/multi-provider-profiles.md).
 Multi-account Claude details remain in
 [Claude multi-account profiles](docs/claude-multi-account-profiles.md).
+OpenCode users who switch between OpenAI ChatGPT accounts while retaining the
+same project sessions should read
+[OpenCode multi-account OpenAI profiles](docs/opencode-openai-multi-account-profiles.md).
 The cross-provider ownership and composition model is documented in
 [AI credential ownership and profile composition](docs/ai-credential-ownership.md).
 

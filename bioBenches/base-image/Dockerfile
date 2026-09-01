@@ -63,8 +63,7 @@ RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkg
     && conda config --system --prepend channels conda-forge \
     && conda config --system --prepend channels bioconda \
     && conda config --system --set channel_priority strict \
-    && CONDA_VERSION="$(curl -fsSL https://api.github.com/repos/conda/conda/releases/latest | jq -r '.tag_name')" \
-    && conda install -n base -y --override-channels -c conda-forge "conda=${CONDA_VERSION}" \
+    && conda update -n base -y --override-channels -c conda-forge conda \
     && conda clean -afy
 
 # ========================================
