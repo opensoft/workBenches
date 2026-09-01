@@ -4,4 +4,3 @@ interface:
   default_prompt: "Use $speckit-git-feature to create a Speckit feature branch."
 policy:
   allow_implicit_invocation: false
-

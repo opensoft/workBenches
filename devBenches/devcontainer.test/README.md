@@ -17,6 +17,10 @@ Layer 1a adds developer tools on top of Layer 0:
 - Zsh and oh-my-zsh with plugins
 - PATH configuration for all dev tools
 
+The Layer 3 user image adds the effective-user Corepack cache exercised by the
+unprivileged pnpm checks in this harness, including shells that place
+`/usr/bin` before `/usr/local/bin`.
+
 ## Quick Start
 
 ```bash
@@ -38,11 +42,45 @@ docker compose exec test ./test.sh
 docker compose down
 ```
 
+## PowerShell Regression Suite
+
+Run the full 28-scenario Speckit Git PowerShell suite from a Linux checkout
+when PowerShell 7, Git, and Bash are installed:
+
+```bash
+pwsh -NoLogo -NoProfile -File ./devBenches/devcontainer.test/test-speckit-git-powershell.ps1
+```
+
+On Windows, run the five selected native state scenarios. This subset covers
+the structural contract, held-reader replacement, primary-failure cleanup,
+temporary-leaf replacement attack, and authenticated-parent swap without
+invoking the Unix-only FIFO and Bash reservation helpers:
+
+```powershell
+pwsh -NoLogo -NoProfile -File ./devBenches/devcontainer.test/test-speckit-git-powershell.ps1 -WindowsStateOnly
+```
+
+To exercise the same `/test` mount used by this devcontainer while resolving
+the Git extension from its installed template location, run:
+
+```bash
+docker run --rm \
+  --entrypoint bash \
+  -v "$PWD/devBenches/devcontainer.test:/test:ro" \
+  -v "$PWD/devBenches/base-image/files/speckit-worktree/templates:/usr/local/share/speckit-worktree/templates:ro" \
+  -w /test \
+  mcr.microsoft.com/powershell:latest \
+  -lc 'apt-get update >/dev/null && apt-get install -y --no-install-recommends git >/dev/null && pwsh -NoLogo -NoProfile -File /test/test-speckit-git-powershell.ps1'
+```
+
+The PowerShell suite is intentionally separate from `test.sh`: the Layer 3
+Linux test image does not include `pwsh`.
+
 ## Test Script
 
 The `test.sh` script validates:
 - ✅ Python development tools
-- ✅ Node.js development tools
+- ✅ Node.js development tools and unprivileged pnpm/Corepack operation
 - ✅ Python package managers (uv)
 - ✅ Spec-driven tools (`specify`, `openspec`)
 - ✅ Worktree-mode Speckit bootstrap installation
