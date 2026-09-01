@@ -126,7 +126,7 @@ For each candidate question, provide the same structured format as above.
 
 ## Phase 3: Curate Questions (You, the lead)
 
-After all 3 agents return, you will have 9–15 candidate questions. Your job is to curate the **best 3–5** for the user.
+After all 3 agents return, you will have 9–15 initial candidate questions. Your job is to curate only material gaps, expanding investigation when needed, with a hard ceiling of **25 total questions** for the clarification session.
 
 ### Curation criteria:
 
@@ -149,7 +149,7 @@ These go into spec.md's Clarifications section as well, marked as context-derive
 
 ## Phase 4: Ask the User
 
-Present the curated **3–5 questions** using **AskUserQuestion**. Group them into a single call with multiple questions when possible.
+Present up to **25 total high-impact questions** using **AskUserQuestion**. Ask exactly one question per call so each answer can refine or eliminate later questions. Stop early when remaining ambiguities are answerable from context or no longer affect the design.
 
 Each question must:
 - **Reference the specific gap** — cite the spec section, requirement, or constitution rule
@@ -233,7 +233,7 @@ Summarize to the user:
 - **Ask, don't plan** — No architecture suggestions, no implementation details. That's for `/speckit.plan`.
 - **Read-only on codebase** — You and the agents may read any file. Do NOT write application code.
 - **You MAY write** spec.md — that's a Speckit artifact, not implementation.
-- **3–5 questions max to the user** — The agents generate many candidates. Your value is curation, not volume.
+- **25 questions maximum for the session** — Ask only material questions, exactly one per call. This is a ceiling, not a target; stop as soon as the specification is decision-complete.
 - **Don't ask what you can answer from context** — If the codebase or docs answer a question, resolve it yourself and note the source.
 - **Respect prior clarifications** — If spec.md already has a Clarifications section, read it first. Don't re-ask answered questions.
 - **Framework-agnostic** — Agent analysis dimensions adapt to whatever tech stack the project uses. They read the stack, they don't assume it.
