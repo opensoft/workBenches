@@ -106,9 +106,9 @@ run_launcher "$SONARQUBE_URL" \
 } > "$EXPECTED"
 assert_file_equals "$EXPECTED" "$FAKE_CODEX_LOG"
 
-[[ "$(grep -c '^arg=mcp_servers\.sonarqube\.url=' "$FAKE_CODEX_LOG")" -eq 1 ]] \
+[[ "$(grep -c '^arg=mcp_servers\.sonarqube\.url=' "$FAKE_CODEX_LOG" || true)" -eq 1 ]] \
     || fail "expected exactly one SonarQube MCP URL override"
-[[ "$(grep -c '^arg=mcp_servers\.' "$FAKE_CODEX_LOG")" -eq 1 ]] \
+[[ "$(grep -c '^arg=mcp_servers\.' "$FAKE_CODEX_LOG" || true)" -eq 1 ]] \
     || fail "launcher changed an unrelated MCP setting"
 ! grep -q 'SONARQUBE_TOKEN' "$LAUNCHER" \
     || fail "launcher must not read or forward SonarQube tokens"

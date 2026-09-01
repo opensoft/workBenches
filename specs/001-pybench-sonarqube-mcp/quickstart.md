@@ -20,7 +20,8 @@ Confirm the rendered py-bench service has both networks and the runtime URL.
 ```bash
 scripts/wave-container-shell.sh --check py-bench
 docker inspect py-bench --format '{{json .NetworkSettings.Networks}}'
-docker inspect py-bench --format '{{range .Config.Env}}{{println .}}{{end}}'
+docker inspect py-bench --format '{{range .Config.Env}}{{println .}}{{end}}' \
+  | grep '^CODEX_SONARQUBE_MCP_URL='
 ```
 
 Do not print or inspect SonarQube token values.
