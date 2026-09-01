@@ -249,6 +249,23 @@ recreate_with_compose() {
     create_with_compose
 }
 
+recreate_stopped_with_compose() {
+    echo "Recreating stopped container $container with Wave compose mounts..."
+    if docker rm "$container" >/dev/null 2>&1; then
+        create_with_compose
+        return 0
+    fi
+
+    if [[ "$(docker container inspect -f '{{.State.Running}}' "$container" 2>/dev/null)" == "true" ]]; then
+        echo "Container '$container' started while Wave mounts were being checked; preserving the live container." >&2
+        echo "Run this launcher with --repair when it is safe to recreate the container." >&2
+        return 0
+    fi
+
+    echo "Could not remove stopped container '$container' for automatic Wave mount repair." >&2
+    return 1
+}
+
 mount_destination_covers() {
     local mount_destination="$1"
     local required_path="$2"
@@ -301,12 +318,8 @@ container_missing_required_mounts() {
 }
 
 container_exists=false
-container_was_running=false
 if docker container inspect "$container" >/dev/null 2>&1; then
     container_exists=true
-    if [[ "$(docker container inspect -f '{{.State.Running}}' "$container")" == "true" ]]; then
-        container_was_running=true
-    fi
 fi
 
 if [[ "$repair_requested" == true && "$container_exists" == true ]]; then
@@ -323,12 +336,7 @@ elif [[ "$container_exists" != true ]]; then
         create_with_compose
     fi
 elif [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]] && container_missing_required_mounts; then
-    if [[ "$container_was_running" == true ]]; then
-        echo "Container '$container' is running but is missing required Wave mounts; preserving the live container." >&2
-        echo "Run this launcher with --repair when it is safe to recreate the container." >&2
-    else
-        recreate_with_compose
-    fi
+    recreate_stopped_with_compose
 fi
 
 if [[ "$(docker container inspect -f '{{.State.Running}}' "$container")" != "true" ]]; then
