@@ -12,6 +12,7 @@ workdir="/workspace"
 shell_path="zsh"
 block_title="pyBench"
 check_only=false
+repair_requested=false
 profile_launcher_marker="/usr/local/share/workbenches/profile-launchers.sha256"
 bench_dir="$workbenches_root/devBenches/pyBench"
 compose_file="$bench_dir/.devcontainer/docker-compose.yml"
@@ -58,6 +59,7 @@ Options:
   --shell PATH             Shell to run inside the container (default: zsh)
   --title TEXT             Wave block/terminal title (default: pyBench)
   --check                  Verify that the container can run a command, then exit
+  --repair                 Recreate an existing container before opening it
   -h, --help               Show this help
 EOF
 }
@@ -71,6 +73,7 @@ while [[ $# -gt 0 ]]; do
         --shell) shell_path="$2"; shift 2 ;;
         --title) block_title="$2"; shift 2 ;;
         --check) check_only=true; shift ;;
+        --repair) repair_requested=true; shift ;;
         -h|--help) usage; exit 0 ;;
         --*) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
         *) container="$1"; shift ;;
@@ -246,6 +249,23 @@ recreate_with_compose() {
     create_with_compose
 }
 
+recreate_stopped_with_compose() {
+    echo "Recreating stopped container $container with Wave compose mounts..."
+    if docker rm "$container" >/dev/null 2>&1; then
+        create_with_compose
+        return 0
+    fi
+
+    if [[ "$(docker container inspect -f '{{.State.Running}}' "$container" 2>/dev/null)" == "true" ]]; then
+        echo "Container '$container' started while Wave mounts were being checked; preserving the live container." >&2
+        echo "Run this launcher with --repair when it is safe to recreate the container." >&2
+        return 0
+    fi
+
+    echo "Could not remove stopped container '$container' for automatic Wave mount repair." >&2
+    return 1
+}
+
 mount_destination_covers() {
     local mount_destination="$1"
     local required_path="$2"
@@ -297,7 +317,14 @@ container_missing_required_mounts() {
     return 1
 }
 
-if ! docker container inspect "$container" >/dev/null 2>&1; then
+container_exists=false
+if docker container inspect "$container" >/dev/null 2>&1; then
+    container_exists=true
+fi
+
+if [[ "$repair_requested" == true && "$container_exists" == true ]]; then
+    recreate_with_compose
+elif [[ "$container_exists" != true ]]; then
     if [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]]; then
         echo "Creating $container with Dev Containers CLI..."
         if ! run_devcontainer_up; then
@@ -308,10 +335,8 @@ if ! docker container inspect "$container" >/dev/null 2>&1; then
     else
         create_with_compose
     fi
-fi
-
-if [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]] && container_missing_required_mounts; then
-    recreate_with_compose
+elif [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]] && container_missing_required_mounts; then
+    recreate_stopped_with_compose
 fi
 
 if [[ "$(docker container inspect -f '{{.State.Running}}' "$container")" != "true" ]]; then
