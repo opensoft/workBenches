@@ -41,7 +41,7 @@ profile_metadata() {
         fallback_row="$row"
       fi
     fi
-  done < <(find "$base/profiles" -mindepth 2 -type f -name .profile.json -print0)
+  done < <(find "$base/profiles" -mindepth 2 -type f -name .profile.json -print0 2>/dev/null || true)
   [[ -n "${preferred_row:-}" ]] && { printf '%s\n' "$preferred_row"; return 0; }
   [[ -n "${fallback_row:-}" ]] && { printf '%s\n' "$fallback_row"; return 0; }
   return 1
@@ -56,7 +56,14 @@ fi
 
 case "$action" in
   list)
-    jq -r '.profiles[] | [.name,.family,.email,((.aliases // [])|join(",")),((.providers // [])|join(","))] | @tsv' "$manifest"
+    {
+      if [[ -f "$manifest" ]]; then
+        jq -r '.profiles[] | [.name,.family,.email,((.aliases // [])|join(",")),((.providers // [])|join(","))] | @tsv' "$manifest"
+      fi
+      while IFS= read -r -d '' metadata; do
+        jq -r '[.name,.family,.email,((.aliases // [])|join(",")),((.providers // [])|join(","))] | @tsv' "$metadata"
+      done < <(find "$base/profiles" -mindepth 2 -type f -name .profile.json -print0 2>/dev/null || true)
+    } | awk -F '\t' '!seen[tolower($1)]++'
     ;;
   login|status|logout|run)
     profile="${1:?Usage: pi-profile $action PROFILE [arguments]}"; shift
@@ -83,7 +90,7 @@ case "$action" in
           claude_profile_depth="$candidate_depth"
         fi
       fi
-    done < <(find "$claude_profiles_root" -mindepth 1 -type d -name "$profile" -print0)
+    done < <(find "$claude_profiles_root" -mindepth 1 -type d -name "$profile" -print0 2>/dev/null || true)
     if [[ ",$providers," == *,claude,* && -d "$claude_config_dir" ]]; then
       export CLAUDE_CONFIG_DIR="$claude_config_dir"
     fi

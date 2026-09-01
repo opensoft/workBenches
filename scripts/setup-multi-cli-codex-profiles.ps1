@@ -88,14 +88,21 @@ foreach ($profile in $profiles) {
         Set-SharedFileLink -ProfileDir $profileDir -Name $name
     }
 
+    $aliasesProperty = $profile.PSObject.Properties["aliases"]
+    [object[]]$aliases = @()
+    if ($null -ne $aliasesProperty -and $null -ne $aliasesProperty.Value) {
+        $aliases = @($aliasesProperty.Value | Where-Object { $_ -is [string] -and $_.Length -gt 0 })
+    }
     $metadata = [ordered]@{
         name = $profile.name
         email = $profile.email
         family = $profile.family
-        aliases = @($profile.aliases)
+        aliases = $aliases
         managedBy = "workBenches"
     } | ConvertTo-Json -Depth 4
-    Set-Content -LiteralPath (Join-Path $profileDir ".profile.json") -Value $metadata -Encoding utf8
+    $metadataPath = Join-Path $profileDir ".profile.json"
+    $utf8WithoutBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($metadataPath, $metadata + [Environment]::NewLine, $utf8WithoutBom)
 }
 
 Write-Host "Multi-CLI Codex profiles synchronized under $codexProfiles"

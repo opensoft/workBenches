@@ -166,6 +166,7 @@ ENV PATH="/opt/bun/bin:${PATH}"
 # Copy and run AI CLI installation script
 COPY install-ai-clis.sh /tmp/
 ARG AI_CLI_REFRESH=2026-07-12
+ARG HERDR_INSTALL_SHA256=""
 RUN echo "AI CLI refresh marker: ${AI_CLI_REFRESH}"
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/root/.npm \
