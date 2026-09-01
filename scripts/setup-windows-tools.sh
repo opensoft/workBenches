@@ -157,6 +157,7 @@ install_pi_terminal() {
         return 0
     elif command -v npm >/dev/null 2>&1; then
         echo "  Installing Pi Terminal in WSL/Linux for ppi and devBench use..."
+        local wsl_npm
         wsl_npm="$(command -v npm)"
         [[ -x /usr/bin/npm ]] && wsl_npm=/usr/bin/npm
         if "$wsl_npm" install -g --ignore-scripts "$PI_NPM_PACKAGE"; then
@@ -166,7 +167,11 @@ install_pi_terminal() {
         fi
     fi
 
-    [ "$windows_pi" = true ] && return 0
+    if [ "$windows_pi" = true ]; then
+        echo "  ✗ Pi Terminal is available only in Windows; WSL/Linux Pi is required for ppi and devBenches"
+        echo "    Install Node.js/npm in WSL, then rerun this setup."
+        return 1
+    fi
 
     echo "  ✗ Node.js/npm not found in Windows or WSL"
     echo "    Install Node.js 22+ on Windows, then rerun this setup."

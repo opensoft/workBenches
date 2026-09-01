@@ -25,13 +25,20 @@ jq -e '
   and ((.families // []) | type == "array")
   and all(.families[]?; type == "string" and test("^[a-z0-9][a-z0-9-]*$"))
   and all(.profiles[];
-    (.name|length)>0 and (.email|length)>0
+    (.name | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$"))
+    and (.email|length)>0
     and (.family | test("^[a-z0-9][a-z0-9-]*$"))
     and ((.providers//[])|type=="array")
+    and ((.aliases//[])|type=="array")
+    and all(.aliases[]?; type == "string" and length > 0)
     and ((.profilePath // .name) |
       type == "string" and length > 0 and (startswith("/") | not)
       and (split("/") | all(.[]; length > 0 and . != "." and . != ".."))
     )
+  )
+  and (
+    [.profiles[] | (.name | ascii_downcase), (.aliases[]? | ascii_downcase)] as $tokens
+    | ($tokens | length) == ($tokens | unique | length)
   )
 ' "$manifest" >/dev/null
 
@@ -45,7 +52,7 @@ while IFS= read -r family; do
     mkdir -p "$base/profiles/$family"/{team,max,xfactor}
   fi
 done < <(jq -r '[(.families[]?), .profiles[].family] | unique[]' "$manifest")
-chmod 700 "$base" "$base/profiles" "$base/shared"
+chmod 700 "$base" "$base/profiles" "$base/state" "$base/shared"
 
 link_path() {
   local target="$1" link="$2"
@@ -86,6 +93,21 @@ while IFS=$'\t' read -r name email family profile_path aliases providers; do
       .packages = (((.packages // []) | map(select(. != "npm:pi-claude-cli" and . != "npm:@ramarivera/pi-claude-cli" and . != "npm:@ramarivera/pi-claude-cli@0.3.1"))) + ["npm:@ramarivera/pi-claude-cli@0.3.1"])
       | .defaultProvider = "pi-claude-cli"
       | .defaultModel = "claude-fable-5"
+    ' "$agent_dir/settings.json" > "$settings_tmp"
+    chmod 600 "$settings_tmp"
+    mv -f "$settings_tmp" "$agent_dir/settings.json"
+  else
+    settings_tmp="$(mktemp "$agent_dir/.settings.XXXXXX.tmp")"
+    jq '
+      .packages = ((.packages // []) | map(select(
+        . != "npm:pi-claude-cli"
+        and . != "npm:@ramarivera/pi-claude-cli"
+        and . != "npm:@ramarivera/pi-claude-cli@0.3.1"
+      )))
+      | if .defaultProvider == "pi-claude-cli"
+        then del(.defaultProvider, .defaultModel)
+        else .
+        end
     ' "$agent_dir/settings.json" > "$settings_tmp"
     chmod 600 "$settings_tmp"
     mv -f "$settings_tmp" "$agent_dir/settings.json"

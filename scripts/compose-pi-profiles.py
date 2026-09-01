@@ -31,10 +31,15 @@ def atomic_json(path: pathlib.Path, payload: dict) -> None:
 def add_profile(profiles: dict[str, dict], provider: str, raw: dict, source: pathlib.Path) -> None:
     if not isinstance(raw, dict) or any(not raw.get(field) for field in ("name", "email", "family")):
         raise ValueError(f"invalid {provider} profile in {source}")
+    aliases = raw.get("aliases") or []
+    if not isinstance(aliases, list) or any(
+        not isinstance(alias, str) or not alias.strip() for alias in aliases
+    ):
+        raise ValueError(f"invalid aliases for {provider} profile in {source}")
     normalized = {
         "email": raw["email"],
         "family": raw["family"],
-        "aliases": sorted(raw.get("aliases") or []),
+        "aliases": sorted(aliases, key=str.casefold),
         "profilePath": raw.get("profilePath", raw["name"]),
     }
     existing = profiles.get(raw["name"])
@@ -45,6 +50,20 @@ def add_profile(profiles: dict[str, dict], provider: str, raw: dict, source: pat
         raise ValueError(f"provider identity mismatch for Pi profile {raw['name']}")
     if provider not in existing["providers"]:
         existing["providers"].append(provider)
+
+
+def validate_namespace(profiles: list[dict]) -> None:
+    owners: dict[str, str] = {}
+    for profile in profiles:
+        name = profile["name"]
+        for token in [name, *profile.get("aliases", [])]:
+            normalized = token.casefold()
+            owner = owners.get(normalized)
+            if owner is not None and owner != name:
+                raise ValueError(
+                    f"ambiguous Pi profile name or alias {token!r}: {owner!r} and {name!r}"
+                )
+            owners[normalized] = name
 
 
 def compose(config_dir: pathlib.Path, profile_roots: dict[str, pathlib.Path] | None = None) -> list[dict]:
@@ -72,7 +91,9 @@ def compose(config_dir: pathlib.Path, profile_roots: dict[str, pathlib.Path] | N
                 selected[raw.get("name", "")] = (score, metadata, raw)
         for _, metadata, raw in selected.values():
             add_profile(profiles, provider, raw, metadata)
-    return [profiles[name] for name in sorted(profiles)]
+    result = [profiles[name] for name in sorted(profiles, key=str.casefold)]
+    validate_namespace(result)
+    return result
 
 
 def compose_families(config_dir: pathlib.Path, profiles: list[dict]) -> list[str]:

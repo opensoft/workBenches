@@ -39,7 +39,14 @@ for provider in gemini grok glm; do
   fi
 done
 
-if ls "$config_dir"/{claude,openai,gemini,grok,glm}-profiles.json >/dev/null 2>&1; then
+compose_pi=false
+for provider in claude openai gemini grok glm; do
+  if [[ -f "$config_dir/$provider-profiles.json" ]]; then
+    compose_pi=true
+    break
+  fi
+done
+if [[ "$compose_pi" == true ]]; then
   pi_profile_roots=(
     --profile-root "claude=${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}/profiles"
     --profile-root "openai=${CODEX_PROFILES_HOME:-$HOME/.chatgpt-profiles}/profiles"

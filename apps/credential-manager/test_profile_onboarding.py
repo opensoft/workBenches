@@ -123,6 +123,70 @@ class ProfileOnboardingTest(unittest.TestCase):
                         )
                 self.assertTrue((root / "profiles/personal").is_dir())
 
+    def test_setup_composes_pi_profiles_from_a_partial_provider_inventory(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
+            home = pathlib.Path(temporary) / "home"
+            config = home / ".config/workbenches"
+            config.mkdir(parents=True)
+            (config / "openai-profiles.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "families": ["company"],
+                        "profiles": [
+                            {
+                                "name": "work-chatgpt",
+                                "email": "user@example.com",
+                                "family": "company",
+                                "aliases": [],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [str(REPO / "scripts/setup-ai-profiles.sh"), "--apply-existing"],
+                env={
+                    **os.environ,
+                    "HOME": str(home),
+                    "XDG_CONFIG_HOME": str(home / ".config"),
+                },
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            pi_manifest = json.loads((config / "pi-profiles.json").read_text())
+            self.assertEqual(
+                [profile["name"] for profile in pi_manifest["profiles"]],
+                ["work-chatgpt"],
+            )
+
+    def test_profile_launchers_list_cleanly_before_setup(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
+            home = pathlib.Path(temporary) / "home"
+            home.mkdir()
+            cases = (
+                ("claude-profile", "CLAUDE_PROFILES_MANIFEST", "CLAUDE_PROFILES_HOME"),
+                ("codex-profile", "CODEX_PROFILES_MANIFEST", "CODEX_PROFILES_HOME"),
+            )
+            for launcher, manifest_name, home_name in cases:
+                with self.subTest(launcher=launcher):
+                    env = {
+                        **os.environ,
+                        "HOME": str(home),
+                        manifest_name: str(home / f"missing-{launcher}.json"),
+                        home_name: str(home / f"missing-{launcher}-profiles"),
+                    }
+                    result = subprocess.run(
+                        [str(REPO / "base-image/files" / launcher), "list"],
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, "")
+
     def test_registry_sources_are_composed_with_user_grants(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
             home = pathlib.Path(temporary)
