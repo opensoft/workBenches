@@ -232,7 +232,7 @@ profile_metadata() {
         fallback_row="$row"
       fi
     fi
-  done < <(find "$base/profiles" -mindepth 2 -type f -name .profile.json -print0)
+  done < <(find "$base/profiles" -mindepth 2 -type f -name .profile.json -print0 2>/dev/null || true)
   if [[ -n "${preferred_row:-}" ]]; then
     printf '%s\n' "$preferred_row"
     return 0
@@ -259,7 +259,7 @@ case "$action" in
       fi
       while IFS= read -r -d '' metadata; do
         jq -r '[.name,.family,.email,((.aliases // []) | join(","))] | @tsv' "$metadata"
-      done < <(find "$base/profiles" -mindepth 2 -type f -name .profile.json -print0)
+      done < <(find "$base/profiles" -mindepth 2 -type f -name .profile.json -print0 2>/dev/null || true)
     } | awk -F '\t' '!seen[tolower($1)]++'
     ;;
   login|status|run)

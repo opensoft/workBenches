@@ -272,8 +272,8 @@ check_component_status() {
             fi
             ;;
         pi_cli)
-            if command -v pi &>/dev/null; then
-                if [[ -f "$HOME/.pi/agent/auth.json" ]] || find "$HOME/.pi-profiles/profiles" -mindepth 3 -maxdepth 3 -name auth.json -print -quit 2>/dev/null | grep -q .; then
+            if command -v pi &>/dev/null || [[ -x "$HOME/.npm-global/bin/pi" ]]; then
+                if [[ -f "$HOME/.pi/agent/auth.json" ]] || find "$HOME/.pi-profiles/profiles" -mindepth 3 -maxdepth 6 -type f -name auth.json -print -quit 2>/dev/null | grep -q .; then
                     echo "installed"
                 else
                     echo "needs creds"
@@ -2402,7 +2402,17 @@ process_selections() {
                     if [[ ! $launch_pi =~ ^[Nn] ]]; then
                         read -r -p "Pi profile name or alias: " pi_profile
                         echo -e "${YELLOW}Run /login, choose a provider, verify the matching identity, then exit Pi.${NC}"
-                        ppi login "$pi_profile"
+                        if command -v ppi >/dev/null 2>&1; then
+                            ppi login "$pi_profile"
+                        elif [[ -x "$HOME/.local/bin/ppi" ]]; then
+                            "$HOME/.local/bin/ppi" login "$pi_profile"
+                        else
+                            echo -e "${YELLOW}No isolated Pi profile launcher is configured; using the standard Pi login flow.${NC}"
+                            pi_command="$(command -v pi || true)"
+                            [[ -n "$pi_command" ]] || pi_command="$HOME/.npm-global/bin/pi"
+                            [[ -x "$pi_command" ]] || { echo -e "${RED}Pi CLI is not available.${NC}"; continue; }
+                            "$pi_command"
+                        fi
                     else
                         echo -e "${YELLOW}Skipped. Run 'ppi login PROFILE' anytime.${NC}"
                     fi

@@ -42,6 +42,9 @@ class PiProfilesTest(unittest.TestCase):
             (claude_home / ".profile.json").write_text(
                 json.dumps(profile), encoding="utf-8"
             )
+            standard_auth = home / ".pi/agent/auth.json"
+            standard_auth.parent.mkdir(parents=True)
+            standard_auth.write_text('{"standard":"credential"}', encoding="utf-8")
             env = {
                 **os.environ,
                 "HOME": str(home),
@@ -60,6 +63,9 @@ class PiProfilesTest(unittest.TestCase):
             self.assertEqual((expected / "settings.json").stat().st_mode & 0o777, 0o600)
             self.assertFalse((expected / "auth.json").exists())
             self.assertEqual(
+                standard_auth.read_text(encoding="utf-8"), '{"standard":"credential"}'
+            )
+            self.assertEqual(
                 json.loads(pi_manifest.read_text())["profiles"][0]["providers"],
                 ["claude", "openai", "gemini", "grok", "glm"],
             )
@@ -74,6 +80,9 @@ class PiProfilesTest(unittest.TestCase):
             self.assertTrue(
                 (home / ".pi-profiles/state/example-company/sessions").is_dir()
             )
+            self.assertEqual(
+                (home / ".pi-profiles/state").stat().st_mode & 0o777, 0o700
+            )
 
             env_capture = root / "env-capture"
             fake_pi.write_text(
@@ -82,6 +91,21 @@ class PiProfilesTest(unittest.TestCase):
             env["ENV_CAPTURE"] = str(env_capture)
             subprocess.run([str(launcher), "team001"], env=env, check=True)
             self.assertEqual(env_capture.read_text().splitlines(), [str(expected), str(claude_home)])
+
+            payload = json.loads(pi_manifest.read_text(encoding="utf-8"))
+            payload["profiles"][0]["providers"] = ["openai"]
+            pi_manifest.write_text(json.dumps(payload), encoding="utf-8")
+            subprocess.run(
+                [str(setup), "--manifest", str(pi_manifest)],
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            settings = json.loads((expected / "settings.json").read_text())
+            self.assertNotIn("defaultProvider", settings)
+            self.assertNotIn("defaultModel", settings)
+            self.assertNotIn("npm:@ramarivera/pi-claude-cli@0.3.1", settings["packages"])
 
     def test_composition_rejects_cross_provider_identity_mismatch(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
@@ -97,6 +121,40 @@ class PiProfilesTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("identity mismatch", result.stderr)
 
+    def test_composition_rejects_cross_profile_alias_collisions(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
+            config = pathlib.Path(temporary)
+            first = {
+                "name": "alpha",
+                "email": "alpha@example.com",
+                "family": "company",
+                "aliases": ["shared"],
+            }
+            second = {
+                "name": "zeta",
+                "email": "zeta@example.com",
+                "family": "company",
+                "aliases": ["SHARED"],
+            }
+            (config / "claude-profiles.json").write_text(
+                json.dumps({"version": 1, "profiles": [first]}), encoding="utf-8"
+            )
+            (config / "openai-profiles.json").write_text(
+                json.dumps({"version": 1, "profiles": [second]}), encoding="utf-8"
+            )
+            result = subprocess.run(
+                [
+                    str(REPO / "scripts/compose-pi-profiles.py"),
+                    "--config-dir",
+                    str(config),
+                    "--check",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("ambiguous Pi profile", result.stderr)
+
     def test_pi_escrow_round_trip_uses_separate_harness_secret(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
             root = pathlib.Path(temporary)
@@ -107,8 +165,13 @@ class PiProfilesTest(unittest.TestCase):
                 "profiles": {"claude": [{"name": "team-001"}]}
             }))
             home = root / "home"
-            auth = home / ".pi-profiles/profiles/team-001/agent/auth.json"
+            profile_dir = home / ".pi-profiles/profiles/company/team/team-001"
+            auth = profile_dir / "agent/auth.json"
             auth.parent.mkdir(parents=True)
+            (profile_dir / ".profile.json").write_text(
+                json.dumps({"name": "team-001", "profilePath": "company/team/team-001"}),
+                encoding="utf-8",
+            )
             expected = {"anthropic": {"type": "oauth", "access": "a", "refresh": "r", "expires": 123}}
             auth.write_text(json.dumps(expected))
             auth.chmod(0o600)
@@ -137,6 +200,42 @@ class PiProfilesTest(unittest.TestCase):
                 [command[0], "restore", *command[2:]], env=env, check=True, capture_output=True, text=True
             )
             self.assertEqual(json.loads(auth.read_text()), expected)
+
+            unsafe = subprocess.run(
+                [
+                    command[0],
+                    "check",
+                    "--repo",
+                    str(repo),
+                    "--profile",
+                    "../escape",
+                    "--identity-file",
+                    str(identity),
+                ],
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(unsafe.returncode, 2)
+            self.assertIn("Unsafe Pi profile name", unsafe.stderr)
+
+    def test_launcher_list_tolerates_missing_manifest_and_profile_root(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as temporary:
+            home = pathlib.Path(temporary) / "home"
+            home.mkdir()
+            env = {
+                **os.environ,
+                "HOME": str(home),
+                "PI_PROFILES_MANIFEST": str(home / "missing.json"),
+            }
+            result = subprocess.run(
+                [str(REPO / "base-image/files/pi-profile"), "list"],
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, "")
 
 
 if __name__ == "__main__":

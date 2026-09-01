@@ -32,7 +32,7 @@ EXPECTED="$TEST_ROOT/expected.log"
 mkdir -p "$PROFILE_DIR"
 
 printf '%s\n' \
-    '{"profiles":[{"name":"max-002","email":"test@example.invalid","family":"opensoft","aliases":[],"profilePath":"max/max-002"}]}' \
+    '{"profiles":[{"name":"max-002","email":"test@example.invalid","family":"max","aliases":[],"profilePath":"max/max-002"}]}' \
     > "$MANIFEST"
 
 cat > "$FAKE_CODEX" <<'EOF'
@@ -108,9 +108,9 @@ run_launcher "$SONARQUBE_URL" \
 } > "$EXPECTED"
 assert_file_equals "$EXPECTED" "$FAKE_CODEX_LOG"
 
-[[ "$(grep -c '^arg=mcp_servers\.sonarqube\.url=' "$FAKE_CODEX_LOG")" -eq 1 ]] \
+[[ "$(grep -c '^arg=mcp_servers\.sonarqube\.url=' "$FAKE_CODEX_LOG" || true)" -eq 1 ]] \
     || fail "expected exactly one SonarQube MCP URL override"
-[[ "$(grep -c '^arg=mcp_servers\.' "$FAKE_CODEX_LOG")" -eq 1 ]] \
+[[ "$(grep -c '^arg=mcp_servers\.' "$FAKE_CODEX_LOG" || true)" -eq 1 ]] \
     || fail "launcher changed an unrelated MCP setting"
 ! grep -q 'SONARQUBE_TOKEN' "$LAUNCHER" \
     || fail "launcher must not read or forward SonarQube tokens"

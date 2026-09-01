@@ -15,6 +15,7 @@ x-standard-mounts: &standard-mounts
 
   # Zsh history persistence. Mount the named volume as a directory; Docker named
   # volumes are directories and cannot safely target the ~/.zsh_history file.
+  # Set HISTFILE=/home/${USER}/.workbenches-history/.zsh_history in the container.
   - ${BENCH_NAME:-bench}-zshhistory:/home/${USER}/.workbenches-history
 
   # Shell configurations (readonly — host user's actual config)

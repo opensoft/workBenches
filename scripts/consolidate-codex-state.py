@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
 from datetime import datetime, timezone
@@ -15,17 +16,14 @@ from pathlib import Path
 
 DIRECTORIES = ("sessions", "archived_sessions")
 JSONL_FILES = ("history.jsonl", "session_index.jsonl")
-FAMILIES = ("opensoft", "medx", "personal")
+FAMILY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
 def family_for(profile: dict) -> str:
-    email = str(profile.get("email", "")).lower()
-    name = str(profile.get("name", "")).lower()
-    if email.endswith("@opensoft.one"):
-        return "opensoft"
-    if "medx" in name or "medx" in email:
-        return "medx"
-    return "personal"
+    family = profile.get("family")
+    if not isinstance(family, str) or not FAMILY_PATTERN.fullmatch(family):
+        raise ValueError(f"invalid or missing profile family: {family!r}")
+    return family
 
 
 def hash_file(path: Path) -> str:
@@ -117,9 +115,13 @@ def merge_directories(
 
 
 def merge_jsonl(
-    profiles: list[tuple[Path, dict]], state_root: Path, backup_root: Path, report: dict
+    profiles: list[tuple[Path, dict]],
+    families: list[str],
+    state_root: Path,
+    backup_root: Path,
+    report: dict,
 ) -> None:
-    for family in FAMILIES:
+    for family in families:
         family_profiles = [(path, profile) for path, profile in profiles if family_for(profile) == family]
         for name in JSONL_FILES:
             target = state_root / family / name
@@ -162,6 +164,7 @@ def main() -> int:
         profiles.append((metadata.parent, profile))
     if not profiles:
         parser.error(f"no Codex profiles found under {profile_root}")
+    families = sorted({family_for(profile) for _, profile in profiles})
     if not args.apply:
         print(f"Ready to consolidate {len(profiles)} Codex profile directories")
         return 0
@@ -169,7 +172,7 @@ def main() -> int:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup_root = base / "migration-backups" / f"state-consolidation-{timestamp}"
     backup_root.mkdir(parents=True)
-    for family in FAMILIES:
+    for family in families:
         family_root = state_root / family
         for name in DIRECTORIES:
             (family_root / name).mkdir(parents=True, exist_ok=True)
@@ -189,7 +192,7 @@ def main() -> int:
         "metadata_updated": 0,
     }
     merge_directories(profiles, state_root, backup_root, report)
-    merge_jsonl(profiles, state_root, backup_root, report)
+    merge_jsonl(profiles, families, state_root, backup_root, report)
     for profile_dir, profile in profiles:
         family = family_for(profile)
         if profile.get("family") != family:

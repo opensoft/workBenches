@@ -42,6 +42,7 @@ INSTALL_ANTIGRAVITY_CLI="${INSTALL_ANTIGRAVITY_CLI:-0}"
 ANTIGRAVITY_INSTALL_URL="${ANTIGRAVITY_INSTALL_URL:-https://antigravity.google/cli/install.sh}"
 ANTIGRAVITY_INSTALL_SHA256="${ANTIGRAVITY_INSTALL_SHA256:-}"
 HERDR_INSTALL_URL="${HERDR_INSTALL_URL:-https://herdr.dev/install.sh}"
+HERDR_INSTALL_SHA256="${HERDR_INSTALL_SHA256:-3db3af8375006e193a393b5e3129feb237f30bc6f053fffbe1dc75da1f3d9ac4}"
 
 log_debug() {
     if [ "$DEBUG" = "1" ]; then
@@ -220,18 +221,24 @@ if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Pi Coding Agent npm install" \
 fi
 
 log_info "Installing Herdr terminal workspace manager..."
-herdr_installer="$(mktemp)"
-if run_with_timeout "$RELEASE_DOWNLOAD_TIMEOUT" "Herdr installer download" \
-    curl -fsSL --retry 3 --connect-timeout 10 --max-time 60 \
-        -o "$herdr_installer" "$HERDR_INSTALL_URL"; then
-    if ! run_with_timeout "$RELEASE_DOWNLOAD_TIMEOUT" "Herdr install" \
-        env HERDR_INSTALL_DIR=/usr/local/bin sh "$herdr_installer"; then
-        log_error "Herdr installation failed (continuing)"
-    fi
+if [ -z "$HERDR_INSTALL_SHA256" ]; then
+    log_error "Herdr installer checksum is not set; set HERDR_INSTALL_SHA256 to enable installation (skipping)"
 else
-    log_error "Herdr installer download failed (continuing)"
+    herdr_installer="$(mktemp)"
+    if run_with_timeout "$RELEASE_DOWNLOAD_TIMEOUT" "Herdr installer download" \
+        curl -fsSL --retry 3 --connect-timeout 10 --max-time 60 \
+            -o "$herdr_installer" "$HERDR_INSTALL_URL"; then
+        if ! printf '%s  %s\n' "$HERDR_INSTALL_SHA256" "$herdr_installer" | sha256sum -c - >/dev/null 2>&1; then
+            log_error "Herdr installer checksum verification failed (skipping)"
+        elif ! run_with_timeout "$RELEASE_DOWNLOAD_TIMEOUT" "Herdr install" \
+            env HERDR_INSTALL_DIR=/usr/local/bin sh "$herdr_installer"; then
+            log_error "Herdr installation failed (continuing)"
+        fi
+    else
+        log_error "Herdr installer download failed (continuing)"
+    fi
+    rm -f "$herdr_installer"
 fi
-rm -f "$herdr_installer"
 
 if [ "$INSTALL_ANTIGRAVITY_CLI" = "1" ] || [ "$INSTALL_ANTIGRAVITY_CLI" = "true" ]; then
     log_info "Installing Google Antigravity CLI..."
