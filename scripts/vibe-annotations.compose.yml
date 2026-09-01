@@ -1,0 +1,38 @@
+name: dev-benches
+
+services:
+  vibe-annotations:
+    build:
+      context: ./vibe-annotations
+      args:
+        VIBE_ANNOTATIONS_VERSION: ${VIBE_ANNOTATIONS_VERSION:-0.5.1}
+    image: ${VIBE_ANNOTATIONS_IMAGE:-workbenches/vibe-annotations:0.5.1}
+    container_name: ${VIBE_ANNOTATIONS_CONTAINER:-vibe-annotations}
+    restart: unless-stopped
+    labels:
+      devbench.shared-service: vibe-annotations
+    user: "${VIBE_ANNOTATIONS_UID:-1000}:${VIBE_ANNOTATIONS_GID:-1000}"
+    environment:
+      HOME: /workspace/projects/.workbenches/vibe
+      NODE_ENV: production
+    volumes:
+      - ${VIBE_ANNOTATIONS_HOME_DIR}:/workspace/projects/.workbenches/vibe
+    ports:
+      - "${VIBE_ANNOTATIONS_HOST_BIND:-127.0.0.1}:3846:3846"
+    networks:
+      - devbench-shared
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3846/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+
+networks:
+  devbench-shared:
+    name: ${VIBE_ANNOTATIONS_NETWORK:-devbench-shared}
+    external: true

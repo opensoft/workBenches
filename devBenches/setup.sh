@@ -157,6 +157,22 @@ PY
 
 ensure_docker
 
+# Vibe Annotations is one host-local MCP service shared by every language
+# bench. Keep it outside individual bench lifecycles so the Windows browser
+# extension has exactly one stable localhost:3846 endpoint.
+if [ -x "$REPO_DIR/scripts/ensure-vibe-annotations.sh" ]; then
+    "$REPO_DIR/scripts/ensure-vibe-annotations.sh" || \
+        echo "Warning: shared Vibe Annotations service setup failed."
+fi
+if [ -x "$REPO_DIR/scripts/workbenches-mcp-sync" ]; then
+    "$REPO_DIR/scripts/workbenches-mcp-sync" put-http \
+        opensoft \
+        vibe-annotations \
+        http://127.0.0.1:3846/mcp \
+        http://host.docker.internal:3846/mcp || \
+        echo "Warning: shared Vibe Annotations MCP registry setup failed."
+fi
+
 echo "=========================================="
 echo "Building Layer 1a: DevBenches Base"
 echo "=========================================="
