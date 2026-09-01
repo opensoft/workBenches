@@ -387,7 +387,7 @@ Summarize:
 - Council results recap (N valid, N noted, N dismissed)
 - List of artifacts created with brief descriptions
 - "All artifacts created! Ready for implementation."
-- "Run `/opsx:apply` to start implementing, or `/opsx:analyze` for a deep audit first."
+- "Run `/opsx:apply` to start implementing."
 
 ---
 

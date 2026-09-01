@@ -61,12 +61,6 @@ CURRENT_IMAGE_ID="$(docker inspect --format '{{.Image}}' "$CONTAINER_NAME" 2>/de
 CURRENT_CONFIG_IMAGE="$(docker inspect --format '{{.Config.Image}}' "$CONTAINER_NAME" 2>/dev/null)" || exit 0
 EXPECTED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$EXPECTED_IMAGE")"
 
-if [[ "$REPLACE_EXISTING" == true ]]; then
-    echo "Removing existing devcontainer '$CONTAINER_NAME' (${CURRENT_CONFIG_IMAGE}) so the caller can recreate it"
-    docker rm -f "$CONTAINER_NAME" >/dev/null
-    exit 0
-fi
-
 if [[ -n "$EXPECTED_PROJECT" || -n "$EXPECTED_SERVICE" ]]; then
     CURRENT_PROJECT="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$CONTAINER_NAME" 2>/dev/null || true)"
     CURRENT_SERVICE="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.service" }}' "$CONTAINER_NAME" 2>/dev/null || true)"
@@ -83,10 +77,15 @@ if [[ -n "$EXPECTED_PROJECT" || -n "$EXPECTED_SERVICE" ]]; then
     fi
 
     if [[ "$PROJECT_MATCH" != true || "$SERVICE_MATCH" != true ]]; then
-        echo "Removing existing devcontainer '$CONTAINER_NAME' (${CURRENT_CONFIG_IMAGE}): not managed by expected compose service '${EXPECTED_PROJECT}/${EXPECTED_SERVICE}'"
-        docker rm -f "$CONTAINER_NAME" >/dev/null
-        exit 0
+        echo "Refusing to remove devcontainer '$CONTAINER_NAME' (${CURRENT_CONFIG_IMAGE}): managed by compose service '${CURRENT_PROJECT}/${CURRENT_SERVICE}', expected '${EXPECTED_PROJECT}/${EXPECTED_SERVICE}'" >&2
+        exit 1
     fi
+fi
+
+if [[ "$REPLACE_EXISTING" == true ]]; then
+    echo "Removing existing devcontainer '$CONTAINER_NAME' (${CURRENT_CONFIG_IMAGE}) so the caller can recreate it"
+    docker rm -f "$CONTAINER_NAME" >/dev/null
+    exit 0
 fi
 
 REMOVE_REASON=""
