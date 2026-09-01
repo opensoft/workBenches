@@ -9,6 +9,17 @@ codex_bin="${CODEX_BIN:-$(command -v codex || true)}"
 if [[ -z "$codex_bin" && -x "$HOME/.local/bin/codex" ]]; then
   codex_bin="$HOME/.local/bin/codex"
 fi
+mcp_sync="${WORKBENCHES_MCP_SYNC_BIN:-$(command -v workbenches-mcp-sync || true)}"
+if [[ -z "$mcp_sync" ]]; then
+  launcher_dir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+  [[ -x "$launcher_dir/workbenches-mcp-sync" ]] && mcp_sync="$launcher_dir/workbenches-mcp-sync"
+fi
+
+family_uses_shared_mcp() {
+  local family="$1"
+  local configured=",${WORKBENCHES_SHARED_MCP_FAMILIES:-opensoft},"
+  [[ "$configured" == *",$family,"* ]]
+}
 
 profile_metadata() {
   local requested="$1" normalized row metadata candidate profile_path fallback_row
@@ -95,6 +106,33 @@ case "$action" in
       -c 'forced_login_method="chatgpt"'
       -c 'cli_auth_credentials_store="file"'
     )
+    codex_runtime_config=()
+    shared_mcp=false
+    if family_uses_shared_mcp "$family" && [[ -n "$mcp_sync" && -x "$mcp_sync" ]]; then
+      shared_mcp=true
+      "$mcp_sync" ensure "$family"
+      mapfile -t shared_mcp_config < <("$mcp_sync" codex-args "$family")
+      codex_runtime_config+=("${shared_mcp_config[@]}")
+    fi
+    if family_uses_shared_mcp "$family" && [[ -n "${CODEX_SONARQUBE_MCP_URL:-}" ]]; then
+      sonarqube_mcp_url_toml="$(jq -Rn --arg value "$CODEX_SONARQUBE_MCP_URL" '$value')"
+      codex_runtime_config+=(
+        -c "mcp_servers.sonarqube.url=$sonarqube_mcp_url_toml"
+      )
+    fi
+    if family_uses_shared_mcp "$family"; then
+      vibe_annotations_mcp_url="${CODEX_VIBE_ANNOTATIONS_MCP_URL:-}"
+      if [[ -z "$vibe_annotations_mcp_url" && -f /.dockerenv \
+        && "${WORKBENCHES_DISABLE_DEFAULT_VIBE_MCP:-0}" != 1 ]]; then
+        vibe_annotations_mcp_url="http://host.docker.internal:3846/mcp"
+      fi
+      if [[ -n "$vibe_annotations_mcp_url" ]]; then
+        vibe_annotations_mcp_url_toml="$(jq -Rn --arg value "$vibe_annotations_mcp_url" '$value')"
+        codex_runtime_config+=(
+          -c "mcp_servers.vibe-annotations.url=$vibe_annotations_mcp_url_toml"
+        )
+      fi
+    fi
 
     case "$action" in
       login)
@@ -108,7 +146,40 @@ case "$action" in
         CODEX_HOME="$config_dir" "$codex_bin" "${codex_auth_config[@]}" logout "$@"
         ;;
       run)
-        CODEX_HOME="$config_dir" exec "$codex_bin" "${codex_auth_config[@]}" "$@"
+        if [[ "$shared_mcp" == true && "${1:-}" == mcp && "${2:-}" == add ]]; then
+          before="$(mktemp "$config_dir/.mcp-before.XXXXXX.json")"
+          after="$(mktemp "$config_dir/.mcp-after.XXXXXX.json")"
+          CODEX_HOME="$config_dir" "$codex_bin" "${codex_auth_config[@]}" mcp list --json >"$before"
+          set +e
+          CODEX_HOME="$config_dir" "$codex_bin" "${codex_auth_config[@]}" "$@"
+          command_status=$?
+          set -e
+          if [[ "$command_status" -eq 0 ]]; then
+            CODEX_HOME="$config_dir" "$codex_bin" "${codex_auth_config[@]}" mcp list --json >"$after"
+            "$mcp_sync" import-codex-diff "$family" "$profile" "$before" "$after"
+          fi
+          find "$before" "$after" -delete
+          exit "$command_status"
+        fi
+        if [[ "$shared_mcp" == true && "${1:-}" == mcp && "${2:-}" == remove && -n "${3:-}" ]]; then
+          shared_removed=false
+          if "$mcp_sync" has "$family" "$3"; then
+            "$mcp_sync" remove "$family" "$3"
+            shared_removed=true
+          fi
+          set +e
+          CODEX_HOME="$config_dir" "$codex_bin" "${codex_auth_config[@]}" "$@"
+          command_status=$?
+          set -e
+          if [[ "$shared_removed" == true ]]; then
+            exit 0
+          fi
+          exit "$command_status"
+        fi
+        CODEX_HOME="$config_dir" exec "$codex_bin" \
+          "${codex_auth_config[@]}" \
+          "${codex_runtime_config[@]}" \
+          "$@"
         ;;
     esac
     ;;

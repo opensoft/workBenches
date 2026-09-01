@@ -95,23 +95,42 @@ separate.
 Credentials, settings, plugins, caches, and daemon state remain per profile.
 
 Every profile receives the shared four-line Claude status panel. It reports the
-worktree and Git branch, model and effort level, context use, 5-hour and 7-day
-credit use, the exact tmux attach target, and graphical countdowns to the
-5-hour and 7-day reset times. The 5-hour countdown shows minutes remaining; the
-weekly countdown shows days remaining, switching to hours under one day. Reset
-times use `America/Los_Angeles` by default and can be changed with
-`STATUSLINE_TZ`. When Claude exposes a separate weekly Fable limit, the panel
-shows both `7d All` and `7d Fable`. Because the standard status-line payload
-contains only the aggregate weekly value, the Fable value comes from Claude's
-read-only OAuth usage endpoint and is cached per profile for 60 seconds.
+selected profile as a compact label such as `Team002`, `Max001`, or
+`xFactory001`, along with the worktree and Git branch, model and effort level,
+context use, 5-hour and 7-day credit use, the exact tmux attach target, and
+graphical countdowns to the 5-hour and 7-day reset times. The tmux field is
+always the first panel segment so it remains visible when the terminal narrows.
+The profile label
+identifies the selected configuration directory; it does not independently
+verify the account in the current credential. The 5-hour countdown shows
+minutes remaining; the weekly countdown shows days remaining, switching to
+hours under one day. Reset times use `America/Los_Angeles` by default and can
+be changed with `STATUSLINE_TZ`. When Claude exposes a separate weekly Fable
+limit, the panel shows both `7d All` and `7d Fable`. Because the standard
+status-line payload contains only the aggregate weekly value, the Fable value
+comes from Claude's read-only OAuth usage endpoint and is cached per profile
+for 60 seconds.
 
 The canonical renderer is
 `base-image/files/claude-statusline-command.sh`. Profile setup installs it once
 at `~/.claude-profiles/shared/statusline-command.sh`, and every profile links to
-that shared copy. Update the canonical renderer in workBenches, then rerun
+that shared copy. The compatibility path used by bare `claude` and `yolo`,
+`~/.claude/statusline-command.sh`, links to the same renderer. The first setup
+that adopts an existing regular compatibility script preserves it as
+`statusline-command.sh.pre-workbenches-shared`. Update the canonical renderer
+in workBenches, then rerun
 `./scripts/setup-claude-profiles.sh` to propagate changes without rebuilding a
 bench image. Mounted running benches see the updated shared file immediately;
 Claude refreshes the panel on its configured 10-second interval.
+
+Interactive `pclaude PROFILE` launches are tmux-backed by default when started
+from a terminal outside tmux. The panel reserves its first segment for the
+exact `tmux:<session>/<pane>` target, so AgentTower can use the session portion
+with `tmux attach -t`. When Claude is not running in tmux, the panel explicitly
+shows `[TMUX] none` instead of silently dropping the field. Set
+`WORKBENCHES_CLAUDE_TMUX=off` for a direct interactive launch. Noninteractive
+commands such as `mcp`, `doctor`, `--help`, `--version`, and `--print` remain
+direct, and a `pclaude` command run inside an existing tmux session reuses it.
 
 Profile launches default to
 `xhigh` effort and always start Claude with `bypassPermissions` plus
