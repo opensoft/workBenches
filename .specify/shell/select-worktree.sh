@@ -166,7 +166,8 @@ resolve_worktree_root() {
     local main_root
     main_root=$(resolve_main_repo_root "$repo_root")
 
-    local default_root="../$(basename "$main_root")-worktrees"
+    local default_root
+    default_root="../$(basename "$main_root")-worktrees"
     local raw_root
     raw_root=$(resolve_config_value "$main_root" "worktree_root" "$default_root")
 
@@ -220,11 +221,6 @@ done < <(list_worktree_dirs_by_mtime "$WORKTREE_ROOT")
 
 if [ "${#PATHS[@]}" -eq 0 ]; then
     echo "No Speckit worktrees found under: $WORKTREE_ROOT" >&2
-    exit 1
-fi
-
-if [ "${#PATHS[@]}" -eq 0 ]; then
-    echo "No usable Speckit worktrees found under: $WORKTREE_ROOT" >&2
     exit 1
 fi
 
