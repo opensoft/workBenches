@@ -1581,6 +1581,14 @@ initialize_three_leg_fixture() {
     init_plain_repo "$THREE_LEG_ROOT" || return 1
     add_local_submodule "$THREE_LEG_ROOT" "$THREE_LEG_SPEC_ORIGIN" spec || return 1
     add_local_submodule "$THREE_LEG_ROOT" "$THREE_LEG_CODE_ORIGIN" code || return 1
+    # A submodule checkout has its own config under .git/modules/<leg>, so the
+    # identity set on the origin does not reach it; commits made in the leg
+    # worktrees (auto-commit) need it there. CI runners have no global identity.
+    local leg
+    for leg in spec code; do
+        git -C "$THREE_LEG_ROOT/$leg" config user.name 'Spec Kit test' || return 1
+        git -C "$THREE_LEG_ROOT/$leg" config user.email 'spec-kit-test@example.invalid' || return 1
+    done
     write_three_leg_manifest "$THREE_LEG_ROOT/project.yaml" || return 1
     mkdir -p "$THREE_LEG_ROOT/.specify/extensions/git" || return 1
     printf '%s\n' "$config" > "$THREE_LEG_ROOT/.specify/extensions/git/git-config.yml" || return 1
