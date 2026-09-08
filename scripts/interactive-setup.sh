@@ -2609,13 +2609,107 @@ check_and_install_dependencies() {
 
     # Handle missing core dependencies
     if [ "$all_ok" = false ]; then
-        echo -e "${RED}Missing required core dependencies.${NC}"
-        echo -e "${YELLOW}Please install manually:${NC}"
-        echo -e "  Ubuntu/Debian: ${CYAN}sudo apt update && sudo apt install -y git jq curl${NC}"
-        echo -e "  macOS:         ${CYAN}brew install git jq curl${NC}"
+        # Build list of missing packages
+        local missing_pkgs=()
+        command -v git &> /dev/null || missing_pkgs+=("git")
+        command -v jq &> /dev/null || missing_pkgs+=("jq")
+        command -v curl &> /dev/null || missing_pkgs+=("curl")
+        
+        echo -e "${YELLOW}Missing required core dependencies: ${missing_pkgs[*]}${NC}"
         echo ""
-        read -p "Press Enter to exit..."
-        exit 1
+        while true; do
+            read -p "Would you like to install them now? [Y/n]: " install_choice
+            case $install_choice in
+                [Yy]* | "" )
+                    echo ""
+                    # Detect OS
+                    if [ -f /etc/os-release ]; then
+                        . /etc/os-release
+                        local OS=$ID
+                    else
+                        local OS=$(uname -s)
+                    fi
+                    
+                    local install_ok=true
+                    case "$OS" in
+                        ubuntu|debian|pop)
+                            echo -e "${CYAN}Installing ${missing_pkgs[*]} via apt...${NC}"
+                            if sudo apt-get update && sudo apt-get install -y "${missing_pkgs[@]}"; then
+                                echo ""
+                                echo -e "${GREEN}✓ Core dependencies installed successfully!${NC}"
+                            else
+                                install_ok=false
+                            fi
+                            ;;
+                        fedora|rhel|centos)
+                            echo -e "${CYAN}Installing ${missing_pkgs[*]} via dnf...${NC}"
+                            if sudo dnf install -y "${missing_pkgs[@]}"; then
+                                echo ""
+                                echo -e "${GREEN}✓ Core dependencies installed successfully!${NC}"
+                            else
+                                install_ok=false
+                            fi
+                            ;;
+                        alpine)
+                            echo -e "${CYAN}Installing ${missing_pkgs[*]} via apk...${NC}"
+                            if sudo apk add "${missing_pkgs[@]}"; then
+                                echo ""
+                                echo -e "${GREEN}✓ Core dependencies installed successfully!${NC}"
+                            else
+                                install_ok=false
+                            fi
+                            ;;
+                        Darwin|darwin|macos)
+                            if command -v brew &> /dev/null; then
+                                echo -e "${CYAN}Installing ${missing_pkgs[*]} via Homebrew...${NC}"
+                                if brew install "${missing_pkgs[@]}"; then
+                                    echo ""
+                                    echo -e "${GREEN}✓ Core dependencies installed successfully!${NC}"
+                                else
+                                    install_ok=false
+                                fi
+                            else
+                                echo -e "${RED}Homebrew not found.${NC}"
+                                echo -e "Install Homebrew first: ${BLUE}https://brew.sh${NC}"
+                                install_ok=false
+                            fi
+                            ;;
+                        *)
+                            echo -e "${YELLOW}Unknown OS: $OS${NC}"
+                            echo -e "Please install manually: ${missing_pkgs[*]}"
+                            install_ok=false
+                            ;;
+                    esac
+                    
+                    if [ "$install_ok" = false ]; then
+                        echo ""
+                        echo -e "${RED}✗ Failed to install core dependencies.${NC}"
+                        echo -e "${YELLOW}Please install manually:${NC}"
+                        echo -e "  Ubuntu/Debian: ${CYAN}sudo apt update && sudo apt install -y ${missing_pkgs[*]}${NC}"
+                        echo -e "  macOS:         ${CYAN}brew install ${missing_pkgs[*]}${NC}"
+                        echo ""
+                        read -p "Press Enter to exit..."
+                        exit 1
+                    fi
+                    echo ""
+                    sleep 2
+                    break
+                    ;;
+                [Nn]* )
+                    echo ""
+                    echo -e "${RED}Core dependencies are required to continue.${NC}"
+                    echo -e "${YELLOW}Please install manually:${NC}"
+                    echo -e "  Ubuntu/Debian: ${CYAN}sudo apt update && sudo apt install -y ${missing_pkgs[*]}${NC}"
+                    echo -e "  macOS:         ${CYAN}brew install ${missing_pkgs[*]}${NC}"
+                    echo ""
+                    read -p "Press Enter to exit..."
+                    exit 1
+                    ;;
+                * )
+                    echo "Please answer yes or no."
+                    ;;
+            esac
+        done
     fi
 
     # Offer to install Node.js if needed
