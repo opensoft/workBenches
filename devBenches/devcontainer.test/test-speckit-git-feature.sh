@@ -12,13 +12,14 @@ fi
 FEATURE_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/bash/create-new-feature.sh"
 GET_LAST_WORKTREE_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/bash/get-last-worktree.sh"
 GIT_COMMON_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/bash/git-common.sh"
+AUTO_COMMIT_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/bash/auto-commit.sh"
 SELECT_WORKTREE_SCRIPT="$TEMPLATE_ROOT/specify/shell/select-worktree.sh"
 REAL_GIT="$(command -v git)"
 
 FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/speckit-git-feature.XXXXXX")"
 trap 'rm -rf "$FIXTURE_ROOT"' EXIT
 
-for required_script in "$FEATURE_SCRIPT" "$GET_LAST_WORKTREE_SCRIPT" "$GIT_COMMON_SCRIPT" "$SELECT_WORKTREE_SCRIPT"; do
+for required_script in "$FEATURE_SCRIPT" "$GET_LAST_WORKTREE_SCRIPT" "$GIT_COMMON_SCRIPT" "$AUTO_COMMIT_SCRIPT" "$SELECT_WORKTREE_SCRIPT"; do
     if [ ! -x "$required_script" ]; then
         printf 'Checked-in Speckit script is missing or not executable: %s\n' "$required_script" >&2
         exit 1
@@ -1458,6 +1459,506 @@ test_explicit_configuration() {
     assert_worktree "$branch" "$worktree_path"
 }
 
+# ---------------------------------------------------------------------------
+# openRepoShape three-leg fixtures and scenarios.
+#
+# A three-leg fixture is three local repositories: two leg "origins" plus an
+# assembly root that mounts them as real submodules at spec/ and code/, with a
+# project.yaml manifest and the root's .specify/ overlay.
+# ---------------------------------------------------------------------------
+
+THREE_LEG_ROOT=''
+THREE_LEG_SPEC_ORIGIN=''
+THREE_LEG_CODE_ORIGIN=''
+
+init_plain_repo() {
+    local repo="$1"
+
+    mkdir -p "$repo" || return 1
+    git init -q -b main "$repo" || return 1
+    git -C "$repo" config user.name 'Spec Kit test' || return 1
+    git -C "$repo" config user.email 'spec-kit-test@example.invalid' || return 1
+    printf 'fixture\n' > "$repo/README.md" || return 1
+    git -C "$repo" add README.md || return 1
+    git -C "$repo" commit -qm 'fixture commit' || return 1
+}
+
+# Newer Git refuses the file:// transport for submodules unless it is allowed
+# explicitly; older Git does not know the option at all.
+add_local_submodule() {
+    local repo="$1"
+    local source="$2"
+    local mount="$3"
+
+    if git -C "$repo" -c protocol.file.allow=always submodule add -q "$source" "$mount" 2>/dev/null; then
+        return 0
+    fi
+    git -C "$repo" submodule add -q "$source" "$mount"
+}
+
+# The manifest mirrors openRepoShape's assembly-root template with dummy
+# values. The comment block and the nested `naming:` records are deliberate:
+# a naive parser would read the commented `role:` lines, or the code leg's
+# nested `role: spec`, and mount the legs in the wrong place.
+write_three_leg_manifest() {
+    local manifest="$1"
+
+    cat > "$manifest" <<'YAML'
+schema_version: 1
+kind: project-manifest
+
+# ===========================================================================
+# project.yaml — this project's SELF-DESCRIBING MANIFEST, and the SOURCE.
+# IT CONFERS NOTHING. `schema`, `legs[].role` and `topic` are descriptive
+# navigation, for example:
+#   - role: spec
+#     path: not-a-real-leg
+# ===========================================================================
+
+id: fixture-project
+name: "Fixture Project"
+
+schema: project-repo-schema
+reference: "dummy reference"
+
+elected_by: "spec-kit-test"
+elected_on: 2026-01-01
+
+topic: xf-project-fixture
+
+visibility: private
+
+tracking_branch: main
+
+shape:
+  repository: dummy/openRepoShape
+  revision_kind: commit
+  commit: "0000000000000000000000000000000000000000"
+  digest_algorithm: sha256
+  digest_definition: sorted-ls-tree-r-v1
+  digests:
+    tree_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+
+neutral_product_pins: []
+
+legs:
+  - role: assembly
+    repository: dummy/fixture-project
+    path: "."
+    naming:
+      form: project-leg
+      role: assembly
+      also_matches: []
+  - role: spec
+    repository: dummy/fixture-project-spec
+    path: spec
+    naming:
+      form: project-leg
+      role: spec
+      also_matches: []
+  - role: code
+    repository: dummy/fixture-project-code
+    path: code
+    naming:
+      form: project-leg
+      role: spec
+      also_matches: []
+YAML
+}
+
+initialize_three_leg_fixture() {
+    local name="$1"
+    local config="$2"
+    local base="$FIXTURE_ROOT/$name"
+
+    THREE_LEG_ROOT="$base/root"
+    THREE_LEG_SPEC_ORIGIN="$base/spec-origin"
+    THREE_LEG_CODE_ORIGIN="$base/code-origin"
+
+    mkdir -p "$base" || return 1
+    init_plain_repo "$THREE_LEG_SPEC_ORIGIN" || return 1
+    init_plain_repo "$THREE_LEG_CODE_ORIGIN" || return 1
+    init_plain_repo "$THREE_LEG_ROOT" || return 1
+    add_local_submodule "$THREE_LEG_ROOT" "$THREE_LEG_SPEC_ORIGIN" spec || return 1
+    add_local_submodule "$THREE_LEG_ROOT" "$THREE_LEG_CODE_ORIGIN" code || return 1
+    # A submodule checkout has its own config under .git/modules/<leg>, so the
+    # identity set on the origin does not reach it; commits made in the leg
+    # worktrees (auto-commit) need it there. CI runners have no global identity.
+    local leg
+    for leg in spec code; do
+        git -C "$THREE_LEG_ROOT/$leg" config user.name 'Spec Kit test' || return 1
+        git -C "$THREE_LEG_ROOT/$leg" config user.email 'spec-kit-test@example.invalid' || return 1
+    done
+    write_three_leg_manifest "$THREE_LEG_ROOT/project.yaml" || return 1
+    mkdir -p "$THREE_LEG_ROOT/.specify/extensions/git" || return 1
+    printf '%s\n' "$config" > "$THREE_LEG_ROOT/.specify/extensions/git/git-config.yml" || return 1
+    printf '/worktrees/\n' > "$THREE_LEG_ROOT/.gitignore" || return 1
+    git -C "$THREE_LEG_ROOT" add -A || return 1
+    git -C "$THREE_LEG_ROOT" commit -qm 'three-leg fixture' || return 1
+}
+
+install_three_leg_scripts() {
+    local root="$1"
+    local script_dir="$root/.specify/extensions/git/scripts/bash"
+
+    mkdir -p "$script_dir" "$root/.specify/shell" || return 1
+    cp "$GET_LAST_WORKTREE_SCRIPT" "$script_dir/get-last-worktree.sh" || return 1
+    cp "$GIT_COMMON_SCRIPT" "$script_dir/git-common.sh" || return 1
+    cp "$AUTO_COMMIT_SCRIPT" "$script_dir/auto-commit.sh" || return 1
+    cp "$SELECT_WORKTREE_SCRIPT" "$root/.specify/shell/select-worktree.sh" || return 1
+    chmod +x \
+        "$script_dir/get-last-worktree.sh" \
+        "$script_dir/auto-commit.sh" \
+        "$root/.specify/shell/select-worktree.sh"
+}
+
+invoke_three_leg_feature() {
+    local root="$1"
+    local description="$2"
+    local stderr_file="$3"
+    shift 3
+
+    FEATURE_OUTPUT=''
+    FEATURE_OUTPUT="$(cd "$root" && bash "$FEATURE_SCRIPT" --json "$@" "$description" 2>"$stderr_file")" || return 1
+}
+
+leg_branches() {
+    git -C "$1" for-each-ref --format='%(refname:short)' refs/heads | sort | tr '\n' ' '
+}
+
+worktree_record_count() {
+    git -C "$1" worktree list --porcelain | grep -c '^worktree ' || true
+}
+
+assert_no_three_leg_side_effects() {
+    local root="$1"
+    local label="$2"
+
+    if [ -e "$root/worktrees" ]; then
+        printf 'assertion failed: %s created %s\n' "$label" "$root/worktrees" >&2
+        return 1
+    fi
+    if [ -e "$root/.specify/feature.json" ]; then
+        printf 'assertion failed: %s wrote .specify/feature.json\n' "$label" >&2
+        return 1
+    fi
+    assert_equal 'main ' "$(leg_branches "$root/spec")" "$label spec leg branches" || return 1
+    assert_equal 'main ' "$(leg_branches "$root/code")" "$label code leg branches" || return 1
+    assert_equal 'main ' "$(leg_branches "$root")" "$label root branches"
+}
+
+THREE_LEG_CONFIG=$'checkout_mode: worktree\nbase_branch: main\nworktree_root: worktrees'
+
+test_three_leg_creates_both_leg_worktrees() {
+    local stderr_file="$FIXTURE_ROOT/three-leg-create.stderr"
+    local root branch worktree_path spec_worktree code_worktree feature_dir
+    local repo_shape project_root feature_json
+
+    # Given: a three-leg root whose code leg already carries a 002 branch.
+    initialize_three_leg_fixture 'three-leg-create' "$THREE_LEG_CONFIG" || return 1
+    root="$THREE_LEG_ROOT"
+    git -C "$root/code" branch 002-existing || return 1
+
+    # When: the feature hook runs from the assembly root.
+    if ! invoke_three_leg_feature "$root" 'Add routing core' "$stderr_file"; then
+        printf 'three-leg invocation failed: %s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+
+    # Then: numbering crosses both legs and the JSON carries the shape keys.
+    branch="$(json_field "$FEATURE_OUTPUT" BRANCH_NAME)" || return 1
+    repo_shape="$(json_field "$FEATURE_OUTPUT" REPO_SHAPE)" || return 1
+    project_root="$(json_field "$FEATURE_OUTPUT" PROJECT_ROOT)" || return 1
+    worktree_path="$(json_field "$FEATURE_OUTPUT" WORKTREE_PATH)" || return 1
+    spec_worktree="$(json_field "$FEATURE_OUTPUT" SPEC_WORKTREE_PATH)" || return 1
+    code_worktree="$(json_field "$FEATURE_OUTPUT" CODE_WORKTREE_PATH)" || return 1
+    feature_dir="$(json_field "$FEATURE_OUTPUT" FEATURE_DIR)" || return 1
+
+    assert_equal '003-routing-core' "$branch" 'three-leg branch number across legs' || return 1
+    assert_equal 'three-leg' "$repo_shape" 'three-leg REPO_SHAPE' || return 1
+    assert_equal "$root" "$project_root" 'three-leg PROJECT_ROOT' || return 1
+    assert_equal "$root/worktrees/003-routing-core" "$worktree_path" 'three-leg WORKTREE_PATH' || return 1
+    assert_equal "$worktree_path/spec" "$spec_worktree" 'three-leg SPEC_WORKTREE_PATH' || return 1
+    assert_equal "$worktree_path/code" "$code_worktree" 'three-leg CODE_WORKTREE_PATH' || return 1
+    assert_equal "$spec_worktree/specs/003-routing-core" "$feature_dir" 'three-leg FEATURE_DIR' || return 1
+
+    # Then: both legs hold a real worktree on the same branch.
+    assert_worktree '003-routing-core' "$spec_worktree" || return 1
+    assert_worktree '003-routing-core' "$code_worktree" || return 1
+    if [ ! -d "$feature_dir" ]; then
+        printf 'assertion failed: FEATURE_DIR was not created: %s\n' "$feature_dir" >&2
+        return 1
+    fi
+
+    # Then: the assembly root gets no branch and no worktree of its own.
+    assert_equal 'main ' "$(leg_branches "$root")" 'three-leg root branches' || return 1
+    assert_equal '1' "$(worktree_record_count "$root")" 'three-leg root worktree records' || return 1
+
+    # Then: feature.json at the ROOT points into the spec worktree.
+    feature_json="$(<"$root/.specify/feature.json")" || return 1
+    assert_equal 'worktrees/003-routing-core/spec/specs/003-routing-core' \
+        "$(json_field "$feature_json" feature_directory)" 'three-leg feature.json' || return 1
+
+    # Then: the stderr hints name both environment variables.
+    if ! grep -Fq '# To persist: export SPECIFY_FEATURE=003-routing-core' "$stderr_file"; then
+        printf 'assertion failed: missing SPECIFY_FEATURE hint\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if ! grep -Fq '#             export SPECIFY_FEATURE_DIRECTORY=worktrees/003-routing-core/spec/specs/003-routing-core' "$stderr_file"; then
+        printf 'assertion failed: missing SPECIFY_FEATURE_DIRECTORY hint\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+}
+
+test_three_leg_dry_run_creates_nothing() {
+    local stderr_file="$FIXTURE_ROOT/three-leg-dry-run.stderr"
+    local root
+
+    # Given: a clean three-leg root.
+    initialize_three_leg_fixture 'three-leg-dry-run' "$THREE_LEG_CONFIG" || return 1
+    root="$THREE_LEG_ROOT"
+
+    # When: the hook runs in dry-run mode.
+    if ! invoke_three_leg_feature "$root" 'Add routing core' "$stderr_file" --dry-run; then
+        printf 'three-leg dry-run invocation failed: %s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+
+    # Then: the shape and paths are reported but nothing is created.
+    assert_equal 'three-leg' "$(json_field "$FEATURE_OUTPUT" REPO_SHAPE)" 'dry-run REPO_SHAPE' || return 1
+    assert_equal '001-routing-core' "$(json_field "$FEATURE_OUTPUT" BRANCH_NAME)" 'dry-run branch' || return 1
+    assert_equal "$root/worktrees/001-routing-core/spec/specs/001-routing-core" \
+        "$(json_field "$FEATURE_OUTPUT" FEATURE_DIR)" 'dry-run FEATURE_DIR' || return 1
+    assert_no_three_leg_side_effects "$root" 'three-leg dry run'
+}
+
+test_three_leg_refuses_branch_checkout_mode() {
+    local stderr_file="$FIXTURE_ROOT/three-leg-branch-mode.stderr"
+    local root
+
+    # Given: a three-leg root configured for branch mode.
+    initialize_three_leg_fixture 'three-leg-branch-mode' $'checkout_mode: branch\nbase_branch: main' || return 1
+    root="$THREE_LEG_ROOT"
+
+    # When: the hook runs.
+    if invoke_three_leg_feature "$root" 'Add routing core' "$stderr_file"; then
+        printf 'assertion failed: branch checkout_mode was accepted in a three-leg project\n' >&2
+        return 1
+    fi
+
+    # Then: the refusal names checkout_mode and nothing was created.
+    if ! grep -Fq 'checkout_mode: worktree' "$stderr_file"; then
+        printf 'assertion failed: refusal does not name checkout_mode\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    assert_no_three_leg_side_effects "$root" 'three-leg branch mode refusal'
+}
+
+test_three_leg_refuses_uninitialised_leg() {
+    local stderr_file="$FIXTURE_ROOT/three-leg-empty-leg.stderr"
+    local root
+
+    # Given: the code leg submodule was never fetched (an empty mount point).
+    initialize_three_leg_fixture 'three-leg-empty-leg' "$THREE_LEG_CONFIG" || return 1
+    root="$THREE_LEG_ROOT"
+    rm -rf "$root/code" || return 1
+    mkdir -p "$root/code" || return 1
+
+    # When: the hook runs.
+    if invoke_three_leg_feature "$root" 'Add routing core' "$stderr_file"; then
+        printf 'assertion failed: an uninitialised leg was accepted\n' >&2
+        return 1
+    fi
+
+    # Then: the refusal tells the user how to fetch the submodule.
+    if ! grep -Fq 'git submodule update --init' "$stderr_file"; then
+        printf 'assertion failed: refusal does not name git submodule update --init\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if [ -e "$root/worktrees" ] || [ -e "$root/.specify/feature.json" ]; then
+        printf 'assertion failed: uninitialised leg refusal still created state\n' >&2
+        return 1
+    fi
+    assert_equal 'main ' "$(leg_branches "$root/spec")" 'uninitialised leg refusal spec branches'
+}
+
+test_three_leg_refuses_existing_feature_directory() {
+    local stderr_file="$FIXTURE_ROOT/three-leg-existing-dir.stderr"
+    local root
+
+    # Given: the feature directory the hook would use already exists.
+    initialize_three_leg_fixture 'three-leg-existing-dir' "$THREE_LEG_CONFIG" || return 1
+    root="$THREE_LEG_ROOT"
+    mkdir -p "$root/worktrees/001-routing-core" || return 1
+
+    # When: the hook runs.
+    if invoke_three_leg_feature "$root" 'Add routing core' "$stderr_file"; then
+        printf 'assertion failed: an existing feature directory was accepted\n' >&2
+        return 1
+    fi
+
+    # Then: it refuses without creating branches in either leg.
+    if ! grep -Fq "Feature worktree directory '$root/worktrees/001-routing-core' already exists" "$stderr_file"; then
+        printf 'assertion failed: refusal does not name the existing feature directory\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    assert_equal 'main ' "$(leg_branches "$root/spec")" 'existing dir refusal spec branches' || return 1
+    assert_equal 'main ' "$(leg_branches "$root/code")" 'existing dir refusal code branches'
+}
+
+install_code_worktree_failure_shim() {
+    local shim_dir="$1"
+
+    mkdir -p "$shim_dir" || return 1
+    cat > "$shim_dir/git" <<'SH'
+#!/usr/bin/env bash
+is_worktree=false
+is_add=false
+touches_code_leg=false
+for argument in "$@"; do
+    case "$argument" in
+        worktree) is_worktree=true ;;
+        add) is_add=true ;;
+        */code|*/code/*) touches_code_leg=true ;;
+    esac
+done
+
+if $is_worktree && $is_add && $touches_code_leg; then
+    printf 'forced code leg worktree failure\n' >&2
+    exit 128
+fi
+
+exec "$SPECKIT_TEST_REAL_GIT" "$@"
+SH
+    chmod +x "$shim_dir/git"
+}
+
+test_three_leg_rolls_back_when_code_leg_fails() {
+    local stderr_file="$FIXTURE_ROOT/three-leg-rollback.stderr"
+    local shim_dir="$FIXTURE_ROOT/three-leg-rollback-bin"
+    local root
+
+    # Given: adding the code leg worktree is forced to fail.
+    initialize_three_leg_fixture 'three-leg-rollback' "$THREE_LEG_CONFIG" || return 1
+    root="$THREE_LEG_ROOT"
+    install_code_worktree_failure_shim "$shim_dir" || return 1
+
+    # When: the hook runs with the failing shim first on PATH.
+    if (cd "$root" && PATH="$shim_dir:$PATH" SPECKIT_TEST_REAL_GIT="$REAL_GIT" \
+        bash "$FEATURE_SCRIPT" --json 'Add routing core' >/dev/null 2>"$stderr_file"); then
+        printf 'assertion failed: the hook succeeded although the code leg failed\n' >&2
+        return 1
+    fi
+
+    # Then: the spec leg worktree and branch are rolled back.
+    if ! grep -Fq 'Rolling back the spec leg worktree' "$stderr_file"; then
+        printf 'assertion failed: no rollback message\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    assert_equal 'main ' "$(leg_branches "$root/spec")" 'rollback spec leg branches' || return 1
+    assert_equal 'main ' "$(leg_branches "$root/code")" 'rollback code leg branches' || return 1
+    assert_equal '1' "$(worktree_record_count "$root/spec")" 'rollback spec worktree records' || return 1
+    if [ -e "$root/worktrees/001-routing-core" ]; then
+        printf 'assertion failed: rollback left the feature directory behind\n' >&2
+        return 1
+    fi
+}
+
+test_three_leg_get_last_worktree_reports_feature() {
+    local stderr_file="$FIXTURE_ROOT/three-leg-get-last.stderr"
+    local root output list_output
+
+    # Given: a created three-leg feature and the discovery scripts installed.
+    initialize_three_leg_fixture 'three-leg-get-last' "$THREE_LEG_CONFIG" || return 1
+    root="$THREE_LEG_ROOT"
+    install_three_leg_scripts "$root" || return 1
+    if ! invoke_three_leg_feature "$root" 'Add routing core' "$stderr_file"; then
+        printf 'three-leg invocation failed: %s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+
+    # When: discovery runs from the assembly root.
+    output="$(cd "$root" && bash .specify/extensions/git/scripts/bash/get-last-worktree.sh --json)" || return 1
+
+    # Then: it reports the feature directory and both leg worktrees.
+    assert_equal 'three-leg' "$(json_field "$output" REPO_SHAPE)" 'get-last REPO_SHAPE' || return 1
+    assert_equal '001-routing-core' "$(json_field "$output" BRANCH_NAME)" 'get-last branch' || return 1
+    assert_equal "$root/worktrees/001-routing-core" "$(json_field "$output" WORKTREE_PATH)" 'get-last WORKTREE_PATH' || return 1
+    assert_equal "$root/worktrees/001-routing-core/spec" "$(json_field "$output" SPEC_WORKTREE_PATH)" 'get-last SPEC_WORKTREE_PATH' || return 1
+    assert_equal "$root/worktrees/001-routing-core/code" "$(json_field "$output" CODE_WORKTREE_PATH)" 'get-last CODE_WORKTREE_PATH' || return 1
+    assert_equal "$root/worktrees/001-routing-core/spec/specs/001-routing-core" \
+        "$(json_field "$output" FEATURE_DIR)" 'get-last FEATURE_DIR' || return 1
+    assert_equal "$root" "$(json_field "$output" PROJECT_ROOT)" 'get-last PROJECT_ROOT' || return 1
+
+    # Then: the selector lists the same feature directory, not a leg checkout.
+    list_output="$(cd "$root" && bash .specify/shell/select-worktree.sh --list)" || return 1
+    if ! printf '%s\n' "$list_output" | grep -Fq "$root/worktrees/001-routing-core"; then
+        printf 'assertion failed: selector did not list the feature directory\n%s\n' "$list_output" >&2
+        return 1
+    fi
+    if printf '%s\n' "$list_output" | grep -Fq "$root/spec"; then
+        printf 'assertion failed: selector listed the pinned spec leg\n%s\n' "$list_output" >&2
+        return 1
+    fi
+}
+
+test_three_leg_auto_commit_commits_both_legs_only() {
+    local stderr_file="$FIXTURE_ROOT/three-leg-auto-commit.stderr"
+    local config=$'checkout_mode: worktree\nbase_branch: main\nworktree_root: worktrees\nauto_commit:\n  default: true'
+    local root feature_dir root_head_before spec_head_before code_head_before
+
+    # Given: a created feature with pending edits in both leg worktrees.
+    initialize_three_leg_fixture 'three-leg-auto-commit' "$config" || return 1
+    root="$THREE_LEG_ROOT"
+    install_three_leg_scripts "$root" || return 1
+    if ! invoke_three_leg_feature "$root" 'Add routing core' "$stderr_file"; then
+        printf 'three-leg invocation failed: %s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    feature_dir="$root/worktrees/001-routing-core"
+    printf 'spec\n' > "$feature_dir/spec/specs/001-routing-core/spec.md" || return 1
+    printf 'code\n' > "$feature_dir/code/implementation.txt" || return 1
+    root_head_before="$(git -C "$root" rev-parse HEAD)" || return 1
+    spec_head_before="$(git -C "$feature_dir/spec" rev-parse HEAD)" || return 1
+    code_head_before="$(git -C "$feature_dir/code" rev-parse HEAD)" || return 1
+
+    # When: the auto-commit hook runs from the assembly root.
+    if ! (cd "$root" && bash .specify/extensions/git/scripts/bash/auto-commit.sh after_specify 2>"$stderr_file"); then
+        printf 'three-leg auto-commit failed: %s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+
+    # Then: both leg worktrees advanced and the assembly root did not.
+    if [ "$spec_head_before" = "$(git -C "$feature_dir/spec" rev-parse HEAD)" ]; then
+        printf 'assertion failed: the spec worktree was not committed\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if [ "$code_head_before" = "$(git -C "$feature_dir/code" rev-parse HEAD)" ]; then
+        printf 'assertion failed: the code worktree was not committed\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    assert_equal "$root_head_before" "$(git -C "$root" rev-parse HEAD)" 'auto-commit left the root HEAD alone' || return 1
+    assert_equal '001-routing-core' "$(git -C "$feature_dir/spec" branch --show-current)" 'auto-commit spec branch' || return 1
+    assert_equal '001-routing-core' "$(git -C "$feature_dir/code" branch --show-current)" 'auto-commit code branch' || return 1
+
+    # When: no feature is selected any more.
+    rm -f "$root/.specify/feature.json" || return 1
+    printf 'spec again\n' >> "$feature_dir/spec/specs/001-routing-core/spec.md" || return 1
+    spec_head_before="$(git -C "$feature_dir/spec" rev-parse HEAD)" || return 1
+    if ! (cd "$root" && env -u SPECIFY_FEATURE bash .specify/extensions/git/scripts/bash/auto-commit.sh after_plan 2>"$stderr_file"); then
+        printf 'three-leg auto-commit without a feature failed: %s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+
+    # Then: it says so and commits nothing.
+    if ! grep -Fq 'No Speckit feature is selected' "$stderr_file"; then
+        printf 'assertion failed: missing no-feature message\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    assert_equal "$spec_head_before" "$(git -C "$feature_dir/spec" rev-parse HEAD)" 'no-feature auto-commit left the spec worktree alone' || return 1
+    assert_equal "$root_head_before" "$(git -C "$root" rev-parse HEAD)" 'no-feature auto-commit left the root alone'
+}
+
 failures=0
 run_scenario() {
     local name="$1"
@@ -1495,6 +1996,14 @@ run_scenario 'legacy line porcelain rejects directory and forged candidates with
 run_scenario 'Git discovery failures are not reported as zero records' test_discovery_failure_is_not_reported_as_zero_records
 run_scenario 'fallback root detection ignores decoy directories' test_fallback_root_ignores_decoy_directories
 run_scenario 'explicit decoy-only root reports no registered worktrees' test_explicit_decoy_only_root_reports_no_worktrees
+run_scenario 'three-leg feature creates a worktree in both legs and none at the root' test_three_leg_creates_both_leg_worktrees
+run_scenario 'three-leg dry run creates nothing' test_three_leg_dry_run_creates_nothing
+run_scenario 'three-leg refuses branch checkout mode' test_three_leg_refuses_branch_checkout_mode
+run_scenario 'three-leg refuses an uninitialised leg' test_three_leg_refuses_uninitialised_leg
+run_scenario 'three-leg refuses an existing feature directory' test_three_leg_refuses_existing_feature_directory
+run_scenario 'three-leg rolls back the spec leg when the code leg fails' test_three_leg_rolls_back_when_code_leg_fails
+run_scenario 'three-leg discovery reports the feature and both leg worktrees' test_three_leg_get_last_worktree_reports_feature
+run_scenario 'three-leg auto-commit commits both legs and never the root' test_three_leg_auto_commit_commits_both_legs_only
 
 if [ "$failures" -ne 0 ]; then
     printf 'RED: Speckit Git feature behavior tests failed: %d scenario(s)\n' "$failures" >&2

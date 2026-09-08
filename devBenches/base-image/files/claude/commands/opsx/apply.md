@@ -5,6 +5,20 @@ category: Workflow
 tags: [workflow, artifacts, experimental, teams]
 ---
 
+<!-- OPENSPEC-SPECKIT-SHAPE:START -->
+## Repository Shape (managed by setup-openspeckit)
+
+Resolve the project shape once before any step below.
+
+1. The project root is the nearest directory at or above the current one that contains `.specify/`. Run every `.specify/scripts/...` command from that root.
+2. If the root has `project.yaml` with `kind: project-manifest` and `legs:` entries for `role: spec` and `role: code`, this is an openRepoShape **three-leg** project. `<spec>` and `<code>` are those legs' `path:` values (defaults `spec` and `code`). Otherwise it is a **single repository** and `<spec>` and `<code>` are both the root.
+3. Three-leg placement: `openspec/` and `specs/NNN-*` live in the spec leg; source and tests live in the code leg; a feature's worktrees live at `worktrees/<NNN-feature>/<spec>/` and `worktrees/<NNN-feature>/<code>/` under the root. Never write feature work into `<spec>/` or `<code>/` at the root; they sit at the pinned commit.
+4. Feature paths come from `.specify/scripts/bash/check-prerequisites.sh --json` (or `SPECIFY_FEATURE_DIRECTORY` / `.specify/feature.json`). In three-leg, `FEATURE_DIR` is inside the feature's spec worktree and the code worktree is the sibling `<code>/` directory beside it; implementation edits go there.
+5. Run the `openspec` CLI with the current directory at the owner of `openspec/`: the root in a single repository, `<spec>/` in a three-leg project.
+
+Full rules: `${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/protocols/openspec-speckit-workflow.md` ("Repository Shape", "Worktree Rules").
+<!-- OPENSPEC-SPECKIT-SHAPE:END -->
+
 Apply a governed OpenSpec change by executing the tasks in its one linked Speckit feature. OpenSpec remains the decision and handoff record; `specs/<feature>/tasks.md` is the only executable task authority.
 
 **Input**: Optionally specify a change name (e.g., `/opsx:apply add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
@@ -164,7 +178,7 @@ After all packages complete:
 
 For each pending Speckit task:
 - Show which task is being worked on
-- Make the code changes required
+- OpenSpec `tasks.md` carries handoff-level tasks only; implementation happens through the linked Speckit feature (`/speckit.implement`); tick OpenSpec tasks only when the corresponding Speckit work or governance step has actually landed
 - Keep changes minimal and focused
 - Mark the linked Speckit task complete: `- [ ]` → `- [x]`
 - Continue to next task

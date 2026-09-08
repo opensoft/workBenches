@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+# speckit-overlay-shape: 1
 
 JSON_MODE=false
-if [ "${1:-}" = "--json" ]; then
-    JSON_MODE=true
-fi
+ENV_MODE=false
+case "${1:-}" in
+    --json) JSON_MODE=true ;;
+    --env) ENV_MODE=true ;;
+esac
+
+# Shape-dependent extras filled in before emit_result runs.
+EMIT_REPO_SHAPE=single
+EMIT_PROJECT_ROOT=""
+EMIT_SPEC_WORKTREE_PATH=""
+EMIT_CODE_WORKTREE_PATH=""
+EMIT_FEATURE_DIR=""
+EMIT_FEATURE_DIR_RELATIVE=""
 
 capture_path() {
     local frame='__SPECKIT_PATH_CAPTURE_FRAME_7D3A9C__'
@@ -383,6 +394,24 @@ emit_result() {
     local repo_root="$4"
     local source="$5"
 
+    if $ENV_MODE; then
+        printf 'REPO_SHAPE=%q\n' "$EMIT_REPO_SHAPE"
+        printf 'PROJECT_ROOT=%q\n' "${EMIT_PROJECT_ROOT:-$repo_root}"
+        printf 'REPO_ROOT=%q\n' "$repo_root"
+        printf 'BRANCH_NAME=%q\n' "$branch_name"
+        printf 'BASE_BRANCH=%q\n' "$base_branch"
+        printf 'WORKTREE_PATH=%q\n' "$worktree_path"
+        printf 'SOURCE=%q\n' "$source"
+        if [ "$EMIT_REPO_SHAPE" = three-leg ]; then
+            printf 'SPEC_WORKTREE_PATH=%q\n' "$EMIT_SPEC_WORKTREE_PATH"
+            printf 'CODE_WORKTREE_PATH=%q\n' "$EMIT_CODE_WORKTREE_PATH"
+            printf 'FEATURE_DIR=%q\n' "$EMIT_FEATURE_DIR"
+            printf 'SPECIFY_FEATURE=%q\n' "$branch_name"
+            printf 'SPECIFY_FEATURE_DIRECTORY=%q\n' "$EMIT_FEATURE_DIR_RELATIVE"
+        fi
+        return 0
+    fi
+
     if $JSON_MODE; then
         if command -v jq >/dev/null 2>&1; then
             jq -cn \
@@ -391,19 +420,34 @@ emit_result() {
                 --arg base_branch "$base_branch" \
                 --arg repo_root "$repo_root" \
                 --arg source "$source" \
-                '{BRANCH_NAME:$branch_name,WORKTREE_PATH:$worktree_path,BASE_BRANCH:$base_branch,REPO_ROOT:$repo_root,SOURCE:$source}'
+                --arg repo_shape "$EMIT_REPO_SHAPE" \
+                --arg project_root "${EMIT_PROJECT_ROOT:-$repo_root}" \
+                --arg spec_worktree_path "$EMIT_SPEC_WORKTREE_PATH" \
+                --arg code_worktree_path "$EMIT_CODE_WORKTREE_PATH" \
+                --arg feature_dir "$EMIT_FEATURE_DIR" \
+                '({BRANCH_NAME:$branch_name,WORKTREE_PATH:$worktree_path,BASE_BRANCH:$base_branch,REPO_ROOT:$repo_root,SOURCE:$source,REPO_SHAPE:$repo_shape}
+                  + (if $repo_shape == "three-leg" then {PROJECT_ROOT:$project_root,SPEC_WORKTREE_PATH:$spec_worktree_path,CODE_WORKTREE_PATH:$code_worktree_path,FEATURE_DIR:$feature_dir} else {} end))'
         elif command -v python3 >/dev/null 2>&1; then
-            python3 - "$branch_name" "$worktree_path" "$base_branch" "$repo_root" "$source" <<'PY'
+            python3 - "$branch_name" "$worktree_path" "$base_branch" "$repo_root" "$source" \
+                "$EMIT_REPO_SHAPE" "${EMIT_PROJECT_ROOT:-$repo_root}" "$EMIT_SPEC_WORKTREE_PATH" \
+                "$EMIT_CODE_WORKTREE_PATH" "$EMIT_FEATURE_DIR" <<'PY'
 import json
 import sys
 
-print(json.dumps({
+payload = {
     "BRANCH_NAME": sys.argv[1],
     "WORKTREE_PATH": sys.argv[2],
     "BASE_BRANCH": sys.argv[3],
     "REPO_ROOT": sys.argv[4],
     "SOURCE": sys.argv[5],
-}))
+    "REPO_SHAPE": sys.argv[6],
+}
+if sys.argv[6] == "three-leg":
+    payload["PROJECT_ROOT"] = sys.argv[7]
+    payload["SPEC_WORKTREE_PATH"] = sys.argv[8]
+    payload["CODE_WORKTREE_PATH"] = sys.argv[9]
+    payload["FEATURE_DIR"] = sys.argv[10]
+print(json.dumps(payload))
 PY
         else
             echo "Error: JSON output requires jq or python3." >&2
@@ -412,6 +456,20 @@ PY
     else
         printf '%s\n' "$worktree_path"
     fi
+}
+
+shape_fill_emit_fields() {
+    local project_root="$1"
+    local feature_dir="$2"
+    local branch="$3"
+
+    shape_feature_paths_for "$project_root" "$feature_dir" "$branch"
+    EMIT_REPO_SHAPE=three-leg
+    EMIT_PROJECT_ROOT="$project_root"
+    EMIT_SPEC_WORKTREE_PATH="$SHAPE_SPEC_WORKTREE_PATH"
+    EMIT_CODE_WORKTREE_PATH="$SHAPE_CODE_WORKTREE_PATH"
+    EMIT_FEATURE_DIR="${SHAPE_FEATURE_DIR}"
+    EMIT_FEATURE_DIR_RELATIVE="$SHAPE_FEATURE_DIR_RELATIVE"
 }
 
 if capture_path git rev-parse --show-toplevel 2>/dev/null; then
@@ -443,6 +501,57 @@ fi
 
 STATE_FILE="$COMMON_DIR/speckit-last-worktree.json"
 BASE_BRANCH=$(resolve_config_value "$REPO_ROOT" "base_branch" "main")
+
+load_repo_shape "$MAIN_REPO_ROOT"
+if [ "$REPO_SHAPE" = "three-leg" ]; then
+    if ! shape_leg_is_checkout "$SPEC_LEG"; then
+        echo "Error: the spec leg '$SHAPE_SPEC_PATH' is not an initialised Git checkout at '$SPEC_LEG'." >&2
+        echo "Run 'git submodule update --init' (or 'make bootstrap') in the project root first." >&2
+        exit 1
+    fi
+    SHAPE_WORKTREE_ROOT_RAW=$(resolve_config_value "$MAIN_REPO_ROOT" "worktree_root" "worktrees")
+    if ! capture_path resolve_path_from_root "$MAIN_REPO_ROOT" "$SHAPE_WORKTREE_ROOT_RAW"; then
+        echo "Error: Failed to resolve the Speckit worktree root." >&2
+        exit 1
+    fi
+    SHAPE_WORKTREE_ROOT="$CAPTURED_PATH"
+    if ! shape_load_features "$SHAPE_WORKTREE_ROOT"; then
+        echo "Error: Failed to list Git worktrees." >&2
+        exit 1
+    fi
+
+    SHAPE_SELECTED=-1
+    SHAPE_SOURCE=worktree_root_fallback
+    if [ ! -L "$STATE_FILE" ] && [ -f "$STATE_FILE" ]; then
+        WORKTREE_PATH=""
+        if read_state_worktree_path "$STATE_FILE" && [ -n "$WORKTREE_PATH" ]; then
+            SHAPE_INDEX=0
+            while [ "$SHAPE_INDEX" -lt "${#SHAPE_FEATURE_PATHS[@]}" ]; do
+                if [ "$WORKTREE_PATH" = "${SHAPE_FEATURE_PATHS[$SHAPE_INDEX]}" ]; then
+                    SHAPE_SELECTED=$SHAPE_INDEX
+                    SHAPE_SOURCE=state_file
+                    break
+                fi
+                SHAPE_INDEX=$((SHAPE_INDEX + 1))
+            done
+        fi
+    fi
+    if [ "$SHAPE_SELECTED" -lt 0 ] && [ "${#SHAPE_FEATURE_PATHS[@]}" -gt 0 ]; then
+        SHAPE_SELECTED=0
+    fi
+    if [ "$SHAPE_SELECTED" -lt 0 ]; then
+        echo "Error: no Speckit worktree handoff has been recorded yet." >&2
+        exit 1
+    fi
+
+    SHAPE_SELECTED_DIR="${SHAPE_FEATURE_PATHS[$SHAPE_SELECTED]}"
+    SHAPE_SELECTED_BRANCH="${SHAPE_FEATURE_BRANCHES[$SHAPE_SELECTED]}"
+    shape_fill_emit_fields "$MAIN_REPO_ROOT" "$SHAPE_SELECTED_DIR" "$SHAPE_SELECTED_BRANCH"
+    emit_result "$SHAPE_SELECTED_BRANCH" "$SHAPE_SELECTED_DIR" "$BASE_BRANCH" \
+        "$MAIN_REPO_ROOT" "$SHAPE_SOURCE"
+    exit 0
+fi
+
 if ! capture_path resolve_worktree_root "$REPO_ROOT"; then
     echo "Error: Failed to list Git worktrees." >&2
     exit 1

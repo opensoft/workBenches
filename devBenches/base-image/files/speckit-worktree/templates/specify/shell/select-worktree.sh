@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+# speckit-overlay-shape: 1
 
 capture_path() {
     local frame='__SPECKIT_PATH_CAPTURE_FRAME_7D3A9C__'
@@ -326,40 +327,96 @@ if [ "${1:-}" = "--path" ]; then
     MODE="path"
 elif [ "${1:-}" = "--list" ]; then
     MODE="list"
+elif [ "${1:-}" = "--env" ]; then
+    MODE="env"
 elif [ $# -gt 0 ]; then
-    echo "Usage: $0 [--path|--list]" >&2
+    echo "Usage: $0 [--path|--list|--env]" >&2
     exit 1
 fi
 
 capture_path resolve_main_repo_root "$REPO_ROOT"
 MAIN_REPO_ROOT="$CAPTURED_PATH"
-if ! capture_path resolve_worktree_root "$REPO_ROOT"; then
-    echo "Error: Failed to list Git worktrees." >&2
-    exit 1
-fi
-WORKTREE_ROOT="$CAPTURED_PATH"
-if [ ! -d "$WORKTREE_ROOT" ]; then
-    echo "No Speckit worktree root found at: $WORKTREE_ROOT" >&2
-    exit 1
-fi
+load_repo_shape "$MAIN_REPO_ROOT"
 
 PATHS=()
 BRANCHES=()
-if ! load_registered_worktrees_by_mtime "$WORKTREE_ROOT" "$MAIN_REPO_ROOT"; then
-    echo "Error: Failed to list Git worktrees." >&2
-    exit 1
+if [ "$REPO_SHAPE" = "three-leg" ]; then
+    if ! shape_leg_is_checkout "$SPEC_LEG"; then
+        echo "Error: the spec leg '$SHAPE_SPEC_PATH' is not an initialised Git checkout at '$SPEC_LEG'." >&2
+        echo "Run 'git submodule update --init' (or 'make bootstrap') in the project root first." >&2
+        exit 1
+    fi
+    SHAPE_WORKTREE_ROOT_RAW=$(resolve_config_value "$MAIN_REPO_ROOT" "worktree_root" "worktrees")
+    if ! capture_path resolve_path_from_root "$MAIN_REPO_ROOT" "$SHAPE_WORKTREE_ROOT_RAW"; then
+        echo "Error: Failed to resolve the Speckit worktree root." >&2
+        exit 1
+    fi
+    WORKTREE_ROOT="$CAPTURED_PATH"
+    if [ ! -d "$WORKTREE_ROOT" ]; then
+        echo "No Speckit worktree root found at: $WORKTREE_ROOT" >&2
+        exit 1
+    fi
+    if ! shape_load_features "$WORKTREE_ROOT"; then
+        echo "Error: Failed to list Git worktrees." >&2
+        exit 1
+    fi
+    if [ "${#SHAPE_FEATURE_PATHS[@]}" -eq 0 ]; then
+        echo "No Speckit worktrees found under: $WORKTREE_ROOT" >&2
+        exit 1
+    fi
+    PATHS=("${SHAPE_FEATURE_PATHS[@]}")
+    BRANCHES=("${SHAPE_FEATURE_BRANCHES[@]}")
+else
+    if ! capture_path resolve_worktree_root "$REPO_ROOT"; then
+        echo "Error: Failed to list Git worktrees." >&2
+        exit 1
+    fi
+    WORKTREE_ROOT="$CAPTURED_PATH"
+    if [ ! -d "$WORKTREE_ROOT" ]; then
+        echo "No Speckit worktree root found at: $WORKTREE_ROOT" >&2
+        exit 1
+    fi
+
+    if ! load_registered_worktrees_by_mtime "$WORKTREE_ROOT" "$MAIN_REPO_ROOT"; then
+        echo "Error: Failed to list Git worktrees." >&2
+        exit 1
+    fi
+    if [ "${#REGISTERED_WORKTREE_PATHS[@]}" -eq 0 ]; then
+        echo "No Speckit worktrees found under: $WORKTREE_ROOT" >&2
+        exit 1
+    fi
+    PATHS=("${REGISTERED_WORKTREE_PATHS[@]}")
+    BRANCHES=("${REGISTERED_WORKTREE_BRANCHES[@]}")
 fi
-if [ "${#REGISTERED_WORKTREE_PATHS[@]}" -eq 0 ]; then
-    echo "No Speckit worktrees found under: $WORKTREE_ROOT" >&2
-    exit 1
-fi
-PATHS=("${REGISTERED_WORKTREE_PATHS[@]}")
-BRANCHES=("${REGISTERED_WORKTREE_BRANCHES[@]}")
 
 if [ "${#PATHS[@]}" -eq 0 ]; then
     echo "No usable Speckit worktrees found under: $WORKTREE_ROOT" >&2
     exit 1
 fi
+
+# In --env mode the selection is emitted as shell assignments so the ct-family
+# launchers can jump to the right place without a JSON parser.
+emit_selection() {
+    local index="$1"
+
+    if [ "$MODE" != "env" ]; then
+        printf '%s\n' "${PATHS[$index]}"
+        return 0
+    fi
+
+    printf 'REPO_SHAPE=%q\n' "$REPO_SHAPE"
+    printf 'PROJECT_ROOT=%q\n' "$MAIN_REPO_ROOT"
+    printf 'BRANCH_NAME=%q\n' "${BRANCHES[$index]}"
+    printf 'WORKTREE_PATH=%q\n' "${PATHS[$index]}"
+    if [ "$REPO_SHAPE" = "three-leg" ]; then
+        shape_feature_paths_for "$MAIN_REPO_ROOT" "${PATHS[$index]}" "${BRANCHES[$index]}"
+        printf 'SPEC_WORKTREE_PATH=%q\n' "$SHAPE_SPEC_WORKTREE_PATH"
+        printf 'CODE_WORKTREE_PATH=%q\n' "$SHAPE_CODE_WORKTREE_PATH"
+        printf 'FEATURE_DIR=%q\n' "$SHAPE_FEATURE_DIR"
+        printf 'SPECIFY_FEATURE=%q\n' "${BRANCHES[$index]}"
+        printf 'SPECIFY_FEATURE_DIRECTORY=%q\n' "$SHAPE_FEATURE_DIR_RELATIVE"
+    fi
+}
 
 if [ "$MODE" = "list" ]; then
     for i in "${!PATHS[@]}"; do
@@ -374,8 +431,8 @@ if [ "$MODE" = "list" ]; then
     exit 0
 fi
 
-if [ "$MODE" = "path" ] && ! [ -t 0 ]; then
-    printf '%s\n' "${PATHS[0]}"
+if { [ "$MODE" = "path" ] || [ "$MODE" = "env" ]; } && ! [ -t 0 ]; then
+    emit_selection 0
     exit 0
 fi
 
@@ -408,7 +465,7 @@ while true; do
     esac
 
     if [[ "$selection" =~ ^[0-9]+$ ]] && [ "$selection" -ge 1 ] && [ "$selection" -le "${#PATHS[@]}" ]; then
-        printf '%s\n' "${PATHS[$((selection - 1))]}"
+        emit_selection "$((selection - 1))"
         exit 0
     fi
 

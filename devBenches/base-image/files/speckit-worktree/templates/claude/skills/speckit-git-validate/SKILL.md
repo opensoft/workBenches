@@ -8,6 +8,7 @@ metadata:
 user-invocable: true
 disable-model-invocation: false
 ---
+<!-- speckit-overlay-shape: 1 -->
 
 # Validate Feature Branch
 
@@ -20,6 +21,20 @@ Validate that the current Git branch follows the expected feature branch naming 
   ```
   [specify] Warning: Git repository not detected; skipped branch validation
   ```
+
+## Repository Shape
+
+Resolve the shape before validating anything.
+
+- **Single repository**: the branch to validate is the current checkout's branch (`git rev-parse --abbrev-ref HEAD`), and `.specify/feature.json` is read from that checkout.
+- **Three-leg project** (the project root has `project.yaml` with `kind: project-manifest` and `legs:` for `role: spec` and `role: code`): the assembly root has **no** feature branch, so validating its branch is meaningless. Validate the two **leg worktree** branches instead.
+
+In a three-leg project:
+
+1. Resolve the feature from `SPECIFY_FEATURE` / `SPECIFY_FEATURE_DIRECTORY`, or from `.specify/feature.json` at the project root — its `feature_directory` is `worktrees/<NNN-feature-name>/<spec>/specs/<NNN-feature-name>`, relative to the project root. The `speckit.git.feature` hook's JSON carries the same values as `SPEC_WORKTREE_PATH`, `CODE_WORKTREE_PATH`, and `FEATURE_DIR`.
+2. Read the branch of each leg worktree with `git -C <SPEC_WORKTREE_PATH> rev-parse --abbrev-ref HEAD` and `git -C <CODE_WORKTREE_PATH> rev-parse --abbrev-ref HEAD`.
+3. Both must match the feature-branch patterns below **and** be the same branch name in both legs. Report a mismatch between the legs as an error naming both branches.
+4. Do not validate the assembly root's branch and do not report it as a failure; it stays on its tracking branch until the pin bump.
 
 ## Validation Rules
 
@@ -50,6 +65,12 @@ If on a feature branch (matches either pattern):
 If NOT on a feature branch:
 - Output: `✗ Not on a feature branch. Current branch: <branch-name>`
 - Output: `Feature branches should be named like: 001-feature-name, 20260319-143022-feature-name, or <namespace>/001-feature-name`
+
+In a three-leg project apply the same reporting per leg, using the leg worktree branch instead of the root branch:
+
+- `✓ On feature branch: <branch-name> (spec worktree)` and the same line for the code worktree
+- `✗ Leg branches differ: spec=<spec-branch>, code=<code-branch>` when the two legs are not on the same branch
+- The spec directory is `FEATURE_DIR` inside the spec worktree (`worktrees/<NNN-feature-name>/<spec>/specs/<NNN-feature-name>`), resolved from `.specify/feature.json` at the project root; do not look for `specs/<prefix>-*` at the root
 
 ## Graceful Degradation
 
