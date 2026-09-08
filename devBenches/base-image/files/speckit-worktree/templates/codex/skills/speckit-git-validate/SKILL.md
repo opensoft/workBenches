@@ -2,6 +2,7 @@
 name: "speckit-git-validate"
 description: "Codex wrapper for the Speckit git branch validation workflow."
 ---
+<!-- speckit-overlay-shape: 1 -->
 
 # speckit-git-validate
 
@@ -13,3 +14,4 @@ Rules:
 - Read the source skill before doing anything else.
 - Pass any text after `/speckit.git.validate` through as the original command input for the source skill.
 - Execute the source skill exactly, including validation behavior.
+- In an openRepoShape three-leg project validate the two leg worktree branches (from `.specify/feature.json` at the project root), not the assembly root's branch.

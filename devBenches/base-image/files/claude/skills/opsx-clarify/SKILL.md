@@ -6,6 +6,20 @@ metadata:
   version: "2.0"
 ---
 
+<!-- OPENSPEC-SPECKIT-SHAPE:START -->
+## Repository Shape (managed by setup-openspeckit)
+
+Resolve the project shape once before any step below.
+
+1. The project root is the nearest directory at or above the current one that contains `.specify/`. Run every `.specify/scripts/...` command from that root.
+2. If the root has `project.yaml` with `kind: project-manifest` and `legs:` entries for `role: spec` and `role: code`, this is an openRepoShape **three-leg** project. `<spec>` and `<code>` are those legs' `path:` values (defaults `spec` and `code`). Otherwise it is a **single repository** and `<spec>` and `<code>` are both the root.
+3. Three-leg placement: `openspec/` and `specs/NNN-*` live in the spec leg; source and tests live in the code leg; a feature's worktrees live at `worktrees/<NNN-feature>/<spec>/` and `worktrees/<NNN-feature>/<code>/` under the root. Never write feature work into `<spec>/` or `<code>/` at the root; they sit at the pinned commit.
+4. Feature paths come from `.specify/scripts/bash/check-prerequisites.sh --json` (or `SPECIFY_FEATURE_DIRECTORY` / `.specify/feature.json`). In three-leg, `FEATURE_DIR` is inside the feature's spec worktree and the code worktree is the sibling `<code>/` directory beside it; implementation edits go there.
+5. Run the `openspec` CLI with the current directory at the owner of `openspec/`: the root in a single repository, `<spec>/` in a three-leg project.
+
+Full rules: `${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/protocols/openspec-speckit-workflow.md` ("Repository Shape", "Worktree Rules").
+<!-- OPENSPEC-SPECKIT-SHAPE:END -->
+
 You are a **team lead** orchestrating a proposal clarification. You assemble a team of three specialist analysts who each examine the proposal from a different engineering perspective, then you curate their best questions, ask the user, and capture the answers.
 
 **IMPORTANT: This is a clarification step, not a design step.** The team finds gaps and generates candidate questions. You curate and ask them. You capture answers. Nobody writes design.md or tasks.md — those artifacts are prepared in the design/task phases before implementation.
@@ -26,7 +40,7 @@ If multiple exist, use **AskUserQuestion** to ask which change to clarify.
 
 Read ALL of these before spawning agents. You need the full picture to write good agent prompts.
 
-**Change artifacts:**
+**Change artifacts:** (paths below are relative to the owner of `openspec/`; see Repository Shape)
 - `openspec/changes/<name>/proposal.md` — the proposal to clarify
 - `openspec/changes/<name>/clarifications.md` — if it exists (don't re-ask answered questions)
 
@@ -166,7 +180,7 @@ Example of a bad question:
 
 After the user answers, create or update the clarifications file:
 
-**Write to:** `openspec/changes/<name>/clarifications.md`
+**Write to:** `openspec/changes/<name>/clarifications.md` (relative to the owner of `openspec/`; see Repository Shape)
 
 ```markdown
 # Clarifications

@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Iterator
-from contextlib import ExitStack, contextmanager
+from contextlib import AbstractContextManager, ExitStack, contextmanager
 from dataclasses import dataclass
+import fnmatch
 import hashlib
 import json
 import os
@@ -16,13 +17,24 @@ import stat
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Final
 
 
 START = "<!-- OPENSPEC-SPECKIT-GLOBAL:START -->"
 END = "<!-- OPENSPEC-SPECKIT-GLOBAL:END -->"
+SHAPE_START = "<!-- OPENSPEC-SPECKIT-SHAPE:START -->"
+SHAPE_END = "<!-- OPENSPEC-SPECKIT-SHAPE:END -->"
 REPO_AGENT_ROOT: Final = "${AGENT_PROTOCOL_ROOT:-$HOME/.agents}"
+SHAPE_FIRST_LINE_SENTINEL: Final = "AGENTS-shape.md"
+DEFAULT_LEG_PATHS: Final = {"spec": "spec", "code": "code"}
+THREE_LEG_WORKTREE_ROOT: Final = "worktrees"
+WORKTREES_IGNORE_LINE: Final = "/worktrees/"
+OVERLAY_SHAPE_MARKER: Final = "# speckit-overlay-shape: 1"
+OVERLAY_SHAPE_MARKER_FILES: Final = (
+    "scripts/bash/create-new-feature.sh",
+    "scripts/bash/git-common.sh",
+)
 DIRECTORY_OPEN_FLAGS: Final = (
     os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
 )
@@ -56,6 +68,14 @@ class SourceTreeEntry:
     mode: int
     device: int
     inode: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectShape:
+    spec_path: str
+    code_path: str
+    spec_leg: Path
+    code_leg: Path
 
 
 SKILLS = [
@@ -206,9 +226,23 @@ def parse_args() -> argparse.Namespace:
         help="Worktree parent path, relative to repo root unless absolute. Defaults to ../<repo-name>-worktrees.",
     )
     parser.add_argument(
+        "--shape",
+        choices=("auto", "on", "off"),
+        default="auto",
+        help=(
+            "Repository shape handling: auto detects project.yaml, on requires the "
+            "three-leg layout, off forces the single-repository layout."
+        ),
+    )
+    parser.add_argument(
         "--no-skill-links",
         action="store_true",
         help="Do not link global skills into repo-local agent folders.",
+    )
+    parser.add_argument(
+        "--no-skill-shape-blocks",
+        action="store_true",
+        help="Do not maintain the managed Repository Shape block in skills and commands.",
     )
     parser.add_argument(
         "--no-global-agent-pointers",
@@ -223,8 +257,66 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+LOG_PREFIX = ""
+LOG_RECORDER: list[str] | None = None
+
+
 def log(message: str) -> None:
-    print(message)
+    if LOG_RECORDER is not None:
+        LOG_RECORDER.append(message)
+    print(f"{LOG_PREFIX}{message}")
+
+
+@contextmanager
+def log_context(prefix: str, recorder: list[str] | None = None) -> Iterator[None]:
+    """Prefix and optionally record every log line written inside the block."""
+    global LOG_PREFIX, LOG_RECORDER
+    previous_prefix = LOG_PREFIX
+    previous_recorder = LOG_RECORDER
+    LOG_PREFIX = prefix
+    LOG_RECORDER = recorder
+    try:
+        yield
+    finally:
+        LOG_PREFIX = previous_prefix
+        LOG_RECORDER = previous_recorder
+
+
+ROOT_LOG_PREFIX = ""
+SPEC_LOG_PREFIX = ""
+SPEC_LEG_WRITES: list[str] = []
+
+
+def root_scope() -> AbstractContextManager[None]:
+    """Log lines written to the assembly root (or to a single repository)."""
+    return log_context(ROOT_LOG_PREFIX, None)
+
+
+def spec_scope() -> AbstractContextManager[None]:
+    """Log lines written to the spec leg (or to a single repository)."""
+    return log_context(SPEC_LOG_PREFIX, SPEC_LEG_WRITES)
+
+
+def enable_shape_log_scopes(dry_run: bool) -> None:
+    """Prefix planned three-leg writes with the repository they land in."""
+    global ROOT_LOG_PREFIX, SPEC_LOG_PREFIX
+    if dry_run:
+        ROOT_LOG_PREFIX = "[root] "
+        SPEC_LOG_PREFIX = "[spec] "
+
+
+def spec_leg_written_paths() -> list[str]:
+    written: list[str] = []
+    for message in SPEC_LEG_WRITES:
+        for verb in ("wrote ", "created ", "copied "):
+            if message.startswith(verb):
+                path = message[len(verb) :]
+                if verb == "copied " and " -> " in path:
+                    path = path.split(" -> ", 1)[1]
+                if path not in written:
+                    written.append(path)
+                break
+    return written
 
 
 def run_command(command: list[str], cwd: Path, dry_run: bool) -> None:
@@ -644,7 +736,28 @@ def upsert_block(path: Path, block_body: str, dry_run: bool) -> None:
                 # index points at the newline before the first section heading.
                 new_text = text[:index].rstrip() + "\n\n" + block + "\n" + text[index + 1 :]
 
+    assert_preserved_first_line(path, text, new_text)
     write_text(path, new_text, dry_run)
+
+
+def first_line(text: str) -> str:
+    lines = text.splitlines()
+    return lines[0] if lines else ""
+
+
+def assert_preserved_first_line(path: Path, before: str, after: str) -> None:
+    """Refuse to displace a shape pointer that must stay on line 1."""
+    before_first = first_line(before)
+    if SHAPE_FIRST_LINE_SENTINEL not in before_first:
+        return
+    after_first = first_line(after)
+    if after_first == before_first:
+        return
+    raise SystemExit(
+        f"Refusing to move the first line of {path}: "
+        f"line 1 is {before_first!r} but the managed block would make it "
+        f"{after_first!r}."
+    )
 
 
 def safe_source_tree_entries(src: Path) -> list[SourceTreeEntry]:
@@ -1460,7 +1573,26 @@ def skill_tree_will_be_usable(path: Path, force: bool) -> bool:
     return skill_mode is None or stat.S_ISREG(skill_mode) or force
 
 
-def has_compatible_worktree_git_overlay(repo: Path) -> bool:
+def has_overlay_shape_marker(overlay_root: Path) -> bool:
+    """Report whether a git overlay tree carries the shape-aware compatibility marker."""
+    try:
+        for relative_path in OVERLAY_SHAPE_MARKER_FILES:
+            content = read_destination_text(overlay_root / relative_path)
+            if content is None:
+                return False
+            if not any(
+                line.strip() == OVERLAY_SHAPE_MARKER for line in content.splitlines()
+            ):
+                return False
+    except (OSError, UnicodeError):
+        return False
+    return True
+
+
+def has_compatible_worktree_git_overlay(
+    repo: Path,
+    template_root: Path | None = None,
+) -> bool:
     overlay_root = repo / ".specify" / "extensions" / "git"
     contents: dict[str, str] = {}
     try:
@@ -1472,9 +1604,207 @@ def has_compatible_worktree_git_overlay(repo: Path) -> bool:
     except (OSError, UnicodeError):
         return False
 
-    return LOAD_GIT_WORKTREES_DEFINITION.search(
+    if LOAD_GIT_WORKTREES_DEFINITION.search(
         contents["scripts/bash/git-common.sh"]
-    ) is not None
+    ) is None:
+        return False
+
+    # The shape marker can only be demanded of an installed overlay once the
+    # templates this bootstrap installs from carry it themselves.
+    if template_root is not None and has_overlay_shape_marker(
+        template_root / "specify" / "extensions" / "git"
+    ):
+        return has_overlay_shape_marker(overlay_root)
+    return True
+
+
+def strip_yaml_comment(line: str) -> str:
+    """Drop a trailing ``#`` comment that starts outside a quoted scalar."""
+    quote: str | None = None
+    for index, character in enumerate(line):
+        if quote is not None:
+            if character == quote:
+                quote = None
+            continue
+        if character in "'\"":
+            quote = character
+            continue
+        if character == "#":
+            return line[:index].rstrip()
+    return line.rstrip()
+
+
+def unquote_yaml_scalar(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+        return value[1:-1]
+    return value
+
+
+def manifest_lines(path: Path) -> list[str] | None:
+    try:
+        text = read_destination_text(path)
+    except (OSError, UnicodeError):
+        return None
+    if text is None:
+        return None
+    return [strip_yaml_comment(line) for line in text.splitlines()]
+
+
+def manifest_top_level_value(lines: list[str], key: str) -> str | None:
+    for line in lines:
+        if not line or line[0] in " \t-":
+            continue
+        name, separator, value = line.partition(":")
+        if separator and name.strip() == key:
+            return unquote_yaml_scalar(value)
+    return None
+
+
+def manifest_legs(lines: list[str]) -> list[dict[str, str]]:
+    """Read the ``legs:`` list of a project manifest without a YAML library."""
+    legs: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    current_indent = 0
+    in_legs = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        indent = len(line) - len(line.lstrip(" \t"))
+        if indent == 0:
+            name, separator, _ = stripped.partition(":")
+            if separator and name.strip() == "legs":
+                in_legs = True
+                current = None
+                continue
+            if in_legs:
+                break
+            continue
+        if not in_legs:
+            continue
+        if stripped == "-" or stripped.startswith("- "):
+            offset = 1
+            while offset < len(stripped) and stripped[offset] == " ":
+                offset += 1
+            current = {}
+            current_indent = indent + offset
+            legs.append(current)
+            stripped = stripped[offset:]
+            if not stripped:
+                continue
+        elif current is None or indent != current_indent:
+            continue
+        name, separator, value = stripped.partition(":")
+        if not separator:
+            continue
+        scalar = unquote_yaml_scalar(value)
+        if scalar and current is not None:
+            current.setdefault(name.strip(), scalar)
+    return legs
+
+
+def relative_leg_path(root: Path, role: str, value: str) -> str:
+    candidate = PurePosixPath(value)
+    if candidate.is_absolute() or ".." in candidate.parts or value in ("", "."):
+        raise SystemExit(
+            f"Refusing unusable {role} leg path {value!r} in {root / 'project.yaml'}: "
+            "leg paths must be relative to the assembly root."
+        )
+    return value
+
+
+def detect_project_shape(repo: Path) -> ProjectShape | None:
+    """Return the three-leg shape of ``repo``, or None for a single repository."""
+    lines = manifest_lines(repo / "project.yaml")
+    if lines is None:
+        return None
+    if manifest_top_level_value(lines, "kind") != "project-manifest":
+        return None
+    if manifest_top_level_value(lines, "schema") != "project-repo-schema":
+        return None
+
+    paths: dict[str, str] = {}
+    for leg in manifest_legs(lines):
+        role = leg.get("role")
+        if role in DEFAULT_LEG_PATHS and role not in paths:
+            paths[role] = leg.get("path") or DEFAULT_LEG_PATHS[role]
+    if "spec" not in paths or "code" not in paths:
+        return None
+
+    spec_path = relative_leg_path(repo, "spec", paths["spec"])
+    code_path = relative_leg_path(repo, "code", paths["code"])
+    return ProjectShape(
+        spec_path=spec_path,
+        code_path=code_path,
+        spec_leg=repo / spec_path,
+        code_leg=repo / code_path,
+    )
+
+
+def is_family_holder(repo: Path) -> bool:
+    """Report whether ``repo`` is a family holder rather than a project."""
+    if mode_without_following(repo / "project.yaml") is not None:
+        return False
+    lines = manifest_lines(repo / "family.yaml")
+    if lines is None:
+        return False
+    return manifest_top_level_value(lines, "kind") == "family-manifest"
+
+
+def ensure_initialised_spec_leg(repo: Path, shape: ProjectShape) -> None:
+    """Refuse a three-leg root whose spec leg has not been fetched."""
+    remedy = (
+        "Fetch the legs first: `git submodule update --init` (or `make bootstrap`), "
+        "then re-run setup-openspeckit."
+    )
+    leg_mode = mode_without_following(shape.spec_leg)
+    if leg_mode is None or not stat.S_ISDIR(leg_mode):
+        raise SystemExit(
+            f"Refusing to bootstrap {repo}: the spec leg "
+            f"{shape.spec_path}/ named by project.yaml is missing. {remedy}"
+        )
+    if mode_without_following(shape.spec_leg / ".git") is None:
+        raise SystemExit(
+            f"Refusing to bootstrap {repo}: the spec leg "
+            f"{shape.spec_path}/ is not an initialised git checkout. {remedy}"
+        )
+
+
+def resolve_project_shape(repo: Path, mode: str) -> ProjectShape | None:
+    """Apply --shape to the detected manifest and validate the three-leg root."""
+    if mode == "off":
+        log("shape: single repository (forced by --shape off)")
+        return None
+
+    shape = detect_project_shape(repo)
+    if shape is None:
+        family = is_family_holder(repo)
+        if mode == "on":
+            reason = (
+                "it is a family holder (family.yaml, kind: family-manifest)"
+                if family
+                else "no project.yaml with kind: project-manifest and spec/code legs was found"
+            )
+            raise SystemExit(
+                f"Refusing --shape on for {repo}: {reason}. "
+                "Use --shape off or --shape auto for a single repository."
+            )
+        if family:
+            log(
+                "shape: family holder (family.yaml, kind: family-manifest); "
+                "using the single-repository layout"
+            )
+        else:
+            log("shape: single repository")
+        return None
+
+    ensure_initialised_spec_leg(repo, shape)
+    log(
+        "shape: openRepoShape three-leg "
+        f"(spec leg {shape.spec_path}/, code leg {shape.code_path}/)"
+    )
+    return shape
 
 
 def can_write_path_or_parent(path: Path) -> bool:
@@ -1512,21 +1842,34 @@ Core rule:
   specify/clarify/plan/tasks/analyze/implement lifecycle.
 - Do not duplicate task lists: OpenSpec records governance and handoff; Speckit
   owns implementation tasks.
+- The protocol is shape-aware. Detect the shape first (single repository or
+  openRepoShape three-leg, from `project.yaml`), then use the placement and
+  worktree rules for that shape. In a three-leg project `openspec/` and
+  `specs/` live in the spec leg, code lives in the code leg, and feature
+  worktrees live under `<root>/worktrees/<NNN-feature>/{{spec,code}}/`.
 
 ## Repository Overrides
 
 Repo-local instructions remain authoritative for project-specific details such
 as package commands, runtime prerequisites, test commands, source-of-truth docs,
 and deployment constraints.
+
+When a repo-local file conflicts with the global OpenSpec/Speckit mechanics,
+follow the global protocol unless the repo-local file explicitly says it is
+overriding the global rule for that repository.
 """
 
 
-def openspec_speckit_protocol() -> str:
-    return """# OpenSpec and Speckit Shared Workflow
+def openspec_speckit_protocol(agent_root: Path) -> str:
+    return f"""# OpenSpec and Speckit Shared Workflow
 
 This protocol is the shared source of truth for using OpenSpec and Speckit
 together across local coding agents. Repo-local files should reference this file
 instead of copying the same process text into each project.
+
+This protocol is shape-aware. It applies to single-repository projects and to
+openRepoShape three-leg projects alike; wherever the two differ, the rule names
+the shape it is for. Read "Repository Shape" first.
 
 ## Authority
 
@@ -1548,6 +1891,58 @@ and verification.
 
 Do not duplicate task lists between the two systems. OpenSpec records the
 governed decision and handoff. Speckit owns the executable implementation tasks.
+
+## Repository Shape
+
+Every project is one of two shapes.
+
+**Single repository.** One git repository holds tooling, specifications, and
+code together. `.specify/`, `openspec/`, `specs/`, and the source tree all sit
+at that repository's root.
+
+**Three-leg project (openRepoShape).** An assembly root that an engineer
+clones, with a `spec` leg and a `code` leg mounted inside it as git
+submodules. The root holds `project.yaml`, the pins, and the project-level
+tooling. The spec leg holds what the project has decided. The code leg holds
+the implementation. Committing in a leg does not advance the project; only a
+root commit that moves that leg's pin does. The bootstrap side of this shape
+is in `{agent_root / "protocols" / "project-agent-bootstrap.md"}`; the shape
+itself is the openRepoShape standard and its `AGENTS-shape.md` in every root.
+
+### Detecting the shape
+
+Read `project.yaml` at the checkout root. It is a three-leg project when the
+file carries `kind: project-manifest`, `schema: project-repo-schema`, and
+`legs:` entries for `role: spec` and `role: code`; their `path:` values are
+the mount points, `spec` and `code` by default. Anything else is a single
+repository.
+
+If the checkout has no `project.yaml` but its `AGENTS.md` says it is a leg of
+a project, you are standing in a leg clone. Stop and move to the assembly
+root: a leg clone can see neither the manifest nor the other leg, and this
+protocol runs from the root. A `family.yaml` with `kind: family-manifest` and
+no `project.yaml` is a family holder, not a project; go to a member project.
+
+### Placement
+
+| artifact | single repository | three-leg project |
+|---|---|---|
+| `.specify/` (templates, memory, scripts, git extension) | repo root | assembly root |
+| agent context files and their managed blocks | repo root | assembly root |
+| `.claude/commands/opsx/*` and skill links | repo root | assembly root |
+| `openspec/` (changes, specs, archive) | repo root | spec leg: `<spec>/openspec/` |
+| Speckit feature directories `specs/NNN-*` | repo root | spec leg: `<spec>/specs/NNN-*` |
+| implementation source and tests | repo root | code leg: `<code>/` |
+| feature worktrees | `../<repo>-worktrees/<NNN-feature>/` | `<root>/worktrees/<NNN-feature>/{{spec,code}}/` |
+
+`<spec>` and `<code>` are the `path:` values from `project.yaml`. In a single
+repository both resolve to the repository root, and every rule below that
+names a leg reads as "the repository".
+
+Run the `openspec` CLI with the current directory set to wherever `openspec/`
+lives: the repo root in a single repository, the spec leg checkout in a
+three-leg project. The CLI resolves `openspec/` from the current directory
+and has no flag for another location.
 
 ## When To Use OpenSpec
 
@@ -1571,12 +1966,19 @@ decision is being made.
 1. OpenSpec proposal or exploration captures the decision.
 2. OpenSpec apply work keeps proposal, design notes, and spec deltas current.
 3. The OpenSpec change hands off to exactly one Speckit feature under
-   `specs/NNN-*`.
+   `specs/NNN-*` (in a three-leg project, `<spec>/specs/NNN-*`).
 4. Speckit creates or updates the implementation worktree and artifacts.
 5. Implementation happens from the Speckit feature worktree.
-6. Review and verification happen on the implementation branch or PR.
+6. Review and verification happen on the implementation branch or PR. In a
+   three-leg project that means the leg PRs and then the root pin-bump PR.
 7. Archive the OpenSpec change only after the corresponding Speckit work and PR
-   have landed, or after the change is explicitly abandoned.
+   have landed, or after the change is explicitly abandoned. In a three-leg
+   project, "landed" means the root pin bump that carries the work has merged.
+
+In a three-leg project an OpenSpec change is authored in the spec leg checkout
+at `<root>/<spec>/` on a branch named after the change, and landed by pull
+request in the spec repository. Bump the root's spec pin when the project
+needs the root to see it, and always before the change is archived.
 
 For shipped-feature amendments, do not silently rewrite history. Capture the
 new interpretation as an OpenSpec change first, then update docs/specs/code
@@ -1584,8 +1986,66 @@ through the normal handoff.
 
 ## Worktree Rules
 
-Run `/speckit.specify` only from the root checkout on the repo base branch
-unless the repo explicitly documents a different creation path.
+A Speckit feature is always worked in a linked git worktree, never on the base
+branch of a checkout, in both shapes. The layout differs by shape and follows
+one rule: **a worktree never lives inside a tree that holds code.** A worktree
+nested in a code tree is swept by `git clean -fdx` and indexed by every tool
+that recurses from that tree's root.
+
+### Single repository layout
+
+Worktrees live beside the repository under `../<repo>-worktrees/`, one
+directory per feature named after the branch, for example
+`../IRRS-worktrees/001-irrs-routing-core/`. Each worktree is a full checkout of
+the repository on its `NNN-feature-name` branch and carries its own
+`.specify/`, `specs/NNN-feature-name/`, and code.
+`.specify/extensions/git/git-config.yml` records this as `checkout_mode:
+worktree`, `base_branch: <base>`, and `worktree_root: ../<repo>-worktrees`.
+
+### Three-leg layout
+
+Worktrees live inside the assembly root under `worktrees/`, one directory per
+feature, holding a linked worktree of each leg:
+
+```text
+<root>/
+  project.yaml
+  .specify/
+  spec/                        spec leg submodule, at the pinned commit
+  code/                        code leg submodule, at the pinned commit
+  worktrees/
+    001-irrs-routing-core/
+      spec/                    worktree of the spec repo, branch 001-irrs-routing-core
+      code/                    worktree of the code repo, branch 001-irrs-routing-core
+```
+
+The root holds no code, so nesting is safe there, and the legs never see the
+worktrees. The root's `.gitignore` carries `/worktrees/`, and nothing under
+that directory is ever committed to the root. `git-config.yml` records
+`worktree_root: worktrees`.
+
+Both leg worktrees use the same `NNN-feature-name` branch, cut from each leg's
+base branch as last fetched (`origin/<base>`), not from the pinned commit. The
+Speckit feature directory is
+`worktrees/<NNN-feature-name>/spec/specs/<NNN-feature-name>/`, and the
+implementation goes under `worktrees/<NNN-feature-name>/code/`. The root
+itself gets no feature branch until the pin bump at the end.
+
+Feature numbering takes the next free number after scanning `specs/` on the
+spec leg's base branch and the branch lists of both leg repositories.
+
+A linked worktree records an absolute path to its repository's git directory.
+That is machine-managed plumbing, exempt from the no-host-paths rule, but it
+breaks when the checkout moves on disk. After any move, symlink change, or
+container remount, run `git worktree repair` from the owning repository (from
+each leg, in a three-leg project) before doing anything else.
+
+### Creating a feature
+
+Run `/speckit.specify` only from the root checkout on the base branch unless
+the repo explicitly documents a different creation path. In a three-leg
+project the root checkout is the assembly root on its tracking branch, with
+both legs present (`git submodule update --init` or `make bootstrap`).
 
 Before running `/speckit.specify`, verify from the same shell/container:
 
@@ -1594,15 +2054,22 @@ git status -sb
 git branch --show-current
 ```
 
+In a three-leg project run the same two commands inside `<spec>/` and
+`<code>/` as well.
+
 If the root checkout is not on the intended base branch or has unintended dirty
 work, stop and preserve or commit that work before creating a new Speckit
 feature.
 
 Do not pre-create agent-prefixed branches for Speckit features. Let Speckit's
 feature/worktree hook create the canonical `NNN-feature-name` branch/worktree.
+In a three-leg project that hook creates both leg branches and both leg
+worktrees in one run.
 
-After `/speckit.specify` creates a worktree, run follow-on Speckit commands from
-that generated worktree, not from the root checkout:
+### Working a feature
+
+Run follow-on Speckit commands with the feature selected, never against the
+base branch:
 
 - `/speckit.clarify`
 - `/speckit.checklist`
@@ -1611,8 +2078,34 @@ that generated worktree, not from the root checkout:
 - `/speckit.analyze`
 - `/speckit.implement`
 
+Single repository: run them from inside the feature worktree, which carries
+its own `.specify/`.
+
+Three-leg project: run them from the assembly root, the only place `.specify/`
+exists, with the feature selected. `.specify/feature.json` records the feature
+most recently created. A session working any other feature first exports
+`SPECIFY_FEATURE=<NNN-feature-name>` and
+`SPECIFY_FEATURE_DIRECTORY=worktrees/<NNN-feature-name>/spec/specs/<NNN-feature-name>`.
+The feature's edits go to its two worktrees only; `<spec>/` and `<code>/` at
+the root sit at the pinned commit and belong to the project, not the feature.
+
 If a requested follow-on command targets a worktree that does not exist, stop
 and report that. Do not silently fall back to the root checkout.
+
+### Landing a feature
+
+Single repository: commit on the feature branch, open the PR, land it, then
+remove the worktree.
+
+Three-leg project: commit in the leg worktrees, and land each leg by pull
+request in its own repository. Landing a leg does not advance the project.
+Once the leg PRs have merged, cut a root branch of the same `NNN-feature-name`
+and make the pin bump: for each leg moved, one root commit that moves the
+gitlink, `commit:` in `contracts/<role>-pin.yaml`, and every workflow `@<sha>`
+naming that leg together. `bump-leg.py` from an openRepoShape checkout does
+this; never a bare `git submodule update` followed by a commit. Land the root
+branch by PR, then remove both leg worktrees and the feature's directory under
+`worktrees/`. Archive the OpenSpec change only after that root PR has merged.
 
 ## Speckit Clarify Rules
 
@@ -1637,6 +2130,10 @@ Claude:
 - `/opsx:archive` for completed OpenSpec changes
 - `/speckit.specify`, `/speckit.clarify`, `/speckit.plan`, `/speckit.tasks`,
   `/speckit.analyze`, and `/speckit.implement` for the Speckit lifecycle
+
+The `/opsx:*` commands run with the current directory at the owner of
+`openspec/` (see "Placement"). The `/speckit.*` commands run where "Worktree
+Rules" says for the shape.
 
 Codex:
 
@@ -1692,16 +2189,26 @@ setup-openspeckit
 
 That command installs managed pointers to this protocol and links common
 agent-facing OpenSpec/Speckit skills and command wrappers without overwriting
-repo-specific guidance outside managed blocks.
+repo-specific guidance outside managed blocks. Its shape handling, the
+`--shape` flag, and what the installed script implements today are recorded
+in `{agent_root / "protocols" / "project-agent-bootstrap.md"}`.
 """
 
 
 def project_agent_bootstrap_protocol(agent_root: Path) -> str:
     return f"""# Project Agent Bootstrap
 
-`setup-openspeckit` prepares a repository so Codex, Claude, opencode, and other
-local coding agents can find the same OpenSpec/Speckit workflow without copying
-long process docs into every repo.
+`setup-openspeckit` prepares a repository so Codex, Claude,
+opencode, and other local coding agents can find the same OpenSpec/Speckit
+workflow without copying long process docs into every repo.
+
+This contract is shape-aware: it covers single-repository projects and
+openRepoShape three-leg projects. The shape rules an agent follows once the
+bootstrap has run are in
+`{agent_root / "protocols" / "openspec-speckit-workflow.md"}` ("Repository
+Shape" and "Worktree Rules"); this file says what the bootstrap writes so
+those rules hold. See "Script Status" at the end for what the installed script
+implements today.
 
 ## What It Updates
 
@@ -1709,27 +2216,39 @@ The bootstrap script is idempotent and marker-based. It can be re-run safely.
 
 It updates or creates:
 
-- repo-local context files for Speckit-supported agent integrations
-- `openspec/README.md` and `.specify/README.md` as thin pointers to the global
-  workflow
+- repo-local context files for every Speckit-supported agent integration,
+  including `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`,
+  `.github/copilot-instructions.md`, `.cursor/rules/specify-rules.mdc`,
+  `.roo/rules/specify-rules.md`, `.windsurf/rules/specify-rules.md`, and the
+  other integration-specific files from Speckit's registry
+- `openspec/README.md` as a thin repo-local pointer to the global workflow
+- `.specify/README.md` as a thin repo-local pointer to the global workflow
 - `.claude/commands/opsx/*` from global templates when missing
-- copied directories under `.claude/skills`, `.codex/skills`, and
-  `.agents/skills` for available global OpenSpec/Speckit skills
+- `.claude/skills`, `.codex/skills`, and `.agents/skills` links for available
+  global OpenSpec/Speckit skills
 - minimal `openspec/changes/archive`, `openspec/specs`, and `.specify/`
-  scaffolding when those directories are absent
-- user-global agent entrypoint pointers for practical global agent homes
+  scaffolding when those directories are absent (in a three-leg project the
+  OpenSpec half of that lands in the spec leg — see Three-leg Projects)
+- the worktree settings in `.specify/extensions/git/git-config.yml`
+  (`checkout_mode`, `base_branch`, `worktree_root`) for the detected shape,
+  when that file exists and the keys are absent — see Worktree Layout
+- user-global agent entrypoint pointers for Codex, Claude, opencode, Cursor,
+  Gemini, Copilot, Roo, Windsurf, Qwen, Kimi, and other practical homes that
+  match Speckit's supported integration context files
 
 ## Idempotency Rules
 
-Generated sections are bounded by:
+The script only edits generated sections between:
 
 ```md
 <!-- OPENSPEC-SPECKIT-GLOBAL:START -->
 <!-- OPENSPEC-SPECKIT-GLOBAL:END -->
 ```
 
-Existing hand-written content outside those markers is preserved. Existing skill
-directories and command files are not overwritten unless `--force` is passed.
+Existing hand-written content outside those markers is preserved.
+
+Existing skill directories and command files are not overwritten unless `--force`
+is passed. Default behavior prefers leaving local customizations alone.
 
 ## Usage
 
@@ -1745,7 +2264,219 @@ From anywhere:
 setup-openspeckit --repo /path/to/repo
 ```
 
-The shared global entrypoint is `{agent_root / "AGENTS.md"}`.
+Dry run:
+
+```bash
+setup-openspeckit --repo /path/to/repo --dry-run
+```
+
+Keep existing `openspec/README.md` and `.specify/README.md` untouched:
+
+```bash
+setup-openspeckit --preserve-readmes
+```
+
+Skip skill links:
+
+```bash
+setup-openspeckit --no-skill-links
+```
+
+Skip repo-local agent context files:
+
+```bash
+setup-openspeckit --no-repo-agent-pointers
+```
+
+## Worktree Layout
+
+Speckit features are worked in linked git worktrees in both shapes. The
+bootstrap writes the layout for the detected shape into
+`.specify/extensions/git/git-config.yml` when the worktree keys are absent, and
+never overwrites keys that are present. The rule behind both layouts is that a
+worktree never lives inside a tree that holds code.
+
+Single repository:
+
+```yaml
+checkout_mode: worktree
+base_branch: main
+worktree_root: ../<repo>-worktrees
+```
+
+Worktrees sit beside the repository, one per feature, each a full checkout on
+its `NNN-feature-name` branch.
+
+Three-leg project:
+
+```yaml
+checkout_mode: worktree
+base_branch: main
+worktree_root: worktrees
+```
+
+Worktrees sit inside the assembly root under `worktrees/<NNN-feature-name>/`,
+each holding a `spec/` worktree of the spec repository and a `code/` worktree
+of the code repository, both on the `NNN-feature-name` branch. The bootstrap
+adds `/worktrees/` to the root's `.gitignore` (the root's own file, not a
+shape-pinned one) so nothing under it can reach the root repository. It does
+not create `worktrees/`; the Speckit feature hook does.
+
+## Three-leg Projects (openRepoShape)
+
+A project built to openRepoShape's shape spans three repositories: an assembly
+root an engineer clones, plus a `spec` and a `code` leg mounted inside it as
+submodules. The bootstrap detects that layout and splits its work between the
+root and the spec leg instead of writing everything into one repository.
+
+### Detection
+
+A small self-contained reader parses the root's `project.yaml` — no PyYAML, and
+no import of the project's own `scripts/repo_shape.py`. It is a three-leg
+project when that file carries:
+
+- `kind: project-manifest`
+- `schema: project-repo-schema`
+- `legs:` entries for `role: spec` and `role: code`, whose `path:` values are
+  the mount points (`spec` and `code` by default)
+
+### The Split
+
+| what | where |
+|---|---|
+| `.specify/` scaffolding, `specify init`, registration, `.specify/README.md` | root |
+| managed blocks in the agent context files | root |
+| `.claude/commands/opsx/*`, skill links, the worktree overlay | root |
+| worktree keys in `.specify/extensions/git/git-config.yml` (`worktree_root: worktrees`) | root |
+| `/worktrees/` line in `.gitignore` | root |
+| `openspec/changes/archive/.gitkeep`, `openspec/specs/.gitkeep`, `openspec/README.md` | spec leg |
+
+`.specify/` belongs to the project rather than to either leg — it drives a
+workflow that starts in the specification and lands in the implementation —
+which is the `root-spec-kit` row in openRepoShape's
+`contracts/path-classification.yaml`. OpenSpec is what the project has
+decided, so it is `spec-governance` and lives in the spec leg; run `openspec`
+from there. Speckit feature directories (`specs/NNN-*`) belong beside it in the
+spec leg by the same rule, but the bootstrap does not create `specs/` — the
+managed block says where they go and Speckit makes them, inside the feature's
+spec worktree. The code leg is never touched.
+
+### The Managed Block Names the Split
+
+In a three-leg root the managed block written into the agent context files
+states, in addition to the pointers: the shape detected, the two mount paths
+from `project.yaml`, that `openspec/` and `specs/` live in the spec leg, that
+implementation lives in the code leg, and that feature worktrees live under
+`worktrees/<NNN-feature-name>/{{spec,code}}/`. An agent that reads only the
+root's `AGENTS.md` must be able to find every artifact without opening this
+contract.
+
+### The Speckit Worktree Overlay in a Three-leg Root
+
+The overlay the bootstrap installs (the git extension's feature scripts and the
+`ct`/`ctp` helpers) must behave as follows when the root is three-leg. These
+are contract items for the overlay, not things the bootstrap itself does:
+
+- The feature hook creates the `NNN-feature-name` branch in each leg
+  repository from that leg's fetched base branch, and adds one linked
+  worktree per leg at `worktrees/<NNN-feature-name>/<spec>/` and
+  `worktrees/<NNN-feature-name>/<code>/`. It never adds a worktree of the
+  root repository.
+- Feature numbering scans `specs/` on the spec leg's base branch and the
+  branch lists of both leg repositories.
+- The resolved feature directory recorded in `.specify/feature.json` is
+  `worktrees/<NNN-feature-name>/<spec>/specs/<NNN-feature-name>`, relative to
+  the root.
+- The hook's JSON output carries `WORKTREE_PATH` for the feature directory
+  under `worktrees/`, plus `SPEC_WORKTREE_PATH` and `CODE_WORKTREE_PATH`.
+- `get-last-worktree.sh`, `ct`, and `ctp` report the feature directory and
+  both leg paths, and export `SPECIFY_FEATURE` and
+  `SPECIFY_FEATURE_DIRECTORY` for the session they start.
+- Removing a feature removes both leg worktrees and the feature directory,
+  and prunes both leg repositories.
+
+### The Legs Keep Their Own Pointers
+
+No managed block is written into either leg. Since openRepoShape `99b3774`
+every leg ships its own `AGENTS.md` and `CLAUDE.md` pointing back to the
+assembly root, and the global block would bury that pointer under protocol
+text an agent standing in a leg clone cannot act on anyway.
+
+### The First Line Is an Invariant
+
+The root's `AGENTS.md` opens with a pointer to `AGENTS-shape.md`, and that line
+stays first. On a scaffolded root the managed block appends after it; on an
+adopted root — where the pointer sits above `# Agent Instructions` and `## `
+sections — the block lands before the first `## ` heading. Either way line 1 is
+unchanged. The bootstrap asserts it and refuses, naming the file and both first
+lines, rather than moving the line.
+
+### Family Holders Are Not Three-leg Projects
+
+A family holder — `family.yaml` with `kind: family-manifest` and no
+`project.yaml` — pins its members' assembly roots and has no legs of its own.
+The bootstrap logs one line saying so and applies the ordinary
+single-repository layout: OpenSpec and Speckit belong in the member projects.
+
+### The `--shape` Flag
+
+```bash
+setup-openspeckit --shape auto   # default: detect project.yaml
+setup-openspeckit --shape on     # require the three-leg layout
+setup-openspeckit --shape off    # force the single-repository layout
+```
+
+`--shape on` exits non-zero when the manifest is absent, is not a project
+manifest, or is a family holder's. In `auto` and `on` alike a manifest whose
+spec leg is missing or empty is a refusal rather than a fallback: the submodule
+is simply not fetched, and writing OpenSpec into the root instead would put it
+in the wrong repository. The message names `git submodule update --init` and
+`make bootstrap`. `--shape off` is the escape hatch, and produces exactly the
+single-repository behavior.
+
+### Two Repositories Means Two Commits
+
+Files the bootstrap writes under the spec leg are commits in the spec
+repository, and they reach the assembly root only through a lockstep pin bump.
+The run ends by listing them with the two repositories involved: commit and
+push them in the spec repository, then move the gitlink, `commit:` in
+`contracts/spec-pin.yaml`, and every workflow `@<sha>` naming that leg together
+in one commit in the root. `--dry-run` prefixes every planned path with
+`[root]` or `[spec]`, so the split is visible before anything is written.
+
+## New Project Checklist
+
+1. Create or clone the repo. A three-leg project is created with
+   openRepoShape's `setup.sh` first — that writes `project.yaml` and mounts
+   the legs — and the bootstrap then detects `project.yaml`. An existing
+   single repository becomes three-leg through openRepoShape's
+   `adopt-project.py`; run that from a clean default branch with no linked
+   worktrees attached, and re-run the bootstrap afterwards.
+2. Run `setup-openspeckit --repo /path/to/repo`.
+3. Fill in repo-specific `AGENTS.md` or `CLAUDE.md` commands and runtime rules.
+4. Initialize OpenSpec/Speckit with their CLIs if the repo does not already have
+   real project templates.
+5. Confirm `.specify/extensions/git/git-config.yml` carries the worktree
+   layout for the shape (see Worktree Layout) and, in a three-leg root, that
+   `.gitignore` carries `/worktrees/`.
+6. Keep the global workflow in `{agent_root / "protocols"}/` and leave repo
+   files as pointers plus repo-specific overrides.
+
+## Script Status
+
+Recorded 2026-09-08. The script at this revision implements the contract
+above: `project.yaml` detection, `--shape`, the spec-leg split, the shape-aware
+managed block and first-line invariant, the worktree layout and `/worktrees/`
+ignore line, the managed shape block in skill and command files, and the
+overlay refresh keyed on the `speckit-overlay-shape` marker. The overlay's bash
+scripts create paired leg worktrees; the unmodified Spec Kit core scripts
+resolve the feature from the root through `.specify/feature.json`.
+
+This section is retained so that a future gap between the installed script and
+this contract can be recorded here. Known gap: the overlay's PowerShell scripts
+(`.specify/extensions/git/scripts/powershell/*.ps1`) have no three-leg logic,
+so a Windows-native run of the feature hook in a three-leg root still behaves
+as a single repository. Use the bash scripts (WSL2) for three-leg projects.
 """
 
 
@@ -1753,7 +2484,7 @@ def ensure_agent_protocol_files(agent_root: Path, dry_run: bool) -> None:
     write_text_if_missing(agent_root / "AGENTS.md", global_agent_entrypoint(agent_root), dry_run)
     write_text_if_missing(
         agent_root / "protocols" / "openspec-speckit-workflow.md",
-        openspec_speckit_protocol(),
+        openspec_speckit_protocol(agent_root),
         dry_run,
     )
     write_text_if_missing(
@@ -1763,8 +2494,8 @@ def ensure_agent_protocol_files(agent_root: Path, dry_run: bool) -> None:
     )
 
 
-def agent_block() -> str:
-    return f"""## Shared OpenSpec/Speckit Protocol
+def agent_block(shape: ProjectShape | None = None) -> str:
+    block = f"""## Shared OpenSpec/Speckit Protocol
 
 This repo uses the user-global OpenSpec/Speckit workflow instead of duplicating
 process rules in every repository.
@@ -1775,6 +2506,17 @@ process rules in every repository.
 
 Repo-local sections below remain authoritative for project-specific commands,
 runtime prerequisites, source-of-truth docs, tests, and deployment constraints."""
+    if shape is None:
+        return block
+    return block + f"""
+
+### Repository shape: openRepoShape three-leg
+
+- Spec leg: `{shape.spec_path}/` — `openspec/` and Speckit `specs/NNN-*` live here.
+- Code leg: `{shape.code_path}/` — implementation and tests live here.
+- Feature worktrees: `worktrees/<NNN-feature>/{shape.spec_path}/` and `worktrees/<NNN-feature>/{shape.code_path}/` (ignored by this root).
+- `.specify/` and these agent files belong to this root; run Speckit commands from here with the feature selected.
+- Committing in a leg does not advance the project; one root commit moving the leg's gitlink, `contracts/<role>-pin.yaml`, and workflow `@<sha>` does."""
 
 
 def global_pointer_block(agent_root: Path) -> str:
@@ -1817,36 +2559,44 @@ behavior when present.
 """
 
 
-def ensure_scaffold(repo: Path, dry_run: bool, skip_init: bool) -> None:
-    config = repo / "openspec" / "config.yaml"
+def ensure_scaffold(
+    repo: Path,
+    spec_root: Path,
+    dry_run: bool,
+    skip_init: bool,
+) -> None:
+    config = spec_root / "openspec" / "config.yaml"
     directories = [
-        repo / "openspec" / "changes" / "archive",
-        repo / "openspec" / "specs",
-        repo / ".specify",
+        (spec_root / "openspec" / "changes" / "archive", spec_scope),
+        (spec_root / "openspec" / "specs", spec_scope),
+        (repo / ".specify", root_scope),
     ]
     keep_files = [
-        repo / "openspec" / "changes" / "archive" / ".gitkeep",
-        repo / "openspec" / "specs" / ".gitkeep",
+        spec_root / "openspec" / "changes" / "archive" / ".gitkeep",
+        spec_root / "openspec" / "specs" / ".gitkeep",
     ]
     ensure_safe_destination_file(config, set())
     if not skip_init:
-        for path in [*directories, *keep_files]:
+        for path in [*(directory for directory, _ in directories), *keep_files]:
             ensure_safe_destination_file(path, set())
-    write_text_if_missing(
-        config,
-        "schema: spec-driven\n",
-        dry_run,
-    )
+    with spec_scope():
+        write_text_if_missing(
+            config,
+            "schema: spec-driven\n",
+            dry_run,
+        )
     if skip_init:
         return
-    for directory in directories:
-        if dry_run:
-            if not directory.exists():
-                log(f"would create directory {directory}")
-        else:
-            ensure_destination_directory(directory)
+    for directory, scope in directories:
+        with scope():
+            if dry_run:
+                if not directory.exists():
+                    log(f"would create directory {directory}")
+            else:
+                ensure_destination_directory(directory)
     for keep_file in keep_files:
-        touch(keep_file, dry_run)
+        with spec_scope():
+            touch(keep_file, dry_run)
 
 
 def ensure_skills(
@@ -1876,13 +2626,166 @@ def ensure_skills(
             )
 
 
-def ensure_repo_agent_pointers(repo: Path, dry_run: bool) -> None:
+def ensure_repo_agent_pointers(
+    repo: Path,
+    dry_run: bool,
+    shape: ProjectShape | None = None,
+) -> None:
     seen: set[str] = set()
+    block = agent_block(shape)
     for _, relative_path in SUPPORTED_AGENT_CONTEXT_FILES:
         if relative_path in seen:
             continue
         seen.add(relative_path)
-        upsert_block(repo / relative_path, agent_block(), dry_run)
+        upsert_block(repo / relative_path, block, dry_run)
+
+
+def shape_block_body(agent_root: str) -> str:
+    return f"""{SHAPE_START}
+## Repository Shape (managed by setup-openspeckit)
+
+Resolve the project shape once before any step below.
+
+1. The project root is the nearest directory at or above the current one that contains `.specify/`. Run every `.specify/scripts/...` command from that root.
+2. If the root has `project.yaml` with `kind: project-manifest` and `legs:` entries for `role: spec` and `role: code`, this is an openRepoShape **three-leg** project. `<spec>` and `<code>` are those legs' `path:` values (defaults `spec` and `code`). Otherwise it is a **single repository** and `<spec>` and `<code>` are both the root.
+3. Three-leg placement: `openspec/` and `specs/NNN-*` live in the spec leg; source and tests live in the code leg; a feature's worktrees live at `worktrees/<NNN-feature>/<spec>/` and `worktrees/<NNN-feature>/<code>/` under the root. Never write feature work into `<spec>/` or `<code>/` at the root; they sit at the pinned commit.
+4. Feature paths come from `.specify/scripts/bash/check-prerequisites.sh --json` (or `SPECIFY_FEATURE_DIRECTORY` / `.specify/feature.json`). In three-leg, `FEATURE_DIR` is inside the feature's spec worktree and the code worktree is the sibling `<code>/` directory beside it; implementation edits go there.
+5. Run the `openspec` CLI with the current directory at the owner of `openspec/`: the root in a single repository, `<spec>/` in a three-leg project.
+
+Full rules: `{agent_root}/protocols/openspec-speckit-workflow.md` ("Repository Shape", "Worktree Rules").
+{SHAPE_END}"""
+
+
+def frontmatter_end_index(text: str) -> int | None:
+    """Index of the frontmatter's closing ``---`` line, or None when absent."""
+    if not text.startswith("---\n"):
+        return None
+    lines = text.split("\n")
+    for index in range(1, len(lines)):
+        if lines[index] == "---":
+            return index
+    return None
+
+
+def shape_block_applied(text: str, block: str) -> str:
+    if SHAPE_START in text and SHAPE_END in text:
+        before, remainder = text.split(SHAPE_START, 1)
+        _, after = remainder.split(SHAPE_END, 1)
+        return before + block + after
+
+    end = frontmatter_end_index(text)
+    if end is None:
+        body = text.lstrip("\n")
+        return f"{block}\n\n{body}" if body else f"{block}\n"
+    lines = text.split("\n")
+    head = "\n".join(lines[: end + 1])
+    tail = "\n".join(lines[end + 1 :]).lstrip("\n")
+    return f"{head}\n\n{block}\n\n{tail}" if tail else f"{head}\n\n{block}\n"
+
+
+def upsert_shape_block(path: Path, block: str, dry_run: bool) -> None:
+    try:
+        text = read_destination_text(path)
+    except (OSError, UnicodeError):
+        log(f"skipped {path}: not a readable regular file")
+        return
+    if text is None:
+        return
+    write_text(path, shape_block_applied(text, block), dry_run)
+
+
+def regular_skill_documents(root: Path, patterns: tuple[str, ...]) -> list[Path]:
+    """Existing regular ``SKILL.md`` files in skill directories matching a pattern."""
+    documents: list[Path] = []
+    root_mode = mode_without_following(root)
+    if root_mode is None or not stat.S_ISDIR(root_mode):
+        return documents
+    try:
+        names = sorted(os.listdir(root))
+    except OSError:
+        return documents
+    for name in names:
+        if not any(fnmatch.fnmatchcase(name, pattern) for pattern in patterns):
+            continue
+        entry = root / name
+        entry_mode = mode_without_following(entry)
+        if entry_mode is None or not stat.S_ISDIR(entry_mode):
+            continue
+        document = entry / "SKILL.md"
+        document_mode = mode_without_following(document)
+        if document_mode is not None and stat.S_ISREG(document_mode):
+            documents.append(document)
+    return documents
+
+
+def regular_markdown_files(root: Path) -> list[Path]:
+    files: list[Path] = []
+    root_mode = mode_without_following(root)
+    if root_mode is None or not stat.S_ISDIR(root_mode):
+        return files
+    try:
+        names = sorted(os.listdir(root))
+    except OSError:
+        return files
+    for name in names:
+        if not name.endswith(".md"):
+            continue
+        entry = root / name
+        entry_mode = mode_without_following(entry)
+        if entry_mode is not None and stat.S_ISREG(entry_mode):
+            files.append(entry)
+    return files
+
+
+def repo_shape_block_targets(repo: Path) -> list[Path]:
+    targets: list[Path] = []
+    targets.extend(
+        regular_skill_documents(repo / ".claude" / "skills", ("speckit-*", "ct", "ctp"))
+    )
+    targets.extend(regular_markdown_files(repo / ".claude" / "commands" / "opsx"))
+    targets.extend(regular_skill_documents(repo / ".agents" / "skills", ("speckit-*",)))
+    targets.extend(regular_skill_documents(repo / ".codex" / "skills", ("speckit-*",)))
+    return targets
+
+
+def global_shape_block_targets(home: Path) -> list[Path]:
+    targets: list[Path] = []
+    targets.extend(
+        regular_skill_documents(
+            home / ".claude" / "skills",
+            ("speckit-*", "openspec-*", "ct", "ctp"),
+        )
+    )
+    targets.extend(regular_skill_documents(home / ".agents" / "skills", ("speckit-*",)))
+    targets.extend(
+        regular_skill_documents(
+            home / ".codex" / "skills",
+            ("speckit-*", "openspec-*"),
+        )
+    )
+    return targets
+
+
+def ensure_skill_shape_blocks(
+    repo: Path,
+    agent_root: Path,
+    dry_run: bool,
+    include_global: bool,
+) -> None:
+    """Maintain the managed Repository Shape block in skills and commands."""
+    repo_block = shape_block_body(REPO_AGENT_ROOT)
+    for path in repo_shape_block_targets(repo):
+        upsert_shape_block(path, repo_block, dry_run)
+    if not include_global:
+        return
+    global_block = shape_block_body(str(agent_root))
+    for path in global_shape_block_targets(Path.home()):
+        try:
+            upsert_shape_block(path, global_block, dry_run)
+        except PermissionError as exc:
+            log(f"skipped {path}: permission denied ({exc})")
+        except OSError as exc:
+            log(f"skipped {path}: {exc}")
 
 
 def ensure_global_agent_pointers(agent_root: Path, dry_run: bool) -> None:
@@ -2137,6 +3040,46 @@ def refresh_git_extension_manifest_hash(
     write_text(registry_path, json.dumps(registry, indent=2) + "\n", dry_run)
 
 
+def replace_overlay_skill_link(destination: Path, dry_run: bool) -> bool:
+    """Drop a symlinked overlay skill destination so a real directory replaces it.
+
+    An earlier bootstrap could leave a link to a global skill where the worktree
+    overlay belongs. A link is never a legitimate overlay copy, so remove the
+    link itself, never following it, and let the overlay copy build a fresh
+    directory. Every other unsafe destination keeps its ordinary refusal.
+    """
+    mode = mode_without_following(destination)
+    if mode is None or not stat.S_ISLNK(mode):
+        return False
+    if dry_run:
+        log(f"would replace skill link {destination} with worktree overlay")
+        return True
+    remove_destination_without_following(destination)
+    log(f"replaced skill link {destination} with worktree overlay")
+    return True
+
+
+def ensure_worktrees_ignored(repo: Path, dry_run: bool) -> None:
+    """Keep the three-leg root's own .gitignore carrying `/worktrees/`."""
+    path = repo / ".gitignore"
+    ensure_safe_destination_file(path, set())
+    existing_text = read_destination_text(path)
+    if existing_text is None:
+        write_text(path, f"{WORKTREES_IGNORE_LINE}\n", dry_run)
+        return
+    if any(
+        line.strip() == WORKTREES_IGNORE_LINE for line in existing_text.splitlines()
+    ):
+        log(f"unchanged {path}")
+        return
+    separator = "" if not existing_text or existing_text.endswith("\n") else "\n"
+    write_text(
+        path,
+        f"{existing_text}{separator}{WORKTREES_IGNORE_LINE}\n",
+        dry_run,
+    )
+
+
 def ensure_worktree_overlay(
     repo: Path,
     template_root: Path | None,
@@ -2145,6 +3088,7 @@ def ensure_worktree_overlay(
     base_branch: str | None,
     worktree_root: str | None,
     skip_worktrees: bool,
+    shape: ProjectShape | None = None,
 ) -> set[Path]:
     if skip_worktrees:
         return set()
@@ -2152,12 +3096,16 @@ def ensure_worktree_overlay(
     if template_root is None:
         raise SystemExit("Speckit worktree template root not found.")
 
-    git_overlay_force = force or not has_compatible_worktree_git_overlay(repo)
+    git_overlay_force = force or not has_compatible_worktree_git_overlay(
+        repo,
+        template_root,
+    )
     if git_overlay_force and not force:
         log("replacing incompatible Spec Kit git extension with worktree-aware overlay")
+    overlay_force = force or git_overlay_force
 
     copy_overlay_tree(template_root / "specify" / "extensions" / "git", repo / ".specify" / "extensions" / "git", dry_run, git_overlay_force)
-    copy_overlay_tree(template_root / "specify" / "shell", repo / ".specify" / "shell", dry_run, force)
+    copy_overlay_tree(template_root / "specify" / "shell", repo / ".specify" / "shell", dry_run, overlay_force)
     skill_overlays = (
         (
             template_root / "agents" / "skills" / "speckit-specify",
@@ -2202,9 +3150,14 @@ def ensure_worktree_overlay(
         if not is_usable_skill_tree(source):
             log(f"skipped unusable worktree skill overlay {source}")
             continue
-        copy_overlay_tree(source, destination, dry_run, force)
+        if replace_overlay_skill_link(destination, dry_run) and dry_run:
+            # The link is still in place, so the copy would refuse it. The
+            # planned replacement has already been logged.
+            overlay_owned_destinations.add(destination)
+            continue
+        copy_overlay_tree(source, destination, dry_run, overlay_force)
         if is_usable_skill_tree(destination) or (
-            dry_run and skill_tree_will_be_usable(destination, force)
+            dry_run and skill_tree_will_be_usable(destination, overlay_force)
         ):
             overlay_owned_destinations.add(destination)
 
@@ -2221,7 +3174,9 @@ def ensure_worktree_overlay(
         "branch_numbering": "sequential",
         "checkout_mode": "worktree",
         "base_branch": default_base_branch(repo),
-        "worktree_root": f"../{repo.name}-worktrees",
+        "worktree_root": (
+            THREE_LEG_WORKTREE_ROOT if shape is not None else f"../{repo.name}-worktrees"
+        ),
     }
     values = {
         key: value for key, value in required_values.items() if key not in existing_keys
@@ -2250,6 +3205,24 @@ def ensure_worktree_overlay(
     return overlay_owned_destinations
 
 
+def report_two_commit_split(repo: Path, shape: ProjectShape) -> None:
+    """Close a three-leg run with the spec-leg paths and the pin-bump reminder."""
+    written = spec_leg_written_paths()
+    log("")
+    log("Two Repositories Means Two Commits")
+    if written:
+        log(f"Written in the spec repository ({shape.spec_path}/):")
+        for path in written:
+            log(f"  {path}")
+    else:
+        log(f"Nothing new was written in the spec repository ({shape.spec_path}/).")
+    log(
+        "Commit and push those in the spec repository first, then in the assembly "
+        f"root {repo} move the gitlink, `commit:` in `contracts/spec-pin.yaml`, and "
+        "every workflow `@<sha>` naming that leg together in one commit."
+    )
+
+
 def main() -> int:
     args = parse_args()
     repo = (args.repo.resolve() if args.repo else git_root())
@@ -2266,42 +3239,70 @@ def main() -> int:
     log(f"agent root: {agent_root}")
     log(f"integration: {integration}")
 
-    ensure_agent_protocol_files(agent_root, args.dry_run)
-    ensure_scaffold(repo, args.dry_run, args.skip_init)
-    ensure_speckit_initialized(repo, integration, args.dry_run, args.skip_init)
-    ensure_speckit_registration(repo, args.dry_run, args.no_speckit_registration)
-    overlay_owned_destinations = ensure_worktree_overlay(
-        repo,
-        worktree_templates,
-        args.dry_run,
-        args.force,
-        args.base_branch,
-        args.worktree_root,
-        args.no_worktrees,
-    )
+    shape = resolve_project_shape(repo, args.shape)
+    spec_root = shape.spec_leg if shape is not None else repo
+    if shape is not None:
+        enable_shape_log_scopes(args.dry_run)
 
-    if not args.no_repo_agent_pointers:
-        ensure_repo_agent_pointers(repo, args.dry_run)
-
-    if not args.preserve_readmes:
-        write_text(repo / "openspec" / "README.md", openspec_readme(), args.dry_run)
-        write_text(repo / ".specify" / "README.md", specify_readme(), args.dry_run)
-
-    if command_templates:
-        copy_missing_tree(
-            command_templates,
-            repo / ".claude" / "commands" / "opsx",
+    with root_scope():
+        ensure_agent_protocol_files(agent_root, args.dry_run)
+    ensure_scaffold(repo, spec_root, args.dry_run, args.skip_init)
+    with root_scope():
+        ensure_speckit_initialized(repo, integration, args.dry_run, args.skip_init)
+        ensure_speckit_registration(repo, args.dry_run, args.no_speckit_registration)
+        overlay_owned_destinations = ensure_worktree_overlay(
+            repo,
+            worktree_templates,
             args.dry_run,
             args.force,
+            args.base_branch,
+            args.worktree_root,
+            args.no_worktrees,
+            shape,
         )
-    else:
-        log("skipped opsx command templates: no template root found")
+        if shape is not None:
+            ensure_worktrees_ignored(repo, args.dry_run)
 
-    if not args.no_skill_links:
-        ensure_skills(repo, args.dry_run, args.force, overlay_owned_destinations)
+        if not args.no_repo_agent_pointers:
+            ensure_repo_agent_pointers(repo, args.dry_run, shape)
 
-    if not args.no_global_agent_pointers:
-        ensure_global_agent_pointers(agent_root, args.dry_run)
+    if not args.preserve_readmes:
+        with spec_scope():
+            write_text(
+                spec_root / "openspec" / "README.md",
+                openspec_readme(),
+                args.dry_run,
+            )
+        with root_scope():
+            write_text(repo / ".specify" / "README.md", specify_readme(), args.dry_run)
+
+    with root_scope():
+        if command_templates:
+            copy_missing_tree(
+                command_templates,
+                repo / ".claude" / "commands" / "opsx",
+                args.dry_run,
+                args.force,
+            )
+        else:
+            log("skipped opsx command templates: no template root found")
+
+        if not args.no_skill_links:
+            ensure_skills(repo, args.dry_run, args.force, overlay_owned_destinations)
+
+        if not args.no_skill_shape_blocks:
+            ensure_skill_shape_blocks(
+                repo,
+                agent_root,
+                args.dry_run,
+                not args.no_global_agent_pointers,
+            )
+
+        if not args.no_global_agent_pointers:
+            ensure_global_agent_pointers(agent_root, args.dry_run)
+
+    if shape is not None and not args.dry_run:
+        report_two_commit_split(repo, shape)
 
     log("done")
     return 0

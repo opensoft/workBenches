@@ -6,6 +6,7 @@ metadata:
   author: "github-spec-kit"
   source: "templates/commands/specify.md"
 ---
+<!-- speckit-overlay-shape: 1 -->
 
 
 ## User Input
@@ -77,12 +78,22 @@ Given that feature description, do this:
    - Otherwise, set `TARGET_REPO_ROOT` to the current project root.
    - Note `BRANCH_NAME` for reference, but the branch name does **not** dictate the spec directory name.
    - A linked worktree does **not** change the user's current shell directory automatically. If `WORKTREE_PATH` is returned, remember that the current CLI session is still in the original checkout unless the user manually changes directories or opens a new session there.
+   - The hook also returns `REPO_SHAPE` (`single` or `three-leg`). When it is `three-leg` it additionally returns `PROJECT_ROOT`, `SPEC_WORKTREE_PATH`, `CODE_WORKTREE_PATH`, and `FEATURE_DIR`; `WORKTREE_PATH` is then the feature directory that holds both leg worktrees, not a checkout. See "Three-leg projects" in step 3.
 
    If the user explicitly provided `GIT_BRANCH_NAME`, pass it through to the hook so the branch script uses the exact value as the branch name (bypassing all prefix/suffix generation).
 
 3. **Create the spec feature directory**:
 
    Specs live under the default `specs/` directory inside `TARGET_REPO_ROOT` unless the user explicitly provides `SPECIFY_FEATURE_DIRECTORY`.
+
+   **Three-leg projects (`REPO_SHAPE: "three-leg"`)**:
+
+   When the hook's JSON reports `REPO_SHAPE: "three-leg"` (an openRepoShape assembly root), the spec files do **not** go in a repo-root-shaped worktree:
+
+   - Use `FEATURE_DIR` from the hook JSON verbatim as `SPECIFY_FEATURE_DIRECTORY`; it is `<SPEC_WORKTREE_PATH>/specs/<BRANCH_NAME>`, inside the feature's spec leg worktree. Do not invent a directory name and do not scan `specs/` yourself.
+   - Set `TARGET_REPO_ROOT` to `PROJECT_ROOT` from the hook JSON. The feature directory has **no** `.specify/` of its own: templates come from `PROJECT_ROOT/.specify/templates/` and `.specify/feature.json` is written at `PROJECT_ROOT/.specify/feature.json`, relative to `PROJECT_ROOT` (`worktrees/<BRANCH_NAME>/<spec>/specs/<BRANCH_NAME>`). The hook has already written it; leave it alone unless it is missing or wrong.
+   - Implementation source and tests belong in `CODE_WORKTREE_PATH`, the sibling code leg worktree — never in the spec worktree and never in `<spec>/` or `<code>/` at the project root, which sit at the pinned commit.
+   - Follow-on commands (`/speckit.clarify`, `/speckit.plan`, `/speckit.tasks`, `/speckit.analyze`, `/speckit.implement`) run **from `PROJECT_ROOT`**, not from the worktree, with `SPECIFY_FEATURE=<BRANCH_NAME>` and `SPECIFY_FEATURE_DIRECTORY=worktrees/<BRANCH_NAME>/<spec>/specs/<BRANCH_NAME>` exported.
 
    **Resolution order for `SPECIFY_FEATURE_DIRECTORY`**:
    1. If the user explicitly provided `SPECIFY_FEATURE_DIRECTORY` (e.g., via environment variable, argument, or configuration), use it as-is
@@ -239,6 +250,7 @@ Given that feature description, do this:
      - the spec artifacts were written in `WORKTREE_PATH`
      - the user's current shell did **not** automatically move there
      - all follow-on commands (`/speckit.clarify`, `/speckit.plan`, `/speckit.tasks`, `/speckit.implement`) must be run from that worktree
+     - in a three-leg project instead: the spec artifacts are in `FEATURE_DIR` inside `SPEC_WORKTREE_PATH`, implementation goes in `CODE_WORKTREE_PATH`, and all follow-on commands run from `PROJECT_ROOT` with `SPECIFY_FEATURE` and `SPECIFY_FEATURE_DIRECTORY` exported
    - `SPECIFY_FEATURE_DIRECTORY` — the feature directory path
    - `SPEC_FILE` — the spec file path
    - `WORKTREE_PATH` — include when the hook created a linked worktree, and state that subsequent `/speckit.*` commands should run from that worktree
@@ -274,7 +286,7 @@ Given that feature description, do this:
        ```
    - If no hooks are registered or `TARGET_REPO_ROOT/.specify/extensions.yml` does not exist, skip silently
 
-**NOTE:** Feature checkout creation is handled by the `before_specify` hook (git extension). Spec directory and file creation are always handled by this core command inside the target checkout or worktree. Worktree creation does not move the user's existing shell session.
+**NOTE:** Feature checkout creation is handled by the `before_specify` hook (git extension). Spec directory and file creation are always handled by this core command inside the target checkout or worktree. Worktree creation does not move the user's existing shell session. In a three-leg project the hook creates both leg worktrees and writes `.specify/feature.json` at `PROJECT_ROOT`; this command still creates the spec directory and files, inside `FEATURE_DIR`.
 
 ## Quick Guidelines
 

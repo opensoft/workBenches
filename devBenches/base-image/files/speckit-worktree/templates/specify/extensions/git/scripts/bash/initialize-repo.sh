@@ -5,6 +5,7 @@
 # default branch config, git-flow, LFS, signing, etc.
 
 set -e
+# speckit-overlay-shape: 1
 
 SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -37,6 +38,23 @@ fi
 # Check if git is available
 if ! command -v git >/dev/null 2>&1; then
     echo "[specify] Warning: Git not found; skipped repository initialization" >&2
+    exit 0
+fi
+
+# In a three-leg project the assembly root is always already a repository, and
+# the legs are submodules that must never be re-initialised from here.
+REPO_SHAPE=single
+if [ -f "$SCRIPT_DIR/git-common.sh" ]; then
+    # shellcheck source=/dev/null
+    . "$SCRIPT_DIR/git-common.sh"
+    load_repo_shape "$REPO_ROOT"
+fi
+if [ "$REPO_SHAPE" = "three-leg" ]; then
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        echo "[specify] Three-leg project root is already a Git repository; skipping" >&2
+    else
+        echo "[specify] Warning: three-leg project root is not a Git repository; skipped initialization" >&2
+    fi
     exit 0
 fi
 

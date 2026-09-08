@@ -1,7 +1,290 @@
 #!/usr/bin/env bash
+# speckit-overlay-shape: 1
 # Git-specific common functions for the git extension.
 # Extracted from scripts/bash/common.sh — contains Git-specific branch
 # validation, repository detection, and worktree discovery logic.
+
+# ---------------------------------------------------------------------------
+# Repository shape detection (single repository vs openRepoShape three-leg).
+#
+# load_repo_shape <root> sets, for its callers:
+#   REPO_SHAPE        single | three-leg
+#   PROJECT_ROOT      absolute path of the directory holding .specify/
+#   SHAPE_SPEC_PATH   relative mount path of the spec leg (empty when single)
+#   SHAPE_CODE_PATH   relative mount path of the code leg (empty when single)
+#   SPEC_LEG          absolute path of the spec leg checkout (root when single)
+#   CODE_LEG          absolute path of the code leg checkout (root when single)
+#   SHAPE_FAMILY      1 when a family holder was detected, else 0
+#
+# The manifest is read line by line with parameter expansion only: no YAML
+# library, no Python, no forks per line.
+# ---------------------------------------------------------------------------
+
+_shape_set_trimmed() {
+    _SHAPE_TRIMMED="$1"
+    _SHAPE_TRIMMED="${_SHAPE_TRIMMED#"${_SHAPE_TRIMMED%%[![:space:]]*}"}"
+    _SHAPE_TRIMMED="${_SHAPE_TRIMMED%"${_SHAPE_TRIMMED##*[![:space:]]}"}"
+}
+
+_shape_set_scalar() {
+    _shape_set_trimmed "$1"
+    _SHAPE_SCALAR="$_SHAPE_TRIMMED"
+    case "$_SHAPE_SCALAR" in
+        \"*\")
+            _SHAPE_SCALAR="${_SHAPE_SCALAR#\"}"
+            _SHAPE_SCALAR="${_SHAPE_SCALAR%\"}"
+            ;;
+        \'*\')
+            _SHAPE_SCALAR="${_SHAPE_SCALAR#\'}"
+            _SHAPE_SCALAR="${_SHAPE_SCALAR%\'}"
+            ;;
+    esac
+}
+
+_shape_record_leg() {
+    local role="$1"
+    local path="$2"
+
+    case "$role" in
+        spec) _SHAPE_LEG_SPEC_PATH="${path:-spec}" ;;
+        code) _SHAPE_LEG_CODE_PATH="${path:-code}" ;;
+    esac
+}
+
+_shape_is_family_holder() {
+    local family_manifest="$1"
+
+    [ -f "$family_manifest" ] || return 1
+    grep -Eq "^[[:space:]]*kind:[[:space:]]*[\"']?family-manifest[\"']?[[:space:]]*$" \
+        "$family_manifest"
+}
+
+# shellcheck disable=SC2034  # the shape variables are consumed by the callers
+load_repo_shape() {
+    local root="$1"
+    local manifest="$root/project.yaml"
+    local family_manifest="$root/family.yaml"
+    local raw content trimmed indent_ws indent key value rest
+    local manifest_kind="" manifest_schema=""
+    local in_legs=false key_col=-1
+    local cur_role="" cur_path=""
+
+    REPO_SHAPE="single"
+    PROJECT_ROOT="$root"
+    SHAPE_SPEC_PATH=""
+    SHAPE_CODE_PATH=""
+    SPEC_LEG="$root"
+    CODE_LEG="$root"
+    SHAPE_FAMILY=0
+    _SHAPE_LEG_SPEC_PATH=""
+    _SHAPE_LEG_CODE_PATH=""
+
+    if [ ! -f "$manifest" ]; then
+        if _shape_is_family_holder "$family_manifest"; then
+            SHAPE_FAMILY=1
+            echo "[specify] Family holder detected ($family_manifest); using the single-repository layout." >&2
+        fi
+        return 0
+    fi
+
+    while IFS= read -r raw || [ -n "$raw" ]; do
+        content="${raw%%#*}"
+        _shape_set_trimmed "$content"
+        trimmed="$_SHAPE_TRIMMED"
+        [ -n "$trimmed" ] || continue
+        indent_ws="${content%%[![:space:]]*}"
+        indent=${#indent_ws}
+
+        if [ "$in_legs" = true ]; then
+            if [ "$indent" -eq 0 ]; then
+                _shape_record_leg "$cur_role" "$cur_path"
+                cur_role=""
+                cur_path=""
+                in_legs=false
+            elif [ "${trimmed:0:2}" = "- " ] || [ "$trimmed" = "-" ]; then
+                _shape_record_leg "$cur_role" "$cur_path"
+                cur_role=""
+                cur_path=""
+                key_col=$((indent + 2))
+                _shape_set_trimmed "${trimmed#-}"
+                rest="$_SHAPE_TRIMMED"
+                key="${rest%%:*}"
+                if [ -n "$rest" ] && [ "$key" != "$rest" ]; then
+                    _shape_set_scalar "${rest#*:}"
+                    value="$_SHAPE_SCALAR"
+                    case "$key" in
+                        role) cur_role="$value" ;;
+                        path) cur_path="$value" ;;
+                    esac
+                fi
+                continue
+            elif [ "$indent" -eq "$key_col" ]; then
+                key="${trimmed%%:*}"
+                if [ "$key" != "$trimmed" ]; then
+                    _shape_set_scalar "${trimmed#*:}"
+                    value="$_SHAPE_SCALAR"
+                    case "$key" in
+                        role) cur_role="$value" ;;
+                        path) cur_path="$value" ;;
+                    esac
+                fi
+                continue
+            else
+                continue
+            fi
+        fi
+
+        if [ "$indent" -eq 0 ]; then
+            key="${trimmed%%:*}"
+            [ "$key" != "$trimmed" ] || continue
+            _shape_set_scalar "${trimmed#*:}"
+            value="$_SHAPE_SCALAR"
+            case "$key" in
+                kind) manifest_kind="$value" ;;
+                schema) manifest_schema="$value" ;;
+                legs)
+                    in_legs=true
+                    key_col=-1
+                    ;;
+            esac
+        fi
+    done < "$manifest"
+    _shape_record_leg "$cur_role" "$cur_path"
+
+    if [ "$manifest_kind" = "project-manifest" ] \
+        && [ "$manifest_schema" = "project-repo-schema" ] \
+        && [ -n "$_SHAPE_LEG_SPEC_PATH" ] \
+        && [ -n "$_SHAPE_LEG_CODE_PATH" ]; then
+        REPO_SHAPE="three-leg"
+        SHAPE_SPEC_PATH="$_SHAPE_LEG_SPEC_PATH"
+        SHAPE_CODE_PATH="$_SHAPE_LEG_CODE_PATH"
+        SPEC_LEG="$root/$SHAPE_SPEC_PATH"
+        CODE_LEG="$root/$SHAPE_CODE_PATH"
+    fi
+
+    return 0
+}
+
+# True when the leg mount point holds an initialised Git checkout. A submodule
+# that was never fetched is an empty directory, which is the case this guards.
+shape_leg_is_checkout() {
+    local leg="$1"
+
+    [ -d "$leg" ] || return 1
+    { [ -d "$leg/.git" ] || [ -f "$leg/.git" ]; } || return 1
+    command -v git >/dev/null 2>&1 || return 1
+    git -C "$leg" rev-parse --is-inside-work-tree >/dev/null 2>&1
+}
+
+# ---------------------------------------------------------------------------
+# Three-leg feature discovery.
+#
+# shape_load_features <worktree_root> enumerates the spec leg's linked
+# worktrees and keeps the ones that sit at <worktree_root>/<feature>/<spec>/
+# with a sibling <code>/ worktree. The feature directory is the parent of the
+# spec worktree. Results are ordered newest first by feature directory mtime:
+#
+#   SHAPE_FEATURE_PATHS     feature directories
+#   SHAPE_FEATURE_BRANCHES  branch names, same index
+#   SHAPE_FEATURE_MTIMES    mtimes, same index
+#
+# Requires load_repo_shape to have run (SPEC_LEG / SHAPE_SPEC_PATH /
+# SHAPE_CODE_PATH) and load_git_worktrees from this file.
+# ---------------------------------------------------------------------------
+SHAPE_FEATURE_PATHS=()
+SHAPE_FEATURE_BRANCHES=()
+SHAPE_FEATURE_MTIMES=()
+
+_shape_mtime_for_path() {
+    if stat -c %Y "$1" >/dev/null 2>&1; then
+        stat -c %Y "$1"
+    else
+        stat -f %m "$1"
+    fi
+}
+
+shape_insert_feature() {
+    local path="$1"
+    local branch="$2"
+    local mtime="$3"
+    local count insert_at index previous_index
+
+    count=${#SHAPE_FEATURE_PATHS[@]}
+    insert_at=$count
+    index=0
+    while [ "$index" -lt "$count" ]; do
+        if [ "$mtime" -gt "${SHAPE_FEATURE_MTIMES[$index]}" ]; then
+            insert_at=$index
+            break
+        fi
+        index=$((index + 1))
+    done
+
+    SHAPE_FEATURE_PATHS+=("")
+    SHAPE_FEATURE_BRANCHES+=("")
+    SHAPE_FEATURE_MTIMES+=("")
+    index=$count
+    while [ "$index" -gt "$insert_at" ]; do
+        previous_index=$((index - 1))
+        SHAPE_FEATURE_PATHS[index]="${SHAPE_FEATURE_PATHS[previous_index]}"
+        SHAPE_FEATURE_BRANCHES[index]="${SHAPE_FEATURE_BRANCHES[previous_index]}"
+        SHAPE_FEATURE_MTIMES[index]="${SHAPE_FEATURE_MTIMES[previous_index]}"
+        index=$previous_index
+    done
+    SHAPE_FEATURE_PATHS[insert_at]="$path"
+    SHAPE_FEATURE_BRANCHES[insert_at]="$branch"
+    SHAPE_FEATURE_MTIMES[insert_at]="$mtime"
+}
+
+shape_load_features() {
+    local worktree_root="$1"
+    local index path branch feature_dir code_dir mtime
+
+    SHAPE_FEATURE_PATHS=()
+    SHAPE_FEATURE_BRANCHES=()
+    SHAPE_FEATURE_MTIMES=()
+    load_git_worktrees "$SPEC_LEG" || return 1
+    index=0
+    while [ "$index" -lt "${#GIT_WORKTREE_PATHS[@]}" ]; do
+        path="${GIT_WORKTREE_PATHS[$index]}"
+        branch="${GIT_WORKTREE_BRANCH_REFS[$index]}"
+        index=$((index + 1))
+        [ -n "$branch" ] || continue
+        [ -d "$path" ] || continue
+        case "$path" in
+            */"$SHAPE_SPEC_PATH") feature_dir="${path%/"$SHAPE_SPEC_PATH"}" ;;
+            *) continue ;;
+        esac
+        feature_dir="${feature_dir%/}"
+        case "$feature_dir" in
+            "$worktree_root"/*) ;;
+            *) continue ;;
+        esac
+        code_dir="$feature_dir/$SHAPE_CODE_PATH"
+        [ -d "$code_dir" ] || continue
+        mtime="$(_shape_mtime_for_path "$feature_dir" 2>/dev/null || true)"
+        [ -n "$mtime" ] || continue
+        shape_insert_feature "$feature_dir" "${branch#refs/heads/}" "$mtime"
+    done
+}
+
+# Derive the per-feature paths of a three-leg feature directory:
+#   SHAPE_SPEC_WORKTREE_PATH, SHAPE_CODE_WORKTREE_PATH,
+#   SHAPE_FEATURE_DIR, SHAPE_FEATURE_DIR_RELATIVE (relative to the root).
+# shellcheck disable=SC2034  # consumed by the scripts that source this file
+shape_feature_paths_for() {
+    local project_root="$1"
+    local feature_dir="$2"
+    local branch="$3"
+
+    SHAPE_SPEC_WORKTREE_PATH="$feature_dir/$SHAPE_SPEC_PATH"
+    SHAPE_CODE_WORKTREE_PATH="$feature_dir/$SHAPE_CODE_PATH"
+    SHAPE_FEATURE_DIR="$SHAPE_SPEC_WORKTREE_PATH/specs/$branch"
+    SHAPE_FEATURE_DIR_RELATIVE="$SHAPE_FEATURE_DIR"
+    case "$SHAPE_FEATURE_DIR" in
+        "$project_root"/*) SHAPE_FEATURE_DIR_RELATIVE="${SHAPE_FEATURE_DIR#"$project_root/"}" ;;
+    esac
+}
 
 # Check if we have git available at the repo root
 has_git() {

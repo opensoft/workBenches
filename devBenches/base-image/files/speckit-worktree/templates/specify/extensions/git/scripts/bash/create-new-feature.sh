@@ -5,6 +5,7 @@
 # git-common.sh for minimal git helpers.
 
 set -e
+# speckit-overlay-shape: 1
 
 JSON_MODE=false
 DRY_RUN=false
@@ -591,6 +592,202 @@ resolve_base_ref() {
     return 1
 }
 
+# ---------------------------------------------------------------------------
+# Three-leg (openRepoShape) helpers.
+#
+# In a three-leg project the feature lives in two linked worktrees, one per leg
+# repository, under <root>/worktrees/<NNN-feature>/. The root repository never
+# receives a feature branch or a worktree from this hook.
+# ---------------------------------------------------------------------------
+
+shape_highest_from_leg_specs_tree() {
+    local leg="$1"
+    local base_ref="$2"
+
+    git -C "$leg" ls-tree --name-only "$base_ref:specs" 2>/dev/null \
+        | _extract_highest_number ""
+}
+
+shape_highest_from_leg_branches() {
+    local leg="$1"
+
+    git -C "$leg" for-each-ref --format='%(refname)' refs/heads refs/remotes 2>/dev/null \
+        | sed -E 's|^refs/heads/||; s|^refs/remotes/[^/]*/||' \
+        | _extract_highest_number ""
+}
+
+# Highest of: specs/ on the spec leg's base ref, specs/ in the spec leg working
+# tree, and the sequential branch names of BOTH leg repositories.
+shape_next_feature_number() {
+    local highest=0
+    local candidate
+
+    for candidate in \
+        "$(shape_highest_from_leg_specs_tree "$SPEC_LEG" "$SPEC_BASE_REF")" \
+        "$(get_highest_from_specs "$SPEC_LEG/specs")" \
+        "$(shape_highest_from_leg_branches "$SPEC_LEG")" \
+        "$(shape_highest_from_leg_branches "$CODE_LEG")"; do
+        [ -n "$candidate" ] || candidate=0
+        if [ "$candidate" -gt "$highest" ]; then
+            highest="$candidate"
+        fi
+    done
+
+    echo $((highest + 1))
+}
+
+shape_fetch_leg_base() {
+    local leg="$1"
+    local role="$2"
+    local fetch_error=""
+
+    git -C "$leg" remote get-url origin >/dev/null 2>&1 || return 0
+    if ! fetch_error=$(GIT_TERMINAL_PROMPT=0 git -C "$leg" fetch origin "$BASE_BRANCH" 2>&1); then
+        >&2 echo "[specify] Warning: could not fetch '$BASE_BRANCH' from origin in the $role leg; using the refs already present."
+        if [ -n "$fetch_error" ]; then
+            >&2 printf '%s\n' "$fetch_error"
+        fi
+    fi
+}
+
+shape_resolve_leg_base_ref() {
+    local leg="$1"
+
+    if git -C "$leg" show-ref --verify --quiet "refs/remotes/origin/$BASE_BRANCH"; then
+        printf 'origin/%s\n' "$BASE_BRANCH"
+        return 0
+    fi
+    if git -C "$leg" show-ref --verify --quiet "refs/heads/$BASE_BRANCH"; then
+        printf '%s\n' "$BASE_BRANCH"
+        return 0
+    fi
+    return 1
+}
+
+shape_branch_exists_in_leg() {
+    local leg="$1"
+    local branch="$2"
+
+    git -C "$leg" show-ref --verify --quiet "refs/heads/$branch"
+}
+
+shape_add_leg_worktree() {
+    local leg="$1"
+    local role="$2"
+    local path="$3"
+    local base_ref="$4"
+    local create_branch="$5"
+    local worktree_error=""
+
+    if [ "$create_branch" = true ]; then
+        if ! worktree_error=$(git -C "$leg" worktree add -b "$BRANCH_NAME" "$path" "$base_ref" 2>&1); then
+            >&2 echo "Error: Failed to create the $role leg worktree '$path' from '$base_ref'."
+            if [ -n "$worktree_error" ]; then
+                >&2 printf '%s\n' "$worktree_error"
+            fi
+            return 1
+        fi
+        return 0
+    fi
+
+    if ! worktree_error=$(git -C "$leg" worktree add "$path" "$BRANCH_NAME" 2>&1); then
+        >&2 echo "Error: Failed to add the $role leg worktree '$path' for existing branch '$BRANCH_NAME'."
+        if [ -n "$worktree_error" ]; then
+            >&2 printf '%s\n' "$worktree_error"
+        fi
+        return 1
+    fi
+}
+
+shape_rollback_spec_worktree() {
+    local created_branch="$1"
+
+    >&2 echo "[specify] Rolling back the spec leg worktree after the code leg failed."
+    git -C "$SPEC_LEG" worktree remove --force "$SPEC_WORKTREE_PATH" >/dev/null 2>&1 \
+        || rm -rf "$SPEC_WORKTREE_PATH" >/dev/null 2>&1 || true
+    git -C "$SPEC_LEG" worktree prune >/dev/null 2>&1 || true
+    if [ "$created_branch" = true ]; then
+        git -C "$SPEC_LEG" branch -D "$BRANCH_NAME" >/dev/null 2>&1 || true
+    fi
+    rmdir "$WORKTREE_PATH" >/dev/null 2>&1 || true
+}
+
+# Record the resolved feature directory in the ROOT's .specify/feature.json so
+# core check-prerequisites.sh resolves FEATURE_DIR without any change to core.
+shape_persist_feature_json() {
+    local relative_dir="$1"
+    local feature_json="$REPO_ROOT/.specify/feature.json"
+
+    if [ "$(type -t _persist_feature_json 2>/dev/null || true)" = "function" ]; then
+        _persist_feature_json "$REPO_ROOT" "$relative_dir"
+        return 0
+    fi
+
+    mkdir -p "$REPO_ROOT/.specify"
+    if command -v jq >/dev/null 2>&1; then
+        jq -cn --arg fd "$relative_dir" '{feature_directory:$fd}' > "$feature_json"
+    elif [ "$(type -t json_escape 2>/dev/null || true)" = "function" ]; then
+        printf '{"feature_directory":"%s"}\n' "$(json_escape "$relative_dir")" > "$feature_json"
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 - "$feature_json" "$relative_dir" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "w", encoding="utf-8") as stream:
+    json.dump({"feature_directory": sys.argv[2]}, stream)
+    stream.write("\n")
+PY
+    else
+        >&2 echo "Error: Writing .specify/feature.json requires jq or Python 3."
+        return 1
+    fi
+}
+
+shape_create_feature_worktrees() {
+    local spec_branch_exists=false
+    local code_branch_exists=false
+    local spec_branch_created=false
+
+    if [ -e "$WORKTREE_PATH" ]; then
+        >&2 echo "Error: Feature worktree directory '$WORKTREE_PATH' already exists. Remove it or specify a different number with --number."
+        exit 1
+    fi
+
+    if shape_branch_exists_in_leg "$SPEC_LEG" "$BRANCH_NAME"; then
+        spec_branch_exists=true
+    fi
+    if shape_branch_exists_in_leg "$CODE_LEG" "$BRANCH_NAME"; then
+        code_branch_exists=true
+    fi
+    if { [ "$spec_branch_exists" = true ] || [ "$code_branch_exists" = true ]; } \
+        && [ "$ALLOW_EXISTING" != true ]; then
+        >&2 echo "Error: Branch '$BRANCH_NAME' already exists in a leg repository. Please use a different feature name or specify a different number with --number."
+        exit 1
+    fi
+
+    mkdir -p "$WORKTREE_PATH"
+
+    if [ "$spec_branch_exists" = true ]; then
+        shape_add_leg_worktree "$SPEC_LEG" spec "$SPEC_WORKTREE_PATH" "$SPEC_BASE_REF" false || exit 1
+    else
+        shape_add_leg_worktree "$SPEC_LEG" spec "$SPEC_WORKTREE_PATH" "$SPEC_BASE_REF" true || exit 1
+        spec_branch_created=true
+    fi
+
+    if [ "$code_branch_exists" = true ]; then
+        if ! shape_add_leg_worktree "$CODE_LEG" code "$CODE_WORKTREE_PATH" "$CODE_BASE_REF" false; then
+            shape_rollback_spec_worktree "$spec_branch_created"
+            exit 1
+        fi
+    elif ! shape_add_leg_worktree "$CODE_LEG" code "$CODE_WORKTREE_PATH" "$CODE_BASE_REF" true; then
+        shape_rollback_spec_worktree "$spec_branch_created"
+        exit 1
+    fi
+
+    mkdir -p "$FEATURE_DIR"
+    shape_persist_feature_json "$FEATURE_DIR_RELATIVE" || exit 1
+}
+
 find_worktree_for_branch() {
     local target_branch="$1"
     local index
@@ -734,8 +931,18 @@ PY
 
 cd "$REPO_ROOT"
 
+# Resolve the repository shape once; every layout decision below reads it.
+load_repo_shape "$REPO_ROOT"
+PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
+
 SPECS_DIR="$REPO_ROOT/specs"
 DEFAULT_WORKTREE_ROOT="../$(basename "$REPO_ROOT")-worktrees"
+SPEC_BASE_REF=""
+CODE_BASE_REF=""
+if [ "$REPO_SHAPE" = "three-leg" ]; then
+    SPECS_DIR="$SPEC_LEG/specs"
+    DEFAULT_WORKTREE_ROOT="worktrees"
+fi
 CHECKOUT_MODE=$(get_config_value "checkout_mode" "branch" "SPECKIT_GIT_CHECKOUT_MODE")
 CHECKOUT_MODE=$(printf '%s' "$CHECKOUT_MODE" | tr '[:upper:]' '[:lower:]')
 BRANCH_NUMBERING=$(get_config_value "branch_numbering" "sequential" "SPECKIT_GIT_BRANCH_NUMBERING")
@@ -753,6 +960,24 @@ if [ "$BRANCH_NUMBERING" != "sequential" ] && [ "$BRANCH_NUMBERING" != "timestam
     exit 1
 fi
 
+if [ "$REPO_SHAPE" = "three-leg" ]; then
+    if [ "$CHECKOUT_MODE" != "worktree" ]; then
+        echo "Error: a three-leg project requires checkout_mode: worktree in .specify/extensions/git/git-config.yml (got '$CHECKOUT_MODE')." >&2
+        echo "Branch mode would put the feature on the assembly root, which never carries a feature branch." >&2
+        exit 1
+    fi
+    if ! shape_leg_is_checkout "$SPEC_LEG"; then
+        echo "Error: the spec leg '$SHAPE_SPEC_PATH' is not an initialised Git checkout at '$SPEC_LEG'." >&2
+        echo "Run 'git submodule update --init' (or 'make bootstrap') in the project root first." >&2
+        exit 1
+    fi
+    if ! shape_leg_is_checkout "$CODE_LEG"; then
+        echo "Error: the code leg '$SHAPE_CODE_PATH' is not an initialised Git checkout at '$CODE_LEG'." >&2
+        echo "Run 'git submodule update --init' (or 'make bootstrap') in the project root first." >&2
+        exit 1
+    fi
+fi
+
 JSON_ENCODER=""
 if [ "$JSON_MODE" = true ] || { [ "$CHECKOUT_MODE" = "worktree" ] && [ "$DRY_RUN" != true ]; }; then
     if ! JSON_ENCODER=$(select_json_encoder); then
@@ -763,6 +988,23 @@ fi
 if [ "$CHECKOUT_MODE" = "worktree" ] && [ "$DRY_RUN" != true ] && ! command -v python3 >/dev/null 2>&1; then
     echo "Error: Non-dry-run worktree creation requires Python 3 for safe state publication." >&2
     exit 1
+fi
+
+if [ "$REPO_SHAPE" = "three-leg" ]; then
+    # Base ref per leg: origin/<base_branch> after a best-effort fetch (failure
+    # is a warning so offline work keeps working), else the local base branch.
+    if [ "$DRY_RUN" != true ]; then
+        shape_fetch_leg_base "$SPEC_LEG" spec
+        shape_fetch_leg_base "$CODE_LEG" code
+    fi
+    if ! SPEC_BASE_REF=$(shape_resolve_leg_base_ref "$SPEC_LEG"); then
+        echo "Error: Base branch '$BASE_BRANCH' does not exist locally or on origin in the spec leg '$SHAPE_SPEC_PATH'." >&2
+        exit 1
+    fi
+    if ! CODE_BASE_REF=$(shape_resolve_leg_base_ref "$CODE_LEG"); then
+        echo "Error: Base branch '$BASE_BRANCH' does not exist locally or on origin in the code leg '$SHAPE_CODE_PATH'." >&2
+        exit 1
+    fi
 fi
 
 if [ "$BRANCH_NUMBERING" = "timestamp" ]; then
@@ -846,7 +1088,9 @@ else
     else
         BRANCH_SCOPE_PREFIX=$(branch_scope_prefix)
         if [ -z "$BRANCH_NUMBER" ]; then
-            if [ "$DRY_RUN" = true ] && [ "$HAS_GIT" = true ]; then
+            if [ "$REPO_SHAPE" = "three-leg" ]; then
+                BRANCH_NUMBER=$(shape_next_feature_number)
+            elif [ "$DRY_RUN" = true ] && [ "$HAS_GIT" = true ]; then
                 BRANCH_NUMBER=$(check_existing_branches "$SPECS_DIR" true "$BRANCH_SCOPE_PREFIX")
             elif [ "$DRY_RUN" = true ]; then
                 if [ -n "$BRANCH_SCOPE_PREFIX" ]; then
@@ -913,6 +1157,20 @@ if [ "$CHECKOUT_MODE" = "worktree" ]; then
     WORKTREE_PATH="$WORKTREE_ROOT/$BRANCH_NAME"
 fi
 
+SPEC_WORKTREE_PATH=""
+CODE_WORKTREE_PATH=""
+FEATURE_DIR=""
+FEATURE_DIR_RELATIVE=""
+if [ "$REPO_SHAPE" = "three-leg" ]; then
+    SPEC_WORKTREE_PATH="$WORKTREE_PATH/$SHAPE_SPEC_PATH"
+    CODE_WORKTREE_PATH="$WORKTREE_PATH/$SHAPE_CODE_PATH"
+    FEATURE_DIR="$SPEC_WORKTREE_PATH/specs/$BRANCH_NAME"
+    FEATURE_DIR_RELATIVE="$FEATURE_DIR"
+    case "$FEATURE_DIR" in
+        "$REPO_ROOT"/*) FEATURE_DIR_RELATIVE="${FEATURE_DIR#"$REPO_ROOT/"}" ;;
+    esac
+fi
+
 STATE_FILE=""
 if [ "$DRY_RUN" != true ] && [ "$HAS_GIT" = true ] && [ "$CHECKOUT_MODE" = "worktree" ]; then
     if ! STATE_COMMON_DIR=$(resolve_git_common_dir); then
@@ -926,7 +1184,9 @@ if [ "$DRY_RUN" != true ] && [ "$HAS_GIT" = true ] && [ "$CHECKOUT_MODE" = "work
 fi
 
 if [ "$DRY_RUN" != true ]; then
-    if [ "$HAS_GIT" = true ]; then
+    if [ "$REPO_SHAPE" = "three-leg" ]; then
+        shape_create_feature_worktrees
+    elif [ "$HAS_GIT" = true ]; then
         if [ "$CHECKOUT_MODE" = "worktree" ]; then
             existing_worktree=""
             find_worktree_status=0
@@ -1023,9 +1283,16 @@ if [ "$DRY_RUN" != true ]; then
     fi
 
     printf '# To persist: export SPECIFY_FEATURE=%q\n' "$BRANCH_NAME" >&2
+    if [ "$REPO_SHAPE" = "three-leg" ]; then
+        printf '#             export SPECIFY_FEATURE_DIRECTORY=%q\n' "$FEATURE_DIR_RELATIVE" >&2
+    fi
     if [ "$CHECKOUT_MODE" = "worktree" ] && [ -n "$WORKTREE_PATH" ]; then
         write_last_worktree_state "$BRANCH_NAME" "$WORKTREE_PATH" "$BASE_BRANCH"
         printf '# Feature worktree: %q\n' "$WORKTREE_PATH" >&2
+        if [ "$REPO_SHAPE" = "three-leg" ]; then
+            printf '# Spec worktree: %q\n' "$SPEC_WORKTREE_PATH" >&2
+            printf '# Code worktree: %q\n' "$CODE_WORKTREE_PATH" >&2
+        fi
     fi
 fi
 
@@ -1039,34 +1306,34 @@ if $JSON_MODE; then
             --arg base_branch "$BASE_BRANCH" \
             --arg worktree_path "$WORKTREE_PATH" \
             --arg dry_run "$DRY_RUN" \
-            '({BRANCH_NAME:$branch_name,FEATURE_NUM:$feature_num,CHECKOUT_MODE:$checkout_mode,HAS_GIT:($has_git == "true")}
+            --arg repo_shape "$REPO_SHAPE" \
+            --arg project_root "$PROJECT_ROOT" \
+            --arg spec_worktree_path "$SPEC_WORKTREE_PATH" \
+            --arg code_worktree_path "$CODE_WORKTREE_PATH" \
+            --arg feature_dir "$FEATURE_DIR" \
+            '({BRANCH_NAME:$branch_name,FEATURE_NUM:$feature_num,CHECKOUT_MODE:$checkout_mode,HAS_GIT:($has_git == "true"),REPO_SHAPE:$repo_shape}
               + (if $checkout_mode == "worktree" then {BASE_BRANCH:$base_branch,WORKTREE_PATH:$worktree_path} else {} end)
+              + (if $repo_shape == "three-leg" then {PROJECT_ROOT:$project_root,SPEC_WORKTREE_PATH:$spec_worktree_path,CODE_WORKTREE_PATH:$code_worktree_path,FEATURE_DIR:$feature_dir} else {} end)
               + (if $dry_run == "true" then {DRY_RUN:true} else {} end))'
     elif [ "$JSON_ENCODER" = json_escape ]; then
-        _je_branch=$(json_escape "$BRANCH_NAME")
-        _je_num=$(json_escape "$FEATURE_NUM")
-        _je_mode=$(json_escape "$CHECKOUT_MODE")
-        _je_base=$(json_escape "$BASE_BRANCH")
-        _je_worktree=$(json_escape "$WORKTREE_PATH")
-        if [ "$DRY_RUN" = true ]; then
-            if [ "$CHECKOUT_MODE" = "worktree" ]; then
-                printf '{"BRANCH_NAME":"%s","FEATURE_NUM":"%s","CHECKOUT_MODE":"%s","HAS_GIT":%s,"BASE_BRANCH":"%s","WORKTREE_PATH":"%s","DRY_RUN":true}\n' \
-                    "$_je_branch" "$_je_num" "$_je_mode" "$HAS_GIT" "$_je_base" "$_je_worktree"
-            else
-                printf '{"BRANCH_NAME":"%s","FEATURE_NUM":"%s","CHECKOUT_MODE":"%s","HAS_GIT":%s,"DRY_RUN":true}\n' \
-                    "$_je_branch" "$_je_num" "$_je_mode" "$HAS_GIT"
-            fi
-        else
-            if [ "$CHECKOUT_MODE" = "worktree" ]; then
-                printf '{"BRANCH_NAME":"%s","FEATURE_NUM":"%s","CHECKOUT_MODE":"%s","HAS_GIT":%s,"BASE_BRANCH":"%s","WORKTREE_PATH":"%s"}\n' \
-                    "$_je_branch" "$_je_num" "$_je_mode" "$HAS_GIT" "$_je_base" "$_je_worktree"
-            else
-                printf '{"BRANCH_NAME":"%s","FEATURE_NUM":"%s","CHECKOUT_MODE":"%s","HAS_GIT":%s}\n' \
-                    "$_je_branch" "$_je_num" "$_je_mode" "$HAS_GIT"
-            fi
+        _je_payload=$(printf '{"BRANCH_NAME":"%s","FEATURE_NUM":"%s","CHECKOUT_MODE":"%s","HAS_GIT":%s,"REPO_SHAPE":"%s"' \
+            "$(json_escape "$BRANCH_NAME")" "$(json_escape "$FEATURE_NUM")" \
+            "$(json_escape "$CHECKOUT_MODE")" "$HAS_GIT" "$(json_escape "$REPO_SHAPE")")
+        if [ "$CHECKOUT_MODE" = "worktree" ]; then
+            _je_payload="$_je_payload$(printf ',"BASE_BRANCH":"%s","WORKTREE_PATH":"%s"' \
+                "$(json_escape "$BASE_BRANCH")" "$(json_escape "$WORKTREE_PATH")")"
         fi
+        if [ "$REPO_SHAPE" = "three-leg" ]; then
+            _je_payload="$_je_payload$(printf ',"PROJECT_ROOT":"%s","SPEC_WORKTREE_PATH":"%s","CODE_WORKTREE_PATH":"%s","FEATURE_DIR":"%s"' \
+                "$(json_escape "$PROJECT_ROOT")" "$(json_escape "$SPEC_WORKTREE_PATH")" \
+                "$(json_escape "$CODE_WORKTREE_PATH")" "$(json_escape "$FEATURE_DIR")")"
+        fi
+        if [ "$DRY_RUN" = true ]; then
+            _je_payload="$_je_payload,\"DRY_RUN\":true"
+        fi
+        printf '%s}\n' "$_je_payload"
     else
-        python3 - "$BRANCH_NAME" "$FEATURE_NUM" "$CHECKOUT_MODE" "$HAS_GIT" "$BASE_BRANCH" "$WORKTREE_PATH" "$DRY_RUN" <<'PY'
+        python3 - "$BRANCH_NAME" "$FEATURE_NUM" "$CHECKOUT_MODE" "$HAS_GIT" "$BASE_BRANCH" "$WORKTREE_PATH" "$DRY_RUN" "$REPO_SHAPE" "$PROJECT_ROOT" "$SPEC_WORKTREE_PATH" "$CODE_WORKTREE_PATH" "$FEATURE_DIR" <<'PY'
 import json
 import sys
 
@@ -1075,10 +1342,16 @@ payload = {
     "FEATURE_NUM": sys.argv[2],
     "CHECKOUT_MODE": sys.argv[3],
     "HAS_GIT": sys.argv[4] == "true",
+    "REPO_SHAPE": sys.argv[8],
 }
 if sys.argv[3] == "worktree":
     payload["BASE_BRANCH"] = sys.argv[5]
     payload["WORKTREE_PATH"] = sys.argv[6]
+if sys.argv[8] == "three-leg":
+    payload["PROJECT_ROOT"] = sys.argv[9]
+    payload["SPEC_WORKTREE_PATH"] = sys.argv[10]
+    payload["CODE_WORKTREE_PATH"] = sys.argv[11]
+    payload["FEATURE_DIR"] = sys.argv[12]
 if sys.argv[7] == "true":
     payload["DRY_RUN"] = True
 json.dump(payload, sys.stdout, ensure_ascii=False, separators=(",", ":"))
@@ -1090,11 +1363,21 @@ else
     echo "FEATURE_NUM: $FEATURE_NUM"
     echo "CHECKOUT_MODE: $CHECKOUT_MODE"
     echo "HAS_GIT: $HAS_GIT"
+    echo "REPO_SHAPE: $REPO_SHAPE"
     if [ "$CHECKOUT_MODE" = "worktree" ]; then
         echo "BASE_BRANCH: $BASE_BRANCH"
         echo "WORKTREE_PATH: $WORKTREE_PATH"
     fi
+    if [ "$REPO_SHAPE" = "three-leg" ]; then
+        echo "PROJECT_ROOT: $PROJECT_ROOT"
+        echo "SPEC_WORKTREE_PATH: $SPEC_WORKTREE_PATH"
+        echo "CODE_WORKTREE_PATH: $CODE_WORKTREE_PATH"
+        echo "FEATURE_DIR: $FEATURE_DIR"
+    fi
     if [ "$DRY_RUN" != true ]; then
         printf '# To persist in your shell: export SPECIFY_FEATURE=%q\n' "$BRANCH_NAME"
+        if [ "$REPO_SHAPE" = "three-leg" ]; then
+            printf '#                           export SPECIFY_FEATURE_DIRECTORY=%q\n' "$FEATURE_DIR_RELATIVE"
+        fi
     fi
 fi

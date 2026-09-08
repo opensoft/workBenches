@@ -6,6 +6,7 @@ metadata:
   author: github-spec-kit
   source: git:commands/speckit.git.feature.md
 ---
+<!-- speckit-overlay-shape: 1 -->
 
 # Create Feature Checkout
 
@@ -30,6 +31,21 @@ If the user explicitly provided `GIT_BRANCH_NAME` (e.g., via environment variabl
 
 - Verify Git is available by running `git rev-parse --is-inside-work-tree 2>/dev/null`
 - If Git is not available, warn the user and skip branch creation
+
+## Repository Shape
+
+The script resolves the project shape itself and reports it as `REPO_SHAPE`.
+
+- **Single repository** (`REPO_SHAPE: "single"`): one feature branch, and in worktree mode one linked worktree under `worktree_root`.
+- **Three-leg project** (`REPO_SHAPE: "three-leg"` — an openRepoShape assembly root whose `project.yaml` declares `legs:` for `role: spec` and `role: code`): the same `NNN-feature-name` branch is created in **both** leg repositories, and one linked worktree is added per leg at `worktrees/<NNN-feature-name>/<spec>/` and `worktrees/<NNN-feature-name>/<code>/`. The assembly root never receives a feature branch or a worktree. The script also writes `.specify/feature.json` **at the project root**, pointing at `worktrees/<NNN-feature-name>/<spec>/specs/<NNN-feature-name>`.
+
+In a three-leg project:
+
+- Run the script from the project root (the directory holding `.specify/`).
+- `checkout_mode` must be `worktree`; `branch` is refused with an error naming `checkout_mode` in `.specify/extensions/git/git-config.yml`.
+- Both legs must be initialised checkouts. If one is not, the script refuses and tells you to run `git submodule update --init` (or `make bootstrap`) rather than writing into the wrong repository.
+- Feature numbering scans `specs/` on the spec leg's base branch and in its working tree, plus the branch lists of both leg repositories.
+- Each leg's branch is cut from `origin/<base_branch>` after a best-effort fetch, falling back to the local base branch when offline.
 
 ## Branch Numbering Mode
 
@@ -73,6 +89,7 @@ Run the appropriate script based on your platform:
 - You must only ever run this script once per feature
 - The JSON output will always contain `BRANCH_NAME`, `FEATURE_NUM`, and `CHECKOUT_MODE`
 - In worktree mode the JSON output also contains `BASE_BRANCH` and `WORKTREE_PATH`
+- In a three-leg project the JSON also contains `REPO_SHAPE`, `PROJECT_ROOT`, `SPEC_WORKTREE_PATH`, `CODE_WORKTREE_PATH`, and `FEATURE_DIR`; there `WORKTREE_PATH` is the feature directory that holds both leg worktrees
 
 ## Graceful Degradation
 
@@ -88,3 +105,8 @@ The script outputs JSON with:
 - `CHECKOUT_MODE`: `branch` or `worktree`
 - `BASE_BRANCH`: the configured worktree base branch when `CHECKOUT_MODE=worktree`
 - `WORKTREE_PATH`: the linked worktree root when `CHECKOUT_MODE=worktree`
+- `REPO_SHAPE`: `single` or `three-leg`
+- `PROJECT_ROOT`: the project root that holds `.specify/` (three-leg only)
+- `SPEC_WORKTREE_PATH`: the spec leg worktree `worktrees/<NNN-feature-name>/<spec>/` (three-leg only)
+- `CODE_WORKTREE_PATH`: the code leg worktree `worktrees/<NNN-feature-name>/<code>/` (three-leg only)
+- `FEATURE_DIR`: the Speckit feature directory `<spec worktree>/specs/<NNN-feature-name>` (three-leg only)

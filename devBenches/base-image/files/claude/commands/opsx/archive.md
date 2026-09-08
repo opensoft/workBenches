@@ -5,6 +5,20 @@ category: Workflow
 tags: [workflow, archive, experimental]
 ---
 
+<!-- OPENSPEC-SPECKIT-SHAPE:START -->
+## Repository Shape (managed by setup-openspeckit)
+
+Resolve the project shape once before any step below.
+
+1. The project root is the nearest directory at or above the current one that contains `.specify/`. Run every `.specify/scripts/...` command from that root.
+2. If the root has `project.yaml` with `kind: project-manifest` and `legs:` entries for `role: spec` and `role: code`, this is an openRepoShape **three-leg** project. `<spec>` and `<code>` are those legs' `path:` values (defaults `spec` and `code`). Otherwise it is a **single repository** and `<spec>` and `<code>` are both the root.
+3. Three-leg placement: `openspec/` and `specs/NNN-*` live in the spec leg; source and tests live in the code leg; a feature's worktrees live at `worktrees/<NNN-feature>/<spec>/` and `worktrees/<NNN-feature>/<code>/` under the root. Never write feature work into `<spec>/` or `<code>/` at the root; they sit at the pinned commit.
+4. Feature paths come from `.specify/scripts/bash/check-prerequisites.sh --json` (or `SPECIFY_FEATURE_DIRECTORY` / `.specify/feature.json`). In three-leg, `FEATURE_DIR` is inside the feature's spec worktree and the code worktree is the sibling `<code>/` directory beside it; implementation edits go there.
+5. Run the `openspec` CLI with the current directory at the owner of `openspec/`: the root in a single repository, `<spec>/` in a three-leg project.
+
+Full rules: `${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/protocols/openspec-speckit-workflow.md` ("Repository Shape", "Worktree Rules").
+<!-- OPENSPEC-SPECKIT-SHAPE:END -->
+
 Archive a completed change in the experimental workflow.
 
 **Input**: Optionally specify a change name after `/opsx:archive` (e.g., `/opsx:archive add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
@@ -54,7 +68,7 @@ Archive a completed change in the experimental workflow.
 
 5. **Assess delta spec sync state**
 
-   Check for delta specs at `openspec/changes/<name>/specs/`. If none exist, proceed without sync prompt.
+   Check for delta specs at `openspec/changes/<name>/specs/` (relative to the owner of `openspec/`; see Repository Shape). If none exist, proceed without sync prompt.
 
    **If delta specs exist:**
    - Compare each delta spec with its corresponding main spec at `openspec/specs/<capability>/spec.md`
@@ -67,7 +81,7 @@ Archive a completed change in the experimental workflow.
 
    If user chooses sync, apply the delta specs directly using the standard OpenSpec delta rules. Update the corresponding files under `openspec/specs/<capability>/spec.md`, then proceed to archive. Do not invoke a separate sync skill or command unless it exists in the current project.
 
-6. **Perform the archive**
+6. **Perform the archive** (paths below are relative to the owner of `openspec/`; see Repository Shape)
 
    Create the archive directory if it doesn't exist:
    ```bash

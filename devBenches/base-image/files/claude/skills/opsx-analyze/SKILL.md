@@ -6,6 +6,20 @@ metadata:
   version: "1.1"
 ---
 
+<!-- OPENSPEC-SPECKIT-SHAPE:START -->
+## Repository Shape (managed by setup-openspeckit)
+
+Resolve the project shape once before any step below.
+
+1. The project root is the nearest directory at or above the current one that contains `.specify/`. Run every `.specify/scripts/...` command from that root.
+2. If the root has `project.yaml` with `kind: project-manifest` and `legs:` entries for `role: spec` and `role: code`, this is an openRepoShape **three-leg** project. `<spec>` and `<code>` are those legs' `path:` values (defaults `spec` and `code`). Otherwise it is a **single repository** and `<spec>` and `<code>` are both the root.
+3. Three-leg placement: `openspec/` and `specs/NNN-*` live in the spec leg; source and tests live in the code leg; a feature's worktrees live at `worktrees/<NNN-feature>/<spec>/` and `worktrees/<NNN-feature>/<code>/` under the root. Never write feature work into `<spec>/` or `<code>/` at the root; they sit at the pinned commit.
+4. Feature paths come from `.specify/scripts/bash/check-prerequisites.sh --json` (or `SPECIFY_FEATURE_DIRECTORY` / `.specify/feature.json`). In three-leg, `FEATURE_DIR` is inside the feature's spec worktree and the code worktree is the sibling `<code>/` directory beside it; implementation edits go there.
+5. Run the `openspec` CLI with the current directory at the owner of `openspec/`: the root in a single repository, `<spec>/` in a three-leg project.
+
+Full rules: `${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/protocols/openspec-speckit-workflow.md` ("Repository Shape", "Worktree Rules").
+<!-- OPENSPEC-SPECKIT-SHAPE:END -->
+
 You are a principal engineer and **team lead**. Your job is to orchestrate a deep pre-implementation audit by assembling a team of specialist agents, collecting their findings, and producing a unified audit report.
 
 **IMPORTANT: This is analysis only.** The team reads everything, reports findings, and you write a structured audit report. Nobody fixes issues — that happens after the user reviews your findings.
@@ -26,7 +40,7 @@ If multiple exist, use **AskUserQuestion** to ask which change to analyze.
 
 Before spawning the team, gather and read ALL context yourself. You need to brief the agents.
 
-**Change artifacts:**
+**Change artifacts:** (paths below are relative to the owner of `openspec/`; see Repository Shape)
 - `openspec/changes/<name>/proposal.md`
 - `openspec/changes/<name>/design.md`
 - `openspec/changes/<name>/tasks.md`
@@ -96,7 +110,7 @@ members and cannot be shut down as part of the team.
 
 > You are an audit agent. Read the following files, then run two analysis passes.
 >
-> **Files to read:**
+> **Files to read:** (OpenSpec paths below are relative to the owner of `openspec/`; see Repository Shape)
 > - `openspec/changes/<name>/proposal.md`
 > - `openspec/changes/<name>/design.md`
 > - `openspec/changes/<name>/tasks.md`
@@ -115,7 +129,7 @@ members and cannot be shut down as part of the team.
 
 > You are an audit agent. Read the following files, then run two analysis passes.
 >
-> **Files to read:**
+> **Files to read:** (OpenSpec paths below are relative to the owner of `openspec/`; see Repository Shape)
 > - `openspec/changes/<name>/design.md`
 > - `openspec/changes/<name>/tasks.md`
 > - `openspec/config.yaml`
@@ -133,7 +147,7 @@ members and cannot be shut down as part of the team.
 
 > You are an audit agent. Read the following files, then run two analysis passes.
 >
-> **Files to read:**
+> **Files to read:** (OpenSpec paths below are relative to the owner of `openspec/`; see Repository Shape)
 > - `openspec/changes/<name>/tasks.md`
 > - `openspec/changes/<name>/design.md`
 > - `openspec/changes/<name>/proposal.md`
@@ -150,7 +164,7 @@ members and cannot be shut down as part of the team.
 
 > You are an audit agent. Read the following files, then run two analysis passes.
 >
-> **Files to read:**
+> **Files to read:** (OpenSpec paths below are relative to the owner of `openspec/`; see Repository Shape)
 > - `openspec/changes/<name>/design.md`
 > - `openspec/changes/<name>/tasks.md`
 > - `openspec/config.yaml`
@@ -193,7 +207,7 @@ Focus on:
 
 ## Phase 4: Assemble the Audit Report
 
-Collect findings from all 4 agents plus your own Pass 9 results. Write the unified report to:
+Collect findings from all 4 agents plus your own Pass 9 results. Write the unified report to (relative to the owner of `openspec/`; see Repository Shape):
 **`openspec/changes/<name>/audit-report.md`**
 
 ```markdown

@@ -1,3 +1,4 @@
+# speckit-overlay-shape: 1
 # Source this file from bash or zsh to enable Speckit worktree helpers.
 #
 # NOTE: In devBench containers, prefer the globally sourced ct helpers from
@@ -142,12 +143,86 @@ _speckit_worktree_select_worktree() {
   printf '%s\n' "$target"
 }
 
+# Load a handoff into _SPECKIT_WT_* variables. A shape-aware helper answers
+# `--env` with `KEY=value` assignments; an older or stubbed helper prints only
+# the worktree path, which is still accepted verbatim (byte-exact, including
+# any trailing newlines in the path).
+_speckit_worktree_load_env() {
+  local output _SPECKIT_WORKTREE_CAPTURED_PATH
+
+  _SPECKIT_WT_REPO_SHAPE=single
+  _SPECKIT_WT_PROJECT_ROOT=""
+  _SPECKIT_WT_BRANCH_NAME=""
+  _SPECKIT_WT_WORKTREE_PATH=""
+  _SPECKIT_WT_SPEC_WORKTREE_PATH=""
+  _SPECKIT_WT_CODE_WORKTREE_PATH=""
+  _SPECKIT_WT_FEATURE_DIR=""
+  _SPECKIT_WT_SPECIFY_FEATURE=""
+  _SPECKIT_WT_SPECIFY_FEATURE_DIRECTORY=""
+  _SPECKIT_WT_TARGET=""
+
+  _speckit_worktree_capture_path "$@" || return 1
+  output="$_SPECKIT_WORKTREE_CAPTURED_PATH"
+  [ -n "$output" ] || return 1
+
+  case "$output" in
+    REPO_SHAPE=*)
+      eval "$(printf '%s\n' "$output" | sed 's/^/_SPECKIT_WT_/')" || return 1
+      ;;
+    *)
+      _SPECKIT_WT_WORKTREE_PATH="$output"
+      ;;
+  esac
+}
+
+_speckit_worktree_select_env() {
+  if [ ! -f "$SPECKIT_WORKTREE_SELECT_WORKTREE_SCRIPT" ]; then
+    echo "worktree selector not found: $SPECKIT_WORKTREE_SELECT_WORKTREE_SCRIPT" >&2
+    return 1
+  fi
+
+  if ! _speckit_worktree_load_env bash "$SPECKIT_WORKTREE_SELECT_WORKTREE_SCRIPT" --env; then
+    _speckit_worktree_load_env bash "$SPECKIT_WORKTREE_SELECT_WORKTREE_SCRIPT" --path || return 1
+  fi
+  if [ -z "$_SPECKIT_WT_WORKTREE_PATH" ]; then
+    echo "no Speckit worktree selected" >&2
+    return 1
+  fi
+}
+
+# Where a CLI session should start: the project root in a three-leg project
+# (the only place .specify/ exists), the feature worktree otherwise. Assigns
+# rather than echoes so paths keep their exact bytes.
+_speckit_worktree_set_target() {
+  if [ "${_SPECKIT_WT_REPO_SHAPE:-single}" = "three-leg" ]; then
+    _SPECKIT_WT_TARGET="$_SPECKIT_WT_PROJECT_ROOT"
+  else
+    _SPECKIT_WT_TARGET="$_SPECKIT_WT_WORKTREE_PATH"
+  fi
+}
+
+_speckit_worktree_report_three_leg() {
+  local label="$1"
+
+  printf '%s: three-leg project; starting in %s\n' "$label" "$_SPECKIT_WT_PROJECT_ROOT" >&2
+  printf '%s: SPECIFY_FEATURE=%s\n' "$label" "$_SPECKIT_WT_SPECIFY_FEATURE" >&2
+  printf '%s: SPECIFY_FEATURE_DIRECTORY=%s\n' "$label" "$_SPECKIT_WT_SPECIFY_FEATURE_DIRECTORY" >&2
+  printf '%s: spec worktree %s\n' "$label" "$_SPECKIT_WT_SPEC_WORKTREE_PATH" >&2
+  printf '%s: code worktree %s\n' "$label" "$_SPECKIT_WT_CODE_WORKTREE_PATH" >&2
+}
+
 _speckit_worktree_start_cli() {
   local cli_command="$1"
   local target="$2"
   shift 2 || true
 
   cd "$target" || return 1
+  if [ -n "${_SPECKIT_WT_SPECIFY_FEATURE:-}" ]; then
+    env SPECIFY_FEATURE="$_SPECKIT_WT_SPECIFY_FEATURE" \
+      SPECIFY_FEATURE_DIRECTORY="$_SPECKIT_WT_SPECIFY_FEATURE_DIRECTORY" \
+      "$cli_command" "$@"
+    return $?
+  fi
   "$cli_command" "$@"
 }
 
@@ -181,15 +256,27 @@ _speckit_worktree_start_gemini() {
 }
 
 ct() {
-  local target _SPECKIT_WORKTREE_CAPTURED_PATH
+  local target
 
   if [ ! -f "$SPECKIT_WORKTREE_LAST_WORKTREE_SCRIPT" ]; then
     echo "ct: helper script not found: $SPECKIT_WORKTREE_LAST_WORKTREE_SCRIPT" >&2
     return 1
   fi
 
-  _speckit_worktree_capture_path bash "$SPECKIT_WORKTREE_LAST_WORKTREE_SCRIPT" || return 1
-  target="$_SPECKIT_WORKTREE_CAPTURED_PATH"
+  if ! _speckit_worktree_load_env bash "$SPECKIT_WORKTREE_LAST_WORKTREE_SCRIPT" --env; then
+    _speckit_worktree_load_env bash "$SPECKIT_WORKTREE_LAST_WORKTREE_SCRIPT" || return 1
+  fi
+
+  if [ "$_SPECKIT_WT_REPO_SHAPE" = "three-leg" ]; then
+    # The project root is the only place .specify/ exists, so Speckit commands
+    # run from there with the feature selected; the files live in the worktrees.
+    _speckit_worktree_report_three_leg ct
+    export SPECIFY_FEATURE="$_SPECKIT_WT_SPECIFY_FEATURE"
+    export SPECIFY_FEATURE_DIRECTORY="$_SPECKIT_WT_SPECIFY_FEATURE_DIRECTORY"
+  fi
+
+  _speckit_worktree_set_target
+  target="$_SPECKIT_WT_TARGET"
   if [ -z "$target" ]; then
     echo "ct: no Speckit worktree path returned" >&2
     return 1
@@ -208,51 +295,66 @@ ctp() {
 }
 
 cta() {
-  local target _SPECKIT_WORKTREE_CAPTURED_PATH
+  local target
 
   if ! command -v claude >/dev/null 2>&1; then
     echo "cta: Claude CLI not found on PATH" >&2
     return 1
   fi
 
-  _speckit_worktree_capture_path _speckit_worktree_select_worktree || return 1
-  target="$_SPECKIT_WORKTREE_CAPTURED_PATH"
+  _speckit_worktree_select_env || return 1
+  if [ "$_SPECKIT_WT_REPO_SHAPE" = "three-leg" ]; then
+    _speckit_worktree_report_three_leg cta
+  fi
+  _speckit_worktree_set_target
+  target="$_SPECKIT_WT_TARGET"
   _speckit_worktree_start_claude "$target" "$@"
 }
 
 ctc() {
-  local target _SPECKIT_WORKTREE_CAPTURED_PATH
+  local target
 
   if ! command -v codex >/dev/null 2>&1; then
     echo "ctc: Codex CLI not found on PATH" >&2
     return 1
   fi
 
-  _speckit_worktree_capture_path _speckit_worktree_select_worktree || return 1
-  target="$_SPECKIT_WORKTREE_CAPTURED_PATH"
+  _speckit_worktree_select_env || return 1
+  if [ "$_SPECKIT_WT_REPO_SHAPE" = "three-leg" ]; then
+    _speckit_worktree_report_three_leg ctc
+  fi
+  _speckit_worktree_set_target
+  target="$_SPECKIT_WT_TARGET"
   _speckit_worktree_start_codex "$target" "$@"
 }
 
 ctg() {
-  local target _SPECKIT_WORKTREE_CAPTURED_PATH
+  local target
 
   if ! command -v gemini >/dev/null 2>&1; then
     echo "ctg: Gemini CLI not found on PATH" >&2
     return 1
   fi
 
-  _speckit_worktree_capture_path _speckit_worktree_select_worktree || return 1
-  target="$_SPECKIT_WORKTREE_CAPTURED_PATH"
+  _speckit_worktree_select_env || return 1
+  if [ "$_SPECKIT_WT_REPO_SHAPE" = "three-leg" ]; then
+    _speckit_worktree_report_three_leg ctg
+  fi
+  _speckit_worktree_set_target
+  target="$_SPECKIT_WT_TARGET"
   _speckit_worktree_start_gemini "$target" "$@"
 }
 
 cts() {
   local target
   local cli_command
-  local _SPECKIT_WORKTREE_CAPTURED_PATH
 
-  _speckit_worktree_capture_path _speckit_worktree_select_worktree || return 1
-  target="$_SPECKIT_WORKTREE_CAPTURED_PATH"
+  _speckit_worktree_select_env || return 1
+  if [ "$_SPECKIT_WT_REPO_SHAPE" = "three-leg" ]; then
+    _speckit_worktree_report_three_leg cts
+  fi
+  _speckit_worktree_set_target
+  target="$_SPECKIT_WT_TARGET"
   cli_command=$(_speckit_worktree_prompt_cli) || return 1
   case "$cli_command" in
     claude)

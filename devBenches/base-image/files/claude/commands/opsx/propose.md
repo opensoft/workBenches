@@ -5,6 +5,20 @@ category: Workflow
 tags: [workflow, artifacts, experimental, teams]
 ---
 
+<!-- OPENSPEC-SPECKIT-SHAPE:START -->
+## Repository Shape (managed by setup-openspeckit)
+
+Resolve the project shape once before any step below.
+
+1. The project root is the nearest directory at or above the current one that contains `.specify/`. Run every `.specify/scripts/...` command from that root.
+2. If the root has `project.yaml` with `kind: project-manifest` and `legs:` entries for `role: spec` and `role: code`, this is an openRepoShape **three-leg** project. `<spec>` and `<code>` are those legs' `path:` values (defaults `spec` and `code`). Otherwise it is a **single repository** and `<spec>` and `<code>` are both the root.
+3. Three-leg placement: `openspec/` and `specs/NNN-*` live in the spec leg; source and tests live in the code leg; a feature's worktrees live at `worktrees/<NNN-feature>/<spec>/` and `worktrees/<NNN-feature>/<code>/` under the root. Never write feature work into `<spec>/` or `<code>/` at the root; they sit at the pinned commit.
+4. Feature paths come from `.specify/scripts/bash/check-prerequisites.sh --json` (or `SPECIFY_FEATURE_DIRECTORY` / `.specify/feature.json`). In three-leg, `FEATURE_DIR` is inside the feature's spec worktree and the code worktree is the sibling `<code>/` directory beside it; implementation edits go there.
+5. Run the `openspec` CLI with the current directory at the owner of `openspec/`: the root in a single repository, `<spec>/` in a three-leg project.
+
+Full rules: `${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/protocols/openspec-speckit-workflow.md` ("Repository Shape", "Worktree Rules").
+<!-- OPENSPEC-SPECKIT-SHAPE:END -->
+
 Propose a new governed change. After drafting the proposal, two review gates run before design and the Speckit handoff are generated:
 
 1. **Alignment Review** — An architect and QA lead verify the proposal against your architecture docs and requirements docs, fixing mismatches before anyone debates the proposal.
@@ -99,7 +113,7 @@ Spawn 2 agents **in a single message** (parallel) using the **Agent tool** with 
 
 > You are the **Stack Architect** reviewing a proposal for alignment with the project's architecture and tech stack conventions.
 >
-> **Read these files:**
+> **Read these files:** (OpenSpec paths below are relative to the owner of `openspec/`; see Repository Shape)
 > - Proposal: `openspec/changes/<name>/proposal.md`
 > - Config: `openspec/config.yaml` (especially `tech_stack` and `rules.design`)
 > - Architecture docs: all files in `docs/architecture/`
@@ -126,7 +140,7 @@ Spawn 2 agents **in a single message** (parallel) using the **Agent tool** with 
 
 > You are the **QA Lead** reviewing a proposal for alignment with the project's requirements documentation.
 >
-> **Read these files:**
+> **Read these files:** (OpenSpec paths below are relative to the owner of `openspec/`; see Repository Shape)
 > - Proposal: `openspec/changes/<name>/proposal.md`
 > - Config: `openspec/config.yaml`
 > - Requirements docs: all files in `docs/requirements/`
@@ -216,7 +230,7 @@ Each agent prompt must include:
 
 > You are the **Product Advocate** on a proposal review council. You care about user outcomes, scope clarity, and business value.
 >
-> Read the proposal at `openspec/changes/<name>/proposal.md`, the project config at `openspec/config.yaml`, and docs in `docs/requirements/` and `docs/architecture/`.
+> Read the proposal at `openspec/changes/<name>/proposal.md`, the project config at `openspec/config.yaml`, and docs in `docs/requirements/` and `docs/architecture/`. (OpenSpec paths are relative to the owner of `openspec/`; see Repository Shape.)
 >
 > Evaluate the proposal on these dimensions:
 >
@@ -238,7 +252,7 @@ Each agent prompt must include:
 
 > You are the **Systems Architect** on a proposal review council. You care about technical feasibility, architectural fit, and risk.
 >
-> Read the proposal at `openspec/changes/<name>/proposal.md`, the project config at `openspec/config.yaml`, docs in `docs/requirements/` and `docs/architecture/`, and explore the existing codebase (entry point, services, models, dependency manifest).
+> Read the proposal at `openspec/changes/<name>/proposal.md`, the project config at `openspec/config.yaml`, docs in `docs/requirements/` and `docs/architecture/`, and explore the existing codebase (entry point, services, models, dependency manifest). (OpenSpec paths are relative to the owner of `openspec/`; see Repository Shape.)
 >
 > Evaluate the proposal on these dimensions:
 >
@@ -260,7 +274,7 @@ Each agent prompt must include:
 
 > You are the **Adversary Engineer** on a proposal review council. Your job is to break the proposal. You think about what goes wrong, what's missing, and what assumptions are hiding.
 >
-> Read the proposal at `openspec/changes/<name>/proposal.md`, the project config at `openspec/config.yaml`, docs in `docs/requirements/` and `docs/architecture/`, and explore the existing codebase.
+> Read the proposal at `openspec/changes/<name>/proposal.md`, the project config at `openspec/config.yaml`, docs in `docs/requirements/` and `docs/architecture/`, and explore the existing codebase. (OpenSpec paths are relative to the owner of `openspec/`; see Repository Shape.)
 >
 > Attack the proposal on these dimensions:
 >

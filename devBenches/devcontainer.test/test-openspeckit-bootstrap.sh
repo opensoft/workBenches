@@ -372,6 +372,7 @@ if HOME="$CANONICAL_ALIAS_HOME" \
         --no-repo-agent-pointers \
         --preserve-readmes \
         --no-skill-links \
+        --no-skill-shape-blocks \
         > "$TMPDIR_ROOT/canonical-alias.log" 2>&1; then
     pass 'compatibility alias reaches canonical setup-openspeckit'
 else
@@ -551,6 +552,7 @@ BOOTSTRAP_FLAGS=(
     --skip-init
     --no-speckit-registration
     --no-global-agent-pointers
+    --no-skill-shape-blocks
 )
 
 if ! python3 "$SETUP_SCRIPT" "${BOOTSTRAP_FLAGS[@]}" > "$FIRST_LOG" 2>&1; then
@@ -605,7 +607,7 @@ assert_contains "$WORKFLOW_PROTOCOL" 'git status -sb' 'workflow protocol checks 
 assert_contains "$WORKFLOW_PROTOCOL" 'git branch --show-current' 'workflow protocol checks the root checkout branch before specify'
 assert_contains "$WORKFLOW_PROTOCOL" 'NNN-feature-name' 'workflow protocol reserves canonical feature creation for Speckit'
 assert_file "$BOOTSTRAP_PROTOCOL" 'generated bootstrap protocol exists'
-assert_contains "$BOOTSTRAP_PROTOCOL" 'copied directories' 'bootstrap protocol describes copied skill directories'
+assert_contains "$BOOTSTRAP_PROTOCOL" '`.claude/skills`, `.codex/skills`, and `.agents/skills`' 'bootstrap protocol describes the repo-local skill homes'
 assert_not_contains "$BOOTSTRAP_PROTOCOL" 'skills links' 'bootstrap protocol does not describe repo-local skills as links'
 assert_file "$EXPLORE_COMMAND" 'generated explore command exists'
 if [[ -f "$EXPLORE_COMMAND" ]] && grep -Eiq 'executable work.{0,80}exclusively.{0,80}specs/<feature>/tasks\.md' "$EXPLORE_COMMAND"; then
@@ -1445,6 +1447,7 @@ if env -u OPSX_COMMAND_TEMPLATE_ROOT \
         --no-worktrees \
         --no-repo-agent-pointers \
         --no-skill-links \
+        --no-skill-shape-blocks \
         --no-global-agent-pointers \
         --preserve-readmes > "$TMPDIR_ROOT/opsx-precedence.log" 2>&1; then
     pass 'bootstrap resolves a default OPSX command source'
@@ -1474,6 +1477,7 @@ if HOME="$OPSX_PRECEDENCE_HOME" \
         --no-worktrees \
         --no-repo-agent-pointers \
         --no-skill-links \
+        --no-skill-shape-blocks \
         --no-global-agent-pointers \
         --preserve-readmes > "$TMPDIR_ROOT/opsx-empty-env.log" 2>&1; then
     pass 'empty OPSX override is treated as unset'
@@ -2625,6 +2629,7 @@ if ! python3 "$SETUP_SCRIPT" \
     --skip-init \
     --no-speckit-registration \
     --no-global-agent-pointers \
+    --no-skill-shape-blocks \
     --force > "$TMPDIR_ROOT/incomplete-overlay.log" 2>&1; then
     printf '%s\n' 'FAIL: incomplete-overlay bootstrap invocation failed:'
     cat "$TMPDIR_ROOT/incomplete-overlay.log"
@@ -2770,6 +2775,916 @@ if cmp -s "$DRY_RUN_PROTOCOL_MODES_BEFORE" "$DRY_RUN_PROTOCOL_MODES_AFTER"; then
 else
     fail '--dry-run changes protocol-root path types, symlinks, or modes'
 fi
+
+printf '%s\n' 'Given: manifest fixtures covering three-leg, default paths, family holders, and non-manifests'
+if python3 - "$SETUP_SCRIPT" "$TMPDIR_ROOT/manifest-parsing" <<'PY'
+from pathlib import Path
+import runpy
+import sys
+
+namespace = runpy.run_path(sys.argv[1], run_name="setup_openspeckit_test")
+detect_project_shape = namespace["detect_project_shape"]
+is_family_holder = namespace["is_family_holder"]
+fixture_root = Path(sys.argv[2])
+fixture_root.mkdir()
+failures = 0
+
+
+def check(condition, label):
+    global failures
+    if condition:
+        print(f"PASS: {label}")
+    else:
+        print(f"FAIL: {label}")
+        failures += 1
+
+
+def make_repo(name, files):
+    repo = fixture_root / name
+    repo.mkdir()
+    for relative_name, content in files.items():
+        (repo / relative_name).write_text(content, encoding="utf-8")
+    return repo
+
+
+QUOTED_MANIFEST = """schema_version: 1
+kind: project-manifest   # the manifest kind
+schema: project-repo-schema
+legs:
+  - role: assembly
+    repository: fixture/Fixture
+    path: "."
+  - role: spec
+    repository: fixture/Fixture-spec
+    path: 'spec tree'      # quoted, with a trailing comment
+    naming:
+      form: project-leg
+      role: assembly
+  - role: code
+    repository: fixture/Fixture-code
+    path: "impl"
+contracts: []
+"""
+
+DEFAULT_PATH_MANIFEST = """kind: project-manifest
+schema: project-repo-schema
+legs:
+  - role: assembly
+    path: "."
+  - role: spec
+  - role: code
+"""
+
+TRAILING_LEGS_MANIFEST = """kind: project-manifest
+schema: project-repo-schema
+legs:
+  - role: spec
+    path: spec
+  - role: code
+    path: code
+other:
+  - role: spec
+    path: decoy
+"""
+
+quoted = make_repo("quoted", {"project.yaml": QUOTED_MANIFEST})
+shape = detect_project_shape(quoted)
+check(shape is not None, "manifest: quoted three-leg manifest is detected")
+if shape is not None:
+    check(shape.spec_path == "spec tree", "manifest: quoted spec path is unquoted")
+    check(shape.code_path == "impl", "manifest: quoted code path is unquoted")
+    check(shape.spec_leg == quoted / "spec tree", "manifest: spec leg resolves under the root")
+    check(shape.code_leg == quoted / "impl", "manifest: code leg resolves under the root")
+
+defaults = make_repo("defaults", {"project.yaml": DEFAULT_PATH_MANIFEST})
+shape = detect_project_shape(defaults)
+check(shape is not None, "manifest: legs without path: are detected")
+if shape is not None:
+    check(
+        (shape.spec_path, shape.code_path) == ("spec", "code"),
+        "manifest: missing leg paths fall back to spec and code",
+    )
+
+trailing = make_repo("trailing", {"project.yaml": TRAILING_LEGS_MANIFEST})
+shape = detect_project_shape(trailing)
+check(
+    shape is not None and shape.spec_path == "spec",
+    "manifest: a later column-0 key ends the legs list",
+)
+
+wrong_kind = make_repo(
+    "wrong-kind",
+    {"project.yaml": "kind: something-else\nschema: project-repo-schema\nlegs:\n  - role: spec\n"},
+)
+check(detect_project_shape(wrong_kind) is None, "manifest: a non-project kind is a single repository")
+
+wrong_schema = make_repo(
+    "wrong-schema",
+    {"project.yaml": "kind: project-manifest\nschema: other\nlegs:\n  - role: spec\n  - role: code\n"},
+)
+check(detect_project_shape(wrong_schema) is None, "manifest: a foreign schema is a single repository")
+
+missing_code = make_repo(
+    "missing-code",
+    {"project.yaml": "kind: project-manifest\nschema: project-repo-schema\nlegs:\n  - role: spec\n"},
+)
+check(detect_project_shape(missing_code) is None, "manifest: a manifest without a code leg is a single repository")
+
+plain = make_repo("plain", {"README.md": "no manifest\n"})
+check(detect_project_shape(plain) is None, "manifest: a repository without project.yaml is a single repository")
+check(not is_family_holder(plain), "manifest: a repository without family.yaml is not a family holder")
+
+family = make_repo(
+    "family",
+    {"family.yaml": "schema_version: 1\nkind: family-manifest\nid: fixture-family\n"},
+)
+check(is_family_holder(family), "manifest: family.yaml with kind family-manifest is a family holder")
+check(detect_project_shape(family) is None, "manifest: a family holder has no three-leg shape")
+
+family_with_project = make_repo(
+    "family-with-project",
+    {
+        "family.yaml": "kind: family-manifest\n",
+        "project.yaml": "kind: project-manifest\nschema: project-repo-schema\nlegs:\n  - role: spec\n  - role: code\n",
+    },
+)
+check(
+    not is_family_holder(family_with_project),
+    "manifest: a project.yaml beside family.yaml is not a family holder",
+)
+
+escaping = make_repo(
+    "escaping",
+    {
+        "project.yaml": "kind: project-manifest\nschema: project-repo-schema\n"
+        "legs:\n  - role: spec\n    path: ../outside\n  - role: code\n    path: code\n"
+    },
+)
+try:
+    detect_project_shape(escaping)
+except SystemExit:
+    print("PASS: manifest: a leg path escaping the root is refused")
+else:
+    print("FAIL: manifest: a leg path escaping the root is refused")
+    failures += 1
+
+raise SystemExit(1 if failures else 0)
+PY
+then
+    pass 'manifest parsing detects three-leg projects, defaults, and family holders'
+else
+    fail 'manifest parsing detects three-leg projects, defaults, and family holders'
+fi
+
+git_fixture() {
+    git \
+        -c user.name='Bootstrap Test' \
+        -c user.email='bootstrap-test@example.invalid' \
+        -c protocol.file.allow=always \
+        "$@"
+}
+
+make_leg_origin() {
+    local path="$1"
+    local label="$2"
+    mkdir -p "$path"
+    git init -q -b main "$path"
+    printf '%s\n' "$label leg fixture" > "$path/README.md"
+    git_fixture -C "$path" add README.md
+    git_fixture -C "$path" commit -q -m "initial $label"
+}
+
+write_project_manifest() {
+    local root="$1"
+    cat > "$root/project.yaml" <<'EOF'
+schema_version: 1
+kind: project-manifest
+
+# The three legs. `assembly` is THIS repository and its path is `.`;
+# `spec` and `code` are submodules mounted at the paths below.
+id: fixture
+name: "Fixture Project"
+schema: project-repo-schema
+reference: "fixture reference"
+elected_by: "fixture"
+elected_on: 2026-09-08
+topic: xf-project-fixture
+visibility: private
+tracking_branch: main
+neutral_product_pins: []
+
+legs:
+  - role: assembly
+    repository: fixture/Fixture
+    path: "."
+    naming:
+      form: project-leg
+      role: assembly
+      also_matches: []
+  - role: spec
+    repository: fixture/Fixture-spec
+    path: spec        # the spec leg mount point
+    naming:
+      form: project-leg
+      role: spec
+      also_matches: []
+  - role: code
+    repository: fixture/Fixture-code
+    path: "code"
+    naming:
+      form: project-leg
+      role: code
+      also_matches: []
+
+contracts: []
+EOF
+}
+
+seed_speckit_state() {
+    local root="$1"
+    mkdir -p "$root/.specify/templates"
+    printf '%s\n' '{"integration":"claude"}' > "$root/.specify/integration.json"
+    printf '%s\n' '{"integration":"claude"}' > "$root/.specify/init-options.json"
+    printf '%s\n' '# Spec template' > "$root/.specify/templates/spec-template.md"
+}
+
+make_three_leg_root() {
+    local root="$1"
+    mkdir -p "$root"
+    git init -q -b main "$root"
+    git_fixture -C "$root" submodule add -q "$THREE_LEG_SPEC_ORIGIN" spec > /dev/null 2>&1
+    git_fixture -C "$root" submodule add -q "$THREE_LEG_CODE_ORIGIN" code > /dev/null 2>&1
+    write_project_manifest "$root"
+    seed_speckit_state "$root"
+}
+
+THREE_LEG_HOME="$TMPDIR_ROOT/three-leg-home"
+THREE_LEG_PROTOCOL_ROOT="$TMPDIR_ROOT/three-leg-protocol"
+THREE_LEG_SPEC_ORIGIN="$TMPDIR_ROOT/three-leg-origins/spec"
+THREE_LEG_CODE_ORIGIN="$TMPDIR_ROOT/three-leg-origins/code"
+THREE_LEG_OPSX_TEMPLATES="$TMPDIR_ROOT/three-leg-opsx-templates"
+THREE_LEG_ROOT="$TMPDIR_ROOT/three-leg-root"
+mkdir -p "$THREE_LEG_HOME" "$THREE_LEG_OPSX_TEMPLATES"
+cat > "$THREE_LEG_OPSX_TEMPLATES/apply.md" <<'EOF'
+---
+name: opsx-apply
+---
+
+Fixture OPSX apply command.
+EOF
+make_leg_origin "$THREE_LEG_SPEC_ORIGIN" spec
+make_leg_origin "$THREE_LEG_CODE_ORIGIN" code
+make_three_leg_root "$THREE_LEG_ROOT"
+
+if [[ -f "$THREE_LEG_ROOT/spec/README.md" && -e "$THREE_LEG_ROOT/spec/.git" ]]; then
+    pass 'Given three-leg fixture mounts a real spec submodule'
+else
+    fail 'Given three-leg fixture mounts a real spec submodule'
+fi
+if [[ -f "$THREE_LEG_ROOT/code/README.md" && -e "$THREE_LEG_ROOT/code/.git" ]]; then
+    pass 'Given three-leg fixture mounts a real code submodule'
+else
+    fail 'Given three-leg fixture mounts a real code submodule'
+fi
+
+THREE_LEG_FLAGS=(
+    --no-speckit-registration
+    --no-skill-links
+    --no-global-agent-pointers
+)
+
+printf '%s\n' 'When: bootstrap runs with --dry-run against the three-leg root'
+export HOME="$THREE_LEG_HOME"
+export AGENT_PROTOCOL_ROOT="$THREE_LEG_PROTOCOL_ROOT"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT"
+export OPSX_COMMAND_TEMPLATE_ROOT="$THREE_LEG_OPSX_TEMPLATES"
+THREE_LEG_DRY_RUN_LOG="$TMPDIR_ROOT/three-leg-dry-run.log"
+THREE_LEG_DRY_BEFORE="$TMPDIR_ROOT/three-leg-dry.before"
+THREE_LEG_DRY_AFTER="$TMPDIR_ROOT/three-leg-dry.after"
+snapshot_repo "$THREE_LEG_ROOT" > "$THREE_LEG_DRY_BEFORE"
+if ! python3 "$SETUP_SCRIPT" --repo "$THREE_LEG_ROOT" --dry-run "${THREE_LEG_FLAGS[@]}" \
+    > "$THREE_LEG_DRY_RUN_LOG" 2>&1; then
+    printf '%s\n' 'FAIL: three-leg dry-run bootstrap invocation failed:'
+    cat "$THREE_LEG_DRY_RUN_LOG"
+    exit 1
+fi
+
+printf '%s\n' 'Then: the dry run announces the shape, splits its log, and writes nothing'
+snapshot_repo "$THREE_LEG_ROOT" > "$THREE_LEG_DRY_AFTER"
+assert_contains "$THREE_LEG_DRY_RUN_LOG" 'shape: openRepoShape three-leg' 'three-leg dry run reports the detected shape'
+assert_contains "$THREE_LEG_DRY_RUN_LOG" "[spec] would write $THREE_LEG_ROOT/spec/openspec/config.yaml" 'three-leg dry run plans the OpenSpec config in the spec leg'
+assert_contains "$THREE_LEG_DRY_RUN_LOG" "[spec] would create directory $THREE_LEG_ROOT/spec/openspec/specs" 'three-leg dry run plans the OpenSpec specs directory in the spec leg'
+assert_contains "$THREE_LEG_DRY_RUN_LOG" "[root] would write $THREE_LEG_ROOT/.gitignore" 'three-leg dry run plans the root gitignore'
+assert_contains "$THREE_LEG_DRY_RUN_LOG" "[root] would write $THREE_LEG_ROOT/AGENTS.md" 'three-leg dry run plans the root agent pointer'
+assert_not_contains "$THREE_LEG_DRY_RUN_LOG" "[spec] would write $THREE_LEG_ROOT/AGENTS.md" 'three-leg dry run keeps root writes out of the spec prefix'
+assert_not_contains "$THREE_LEG_DRY_RUN_LOG" "$THREE_LEG_ROOT/code/openspec" 'three-leg dry run plans nothing in the code leg'
+if cmp -s "$THREE_LEG_DRY_BEFORE" "$THREE_LEG_DRY_AFTER"; then
+    pass 'three-leg dry run leaves the root byte-for-byte unchanged'
+else
+    fail 'three-leg dry run changes the root'
+fi
+
+printf '%s\n' 'When: bootstrap runs for real against the three-leg root'
+THREE_LEG_LOG="$TMPDIR_ROOT/three-leg.log"
+if ! python3 "$SETUP_SCRIPT" --repo "$THREE_LEG_ROOT" "${THREE_LEG_FLAGS[@]}" \
+    > "$THREE_LEG_LOG" 2>&1; then
+    printf '%s\n' 'FAIL: three-leg bootstrap invocation failed:'
+    cat "$THREE_LEG_LOG"
+    exit 1
+fi
+
+printf '%s\n' 'Then: OpenSpec scaffolding lands in the spec leg and everything else in the root'
+assert_file "$THREE_LEG_ROOT/spec/openspec/config.yaml" 'three-leg OpenSpec config lands in the spec leg'
+assert_file "$THREE_LEG_ROOT/spec/openspec/changes/archive/.gitkeep" 'three-leg archive keepfile lands in the spec leg'
+assert_file "$THREE_LEG_ROOT/spec/openspec/specs/.gitkeep" 'three-leg specs keepfile lands in the spec leg'
+assert_file "$THREE_LEG_ROOT/spec/openspec/README.md" 'three-leg OpenSpec README lands in the spec leg'
+assert_contains "$THREE_LEG_ROOT/spec/openspec/README.md" '${AGENT_PROTOCOL_ROOT:-$HOME/.agents}' 'three-leg OpenSpec README keeps the portable protocol root'
+assert_not_exists "$THREE_LEG_ROOT/openspec" 'three-leg root receives no OpenSpec directory'
+assert_regular_directory "$THREE_LEG_ROOT/.specify" 'three-leg Speckit scaffolding stays in the root'
+assert_file "$THREE_LEG_ROOT/.specify/README.md" 'three-leg Speckit README stays in the root'
+assert_file "$THREE_LEG_ROOT/AGENTS.md" 'three-leg agent pointer stays in the root'
+assert_not_exists "$THREE_LEG_ROOT/spec/AGENTS.md" 'three-leg spec leg receives no agent pointer'
+assert_not_exists "$THREE_LEG_ROOT/code/openspec" 'three-leg code leg receives no OpenSpec directory'
+assert_not_exists "$THREE_LEG_ROOT/code/.specify" 'three-leg code leg receives no Speckit scaffolding'
+assert_not_exists "$THREE_LEG_ROOT/code/AGENTS.md" 'three-leg code leg receives no agent pointer'
+
+printf '%s\n' 'Then: the worktree layout and ignore line describe the three-leg root'
+THREE_LEG_GIT_CONFIG="$THREE_LEG_ROOT/.specify/extensions/git/git-config.yml"
+assert_contains "$THREE_LEG_GIT_CONFIG" 'worktree_root: worktrees' 'three-leg worktree root defaults to worktrees'
+assert_contains "$THREE_LEG_GIT_CONFIG" 'checkout_mode: worktree' 'three-leg checkout mode stays worktree'
+assert_contains "$THREE_LEG_ROOT/.gitignore" '/worktrees/' 'three-leg root gitignore carries the worktrees line'
+assert_equal "$(grep -Fxc '/worktrees/' "$THREE_LEG_ROOT/.gitignore")" 1 'three-leg root gitignore carries the worktrees line once'
+
+printf '%s\n' 'Then: the managed agent block names the two mount paths'
+assert_contains "$THREE_LEG_ROOT/AGENTS.md" '### Repository shape: openRepoShape three-leg' 'three-leg agent block names the shape'
+assert_contains "$THREE_LEG_ROOT/AGENTS.md" '- Spec leg: `spec/`' 'three-leg agent block names the spec mount path'
+assert_contains "$THREE_LEG_ROOT/AGENTS.md" '- Code leg: `code/`' 'three-leg agent block names the code mount path'
+assert_contains "$THREE_LEG_ROOT/AGENTS.md" '`worktrees/<NNN-feature>/spec/`' 'three-leg agent block names the spec worktree path'
+assert_contains "$THREE_LEG_ROOT/CLAUDE.md" '### Repository shape: openRepoShape three-leg' 'three-leg shape reaches every agent context file'
+
+printf '%s\n' 'Then: the run closes with the spec-leg paths and the two-commit note'
+assert_contains "$THREE_LEG_LOG" 'Two Repositories Means Two Commits' 'three-leg run prints the two-commit note'
+assert_contains "$THREE_LEG_LOG" 'Written in the spec repository (spec/):' 'three-leg run lists the spec repository writes'
+assert_contains "$THREE_LEG_LOG" "  $THREE_LEG_ROOT/spec/openspec/config.yaml" 'three-leg run names the OpenSpec config as a spec-leg write'
+assert_contains "$THREE_LEG_LOG" 'contracts/spec-pin.yaml' 'three-leg run names the pin file to move'
+
+printf '%s\n' 'When: bootstrap reruns against the same three-leg root'
+THREE_LEG_FIRST_SNAPSHOT="$TMPDIR_ROOT/three-leg-first.snapshot"
+THREE_LEG_SECOND_SNAPSHOT="$TMPDIR_ROOT/three-leg-second.snapshot"
+THREE_LEG_FIRST_MODES="$TMPDIR_ROOT/three-leg-first-modes.snapshot"
+THREE_LEG_SECOND_MODES="$TMPDIR_ROOT/three-leg-second-modes.snapshot"
+snapshot_repo "$THREE_LEG_ROOT" > "$THREE_LEG_FIRST_SNAPSHOT"
+snapshot_repo_modes "$THREE_LEG_ROOT" > "$THREE_LEG_FIRST_MODES"
+if ! python3 "$SETUP_SCRIPT" --repo "$THREE_LEG_ROOT" "${THREE_LEG_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/three-leg-second.log" 2>&1; then
+    printf '%s\n' 'FAIL: second three-leg bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/three-leg-second.log"
+    exit 1
+fi
+snapshot_repo "$THREE_LEG_ROOT" > "$THREE_LEG_SECOND_SNAPSHOT"
+snapshot_repo_modes "$THREE_LEG_ROOT" > "$THREE_LEG_SECOND_MODES"
+
+printf '%s\n' 'Then: the second three-leg run changes nothing'
+if cmp -s "$THREE_LEG_FIRST_SNAPSHOT" "$THREE_LEG_SECOND_SNAPSHOT"; then
+    pass 'second three-leg bootstrap preserves file hashes'
+else
+    fail 'second three-leg bootstrap changes file hashes'
+fi
+if cmp -s "$THREE_LEG_FIRST_MODES" "$THREE_LEG_SECOND_MODES"; then
+    pass 'second three-leg bootstrap preserves path types and modes'
+else
+    fail 'second three-leg bootstrap changes path types or modes'
+fi
+assert_equal "$(grep -Fc '### Repository shape: openRepoShape three-leg' "$THREE_LEG_ROOT/AGENTS.md")" 1 'second three-leg bootstrap keeps one managed shape section'
+assert_equal "$(grep -Fxc '/worktrees/' "$THREE_LEG_ROOT/.gitignore")" 1 'second three-leg bootstrap appends no duplicate ignore line'
+
+printf '%s\n' 'Given: a three-leg root whose AGENTS.md opens with the shape pointer'
+SHAPE_POINTER_ROOT="$TMPDIR_ROOT/shape-pointer-root"
+make_three_leg_root "$SHAPE_POINTER_ROOT"
+printf '%s\n' \
+    'Read AGENTS-shape.md first — the rules of this repository shape.' \
+    '' \
+    '# Agent Instructions' \
+    '' \
+    '## Repository Role' \
+    '' \
+    'fixture role' > "$SHAPE_POINTER_ROOT/AGENTS.md"
+
+printf '%s\n' 'When: bootstrap writes the managed block into that root'
+if ! python3 "$SETUP_SCRIPT" --repo "$SHAPE_POINTER_ROOT" "${THREE_LEG_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/shape-pointer.log" 2>&1; then
+    printf '%s\n' 'FAIL: shape-pointer bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/shape-pointer.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: line 1 is untouched and the block lands before the first section'
+assert_equal \
+    "$(sed -n '1p' "$SHAPE_POINTER_ROOT/AGENTS.md")" \
+    'Read AGENTS-shape.md first — the rules of this repository shape.' \
+    'first-line invariant keeps the shape pointer on line 1'
+assert_contains "$SHAPE_POINTER_ROOT/AGENTS.md" '### Repository shape: openRepoShape three-leg' 'shape-pointer root still receives the managed shape section'
+assert_contains "$SHAPE_POINTER_ROOT/AGENTS.md" '## Repository Role' 'shape-pointer root keeps its hand-written section'
+
+printf '%s\n' 'Given: a root whose first line is both the shape pointer and the first section heading'
+FIRST_LINE_ROOT="$TMPDIR_ROOT/first-line-refusal-root"
+make_three_leg_root "$FIRST_LINE_ROOT"
+printf '%s\n' \
+    '## Read AGENTS-shape.md first' \
+    '' \
+    'fixture body' > "$FIRST_LINE_ROOT/AGENTS.md"
+
+printf '%s\n' 'When: the managed block would have to displace that line'
+if python3 "$SETUP_SCRIPT" --repo "$FIRST_LINE_ROOT" "${THREE_LEG_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/first-line-refusal.log" 2>&1; then
+    fail 'bootstrap refuses to move a first line naming AGENTS-shape.md'
+else
+    pass 'bootstrap refuses to move a first line naming AGENTS-shape.md'
+fi
+
+printf '%s\n' 'Then: the refusal names the file and both first lines'
+assert_contains "$TMPDIR_ROOT/first-line-refusal.log" "Refusing to move the first line of $FIRST_LINE_ROOT/AGENTS.md" 'first-line refusal names the file'
+assert_contains "$TMPDIR_ROOT/first-line-refusal.log" "'## Read AGENTS-shape.md first'" 'first-line refusal quotes the existing first line'
+assert_contains "$TMPDIR_ROOT/first-line-refusal.log" "'<!-- OPENSPEC-SPECKIT-GLOBAL:START -->'" 'first-line refusal quotes the proposed first line'
+assert_contains "$FIRST_LINE_ROOT/AGENTS.md" '## Read AGENTS-shape.md first' 'first-line refusal leaves the context file unchanged'
+assert_not_contains "$FIRST_LINE_ROOT/AGENTS.md" 'OPENSPEC-SPECKIT-GLOBAL' 'first-line refusal writes no managed block'
+
+printf '%s\n' 'Given: a three-leg root whose spec leg was never fetched'
+UNFETCHED_ROOT="$TMPDIR_ROOT/unfetched-spec-root"
+mkdir -p "$UNFETCHED_ROOT/spec" "$UNFETCHED_ROOT/code"
+git init -q -b main "$UNFETCHED_ROOT"
+write_project_manifest "$UNFETCHED_ROOT"
+seed_speckit_state "$UNFETCHED_ROOT"
+
+printf '%s\n' 'When: bootstrap runs against the unfetched three-leg root'
+if python3 "$SETUP_SCRIPT" --repo "$UNFETCHED_ROOT" "${THREE_LEG_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/unfetched-spec.log" 2>&1; then
+    fail 'bootstrap refuses a three-leg root whose spec leg is not initialised'
+else
+    pass 'bootstrap refuses a three-leg root whose spec leg is not initialised'
+fi
+
+printf '%s\n' 'Then: the refusal names the remedy and nothing is written'
+assert_contains "$TMPDIR_ROOT/unfetched-spec.log" 'is not an initialised git checkout' 'unfetched spec leg refusal names the cause'
+assert_contains "$TMPDIR_ROOT/unfetched-spec.log" 'git submodule update --init' 'unfetched spec leg refusal names the submodule command'
+assert_contains "$TMPDIR_ROOT/unfetched-spec.log" 'make bootstrap' 'unfetched spec leg refusal names the bootstrap target'
+assert_not_exists "$UNFETCHED_ROOT/spec/openspec" 'unfetched spec leg refusal writes nothing in the spec leg'
+assert_not_exists "$UNFETCHED_ROOT/openspec" 'unfetched spec leg refusal writes nothing in the root'
+assert_not_exists "$UNFETCHED_ROOT/AGENTS.md" 'unfetched spec leg refusal writes no agent pointer'
+
+printf '%s\n' 'Given: a three-leg root whose spec leg directory is missing entirely'
+MISSING_LEG_ROOT="$TMPDIR_ROOT/missing-spec-root"
+mkdir -p "$MISSING_LEG_ROOT/code"
+git init -q -b main "$MISSING_LEG_ROOT"
+write_project_manifest "$MISSING_LEG_ROOT"
+seed_speckit_state "$MISSING_LEG_ROOT"
+
+printf '%s\n' 'When: bootstrap runs against the root with no spec leg directory'
+if python3 "$SETUP_SCRIPT" --repo "$MISSING_LEG_ROOT" "${THREE_LEG_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/missing-spec.log" 2>&1; then
+    fail 'bootstrap refuses a three-leg root whose spec leg is missing'
+else
+    pass 'bootstrap refuses a three-leg root whose spec leg is missing'
+fi
+assert_contains "$TMPDIR_ROOT/missing-spec.log" 'named by project.yaml is missing' 'missing spec leg refusal names the cause'
+assert_contains "$TMPDIR_ROOT/missing-spec.log" 'git submodule update --init' 'missing spec leg refusal names the submodule command'
+assert_contains "$TMPDIR_ROOT/missing-spec.log" 'make bootstrap' 'missing spec leg refusal names the bootstrap target'
+
+printf '%s\n' 'Given: a single repository and a family holder'
+SHAPE_ON_REPO="$TMPDIR_ROOT/shape-on-repo"
+FAMILY_HOLDER_REPO="$TMPDIR_ROOT/family-holder-repo"
+mkdir -p "$SHAPE_ON_REPO" "$FAMILY_HOLDER_REPO"
+git init -q -b main "$SHAPE_ON_REPO"
+git init -q -b main "$FAMILY_HOLDER_REPO"
+seed_speckit_state "$SHAPE_ON_REPO"
+seed_speckit_state "$FAMILY_HOLDER_REPO"
+cat > "$FAMILY_HOLDER_REPO/family.yaml" <<'EOF'
+schema_version: 1
+kind: family-manifest
+
+# A family holder pins its members' assembly roots and has no legs of its own.
+id: fixture-family
+name: "Fixture Family"
+EOF
+
+printf '%s\n' 'When: --shape on runs against the single repository'
+if python3 "$SETUP_SCRIPT" --repo "$SHAPE_ON_REPO" --shape on "${THREE_LEG_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/shape-on.log" 2>&1; then
+    fail '--shape on refuses a single repository'
+else
+    pass '--shape on refuses a single repository'
+fi
+assert_contains "$TMPDIR_ROOT/shape-on.log" 'Refusing --shape on' '--shape on refusal names the flag'
+assert_contains "$TMPDIR_ROOT/shape-on.log" 'no project.yaml with kind: project-manifest' '--shape on refusal names the missing manifest'
+assert_not_exists "$SHAPE_ON_REPO/openspec" '--shape on refusal writes nothing'
+
+printf '%s\n' 'When: --shape on runs against the family holder'
+if python3 "$SETUP_SCRIPT" --repo "$FAMILY_HOLDER_REPO" --shape on "${THREE_LEG_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/shape-on-family.log" 2>&1; then
+    fail '--shape on refuses a family holder'
+else
+    pass '--shape on refuses a family holder'
+fi
+assert_contains "$TMPDIR_ROOT/shape-on-family.log" 'family holder' '--shape on refusal names the family holder'
+
+printf '%s\n' 'When: the family holder is bootstrapped with the default shape handling'
+if ! python3 "$SETUP_SCRIPT" --repo "$FAMILY_HOLDER_REPO" "${THREE_LEG_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/family-holder.log" 2>&1; then
+    printf '%s\n' 'FAIL: family holder bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/family-holder.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: the family holder is logged and gets the single-repository layout'
+assert_contains "$TMPDIR_ROOT/family-holder.log" 'shape: family holder' 'family holder is logged as such'
+assert_file "$FAMILY_HOLDER_REPO/openspec/config.yaml" 'family holder keeps OpenSpec in its own root'
+assert_contains "$FAMILY_HOLDER_REPO/.specify/extensions/git/git-config.yml" 'worktree_root: ../family-holder-repo-worktrees' 'family holder uses the single-repository worktree root'
+assert_not_exists "$FAMILY_HOLDER_REPO/.gitignore" 'family holder receives no worktrees ignore line'
+assert_not_contains "$FAMILY_HOLDER_REPO/AGENTS.md" '### Repository shape: openRepoShape three-leg' 'family holder agent block stays single-repository'
+
+printf '%s\n' 'Given: a three-leg root bootstrapped with --shape off'
+SHAPE_OFF_ROOT="$TMPDIR_ROOT/shape-off-root"
+make_three_leg_root "$SHAPE_OFF_ROOT"
+
+printf '%s\n' 'When: bootstrap forces the single-repository layout'
+if ! python3 "$SETUP_SCRIPT" --repo "$SHAPE_OFF_ROOT" --shape off "${THREE_LEG_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/shape-off.log" 2>&1; then
+    printf '%s\n' 'FAIL: --shape off bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/shape-off.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: everything lands in the root and the legs are untouched'
+assert_contains "$TMPDIR_ROOT/shape-off.log" 'shape: single repository (forced by --shape off)' '--shape off reports the forced layout'
+assert_file "$SHAPE_OFF_ROOT/openspec/config.yaml" '--shape off keeps OpenSpec in the root'
+assert_not_exists "$SHAPE_OFF_ROOT/spec/openspec" '--shape off writes nothing in the spec leg'
+assert_contains "$SHAPE_OFF_ROOT/.specify/extensions/git/git-config.yml" 'worktree_root: ../shape-off-root-worktrees' '--shape off uses the single-repository worktree root'
+assert_not_exists "$SHAPE_OFF_ROOT/.gitignore" '--shape off adds no worktrees ignore line'
+assert_not_contains "$SHAPE_OFF_ROOT/AGENTS.md" '### Repository shape: openRepoShape three-leg' '--shape off agent block stays single-repository'
+assert_not_contains "$TMPDIR_ROOT/shape-off.log" '[spec] ' '--shape off prints no spec-leg log prefix'
+assert_not_contains "$TMPDIR_ROOT/shape-off.log" 'Two Repositories Means Two Commits' '--shape off prints no two-commit note'
+
+printf '%s\n' 'Given: skills and commands that should carry the managed shape block'
+SHAPE_BLOCK_ROOT="$TMPDIR_ROOT/shape-block-root"
+SHAPE_BLOCK_HOME="$TMPDIR_ROOT/shape-block-home"
+SHAPE_BLOCK_PROTOCOL_ROOT="$TMPDIR_ROOT/shape-block-protocol"
+SHAPE_BLOCK_EXTERNAL="$TMPDIR_ROOT/shape-block-external"
+make_three_leg_root "$SHAPE_BLOCK_ROOT"
+printf '%s\n' '# repository-specific ignores' '*.log' > "$SHAPE_BLOCK_ROOT/.gitignore"
+mkdir -p \
+    "$SHAPE_BLOCK_ROOT/.claude/skills/speckit-plan" \
+    "$SHAPE_BLOCK_ROOT/.claude/skills/ct" \
+    "$SHAPE_BLOCK_ROOT/.claude/skills/openspec-propose" \
+    "$SHAPE_BLOCK_ROOT/.agents/skills/speckit-tasks" \
+    "$SHAPE_BLOCK_ROOT/.codex/skills/speckit-tasks" \
+    "$SHAPE_BLOCK_HOME/.claude/skills/speckit-plan" \
+    "$SHAPE_BLOCK_HOME/.claude/skills/ctp" \
+    "$SHAPE_BLOCK_HOME/.agents/skills/speckit-tasks" \
+    "$SHAPE_BLOCK_HOME/.codex/skills/openspec-apply-change" \
+    "$SHAPE_BLOCK_HOME/.codex/skills/speckit-linked" \
+    "$SHAPE_BLOCK_EXTERNAL"
+cat > "$SHAPE_BLOCK_ROOT/.claude/skills/speckit-plan/SKILL.md" <<'EOF'
+---
+name: speckit-plan
+description: fixture plan skill
+---
+
+Run the planning workflow from the repo root.
+EOF
+printf '%s\n' 'fixture ct skill without frontmatter' > "$SHAPE_BLOCK_ROOT/.claude/skills/ct/SKILL.md"
+printf '%s\n' 'fixture repo-local OpenSpec wrapper' > "$SHAPE_BLOCK_ROOT/.claude/skills/openspec-propose/SKILL.md"
+cp "$SHAPE_BLOCK_ROOT/.claude/skills/speckit-plan/SKILL.md" "$SHAPE_BLOCK_ROOT/.agents/skills/speckit-tasks/SKILL.md"
+cp "$SHAPE_BLOCK_ROOT/.claude/skills/speckit-plan/SKILL.md" "$SHAPE_BLOCK_ROOT/.codex/skills/speckit-tasks/SKILL.md"
+cp "$SHAPE_BLOCK_ROOT/.claude/skills/speckit-plan/SKILL.md" "$SHAPE_BLOCK_HOME/.claude/skills/speckit-plan/SKILL.md"
+cp "$SHAPE_BLOCK_ROOT/.claude/skills/speckit-plan/SKILL.md" "$SHAPE_BLOCK_HOME/.claude/skills/ctp/SKILL.md"
+cp "$SHAPE_BLOCK_ROOT/.claude/skills/speckit-plan/SKILL.md" "$SHAPE_BLOCK_HOME/.agents/skills/speckit-tasks/SKILL.md"
+cp "$SHAPE_BLOCK_ROOT/.claude/skills/speckit-plan/SKILL.md" "$SHAPE_BLOCK_HOME/.codex/skills/openspec-apply-change/SKILL.md"
+printf '%s\n' 'external skill body' > "$SHAPE_BLOCK_EXTERNAL/SKILL.md"
+ln -s "$SHAPE_BLOCK_EXTERNAL/SKILL.md" "$SHAPE_BLOCK_HOME/.codex/skills/speckit-linked/SKILL.md"
+
+printf '%s\n' 'When: bootstrap maintains the managed shape block'
+export HOME="$SHAPE_BLOCK_HOME"
+export AGENT_PROTOCOL_ROOT="$SHAPE_BLOCK_PROTOCOL_ROOT"
+if ! python3 "$SETUP_SCRIPT" \
+    --repo "$SHAPE_BLOCK_ROOT" \
+    --no-speckit-registration \
+    --no-skill-links \
+    --preserve-readmes > "$TMPDIR_ROOT/shape-block.log" 2>&1; then
+    printf '%s\n' 'FAIL: shape-block bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/shape-block.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: an existing root gitignore keeps its content and gains the worktrees line'
+assert_contains "$SHAPE_BLOCK_ROOT/.gitignore" '# repository-specific ignores' 'existing gitignore comment survives the worktrees line'
+assert_contains "$SHAPE_BLOCK_ROOT/.gitignore" '*.log' 'existing gitignore entry survives the worktrees line'
+assert_equal "$(grep -Fxc '/worktrees/' "$SHAPE_BLOCK_ROOT/.gitignore")" 1 'existing gitignore gains exactly one worktrees line'
+
+printf '%s\n' 'Then: repo-local targets carry a relocatable block directly after the frontmatter'
+SHAPE_BLOCK_PLAN="$SHAPE_BLOCK_ROOT/.claude/skills/speckit-plan/SKILL.md"
+assert_equal "$(sed -n '4p' "$SHAPE_BLOCK_PLAN")" '---' 'managed shape block leaves the frontmatter intact'
+assert_equal "$(sed -n '5p' "$SHAPE_BLOCK_PLAN")" '' 'managed shape block leaves a blank line after the frontmatter'
+assert_equal "$(sed -n '6p' "$SHAPE_BLOCK_PLAN")" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'managed shape block opens directly after the frontmatter'
+assert_contains "$SHAPE_BLOCK_PLAN" '## Repository Shape (managed by setup-openspeckit)' 'managed shape block carries its heading'
+assert_contains "$SHAPE_BLOCK_PLAN" '${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/protocols/openspec-speckit-workflow.md' 'repo-local shape block uses the portable protocol root'
+assert_not_contains "$SHAPE_BLOCK_PLAN" "$SHAPE_BLOCK_PROTOCOL_ROOT" 'repo-local shape block omits the absolute protocol root'
+assert_contains "$SHAPE_BLOCK_PLAN" 'Run the planning workflow from the repo root.' 'managed shape block preserves the skill body'
+assert_contains "$SHAPE_BLOCK_ROOT/.agents/skills/speckit-tasks/SKILL.md" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'managed shape block reaches Agents skills'
+assert_contains "$SHAPE_BLOCK_ROOT/.codex/skills/speckit-tasks/SKILL.md" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'managed shape block reaches Codex skills'
+assert_contains "$SHAPE_BLOCK_ROOT/.claude/skills/speckit-specify/SKILL.md" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'managed shape block reaches the installed worktree overlay skills'
+assert_contains "$SHAPE_BLOCK_ROOT/.claude/commands/opsx/apply.md" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'managed shape block reaches the OPSX commands'
+assert_equal "$(sed -n '1p' "$SHAPE_BLOCK_ROOT/.claude/skills/ct/SKILL.md")" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'managed shape block opens a file without frontmatter'
+assert_not_contains "$SHAPE_BLOCK_ROOT/.claude/skills/openspec-propose/SKILL.md" 'OPENSPEC-SPECKIT-SHAPE' 'managed shape block skips repo-local OpenSpec wrappers'
+
+printf '%s\n' 'Then: user-global targets carry the resolved protocol root and symlinks are skipped'
+assert_contains "$SHAPE_BLOCK_HOME/.claude/skills/speckit-plan/SKILL.md" "$SHAPE_BLOCK_PROTOCOL_ROOT/protocols/openspec-speckit-workflow.md" 'user-global shape block uses the resolved protocol root'
+assert_contains "$SHAPE_BLOCK_HOME/.claude/skills/ctp/SKILL.md" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'user-global shape block reaches ctp'
+assert_contains "$SHAPE_BLOCK_HOME/.agents/skills/speckit-tasks/SKILL.md" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'user-global shape block reaches Agents skills'
+assert_contains "$SHAPE_BLOCK_HOME/.codex/skills/openspec-apply-change/SKILL.md" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'user-global shape block reaches Codex OpenSpec skills'
+assert_not_contains "$SHAPE_BLOCK_EXTERNAL/SKILL.md" 'OPENSPEC-SPECKIT-SHAPE' 'managed shape block never follows a symlinked SKILL.md'
+if [[ -L "$SHAPE_BLOCK_HOME/.codex/skills/speckit-linked/SKILL.md" ]]; then
+    pass 'managed shape block leaves a symlinked SKILL.md as a symlink'
+else
+    fail 'managed shape block leaves a symlinked SKILL.md as a symlink'
+fi
+
+printf '%s\n' 'When: bootstrap reruns and then reruns with --no-skill-shape-blocks'
+SHAPE_BLOCK_FIRST="$TMPDIR_ROOT/shape-block-first.snapshot"
+SHAPE_BLOCK_SECOND="$TMPDIR_ROOT/shape-block-second.snapshot"
+snapshot_repo "$SHAPE_BLOCK_ROOT" > "$SHAPE_BLOCK_FIRST"
+if ! python3 "$SETUP_SCRIPT" \
+    --repo "$SHAPE_BLOCK_ROOT" \
+    --no-speckit-registration \
+    --no-skill-links \
+    --preserve-readmes > "$TMPDIR_ROOT/shape-block-second.log" 2>&1; then
+    printf '%s\n' 'FAIL: second shape-block bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/shape-block-second.log"
+    exit 1
+fi
+snapshot_repo "$SHAPE_BLOCK_ROOT" > "$SHAPE_BLOCK_SECOND"
+if cmp -s "$SHAPE_BLOCK_FIRST" "$SHAPE_BLOCK_SECOND"; then
+    pass 'managed shape block is idempotent'
+else
+    fail 'managed shape block changes on rerun'
+fi
+assert_equal "$(grep -Fc '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' "$SHAPE_BLOCK_PLAN")" 1 'managed shape block keeps one start marker'
+assert_equal "$(grep -Fc '<!-- OPENSPEC-SPECKIT-SHAPE:END -->' "$SHAPE_BLOCK_PLAN")" 1 'managed shape block keeps one end marker'
+
+SKIPPED_BLOCK_ROOT="$TMPDIR_ROOT/skipped-block-root"
+make_three_leg_root "$SKIPPED_BLOCK_ROOT"
+mkdir -p "$SKIPPED_BLOCK_ROOT/.claude/skills/speckit-plan"
+cp "$SHAPE_BLOCK_ROOT/.claude/skills/ct/SKILL.md" "$TMPDIR_ROOT/shape-block-ct-reference"
+cat > "$SKIPPED_BLOCK_ROOT/.claude/skills/speckit-plan/SKILL.md" <<'EOF'
+---
+name: speckit-plan
+---
+
+fixture body
+EOF
+if ! python3 "$SETUP_SCRIPT" \
+    --repo "$SKIPPED_BLOCK_ROOT" \
+    --no-speckit-registration \
+    --no-skill-links \
+    --no-skill-shape-blocks \
+    --no-global-agent-pointers \
+    --preserve-readmes > "$TMPDIR_ROOT/skipped-block.log" 2>&1; then
+    printf '%s\n' 'FAIL: --no-skill-shape-blocks bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/skipped-block.log"
+    exit 1
+fi
+assert_not_contains "$SKIPPED_BLOCK_ROOT/.claude/skills/speckit-plan/SKILL.md" 'OPENSPEC-SPECKIT-SHAPE' '--no-skill-shape-blocks leaves skills alone'
+
+printf '%s\n' 'Given: overlay template trees with and without the shape compatibility marker'
+make_fake_overlay_template() {
+    local root="$1"
+    local marking="$2"
+    mkdir -p \
+        "$root/specify/extensions/git/commands" \
+        "$root/specify/extensions/git/scripts/bash" \
+        "$root/specify/extensions/git/scripts/powershell" \
+        "$root/specify/shell"
+    printf '%s\n' 'name: git' > "$root/specify/extensions/git/extension.yml"
+    for overlay_command in commit feature initialize remote validate; do
+        printf '%s\n' "# speckit.git.$overlay_command fixture" \
+            > "$root/specify/extensions/git/commands/speckit.git.$overlay_command.md"
+    done
+    for overlay_script in auto-commit create-new-feature get-last-worktree git-common initialize-repo; do
+        {
+            printf '%s\n' '#!/usr/bin/env bash'
+            printf '%s\n' 'set -euo pipefail'
+            if [[ "$marking" == 'marked' ]]; then
+                printf '%s\n' '# speckit-overlay-shape: 1'
+            fi
+            printf '%s\n' "# fixture overlay $overlay_script"
+            if [[ "$overlay_script" == 'git-common' ]]; then
+                printf '%s\n' 'load_git_worktrees() {' '    :' '}'
+            fi
+        } > "$root/specify/extensions/git/scripts/bash/$overlay_script.sh"
+    done
+    for overlay_script in auto-commit create-new-feature git-common initialize-repo; do
+        printf '%s\n' "# fixture overlay $overlay_script" \
+            > "$root/specify/extensions/git/scripts/powershell/$overlay_script.ps1"
+    done
+    printf '%s\n' 'fixture shell helper' > "$root/specify/shell/select-worktree.sh"
+    for template_agent_dir in agents claude codex; do
+        for overlay_skill in speckit-specify speckit-git-feature speckit-git-validate; do
+            mkdir -p "$root/$template_agent_dir/skills/$overlay_skill"
+            printf '%s\n' "fixture overlay skill $template_agent_dir/$overlay_skill" \
+                > "$root/$template_agent_dir/skills/$overlay_skill/SKILL.md"
+        done
+    done
+}
+
+customize_installed_overlay() {
+    local repo="$1"
+    printf '%s\n' '# repository-specific overlay customization' \
+        >> "$repo/.specify/extensions/git/scripts/bash/git-common.sh"
+    printf '%s\n' 'repository-specific shell customization' \
+        > "$repo/.specify/shell/select-worktree.sh"
+    printf '%s\n' 'repository-specific overlay skill customization' \
+        > "$repo/.claude/skills/speckit-specify/SKILL.md"
+}
+
+MARKED_TEMPLATE_ROOT="$TMPDIR_ROOT/marked-overlay-templates"
+UNMARKED_TEMPLATE_ROOT="$TMPDIR_ROOT/unmarked-overlay-templates"
+make_fake_overlay_template "$MARKED_TEMPLATE_ROOT" marked
+make_fake_overlay_template "$UNMARKED_TEMPLATE_ROOT" unmarked
+
+OVERLAY_REFRESH_FLAGS=(
+    --skip-init
+    --no-speckit-registration
+    --no-repo-agent-pointers
+    --no-skill-links
+    --no-skill-shape-blocks
+    --no-global-agent-pointers
+    --preserve-readmes
+)
+
+install_overlay_fixture() {
+    local repo="$1"
+    local template="$2"
+    mkdir -p "$repo/.specify" "$repo/.claude/skills" "$repo/.agents/skills" "$repo/.codex/skills"
+    cp -a "$template/specify/extensions" "$repo/.specify/extensions"
+    cp -a "$template/specify/shell" "$repo/.specify/shell"
+    for repo_agent_mapping in '.agents:agents' '.claude:claude' '.codex:codex'; do
+        local repo_agent_dir="${repo_agent_mapping%%:*}"
+        local template_agent_dir="${repo_agent_mapping##*:}"
+        cp -a "$template/$template_agent_dir/skills/." "$repo/$repo_agent_dir/skills/"
+    done
+    git init -q -b main "$repo"
+}
+
+printf '%s\n' 'When: a marked template meets an installed overlay without the marker'
+STALE_OVERLAY_REPO="$TMPDIR_ROOT/stale-overlay-repo"
+STALE_OVERLAY_PROTOCOL_ROOT="$TMPDIR_ROOT/stale-overlay-protocol"
+install_overlay_fixture "$STALE_OVERLAY_REPO" "$UNMARKED_TEMPLATE_ROOT"
+customize_installed_overlay "$STALE_OVERLAY_REPO"
+export AGENT_PROTOCOL_ROOT="$STALE_OVERLAY_PROTOCOL_ROOT"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$MARKED_TEMPLATE_ROOT"
+if ! python3 "$SETUP_SCRIPT" --repo "$STALE_OVERLAY_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/stale-overlay.log" 2>&1; then
+    printf '%s\n' 'FAIL: stale-overlay bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/stale-overlay.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: the git extension, the shell tree, and the three skill trees are replaced'
+assert_contains "$TMPDIR_ROOT/stale-overlay.log" 'replacing incompatible Spec Kit git extension' 'unmarked overlay is reported as incompatible'
+assert_contains "$STALE_OVERLAY_REPO/.specify/extensions/git/scripts/bash/git-common.sh" '# speckit-overlay-shape: 1' 'unmarked overlay refresh installs the marked helper'
+assert_not_contains "$STALE_OVERLAY_REPO/.specify/extensions/git/scripts/bash/git-common.sh" 'repository-specific overlay customization' 'unmarked overlay refresh replaces the git extension tree'
+assert_not_contains "$STALE_OVERLAY_REPO/.specify/shell/select-worktree.sh" 'repository-specific shell customization' 'unmarked overlay refresh replaces the shell tree'
+assert_not_contains "$STALE_OVERLAY_REPO/.claude/skills/speckit-specify/SKILL.md" 'repository-specific overlay skill customization' 'unmarked overlay refresh replaces the overlay skill trees'
+assert_contains "$STALE_OVERLAY_REPO/.codex/skills/speckit-git-validate/SKILL.md" 'fixture overlay skill codex/speckit-git-validate' 'unmarked overlay refresh restores every overlay skill home'
+
+printf '%s\n' 'Given: an old-style overlay whose Agents skill destination is a symlink outside the repo'
+LINKED_OVERLAY_REPO="$TMPDIR_ROOT/linked-overlay-repo"
+LINKED_OVERLAY_HOME="$TMPDIR_ROOT/linked-overlay-home"
+LINKED_OVERLAY_PROTOCOL_ROOT="$TMPDIR_ROOT/linked-overlay-protocol"
+LINKED_OVERLAY_EXTERNAL="$TMPDIR_ROOT/linked-overlay-external"
+LINKED_OVERLAY_DESTINATION="$LINKED_OVERLAY_REPO/.agents/skills/speckit-git-validate"
+LINKED_OVERLAY_EXTERNAL_BEFORE="$TMPDIR_ROOT/linked-overlay-external.before"
+LINKED_OVERLAY_EXTERNAL_AFTER="$TMPDIR_ROOT/linked-overlay-external.after"
+LINKED_OVERLAY_EXTERNAL_MODES_BEFORE="$TMPDIR_ROOT/linked-overlay-external-modes.before"
+LINKED_OVERLAY_EXTERNAL_MODES_AFTER="$TMPDIR_ROOT/linked-overlay-external-modes.after"
+install_overlay_fixture "$LINKED_OVERLAY_REPO" "$UNMARKED_TEMPLATE_ROOT"
+mkdir -p "$LINKED_OVERLAY_HOME" "$LINKED_OVERLAY_EXTERNAL/nested"
+printf '%s\n' 'external validator skill' > "$LINKED_OVERLAY_EXTERNAL/SKILL.md"
+printf '%s\n' 'external validator helper' > "$LINKED_OVERLAY_EXTERNAL/nested/helper.txt"
+chmod 0700 "$LINKED_OVERLAY_EXTERNAL"
+chmod 0710 "$LINKED_OVERLAY_EXTERNAL/nested"
+chmod 0640 "$LINKED_OVERLAY_EXTERNAL/SKILL.md"
+chmod 0600 "$LINKED_OVERLAY_EXTERNAL/nested/helper.txt"
+rm -rf "$LINKED_OVERLAY_DESTINATION"
+ln -s "$LINKED_OVERLAY_EXTERNAL" "$LINKED_OVERLAY_DESTINATION"
+snapshot_repo "$LINKED_OVERLAY_EXTERNAL" > "$LINKED_OVERLAY_EXTERNAL_BEFORE"
+snapshot_repo_modes "$LINKED_OVERLAY_EXTERNAL" > "$LINKED_OVERLAY_EXTERNAL_MODES_BEFORE"
+
+LINKED_OVERLAY_FLAGS=(
+    --skip-init
+    --no-speckit-registration
+    --no-repo-agent-pointers
+    --no-skill-links
+    --no-global-agent-pointers
+    --preserve-readmes
+)
+
+printf '%s\n' 'When: the bootstrap plans that refresh with --dry-run'
+export HOME="$LINKED_OVERLAY_HOME"
+export AGENT_PROTOCOL_ROOT="$LINKED_OVERLAY_PROTOCOL_ROOT"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$MARKED_TEMPLATE_ROOT"
+if ! python3 "$SETUP_SCRIPT" --repo "$LINKED_OVERLAY_REPO" --dry-run "${LINKED_OVERLAY_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/linked-overlay-dry-run.log" 2>&1; then
+    printf '%s\n' 'FAIL: linked-overlay dry-run bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/linked-overlay-dry-run.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: the dry run plans the replacement without touching the link'
+assert_contains "$TMPDIR_ROOT/linked-overlay-dry-run.log" "would replace skill link $LINKED_OVERLAY_DESTINATION with worktree overlay" 'dry run plans the skill link replacement'
+if [[ -L "$LINKED_OVERLAY_DESTINATION" ]]; then
+    pass 'dry run leaves the symlinked overlay skill destination in place'
+else
+    fail 'dry run changes the symlinked overlay skill destination'
+fi
+
+printf '%s\n' 'When: the bootstrap refreshes that old-style overlay for real'
+if ! python3 "$SETUP_SCRIPT" --repo "$LINKED_OVERLAY_REPO" "${LINKED_OVERLAY_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/linked-overlay.log" 2>&1; then
+    printf '%s\n' 'FAIL: linked-overlay bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/linked-overlay.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: the link is replaced by a real overlay directory and the target is untouched'
+snapshot_repo "$LINKED_OVERLAY_EXTERNAL" > "$LINKED_OVERLAY_EXTERNAL_AFTER"
+snapshot_repo_modes "$LINKED_OVERLAY_EXTERNAL" > "$LINKED_OVERLAY_EXTERNAL_MODES_AFTER"
+assert_contains "$TMPDIR_ROOT/linked-overlay.log" "replaced skill link $LINKED_OVERLAY_DESTINATION with worktree overlay" 'skill link replacement is logged'
+assert_regular_directory "$LINKED_OVERLAY_DESTINATION" 'replaced skill link becomes a regular directory'
+assert_file "$LINKED_OVERLAY_DESTINATION/SKILL.md" 'replaced skill link holds the overlay skill document'
+assert_contains "$LINKED_OVERLAY_DESTINATION/SKILL.md" 'fixture overlay skill agents/speckit-git-validate' 'replaced skill link holds the checked-in overlay content'
+assert_not_contains "$LINKED_OVERLAY_DESTINATION/SKILL.md" 'external validator skill' 'replaced skill link does not copy the link target'
+assert_contains "$LINKED_OVERLAY_EXTERNAL/SKILL.md" 'external validator skill' 'skill link target keeps its own content'
+if cmp -s "$LINKED_OVERLAY_EXTERNAL_BEFORE" "$LINKED_OVERLAY_EXTERNAL_AFTER"; then
+    pass 'skill link replacement preserves external file paths and hashes'
+else
+    fail 'skill link replacement changes external file paths or hashes'
+fi
+if cmp -s "$LINKED_OVERLAY_EXTERNAL_MODES_BEFORE" "$LINKED_OVERLAY_EXTERNAL_MODES_AFTER"; then
+    pass 'skill link replacement preserves external path types and modes'
+else
+    fail 'skill link replacement changes external path types or modes'
+fi
+assert_contains "$TMPDIR_ROOT/linked-overlay.log" 'done' 'skill link replacement run reaches the end of the bootstrap'
+assert_contains "$LINKED_OVERLAY_DESTINATION/SKILL.md" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'replaced skill link receives the managed shape block'
+assert_contains "$LINKED_OVERLAY_REPO/.claude/skills/speckit-specify/SKILL.md" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'skill link replacement run still writes the other shape blocks'
+
+printf '%s\n' 'When: a marked template meets an installed overlay that already carries the marker'
+MARKED_OVERLAY_REPO="$TMPDIR_ROOT/marked-overlay-repo"
+MARKED_OVERLAY_PROTOCOL_ROOT="$TMPDIR_ROOT/marked-overlay-protocol"
+install_overlay_fixture "$MARKED_OVERLAY_REPO" "$MARKED_TEMPLATE_ROOT"
+customize_installed_overlay "$MARKED_OVERLAY_REPO"
+export AGENT_PROTOCOL_ROOT="$MARKED_OVERLAY_PROTOCOL_ROOT"
+if ! python3 "$SETUP_SCRIPT" --repo "$MARKED_OVERLAY_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/marked-overlay.log" 2>&1; then
+    printf '%s\n' 'FAIL: marked-overlay bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/marked-overlay.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: a compatible marked overlay keeps its repository customizations'
+assert_not_contains "$TMPDIR_ROOT/marked-overlay.log" 'replacing incompatible Spec Kit git extension' 'marked overlay is treated as compatible'
+assert_contains "$MARKED_OVERLAY_REPO/.specify/extensions/git/scripts/bash/git-common.sh" 'repository-specific overlay customization' 'marked overlay keeps its git extension customization'
+assert_contains "$MARKED_OVERLAY_REPO/.specify/shell/select-worktree.sh" 'repository-specific shell customization' 'marked overlay keeps its shell customization'
+assert_contains "$MARKED_OVERLAY_REPO/.claude/skills/speckit-specify/SKILL.md" 'repository-specific overlay skill customization' 'marked overlay keeps its skill customization'
+
+printf '%s\n' 'When: an unmarked template meets an unmarked installed overlay'
+LEGACY_OVERLAY_REPO="$TMPDIR_ROOT/legacy-overlay-repo"
+LEGACY_OVERLAY_PROTOCOL_ROOT="$TMPDIR_ROOT/legacy-overlay-protocol"
+LEGACY_OVERLAY_LINK="$LEGACY_OVERLAY_REPO/.codex/skills/speckit-git-feature"
+install_overlay_fixture "$LEGACY_OVERLAY_REPO" "$UNMARKED_TEMPLATE_ROOT"
+customize_installed_overlay "$LEGACY_OVERLAY_REPO"
+rm -rf "$LEGACY_OVERLAY_LINK"
+ln -s "$LINKED_OVERLAY_EXTERNAL" "$LEGACY_OVERLAY_LINK"
+export AGENT_PROTOCOL_ROOT="$LEGACY_OVERLAY_PROTOCOL_ROOT"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$UNMARKED_TEMPLATE_ROOT"
+if ! python3 "$SETUP_SCRIPT" --repo "$LEGACY_OVERLAY_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/legacy-overlay.log" 2>&1; then
+    printf '%s\n' 'FAIL: legacy-overlay bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/legacy-overlay.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: no marker is demanded of an overlay whose templates do not carry one'
+assert_not_contains "$TMPDIR_ROOT/legacy-overlay.log" 'replacing incompatible Spec Kit git extension' 'unmarked templates demand no marker'
+assert_contains "$LEGACY_OVERLAY_REPO/.specify/extensions/git/scripts/bash/git-common.sh" 'repository-specific overlay customization' 'unmarked templates preserve the installed overlay'
+assert_contains "$LEGACY_OVERLAY_REPO/.specify/shell/select-worktree.sh" 'repository-specific shell customization' 'unmarked templates preserve the shell tree'
+assert_regular_directory "$LEGACY_OVERLAY_LINK" 'a symlinked overlay skill is replaced even without a forced refresh'
+assert_contains "$LEGACY_OVERLAY_LINK/SKILL.md" 'fixture overlay skill codex/speckit-git-feature' 'the compatible-overlay replacement installs the overlay skill'
+assert_contains "$LINKED_OVERLAY_EXTERNAL/SKILL.md" 'external validator skill' 'the compatible-overlay replacement leaves the link target untouched'
+
+export HOME="$FIXTURE_HOME"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT"
+export OPSX_COMMAND_TEMPLATE_ROOT="$COMMAND_TEMPLATE_ROOT"
 
 if (( failures == 0 )); then
     printf '%s\n' 'GREEN: OpenSpec bootstrap regression test passed'
