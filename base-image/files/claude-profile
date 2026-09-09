@@ -45,7 +45,7 @@ configure_profile_runtime() {
   fi
 
   statusline_command='bash "${CLAUDE_CONFIG_DIR}/statusline-command.sh"'
-  default_model='claude-fable-5'
+  default_model='claude-fable-5-1'
   guard_command='bash "${CLAUDE_CONFIG_DIR}/usage-guard.sh"'
   settings_tmp="$(mktemp "$config_dir/.settings.XXXXXX.tmp")"
   if [[ -f "$settings" ]]; then
@@ -183,7 +183,7 @@ export_tmux_identity() {
 # Native Claude records ~/.local/bin/claude as its expected installation path.
 # Bench images install the immutable CLI in /usr/local/bin, so provide a
 # per-user compatibility link to keep Claude's installer health check accurate.
-if [[ "$claude_bin" == "/usr/local/bin/claude" ]]; then
+if [[ ! -e /.dockerenv && "$claude_bin" == "/usr/local/bin/claude" ]]; then
   if mkdir -p "$HOME/.local/bin" 2>/dev/null; then
     if [[ ! -e "$HOME/.local/bin/claude" && ! -L "$HOME/.local/bin/claude" ]]; then
       ln -s /usr/local/bin/claude "$HOME/.local/bin/claude"

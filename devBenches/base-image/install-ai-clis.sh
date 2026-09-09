@@ -1,6 +1,6 @@
 #!/bin/bash
 # Shared AI CLI Installation Script
-# Version: 1.3.2
+# Version: 1.4.0
 #
 # This script installs all AI CLI tools for devcontainers.
 # Source this from Dockerfiles to maintain a single source of truth.
@@ -12,6 +12,9 @@
 #   - Auth plugins (opencode-gemini-auth, opencode-openai-codex-auth)
 #   - Other AI CLIs (Codex, Gemini, Copilot, etc.)
 #   - Claude Code (via native installer, not npm)
+#   - Kimi Code (Moonshot AI, Kimi K3), Qwen Code (Alibaba), Z.AI GLM Coding
+#     Plan helper (chelper), DeepSeek Harness (dsh, developer preview), and
+#     MiniMax Code (mcode, via native installer)
 #
 # Note: OpenAgents agent files (openagent.md, opencoder.md) are copied via
 #       Dockerfile, not installed by this script
@@ -446,12 +449,52 @@ if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Letta Code npm install" npm instal
     log_error "Letta Code installation failed (continuing)"
 fi
 
+# Some newer CLIs ship native postinstall build steps (pty/FFI bindings, spawn
+# helpers). npm blocks arbitrary install scripts by default; explicitly allow
+# only the ones required by the packages installed below.
+NPM_NATIVE_ALLOW_SCRIPTS="@moonshot-ai/kimi-code,node-pty,@qwen-code/audio-capture,@deepseek-ai/dsh-subprocess-local,koffi,@google/genai,protobufjs"
+
+log_info "Installing Moonshot Kimi Code CLI (Kimi K3)..."
+# Kimi Code: Moonshot AI's terminal coding agent (https://github.com/MoonshotAI/kimi-code)
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Kimi Code npm install" npm install -g --allow-scripts="$NPM_NATIVE_ALLOW_SCRIPTS" @moonshot-ai/kimi-code@latest; then
+    log_error "Kimi Code installation failed (continuing)"
+fi
+
+log_info "Installing Qwen Code CLI..."
+# Qwen Code: Alibaba's terminal coding agent (https://github.com/QwenLM/qwen-code)
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Qwen Code npm install" npm install -g --allow-scripts="$NPM_NATIVE_ALLOW_SCRIPTS" @qwen-code/qwen-code@latest; then
+    log_error "Qwen Code installation failed (continuing)"
+fi
+
+log_info "Installing Z.AI GLM Coding Plan helper (chelper)..."
+# Coding Tool Helper: Z.AI's official wizard for wiring GLM Coding Plan into
+# Claude Code, OpenCode, Crush, and Factory Droid (not a standalone agent).
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Z.AI coding-helper npm install" npm install -g @z_ai/coding-helper@latest; then
+    log_error "Z.AI coding-helper installation failed (continuing)"
+fi
+
+log_info "Installing DeepSeek Harness (dsh)..."
+# DeepSeek Harness: DeepSeek AI's open-source, plugin-based agent harness
+# (https://github.com/deepseek-ai/deepseek-harness). Developer preview as of
+# this writing; not added to required_clis below since it may break between
+# releases.
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "DeepSeek Harness npm install" npm install -g --allow-scripts="$NPM_NATIVE_ALLOW_SCRIPTS" @deepseek-ai/dsh@latest; then
+    log_error "DeepSeek Harness installation failed (continuing)"
+fi
+
+log_info "Installing MiniMax Code CLI (mcode)..."
+# MiniMax Code: MiniMax's official terminal coding agent, installed via its
+# native installer (not npm-global); adds itself to PATH via shell rc.
+if ! run_with_timeout "$COMMAND_TIMEOUT" "MiniMax Code CLI install" bash -c 'curl -fsSL https://filecdn.minimax.chat/public/install.sh | bash'; then
+    log_error "MiniMax Code CLI installation failed (continuing)"
+fi
+
 log_info "=========================================="
 log_info "AI CLI Tools Installation Complete!"
 log_info "=========================================="
 log_info ""
 
-required_clis=(claude codex gemini copilot opencode omo letta)
+required_clis=(claude codex gemini copilot opencode omo letta kimi qwen)
 missing_clis=()
 for cli in "${required_clis[@]}"; do
     if ! command -v "$cli" >/dev/null 2>&1; then
@@ -477,6 +520,11 @@ log_info "  - GitHub Copilot (copilot)"
 log_info "  - OpenCode (opencode)"
 log_info "  - oh-my-opencode (omo)"
 log_info "  - Letta Code (letta)"
+log_info "  - Moonshot Kimi Code (kimi)"
+log_info "  - Qwen Code (qwen)"
+log_info "  - Z.AI Coding Plan helper (chelper)"
+log_info "  - DeepSeek Harness (dsh)"
+log_info "  - MiniMax Code (mcode)"
 log_info ""
 log_info "Agent files (openagent.md, opencoder.md) provided via Dockerfile COPY"
 log_info ""

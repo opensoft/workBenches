@@ -21,7 +21,7 @@ if [ -f "$PRIORITY_CONFIG" ]; then
     mapfile -t PROVIDER_PRIORITY < "$PRIORITY_CONFIG"
 else
     # Default provider priority order
-    PROVIDER_PRIORITY=("codex" "claude" "gemini" "copilot" "meta" "kimi2" "deepseek")
+    PROVIDER_PRIORITY=("codex" "claude" "gemini" "copilot" "qwen" "meta" "kimi2" "minimax" "deepseek")
 fi
 
 filter_supported_providers() {
@@ -30,7 +30,7 @@ filter_supported_providers() {
 
     for provider in "${PROVIDER_PRIORITY[@]}"; do
         case "$provider" in
-            codex|claude|gemini|copilot|meta|kimi2|deepseek)
+            codex|claude|gemini|copilot|qwen|meta|kimi2|minimax|deepseek)
                 filtered+=("$provider")
                 ;;
         esac
@@ -39,7 +39,7 @@ filter_supported_providers() {
     if [ ${#filtered[@]} -gt 0 ]; then
         PROVIDER_PRIORITY=("${filtered[@]}")
     else
-        PROVIDER_PRIORITY=("codex" "claude" "gemini" "copilot" "meta" "kimi2" "deepseek")
+        PROVIDER_PRIORITY=("codex" "claude" "gemini" "copilot" "qwen" "meta" "kimi2" "minimax" "deepseek")
     fi
 }
 
@@ -215,11 +215,18 @@ get_all_cli_status() {
             copilot)
                 cli_status_map["copilot"]=$(check_copilot_status)
                 ;;
+            qwen)
+                cli_status_map["qwen"]=$(check_generic_cli_status "qwen" "qwen")
+                ;;
             meta)
                 cli_status_map["meta"]=$(check_generic_cli_status "meta" "llama")
                 ;;
             kimi2)
-                cli_status_map["kimi2"]=$(check_generic_cli_status "kimi" "kimi")
+                # Kimi Code CLI (Moonshot AI) stores state under ~/.kimi-code
+                cli_status_map["kimi2"]=$(check_generic_cli_status "kimi-code" "kimi")
+                ;;
+            minimax)
+                cli_status_map["minimax"]=$(check_generic_cli_status "minimax-code" "mcode")
                 ;;
             deepseek)
                 cli_status_map["deepseek"]=$(check_generic_cli_status "deepseek" "deepseek")
@@ -250,11 +257,17 @@ get_authenticated_cli() {
             copilot)
                 cli_status=$(check_copilot_status)
                 ;;
+            qwen)
+                cli_status=$(check_generic_cli_status "qwen" "qwen")
+                ;;
             meta)
                 cli_status=$(check_generic_cli_status "meta" "llama")
                 ;;
             kimi2)
-                cli_status=$(check_generic_cli_status "kimi" "kimi")
+                cli_status=$(check_generic_cli_status "kimi-code" "kimi")
+                ;;
+            minimax)
+                cli_status=$(check_generic_cli_status "minimax-code" "mcode")
                 ;;
             deepseek)
                 cli_status=$(check_generic_cli_status "deepseek" "deepseek")
@@ -289,11 +302,17 @@ get_unauthenticated_clis() {
             copilot)
                 cli_status=$(check_copilot_status)
                 ;;
+            qwen)
+                cli_status=$(check_generic_cli_status "qwen" "qwen")
+                ;;
             meta)
                 cli_status=$(check_generic_cli_status "meta" "llama")
                 ;;
             kimi2)
-                cli_status=$(check_generic_cli_status "kimi" "kimi")
+                cli_status=$(check_generic_cli_status "kimi-code" "kimi")
+                ;;
+            minimax)
+                cli_status=$(check_generic_cli_status "minimax-code" "mcode")
                 ;;
             deepseek)
                 cli_status=$(check_generic_cli_status "deepseek" "deepseek")
