@@ -31,6 +31,7 @@ set -e
 DEBUG="${DEBUG:-1}"
 COMMAND_TIMEOUT="${COMMAND_TIMEOUT:-300}"  # 5 minutes per general command
 NPM_INSTALL_TIMEOUT="${NPM_INSTALL_TIMEOUT:-600}"  # 10 minutes for npm package installs
+NPM_VERSION="${NPM_VERSION:-12.0.2}"
 GIT_CLONE_TIMEOUT="${GIT_CLONE_TIMEOUT:-900}"  # 15 minutes for slow GitHub clones
 RELEASE_DOWNLOAD_TIMEOUT="${RELEASE_DOWNLOAD_TIMEOUT:-3600}"  # 60 minutes for slow GitHub release assets
 BUN_OPERATIONS_TIMEOUT="${BUN_OPERATIONS_TIMEOUT:-900}"  # 15 minutes for bun ops
@@ -70,6 +71,20 @@ run_with_timeout() {
         fi
         return $exit_code
     fi
+}
+
+ensure_selective_npm_scripts() {
+    local current_version
+
+    current_version="$(npm --version)"
+    if [ "$current_version" != "$NPM_VERSION" ]; then
+        log_info "Installing npm ${NPM_VERSION} for selective lifecycle-script controls..."
+        run_with_timeout "$NPM_INSTALL_TIMEOUT" "npm ${NPM_VERSION} install" \
+            npm install -g "npm@${NPM_VERSION}" || return 1
+        hash -r
+    fi
+
+    npm install --help | grep -Fq -- '--allow-scripts'
 }
 
 check_system_resources() {
@@ -142,7 +157,7 @@ export PATH="$HOME/.npm-global/bin:$PATH"
 # BUN RUNTIME (for OpenCode plugins)
 # ========================================
 log_info "Installing Bun runtime..."
-if run_with_timeout "$COMMAND_TIMEOUT" "Bun runtime download and install" bash -c 'curl -fsSL https://bun.sh/install | bash'; then
+if run_with_timeout "$COMMAND_TIMEOUT" "Bun runtime download and install" bash -o pipefail -c 'curl -fsSL https://bun.sh/install | bash'; then
     log_debug "Bun installation completed"
 else
     log_error "Failed to download or install Bun. Continuing without Bun support."
@@ -167,7 +182,7 @@ fi
 log_info "Installing Claude Code CLI (native installer)..."
 # Native installer is now the recommended method (npm is deprecated)
 # Installs to ~/.local/bin/claude, auto-updates in background, no Node.js dependency
-if ! run_with_timeout "$COMMAND_TIMEOUT" "Claude Code native install" bash -c 'curl -fsSL https://claude.ai/install.sh | bash'; then
+if ! run_with_timeout "$COMMAND_TIMEOUT" "Claude Code native install" bash -o pipefail -c 'curl -fsSL https://claude.ai/install.sh | bash'; then
     log_error "Claude Code native installation failed (continuing)"
 fi
 
@@ -453,6 +468,10 @@ fi
 # helpers). npm blocks arbitrary install scripts by default; explicitly allow
 # only the ones required by the packages installed below.
 NPM_NATIVE_ALLOW_SCRIPTS="@moonshot-ai/kimi-code,node-pty,@qwen-code/audio-capture,@deepseek-ai/dsh-subprocess-local,koffi,@google/genai,protobufjs"
+if ! ensure_selective_npm_scripts; then
+    log_error "npm ${NPM_VERSION} selective lifecycle-script controls are unavailable"
+    exit 1
+fi
 
 log_info "Installing Moonshot Kimi Code CLI (Kimi K3)..."
 # Kimi Code: Moonshot AI's terminal coding agent (https://github.com/MoonshotAI/kimi-code)
@@ -485,7 +504,7 @@ fi
 log_info "Installing MiniMax Code CLI (mcode)..."
 # MiniMax Code: MiniMax's official terminal coding agent, installed via its
 # native installer (not npm-global); adds itself to PATH via shell rc.
-if ! run_with_timeout "$COMMAND_TIMEOUT" "MiniMax Code CLI install" bash -c 'curl -fsSL https://filecdn.minimax.chat/public/install.sh | bash'; then
+if ! run_with_timeout "$COMMAND_TIMEOUT" "MiniMax Code CLI install" bash -o pipefail -c 'curl -fsSL https://filecdn.minimax.chat/public/install.sh | bash'; then
     log_error "MiniMax Code CLI installation failed (continuing)"
 fi
 
@@ -523,8 +542,16 @@ log_info "  - Letta Code (letta)"
 log_info "  - Moonshot Kimi Code (kimi)"
 log_info "  - Qwen Code (qwen)"
 log_info "  - Z.AI Coding Plan helper (chelper)"
-log_info "  - DeepSeek Harness (dsh)"
-log_info "  - MiniMax Code (mcode)"
+if command -v dsh >/dev/null 2>&1; then
+    log_info "  - DeepSeek Harness (dsh) [developer preview]"
+else
+    log_info "  - DeepSeek Harness (dsh) [install skipped or failed, developer preview]"
+fi
+if command -v mcode >/dev/null 2>&1; then
+    log_info "  - MiniMax Code (mcode)"
+else
+    log_info "  - MiniMax Code (mcode) [install skipped or failed]"
+fi
 log_info ""
 log_info "Agent files (openagent.md, opencoder.md) provided via Dockerfile COPY"
 log_info ""

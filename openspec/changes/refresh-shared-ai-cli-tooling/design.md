@@ -31,8 +31,13 @@ ownership and command resolution explicit.
 - Keep the canonical tools in the shared Layer 0 image. Installing them in each
   bench would multiply drift and build time.
 - Use npm's explicit `allow-scripts` list only for packages whose published
-  installation requires native post-install work. This retains npm's default
-  script blocking for unrelated dependencies.
+  installation requires native post-install work. Pin npm to a release that
+  implements that option and fail the image build if the option is unavailable.
+  This retains npm's default script blocking for unrelated dependencies.
+- Keep account/profile-family recognition separate from the unified prompt
+  adapter. The adapter selects only providers with a tested non-interactive
+  invocation contract; newly recognized profile families remain directly
+  launchable until their prompt/output flags are qualified.
 - Treat the command-presence list as the hard image contract. Preview tools
   such as DeepSeek Harness and native tools whose installer can be unavailable
   remain best effort and are reported distinctly at build completion.

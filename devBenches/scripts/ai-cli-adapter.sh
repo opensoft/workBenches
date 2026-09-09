@@ -1,7 +1,7 @@
 #!/bin/bash
 # AI CLI Adapter - Provider detection and unified interface
 # Version: 1.0.0
-# Supports: Codex, Claude Code, Gemini CLI with subscription auth
+# Supports non-interactive calls through Codex, Claude Code, and Gemini CLI.
 # Shared across all bench types (frappe, flutter, dotnet)
 
 # Prevent double-sourcing
@@ -21,7 +21,7 @@ if [ -f "$PRIORITY_CONFIG" ]; then
     mapfile -t PROVIDER_PRIORITY < "$PRIORITY_CONFIG"
 else
     # Default provider priority order
-    PROVIDER_PRIORITY=("codex" "claude" "gemini" "copilot" "qwen" "meta" "kimi2" "minimax" "deepseek")
+    PROVIDER_PRIORITY=("codex" "claude" "gemini")
 fi
 
 filter_supported_providers() {
@@ -30,7 +30,7 @@ filter_supported_providers() {
 
     for provider in "${PROVIDER_PRIORITY[@]}"; do
         case "$provider" in
-            codex|claude|gemini|copilot|qwen|meta|kimi2|minimax|deepseek)
+            codex|claude|gemini)
                 filtered+=("$provider")
                 ;;
         esac
@@ -39,7 +39,7 @@ filter_supported_providers() {
     if [ ${#filtered[@]} -gt 0 ]; then
         PROVIDER_PRIORITY=("${filtered[@]}")
     else
-        PROVIDER_PRIORITY=("codex" "claude" "gemini" "copilot" "qwen" "meta" "kimi2" "minimax" "deepseek")
+        PROVIDER_PRIORITY=("codex" "claude" "gemini")
     fi
 }
 
