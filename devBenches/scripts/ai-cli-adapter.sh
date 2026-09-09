@@ -227,7 +227,7 @@ get_all_cli_status() {
                 cli_status_map["minimax"]=$(check_generic_cli_status "minimax-code" "mcode")
                 ;;
             deepseek)
-                cli_status_map["deepseek"]=$(check_generic_cli_status "deepseek" "deepseek")
+                cli_status_map["deepseek"]=$(check_generic_cli_status "dsh" "dsh")
                 ;;
         esac
     done
@@ -268,7 +268,7 @@ get_authenticated_cli() {
                 cli_status=$(check_generic_cli_status "minimax-code" "mcode")
                 ;;
             deepseek)
-                cli_status=$(check_generic_cli_status "deepseek" "deepseek")
+                cli_status=$(check_generic_cli_status "dsh" "dsh")
                 ;;
         esac
         
@@ -340,7 +340,7 @@ get_unauthenticated_clis() {
                 cli_status=$(check_generic_cli_status "minimax-code" "mcode")
                 ;;
             deepseek)
-                cli_status=$(check_generic_cli_status "deepseek" "deepseek")
+                cli_status=$(check_generic_cli_status "dsh" "dsh")
                 ;;
         esac
         
@@ -404,7 +404,7 @@ prompt_cli_authentication() {
         
         # Re-check authentication
         local authenticated
-        authenticated=$(get_authenticated_cli)
+        authenticated=$(get_authenticated_routing_cli)
         if [ -n "$authenticated" ]; then
             echo -e "\033[0;32m✓ Successfully authenticated with $authenticated\033[0m"
             echo "$authenticated"
