@@ -46,6 +46,9 @@ set -euo pipefail
 printf '%s\n' "$*" >> "$MOCK_DOCKER_LOG"
 
 if [[ "${1:-}" == "container" && "${2:-}" == "inspect" ]]; then
+    if [[ "$MOCK_CONTAINER_EXISTS" != true ]]; then
+        exit 1
+    fi
     if [[ "${3:-}" == "-f" ]]; then
         case "${4:-}" in
             *State.Running*)
@@ -92,6 +95,13 @@ exit 0
 MOCK
     chmod +x "$mock_bin/docker"
 
+    cat > "$mock_bin/devcontainer" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'devcontainer %s\n' "$*" >> "$MOCK_DOCKER_LOG"
+MOCK
+    chmod +x "$mock_bin/devcontainer"
+
     local launcher_args=()
     if [[ "${CASE_EXPLICIT_COMPOSE:-false}" == true ]]; then
         launcher_args+=(--compose-file "$fake_root/custom-compose.yml")
@@ -104,6 +114,7 @@ MOCK
             USER=tester \
             PATH="$mock_bin:$PATH" \
             MOCK_DOCKER_LOG="$docker_log" \
+            MOCK_CONTAINER_EXISTS="${CASE_CONTAINER_EXISTS:-true}" \
             MOCK_PREPARE_LOG="$prepare_log" \
             MOCK_RUNNING="$running" \
             MOCK_MOUNTS="$mounts" \
@@ -170,5 +181,12 @@ grep -q -- '--container dotnet-bench --base dotnet-bench:latest --user tester --
 CASE_EXPLICIT_COMPOSE=true run_launcher_case dotnet-explicit-compose false missing false false dotNetBench
 grep -q -- "compose -f .*/custom-compose.yml" <<<"$CASE_DOCKER_LOG" \
     || fail "dotNetBench replaced the explicitly supplied Compose file"
+
+CASE_CONTAINER_EXISTS=false CASE_EXPLICIT_COMPOSE=true run_launcher_case dotnet-explicit-compose-first-create false missing false false dotNetBench
+grep -q -- "compose -f .*/custom-compose.yml" <<<"$CASE_DOCKER_LOG" \
+    || fail "first creation did not use the explicitly supplied Compose file"
+if grep -q '^devcontainer ' <<<"$CASE_DOCKER_LOG"; then
+    fail "first creation ignored the explicit Compose file through Dev Containers CLI"
+fi
 
 echo "PASS: wave container launcher lifecycle tests"

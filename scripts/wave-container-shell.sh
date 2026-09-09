@@ -395,7 +395,9 @@ fi
 if [[ "$repair_requested" == true && "$container_exists" == true ]]; then
     recreate_with_compose
 elif [[ "$container_exists" != true ]]; then
-    if [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]]; then
+    if [[ "$compose_file_explicit" == true ]]; then
+        create_with_compose
+    elif [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]]; then
         echo "Creating $container with Dev Containers CLI..."
         if ! run_devcontainer_up; then
             echo "Dev Containers CLI did not complete; creating $container with Wave compose mounts." >&2
