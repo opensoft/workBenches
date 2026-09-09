@@ -25,6 +25,8 @@ DOCKER_SOCKET_GID=""
 BASE_IMAGE=""
 EXTRA_CHOWN_DIRS=""
 NO_CACHE="${NO_CACHE:-false}"
+LAYER3_RECIPE_SHA256=""
+CODEX_VERSION="0.153.4"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -35,6 +37,8 @@ while [[ $# -gt 0 ]]; do
         --gid) USER_GID="$2"; shift 2 ;;
         --docker-gid) DOCKER_SOCKET_GID="$2"; shift 2 ;;
         --chown) EXTRA_CHOWN_DIRS="$2"; shift 2 ;;
+        --recipe-sha256) LAYER3_RECIPE_SHA256="$2"; shift 2 ;;
+        --codex-version) CODEX_VERSION="$2"; shift 2 ;;
         --no-cache) NO_CACHE=true; shift ;;
         -h|--help)
             echo "Usage: $0 --base <image:latest> [--user USERNAME] [--chown \"dir1 dir2\"] [--no-cache]"
@@ -45,6 +49,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --uid UID       User UID (default: \$(id -u))"
             echo "  --gid GID       User GID (default: \$(id -g))"
             echo "  --chown DIRS    Space-separated dirs to chown to user (e.g. \"/opt/vcpkg /go\")"
+            echo "  --recipe-sha256 SHA256  Layer 3 recipe fingerprint (computed automatically by default)"
+            echo "  --codex-version VERSION  Pinned Codex version baked into Layer 3 (default: $CODEX_VERSION)"
             echo "  --no-cache      Force Docker to rebuild without cached layers"
             exit 0
             ;;
@@ -58,6 +64,17 @@ if [ -z "$BASE_IMAGE" ]; then
     exit 1
 fi
 
+if [ -z "$LAYER3_RECIPE_SHA256" ]; then
+    LAYER3_RECIPE_SHA256="$(
+        cd "$SCRIPT_DIR"
+        find . -type f -print0 \
+            | LC_ALL=C sort -z \
+            | xargs -0 sha256sum \
+            | sha256sum \
+            | awk '{print $1}'
+    )"
+fi
+
 # Derive output tag: replace :latest with :$USERNAME
 OUTPUT_IMAGE="${BASE_IMAGE%%:*}:${USERNAME}"
 
@@ -69,6 +86,8 @@ echo "  UID/GID:     $USER_UID/$USER_GID"
 echo "  Docker GID:  ${DOCKER_SOCKET_GID:-none}"
 echo "  Extra chown: ${EXTRA_CHOWN_DIRS:-none}"
 echo "  No cache:    $NO_CACHE"
+echo "  Recipe SHA:  $LAYER3_RECIPE_SHA256"
+echo "  Codex:       $CODEX_VERSION"
 echo ""
 
 # Check if base image exists
@@ -89,6 +108,8 @@ docker build \
     --build-arg USER_GID="$USER_GID" \
     --build-arg DOCKER_SOCKET_GID="$DOCKER_SOCKET_GID" \
     --build-arg EXTRA_CHOWN_DIRS="$EXTRA_CHOWN_DIRS" \
+    --build-arg LAYER3_RECIPE_SHA256="$LAYER3_RECIPE_SHA256" \
+    --build-arg CODEX_VERSION="$CODEX_VERSION" \
     -t "$OUTPUT_IMAGE" \
     -f "$SCRIPT_DIR/Dockerfile" \
     "$SCRIPT_DIR"

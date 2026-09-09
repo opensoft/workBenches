@@ -15,7 +15,10 @@ check_only=false
 repair_requested=false
 profile_launcher_marker="/usr/local/share/workbenches/profile-launchers.sha256"
 bench_dir="$workbenches_root/devBenches/pyBench"
+bench_dir_resolved=false
 compose_file="$bench_dir/.devcontainer/docker-compose.yml"
+compose_file_explicit=false
+wslg_root="${WAVE_WSLG_ROOT:-/mnt/wslg}"
 base_image="py-bench:latest"
 layer3_chown=""
 compose_project="dev-benches"
@@ -25,15 +28,26 @@ resolve_bench_defaults() {
         pyBench|py-bench)
             container="py-bench"
             bench_dir="$workbenches_root/devBenches/pyBench"
-            compose_file="$bench_dir/.devcontainer/docker-compose.yml"
+            bench_dir_resolved=true
+            [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="py-bench:latest"
+            layer3_chown=""
+            compose_project="dev-benches"
+            ;;
+        dotNetBench|dotnetBench|dotnet-bench)
+            container="dotnet-bench"
+            bench_dir="$workbenches_root/devBenches/dotNetBench"
+            bench_dir_resolved=true
+            [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
+            base_image="dotnet-bench:latest"
             layer3_chown=""
             compose_project="dev-benches"
             ;;
         cppBench|C++Bench|c++Bench|cpp-bench)
             container="cpp-bench"
             bench_dir="$workbenches_root/devBenches/cppBench"
-            compose_file="$bench_dir/.devcontainer/docker-compose.yml"
+            bench_dir_resolved=true
+            [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="cpp-bench:latest"
             layer3_chown="/opt/vcpkg"
             compose_project="dev-benches"
@@ -41,7 +55,8 @@ resolve_bench_defaults() {
         rustBench|rust-bench)
             container="rust-bench"
             bench_dir="$workbenches_root/devBenches/rustBench"
-            compose_file="$bench_dir/.devcontainer/docker-compose.yml"
+            bench_dir_resolved=true
+            [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="rust-bench:latest"
             layer3_chown="/opt/rust"
             compose_project="dev-benches"
@@ -49,7 +64,8 @@ resolve_bench_defaults() {
         flutterBench|flutter-bench)
             container="flutter-bench"
             bench_dir="$workbenches_root/devBenches/flutterBench"
-            compose_file="$bench_dir/.devcontainer/docker-compose.yml"
+            bench_dir_resolved=true
+            [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="flutter-bench:latest"
             layer3_chown="/opt/flutter /opt/flutter-3.27.0 /opt/android-sdk"
             compose_project="dev-benches"
@@ -57,7 +73,8 @@ resolve_bench_defaults() {
         cloudBench|cloud-bench)
             container="cloud-bench"
             bench_dir="$workbenches_root/sysBenches/cloudBench/devcontainer.example"
-            compose_file="$bench_dir/docker-compose.yml"
+            bench_dir_resolved=true
+            [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/docker-compose.yml"
             base_image="cloud-bench:latest"
             layer3_chown=""
             compose_project="sys-benches"
@@ -65,7 +82,8 @@ resolve_bench_defaults() {
         365Bench|m365Bench|m365-bench)
             container="m365-bench"
             bench_dir="$workbenches_root/sysBenches/365Bench"
-            compose_file="$bench_dir/.devcontainer/docker-compose.yml"
+            bench_dir_resolved=true
+            [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="m365-bench:latest"
             layer3_chown=""
             compose_project="sys-benches"
@@ -98,7 +116,7 @@ EOF
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --workbenches-root) workbenches_root="$2"; shift 2 ;;
-        --compose-file) compose_file="$2"; shift 2 ;;
+        --compose-file) compose_file="$2"; compose_file_explicit=true; shift 2 ;;
         --user) container_user="$2"; shift 2 ;;
         --workdir) workdir="$2"; shift 2 ;;
         --shell) shell_path="$2"; shift 2 ;;
@@ -276,18 +294,22 @@ create_with_compose() {
         exit 1
     fi
 
-    local compose_dir
+    local compose_dir compose_bench_dir
     compose_dir="$(dirname "$compose_file")"
-    bench_dir="$(dirname "$compose_dir")"
-    if [[ ! -f "$compose_dir/.env" && -f "$bench_dir/.env" ]]; then
-        cp "$bench_dir/.env" "$compose_dir/.env"
+    if [[ "$bench_dir_resolved" == true ]]; then
+        compose_bench_dir="$bench_dir"
+    else
+        compose_bench_dir="$(dirname "$compose_dir")"
+    fi
+    if [[ ! -f "$compose_dir/.env" && -f "$compose_bench_dir/.env" ]]; then
+        cp "$compose_bench_dir/.env" "$compose_dir/.env"
     fi
 
     local override_file
     local compose_args
     override_file="$(write_wave_compose_override)"
     compose_args=(-f "$compose_file")
-    if [[ "$container" == "rust-bench" && -d /mnt/wslg ]]; then
+    if [[ "$container" == "rust-bench" && -d "$wslg_root" ]]; then
         local wslg_compose_file="$bench_dir/.devcontainer/docker-compose.wslg.yml"
         if [[ ! -f "$wslg_compose_file" ]]; then
             echo "rustBench WSLg override is missing: $wslg_compose_file" >&2
@@ -386,7 +408,9 @@ fi
 if [[ "$repair_requested" == true && "$container_exists" == true ]]; then
     recreate_with_compose
 elif [[ "$container_exists" != true ]]; then
-    if [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]]; then
+    if [[ "$compose_file_explicit" == true ]]; then
+        create_with_compose
+    elif [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]]; then
         echo "Creating $container with Dev Containers CLI..."
         if ! run_devcontainer_up; then
             echo "Dev Containers CLI did not complete; creating $container with Wave compose mounts." >&2
@@ -494,10 +518,6 @@ install_ai_profile_launchers() {
 
     docker exec --user root "$container" sh -c \
         "mkdir -p '/home/${container_user}/.local/bin' '/home/${container_user}/.local/state' && chown '${container_user}:${container_user}' '/home/${container_user}/.local' '/home/${container_user}/.local/bin' '/home/${container_user}/.local/state'"
-    if [[ -f "$claude_launcher" ]]; then
-        docker exec --user "$container_user" "$container" sh -c \
-            'ln -sfn /usr/local/bin/claude "$HOME/.local/bin/claude"'
-    fi
 }
 
 ensure_user_cargo_cache

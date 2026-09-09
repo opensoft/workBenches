@@ -22,6 +22,7 @@ USER_UID=$(id -u)
 USER_GID=$(id -g)
 DOCKER_SOCKET_GID=""
 FORCE=false
+LAYER3_RECIPE_DIR="$REPO_DIR/user-layer"
 
 # Colors
 RED='\033[0;31m'
@@ -71,6 +72,36 @@ USER_IMAGE="${BASE_NAME}:${USERNAME}"
 
 echo -e "${CYAN}ensure-layer3: Checking ${USER_IMAGE}...${NC}"
 
+layer3_recipe_sha256() {
+    local hash_tool
+    if command -v sha256sum >/dev/null 2>&1; then
+        hash_tool=sha256sum
+    elif command -v shasum >/dev/null 2>&1; then
+        hash_tool=shasum
+    else
+        echo "sha256sum or shasum is required to fingerprint the Layer 3 recipe" >&2
+        return 1
+    fi
+
+    (
+        cd "$LAYER3_RECIPE_DIR"
+        find . -type f -print \
+            | LC_ALL=C sort \
+            | while IFS= read -r recipe_file; do
+                if [[ "$hash_tool" == sha256sum ]]; then
+                    file_sha="$(sha256sum "$recipe_file" | awk '{print $1}')"
+                else
+                    file_sha="$(shasum -a 256 "$recipe_file" | awk '{print $1}')"
+                fi
+                printf '%s  %s\n' "$file_sha" "$recipe_file"
+            done \
+            | if [[ "$hash_tool" == sha256sum ]]; then sha256sum; else shasum -a 256; fi \
+            | awk '{print $1}'
+    )
+}
+
+LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256)"
+
 running_container_for_image() {
     local container_id
     local configured_image
@@ -85,6 +116,40 @@ running_container_for_image() {
     done < <(docker container ls --quiet)
 
     return 1
+}
+
+reconcile_stopped_containers_for_image() {
+    local expected_image_id
+    local container_id
+    local configured_image
+    local running
+    local current_image_id
+
+    expected_image_id="$(docker image inspect --format '{{.Id}}' "$USER_IMAGE")"
+    while IFS= read -r container_id; do
+        [[ -n "$container_id" ]] || continue
+        configured_image="$(docker container inspect --format '{{.Config.Image}}' "$container_id" 2>/dev/null || true)"
+        [[ "$configured_image" == "$USER_IMAGE" ]] || continue
+        running="$(docker container inspect --format '{{.State.Running}}' "$container_id" 2>/dev/null || true)"
+        [[ "$running" == "false" ]] || continue
+        current_image_id="$(docker inspect --format '{{.Image}}' "$container_id" 2>/dev/null || true)"
+        [[ -n "$current_image_id" && "$current_image_id" != "$expected_image_id" ]] || continue
+
+        echo -e "${YELLOW}⟳ Removing stopped container '${container_id}' because it uses the previous ${USER_IMAGE} image ID${NC}"
+        if ! docker rm "$container_id" >/dev/null; then
+            if ! docker container inspect "$container_id" >/dev/null 2>&1; then
+                echo -e "${GREEN}✓ Stale container '${container_id}' was already removed by another startup${NC}"
+                continue
+            fi
+            running="$(docker container inspect --format '{{.State.Running}}' "$container_id" 2>/dev/null || true)"
+            if [[ "$running" == "true" ]]; then
+                echo -e "${YELLOW}↷ Container '${container_id}' started during reconciliation; preserving it${NC}"
+            else
+                echo -e "${RED}✗ Unable to remove stale stopped container '${container_id}'${NC}" >&2
+                return 1
+            fi
+        fi
+    done < <(docker container ls --all --quiet)
 }
 
 # Check if base image exists
@@ -200,8 +265,11 @@ image_group_gid_has_member() {
 if [ "$FORCE" = false ] && docker image inspect "$USER_IMAGE" >/dev/null 2>&1; then
     BASE_CREATED=$(docker inspect --format '{{.Created}}' "$BASE_IMAGE" 2>/dev/null)
     USER_CREATED=$(docker inspect --format '{{.Created}}' "$USER_IMAGE" 2>/dev/null)
+    IMAGE_RECIPE_SHA256=$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.recipe-sha256" }}' "$USER_IMAGE" 2>/dev/null || true)
 
-    if [[ -n "$BASE_CREATED" && -n "$USER_CREATED" ]]; then
+    if [[ "$IMAGE_RECIPE_SHA256" != "$LAYER3_RECIPE_SHA256" ]]; then
+        echo -e "${YELLOW}⟳ ${USER_IMAGE} was built from a different Layer 3 recipe, rebuilding...${NC}"
+    elif [[ -n "$BASE_CREATED" && -n "$USER_CREATED" ]]; then
         # Compare timestamps (ISO 8601 strings sort lexicographically)
         if [[ "$USER_CREATED" > "$BASE_CREATED" ]]; then
             # Verify the user actually exists inside the image
@@ -211,6 +279,7 @@ if [ "$FORCE" = false ] && docker image inspect "$USER_IMAGE" >/dev/null 2>&1; t
                     ! image_group_gid_has_member "$USER_IMAGE" "$DOCKER_SOCKET_GID" "$USERNAME"; then
                     echo -e "${YELLOW}⟳ Docker socket group '$DOCKER_SOCKET_GID' missing from ${USER_IMAGE}, rebuilding...${NC}"
                 else
+                    reconcile_stopped_containers_for_image
                     echo -e "${GREEN}✓ ${USER_IMAGE} is up-to-date (newer than ${BASE_IMAGE})${NC}"
                     exit 0
                 fi
@@ -238,6 +307,7 @@ if [ ! -x "$BUILD_SCRIPT" ]; then
 fi
 
 BUILD_ARGS=(--base "$BASE_IMAGE" --user "$USERNAME" --uid "$USER_UID" --gid "$USER_GID")
+BUILD_ARGS+=(--recipe-sha256 "$LAYER3_RECIPE_SHA256")
 if [ -n "$DOCKER_SOCKET_GID" ]; then
     BUILD_ARGS+=(--docker-gid "$DOCKER_SOCKET_GID")
 fi
@@ -246,5 +316,6 @@ if [ -n "$EXTRA_CHOWN" ]; then
 fi
 
 "$BUILD_SCRIPT" "${BUILD_ARGS[@]}"
+reconcile_stopped_containers_for_image
 
 echo -e "${GREEN}✓ ${USER_IMAGE} ready${NC}"
