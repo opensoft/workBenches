@@ -22,6 +22,7 @@ USER_UID=$(id -u)
 USER_GID=$(id -g)
 DOCKER_SOCKET_GID=""
 FORCE=false
+LAYER3_RECIPE_DIR="$REPO_DIR/user-layer"
 
 # Colors
 RED='\033[0;31m'
@@ -70,6 +71,24 @@ BASE_NAME="${BASE_IMAGE%%:*}"
 USER_IMAGE="${BASE_NAME}:${USERNAME}"
 
 echo -e "${CYAN}ensure-layer3: Checking ${USER_IMAGE}...${NC}"
+
+layer3_recipe_sha256() {
+    if ! command -v sha256sum >/dev/null 2>&1; then
+        echo "sha256sum is required to fingerprint the Layer 3 recipe" >&2
+        return 1
+    fi
+
+    (
+        cd "$LAYER3_RECIPE_DIR"
+        find . -type f -print0 \
+            | LC_ALL=C sort -z \
+            | xargs -0 sha256sum \
+            | sha256sum \
+            | awk '{print $1}'
+    )
+}
+
+LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256)"
 
 running_container_for_image() {
     local container_id
@@ -200,8 +219,11 @@ image_group_gid_has_member() {
 if [ "$FORCE" = false ] && docker image inspect "$USER_IMAGE" >/dev/null 2>&1; then
     BASE_CREATED=$(docker inspect --format '{{.Created}}' "$BASE_IMAGE" 2>/dev/null)
     USER_CREATED=$(docker inspect --format '{{.Created}}' "$USER_IMAGE" 2>/dev/null)
+    IMAGE_RECIPE_SHA256=$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.recipe-sha256" }}' "$USER_IMAGE" 2>/dev/null || true)
 
-    if [[ -n "$BASE_CREATED" && -n "$USER_CREATED" ]]; then
+    if [[ "$IMAGE_RECIPE_SHA256" != "$LAYER3_RECIPE_SHA256" ]]; then
+        echo -e "${YELLOW}⟳ ${USER_IMAGE} was built from a different Layer 3 recipe, rebuilding...${NC}"
+    elif [[ -n "$BASE_CREATED" && -n "$USER_CREATED" ]]; then
         # Compare timestamps (ISO 8601 strings sort lexicographically)
         if [[ "$USER_CREATED" > "$BASE_CREATED" ]]; then
             # Verify the user actually exists inside the image
@@ -238,6 +260,7 @@ if [ ! -x "$BUILD_SCRIPT" ]; then
 fi
 
 BUILD_ARGS=(--base "$BASE_IMAGE" --user "$USERNAME" --uid "$USER_UID" --gid "$USER_GID")
+BUILD_ARGS+=(--recipe-sha256 "$LAYER3_RECIPE_SHA256")
 if [ -n "$DOCKER_SOCKET_GID" ]; then
     BUILD_ARGS+=(--docker-gid "$DOCKER_SOCKET_GID")
 fi

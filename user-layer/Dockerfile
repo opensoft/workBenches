@@ -27,6 +27,10 @@ ARG USER_UID=1000
 ARG USER_GID=1000
 ARG DOCKER_SOCKET_GID=""
 ARG EXTRA_CHOWN_DIRS=""
+ARG LAYER3_RECIPE_SHA256="unknown"
+ARG CODEX_VERSION="0.153.4"
+
+LABEL io.opensoft.workbenches.layer3.recipe-sha256="${LAYER3_RECIPE_SHA256}"
 
 USER root
 
@@ -131,7 +135,7 @@ USER $USERNAME
 ENV NPM_CONFIG_PREFIX=/home/${USERNAME}/.npm-global
 ENV PATH=/home/${USERNAME}/.npm-global/bin:${PATH}
 RUN mkdir -p "$NPM_CONFIG_PREFIX" \
-    && npm install -g @openai/codex@latest
+    && npm install -g "@openai/codex@${CODEX_VERSION}"
 
 # Pre-create user-owned cache roots so first-use named volumes inherit the
 # runtime user's ownership instead of becoming root-only.

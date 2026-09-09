@@ -23,6 +23,8 @@ system-wide Codex binary without a writable npm prefix.
 - Install a second Codex copy into the runtime user's `$HOME/.npm-global` after Layer 3
   switches to the runtime user. This isolates user updates from the shared
   root-owned package.
+- Bake a reviewed, pinned Codex version into Layer 3. Runtime users can advance
+  their writable copy later with the normal Codex update workflow.
 - Set the npm global prefix and prepend its bin directory through Layer 3
   environment configuration. The resolved `codex` and the updater therefore
   use the same writable location.
