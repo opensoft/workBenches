@@ -717,6 +717,12 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     try:
         config = None if arguments.command == "status" else Config.load(arguments.config)
+        signaling_enabled = config is not None and config.active and (
+            arguments.command == "daemon"
+            or (arguments.command == "run-once" and getattr(arguments, "active", False))
+        )
+        if signaling_enabled and arguments.proc_root != Path("/proc"):
+            raise WatchdogError("custom --proc-root is permitted only in non-signaling modes")
         scanner = ProcScanner(arguments.proc_root)
         if arguments.command == "validate-config":
             assert config is not None

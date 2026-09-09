@@ -438,6 +438,7 @@ def uninstall(root: Path) -> dict[str, object]:
             raise InstallError(f"refusing removal of modified managed file: {target}")
 
     wsl_config_path = rooted(root, WSL_CONFIG_PATH)
+    ensure_regular_or_absent(wsl_config_path)
     current_wsl_config = wsl_config_path.read_text(encoding="utf-8") if wsl_config_path.exists() else ""
     updated_wsl_config = uninstall_boot_command(
         current_wsl_config,

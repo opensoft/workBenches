@@ -333,6 +333,32 @@ class ConfigTests(unittest.TestCase):
             self.assertFalse(config.active)
 
 
+class CliSafetyTests(unittest.TestCase):
+    def test_custom_proc_root_is_refused_for_signaling_commands(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            config_path = root / "watchdog.conf"
+            config_path.write_text("ACTIVE=true\n", encoding="utf-8")
+            proc_root = root / "proc"
+
+            for command in (("daemon", "--max-cycles", "1"), ("run-once", "--active")):
+                with self.subTest(command=command):
+                    errors = io.StringIO()
+                    with contextlib.redirect_stderr(errors):
+                        result = watchdog.main(
+                            [
+                                "--config",
+                                str(config_path),
+                                "--proc-root",
+                                str(proc_root),
+                                *command,
+                            ]
+                        )
+
+                    self.assertEqual(2, result)
+                    self.assertIn("custom --proc-root", errors.getvalue())
+
+
 class DaemonTests(unittest.TestCase):
     def test_existing_lock_prevents_duplicate_daemon(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -611,6 +637,25 @@ class InstallerTests(unittest.TestCase):
 
             stop_watchdog.assert_not_called()
 
+            self.assertTrue(installer.rooted(root, installer.ENGINE_PATH).exists())
+
+    def test_uninstall_refuses_replaced_wsl_config_symlink(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            installer.install(root, MODULE_DIR / "wsl_relay_watchdog.py", active=False, start=False)
+            wsl_config = installer.rooted(root, installer.WSL_CONFIG_PATH)
+            replacement = root / "unmanaged-wsl.conf"
+            replacement.write_text("[boot]\nsystemd=true\n", encoding="utf-8")
+            wsl_config.unlink()
+            wsl_config.symlink_to(replacement)
+
+            with mock.patch.object(installer, "stop_watchdog") as stop_watchdog:
+                with self.assertRaises(installer.InstallError):
+                    installer.uninstall(root)
+
+            stop_watchdog.assert_not_called()
+            self.assertTrue(wsl_config.is_symlink())
+            self.assertEqual("[boot]\nsystemd=true\n", replacement.read_text(encoding="utf-8"))
             self.assertTrue(installer.rooted(root, installer.ENGINE_PATH).exists())
 
 
