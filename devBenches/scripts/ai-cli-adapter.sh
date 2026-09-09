@@ -173,6 +173,7 @@ check_copilot_status() {
 check_generic_cli_status() {
     local provider="$1"
     local cli_cmd="$2"
+    local config_dir="${3:-$HOME/.${provider}}"
     
     # Check if CLI is installed
     if ! command -v "$cli_cmd" >/dev/null 2>&1; then
@@ -181,7 +182,7 @@ check_generic_cli_status() {
     fi
     
     # Check if config directory exists
-    if [ -d "$HOME/.${provider}" ]; then
+    if [ -d "$config_dir" ]; then
         # Assume authenticated if config dir exists
         echo "$CLI_AUTHENTICATED"
         return 0
@@ -197,7 +198,7 @@ check_generic_cli_status() {
 
 # Get status of all CLI providers
 get_all_cli_status() {
-    local -A cli_status_map
+    local -A cli_status_map=()
     
     for provider in "${PROVIDER_PRIORITY[@]}"; do
         case "$provider" in
@@ -221,13 +222,21 @@ get_all_cli_status() {
                 ;;
             kimi2)
                 # Kimi Code CLI (Moonshot AI) stores state under ~/.kimi-code
-                cli_status_map["kimi2"]=$(check_generic_cli_status "kimi-code" "kimi")
+                cli_status_map["kimi2"]=$(
+                    check_generic_cli_status \
+                        "kimi-code" \
+                        "kimi" \
+                        "${KIMI_CODE_HOME:-$HOME/.kimi-code}"
+                )
                 ;;
             minimax)
                 cli_status_map["minimax"]=$(check_generic_cli_status "minimax-code" "mcode")
                 ;;
             deepseek)
                 cli_status_map["deepseek"]=$(check_generic_cli_status "dsh" "dsh")
+                ;;
+            *)
+                continue
                 ;;
         esac
     done
@@ -262,13 +271,21 @@ get_authenticated_cli() {
                 cli_status=$(check_generic_cli_status "meta" "llama")
                 ;;
             kimi2)
-                cli_status=$(check_generic_cli_status "kimi-code" "kimi")
+                cli_status=$(
+                    check_generic_cli_status \
+                        "kimi-code" \
+                        "kimi" \
+                        "${KIMI_CODE_HOME:-$HOME/.kimi-code}"
+                )
                 ;;
             minimax)
                 cli_status=$(check_generic_cli_status "minimax-code" "mcode")
                 ;;
             deepseek)
                 cli_status=$(check_generic_cli_status "dsh" "dsh")
+                ;;
+            *)
+                continue
                 ;;
         esac
         
@@ -310,7 +327,7 @@ get_authenticated_routing_cli() {
 
 # Get list of installed but not authenticated CLIs
 get_unauthenticated_clis() {
-    local -a unauthenticated
+    local -a unauthenticated=()
     
     for provider in "${PROVIDER_PRIORITY[@]}"; do
         local cli_status
@@ -334,13 +351,21 @@ get_unauthenticated_clis() {
                 cli_status=$(check_generic_cli_status "meta" "llama")
                 ;;
             kimi2)
-                cli_status=$(check_generic_cli_status "kimi-code" "kimi")
+                cli_status=$(
+                    check_generic_cli_status \
+                        "kimi-code" \
+                        "kimi" \
+                        "${KIMI_CODE_HOME:-$HOME/.kimi-code}"
+                )
                 ;;
             minimax)
                 cli_status=$(check_generic_cli_status "minimax-code" "mcode")
                 ;;
             deepseek)
                 cli_status=$(check_generic_cli_status "dsh" "dsh")
+                ;;
+            *)
+                continue
                 ;;
         esac
         

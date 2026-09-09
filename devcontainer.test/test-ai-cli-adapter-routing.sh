@@ -15,9 +15,17 @@ source "$ADAPTER"
 [[ "${PROVIDER_PRIORITY[*]}" == "qwen codex kimi2 minimax deepseek" ]]
 [[ "${ROUTING_PROVIDER_PRIORITY[*]}" == "codex" ]]
 
+mkdir -p "$temporary_home/bin" "$temporary_home/kimi-profile"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$temporary_home/bin/kimi"
+chmod +x "$temporary_home/bin/kimi"
+PATH="$temporary_home/bin:$PATH"
+KIMI_CODE_HOME="$temporary_home/kimi-profile"
+export PATH KIMI_CODE_HOME
+[[ "$(check_generic_cli_status "kimi-code" "kimi" "$KIMI_CODE_HOME")" == "$CLI_AUTHENTICATED" ]]
+
 generic_calls="$temporary_home/generic-calls"
 check_generic_cli_status() {
-    printf '%s|%s\n' "$1" "$2" >>"$generic_calls"
+    printf '%s|%s|%s\n' "$1" "$2" "${3-}" >>"$generic_calls"
     printf '%s\n' "$CLI_AUTHENTICATED"
 }
 check_codex_status() {
@@ -32,7 +40,17 @@ grep -qx 'qwen=authenticated' <<<"$inventory"
 grep -qx 'kimi2=authenticated' <<<"$inventory"
 grep -qx 'minimax=authenticated' <<<"$inventory"
 grep -qx 'deepseek=authenticated' <<<"$inventory"
-grep -qx 'dsh|dsh' "$generic_calls"
+grep -qx 'dsh|dsh|' "$generic_calls"
+grep -qx "kimi-code|kimi|$KIMI_CODE_HOME" "$generic_calls"
+
+saved_priority=("${PROVIDER_PRIORITY[@]}")
+PROVIDER_PRIORITY=("" antigravity qwen)
+[[ "$(get_authenticated_cli)" == qwen ]]
+if get_unauthenticated_clis >/dev/null 2>&1; then
+    echo "unexpected unauthenticated provider from unknown-entry fixture" >&2
+    exit 1
+fi
+PROVIDER_PRIORITY=("${saved_priority[@]}")
 
 get_unauthenticated_clis() {
     printf '%s\n' codex
