@@ -16,6 +16,7 @@ repair_requested=false
 profile_launcher_marker="/usr/local/share/workbenches/profile-launchers.sha256"
 bench_dir="$workbenches_root/devBenches/pyBench"
 compose_file="$bench_dir/.devcontainer/docker-compose.yml"
+compose_file_explicit=false
 base_image="py-bench:latest"
 layer3_chown=""
 compose_project="dev-benches"
@@ -25,7 +26,7 @@ resolve_bench_defaults() {
         pyBench|py-bench)
             container="py-bench"
             bench_dir="$workbenches_root/devBenches/pyBench"
-            compose_file="$bench_dir/.devcontainer/docker-compose.yml"
+            [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="py-bench:latest"
             layer3_chown=""
             compose_project="dev-benches"
@@ -33,7 +34,7 @@ resolve_bench_defaults() {
         dotNetBench|dotnetBench|dotnet-bench)
             container="dotnet-bench"
             bench_dir="$workbenches_root/devBenches/dotNetBench"
-            compose_file="$bench_dir/.devcontainer/docker-compose.yml"
+            [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="dotnet-bench:latest"
             layer3_chown=""
             compose_project="dev-benches"
@@ -41,7 +42,7 @@ resolve_bench_defaults() {
         cppBench|C++Bench|c++Bench|cpp-bench)
             container="cpp-bench"
             bench_dir="$workbenches_root/devBenches/cppBench"
-            compose_file="$bench_dir/.devcontainer/docker-compose.yml"
+            [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="cpp-bench:latest"
             layer3_chown="/opt/vcpkg"
             compose_project="dev-benches"
@@ -49,7 +50,7 @@ resolve_bench_defaults() {
         rustBench|rust-bench)
             container="rust-bench"
             bench_dir="$workbenches_root/devBenches/rustBench"
-            compose_file="$bench_dir/.devcontainer/docker-compose.yml"
+            [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="rust-bench:latest"
             layer3_chown="/opt/rust"
             compose_project="dev-benches"
@@ -57,7 +58,7 @@ resolve_bench_defaults() {
         flutterBench|flutter-bench)
             container="flutter-bench"
             bench_dir="$workbenches_root/devBenches/flutterBench"
-            compose_file="$bench_dir/.devcontainer/docker-compose.yml"
+            [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="flutter-bench:latest"
             layer3_chown="/opt/flutter /opt/flutter-3.27.0 /opt/android-sdk"
             compose_project="dev-benches"
@@ -65,7 +66,7 @@ resolve_bench_defaults() {
         cloudBench|cloud-bench)
             container="cloud-bench"
             bench_dir="$workbenches_root/sysBenches/cloudBench/devcontainer.example"
-            compose_file="$bench_dir/docker-compose.yml"
+            [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/docker-compose.yml"
             base_image="cloud-bench:latest"
             layer3_chown=""
             compose_project="sys-benches"
@@ -73,7 +74,7 @@ resolve_bench_defaults() {
         365Bench|m365Bench|m365-bench)
             container="m365-bench"
             bench_dir="$workbenches_root/sysBenches/365Bench"
-            compose_file="$bench_dir/.devcontainer/docker-compose.yml"
+            [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="m365-bench:latest"
             layer3_chown=""
             compose_project="sys-benches"
@@ -106,7 +107,7 @@ EOF
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --workbenches-root) workbenches_root="$2"; shift 2 ;;
-        --compose-file) compose_file="$2"; shift 2 ;;
+        --compose-file) compose_file="$2"; compose_file_explicit=true; shift 2 ;;
         --user) container_user="$2"; shift 2 ;;
         --workdir) workdir="$2"; shift 2 ;;
         --shell) shell_path="$2"; shift 2 ;;

@@ -31,6 +31,7 @@ run_launcher_case() {
     : > "$fake_root/devBenches/pyBench/.devcontainer/docker-compose.yml"
     : > "$fake_root/devBenches/dotNetBench/.devcontainer/devcontainer.json"
     : > "$fake_root/devBenches/dotNetBench/.devcontainer/docker-compose.yml"
+    : > "$fake_root/custom-compose.yml"
 
     cat > "$fake_root/scripts/prepare-bench-start.sh" <<'PREPARE'
 #!/usr/bin/env bash
@@ -91,6 +92,11 @@ exit 0
 MOCK
     chmod +x "$mock_bin/docker"
 
+    local launcher_args=()
+    if [[ "${CASE_EXPLICIT_COMPOSE:-false}" == true ]]; then
+        launcher_args+=(--compose-file "$fake_root/custom-compose.yml")
+    fi
+
     local output
     if ! output="$(
         env \
@@ -108,6 +114,7 @@ MOCK
                 --workbenches-root "$fake_root" \
                 --shell sh \
                 --check \
+                "${launcher_args[@]}" \
                 "$@" \
                 "$bench" 2>&1
     )"; then
@@ -159,5 +166,9 @@ fi
 run_launcher_case dotnet-defaults false missing false false dotNetBench
 grep -q -- '--container dotnet-bench --base dotnet-bench:latest --user tester --project dev-benches --service dotnet-bench' <<<"$CASE_PREPARE_LOG" \
     || fail "safe startup helper did not receive the dotNetBench lifecycle contract"
+
+CASE_EXPLICIT_COMPOSE=true run_launcher_case dotnet-explicit-compose false missing false false dotNetBench
+grep -q -- "compose -f .*/custom-compose.yml" <<<"$CASE_DOCKER_LOG" \
+    || fail "dotNetBench replaced the explicitly supplied Compose file"
 
 echo "PASS: wave container launcher lifecycle tests"
