@@ -5,7 +5,7 @@
 # Shared across all bench types (frappe, flutter, dotnet)
 
 # Prevent double-sourcing
-if [ -n "$_AI_CLI_ADAPTER_SOURCED" ]; then
+if [ -n "${_AI_CLI_ADAPTER_SOURCED:-}" ]; then
     return 0
 fi
 _AI_CLI_ADAPTER_SOURCED=1
@@ -24,26 +24,24 @@ else
     PROVIDER_PRIORITY=("codex" "claude" "gemini")
 fi
 
-filter_supported_providers() {
-    local -a filtered=()
+build_routing_provider_priority() {
+    ROUTING_PROVIDER_PRIORITY=()
     local provider
 
     for provider in "${PROVIDER_PRIORITY[@]}"; do
         case "$provider" in
             codex|claude|gemini)
-                filtered+=("$provider")
+                ROUTING_PROVIDER_PRIORITY+=("$provider")
                 ;;
         esac
     done
 
-    if [ ${#filtered[@]} -gt 0 ]; then
-        PROVIDER_PRIORITY=("${filtered[@]}")
-    else
-        PROVIDER_PRIORITY=("codex" "claude" "gemini")
+    if [ ${#ROUTING_PROVIDER_PRIORITY[@]} -eq 0 ]; then
+        ROUTING_PROVIDER_PRIORITY=("codex" "claude" "gemini")
     fi
 }
 
-filter_supported_providers
+build_routing_provider_priority
 
 # Timeout for CLI probes (seconds)
 readonly PROBE_TIMEOUT=10
@@ -283,6 +281,33 @@ get_authenticated_cli() {
     return 1
 }
 
+# Get the first authenticated provider supported by the unified call interface.
+get_authenticated_routing_cli() {
+    local provider
+    local cli_status
+
+    for provider in "${ROUTING_PROVIDER_PRIORITY[@]}"; do
+        case "$provider" in
+            codex)
+                cli_status=$(check_codex_status)
+                ;;
+            claude)
+                cli_status=$(check_claude_status)
+                ;;
+            gemini)
+                cli_status=$(check_gemini_status)
+                ;;
+        esac
+
+        if [ "$cli_status" = "$CLI_AUTHENTICATED" ]; then
+            echo "$provider"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 # Get list of installed but not authenticated CLIs
 get_unauthenticated_clis() {
     local -a unauthenticated
@@ -406,7 +431,7 @@ call_ai_cli() {
     
     # Get authenticated provider
     local provider
-    provider=$(get_authenticated_cli)
+    provider=$(get_authenticated_routing_cli)
     
     if [ -z "$provider" ]; then
         echo "Error: No authenticated CLI provider available" >&2
@@ -455,7 +480,7 @@ call_ai_cli() {
 select_ai_provider() {
     # First: Try to get authenticated CLI
     local cli_provider
-    cli_provider=$(get_authenticated_cli)
+    cli_provider=$(get_authenticated_routing_cli)
     
     if [ -n "$cli_provider" ]; then
         echo "${cli_provider}|cli"
