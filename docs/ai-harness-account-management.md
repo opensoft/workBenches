@@ -20,9 +20,9 @@ The supported harness families are:
 | `gemini` | Google Gemini CLI | `gemini` | One `GEMINI_CLI_HOME` per account | Login and local credential presence |
 | `grok` | Grok Build | `grok` | One `GROK_HOME` per account | Login and verification |
 | `glm` | Z.AI GLM Coding Plan through OpenCode | `opencode` | Profile-specific XDG directories | Login and verification |
-| `kimi-code` | Kimi Code CLI (Moonshot AI, Kimi K3) | `kimi` | One `KIMI_CODE_HOME` per account | Login and verification |
-| `qwen` | Qwen Code CLI (Alibaba) | `qwen` | Profile-specific `~/.qwen` config | Login and verification |
-| `minimax` | MiniMax Code CLI | `mcode` | Region-aware login (`global`/`cn`) | Login and verification |
+| `kimi-code` | Kimi Code CLI (Moonshot AI, Kimi K3) | `kimi` | One `KIMI_CODE_HOME` per account | Inventory and manual verification |
+| `qwen` | Qwen Code CLI (Alibaba) | `qwen` | Profile-specific `~/.qwen` config | Inventory and manual verification |
+| `minimax` | MiniMax Code CLI | `mcode` | Region-aware login (`global`/`cn`) | Inventory and manual verification |
 | `deepseek-harness` | DeepSeek Harness (developer preview) | `dsh` | One `DSH_HOME` per account | Inventory and manual verification |
 | `antigravity` | Google Antigravity, the Gemini CLI migration target | `agy` | Operating-system secure keyring | Inventory and manual verification |
 | `abacus` | Abacus AI CLI | `abacusai` | Provider login or per-process API key | Inventory and manual verification |
@@ -72,6 +72,11 @@ Open `http://127.0.0.1:8765`. The server binds only to loopback. It displays
 the source repository URL, verifies supported local profiles, and can start
 vendor login flows. It does not read, return, copy, or commit credential
 contents.
+
+Kimi, Qwen, and MiniMax are recognized in the shared CLI inventory and shell
+adapter, but the dashboard does not yet implement their profile-home or
+authentication adapters. Use the vendor commands in their workflows below for
+login and verification.
 
 ## Provider workflows
 
