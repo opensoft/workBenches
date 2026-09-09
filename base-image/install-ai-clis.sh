@@ -733,7 +733,11 @@ log_info "  - NotebookLM CLI (notebooklm) [auth via host browser]"
 log_info "  - NotebookLM MCP CLI (nlm) [auth via host browser]"
 log_info "  - Moonshot Kimi Code (kimi)"
 log_info "  - Qwen Code (qwen)"
-log_info "  - Z.AI Coding Plan helper (chelper) [configures other tools, not a standalone agent]"
+if command -v chelper >/dev/null 2>&1; then
+    log_info "  - Z.AI Coding Plan helper (chelper) [configures other tools, not a standalone agent]"
+else
+    log_info "  - Z.AI Coding Plan helper (chelper) [install skipped or failed]"
+fi
 if command -v dsh >/dev/null 2>&1; then
     log_info "  - DeepSeek Harness (dsh) [developer preview]"
 else

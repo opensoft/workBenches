@@ -541,7 +541,11 @@ log_info "  - oh-my-opencode (omo)"
 log_info "  - Letta Code (letta)"
 log_info "  - Moonshot Kimi Code (kimi)"
 log_info "  - Qwen Code (qwen)"
-log_info "  - Z.AI Coding Plan helper (chelper)"
+if command -v chelper >/dev/null 2>&1; then
+    log_info "  - Z.AI Coding Plan helper (chelper)"
+else
+    log_info "  - Z.AI Coding Plan helper (chelper) [install skipped or failed]"
+fi
 if command -v dsh >/dev/null 2>&1; then
     log_info "  - DeepSeek Harness (dsh) [developer preview]"
 else
