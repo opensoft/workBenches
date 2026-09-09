@@ -85,7 +85,12 @@ if ($Action -eq 'Uninstall') {
         Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
     }
-    Remove-Item -LiteralPath $installedScript -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $installedScript) {
+        Remove-Item -LiteralPath $installedScript -Force -ErrorAction Stop
+    }
+    if (Test-Path -LiteralPath $installedScript) {
+        throw "Unable to remove installed watchdog script: $installedScript"
+    }
     [ordered]@{
         installed = $false
         installed_script_removed = (-not (Test-Path -LiteralPath $installedScript))

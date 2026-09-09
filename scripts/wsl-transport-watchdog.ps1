@@ -29,6 +29,7 @@ $script:EventPath = Join-Path $StateDirectory 'events.jsonl'
 $script:EvidenceDirectory = Join-Path $StateDirectory 'evidence'
 $script:HeartbeatSeconds = 600
 $script:MaxEventBytes = 5MB
+$script:MaxEvidenceFiles = 20
 $script:SystemRoot = $env:SystemRoot
 if (-not $script:SystemRoot) {
     $script:SystemRoot = [Environment]::GetEnvironmentVariable('SystemRoot', 'Machine')
@@ -187,20 +188,38 @@ function Invoke-WslTransportProbe {
 }
 
 function Get-HostSnapshot {
-    $operatingSystem = Get-CimInstance Win32_OperatingSystem
-    $computerSystem = Get-CimInstance Win32_ComputerSystem
-    $wslProcesses = @(Get-CimInstance Win32_Process -Filter "Name='wsl.exe' OR Name='wslhost.exe'" -ErrorAction SilentlyContinue)
-    $vmmem = Get-Process -Name vmmemWSL -ErrorAction SilentlyContinue
-    $wslService = Get-CimInstance Win32_Service -Filter "Name='WSLService'" -ErrorAction SilentlyContinue
-    $wslBinary = Get-Item -LiteralPath (Join-Path $script:SystemRoot 'System32\wsl.exe') -ErrorAction SilentlyContinue
+    $diagnosticErrors = [ordered]@{}
+    $operatingSystem = $null
+    $computerSystem = $null
+    $wslProcesses = @()
+    $vmmem = $null
+    $wslService = $null
+    $wslBinary = $null
+
+    try { $operatingSystem = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop }
+    catch { $diagnosticErrors.operating_system = $_.Exception.GetType().Name }
+    try { $computerSystem = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop }
+    catch { $diagnosticErrors.computer_system = $_.Exception.GetType().Name }
+    try { $wslProcesses = @(Get-CimInstance Win32_Process -Filter "Name='wsl.exe' OR Name='wslhost.exe'" -ErrorAction Stop) }
+    catch { $diagnosticErrors.wsl_processes = $_.Exception.GetType().Name }
+    try { $vmmem = Get-Process -Name vmmemWSL -ErrorAction Stop }
+    catch { $diagnosticErrors.vmmem = $_.Exception.GetType().Name }
+    try { $wslService = Get-CimInstance Win32_Service -Filter "Name='WSLService'" -ErrorAction Stop }
+    catch { $diagnosticErrors.wsl_service = $_.Exception.GetType().Name }
+    try { $wslBinary = Get-Item -LiteralPath (Join-Path $script:SystemRoot 'System32\wsl.exe') -ErrorAction Stop }
+    catch { $diagnosticErrors.wsl_launcher = $_.Exception.GetType().Name }
     $packagedWslPath = if ($env:ProgramFiles) { Join-Path $env:ProgramFiles 'WSL\wsl.exe' } else { $null }
-    $packagedWslBinary = if ($packagedWslPath) { Get-Item -LiteralPath $packagedWslPath -ErrorAction SilentlyContinue } else { $null }
+    $packagedWslBinary = $null
+    if ($packagedWslPath) {
+        try { $packagedWslBinary = Get-Item -LiteralPath $packagedWslPath -ErrorAction Stop }
+        catch { $diagnosticErrors.packaged_wsl = $_.Exception.GetType().Name }
+    }
 
     return [ordered]@{
         windows = [ordered]@{
-            total_visible_gib = [Math]::Round($computerSystem.TotalPhysicalMemory / 1GB, 2)
-            free_physical_gib = [Math]::Round(($operatingSystem.FreePhysicalMemory * 1KB) / 1GB, 2)
-            free_virtual_gib = [Math]::Round(($operatingSystem.FreeVirtualMemory * 1KB) / 1GB, 2)
+            total_visible_gib = if ($null -ne $computerSystem) { [Math]::Round($computerSystem.TotalPhysicalMemory / 1GB, 2) } else { $null }
+            free_physical_gib = if ($null -ne $operatingSystem) { [Math]::Round(($operatingSystem.FreePhysicalMemory * 1KB) / 1GB, 2) } else { $null }
+            free_virtual_gib = if ($null -ne $operatingSystem) { [Math]::Round(($operatingSystem.FreeVirtualMemory * 1KB) / 1GB, 2) } else { $null }
         }
         wsl_service = if ($null -ne $wslService) {
             [ordered]@{
@@ -233,6 +252,7 @@ function Get-HostSnapshot {
                 cpu_seconds = [Math]::Round($vmmem.CPU, 2)
             }
         } else { $null }
+        diagnostic_errors = $diagnosticErrors
     }
 }
 
@@ -377,6 +397,11 @@ function Save-FailureEvidence {
     )
 
     New-Item -ItemType Directory -Path $script:EvidenceDirectory -Force | Out-Null
+    $existingEvidence = @(Get-ChildItem -LiteralPath $script:EvidenceDirectory -Filter 'wsl-transport-*.json' -File |
+        Sort-Object LastWriteTimeUtc -Descending)
+    foreach ($staleEvidence in @($existingEvidence | Select-Object -Skip ($script:MaxEvidenceFiles - 1))) {
+        Remove-Item -LiteralPath $staleEvidence.FullName -Force -ErrorAction Stop
+    }
     $timestamp = [DateTimeOffset]::UtcNow
     $evidencePath = Join-Path $script:EvidenceDirectory ('wsl-transport-{0}.json' -f $timestamp.ToString('yyyyMMddTHHmmssfffZ'))
     $evidence = [ordered]@{
@@ -473,7 +498,16 @@ function Invoke-WatchdogCycle {
     if ($health -ne $PreviousHealth) {
         $transition = [DateTimeOffset]::UtcNow.ToString('o')
         if ($health -eq 'stuck') {
-            $evidencePath = Save-FailureEvidence -Probe $probe -ConsecutiveFailures $failureCount
+            try {
+                $evidencePath = Save-FailureEvidence -Probe $probe -ConsecutiveFailures $failureCount
+            }
+            catch {
+                $evidencePath = $null
+                Add-WatchdogEvent -Event 'evidence-capture-failed' -Data ([ordered]@{
+                    error = $_.Exception.GetType().Name
+                    consecutive_failures = $failureCount
+                })
+            }
         }
         Add-WatchdogEvent -Event 'health-transition' -Data ([ordered]@{
             previous_health = $PreviousHealth

@@ -16,3 +16,4 @@
 - [x] 3.2 Run a one-shot probe against a temporary state directory and verify its JSON contract.
 - [x] 3.3 Verify strict OpenSpec validation, diff hygiene, and absence of host-specific committed paths.
 - [x] 3.4 Verify bounded child-process termination, status output/exit-code separation, encoded child arguments, and installed-script removal on uninstall.
+- [x] 3.5 Verify host diagnostic failures remain non-fatal and failure evidence retention is bounded.

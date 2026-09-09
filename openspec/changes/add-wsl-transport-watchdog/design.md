@@ -32,8 +32,10 @@ without gaining authority over WSL services or existing workloads.
   process-name cleanup is explicitly rejected.
 - Require consecutive failures before entering the `stuck` state so a single
   slow launch does not create a false incident.
-- Write current state atomically and rotate the append-only event log at a
-  bounded size. Evidence is captured only on transition to `stuck`.
+- Write current state atomically, rotate the append-only event log at a bounded
+  size, and retain at most 20 failure snapshots. Evidence is captured only on
+  transition to `stuck`; diagnostic query failures are recorded without
+  terminating the daemon.
 - Gather guest filesystem evidence through the distribution's UNC filesystem
   in a separately bounded PowerShell child. This can still work when guest
   process creation is unavailable and can itself time out safely.
