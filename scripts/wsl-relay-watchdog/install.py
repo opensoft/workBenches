@@ -246,11 +246,20 @@ def stop_watchdog(root: Path, timeout_seconds: float = 5.0) -> None:
         signal.pidfd_send_signal(pidfd, signal.SIGTERM, None, 0)
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
-            if not verified_watchdog(identity):
+            if not verified_watchdog(identity) and not watchdog_lock_is_held(root):
                 return
             time.sleep(0.1)
         if verified_watchdog(identity):
-            signal.pidfd_send_signal(pidfd, signal.SIGKILL, None, 0)
+            try:
+                signal.pidfd_send_signal(pidfd, signal.SIGKILL, None, 0)
+            except ProcessLookupError:
+                pass
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            if not verified_watchdog(identity) and not watchdog_lock_is_held(root):
+                return
+            time.sleep(0.1)
+        raise InstallError("watchdog did not release its singleton lock after termination")
     finally:
         os.close(pidfd)
 

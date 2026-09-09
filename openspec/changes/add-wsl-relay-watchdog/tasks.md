@@ -34,6 +34,7 @@
 - [x] 5.3 Add signal-order and revalidation tests proving TERM-before-KILL and no signal after identity or predicate changes
 - [x] 5.4 Add batch-limit, configuration rejection, singleton lock, bounded logging, install-conflict, and rollback-preservation tests
 - [x] 5.5 Add missing-identity lock, fresh-start status, and absent-configuration rollback coverage
+- [x] 5.6 Add target-scoped pre-signal child revalidation and daemon lock-release waiting
 - [x] 5.5 Run focused tests and shell syntax/static checks, fixing only watchdog-related failures
 
 ## 6. Live Dry-Run Qualification

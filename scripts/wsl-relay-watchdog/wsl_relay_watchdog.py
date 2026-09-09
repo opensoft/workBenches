@@ -186,6 +186,55 @@ class ProcScanner:
         except (FileNotFoundError, PermissionError, OSError, UnicodeError, ValueError):
             return None
 
+    def inspect_strict_candidate(
+        self, identity: ProcessIdentity, min_age_seconds: int
+    ) -> ProcessInfo | None:
+        process_dir = self.proc_root / str(identity.pid)
+        try:
+            uptime_seconds = self._uptime_seconds()
+            parent_pid, start_time_ticks = self._parse_stat(
+                (process_dir / "stat").read_text(encoding="utf-8")
+            )
+            if start_time_ticks != identity.start_time_ticks:
+                return None
+            raw_name = (process_dir / "comm").read_text(encoding="utf-8")
+            if not raw_name.endswith("\n"):
+                return None
+            name = raw_name[:-1]
+            if "\n" in name or "\r" in name or name != "Relay":
+                return None
+            command_line = self._parse_command_line((process_dir / "cmdline").read_bytes())
+            task_dirs = tuple(
+                task_dir for task_dir in (process_dir / "task").iterdir() if task_dir.name.isdigit()
+            )
+            if not task_dirs:
+                return None
+            child_pids: set[int] = set()
+            for task_dir in task_dirs:
+                raw_children = (task_dir / "children").read_text(encoding="ascii").strip()
+                if not raw_children:
+                    continue
+                task_child_pids = [int(child_pid) for child_pid in raw_children.split()]
+                if any(child_pid <= 0 for child_pid in task_child_pids):
+                    return None
+                child_pids.update(task_child_pids)
+            age_seconds = uptime_seconds - (start_time_ticks / self.clock_ticks)
+            if age_seconds < min_age_seconds:
+                return None
+            candidate = ProcessInfo(
+                identity=identity,
+                parent_pid=parent_pid,
+                name=name,
+                command_line=command_line,
+                age_seconds=age_seconds,
+                child_count=len(child_pids),
+            )
+            if parent_pid != 1 or command_line != ("/init",) or candidate.child_count != 0:
+                return None
+            return candidate
+        except (FileNotFoundError, PermissionError, OSError, UnicodeError, ValueError):
+            return None
+
     def scan(self, min_age_seconds: int) -> ScanResult:
         timestamp = time.time()
         inspection_errors: list[str] = []
@@ -320,11 +369,7 @@ class CleanupEngine:
         self.sleep = sleep
 
     def _revalidate(self, identity: ProcessIdentity) -> tuple[ProcessInfo | None, tuple[str, ...]]:
-        scan_result = self.scanner.scan(self.config.min_age_seconds)
-        for candidate in scan_result.strict_candidates:
-            if candidate.identity == identity:
-                return candidate, scan_result.inspection_errors
-        return None, scan_result.inspection_errors
+        return self.scanner.inspect_strict_candidate(identity, self.config.min_age_seconds), ()
 
     def clean(self, eligible: Iterable[ProcessInfo]) -> tuple[SignalDecision, ...]:
         ordered = sorted(eligible, key=lambda item: (-item.age_seconds, item.identity.pid))

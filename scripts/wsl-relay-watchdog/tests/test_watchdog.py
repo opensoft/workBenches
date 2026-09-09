@@ -107,8 +107,25 @@ class SequenceScanner:
             self.last_result = self.results.pop(0)
         return self.last_result
 
+    def inspect_strict_candidate(self, identity, min_age_seconds):
+        result = self.scan(min_age_seconds)
+        return next((candidate for candidate in result.strict_candidates if candidate.identity == identity), None)
+
 
 class ProcScannerTests(unittest.TestCase):
+    def test_targeted_revalidation_observes_new_child(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            proc_root = Path(temporary_directory) / "proc"
+            fixture = ProcFixture(proc_root)
+            fixture.add_process(10, "Relay", 1, command_line=("/init",))
+            scanner = watchdog.ProcScanner(proc_root, clock_ticks=100)
+            candidate = scanner.scan(min_age_seconds=300).strict_candidates[0]
+            fixture.add_thread_children(10, 101, (14,))
+
+            revalidated = scanner.inspect_strict_candidate(candidate.identity, min_age_seconds=300)
+
+            self.assertIsNone(revalidated)
+
     def test_strict_classifier_preserves_protected_and_ambiguous_processes(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             proc_root = Path(temporary_directory) / "proc"

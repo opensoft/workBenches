@@ -25,6 +25,10 @@ The installer adds a root-owned Python engine and wrappers under `/usr/local`. T
 Installer lifecycle operations also refuse a held singleton lock without
 verifiable PID metadata, clear stale status before startup, and restore an
 originally absent `wsl.conf` to absence on uninstall.
+Immediately before each signal, the cleanup engine reads only the target
+process and all of its task children instead of relying on a cached full-table
+scan. Replacement startup waits for both verified process exit and singleton
+lock release after TERM or KILL.
 
 Systemd was rejected because it is intentionally disabled and would require a WSL restart. Windows polling was rejected because it would repeatedly cross the same WSL session boundary that becomes exhausted. Cron is not guaranteed to run, and Wave-launcher edits would not protect other creation paths.
 
