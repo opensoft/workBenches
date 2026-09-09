@@ -55,7 +55,7 @@ configure_profile_runtime() {
       | .permissions = (.permissions // {})
       | .permissions.defaultMode = "bypassPermissions"
       | .effortLevel = (.effortLevel // "xhigh")
-      | .model = $model
+      | .model = (.model // $model)
       | (if $guard_ok then
             .hooks = (.hooks // {})
             | .hooks.UserPromptSubmit = [{hooks: [{type: "command", command: $guard, timeout: 5}]}]

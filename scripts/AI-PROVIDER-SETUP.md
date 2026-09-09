@@ -95,17 +95,16 @@ OpenCode, Crush, or Factory Droid at the GLM Coding Plan endpoint, optionally
 via the official `chelper` (`@z_ai/coding-helper`) setup wizard. It is
 therefore not a selectable entry in this priority list.
 
-## Default Priority Order
+## Unified Non-Interactive Priority Order
 
 1. **codex** (ChatGPT account / Codex CLI)
 2. **claude** (Claude - Anthropic)
-3. **gemini** (legacy ID; Google Antigravity is the migration target)
-4. **copilot** (GitHub Copilot)
-5. **qwen** (Qwen Code)
-6. **meta** (Meta Llama)
-7. **kimi2** (Kimi Code / Kimi K3)
-8. **minimax** (MiniMax Code)
-9. **deepseek** (DeepSeek Harness / DeepSeek as a provider)
+3. **gemini** (Google Gemini CLI)
+
+The shared image also installs Copilot, Qwen, Kimi, MiniMax, and other direct
+CLIs listed above. Launch those commands directly. They are not selectable in
+the unified priority router until they have a qualified, non-interactive call
+contract in `ai-cli-adapter.sh`.
 
 ## How It Works
 

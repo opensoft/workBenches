@@ -22,33 +22,21 @@ PRIORITY_CONFIG="${CONFIG_DIR}/ai-provider-priority.conf"
 DEFAULT_PROVIDERS=(
     "codex"
     "claude"
-    "antigravity"
-    "copilot"
-    "meta"
-    "kimi2"
-    "deepseek"
+    "gemini"
 )
 
 # Provider display names
 declare -A PROVIDER_NAMES=(
     ["codex"]="GitHub Codex"
     ["claude"]="Claude (Anthropic)"
-    ["antigravity"]="Google Antigravity"
-    ["copilot"]="GitHub Copilot"
-    ["meta"]="Meta Llama"
-    ["kimi2"]="Moonshot Kimi 2"
-    ["deepseek"]="DeepSeek"
+    ["gemini"]="Google Gemini"
 )
 
 # Provider CLI commands to check
 declare -A PROVIDER_CLI=(
     ["codex"]="codex"
     ["claude"]="claude"
-    ["antigravity"]="agy"
-    ["copilot"]="copilot"
-    ["meta"]="llama"
-    ["kimi2"]="kimi"
-    ["deepseek"]="deepseek"
+    ["gemini"]="gemini"
 )
 
 # Log functions
