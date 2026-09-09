@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Daemon', 'Once', 'Status', 'GuestSnapshot')]
+    [ValidateSet('Daemon', 'Once', 'Status', 'GuestSnapshot', 'DiagnosticSnapshot')]
     [string]$Mode = 'Daemon',
 
     [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]*$')]
@@ -30,6 +30,7 @@ $script:EvidenceDirectory = Join-Path $StateDirectory 'evidence'
 $script:HeartbeatSeconds = 600
 $script:MaxEventBytes = 5MB
 $script:MaxEvidenceFiles = 20
+$script:HostDiagnosticTimeoutMilliseconds = 10000
 $script:SystemRoot = $env:SystemRoot
 if (-not $script:SystemRoot) {
     $script:SystemRoot = [Environment]::GetEnvironmentVariable('SystemRoot', 'Machine')
@@ -387,6 +388,69 @@ function Get-RelevantWindowsEvents {
     return $eventSets
 }
 
+function Write-DiagnosticSnapshot {
+    if (-not $OutputPath) {
+        throw 'DiagnosticSnapshot requires -OutputPath.'
+    }
+
+    Write-AtomicJson -Path $OutputPath -Value ([ordered]@{
+        host = Get-HostSnapshot
+        windows_events = Get-RelevantWindowsEvents
+    })
+}
+
+function Invoke-BoundedDiagnosticSnapshot {
+    New-Item -ItemType Directory -Path $script:EvidenceDirectory -Force | Out-Null
+    $temporaryPath = Join-Path $script:EvidenceDirectory ('.diagnostics-{0}.json' -f [guid]::NewGuid().ToString('N'))
+    $process = $null
+    try {
+        $powerShellPath = Join-Path $PSHOME 'powershell.exe'
+        if (-not (Test-Path -LiteralPath $powerShellPath)) {
+            $powerShellPath = (Get-Process -Id $PID).Path
+        }
+        $quoteLiteral = {
+            param([string]$Value)
+            return "'" + $Value.Replace("'", "''") + "'"
+        }
+        $quotedScriptPath = & $quoteLiteral $PSCommandPath
+        $quotedStateDirectory = & $quoteLiteral $StateDirectory
+        $quotedTemporaryPath = & $quoteLiteral $temporaryPath
+        $childCommand = '& {0} -Mode DiagnosticSnapshot -StateDirectory {1} -OutputPath {2}' -f $quotedScriptPath, $quotedStateDirectory, $quotedTemporaryPath
+        $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($childCommand))
+        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $startInfo.FileName = $powerShellPath
+        $startInfo.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encodedCommand"
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $process = [System.Diagnostics.Process]::Start($startInfo)
+        if (-not $process.WaitForExit($script:HostDiagnosticTimeoutMilliseconds)) {
+            $terminated = Stop-OwnedProbe -Process $process
+            return [ordered]@{
+                completed = $false
+                outcome = if ($terminated) { 'timeout' } else { 'timeout-process-still-running' }
+                owned_process_terminated = $terminated
+            }
+        }
+        if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $temporaryPath)) {
+            return [ordered]@{ completed = $false; outcome = 'error'; exit_code = $process.ExitCode }
+        }
+        return [ordered]@{
+            completed = $true
+            outcome = 'success'
+            snapshot = Get-Content -LiteralPath $temporaryPath -Raw | ConvertFrom-Json
+        }
+    }
+    catch {
+        return [ordered]@{ completed = $false; outcome = 'error'; error = $_.Exception.GetType().Name }
+    }
+    finally {
+        if ($null -ne $process) {
+            $process.Dispose()
+        }
+        Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Save-FailureEvidence {
     param(
         [Parameter(Mandatory = $true)]
@@ -403,15 +467,16 @@ function Save-FailureEvidence {
         Remove-Item -LiteralPath $staleEvidence.FullName -Force -ErrorAction Stop
     }
     $timestamp = [DateTimeOffset]::UtcNow
+    $diagnostics = Invoke-BoundedDiagnosticSnapshot
     $evidencePath = Join-Path $script:EvidenceDirectory ('wsl-transport-{0}.json' -f $timestamp.ToString('yyyyMMddTHHmmssfffZ'))
     $evidence = [ordered]@{
         timestamp = $timestamp.ToString('o')
         classification = 'wsl-host-to-guest-session-channel-stuck'
         consecutive_failures = $ConsecutiveFailures
         probe = $Probe
-        host = Get-HostSnapshot
+        host = if ($diagnostics.completed) { $diagnostics.snapshot.host } else { [ordered]@{ capture = $diagnostics } }
         guest = Invoke-BoundedGuestSnapshot
-        windows_events = Get-RelevantWindowsEvents
+        windows_events = if ($diagnostics.completed) { $diagnostics.snapshot.windows_events } else { @() }
         recovery_boundary = [ordered]@{
             owned_probe_terminated = [bool]$Probe.owned_probe_terminated
             unrelated_processes_signaled = 0
@@ -603,6 +668,11 @@ function Run-Daemon {
 
 if ($Mode -eq 'GuestSnapshot') {
     Write-GuestSnapshot
+    exit 0
+}
+
+if ($Mode -eq 'DiagnosticSnapshot') {
+    Write-DiagnosticSnapshot
     exit 0
 }
 

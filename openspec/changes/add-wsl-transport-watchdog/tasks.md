@@ -17,3 +17,4 @@
 - [x] 3.3 Verify strict OpenSpec validation, diff hygiene, and absence of host-specific committed paths.
 - [x] 3.4 Verify bounded child-process termination, status output/exit-code separation, encoded child arguments, and installed-script removal on uninstall.
 - [x] 3.5 Verify host diagnostic failures remain non-fatal and failure evidence retention is bounded.
+- [x] 3.6 Verify host and Windows-event diagnostics run behind an owned-process deadline.
