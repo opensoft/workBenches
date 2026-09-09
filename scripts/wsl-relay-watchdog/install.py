@@ -264,6 +264,10 @@ def source_digest(source_path: Path) -> str:
     return hashlib.sha256(source_path.read_bytes()).hexdigest()
 
 
+def content_digest(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
 def install(root: Path, source_path: Path, active: bool, start: bool) -> dict[str, object]:
     if root == Path("/") and os.geteuid() != 0:
         raise InstallError("installation into / requires root")
@@ -285,8 +289,36 @@ def install(root: Path, source_path: Path, active: bool, start: bool) -> dict[st
             previous_state = json.loads(state_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
             raise InstallError(f"cannot read existing install state: {error}") from error
-    elif rooted(root, CONFIG_PATH).exists():
-        raise InstallError(f"refusing unmanaged existing configuration: {rooted(root, CONFIG_PATH)}")
+
+    source_content = source_path.read_bytes()
+    desired_content = {
+        ENGINE_PATH: source_content,
+        COMMAND_PATH: command_wrapper(),
+        BOOT_PATH: boot_wrapper(),
+        CONFIG_PATH: config_content(active),
+    }
+    if previous_state is None:
+        for managed_path in desired_content:
+            existing_path = rooted(root, managed_path)
+            if existing_path.exists():
+                raise InstallError(f"refusing unmanaged existing file: {existing_path}")
+    else:
+        recorded_digests = previous_state.get("managed_path_sha256", {})
+        if not isinstance(recorded_digests, dict):
+            raise InstallError("existing install state has invalid managed path digests")
+        legacy_digests = {
+            ENGINE_PATH: previous_state.get("engine_sha256"),
+            COMMAND_PATH: content_digest(command_wrapper()),
+            BOOT_PATH: content_digest(boot_wrapper()),
+            CONFIG_PATH: content_digest(config_content(bool(previous_state.get("active", False)))),
+        }
+        for managed_path in desired_content:
+            existing_path = rooted(root, managed_path)
+            if not existing_path.exists():
+                continue
+            expected_digest = recorded_digests.get(managed_path, legacy_digests.get(managed_path))
+            if not isinstance(expected_digest, str) or source_digest(existing_path) != expected_digest:
+                raise InstallError(f"refusing modified managed file: {existing_path}")
 
     wsl_config_path = rooted(root, WSL_CONFIG_PATH)
     original_wsl_config = wsl_config_path.read_text(encoding="utf-8") if wsl_config_path.exists() else ""
@@ -313,10 +345,10 @@ def install(root: Path, source_path: Path, active: bool, start: bool) -> dict[st
 
     if start:
         stop_watchdog(root)
-    atomic_write(rooted(root, ENGINE_PATH), source_path.read_bytes(), 0o755)
-    atomic_write(rooted(root, COMMAND_PATH), command_wrapper(), 0o755)
-    atomic_write(rooted(root, BOOT_PATH), boot_wrapper(), 0o755)
-    atomic_write(rooted(root, CONFIG_PATH), config_content(active), 0o644)
+    atomic_write(rooted(root, ENGINE_PATH), desired_content[ENGINE_PATH], 0o755)
+    atomic_write(rooted(root, COMMAND_PATH), desired_content[COMMAND_PATH], 0o755)
+    atomic_write(rooted(root, BOOT_PATH), desired_content[BOOT_PATH], 0o755)
+    atomic_write(rooted(root, CONFIG_PATH), desired_content[CONFIG_PATH], 0o644)
     atomic_write(wsl_config_path, updated_wsl_config.encode("utf-8"), 0o644)
 
     state: dict[str, object] = {
@@ -324,6 +356,10 @@ def install(root: Path, source_path: Path, active: bool, start: bool) -> dict[st
         "installed_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "active": active,
         "engine_sha256": source_digest(source_path),
+        "managed_path_sha256": {
+            managed_path: content_digest(content)
+            for managed_path, content in desired_content.items()
+        },
         "initial_wsl_config_backup": backup_path,
         "boot_section_created": boot_section_created,
         "managed_boot_command": MANAGED_BOOT_COMMAND,
@@ -344,6 +380,24 @@ def uninstall(root: Path) -> dict[str, object]:
     except (OSError, json.JSONDecodeError) as error:
         raise InstallError(f"cannot read install state: {error}") from error
 
+    recorded_digests = state.get("managed_path_sha256", {})
+    if not isinstance(recorded_digests, dict):
+        raise InstallError("install state has invalid managed path digests")
+    legacy_digests = {
+        ENGINE_PATH: state.get("engine_sha256"),
+        COMMAND_PATH: content_digest(command_wrapper()),
+        BOOT_PATH: content_digest(boot_wrapper()),
+        CONFIG_PATH: content_digest(config_content(bool(state.get("active", False)))),
+    }
+    for managed_path in (ENGINE_PATH, COMMAND_PATH, BOOT_PATH, CONFIG_PATH):
+        target = rooted(root, managed_path)
+        ensure_regular_or_absent(target)
+        if not target.exists():
+            continue
+        expected_digest = recorded_digests.get(managed_path, legacy_digests.get(managed_path))
+        if not isinstance(expected_digest, str) or source_digest(target) != expected_digest:
+            raise InstallError(f"refusing removal of modified managed file: {target}")
+
     stop_watchdog(root)
     wsl_config_path = rooted(root, WSL_CONFIG_PATH)
     current_wsl_config = wsl_config_path.read_text(encoding="utf-8") if wsl_config_path.exists() else ""
@@ -355,7 +409,6 @@ def uninstall(root: Path) -> dict[str, object]:
 
     for managed_path in (ENGINE_PATH, COMMAND_PATH, BOOT_PATH, CONFIG_PATH):
         target = rooted(root, managed_path)
-        ensure_regular_or_absent(target)
         try:
             target.unlink()
         except FileNotFoundError:

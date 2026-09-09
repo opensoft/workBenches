@@ -208,7 +208,12 @@ class ProcScanner:
                 parent_pid, start_time_ticks = self._parse_stat(
                     (process_dir / "stat").read_text(encoding="utf-8")
                 )
-                name = (process_dir / "comm").read_text(encoding="utf-8").rstrip("\n")
+                raw_name = (process_dir / "comm").read_text(encoding="utf-8")
+                if not raw_name.endswith("\n"):
+                    raise ValueError("comm is missing its procfs delimiter")
+                name = raw_name[:-1]
+                if "\n" in name or "\r" in name:
+                    raise ValueError("comm contains an embedded newline")
                 command_line = None
                 child_count = 0
                 if name == "Relay":

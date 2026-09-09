@@ -41,10 +41,13 @@ clock_ticks=$(getconf CLK_TCK)
 uptime_seconds=$(cut -d ' ' -f 1 /proc/uptime)
 for process_dir in /proc/[0-9]*; do
     pid=${process_dir##*/}
-    if ! IFS= read -r process_name <"${process_dir}/comm" 2>/dev/null; then
+    if ! IFS= read -r process_name 2>/dev/null <"${process_dir}/comm"; then
         continue
     fi
-    [[ "${process_name}" == "Relay" ]] || continue
+    if ! process_name_size=$(wc -c 2>/dev/null <"${process_dir}/comm"); then
+        continue
+    fi
+    [[ "${process_name}" == "Relay" && "${process_name_size}" == "6" ]] || continue
 
     if ! IFS= read -r stat_line <"${process_dir}/stat" 2>/dev/null; then
         continue
@@ -61,10 +64,22 @@ for process_dir in /proc/[0-9]*; do
     fi
     [[ ${#command_line[@]} -eq 1 && "${command_line[0]}" == "/init" ]] || continue
 
-    if ! children=$(cat "${process_dir}/task/${pid}/children" 2>/dev/null); then
-        continue
-    fi
-    [[ -z "${children//[[:space:]]/}" ]] || continue
+    task_entries_found=false
+    child_found=false
+    task_scan_complete=true
+    for children_file in "${process_dir}"/task/[0-9]*/children; do
+        [[ -f "${children_file}" ]] || continue
+        task_entries_found=true
+        if ! children=$(cat "${children_file}" 2>/dev/null); then
+            task_scan_complete=false
+            break
+        fi
+        if [[ -n "${children//[[:space:]]/}" ]]; then
+            child_found=true
+        fi
+    done
+    [[ "${task_entries_found}" == true && "${task_scan_complete}" == true ]] || continue
+    [[ "${child_found}" == false ]] || continue
 
     if awk -v uptime="${uptime_seconds}" -v start="${start_time_ticks}" -v hz="${clock_ticks}" -v minimum="${MIN_AGE_SECONDS}" 'BEGIN { exit !((uptime - start / hz) >= minimum) }'; then
         printf '%s\n' "${pid}" >>"${manual_pids}"

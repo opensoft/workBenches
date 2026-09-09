@@ -155,6 +155,17 @@ class ProcScannerTests(unittest.TestCase):
 
             self.assertEqual((), result.strict_candidates)
 
+    def test_relay_name_with_embedded_newline_is_never_strict(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            proc_root = Path(temporary_directory) / "proc"
+            fixture = ProcFixture(proc_root)
+            fixture.add_process(10, "Relay\n", 1, command_line=("/init",))
+
+            result = watchdog.ProcScanner(proc_root, clock_ticks=100).scan(min_age_seconds=300)
+
+            self.assertEqual((), result.strict_candidates)
+            self.assertTrue(any(error.startswith("pid=10: ValueError") for error in result.inspection_errors))
+
 
 class ObservationTests(unittest.TestCase):
     def test_requires_consecutive_observations(self):
@@ -431,6 +442,39 @@ class InstallerTests(unittest.TestCase):
 
             self.assertEqual(original, wsl_config.read_text(encoding="utf-8"))
             self.assertFalse(installer.rooted(root, installer.ENGINE_PATH).exists())
+
+    def test_first_install_refuses_unmanaged_reserved_file(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            etc_dir = root / "etc"
+            etc_dir.mkdir()
+            (etc_dir / "wsl.conf").write_text("[boot]\nsystemd=false\n", encoding="utf-8")
+            command_path = installer.rooted(root, installer.COMMAND_PATH)
+            command_path.parent.mkdir(parents=True)
+            command_path.write_text("unmanaged\n", encoding="utf-8")
+
+            with self.assertRaises(installer.InstallError):
+                installer.install(root, MODULE_DIR / "wsl_relay_watchdog.py", active=False, start=False)
+
+            self.assertEqual("unmanaged\n", command_path.read_text(encoding="utf-8"))
+
+    def test_upgrade_refuses_modified_recorded_file(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            etc_dir = root / "etc"
+            etc_dir.mkdir()
+            (etc_dir / "wsl.conf").write_text("[boot]\nsystemd=false\n", encoding="utf-8")
+            installer.install(root, MODULE_DIR / "wsl_relay_watchdog.py", active=False, start=False)
+            command_path = installer.rooted(root, installer.COMMAND_PATH)
+            command_path.write_text("modified\n", encoding="utf-8")
+
+            with self.assertRaises(installer.InstallError):
+                installer.install(root, MODULE_DIR / "wsl_relay_watchdog.py", active=False, start=False)
+
+            with self.assertRaises(installer.InstallError):
+                installer.uninstall(root)
+
+            self.assertEqual("modified\n", command_path.read_text(encoding="utf-8"))
 
     def test_uninstall_refuses_changed_boot_command(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

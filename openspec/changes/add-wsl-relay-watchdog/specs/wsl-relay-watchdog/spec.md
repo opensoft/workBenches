@@ -95,7 +95,7 @@ The watchdog SHALL provide non-mutating scan and verified status commands, requi
 - **THEN** atomic status and bounded logs report counts and decisions without environment values or unrelated command lines
 
 ### Requirement: Reversible non-destructive installation
-The installer SHALL preserve unrelated WSL configuration, refuse unmanaged boot conflicts, use root-owned components, and roll back without stopping WSL.
+The installer SHALL preserve unrelated WSL configuration, refuse unmanaged boot conflicts, refuse existing reserved files without matching recorded digests, use root-owned components, and roll back without stopping WSL.
 
 #### Scenario: Compatible installation
 - **WHEN** validation passes and no boot command conflicts
@@ -104,6 +104,14 @@ The installer SHALL preserve unrelated WSL configuration, refuse unmanaged boot 
 #### Scenario: Boot command conflicts
 - **WHEN** a non-watchdog boot command exists
 - **THEN** installation makes no configuration change and reports the conflict
+
+#### Scenario: A reserved install path is already occupied
+- **WHEN** a first install finds an existing engine, command, boot-wrapper, or configuration file without managed install state
+- **THEN** installation preserves the file, makes no managed-file change, and reports the conflict
+
+#### Scenario: A managed file changed after installation
+- **WHEN** an upgrade finds a reserved file whose digest differs from the recorded install state
+- **THEN** installation preserves the changed file and refuses to overwrite it
 
 #### Scenario: Uninstall runs
 - **WHEN** uninstall is invoked

@@ -21,7 +21,7 @@ Wave can leave hundreds of root-owned processes with the narrow signature `Relay
 
 ### WSL boot watchdog
 
-The installer adds a root-owned Python engine and wrappers under `/usr/local`. The existing `[boot]` section registers a short detached launcher, and `flock` prevents duplicate daemon instances. The installer preserves all settings, backs up `wsl.conf`, refuses unmanaged boot-command conflicts, starts immediately, and never restarts WSL.
+The installer adds a root-owned Python engine and wrappers under `/usr/local`. The existing `[boot]` section registers a short detached launcher, and `flock` prevents duplicate daemon instances. The installer preserves all settings, backs up `wsl.conf`, refuses unmanaged boot-command conflicts and occupied reserved paths, records digests for every managed file, starts immediately, and never restarts WSL.
 
 Systemd was rejected because it is intentionally disabled and would require a WSL restart. Windows polling was rejected because it would repeatedly cross the same WSL session boundary that becomes exhausted. Cron is not guaranteed to run, and Wave-launcher edits would not protect other creation paths.
 
