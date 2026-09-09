@@ -18,15 +18,28 @@ printf '%s\n' "$*" >> "$DOCKER_LOG"
 case "$1 $2" in
     "image inspect")
         if [[ "$3" == "--format" ]]; then
-            printf '%s\n' "${TEST_IMAGE_RECIPE_SHA256:-}"
+            if [[ "$4" == *recipe-sha256* ]]; then
+                printf '%s\n' "${TEST_IMAGE_RECIPE_SHA256:-}"
+            else
+                printf '%s\n' 'sha256:new-user-image'
+            fi
         fi
         ;;
     "container ls")
+        if [[ " $* " == *" --all "* && "${TEST_STALE_CONTAINER:-false}" == true ]]; then
+            printf '%s\n' stale-container
+        fi
         ;;
     "container inspect")
+        case "$4" in
+            *Config.Image*) printf '%s\n' dotnet-bench:brett ;;
+            *State.Running*) printf '%s\n' false ;;
+        esac
         ;;
     "inspect --format")
-        if [[ "$4" == *:latest ]]; then
+        if [[ "$3" == *Image* && "$4" == stale-container ]]; then
+            printf '%s\n' 'sha256:old-user-image'
+        elif [[ "$4" == *:latest ]]; then
             printf '%s\n' '2026-09-08T12:00:00Z'
         else
             printf '%s\n' '2026-09-08T12:01:00Z'
@@ -43,6 +56,8 @@ case "$1 $2" in
         fi
         ;;
     "rm -f")
+        ;;
+    "rm stale-container")
         ;;
     "build --build-arg")
         ;;
@@ -78,10 +93,12 @@ run_check
 grep -q '^build ' "$DOCKER_LOG"
 
 export TEST_IMAGE_RECIPE_SHA256="$(recipe_sha256)"
+export TEST_STALE_CONTAINER=true
 run_check
 if grep -q '^build ' "$DOCKER_LOG"; then
     echo "matching recipe fingerprint unexpectedly rebuilt Layer 3" >&2
     exit 1
 fi
+grep -q '^rm stale-container$' "$DOCKER_LOG"
 
 echo "ensure-layer3 recipe freshness tests passed"

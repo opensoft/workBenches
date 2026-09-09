@@ -32,6 +32,9 @@ system-wide Codex binary without a writable npm prefix.
   directory was rejected because it would weaken the user-agnostic ownership
   boundary; requiring `sudo` was rejected because it leaves untracked
   container drift.
+- Reconcile stopped containers configured for the user-image tag whenever the
+  tag points at a newer image ID. Removal is non-forced and a container that
+  starts during the check is preserved.
 
 ## Risks / Trade-offs
 

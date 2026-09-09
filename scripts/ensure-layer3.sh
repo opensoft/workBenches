@@ -106,6 +106,36 @@ running_container_for_image() {
     return 1
 }
 
+reconcile_stopped_containers_for_image() {
+    local expected_image_id
+    local container_id
+    local configured_image
+    local running
+    local current_image_id
+
+    expected_image_id="$(docker image inspect --format '{{.Id}}' "$USER_IMAGE")"
+    while IFS= read -r container_id; do
+        [[ -n "$container_id" ]] || continue
+        configured_image="$(docker container inspect --format '{{.Config.Image}}' "$container_id" 2>/dev/null || true)"
+        [[ "$configured_image" == "$USER_IMAGE" ]] || continue
+        running="$(docker container inspect --format '{{.State.Running}}' "$container_id" 2>/dev/null || true)"
+        [[ "$running" == "false" ]] || continue
+        current_image_id="$(docker inspect --format '{{.Image}}' "$container_id" 2>/dev/null || true)"
+        [[ -n "$current_image_id" && "$current_image_id" != "$expected_image_id" ]] || continue
+
+        echo -e "${YELLOW}⟳ Removing stopped container '${container_id}' because it uses the previous ${USER_IMAGE} image ID${NC}"
+        if ! docker rm "$container_id" >/dev/null; then
+            running="$(docker container inspect --format '{{.State.Running}}' "$container_id" 2>/dev/null || true)"
+            if [[ "$running" == "true" ]]; then
+                echo -e "${YELLOW}↷ Container '${container_id}' started during reconciliation; preserving it${NC}"
+            else
+                echo -e "${RED}✗ Unable to remove stale stopped container '${container_id}'${NC}" >&2
+                return 1
+            fi
+        fi
+    done < <(docker container ls --all --quiet)
+}
+
 # Check if base image exists
 if ! docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
     echo -e "${RED}✗ Base image '$BASE_IMAGE' not found!${NC}"
@@ -233,6 +263,7 @@ if [ "$FORCE" = false ] && docker image inspect "$USER_IMAGE" >/dev/null 2>&1; t
                     ! image_group_gid_has_member "$USER_IMAGE" "$DOCKER_SOCKET_GID" "$USERNAME"; then
                     echo -e "${YELLOW}⟳ Docker socket group '$DOCKER_SOCKET_GID' missing from ${USER_IMAGE}, rebuilding...${NC}"
                 else
+                    reconcile_stopped_containers_for_image
                     echo -e "${GREEN}✓ ${USER_IMAGE} is up-to-date (newer than ${BASE_IMAGE})${NC}"
                     exit 0
                 fi
@@ -269,5 +300,6 @@ if [ -n "$EXTRA_CHOWN" ]; then
 fi
 
 "$BUILD_SCRIPT" "${BUILD_ARGS[@]}"
+reconcile_stopped_containers_for_image
 
 echo -e "${GREEN}✓ ${USER_IMAGE} ready${NC}"
