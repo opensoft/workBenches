@@ -588,6 +588,37 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(original, wsl_config.read_text(encoding="utf-8"))
             self.assertFalse(installer.rooted(root, installer.ENGINE_PATH).exists())
 
+    def test_install_refuses_symlinked_managed_path_ancestor(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            engine_directory = installer.rooted(root, installer.ENGINE_PATH).parent
+            engine_directory.parent.mkdir(parents=True)
+            unmanaged_directory = root / "unmanaged-target"
+            unmanaged_directory.mkdir()
+            engine_directory.symlink_to(unmanaged_directory, target_is_directory=True)
+
+            with self.assertRaises(installer.InstallError):
+                installer.install(root, MODULE_DIR / "wsl_relay_watchdog.py", active=False, start=False)
+
+            self.assertEqual([], list(unmanaged_directory.iterdir()))
+            self.assertTrue(engine_directory.is_symlink())
+
+    def test_install_preserves_existing_wsl_config_metadata(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            wsl_config = installer.rooted(root, installer.WSL_CONFIG_PATH)
+            wsl_config.parent.mkdir(parents=True)
+            wsl_config.write_text("[boot]\nsystemd=false\n", encoding="utf-8")
+            wsl_config.chmod(0o640)
+            original_metadata = wsl_config.stat()
+
+            installer.install(root, MODULE_DIR / "wsl_relay_watchdog.py", active=False, start=False)
+
+            installed_metadata = wsl_config.stat()
+            self.assertEqual(0o640, stat.S_IMODE(installed_metadata.st_mode))
+            self.assertEqual(original_metadata.st_uid, installed_metadata.st_uid)
+            self.assertEqual(original_metadata.st_gid, installed_metadata.st_gid)
+
     def test_first_install_refuses_unmanaged_reserved_file(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -657,6 +688,19 @@ class InstallerTests(unittest.TestCase):
             self.assertTrue(wsl_config.is_symlink())
             self.assertEqual("[boot]\nsystemd=true\n", replacement.read_text(encoding="utf-8"))
             self.assertTrue(installer.rooted(root, installer.ENGINE_PATH).exists())
+
+    def test_uninstall_keeps_externally_deleted_wsl_config_absent(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            wsl_config = installer.rooted(root, installer.WSL_CONFIG_PATH)
+            wsl_config.parent.mkdir(parents=True)
+            wsl_config.write_text("[boot]\nsystemd=false\n", encoding="utf-8")
+            installer.install(root, MODULE_DIR / "wsl_relay_watchdog.py", active=False, start=False)
+            wsl_config.unlink()
+
+            installer.uninstall(root)
+
+            self.assertFalse(wsl_config.exists())
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -38,7 +39,12 @@ def rooted(root: Path, absolute_path: str) -> Path:
     return root / absolute_path.lstrip("/")
 
 
-def atomic_write(path: Path, content: bytes, mode: int) -> None:
+def atomic_write(
+    path: Path,
+    content: bytes,
+    mode: int,
+    owner: tuple[int, int] | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     file_descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
@@ -48,7 +54,7 @@ def atomic_write(path: Path, content: bytes, mode: int) -> None:
             os.fsync(temporary_file.fileno())
         os.chmod(temporary_name, mode)
         if os.geteuid() == 0:
-            os.chown(temporary_name, 0, 0)
+            os.chown(temporary_name, *(owner or (0, 0)))
         os.replace(temporary_name, path)
     finally:
         try:
@@ -57,11 +63,37 @@ def atomic_write(path: Path, content: bytes, mode: int) -> None:
             pass
 
 
-def ensure_regular_or_absent(path: Path) -> None:
+def ensure_safe_ancestors(root: Path, path: Path) -> None:
+    try:
+        relative_path = path.relative_to(root)
+    except ValueError as error:
+        raise InstallError(f"managed path escapes installation root: {path}") from error
+
+    if root.is_symlink() or not root.is_dir():
+        raise InstallError(f"installation root is not a real directory: {root}")
+    current = root
+    for component in relative_path.parts[:-1]:
+        current /= component
+        if current.is_symlink():
+            raise InstallError(f"refusing symbolic link in managed path: {current}")
+        if current.exists() and not current.is_dir():
+            raise InstallError(f"managed path ancestor is not a directory: {current}")
+
+
+def ensure_regular_or_absent(root: Path, path: Path) -> None:
+    ensure_safe_ancestors(root, path)
     if path.is_symlink():
         raise InstallError(f"refusing symbolic link at managed path: {path}")
     if path.exists() and not path.is_file():
         raise InstallError(f"managed path is not a regular file: {path}")
+
+
+def ensure_directory_or_absent(root: Path, path: Path) -> None:
+    ensure_safe_ancestors(root, path)
+    if path.is_symlink():
+        raise InstallError(f"refusing symbolic link at managed directory: {path}")
+    if path.exists() and not path.is_dir():
+        raise InstallError(f"managed directory path is not a directory: {path}")
 
 
 def section_bounds(lines: list[str], section_name: str) -> tuple[int, int] | None:
@@ -316,7 +348,9 @@ def install(root: Path, source_path: Path, active: bool, start: bool) -> dict[st
 
     managed_paths = [ENGINE_PATH, COMMAND_PATH, BOOT_PATH, CONFIG_PATH, WSL_CONFIG_PATH, STATE_PATH]
     for managed_path in managed_paths:
-        ensure_regular_or_absent(rooted(root, managed_path))
+        ensure_regular_or_absent(root, rooted(root, managed_path))
+    for managed_directory in (STATE_DIR, f"{STATE_DIR}/backups", RUN_DIR, LOG_DIR):
+        ensure_directory_or_absent(root, rooted(root, managed_directory))
 
     state_path = rooted(root, STATE_PATH)
     previous_state: dict[str, object] | None = None
@@ -358,6 +392,7 @@ def install(root: Path, source_path: Path, active: bool, start: bool) -> dict[st
 
     wsl_config_path = rooted(root, WSL_CONFIG_PATH)
     wsl_config_existed = wsl_config_path.exists()
+    wsl_config_metadata = wsl_config_path.stat() if wsl_config_existed else None
     original_wsl_config = wsl_config_path.read_text(encoding="utf-8") if wsl_config_existed else ""
     updated_wsl_config, boot_section_created = install_boot_command(original_wsl_config)
 
@@ -387,7 +422,16 @@ def install(root: Path, source_path: Path, active: bool, start: bool) -> dict[st
     atomic_write(rooted(root, COMMAND_PATH), desired_content[COMMAND_PATH], 0o755)
     atomic_write(rooted(root, BOOT_PATH), desired_content[BOOT_PATH], 0o755)
     atomic_write(rooted(root, CONFIG_PATH), desired_content[CONFIG_PATH], 0o644)
-    atomic_write(wsl_config_path, updated_wsl_config.encode("utf-8"), 0o644)
+    wsl_config_mode = stat.S_IMODE(wsl_config_metadata.st_mode) if wsl_config_metadata else 0o644
+    wsl_config_owner = (
+        (wsl_config_metadata.st_uid, wsl_config_metadata.st_gid) if wsl_config_metadata else None
+    )
+    atomic_write(
+        wsl_config_path,
+        updated_wsl_config.encode("utf-8"),
+        wsl_config_mode,
+        owner=wsl_config_owner,
+    )
 
     state: dict[str, object] = {
         "version": 1,
@@ -411,7 +455,10 @@ def install(root: Path, source_path: Path, active: bool, start: bool) -> dict[st
 def uninstall(root: Path) -> dict[str, object]:
     if root == Path("/") and os.geteuid() != 0:
         raise InstallError("uninstallation from / requires root")
+    for managed_directory in (STATE_DIR, RUN_DIR, LOG_DIR):
+        ensure_directory_or_absent(root, rooted(root, managed_directory))
     state_path = rooted(root, STATE_PATH)
+    ensure_regular_or_absent(root, state_path)
     if not state_path.exists():
         raise InstallError("watchdog install state is absent; refusing unmanaged removal")
     try:
@@ -430,7 +477,7 @@ def uninstall(root: Path) -> dict[str, object]:
     }
     for managed_path in (ENGINE_PATH, COMMAND_PATH, BOOT_PATH, CONFIG_PATH):
         target = rooted(root, managed_path)
-        ensure_regular_or_absent(target)
+        ensure_regular_or_absent(root, target)
         if not target.exists():
             continue
         expected_digest = recorded_digests.get(managed_path, legacy_digests.get(managed_path))
@@ -438,20 +485,30 @@ def uninstall(root: Path) -> dict[str, object]:
             raise InstallError(f"refusing removal of modified managed file: {target}")
 
     wsl_config_path = rooted(root, WSL_CONFIG_PATH)
-    ensure_regular_or_absent(wsl_config_path)
-    current_wsl_config = wsl_config_path.read_text(encoding="utf-8") if wsl_config_path.exists() else ""
+    ensure_regular_or_absent(root, wsl_config_path)
+    wsl_config_present = wsl_config_path.exists()
+    wsl_config_metadata = wsl_config_path.stat() if wsl_config_present else None
+    current_wsl_config = wsl_config_path.read_text(encoding="utf-8") if wsl_config_present else ""
     updated_wsl_config = uninstall_boot_command(
         current_wsl_config,
         boot_section_created=bool(state.get("boot_section_created", False)),
     )
     stop_watchdog(root)
-    if not bool(state.get("wsl_config_existed", True)) and not updated_wsl_config:
+    if not wsl_config_present:
+        pass
+    elif not bool(state.get("wsl_config_existed", True)) and not updated_wsl_config:
         try:
             wsl_config_path.unlink()
         except FileNotFoundError:
             pass
     else:
-        atomic_write(wsl_config_path, updated_wsl_config.encode("utf-8"), 0o644)
+        assert wsl_config_metadata is not None
+        atomic_write(
+            wsl_config_path,
+            updated_wsl_config.encode("utf-8"),
+            stat.S_IMODE(wsl_config_metadata.st_mode),
+            owner=(wsl_config_metadata.st_uid, wsl_config_metadata.st_gid),
+        )
 
     for managed_path in (ENGINE_PATH, COMMAND_PATH, BOOT_PATH, CONFIG_PATH):
         target = rooted(root, managed_path)
