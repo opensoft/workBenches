@@ -169,7 +169,7 @@ check_copilot_status() {
     return 1
 }
 
-# Generic check for other providers (meta, kimi2, deepseek)
+# Generic check for providers whose config directory is created only after login.
 check_generic_cli_status() {
     local provider="$1"
     local cli_cmd="$2"
@@ -188,6 +188,216 @@ check_generic_cli_status() {
         return 0
     fi
     
+    echo "$CLI_INSTALLED_NOT_AUTH"
+    return 1
+}
+
+dotenv_has_nonempty_value() {
+    local env_file="$1"
+    local key="$2"
+
+    [ -s "$env_file" ] || return 1
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
+    grep -Eq \
+        "^[[:space:]]*(export[[:space:]]+)?${key}[[:space:]]*=[[:space:]]*(\"[^\"]+\"|'[^']+'|[^#[:space:]][^#]*)[[:space:]]*(#.*)?$" \
+        "$env_file"
+}
+
+find_qwen_env_file() {
+    local search_dir="$PWD"
+    local parent_dir
+
+    while :; do
+        if [ -f "$search_dir/.qwen/.env" ]; then
+            printf '%s\n' "$search_dir/.qwen/.env"
+            return 0
+        fi
+        if [ -f "$search_dir/.env" ]; then
+            printf '%s\n' "$search_dir/.env"
+            return 0
+        fi
+
+        [ "$search_dir" = "/" ] && break
+        parent_dir=$(dirname -- "$search_dir")
+        [ "$parent_dir" = "$search_dir" ] && break
+        search_dir="$parent_dir"
+    done
+
+    if [ -f "$HOME/.qwen/.env" ]; then
+        printf '%s\n' "$HOME/.qwen/.env"
+        return 0
+    fi
+    if [ -f "$HOME/.env" ]; then
+        printf '%s\n' "$HOME/.env"
+        return 0
+    fi
+
+    return 1
+}
+
+# Qwen creates ~/.qwen before /auth completes. Treat it as authenticated only
+# when the selected provider has an actual credential source, or when a legacy
+# OAuth cache still contains a token.
+check_qwen_status() {
+    if ! command -v qwen >/dev/null 2>&1; then
+        echo "$CLI_NOT_INSTALLED"
+        return 1
+    fi
+
+    local qwen_home="$HOME/.qwen"
+    local settings_file="$qwen_home/settings.json"
+    local oauth_file="$qwen_home/oauth_creds.json"
+    local selected_type=""
+    local env_key=""
+    local qwen_env_file=""
+
+    if [ -s "$oauth_file" ] \
+        && grep -Eq '"(access_token|accessToken|refresh_token|refreshToken)"[[:space:]]*:[[:space:]]*"[^"[:space:]]+"' "$oauth_file"; then
+        echo "$CLI_AUTHENTICATED"
+        return 0
+    fi
+
+    if [ -s "$settings_file" ] && command -v jq >/dev/null 2>&1; then
+        selected_type=$(jq -r '.security.auth.selectedType? // empty' "$settings_file" 2>/dev/null || true)
+    fi
+    qwen_env_file=$(find_qwen_env_file 2>/dev/null || true)
+
+    # OPENAI_API_KEY selects Qwen's OpenAI-compatible auth when no persisted
+    # auth type overrides it. Provider-specific keys require settings below.
+    if [ -z "$selected_type" ]; then
+        if [ -n "${OPENAI_API_KEY:-}" ] \
+            || { [ -n "$qwen_env_file" ] \
+                && dotenv_has_nonempty_value "$qwen_env_file" "OPENAI_API_KEY"; }; then
+            echo "$CLI_AUTHENTICATED"
+            return 0
+        fi
+        echo "$CLI_INSTALLED_NOT_AUTH"
+        return 1
+    fi
+
+    if jq -e '.security.auth.apiKey? | strings | length > 0' \
+        "$settings_file" >/dev/null 2>&1; then
+        echo "$CLI_AUTHENTICATED"
+        return 0
+    fi
+
+    case "$selected_type" in
+        openai)
+            env_key="OPENAI_API_KEY"
+            ;;
+        anthropic)
+            env_key="ANTHROPIC_API_KEY"
+            ;;
+        gemini)
+            env_key="GEMINI_API_KEY"
+            ;;
+        vertex-ai)
+            if [ -n "${GOOGLE_API_KEY:-}" ] \
+                || { [ -n "${GOOGLE_CLOUD_PROJECT:-}" ] \
+                    && { { [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] \
+                            && [ -s "$GOOGLE_APPLICATION_CREDENTIALS" ]; } \
+                        || [ -s "$HOME/.config/gcloud/application_default_credentials.json" ]; }; }; then
+                echo "$CLI_AUTHENTICATED"
+                return 0
+            fi
+            ;;
+    esac
+
+    if [ -n "$env_key" ]; then
+        if [ -n "${!env_key:-}" ] \
+            || { [ -n "$qwen_env_file" ] \
+                && dotenv_has_nonempty_value "$qwen_env_file" "$env_key"; } \
+            || jq -e --arg key "$env_key" '.env[$key]? | strings | length > 0' \
+                "$settings_file" >/dev/null 2>&1; then
+            echo "$CLI_AUTHENTICATED"
+            return 0
+        fi
+    fi
+
+    while IFS= read -r env_key; do
+        [[ "$env_key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+        if [ -n "${!env_key:-}" ] \
+            || { [ -n "$qwen_env_file" ] \
+                && dotenv_has_nonempty_value "$qwen_env_file" "$env_key"; } \
+            || jq -e --arg key "$env_key" '.env[$key]? | strings | length > 0' \
+                "$settings_file" >/dev/null 2>&1; then
+            echo "$CLI_AUTHENTICATED"
+            return 0
+        fi
+    done < <(
+        jq -r --arg type "$selected_type" \
+            '.modelProviders[$type] // [] | .. | objects | .envKey? // empty' \
+            "$settings_file" 2>/dev/null
+    )
+
+    echo "$CLI_INSTALLED_NOT_AUTH"
+    return 1
+}
+
+# Kimi creates KIMI_CODE_HOME and a default config before /login. A usable
+# profile has either a non-empty provider key or a persisted OAuth token under
+# the credential directory managed by the login flow.
+check_kimi_status() {
+    if ! command -v kimi >/dev/null 2>&1; then
+        echo "$CLI_NOT_INSTALLED"
+        return 1
+    fi
+
+    local kimi_home="${KIMI_CODE_HOME:-$HOME/.kimi-code}"
+    local config_file="$kimi_home/config.toml"
+    local credential_file
+    if [ -s "$config_file" ]; then
+        if awk '
+            /^[[:space:]]*\[/ {
+                in_provider = ($0 ~ /^[[:space:]]*\[providers\./)
+            }
+            in_provider && /^[[:space:]]*(api_key|[A-Za-z_][A-Za-z0-9_]*API_KEY)[[:space:]]*=/ {
+                value = $0
+                sub(/^[^=]*=[[:space:]]*/, "", value)
+                if (value ~ /^"[^"[:space:]][^"]*"/) {
+                    found = 1
+                }
+            }
+            END { exit(found ? 0 : 1) }
+        ' "$config_file"; then
+            echo "$CLI_AUTHENTICATED"
+            return 0
+        fi
+    fi
+
+    if [ -d "$kimi_home/credentials" ]; then
+        while IFS= read -r -d '' credential_file; do
+            if [ -s "$credential_file" ] \
+                && grep -Eq '"(access_token|accessToken|refresh_token|refreshToken)"[[:space:]]*:[[:space:]]*"[^"[:space:]]+"' "$credential_file"; then
+                echo "$CLI_AUTHENTICATED"
+                return 0
+            fi
+        done < <(find "$kimi_home/credentials" -maxdepth 1 -type f -name '*.json' -print0 2>/dev/null)
+    fi
+
+    echo "$CLI_INSTALLED_NOT_AUTH"
+    return 1
+}
+
+# DeepSeek Harness resolves its default key from the launch environment, its
+# managed credentials file, the invoking project's .env, then DSH_HOME/.env.
+check_deepseek_status() {
+    if ! command -v dsh >/dev/null 2>&1; then
+        echo "$CLI_NOT_INSTALLED"
+        return 1
+    fi
+
+    local dsh_home="${DSH_HOME:-$HOME/.dsh}"
+    local credentials_file="$dsh_home/.credentials.yaml"
+    if [ -n "${DEEPSEEK_API_KEY:-}" ] \
+        || { [ -s "$credentials_file" ] \
+            && grep -Eq '^[[:space:]]*DEEPSEEK_API_KEY:[[:space:]]*("[^"]+"|'\''[^'\'']+'\''|[^#[:space:]][^#]*)' "$credentials_file"; } \
+        || dotenv_has_nonempty_value "$PWD/.env" "DEEPSEEK_API_KEY" \
+        || dotenv_has_nonempty_value "$dsh_home/.env" "DEEPSEEK_API_KEY"; then
+        echo "$CLI_AUTHENTICATED"
+        return 0
+    fi
+
     echo "$CLI_INSTALLED_NOT_AUTH"
     return 1
 }
@@ -236,30 +446,19 @@ get_all_cli_status() {
                 cli_status_map["copilot"]=$(check_copilot_status)
                 ;;
             qwen)
-                cli_status_map["qwen"]=$(check_generic_cli_status "qwen" "qwen")
+                cli_status_map["qwen"]=$(check_qwen_status)
                 ;;
             meta)
                 cli_status_map["meta"]=$(check_generic_cli_status "meta" "llama")
                 ;;
             kimi2)
-                # Kimi Code CLI (Moonshot AI) stores state under ~/.kimi-code
-                cli_status_map["kimi2"]=$(
-                    check_generic_cli_status \
-                        "kimi-code" \
-                        "kimi" \
-                        "${KIMI_CODE_HOME:-$HOME/.kimi-code}"
-                )
+                cli_status_map["kimi2"]=$(check_kimi_status)
                 ;;
             minimax)
                 cli_status_map["minimax"]=$(check_minimax_status)
                 ;;
             deepseek)
-                cli_status_map["deepseek"]=$(
-                    check_generic_cli_status \
-                        "dsh" \
-                        "dsh" \
-                        "${DSH_HOME:-$HOME/.dsh}"
-                )
+                cli_status_map["deepseek"]=$(check_deepseek_status)
                 ;;
             *)
                 continue
@@ -291,29 +490,19 @@ get_authenticated_cli() {
                 cli_status=$(check_copilot_status)
                 ;;
             qwen)
-                cli_status=$(check_generic_cli_status "qwen" "qwen")
+                cli_status=$(check_qwen_status)
                 ;;
             meta)
                 cli_status=$(check_generic_cli_status "meta" "llama")
                 ;;
             kimi2)
-                cli_status=$(
-                    check_generic_cli_status \
-                        "kimi-code" \
-                        "kimi" \
-                        "${KIMI_CODE_HOME:-$HOME/.kimi-code}"
-                )
+                cli_status=$(check_kimi_status)
                 ;;
             minimax)
                 cli_status=$(check_minimax_status)
                 ;;
             deepseek)
-                cli_status=$(
-                    check_generic_cli_status \
-                        "dsh" \
-                        "dsh" \
-                        "${DSH_HOME:-$HOME/.dsh}"
-                )
+                cli_status=$(check_deepseek_status)
                 ;;
             *)
                 continue
@@ -376,29 +565,19 @@ get_unauthenticated_clis() {
                 cli_status=$(check_copilot_status)
                 ;;
             qwen)
-                cli_status=$(check_generic_cli_status "qwen" "qwen")
+                cli_status=$(check_qwen_status)
                 ;;
             meta)
                 cli_status=$(check_generic_cli_status "meta" "llama")
                 ;;
             kimi2)
-                cli_status=$(
-                    check_generic_cli_status \
-                        "kimi-code" \
-                        "kimi" \
-                        "${KIMI_CODE_HOME:-$HOME/.kimi-code}"
-                )
+                cli_status=$(check_kimi_status)
                 ;;
             minimax)
                 cli_status=$(check_minimax_status)
                 ;;
             deepseek)
-                cli_status=$(
-                    check_generic_cli_status \
-                        "dsh" \
-                        "dsh" \
-                        "${DSH_HOME:-$HOME/.dsh}"
-                )
+                cli_status=$(check_deepseek_status)
                 ;;
             *)
                 continue

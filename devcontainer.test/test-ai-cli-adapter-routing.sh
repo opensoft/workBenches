@@ -15,28 +15,67 @@ source "$ADAPTER"
 [[ "${PROVIDER_PRIORITY[*]}" == "qwen codex kimi2 minimax deepseek" ]]
 [[ "${ROUTING_PROVIDER_PRIORITY[*]}" == "codex" ]]
 
-mkdir -p "$temporary_home/bin" "$temporary_home/kimi-profile" "$temporary_home/minimax-data"
+mkdir -p \
+    "$temporary_home/bin" \
+    "$temporary_home/.qwen" \
+    "$temporary_home/kimi-profile" \
+    "$temporary_home/minimax-data" \
+    "$temporary_home/dsh-profile"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$temporary_home/bin/qwen"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$temporary_home/bin/kimi"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$temporary_home/bin/mcode"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$temporary_home/bin/dsh"
+chmod +x "$temporary_home/bin/qwen"
 chmod +x "$temporary_home/bin/kimi"
 chmod +x "$temporary_home/bin/mcode"
+chmod +x "$temporary_home/bin/dsh"
 PATH="$temporary_home/bin:$PATH"
 KIMI_CODE_HOME="$temporary_home/kimi-profile"
 DSH_HOME="$temporary_home/dsh-profile"
 MINIMAX_DATA_DIR="$temporary_home/minimax-data"
-mkdir -p "$DSH_HOME"
 export PATH KIMI_CODE_HOME DSH_HOME MINIMAX_DATA_DIR
-[[ "$(check_generic_cli_status "kimi-code" "kimi" "$KIMI_CODE_HOME")" == "$CLI_AUTHENTICATED" ]]
+
+# Installation creates these profile roots before credentials exist.
+printf '%s\n' '{"security":{"auth":{"selectedType":"openai"}}}' \
+    >"$temporary_home/.qwen/settings.json"
+printf '%s\n' '[providers."managed:kimi-code"]' 'api_key = ""' \
+    >"$KIMI_CODE_HOME/config.toml"
+printf '%s\n' 'version: 1' 'refs: {}' >"$DSH_HOME/.credentials.yaml"
+[[ "$(check_qwen_status)" == "$CLI_INSTALLED_NOT_AUTH" ]]
+[[ "$(check_kimi_status)" == "$CLI_INSTALLED_NOT_AUTH" ]]
+[[ "$(check_deepseek_status)" == "$CLI_INSTALLED_NOT_AUTH" ]]
 [[ "$(check_minimax_status)" == "$CLI_INSTALLED_NOT_AUTH" ]]
+
+mkdir -p "$KIMI_CODE_HOME/credentials"
+printf '%s\n' '{"accessToken":"fixture-token"}' \
+    >"$KIMI_CODE_HOME/credentials/managed:kimi-code.json"
+[[ "$(check_kimi_status)" == "$CLI_AUTHENTICATED" ]]
+: >"$KIMI_CODE_HOME/credentials/managed:kimi-code.json"
+
+printf '%s\n' \
+    '{"modelProviders":{"anthropic":[{"envKey":"OTHER_PROVIDER_KEY"}]},"env":{"OTHER_PROVIDER_KEY":"fixture-key"},"security":{"auth":{"selectedType":"openai"}}}' \
+    >"$temporary_home/.qwen/settings.json"
+[[ "$(check_qwen_status)" == "$CLI_INSTALLED_NOT_AUTH" ]]
+
+printf '%s\n' \
+    '{"modelProviders":{"vertex-ai":[{"id":"fixture-model"}]},"security":{"auth":{"selectedType":"vertex-ai"}}}' \
+    >"$temporary_home/.qwen/settings.json"
+[[ "$(GOOGLE_CLOUD_PROJECT=fixture-project check_qwen_status)" == "$CLI_INSTALLED_NOT_AUTH" ]]
+
+printf '%s\n' \
+    '{"modelProviders":{"openai":[{"envKey":"QWEN_TEST_API_KEY"}]},"env":{"QWEN_TEST_API_KEY":"fixture-key"},"security":{"auth":{"selectedType":"openai"}}}' \
+    >"$temporary_home/.qwen/settings.json"
+printf '%s\n' '[providers."managed:kimi-code"]' 'api_key = "fixture-key"' \
+    >"$KIMI_CODE_HOME/config.toml"
+printf '%s\n' 'version: 1' 'refs:' '  DEEPSEEK_API_KEY: fixture-key' \
+    >"$DSH_HOME/.credentials.yaml"
 printf '%s\n' '{"version":1,"auth":{"accessToken":"fixture-token"}}' \
     >"$MINIMAX_DATA_DIR/local-runtime.auth.json"
+[[ "$(check_qwen_status)" == "$CLI_AUTHENTICATED" ]]
+[[ "$(check_kimi_status)" == "$CLI_AUTHENTICATED" ]]
+[[ "$(check_deepseek_status)" == "$CLI_AUTHENTICATED" ]]
 [[ "$(check_minimax_status)" == "$CLI_AUTHENTICATED" ]]
 
-generic_calls="$temporary_home/generic-calls"
-check_generic_cli_status() {
-    printf '%s|%s|%s\n' "$1" "$2" "${3-}" >>"$generic_calls"
-    printf '%s\n' "$CLI_AUTHENTICATED"
-}
 check_codex_status() {
     printf '%s\n' "$CLI_AUTHENTICATED"
 }
@@ -49,8 +88,6 @@ grep -qx 'qwen=authenticated' <<<"$inventory"
 grep -qx 'kimi2=authenticated' <<<"$inventory"
 grep -qx 'minimax=authenticated' <<<"$inventory"
 grep -qx 'deepseek=authenticated' <<<"$inventory"
-grep -qx "dsh|dsh|$DSH_HOME" "$generic_calls"
-grep -qx "kimi-code|kimi|$KIMI_CODE_HOME" "$generic_calls"
 
 saved_priority=("${PROVIDER_PRIORITY[@]}")
 PROVIDER_PRIORITY=("" antigravity qwen)
@@ -63,7 +100,7 @@ PROVIDER_PRIORITY=("${saved_priority[@]}")
 
 PROVIDER_PRIORITY=(qwen)
 ROUTING_PROVIDER_PRIORITY=(codex)
-check_generic_cli_status() {
+check_qwen_status() {
     printf '%s\n' "$CLI_INSTALLED_NOT_AUTH"
 }
 check_codex_status() {

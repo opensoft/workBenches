@@ -747,7 +747,7 @@ log_info "  - Amp CLI (amp)"
 log_info "  - Aider (aider)"
 log_info "  - OpenHands CLI (openhands)"
 log_info "  - Cursor CLI (cursor-agent)"
-if command -v mcode >/dev/null 2>&1; then
+if command -v mcode >/dev/null 2>&1 || [ -x "$HOME/.minimax-code/bin/mcode" ]; then
     log_info "  - MiniMax Code (mcode)"
 else
     log_info "  - MiniMax Code (mcode) [install skipped or failed]"
