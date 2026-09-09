@@ -30,6 +30,14 @@ resolve_bench_defaults() {
             layer3_chown=""
             compose_project="dev-benches"
             ;;
+        dotNetBench|dotnetBench|dotnet-bench)
+            container="dotnet-bench"
+            bench_dir="$workbenches_root/devBenches/dotNetBench"
+            compose_file="$bench_dir/.devcontainer/docker-compose.yml"
+            base_image="dotnet-bench:latest"
+            layer3_chown=""
+            compose_project="dev-benches"
+            ;;
         cppBench|C++Bench|c++Bench|cpp-bench)
             container="cpp-bench"
             bench_dir="$workbenches_root/devBenches/cppBench"
@@ -494,10 +502,6 @@ install_ai_profile_launchers() {
 
     docker exec --user root "$container" sh -c \
         "mkdir -p '/home/${container_user}/.local/bin' '/home/${container_user}/.local/state' && chown '${container_user}:${container_user}' '/home/${container_user}/.local' '/home/${container_user}/.local/bin' '/home/${container_user}/.local/state'"
-    if [[ -f "$claude_launcher" ]]; then
-        docker exec --user "$container_user" "$container" sh -c \
-            'ln -sfn /usr/local/bin/claude "$HOME/.local/bin/claude"'
-    fi
 }
 
 ensure_user_cargo_cache
