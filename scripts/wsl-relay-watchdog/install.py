@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import fcntl
 import hashlib
 import json
 import os
@@ -203,11 +204,26 @@ def verified_watchdog(identity: dict[str, object], proc_root: Path = Path("/proc
     return ENGINE_PATH in decoded and "daemon" in decoded
 
 
+def watchdog_lock_is_held(root: Path) -> bool:
+    lock_path = rooted(root, f"{RUN_DIR}/watchdog.lock")
+    if not lock_path.exists():
+        return False
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+    return False
+
+
 def stop_watchdog(root: Path, timeout_seconds: float = 5.0) -> None:
-    if root != Path("/"):
-        return
     pid_path = rooted(root, f"{RUN_DIR}/watchdog.pid.json")
     if not pid_path.exists():
+        if watchdog_lock_is_held(root):
+            raise InstallError("watchdog lock is held but its identity file is missing")
+        return
+    if root != Path("/"):
         return
     try:
         identity = json.loads(pid_path.read_text(encoding="utf-8"))
@@ -239,12 +255,21 @@ def stop_watchdog(root: Path, timeout_seconds: float = 5.0) -> None:
         os.close(pidfd)
 
 
+def clear_runtime_status(root: Path) -> None:
+    status_path = rooted(root, f"{RUN_DIR}/status.json")
+    try:
+        status_path.unlink()
+    except FileNotFoundError:
+        pass
+
+
 def start_watchdog(root: Path, timeout_seconds: float = 10.0) -> dict[str, object] | None:
     if root != Path("/"):
         return None
-    subprocess.run([BOOT_PATH], check=True)
     pid_path = rooted(root, f"{RUN_DIR}/watchdog.pid.json")
     status_path = rooted(root, f"{RUN_DIR}/status.json")
+    clear_runtime_status(root)
+    subprocess.run([BOOT_PATH], check=True)
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         if pid_path.exists() and status_path.exists():
@@ -321,7 +346,8 @@ def install(root: Path, source_path: Path, active: bool, start: bool) -> dict[st
                 raise InstallError(f"refusing modified managed file: {existing_path}")
 
     wsl_config_path = rooted(root, WSL_CONFIG_PATH)
-    original_wsl_config = wsl_config_path.read_text(encoding="utf-8") if wsl_config_path.exists() else ""
+    wsl_config_existed = wsl_config_path.exists()
+    original_wsl_config = wsl_config_path.read_text(encoding="utf-8") if wsl_config_existed else ""
     updated_wsl_config, boot_section_created = install_boot_command(original_wsl_config)
 
     state_dir = rooted(root, STATE_DIR)
@@ -331,6 +357,7 @@ def install(root: Path, source_path: Path, active: bool, start: bool) -> dict[st
     if previous_state is not None:
         backup_path = previous_state.get("initial_wsl_config_backup")  # type: ignore[assignment]
         boot_section_created = bool(previous_state.get("boot_section_created", boot_section_created))
+        wsl_config_existed = bool(previous_state.get("wsl_config_existed", True))
     else:
         timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         backup = backup_dir / f"wsl.conf.{timestamp}.bak"
@@ -361,6 +388,7 @@ def install(root: Path, source_path: Path, active: bool, start: bool) -> dict[st
             for managed_path, content in desired_content.items()
         },
         "initial_wsl_config_backup": backup_path,
+        "wsl_config_existed": wsl_config_existed,
         "boot_section_created": boot_section_created,
         "managed_boot_command": MANAGED_BOOT_COMMAND,
     }
@@ -405,7 +433,13 @@ def uninstall(root: Path) -> dict[str, object]:
         current_wsl_config,
         boot_section_created=bool(state.get("boot_section_created", False)),
     )
-    atomic_write(wsl_config_path, updated_wsl_config.encode("utf-8"), 0o644)
+    if not bool(state.get("wsl_config_existed", True)) and not updated_wsl_config:
+        try:
+            wsl_config_path.unlink()
+        except FileNotFoundError:
+            pass
+    else:
+        atomic_write(wsl_config_path, updated_wsl_config.encode("utf-8"), 0o644)
 
     for managed_path in (ENGINE_PATH, COMMAND_PATH, BOOT_PATH, CONFIG_PATH):
         target = rooted(root, managed_path)

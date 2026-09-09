@@ -379,6 +379,42 @@ class StatusTests(unittest.TestCase):
 
 
 class InstallerTests(unittest.TestCase):
+    def test_startup_clears_stale_runtime_status(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            status_path = installer.rooted(root, f"{installer.RUN_DIR}/status.json")
+            status_path.parent.mkdir(parents=True)
+            status_path.write_text('{"mode":"stale"}\n', encoding="utf-8")
+
+            installer.clear_runtime_status(root)
+
+            self.assertFalse(status_path.exists())
+
+    def test_missing_identity_with_held_lock_is_refused(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            run_dir = installer.rooted(root, installer.RUN_DIR)
+            run_dir.mkdir(parents=True)
+            lock_file = (run_dir / "watchdog.lock").open("a+", encoding="utf-8")
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                with self.assertRaises(installer.InstallError):
+                    installer.stop_watchdog(root)
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                lock_file.close()
+
+    def test_uninstall_restores_absent_wsl_config_to_absence(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            installer.install(root, MODULE_DIR / "wsl_relay_watchdog.py", active=False, start=False)
+            wsl_config = installer.rooted(root, installer.WSL_CONFIG_PATH)
+            self.assertTrue(wsl_config.exists())
+
+            installer.uninstall(root)
+
+            self.assertFalse(wsl_config.exists())
+
     def test_boot_command_preserves_systemd_and_other_sections(self):
         original = "[boot]\nsystemd=false\n\n[interop]\nappendWindowsPath=false\n"
         updated, created = installer.install_boot_command(original)
