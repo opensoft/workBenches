@@ -9,7 +9,7 @@ A process is eligible only when all of these remain true:
 - `/proc/<pid>/comm` is exactly `Relay`.
 - Parent PID is exactly 1.
 - The command line is exactly the single argument `/init`.
-- The kernel child list is empty.
+- The kernel child lists aggregated across every relay thread are empty.
 - The process is at least 300 seconds old.
 - The same PID and start-time identity passes three scans, 30 seconds apart.
 - The identity and complete predicate pass again immediately before each signal.
@@ -71,7 +71,7 @@ The root-owned `/etc/wsl-relay-watchdog.conf` file uses these validated bounds:
 | Setting | Default | Accepted range |
 | --- | ---: | ---: |
 | `MIN_AGE_SECONDS` | 300 | 60-86400 |
-| `CONFIRMATIONS` | 3 | 2-20 |
+| `CONFIRMATIONS` | 3 | 3-20 |
 | `INTERVAL_SECONDS` | 30 | 5-3600 |
 | `BATCH_LIMIT` | 32 | 1-128 |
 | `TERM_GRACE_SECONDS` | 3 | 1-30 |

@@ -12,8 +12,10 @@ engine_json="${temporary_directory}/engine.json"
 engine_pids="${temporary_directory}/engine-pids"
 manual_pids="${temporary_directory}/manual-pids"
 protected_pids="${temporary_directory}/protected-pids"
+engine_config="${temporary_directory}/engine.conf"
 
-python3 "${ENGINE}" scan >"${engine_json}"
+printf 'MIN_AGE_SECONDS=%s\n' "${MIN_AGE_SECONDS}" >"${engine_config}"
+python3 "${ENGINE}" --config "${engine_config}" scan >"${engine_json}"
 python3 - "${engine_json}" "${engine_pids}" "${protected_pids}" <<'PY'
 import json
 from pathlib import Path

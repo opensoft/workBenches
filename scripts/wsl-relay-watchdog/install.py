@@ -65,18 +65,20 @@ def ensure_regular_or_absent(path: Path) -> None:
 
 def section_bounds(lines: list[str], section_name: str) -> tuple[int, int] | None:
     section_pattern = re.compile(r"^\s*\[([^]]+)\]\s*$")
-    start: int | None = None
+    section_headers: list[tuple[int, str]] = []
     for index, line in enumerate(lines):
         match = section_pattern.match(line)
-        if not match:
-            continue
-        if start is not None:
-            return start, index
-        if match.group(1).strip().lower() == section_name.lower():
-            start = index
-    if start is None:
+        if match:
+            section_headers.append((index, match.group(1).strip().lower()))
+
+    matching_indexes = [index for index, name in section_headers if name == section_name.lower()]
+    if len(matching_indexes) > 1:
+        raise InstallError(f"/etc/wsl.conf contains multiple [{section_name}] sections")
+    if not matching_indexes:
         return None
-    return start, len(lines)
+    start = matching_indexes[0]
+    end = next((index for index, _name in section_headers if index > start), len(lines))
+    return start, end
 
 
 def install_boot_command(content: str) -> tuple[str, bool]:

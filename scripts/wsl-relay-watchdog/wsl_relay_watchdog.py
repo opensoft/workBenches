@@ -78,7 +78,7 @@ class Config:
         config = cls(
             active=active,
             min_age_seconds=cls._parse_int(values, "MIN_AGE_SECONDS", 300, 60, 86_400),
-            confirmations=cls._parse_int(values, "CONFIRMATIONS", 3, 2, 20),
+            confirmations=cls._parse_int(values, "CONFIRMATIONS", 3, 3, 20),
             interval_seconds=cls._parse_int(values, "INTERVAL_SECONDS", 30, 5, 3_600),
             batch_limit=cls._parse_int(values, "BATCH_LIMIT", 32, 1, 128),
             term_grace_seconds=cls._parse_int(values, "TERM_GRACE_SECONDS", 3, 1, 30),
@@ -213,12 +213,23 @@ class ProcScanner:
                 child_count = 0
                 if name == "Relay":
                     command_line = self._parse_command_line((process_dir / "cmdline").read_bytes())
-                    raw_children = (process_dir / "task" / str(pid) / "children").read_text(encoding="ascii").strip()
-                    if raw_children:
-                        child_pids = [int(child_pid) for child_pid in raw_children.split()]
-                        if any(child_pid <= 0 for child_pid in child_pids):
+                    task_dirs = tuple(
+                        task_dir
+                        for task_dir in (process_dir / "task").iterdir()
+                        if task_dir.name.isdigit()
+                    )
+                    if not task_dirs:
+                        raise ValueError("relay has no readable task entries")
+                    child_pids: set[int] = set()
+                    for task_dir in task_dirs:
+                        raw_children = (task_dir / "children").read_text(encoding="ascii").strip()
+                        if not raw_children:
+                            continue
+                        task_child_pids = [int(child_pid) for child_pid in raw_children.split()]
+                        if any(child_pid <= 0 for child_pid in task_child_pids):
                             raise ValueError("children contains an invalid PID")
-                        child_count = len(child_pids)
+                        child_pids.update(task_child_pids)
+                    child_count = len(child_pids)
                 age_seconds = uptime_seconds - (start_time_ticks / self.clock_ticks)
                 if age_seconds < 0:
                     raise ValueError("process start time is after uptime")
@@ -230,9 +241,7 @@ class ProcScanner:
                     age_seconds,
                     child_count,
                 )
-            except FileNotFoundError:
-                continue
-            except (PermissionError, OSError, UnicodeError, ValueError) as error:
+            except (FileNotFoundError, PermissionError, OSError, UnicodeError, ValueError) as error:
                 if len(inspection_errors) < 50:
                     inspection_errors.append(f"pid={pid}: {type(error).__name__}")
 
@@ -582,6 +591,7 @@ def scan_payload(scan_result: ScanResult, config: Config) -> dict[str, object]:
         "timestamp": scan_result.timestamp,
         "mode": "scan",
         "active_configuration": config.active,
+        "minimum_age_seconds": config.min_age_seconds,
         "strict_count": len(scan_result.strict_candidates),
         "strict_candidates": [process_summary(process) for process in scan_result.strict_candidates],
         "protected_named_relay_count": len(scan_result.named_relays),
@@ -664,17 +674,36 @@ def main(argv: list[str] | None = None) -> int:
             if not status_path.exists():
                 print_json({"running": False, "status": "unavailable"})
                 return 3
-            status_payload = json.loads(status_path.read_text(encoding="utf-8"))
+            try:
+                status_payload = json.loads(status_path.read_text(encoding="utf-8"))
+                if not isinstance(status_payload, dict):
+                    raise ValueError("status payload is not an object")
+            except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+                print_json(
+                    {
+                        "running": False,
+                        "status": "unavailable",
+                        "status_error": type(error).__name__,
+                    }
+                )
+                return 3
             pid_path = arguments.run_dir / "watchdog.pid.json"
             running = False
             if pid_path.exists():
-                identity_payload = json.loads(pid_path.read_text(encoding="utf-8"))
-                expected_identity = ProcessIdentity(
-                    pid=int(identity_payload["pid"]),
-                    start_time_ticks=int(identity_payload["start_time_ticks"]),
-                )
-                running = scanner.read_identity(expected_identity.pid) == expected_identity
-                status_payload["watchdog_identity"] = dataclasses.asdict(expected_identity)
+                try:
+                    identity_payload = json.loads(pid_path.read_text(encoding="utf-8"))
+                    if not isinstance(identity_payload, dict):
+                        raise ValueError("identity payload is not an object")
+                    expected_identity = ProcessIdentity(
+                        pid=int(identity_payload["pid"]),
+                        start_time_ticks=int(identity_payload["start_time_ticks"]),
+                    )
+                    if expected_identity.pid <= 0 or expected_identity.start_time_ticks < 0:
+                        raise ValueError("identity values are out of range")
+                    running = scanner.read_identity(expected_identity.pid) == expected_identity
+                    status_payload["watchdog_identity"] = dataclasses.asdict(expected_identity)
+                except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
+                    status_payload["watchdog_identity_error"] = type(error).__name__
             status_payload["running"] = running
             print_json(status_payload)
             return 0 if running else 3

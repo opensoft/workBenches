@@ -27,7 +27,7 @@ Systemd was rejected because it is intentionally disabled and would require a WS
 
 ### Exact fail-closed classification
 
-A strict candidate requires exact `Relay` process name, PPID 1, a single `/init` argument, an empty kernel child list, and at least 300 seconds of age. Missing or malformed metadata makes the process ineligible. Exact naming excludes `Relay(<pid>)` and `SessionLeader`.
+A strict candidate requires exact `Relay` process name, PPID 1, a single `/init` argument, empty kernel child lists across every relay thread, and at least 300 seconds of age. Missing or malformed metadata makes the process ineligible. Exact naming excludes `Relay(<pid>)` and `SessionLeader`.
 
 ### Consecutive identity confirmation
 

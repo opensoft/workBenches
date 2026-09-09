@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import importlib.util
+import io
 import json
 import logging
 from pathlib import Path
@@ -64,6 +66,14 @@ class ProcFixture:
         if parent_children.exists():
             existing = parent_children.read_text(encoding="ascii").strip()
             parent_children.write_text(f"{existing} {pid}".strip(), encoding="ascii")
+
+    def add_thread_children(self, pid: int, thread_id: int, child_pids: tuple[int, ...]) -> None:
+        task_dir = self.root / str(pid) / "task" / str(thread_id)
+        task_dir.mkdir(parents=True)
+        task_dir.joinpath("children").write_text(
+            " ".join(str(child_pid) for child_pid in child_pids),
+            encoding="ascii",
+        )
 
 
 def process_info(pid: int, start_time_ticks: int = 100, age_seconds: float = 900.0):
@@ -128,6 +138,18 @@ class ProcScannerTests(unittest.TestCase):
             fixture = ProcFixture(proc_root)
             fixture.add_process(10, "Relay", 1, command_line=("/init",))
             (proc_root / "10" / "cmdline").unlink()
+
+            result = watchdog.ProcScanner(proc_root, clock_ticks=100).scan(min_age_seconds=300)
+
+            self.assertEqual((), result.strict_candidates)
+            self.assertTrue(any(error == "pid=10: FileNotFoundError" for error in result.inspection_errors))
+
+    def test_relay_child_owned_by_non_leader_thread_is_preserved(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            proc_root = Path(temporary_directory) / "proc"
+            fixture = ProcFixture(proc_root)
+            fixture.add_process(10, "Relay", 1, command_line=("/init",))
+            fixture.add_thread_children(10, 101, (14,))
 
             result = watchdog.ProcScanner(proc_root, clock_ticks=100).scan(min_age_seconds=300)
 
@@ -246,6 +268,13 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaises(watchdog.ConfigError):
                 watchdog.Config.load(config_path)
 
+    def test_confirmation_count_cannot_drop_below_three(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            config_path = Path(temporary_directory) / "watchdog.conf"
+            config_path.write_text("CONFIRMATIONS=2\n", encoding="utf-8")
+            with self.assertRaises(watchdog.ConfigError):
+                watchdog.Config.load(config_path)
+
     def test_inactive_is_default(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             config = watchdog.Config.load(Path(temporary_directory) / "missing.conf")
@@ -289,6 +318,55 @@ class DaemonTests(unittest.TestCase):
             self.assertTrue(all(path.stat().st_size <= 200 for path in log_files))
 
 
+class StatusTests(unittest.TestCase):
+    def test_corrupt_status_file_reports_unavailable(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            run_dir = root / "run"
+            run_dir.mkdir()
+            run_dir.joinpath("status.json").write_text("{", encoding="utf-8")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = watchdog.main(
+                    [
+                        "--config",
+                        str(root / "missing.conf"),
+                        "--run-dir",
+                        str(run_dir),
+                        "status",
+                    ]
+                )
+
+            payload = json.loads(output.getvalue())
+            self.assertEqual(3, result)
+            self.assertFalse(payload["running"])
+            self.assertEqual("unavailable", payload["status"])
+
+    def test_corrupt_identity_file_reports_not_running(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            run_dir = root / "run"
+            run_dir.mkdir()
+            run_dir.joinpath("status.json").write_text('{"health":"healthy"}', encoding="utf-8")
+            run_dir.joinpath("watchdog.pid.json").write_text("{", encoding="utf-8")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = watchdog.main(
+                    [
+                        "--config",
+                        str(root / "missing.conf"),
+                        "--run-dir",
+                        str(run_dir),
+                        "status",
+                    ]
+                )
+
+            payload = json.loads(output.getvalue())
+            self.assertEqual(3, result)
+            self.assertFalse(payload["running"])
+            self.assertEqual("JSONDecodeError", payload["watchdog_identity_error"])
+
+
 class InstallerTests(unittest.TestCase):
     def test_boot_command_preserves_systemd_and_other_sections(self):
         original = "[boot]\nsystemd=false\n\n[interop]\nappendWindowsPath=false\n"
@@ -301,6 +379,13 @@ class InstallerTests(unittest.TestCase):
     def test_conflicting_boot_command_is_refused(self):
         with self.assertRaises(installer.InstallError):
             installer.install_boot_command("[boot]\ncommand=service docker start\nsystemd=false\n")
+
+    def test_duplicate_boot_sections_are_refused(self):
+        duplicate = "[boot]\nsystemd=false\n\n[network]\ngenerateResolvConf=true\n\n[boot]\ncommand=service docker start\n"
+        with self.assertRaises(installer.InstallError):
+            installer.install_boot_command(duplicate)
+        with self.assertRaises(installer.InstallError):
+            installer.uninstall_boot_command(duplicate, boot_section_created=False)
 
     def test_install_and_uninstall_preserve_unrelated_configuration(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

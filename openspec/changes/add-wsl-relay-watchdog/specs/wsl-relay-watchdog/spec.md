@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Strict orphan classification
-The watchdog SHALL classify a process as a strict orphan relay only when its process name is exactly `Relay`, its parent PID is 1, its command line is exactly the single argument `/init`, its kernel child list is empty, and its age meets the configured minimum.
+The watchdog SHALL classify a process as a strict orphan relay only when its process name is exactly `Relay`, its parent PID is 1, its command line is exactly the single argument `/init`, the aggregated kernel child lists for every relay thread are empty, and its age meets the configured minimum.
 
 #### Scenario: Plain childless relay qualifies
 - **WHEN** a process satisfies every strict predicate field and meets the minimum age
@@ -16,7 +16,7 @@ The watchdog SHALL classify a process as a strict orphan relay only when its pro
 - **THEN** the watchdog excludes it from candidate and signal sets regardless of age or parent
 
 #### Scenario: Relay with a child is preserved
-- **WHEN** an otherwise matching relay has at least one current child process
+- **WHEN** an otherwise matching relay has at least one current child process owned by any of its threads
 - **THEN** the watchdog excludes it from candidate and signal sets
 
 #### Scenario: Ambiguous metadata fails closed
