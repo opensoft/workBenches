@@ -26,7 +26,10 @@ run_launcher_case() {
     local mock_bin="$case_root/bin"
     local docker_log="$case_root/docker.log"
     local prepare_log="$case_root/prepare.log"
-    mkdir -p "$fake_home" "$fake_root/devBenches/pyBench/.devcontainer" "$fake_root/devBenches/dotNetBench/.devcontainer" "$fake_root/devBenches/rustBench/.devcontainer" "$fake_root/scripts" "$mock_bin"
+    local wslg_root="$case_root/no-wslg"
+    local explicit_compose="$fake_root/custom-compose.yml"
+    local expected_env_dir=""
+    mkdir -p "$fake_home" "$fake_root/devBenches/pyBench/.devcontainer" "$fake_root/devBenches/dotNetBench/.devcontainer" "$fake_root/devBenches/rustBench/.devcontainer" "$fake_root/customBench/.devcontainer" "$fake_root/scripts" "$mock_bin"
     : > "$fake_root/devBenches/pyBench/.devcontainer/devcontainer.json"
     : > "$fake_root/devBenches/pyBench/.devcontainer/docker-compose.yml"
     : > "$fake_root/devBenches/dotNetBench/.devcontainer/devcontainer.json"
@@ -35,6 +38,16 @@ run_launcher_case() {
     : > "$fake_root/devBenches/rustBench/.devcontainer/docker-compose.yml"
     : > "$fake_root/devBenches/rustBench/.devcontainer/docker-compose.wslg.yml"
     : > "$fake_root/custom-compose.yml"
+    : > "$fake_root/customBench/.devcontainer/docker-compose.yml"
+    printf '%s\n' 'CUSTOM_BENCH_VALUE=present' > "$fake_root/customBench/.env"
+    if [[ "${CASE_GENERIC_COMPOSE:-false}" == true ]]; then
+        explicit_compose="$fake_root/customBench/.devcontainer/docker-compose.yml"
+        expected_env_dir="$fake_root/customBench/.devcontainer"
+    fi
+    if [[ "${CASE_WSLG_ENABLED:-false}" == true ]]; then
+        wslg_root="$fake_root/wslg"
+        mkdir -p "$wslg_root"
+    fi
 
     cat > "$fake_root/scripts/prepare-bench-start.sh" <<'PREPARE'
 #!/usr/bin/env bash
@@ -47,6 +60,11 @@ PREPARE
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$MOCK_DOCKER_LOG"
+
+if [[ "${1:-}" == "compose" && -n "$MOCK_EXPECT_ENV_DIR" ]]; then
+    [[ -f "$MOCK_EXPECT_ENV_DIR/.env" ]] || exit 1
+    printf '%s\n' compose-env-present >> "$MOCK_DOCKER_LOG"
+fi
 
 if [[ "${1:-}" == "container" && "${2:-}" == "inspect" ]]; then
     if [[ "$MOCK_CONTAINER_EXISTS" != true ]]; then
@@ -107,7 +125,7 @@ MOCK
 
     local launcher_args=()
     if [[ "${CASE_EXPLICIT_COMPOSE:-false}" == true ]]; then
-        launcher_args+=(--compose-file "$fake_root/custom-compose.yml")
+        launcher_args+=(--compose-file "$explicit_compose")
     fi
 
     local output
@@ -117,6 +135,8 @@ MOCK
             USER=tester \
             PATH="$mock_bin:$PATH" \
             MOCK_DOCKER_LOG="$docker_log" \
+            MOCK_EXPECT_ENV_DIR="$expected_env_dir" \
+            WAVE_WSLG_ROOT="$wslg_root" \
             MOCK_CONTAINER_EXISTS="${CASE_CONTAINER_EXISTS:-true}" \
             MOCK_PREPARE_LOG="$prepare_log" \
             MOCK_RUNNING="$running" \
@@ -192,8 +212,12 @@ if grep -q '^devcontainer ' <<<"$CASE_DOCKER_LOG"; then
     fail "first creation ignored the explicit Compose file through Dev Containers CLI"
 fi
 
-CASE_CONTAINER_EXISTS=false CASE_EXPLICIT_COMPOSE=true run_launcher_case rust-explicit-compose-first-create false missing false false rustBench
+CASE_CONTAINER_EXISTS=false CASE_EXPLICIT_COMPOSE=true CASE_WSLG_ENABLED=true run_launcher_case rust-explicit-compose-first-create false missing false false rustBench
 grep -q -- "compose -f .*/custom-compose.yml -f .*/devBenches/rustBench/.devcontainer/docker-compose.wslg.yml" <<<"$CASE_DOCKER_LOG" \
     || fail "rustBench resolved its WSLg override relative to the explicit Compose file"
+
+CASE_CONTAINER_EXISTS=false CASE_EXPLICIT_COMPOSE=true CASE_GENERIC_COMPOSE=true run_launcher_case generic-explicit-compose-first-create false missing false false custom-bench
+grep -q '^compose-env-present$' <<<"$CASE_DOCKER_LOG" \
+    || fail "generic container did not copy its bench-root .env beside the Compose file"
 
 echo "PASS: wave container launcher lifecycle tests"

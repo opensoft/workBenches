@@ -15,8 +15,10 @@ check_only=false
 repair_requested=false
 profile_launcher_marker="/usr/local/share/workbenches/profile-launchers.sha256"
 bench_dir="$workbenches_root/devBenches/pyBench"
+bench_dir_resolved=false
 compose_file="$bench_dir/.devcontainer/docker-compose.yml"
 compose_file_explicit=false
+wslg_root="${WAVE_WSLG_ROOT:-/mnt/wslg}"
 base_image="py-bench:latest"
 layer3_chown=""
 compose_project="dev-benches"
@@ -26,6 +28,7 @@ resolve_bench_defaults() {
         pyBench|py-bench)
             container="py-bench"
             bench_dir="$workbenches_root/devBenches/pyBench"
+            bench_dir_resolved=true
             [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="py-bench:latest"
             layer3_chown=""
@@ -34,6 +37,7 @@ resolve_bench_defaults() {
         dotNetBench|dotnetBench|dotnet-bench)
             container="dotnet-bench"
             bench_dir="$workbenches_root/devBenches/dotNetBench"
+            bench_dir_resolved=true
             [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="dotnet-bench:latest"
             layer3_chown=""
@@ -42,6 +46,7 @@ resolve_bench_defaults() {
         cppBench|C++Bench|c++Bench|cpp-bench)
             container="cpp-bench"
             bench_dir="$workbenches_root/devBenches/cppBench"
+            bench_dir_resolved=true
             [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="cpp-bench:latest"
             layer3_chown="/opt/vcpkg"
@@ -50,6 +55,7 @@ resolve_bench_defaults() {
         rustBench|rust-bench)
             container="rust-bench"
             bench_dir="$workbenches_root/devBenches/rustBench"
+            bench_dir_resolved=true
             [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="rust-bench:latest"
             layer3_chown="/opt/rust"
@@ -58,6 +64,7 @@ resolve_bench_defaults() {
         flutterBench|flutter-bench)
             container="flutter-bench"
             bench_dir="$workbenches_root/devBenches/flutterBench"
+            bench_dir_resolved=true
             [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="flutter-bench:latest"
             layer3_chown="/opt/flutter /opt/flutter-3.27.0 /opt/android-sdk"
@@ -66,6 +73,7 @@ resolve_bench_defaults() {
         cloudBench|cloud-bench)
             container="cloud-bench"
             bench_dir="$workbenches_root/sysBenches/cloudBench/devcontainer.example"
+            bench_dir_resolved=true
             [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/docker-compose.yml"
             base_image="cloud-bench:latest"
             layer3_chown=""
@@ -74,6 +82,7 @@ resolve_bench_defaults() {
         365Bench|m365Bench|m365-bench)
             container="m365-bench"
             bench_dir="$workbenches_root/sysBenches/365Bench"
+            bench_dir_resolved=true
             [[ "$compose_file_explicit" == true ]] || compose_file="$bench_dir/.devcontainer/docker-compose.yml"
             base_image="m365-bench:latest"
             layer3_chown=""
@@ -285,17 +294,22 @@ create_with_compose() {
         exit 1
     fi
 
-    local compose_dir
+    local compose_dir compose_bench_dir
     compose_dir="$(dirname "$compose_file")"
-    if [[ ! -f "$compose_dir/.env" && -f "$bench_dir/.env" ]]; then
-        cp "$bench_dir/.env" "$compose_dir/.env"
+    if [[ "$bench_dir_resolved" == true ]]; then
+        compose_bench_dir="$bench_dir"
+    else
+        compose_bench_dir="$(dirname "$compose_dir")"
+    fi
+    if [[ ! -f "$compose_dir/.env" && -f "$compose_bench_dir/.env" ]]; then
+        cp "$compose_bench_dir/.env" "$compose_dir/.env"
     fi
 
     local override_file
     local compose_args
     override_file="$(write_wave_compose_override)"
     compose_args=(-f "$compose_file")
-    if [[ "$container" == "rust-bench" && -d /mnt/wslg ]]; then
+    if [[ "$container" == "rust-bench" && -d "$wslg_root" ]]; then
         local wslg_compose_file="$bench_dir/.devcontainer/docker-compose.wslg.yml"
         if [[ ! -f "$wslg_compose_file" ]]; then
             echo "rustBench WSLg override is missing: $wslg_compose_file" >&2
