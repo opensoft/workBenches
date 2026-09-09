@@ -111,8 +111,10 @@ function Stop-OwnedProbe {
 
     try {
         $Process.Kill()
-        $null = $Process.WaitForExit(3000)
-        return $true
+        if (-not $Process.WaitForExit(3000)) {
+            return $false
+        }
+        return $Process.HasExited
     }
     catch {
         return $false
@@ -251,7 +253,7 @@ function Write-GuestSnapshot {
         throw 'GuestSnapshot requires -OutputPath.'
     }
 
-        $distributionRoot = '\\wsl$\{0}' -f $Distribution
+    $distributionRoot = '\\wsl$\{0}' -f $Distribution
     $snapshot = [ordered]@{
         timestamp = [DateTimeOffset]::UtcNow.ToString('o')
         distribution = $Distribution
@@ -290,15 +292,29 @@ function Invoke-BoundedGuestSnapshot {
         if (-not (Test-Path -LiteralPath $powerShellPath)) {
             $powerShellPath = (Get-Process -Id $PID).Path
         }
+        $quoteLiteral = {
+            param([string]$Value)
+            return "'" + $Value.Replace("'", "''") + "'"
+        }
+        $quotedScriptPath = & $quoteLiteral $PSCommandPath
+        $quotedDistribution = & $quoteLiteral $Distribution
+        $quotedStateDirectory = & $quoteLiteral $StateDirectory
+        $quotedTemporaryPath = & $quoteLiteral $temporaryPath
+        $childCommand = '& {0} -Mode GuestSnapshot -Distribution {1} -StateDirectory {2} -OutputPath {3}' -f $quotedScriptPath, $quotedDistribution, $quotedStateDirectory, $quotedTemporaryPath
+        $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($childCommand))
         $startInfo = New-Object System.Diagnostics.ProcessStartInfo
         $startInfo.FileName = $powerShellPath
-        $startInfo.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -Mode GuestSnapshot -Distribution "{1}" -StateDirectory "{2}" -OutputPath "{3}"' -f $PSCommandPath, $Distribution, $StateDirectory, $temporaryPath
+        $startInfo.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encodedCommand"
         $startInfo.UseShellExecute = $false
         $startInfo.CreateNoWindow = $true
         $process = [System.Diagnostics.Process]::Start($startInfo)
         if (-not $process.WaitForExit(5000)) {
-            $null = Stop-OwnedProbe -Process $process
-            return [ordered]@{ completed = $false; outcome = 'timeout' }
+            $terminated = Stop-OwnedProbe -Process $process
+            return [ordered]@{
+                completed = $false
+                outcome = if ($terminated) { 'timeout' } else { 'timeout-process-still-running' }
+                owned_probe_terminated = $terminated
+            }
         }
         if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $temporaryPath)) {
             return [ordered]@{ completed = $false; outcome = 'error'; exit_code = $process.ExitCode }
@@ -495,18 +511,19 @@ function Test-DaemonIdentity {
     }
 }
 
-function Show-Status {
+function Get-StatusResult {
     $state = Read-ExistingState
     if ($null -eq $state) {
-        [ordered]@{ running = $false; status = 'unavailable'; state_path = $script:StatePath } | ConvertTo-Json -Depth 6
-        return 3
+        return [ordered]@{
+            exit_code = 3
+            payload = [ordered]@{ running = $false; status = 'unavailable'; state_path = $script:StatePath }
+        }
     }
     $state | Add-Member -NotePropertyName running -NotePropertyValue (Test-DaemonIdentity -State $state) -Force
-    $state | ConvertTo-Json -Depth 10
-    if (-not $state.running) {
-        return 3
+    return [ordered]@{
+        exit_code = if ($state.running) { 0 } else { 3 }
+        payload = $state
     }
-    return 0
 }
 
 function Run-Daemon {
@@ -556,7 +573,9 @@ if ($Mode -eq 'GuestSnapshot') {
 }
 
 if ($Mode -eq 'Status') {
-    exit (Show-Status)
+    $statusResult = Get-StatusResult
+    $statusResult.payload | ConvertTo-Json -Depth 10
+    exit ([int]$statusResult.exit_code)
 }
 
 if ($Mode -eq 'Once') {

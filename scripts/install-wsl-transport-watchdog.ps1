@@ -85,8 +85,10 @@ if ($Action -eq 'Uninstall') {
         Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
     }
+    Remove-Item -LiteralPath $installedScript -Force -ErrorAction SilentlyContinue
     [ordered]@{
         installed = $false
+        installed_script_removed = (-not (Test-Path -LiteralPath $installedScript))
         preserved_state_directory = $installDirectory
     } | ConvertTo-Json
     exit 0

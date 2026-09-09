@@ -31,6 +31,7 @@ Run from Windows PowerShell:
 & .\scripts\install-wsl-transport-watchdog.ps1 -Action Status
 & .\scripts\install-wsl-transport-watchdog.ps1 -Action Stop
 & .\scripts\install-wsl-transport-watchdog.ps1 -Action Start
+& .\scripts\install-wsl-transport-watchdog.ps1 -Action Uninstall
 ```
 
 The per-user scheduled task starts at logon and is named `workBenches WSL Transport Watchdog`.
