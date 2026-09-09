@@ -59,6 +59,9 @@ for process_dir in /proc/[0-9]*; do
     [[ "${start_time_ticks}" =~ ^[0-9]+$ ]] || continue
 
     command_line=()
+    if ! tail -c 1 "${process_dir}/cmdline" 2>/dev/null | od -An -tu1 | grep -Eq '^[[:space:]]*0[[:space:]]*$'; then
+        continue
+    fi
     if ! mapfile -d '' -t command_line <"${process_dir}/cmdline" 2>/dev/null; then
         continue
     fi

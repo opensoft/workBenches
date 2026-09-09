@@ -11,6 +11,7 @@ import signal
 import stat
 import tempfile
 import unittest
+from unittest import mock
 
 
 MODULE_DIR = Path(__file__).resolve().parents[1]
@@ -370,6 +371,31 @@ class DaemonTests(unittest.TestCase):
 
 
 class StatusTests(unittest.TestCase):
+    def test_status_ignores_invalid_configuration(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            config_path = root / "invalid.conf"
+            config_path.write_text("ACTIVE=maybe\n", encoding="utf-8")
+            run_dir = root / "run"
+            run_dir.mkdir()
+            run_dir.joinpath("status.json").write_text('{"health":"healthy"}', encoding="utf-8")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = watchdog.main(
+                    [
+                        "--config",
+                        str(config_path),
+                        "--run-dir",
+                        str(run_dir),
+                        "status",
+                    ]
+                )
+
+            payload = json.loads(output.getvalue())
+            self.assertEqual(3, result)
+            self.assertFalse(payload["running"])
+            self.assertEqual("healthy", payload["health"])
+
     def test_corrupt_status_file_reports_unavailable(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -579,8 +605,11 @@ class InstallerTests(unittest.TestCase):
             installer.install(root, MODULE_DIR / "wsl_relay_watchdog.py", active=False, start=False)
             wsl_config.write_text("[boot]\ncommand=changed-command\nsystemd=false\n", encoding="utf-8")
 
-            with self.assertRaises(installer.InstallError):
-                installer.uninstall(root)
+            with mock.patch.object(installer, "stop_watchdog") as stop_watchdog:
+                with self.assertRaises(installer.InstallError):
+                    installer.uninstall(root)
+
+            stop_watchdog.assert_not_called()
 
             self.assertTrue(installer.rooted(root, installer.ENGINE_PATH).exists())
 

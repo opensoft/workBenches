@@ -716,12 +716,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     arguments = parser.parse_args(argv)
     try:
-        config = Config.load(arguments.config)
+        config = None if arguments.command == "status" else Config.load(arguments.config)
         scanner = ProcScanner(arguments.proc_root)
         if arguments.command == "validate-config":
+            assert config is not None
             print_json({"valid": True, "active": config.active, "version": VERSION})
             return 0
         if arguments.command == "scan":
+            assert config is not None
             print_json(scan_payload(scanner.scan(config.min_age_seconds), config))
             return 0
         if arguments.command == "status":
@@ -763,8 +765,10 @@ def main(argv: list[str] | None = None) -> int:
             print_json(status_payload)
             return 0 if running else 3
         if arguments.command == "run-once":
+            assert config is not None
             return run_once(config, scanner, arguments.active)
         if arguments.command == "daemon":
+            assert config is not None
             daemon = WatchdogDaemon(config, scanner, arguments.run_dir, arguments.log_dir)
             return daemon.run(max_cycles=arguments.max_cycles)
         parser.error(f"unsupported command: {arguments.command}")

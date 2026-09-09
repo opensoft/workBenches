@@ -437,13 +437,13 @@ def uninstall(root: Path) -> dict[str, object]:
         if not isinstance(expected_digest, str) or source_digest(target) != expected_digest:
             raise InstallError(f"refusing removal of modified managed file: {target}")
 
-    stop_watchdog(root)
     wsl_config_path = rooted(root, WSL_CONFIG_PATH)
     current_wsl_config = wsl_config_path.read_text(encoding="utf-8") if wsl_config_path.exists() else ""
     updated_wsl_config = uninstall_boot_command(
         current_wsl_config,
         boot_section_created=bool(state.get("boot_section_created", False)),
     )
+    stop_watchdog(root)
     if not bool(state.get("wsl_config_existed", True)) and not updated_wsl_config:
         try:
             wsl_config_path.unlink()
