@@ -161,6 +161,18 @@ class ProcScannerTests(unittest.TestCase):
             self.assertEqual((), result.strict_candidates)
             self.assertTrue(any(error == "pid=10: FileNotFoundError" for error in result.inspection_errors))
 
+    def test_truncated_relay_cmdline_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            proc_root = Path(temporary_directory) / "proc"
+            fixture = ProcFixture(proc_root)
+            fixture.add_process(10, "Relay", 1, command_line=("/init",))
+            (proc_root / "10" / "cmdline").write_bytes(b"/init")
+
+            result = watchdog.ProcScanner(proc_root, clock_ticks=100).scan(min_age_seconds=300)
+
+            self.assertEqual((), result.strict_candidates)
+            self.assertTrue(any(error == "pid=10: ValueError" for error in result.inspection_errors))
+
     def test_relay_child_owned_by_non_leader_thread_is_preserved(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             proc_root = Path(temporary_directory) / "proc"
@@ -177,6 +189,17 @@ class ProcScannerTests(unittest.TestCase):
             proc_root = Path(temporary_directory) / "proc"
             fixture = ProcFixture(proc_root)
             fixture.add_process(10, "Relay\n", 1, command_line=("/init",))
+
+            result = watchdog.ProcScanner(proc_root, clock_ticks=100).scan(min_age_seconds=300)
+
+            self.assertEqual((), result.strict_candidates)
+            self.assertTrue(any(error.startswith("pid=10: ValueError") for error in result.inspection_errors))
+
+    def test_relay_name_with_carriage_return_is_never_strict(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            proc_root = Path(temporary_directory) / "proc"
+            fixture = ProcFixture(proc_root)
+            fixture.add_process(10, "Relay\r", 1, command_line=("/init",))
 
             result = watchdog.ProcScanner(proc_root, clock_ticks=100).scan(min_age_seconds=300)
 
@@ -396,6 +419,23 @@ class StatusTests(unittest.TestCase):
 
 
 class InstallerTests(unittest.TestCase):
+    def test_stale_identity_with_held_lock_is_refused(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            run_dir = installer.rooted(root, installer.RUN_DIR)
+            run_dir.mkdir(parents=True)
+            run_dir.joinpath("watchdog.pid.json").write_text(
+                '{"pid":2147483647,"start_time_ticks":1}\n', encoding="utf-8"
+            )
+            lock_file = (run_dir / "watchdog.lock").open("a+", encoding="utf-8")
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                with self.assertRaises(installer.InstallError):
+                    installer.stop_watchdog(root)
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                lock_file.close()
+
     def test_startup_clears_stale_runtime_status(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

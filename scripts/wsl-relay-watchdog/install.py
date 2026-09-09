@@ -223,8 +223,6 @@ def stop_watchdog(root: Path, timeout_seconds: float = 5.0) -> None:
         if watchdog_lock_is_held(root):
             raise InstallError("watchdog lock is held but its identity file is missing")
         return
-    if root != Path("/"):
-        return
     try:
         identity = json.loads(pid_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
@@ -232,7 +230,11 @@ def stop_watchdog(root: Path, timeout_seconds: float = 5.0) -> None:
     pid = int(identity["pid"])
     current_start = read_start_time_ticks(pid)
     if current_start is None:
+        if watchdog_lock_is_held(root):
+            raise InstallError("watchdog lock is held but its recorded identity is stale")
         pid_path.unlink()
+        return
+    if root != Path("/"):
         return
     if not verified_watchdog(identity):
         raise InstallError("refusing to stop an unverified watchdog identity")

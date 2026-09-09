@@ -166,9 +166,10 @@ class ProcScanner:
     def _parse_command_line(raw_command_line: bytes) -> tuple[str, ...]:
         if not raw_command_line:
             return ()
+        if not raw_command_line.endswith(b"\0"):
+            raise ValueError("cmdline is missing its procfs delimiter")
         parts = raw_command_line.split(b"\0")
-        if parts and parts[-1] == b"":
-            parts.pop()
+        parts.pop()
         return tuple(part.decode("utf-8", errors="strict") for part in parts)
 
     def _uptime_seconds(self) -> float:
@@ -197,11 +198,14 @@ class ProcScanner:
             )
             if start_time_ticks != identity.start_time_ticks:
                 return None
-            raw_name = (process_dir / "comm").read_text(encoding="utf-8")
-            if not raw_name.endswith("\n"):
+            raw_name = (process_dir / "comm").read_bytes()
+            if not raw_name.endswith(b"\n"):
                 return None
-            name = raw_name[:-1]
-            if "\n" in name or "\r" in name or name != "Relay":
+            raw_name = raw_name[:-1]
+            if b"\n" in raw_name or b"\r" in raw_name:
+                return None
+            name = raw_name.decode("utf-8", errors="strict")
+            if name != "Relay":
                 return None
             command_line = self._parse_command_line((process_dir / "cmdline").read_bytes())
             task_dirs = tuple(
@@ -257,12 +261,13 @@ class ProcScanner:
                 parent_pid, start_time_ticks = self._parse_stat(
                     (process_dir / "stat").read_text(encoding="utf-8")
                 )
-                raw_name = (process_dir / "comm").read_text(encoding="utf-8")
-                if not raw_name.endswith("\n"):
+                raw_name = (process_dir / "comm").read_bytes()
+                if not raw_name.endswith(b"\n"):
                     raise ValueError("comm is missing its procfs delimiter")
-                name = raw_name[:-1]
-                if "\n" in name or "\r" in name:
+                raw_name = raw_name[:-1]
+                if b"\n" in raw_name or b"\r" in raw_name:
                     raise ValueError("comm contains an embedded newline")
+                name = raw_name.decode("utf-8", errors="strict")
                 command_line = None
                 child_count = 0
                 if name == "Relay":

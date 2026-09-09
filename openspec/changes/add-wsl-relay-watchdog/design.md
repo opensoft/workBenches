@@ -29,6 +29,9 @@ Immediately before each signal, the cleanup engine reads only the target
 process and all of its task children instead of relying on a cached full-table
 scan. Replacement startup waits for both verified process exit and singleton
 lock release after TERM or KILL.
+Procfs names and command lines are validated as raw bytes with their exact
+newline and NUL delimiters, and stale identity metadata is never discarded
+while the singleton lock is held.
 
 Systemd was rejected because it is intentionally disabled and would require a WSL restart. Windows polling was rejected because it would repeatedly cross the same WSL session boundary that becomes exhausted. Cron is not guaranteed to run, and Wave-launcher edits would not protect other creation paths.
 
