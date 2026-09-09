@@ -126,6 +126,13 @@ RUN if [ -n "$EXTRA_CHOWN_DIRS" ]; then \
 
 USER $USERNAME
 
+# User-owned Codex overlay. Keep the shared Layer 0 package root-owned while
+# allowing the runtime user to run `codex update` against this writable prefix.
+ENV NPM_CONFIG_PREFIX=/home/${USERNAME}/.npm-global
+ENV PATH=/home/${USERNAME}/.npm-global/bin:${PATH}
+RUN mkdir -p "$NPM_CONFIG_PREFIX" \
+    && npm install -g @openai/codex@latest
+
 # Pre-create user-owned cache roots so first-use named volumes inherit the
 # runtime user's ownership instead of becoming root-only.
 RUN mkdir -p \
