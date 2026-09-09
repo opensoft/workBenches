@@ -1,6 +1,6 @@
 #!/bin/bash
 # Shared AI CLI Installation Script
-# Version: 1.3.2
+# Version: 1.4.0
 #
 # This script installs all AI CLI tools for devcontainers.
 # Source this from Dockerfiles to maintain a single source of truth.
@@ -12,6 +12,9 @@
 #   - Auth plugins (opencode-gemini-auth, opencode-openai-codex-auth)
 #   - Other AI CLIs (Codex, Gemini, Copilot, etc.)
 #   - Claude Code (via native installer, not npm)
+#   - Kimi Code (Moonshot AI, Kimi K3), Qwen Code (Alibaba), Z.AI GLM Coding
+#     Plan helper (chelper), DeepSeek Harness (dsh, developer preview), and
+#     MiniMax Code (mcode, via native installer)
 #
 # Note: OpenAgents agent files (openagent.md, opencoder.md) are copied via
 #       Dockerfile, not installed by this script
@@ -28,6 +31,7 @@ set -e
 DEBUG="${DEBUG:-1}"
 COMMAND_TIMEOUT="${COMMAND_TIMEOUT:-300}"  # 5 minutes per general command
 NPM_INSTALL_TIMEOUT="${NPM_INSTALL_TIMEOUT:-600}"  # 10 minutes for npm package installs
+NPM_VERSION="${NPM_VERSION:-12.0.2}"
 GIT_CLONE_TIMEOUT="${GIT_CLONE_TIMEOUT:-900}"  # 15 minutes for slow GitHub clones
 RELEASE_DOWNLOAD_TIMEOUT="${RELEASE_DOWNLOAD_TIMEOUT:-3600}"  # 60 minutes for slow GitHub release assets
 BUN_OPERATIONS_TIMEOUT="${BUN_OPERATIONS_TIMEOUT:-900}"  # 15 minutes for bun ops
@@ -67,6 +71,20 @@ run_with_timeout() {
         fi
         return $exit_code
     fi
+}
+
+ensure_selective_npm_scripts() {
+    local current_version
+
+    current_version="$(npm --version)"
+    if [ "$current_version" != "$NPM_VERSION" ]; then
+        log_info "Installing npm ${NPM_VERSION} for selective lifecycle-script controls..."
+        run_with_timeout "$NPM_INSTALL_TIMEOUT" "npm ${NPM_VERSION} install" \
+            npm install -g "npm@${NPM_VERSION}" || return 1
+        hash -r
+    fi
+
+    npm install --help | grep -Fq -- '--allow-scripts'
 }
 
 check_system_resources() {
@@ -139,7 +157,7 @@ export PATH="$HOME/.npm-global/bin:$PATH"
 # BUN RUNTIME (for OpenCode plugins)
 # ========================================
 log_info "Installing Bun runtime..."
-if run_with_timeout "$COMMAND_TIMEOUT" "Bun runtime download and install" bash -c 'curl -fsSL https://bun.sh/install | bash'; then
+if run_with_timeout "$COMMAND_TIMEOUT" "Bun runtime download and install" bash -o pipefail -c 'curl -fsSL https://bun.sh/install | bash'; then
     log_debug "Bun installation completed"
 else
     log_error "Failed to download or install Bun. Continuing without Bun support."
@@ -164,7 +182,7 @@ fi
 log_info "Installing Claude Code CLI (native installer)..."
 # Native installer is now the recommended method (npm is deprecated)
 # Installs to ~/.local/bin/claude, auto-updates in background, no Node.js dependency
-if ! run_with_timeout "$COMMAND_TIMEOUT" "Claude Code native install" bash -c 'curl -fsSL https://claude.ai/install.sh | bash'; then
+if ! run_with_timeout "$COMMAND_TIMEOUT" "Claude Code native install" bash -o pipefail -c 'curl -fsSL https://claude.ai/install.sh | bash'; then
     log_error "Claude Code native installation failed (continuing)"
 fi
 
@@ -446,12 +464,56 @@ if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Letta Code npm install" npm instal
     log_error "Letta Code installation failed (continuing)"
 fi
 
+# Some newer CLIs ship native postinstall build steps (pty/FFI bindings, spawn
+# helpers). npm blocks arbitrary install scripts by default; explicitly allow
+# only the ones required by the packages installed below.
+NPM_NATIVE_ALLOW_SCRIPTS="@moonshot-ai/kimi-code,node-pty,@qwen-code/audio-capture,@deepseek-ai/dsh-subprocess-local,koffi,@google/genai,protobufjs"
+if ! ensure_selective_npm_scripts; then
+    log_error "npm ${NPM_VERSION} selective lifecycle-script controls are unavailable"
+    exit 1
+fi
+
+log_info "Installing Moonshot Kimi Code CLI (Kimi K3)..."
+# Kimi Code: Moonshot AI's terminal coding agent (https://github.com/MoonshotAI/kimi-code)
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Kimi Code npm install" npm install -g --allow-scripts="$NPM_NATIVE_ALLOW_SCRIPTS" @moonshot-ai/kimi-code@latest; then
+    log_error "Kimi Code installation failed (continuing)"
+fi
+
+log_info "Installing Qwen Code CLI..."
+# Qwen Code: Alibaba's terminal coding agent (https://github.com/QwenLM/qwen-code)
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Qwen Code npm install" npm install -g --allow-scripts="$NPM_NATIVE_ALLOW_SCRIPTS" @qwen-code/qwen-code@latest; then
+    log_error "Qwen Code installation failed (continuing)"
+fi
+
+log_info "Installing Z.AI GLM Coding Plan helper (chelper)..."
+# Coding Tool Helper: Z.AI's official wizard for wiring GLM Coding Plan into
+# Claude Code, OpenCode, Crush, and Factory Droid (not a standalone agent).
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Z.AI coding-helper npm install" npm install -g @z_ai/coding-helper@latest; then
+    log_error "Z.AI coding-helper installation failed (continuing)"
+fi
+
+log_info "Installing DeepSeek Harness (dsh)..."
+# DeepSeek Harness: DeepSeek AI's open-source, plugin-based agent harness
+# (https://github.com/deepseek-ai/deepseek-harness). Developer preview as of
+# this writing; not added to required_clis below since it may break between
+# releases.
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "DeepSeek Harness npm install" npm install -g --allow-scripts="$NPM_NATIVE_ALLOW_SCRIPTS" @deepseek-ai/dsh@latest; then
+    log_error "DeepSeek Harness installation failed (continuing)"
+fi
+
+log_info "Installing MiniMax Code CLI (mcode)..."
+# MiniMax Code: MiniMax's official terminal coding agent, installed via its
+# native installer (not npm-global); adds itself to PATH via shell rc.
+if ! run_with_timeout "$COMMAND_TIMEOUT" "MiniMax Code CLI install" bash -o pipefail -c 'curl -fsSL https://filecdn.minimax.chat/public/install.sh | bash'; then
+    log_error "MiniMax Code CLI installation failed (continuing)"
+fi
+
 log_info "=========================================="
 log_info "AI CLI Tools Installation Complete!"
 log_info "=========================================="
 log_info ""
 
-required_clis=(claude codex gemini copilot opencode omo letta)
+required_clis=(claude codex gemini copilot opencode omo letta kimi qwen)
 missing_clis=()
 for cli in "${required_clis[@]}"; do
     if ! command -v "$cli" >/dev/null 2>&1; then
@@ -477,6 +539,23 @@ log_info "  - GitHub Copilot (copilot)"
 log_info "  - OpenCode (opencode)"
 log_info "  - oh-my-opencode (omo)"
 log_info "  - Letta Code (letta)"
+log_info "  - Moonshot Kimi Code (kimi)"
+log_info "  - Qwen Code (qwen)"
+if command -v chelper >/dev/null 2>&1; then
+    log_info "  - Z.AI Coding Plan helper (chelper)"
+else
+    log_info "  - Z.AI Coding Plan helper (chelper) [install skipped or failed]"
+fi
+if command -v dsh >/dev/null 2>&1; then
+    log_info "  - DeepSeek Harness (dsh) [developer preview]"
+else
+    log_info "  - DeepSeek Harness (dsh) [install skipped or failed, developer preview]"
+fi
+if command -v mcode >/dev/null 2>&1 || [ -x "$HOME/.minimax-code/bin/mcode" ]; then
+    log_info "  - MiniMax Code (mcode)"
+else
+    log_info "  - MiniMax Code (mcode) [install skipped or failed]"
+fi
 log_info ""
 log_info "Agent files (openagent.md, opencoder.md) provided via Dockerfile COPY"
 log_info ""

@@ -69,8 +69,10 @@ claude
 codex
 gemini
 copilot
+qwen
 meta
 kimi2
+minimax
 deepseek
 ```
 
@@ -82,19 +84,27 @@ deepseek
 | claude | Claude (Anthropic) | `claude` | CLI OAuth + API key |
 | gemini | Legacy Gemini CLI ID; migrate to Antigravity | `gemini` | CLI OAuth |
 | copilot | GitHub Copilot | `copilot` | CLI OAuth |
+| qwen | Qwen Code (Alibaba) | `qwen` | CLI login / API key |
 | meta | Meta Llama | `llama` | CLI OAuth |
-| kimi2 | Moonshot Kimi 2 | `kimi` | CLI OAuth |
-| deepseek | DeepSeek | `deepseek` | CLI OAuth |
+| kimi2 | Kimi Code (Moonshot AI, Kimi K3) | `kimi` | CLI OAuth / API key |
+| minimax | MiniMax Code | `mcode` | CLI login (region-aware) |
+| deepseek | DeepSeek Harness (`dsh`) or DeepSeek as a provider inside Qwen Code/OpenCode | `dsh` | API key |
 
-## Default Priority Order
+GLM/Z.AI has no standalone agent CLI; it is used by pointing Claude Code,
+OpenCode, Crush, or Factory Droid at the GLM Coding Plan endpoint, optionally
+via the official `chelper` (`@z_ai/coding-helper`) setup wizard. It is
+therefore not a selectable entry in this priority list.
+
+## Unified Non-Interactive Priority Order
 
 1. **codex** (ChatGPT account / Codex CLI)
 2. **claude** (Claude - Anthropic)
-3. **gemini** (legacy ID; Google Antigravity is the migration target)
-4. **copilot** (GitHub Copilot)
-5. **meta** (Meta Llama)
-6. **kimi2** (Moonshot Kimi 2)
-7. **deepseek** (DeepSeek)
+3. **gemini** (Google Gemini CLI)
+
+The shared image also installs Copilot, Qwen, Kimi, MiniMax, and other direct
+CLIs listed above. Launch those commands directly. They are not selectable in
+the unified priority router until they have a qualified, non-interactive call
+contract in `ai-cli-adapter.sh`.
 
 ## How It Works
 

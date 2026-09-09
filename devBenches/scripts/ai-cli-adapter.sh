@@ -1,11 +1,11 @@
 #!/bin/bash
 # AI CLI Adapter - Provider detection and unified interface
 # Version: 1.0.0
-# Supports: Codex, Claude Code, Gemini CLI with subscription auth
+# Supports non-interactive calls through Codex, Claude Code, and Gemini CLI.
 # Shared across all bench types (frappe, flutter, dotnet)
 
 # Prevent double-sourcing
-if [ -n "$_AI_CLI_ADAPTER_SOURCED" ]; then
+if [ -n "${_AI_CLI_ADAPTER_SOURCED:-}" ]; then
     return 0
 fi
 _AI_CLI_ADAPTER_SOURCED=1
@@ -21,29 +21,27 @@ if [ -f "$PRIORITY_CONFIG" ]; then
     mapfile -t PROVIDER_PRIORITY < "$PRIORITY_CONFIG"
 else
     # Default provider priority order
-    PROVIDER_PRIORITY=("codex" "claude" "gemini" "copilot" "meta" "kimi2" "deepseek")
+    PROVIDER_PRIORITY=("codex" "claude" "gemini")
 fi
 
-filter_supported_providers() {
-    local -a filtered=()
+build_routing_provider_priority() {
+    ROUTING_PROVIDER_PRIORITY=()
     local provider
 
     for provider in "${PROVIDER_PRIORITY[@]}"; do
         case "$provider" in
-            codex|claude|gemini|copilot|meta|kimi2|deepseek)
-                filtered+=("$provider")
+            codex|claude|gemini)
+                ROUTING_PROVIDER_PRIORITY+=("$provider")
                 ;;
         esac
     done
 
-    if [ ${#filtered[@]} -gt 0 ]; then
-        PROVIDER_PRIORITY=("${filtered[@]}")
-    else
-        PROVIDER_PRIORITY=("codex" "claude" "gemini" "copilot" "meta" "kimi2" "deepseek")
+    if [ ${#ROUTING_PROVIDER_PRIORITY[@]} -eq 0 ]; then
+        ROUTING_PROVIDER_PRIORITY=("codex" "claude" "gemini")
     fi
 }
 
-filter_supported_providers
+build_routing_provider_priority
 
 # Timeout for CLI probes (seconds)
 readonly PROBE_TIMEOUT=10
@@ -171,10 +169,11 @@ check_copilot_status() {
     return 1
 }
 
-# Generic check for other providers (meta, kimi2, deepseek)
+# Generic check for providers whose config directory is created only after login.
 check_generic_cli_status() {
     local provider="$1"
     local cli_cmd="$2"
+    local config_dir="${3:-$HOME/.${provider}}"
     
     # Check if CLI is installed
     if ! command -v "$cli_cmd" >/dev/null 2>&1; then
@@ -183,12 +182,243 @@ check_generic_cli_status() {
     fi
     
     # Check if config directory exists
-    if [ -d "$HOME/.${provider}" ]; then
+    if [ -d "$config_dir" ]; then
         # Assume authenticated if config dir exists
         echo "$CLI_AUTHENTICATED"
         return 0
     fi
     
+    echo "$CLI_INSTALLED_NOT_AUTH"
+    return 1
+}
+
+dotenv_has_nonempty_value() {
+    local env_file="$1"
+    local key="$2"
+
+    [ -s "$env_file" ] || return 1
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
+    grep -Eq \
+        "^[[:space:]]*(export[[:space:]]+)?${key}[[:space:]]*=[[:space:]]*(\"[^\"]+\"|'[^']+'|[^#[:space:]][^#]*)[[:space:]]*(#.*)?$" \
+        "$env_file"
+}
+
+find_qwen_env_file() {
+    local search_dir="$PWD"
+    local parent_dir
+
+    while :; do
+        if [ -f "$search_dir/.qwen/.env" ]; then
+            printf '%s\n' "$search_dir/.qwen/.env"
+            return 0
+        fi
+        if [ -f "$search_dir/.env" ]; then
+            printf '%s\n' "$search_dir/.env"
+            return 0
+        fi
+
+        [ "$search_dir" = "/" ] && break
+        parent_dir=$(dirname -- "$search_dir")
+        [ "$parent_dir" = "$search_dir" ] && break
+        search_dir="$parent_dir"
+    done
+
+    if [ -f "$HOME/.qwen/.env" ]; then
+        printf '%s\n' "$HOME/.qwen/.env"
+        return 0
+    fi
+    if [ -f "$HOME/.env" ]; then
+        printf '%s\n' "$HOME/.env"
+        return 0
+    fi
+
+    return 1
+}
+
+# Qwen creates ~/.qwen before /auth completes. Treat it as authenticated only
+# when the selected provider has an actual credential source, or when a legacy
+# OAuth cache still contains a token.
+check_qwen_status() {
+    if ! command -v qwen >/dev/null 2>&1; then
+        echo "$CLI_NOT_INSTALLED"
+        return 1
+    fi
+
+    local qwen_home="$HOME/.qwen"
+    local settings_file="$qwen_home/settings.json"
+    local oauth_file="$qwen_home/oauth_creds.json"
+    local selected_type=""
+    local env_key=""
+    local qwen_env_file=""
+
+    if [ -s "$oauth_file" ] \
+        && grep -Eq '"(access_token|accessToken|refresh_token|refreshToken)"[[:space:]]*:[[:space:]]*"[^"[:space:]]+"' "$oauth_file"; then
+        echo "$CLI_AUTHENTICATED"
+        return 0
+    fi
+
+    if [ -s "$settings_file" ] && command -v jq >/dev/null 2>&1; then
+        selected_type=$(jq -r '.security.auth.selectedType? // empty' "$settings_file" 2>/dev/null || true)
+    fi
+    qwen_env_file=$(find_qwen_env_file 2>/dev/null || true)
+
+    # OPENAI_API_KEY selects Qwen's OpenAI-compatible auth when no persisted
+    # auth type overrides it. Provider-specific keys require settings below.
+    if [ -z "$selected_type" ]; then
+        if [ -n "${OPENAI_API_KEY:-}" ] \
+            || { [ -n "$qwen_env_file" ] \
+                && dotenv_has_nonempty_value "$qwen_env_file" "OPENAI_API_KEY"; }; then
+            echo "$CLI_AUTHENTICATED"
+            return 0
+        fi
+        echo "$CLI_INSTALLED_NOT_AUTH"
+        return 1
+    fi
+
+    if jq -e '.security.auth.apiKey? | strings | length > 0' \
+        "$settings_file" >/dev/null 2>&1; then
+        echo "$CLI_AUTHENTICATED"
+        return 0
+    fi
+
+    case "$selected_type" in
+        openai)
+            env_key="OPENAI_API_KEY"
+            ;;
+        anthropic)
+            env_key="ANTHROPIC_API_KEY"
+            ;;
+        gemini)
+            env_key="GEMINI_API_KEY"
+            ;;
+        vertex-ai)
+            if [ -n "${GOOGLE_API_KEY:-}" ] \
+                || { [ -n "${GOOGLE_CLOUD_PROJECT:-}" ] \
+                    && { { [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] \
+                            && [ -s "$GOOGLE_APPLICATION_CREDENTIALS" ]; } \
+                        || [ -s "$HOME/.config/gcloud/application_default_credentials.json" ]; }; }; then
+                echo "$CLI_AUTHENTICATED"
+                return 0
+            fi
+            ;;
+    esac
+
+    if [ -n "$env_key" ]; then
+        if [ -n "${!env_key:-}" ] \
+            || { [ -n "$qwen_env_file" ] \
+                && dotenv_has_nonempty_value "$qwen_env_file" "$env_key"; } \
+            || jq -e --arg key "$env_key" '.env[$key]? | strings | length > 0' \
+                "$settings_file" >/dev/null 2>&1; then
+            echo "$CLI_AUTHENTICATED"
+            return 0
+        fi
+    fi
+
+    while IFS= read -r env_key; do
+        [[ "$env_key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+        if [ -n "${!env_key:-}" ] \
+            || { [ -n "$qwen_env_file" ] \
+                && dotenv_has_nonempty_value "$qwen_env_file" "$env_key"; } \
+            || jq -e --arg key "$env_key" '.env[$key]? | strings | length > 0' \
+                "$settings_file" >/dev/null 2>&1; then
+            echo "$CLI_AUTHENTICATED"
+            return 0
+        fi
+    done < <(
+        jq -r --arg type "$selected_type" \
+            '.modelProviders[$type] // [] | .. | objects | .envKey? // empty' \
+            "$settings_file" 2>/dev/null
+    )
+
+    echo "$CLI_INSTALLED_NOT_AUTH"
+    return 1
+}
+
+# Kimi creates KIMI_CODE_HOME and a default config before /login. A usable
+# profile has either a non-empty provider key or a persisted OAuth token under
+# the credential directory managed by the login flow.
+check_kimi_status() {
+    if ! command -v kimi >/dev/null 2>&1; then
+        echo "$CLI_NOT_INSTALLED"
+        return 1
+    fi
+
+    local kimi_home="${KIMI_CODE_HOME:-$HOME/.kimi-code}"
+    local config_file="$kimi_home/config.toml"
+    local credential_file
+    if [ -s "$config_file" ]; then
+        if awk '
+            /^[[:space:]]*\[/ {
+                in_provider = ($0 ~ /^[[:space:]]*\[providers\./)
+            }
+            in_provider && /^[[:space:]]*(api_key|[A-Za-z_][A-Za-z0-9_]*API_KEY)[[:space:]]*=/ {
+                value = $0
+                sub(/^[^=]*=[[:space:]]*/, "", value)
+                if (value ~ /^"[^"[:space:]][^"]*"/) {
+                    found = 1
+                }
+            }
+            END { exit(found ? 0 : 1) }
+        ' "$config_file"; then
+            echo "$CLI_AUTHENTICATED"
+            return 0
+        fi
+    fi
+
+    if [ -d "$kimi_home/credentials" ]; then
+        while IFS= read -r -d '' credential_file; do
+            if [ -s "$credential_file" ] \
+                && grep -Eq '"(access_token|accessToken|refresh_token|refreshToken)"[[:space:]]*:[[:space:]]*"[^"[:space:]]+"' "$credential_file"; then
+                echo "$CLI_AUTHENTICATED"
+                return 0
+            fi
+        done < <(find "$kimi_home/credentials" -maxdepth 1 -type f -name '*.json' -print0 2>/dev/null)
+    fi
+
+    echo "$CLI_INSTALLED_NOT_AUTH"
+    return 1
+}
+
+# DeepSeek Harness resolves its default key from the launch environment, its
+# managed credentials file, the invoking project's .env, then DSH_HOME/.env.
+check_deepseek_status() {
+    if ! command -v dsh >/dev/null 2>&1; then
+        echo "$CLI_NOT_INSTALLED"
+        return 1
+    fi
+
+    local dsh_home="${DSH_HOME:-$HOME/.dsh}"
+    local credentials_file="$dsh_home/.credentials.yaml"
+    if [ -n "${DEEPSEEK_API_KEY:-}" ] \
+        || { [ -s "$credentials_file" ] \
+            && grep -Eq '^[[:space:]]*DEEPSEEK_API_KEY:[[:space:]]*("[^"]+"|'\''[^'\'']+'\''|[^#[:space:]][^#]*)' "$credentials_file"; } \
+        || dotenv_has_nonempty_value "$PWD/.env" "DEEPSEEK_API_KEY" \
+        || dotenv_has_nonempty_value "$dsh_home/.env" "DEEPSEEK_API_KEY"; then
+        echo "$CLI_AUTHENTICATED"
+        return 0
+    fi
+
+    echo "$CLI_INSTALLED_NOT_AUTH"
+    return 1
+}
+
+# MiniMax Code's installer creates ~/.minimax-code before authentication. Its
+# login credential is stored separately under MINIMAX_DATA_DIR (or ~/.minimax),
+# so installation state must not be mistaken for an authenticated profile.
+check_minimax_status() {
+    if ! command -v mcode >/dev/null 2>&1; then
+        echo "$CLI_NOT_INSTALLED"
+        return 1
+    fi
+
+    local data_dir="${MINIMAX_DATA_DIR:-${MAVIS_DATA_DIR:-$HOME/.minimax}}"
+    local auth_file="$data_dir/local-runtime.auth.json"
+    if [ -s "$auth_file" ] \
+        && grep -Eq '"accessToken"[[:space:]]*:[[:space:]]*"[^"[:space:]]+"' "$auth_file"; then
+        echo "$CLI_AUTHENTICATED"
+        return 0
+    fi
+
     echo "$CLI_INSTALLED_NOT_AUTH"
     return 1
 }
@@ -199,7 +429,7 @@ check_generic_cli_status() {
 
 # Get status of all CLI providers
 get_all_cli_status() {
-    local -A cli_status_map
+    local -A cli_status_map=()
     
     for provider in "${PROVIDER_PRIORITY[@]}"; do
         case "$provider" in
@@ -215,14 +445,23 @@ get_all_cli_status() {
             copilot)
                 cli_status_map["copilot"]=$(check_copilot_status)
                 ;;
+            qwen)
+                cli_status_map["qwen"]=$(check_qwen_status)
+                ;;
             meta)
                 cli_status_map["meta"]=$(check_generic_cli_status "meta" "llama")
                 ;;
             kimi2)
-                cli_status_map["kimi2"]=$(check_generic_cli_status "kimi" "kimi")
+                cli_status_map["kimi2"]=$(check_kimi_status)
+                ;;
+            minimax)
+                cli_status_map["minimax"]=$(check_minimax_status)
                 ;;
             deepseek)
-                cli_status_map["deepseek"]=$(check_generic_cli_status "deepseek" "deepseek")
+                cli_status_map["deepseek"]=$(check_deepseek_status)
+                ;;
+            *)
+                continue
                 ;;
         esac
     done
@@ -250,14 +489,23 @@ get_authenticated_cli() {
             copilot)
                 cli_status=$(check_copilot_status)
                 ;;
+            qwen)
+                cli_status=$(check_qwen_status)
+                ;;
             meta)
                 cli_status=$(check_generic_cli_status "meta" "llama")
                 ;;
             kimi2)
-                cli_status=$(check_generic_cli_status "kimi" "kimi")
+                cli_status=$(check_kimi_status)
+                ;;
+            minimax)
+                cli_status=$(check_minimax_status)
                 ;;
             deepseek)
-                cli_status=$(check_generic_cli_status "deepseek" "deepseek")
+                cli_status=$(check_deepseek_status)
+                ;;
+            *)
+                continue
                 ;;
         esac
         
@@ -270,9 +518,36 @@ get_authenticated_cli() {
     return 1
 }
 
+# Get the first authenticated provider supported by the unified call interface.
+get_authenticated_routing_cli() {
+    local provider
+    local cli_status
+
+    for provider in "${ROUTING_PROVIDER_PRIORITY[@]}"; do
+        case "$provider" in
+            codex)
+                cli_status=$(check_codex_status)
+                ;;
+            claude)
+                cli_status=$(check_claude_status)
+                ;;
+            gemini)
+                cli_status=$(check_gemini_status)
+                ;;
+        esac
+
+        if [ "$cli_status" = "$CLI_AUTHENTICATED" ]; then
+            echo "$provider"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 # Get list of installed but not authenticated CLIs
 get_unauthenticated_clis() {
-    local -a unauthenticated
+    local -a unauthenticated=()
     
     for provider in "${PROVIDER_PRIORITY[@]}"; do
         local cli_status
@@ -289,14 +564,23 @@ get_unauthenticated_clis() {
             copilot)
                 cli_status=$(check_copilot_status)
                 ;;
+            qwen)
+                cli_status=$(check_qwen_status)
+                ;;
             meta)
                 cli_status=$(check_generic_cli_status "meta" "llama")
                 ;;
             kimi2)
-                cli_status=$(check_generic_cli_status "kimi" "kimi")
+                cli_status=$(check_kimi_status)
+                ;;
+            minimax)
+                cli_status=$(check_minimax_status)
                 ;;
             deepseek)
-                cli_status=$(check_generic_cli_status "deepseek" "deepseek")
+                cli_status=$(check_deepseek_status)
+                ;;
+            *)
+                continue
                 ;;
         esac
         
@@ -313,6 +597,43 @@ get_unauthenticated_clis() {
     return 1
 }
 
+# Get installed-but-unauthenticated providers supported by the unified call
+# interface. Inventory-only providers remain visible in status output but must
+# not trigger a login prompt that cannot route a request afterward.
+get_unauthenticated_routing_clis() {
+    local -a unauthenticated=()
+    local provider
+    local cli_status
+
+    for provider in "${ROUTING_PROVIDER_PRIORITY[@]}"; do
+        case "$provider" in
+            codex)
+                cli_status=$(check_codex_status)
+                ;;
+            claude)
+                cli_status=$(check_claude_status)
+                ;;
+            gemini)
+                cli_status=$(check_gemini_status)
+                ;;
+            *)
+                continue
+                ;;
+        esac
+
+        if [ "$cli_status" = "$CLI_INSTALLED_NOT_AUTH" ]; then
+            unauthenticated+=("$provider")
+        fi
+    done
+
+    if [ ${#unauthenticated[@]} -gt 0 ]; then
+        printf '%s\n' "${unauthenticated[@]}"
+        return 0
+    fi
+
+    return 1
+}
+
 # ============================================================================
 # User Interaction
 # ============================================================================
@@ -320,7 +641,7 @@ get_unauthenticated_clis() {
 # Prompt user to authenticate CLI tools
 prompt_cli_authentication() {
     local -a unauthenticated
-    mapfile -t unauthenticated < <(get_unauthenticated_clis)
+    mapfile -t unauthenticated < <(get_unauthenticated_routing_clis)
     
     if [ ${#unauthenticated[@]} -eq 0 ]; then
         return 1
@@ -360,7 +681,7 @@ prompt_cli_authentication() {
         
         # Re-check authentication
         local authenticated
-        authenticated=$(get_authenticated_cli)
+        authenticated=$(get_authenticated_routing_cli)
         if [ -n "$authenticated" ]; then
             echo -e "\033[0;32m✓ Successfully authenticated with $authenticated\033[0m"
             echo "$authenticated"
@@ -387,7 +708,7 @@ call_ai_cli() {
     
     # Get authenticated provider
     local provider
-    provider=$(get_authenticated_cli)
+    provider=$(get_authenticated_routing_cli)
     
     if [ -z "$provider" ]; then
         echo "Error: No authenticated CLI provider available" >&2
@@ -436,7 +757,7 @@ call_ai_cli() {
 select_ai_provider() {
     # First: Try to get authenticated CLI
     local cli_provider
-    cli_provider=$(get_authenticated_cli)
+    cli_provider=$(get_authenticated_routing_cli)
     
     if [ -n "$cli_provider" ]; then
         echo "${cli_provider}|cli"
@@ -444,7 +765,7 @@ select_ai_provider() {
     fi
     
     # Second: Check if CLIs are installed but not authenticated
-    if get_unauthenticated_clis >/dev/null 2>&1; then
+    if get_unauthenticated_routing_clis >/dev/null 2>&1; then
         # Prompt user to authenticate
         local authenticated
         if authenticated=$(prompt_cli_authentication); then

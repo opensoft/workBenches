@@ -20,6 +20,10 @@ The supported harness families are:
 | `gemini` | Google Gemini CLI | `gemini` | One `GEMINI_CLI_HOME` per account | Login and local credential presence |
 | `grok` | Grok Build | `grok` | One `GROK_HOME` per account | Login and verification |
 | `glm` | Z.AI GLM Coding Plan through OpenCode | `opencode` | Profile-specific XDG directories | Login and verification |
+| `kimi-code` | Kimi Code CLI (Moonshot AI, Kimi K3) | `kimi` | One `KIMI_CODE_HOME` per account | Inventory and manual verification |
+| `qwen` | Qwen Code CLI (Alibaba) | `qwen` | Profile-specific `~/.qwen` config | Inventory and manual verification |
+| `minimax` | MiniMax Code CLI | `mcode` | Region-aware login (`global`/`cn`) | Inventory and manual verification |
+| `deepseek-harness` | DeepSeek Harness (developer preview) | `dsh` | One `DSH_HOME` per account | Inventory and manual verification |
 | `antigravity` | Google Antigravity, the Gemini CLI migration target | `agy` | Operating-system secure keyring | Inventory and manual verification |
 | `abacus` | Abacus AI CLI | `abacusai` | Provider login or per-process API key | Inventory and manual verification |
 
@@ -68,6 +72,11 @@ Open `http://127.0.0.1:8765`. The server binds only to loopback. It displays
 the source repository URL, verifies supported local profiles, and can start
 vendor login flows. It does not read, return, copy, or commit credential
 contents.
+
+Kimi, Qwen, and MiniMax are recognized in the shared CLI inventory and shell
+adapter, but the dashboard does not yet implement their profile-home or
+authentication adapters. Use the vendor commands in their workflows below for
+login and verification.
 
 ## Provider workflows
 
@@ -181,6 +190,89 @@ pglm team001
 
 `pzai` is an alias for `pglm`. The profile manifest records the expected email
 but never contains the API key.
+
+### Kimi Code CLI
+
+Kimi Code CLI is Moonshot AI's terminal coding agent (Kimi K3 and later). It
+reads local data from `~/.kimi-code/` by default, and honors a `KIMI_CODE_HOME`
+override for a per-account root:
+
+```bash
+KIMI_CODE_HOME="$HOME/.kimi-code-profiles/personal" kimi
+```
+
+Inside the CLI, `/login` opens a chooser for Kimi Code OAuth (device-code flow)
+or a Moonshot AI Open Platform API key; `/logout` clears the active profile's
+credentials. Do not confuse this current TypeScript CLI with the legacy Python
+`kimi-cli` package (distributed on PyPI as `kimi-cli`); check `kimi --version`
+and expect a `0.x` release for the current tool.
+
+### Qwen Code CLI
+
+Qwen Code CLI is Alibaba's terminal coding agent. Configuration lives in
+`~/.qwen/settings.json`, which can declare multiple named model providers
+(Alibaba Cloud Model Studio, DeepSeek, MiniMax, Z.AI, Kimi, OpenRouter, or any
+OpenAI/Anthropic/Gemini-compatible endpoint) side by side:
+
+```bash
+qwen
+# inside the CLI
+/auth
+```
+
+Since Qwen Code's `settings.json` can hold several third-party provider keys at
+once, a single Qwen Code account/profile can double as the practical way to
+use DeepSeek's or MiniMax's models without a dedicated CLI for those vendors.
+
+### MiniMax Code CLI
+
+MiniMax Code CLI (`mcode`) is MiniMax's terminal coding agent, distinct from
+MiniMax's multimodal `mmx-cli` (`mmx`, for text/image/video/speech/music
+generation). Sign-in is region-aware:
+
+```bash
+mcode login --region global   # overseas MiniMax account
+mcode login --region cn       # mainland China MiniMax account
+mcode /status                 # inside the TUI: verify account, model, region
+```
+
+### DeepSeek Harness
+
+DeepSeek Harness (`dsh`, package `@deepseek-ai/dsh`) is DeepSeek AI's official,
+plugin-based agent harness, released as an MIT-licensed developer preview. It
+is genuinely different from the Claude Code/Codex/Kimi/Qwen model: nearly
+everything (models, tools, sessions, sandboxes, the agent loop, and the UI) is
+a swappable Cordis plugin rather than a fixed CLI surface.
+
+```bash
+npx @deepseek-ai/dsh web              # local Web UI at http://127.0.0.1:3080
+dsh --profile headless "do the task"  # one-shot headless run for scripts/CI
+```
+
+Credentials resolve from the inherited environment, `$DSH_HOME/.credentials.yaml`,
+the invoking directory's `.env`, then `$DSH_HOME/.env`; a DeepSeek API key
+added under Settings → Models (or the credential provider) takes effect
+immediately. Treat it as evaluation/development infrastructure, not a stable
+daily driver: the upstream README warns in capitals that breaking changes are
+expected between developer-preview releases, and installing a third-party
+plugin runs that plugin's code unsandboxed.
+
+### GLM/Z.AI Coding Tool Helper
+
+Z.AI does not ship a standalone GLM coding agent. Its official `chelper`
+(`@z_ai/coding-helper`) is a setup wizard that wires the GLM Coding Plan into
+an existing tool (Claude Code, OpenCode, Crush, or Factory Droid) rather than
+acting as an agent itself:
+
+```bash
+coding-helper init                       # interactive wizard
+chelper auth glm_coding_plan_global <token>
+chelper auth reload claude                # push the plan into Claude Code
+chelper doctor                            # health check
+```
+
+This complements, rather than replaces, the existing OpenCode-based `glm`
+profile workflow described above.
 
 ### Google Antigravity
 

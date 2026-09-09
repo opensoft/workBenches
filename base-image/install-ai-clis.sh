@@ -1,6 +1,6 @@
 #!/bin/bash
 # Shared AI CLI Installation Script
-# Version: 2.0.5
+# Version: 2.1.0
 #
 # USER-AGNOSTIC: Runs as root, installs to system-wide paths.
 # All npm globals go to /usr/local (default root prefix).
@@ -18,6 +18,10 @@
 #   - Other AI CLIs (Codex, Gemini, Copilot, etc.)
 #   - Google Antigravity CLI (agy), checksum-gated opt-in
 #   - Claude Code (via native installer, not npm)
+#   - Kimi Code (Moonshot AI, Kimi K3), Qwen Code (Alibaba), Z.AI GLM Coding
+#     Plan helper (chelper), DeepSeek Harness (dsh, developer preview)
+#   - Amp CLI (Sourcegraph), Aider, OpenHands CLI, Cursor CLI (cursor-agent),
+#     MiniMax Code (mcode, via native installer)
 #
 # Note: OpenAgents agent files (openagent.md, opencoder.md) are copied via
 #       Dockerfile, not installed by this script
@@ -34,6 +38,7 @@ set -e
 DEBUG="${DEBUG:-1}"
 COMMAND_TIMEOUT="${COMMAND_TIMEOUT:-300}"  # 5 minutes per general command
 NPM_INSTALL_TIMEOUT="${NPM_INSTALL_TIMEOUT:-600}"  # 10 minutes for npm package installs
+NPM_VERSION="${NPM_VERSION:-12.0.2}"
 GIT_CLONE_TIMEOUT="${GIT_CLONE_TIMEOUT:-900}"  # 15 minutes for slow GitHub clones
 RELEASE_DOWNLOAD_TIMEOUT="${RELEASE_DOWNLOAD_TIMEOUT:-3600}"  # 60 minutes for slow GitHub release assets
 BUN_OPERATIONS_TIMEOUT="${BUN_OPERATIONS_TIMEOUT:-900}"  # 15 minutes for bun ops
@@ -42,7 +47,7 @@ INSTALL_ANTIGRAVITY_CLI="${INSTALL_ANTIGRAVITY_CLI:-0}"
 ANTIGRAVITY_INSTALL_URL="${ANTIGRAVITY_INSTALL_URL:-https://antigravity.google/cli/install.sh}"
 ANTIGRAVITY_INSTALL_SHA256="${ANTIGRAVITY_INSTALL_SHA256:-}"
 HERDR_INSTALL_URL="${HERDR_INSTALL_URL:-https://herdr.dev/install.sh}"
-HERDR_INSTALL_SHA256="${HERDR_INSTALL_SHA256:-3db3af8375006e193a393b5e3129feb237f30bc6f053fffbe1dc75da1f3d9ac4}"
+HERDR_INSTALL_SHA256="${HERDR_INSTALL_SHA256:-bf83668c944cff30b3365eee5a4fe15ff61a4b749ab0c73b98e7a203f70893dd}"
 
 log_debug() {
     if [ "$DEBUG" = "1" ]; then
@@ -79,6 +84,20 @@ run_with_timeout() {
         fi
         return $exit_code
     fi
+}
+
+ensure_selective_npm_scripts() {
+    local current_version
+
+    current_version="$(npm --version)"
+    if [ "$current_version" != "$NPM_VERSION" ]; then
+        log_info "Installing npm ${NPM_VERSION} for selective lifecycle-script controls..."
+        run_with_timeout "$NPM_INSTALL_TIMEOUT" "npm ${NPM_VERSION} install" \
+            npm install -g "npm@${NPM_VERSION}" || return 1
+        hash -r
+    fi
+
+    npm install --help | grep -Fq -- '--allow-scripts'
 }
 
 ensure_system_uv_tool_paths() {
@@ -181,7 +200,7 @@ log_info "Installing Claude Code CLI (native installer)..."
 # which places a launcher in ~/.local/bin/. Since we run as root, we need to
 # find the binary and copy it to /usr/local/bin ourselves.
 # Claude installer needs more time for download, use 5 minutes
-run_with_timeout "300" "Claude Code native install" bash -c 'curl -fsSL https://claude.ai/install.sh | bash' || true
+run_with_timeout "300" "Claude Code native install" bash -o pipefail -c 'curl -fsSL https://claude.ai/install.sh | bash' || true
 
 # Find the claude binary wherever the installer put it and copy to /usr/local/bin
 CLAUDE_BIN=""
@@ -284,6 +303,102 @@ if run_with_timeout "$COMMAND_TIMEOUT" "Grok native install" bash -o pipefail -c
     fi
 else
     log_error "Grok CLI native installation failed (continuing)"
+fi
+
+# Some newer CLIs ship native postinstall build steps (pty/FFI bindings, spawn
+# helpers). npm blocks arbitrary install scripts by default; explicitly allow
+# only the ones required by the packages installed below.
+NPM_NATIVE_ALLOW_SCRIPTS="@moonshot-ai/kimi-code,node-pty,@qwen-code/audio-capture,@deepseek-ai/dsh-subprocess-local,koffi,@google/genai,protobufjs"
+if ! ensure_selective_npm_scripts; then
+    log_error "npm ${NPM_VERSION} selective lifecycle-script controls are unavailable"
+    exit 1
+fi
+
+log_info "Installing Moonshot Kimi Code CLI (Kimi K3)..."
+# Kimi Code: Moonshot AI's terminal coding agent (https://github.com/MoonshotAI/kimi-code)
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Kimi Code npm install" npm install -g --allow-scripts="$NPM_NATIVE_ALLOW_SCRIPTS" @moonshot-ai/kimi-code@latest; then
+    log_error "Kimi Code installation failed (continuing)"
+fi
+
+log_info "Installing Qwen Code CLI..."
+# Qwen Code: Alibaba's terminal coding agent (https://github.com/QwenLM/qwen-code)
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Qwen Code npm install" npm install -g --allow-scripts="$NPM_NATIVE_ALLOW_SCRIPTS" @qwen-code/qwen-code@latest; then
+    log_error "Qwen Code installation failed (continuing)"
+fi
+
+log_info "Installing Z.AI GLM Coding Plan helper (chelper)..."
+# Coding Tool Helper: Z.AI's official wizard for wiring GLM Coding Plan into
+# Claude Code, OpenCode, Crush, and Factory Droid (not a standalone agent).
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Z.AI coding-helper npm install" npm install -g @z_ai/coding-helper@latest; then
+    log_error "Z.AI coding-helper installation failed (continuing)"
+fi
+
+log_info "Installing DeepSeek Harness (dsh)..."
+# DeepSeek Harness: DeepSeek AI's open-source, plugin-based agent harness
+# (https://github.com/deepseek-ai/deepseek-harness). Developer preview as of
+# this writing; not added to required_clis below since it may break between
+# releases.
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "DeepSeek Harness npm install" npm install -g --allow-scripts="$NPM_NATIVE_ALLOW_SCRIPTS" @deepseek-ai/dsh@latest; then
+    log_error "DeepSeek Harness installation failed (continuing)"
+fi
+
+log_info "Installing Amp CLI (Sourcegraph)..."
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Amp CLI npm install" npm install -g @ampcode/cli@latest; then
+    log_error "Amp CLI installation failed (continuing)"
+fi
+
+log_info "Installing Aider..."
+if run_system_uv_tool_install "Aider install" --python python3.12 --with pip aider-chat@latest; then
+    log_info "Aider installed (aider)"
+else
+    log_error "Aider installation failed (continuing)"
+fi
+
+log_info "Installing OpenHands CLI..."
+if run_system_uv_tool_install "OpenHands install" openhands --python 3.12; then
+    log_info "OpenHands CLI installed (openhands)"
+else
+    log_error "OpenHands installation failed (continuing)"
+fi
+
+log_info "Installing Cursor CLI..."
+# Cursor's terminal agent; native installer places the binary under
+# $HOME/.local/bin, exposed as both 'agent' and 'cursor-agent'. Grok's CLI
+# also ships a binary literally named 'agent' (installed above), so only
+# claim the unambiguous 'cursor-agent' name in /usr/local/bin; skip 'agent'
+# here entirely to avoid silently overriding or being shadowed by Grok's.
+if run_with_timeout "$COMMAND_TIMEOUT" "Cursor CLI install" bash -o pipefail -c 'curl -fsSL https://cursor.com/install | bash'; then
+    if [ -f "$HOME/.local/bin/cursor-agent" ] && [ ! -e /usr/local/bin/cursor-agent ]; then
+        cp "$HOME/.local/bin/cursor-agent" /usr/local/bin/cursor-agent
+        chmod +x /usr/local/bin/cursor-agent
+    elif [ -f "$HOME/.local/bin/agent" ] && [ ! -e /usr/local/bin/cursor-agent ]; then
+        cp "$HOME/.local/bin/agent" /usr/local/bin/cursor-agent
+        chmod +x /usr/local/bin/cursor-agent
+    fi
+    if command -v cursor-agent >/dev/null 2>&1; then
+        log_info "Cursor CLI installed to $(command -v cursor-agent)"
+    else
+        log_error "Cursor CLI binary not found on PATH after installation (continuing)"
+    fi
+else
+    log_error "Cursor CLI installation failed (continuing)"
+fi
+
+log_info "Installing MiniMax Code CLI (mcode)..."
+# MiniMax's official terminal coding agent. Its installer targets a per-user
+# shell rc, so copy the resulting binary into /usr/local/bin for every user.
+if run_with_timeout "$COMMAND_TIMEOUT" "MiniMax Code CLI install" bash -o pipefail -c 'curl -fsSL https://filecdn.minimax.chat/public/install.sh | bash'; then
+    if [ -f "$HOME/.minimax-code/bin/mcode" ] && [ ! -e /usr/local/bin/mcode ]; then
+        cp "$HOME/.minimax-code/bin/mcode" /usr/local/bin/mcode
+        chmod +x /usr/local/bin/mcode
+    fi
+    if command -v mcode >/dev/null 2>&1; then
+        log_info "MiniMax Code CLI installed to $(command -v mcode)"
+    else
+        log_error "MiniMax Code CLI binary not found on PATH after installation (continuing)"
+    fi
+else
+    log_error "MiniMax Code CLI installation failed (continuing)"
 fi
 
 install_opencode_release() {
@@ -563,7 +678,10 @@ fi
 # Auth is done on the host (requires browser); tokens mounted into container
 # Install into a shared uv tools directory instead of root's home so bench
 # users can execute the launchers from /usr/local/bin.
-if run_system_uv_tool_install "NotebookLM MCP CLI install" notebooklm-mcp-cli; then
+# notebooklm-py and notebooklm-mcp-cli both publish notebooklm-mcp. Let the
+# dedicated MCP package own that shared launcher while preserving notebooklm
+# from notebooklm-py and adding nlm from notebooklm-mcp-cli.
+if run_system_uv_tool_install "NotebookLM MCP CLI install" notebooklm-mcp-cli --force; then
     log_info "NotebookLM MCP CLI installed (nlm, notebooklm-mcp)"
 else
     log_error "NotebookLM MCP CLI installation failed (continuing)"
@@ -574,7 +692,7 @@ log_info "AI CLI Tools Installation Complete!"
 log_info "=========================================="
 log_info ""
 
-required_clis=(claude codex gemini pi herdr copilot opencode omo letta notebooklm nlm)
+required_clis=(claude codex gemini pi herdr copilot opencode omo letta notebooklm nlm kimi qwen aider openhands amp cursor-agent)
 missing_clis=()
 for cli in "${required_clis[@]}"; do
     if ! command -v "$cli" >/dev/null 2>&1; then
@@ -613,6 +731,27 @@ log_info "  - oh-my-opencode (omo)"
 log_info "  - Letta Code (letta)"
 log_info "  - NotebookLM CLI (notebooklm) [auth via host browser]"
 log_info "  - NotebookLM MCP CLI (nlm) [auth via host browser]"
+log_info "  - Moonshot Kimi Code (kimi)"
+log_info "  - Qwen Code (qwen)"
+if command -v chelper >/dev/null 2>&1; then
+    log_info "  - Z.AI Coding Plan helper (chelper) [configures other tools, not a standalone agent]"
+else
+    log_info "  - Z.AI Coding Plan helper (chelper) [install skipped or failed]"
+fi
+if command -v dsh >/dev/null 2>&1; then
+    log_info "  - DeepSeek Harness (dsh) [developer preview]"
+else
+    log_info "  - DeepSeek Harness (dsh) [install skipped or failed, developer preview]"
+fi
+log_info "  - Amp CLI (amp)"
+log_info "  - Aider (aider)"
+log_info "  - OpenHands CLI (openhands)"
+log_info "  - Cursor CLI (cursor-agent)"
+if command -v mcode >/dev/null 2>&1 || [ -x "$HOME/.minimax-code/bin/mcode" ]; then
+    log_info "  - MiniMax Code (mcode)"
+else
+    log_info "  - MiniMax Code (mcode) [install skipped or failed]"
+fi
 log_info ""
 log_info "Agent files (openagent.md, opencoder.md) provided via Dockerfile COPY"
 log_info ""

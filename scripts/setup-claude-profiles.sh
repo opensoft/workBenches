@@ -6,6 +6,7 @@ config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/workbenches"
 default_manifest="$config_dir/claude-profiles.json"
 manifest="${CLAUDE_PROFILES_MANIFEST:-$default_manifest}"
 base="${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}"
+default_model='claude-fable-5-1'
 interactive=false
 
 usage() {
@@ -227,7 +228,6 @@ while IFS=$'\t' read -r name family profile_path; do
   settings="$profile_dir/settings.json"
   settings_tmp="$(mktemp "$profile_dir/.settings.XXXXXX.tmp")"
   statusline_command='bash "${CLAUDE_CONFIG_DIR}/statusline-command.sh"'
-  default_model='claude-fable-5'
   if [[ -e "$settings" ]] && ! jq -e 'type == "object"' "$settings" >/dev/null 2>&1; then
     echo "Claude profile settings are not valid JSON: $settings" >&2
     rm -f "$settings_tmp"
@@ -239,7 +239,7 @@ while IFS=$'\t' read -r name family profile_path; do
       | .permissions = (.permissions // {})
       | .permissions.defaultMode = "bypassPermissions"
       | .effortLevel = (.effortLevel // "xhigh")
-      | .model = $model
+      | .model = (.model // $model)
     ' "$settings" > "$settings_tmp"
   else
     jq -n --arg command "$statusline_command" --arg model "$default_model" '{
@@ -254,14 +254,15 @@ while IFS=$'\t' read -r name family profile_path; do
 done < <(jq -r '.profiles[] | [.name, .family, (.profilePath // .name)] | @tsv' "$manifest")
 
 # Profiles retained from older manifests remain launchable through their local
-# metadata. Keep their startup model aligned with the active manifest profiles.
+# metadata. Preserve explicit selections and seed the current default only when
+# a retained profile has no model configured.
 while IFS= read -r -d '' settings; do
   if ! jq -e 'type == "object"' "$settings" >/dev/null 2>&1; then
     echo "Claude profile settings are not valid JSON: $settings" >&2
     exit 1
   fi
   settings_tmp="$(mktemp "$(dirname "$settings")/.settings.XXXXXX.tmp")"
-  jq --arg model 'claude-fable-5' '.model = $model' "$settings" > "$settings_tmp"
+  jq --arg model "$default_model" '.model = (.model // $model)' "$settings" > "$settings_tmp"
   chmod 600 "$settings_tmp"
   mv -f "$settings_tmp" "$settings"
 done < <(find "$base/profiles" -mindepth 2 -type f -name settings.json -print0)
