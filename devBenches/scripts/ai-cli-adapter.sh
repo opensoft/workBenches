@@ -192,6 +192,27 @@ check_generic_cli_status() {
     return 1
 }
 
+# MiniMax Code's installer creates ~/.minimax-code before authentication. Its
+# login credential is stored separately under MINIMAX_DATA_DIR (or ~/.minimax),
+# so installation state must not be mistaken for an authenticated profile.
+check_minimax_status() {
+    if ! command -v mcode >/dev/null 2>&1; then
+        echo "$CLI_NOT_INSTALLED"
+        return 1
+    fi
+
+    local data_dir="${MINIMAX_DATA_DIR:-${MAVIS_DATA_DIR:-$HOME/.minimax}}"
+    local auth_file="$data_dir/local-runtime.auth.json"
+    if [ -s "$auth_file" ] \
+        && grep -Eq '"accessToken"[[:space:]]*:[[:space:]]*"[^"[:space:]]+"' "$auth_file"; then
+        echo "$CLI_AUTHENTICATED"
+        return 0
+    fi
+
+    echo "$CLI_INSTALLED_NOT_AUTH"
+    return 1
+}
+
 # ============================================================================
 # Provider Selection Logic
 # ============================================================================
@@ -230,7 +251,7 @@ get_all_cli_status() {
                 )
                 ;;
             minimax)
-                cli_status_map["minimax"]=$(check_generic_cli_status "minimax-code" "mcode")
+                cli_status_map["minimax"]=$(check_minimax_status)
                 ;;
             deepseek)
                 cli_status_map["deepseek"]=$(
@@ -284,7 +305,7 @@ get_authenticated_cli() {
                 )
                 ;;
             minimax)
-                cli_status=$(check_generic_cli_status "minimax-code" "mcode")
+                cli_status=$(check_minimax_status)
                 ;;
             deepseek)
                 cli_status=$(
@@ -369,7 +390,7 @@ get_unauthenticated_clis() {
                 )
                 ;;
             minimax)
-                cli_status=$(check_generic_cli_status "minimax-code" "mcode")
+                cli_status=$(check_minimax_status)
                 ;;
             deepseek)
                 cli_status=$(

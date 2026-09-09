@@ -15,15 +15,22 @@ source "$ADAPTER"
 [[ "${PROVIDER_PRIORITY[*]}" == "qwen codex kimi2 minimax deepseek" ]]
 [[ "${ROUTING_PROVIDER_PRIORITY[*]}" == "codex" ]]
 
-mkdir -p "$temporary_home/bin" "$temporary_home/kimi-profile"
+mkdir -p "$temporary_home/bin" "$temporary_home/kimi-profile" "$temporary_home/minimax-data"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$temporary_home/bin/kimi"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$temporary_home/bin/mcode"
 chmod +x "$temporary_home/bin/kimi"
+chmod +x "$temporary_home/bin/mcode"
 PATH="$temporary_home/bin:$PATH"
 KIMI_CODE_HOME="$temporary_home/kimi-profile"
 DSH_HOME="$temporary_home/dsh-profile"
+MINIMAX_DATA_DIR="$temporary_home/minimax-data"
 mkdir -p "$DSH_HOME"
-export PATH KIMI_CODE_HOME DSH_HOME
+export PATH KIMI_CODE_HOME DSH_HOME MINIMAX_DATA_DIR
 [[ "$(check_generic_cli_status "kimi-code" "kimi" "$KIMI_CODE_HOME")" == "$CLI_AUTHENTICATED" ]]
+[[ "$(check_minimax_status)" == "$CLI_INSTALLED_NOT_AUTH" ]]
+printf '%s\n' '{"version":1,"auth":{"accessToken":"fixture-token"}}' \
+    >"$MINIMAX_DATA_DIR/local-runtime.auth.json"
+[[ "$(check_minimax_status)" == "$CLI_AUTHENTICATED" ]]
 
 generic_calls="$temporary_home/generic-calls"
 check_generic_cli_status() {
