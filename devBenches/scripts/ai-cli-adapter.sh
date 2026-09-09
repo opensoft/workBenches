@@ -233,7 +233,12 @@ get_all_cli_status() {
                 cli_status_map["minimax"]=$(check_generic_cli_status "minimax-code" "mcode")
                 ;;
             deepseek)
-                cli_status_map["deepseek"]=$(check_generic_cli_status "dsh" "dsh")
+                cli_status_map["deepseek"]=$(
+                    check_generic_cli_status \
+                        "dsh" \
+                        "dsh" \
+                        "${DSH_HOME:-$HOME/.dsh}"
+                )
                 ;;
             *)
                 continue
@@ -282,7 +287,12 @@ get_authenticated_cli() {
                 cli_status=$(check_generic_cli_status "minimax-code" "mcode")
                 ;;
             deepseek)
-                cli_status=$(check_generic_cli_status "dsh" "dsh")
+                cli_status=$(
+                    check_generic_cli_status \
+                        "dsh" \
+                        "dsh" \
+                        "${DSH_HOME:-$HOME/.dsh}"
+                )
                 ;;
             *)
                 continue
@@ -362,7 +372,12 @@ get_unauthenticated_clis() {
                 cli_status=$(check_generic_cli_status "minimax-code" "mcode")
                 ;;
             deepseek)
-                cli_status=$(check_generic_cli_status "dsh" "dsh")
+                cli_status=$(
+                    check_generic_cli_status \
+                        "dsh" \
+                        "dsh" \
+                        "${DSH_HOME:-$HOME/.dsh}"
+                )
                 ;;
             *)
                 continue
@@ -382,6 +397,43 @@ get_unauthenticated_clis() {
     return 1
 }
 
+# Get installed-but-unauthenticated providers supported by the unified call
+# interface. Inventory-only providers remain visible in status output but must
+# not trigger a login prompt that cannot route a request afterward.
+get_unauthenticated_routing_clis() {
+    local -a unauthenticated=()
+    local provider
+    local cli_status
+
+    for provider in "${ROUTING_PROVIDER_PRIORITY[@]}"; do
+        case "$provider" in
+            codex)
+                cli_status=$(check_codex_status)
+                ;;
+            claude)
+                cli_status=$(check_claude_status)
+                ;;
+            gemini)
+                cli_status=$(check_gemini_status)
+                ;;
+            *)
+                continue
+                ;;
+        esac
+
+        if [ "$cli_status" = "$CLI_INSTALLED_NOT_AUTH" ]; then
+            unauthenticated+=("$provider")
+        fi
+    done
+
+    if [ ${#unauthenticated[@]} -gt 0 ]; then
+        printf '%s\n' "${unauthenticated[@]}"
+        return 0
+    fi
+
+    return 1
+}
+
 # ============================================================================
 # User Interaction
 # ============================================================================
@@ -389,7 +441,7 @@ get_unauthenticated_clis() {
 # Prompt user to authenticate CLI tools
 prompt_cli_authentication() {
     local -a unauthenticated
-    mapfile -t unauthenticated < <(get_unauthenticated_clis)
+    mapfile -t unauthenticated < <(get_unauthenticated_routing_clis)
     
     if [ ${#unauthenticated[@]} -eq 0 ]; then
         return 1
@@ -513,7 +565,7 @@ select_ai_provider() {
     fi
     
     # Second: Check if CLIs are installed but not authenticated
-    if get_unauthenticated_clis >/dev/null 2>&1; then
+    if get_unauthenticated_routing_clis >/dev/null 2>&1; then
         # Prompt user to authenticate
         local authenticated
         if authenticated=$(prompt_cli_authentication); then

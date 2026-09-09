@@ -20,7 +20,9 @@ printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$temporary_home/bin/kimi"
 chmod +x "$temporary_home/bin/kimi"
 PATH="$temporary_home/bin:$PATH"
 KIMI_CODE_HOME="$temporary_home/kimi-profile"
-export PATH KIMI_CODE_HOME
+DSH_HOME="$temporary_home/dsh-profile"
+mkdir -p "$DSH_HOME"
+export PATH KIMI_CODE_HOME DSH_HOME
 [[ "$(check_generic_cli_status "kimi-code" "kimi" "$KIMI_CODE_HOME")" == "$CLI_AUTHENTICATED" ]]
 
 generic_calls="$temporary_home/generic-calls"
@@ -40,7 +42,7 @@ grep -qx 'qwen=authenticated' <<<"$inventory"
 grep -qx 'kimi2=authenticated' <<<"$inventory"
 grep -qx 'minimax=authenticated' <<<"$inventory"
 grep -qx 'deepseek=authenticated' <<<"$inventory"
-grep -qx 'dsh|dsh|' "$generic_calls"
+grep -qx "dsh|dsh|$DSH_HOME" "$generic_calls"
 grep -qx "kimi-code|kimi|$KIMI_CODE_HOME" "$generic_calls"
 
 saved_priority=("${PROVIDER_PRIORITY[@]}")
@@ -52,7 +54,24 @@ if get_unauthenticated_clis >/dev/null 2>&1; then
 fi
 PROVIDER_PRIORITY=("${saved_priority[@]}")
 
+PROVIDER_PRIORITY=(qwen)
+ROUTING_PROVIDER_PRIORITY=(codex)
+check_generic_cli_status() {
+    printf '%s\n' "$CLI_INSTALLED_NOT_AUTH"
+}
+check_codex_status() {
+    printf '%s\n' "$CLI_NOT_INSTALLED"
+}
+[[ "$(get_unauthenticated_clis)" == qwen ]]
+if get_unauthenticated_routing_clis >/dev/null 2>&1; then
+    echo "direct-only provider unexpectedly entered the routing login prompt" >&2
+    exit 1
+fi
+
 get_unauthenticated_clis() {
+    printf '%s\n' codex
+}
+get_unauthenticated_routing_clis() {
     printf '%s\n' codex
 }
 get_authenticated_cli() {
