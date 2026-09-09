@@ -31,6 +31,9 @@ case "$1 $2" in
         fi
         ;;
     "container inspect")
+        if [[ -f "${TEST_REMOVED_MARKER:-/nonexistent}" ]]; then
+            exit 1
+        fi
         case "$4" in
             *Config.Image*) printf '%s\n' dotnet-bench:brett ;;
             *State.Running*) printf '%s\n' false ;;
@@ -58,6 +61,10 @@ case "$1 $2" in
     "rm -f")
         ;;
     "rm stale-container")
+        if [[ "${TEST_RM_ALREADY_ABSENT:-false}" == true ]]; then
+            : > "$TEST_REMOVED_MARKER"
+            exit 1
+        fi
         ;;
     "build --build-arg")
         ;;
@@ -114,5 +121,11 @@ if grep -q '^build ' "$DOCKER_LOG"; then
     exit 1
 fi
 grep -q '^rm stale-container$' "$DOCKER_LOG"
+
+export TEST_RM_ALREADY_ABSENT=true
+export TEST_REMOVED_MARKER="$TEST_DIR/removed"
+run_check
+grep -q '^rm stale-container$' "$DOCKER_LOG"
+grep -q '^container inspect stale-container$' "$DOCKER_LOG"
 
 echo "ensure-layer3 recipe freshness tests passed"

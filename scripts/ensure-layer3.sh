@@ -137,6 +137,10 @@ reconcile_stopped_containers_for_image() {
 
         echo -e "${YELLOW}⟳ Removing stopped container '${container_id}' because it uses the previous ${USER_IMAGE} image ID${NC}"
         if ! docker rm "$container_id" >/dev/null; then
+            if ! docker container inspect "$container_id" >/dev/null 2>&1; then
+                echo -e "${GREEN}✓ Stale container '${container_id}' was already removed by another startup${NC}"
+                continue
+            fi
             running="$(docker container inspect --format '{{.State.Running}}' "$container_id" 2>/dev/null || true)"
             if [[ "$running" == "true" ]]; then
                 echo -e "${YELLOW}↷ Container '${container_id}' started during reconciliation; preserving it${NC}"
