@@ -287,7 +287,6 @@ create_with_compose() {
 
     local compose_dir
     compose_dir="$(dirname "$compose_file")"
-    bench_dir="$(dirname "$compose_dir")"
     if [[ ! -f "$compose_dir/.env" && -f "$bench_dir/.env" ]]; then
         cp "$bench_dir/.env" "$compose_dir/.env"
     fi

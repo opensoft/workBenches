@@ -26,11 +26,14 @@ run_launcher_case() {
     local mock_bin="$case_root/bin"
     local docker_log="$case_root/docker.log"
     local prepare_log="$case_root/prepare.log"
-    mkdir -p "$fake_home" "$fake_root/devBenches/pyBench/.devcontainer" "$fake_root/devBenches/dotNetBench/.devcontainer" "$fake_root/scripts" "$mock_bin"
+    mkdir -p "$fake_home" "$fake_root/devBenches/pyBench/.devcontainer" "$fake_root/devBenches/dotNetBench/.devcontainer" "$fake_root/devBenches/rustBench/.devcontainer" "$fake_root/scripts" "$mock_bin"
     : > "$fake_root/devBenches/pyBench/.devcontainer/devcontainer.json"
     : > "$fake_root/devBenches/pyBench/.devcontainer/docker-compose.yml"
     : > "$fake_root/devBenches/dotNetBench/.devcontainer/devcontainer.json"
     : > "$fake_root/devBenches/dotNetBench/.devcontainer/docker-compose.yml"
+    : > "$fake_root/devBenches/rustBench/.devcontainer/devcontainer.json"
+    : > "$fake_root/devBenches/rustBench/.devcontainer/docker-compose.yml"
+    : > "$fake_root/devBenches/rustBench/.devcontainer/docker-compose.wslg.yml"
     : > "$fake_root/custom-compose.yml"
 
     cat > "$fake_root/scripts/prepare-bench-start.sh" <<'PREPARE'
@@ -188,5 +191,9 @@ grep -q -- "compose -f .*/custom-compose.yml" <<<"$CASE_DOCKER_LOG" \
 if grep -q '^devcontainer ' <<<"$CASE_DOCKER_LOG"; then
     fail "first creation ignored the explicit Compose file through Dev Containers CLI"
 fi
+
+CASE_CONTAINER_EXISTS=false CASE_EXPLICIT_COMPOSE=true run_launcher_case rust-explicit-compose-first-create false missing false false rustBench
+grep -q -- "compose -f .*/custom-compose.yml -f .*/devBenches/rustBench/.devcontainer/docker-compose.wslg.yml" <<<"$CASE_DOCKER_LOG" \
+    || fail "rustBench resolved its WSLg override relative to the explicit Compose file"
 
 echo "PASS: wave container launcher lifecycle tests"
