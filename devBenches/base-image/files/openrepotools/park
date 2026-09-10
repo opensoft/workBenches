@@ -4,7 +4,7 @@
 # park — leave this workstation with your half-finished work carried, from any
 # folder: `park InkRouter`, or just `park` from inside the estate.
 #
-# Installed with the other two by `openRepoShape --install`.
+# Installed with the other two by `openRepoTools --install`.
 #
 # IT ADDS NO MECHANICS, exactly as the `openRepoShape` command adds none. It
 # FINDS THE ESTATE and runs the estate's own `make park` — the family holder's,
@@ -25,6 +25,7 @@
 # `resume` deliberately KEEPS ruling 3's refusal for its own bare form (see
 # its header) — rebuilding every estate on a fresh machine by accident is the
 # opposite risk from failing to park the one you meant.
+# openRepoShape #82 wrote this, its #93 last changed it, its #92 moved it here.
 
 set -euo pipefail
 

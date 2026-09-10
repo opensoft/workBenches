@@ -3,7 +3,7 @@
 #
 # resume — arrive at a workstation and get the estate back: `resume InkRouter`.
 #
-# Installed with the other two by `openRepoShape --install`.
+# Installed with the other two by `openRepoTools --install`.
 #
 # IT ADDS NO MECHANICS, exactly as the `openRepoShape` command adds none. It
 # REBUILDS OR REFRESHES the estate with the tools that already exist — `git
@@ -27,6 +27,7 @@
 # estate you meant: a clone or a fast-forward per estate is real network and
 # real disk, and undoing an accidental one is not as simple as re-running the
 # command. Ruling #91 names `park` only; this refusal stands.
+# openRepoShape #82 wrote this, its #93 last changed it, its #92 moved it here.
 #
 # THE ONLY FILE THIS STANDARD EVER WRITES OUTSIDE A REPOSITORY is the two-line
 # user config, and only when `--workspace <owner/name>` asks for it by name on
@@ -76,7 +77,7 @@ With no <Name> the estate around the current directory is refreshed.
   $PROJECTS_DIR             your projects directory (default: ~/projects, then
                             ~/Projects - people spell it both ways)
   $AGENT_PROTOCOL_ROOT      where workspace.yaml lives (default: ~/.agents)
-  $OPENREPOSHAPE_REMOTE_BASE
+  $OPENREPOTOOLS_REMOTE_BASE
                             TEST PATH: clone from bare repositories in this
                             directory (<name>.git) instead of from GitHub, so
                             the whole flow runs offline
@@ -541,7 +542,7 @@ is_checkout() {
 
 # `https://github.com/<owner>/<name>.git` by default.
 #
-# `$OPENREPOSHAPE_REMOTE_BASE` IS THE OFFLINE TEST PATH, and it is the same
+# `$OPENREPOTOOLS_REMOTE_BASE` IS THE OFFLINE TEST PATH, and it is the same
 # concession `setup-project.py --local-remote-dir` and `family.py
 # --local-remote-dir` make: a directory of BARE repositories named
 # `<name>.git`, used as origins, so this whole flow — clone the workspace,
@@ -551,7 +552,7 @@ is_checkout() {
 # permission of its own: a test that needs `protocol.file.allow` sets it in
 # git's own environment, which is how it stays a test's decision.
 clone_url_for() {
-    local slug="$1" base="${OPENREPOSHAPE_REMOTE_BASE:-}"
+    local slug="$1" base="${OPENREPOTOOLS_REMOTE_BASE:-}"
     if [ -n "$base" ]; then
         printf '%s/%s.git\n' "${base%/}" "${slug##*/}"
         return 0
