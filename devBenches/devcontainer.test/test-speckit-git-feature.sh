@@ -30,7 +30,7 @@ SELECT_WORKTREE_SCRIPT="$TEMPLATE_ROOT/specify/shell/select-worktree.sh"
 # mounted names them through the environment instead, which is what this
 # directory's own docker-compose.yml does.
 SOURCE_SHAPE_TEMPLATE_ROOT="$REPO_ROOT/devBenches/base-image/files/openreposhape/templates"
-SHAPE_TEMPLATE_ROOT="${OPENREPOSHAPE_TEMPLATE_ROOT:-$SOURCE_SHAPE_TEMPLATE_ROOT}"
+SHAPE_TEMPLATE_ROOT="${WORKBENCHES_SHAPE_TEMPLATE_ROOT:-$SOURCE_SHAPE_TEMPLATE_ROOT}"
 THREE_LEG_MANIFEST_TEMPLATE="$SHAPE_TEMPLATE_ROOT/assembly-root/project.yaml"
 SOURCE_UPDATE_UPSTREAM_FILE="$REPO_ROOT/devBenches/base-image/update-upstream.py"
 UPDATE_UPSTREAM_FILE="${UPDATE_UPSTREAM_FILE:-$SOURCE_UPDATE_UPSTREAM_FILE}"
@@ -54,7 +54,7 @@ done
 for required_file in "$THREE_LEG_MANIFEST_TEMPLATE" "$UPDATE_UPSTREAM_FILE"; do
     if [ ! -f "$required_file" ]; then
         printf 'Pinned openRepoShape fixture input is missing: %s\n' "$required_file" >&2
-        printf 'Set $OPENREPOSHAPE_TEMPLATE_ROOT and $UPDATE_UPSTREAM_FILE when only\n' >&2
+        printf 'Set $WORKBENCHES_SHAPE_TEMPLATE_ROOT and $UPDATE_UPSTREAM_FILE when only\n' >&2
         printf 'devBenches/devcontainer.test/ is mounted; the image does not carry them.\n' >&2
         exit 1
     fi
@@ -1631,11 +1631,15 @@ if text.count(assembly) != 1:
     raise SystemExit(
         "the derived manifest holds %d assembly-leg repository lines, not 1; "
         "set_assembly_repository cannot work" % text.count(assembly))
-# (2) Exactly three legs, each opening with its role at indent 2.
-if text.count("\n  - role: ") != 3:
+# (2) Exactly three legs, each opening with its role at indent 2, and the
+#     roles are exactly the three load_repo_shape needs, once each — a
+#     template that renamed one would otherwise pass this and then fail three
+#     scenarios later inside the reader.
+roles = re.findall(r"^  - role: (\S+)$", text, re.MULTILINE)
+if sorted(roles) != ["assembly", "code", "spec"]:
     raise SystemExit(
-        "the derived manifest holds %d legs, not 3"
-        % text.count("\n  - role: "))
+        "the derived manifest's legs are %r, not assembly/spec/code once each"
+        % (roles,))
 # (3) The nested `role:` trap survived the substitution, twice: the spec leg's
 #     naming block and the code leg's, the second of which says `spec`.
 if text.count("\n      role: spec\n") != 2:

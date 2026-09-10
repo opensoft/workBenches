@@ -30,5 +30,5 @@ services:
       - PATH=/home/${USER:-brett}/.local/bin:/home/${USER:-brett}/.npm-global/bin:/home/${USER:-brett}/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       # Where the suite finds the pinned openRepoShape fixture inputs when
       # only this directory is mounted as the workspace.
-      - OPENREPOSHAPE_TEMPLATE_ROOT=/test-fixtures/base-image/files/openreposhape/templates
+      - WORKBENCHES_SHAPE_TEMPLATE_ROOT=/test-fixtures/base-image/files/openreposhape/templates
       - UPDATE_UPSTREAM_FILE=/test-fixtures/base-image/update-upstream.py

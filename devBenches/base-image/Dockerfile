@@ -156,6 +156,11 @@ RUN chmod 0755 /usr/local/bin/speckit-worktree-enable && \
 # non-interactive `docker exec` uses this image's own ENV PATH, where these
 # win. Accepted, not fixed: fetching at build time is what the network
 # constraint above forbids.
+#
+# `openRepoShape --version` prints `(opensoft/openRepoShape @ main)`, not the
+# pinned commit: $OPENREPOSHAPE_REF defaults to `main` upstream and this image
+# does not set it. The identity of these bytes is ../upstream-pin.yaml, not
+# what the command says about itself.
 COPY files/openreposhape/openRepoShape /usr/local/bin/openRepoShape
 COPY files/openreposhape/park /usr/local/bin/park
 COPY files/openreposhape/resume /usr/local/bin/resume

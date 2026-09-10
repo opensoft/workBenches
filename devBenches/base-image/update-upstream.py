@@ -33,7 +33,16 @@ ON PURPOSE, and the finding names both.
 
 EVERY FILE UNDER A VENDOR DIRECTORY IS A PINNED COPY, by construction. A file
 there with no row is a finding as loud as a changed byte: it is bytes from
-somewhere nobody recorded, sitting in the directory a reader trusts.
+somewhere nobody recorded, sitting in the directory a reader trusts. So is a
+copy that stopped being a regular file, or one that resolves out of the tree:
+a link is followed by every read and write in the standard library, so neither
+verb will touch a path whose `realpath` leaves the vendor directory.
+
+A NEW SOURCE'S ROWS ARE HAND-WRITTEN, ONCE. The block — id, repository,
+`vendor_dir` and one `- path: <upstream path>` per file, with no `sha256:` or
+an empty one — is a human's decision. The first `apply` fetches those paths and
+fills the digests in; `check` refuses an unfilled row, because a row with no
+digest pins nothing. Both refusals name that sequence.
 
 WHAT `apply` REFUSES, because a pin it cannot justify must not be recorded:
 
@@ -48,7 +57,13 @@ WHAT `apply` REFUSES, because a pin it cannot justify must not be recorded:
   * a fetch that failed for ANY file in the set: NOTHING is written, no
     vendored copy is replaced, and every file it could not get is named, with
     both forms it tried. All the bytes in hand before any one of them is
-    placed — openRepoShape #82's F10 rule, for its reason.
+    placed — openRepoShape #82's F10 rule, for its reason;
+  * a `--remove` set that would leave a source with NO rows. An empty `files:`
+    block is a pin this tool's own `check` refuses, so `apply` must not be able
+    to write one and then print `NEXT … check`; emptying a source means
+    deleting its block, by hand and on purpose;
+  * a repeated `--add` or `--remove` value, and a destination that is a link
+    or resolves outside the vendor directory.
 
 THE FETCH ORDER IS THE SHIMS'. `gh api …/contents/<path>?ref=<sha>` with
 `Accept: application/vnd.github.raw` first, because it is authenticated and so
@@ -201,6 +216,10 @@ def read_pin(path: Path) -> tuple[dict[str, str], list[Source], list[str]]:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise Refusal("pin-unreadable", f"{exc}") from exc
+    except UnicodeDecodeError as exc:
+        # A pin is text. Bytes that are not UTF-8 are a mis-written file, and
+        # a mis-written file must exit 2 with a name, not a traceback.
+        raise Refusal("pin-not-utf8", f"{display(path)}: {exc}") from exc
     lines = text.split("\n")
 
     top: dict[str, str] = {}
@@ -232,6 +251,12 @@ def read_pin(path: Path) -> tuple[dict[str, str], list[Source], list[str]]:
                         f"{display(path)}:{number}: `sources:` takes a block "
                         f"sequence, "
                         f"not {value!r}")
+                if "sources" in top:
+                    raise Refusal(
+                        "pin-duplicate-key",
+                        f"{display(path)}:{number}: `sources:` is set twice; "
+                        f"the second block would merge into the first")
+                top["sources"] = ""
                 in_sources = True
                 continue
             if key in top:
@@ -401,18 +426,29 @@ def validate_pin(path: Path, top: dict[str, str], sources: list[Source],
                 f"lowercase hex — a tag can be moved and a commit cannot")
         vendor_dir = source.value("vendor_dir")
         _checked_relative(vendor_dir, where, "vendor_dir")
-        if vendor_dir in seen_dirs:
-            raise Refusal(
-                "pin-vendor-dir-shared",
-                f"{where}: '{source.id}' and '{seen_dirs[vendor_dir]}' both "
-                f"vendor into {vendor_dir}; one directory, one source")
+        for other, owner in seen_dirs.items():
+            if vendor_dir == other or _under(vendor_dir, other) \
+                    or _under(other, vendor_dir):
+                raise Refusal(
+                    "pin-vendor-dir-shared",
+                    f"{where}: '{source.id}' vendors into {vendor_dir} and "
+                    f"'{owner}' into {other}; one directory per source, and "
+                    f"never one inside another — the outer source's walk "
+                    f"would report the inner source's files as unpinned")
         seen_dirs[vendor_dir] = source.id
         if source.files_line is None:
             raise Refusal("pin-no-files",
                           f"{where}: source '{source.id}' has no `files:` key")
         if not source.rows:
-            raise Refusal("pin-no-rows",
-                          f"{where}: source '{source.id}' has no `files:` rows")
+            raise Refusal(
+                "pin-no-rows",
+                f"{where}: source '{source.id}' has no `files:` rows.\n"
+                f"A source's rows are HAND-WRITTEN once, one `- path: "
+                f"<path in {source.value('source_repository')}>` per file,\n"
+                f"with no `sha256:` (or an empty one); the first `apply` "
+                f"fetches the bytes and fills\nthe digests in:\n"
+                f"    python3 {TOOL} apply --source {source.id} "
+                f"--at <40-hex> --yes")
         seen_paths: set[str] = set()
         for row in source.rows:
             row_where = f"{display(path)}:{row.first_line}"
@@ -420,14 +456,25 @@ def validate_pin(path: Path, top: dict[str, str], sources: list[Source],
             if row.path in seen_paths:
                 raise Refusal("pin-row-duplicate",
                               f"{row_where}: '{row.path}' has two rows")
+            for other in seen_paths:
+                if _under(row.path, other) or _under(other, row.path):
+                    raise Refusal(
+                        "pin-row-nested",
+                        f"{row_where}: '{row.path}' and '{other}' cannot both "
+                        f"be files; one is inside the other")
             seen_paths.add(row.path)
-            if row.sha256 is None:
+            if not row.sha256:
+                # A row written with no digest, or an empty one, is a row
+                # WAITING to be filled: that is how a new source block is
+                # hand-written. `apply` fills it; `check` refuses it, because
+                # a row with no digest pins nothing.
                 if digests_required:
                     raise Refusal(
-                        "pin-row-no-digest",
-                        f"{row_where}: '{row.path}' has no sha256. A row with "
-                        f"no digest pins nothing; run `{TOOL} apply --source "
-                        f"{source.id} --at {source.value('commit')} --yes`")
+                        "pin-row-unfilled",
+                        f"{row_where}: '{row.path}' has no sha256, so it pins "
+                        f"nothing.\nFill it from the upstream bytes:\n"
+                        f"    python3 {TOOL} apply --source {source.id} "
+                        f"--at {source.value('commit')} --yes")
                 continue
             if not SHA256_RE.match(row.sha256):
                 raise Refusal(
@@ -439,6 +486,16 @@ def validate_pin(path: Path, top: dict[str, str], sources: list[Source],
 #: A path that is not relative-and-downward. Anchored at the front so a drive
 #: letter, a UNC prefix and a leading slash are all one check.
 NOT_RELATIVE_RE = re.compile(r"^(?:/|\\\\|[A-Za-z]:)")
+
+
+def _under(inner: str, outer: str) -> bool:
+    """True when `inner` sits beneath `outer`, compared segment by segment.
+
+    String prefixes are not enough: `files/openreposhapex` starts with
+    `files/openreposhape` and is a different directory.
+    """
+    a, b = inner.split("/"), outer.split("/")
+    return len(a) > len(b) and a[:len(b)] == b
 
 
 def _checked_relative(value: str, where: str, label: str) -> None:
@@ -468,9 +525,35 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def contained(base: Path, target: Path) -> bool:
+    """True when `target` REALLY lives under `base`, every link resolved.
+
+    `_checked_relative` rejects `..` and an absolute path, which is lexical.
+    This is the other half: a symlinked `vendor_dir`, or a symlinked directory
+    inside one, would otherwise let `check` hash — and `apply` write — bytes
+    outside the tree the pin describes. `realpath` resolves what exists and
+    leaves the rest alone, so it answers for a destination not created yet.
+    """
+    base_real = Path(os.path.realpath(base))
+    target_real = Path(os.path.realpath(target))
+    return target_real == base_real or base_real in target_real.parents
+
+
 def vendor_root(pin_path: Path, source: Source) -> Path:
-    """`vendor_dir` is relative to the pin file's own directory."""
-    return pin_path.resolve().parent / source.value("vendor_dir")
+    """`vendor_dir` is relative to the pin file's own directory.
+
+    REFUSES a vendor directory that resolves outside the pin's own directory:
+    that is a link, and a pin cannot describe bytes it does not sit above.
+    """
+    pin_dir = pin_path.resolve().parent
+    root = pin_dir / source.value("vendor_dir")
+    if not contained(pin_dir, root):
+        raise Refusal(
+            "pin-vendor-dir-escapes",
+            f"{source.value('vendor_dir')} resolves outside the pin's own "
+            f"directory ({pin_dir}); a vendor directory is a real directory "
+            f"beside the pin, never a link")
+    return root
 
 
 def display(path: Path) -> str:
@@ -484,6 +567,10 @@ def display(path: Path) -> str:
     """
     here = Path.cwd().resolve()
     resolved = Path(path).resolve()
+    if here == Path(here.root):
+        # Run from `/`, every path is "under" the working directory and
+        # `relative_to` would strip the leading slash off an absolute path.
+        return str(resolved)
     if resolved == here or here in resolved.parents:
         return str(resolved.relative_to(here))
     return str(resolved)
@@ -560,6 +647,11 @@ def cmd_check(args: argparse.Namespace) -> int:
             if copy.is_symlink():
                 drift.append(f"  SYMLINK  {shown}  a vendored copy is a "
                              f"regular file, never a link")
+                _blame(guilty, source)
+                continue
+            if copy.exists() and not contained(root, copy):
+                drift.append(f"  ESCAPES  {shown}  resolves outside the "
+                             f"vendor directory")
                 _blame(guilty, source)
                 continue
             if not copy.is_file():
@@ -714,9 +806,10 @@ def assert_on_default_branch(repository: str, commit: str) -> str:
 def fetch_file(repository: str, commit: str, path: str) -> bytes | None:
     """The shims' order: the API first, the raw URL second.
 
-    Each attempt is checked — a zero exit AND a non-empty body — before its
-    bytes are used, so a half-written first attempt is never mistaken for a
-    fetch. The bytes are RETURNED and held in memory rather than written
+    THE EXIT CODE IS THE CHECK, and the body's length is not: both `gh api`
+    and `curl -f` exit non-zero on a 404 or a truncated transfer, and a
+    zero-byte file is a perfectly ordinary git blob that this must be able to
+    vendor. The bytes are RETURNED and held in memory rather than written
     anywhere: nothing reaches a vendor directory until every file in the set
     is in hand. Returns None rather than dying, so the caller can report the
     whole set of failures instead of stopping at the first.
@@ -724,12 +817,12 @@ def fetch_file(repository: str, commit: str, path: str) -> bytes | None:
     code, out, _ = run_capture(
         ["gh", "api", f"repos/{repository}/contents/{path}?ref={commit}",
          "-H", GH_RAW_ACCEPT])
-    if code == 0 and out:
+    if code == 0:
         return out
     code, out, _ = run_capture(
         ["curl", "-fsSL",
          f"https://raw.githubusercontent.com/{repository}/{commit}/{path}"])
-    if code == 0 and out:
+    if code == 0:
         return out
     return None
 
@@ -752,9 +845,11 @@ def rewrite_pin(pin_path: Path, lines: list[str], source: Source,
     assert source.commit_line is not None
     assert source.files_line is not None and source.files_indent is not None
     commit_index = source.commit_line - 1
-    indent = " " * (len(lines[commit_index])
-                    - len(lines[commit_index].lstrip(" ")))
-    lines[commit_index] = f'{indent}commit: "{commit}"'
+    original = lines[commit_index]
+    # Everything in front of the key, so a `  - commit:` opening item keeps
+    # its sequence marker and an ordinary `    commit:` keeps its indentation.
+    prefix = original[:original.index("commit:")]
+    lines[commit_index] = f'{prefix}commit: "{commit}"'
 
     item_indent = " " * (source.files_indent + 2)
     key_indent = " " * (source.files_indent + 4)
@@ -784,6 +879,13 @@ def cmd_apply(args: argparse.Namespace) -> int:
     root = vendor_root(pin_path, source)
 
     have = [row.path for row in source.rows]
+    for flag, given in (("--add", args.add), ("--remove", args.remove)):
+        for path in given:
+            if given.count(path) > 1:
+                raise Refusal(
+                    "upstream-repeated-flag",
+                    f"{flag} {path!r} is given {given.count(path)} times; "
+                    f"one row is one row")
     for path in args.add:
         _checked_relative(path, "--add", "path")
         if path in have:
@@ -802,6 +904,16 @@ def cmd_apply(args: argparse.Namespace) -> int:
                           f"{path!r} is both --add and --remove")
     wanted = [path for path in have if path not in args.remove]
     wanted += [path for path in args.add if path not in wanted]
+    if not wanted:
+        # Refused HERE, before the fetch and before any byte moves: an empty
+        # `files:` block is a pin its own `check` refuses, so `apply` must not
+        # be able to write one and then print `NEXT … check`.
+        raise Refusal(
+            "upstream-empty-source",
+            f"--remove would leave source '{source.id}' with no rows, and a "
+            f"source with no\nfiles is a source that should not be in the "
+            f"pin — `check` refuses one. Delete the\nblock from "
+            f"{display(pin_path)} by hand, on purpose, instead.")
 
     branch = assert_on_default_branch(repository, args.at)
     print(f"source      {source.id} ({repository})")
@@ -866,6 +978,14 @@ def cmd_apply(args: argparse.Namespace) -> int:
     for path, digest in rows:
         copy = root / path
         copy.parent.mkdir(parents=True, exist_ok=True)
+        if copy.is_symlink() or not contained(root, copy):
+            raise Refusal(
+                "upstream-destination-escapes",
+                f"{source.value('vendor_dir')}/{path} is a link, or resolves "
+                f"outside the vendor directory.\n`write_bytes` and `chmod` "
+                f"follow a link, so this would overwrite bytes no row "
+                f"describes.\nRestore the directory first: git checkout -- "
+                f"{display(root)}/")
         data = staged[path]
         copy.write_bytes(data)
         mode = mode_for(data)
@@ -873,9 +993,16 @@ def cmd_apply(args: argparse.Namespace) -> int:
         print(f"  wrote     {source.value('vendor_dir')}/{path}  {mode:04o}")
     for path in args.remove:
         copy = root / path
-        if copy.is_file():
+        # `is_file()` is False for a directory AND for a broken link, either of
+        # which would have outlived its row. Links are unlinked, not followed;
+        # a directory is a shape no row ever described, so it is named.
+        if copy.is_symlink() or copy.is_file():
             copy.unlink()
             print(f"  deleted   {source.value('vendor_dir')}/{path}")
+        elif copy.is_dir():
+            print(f"  KEPT      {source.value('vendor_dir')}/{path} is a "
+                  f"directory, not a vendored copy; its row is gone and it "
+                  f"is not — remove it by hand")
     rewrite_pin(pin_path, lines, source, args.at, rows)
     print(f"  re-pinned {display(pin_path)}  "
           f"{len(rows)} row(s) at {args.at[:12]}")
