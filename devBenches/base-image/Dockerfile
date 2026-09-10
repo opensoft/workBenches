@@ -135,6 +135,33 @@ RUN chmod 0755 /usr/local/bin/speckit-worktree-enable && \
     find /usr/local/share/speckit-worktree/templates -type f ! \( -name '*.sh' -o -name '*.zsh' -o -name '*.ps1' \) -exec chmod 0644 {} +
 
 # ========================================
+# ESTATE COMMANDS (openRepoShape)
+# ========================================
+# VENDORED, never fetched at build time: the build network may route github.com
+# through a VPN tunnel whose MTU breaks TLS, which is why the Oh My Zsh plugins
+# in Layer 0 come from apt rather than a clone. These copies are pinned by
+# commit and per-file sha256 in ../upstream-pin.yaml; `update-upstream.py check`
+# is what says they still are, and it runs in CI (.github/workflows/
+# speckit-git-bash.yml) and in the devcontainer suite.
+#
+# files/openreposhape/templates/ is NOT copied. It is a fixture input for
+# devBenches/devcontainer.test/test-speckit-git-feature.sh, which derives its
+# three-leg project.yaml from the pinned template; the image installs commands.
+# Do not "fix" the omission.
+#
+# PATH, said out loud: Layer 0 writes $HOME/.local/bin AHEAD of the inherited
+# PATH into /etc/skel/.zshrc and /etc/skel/.bashrc (base-image/Dockerfile:261
+# and :270), so `openRepoShape --install` run in an interactive container shell
+# SHADOWS these pinned copies with whatever the upstream main holds. A
+# non-interactive `docker exec` uses this image's own ENV PATH, where these
+# win. Accepted, not fixed: fetching at build time is what the network
+# constraint above forbids.
+COPY files/openreposhape/openRepoShape /usr/local/bin/openRepoShape
+COPY files/openreposhape/park /usr/local/bin/park
+COPY files/openreposhape/resume /usr/local/bin/resume
+RUN chmod 0755 /usr/local/bin/openRepoShape /usr/local/bin/park /usr/local/bin/resume
+
+# ========================================
 # AI META-HARNESS (OMNIGENT)
 # ========================================
 # Omnigent wraps the Layer 0 codex/claude CLIs behind one CLI + web UI.
