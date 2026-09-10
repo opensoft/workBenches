@@ -848,7 +848,12 @@ def rewrite_pin(pin_path: Path, lines: list[str], source: Source,
     original = lines[commit_index]
     # Everything in front of the key, so a `  - commit:` opening item keeps
     # its sequence marker and an ordinary `    commit:` keeps its indentation.
-    prefix = original[:original.index("commit:")]
+    # The bare word, not `commit:`: the reader tolerates `commit : "…"` (it
+    # strips the key before comparing), and searching for the colon spelling
+    # raised ValueError on one — a traceback where this file's own rule is
+    # that a mis-written pin exits 2 with a name. Only whitespace and an
+    # optional `- ` can precede the key, so the first occurrence is the key.
+    prefix = original[:original.index("commit")]
     lines[commit_index] = f'{prefix}commit: "{commit}"'
 
     item_indent = " " * (source.files_indent + 2)
@@ -974,18 +979,28 @@ def cmd_apply(args: argparse.Namespace) -> int:
             "NOTHING was written: this is the plan, not the run. Re-run it "
             "with --yes.")
 
+    # EVERY DESTINATION JUDGED BEFORE ANY IS TOUCHED, the same rule as the
+    # fetch above: `write_bytes` and `chmod` follow a link, and a refusal
+    # raised halfway down the write loop would leave some rows at the new
+    # commit and some at the old, which no pin describes.
+    escaping = [path for path, _ in rows
+                if (root / path).is_symlink()
+                or not contained(root, root / path)]
+    if escaping:
+        raise Refusal(
+            "upstream-destination-escapes",
+            f"{len(escaping)} destination(s) are links, or resolve outside "
+            f"the vendor directory,\nso NOTHING was written:\n"
+            + "".join(f"    {source.value('vendor_dir')}/{path}\n"
+                      for path in escaping)
+            + "`write_bytes` and `chmod` follow a link, so this would "
+            "overwrite bytes no row\ndescribes. Restore the directory first: "
+            f"git checkout -- {display(root)}/")
+
     print()
     for path, digest in rows:
         copy = root / path
         copy.parent.mkdir(parents=True, exist_ok=True)
-        if copy.is_symlink() or not contained(root, copy):
-            raise Refusal(
-                "upstream-destination-escapes",
-                f"{source.value('vendor_dir')}/{path} is a link, or resolves "
-                f"outside the vendor directory.\n`write_bytes` and `chmod` "
-                f"follow a link, so this would overwrite bytes no row "
-                f"describes.\nRestore the directory first: git checkout -- "
-                f"{display(root)}/")
         data = staged[path]
         copy.write_bytes(data)
         mode = mode_for(data)
