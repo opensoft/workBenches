@@ -296,14 +296,35 @@ assert_contains "$OUTPUT_J" 'missing' 'the refusal says the pin is missing'
 assert_empty_dir "$BIN_J" 'missing-pin run installs nothing'
 
 printf '%s\n' '--- Scenario (k) [D3]: resume'"'"'s row AND vendored file both removed the documented way ---'
+# Hand-edit the copy directly (drop resume's three-line row, delete its
+# file) rather than running `update-upstream.py apply --remove`, which
+# needs `gh api` to prove the target commit is reachable from
+# opensoft/openRepoTools' default branch -- network and auth this offline
+# suite does not assume (and does not have in every CI job). The end state
+# is the same one `apply --remove` documents producing: a row-and-file pair
+# gone together, `check` none the wiser.
 NOROW_BASE="$TMPDIR_ROOT/norow-base-image"
 mkdir -p "$NOROW_BASE"
 cp -r "$BASE_IMAGE_DIR/." "$NOROW_BASE/"
-NOROW_COMMIT="$(pin_commit_for openrepotools)"
-(cd "$NOROW_BASE" && python3 update-upstream.py apply --source openrepotools --at "$NOROW_COMMIT" --remove resume --yes) >"$TMPDIR_ROOT/norow-apply.log" 2>&1
-if ! grep -Fq 'deleted   files/openrepotools/resume' "$TMPDIR_ROOT/norow-apply.log"; then
-    fail "scenario (k) setup: 'apply --remove resume' did not report deleting the file; see $TMPDIR_ROOT/norow-apply.log"
-fi
+python3 - "$NOROW_BASE/upstream-pin.yaml" <<'PYEOF'
+import sys
+path = sys.argv[1]
+lines = open(path).readlines()
+out = []
+i = 0
+dropped = 0
+while i < len(lines):
+    if lines[i].strip() == "- path: resume":
+        i += 3  # this line, its sha256: line, its mode: line
+        dropped += 1
+        continue
+    out.append(lines[i])
+    i += 1
+if dropped != 1:
+    raise SystemExit(f"expected to drop exactly one 'resume' row, dropped {dropped}")
+open(path, "w").writelines(out)
+PYEOF
+rm -f "$NOROW_BASE/files/openrepotools/resume"
 NOROW_CHECK_STATUS=0
 python3 "$NOROW_BASE/update-upstream.py" check >"$TMPDIR_ROOT/norow-check.log" 2>&1 || NOROW_CHECK_STATUS=$?
 assert_equal '0' "$NOROW_CHECK_STATUS" "scenario (k) setup: 'check' passes on the row-and-file-removed copy (this is the D3 precondition)"
