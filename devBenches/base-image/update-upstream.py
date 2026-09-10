@@ -58,6 +58,10 @@ WHAT `apply` REFUSES, because a pin it cannot justify must not be recorded:
     vendored copy is replaced, and every file it could not get is named, with
     both forms it tried. All the bytes in hand before any one of them is
     placed — openRepoShape #82's F10 rule, for its reason;
+  * a path whose mode, in the source repository's tree at that commit, is not
+    an ordinary file's or one whose executable bit git tracks — a symlink, a
+    submodule, a directory. A pin records copies of regular files, and a row
+    naming one of those is not one;
   * a `--remove` set that would leave a source with NO rows. An empty `files:`
     block is a pin this tool's own `check` refuses, so `apply` must not be able
     to write one and then print `NEXT … check`; emptying a source means
@@ -72,12 +76,23 @@ raw.githubusercontent.com; `curl` at the raw URL second, for a machine with no
 `gh`. Each attempt is written to a temporary file and checked before its bytes
 are used, so a half-written first attempt is never mistaken for a fetch.
 
-MODES ARE NOT PINNED, AND THAT IS DELIBERATE. A fetched file whose first two
-bytes are `#!` is a command and is placed 0755; anything else is data and is
-placed 0644. The pin records BYTES: the Dockerfile chmods 0755 explicitly when
-it installs the commands, so no image depends on the in-tree bit, and a
-`check` that compared filesystem modes would report a finding on any checkout
-made by a tool that does not carry them.
+MODES ARE PINNED FROM UPSTREAM, NOT GUESSED FROM BYTES. `apply` reads each
+file's own mode from the source repository's git tree at the pinned commit —
+one `git/trees/<commit>?recursive=1` call per source, cached for the run —
+because a byte-content heuristic is lossy: a `.py` upstream ships 0644 does
+not become a command by starting with `#!`, and nothing about the bytes says
+whether upstream tracks the executable bit at all. The mode is recorded as an
+OPTIONAL `mode:` field on a row, `"100755"` or `"100644"`; `apply` writes it
+for every row it touches. A row written before this existed, or written by
+hand for a new source, carries no `mode:` and stays valid — UNRECORDED, not
+unchecked because broken — so the pin stays readable across the change.
+
+`check` compares the working tree's own executable bit against a row's
+`mode:` ONLY when the row has one; a mismatch is drift, exactly like a
+changed byte, and the fix it names is `chmod`. The Dockerfile still chmods
+0755 explicitly when it installs the commands into the image, unaffected by
+any of this: that bit is about the image, and this one is about the copy
+sitting in this tree.
 
 STANDARD LIBRARY ONLY, and its own reader for the small subset of YAML the pin
 is written in. Importing the upstream's `repo_shape.py` would give this checker
@@ -85,9 +100,10 @@ the one property it must not have: breaking on exactly the refactor it exists
 to notice.
 
 EXIT CODES
-    check   0  every row matches its bytes
+    check   0  every row matches its bytes (and its mode, where recorded)
             1  a FINDING: a copy drifted, went missing, stopped being a
-               regular file, or a file under a vendor directory has no row
+               regular file, its recorded mode no longer matches, or a file
+               under a vendor directory has no row
             2  a REFUSAL: no pin, an unreadable or malformed pin, an unknown
                --source
     apply   0  applied
@@ -105,7 +121,41 @@ import subprocess
 import sys
 from pathlib import Path
 
-TOOL = "devBenches/base-image/" + Path(__file__).name
+
+def _tool_path() -> str:
+    """This tool's own path, relative to the repository root it sits in.
+
+    Derived from `__file__` and `git rev-parse --show-toplevel` (run with
+    `-C` at this file's own directory, so the caller's cwd never enters it),
+    so every remediation line prints a path that is right to type from any
+    cwd — not the one path this file happens to sit at in the repository
+    `apply` was authored against. A reviewer's throwaway copy, a worktree,
+    or a clone at a different name all get their OWN right answer.
+
+    Falls back to the literal when there is nothing to ask: no `git` on
+    PATH, this file not inside a checkout (`rev-parse` fails), or its
+    directory outside the toplevel `rev-parse` names.
+    """
+    literal = "devBenches/base-image/" + Path(__file__).name
+    here = Path(__file__).resolve()
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(here.parent), "rev-parse", "--show-toplevel"],
+            capture_output=True, check=False)
+    except FileNotFoundError:
+        return literal
+    if proc.returncode != 0:
+        return literal
+    toplevel = proc.stdout.decode("utf-8", "replace").strip()
+    if not toplevel:
+        return literal
+    try:
+        return here.relative_to(Path(toplevel).resolve()).as_posix()
+    except ValueError:
+        return literal
+
+
+TOOL = _tool_path()
 DEFAULT_PIN = Path(__file__).resolve().parent / "upstream-pin.yaml"
 
 SCHEMA_VERSION = "1"
@@ -114,6 +164,10 @@ DIGEST_ALGORITHM = "sha256"
 
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+#: The only two shapes `apply` ever writes: an ordinary file, or one whose
+#: executable bit git tracks. Anything else a row's `mode:` might otherwise
+#: hold is not a shape a vendored copy can be.
+MODE_RE = re.compile(r"^(?:100644|100755)$")
 SOURCE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
@@ -165,11 +219,17 @@ class Refusal(Exception):
 
 
 class Row:
-    """One `- path: … / sha256: …` record, and where it sits in the file."""
+    """One `- path: … / sha256: … / mode: …` record, and where it sits.
+
+    `mode` is OPTIONAL: a row written before it existed, or by hand for a
+    new source, carries none, and stays valid unrecorded rather than
+    refused.
+    """
 
     def __init__(self, path: str, line: int):
         self.path = path
         self.sha256: str | None = None
+        self.mode: str | None = None
         self.first_line = line
         self.last_line = line
 
@@ -314,17 +374,25 @@ def read_pin(path: Path) -> tuple[dict[str, str], list[Source], list[str]]:
                 continue
             if indent == item_indent + 2 and row is not None:
                 key, value = _split_key(body, path, number)
-                if key != "sha256":
+                if key not in ("sha256", "mode"):
                     raise Refusal(
                         "pin-unparsable",
-                        f"{display(path)}:{number}: a file row carries `path:` and "
-                        f"`sha256:`, not {key!r}")
-                if row.sha256 is not None:
-                    raise Refusal(
-                        "pin-duplicate-key",
-                        f"{display(path)}:{number}: '{row.path}' sets "
-                        f"`sha256:` twice")
-                row.sha256 = value
+                        f"{display(path)}:{number}: a file row carries `path:`, "
+                        f"`sha256:` and an optional `mode:`, not {key!r}")
+                if key == "sha256":
+                    if row.sha256 is not None:
+                        raise Refusal(
+                            "pin-duplicate-key",
+                            f"{display(path)}:{number}: '{row.path}' sets "
+                            f"`sha256:` twice")
+                    row.sha256 = value
+                else:
+                    if row.mode is not None:
+                        raise Refusal(
+                            "pin-duplicate-key",
+                            f"{display(path)}:{number}: '{row.path}' sets "
+                            f"`mode:` twice")
+                    row.mode = value
                 row.last_line = number
                 continue
             raise Refusal("pin-unparsable",
@@ -475,12 +543,16 @@ def validate_pin(path: Path, top: dict[str, str], sources: list[Source],
                         f"nothing.\nFill it from the upstream bytes:\n"
                         f"    python3 {TOOL} apply --source {source.id} "
                         f"--at {source.value('commit')} --yes")
-                continue
-            if not SHA256_RE.match(row.sha256):
+            elif not SHA256_RE.match(row.sha256):
                 raise Refusal(
                     "pin-row-digest",
                     f"{row_where}: '{row.path}' has sha256 {row.sha256!r}, "
                     f"which is not 64 lowercase hex")
+            if row.mode is not None and not MODE_RE.match(row.mode):
+                raise Refusal(
+                    "pin-row-mode",
+                    f"{row_where}: '{row.path}' has mode {row.mode!r}, which "
+                    f"is not '100644' or '100755'")
 
 
 #: A path that is not relative-and-downward. Anchored at the front so a drive
@@ -523,6 +595,16 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(65536), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def is_executable(path: Path) -> bool:
+    """True when ANY of the file's own executable bits is set.
+
+    A row's `mode:` records one bit, not a full permission triple — `apply`
+    only ever writes 0755 or 0644 (`fetch_tree_modes`) — so this only needs
+    to answer the same question the row does: does this run as a command.
+    """
+    return bool(path.stat().st_mode & 0o111)
 
 
 def contained(base: Path, target: Path) -> bool:
@@ -630,6 +712,11 @@ def cmd_check(args: argparse.Namespace) -> int:
     validate_pin(pin_path, top, sources, digests_required=True)
 
     drift: list[str] = []
+    modes: list[str] = []
+    #: (shown path, wanted octal) per `modes` line, so the remediation can
+    #: print the exact `chmod` rather than send the reader back to work it
+    #: out from the finding.
+    mode_fixes: list[tuple[str, str]] = []
     unpinned: list[str] = []
     #: The sources a finding was raised against, so the remediation can name
     #: the directory to restore rather than a `<id>` the reader must expand.
@@ -665,6 +752,19 @@ def cmd_check(args: argparse.Namespace) -> int:
                              f"computed {computed[:8]}")
                 _blame(guilty, source)
                 continue
+            if row.mode is not None:
+                # UNRECORDED rows (no `mode:`) are not checked at all — the
+                # pin stays readable across the change that added this.
+                want_exec = row.mode == "100755"
+                have_exec = is_executable(copy)
+                if have_exec != want_exec:
+                    want_octal = "0755" if want_exec else "0644"
+                    have_octal = "0755" if have_exec else "0644"
+                    modes.append(f"  MODE     {shown}  recorded {want_octal}  "
+                                 f"working tree {have_octal}")
+                    mode_fixes.append((shown, want_octal))
+                    _blame(guilty, source)
+                    continue
             print(f"  ok      {shown}  {computed[:12]}")
         for found, is_link in walk_vendor_dir(root):
             if found in rows:
@@ -673,7 +773,7 @@ def cmd_check(args: argparse.Namespace) -> int:
                             + ("  (a symbolic link)" if is_link else ""))
             _blame(guilty, source)
 
-    if not drift and not unpinned:
+    if not drift and not modes and not unpinned:
         print()
         print(f"{checked} vendored copy(ies) match {display(pin_path)}")
         return 0
@@ -697,8 +797,19 @@ def cmd_check(args: argparse.Namespace) -> int:
         for source in guilty:
             print(f"    python3 {TOOL} apply --source {source.id} "
                   f"--at <40-hex> --yes", file=sys.stderr)
-    if unpinned:
+    if modes:
         if drift:
+            print(file=sys.stderr)
+        print(f"REFUSED: {len(modes)} vendored copy(ies) no longer have the "
+              f"executable bit {display(pin_path)} records.", file=sys.stderr)
+        for line in modes:
+            print(line, file=sys.stderr)
+        print("The bytes are right; only the working-tree permission bit "
+              "drifted. Fix it:", file=sys.stderr)
+        for shown, octal in mode_fixes:
+            print(f"    chmod {octal} {shown}", file=sys.stderr)
+    if unpinned:
+        if drift or modes:
             print(file=sys.stderr)
         print(f"REFUSED: {len(unpinned)} file(s) under a vendor directory have "
               f"no row in {display(pin_path)}.", file=sys.stderr)
@@ -827,13 +938,42 @@ def fetch_file(repository: str, commit: str, path: str) -> bytes | None:
     return None
 
 
-def mode_for(data: bytes) -> int:
-    """A fetched file that starts with `#!` is a command; anything else data."""
-    return 0o755 if data[:2] == b"#!" else 0o644
+def fetch_tree_modes(repository: str, commit: str) -> dict[str, str]:
+    """Every path's own git mode at a commit, in ONE call, cached for the run.
+
+    `git/trees/<commit>?recursive=1` lists the whole tree; each entry's own
+    `mode` is the only way to reproduce the bit upstream actually carries —
+    a `.py` upstream ships 0644 is not made a command by the fact that its
+    bytes are still correct, and a byte-content heuristic cannot tell a
+    directory or a symlink from a file at all. The result maps every path in
+    the tree to its mode string (`"100644"`, `"100755"`, or something else
+    entirely for a shape a vendored copy cannot be); the caller looks up only
+    the paths it wants.
+    """
+    code, out, err = gh_api(
+        f"repos/{repository}/git/trees/{commit}?recursive=1",
+        r'.tree[] | .path + "\t" + .mode')
+    if code == 127:
+        raise Refusal(
+            "upstream-no-gh",
+            f"`apply` needs the `gh` CLI to read {repository}'s tree modes "
+            f"at\n{commit[:12]}, and it is not on PATH: {err}")
+    if code != 0:
+        raise Refusal(
+            "upstream-tree-unreadable",
+            f"could not read {repository}'s tree at {commit[:12]}: "
+            f"{err or code}")
+    modes: dict[str, str] = {}
+    for line in out.split("\n"):
+        if not line:
+            continue
+        entry_path, _, mode = line.rpartition("\t")
+        modes[entry_path] = mode
+    return modes
 
 
 def rewrite_pin(pin_path: Path, lines: list[str], source: Source,
-                commit: str, rows: list[tuple[str, str]]) -> None:
+                commit: str, rows: list[tuple[str, str, str]]) -> None:
     """Move this source's `commit:` and re-emit its `files:` rows, in place.
 
     Only those lines change. The header prose, every other source's block, the
@@ -859,9 +999,10 @@ def rewrite_pin(pin_path: Path, lines: list[str], source: Source,
     item_indent = " " * (source.files_indent + 2)
     key_indent = " " * (source.files_indent + 4)
     block: list[str] = []
-    for path, digest in rows:
+    for path, digest, mode in rows:
         block.append(f"{item_indent}- path: {path}")
         block.append(f'{key_indent}sha256: "{digest}"')
+        block.append(f'{key_indent}mode: "{mode}"')
 
     start = source.files_line          # the line after `files:`
     end = max((row.last_line for row in source.rows), default=start)
@@ -927,17 +1068,27 @@ def cmd_apply(args: argparse.Namespace) -> int:
     print(f"vendor      {source.value('vendor_dir')}")
     print()
 
+    # ONE CALL PER SOURCE, CACHED FOR THE RUN: every path's own mode in the
+    # upstream tree, so a row's `mode:` records what upstream actually
+    # carries rather than a guess from the bytes.
+    tree_modes = fetch_tree_modes(repository, args.at)
+
     # ALL THE BYTES IN HAND BEFORE ANY ONE OF THEM IS PLACED (#82, F10). A
     # fetch that fails halfway through leaves a vendor directory holding some
     # files from the new commit and some from the old, which no pin describes.
     staged: dict[str, bytes] = {}
     missing: list[str] = []
+    bad_modes: list[str] = []
     for path in wanted:
         data = fetch_file(repository, args.at, path)
         if data is None:
             missing.append(path)
         else:
             staged[path] = data
+        mode = tree_modes.get(path)
+        if mode not in ("100644", "100755"):
+            shown_mode = mode if mode is not None else "not in the tree"
+            bad_modes.append(f"{path}  ({shown_mode})")
     if missing:
         raise Refusal(
             "upstream-fetch-failed",
@@ -950,13 +1101,23 @@ def cmd_apply(args: argparse.Namespace) -> int:
             f"-H '{GH_RAW_ACCEPT}'\n"
             f"    curl -fsSL https://raw.githubusercontent.com/{repository}/"
             f"{args.at}/<path>")
+    if bad_modes:
+        raise Refusal(
+            "upstream-mode-unusable",
+            f"{len(bad_modes)} of {len(wanted)} file(s) are not an ordinary "
+            f"file in {repository}'s\ntree at {args.at[:12]}, so NOTHING was "
+            f"written:\n"
+            + "".join(f"    {line}\n" for line in bad_modes)
+            + "A pin records copies of regular files; a row naming a "
+            "symlink, a submodule\nor a directory is not one.")
 
-    rows: list[tuple[str, str]] = []
+    rows: list[tuple[str, str, str]] = []
     plan: list[str] = []
     for path in wanted:
         data = staged[path]
         digest = hashlib.sha256(data).hexdigest()
-        rows.append((path, digest))
+        mode = tree_modes[path]
+        rows.append((path, digest, mode))
         copy = root / path
         if path not in have:
             plan.append(f"  add       {path}  {digest[:12]}")
@@ -983,7 +1144,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
     # fetch above: `write_bytes` and `chmod` follow a link, and a refusal
     # raised halfway down the write loop would leave some rows at the new
     # commit and some at the old, which no pin describes.
-    escaping = [path for path, _ in rows
+    escaping = [path for path, _, _ in rows
                 if (root / path).is_symlink()
                 or not contained(root, root / path)]
     if escaping:
@@ -998,14 +1159,14 @@ def cmd_apply(args: argparse.Namespace) -> int:
             f"git checkout -- {display(root)}/")
 
     print()
-    for path, digest in rows:
+    for path, digest, mode in rows:
         copy = root / path
         copy.parent.mkdir(parents=True, exist_ok=True)
         data = staged[path]
         copy.write_bytes(data)
-        mode = mode_for(data)
-        os.chmod(copy, mode)
-        print(f"  wrote     {source.value('vendor_dir')}/{path}  {mode:04o}")
+        octal = 0o755 if mode == "100755" else 0o644
+        os.chmod(copy, octal)
+        print(f"  wrote     {source.value('vendor_dir')}/{path}  {octal:04o}")
     for path in args.remove:
         copy = root / path
         # `is_file()` is False for a directory AND for a broken link, either of
