@@ -135,14 +135,31 @@ RUN chmod 0755 /usr/local/bin/speckit-worktree-enable && \
     find /usr/local/share/speckit-worktree/templates -type f ! \( -name '*.sh' -o -name '*.zsh' -o -name '*.ps1' \) -exec chmod 0644 {} +
 
 # ========================================
-# ESTATE COMMANDS (openRepoShape)
+# ESTATE COMMANDS (openRepoShape + openRepoTools)
 # ========================================
 # VENDORED, never fetched at build time: the build network may route github.com
 # through a VPN tunnel whose MTU breaks TLS, which is why the Oh My Zsh plugins
 # in Layer 0 come from apt rather than a clone. These copies are pinned by
-# commit and per-file sha256 in ../upstream-pin.yaml; `update-upstream.py check`
-# is what says they still are, and it runs in CI (.github/workflows/
-# speckit-git-bash.yml) and in the devcontainer suite.
+# commit and per-file sha256 in ../upstream-pin.yaml, one source block per
+# repository; `update-upstream.py check` is what says they still are, and it
+# runs in CI (.github/workflows/speckit-git-bash.yml) and in the devcontainer
+# suite.
+#
+# TWO SOURCES, ONE DIRECTION. openRepoTools pins openRepoShape (as a submodule
+# in that repository, mounted and verified against the pinned checkout's own
+# scripts/repo_shape.py) because `park` and `resume` are tested against the
+# estate standard they walk. openRepoShape pins nothing of openRepoTools' and
+# does not know it exists. This image is downstream of both pins and holds a
+# vendored COPY of each, at the commit its own source block in
+# ../upstream-pin.yaml names — that copying does not add a dependency between
+# the two repositories, only two independent commits landing beside each other
+# under /usr/local/bin.
+#
+# `park` and `resume` are vendored from files/openrepotools/
+# (opensoft/openRepoTools), not from files/openreposhape/: they moved there so
+# the estate-resolver they share is reviewed once for the whole estate rather
+# than once per standard. files/openreposhape/ now vendors only the shim
+# (`openRepoShape` itself) and the manifest template below.
 #
 # files/openreposhape/templates/ is NOT copied. It is a fixture input for
 # devBenches/devcontainer.test/test-speckit-git-feature.sh, which derives its
@@ -151,20 +168,24 @@ RUN chmod 0755 /usr/local/bin/speckit-worktree-enable && \
 #
 # PATH, said out loud: Layer 0 writes $HOME/.local/bin AHEAD of the inherited
 # PATH into /etc/skel/.zshrc and /etc/skel/.bashrc (base-image/Dockerfile:261
-# and :270), so `openRepoShape --install` run in an interactive container shell
-# SHADOWS these pinned copies with whatever the upstream main holds. A
-# non-interactive `docker exec` uses this image's own ENV PATH, where these
-# win. Accepted, not fixed: fetching at build time is what the network
+# and :270), so an `--install` of either command run in an interactive
+# container shell SHADOWS these pinned copies with whatever the upstream main
+# holds. A non-interactive `docker exec` uses this image's own ENV PATH, where
+# these win. Accepted, not fixed: fetching at build time is what the network
 # constraint above forbids.
 #
-# `openRepoShape --version` prints `(opensoft/openRepoShape @ main)`, not the
-# pinned commit: $OPENREPOSHAPE_REF defaults to `main` upstream and this image
-# does not set it. The identity of these bytes is ../upstream-pin.yaml, not
-# what the command says about itself.
+# `openRepoShape --version` prints `openRepoShape (opensoft/openRepoShape @
+# main)` and `openRepoTools --version` prints `openRepoTools
+# (opensoft/openRepoTools @ main)` — neither the pinned commit: each shim's
+# own `_REF` defaults to `main` upstream and this image sets neither override.
+# The identity of these bytes is ../upstream-pin.yaml, not what either command
+# says about itself.
 COPY files/openreposhape/openRepoShape /usr/local/bin/openRepoShape
-COPY files/openreposhape/park /usr/local/bin/park
-COPY files/openreposhape/resume /usr/local/bin/resume
-RUN chmod 0755 /usr/local/bin/openRepoShape /usr/local/bin/park /usr/local/bin/resume
+COPY files/openrepotools/openRepoTools /usr/local/bin/openRepoTools
+COPY files/openrepotools/park /usr/local/bin/park
+COPY files/openrepotools/resume /usr/local/bin/resume
+RUN chmod 0755 /usr/local/bin/openRepoShape /usr/local/bin/openRepoTools \
+    /usr/local/bin/park /usr/local/bin/resume
 
 # ========================================
 # AI META-HARNESS (OMNIGENT)

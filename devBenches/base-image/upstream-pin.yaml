@@ -43,14 +43,24 @@ sources:
     source_repository: opensoft/openRepoShape
     materialization: copied
     revision_kind: commit
-    commit: "d090a7a141048b214f0420a8c7afbfff62472d1a"
+    commit: "0fa73b7df704266589dcc27afca020c0127fa36f"
     vendor_dir: files/openreposhape
     files:
       - path: openRepoShape
-        sha256: "dd273fc39e6771a87450bb1b71fda6f8b728a2ddba3f1c0e44106e7f865b6e3a"
-      - path: park
-        sha256: "432f00236053d3648a061d12c02d9f449982f8a17f100f39de78f41f9013ad13"
-      - path: resume
-        sha256: "3953174297b30a41eb0ae8a57dc59fdb25d2afc3248192dda679501e503566fa"
+        sha256: "32ca582b7990c9ca29e5dcf142d51661bf3543f7bda4bfdb890ba9ee34e18bbb"
       - path: templates/assembly-root/project.yaml
         sha256: "45a0fb89f7f7f873665d24c0d26a79dab5113364808bd61e914eb07f46eab0c7"
+
+  - id: openrepotools
+    source_repository: opensoft/openRepoTools
+    materialization: copied
+    revision_kind: commit
+    commit: "9fbf01c789c311aa7c190b238a3df48ea39473e1"
+    vendor_dir: files/openrepotools
+    files:
+      - path: openRepoTools
+        sha256: "e1996322a0fc898edf271ad8fc66837b54410e8dc93880b9c13149421ba9ffe9"
+      - path: park
+        sha256: "5048a7db16bcf68b5b976d96b9ee9c44ee6fa17a2e548c4c4fc825064bb84239"
+      - path: resume
+        sha256: "a5a147f89cf9a1b97a0d8c1e8868d17323e41b238f96d9e59d8ddd766af387eb"
