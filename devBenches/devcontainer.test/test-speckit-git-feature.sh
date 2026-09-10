@@ -2687,7 +2687,7 @@ test_resume_refuses_on_divergence() {
     assert_contains_block "$stderr_file" \
 "Error: 001-routing-core (spec leg) has moved since it was parked; that feature was NOT recreated.
   parked commit  $RESUME_PARKED_SPEC   (parked $parked_at on Fixture)
-  current tip    $foreign_tip      (origin/001-routing-core)
+  current tip    $foreign_tip   (origin/001-routing-core)
 Nothing is ever reset over commits this workspace did not park. Reconcile by hand:
   git -C spec fetch origin 001-routing-core
   git -C spec log --oneline $RESUME_PARKED_SPEC..origin/001-routing-core

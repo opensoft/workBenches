@@ -201,7 +201,11 @@ Inside whichever repository is chosen, the manifest is
 else `workspaces/<org>/<project id>.yaml`. `<org>` is the owner segment of the
 family holder's or the project's declared `repository:` (`opensoft/openRepoShape`
 → `opensoft`), falling back to the root's `origin` remote and then to `local`
-for a checkout that declares no owner at all — one workspace repository can
+for a checkout that declares no owner at all. `local` therefore appears only
+when neither `family.yaml` nor `project.yaml` carries a `repository:` and the
+`origin` remote is a filesystem path rather than a hosted URL — a single
+repository cloned from a path on the same machine, say. One workspace
+repository can
 track work across several orgs, and two projects that share an id in different
 orgs must never share a file. Any segment outside `[A-Za-z0-9._-]+` is refused
 rather than sanitised. The file records branches, commits and a relative

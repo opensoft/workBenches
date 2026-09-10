@@ -509,7 +509,7 @@ while [ "$selection" -lt "${#SELECTED_INDEXES[@]}" ]; do
         if [ "$remote_tip" != "$parked_commit" ]; then
             >&2 echo "Error: $branch ($role leg) has moved since it was parked; that feature was NOT recreated."
             >&2 echo "  parked commit  $parked_commit   (parked $MANIFEST_PARKED_AT on $MANIFEST_PARKED_ON)"
-            >&2 echo "  current tip    $remote_tip      (origin/$branch)"
+            >&2 echo "  current tip    $remote_tip   (origin/$branch)"
             >&2 echo "Nothing is ever reset over commits this workspace did not park. Reconcile by hand:"
             >&2 echo "  git -C $mount fetch origin $branch"
             >&2 echo "  git -C $mount log --oneline $parked_commit..origin/$branch"
