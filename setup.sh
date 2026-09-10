@@ -176,6 +176,16 @@ if [ -x "${SCRIPT_DIR}/scripts/setup-shell.sh" ]; then
     echo ""
 fi
 
+# Estate commands (openRepoShape, openRepoTools, park, resume) come from
+# workBenches' own vendored pin and are placed by their own installers; see
+# scripts/setup-estate-commands.sh. Best-effort, like the other host-user
+# steps here: it never fails setup.sh. WORKBENCHES_SKIP_ESTATE_COMMANDS=1 skips it.
+log_header "ESTATE COMMANDS"
+if [ -x "${SCRIPT_DIR}/scripts/setup-estate-commands.sh" ]; then
+    "${SCRIPT_DIR}/scripts/setup-estate-commands.sh" || echo "⚠ Estate command install skipped or failed; continuing workBenches setup."
+    echo ""
+fi
+
 # Claude workflow setup is host-user state. The benches bind-mount ~/.claude, so
 # seed it before any container build without overwriting existing user workflows.
 log_header "CLAUDE WORKFLOW SETUP"
