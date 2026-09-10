@@ -21,7 +21,7 @@ After setup, open any bench in VS Code → "Reopen in Container" to start develo
 
 ### Re-running setup.sh
 
-Safe to run repeatedly. Installed benches show `✓ up to date` and are skipped. Only new selections or missing images trigger builds.
+Safe to run repeatedly. Installed benches show `✓ up to date` and are skipped. Only new selections or missing images trigger builds. The estate commands (`openRepoShape`, `openRepoTools`, `park`, `resume`) are checked against workBenches' pin on every run and are re-placed only when a host copy differs from it.
 
 ## Docker Image Layers
 
@@ -81,6 +81,8 @@ setup.sh
   ├── Layer 1 builds (dev-bench-base, sys-bench-base, bio-bench-base)
   └── Summary + log file path
 ```
+
+Your host's `openRepoShape`, `openRepoTools`, `park` and `resume` commands come from workBenches' own pin (`devBenches/base-image/upstream-pin.yaml`). `setup.sh` places them from the vendored copies in `devBenches/base-image/files/openreposhape/` and `devBenches/base-image/files/openrepotools/`, and re-places them whenever a host copy differs from the pin, in either direction — behind, ahead, or hand-edited. To move them to a new upstream commit, move the pin with `update-upstream.py apply` and re-run `setup.sh`; do not edit the vendored files or the installed commands directly. The step refuses to run over a symlinked, non-regular, or read-only target, and verifies the four placed files against the vendored copies before it reports success. Set `WORKBENCHES_SKIP_ESTATE_COMMANDS=1` to skip this step.
 
 ## Wave Terminal Widgets
 

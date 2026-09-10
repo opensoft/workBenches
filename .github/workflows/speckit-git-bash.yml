@@ -17,6 +17,9 @@ on:
       - devBenches/base-image/update-upstream.py
       - devBenches/base-image/files/openreposhape/**
       - devBenches/base-image/files/openrepotools/**
+      - scripts/setup-estate-commands.sh
+      - devcontainer.test/test-setup-estate-commands.sh
+      - setup.sh
   pull_request:
     paths:
       - .github/workflows/speckit-git-bash.yml
@@ -33,6 +36,9 @@ on:
       - devBenches/base-image/update-upstream.py
       - devBenches/base-image/files/openreposhape/**
       - devBenches/base-image/files/openrepotools/**
+      - scripts/setup-estate-commands.sh
+      - devcontainer.test/test-setup-estate-commands.sh
+      - setup.sh
   workflow_dispatch:
 
 permissions:
@@ -66,6 +72,9 @@ jobs:
 
       - name: Check the vendored upstream copies against their pin
         run: python3 ./devBenches/base-image/update-upstream.py check
+
+      - name: Run the setup-estate-commands regression test
+        run: bash ./devcontainer.test/test-setup-estate-commands.sh
 
       - name: Run bootstrap suite
         run: bash ./devBenches/devcontainer.test/test-openspeckit-bootstrap.sh
