@@ -13,6 +13,10 @@ on:
       - devBenches/base-image/files/claude/commands/opsx/**
       - base-image/files/claude/skills/speckit-clarify/SKILL.md
       - devBenches/base-image/files/ct/ct-functions.zsh
+      - devBenches/base-image/upstream-pin.yaml
+      - devBenches/base-image/update-upstream.py
+      - devBenches/base-image/files/openreposhape/**
+      - devBenches/base-image/files/openrepotools/**
   pull_request:
     paths:
       - .github/workflows/speckit-git-bash.yml
@@ -25,6 +29,10 @@ on:
       - devBenches/base-image/files/claude/commands/opsx/**
       - base-image/files/claude/skills/speckit-clarify/SKILL.md
       - devBenches/base-image/files/ct/ct-functions.zsh
+      - devBenches/base-image/upstream-pin.yaml
+      - devBenches/base-image/update-upstream.py
+      - devBenches/base-image/files/openreposhape/**
+      - devBenches/base-image/files/openrepotools/**
   workflow_dispatch:
 
 permissions:
@@ -55,6 +63,9 @@ jobs:
           bash --version | sed -n '1p'
           python3 --version
           zsh --version
+
+      - name: Check the vendored upstream copies against their pin
+        run: python3 ./devBenches/base-image/update-upstream.py check
 
       - name: Run bootstrap suite
         run: bash ./devBenches/devcontainer.test/test-openspeckit-bootstrap.sh
