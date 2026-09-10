@@ -384,6 +384,8 @@ else
     HAS_GIT=false
 fi
 
+# get_config_value in git-common.sh reads CONFIG_FILE.
+# shellcheck disable=SC2034
 CONFIG_FILE="$REPO_ROOT/.specify/extensions/git/git-config.yml"
 
 branch_token() {

@@ -34,6 +34,9 @@ OVERLAY_SHAPE_MARKER: Final = "# speckit-overlay-shape: 1"
 OVERLAY_SHAPE_MARKER_FILES: Final = (
     "scripts/bash/create-new-feature.sh",
     "scripts/bash/git-common.sh",
+    "scripts/bash/park.sh",
+    "scripts/bash/resume.sh",
+    "scripts/bash/workspace-common.sh",
 )
 DIRECTORY_OPEN_FLAGS: Final = (
     os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -44,13 +47,18 @@ WORKTREE_GIT_OVERLAY_REQUIRED_FILES: Final = (
     "commands/speckit.git.commit.md",
     "commands/speckit.git.feature.md",
     "commands/speckit.git.initialize.md",
+    "commands/speckit.git.park.md",
     "commands/speckit.git.remote.md",
+    "commands/speckit.git.resume.md",
     "commands/speckit.git.validate.md",
     "scripts/bash/auto-commit.sh",
     "scripts/bash/create-new-feature.sh",
     "scripts/bash/get-last-worktree.sh",
     "scripts/bash/git-common.sh",
     "scripts/bash/initialize-repo.sh",
+    "scripts/bash/park.sh",
+    "scripts/bash/resume.sh",
+    "scripts/bash/workspace-common.sh",
     "scripts/powershell/auto-commit.ps1",
     "scripts/powershell/create-new-feature.ps1",
     "scripts/powershell/git-common.ps1",

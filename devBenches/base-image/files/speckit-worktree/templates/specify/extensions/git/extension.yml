@@ -32,6 +32,12 @@ provides:
     - name: speckit.git.commit
       file: commands/speckit.git.commit.md
       description: "Auto-commit changes after a Spec Kit command completes"
+    - name: speckit.git.park
+      file: commands/speckit.git.park.md
+      description: "Park every open feature: commit the work in progress, push it, and record the feature list"
+    - name: speckit.git.resume
+      file: commands/speckit.git.resume.md
+      description: "Resume parked features: recreate the worktrees, restore the state, and un-commit the parked work"
 
   config:
     - name: "git-config.yml"
