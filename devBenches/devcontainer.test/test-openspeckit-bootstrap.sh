@@ -3464,11 +3464,11 @@ make_fake_overlay_template() {
         "$root/specify/extensions/git/scripts/powershell" \
         "$root/specify/shell"
     printf '%s\n' 'name: git' > "$root/specify/extensions/git/extension.yml"
-    for overlay_command in commit feature initialize remote validate; do
+    for overlay_command in commit feature initialize park remote resume validate; do
         printf '%s\n' "# speckit.git.$overlay_command fixture" \
             > "$root/specify/extensions/git/commands/speckit.git.$overlay_command.md"
     done
-    for overlay_script in auto-commit create-new-feature get-last-worktree git-common initialize-repo; do
+    for overlay_script in auto-commit create-new-feature get-last-worktree git-common initialize-repo park resume workspace-common; do
         {
             printf '%s\n' '#!/usr/bin/env bash'
             printf '%s\n' 'set -euo pipefail'

@@ -384,36 +384,9 @@ else
     HAS_GIT=false
 fi
 
+# get_config_value in git-common.sh reads CONFIG_FILE.
+# shellcheck disable=SC2034
 CONFIG_FILE="$REPO_ROOT/.specify/extensions/git/git-config.yml"
-
-get_config_value() {
-    local key="$1"
-    local default_value="$2"
-    local env_override_name="${3:-}"
-
-    if [ -n "$env_override_name" ]; then
-        local override_value="${!env_override_name:-}"
-        if [ -n "$override_value" ]; then
-            printf '%s\n' "$override_value"
-            return 0
-        fi
-    fi
-
-    if [ -f "$CONFIG_FILE" ]; then
-        local line
-        line=$(grep -E "^[[:space:]]*$key:[[:space:]]*" "$CONFIG_FILE" | tail -n 1 || true)
-        if [ -n "$line" ]; then
-            local value="${line#*:}"
-            value=$(printf '%s' "$value" | sed -E "s/[[:space:]]+#.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^['\"]//; s/['\"]$//")
-            if [ -n "$value" ]; then
-                printf '%s\n' "$value"
-                return 0
-            fi
-        fi
-    fi
-
-    printf '%s\n' "$default_value"
-}
 
 branch_token() {
     local value="$1"
@@ -542,35 +515,6 @@ extract_feature_num_from_branch() {
     printf '%s\n' "$branch_name"
 }
 
-resolve_path_from_repo_root() {
-    local raw_path="$1"
-    if [[ "$raw_path" == /* ]]; then
-        printf '%s\n' "$raw_path"
-    elif command -v python3 >/dev/null 2>&1; then
-        python3 - "$REPO_ROOT" "$raw_path" <<'PY'
-import os
-import sys
-
-print(os.path.abspath(os.path.join(sys.argv[1], sys.argv[2])))
-PY
-    else
-        printf '%s\n' "$REPO_ROOT/$raw_path"
-    fi
-}
-
-resolve_git_common_dir() {
-    local common_dir
-    common_dir=$(git rev-parse --git-common-dir 2>/dev/null || true)
-    if [ -z "$common_dir" ]; then
-        return 1
-    fi
-    if [[ "$common_dir" == /* ]]; then
-        printf '%s\n' "$common_dir"
-    else
-        printf '%s\n' "$REPO_ROOT/$common_dir"
-    fi
-}
-
 resolve_base_ref() {
     local base_ref="$1"
 
@@ -671,34 +615,6 @@ shape_branch_exists_in_leg() {
     git -C "$leg" show-ref --verify --quiet "refs/heads/$branch"
 }
 
-shape_add_leg_worktree() {
-    local leg="$1"
-    local role="$2"
-    local path="$3"
-    local base_ref="$4"
-    local create_branch="$5"
-    local worktree_error=""
-
-    if [ "$create_branch" = true ]; then
-        if ! worktree_error=$(git -C "$leg" worktree add -b "$BRANCH_NAME" "$path" "$base_ref" 2>&1); then
-            >&2 echo "Error: Failed to create the $role leg worktree '$path' from '$base_ref'."
-            if [ -n "$worktree_error" ]; then
-                >&2 printf '%s\n' "$worktree_error"
-            fi
-            return 1
-        fi
-        return 0
-    fi
-
-    if ! worktree_error=$(git -C "$leg" worktree add "$path" "$BRANCH_NAME" 2>&1); then
-        >&2 echo "Error: Failed to add the $role leg worktree '$path' for existing branch '$BRANCH_NAME'."
-        if [ -n "$worktree_error" ]; then
-            >&2 printf '%s\n' "$worktree_error"
-        fi
-        return 1
-    fi
-}
-
 shape_rollback_spec_worktree() {
     local created_branch="$1"
 
@@ -710,37 +626,6 @@ shape_rollback_spec_worktree() {
         git -C "$SPEC_LEG" branch -D "$BRANCH_NAME" >/dev/null 2>&1 || true
     fi
     rmdir "$WORKTREE_PATH" >/dev/null 2>&1 || true
-}
-
-# Record the resolved feature directory in the ROOT's .specify/feature.json so
-# core check-prerequisites.sh resolves FEATURE_DIR without any change to core.
-shape_persist_feature_json() {
-    local relative_dir="$1"
-    local feature_json="$REPO_ROOT/.specify/feature.json"
-
-    if [ "$(type -t _persist_feature_json 2>/dev/null || true)" = "function" ]; then
-        _persist_feature_json "$REPO_ROOT" "$relative_dir"
-        return 0
-    fi
-
-    mkdir -p "$REPO_ROOT/.specify"
-    if command -v jq >/dev/null 2>&1; then
-        jq -cn --arg fd "$relative_dir" '{feature_directory:$fd}' > "$feature_json"
-    elif [ "$(type -t json_escape 2>/dev/null || true)" = "function" ]; then
-        printf '{"feature_directory":"%s"}\n' "$(json_escape "$relative_dir")" > "$feature_json"
-    elif command -v python3 >/dev/null 2>&1; then
-        python3 - "$feature_json" "$relative_dir" <<'PY'
-import json
-import sys
-
-with open(sys.argv[1], "w", encoding="utf-8") as stream:
-    json.dump({"feature_directory": sys.argv[2]}, stream)
-    stream.write("\n")
-PY
-    else
-        >&2 echo "Error: Writing .specify/feature.json requires jq or Python 3."
-        return 1
-    fi
 }
 
 shape_create_feature_worktrees() {
@@ -809,124 +694,6 @@ find_worktree_for_branch() {
     done
 
     return 1
-}
-
-select_json_encoder() {
-    if command -v jq >/dev/null 2>&1; then
-        printf '%s\n' jq
-    elif [ "$(type -t json_escape 2>/dev/null || true)" = "function" ]; then
-        printf '%s\n' json_escape
-    elif command -v python3 >/dev/null 2>&1; then
-        printf '%s\n' python3
-    else
-        return 1
-    fi
-}
-
-assert_state_file_safe() {
-    local state_file="$1"
-
-    if [ -L "$state_file" ] || { [ -e "$state_file" ] && [ ! -f "$state_file" ]; }; then
-        printf 'Error: Speckit state path must be a regular file or missing: %s\n' "$state_file" >&2
-        return 1
-    fi
-}
-
-write_last_worktree_state() {
-    local branch_name="$1"
-    local worktree_path="$2"
-    local base_branch="$3"
-    local state_file="$STATE_FILE"
-
-    [ -n "$state_file" ] || return 0
-    local common_dir="${state_file%/*}"
-    local updated_at
-    updated_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")
-
-    if ! python3 - "$common_dir" "${state_file##*/}" "$branch_name" "$worktree_path" "$base_branch" "$REPO_ROOT" "$updated_at" <<'PY'
-import errno
-import json
-import os
-import secrets
-import stat
-import sys
-from contextlib import ExitStack
-
-common_dir = sys.argv[1]
-state_name = sys.argv[2]
-payload = {
-    "BRANCH_NAME": sys.argv[3],
-    "WORKTREE_PATH": sys.argv[4],
-    "BASE_BRANCH": sys.argv[5],
-    "REPO_ROOT": sys.argv[6],
-    "UPDATED_AT": sys.argv[7],
-}
-serialized = (json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
-directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-temporary_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
-
-with ExitStack() as descriptors:
-    directory_fd = os.open("/", directory_flags)
-    descriptors.callback(os.close, directory_fd)
-    for component in common_dir.split("/"):
-        if component in ("", "."):
-            continue
-        directory_fd = os.open(component, directory_flags, dir_fd=directory_fd)
-        descriptors.callback(os.close, directory_fd)
-
-    temporary_name = ""
-    temporary_fd = -1
-    temporary_identity = None
-    try:
-        for _ in range(128):
-            temporary_name = ".speckit-last-worktree.json.tmp." + secrets.token_hex(8)
-            try:
-                temporary_fd = os.open(temporary_name, temporary_flags, 0o600, dir_fd=directory_fd)
-                break
-            except FileExistsError:
-                continue
-        else:
-            raise FileExistsError(errno.EEXIST, "could not create a unique state temporary")
-
-        descriptors.callback(os.close, temporary_fd)
-        temporary_identity = os.fstat(temporary_fd)
-        offset = 0
-        while offset < len(serialized):
-            offset += os.write(temporary_fd, serialized[offset:])
-        os.fchmod(temporary_fd, 0o600)
-        os.fsync(temporary_fd)
-
-        temporary_leaf = os.stat(temporary_name, dir_fd=directory_fd, follow_symlinks=False)
-        if not stat.S_ISREG(temporary_leaf.st_mode) or (
-            temporary_leaf.st_dev,
-            temporary_leaf.st_ino,
-        ) != (temporary_identity.st_dev, temporary_identity.st_ino):
-            raise OSError(errno.EPERM, "state temporary was replaced before publication")
-
-        try:
-            state_leaf = os.stat(state_name, dir_fd=directory_fd, follow_symlinks=False)
-        except FileNotFoundError:
-            state_leaf = None
-        if state_leaf is not None and not stat.S_ISREG(state_leaf.st_mode):
-            raise OSError(errno.EPERM, "Speckit state path must be a regular file or missing")
-
-        os.replace(temporary_name, state_name, src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
-        temporary_name = ""
-    finally:
-        if temporary_name and temporary_identity is not None:
-            try:
-                temporary_leaf = os.stat(temporary_name, dir_fd=directory_fd, follow_symlinks=False)
-            except FileNotFoundError:
-                temporary_leaf = None
-            if temporary_leaf is not None and (
-                temporary_leaf.st_dev,
-                temporary_leaf.st_ino,
-            ) == (temporary_identity.st_dev, temporary_identity.st_ino):
-                os.unlink(temporary_name, dir_fd=directory_fd)
-PY
-    then
-        return 1
-    fi
 }
 
 cd "$REPO_ROOT"
