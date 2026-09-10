@@ -4,6 +4,12 @@
 # workBenches' own vendored pin, and the script places them, re-places them
 # when they differ from the pin (either direction), and refuses to place
 # anything when the vendored copies themselves no longer match the pin.
+#
+# Scenarios (g)-(m) guard the adversarial review round's D1-D6 findings: a
+# symlinked target (D1), a directory target (D2), unpinned bytes reaching
+# the shims from the network (D3), a partial install across two independent
+# shim transactions (D4), the pin file itself missing, and the placed
+# files' mode.
 
 set -euo pipefail
 
@@ -65,6 +71,23 @@ assert_contains() {
     fi
 }
 
+assert_not_contains() {
+    local haystack="$1"
+    local needle="$2"
+    local label="$3"
+    if grep -Fq -- "$needle" <<<"$haystack"; then
+        fail "$label: output unexpectedly contains: $needle"
+    else
+        pass "$label"
+    fi
+}
+
+count_occurrences() {
+    # A bare `grep -c` with zero matches exits 1, which would abort this
+    # test script under `set -e` if not for the `|| true` guard here.
+    grep -Fc -- "$2" <<<"$1" || true
+}
+
 assert_file_executable() {
     local path="$1"
     local label="$2"
@@ -94,6 +117,15 @@ assert_empty_dir() {
     else
         fail "$label: $dir is not empty"
     fi
+}
+
+assert_mode() {
+    local path="$1"
+    local expected="$2"
+    local label="$3"
+    local actual
+    actual="$(stat -c '%a' "$path" 2>/dev/null || stat -f '%Lp' "$path" 2>/dev/null)"
+    assert_equal "$actual" "$expected" "$label"
 }
 
 # Independent of the script under test: read the two pinned commits straight
@@ -139,8 +171,13 @@ assert_contains "$OUTPUT_A" 'openRepoShape: installed at' 'fresh install reports
 assert_contains "$OUTPUT_A" 'openRepoTools: installed at' 'fresh install reports an installed verb for openRepoTools'
 assert_contains "$OUTPUT_A" 'park: installed at' 'fresh install reports an installed verb for park'
 assert_contains "$OUTPUT_A" 'resume: installed at' 'fresh install reports an installed verb for resume'
-# Scenario (f) folded in here: a brand-new temp dir is never on $PATH.
-assert_contains "$OUTPUT_A" "$BIN_A is not on \$PATH" 'fresh install warns that the bin dir is not on PATH, naming it'
+assert_contains "$OUTPUT_A" 'Estate commands verified against the vendored pin.' 'fresh install reports success only after post-install verification'
+# Scenario (f) folded in here: a brand-new temp dir is never on $PATH. Fix 4
+# removed this script's own PATH warning (the shims already print theirs),
+# so the substring must appear exactly twice -- once per shim -- not three
+# times.
+path_warning_count="$(count_occurrences "$OUTPUT_A" 'is not on $PATH')"
+assert_equal '2' "$path_warning_count" 'exactly two PATH warnings (one per shim; this script prints no third copy)'
 
 printf '%s\n' '--- Scenario (b): a second run over an already-installed bin dir reports unchanged ---'
 STATUS_B=0
@@ -200,6 +237,123 @@ OUTPUT_E="$(WORKBENCHES_SKIP_ESTATE_COMMANDS=1 OPENREPOSHAPE_BIN_DIR="$BIN_E" OP
 assert_equal '0' "$STATUS_E" 'skip-var run exit code'
 assert_contains "$OUTPUT_E" 'skipped' 'skip-var run says skipped'
 assert_empty_dir "$BIN_E" 'skip-var run installs nothing'
+
+printf '%s\n' '--- Scenario (g) [D1]: a symlinked target refuses, the link target is untouched ---'
+BIN_G="$TMPDIR_ROOT/bin-g"
+OTHER_REPO_G="$TMPDIR_ROOT/other-repo-g"
+mkdir -p "$BIN_G" "$OTHER_REPO_G"
+printf '#!/bin/bash\necho other repo park, not workBenches'"'"'s\n' > "$OTHER_REPO_G/park"
+chmod +x "$OTHER_REPO_G/park"
+LINK_TARGET_BEFORE="$(cat "$OTHER_REPO_G/park")"
+ln -s "$OTHER_REPO_G/park" "$BIN_G/park"
+STATUS_G=0
+OUTPUT_G="$(OPENREPOSHAPE_BIN_DIR="$BIN_G" OPENREPOTOOLS_BIN_DIR="$BIN_G" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_G=$?
+
+assert_equal '1' "$STATUS_G" 'symlinked park target exit code'
+assert_contains "$OUTPUT_G" "$BIN_G/park" 'the refusal names the symlinked path'
+assert_contains "$OUTPUT_G" 'symlink' 'the refusal says it is a symlink'
+assert_equal "$LINK_TARGET_BEFORE" "$(cat "$OTHER_REPO_G/park")" 'the symlink target file is byte-for-byte unchanged'
+assert_equal '1' "$(find "$BIN_G" -mindepth 1 | wc -l | tr -d ' ')" 'no other target was placed into the bin dir (only the pre-existing symlink remains)'
+
+printf '%s\n' '--- Scenario (h) [D2]: a directory target refuses, nothing is placed ---'
+BIN_H="$TMPDIR_ROOT/bin-h"
+mkdir -p "$BIN_H/park"
+STATUS_H=0
+OUTPUT_H="$(OPENREPOSHAPE_BIN_DIR="$BIN_H" OPENREPOTOOLS_BIN_DIR="$BIN_H" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_H=$?
+
+assert_equal '1' "$STATUS_H" 'directory-target park exit code'
+assert_contains "$OUTPUT_H" "$BIN_H/park" 'the refusal names the directory path'
+assert_contains "$OUTPUT_H" 'not a regular file' 'the refusal says it is not a regular file'
+assert_equal '0' "$(find "$BIN_H/park" -mindepth 1 | wc -l | tr -d ' ')" 'nothing was copied into the directory standing in for park'
+
+printf '%s\n' '--- Scenario (i) [D4 regression guard]: a read-only pre-seeded park refuses before ANY placement ---'
+BIN_I="$TMPDIR_ROOT/bin-i"
+mkdir -p "$BIN_I"
+cp "$PARK_VENDOR" "$BIN_I/park"
+chmod 0444 "$BIN_I/park"
+STATUS_I=0
+OUTPUT_I="$(OPENREPOSHAPE_BIN_DIR="$BIN_I" OPENREPOTOOLS_BIN_DIR="$BIN_I" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_I=$?
+
+assert_equal '1' "$STATUS_I" 'read-only park exit code'
+assert_contains "$OUTPUT_I" 'not writable' 'the refusal says park is not writable'
+assert_equal '0' "$([ -e "$BIN_I/openRepoShape" ] && echo 1 || echo 0)" 'openRepoShape was NOT placed (D4 regression guard)'
+assert_equal '0' "$([ -e "$BIN_I/openRepoTools" ] && echo 1 || echo 0)" 'openRepoTools was NOT placed (D4 regression guard)'
+assert_equal '0' "$([ -e "$BIN_I/resume" ] && echo 1 || echo 0)" 'resume was NOT placed (D4 regression guard)'
+chmod 0755 "$BIN_I/park"
+
+printf '%s\n' '--- Scenario (j): a base-image copy with upstream-pin.yaml deleted refuses with exit 2 ---'
+NOPIN_BASE="$TMPDIR_ROOT/nopin-base-image"
+mkdir -p "$NOPIN_BASE"
+cp -r "$BASE_IMAGE_DIR/." "$NOPIN_BASE/"
+rm -f "$NOPIN_BASE/upstream-pin.yaml"
+BIN_J="$TMPDIR_ROOT/bin-j"
+mkdir -p "$BIN_J"
+STATUS_J=0
+OUTPUT_J="$(OPENREPOSHAPE_BIN_DIR="$BIN_J" OPENREPOTOOLS_BIN_DIR="$BIN_J" WORKBENCHES_BASE_IMAGE_DIR="$NOPIN_BASE" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_J=$?
+
+assert_equal '2' "$STATUS_J" 'missing pin file exit code'
+assert_contains "$OUTPUT_J" 'missing' 'the refusal says the pin is missing'
+assert_empty_dir "$BIN_J" 'missing-pin run installs nothing'
+
+printf '%s\n' '--- Scenario (k) [D3]: resume'"'"'s row AND vendored file both removed the documented way ---'
+NOROW_BASE="$TMPDIR_ROOT/norow-base-image"
+mkdir -p "$NOROW_BASE"
+cp -r "$BASE_IMAGE_DIR/." "$NOROW_BASE/"
+NOROW_COMMIT="$(pin_commit_for openrepotools)"
+(cd "$NOROW_BASE" && python3 update-upstream.py apply --source openrepotools --at "$NOROW_COMMIT" --remove resume --yes) >"$TMPDIR_ROOT/norow-apply.log" 2>&1
+if ! grep -Fq 'deleted   files/openrepotools/resume' "$TMPDIR_ROOT/norow-apply.log"; then
+    fail "scenario (k) setup: 'apply --remove resume' did not report deleting the file; see $TMPDIR_ROOT/norow-apply.log"
+fi
+NOROW_CHECK_STATUS=0
+python3 "$NOROW_BASE/update-upstream.py" check >"$TMPDIR_ROOT/norow-check.log" 2>&1 || NOROW_CHECK_STATUS=$?
+assert_equal '0' "$NOROW_CHECK_STATUS" "scenario (k) setup: 'check' passes on the row-and-file-removed copy (this is the D3 precondition)"
+
+BIN_K="$TMPDIR_ROOT/bin-k"
+mkdir -p "$BIN_K"
+STATUS_K=0
+OUTPUT_K="$(OPENREPOSHAPE_BIN_DIR="$BIN_K" OPENREPOTOOLS_BIN_DIR="$BIN_K" WORKBENCHES_BASE_IMAGE_DIR="$NOROW_BASE" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_K=$?
+
+assert_equal '2' "$STATUS_K" 'row-and-file-removed resume exit code'
+assert_contains "$OUTPUT_K" 'resume' 'the pre-flight refusal names resume'
+assert_empty_dir "$BIN_K" 'nothing was installed for the row-and-file-removed copy'
+assert_not_contains "$OUTPUT_K" 'fetch' 'the output contains no attempted-fetch line'
+assert_not_contains "$OUTPUT_K" 'github' 'the output contains no github reference'
+
+printf '%s\n' '--- Scenario (l): every placed file is mode 0755 ---'
+assert_mode "$BIN_A/openRepoShape" '755' 'placed openRepoShape is mode 0755'
+assert_mode "$BIN_A/openRepoTools" '755' 'placed openRepoTools is mode 0755'
+assert_mode "$BIN_A/park" '755' 'placed park is mode 0755'
+assert_mode "$BIN_A/resume" '755' 'placed resume is mode 0755'
+
+printf '%s\n' '--- Scenario (m): the operator'"'"'s own *_REF/*_REPO are overridden by the sentinel, not used ---'
+# Dynamically: an operator's environment must not change the happy-path
+# outcome (this would also be true without the fix, since neither shim
+# fetches when every file is already present -- but it is still a real
+# regression guard: it proves the override does not itself break anything).
+BIN_M="$TMPDIR_ROOT/bin-m"
+mkdir -p "$BIN_M"
+STATUS_M=0
+OUTPUT_M="$(OPENREPOSHAPE_REF='operator-branch' OPENREPOTOOLS_REF='operator-branch' \
+    OPENREPOSHAPE_REPO='operator/fork' OPENREPOTOOLS_REPO='operator/fork' \
+    OPENREPOSHAPE_BIN_DIR="$BIN_M" OPENREPOTOOLS_BIN_DIR="$BIN_M" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_M=$?
+assert_equal '0' "$STATUS_M" 'an operator-set REF/REPO does not change the happy-path exit code'
+assert_not_contains "$OUTPUT_M" 'operator-branch' "the operator's REF value never reaches the output"
+assert_not_contains "$OUTPUT_M" 'operator/fork' "the operator's REPO value never reaches the output"
+assert_identical "$BIN_M/resume" "$RESUME_VENDOR" 'resume is still placed correctly from the vendored copy, not fetched'
+# Statically: neither shim echoes REPO/REF on the happy path at all (only on
+# --version, or inside a fetch-failure message -- and this script's own
+# pre-flight makes a fetch unreachable through its front door once every
+# file is proven present and pinned, which is exactly what scenario (k)
+# proves for the one file that COULD have gone missing). So the only way to
+# show the override itself -- not just its harmlessness -- is to read the
+# source for the four fixed exports, which is what the reviewer's own
+# fallback clause invited ("assert instead by a method you can justify, or
+# drop (m) and say so"): this is that method.
+SCRIPT_SOURCE="$(cat "$SCRIPT_UNDER_TEST")"
+for var in OPENREPOSHAPE_REPO OPENREPOSHAPE_REF OPENREPOTOOLS_REPO OPENREPOTOOLS_REF; do
+    assert_contains "$SCRIPT_SOURCE" "export $var=\"\$ESTATE_SENTINEL\"" "the script source exports $var to the fixed sentinel before installing"
+done
 
 if (( failures == 0 )); then
     printf '%s\n' 'GREEN: setup-estate-commands regression test passed'
