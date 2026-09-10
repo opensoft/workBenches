@@ -1,0 +1,56 @@
+schema_version: 1
+kind: pinned_copy_manifest
+
+# ===========================================================================
+# upstream-pin.yaml — the files this repository holds COPIES of, per source
+# repository, at a commit.
+#
+# A COPY PIN, and not a build-time fetch either. The Docker build cannot reach
+# github.com reliably: a VPN tunnel's MTU breaks TLS mid-clone, which is why
+# the Oh My Zsh plugins come from apt rather than a `git clone`. So the bytes
+# live here, and their identity is these rows.
+#
+# EDITING A VENDORED COPY IS DRIFT AND IS REPORTED AS SUCH.
+# `update-upstream.py check` recomputes every sha256 below, in CI and in the
+# devcontainer suite. The exit from a drift finding is to restore the bytes or
+# to take a new upstream commit ON PURPOSE — never to recompute the row, which
+# records the local edit as the upstream.
+#
+# EVERY FILE UNDER A `vendor_dir` IS A PINNED COPY, by construction: one with
+# no row below is a finding as loud as a changed byte.
+#
+# Each source's `commit:` and every `sha256:` are WRITTEN BY
+# `update-upstream.py apply`; do not hand-edit them, and do not put a comment
+# between two `files:` rows, because `apply` re-emits that block. A NEW source
+# is a human's decision, so its block — id, repository, vendor_dir and the
+# `path:` rows it wants — is hand-written ONCE, with no digests, and the first
+# `apply` fills them in. Everything else in this file survives an `apply` byte
+# for byte.
+#
+# `vendor_dir` is relative to THIS file's directory. `path` is both the path
+# in the source repository and the path under `vendor_dir`: one string, two
+# meanings, because the vendored tree mirrors the upstream's own layout.
+#
+# There is deliberately NO `digests.tree_sha256` here, unlike openRepoShape's
+# `shape-pin.yaml`: nothing is mounted, so no offline run could ever recompute
+# it, and a number no run checks is decoration.
+# ===========================================================================
+
+digest_algorithm: sha256
+
+sources:
+  - id: openreposhape
+    source_repository: opensoft/openRepoShape
+    materialization: copied
+    revision_kind: commit
+    commit: "d090a7a141048b214f0420a8c7afbfff62472d1a"
+    vendor_dir: files/openreposhape
+    files:
+      - path: openRepoShape
+        sha256: "dd273fc39e6771a87450bb1b71fda6f8b728a2ddba3f1c0e44106e7f865b6e3a"
+      - path: park
+        sha256: "432f00236053d3648a061d12c02d9f449982f8a17f100f39de78f41f9013ad13"
+      - path: resume
+        sha256: "3953174297b30a41eb0ae8a57dc59fdb25d2afc3248192dda679501e503566fa"
+      - path: templates/assembly-root/project.yaml
+        sha256: "45a0fb89f7f7f873665d24c0d26a79dab5113364808bd61e914eb07f46eab0c7"
