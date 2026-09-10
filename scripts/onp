@@ -1,17 +1,13 @@
-#!/bin/bash
-
-# onp (Opensoft New Project) - Command wrapper for workBenches new-project.sh
-# This script forwards all arguments to the new-project.sh script in the workBenches directory
-
-# Find the workBenches directory by locating this script's installation source
-WORKBENCHES_DIR="/home/brett/projects/workBenches"
-
-# Check if the new-project.sh script exists
-if [ ! -f "$WORKBENCHES_DIR/scripts/new-project.sh" ]; then
-    echo "Error: workBenches new-project.sh not found at $WORKBENCHES_DIR/scripts/new-project.sh"
-    echo "Please ensure workBenches is properly installed."
-    exit 1
+#!/usr/bin/env bash
+# Legacy name/parent arguments are handled by project new.
+set -euo pipefail
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$script_dir/new-project.sh" ]; then
+    exec bash "$script_dir/new-project.sh" "$@"
 fi
-
-# Execute new-project.sh with all forwarded arguments
-exec "$WORKBENCHES_DIR/scripts/new-project.sh" "$@"
+# setup-workbenches also supports copying onp beside the installed executable.
+if [ -f "$script_dir/project" ]; then
+    exec python3 "$script_dir/project" new "$@"
+fi
+echo 'project is not installed; run workBenches/scripts/setup-project-command.py' >&2
+exit 2

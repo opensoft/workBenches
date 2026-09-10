@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# workBenches owns discovery of its installation; openRepoProject owns the CLI.
+set -euo pipefail
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export WORKBENCHES_ROOT="${WORKBENCHES_ROOT:-$(dirname "$script_dir")}"
+project_bin="${OPENREPOPROJECT_BIN_DIR:-$HOME/.local/bin}/project"
+if [ ! -f "$project_bin" ] || [ "$project_bin" -ef "$script_dir/project" ]; then
+    echo 'project is not installed. Run: python3 scripts/setup-project-command.py' >&2
+    exit 2
+fi
+exec python3 "$project_bin" "$@"

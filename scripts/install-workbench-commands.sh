@@ -24,6 +24,7 @@ print_error() { echo -e "${RED}❌ $1${NC}"; }
 
 # Commands to install globally
 declare -A COMMANDS=(
+    ["project"]="Create, inspect, diagnose and maintain projects"
     ["launchBench"]="Universal bench launcher with AI-powered routing"
     ["onp"]="Opensoft New Project - Quick project creation command"
     ["new-workspace"]="Intelligent workspace creator - routes to Frappe, Flutter, .NET, etc."
@@ -211,6 +212,9 @@ install_commands() {
     fi
     
     print_info "Installing to: $install_dir"
+
+    # Install the authoritative executable; do not replace it with a wrapper.
+    python3 "$SCRIPT_DIR/setup-project-command.py" --bin-dir "$install_dir" || return $?
     
     # Store workbenches path for wrappers
     echo "$WORKBENCHES_ROOT" > "$install_dir/.workbenches-path"
@@ -218,6 +222,11 @@ install_commands() {
     # Install each command
     local installed_count=0
     for cmd_name in "${!COMMANDS[@]}"; do
+        if [ "$cmd_name" = "project" ]; then
+            # Already installed and verified by its dedicated installer above.
+            installed_count=$((installed_count + 1))
+            continue
+        fi
         local cmd_desc="${COMMANDS[$cmd_name]}"
         local source_script=""
         

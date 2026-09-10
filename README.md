@@ -1,5 +1,47 @@
 # workBenches
 
+## Project command
+
+Generic project creation now lives in
+[openRepoProject](https://github.com/opensoft/openRepoProject). workBenches
+installs its `project` executable during setup and command installation:
+
+```sh
+python3 scripts/setup-project-command.py
+project benches
+project new MyApp --bench flutterBench --type flutter --dry-run
+project status MyApp
+project doctor MyApp
+project update MyApp
+```
+
+`onp NAME [PARENT]` and `scripts/new-project.sh NAME [PARENT]` forward to
+`project new` and accept its flags. Bench-specific generators remain owned by
+their bench repositories. The creation list excludes update scripts and reports
+configured scripts that are not installed.
+
+`config/openrepoproject-pin.json` identifies an exact source commit and executable
+SHA-256. The installer tries the authenticated GitHub API before raw download,
+verifies bytes before replacing anything, and installs atomically. A failed
+download/digest check preserves the existing executable. A symlink, directory,
+or read-only target refuses. Python 3.10+ is required; YAML inspection needs
+PyYAML, available in the development bench.
+
+Use `--source /path/to/openRepoProject/project` for offline installation of the
+same pinned bytes, `--bin-dir PATH` for another command directory, or
+`WORKBENCHES_SKIP_PROJECT_COMMAND=1` to skip. The installer records this checkout
+in the host-local `.workbenches-path` beside the command; `WORKBENCHES_ROOT`
+overrides it at runtime.
+
+When advancing the pin, first publish the tested source commit, obtain `project`
+from that commit, compute its SHA-256, and update both fields in one change. If
+the source PR will squash-merge, re-pin to the resulting main commit before
+landing the workBenches integration. Never adjust the digest to accept drift.
+
+Offline integration tests: `python3 devcontainer.test/test-project-command.py`
+inside a Python workBench. Command behavior and migration notes live in
+openRepoProject's README and `docs/migration-review.md`.
+
 A layered Docker-based development environment system. Each "bench" is a self-contained devcontainer for a specific tech stack (Flutter, Java, .NET, Python, Frappe, C++, etc.) built on shared base images.
 
 ## Quick Start
