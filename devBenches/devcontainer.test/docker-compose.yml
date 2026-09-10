@@ -10,6 +10,15 @@ services:
     volumes:
       # Mount test script
       - .:/test:cached
+
+      # The pinned openRepoShape copies and their pin checker.
+      # test-speckit-git-feature.sh DERIVES its three-leg project.yaml from
+      # files/openreposhape/templates/assembly-root/project.yaml and runs
+      # update-upstream.py over the vendored copies. The image deliberately
+      # installs the estate COMMANDS and not these templates, so the suite
+      # cannot find them on PATH or under /usr/local/share; read-only is
+      # enough, because `check` writes nothing.
+      - ../base-image:/test-fixtures/base-image:ro
       
     command: sleep infinity
     
@@ -19,3 +28,7 @@ services:
       - HOME=/home/${USER:-brett}
       # PATH for dev tools
       - PATH=/home/${USER:-brett}/.local/bin:/home/${USER:-brett}/.npm-global/bin:/home/${USER:-brett}/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      # Where the suite finds the pinned openRepoShape fixture inputs when
+      # only this directory is mounted as the workspace.
+      - OPENREPOSHAPE_TEMPLATE_ROOT=/test-fixtures/base-image/files/openreposhape/templates
+      - UPDATE_UPSTREAM_FILE=/test-fixtures/base-image/update-upstream.py

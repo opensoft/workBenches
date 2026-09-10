@@ -17,6 +17,24 @@ WORKSPACE_COMMON_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/bash/work
 PARK_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/bash/park.sh"
 RESUME_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/bash/resume.sh"
 SELECT_WORKTREE_SCRIPT="$TEMPLATE_ROOT/specify/shell/select-worktree.sh"
+
+# The pinned openRepoShape files this suite READS. The three-leg fixture's
+# manifest is derived from the assembly-root template
+# (write_three_leg_manifest), and one scenario runs the pin checker over the
+# vendored copies themselves.
+#
+# TWO ways, not the three above: the image deliberately does NOT carry these
+# templates — they are a fixture input, not a command, and
+# devBenches/base-image/Dockerfile says so — so there is no
+# /usr/local/share fallback to invent. A run with only devcontainer.test/
+# mounted names them through the environment instead, which is what this
+# directory's own docker-compose.yml does.
+SOURCE_SHAPE_TEMPLATE_ROOT="$REPO_ROOT/devBenches/base-image/files/openreposhape/templates"
+SHAPE_TEMPLATE_ROOT="${OPENREPOSHAPE_TEMPLATE_ROOT:-$SOURCE_SHAPE_TEMPLATE_ROOT}"
+THREE_LEG_MANIFEST_TEMPLATE="$SHAPE_TEMPLATE_ROOT/assembly-root/project.yaml"
+SOURCE_UPDATE_UPSTREAM_FILE="$REPO_ROOT/devBenches/base-image/update-upstream.py"
+UPDATE_UPSTREAM_FILE="${UPDATE_UPSTREAM_FILE:-$SOURCE_UPDATE_UPSTREAM_FILE}"
+
 REAL_GIT="$(command -v git)"
 
 FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/speckit-git-feature.XXXXXX")"
@@ -25,6 +43,19 @@ trap 'rm -rf "$FIXTURE_ROOT"' EXIT
 for required_script in "$FEATURE_SCRIPT" "$GET_LAST_WORKTREE_SCRIPT" "$GIT_COMMON_SCRIPT" "$AUTO_COMMIT_SCRIPT" "$WORKSPACE_COMMON_SCRIPT" "$PARK_SCRIPT" "$RESUME_SCRIPT" "$SELECT_WORKTREE_SCRIPT"; do
     if [ ! -x "$required_script" ]; then
         printf 'Checked-in Speckit script is missing or not executable: %s\n' "$required_script" >&2
+        exit 1
+    fi
+done
+
+# `[ -f ]` and not `[ -x ]`: the manifest template is data, and the pin checker
+# is invoked through `python3`. Both are vendored under
+# devBenches/base-image/files/openreposhape/ and pinned by
+# devBenches/base-image/upstream-pin.yaml.
+for required_file in "$THREE_LEG_MANIFEST_TEMPLATE" "$UPDATE_UPSTREAM_FILE"; do
+    if [ ! -f "$required_file" ]; then
+        printf 'Pinned openRepoShape fixture input is missing: %s\n' "$required_file" >&2
+        printf 'Set $OPENREPOSHAPE_TEMPLATE_ROOT and $UPDATE_UPSTREAM_FILE when only\n' >&2
+        printf 'devBenches/devcontainer.test/ is mounted; the image does not carry them.\n' >&2
         exit 1
     fi
 done
@@ -1499,74 +1530,126 @@ add_local_submodule() {
     git -C "$repo" submodule add -q "$source" "$mount"
 }
 
-# The manifest mirrors openRepoShape's assembly-root template with dummy
-# values. The comment block and the nested `naming:` records are deliberate:
-# a naive parser would read the commented `role:` lines, or the code leg's
-# nested `role: spec`, and mount the legs in the wrong place.
+# The three-leg fixture's manifest is DERIVED from the pinned copy of
+# openRepoShape's own assembly-root template, not hand-mirrored: every
+# `{{PLACEHOLDER}}` is substituted with a dummy value and the derivation
+# REFUSES if any survives. A field the standard adds therefore fails here,
+# loudly, instead of leaving a fixture that quietly stops resembling the thing
+# it stands for. The template's own ~140-line comment block reaches the
+# readers with it, which is the point: `workspace_read_scalar`,
+# `workspace_project_repository` and `load_repo_shape` all strip comments
+# before anything else, and this is the run that says so.
+#
+# The nested `naming:` records are the deliberate trap, and they arrive
+# through the substituted values: a naive parser that takes the last `role:`
+# it saw reads the CODE leg's nested `role: spec` and mounts that leg at
+# spec/. The commented decoy leg is the FIXTURE's own and is appended after
+# substitution — the template carries no commented leg block.
 write_three_leg_manifest() {
     local manifest="$1"
 
-    cat > "$manifest" <<'YAML'
-schema_version: 1
-kind: project-manifest
+    python3 - "$THREE_LEG_MANIFEST_TEMPLATE" "$manifest" <<'PY' || return 1
+import re
+import sys
 
+template, destination = sys.argv[1], sys.argv[2]
+
+# One entry per `{{...}}` in openRepoShape's assembly-root project.yaml. A
+# placeholder the standard ADDS has no entry here, so the refusal below names
+# it; a placeholder it REMOVES leaves an unused entry, which is harmless and
+# is not what this fixture is guarding.
+#
+# The `*_NAMING` values carry their own indentation, because the template puts
+# those placeholders at column zero and the block they stand for is nested
+# under the leg at indent 4.
+VALUES = {
+    "PROJECT_ID": "fixture-project",
+    "PROJECT_NAME": "Fixture Project",
+    "REFERENCE": "dummy reference",
+    "ELECTED_BY": "spec-kit-test",
+    "ELECTED_ON": "2026-01-01",
+    "TOPIC": "xf-project-fixture",
+    "VISIBILITY": "private",
+    "TRACKING_BRANCH": "main",
+    "SHAPE_REPOSITORY": "dummy/openRepoShape",
+    "SHAPE_COMMIT": "0" * 40,
+    "DIGEST_DEFINITION": "sorted-ls-tree-r-v1",
+    "SHAPE_TREE_SHA256": "0" * 64,
+    "NEUTRAL_PRODUCT_PINS": "[]",
+    "ASSEMBLY_REPOSITORY": "dummy/fixture-project",
+    "SPEC_REPOSITORY": "dummy/fixture-project-spec",
+    "SPEC_PATH": "spec",
+    "CODE_REPOSITORY": "dummy/fixture-project-code",
+    "CODE_PATH": "code",
+    "ASSEMBLY_NAMING": "    naming:\n      form: project-leg\n"
+                       "      role: assembly\n      also_matches: []",
+    "SPEC_NAMING": "    naming:\n      form: project-leg\n"
+                   "      role: spec\n      also_matches: []",
+    "CODE_NAMING": "    naming:\n      form: project-leg\n"
+                   "      role: spec\n      also_matches: []",
+}
+
+# The fixture's own decoy, carried by no openRepoShape template. A parser that
+# greps for `role:` reads these two commented lines as a fourth leg mounted at
+# a path that does not exist; every reader in the git extension strips comments
+# first (workspace-common.sh, git-common.sh), and this block is what makes that
+# a tested property rather than a claim.
+DECOY = """
 # ===========================================================================
-# project.yaml — this project's SELF-DESCRIBING MANIFEST, and the SOURCE.
-# IT CONFERS NOTHING. `schema`, `legs[].role` and `topic` are descriptive
-# navigation, for example:
+# THE LINES BELOW ARE THIS FIXTURE'S, not openRepoShape's, and they are a
+# DECOY: a naive `grep role:` reader mounts a leg named here that does not
+# exist. Every reader must strip comments before it reads anything.
 #   - role: spec
 #     path: not-a-real-leg
 # ===========================================================================
+"""
 
-id: fixture-project
-name: "Fixture Project"
+with open(template, "r", encoding="utf-8") as stream:
+    text = stream.read()
+for name, value in VALUES.items():
+    text = text.replace("{{%s}}" % name, value)
 
-schema: project-repo-schema
-reference: "dummy reference"
+leftover = sorted(set(re.findall(r"\{\{[^{}]*\}\}", text)))
+if leftover:
+    raise SystemExit(
+        "the pinned openRepoShape manifest template carries "
+        "placeholder(s) this fixture has no value for: %s\n"
+        "    template: %s\n"
+        "Add them to VALUES in write_three_leg_manifest "
+        "(devBenches/devcontainer.test/test-speckit-git-feature.sh)."
+        % (", ".join(leftover), template))
 
-elected_by: "spec-kit-test"
-elected_on: 2026-01-01
+# Three properties the helpers below depend on, asserted where the derivation
+# happens so that a template change is named here rather than three scenarios
+# later.
+#
+# (1) `set_assembly_repository` replaces this exact line and refuses unless it
+#     is unique. The spec and code legs render with a suffix, and the `shape:`
+#     block's repository: sits at indent 2, so it is.
+assembly = "    repository: dummy/fixture-project\n"
+if text.count(assembly) != 1:
+    raise SystemExit(
+        "the derived manifest holds %d assembly-leg repository lines, not 1; "
+        "set_assembly_repository cannot work" % text.count(assembly))
+# (2) Exactly three legs, each opening with its role at indent 2.
+if text.count("\n  - role: ") != 3:
+    raise SystemExit(
+        "the derived manifest holds %d legs, not 3"
+        % text.count("\n  - role: "))
+# (3) The nested `role:` trap survived the substitution, twice: the spec leg's
+#     naming block and the code leg's, the second of which says `spec`.
+if text.count("\n      role: spec\n") != 2:
+    raise SystemExit(
+        "the derived manifest holds %d nested `role: spec` records, not 2; "
+        "the naive-parser trap is gone"
+        % text.count("\n      role: spec\n"))
 
-topic: xf-project-fixture
-
-visibility: private
-
-tracking_branch: main
-
-shape:
-  repository: dummy/openRepoShape
-  revision_kind: commit
-  commit: "0000000000000000000000000000000000000000"
-  digest_algorithm: sha256
-  digest_definition: sorted-ls-tree-r-v1
-  digests:
-    tree_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
-
-neutral_product_pins: []
-
-legs:
-  - role: assembly
-    repository: dummy/fixture-project
-    path: "."
-    naming:
-      form: project-leg
-      role: assembly
-      also_matches: []
-  - role: spec
-    repository: dummy/fixture-project-spec
-    path: spec
-    naming:
-      form: project-leg
-      role: spec
-      also_matches: []
-  - role: code
-    repository: dummy/fixture-project-code
-    path: code
-    naming:
-      form: project-leg
-      role: spec
-      also_matches: []
-YAML
+with open(destination, "w", encoding="utf-8") as stream:
+    stream.write(text)
+    if not text.endswith("\n"):
+        stream.write("\n")
+    stream.write(DECOY)
+PY
 }
 
 initialize_three_leg_fixture() {
@@ -3427,6 +3510,17 @@ test_single_repo_park_and_resume() {
         'single-repo state file'
 }
 
+# The vendored openRepoShape copies — including the manifest template this
+# suite derives its three-leg fixture from — are pinned by commit and per-file
+# sha256. Checking them HERE and not only in CI is what makes an edited copy
+# red for the developer who edited it, before the push. `check` writes nothing
+# and needs no network, which is why it can run inside the read-only mounts of
+# the Bash 3.2 and Git 2.34.1 jobs. Its own report is suppressed on success;
+# a finding goes to stderr and reaches the log.
+test_vendored_copies_match_their_pins() {
+    python3 "$UPDATE_UPSTREAM_FILE" check >/dev/null
+}
+
 failures=0
 run_scenario() {
     local name="$1"
@@ -3440,6 +3534,8 @@ run_scenario() {
     fi
 }
 
+run_scenario 'the vendored openRepoShape copies match devBenches/base-image/upstream-pin.yaml' \
+    test_vendored_copies_match_their_pins
 run_scenario 'default sequential worktree with apostrophe description' test_default_sequential_worktree
 run_scenario 'branch_template with {number}-{slug} final segment' test_branch_template
 run_scenario 'namespaced sequential numbering' test_namespaced_numbering
