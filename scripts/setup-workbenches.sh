@@ -263,6 +263,7 @@ clone_repo() {
 
 # Install onp command
 install_onp_command() {
+    python3 "$SCRIPT_DIR/setup-project-command.py" || return $?
     echo -e "${BLUE}Installing onp (Opensoft New Project) command...${NC}"
     
     # Ensure ~/.local/bin exists
