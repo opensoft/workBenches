@@ -2969,7 +2969,7 @@ Then re-run `make resume`.' 'R1 wording for resume' || return 1
 
 test_two_workstations_share_the_workspace_repository() {
     local stderr_file="$FIXTURE_ROOT/two-workstations.stderr"
-    local root second_workspace first_workspace log
+    local root second_workspace first_workspace log clone
 
     # Given: one project and two clones of the workspace repository, with a
     # peer's uncommitted edit sitting in the second one.
@@ -3009,7 +3009,183 @@ test_two_workstations_share_the_workspace_repository() {
     fi
     assert_equal '' "$(git -C "$second_workspace" status --porcelain -- workspaces)" \
         'the second workspace is clean after the park' || return 1
-    assert_file_absent "$second_workspace/.workspaces.lock" 'the mutex was released'
+    assert_file_absent "$second_workspace/.workspaces.lock" 'the mutex was released' || return 1
+
+    # Then: the depth is the BRANCH's, not the stale clone's. The second
+    # workstation's clone knew nothing of the first park, so a depth taken
+    # from the manifest would have recorded 1 over a two-commit stack.
+    if ! grep -Fq '            wip_depth: 2' "$second_workspace/workspaces/dummy/fixture-project.yaml"; then
+        printf 'assertion failed: the stacked depth was not recorded\n%s\n' \
+            "$(<"$second_workspace/workspaces/dummy/fixture-project.yaml")" >&2
+        return 1
+    fi
+    assert_equal '2' "$(git -C "$root/worktrees/001-routing-core/spec" rev-list --count HEAD ^main)" \
+        'two stacked WIP commits on the branch' || return 1
+
+    # Then: a fresh clone resuming from that manifest un-commits BOTH.
+    clone="$PARKED_BASE/second-station"
+    clone_three_leg_root "$root" "$clone" || return 1
+    WORKSPACE_DIR="$second_workspace"
+    invoke_resume "$clone" "$stderr_file"
+    WORKSPACE_DIR="$first_workspace"
+    if [ "$RESUME_STATUS" -ne 0 ]; then
+        printf 'the stacked resume failed (%s): %s\n' "$RESUME_STATUS" "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    assert_equal 'fixture commit' \
+        "$(git -C "$clone/worktrees/001-routing-core/spec" log -1 --format=%s)" \
+        'the stacked resume landed back on the base commit' || return 1
+    assert_equal '' "$(git -C "$clone/worktrees/001-routing-core/spec" diff --cached --name-only)" \
+        'the stacked resume left nothing staged' || return 1
+    if ! git -C "$clone/worktrees/001-routing-core/spec" status --porcelain \
+        | grep -q '^?? specs/001-routing-core/'; then
+        printf 'assertion failed: the stacked resume did not restore the work\n%s\n' \
+            "$(git -C "$clone/worktrees/001-routing-core/spec" status --porcelain)" >&2
+        return 1
+    fi
+}
+
+test_park_against_a_stale_workspace_keeps_a_refused_entry() {
+    local stderr_file="$FIXTURE_ROOT/stale-workspace.stderr"
+    local root first_workspace stale_workspace manifest parked_001
+
+    # Given: two features parked from one clone of the workspace repository,
+    # and a SECOND clone taken before that park — so it knows neither.
+    initialize_three_leg_parked_fixture 'stale-workspace' "$PARKED_CONFIG" || return 1
+    initialize_workspace_fixture 'stale-workspace-ws' || return 1
+    root="$PARKED_ROOT"
+    first_workspace="$WORKSPACE_DIR"
+    stale_workspace="$FIXTURE_ROOT/stale-workspace-ws/workspace-stale"
+    clone_workspace_fixture "$stale_workspace" || return 1
+    create_parked_feature "$root" 'Add routing core' "$stderr_file" || return 1
+    create_parked_feature "$root" 'Add label render' "$stderr_file" || return 1
+    printf 'draft\n' > "$root/worktrees/001-routing-core/spec/specs/001-routing-core/spec.md" || return 1
+    invoke_park "$root" "$stderr_file"
+    if [ "$PARK_STATUS" -ne 0 ]; then
+        printf 'the first park failed (%s): %s\n' "$PARK_STATUS" "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    parked_001="$(git -C "$root/worktrees/001-routing-core/spec" rev-parse HEAD)"
+
+    # Given: 001 can no longer be parked here — its spec leg worktree is gone.
+    git -C "$root/spec" worktree remove --force "$root/worktrees/001-routing-core/spec" || return 1
+
+    # When: park runs against the STALE clone.
+    WORKSPACE_DIR="$stale_workspace"
+    invoke_park "$root" "$stderr_file"
+    WORKSPACE_DIR="$first_workspace"
+
+    # Then: 001 is refused, 002 is parked, and 001's recorded entry SURVIVES —
+    # it is the entry the other workstation resumes from.
+    assert_equal '3' "$PARK_STATUS" 'stale-workspace park exit code' || return 1
+    manifest="$stale_workspace/workspaces/dummy/fixture-project.yaml"
+    if ! grep -Fq '      - branch: 001-routing-core' "$manifest"; then
+        printf 'assertion failed: the refused feature was erased from the manifest\n%s\n' \
+            "$(<"$manifest")" >&2
+        return 1
+    fi
+    if ! grep -Fq "            parked_commit: $parked_001" "$manifest"; then
+        printf 'assertion failed: the refused feature lost its parked commit\n%s\n' \
+            "$(<"$manifest")" >&2
+        return 1
+    fi
+    grep -Fq '      - branch: 002-label-render' "$manifest" || {
+        printf 'assertion failed: the parkable feature was not recorded\n%s\n' "$(<"$manifest")" >&2
+        return 1
+    }
+}
+
+test_park_refuses_a_dirty_workspace_by_name() {
+    local stderr_file="$FIXTURE_ROOT/dirty-workspace.stderr"
+    local root first_workspace peer_workspace before
+
+    # Given: a workspace clone with an uncommitted edit to a tracked handoff,
+    # and an origin that has moved on, so a rebase is actually needed.
+    initialize_three_leg_parked_fixture 'dirty-workspace' "$PARKED_CONFIG" || return 1
+    initialize_workspace_fixture 'dirty-workspace-ws' || return 1
+    root="$PARKED_ROOT"
+    first_workspace="$WORKSPACE_DIR"
+    mkdir -p "$first_workspace/handoffs" || return 1
+    printf 'a handoff\n' > "$first_workspace/handoffs/x.md" || return 1
+    git -C "$first_workspace" add handoffs/x.md || return 1
+    git -C "$first_workspace" commit -qm 'a handoff' || return 1
+    git -C "$first_workspace" push -q origin main || return 1
+    peer_workspace="$FIXTURE_ROOT/dirty-workspace-ws/workspace-peer"
+    clone_workspace_fixture "$peer_workspace" || return 1
+    printf 'a peer commit\n' > "$peer_workspace/handoffs/y.md" || return 1
+    git -C "$peer_workspace" add handoffs/y.md || return 1
+    git -C "$peer_workspace" commit -qm 'a peer commit' || return 1
+    git -C "$peer_workspace" push -q origin main || return 1
+    printf 'half-written\n' >> "$first_workspace/handoffs/x.md" || return 1
+    before="$(cat "$first_workspace/handoffs/x.md")"
+    create_parked_feature "$root" 'Add routing core' "$stderr_file" || return 1
+
+    # When: park runs.
+    invoke_park "$root" "$stderr_file"
+
+    # Then: it refuses by name, not with a false rebase conflict, and the
+    # half-written handoff is untouched.
+    assert_equal '2' "$PARK_STATUS" 'dirty-workspace park exit code' || return 1
+    if ! grep -Fq "Error: workspace-dirty: '$first_workspace' has uncommitted changes outside workspaces/, so it cannot be brought up to date; nothing was parked." "$stderr_file"; then
+        printf 'assertion failed: missing workspace-dirty refusal\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if ! grep -Fq '  handoffs/x.md' "$stderr_file"; then
+        printf 'assertion failed: the refusal did not name the path\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if grep -Fq 'conflicted' "$stderr_file"; then
+        printf 'assertion failed: a dirty checkout was reported as a rebase conflict\n%s\n' \
+            "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    assert_equal "$before" "$(cat "$first_workspace/handoffs/x.md")" 'the handoff is untouched' || return 1
+    assert_file_absent "$first_workspace/.workspaces.lock" 'the mutex was released' || return 1
+    assert_file_absent "$first_workspace/workspaces/dummy" 'a manifest was written anyway'
+}
+
+test_resume_rollback_names_the_leg_for_an_attached_worktree() {
+    local stderr_file="$FIXTURE_ROOT/rollback-attach.stderr"
+    local clone shim_dir spec_tree
+
+    # Given: a clone whose spec leg already carries the branch AT the parked
+    # commit but with no worktree — the state the RR5-behind remediation
+    # leaves behind — so the spec leg attaches while the code leg creates.
+    park_then_clone 'rollback-attach' "$stderr_file" || return 1
+    clone="$RESUME_ROOT"
+    git -C "$clone/spec" fetch -q origin '001-routing-core:001-routing-core' || return 1
+    assert_equal "$RESUME_PARKED_SPEC" \
+        "$(git -C "$clone/spec" rev-parse refs/heads/001-routing-core)" \
+        'the spec leg branch is at the parked commit' || return 1
+    spec_tree="$clone/worktrees/001-routing-core/spec"
+
+    # When: the code leg's worktree add fails, so the run rolls back.
+    shim_dir="$FIXTURE_ROOT/rollback-attach-shim"
+    install_code_worktree_failure_shim "$shim_dir" || return 1
+    RESUME_OUTPUT=''
+    RESUME_STATUS=0
+    RESUME_OUTPUT="$(cd "$clone" && env \
+        SPECKIT_WORKSTATION=Fixture SPECKIT_LANE=fixture-lane \
+        SPECKIT_TEST_REAL_GIT="$REAL_GIT" PATH="$shim_dir:$PATH" \
+        bash .specify/extensions/git/scripts/bash/resume.sh \
+        --workspace "$WORKSPACE_DIR" 2>"$stderr_file")" || RESUME_STATUS=$?
+
+    # Then: the attached spec worktree is really gone — removed through the
+    # LEG that registered it, so no phantom registration is left behind for a
+    # later resume to read as "already registered".
+    assert_equal '2' "$RESUME_STATUS" 'rollback resume exit code' || return 1
+    assert_file_absent "$spec_tree" 'the rolled-back spec worktree' || return 1
+    if git -C "$clone/spec" worktree list --porcelain | grep -Fq "worktree $spec_tree"; then
+        printf 'assertion failed: the spec leg still registers the removed worktree\n%s\n' \
+            "$(git -C "$clone/spec" worktree list --porcelain)" >&2
+        return 1
+    fi
+    assert_equal '1' "$(worktree_record_count "$clone/spec")" 'the spec leg has only its own checkout' || return 1
+
+    # Then: the branch the run did NOT create is still there.
+    assert_equal "$RESUME_PARKED_SPEC" \
+        "$(git -C "$clone/spec" rev-parse refs/heads/001-routing-core)" \
+        'the pre-existing branch was not deleted'
 }
 
 test_per_org_workspace_override() {
@@ -3103,6 +3279,47 @@ test_per_org_workspace_override() {
     fi
     if ! printf '%s\n' "$PARK_OUTPUT" | grep -Fq "WORKSPACE: $default_workspace (--workspace)"; then
         printf 'assertion failed: park did not name --workspace\n%s\n' "$PARK_OUTPUT" >&2
+        return 1
+    fi
+
+    # When: the config spells the org in another case. GitHub org names are
+    # case-insensitive, and routing a confidential org's manifest to the
+    # DEFAULT workspace over a capital letter is the failure this exists to
+    # prevent.
+    initialize_three_leg_parked_fixture 'org-override-case' "$PARKED_CONFIG" || return 1
+    other_root="$PARKED_ROOT"
+    create_parked_feature "$other_root" 'Add routing core' "$stderr_file" || return 1
+    {
+        printf 'repository: fixture/default-wip\n'
+        printf 'path: %s\n' "$default_workspace"
+        printf 'orgs:\n'
+        printf '  DuMmY:\n'
+        printf '    repository: DuMmY/dummy-wip\n'
+        printf '    path: %s\n' "$override_workspace"
+    } > "$config" || return 1
+    rm -rf "$override_workspace/workspaces/dummy" || return 1
+    git -C "$override_workspace" commit -q -am 'drop the manifest' >/dev/null 2>&1 || true
+    status=0
+    (cd "$other_root" && env -u SPECKIT_WORKSPACE_PATH -u SPECKIT_WORKSPACE_REPOSITORY \
+        -u AGENT_PROTOCOL_ROOT HOME="$home" \
+        SPECKIT_WORKSTATION=Fixture SPECKIT_LANE=fixture-lane \
+        bash .specify/extensions/git/scripts/bash/park.sh \
+        > "$stderr_file.out" 2>"$stderr_file") || status=$?
+
+    # Then: the override wins, and the directory keeps the ONE canonical
+    # spelling — the owner segment as written in repository:.
+    if [ "$status" -ne 0 ]; then
+        printf 'case-folded park failed (%s): %s\n' "$status" "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if [ ! -f "$override_workspace/workspaces/dummy/fixture-project.yaml" ]; then
+        printf 'assertion failed: a differently-cased org key did not reach the override\n' >&2
+        find "$override_workspace/workspaces" "$default_workspace/workspaces" -type f >&2
+        return 1
+    fi
+    if ! grep -Fq "WORKSPACE: $override_workspace (orgs.dummy override)" "$stderr_file.out"; then
+        printf 'assertion failed: park did not name the case-folded override\n%s\n' \
+            "$(<"$stderr_file.out")" >&2
         return 1
     fi
 
@@ -3273,6 +3490,9 @@ run_scenario 'resume refuses a local branch behind the parked commit and names t
 run_scenario 'the workspace manifest round-trips byte-identically' test_manifest_round_trip
 run_scenario 'a missing workspace config refuses both verbs' test_missing_workspace_config_refuses
 run_scenario 'two workstations share one workspace repository' test_two_workstations_share_the_workspace_repository
+run_scenario 'park against a stale workspace keeps a refused feature entry' test_park_against_a_stale_workspace_keeps_a_refused_entry
+run_scenario 'park refuses a dirty workspace by name, not as a rebase conflict' test_park_refuses_a_dirty_workspace_by_name
+run_scenario "resume's rollback removes an attached worktree through its own leg" test_resume_rollback_names_the_leg_for_an_attached_worktree
 run_scenario 'a per-org workspace override keeps that org out of the default repository' test_per_org_workspace_override
 run_scenario 'single-repository park and resume' test_single_repo_park_and_resume
 

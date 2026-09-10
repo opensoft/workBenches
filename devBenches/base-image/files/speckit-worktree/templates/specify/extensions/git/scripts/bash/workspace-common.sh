@@ -111,8 +111,14 @@ workspace_read_org_override() {
     local want="$2"
     local raw content trimmed indent_ws indent key value
     local in_orgs=false org_col=-1 key_col=-1
-    local current="" found=false found_repository="" found_path=""
+    local current="" current_folded="" found=false
+    local found_repository="" found_path="" want_folded
 
+    # GitHub org names are case-insensitive, so `orgs: medxsoft:` must match a
+    # `repository: MedxSoft/...`. Routing a confidential org's manifest to the
+    # DEFAULT workspace over a capital letter is the one failure this override
+    # exists to prevent.
+    want_folded="$(printf '%s' "$want" | tr '[:upper:]' '[:lower:]')"
     WORKSPACE_ORG_PATH=""
     WORKSPACE_ORG_REPOSITORY=""
     WORKSPACE_CONFIG_ERROR=""
@@ -170,6 +176,7 @@ workspace_read_org_override() {
                 return 2
             fi
             current="$key"
+            current_folded="$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]')"
             key_col=-1
             continue
         fi
@@ -193,7 +200,7 @@ workspace_read_org_override() {
             WORKSPACE_CONFIG_ERROR="'$key' under '$current' has no value"
             return 2
         fi
-        if [ "$current" = "$want" ]; then
+        if [ "$current_folded" = "$want_folded" ]; then
             found=true
             case "$key" in
                 repository) found_repository="$value" ;;
@@ -854,9 +861,50 @@ EOF
     return 0
 }
 
+# Tracked changes outside workspaces/ that would stop a rebase. Untracked
+# files do not stop one, so they are not counted: a half-written handoff that
+# has never been added is nobody's problem. workspace_commit_pre_existing has
+# already dealt with everything under workspaces/.
+workspace_dirty_outside_manifests() {
+    local workspace="$1"
+    local line path
+
+    WORKSPACE_DIRTY_PATHS=""
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        case "$line" in
+            '??'*) continue ;;
+        esac
+        path="${line:3}"
+        case "$path" in
+            workspaces/*) continue ;;
+        esac
+        WORKSPACE_DIRTY_PATHS="$WORKSPACE_DIRTY_PATHS$path
+"
+    done <<EOF
+$(git -C "$workspace" status --porcelain 2>/dev/null || true)
+EOF
+    [ -n "$WORKSPACE_DIRTY_PATHS" ]
+}
+
+# workspace-dirty.
+workspace_refuse_dirty() {
+    local workspace="$1"
+    local past="$2"
+
+    >&2 echo "Error: workspace-dirty: '$workspace' has uncommitted changes outside workspaces/, so it cannot be brought up to date; nothing was $past."
+    >&2 printf '  %s
+' "$WORKSPACE_DIRTY_PATHS" | sed '/^  $/d'
+    >&2 echo "park and resume never touch a file outside workspaces/ — a handoff is yours to commit."
+    >&2 echo "  commit or stash those paths, then re-run:"
+    >&2 echo "  git -C $workspace status"
+}
+
 # Bring the workspace checkout up to date before the manifest is rewritten, so
 # the write lands on what origin already holds instead of colliding with it.
-# On a rebase conflict the rebase is ABORTED and the caller refuses.
+# On a rebase conflict the rebase is ABORTED and the caller refuses. Returns 2
+# when the checkout is dirty outside workspaces/ and a rebase is needed, so
+# the caller can refuse by name instead of misreporting a conflict.
 workspace_sync() {
     local workspace="$1"
     local branch conflict
@@ -866,6 +914,10 @@ workspace_sync() {
     [ -n "$branch" ] && [ "$branch" != "HEAD" ] || return 0
     git -C "$workspace" fetch -q origin "$branch" >/dev/null 2>&1 || return 0
     git -C "$workspace" merge-base --is-ancestor "refs/remotes/origin/$branch" HEAD 2>/dev/null && return 0
+    # A rebase is actually needed, so the working tree has to be clean for it.
+    if workspace_dirty_outside_manifests "$workspace"; then
+        return 2
+    fi
     if git -C "$workspace" pull --rebase -q origin "$branch" >/dev/null 2>&1; then
         return 0
     fi
@@ -913,6 +965,10 @@ workspace_push_manifest() {
         if git -C "$workspace" push -q origin "HEAD:refs/heads/$branch" 2>/dev/null; then
             WORKSPACE_PUSH_RESULT="pushed"
             return 0
+        fi
+        if workspace_dirty_outside_manifests "$workspace"; then
+            WORKSPACE_PUSH_RESULT="dirty"
+            return 1
         fi
         if ! git -C "$workspace" pull --rebase -q origin "$branch" 2>/dev/null; then
             conflict="$(git -C "$workspace" diff --name-only --diff-filter=U 2>/dev/null || true)"

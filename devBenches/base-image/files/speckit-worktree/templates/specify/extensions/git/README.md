@@ -189,6 +189,12 @@ handoff; a handoff is a document a person wrote). The resolved order is:
 4. the config's top-level — the default workspace;
 5. nothing — refuse, naming the two lines to write.
 
+Org names are matched case-insensitively, because GitHub's are: `orgs:
+medxsoft:` selects the workspace for a `repository: MedxSoft/...`. The
+directory inside that workspace always uses the one canonical spelling — the
+owner segment exactly as written in `repository:` — so the same org never ends
+up split across `workspaces/MedxSoft/` and `workspaces/medxsoft/`.
+
 A malformed `orgs:` block is a named refusal (`workspace-config-invalid`, exit
 2) and never a silent fall-through to the default. `SPECKIT_WORKSPACE_REPOSITORY`
 overrides the repository slug used in the clone remediation, which otherwise
@@ -211,6 +217,20 @@ orgs must never share a file. Any segment outside `[A-Za-z0-9._-]+` is refused
 rather than sanitised. The file records branches, commits and a relative
 `root` — never an absolute path, because a linked worktree's absolute path is
 machine plumbing and `resume` recreates at the *local* `worktree_root`.
+
+`park` writes in the workspace repository under a `mkdir` mutex, and it
+touches nothing outside `workspaces/`. It brings the checkout up to date
+before it reads the manifest, so a stale clone can never drop a feature it
+could not park from the recorded list. That rebase needs a clean working tree,
+so an uncommitted change to a tracked file elsewhere in the repository — a
+handoff you are half-way through, say — is a named refusal
+(`workspace-dirty`, exit 2) that lists the paths, rather than a misreported
+rebase conflict. Untracked files are never in the way.
+
+When `park` rewrites a project's block it re-emits the file from the schema
+below, so an unknown top-level key someone added to a manifest by hand is
+dropped. Other projects' blocks are preserved verbatim; these files are
+written by `speckit park` and are not hand-edited.
 
 `park` never force-pushes. When a previous `resume` has left the branch behind
 the remote by this workspace's own parked WIP commits, `park` refuses and

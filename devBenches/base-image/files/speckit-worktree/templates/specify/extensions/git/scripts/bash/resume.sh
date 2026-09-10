@@ -357,9 +357,15 @@ _git_worktree_create_temp_file || {
     exit 1
 }
 RECORD_FILE="$_GIT_WORKTREE_OUTPUT_FILE"
+_git_worktree_create_temp_file || {
+    echo "Error: could not create a temporary file for the resume record." >&2
+    exit 1
+}
+HEADER_FILE="$_GIT_WORKTREE_OUTPUT_FILE"
 # shellcheck disable=SC2329  # an EXIT trap handler
 cleanup() {
     [ -n "${RECORD_FILE:-}" ] && rm -f "$RECORD_FILE" 2>/dev/null || true
+    [ -n "${HEADER_FILE:-}" ] && rm -f "$HEADER_FILE" 2>/dev/null || true
     return 0
 }
 trap cleanup EXIT
@@ -577,7 +583,8 @@ while [ "$selection" -lt "${#SELECTED_INDEXES[@]}" ]; do
     # Create. A failure in a later leg rolls back the earlier ones, exactly as
     # shape_rollback_spec_worktree does for feature creation.
     CREATED_TREES=()
-    CREATED_BRANCH_IN=()
+    CREATED_OWNERS=()
+    CREATED_BRANCH_NEW=()
     mkdir -p "$WORKTREE_ROOT/$branch" 2>/dev/null || true
     leg=0
     while [ "$leg" -lt "${#LEG_ROLES[@]}" ]; do
@@ -601,7 +608,8 @@ while [ "$selection" -lt "${#SELECTED_INDEXES[@]}" ]; do
                     break
                 fi
                 CREATED_TREES[${#CREATED_TREES[@]}]="$tree"
-                CREATED_BRANCH_IN[${#CREATED_BRANCH_IN[@]}]=""
+                CREATED_OWNERS[${#CREATED_OWNERS[@]}]="$leg_repo"
+                CREATED_BRANCH_NEW[${#CREATED_BRANCH_NEW[@]}]=false
                 ;;
             create)
                 if ! worktree_error="$(git -C "$leg_repo" worktree add -b "$branch" "$tree" "origin/$branch" 2>&1)"; then
@@ -613,7 +621,8 @@ while [ "$selection" -lt "${#SELECTED_INDEXES[@]}" ]; do
                     break
                 fi
                 CREATED_TREES[${#CREATED_TREES[@]}]="$tree"
-                CREATED_BRANCH_IN[${#CREATED_BRANCH_IN[@]}]="$leg_repo"
+                CREATED_OWNERS[${#CREATED_OWNERS[@]}]="$leg_repo"
+                CREATED_BRANCH_NEW[${#CREATED_BRANCH_NEW[@]}]=true
                 ;;
         esac
     done
@@ -622,15 +631,19 @@ while [ "$selection" -lt "${#SELECTED_INDEXES[@]}" ]; do
         undo=0
         while [ "$undo" -lt "${#CREATED_TREES[@]}" ]; do
             undo_tree="${CREATED_TREES[$undo]}"
-            undo_repo="${CREATED_BRANCH_IN[$undo]}"
+            # The owner is always the LEG repository that registered the
+            # worktree. Naming the assembly root instead makes `worktree
+            # remove` fail, the fallback `rm -rf` take the directory, and the
+            # leg keep a phantom registration a later resume reads as
+            # "already registered" for a path that is not there.
+            owner="${CREATED_OWNERS[$undo]}"
+            undo_new_branch="${CREATED_BRANCH_NEW[$undo]}"
             undo=$((undo + 1))
-            owner="$REPO_ROOT"
-            [ -n "$undo_repo" ] && owner="$undo_repo"
             git -C "$owner" worktree remove --force "$undo_tree" >/dev/null 2>&1 \
                 || rm -rf "$undo_tree" >/dev/null 2>&1 || true
             git -C "$owner" worktree prune >/dev/null 2>&1 || true
-            if [ -n "$undo_repo" ]; then
-                git -C "$undo_repo" branch -D "$branch" >/dev/null 2>&1 || true
+            if [ "$undo_new_branch" = true ]; then
+                git -C "$owner" branch -D "$branch" >/dev/null 2>&1 || true
             fi
         done
         rmdir "$WORKTREE_ROOT/$branch" >/dev/null 2>&1 || true
@@ -780,7 +793,6 @@ fi
 # ---------------------------------------------------------------------------
 # Output.
 # ---------------------------------------------------------------------------
-HEADER_FILE="$RECORD_FILE.header"
 {
     printf 'repo_shape\t%s\n' "$REPO_SHAPE"
     printf 'project_id\t%s\n' "$PROJECT_ID"

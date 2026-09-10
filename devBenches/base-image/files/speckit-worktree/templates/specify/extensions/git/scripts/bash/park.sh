@@ -219,7 +219,63 @@ fi
 MANIFEST_RELATIVE="workspaces/$MANIFEST_ORG/$MANIFEST_NAME.yaml"
 MANIFEST_PATH="$WORKSPACE_PATH/$MANIFEST_RELATIVE"
 
-# What this workspace recorded last time, for the WIP depth and the R8 lease.
+WIP_PREFIX='wip: park '
+TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")"
+LANE="$(workspace_lane "$LANE_ARG")"
+WORKSTATION="$(workspace_workstation)"
+WIP_SUBJECT="$WIP_PREFIX$TIMESTAMP — lane $LANE"
+if [ -n "$MESSAGE_ARG" ]; then
+    WIP_SUBJECT="$WIP_SUBJECT — $MESSAGE_ARG"
+fi
+
+# The temporaries and the EXIT trap come before the lock, so the lock is never
+# taken by a run that cannot release it.
+_git_worktree_create_temp_file || {
+    echo "Error: could not create a temporary file for the workspace record." >&2
+    exit 1
+}
+RECORD_FILE="$_GIT_WORKTREE_OUTPUT_FILE"
+_git_worktree_create_temp_file || {
+    echo "Error: could not create a temporary file for the workspace record." >&2
+    exit 1
+}
+HEADER_FILE="$_GIT_WORKTREE_OUTPUT_FILE"
+# shellcheck disable=SC2329  # an EXIT trap handler
+cleanup() {
+    workspace_unlock
+    [ -n "${RECORD_FILE:-}" ] && rm -f "$RECORD_FILE" 2>/dev/null || true
+    [ -n "${HEADER_FILE:-}" ] && rm -f "$HEADER_FILE" 2>/dev/null || true
+    return 0
+}
+trap cleanup EXIT
+
+# The workspace is locked, drained of a peer's in-flight edit and brought up
+# to date BEFORE the manifest is read. Reading a stale clone would make every
+# "what did this workspace record last time" decision wrong, and the worst of
+# those is silent: a feature this workstation cannot park would be dropped
+# from the block instead of carried forward, erasing the entry the other
+# workstation resumes from.
+if [ "$DRY_RUN" != true ]; then
+    if ! workspace_lock "$WORKSPACE_PATH"; then
+        >&2 echo "Error: another park or resume holds '$WORKSPACE_PATH/.workspaces.lock'; nothing was parked."
+        >&2 echo "  If no other run is active, remove it:  rmdir $WORKSPACE_PATH/.workspaces.lock"
+        exit 3
+    fi
+    if ! workspace_commit_pre_existing "$WORKSPACE_PATH" "$WORKSTATION"; then
+        >&2 echo "Error: could not commit the pre-existing changes under '$WORKSPACE_PATH/workspaces'; nothing was parked."
+        exit 3
+    fi
+    SYNC_STATUS=0
+    workspace_sync "$WORKSPACE_PATH" || SYNC_STATUS=$?
+    if [ "$SYNC_STATUS" -eq 2 ]; then
+        workspace_refuse_dirty "$WORKSPACE_PATH" parked
+        exit 2
+    elif [ "$SYNC_STATUS" -ne 0 ]; then
+        exit 3
+    fi
+fi
+
+# What this workspace recorded last time, for the R8 lease.
 workspace_load_project "$MANIFEST_PATH" "$PROJECT_ID" || true
 
 recorded_leg_index() {
@@ -246,16 +302,6 @@ recorded_leg_commit() {
     recorded_leg_index "$1" "$2" || return 1
     RECORDED_COMMIT="${MANIFEST_LEG_COMMIT[$RECORDED_INDEX]}"
     [ -n "$RECORDED_COMMIT" ]
-}
-
-recorded_leg_depth() {
-    RECORDED_DEPTH=0
-    recorded_leg_index "$1" "$2" || return 1
-    RECORDED_DEPTH="${MANIFEST_LEG_DEPTH[$RECORDED_INDEX]}"
-    case "$RECORDED_DEPTH" in
-        ''|*[!0-9]*) RECORDED_DEPTH=0 ;;
-    esac
-    return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -466,8 +512,6 @@ fi
 # ---------------------------------------------------------------------------
 # Per-leg helpers.
 # ---------------------------------------------------------------------------
-WIP_PREFIX='wip: park '
-
 leg_in_progress_operation() {
     local tree="$1"
     local git_dir
@@ -502,6 +546,37 @@ leg_is_dirty() {
     [ -n "$(git -C "$tree" status --porcelain 2>/dev/null || true)" ]
 }
 
+commit_has_one_parent() {
+    local tree="$1"
+    local revision="$2"
+    local parents
+
+    parents="$(git -C "$tree" log -1 --format=%P "$revision" 2>/dev/null || true)"
+    case "$parents" in
+        '') return 1 ;;
+        *' '*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+# How many parked WIP commits sit on the tip of this branch, read from the
+# BRANCH and never from the manifest: a stale or missing manifest entry must
+# not make park record a one-commit stack over a two-commit one, which would
+# leave a resume elsewhere sitting on the older WIP commit with the first
+# park's work still committed.
+count_wip_tip_commits() {
+    local tree="$1"
+    local start="$2"
+    local depth=0
+
+    while [ "$depth" -lt 100 ]; do
+        commit_subject_is_wip "$tree" "$start~$depth" || break
+        commit_has_one_parent "$tree" "$start~$depth" || break
+        depth=$((depth + 1))
+    done
+    WIP_TIP_DEPTH=$depth
+}
+
 commit_subject_is_wip() {
     local tree="$1"
     local revision="$2"
@@ -527,27 +602,6 @@ record_refusal() {
     REFUSED_REMEDIATIONS[${#REFUSED_REMEDIATIONS[@]}]="$3"
 }
 REFUSED_REMEDIATIONS=()
-
-TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")"
-LANE="$(workspace_lane "$LANE_ARG")"
-WORKSTATION="$(workspace_workstation)"
-WIP_SUBJECT="$WIP_PREFIX$TIMESTAMP — lane $LANE"
-if [ -n "$MESSAGE_ARG" ]; then
-    WIP_SUBJECT="$WIP_SUBJECT — $MESSAGE_ARG"
-fi
-
-_git_worktree_create_temp_file || {
-    echo "Error: could not create a temporary file for the workspace record." >&2
-    exit 1
-}
-RECORD_FILE="$_GIT_WORKTREE_OUTPUT_FILE"
-# shellcheck disable=SC2329  # an EXIT trap handler
-cleanup() {
-    workspace_unlock
-    [ -n "${RECORD_FILE:-}" ] && rm -f "$RECORD_FILE" 2>/dev/null || true
-    return 0
-}
-trap cleanup EXIT
 
 # A refused feature keeps whatever an earlier park recorded for it: a refusal
 # must never erase the entry another workstation would resume from. A feature
@@ -731,12 +785,18 @@ while [ "$feature_index" -lt "${#PARK_BRANCHES[@]}" ]; do
         LEG_RETIRE_LEASE[leg]=""
         leg=$((leg + 1))
         [ "$NO_PUSH" = false ] || continue
-        [ "$DRY_RUN" = false ] || continue
         # A probe, not a requirement: on a first park the branch is not on
         # origin yet, and an unreachable origin is reported honestly by the
-        # push itself (R6) rather than by a warning here.
-        GIT_TERMINAL_PROMPT=0 git -C "$tree" fetch -q origin "$branch" >/dev/null 2>&1 || continue
-        remote_tip="$(git -C "$tree" rev-parse --verify --quiet FETCH_HEAD 2>/dev/null || true)"
+        # push itself (R6) rather than by a warning here. A dry run previews
+        # the refusal from the remote-tracking ref it already has rather than
+        # fetching: R8 is the refusal a person most wants previewed, and a dry
+        # run still writes nothing at all.
+        if [ "$DRY_RUN" = true ]; then
+            remote_tip="$(git -C "$tree" rev-parse --verify --quiet "refs/remotes/origin/$branch" 2>/dev/null || true)"
+        else
+            GIT_TERMINAL_PROMPT=0 git -C "$tree" fetch -q origin "$branch" >/dev/null 2>&1 || continue
+            remote_tip="$(git -C "$tree" rev-parse --verify --quiet FETCH_HEAD 2>/dev/null || true)"
+        fi
         [ -n "$remote_tip" ] || continue
         local_head="$(git -C "$tree" rev-parse --verify HEAD 2>/dev/null || true)"
         [ -n "$local_head" ] || continue
@@ -809,27 +869,19 @@ while [ "$feature_index" -lt "${#PARK_BRANCHES[@]}" ]; do
                     break
                 fi
                 wip=true
-                depth=1
-                if commit_subject_is_wip "$tree" "$head_before" \
-                    && recorded_leg_commit "$branch" "$role" \
-                    && [ "$RECORDED_COMMIT" = "$head_before" ]; then
-                    recorded_leg_depth "$branch" "$role"
-                    depth=$((RECORDED_DEPTH + 1))
-                fi
+                count_wip_tip_commits "$tree" HEAD
+                depth="$WIP_TIP_DEPTH"
                 parked_commit="$(git -C "$tree" rev-parse --verify HEAD)"
             fi
-        elif recorded_leg_commit "$branch" "$role" \
-            && [ "$RECORDED_COMMIT" = "$head_before" ] \
-            && commit_subject_is_wip "$tree" HEAD; then
-            # Clean, and HEAD is still this workspace's own parked WIP commit:
-            # make no commit, and keep the recorded depth. Recording wip: false
-            # here would disarm resume's un-commit for work that is still
-            # parked, and would make a second park rewrite the manifest for
-            # nothing.
-            recorded_leg_depth "$branch" "$role"
-            if [ "$RECORDED_DEPTH" -gt 0 ]; then
+        else
+            # Clean. When HEAD is still a parked WIP commit the work is parked
+            # and not landed, so it keeps wip: true and the depth the BRANCH
+            # says: recording wip: false here would disarm resume's un-commit
+            # for work that is still parked.
+            count_wip_tip_commits "$tree" HEAD
+            if [ "$WIP_TIP_DEPTH" -gt 0 ]; then
                 wip=true
-                depth="$RECORDED_DEPTH"
+                depth="$WIP_TIP_DEPTH"
             fi
         fi
 
@@ -981,7 +1033,6 @@ fi
 workspace_project_repository "$REPO_ROOT"
 PROJECT_REPOSITORY="$WORKSPACE_PROJECT_REPOSITORY"
 
-HEADER_FILE="$RECORD_FILE.header"
 {
     printf 'repo_shape\t%s\n' "$REPO_SHAPE"
     printf 'project_id\t%s\n' "$PROJECT_ID"
@@ -1020,18 +1071,8 @@ MANIFEST_STATE="dry-run"
 MANIFEST_COMMIT=""
 PUSH_STATE="not-pushed"
 if [ "$DRY_RUN" != true ]; then
-    if ! workspace_lock "$WORKSPACE_PATH"; then
-        >&2 echo "Error: another park or resume holds '$WORKSPACE_PATH/.workspaces.lock'; nothing was recorded."
-        >&2 echo "  If no other run is active, remove it:  rmdir $WORKSPACE_PATH/.workspaces.lock"
-        exit 3
-    fi
-    if ! workspace_commit_pre_existing "$WORKSPACE_PATH" "$WORKSTATION"; then
-        >&2 echo "Error: could not commit the pre-existing changes under '$WORKSPACE_PATH/workspaces'; nothing was recorded."
-        exit 3
-    fi
-    if ! workspace_sync "$WORKSPACE_PATH"; then
-        exit 3
-    fi
+    # The lock is still held and this is still the checkout that was synced
+    # above, so the write lands on what origin already holds.
     if ! MANIFEST_STATE="$(workspace_write_manifest "$MANIFEST_PATH" "$RECORD_FILE")"; then
         >&2 echo "Error: could not write '$MANIFEST_PATH'; nothing was recorded."
         exit 3
@@ -1052,6 +1093,11 @@ if [ "$DRY_RUN" != true ]; then
             PUSH_STATE="$WORKSPACE_PUSH_RESULT"
         else
             PUSH_STATE="$WORKSPACE_PUSH_RESULT"
+            if [ "$PUSH_STATE" = "dirty" ]; then
+                workspace_refuse_dirty "$WORKSPACE_PATH" parked
+                workspace_unlock
+                exit 2
+            fi
             workspace_unlock
             exit 3
         fi
