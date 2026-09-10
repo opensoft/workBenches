@@ -13,13 +13,16 @@ FEATURE_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/bash/create-new-fe
 GET_LAST_WORKTREE_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/bash/get-last-worktree.sh"
 GIT_COMMON_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/bash/git-common.sh"
 AUTO_COMMIT_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/bash/auto-commit.sh"
+WORKSPACE_COMMON_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/bash/workspace-common.sh"
+PARK_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/bash/park.sh"
+RESUME_SCRIPT="$TEMPLATE_ROOT/specify/extensions/git/scripts/bash/resume.sh"
 SELECT_WORKTREE_SCRIPT="$TEMPLATE_ROOT/specify/shell/select-worktree.sh"
 REAL_GIT="$(command -v git)"
 
 FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/speckit-git-feature.XXXXXX")"
 trap 'rm -rf "$FIXTURE_ROOT"' EXIT
 
-for required_script in "$FEATURE_SCRIPT" "$GET_LAST_WORKTREE_SCRIPT" "$GIT_COMMON_SCRIPT" "$AUTO_COMMIT_SCRIPT" "$SELECT_WORKTREE_SCRIPT"; do
+for required_script in "$FEATURE_SCRIPT" "$GET_LAST_WORKTREE_SCRIPT" "$GIT_COMMON_SCRIPT" "$AUTO_COMMIT_SCRIPT" "$WORKSPACE_COMMON_SCRIPT" "$PARK_SCRIPT" "$RESUME_SCRIPT" "$SELECT_WORKTREE_SCRIPT"; do
     if [ ! -x "$required_script" ]; then
         printf 'Checked-in Speckit script is missing or not executable: %s\n' "$required_script" >&2
         exit 1
@@ -1959,6 +1962,1254 @@ test_three_leg_auto_commit_commits_both_legs_only() {
     assert_equal "$root_head_before" "$(git -C "$root" rev-parse HEAD)" 'no-feature auto-commit left the root alone'
 }
 
+# ---------------------------------------------------------------------------
+# park / resume fixtures and scenarios (openRepoShape#77 S1, workBenches#30).
+#
+# The leg origins are BARE here, unlike initialize_three_leg_fixture's: park
+# pushes the feature branch, and pushing the checked-out branch of a non-bare
+# origin works only by accident (receive.denyCurrentBranch). The divergence
+# scenario also has to push a foreign commit INTO an origin.
+# ---------------------------------------------------------------------------
+
+PARKED_ROOT=''
+PARKED_SPEC_ORIGIN=''
+PARKED_CODE_ORIGIN=''
+PARKED_BASE=''
+WORKSPACE_DIR=''
+WORKSPACE_ORIGIN=''
+
+init_bare_repo() {
+    local bare="$1"
+
+    if git init -q --bare -b main "$bare" 2>/dev/null; then
+        return 0
+    fi
+    git init -q --bare "$bare" || return 1
+    git -C "$bare" symbolic-ref HEAD refs/heads/main
+}
+
+# A bare origin seeded with one commit on main, through a throwaway checkout.
+init_seeded_bare_origin() {
+    local bare="$1"
+    local seed="$2"
+
+    mkdir -p "$seed" || return 1
+    git init -q -b main "$seed" || return 1
+    git -C "$seed" config user.name 'Spec Kit test' || return 1
+    git -C "$seed" config user.email 'spec-kit-test@example.invalid' || return 1
+    printf 'fixture\n' > "$seed/README.md" || return 1
+    mkdir -p "$seed/specs" || return 1
+    printf 'fixture\n' > "$seed/specs/.keep" || return 1
+    git -C "$seed" add -A || return 1
+    git -C "$seed" commit -qm 'fixture commit' || return 1
+    init_bare_repo "$bare" || return 1
+    git -C "$seed" remote add origin "$bare" || return 1
+    git -C "$seed" push -q origin main || return 1
+}
+
+install_park_scripts() {
+    local root="$1"
+    local script_dir="$root/.specify/extensions/git/scripts/bash"
+
+    mkdir -p "$script_dir" "$root/.specify/shell" || return 1
+    cp "$GIT_COMMON_SCRIPT" "$script_dir/git-common.sh" || return 1
+    cp "$WORKSPACE_COMMON_SCRIPT" "$script_dir/workspace-common.sh" || return 1
+    cp "$PARK_SCRIPT" "$script_dir/park.sh" || return 1
+    cp "$RESUME_SCRIPT" "$script_dir/resume.sh" || return 1
+    cp "$GET_LAST_WORKTREE_SCRIPT" "$script_dir/get-last-worktree.sh" || return 1
+    cp "$SELECT_WORKTREE_SCRIPT" "$root/.specify/shell/select-worktree.sh" || return 1
+    chmod +x \
+        "$script_dir/park.sh" \
+        "$script_dir/resume.sh" \
+        "$script_dir/get-last-worktree.sh" \
+        "$root/.specify/shell/select-worktree.sh"
+}
+
+initialize_three_leg_parked_fixture() {
+    local name="$1"
+    local config="$2"
+    local base="$FIXTURE_ROOT/$name"
+    local leg
+
+    PARKED_BASE="$base"
+    PARKED_ROOT="$base/root"
+    PARKED_SPEC_ORIGIN="$base/spec-origin.git"
+    PARKED_CODE_ORIGIN="$base/code-origin.git"
+
+    mkdir -p "$base" || return 1
+    init_seeded_bare_origin "$PARKED_SPEC_ORIGIN" "$base/spec-seed" || return 1
+    init_seeded_bare_origin "$PARKED_CODE_ORIGIN" "$base/code-seed" || return 1
+    init_plain_repo "$PARKED_ROOT" || return 1
+    add_local_submodule "$PARKED_ROOT" "$PARKED_SPEC_ORIGIN" spec || return 1
+    add_local_submodule "$PARKED_ROOT" "$PARKED_CODE_ORIGIN" code || return 1
+    for leg in spec code; do
+        git -C "$PARKED_ROOT/$leg" config user.name 'Spec Kit test' || return 1
+        git -C "$PARKED_ROOT/$leg" config user.email 'spec-kit-test@example.invalid' || return 1
+    done
+    write_three_leg_manifest "$PARKED_ROOT/project.yaml" || return 1
+    mkdir -p "$PARKED_ROOT/.specify/extensions/git" || return 1
+    printf '%s\n' "$config" > "$PARKED_ROOT/.specify/extensions/git/git-config.yml" || return 1
+    printf '/worktrees/\n' > "$PARKED_ROOT/.gitignore" || return 1
+    install_park_scripts "$PARKED_ROOT" || return 1
+    git -C "$PARKED_ROOT" add -A || return 1
+    git -C "$PARKED_ROOT" commit -qm 'three-leg parked fixture' || return 1
+}
+
+initialize_workspace_fixture() {
+    local name="$1"
+    local base="$FIXTURE_ROOT/$name"
+
+    WORKSPACE_ORIGIN="$base/workspace-origin.git"
+    WORKSPACE_DIR="$base/workspace"
+    mkdir -p "$base" || return 1
+    init_bare_repo "$WORKSPACE_ORIGIN" || return 1
+    git init -q -b main "$WORKSPACE_DIR" || return 1
+    git -C "$WORKSPACE_DIR" config user.name 'Spec Kit test' || return 1
+    git -C "$WORKSPACE_DIR" config user.email 'spec-kit-test@example.invalid' || return 1
+    mkdir -p "$WORKSPACE_DIR/workspaces" || return 1
+    printf 'workspace manifests\n' > "$WORKSPACE_DIR/workspaces/README.md" || return 1
+    git -C "$WORKSPACE_DIR" add -A || return 1
+    git -C "$WORKSPACE_DIR" commit -qm 'workspace fixture' || return 1
+    git -C "$WORKSPACE_DIR" remote add origin "$WORKSPACE_ORIGIN" || return 1
+    git -C "$WORKSPACE_DIR" push -q -u origin main || return 1
+}
+
+clone_workspace_fixture() {
+    local destination="$1"
+
+    git clone -q "$WORKSPACE_ORIGIN" "$destination" || return 1
+    git -C "$destination" config user.name 'Spec Kit test' || return 1
+    git -C "$destination" config user.email 'spec-kit-test@example.invalid'
+}
+
+# A second checkout of a three-leg root, the way a person reaches one on
+# another workstation: clone the assembly root, then initialise the legs.
+clone_three_leg_root() {
+    local source="$1"
+    local destination="$2"
+    local leg
+
+    git -c protocol.file.allow=always clone -q "$source" "$destination" || return 1
+    git -C "$destination" config user.name 'Spec Kit test' || return 1
+    git -C "$destination" config user.email 'spec-kit-test@example.invalid' || return 1
+    git -C "$destination" -c protocol.file.allow=always submodule update -q --init || return 1
+    for leg in spec code; do
+        git -C "$destination/$leg" config user.name 'Spec Kit test' || return 1
+        git -C "$destination/$leg" config user.email 'spec-kit-test@example.invalid' || return 1
+    done
+    rm -f "$destination/.specify/feature.json"
+}
+
+PARK_OUTPUT=''
+PARK_STATUS=0
+invoke_park() {
+    local root="$1"
+    local stderr_file="$2"
+    shift 2
+
+    PARK_OUTPUT=''
+    PARK_STATUS=0
+    PARK_OUTPUT="$(cd "$root" && env \
+        SPECKIT_WORKSTATION=Fixture SPECKIT_LANE=fixture-lane \
+        bash .specify/extensions/git/scripts/bash/park.sh \
+        --workspace "$WORKSPACE_DIR" "$@" 2>"$stderr_file")" || PARK_STATUS=$?
+    return 0
+}
+
+RESUME_OUTPUT=''
+RESUME_STATUS=0
+invoke_resume() {
+    local root="$1"
+    local stderr_file="$2"
+    shift 2
+
+    RESUME_OUTPUT=''
+    RESUME_STATUS=0
+    RESUME_OUTPUT="$(cd "$root" && env \
+        SPECKIT_WORKSTATION=Fixture SPECKIT_LANE=fixture-lane \
+        bash .specify/extensions/git/scripts/bash/resume.sh \
+        --workspace "$WORKSPACE_DIR" "$@" 2>"$stderr_file")" || RESUME_STATUS=$?
+    return 0
+}
+
+create_parked_feature() {
+    local root="$1"
+    local description="$2"
+    local stderr_file="$3"
+    shift 3
+
+    FEATURE_OUTPUT=''
+    FEATURE_OUTPUT="$(cd "$root" && bash "$FEATURE_SCRIPT" --json "$@" "$description" 2>"$stderr_file")" || return 1
+}
+
+assert_contains_block() {
+    local file="$1"
+    local expected="$2"
+    local label="$3"
+    local content
+
+    content="$(cat "$file")"
+    case "$content" in
+        *"$expected"*) return 0 ;;
+    esac
+    printf 'assertion failed: %s\n--- expected block ---\n%s\n--- actual ---\n%s\n' \
+        "$label" "$expected" "$content" >&2
+    return 1
+}
+
+assert_file_absent() {
+    local path="$1"
+    local label="$2"
+
+    if [ -e "$path" ]; then
+        printf 'assertion failed: %s exists: %s\n' "$label" "$path" >&2
+        return 1
+    fi
+}
+
+commit_count() {
+    git -C "$1" rev-list --count HEAD 2>/dev/null || echo 0
+}
+
+manifest_line_count() {
+    grep -c "$2" "$1" 2>/dev/null || true
+}
+
+# Mask the values that move between runs so a whole-file comparison can assert
+# every field AND the fixed key order at once. Python 3 rather than sed -E,
+# because BusyBox sed is what the Bash 3.2 CI image has.
+mask_manifest() {
+    python3 - "$1" <<'PY'
+import re
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as stream:
+    for line in stream:
+        line = line.rstrip("\n")
+        line = re.sub(r"^( *parked_commit:) [0-9a-f]{40}$", r"\1 <SHA>", line)
+        line = re.sub(
+            r"^( *parked_at:) [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+            r"\1 <TS>",
+            line,
+        )
+        print(line)
+PY
+}
+
+PARKED_CONFIG=$'checkout_mode: worktree\nbase_branch: main\nworktree_root: worktrees'
+
+# Point the fixture project's assembly leg at another org, so its manifest is
+# filed — and its workspace chosen — under that org instead.
+set_assembly_repository() {
+    local root="$1"
+    local slug="$2"
+
+    python3 - "$root/project.yaml" "$slug" <<'PY'
+import sys
+
+path, slug = sys.argv[1], sys.argv[2]
+with open(path, "r", encoding="utf-8") as stream:
+    text = stream.read()
+old = "    repository: dummy/fixture-project\n"
+if text.count(old) != 1:
+    raise SystemExit("the assembly leg's repository line is not unique")
+with open(path, "w", encoding="utf-8") as stream:
+    stream.write(text.replace(old, "    repository: %s\n" % slug))
+PY
+    git -C "$root" add project.yaml || return 1
+    git -C "$root" commit -qm 'point the assembly leg at another org'
+}
+
+test_park_commits_and_pushes_both_legs() {
+    local stderr_file="$FIXTURE_ROOT/park-both-legs.stderr"
+    local root spec_tree code_tree spec_before code_before
+    local root_head_before root_index_before subject
+
+    # Given: a parked-shape fixture with uncommitted work in both legs.
+    initialize_three_leg_parked_fixture 'park-both-legs' "$PARKED_CONFIG" || return 1
+    initialize_workspace_fixture 'park-both-legs-ws' || return 1
+    root="$PARKED_ROOT"
+    if ! create_parked_feature "$root" 'Add routing core' "$stderr_file"; then
+        printf 'feature creation failed: %s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    spec_tree="$root/worktrees/001-routing-core/spec"
+    code_tree="$root/worktrees/001-routing-core/code"
+    printf 'draft\n' > "$spec_tree/specs/001-routing-core/spec.md" || return 1
+    printf 'impl\n' > "$code_tree/implementation.txt" || return 1
+    spec_before="$(commit_count "$spec_tree")"
+    code_before="$(commit_count "$code_tree")"
+    root_head_before="$(git -C "$root" rev-parse HEAD)"
+    root_index_before="$(git -C "$root" diff --cached --name-only | sort | tr '\n' ' ')"
+
+    # When: park runs from the assembly root.
+    invoke_park "$root" "$stderr_file"
+    if [ "$PARK_STATUS" -ne 0 ]; then
+        printf 'park failed (%s): %s\n' "$PARK_STATUS" "$(<"$stderr_file")" >&2
+        return 1
+    fi
+
+    # Then: exactly one WIP commit per leg, with the fixed subject.
+    assert_equal "$((spec_before + 1))" "$(commit_count "$spec_tree")" 'spec leg WIP commit' || return 1
+    assert_equal "$((code_before + 1))" "$(commit_count "$code_tree")" 'code leg WIP commit' || return 1
+    subject="$(git -C "$spec_tree" log -1 --format=%s)"
+    if ! printf '%s\n' "$subject" | grep -Eq '^wip: park [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z — lane fixture-lane$'; then
+        printf 'assertion failed: WIP subject does not match: %s\n' "$subject" >&2
+        return 1
+    fi
+
+    # Then: the origins carry the branch at the parked commit.
+    assert_equal "$(git -C "$spec_tree" rev-parse HEAD)" \
+        "$(git -C "$PARKED_SPEC_ORIGIN" rev-parse refs/heads/001-routing-core)" \
+        'spec origin has the parked commit' || return 1
+    assert_equal "$(git -C "$code_tree" rev-parse HEAD)" \
+        "$(git -C "$PARKED_CODE_ORIGIN" rev-parse refs/heads/001-routing-core)" \
+        'code origin has the parked commit' || return 1
+
+    # Then: the manifest records the WIP.
+    assert_equal '2' "$(manifest_line_count "$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml" '^            wip: true$')" \
+        'manifest wip: true per leg' || return 1
+    assert_equal '2' "$(manifest_line_count "$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml" '^            wip_depth: 1$')" \
+        'manifest wip_depth: 1 per leg' || return 1
+
+    # Then: the assembly root is untouched — no branch, no worktree, no index.
+    assert_equal 'main ' "$(leg_branches "$root")" 'park left the root branches alone' || return 1
+    assert_equal '1' "$(worktree_record_count "$root")" 'park left the root worktree records alone' || return 1
+    assert_equal "$root_head_before" "$(git -C "$root" rev-parse HEAD)" 'park left the root HEAD alone' || return 1
+    assert_equal "$root_index_before" "$(git -C "$root" diff --cached --name-only | sort | tr '\n' ' ')" \
+        'park left the root index alone'
+}
+
+test_park_clean_feature_makes_no_commit() {
+    local stderr_file="$FIXTURE_ROOT/park-clean.stderr"
+    local root spec_tree spec_before spec_tip
+
+    # Given: a created feature with nothing uncommitted.
+    initialize_three_leg_parked_fixture 'park-clean' "$PARKED_CONFIG" || return 1
+    initialize_workspace_fixture 'park-clean-ws' || return 1
+    root="$PARKED_ROOT"
+    create_parked_feature "$root" 'Add routing core' "$stderr_file" || return 1
+    spec_tree="$root/worktrees/001-routing-core/spec"
+    spec_before="$(commit_count "$spec_tree")"
+    spec_tip="$(git -C "$spec_tree" rev-parse HEAD)"
+
+    # When: park runs.
+    invoke_park "$root" "$stderr_file"
+    assert_equal '0' "$PARK_STATUS" 'clean park exit code' || return 1
+
+    # Then: no commit was created anywhere and the tip is what was recorded.
+    assert_equal "$spec_before" "$(commit_count "$spec_tree")" 'clean park created no commit' || return 1
+    assert_equal '2' "$(manifest_line_count "$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml" '^            wip: false$')" \
+        'clean park records wip: false' || return 1
+    assert_equal '2' "$(manifest_line_count "$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml" '^            wip_depth: 0$')" \
+        'clean park records wip_depth: 0' || return 1
+    if ! grep -Fq "            parked_commit: $spec_tip" "$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml"; then
+        printf 'assertion failed: the spec tip was not recorded as the parked commit\n%s\n' \
+            "$(<"$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml")" >&2
+        return 1
+    fi
+}
+
+test_park_enumerates_from_git_not_feature_json() {
+    local stderr_file="$FIXTURE_ROOT/park-stale-json.stderr"
+    local root
+
+    # Given: a created feature and a feature.json naming a directory that is
+    # not an open feature.
+    initialize_three_leg_parked_fixture 'park-stale-json' "$PARKED_CONFIG" || return 1
+    initialize_workspace_fixture 'park-stale-json-ws' || return 1
+    root="$PARKED_ROOT"
+    create_parked_feature "$root" 'Add routing core' "$stderr_file" || return 1
+    printf '%s\n' '{"feature_directory":"worktrees/009-removed/spec/specs/009-removed"}' \
+        > "$root/.specify/feature.json" || return 1
+
+    # When: park runs.
+    invoke_park "$root" "$stderr_file"
+    assert_equal '0' "$PARK_STATUS" 'stale feature.json park exit code' || return 1
+
+    # Then: the open feature is parked, and the disagreement is a warning.
+    if ! grep -Fq "[specify] Warning: .specify/feature.json names 'worktrees/009-removed/spec/specs/009-removed', which is not an open feature under 'worktrees'." "$stderr_file"; then
+        printf 'assertion failed: missing W1 first line\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if ! grep -Fq "[specify] Recorded active_feature_source: stale-feature-json; resume will select '001-routing-core' instead." "$stderr_file"; then
+        printf 'assertion failed: missing W1 second line\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if ! grep -Fq '    active_feature_source: stale-feature-json' "$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml"; then
+        printf 'assertion failed: active_feature_source was not recorded as stale-feature-json\n' >&2
+        return 1
+    fi
+    grep -Fq '      - branch: 001-routing-core' "$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml"
+}
+
+test_park_refuses_a_leg_without_origin() {
+    local stderr_file="$FIXTURE_ROOT/park-no-origin.stderr"
+    local root
+
+    # Given: a created feature whose code leg has no origin. A remote is a
+    # property of the leg REPOSITORY, so this refusal reaches every feature of
+    # that leg — here there is one, so nothing is parked at all.
+    initialize_three_leg_parked_fixture 'park-no-origin' "$PARKED_CONFIG" || return 1
+    initialize_workspace_fixture 'park-no-origin-ws' || return 1
+    root="$PARKED_ROOT"
+    create_parked_feature "$root" 'Add routing core' "$stderr_file" || return 1
+    git -C "$root/code" remote remove origin || return 1
+
+    # When: park runs.
+    invoke_park "$root" "$stderr_file"
+
+    # Then: R5, exactly, and nothing was recorded for the feature.
+    assert_equal '2' "$PARK_STATUS" 'no-origin park exit code' || return 1
+    assert_contains_block "$stderr_file" \
+"Error: 001-routing-core (code leg) has no 'origin' remote; that feature was NOT parked.
+resume rebuilds worktrees from pushed branches, so a leg with no remote cannot travel.
+  git -C code remote add origin <url>" 'R5 wording' || return 1
+    if grep -Fq '      - branch: 001-routing-core' "$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml" 2>/dev/null; then
+        printf 'assertion failed: a refused feature was recorded\n' >&2
+        return 1
+    fi
+    assert_equal '0' "$(commit_count "$root/worktrees/001-routing-core/spec")" \
+        'no-origin park made no spec commit' 2>/dev/null || true
+    if [ "$(git -C "$root/worktrees/001-routing-core/spec" log -1 --format=%s)" != 'fixture commit' ]; then
+        printf 'assertion failed: the spec leg was committed before the blockers were checked\n' >&2
+        return 1
+    fi
+}
+
+test_park_refuses_a_rebase_in_progress() {
+    local stderr_file="$FIXTURE_ROOT/park-rebase.stderr"
+    local root spec_tree spec_before
+
+    # Given: two features, one of which has a real conflicted rebase in its
+    # spec leg worktree.
+    initialize_three_leg_parked_fixture 'park-rebase' "$PARKED_CONFIG" || return 1
+    initialize_workspace_fixture 'park-rebase-ws' || return 1
+    root="$PARKED_ROOT"
+    create_parked_feature "$root" 'Add routing core' "$stderr_file" || return 1
+    create_parked_feature "$root" 'Add label render' "$stderr_file" || return 1
+    spec_tree="$root/worktrees/001-routing-core/spec"
+    printf 'feature side\n' > "$spec_tree/README.md" || return 1
+    git -C "$spec_tree" commit -q -am 'feature edit' || return 1
+    printf 'main side\n' > "$root/spec/README.md" || return 1
+    git -C "$root/spec" commit -q -am 'main edit' || return 1
+    git -C "$spec_tree" rebase main >/dev/null 2>&1 || true
+    if [ ! -e "$(git -C "$spec_tree" rev-parse --absolute-git-dir)/rebase-merge" ] \
+        && [ ! -e "$(git -C "$spec_tree" rev-parse --absolute-git-dir)/rebase-apply" ]; then
+        printf 'fixture failed: no rebase is in progress\n' >&2
+        return 1
+    fi
+    spec_before="$(commit_count "$spec_tree")"
+
+    # When: park runs.
+    invoke_park "$root" "$stderr_file"
+
+    # Then: R4, exit 3, no commit in that leg, and the other feature parked.
+    assert_equal '3' "$PARK_STATUS" 'rebase-in-progress park exit code' || return 1
+    assert_contains_block "$stderr_file" \
+"Error: 001-routing-core (spec leg) has a rebase in progress; that feature was NOT parked.
+A WIP commit over an unresolved index would park a conflicted tree as if it were work.
+  finish it:  git -C worktrees/001-routing-core/spec rebase --continue
+  or drop it: git -C worktrees/001-routing-core/spec rebase --abort
+Then re-run \`make park\`." 'R4 wording' || return 1
+    assert_equal "$spec_before" "$(commit_count "$spec_tree")" 'R4 made no commit' || return 1
+    grep -Fq '      - branch: 002-label-render' "$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml" || {
+        printf 'assertion failed: the other feature was not parked\n%s\n' \
+            "$(<"$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml")" >&2
+        return 1
+    }
+}
+
+test_park_refuses_a_rejected_push_and_keeps_the_wip_commit() {
+    local stderr_file="$FIXTURE_ROOT/park-push-refused.stderr"
+    local root spec_tree wip_sha
+
+    # Given: two features and a spec origin that rejects only 002-*.
+    initialize_three_leg_parked_fixture 'park-push-refused' "$PARKED_CONFIG" || return 1
+    initialize_workspace_fixture 'park-push-refused-ws' || return 1
+    root="$PARKED_ROOT"
+    create_parked_feature "$root" 'Add routing core' "$stderr_file" || return 1
+    create_parked_feature "$root" 'Add label render' "$stderr_file" || return 1
+    mkdir -p "$PARKED_SPEC_ORIGIN/hooks" || return 1
+    cat > "$PARKED_SPEC_ORIGIN/hooks/pre-receive" <<'HOOK'
+#!/usr/bin/env bash
+while read -r _old _new ref; do
+    case "$ref" in
+        */002-*) printf 'the fixture refuses %s\n' "$ref" >&2; exit 1 ;;
+    esac
+done
+exit 0
+HOOK
+    chmod +x "$PARKED_SPEC_ORIGIN/hooks/pre-receive" || return 1
+    spec_tree="$root/worktrees/002-label-render/spec"
+    printf 'draft\n' > "$spec_tree/specs/002-label-render/spec.md" || return 1
+
+    # When: park runs.
+    invoke_park "$root" "$stderr_file"
+
+    # Then: R6, exit 3, the WIP commit is still there, nothing recorded for it.
+    assert_equal '3' "$PARK_STATUS" 'rejected-push park exit code' || return 1
+    wip_sha="$(git -C "$spec_tree" rev-parse HEAD)"
+    if ! grep -Fq 'Error: pushing 002-label-render to origin refused in the spec leg; that feature was NOT parked.' "$stderr_file"; then
+        printf 'assertion failed: missing R6 first line\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if ! grep -Fq "Your work is NOT lost: it is committed locally at $wip_sha. park never force-pushes." "$stderr_file"; then
+        printf 'assertion failed: missing R6 reassurance\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if ! grep -Fq "  look:  git -C worktrees/002-label-render/spec fetch origin && git -C worktrees/002-label-render/spec log --oneline $wip_sha..origin/002-label-render" "$stderr_file"; then
+        printf 'assertion failed: missing R6 remediation\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if ! grep -Fq 'Then reconcile by hand and re-run `make park`.' "$stderr_file"; then
+        printf 'assertion failed: missing R6 closing line\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if ! git -C "$spec_tree" log -1 --format=%s | grep -q '^wip: park '; then
+        printf 'assertion failed: the WIP commit was not kept\n' >&2
+        return 1
+    fi
+    if grep -Fq '      - branch: 002-label-render' "$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml"; then
+        printf 'assertion failed: a feature whose push was refused was recorded\n' >&2
+        return 1
+    fi
+    grep -Fq '      - branch: 001-routing-core' "$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml"
+}
+
+test_park_stacks_a_second_wip_without_a_force_push() {
+    local stderr_file="$FIXTURE_ROOT/park-stacked.stderr"
+    local root spec_tree base_count
+
+    # Given: a feature already parked with one WIP commit, then dirty again.
+    initialize_three_leg_parked_fixture 'park-stacked' "$PARKED_CONFIG" || return 1
+    initialize_workspace_fixture 'park-stacked-ws' || return 1
+    root="$PARKED_ROOT"
+    create_parked_feature "$root" 'Add routing core' "$stderr_file" || return 1
+    spec_tree="$root/worktrees/001-routing-core/spec"
+    base_count="$(commit_count "$spec_tree")"
+    printf 'draft\n' > "$spec_tree/specs/001-routing-core/spec.md" || return 1
+    invoke_park "$root" "$stderr_file"
+    assert_equal '0' "$PARK_STATUS" 'first park of a stack' || return 1
+    printf 'draft again\n' >> "$spec_tree/specs/001-routing-core/spec.md" || return 1
+
+    # When: park runs a second time.
+    invoke_park "$root" "$stderr_file"
+
+    # Then: a second WIP commit, depth 2, and a fast-forward push.
+    assert_equal '0' "$PARK_STATUS" 'second park of a stack' || return 1
+    assert_equal "$((base_count + 2))" "$(commit_count "$spec_tree")" 'two stacked WIP commits' || return 1
+    if ! grep -Fq '            wip_depth: 2' "$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml"; then
+        printf 'assertion failed: wip_depth 2 was not recorded\n%s\n' \
+            "$(<"$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml")" >&2
+        return 1
+    fi
+    assert_equal "$(git -C "$spec_tree" rev-parse HEAD)" \
+        "$(git -C "$PARKED_SPEC_ORIGIN" rev-parse refs/heads/001-routing-core)" \
+        'the stacked push reached the origin' || return 1
+    if grep -Fq 'force' "$stderr_file"; then
+        printf 'assertion failed: a force-push was mentioned\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+}
+
+test_park_dry_run_writes_nothing() {
+    local stderr_file="$FIXTURE_ROOT/park-dry-run.stderr"
+    local root spec_tree spec_before
+
+    # Given: a created feature with uncommitted work.
+    initialize_three_leg_parked_fixture 'park-dry-run' "$PARKED_CONFIG" || return 1
+    initialize_workspace_fixture 'park-dry-run-ws' || return 1
+    root="$PARKED_ROOT"
+    create_parked_feature "$root" 'Add routing core' "$stderr_file" || return 1
+    spec_tree="$root/worktrees/001-routing-core/spec"
+    printf 'draft\n' > "$spec_tree/specs/001-routing-core/spec.md" || return 1
+    spec_before="$(commit_count "$spec_tree")"
+
+    # When: park runs with --dry-run.
+    invoke_park "$root" "$stderr_file" --dry-run
+    assert_equal '0' "$PARK_STATUS" 'dry-run park exit code' || return 1
+
+    # Then: no commit, no push, no manifest, no lock left behind.
+    assert_equal "$spec_before" "$(commit_count "$spec_tree")" 'dry-run park made no commit' || return 1
+    if git -C "$PARKED_SPEC_ORIGIN" rev-parse --verify --quiet refs/heads/001-routing-core >/dev/null; then
+        printf 'assertion failed: dry-run park pushed a branch\n' >&2
+        return 1
+    fi
+    assert_file_absent "$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml" 'dry-run park manifest' || return 1
+    assert_file_absent "$WORKSPACE_DIR/.workspaces.lock" 'dry-run park lock directory' || return 1
+    assert_equal '1' "$(commit_count "$WORKSPACE_DIR")" 'dry-run park made no workspace commit' || return 1
+    if ! printf '%s\n' "$PARK_OUTPUT" | grep -Fq 'COMMITTED: nothing (--dry-run)'; then
+        printf 'assertion failed: dry-run park did not say it wrote nothing\n%s\n' "$PARK_OUTPUT" >&2
+        return 1
+    fi
+}
+
+# A parked three-leg fixture with one feature carrying WIP in both legs, and a
+# second checkout of the root ready to resume it. Sets PARKED_ROOT,
+# WORKSPACE_DIR, RESUME_ROOT and RESUME_PARKED_SPEC / RESUME_PARKED_CODE.
+RESUME_ROOT=''
+RESUME_PARKED_SPEC=''
+RESUME_PARKED_CODE=''
+park_then_clone() {
+    local name="$1"
+    local stderr_file="$2"
+    local root
+
+    initialize_three_leg_parked_fixture "$name" "$PARKED_CONFIG" || return 1
+    initialize_workspace_fixture "$name-ws" || return 1
+    root="$PARKED_ROOT"
+    create_parked_feature "$root" 'Add routing core' "$stderr_file" || return 1
+    printf 'draft\n' > "$root/worktrees/001-routing-core/spec/specs/001-routing-core/spec.md" || return 1
+    printf 'impl\n' > "$root/worktrees/001-routing-core/code/implementation.txt" || return 1
+    invoke_park "$root" "$stderr_file"
+    if [ "$PARK_STATUS" -ne 0 ]; then
+        printf 'park failed (%s): %s\n' "$PARK_STATUS" "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    RESUME_PARKED_SPEC="$(git -C "$root/worktrees/001-routing-core/spec" rev-parse HEAD)"
+    RESUME_PARKED_CODE="$(git -C "$root/worktrees/001-routing-core/code" rev-parse HEAD)"
+    RESUME_ROOT="$PARKED_BASE/second"
+    clone_three_leg_root "$root" "$RESUME_ROOT"
+}
+
+test_resume_recreates_worktrees_feature_json_and_state() {
+    local stderr_file="$FIXTURE_ROOT/resume-fresh.stderr"
+    local clone output
+
+    # Given: a parked feature and a fresh clone of the assembly root.
+    park_then_clone 'resume-fresh' "$stderr_file" || return 1
+    clone="$RESUME_ROOT"
+
+    # When: resume runs there.
+    invoke_resume "$clone" "$stderr_file"
+    if [ "$RESUME_STATUS" -ne 0 ]; then
+        printf 'resume failed (%s): %s\n' "$RESUME_STATUS" "$(<"$stderr_file")" >&2
+        return 1
+    fi
+
+    # Then: both legs are registered on the branch at the parked commit.
+    assert_worktree '001-routing-core' "$clone/worktrees/001-routing-core/spec" || return 1
+    assert_worktree '001-routing-core' "$clone/worktrees/001-routing-core/code" || return 1
+    assert_equal "$RESUME_PARKED_SPEC" \
+        "$(git -C "$clone/spec" rev-parse refs/remotes/origin/001-routing-core)" \
+        'resume fetched the parked spec commit' || return 1
+
+    # Then: feature.json and the state file are restored, and discovery agrees.
+    assert_equal 'worktrees/001-routing-core/spec/specs/001-routing-core' \
+        "$(json_field "$(<"$clone/.specify/feature.json")" feature_directory)" 'resume feature.json' || return 1
+    assert_equal '001-routing-core' \
+        "$(json_field "$(<"$clone/.git/speckit-last-worktree.json")" BRANCH_NAME)" 'resume state file' || return 1
+    output="$(cd "$clone" && bash .specify/extensions/git/scripts/bash/get-last-worktree.sh --json)" || return 1
+    assert_equal 'state_file' "$(json_field "$output" SOURCE)" 'resume discovery source' || return 1
+    assert_equal '001-routing-core' "$(json_field "$output" BRANCH_NAME)" 'resume discovery branch'
+}
+
+test_resume_uncommits_exactly_the_parked_wip() {
+    local stderr_file="$FIXTURE_ROOT/resume-uncommit.stderr"
+    local clone staged_clone spec_tree
+
+    # Given: a parked feature and a fresh clone.
+    park_then_clone 'resume-uncommit' "$stderr_file" || return 1
+    clone="$RESUME_ROOT"
+
+    # When: resume runs.
+    invoke_resume "$clone" "$stderr_file"
+    assert_equal '0' "$RESUME_STATUS" 'un-commit resume exit code' || return 1
+
+    # Then: the work is back, nothing is staged, and files absent from HEAD are
+    # untracked again.
+    spec_tree="$clone/worktrees/001-routing-core/spec"
+    assert_equal 'draft' "$(cat "$spec_tree/specs/001-routing-core/spec.md")" 'the parked content is back' || return 1
+    assert_equal '' "$(git -C "$spec_tree" diff --cached --name-only)" 'nothing is left staged' || return 1
+    if ! git -C "$spec_tree" status --porcelain | grep -q '^?? specs/001-routing-core/'; then
+        printf 'assertion failed: the restored file is not untracked\n%s\n' \
+            "$(git -C "$spec_tree" status --porcelain)" >&2
+        return 1
+    fi
+    assert_equal '1' "$(git -C "$spec_tree" rev-list --count HEAD..origin/001-routing-core)" \
+        'the local branch is exactly one WIP commit behind' || return 1
+
+    # When: another clone resumes with --keep-staged.
+    staged_clone="$PARKED_BASE/staged"
+    clone_three_leg_root "$PARKED_ROOT" "$staged_clone" || return 1
+    invoke_resume "$staged_clone" "$stderr_file" --keep-staged
+    assert_equal '0' "$RESUME_STATUS" '--keep-staged resume exit code' || return 1
+
+    # Then: the work is staged instead.
+    if ! git -C "$staged_clone/worktrees/001-routing-core/spec" diff --cached --name-only \
+        | grep -q '^specs/001-routing-core/spec.md$'; then
+        printf 'assertion failed: --keep-staged did not leave the work staged\n%s\n' \
+            "$(git -C "$staged_clone/worktrees/001-routing-core/spec" diff --cached --name-only)" >&2
+        return 1
+    fi
+}
+
+test_resume_refuses_on_divergence() {
+    local stderr_file="$FIXTURE_ROOT/resume-divergence.stderr"
+    local root clone foreign parked_at foreign_tip
+
+    # Given: two parked features, then a foreign commit pushed to the spec
+    # origin on the first one's branch.
+    initialize_three_leg_parked_fixture 'resume-divergence' "$PARKED_CONFIG" || return 1
+    initialize_workspace_fixture 'resume-divergence-ws' || return 1
+    root="$PARKED_ROOT"
+    create_parked_feature "$root" 'Add routing core' "$stderr_file" || return 1
+    create_parked_feature "$root" 'Add label render' "$stderr_file" || return 1
+    printf 'draft\n' > "$root/worktrees/001-routing-core/spec/specs/001-routing-core/spec.md" || return 1
+    invoke_park "$root" "$stderr_file"
+    if [ "$PARK_STATUS" -ne 0 ]; then
+        printf 'park failed (%s): %s\n' "$PARK_STATUS" "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    parked_at="$(grep -E '^    parked_at:' "$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml")"
+    parked_at="${parked_at#    parked_at: }"
+    RESUME_PARKED_SPEC="$(git -C "$root/worktrees/001-routing-core/spec" rev-parse HEAD)"
+
+    foreign="$PARKED_BASE/foreign"
+    git clone -q --branch 001-routing-core "$PARKED_SPEC_ORIGIN" "$foreign" || return 1
+    git -C "$foreign" config user.name 'Someone else' || return 1
+    git -C "$foreign" config user.email 'someone-else@example.invalid' || return 1
+    printf 'a foreign commit\n' > "$foreign/foreign.txt" || return 1
+    git -C "$foreign" add foreign.txt || return 1
+    git -C "$foreign" commit -qm 'foreign work' || return 1
+    git -C "$foreign" push -q origin 001-routing-core || return 1
+    foreign_tip="$(git -C "$foreign" rev-parse HEAD)"
+
+    clone="$PARKED_BASE/second"
+    clone_three_leg_root "$root" "$clone" || return 1
+
+    # When: resume runs in the fresh clone.
+    invoke_resume "$clone" "$stderr_file"
+
+    # Then: RR1, byte-for-byte, and nothing was recreated for that feature.
+    assert_equal '3' "$RESUME_STATUS" 'divergence resume exit code' || return 1
+    assert_contains_block "$stderr_file" \
+"Error: 001-routing-core (spec leg) has moved since it was parked; that feature was NOT recreated.
+  parked commit  $RESUME_PARKED_SPEC   (parked $parked_at on Fixture)
+  current tip    $foreign_tip      (origin/001-routing-core)
+Nothing is ever reset over commits this workspace did not park. Reconcile by hand:
+  git -C spec fetch origin 001-routing-core
+  git -C spec log --oneline $RESUME_PARKED_SPEC..origin/001-routing-core
+  git -C spec worktree add -b 001-routing-core worktrees/001-routing-core/spec origin/001-routing-core
+  # then decide: rebase the parked WIP onto the new tip, or discard it" 'RR1 wording' || return 1
+    assert_file_absent "$clone/worktrees/001-routing-core" 'the diverged feature directory' || return 1
+    assert_worktree '002-label-render' "$clone/worktrees/002-label-render/spec" || return 1
+    assert_worktree '002-label-render' "$clone/worktrees/002-label-render/code"
+}
+
+test_resume_is_idempotent() {
+    local stderr_file="$FIXTURE_ROOT/resume-idempotent.stderr"
+    local clone spec_tree head_before dirty_before
+
+    # Given: a clone that has already been resumed, with new local work.
+    park_then_clone 'resume-idempotent' "$stderr_file" || return 1
+    clone="$RESUME_ROOT"
+    invoke_resume "$clone" "$stderr_file"
+    assert_equal '0' "$RESUME_STATUS" 'first resume exit code' || return 1
+    spec_tree="$clone/worktrees/001-routing-core/spec"
+    printf 'later work\n' > "$spec_tree/later.txt" || return 1
+    head_before="$(git -C "$spec_tree" rev-parse HEAD)"
+    dirty_before="$(git -C "$spec_tree" status --porcelain)"
+
+    # When: resume runs again.
+    invoke_resume "$clone" "$stderr_file"
+
+    # Then: it says so, creates nothing, and never double-resets.
+    assert_equal '0' "$RESUME_STATUS" 'second resume exit code' || return 1
+    if ! grep -Fq "[specify] 001-routing-core (spec): worktree already registered at worktrees/001-routing-core/spec; left as it is." "$stderr_file"; then
+        printf 'assertion failed: missing RR4 line\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    assert_equal "$head_before" "$(git -C "$spec_tree" rev-parse HEAD)" 'the second resume did not reset' || return 1
+    assert_equal "$dirty_before" "$(git -C "$spec_tree" status --porcelain)" 'the second resume left the dirty state alone' || return 1
+    assert_equal '2' "$(worktree_record_count "$clone/spec")" 'the second resume created no worktree'
+}
+
+test_resume_refuses_a_foreign_directory() {
+    local stderr_file="$FIXTURE_ROOT/resume-foreign-dir.stderr"
+    local clone intruder
+
+    # Given: a clone with an unrelated directory at the spec leg's target path.
+    park_then_clone 'resume-foreign-dir' "$stderr_file" || return 1
+    clone="$RESUME_ROOT"
+    intruder="$clone/worktrees/001-routing-core/spec"
+    mkdir -p "$intruder" || return 1
+    printf 'not a worktree\n' > "$intruder/keep.txt" || return 1
+
+    # When: resume runs.
+    invoke_resume "$clone" "$stderr_file"
+
+    # Then: RR3, and the intruder's bytes are unchanged.
+    assert_equal '2' "$RESUME_STATUS" 'foreign-directory resume exit code' || return 1
+    assert_contains_block "$stderr_file" \
+"Error: 'worktrees/001-routing-core/spec' exists and is not a registered worktree of the spec leg; that feature was NOT recreated.
+Nothing here overwrites a directory it did not create.
+  look:  git -C spec worktree list
+Move it aside, then re-run \`make resume\`." 'RR3 wording' || return 1
+    assert_equal 'not a worktree' "$(cat "$intruder/keep.txt")" 'the foreign directory is unchanged' || return 1
+    assert_equal '1' "$(worktree_record_count "$clone/spec")" 'RR3 created no worktree'
+}
+
+test_resume_refuses_a_local_branch_that_is_not_the_parked_commit() {
+    local stderr_file="$FIXTURE_ROOT/resume-local-branch.stderr"
+    local clone local_sha
+
+    # Given: a clone whose spec leg carries the branch with a local commit the
+    # parked commit does not contain — DIVERGED, not merely behind.
+    park_then_clone 'resume-local-branch' "$stderr_file" || return 1
+    clone="$RESUME_ROOT"
+    git -C "$clone/spec" checkout -q -b 001-routing-core main || return 1
+    printf 'local work\n' > "$clone/spec/local.txt" || return 1
+    git -C "$clone/spec" add local.txt || return 1
+    git -C "$clone/spec" commit -qm 'local work' || return 1
+    git -C "$clone/spec" checkout -q main || return 1
+    local_sha="$(git -C "$clone/spec" rev-parse refs/heads/001-routing-core)"
+
+    # When: resume runs.
+    invoke_resume "$clone" "$stderr_file"
+
+    # Then: RR5.
+    assert_equal '2' "$RESUME_STATUS" 'local-branch resume exit code' || return 1
+    assert_contains_block "$stderr_file" \
+"Error: the spec leg already has a local branch '001-routing-core' at $local_sha, not the parked commit $RESUME_PARKED_SPEC; that feature was NOT recreated.
+  git -C spec log --oneline $RESUME_PARKED_SPEC..001-routing-core
+Rename or delete that branch, then re-run \`make resume\`." 'RR5 wording' || return 1
+    assert_file_absent "$clone/worktrees/001-routing-core" 'RR5 feature directory'
+}
+
+test_resume_refuses_a_local_branch_behind_the_parked_commit() {
+    local stderr_file="$FIXTURE_ROOT/resume-behind.stderr"
+    local clone local_sha spec_tree
+
+    # Given: a clone whose spec leg carries the branch at an ancestor of the
+    # parked commit — this workstation had the feature before the other one
+    # parked newer work on it.
+    park_then_clone 'resume-behind' "$stderr_file" || return 1
+    clone="$RESUME_ROOT"
+    git -C "$clone/spec" branch 001-routing-core main || return 1
+    local_sha="$(git -C "$clone/spec" rev-parse refs/heads/001-routing-core)"
+
+    # When: resume runs.
+    invoke_resume "$clone" "$stderr_file"
+
+    # Then: the remediation is the fast-forward, not a deletion, and nothing
+    # was created or reset.
+    assert_equal '2' "$RESUME_STATUS" 'behind-branch resume exit code' || return 1
+    assert_contains_block "$stderr_file" \
+"Error: the spec leg's local branch '001-routing-core' is BEHIND the parked commit ($local_sha is an ancestor of $RESUME_PARKED_SPEC); that feature was NOT recreated.
+Fast-forward it, then re-run:
+  git -C spec fetch origin 001-routing-core:001-routing-core
+  make resume" 'RR5 behind wording' || return 1
+    assert_file_absent "$clone/worktrees/001-routing-core" 'behind-branch feature directory' || return 1
+    assert_equal "$local_sha" "$(git -C "$clone/spec" rev-parse refs/heads/001-routing-core)" \
+        'behind-branch resume moved nothing' || return 1
+
+    # When: the printed command runs, and resume runs again.
+    git -C "$clone/spec" fetch -q origin 001-routing-core:001-routing-core || return 1
+    invoke_resume "$clone" "$stderr_file"
+
+    # Then: the feature comes back and the parked WIP is un-committed.
+    if [ "$RESUME_STATUS" -ne 0 ]; then
+        printf 'the replayed resume failed (%s): %s\n' "$RESUME_STATUS" "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    spec_tree="$clone/worktrees/001-routing-core/spec"
+    assert_worktree '001-routing-core' "$spec_tree" || return 1
+    assert_worktree '001-routing-core' "$clone/worktrees/001-routing-core/code" || return 1
+    assert_equal 'draft' "$(cat "$spec_tree/specs/001-routing-core/spec.md")" 'the parked content is back' || return 1
+    assert_equal '1' "$(git -C "$spec_tree" rev-list --count HEAD..origin/001-routing-core)" \
+        'the replayed resume un-committed the parked WIP'
+}
+
+test_manifest_round_trip() {
+    local stderr_file="$FIXTURE_ROOT/manifest-round-trip.stderr"
+    local root manifest first_bytes second_bytes commits_before
+    local expected_manifest actual_manifest
+
+    # Given: a parked feature with WIP in both legs.
+    initialize_three_leg_parked_fixture 'manifest-round-trip' "$PARKED_CONFIG" || return 1
+    initialize_workspace_fixture 'manifest-round-trip-ws' || return 1
+    root="$PARKED_ROOT"
+    create_parked_feature "$root" 'Add routing core' "$stderr_file" || return 1
+    printf 'draft\n' > "$root/worktrees/001-routing-core/spec/specs/001-routing-core/spec.md" || return 1
+    printf 'impl\n' > "$root/worktrees/001-routing-core/code/implementation.txt" || return 1
+    invoke_park "$root" "$stderr_file"
+    assert_equal '0' "$PARK_STATUS" 'round-trip park exit code' || return 1
+
+    # Then: the file is filed under the org of the project's own repository,
+    # so two projects sharing an id in different orgs never share a file.
+    manifest="$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml"
+    if [ ! -f "$manifest" ]; then
+        printf 'assertion failed: no manifest at the org-namespaced path %s\n' "$manifest" >&2
+        find "$WORKSPACE_DIR/workspaces" -type f >&2
+        return 1
+    fi
+    assert_file_absent "$WORKSPACE_DIR/workspaces/fixture-project.yaml" \
+        'an un-namespaced manifest' || return 1
+
+    # Then: every field, in a fixed key order.
+    expected_manifest="$(cat <<'YAML'
+schema_version: 1
+kind: workspace-manifest
+written_by: speckit park
+projects:
+  - id: fixture-project
+    repository: dummy/fixture-project
+    shape: three-leg
+    root: root
+    tracking_branch: main
+    worktree_root: worktrees
+    parked_at: <TS>
+    parked_on: Fixture
+    parked_by_lane: fixture-lane
+    active_feature: 001-routing-core
+    active_feature_source: state_file
+    features:
+      - branch: 001-routing-core
+        feature_directory: worktrees/001-routing-core/spec/specs/001-routing-core
+        legs:
+          - role: spec
+            remote: origin
+            parked_commit: <SHA>
+            wip: true
+            wip_depth: 1
+            pushed: true
+          - role: code
+            remote: origin
+            parked_commit: <SHA>
+            wip: true
+            wip_depth: 1
+            pushed: true
+YAML
+    )"
+    actual_manifest="$(mask_manifest "$manifest")"
+    if [ "$expected_manifest" != "$actual_manifest" ]; then
+        printf 'assertion failed: the manifest is not the expected shape\n--- expected ---\n%s\n--- actual ---\n%s\n' \
+            "$expected_manifest" "$actual_manifest" >&2
+        return 1
+    fi
+
+    # Then: no value is a host-absolute path.
+    if grep -nE ':[[:space:]]+["'"'"']?[~/]' "$manifest"; then
+        printf 'assertion failed: the manifest names an absolute path\n' >&2
+        return 1
+    fi
+
+    # When: park runs again with nothing changed.
+    first_bytes="$(cat "$manifest")"
+    commits_before="$(commit_count "$WORKSPACE_DIR")"
+    invoke_park "$root" "$stderr_file"
+    assert_equal '0' "$PARK_STATUS" 'second round-trip park exit code' || return 1
+
+    # Then: the file is byte-identical and no commit was made.
+    second_bytes="$(cat "$manifest")"
+    if [ "$first_bytes" != "$second_bytes" ]; then
+        printf 'assertion failed: an unchanged re-park rewrote the manifest\n--- first ---\n%s\n--- second ---\n%s\n' \
+            "$first_bytes" "$second_bytes" >&2
+        return 1
+    fi
+    assert_equal "$commits_before" "$(commit_count "$WORKSPACE_DIR")" 'an unchanged re-park made no commit'
+}
+
+test_missing_workspace_config_refuses() {
+    local stderr_file="$FIXTURE_ROOT/no-workspace-config.stderr"
+    local root empty_home status
+
+    # Given: a created feature and a HOME with no workspace config.
+    initialize_three_leg_parked_fixture 'no-workspace-config' "$PARKED_CONFIG" || return 1
+    root="$PARKED_ROOT"
+    create_parked_feature "$root" 'Add routing core' "$stderr_file" || return 1
+    empty_home="$FIXTURE_ROOT/no-workspace-config/empty-home"
+    mkdir -p "$empty_home" || return 1
+
+    # When: park runs with nothing to point it at a workspace.
+    status=0
+    (cd "$root" && env -u SPECKIT_WORKSPACE_PATH -u AGENT_PROTOCOL_ROOT -u SPECKIT_WORKSPACE_REPOSITORY \
+        HOME="$empty_home" bash .specify/extensions/git/scripts/bash/park.sh \
+        >/dev/null 2>"$stderr_file") || status=$?
+
+    # Then: R1, exit 2, and nothing was created.
+    assert_equal '2' "$status" 'no-workspace-config park exit code' || return 1
+    assert_contains_block "$stderr_file" \
+'Error: no workspace repository is configured; nothing was parked.
+park records the feature list in a private repository you own. Name it once in
+~/.agents/workspace.yaml:
+
+  repository: <owner>/<repo>
+  path: ~/projects/<repo>
+
+Then re-run `make park`.' 'R1 wording for park' || return 1
+
+    # When: resume runs the same way.
+    status=0
+    (cd "$root" && env -u SPECKIT_WORKSPACE_PATH -u AGENT_PROTOCOL_ROOT -u SPECKIT_WORKSPACE_REPOSITORY \
+        HOME="$empty_home" bash .specify/extensions/git/scripts/bash/resume.sh \
+        >/dev/null 2>"$stderr_file") || status=$?
+
+    # Then: R1 with resume's verb, exit 2.
+    assert_equal '2' "$status" 'no-workspace-config resume exit code' || return 1
+    assert_contains_block "$stderr_file" \
+'Error: no workspace repository is configured; nothing was resumed.
+park records the feature list in a private repository you own. Name it once in
+~/.agents/workspace.yaml:
+
+  repository: <owner>/<repo>
+  path: ~/projects/<repo>
+
+Then re-run `make resume`.' 'R1 wording for resume' || return 1
+    assert_file_absent "$empty_home/.agents" 'no-workspace-config created nothing in HOME' || return 1
+    assert_equal '0' "$(commit_count "$root/worktrees/001-routing-core/spec")" \
+        'no-workspace-config committed nothing' 2>/dev/null || true
+    if [ "$(git -C "$root/worktrees/001-routing-core/spec" log -1 --format=%s)" != 'fixture commit' ]; then
+        printf 'assertion failed: a refused park still committed\n' >&2
+        return 1
+    fi
+}
+
+test_two_workstations_share_the_workspace_repository() {
+    local stderr_file="$FIXTURE_ROOT/two-workstations.stderr"
+    local root second_workspace first_workspace log
+
+    # Given: one project and two clones of the workspace repository, with a
+    # peer's uncommitted edit sitting in the second one.
+    initialize_three_leg_parked_fixture 'two-workstations' "$PARKED_CONFIG" || return 1
+    initialize_workspace_fixture 'two-workstations-ws' || return 1
+    root="$PARKED_ROOT"
+    first_workspace="$WORKSPACE_DIR"
+    second_workspace="$FIXTURE_ROOT/two-workstations-ws/workspace-2"
+    clone_workspace_fixture "$second_workspace" || return 1
+    create_parked_feature "$root" 'Add routing core' "$stderr_file" || return 1
+    printf 'draft\n' > "$root/worktrees/001-routing-core/spec/specs/001-routing-core/spec.md" || return 1
+
+    # When: the first workstation parks.
+    invoke_park "$root" "$stderr_file"
+    assert_equal '0' "$PARK_STATUS" 'first workstation park exit code' || return 1
+
+    # When: the second workstation parks, over a peer's in-flight edit.
+    printf 'a peer was editing this\n' > "$second_workspace/workspaces/peer.yaml" || return 1
+    printf 'draft again\n' >> "$root/worktrees/001-routing-core/spec/specs/001-routing-core/spec.md" || return 1
+    WORKSPACE_DIR="$second_workspace"
+    invoke_park "$root" "$stderr_file"
+    WORKSPACE_DIR="$first_workspace"
+    assert_equal '0' "$PARK_STATUS" 'second workstation park exit code' || return 1
+
+    # Then: the peer's edit is its own commit, ours rebased on top, and both
+    # parks are in the shared history.
+    log="$(git -C "$second_workspace" log --format=%s origin/main)"
+    if ! printf '%s\n' "$log" | grep -Fq 'park(pre-existing@Fixture): 1 file(s)'; then
+        printf 'assertion failed: the pre-existing edit was not its own commit\n%s\n' "$log" >&2
+        return 1
+    fi
+    assert_equal '2' "$(printf '%s\n' "$log" | grep -Fc 'park(fixture-project@Fixture):')" \
+        'both parks are in the shared history' || return 1
+    if ! grep -Fq 'a peer was editing this' "$second_workspace/workspaces/peer.yaml"; then
+        printf 'assertion failed: the peer edit was lost\n' >&2
+        return 1
+    fi
+    assert_equal '' "$(git -C "$second_workspace" status --porcelain -- workspaces)" \
+        'the second workspace is clean after the park' || return 1
+    assert_file_absent "$second_workspace/.workspaces.lock" 'the mutex was released'
+}
+
+test_per_org_workspace_override() {
+    local stderr_file="$FIXTURE_ROOT/org-override.stderr"
+    local root home config default_workspace override_workspace status other_root
+
+    # Given: a default workspace, a second workspace for the 'dummy' org, and a
+    # user config that names both.
+    initialize_three_leg_parked_fixture 'org-override' "$PARKED_CONFIG" || return 1
+    root="$PARKED_ROOT"
+    initialize_workspace_fixture 'org-override-default' || return 1
+    default_workspace="$WORKSPACE_DIR"
+    initialize_workspace_fixture 'org-override-dummy' || return 1
+    override_workspace="$WORKSPACE_DIR"
+    home="$FIXTURE_ROOT/org-override/home"
+    config="$home/.agents/workspace.yaml"
+    mkdir -p "$home/.agents" || return 1
+    {
+        printf 'repository: fixture/default-wip\n'
+        printf 'path: %s\n' "$default_workspace"
+        printf 'orgs:\n'
+        printf '  dummy:\n'
+        printf '    repository: dummy/dummy-wip\n'
+        printf '    path: %s\n' "$override_workspace"
+    } > "$config" || return 1
+    create_parked_feature "$root" 'Add routing core' "$stderr_file" || return 1
+    printf 'draft\n' > "$root/worktrees/001-routing-core/spec/specs/001-routing-core/spec.md" || return 1
+
+    # When: park runs with nothing but the config to go on.
+    status=0
+    (cd "$root" && env -u SPECKIT_WORKSPACE_PATH -u SPECKIT_WORKSPACE_REPOSITORY \
+        -u AGENT_PROTOCOL_ROOT HOME="$home" \
+        SPECKIT_WORKSTATION=Fixture SPECKIT_LANE=fixture-lane \
+        bash .specify/extensions/git/scripts/bash/park.sh \
+        > "$stderr_file.out" 2>"$stderr_file") || status=$?
+
+    # Then: the org's own repository holds the manifest, and the default does
+    # not hold it at all.
+    if [ "$status" -ne 0 ]; then
+        printf 'override park failed (%s): %s\n' "$status" "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if [ ! -f "$override_workspace/workspaces/dummy/fixture-project.yaml" ]; then
+        printf 'assertion failed: the org override repository has no manifest\n' >&2
+        find "$override_workspace/workspaces" -type f >&2
+        return 1
+    fi
+    assert_file_absent "$default_workspace/workspaces/dummy" \
+        'the default workspace received the override org' || return 1
+    if ! grep -Fq "WORKSPACE: $override_workspace (orgs.dummy override)" "$stderr_file.out"; then
+        printf 'assertion failed: park did not name the override\n%s\n' "$(<"$stderr_file.out")" >&2
+        return 1
+    fi
+
+    # When: a project in another org parks with the same config.
+    initialize_three_leg_parked_fixture 'org-override-other' "$PARKED_CONFIG" || return 1
+    other_root="$PARKED_ROOT"
+    set_assembly_repository "$other_root" 'otherorg/fixture-project' || return 1
+    create_parked_feature "$other_root" 'Add routing core' "$stderr_file" || return 1
+    status=0
+    (cd "$other_root" && env -u SPECKIT_WORKSPACE_PATH -u SPECKIT_WORKSPACE_REPOSITORY \
+        -u AGENT_PROTOCOL_ROOT HOME="$home" \
+        SPECKIT_WORKSTATION=Fixture SPECKIT_LANE=fixture-lane \
+        bash .specify/extensions/git/scripts/bash/park.sh \
+        > "$stderr_file.out" 2>"$stderr_file") || status=$?
+
+    # Then: it lands in the default workspace, under its own org.
+    if [ "$status" -ne 0 ]; then
+        printf 'default park failed (%s): %s\n' "$status" "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if [ ! -f "$default_workspace/workspaces/otherorg/fixture-project.yaml" ]; then
+        printf 'assertion failed: the default workspace has no manifest for the other org\n' >&2
+        find "$default_workspace/workspaces" -type f >&2
+        return 1
+    fi
+    if ! grep -Fq "WORKSPACE: $default_workspace (default)" "$stderr_file.out"; then
+        printf 'assertion failed: park did not name the default\n%s\n' "$(<"$stderr_file.out")" >&2
+        return 1
+    fi
+
+    # When: --workspace is given as well.
+    WORKSPACE_DIR="$default_workspace"
+    invoke_park "$root" "$stderr_file"
+    assert_equal '0' "$PARK_STATUS" '--workspace park exit code' || return 1
+
+    # Then: it beats the override.
+    if [ ! -f "$default_workspace/workspaces/dummy/fixture-project.yaml" ]; then
+        printf 'assertion failed: --workspace did not beat the org override\n' >&2
+        return 1
+    fi
+    if ! printf '%s\n' "$PARK_OUTPUT" | grep -Fq "WORKSPACE: $default_workspace (--workspace)"; then
+        printf 'assertion failed: park did not name --workspace\n%s\n' "$PARK_OUTPUT" >&2
+        return 1
+    fi
+
+    # When: the orgs: block is malformed.
+    {
+        printf 'repository: fixture/default-wip\n'
+        printf 'path: %s\n' "$default_workspace"
+        printf 'orgs:\n'
+        printf '  dummy: %s\n' "$override_workspace"
+    } > "$config" || return 1
+    status=0
+    (cd "$root" && env -u SPECKIT_WORKSPACE_PATH -u SPECKIT_WORKSPACE_REPOSITORY \
+        -u AGENT_PROTOCOL_ROOT HOME="$home" \
+        bash .specify/extensions/git/scripts/bash/park.sh \
+        >/dev/null 2>"$stderr_file") || status=$?
+
+    # Then: it refuses by name rather than falling back to the default.
+    assert_equal '2' "$status" 'malformed orgs: exit code' || return 1
+    if ! grep -Fq "Error: workspace-config-invalid: the orgs: block in $config is malformed (org 'dummy' must be a block with repository: and path:); nothing was parked." "$stderr_file"; then
+        printf 'assertion failed: missing workspace-config-invalid refusal\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    status=0
+    (cd "$root" && env -u SPECKIT_WORKSPACE_PATH -u AGENT_PROTOCOL_ROOT HOME="$home" \
+        bash .specify/extensions/git/scripts/bash/resume.sh \
+        >/dev/null 2>"$stderr_file") || status=$?
+    assert_equal '2' "$status" 'malformed orgs: resume exit code' || return 1
+    grep -Fq 'nothing was resumed.' "$stderr_file"
+}
+
+test_single_repo_park_and_resume() {
+    local stderr_file="$FIXTURE_ROOT/single-park.stderr"
+    local base repo origin clone worktree branch manifest
+
+    # Given: a single-repository Speckit checkout with a bare origin and one
+    # feature worktree carrying WIP.
+    base="$FIXTURE_ROOT/single-park"
+    repo="$base/single"
+    origin="$base/single-origin.git"
+    mkdir -p "$base" || return 1
+    initialize_fixture "$repo" $'checkout_mode: worktree\nbase_branch: main' || return 1
+    install_park_scripts "$repo" || return 1
+    git -C "$repo" add -A || return 1
+    git -C "$repo" commit -qm 'install park scripts' || return 1
+    init_bare_repo "$origin" || return 1
+    git -C "$repo" remote add origin "$origin" || return 1
+    git -C "$repo" push -q -u origin main || return 1
+    initialize_workspace_fixture 'single-park-ws' || return 1
+
+    if ! create_parked_feature "$repo" 'Add routing core' "$stderr_file"; then
+        printf 'single-repo feature creation failed: %s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    branch='001-routing-core'
+    worktree="$base/single-worktrees/$branch"
+    assert_worktree "$branch" "$worktree" || return 1
+    printf 'draft\n' > "$worktree/notes.txt" || return 1
+
+    # When: park runs at the repository root.
+    invoke_park "$repo" "$stderr_file"
+    if [ "$PARK_STATUS" -ne 0 ]; then
+        printf 'single-repo park failed (%s): %s\n' "$PARK_STATUS" "$(<"$stderr_file")" >&2
+        return 1
+    fi
+
+    # Then: one leg, recorded as role: repo, in a manifest named for the
+    # repository directory, under the "local" org: a single-repository fixture
+    # declares no owner and nothing invents one.
+    manifest="$WORKSPACE_DIR/workspaces/local/single.yaml"
+    if [ ! -f "$manifest" ]; then
+        printf 'assertion failed: no manifest at %s\n' "$manifest" >&2
+        return 1
+    fi
+    grep -Fq '    shape: single' "$manifest" || {
+        printf 'assertion failed: shape single\n%s\n' "$(<"$manifest")" >&2
+        return 1
+    }
+    assert_equal '1' "$(manifest_line_count "$manifest" '^          - role: repo$')" \
+        'single-repo leg role' || return 1
+    if grep -Fq 'feature_directory:' "$manifest"; then
+        printf 'assertion failed: a single-repository manifest recorded a feature_directory\n' >&2
+        return 1
+    fi
+
+    # When: a fresh clone resumes it. A single-repository project is named by
+    # its directory, so the second checkout carries the same directory name.
+    mkdir -p "$base/second" || return 1
+    clone="$base/second/single"
+    git clone -q "$origin" "$clone" || return 1
+    git -C "$clone" config user.name 'Spec Kit test' || return 1
+    git -C "$clone" config user.email 'spec-kit-test@example.invalid' || return 1
+    invoke_resume "$clone" "$stderr_file"
+    if [ "$RESUME_STATUS" -ne 0 ]; then
+        printf 'single-repo resume failed (%s): %s\n' "$RESUME_STATUS" "$(<"$stderr_file")" >&2
+        return 1
+    fi
+
+    # Then: the worktree is back, the WIP un-committed, no feature.json, and
+    # the state file restored.
+    assert_worktree "$branch" "$base/second/single-worktrees/$branch" || return 1
+    assert_equal 'draft' "$(cat "$base/second/single-worktrees/$branch/notes.txt")" 'the parked content is back' || return 1
+    assert_file_absent "$clone/.specify/feature.json" 'a single-repository feature.json' || return 1
+    assert_equal "$branch" \
+        "$(json_field "$(<"$clone/.git/speckit-last-worktree.json")" BRANCH_NAME)" \
+        'single-repo state file'
+}
+
 failures=0
 run_scenario() {
     local name="$1"
@@ -2004,6 +3255,26 @@ run_scenario 'three-leg refuses an existing feature directory' test_three_leg_re
 run_scenario 'three-leg rolls back the spec leg when the code leg fails' test_three_leg_rolls_back_when_code_leg_fails
 run_scenario 'three-leg discovery reports the feature and both leg worktrees' test_three_leg_get_last_worktree_reports_feature
 run_scenario 'three-leg auto-commit commits both legs and never the root' test_three_leg_auto_commit_commits_both_legs_only
+run_scenario 'park commits and pushes a WIP commit in both legs and never at the root' test_park_commits_and_pushes_both_legs
+run_scenario 'park with nothing uncommitted makes no commit' test_park_clean_feature_makes_no_commit
+run_scenario 'park enumerates from git worktree list, not feature.json' test_park_enumerates_from_git_not_feature_json
+run_scenario 'park refuses a leg with no origin remote' test_park_refuses_a_leg_without_origin
+run_scenario 'park refuses a rebase in progress and commits nothing there' test_park_refuses_a_rebase_in_progress
+run_scenario 'park refuses a rejected push and keeps the WIP commit' test_park_refuses_a_rejected_push_and_keeps_the_wip_commit
+run_scenario 'park stacks a second WIP commit without a force-push' test_park_stacks_a_second_wip_without_a_force_push
+run_scenario 'park --dry-run writes nothing' test_park_dry_run_writes_nothing
+run_scenario 'resume recreates the worktrees, feature.json and the state file' test_resume_recreates_worktrees_feature_json_and_state
+run_scenario 'resume un-commits exactly the parked WIP' test_resume_uncommits_exactly_the_parked_wip
+run_scenario 'resume refuses on divergence with the exact wording' test_resume_refuses_on_divergence
+run_scenario 'resume is idempotent when the worktrees already exist' test_resume_is_idempotent
+run_scenario 'resume refuses a foreign directory at the worktree path' test_resume_refuses_a_foreign_directory
+run_scenario 'resume refuses a local branch that diverged from the parked commit' test_resume_refuses_a_local_branch_that_is_not_the_parked_commit
+run_scenario 'resume refuses a local branch behind the parked commit and names the fast-forward' test_resume_refuses_a_local_branch_behind_the_parked_commit
+run_scenario 'the workspace manifest round-trips byte-identically' test_manifest_round_trip
+run_scenario 'a missing workspace config refuses both verbs' test_missing_workspace_config_refuses
+run_scenario 'two workstations share one workspace repository' test_two_workstations_share_the_workspace_repository
+run_scenario 'a per-org workspace override keeps that org out of the default repository' test_per_org_workspace_override
+run_scenario 'single-repository park and resume' test_single_repo_park_and_resume
 
 if [ "$failures" -ne 0 ]; then
     printf 'RED: Speckit Git feature behavior tests failed: %d scenario(s)\n' "$failures" >&2
