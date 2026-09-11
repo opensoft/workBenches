@@ -435,12 +435,42 @@ while [ "$selection" -lt "${#SELECTED_INDEXES[@]}" ]; do
         LEG_ACTION[leg]="create"
         leg=$((leg + 1))
 
-        # RR6 — parked with --no-push.
+        # RR6 — the record's `pushed:` is not `true`.
+        #
+        # AS STRICT AS IT EVER WAS, and no longer worded past what the record
+        # says. `park.sh` writes the literal `true` or `false` it computed from
+        # the push it just made, and `workspace_write_manifest` drops a key
+        # whose value is empty — so `false` IS the `--no-push` park and keeps
+        # that wording byte for byte. ANYTHING ELSE IS A VALUE THIS EXTENSION
+        # NEVER WROTE: a hand-edit or a bad merge of the record. Saying
+        # "parked with --no-push" over `pushed: maybe` made a claim nobody
+        # made — the same reading `openRepoTools`' `status` stopped making on
+        # 2026-09-11 — and, worse, told the person the parked commit is on the
+        # workstation that parked it and nowhere else, which the record does
+        # not say either. So the unreadable value is named for what it is, and
+        # the one thing that is true of it is what the line offers: the record
+        # rules nothing out, and only a park from the workstation that has the
+        # worktree writes it afresh. The refusal itself is unchanged —
+        # `!= true` — because a reader that cannot read the field must not
+        # recreate the feature on a guess.
         if [ "$pushed" != true ]; then
-            >&2 echo "Error: $branch ($role leg) was parked with --no-push; that feature was NOT recreated."
-            >&2 echo "Its parked commit $parked_commit exists only on the workstation that parked it ($MANIFEST_PARKED_ON)."
-            >&2 echo "Push it there, re-run \`make park\`, then resume here."
-            record_refusal "$branch" "parked with --no-push" "re-run \`make park\` on $MANIFEST_PARKED_ON"
+            if [ "$pushed" = false ]; then
+                >&2 echo "Error: $branch ($role leg) was parked with --no-push; that feature was NOT recreated."
+                >&2 echo "Its parked commit $parked_commit exists only on the workstation that parked it ($MANIFEST_PARKED_ON)."
+                >&2 echo "Push it there, re-run \`make park\`, then resume here."
+                record_refusal "$branch" "parked with --no-push" "re-run \`make park\` on $MANIFEST_PARKED_ON"
+            else
+                if [ -z "$pushed" ]; then
+                    unreadable_pushed="its record's \`pushed:\` has no value"
+                else
+                    unreadable_pushed="its record's \`pushed:\` says '$pushed'"
+                fi
+                >&2 echo "Error: $branch ($role leg): $unreadable_pushed, which is neither true nor false; that feature was NOT recreated."
+                >&2 echo "Whether its parked commit $parked_commit ever left ${MANIFEST_PARKED_ON:-the workstation that parked it} cannot be read from the record."
+                >&2 echo "Park it again from there, which writes the record afresh, then resume here."
+                record_refusal "$branch" "$unreadable_pushed, which is neither true nor false" \
+                    "re-run \`make park\` on ${MANIFEST_PARKED_ON:-the workstation that parked it} to write the record afresh"
+            fi
             refused=true
             break
         fi

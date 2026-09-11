@@ -66,6 +66,7 @@ Print the script's own message verbatim, then add the reading below.
 | the local branch is BEHIND the parked commit | This workstation had the feature before the other one parked newer work. The remediation is the fast-forward the message prints, then `make resume` again — not a deletion |
 | the local branch diverged | Local commits exist that the parked commit does not contain. Rename or delete that branch; look first with the printed `log` command |
 | parked with `--no-push` | The parked commit exists only on the workstation that parked it. Push it there, re-run `park`, then resume here |
+| the record's `pushed:` is neither true nor false | A value `park` never writes — a hand-edit or a bad merge of the record. Do NOT read it as `--no-push`: the record rules nothing out, so whether the parked commit ever left that workstation cannot be read from it. The exit is a park from the workstation that has the worktree, which writes the record afresh |
 | the workspace has no entry for this project | Either nothing was parked for it, or it was parked into a differently named file; the message prints the `grep` over that org's directory |
 | `workspace-config-invalid` | The config's `orgs:` block is malformed. It refuses rather than falling back to the default workspace, because a confidential org's work must never be indexed in the wrong repository |
 
