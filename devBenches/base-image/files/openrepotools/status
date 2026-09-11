@@ -1,0 +1,2082 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+#
+# status — what is in and out of sync across an estate, READ-ONLY: `status
+# InkRouter`, or just `status` from inside the estate, or `status --all`.
+#
+# Installed with the other three by `openRepoTools --install`.
+#
+# IT CHANGES NOTHING. It finds the estate exactly as `park` and `resume` do,
+# and then only READS — git's refs, index and working tree — for the family
+# holder or the assembly root, each member's working clone beside the holder,
+# and every mounted leg. It fetches nothing unless told to (`--fetch`), so
+# every ahead/behind answer is AS OF THE LAST FETCH — the one it just made,
+# or the one before — and it says which on every run. `make validate` and
+# `make pins` say whether an estate is CONSISTENT with itself (naming,
+# manifests, lockstep pins); this is the view neither gives — whether it is
+# CURRENT with its remotes, and whether anything here has moved and not
+# travelled.
+#
+# THE FOURTH FILE, under Brett Heap's RULING of 2026-09-10 in this repository
+# (its #9), verbatim: "lets go with a fourth file. start with the local status
+# layer."
+# A flag on `park` would have put a read-only report under a verb whose name
+# means commit-and-push; a fourth file costs the shared estate resolver a
+# third copy, which the suite holds byte-identical, and the install story one
+# more line.
+#
+# THIS IS THE LOCAL LAYER PLUS `--fetch`: what this machine already knows,
+# and — only when asked — what origin knows right now. `--fetch` is the
+# second layer, under Brett Heap's RULING of 2026-09-11 (this repository's
+# #10), verbatim: "next layer: --fetch". It runs `git fetch --prune origin`
+# in every repository
+# about to be read, so the ahead/behind answers are current and a remote
+# branch deleted under a feature reads as gone; that fetch is THE ONE WRITE
+# this command ever makes — remote-tracking refs (`refs/remotes/<remote>/*`:
+# origin, and upstream where a fork has one),
+# the objects behind them and `FETCH_HEAD`, and nothing else: no branch, no
+# tag, no HEAD, no index, no working tree, because the refspec is pinned on
+# the command line rather than trusted from config (see `fetch_remote`).
+# What it cannot do is answer a prompt: `GIT_TERMINAL_PROMPT=0` makes an
+# https credential prompt FAIL and be reported, but an ssh host-key or
+# passphrase prompt is ssh's own and blocks exactly as `git fetch` would —
+# so run `--fetch` where ssh is already non-interactive (an agent, a
+# known_hosts entry). Without the flag it fetches nothing, as before.
+#
+# THE THIRD LAYER is the FORK against what it was forked from, under Brett
+# Heap's RULING of 2026-09-11 (this repository's #11), verbatim: "next layer:
+# fork against upstream".
+# A remote named `upstream` is read from local refs — `origin/<branch>`
+# against `upstream/<branch>`, as of the last fetch — and `--fetch` fetches
+# it too, under the same pinned refspec. With no such remote, and only under
+# `--fetch`, an origin on github.com is asked about with `gh api`, once: a
+# fork is a finding that names the parent and the `git remote add upstream …`
+# that makes the drift readable here. See "the fork against its upstream",
+# below.
+#
+# THE FOURTH LAYER is the SHAPE PIN, under Brett Heap's RULING of 2026-09-11
+# (this repository's #12), verbatim: "next layer: shape-pin drift". Every
+# assembly root and family
+# holder carries `contracts/shape-pin.yaml`: the openRepoShape commit its
+# copied shape files were cut from, and a sha256 per copy. The copies are
+# re-hashed here and one that differs is DRIFT — a copy edited in place, whose
+# exit is upstream, never a re-digest; a `shape:` mirror in `project.yaml` /
+# `family.yaml` that names another commit, or is missing, is out of step; and
+# the pin is read against the source's default branch (`main` for
+# openRepoShape, read from the clone's `origin/HEAD` or from GitHub) — from a
+# clone of the source under the projects directory when there is one, found
+# by its origin's slug the way `--repo` finds an estate, as of its last fetch;
+# else under `--fetch` from GitHub, once per pin per run — so a pin that has
+# fallen behind, or sits on a commit the branch never had, is named with
+# `update-shape.py check` as the exit.
+# See "the shape pin", below.
+#
+# THE FIFTH LAYER, the last of the five named when this file landed, is THE
+# PARKED RECORD AGAINST DISK, under Brett Heap's RULING of 2026-09-11 (this
+# repository's #13), verbatim: "next layer: parked record against disk".
+# `park` records every
+# open feature in the person's private workspace repository — the one
+# `~/.agents/workspace.yaml` names — and `resume` rebuilds the worktrees from
+# it; between the two, record and disk drift apart in exactly the ways
+# `resume` later refuses, and this reads them beforehand: a recorded feature
+# with no worktree here (parked, not resumed — `resume <Name>` is the exit), a
+# worktree whose branch tip is not the parked commit (moved on, or BEHIND a
+# newer record by more than the WIP commits `resume` itself un-committed, or
+# diverged), a leg parked with `--no-push`, and a worktree on disk the record
+# does not know (never parked). See "the parked record against disk", below.
+# Nothing is left on the list.
+#
+# READ THE LINES, NOT THE EXIT CODE — the rule `park` and `resume` carry.
+# Exit 0: every repository read is in sync and clean, as of the last fetch.
+# Exit 1: at least one finding was printed. Exit 2: refused, and nothing was
+# read. A finding is a fact to look at, not a fault — an unpushed commit on a
+# feature branch is exactly what `park` exists to carry.
+
+set -euo pipefail
+
+SELF_NAME="status"
+
+NAME=""
+REPO_SLUG=""
+REPO_ARG=""
+#: 1 when EVERY estate under the projects directory is to be read: `--all` /
+#: `-a`, or the bare form standing outside every estate — which SWEEPS WITHOUT
+#: ASKING, unlike `park`'s, because nothing here writes and a question before
+#: a read is only friction. `ALL_ROWS` is what the sweep reads, `<name><TAB>
+#: <dir>` per estate.
+STATUS_ALL=0
+ALL_ROWS=""
+#: 1 with `--fetch`: `git fetch --prune origin` in every repository before it
+#: is read — the one write this command makes. See `fetch_remote`.
+FETCH=0
+
+say() { printf '%s\n' "$*"; }
+refuse() { printf '\nREFUSED: %s\n' "$1" >&2; }
+die() { refuse "$1"; exit "${2:-2}"; }
+
+usage() {
+    cat <<'USAGE'
+status [<Name>] [--repo <owner/name>] [--fetch]
+status --all | -a [--fetch]
+status --help
+
+What is in and out of sync across ONE estate, read-only. For the family
+holder or the assembly root, each member's working clone, and every mounted
+leg: whether the tracking branch is ahead of or behind its origin; what is
+dirty or stashed; which feature branches carry commits origin has not seen,
+or point at a remote branch that is gone; whether a feature worktree is
+dirty; and whether a leg is checked out away from its pin, or its pin has
+fallen behind its origin. It FETCHES NOTHING unless you say `--fetch`, so
+every answer is AS OF THE LAST FETCH — the one it just made, or the one
+before — and the report says which. A FORK is read against what it was
+forked from: with a remote named `upstream`, `origin/<branch>` against
+`upstream/<branch>` from local refs, and `--fetch` fetches upstream too; with
+none, and only under `--fetch`, an origin on github.com is asked about once
+with `gh api`, and a fork is a finding naming the parent and the `git remote
+add upstream …` to run. Not a fork: nothing to say. THE SHAPE PIN
+(`contracts/shape-pin.yaml`) is read too: a copied shape file whose sha256 is
+not the one recorded is drift, a `shape:` mirror naming another commit is out
+of step, and the pinned commit is compared with the source's default branch
+— from a clone of the source under your projects directory, found by its
+origin like `--repo` finds an estate, or under `--fetch` from GitHub — so a
+pin that has fallen behind is named with the exit, `update-shape.py check
+--root <root>`. THE PARKED RECORD (`~/.agents/workspace.yaml` names the
+workspace repository; `workspaces/<org>/<id>.yaml` in it) is read against the
+worktrees on disk: a recorded feature with no worktree here (`resume <Name>`
+brings it back), a worktree whose tip is not the parked commit, a leg parked
+with `--no-push`, and a worktree the record does not know (never parked).
+
+<Name> is the estate's folder under your projects directory: a FAMILY folder
+(<Name>/<Name>/family.yaml) or a standalone project root (<Name>/project.yaml).
+With no <Name> the estate around the current directory is read. With no
+estate around it either, EVERY estate under your projects directory is read,
+without asking, because nothing here writes; `--all` (or `-a`) says the same
+thing from anywhere. `--repo <owner/name>` names the estate by the origin of
+a clone you ALREADY HAVE, in any spelling git accepts.
+
+  --fetch             `git fetch --prune` of origin — and of upstream, where a
+                      fork has one — in every repository first, so the answers
+                      are current: THE ONE WRITE this command makes, to
+                      remote-tracking refs, the objects behind them and
+                      FETCH_HEAD; never a local branch, tag, HEAD, index or
+                      working tree, because the refspec is pinned. A fetch that
+                      fails is a finding on that row, read as of the last fetch
+                      that worked. An ssh prompt is ssh's own and still blocks.
+  --all, -a           read EVERY estate under your projects directory
+  --project <Name>    the positional under a flag (also --name)
+
+  $PROJECTS_DIR       your projects directory (default: ~/projects, then
+                      ~/Projects - people spell it both ways)
+
+EXIT 0: every repository read is in sync and clean, as of the last fetch.
+EXIT 1: at least one finding was printed. EXIT 2: refused; nothing was read.
+WHAT STATUS NEVER DOES: pull, commit, push, reset, or move anything — and it
+fetches only with `--fetch`. It takes no lock while it reads (`git
+--no-optional-locks`); `--fetch` takes the ref locks a fetch takes.
+USAGE
+}
+
+# --- BEGIN shared estate resolver (park, resume, status: byte for byte) -----
+#
+# THIS BLOCK IS DUPLICATED IN THE OTHER COMMANDS, DELIBERATELY, and
+# `tests/test_park_resume_commands.py` asserts the three copies are IDENTICAL.
+# Each of these is one file a person has on PATH: a shared `orp-estate.sh`
+# would be a fifth file for `--install` to place and a broken command the
+# first time somebody copied only one of them. The rules themselves are NOT
+# new: `<dir>/<Name>/family.yaml` carrying `kind: family-manifest` and naming
+# `<Name>` is `setup-project.py`'s `family_folder_here`, doubled-name layout
+# and all (#76, RULING ruling 3).
+
+# `$PROJECTS_DIR` names ONE directory when it is set. Otherwise both
+# spellings, in that order, because people really do use both - and DEDUPED by
+# inode, because on a case-insensitive filesystem (a stock Mac) `~/projects`
+# and `~/Projects` are the same directory, and listing every estate twice
+# would read as two estates.
+PROJECTS_DIRS=()
+if [ -n "${PROJECTS_DIR:-}" ]; then
+    PROJECTS_DIRS=("$PROJECTS_DIR")
+else
+    PROJECTS_DIRS=("$HOME/projects")
+    if [ -d "$HOME/Projects" ]; then
+        if [ -d "$HOME/projects" ] && [ "$HOME/Projects" -ef "$HOME/projects" ]; then
+            : # one directory under two spellings; name it once
+        else
+            PROJECTS_DIRS+=("$HOME/Projects")
+        fi
+    fi
+fi
+
+# Where a NEW clone would go: the first spelling that already exists, else the
+# first named.
+#
+# shellcheck disable=SC2329  # `park` and `status` create nothing and never
+# call this. The block is byte-identical in all three commands BY DESIGN, so
+# each carries a couple of functions only another one asks.
+projects_dir_for_new() {
+    local dir
+    for dir in "${PROJECTS_DIRS[@]}"; do
+        if [ -d "$dir" ]; then
+            printf '%s\n' "$dir"
+            return 0
+        fi
+    done
+    printf '%s\n' "${PROJECTS_DIRS[0]}"
+}
+
+trim_unquote() {
+    local value="$1"
+    value="${value%$'\r'}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    case "$value" in
+    '"'*'"') value="${value#\"}"; value="${value%\"}" ;;
+    "'"*"'") value="${value#\'}"; value="${value%\'}" ;;
+    esac
+    printf '%s' "$value"
+}
+
+# ONE FOLDER NAME, and never a path. A `<Name>` off the command line and a
+# `root:` out of somebody's workspace manifest both end up joined to the
+# projects directory, so both are held to this: no empty string, no `/`, and
+# no leading `.` — which is what stops `resume ../../elsewhere/X` from cloning
+# outside the projects directory at all, rather than noticing afterwards.
+is_safe_folder_name() {
+    local name="$1"
+    case "$name" in
+    "" | .* | */*) return 1 ;;
+    esac
+    case "$name" in
+    *[!A-Za-z0-9_.+@-]*) return 1 ;;
+    esac
+    return 0
+}
+
+# One indent-zero scalar out of a small YAML file, with parameter expansion
+# only: no YAML library, no python per line, no forks per line. This is the
+# reader the Speckit extension's `workspace_read_scalar` is, narrowed to the
+# keys these two commands read (`kind`, `name`, `family`, `tracking_branch`).
+YAML_VALUE=""
+yaml_scalar() {
+    local file="$1" key="$2" line
+    YAML_VALUE=""
+    [ -f "$file" ] || return 1
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+        "$key":*) ;;
+        *) continue ;;
+        esac
+        YAML_VALUE="$(trim_unquote "${line#"$key":}")"
+        return 0
+    done <"$file"
+    return 1
+}
+
+# A LINKED WORKTREE, not a checkout of its own: `.git` is a FILE holding a
+# `gitdir:` line, and `--git-dir` and `--git-common-dir` disagree. A
+# single-repository project's FEATURE worktree is a whole `project.yaml` root
+# by construction, so without this the walk-up would answer `<worktree_root>/
+# 001-my-feature` as an estate named after the branch — and `park` would run
+# the write verb inside the very worktree the extension is about to park.
+# GIT'S OWN ANSWER, and not the `.git`-is-a-file shortcut, because that shape
+# is shared with a SUBMODULE and a leg must not be mistaken for a worktree:
+# in a linked worktree `--git-dir` is `<common>/worktrees/<name>` and the two
+# differ; in a submodule both are `<super>/.git/modules/<name>`; in an
+# ordinary checkout both are `.git`. Verified against all three.
+is_linked_worktree() {
+    local dir="$1" gitdir common
+    [ -e "$dir/.git" ] || return 1
+    gitdir="$(git -C "$dir" rev-parse --git-dir 2>/dev/null || true)"
+    common="$(git -C "$dir" rev-parse --git-common-dir 2>/dev/null || true)"
+    [ -n "$gitdir" ] && [ -n "$common" ] && [ "$gitdir" != "$common" ]
+}
+
+# The PINNED copy inside a family holder: `<Family>/<Family>/members/<X>`, so
+# the grandparent carries the `family.yaml`. It is detached, it is what
+# `bootstrap` and `validate` read, and nobody's in-flight work is in it — a
+# walk-up that answered it would run a WRITE verb on a detached HEAD. The
+# working clone BESIDE the holder is the one a person works in, which is the
+# same rule #80's holder dispatch follows.
+is_pinned_member() {
+    local dir="$1" parent grandparent
+    parent="${dir%/*}"
+    [ -n "$parent" ] && [ "$parent" != "$dir" ] || return 1
+    grandparent="${parent%/*}"
+    [ -n "$grandparent" ] && [ "$grandparent" != "$parent" ] || return 1
+    yaml_scalar "$grandparent/family.yaml" kind || return 1
+    [ "$YAML_VALUE" = "family-manifest" ]
+}
+
+# Is `<dir>` a FAMILY FOLDER? All three facts have to agree, exactly as
+# `family_folder_here` requires them to: the holder clone sits at
+# `<dir>/<basename>`, its `family.yaml` says `kind: family-manifest`, and it
+# names that same family. A directory called Northwind is a directory called
+# Northwind; what makes it a family folder is read, never guessed from a name.
+is_family_folder() {
+    local dir="$1" name manifest
+    name="${dir##*/}"
+    [ -n "$name" ] || return 1
+    manifest="$dir/$name/family.yaml"
+    yaml_scalar "$manifest" kind || return 1
+    [ "$YAML_VALUE" = "family-manifest" ] || return 1
+    yaml_scalar "$manifest" name || return 1
+    [ "$YAML_VALUE" = "$name" ]
+}
+
+is_project_root() {
+    local dir="$1"
+    yaml_scalar "$dir/project.yaml" kind || return 1
+    [ "$YAML_VALUE" = "project-manifest" ] || return 1
+    is_pinned_member "$dir" && return 1
+    is_linked_worktree "$dir" && return 1
+    return 0
+}
+
+ESTATE_KIND=""
+ESTATE_DIR=""
+ESTATE_ROOT=""
+ESTATE_NAME=""
+
+# Is THIS directory an estate? A FAMILY FOLDER WINS over a standalone root of
+# the same name: the holder is what drives the members, so a family answered as
+# one of its own members would act on one project and report the estate done.
+estate_here() {
+    local dir="$1"
+    if is_family_folder "$dir"; then
+        ESTATE_KIND="family"
+        ESTATE_DIR="$dir"
+        ESTATE_NAME="${dir##*/}"
+        ESTATE_ROOT="$dir/$ESTATE_NAME"
+        return 0
+    fi
+    if is_project_root "$dir"; then
+        ESTATE_KIND="standalone"
+        ESTATE_DIR="$dir"
+        ESTATE_NAME="${dir##*/}"
+        ESTATE_ROOT="$dir"
+        return 0
+    fi
+    return 1
+}
+
+# The NEAREST estate at or above `<dir>`: the holder beside you, or the project
+# root you are standing in. NEAREST WINS, so standing inside a member of a
+# family acts on that member - the estate the person is standing in. A pinned
+# copy and a linked worktree are WALKED PAST rather than answered, so
+# `<Family>/<Family>/members/<X>` reaches the family folder and a feature
+# worktree reaches the root that owns it.
+estate_walk_up() {
+    local dir="$1"
+    while [ -n "$dir" ] && [ "$dir" != "/" ]; do
+        estate_here "$dir" && return 0
+        dir="${dir%/*}"
+    done
+    return 1
+}
+
+estate_by_name() {
+    local want="$1" dir
+    is_safe_folder_name "$want" || return 1
+    for dir in "${PROJECTS_DIRS[@]}"; do
+        estate_here "$dir/$want" && return 0
+    done
+    return 1
+}
+
+# Every estate under the projects directory, one row each. What ruling 3 asks
+# a refusal to print: a person who typed the command in the wrong folder needs
+# the names, not an instruction to go and look for them.
+list_estates() {
+    local dir child
+    for dir in "${PROJECTS_DIRS[@]}"; do
+        [ -d "$dir" ] || continue
+        for child in "$dir"/*; do
+            [ -d "$child" ] || continue
+            if is_family_folder "$child"; then
+                printf '  family   %-20s %s\n' "${child##*/}" "$child"
+            elif is_project_root "$child"; then
+                printf '  project  %-20s %s\n' "${child##*/}" "$child"
+            fi
+        done
+    done
+}
+
+estates_or_none() {
+    local rows
+    rows="$(list_estates)"
+    if [ -n "$rows" ]; then
+        printf '%s\n' "$rows"
+    else
+        printf '  (none)\n'
+    fi
+}
+
+lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+# `owner/name` — CASE PRESERVED, so a refusal prints back what a person can
+# type — out of any spelling git accepts: owner/name, owner/name.git,
+# https://host/owner/name(.git), git@host:owner/name.git,
+# ssh://git@host/owner/name.git, and a token-bearing https url. Callers
+# compare with `lower` on both sides, because GitHub owners and names are
+# case-insensitive.
+#
+# A FILESYSTEM PATH IS REFUSED rather than parsed, for the reason the
+# extension's own `workspace_org_from_url` refuses one: `/srv/remotes/Name.git`
+# has a name but no owner, and inventing `remotes` as the owner would let
+# `--repo remotes/Name` match a bare repository on disk. Such a clone answers
+# `<Name>` and the walk-up; it does not answer `--repo`.
+repo_slug_of() {
+    local url="$1" rest owner name
+    rest="$url"
+    case "$rest" in
+    /* | ./* | ../* | [A-Za-z]:[/\\]* | file://*) return 1 ;;
+    esac
+    rest="${rest%/}"
+    rest="${rest%.git}"
+    case "$rest" in
+    *://*)
+        rest="${rest#*://}"
+        rest="${rest#*@}"
+        rest="${rest#*/}"
+        ;;
+    *@*:*)
+        rest="${rest#*@}"
+        rest="${rest#*:}"
+        ;;
+    esac
+    case "$rest" in
+    */*) ;;
+    *) return 1 ;;
+    esac
+    name="${rest##*/}"
+    owner="${rest%/*}"
+    owner="${owner##*/}"
+    [ -n "$owner" ] && [ -n "$name" ] || return 1
+    case "$owner$name" in
+    *[!A-Za-z0-9_.-]*) return 1 ;;
+    esac
+    printf '%s/%s\n' "$owner" "$name"
+}
+
+# The clone under the projects directory whose `origin` IS that repository -
+# ruling 1. Two levels deep, because the estates this standard places are
+# `<projects>/<Project>` and `<projects>/<Family>/<Project>`.
+clone_with_origin() {
+    local want dir candidate origin found
+    want="$(lower "$1")"
+    for dir in "${PROJECTS_DIRS[@]}"; do
+        [ -d "$dir" ] || continue
+        for candidate in "$dir"/*/ "$dir"/*/*/; do
+            candidate="${candidate%/}"
+            [ -e "$candidate/.git" ] || continue
+            origin="$(git -C "$candidate" remote get-url origin 2>/dev/null || true)"
+            [ -n "$origin" ] || continue
+            found="$(repo_slug_of "$origin" || true)"
+            [ -n "$found" ] || continue
+            if [ "$(lower "$found")" = "$want" ]; then
+                printf '%s\n' "$candidate"
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
+# The family's members, by the same `  - project: <Project>` row `family.py`
+# writes and `siblings.py` reads. The working clone is `<family folder>/
+# <Project>`, beside the holder.
+family_members() {
+    local manifest="$1" line
+    [ -f "$manifest" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+        "  - project: "*) printf '%s\n' "$(trim_unquote "${line#  - project: }")" ;;
+        esac
+    done <"$manifest"
+}
+
+# The branch a checkout belongs on: its OWN manifest's `tracking_branch:` —
+# the field `scripts/bootstrap.py` already reads to place the legs — falling
+# back to `main`. The workspace manifest records a `tracking_branch` too, but
+# that is PROVENANCE from the machine that parked; the local declaration is
+# what this machine's clone actually tracks, and the extension takes the same
+# line about `worktree_root`.
+tracking_branch_of() {
+    local root="$1"
+    if yaml_scalar "$root/family.yaml" tracking_branch && [ -n "$YAML_VALUE" ]; then
+        printf '%s\n' "$YAML_VALUE"
+        return 0
+    fi
+    if yaml_scalar "$root/project.yaml" tracking_branch && [ -n "$YAML_VALUE" ]; then
+        printf '%s\n' "$YAML_VALUE"
+        return 0
+    fi
+    printf 'main\n'
+}
+
+# The legs a root declares, by path, out of `project.yaml`'s `legs:` block —
+# the same rows `scripts/bootstrap.py` reads, and in the order it reads them,
+# `role:` before `path:`. The assembly leg is `path: "."` and is the root
+# itself, so it is not one of these.
+#
+# shellcheck disable=SC2329  # only `resume` bootstraps a root, so only
+# `resume` has to ask where its legs are; see the note above.
+legs_of() {
+    local root="$1" line role="" path=""
+    [ -f "$root/project.yaml" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        case "$line" in
+        '  - role:'*)
+            role="$(trim_unquote "${line#*:}")"
+            path=""
+            ;;
+        '    path:'*)
+            path="$(trim_unquote "${line#*:}")"
+            [ -n "$role" ] || continue
+            [ "$role" != "assembly" ] || continue
+            [ "$path" != "." ] || continue
+            [ -n "$path" ] && printf '%s\n' "$path"
+            ;;
+        [![:space:]]*) role=""; path="" ;;
+        esac
+    done <"$root/project.yaml"
+}
+# --- END shared estate resolver ---------------------------------------------
+
+# --- reading one repository -------------------------------------------------
+
+# `git` FOR READING, and every git call in this file goes through it.
+# `--no-optional-locks` (git 2.15, 2017) keeps `status --porcelain` from
+# refreshing the index under a lock, so a `status` running beside an editor
+# or a `git commit` is never the thing that says `index.lock exists`. `-C` is
+# first so the call reads exactly as `git -C <repo> …` does.
+g() { git --no-optional-locks -C "$@"; }
+
+short() { printf '%s' "${1:0:7}"; }
+
+has_ref() { g "$1" rev-parse --verify -q "$2" >/dev/null 2>&1; }
+
+# The legs a root DECLARES in `.gitmodules` — the same file `make bootstrap`
+# mounts them from — each marked `mounted` or `unmounted` by whether `.git`
+# is there. Not the shared `legs_of`, which reads what `project.yaml` says:
+# this report is about what is on disk, and a leg that is declared and not
+# mounted is itself one of its findings. `git config --get-regexp` prints
+# `key value`, so the value is everything after the first space.
+declared_legs() {
+    local root="$1" record path
+    [ -f "$root/.gitmodules" ] || return 0
+    # `-z`, so the key and the value cannot be confused: a submodule NAME may
+    # carry a space (`[submodule "sp ace"]`), and splitting the plain output
+    # at its first space would hand back `ace.path spec` and miss the leg;
+    # with `-z` each entry is `key<LF>value<NUL>`, and a key with NO value has
+    # no LF at all and is not a path — not a phantom leg declared and never
+    # mounted. `park`'s `submodule_paths` reads the same way.
+    while IFS= read -r -d '' record; do
+        case "$record" in
+        *$'\n'*) path="${record#*$'\n'}" ;;
+        *) continue ;;
+        esac
+        [ -n "$path" ] || continue
+        if [ -e "$root/$path/.git" ]; then
+            printf 'mounted\t%s\n' "$path"
+        else
+            printf 'unmounted\t%s\n' "$path"
+        fi
+    done < <(g "$root" config --file .gitmodules -z \
+        --get-regexp '^submodule\..*\.path$' 2>/dev/null || true)
+}
+
+# `label<TAB>branch<TAB>path` per repository this estate reads — THE SAME
+# ENUMERATION `park`'s not-carried report makes, with two rows it does not
+# need: `missing`, for a member with no working clone beside the holder, and
+# `unmounted`, for a leg declared and not there. Both are things out of sync
+# with the estate as recorded, which is what this command is for.
+#
+# `members/<Project>` INSIDE A FAMILY HOLDER IS DELIBERATELY NOT HERE, for
+# park's reason: that copy is pinned and DETACHED, for `bootstrap` and
+# `validate`; nobody works in it. The working clone BESIDE the holder is
+# where a person works, so it is what is read.
+estate_repos() {
+    local member branch state leg
+    if [ "$ESTATE_KIND" = "family" ]; then
+        printf 'holder\t%s\t%s\n' "$(tracking_branch_of "$ESTATE_ROOT")" \
+            "$ESTATE_ROOT"
+        while IFS= read -r member; do
+            [ -n "$member" ] || continue
+            if [ ! -e "$ESTATE_DIR/$member/.git" ]; then
+                printf 'missing\t%s\t%s\n' \
+                    "$(tracking_branch_of "$ESTATE_ROOT")" "$ESTATE_DIR/$member"
+                continue
+            fi
+            branch="$(tracking_branch_of "$ESTATE_DIR/$member")"
+            printf 'root\t%s\t%s\n' "$branch" "$ESTATE_DIR/$member"
+            while IFS=$'\t' read -r state leg; do
+                [ -n "$leg" ] || continue
+                # A LEG'S branch is the ROOT's `tracking_branch:` — the one
+                # value `scripts/bootstrap.py` places every leg on.
+                printf '%s\t%s\t%s\n' "$state" "$branch" "$ESTATE_DIR/$member/$leg"
+            done < <(declared_legs "$ESTATE_DIR/$member")
+        done < <(family_members "$ESTATE_ROOT/family.yaml")
+        return 0
+    fi
+    branch="$(tracking_branch_of "$ESTATE_ROOT")"
+    printf 'root\t%s\t%s\n' "$branch" "$ESTATE_ROOT"
+    while IFS=$'\t' read -r state leg; do
+        [ -n "$leg" ] || continue
+        printf '%s\t%s\t%s\n' "$state" "$branch" "$ESTATE_ROOT/$leg"
+    done < <(declared_legs "$ESTATE_ROOT")
+}
+
+# The findings for the repository being read, one line each, in the order
+# they were found. Printed by `read_one_estate` under the repository's own
+# row, or replaced by one `in sync` line when there are none. EXPANDED ONLY
+# WHEN NON-EMPTY: `"${arr[@]}"` on an empty array is an unbound-variable
+# error under `set -u` in every bash before 4.4, and a Mac's is 3.2.
+FINDINGS=()
+finding() { FINDINGS+=("$1"); }
+
+# Where HEAD is: `branch<TAB><name>`, `detached<TAB><sha>`, or `unborn`.
+# `symbolic-ref -q` prints the branch when HEAD is symbolic and exits 1,
+# silently, when it is not — which is the whole test.
+head_of() {
+    local repo="$1" name sha
+    name="$(g "$repo" symbolic-ref -q --short HEAD 2>/dev/null || true)"
+    if [ -n "$name" ]; then
+        printf 'branch\t%s\n' "$name"
+        return 0
+    fi
+    sha="$(g "$repo" rev-parse -q --verify HEAD 2>/dev/null || true)"
+    if [ -n "$sha" ]; then
+        printf 'detached\t%s\n' "$sha"
+    else
+        printf 'unborn\t\n'
+    fi
+}
+
+# A ROOT OR A HOLDER belongs on its tracking branch: `resume` refuses one on a
+# feature branch, and a detached root is one `make bootstrap` never ran in.
+read_head() {
+    local repo="$1" branch="$2" kind ref
+    IFS=$'\t' read -r kind ref < <(head_of "$repo")
+    case "$kind" in
+    branch)
+        [ "$ref" = "$branch" ] ||
+            finding "on branch $ref, not $branch (\`resume\` refuses a root on a feature branch)"
+        ;;
+    detached) finding "detached HEAD at $(short "$ref"); expected to be on $branch" ;;
+    unborn) finding "no commits at all" ;;
+    esac
+}
+
+# No `origin/<branch>` locally. Without a fetch that is "never fetched, or no
+# remote named origin"; right after one that WORKED it means origin has no
+# such branch — deleted or renamed there — and saying "never fetched" would
+# contradict the `fetched origin:` line printed just above it.
+no_origin_branch_finding() {
+    if [ "$FETCHED_OK" -eq 1 ]; then
+        finding "no origin/$1 after the fetch: origin has no branch $1 (deleted or renamed there)"
+    else
+        finding "no origin/$1 here: never fetched, or no remote named origin"
+    fi
+}
+
+# The tracking branch against origin's copy of it, AS OF THE LAST FETCH: park
+# fetches nothing and neither does this. BOTH refs must exist locally or there
+# is no question to ask, and each absence is its own finding, because a clone
+# with no `origin/<branch>` is one that was never fetched or has no remote
+# named origin — either way, "in sync" would be a fiction. `rev-list
+# --left-right --count a...b` prints `<only in a> <only in b>`, so with origin
+# on the left the first number is BEHIND and the second AHEAD.
+read_tracking() {
+    local repo="$1" branch="$2" counts behind ahead
+    if ! has_ref "$repo" "refs/heads/$branch"; then
+        finding "no local branch $branch"
+        return 0
+    fi
+    if ! has_ref "$repo" "refs/remotes/origin/$branch"; then
+        no_origin_branch_finding "$branch"
+        return 0
+    fi
+    counts="$(g "$repo" rev-list --left-right --count \
+        "origin/$branch...$branch" 2>/dev/null || true)"
+    [ -n "$counts" ] || return 0
+    behind="${counts%%[[:space:]]*}"
+    ahead="${counts##*[[:space:]]}"
+    [ "$ahead" = 0 ] ||
+        finding "ahead of origin/$branch by $ahead commit(s): unpushed"
+    [ "$behind" = 0 ] ||
+        finding "behind origin/$branch by $behind commit(s), as of the last fetch"
+}
+
+# Dirty and stashed. `--ignore-submodules=all` at a root, because a leg whose
+# checkout has moved shows up in the ROOT's porcelain as ` M <leg>`, and the
+# leg's own row below reports that once, in its own words.
+read_worktree_state() {
+    local repo="$1" out n
+    out="$(g "$repo" status --porcelain --ignore-submodules=all 2>/dev/null || true)"
+    if [ -n "$out" ]; then
+        n="$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
+        finding "dirty: $n path(s)"
+    fi
+    n="$(g "$repo" stash list 2>/dev/null | wc -l | tr -d ' ' || true)"
+    [ "$n" = 0 ] || finding "$n stash(es)"
+}
+
+# Every local branch OTHER than the tracking branch — the feature branches —
+# by what `for-each-ref` knows without a fetch: no upstream at all means
+# never pushed; `[gone]` means the remote branch was deleted under it, which
+# is what a merged pull request leaves behind; `[ahead N]` is unpushed work.
+# `%(upstream:track)` prints `[ahead 1]`, `[behind 2]`, `[ahead 1, behind 2]`,
+# `[gone]` or nothing, so the count is what follows `ahead ` up to the next
+# `]` or `,`. THE FIELDS ARE SEPARATED BY 0x1F, NOT TAB: a tab is IFS
+# whitespace, so a run of tabs collapses and an EMPTY middle field shifts the
+# ones after it left — `name<TAB><TAB>[gone]` would read as upstream=`[gone]`
+# and the finding would vanish. 0x1F (`%1f` to for-each-ref, `$'\037'` to
+# bash 3.2) is not whitespace, so every field stays where it was printed.
+read_branches() {
+    local repo="$1" tracking="$2" name upstream track n base
+    while IFS=$'\037' read -r name upstream track; do
+        [ -n "$name" ] || continue
+        [ "$name" != "$tracking" ] || continue
+        if [ -z "$upstream" ]; then
+            base="origin/$tracking"
+            has_ref "$repo" "refs/remotes/$base" || base="$tracking"
+            n="$(g "$repo" rev-list --count "$base..$name" 2>/dev/null || printf '?')"
+            if [ "$n" = 0 ]; then
+                finding "branch $name: never pushed; no commit of its own yet (no upstream branch)"
+            else
+                finding "branch $name: $n commit(s) never pushed (no upstream branch)"
+            fi
+            continue
+        fi
+        case "$track" in
+        *gone*)
+            finding "branch $name: its remote branch $upstream is gone (merged, or deleted)"
+            ;;
+        *ahead*)
+            n="${track#*ahead }"
+            n="${n%%[],]*}"
+            finding "branch $name: $n commit(s) unpushed to $upstream"
+            ;;
+        esac
+    done < <(g "$repo" for-each-ref refs/heads \
+        --format='%(refname:short)%1f%(upstream:short)%1f%(upstream:track)' \
+        2>/dev/null || true)
+}
+
+# The LINKED worktrees of a root — the Speckit extension's feature worktrees
+# — and whether each is dirty. Their branches are already read above; what a
+# branch cannot say is that the worktree holds uncommitted work, which is
+# exactly the work `park` would refuse to guess about. `worktree list
+# --porcelain` prints blank-line-separated blocks, the main worktree first,
+# so the first block is skipped rather than compared by path (a Mac's
+# `/tmp` is `/private/tmp`, and two spellings of one path would compare
+# unequal).
+read_worktrees() {
+    local repo="$1" line path="" branch="" first=1 out n
+    while IFS= read -r line; do
+        case "$line" in
+        "worktree "*) path="${line#worktree }"; branch="" ;;
+        "branch "*) branch="${line#branch refs/heads/}" ;;
+        "")
+            if [ "$first" -eq 1 ]; then
+                first=0
+            elif [ -n "$path" ] && [ -d "$path" ]; then
+                out="$(g "$path" status --porcelain --ignore-submodules=all 2>/dev/null || true)"
+                if [ -n "$out" ]; then
+                    n="$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
+                    finding "worktree ${path#"$ESTATE_DIR"/} on ${branch:-a detached HEAD}: dirty, $n path(s)"
+                fi
+            fi
+            path=""; branch=""
+            ;;
+        esac
+    done < <(g "$repo" worktree list --porcelain 2>/dev/null; printf '\n')
+}
+
+# A LEG is read against its PIN, not against a branch of its own: the root's
+# HEAD records a gitlink for it, `make bootstrap` places it there, and
+# `scripts/bump-leg.py` is the one way the pin moves. So: a checkout that is
+# not the gitlink has moved without being pinned; a gitlink with commits on
+# `origin/<branch>` after it is a pin that has fallen behind; and a gitlink
+# that `origin/<branch>` does not contain is a pin on work the leg never
+# pushed. A leg detached AT its pin is the normal state of a submodule and
+# is not a finding. The counts are read in the LEG's repository, where the
+# commits live; if the leg has never fetched, the answer is "unknown" rather
+# than "fine", and says so.
+read_leg() {
+    local root="$1" rel="$2" branch="$3" leg gitlink head n kind ref
+    leg="$root/$rel"
+    gitlink="$(g "$root" rev-parse -q --verify "HEAD:$rel" 2>/dev/null || true)"
+    head="$(g "$leg" rev-parse -q --verify HEAD 2>/dev/null || true)"
+    # A LEG ON A FEATURE BRANCH is the state `resume` refuses a whole root
+    # for — that root's own `make bootstrap` would walk the leg back onto
+    # its tracking branch — and the superproject looks clean in it, which is
+    # why the leg's own row has to say so, pin or no pin. A leg DETACHED at
+    # its pin is a submodule's normal state and is not a finding; one on its
+    # tracking branch is where `make bootstrap` leaves it.
+    IFS=$'\t' read -r kind ref < <(head_of "$leg")
+    if [ "$kind" = "branch" ] && [ "$ref" != "$branch" ]; then
+        finding "on branch $ref, not $branch (\`resume\` refuses a root whose leg sits on a feature branch)"
+    fi
+    if [ -z "$gitlink" ]; then
+        finding "not pinned: the root's HEAD records no gitlink at $rel"
+    elif [ -n "$head" ] && [ "$gitlink" != "$head" ]; then
+        finding "checked out at $(short "$head"), pinned at $(short "$gitlink"): moved but not pinned (scripts/bump-leg.py)"
+    fi
+    if [ -n "$gitlink" ]; then
+        if has_ref "$leg" "refs/remotes/origin/$branch"; then
+            n="$(g "$leg" rev-list --count "$gitlink..origin/$branch" 2>/dev/null || true)"
+            if [ -z "$n" ]; then
+                finding "pin $(short "$gitlink") is not in this leg's history: never fetched?"
+            else
+                [ "$n" = 0 ] ||
+                    finding "pin $(short "$gitlink") is $n commit(s) behind origin/$branch, as of the last fetch"
+                n="$(g "$leg" rev-list --count "origin/$branch..$gitlink" 2>/dev/null || printf 0)"
+                [ "$n" = 0 ] ||
+                    finding "pin $(short "$gitlink") is not on origin/$branch: $n commit(s) unpushed in the leg"
+            fi
+        else
+            no_origin_branch_finding "$branch"
+        fi
+    fi
+    read_worktree_state "$leg"
+    read_branches "$leg" "$branch"
+}
+
+# --- `--fetch`: ask origin first ---------------------------------------------
+#
+# THE ONE WRITE THIS COMMAND MAKES, and only when asked: `git fetch --prune
+# origin` in the repository about to be read. A fetch moves remote-tracking
+# refs (`refs/remotes/origin/*`) and writes objects; it touches no branch, no
+# HEAD, no index and no working tree, which is why it is the one write a
+# read-only report can make and still be one. `--prune` is part of it because
+# a remote branch deleted under a feature is exactly the `[gone]` this report
+# looks for, and a fetch without prune would keep the stale ref that hides
+# it. `--recurse-submodules=no`, because the legs are rows of their own and
+# are fetched as such; git's on-demand default would fetch them again from
+# the root. `GIT_TERMINAL_PROMPT=0` so a fetch that wants an https password
+# FAILS and is reported, rather than stopping the whole report at a prompt
+# nobody is watching; an ssh host-key or passphrase prompt is ssh's own and
+# is NOT stopped by it — that blocks exactly as `git fetch` would. The
+# outcome is one line under the repository's row — not a finding when it
+# worked, a finding when it did not, in which case what follows is as of the
+# last fetch that did work. `FETCHED_OK` tells the reads below whether a
+# missing `origin/<branch>` means "never fetched" or "origin has no such
+# branch".
+#
+# THE REFSPEC IS PINNED ON THE COMMAND LINE, and that is what bounds the
+# write. `--prune` deletes whatever the refspec's destination side no longer
+# has a source for — and a repository whose `remote.origin.fetch` was
+# hand-edited, or made with `--mirror`, maps heads onto LOCAL branches, so a
+# configured refspec plus `--prune` would delete a local branch and this
+# report would then call the repository clean; `fetch.pruneTags` set
+# globally would prune local tags the same way. Naming
+# `+refs/heads/*:refs/remotes/origin/*` here means the only refs that can
+# move or go are under `refs/remotes/origin/`, whatever the config says (the
+# review of this layer deleted a local branch through the configured form to
+# prove it). AND `--refmap`, WITH THE SAME REFSPEC: a refspec on the command
+# line bounds what is fetched and pruned, but git still maps every ref it
+# fetched through the CONFIGURED refspecs as well — "opportunistic
+# remote-tracking updates" — so under a mirror-style config the pinned fetch
+# alone would still move `refs/heads/main` in a detached leg, and refuse
+# outright in a checked-out root. `--refmap` (git 2.1) replaces the
+# configured mapping for this one fetch, so nothing outside
+# `refs/remotes/<remote>/` is written by either route.
+# ONE FUNCTION FOR BOTH REMOTES: `origin` always, `upstream` when a fork has
+# one (the third layer, below). The remote's name is in every line it prints,
+# and in the refspec, so `--prune` on the upstream fetch can only touch
+# `refs/remotes/upstream/*`.
+FETCHED_OK=0
+UPSTREAM_FETCHED_OK=0
+fetch_remote() {
+    local repo="$1" branch="$2" remote="$3" before after err what="fetch"
+    [ "$remote" = origin ] || what="fetch $remote"
+    if [ "$remote" = origin ]; then FETCHED_OK=0; else UPSTREAM_FETCHED_OK=0; fi
+    if ! g "$repo" rev-parse --git-dir >/dev/null 2>&1; then
+        finding "fetch: not a readable git repository (a gitfile whose gitdir is gone?), so nothing could be fetched"
+        return 0
+    fi
+    if ! g "$repo" remote get-url "$remote" >/dev/null 2>&1; then
+        finding "fetch: no remote named $remote, so nothing could be fetched"
+        return 0
+    fi
+    before="$(g "$repo" rev-parse -q --verify "refs/remotes/$remote/$branch" 2>/dev/null || true)"
+    if err="$(GIT_TERMINAL_PROMPT=0 git --no-optional-locks -C "$repo" fetch --quiet \
+            --prune --recurse-submodules=no \
+            --refmap="+refs/heads/*:refs/remotes/$remote/*" "$remote" \
+            "+refs/heads/*:refs/remotes/$remote/*" 2>&1)"; then
+        if [ "$remote" = origin ]; then FETCHED_OK=1; else UPSTREAM_FETCHED_OK=1; fi
+        after="$(g "$repo" rev-parse -q --verify "refs/remotes/$remote/$branch" 2>/dev/null || true)"
+        if [ -n "$before" ] && [ -z "$after" ]; then
+            say "    fetched $remote: $remote/$branch is GONE (was $(short "$before")): deleted or renamed on $remote"
+        elif [ -n "$after" ] && [ "$before" != "$after" ]; then
+            if [ -n "$before" ]; then
+                say "    fetched $remote: $remote/$branch moved $(short "$before") -> $(short "$after")"
+            else
+                say "    fetched $remote: $remote/$branch is here now, at $(short "$after")"
+            fi
+        elif [ -z "$after" ]; then
+            say "    fetched $remote: there is no $remote/$branch"
+        else
+            say "    fetched $remote: nothing new on $remote/$branch"
+        fi
+    else
+        err="${err%%$'\n'*}"
+        finding "$what failed: ${err:-git said nothing}; what follows is as of the last fetch that worked"
+    fi
+}
+
+# --- the fork against its upstream --------------------------------------------
+#
+# THE THIRD LAYER, under Brett Heap's RULING of 2026-09-11, verbatim: "next
+# layer: fork against upstream". When origin is a FORK, the one question a
+# clone cannot answer about itself is whether the fork has kept up with what
+# it was forked from: a fork's `main` falls behind quietly, and a feature cut
+# from it is a feature cut from stale ground. Two ways to know, in order:
+#
+# 1. A REMOTE NAMED `upstream` — the convention every fork guide teaches — is
+#    read from LOCAL refs: `origin/<branch>` against `upstream/<branch>`, as
+#    of the last fetch. With `--fetch` the upstream remote is fetched too,
+#    under the pinned refspec, so the write stays under `refs/remotes/`.
+# 2. WITH NO SUCH REMOTE, and only under `--fetch` — the one flag that
+#    reaches the network — an origin on github.com is asked about with
+#    `gh api repos/<owner>/<name>`. If GitHub says it is a fork, that is a
+#    finding naming the parent and the `git remote add upstream …` that makes
+#    the drift readable locally from then on, and GitHub's compare endpoint
+#    gives the counts once. `gh` is READ ONLY here, and every call goes
+#    through `gh_api_line`, which pins the host, clears `GH_DEBUG`, and
+#    decides whether the run keeps asking: not on PATH, or not logged in
+#    (gh exit 4), is true of every repository and is said once; a failure on
+#    one repository — a 404 the token cannot see past — is said on its row
+#    and the others are still asked, three in a row settling the run so an
+#    offline machine does not pay a timeout per row. Without `--fetch`
+#    nothing is asked, and a fork with no upstream remote reads exactly as it
+#    did before this layer.
+#
+# An origin that is NOT a fork says nothing here: most estates are the
+# organisation's own repositories, and "not a fork" is not a finding. The
+# origin URL is read from config, not `remote get-url`, because a
+# `url.<base>.insteadOf` rewrite must not hide whose repository it is.
+GH_STATE=""
+GH_FAILS=0
+GH_LINE=""
+
+# Is `gh` there to ask? Settled ONCE per run and shared by every question this
+# command puts to GitHub (the fork check, the shape pin): absent is said once,
+# under the first row that wanted it; `failed` is set by `gh_api_line` when a
+# failure was true of every repository, after which nobody asks again.
+gh_ready() {
+    local what="$1"
+    if [ -z "$GH_STATE" ]; then
+        if command -v gh >/dev/null 2>&1; then
+            GH_STATE=ok
+        else
+            GH_STATE=none
+            say "    $what: no \`gh\` on PATH, so GitHub was not asked (said once per run)"
+        fi
+    fi
+    [ "$GH_STATE" = ok ]
+}
+
+# THE ONE PLACE `gh` IS RUN: `gh api <endpoint> --jq <filter>`, a GET, and the
+# LAST line of its output lands in `GH_LINE` (the jq payload is always last;
+# a `GH_DEBUG` trace would come first, and is cleared anyway, because a stray
+# stderr line read as the payload turns a fork into "clean"). `--hostname
+# github.com`, because that is the host `is_github_origin` admitted and a
+# `GH_HOST` in somebody's environment must not send the question elsewhere.
+# ON FAILURE the run's state is decided here, and said on the row: gh exit 4
+# is "not logged in", true of every repository, so it settles the run; a 404
+# on one repository is true of that one only, so the others are still asked
+# — three failures in a row settle it too, so a machine with no network does
+# not pay a timeout per row. Returns 1 on any failure (the caller says what
+# it could not read), 0 with `GH_LINE` set on success.
+gh_api_line() {
+    local what="$1" endpoint="$2" filter="$3" out rc=0
+    GH_LINE=""
+    gh_ready "$what" || return 1
+    out="$(GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 GH_DEBUG='' gh api "$endpoint" \
+        --hostname github.com --jq "$filter" 2>&1)" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        out="${out%%$'\n'*}"
+        GH_FAILS=$((GH_FAILS + 1))
+        if [ "$rc" -eq 4 ] || [ "$GH_FAILS" -ge 3 ]; then
+            GH_STATE=failed
+            say "    $what: \`gh api ${endpoint%%\?*}\` failed (${out:-no message}); not asked again this run"
+        else
+            say "    $what: \`gh api ${endpoint%%\?*}\` failed (${out:-no message}); the other repositories are still asked"
+        fi
+        return 1
+    fi
+    GH_FAILS=0
+    GH_LINE="${out##*$'\n'}"
+}
+
+# `github.com` THE HOST, not a substring: `github.company.com` is somebody's
+# GitHub Enterprise and `notgithub.com` is somebody else's server, and the
+# question goes to github.com whatever the origin says — so a match on the
+# substring would ask the wrong server about a repository that is not there,
+# with the person's token. Every spelling git accepts: `https://host/…`,
+# `ssh://user@host:port/…`, `user@host:owner/name`.
+is_github_origin() {
+    local url="$1" host
+    case "$url" in
+    *://*) host="${url#*://}"; host="${host%%/*}" ;;
+    *:*) host="${url%%:*}" ;;
+    *) return 1 ;;
+    esac
+    host="${host##*@}"
+    host="${host%%:*}"
+    [ "$(lower "$host")" = "github.com" ]
+}
+
+# A count from GitHub is digits or it is not read: `tostring` on a field the
+# answer lacks is the word `null`, and "null commit(s) behind" is a lie.
+is_count() {
+    case "$1" in
+    '' | *[!0-9]*) return 1 ;;
+    esac
+    return 0
+}
+
+has_upstream() { g "$1" config --get remote.upstream.url >/dev/null 2>&1; }
+
+read_fork() {
+    local repo="$1" branch="$2" counts behind ahead
+    if ! has_upstream "$repo"; then
+        [ "$FETCH" -eq 0 ] || ask_github_fork "$repo" "$branch"
+        return 0
+    fi
+    if ! has_ref "$repo" "refs/remotes/upstream/$branch"; then
+        if [ "$UPSTREAM_FETCHED_OK" -eq 1 ]; then
+            finding "fork: no upstream/$branch after the fetch: upstream has no branch $branch"
+        elif [ "$FETCH" -eq 1 ]; then
+            finding "fork: no upstream/$branch here, and the fetch of upstream above did not bring one"
+        else
+            finding "fork: no upstream/$branch here: the upstream remote was never fetched (\`--fetch\` asks it)"
+        fi
+        return 0
+    fi
+    # No `origin/<branch>` is already a finding above; nothing to compare.
+    has_ref "$repo" "refs/remotes/origin/$branch" || return 0
+    counts="$(g "$repo" rev-list --left-right --count \
+        "upstream/$branch...origin/$branch" 2>/dev/null || true)"
+    [ -n "$counts" ] || return 0
+    behind="${counts%%[[:space:]]*}"
+    ahead="${counts##*[[:space:]]}"
+    [ "$behind" = 0 ] ||
+        finding "fork: origin/$branch is $behind commit(s) behind upstream/$branch, as of the last fetch"
+    [ "$ahead" = 0 ] ||
+        finding "fork: origin/$branch has $ahead commit(s) upstream/$branch does not"
+}
+
+# `gh api`, read-only, twice at most per repository: is origin a fork, and
+# if so how far is its <branch> from the parent's default branch. The fields
+# come back joined by 0x1F for the reason `read_branches` gives: an empty
+# middle field must stay where it was printed.
+ask_github_fork() {
+    local repo="$1" branch="$2" url slug owner is_fork parent parent_default behind ahead
+    url="$(g "$repo" config --get remote.origin.url 2>/dev/null || true)"
+    is_github_origin "$url" || return 0
+    slug="$(repo_slug_of "$url" || true)"
+    [ -n "$slug" ] || return 0
+    owner="${slug%%/*}"
+    gh_api_line "fork check" "repos/$slug" \
+        '[(.fork|tostring), (.parent.full_name // ""), (.parent.default_branch // "")] | join("\u001f")' ||
+        return 0
+    IFS=$'\037' read -r is_fork parent parent_default <<<"$GH_LINE"
+    [ "$is_fork" = true ] || return 0
+    if [ -z "$parent" ]; then
+        finding "fork of a repository GitHub does not show (deleted, or private to you?), and no remote named upstream here"
+        return 0
+    fi
+    finding "fork of $parent (per GitHub), and no remote named upstream here: \`git remote add upstream https://github.com/$parent.git\` reads the drift locally"
+    if gh_api_line "fork check" \
+            "repos/$parent/compare/$parent_default...$owner:$branch?per_page=1" \
+            '[(.behind_by|tostring), (.ahead_by|tostring)] | join("\u001f")'; then
+        IFS=$'\037' read -r behind ahead <<<"$GH_LINE"
+        if ! is_count "$behind" || ! is_count "$ahead"; then
+            finding "fork: GitHub's compare of origin/$branch with $parent's $parent_default was not two counts; not read"
+            return 0
+        fi
+        [ "$behind" = 0 ] ||
+            finding "fork: origin/$branch is $behind commit(s) behind $parent's $parent_default (per GitHub)"
+        [ "$ahead" = 0 ] ||
+            finding "fork: origin/$branch has $ahead commit(s) $parent's $parent_default does not (per GitHub)"
+    else
+        finding "fork: could not compare origin/$branch with $parent's $parent_default (the fork check line above says why)"
+    fi
+}
+
+# --- the shape pin ------------------------------------------------------------
+#
+# THE FOURTH LAYER, under Brett Heap's RULING of 2026-09-11, verbatim: "next
+# layer: shape-pin drift". An assembly root and a family holder each carry
+# `contracts/shape-pin.yaml` — A COPY PIN, in the standard's own words: the
+# scaffold COPIED a small set of files out of openRepoShape (the Makefile, the
+# validators, the bootstrap, the workflow) so a project runs its own gate with
+# no upstream mounted, and the pin records the commit they came from plus a
+# sha256 per copy. Three things can be out of sync with it, and each is read:
+#
+# 1. A COPY EDITED IN PLACE. Every `files:` row is re-hashed with whatever
+#    sha256 this machine has (GNU `sha256sum`, the `shasum` a Mac ships, or
+#    `openssl`); a digest that differs is DRIFT, and the standard's exit is
+#    named with it — carry the change upstream, never re-digest. The same
+#    check the root's own `scripts/validate-pins.py` (or the holder's
+#    `validate-family.py`) makes on every pull request, read here across the
+#    estate without running the validator, which also asks lockstep questions
+#    a report about the shape does not. A row whose file is missing is named.
+# 2. THE MIRROR. `project.yaml` (or `family.yaml`) carries a `shape:` block
+#    that mirrors the pin's commit; `update-shape.py` moves both together, so
+#    two different commits there is a half-done update.
+# 3. THE PIN AGAINST THE SOURCE'S DEFAULT BRANCH. From a clone of the source
+#    under the projects directory when there is one — found by its origin's
+#    slug, the way `--repo` finds an estate, never by folder name — read from
+#    local refs, as of that clone's last fetch; else, under `--fetch`, from
+#    GitHub's compare endpoint, once per pin per run. Behind is a finding
+#    whose exit is `update-shape.py check --root <root>`; a pin the branch
+#    does not contain is a finding too, because the standard squash-merges
+#    and a branch commit is orphaned the moment its pull request lands. When
+#    neither source answered, the note says currency was NOT read and why,
+#    so nobody mistakes "no finding" for "current".
+#
+# A root with no `contracts/shape-pin.yaml` says nothing here: a root adopted
+# before the pin existed, or a probe, is not out of sync with a pin it never
+# had.
+
+SHA_TOOL=""
+# Which sha256 this machine has: GNU `sha256sum`, the `shasum` a Mac ships, or
+# `openssl`. Chosen ONCE, here, and not inside `file_sha256`, whose caller runs
+# it in a command substitution — a subshell, where nothing chosen would
+# survive to the next file.
+choose_sha_tool() {
+    [ -z "$SHA_TOOL" ] || return 0
+    if command -v sha256sum >/dev/null 2>&1; then SHA_TOOL=sha256sum
+    elif command -v shasum >/dev/null 2>&1; then SHA_TOOL=shasum
+    elif command -v openssl >/dev/null 2>&1; then SHA_TOOL=openssl
+    else SHA_TOOL=none
+    fi
+}
+
+# sha256 of one file's bytes, as `file_sha256` in the standard's
+# `scripts/repo_shape.py` computes it. Empty when the tool could not read the
+# file. GNU `sha256sum` and `shasum` mark a name holding a backslash or a
+# newline by prefixing the whole line with `\`; that is about the name, not
+# the digest, and is dropped.
+file_sha256() {
+    local file="$1" out=""
+    case "$SHA_TOOL" in
+    sha256sum) out="$(sha256sum -- "$file" 2>/dev/null || true)" ;;
+    shasum) out="$(shasum -a 256 -- "$file" 2>/dev/null || true)" ;;
+    openssl) out="$(openssl dgst -sha256 -r -- "$file" 2>/dev/null || true)" ;;
+    esac
+    out="${out%% *}"
+    printf '%s' "${out#\\}"
+}
+
+# `path<TAB>sha256` per row of the pin's `files:` block — the rows
+# `update-shape.py` writes as `  - path: <p>` / `    sha256: "<hex>"`, in
+# that order; a hand-edited row the other way round is dropped, which is one
+# reason the note counts rows. A trailing comment on a path is not part of
+# it. A new top-level key ends the block.
+shape_pin_rows() {
+    local file="$1" line path="" digest in_files=0
+    [ -f "$file" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        case "$line" in
+        '#'*) continue ;;
+        'files:'*) in_files=1; path=""; continue ;;
+        [![:space:]]*) in_files=0; continue ;;
+        esac
+        [ "$in_files" -eq 1 ] || continue
+        case "$line" in
+        '  - path:'*)
+            path="$(trim_unquote "${line#*:}")"
+            case "$path" in
+            *' #'*) path="$(trim_unquote "${path%% #*}")" ;;
+            esac
+            ;;
+        '    sha256:'*)
+            digest="$(trim_unquote "${line#*:}")"
+            [ -z "$path" ] || printf '%s\t%s\n' "$path" "$digest"
+            path=""
+            ;;
+        esac
+    done <"$file"
+}
+
+# One two-space-indented scalar out of one top-level section of a manifest —
+# `shape:` / `  commit:` — with parameter expansion only, like `yaml_scalar`.
+nested_scalar() {
+    local file="$1" section="$2" key="$3" line in_section=0
+    [ -f "$file" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        case "$line" in
+        '#'*) continue ;;
+        "$section:"*) in_section=1; continue ;;
+        [![:space:]]*) [ "$in_section" -eq 0 ] || return 0 ;;
+        esac
+        [ "$in_section" -eq 1 ] || continue
+        case "$line" in
+        "  $key:"*) printf '%s\n' "$(trim_unquote "${line#*:}")"; return 0 ;;
+        esac
+    done <"$file"
+}
+
+# THE SOURCE'S DEFAULT BRANCH is what a pin is measured against. openRepoShape's
+# is `main`, but `source_repository:` is whatever a fork of the standard was
+# named, so it is READ where it can be — the clone's `origin/HEAD`, or GitHub's
+# `default_branch` — and remembered per source for the run; `main` when
+# neither says. And the answer about ONE pin serves every root that carries
+# it: a family's holder and members are cut from the same commit, and N
+# identical questions would be N round-trips and N strikes against
+# `gh_api_line`'s budget, which the fork check shares.
+SHAPE_DEFAULT_SOURCE=""
+SHAPE_DEFAULT_BRANCH=""
+SHAPE_ASKED=""
+SHAPE_ASKED_BEHIND=""
+SHAPE_ASKED_AHEAD=""
+
+# The pin's commit against the source's default branch, from a clone of the
+# source under the projects directory — found by its origin's slug, the way
+# `--repo` finds an estate, never by folder name. `merge-base --is-ancestor`
+# says whether the branch contains it, `rev-list --count` says how far behind.
+# Returns 0 when it could answer (finding or not), 1 when there is no such
+# clone or it has never fetched its default branch, so the caller can try
+# GitHub or say "not read".
+shape_currency_from_clone() {
+    local root="$1" commit="$2" source="$3" clone n default
+    clone="$(clone_with_origin "$source" || true)"
+    [ -n "$clone" ] || return 1
+    default="$(g "$clone" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+    default="${default#origin/}"
+    [ -n "$default" ] || default=main
+    has_ref "$clone" "refs/remotes/origin/$default" || return 1
+    SHAPE_DEFAULT_SOURCE="$source"
+    SHAPE_DEFAULT_BRANCH="$default"
+    if ! g "$clone" cat-file -e "$commit^{commit}" 2>/dev/null; then
+        finding "shape pin $(short "$commit") is not in the clone of $source at $clone, as of its last fetch: fetch it, or the pin is on a commit that was squash-merged away"
+        return 0
+    fi
+    if g "$clone" merge-base --is-ancestor "$commit" "origin/$default" 2>/dev/null; then
+        n="$(g "$clone" rev-list --count "$commit..origin/$default" 2>/dev/null || true)"
+        [ -z "$n" ] || [ "$n" = 0 ] ||
+            finding "shape pin $(short "$commit") is $n commit(s) behind $source $default (per the clone at $clone, as of its last fetch): update-shape.py check --root $root"
+    else
+        finding "shape pin $(short "$commit") is not on $source $default (per the clone at $clone): a branch commit, which the standard's squash-merge orphans"
+    fi
+    return 0
+}
+
+# The same question put to GitHub, under `--fetch` only and only when no clone
+# answered: the source's default branch once per source, then `compare/<pin>
+# ...<default>` once per pin, with the pin as base so `ahead_by` is what the
+# branch has since the pin and `behind_by` is what the pin has that the
+# branch never did. Returns 1 when GitHub did not answer (`gh_api_line` has
+# said why, or an earlier failure settled the run).
+ask_github_shape_pin() {
+    local root="$1" commit="$2" source="$3" behind ahead default
+    if [ "$SHAPE_DEFAULT_SOURCE" = "$source" ] && [ -n "$SHAPE_DEFAULT_BRANCH" ]; then
+        default="$SHAPE_DEFAULT_BRANCH"
+    else
+        gh_api_line "shape check" "repos/$source" '.default_branch // "main"' || return 1
+        default="$GH_LINE"
+        [ -n "$default" ] || default=main
+        SHAPE_DEFAULT_SOURCE="$source"
+        SHAPE_DEFAULT_BRANCH="$default"
+    fi
+    if [ "$SHAPE_ASKED" = "$source $commit" ]; then
+        behind="$SHAPE_ASKED_BEHIND"
+        ahead="$SHAPE_ASKED_AHEAD"
+    else
+        gh_api_line "shape check" "repos/$source/compare/$commit...$default?per_page=1" \
+            '[(.behind_by|tostring), (.ahead_by|tostring)] | join("\u001f")' || return 1
+        IFS=$'\037' read -r behind ahead <<<"$GH_LINE"
+        SHAPE_ASKED="$source $commit"
+        SHAPE_ASKED_BEHIND="$behind"
+        SHAPE_ASKED_AHEAD="$ahead"
+    fi
+    if ! is_count "$behind" || ! is_count "$ahead"; then
+        finding "shape: GitHub's compare of pin $(short "$commit") with $source $default was not two counts; not read"
+        return 0
+    fi
+    [ "$behind" = 0 ] ||
+        finding "shape pin $(short "$commit") is not on $source $default: $behind commit(s) of it are not there (per GitHub) — a branch commit, which the standard's squash-merge orphans"
+    [ "$ahead" = 0 ] ||
+        finding "shape pin $(short "$commit") is $ahead commit(s) behind $source $default (per GitHub): update-shape.py check --root $root"
+    return 0
+}
+
+# A root's or holder's shape pin, all three reads, and one note line saying
+# what was pinned, how many copies matched, and where currency came from — or
+# that it was NOT read, and why, so silence is never mistaken for current.
+read_shape() {
+    local root="$1" manifest="$2" pin commit source mirror path digest actual
+    local ok=0 total=0 currency=""
+    pin="$root/contracts/shape-pin.yaml"
+    [ -f "$pin" ] || return 0
+    commit=""; yaml_scalar "$pin" commit && commit="$YAML_VALUE"
+    source=""; yaml_scalar "$pin" source_repository && source="$YAML_VALUE"
+    if [ -z "$commit" ]; then
+        finding "shape: contracts/shape-pin.yaml records no commit"
+        return 0
+    fi
+    choose_sha_tool
+    while IFS=$'\t' read -r path digest; do
+        [ -n "$path" ] || continue
+        total=$((total + 1))
+        if [ ! -f "$root/$path" ]; then
+            finding "shape copy $path is missing; contracts/shape-pin.yaml names it (update-shape.py check --root $root)"
+            continue
+        fi
+        if [ "$SHA_TOOL" = none ]; then
+            finding "shape copy $path not checked: no sha256sum, shasum or openssl on PATH"
+            continue
+        fi
+        actual="$(file_sha256 "$root/$path")"
+        if [ -z "$actual" ]; then
+            finding "shape copy $path not checked: \`$SHA_TOOL\` could not read it"
+        elif [ "$actual" != "$digest" ]; then
+            finding "shape copy $path edited in place: its sha256 is not the one contracts/shape-pin.yaml records (drift: carry the change upstream, never re-digest)"
+        else
+            ok=$((ok + 1))
+        fi
+    done < <(shape_pin_rows "$pin")
+    # THE MIRROR. `update-shape.py` moves the pin and the manifest's `shape:`
+    # block together, and refuses a manifest that has no such block — so a
+    # pin beside a manifest without one is the same half-done state as two
+    # different commits.
+    mirror="$(nested_scalar "$root/$manifest" shape commit)"
+    if [ -z "$mirror" ]; then
+        finding "shape: $manifest carries no \`shape:\` commit beside contracts/shape-pin.yaml (update-shape.py moves both together)"
+    elif [ "$mirror" != "$commit" ]; then
+        finding "shape: $manifest mirrors $(short "$mirror") but contracts/shape-pin.yaml pins $(short "$commit"): out of step (update-shape.py moves both together)"
+    fi
+    # CURRENCY: the clone first, because it is local and free, and reading it
+    # before asking GitHub is what the documents promise; GitHub only under
+    # `--fetch`, and only when no clone answered.
+    if [ -n "$source" ]; then
+        if shape_currency_from_clone "$root" "$commit" "$source"; then
+            currency="; against $source $SHAPE_DEFAULT_BRANCH per a clone under the projects directory"
+        elif [ "$FETCH" -eq 1 ] && ask_github_shape_pin "$root" "$commit" "$source"; then
+            currency="; against $source $SHAPE_DEFAULT_BRANCH per GitHub"
+        elif [ "$FETCH" -eq 1 ]; then
+            currency="; currency NOT read: no clone of $source with its default branch fetched under the projects directory, and GitHub did not answer (an earlier line says why)"
+        else
+            currency="; currency not read (no clone of $source with its default branch fetched under the projects directory; --fetch asks GitHub)"
+        fi
+    fi
+    say "    shape: pinned at $(short "$commit") of ${source:-an unnamed source}; $ok/$total copies match their digests$currency"
+}
+
+# --- the parked record against disk -------------------------------------------
+#
+# THE FIFTH LAYER, under Brett Heap's RULING of 2026-09-11, verbatim: "next
+# layer: parked record against disk". `park` RECORDS every open feature of an
+# estate in the person's private workspace repository — `workspaces/<org>/
+# <id>.yaml`, one block per project, one entry per feature, and per leg the
+# commit it was parked at and whether that commit was pushed — and `resume`
+# rebuilds the worktrees from that record on the next workstation. Between
+# the two, the record and the disk drift apart in exactly the ways `resume`
+# later refuses, and this layer reads them beforehand, the way `resume.sh`
+# will:
+#
+# 1. A RECORDED FEATURE WITH NO WORKTREE HERE on its branch: parked, and not
+#    resumed on this machine. `resume <Name>` is the exit; nothing here adds
+#    a worktree.
+# 2. A WORKTREE WHOSE BRANCH TIP IS NOT THE PARKED COMMIT: moved on since it
+#    was parked (park again before leaving); or BEHIND it — the record is
+#    newer, parked later on another workstation, which `resume` refuses to
+#    reset; or diverged from it; or a parked commit this machine never
+#    fetched. ONE GAP IS NOT A FINDING: `resume` recreates the worktree at the
+#    parked commit and SOFT-RESETS the WIP commits `park` made, so a resumed
+#    feature's tip is legitimately `<parked>~<wip_depth>` with the work back
+#    in the working tree — `resume.sh`'s `wip_gap_is_ours` is what keeps it
+#    from refusing that, and the same test is made here.
+# 3. A LEG PARKED WITH `--no-push`: the record says `pushed: false`, only the
+#    workstation that parked it has the WIP commit, and `resume` refuses it.
+# 4. A WORKTREE ON DISK THAT THE RECORD DOES NOT KNOW: a feature that was
+#    never parked, which is the one thing `park` exists to carry.
+#
+# THE RECORD IS FOUND WHERE `park` FILES IT AND `resume` LOOKS FOR IT:
+# `${AGENT_PROTOCOL_ROOT:-~/.agents}/workspace.yaml` names the workspace
+# repository and its checkout (`path:`), plus per-org overrides under
+# `orgs:`, each checkout counted ONCE by physical path (an override pointing
+# at the default's clone is one clone, not two orgs); every checkout's
+# `workspaces/<org>/*.yaml` is scanned for the estate's ID — a standalone
+# project's `project.yaml` `id:`, a family's `family.yaml` `id:`, which is
+# the name `park` files under — and then, if none, for the estate's FOLDER
+# name, which is what `resume <Name>` looks up; basenames are compared
+# case-insensitively, as `resume` compares them. No config, a checkout that
+# is not on this machine, or no record for this estate, is a NOTE, not a
+# finding: a machine that never parked has nothing to be out of sync with.
+# Two orgs recording the same id is a note too, unless one of them is the org
+# this root's origin names. Nothing here reads the workspace repository's
+# remote: the record is as of its last pull, and the estate's line says so.
+#
+# A FAMILY's record has one block per MEMBER, matched by its `root:` —
+# `<family folder>/<member folder>`, the casing `workspace_manifest_root_value`
+# writes — and the holder has none. Each leg is read in the repository it
+# lives in: the root for the `repo` and `assembly` roles, the leg's own
+# checkout for `spec`, `code` and any other role `project.yaml` places.
+
+WORKSPACE_CONFIG="${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/workspace.yaml"
+RECORD_FILE=""
+RECORD_NOTE=""
+RECORD_ID=""
+NL=$'\n'
+
+# shellcheck disable=SC2088  # a literal leading ~ is what is matched here
+expand_home() {
+    local value="$1"
+    case "$value" in
+    '~') printf '%s\n' "$HOME" ;;
+    '~/'*) printf '%s\n' "$HOME/${value#\~/}" ;;
+    *) printf '%s\n' "$value" ;;
+    esac
+}
+
+# Every workspace checkout the config names: the top-level `path:` and each
+# `    path:` under `orgs:`. Read only; a malformed block is a block not found.
+workspace_checkouts() {
+    local file="$1" line
+    [ -r "$file" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        case "$line" in
+        '#'*) continue ;;
+        'path:'* | '    path:'*) expand_home "$(trim_unquote "${line#*:}")" ;;
+        esac
+    done <"$file"
+}
+
+# `<org><TAB><file>` for every `workspaces/<org>/<id>.yaml` in every checkout,
+# basename compared case-insensitively — `resume`'s `manifest_candidates`.
+record_candidates() {
+    local want checkout dir file base
+    want="$(lower "$1")"
+    shift
+    for checkout in "$@"; do
+        [ -d "$checkout/workspaces" ] || continue
+        for dir in "$checkout"/workspaces/*/; do
+            dir="${dir%/}"
+            [ -d "$dir" ] || continue
+            for file in "$dir"/*.yaml; do
+                [ -f "$file" ] || continue
+                base="${file##*/}"
+                base="${base%.yaml}"
+                [ "$(lower "$base")" = "$want" ] || continue
+                printf '%s\t%s\n' "${dir##*/}" "$file"
+            done
+        done
+    done
+}
+
+# THIS estate's record, once per estate: RECORD_FILE, or RECORD_NOTE saying
+# why there is none to read. RECORD_ID is what a standalone block is matched
+# by.
+locate_record() {
+    local manifest checkouts candidates count org file owner url line physical seen missing=""
+    local -a dirs=()
+    RECORD_FILE=""
+    RECORD_NOTE=""
+    RECORD_ID=""
+    if [ "$ESTATE_KIND" = "family" ]; then
+        manifest="$ESTATE_ROOT/family.yaml"
+    else
+        manifest="$ESTATE_ROOT/project.yaml"
+    fi
+    if yaml_scalar "$manifest" id; then RECORD_ID="$YAML_VALUE"; fi
+    [ -n "$RECORD_ID" ] || RECORD_ID="$(lower "$ESTATE_NAME")"
+    if [ ! -f "$WORKSPACE_CONFIG" ]; then
+        RECORD_NOTE="parked record: no $WORKSPACE_CONFIG on this machine, so parked features are not read (\`resume --workspace <owner>/<repo>\` writes it)"
+        return 0
+    fi
+    if [ ! -r "$WORKSPACE_CONFIG" ]; then
+        RECORD_NOTE="parked record: $WORKSPACE_CONFIG cannot be read (permissions), so parked features are not read"
+        return 0
+    fi
+    checkouts="$(workspace_checkouts "$WORKSPACE_CONFIG")"
+    if [ -z "$checkouts" ]; then
+        RECORD_NOTE="parked record: $WORKSPACE_CONFIG names no \`path:\`, so parked features are not read"
+        return 0
+    fi
+    # ONE ENTRY PER DIRECTORY, by PHYSICAL path — `resume`'s `add_workspace`,
+    # for its reason (F4 of the review on openRepoShape #83): an `orgs:`
+    # override pointing at the default's clone would otherwise be scanned
+    # twice and every record in it counted twice, which reads as "two orgs
+    # record this id". A checkout the config names and this machine does not
+    # have is skipped and, if none is left, said.
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        [ -d "$line" ] || { missing="${missing:+$missing }$line"; continue; }
+        physical="$(cd "$line" 2>/dev/null && pwd -P)" || physical="$line"
+        for seen in ${dirs[@]+"${dirs[@]}"}; do
+            [ "$seen" != "$physical" ] || continue 2
+        done
+        dirs+=("$physical")
+    done <<<"$checkouts"
+    if [ ${#dirs[@]} -eq 0 ]; then
+        RECORD_NOTE="parked record: the workspace checkout $WORKSPACE_CONFIG names is not on this machine ($missing), so parked features are not read (\`resume\` clones it)"
+        return 0
+    fi
+    candidates="$(record_candidates "$RECORD_ID" "${dirs[@]}")"
+    if [ -z "$candidates" ] && [ "$(lower "$ESTATE_NAME")" != "$(lower "$RECORD_ID")" ]; then
+        # Filed under the id by `park`; looked up by folder by `resume <Name>`.
+        candidates="$(record_candidates "$ESTATE_NAME" "${dirs[@]}")"
+    fi
+    if [ -z "$candidates" ]; then
+        RECORD_NOTE="parked record: none for '$RECORD_ID' under ${dirs[*]} — nothing of this estate has been parked, or not into this workspace"
+        return 0
+    fi
+    count="$(printf '%s\n' "$candidates" | grep -c . || true)"
+    if [ "$count" -eq 1 ]; then
+        RECORD_FILE="${candidates#*	}"
+        return 0
+    fi
+    # Two orgs record this id: the one this root's origin belongs to, if any.
+    url="$(g "$ESTATE_ROOT" config --get remote.origin.url 2>/dev/null || true)"
+    owner="$(repo_slug_of "$url" || true)"
+    owner="${owner%%/*}"
+    while IFS=$'\t' read -r org file; do
+        [ -n "$org" ] || continue
+        if [ -n "$owner" ] && [ "$(lower "$org")" = "$(lower "$owner")" ]; then
+            RECORD_FILE="$file"
+            return 0
+        fi
+    done <<<"$candidates"
+    RECORD_NOTE="parked record: $count records for '$RECORD_ID' in different orgs, and none is the org this root's origin names; not read (\`resume --org\` is how one is chosen)"
+}
+
+# One project block of a record as rows, fields joined by 0x1F (a tab is IFS
+# whitespace, and an absent optional key — `park` writes no key for an empty
+# value — would shift every later field left, the hazard `read_branches`
+# names): `project` with parked_at, parked_on, lane and active, once; `branch`
+# with the branch, per feature; `leg` with branch, role, parked_commit,
+# pushed and wip_depth, per leg. The block is the one whose `id:` (a
+# standalone) or `root:` (a family member) is the selector's. The layout is
+# the fixed one `workspace_write_manifest` emits — two spaces per level,
+# `pushed:` the last key of a leg, which is where the leg's row is emitted —
+# so a hand-edited leg without `pushed:` is dropped; its branch is still
+# known from the `branch` row, so it is never accused of being unparked.
+record_rows() {
+    local file="$1" sel="$2" line matched=0 value
+    local parked_at="" parked_on="" lane="" active="" branch="" role="" commit="" pushed="" depth=""
+    [ -f "$file" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        case "$line" in
+        '  - id:'*)
+            matched=0
+            parked_at=""; parked_on=""; lane=""; active=""; branch=""; role=""
+            value="$(trim_unquote "${line#*:}")"
+            case "$sel" in
+            id=*) [ "$(lower "$value")" != "$(lower "${sel#id=}")" ] || matched=1 ;;
+            esac
+            ;;
+        '    root:'*)
+            value="$(trim_unquote "${line#*:}")"
+            case "$sel" in
+            root=*) [ "$(lower "$value")" != "$(lower "${sel#root=}")" ] || matched=1 ;;
+            esac
+            ;;
+        '    parked_at:'*) parked_at="$(trim_unquote "${line#*:}")" ;;
+        '    parked_on:'*) parked_on="$(trim_unquote "${line#*:}")" ;;
+        '    parked_by_lane:'*) lane="$(trim_unquote "${line#*:}")" ;;
+        '    active_feature:'*) active="$(trim_unquote "${line#*:}")" ;;
+        '    features:'*)
+            if [ "$matched" -eq 1 ]; then
+                printf 'project\037%s\037%s\037%s\037%s\n' "$parked_at" "$parked_on" "$lane" "$active"
+            fi
+            ;;
+        '      - branch:'*)
+            branch="$(trim_unquote "${line#*:}")"
+            if [ "$matched" -eq 1 ] && [ -n "$branch" ]; then
+                printf 'branch\037%s\n' "$branch"
+            fi
+            ;;
+        '          - role:'*) role="$(trim_unquote "${line#*:}")"; commit=""; pushed=""; depth="" ;;
+        '            parked_commit:'*) commit="$(trim_unquote "${line#*:}")" ;;
+        '            wip_depth:'*) depth="$(trim_unquote "${line#*:}")" ;;
+        '            pushed:'*)
+            pushed="$(trim_unquote "${line#*:}")"
+            if [ "$matched" -eq 1 ] && [ -n "$branch" ] && [ -n "$role" ]; then
+                printf 'leg\037%s\037%s\037%s\037%s\037%s\n' "$branch" "$role" "$commit" "$pushed" "$depth"
+            fi
+            ;;
+        esac
+    done <"$file"
+    return 0
+}
+
+# The repository a leg role lives in: the root for `repo` and `assembly`, else
+# the path `project.yaml` gives that role, else a folder named for the role.
+leg_repo_for_role() {
+    local root="$1" want="$2" line role="" path=""
+    case "$want" in
+    repo | assembly) printf '%s\n' "$root"; return 0 ;;
+    esac
+    if [ -f "$root/project.yaml" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            line="${line%$'\r'}"
+            case "$line" in
+            '  - role:'*) role="$(trim_unquote "${line#*:}")"; path="" ;;
+            '    path:'*)
+                path="$(trim_unquote "${line#*:}")"
+                if [ "$role" = "$want" ] && [ -n "$path" ] && [ "$path" != "." ]; then
+                    printf '%s\n' "$root/$path"
+                    return 0
+                fi
+                ;;
+            [![:space:]]*) role="" ;;
+            esac
+        done <"$root/project.yaml"
+    fi
+    if [ -d "$root/$want" ]; then
+        printf '%s\n' "$root/$want"
+        return 0
+    fi
+    return 1
+}
+
+# The path of the worktree checked out on `<branch>` in `<repo>`, main or
+# linked, or nothing.
+worktree_on_branch() {
+    local repo="$1" want="$2" line path=""
+    while IFS= read -r line; do
+        case "$line" in
+        "worktree "*) path="${line#worktree }" ;;
+        "branch refs/heads/$want") printf '%s\n' "$path"; return 0 ;;
+        esac
+    done < <(g "$repo" worktree list --porcelain 2>/dev/null || true)
+    return 1
+}
+
+# THE GAP A RESUME ITSELF LEAVES. `park` commits the WIP under a fixed subject
+# prefix and records how many such commits sit on the tip (`wip_depth`);
+# `resume` recreates the worktree at the parked commit and SOFT-RESETS exactly
+# those commits away, so a resumed feature's tip is legitimately `<parked>~
+# <wip_depth>` with the work back in the working tree. `resume.sh`'s
+# `wip_gap_is_ours` is what keeps it from refusing that state, and this is
+# the same test: the gap is exactly `wip_depth` commits, every one of them a
+# `wip: park …` commit. Read-only (`log -1 --format=%s`).
+WIP_PREFIX='wip: park '
+wip_gap_is_ours() {
+    local repo="$1" from="$2" to="$3" depth="$4" count subject step=0
+    is_count "$depth" || return 1
+    [ "$depth" -gt 0 ] || return 1
+    count="$(g "$repo" rev-list --count "$from..$to" 2>/dev/null || printf 0)"
+    [ "$count" = "$depth" ] || return 1
+    while [ "$step" -lt "$depth" ]; do
+        subject="$(g "$repo" log -1 --format=%s "$to~$step" 2>/dev/null || true)"
+        case "$subject" in
+        "$WIP_PREFIX"*) ;;
+        *) return 1 ;;
+        esac
+        step=$((step + 1))
+    done
+    return 0
+}
+
+# One recorded leg against disk: the four states above, read in the leg's own
+# repository.
+check_parked_leg() {
+    local root="$1" branch="$2" role="$3" commit="$4" pushed="$5" parked_at="$6" parked_on="$7" depth="$8"
+    local repo tree tip n
+    repo="$(leg_repo_for_role "$root" "$role" || true)"
+    if [ -z "$repo" ] || [ ! -e "$repo/.git" ]; then
+        finding "parked feature $branch ($role leg): the record names a leg this root does not mount here"
+        return 0
+    fi
+    if [ "$pushed" = false ]; then
+        finding "parked feature $branch ($role leg): parked with --no-push on ${parked_on:-another workstation}; only that workstation has the WIP commit, and \`resume\` refuses it"
+    fi
+    tree="$(worktree_on_branch "$repo" "$branch" || true)"
+    if [ -z "$tree" ]; then
+        finding "parked feature $branch ($role leg): no worktree on that branch here; parked ${parked_at:-?} on ${parked_on:-?} — \`resume $ESTATE_NAME\` brings it back"
+        return 0
+    fi
+    [ -n "$commit" ] || return 0
+    tip="$(g "$repo" rev-parse -q --verify "refs/heads/$branch" 2>/dev/null || true)"
+    [ -n "$tip" ] || return 0
+    [ "$tip" != "$commit" ] || return 0
+    if ! g "$repo" cat-file -e "$commit^{commit}" 2>/dev/null; then
+        finding "parked feature $branch ($role leg): its parked commit $(short "$commit") is not here — never fetched, or parked with --no-push on ${parked_on:-another workstation}"
+    elif g "$repo" merge-base --is-ancestor "$commit" "$tip" 2>/dev/null; then
+        n="$(g "$repo" rev-list --count "$commit..$tip" 2>/dev/null || true)"
+        finding "parked feature $branch ($role leg): moved on since it was parked, ${n:-?} commit(s) after $(short "$commit") — park again before leaving"
+    elif g "$repo" merge-base --is-ancestor "$tip" "$commit" 2>/dev/null; then
+        # RESUMED HERE, not behind: the gap is the WIP `resume` un-committed.
+        if wip_gap_is_ours "$repo" "$tip" "$commit" "$depth"; then
+            return 0
+        fi
+        finding "parked feature $branch ($role leg): this worktree is BEHIND the parked commit $(short "$commit"), parked ${parked_at:-?} on ${parked_on:-?} — the record is newer, and \`resume\` refuses to reset it"
+    else
+        finding "parked feature $branch ($role leg): diverged from the parked commit $(short "$commit"), parked ${parked_at:-?} on ${parked_on:-?} — reconcile by hand: \`git -C $repo log --oneline $(short "$commit")..$branch\`"
+    fi
+    return 0
+}
+
+# Linked worktrees on disk — in the root and in each mounted leg — whose
+# branch the record does not know: work that was never parked.
+unrecorded_worktrees() {
+    local root="$1" recorded="$2" repo where line path="" branch="" first=1 state leg
+    local -a repos=("$root")
+    while IFS=$'\t' read -r state leg; do
+        [ "$state" = mounted ] || continue
+        repos+=("$root/$leg")
+    done < <(declared_legs "$root")
+    for repo in "${repos[@]}"; do
+        where="${repo#"$root"}"
+        where="${where#/}"
+        [ -n "$where" ] || where="root"
+        first=1; path=""; branch=""
+        while IFS= read -r line; do
+            case "$line" in
+            "worktree "*) path="${line#worktree }"; branch="" ;;
+            "branch "*) branch="${line#branch refs/heads/}" ;;
+            "")
+                if [ "$first" -eq 1 ]; then
+                    first=0
+                elif [ -n "$branch" ]; then
+                    case "$recorded" in
+                    *"$NL$branch$NL"*) ;;
+                    *) finding "worktree on $branch ($where): not in the parked record — never parked; \`park\` carries the features under this root's worktree root, anything else is yours to keep or remove" ;;
+                    esac
+                fi
+                path=""; branch=""
+                ;;
+            esac
+        done < <(g "$repo" worktree list --porcelain 2>/dev/null; printf '\n')
+    done
+}
+
+# A root's block of the record against its disk: the note line, one finding
+# per leg that is out of step, and the worktrees the record does not know.
+# The selectors are tried in order until one names a block: a standalone root
+# by its `id:` first, then by its folder as `root:` — the block a record found
+# by folder name carries — and a family member by its `root:` alone.
+read_record() {
+    local root="$1" sel rows="" kind a b c d e n_features=0
+    local parked_at="" parked_on="" lane="" active="" recorded="$NL"
+    shift
+    [ -n "$RECORD_FILE" ] || return 0
+    for sel in "$@"; do
+        rows="$(record_rows "$RECORD_FILE" "$sel")"
+        [ -z "$rows" ] || break
+    done
+    if [ -z "$rows" ]; then
+        # A root the record does not mention: every worktree here is unparked,
+        # which is the one thing worth saying about it.
+        say "    parked record: no block for this root in ${RECORD_FILE##*/}"
+    else
+        while IFS=$'\037' read -r kind a b c d e; do
+            case "$kind" in
+            project) parked_at="$a"; parked_on="$b"; lane="$c"; active="$d" ;;
+            branch)
+                case "$recorded" in
+                *"$NL$a$NL"*) ;;
+                *) recorded="$recorded$a$NL"; n_features=$((n_features + 1)) ;;
+                esac
+                ;;
+            leg) check_parked_leg "$root" "$a" "$b" "$c" "$d" "$parked_at" "$parked_on" "$e" ;;
+            esac
+        done <<<"$rows"
+        say "    parked record: $n_features feature(s), parked ${parked_at:-?} on ${parked_on:-?}${lane:+ (lane $lane)}${active:+; active $active}"
+    fi
+    unrecorded_worktrees "$root" "$recorded"
+}
+
+ESTATE_FINDINGS=0
+ESTATE_REPOS=0
+#: The footer's last clause, decided once by `--fetch`: what this run changed.
+CHANGED_CLAUSE="nothing was changed."
+
+# --- one estate -------------------------------------------------------------
+#
+# ESTATE_KIND / ESTATE_DIR / ESTATE_ROOT / ESTATE_NAME must already be set —
+# by `estate_walk_up`, `estate_by_name`, `clone_with_origin`, or, for the
+# sweep, a direct `estate_here` on a discovered child. RETURNS 1 when
+# anything was found and 0 when nothing was, so the sweep can carry on and
+# the single-estate call site can turn that straight into its exit code.
+read_one_estate() {
+    local label branch path current_root="" rel line
+    ESTATE_FINDINGS=0
+    ESTATE_REPOS=0
+    if [ "$ESTATE_KIND" = "family" ]; then
+        say "status: $ESTATE_NAME - the family holder at $ESTATE_ROOT"
+        say "  the members' working clones beside it, and their legs, are read too."
+    else
+        say "status: $ESTATE_NAME - the assembly root at $ESTATE_ROOT"
+    fi
+    if [ "$FETCH" -eq 1 ]; then
+        say "  fetched first (--fetch): origin — and upstream, where a fork has one — is asked in every repository below, then it is read."
+    else
+        say "  as of the last fetch: status reads local refs only and fetches nothing."
+    fi
+    locate_record
+    if [ -n "$RECORD_FILE" ]; then
+        say "  parked record: $RECORD_FILE, as of its last pull"
+    else
+        say "  $RECORD_NOTE"
+    fi
+    say ""
+    while IFS=$'\t' read -r label branch path; do
+        [ -n "${path:-}" ] || continue
+        FINDINGS=()
+        FETCHED_OK=0
+        UPSTREAM_FETCHED_OK=0
+        ESTATE_REPOS=$((ESTATE_REPOS + 1))
+        case "$label" in
+        holder | root)
+            current_root="$path"
+            printf '  %-6s %-6s %s\n' "$label" "$branch" "$path"
+            if [ "$FETCH" -eq 1 ]; then
+                fetch_remote "$path" "$branch" origin
+                if has_upstream "$path"; then
+                    fetch_remote "$path" "$branch" upstream
+                fi
+            fi
+            read_head "$path" "$branch"
+            read_tracking "$path" "$branch"
+            read_fork "$path" "$branch"
+            if [ "$label" = holder ]; then
+                read_shape "$path" family.yaml
+            elif [ "$ESTATE_KIND" = "family" ]; then
+                read_shape "$path" project.yaml
+                read_record "$path" "root=$ESTATE_NAME/${path##*/}"
+            else
+                read_shape "$path" project.yaml
+                read_record "$path" "id=$RECORD_ID" "root=$ESTATE_NAME"
+            fi
+            read_worktree_state "$path"
+            read_branches "$path" "$branch"
+            read_worktrees "$path"
+            ;;
+        mounted)
+            printf '  %-6s %-6s %s\n' "leg" "$branch" "$path"
+            if [ "$FETCH" -eq 1 ]; then
+                fetch_remote "$path" "$branch" origin
+                if has_upstream "$path"; then
+                    fetch_remote "$path" "$branch" upstream
+                fi
+            fi
+            rel="${path#"$current_root"/}"
+            read_leg "$current_root" "$rel" "$branch"
+            read_fork "$path" "$branch"
+            ;;
+        unmounted)
+            printf '  %-6s %-6s %s\n' "leg" "$branch" "$path"
+            finding "declared in .gitmodules and not mounted (\`make bootstrap\` places it)"
+            ;;
+        missing)
+            printf '  %-6s %-6s %s\n' "root" "$branch" "$path"
+            finding "not here: no working clone beside the holder (\`resume $ESTATE_NAME\` places it)"
+            ;;
+        esac
+        if [ ${#FINDINGS[@]} -eq 0 ]; then
+            if [ "$label" = "mounted" ]; then
+                say "    at its pin, which is origin/$branch's tip as of the last fetch; clean"
+            else
+                say "    in sync with origin/$branch; clean"
+            fi
+        else
+            for line in "${FINDINGS[@]}"; do
+                say "    - $line"
+            done
+            ESTATE_FINDINGS=$((ESTATE_FINDINGS + ${#FINDINGS[@]}))
+        fi
+    done < <(estate_repos)
+    say ""
+    if [ "$ESTATE_REPOS" -eq 1 ]; then
+        say "status: $ESTATE_NAME - $ESTATE_FINDINGS finding(s) in 1 repository; $CHANGED_CLAUSE"
+    else
+        say "status: $ESTATE_NAME - $ESTATE_FINDINGS finding(s) in $ESTATE_REPOS repositories; $CHANGED_CLAUSE"
+    fi
+    [ "$ESTATE_FINDINGS" -eq 0 ]
+}
+
+# --- every estate -----------------------------------------------------------
+
+# Every estate under the projects directory, `<name><TAB><dir>` per row, in
+# NAME order — `park`'s own discovery, spelled the same way and for the same
+# reason: `~/projects` and `~/Projects` can each hold estates when both
+# exist, and name order reads them together.
+all_estate_dirs() {
+    local dir child
+    for dir in "${PROJECTS_DIRS[@]}"; do
+        [ -d "$dir" ] || continue
+        for child in "$dir"/*; do
+            [ -d "$child" ] || continue
+            if is_family_folder "$child" || is_project_root "$child"; then
+                printf '%s\t%s\n' "${child##*/}" "$child"
+            fi
+        done
+    done | LC_ALL=C sort -t $'\t' -k1,1
+}
+
+# Read every estate in `$1`, in name order, and end with a summary. An estate
+# with findings does not stop the others being read; the exit code is 1 when
+# any had findings. NOTHING IS SKIPPED HERE: `park`'s sweep skips a root
+# without the Speckit overlay because there is nothing to RUN in it; there is
+# always something to read.
+status_every_estate() {
+    local rows="$1" name dir total=0 bad=0 estate_status line
+    local -a summary=()
+    while IFS=$'\t' read -r name dir; do
+        [ -n "$name" ] || continue
+        estate_here "$dir" || continue
+        say "=== status $ESTATE_NAME ==="
+        total=$((total + 1))
+        estate_status=0
+        read_one_estate || estate_status=$?
+        if [ "$estate_status" -eq 0 ]; then
+            summary+=("  in sync    $ESTATE_NAME")
+        else
+            summary+=("  findings   $ESTATE_NAME ($ESTATE_FINDINGS)")
+            bad=$((bad + 1))
+        fi
+        say ""
+    done <<<"$rows"
+    say "status: summary"
+    if [ ${#summary[@]} -gt 0 ]; then
+        for line in "${summary[@]}"; do
+            say "$line"
+        done
+    fi
+    say "status: $((total - bad)) estate(s) in sync, $bad with findings; $CHANGED_CLAUSE"
+    [ "$bad" -eq 0 ]
+}
+
+# --- arguments -------------------------------------------------------------
+while [ $# -gt 0 ]; do
+    case "$1" in
+    -h | --help) usage; exit 0 ;;
+    -a | --all) STATUS_ALL=1; shift ;;
+    # A MISSING VALUE IS A REFUSAL, exit 2, in this command's own words:
+    # `${2:?…}` would be bash's message and bash's exit 1 — and 1 is what
+    # this command means by "findings were printed", so a typo must not be
+    # able to read as a report.
+    --repo)
+        [ $# -ge 2 ] || die "--repo needs a value: <owner>/<name>, or any url spelling of one."
+        REPO_SLUG="$2"; REPO_ARG="$REPO_SLUG"; shift 2 ;;
+    --name | --project)
+        [ $# -ge 2 ] || die "$1 needs a value: one estate folder name under your projects directory."
+        NAME="$2"; shift 2 ;;
+    # THE SECOND LAYER (Brett Heap's RULING of 2026-09-11, "next layer:
+    # --fetch"): ask origin in every repository first. See `fetch_remote`.
+    --fetch) FETCH=1; CHANGED_CLAUSE="only remote-tracking refs and fetched objects were changed (--fetch)."; shift ;;
+    -*)
+        usage >&2
+        die "$SELF_NAME does not know $1. Its flags are listed above; it takes nothing for
+    the extension, because it runs nothing."
+        ;;
+    *)
+        [ -z "$NAME" ] ||
+            die "two estate names, '$NAME' and '$1'. One positional <Name>, then flags."
+        NAME="$1"; shift ;;
+    esac
+done
+
+[ -z "$NAME" ] || [ -z "$REPO_SLUG" ] ||
+    die "both <Name> ('$NAME') and --repo '$REPO_SLUG'. One estate per run: name it
+    either way, not both."
+if [ "$STATUS_ALL" -eq 1 ]; then
+    [ -z "$NAME" ] ||
+        die "both <Name> ('$NAME') and --all. \`--all\` reads EVERY estate under your
+    projects directory; <Name> reads one. Drop one of them."
+    [ -z "$REPO_SLUG" ] ||
+        die "both --repo '$REPO_ARG' and --all. \`--all\` reads EVERY estate under your
+    projects directory; \`--repo\` reads the one that clone belongs to. Drop one
+    of them."
+fi
+
+# GIT IS THE WHOLE MECHANISM, and every call below is `|| true`-guarded so a
+# missing ref reads as a finding rather than a crash — which means a git that
+# cannot run AT ALL would otherwise be reported as an estate with no commits,
+# no branches and no legs, exit 1, and no line saying nothing was read.
+# `--no-optional-locks` is git 2.15 (2017) and is what makes this command take
+# no lock, so a git that does not know it is refused BY NAME rather than
+# answered wrongly. `--help` has already exited above and needs neither.
+command -v git >/dev/null 2>&1 ||
+    die "no \`git\` on PATH, so nothing can be read."
+git --no-optional-locks --version >/dev/null 2>&1 ||
+    die "this \`git\` does not know \`--no-optional-locks\` (git 2.15, 2017), which is
+    what stops \`$SELF_NAME\` taking a lock on a repository somebody else is using.
+    Upgrade git and re-run; every answer here would otherwise be read off a git
+    that refused every command."
+
+# --- resolve ---------------------------------------------------------------
+if [ "$STATUS_ALL" -eq 1 ]; then
+    ALL_ROWS="$(all_estate_dirs)"
+    [ -n "$ALL_ROWS" ] ||
+        die "--all found no estate under ${PROJECTS_DIRS[*]}, so nothing was read.
+    An estate is a FAMILY folder (<Name>/<Name>/family.yaml) or a standalone
+    project root (<Name>/project.yaml), one level under your projects
+    directory; \`resume <Name>\` brings one back."
+    say "status --all: reading every estate under ${PROJECTS_DIRS[*]}:"
+    say ""
+    say "$(estates_or_none)"
+    say ""
+elif [ -n "$REPO_SLUG" ]; then
+    # ANY SPELLING A PERSON MIGHT PASTE, through the same reader that reads a
+    # clone's `origin` — `park`'s rule, for `park`'s reasons.
+    REPO_SLUG="$(repo_slug_of "$REPO_SLUG" || true)"
+    [ -n "$REPO_SLUG" ] || die "--repo '$REPO_ARG' is not a repository: it wants <owner>/<name>, or any
+    url spelling of one (https://…/<owner>/<name>.git, git@host:<owner>/<name>).
+    A family's members may live in another organisation, so there is no owner
+    to assume, and a path on disk has none to read."
+    MATCH="$(clone_with_origin "$REPO_SLUG" || true)"
+    [ -n "$MATCH" ] || die "no clone under your projects directory has origin $REPO_SLUG.
+    \`--repo\` names a clone you ALREADY HAVE; nothing here clones one. Bring the
+    estate back with \`resume <Name>\`, or read one of these:
+
+$(estates_or_none)"
+    estate_walk_up "$MATCH" ||
+        die "$MATCH is a clone of $REPO_SLUG, but nothing at or above it is an
+    estate: no \`family.yaml\` holder beside it and no \`project.yaml\` root. It
+    is a clone, not a project of this shape."
+elif [ -n "$NAME" ]; then
+    is_safe_folder_name "$NAME" ||
+        die "'$NAME' is not an estate name: it is a path, or it carries a
+    character an estate folder may not. <Name> is ONE folder name under your
+    projects directory — no slash, no leading dot. To read a checkout
+    somewhere else, stand in it and run \`$SELF_NAME\` with no <Name>."
+    estate_by_name "$NAME" || die "no estate named '$NAME' under your projects directory.
+    An estate is a FAMILY folder ($NAME/$NAME/family.yaml) or a standalone
+    project root ($NAME/project.yaml). Bring it back with \`resume $NAME\`, or
+    read one of these:
+
+$(estates_or_none)"
+else
+    # THE WALK-UP WINS FIRST, as it does for `park`: standing inside an estate
+    # reads THAT estate. Outside every estate, every estate is read — WITHOUT
+    # the question `park` asks, because a read changes nothing and the
+    # answer to "which estate did you mean" is, for a report, all of them.
+    if ! estate_walk_up "$PWD"; then
+        ALL_ROWS="$(all_estate_dirs)"
+        [ -n "$ALL_ROWS" ] ||
+            die "no estate around $PWD, no <Name> was given, and there is no estate under
+    ${PROJECTS_DIRS[*]} at all, so there is nothing to read. An estate is a
+    FAMILY folder (<Name>/<Name>/family.yaml) or a standalone project root
+    (<Name>/project.yaml), one level under your projects directory;
+    \`resume <Name>\` brings one back."
+        STATUS_ALL=1
+        say "status: no estate around $PWD; reading every estate under ${PROJECTS_DIRS[*]}:"
+        say ""
+        say "$(estates_or_none)"
+        say ""
+    fi
+fi
+
+if [ "$STATUS_ALL" -eq 1 ]; then
+    STATUS=0
+    status_every_estate "$ALL_ROWS" || STATUS=$?
+    exit "$STATUS"
+fi
+
+STATUS=0
+read_one_estate || STATUS=$?
+exit "$STATUS"

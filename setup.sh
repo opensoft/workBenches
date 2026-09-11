@@ -176,7 +176,7 @@ if [ -x "${SCRIPT_DIR}/scripts/setup-shell.sh" ]; then
     echo ""
 fi
 
-# Estate commands (openRepoShape, openRepoTools, park, resume) come from
+# Estate commands (openRepoShape, openRepoTools, park, resume, status) come from
 # workBenches' own vendored pin and are placed by their own installers; see
 # scripts/setup-estate-commands.sh. Best-effort, like the other host-user
 # steps here: it never fails setup.sh. WORKBENCHES_SKIP_ESTATE_COMMANDS=1 skips it.

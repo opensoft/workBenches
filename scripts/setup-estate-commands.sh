@@ -3,7 +3,7 @@
 # scripts/setup-estate-commands.sh
 #
 # Installs the estate commands on this host from workBenches' own vendored
-# pin: openRepoShape, openRepoTools, park and resume, placed by the vendored
+# pin: openRepoShape, openRepoTools, park, resume and status, placed by the vendored
 # shims' own `--install` (devBenches/base-image/files/openreposhape/openRepoShape
 # and devBenches/base-image/files/openrepotools/openRepoTools). This script
 # adds no install logic of its own: it runs `update-upstream.py check`, then
@@ -27,7 +27,7 @@
 #     it never fails setup.sh.
 #
 # Guarantees added by the adversarial review round:
-#   - Refuses (exit 1) before running either shim if any of the four install
+#   - Refuses (exit 1) before running either shim if any of the five install
 #     targets already exists as a symlink, as anything other than a regular
 #     file (e.g. a directory), or is not writable -- or if its bin dir exists
 #     and is not writable. Nothing is installed once any one target fails
@@ -43,7 +43,7 @@
 #     above, it fails loudly naming the sentinel rather than silently
 #     succeeding against whatever the operator's shell happened to export
 #     (D3, defense in depth).
-#   - After both installers exit 0, every one of the four placed files is
+#   - After both installers exit 0, every one of the five placed files is
 #     re-checked: a regular, non-symlink file, mode exactly 0755, and
 #     `cmp`-identical to its vendored copy. Only then does this script
 #     report success (D1/D2/D3/D4 residue, closed in one place).
@@ -93,6 +93,7 @@ SHAPE_SHIM="$BASE_IMAGE_DIR/files/openreposhape/openRepoShape"
 TOOLS_SHIM="$BASE_IMAGE_DIR/files/openrepotools/openRepoTools"
 PARK_FILE="$BASE_IMAGE_DIR/files/openrepotools/park"
 RESUME_FILE="$BASE_IMAGE_DIR/files/openrepotools/resume"
+STATUS_FILE="$BASE_IMAGE_DIR/files/openrepotools/status"
 
 if [ ! -f "$PIN_FILE" ]; then
     echo "Estate command install refused: the pin file is missing or" >&2
@@ -101,7 +102,7 @@ if [ ! -f "$PIN_FILE" ]; then
 fi
 
 missing=""
-for f in "$UPDATE_UPSTREAM" "$SHAPE_SHIM" "$TOOLS_SHIM" "$PARK_FILE" "$RESUME_FILE"; do
+for f in "$UPDATE_UPSTREAM" "$SHAPE_SHIM" "$TOOLS_SHIM" "$PARK_FILE" "$RESUME_FILE" "$STATUS_FILE"; do
     if [ ! -f "$f" ]; then
         missing="${missing:+$missing }$f"
     fi
@@ -178,6 +179,7 @@ require_pin_row "openRepoShape"
 require_pin_row "openRepoTools"
 require_pin_row "park"
 require_pin_row "resume"
+require_pin_row "status"
 
 echo "openRepoShape pinned at $shape_commit"
 echo "openRepoTools pinned at $tools_commit"
@@ -193,14 +195,14 @@ refuse_preflight() {
 
 refuse_postverify() {
     echo "Estate command install refused: $1" >&2
-    echo "One or more of the four commands may now be in a mixed state;" >&2
+    echo "One or more of the five commands may now be in a mixed state;" >&2
     echo "fix the problem above and re-run this script." >&2
     exit 1
 }
 
 # D1/D2/most of D4: every target either shim is about to write to is
 # checked BEFORE either of them runs, so a bad target refuses before
-# anything at all is placed -- never after only some of the four are done.
+# anything at all is placed -- never after only some of the five are done.
 check_target_preflight() {
     local target="$1" dir="$2"
     if [ -L "$target" ]; then
@@ -221,6 +223,7 @@ check_target_preflight "$shape_bin_dir/openRepoShape" "$shape_bin_dir"
 check_target_preflight "$tools_bin_dir/openRepoTools" "$tools_bin_dir"
 check_target_preflight "$tools_bin_dir/park" "$tools_bin_dir"
 check_target_preflight "$tools_bin_dir/resume" "$tools_bin_dir"
+check_target_preflight "$tools_bin_dir/status" "$tools_bin_dir"
 
 # D3, defense in depth: every file the checks above proved is present and
 # pinned is about to be installed with no fetch ever reachable, because
@@ -236,8 +239,8 @@ export OPENREPOTOOLS_REPO="$ESTATE_SENTINEL"
 export OPENREPOTOOLS_REF="$ESTATE_SENTINEL"
 
 # Ruling 2 (the host follows the pin, both ways): each shim, invoked as a
-# FILE, installs its own bytes (and openRepoTools copies park and resume
-# from beside itself); it reports each target `already installed ...
+# FILE, installs its own bytes (and openRepoTools copies park, resume and
+# status from beside itself); it reports each target `already installed ...
 # (unchanged)`, `updated`, or `installed`. That per-file report is relayed
 # unchanged below -- this script adds no version logic and no flags of its
 # own to either shim (ruling 4).
@@ -255,7 +258,7 @@ fi
 # shims reported success above, but `cp` can write through a symlink or into
 # a directory without either shim noticing -- so every placed file is
 # re-checked against the vendored copy it was supposed to become, and only
-# once all four pass does this script report success itself.
+# once all five pass does this script report success itself.
 file_mode_octal() {
     stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null
 }
@@ -278,6 +281,7 @@ verify_installed "$shape_bin_dir/openRepoShape" "$SHAPE_SHIM"
 verify_installed "$tools_bin_dir/openRepoTools" "$TOOLS_SHIM"
 verify_installed "$tools_bin_dir/park" "$PARK_FILE"
 verify_installed "$tools_bin_dir/resume" "$RESUME_FILE"
+verify_installed "$tools_bin_dir/status" "$STATUS_FILE"
 
 echo "Estate commands verified against the vendored pin."
 
