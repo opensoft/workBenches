@@ -43,11 +43,11 @@ sources:
     source_repository: opensoft/openRepoShape
     materialization: copied
     revision_kind: commit
-    commit: "0fa73b7df704266589dcc27afca020c0127fa36f"
+    commit: "3d46ab590351797f7570946aab422a940b44fded"
     vendor_dir: files/openreposhape
     files:
       - path: openRepoShape
-        sha256: "32ca582b7990c9ca29e5dcf142d51661bf3543f7bda4bfdb890ba9ee34e18bbb"
+        sha256: "6efcd6142eed678d7ebd9017bcbde84318708f3407b61d38b54c2ae16a748219"
         mode: "100755"
       - path: templates/assembly-root/project.yaml
         sha256: "45a0fb89f7f7f873665d24c0d26a79dab5113364808bd61e914eb07f46eab0c7"
