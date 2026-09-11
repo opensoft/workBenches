@@ -67,6 +67,7 @@ Print the script's own message verbatim, then add the reading below.
 | the local branch diverged | Local commits exist that the parked commit does not contain. Rename or delete that branch; look first with the printed `log` command |
 | parked with `--no-push` | The parked commit exists only on the workstation that parked it. Push it there, re-run `park`, then resume here |
 | the record's `pushed:` is neither true nor false | A value `park` never writes — a hand-edit or a bad merge of the record. Do NOT read it as `--no-push`: the record rules nothing out, so whether the parked commit ever left that workstation cannot be read from it. The exit is a park from the workstation that has the worktree, which writes the record afresh |
+| the record has no `pushed:` for a leg | The record says nothing at all about that leg, which is not the same as saying `false`. It rules nothing out either, and the exit is the same park from the workstation that has the worktree |
 | the workspace has no entry for this project | Either nothing was parked for it, or it was parked into a differently named file; the message prints the `grep` over that org's directory |
 | `workspace-config-invalid` | The config's `orgs:` block is malformed. It refuses rather than falling back to the default workspace, because a confidential org's work must never be indexed in the wrong repository |
 

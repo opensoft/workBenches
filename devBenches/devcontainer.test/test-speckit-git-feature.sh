@@ -3050,6 +3050,76 @@ Park it again from there, which writes the record afresh, then resume here." 'RR
     assert_file_absent "$clone/worktrees/001-routing-core" 'the valueless-pushed feature directory'
 }
 
+# NO `pushed:` AT ALL is a different thing for a record to say than a value
+# that cannot be read: it says nothing about that leg. Both ends of it are
+# here, because both ends used to speak for it — `resume` refused the leg in
+# the `--no-push` words, and a park that REFUSED the feature wrote
+# `pushed: false` back into the file, a --no-push claim nobody made. A
+# follow-up to a reviewer's note on opensoft/openRepoTools #19 and #20
+# (2026-09-11); nobody has ruled on it.
+test_a_record_without_pushed_is_neither_read_nor_written_as_no_push() {
+    local stderr_file="$FIXTURE_ROOT/pushed-absent.stderr"
+    local root clone manifest
+
+    # Given: a parked feature whose spec leg has no `pushed:` key.
+    park_then_clone 'pushed-absent' "$stderr_file" || return 1
+    root="$PARKED_ROOT"
+    clone="$RESUME_ROOT"
+    manifest="$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml"
+    set_manifest_pushed "$manifest" spec 'absent' || return 1
+    git -C "$WORKSPACE_DIR" add workspaces || return 1
+    git -C "$WORKSPACE_DIR" commit -qm 'drop the spec leg pushed: key' || return 1
+    git -C "$WORKSPACE_DIR" push -q origin main || return 1
+
+    # When: the other checkout resumes it.
+    invoke_resume "$clone" "$stderr_file"
+
+    # Then: the refusal says the record says nothing, and never --no-push.
+    assert_equal '2' "$RESUME_STATUS" 'absent-pushed resume exit code' || return 1
+    assert_contains_block "$stderr_file" \
+"Error: 001-routing-core (spec leg): the record has no \`pushed:\` for this leg; that feature was NOT recreated.
+Whether its parked commit $RESUME_PARKED_SPEC ever left Fixture cannot be read from the record.
+Park it again from there, which writes the record afresh, then resume here." 'RR6 absent-key wording' || return 1
+    if grep -Fq -- '--no-push' "$stderr_file"; then
+        printf 'assertion failed: a missing pushed: drew a --no-push claim\n%s\n' \
+            "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if ! printf '%s\n' "$RESUME_OUTPUT" \
+        | grep -Fq 'REFUSED: 001-routing-core — the record has no `pushed:` for this leg'; then
+        printf 'assertion failed: the absent-pushed summary line\n%s\n' "$RESUME_OUTPUT" >&2
+        return 1
+    fi
+    assert_file_absent "$clone/worktrees/001-routing-core" 'the absent-pushed feature directory' || return 1
+
+    # Given: back where it was parked, that leg's worktree is gone, so the
+    # next park REFUSES the feature and carries its recorded entry forward.
+    git -C "$root/spec" worktree remove --force "$root/worktrees/001-routing-core/spec" || return 1
+
+    # When: park runs there.
+    invoke_park "$root" "$stderr_file"
+
+    # Then: the entry survives with its parked commit, and the hole stays a
+    # hole — the refused park invents no `pushed: false`.
+    assert_equal '2' "$PARK_STATUS" 'refused-park exit code' || return 1
+    if ! grep -Fq '      - branch: 001-routing-core' "$manifest"; then
+        printf 'assertion failed: the refused feature was erased\n%s\n' "$(<"$manifest")" >&2
+        return 1
+    fi
+    if ! grep -Fq "            parked_commit: $RESUME_PARKED_SPEC" "$manifest"; then
+        printf 'assertion failed: the refused feature lost its parked commit\n%s\n' \
+            "$(<"$manifest")" >&2
+        return 1
+    fi
+    assert_equal '1' "$(manifest_line_count "$manifest" '^            pushed: ')" \
+        'only the code leg carries a pushed: key after the refused park' || return 1
+    if grep -Fq '            pushed: false' "$manifest"; then
+        printf 'assertion failed: a refused park wrote a --no-push claim nobody made\n%s\n' \
+            "$(<"$manifest")" >&2
+        return 1
+    fi
+}
+
 test_manifest_round_trip() {
     local stderr_file="$FIXTURE_ROOT/manifest-round-trip.stderr"
     local root manifest first_bytes second_bytes commits_before
@@ -3730,6 +3800,7 @@ run_scenario 'resume refuses a local branch that diverged from the parked commit
 run_scenario 'resume refuses a local branch behind the parked commit and names the fast-forward' test_resume_refuses_a_local_branch_behind_the_parked_commit
 run_scenario 'resume refuses a --no-push record in the unchanged wording' test_resume_refuses_a_no_push_record_in_the_unchanged_words
 run_scenario 'resume names a pushed: that is neither true nor false and never claims --no-push' test_resume_names_an_unreadable_pushed_rather_than_claiming_no_push
+run_scenario 'a record with no pushed: key is neither read nor written as --no-push' test_a_record_without_pushed_is_neither_read_nor_written_as_no_push
 run_scenario 'the workspace manifest round-trips byte-identically' test_manifest_round_trip
 run_scenario 'a missing workspace config refuses both verbs' test_missing_workspace_config_refuses
 run_scenario 'two workstations share one workspace repository' test_two_workstations_share_the_workspace_repository

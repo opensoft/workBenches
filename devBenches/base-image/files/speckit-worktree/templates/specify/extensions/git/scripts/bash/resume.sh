@@ -290,6 +290,7 @@ LEG_TREES=()
 LEG_COMMITS=()
 LEG_DEPTHS=()
 LEG_PUSHEDS=()
+LEG_PUSHED_SEENS=()
 
 collect_legs() {
     local feature_index="$1"
@@ -304,6 +305,7 @@ collect_legs() {
     LEG_COMMITS=()
     LEG_DEPTHS=()
     LEG_PUSHEDS=()
+    LEG_PUSHED_SEENS=()
     while [ "$index" -lt "${#MANIFEST_LEG_ROLE[@]}" ]; do
         if [ "${MANIFEST_LEG_FEATURE[$index]}" != "$feature_index" ]; then
             index=$((index + 1))
@@ -335,6 +337,7 @@ collect_legs() {
         LEG_COMMITS[${#LEG_COMMITS[@]}]="${MANIFEST_LEG_COMMIT[$index]}"
         LEG_DEPTHS[${#LEG_DEPTHS[@]}]="${MANIFEST_LEG_DEPTH[$index]}"
         LEG_PUSHEDS[${#LEG_PUSHEDS[@]}]="${MANIFEST_LEG_PUSHED[$index]}"
+        LEG_PUSHED_SEENS[${#LEG_PUSHED_SEENS[@]}]="${MANIFEST_LEG_PUSHED_SEEN[$index]}"
         index=$((index + 1))
     done
     [ "${#LEG_ROLES[@]}" -gt 0 ]
@@ -432,6 +435,7 @@ while [ "$selection" -lt "${#SELECTED_INDEXES[@]}" ]; do
         tree="${LEG_TREES[$leg]}"
         parked_commit="${LEG_COMMITS[$leg]}"
         pushed="${LEG_PUSHEDS[$leg]}"
+        pushed_seen="${LEG_PUSHED_SEENS[$leg]}"
         LEG_ACTION[leg]="create"
         leg=$((leg + 1))
 
@@ -453,6 +457,13 @@ while [ "$selection" -lt "${#SELECTED_INDEXES[@]}" ]; do
         # worktree writes it afresh. The refusal itself is unchanged —
         # `!= true` — because a reader that cannot read the field must not
         # recreate the feature on a guess.
+        #
+        # AND NO `pushed:` AT ALL IS ITS OWN STATE, not a spelling of the one
+        # above: the record is not saying something that cannot be read, it is
+        # saying nothing. `workspace_load_project` keeps the two apart in
+        # `MANIFEST_LEG_PUSHED_SEEN` for that reason, and these are
+        # `openRepoTools`' `status`'s words for the same four states, so the
+        # two tools tell the person one story.
         if [ "$pushed" != true ]; then
             if [ "$pushed" = false ]; then
                 >&2 echo "Error: $branch ($role leg) was parked with --no-push; that feature was NOT recreated."
@@ -460,15 +471,17 @@ while [ "$selection" -lt "${#SELECTED_INDEXES[@]}" ]; do
                 >&2 echo "Push it there, re-run \`make park\`, then resume here."
                 record_refusal "$branch" "parked with --no-push" "re-run \`make park\` on $MANIFEST_PARKED_ON"
             else
-                if [ -z "$pushed" ]; then
-                    unreadable_pushed="its record's \`pushed:\` has no value"
+                if [ -z "$pushed_seen" ]; then
+                    unreadable_pushed="the record has no \`pushed:\` for this leg"
+                elif [ -z "$pushed" ]; then
+                    unreadable_pushed="its record's \`pushed:\` has no value, which is neither true nor false"
                 else
-                    unreadable_pushed="its record's \`pushed:\` says '$pushed'"
+                    unreadable_pushed="its record's \`pushed:\` says '$pushed', which is neither true nor false"
                 fi
-                >&2 echo "Error: $branch ($role leg): $unreadable_pushed, which is neither true nor false; that feature was NOT recreated."
+                >&2 echo "Error: $branch ($role leg): $unreadable_pushed; that feature was NOT recreated."
                 >&2 echo "Whether its parked commit $parked_commit ever left ${MANIFEST_PARKED_ON:-the workstation that parked it} cannot be read from the record."
                 >&2 echo "Park it again from there, which writes the record afresh, then resume here."
-                record_refusal "$branch" "$unreadable_pushed, which is neither true nor false" \
+                record_refusal "$branch" "$unreadable_pushed" \
                     "re-run \`make park\` on ${MANIFEST_PARKED_ON:-the workstation that parked it} to write the record afresh"
             fi
             refused=true

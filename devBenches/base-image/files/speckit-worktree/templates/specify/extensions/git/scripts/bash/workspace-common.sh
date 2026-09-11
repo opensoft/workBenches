@@ -615,6 +615,21 @@ PY
 #   MANIFEST_FEATURE_BRANCHES[]   MANIFEST_FEATURE_DIRECTORIES[]
 #   MANIFEST_LEG_FEATURE[]        the feature index each leg row belongs to
 #   MANIFEST_LEG_ROLE[] _REMOTE[] _COMMIT[] _WIP[] _DEPTH[] _PUSHED[]
+#   MANIFEST_LEG_PUSHED_SEEN[]    the word `pushed` where that leg's record
+#                                 carried the key, empty where it did not
+#
+# _PUSHED[] IS NOT DEFAULTED TO A VALUE THE RECORD DOES NOT CARRY. It was
+# seeded with "false" at the `- role:` line, so a leg with no `pushed:` key
+# loaded as though the record said `pushed: false` — and two readers then
+# spoke for a record that had said nothing: `resume.sh`'s RR6 refused the leg
+# in the `--no-push` words, and `park.sh`'s `emit_recorded_feature`, which
+# carries a REFUSED feature's loaded entry forward verbatim, wrote
+# `pushed: false` back into the file. The seed is the empty string instead,
+# which `workspace_write_manifest` drops rather than writes, so a refused park
+# carries the hole forward as a hole. _PUSHED_SEEN[] is what keeps the two
+# empties apart — a key that is absent from a key that is there with no value
+# after the colon — because they are two different things for a reader to say,
+# and a reader never guesses.
 #
 # Bash 3.2 has no nested arrays, so the leg rows are a flat table keyed by
 # feature index. The file is written by this extension with a fixed layout, so
@@ -647,6 +662,7 @@ workspace_load_project() {
     MANIFEST_LEG_WIP=()
     MANIFEST_LEG_DEPTH=()
     MANIFEST_LEG_PUSHED=()
+    MANIFEST_LEG_PUSHED_SEEN=()
 
     [ -f "$file" ] || return 1
     while IFS= read -r raw || [ -n "$raw" ]; do
@@ -774,7 +790,8 @@ workspace_load_project() {
             MANIFEST_LEG_COMMIT[${#MANIFEST_LEG_COMMIT[@]}]=""
             MANIFEST_LEG_WIP[${#MANIFEST_LEG_WIP[@]}]="false"
             MANIFEST_LEG_DEPTH[${#MANIFEST_LEG_DEPTH[@]}]="0"
-            MANIFEST_LEG_PUSHED[${#MANIFEST_LEG_PUSHED[@]}]="false"
+            MANIFEST_LEG_PUSHED[${#MANIFEST_LEG_PUSHED[@]}]=""
+            MANIFEST_LEG_PUSHED_SEEN[${#MANIFEST_LEG_PUSHED_SEEN[@]}]=""
             continue
         fi
 
@@ -788,7 +805,10 @@ workspace_load_project() {
                 parked_commit) MANIFEST_LEG_COMMIT[leg_index]="$_SHAPE_SCALAR" ;;
                 wip) MANIFEST_LEG_WIP[leg_index]="$_SHAPE_SCALAR" ;;
                 wip_depth) MANIFEST_LEG_DEPTH[leg_index]="$_SHAPE_SCALAR" ;;
-                pushed) MANIFEST_LEG_PUSHED[leg_index]="$_SHAPE_SCALAR" ;;
+                pushed)
+                    MANIFEST_LEG_PUSHED[leg_index]="$_SHAPE_SCALAR"
+                    MANIFEST_LEG_PUSHED_SEEN[leg_index]=pushed
+                    ;;
             esac
         fi
     done < "$file"
