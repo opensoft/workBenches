@@ -86,10 +86,15 @@ grep -q 'mcp list$' "$FAKE_CLAUDE_LOG" \
 
 status_input='{"workspace":{"current_dir":"/workspace/project"},"model":{"display_name":"Fable"},"context_window":{"used_percentage":12}}'
 status_config="$TEST_ROOT/status-config"
-mkdir -p "$status_config"
+status_home="$TEST_ROOT/status-home"
+mkdir -p "$status_config" "$status_home"
+
+# The renderer publishes usage snapshots under $HOME/.claude/usage-snapshots
+# regardless of CLAUDE_CONFIG_DIR; pin HOME to a throwaway directory so this
+# test never leaves artifacts under the caller's real home directory.
 
 # The attach target is first so narrow panels cannot clip it from the right.
-panel="$(env CLAUDE_CONFIG_DIR="$status_config" CLAUDE_PROFILE_NAME=team-002 \
+panel="$(env HOME="$status_home" CLAUDE_CONFIG_DIR="$status_config" CLAUDE_PROFILE_NAME=team-002 \
     WORKBENCHES_TMUX_SESSION=agent-tower-42 WORKBENCHES_TMUX_PANE=%7 \
     COLUMNS=70 bash "$STATUSLINE" <<< "$status_input" | strip_ansi)"
 first_line="${panel%%$'\n'*}"
@@ -98,7 +103,7 @@ first_line="${panel%%$'\n'*}"
 
 # A direct Claude process reports the missing runtime instead of hiding it.
 panel="$(env -u TMUX -u TMUX_PANE -u WORKBENCHES_TMUX_SESSION \
-    -u WORKBENCHES_TMUX_PANE CLAUDE_CONFIG_DIR="$status_config" COLUMNS=70 \
+    -u WORKBENCHES_TMUX_PANE HOME="$status_home" CLAUDE_CONFIG_DIR="$status_config" COLUMNS=70 \
     bash "$STATUSLINE" <<< "$status_input" | strip_ansi)"
 first_line="${panel%%$'\n'*}"
 [[ "$first_line" == '[TMUX] | none | [WORK]'* ]] \
