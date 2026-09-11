@@ -132,6 +132,17 @@ shows `[TMUX] none` instead of silently dropping the field. Set
 commands such as `mcp`, `doctor`, `--help`, `--version`, and `--print` remain
 direct, and a `pclaude` command run inside an existing tmux session reuses it.
 
+Pass `--lane <repo>-<n>` (or set `CLAUDE_LANE=<repo>-<n>` in the environment)
+to hand the launch to `lane-start` instead of exec'ing Claude directly —
+opt-in, and off by default; without it `pclaude`/`claude-profile` behave
+exactly as described above. `lane-start` (from `opensoft/brett-wip`'s
+`lanes/`, put on `PATH` by that repository's `scripts/link-estates`) renames
+the current tmux window to the lane, records the lane in the lane register,
+and starts this same Claude binary under this same profile with
+`--resume`/`--name <lane>` as appropriate. Naming a lane while `lane-start`
+is not on `PATH` refuses with the fix instead of launching an unnamed
+session. See `claude-profile --help` for the exact option.
+
 Profile launches default to
 `xhigh` effort and always start Claude with `bypassPermissions` plus
 `--dangerously-skip-permissions` (the most permissive Claude Code mode). The

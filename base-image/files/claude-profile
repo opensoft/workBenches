@@ -150,6 +150,13 @@ start_profile_tmux() {
   local profile="$1"
   shift
   local launcher session_name command_string="" argument
+  local -a env_prefix
+  env_prefix=(env WORKBENCHES_CLAUDE_TMUX_CHILD=1)
+  # --lane/CLAUDE_LANE must survive this re-exec into a new tmux session.
+  # tmux does not reliably hand a freshly-exported variable to a new session
+  # on an already-running server, so it is threaded through explicitly here
+  # rather than relied on via inheritance — same idiom as the guard above.
+  [[ -n "${lane:-}" ]] && env_prefix+=("CLAUDE_LANE=$lane")
 
   command -v tmux >/dev/null 2>&1 || {
     echo "pclaude: tmux is required for interactive profile launches." >&2
@@ -157,7 +164,7 @@ start_profile_tmux() {
   }
   launcher="$(readlink -f "${BASH_SOURCE[0]}")"
   session_name="claude-${profile//[^a-zA-Z0-9_-]/-}-$(date +%Y%m%d%H%M%S)-$$"
-  for argument in env WORKBENCHES_CLAUDE_TMUX_CHILD=1 "$launcher" run "$profile" "$@"; do
+  for argument in "${env_prefix[@]}" "$launcher" run "$profile" "$@"; do
     printf -v argument '%q' "$argument"
     command_string+="${command_string:+ }$argument"
   done
@@ -244,6 +251,50 @@ profile_metadata() {
   return 1
 }
 
+# --lane / CLAUDE_LANE (opt-in, default off): hand the final Claude launch to
+# `lane-start` instead of exec'ing Claude directly. Recognised only as a
+# leading option, before the action/profile — the first token that is not
+# --lane/--lane=.../-h/--help ends this loop and is left for the existing
+# parsing below, so anything meant for Claude itself (e.g. `claude-profile
+# work --help`) is untouched.
+lane="${CLAUDE_LANE:-}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --lane)
+      [[ $# -ge 2 ]] || { echo "pclaude: --lane needs a value: <repo>-<n>" >&2; exit 2; }
+      lane="$2"; shift 2 ;;
+    --lane=*) lane="${1#--lane=}"; shift ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: claude-profile {list|login|status|run} PROFILE [CLAUDE_ARGS...]
+       pclaude PROFILE [CLAUDE_ARGS...]
+
+Actions:
+  list                 list configured profiles
+  login PROFILE        authenticate a profile
+  status PROFILE       show Claude auth status for a profile
+  run PROFILE [ARGS]   launch Claude under the profile (the default action;
+                        "run" itself may be omitted: claude-profile PROFILE)
+
+Options:
+  --lane <repo>-<n>    opt-in: hand the final launch to
+                        `lane-start <repo>-<n> -- CLAUDE_ARGS` instead of
+                        exec'ing Claude directly (also settable as
+                        CLAUDE_LANE=<repo>-<n> in the environment).
+                        lane-start renames the tmux window to the lane,
+                        records the lane register row, and starts Claude
+                        with --resume/--name <lane> under this same profile.
+                        Requires lane-start on PATH (opensoft/brett-wip,
+                        lanes/, linked by that repo's scripts/link-estates).
+                        Without --lane/CLAUDE_LANE, behaviour is unchanged.
+  -h, --help           show this help
+EOF
+      exit 0
+      ;;
+    *) break ;;
+  esac
+done
+
 action="${1:-list}"
 if [[ "$action" == "list" || "$action" == "login" || "$action" == "status" || "$action" == "run" ]]; then
   [[ $# -eq 0 ]] || shift
@@ -282,6 +333,13 @@ case "$action" in
       login) CLAUDE_CONFIG_DIR="$config_dir" "$claude_bin" auth login --claudeai --email "$email" "$@" ;;
       status) CLAUDE_CONFIG_DIR="$config_dir" "$claude_bin" auth status "${@---text}" ;;
       run)
+        if [[ -n "${lane:-}" ]]; then
+          command -v lane-start >/dev/null 2>&1 || {
+            echo "pclaude: --lane $lane needs lane-start on PATH. Fix:" >&2
+            echo "  git clone git@github.com:opensoft/brett-wip.git ~/projects/brett-wip && ~/projects/brett-wip/scripts/link-estates" >&2
+            exit 2
+          }
+        fi
         if claude_run_is_interactive "$@"; then
           start_profile_tmux "$profile" "$@"
         fi
@@ -317,6 +375,13 @@ case "$action" in
           "$mcp_sync" remove "$family" "$3"
           "$mcp_sync" sync-claude-profile "$family" "$config_dir/.claude.json"
           exit 0
+        fi
+        if [[ -n "${lane:-}" ]]; then
+          CLAUDE_CONFIG_DIR="$config_dir" CLAUDE_BIN="$claude_bin" exec lane-start "$lane" -- \
+            --allow-dangerously-skip-permissions \
+            --dangerously-skip-permissions \
+            --permission-mode bypassPermissions \
+            "$@"
         fi
         CLAUDE_CONFIG_DIR="$config_dir" exec "$claude_bin" \
           --allow-dangerously-skip-permissions \
