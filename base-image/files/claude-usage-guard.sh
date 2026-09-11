@@ -39,15 +39,39 @@ done
 [ -f "$HOME/.claude/usage-guard.on" ] && on=1
 [ "$on" -eq 1 ] || exit 0
 
-SNAP="$SNAP_DIR/$sid.json"
-# prune snapshots from sessions that ended (>1 day old), bounded and quiet
+# Rate limits are account-scoped (profile-keyed, shared by every sibling
+# session on that CLAUDE_CONFIG_DIR); context is session-scoped (each
+# conversation's own window). Read independently so a stale/missing file on
+# one side never hides fresh data on the other.
+profile_key=$(printf '%s' "${CLAUDE_CONFIG_DIR:-default}" | sed 's/[^A-Za-z0-9._-]/_/g')
+PROFILE_SNAP="$SNAP_DIR/profile.$profile_key.json"
+SESSION_SNAP="$SNAP_DIR/session.$sid.json"
+
+# prune snapshots from sessions/profiles that went idle (>1 day), bounded and quiet
 find "$SNAP_DIR" -maxdepth 1 -name '*.json' -mtime +1 -delete 2>/dev/null || true
-[ -r "$SNAP" ] || exit 0
-now=$(date +%s)
-mtime=$(stat -c %Y "$SNAP" 2>/dev/null || echo 0)
-[ $((now - mtime)) -le "$MAX_AGE" ] || exit 0
 
 mkdir -p "$LATCH_DIR" 2>/dev/null || exit 0
+
+fresh() {
+  local f="$1" now mtime
+  [ -r "$f" ] || return 1
+  now=$(date +%s)
+  mtime=$(stat -c %Y "$f" 2>/dev/null || echo 0)
+  [ $((now - mtime)) -le "$MAX_AGE" ]
+}
+
+five=null; fivereset=null; fable=null; fablereset=null; ctx=null
+if fresh "$PROFILE_SNAP"; then
+  read -r five fivereset fable fablereset < <(
+    jq -r '[(.five_hour//"null"),(.five_hour_reset//"null"),
+            (.fable_weekly//"null"),(.fable_weekly_reset//"null")] | @tsv' "$PROFILE_SNAP" 2>/dev/null \
+      || echo "null null null null"
+  )
+fi
+if fresh "$SESSION_SNAP"; then
+  ctx=$(jq -r '.context_pct // "null"' "$SESSION_SNAP" 2>/dev/null || echo null)
+fi
+[ "$five" = null ] && [ "$fable" = null ] && [ "$ctx" = null ] && exit 0
 
 # highest crossed threshold for a value, given a descending list
 crossed() {
@@ -68,12 +92,6 @@ latched_warn() {
   : > "$f" 2>/dev/null || return 0
   printf '%s\n' "$msg"
 }
-
-read -r five fivereset fable fablereset ctx < <(
-  jq -r '[(.five_hour//"null"),(.five_hour_reset//"null"),
-          (.fable_weekly//"null"),(.fable_weekly_reset//"null"),
-          (.context_pct//"null")] | @tsv' "$SNAP" 2>/dev/null || echo "null null null null null"
-)
 
 hhmm() { [ -n "${1:-}" ] && [ "$1" != "null" ] && date -u -d "@$1" +%H:%MZ 2>/dev/null || echo "unknown"; }
 

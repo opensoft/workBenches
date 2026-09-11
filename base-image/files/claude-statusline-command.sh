@@ -27,6 +27,8 @@ mapfile -t data < <(jq -r '[
     (.permission_mode // .permissions.mode // "")
 ] | .[]' <<<"$input")
 
+sid=$(jq -r '.session_id // empty' <<<"$input" 2>/dev/null)
+
 cwd=${data[0]:-}
 repo_name=${data[1]:-}
 worktree_name=${data[2]:-}
@@ -399,6 +401,49 @@ fable_weekly_pct=$(jq -r '.rate_limits.seven_day_fable.used_percentage // empty'
 fable_weekly_reset=$(jq -r '.rate_limits.seven_day_fable.resets_at // empty' <<<"$input")
 if [[ -z $fable_weekly_pct ]]; then
     IFS=$'\t' read -r fable_weekly_pct fable_weekly_reset < <(fable_weekly_limit)
+fi
+
+# Publish snapshots for usage-guard.sh (a UserPromptSubmit hook that has no
+# access to the statusline payload itself). Fail-quiet: a broken snapshot
+# write must never affect the visible status line.
+#
+# Rate limits (five_hour/fable_weekly) are account-scoped: every session
+# sharing a profile's CLAUDE_CONFIG_DIR sees the same numbers from Anthropic,
+# so they're published to ONE profile-keyed file. Whichever session ticks
+# its statusline soonest refreshes it for every sibling session on that
+# profile — including a brand-new session that hasn't ticked yet.
+#
+# context_pct is NOT shared: each session has its own independent context
+# window, so it stays in a session-keyed file.
+snap_dir="$HOME/.claude/usage-snapshots"
+profile_key=$(printf '%s' "${CLAUDE_CONFIG_DIR:-default}" | sed 's/[^A-Za-z0-9._-]/_/g')
+mkdir -p "$snap_dir" 2>/dev/null && {
+    profile_tmp="$snap_dir/.profile.$profile_key.json.$$"
+    if jq -n \
+        --arg five "$five_hour_pct" --arg five_reset "$five_hour_reset" \
+        --arg fable "$fable_weekly_pct" --arg fable_reset "$fable_weekly_reset" \
+        '{
+            five_hour: (if $five == "" then null else ($five | tonumber) end),
+            five_hour_reset: (if $five_reset == "" then null else ($five_reset | tonumber) end),
+            fable_weekly: (if $fable == "" then null else ($fable | tonumber) end),
+            fable_weekly_reset: (if $fable_reset == "" then null else ($fable_reset | tonumber) end)
+        }' >"$profile_tmp" 2>/dev/null; then
+        mv -f "$profile_tmp" "$snap_dir/profile.$profile_key.json" 2>/dev/null
+    else
+        rm -f "$profile_tmp" 2>/dev/null
+    fi
+}
+if [[ -n $sid ]]; then
+    mkdir -p "$snap_dir" 2>/dev/null && {
+        session_tmp="$snap_dir/.session.$sid.json.$$"
+        if jq -n --arg ctx "$used_pct" \
+            '{ context_pct: (if $ctx == "" then null else ($ctx | tonumber) end) }' \
+            >"$session_tmp" 2>/dev/null; then
+            mv -f "$session_tmp" "$snap_dir/session.$sid.json" 2>/dev/null
+        else
+            rm -f "$session_tmp" 2>/dev/null
+        fi
+    }
 fi
 
 line3_parts=(

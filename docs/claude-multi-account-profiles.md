@@ -123,6 +123,27 @@ in workBenches, then rerun
 bench image. Mounted running benches see the updated shared file immediately;
 Claude refreshes the panel on its configured 10-second interval.
 
+The same renderer also publishes usage snapshots for two readers that have no
+access to the statusline payload themselves: `claude-usage-guard.sh` (the
+`UserPromptSubmit` hook that injects a context/rate-limit warning into the
+model's own context) and the `claude-usage` command (the balance check behind
+the Claude Model Roles and Usage Budget protocol). Every tick writes the
+account-scoped `five_hour`/`fable_weekly` percentages and reset times to
+`$HOME/.claude/usage-snapshots/profile.<key>.json`, where `<key>` is
+`$CLAUDE_CONFIG_DIR` with every character outside `[A-Za-z0-9._-]` replaced by
+`_`; the session's own context percentage goes to a session-keyed file
+alongside it, since context is not shared across sessions the way account
+rate limits are. Both writes are fail-quiet: a missing directory or a failed
+write is swallowed and never changes the visible line. Because
+`setup-claude-profiles.sh` reinstalls the shared status line from this file on
+every run, the publisher has to live in `base-image/files/claude-statusline-command.sh`
+itself — a patch applied only to the installed copy at
+`~/.claude-profiles/shared/statusline-command.sh` does not survive the next
+setup run. That is exactly what happened on 2026-09-11: the publisher existed
+only in the deployed shared copy, a routine `setup-claude-profiles.sh` run
+overwrote it with this file's then-unpatched contents, and every profile's
+snapshot went stale until the shared copy was restored by hand.
+
 Interactive `pclaude PROFILE` launches are tmux-backed by default when started
 from a terminal outside tmux. The panel reserves its first segment for the
 exact `tmux:<session>/<pane>` target, so AgentTower can use the session portion
