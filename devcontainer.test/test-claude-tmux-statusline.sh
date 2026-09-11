@@ -10,6 +10,37 @@ STATUSLINE="${2:-$REPO_ROOT/base-image/files/claude-statusline-command.sh}"
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
 
+# This test drives the real launcher and statusline scripts against a fake
+# tmux/claude sandbox built below, then asserts on the fake tmux/claude logs
+# that sandbox produces. Both scripts also read tmux identity straight from
+# the environment (WORKBENCHES_CLAUDE_TMUX*, TMUX*, WORKBENCHES_TMUX_*), and
+# the launcher separately reads CLAUDE_LANE to decide whether to hand the
+# launch off to `lane-start` instead of the fake claude. If this test itself
+# is run from inside a real tmux session — a live claude-profile-launched
+# Claude Code pane included — those variables leak in from the caller and
+# are indistinguishable from the sandbox's own state. That alone corrupts
+# the assertions below, and it can also abort the launcher outright: with a
+# real TMUX inherited but only the fake tmux binary on PATH, the launcher's
+# export_tmux_identity() queries tmux, gets back nothing the fake
+# understands, and its last command's failure under `set -e` kills the
+# launcher before it ever reaches Claude. A leaked CLAUDE_LANE is worse in a
+# different way: if a real `lane-start` happens to be on PATH (as it is in
+# exactly the lane sessions this test is likeliest to be run from), the
+# launcher hands the whole launch to it instead of the fake claude — a test
+# run invoking real lane tooling. Mirrors the same guard in
+# test-claude-profile-lane-start.sh, extended to also cover
+# WORKBENCHES_CLAUDE_TMUX (the opt-out switch claude_run_is_interactive
+# reads) and CLAUDE_LANE (the launcher's lane-start hand-off switch). Clear
+# all of it before the sandbox runs, so the sandbox's own state is always
+# authoritative. (CLAUDE_BIN/CLAUDE_PROFILES_HOME/CLAUDE_PROFILES_MANIFEST/
+# WORKBENCHES_SHARED_MCP_FAMILIES are already owned below via common_env's
+# explicit assignments on every launcher invocation, so an inherited value
+# for any of those is always overridden rather than leaked; CLAUDE_CONFIG_DIR
+# is only ever written by the launcher for its children, never read as one
+# of its own inputs, so nothing to clear there either.)
+unset TMUX TMUX_PANE WORKBENCHES_CLAUDE_TMUX WORKBENCHES_CLAUDE_TMUX_CHILD \
+    WORKBENCHES_TMUX_SESSION WORKBENCHES_TMUX_PANE CLAUDE_LANE 2>/dev/null || true
+
 fail() {
     echo "FAIL: $*" >&2
     exit 1
