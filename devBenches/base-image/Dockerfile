@@ -147,19 +147,21 @@ RUN chmod 0755 /usr/local/bin/speckit-worktree-enable && \
 #
 # TWO SOURCES, ONE DIRECTION. openRepoTools pins openRepoShape (as a submodule
 # in that repository, mounted and verified against the pinned checkout's own
-# scripts/repo_shape.py) because `park` and `resume` are tested against the
-# estate standard they walk. openRepoShape pins nothing of openRepoTools' and
+# scripts/repo_shape.py) because `park`, `resume` and `status` are tested against
+# the estate standard they walk. openRepoShape pins nothing of openRepoTools' and
 # does not know it exists. This image is downstream of both pins and holds a
 # vendored COPY of each, at the commit its own source block in
 # ../upstream-pin.yaml names — that copying does not add a dependency between
 # the two repositories, only two independent commits landing beside each other
 # under /usr/local/bin.
 #
-# `park` and `resume` are vendored from files/openrepotools/
-# (opensoft/openRepoTools), not from files/openreposhape/: they moved there so
-# the estate-resolver they share is reviewed once for the whole estate rather
-# than once per standard. files/openreposhape/ now vendors only the shim
-# (`openRepoShape` itself) and the manifest template below.
+# `park`, `resume` and `status` are vendored from files/openrepotools/
+# (opensoft/openRepoTools), not from files/openreposhape/: the two verbs moved
+# there so the estate-resolver they share is reviewed once for the whole estate
+# rather than once per standard, and `status` — the read-only view of the same
+# estate, which runs nothing — was added there on the same resolver.
+# files/openreposhape/ now vendors only the shim (`openRepoShape` itself) and
+# the manifest template below.
 #
 # files/openreposhape/templates/ is NOT copied. It is a fixture input for
 # devBenches/devcontainer.test/test-speckit-git-feature.sh, which derives its
@@ -184,8 +186,9 @@ COPY files/openreposhape/openRepoShape /usr/local/bin/openRepoShape
 COPY files/openrepotools/openRepoTools /usr/local/bin/openRepoTools
 COPY files/openrepotools/park /usr/local/bin/park
 COPY files/openrepotools/resume /usr/local/bin/resume
+COPY files/openrepotools/status /usr/local/bin/status
 RUN chmod 0755 /usr/local/bin/openRepoShape /usr/local/bin/openRepoTools \
-    /usr/local/bin/park /usr/local/bin/resume
+    /usr/local/bin/park /usr/local/bin/resume /usr/local/bin/status
 
 # ========================================
 # AI META-HARNESS (OMNIGENT)

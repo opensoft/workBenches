@@ -3,7 +3,7 @@
 #
 # resume — arrive at a workstation and get the estate back: `resume InkRouter`.
 #
-# Installed with the other two by `openRepoTools --install`.
+# Installed with the other three by `openRepoTools --install`.
 #
 # IT ADDS NO MECHANICS, exactly as the `openRepoShape` command adds none. It
 # REBUILDS OR REFRESHES the estate with the tools that already exist — `git
@@ -21,12 +21,15 @@
 #
 # BARE `resume`, WITH NO <Name> AND NO ESTATE AROUND THE CWD, STILL REFUSES —
 # deliberately NOT changed by Brett Heap's RULING of 2026-09-10 (#91), which
-# supersedes ruling 3 of #82 for `park`'s own bare form only. Rebuilding every
-# estate this machine has a record of, by accident, from one bare `resume` in
-# the wrong folder, is the opposite risk from `park` failing to park the one
-# estate you meant: a clone or a fast-forward per estate is real network and
-# real disk, and undoing an accidental one is not as simple as re-running the
-# command. Ruling #91 names `park` only; this refusal stands.
+# supersedes ruling 3 of #82 for `park`'s own bare form only, nor by his later
+# RULING of the same day in openRepoTools, under which `park` ASKS there and
+# sweeps on a yes or a `--all`. `resume` has no `--all` and asks nothing:
+# rebuilding every estate this machine has a record of, by accident, from one
+# bare `resume` in the wrong folder, is the opposite risk from `park` failing
+# to park the one estate you meant — a clone or a fast-forward per estate is
+# real network and real disk, and undoing an accidental one is not as simple
+# as re-running the command. Both rulings name `park` only; this refusal
+# stands.
 # openRepoShape #82 wrote this, its #93 last changed it, its #92 moved it here.
 #
 # THE ONLY FILE THIS STANDARD EVER WRITES OUTSIDE A REPOSITORY is the two-line
@@ -91,12 +94,12 @@ estate still comes back.
 USAGE
 }
 
-# --- BEGIN shared estate resolver (park and resume carry it byte for byte) --
+# --- BEGIN shared estate resolver (park, resume, status: byte for byte) -----
 #
-# THIS BLOCK IS DUPLICATED IN THE OTHER COMMAND, DELIBERATELY, and
-# `tests/test_park_resume_commands.py` asserts the two copies are IDENTICAL.
+# THIS BLOCK IS DUPLICATED IN THE OTHER COMMANDS, DELIBERATELY, and
+# `tests/test_park_resume_commands.py` asserts the three copies are IDENTICAL.
 # Each of these is one file a person has on PATH: a shared `orp-estate.sh`
-# would be a fourth file for `--install` to place and a broken command the
+# would be a fifth file for `--install` to place and a broken command the
 # first time somebody copied only one of them. The rules themselves are NOT
 # new: `<dir>/<Name>/family.yaml` carrying `kind: family-manifest` and naming
 # `<Name>` is `setup-project.py`'s `family_folder_here`, doubled-name layout
@@ -124,9 +127,9 @@ fi
 # Where a NEW clone would go: the first spelling that already exists, else the
 # first named.
 #
-# shellcheck disable=SC2329  # `park` creates nothing and never calls this. The
-# block is byte-identical in both commands BY DESIGN, so each carries a couple
-# of functions only the other one asks.
+# shellcheck disable=SC2329  # `park` and `status` create nothing and never
+# call this. The block is byte-identical in all three commands BY DESIGN, so
+# each carries a couple of functions only another one asks.
 projects_dir_for_new() {
     local dir
     for dir in "${PROJECTS_DIRS[@]}"; do
@@ -755,10 +758,29 @@ while [ $# -gt 0 ]; do
     case "$1" in
     -h | --help) usage; exit 0 ;;
     --dry-run) DRY_RUN=1; shift ;;
-    --repo) REPO_SLUG="${2:?--repo needs a value}"; REPO_ARG="$REPO_SLUG"; shift 2 ;;
-    --workspace) WORKSPACE_SLUG="${2:?--workspace needs a value}"; shift 2 ;;
-    --org) ORG_WANTED="${2:?--org needs a value}"; shift 2 ;;
-    --name | --project) NAME="${2:?$1 needs a value}"; shift 2 ;;
+    # A MISSING VALUE IS THIS COMMAND'S REFUSAL, exit 2, in its own words:
+    # `${2:?…}` would be bash's message and bash's exit 1 — and a `resume`
+    # that exits non-zero is read as "something was refused", so the refusal
+    # has to be one this command wrote and a person can act on.
+    --repo)
+        [ $# -ge 2 ] || die "--repo needs a value: <owner>/<name>, or any url spelling of one."
+        REPO_SLUG="$2"; REPO_ARG="$REPO_SLUG"; shift 2 ;;
+    --workspace)
+        [ $# -ge 2 ] || die "--workspace needs a value: <owner>/<name> of your private workspace repository."
+        WORKSPACE_SLUG="$2"; shift 2 ;;
+    --org)
+        [ $# -ge 2 ] || die "--org needs a value: the organisation whose manifest to read."
+        ORG_WANTED="$2"; shift 2 ;;
+    --name | --project)
+        [ $# -ge 2 ] || die "$1 needs a value: one estate folder name under your projects directory."
+        NAME="$2"; shift 2 ;;
+    # `park --all` exists; `resume --all` deliberately does not (see the
+    # header). Said here in so many words, because the generic answer below
+    # - "put it after `--`" - would hand the extension a flag it does not
+    # have and nobody meant.
+    -a | --all) die "\`$SELF_NAME\` has no \`--all\`, deliberately: rebuilding every estate on this
+    machine from one command is the accident its own bare-form refusal exists
+    to prevent. Name the one you want: \`$SELF_NAME <Name>\`." ;;
     # EVERYTHING AFTER `--` IS THE EXTENSION'S, verbatim: `resume.sh` has
     # flags this command has no opinion about (--feature, --keep-staged), and
     # a command that ate them would be a command people stop using the moment
