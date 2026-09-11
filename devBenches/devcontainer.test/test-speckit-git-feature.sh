@@ -3086,7 +3086,7 @@ Park it again from there, which writes the record afresh, then resume here." 'RR
         return 1
     fi
     if ! printf '%s\n' "$RESUME_OUTPUT" \
-        | grep -Fq 'REFUSED: 001-routing-core — the record has no `pushed:` for this leg'; then
+        | grep -Fq 'REFUSED: 001-routing-core — the record has no `pushed:` for the spec leg'; then
         printf 'assertion failed: the absent-pushed summary line\n%s\n' "$RESUME_OUTPUT" >&2
         return 1
     fi
@@ -3100,8 +3100,14 @@ Park it again from there, which writes the record afresh, then resume here." 'RR
     invoke_park "$root" "$stderr_file"
 
     # Then: the entry survives with its parked commit, and the hole stays a
-    # hole — the refused park invents no `pushed: false`.
+    # hole — the refused park invents no `pushed: false`. First that the
+    # refused park WROTE the manifest at all, or every assertion below would
+    # hold of a park that wrote nothing (the independent review, 2026-09-11).
     assert_equal '2' "$PARK_STATUS" 'refused-park exit code' || return 1
+    if ! printf '%s\n' "$PARK_OUTPUT" | grep -Fq 'COMMITTED: workspaces/'; then
+        printf 'assertion failed: the refused park wrote no manifest\n%s\n' "$PARK_OUTPUT" >&2
+        return 1
+    fi
     if ! grep -Fq '      - branch: 001-routing-core' "$manifest"; then
         printf 'assertion failed: the refused feature was erased\n%s\n' "$(<"$manifest")" >&2
         return 1
