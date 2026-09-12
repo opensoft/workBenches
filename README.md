@@ -94,7 +94,7 @@ Your host's `openRepoShape`, `openRepoTools`, `park`, `resume` and `status` comm
 After the estate commands are installed, `setup.sh` runs `openRepoTools wip init` — the fourth link in the onboarding chain of lane-collision-protocol Amendment 9(e):
 
 ```text
-gh repo clone opensoft/workBenches && ./setup.sh   # the host, and the estate commands
+gh repo clone opensoft/workBenches && cd workBenches && ./setup.sh   # the host, and the estate commands
 openRepoTools --install                            # (setup.sh already did this for you)
 openRepoTools wip init                             # your workspace repository
 pclaude run <profile> --lane <repo>-<n>

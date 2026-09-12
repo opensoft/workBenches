@@ -5,7 +5,7 @@
 # The workspace-repository step of the onboarding chain -- lane-collision-protocol
 # Amendment 9(e). The chain a new person walks, in the amendment's own order:
 #
-#   gh repo clone opensoft/workBenches && ./setup.sh
+#   gh repo clone opensoft/workBenches && cd workBenches && ./setup.sh
 #   openRepoTools --install                   <- scripts/setup-estate-commands.sh
 #   openRepoTools wip init                    <- THIS SCRIPT
 #   pclaude run <profile> --lane <repo>-<n>

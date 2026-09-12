@@ -21,6 +21,8 @@
 #               mismatch too, not "done" (RV-W2)
 #   (l)         normalize_github_repo matches every GitHub remote URL
 #               spelling, https/git@/ssh://, with and without `.git` (RV-W1)
+#   (m)         the onboarding clone example is runnable as printed, in this
+#               script's own header and in README.md (RV-W4)
 #   (c)(c2)     the subcommand absent: it prints what to run and continues (0)
 #   (c3)        MUTATION: absence is decided by `--help`, NEVER by an exit code
 #   (c4)        MUTATION: a bare `wip` in --help PROSE is not capability (F1)
@@ -376,6 +378,14 @@ check_url_form 'scp-like'         'git@github.com:opensoft/brettheap-wip'
 check_url_form 'scp-like-dotgit'  'git@github.com:opensoft/brettheap-wip.git'
 check_url_form 'ssh'              'ssh://git@github.com/opensoft/brettheap-wip'
 check_url_form 'ssh-dotgit'       'ssh://git@github.com/opensoft/brettheap-wip.git'
+
+printf '%s\n' '--- (m) RV-W4: the onboarding clone example is runnable as printed ---'
+assert_contains "$(sed -n '1,20p' "$SCRIPT_UNDER_TEST")" \
+    'gh repo clone opensoft/workBenches && cd workBenches && ./setup.sh' \
+    '(m) this script own header cd'"'"'s into the clone before ./setup.sh'
+assert_contains "$(cat "$REPO_ROOT/README.md" 2>/dev/null || true)" \
+    'gh repo clone opensoft/workBenches && cd workBenches && ./setup.sh' \
+    '(m) README.md prints the same runnable clone example'
 
 # ===========================================================================
 printf '%s\n' '--- (c) the subcommand is absent: print what to run, and continue ---'
