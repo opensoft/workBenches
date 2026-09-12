@@ -181,12 +181,24 @@ ln -sfn "$default_statusline_relative" "$default_statusline"
 # launcher and the shared directory is the one write that reaches all of them
 # (lane-collision-protocol Amendment 8(a), A8 Addendum 2 R-A8-5(a)). The
 # ~/.claude copy stays for a bare `claude` run outside the launcher.
+#
+# These are the same paths Amendment 9 later assigns to `openRepoTools
+# --install`. Ruled on opensoft/workBenches#68 (F5): this loop STANDS for
+# Amendment 8 and is their sole writer until A9's adoption act 3 lands, and
+# A9's act 4 deletes it. Until then the copy is idempotent BY CONTENT — a
+# destination already holding the vendored bytes is left alone, mtime and all,
+# so a later `--install` write of the same bytes is not clobbered by the next
+# setup run.
 for skill in lane-swap; do
   skill_source="$repo_dir/base-image/files/claude/skills/$skill/SKILL.md"
   [[ -f "$skill_source" ]] || continue
   mkdir -p "$base/shared/skills/$skill" "$default_claude_dir/skills/$skill"
-  install -m 0644 "$skill_source" "$base/shared/skills/$skill/SKILL.md"
-  install -m 0644 "$skill_source" "$default_claude_dir/skills/$skill/SKILL.md"
+  for skill_target in "$base/shared/skills/$skill/SKILL.md" \
+                      "$default_claude_dir/skills/$skill/SKILL.md"; do
+    if ! cmp -s "$skill_source" "$skill_target"; then
+      install -m 0644 "$skill_source" "$skill_target"
+    fi
+  done
 done
 
 default_settings="$default_claude_dir/settings.json"

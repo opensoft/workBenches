@@ -21,11 +21,23 @@ L=~/projects/xFactory/lanes-edit.sh
 
 ## 1. Usage, then the identity triple — derived, not asked
 
-```sh
+```bash
 claude-usage
-lane="$(tmux display-message -p '#W')"                      # Amendment 8(b): the window IS the lane
+window="$(tmux display-message -p '#W')"                     # Amendment 8(b): the window IS the lane
+lane="$window"
 LANES_NO_FETCH=1 "$L" register-row "$lane" >/dev/null 2>&1 || lane=""
-[ -n "$lane" ] || lane="$(LANES_NO_FETCH=1 "$L" swapped "$(hostname -s)" 2>/dev/null | head -n 1 | cut -f 1)"
+if [[ -z "$lane" ]]; then
+  # The swap record, read exactly as the launcher reads it: the STATUS decides
+  # whether there is an answer at all, and the contract is the tab. A row that
+  # printed before a failed read, or one with no tab, is not a record row —
+  # `cut -f 1` would hand back the whole line, lane-shaped and wrong.
+  rows="$(LANES_NO_FETCH=1 "$L" swapped "$(hostname -s)" 2>/dev/null)" || rows=""
+  first="$(printf '%s\n' "$rows" | head -n 1)"
+  if [[ -n "$rows" && "$first" == *$'\t'* ]]; then
+    candidate="${first%%$'\t'*}"
+    [[ "$candidate" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] && lane="$candidate"
+  fi
+fi
 printf 'lane=%s\n' "${lane:-<none>}"
 ```
 
@@ -36,12 +48,18 @@ the launcher never disagree about which lane this is. Then make the other two na
 - Claude session name ≠ lane → type `/rename <lane>` (Amendment 2: the session name is the lane's
   messaging address).
 
-If `lane` is empty, **nothing binds this window**. Stop, and print the one derived command — `<repo>` and
-`<n>` are the window name split on its last `-`, never a literal placeholder:
+If `lane` is empty, **nothing binds this window**. Stop, and print the command FILLED IN — the repo and
+the number are the window's own name split on its last `-` (clause (e) does the same, for the same reason:
+nobody should have to translate a placeholder at the one moment they are trying to get back to work):
 
-```sh
-lane-start --no-launch <repo> <n>
+```bash
+case "$window" in
+  *-[0-9]*) printf 'run: lane-start --no-launch %s %s\n' "${window%-*}" "${window##*-}" ;;
+  *)        printf 'run: lane-start --no-launch REPO N; this window is named "%s", which is not a lane name, so the repo and the number have to come from the operator\n' "$window" ;;
+esac
 ```
+
+Only the second branch leaves anything blank, and it leaves it blank because nothing here knows it.
 
 ## 2. Refresh the handoff
 
@@ -72,11 +90,12 @@ On a rebase conflict: abort, leave the tree clean, report it, and never force.
 
 Run `ListAgents`, then send each running subagent one `SendMessage`: "Swap imminent: commit and push what
 you have now, with the usual trailers and explicit pathspecs; reply with the sha or 'nothing to push'."
-For every worktree an agent named (or found under the scratchpad), report both:
+For every worktree an agent named (or found under the scratchpad) — `$worktree` below is each of those
+paths in turn — report both:
 
-```sh
-git -C <worktree> status --short              # dirty files
-git -C <worktree> log '@{u}..' --oneline      # unpushed commits
+```bash
+git -C "$worktree" status --short              # dirty files
+git -C "$worktree" log '@{u}..' --oneline      # unpushed commits
 ```
 
 **Ask the operator exactly one question, and only if a writer still has unpushed work and has not replied:**

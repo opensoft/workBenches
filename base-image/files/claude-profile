@@ -11,21 +11,27 @@ command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
 # ~/.claude/settings.json is never read under `pclaude run` and the entry has
 # to be ensured in the profile's own settings instead.
 #
-# The command is clause (e)'s snippet VERBATIM, and the exact string is the
-# idempotence key, so nothing may be added to it: no `bash -lc`, which would
-# source a login profile in front of every session start; no `2>/dev/null`,
-# which would throw the block away, since every line the subcommand prints goes
-# to stderr; and no `|| true`, since the subcommand exits 0 by construction.
-# Tolerance for a lanes-edit.sh that has no `session-start` yet is bought by
-# the capability probe below instead — the entry is not written at all until
-# the subcommand exists, which is one process per session start fewer than
-# writing an entry that can only print a usage block. `"timeout": 5` is clause
-# (e)'s too and is part of the entry, not decoration: it is the outer bound on
-# the one path that must never hang. The tilde is the harness's to expand;
+# The three values below ARE the canonical entry — ruled 2026-09-12 by the
+# orchestrator of the Amendment 8 round, with clause (e)'s text to be changed
+# to quote them byte for byte — and the command string is the idempotence key,
+# so it is not varied by anything downstream of this line. No `bash -lc`, which
+# would source a login profile in front of every session start; no
+# `2>/dev/null`, since every line the subcommand prints goes to stderr and the
+# block is the point; `|| true` stays by that ruling, because a hook in front
+# of every session start is tolerant by construction. `"timeout": 5` is part of
+# the entry and not decoration: it is the outer bound on the one path that must
+# never hang.
+#
+# `|| true` swallows the STATUS of a lanes-edit.sh that has no `session-start`
+# subcommand; it does not swallow the usage block such a one prints, and that
+# block would appear in front of every session on the workstation until the
+# brett-wip half lands (F-S4). So the entry is also gated on the subcommand
+# existing — an install-time probe, below, which changes nothing about the
+# string it writes. The tilde is the harness's to expand;
 # `lane_session_start_script` is the same path again, for this script's own
 # reads of it.
 lane_session_start_script="$HOME/projects/xFactory/lanes-edit.sh"
-lane_session_start_command='~/projects/xFactory/lanes-edit.sh session-start'
+lane_session_start_command='~/projects/xFactory/lanes-edit.sh session-start || true'
 lane_session_start_matcher='startup|resume|clear|fork'
 lane_session_start_timeout=5
 # Set by configure_profile_runtime: true when the entry is in this profile's
