@@ -290,6 +290,7 @@ LEG_TREES=()
 LEG_COMMITS=()
 LEG_DEPTHS=()
 LEG_PUSHEDS=()
+LEG_PUSHED_SEENS=()
 
 collect_legs() {
     local feature_index="$1"
@@ -304,6 +305,7 @@ collect_legs() {
     LEG_COMMITS=()
     LEG_DEPTHS=()
     LEG_PUSHEDS=()
+    LEG_PUSHED_SEENS=()
     while [ "$index" -lt "${#MANIFEST_LEG_ROLE[@]}" ]; do
         if [ "${MANIFEST_LEG_FEATURE[$index]}" != "$feature_index" ]; then
             index=$((index + 1))
@@ -335,6 +337,7 @@ collect_legs() {
         LEG_COMMITS[${#LEG_COMMITS[@]}]="${MANIFEST_LEG_COMMIT[$index]}"
         LEG_DEPTHS[${#LEG_DEPTHS[@]}]="${MANIFEST_LEG_DEPTH[$index]}"
         LEG_PUSHEDS[${#LEG_PUSHEDS[@]}]="${MANIFEST_LEG_PUSHED[$index]}"
+        LEG_PUSHED_SEENS[${#LEG_PUSHED_SEENS[@]}]="${MANIFEST_LEG_PUSHED_SEEN[$index]}"
         index=$((index + 1))
     done
     [ "${#LEG_ROLES[@]}" -gt 0 ]
@@ -432,15 +435,62 @@ while [ "$selection" -lt "${#SELECTED_INDEXES[@]}" ]; do
         tree="${LEG_TREES[$leg]}"
         parked_commit="${LEG_COMMITS[$leg]}"
         pushed="${LEG_PUSHEDS[$leg]}"
+        pushed_seen="${LEG_PUSHED_SEENS[$leg]}"
         LEG_ACTION[leg]="create"
         leg=$((leg + 1))
 
-        # RR6 — parked with --no-push.
+        # RR6 — the record's `pushed:` is not `true`.
+        #
+        # AS STRICT AS IT EVER WAS, and no longer worded past what the record
+        # says. `park.sh` writes the literal `true` or `false` it computed from
+        # the push it just made, and `workspace_write_manifest` drops a key
+        # whose value is empty — so `false` IS the `--no-push` park and keeps
+        # that wording byte for byte. ANYTHING ELSE IS A VALUE THIS EXTENSION
+        # NEVER WROTE: a hand-edit or a bad merge of the record. Saying
+        # "parked with --no-push" over `pushed: maybe` made a claim nobody
+        # made — the same reading `openRepoTools`' `status` stopped making on
+        # 2026-09-11 — and, worse, told the person the parked commit is on the
+        # workstation that parked it and nowhere else, which the record does
+        # not say either. So the unreadable value is named for what it is, and
+        # the one thing that is true of it is what the line offers: the record
+        # rules nothing out, and only a park from the workstation that has the
+        # worktree writes it afresh. The refusal itself is unchanged —
+        # `!= true` — because a reader that cannot read the field must not
+        # recreate the feature on a guess.
+        #
+        # AND NO `pushed:` AT ALL IS ITS OWN STATE, not a spelling of the one
+        # above: the record is not saying something that cannot be read, it is
+        # saying nothing. `workspace_load_project` keeps the two apart in
+        # `MANIFEST_LEG_PUSHED_SEEN` for that reason, and these are
+        # `openRepoTools`' `status`'s words for the same four states, so the
+        # two tools tell the person one story.
         if [ "$pushed" != true ]; then
-            >&2 echo "Error: $branch ($role leg) was parked with --no-push; that feature was NOT recreated."
-            >&2 echo "Its parked commit $parked_commit exists only on the workstation that parked it ($MANIFEST_PARKED_ON)."
-            >&2 echo "Push it there, re-run \`make park\`, then resume here."
-            record_refusal "$branch" "parked with --no-push" "re-run \`make park\` on $MANIFEST_PARKED_ON"
+            if [ "$pushed" = false ]; then
+                >&2 echo "Error: $branch ($role leg) was parked with --no-push; that feature was NOT recreated."
+                >&2 echo "Its parked commit $parked_commit exists only on the workstation that parked it ($MANIFEST_PARKED_ON)."
+                >&2 echo "Push it there, re-run \`make park\`, then resume here."
+                record_refusal "$branch" "parked with --no-push" "re-run \`make park\` on $MANIFEST_PARKED_ON"
+            else
+                # The stderr line names the leg in front of the clause; the
+                # branch-level REFUSED line and the `--json` reason do not, so
+                # "this leg" had no antecedent there — the reason names the
+                # leg itself (the independent review of this change, 2026-09-11).
+                if [ -z "$pushed_seen" ]; then
+                    unreadable_pushed="the record has no \`pushed:\` for this leg"
+                    refusal_reason="the record has no \`pushed:\` for the $role leg"
+                elif [ -z "$pushed" ]; then
+                    unreadable_pushed="its record's \`pushed:\` has no value, which is neither true nor false"
+                    refusal_reason="$unreadable_pushed"
+                else
+                    unreadable_pushed="its record's \`pushed:\` says '$pushed', which is neither true nor false"
+                    refusal_reason="$unreadable_pushed"
+                fi
+                >&2 echo "Error: $branch ($role leg): $unreadable_pushed; that feature was NOT recreated."
+                >&2 echo "Whether its parked commit $parked_commit ever left ${MANIFEST_PARKED_ON:-the workstation that parked it} cannot be read from the record."
+                >&2 echo "Park it again from there, which writes the record afresh, then resume here."
+                record_refusal "$branch" "$refusal_reason" \
+                    "re-run \`make park\` on ${MANIFEST_PARKED_ON:-the workstation that parked it} to write the record afresh"
+            fi
             refused=true
             break
         fi

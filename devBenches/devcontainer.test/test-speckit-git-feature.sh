@@ -2909,6 +2909,223 @@ Fast-forward it, then re-run:
         'the replayed resume un-committed the parked WIP'
 }
 
+# Hand-edit one leg's `pushed:` in a workspace manifest: `park` writes the
+# literal `true` or `false` it computed and `workspace_write_manifest` drops a
+# key whose value is empty, so every other state of that field reaches a
+# record through an editor or a bad merge, and this is how a fixture reaches
+# one. `absent` removes the key; an empty value leaves it bare.
+set_manifest_pushed() {
+    local manifest="$1"
+    local role="$2"
+    local value="$3"
+
+    python3 - "$manifest" "$role" "$value" <<'PY'
+import sys
+
+path, role, value = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path, "r", encoding="utf-8") as stream:
+    lines = stream.read().splitlines()
+out = []
+in_leg = False
+edited = 0
+for line in lines:
+    if line.startswith("          - role:"):
+        in_leg = line.split(":", 1)[1].strip() == role
+    if in_leg and line.startswith("            pushed:"):
+        edited += 1
+        if value == "absent":
+            continue
+        line = "            pushed:" + (" " + value if value else "")
+    out.append(line)
+if edited != 1:
+    raise SystemExit(
+        "expected exactly one pushed: line for the %s leg, found %d" % (role, edited)
+    )
+with open(path, "w", encoding="utf-8") as stream:
+    stream.write("\n".join(out) + "\n")
+PY
+}
+
+# RR6 over the record `park --no-push` actually writes. Its wording is the one
+# state of `pushed:` that this extension does write, so it is asserted byte
+# for byte and must not move: nothing here is pushed anywhere, which is
+# exactly what the refusal is about.
+test_resume_refuses_a_no_push_record_in_the_unchanged_words() {
+    local stderr_file="$FIXTURE_ROOT/resume-no-push.stderr"
+    local root clone manifest parked_spec
+
+    # Given: a feature parked with --no-push, so its commit is on this
+    # workstation and nowhere else.
+    initialize_three_leg_parked_fixture 'resume-no-push' "$PARKED_CONFIG" || return 1
+    initialize_workspace_fixture 'resume-no-push-ws' || return 1
+    root="$PARKED_ROOT"
+    create_parked_feature "$root" 'Add routing core' "$stderr_file" || return 1
+    printf 'draft\n' > "$root/worktrees/001-routing-core/spec/specs/001-routing-core/spec.md" || return 1
+    invoke_park "$root" "$stderr_file" --no-push
+    if [ "$PARK_STATUS" -ne 0 ]; then
+        printf 'the --no-push park failed (%s): %s\n' "$PARK_STATUS" "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    manifest="$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml"
+    assert_equal '2' "$(manifest_line_count "$manifest" '^            pushed: false$')" \
+        '--no-push recorded pushed: false for both legs' || return 1
+    parked_spec="$(git -C "$root/worktrees/001-routing-core/spec" rev-parse HEAD)"
+
+    # When: another checkout resumes it.
+    clone="$PARKED_BASE/second"
+    clone_three_leg_root "$root" "$clone" || return 1
+    invoke_resume "$clone" "$stderr_file"
+
+    # Then: RR6, byte-for-byte, and nothing was recreated.
+    assert_equal '2' "$RESUME_STATUS" 'no-push resume exit code' || return 1
+    assert_contains_block "$stderr_file" \
+"Error: 001-routing-core (spec leg) was parked with --no-push; that feature was NOT recreated.
+Its parked commit $parked_spec exists only on the workstation that parked it (Fixture).
+Push it there, re-run \`make park\`, then resume here." 'RR6 --no-push wording' || return 1
+    if ! printf '%s\n' "$RESUME_OUTPUT" | grep -Fq 'REFUSED: 001-routing-core — parked with --no-push'; then
+        printf 'assertion failed: the --no-push summary line\n%s\n' "$RESUME_OUTPUT" >&2
+        return 1
+    fi
+    assert_file_absent "$clone/worktrees/001-routing-core" 'the --no-push feature directory'
+}
+
+# A `pushed:` that is neither true nor false is refused exactly as strictly —
+# nothing is recreated on a guess — but the refusal says what the record says.
+# Reading it as --no-push made a claim nobody made, and told the person the
+# parked commit is on one workstation and nowhere else, which the record does
+# not say either. A follow-up to a reviewer's note on opensoft/openRepoTools
+# #19 and #20 (2026-09-11); nobody has ruled on it.
+test_resume_names_an_unreadable_pushed_rather_than_claiming_no_push() {
+    local stderr_file="$FIXTURE_ROOT/resume-pushed-unreadable.stderr"
+    local clone manifest
+
+    # Given: a parked feature whose spec leg's `pushed:` was hand-edited to a
+    # value park never writes.
+    park_then_clone 'resume-pushed-unreadable' "$stderr_file" || return 1
+    clone="$RESUME_ROOT"
+    manifest="$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml"
+    set_manifest_pushed "$manifest" spec 'maybe' || return 1
+
+    # When: resume runs there.
+    invoke_resume "$clone" "$stderr_file"
+
+    # Then: the refusal names the value, offers the only exit there is, and
+    # never says --no-push.
+    assert_equal '2' "$RESUME_STATUS" 'unreadable-pushed resume exit code' || return 1
+    assert_contains_block "$stderr_file" \
+"Error: 001-routing-core (spec leg): its record's \`pushed:\` says 'maybe', which is neither true nor false; that feature was NOT recreated.
+Whether its parked commit $RESUME_PARKED_SPEC ever left Fixture cannot be read from the record.
+Park it again from there, which writes the record afresh, then resume here." 'RR6 unreadable wording' || return 1
+    if grep -Fq -- '--no-push' "$stderr_file"; then
+        printf 'assertion failed: an unreadable pushed: drew a --no-push claim\n%s\n' \
+            "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if ! printf '%s\n' "$RESUME_OUTPUT" \
+        | grep -Fq "REFUSED: 001-routing-core — its record's \`pushed:\` says 'maybe', which is neither true nor false"; then
+        printf 'assertion failed: the unreadable-pushed summary line\n%s\n' "$RESUME_OUTPUT" >&2
+        return 1
+    fi
+    if printf '%s\n' "$RESUME_OUTPUT" | grep -Fq -- '--no-push'; then
+        printf 'assertion failed: the summary claimed --no-push\n%s\n' "$RESUME_OUTPUT" >&2
+        return 1
+    fi
+    assert_file_absent "$clone/worktrees/001-routing-core" 'the unreadable-pushed feature directory' || return 1
+
+    # When: the key is bare instead — present, with nothing after the colon.
+    set_manifest_pushed "$manifest" spec '' || return 1
+    invoke_resume "$clone" "$stderr_file"
+
+    # Then: the same refusal, worded for a key that carries no value.
+    assert_equal '2' "$RESUME_STATUS" 'valueless-pushed resume exit code' || return 1
+    assert_contains_block "$stderr_file" \
+"Error: 001-routing-core (spec leg): its record's \`pushed:\` has no value, which is neither true nor false; that feature was NOT recreated.
+Whether its parked commit $RESUME_PARKED_SPEC ever left Fixture cannot be read from the record.
+Park it again from there, which writes the record afresh, then resume here." 'RR6 valueless wording' || return 1
+    if grep -Fq -- '--no-push' "$stderr_file"; then
+        printf 'assertion failed: a bare pushed: drew a --no-push claim\n%s\n' \
+            "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    assert_file_absent "$clone/worktrees/001-routing-core" 'the valueless-pushed feature directory'
+}
+
+# NO `pushed:` AT ALL is a different thing for a record to say than a value
+# that cannot be read: it says nothing about that leg. Both ends of it are
+# here, because both ends used to speak for it — `resume` refused the leg in
+# the `--no-push` words, and a park that REFUSED the feature wrote
+# `pushed: false` back into the file, a --no-push claim nobody made. A
+# follow-up to a reviewer's note on opensoft/openRepoTools #19 and #20
+# (2026-09-11); nobody has ruled on it.
+test_a_record_without_pushed_is_neither_read_nor_written_as_no_push() {
+    local stderr_file="$FIXTURE_ROOT/pushed-absent.stderr"
+    local root clone manifest
+
+    # Given: a parked feature whose spec leg has no `pushed:` key.
+    park_then_clone 'pushed-absent' "$stderr_file" || return 1
+    root="$PARKED_ROOT"
+    clone="$RESUME_ROOT"
+    manifest="$WORKSPACE_DIR/workspaces/dummy/fixture-project.yaml"
+    set_manifest_pushed "$manifest" spec 'absent' || return 1
+    git -C "$WORKSPACE_DIR" add workspaces || return 1
+    git -C "$WORKSPACE_DIR" commit -qm 'drop the spec leg pushed: key' || return 1
+    git -C "$WORKSPACE_DIR" push -q origin main || return 1
+
+    # When: the other checkout resumes it.
+    invoke_resume "$clone" "$stderr_file"
+
+    # Then: the refusal says the record says nothing, and never --no-push.
+    assert_equal '2' "$RESUME_STATUS" 'absent-pushed resume exit code' || return 1
+    assert_contains_block "$stderr_file" \
+"Error: 001-routing-core (spec leg): the record has no \`pushed:\` for this leg; that feature was NOT recreated.
+Whether its parked commit $RESUME_PARKED_SPEC ever left Fixture cannot be read from the record.
+Park it again from there, which writes the record afresh, then resume here." 'RR6 absent-key wording' || return 1
+    if grep -Fq -- '--no-push' "$stderr_file"; then
+        printf 'assertion failed: a missing pushed: drew a --no-push claim\n%s\n' \
+            "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if ! printf '%s\n' "$RESUME_OUTPUT" \
+        | grep -Fq 'REFUSED: 001-routing-core — the record has no `pushed:` for the spec leg'; then
+        printf 'assertion failed: the absent-pushed summary line\n%s\n' "$RESUME_OUTPUT" >&2
+        return 1
+    fi
+    assert_file_absent "$clone/worktrees/001-routing-core" 'the absent-pushed feature directory' || return 1
+
+    # Given: back where it was parked, that leg's worktree is gone, so the
+    # next park REFUSES the feature and carries its recorded entry forward.
+    git -C "$root/spec" worktree remove --force "$root/worktrees/001-routing-core/spec" || return 1
+
+    # When: park runs there.
+    invoke_park "$root" "$stderr_file"
+
+    # Then: the entry survives with its parked commit, and the hole stays a
+    # hole — the refused park invents no `pushed: false`. First that the
+    # refused park WROTE the manifest at all, or every assertion below would
+    # hold of a park that wrote nothing (the independent review, 2026-09-11).
+    assert_equal '2' "$PARK_STATUS" 'refused-park exit code' || return 1
+    if ! printf '%s\n' "$PARK_OUTPUT" | grep -Fq 'COMMITTED: workspaces/'; then
+        printf 'assertion failed: the refused park wrote no manifest\n%s\n' "$PARK_OUTPUT" >&2
+        return 1
+    fi
+    if ! grep -Fq '      - branch: 001-routing-core' "$manifest"; then
+        printf 'assertion failed: the refused feature was erased\n%s\n' "$(<"$manifest")" >&2
+        return 1
+    fi
+    if ! grep -Fq "            parked_commit: $RESUME_PARKED_SPEC" "$manifest"; then
+        printf 'assertion failed: the refused feature lost its parked commit\n%s\n' \
+            "$(<"$manifest")" >&2
+        return 1
+    fi
+    assert_equal '1' "$(manifest_line_count "$manifest" '^            pushed: ')" \
+        'only the code leg carries a pushed: key after the refused park' || return 1
+    if grep -Fq '            pushed: false' "$manifest"; then
+        printf 'assertion failed: a refused park wrote a --no-push claim nobody made\n%s\n' \
+            "$(<"$manifest")" >&2
+        return 1
+    fi
+}
+
 test_manifest_round_trip() {
     local stderr_file="$FIXTURE_ROOT/manifest-round-trip.stderr"
     local root manifest first_bytes second_bytes commits_before
@@ -3587,6 +3804,9 @@ run_scenario 'resume is idempotent when the worktrees already exist' test_resume
 run_scenario 'resume refuses a foreign directory at the worktree path' test_resume_refuses_a_foreign_directory
 run_scenario 'resume refuses a local branch that diverged from the parked commit' test_resume_refuses_a_local_branch_that_is_not_the_parked_commit
 run_scenario 'resume refuses a local branch behind the parked commit and names the fast-forward' test_resume_refuses_a_local_branch_behind_the_parked_commit
+run_scenario 'resume refuses a --no-push record in the unchanged wording' test_resume_refuses_a_no_push_record_in_the_unchanged_words
+run_scenario 'resume names a pushed: that is neither true nor false and never claims --no-push' test_resume_names_an_unreadable_pushed_rather_than_claiming_no_push
+run_scenario 'a record with no pushed: key is neither read nor written as --no-push' test_a_record_without_pushed_is_neither_read_nor_written_as_no_push
 run_scenario 'the workspace manifest round-trips byte-identically' test_manifest_round_trip
 run_scenario 'a missing workspace config refuses both verbs' test_missing_workspace_config_refuses
 run_scenario 'two workstations share one workspace repository' test_two_workstations_share_the_workspace_repository
