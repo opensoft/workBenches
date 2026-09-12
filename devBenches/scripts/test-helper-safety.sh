@@ -84,6 +84,18 @@ grep -Fx 'compose org_set=x org=opensoft url=https://sonarcloud.io' "$DOCKER_LOG
 run_sonar_case SONARQUBE_URL=https://sonar.example.test
 grep -Fx 'compose org_set= org= url=https://sonar.example.test' "$DOCKER_LOG" >/dev/null
 
+# ensure-sonarqube-mcp.sh must also teach workbenches-mcp-sync's shared MCP
+# registry the SonarQube proxy's two addresses, so host-side Claude/Codex
+# profiles resolve it over loopback while bench containers keep the Docker
+# service name (see devBenches/scripts/ensure-sonarqube-mcp.sh).
+shared_mcp_registry="$TMP_ROOT/home/projects/.workbenches/mcp/opensoft/registry.json"
+jq -e '.servers.sonarqube.definition.url == "http://127.0.0.1:64130/mcp"' "$shared_mcp_registry" >/dev/null
+jq -e '.servers.sonarqube.definition.containerUrl == "http://sonarqube-mcp-proxy:64130/mcp"' \
+  "$shared_mcp_registry" >/dev/null
+rendered_claude_config="$(env -i HOME="$TMP_ROOT/home" PATH="$BIN_DIR:/usr/bin:/bin" \
+  "$REPO_ROOT/scripts/workbenches-mcp-sync" claude-config opensoft)"
+jq -e '.mcpServers.sonarqube.url == "http://127.0.0.1:64130/mcp"' "$rendered_claude_config" >/dev/null
+
 : > "$DOCKER_LOG"
 if PATH="$BIN_DIR:$PATH" DOCKER_LOG="$DOCKER_LOG" \
   MOCK_CURRENT_PROJECT=other-project MOCK_CURRENT_SERVICE=other-service \
