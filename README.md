@@ -13,15 +13,17 @@ This single command:
 2. Checks workstation VPN clients and patches 0dcloud TUN MTU for large Git/Docker transfers
 3. Installs or updates Wave Terminal widgets for workBenches
 4. Ensures Docker is running and Layer 0 base image exists
-5. Opens an interactive TUI to select benches, AI tools, and workstation tools
-6. Builds Docker images for selected benches
-7. Installs AI coding CLIs and workstation tools (Claude, Copilot, Codex, Pi, etc.)
+5. Installs the estate commands from workBenches' own pin (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status`)
+6. Creates your workspace repository, if you have none, with `openRepoTools wip init` — it asks you nothing
+7. Opens an interactive TUI to select benches, AI tools, and workstation tools
+8. Builds Docker images for selected benches
+9. Installs AI coding CLIs and workstation tools (Claude, Copilot, Codex, Pi, etc.)
 
 After setup, open any bench in VS Code → "Reopen in Container" to start developing.
 
 ### Re-running setup.sh
 
-Safe to run repeatedly. Installed benches show `✓ up to date` and are skipped. Only new selections or missing images trigger builds. The estate commands (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status`) are checked against workBenches' pin on every run and are re-placed only when a host copy differs from it.
+Safe to run repeatedly. Installed benches show `✓ up to date` and are skipped. Only new selections or missing images trigger builds. The estate commands (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status`) are checked against workBenches' pin on every run and are re-placed only when a host copy differs from it. The workspace repository step does nothing at all once you have one: it is a file test on `~/.agents/workspace.yaml`, so a second `./setup.sh` neither asks you anything nor touches the network for it.
 
 ## Docker Image Layers
 
@@ -68,6 +70,9 @@ bash scripts/ensure-layer3.sh --base java-bench:latest
 ```
 setup.sh
   ├── Shell setup (zsh + Oh My Zsh + Powerlevel10k)
+  ├── Estate commands (scripts/setup-estate-commands.sh — openRepoTools --install)
+  ├── Workspace repository (scripts/setup-workspace-repo.sh — openRepoTools wip init)
+  │     └── strictly after the estate commands: `wip init` is their subcommand
   ├── VPN setup (AmneziaVPN + 0dcloud checks, 0dcloud MTU patch)
   ├── Wave Terminal widgets (terminal, projects, and workBench containers)
   ├── Docker check (is daemon running?)
@@ -83,6 +88,38 @@ setup.sh
 ```
 
 Your host's `openRepoShape`, `openRepoTools`, `park`, `resume` and `status` commands come from workBenches' own pin (`devBenches/base-image/upstream-pin.yaml`). `setup.sh` places them from the vendored copies in `devBenches/base-image/files/openreposhape/` and `devBenches/base-image/files/openrepotools/`, and re-places them whenever a host copy differs from the pin, in either direction — behind, ahead, or hand-edited. To move them to a new upstream commit, move the pin with `update-upstream.py apply` and re-run `setup.sh`; do not edit the vendored files or the installed commands directly. The step refuses to run over a symlinked, non-regular, or read-only target, and verifies the five placed files against the vendored copies before it reports success. Set `WORKBENCHES_SKIP_ESTATE_COMMANDS=1` to skip this step.
+
+## Your Workspace Repository
+
+After the estate commands are installed, `setup.sh` runs `openRepoTools wip init` — the fourth link in the onboarding chain of lane-collision-protocol Amendment 9(e):
+
+```text
+gh repo clone opensoft/workBenches && ./setup.sh   # the host, and the estate commands
+openRepoTools --install                            # (setup.sh already did this for you)
+openRepoTools wip init                             # your workspace repository
+pclaude run <profile> --lane <repo>-<n>
+lane-start <repo> <n>
+```
+
+The workspace repository (`<org>/<login>-wip`) holds your lane register, your handoffs and your workspace manifests. It holds **no code**: the lane tooling is installed from `opensoft/openRepoTools`.
+
+**This step asks you nothing.** The login comes from `gh api user -q .login`, lowercased; the organisation is your home organisation (`opensoft` in this estate). There is no prompt in it in any path — where nothing can be derived it prints the one command that fixes that (`gh auth login`) and continues rather than asking you for what it could not read.
+
+**It does nothing on a host that already has one.** `~/.agents/workspace.yaml` naming a repository and a checkout of it is the whole of the idempotence, and it is a file test, not a network call. Re-run `./setup.sh` as often as you like.
+
+**It never fails setup.** `setup.sh` treats it as best-effort, exactly as it treats the estate command step above it. Run directly, `scripts/setup-workspace-repo.sh` exits `0` (done, or already done, or degraded and printed), `1` (`openRepoTools wip init` itself refused — its own output above says why), or `2` (no openRepoTools is installed, so the estate command step has not run yet).
+
+**Two things it cannot do for you, and says so rather than attempting.** Where your account cannot create a repository in the organisation, `wip init` prints the exact `gh repo create` and the team-permission `gh api --method PUT` for an administrator; and a newly created workspace repository must be excluded from the organisation's PR-only ruleset before the lane register can be written at all. Both are administrator acts. This step never captures or summarises that output — it relays every byte of it to your terminal.
+
+**Until `openRepoTools` ships `wip init`**, this step prints what you would run and continues. `wip init` arrives with Amendment 9's adoption act 3, in `opensoft/openRepoTools`; workBenches then moves its pin to that commit with `update-upstream.py apply` and the step starts working on the next `./setup.sh`.
+
+| Variable | Effect |
+|----------|--------|
+| `WORKBENCHES_SKIP_WORKSPACE_REPO=1` | Skip this step entirely |
+| `WORKBENCHES_WORKSPACE_ORG=<org>` | The organisation (default: `opensoft`); passed through to `wip init` |
+| `AGENT_PROTOCOL_ROOT=<dir>` | Where `workspace.yaml` lives (default: `~/.agents`) |
+
+Tests: `devcontainer.test/test-setup-workspace-repo.sh` (76 checks; fakes `openRepoTools` and `gh`, and also runs the real vendored `openRepoTools` to prove the degradation is live).
 
 ## Wave Terminal Widgets
 

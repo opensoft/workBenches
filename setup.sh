@@ -186,6 +186,21 @@ if [ -x "${SCRIPT_DIR}/scripts/setup-estate-commands.sh" ]; then
     echo ""
 fi
 
+# The workspace repository, AFTER the estate commands and nowhere else:
+# `openRepoTools wip init` is a subcommand of the openRepoTools the step above
+# just placed, so the chain of lane-collision-protocol Amendment 9(e) is
+# `--install` and then this. It asks nothing -- the login comes from
+# `gh api user -q .login` and the organisation from the amendment's own rule --
+# and it does nothing at all on a host that already has one. Best-effort, like
+# every host-user step here: it never fails setup.sh, and an openRepoTools with
+# no `wip` subcommand yet prints what to run instead of refusing.
+# WORKBENCHES_SKIP_WORKSPACE_REPO=1 skips it.
+log_header "WORKSPACE REPOSITORY"
+if [ -x "${SCRIPT_DIR}/scripts/setup-workspace-repo.sh" ]; then
+    "${SCRIPT_DIR}/scripts/setup-workspace-repo.sh" || echo "⚠ Workspace repository step skipped or refused; continuing workBenches setup."
+    echo ""
+fi
+
 # Claude workflow setup is host-user state. The benches bind-mount ~/.claude, so
 # seed it before any container build without overwriting existing user workflows.
 log_header "CLAUDE WORKFLOW SETUP"
