@@ -1,0 +1,40 @@
+name: DevBenches Helper Safety
+
+on:
+  push:
+    paths:
+      - .github/workflows/devbenches-helper-safety.yml
+      - devBenches/scripts/ensure-sonarqube-mcp.sh
+      - devBenches/scripts/test-helper-safety.sh
+      - devBenches/scripts/reconcile-devcontainer-container.sh
+      - scripts/workbenches-mcp-sync
+      - base-image/files/workbenches-mcp-sync
+  pull_request:
+    paths:
+      - .github/workflows/devbenches-helper-safety.yml
+      - devBenches/scripts/ensure-sonarqube-mcp.sh
+      - devBenches/scripts/test-helper-safety.sh
+      - devBenches/scripts/reconcile-devcontainer-container.sh
+      - scripts/workbenches-mcp-sync
+      - base-image/files/workbenches-mcp-sync
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Verify runtime prerequisites
+        run: |
+          jq --version
+          flock --version | sed -n '1p'
+          stat --version | sed -n '1p'
+
+      - name: Run devBenches helper safety suite
+        run: bash ./devBenches/scripts/test-helper-safety.sh

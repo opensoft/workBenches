@@ -20,6 +20,17 @@ LEGACY_CONTAINER_NAME="devbench-sonarqube-mcp"
 LEGACY_PROXY_CONTAINER_NAME="devbench-sonarqube-mcp-proxy"
 SECRET_FILE="${SONARQUBE_ENV_FILE:-$HOME/.config/sonarqube/sonar.env}"
 
+# Host-side Claude/Codex profiles and bench (container) configs must resolve
+# SonarQube MCP through different addresses: the host cannot resolve the
+# Docker service name without an /etc/hosts entry nobody writes (WSL
+# regenerates /etc/hosts on boot), while a bench container cannot reach the
+# host's 127.0.0.1 loopback. workbenches-mcp-sync's shared MCP registry
+# already supports both (`url` for host, `containerUrl` for a bench), but
+# nothing previously taught it the SonarQube proxy's two addresses.
+REPO_ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SHARED_MCP_HELPER="$REPO_ROOT_DIR/scripts/workbenches-mcp-sync"
+SHARED_MCP_FAMILY="${SONARQUBE_MCP_SHARED_FAMILY:-opensoft}"
+
 case "${1:-}" in
   --stop)
     docker rm -f "$PROXY_CONTAINER_NAME" "$CONTAINER_NAME" "$LEGACY_PROXY_CONTAINER_NAME" "$LEGACY_CONTAINER_NAME" >/dev/null 2>&1 || true
@@ -124,9 +135,20 @@ ensure_compose_services() {
     up -d
 }
 
+register_shared_mcp_route() {
+  [[ -x "$SHARED_MCP_HELPER" ]] || return 0
+  "$SHARED_MCP_HELPER" put-http \
+    "$SHARED_MCP_FAMILY" \
+    sonarqube \
+    "http://${HOST_BIND}:${PROXY_PORT}/mcp" \
+    "http://${PROXY_CONTAINER_NAME}:${PROXY_PORT}/mcp" \
+    || log "Warning: shared SonarQube MCP registry setup failed."
+}
+
 ensure_network
 ensure_storage_volume
 remove_legacy_containers
 ensure_compose_services
+register_shared_mcp_route
 
 log "Reusable SonarQube MCP is available at http://${HOST_BIND}:${PROXY_PORT}/mcp"
