@@ -291,7 +291,18 @@ fi
 derive_login() {
     local login=""
     command -v gh >/dev/null 2>&1 || return 0
-    login="$(timeout 10 gh api user -q .login 2>/dev/null || true)"
+    # RV-W3: GNU `timeout` is not on a stock macOS PATH -- the very platform
+    # F8's 10s guard against a hung `gh api user` was added for. Used
+    # unconditionally, `timeout 10 ...` fails to exec at all there, and
+    # `|| true` swallows that "command not found" the same way it swallows a
+    # real timeout, so a fully-authenticated `gh` is misread as
+    # unauthenticated. Guarded exactly as scripts/ensure-layer3.sh already
+    # guards its own `timeout` use (its `run_docker_probe`).
+    if command -v timeout >/dev/null 2>&1; then
+        login="$(timeout 10 gh api user -q .login 2>/dev/null || true)"
+    else
+        login="$(gh api user -q .login 2>/dev/null || true)"
+    fi
     printf '%s\n' "$(printf '%s' "$login" | tr '[:upper:]' '[:lower:]')"
 }
 

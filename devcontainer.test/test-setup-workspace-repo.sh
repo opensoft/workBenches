@@ -32,6 +32,8 @@
 #   (f)         the prompt count, which is zero, proven two ways
 #   (g)         the skip switch
 #   (h1-h5)     the derivations: nothing derivable is ever asked
+#   (h6)        the login still derives with no `timeout` binary on PATH at
+#               all -- stock macOS has none (RV-W3)
 #   (j1-j3)     the RUN path never calls a `wip init` this step already knows
 #               would refuse -- no gh, an unauthenticated gh, or a
 #               noncompliant login all stop here instead (F3, F7)
@@ -684,6 +686,34 @@ run_step "AGENT_PROTOCOL_ROOT=$AGENTS_H5" "FAKE_TOOLS_HELP=$PRE_A9_HELP" --
 assert_equal "$STATUS" '0' '(h5) an unauthenticated gh is still not a failure'
 assert_contains "$OUTPUT" 'gh auth login' '(h5) it names the one command that makes the login derivable'
 assert_not_contains "$OUTPUT" '<your-login>' '(h5) and no placeholder either, in the meantime (R-A9-3)'
+
+# h6 (RV-W3): GNU `timeout` is not on a stock macOS PATH -- the very platform
+# F8's 10s guard was added for. A PATH with `gh` reachable but NO `timeout`
+# binary at all must still derive the login, not silently misreport a
+# fully-authenticated `gh` as unauthenticated (which `timeout ... || true`
+# would do if `timeout` failed to exec and that were swallowed).
+printf '%s\n' '--- (h6) RV-W3: the login still derives with no `timeout` binary on PATH ---'
+NOTIMEOUT_BIN="$TMPDIR_ROOT/notimeout-bin"
+mkdir -p "$NOTIMEOUT_BIN"
+cp "$FAKE_BIN/openRepoTools" "$NOTIMEOUT_BIN/openRepoTools"
+cp "$FAKE_BIN/gh" "$NOTIMEOUT_BIN/gh"
+for tool in bash sed head tr grep cat mkdir rm; do
+    tool_path="$(command -v "$tool")"
+    ln -sf "$tool_path" "$NOTIMEOUT_BIN/$tool"
+done
+assert_file_absent "$NOTIMEOUT_BIN/timeout" '(h6) setup: the hermetic PATH has no timeout binary'
+AGENTS_H6="$TMPDIR_ROOT/agents-h6"
+mkdir -p "$AGENTS_H6"
+H6_TOOLS_LOG="$TMPDIR_ROOT/h6-tools.log"
+H6_GH_LOG="$TMPDIR_ROOT/h6-gh.log"
+STATUS_H6=0
+OUTPUT_H6="$(env -i "PATH=$NOTIMEOUT_BIN" "HOME=$TMPDIR_ROOT/home" \
+    "FAKE_TOOLS_LOG=$H6_TOOLS_LOG" "FAKE_GH_LOG=$H6_GH_LOG" \
+    "AGENT_PROTOCOL_ROOT=$AGENTS_H6" "FAKE_TOOLS_HELP=$A9_HELP" "FAKE_GH_LOGIN=brettheap" \
+    "$SCRIPT_UNDER_TEST" 2>&1 </dev/null)" || STATUS_H6=$?
+assert_equal "$STATUS_H6" '0' '(h6) exit code with no `timeout` binary present'
+assert_contains "$OUTPUT_H6" 'target: opensoft/brettheap-wip' '(h6) the login still derives with no `timeout` present'
+assert_contains "$(cat "$H6_GH_LOG" 2>/dev/null || true)" 'argv=api user -q .login' '(h6) gh was still called directly, without a timeout wrapper'
 
 # ===========================================================================
 printf '%s\n' '--- (j) the RUN path never calls a `wip init` this step already knows would refuse ---'
