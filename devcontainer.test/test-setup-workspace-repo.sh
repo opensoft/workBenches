@@ -17,6 +17,10 @@
 #   (b)(b2)     idempotence: a host with a workspace runs nothing at all
 #   (b3)(b4)    a checkout of a DIFFERENT repository, and a `.git` that is a
 #               plain file, are both mismatches, not "done" (F2)
+#   (b5)        a `path:` that is a SUBDIRECTORY of the real checkout is a
+#               mismatch too, not "done" (RV-W2)
+#   (l)         normalize_github_repo matches every GitHub remote URL
+#               spelling, https/git@/ssh://, with and without `.git` (RV-W1)
 #   (c)(c2)     the subcommand absent: it prints what to run and continues (0)
 #   (c3)        MUTATION: absence is decided by `--help`, NEVER by an exit code
 #   (c4)        MUTATION: a bare `wip` in --help PROSE is not capability (F1)
@@ -321,6 +325,55 @@ run_step \
     --
 assert_equal "$STATUS" '0' '(b4) exit code'
 assert_contains "$(tools_argv)" 'argv=wip init' '(b4) a `.git` FILE is not a checkout either -- wip init is consulted'
+
+# ===========================================================================
+printf '%s\n' '--- (b5) a path: that is a SUBDIRECTORY of the real checkout is a mismatch too, not "done" (RV-W2) ---'
+# `git -C "$path" rev-parse --is-inside-work-tree` and `remote get-url origin`
+# both succeed from inside ANY subdirectory of a work tree -- not just its
+# root -- so `path:` pointing one level too deep must not read as "already
+# checked out" either. Reproduced exactly as the review found it: `path:`
+# names a real subdirectory of a checkout whose origin DOES match.
+AGENTS_B5="$TMPDIR_ROOT/agents-b5"
+WS_B5="$TMPDIR_ROOT/projects/brettheap-wip-nested"
+mkdir -p "$AGENTS_B5" "$WS_B5/nested"
+git -C "$WS_B5" init -q
+git -C "$WS_B5" remote add origin "https://github.com/opensoft/brettheap-wip.git"
+printf 'repository: opensoft/brettheap-wip\npath: %s/nested\n' "$WS_B5" > "$AGENTS_B5/workspace.yaml"
+run_step \
+    "AGENT_PROTOCOL_ROOT=$AGENTS_B5" \
+    "FAKE_TOOLS_HELP=$A9_HELP" \
+    "FAKE_GH_LOGIN=brettheap" \
+    --
+assert_equal "$STATUS" '0' '(b5) exit code'
+assert_not_contains "$OUTPUT" 'already checked out' '(b5) a subdirectory path: is never reported as already checked out'
+assert_contains "$(tools_argv)" 'argv=wip init' '(b5) a path: pointing at a SUBDIRECTORY of the real checkout is not "already done" -- wip init is consulted'
+
+printf '%s\n' '--- (l) RV-W1: normalize_github_repo matches every GitHub remote URL spelling ---'
+# One idempotence check per spelling `git remote get-url origin` can print for
+# the same repository, reproduced end-to-end through workspace_repo_matches --
+# the path production actually takes -- rather than as a unit test of the
+# private function. ssh:// is the spelling the review found missing; the
+# other five are run alongside it so a future regression in ANY spelling is
+# caught the same way.
+check_url_form() {
+    local label="$1" remote_url="$2"
+    local agents_dir="$TMPDIR_ROOT/agents-l-$label"
+    local ws_dir="$TMPDIR_ROOT/projects/wip-l-$label"
+    mkdir -p "$agents_dir" "$ws_dir"
+    git -C "$ws_dir" init -q
+    git -C "$ws_dir" remote add origin "$remote_url"
+    printf 'repository: opensoft/brettheap-wip\npath: %s\n' "$ws_dir" > "$agents_dir/workspace.yaml"
+    run_step "AGENT_PROTOCOL_ROOT=$agents_dir" "FAKE_TOOLS_HELP=$A9_HELP" "FAKE_GH_LOGIN=brettheap" --
+    assert_equal "$STATUS" '0' "(l) $label exit code"
+    assert_contains "$OUTPUT" 'already checked out' "(l) $label ($remote_url) is recognised as the same repository"
+    assert_file_absent "$TOOLS_LOG" "(l) $label: openRepoTools was not invoked -- the URL form matched"
+}
+check_url_form 'https'            'https://github.com/opensoft/brettheap-wip'
+check_url_form 'https-dotgit'     'https://github.com/opensoft/brettheap-wip.git'
+check_url_form 'scp-like'         'git@github.com:opensoft/brettheap-wip'
+check_url_form 'scp-like-dotgit'  'git@github.com:opensoft/brettheap-wip.git'
+check_url_form 'ssh'              'ssh://git@github.com/opensoft/brettheap-wip'
+check_url_form 'ssh-dotgit'       'ssh://git@github.com/opensoft/brettheap-wip.git'
 
 # ===========================================================================
 printf '%s\n' '--- (c) the subcommand is absent: print what to run, and continue ---'

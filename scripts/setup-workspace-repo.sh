@@ -189,26 +189,43 @@ yaml_value() {
 }
 
 normalize_github_repo() {
-    # Reduce one of the four spellings `git remote get-url origin` can print
-    # for the same GitHub repository -- https://github.com/<repo>(.git)? and
-    # git@github.com:<repo>(.git)? -- to a bare, lowercased "<org>/<name>", so
-    # it can be compared against workspace.yaml's own "<org>/<name>" spelling.
+    # Reduce one of the six spellings `git remote get-url origin` can print
+    # for the same GitHub repository -- https://github.com/<repo>(.git)?,
+    # git@github.com:<repo>(.git)?, and ssh://git@github.com/<repo>(.git)? --
+    # to a bare, lowercased "<org>/<name>", so it can be compared against
+    # workspace.yaml's own "<org>/<name>" spelling. RV-W1: ssh:// is a real
+    # spelling `git remote get-url origin` prints and was missing here, which
+    # made the idempotence check below (RV-W2) fall through to `wip init` for
+    # a host whose checkout uses it -- silently, and on every re-run.
     local url="$1"
     url="${url%.git}"
     case "$url" in
         https://github.com/*) url="${url#https://github.com/}" ;;
+        ssh://git@github.com/*) url="${url#ssh://git@github.com/}" ;;
         git@github.com:*) url="${url#git@github.com:}" ;;
     esac
     printf '%s\n' "$(printf '%s' "$url" | tr '[:upper:]' '[:lower:]')"
 }
 
 workspace_repo_matches() {
-    # Is $2 (workspace.yaml's `path:`) a checkout of $1 (its `repository:`)?
-    # Local only, no network -- same as the rest of step 1.
-    local want="$1" path="$2" origin
+    # Is $2 (workspace.yaml's `path:`) the ROOT of a checkout of $1 (its
+    # `repository:`)? Local only, no network -- same as the rest of step 1.
+    # RV-W2: `rev-parse --is-inside-work-tree` and `remote get-url origin`
+    # both succeed from ANY subdirectory of a work tree, not just its root --
+    # so root-ness is its own check, not implied by the two above. Amendment
+    # 9(a) resolves the register at `<path>/lanes/LANES.md`, and a `path:`
+    # that names a subdirectory of the real checkout would otherwise be
+    # accepted here and silently resolve that file inside the wrong
+    # directory. Both sides are realpath-normalised (`pwd -P`, the same idiom
+    # this suite's own test harness uses for TEST_DIR/REPO_ROOT) so a symlink
+    # in the parent chain cannot produce a false mismatch either.
+    local want="$1" path="$2" origin toplevel real_path
     git -C "$path" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
     origin="$(git -C "$path" remote get-url origin 2>/dev/null)" || return 1
-    [ "$(normalize_github_repo "$origin")" = "$(normalize_github_repo "$want")" ]
+    [ "$(normalize_github_repo "$origin")" = "$(normalize_github_repo "$want")" ] || return 1
+    toplevel="$(git -C "$path" rev-parse --show-toplevel 2>/dev/null)" || return 1
+    real_path="$(cd "$path" 2>/dev/null && pwd -P)" || return 1
+    [ "$toplevel" = "$real_path" ]
 }
 
 if [ -f "$WORKSPACE_YAML" ]; then
