@@ -56,7 +56,7 @@ fail() {
 # quietly changing a number; the assertion count is printed and not pinned,
 # because checks are added to existing scenarios all the time and a scenario
 # that stops running is the thing worth catching.
-EXPECTED_SCENARIOS=30
+EXPECTED_SCENARIOS=31
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -134,6 +134,17 @@ set -euo pipefail
     printf 'argv=%s\n' "$*"
     printf 'LANES_NO_FETCH=%s\n' "${LANES_NO_FETCH:-}"
 } >> "${FAKE_LANES_EDIT_LOG:?}"
+# A lanes-edit.sh from before Amendment 8 has no `swapped` case AT ALL, so it
+# answers the unknown-subcommand line below — which is the real one's answer
+# too. One that HAS the subcommand can still exit 2 for a usage error of its
+# own. Same status, two different situations, and only the words tell them
+# apart (F-W4). This is decided before the case rather than by breaking out of
+# it: `break` is meaningless outside a loop, so a fake that used one answered
+# the swapped arm anyway and this scenario tested nothing it claimed to.
+if [[ -n "${FAKE_SWAPPED_UNKNOWN:-}" && "${1:-}" == swapped ]]; then
+    echo "unknown subcommand '${1:-}'" >&2
+    exit 2
+fi
 case "${1:-}" in
     register-row)
         if [[ -n "${FAKE_LANE_WITH_ROW:-}" && "${2:-}" == "${FAKE_LANE_WITH_ROW}" ]]; then
@@ -143,11 +154,6 @@ case "${1:-}" in
         exit "${FAKE_REGISTER_ROW_OTHER:-8}"
         ;;
     swapped)
-        # A lanes-edit.sh from before Amendment 8 has no `swapped` case at all
-        # and falls through to the unknown-subcommand line below; one that has
-        # it can still exit 2 for a usage error of its own. Same status, two
-        # different situations, and only the words tell them apart (F-W4).
-        [[ -z "${FAKE_SWAPPED_UNKNOWN:-}" ]] || break
         if [[ "${FAKE_SWAPPED_STATUS:-8}" -eq 0 || -n "${FAKE_SWAPPED_ROWS_ANYWAY:-}" ]]; then
             printf '%b' "${FAKE_SWAPPED_ROWS:-}"
         fi
@@ -342,6 +348,22 @@ grep -Fxq -- "$claude_args --resume session-onefield" "$CLAUDE_LOG" \
     || fail "one-field record row: Claude did not receive its arguments unchanged"; assertion
 grep -q "$note" "$ERR_LOG" || fail "one-field record row: the note was not printed"; assertion
 
+# 2d. A row of exactly the right SHAPE whose first field is not a lane name.
+# The tab is there, so the tab check passes it; only the lane-shape check can
+# refuse it, and a window name that is not lane-shaped never reaches here
+# because register-row answered 2 for it (scenario 5).
+launch \
+    "FAKE_TMUX_WINDOW=claude" \
+    "FAKE_LANE_WITH_ROW=openRepoProject-1" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=not a lane\t2026-09-12T17:04Z\tclaude-a:0\n" \
+    -- run team002 --resume session-unshaped
+[[ ! -e "$LANE_START_LOG" ]] \
+    || fail "unshaped record lane: lane-start was handed '$(lane_start_argv)'"; assertion
+grep -Fxq -- "$claude_args --resume session-unshaped" "$CLAUDE_LOG" \
+    || fail "unshaped record lane: Claude did not receive its arguments unchanged"; assertion
+grep -q "$note" "$ERR_LOG" || fail "unshaped record lane: the note was not printed"; assertion
+
 # ---------------------------------------------------------------------------
 # 3. No window lane and no swapped lane: today's behaviour, and one line.
 launch \
@@ -367,6 +389,10 @@ launch \
 grep -Fxq -- "$claude_args --resume session-old" "$CLAUDE_LOG" \
     || fail "no swapped subcommand: Claude did not receive its arguments unchanged"; assertion
 grep -q "$note" "$ERR_LOG" || fail "no swapped subcommand: the note was not printed"; assertion
+grep -q 'caller bug' "$ERR_LOG" \
+    && fail "no swapped subcommand: an old helper was reported as a caller bug (F-W4: $(cat "$ERR_LOG"))"; assertion
+[[ "$(wc -l < "$ERR_LOG")" -eq 1 ]] \
+    || fail "no swapped subcommand: one situation printed $(wc -l < "$ERR_LOG") lines ($(cat "$ERR_LOG"))"; assertion
 
 # 4b. And a `swapped` that fails HALFWAY, after printing a row a launcher could
 # otherwise read as a lane: output from a read that did not succeed is not a

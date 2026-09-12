@@ -139,8 +139,16 @@ grep -q 'Until the brett-wip' "$SKILL_SOURCE" \
     && fail "text: the closing note still dates itself to an unlanded PR (F-S8)"; assertion
 [[ "$(grep -c 'READY TO SWAP' "$SKILL_SOURCE")" -eq 1 ]] \
     || fail "text: step 5 prints $(grep -c 'READY TO SWAP' "$SKILL_SOURCE") restart lines, and the ruling is ONE (F-S9)"; assertion
-[[ "$(grep -c 'claude --resume' "$SKILL_SOURCE")" -eq 1 ]] \
-    || fail "text: `claude --resume` appears $(grep -c 'claude --resume' "$SKILL_SOURCE") times; it belongs only in the line that rules it out (R-A8-6)"; assertion
+# grep -c counts LINES; a second mention on the same line is exactly how a
+# fallback would be slipped back in, so count OCCURRENCES.
+resume_mentions="$(grep -o 'claude --resume' "$SKILL_SOURCE" | wc -l)"
+[[ "$resume_mentions" -eq 1 ]] \
+    || fail "text: 'claude --resume' appears $resume_mentions times; it belongs only where it is ruled out (R-A8-6)"; assertion
+# ... and every one of them has to be on the line that rules it out. (The word
+# "fallback" itself stays: the skill's last line is "Do not offer either as a
+# fallback".)
+[[ "$(grep -c 'claude --resume' "$SKILL_SOURCE")" -eq "$(grep 'claude --resume' "$SKILL_SOURCE" | grep -c 'not lane surfaces')" ]] \
+    || fail "text: 'claude --resume' appears somewhere other than the line that rules it out (R-A8-6)"; assertion
 grep -q 'are not lane surfaces' "$SKILL_SOURCE" \
     || fail "text: /resume is not ruled out as a lane surface (R-A8-6)"; assertion
 grep -q -- '--no-launch <repo> <n>' "$SKILL_SOURCE" \
