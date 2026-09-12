@@ -43,7 +43,7 @@ sources:
     source_repository: opensoft/openRepoShape
     materialization: copied
     revision_kind: commit
-    commit: "cd57c4bbd84ee323616f952b35cbb5fe8ac88196"
+    commit: "57ddeacc9f1d8b0e0223602574b7e41df1e0e65a"
     vendor_dir: files/openreposhape
     files:
       - path: openRepoShape
