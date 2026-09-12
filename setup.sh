@@ -310,3 +310,15 @@ else
     echo "✓ Setup complete."
 fi
 echo "  Log saved to: $LOG_FILE"
+
+# The workspace repository step (above) relays `openRepoTools wip init`'s own
+# output byte for byte rather than summarising it, which is right for that
+# step but means its most important lines -- an administrator block, or a
+# precondition it stopped on -- can scroll off screen under eight more headers
+# before a person ever reads this far. It leaves a marker file behind on
+# anything but a clean run; surface it here, at the one place a person is
+# still looking, rather than let it go unmentioned.
+workspace_repo_marker="${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/.workspace-step-needs-attention"
+if [ -e "$workspace_repo_marker" ]; then
+    echo "⚠ Workspace repository step needs attention: grep -n \"WORKSPACE REPOSITORY\" \"$LOG_FILE\""
+fi

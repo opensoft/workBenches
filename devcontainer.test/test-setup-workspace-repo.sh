@@ -15,8 +15,12 @@
 #
 #   (a)(i)      the subcommand present: it runs, relays, and adds no question
 #   (b)(b2)     idempotence: a host with a workspace runs nothing at all
+#   (b3)(b4)    a checkout of a DIFFERENT repository, and a `.git` that is a
+#               plain file, are both mismatches, not "done" (F2)
 #   (c)(c2)     the subcommand absent: it prints what to run and continues (0)
 #   (c3)        MUTATION: absence is decided by `--help`, NEVER by an exit code
+#   (c4)        MUTATION: a bare `wip` in --help PROSE is not capability (F1)
+#   (c5)        the degraded path never repairs a noncompliant login (F7)
 #   (d)(d2)     the missing-gh-rights path: the administrator block is
 #               surfaced, not swallowed -- through this step AND through
 #               setup.sh's own best-effort caller pattern
@@ -24,6 +28,9 @@
 #   (f)         the prompt count, which is zero, proven two ways
 #   (g)         the skip switch
 #   (h1-h5)     the derivations: nothing derivable is ever asked
+#   (j1-j3)     the RUN path never calls a `wip init` this step already knows
+#               would refuse -- no gh, an unauthenticated gh, or a
+#               noncompliant login all stop here instead (F3, F7)
 #
 # Scenario (c3) is the one that matters most and is the least obvious. Today's
 # openRepoTools answers an unknown argument by `die`ing, and `die`'s default
@@ -41,6 +48,16 @@ REPO_ROOT="$(cd -- "$TEST_DIR/.." && pwd -P)"
 SCRIPT_UNDER_TEST="${1:-$REPO_ROOT/scripts/setup-workspace-repo.sh}"
 SETUP_SH="$REPO_ROOT/setup.sh"
 REAL_TOOLS="$REPO_ROOT/devBenches/base-image/files/openrepotools/openRepoTools"
+
+# A mutant left at mode 644 (or any non-executable mode) must fail loudly and
+# distinctly, not read as "every scenario caught it" -- `"$SCRIPT_UNDER_TEST"`
+# would exit 126 on every single invocation below, which looks exactly like a
+# suite that caught a mutation instead of a harness that forgot to `chmod +x`
+# the copy it was pointed at.
+[ -x "$SCRIPT_UNDER_TEST" ] || {
+    printf 'not executable: %s\n' "$SCRIPT_UNDER_TEST" >&2
+    exit 2
+}
 
 # Ambient state from the shell running this must not reach the step: a
 # workstation that has already run the real chain has a real
@@ -72,6 +89,10 @@ assert_not_contains() {
 
 assert_file_absent() {
     if [ ! -e "$1" ]; then pass "$2"; else fail "$2: $1 exists ($(cat "$1" 2>/dev/null))"; fi
+}
+
+assert_file_present() {
+    if [ -e "$1" ]; then pass "$2"; else fail "$2: $1 does not exist"; fi
 }
 
 assert_identical() {
@@ -134,6 +155,15 @@ openRepoTools --help | --version'
 PRE_A9_HELP='openRepoTools --install            install (or update) park, resume, status and
                                    this command into ~/.local/bin
 openRepoTools --help | --version'
+# F1: an identity line that names the workspace repository in PROSE, before
+# ever shipping the verb. A bare-word probe would call this capable; the
+# verb-pair probe must not.
+PROSE_ONLY_HELP='openRepoTools --install            install (or update) the estate commands
+
+This command installs the estate commands and does nothing else besides
+--install: the helpers read your workspace repository, the wip repository
+your register lives in.
+openRepoTools --help | --version'
 
 ADMIN_BLOCK='This account cannot create repositories in opensoft. Ask an administrator
 for these three, then re-run `openRepoTools wip init`:
@@ -142,6 +172,16 @@ for these three, then re-run `openRepoTools wip init`:
         --description "brettheap'"'"'s workspace repository"
     gh api --method PUT /orgs/opensoft/teams/estate/repos/opensoft/brettheap-wip -f permission=pull
     exclude opensoft/brettheap-wip from the organisation'"'"'s PR-only ruleset
+'
+
+# A9(a)'s own words for the mismatch this step must never call "done": a
+# `path:` that is not a checkout of the `repository:` beside it. This is
+# `wip init`'s refusal to give (exit 1 in its own numbering), never this
+# step's -- this step's only job is not to short-circuit past it.
+MISMATCH_REFUSAL='Error: opensoft/brettheap-wip is not configured here; nothing was created.
+A `path:` that is not a checkout of the `repository:` it names beside it is a
+mismatch, not a workspace. Fix `path:` in workspace.yaml, or remove it and
+re-run to create opensoft/brettheap-wip fresh.
 '
 
 # run <scenario env>... -- [args]   ; leaves OUTPUT and STATUS set.
@@ -191,6 +231,7 @@ assert_not_contains "$OUTPUT" 'no `wip` subcommand' '(a) a working openRepoTools
 assert_not_contains "$(tools_argv)" '--login' '(a) --login is NOT passed (wip init derives it, 9(c) step 2)'
 assert_not_contains "$(tools_argv)" '--org' '(a) --org is NOT passed when the estate default applies'
 assert_equal "$(grep -c 'argv=wip init' "$TOOLS_LOG")" '1' '(a) wip init was invoked exactly once'
+assert_file_absent "$AGENTS_A/.workspace-step-needs-attention" '(a) a clean run leaves no needs-attention marker'
 
 printf '%s\n' '--- (i) --dry-run is passed through ---'
 run_step \
@@ -205,7 +246,12 @@ assert_contains "$(tools_argv)" 'argv=wip init --dry-run' '(i) --dry-run reaches
 printf '%s\n' '--- (b) idempotent re-run: a host that has one runs NOTHING ---'
 AGENTS_B="$TMPDIR_ROOT/agents-b"
 WS_B="$TMPDIR_ROOT/projects/brettheap-wip"
-mkdir -p "$AGENTS_B" "$WS_B/.git"
+mkdir -p "$AGENTS_B" "$WS_B"
+# A REAL checkout, not a fabricated `.git` directory: the production check is
+# `git rev-parse --is-inside-work-tree` plus `remote get-url origin`, so the
+# fixture must be one or it only proves the fixture, not the step.
+git -C "$WS_B" init -q
+git -C "$WS_B" remote add origin "https://github.com/opensoft/brettheap-wip.git"
 printf 'repository: opensoft/brettheap-wip\npath: %s\n' "$WS_B" > "$AGENTS_B/workspace.yaml"
 cp "$AGENTS_B/workspace.yaml" "$TMPDIR_ROOT/workspace-b.before"
 
@@ -241,6 +287,41 @@ run_step \
 assert_equal "$STATUS" '0' '(b2) exit code'
 assert_contains "$(tools_argv)" 'argv=wip init' '(b2) the judgement is left to wip init, which owns it'
 
+printf '%s\n' '--- (b3) a path: that is a checkout of a DIFFERENT repository is a mismatch, not "done" (F2) ---'
+# A9(a): "a `path:` that is not a checkout of the `repository:` it names
+# beside it" is the new refusal, and it is `wip init`'s to give -- this step's
+# only job is to not call a foreign checkout "already done".
+AGENTS_B3="$TMPDIR_ROOT/agents-b3"
+WS_B3="$TMPDIR_ROOT/projects/foreign-checkout"
+mkdir -p "$AGENTS_B3" "$WS_B3"
+git -C "$WS_B3" init -q
+git -C "$WS_B3" remote add origin "git@github.com:opensoft/workBenches.git"
+printf 'repository: opensoft/brettheap-wip\npath: %s\n' "$WS_B3" > "$AGENTS_B3/workspace.yaml"
+run_step \
+    "AGENT_PROTOCOL_ROOT=$AGENTS_B3" \
+    "FAKE_TOOLS_HELP=$A9_HELP" \
+    "FAKE_GH_LOGIN=brettheap" \
+    "FAKE_WIP_STDERR=$MISMATCH_REFUSAL" \
+    "FAKE_WIP_STATUS=2" \
+    --
+assert_equal "$STATUS" '1' '(b3) a checkout of a DIFFERENT repository is NOT treated as done'
+assert_contains "$(tools_argv)" 'argv=wip init' '(b3) wip init is consulted -- the mismatch judgement is not made here'
+assert_contains "$OUTPUT" 'is not a checkout of the' '(b3) the A9(a) mismatch wording is relayed, not summarised or replaced'
+
+printf '%s\n' '--- (b4) a `.git` that is a plain FILE (no git metadata at all) also falls through (F2) ---'
+AGENTS_B4="$TMPDIR_ROOT/agents-b4"
+WS_B4="$TMPDIR_ROOT/projects/git-is-a-file"
+mkdir -p "$AGENTS_B4" "$WS_B4"
+: > "$WS_B4/.git"
+printf 'repository: opensoft/brettheap-wip\npath: %s\n' "$WS_B4" > "$AGENTS_B4/workspace.yaml"
+run_step \
+    "AGENT_PROTOCOL_ROOT=$AGENTS_B4" \
+    "FAKE_TOOLS_HELP=$A9_HELP" \
+    "FAKE_GH_LOGIN=brettheap" \
+    --
+assert_equal "$STATUS" '0' '(b4) exit code'
+assert_contains "$(tools_argv)" 'argv=wip init' '(b4) a `.git` FILE is not a checkout either -- wip init is consulted'
+
 # ===========================================================================
 printf '%s\n' '--- (c) the subcommand is absent: print what to run, and continue ---'
 AGENTS_C="$TMPDIR_ROOT/agents-c"
@@ -263,7 +344,10 @@ assert_contains "$(tools_argv)" 'argv=--help' '(c) the capability was probed wit
 printf '%s\n' '--- (c2) the same, against the openRepoTools this repo vendors TODAY ---'
 # Not a fake: the real vendored bytes. Adoption act 3 has not landed, so this
 # must degrade -- and the day it does land, this scenario is the one that
-# notices, because the real --help will then carry the verb.
+# notices, because the real --help will then carry the verb. THAT DAY, the
+# act-3 pin-move PR must update this scenario (and (c)'s siblings that assert
+# "no `wip` subcommand yet") in the same commit, or CI (F4) lands red on this
+# suite rather than green on a stale assumption.
 AGENTS_C2="$TMPDIR_ROOT/agents-c2"
 REAL_BIN="$TMPDIR_ROOT/real-bin"
 mkdir -p "$AGENTS_C2" "$REAL_BIN"
@@ -297,6 +381,39 @@ assert_not_contains "$OUTPUT" 'no `wip` subcommand yet' '(c3) a refusal is NOT m
 assert_not_contains "$OUTPUT" 'update-upstream.py apply' '(c3) the degradation recipe is not printed over a real refusal'
 assert_contains "$OUTPUT" 'gh repo create opensoft/brettheap-wip' '(c3) the administrator block survives'
 
+printf '%s\n' '--- (c4) MUTATION: a bare `wip` in --help PROSE is not capability (F1) ---'
+# Amendment 9(b) rewrites the identity line to describe the workspace
+# repository in prose before the verb ever ships. A probe that matched a bare
+# word would call this capable and invoke `wip init`; this fake's `wip` arm is
+# made to die exactly as a real "no such subcommand" would, so a regression
+# here is loud and unmistakable rather than silently swallowed.
+AGENTS_C4="$TMPDIR_ROOT/agents-c4"
+mkdir -p "$AGENTS_C4"
+run_step \
+    "AGENT_PROTOCOL_ROOT=$AGENTS_C4" \
+    "FAKE_TOOLS_HELP=$PROSE_ONLY_HELP" \
+    "FAKE_GH_LOGIN=brettheap" \
+    "FAKE_WIP_STDERR=\nREFUSED: openRepoTools installs the estate commands and does nothing else.\n" \
+    "FAKE_WIP_STATUS=2" \
+    --
+assert_equal "$STATUS" '0' '(c4) help that only mentions "wip" in prose still degrades (exit 0)'
+assert_contains "$OUTPUT" 'no `wip` subcommand yet' '(c4) it is reported as absent, not as a refusal'
+assert_not_contains "$OUTPUT" 'REFUSED' "(c4) the fake's die text never reaches the person -- the verb was never invoked"
+assert_not_contains "$(tools_argv)" 'argv=wip' '(c4) `wip init` was NEVER invoked against prose-only help'
+
+printf '%s\n' '--- (c5) the degraded path never repairs a noncompliant login either (F7) ---'
+AGENTS_C5="$TMPDIR_ROOT/agents-c5"
+mkdir -p "$AGENTS_C5"
+run_step \
+    "AGENT_PROTOCOL_ROOT=$AGENTS_C5" \
+    "FAKE_TOOLS_HELP=$PRE_A9_HELP" \
+    "FAKE_GH_LOGIN=Brett_Heap" \
+    --
+assert_equal "$STATUS" '0' '(c5) degraded path is still not a failure'
+assert_not_contains "$OUTPUT" 'brett_heap-wip' '(c5) the noncompliant name is never repaired or printed as a target'
+assert_not_contains "$OUTPUT" '<your-login>' '(c5) and no placeholder either (R-A9-3)'
+assert_contains "$OUTPUT" 'naming pattern' '(c5) it names the pattern instead, per F7'
+
 # ===========================================================================
 printf '%s\n' '--- (d) missing gh rights: the printed block is SURFACED, not swallowed ---'
 AGENTS_D="$TMPDIR_ROOT/agents-d"
@@ -316,6 +433,17 @@ assert_contains "$OUTPUT" 'exited 2' '(d) the step names the exit it got rather 
 assert_contains "$OUTPUT" 'idempotent' '(d) it says the re-run is safe'
 # The mutation this guards: a step that captured the output to summarise it.
 assert_not_contains "$OUTPUT" 'Workspace repository step refused: no openRepoTools' '(d) it is not confused with the ordering refusal'
+assert_file_present "$AGENTS_D/.workspace-step-needs-attention" '(d) a refusal leaves the needs-attention marker for setup.sh to find (F9)'
+
+printf '%s\n' '--- (d3) ... and a later CLEAN run removes that marker (F9) ---'
+run_step \
+    "AGENT_PROTOCOL_ROOT=$AGENTS_D" \
+    "FAKE_TOOLS_HELP=$A9_HELP" \
+    "FAKE_GH_LOGIN=brettheap" \
+    "FAKE_WIP_STDOUT=created opensoft/brettheap-wip\n" \
+    --
+assert_equal "$STATUS" '0' '(d3) the re-run succeeds'
+assert_file_absent "$AGENTS_D/.workspace-step-needs-attention" '(d3) ... and the marker left by (d) is gone'
 
 printf '%s\n' '--- (d2) ... and through setup.sh own best-effort caller pattern ---'
 # setup.sh runs this as `script || echo "warning"`. A `||` cannot eat stdout,
@@ -328,16 +456,18 @@ cat > "$CALLER" <<EOF
 echo "SETUP CONTINUED PAST THE STEP"
 EOF
 chmod +x "$CALLER"
+AGENTS_D2="$TMPDIR_ROOT/agents-d2"
+mkdir -p "$AGENTS_D2"
 STATUS_D2=0
 OUTPUT_D2="$(env -i "PATH=$FAKE_BIN:/usr/bin:/bin" "HOME=$TMPDIR_ROOT/home" \
     "FAKE_TOOLS_LOG=$TMPDIR_ROOT/d2-tools.log" "FAKE_GH_LOG=$TMPDIR_ROOT/d2-gh.log" \
-    "AGENT_PROTOCOL_ROOT=$AGENTS_D" "FAKE_TOOLS_HELP=$A9_HELP" "FAKE_GH_LOGIN=brettheap" \
+    "AGENT_PROTOCOL_ROOT=$AGENTS_D2" "FAKE_TOOLS_HELP=$A9_HELP" "FAKE_GH_LOGIN=brettheap" \
     "FAKE_WIP_STDOUT=$ADMIN_BLOCK" "FAKE_WIP_STATUS=2" \
     "$CALLER" "$SCRIPT_UNDER_TEST" 2>&1 </dev/null)" || STATUS_D2=$?
 assert_equal "$STATUS_D2" '0' '(d2) setup.sh own pattern does not fail the setup'
 assert_contains "$OUTPUT_D2" 'gh repo create opensoft/brettheap-wip' '(d2) the block survives the caller'
 assert_contains "$OUTPUT_D2" 'SETUP CONTINUED PAST THE STEP' '(d2) setup continues past a refused step'
-assert_contains "$(grep -c 'continuing workBenches setup' <<<"$OUTPUT_D2")" '1' '(d2) exactly one best-effort warning'
+assert_equal "$(grep -c 'continuing workBenches setup' <<<"$OUTPUT_D2")" '1' '(d2) exactly one best-effort warning'
 
 # ===========================================================================
 printf '%s\n' '--- (e1) ordering: with no openRepoTools installed, it refuses and names --install ---'
@@ -353,6 +483,7 @@ assert_contains "$OUTPUT_E1" 'openRepoTools --install' '(e1) the refusal names t
 assert_contains "$OUTPUT_E1" 'scripts/setup-estate-commands.sh' '(e1) ... by the name of the script that runs it'
 assert_contains "$OUTPUT_E1" 'Nothing was created' '(e1) and says it created nothing'
 assert_not_contains "$OUTPUT_E1" 'no `wip` subcommand yet' '(e1) an absent openRepoTools is not a degraded one'
+assert_file_present "$AGENTS_E/.workspace-step-needs-attention" '(e1) a precondition refusal also leaves the marker (F9)'
 
 printf '%s\n' '--- (e2) ordering: the file --install just placed wins over $PATH ---'
 # OPENREPOTOOLS_BIN_DIR is where `--install` puts it. If some other
@@ -471,11 +602,11 @@ assert_contains "$OUTPUT" 'target: opensoft/brettheap-wip' '(h3) the default org
 # h4: no gh at all. Nothing derives -- and the answer is still not a question.
 # A PATH with NO gh on it at all. /usr/bin has a real gh on most workstations
 # (and on this one), so the fake openRepoTools gets a hermetic bin dir carrying
-# only the four externals the step actually uses.
+# only the externals the step actually uses when gh is absent.
 NOGH_BIN="$TMPDIR_ROOT/nogh-bin"
 mkdir -p "$NOGH_BIN"
 cp "$FAKE_BIN/openRepoTools" "$NOGH_BIN/openRepoTools"
-for tool in bash sed head tr grep cat; do
+for tool in bash sed head tr grep cat mkdir rm; do
     tool_path="$(command -v "$tool")"
     ln -sf "$tool_path" "$NOGH_BIN/$tool"
 done
@@ -490,7 +621,7 @@ OUTPUT_H4="$(env -i "PATH=$NOGH_BIN" "HOME=$TMPDIR_ROOT/home" \
     "AGENT_PROTOCOL_ROOT=$AGENTS_H4" "FAKE_TOOLS_HELP=$PRE_A9_HELP" \
     "$SCRIPT_UNDER_TEST" 2>&1 </dev/null)" || STATUS_H4=$?
 assert_equal "$STATUS_H4" '0' '(h4) no gh is still not a failure'
-assert_contains "$OUTPUT_H4" 'opensoft/<your-login>-wip' '(h4) the undeducible half is shown as a placeholder, not asked for'
+assert_not_contains "$OUTPUT_H4" '<your-login>' '(h4) the undeducible half is OMITTED, never shown as a placeholder (R-A9-3)'
 assert_contains "$OUTPUT_H4" '`gh` is not installed' '(h4) it names why it could not derive the login'
 
 # h5: a gh that is installed but not logged in names the command that fixes it.
@@ -499,7 +630,59 @@ mkdir -p "$AGENTS_H5"
 run_step "AGENT_PROTOCOL_ROOT=$AGENTS_H5" "FAKE_TOOLS_HELP=$PRE_A9_HELP" --
 assert_equal "$STATUS" '0' '(h5) an unauthenticated gh is still not a failure'
 assert_contains "$OUTPUT" 'gh auth login' '(h5) it names the one command that makes the login derivable'
-assert_contains "$OUTPUT" '<your-login>' '(h5) and asks for nothing in the meantime'
+assert_not_contains "$OUTPUT" '<your-login>' '(h5) and no placeholder either, in the meantime (R-A9-3)'
+
+# ===========================================================================
+printf '%s\n' '--- (j) the RUN path never calls a `wip init` this step already knows would refuse ---'
+# F3 + F7: `wip init` needs this same login (9(c) step 2) and would refuse for
+# exactly the reason this step already knows -- so calling it anyway would
+# only relay a refusal already known here, and it is the one place a
+# placeholder could still have leaked (F3's worst case). All three stop
+# BEFORE invoking wip init, name the precondition, and exit 2 -- the same code
+# `wip init` uses for its own refusals -- never 1, which would claim it ran.
+
+printf '%s\n' '--- (j1) wip IS capable, but no gh at all: stop before calling it ---'
+AGENTS_J1="$TMPDIR_ROOT/agents-j1"
+mkdir -p "$AGENTS_J1"
+J1_TOOLS_LOG="$TMPDIR_ROOT/j1-tools.log"
+STATUS_J1=0
+OUTPUT_J1="$(env -i "PATH=$NOGH_BIN" "HOME=$TMPDIR_ROOT/home" \
+    "FAKE_TOOLS_LOG=$J1_TOOLS_LOG" \
+    "AGENT_PROTOCOL_ROOT=$AGENTS_J1" "FAKE_TOOLS_HELP=$A9_HELP" \
+    "$SCRIPT_UNDER_TEST" 2>&1 </dev/null)" || STATUS_J1=$?
+assert_equal "$STATUS_J1" '2' '(j1) stops rather than calling a wip init that would only refuse the same way'
+assert_contains "$OUTPUT_J1" 'gh' '(j1) it names gh as the precondition'
+assert_not_contains "$OUTPUT_J1" 'target:' '(j1) no target: line -- nothing was derived to show'
+assert_not_contains "$OUTPUT_J1" '<your-login>' '(j1) and no placeholder either (R-A9-3)'
+assert_not_contains "$(cat "$J1_TOOLS_LOG" 2>/dev/null || true)" 'argv=wip' '(j1) `wip init` itself was never invoked'
+assert_file_present "$AGENTS_J1/.workspace-step-needs-attention" '(j1) the stop leaves the needs-attention marker too (F9)'
+
+printf '%s\n' '--- (j2) wip IS capable, gh installed but not authenticated: stop, name gh auth login ---'
+AGENTS_J2="$TMPDIR_ROOT/agents-j2"
+mkdir -p "$AGENTS_J2"
+run_step \
+    "AGENT_PROTOCOL_ROOT=$AGENTS_J2" \
+    "FAKE_TOOLS_HELP=$A9_HELP" \
+    --
+assert_equal "$STATUS" '2' '(j2) stops rather than calling a wip init that would only refuse the same way'
+assert_contains "$OUTPUT" 'gh auth login' '(j2) it names the one command that fixes it'
+assert_not_contains "$OUTPUT" 'target:' '(j2) no target: line -- nothing was derived to show'
+assert_not_contains "$OUTPUT" '<your-login>' '(j2) and no placeholder either (R-A9-3)'
+assert_not_contains "$(tools_argv)" 'argv=wip' '(j2) `wip init` itself was never invoked'
+
+printf '%s\n' '--- (j3) wip IS capable, login derived but not compliant with <login>-wip (F7): stop, name the pattern ---'
+AGENTS_J3="$TMPDIR_ROOT/agents-j3"
+mkdir -p "$AGENTS_J3"
+run_step \
+    "AGENT_PROTOCOL_ROOT=$AGENTS_J3" \
+    "FAKE_TOOLS_HELP=$A9_HELP" \
+    "FAKE_GH_LOGIN=Brett_Heap" \
+    --
+assert_equal "$STATUS" '2' '(j3) stops rather than calling a wip init that would refuse the same login'
+assert_contains "$OUTPUT" '[a-z0-9]' '(j3) it names the naming pattern, not a repaired or placeholder name'
+assert_not_contains "$OUTPUT" 'brett_heap-wip' '(j3) the noncompliant name never reaches a target: line'
+assert_not_contains "$OUTPUT" 'target:' '(j3) no target: line -- nothing was derived to show'
+assert_not_contains "$(tools_argv)" 'argv=wip' '(j3) `wip init` itself was never invoked'
 
 # ===========================================================================
 printf '\n%s\n' "=========================================="
