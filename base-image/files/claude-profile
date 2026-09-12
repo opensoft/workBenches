@@ -132,18 +132,25 @@ claude_add_has_scope() {
   return 1
 }
 
-claude_run_is_interactive() {
-  [[ -t 0 && -t 1 ]] || return 1
-  [[ "${WORKBENCHES_CLAUDE_TMUX:-auto}" != off ]] || return 1
-  [[ -z "${WORKBENCHES_CLAUDE_TMUX_CHILD:-}" ]] || return 1
-  [[ -z "${TMUX:-}" ]] || return 1
-
+# The first Claude argument says whether this launch is a conversation at all.
+# `mcp`, `doctor`, `--version` and the other subcommands and one-shots are not,
+# so they are neither wrapped in a tmux session of their own nor handed to
+# lane-start by the lane default below.
+claude_args_start_session() {
   case "${1:-}" in
     mcp|plugin|plugins|doctor|install|update|--help|-h|--version|-v|--print|-p)
       return 1
       ;;
   esac
   return 0
+}
+
+claude_run_is_interactive() {
+  [[ -t 0 && -t 1 ]] || return 1
+  [[ "${WORKBENCHES_CLAUDE_TMUX:-auto}" != off ]] || return 1
+  [[ -z "${WORKBENCHES_CLAUDE_TMUX_CHILD:-}" ]] || return 1
+  [[ -z "${TMUX:-}" ]] || return 1
+  claude_args_start_session "$@"
 }
 
 start_profile_tmux() {
@@ -157,6 +164,12 @@ start_profile_tmux() {
   # on an already-running server, so it is threaded through explicitly here
   # rather than relied on via inheritance — same idiom as the guard above.
   [[ -n "${lane:-}" ]] && env_prefix+=("CLAUDE_LANE=$lane")
+  [[ "${no_lane:-false}" == true ]] && env_prefix+=("CLAUDE_NO_LANE=1")
+  # So must the name of the window this was typed in. The session created here
+  # is brand new and its window is named for the command that made it, never
+  # for a lane, so the child must read the name captured on this side of the
+  # re-exec instead of asking tmux again (capture_lane_window).
+  [[ -n "${lane_window:-}" ]] && env_prefix+=("WORKBENCHES_CLAUDE_WINDOW=$lane_window")
 
   command -v tmux >/dev/null 2>&1 || {
     echo "pclaude: tmux is required for interactive profile launches." >&2
@@ -251,19 +264,158 @@ profile_metadata() {
   return 1
 }
 
-# --lane / CLAUDE_LANE (opt-in, default off): hand the final Claude launch to
-# `lane-start` instead of exec'ing Claude directly. Recognised only as a
-# leading option, before the action/profile — the first token that is not
-# --lane/--lane=.../-h/--help ends this loop and is left for the existing
-# parsing below, so anything meant for Claude itself (e.g. `claude-profile
-# work --help`) is untouched.
+# ---------------------------------------------------------------------------
+# THE LANE DEFAULT — lane-collision-protocol Amendment 8(c).
+#
+# `--lane` was opt-in, and a launch without it started a Claude with no lane at
+# all: the window kept tmux's automatic rename, no register row was stamped,
+# and the resume was left to a picker filtered by a title several transcripts
+# share. That is the 2026-09-11 wrong-lineage resume, whose sixth finding was
+# simply "the automation never ran" (Amendment 6). So a launch that starts a
+# conversation now takes a lane by default, and the lane is RESOLVED rather
+# than typed:
+#
+#   1. --lane / CLAUDE_LANE — what the operator said. Always wins.
+#   2. the CURRENT tmux window's name, when `lanes-edit.sh register-row` says
+#      the register has a row for it. The window name IS the lane (Rule 4),
+#      and lane-start turned tmux's automatic rename off when it took the
+#      window, so a window still called `claude` or `zsh` simply is not one.
+#   3. `lanes-edit.sh swapped <workstation>` — the lane this workstation last
+#      PAUSED for a swap and has not resumed since (the record, Amendment
+#      8(b)). Its first row is the most recent.
+#   4. nothing: exactly today's behaviour, plus one line saying how to take a
+#      lane in this window.
+#
+# 2 is certain — the operator is standing in the lane's own window — so it goes
+# to lane-start as `--yes`, as an explicit `--lane` does. 3 is a guess read
+# from a record written before the restart, so it goes as `--confirm` and
+# lane-start asks before it renames the window.
+#
+# Nothing here refuses a launch. Every probe that cannot be made — no
+# lane-start, no lanes-edit.sh, a lanes-edit.sh with no `swapped` yet, a
+# lane-start with no `--confirm` yet — falls back to 4.
+
+lanes_edit_bin() {
+  # Found the way lane-start is, and never as a path spelled for one
+  # workstation: on PATH, else beside the lane-start that IS on PATH (both are
+  # `lanes/` in opensoft/brett-wip), else the symlink the protocol names.
+  local candidate lane_start
+  candidate="${WORKBENCHES_LANES_EDIT_BIN:-$(command -v lanes-edit.sh 2>/dev/null || true)}"
+  if [[ -z "$candidate" ]]; then
+    lane_start="$(command -v lane-start 2>/dev/null || true)"
+    if [[ -n "$lane_start" ]]; then
+      candidate="$(dirname "$(readlink -f "$lane_start")")/lanes-edit.sh"
+    fi
+  fi
+  [[ -n "$candidate" ]] || candidate="$HOME/projects/xFactory/lanes-edit.sh"
+  [[ -x "$candidate" ]] || return 1
+  printf '%s\n' "$candidate"
+}
+
+capture_lane_window() {
+  # The lane's window is the one this was typed in, and its name is readable
+  # only HERE — before start_profile_tmux re-execs into a session tmux names
+  # after the command that made it. A child of that re-exec never asks tmux: it
+  # takes the name threaded across, which is empty when the launch did not come
+  # from a tmux window at all.
+  if [[ -n "${WORKBENCHES_CLAUDE_TMUX_CHILD:-}" ]]; then
+    lane_window="${WORKBENCHES_CLAUDE_WINDOW:-}"
+    return 0
+  fi
+  lane_window=""
+  [[ -n "${TMUX:-}" ]] || return 0
+  command -v tmux >/dev/null 2>&1 || return 0
+  lane_window="$(tmux display-message -p '#W' 2>/dev/null || true)"
+  return 0
+}
+
+lane_note_no_lane() {
+  echo "pclaude: no lane for this window; run lane-start <repo> <n> inside it" >&2
+}
+
+lane_start_supports() {
+  # `--confirm` and `--yes` arrive with the brett-wip half of Amendment 8.
+  # Until they do, a lane-start that has never heard of them must not be handed
+  # one, and its own --help is the only thing that can say.
+  local flag="$1"
+  if [[ -z "${lane_start_help+set}" ]]; then
+    lane_start_help="$(lane-start --help 2>/dev/null || true)"
+  fi
+  [[ "$lane_start_help" == *"$flag"* ]]
+}
+
+resolve_lane() {
+  # Sets `lane` and `lane_source` (flag|window|record, empty for none) from the
+  # Claude arguments this launch carries. Never fails, never refuses: a lane
+  # that cannot be resolved is today's behaviour.
+  local lanes_edit ws rows status candidate
+  local -a swapped_argv
+  if [[ -n "${lane:-}" ]]; then
+    lane_source=flag
+    return 0
+  fi
+  [[ "$no_lane" == false ]] || return 0
+  claude_args_start_session "$@" || return 0
+  # No lane estate on this machine: the whole feature is absent, and saying so
+  # on every launch would be noise.
+  command -v lane-start >/dev/null 2>&1 || return 0
+  lanes_edit="$(lanes_edit_bin || true)"
+  if [[ -z "$lanes_edit" ]]; then
+    lane_note_no_lane
+    return 0
+  fi
+
+  # LANES_NO_FETCH=1 on both reads: they are on the path of every launch, and
+  # lanes-edit.sh otherwise fetches origin before it answers. A row or a record
+  # this workstation wrote is in this workstation's own clone already, and a
+  # launcher must not sit on the network to open a terminal.
+  #
+  # Only 0 is a lane. `register-row` answers 8 for a name with no row and 2 for
+  # a window name that is not even lane-shaped (`zsh`, `1:vim*`).
+  if [[ -n "${lane_window:-}" ]] \
+    && LANES_NO_FETCH=1 "$lanes_edit" register-row "$lane_window" >/dev/null 2>&1; then
+    lane="$lane_window"
+    lane_source=window
+    return 0
+  fi
+
+  ws="${LANES_WORKSTATION:-$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)}"
+  swapped_argv=(swapped)
+  [[ -z "$ws" ]] || swapped_argv+=("$ws")
+  set +e
+  rows="$(LANES_NO_FETCH=1 "$lanes_edit" "${swapped_argv[@]}" 2>/dev/null)"
+  status=$?
+  set -e
+  # 0 with rows `<lane>\t<UTC>\t<window>`, most recent first; 8 with none; 2
+  # from a lanes-edit.sh that has no `swapped` subcommand yet.
+  if [[ "$status" -eq 0 && -n "$rows" ]]; then
+    candidate="$(printf '%s\n' "$rows" | head -n 1 | cut -f 1)"
+    if [[ "$candidate" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
+      lane="$candidate"
+      lane_source=record
+      return 0
+    fi
+  fi
+  lane_note_no_lane
+  return 0
+}
+
+# --lane / CLAUDE_LANE / --no-lane are recognised only as leading options,
+# before the action/profile — the first token that is not one of them ends this
+# loop and is left for the existing parsing below, so anything meant for Claude
+# itself (e.g. `claude-profile work --help`) is untouched.
 lane="${CLAUDE_LANE:-}"
+lane_source=""
+lane_window=""
+no_lane=false
+[[ -z "${CLAUDE_NO_LANE:-}" ]] || no_lane=true
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --lane)
       [[ $# -ge 2 ]] || { echo "pclaude: --lane needs a value: <repo>-<n>" >&2; exit 2; }
       lane="$2"; shift 2 ;;
     --lane=*) lane="${1#--lane=}"; shift ;;
+    --no-lane) no_lane=true; shift ;;
     -h|--help)
       cat <<'EOF'
 Usage: claude-profile {list|login|status|run} PROFILE [CLAUDE_ARGS...]
@@ -277,7 +429,7 @@ Actions:
                         "run" itself may be omitted: claude-profile PROFILE)
 
 Options:
-  --lane <repo>-<n>    opt-in: hand the final launch to
+  --lane <repo>-<n>    take this lane: hand the final launch to
                         `lane-start <repo>-<n> -- CLAUDE_ARGS` instead of
                         exec'ing Claude directly (also settable as
                         CLAUDE_LANE=<repo>-<n> in the environment).
@@ -286,14 +438,27 @@ Options:
                         with --resume/--name <lane> under this same profile.
                         Requires lane-start on PATH (opensoft/brett-wip,
                         lanes/, linked by that repo's scripts/link-estates).
-                        Without --lane/CLAUDE_LANE, behaviour is unchanged.
+  --no-lane            take no lane: exec Claude directly, whatever the
+                        window or the swap record says (also settable as
+                        CLAUDE_NO_LANE=1 in the environment). Wins over
+                        --lane/CLAUDE_LANE.
   -h, --help           show this help
+
+THE LANE DEFAULT (lane-collision-protocol Amendment 8(c)). With no --lane, a
+`run` that starts a conversation resolves the lane itself: the current tmux
+window's name when the lane register has a row for it (handed over as --yes),
+else the lane this workstation last paused for a swap and has not resumed
+since (handed over as --confirm, so lane-start asks before it takes the
+window). With neither, and with --no-lane, behaviour is unchanged.
 EOF
       exit 0
       ;;
     *) break ;;
   esac
 done
+if [[ "$no_lane" == true ]]; then
+  lane=""
+fi
 
 action="${1:-list}"
 if [[ "$action" == "list" || "$action" == "login" || "$action" == "status" || "$action" == "run" ]]; then
@@ -340,6 +505,7 @@ case "$action" in
             exit 2
           }
         fi
+        capture_lane_window
         if claude_run_is_interactive "$@"; then
           start_profile_tmux "$profile" "$@"
         fi
@@ -376,8 +542,26 @@ case "$action" in
           "$mcp_sync" sync-claude-profile "$family" "$config_dir/.claude.json"
           exit 0
         fi
+        resolve_lane "$@"
+        lane_argv=(lane-start)
         if [[ -n "${lane:-}" ]]; then
-          CLAUDE_CONFIG_DIR="$config_dir" CLAUDE_BIN="$claude_bin" exec lane-start "$lane" -- \
+          if [[ "$lane_source" == record ]]; then
+            # A lane read from the record is a guess about a window nobody has
+            # named yet, so lane-start must ask before it takes it — and a
+            # lane-start that cannot ask is not handed the guess at all.
+            if lane_start_supports --confirm; then
+              lane_argv+=(--confirm)
+            else
+              echo "pclaude: $lane is the lane this workstation last paused for a swap, but this lane-start cannot ask before it takes a window (no --confirm); leaving it." >&2
+              lane=""
+              lane_note_no_lane
+            fi
+          elif lane_start_supports --yes; then
+            lane_argv+=(--yes)
+          fi
+        fi
+        if [[ -n "${lane:-}" ]]; then
+          CLAUDE_CONFIG_DIR="$config_dir" CLAUDE_BIN="$claude_bin" exec "${lane_argv[@]}" "$lane" -- \
             --allow-dangerously-skip-permissions \
             --dangerously-skip-permissions \
             --permission-mode bypassPermissions \

@@ -154,15 +154,34 @@ commands such as `mcp`, `doctor`, `--help`, `--version`, and `--print` remain
 direct, and a `pclaude` command run inside an existing tmux session reuses it.
 
 Pass `--lane <repo>-<n>` (or set `CLAUDE_LANE=<repo>-<n>` in the environment)
-to hand the launch to `lane-start` instead of exec'ing Claude directly —
-opt-in, and off by default; without it `pclaude`/`claude-profile` behave
-exactly as described above. `lane-start` (from `opensoft/brett-wip`'s
-`lanes/`, put on `PATH` by that repository's `scripts/link-estates`) renames
-the current tmux window to the lane, records the lane in the lane register,
-and starts this same Claude binary under this same profile with
-`--resume`/`--name <lane>` as appropriate. Naming a lane while `lane-start`
-is not on `PATH` refuses with the fix instead of launching an unnamed
-session. See `claude-profile --help` for the exact option.
+to hand the launch to `lane-start` instead of exec'ing Claude directly.
+`lane-start` (from `opensoft/brett-wip`'s `lanes/`, put on `PATH` by that
+repository's `scripts/link-estates`) renames the current tmux window to the
+lane, records the lane in the lane register, and starts this same Claude
+binary under this same profile with `--resume`/`--name <lane>` as appropriate.
+Naming a lane while `lane-start` is not on `PATH` refuses with the fix instead
+of launching an unnamed session.
+
+Since lane-collision-protocol Amendment 8(c) the lane is also the default: a
+`run` that starts a conversation and names no lane resolves one itself. First
+the current tmux window's name, when `lanes-edit.sh register-row` says the
+register has a row for it — handed to `lane-start` as `--yes`, because the
+operator is standing in the lane's own window. Failing that, the lane this
+workstation last paused for a swap and has not resumed since
+(`lanes-edit.sh swapped <workstation>`, first row) — handed over as
+`--confirm`, so `lane-start` asks before it takes the window. The window name
+is read before the tmux re-exec and carried across it, since the new session's
+window is named for the command that made it rather than for a lane. Both
+register reads are made with `LANES_NO_FETCH=1`, so a launch never waits on the
+network.
+
+With neither, the launch is exactly as described above plus one line saying how
+to take a lane in this window. `--no-lane` (or `CLAUDE_NO_LANE=1`) opts out of
+the resolution entirely and wins over `--lane`; a machine with no `lane-start`
+on `PATH` has no lane estate and is neither asked nor told anything. Nothing in
+the resolution can refuse a launch: a `lanes-edit.sh` with no `swapped`
+subcommand, or a `lane-start` with no `--confirm`, falls back to the
+unchanged behaviour. See `claude-profile --help` for the exact options.
 
 Profile launches default to
 `xhigh` effort and always start Claude with `bypassPermissions` plus
