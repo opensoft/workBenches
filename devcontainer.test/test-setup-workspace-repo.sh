@@ -31,6 +31,8 @@
 #               surfaced, not swallowed -- through this step AND through
 #               setup.sh's own best-effort caller pattern
 #   (e1-e3)     ordering relative to `--install`, behavioural and static
+#   (e4)        the SETUP COMPLETE marker reminder cannot be skipped by the
+#               BUILD_FAILED exit path, statically (RV-W7)
 #   (f)         the prompt count, which is zero, proven two ways
 #   (g)         the skip switch
 #   (h1-h5)     the derivations: nothing derivable is ever asked
@@ -592,7 +594,8 @@ elif [ "$estate_line" -lt "$workspace_line" ]; then
 else
     fail "(e3) setup.sh calls the workspace step (line $workspace_line) BEFORE the estate commands (line $estate_line)"
 fi
-assert_contains "$(cat "$SETUP_SH")" 'log_header "WORKSPACE REPOSITORY"' '(e3) it has its own log_header block'
+assert_contains "$(cat "$SETUP_SH")" 'run_logged "WORKSPACE REPOSITORY"' \
+    '(e3) it runs through run_logged (RV-W6), so its own output reaches $LOG_FILE too, not just the header banner'
 if [ -n "$estate_line" ] && [ -n "$workspace_line" ] && [ "$estate_line" -lt "$workspace_line" ]; then
     assert_contains "$(sed -n "${workspace_line}p" "$SETUP_SH")" '||' '(e3) the workspace step is best-effort in setup.sh, like the estate step'
     # And nothing between them: the chain order of Amendment 9(e) is meant to be
@@ -600,6 +603,24 @@ if [ -n "$estate_line" ] && [ -n "$workspace_line" ] && [ "$estate_line" -lt "$w
     between="$(sed -n "$((estate_line + 1)),$((workspace_line - 1))p" "$SETUP_SH" \
         | grep 'SCRIPT_DIR}/scripts/' | grep -cv 'setup-workspace-repo.sh' || true)"
     assert_equal "$between" '0' '(e3) no other script runs between --install and wip init'
+fi
+
+printf '%s\n' '--- (e4) RV-W7: the SETUP COMPLETE marker reminder cannot be skipped by the BUILD_FAILED exit path ---'
+# setup.sh exits 1 at the BUILD_FAILED check, before the line that used to
+# print this reminder -- so a host whose first-run Layer 1 build fails would
+# never see it, even though the marker file exists. The fix moves the marker
+# check above that exit; this asserts it statically so the ordering cannot
+# regress silently.
+marker_line="$(grep -n 'workspace_repo_marker=' "$SETUP_SH" | head -n 1 | cut -d: -f1 || true)"
+build_failed_line="$(grep -n 'if \[ "\$BUILD_FAILED" = true \]; then' "$SETUP_SH" | head -n 1 | cut -d: -f1 || true)"
+if [ -z "$marker_line" ]; then
+    fail "(e4) setup.sh no longer names the workspace_repo_marker variable at all"
+elif [ -z "$build_failed_line" ]; then
+    fail "(e4) setup.sh no longer has a BUILD_FAILED exit check"
+elif [ "$marker_line" -lt "$build_failed_line" ]; then
+    pass "(e4) the marker check (line $marker_line) runs before the BUILD_FAILED exit (line $build_failed_line)"
+else
+    fail "(e4) the marker check (line $marker_line) is only reachable AFTER the BUILD_FAILED exit (line $build_failed_line) -- it can be skipped"
 fi
 
 # ===========================================================================

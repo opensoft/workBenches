@@ -195,9 +195,18 @@ fi
 # every host-user step here: it never fails setup.sh, and an openRepoTools with
 # no `wip` subcommand yet prints what to run instead of refusing.
 # WORKBENCHES_SKIP_WORKSPACE_REPO=1 skips it.
-log_header "WORKSPACE REPOSITORY"
+#
+# Run through run_logged (RV-W6), not a bare invocation: this step relays
+# `openRepoTools wip init`'s own stdout/stderr rather than summarising it (see
+# its own header), so those bytes are this step's only account of an
+# administrator block or a refusal. A bare invocation sends them to the
+# terminal only -- log_header alone writes just the banner/timestamp lines --
+# so the SETUP COMPLETE hint below (`grep -n "WORKSPACE REPOSITORY"
+# "$LOG_FILE"`) would find that banner and nothing else. run_logged both
+# writes the "WORKSPACE REPOSITORY" header AND tees the step's own output into
+# $LOG_FILE, so the hint finds the real content.
 if [ -x "${SCRIPT_DIR}/scripts/setup-workspace-repo.sh" ]; then
-    "${SCRIPT_DIR}/scripts/setup-workspace-repo.sh" || echo "⚠ Workspace repository step skipped or refused; continuing workBenches setup."
+    run_logged "WORKSPACE REPOSITORY" "${SCRIPT_DIR}/scripts/setup-workspace-repo.sh" || echo "⚠ Workspace repository step skipped or refused; continuing workBenches setup."
     echo ""
 fi
 
@@ -302,14 +311,6 @@ fi
 log_header "SETUP COMPLETE"
 
 echo ""
-if [ "$BUILD_FAILED" = true ]; then
-    echo "✗ One or more Layer 1 builds failed."
-    echo "  Full log: $LOG_FILE"
-    exit 1
-else
-    echo "✓ Setup complete."
-fi
-echo "  Log saved to: $LOG_FILE"
 
 # The workspace repository step (above) relays `openRepoTools wip init`'s own
 # output byte for byte rather than summarising it, which is right for that
@@ -318,7 +319,21 @@ echo "  Log saved to: $LOG_FILE"
 # before a person ever reads this far. It leaves a marker file behind on
 # anything but a clean run; surface it here, at the one place a person is
 # still looking, rather than let it go unmentioned.
+#
+# RV-W7: checked BEFORE the BUILD_FAILED exit below, not after. A first-run
+# Docker/Layer-1 build failure exits this script at that check, and a marker
+# check placed after it would never run on that path -- silently dropping the
+# one reminder a person most needs when the run did not go cleanly end to end.
 workspace_repo_marker="${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/.workspace-step-needs-attention"
 if [ -e "$workspace_repo_marker" ]; then
     echo "⚠ Workspace repository step needs attention: grep -n \"WORKSPACE REPOSITORY\" \"$LOG_FILE\""
 fi
+
+if [ "$BUILD_FAILED" = true ]; then
+    echo "✗ One or more Layer 1 builds failed."
+    echo "  Full log: $LOG_FILE"
+    exit 1
+else
+    echo "✓ Setup complete."
+fi
+echo "  Log saved to: $LOG_FILE"
