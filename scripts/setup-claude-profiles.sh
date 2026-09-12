@@ -174,6 +174,21 @@ fi
 default_statusline_relative="$(realpath -m --relative-to="$default_claude_dir" "$base/shared/statusline-command.sh")"
 ln -sfn "$default_statusline_relative" "$default_statusline"
 
+# Skills vendored by this repository, installed into the SHARED skills
+# directory every profile's `skills` symlink points at (created above, linked
+# per profile below). claude-profile execs Claude with
+# CLAUDE_CONFIG_DIR=<profile dir>, so ~/.claude/skills is NOT read under the
+# launcher and the shared directory is the one write that reaches all of them
+# (lane-collision-protocol Amendment 8(a), A8 Addendum 2 R-A8-5(a)). The
+# ~/.claude copy stays for a bare `claude` run outside the launcher.
+for skill in lane-swap; do
+  skill_source="$repo_dir/base-image/files/claude/skills/$skill/SKILL.md"
+  [[ -f "$skill_source" ]] || continue
+  mkdir -p "$base/shared/skills/$skill" "$default_claude_dir/skills/$skill"
+  install -m 0644 "$skill_source" "$base/shared/skills/$skill/SKILL.md"
+  install -m 0644 "$skill_source" "$default_claude_dir/skills/$skill/SKILL.md"
+done
+
 default_settings="$default_claude_dir/settings.json"
 if [[ -e "$default_settings" ]] && ! jq -e 'type == "object"' "$default_settings" >/dev/null 2>&1; then
   echo "Claude default settings are not valid JSON: $default_settings" >&2

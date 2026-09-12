@@ -5,9 +5,41 @@ manifest="${CLAUDE_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenc
 base="${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}"
 command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
 
+# lane-collision-protocol Amendment 8(e), as ruled by A8 Addendum 2 R-A8-5(b).
+# Claude reads THIS launcher's per-profile config dir (every exec below carries
+# CLAUDE_CONFIG_DIR="$config_dir"), so a SessionStart hook installed in
+# ~/.claude/settings.json is never read under `pclaude run` and the entry has
+# to be ensured in the profile's own settings instead. The command is clause
+# (e)'s, with `|| true` added so a lanes-edit.sh that has no `session-start`
+# subcommand yet cannot take a session start down with it, and clause (e)'s own
+# `timeout` so the read is bounded however slow the checkout is. The tilde is
+# the harness's to expand; `lane_session_start_script` is the same path again
+# for this script's own test of whether the lane estate is installed at all.
+lane_session_start_script="$HOME/projects/xFactory/lanes-edit.sh"
+lane_session_start_command='~/projects/xFactory/lanes-edit.sh session-start || true'
+lane_session_start_matcher='startup|resume|clear|fork'
+lane_session_start_timeout=5
+
+# Ensuring it is an append, matched by the EXACT command string: an entry that
+# already carries it is left exactly as it is — wherever it sits, whatever
+# matcher it shares, whatever else the operator put beside it — and nothing
+# else under .hooks is touched. Reused verbatim by both branches below.
+lane_session_start_jq='
+      .hooks = (.hooks // {})
+      | .hooks.SessionStart = (
+          (.hooks.SessionStart // []) as $entries
+          | if ([$entries[]? | (.hooks // [])[]? | .command] | index($session_start))
+            then $entries
+            else $entries + [{
+              matcher: $session_start_matcher,
+              hooks: [{type: "command", command: $session_start, timeout: $session_start_timeout}]
+            }]
+            end
+        )'
+
 configure_profile_runtime() {
   local config_dir="$1" statusline_source statusline_link settings settings_tmp statusline_command default_model
-  local guard_source guard_link guard_command guard_ok
+  local guard_source guard_link guard_command guard_ok session_start_ok
 
   statusline_source="$base/shared/statusline-command.sh"
   if [[ ! -f "$statusline_source" && -f /usr/local/share/workbenches/claude/statusline-command.sh ]]; then
@@ -38,6 +70,13 @@ configure_profile_runtime() {
     guard_ok=true
   fi
 
+  # The SessionStart hook is ensured only where the lane estate it calls is
+  # actually installed: on a machine without one the entry would spawn a
+  # process per session start to say nothing. A later install is picked up by
+  # the next run, because this runs on every one.
+  session_start_ok=false
+  [[ -e "$lane_session_start_script" ]] && session_start_ok=true
+
   settings="$config_dir/settings.json"
   if [[ -e "$settings" ]] && ! jq -e 'type == "object"' "$settings" >/dev/null 2>&1; then
     echo "Claude profile settings are not valid JSON: $settings" >&2
@@ -50,7 +89,11 @@ configure_profile_runtime() {
   settings_tmp="$(mktemp "$config_dir/.settings.XXXXXX.tmp")"
   if [[ -f "$settings" ]]; then
     jq --arg command "$statusline_command" --arg model "$default_model" \
-       --arg guard "$guard_command" --argjson guard_ok "$guard_ok" '
+       --arg guard "$guard_command" --argjson guard_ok "$guard_ok" \
+       --arg session_start "$lane_session_start_command" \
+       --arg session_start_matcher "$lane_session_start_matcher" \
+       --argjson session_start_timeout "$lane_session_start_timeout" \
+       --argjson session_start_ok "$session_start_ok" '
       .statusLine = {type: "command", command: $command, refreshInterval: 10}
       | .permissions = (.permissions // {})
       | .permissions.defaultMode = "bypassPermissions"
@@ -60,10 +103,15 @@ configure_profile_runtime() {
             .hooks = (.hooks // {})
             | .hooks.UserPromptSubmit = [{hooks: [{type: "command", command: $guard, timeout: 5}]}]
          else . end)
+      | (if $session_start_ok then'"$lane_session_start_jq"' else . end)
     ' "$settings" > "$settings_tmp"
   else
     jq -n --arg command "$statusline_command" --arg model "$default_model" \
-       --arg guard "$guard_command" --argjson guard_ok "$guard_ok" '{
+       --arg guard "$guard_command" --argjson guard_ok "$guard_ok" \
+       --arg session_start "$lane_session_start_command" \
+       --arg session_start_matcher "$lane_session_start_matcher" \
+       --argjson session_start_timeout "$lane_session_start_timeout" \
+       --argjson session_start_ok "$session_start_ok" '{
       statusLine: {type: "command", command: $command, refreshInterval: 10},
       permissions: {defaultMode: "bypassPermissions"},
       effortLevel: "xhigh",
@@ -71,7 +119,8 @@ configure_profile_runtime() {
     }
     | (if $guard_ok then
           .hooks = {UserPromptSubmit: [{hooks: [{type: "command", command: $guard, timeout: 5}]}]}
-       else . end)' > "$settings_tmp"
+       else . end)
+    | (if $session_start_ok then'"$lane_session_start_jq"' else . end)' > "$settings_tmp"
   fi
   chmod 600 "$settings_tmp"
   mv -f "$settings_tmp" "$settings"
