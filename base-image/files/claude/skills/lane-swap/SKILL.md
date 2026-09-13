@@ -226,9 +226,21 @@ fi
 # record's fields from its free text and a row stamp's facts from each other, so the parser could not read
 # the line back (Amendment 8(b)'s refusal, extended to `dir` by Amendment 11, SPEC §5). Drop the sub-field,
 # keep the line — the PAUSED line is what the launcher restarts from — and report what was dropped.
+#
+# AND `dir` ALSO REFUSES `; ` — SPEC rev 6 §5. `; ` is the separator BETWEEN payload sub-fields, so
+# `dir /a; b` reads back as a `dir` of `/a` followed by a sub-field `b` no reader knows: the same lost fact
+# one level down that `, ` causes one level up. `profile` takes the same rule and needs no token for it —
+# its shape check below is `^[A-Za-z0-9._-]+$`, which admits neither `;` nor a space, so a name carrying
+# either is already omitted rather than written.
+#
+# `window` IS NOT WIDENED, and that is the ruling rather than an oversight (SPEC rev 6 §5): its list is
+# Amendment 8(b)'s, narrowing it would be a SEVENTH edit to in-force text where the ratified count is six
+# (`R-A11-15`), and a `window` value is a launcher-built session name, an index and an `<@id>`. The residue
+# is named rather than hidden: a tmux session name containing `; ` would split the payload the same way, and
+# that is A8(b)'s list to widen on the day something can produce such a name.
 refused=""
 case "$win" in *', '*|*' — '*) refused="$refused window=$win"; win="" ;; esac
-case "$dir" in *', '*|*' — '*|*'"'*) refused="$refused dir=$dir"; dir="" ;; esac
+case "$dir" in *', '*|*' — '*|*'; '*|*'"'*) refused="$refused dir=$dir"; dir="" ;; esac
 # A SPACE IS QUOTED, NOT REFUSED (SPEC §5). Amendment 7(b) makes the space the separator between several
 # refs inside one sub-field — which is exactly what `window`'s two refs rely on — so an unquoted
 # `dir /home/b/my projects/x` parses as two refs and every reader hands back a truncated path. Quoting makes

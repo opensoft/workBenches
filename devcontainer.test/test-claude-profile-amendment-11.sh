@@ -2146,6 +2146,21 @@ grep -Fq 'case "$dir" in *'"'"' '"'"'*) dir=' "$SKILL_MD" \
     || fail "§5/R-A11-6: a dir sub-field containing a space is not quoted"; assertion
 grep -q 'case "\$dir" in .*'"'"', '"'"'.*'"'"' — '"'"'.*refused' "$SKILL_MD" \
     || fail "§5: a dir sub-field containing ', ' or ' -- ' is not refused"; assertion
+# ...and `; ` joins that list for `dir`, SPEC rev 6 §5: it is the separator
+# BETWEEN payload sub-fields, so `dir /a; b` reads back as a dir of `/a`
+# followed by a sub-field no reader knows.
+grep -Fq "case \"\$dir\" in *', '*|*' — '*|*'; '*" "$SKILL_MD" \
+    || fail "§5 (rev 6): a dir sub-field containing '; ' is not refused, so it splits the payload one level down"; assertion
+# ...and `window` is NOT widened. Narrowing it would be a SEVENTH edit to
+# in-force text where the ratified count is six (R-A11-15), spent on a case the
+# estate cannot produce: a window value is a launcher-built session name, an
+# index and an <@id>. Pinned so a later pass does not "fix" it for symmetry.
+grep -Fq "case \"\$win\" in *', '*|*' — '*|*'; '*" "$SKILL_MD" \
+    && fail "§5 (rev 6): the window refusal was widened to '; ', which is A8(b)'s list and a seventh in-force edit"; assertion
+# ...and `profile` needs no token, because its shape check already admits
+# neither `;` nor a space.
+grep -Fq 'profile_name" =~ ^[A-Za-z0-9._-]+$' "$SKILL_MD" \
+    || fail "§5 (rev 6): the profile sub-field is not shape-checked, so '; ' can reach the payload through it"; assertion
 
 # SPEC §7 — the uuid is SUPPLIED, not left for session_for() to substitute.
 grep -Fq 'LANES_SESSION="$uuid"' "$SKILL_MD" \

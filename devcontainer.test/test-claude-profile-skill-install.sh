@@ -53,7 +53,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=14
+EXPECTED_SCENARIOS=15
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -527,10 +527,65 @@ env HOME="$MIRROR_HOME" \
     || fail "missing source: something was installed from a source that does not exist"; assertion
 [[ ! -e "$MIRROR_DEFAULT_CLAUDE/commands/swap.md" ]] \
     || fail "missing source: something was installed into ~/.claude from a source that does not exist"; assertion
+# ...and the usage guard added in this round takes the same contract. It is an
+# `install`, not a loop, so it needed its own `[[ -f ]]` — and this scenario is
+# what said so: the first version of that line exited 1 here.
+[[ ! -e "$MIRROR_BASE/shared/usage-guard.sh" ]] \
+    || fail "missing source: the usage guard was installed from a source that does not exist"; assertion
 # ... and the run really did the REST of its work, so the pass above is a skip
 # and not an early exit that happened to return 0.
 cmp -s "$SKILL_SOURCE" "$MIRROR_BASE/shared/skills/lane-swap/SKILL.md" \
     || fail "missing source: the run did not get as far as the skill, so the 'skip' proves nothing"; assertion
+
+# ---------------------------------------------------------------------------
+# 13b. THE USAGE GUARD REACHES A PRODUCTION PATH, SO `guard_ok` IS TRUE AND
+# CLAUSE (g) IS NOT INERT — round-3 confirmation review 5192133162,
+# non-blocking 5.
+#
+# `configure_profile_runtime` looks for the guard at `$base/shared/usage-guard.sh`
+# and then at `/usr/local/share/workbenches/claude/usage-guard.sh`, and where it
+# finds NEITHER it sets `guard_ok=false` and writes no `UserPromptSubmit` entry
+# at all — so the hook never runs and Amendment 11(4)'s automatic swap, which is
+# RATIFIED, is dead on every host. Nothing in this repository put the file in
+# either place: `setup-claude-profiles.sh` installed the statusline into the
+# shared directory and `base-image/Dockerfile:184` copied the statusline into the
+# share directory, and `base-image/files/claude-usage-guard.sh` had no equivalent
+# in either. That is PRE-EXISTING on `main` and not this PR's regression, but
+# this is the PR that makes the guard load-bearing, so the host half is wired
+# here. (The container half is the Dockerfile's and is named in the PR body.)
+#
+# The assertion that matters is the LAST one: not that a file was copied, but
+# that the launcher, reading the same tree, writes the hook. A test that only
+# checked the copy would pass on a path the launcher does not look at.
+scenario
+GUARD_SOURCE="$REPO_ROOT/base-image/files/claude-usage-guard.sh"
+SHARED_GUARD="$BASE/shared/usage-guard.sh"
+[[ -f "$SHARED_GUARD" ]] \
+    || fail "guard: nothing at $SHARED_GUARD, so configure_profile_runtime sets guard_ok=false and the automatic swap never runs"; assertion
+cmp -s "$GUARD_SOURCE" "$SHARED_GUARD" \
+    || fail "guard: the shared copy is not the vendored file"; assertion
+[[ "$(stat -c '%a' "$SHARED_GUARD")" == 755 ]] \
+    || fail "guard: the shared copy is mode $(stat -c '%a' "$SHARED_GUARD"), not 755"; assertion
+# ...and it is the path the LAUNCHER looks at, taken from the launcher itself
+# rather than restated here — two spellings of one path is the whole defect.
+grep -Fq 'guard_source="$base/shared/usage-guard.sh"' "$REPO_ROOT/base-image/files/claude-profile" \
+    || fail "guard: the launcher no longer looks where setup installs, so this copy reaches nothing"; assertion
+# ...and END TO END: the real launcher, over the tree setup just wrote, writes
+# the UserPromptSubmit entry into the profile's own settings.json.
+GUARD_BIN="$TEST_ROOT/guard-bin"
+mkdir -p "$GUARD_BIN"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$GUARD_BIN/claude"
+chmod +x "$GUARD_BIN/claude"
+env HOME="$FAKE_HOME" XDG_CONFIG_HOME="$FAKE_HOME/.config" \
+    CLAUDE_PROFILES_HOME="$BASE" CLAUDE_PROFILES_MANIFEST="$MANIFEST" \
+    CLAUDE_BIN="$GUARD_BIN/claude" WORKBENCHES_SHARED_MCP_FAMILIES=disabled \
+    "$REPO_ROOT/base-image/files/claude-profile" status team002 >/dev/null 2>&1
+guard_hook="$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].command // empty' \
+    "$PROFILE_DIR/settings.json" 2>/dev/null || true)"
+[[ "$guard_hook" == 'bash "${CLAUDE_CONFIG_DIR}/usage-guard.sh"' ]] \
+    || fail "guard: the launcher wrote no UserPromptSubmit entry ('$guard_hook'), so the ratified automatic swap is wired by nobody"; assertion
+cmp -s "$GUARD_SOURCE" "$PROFILE_DIR/usage-guard.sh" \
+    || fail "guard: the profile's usage-guard.sh does not resolve to the vendored guard"; assertion
 
 # ---------------------------------------------------------------------------
 # 14. The alias file's own text. SPEC §9 rules that the canonical name stays

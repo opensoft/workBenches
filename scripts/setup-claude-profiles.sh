@@ -148,6 +148,31 @@ while IFS= read -r family; do
 done < <(jq -r '[(.families[]?), .profiles[].family] | unique[]' "$manifest")
 install -m 0755 "$repo_dir/base-image/files/claude-statusline-command.sh" \
   "$base/shared/statusline-command.sh"
+# AND THE USAGE GUARD BESIDE IT — round-3 confirmation review 5192133162,
+# non-blocking 5. `claude-profile`'s configure_profile_runtime looks for the
+# guard at `$base/shared/usage-guard.sh` and then at
+# `/usr/local/share/workbenches/claude/usage-guard.sh`, and sets `guard_ok`
+# false when it finds neither — in which case the `UserPromptSubmit` entry is
+# not written and the hook never runs. Nothing in this repository put the file
+# in either place: the statusline is installed here and copied by
+# `base-image/Dockerfile:184`, and `base-image/files/claude-usage-guard.sh` had
+# no equivalent in either file (`grep -c 'claude-usage-guard'
+# base-image/Dockerfile` = 0). That is PRE-EXISTING on `main` and not this PR's
+# regression — but this is the PR that makes the guard load-bearing for a
+# RATIFIED decision (Amendment 11(4)'s automatic swap), and a ratified swap that
+# no profile ever wires is worth the one line that wires it.
+#
+# This is the HOST half. The container half is `base-image/Dockerfile`, which is
+# not in this PR's remit; the PR body names the line it owes.
+# A vendored source that is not there is SKIPPED rather than fatal, the same
+# `[[ -f ]] || continue` the two vendoring loops below carry and for the same
+# reason: this file runs on checkouts that predate the guard, and `set -euo
+# pipefail` at the top of it turns one unguarded read of a missing source into a
+# failed setup for every profile on the machine.
+if [[ -f "$repo_dir/base-image/files/claude-usage-guard.sh" ]]; then
+  install -m 0755 "$repo_dir/base-image/files/claude-usage-guard.sh" \
+    "$base/shared/usage-guard.sh"
+fi
 
 link_path() {
   local target="$1" link="$2"
@@ -216,9 +241,24 @@ done
 # alternative — the same reason Amendment 9(b) gives about two writers of one
 # file — which is why this loop installs a command and not a second skill.
 #
-# Same handover as the skills loop, and the same ruling (opensoft/workBenches#68,
-# F5): this loop STANDS until Amendment 9's adoption act 3 lands, and A9's act 4
-# deletes it. Until then the copy is idempotent BY CONTENT — a destination
+# THIS LOOP'S HANDOVER IS NOT THE SKILLS LOOP'S, and saying it was is the
+# correction here. An earlier revision read "A9's act 4 deletes it" unqualified,
+# copied from the loop above; that was measured wrong. `openRepoTools --install`
+# placed SKILLS and the SessionStart hook and NO COMMAND FILE, so deleting this
+# loop on act 4's word alone would have left `/swap` with no writer at all on
+# every host.
+#
+# What settles it is **A11 Addendum 4 ruling 9**, RATIFIED by Brett Heap
+# 2026-09-13T21:08:26Z, verbatim "a11 addendum 4 yes"
+# (brettheap/new-workstation#20 issuecomment-5656154524, rulings at
+# issuecomment-5656076583): `openRepoTools --install` TAKES `commands/swap.md`,
+# built in `opensoft/openRepoTools#26` round 2, "because workBenches#74 removes
+# the launcher's copy and `/swap` would otherwise be installed by nobody". So
+# this loop is TRANSITIONAL and its deletion is Amendment 9 act 4b's
+# (`opensoft/workBenches#74`), CONDITIONAL on `--install` placing the command
+# file first — not on act 3, and not on act 4 as this comment used to say.
+#
+# Until then the copy is idempotent BY CONTENT — a destination
 # already holding the vendored bytes is left alone, mtime and all, so a later
 # `openRepoTools --install` write of the same bytes is not clobbered by the next
 # setup run. A vendored source that is not there is skipped rather than failing:
