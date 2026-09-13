@@ -65,6 +65,16 @@ fail() {
     failures=$((failures + 1))
 }
 
+# PARAMETER ORDER IS (actual, expected), and every call site in this file
+# passes them that way. It did not always: at 58bd630 the declaration read
+# (actual, expected) while all nineteen direct call sites passed expected
+# first, so a failure printed `expected [2], got [0]` when it had got 2 and
+# wanted 0 -- exactly backwards, on the one line a person reads when something
+# breaks. That was recorded as F-4b.8 of this PR's adversarial review
+# (opensoft/workBenches#74, review 5192258766) as pre-existing; it is fixed
+# here because act 4b's own new assertions made the file carry BOTH orders at
+# once, which is worse than one wrong one. Only the labels changed: `=` is
+# symmetric, so no assertion's verdict moved.
 assert_equal() {
     local actual="$1"
     local expected="$2"
@@ -207,7 +217,7 @@ mkdir -p "$BIN_A"
 STATUS_A=0
 OUTPUT_A="$(OPENREPOSHAPE_BIN_DIR="$BIN_A" OPENREPOTOOLS_BIN_DIR="$BIN_A" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_A=$?
 
-assert_equal '0' "$STATUS_A" 'fresh install exit code'
+assert_equal "$STATUS_A" '0' 'fresh install exit code'
 assert_file_executable "$BIN_A/openRepoShape" 'fresh install places openRepoShape, executable'
 assert_file_executable "$BIN_A/openRepoTools" 'fresh install places openRepoTools, executable'
 assert_file_executable "$BIN_A/park" 'fresh install places park, executable'
@@ -267,13 +277,13 @@ assert_contains "$OUTPUT_A" 'Estate commands verified against the vendored pin.'
 # so the substring must appear exactly twice -- once per shim -- not three
 # times.
 path_warning_count="$(count_occurrences "$OUTPUT_A" 'is not on $PATH')"
-assert_equal '2' "$path_warning_count" 'exactly two PATH warnings (one per shim; this script prints no third copy)'
+assert_equal "$path_warning_count" '2' 'exactly two PATH warnings (one per shim; this script prints no third copy)'
 
 printf '%s\n' '--- Scenario (b): a second run over an already-installed bin dir reports unchanged ---'
 STATUS_B=0
 OUTPUT_B="$(OPENREPOSHAPE_BIN_DIR="$BIN_A" OPENREPOTOOLS_BIN_DIR="$BIN_A" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_B=$?
 
-assert_equal '0' "$STATUS_B" 'second run exit code'
+assert_equal "$STATUS_B" '0' 'second run exit code'
 assert_contains "$OUTPUT_B" 'openRepoShape: already installed at' 'second run reports openRepoShape unchanged'
 assert_contains "$OUTPUT_B" 'openRepoTools: already installed at' 'second run reports openRepoTools unchanged'
 assert_contains "$OUTPUT_B" 'park: already installed at' 'second run reports park unchanged'
@@ -295,7 +305,7 @@ printf '%s\n' '# a local edit, not the vendored bytes' >> "$BIN_A/park"
 STATUS_C=0
 OUTPUT_C="$(OPENREPOSHAPE_BIN_DIR="$BIN_A" OPENREPOTOOLS_BIN_DIR="$BIN_A" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_C=$?
 
-assert_equal '0' "$STATUS_C" 'updated-park run exit code'
+assert_equal "$STATUS_C" '0' 'updated-park run exit code'
 assert_contains "$OUTPUT_C" 'park: updated at' 'the locally-modified park is reported updated'
 assert_identical "$BIN_A/park" "$PARK_VENDOR" 'park is byte-identical to the vendored copy again after being updated'
 # The other three were untouched, so this run still reports them unchanged.
@@ -320,7 +330,7 @@ mkdir -p "$BIN_D"
 STATUS_D=0
 OUTPUT_D="$(OPENREPOSHAPE_BIN_DIR="$BIN_D" OPENREPOTOOLS_BIN_DIR="$BIN_D" WORKBENCHES_BASE_IMAGE_DIR="$CORRUPT_BASE" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_D=$?
 
-assert_equal '1' "$STATUS_D" 'corrupted vendor copy exit code'
+assert_equal "$STATUS_D" '1' 'corrupted vendor copy exit code'
 assert_contains "$OUTPUT_D" 'REFUSED' "the check's REFUSED finding is in the output"
 assert_contains "$OUTPUT_D" 'CHANGED' "the check's CHANGED finding is in the output"
 assert_contains "$OUTPUT_D" 'files/openrepotools/resume' 'the finding names the corrupted file'
@@ -332,7 +342,7 @@ mkdir -p "$BIN_E"
 STATUS_E=0
 OUTPUT_E="$(WORKBENCHES_SKIP_ESTATE_COMMANDS=1 OPENREPOSHAPE_BIN_DIR="$BIN_E" OPENREPOTOOLS_BIN_DIR="$BIN_E" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_E=$?
 
-assert_equal '0' "$STATUS_E" 'skip-var run exit code'
+assert_equal "$STATUS_E" '0' 'skip-var run exit code'
 assert_contains "$OUTPUT_E" 'skipped' 'skip-var run says skipped'
 assert_empty_dir "$BIN_E" 'skip-var run installs nothing'
 
@@ -347,11 +357,11 @@ ln -s "$OTHER_REPO_G/park" "$BIN_G/park"
 STATUS_G=0
 OUTPUT_G="$(OPENREPOSHAPE_BIN_DIR="$BIN_G" OPENREPOTOOLS_BIN_DIR="$BIN_G" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_G=$?
 
-assert_equal '1' "$STATUS_G" 'symlinked park target exit code'
+assert_equal "$STATUS_G" '1' 'symlinked park target exit code'
 assert_contains "$OUTPUT_G" "$BIN_G/park" 'the refusal names the symlinked path'
 assert_contains "$OUTPUT_G" 'symlink' 'the refusal says it is a symlink'
-assert_equal "$LINK_TARGET_BEFORE" "$(cat "$OTHER_REPO_G/park")" 'the symlink target file is byte-for-byte unchanged'
-assert_equal '1' "$(find "$BIN_G" -mindepth 1 | wc -l | tr -d ' ')" 'no other target was placed into the bin dir (only the pre-existing symlink remains)'
+assert_equal "$(cat "$OTHER_REPO_G/park")" "$LINK_TARGET_BEFORE" 'the symlink target file is byte-for-byte unchanged'
+assert_equal "$(find "$BIN_G" -mindepth 1 | wc -l | tr -d ' ')" '1' 'no other target was placed into the bin dir (only the pre-existing symlink remains)'
 
 printf '%s\n' '--- Scenario (h) [D2]: a directory target refuses, nothing is placed ---'
 BIN_H="$TMPDIR_ROOT/bin-h"
@@ -359,10 +369,10 @@ mkdir -p "$BIN_H/park"
 STATUS_H=0
 OUTPUT_H="$(OPENREPOSHAPE_BIN_DIR="$BIN_H" OPENREPOTOOLS_BIN_DIR="$BIN_H" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_H=$?
 
-assert_equal '1' "$STATUS_H" 'directory-target park exit code'
+assert_equal "$STATUS_H" '1' 'directory-target park exit code'
 assert_contains "$OUTPUT_H" "$BIN_H/park" 'the refusal names the directory path'
 assert_contains "$OUTPUT_H" 'not a regular file' 'the refusal says it is not a regular file'
-assert_equal '0' "$(find "$BIN_H/park" -mindepth 1 | wc -l | tr -d ' ')" 'nothing was copied into the directory standing in for park'
+assert_equal "$(find "$BIN_H/park" -mindepth 1 | wc -l | tr -d ' ')" '0' 'nothing was copied into the directory standing in for park'
 
 printf '%s\n' '--- Scenario (i) [D4 regression guard]: a read-only pre-seeded park refuses before ANY placement ---'
 BIN_I="$TMPDIR_ROOT/bin-i"
@@ -372,11 +382,11 @@ chmod 0444 "$BIN_I/park"
 STATUS_I=0
 OUTPUT_I="$(OPENREPOSHAPE_BIN_DIR="$BIN_I" OPENREPOTOOLS_BIN_DIR="$BIN_I" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_I=$?
 
-assert_equal '1' "$STATUS_I" 'read-only park exit code'
+assert_equal "$STATUS_I" '1' 'read-only park exit code'
 assert_contains "$OUTPUT_I" 'not writable' 'the refusal says park is not writable'
-assert_equal '0' "$([ -e "$BIN_I/openRepoShape" ] && echo 1 || echo 0)" 'openRepoShape was NOT placed (D4 regression guard)'
-assert_equal '0' "$([ -e "$BIN_I/openRepoTools" ] && echo 1 || echo 0)" 'openRepoTools was NOT placed (D4 regression guard)'
-assert_equal '0' "$([ -e "$BIN_I/resume" ] && echo 1 || echo 0)" 'resume was NOT placed (D4 regression guard)'
+assert_equal "$([ -e "$BIN_I/openRepoShape" ] && echo 1 || echo 0)" '0' 'openRepoShape was NOT placed (D4 regression guard)'
+assert_equal "$([ -e "$BIN_I/openRepoTools" ] && echo 1 || echo 0)" '0' 'openRepoTools was NOT placed (D4 regression guard)'
+assert_equal "$([ -e "$BIN_I/resume" ] && echo 1 || echo 0)" '0' 'resume was NOT placed (D4 regression guard)'
 chmod 0755 "$BIN_I/park"
 
 printf '%s\n' '--- Scenario (j): a base-image copy with upstream-pin.yaml deleted refuses with exit 2 ---'
@@ -389,7 +399,7 @@ mkdir -p "$BIN_J"
 STATUS_J=0
 OUTPUT_J="$(OPENREPOSHAPE_BIN_DIR="$BIN_J" OPENREPOTOOLS_BIN_DIR="$BIN_J" WORKBENCHES_BASE_IMAGE_DIR="$NOPIN_BASE" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_J=$?
 
-assert_equal '2' "$STATUS_J" 'missing pin file exit code'
+assert_equal "$STATUS_J" '2' 'missing pin file exit code'
 assert_contains "$OUTPUT_J" 'missing' 'the refusal says the pin is missing'
 assert_empty_dir "$BIN_J" 'missing-pin run installs nothing'
 
@@ -425,14 +435,14 @@ PYEOF
 rm -f "$NOROW_BASE/files/openrepotools/resume"
 NOROW_CHECK_STATUS=0
 python3 "$NOROW_BASE/update-upstream.py" check >"$TMPDIR_ROOT/norow-check.log" 2>&1 || NOROW_CHECK_STATUS=$?
-assert_equal '0' "$NOROW_CHECK_STATUS" "scenario (k) setup: 'check' passes on the row-and-file-removed copy (this is the D3 precondition)"
+assert_equal "$NOROW_CHECK_STATUS" '0' "scenario (k) setup: 'check' passes on the row-and-file-removed copy (this is the D3 precondition)"
 
 BIN_K="$TMPDIR_ROOT/bin-k"
 mkdir -p "$BIN_K"
 STATUS_K=0
 OUTPUT_K="$(OPENREPOSHAPE_BIN_DIR="$BIN_K" OPENREPOTOOLS_BIN_DIR="$BIN_K" WORKBENCHES_BASE_IMAGE_DIR="$NOROW_BASE" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_K=$?
 
-assert_equal '2' "$STATUS_K" 'row-and-file-removed resume exit code'
+assert_equal "$STATUS_K" '2' 'row-and-file-removed resume exit code'
 assert_contains "$OUTPUT_K" 'resume' 'the pre-flight refusal names resume'
 assert_empty_dir "$BIN_K" 'nothing was installed for the row-and-file-removed copy'
 assert_not_contains "$OUTPUT_K" 'fetch' 'the output contains no attempted-fetch line'
@@ -464,7 +474,7 @@ OUTPUT_M="$(OPENREPOSHAPE_REF='operator-branch' OPENREPOTOOLS_REF='operator-bran
     OPENREPOSHAPE_REPO='operator/fork' OPENREPOTOOLS_REPO='operator/fork' \
     OPENREPOSHAPE_BIN_DIR="$BIN_M" OPENREPOTOOLS_BIN_DIR="$BIN_M" \
     "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_M=$?
-assert_equal '0' "$STATUS_M" 'an operator-set REF/REPO does not change the happy-path exit code'
+assert_equal "$STATUS_M" '0' 'an operator-set REF/REPO does not change the happy-path exit code'
 assert_not_contains "$OUTPUT_M" 'operator-branch' "the operator's REF value never reaches the output"
 assert_not_contains "$OUTPUT_M" 'operator/fork' "the operator's REPO value never reaches the output"
 assert_identical "$BIN_M/resume" "$RESUME_VENDOR" 'resume is still placed correctly from the vendored copy, not fetched'
@@ -506,10 +516,6 @@ printf '%s\n' '--- Scenario (n): every entry of all four install-target lists is
 # ADDED to the script without being added here fails the count. Growing a
 # list is therefore exactly two edits -- the script, and the array below --
 # and never one.
-#
-# (assert_equal's parameters are declared (actual, expected). The calls in
-# this scenario pass them in that order, so a failure here prints the two
-# labels the right way round.)
 
 # The missing-file pre-flight is a `for f in "$VAR" ...` list, and most of
 # those same "$VAR" spellings occur AGAIN further down the script as
