@@ -155,8 +155,9 @@ direct, and a `pclaude` command run inside an existing tmux session reuses it.
 
 Pass `--lane <repo>-<n>` (or set `CLAUDE_LANE=<repo>-<n>` in the environment)
 to hand the launch to `lane-start` instead of exec'ing Claude directly.
-`lane-start` (from `opensoft/brett-wip`'s `lanes/`, put on `PATH` by that
-repository's `scripts/link-estates`) renames the current tmux window to the
+`lane-start` (from `opensoft/openRepoTools`, placed on `PATH` by
+`openRepoTools --install`, which workBenches' own `./setup.sh` runs — lane-collision-protocol
+Amendment 9(b)) renames the current tmux window to the
 lane, records the lane in the lane register, and starts this same Claude
 binary under this same profile with `--resume`/`--name <lane>` as appropriate.
 Naming a lane while `lane-start` is not on `PATH` refuses with the fix instead
@@ -219,34 +220,41 @@ this launcher at all. Two consequences, both of which this launcher and
   next launch, because the ensure runs on every one. Any installer that wants a
   hook to fire for profile launches should write it into the profile
   `settings.json` files the same way, not into `~/.claude/settings.json`.
-- **Skills belong in the shared skills directory.** Every profile's `skills` is
-  a symlink to `~/.claude-profiles/shared/skills`, so one write there is
-  visible to every profile at once. `scripts/setup-claude-profiles.sh` installs
-  this repository's vendored skills — currently `/lane-swap`, from
-  `base-image/files/claude/skills/` — into that directory and into
-  `~/.claude/skills` for a bare `claude` outside the launcher. The copy is
-  idempotent by content: a destination already holding the vendored bytes is
-  left untouched.
-- **The bare-`claude` path gets the hook too, from a second writer of the same
-  entry.** `claude-profile` only ever ensures the `SessionStart` entry in the
-  profile it is about to exec into, so a bare `claude` run — the one case
-  `~/.claude/settings.json` exists for — used to get the skill above and
-  nothing else. `scripts/setup-claude-profiles.sh` now ensures the identical
-  entry (same command string, same `"matcher": "startup|resume|clear|fork"`,
-  same `"timeout": 5`, same exact-string idempotence, additive beside every
-  other hook kind) into `~/.claude/settings.json` on every setup run, gated on
-  the same estate probe. The command string is the idempotence key for *both*
-  writers of *both* files; change it in one and the other goes stale.
+- **Skills belong in the shared skills directory, and `openRepoTools --install`
+  is the one thing that writes them.** Every profile's `skills` is a symlink to
+  `~/.claude-profiles/shared/skills`, so one write there is visible to every
+  profile at once. `--install` places `/lane-swap` at
+  `${CLAUDE_PROFILES_HOME:-~/.claude-profiles}/shared/skills/lane-swap/SKILL.md`
+  and a copy at `~/.claude/skills/lane-swap/SKILL.md` for a bare `claude`
+  outside the launcher, both at 0644, idempotently and byte-compared.
+  `scripts/setup-claude-profiles.sh` used to install that skill from its own
+  vendored copy; lane-collision-protocol Amendment 9's adoption act 4b deleted
+  that loop and the copy with it, because two installers of one file is a
+  defect no exact-match idempotence can resolve. This script still creates the
+  shared directory and still links each profile at it.
+- **The bare-`claude` hook entry is `--install`'s too, and there is no second
+  writer of it.** `claude-profile` ensures the `SessionStart` entry only in the
+  profile it is about to exec into; `~/.claude/settings.json` — the one file a
+  bare `claude` run reads — is merged by `openRepoTools --install`, which adds
+  exactly one entry, by exact-string match on the command, additive beside
+  every other hook kind, and writes the file back at mode 600. It refuses
+  rather than repairing a file it cannot parse or an entry under `SessionStart`
+  whose command differs, and it computes the merge before it places anything,
+  so a merge it cannot compute costs a whole install rather than half of one.
+  Adoption act 4b deleted the ensure `scripts/setup-claude-profiles.sh` carried
+  for the same file. **One path, one writer, in both halves:** a profile's
+  `settings.json` is the launcher's, `~/.claude/settings.json` is
+  `--install`'s, and the two never write one file.
 
-**Live state, so this section is not mistaken for a live measurement.** Both
-writers above are gated on `~/projects/xFactory/lanes-edit.sh` having a
-`session-start` subcommand, and on `opensoft/brett-wip` `main` that subcommand
-does not exist yet — so today, correctly, neither writer ensures anything: no
-profile `settings.json` under `~/.claude-profiles/profiles/` carries a
-`SessionStart` hook, and `~/.claude/settings.json` only carries one where an
-operator hand-wrote it before this script could. This section describes what
-the code now does once the brett-wip half of Amendment 8 lands, not a
-measurement of any workstation today.
+**The command string is the idempotence key across all three places** —
+`~/projects/xFactory/lanes-edit.sh session-start || true`, with
+`"matcher": "startup|resume|clear|fork"` and `"timeout": 5` — byte for byte in
+the launcher's per-profile ensure, in `--install`'s merge, and in Amendment
+8(e) itself. A re-formatted quotation of a string whose only idempotence is
+exact match is a second string; change it in one place and the others go
+stale. Both writers are gated on `~/projects/xFactory/lanes-edit.sh` actually
+having the `session-start` subcommand, so on a host whose estate has not been
+repointed yet neither of them writes anything at all.
 
 Profile launches default to
 `xhigh` effort and always start Claude with `bypassPermissions` plus
