@@ -56,7 +56,7 @@ GUARD="${1:-$REPO_ROOT/base-image/files/claude-usage-guard.sh}"
 # guard look for a snapshot at a completely different path, finding nothing,
 # forever — see the CLAUDE_CONFIG_DIR MANGLING scenario below, which is the
 # one built to fail loudly if this line is ever removed.
-unset CLAUDE_CONFIG_DIR CLAUDE_PROFILE_NAME TMUX 2>/dev/null || true
+unset CLAUDE_CONFIG_DIR CLAUDE_PROFILE_NAME TMUX WORKBENCHES_CLAUDE_LANE 2>/dev/null || true
 
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
@@ -71,7 +71,7 @@ fail() {
 # pinned, as in test-claude-profile-lane-default.sh, so a scenario silently
 # dropped (or a run that quietly stopped happening) fails the suite instead of
 # just shrinking a number nobody reads.
-EXPECTED_SCENARIOS=17
+EXPECTED_SCENARIOS=22
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -195,6 +195,15 @@ chmod +x "$FAKE_BIN/claude-usage" "$FAKE_BIN/lanes-edit.sh" "$FAKE_BIN/lane-star
 # suite must not be reachable from inside a guard invocation.
 common_env=(
     "PATH=$FAKE_BIN:/usr/bin:/bin"
+    # THE SESSION HOLDS A LANE unless a scenario says otherwise. SPEC §9 (A11
+    # Addendum 1 `R-A11-6`, on the review's F14) fences the automatic-swap
+    # DIRECTIVE to a session that holds one, and `WORKBENCHES_CLAUDE_LANE` is
+    # the fence: claude-profile exports it only after lane-start took the lane
+    # and unsets it again where lane-start declined. The directive is the
+    # ordinary case for this suite, so it is the default here, and the
+    # scenarios about the fence itself override it with an empty value — which
+    # is exactly what a bare `claude` in an armed checkout carries.
+    "WORKBENCHES_CLAUDE_LANE=swaptest-1"
     "SHELLOUT_CLAUDE_USAGE_LOG=$SHELLOUT_CLAUDE_USAGE_LOG"
     "SHELLOUT_LANES_EDIT_LOG=$SHELLOUT_LANES_EDIT_LOG"
     "SHELLOUT_LANE_START_LOG=$SHELLOUT_LANE_START_LOG"
@@ -546,6 +555,88 @@ grep -qF 'named no session' <<<"$guard_out" \
     || fail "nosession: it does not say WHY the automatic swap is not directed here (out=[$guard_out])"; assertion
 [[ "$guard_status" -eq 0 ]] \
     || fail "nosession: exited $guard_status instead of 0"; assertion
+
+# ---------------------------------------------------------------------------
+# 18. THE LANE FENCE — SPEC §9, `R-A11-6` on the review's F14. THIS IS THE
+# CONTRACT POINT OF THIS ROUND. The guard is a UserPromptSubmit hook wired for
+# EVERY profile and armed per DIRECTORY, and clause (g) has lane-start arm the
+# lane's own checkout — so a bare `claude`, a second window, or any other
+# session started in that checkout is armed too. Telling such a session to "run
+# /lane-swap NOW, and do not ask the operator" would have it swap A LANE IT
+# DOES NOT HOLD, which is the collision this protocol exists to prevent.
+#
+# 18a. A session with no lane, armed, at 96%: TODAY'S ADVICE at the same
+# threshold, naming nothing. Not silence — the threshold is still crossed and
+# the operator still needs to know — and not the directive.
+read -r NOLANE_HOME NOLANE_CWD < <(new_lane)
+write_profile_snapshot "$NOLANE_HOME" "" 96 "$FIVE_RESET_EPOCH" null null >/dev/null
+run_guard "$NOLANE_HOME" "$NOLANE_CWD" "sid-nolane" "WORKBENCHES_CLAUDE_LANE="
+[[ -n "$guard_out" ]] \
+    || fail "lane fence: a crossed threshold went SILENT for a session with no lane (out=[$guard_out])"; assertion
+grep -qF 'AUTOMATIC SWAP' <<<"$guard_out" \
+    && fail "lane fence: a session holding no lane was told to swap one (out=[$guard_out])"; assertion
+grep -qF '/lane-swap' <<<"$guard_out" \
+    && fail "lane fence: /lane-swap was ordered in a session that holds no lane (out=[$guard_out])"; assertion
+grep -qF 'STOP at a breakpoint, write or refresh the handoff doc' <<<"$guard_out" \
+    || fail "lane fence: today's advice did not stand in for the directive (out=[$guard_out])"; assertion
+grep -qF 'holds no lane' <<<"$guard_out" \
+    || fail "lane fence: it does not say WHY the automatic swap is not directed here (out=[$guard_out])"; assertion
+grep -qF 'pclaude' <<<"$guard_out" \
+    && fail "lane fence: a restart command was printed to a session that holds no lane (out=[$guard_out])"; assertion
+[[ "$guard_status" -eq 0 ]] \
+    || fail "lane fence: exited $guard_status instead of 0"; assertion
+
+# 18b. THE CASE F14 NAMES, END TO END: the very SAME armed checkout, the same
+# threshold, two sessions — one that lane-start handed the lane to and one that
+# came up beside it. One is directed; the other is advised. A guard that read
+# only the directory could not tell them apart, which is the defect.
+run_guard "$NOLANE_HOME" "$NOLANE_CWD" "sid-holder" "WORKBENCHES_CLAUDE_LANE=openRepoProject-1"
+grep -qF 'AUTOMATIC SWAP' <<<"$guard_out" \
+    || fail "lane fence: the session that HOLDS the lane was not directed (out=[$guard_out])"; assertion
+grep -qF 'for lane openRepoProject-1' <<<"$guard_out" \
+    || fail "lane fence: the directive does not name the lane it is about (out=[$guard_out])"; assertion
+[[ "$guard_status" -eq 0 ]] \
+    || fail "lane fence: the holder's run exited $guard_status instead of 0"; assertion
+
+# 18c. MUTATION — THE FENCE IS NOT A GATE. The 90 and 80 lines were always
+# advice and are not the automatic swap, so a no-lane session gets them
+# unchanged: a fence that silenced the whole five-hour block would have taken
+# the workstation's usage warnings away from every bare `claude` on it.
+read -r NOLANE90_HOME NOLANE90_CWD < <(new_lane)
+write_profile_snapshot "$NOLANE90_HOME" "" 92 "$FIVE_RESET_EPOCH" null null >/dev/null
+run_guard "$NOLANE90_HOME" "$NOLANE90_CWD" "sid-nolane90" "WORKBENCHES_CLAUDE_LANE="
+grep -qF '5-hour window at 92%' <<<"$guard_out" \
+    || fail "lane fence: the 90-line was suppressed for a session with no lane (out=[$guard_out])"; assertion
+grep -qF 'Approaching the 95% stop line' <<<"$guard_out" \
+    || fail "lane fence: the 90-line's standing wording changed (out=[$guard_out])"; assertion
+
+# 18d. ...and neither is the CONTEXT block, which is about this conversation's
+# own window and has nothing to do with which lane it holds.
+read -r NOLANECTX_HOME NOLANECTX_CWD < <(new_lane)
+write_profile_snapshot "$NOLANECTX_HOME" "" 96 "$FIVE_RESET_EPOCH" null null >/dev/null
+write_session_snapshot "$NOLANECTX_HOME" "sid-nolanectx" 96
+run_guard "$NOLANECTX_HOME" "$NOLANECTX_CWD" "sid-nolanectx" "WORKBENCHES_CLAUDE_LANE="
+grep -qF 'CONTEXT AT 96%' <<<"$guard_out" \
+    || fail "lane fence: the context line was suppressed for a session with no lane (out=[$guard_out])"; assertion
+[[ "$(wc -l <<<"$guard_out")" -eq 2 ]] \
+    || fail "lane fence: expected the advice line and the context line, got $(wc -l <<<"$guard_out") (out=[$guard_out])"; assertion
+
+# 18e. MUTATION — AND THE GUARD STILL PERFORMS NO STEP OF THE SWAP (SPEC §9:
+# it "performs no step of the swap itself"). The fence added a read of the
+# environment and nothing else; the fakes for every binary Amendment 8(a)'s
+# five steps need are still untouched on the DIRECTED path.
+read -r FENCEMUT_HOME FENCEMUT_CWD < <(new_lane)
+write_profile_snapshot "$FENCEMUT_HOME" "" 96 "$FIVE_RESET_EPOCH" null null >/dev/null
+rm -f "$SHELLOUT_CLAUDE_USAGE_LOG" "$SHELLOUT_LANES_EDIT_LOG" "$SHELLOUT_LANE_START_LOG" \
+    "$SHELLOUT_TMUX_LOG" "$SHELLOUT_GIT_LOG"
+run_guard "$FENCEMUT_HOME" "$FENCEMUT_CWD" "sid-fencemut" "WORKBENCHES_CLAUDE_LANE=openRepoProject-1"
+grep -qF 'AUTOMATIC SWAP' <<<"$guard_out" \
+    || fail "lane fence mutation: the run under test was not on the directive path (out=[$guard_out])"; assertion
+for shellout in "$SHELLOUT_CLAUDE_USAGE_LOG" "$SHELLOUT_LANES_EDIT_LOG" \
+                "$SHELLOUT_LANE_START_LOG" "$SHELLOUT_TMUX_LOG" "$SHELLOUT_GIT_LOG"; do
+    [[ ! -e "$shellout" ]] \
+        || fail "lane fence mutation: the guard shelled out to $(basename "$shellout") ($(cat "$shellout"))"; assertion
+done
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"

@@ -288,8 +288,19 @@ question put to the operator. The steps are Amendment 8(a)'s five, unchanged
 every running writer told to commit and push; the `PAUSED` swap record (now
 carrying `dir` and `window`) together with the register's event line and the
 row's state cell; and the one restart command printed — so the operator's
-entire part in the restart is re-running `pclaude <profile>`. The guard stays
-gated exactly as before: silent unless `.claude/usage-guard.on` exists in the
+entire part in the restart is re-running `pclaude <profile>`. **The guard
+performs no step of the swap itself** — it is a hook, it can put one line into
+the session's context and nothing else — and **the directive fires only in a
+session that HOLDS a lane.** That second fence matters because the guard is
+wired for every profile and armed per *directory*: a bare `claude`, or a second
+window in a lane's checkout, is armed too, and telling it to swap would have it
+pause a lane it does not hold. `WORKBENCHES_CLAUDE_LANE` — exported by the
+launcher only after `lane-start` took the lane, and unset again where
+`lane-start` declined — is the fence, and the directive names the lane it is
+about. Where the session carries no lane, the guard prints today's advice at
+the same threshold and names nothing; the 90 and 80 lines, and the context
+block, are unchanged for every session either way. The guard stays gated
+exactly as before: silent unless `.claude/usage-guard.on` exists in the
 session's working directory or an ancestor, up to `$HOME` (or
 `~/.claude/usage-guard.on`, for every session on the machine). The Fable
 weekly bucket's own 95% line is not part of this and keeps today's warning.
