@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=89
+EXPECTED_SCENARIOS=91
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -983,6 +983,36 @@ launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
 grep -Fxq -- "--dir $SPACED_TREE mine-5 -- $claude_args --resume session-dirquoted" "$LANE_START_LOG" \
     || fail "quoted dir: lane-start argv was '$(lane_start_argv)'"; assertion
 
+# 4b-iii. RUNG 2 READ OUT OF THE RECORD SPEC rev 3 ACTUALLY WRITES — the
+# "tolerant reader beside `lane_dir_field`" SPEC §13.2 owes this PR. The payload
+# gained `profile <name>` (`R-A11-10`) between `dir` and `workstation`, so the
+# dir reader now has a sub-field on BOTH sides of it; a reader that ran to the
+# end of the line instead of stopping at the `;` would hand `lane-start` a
+# directory with two more sub-fields glued to it, and every scenario above would
+# still pass because none of them writes a record with anything after the `dir`.
+launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_TMUX_WINDOW_ID=@97" \
+    "FAKE_WINDOW_LANE_MAP=@97=mine-5" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tswap; window claude-y:0 @97; dir $RECORD_TREE; profile team-002; workstation Eagle\n" \
+    -- run team002 --resume session-dirfullpayload
+grep -Fxq -- "--dir $RECORD_TREE mine-5 -- $claude_args --resume session-dirfullpayload" "$LANE_START_LOG" \
+    || fail "§5 payload: the dir reader did not stop at the sub-field that follows it ('$(lane_start_argv)')"; assertion
+grep -Fq 'profile' "$LANE_START_LOG" \
+    && fail "§5 payload: a sub-field beside the directory was read as part of it ('$(lane_start_argv)')"; assertion
+
+# 4b-iv. ...and the TAB form of the same record. SPEC rev 3 §11 gives `swapped`
+# a fourth `<dir>` field and a FIFTH `<profile>`; the dir is the fourth and a
+# fifth column must not move it.
+launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_TMUX_WINDOW_ID=@97" \
+    "FAKE_WINDOW_LANE_MAP=@97=mine-5" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\t$RECORD_TREE\tteam-002\n" \
+    -- run team002 --resume session-dirfifthfield
+grep -Fxq -- "--dir $RECORD_TREE mine-5 -- $claude_args --resume session-dirfifthfield" "$LANE_START_LOG" \
+    || fail "§11: a fifth <profile> column moved the fourth <dir> one ('$(lane_start_argv)')"; assertion
+
 # 4c. RUNG 3 — `lanes-edit.sh lane-dir <lane>` (SPEC §11), for a lane whose
 # record carries no directory.
 launch "FAKE_TMUX_WINDOW=openXfactory-5" "FAKE_LANE_WITH_ROW=openXfactory-5" \
@@ -1615,8 +1645,11 @@ SKILL_MD="$REPO_ROOT/base-image/files/claude/skills/lane-swap/SKILL.md"
 SWAP_MD="$REPO_ROOT/base-image/files/claude/commands/swap.md"
 GUARD_SH="$REPO_ROOT/base-image/files/claude-usage-guard.sh"
 
-# SPEC §5 — the swap record's payload, in the SPEC's own order and spelling:
-# `swap; window <session>:<index> <@id>; dir <path>; workstation <ws>`.
+# SPEC §5 (rev 3) — the swap record's payload, in the SPEC's own ORDER and
+# spelling: `swap; window <session>:<index> <@id>; dir <path>; profile <name>;
+# workstation <ws>`. Five sub-fields now: `profile` was added by `R-A11-10` and
+# sits between `dir` and `workstation`, which is the order the SPEC's own three
+# example lines carry and the order a reader of the log will meet.
 grep -Fq 'payload="swap"' "$SKILL_MD" \
     || fail "§5: the PAUSED payload does not open with the verb-less swap token"; assertion
 grep -Fq 'payload="$payload; window $win"' "$SKILL_MD" \
@@ -1625,6 +1658,11 @@ grep -Fq 'payload="$payload; dir $dir"' "$SKILL_MD" \
     || fail "§5: the directory sub-field is not written as 'dir <path>'"; assertion
 grep -Fq 'payload="$payload; workstation ' "$SKILL_MD" \
     || fail "§5: the workstation sub-field is not written as 'workstation <ws>'"; assertion
+# ...and they are appended in the SPEC's order, which is a property of the four
+# lines TOGETHER and cannot be read off any one of them.
+payload_order="$(grep -o 'payload="$payload; [a-z]*' "$SKILL_MD" | sed 's/.*; //' | tr '\n' ' ')"
+[[ "$payload_order" == "window dir profile workstation " ]] \
+    || fail "§5: the payload is built as '$payload_order', and rev 3's order is 'window dir profile workstation'"; assertion
 # ...and the window sub-field's two refs are SPACE-separated within it, which is
 # Amendment 7(b)'s rule for several refs in one sub-field.
 grep -Fq 'win="${win:+$win }$win_id"' "$SKILL_MD" \
