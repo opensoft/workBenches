@@ -243,7 +243,15 @@ grep -Fq 'NO session recorded for this lane' "$SKILL_SOURCE" \
 skill_code_only="$(awk '/^```/ { fence = !fence; next } fence' "$SKILL_SOURCE" | grep -v '^[[:space:]]*#')"
 printf '%s\n' "$skill_code_only" | grep -Fq 'none recorded' \
     && fail "R-A11-14: the skill still writes 'none recorded' into a field that takes one uuid"; assertion
-printf '%s\n' "$skill_code_only" | grep -Fq 'unknown' \
+# ...and `unknown` is counted as a VALUE and not as the word, exactly as the
+# `$(hostname` read is counted above and for the same reason. Since the step-1
+# reader takes `window-lane`'s status apart (clause (k), the launcher's
+# `window_lane_read` matched string for string), the skill's shell now contains
+# the helper's own `unknown subcommand` line as a COMPARISON. That is naming the
+# helper's message, not writing a placeholder into a record, so it is removed
+# before the word is looked for — a count that could not tell the two apart
+# would force the skill to misspell the one string it must match exactly.
+printf '%s\n' "$skill_code_only" | sed 's/unknown subcommand//g' | grep -Fq 'unknown' \
     && fail "R-A11-14: the skill still writes a placeholder workstation into the register"; assertion
 grep -Fq 'REFUSED: no workstation for this lane' "$SKILL_SOURCE" \
     || fail "R-A11-14: a writer with no configured workstation does not refuse"; assertion
@@ -287,6 +295,38 @@ grep -F 'REFUSED: no workstation for this lane' "$SKILL_SOURCE" | grep -Fq 'pcla
     || fail "the skill records a <session>:<index> without checking its shape, or checks it only once — the env fallback is another process's value and is unread too"; assertion
 grep -Fq '=~ ^@[0-9]+$' "$SKILL_SOURCE" \
     || fail "the skill records a window id without checking its shape"; assertion
+# ...AND STEP 1 CHECKS THE SAME TWO SHAPES STEP 4 CHECKS (round-4 non-blocking
+# 4). The refs step 1 hands `window-lane` are the same two strings step 4
+# records, and until now only step 4 judged them: two steps of one file
+# disagreeing about what a ref is. The argument carries across unchanged — a
+# tmux too old to know a format prints the FORMAT BACK and a shim on PATH may
+# print anything — and asking the helper which lane is `#{window_id}` spends a
+# read on a question no register can answer. Ruling 10 hands step 4's check to
+# `openRepoTools#26`, so the asymmetry would have travelled with it.
+step1_code="$(awk '/^## 1\./ { inside = 1; next } inside && /^## / { exit } inside && /^```/ { fence = !fence; next } inside && fence' "$SKILL_SOURCE")"
+[[ -n "$step1_code" ]] \
+    || fail "non-blocking 4: step 1's shell block could not be found, so nothing can be said about the refs it passes"; assertion
+printf '%s\n' "$step1_code" | grep -Fq '[[ "$win_ref" =~ ^.+:[0-9]+$ ]] || win_ref=""' \
+    || fail "non-blocking 4: step 1 hands window-lane a <session>:<index> it never shape-checked"; assertion
+printf '%s\n' "$step1_code" | grep -Fq '[[ "$win_id" =~ ^@[0-9]+$ ]] || win_id=""' \
+    || fail "non-blocking 4: step 1 hands window-lane a window id it never shape-checked"; assertion
+# ...AND STEP 1 READS `window-lane`'s STATUS RATHER THAN SWALLOWING IT (round-4
+# non-blocking 5, clause (k)'s "never degrades silently"). `2>/dev/null ||
+# candidate=""` made a permission error, an unreadable register and a caller bug
+# indistinguishable from the one case the comment justifies — a helper predating
+# Amendment 11, which exits 2 saying `unknown subcommand`. The launcher's own
+# reader of this same subcommand (`window_lane_read`) captures status AND stderr
+# for exactly that reason, and the two are told apart by the helper's WORDS and
+# never by its status. The step still falls through on every failure: what is
+# added is that a real one is NAMED.
+printf '%s\n' "$step1_code" | grep -Fq '2>/dev/null)" || candidate=""' \
+    && fail "non-blocking 5: step 1 still swallows every window-lane failure, so a failed read is indistinguishable from a helper predating Amendment 11"; assertion
+printf '%s\n' "$step1_code" | grep -Fq 'window-lane "$ref" 2>"$err")" || status=$?' \
+    || fail "non-blocking 5: step 1 does not capture window-lane's exit status, which is what tells an old helper from a failed read"; assertion
+printf '%s\n' "$step1_code" | grep -Fq 'unknown subcommand' \
+    || fail "non-blocking 5: step 1 does not tell an old helper from a failed read by the helper's own words, which is how the launcher tells them apart"; assertion
+printf '%s\n' "$step1_code" | grep -Fq 'FAILED READ' \
+    || fail "non-blocking 5: a window-lane failure that is not an old helper is not named anywhere, so the skill degrades silently"; assertion
 grep -Fq 'ws="${LANES_WORKSTATION:-}"' "$SKILL_SOURCE" \
     || fail "text: the workstation is not taken from configuration first (Evidence 6)"; assertion
 # ONE hostname READ — the read, `$(hostname`, and not the word: the `R-A11-14`

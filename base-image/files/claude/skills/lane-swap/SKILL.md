@@ -85,6 +85,16 @@ claude-usage
 window="$(tmux display-message -p '#W')"                     # Amendment 8(b): the window IS the lane
 win_ref="$(tmux display-message -p '#S:#I' 2>/dev/null || true)"
 win_id="$(tmux display-message -p '#{window_id}' 2>/dev/null || true)"
+# BOTH REFS ARE SHAPE-CHECKED HERE TOO — step 4's rule, read one step earlier, and the same two shapes
+# (`^.+:[0-9]+$` and `^@[0-9]+$`) the launcher's `lane_window_ref` validates. A tmux too old to know a
+# format prints the FORMAT BACK and a shim on PATH may print anything at all; step 4 refuses such a string
+# because recording it would put a lie in an append-only log, and step 1 refuses it because asking the
+# helper which lane is `#{window_id}` spends a read on a question no register can answer — and a helper
+# that DID answer it would be answering about a window that does not exist. One shape for a ref, in both
+# steps of one file, so the asymmetry ruling 10 hands to `openRepoTools#26` with step 4's check does not
+# travel with it.
+[[ "$win_ref" =~ ^.+:[0-9]+$ ]] || win_ref=""
+[[ "$win_id" =~ ^@[0-9]+$ ]] || win_id=""
 lane="$window"
 LANES_NO_FETCH=1 "$L" register-row "$lane" >/dev/null 2>&1 || lane=""
 if [[ -z "$lane" ]]; then
@@ -96,12 +106,44 @@ if [[ -z "$lane" ]]; then
   # names it — and a skill that skipped it would disagree with the launcher in
   # precisely that case. A helper predating Amendment 11 has no such
   # subcommand: it says so and exits 2, which is not an answer and not a fault.
+  #
+  # THE STATUS IS READ, NOT SWALLOWED, and the reason is clause (k)'s "never
+  # degrades silently". This mirrors the launcher's own reader of this same
+  # subcommand (`window_lane_read` in `claude-profile`), code for code: 0 with a
+  # lane-shaped answer IS the answer; 8 is the contract's own "no record names
+  # this window" and is silent by design; a 2 whose stderr says `unknown
+  # subcommand` is a helper predating Amendment 11 and is expected and silent —
+  # the two kinds of 2 are told apart by the helper's WORDS and never by its
+  # status. Everything else — a permission error, an unreadable register, a
+  # caller bug — is a failed READ, and `2>/dev/null || candidate=""` made it
+  # indistinguishable from the old helper exactly where it matters. It is named
+  # in one line and the step still falls to the next rung: this read decides
+  # nothing on its own, so a failure here must not stop a swap, only be seen.
+  err="$(mktemp "${TMPDIR:-/tmp}/lane-swap-window-lane.XXXXXX")"
   for ref in "$win_id" "$win_ref"; do
     [[ -n "$ref" && -z "$lane" ]] || continue
-    candidate="$(LANES_NO_FETCH=1 "$L" window-lane "$ref" 2>/dev/null)" || candidate=""
+    status=0
+    candidate="$(LANES_NO_FETCH=1 "$L" window-lane "$ref" 2>"$err")" || status=$?
+    reason="$(cat "$err" 2>/dev/null || true)"
     candidate="${candidate%%$'\n'*}"
-    [[ "$candidate" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] && lane="$candidate"
+    case "$status" in
+      0)
+        if [[ "$candidate" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
+          lane="$candidate"
+        else
+          printf 'window-lane %s exited 0 without printing a lane, so this step answers nothing: %s\n' \
+            "$ref" "${reason:-no message}"
+        fi
+        ;;
+      8) : ;;   # no record names this window — the contract's own "none", and silent by it
+      *)
+        [[ "$reason" == *"unknown subcommand"* ]] \
+          || printf 'window-lane %s exited %s and did not call it an unknown subcommand, so this is a FAILED READ and not a helper predating Amendment 11: %s\n' \
+               "$ref" "$status" "${reason:-no message}"
+        ;;
+    esac
   done
+  rm -f "$err"
 fi
 if [[ -z "$lane" ]]; then
   # The swap record, read exactly as the launcher reads it: the STATUS decides

@@ -2503,7 +2503,15 @@ grep -Fq 'NO session recorded for this lane' "$SKILL_MD" \
 skill_write_code="$(awk '/^```/ { fence = !fence; next } fence' "$SKILL_MD" | grep -v '^[[:space:]]*#')"
 printf '%s\n' "$skill_write_code" | grep -Fq 'none recorded' \
     && fail "R-A11-14: the skill still writes 'none recorded' — two tokens with a space, in a field Amendment 7(b) gives one uuid"; assertion
-printf '%s\n' "$skill_write_code" | grep -Fq 'unknown' \
+# ...and `unknown` is counted as a VALUE and not as the word, exactly as the
+# `$(hostname` read is counted above and for the same reason. Since the step-1
+# reader takes `window-lane`'s status apart (clause (k), the launcher's
+# `window_lane_read` matched string for string), the skill's shell now contains
+# the helper's own `unknown subcommand` line as a COMPARISON. That is naming the
+# helper's message, not writing a placeholder into a record, so it is removed
+# before the word is looked for — a count that could not tell the two apart
+# would force the skill to misspell the one string it must match exactly.
+printf '%s\n' "$skill_write_code" | sed 's/unknown subcommand//g' | grep -Fq 'unknown' \
     && fail "R-A11-14: the skill still writes a placeholder workstation into a position 'swapped <ws>' keys on, which append-line does not validate"; assertion
 # ...and write (c), the row's state cell, is outside the guard too — SPEC §7 names
 # the two together, and a state cell flipped only where a uuid exists is the same
