@@ -10,6 +10,13 @@
 # the shims from the network (D3), a partial install across two independent
 # shim transactions (D4), the pin file itself missing, and the placed
 # files' mode.
+#
+# Scenario (n) guards the four install-target LISTS themselves -- the
+# missing-file pre-flight, `require_pin_row`, `check_target_preflight` and
+# `verify_installed`. Their LENGTH is the whole of what Amendment 9 adoption
+# act 4b changes in the script, and until (n) nothing here read them: every
+# entry is asserted by membership and every list by length, so neither
+# dropping a target nor adding one can silently stay green.
 
 set -euo pipefail
 
@@ -104,6 +111,18 @@ count_occurrences() {
     # A bare `grep -c` with zero matches exits 1, which would abort this
     # test script under `set -e` if not for the `|| true` guard here.
     grep -Fc -- "$2" <<<"$1" || true
+}
+
+# `count_occurrences` counts LINES that contain the needle. The four
+# install-target lists scenario (n) reads out of the script put several
+# entries on one line, and one entry can repeat on a line, so counting them
+# needs OCCURRENCES. `grep -o` exits 1 on zero matches, which `set -e` and
+# `pipefail` would both turn into an aborted suite, hence the `|| true`
+# inside the group.
+count_matches() {
+    local n
+    n="$( { grep -Fo -- "$2" <<<"$1" || true; } | wc -l)"
+    printf '%s\n' "${n// /}"
 }
 
 assert_file_executable() {
@@ -448,6 +467,107 @@ SCRIPT_SOURCE="$(cat "$SCRIPT_UNDER_TEST")"
 for var in OPENREPOSHAPE_REPO OPENREPOSHAPE_REF OPENREPOTOOLS_REPO OPENREPOTOOLS_REF; do
     assert_contains "$SCRIPT_SOURCE" "export $var=\"\$ESTATE_SENTINEL\"" "the script source exports $var to the fixed sentinel before installing"
 done
+
+printf '%s\n' '--- Scenario (n): every entry of all four install-target lists is asserted, by membership AND by length ---'
+# WHY THIS SCENARIO EXISTS. Amendment 9 adoption act 4b's whole job in
+# scripts/setup-estate-commands.sh is the LENGTH of four lists -- the
+# missing-file pre-flight, `require_pin_row`, `check_target_preflight` and
+# `verify_installed` -- and until this scenario the suite asserted nothing
+# about any of them. It drives the symlink pre-flight through `park` only
+# (scenario (g)) and the pin-row refusal through `resume` only (scenario
+# (k)), so DELETING one `check_target_preflight` target or one
+# `verify_installed` target left this suite at exit 0. That is measured, not
+# supposed: mutations 7 and 8 of this PR's adversarial review
+# (opensoft/workBenches#74, review 5192253900) each went green. A later edit
+# that silently dropped one of the targets this act added would have gone
+# green with them.
+#
+# Membership is read out of the SOURCE, in the idiom scenario (m) above
+# already uses and for the same reason: three of the four lists cannot be
+# reached dynamically without a host that can actually fail each way, and the
+# regression being guarded is an edit to a list, not a host.
+#
+# Each list also gets a LENGTH assertion, so the guard bites both ways: a
+# target deleted from the script fails its membership assertion, and a target
+# ADDED to the script without being added here fails the count. Growing a
+# list is therefore exactly two edits -- the script, and the array below --
+# and never one.
+#
+# (assert_equal's parameters are declared (actual, expected). The calls in
+# this scenario pass them in that order, so a failure here prints the two
+# labels the right way round.)
+
+# The missing-file pre-flight is a `for f in "$VAR" ...` list, and most of
+# those same "$VAR" spellings occur AGAIN further down the script as
+# `verify_installed`'s second argument -- so this one list is asserted
+# against the loop's own text, extracted from the source, rather than against
+# the whole file, which would pass on a name that had been deleted from the
+# loop and left below it.
+missing_file_block="$(awk '/^for f in /{in_block=1} in_block{print} in_block&&/; do$/{exit}' "$SCRIPT_UNDER_TEST")"
+assert_matches "$missing_file_block" '^for f in ' 'the missing-file pre-flight loop was located in the script source'
+
+PREFLIGHT_FILE_VARS=(
+    UPDATE_UPSTREAM SHAPE_SHIM TOOLS_SHIM PARK_FILE RESUME_FILE STATUS_FILE
+    LANES_EDIT_FILE LANE_START_FILE LANE_END_FILE LINK_ESTATES_FILE
+    REPOS_TSV_FILE SKILL_FILE
+)
+for v in "${PREFLIGHT_FILE_VARS[@]}"; do
+    assert_contains "$missing_file_block" "\"\$$v\"" "missing-file pre-flight covers \$$v"
+done
+assert_equal "$(count_matches "$missing_file_block" '"$')" "${#PREFLIGHT_FILE_VARS[@]}" \
+    'the missing-file pre-flight loop holds exactly the entries asserted above and no others'
+
+# Every path `require_pin_row` demands a row for. This list is LONGER than the
+# two bin-directory lists by one: skills/lane-swap/SKILL.md must be present
+# and pinned, but it is not written into a bin directory, so it is neither
+# pre-flighted nor verified as an install target.
+PIN_ROW_PATHS=(
+    openRepoShape openRepoTools park resume status
+    lanes-edit.sh lane-start lane-end link-estates repos.tsv
+    skills/lane-swap/SKILL.md
+)
+for p in "${PIN_ROW_PATHS[@]}"; do
+    assert_contains "$SCRIPT_SOURCE" "require_pin_row \"$p\"" "require_pin_row covers $p"
+done
+assert_equal "$(count_matches "$SCRIPT_SOURCE" 'require_pin_row "')" "${#PIN_ROW_PATHS[@]}" \
+    'require_pin_row is called exactly once per path asserted above and no more'
+
+# name:VENDOR_VAR, one row per file placed into the TOOLS bin directory. The
+# pre-flight list and the verify list are the same set in the script, so they
+# are the same array here; openRepoShape is the single target in the OTHER
+# bin directory and is asserted on its own line above each loop.
+TOOLS_BIN_TARGETS=(
+    "openRepoTools:TOOLS_SHIM"
+    "park:PARK_FILE"
+    "resume:RESUME_FILE"
+    "status:STATUS_FILE"
+    "lanes-edit.sh:LANES_EDIT_FILE"
+    "lane-start:LANE_START_FILE"
+    "lane-end:LANE_END_FILE"
+    "link-estates:LINK_ESTATES_FILE"
+    "repos.tsv:REPOS_TSV_FILE"
+)
+
+assert_contains "$SCRIPT_SOURCE" 'check_target_preflight "$shape_bin_dir/openRepoShape" "$shape_bin_dir"' \
+    'check_target_preflight covers openRepoShape, the one target in the shape bin dir'
+for row in "${TOOLS_BIN_TARGETS[@]}"; do
+    target_name="${row%%:*}"
+    assert_contains "$SCRIPT_SOURCE" "check_target_preflight \"\$tools_bin_dir/$target_name\" \"\$tools_bin_dir\"" \
+        "check_target_preflight covers $target_name"
+done
+assert_equal "$(count_matches "$SCRIPT_SOURCE" 'check_target_preflight "$')" "$(( ${#TOOLS_BIN_TARGETS[@]} + 1 ))" \
+    'check_target_preflight is called exactly once per target asserted above and no more'
+
+assert_contains "$SCRIPT_SOURCE" 'verify_installed "$shape_bin_dir/openRepoShape" "$SHAPE_SHIM"' \
+    'verify_installed covers openRepoShape against its vendored copy'
+for row in "${TOOLS_BIN_TARGETS[@]}"; do
+    target_name="${row%%:*}"
+    vendor_var="${row##*:}"
+    assert_contains "$SCRIPT_SOURCE" "verify_installed \"\$tools_bin_dir/$target_name\" \"\$$vendor_var\"" \
+        "verify_installed covers $target_name against \$$vendor_var"
+done
+assert_equal "$(count_matches "$SCRIPT_SOURCE" 'verify_installed "$')" "$(( ${#TOOLS_BIN_TARGETS[@]} + 1 ))" \
+    'verify_installed is called exactly once per target asserted above and no more'
 
 if (( failures == 0 )); then
     printf '%s\n' 'GREEN: setup-estate-commands regression test passed'
