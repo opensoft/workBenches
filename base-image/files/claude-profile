@@ -622,12 +622,117 @@ lane_start_supports() {
   [[ "$lane_start_help" == *"$flag"* ]]
 }
 
+# THE SWAP RECORDS, READ AT MOST ONCE PER LAUNCH. Two callers want them — the
+# lane order's precedence 4 and the directory order's rung 2 — and `swapped` is
+# on the path of every launch, so the read is cached rather than repeated. It
+# is never a fetch: LANES_NO_FETCH=1, because a row this workstation wrote is in
+# this workstation's own clone already and a launcher must not sit on the
+# network to open a terminal.
+swapped_read() {
+  local lanes_edit ws err
+  [[ -z "${swapped_read_done:-}" ]] || return 0
+  swapped_read_done=1
+  swapped_rows=""
+  swapped_status=8
+  swapped_reason=""
+  swapped_argv=(swapped)
+  lanes_edit="$(lanes_edit_bin || true)"
+  [[ -n "$lanes_edit" ]] || return 0
+  ws="${LANES_WORKSTATION:-$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)}"
+  [[ -z "$ws" ]] || swapped_argv+=("$ws")
+  err="$(mktemp "${TMPDIR:-/tmp}/pclaude-swapped.XXXXXX")"
+  set +e
+  swapped_rows="$(LANES_NO_FETCH=1 "$lanes_edit" "${swapped_argv[@]}" 2>"$err")"
+  swapped_status=$?
+  set -e
+  swapped_reason="$(cat "$err" 2>/dev/null || true)"
+  rm -f "$err"
+  return 0
+}
+
+lane_swapped_row() {
+  # The swap record row that names THIS lane, or nothing. The contract is the
+  # TAB (SPEC §11): `<lane>\t<UTC>\t<window>[\t<dir>]`, and a line without one
+  # is not a record row — taking its first field would take the whole line,
+  # which `cut -f 1` hands back intact, lane-shaped and wrong.
+  local want="$1"
+  swapped_read
+  [[ "${swapped_status:-8}" -eq 0 && -n "${swapped_rows:-}" ]] || return 1
+  printf '%s\n' "$swapped_rows" \
+    | awk -F'\t' -v want="$want" 'NF >= 2 && $1 == want { print; exit }' \
+    | grep . || return 1
+}
+
+window_lane_read() {
+  # PRECEDENCE 3's read, and it is the HELPER'S (SPEC §11, clause (h)):
+  # `lanes-edit.sh window-lane <@id>` / `<session>:<index>` answers "the
+  # register row whose name is the window's name, else the swap record whose
+  # `window` names that id or that `session:index`". ONE RULE, ONE
+  # IMPLEMENTATION — the launcher, `/restart` and the `/lane-swap` skill are its
+  # three callers, and a launcher that parsed `swapped` rows for itself would be
+  # a second implementation of a rule that exists to stop the three disagreeing
+  # about which lane a window is.
+  #
+  # Codes, exactly as SPEC §2 assigns them: 0 a lane · 8 none · 64 its own usage
+  # error · 2 A HELPER PREDATING AMENDMENT 11, which exits 2 for an unknown
+  # subcommand exactly as a pre-Amendment-8 one did for `swapped`. The two kinds
+  # of 2 are told apart by the helper's own WORDS and never by its status, the
+  # way this launcher already tells them apart for `swapped`: an old helper is
+  # expected and silent, a caller's bug gets one line. Either way the read
+  # answers nothing and the caller falls to the NEXT step.
+  # The answer goes into `window_lane_answer` rather than onto stdout, and that
+  # is not a style choice: a failed read has to be NAMED, `lane_read_note` is
+  # how it is carried down the order, and a function called inside `$( )` sets
+  # its globals in a subshell that dies with the substitution — the notice
+  # would be lost exactly in the case it exists for.
+  local ref="$1" lanes_edit out status err reason
+  window_lane_answer=""
+  lanes_edit="$(lanes_edit_bin || true)"
+  [[ -n "$lanes_edit" ]] || return 1
+  err="$(mktemp "${TMPDIR:-/tmp}/pclaude-window-lane.XXXXXX")"
+  set +e
+  out="$(LANES_NO_FETCH=1 "$lanes_edit" window-lane "$ref" 2>"$err")"
+  status=$?
+  set -e
+  reason="$(cat "$err" 2>/dev/null || true)"
+  rm -f "$err"
+  out="${out%%$'\n'*}"
+  case "$status" in
+    0)
+      if [[ "$out" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
+        window_lane_answer="$out"
+        return 0
+      fi
+      lane_read_note="${lane_read_note:-lanes-edit.sh window-lane $ref exited 0 without printing a lane}"
+      return 1
+      ;;
+    8) return 1 ;;
+    *)
+      [[ "$reason" == *"unknown subcommand"* ]] \
+        || lane_read_note="${lane_read_note:-lanes-edit.sh window-lane $ref exited $status without calling it an unknown subcommand, so this is a caller bug and not an old helper}"
+      return 1
+      ;;
+  esac
+}
+
+lane_note_read_failed() {
+  # A FAILED READ IS NAMED WHERE IT FAILED, and the order carries on below it
+  # (SPEC §2: "A failed read falls to the NEXT step, not to step 5"). Printed
+  # once, and only where a lane was found anyway — where none was, the note
+  # goes INTO the single no-lane line instead, because R-A8-7 is one no-lane
+  # notice and not two.
+  [[ -n "${lane_read_note:-}" ]] || return 0
+  echo "pclaude: $lane_read_note" >&2
+  lane_read_note=""
+window_lane_answer=""
+}
+
 resolve_lane() {
-  # Sets `lane` and `lane_source` (flag|window|record, empty for none) from the
-  # Claude arguments this launch carries. Never fails, never refuses: a lane
-  # that cannot be resolved is today's behaviour.
-  local lanes_edit ws rows status candidate reason swapped_err first_row
-  local -a swapped_argv
+  # Sets `lane` and `lane_source` (flag|window|window-record|record, empty for
+  # none) from the Claude arguments this launch carries. Never fails, never
+  # refuses: a lane that cannot be resolved is today's behaviour.
+  local lanes_edit candidate first_row ref
+  window_lane_answer=""
   if [[ -n "${lane:-}" ]]; then
     lane_source=flag
     return 0
@@ -643,13 +748,12 @@ resolve_lane() {
     return 0
   fi
 
-  # LANES_NO_FETCH=1 on both reads: they are on the path of every launch, and
-  # lanes-edit.sh otherwise fetches origin before it answers. A row or a record
-  # this workstation wrote is in this workstation's own clone already, and a
-  # launcher must not sit on the network to open a terminal.
+  # LANES_NO_FETCH=1 on every read below: they are on the path of every launch,
+  # and lanes-edit.sh otherwise fetches origin before it answers.
   #
-  # Only 0 is a lane. `register-row` answers 8 for a name with no row and 2 for
-  # a window name that is not even lane-shaped (`zsh`, `1:vim*`).
+  # PRECEDENCE 2 — THE WINDOW'S NAME. Only 0 is a lane. `register-row` answers
+  # 8 for a name with no row and 2 for a window name that is not even
+  # lane-shaped (`zsh`, `1:vim*`).
   if [[ -n "${lane_window:-}" ]] \
     && LANES_NO_FETCH=1 "$lanes_edit" register-row "$lane_window" >/dev/null 2>&1; then
     lane="$lane_window"
@@ -672,107 +776,74 @@ resolve_lane() {
     return 0
   fi
 
-  ws="${LANES_WORKSTATION:-$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)}"
-  swapped_argv=(swapped)
-  [[ -z "$ws" ]] || swapped_argv+=("$ws")
-  swapped_err="$(mktemp "${TMPDIR:-/tmp}/pclaude-swapped.XXXXXX")"
-  set +e
-  rows="$(LANES_NO_FETCH=1 "$lanes_edit" "${swapped_argv[@]}" 2>"$swapped_err")"
-  status=$?
-  set -e
-  reason="$(cat "$swapped_err" 2>/dev/null || true)"
-  rm -f "$swapped_err"
-  # 0 with rows `<lane>\t<UTC>\t<window>[\t<dir>]`, most recent first; 8 with
-  # none. The contract is the TAB: a row without one is not that shape, and
-  # taking its first field would take the whole line — which `cut -f 1` hands
-  # back intact, lane-shaped and wrong, for output that never came from
-  # `swapped` at all.
-  #
-  # PRECEDENCE 3 (SPEC §2, new in Amendment 11) — THE RECORD FOR *THIS*
-  # WINDOW, and it is not a guess. Every row's third field is the window the
-  # swap paused in, `<session>:<index>` and, from Amendment 11(5), its
-  # `<@id>` beside it. Where one of those refs IS the window this command was
-  # typed in, the lane is an exact match on the window the operator is
-  # standing in — the same certainty the window NAME carries in precedence 2,
-  # arrived at from the other side — so it goes to lane-start BARE, with no
-  # `--confirm` and no question. Only if no row names this window does the
-  # newest-first guess of precedence 4 apply, and that one is still confirmed.
+  # PRECEDENCE 3 (SPEC §2 row 3, new in Amendment 11) — THE RECORD FOR *THIS*
+  # WINDOW, and it is not a guess. Where a swap record's `window` sub-field
+  # names the window this command was typed in, the lane is an exact match on
+  # the window the operator is standing in — the same certainty the window NAME
+  # carries in precedence 2, arrived at from the other side — so it goes to
+  # lane-start BARE, with no `--confirm` and no question. Only if nothing names
+  # this window does the newest-first guess of precedence 4 apply, and that one
+  # is still confirmed.
   #
   # This is what makes a restart in the lane's own window silent even when the
   # window has LOST its name: a tmux `automatic-rename` that fired, a window
   # renamed by hand, a pane that came back as `zsh`.
   #
-  # THE ID IS THE BETTER KEY AND IS TRIED FIRST — ACROSS ALL ROWS, and a row
-  # that names an id which is not ours is then INELIGIBLE for the ref match.
-  # Both halves of that matter, and a single scan that took whichever ref a row
-  # happened to carry has neither. A `<session>:<index>` is reused the instant a
-  # window closes and the next one takes its index, while an id is never
-  # reissued for the life of the server: so a record reading
-  # `claude-y:0 @97`, met from the window that later took `claude-y:0` as
-  # `@200`, names a DIFFERENT window, and matching its ref would bind this
-  # window to a lane that was paused in another one — silently, since step 3
-  # asks nothing. The id disagreeing is proof, not absence of evidence.
+  # THE `<@id>` IS TRIED FIRST AND THE `<session>:<index>` SECOND, which is the
+  # amendment's own words (clause (b), SPEC §2 row 3). The id is the better key
+  # — a `<session>:<index>` is reused the instant a window closes and the next
+  # one takes its index, while an id is never reissued for the life of the
+  # server — so it is asked about before the ref is, and the ref is asked about
+  # only where the id answered nothing.
   #
-  # Where THIS window has no id to offer (a tmux too old to know the format,
-  # anything that failed the shape check in capture_lane_window), rows that
-  # name one are skipped rather than matched on their ref: nothing here can
-  # prove they are this window, and the cost of being wrong is silence. Such a
-  # launch falls to precedence 4 and is CONFIRMED, which is the right answer
-  # for a guess — degrading to one question, never to a wrong silent bind.
-  if [[ "$status" -eq 0 && -n "$rows" ]] \
-    && { [[ -n "${lane_window_id:-}" ]] || [[ -n "${lane_window_ref:-}" ]]; }; then
-    candidate="$(printf '%s\n' "$rows" | awk -F'\t' -v id="${lane_window_id:-}" -v ref="${lane_window_ref:-}" '
-      NF < 3 { next }
-      {
-        rows_seen++
-        lane_of[rows_seen] = $1
-        window_of[rows_seen] = $3
-        id_of[rows_seen] = ""
-        n = split($3, w, /[ \t]+/)
-        for (i = 1; i <= n; i++) if (w[i] ~ /^@[0-9]+$/) id_of[rows_seen] = w[i]
-      }
-      END {
-        if (id != "")
-          for (r = 1; r <= rows_seen; r++)
-            if (id_of[r] == id) { print lane_of[r]; exit }
-        if (ref != "")
-          for (r = 1; r <= rows_seen; r++) {
-            if (id_of[r] != "") continue
-            n = split(window_of[r], w, /[ \t]+/)
-            for (i = 1; i <= n; i++) if (w[i] == ref) { print lane_of[r]; exit }
-          }
-      }')"
-    if [[ "$candidate" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
-      lane="$candidate"
+  # AND EITHER IS TAKEN ONLY WHERE THAT WINDOW STILL EXISTS. Here that fence
+  # costs nothing to hold: both refs were read out of `tmux display-message` in
+  # `capture_lane_window` a moment ago, for the window this process is standing
+  # in, so the window they name is this one and it exists by construction.
+  # Outside tmux — act 1, where there is no current window — the fence is a
+  # live `display-message -t` probe, and `act1_window_reuse` makes it.
+  for ref in "${lane_window_id:-}" "${lane_window_ref:-}"; do
+    [[ -n "$ref" ]] || continue
+    if window_lane_read "$ref"; then
+      lane="$window_lane_answer"
       lane_source=window-record
-      lane_record_row="$(printf '%s\n' "$rows" | awk -F'\t' -v want="$candidate" '$1 == want { print; exit }')"
+      lane_note_read_failed
       return 0
     fi
-  fi
-  first_row="$(printf '%s\n' "$rows" | head -n 1)"
-  if [[ "$status" -eq 0 && -n "$rows" && "$first_row" == *$'\t'* ]]; then
+  done
+
+  # PRECEDENCE 4 — THE WORKSTATION'S NEWEST SWAP, and it IS a guess about which
+  # window, so it is handed to lane-start as `--confirm` and lane-start asks.
+  # 0 with rows `<lane>\t<UTC>\t<window>[\t<dir>]`, most recent first; 8 with
+  # none. The contract is the TAB: a row without one is not that shape.
+  swapped_read
+  first_row="$(printf '%s\n' "${swapped_rows:-}" | head -n 1)"
+  if [[ "${swapped_status:-8}" -eq 0 && -n "${swapped_rows:-}" && "$first_row" == *$'\t'* ]]; then
     candidate="${first_row%%$'\t'*}"
     if [[ "$candidate" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
       lane="$candidate"
       lane_source=record
-      # The row this lane came from, kept for resolve_lane_dir: the record is
-      # the one place that knows where the lane this workstation paused
-      # actually lives, and it is read once (Amendment 11(3)).
-      lane_record_row="$first_row"
+      lane_note_read_failed
       return 0
     fi
   fi
   # A lanes-edit.sh from before Amendment 8 exits 2 because it has no `swapped`
   # subcommand at all — but 2 is also its usage code, so a caller bug would look
-  # exactly like an old helper and degrade to case 4 in silence (F-W4). The
+  # exactly like an old helper and degrade to case 5 in silence (F-W4). The
   # status cannot tell them apart; the helper's own words can, because it says
   # "unknown subcommand" for the one and not for the other. An old helper is
   # expected and silent. A caller bug gets one line, and still a launch.
-  if [[ "$status" -ne 0 && "$status" -ne 8 && "$reason" != *"unknown subcommand"* ]]; then
-    lane_note_no_lane "lanes-edit.sh ${swapped_argv[*]} exited $status without calling it an unknown subcommand, so this is a caller bug and not an old helper"
-    return 0
+  if [[ "${swapped_status:-8}" -ne 0 && "${swapped_status:-8}" -ne 8 \
+        && "${swapped_reason:-}" != *"unknown subcommand"* ]]; then
+    lane_read_note="lanes-edit.sh ${swapped_argv[*]} exited ${swapped_status} without calling it an unknown subcommand, so this is a caller bug and not an old helper"
   fi
-  lane_note_no_lane
+  # PRECEDENCE 5 — no lane, one notice, and still a launch.
+  if [[ -n "${lane_read_note:-}" ]]; then
+    lane_note_no_lane "$lane_read_note"
+    lane_read_note=""
+  else
+    lane_note_no_lane
+  fi
   return 0
 }
 
@@ -789,72 +860,89 @@ resolve_lane() {
 # printed `[exited]` and the window closed on a restart that had nothing wrong
 # with it (new-workstation#20, Evidence 2).
 #
-# So the launcher learns the directory where it can and passes `--dir`. In
-# order, and never guessing:
+# So the launcher learns the directory where it can and passes `--dir`. THE
+# PRECEDENCE IS THE SPEC'S, and it has FOUR RUNGS AND NO FIFTH (SPEC §4,
+# Amendment 11(c), A11 Addendum 1 `R-A11-3`). First answer wins:
 #
-#   1. `--dir <path>`         — what the operator said. Passed as given.
-#   2. `CLAUDE_LANE_DIR`      — the same thing from the environment, so the
-#                               re-exec into a new tmux session can carry it.
-#   3. the SWAP RECORD        — the lane this workstation paused recorded where
-#                               it was (`dir <path>` in the PAUSED payload,
-#                               Amendment 11(4)); read only for the lane the
-#                               record itself named.
-#   4. the REGISTER ROW       — a `dir <path>` / `dir: <path>` field in the
-#                               lane's own row, if the register records one.
-#   5. the CWD's checkout     — only when its basename IS the lane's `<repo>`
-#                               token and lane-start's own default does not
-#                               exist. See below.
-#   6. nothing                — `--dir` is not passed and lane-start's default
-#                               stands, byte for byte as before this existed.
+#   1. `--dir <path>`         — the operator's word, on this launcher or on
+#                               lane-start, together with the `CLAUDE_LANE_DIR`
+#                               that carries it across the re-exec into a new
+#                               tmux session, exactly as `CLAUDE_LANE` carries
+#                               `--lane` at precedence 1 of the lane order.
+#                               ONE RUNG, two spellings of the same word. Not
+#                               tested for existence: lane-start's own refusal
+#                               names the path and the flag that fixes it, and a
+#                               launcher that silently dropped what it was told
+#                               would hide that.
+#   2. the SWAP RECORD's `dir` — the lane this workstation paused recorded where
+#                               it was (`dir <path>` in the PAUSED payload, and
+#                               `swapped`'s fourth tab-separated field), read
+#                               only for the row that names THIS lane.
+#   3. `lanes-edit.sh lane-dir <lane>` — the `dir ` sub-field of the lane's log's
+#                               LAST lane-kind line carrying one, in file order
+#                               (SPEC §11); written by lane-start on the
+#                               STARTED/RESUMED line.
+#   4. `$PROJECTS_ROOT/<repo>` — lane-start's own default, reached by passing no
+#                               `--dir` at all, and only the default for a lane
+#                               that has never been started under this
+#                               amendment. Byte for byte what every launch
+#                               before Amendment 11 passed.
 #
-# 3 and 4 are read TOLERANTLY: today's `lanes-edit.sh swapped` prints
-# `<lane>\t<UTC>\t<window>` and today's register row has no directory in it at
-# all, so both rungs simply find nothing and the next one is tried. A helper
-# that starts recording one is picked up with no change here, because the field
-# is looked for by its LABEL and by nothing positional — an unlabelled column
-# that happens to look like a path is not a directory this launcher will act
-# on, and a row whose shape changed underneath it can therefore never make it
-# start a lane in the wrong tree.
+# THERE IS NO FIFTH RUNG, AND THE CWD'S OWN CHECKOUT IS RULED OUT BY NAME.
+# This launcher's first pass had one: the cwd's git checkout where its basename
+# case-insensitively equalled the lane's `<repo>` token and `$PROJECTS_ROOT/
+# <repo>` did not exist. It was never authorised, and A11 Addendum 1 `R-A11-3`
+# removed it here rather than ruling it in with its two fences: `lane-start`
+# writes the lane's HOME into its Amendment 7 `STARTED` line from that
+# directory's `origin`, and every `#n` the lane afterwards writes inherits it,
+# so an inference that can silently re-home a lane is not worth the refusal it
+# saves — and the refusal names `--dir`, which is one word. Evidence 2's own
+# command is served by rung 1 today and by rung 2 the moment the swap writes a
+# `dir`, which is the tooling PR's act (SPEC §13.3 and §13.5).
 #
-# RUNG 5 IS THE ONE INFERENCE, AND IT IS FENCED ON BOTH SIDES. It fires only
-# when lane-start's own default `$PROJECTS_ROOT/<repo>` DOES NOT EXIST — so it
-# can never change where a lane that already works is started — and only when
-# the basename of the cwd's git checkout matches the lane's `<repo>` token
-# ignoring case, which is exactly Evidence 2's `openxFactory` vs
-# `openXfactory`. A wrong directory here is not a cosmetic error: lane-start
-# writes the lane's HOME into the Amendment 7 STARTED line from that
-# directory's `origin`, and a home is inherited by every `#n` the lane writes.
-# The two fences mean the only thing this rung can do is turn a certain
-# refusal into the checkout the operator is standing in, under the lane's own
-# name. `WORKBENCHES_CLAUDE_LANE_DIR_FROM_CWD=off` turns it off.
+# Rungs 2 and 3 are read TOLERANTLY: today's `lanes-edit.sh swapped` prints
+# `<lane>\t<UTC>\t<window>` with no fourth field and today's helper has no
+# `lane-dir` subcommand at all, so both simply find nothing and rung 4 stands.
+# A helper that starts recording one is picked up with no change here.
 
 lane_dir_field() {
-  # A `dir <path>` / `dir: <path>` / `dir=<path>` field anywhere in the text
-  # given, whatever separates the fields around it. Only an ABSOLUTE path is
-  # an answer: a relative one has no meaning without the writer's cwd, which
-  # nothing here knows, and `~` is the writing shell's and not this one's.
+  # The SPEC's field and only the SPEC's field: `dir <path>`, a payload
+  # sub-field in Amendment 7(b)'s grammar — the label, one space, an ABSOLUTE
+  # path (SPEC §5). A relative path has no meaning without the writer's cwd,
+  # which nothing here knows, and `~` is the writing shell's and not this one's.
+  #
+  # A PATH CONTAINING A SPACE IS QUOTED, NOT REFUSED (SPEC §5, A11 Addendum 1
+  # `R-A11-6`): the space is 7(b)'s separator between several refs inside one
+  # sub-field — which is what the `window` sub-field's two refs rely on — so the
+  # writer writes `dir "/home/b/my projects/x"` and EVERY READER takes a value
+  # opening with `"` as running to its closing `"`, stripping both. This is one
+  # of those readers. A path carrying `, `, ` — ` or a `"` of its own was
+  # refused by the writer and never appears here at all.
   local text="$1" value
   value="$(printf '%s\n' "$text" \
-    | sed -n 's/.*[[:space:]|]dir[:=]\{0,1\}[[:space:]]\{1,\}\(\/[^|;\t]*\).*/\1/p' \
+    | sed -n 's/.*[[:space:]|]dir[[:space:]]\{1,\}"\([^"]*\)".*/\1/p' \
     | head -n 1)"
-  value="${value%"${value##*[![:space:]]}"}"
+  if [[ -z "$value" ]]; then
+    value="$(printf '%s\n' "$text" \
+      | sed -n 's/.*[[:space:]|]dir[[:space:]]\{1,\}\(\/[^|;"\t]*\).*/\1/p' \
+      | head -n 1)"
+    value="${value%"${value##*[![:space:]]}"}"
+  fi
   [[ -n "$value" ]] || return 1
   printf '%s\n' "$value"
 }
 
 resolve_lane_dir() {
-  # Sets `lane_dir` and `lane_dir_source`
-  # (flag|env|record|recorded|cwd, empty for none). Never fails and never
-  # refuses: a directory that cannot be learnt is lane-start's default, which
-  # is what every launch before Amendment 11 passed.
-  local lanes_edit row candidate repo_token cwd_root default_root status
+  # Sets `lane_dir` and `lane_dir_source` (flag|env|record|recorded, empty for
+  # rung 4). Never fails and never refuses: a directory that cannot be learnt is
+  # lane-start's default, which is what every launch before Amendment 11 passed.
+  local lanes_edit row candidate status
   lane_dir=""
   lane_dir_source=""
   [[ -n "${lane:-}" ]] || return 0
 
-  # 1 and 2 — the operator's word, passed exactly as given. NOT tested for
-  # existence: lane-start's refusal names the path and the flag that fixes it,
-  # and a launcher that silently dropped what it was told would hide that.
+  # RUNG 1 — the operator's word, in either of its two spellings, passed
+  # exactly as given and NOT tested for existence (see above).
   if [[ -n "${lane_dir_flag:-}" ]]; then
     lane_dir="$lane_dir_flag"; lane_dir_source=flag; return 0
   fi
@@ -862,29 +950,34 @@ resolve_lane_dir() {
     lane_dir="$CLAUDE_LANE_DIR"; lane_dir_source=env; return 0
   fi
 
-  # 3 — THE SWAP RECORD, and only the row that named THIS lane: a record for
-  # some other lane says nothing about where this one lives. Free — the row is
-  # already in hand from resolve_lane, so nothing is read again for it. SPEC
-  # §11 gives `swapped` a FOURTH tab-separated field, `<dir>`; a labelled
-  # `dir <path>` anywhere in the row is taken too, so a helper that packs it
-  # into the payload instead is read the same way. Today's helper has neither,
-  # and finds nothing.
-  if [[ -n "${lane_record_row:-}" ]]; then
-    candidate="$(printf '%s' "$lane_record_row" | cut -f 4)"
-    [[ "$candidate" == /* ]] || candidate="$(lane_dir_field "$lane_record_row" || true)"
+  # RUNG 2 — THE SWAP RECORD, and only the row that names THIS lane: a record
+  # for some other lane says nothing about where this one lives. The row is
+  # already in hand wherever `swapped` was read to resolve the lane, and
+  # `swapped_rows` reads it at most once per launch otherwise — which is the
+  # case the `window-lane` and `--lane` paths reach, since neither of them
+  # reads `swapped` at all. SPEC §11 gives `swapped` a FOURTH tab-separated
+  # field, `<dir>`; a `dir <path>` sub-field anywhere in the row is taken too,
+  # so a helper that packs it into the payload instead is read the same way.
+  swapped_read
+  row="$(lane_swapped_row "$lane" || true)"
+  if [[ -n "$row" ]]; then
+    candidate="$(printf '%s' "$row" | cut -f 4)"
+    [[ "$candidate" == /* || "$candidate" == '"'* ]] || candidate=""
+    [[ -n "$candidate" ]] || candidate="$(lane_dir_field "$row" || true)"
+    candidate="${candidate%\"}"; candidate="${candidate#\"}"
     if [[ -n "$candidate" && -d "$candidate" ]]; then
       lane_dir="$candidate"; lane_dir_source=record; return 0
     fi
   fi
 
-  # 4 — THE LANE'S RECORDED DIRECTORY (SPEC §11, `lanes-edit.sh lane-dir
+  # RUNG 3 — THE LANE'S RECORDED DIRECTORY (SPEC §11, `lanes-edit.sh lane-dir
   # <lane>`: the `dir ` sub-field of its log's last lane-kind line carrying
-  # one; 0 a path, 8 none, 64 usage). Read with the same LANES_NO_FETCH=1 as
-  # every other register read on the path of a launch — a launcher must not sit
-  # on the network to open a terminal. A helper that has no such subcommand
-  # answers 2 and is simply a helper that records no directory yet; ONLY 0 with
-  # an existing directory is an answer, so an unknown-subcommand line can never
-  # be mistaken for a path.
+  # one; 0 a path, 8 none, 64 usage, 2 a helper predating Amendment 11). Read
+  # with the same LANES_NO_FETCH=1 as every other register read on the path of
+  # a launch — a launcher must not sit on the network to open a terminal. ONLY
+  # 0 with an existing directory is an answer, so the unknown-subcommand line
+  # today's helper prints can never be mistaken for a path, and every other
+  # code simply leaves rung 4 standing.
   lanes_edit="$(lanes_edit_bin || true)"
   if [[ -n "$lanes_edit" ]]; then
     set +e
@@ -892,36 +985,15 @@ resolve_lane_dir() {
     status=$?
     set -e
     row="${row%%$'\n'*}"
+    row="${row%\"}"; row="${row#\"}"
     if [[ "$status" -eq 0 && "$row" == /* && -d "$row" ]]; then
       lane_dir="$row"; lane_dir_source=recorded; return 0
     fi
   fi
 
-  # 5 — THE CWD'S CHECKOUT, and it is the one INFERENCE here, fenced on both
-  # sides. It fires only where lane-start's own default `$PROJECTS_ROOT/<repo>`
-  # DOES NOT EXIST, so a launch that has always worked keeps working and this
-  # rung is not even attempted; and only where the basename of the cwd's git
-  # checkout IS the lane's `<repo>` token ignoring case, which is exactly
-  # Evidence 2's `openxFactory` against `openXfactory`. A derived path that
-  # overrode a working default could move a lane into another tree, where
-  # lane-start would write that tree's `origin` into the lane's Amendment 7
-  # STARTED line as its HOME — a home every `#n` the lane writes then inherits.
-  # Between the two fences the most this rung can do is turn a certain refusal
-  # into the checkout the operator is standing in, under the lane's own name.
-  # It is a DEGRADATION for the estate as it is today, and it retires itself:
-  # once rung 3 or 4 can answer, this one is never reached.
-  [[ "${WORKBENCHES_CLAUDE_LANE_DIR_FROM_CWD:-on}" != off ]] || return 0
-  repo_token="${lane%-*}"
-  [[ -n "$repo_token" && "$repo_token" != "$lane" ]] || return 0
-  default_root="${PROJECTS_ROOT:-$HOME/projects}/$repo_token"
-  [[ ! -d "$default_root" ]] || return 0
-  command -v git >/dev/null 2>&1 || return 0
-  cwd_root="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || true)"
-  [[ -n "$cwd_root" && -d "$cwd_root" ]] || return 0
-  [[ "$(printf '%s' "${cwd_root##*/}" | tr '[:upper:]' '[:lower:]')" \
-     == "$(printf '%s' "$repo_token" | tr '[:upper:]' '[:lower:]')" ]] || return 0
-  lane_dir="$cwd_root"
-  lane_dir_source=cwd
+  # RUNG 4 — lane-start's own default, reached by passing no `--dir`. There is
+  # nothing here to write: `lane_dir` is empty and the launcher hands the lane
+  # over exactly as it did before Amendment 11 existed.
   return 0
 }
 
@@ -934,7 +1006,16 @@ lane_source=""
 lane_window=""
 lane_window_ref=""
 lane_window_id=""
-lane_record_row=""
+# The swap records, read at most once per launch (swapped_read) and shared by
+# the lane order's precedence 4 and the directory order's rung 2.
+swapped_read_done=""
+swapped_rows=""
+swapped_status=8
+swapped_reason=""
+swapped_argv=(swapped)
+# The first failed read of the lane order, named where it failed and carried
+# down the order so the notice is printed once (SPEC §2).
+lane_read_note=""
 lane_dir=""
 lane_dir_source=""
 lane_dir_flag=""
@@ -1004,18 +1085,24 @@ answers start Claude, one of them with no lane). With neither, and with
 THE WINDOW IS REUSED (Amendment 11(2), act 1). Run inside tmux, this launcher
 keeps the CURRENT window: it sets CLAUDE_CONFIG_DIR and execs in place, so the
 window's name and its id survive a restart and the window name resolves the
-lane with no question asked. Run outside tmux it creates a session of its own,
-as before; that session's window is named for the command that made it, so
-there the swap record is what binds. A window named for ANOTHER lane resolves
-THAT lane — the window is the key — and --lane or --no-lane is the way out.
+lane with no question asked. Run OUTSIDE tmux it first tries to reuse the
+window a swap record names, where that window still exists, and attaches to its
+session; failing that it creates a session of its own, whose window is named
+for the LANE at birth when the lane is certain (--lane/CLAUDE_LANE) and for the
+command that made it when it is not, because naming a window from a guess
+nobody confirmed would pre-answer lane-start's own question. A window named for
+ANOTHER lane resolves THAT lane — the window is the key — and --lane or
+--no-lane is the way out.
 
 THE LANE'S DIRECTORY (Amendment 11(3)). lane-start's default is
 $PROJECTS_ROOT/<repo>, and a checkout that is somewhere else used to end the
-launch. --dir is passed when this launcher can learn it: --dir, else
-CLAUDE_LANE_DIR, else a `dir <path>` field in the swap record, else one in the
-register row, else the cwd's own checkout when its name IS the lane's <repo>
-and the default does not exist (WORKBENCHES_CLAUDE_LANE_DIR_FROM_CWD=off turns
-that last one off). Failing all of those, lane-start's default stands.
+launch. --dir is passed when this launcher can learn it, in FOUR rungs and no
+fifth: 1 --dir or CLAUDE_LANE_DIR, the operator's own word; 2 the `dir <path>`
+of this lane's own swap record; 3 `lanes-edit.sh lane-dir <lane>`, the
+directory the lane's log recorded at its last start; 4 nothing, so
+lane-start's default stands. The cwd's own checkout is NOT a rung: deriving the
+lane's tree from the tree you happen to stand in can silently re-home the lane,
+and the refusal that rung would have saved names --dir, which is one word.
 
 NOTHING HERE CAN CLOSE THE WINDOW. lane-start is run, never exec'd: if it
 refuses — a directory that is not there, a lane held live elsewhere, a

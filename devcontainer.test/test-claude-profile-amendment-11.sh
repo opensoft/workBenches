@@ -55,21 +55,24 @@ unset TMUX TMUX_PANE WORKBENCHES_CLAUDE_TMUX WORKBENCHES_CLAUDE_TMUX_CHILD \
     WORKBENCHES_CLAUDE_WINDOW WORKBENCHES_CLAUDE_WINDOW_ID \
     WORKBENCHES_CLAUDE_WINDOW_REF WORKBENCHES_TMUX_SESSION \
     WORKBENCHES_TMUX_PANE CLAUDE_LANE CLAUDE_NO_LANE CLAUDE_LANE_DIR \
-    LANES_WORKSTATION PROJECTS_ROOT WORKBENCHES_CLAUDE_LANE_DIR_FROM_CWD \
+    LANES_WORKSTATION PROJECTS_ROOT \
     2>/dev/null || true
 
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
 
-# THE CWD IS PART OF THE STATE UNDER TEST, so this suite pins it. Amendment
-# 11(3)'s last rung reads the cwd's own git checkout, which means a suite run
-# from inside a checkout whose basename happens to be a lane's <repo> resolves a
-# directory nobody asked for — and one run from `~/projects/openRepoProject`
-# did exactly that, handing lane-start `--dir /home/brett/projects/...` in
-# scenarios that are not about directories at all. Every scenario below either
-# stands in $TEST_ROOT, which is nobody's checkout, or `cd`s into a tree it made
-# itself. GIT_CEILING_DIRECTORIES stops `rev-parse --show-toplevel` walking out
-# of $TEST_ROOT on a machine whose temp directory sits inside a repository.
+# THE CWD IS PART OF THE STATE UNDER TEST, so this suite pins it — and keeps
+# pinning it now that Amendment 11's directory order has no cwd rung at all.
+# An earlier pass of this launcher had one, and a suite run from
+# `~/projects/openRepoProject` inferred a directory nobody asked for, handing
+# lane-start `--dir /home/brett/projects/...` in scenarios that are not about
+# directories: three mutations came back green for the wrong reason. 4f and
+# 4f-i now assert the rung's ABSENCE from the cwd it used to fire in, which
+# only means anything if the suite's own cwd is pinned. Every scenario below
+# either stands in $TEST_ROOT, which is nobody's checkout, or `cd`s into a tree
+# it made itself. GIT_CEILING_DIRECTORIES stops `rev-parse --show-toplevel`
+# walking out of $TEST_ROOT on a machine whose temp directory sits inside a
+# repository.
 cd "$TEST_ROOT"
 
 fail() {
@@ -83,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=43
+EXPECTED_SCENARIOS=45
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -198,6 +201,29 @@ case "${1:-}" in
         fi
         [[ -z "${FAKE_LANE_DIR_NONE:-}" ]] || exit 8
         ;;
+    window-lane)
+        # SPEC §11: "the register row whose name is the window's name, else the
+        # swap record whose `window` names that id or that `session:index`".
+        # FAKE_WINDOW_LANE_MAP is `<ref>=<lane>` per line — the answer the
+        # helper gives, never a shape this launcher is allowed to derive for
+        # itself. FAKE_WINDOW_LANE_NONE=1 is the helper answering 8 (no lane for
+        # this window), FAKE_WINDOW_LANE_STATUS is any other code, and NEITHER
+        # set is TODAY'S ESTATE: a helper predating Amendment 11 falls through
+        # to the unknown-subcommand line and 2, exactly as a pre-Amendment-8 one
+        # did for `swapped`.
+        [[ -z "${FAKE_WINDOW_LANE_STATUS:-}" ]] || exit "$FAKE_WINDOW_LANE_STATUS"
+        if [[ -n "${FAKE_WINDOW_LANE_MAP:-}" ]]; then
+            while IFS= read -r pair; do
+                [[ -n "$pair" ]] || continue
+                if [[ "${pair%%=*}" == "${2:-}" ]]; then
+                    printf '%s\n' "${pair#*=}"
+                    exit 0
+                fi
+            done <<< "$FAKE_WINDOW_LANE_MAP"
+            exit 8
+        fi
+        [[ -z "${FAKE_WINDOW_LANE_NONE:-}" ]] || exit 8
+        ;;
 esac
 echo "unknown subcommand '${1:-}'" >&2
 exit 2
@@ -265,10 +291,10 @@ common_env=(
     "WORKBENCHES_SHARED_MCP_FAMILIES=disabled"
     "LANES_WORKSTATION=Eagle"
     "TMUX=fake-session"
-    # lane-start's own default, pointed at a tree of this suite's own so that
-    # the first fence of the cwd rung is OPEN by default: the scenarios that
-    # must not reach that rung then prove it on the rung's own terms, not on an
-    # accident of where the suite was run.
+    # lane-start's own default, pointed at a tree of this suite's own: rung 4
+    # is "pass no --dir and let lane-start derive it", so nothing here may
+    # depend on a real `$HOME/projects`, and 4f's assertion that no fifth rung
+    # exists is made with the retired rung's first fence wide open.
     "PROJECTS_ROOT=$TEST_ROOT/projects"
     "GIT_CEILING_DIRECTORIES=$TEST_ROOT"
 )
@@ -517,14 +543,24 @@ grep -Fxq -- "mineLane-1 -- $claude_args --resume session-override" "$LANE_START
     || fail "window of another lane, --lane given: lane-start argv was '$(lane_start_argv)'"; assertion
 
 # ===========================================================================
-# 3. THE RECORD FOR *THIS* WINDOW — precedence step 3, SPEC §2.
+# 3. THE RECORD FOR *THIS* WINDOW — precedence step 3, SPEC §2 row 3 and §11.
+#
+# READ THROUGH `lanes-edit.sh window-lane`, AND THAT IS THE CONTRACT POINT.
+# The helper answers "the register row whose name is the window's name, else
+# the swap record whose `window` names that id or that `session:index`" (SPEC
+# §11), and it has THREE callers — this launcher, `/restart` step 2(b) and the
+# `/lane-swap` skill's step 1. One rule, one implementation: a launcher that
+# scanned `swapped` rows for itself would be a second implementation of the one
+# rule that exists to stop the three disagreeing about which lane a window is.
+# Every scenario below therefore asserts the READ as well as the answer.
 # ===========================================================================
 
 # 3a. The record whose `window` field names THIS window's `<@id>`. It is an
 # exact match on the window the operator is standing in, so it is taken BARE —
-# no `--confirm`, no question — even though the row is not the newest one.
+# no `--confirm`, no question — even though the newest swap is another lane's.
 launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     "FAKE_TMUX_WINDOW_ID=@97" "FAKE_TMUX_WINDOW_REF=some-session:2" \
+    "FAKE_WINDOW_LANE_MAP=@97=mine-5" \
     "FAKE_SWAPPED_STATUS=0" \
     "FAKE_SWAPPED_ROWS=newest-9\t2026-09-13T03:31:56Z\tclaude-x:0 @12\nmine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
     -- run team002 --resume session-byid
@@ -534,12 +570,33 @@ grep -q -- '--confirm' "$LANE_START_LOG" \
     && fail "record by @id: an EXACT match on this window was confirmed ($(lane_start_argv))"; assertion
 grep -Fq 'newest-9' "$LANE_START_LOG" \
     && fail "record by @id: the newest row beat the row that names this window"; assertion
+grep -Fxq 'argv=window-lane @97' "$LANES_EDIT_LOG" \
+    || fail "record by @id: the helper's own read was not made ($(cat "$LANES_EDIT_LOG"))"; assertion
 
-# 3b. ...and by `<session>:<index>` where no id is recorded. The id is the
-# better key and is tried first, but a record written before ids were recorded
-# still names its window, and that is still exact.
+# 3a-i. MUTATION — THE READ IS THE HELPER'S, NEVER THE LAUNCHER'S OWN PARSE.
+# `swapped` is holding a row that names this window, and the helper answers
+# NOTHING. A launcher that still parsed the rows itself binds `mine-5` bare
+# here; one that reads the rule through the helper falls to precedence 4 and is
+# CONFIRMED. This is the assertion that fails if the old parse comes back.
 launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     "FAKE_TMUX_WINDOW_ID=@97" "FAKE_TMUX_WINDOW_REF=claude-y:0" \
+    "FAKE_WINDOW_LANE_NONE=1" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=newest-9\t2026-09-13T03:31:56Z\tclaude-x:0 @12\nmine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
+    -- run team002 --resume session-helperonly
+grep -Fq 'mine-5' "$LANE_START_LOG" \
+    && fail "helper is the read: the launcher parsed the swapped rows itself ('$(lane_start_argv)')"; assertion
+grep -Fxq -- "--confirm newest-9 -- $claude_args --resume session-helperonly" "$LANE_START_LOG" \
+    || fail "helper is the read: it did not fall to the confirmed guess ('$(lane_start_argv)')"; assertion
+
+# 3b. ...and by `<session>:<index>` where the id answered nothing. The id is
+# the better key and is asked about FIRST — a `<session>:<index>` is reused the
+# instant a window closes and the next one takes its index, while an id is never
+# reissued for the life of the server — but a record written before ids were
+# recorded still names its window, and that is still exact.
+launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_TMUX_WINDOW_ID=@97" "FAKE_TMUX_WINDOW_REF=claude-y:0" \
+    "FAKE_WINDOW_LANE_MAP=claude-y:0=mine-5" \
     "FAKE_SWAPPED_STATUS=0" \
     "FAKE_SWAPPED_ROWS=newest-9\t2026-09-13T03:31:56Z\tclaude-x:0\nmine-5\t2026-09-13T03:31:33Z\tclaude-y:0\n" \
     -- run team002 --resume session-byref
@@ -548,80 +605,97 @@ grep -Fxq -- "mine-5 -- $claude_args --resume session-byref" "$LANE_START_LOG" \
 grep -q -- '--confirm' "$LANE_START_LOG" \
     && fail "record by session:index: an exact match was confirmed"; assertion
 
-# 3c. MUTATION — NO ROW NAMES THIS WINDOW, so the newest-first guess of
+# 3b-i. THE ORDER OF THE TWO REFS, asserted on the log rather than inferred:
+# `window-lane <@id>` is asked BEFORE `window-lane <session>:<index>`, and where
+# the id answers the ref is never asked at all.
+launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_TMUX_WINDOW_ID=@97" "FAKE_TMUX_WINDOW_REF=claude-y:0" \
+    "FAKE_WINDOW_LANE_MAP=@97=idmatch-5"$'\n'"claude-y:0=refmatch-9" \
+    "FAKE_SWAPPED_STATUS=8" \
+    -- run team002 --resume session-idfirst
+grep -Fxq -- "idmatch-5 -- $claude_args --resume session-idfirst" "$LANE_START_LOG" \
+    || fail "id first: the ref answered before the id ('$(lane_start_argv)')"; assertion
+grep -Fxq 'argv=window-lane claude-y:0' "$LANES_EDIT_LOG" \
+    && fail "id first: the ref was asked about although the id had answered"; assertion
+
+# 3c. MUTATION — NOTHING NAMES THIS WINDOW, so the newest-first guess of
 # precedence 4 applies and IT IS STILL CONFIRMED. The whole value of step 3 is
 # that it is not a guess; a launcher that took the newest row bare because step
 # 3 had merely been TRIED would have turned Amendment 8(c)'s one question into
 # silence, and on 2026-09-13 the two newest records were 23 seconds apart.
 launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     "FAKE_TMUX_WINDOW_ID=@55" "FAKE_TMUX_WINDOW_REF=nobody:9" \
+    "FAKE_WINDOW_LANE_NONE=1" \
     "FAKE_SWAPPED_STATUS=0" \
     "FAKE_SWAPPED_ROWS=newest-9\t2026-09-13T03:31:56Z\tclaude-x:0 @12\nmine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
     -- run team002 --resume session-noexact
 grep -Fxq -- "--confirm newest-9 -- $claude_args --resume session-noexact" "$LANE_START_LOG" \
     || fail "no exact record: lane-start argv was '$(lane_start_argv)'"; assertion
 
-# 3c-i. MUTATION — A ROW WHOSE ID IS NOT OURS IS INELIGIBLE ON ITS REF. This is
-# the reuse the id exists to catch: a window paused as `claude-y:0 @97` closes,
-# the next window takes the index and is `claude-y:0 @200`, and a launcher that
-# scanned each row's refs for whichever matched would bind THIS window to a
-# lane that was paused in a different one — silently, because step 3 asks
-# nothing. The id disagreeing is proof, not absence of evidence, so the launch
-# falls to precedence 4 and is CONFIRMED.
+# 3c-i. DEGRADATION — TODAY'S ESTATE. A `lanes-edit.sh` predating Amendment 11
+# has no `window-lane` subcommand at all: it prints its unknown-subcommand line
+# and exits 2, exactly as a pre-Amendment-8 one did for `swapped`. That 2 is an
+# OLD HELPER and is EXPECTED AND SILENT — not a caller's bug, not a notice —
+# and the order falls to the NEXT step, which answers today on every
+# workstation whose helper is not yet upgraded.
 launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
-    "FAKE_TMUX_WINDOW_ID=@200" "FAKE_TMUX_WINDOW_REF=claude-y:0" \
+    "FAKE_TMUX_WINDOW_ID=@97" "FAKE_TMUX_WINDOW_REF=claude-y:0" \
     "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=newest-9\t2026-09-13T03:31:56Z\tclaude-x:0 @12\nmine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
-    -- run team002 --resume session-reused-index
-grep -Fq 'mine-5' "$LANE_START_LOG" \
-    && fail "reused index: a record whose @id is NOT ours was matched on its ref ('$(lane_start_argv)')"; assertion
-grep -Fxq -- "--confirm newest-9 -- $claude_args --resume session-reused-index" "$LANE_START_LOG" \
-    || fail "reused index: it did not fall to the confirmed guess ('$(lane_start_argv)')"; assertion
+    "FAKE_SWAPPED_ROWS=newest-9\t2026-09-13T03:31:56Z\tclaude-x:0 @12\n" \
+    -- run team002 --resume session-oldhelper
+grep -Fxq -- "--confirm newest-9 -- $claude_args --resume session-oldhelper" "$LANE_START_LOG" \
+    || fail "old helper: it did not fall to precedence 4 ('$(lane_start_argv)')"; assertion
+grep -Fq 'window-lane' "$ERR_LOG" \
+    && fail "old helper: a helper predating Amendment 11 was reported as a fault ($(cat "$ERR_LOG"))"; assertion
 
-# 3c-ii. ...and the ID BEATS A REF ON ANOTHER ROW, wherever the two rows sit.
-# A single per-row scan takes whichever row comes first; the id is the better
-# key and is tried across every row before any ref is.
+# 3c-ii. MUTATION — A FAILED READ FALLS TO THE NEXT STEP, NOT TO STEP 5, AND
+# NAMES ITSELF. SPEC §2: "A failed read falls to the NEXT step, not to step 5 …
+# dropping to 5 would skip step 4, which answers today on every workstation
+# whose helper is not yet upgraded." 64 is the helper's own usage error and it
+# says nothing about unknown subcommands, so it is a caller's bug: one line,
+# and still the confirmed guess of precedence 4 below it.
 launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
-    "FAKE_TMUX_WINDOW_ID=@97" "FAKE_TMUX_WINDOW_REF=claude-x:0" \
+    "FAKE_TMUX_WINDOW_ID=@97" "FAKE_TMUX_WINDOW_REF=claude-y:0" \
+    "FAKE_WINDOW_LANE_STATUS=64" \
     "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=refmatch-9\t2026-09-13T03:31:56Z\tclaude-x:0\nidmatch-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
-    -- run team002 --resume session-idfirst
-grep -Fxq -- "idmatch-5 -- $claude_args --resume session-idfirst" "$LANE_START_LOG" \
-    || fail "id first: the ref on an earlier row won ('$(lane_start_argv)')"; assertion
-
-# 3c-iii. With NO id of our own, a row that names one is skipped rather than
-# matched on its ref: nothing here can prove it is this window, and the cost of
-# being wrong is silence. One question is the right answer for a guess.
-launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
-    "FAKE_TMUX_WINDOW_ID=" "FAKE_TMUX_WINDOW_REF=claude-y:0" \
-    "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=newest-9\t2026-09-13T03:31:56Z\tclaude-x:0 @12\nmine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
-    -- run team002 --resume session-noid
-grep -Fxq -- "--confirm newest-9 -- $claude_args --resume session-noid" "$LANE_START_LOG" \
-    || fail "no id of our own: a row naming an id was matched on its ref anyway ('$(lane_start_argv)')"; assertion
+    "FAKE_SWAPPED_ROWS=newest-9\t2026-09-13T03:31:56Z\tclaude-x:0 @12\n" \
+    -- run team002 --resume session-failedread
+grep -Fxq -- "--confirm newest-9 -- $claude_args --resume session-failedread" "$LANE_START_LOG" \
+    || fail "failed read: it did not fall to the NEXT step ('$(lane_start_argv)')"; assertion
+grep -Fq 'window-lane' "$ERR_LOG" \
+    || fail "failed read: it was not named ($(cat "$ERR_LOG"))"; assertion
+grep -Fq "$note" "$ERR_LOG" \
+    && fail "failed read: it dropped to step 5's no-lane notice instead of to step 4"; assertion
 
 # 3d. The WINDOW NAME still beats the record, and when it answers the record is
 # not read at all. Precedence 2 is first for a reason: it is the register's own
 # word about a live window, and the record is a copy of an address.
 launch "FAKE_TMUX_WINDOW=openRepoProject-1" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
     "FAKE_TMUX_WINDOW_ID=@97" \
+    "FAKE_WINDOW_LANE_MAP=@97=mine-5" \
     "FAKE_SWAPPED_STATUS=0" \
     "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
     -- run team002 --resume session-namewins
 grep -Fxq -- "openRepoProject-1 -- $claude_args --resume session-namewins" "$LANE_START_LOG" \
     || fail "name beats record: lane-start argv was '$(lane_start_argv)'"; assertion
-grep -Fq 'argv=swapped' "$LANES_EDIT_LOG" \
-    && fail "name beats record: the record was read even though the window answered"; assertion
+grep -Fq 'argv=window-lane' "$LANES_EDIT_LOG" \
+    && fail "name beats record: precedence 3 was read even though the window answered"; assertion
 
 # ===========================================================================
 # 4. THE LANE'S DIRECTORY — Amendment 11(3), SPEC §4 and §11.
+#
+# FOUR RUNGS AND NO FIFTH: `--dir`/`CLAUDE_LANE_DIR` → the swap record's `dir`
+# → `lanes-edit.sh lane-dir <lane>` → lane-start's own default. The cwd's own
+# checkout is ruled OUT BY NAME (A11 Addendum 1, `R-A11-3`), and 4f asserts its
+# absence on the very shapes that used to make it fire.
 # ===========================================================================
 
 LANE_TREE="$TEST_ROOT/trees/openXfactory"
 RECORD_TREE="$TEST_ROOT/trees/from-record"
-mkdir -p "$LANE_TREE" "$RECORD_TREE"
+SPACED_TREE="$TEST_ROOT/trees/my lane tree"
+mkdir -p "$LANE_TREE" "$RECORD_TREE" "$SPACED_TREE"
 
-# 4a. `--dir` is passed straight through, exactly as typed. It is the
+# 4a. RUNG 1 — `--dir` is passed straight through, exactly as typed. It is the
 # operator's word, and it is NOT tested for existence here: lane-start's own
 # refusal names the path and the flag that fixes it, and a launcher that
 # silently dropped what it was told would hide that.
@@ -631,25 +705,52 @@ launch "FAKE_TMUX_WINDOW=openRepoProject-1" "FAKE_LANE_WITH_ROW=openRepoProject-
 grep -Fxq -- "--dir $LANE_TREE openRepoProject-1 -- $claude_args --resume session-dirflag" "$LANE_START_LOG" \
     || fail "--dir: lane-start argv was '$(lane_start_argv)'"; assertion
 
+# ...and `CLAUDE_LANE_DIR` is the SAME RUNG, not a second one: it is how the
+# operator's `--dir` survives the re-exec into a new tmux session, exactly as
+# `CLAUDE_LANE` carries `--lane` at precedence 1 of the lane order.
 launch "FAKE_TMUX_WINDOW=openRepoProject-1" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
     "FAKE_SWAPPED_STATUS=8" "CLAUDE_LANE_DIR=$LANE_TREE" \
     -- run team002 --resume session-direnv
 grep -Fxq -- "--dir $LANE_TREE openRepoProject-1 -- $claude_args --resume session-direnv" "$LANE_START_LOG" \
     || fail "CLAUDE_LANE_DIR: lane-start argv was '$(lane_start_argv)'"; assertion
 
-# 4b. The SWAP RECORD's fourth tab-separated field (SPEC §11). It comes free
-# with the row the lane itself was resolved from, so nothing is read twice for
-# it — and it is the field the tooling PR will start writing.
+# 4b. RUNG 2 — THE SWAP RECORD's fourth tab-separated field (SPEC §11), for the
+# row that names THIS lane.
 launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     "FAKE_TMUX_WINDOW_ID=@97" \
+    "FAKE_WINDOW_LANE_MAP=@97=mine-5" \
     "FAKE_SWAPPED_STATUS=0" \
     "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\t$RECORD_TREE\n" \
     -- run team002 --resume session-dirrecord
 grep -Fxq -- "--dir $RECORD_TREE mine-5 -- $claude_args --resume session-dirrecord" "$LANE_START_LOG" \
     || fail "record dir: lane-start argv was '$(lane_start_argv)'"; assertion
 
-# 4c. `lanes-edit.sh lane-dir <lane>` (SPEC §11), for a lane whose record is not
-# what resolved it.
+# 4b-i. RUNG 2, READ FOR *THIS* LANE AND NOT FOR THE NEWEST ROW. A record for
+# some other lane says nothing about where this one lives, and the lane here
+# came from the operator's own `--lane` rather than from any row.
+launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=someone-9\t2026-09-13T03:31:56Z\tclaude-x:0 @12\t$LANE_TREE\nmine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\t$RECORD_TREE\n" \
+    -- --lane mine-5 run team002 --resume session-dirmine
+grep -Fxq -- "--dir $RECORD_TREE mine-5 -- $claude_args --resume session-dirmine" "$LANE_START_LOG" \
+    || fail "record dir for this lane: lane-start argv was '$(lane_start_argv)'"; assertion
+
+# 4b-ii. RUNG 2 WITH A SPACE IN THE PATH, which SPEC §5 makes a QUOTING rule
+# rather than a refusal: the space is Amendment 7(b)'s separator between refs
+# inside one sub-field, so the writer writes `dir "/home/b/my projects/x"` and
+# every reader takes a value opening with `"` as running to its closing `"`,
+# stripping both. This launcher is one of those readers.
+launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_TMUX_WINDOW_ID=@97" \
+    "FAKE_WINDOW_LANE_MAP=@97=mine-5" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97; dir \"$SPACED_TREE\"\n" \
+    -- run team002 --resume session-dirquoted
+grep -Fxq -- "--dir $SPACED_TREE mine-5 -- $claude_args --resume session-dirquoted" "$LANE_START_LOG" \
+    || fail "quoted dir: lane-start argv was '$(lane_start_argv)'"; assertion
+
+# 4c. RUNG 3 — `lanes-edit.sh lane-dir <lane>` (SPEC §11), for a lane whose
+# record carries no directory.
 launch "FAKE_TMUX_WINDOW=openXfactory-5" "FAKE_LANE_WITH_ROW=openXfactory-5" \
     "FAKE_SWAPPED_STATUS=8" "FAKE_LANE_DIR=$LANE_TREE" \
     -- run team002 --resume session-lanedir
@@ -663,7 +764,7 @@ grep -Fxq 'LANES_NO_FETCH=1' "$LANES_EDIT_LOG" \
 # 4d. DEGRADATION — today's helper has no `lane-dir` at all: it answers the
 # unknown-subcommand line and exits 2. Only 0 with an existing directory is an
 # answer, so that line can never be mistaken for a path, and the launch is
-# byte-for-byte what it was before Amendment 11.
+# byte-for-byte what it was before Amendment 11. This is RUNG 4.
 launch "FAKE_TMUX_WINDOW=openRepoProject-1" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
     "FAKE_SWAPPED_STATUS=8" \
     -- run team002 --resume session-nolanedir
@@ -681,10 +782,17 @@ launch "FAKE_TMUX_WINDOW=openRepoProject-1" "FAKE_LANE_WITH_ROW=openRepoProject-
 grep -Fxq -- "openRepoProject-1 -- $claude_args --resume session-nodirflag" "$LANE_START_LOG" \
     || fail "lane-start without --dir: lane-start argv was '$(lane_start_argv)'"; assertion
 
-# 4f. THE CWD RUNG, and Evidence 2's own shapes. The lane is `openXfactory-5`,
-# `$PROJECTS_ROOT/openXfactory` does not exist, and the cwd's checkout is
-# `.../openxFactory` — the same word in a different case, which is exactly what
-# made lane-start die. It fires, and it fires only because BOTH fences are open.
+# 4f. MUTATION — THERE IS NO FIFTH RUNG, ON THE VERY SHAPES THAT USED TO MAKE
+# ONE FIRE. This is Evidence 2's own command, run from Evidence 2's own
+# checkout: the lane is `openXfactory-5`, `$PROJECTS_ROOT/openXfactory` does not
+# exist, and the cwd IS a git checkout named `openxFactory` — the same word in
+# a different case. An earlier pass of this launcher inferred the lane's tree
+# from it. A11 Addendum 1 `R-A11-3` ruled that out BY NAME, because lane-start
+# writes the lane's HOME into its Amendment 7 STARTED line from that
+# directory's `origin` and every `#n` the lane afterwards writes inherits it —
+# an inference that can silently re-home a lane is not worth the refusal it
+# saves, and the refusal names `--dir`. So NO `--dir` is passed, lane-start's
+# own default stands, and lane-start refuses with the words that name the flag.
 CWD_TREE="$TEST_ROOT/xFactory/openxFactory"
 mkdir -p "$CWD_TREE"
 git -C "$CWD_TREE" init -q 2>/dev/null || true
@@ -694,17 +802,37 @@ set +e
 ( cd "$CWD_TREE" && env "${common_env[@]}" \
     "FAKE_TMUX_WINDOW=openXfactory-5" "FAKE_LANE_WITH_ROW=openXfactory-5" \
     "FAKE_SWAPPED_STATUS=8" "PROJECTS_ROOT=$TEST_ROOT/projects" \
-    "$LAUNCHER" run team002 --resume session-cwd >/dev/null 2>"$ERR_LOG" )
+    "$LAUNCHER" run team002 --resume session-nocwd >/dev/null 2>"$ERR_LOG" )
 launch_status=$?
 set -e
-grep -Fxq -- "--dir $CWD_TREE openXfactory-5 -- $claude_args --resume session-cwd" "$LANE_START_LOG" \
-    || fail "cwd rung: lane-start argv was '$(lane_start_argv)'"; assertion
+grep -q -- '--dir' "$LANE_START_LOG" \
+    && fail "no fifth rung: the cwd's own checkout was inferred as the lane's tree ($(lane_start_argv))"; assertion
+grep -Fxq -- "openXfactory-5 -- $claude_args --resume session-nocwd" "$LANE_START_LOG" \
+    || fail "no fifth rung: lane-start argv was '$(lane_start_argv)'"; assertion
 
-# 4g. MUTATION — THE FIRST FENCE. With `$PROJECTS_ROOT/<repo>` present,
-# lane-start's own default works and the rung must not fire. A derived path that
-# overrode a working default could move a lane into another tree, where
-# lane-start writes THAT tree's origin into the lane's Amendment 7 STARTED line
-# as its HOME — a home every `#n` the lane writes then inherits.
+# 4f-i. ...and the rung's own opt-out is gone with it. A switch that turns off
+# a rung that does not exist is a switch that says the rung might: nothing may
+# read `WORKBENCHES_CLAUDE_LANE_DIR_FROM_CWD` any more, and setting it changes
+# nothing at all.
+reset_logs
+scenario
+set +e
+( cd "$CWD_TREE" && env "${common_env[@]}" \
+    "FAKE_TMUX_WINDOW=openXfactory-5" "FAKE_LANE_WITH_ROW=openXfactory-5" \
+    "FAKE_SWAPPED_STATUS=8" "PROJECTS_ROOT=$TEST_ROOT/projects" \
+    "WORKBENCHES_CLAUDE_LANE_DIR_FROM_CWD=on" \
+    "$LAUNCHER" run team002 --resume session-nocwd-on >/dev/null 2>"$ERR_LOG" )
+launch_status=$?
+set -e
+grep -q -- '--dir' "$LANE_START_LOG" \
+    && fail "no fifth rung: the retired opt-out still switches an inference on ($(lane_start_argv))"; assertion
+grep -Fq 'WORKBENCHES_CLAUDE_LANE_DIR_FROM_CWD' "$LAUNCHER" \
+    && fail "no fifth rung: the launcher still reads the retired opt-out"; assertion
+
+# 4g. MUTATION — AND NOT EVEN WHERE THE DEFAULT EXISTS AND THE CWD IS THE
+# LANE'S OWN TREE. The old rung's two fences are not the point; the inference
+# is. Standing in the lane's own checkout must change nothing about where the
+# lane is started.
 mkdir -p "$TEST_ROOT/projects/openXfactory"
 reset_logs
 scenario
@@ -712,53 +840,18 @@ set +e
 ( cd "$CWD_TREE" && env "${common_env[@]}" \
     "FAKE_TMUX_WINDOW=openXfactory-5" "FAKE_LANE_WITH_ROW=openXfactory-5" \
     "FAKE_SWAPPED_STATUS=8" "PROJECTS_ROOT=$TEST_ROOT/projects" \
-    "$LAUNCHER" run team002 --resume session-cwd-fenced >/dev/null 2>"$ERR_LOG" )
+    "$LAUNCHER" run team002 --resume session-cwd-default >/dev/null 2>"$ERR_LOG" )
 launch_status=$?
 set -e
 grep -q -- '--dir' "$LANE_START_LOG" \
-    && fail "cwd rung, default present: a working default was overridden ($(lane_start_argv))"; assertion
-grep -Fxq -- "openXfactory-5 -- $claude_args --resume session-cwd-fenced" "$LANE_START_LOG" \
-    || fail "cwd rung, default present: lane-start argv was '$(lane_start_argv)'"; assertion
+    && fail "no fifth rung, default present: a directory was derived anyway ($(lane_start_argv))"; assertion
 rm -rf "$TEST_ROOT/projects/openXfactory"
-
-# 4h. MUTATION — THE SECOND FENCE. A checkout whose basename is NOT the lane's
-# `<repo>` token is not this lane's tree, whatever the operator happens to be
-# standing in. Without this fence the rung would start any lane in any
-# directory that merely happened to be a git checkout.
-OTHER_TREE="$TEST_ROOT/elsewhere/unrelated"
-mkdir -p "$OTHER_TREE"
-git -C "$OTHER_TREE" init -q 2>/dev/null || true
-reset_logs
-scenario
-set +e
-( cd "$OTHER_TREE" && env "${common_env[@]}" \
-    "FAKE_TMUX_WINDOW=openXfactory-5" "FAKE_LANE_WITH_ROW=openXfactory-5" \
-    "FAKE_SWAPPED_STATUS=8" "PROJECTS_ROOT=$TEST_ROOT/projects" \
-    "$LAUNCHER" run team002 --resume session-cwd-unrelated >/dev/null 2>"$ERR_LOG" )
-launch_status=$?
-set -e
-grep -q -- '--dir' "$LANE_START_LOG" \
-    && fail "cwd rung, unrelated checkout: it was taken as the lane's tree ($(lane_start_argv))"; assertion
-
-# 4i. ...and the opt-out turns the inference off entirely, leaving lane-start's
-# default in place.
-reset_logs
-scenario
-set +e
-( cd "$CWD_TREE" && env "${common_env[@]}" \
-    "FAKE_TMUX_WINDOW=openXfactory-5" "FAKE_LANE_WITH_ROW=openXfactory-5" \
-    "FAKE_SWAPPED_STATUS=8" "PROJECTS_ROOT=$TEST_ROOT/projects" \
-    "WORKBENCHES_CLAUDE_LANE_DIR_FROM_CWD=off" \
-    "$LAUNCHER" run team002 --resume session-cwd-off >/dev/null 2>"$ERR_LOG" )
-launch_status=$?
-set -e
-grep -q -- '--dir' "$LANE_START_LOG" \
-    && fail "cwd rung opt-out: it fired anyway ($(lane_start_argv))"; assertion
 
 # 4j. THE ORDER. The operator's word beats every derived answer, and the record
 # beats `lane-dir`. Set all three at once and exactly one may reach lane-start.
 launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     "FAKE_TMUX_WINDOW_ID=@97" \
+    "FAKE_WINDOW_LANE_MAP=@97=mine-5" \
     "FAKE_SWAPPED_STATUS=0" \
     "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\t$RECORD_TREE\n" \
     "FAKE_LANE_DIR=$LANE_TREE" \
@@ -768,6 +861,7 @@ grep -Fxq -- "--dir $TEST_ROOT/trees mine-5 -- $claude_args --resume session-dir
 
 launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     "FAKE_TMUX_WINDOW_ID=@97" \
+    "FAKE_WINDOW_LANE_MAP=@97=mine-5" \
     "FAKE_SWAPPED_STATUS=0" \
     "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\t$RECORD_TREE\n" \
     "FAKE_LANE_DIR=$LANE_TREE" \
@@ -776,7 +870,6 @@ grep -Fxq -- "--dir $RECORD_TREE mine-5 -- $claude_args --resume session-dirorde
     || fail "dir order: the record did not beat lane-dir ('$(lane_start_argv)')"; assertion
 grep -Fq 'argv=lane-dir' "$LANES_EDIT_LOG" \
     && fail "dir order: lane-dir was read although the record had already answered"; assertion
-
 # ===========================================================================
 # 5. NOTHING CAN CLOSE THE WINDOW — R-A8-3 widened, Evidence 2.
 # ===========================================================================

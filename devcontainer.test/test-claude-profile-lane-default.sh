@@ -279,7 +279,11 @@ grep -q -- '--yes' "$TEST_ROOT/help.out" \
 # ---------------------------------------------------------------------------
 # 1. The window's own name, when the register has a row for it: the lane, and
 # --yes — the operator is standing in the lane's window, there is nothing to
-# ask. The record is not even read.
+# ask. The record is not read TO RESOLVE A LANE: precedence 3's own read,
+# `lanes-edit.sh window-lane`, is never made, because precedence 2 answered
+# above it. (Amendment 11(3) gives the launcher one other reason to read
+# `swapped` — the lane's own recorded DIRECTORY, rung 2 of SPEC §4's four —
+# and that is a question about a directory, not about which lane this is.)
 launch \
     "FAKE_TMUX_WINDOW=openRepoProject-1" \
     "FAKE_LANE_WITH_ROW=openRepoProject-1" \
@@ -294,8 +298,8 @@ grep -q -- '--yes' "$LANE_START_LOG" \
 [[ ! -e "$CLAUDE_LOG" ]] || fail "window lane: Claude was exec'd directly"; assertion
 grep -Fq 'argv=register-row openRepoProject-1' "$LANES_EDIT_LOG" \
     || fail "window lane: register-row was not asked about the window name"; assertion
-grep -Fq 'argv=swapped' "$LANES_EDIT_LOG" \
-    && fail "window lane: the swap record was read even though the window answered"; assertion
+grep -Fq 'argv=window-lane' "$LANES_EDIT_LOG" \
+    && fail "window lane: precedence 3 was read even though the window answered"; assertion
 grep -Fxq 'LANES_NO_FETCH=1' "$LANES_EDIT_LOG" \
     || fail "window lane: the register read was not made with LANES_NO_FETCH=1"; assertion
 grep -q "$note" "$ERR_LOG" && fail "window lane: printed the no-lane note anyway"; assertion
@@ -447,10 +451,12 @@ grep -q "$note" "$ERR_LOG" || fail "unshaped window name: the note was not print
 # window name nor the swap record is looked up, which is the whole of what
 # "beats both" means. (Amendment 11(3) added ONE other reason to read it: where
 # lane-start's own default directory does not exist, the launcher asks the
-# lane's OWN row whether the register records where the lane lives, so a
-# checkout that is not `$PROJECTS_ROOT/<repo>` does not end the launch. That is
-# a question about a directory, not about which lane this is, and it is asked
-# about the lane the operator named and no other.)
+# lane's OWN swap record and its own log where the lane lives, so a checkout
+# that is not `$PROJECTS_ROOT/<repo>` does not end the launch. That is a
+# question about a directory, not about which lane this is, and it is asked
+# about the lane the operator named and no other. What must never happen is a
+# read that could RESOLVE a lane — no `register-row <window>`, no
+# `window-lane` — and those are what the two assertions below pin.)
 launch \
     "FAKE_TMUX_WINDOW=openRepoProject-1" \
     "FAKE_LANE_WITH_ROW=openRepoProject-1" \
@@ -461,8 +467,8 @@ grep -Fxq -- "spoken-3 -- $claude_args --resume session-f" "$LANE_START_LOG" \
     || fail "--lane: lane-start argv was '$(lane_start_argv)'"; assertion
 grep -Fq 'argv=register-row openRepoProject-1' "$LANES_EDIT_LOG" \
     && fail "--lane: the window name was looked up for a lane the operator named ($(cat "$LANES_EDIT_LOG"))"; assertion
-grep -Fq 'argv=swapped' "$LANES_EDIT_LOG" \
-    && fail "--lane: the swap record was read for a lane the operator named ($(cat "$LANES_EDIT_LOG"))"; assertion
+grep -Fq 'argv=window-lane' "$LANES_EDIT_LOG" \
+    && fail "--lane: precedence 3 was read for a lane the operator named ($(cat "$LANES_EDIT_LOG"))"; assertion
 
 # CLAUDE_LANE is the same thing by another route.
 launch \

@@ -223,19 +223,23 @@ lives somewhere else used to end the launch outright:
 `pclaude --lane openXfactory-5 run team01l` printed `[exited]` over a window
 with no Claude in it, because that lane's checkout is `~/projects/xFactory/openxFactory`, not
 `$PROJECTS_ROOT/openXfactory`. The launcher now learns the directory and
-passes `--dir` when it can, checked in order and never guessed: `--dir`
-itself, else `CLAUDE_LANE_DIR`, else a `dir <path>` field in the swap record
-for the lane the record itself named, else one in the lane's own register
-row, else — only where `$PROJECTS_ROOT/<repo>` does not exist — the cwd's own
-checkout, when its name is the lane's `<repo>` token
-(`WORKBENCHES_CLAUDE_LANE_DIR_FROM_CWD=off` turns that last rung off). Failing
-every rung, `lane-start`'s own default stands exactly as it did before this
-existed. The two recorded-directory rungs degrade silently against today's
-helpers, which do not record a directory yet — `lanes-edit.sh swapped` prints
-no fourth field and no register row carries one, so both simply find nothing
-and the next rung is tried; a helper that starts recording one is picked up
-with no change here, because the field is read by its label and never
-positionally.
+passes `--dir` when it can. **Four rungs, first answer wins, and there is no
+fifth:** (1) `--dir <path>` — or the `CLAUDE_LANE_DIR` that carries the same
+word across the re-exec into a new tmux session, which is one rung and two
+spellings; (2) the `dir <path>` of *this lane's own* swap record, which the
+swap writes from the live session's own record; (3) `lanes-edit.sh lane-dir
+<lane>`, the directory the lane's log recorded at its last start; (4) nothing,
+so `lane-start`'s own default `$PROJECTS_ROOT/<repo>` stands exactly as it did
+before this existed. **The cwd's own checkout is not a rung and is ruled out by
+name:** `lane-start` writes the lane's *home* into its Amendment 7 `STARTED`
+line from that directory's `origin`, and every `#n` the lane afterwards writes
+inherits it, so an inference that can silently re-home a lane is not worth the
+refusal it saves — and the refusal names `--dir`, which is one word. Rungs 2
+and 3 degrade silently against today's helpers, which do not record a directory
+yet — `lanes-edit.sh swapped` prints no fourth field and `lane-dir` does not
+exist — so both simply find nothing and rung 4 stands. A path containing a
+space is written quoted and read back unquoted; one containing `, `, ` — ` or a
+`"` is refused by the writer and never reaches a reader.
 
 **Nothing here can close the window (Amendment 11(3)).** `lane-start` is now
 *run*, never `exec`'d, on every path above that resolves a lane — before this,
