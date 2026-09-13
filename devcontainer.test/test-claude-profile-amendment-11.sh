@@ -2294,6 +2294,19 @@ grep -Fq 'carry no `--name` at all' "$DOCS_MD" \
     && fail "CF2-W1: the docs still say lane-start's resume branches carry no --name; they have carried it since 3719d97"; assertion
 grep -Fq 'closing that is the tooling PR' "$DOCS_MD" \
     && fail "CF2-W1: the docs still hand the --name fix to the tooling PR, which SPEC rev 5 §13 does not give it"; assertion
+# ...AND A THIRD PHRASING, which is `CF3-W2`. The two negatives above refuse the
+# two spellings that were corrected in round 4; a THIRD survived fifty lines
+# below the corrected paragraph, in the `lane-start` description — "`--name
+# <lane>` where it creates a session, `--resume` where it continues one (see
+# Evidence 4 above for which branch carries which)" — and used neither string, so
+# this audit passed it. That sentence is the pre-`CF2-W1` framing entire: it
+# sends the reader to work out a distinction act 0 abolished at `3719d97`. Both
+# halves are refused, the claim and the pointer, because either one alone would
+# leave the reader expecting a derived name after a normal restart.
+grep -Fq 'where it creates a session' "$DOCS_MD" \
+    && fail "CF3-W2: the docs still split lane-start's branches into one that names and one that resumes, which act 0 abolished at 3719d97"; assertion
+grep -Fq 'which branch carries' "$DOCS_MD" \
+    && fail "CF3-W2: the docs still send the reader to work out which branch carries --name, and since 3719d97 all three do"; assertion
 
 # RV-W7 — DIVERGENCE 9's RESIDUE IS NAMED, with the finding ids the two reviews
 # actually gave it. A rule this PR withdrew and nobody had implemented is a hole

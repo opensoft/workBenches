@@ -265,9 +265,16 @@ is where a person names that repository, and its own `scripts/link-estates` is
 what puts the helpers on `PATH` until Amendment 9 act 3 makes
 `openRepoTools --install` place them) renames the current tmux window to the
 lane, records the lane in the lane register, and starts this same Claude
-binary under this same profile — `--name <lane>` where it creates a session,
-`--resume` where it continues one (see Evidence 4 above for which branch carries
-which).
+binary under this same profile — with `--name "$LANE"` on **every** branch it
+launches, the two that `--resume` an existing transcript as well as the one that
+starts a new session, since **adoption act 0** merged as `opensoft/brett-wip#5`
+at `3719d97` (`lane-start:846`, `:855`, `:866`), exactly as the `lane-start`
+paragraph above says. **An earlier revision of this sentence split the two** and
+sent the reader up to Evidence 4 to decide which was which; act 0 abolished that
+distinction and the correction is recorded rather than quietly made (`CF3-W2`,
+the residue of `CF2-W1`). The superseded wording is kept in the assertion that
+now refuses it, `test-claude-profile-amendment-11.sh`'s doc audit, so that no
+copy of it survives in a document a person reads.
 Naming a lane while `lane-start` is not on `PATH` refuses with the fix instead
 of launching an unnamed session.
 
