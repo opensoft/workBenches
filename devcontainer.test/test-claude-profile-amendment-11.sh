@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=64
+EXPECTED_SCENARIOS=75
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -101,6 +101,8 @@ FAKE_CLAUDE="$FAKE_BIN/claude"
 CLAUDE_LOG="$TEST_ROOT/claude.log"
 TMUX_LOG="$TEST_ROOT/tmux.log"
 LANE_START_LOG="$TEST_ROOT/lane-start.log"
+LANE_START_CWD_LOG="$TEST_ROOT/lane-start-cwd.log"
+CLAUDE_CWD_LOG="$TEST_ROOT/claude-cwd.log"
 LANES_EDIT_LOG="$TEST_ROOT/lanes-edit.log"
 ERR_LOG="$TEST_ROOT/stderr.log"
 OUT_LOG="$TEST_ROOT/stdout.log"
@@ -123,6 +125,9 @@ cat > "$FAKE_CLAUDE" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "${FAKE_CLAUDE_LOG:?}"
+# WHERE Claude ran, in a log of its own (Evidence 3). Its own argv log is
+# compared whole and counted by line elsewhere, so this cannot go in it.
+printf '%s\n' "$PWD" >> "${FAKE_CLAUDE_CWD_LOG:-/dev/null}"
 EOF
 
 # tmux. `display-message -p '#W'` is the window NAME the launcher resolves a
@@ -183,6 +188,16 @@ case "${1:-}" in
         # exits 0 and leaves the window's name and its automatic-rename off
         # intact. A live pane is the ORDINARY state right after a swap, because
         # /lane-swap kills nothing, so live is this fake's default.
+        # A tmux predating 2.6 has no `-c` on respawn-pane and refuses the
+        # OPTION rather than the pane, which is a different failure from "the
+        # pane is in use" and has a different right answer: retry without it.
+        if [[ -n "${FAKE_TMUX_NO_RESPAWN_C:-}" ]]; then
+            for argument in "$@"; do
+                [[ "$argument" == -c ]] || continue
+                echo "unknown option -- c" >&2
+                exit 1
+            done
+        fi
         if [[ "${2:-}" == -k ]]; then
             exit 0
         fi
@@ -279,6 +294,10 @@ if [[ "${1:-}" == --help ]]; then
     exit 0
 fi
 printf '%s\n' "$*" >> "${FAKE_LANE_START_LOG:?}"
+# ...and WHERE lane-start was run from, which is the directory the Claude it
+# execs inherits and the harness keys the session to (Evidence 3). Logged after
+# the --help early exit above, so a capability probe never creates either file.
+printf '%s\n' "$PWD" >> "${FAKE_LANE_START_CWD_LOG:-/dev/null}"
 lane_argument=""; rest=(); seen=false
 for argument in "$@"; do
     if [[ "$seen" == true ]]; then rest+=("$argument")
@@ -323,6 +342,8 @@ common_env=(
     "FAKE_CLAUDE_LOG=$CLAUDE_LOG"
     "FAKE_TMUX_LOG=$TMUX_LOG"
     "FAKE_LANE_START_LOG=$LANE_START_LOG"
+    "FAKE_LANE_START_CWD_LOG=$LANE_START_CWD_LOG"
+    "FAKE_CLAUDE_CWD_LOG=$CLAUDE_CWD_LOG"
     "FAKE_LANES_EDIT_LOG=$LANES_EDIT_LOG"
     "FAKE_LANE_START_HELP=$AMENDMENT_11_HELP"
     "WORKBENCHES_SHARED_MCP_FAMILIES=disabled"
@@ -340,7 +361,8 @@ claude_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions
 note='no lane for this window; run lane-start <repo> <n> inside it'
 
 reset_logs() {
-    rm -f "$CLAUDE_LOG" "$TMUX_LOG" "$LANE_START_LOG" "$LANES_EDIT_LOG" "$ERR_LOG" "$OUT_LOG"
+    rm -f "$CLAUDE_LOG" "$TMUX_LOG" "$LANE_START_LOG" "$LANES_EDIT_LOG" "$ERR_LOG" "$OUT_LOG" \
+        "$LANE_START_CWD_LOG" "$CLAUDE_CWD_LOG"
 }
 
 # launch <scenario env>... -- <launcher args>...
@@ -1021,6 +1043,182 @@ grep -Fxq -- "--dir $RECORD_TREE mine-5 -- $claude_args --resume session-dirorde
     || fail "dir order: the record did not beat lane-dir ('$(lane_start_argv)')"; assertion
 grep -Fq 'argv=lane-dir' "$LANES_EDIT_LOG" \
     && fail "dir order: lane-dir was read although the record had already answered"; assertion
+# ---------------------------------------------------------------------------
+# 4k-4n. A RECORDED DIRECTORY THAT IS GONE, AND THE DIRECTORY THE LAUNCH RUNS
+# IN — RV-W2 and Evidence 3 (A11 Addendum 2 `R-A11-11`).
+#
+# The rung tests above say which path is CHOSEN. These say what happens to it:
+# a recorded one that is not there is a refusal naming it, never a fall to rung
+# 4; and the one that is there is ENTERED before anything is launched.
+GONE_TREE="$TEST_ROOT/trees/moved-away"
+
+# 4k. RV-W2, AND THE REVIEW'S SURVIVING MUTATION M1. The lane's swap record
+# names a directory that no longer exists. Under the `-d` test this launcher
+# used to make, that record was SKIPPED and the order fell through rung 3 to
+# rung 4 — `$PROJECTS_ROOT/<repo>`, which here EXISTS and is a different tree.
+# `lane-start` would start the lane in it and write the lane's HOME from that
+# tree's `origin` into its Amendment 7 STARTED line, and every `#n` after it
+# inherits that: `R-A11-3`'s own hazard, reached from the record instead of
+# from the cwd. So the launcher refuses, names the path, and starts nothing.
+mkdir -p "$TEST_ROOT/projects/mine"
+launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_TMUX_WINDOW_ID=@97" \
+    "FAKE_WINDOW_LANE_MAP=@97=mine-5" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\t$GONE_TREE\n" \
+    -- run team002 --resume session-dirgone
+[[ "$launch_status" -eq 2 ]] \
+    || fail "gone record dir: the launcher exited $launch_status instead of refusing"; assertion
+grep -Fq "$GONE_TREE" "$ERR_LOG" \
+    || fail "gone record dir: the refusal does not NAME the path ($(cat "$ERR_LOG"))"; assertion
+grep -Fq -- '--dir' "$ERR_LOG" \
+    || fail "gone record dir: the refusal does not name the one word that fixes it ($(cat "$ERR_LOG"))"; assertion
+[[ ! -e "$LANE_START_LOG" ]] \
+    || fail "gone record dir: the lane was started anyway ($(lane_start_argv))"; assertion
+[[ ! -e "$CLAUDE_LOG" ]] \
+    || fail "gone record dir: a Claude was started in a tree nobody named ($(cat "$CLAUDE_LOG"))"; assertion
+grep -Fq "$TEST_ROOT/projects/mine" "$ERR_LOG" \
+    && fail "gone record dir: the lane was silently RE-HOMED to lane-start's default"; assertion
+rm -rf "$TEST_ROOT/projects/mine"
+
+# 4k-i. ...AND IN A CHILD IT DROPS TO BARE CLAUDE INSTEAD, because `R-A11-4`
+# outranks the refusal there: this process is the only command of a window the
+# launcher itself made, so an exit leaves tmux printing `[exited]` over it. The
+# lane is dropped, the path is still named, and the window keeps a Claude.
+launch "WORKBENCHES_CLAUDE_TMUX_CHILD=1" \
+    "WORKBENCHES_CLAUDE_WINDOW=mine-5" \
+    "FAKE_TMUX_WINDOW=mine-5" "FAKE_LANE_WITH_ROW=mine-5" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\t$GONE_TREE\n" \
+    -- run team002 --resume session-dirgone-child
+grep -Fxq -- "$claude_args --resume session-dirgone-child" "$CLAUDE_LOG" \
+    || fail "gone record dir in a child: the pane was left with no Claude in it — [exited] (R-A11-4)"; assertion
+[[ "$launch_status" -eq 0 ]] \
+    || fail "gone record dir in a child: the launcher exited $launch_status over a Claude that started"; assertion
+grep -Fq "$GONE_TREE" "$ERR_LOG" \
+    || fail "gone record dir in a child: the path was not named ($(cat "$ERR_LOG"))"; assertion
+[[ ! -e "$LANE_START_LOG" ]] \
+    || fail "gone record dir in a child: the lane was started in a tree that is not there ($(lane_start_argv))"; assertion
+
+# 4k-ii. THE SAME FOR RUNG 3, the lane's own recorded directory. One rule for
+# both records; the mutation that survived was on rung 2's line alone.
+launch "FAKE_TMUX_WINDOW=openXfactory-5" "FAKE_LANE_WITH_ROW=openXfactory-5" \
+    "FAKE_SWAPPED_STATUS=8" "FAKE_LANE_DIR=$GONE_TREE" \
+    -- run team002 --resume session-lanedirgone
+[[ "$launch_status" -eq 2 ]] \
+    || fail "gone lane-dir: the launcher exited $launch_status instead of refusing"; assertion
+grep -Fq "$GONE_TREE" "$ERR_LOG" \
+    || fail "gone lane-dir: the refusal does not name the path ($(cat "$ERR_LOG"))"; assertion
+[[ ! -e "$LANE_START_LOG" ]] \
+    || fail "gone lane-dir: the lane was started anyway ($(lane_start_argv))"; assertion
+
+# 4k-iii. AND RUNG 1 IS NOT TOUCHED BY ANY OF IT. SPEC §4 says of the
+# operator's own word, and only of it, that it is "not tested for existence —
+# lane-start's refusal names the path and the flag". Two refusals for one typo
+# would be two; the launcher passes it on and lane-start says it once.
+launch "FAKE_TMUX_WINDOW=openRepoProject-1" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
+    "FAKE_SWAPPED_STATUS=8" "FAKE_LANE_START_STATUS=1" \
+    -- --dir "$GONE_TREE" run team002 --resume session-dirflag-gone
+grep -Fxq -- "--dir $GONE_TREE openRepoProject-1 -- $claude_args --resume session-dirflag-gone" "$LANE_START_LOG" \
+    || fail "gone --dir: the operator's own word was not passed through ($(lane_start_argv))"; assertion
+grep -Fq 'the directory recorded for' "$ERR_LOG" \
+    && fail "gone --dir: the launcher refused a path SPEC §4 says lane-start refuses"; assertion
+
+# 4m. EVIDENCE 3 — THE LAUNCH RUNS IN THE LANE'S DIRECTORY. The second restart
+# of this lane today was typed from `/workspace`: the launcher made its session
+# there, the harness keyed the session to that directory, and the repository's
+# CLAUDE.md and the lane's memory did not load, while `--resume <uuid>` still
+# continued the transcript. Nothing refused and nothing warned. So the resolved
+# directory is ENTERED before lane-start is run, and the Claude lane-start
+# execs inherits it.
+launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_TMUX_WINDOW_ID=@97" \
+    "FAKE_WINDOW_LANE_MAP=@97=mine-5" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\t$RECORD_TREE\n" \
+    -- run team002 --resume session-dircd
+grep -Fxq "$RECORD_TREE" "$LANE_START_CWD_LOG" \
+    || fail "evidence 3: lane-start was run from '$(cat "$LANE_START_CWD_LOG" 2>/dev/null)', not the lane's own directory"; assertion
+
+# 4m-i. ...AND SO DOES THE BARE CLAUDE BEHIND A REFUSAL. The drop exists so that
+# no window is left empty (R-A11-4); a drop that lands in the terminal's own
+# directory is Evidence 3 again, one door along, with the lane's instructions
+# and memory missing from the session that replaces it.
+launch "WORKBENCHES_CLAUDE_TMUX_CHILD=1" \
+    "WORKBENCHES_CLAUDE_WINDOW=mine-5" \
+    "FAKE_TMUX_WINDOW=mine-5" "FAKE_LANE_WITH_ROW=mine-5" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\t$RECORD_TREE\n" \
+    "FAKE_LANE_START_STATUS=1" \
+    -- run team002 --resume session-dircd-bare
+grep -Fxq -- "$claude_args --resume session-dircd-bare" "$CLAUDE_LOG" \
+    || fail "evidence 3, bare drop: no Claude started at all"; assertion
+grep -Fxq "$RECORD_TREE" "$CLAUDE_CWD_LOG" \
+    || fail "evidence 3, bare drop: Claude ran in '$(cat "$CLAUDE_CWD_LOG" 2>/dev/null)' instead of the lane's directory"; assertion
+
+# 4m-ii. AND RUNG 4 ENTERS NOTHING. Where no directory was learnt there is
+# nothing to enter, and the launch is byte-for-byte what it was before
+# Amendment 11: lane-start derives its own default from where it stands.
+launch "FAKE_TMUX_WINDOW=openRepoProject-1" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
+    "FAKE_SWAPPED_STATUS=8" \
+    -- run team002 --resume session-nodircd
+grep -Fxq "$TEST_ROOT" "$LANE_START_CWD_LOG" \
+    || fail "rung 4: the launcher moved to '$(cat "$LANE_START_CWD_LOG" 2>/dev/null)' although it learnt no directory"; assertion
+
+# 4n. ACT 1 CREATES THE SESSION WITH `-c` THE LANE'S DIRECTORY (Evidence 3).
+# The evidence's own shape: no window to reuse, a session made, and the pane it
+# is made in decides what the harness keys the session to.
+tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\t$RECORD_TREE\n" \
+    -- --lane mine-5 run team002 --resume session-newsession-dir
+grep -q 'new-session' "$TMUX_LOG" || fail "act 1 step 3 -c: no session was created"; assertion
+grep -Fq -- "-c $RECORD_TREE" "$TMUX_LOG" \
+    || fail "act 1 step 3: the session was created outside the lane's directory ($(cat "$TMUX_LOG"))"; assertion
+
+# 4n-i. ...BUT NEVER FROM A GUESS. The newest-first row of precedence 4 is an
+# inference the CHILD hands to lane-start as `--confirm`; act 1 already refuses
+# to name the window from it, and the directory is the same rule. Standing
+# somewhere else and starting a session in a lane nobody confirmed is how a
+# restart lands in the wrong tree with the right name.
+tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0\t$RECORD_TREE\n" \
+    -- run team002 --resume session-newsession-guess
+grep -Fq -- "-c $RECORD_TREE" "$TMUX_LOG" \
+    && fail "act 1 step 3: the session was created in a directory taken from a lane nobody confirmed ($(cat "$TMUX_LOG"))"; assertion
+grep -Fq -- "-c $TEST_ROOT" "$TMUX_LOG" \
+    || fail "act 1 step 3: the session was created with no start directory at all ($(cat "$TMUX_LOG"))"; assertion
+
+# 4n-ii. AND THE REUSED PANE IS RESPAWNED WITH `-c` TOO. A window the lane
+# already had keeps whatever start directory it was BORN with, which is the
+# lane's tree only if it was made for the lane — and Evidence 3 is a window
+# that was not.
+tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\t$RECORD_TREE\n" \
+    "FAKE_TMUX_WINDOWS=@97|claude-y:0|%12|mine-5" \
+    -- --lane mine-5 run team002 --resume session-respawn-dir
+grep -q 'new-session' "$TMUX_LOG" \
+    && fail "act 1 step 2 -c: a session was created although the recorded window still exists ($(cat "$TMUX_LOG"))"; assertion
+grep -Fq -- "respawn-pane -k -c $RECORD_TREE -t %12" "$TMUX_LOG" \
+    || fail "act 1 step 2: the pane was respawned outside the lane's directory ($(cat "$TMUX_LOG"))"; assertion
+
+# 4n-iii. DEGRADATION — a tmux predating 2.6 has no `-c` on respawn-pane and
+# refuses the OPTION, not the pane. That is a different failure from "the pane
+# is in use" and has a different right answer: one retry without it, so the
+# REUSE survives — act 1 step 2 is the whole of what a restart in the lane's
+# own window is for — and the child's own `cd` covers the difference.
+tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\t$RECORD_TREE\n" \
+    "FAKE_TMUX_WINDOWS=@97|claude-y:0|%12|mine-5" "FAKE_TMUX_NO_RESPAWN_C=1" \
+    -- --lane mine-5 run team002 --resume session-respawn-old-tmux
+grep -Fq 'respawn-pane -k -t %12' "$TMUX_LOG" \
+    || fail "old tmux: the respawn was not retried without -c ($(cat "$TMUX_LOG"))"; assertion
+grep -q 'new-session' "$TMUX_LOG" \
+    && fail "old tmux: the reuse was lost over an option this tmux does not have ($(cat "$TMUX_LOG"))"; assertion
+
 # ===========================================================================
 # 5. NOTHING CAN CLOSE THE WINDOW — R-A8-3 widened, Evidence 2.
 # ===========================================================================

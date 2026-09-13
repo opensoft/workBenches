@@ -299,6 +299,7 @@ act1_reuse_name=""
 act1_reuse_ref=""
 act1_reuse_id=""
 act1_reuse_kill=false
+act1_start_dir=""
 
 act1_window_probe() {
   # One read of one window, by whichever ref names it: `<@id>` or
@@ -417,6 +418,49 @@ act1_find_window() {
   return 0
 }
 
+act1_resolve_start_dir() {
+  # THE START DIRECTORY OF THE WINDOW ACT 1 IS ABOUT TO CREATE OR RESPAWN —
+  # Evidence 3. Without it the session is keyed to the terminal the operator
+  # happened to type in (`/workspace`, in the evidence), and the harness reads
+  # its instructions and memory from there.
+  #
+  # ONLY FOR A LANE THIS SIDE IS CERTAIN OF, which is the same fence act 1 step
+  # 3 already applies to the window's NAME, for the same reason: `--lane` /
+  # `CLAUDE_LANE` is the operator's word, and a window whose pane step 2 is
+  # reusing was matched from that lane's own record. The newest-first guess of
+  # precedence 4 names no directory here — the child resolves the lane, asks
+  # about it through `--confirm`, and enters the directory itself.
+  local certain="" saved_lane
+  act1_start_dir=""
+  if [[ -n "${lane_dir_flag:-}" ]]; then
+    act1_start_dir="$lane_dir_flag"
+  elif [[ -n "${CLAUDE_LANE_DIR:-}" ]]; then
+    act1_start_dir="$CLAUDE_LANE_DIR"
+  else
+    if [[ -n "${lane:-}" ]]; then
+      certain="$lane"
+    elif [[ -n "$act1_reuse_pane" && -n "$act1_reuse_lane" ]]; then
+      certain="$act1_reuse_lane"
+    fi
+    [[ -n "$certain" ]] || return 0
+    saved_lane="${lane:-}"
+    lane="$certain"
+    resolve_lane_dir
+    lane="$saved_lane"
+    act1_start_dir="${lane_dir:-}"
+    # What this side resolved decides a START DIRECTORY and nothing else — the
+    # same rule act 1 step 1 holds for the lane. The child re-reads the order
+    # for itself and is the one that refuses a directory that is gone, where it
+    # can name the lane it belongs to.
+    lane_dir=""
+    lane_dir_source=""
+  fi
+  # tmux refuses a `-c` that is not a directory and the whole launch would fail
+  # with it. A directory that is gone is the CHILD's refusal to make.
+  [[ -n "$act1_start_dir" && -d "$act1_start_dir" ]] || act1_start_dir=""
+  return 0
+}
+
 start_profile_tmux() {
   local profile="$1"
   shift
@@ -451,6 +495,9 @@ start_profile_tmux() {
     lane_window_ref="$act1_reuse_ref"
     lane_window_id="$act1_reuse_id"
   fi
+  # ...and the directory that window is to stand in (Evidence 3), which needs
+  # step 2's answer and so is resolved after it.
+  act1_resolve_start_dir
 
   env_prefix=(env WORKBENCHES_CLAUDE_TMUX_CHILD=1)
   # --lane/CLAUDE_LANE must survive this re-exec into a new tmux session.
@@ -482,19 +529,34 @@ start_profile_tmux() {
   done
 
   # ACT 1 STEP 2 — RESPAWN THE RECORDED WINDOW'S PANE AND ATTACH TO ITS SESSION.
-  # No `-c`: the pane keeps its own start directory, which is the lane's tree
-  # rather than the terminal the operator happened to type this in. A non-zero
-  # status is NOT an error to report — on a live pane a plain `respawn-pane`
-  # exits 1 saying the pane is still active, which is the launcher being told
-  # the window is in use — so it falls to step 3 and makes a session.
+  # `-c` THE LANE'S OWN DIRECTORY where act 1 learnt one (Evidence 3): without
+  # it the pane keeps whatever start directory it was born with, which is the
+  # lane's tree only if the window was made for the lane in the first place —
+  # and Evidence 3 is a window that was not. A non-zero status is NOT an error
+  # to report — on a live pane a plain `respawn-pane` exits 1 saying the pane
+  # is still active, which is the launcher being told the window is in use — so
+  # it falls to step 3 and makes a session.
   if [[ -n "$act1_reuse_pane" ]]; then
+    local -a respawn_dir=()
+    [[ -z "$act1_start_dir" ]] || respawn_dir=(-c "$act1_start_dir")
     set +e
     if [[ "$act1_reuse_kill" == true ]]; then
-      tmux respawn-pane -k -t "$act1_reuse_pane" "$command_string" >/dev/null 2>&1
+      tmux respawn-pane -k ${respawn_dir[@]+"${respawn_dir[@]}"} -t "$act1_reuse_pane" "$command_string" >/dev/null 2>&1
     else
-      tmux respawn-pane -t "$act1_reuse_pane" "$command_string" >/dev/null 2>&1
+      tmux respawn-pane ${respawn_dir[@]+"${respawn_dir[@]}"} -t "$act1_reuse_pane" "$command_string" >/dev/null 2>&1
     fi
     reuse_status=$?
+    # A tmux too old for `respawn-pane -c` (it arrives in 2.6) refuses the
+    # OPTION, not the pane, and the reuse is act 1's whole point — so the one
+    # retry is made without it and the child's own `cd` covers the difference.
+    if [[ "$reuse_status" -ne 0 && ${#respawn_dir[@]} -gt 0 ]]; then
+      if [[ "$act1_reuse_kill" == true ]]; then
+        tmux respawn-pane -k -t "$act1_reuse_pane" "$command_string" >/dev/null 2>&1
+      else
+        tmux respawn-pane -t "$act1_reuse_pane" "$command_string" >/dev/null 2>&1
+      fi
+      reuse_status=$?
+    fi
     set -e
     if [[ "$reuse_status" -eq 0 ]]; then
       tmux select-window -t "$act1_reuse_window" >/dev/null 2>&1 || true
@@ -534,13 +596,13 @@ start_profile_tmux() {
   # is deliberately not written back to it, and `--no-lane` already emptied it.
   # So the test for certainty is simply that there is one.
   if [[ -n "${lane:-}" ]]; then
-    tmux new-session -d -s "$session_name" -n "$lane" -c "$PWD" "$command_string" || {
+    tmux new-session -d -s "$session_name" -n "$lane" -c "${act1_start_dir:-$PWD}" "$command_string" || {
       echo "pclaude: failed to start tmux session $session_name" >&2
       return 1
     }
     tmux set-window-option -t "$session_name:0" automatic-rename off >/dev/null 2>&1 || true
   else
-    tmux new-session -d -s "$session_name" -c "$PWD" "$command_string" || {
+    tmux new-session -d -s "$session_name" -c "${act1_start_dir:-$PWD}" "$command_string" || {
       echo "pclaude: failed to start tmux session $session_name" >&2
       return 1
     }
@@ -1164,7 +1226,17 @@ resolve_lane_dir() {
     [[ "$candidate" == /* || "$candidate" == '"'* ]] || candidate=""
     [[ -n "$candidate" ]] || candidate="$(lane_dir_field "$row" || true)"
     candidate="${candidate%\"}"; candidate="${candidate#\"}"
-    if [[ -n "$candidate" && -d "$candidate" ]]; then
+    # WHAT THE RECORD SAYS IS THE ANSWER, EXISTING OR NOT (RV-W2, A11 Addendum 2
+    # `R-A11-11`). An earlier pass required `-d` here, which looks like caution
+    # and is the opposite: a lane whose checkout has MOVED then falls through
+    # rungs 2 and 3 to rung 4, `$PROJECTS_ROOT/<repo>` — and where that path
+    # exists but is a different tree, the lane is started in it and `lane-start`
+    # writes the lane's HOME from that tree's `origin` (Amendment 7's STARTED
+    # line), which every `#n` afterwards inherits. That is `R-A11-3`'s own
+    # hazard, reached from the record instead of from the cwd. So a recorded
+    # directory that is gone is a REFUSAL NAMING THE PATH (enter_lane_dir),
+    # never a silent re-home.
+    if [[ -n "$candidate" ]]; then
       lane_dir="$candidate"; lane_dir_source=record; return 0
     fi
   fi
@@ -1174,9 +1246,12 @@ resolve_lane_dir() {
   # one; 0 a path, 8 none, 64 usage, 2 a helper predating Amendment 11). Read
   # with the same LANES_NO_FETCH=1 as every other register read on the path of
   # a launch — a launcher must not sit on the network to open a terminal. ONLY
-  # 0 with an existing directory is an answer, so the unknown-subcommand line
+  # 0 WITH AN ABSOLUTE PATH is an answer, so the unknown-subcommand line
   # today's helper prints can never be mistaken for a path, and every other
-  # code simply leaves rung 4 standing.
+  # code simply leaves rung 4 standing. The path is NOT tested for existence,
+  # for rung 2's reason: what the lane's log recorded is this lane's tree, and
+  # a tree that is gone is a refusal naming it, never a fall to rung 4's guess
+  # (RV-W2, `R-A11-11`).
   lanes_edit="$(lanes_edit_bin || true)"
   if [[ -n "$lanes_edit" ]]; then
     set +e
@@ -1185,7 +1260,7 @@ resolve_lane_dir() {
     set -e
     row="${row%%$'\n'*}"
     row="${row%\"}"; row="${row#\"}"
-    if [[ "$status" -eq 0 && "$row" == /* && -d "$row" ]]; then
+    if [[ "$status" -eq 0 && "$row" == /* ]]; then
       lane_dir="$row"; lane_dir_source=recorded; return 0
     fi
   fi
@@ -1194,6 +1269,75 @@ resolve_lane_dir() {
   # nothing here to write: `lane_dir` is empty and the launcher hands the lane
   # over exactly as it did before Amendment 11 existed.
   return 0
+}
+
+enter_lane_dir() {
+  # THE LAUNCH HAPPENS IN THE LANE'S DIRECTORY — Evidence 3 (new-workstation#20,
+  # 2026-09-13T17:20:55Z), and it is load-bearing for far more than `--dir`.
+  #
+  # A restart of this very lane was typed from `/workspace`. The launcher made
+  # its tmux session there, so the HARNESS KEYED THE SESSION TO THAT DIRECTORY:
+  # the repository's CLAUDE.md and the lane's memory did not load and the
+  # scratchpad moved, while `--resume <uuid>` still continued the transcript.
+  # Nothing refused, nothing warned; the session simply came up without its
+  # instructions. A lane is a checkout, so a launch that binds one and starts
+  # somewhere else has not started that lane at all.
+  #
+  # So the directory the order above resolved is ENTERED before anything is
+  # launched — before `lane-start`, and therefore before the Claude it execs —
+  # and act 1 creates its session with `-c` the same directory, so the pane
+  # agrees with the process. Relative paths in CLAUDE_ARGS are read from the
+  # lane's tree after this point, which is the tree they are about.
+  #
+  # AND A RECORDED DIRECTORY THAT IS GONE IS A REFUSAL NAMING THE PATH (RV-W2,
+  # `R-A11-11`). It is never a fall to rung 4: `lane-start` writes the lane's
+  # HOME into its Amendment 7 `STARTED` line from the directory it starts in,
+  # so a silent re-home rewrites the lane's identity out of whatever tree
+  # happens to sit at `$PROJECTS_ROOT/<repo>`, and every `#n` inherits it. The
+  # refusal names the path, the record it came from, and `--dir`, which is one
+  # word.
+  local reason
+  lane_dir_entered=""
+  [[ -n "${lane:-}" && -n "${lane_dir:-}" ]] || return 0
+  if [[ -d "$lane_dir" ]]; then
+    if cd -- "$lane_dir" 2>/dev/null; then
+      lane_dir_entered="$lane_dir"
+      return 0
+    fi
+    reason="cannot be entered"
+  else
+    reason="is not there"
+  fi
+  # RUNG 1 IS THE OPERATOR'S OWN WORD, and SPEC §4 keeps it untested by name:
+  # "lane-start's refusal names the path and the flag". There is nothing to
+  # enter, so the launch goes on and lane-start says so in its own words —
+  # which is one refusal, from the one place that can also name `--dir` as the
+  # thing to change. Two refusals for one typo would be two.
+  case "${lane_dir_source:-}" in
+    flag|env) return 0 ;;
+  esac
+  case "${lane_dir_source:-}" in
+    record)   reason="$reason (recorded by this lane's own swap record)" ;;
+    recorded) reason="$reason (recorded by lanes-edit.sh lane-dir $lane)" ;;
+  esac
+  echo "pclaude: the directory recorded for $lane $reason: $lane_dir" >&2
+  echo "pclaude:   NOT re-homed to lane-start's default: a lane started in another tree takes that tree's origin as its home, and every #n inherits it." >&2
+  echo "pclaude:   fix: pclaude --dir <path> --lane $lane ${CLAUDE_PROFILE_NAME:-<profile>}, or put the checkout back." >&2
+  if [[ -n "${WORKBENCHES_CLAUDE_TMUX_CHILD:-}" ]]; then
+    # `R-A11-4`, and the same fence the status-passthrough arm carries: this
+    # process is the only command of a window the launcher itself made or
+    # respawned, so exiting here would leave tmux printing `[exited]` over a
+    # window with no Claude in it — Evidence 2 through a fourth door. The lane
+    # is dropped instead, nothing downstream may read that this session holds
+    # it, and Claude starts bare in the window, exactly as it does behind a
+    # lane-start refusal.
+    lane=""
+    lane_dir=""
+    lane_dir_source=""
+    lane_note_no_lane "the lane's recorded directory is gone, so this window took no lane"
+    return 0
+  fi
+  exit 2
 }
 
 # --lane / CLAUDE_LANE / --no-lane are recognised only as leading options,
@@ -1218,6 +1362,9 @@ lane_read_note=""
 lane_dir=""
 lane_dir_source=""
 lane_dir_flag=""
+# The directory this launch actually entered (Evidence 3), empty where none was
+# learnt. Published for the record the swap writes, and for nothing else.
+lane_dir_entered=""
 no_lane=false
 [[ -z "${CLAUDE_NO_LANE:-}" ]] || no_lane=true
 while [[ $# -gt 0 ]]; do
@@ -1438,6 +1585,11 @@ case "$action" in
         fi
         resolve_lane "$@"
         resolve_lane_dir
+        # Evidence 3: the lane's directory is ENTERED before anything is
+        # launched, and a recorded one that is gone is a refusal naming it
+        # (RV-W2). Before the `--dir` probe below, because the `cd` is this
+        # launcher's own act and holds whether or not lane-start can be told.
+        enter_lane_dir
         lane_argv=(lane-start)
         # Amendment 11(3). `--dir` is lane-start's oldest option, but a
         # lane-start that somehow has none must not be handed one: the probe is
