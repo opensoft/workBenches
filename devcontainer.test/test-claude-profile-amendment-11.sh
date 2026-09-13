@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=51
+EXPECTED_SCENARIOS=62
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -105,7 +105,7 @@ LANES_EDIT_LOG="$TEST_ROOT/lanes-edit.log"
 ERR_LOG="$TEST_ROOT/stderr.log"
 OUT_LOG="$TEST_ROOT/stdout.log"
 FAKE_HOME="$TEST_ROOT/home"
-mkdir -p "$PROFILE_DIR" "$RUN_PROFILE_DIR" "$FAKE_BIN" "$FAKE_HOME"
+mkdir -p "$PROFILE_DIR" "$RUN_PROFILE_DIR" "$FAKE_BIN" "$FAKE_HOME" "$TEST_ROOT/empty-bin"
 
 # A profile called `run` exists in this estate ON PURPOSE. It is the one word
 # whose meaning the amendment has to decide, and the decision is that the VERB
@@ -1104,6 +1104,106 @@ launch "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=nothing" "FAKE_SWAPPED_STAT
     -- --lane openXfactory-5 run team002 --print env-check
 grep -Fxq -- "$claude_args --print env-check" "$CLAUDE_LOG" \
     || fail "identity after a refusal: Claude did not start"; assertion
+
+# 5g. THE DOOR ACT 1 OPENED, AND R-A11-4's "NO PATH EXITS THE PANE". A child of
+# the re-exec whose window ALREADY CARRIES THE LANE'S NAME — which is now the
+# ordinary case, because act 1 step 3 names the new window for a certain lane at
+# birth and step 2 reuses a window that already has the name — met a lane-start
+# that REFUSED. The window read cannot tell that refusal from a Claude's own
+# exit 1 there, because the rename lane-start would have made is a no-op; and
+# handing the status back in a child is not "returning the operator to a
+# prompt", because the child IS the only command of a window the launcher made
+# a moment ago. tmux would print `[exited]` over a window with no Claude in it,
+# which is Evidence 2 exactly, through a third door. So in a child the launcher
+# drops to bare Claude with one line.
+launch "WORKBENCHES_CLAUDE_TMUX_CHILD=1" \
+    "WORKBENCHES_CLAUDE_WINDOW=openXfactory-5" \
+    "FAKE_TMUX_WINDOW=openXfactory-5" "FAKE_LANE_WITH_ROW=openXfactory-5" \
+    "FAKE_SWAPPED_STATUS=8" "FAKE_LANE_START_STATUS=1" \
+    -- run team002 --resume session-child-refused
+grep -Fxq -- "openXfactory-5 -- $claude_args --resume session-child-refused" "$LANE_START_LOG" \
+    || fail "child, window already the lane's: lane-start argv was '$(lane_start_argv)'"; assertion
+grep -Fxq -- "$claude_args --resume session-child-refused" "$CLAUDE_LOG" \
+    || fail "child, window already the lane's: the pane was left with no Claude in it — [exited] (R-A11-4)"; assertion
+[[ "$launch_status" -eq 0 ]] \
+    || fail "child, window already the lane's: the launcher exited $launch_status over a Claude that started"; assertion
+grep -q 'did not take openXfactory-5 (exit 1)' "$ERR_LOG" \
+    || fail "child, window already the lane's: the notice was '$(cat "$ERR_LOG")'"; assertion
+
+# 5g-i. ...and OUTSIDE a child the same shape still hands the status back. There
+# the launcher is a command in an existing window's shell: a refusal returns the
+# operator to their prompt under lane-start's own words, and there is no pane to
+# exit. Starting a bare Claude behind a session that may still be the lane's
+# would mint a second transcript in the lane's own window, which is the lineage
+# fault the protocol exists to prevent — and that objection is exactly what does
+# NOT reach a window the launcher itself just made.
+launch "FAKE_TMUX_WINDOW=openXfactory-5" "FAKE_LANE_WITH_ROW=openXfactory-5" \
+    "FAKE_SWAPPED_STATUS=8" "FAKE_LANE_START_STATUS=1" \
+    -- run team002 --resume session-shell-refused
+[[ ! -e "$CLAUDE_LOG" ]] \
+    || fail "shell, window already the lane's: a bare Claude was started behind a session that may still be the lane's ($(cat "$CLAUDE_LOG"))"; assertion
+[[ "$launch_status" -eq 1 ]] \
+    || fail "shell, window already the lane's: the launcher exited $launch_status instead of handing back 1"; assertion
+
+# 5h. THE WHOLE MATRIX, ASSERTED RATHER THAN ARGUED. Every lane source this
+# launcher has crossed with both of lane-start's documented refusals, IN A
+# CHILD — which is every path on which this process is the only command of a
+# tmux window and therefore every path that could print `[exited]`. Each cell
+# must end with a Claude running and the launcher exiting 0. This is the
+# scenario SPEC §2's "a launcher never refuses to start Claude" owes, and it is
+# one loop rather than eight paragraphs because the claim is about ALL of them.
+for lane_case in flag window window-record record; do
+    for refusal in 1 2; do
+        case "$lane_case" in
+            flag)          lane_env=(--lane matrix-1) ; scen=(
+                               "FAKE_TMUX_WINDOW=matrix-1" "FAKE_LANE_WITH_ROW=nothing"
+                               "FAKE_SWAPPED_STATUS=8") ;;
+            window)        lane_env=() ; scen=(
+                               "FAKE_TMUX_WINDOW=matrix-1" "FAKE_LANE_WITH_ROW=matrix-1"
+                               "FAKE_SWAPPED_STATUS=8") ;;
+            window-record) lane_env=() ; scen=(
+                               "FAKE_TMUX_WINDOW=matrix-1" "FAKE_LANE_WITH_ROW=nothing"
+                               "WORKBENCHES_CLAUDE_WINDOW_ID=@97"
+                               "FAKE_WINDOW_LANE_MAP=@97=matrix-1"
+                               "FAKE_SWAPPED_STATUS=8") ;;
+            record)        lane_env=() ; scen=(
+                               "FAKE_TMUX_WINDOW=matrix-1" "FAKE_LANE_WITH_ROW=nothing"
+                               "FAKE_SWAPPED_STATUS=0"
+                               "FAKE_SWAPPED_ROWS=matrix-1\t2026-09-13T03:31:33Z\tclaude-m:0\n") ;;
+        esac
+        launch "WORKBENCHES_CLAUDE_TMUX_CHILD=1" \
+            "WORKBENCHES_CLAUDE_WINDOW=matrix-1" \
+            "${scen[@]}" "FAKE_LANE_START_STATUS=$refusal" \
+            -- ${lane_env[@]+"${lane_env[@]}"} run team002 --resume "session-$lane_case-$refusal"
+        grep -Fxq -- "$claude_args --resume session-$lane_case-$refusal" "$CLAUDE_LOG" \
+            || fail "no [exited] pane: lane source $lane_case, lane-start exit $refusal, left the pane with no Claude ($(cat "$CLAUDE_LOG" 2>/dev/null))"; assertion
+        [[ "$launch_status" -eq 0 ]] \
+            || fail "no [exited] pane: lane source $lane_case, lane-start exit $refusal, the launcher exited $launch_status"; assertion
+        [[ -e "$LANE_START_LOG" ]] \
+            || fail "no [exited] pane: lane source $lane_case, lane-start was never invoked at all"; assertion
+    done
+done
+
+# 5h-i. ...and the same matrix with a lane-start that is not there AT ALL, which
+# is the other way an `exec`ed one used to die (`lane-start:337`'s sibling: a
+# helper that is not on PATH). The launcher refuses the launch only where the
+# operator NAMED a lane and it cannot be taken; with no lane named, the whole
+# feature is simply absent and Claude starts.
+reset_logs
+scenario
+set +e
+env "PATH=$TEST_ROOT/empty-bin:/usr/bin:/bin" \
+    "HOME=$FAKE_HOME" "CLAUDE_BIN=$FAKE_CLAUDE" \
+    "CLAUDE_PROFILES_HOME=$PROFILE_BASE" "CLAUDE_PROFILES_MANIFEST=$MANIFEST" \
+    "FAKE_CLAUDE_LOG=$CLAUDE_LOG" "WORKBENCHES_SHARED_MCP_FAMILIES=disabled" \
+    "WORKBENCHES_CLAUDE_TMUX_CHILD=1" "WORKBENCHES_CLAUDE_WINDOW=matrix-1" \
+    "$LAUNCHER" run team002 --resume session-no-lane-start >"$OUT_LOG" 2>"$ERR_LOG"
+launch_status=$?
+set -e
+grep -Fxq -- "$claude_args --resume session-no-lane-start" "$CLAUDE_LOG" \
+    || fail "no lane-start on PATH: the pane was left with no Claude in it ($(cat "$CLAUDE_LOG" 2>/dev/null))"; assertion
+[[ "$launch_status" -eq 0 ]] \
+    || fail "no lane-start on PATH: the launcher exited $launch_status"; assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"

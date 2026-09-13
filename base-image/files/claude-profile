@@ -1521,9 +1521,24 @@ case "$action" in
           # started behind a session that may still be the lane's would mint a
           # new transcript in the lane's own window, which is the lineage fault
           # the whole protocol exists to prevent.
+          #
+          # AND THE WINDOW-ALREADY-THE-LANE'S ARM STOPS AT THE ONE PLACE IT
+          # WOULD EXIT A PANE (`R-A11-4`: "no path exits the pane"). Where this
+          # process is the only command of a tmux window the LAUNCHER ITSELF
+          # made or respawned a moment ago — WORKBENCHES_CLAUDE_TMUX_CHILD,
+          # which act 1 sets on both of its paths — handing a refusal back is
+          # not "returning the operator to a prompt": there is no prompt behind
+          # it, and tmux prints `[exited]` over a window with no Claude in it,
+          # which is Evidence 2 exactly. Act 1 step 3 now names that window for
+          # the lane at birth and step 2 reuses a window that already carries
+          # the name, so this arm became reachable there in a way it was not
+          # before, through a door act 1 itself opened. The lineage objection
+          # does not reach it either: a window this launcher just created, or
+          # one whose pane it just respawned, has nothing of the lane's running
+          # behind it to mint a second transcript beside.
           if [[ "$lane_status" -eq 0 ]] \
             || { [[ "$lane_status" -ne 1 && "$lane_status" -ne 2 ]]; } \
-            || lane_window_is "$lane"; then
+            || { [[ -z "${WORKBENCHES_CLAUDE_TMUX_CHILD:-}" ]] && lane_window_is "$lane"; }; then
             exit "$lane_status"
           fi
           # lane-start's own refusal is already on the terminal: it is never
