@@ -387,7 +387,10 @@ lane-start --help 2>/dev/null | grep -q -- '--confirm' \
 #
 # WHAT IT IS STILL FOR is the session that comes up WITHOUT `lane-start`: the launcher's own two
 # documented degradations — no `lane-start` on PATH (Evidence 5) and a `lane-start` that refused, both of
-# which start bare Claude in the same window — and a `claude` typed by hand. Those come up with the name
+# which start bare Claude in the same window — and a `claude` typed by hand. And one more the amendment
+# names in the same breath: a workstation whose `lane-start` PREDATES `3719d97`, because the fix is in a
+# checkout and not in the air ("on a workstation carrying that helper the resume case no longer needs it
+# either" — the qualifier is the point). Those come up with the name
 # the harness derived (`openrepoproject-b9`, Evidence 4), and a lane whose messaging address (Amendment 2)
 # is a derived name is a lane nobody can address. Step 1 says this for the session running the skill; this
 # says it for the one that comes next.

@@ -227,7 +227,9 @@ there — comes up named for the lane, resume or not.
 **What is left is the session that comes up WITHOUT `lane-start`**: the two
 degradations this launcher documents — no `lane-start` on `PATH` (Evidence 5)
 and a `lane-start` that refused, both of which start bare Claude in the same
-window — and a `claude` typed by hand. From inside a session already running
+window — a `claude` typed by hand, and a workstation whose `lane-start`
+**predates `3719d97`**, since the fix lives in a checkout rather than in the
+air. From inside a session already running
 under a derived name, `/rename <lane>` is the only act that fixes it: there is no
 API to rename a running session, which is why every surface prints the act rather
 than performing it, and prints it **conditionally** — *if its name is not the
