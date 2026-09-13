@@ -504,9 +504,17 @@ act1_compose_child_command() {
   # the swap record's `window <session>:<index> <@id>` field.
   [[ -n "${lane_window_ref:-}" ]] && env_prefix+=("WORKBENCHES_CLAUDE_WINDOW_REF=$lane_window_ref")
   [[ -n "${lane_window_id:-}" ]] && env_prefix+=("WORKBENCHES_CLAUDE_WINDOW_ID=$lane_window_id")
-  # And the lane's directory, when the operator named one: `--dir` is this
-  # launcher's own option, so nothing downstream would see it otherwise.
-  [[ -n "${lane_dir_flag:-}" ]] && env_prefix+=("CLAUDE_LANE_DIR=$lane_dir_flag")
+  # And the lane's directory, when the operator named one — IN EITHER OF ITS
+  # TWO SPELLINGS. `--dir` is this launcher's own option, so nothing downstream
+  # would see it otherwise; and `CLAUDE_LANE_DIR`, which `--help` advertises as
+  # the same thing, is lost here too unless it is threaded. `tmux new-session`
+  # hands the command the SERVER's environment, not this client's, so a variable
+  # the operator exported in their own shell reaches the child only if it is
+  # written into the command string — which is the reason every other value
+  # above is. `--dir` wins where both are given, exactly as the directory
+  # order's rung 1 has it.
+  [[ -n "${lane_dir_flag:-${CLAUDE_LANE_DIR:-}}" ]] \
+    && env_prefix+=("CLAUDE_LANE_DIR=${lane_dir_flag:-${CLAUDE_LANE_DIR:-}}")
 
   command_string=""
   for argument in "${env_prefix[@]}" "$launcher" run "$profile" "$@"; do

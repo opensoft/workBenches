@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=108
+EXPECTED_SCENARIOS=110
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -912,6 +912,30 @@ grep -q 'respawn-pane -k -t %12' "$TMUX_LOG" \
 # step 3's fence exists to prevent, and it is no better done at step 2.
 grep -q 'CLAUDE_LANE=' "$TMUX_LOG" \
     && fail "act 1 step 1: the parent's own resolution was handed to the child as the operator's word ($(cat "$TMUX_LOG"))"; assertion
+
+# 2c-i. ...AND SO DOES `CLAUDE_LANE_DIR`, THE OTHER SPELLING OF `--dir`.
+# `--help` advertises the two as the same thing, and `tmux new-session` hands
+# its command the SERVER's environment rather than this client's — which is why
+# every other value is written into the command string — so an operator who
+# exported `CLAUDE_LANE_DIR` and launched from OUTSIDE tmux lost it at the
+# re-exec while `--dir` survived. (Raised by the round-3 pass as the residue
+# behind its fifth "not real" item, as a doc-side nit; it is one line either
+# way, and threading it is the half that keeps `--help` honest.)
+tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_SWAPPED_STATUS=8" \
+    "CLAUDE_LANE_DIR=$TEST_ROOT/projects/openRepoProject" \
+    -- --lane mine-5 run team002 --resume session-envdir-reexec
+grep -Fq "CLAUDE_LANE_DIR=$TEST_ROOT/projects/openRepoProject" "$TMUX_LOG" \
+    || fail "re-exec: CLAUDE_LANE_DIR did not cross into the session, so --help's 'also settable as' is false outside tmux ($(cat "$TMUX_LOG"))"; assertion
+
+# 2c-ii. ...and `--dir` still WINS where both are given, which is the directory
+# order's rung 1 read in its own order.
+tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_SWAPPED_STATUS=8" \
+    "CLAUDE_LANE_DIR=$TEST_ROOT/projects/from-env" \
+    -- --dir "$TEST_ROOT/projects/openRepoProject" --lane mine-5 run team002 --resume session-envdir-loses
+grep -Fq "CLAUDE_LANE_DIR=$TEST_ROOT/projects/openRepoProject" "$TMUX_LOG" \
+    || fail "re-exec: --dir did not beat CLAUDE_LANE_DIR across the re-exec ($(cat "$TMUX_LOG"))"; assertion
+grep -Fq 'from-env' "$TMUX_LOG" \
+    && fail "re-exec: the environment's directory beat the operator's own --dir ($(cat "$TMUX_LOG"))"; assertion
 
 # 2d. The window's ADDRESS crosses the re-exec beside its name. Amendment 11(5):
 # the id is information and the name is the key, so both travel and neither is
