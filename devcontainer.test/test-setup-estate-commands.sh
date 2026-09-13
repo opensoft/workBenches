@@ -24,9 +24,26 @@ TOOLS_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/openRepoTools"
 PARK_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/park"
 RESUME_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/resume"
 STATUS_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/status"
+LANES_EDIT_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/lanes-edit.sh"
+LANE_START_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/lane-start"
+LANE_END_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/lane-end"
+LINK_ESTATES_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/link-estates"
+REPOS_TSV_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/repos.tsv"
 
 TMPDIR_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_ROOT"' EXIT
+
+# HERMETIC AFTER AMENDMENT 9 ADOPTION ACT 4B. `openRepoTools --install` no
+# longer writes only into a bin directory: from act 3 it also places the
+# /lane-swap skill into the shared skills directory and into ~/.claude, and
+# merges one SessionStart entry into ~/.claude/settings.json (Amendment 9(b)).
+# Every scenario below runs the REAL script against the REAL vendored shims,
+# so without these two the suite would write into the runner's own home. They
+# are exported once rather than per invocation because the script under test
+# is run twelve times here, and a missed one is a suite that edits a person's
+# settings.
+export CLAUDE_PROFILES_HOME="$TMPDIR_ROOT/claude-profiles"
+export CLAUDE_USER_DIR="$TMPDIR_ROOT/claude-user"
 
 failures=0
 
@@ -99,6 +116,18 @@ assert_file_executable() {
     fi
 }
 
+# A SKILL.md is 0644 -- a document a session reads, not a command -- so the
+# executable assertion above cannot speak for it.
+assert_file_present() {
+    local path="$1"
+    local label="$2"
+    if [ -f "$path" ]; then
+        pass "$label"
+    else
+        fail "$label: $path is missing"
+    fi
+}
+
 assert_identical() {
     local a="$1"
     local b="$2"
@@ -151,7 +180,7 @@ TOOLS_COMMIT="$(pin_commit_for openrepotools)"
 assert_matches "$SHAPE_COMMIT" '^[0-9a-f]{40}$' 'pin file yields a 40-hex openreposhape commit'
 assert_matches "$TOOLS_COMMIT" '^[0-9a-f]{40}$' 'pin file yields a 40-hex openrepotools commit'
 
-printf '%s\n' '--- Scenario (a): fresh bin dir installs all five commands from the vendored copies ---'
+printf '%s\n' '--- Scenario (a): fresh bin dir installs all ten commands from the vendored copies ---'
 BIN_A="$TMPDIR_ROOT/bin-a"
 mkdir -p "$BIN_A"
 STATUS_A=0
@@ -163,11 +192,25 @@ assert_file_executable "$BIN_A/openRepoTools" 'fresh install places openRepoTool
 assert_file_executable "$BIN_A/park" 'fresh install places park, executable'
 assert_file_executable "$BIN_A/resume" 'fresh install places resume, executable'
 assert_file_executable "$BIN_A/status" 'fresh install places status, executable'
+# Amendment 9 adoption act 4b: five more, from `--install`'s one INSTALLABLES
+# list. repos.tsv is DATA and is placed executable anyway -- Amendment 9(b)
+# takes that "one honest ugliness" so this script keeps one destination and
+# one mode.
+assert_file_executable "$BIN_A/lanes-edit.sh" 'fresh install places lanes-edit.sh, executable'
+assert_file_executable "$BIN_A/lane-start" 'fresh install places lane-start, executable'
+assert_file_executable "$BIN_A/lane-end" 'fresh install places lane-end, executable'
+assert_file_executable "$BIN_A/link-estates" 'fresh install places link-estates, executable'
+assert_file_executable "$BIN_A/repos.tsv" 'fresh install places repos.tsv, executable'
 assert_identical "$BIN_A/openRepoShape" "$SHAPE_VENDOR" 'fresh openRepoShape is byte-identical to the vendored copy'
 assert_identical "$BIN_A/openRepoTools" "$TOOLS_VENDOR" 'fresh openRepoTools is byte-identical to the vendored copy'
 assert_identical "$BIN_A/park" "$PARK_VENDOR" 'fresh park is byte-identical to the vendored copy'
 assert_identical "$BIN_A/resume" "$RESUME_VENDOR" 'fresh resume is byte-identical to the vendored copy'
 assert_identical "$BIN_A/status" "$STATUS_VENDOR" 'fresh status is byte-identical to the vendored copy'
+assert_identical "$BIN_A/lanes-edit.sh" "$LANES_EDIT_VENDOR" 'fresh lanes-edit.sh is byte-identical to the vendored copy'
+assert_identical "$BIN_A/lane-start" "$LANE_START_VENDOR" 'fresh lane-start is byte-identical to the vendored copy'
+assert_identical "$BIN_A/lane-end" "$LANE_END_VENDOR" 'fresh lane-end is byte-identical to the vendored copy'
+assert_identical "$BIN_A/link-estates" "$LINK_ESTATES_VENDOR" 'fresh link-estates is byte-identical to the vendored copy'
+assert_identical "$BIN_A/repos.tsv" "$REPOS_TSV_VENDOR" 'fresh repos.tsv is byte-identical to the vendored copy'
 assert_contains "$OUTPUT_A" "openRepoShape pinned at $SHAPE_COMMIT" 'fresh install prints the openRepoShape pin commit'
 assert_contains "$OUTPUT_A" "openRepoTools pinned at $TOOLS_COMMIT" 'fresh install prints the openRepoTools pin commit'
 assert_contains "$OUTPUT_A" 'openRepoShape: installed at' 'fresh install reports an installed verb for openRepoShape'
@@ -175,6 +218,16 @@ assert_contains "$OUTPUT_A" 'openRepoTools: installed at' 'fresh install reports
 assert_contains "$OUTPUT_A" 'park: installed at' 'fresh install reports an installed verb for park'
 assert_contains "$OUTPUT_A" 'resume: installed at' 'fresh install reports an installed verb for resume'
 assert_contains "$OUTPUT_A" 'status: installed at' 'fresh install reports an installed verb for status'
+assert_contains "$OUTPUT_A" 'lanes-edit.sh: installed at' 'fresh install reports an installed verb for lanes-edit.sh'
+assert_contains "$OUTPUT_A" 'lane-start: installed at' 'fresh install reports an installed verb for lane-start'
+assert_contains "$OUTPUT_A" 'lane-end: installed at' 'fresh install reports an installed verb for lane-end'
+assert_contains "$OUTPUT_A" 'link-estates: installed at' 'fresh install reports an installed verb for link-estates'
+assert_contains "$OUTPUT_A" 'repos.tsv: installed at' 'fresh install reports an installed verb for repos.tsv'
+assert_contains "$OUTPUT_A" 'openRepoTools: 9 of 9 placed' 'the shim reports its own count, and it is nine'
+# The skill is placed too, from the pinned copy beside the shim and with no
+# fetch: the no-fetch sentinel this script exports would refuse one.
+assert_file_present "$CLAUDE_PROFILES_HOME/shared/skills/lane-swap/SKILL.md" 'fresh install places the /lane-swap skill in the shared skills directory'
+assert_file_present "$CLAUDE_USER_DIR/skills/lane-swap/SKILL.md" 'fresh install places the /lane-swap skill for a bare claude too'
 assert_contains "$OUTPUT_A" 'Estate commands verified against the vendored pin.' 'fresh install reports success only after post-install verification'
 # Scenario (f) folded in here: a brand-new temp dir is never on $PATH. Fix 4
 # removed this script's own PATH warning (the shims already print theirs),
@@ -193,6 +246,11 @@ assert_contains "$OUTPUT_B" 'openRepoTools: already installed at' 'second run re
 assert_contains "$OUTPUT_B" 'park: already installed at' 'second run reports park unchanged'
 assert_contains "$OUTPUT_B" 'resume: already installed at' 'second run reports resume unchanged'
 assert_contains "$OUTPUT_B" 'status: already installed at' 'second run reports status unchanged'
+assert_contains "$OUTPUT_B" 'lanes-edit.sh: already installed at' 'second run reports lanes-edit.sh unchanged'
+assert_contains "$OUTPUT_B" 'lane-start: already installed at' 'second run reports lane-start unchanged'
+assert_contains "$OUTPUT_B" 'lane-end: already installed at' 'second run reports lane-end unchanged'
+assert_contains "$OUTPUT_B" 'link-estates: already installed at' 'second run reports link-estates unchanged'
+assert_contains "$OUTPUT_B" 'repos.tsv: already installed at' 'second run reports repos.tsv unchanged'
 assert_identical "$BIN_A/openRepoShape" "$SHAPE_VENDOR" 'openRepoShape still byte-identical after the second run'
 assert_identical "$BIN_A/openRepoTools" "$TOOLS_VENDOR" 'openRepoTools still byte-identical after the second run'
 assert_identical "$BIN_A/park" "$PARK_VENDOR" 'park still byte-identical after the second run'
@@ -353,6 +411,13 @@ assert_mode "$BIN_A/openRepoTools" '755' 'placed openRepoTools is mode 0755'
 assert_mode "$BIN_A/park" '755' 'placed park is mode 0755'
 assert_mode "$BIN_A/resume" '755' 'placed resume is mode 0755'
 assert_mode "$BIN_A/status" '755' 'placed status is mode 0755'
+assert_mode "$BIN_A/lanes-edit.sh" '755' 'placed lanes-edit.sh is mode 0755'
+assert_mode "$BIN_A/lane-start" '755' 'placed lane-start is mode 0755'
+assert_mode "$BIN_A/lane-end" '755' 'placed lane-end is mode 0755'
+assert_mode "$BIN_A/link-estates" '755' 'placed link-estates is mode 0755'
+# 0755 although the VENDORED repos.tsv is 0644: `--install` stamps every file
+# in its one list executable, and this script's verify refuses any other mode.
+assert_mode "$BIN_A/repos.tsv" '755' 'placed repos.tsv is mode 0755, though its vendored copy is 0644'
 
 printf '%s\n' '--- Scenario (m): the operator'"'"'s own *_REF/*_REPO are overridden by the sentinel, not used ---'
 # Dynamically: an operator's environment must not change the happy-path

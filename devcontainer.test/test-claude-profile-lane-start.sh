@@ -169,10 +169,19 @@ set -e
     || fail "missing lane-start: exit status was $refusal_status, not 2"
 grep -q 'lane-start' "$TEST_ROOT/typescript-refusal.log" \
     || fail "missing lane-start: refusal did not mention lane-start"
-grep -q 'opensoft/brett-wip' "$TEST_ROOT/typescript-refusal.log" \
-    || fail "missing lane-start: refusal did not name the fix (clone opensoft/brett-wip)"
+# THE FIX IS THE INSTALL ACT (lane-collision-protocol Amendment 9(b), and
+# adoption act 5 which deletes scripts/link-estates from the workspace
+# repository -- opensoft/brett-wip#6 @1483d55). The refusal must name the act
+# that places lane-start, and must NOT send a person to a path inside somebody
+# else's wip repository, which stops existing at act 5.
+grep -q 'openRepoTools --install' "$TEST_ROOT/typescript-refusal.log" \
+    || fail "missing lane-start: refusal did not name the install act (openRepoTools --install)"
+grep -q 'setup-estate-commands.sh' "$TEST_ROOT/typescript-refusal.log" \
+    || fail "missing lane-start: refusal did not name the workBenches step that runs it"
 grep -q 'link-estates' "$TEST_ROOT/typescript-refusal.log" \
-    || fail "missing lane-start: refusal did not name scripts/link-estates"
+    && fail "missing lane-start: refusal still sends the person to scripts/link-estates, which act 5 deletes"
+grep -q 'brett-wip' "$TEST_ROOT/typescript-refusal.log" \
+    && fail "missing lane-start: refusal still names one operator's own wip repository"
 [[ ! -s "$NO_LANE_TMUX_LOG" ]] \
     || fail "missing lane-start: a tmux command ran before the refusal ($(cat "$NO_LANE_TMUX_LOG"))"
 

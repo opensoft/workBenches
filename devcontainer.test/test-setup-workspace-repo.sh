@@ -23,7 +23,9 @@
 #               spelling, https/git@/ssh://, with and without `.git` (RV-W1)
 #   (m)         the onboarding clone example is runnable as printed, in this
 #               script's own header and in README.md (RV-W4)
-#   (c)(c2)     the subcommand absent: it prints what to run and continues (0)
+#   (c)         the subcommand absent: it prints what to run and continues (0)
+#   (c2)        the openRepoTools this repo VENDORS is capable -- the real
+#               bytes carry the verb pair, which is act 4b having landed
 #   (c3)        MUTATION: absence is decided by `--help`, NEVER by an exit code
 #   (c4)        MUTATION: a bare `wip` in --help PROSE is not capability (F1)
 #   (c5)        the degraded path never repairs a noncompliant login (F7)
@@ -408,27 +410,32 @@ assert_contains "$OUTPUT" 'opensoft/brettheap-wip' '(c) it names the repository 
 assert_not_contains "$(tools_argv)" 'argv=wip' '(c) wip init was NOT invoked'
 assert_contains "$(tools_argv)" 'argv=--help' '(c) the capability was probed with --help'
 
-printf '%s\n' '--- (c2) the same, against the openRepoTools this repo vendors TODAY ---'
-# Not a fake: the real vendored bytes. Adoption act 3 has not landed, so this
-# must degrade -- and the day it does land, this scenario is the one that
-# notices, because the real --help will then carry the verb. THAT DAY, the
-# act-3 pin-move PR must update this scenario (and (c)'s siblings that assert
-# "no `wip` subcommand yet") in the same commit, or CI (F4) lands red on this
-# suite rather than green on a stale assumption.
-AGENTS_C2="$TMPDIR_ROOT/agents-c2"
-REAL_BIN="$TMPDIR_ROOT/real-bin"
-mkdir -p "$AGENTS_C2" "$REAL_BIN"
-cp "$REAL_TOOLS" "$REAL_BIN/openRepoTools"
-chmod 755 "$REAL_BIN/openRepoTools"
-STATUS_C2=0
-OUTPUT_C2="$(env -i "PATH=$FAKE_BIN:/usr/bin:/bin" "HOME=$TMPDIR_ROOT/home" \
-    "FAKE_TOOLS_LOG=$TMPDIR_ROOT/unused.log" "FAKE_GH_LOG=$TMPDIR_ROOT/unused-gh.log" \
-    "FAKE_GH_LOGIN=brettheap" \
-    "AGENT_PROTOCOL_ROOT=$AGENTS_C2" "OPENREPOTOOLS_BIN_DIR=$REAL_BIN" \
-    "$SCRIPT_UNDER_TEST" 2>&1 </dev/null)" || STATUS_C2=$?
-assert_equal "$STATUS_C2" '0' '(c2) the real vendored openRepoTools degrades, exit 0'
-assert_contains "$OUTPUT_C2" 'no `wip` subcommand yet' '(c2) the real vendored copy is correctly seen to lack wip'
-assert_contains "$OUTPUT_C2" "$REAL_BIN/openRepoTools" '(c2) it names the openRepoTools it asked'
+printf '%s\n' '--- (c2) the openRepoTools this repo vendors TODAY is CAPABLE ---'
+# Not a fake: the real vendored bytes. This scenario has flipped, exactly as
+# its previous form said it would -- "the day it does land, this scenario is
+# the one that notices, because the real --help will then carry the verb. THAT
+# DAY, the act-3 pin-move PR must update this scenario ... or CI (F4) lands red
+# on this suite rather than green on a stale assumption." Amendment 9 adoption
+# act 4b is that pin move, and this is that update.
+#
+# What only the real bytes can say is asserted, and nothing else: the vendored
+# openRepoTools now documents the VERB PAIR, so the step's probe reads it as
+# capable and the degraded branch is dead against this pin. It deliberately no
+# longer RUNS the step against those bytes -- a real `wip init` reaches for
+# `gh` and for openRepoShape's template over the network, which a hermetic
+# suite may not do. Every branch after the probe is covered against the fake,
+# hermetically, by (a), (i), (b2)-(b5) and (d).
+#
+# THE PROBE EXPRESSION IS READ OUT OF THE SCRIPT, never copied: this executes
+# the shipped ERE itself, so an edit to it is re-tested here instead of
+# silently diverging from a hand-kept stand-in. (c4) still guards the other
+# half -- that a bare `wip` in PROSE is not capability.
+CAP_EXPR="$(sed -n "s/^[[:space:]]*if printf '%s' \"\$tools_help\" | grep -Eq '\(.*\)'; then$/\1/p" "$SCRIPT_UNDER_TEST")"
+assert_contains "$CAP_EXPR" 'wip' '(c2) the capability expression was read out of the script'
+REAL_HELP="$("$REAL_TOOLS" --help 2>/dev/null || true)"
+if printf '%s' "$REAL_HELP" | grep -Eq "$CAP_EXPR"; then REAL_CAPABLE=yes; else REAL_CAPABLE=no; fi
+assert_equal "$REAL_CAPABLE" 'yes' '(c2) the vendored openRepoTools documents `wip init` -- adoption act 3 is pinned'
+assert_contains "$REAL_HELP" 'openRepoTools wip init' '(c2) ... and names it as a command, not only in prose'
 
 printf '%s\n' '--- (c3) MUTATION: absence is read from --help, never from an exit code ---'
 # A `wip init` that REFUSES prints the administrator block and exits 2 -- the

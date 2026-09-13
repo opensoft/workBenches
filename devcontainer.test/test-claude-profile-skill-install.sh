@@ -1,20 +1,25 @@
 #!/usr/bin/env bash
-# Regression tests for the /lane-swap skill: where setup-claude-profiles.sh
-# puts it, and what the file itself has to say — lane-collision-protocol
-# Amendment 8(a), as ruled by A8 Addendum 2 R-A8-5(a) and R-A8-7.
+# Regression tests for the /lane-swap skill after lane-collision-protocol
+# Amendment 9 adoption act 4b: WHO places it, who no longer does, and what the
+# file itself has to say.
 #
-# WHERE. `claude-profile` execs every `run` with CLAUDE_CONFIG_DIR=<profile
-# dir>, so the harness reads THAT directory's `skills/`, never ~/.claude's.
-# Every profile's `skills` is a symlink to one shared directory, so a single
-# write into it reaches all of them — 418 on Eagle, where the skill had been
-# installed in ~/.claude/skills and had therefore never been listed at all
-# (F-S1). The ~/.claude copy stays for a bare `claude` outside the launcher.
+# WHAT ACT 4B CHANGED HERE. Until act 4b, scripts/setup-claude-profiles.sh
+# carried a `for skill in lane-swap` loop that installed SKILL.md into the
+# shared skills directory and into ~/.claude, and a SessionStart ensure that
+# appended Amendment 8(e)'s entry to ~/.claude/settings.json. Act 3 gave both
+# to `openRepoTools --install` (Amendment 9(b), on A8 Addendum 2's ratified
+# R-A8-5), and act 4b deleted them from that script "together with the
+# vendored copy it installs from". So this suite is inverted: the assertions
+# that used to prove the loop RAN now prove it is GONE, and one new scenario
+# proves the install act is what places the skill.
 #
-# The copy is idempotent BY CONTENT: a destination already holding the vendored
-# bytes is left alone, mtime and all, so a later `openRepoTools --install`
-# write of the same bytes is not clobbered by the next setup run (ruled on
-# opensoft/workBenches#68, F5 — this loop is their sole writer until Amendment
-# 9's adoption act 3 lands, and A9's act 4 deletes it).
+# THE SKILL'S TEXT DID NOT LEAVE THIS REPOSITORY, it changed shelf. It is now
+# devBenches/base-image/files/openrepotools/skills/lane-swap/SKILL.md, a pinned
+# copy under devBenches/base-image/upstream-pin.yaml, vendored so that
+# `--install` can place it with no network -- scripts/setup-estate-commands.sh
+# exports OPENREPOTOOLS_REPO/_REF to a sentinel that cannot resolve. Every
+# text assertion below therefore survives act 4b unchanged, reading the pinned
+# copy instead of the deleted one.
 #
 # WHAT. The skill's own text carries F-S5-F-S9: it is named /lane-swap in both
 # name and description; it never hands ` — ` to `lanes-edit.sh log`, which
@@ -32,7 +37,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SETUP="$REPO_ROOT/scripts/setup-claude-profiles.sh"
-SKILL_SOURCE="$REPO_ROOT/base-image/files/claude/skills/lane-swap/SKILL.md"
+VENDOR_DIR="$REPO_ROOT/devBenches/base-image/files/openrepotools"
+TOOLS_SHIM="$VENDOR_DIR/openRepoTools"
+SKILL_SOURCE="$VENDOR_DIR/skills/lane-swap/SKILL.md"
+DELETED_SKILL="$REPO_ROOT/base-image/files/claude/skills/lane-swap/SKILL.md"
 
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
@@ -42,7 +50,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=9
+EXPECTED_SCENARIOS=8
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -55,6 +63,9 @@ MANIFEST="$TEST_ROOT/claude-profiles.json"
 PROFILE_DIR="$BASE/profiles/opensoft/team/team-002"
 SHARED_SKILL="$BASE/shared/skills/lane-swap/SKILL.md"
 DEFAULT_SKILL="$DEFAULT_CLAUDE/skills/lane-swap/SKILL.md"
+DEFAULT_SETTINGS="$DEFAULT_CLAUDE/settings.json"
+SESSION_START_SNIPPET='~/projects/xFactory/lanes-edit.sh session-start || true'
+SESSION_START_MATCHER='startup|resume|clear|fork'
 mkdir -p "$FAKE_HOME"
 
 cat > "$MANIFEST" <<'EOF'
@@ -73,59 +84,147 @@ run_setup() {
         "$SETUP" --manifest "$MANIFEST" >/dev/null
 }
 
+# `openRepoTools --install` exactly as scripts/setup-estate-commands.sh runs
+# it: the vendored shim invoked as a FILE, with the no-fetch sentinel exported,
+# so a fetch that should never happen fails loudly instead of quietly
+# succeeding against the network.
+run_install() {
+    scenario
+    env HOME="$FAKE_HOME" \
+        OPENREPOTOOLS_BIN_DIR="$TEST_ROOT/bin" \
+        CLAUDE_PROFILES_HOME="$BASE" \
+        CLAUDE_USER_DIR="$DEFAULT_CLAUDE" \
+        OPENREPOTOOLS_REPO=pinned-by-workBenches-no-fetch \
+        OPENREPOTOOLS_REF=pinned-by-workBenches-no-fetch \
+        "$TOOLS_SHIM" --install >"$TEST_ROOT/install.out" 2>&1
+}
+
 # ---------------------------------------------------------------------------
-# 1. One run installs the skill into the shared directory and into ~/.claude,
-# byte-for-byte and world-readable, and it is visible THROUGH the profile's
-# own `skills` symlink — which is the whole point of the shared directory.
+# 1. THE LOOP IS GONE, statically. The deleted paths are named here rather
+# than only inferred from behaviour, because a loop that is merely never
+# reached would pass every behavioural check below and still be a second
+# writer the day something reaches it.
+scenario
+[[ ! -e "$DELETED_SKILL" ]] \
+    || fail "deletion: $DELETED_SKILL is still vendored here; act 4b deletes the copy the loop installed from"; assertion
+# CODE, not comments: the deletion note left behind names both of the things
+# it deleted, and a comment is not a writer.
+setup_code="$(grep -v '^[[:space:]]*#' "$SETUP")"
+grep -q 'for skill in lane-swap' <<<"$setup_code" \
+    && fail "deletion: the \`for skill in lane-swap\` loop is still in $SETUP"; assertion
+grep -q 'default_session_start' <<<"$setup_code" \
+    && fail "deletion: the ~/.claude SessionStart ensure is still in $SETUP"; assertion
+# ... and the launcher's own ensure is NOT deleted: R-A8-5(b) is ratified and
+# `--install` writes no profile's settings.json (Amendment 9(b)).
+grep -q 'lane_session_start_command' "$REPO_ROOT/base-image/files/claude-profile" \
+    || fail "deletion: the launcher's per-profile SessionStart ensure was removed, and act 4b keeps it"; assertion
+
+# ---------------------------------------------------------------------------
+# 2. A setup run places NO skill and NO SessionStart entry -- with a working
+# lane estate present, which is the condition under which the deleted ensure
+# would have fired.
+XFACTORY="$FAKE_HOME/projects/xFactory"
+mkdir -p "$XFACTORY"
+printf '#!/usr/bin/env bash\ncase "$1" in session-start) exit 0 ;; esac\nexit 2\n' \
+    > "$XFACTORY/lanes-edit.sh"
+chmod +x "$XFACTORY/lanes-edit.sh"
 run_setup
-[[ -f "$SHARED_SKILL" ]] \
-    || fail "install: nothing at $SHARED_SKILL"; assertion
-cmp -s "$SKILL_SOURCE" "$SHARED_SKILL" \
-    || fail "install: the shared copy is not the vendored file"; assertion
-[[ "$(stat -c '%a' "$SHARED_SKILL")" == 644 ]] \
-    || fail "install: the shared copy is mode $(stat -c '%a' "$SHARED_SKILL"), not 644"; assertion
-[[ -f "$DEFAULT_SKILL" ]] \
-    || fail "install: nothing at $DEFAULT_SKILL for a bare claude"; assertion
-cmp -s "$SKILL_SOURCE" "$DEFAULT_SKILL" \
-    || fail "install: the ~/.claude copy is not the vendored file"; assertion
-# RV-W2 (workBenches#63 re-verification): with no lane estate on this machine
-# at all, the bare-claude SessionStart hook is gated exactly like the
-# per-profile one, so nothing is written yet.
-DEFAULT_SETTINGS="$DEFAULT_CLAUDE/settings.json"
+[[ ! -e "$SHARED_SKILL" ]] \
+    || fail "no-write: setup placed a skill at $SHARED_SKILL, which is --install's path now"; assertion
+[[ ! -e "$DEFAULT_SKILL" ]] \
+    || fail "no-write: setup placed a skill at $DEFAULT_SKILL, which is --install's path now"; assertion
 jq -e '.hooks.SessionStart // empty' "$DEFAULT_SETTINGS" >/dev/null 2>&1 \
-    && fail "install: a SessionStart hook was written with no lanes-edit.sh estate at all"; assertion
+    && fail "no-write: setup wrote a SessionStart entry into $DEFAULT_SETTINGS, which is --install's to merge"; assertion
+# What this script still owns is untouched: the shared skills directory every
+# profile symlinks to, and its own statusLine write at mode 600.
+[[ -d "$BASE/shared/skills" ]] \
+    || fail "no-write: the shared skills directory is no longer created, and --install writes into it"; assertion
 [[ -L "$PROFILE_DIR/skills" ]] \
-    || fail "install: the profile's skills is not a symlink ($(ls -ld "$PROFILE_DIR/skills" 2>&1))"; assertion
+    || fail "no-write: the profile's skills is not a symlink to the shared directory"; assertion
+[[ "$(jq -r '.statusLine.type' "$DEFAULT_SETTINGS")" == command ]] \
+    || fail "no-write: the statusLine write was lost with the hook wiring"; assertion
+[[ "$(stat -c '%a' "$DEFAULT_SETTINGS")" == 600 ]] \
+    || fail "no-write: $DEFAULT_SETTINGS is mode $(stat -c '%a' "$DEFAULT_SETTINGS"), not 600"; assertion
+
+# ---------------------------------------------------------------------------
+# 3. THE INSTALL ACT IS THE WRITER. The vendored shim, run the way
+# setup-estate-commands.sh runs it, places both skill copies and merges the
+# hook -- with the no-fetch sentinel exported, so this also proves the skill's
+# bytes are vendored rather than fetched. Without the pinned
+# skills/lane-swap/SKILL.md beside the shim this run exits 2 having placed
+# NOTHING: "could not fetch skills/lane-swap/SKILL.md from
+# pinned-by-workBenches-no-fetch".
+run_install
+[[ -f "$SHARED_SKILL" ]] \
+    || fail "install: --install placed nothing at $SHARED_SKILL ($(cat "$TEST_ROOT/install.out"))"; assertion
+cmp -s "$SKILL_SOURCE" "$SHARED_SKILL" \
+    || fail "install: the shared copy is not the pinned file"; assertion
+[[ -f "$DEFAULT_SKILL" ]] \
+    || fail "install: --install placed nothing at $DEFAULT_SKILL for a bare claude"; assertion
+cmp -s "$SKILL_SOURCE" "$DEFAULT_SKILL" \
+    || fail "install: the ~/.claude copy is not the pinned file"; assertion
 cmp -s "$SKILL_SOURCE" "$PROFILE_DIR/skills/lane-swap/SKILL.md" \
-    || fail "install: the skill is not readable through the profile's own skills symlink — the F-S1 defect"; assertion
+    || fail "install: the skill is not readable through the profile's own skills symlink -- the F-S1 defect"; assertion
+grep -q 'no-fetch' "$TEST_ROOT/install.out" \
+    && fail "install: the sentinel was reached, so a fetch was attempted for a file that is pinned"; assertion
+[[ "$(jq '(.hooks.SessionStart // []) | length' "$DEFAULT_SETTINGS")" -eq 1 ]] \
+    || fail "install: $(jq '(.hooks.SessionStart // []) | length' "$DEFAULT_SETTINGS") SessionStart entries, expected 1"; assertion
+[[ "$(jq -r '.hooks.SessionStart[0].hooks[0].command' "$DEFAULT_SETTINGS")" == "$SESSION_START_SNIPPET" ]] \
+    || fail "install: the merged command is not Amendment 8(e)'s canonical string"; assertion
+[[ "$(jq -r '.hooks.SessionStart[0].matcher' "$DEFAULT_SETTINGS")" == "$SESSION_START_MATCHER" ]] \
+    || fail "install: the merged matcher is not Amendment 8(e)'s"; assertion
+[[ "$(jq -r '.hooks.SessionStart[0].hooks[0].timeout' "$DEFAULT_SETTINGS")" == 5 ]] \
+    || fail "install: the merged timeout is not 5"; assertion
+# The merge is additive: this script's statusLine survived it.
+[[ "$(jq -r '.statusLine.type' "$DEFAULT_SETTINGS")" == command ]] \
+    || fail "install: the merge replaced the file and lost the statusLine this script wrote"; assertion
 
 # ---------------------------------------------------------------------------
-# 2. Idempotent by CONTENT: a second run leaves an identical destination
-# untouched, mtime and all, so a later `openRepoTools --install` write of the
-# same bytes is not clobbered (workBenches#68 F5).
+# 4. EXACTLY ONE WRITER, proved the only way that matters: a setup run AFTER
+# an install leaves every one of --install's three artifacts byte-for-byte and
+# mode-for-mode alone. This is the whole point of act 4b -- the deleted loop
+# stamped 0644 over a file --install owns, and the deleted ensure appended to
+# a file --install merges.
+before_shared="$(sha256sum "$SHARED_SKILL" | cut -d' ' -f1)"
+before_default="$(sha256sum "$DEFAULT_SKILL" | cut -d' ' -f1)"
+before_shared_mode="$(stat -c '%a' "$SHARED_SKILL")"
+before_settings="$(cat "$DEFAULT_SETTINGS")"
 touch -d '2001-01-01T00:00:00Z' "$SHARED_SKILL" "$DEFAULT_SKILL"
-before_shared="$(stat -c '%Y' "$SHARED_SKILL")"
-before_default="$(stat -c '%Y' "$DEFAULT_SKILL")"
+before_shared_mtime="$(stat -c '%Y' "$SHARED_SKILL")"
+before_default_mtime="$(stat -c '%Y' "$DEFAULT_SKILL")"
 run_setup
-[[ "$(stat -c '%Y' "$SHARED_SKILL")" == "$before_shared" ]] \
-    || fail "idempotent: the shared copy was rewritten although its content already matched"; assertion
-[[ "$(stat -c '%Y' "$DEFAULT_SKILL")" == "$before_default" ]] \
-    || fail "idempotent: the ~/.claude copy was rewritten although its content already matched"; assertion
-cmp -s "$SKILL_SOURCE" "$SHARED_SKILL" \
-    || fail "idempotent: the shared copy changed"; assertion
+[[ "$(sha256sum "$SHARED_SKILL" | cut -d' ' -f1)" == "$before_shared" ]] \
+    || fail "one writer: setup rewrote the shared skill --install placed"; assertion
+[[ "$(sha256sum "$DEFAULT_SKILL" | cut -d' ' -f1)" == "$before_default" ]] \
+    || fail "one writer: setup rewrote the ~/.claude skill --install placed"; assertion
+[[ "$(stat -c '%Y' "$SHARED_SKILL")" == "$before_shared_mtime" ]] \
+    || fail "one writer: setup touched the shared skill's mtime"; assertion
+[[ "$(stat -c '%Y' "$DEFAULT_SKILL")" == "$before_default_mtime" ]] \
+    || fail "one writer: setup touched the ~/.claude skill's mtime"; assertion
+[[ "$(stat -c '%a' "$SHARED_SKILL")" == "$before_shared_mode" ]] \
+    || fail "one writer: setup changed the shared skill's mode from $before_shared_mode to $(stat -c '%a' "$SHARED_SKILL") -- the exact defect act 4b closes"; assertion
+[[ "$(jq -S . <<<"$before_settings")" == "$(jq -S . "$DEFAULT_SETTINGS")" ]] \
+    || fail "one writer: setup changed the settings --install merged"; assertion
+[[ "$(jq '(.hooks.SessionStart // []) | length' "$DEFAULT_SETTINGS")" -eq 1 ]] \
+    || fail "one writer: setup appended a second SessionStart entry"; assertion
 
 # ---------------------------------------------------------------------------
-# 3. And a destination that does NOT match is put back: until A9's act 3 this
-# loop is the writer, so drift is corrected rather than preserved.
-printf 'something else\n' > "$SHARED_SKILL"
-run_setup
-cmp -s "$SKILL_SOURCE" "$SHARED_SKILL" \
-    || fail "drift: a shared copy that differed was not put back"; assertion
-[[ "$(stat -c '%a' "$SHARED_SKILL")" == 644 ]] \
-    || fail "drift: the restored copy is mode $(stat -c '%a' "$SHARED_SKILL"), not 644"; assertion
+# 5. THE PINNED COPY IS THE ONLY COPY. A second SKILL.md anywhere in this
+# repository is a second source of truth, which is what act 4b removed.
+scenario
+copies="$(find "$REPO_ROOT" -path "$REPO_ROOT/.git" -prune -o \
+    -path '*/skills/lane-swap/SKILL.md' -print | sort)"
+[[ "$copies" == "$SKILL_SOURCE" ]] \
+    || fail "one source: expected only $SKILL_SOURCE, found:
+$copies"; assertion
+# ... and it is what the pin says it is, checked by the tool that owns the pin.
+python3 "$REPO_ROOT/devBenches/base-image/update-upstream.py" check --source openrepotools >/dev/null \
+    || fail "one source: the vendored copies do not match upstream-pin.yaml"; assertion
+grep -q 'path: skills/lane-swap/SKILL.md' "$REPO_ROOT/devBenches/base-image/upstream-pin.yaml" \
+    || fail "one source: the skill has no pin row, so nothing vendors it for the offline install"; assertion
 
 # ---------------------------------------------------------------------------
-# 4. The skill's own text (F-S5-F-S9, R-A8-6, R-A8-7).
+# 6. The skill's own text (F-S5-F-S9, R-A8-6, R-A8-7).
 scenario
 grep -q '^name: lane-swap$' "$SKILL_SOURCE" \
     || fail "text: the skill is not named lane-swap"; assertion
@@ -165,58 +264,7 @@ grep -q 'row_write_refused=1' "$SKILL_SOURCE" \
     || fail "text: step 4's row write has no refused-write branch (RV-S2)"; assertion
 
 # ---------------------------------------------------------------------------
-# 5. RV-W2 (workBenches#63 re-verification; new-workstation#16 adoption act 6
-# owns this). A bare `claude` run reads $DEFAULT_CLAUDE/settings.json, never a
-# profile's, so the SessionStart hook has to be ensured HERE too, not only by
-# claude-profile — the same canonical string, matcher and timeout, gated the
-# same way on the estate's lanes-edit.sh actually having the subcommand.
-SESSION_START_SNIPPET='~/projects/xFactory/lanes-edit.sh session-start || true'
-SESSION_START_MATCHER='startup|resume|clear|fork'
-XFACTORY="$FAKE_HOME/projects/xFactory"
-mkdir -p "$XFACTORY"
-printf '#!/usr/bin/env bash\ncase "$1" in session-start) exit 0 ;; esac\nexit 2\n' \
-    > "$XFACTORY/lanes-edit.sh"
-chmod +x "$XFACTORY/lanes-edit.sh"
-default_session_start_entries() { jq '.hooks.SessionStart // []' "$DEFAULT_SETTINGS"; }
-default_session_start_count() { jq '(.hooks.SessionStart // []) | length' "$DEFAULT_SETTINGS"; }
-default_entry_with_snippet() {
-    jq --arg c "$SESSION_START_SNIPPET" '
-        [.hooks.SessionStart[]? | select(any(.hooks[]?; .command == $c))] | .[0] // empty
-    ' "$DEFAULT_SETTINGS"
-}
-run_setup
-[[ "$(default_session_start_count)" -eq 1 ]] \
-    || fail "default hook: $(default_session_start_count) SessionStart entries, expected 1 ($(default_session_start_entries))"; assertion
-[[ "$(default_entry_with_snippet | jq -r '.matcher')" == "$SESSION_START_MATCHER" ]] \
-    || fail "default hook: matcher was $(default_entry_with_snippet | jq -r '.matcher')"; assertion
-[[ "$(default_entry_with_snippet | jq -r '.hooks[0].timeout')" == 5 ]] \
-    || fail "default hook: timeout was $(default_entry_with_snippet | jq -r '.hooks[0].timeout'), expected 5"; assertion
-[[ "$(default_entry_with_snippet | jq -r '.hooks[0].command')" == "$SESSION_START_SNIPPET" ]] \
-    || fail "default hook: the command is not claude-profile's own canonical snippet"; assertion
-
-# ---------------------------------------------------------------------------
-# 6. Idempotent: a second run against the same estate appends nothing.
-before_default_entries="$(default_session_start_entries)"
-run_setup
-[[ "$(default_session_start_count)" -eq 1 ]] \
-    || fail "default hook idempotent: a second run left $(default_session_start_count) entries"; assertion
-[[ "$(default_session_start_entries)" == "$before_default_entries" ]] \
-    || fail "default hook idempotent: the entry changed on a second run"; assertion
-
-# ---------------------------------------------------------------------------
-# 7. Additive: an unrelated hook kind set by hand survives the next run
-# alongside the ensured SessionStart entry, exactly like the per-profile
-# rewrite (F-W8's property, carried to this second writer of the same kind).
-jq '.hooks.PreToolUse = [{matcher: "Bash", hooks: [{type: "command", command: "true"}]}]' \
-    "$DEFAULT_SETTINGS" > "$DEFAULT_SETTINGS.tmp" && mv "$DEFAULT_SETTINGS.tmp" "$DEFAULT_SETTINGS"
-run_setup
-[[ "$(jq -r '.hooks.PreToolUse[0].hooks[0].command' "$DEFAULT_SETTINGS")" == true ]] \
-    || fail "default hook additive: an unrelated hook kind was lost"; assertion
-[[ "$(default_session_start_count)" -eq 1 ]] \
-    || fail "default hook additive: SessionStart did not survive beside it"; assertion
-
-# ---------------------------------------------------------------------------
-# 8. RV-S1 regression (BLOCKING, opensoft/workBenches#63 re-verification): the
+# 7. RV-S1 regression (BLOCKING, opensoft/workBenches#63 re-verification): the
 # handoff column has to be read by a fixed LEFT field index, never counted
 # back from NF. A right split returns the wrong cell — the empty string, on
 # this lane's own real register row — the moment any earlier or later column
@@ -244,7 +292,7 @@ old_buggy_result="$(printf '%s' "$multi_pipe_row" | awk -F'|' '{print $(NF-2)}')
     || fail "RV-S1: the fixture does not actually distinguish a right split from a left split"; assertion
 
 # ---------------------------------------------------------------------------
-# 9. RV-S2 regression: step 5 must print --lane as a LEADING option, before
+# 8. RV-S2 regression: step 5 must print --lane as a LEADING option, before
 # `run` — claude-profile accepts --lane only as a leading option (before the
 # action), so a trailing one would be handed to Claude itself, not to the
 # launcher. Executes the shipped branch itself, both ways.
@@ -281,4 +329,4 @@ done < <(
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"
-echo "lane-swap skill install: $scenarios scenarios, $assertions assertions passed"
+echo "lane-swap skill install (act 4b: --install is the writer): $scenarios scenarios, $assertions assertions passed"
