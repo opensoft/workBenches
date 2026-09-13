@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=62
+EXPECTED_SCENARIOS=63
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -1204,6 +1204,88 @@ grep -Fxq -- "$claude_args --resume session-no-lane-start" "$CLAUDE_LOG" \
     || fail "no lane-start on PATH: the pane was left with no Claude in it ($(cat "$CLAUDE_LOG" 2>/dev/null))"; assertion
 [[ "$launch_status" -eq 0 ]] \
     || fail "no lane-start on PATH: the launcher exited $launch_status"; assertion
+
+# ===========================================================================
+# 6. EVERY FIELD NAME IS THE SPEC'S, BYTE FOR BYTE — SPEC §4, §5 and §11.
+#
+# A field name is a contract between writers and readers that nothing else
+# enforces: a launcher that reads `dir:` where the writer writes `dir `, or a
+# skill that writes `win` where the reader looks for `window`, fails silently
+# and only at a restart. The four artefacts this PR ships are audited against
+# the SPEC's own spellings here, statically, because the failure they have is
+# not one a scenario can provoke — it is one that simply never matches.
+# ===========================================================================
+
+scenario
+SKILL_MD="$REPO_ROOT/base-image/files/claude/skills/lane-swap/SKILL.md"
+SWAP_MD="$REPO_ROOT/base-image/files/claude/commands/swap.md"
+GUARD_SH="$REPO_ROOT/base-image/files/claude-usage-guard.sh"
+
+# SPEC §5 — the swap record's payload, in the SPEC's own order and spelling:
+# `swap; window <session>:<index> <@id>; dir <path>; workstation <ws>`.
+grep -Fq 'payload="swap"' "$SKILL_MD" \
+    || fail "§5: the PAUSED payload does not open with the verb-less swap token"; assertion
+grep -Fq 'payload="$payload; window $win"' "$SKILL_MD" \
+    || fail "§5: the window sub-field is not written as 'window <refs>'"; assertion
+grep -Fq 'payload="$payload; dir $dir"' "$SKILL_MD" \
+    || fail "§5: the directory sub-field is not written as 'dir <path>'"; assertion
+grep -Fq 'payload="$payload; workstation ' "$SKILL_MD" \
+    || fail "§5: the workstation sub-field is not written as 'workstation <ws>'"; assertion
+# ...and the window sub-field's two refs are SPACE-separated within it, which is
+# Amendment 7(b)'s rule for several refs in one sub-field.
+grep -Fq 'win="${win:+$win }$win_id"' "$SKILL_MD" \
+    || fail "§5: the window sub-field's two refs are not space-separated"; assertion
+# ...and a space in a path is QUOTED, while `, `, ` — ` and a `"` are refused.
+grep -Fq 'case "$dir" in *'"'"' '"'"'*) dir=' "$SKILL_MD" \
+    || fail "§5/R-A11-6: a dir sub-field containing a space is not quoted"; assertion
+grep -q 'case "\$dir" in .*'"'"', '"'"'.*'"'"' — '"'"'.*refused' "$SKILL_MD" \
+    || fail "§5: a dir sub-field containing ', ' or ' -- ' is not refused"; assertion
+
+# SPEC §7 — the uuid is SUPPLIED, not left for session_for() to substitute.
+grep -Fq 'LANES_SESSION="$uuid"' "$SKILL_MD" \
+    || fail "§7/R-A11-5: the skill does not pass the uuid it has in hand"; assertion
+
+# SPEC §11 — the helper's reads, by their own names, in all three callers this
+# PR ships. `window-lane` has THREE (R-A11-6 on F17): the launcher's precedence
+# 3, /restart step 2(b) — the tooling PR's — and the skill's step 1.
+grep -Fq 'window-lane' "$LAUNCHER" \
+    || fail "§11: the launcher does not read precedence 3 through window-lane"; assertion
+grep -Fq 'window-lane' "$SKILL_MD" \
+    || fail "§11/R-A11-6: the skill's step 1 does not take the new precedence step"; assertion
+grep -Fq 'lane-dir' "$LAUNCHER" \
+    || fail "§11: the launcher does not read the lane's directory through lane-dir"; assertion
+
+# SPEC §4 — the operator's word, in both of its spellings, and nothing else.
+grep -Fq -- '--dir' "$LAUNCHER" || fail "§4: --dir is not an option of the launcher"; assertion
+grep -Fq 'CLAUDE_LANE_DIR' "$LAUNCHER" || fail "§4: CLAUDE_LANE_DIR does not carry --dir across the re-exec"; assertion
+grep -Fq 'dir[:=]' "$LAUNCHER" \
+    && fail "§4/§5: the launcher still reads dir: / dir= spellings the SPEC does not name"; assertion
+
+# SPEC §3 — the window's name and its address across the re-exec.
+for var in WORKBENCHES_CLAUDE_WINDOW WORKBENCHES_CLAUDE_WINDOW_ID WORKBENCHES_CLAUDE_WINDOW_REF; do
+    grep -Fq "$var" "$LAUNCHER" || fail "§3: $var is not threaded across the re-exec"; assertion
+done
+
+# SPEC §9 — `/swap` is a one-line command file that INVOKES the skill, and the
+# 176-line skill is not duplicated into it. Two texts that must stay byte-equal
+# with nothing making them so is the rejected alternative.
+grep -Fq 'lane-swap' "$SWAP_MD" \
+    || fail "§9: commands/swap.md does not invoke the lane-swap skill"; assertion
+[[ "$(wc -l < "$SWAP_MD")" -lt 30 ]] \
+    || fail "§9: commands/swap.md is $(wc -l < "$SWAP_MD") lines — it is restating the skill, not aliasing it"; assertion
+grep -Fq 'append-row-status' "$SWAP_MD" \
+    && fail "§9: commands/swap.md restates the skill's own steps, which is the rejected second copy"; assertion
+
+# SPEC §9 — the guard's fence is the launcher's own exported lane, and the
+# restart command it prints is the one-word form of SPEC §1.
+grep -Fq 'WORKBENCHES_CLAUDE_LANE' "$GUARD_SH" \
+    || fail "§9/R-A11-6: the guard's directive is not fenced on the session's lane"; assertion
+grep -Fq 'pclaude ${CLAUDE_PROFILE_NAME:-<profile>}' "$GUARD_SH" \
+    || fail "§9/§1: the guard does not print the one-word restart command"; assertion
+grep -Fq 'pclaude run ' "$GUARD_SH" \
+    && fail "§1: the guard still prints the long form of the restart command"; assertion
+grep -Fq 'restart_cmd="pclaude ${CLAUDE_PROFILE_NAME:-<profile>}"' "$SKILL_MD" \
+    || fail "§9/§1: the skill does not print the one-word restart command"; assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"

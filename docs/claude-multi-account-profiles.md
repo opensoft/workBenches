@@ -211,7 +211,15 @@ and there is nothing to confirm. Failing that, Amendment 11(2) adds one step:
 the swap record whose `window` field names *this* window — its tmux id first,
 else its `<session>:<index>` — which is not a guess either, but the same
 certainty as the window's name, read from the record's side instead of the
-window's, so it too goes to `lane-start` bare. Failing both, and only inside
+window's, so it too goes to `lane-start` bare. **That step is read through
+`lanes-edit.sh window-lane <@id>` / `<session>:<index>`, not through a parse of
+the records this launcher makes for itself:** the same read answers for the
+launcher, for `/restart` and for the `/lane-swap` skill's step 1, and two
+implementations of one rule is how the three come to disagree about which lane
+a window is. A `lanes-edit.sh` predating Amendment 11 has no such subcommand —
+it says so and exits 2, which is an old helper, expected and silent — and a
+read that *failed* names itself and falls to the **next** step rather than to
+the bare-Claude end of the order. Failing both, and only inside
 tmux, the lane this workstation last paused for a swap and has not resumed
 since (`lanes-edit.sh swapped <workstation>`, first row) — handed over as
 `--confirm`, so `lane-start` asks before it takes the window. That lane is a

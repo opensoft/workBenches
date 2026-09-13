@@ -29,8 +29,26 @@ L=~/projects/xFactory/lanes-edit.sh
 ```bash
 claude-usage
 window="$(tmux display-message -p '#W')"                     # Amendment 8(b): the window IS the lane
+win_ref="$(tmux display-message -p '#S:#I' 2>/dev/null || true)"
+win_id="$(tmux display-message -p '#{window_id}' 2>/dev/null || true)"
 lane="$window"
 LANES_NO_FETCH=1 "$L" register-row "$lane" >/dev/null 2>&1 || lane=""
+if [[ -z "$lane" ]]; then
+  # THE RECORD FOR *THIS* WINDOW — the step Amendment 11 inserted BETWEEN the
+  # window's name and the workstation's newest swap, read through the helper
+  # (`window-lane`, SPEC §11) exactly as the launcher and `/restart` read it.
+  # The `<@id>` is asked about first and the `<session>:<index>` second. This
+  # step exists for one case — a window whose NAME is gone but whose record
+  # names it — and a skill that skipped it would disagree with the launcher in
+  # precisely that case. A helper predating Amendment 11 has no such
+  # subcommand: it says so and exits 2, which is not an answer and not a fault.
+  for ref in "$win_id" "$win_ref"; do
+    [[ -n "$ref" && -z "$lane" ]] || continue
+    candidate="$(LANES_NO_FETCH=1 "$L" window-lane "$ref" 2>/dev/null)" || candidate=""
+    candidate="${candidate%%$'\n'*}"
+    [[ "$candidate" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] && lane="$candidate"
+  done
+fi
 if [[ -z "$lane" ]]; then
   # The swap record, read exactly as the launcher reads it: the STATUS decides
   # whether there is an answer at all, and the contract is the tab. A row that
@@ -46,8 +64,9 @@ fi
 printf 'lane=%s\n' "${lane:-<none>}"
 ```
 
-The window name answers first; the swap record answers second — the launcher's own order, so the skill and
-the launcher never disagree about which lane this is. Then make the other two names match it, mechanically:
+The window name answers first; the record for THIS window answers second; the workstation's newest swap
+answers third — the launcher's own order, all three steps of it, so the skill and the launcher never
+disagree about which lane this is. Then make the other two names match it, mechanically:
 
 - window name ≠ lane → `tmux rename-window "$lane"`;
 - Claude session name ≠ lane → type `/rename <lane>` (Amendment 2: the session name is the lane's
@@ -162,7 +181,14 @@ dir="${WORKBENCHES_CLAUDE_LANE_DIR:-}"
 # keep the line — the PAUSED line is what the launcher restarts from — and report what was dropped.
 refused=""
 case "$win" in *', '*|*' — '*) refused="$refused window=$win"; win="" ;; esac
-case "$dir" in *', '*|*' — '*) refused="$refused dir=$dir"; dir="" ;; esac
+case "$dir" in *', '*|*' — '*|*'"'*) refused="$refused dir=$dir"; dir="" ;; esac
+# A SPACE IS QUOTED, NOT REFUSED (SPEC §5). Amendment 7(b) makes the space the separator between several
+# refs inside one sub-field — which is exactly what `window`'s two refs rely on — so an unquoted
+# `dir /home/b/my projects/x` parses as two refs and every reader hands back a truncated path. Quoting makes
+# it ONE ref under 7(b)'s own grammar, and every reader takes a value opening with `"` as running to its
+# closing `"` and strips both. A path carrying a `"` of its own joins the two separators in the refusal
+# above, for the reason the whole rule has: the writer will not write a line its own parser cannot read back.
+case "$dir" in *' '*) dir="\"$dir\"" ;; esac
 [[ -z "$refused" ]] || printf 'REFUSED sub-field (dropped, not appended):%s\n' "$refused"
 payload="swap"
 [[ -z "$win" ]] || payload="$payload; window $win"
