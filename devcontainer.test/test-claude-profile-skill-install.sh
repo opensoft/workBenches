@@ -16,6 +16,16 @@
 # opensoft/workBenches#68, F5 — this loop is their sole writer until Amendment
 # 9's adoption act 3 lands, and A9's act 4 deletes it).
 #
+# THE ALIAS. Amendment 11 (SPEC §9) adds `/swap` as an alias of `/lane-swap`,
+# and rules that the 176-line skill is NOT duplicated to get it: the alias is a
+# command file whose body invokes the skill. So `commands/swap.md` is vendored
+# beside the skill and installed by a second loop on the same contract, into the
+# same two places and for the same reason — a profile's `commands` is a symlink
+# to the shared directory, so that is the write the launcher reads, and the
+# ~/.claude copy is for a bare `claude`. Sections 10-14 pin all of it, including
+# the negative: that the command file does not grow a second copy of the steps,
+# which is the failure mode §9 rejects by name.
+#
 # WHAT. The skill's own text carries F-S5-F-S9: it is named /lane-swap in both
 # name and description; it never hands ` — ` to `lanes-edit.sh log`, which
 # refuses it; it derives the row's leading state word instead of guessing it;
@@ -33,6 +43,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SETUP="$REPO_ROOT/scripts/setup-claude-profiles.sh"
 SKILL_SOURCE="$REPO_ROOT/base-image/files/claude/skills/lane-swap/SKILL.md"
+COMMAND_SOURCE="$REPO_ROOT/base-image/files/claude/commands/swap.md"
 
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
@@ -42,7 +53,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=9
+EXPECTED_SCENARIOS=14
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -55,6 +66,8 @@ MANIFEST="$TEST_ROOT/claude-profiles.json"
 PROFILE_DIR="$BASE/profiles/opensoft/team/team-002"
 SHARED_SKILL="$BASE/shared/skills/lane-swap/SKILL.md"
 DEFAULT_SKILL="$DEFAULT_CLAUDE/skills/lane-swap/SKILL.md"
+SHARED_COMMAND="$BASE/shared/commands/swap.md"
+DEFAULT_COMMAND="$DEFAULT_CLAUDE/commands/swap.md"
 mkdir -p "$FAKE_HOME"
 
 cat > "$MANIFEST" <<'EOF'
@@ -163,6 +176,55 @@ grep -q -- '--no-launch <repo> <n>' "$SKILL_SOURCE" \
 # have a refused-write branch.
 grep -q 'row_write_refused=1' "$SKILL_SOURCE" \
     || fail "text: step 4's row write has no refused-write branch (RV-S2)"; assertion
+# Amendment 11, SPEC §9: A8(a)'s "every surface names it /lane-swap" is amended,
+# not reversed — the NAME stays lane-swap and the description still OPENS with
+# the canonical /lane-swap (the F-S5 assertions above still stand, unchanged),
+# and /swap is now named in it as the alias. Without this the alias command file
+# installed beside the skill would name a surface the skill itself never does.
+grep -q '^description: "/lane-swap (alias /swap) ' "$SKILL_SOURCE" \
+    || fail "text: the description does not name /swap as the alias (Amendment 11, SPEC §9)"; assertion
+# SPEC §5: the swap record's `window` sub-field is TWO space-separated refs and
+# `dir` is a new sub-field. Grepping the assignments, not the prose, because the
+# prose can say it while the shell writes the old payload.
+grep -q 'payload="\$payload; window \$win"' "$SKILL_SOURCE" \
+    || fail "text: step 4 does not write the window sub-field from a derived ref (SPEC §5)"; assertion
+grep -q 'payload="\$payload; dir \$dir"' "$SKILL_SOURCE" \
+    || fail "text: step 4 does not write the new dir sub-field (SPEC §5)"; assertion
+grep -q "win=\"\${win:+\$win }\$win_id\"" "$SKILL_SOURCE" \
+    || fail "text: the window sub-field does not carry the <@id> beside <session>:<index> (SPEC §5)"; assertion
+# ... and the id is VALIDATED before it is recorded: a tmux too old to know the
+# format prints the format back, and the object log is append-only.
+# The whole guarded line, not just the check: an id is `@<digits>` and nothing
+# else, a tmux too old to know the format prints the format back, and the object
+# log is append-only, so the append must be the check's own consequent and not a
+# separate statement that a later edit could leave behind.
+grep -qF -- '[[ "$win_id" =~ ^@[0-9]+$ ]] && win="${win:+$win }$win_id"' "$SKILL_SOURCE" \
+    || fail "text: the window id is appended without being checked for @<digits> (SPEC §5)"; assertion
+# SPEC §5: a window or dir value carrying `, ` or ` — ` is REFUSED rather than
+# appended, because the parser could not read the line back.
+[[ "$(grep -c "refused=\"\$refused" "$SKILL_SOURCE")" -eq 2 ]] \
+    || fail "text: the `, `/` — ` refusal does not cover BOTH window and dir (SPEC §5)"; assertion
+# SPEC §7: `unknown` is not a transcript uuid and the object log is append-only,
+# so the skill refuses on its own `log PAUSED` path BEFORE it writes, and names
+# the act that supplies the uuid.
+grep -q 'if \[\[ -z "\${uuid:-}" \]\]; then' "$SKILL_SOURCE" \
+    || fail "text: step 4 writes the PAUSED line without first checking it has a uuid (SPEC §7)"; assertion
+grep -q "REFUSED: no transcript uuid" "$SKILL_SOURCE" \
+    || fail "text: the missing-uuid path does not refuse in as many words (SPEC §7)"; assertion
+grep -q "Amendment 6(c)'s session-cell append that supplies one" "$SKILL_SOURCE" \
+    || fail "text: the refusal does not name which act supplies the uuid (SPEC §7)"; assertion
+grep -q 'LANES_SESSION="\$uuid"' "$SKILL_SOURCE" \
+    || fail "text: the uuid is not passed to the writer explicitly, so session_for() can still guess (SPEC §7)"; assertion
+# SPEC §9: under the automatic swap there is no operator to ask, so step 3's one
+# question becomes a BOUNDED wait, and a writer still holding unpushed work when
+# it elapses is named in the handoff. It still kills nothing and pushes nobody's
+# work, so the manual branch's single question has to survive beside it.
+grep -q 'Under the AUTOMATIC swap there is no operator to ask' "$SKILL_SOURCE" \
+    || fail "text: step 3 has no automatic-swap branch (SPEC §9)"; assertion
+grep -q 'named in the handoff' "$SKILL_SOURCE" \
+    || fail "text: the bounded wait does not say what happens to a writer that outlasts it (SPEC §9)"; assertion
+grep -q 'Ask the operator exactly one question' "$SKILL_SOURCE" \
+    || fail "text: the manual branch's single question was lost when the automatic one was added (SPEC §9)"; assertion
 
 # ---------------------------------------------------------------------------
 # 5. RV-W2 (workBenches#63 re-verification; new-workstation#16 adoption act 6
@@ -244,10 +306,18 @@ old_buggy_result="$(printf '%s' "$multi_pipe_row" | awk -F'|' '{print $(NF-2)}')
     || fail "RV-S1: the fixture does not actually distinguish a right split from a left split"; assertion
 
 # ---------------------------------------------------------------------------
-# 9. RV-S2 regression: step 5 must print --lane as a LEADING option, before
-# `run` — claude-profile accepts --lane only as a leading option (before the
+# 9. RV-S2 regression: step 5 must print --lane as a LEADING option, before the
+# profile — claude-profile accepts --lane only as a leading option (before the
 # action), so a trailing one would be handed to Claude itself, not to the
 # launcher. Executes the shipped branch itself, both ways.
+#
+# Amendment 11(1) drops the `run` verb from both branches: `pclaude <profile>`
+# and `pclaude run <profile>` build the same argv, and the short form is what
+# every surface now prints — the usage guard's automatic-swap directive
+# included, so the skill and the hook cannot disagree about what the operator
+# re-runs. The LEADING-option property is unchanged by that and is what this
+# scenario exists for: with `run` gone there is no verb left between the option
+# and the profile to hide a trailing one behind.
 scenario
 step5_snippet="$(sed -n '/if \[\[ -n "\${row_write_refused:-}" \]\]; then/,/^fi$/p' "$SKILL_SOURCE")"
 [[ -n "$step5_snippet" ]] \
@@ -256,12 +326,16 @@ lane=openRepoProject-1
 CLAUDE_PROFILE_NAME=work
 row_write_refused=""
 eval "$step5_snippet"
-[[ "$restart_cmd" == "pclaude run work" ]] \
-    || fail "RV-S2: normal-path restart_cmd='$restart_cmd', expected the unqualified command"; assertion
+[[ "$restart_cmd" == "pclaude work" ]] \
+    || fail "RV-S2: normal-path restart_cmd='$restart_cmd', expected the unqualified one-word command (Amendment 11(1))"; assertion
 row_write_refused=1
 eval "$step5_snippet"
-[[ "$restart_cmd" == "pclaude --lane openRepoProject-1 run work" ]] \
-    || fail "RV-S2: refused-write restart_cmd='$restart_cmd', expected --lane as a LEADING option before run"; assertion
+[[ "$restart_cmd" == "pclaude --lane openRepoProject-1 work" ]] \
+    || fail "RV-S2: refused-write restart_cmd='$restart_cmd', expected --lane as a LEADING option before the profile"; assertion
+# A `run` left anywhere in either branch is the regression: the two surfaces
+# would then print different commands for the same act.
+[[ "$step5_snippet" != *' run '* ]] \
+    || fail "RV-S2: step 5 still prints the 'run' verb, which Amendment 11(1) drops: $step5_snippet"; assertion
 
 # Every fenced shell block has to parse, or the skill is not copy-pasteable.
 block_count=0
@@ -278,6 +352,128 @@ done < <(
 )
 [[ "$block_count" -ge 6 ]] \
     || fail "text: only $block_count shell blocks were found, so the parse check is not covering the skill"; assertion
+
+# ---------------------------------------------------------------------------
+# 10. The `/swap` ALIAS is installed on the skills loop's contract (Amendment
+# 11, SPEC §9): into the shared commands directory, which is what the launcher
+# reads because every profile's `commands` is a symlink to it, and into
+# ~/.claude/commands for a bare `claude`. The symlink assertion is the one that
+# matters — installing only into ~/.claude is precisely the F-S1 defect that
+# left the skill unlisted on 418 profiles, and `commands` is linked by the same
+# `for item in skills agents commands rules` loop that linked `skills`.
+run_setup
+[[ -f "$SHARED_COMMAND" ]] \
+    || fail "alias install: nothing at $SHARED_COMMAND"; assertion
+cmp -s "$COMMAND_SOURCE" "$SHARED_COMMAND" \
+    || fail "alias install: the shared copy is not the vendored file"; assertion
+[[ "$(stat -c '%a' "$SHARED_COMMAND")" == 644 ]] \
+    || fail "alias install: the shared copy is mode $(stat -c '%a' "$SHARED_COMMAND"), not 644"; assertion
+[[ -f "$DEFAULT_COMMAND" ]] \
+    || fail "alias install: nothing at $DEFAULT_COMMAND for a bare claude"; assertion
+cmp -s "$COMMAND_SOURCE" "$DEFAULT_COMMAND" \
+    || fail "alias install: the ~/.claude copy is not the vendored file"; assertion
+[[ -L "$PROFILE_DIR/commands" ]] \
+    || fail "alias install: the profile's commands is not a symlink ($(ls -ld "$PROFILE_DIR/commands" 2>&1))"; assertion
+cmp -s "$COMMAND_SOURCE" "$PROFILE_DIR/commands/swap.md" \
+    || fail "alias install: /swap is not readable through the profile's own commands symlink — the F-S1 defect, for commands"; assertion
+# The alias is installed BESIDE the skill, not instead of it: /swap invokes
+# `lane-swap`, so a profile that has the command and not the skill has a slash
+# command that resolves to nothing.
+cmp -s "$SKILL_SOURCE" "$PROFILE_DIR/skills/lane-swap/SKILL.md" \
+    || fail "alias install: the command was installed without the skill it invokes"; assertion
+
+# ---------------------------------------------------------------------------
+# 11. Idempotent by CONTENT, exactly as section 2 pins for the skill: a second
+# run leaves an identical destination untouched, mtime and all, so Amendment 9's
+# act 3 handover to `openRepoTools --install` is not clobbered by the next setup
+# run (workBenches#68 F5). Two writers of one file is the thing A9(b) rules
+# against, and content-idempotence is what makes the overlap survivable.
+touch -d '2001-01-01T00:00:00Z' "$SHARED_COMMAND" "$DEFAULT_COMMAND"
+before_shared_command="$(stat -c '%Y' "$SHARED_COMMAND")"
+before_default_command="$(stat -c '%Y' "$DEFAULT_COMMAND")"
+run_setup
+[[ "$(stat -c '%Y' "$SHARED_COMMAND")" == "$before_shared_command" ]] \
+    || fail "alias idempotent: the shared copy was rewritten although its content already matched"; assertion
+[[ "$(stat -c '%Y' "$DEFAULT_COMMAND")" == "$before_default_command" ]] \
+    || fail "alias idempotent: the ~/.claude copy was rewritten although its content already matched"; assertion
+cmp -s "$COMMAND_SOURCE" "$SHARED_COMMAND" \
+    || fail "alias idempotent: the shared copy changed"; assertion
+
+# ---------------------------------------------------------------------------
+# 12. And a hand-edited destination IS repaired: until A9's act 3 this loop is
+# the writer, so drift is corrected rather than preserved. This is the other
+# half of section 11 — content-idempotence must not degrade into "never write".
+printf 'not the alias\n' > "$SHARED_COMMAND"
+printf 'not the alias either\n' > "$DEFAULT_COMMAND"
+run_setup
+cmp -s "$COMMAND_SOURCE" "$SHARED_COMMAND" \
+    || fail "alias drift: a shared copy that differed was not put back"; assertion
+cmp -s "$COMMAND_SOURCE" "$DEFAULT_COMMAND" \
+    || fail "alias drift: a ~/.claude copy that differed was not put back"; assertion
+[[ "$(stat -c '%a' "$SHARED_COMMAND")" == 644 ]] \
+    || fail "alias drift: the restored copy is mode $(stat -c '%a' "$SHARED_COMMAND"), not 644"; assertion
+
+# ---------------------------------------------------------------------------
+# 13. A vendored source that is NOT there is skipped, not fatal — the skills
+# loop's `[[ -f ]] || continue`, carried over. This file runs on checkouts that
+# predate the command, and `set -euo pipefail` at the top of it turns any
+# unguarded read of a missing source into a failed setup for every profile on
+# the machine. Proved against a MIRROR repo (symlinks to the real scripts/ and
+# skills/, and no commands/ at all) rather than by moving the real source
+# aside, so the checkout under test is never mutated.
+MIRROR="$TEST_ROOT/repo-without-commands"
+MIRROR_HOME="$TEST_ROOT/home-mirror"
+MIRROR_BASE="$MIRROR_HOME/.claude-profiles"
+MIRROR_DEFAULT_CLAUDE="$MIRROR_HOME/.claude"
+mkdir -p "$MIRROR/scripts" "$MIRROR/base-image/files/claude" "$MIRROR_HOME"
+ln -s "$SETUP" "$MIRROR/scripts/setup-claude-profiles.sh"
+ln -s "$REPO_ROOT/base-image/files/claude-statusline-command.sh" \
+      "$MIRROR/base-image/files/claude-statusline-command.sh"
+ln -s "$REPO_ROOT/base-image/files/claude/skills" "$MIRROR/base-image/files/claude/skills"
+scenario
+mirror_status=0
+env HOME="$MIRROR_HOME" \
+    XDG_CONFIG_HOME="$MIRROR_HOME/.config" \
+    CLAUDE_PROFILES_HOME="$MIRROR_BASE" \
+    WORKBENCHES_DEFAULT_CLAUDE_HOME="$MIRROR_DEFAULT_CLAUDE" \
+    "$MIRROR/scripts/setup-claude-profiles.sh" --manifest "$MANIFEST" \
+    >/dev/null 2>"$TEST_ROOT/mirror.err" || mirror_status=$?
+[[ "$mirror_status" -eq 0 ]] \
+    || fail "missing source: setup exited $mirror_status instead of skipping an absent command — $(cat "$TEST_ROOT/mirror.err")"; assertion
+[[ ! -e "$MIRROR_BASE/shared/commands/swap.md" ]] \
+    || fail "missing source: something was installed from a source that does not exist"; assertion
+[[ ! -e "$MIRROR_DEFAULT_CLAUDE/commands/swap.md" ]] \
+    || fail "missing source: something was installed into ~/.claude from a source that does not exist"; assertion
+# ... and the run really did the REST of its work, so the pass above is a skip
+# and not an early exit that happened to return 0.
+cmp -s "$SKILL_SOURCE" "$MIRROR_BASE/shared/skills/lane-swap/SKILL.md" \
+    || fail "missing source: the run did not get as far as the skill, so the 'skip' proves nothing"; assertion
+
+# ---------------------------------------------------------------------------
+# 14. The alias file's own text. SPEC §9 rules that the canonical name stays
+# `lane-swap` and the skill is NOT duplicated: "two copies of one skill that
+# must stay byte-equal is the rejected alternative", for the reason A9(b) gives
+# about two writers of one file. So the assertions that matter here are the
+# NEGATIVE ones — a command file that grew a second copy of the five steps is
+# the failure, and it would pass every assertion above.
+scenario
+head -n 1 "$COMMAND_SOURCE" | grep -q '^---$' \
+    || fail "alias text: no frontmatter fence, so it does not match the repo's command-file convention"; assertion
+grep -q '^name: ' "$COMMAND_SOURCE" \
+    || fail "alias text: no name: field (the convention the opsx/ command files set)"; assertion
+grep -q '^description: ' "$COMMAND_SOURCE" \
+    || fail "alias text: no description: field"; assertion
+grep -q 'lane-swap' "$COMMAND_SOURCE" \
+    || fail "alias text: the body never names the skill it is an alias of"; assertion
+grep -qi 'invoke the `lane-swap` skill' "$COMMAND_SOURCE" \
+    || fail "alias text: the body does not tell the session to invoke the skill"; assertion
+command_lines="$(wc -l < "$COMMAND_SOURCE")"
+[[ "$command_lines" -le 20 ]] \
+    || fail "alias text: $command_lines lines; §9 rules the alias is a command file that invokes the skill, not a copy of it"; assertion
+for duplicated in 'READY TO SWAP' 'replace-in-row' 'append-row-status' 'lanes-edit.sh' 'log PAUSED'; do
+    grep -qF -- "$duplicated" "$COMMAND_SOURCE" \
+        && fail "alias text: the command file restates the skill's own machinery ('$duplicated') — §9's rejected alternative"; assertion
+done
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"

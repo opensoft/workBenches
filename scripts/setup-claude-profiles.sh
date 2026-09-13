@@ -201,6 +201,40 @@ for skill in lane-swap; do
   done
 done
 
+# Commands vendored by this repository, on exactly the contract of the skills
+# loop above and for exactly its reason: claude-profile execs Claude with
+# CLAUDE_CONFIG_DIR=<profile dir>, so ~/.claude/commands is NOT read under the
+# launcher, and the SHARED commands directory every profile's `commands`
+# symlink points at (created above, linked per profile below) is the one write
+# that reaches all of them. The ~/.claude copy stays for a bare `claude` run
+# outside the launcher.
+#
+# `/swap` is an ALIAS of `/lane-swap` (lane-collision-protocol Amendment 11,
+# SPEC §9): the canonical name stays `lane-swap` and its skill is NOT
+# duplicated here, so the installed file is a few lines that invoke the skill.
+# Two copies of one procedure that must stay byte-equal is the rejected
+# alternative — the same reason Amendment 9(b) gives about two writers of one
+# file — which is why this loop installs a command and not a second skill.
+#
+# Same handover as the skills loop, and the same ruling (opensoft/workBenches#68,
+# F5): this loop STANDS until Amendment 9's adoption act 3 lands, and A9's act 4
+# deletes it. Until then the copy is idempotent BY CONTENT — a destination
+# already holding the vendored bytes is left alone, mtime and all, so a later
+# `openRepoTools --install` write of the same bytes is not clobbered by the next
+# setup run. A vendored source that is not there is skipped rather than failing:
+# this file also runs on checkouts that predate the command.
+for command in swap; do
+  command_source="$repo_dir/base-image/files/claude/commands/$command.md"
+  [[ -f "$command_source" ]] || continue
+  mkdir -p "$base/shared/commands" "$default_claude_dir/commands"
+  for command_target in "$base/shared/commands/$command.md" \
+                        "$default_claude_dir/commands/$command.md"; do
+    if ! cmp -s "$command_source" "$command_target"; then
+      install -m 0644 "$command_source" "$command_target"
+    fi
+  done
+done
+
 # lane-collision-protocol Amendment 8(e) / RV-W2 (workBenches#63
 # re-verification; brettheap/new-workstation#16 adoption act 6 OWNS this
 # entry for the bare-`claude` path). `claude-profile` ensures the canonical

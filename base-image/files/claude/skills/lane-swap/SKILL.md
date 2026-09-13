@@ -1,18 +1,23 @@
 ---
 name: lane-swap
-description: "/lane-swap prepares this lane for a usage reset or profile switch. It fixes the identity triple, refreshes the handoff, polls the writers, writes the swap record, and prints the one restart command (lane-collision-protocol Amendment 8)."
+description: "/lane-swap (alias /swap) prepares this lane for a usage reset or profile switch. It fixes the identity triple, refreshes the handoff, polls the writers, writes the swap record with the window and the lane's directory, and prints the one restart command (lane-collision-protocol Amendment 8(a), amended by Amendment 11)."
 ---
 
 <!-- PROMPTS TO THE PERSON: 1 — step 3, and only when a writer still holds
-     unpushed work and has not replied. It was 3 before A8 Addendum 2 (R-A8-7):
-     the identity fix, the row's leading state word and the restart command are
-     all DERIVED here now, and step 5 prints one command, never a menu. If a
-     step below cannot derive something, it stops and says so — it does not ask. -->
+     unpushed work and has not replied, and only on the MANUAL path. It was 3
+     before A8 Addendum 2 (R-A8-7): the identity fix, the row's leading state
+     word and the restart command are all DERIVED here now, and step 5 prints
+     one command, never a menu. If a step below cannot derive something, it
+     stops and says so — it does not ask. Under the AUTOMATIC swap the count is
+     0: Amendment 11(4) fires this act at 95% of the 5-hour window, where there
+     is no operator to ask, so step 3's wait is BOUNDED instead of asked. -->
 
-# `/lane-swap` — pause this lane for a reset or profile switch
+# `/lane-swap` (alias `/swap`) — pause this lane for a reset or profile switch
 
-Lane-collision-protocol Amendment 8(a). Run every step, in order, before telling the operator it is safe to
-reset usage or switch profiles. `$L` below is the symlink Amendment 5 left in place; every command is
+Lane-collision-protocol Amendment 8(a), amended by Amendment 11. Run every step, in order, before telling
+the operator it is safe to reset usage or switch profiles. `/swap` is an alias and nothing else: it is a
+command file that invokes this skill, so that the act has one text and not two copies of one that must stay
+byte-equal (Amendment 11, SPEC §9). `$L` below is the symlink Amendment 5 left in place; every command is
 copy-pasteable as written once `lane` is derived in step 1.
 
 ```sh
@@ -114,6 +119,18 @@ git -C "$worktree" log '@{u}..' --oneline      # unpushed commits
 *"<agent> has unpushed work and has not replied — wait, or swap now?"* Everything else here is a report, not
 a question. Never move on to step 4 with an unanswered writer unless the operator said so.
 
+**That is the MANUAL path. Under the AUTOMATIC swap there is no operator to ask, so the wait is BOUNDED
+instead** (Amendment 11(4), SPEC §9). The tell is the usage guard's own 95% directive, which says in as many
+words that nobody is being asked — the one fact this skill cannot derive from inside a session, which is why
+the hook states it. On that path do not ask the question; send the same message, then re-read every writer's
+worktree twice, about a minute apart, and proceed. The amendment fixes only that there IS a bound; two polls
+is this skill's own number, and a swap that stalls at 95% is waiting on a subagent that is about to die with
+the session anyway. A writer still holding unpushed work when the bound elapses is **named in the handoff** —
+the agent, its worktree, and its `git log '@{u}..' --oneline` shas — which means going back to step 2's file
+for a second, small commit and push, because step 2's commit is already made. Then the swap proceeds. It
+still kills nothing and still pushes nobody's work: an unpushed commit in a worktree survives the swap
+untouched, and naming it in the handoff is what tells the next session where it is.
+
 ## 4. Write the swap record
 
 First sanitize the operator's words **once**: replace every ` — ` with `; `. Amendment 7(b)/R26 refuses any
@@ -121,25 +138,67 @@ payload or free text containing ` — ` (exit 2), because that separator is what
 its free text.
 
 ```sh
-# (a) the Amendment 7 object-log PAUSED line — the record `swapped` reads
-LANES_LANE="$lane" "$L" log PAUSED "lane:$lane" \
-  → "swap; window $(tmux display-message -p '#S:#I'); workstation $(hostname -s)" \
-  "on <operator>'s word: <sanitized verbatim>"
-# (b) the LANES.md file-level line, the shape every prior PAUSED/RESUMED used
-"$L" append-line "PAUSED — lane $lane, session $uuid@$(hostname -s), $(date -u +%Y-%m-%dT%H:%M:%SZ), on <operator>'s word \"<sanitized verbatim>\"; <what's open, or NOTHING CLAIMED>; handoff refreshed"
+# (0) the refs the record carries, derived ONCE so that (a) and (c) cannot disagree about the window. The
+# `window` sub-field is TWO space-separated refs, `<session>:<index> <@id>` (Amendment 11, SPEC §5); the id
+# is written where one is knowable and the sub-field is `<session>:<index>` alone where it is not, because a
+# record with no id is still complete — the NAME is the key and the id is only information.
+win="$(tmux display-message -p '#S:#I' 2>/dev/null || true)"
+[[ -n "$win" ]] || win="${WORKBENCHES_CLAUDE_WINDOW_REF:-}"
+win_id="$(tmux display-message -p '#{window_id}' 2>/dev/null || true)"
+# An id is `@<digits>` and nothing else. A tmux too old to know the format prints the format back, and a
+# shim may print anything at all; recording that string would put a lie in an append-only log. This is the
+# same check `claude-profile` makes on the same value, for the same reason.
+[[ "$win_id" =~ ^@[0-9]+$ ]] || win_id="${WORKBENCHES_CLAUDE_WINDOW_ID:-}"
+[[ "$win_id" =~ ^@[0-9]+$ ]] && win="${win:+$win }$win_id"
+# `dir` is the LANE'S CHECKOUT (Amendment 11, SPEC §4), not whatever this shell happens to stand in: the
+# launcher resolved it for this launch and exported it, while a subagent's worktree under the scratchpad has
+# a git toplevel of its own, which is exactly the wrong answer. Launcher's word, then the cwd's toplevel,
+# then the cwd.
+dir="${WORKBENCHES_CLAUDE_LANE_DIR:-}"
+[[ -n "$dir" ]] || dir="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")"
+# A `window` or `dir` carrying `, ` or ` — ` is REFUSED, not appended: those two separators are what divide a
+# record's fields from its free text and a row stamp's facts from each other, so the parser could not read
+# the line back (Amendment 8(b)'s refusal, extended to `dir` by Amendment 11, SPEC §5). Drop the sub-field,
+# keep the line — the PAUSED line is what the launcher restarts from — and report what was dropped.
+refused=""
+case "$win" in *', '*|*' — '*) refused="$refused window=$win"; win="" ;; esac
+case "$dir" in *', '*|*' — '*) refused="$refused dir=$dir"; dir="" ;; esac
+[[ -z "$refused" ]] || printf 'REFUSED sub-field (dropped, not appended):%s\n' "$refused"
+payload="swap"
+[[ -z "$win" ]] || payload="$payload; window $win"
+[[ -z "$dir" ]] || payload="$payload; dir $dir"
+payload="$payload; workstation $(hostname -s)"
+# (a) the Amendment 7 object-log PAUSED line — the record `swapped` reads. The uuid is checked BEFORE the
+# write: `unknown` is not a transcript uuid and the object log is append-only, so a line written wrong there
+# is wrong for ever (Amendment 11, SPEC §7). `lanes-edit.sh`'s own session_for() substitutes that literal
+# when LANES_SESSION is unset and the row yields nothing, and it has already done so four times in two
+# lanes. Refuse it here, before anything is written, and pass the uuid explicitly so the writer never guesses.
+if [[ -z "${uuid:-}" ]]; then
+  printf "REFUSED: no transcript uuid for this session, so nothing is written to the object log.\n"
+  printf "It is Amendment 6(c)'s session-cell append that supplies one: lane-start writes it at start, and /restart step 4 writes it for a session that started bare. Run that act, re-read the row in step 2, then come back.\n"
+else
+  LANES_LANE="$lane" LANES_SESSION="$uuid" "$L" log PAUSED "lane:$lane" \
+    → "$payload" \
+    "on <operator>'s word: <sanitized verbatim>"
+  # (b) the LANES.md file-level line, the shape every prior PAUSED/RESUMED used
+  "$L" append-line "PAUSED — lane $lane, session $uuid@$(hostname -s), $(date -u +%Y-%m-%dT%H:%M:%SZ), on <operator>'s word \"<sanitized verbatim>\"; <what's open, or NOTHING CLAIMED>; handoff refreshed"
+fi
 # (c) the row: flip its leading state word, DERIVED from the row itself. row_write_refused is what step 5
-# reads: empty on success, "1" the moment either write below does not.
+# reads: empty on success, "1" the moment either write below does not. Its tail restates the record's own
+# two facts for a person (SPEC §5), out of `$payload`, so the two writes cannot drift apart.
 state="$(printf '%s' "$row" | grep -o '| [A-Z][A-Z]* ·' | head -n 1)"   # e.g. '| LIVE ·'
 row_write_refused=""
 "$L" replace-in-row "$lane" "$state" "| PAUSED ·" "swap" || row_write_refused=1
 if [[ -z "$row_write_refused" ]]; then
-  "$L" append-row-status "$lane" "PAUSED — swap; window $(tmux display-message -p '#S:#I'); workstation $(hostname -s)" \
-    || row_write_refused=1
+  "$L" append-row-status "$lane" "PAUSED — $payload" || row_write_refused=1
 fi
 ```
 
 If (a) still exits 2, re-run it with the free-text argument **dropped entirely** and say so in the report:
-the PAUSED line is what the launcher reads on restart, and step 4 is never left unwritten. If `$state` came
+the PAUSED line is what the launcher reads on restart, and step 4 is never left unwritten. The **one**
+exception is the missing uuid: there, not writing is the point, because an `unknown` in an append-only log
+cannot be taken back and a wrong session id is worse for the next restart than no line at all. Report it,
+name the act that supplies the uuid, and do not work around it. If `$state` came
 back empty, re-read the row and take the first `| WORD ·` in it — `replace-in-row` requires exactly one
 occurrence and exits 2 on a guess. If (c) is still refused after that re-read — a rebase conflict, a push
 race, anything `replace-in-row`/`append-row-status` themselves report — leave `row_write_refused` set and
@@ -150,10 +209,10 @@ never flipped to `PAUSED`.
 
 ```sh
 if [[ -n "${row_write_refused:-}" ]]; then
-  restart_cmd="pclaude --lane $lane run ${CLAUDE_PROFILE_NAME:-<profile>}"
+  restart_cmd="pclaude --lane $lane ${CLAUDE_PROFILE_NAME:-<profile>}"
   restart_note=' (row write was refused; the lane must be named explicitly)'
 else
-  restart_cmd="pclaude run ${CLAUDE_PROFILE_NAME:-<profile>}"
+  restart_cmd="pclaude ${CLAUDE_PROFILE_NAME:-<profile>}"
   restart_note=''
 fi
 printf 'READY TO SWAP — restart with: %s%s\n' "$restart_cmd" "$restart_note"
@@ -162,15 +221,19 @@ lane-start --help 2>/dev/null | grep -q -- '--confirm' \
   || echo 'restart stamps: MANUAL, as the next session first act (Rule 3 / Amendment 6(c))'
 ```
 
-That one command is the whole restart: bare `pclaude run <profile>` resolves this lane from the window name,
-and from the swap record step 4 just wrote when the window is gone (Amendment 8(c)). The profile argument is
-the only part the operator changes, and only when switching accounts. **`--lane <lane>` is printed only
-where step 4's row write was refused** — the row was never flipped to `PAUSED`, so a restart cannot resolve
-this lane from it and the operator must name it explicitly. `--lane` is a **leading** option to
-`claude-profile` (`claude-profile:555-560` accepts it only before the action), so it goes BEFORE `run`, never
-after the profile: `pclaude run <profile> --lane <lane>` would be handed to Claude itself, not to the
+That one command is the whole restart: bare `pclaude <profile>` resolves this lane from the window name,
+from the swap record step 4 just wrote when the window is gone, and from that record's `<@id>` when the
+window outlived its name (Amendment 8(c), plus Amendment 11's new zero-question step). **`run` is gone from
+it**: the verb was always optional, `pclaude <profile>` and `pclaude run <profile>` build the same argv, and
+after Amendment 11(1) the short form is the one every surface prints — the guard's automatic-swap directive
+included, so the two cannot disagree about what the operator re-runs. The profile argument is the only part
+the operator changes, and only when switching accounts. **`--lane <lane>` is printed only where step 4's row
+write was refused** — the row was never flipped to `PAUSED`, so a restart cannot resolve this lane from it
+and the operator must name it explicitly. `--lane` is a **leading** option to `claude-profile`, read before
+the action and before the profile, and after Amendment 11(1) `--dir <path>` is one too; so it goes FIRST,
+never after the profile: `pclaude <profile> --lane <lane>` would be handed to Claude itself, not to the
 launcher. The capability probe above decides whether the RESUMED stamps are `lane-start`'s act or the next
 session's — do not assert either from memory.
 
 **`/resume` and `claude --resume <title>` are not lane surfaces** (A8 Addendum 2, R-A8-6): a lane is entered
-through `pclaude run` or `lane-start`, and by no other door. Do not offer either as a fallback.
+through `pclaude` or `lane-start`, and by no other door. Do not offer either as a fallback.
