@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=101
+EXPECTED_SCENARIOS=104
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -104,6 +104,12 @@ LANE_START_LOG="$TEST_ROOT/lane-start.log"
 LANE_START_CWD_LOG="$TEST_ROOT/lane-start-cwd.log"
 LANE_START_ENV_LOG="$TEST_ROOT/lane-start-env.log"
 CLAUDE_CWD_LOG="$TEST_ROOT/claude-cwd.log"
+# THE LANE MARKERS THE SESSION COMES UP WITH (clause (g), non-blocking 3). The
+# guard's automatic swap reads WORKBENCHES_CLAUDE_LANE and nothing else, and
+# CLAUDE_LANE is what a NESTED pclaude reads at precedence 1 — so what the
+# started process INHERITS is the whole of the fence, observed from the only
+# place it can be observed.
+CLAUDE_ENV_LOG="$TEST_ROOT/claude-env.log"
 LANES_EDIT_LOG="$TEST_ROOT/lanes-edit.log"
 ERR_LOG="$TEST_ROOT/stderr.log"
 OUT_LOG="$TEST_ROOT/stdout.log"
@@ -133,6 +139,16 @@ printf '%s\n' "$*" >> "${FAKE_CLAUDE_LOG:?}"
 # WHERE Claude ran, in a log of its own (Evidence 3). Its own argv log is
 # compared whole and counted by line elsewhere, so this cannot go in it.
 printf '%s\n' "$PWD" >> "${FAKE_CLAUDE_CWD_LOG:-/dev/null}"
+# ...and WHAT LANE THIS SESSION COMES UP HOLDING. `${x-<unset>}` and not
+# `${x:-<unset>}`: an EMPTY export and an absent variable are different answers
+# and the fence is about the second, so the two must not be flattened here.
+{
+    printf 'WORKBENCHES_CLAUDE_LANE=%s\n' "${WORKBENCHES_CLAUDE_LANE-<unset>}"
+    printf 'WORKBENCHES_CLAUDE_LANE_SOURCE=%s\n' "${WORKBENCHES_CLAUDE_LANE_SOURCE-<unset>}"
+    printf 'WORKBENCHES_CLAUDE_LANE_DIR=%s\n' "${WORKBENCHES_CLAUDE_LANE_DIR-<unset>}"
+    printf 'CLAUDE_LANE=%s\n' "${CLAUDE_LANE-<unset>}"
+    printf 'CLAUDE_LANE_DIR=%s\n' "${CLAUDE_LANE_DIR-<unset>}"
+} >> "${FAKE_CLAUDE_ENV_LOG:-/dev/null}"
 EOF
 
 # tmux. `display-message -p '#W'` is the window NAME the launcher resolves a
@@ -317,6 +333,9 @@ printf '%s\n' "$PWD" >> "${FAKE_LANE_START_CWD_LOG:-/dev/null}"
 # and everything downstream — this fake stands for the real lane-start, and the
 # /lane-swap skill stands behind that — reads it or refuses.
 printf 'LANES_WORKSTATION=%s\n' "${LANES_WORKSTATION:-}" >> "${FAKE_LANE_START_ENV_LOG:-/dev/null}"
+# ...and the lane marker, because the Claude a DECLINED `--confirm` starts is
+# started by lane-start and inherits exactly this environment.
+printf 'WORKBENCHES_CLAUDE_LANE=%s\n' "${WORKBENCHES_CLAUDE_LANE-<unset>}" >> "${FAKE_LANE_START_ENV_LOG:-/dev/null}"
 lane_argument=""; rest=(); seen=false
 for argument in "$@"; do
     if [[ "$seen" == true ]]; then rest+=("$argument")
@@ -430,6 +449,7 @@ common_env=(
     "FAKE_LANE_START_CWD_LOG=$LANE_START_CWD_LOG"
     "FAKE_LANE_START_ENV_LOG=$LANE_START_ENV_LOG"
     "FAKE_CLAUDE_CWD_LOG=$CLAUDE_CWD_LOG"
+    "FAKE_CLAUDE_ENV_LOG=$CLAUDE_ENV_LOG"
     "FAKE_LANES_EDIT_LOG=$LANES_EDIT_LOG"
     "FAKE_LANE_START_HELP=$AMENDMENT_11_HELP"
     "WORKBENCHES_SHARED_MCP_FAMILIES=disabled"
@@ -448,7 +468,7 @@ note='no lane for this window; run lane-start <repo> <n> inside it'
 
 reset_logs() {
     rm -f "$CLAUDE_LOG" "$TMUX_LOG" "$LANE_START_LOG" "$LANES_EDIT_LOG" "$ERR_LOG" "$OUT_LOG" \
-        "$LANE_START_CWD_LOG" "$CLAUDE_CWD_LOG" "$LANE_START_ENV_LOG"
+        "$LANE_START_CWD_LOG" "$CLAUDE_CWD_LOG" "$LANE_START_ENV_LOG" "$CLAUDE_ENV_LOG"
 }
 
 # launch <scenario env>... -- <launcher args>...
@@ -1590,12 +1610,84 @@ launch "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=nothing" "FAKE_SWAPPED_STAT
 
 # 5f. And the lane identity is NOT published to a session that did not get the
 # lane: the guard's automatic swap would otherwise write a PAUSED record for a
-# lane this window never took.
+# lane this window never took. The RAW `CLAUDE_LANE`/`CLAUDE_LANE_DIR` go with
+# it — they are read at precedence 1 and at the directory order's rung 1, so a
+# nested `pclaude` inside that Claude would otherwise re-select the very lane
+# lane-start just refused (clause (g), non-blocking 3).
+# The lane is given as `CLAUDE_LANE`/`CLAUDE_LANE_DIR` rather than as `--lane`
+# BECAUSE THAT IS THE SHAPE THE RESIDUE HAS: `--lane` leaves nothing in the
+# environment to inherit, so a suite that only ever typed the flag could not
+# see the raw inputs survive. `--help` documents the two spellings as the same
+# thing, and they resolve to the same `lane`.
 launch "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=nothing" "FAKE_SWAPPED_STATUS=8" \
     "FAKE_LANE_START_STATUS=1" \
-    -- --lane openXfactory-5 run team002 --print env-check
+    "CLAUDE_LANE=openXfactory-5" "CLAUDE_LANE_DIR=$TEST_ROOT/projects/openXfactory" \
+    -- run team002 --print env-check
 grep -Fxq -- "$claude_args --print env-check" "$CLAUDE_LOG" \
     || fail "identity after a refusal: Claude did not start"; assertion
+lane_start_argv | grep -Fq 'openXfactory-5' \
+    || fail "identity after a refusal: CLAUDE_LANE did not reach lane-start as the lane ($(lane_start_argv))"; assertion
+grep -Fxq 'WORKBENCHES_CLAUDE_LANE=<unset>' "$CLAUDE_ENV_LOG" \
+    || fail "clause (g): the Claude behind a lane-start refusal came up holding the lane it refused ($(cat "$CLAUDE_ENV_LOG"))"; assertion
+grep -Fxq 'CLAUDE_LANE=<unset>' "$CLAUDE_ENV_LOG" \
+    || fail "clause (g): the raw CLAUDE_LANE survived the refusal, so a nested pclaude re-selects it at precedence 1 ($(cat "$CLAUDE_ENV_LOG"))"; assertion
+grep -Fxq 'CLAUDE_LANE_DIR=<unset>' "$CLAUDE_ENV_LOG" \
+    || fail "clause (g): the raw CLAUDE_LANE_DIR survived the refusal, so a nested pclaude takes the refused lane's directory at rung 1 ($(cat "$CLAUDE_ENV_LOG"))"; assertion
+
+# 5f-i. `--no-lane` DOES NOT INHERIT A LANE. The operator's own word takes no
+# lane, and until this round `export_lane_identity` only ever ADDED: a
+# `[[ -z $lane ]] || export` leaves an inherited marker exactly where it was, so
+# a nested `pclaude --no-lane <profile>` came up carrying the OUTER session's
+# lane and the automatic swap would have swapped it. The guard states the
+# contract itself (`claude-usage-guard.sh:146-148`): "exported by claude-profile
+# only after lane-start took the lane and UNSET again where lane-start declined
+# it".
+launch "FAKE_TMUX_WINDOW=claude" "FAKE_SWAPPED_STATUS=8" \
+    "WORKBENCHES_CLAUDE_LANE=openRepoProject-1" \
+    "WORKBENCHES_CLAUDE_LANE_SOURCE=window" \
+    "WORKBENCHES_CLAUDE_LANE_DIR=$TEST_ROOT/projects/openRepoProject" \
+    "CLAUDE_LANE=openRepoProject-1" \
+    -- --no-lane run team002 --resume session-nolane-inherit
+grep -Fxq -- "$claude_args --resume session-nolane-inherit" "$CLAUDE_LOG" \
+    || fail "--no-lane: Claude did not start"; assertion
+grep -Fxq 'WORKBENCHES_CLAUDE_LANE=<unset>' "$CLAUDE_ENV_LOG" \
+    || fail "clause (g): --no-lane came up holding the outer session's lane ($(cat "$CLAUDE_ENV_LOG"))"; assertion
+grep -Fxq 'WORKBENCHES_CLAUDE_LANE_SOURCE=<unset>' "$CLAUDE_ENV_LOG" \
+    || fail "clause (g): --no-lane kept an inherited lane SOURCE ($(cat "$CLAUDE_ENV_LOG"))"; assertion
+grep -Fxq 'WORKBENCHES_CLAUDE_LANE_DIR=<unset>' "$CLAUDE_ENV_LOG" \
+    || fail "clause (g): --no-lane kept an inherited lane directory ($(cat "$CLAUDE_ENV_LOG"))"; assertion
+grep -Fxq 'CLAUDE_LANE=<unset>' "$CLAUDE_ENV_LOG" \
+    || fail "clause (g): --no-lane left the raw CLAUDE_LANE for a nested pclaude to read at precedence 1 ($(cat "$CLAUDE_ENV_LOG"))"; assertion
+
+# 5f-ii. A `--confirm` LANE IS A QUESTION, NOT A HANDOVER. Precedence 4's
+# newest-first row is an INFERENCE: lane-start asks, and on a DECLINE it starts
+# bare Claude ITSELF and exits 0 — the same 0 it returns having taken the lane.
+# Nothing downstream can tell those apart afterwards and the environment has to
+# be right before, so the marker is withheld for the one source that is a
+# question. The observation is made on the environment LANE-START is handed,
+# because the Claude a decline starts is lane-start's child and inherits it.
+launch "FAKE_TMUX_WINDOW=claude" "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=openRepoProject-1\t2026-09-13T00:00:00Z\tother-session:9\n" \
+    "FAKE_WINDOW_LANE_NONE=1" "FAKE_LANE_START_DECLINE=took" \
+    -- run team002 --resume session-confirm-decline
+lane_start_argv | grep -Fq -- '--confirm' \
+    || fail "confirm: the record lane did not reach lane-start as a question ($(lane_start_argv))"; assertion
+grep -Fxq 'WORKBENCHES_CLAUDE_LANE=<unset>' "$LANE_START_ENV_LOG" \
+    || fail "clause (g): an UNCONFIRMED record lane was published as handed over, so a declined --confirm swaps a lane it does not hold ($(cat "$LANE_START_ENV_LOG"))"; assertion
+
+# 5f-iii. ...AND THE FENCE IS NOT A GATE. The three CERTAIN sources — the
+# operator's `--lane`, the window's own name and the record naming THIS window
+# — all reach lane-start BARE, with no question for anybody to decline, so all
+# three publish the marker. A fence that withheld it from them would take the
+# automatic swap away from every lane on the estate, which is the mutation that
+# matters here.
+launch "FAKE_TMUX_WINDOW=openRepoProject-1" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
+    "FAKE_SWAPPED_STATUS=8" "FAKE_LANE_START_DECLINE=took" \
+    -- run team002 --resume session-window-certain
+lane_start_argv | grep -Fq -- '--confirm' \
+    && fail "confirm: a window-name lane was handed over as a question ($(lane_start_argv))"; assertion
+grep -Fxq 'WORKBENCHES_CLAUDE_LANE=openRepoProject-1' "$LANE_START_ENV_LOG" \
+    || fail "clause (g): a CERTAIN lane was not published, so the automatic swap is fenced off from the lanes it is for ($(cat "$LANE_START_ENV_LOG"))"; assertion
 
 # 5g. THE DOOR ACT 1 OPENED, AND R-A11-4's "NO PATH EXITS THE PANE". A child of
 # the re-exec whose window ALREADY CARRIES THE LANE'S NAME — which is now the
@@ -1761,7 +1853,8 @@ launch_without_estate() {
     env "PATH=$TEST_ROOT/empty-bin:/usr/bin:/bin" \
         "HOME=$FAKE_HOME" "CLAUDE_BIN=$FAKE_CLAUDE" \
         "CLAUDE_PROFILES_HOME=$PROFILE_BASE" "CLAUDE_PROFILES_MANIFEST=$MANIFEST" \
-        "FAKE_CLAUDE_LOG=$CLAUDE_LOG" "WORKBENCHES_SHARED_MCP_FAMILIES=disabled" \
+        "FAKE_CLAUDE_LOG=$CLAUDE_LOG" "FAKE_CLAUDE_ENV_LOG=$CLAUDE_ENV_LOG" \
+        "WORKBENCHES_SHARED_MCP_FAMILIES=disabled" \
         "WORKBENCHES_CLAUDE_TMUX_CHILD=1" "WORKBENCHES_CLAUDE_WINDOW=matrix-1" \
         ${without_estate_env[@]+"${without_estate_env[@]}"} \
         "$LAUNCHER" "$@" >"$OUT_LOG" 2>"$ERR_LOG"
