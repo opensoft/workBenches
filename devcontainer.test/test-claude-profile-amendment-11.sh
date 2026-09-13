@@ -574,12 +574,43 @@ fi
 #
 # So the rule: cite the CLAUSE — clause letters do not move — and where a line
 # number is given as well, name the head it was read at in the same breath. This
-# refuses the shape rather than the string, over every document this PR ships
-# that cites the text, so the next writer cannot reintroduce it in a new file.
+# refuses the shape rather than the string, so the next writer cannot reintroduce
+# it in a new file.
 #
-# It is deliberately narrow. It fires only on a `#21` citation that carries a
-# line number and no `at <sha>` beside it; a citation naming only a clause is
-# the preferred form and is not touched.
+# ITS SCOPE IS EVERY ARTEFACT THIS PR SHIPS, and the list below is that list
+# (round-4 non-blocking 6). It used to name four files while claiming every
+# document, leaving `README.md` and the `/swap` command file outside a gate whose
+# whole point is the file nobody thought of; neither cites the text today, so
+# nothing was wrong — the CLAIM was wider than the read, which is the shape of
+# defect this PR keeps finding one file along. All eight installed artefacts are
+# read now, and the list is checked for paths this checkout does not have, so a
+# renamed file cannot make the gate pass by going unread.
+#
+# THE SUITES ARE DELIBERATELY OUTSIDE IT, and that is stated rather than left to
+# be noticed: this file quotes `#21 :630-635` at `:568` on purpose — it is the
+# record of the citation that rotted, and the defect a gate reading its own
+# explanation would report is the explanation. What ships to a host is what is
+# read; what explains the gate is not.
+#
+# It is deliberately narrow in the other direction too. It fires only on a `#21`
+# citation that carries a line number and no `at <sha>` beside it; a citation
+# naming only a clause is the preferred form and is not touched.
+cite_files=(
+    "$LAUNCHER"
+    "$REPO_ROOT/base-image/files/claude-usage-guard.sh"
+    "$REPO_ROOT/base-image/files/claude/skills/lane-swap/SKILL.md"
+    "$REPO_ROOT/base-image/files/claude/commands/swap.md"
+    "$REPO_ROOT/docs/claude-multi-account-profiles.md"
+    "$REPO_ROOT/README.md"
+    "$REPO_ROOT/scripts/setup-claude-profiles.sh"
+    "$REPO_ROOT/scripts/wave-container-shell.sh"
+)
+cite_missing=""
+for cite_file in "${cite_files[@]}"; do
+    [[ -f "$cite_file" ]] || cite_missing="$cite_missing $cite_file"
+done
+[[ -z "$cite_missing" ]] \
+    || fail "citation: the gate's list names file(s) this checkout does not have ($cite_missing), so it would pass by not reading them"; assertion
 cite_bare=0
 cite_qualified=0
 while IFS= read -r cite_line; do
@@ -591,11 +622,7 @@ while IFS= read -r cite_line; do
         *) cite_bare=$((cite_bare + 1))
            echo "note: unqualified #21 citation: $cite_line" >&2 ;;
     esac
-done < <(grep -hE '#21' \
-    "$LAUNCHER" \
-    "$REPO_ROOT/base-image/files/claude-usage-guard.sh" \
-    "$REPO_ROOT/base-image/files/claude/skills/lane-swap/SKILL.md" \
-    "$REPO_ROOT/docs/claude-multi-account-profiles.md" 2>/dev/null || true)
+done < <(grep -hE '#21' "${cite_files[@]}" 2>/dev/null || true)
 [[ "$cite_bare" -eq 0 ]] \
     || fail "citation: $cite_bare citation(s) of the #21 DRAFT give a line number with no head to read it at — that paragraph moved :630 -> :642 -> :663 across three heads, so the number alone points a reader at the wrong sentence"; assertion
 [[ "$cite_qualified" -ge 1 ]] \
@@ -2269,6 +2296,20 @@ grep -Fq 'entered' "$DOCS_MD" \
     || fail "RV-W5/Evidence 3: the docs do not say the launcher enters the lane's directory"; assertion
 grep -Fq 'A missing `lane-start` is said, not passed over' "$DOCS_MD" \
     || fail "Evidence 5: the docs still describe the silent degradation this launcher no longer performs"; assertion
+
+# THE `; ` REFUSAL IN THE DOCUMENT A PERSON READS (round-4 non-blocking 3). The
+# rule is pinned in the skill's CODE above and in the `--help` below; until now
+# `grep -c '; ' docs/…md` was 0, so a reader following the documented contract —
+# "`, `, ` — ` or a `\"`" — could build a `dir` the writer drops without ever
+# being told it would be dropped. A contract stated in three places and refused
+# in a fourth is the defect this round keeps finding, one file along. BOTH halves
+# are pinned, because the interesting half is the asymmetry: `window` is
+# deliberately NOT widened (SPEC rev 6 §5), and a document listing `; ` for all
+# three would send the reader back the other way.
+grep -Fq '`, `, ` — `, `; `' "$DOCS_MD" \
+    || fail "non-blocking 3: the '; ' refusal is in the code, the skill and the --help, and is missing from the LIST the docs give a reader"; assertion
+grep -Fq 'deliberately not for' "$DOCS_MD" \
+    || fail "non-blocking 3: the docs list the '; ' refusal without saying that window is deliberately outside it, which is the ruling and not an oversight"; assertion
 
 # EVIDENCE 4 IN THE DOCUMENT A PERSON READS. §6c pins what the CODE does about
 # the session's name — nothing, which is the rule. This pins what the docs SAY,

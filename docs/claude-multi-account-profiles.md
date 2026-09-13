@@ -429,8 +429,21 @@ refusal it saves — and the refusal names `--dir`, which is one word. Rungs 2
 and 3 degrade silently against today's helpers, which do not record a directory
 yet — `lanes-edit.sh swapped` prints no fourth field and `lane-dir` does not
 exist — so both simply find nothing and rung 4 stands. A path containing a
-space is written quoted and read back unquoted; one containing `, `, ` — ` or a
-`"` is refused by the writer and never reaches a reader.
+space is written quoted and read back unquoted; one containing `, `, ` — `, `; `
+or a `"` is refused by the writer and never reaches a reader. **The
+semicolon-space is on that list for `dir` and `profile` and deliberately not for
+`window`** (SPEC rev 6 §5): `; ` separates a payload's sub-fields, so a `dir` of
+`/a; b` reads back as a `dir` of `/a` followed by a sub-field `b` no reader
+knows — the same lost fact one level down that `, ` causes one level up — while
+a `profile` name is checked against `^[A-Za-z0-9._-]+$`, which admits neither a
+semicolon nor a space, so one carrying either is omitted rather than written.
+`window` keeps Amendment 8(b)'s own list because its value is a launcher-built
+session name, an index and an `<@id>`, and widening it would be a seventh edit
+to in-force text where the ratified count is six. The residue is named rather
+than hidden: a tmux session name containing `; ` would split the payload the
+same way, and that is A8(b)'s list to widen on the day something can produce
+such a name. A reader following this contract can build no value the writer
+silently drops.
 
 **And the launch runs in that directory.** The harness keys a session to the
 directory its Claude runs in, so a lane started somewhere else comes up without
