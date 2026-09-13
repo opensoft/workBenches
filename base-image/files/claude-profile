@@ -472,8 +472,23 @@ act1_resolve_start_dir() {
 # still being handed `WORKBENCHES_CLAUDE_WINDOW`/`_REF`/`_ID` for the window it
 # is not in. The swap record that child later writes names that window, where
 # the amendment makes the `window` sub-field a fact about the writer's own
-# window (#21 :630-635) — a lie in an append-only log, and one that would send
-# the next restart's precedence 3 at a stranger's pane.
+# window (#21 clause (c), `:663-668` at `e7b639e`) — a lie in an append-only
+# log, and one that would send the next restart's precedence 3 at a stranger's
+# pane.
+#
+# THE CITATION NAMES A CLAUSE AND A HEAD, and that is this round's own finding
+# rather than a style note. It gave `:630-635` and no head — a bare line number
+# into a text that is still a DRAFT — and MEASURED IT HAS ALREADY MOVED TWICE:
+# that paragraph is `:630` at `2fc8db4` (where the citation was written and
+# true), `:642` at `1f88a12` and `:663` at `e7b639e`, the text having grown from
+# 2,171 to 2,402 lines in two rounds. So a reader checking this comment against
+# today's text at the number it gave would land 33 lines short, in the middle of
+# clause (c)'s `STARTED`/`RESUMED` preamble, and read something that does not
+# say what this comment says it says. That is `CF2-W1`'s defect one size
+# smaller — a sentence about another document that the other document no longer
+# supports — and the fix is the same shape: the CLAUSE is the anchor, because
+# clause letters do not move, and a line number is only readable beside the head
+# it was read at. Section 0 of the launcher's suite now refuses a bare one.
 #
 # So the fall-through CLEARS the three and composes again. Recomposing is the
 # whole reason this is a function: `command_string` is built from `env_prefix`,

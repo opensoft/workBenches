@@ -12,6 +12,43 @@ description: "/lane-swap (alias /swap) prepares this lane for a usage reset or p
      0: Amendment 11(4) fires this act at 95% of the 5-hour window, where there
      is no operator to ask, so step 3's wait is BOUNDED instead of asked. -->
 
+<!-- THIS COPY IS TRANSITIONAL, AND ITS SUCCESSOR IS NAMED — A11 Addendum 4
+     ruling 10, RATIFIED by Brett Heap 2026-09-13T21:08:26Z, verbatim
+     "a11 addendum 4 yes" (brettheap/new-workstation#20
+     issuecomment-5656154524, the rulings at issuecomment-5656076583). The `/lane-swap` skill that SURVIVES
+     is `opensoft/openRepoTools#26`'s, placed by `openRepoTools --install`;
+     Amendment 9 act 4b (`opensoft/workBenches#74`) deletes THIS vendored copy
+     and the loop in `scripts/setup-claude-profiles.sh` that installs it.
+
+     SO THE SIX BEHAVIOURS BELOW ARE THE HANDOVER, and ruling 10 requires #26's
+     copy to absorb them BEFORE #74 removes this one. They are listed here, in
+     this file, because this is the file the next writer reads:
+
+     (Named by STEP and never by line number, for the reason the launcher's own
+     `act1_compose_child_command` now gives: a line number is a citation that
+     rots, and this file is about to be edited by somebody else.)
+
+       1. step 4's `^@[0-9]+$` shape check on the window id — and its twin, the
+          `^.+:[0-9]+$` check on `<session>:<index>`, made on the tmux read AND
+          on the env fallback, which this round added;
+       2. step 4's no-worktree `dir` rungs: the launcher's exported word first,
+          then the LIVE SESSION's own harness record; `git rev-parse
+          --show-toplevel` and `$PWD` are GONE and the comment says why;
+       3. step 4's refusal of `, `, ` — ` and `"` in `dir` — PLUS `; `, which
+          SPEC rev 6 §5 added this round, and which `window` deliberately does
+          NOT take (widening A8(b)'s list would be a seventh in-force edit where
+          the ratified count is six);
+       4. step 4's missing `dir` is SAID, not guessed;
+       5. the closing `/rename <lane>` act of step 5 — CARRIED WITH THE PREMISE
+          `CF2-W1` CORRECTED HERE, not as it stood at `fa0230d`: `lane-start`
+          names every branch it launches since adoption act 0 merged at
+          `3719d97`, so the line is for the session that came up WITHOUT
+          `lane-start`, and no act is scheduled to remove it;
+       6. `/swap` in the description above.
+
+     A copy of #26's that lacks any of the six is a REGRESSION on the day #74
+     lands, which is why the list is contract and not a courtesy. -->
+
 # `/lane-swap` (alias `/swap`) — pause this lane for a reset or profile switch
 
 Lane-collision-protocol Amendment 8(a), amended by Amendment 11. Run every step, in order, before telling

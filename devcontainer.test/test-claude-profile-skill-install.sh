@@ -53,7 +53,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=15
+EXPECTED_SCENARIOS=16
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -612,6 +612,41 @@ for duplicated in 'READY TO SWAP' 'replace-in-row' 'append-row-status' 'lanes-ed
     grep -qF -- "$duplicated" "$COMMAND_SOURCE" \
         && fail "alias text: the command file restates the skill's own machinery ('$duplicated') — §9's rejected alternative"; assertion
 done
+
+# ---------------------------------------------------------------------------
+# 15. THE HANDOVER IS STATED IN THE FILE BEING HANDED OVER — A11 Addendum 4
+# ruling 10, RATIFIED 2026-09-13T21:08:26Z ("a11 addendum 4 yes").
+#
+# This vendored skill is TRANSITIONAL: `openRepoTools#26`'s copy is the one that
+# survives, `openRepoTools --install` places it, and Amendment 9 act 4b
+# (`workBenches#74`) deletes this file and the loop that installs it. Ruling 10
+# requires #26's copy to absorb the six behaviours THIS copy has and it does
+# not, BEFORE #74 removes this one — so on the day #74 lands, a #26 copy missing
+# any of the six is a silent regression in an act nobody re-reads.
+#
+# The PR body says this too, and a PR body is not shipped. The file is, and the
+# writer of #26 opens THIS file to do the absorbing, so the list lives here and
+# this scenario is what keeps it here: a later editor tidying the header away
+# would otherwise take the only in-tree record of a ratified handover with it.
+#
+# The assertions are on the SUBSTANCE — the successor, the deleter, the ruling,
+# and all six items — and not on the prose around them.
+scenario
+grep -qF 'openRepoTools#26' "$SKILL_SOURCE" \
+    || fail "ruling 10: the vendored skill does not name the copy that SURVIVES it (openRepoTools#26)"; assertion
+grep -qF 'workBenches#74' "$SKILL_SOURCE" \
+    || fail "ruling 10: the vendored skill does not name the act that DELETES it (Amendment 9 act 4b, workBenches#74)"; assertion
+grep -qF 'a11 addendum 4 yes' "$SKILL_SOURCE" \
+    || fail "ruling 10: the handover does not cite the ratification it rests on"; assertion
+for handed_over in '^@[0-9]+$' '^.+:[0-9]+$' 'git rev-parse' '; ' 'SAID, not guessed' '/rename <lane>' '/swap'; do
+    grep -qF -- "$handed_over" "$SKILL_SOURCE" \
+        || fail "ruling 10: the handover list has lost '$handed_over', one of the six behaviours #26 must absorb"; assertion
+done
+# And the list is a LIST: six numbered items, so an edit that drops one without
+# renumbering is caught by the count rather than by a reader.
+handover_items="$(sed -n '/SO THE SIX BEHAVIOURS BELOW ARE THE HANDOVER/,/-->/p' "$SKILL_SOURCE" | grep -cE '^ +[1-6]\. ')"
+[[ "$handover_items" -eq 6 ]] \
+    || fail "ruling 10: the handover lists $handover_items items where the ruling names six"; assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"

@@ -560,6 +560,47 @@ else
     echo "note: shellcheck is not on PATH, so the linter half of the CF-W4 gate did not run" >&2
 fi
 
+# CITATIONS OF THE AMENDMENT TEXT NAME A HEAD — round 4's own finding, and the
+# reason it is a gate rather than one corrected comment.
+#
+# `brettheap/new-workstation#21` is a DRAFT that is still being written, and a
+# bare line number into it is a citation that rots silently. Measured: the
+# launcher's `act1_compose_child_command` cited `#21 :630-635` for the rule that
+# the `window` sub-field is a fact about the writer's own window. That was TRUE
+# at `2fc8db4`, the head the round-3 confirmation read; the same paragraph is
+# `:642` at `1f88a12` and `:663` at `e7b639e`, the text having grown from 2,171
+# to 2,402 lines across two rounds. Nothing in this repository noticed, because
+# nothing here reads that file.
+#
+# So the rule: cite the CLAUSE — clause letters do not move — and where a line
+# number is given as well, name the head it was read at in the same breath. This
+# refuses the shape rather than the string, over every document this PR ships
+# that cites the text, so the next writer cannot reintroduce it in a new file.
+#
+# It is deliberately narrow. It fires only on a `#21` citation that carries a
+# line number and no `at <sha>` beside it; a citation naming only a clause is
+# the preferred form and is not touched.
+cite_bare=0
+cite_qualified=0
+while IFS= read -r cite_line; do
+    # Only a citation that GIVES a line number is in scope. A `#21` naming a
+    # clause alone is the preferred form and is passed over.
+    [[ "$cite_line" =~ :[0-9] ]] || continue
+    case "$cite_line" in
+        *'at `'*) cite_qualified=$((cite_qualified + 1)) ;;
+        *) cite_bare=$((cite_bare + 1))
+           echo "note: unqualified #21 citation: $cite_line" >&2 ;;
+    esac
+done < <(grep -hE '#21' \
+    "$LAUNCHER" \
+    "$REPO_ROOT/base-image/files/claude-usage-guard.sh" \
+    "$REPO_ROOT/base-image/files/claude/skills/lane-swap/SKILL.md" \
+    "$REPO_ROOT/docs/claude-multi-account-profiles.md" 2>/dev/null || true)
+[[ "$cite_bare" -eq 0 ]] \
+    || fail "citation: $cite_bare citation(s) of the #21 DRAFT give a line number with no head to read it at — that paragraph moved :630 -> :642 -> :663 across three heads, so the number alone points a reader at the wrong sentence"; assertion
+[[ "$cite_qualified" -ge 1 ]] \
+    || fail "citation: the gate found no head-qualified #21 line citation at all, so it is passing on an empty set rather than on the corrected one"; assertion
+
 # ===========================================================================
 # 1. ONE WORD STARTS A LANE — Amendment 11(1), SPEC §1.
 # ===========================================================================
