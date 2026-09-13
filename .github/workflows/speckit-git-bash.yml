@@ -19,6 +19,8 @@ on:
       - devBenches/base-image/files/openrepotools/**
       - scripts/setup-estate-commands.sh
       - devcontainer.test/test-setup-estate-commands.sh
+      - scripts/setup-workspace-repo.sh
+      - devcontainer.test/test-setup-workspace-repo.sh
       - setup.sh
   pull_request:
     paths:
@@ -38,6 +40,8 @@ on:
       - devBenches/base-image/files/openrepotools/**
       - scripts/setup-estate-commands.sh
       - devcontainer.test/test-setup-estate-commands.sh
+      - scripts/setup-workspace-repo.sh
+      - devcontainer.test/test-setup-workspace-repo.sh
       - setup.sh
   workflow_dispatch:
 
@@ -75,6 +79,9 @@ jobs:
 
       - name: Run the setup-estate-commands regression test
         run: bash ./devcontainer.test/test-setup-estate-commands.sh
+
+      - name: Run the setup-workspace-repo regression test
+        run: bash ./devcontainer.test/test-setup-workspace-repo.sh
 
       - name: Run bootstrap suite
         run: bash ./devBenches/devcontainer.test/test-openspeckit-bootstrap.sh
