@@ -93,6 +93,12 @@ test_tool "Claude profile aliases share one launcher" "test \"$(readlink -f \"$(
 test_tool "Claude profile tmux status panel" "/test/test-claude-tmux-statusline.sh /usr/local/bin/claude-profile /usr/local/share/workbenches/claude/statusline-command.sh"
 test_tool "Claude profile tmux statusline env-isolation regression" "/test/test-claude-tmux-statusline-env-isolation.sh /usr/local/bin/claude-profile /usr/local/share/workbenches/claude/statusline-command.sh"
 test_tool "Claude statusline usage snapshots" "/test/test-claude-statusline-snapshots.sh /usr/local/share/workbenches/claude/statusline-command.sh"
+# lane-collision-protocol Amendment 8: the launcher resolves the lane itself
+# (clause (c)) and ensures the SessionStart hook in each profile's settings
+# (clause (e)). Both fake everything they shell out to, so they run here
+# against the installed launcher with no lane estate in the image.
+test_tool "Claude profile lane default (Amendment 8(c))" "/test/test-claude-profile-lane-default.sh /usr/local/bin/claude-profile"
+test_tool "Claude profile SessionStart hook (Amendment 8(e))" "/test/test-claude-profile-session-start-hook.sh /usr/local/bin/claude-profile"
 test_tool "codex" "command -v codex"
 test_tool "codex-profile" "command -v codex-profile"
 test_tool "pcodex" "command -v pcodex"

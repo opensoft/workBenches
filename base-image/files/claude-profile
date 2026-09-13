@@ -5,9 +5,69 @@ manifest="${CLAUDE_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenc
 base="${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}"
 command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
 
+# lane-collision-protocol Amendment 8(e), as ruled by A8 Addendum 2 R-A8-5(b).
+# Claude reads THIS launcher's per-profile config dir (every exec below carries
+# CLAUDE_CONFIG_DIR="$config_dir"), so a SessionStart hook installed in
+# ~/.claude/settings.json is never read under `pclaude run` and the entry has
+# to be ensured in the profile's own settings instead.
+#
+# The three values below ARE the canonical entry — ruled 2026-09-12 by the
+# orchestrator of the Amendment 8 round, with clause (e)'s text to be changed
+# to quote them byte for byte — and the command string is the idempotence key,
+# so it is not varied by anything downstream of this line. No `bash -lc`, which
+# would source a login profile in front of every session start; no
+# `2>/dev/null`, since every line the subcommand prints goes to stderr and the
+# block is the point; `|| true` stays by that ruling, because a hook in front
+# of every session start is tolerant by construction. `"timeout": 5` is part of
+# the entry and not decoration: it is the outer bound on the one path that must
+# never hang.
+#
+# `|| true` swallows the STATUS of a lanes-edit.sh that has no `session-start`
+# subcommand; it does not swallow the usage block such a one prints, and that
+# block would appear in front of every session on the workstation until the
+# brett-wip half lands (F-S4). So the entry is also gated on the subcommand
+# existing — an install-time probe, below, which changes nothing about the
+# string it writes. The tilde is the harness's to expand;
+# `lane_session_start_script` is the same path again, for this script's own
+# reads of it.
+#
+# `scripts/setup-claude-profiles.sh` carries its own copy of these same three
+# values (RV-W2, workBenches#63 re-verification; new-workstation#16 adoption
+# act 6) so a bare `claude` run — the one case that script's
+# `$default_claude_dir/settings.json` exists for — gets this entry too, not
+# only the profiles this launcher execs into. Change the string here and there
+# together; it is the idempotence key in both files.
+lane_session_start_script="$HOME/projects/xFactory/lanes-edit.sh"
+lane_session_start_command='~/projects/xFactory/lanes-edit.sh session-start || true'
+lane_session_start_matcher='startup|resume|clear|fork'
+lane_session_start_timeout=5
+# Set by configure_profile_runtime: true when the entry is in this profile's
+# settings AND the subcommand it calls exists, i.e. when the hook will speak in
+# the session this launch is about to start. Amendment 8(e) makes that hook the
+# only no-lane notice in the estate, so the launcher's own note stands down
+# against it (lane_note_no_lane).
+lane_session_start_ensured=false
+
+# Ensuring it is an append, matched by the EXACT command string: an entry that
+# already carries it is left exactly as it is — wherever it sits, whatever
+# matcher it shares, whatever else the operator put beside it — and nothing
+# else under .hooks is touched. Reused verbatim by both branches below.
+lane_session_start_jq='
+      .hooks = (.hooks // {})
+      | .hooks.SessionStart = (
+          (.hooks.SessionStart // []) as $entries
+          | if ([$entries[]? | (.hooks // [])[]? | .command] | index($session_start))
+            then $entries
+            else $entries + [{
+              matcher: $session_start_matcher,
+              hooks: [{type: "command", command: $session_start, timeout: $session_start_timeout}]
+            }]
+            end
+        )'
+
 configure_profile_runtime() {
   local config_dir="$1" statusline_source statusline_link settings settings_tmp statusline_command default_model
-  local guard_source guard_link guard_command guard_ok
+  local guard_source guard_link guard_command guard_ok session_start_ok
 
   statusline_source="$base/shared/statusline-command.sh"
   if [[ ! -f "$statusline_source" && -f /usr/local/share/workbenches/claude/statusline-command.sh ]]; then
@@ -38,6 +98,19 @@ configure_profile_runtime() {
     guard_ok=true
   fi
 
+  # The SessionStart hook is ensured only where the estate it calls can answer
+  # it: the script has to be there, and it has to HAVE the subcommand. On
+  # opensoft/brett-wip `main` today it does not, and an entry written against
+  # it would spend a process per session start printing a usage block. The
+  # probe is one local grep of one regular file — no execution, no network, and
+  # no way to hang — and a later install is picked up by the next run, because
+  # this runs on every one.
+  session_start_ok=false
+  if [[ -f "$lane_session_start_script" ]] \
+    && grep -qF 'session-start' "$lane_session_start_script" 2>/dev/null; then
+    session_start_ok=true
+  fi
+
   settings="$config_dir/settings.json"
   if [[ -e "$settings" ]] && ! jq -e 'type == "object"' "$settings" >/dev/null 2>&1; then
     echo "Claude profile settings are not valid JSON: $settings" >&2
@@ -50,7 +123,11 @@ configure_profile_runtime() {
   settings_tmp="$(mktemp "$config_dir/.settings.XXXXXX.tmp")"
   if [[ -f "$settings" ]]; then
     jq --arg command "$statusline_command" --arg model "$default_model" \
-       --arg guard "$guard_command" --argjson guard_ok "$guard_ok" '
+       --arg guard "$guard_command" --argjson guard_ok "$guard_ok" \
+       --arg session_start "$lane_session_start_command" \
+       --arg session_start_matcher "$lane_session_start_matcher" \
+       --argjson session_start_timeout "$lane_session_start_timeout" \
+       --argjson session_start_ok "$session_start_ok" '
       .statusLine = {type: "command", command: $command, refreshInterval: 10}
       | .permissions = (.permissions // {})
       | .permissions.defaultMode = "bypassPermissions"
@@ -60,10 +137,15 @@ configure_profile_runtime() {
             .hooks = (.hooks // {})
             | .hooks.UserPromptSubmit = [{hooks: [{type: "command", command: $guard, timeout: 5}]}]
          else . end)
+      | (if $session_start_ok then'"$lane_session_start_jq"' else . end)
     ' "$settings" > "$settings_tmp"
   else
     jq -n --arg command "$statusline_command" --arg model "$default_model" \
-       --arg guard "$guard_command" --argjson guard_ok "$guard_ok" '{
+       --arg guard "$guard_command" --argjson guard_ok "$guard_ok" \
+       --arg session_start "$lane_session_start_command" \
+       --arg session_start_matcher "$lane_session_start_matcher" \
+       --argjson session_start_timeout "$lane_session_start_timeout" \
+       --argjson session_start_ok "$session_start_ok" '{
       statusLine: {type: "command", command: $command, refreshInterval: 10},
       permissions: {defaultMode: "bypassPermissions"},
       effortLevel: "xhigh",
@@ -71,10 +153,23 @@ configure_profile_runtime() {
     }
     | (if $guard_ok then
           .hooks = {UserPromptSubmit: [{hooks: [{type: "command", command: $guard, timeout: 5}]}]}
-       else . end)' > "$settings_tmp"
+       else . end)
+    | (if $session_start_ok then'"$lane_session_start_jq"' else . end)' > "$settings_tmp"
   fi
   chmod 600 "$settings_tmp"
   mv -f "$settings_tmp" "$settings"
+  # RV-W1 (workBenches#63 re-verification): set only now, for THIS profile,
+  # after its settings.json actually carries the entry — not at probe time.
+  # A probe of the estate says the entry CAN be ensured; it says nothing about
+  # a profile that has not been through this function yet, and the two came
+  # apart the moment the probe could answer true for every profile: a fresh
+  # profile's first launch would print neither the launcher's no-lane notice
+  # nor the hook's block, because lane_note_no_lane stood down on the probe
+  # while the write that makes it true had not happened yet. One launch,
+  # self-healing on the next (this function runs on every one) — but the
+  # ruling is that the flag names what THIS run wrote, not what the estate
+  # merely allows.
+  lane_session_start_ensured="$session_start_ok"
 }
 
 load_profile_setup_token() {
@@ -132,18 +227,25 @@ claude_add_has_scope() {
   return 1
 }
 
-claude_run_is_interactive() {
-  [[ -t 0 && -t 1 ]] || return 1
-  [[ "${WORKBENCHES_CLAUDE_TMUX:-auto}" != off ]] || return 1
-  [[ -z "${WORKBENCHES_CLAUDE_TMUX_CHILD:-}" ]] || return 1
-  [[ -z "${TMUX:-}" ]] || return 1
-
+# The first Claude argument says whether this launch is a conversation at all.
+# `mcp`, `doctor`, `--version` and the other subcommands and one-shots are not,
+# so they are neither wrapped in a tmux session of their own nor handed to
+# lane-start by the lane default below.
+claude_args_start_session() {
   case "${1:-}" in
     mcp|plugin|plugins|doctor|install|update|--help|-h|--version|-v|--print|-p)
       return 1
       ;;
   esac
   return 0
+}
+
+claude_run_is_interactive() {
+  [[ -t 0 && -t 1 ]] || return 1
+  [[ "${WORKBENCHES_CLAUDE_TMUX:-auto}" != off ]] || return 1
+  [[ -z "${WORKBENCHES_CLAUDE_TMUX_CHILD:-}" ]] || return 1
+  [[ -z "${TMUX:-}" ]] || return 1
+  claude_args_start_session "$@"
 }
 
 start_profile_tmux() {
@@ -157,6 +259,12 @@ start_profile_tmux() {
   # on an already-running server, so it is threaded through explicitly here
   # rather than relied on via inheritance — same idiom as the guard above.
   [[ -n "${lane:-}" ]] && env_prefix+=("CLAUDE_LANE=$lane")
+  [[ "${no_lane:-false}" == true ]] && env_prefix+=("CLAUDE_NO_LANE=1")
+  # So must the name of the window this was typed in. The session created here
+  # is brand new and its window is named for the command that made it, never
+  # for a lane, so the child must read the name captured on this side of the
+  # re-exec instead of asking tmux again (capture_lane_window).
+  [[ -n "${lane_window:-}" ]] && env_prefix+=("WORKBENCHES_CLAUDE_WINDOW=$lane_window")
 
   command -v tmux >/dev/null 2>&1 || {
     echo "pclaude: tmux is required for interactive profile launches." >&2
@@ -251,19 +359,231 @@ profile_metadata() {
   return 1
 }
 
-# --lane / CLAUDE_LANE (opt-in, default off): hand the final Claude launch to
-# `lane-start` instead of exec'ing Claude directly. Recognised only as a
-# leading option, before the action/profile — the first token that is not
-# --lane/--lane=.../-h/--help ends this loop and is left for the existing
-# parsing below, so anything meant for Claude itself (e.g. `claude-profile
-# work --help`) is untouched.
+# ---------------------------------------------------------------------------
+# THE LANE DEFAULT — lane-collision-protocol Amendment 8(c).
+#
+# `--lane` was opt-in, and a launch without it started a Claude with no lane at
+# all: the window kept tmux's automatic rename, no register row was stamped,
+# and the resume was left to a picker filtered by a title several transcripts
+# share. That is the 2026-09-11 wrong-lineage resume, whose sixth finding was
+# simply "the automation never ran" (Amendment 6). So a launch that starts a
+# conversation now takes a lane by default, and the lane is RESOLVED rather
+# than typed:
+#
+#   1. --lane / CLAUDE_LANE — what the operator said. Always wins.
+#   2. the CURRENT tmux window's name, when `lanes-edit.sh register-row` says
+#      the register has a row for it. The window name IS the lane (Rule 4),
+#      and lane-start turned tmux's automatic rename off when it took the
+#      window, so a window still called `claude` or `zsh` simply is not one.
+#   3. `lanes-edit.sh swapped <workstation>` — the lane this workstation last
+#      PAUSED for a swap and has not resumed since (the record, Amendment
+#      8(b)), read only inside tmux, because taking it means renaming a window.
+#   4. nothing: exactly today's behaviour, plus one line saying how to take a
+#      lane in this window — and not even that where the SessionStart hook of
+#      clause (e) is ensured, since that block says the same thing with the
+#      repo and the number filled in.
+#
+# 2 is certain — the operator is standing in the lane's own window — so it goes
+# to lane-start BARE, byte-for-byte as an explicit `--lane` always did. 3 is a
+# guess read from a record written before the restart, so it goes as
+# `--confirm` and lane-start asks before it renames the window. `--yes` is
+# passed nowhere: it is inert in lane-start unless `--confirm` came with it,
+# and `--confirm` is the one case it must never come with (F-W2, F-T8).
+#
+# NOTHING HERE REFUSES A LAUNCH, and after A8 Addendum 2 R-A8-3 that is true of
+# the composition and not just of this file: every probe that cannot be made —
+# no lane-start, no lanes-edit.sh, a lanes-edit.sh with no `swapped` yet, a
+# lane-start with no `--confirm` yet, no tmux to take a window in — falls back
+# to 4, and the one path that asks the operator a question launches Claude on
+# BOTH answers, because the `--confirm` case runs lane-start instead of exec'ing
+# it and catches a decline.
+
+lanes_edit_bin() {
+  # Found the way lane-start is, and never as a path spelled for one
+  # workstation: on PATH, else beside the lane-start that IS on PATH (both are
+  # `lanes/` in opensoft/brett-wip), else the symlink the protocol names.
+  local candidate lane_start
+  candidate="${WORKBENCHES_LANES_EDIT_BIN:-$(command -v lanes-edit.sh 2>/dev/null || true)}"
+  if [[ -z "$candidate" ]]; then
+    lane_start="$(command -v lane-start 2>/dev/null || true)"
+    if [[ -n "$lane_start" ]]; then
+      candidate="$(dirname "$(readlink -f "$lane_start")")/lanes-edit.sh"
+    fi
+  fi
+  [[ -n "$candidate" ]] || candidate="$HOME/projects/xFactory/lanes-edit.sh"
+  [[ -x "$candidate" ]] || return 1
+  printf '%s\n' "$candidate"
+}
+
+capture_lane_window() {
+  # The lane's window is the one this was typed in, and its name is readable
+  # only HERE — before start_profile_tmux re-execs into a session tmux names
+  # after the command that made it. A child of that re-exec never asks tmux: it
+  # takes the name threaded across, which is empty when the launch did not come
+  # from a tmux window at all.
+  if [[ -n "${WORKBENCHES_CLAUDE_TMUX_CHILD:-}" ]]; then
+    lane_window="${WORKBENCHES_CLAUDE_WINDOW:-}"
+    return 0
+  fi
+  lane_window=""
+  [[ -n "${TMUX:-}" ]] || return 0
+  command -v tmux >/dev/null 2>&1 || return 0
+  lane_window="$(tmux display-message -p '#W' 2>/dev/null || true)"
+  return 0
+}
+
+lane_no_lane_note='no lane for this window; run lane-start <repo> <n> inside it'
+
+lane_note_no_lane() {
+  # One situation, ONE line (F-W3). A caller that has something of its own to
+  # report passes it; the standing note is appended to it rather than printed
+  # under it.
+  #
+  # And the note itself stands down where the SessionStart hook can speak.
+  # Amendment 8(e): that block is "the ONLY no-lane notice in the estate;
+  # clause (c) step 4 stands down wherever this hook can speak" — it holds the
+  # lane, so it fills in <repo> and <n> instead of leaving them for a reader to
+  # translate at the one moment they are trying to get back to work. Printing
+  # both is the same instruction twice (R-A8-7, "one no-lane notice not two").
+  # Where the hook was not ensured — no estate, or a lanes-edit.sh with no
+  # `session-start` yet — nothing else will say it, so this does.
+  local reported="${1:-}"
+  if [[ "${lane_session_start_ensured:-false}" == true ]]; then
+    [[ -n "$reported" ]] || return 0
+    echo "pclaude: $reported" >&2
+    return 0
+  fi
+  if [[ -n "$reported" ]]; then
+    echo "pclaude: $reported; $lane_no_lane_note" >&2
+  else
+    echo "pclaude: $lane_no_lane_note" >&2
+  fi
+}
+
+lane_window_is() {
+  # Whether the current tmux window is named for this lane — i.e. whether
+  # lane-start took it. Asked only AFTER lane-start has run, on the one path
+  # that does not exec it, and never as a source of a lane.
+  local want="$1" now
+  command -v tmux >/dev/null 2>&1 || return 1
+  now="$(tmux display-message -p '#W' 2>/dev/null || true)"
+  [[ -n "$now" && "$now" == "$want" ]]
+}
+
+lane_start_supports() {
+  # `--confirm` arrives with the brett-wip half of Amendment 8. Until it does,
+  # a lane-start that has never heard of it must not be handed it, and its own
+  # --help is the only thing that can say.
+  local flag="$1"
+  if [[ -z "${lane_start_help+set}" ]]; then
+    lane_start_help="$(lane-start --help 2>/dev/null || true)"
+  fi
+  [[ "$lane_start_help" == *"$flag"* ]]
+}
+
+resolve_lane() {
+  # Sets `lane` and `lane_source` (flag|window|record, empty for none) from the
+  # Claude arguments this launch carries. Never fails, never refuses: a lane
+  # that cannot be resolved is today's behaviour.
+  local lanes_edit ws rows status candidate reason swapped_err first_row
+  local -a swapped_argv
+  if [[ -n "${lane:-}" ]]; then
+    lane_source=flag
+    return 0
+  fi
+  [[ "$no_lane" == false ]] || return 0
+  claude_args_start_session "$@" || return 0
+  # No lane estate on this machine: the whole feature is absent, and saying so
+  # on every launch would be noise.
+  command -v lane-start >/dev/null 2>&1 || return 0
+  lanes_edit="$(lanes_edit_bin || true)"
+  if [[ -z "$lanes_edit" ]]; then
+    lane_note_no_lane
+    return 0
+  fi
+
+  # LANES_NO_FETCH=1 on both reads: they are on the path of every launch, and
+  # lanes-edit.sh otherwise fetches origin before it answers. A row or a record
+  # this workstation wrote is in this workstation's own clone already, and a
+  # launcher must not sit on the network to open a terminal.
+  #
+  # Only 0 is a lane. `register-row` answers 8 for a name with no row and 2 for
+  # a window name that is not even lane-shaped (`zsh`, `1:vim*`).
+  if [[ -n "${lane_window:-}" ]] \
+    && LANES_NO_FETCH=1 "$lanes_edit" register-row "$lane_window" >/dev/null 2>&1; then
+    lane="$lane_window"
+    lane_source=window
+    return 0
+  fi
+
+  # The record's lane is a guess about a WINDOW: `lane-start` takes it by
+  # renaming the current tmux window (Amendment 5(f)), so there has to be one.
+  # Outside tmux there is not — `WORKBENCHES_CLAUDE_TMUX=off`, a launch that is
+  # not on a tty — and a lane-start handed a lane it cannot take is how a
+  # resolution that "never refuses a launch" refuses one. An interactive launch
+  # with no TMUX re-execs into a session of its own before this runs, and the
+  # child resolves INSIDE tmux, where this test passes; so the case this closes
+  # is exactly the documented direct launch, which keeps its documented
+  # behaviour. The window rule above needs no such test: it has no lane to
+  # offer unless tmux named the window in the first place.
+  if [[ -z "${TMUX:-}" ]]; then
+    lane_note_no_lane
+    return 0
+  fi
+
+  ws="${LANES_WORKSTATION:-$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)}"
+  swapped_argv=(swapped)
+  [[ -z "$ws" ]] || swapped_argv+=("$ws")
+  swapped_err="$(mktemp "${TMPDIR:-/tmp}/pclaude-swapped.XXXXXX")"
+  set +e
+  rows="$(LANES_NO_FETCH=1 "$lanes_edit" "${swapped_argv[@]}" 2>"$swapped_err")"
+  status=$?
+  set -e
+  reason="$(cat "$swapped_err" 2>/dev/null || true)"
+  rm -f "$swapped_err"
+  # 0 with rows `<lane>\t<UTC>\t<window>`, most recent first; 8 with none. The
+  # contract is the TAB: a row without one is not that shape, and taking its
+  # first field would take the whole line — which `cut -f 1` hands back intact,
+  # lane-shaped and wrong, for output that never came from `swapped` at all.
+  first_row="$(printf '%s\n' "$rows" | head -n 1)"
+  if [[ "$status" -eq 0 && -n "$rows" && "$first_row" == *$'\t'* ]]; then
+    candidate="${first_row%%$'\t'*}"
+    if [[ "$candidate" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
+      lane="$candidate"
+      lane_source=record
+      return 0
+    fi
+  fi
+  # A lanes-edit.sh from before Amendment 8 exits 2 because it has no `swapped`
+  # subcommand at all — but 2 is also its usage code, so a caller bug would look
+  # exactly like an old helper and degrade to case 4 in silence (F-W4). The
+  # status cannot tell them apart; the helper's own words can, because it says
+  # "unknown subcommand" for the one and not for the other. An old helper is
+  # expected and silent. A caller bug gets one line, and still a launch.
+  if [[ "$status" -ne 0 && "$status" -ne 8 && "$reason" != *"unknown subcommand"* ]]; then
+    lane_note_no_lane "lanes-edit.sh ${swapped_argv[*]} exited $status without calling it an unknown subcommand, so this is a caller bug and not an old helper"
+    return 0
+  fi
+  lane_note_no_lane
+  return 0
+}
+
+# --lane / CLAUDE_LANE / --no-lane are recognised only as leading options,
+# before the action/profile — the first token that is not one of them ends this
+# loop and is left for the existing parsing below, so anything meant for Claude
+# itself (e.g. `claude-profile work --help`) is untouched.
 lane="${CLAUDE_LANE:-}"
+lane_source=""
+lane_window=""
+no_lane=false
+[[ -z "${CLAUDE_NO_LANE:-}" ]] || no_lane=true
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --lane)
       [[ $# -ge 2 ]] || { echo "pclaude: --lane needs a value: <repo>-<n>" >&2; exit 2; }
       lane="$2"; shift 2 ;;
     --lane=*) lane="${1#--lane=}"; shift ;;
+    --no-lane) no_lane=true; shift ;;
     -h|--help)
       cat <<'EOF'
 Usage: claude-profile {list|login|status|run} PROFILE [CLAUDE_ARGS...]
@@ -277,7 +597,7 @@ Actions:
                         "run" itself may be omitted: claude-profile PROFILE)
 
 Options:
-  --lane <repo>-<n>    opt-in: hand the final launch to
+  --lane <repo>-<n>    take this lane: hand the final launch to
                         `lane-start <repo>-<n> -- CLAUDE_ARGS` instead of
                         exec'ing Claude directly (also settable as
                         CLAUDE_LANE=<repo>-<n> in the environment).
@@ -286,14 +606,28 @@ Options:
                         with --resume/--name <lane> under this same profile.
                         Requires lane-start on PATH (opensoft/brett-wip,
                         lanes/, linked by that repo's scripts/link-estates).
-                        Without --lane/CLAUDE_LANE, behaviour is unchanged.
+  --no-lane            take no lane: exec Claude directly, whatever the
+                        window or the swap record says (also settable as
+                        CLAUDE_NO_LANE=1 in the environment). Wins over
+                        --lane/CLAUDE_LANE.
   -h, --help           show this help
+
+THE LANE DEFAULT (lane-collision-protocol Amendment 8(c)). With no --lane, a
+`run` that starts a conversation resolves the lane itself: the current tmux
+window's name when the lane register has a row for it, else the lane this
+workstation last paused for a swap and has not resumed since (handed over as
+--confirm, so lane-start asks before it takes the window; BOTH answers start
+Claude, one of them with no lane). With neither, and with --no-lane, behaviour
+is unchanged.
 EOF
       exit 0
       ;;
     *) break ;;
   esac
 done
+if [[ "$no_lane" == true ]]; then
+  lane=""
+fi
 
 action="${1:-list}"
 if [[ "$action" == "list" || "$action" == "login" || "$action" == "status" || "$action" == "run" ]]; then
@@ -340,6 +674,7 @@ case "$action" in
             exit 2
           }
         fi
+        capture_lane_window
         if claude_run_is_interactive "$@"; then
           start_profile_tmux "$profile" "$@"
         fi
@@ -376,18 +711,64 @@ case "$action" in
           "$mcp_sync" sync-claude-profile "$family" "$config_dir/.claude.json"
           exit 0
         fi
-        if [[ -n "${lane:-}" ]]; then
-          CLAUDE_CONFIG_DIR="$config_dir" CLAUDE_BIN="$claude_bin" exec lane-start "$lane" -- \
-            --allow-dangerously-skip-permissions \
-            --dangerously-skip-permissions \
-            --permission-mode bypassPermissions \
-            "$@"
+        resolve_lane "$@"
+        lane_argv=(lane-start)
+        if [[ -n "${lane:-}" && "$lane_source" == record ]]; then
+          # A lane read from the record is a guess about a window nobody has
+          # named yet, so lane-start must ask before it takes it — and a
+          # lane-start that cannot ask is not handed the guess at all. One
+          # operator, one situation, ONE line, and it names the lane it left
+          # (F-W3).
+          if lane_start_supports --confirm; then
+            lane_argv+=(--confirm)
+          else
+            lane_note_no_lane "$lane is the lane this workstation last paused for a swap, but this lane-start cannot ask before it takes a window (no --confirm), so it is left"
+            lane=""
+          fi
         fi
-        CLAUDE_CONFIG_DIR="$config_dir" exec "$claude_bin" \
-          --allow-dangerously-skip-permissions \
-          --dangerously-skip-permissions \
-          --permission-mode bypassPermissions \
-          "$@"
+        # `--yes` is passed nowhere (F-W2, F-T8): it is inert in lane-start
+        # unless `--confirm` came with it, and `--confirm` is the one case it
+        # must never come with, since answering the question in advance is the
+        # opposite of asking it. A window lane and an operator's `--lane` go
+        # over bare — byte-for-byte what `--lane` did before this default
+        # existed.
+        claude_flags=(--allow-dangerously-skip-permissions
+                      --dangerously-skip-permissions
+                      --permission-mode bypassPermissions)
+        if [[ -n "${lane:-}" ]]; then
+          if [[ "$lane_source" == record ]]; then
+            # R-A8-3: one question, and both of its answers lead somewhere. A
+            # lane-start carrying the brett-wip half of Amendment 8 answers `N`
+            # by launching Claude bare itself and never comes back here at all.
+            # One that still exits 2 on `N` — or on a usage error — would
+            # otherwise leave the operator in an exited pane with no Claude,
+            # which is the one failure this whole default exists to prevent. So
+            # the confirm path RUNS lane-start rather than exec'ing it, and
+            # falls through to the bare launch below on 2. Every other status
+            # is Claude's own, from a lane-start that took the lane and exec'd
+            # it, and is this launcher's status too.
+            set +e
+            CLAUDE_CONFIG_DIR="$config_dir" CLAUDE_BIN="$claude_bin" \
+              "${lane_argv[@]}" "$lane" -- "${claude_flags[@]}" "$@"
+            lane_status=$?
+            set -e
+            # 2 is the decline, and it is also lane-start's argument error; in
+            # both the lane was never taken and Claude never started. It is
+            # ALSO what a Claude that lane-start DID exec can return on its
+            # own, and starting a second Claude behind the first would be worse
+            # than the dead end this fixes. The window says which happened:
+            # taking a lane renames the window to it (Amendment 5(f)), and a
+            # lane-start that never took one left the name alone.
+            if [[ "$lane_status" -ne 2 ]] || lane_window_is "$lane"; then
+              exit "$lane_status"
+            fi
+            echo "pclaude: lane-start did not take $lane (exit 2); starting Claude with no lane." >&2
+          else
+            CLAUDE_CONFIG_DIR="$config_dir" CLAUDE_BIN="$claude_bin" \
+              exec "${lane_argv[@]}" "$lane" -- "${claude_flags[@]}" "$@"
+          fi
+        fi
+        CLAUDE_CONFIG_DIR="$config_dir" exec "$claude_bin" "${claude_flags[@]}" "$@"
         ;;
     esac
     ;;

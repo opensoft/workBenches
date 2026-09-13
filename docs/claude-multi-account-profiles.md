@@ -154,15 +154,99 @@ commands such as `mcp`, `doctor`, `--help`, `--version`, and `--print` remain
 direct, and a `pclaude` command run inside an existing tmux session reuses it.
 
 Pass `--lane <repo>-<n>` (or set `CLAUDE_LANE=<repo>-<n>` in the environment)
-to hand the launch to `lane-start` instead of exec'ing Claude directly —
-opt-in, and off by default; without it `pclaude`/`claude-profile` behave
-exactly as described above. `lane-start` (from `opensoft/brett-wip`'s
-`lanes/`, put on `PATH` by that repository's `scripts/link-estates`) renames
-the current tmux window to the lane, records the lane in the lane register,
-and starts this same Claude binary under this same profile with
-`--resume`/`--name <lane>` as appropriate. Naming a lane while `lane-start`
-is not on `PATH` refuses with the fix instead of launching an unnamed
-session. See `claude-profile --help` for the exact option.
+to hand the launch to `lane-start` instead of exec'ing Claude directly.
+`lane-start` (from `opensoft/brett-wip`'s `lanes/`, put on `PATH` by that
+repository's `scripts/link-estates`) renames the current tmux window to the
+lane, records the lane in the lane register, and starts this same Claude
+binary under this same profile with `--resume`/`--name <lane>` as appropriate.
+Naming a lane while `lane-start` is not on `PATH` refuses with the fix instead
+of launching an unnamed session.
+
+Since lane-collision-protocol Amendment 8(c) the lane is also the default: a
+`run` that starts a conversation and names no lane resolves one itself. First
+the current tmux window's name, when `lanes-edit.sh register-row` says the
+register has a row for it — handed to `lane-start` bare, exactly as an explicit
+`--lane` always was, because the operator is standing in the lane's own window
+and there is nothing to confirm. Failing that, and only inside tmux, the lane
+this workstation last paused for a swap and has not resumed since
+(`lanes-edit.sh swapped <workstation>`, first row) — handed over as
+`--confirm`, so `lane-start` asks before it takes the window. That second lane
+is a guess about a *window*, and taking it means renaming one, so outside tmux
+it is not read at all. The window name is read before the tmux re-exec and
+carried across it, since the new session's window is named for the command that
+made it rather than for a lane. Both register reads are made with
+`LANES_NO_FETCH=1`, so a launch never waits on the network.
+
+With neither, the launch is exactly as described above plus one line saying how
+to take a lane in this window — and not even that where the `SessionStart` hook
+below is installed, since that hook says the same thing with the repository and
+the number filled in. `--no-lane` (or `CLAUDE_NO_LANE=1`) opts out of the
+resolution entirely and wins over `--lane`; a machine with no `lane-start` on
+`PATH` has no lane estate and is neither asked nor told anything.
+
+**Nothing in the resolution can refuse a launch, and the one question it can
+ask has two answers that both start Claude.** A `lanes-edit.sh` with no
+`swapped` subcommand, a `lane-start` with no `--confirm`, a missing
+`lanes-edit.sh` and a launch outside tmux all fall back to the unchanged
+behaviour. When `lane-start` *is* asked to confirm, the launcher runs it rather
+than `exec`ing it: a `lane-start` that declines the window (exit 2) falls
+through to a bare Claude with one line saying so, and a `lane-start` that took
+the lane has its status handed back unchanged, so the launcher can never start
+a second Claude behind the first. See `claude-profile --help` for the exact
+options.
+
+### The Amendment 8 `SessionStart` hook, and where skills have to live
+
+Claude reads the configuration directory it is launched with, and every
+`pclaude run` execs with `CLAUDE_CONFIG_DIR=<profile dir>`. So the harness
+reads *that* directory's `settings.json` and *that* directory's `skills/`, and
+neither `~/.claude/settings.json` nor `~/.claude/skills/` is consulted under
+this launcher at all. Two consequences, both of which this launcher and
+`scripts/setup-claude-profiles.sh` now handle:
+
+- **The per-launch settings rewrite is additive for every hook kind but its
+  own.** `configure_profile_runtime` sets `hooks.UserPromptSubmit` and leaves
+  every other key under `hooks` untouched, so an entry written into a profile's
+  `hooks.SessionStart` survives every subsequent launch. The launcher relies on
+  that to *ensure* Amendment 8(e)'s `SessionStart` entry on every run, matched
+  by its exact command string: an entry already carrying that command is left
+  exactly as it is, whatever matcher or timeout it was given, and otherwise the
+  entry is appended with `"matcher": "startup|resume|clear|fork"` and
+  `"timeout": 5`. The entry is written only where
+  `~/projects/xFactory/lanes-edit.sh` exists *and* has the `session-start`
+  subcommand, so a machine without the lane estate — and one whose estate
+  predates Amendment 8 — is left alone; a later install is picked up by the
+  next launch, because the ensure runs on every one. Any installer that wants a
+  hook to fire for profile launches should write it into the profile
+  `settings.json` files the same way, not into `~/.claude/settings.json`.
+- **Skills belong in the shared skills directory.** Every profile's `skills` is
+  a symlink to `~/.claude-profiles/shared/skills`, so one write there is
+  visible to every profile at once. `scripts/setup-claude-profiles.sh` installs
+  this repository's vendored skills — currently `/lane-swap`, from
+  `base-image/files/claude/skills/` — into that directory and into
+  `~/.claude/skills` for a bare `claude` outside the launcher. The copy is
+  idempotent by content: a destination already holding the vendored bytes is
+  left untouched.
+- **The bare-`claude` path gets the hook too, from a second writer of the same
+  entry.** `claude-profile` only ever ensures the `SessionStart` entry in the
+  profile it is about to exec into, so a bare `claude` run — the one case
+  `~/.claude/settings.json` exists for — used to get the skill above and
+  nothing else. `scripts/setup-claude-profiles.sh` now ensures the identical
+  entry (same command string, same `"matcher": "startup|resume|clear|fork"`,
+  same `"timeout": 5`, same exact-string idempotence, additive beside every
+  other hook kind) into `~/.claude/settings.json` on every setup run, gated on
+  the same estate probe. The command string is the idempotence key for *both*
+  writers of *both* files; change it in one and the other goes stale.
+
+**Live state, so this section is not mistaken for a live measurement.** Both
+writers above are gated on `~/projects/xFactory/lanes-edit.sh` having a
+`session-start` subcommand, and on `opensoft/brett-wip` `main` that subcommand
+does not exist yet — so today, correctly, neither writer ensures anything: no
+profile `settings.json` under `~/.claude-profiles/profiles/` carries a
+`SessionStart` hook, and `~/.claude/settings.json` only carries one where an
+operator hand-wrote it before this script could. This section describes what
+the code now does once the brett-wip half of Amendment 8 lands, not a
+measurement of any workstation today.
 
 Profile launches default to
 `xhigh` effort and always start Claude with `bypassPermissions` plus

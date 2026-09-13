@@ -174,6 +174,68 @@ fi
 default_statusline_relative="$(realpath -m --relative-to="$default_claude_dir" "$base/shared/statusline-command.sh")"
 ln -sfn "$default_statusline_relative" "$default_statusline"
 
+# Skills vendored by this repository, installed into the SHARED skills
+# directory every profile's `skills` symlink points at (created above, linked
+# per profile below). claude-profile execs Claude with
+# CLAUDE_CONFIG_DIR=<profile dir>, so ~/.claude/skills is NOT read under the
+# launcher and the shared directory is the one write that reaches all of them
+# (lane-collision-protocol Amendment 8(a), A8 Addendum 2 R-A8-5(a)). The
+# ~/.claude copy stays for a bare `claude` run outside the launcher.
+#
+# These are the same paths Amendment 9 later assigns to `openRepoTools
+# --install`. Ruled on opensoft/workBenches#68 (F5): this loop STANDS for
+# Amendment 8 and is their sole writer until A9's adoption act 3 lands, and
+# A9's act 4 deletes it. Until then the copy is idempotent BY CONTENT — a
+# destination already holding the vendored bytes is left alone, mtime and all,
+# so a later `--install` write of the same bytes is not clobbered by the next
+# setup run.
+for skill in lane-swap; do
+  skill_source="$repo_dir/base-image/files/claude/skills/$skill/SKILL.md"
+  [[ -f "$skill_source" ]] || continue
+  mkdir -p "$base/shared/skills/$skill" "$default_claude_dir/skills/$skill"
+  for skill_target in "$base/shared/skills/$skill/SKILL.md" \
+                      "$default_claude_dir/skills/$skill/SKILL.md"; do
+    if ! cmp -s "$skill_source" "$skill_target"; then
+      install -m 0644 "$skill_source" "$skill_target"
+    fi
+  done
+done
+
+# lane-collision-protocol Amendment 8(e) / RV-W2 (workBenches#63
+# re-verification; brettheap/new-workstation#16 adoption act 6 OWNS this
+# entry for the bare-`claude` path). `claude-profile` ensures the canonical
+# SessionStart entry only in the profile it execs into, so until now a bare
+# `claude` run — the one case this file's `$default_claude_dir` exists for —
+# got the skill (the loop above) and no hook. These three values MUST stay
+# byte-identical to `base-image/files/claude-profile`'s
+# `lane_session_start_command`/`_matcher`/`_timeout`: the command string is
+# the idempotence key for BOTH writers, of two different settings.json files.
+default_session_start_script="$HOME/projects/xFactory/lanes-edit.sh"
+default_session_start_command='~/projects/xFactory/lanes-edit.sh session-start || true'
+default_session_start_matcher='startup|resume|clear|fork'
+default_session_start_timeout=5
+default_session_start_ok=false
+if [[ -f "$default_session_start_script" ]] \
+  && grep -qF 'session-start' "$default_session_start_script" 2>/dev/null; then
+  default_session_start_ok=true
+fi
+# Ensuring it is an append, matched by the EXACT command string — the same
+# shape as claude-profile's own ensure: an entry already carrying that command
+# is left exactly as it is, whatever else sits beside it, and nothing else
+# under .hooks is touched.
+default_session_start_jq='
+      .hooks = (.hooks // {})
+      | .hooks.SessionStart = (
+          (.hooks.SessionStart // []) as $entries
+          | if ([$entries[]? | (.hooks // [])[]? | .command] | index($session_start))
+            then $entries
+            else $entries + [{
+              matcher: $session_start_matcher,
+              hooks: [{type: "command", command: $session_start, timeout: $session_start_timeout}]
+            }]
+            end
+        )'
+
 default_settings="$default_claude_dir/settings.json"
 if [[ -e "$default_settings" ]] && ! jq -e 'type == "object"' "$default_settings" >/dev/null 2>&1; then
   echo "Claude default settings are not valid JSON: $default_settings" >&2
@@ -183,11 +245,21 @@ default_settings_tmp="$(mktemp "$default_claude_dir/.settings.XXXXXX.tmp")"
 default_statusline_command="bash $default_statusline"
 if [[ -f "$default_settings" ]]; then
   jq --arg command "$default_statusline_command" \
-    '.statusLine = {type: "command", command: $command, refreshInterval: 10}' \
-    "$default_settings" > "$default_settings_tmp"
+    --arg session_start "$default_session_start_command" \
+    --arg session_start_matcher "$default_session_start_matcher" \
+    --argjson session_start_timeout "$default_session_start_timeout" \
+    --argjson session_start_ok "$default_session_start_ok" '
+    .statusLine = {type: "command", command: $command, refreshInterval: 10}
+    | (if $session_start_ok then'"$default_session_start_jq"' else . end)
+  ' "$default_settings" > "$default_settings_tmp"
 else
   jq -n --arg command "$default_statusline_command" \
-    '{statusLine: {type: "command", command: $command, refreshInterval: 10}}' \
+    --arg session_start "$default_session_start_command" \
+    --arg session_start_matcher "$default_session_start_matcher" \
+    --argjson session_start_timeout "$default_session_start_timeout" \
+    --argjson session_start_ok "$default_session_start_ok" '
+    {statusLine: {type: "command", command: $command, refreshInterval: 10}}
+    | (if $session_start_ok then'"$default_session_start_jq"' else . end)' \
     > "$default_settings_tmp"
 fi
 chmod 600 "$default_settings_tmp"
