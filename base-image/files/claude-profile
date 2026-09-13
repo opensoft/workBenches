@@ -1442,12 +1442,29 @@ read as a profile. The four action words win over a profile of the same name;
 `pclaude run list` starts the profile called `list`.
 
 THE LANE DEFAULT (lane-collision-protocol Amendment 8(c), Amendment 11(2)).
-With no --lane, a `run` that starts a conversation resolves the lane itself:
-the current tmux window's name when the lane register has a row for it, else
-the lane this workstation last paused for a swap and has not resumed since
-(handed over as --confirm, so lane-start asks before it takes the window; BOTH
-answers start Claude, one of them with no lane). With neither, and with
---no-lane, behaviour is unchanged. There is no /restart on this path.
+With no --lane, a `run` that starts a conversation resolves the lane itself,
+in FIVE steps, first answer wins and --no-lane beating all of them:
+
+  1 --lane <lane> / CLAUDE_LANE      the operator's word              no question
+  2 the current tmux window's NAME,  the window IS the lane (Rule 4)  no question
+    where `lanes-edit.sh register-row <name>` exits 0
+  3 the swap record whose `window` sub-field NAMES THIS WINDOW — its
+    <@id> first, else its <session>:<index>                          no question
+  4 `lanes-edit.sh swapped <ws>`, first row — the lane this
+    workstation last paused for a swap and has not resumed since,
+    handed over as --confirm                                    ONE confirmation
+  5 nothing: bare Claude, one notice, and still a launch
+
+STEP 3 IS NEW IN AMENDMENT 11 and it is the one that asks nothing where the
+window has LOST its name — an automatic-rename that fired, a rename by hand, a
+pane that came back as `zsh`. It is an exact match on the window you are
+standing in, so it goes to lane-start bare, exactly as steps 1 and 2 do. Only
+step 4 is a guess, and only step 4 is confirmed; BOTH of its answers start
+Claude, one of them with no lane. A read that FAILS falls to the next step and
+is named where it failed — never to step 5, which would skip the step that
+answers on every workstation whose helper is not upgraded yet. With no answer
+at all, and with --no-lane, behaviour is unchanged. There is no /restart on
+this path.
 
 THE WINDOW IS REUSED (Amendment 11(2), act 1). Run inside tmux, this launcher
 keeps the CURRENT window: it sets CLAUDE_CONFIG_DIR and execs in place, so the
@@ -1459,7 +1476,10 @@ for the LANE at birth when the lane is certain (--lane/CLAUDE_LANE) and for the
 command that made it when it is not, because naming a window from a guess
 nobody confirmed would pre-answer lane-start's own question. A window named for
 ANOTHER lane resolves THAT lane — the window is the key — and --lane or
---no-lane is the way out.
+--no-lane is the way out. WORKBENCHES_CLAUDE_WINDOW_REUSE=off turns the reuse
+of a recorded window off for one launch, for the emergency where a record names
+a window that must not be touched; the ownership fence already refuses another
+lane's window without it.
 
 THE LANE'S DIRECTORY (Amendment 11(3)). lane-start's default is
 $PROJECTS_ROOT/<repo>, and a checkout that is somewhere else used to end the
@@ -1471,10 +1491,44 @@ lane-start's default stands. The cwd's own checkout is NOT a rung: deriving the
 lane's tree from the tree you happen to stand in can silently re-home the lane,
 and the refusal that rung would have saved names --dir, which is one word.
 
-NOTHING HERE CAN CLOSE THE WINDOW. lane-start is run, never exec'd: if it
-refuses — a directory that is not there, a lane held live elsewhere, a
+AND THE LAUNCH RUNS IN IT. The directory that was learnt is ENTERED before
+lane-start is run and therefore before the Claude it execs — and before the
+bare Claude behind a refusal — and a new tmux session is created with -c that
+directory. The harness keys a session to the directory its Claude runs in, so a
+lane started somewhere else comes up without that repository's CLAUDE.md and
+without the lane's memory while --resume still continues the transcript
+(new-workstation#20, Evidence 3). A RECORDED directory that is gone is a
+refusal that names the path, never a quiet fall to the default: a lane started
+in another tree takes that tree's origin as its home and every #n inherits it.
+Rungs 2 and 3 are therefore read for what they SAY and are not tested for
+existence, exactly as rung 1 already was. Where nothing was learnt, nothing is
+entered and the launcher says so in the one line it prints.
+
+NO PATH THE LAUNCHER OPENED EXITS THE PANE. lane-start is run, never exec'd:
+if it refuses — a directory that is not there, a lane held live elsewhere, a
 declined confirm — its own refusal is printed and Claude starts bare in the
 same window, with one line saying so.
+
+THE SCOPE OF THAT PROMISE, EXACTLY (Amendment 11, `R-A11-4`; RV-W3). It is held
+for every window this launcher MADE: the tmux session it created and the
+recorded pane it respawned, both of which it marks with
+WORKBENCHES_CLAUDE_TMUX_CHILD. In such a window this process is the only
+command there is, so a refusal handed back would leave tmux printing [exited]
+over a window with no Claude in it, and the launcher drops to bare Claude
+instead. Where the launcher was typed as a command in an EXISTING window's
+shell, a refusal is handed back with lane-start's own words above it and the
+operator lands at their prompt — there is no pane to exit, and a bare Claude
+started behind a session that may still be the lane's would mint a second
+transcript in the lane's own window.
+
+THE CASE THAT IS NOT COVERED, AND IT IS A REAL ONE: a window whose ONLY command
+is `pclaude` and which this launcher did not create — `tmux new-window -n <lane>
+'pclaude <profile>'`, a tmux config line, a pane respawned by hand. There the
+variable is unset and this launcher cannot tell that window from a shell's, so a
+refusal in a window already named for the lane is handed back and tmux prints
+[exited]. Until the fence is made a pane-level one, start such a window with a
+shell in it — `tmux new-window -n <lane>` then `pclaude <profile>` — or pass the
+lane as --lane, whose refusal drops to bare Claude by the arm above.
 EOF
       exit 0
       ;;

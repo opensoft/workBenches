@@ -185,7 +185,12 @@ not an error but the window being in use. A window the register knows as
 created exactly as before, and where the lane is certain — `--lane` or
 `CLAUDE_LANE`, the operator's own word — that new window is named for the lane
 at birth with tmux's `automatic-rename` turned off, so the *next* restart
-typed in it binds by name. What the parent resolved is never handed down as
+typed in it binds by name — and, since Evidence 3, created with `-c` the lane's
+own directory where that is known, because the harness keys a session to the
+directory its Claude runs in. `WORKBENCHES_CLAUDE_WINDOW_REUSE=off` turns step
+two off for one launch, for the emergency where a record names a window that
+must not be touched; the ownership fence above already refuses another lane's
+window without it. What the parent resolved is never handed down as
 the answer: a lane that was an inference still reaches `lane-start` as
 `--confirm` in the child. Before Amendment 11, every outside-tmux
 launch made a fresh session whose window tmux named for whatever command was
@@ -263,7 +268,25 @@ exist — so both simply find nothing and rung 4 stands. A path containing a
 space is written quoted and read back unquoted; one containing `, `, ` — ` or a
 `"` is refused by the writer and never reaches a reader.
 
-**Nothing here can close the window (Amendment 11(3)).** `lane-start` is now
+**And the launch runs in that directory.** The harness keys a session to the
+directory its Claude runs in, so a lane started somewhere else comes up without
+that repository's `CLAUDE.md` and without the lane's own memory — while
+`--resume <uuid>` still continues the right transcript, which is why it is easy
+to miss. This lane's second restart on 2026-09-13 was typed from `/workspace`:
+the launcher made its tmux session there, and the session came up with none of
+its instructions (new-workstation#20, Evidence 3). The directory the order
+above resolved is therefore **entered** before `lane-start` is run — and so
+before the Claude `lane-start` execs, and before the bare Claude behind a
+refusal — and a new tmux session is created with `-c` that directory.
+**A recorded directory that is gone is a refusal that names the path**, never a
+quiet fall to rung 4: `lane-start` writes the lane's home from the tree it
+starts in, so falling through to `$PROJECTS_ROOT/<repo>` where that is a
+different tree re-homes the lane silently. Rungs 2 and 3 are read for what they
+say and are not tested for existence, exactly as rung 1 already was. Where
+nothing was learnt there is nothing to enter, and the launcher says so in the
+one line it prints, naming `--dir`.
+
+**No path the launcher opened exits the pane (Amendment 11(3)).** `lane-start` is now
 *run*, never `exec`'d, on every path above that resolves a lane — before this,
 only the swap-record confirmation ran it, and the window-name and `--lane`
 paths still `exec`'ed it, byte for byte. `lane-start` refuses in exactly two
@@ -280,7 +303,25 @@ apart. There, uniquely, the status is handed back unchanged rather than
 covered over with a bare Claude, because a bare Claude started behind a
 session that may still be the lane's would mint a new transcript in the
 lane's own window — exactly the lineage fault the whole protocol exists to
-prevent. See `claude-profile --help` for the exact options.
+prevent. That last arm stops at the one place it would empty a pane: where this
+process is the only command of a window the launcher itself **made** — the tmux
+session it created or the recorded pane it respawned, both marked
+`WORKBENCHES_CLAUDE_TMUX_CHILD` — there is no prompt behind the refusal, so the
+lane is dropped and Claude starts bare in the window instead.
+
+**The scope of that promise, exactly, and the case it does not cover.** It is
+held for every window this launcher made. It is **not** held for a window whose
+only command is `pclaude` and which the launcher did **not** create — `tmux
+new-window -n <lane> 'pclaude <profile>'`, a tmux configuration line, a pane
+respawned by hand. Such a window carries no `WORKBENCHES_CLAUDE_TMUX_CHILD`,
+the launcher cannot tell it from a command typed in a shell's window, and a
+`lane-start` refusal in a window already named for the lane is handed back —
+tmux then prints `[exited]` over a window with no Claude in it. Until that fence
+is made a pane-level one (compare the pane's own root process against this
+one's), start such a window with a shell in it — `tmux new-window -n <lane>`,
+then `pclaude <profile>` — or name the lane with `--lane`, whose refusal drops
+to bare Claude by the arm above. See `claude-profile --help` for the exact
+options.
 
 **`/swap`, manual and automatic (Amendment 11(4)).** `/swap` is an alias of
 `/lane-swap` — the canonical name and its skill stay exactly where they are;
@@ -294,7 +335,7 @@ guard tells the session to run `/lane-swap` now, every step in order, with no
 question put to the operator. The steps are Amendment 8(a)'s five, unchanged
 — the identity triple derived; the handoff refreshed, committed, and pushed;
 every running writer told to commit and push; the `PAUSED` swap record (now
-carrying `dir` and `window`) together with the register's event line and the
+carrying `dir`, `window` and `profile`) together with the register's event line and the
 row's state cell; and the one restart command printed — so the operator's
 entire part in the restart is re-running `pclaude <profile>`. **The guard
 performs no step of the swap itself** — it is a hook, it can put one line into

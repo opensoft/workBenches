@@ -536,6 +536,40 @@ grep -q 'CLAUDE_LANE_DIR' "$TEST_ROOT/help.out" || fail "--help does not documen
 grep -q -- '--yes' "$TEST_ROOT/help.out" \
     && fail "--help promises --yes, which is passed nowhere (F-W2)"; assertion
 
+# 1i-i. RV-W5 — `--help` IS THE DOCUMENT AN OPERATOR MEETS FIRST, so it says
+# what this launcher does NOW and not what an earlier pass of it did. Every
+# claim below is one Amendment 11 moved, and a help text that lags the code is
+# how an operator learns a rule that is no longer true.
+grep -q 'STEP 3 IS NEW IN AMENDMENT 11' "$TEST_ROOT/help.out" \
+    || fail "RV-W5: --help does not document precedence step 3, the one zero-question rule Amendment 11 adds to this path"; assertion
+grep -Fq 'the swap record whose `window` sub-field NAMES THIS WINDOW' "$TEST_ROOT/help.out" \
+    || fail "RV-W5: --help's lane order does not carry step 3 at all"; assertion
+grep -Fq 'WORKBENCHES_CLAUDE_LANE_DIR_FROM_CWD' "$TEST_ROOT/help.out" \
+    && fail "RV-W5: --help still documents the cwd rung's opt-out, which c712c5b removed"; assertion
+grep -Fq "The cwd's own checkout is NOT a rung" "$TEST_ROOT/help.out" \
+    || fail "RV-W5: --help does not rule the cwd's own checkout out by name (R-A11-3)"; assertion
+grep -Fq 'WORKBENCHES_CLAUDE_WINDOW_REUSE' "$TEST_ROOT/help.out" \
+    || fail "RV-W5: the reuse opt-out is a switch nobody can find — the review's third declared addition, kept only if documented"; assertion
+grep -Fq 'AND THE LAUNCH RUNS IN IT' "$TEST_ROOT/help.out" \
+    || fail "RV-W5/Evidence 3: --help does not say the launcher enters the lane's directory"; assertion
+grep -Fq 'refusal that names the path, never a quiet fall to the default' "$TEST_ROOT/help.out" \
+    || fail "RV-W2: --help does not say what happens to a recorded directory that is gone"; assertion
+
+# 1i-ii. RV-W3 — AND THE SCOPE OF "NO PATH EXITS THE PANE" IS STATED, with the
+# case it does NOT cover documented beside it. The invariant is held for every
+# window this launcher MADE — the session it created and the pane it respawned,
+# both marked WORKBENCHES_CLAUDE_TMUX_CHILD. A window whose only command is
+# `pclaude` and which the launcher did not create carries no such mark, and the
+# launcher cannot tell it from a shell's window: there a refusal is handed back
+# and tmux prints [exited]. That is a fact about this build, so it is written
+# where an operator reads it and not left for them to find.
+grep -q 'NO PATH THE LAUNCHER OPENED EXITS THE PANE' "$TEST_ROOT/help.out" \
+    || fail "RV-W3: --help claims an invariant wider than the one this launcher proves"; assertion
+grep -Fq 'THE CASE THAT IS NOT COVERED' "$TEST_ROOT/help.out" \
+    || fail "RV-W3: the uncovered case — a window whose only command is pclaude that the launcher did not make — is not documented"; assertion
+grep -Fq 'tmux new-window -n <lane>' "$TEST_ROOT/help.out" \
+    || fail "RV-W3: the uncovered case is named without the way around it"; assertion
+
 # ===========================================================================
 # 2. THE WINDOW IS REUSED — Amendment 11(2) act 1, SPEC §3.
 # ===========================================================================
@@ -1579,6 +1613,20 @@ grep -Fq 'dir[:=]' "$LAUNCHER" \
 for var in WORKBENCHES_CLAUDE_WINDOW WORKBENCHES_CLAUDE_WINDOW_ID WORKBENCHES_CLAUDE_WINDOW_REF; do
     grep -Fq "$var" "$LAUNCHER" || fail "§3: $var is not threaded across the re-exec"; assertion
 done
+
+# RV-W5 — AND THE DOCUMENT BESIDE `--help` SAYS THE SAME. A switch that occurs
+# once in the code and nowhere a person reads is a switch nobody can use in the
+# emergency it exists for; the review's judgement on the third declared addition
+# was "keep and document it in one line, or drop it".
+DOCS_MD="$REPO_ROOT/docs/claude-multi-account-profiles.md"
+grep -Fq 'WORKBENCHES_CLAUDE_WINDOW_REUSE' "$DOCS_MD" \
+    || fail "RV-W5: the window-reuse opt-out is in the code and in no document a person reads"; assertion
+grep -Fq 'WORKBENCHES_CLAUDE_LANE_DIR_FROM_CWD' "$DOCS_MD" \
+    && fail "RV-W5: the docs still carry the cwd rung's opt-out, which c712c5b removed"; assertion
+grep -Fq 'the case it does not cover' "$DOCS_MD" \
+    || fail "RV-W3: the docs state the pane invariant without the case it does not cover"; assertion
+grep -Fq 'entered' "$DOCS_MD" \
+    || fail "RV-W5/Evidence 3: the docs do not say the launcher enters the lane's directory"; assertion
 
 # SPEC §9 — `/swap` is a one-line command file that INVOKES the skill, and the
 # 176-line skill is not duplicated into it. Two texts that must stay byte-equal
