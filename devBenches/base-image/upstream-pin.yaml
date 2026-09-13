@@ -57,11 +57,11 @@ sources:
     source_repository: opensoft/openRepoTools
     materialization: copied
     revision_kind: commit
-    commit: "0eb29b34daed39960c9ecf89c2600644a9fed784"
+    commit: "d3d59b57884577cfacfc7301b556317c0518c4df"
     vendor_dir: files/openrepotools
     files:
       - path: openRepoTools
-        sha256: "636a8aa268c70ec414c700d72974e029ab45ffc1051a213bcd955ad73fc0dd9a"
+        sha256: "f08238b49550609333400561e5c9a9c51276a9d7c9bf63a18e6ae0baa6bd8c4c"
         mode: "100755"
       - path: park
         sha256: "b0bcf13a97f4c6688bb6bbc4637e6b1f3142448bbb0b66c105396765f0b7d62b"
@@ -70,5 +70,23 @@ sources:
         sha256: "db6fe6237648714936467be7236cd6450db23e9d5bd96c415a6ae1322becab07"
         mode: "100755"
       - path: status
-        sha256: "ffc8084389c7f4278d7f7925e32eea70981bb3a260f957e8868b454d9b1ce1a5"
+        sha256: "9f737e00a8f8f60e5d589ea4916df297b3558c29481e6ad71b67a4f764e01d78"
         mode: "100755"
+      - path: lane-start
+        sha256: "8dfecb61dddcec4b795022172e44ace09ff8cfb7a2ca1c5c31fb2faca85878c1"
+        mode: "100755"
+      - path: lane-end
+        sha256: "9f7bcad5d9cca6defc4a7c45be9642336fce96049bd57bf7794944b7f730bcf7"
+        mode: "100755"
+      - path: lanes-edit.sh
+        sha256: "ac7cc1f365e795f545d87854ad7f2db2f45457598a068cf74e44fb8a9cf2ee5e"
+        mode: "100755"
+      - path: link-estates
+        sha256: "b8d1c7950af46921aeb014510a8c2506b3c11c1451ef7d76d6b78f1a5fc7565b"
+        mode: "100755"
+      - path: repos.tsv
+        sha256: "e4f9160a07ea528d89903912ecbed2c22041d693bdc0637bbd52843abbd3b959"
+        mode: "100644"
+      - path: skills/lane-swap/SKILL.md
+        sha256: "c26057a507db33cbd2910e8360221584ad96847fe7acaab533ae8379422bc2b7"
+        mode: "100644"
