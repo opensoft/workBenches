@@ -42,7 +42,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=7
+EXPECTED_SCENARIOS=9
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -159,6 +159,10 @@ grep -q 'are not lane surfaces' "$SKILL_SOURCE" \
     || fail "text: /resume is not ruled out as a lane surface (R-A8-6)"; assertion
 grep -q -- '--no-launch <repo> <n>' "$SKILL_SOURCE" \
     && fail "text: a copy-pasteable command still carries literal <repo> <n>, which the shell reads as redirections"; assertion
+# RV-S2 (opensoft/workBenches#63 re-verification): step 4's row write must
+# have a refused-write branch.
+grep -q 'row_write_refused=1' "$SKILL_SOURCE" \
+    || fail "text: step 4's row write has no refused-write branch (RV-S2)"; assertion
 
 # ---------------------------------------------------------------------------
 # 5. RV-W2 (workBenches#63 re-verification; new-workstation#16 adoption act 6
@@ -210,6 +214,54 @@ run_setup
     || fail "default hook additive: an unrelated hook kind was lost"; assertion
 [[ "$(default_session_start_count)" -eq 1 ]] \
     || fail "default hook additive: SessionStart did not survive beside it"; assertion
+
+# ---------------------------------------------------------------------------
+# 8. RV-S1 regression (BLOCKING, opensoft/workBenches#63 re-verification): the
+# handoff column has to be read by a fixed LEFT field index, never counted
+# back from NF. A right split returns the wrong cell — the empty string, on
+# this lane's own real register row — the moment any earlier or later column
+# carries a literal '|', which the live register has more than one of. This
+# executes the shipped derivation line itself against two fixture rows (a
+# plain one and one shaped like this lane's real row, extra '|' characters
+# and all), so a future edit to the expression is re-tested, not a hand-copied
+# stand-in that could silently diverge from the file.
+scenario
+handoff_line="$(grep -m1 '^handoff="\$(printf' "$SKILL_SOURCE")"
+[[ -n "$handoff_line" ]] \
+    || fail "RV-S1: could not find the handoff derivation line to execute it"; assertion
+[[ "$handoff_line" != *'NF-2'* && "$handoff_line" != *'NF -'* ]] \
+    || fail "RV-S1: the handoff derivation itself still counts back from NF: $handoff_line"; assertion
+plain_row='| `openxfactory-13` | `abc12345` | Eagle / WSL2 / brett | 2026-09-05 | none | handoffs/xFactory/session-handoff-2026-09-05.md | LIVE · note |'
+multi_pipe_row='| `openRepoProject-1` | harness abc-123 | Eagle / team / brett | 2026-09-11T19:08Z | https://example/issues/1, CLAIMED | handoffs/openRepoProject/session-handoff-2026-09-11-lane-openRepoProject-1.md | LIVE · event one · event with a | literal pipe inside it · event three |'
+row="$plain_row"; eval "$handoff_line"
+[[ "$handoff" == "handoffs/xFactory/session-handoff-2026-09-05.md" ]] \
+    || fail "RV-S1: plain row derived handoff='$handoff'"; assertion
+row="$multi_pipe_row"; eval "$handoff_line"
+[[ "$handoff" == "handoffs/openRepoProject/session-handoff-2026-09-11-lane-openRepoProject-1.md" ]] \
+    || fail "RV-S1: a row with extra '|' characters (this lane's own shape) derived handoff='$handoff', expected the real handoff column"; assertion
+old_buggy_result="$(printf '%s' "$multi_pipe_row" | awk -F'|' '{print $(NF-2)}')"
+[[ "$old_buggy_result" != "$handoff" ]] \
+    || fail "RV-S1: the fixture does not actually distinguish a right split from a left split"; assertion
+
+# ---------------------------------------------------------------------------
+# 9. RV-S2 regression: step 5 must print --lane as a LEADING option, before
+# `run` — claude-profile accepts --lane only as a leading option (before the
+# action), so a trailing one would be handed to Claude itself, not to the
+# launcher. Executes the shipped branch itself, both ways.
+scenario
+step5_snippet="$(sed -n '/if \[\[ -n "\${row_write_refused:-}" \]\]; then/,/^fi$/p' "$SKILL_SOURCE")"
+[[ -n "$step5_snippet" ]] \
+    || fail "RV-S2: could not find step 5's restart-command branch to execute it"; assertion
+lane=openRepoProject-1
+CLAUDE_PROFILE_NAME=work
+row_write_refused=""
+eval "$step5_snippet"
+[[ "$restart_cmd" == "pclaude run work" ]] \
+    || fail "RV-S2: normal-path restart_cmd='$restart_cmd', expected the unqualified command"; assertion
+row_write_refused=1
+eval "$step5_snippet"
+[[ "$restart_cmd" == "pclaude --lane openRepoProject-1 run work" ]] \
+    || fail "RV-S2: refused-write restart_cmd='$restart_cmd', expected --lane as a LEADING option before run"; assertion
 
 # Every fenced shell block has to parse, or the skill is not copy-pasteable.
 block_count=0
