@@ -358,16 +358,26 @@ lane-start --help 2>/dev/null | grep -q -- '--confirm' \
   && echo 'restart stamps: written by lane-start (Amendment 8(d))' \
   || echo 'restart stamps: MANUAL, as the next session first act (Rule 3 / Amendment 6(c))'
 # AND THE NAME THE NEXT SESSION COMES UP WITH — `R-A11-16` (A11 Addendum 3, ratified 2026-09-13 "a11
-# addendum 3 yes"), which is CF-W5. The restart above resumes, and `lane-start` passes `--name <lane>` only
-# where it CREATES a session (`:823`): its two resume branches (`:803`, `:812`) carry none, so the session
-# the operator lands in after a swap has the name the harness derived — `openrepoproject-b9`, Evidence 4 —
-# and nothing else in flight tells them. Step 1 says this for the session running the skill; this says it
-# for the one that comes next, because a lane whose messaging address (Amendment 2) is a derived name is a
-# lane nobody can address. WHICH ACT REMOVES THIS LINE: the one that puts `--name <lane>` on lane-start's
-# two resume branches, which SPEC §13.3 gives to the TOOLING PR — not adoption act 0, which ships
-# `session-lane` and its three callers and no stamp (act 0 landed as `opensoft/brett-wip#5` @`3719d97`
-# with this still open, which is why the attribution is worth getting right rather than inheriting).
-echo 'then, in the session that comes up: if its name is not the lane, type /rename <lane> (lane-start names only the session it CREATES; this line goes when it names the ones it RESUMES, SPEC §13.3)'
+# addendum 3 yes"), which is CF-W5. THE ACT STAYS AND ITS PREMISE HAS MOVED, because the estate overtook
+# it: `lane-start` names EVERY session it launches. Adoption act 0 merged as `opensoft/brett-wip#5` at
+# `3719d97` on 2026-09-13 — "--name on every launch" — and at that commit `lanes/lane-start:846`, `:855`
+# and `:866` ALL carry `--name "$LANE"`: the two branches that RESUME as well as the one that CREATES.
+# That is the act SPEC rev 5 §13 act 0 item 2 assigns, and it is act 0's rather than the tooling round's.
+# So a restart that reaches `lane-start` comes up named for the lane, and this line says nothing there —
+# it is fenced on `if its name is not the lane`, and that test is the whole of it.
+#
+# WHAT IT IS STILL FOR is the session that comes up WITHOUT `lane-start`: the launcher's own two
+# documented degradations — no `lane-start` on PATH (Evidence 5) and a `lane-start` that refused, both of
+# which start bare Claude in the same window — and a `claude` typed by hand. Those come up with the name
+# the harness derived (`openrepoproject-b9`, Evidence 4), and a lane whose messaging address (Amendment 2)
+# is a derived name is a lane nobody can address. Step 1 says this for the session running the skill; this
+# says it for the one that comes next.
+#
+# WHICH ACT REMOVES THIS LINE: none is scheduled, and that is exactly why it is printed CONDITIONALLY
+# rather than always. There is no API to rename a running session from inside, so wherever a session comes
+# up outside `lane-start` the operator's `/rename <lane>` is the only act there is — the amendment says the
+# same at clause (i) point 2, where a `/restart` in a session already running "needs it always".
+echo 'then, in the session that comes up: if its name is not the lane, type /rename <lane> (lane-start names every session it launches, the resume branches included, since adoption act 0 landed as opensoft/brett-wip#5 @3719d97; a session that came up WITHOUT it — a missing or refusing lane-start, or a bare claude — carries the name the harness derived, and no API renames one from inside)'
 ```
 
 That one command is the whole restart: bare `pclaude <profile>` resolves this lane from the window name,
@@ -384,11 +394,18 @@ never after the profile: `pclaude <profile> --lane <lane>` would be handed to Cl
 launcher. The capability probe above decides whether the RESUMED stamps are `lane-start`'s act or the next
 session's — do not assert either from memory.
 
-**The session that comes up after the restart is not named by `lane-start` unless it CREATES one.** Its two
-resume branches carry no `--name`, so the third leg of the identity triple — Amendment 2's messaging address
-— is whatever the harness derived, and `/rename <lane>` typed in that session is the only act that fixes it
-from inside. Step 5 prints that line beside the restart command for exactly as long as it is true: the
-tooling half stamps the resume branches (SPEC §13.3), and the line goes with it (`R-A11-16`, CF-W5).
+**The session that comes up after the restart IS named by `lane-start` — on every branch it has.** Adoption
+act 0 (`opensoft/brett-wip#5`, merged 2026-09-13 at `3719d97`) put `--name "$LANE"` on all three launch
+branches, the two that RESUME included (`lanes/lane-start:846`, `:855`, `:866`), which is what SPEC rev 5
+§13 act 0 item 2 gives it. An earlier revision of this step handed that to the tooling PR and said act 0 had
+left it open; both were false at the commit they cited, and the correction is recorded here rather than
+quietly made. So the third leg of the identity triple — Amendment 2's messaging address — is the lane
+wherever the restart reaches `lane-start`. What is left is the session that does NOT reach it: a launcher
+that found no `lane-start` (Evidence 5) or one that refused, both of which start bare Claude in the same
+window, and a `claude` typed by hand. There the name is whatever the harness derived, and `/rename <lane>`
+typed in that session is the only act that fixes it, because there is no API to rename a running session
+from inside. Step 5 therefore prints the act CONDITIONALLY — *if its name is not the lane* — which is why it
+needs no expiry: it is silent on every path `lane-start` named (`R-A11-16`, CF-W5).
 
 **`/resume` and `claude --resume <title>` are not lane surfaces** (A8 Addendum 2, R-A8-6): a lane is entered
 through `pclaude` or `lane-start`, and by no other door. Do not offer either as a fallback.

@@ -212,16 +212,26 @@ a bare `claude --resume` as the way back into a lane: the way back is
 is left **unnamed** on purpose, because it holds no lane, and naming it for one
 would put the lane's own address on a session the register does not know.
 
-**And `lane-start` names only the session it CREATES.** `--name "$LANE"` is on
-its new-session branch (`lane-start:823`); its two resume branches build
-`claude --resume "$row_sid"` (`:803`) and `claude --resume "$LANE"` (`:812`) and
-carry no `--name` at all — read back at the head this was written against. So a
-restart that *does* go through `lane-start` and resumes is still left with a
-derived record name today; closing that is the tooling PR's (`SPEC` rev 3 §0.9
-and §13.3). From inside a session already running under a derived name,
-`/rename <lane>` is the only act that fixes it — there is no API to rename a
-running session, which is why every surface prints the act rather than
-performing it.
+**And `lane-start` names EVERY session it launches.** `--name "$LANE"` is on all
+three of its launch branches — the two that RESUME, `claude --resume "$row_sid"`
+(`lane-start:846`) and `claude --resume "$LANE"` (`:855`), as well as the one
+that CREATES (`:866`) — since **adoption act 0** merged as `opensoft/brett-wip#5`
+at `3719d97` on 2026-09-13, *"--name on every launch"*. That is the act **SPEC
+rev 5 §13 act 0 item 2** assigns, and the line numbers above read back at that
+commit. **An earlier revision of this paragraph gave the gap to the tooling PR
+and said act 0 had left it open; both were false, and the correction is recorded
+rather than quietly made** (`CF2-W1`). So a restart that goes through
+`lane-start` — which is every restart this launcher makes where the tool is
+there — comes up named for the lane, resume or not.
+
+**What is left is the session that comes up WITHOUT `lane-start`**: the two
+degradations this launcher documents — no `lane-start` on `PATH` (Evidence 5)
+and a `lane-start` that refused, both of which start bare Claude in the same
+window — and a `claude` typed by hand. From inside a session already running
+under a derived name, `/rename <lane>` is the only act that fixes it: there is no
+API to rename a running session, which is why every surface prints the act rather
+than performing it, and prints it **conditionally** — *if its name is not the
+lane* — rather than always.
 
 **What precedence step 3 can answer depends on the tmux server, and one case is
 still owed to the helper (`RV-W7`).** Window ids are reissued from `@0` when the

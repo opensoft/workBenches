@@ -1976,12 +1976,20 @@ grep -Fq 'openrepoproject-b9' "$DOCS_MD" \
     || fail "Evidence 4: the docs claim a derived name without the one that was measured"; assertion
 grep -Fq '`/rename <lane>` is the only act that fixes it' "$DOCS_MD" \
     || fail "Evidence 4(b): the docs do not name the one act that fixes a derived name from inside a session"; assertion
-# ...and they state §0.9's CORRECTION rather than the overclaim: lane-start names
-# the session it creates, and its two resume branches carry no --name today.
-grep -Fq 'names only the session it CREATES' "$DOCS_MD" \
-    || fail "Evidence 4/SPEC rev 3 §0.9: the docs still say lane-start names every launch it makes, which is the overclaim the SPEC measured"; assertion
+# ...and they state WHAT IS TRUE AT THE HEAD, with the commit that made it so —
+# CF2-W1. SPEC rev 3 §0.9 measured `--name` on the new-session branch alone and
+# this document said so; adoption act 0 then merged as `opensoft/brett-wip#5` at
+# `3719d97` and put it on all three branches, which SPEC rev 5 §13 act 0 item 2
+# assigns to act 0 and not to the tooling round. Both halves are pinned: the
+# corrected claim must be there WITH its commit, and the superseded one must not.
+grep -Fq 'names EVERY session it launches' "$DOCS_MD" \
+    || fail "CF2-W1: the docs still say lane-start names only the session it creates, which is false since 3719d97"; assertion
+grep -Fq '3719d97' "$DOCS_MD" \
+    || fail "CF2-W1: the docs make a claim about lane-start's branches and cite no commit for it, so a reader cannot read it back"; assertion
 grep -Fq 'carry no `--name` at all' "$DOCS_MD" \
-    || fail "SPEC rev 3 §0.9: the docs do not say which branches leave a resumed session derived"; assertion
+    && fail "CF2-W1: the docs still say lane-start's resume branches carry no --name; they have carried it since 3719d97"; assertion
+grep -Fq 'closing that is the tooling PR' "$DOCS_MD" \
+    && fail "CF2-W1: the docs still hand the --name fix to the tooling PR, which SPEC rev 5 §13 does not give it"; assertion
 
 # RV-W7 — DIVERGENCE 9's RESIDUE IS NAMED, with the finding ids the two reviews
 # actually gave it. A rule this PR withdrew and nobody had implemented is a hole
@@ -2158,17 +2166,19 @@ grep -Fq 'export CLAUDE_PROFILE_NAME="$profile"' "$LAUNCHER" \
 # session's RECORD NAME derived (`openrepoproject-b9`), which is what the
 # statusline and `ListAgents` display.
 #
-# WHAT `lane-start` ACTUALLY DOES ABOUT IT, corrected against SPEC rev 3 §0.9
-# and read back at `lane-start` itself: `--name "$LANE"` is on the NEW-SESSION
-# branch alone (`:823`); the two resume branches build `claude --resume
-# "$row_sid"` (`:803`) and `claude --resume "$LANE"` (`:812`) and carry NO
-# `--name`. An earlier pass of this comment said lane-start names every launch
-# it makes, which is the overclaim the SPEC measured: a restart that goes
-# through lane-start and RESUMES is still derived today, and closing that is the
-# tooling PR's (§13.3). What is true here is the negative rule owed to THIS PR —
-# the launcher, the guard and the skill never offer a bare `claude --resume` as
-# the lane's act, and never name a session themselves — and a negative rule is
-# audited, not scenario'd.
+# WHAT `lane-start` ACTUALLY DOES ABOUT IT, read back at the commit that decided
+# it: `--name "$LANE"` is on ALL THREE launch branches — `claude --resume
+# "$row_sid"` (`lanes/lane-start:846`), `claude --resume "$LANE"` (`:855`) and
+# the new session (`:866`) — since adoption act 0 merged as
+# `opensoft/brett-wip#5` at `3719d97` on 2026-09-13, which SPEC rev 5 §13 act 0
+# item 2 assigns to act 0 rather than to the tooling round. This comment has now
+# been wrong in BOTH directions: an early pass said lane-start named every launch
+# it made (the overclaim SPEC rev 3 §0.9 measured), and the pass after it said
+# the resume branches carried none and handed the fix to the tooling PR (CF2-W1,
+# false at the very commit it cited). What is true here is the negative rule owed
+# to THIS PR — the launcher, the guard and the skill never offer a bare
+# `claude --resume` as the lane's act, and never name a session themselves — and
+# a negative rule is audited, not scenario'd.
 #
 # The launcher's own `--help` DESCRIBES lane-start's `--resume/--name <lane>`,
 # which is the correct thing to describe, so the audit is made against the
@@ -2408,10 +2418,22 @@ ws_container_line="$(grep -n '^container="py-bench"' "$WAVE_SHELL" | head -n 1 |
 # ...and the two documents say it.
 grep -Fq 'AND THE WORKSTATION STEP 4 READS IS CONFIGURED' "$TEST_ROOT/help.out" \
     || fail "Evidence 6: --help does not say where the workstation comes from"; assertion
-grep -Fq 'passes `--name <lane>` on the session it CREATES' "$TEST_ROOT/help.out" \
-    || fail "SPEC rev 3 §0.9: --help overclaims what lane-start names"; assertion
+# CF2-W1 — WHAT `lane-start` NAMES, AND WHO CLOSED THE GAP. Adoption act 0
+# merged as `opensoft/brett-wip#5` at `3719d97` on 2026-09-13 and put
+# `--name "$LANE"` on ALL THREE launch branches (`lanes/lane-start:846`, `:855`,
+# `:866`) — the two that RESUME included — which is what SPEC rev 5 §13 act 0
+# item 2 assigns it. Four surfaces of this PR said the opposite and handed the
+# fix to the tooling PR; this pair pins the corrected claim and refuses the old
+# one by its own words, so a revert of the prose fails here rather than shipping.
+grep -Fq 'passes `--name <lane>` on EVERY launch branch' "$TEST_ROOT/help.out" \
+    || fail "CF2-W1: --help does not say lane-start names every branch it launches, which act 0 made true at 3719d97"; assertion
+grep -Fq 'its two resume branches carry' "$TEST_ROOT/help.out" \
+    && fail "CF2-W1: --help still tells the reader lane-start's resume branches carry no --name, which is false since 3719d97"; assertion
+grep -Fq '3719d97' "$TEST_ROOT/help.out" \
+    || fail "CF2-W1: --help names no commit for the claim it makes about lane-start, so a reader cannot read it back"; assertion
 grep -Fq '/rename <lane>' "$TEST_ROOT/help.out" \
     || fail "Evidence 4(b): --help does not name the one act that fixes a derived session name from inside"; assertion
+# ...and the docs' half of the same fact is pinned in the doc audit above.
 grep -Fq 'never taken from' "$DOCS_MD" \
     || fail "Evidence 6: the docs do not carry the rule at all"; assertion
 

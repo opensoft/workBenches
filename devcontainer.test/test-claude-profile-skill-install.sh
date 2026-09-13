@@ -247,16 +247,33 @@ printf '%s\n' "$skill_code_only" | grep -Fq 'unknown' \
     && fail "R-A11-14: the skill still writes a placeholder workstation into the register"; assertion
 grep -Fq 'REFUSED: no workstation for this lane' "$SKILL_SOURCE" \
     || fail "R-A11-14: a writer with no configured workstation does not refuse"; assertion
-# THE INSTALLED SKILL ENDS WITH THE `/rename <lane>` ACT (CF-W5, `R-A11-16`).
-# The restart step 5 prints RESUMES, and `lane-start` names only the session it
-# CREATES, so the one the operator lands in after a swap carries the name the
-# harness derived until adoption act 0 stamps the resume branches.
+# THE INSTALLED SKILL ENDS WITH THE `/rename <lane>` ACT (CF-W5, `R-A11-16`) —
+# AND ITS PREMISE IS TRUE (CF2-W1). `lane-start` names every session it
+# launches, the two RESUME branches included, since adoption act 0 merged as
+# `opensoft/brett-wip#5` at `3719d97` (`lanes/lane-start:846`, `:855`, `:866`;
+# SPEC rev 5 §13 act 0 item 2). The act stays, because a session that came up
+# WITHOUT lane-start — a missing or refusing one, or a bare `claude` — still
+# carries the name the harness derived and no API renames a running session from
+# inside; what had to move is the reason printed beside it.
 # Step 5's SHELL, not the paragraph under it: prose that explains the act is
 # not the act, and what the operator reads at the end of a swap is what the
 # shell prints.
 step5_code="$(awk '/^## 5\./ { inside = 1 } inside && /^```/ { fence = !fence; next } inside && fence' "$SKILL_SOURCE")"
 printf '%s\n' "$step5_code" | grep -Fq '/rename <lane>' \
     || fail "CF-W5: step 5 PRINTS the restart command without the act that fixes the derived name the next session comes up with"; assertion
+# ...and what it prints beside it is the TRUE premise. The false one is refused
+# by its own words in BOTH the printed line and the step's comment, so a revert
+# of either fails here.
+printf '%s\n' "$step5_code" | grep -Fq 'names every session it launches' \
+    || fail "CF2-W1: step 5's printed act does not say lane-start names every branch it launches, which act 0 made true at 3719d97"; assertion
+printf '%s\n' "$step5_code" | grep -Fq '3719d97' \
+    || fail "CF2-W1: step 5's printed act makes a claim about lane-start and cites no commit for it"; assertion
+printf '%s\n' "$step5_code" | grep -Fq 'names only the session it CREATES' \
+    && fail "CF2-W1: step 5 still prints that lane-start names only the session it creates, which is false since 3719d97"; assertion
+grep -Fq 'with this still open' "$SKILL_SOURCE" \
+    && fail "CF2-W1: the skill still says adoption act 0 landed with the --name gap open; it closed it (3719d97)"; assertion
+grep -Fq 'SPEC §13.3 gives to the TOOLING PR' "$SKILL_SOURCE" \
+    && fail "CF2-W1: the skill still hands the --name fix to the tooling PR, which SPEC rev 5 §13 does not give it"; assertion
 # (the installed copies are pinned byte-for-byte against this source by the
 # `cmp -s` assertions below, so proving it here would be proving it twice)
 grep -F 'REFUSED: no workstation for this lane' "$SKILL_SOURCE" | grep -Fq 'pclaude' \

@@ -1757,15 +1757,18 @@ AND THIS LAUNCHER NEVER DEGRADES IN SILENCE (new-workstation#20, Evidence 5).
 Every lane above is taken by RUNNING `lane-start`, which is also the only thing
 that names the session for the lane — Amendment 2's messaging address, the third
 leg of the identity beside the window's name and the transcript. (`lane-start`
-passes `--name <lane>` on the session it CREATES; its two resume branches carry
-none today, so a resumed session is still left with the name Claude derives, and
-closing that is the tooling half's. A bare `claude --resume <uuid>` reaches
-neither, which is why no line here ever prints one as the way back into a lane;
-from inside a session already running under a derived name, `/rename <lane>` is
-the only act that fixes it.) Where lane-start is NOT on PATH there is no lane to
-take:
+passes `--name <lane>` on EVERY launch branch it has — the two that RESUME as
+well as the one that CREATES — since adoption act 0 merged as
+opensoft/brett-wip#5 at 3719d97 on 2026-09-13, "--name on every launch". So a
+restart that reaches lane-start comes up named for the lane. A bare
+`claude --resume <uuid>` reaches none of those branches, which is why no line
+here ever prints one as the way back into a lane; and a session THIS launcher
+started bare — behind a lane-start refusal, or on a machine that has none —
+comes up with the name the harness derived, where `/rename <lane>` typed inside
+it is the only act that fixes it, because there is no API to rename a running
+session from inside.) Where lane-start is NOT on PATH there is no lane to take:
 the launch still happens, and the FIRST line it prints says so and names the one
-install act. This machine cannot tell an estate that was never installed from
+install act, in that one line. This machine cannot tell an estate that was never installed from
 one whose `~/.local/bin` links a rebuild removed while this launcher stayed in
 /usr/local/bin — which is what happened on 2026-09-13, and three restarts came
 up with no stamp, no lane and a derived session name before anything said so.
