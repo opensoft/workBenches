@@ -247,6 +247,18 @@ printf '%s\n' "$skill_code_only" | grep -Fq 'unknown' \
     && fail "R-A11-14: the skill still writes a placeholder workstation into the register"; assertion
 grep -Fq 'REFUSED: no workstation for this lane' "$SKILL_SOURCE" \
     || fail "R-A11-14: a writer with no configured workstation does not refuse"; assertion
+# THE INSTALLED SKILL ENDS WITH THE `/rename <lane>` ACT (CF-W5, `R-A11-16`).
+# The restart step 5 prints RESUMES, and `lane-start` names only the session it
+# CREATES, so the one the operator lands in after a swap carries the name the
+# harness derived until adoption act 0 stamps the resume branches.
+# Step 5's SHELL, not the paragraph under it: prose that explains the act is
+# not the act, and what the operator reads at the end of a swap is what the
+# shell prints.
+step5_code="$(awk '/^## 5\./ { inside = 1 } inside && /^```/ { fence = !fence; next } inside && fence' "$SKILL_SOURCE")"
+printf '%s\n' "$step5_code" | grep -Fq '/rename <lane>' \
+    || fail "CF-W5: step 5 PRINTS the restart command without the act that fixes the derived name the next session comes up with"; assertion
+# (the installed copies are pinned byte-for-byte against this source by the
+# `cmp -s` assertions below, so proving it here would be proving it twice)
 grep -F 'REFUSED: no workstation for this lane' "$SKILL_SOURCE" | grep -Fq 'pclaude' \
     || fail "R-A11-14: the refusal does not name the launcher that sets LANES_WORKSTATION"; assertion
 grep -Fq 'ws="${LANES_WORKSTATION:-}"' "$SKILL_SOURCE" \

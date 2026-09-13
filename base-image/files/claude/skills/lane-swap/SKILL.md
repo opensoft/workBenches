@@ -355,6 +355,14 @@ printf 'READY TO SWAP — restart with: %s%s\n' "$restart_cmd" "$restart_note"
 lane-start --help 2>/dev/null | grep -q -- '--confirm' \
   && echo 'restart stamps: written by lane-start (Amendment 8(d))' \
   || echo 'restart stamps: MANUAL, as the next session first act (Rule 3 / Amendment 6(c))'
+# AND THE NAME THE NEXT SESSION COMES UP WITH — `R-A11-16` (A11 Addendum 3, ratified 2026-09-13 "a11
+# addendum 3 yes"), which is CF-W5. The restart above resumes, and `lane-start` passes `--name <lane>` only
+# where it CREATES a session (`:823`): its two resume branches (`:803`, `:812`) carry none, so the session
+# the operator lands in after a swap has the name the harness derived — `openrepoproject-b9`, Evidence 4 —
+# and nothing else in flight tells them. Step 1 says this for the session running the skill; this says it
+# for the one that comes next, because a lane whose messaging address (Amendment 2) is a derived name is a
+# lane nobody can address. Adoption act 0 puts the stamp on the resume branches and this line goes.
+echo 'then, in the session that comes up: if its name is not the lane, type /rename <lane> (lane-start names only the session it CREATES; adoption act 0 removes this line)'
 ```
 
 That one command is the whole restart: bare `pclaude <profile>` resolves this lane from the window name,
@@ -370,6 +378,12 @@ the action and before the profile, and after Amendment 11(1) `--dir <path>` is o
 never after the profile: `pclaude <profile> --lane <lane>` would be handed to Claude itself, not to the
 launcher. The capability probe above decides whether the RESUMED stamps are `lane-start`'s act or the next
 session's — do not assert either from memory.
+
+**The session that comes up after the restart is not named by `lane-start` unless it CREATES one.** Its two
+resume branches carry no `--name`, so the third leg of the identity triple — Amendment 2's messaging address
+— is whatever the harness derived, and `/rename <lane>` typed in that session is the only act that fixes it
+from inside. Step 5 prints that line beside the restart command for exactly as long as it is true: adoption
+act 0 stamps the resume branches, and the line goes with it (`R-A11-16`, CF-W5).
 
 **`/resume` and `claude --resume <title>` are not lane surfaces** (A8 Addendum 2, R-A8-6): a lane is entered
 through `pclaude` or `lane-start`, and by no other door. Do not offer either as a fallback.

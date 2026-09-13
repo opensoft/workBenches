@@ -1329,8 +1329,30 @@ resolve_lane() {
   # which has its own line for a directory it could not learn.
   # NO APOSTROPHE IN THIS DEFAULT, and that is not style: bash reads a `'` inside
   # a `${x:-word}` as opening a quote, so one here swallows the rest of the file
-  # and every function defined below it goes missing at run time while `bash -n`
-  # still says the syntax is fine.
+  # and every function defined below it goes missing at run time.
+  #
+  # AND WHETHER `bash -n` CATCHES IT DEPENDS ON WHAT FOLLOWS, WHICH IS WHY THE
+  # SUITE NOW RUNS `shellcheck` BESIDE IT (CF-W4, corrected under `R-A11-16`).
+  # Measured on this workstation, GNU bash 5.2.21, by putting one apostrophe
+  # into this very default and running both tools over THIS file:
+  #   $ bash -n base-image/files/claude-profile      -> exit 0, says nothing
+  #   $ shellcheck -S error base-image/files/claude-profile
+  #                                                  -> SC1073/SC1072, :1382
+  # (the `$ ` prompts are load-bearing: a comment line that starts with the
+  # linter's own name is read as a shellcheck DIRECTIVE and fails the gate —
+  # measured here the moment this comment was first written.)
+  # `bash -n` sees a syntax error only where the stray quote is still open at
+  # END OF FILE. Every apostrophe below it can close it again — and a file this
+  # size has many — after which the file parses perfectly while everything
+  # between the two lives inside a string. The confirmation review measured a
+  # three-line file, where the quote does reach EOF unbalanced and `bash -n`
+  # does exit 2; both measurements are right, and the difference is exactly what
+  # follows the trap. So the claim this comment used to make is true of this
+  # file and false in general, and neither wording is a reason to skip the
+  # check: the linter is the half that holds this class, the gate at the top of
+  # `test-claude-profile-amendment-11.sh` runs both, and the comment stays
+  # because the failure mode is invisible on INSPECTION — the file still reads
+  # like bash, and the loss shows up as a function that is simply not there.
   if [[ -n "${swapped_ws_unknown:-}" ]]; then
     lane_read_note="${lane_read_note:-this is a container and LANES_WORKSTATION names no workstation, so the swap records for this workstation were not read (new-workstation#20, Evidence 6); the launcher on the host exports it into every session and container it starts, so set LANES_WORKSTATION=<workstation> here}"
   fi

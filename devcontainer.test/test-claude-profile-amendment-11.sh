@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=100
+EXPECTED_SCENARIOS=101
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -108,6 +108,10 @@ LANES_EDIT_LOG="$TEST_ROOT/lanes-edit.log"
 ERR_LOG="$TEST_ROOT/stderr.log"
 OUT_LOG="$TEST_ROOT/stdout.log"
 FAKE_HOME="$TEST_ROOT/home"
+# The four artefacts this suite audits, named once. `GUARD_SH` and the two
+# markdown files are read by the static sections below; `GUARD_SH` is also
+# under section 0's syntax gate, so it is defined here rather than there.
+GUARD_SH="$REPO_ROOT/base-image/files/claude-usage-guard.sh"
 mkdir -p "$PROFILE_DIR" "$RUN_PROFILE_DIR" "$FAKE_BIN" "$FAKE_HOME" "$TEST_ROOT/empty-bin"
 
 # A profile called `run` exists in this estate ON PURPOSE. It is the one word
@@ -488,6 +492,53 @@ tty_launch() {
 }
 
 lane_start_argv() { cat "$LANE_START_LOG" 2>/dev/null || true; }
+
+# ===========================================================================
+# 0. THE FILE PARSES, AND THE LINTER AGREES — CF-W4, under `R-A11-16` (A11
+#    Addendum 3, ratified by Brett Heap 2026-09-13 "a11 addendum 3 yes").
+#
+# This PR adds ~1,400 lines to `base-image/files/claude-profile` and NOTHING
+# ran a syntax check over it: the only `bash -n` calls in devcontainer.test/
+# were on `codex-profile` and `wave-container-shell.sh`. The hazard is not
+# hypothetical — one apostrophe inside a `${x:-word}` default swallows the rest
+# of the file, and every function below it is simply missing at run time while
+# the file still READS like bash.
+#
+# AND THE TWO HALVES OF THIS GATE ARE NOT THE SAME CHECK. Measured on this
+# workstation (GNU bash 5.2.21, shellcheck 0.9.0) by putting one apostrophe into
+# the launcher's own `lane_read_note` default: `bash -n` on the launcher exits
+# 0 and says nothing, while `shellcheck -S error` refuses it with SC1073/SC1072
+# naming the line. `bash -n` sees the error only where the stray quote is still
+# open at END OF FILE, and any apostrophe below it closes it again. The
+# confirmation review measured a three-line file, where the quote does reach EOF
+# unbalanced and `bash -n` does exit 2 — both are true, and what differs is what
+# follows the trap. The launcher's comment is corrected to say that, and this
+# gate is what makes the correction load-bearing: the mutations for this round
+# put both shapes into the launcher and it is the LINTER that catches each.
+#
+# Every scenario below runs the launcher, so a syntax error fails them all
+# anyway — but it fails them as a hundred unrelated failures with no line
+# number. This runs first and says the one thing that is wrong.
+# `shellcheck` is run WHERE IT IS PRESENT and is not a dependency of this
+# suite: `-S error` is what the launcher is clean at today (three warnings at
+# `-S warning`, none of them this class), so the gate refuses a NEW error and
+# does not demand a cleanup nobody asked for.
+# ===========================================================================
+
+scenario
+
+bash -n "$LAUNCHER" \
+    || fail "bash -n: the launcher does not parse — one apostrophe in a \${x:-word} default swallows every function below it (CF-W4)"; assertion
+bash -n "$GUARD_SH" \
+    || fail "bash -n: the usage guard does not parse"; assertion
+if command -v shellcheck >/dev/null 2>&1; then
+    shellcheck -S error "$LAUNCHER" \
+        || fail "shellcheck -S error: the launcher has an error-level finding (CF-W4)"; assertion
+    shellcheck -S error "$GUARD_SH" \
+        || fail "shellcheck -S error: the usage guard has an error-level finding"; assertion
+else
+    echo "note: shellcheck is not on PATH, so the linter half of the CF-W4 gate did not run" >&2
+fi
 
 # ===========================================================================
 # 1. ONE WORD STARTS A LANE — Amendment 11(1), SPEC §1.
@@ -1843,7 +1894,6 @@ rm -rf "$TEST_ROOT/estate-wip"
 scenario
 SKILL_MD="$REPO_ROOT/base-image/files/claude/skills/lane-swap/SKILL.md"
 SWAP_MD="$REPO_ROOT/base-image/files/claude/commands/swap.md"
-GUARD_SH="$REPO_ROOT/base-image/files/claude-usage-guard.sh"
 
 # SPEC §5 (rev 3) — the swap record's payload, in the SPEC's own ORDER and
 # spelling: `swap; window <session>:<index> <@id>; dir <path>; profile <name>;
@@ -2157,6 +2207,21 @@ grep -Fq 'are not lane surfaces' "$SKILL_MD" \
     || fail "evidence 4: the skill no longer refuses /resume and claude --resume as lane surfaces (A8 Addendum 2 R-A8-6)"; assertion
 grep -Fq '/rename <lane>' "$SKILL_MD" \
     || fail "evidence 4(b): the skill's identity triple does not name /rename <lane>, the only act that fixes a derived session name from inside"; assertion
+# ...AND IT ENDS WITH THE SAME ACT, for the session that comes NEXT (CF-W5,
+# `R-A11-16`). Step 1's `/rename` is the incoming one, for the session running
+# the skill. The restart step 5 prints RESUMES, and `lane-start` passes
+# `--name <lane>` only where it CREATES a session — its two resume branches
+# carry none — so the session the operator lands in after every swap has the
+# name the harness derived, and until adoption act 0 lands nothing else in
+# flight tells them.
+# The audit is of step 5's SHELL — the lines it actually prints — and not of
+# the paragraph under it: prose that explains the act is not the act, and an
+# operator reading the swap's output is reading the shell's words.
+skill_step5_code="$(awk '/^## 5\./ { inside = 1 } inside && /^```/ { fence = !fence; next } inside && fence' "$SKILL_MD")"
+[[ -n "$skill_step5_code" ]] \
+    || fail "CF-W5: step 5 of the skill has no shell at all, so nothing it prints can be audited"; assertion
+printf '%s\n' "$skill_step5_code" | grep -Fq '/rename <lane>' \
+    || fail "CF-W5/R-A11-16: step 5 PRINTS the restart command and says nothing about the derived name the session it starts comes up with"; assertion
 
 # ===========================================================================
 # 7. THE WORKSTATION THE RECORDS ARE KEYED TO — Evidence 6 (new-workstation#20,
