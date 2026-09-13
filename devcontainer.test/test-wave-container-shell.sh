@@ -29,6 +29,14 @@ run_launcher_case() {
     local wslg_root="$case_root/no-wslg"
     local explicit_compose="$fake_root/custom-compose.yml"
     local expected_env_dir=""
+    local expected_config_image
+    case "$bench" in
+        py-bench) expected_config_image="py-bench:tester" ;;
+        dotNetBench) expected_config_image="dotnet-bench:tester" ;;
+        rustBench) expected_config_image="rust-bench:tester" ;;
+        custom-bench) expected_config_image="custom-bench:tester" ;;
+        *) expected_config_image="${bench}:tester" ;;
+    esac
     mkdir -p "$fake_home" "$fake_root/devBenches/pyBench/.devcontainer" "$fake_root/devBenches/dotNetBench/.devcontainer" "$fake_root/devBenches/rustBench/.devcontainer" "$fake_root/customBench/.devcontainer" "$fake_root/scripts" "$mock_bin"
     : > "$fake_root/devBenches/pyBench/.devcontainer/devcontainer.json"
     : > "$fake_root/devBenches/pyBench/.devcontainer/docker-compose.yml"
@@ -102,8 +110,19 @@ MOUNTS
                     printf '%s\n' /workspace/projects
                 fi
                 ;;
+            *Config.Image*)
+                printf '%s\n' "$MOCK_CONFIG_IMAGE"
+                ;;
+            *.Image*)
+                printf '%s\n' "$MOCK_CONTAINER_IMAGE_ID"
+                ;;
         esac
     fi
+    exit 0
+fi
+
+if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
+    printf '%s\n' "$MOCK_EXPECTED_IMAGE_ID"
     exit 0
 fi
 
@@ -129,7 +148,8 @@ MOCK
     fi
 
     local output
-    if ! output="$(
+    local launcher_status=0
+    output="$(
         env \
             HOME="$fake_home" \
             USER=tester \
@@ -144,6 +164,9 @@ MOCK
             MOCK_RM_REFUSE="$rm_refuse" \
             MOCK_RM_REFUSED_MARKER="$case_root/rm-refused" \
             MOCK_AFTER_REFUSAL_RUNNING="$after_refusal_running" \
+            MOCK_CONFIG_IMAGE="${CASE_CONFIG_IMAGE:-$expected_config_image}" \
+            MOCK_CONTAINER_IMAGE_ID="${CASE_CONTAINER_IMAGE_ID:-sha256:expected}" \
+            MOCK_EXPECTED_IMAGE_ID="${CASE_EXPECTED_IMAGE_ID:-sha256:expected}" \
             "$launcher" \
                 --workbenches-root "$fake_root" \
                 --shell sh \
@@ -151,15 +174,16 @@ MOCK
                 "${launcher_args[@]}" \
                 "$@" \
                 "$bench" 2>&1
-    )"; then
+    )" || launcher_status=$?
+    if [[ "$launcher_status" -ne "${CASE_EXPECT_STATUS:-0}" ]]; then
         echo "$output" >&2
         rm -rf "$case_root"
-        fail "$case_name launcher invocation failed"
+        fail "$case_name launcher invocation returned $launcher_status, expected ${CASE_EXPECT_STATUS:-0}"
     fi
 
     CASE_OUTPUT="$output"
     CASE_DOCKER_LOG="$(cat "$docker_log")"
-    CASE_PREPARE_LOG="$(cat "$prepare_log")"
+    CASE_PREPARE_LOG="$(cat "$prepare_log" 2>/dev/null || true)"
     rm -rf "$case_root"
 }
 
@@ -175,6 +199,19 @@ grep -q -- '--container py-bench --base py-bench:latest --user tester --project 
 grep -q 'preserving the live container' <<<"$CASE_OUTPUT" || fail "running container was not preserved with a warning"
 if grep -q '^rm -f py-bench$' <<<"$CASE_DOCKER_LOG"; then
     fail "normal launch removed a running container"
+fi
+
+CASE_EXPECT_STATUS=1 \
+CASE_CONFIG_IMAGE='ghcr.io/codexfactory/browser-ui-repair-bench:latest' \
+CASE_CONTAINER_IMAGE_ID='sha256:foreign' \
+CASE_EXPECTED_IMAGE_ID='sha256:expected' \
+run_launcher_case foreign-container-collision false missing false false py-bench
+grep -q "Refusing to use container 'py-bench'" <<<"$CASE_OUTPUT" || fail "foreign container collision was not reported"
+if [[ -n "$CASE_PREPARE_LOG" ]]; then
+    fail "foreign container collision invoked the Layer 3 preparation helper"
+fi
+if grep -Eq '^(start|rm|compose|exec|cp) ' <<<"$CASE_DOCKER_LOG"; then
+    fail "foreign container collision mutated the named container"
 fi
 if grep -q '^compose ' <<<"$CASE_DOCKER_LOG"; then
     fail "normal launch recreated a running container"

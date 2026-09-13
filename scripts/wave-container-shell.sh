@@ -144,6 +144,22 @@ if ! command -v docker >/dev/null 2>&1; then
     exit 1
 fi
 
+expected_layer3_image="${base_image%%:*}:${container_user}"
+container_exists=false
+if docker container inspect "$container" >/dev/null 2>&1; then
+    container_exists=true
+    configured_image="$(docker container inspect -f '{{.Config.Image}}' "$container")"
+    container_image_id="$(docker container inspect -f '{{.Image}}' "$container")"
+    expected_image_id="$(docker image inspect -f '{{.Id}}' "$expected_layer3_image" 2>/dev/null || true)"
+
+    if [[ "$configured_image" != "$expected_layer3_image" ]] && \
+       [[ -z "$expected_image_id" || "$container_image_id" != "$expected_image_id" ]]; then
+        echo "Refusing to use container '$container': it is configured from '$configured_image' ($container_image_id), but Wave '$block_title' requires '$expected_layer3_image'." >&2
+        echo "Leave the foreign container unchanged; stop or rename it before creating the workBench container." >&2
+        exit 1
+    fi
+fi
+
 prepare_script="$workbenches_root/scripts/prepare-bench-start.sh"
 if [[ ! -x "$prepare_script" ]]; then
     echo "Safe bench startup helper is missing or not executable: $prepare_script" >&2
@@ -161,6 +177,13 @@ if [[ -n "$layer3_chown" ]]; then
     prepare_args+=(--chown "$layer3_chown")
 fi
 "$prepare_script" "${prepare_args[@]}"
+
+# Layer 3 preparation can reconcile a stopped stale container. Re-read the
+# name after it returns so subsequent lifecycle decisions use current state.
+container_exists=false
+if docker container inspect "$container" >/dev/null 2>&1; then
+    container_exists=true
+fi
 
 if [[ "$check_only" != true ]]; then
     if [[ -t 1 ]]; then
@@ -399,11 +422,6 @@ container_missing_required_mounts() {
 
     return 1
 }
-
-container_exists=false
-if docker container inspect "$container" >/dev/null 2>&1; then
-    container_exists=true
-fi
 
 if [[ "$repair_requested" == true && "$container_exists" == true ]]; then
     recreate_with_compose
