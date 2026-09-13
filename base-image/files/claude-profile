@@ -989,6 +989,57 @@ lane_window_is() {
   [[ -n "$now" && "$now" == "$want" ]]
 }
 
+lane_is_pane_root() {
+  # WHETHER THIS PROCESS IS THE PANE'S ROOT COMMAND — i.e. whether there is a
+  # prompt behind a refusal, or nothing at all. `R-A11-16` (A11 Addendum 3 on
+  # new-workstation#20, ratified by Brett Heap 2026-09-13 "a11 addendum 3 yes")
+  # closes RV-W3 HERE rather than documenting it.
+  #
+  # The fence used to be the environment marker alone, and the case it did not
+  # cover was real: a window whose ONLY command is `pclaude` and which this
+  # launcher did not create — `tmux new-window -n <lane> 'pclaude <profile>'`, a
+  # tmux configuration line, a pane respawned by hand — carries no
+  # WORKBENCHES_CLAUDE_TMUX_CHILD, so a lane-start refusal in a window already
+  # named for the lane was handed back and tmux printed `[exited]` over a window
+  # with no Claude in it. That is Evidence 2 through a third door.
+  #
+  # WORKBENCHES_CLAUDE_TMUX_CHILD stays as the FAST PATH: act 1 sets it on both
+  # of its paths, it costs nothing to read, and it is true by construction.
+  # Failing that, the PANE is asked. `#{pane_pid}` is the process tmux started
+  # for this pane, and this process's ancestry is walked up towards it: a
+  # process on the way that is NOT this launcher (or a shell wrapper tmux made
+  # to run it) is a command of its own, and a command of its own is the prompt a
+  # refusal returns to — so the walk stops there and the status is handed back,
+  # exactly as before. Reaching `#{pane_pid}` with nothing but this launcher in
+  # between means this process IS the pane's root command and there is no prompt
+  # behind it, so the caller drops to bare Claude.
+  #
+  # EVERY FAILURE ANSWERS "NOT THE ROOT", which is the answer that changes
+  # nothing: no tmux, no `ps`, a `#{pane_pid}` that is not a number, a walk that
+  # runs out of depth. This function can only ever CLOSE the third door; it can
+  # never open a fourth.
+  [[ -z "${WORKBENCHES_CLAUDE_TMUX_CHILD:-}" ]] || return 0
+  [[ -n "${TMUX:-}" ]] || return 1
+  command -v tmux >/dev/null 2>&1 || return 1
+  command -v ps >/dev/null 2>&1 || return 1
+  local pane_pid pid args self depth
+  local -a target=()
+  [[ -z "${TMUX_PANE:-}" ]] || target=(-t "$TMUX_PANE")
+  pane_pid="$(tmux display-message -p ${target[@]+"${target[@]}"} '#{pane_pid}' 2>/dev/null || true)"
+  [[ "$pane_pid" =~ ^[0-9]+$ ]] || return 1
+  self="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")"
+  pid=$$
+  depth=0
+  while [[ "$pid" =~ ^[0-9]+$ ]] && (( pid > 1 && depth < 8 )); do
+    args="$(ps -o args= -p "$pid" 2>/dev/null || true)"
+    [[ "$args" == *"$self"* || "$args" == *claude-profile* || "$args" == *pclaude* ]] || return 1
+    [[ "$pid" != "$pane_pid" ]] || return 0
+    pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]' || true)"
+    depth=$((depth + 1))
+  done
+  return 1
+}
+
 lane_start_supports() {
   # `--confirm` arrives with the brett-wip half of Amendment 8. Until it does,
   # a lane-start that has never heard of it must not be handed it, and its own
@@ -1546,10 +1597,11 @@ enter_lane_dir() {
   echo "pclaude: the directory recorded for $lane $reason: $lane_dir" >&2
   echo "pclaude:   NOT re-homed to lane-start's default: a lane started in another tree takes that tree's origin as its home, and every #n inherits it." >&2
   echo "pclaude:   fix: pclaude --dir <path> --lane $lane ${CLAUDE_PROFILE_NAME:-<profile>}, or put the checkout back." >&2
-  if [[ -n "${WORKBENCHES_CLAUDE_TMUX_CHILD:-}" ]]; then
+  if lane_is_pane_root; then
     # `R-A11-4`, and the same fence the status-passthrough arm carries: this
-    # process is the only command of a window the launcher itself made or
-    # respawned, so exiting here would leave tmux printing `[exited]` over a
+    # process is the only command of its pane — a window the launcher itself
+    # made or respawned, or (since `R-A11-16`) one whose root command this
+    # process is — so exiting here would leave tmux printing `[exited]` over a
     # window with no Claude in it — Evidence 2 through a fourth door. The lane
     # is dropped instead, nothing downstream may read that this session holds
     # it, and Claude starts bare in the window, exactly as it does behind a
@@ -1757,26 +1809,25 @@ if it refuses — a directory that is not there, a lane held live elsewhere, a
 declined confirm — its own refusal is printed and Claude starts bare in the
 same window, with one line saying so.
 
-THE SCOPE OF THAT PROMISE, EXACTLY (Amendment 11, `R-A11-4`; RV-W3). It is held
-for every window this launcher MADE: the tmux session it created and the
-recorded pane it respawned, both of which it marks with
-WORKBENCHES_CLAUDE_TMUX_CHILD. In such a window this process is the only
-command there is, so a refusal handed back would leave tmux printing [exited]
-over a window with no Claude in it, and the launcher drops to bare Claude
-instead. Where the launcher was typed as a command in an EXISTING window's
-shell, a refusal is handed back with lane-start's own words above it and the
-operator lands at their prompt — there is no pane to exit, and a bare Claude
-started behind a session that may still be the lane's would mint a second
-transcript in the lane's own window.
+THE SCOPE OF THAT PROMISE, EXACTLY (Amendment 11, `R-A11-4`; RV-W3, closed by
+`R-A11-16`). It is held wherever this process is the only command of its pane.
+That is every window this launcher MADE — the tmux session it created and the
+recorded pane it respawned, both marked WORKBENCHES_CLAUDE_TMUX_CHILD, which is
+the fast path — AND, since `R-A11-16`, a window whose only command is `pclaude`
+and which this launcher did NOT create: `tmux new-window -n <lane> 'pclaude
+<profile>'`, a tmux config line, a pane respawned by hand. There the marker is
+unset, so the PANE is asked instead: `#{pane_pid}` is the process tmux started
+for it, and this process's ancestry is walked towards it. In all of those a
+refusal handed back would leave tmux printing [exited] over a window with no
+Claude in it, so the launcher drops to bare Claude instead.
 
-THE CASE THAT IS NOT COVERED, AND IT IS A REAL ONE: a window whose ONLY command
-is `pclaude` and which this launcher did not create — `tmux new-window -n <lane>
-'pclaude <profile>'`, a tmux config line, a pane respawned by hand. There the
-variable is unset and this launcher cannot tell that window from a shell's, so a
-refusal in a window already named for the lane is handed back and tmux prints
-[exited]. Until the fence is made a pane-level one, start such a window with a
-shell in it — `tmux new-window -n <lane>` then `pclaude <profile>` — or pass the
-lane as --lane, whose refusal drops to bare Claude by the arm above.
+Where the launcher was typed as a command in an EXISTING window's shell, the
+walk meets that shell — a command of its own — and stops: the refusal is handed
+back with lane-start's own words above it and the operator lands at their
+prompt. There is no pane to exit, and a bare Claude started behind a session
+that may still be the lane's would mint a second transcript in the lane's own
+window. Every failure of the pane read answers the same way, so a machine with
+no `ps`, or a tmux that will not say, behaves exactly as it did before.
 EOF
       exit 0
       ;;
@@ -2003,21 +2054,25 @@ case "$action" in
           #
           # AND THE WINDOW-ALREADY-THE-LANE'S ARM STOPS AT THE ONE PLACE IT
           # WOULD EXIT A PANE (`R-A11-4`: "no path exits the pane"). Where this
-          # process is the only command of a tmux window the LAUNCHER ITSELF
-          # made or respawned a moment ago — WORKBENCHES_CLAUDE_TMUX_CHILD,
-          # which act 1 sets on both of its paths — handing a refusal back is
-          # not "returning the operator to a prompt": there is no prompt behind
-          # it, and tmux prints `[exited]` over a window with no Claude in it,
-          # which is Evidence 2 exactly. Act 1 step 3 now names that window for
-          # the lane at birth and step 2 reuses a window that already carries
-          # the name, so this arm became reachable there in a way it was not
-          # before, through a door act 1 itself opened. The lineage objection
-          # does not reach it either: a window this launcher just created, or
-          # one whose pane it just respawned, has nothing of the lane's running
-          # behind it to mint a second transcript beside.
+          # process is the only command of its tmux pane, handing a refusal back
+          # is not "returning the operator to a prompt": there is no prompt
+          # behind it, and tmux prints `[exited]` over a window with no Claude
+          # in it, which is Evidence 2 exactly. Act 1 step 3 now names that
+          # window for the lane at birth and step 2 reuses a window that already
+          # carries the name, so this arm became reachable there in a way it was
+          # not before, through a door act 1 itself opened. The lineage
+          # objection does not reach it either: a window this launcher just
+          # created, or one whose pane it just respawned, has nothing of the
+          # lane's running behind it to mint a second transcript beside.
+          #
+          # `lane_is_pane_root` is that test, and since `R-A11-16` it is a test
+          # about the PANE and not only about the environment marker act 1
+          # sets: the window whose only command is `pclaude` and which this
+          # launcher did not create — RV-W3's open case — is now inside the
+          # fence, because the pane's own root process says so.
           if [[ "$lane_status" -eq 0 ]] \
             || { [[ "$lane_status" -ne 1 && "$lane_status" -ne 2 ]]; } \
-            || { [[ -z "${WORKBENCHES_CLAUDE_TMUX_CHILD:-}" ]] && lane_window_is "$lane"; }; then
+            || { ! lane_is_pane_root && lane_window_is "$lane"; }; then
             exit "$lane_status"
           fi
           # lane-start's own refusal is already on the terminal: it is never

@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=98
+EXPECTED_SCENARIOS=100
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -158,6 +158,15 @@ case "${1:-}" in
         # MEASURED on 2026-09-13, where 0 of 5 swap records name a window that
         # still exists, so every `-t` probe fails and act 1 falls to step 3.
         if [[ "${2:-}" == -p && "${3:-}" == -t ]]; then
+            # THE PANE'S ROOT PROCESS (`R-A11-16`). `lane_is_pane_root` asks
+            # for it by pane, and UNSET IS THE DEFAULT everywhere else: an
+            # answer that is not a number is "not the root", which is the answer
+            # that changes nothing, so every scenario that is not about this
+            # fence behaves exactly as it did before it existed.
+            if [[ "${5:-}" == '#{pane_pid}' ]]; then
+                printf '%s\n' "${FAKE_TMUX_PANE_PID:-}"
+                exit 0
+            fi
             target="${4:-}"
             while IFS= read -r live; do
                 [[ -n "$live" ]] || continue
@@ -324,6 +333,41 @@ esac
 echo "lane-start: refused (fake)" >&2
 exit "${FAKE_LANE_START_STATUS:-0}"
 EOF
+
+# `ps`, IN A DIRECTORY OF ITS OWN — the second half of the pane-level fence
+# (`R-A11-16`). It answers the two reads `lane_is_pane_root` makes and nothing
+# else: `-o args= -p <pid>` and `-o ppid= -p <pid>`, out of `<pid>=<value>` maps
+# with `*` as the catch-all, first match winning so a scenario can give one pid
+# an answer of its own. It is NOT on the common PATH: every other scenario keeps
+# the real `ps`, which knows nothing of this suite's pids and therefore answers
+# the way the fence's failure path does — unchanged from before it existed.
+PS_BIN="$TEST_ROOT/ps-bin"
+mkdir -p "$PS_BIN"
+cat > "$PS_BIN/ps" <<'EOF'
+#!/usr/bin/env bash
+field=""; pid=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -o) field="${2:-}"; shift 2 ;;
+        -p) pid="${2:-}"; shift 2 ;;
+        *)  shift ;;
+    esac
+done
+map=""
+case "$field" in
+    args=) map="${FAKE_PS_ARGS:-}" ;;
+    ppid=) map="${FAKE_PS_PPID:-}" ;;
+esac
+while IFS= read -r pair; do
+    [[ -n "$pair" ]] || continue
+    key="${pair%%=*}"
+    [[ "$key" == "$pid" || "$key" == '*' ]] || continue
+    printf '%s\n' "${pair#*=}"
+    exit 0
+done <<< "$map"
+exit 1
+EOF
+chmod +x "$PS_BIN/ps"
 
 chmod +x "$FAKE_CLAUDE" "$FAKE_BIN/tmux" "$FAKE_BIN/lanes-edit.sh" "$FAKE_BIN/lane-start"
 
@@ -595,20 +639,24 @@ grep -Fq 'refusal that names the path, never a quiet fall to the default' "$TEST
 grep -Fq 'NEVER DEGRADES IN SILENCE' "$TEST_ROOT/help.out" \
     || fail "Evidence 5: --help does not say what happens when lane-start is absent, which is the case a rebuilt machine meets"; assertion
 
-# 1i-ii. RV-W3 — AND THE SCOPE OF "NO PATH EXITS THE PANE" IS STATED, with the
-# case it does NOT cover documented beside it. The invariant is held for every
-# window this launcher MADE — the session it created and the pane it respawned,
-# both marked WORKBENCHES_CLAUDE_TMUX_CHILD. A window whose only command is
-# `pclaude` and which the launcher did not create carries no such mark, and the
-# launcher cannot tell it from a shell's window: there a refusal is handed back
-# and tmux prints [exited]. That is a fact about this build, so it is written
-# where an operator reads it and not left for them to find.
+# 1i-ii. RV-W3 — AND THE SCOPE OF "NO PATH EXITS THE PANE" IS STATED, now that
+# `R-A11-16` has CLOSED the case that used to fall outside it rather than
+# documenting it. The invariant is held wherever this process is the only
+# command of its pane: every window act 1 made (WORKBENCHES_CLAUDE_TMUX_CHILD,
+# the fast path) and, since the fence became a pane-level one, a window whose
+# only command is `pclaude` and which the launcher did not create. What --help
+# must still say is where the promise STOPS — the shell you typed `pclaude`
+# into — because that arm is the one that hands a refusal back.
 grep -q 'NO PATH THE LAUNCHER OPENED EXITS THE PANE' "$TEST_ROOT/help.out" \
     || fail "RV-W3: --help claims an invariant wider than the one this launcher proves"; assertion
 grep -Fq 'THE CASE THAT IS NOT COVERED' "$TEST_ROOT/help.out" \
-    || fail "RV-W3: the uncovered case — a window whose only command is pclaude that the launcher did not make — is not documented"; assertion
-grep -Fq 'tmux new-window -n <lane>' "$TEST_ROOT/help.out" \
-    || fail "RV-W3: the uncovered case is named without the way around it"; assertion
+    && fail "RV-W3/R-A11-16: --help still documents as uncovered the case the pane-level fence closes"; assertion
+grep -Fq 'RV-W3, closed by' "$TEST_ROOT/help.out" \
+    || fail "RV-W3/R-A11-16: --help does not say that the third door is closed, or by what"; assertion
+grep -Fq 'the only command of its pane' "$TEST_ROOT/help.out" \
+    || fail "R-A11-16: --help states the promise in terms of the marker rather than the pane"; assertion
+grep -Fq 'stops' "$TEST_ROOT/help.out" \
+    || fail "R-A11-16: --help does not say where the walk stops, which is the arm that hands a refusal back"; assertion
 
 # ===========================================================================
 # 2. THE WINDOW IS REUSED — Amendment 11(2) act 1, SPEC §3.
@@ -1538,6 +1586,46 @@ launch "FAKE_TMUX_WINDOW=openXfactory-5" "FAKE_LANE_WITH_ROW=openXfactory-5" \
 [[ "$launch_status" -eq 1 ]] \
     || fail "shell, window already the lane's: the launcher exited $launch_status instead of handing back 1"; assertion
 
+# 5g-ii. RV-W3 IS CLOSED, NOT DOCUMENTED — `R-A11-16` (A11 Addendum 3, ratified
+# by Brett Heap 2026-09-13 "a11 addendum 3 yes"). THE THIRD DOOR: a window whose
+# only command is `pclaude` and which this launcher did NOT create — `tmux
+# new-window -n <lane> 'pclaude <profile>'`, a tmux config line, a pane
+# respawned by hand. There is no WORKBENCHES_CLAUDE_TMUX_CHILD, so the old fence
+# could not tell that window from a shell's and handed the refusal back, leaving
+# tmux to print `[exited]` over a window with no Claude in it. The pane itself
+# now answers: `#{pane_pid}` is the process tmux started for it, and this
+# process's ancestry reaches it through nothing but this launcher.
+ps_launcher_args="*=/bin/bash $LAUNCHER run team002"
+launch "TMUX=fake-session" "TMUX_PANE=%9" "PATH=$PS_BIN:$FAKE_BIN:/usr/bin:/bin" \
+    "FAKE_TMUX_PANE_PID=4242" "FAKE_PS_ARGS=$ps_launcher_args" "FAKE_PS_PPID=*=4242" \
+    "FAKE_TMUX_WINDOW=openXfactory-5" "FAKE_LANE_WITH_ROW=openXfactory-5" \
+    "FAKE_SWAPPED_STATUS=8" "FAKE_LANE_START_STATUS=1" \
+    -- run team002 --resume session-third-door
+grep -Fxq -- "openXfactory-5 -- $claude_args --resume session-third-door" "$LANE_START_LOG" \
+    || fail "third door: lane-start argv was '$(lane_start_argv)'"; assertion
+grep -Fxq -- "$claude_args --resume session-third-door" "$CLAUDE_LOG" \
+    || fail "RV-W3/R-A11-16: the pane whose only command is pclaude was left with no Claude in it — [exited] ($(cat "$CLAUDE_LOG" 2>/dev/null))"; assertion
+[[ "$launch_status" -eq 0 ]] \
+    || fail "RV-W3/R-A11-16: the launcher exited $launch_status in a pane it is the only command of"; assertion
+grep -q 'did not take openXfactory-5 (exit 1)' "$ERR_LOG" \
+    || fail "third door: the notice was '$(cat "$ERR_LOG")'"; assertion
+
+# 5g-iii. ...AND THE WALK STOPS AT A COMMAND OF ITS OWN, which is what keeps
+# 5g-i true. The same pane, the same lane, the same refusal — but the process
+# tmux started for the pane is a SHELL, so there is a prompt behind this
+# process, the status is handed back under lane-start's own words, and no bare
+# Claude is minted behind a session that may still be the lane's.
+launch "TMUX=fake-session" "TMUX_PANE=%9" "PATH=$PS_BIN:$FAKE_BIN:/usr/bin:/bin" \
+    "FAKE_TMUX_PANE_PID=4242" "FAKE_PS_ARGS=$(printf '4242=-zsh\n%s' "$ps_launcher_args")" \
+    "FAKE_PS_PPID=*=4242" \
+    "FAKE_TMUX_WINDOW=openXfactory-5" "FAKE_LANE_WITH_ROW=openXfactory-5" \
+    "FAKE_SWAPPED_STATUS=8" "FAKE_LANE_START_STATUS=1" \
+    -- run team002 --resume session-shell-behind
+[[ ! -e "$CLAUDE_LOG" ]] \
+    || fail "R-A11-16: a bare Claude was started behind a shell's own prompt ($(cat "$CLAUDE_LOG"))"; assertion
+[[ "$launch_status" -eq 1 ]] \
+    || fail "R-A11-16: the launcher exited $launch_status instead of handing 1 back to the prompt behind it"; assertion
+
 # 5i. EVIDENCE 4 — THE BARE DROP CARRIES NO NAME, AND NO `--resume`. Measured
 # on this lane today: the transcript's `customTitle` is the lane, but every
 # process that resumed it through a bare `claude --resume <uuid>` has a DERIVED
@@ -1819,8 +1907,10 @@ grep -Fq 'WORKBENCHES_CLAUDE_WINDOW_REUSE' "$DOCS_MD" \
     || fail "RV-W5: the window-reuse opt-out is in the code and in no document a person reads"; assertion
 grep -Fq 'WORKBENCHES_CLAUDE_LANE_DIR_FROM_CWD' "$DOCS_MD" \
     && fail "RV-W5: the docs still carry the cwd rung's opt-out, which c712c5b removed"; assertion
-grep -Fq 'the case it does not cover' "$DOCS_MD" \
-    || fail "RV-W3: the docs state the pane invariant without the case it does not cover"; assertion
+grep -Fq 'the only command of its pane' "$DOCS_MD" \
+    || fail "RV-W3/R-A11-16: the docs state the pane invariant in terms of the marker rather than the pane"; assertion
+grep -Fq 'closed by' "$DOCS_MD" \
+    || fail "RV-W3/R-A11-16: the docs do not say the third door is closed, or by what"; assertion
 grep -Fq 'entered' "$DOCS_MD" \
     || fail "RV-W5/Evidence 3: the docs do not say the launcher enters the lane's directory"; assertion
 grep -Fq 'A missing `lane-start` is said, not passed over' "$DOCS_MD" \

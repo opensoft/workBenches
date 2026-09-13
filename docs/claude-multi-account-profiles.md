@@ -431,19 +431,29 @@ session it created or the recorded pane it respawned, both marked
 `WORKBENCHES_CLAUDE_TMUX_CHILD` — there is no prompt behind the refusal, so the
 lane is dropped and Claude starts bare in the window instead.
 
-**The scope of that promise, exactly, and the case it does not cover.** It is
-held for every window this launcher made. It is **not** held for a window whose
-only command is `pclaude` and which the launcher did **not** create — `tmux
+**The scope of that promise, exactly, and the case that used to fall outside it**
+(`RV-W3`, closed by `R-A11-16` — A11 Addendum 3, ratified by Brett Heap
+2026-09-13 *"a11 addendum 3 yes"*). The promise is held wherever this process is
+**the only command of its pane**. `WORKBENCHES_CLAUDE_TMUX_CHILD` — set by both
+of act 1's paths, the session it created and the pane it respawned — is the fast
+path and answers most of them. The case it could not answer was real: a window
+whose only command is `pclaude` and which the launcher did **not** create (`tmux
 new-window -n <lane> 'pclaude <profile>'`, a tmux configuration line, a pane
-respawned by hand. Such a window carries no `WORKBENCHES_CLAUDE_TMUX_CHILD`,
-the launcher cannot tell it from a command typed in a shell's window, and a
-`lane-start` refusal in a window already named for the lane is handed back —
-tmux then prints `[exited]` over a window with no Claude in it. Until that fence
-is made a pane-level one (compare the pane's own root process against this
-one's), start such a window with a shell in it — `tmux new-window -n <lane>`,
-then `pclaude <profile>` — or name the lane with `--lane`, whose refusal drops
-to bare Claude by the arm above. See `claude-profile --help` for the exact
-options.
+respawned by hand) carries no such mark, so a `lane-start` refusal in a window
+already named for the lane was handed back and tmux printed `[exited]` over a
+window with no Claude in it. The fence is now a **pane-level** one: failing the
+marker, the launcher reads the pane's own root process (`#{pane_pid}`) and walks
+this process's ancestry towards it, through this launcher and the shell wrapper
+tmux may have made to run it and through nothing else. Reaching the pane's root
+that way means there is no prompt behind this process, so the lane is dropped
+and Claude starts bare. Meeting a command of its own on the way — the shell you
+typed `pclaude` into — stops the walk, and the refusal is handed back to that
+prompt, which is the behaviour that must not change: a bare Claude started
+behind a session that may still be the lane's would mint a second transcript in
+the lane's own window. Every failure of the pane read (no `ps`, a tmux that will
+not answer, a walk that runs out of depth) answers *not the root*, so it can
+only close that door and never open another. See `claude-profile --help` for the
+exact options.
 
 **`/swap`, manual and automatic (Amendment 11(4)).** `/swap` is an alias of
 `/lane-swap` — the canonical name and its skill stay exactly where they are;
