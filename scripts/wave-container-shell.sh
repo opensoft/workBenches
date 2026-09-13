@@ -155,7 +155,7 @@ if docker container inspect "$container" >/dev/null 2>&1; then
     if [[ "$configured_image" != "$expected_layer3_image" ]] && \
        [[ -z "$expected_image_id" || "$container_image_id" != "$expected_image_id" ]]; then
         echo "Refusing to use container '$container': it is configured from '$configured_image' ($container_image_id), but Wave '$block_title' requires '$expected_layer3_image'." >&2
-        echo "Leave the foreign container unchanged; stop or rename it before creating the workBench container." >&2
+        echo "Leave the foreign container unchanged; stop it if needed, then rename or remove it to free this name before creating the workBench container." >&2
         exit 1
     fi
 fi
