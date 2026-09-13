@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=75
+EXPECTED_SCENARIOS=79
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -468,6 +468,31 @@ grep -q 'Unknown Claude profile: teamOO2' "$ERR_LOG" \
     || fail "typo: the message was '$(cat "$ERR_LOG")'"; assertion
 [[ ! -e "$CLAUDE_LOG" ]] || fail "typo: it became a launch anyway"; assertion
 [[ ! -e "$LANE_START_LOG" ]] || fail "typo: it reached lane-start"; assertion
+
+# 1f-i. RV-W4 — THE SAME REFUSAL ON THE LONG FORM, and it is a DIFFERENT LINE
+# of the launcher. 1f exercises the one-word arm, which refuses before the
+# action is decided; `pclaude run <typo>` reaches the `login|status|run` arm,
+# which refuses after the profile is looked up. SPEC §1 fixes the wording and
+# the code for both, and the re-verification's mutation M6 — that arm's `exit 2`
+# turned into `exit 1` — SURVIVED ten suites, because only one of the two was
+# held. The verb being optional means the two forms are one command, so a
+# reviewer reading either line must find the other pinned.
+launch "FAKE_TMUX_WINDOW=claude" "FAKE_SWAPPED_STATUS=8" -- run teamOO2
+[[ "$launch_status" -eq 2 ]] \
+    || fail "typo, long form: exited $launch_status, and SPEC §1 says 2 (this is mutation M6)"; assertion
+grep -q 'Unknown Claude profile: teamOO2' "$ERR_LOG" \
+    || fail "typo, long form: the message was '$(cat "$ERR_LOG")'"; assertion
+[[ ! -e "$CLAUDE_LOG" ]] || fail "typo, long form: it became a launch anyway"; assertion
+[[ ! -e "$LANE_START_LOG" ]] || fail "typo, long form: it reached lane-start"; assertion
+
+# 1f-ii. ...and on `status`, which shares that arm's one line. A profile that
+# does not exist cannot be logged into, asked about or run, and all three say so
+# in the same words with the same status.
+launch "FAKE_TMUX_WINDOW=claude" "FAKE_SWAPPED_STATUS=8" -- status teamOO2
+[[ "$launch_status" -eq 2 ]] \
+    || fail "typo, status: exited $launch_status, and SPEC §1 says 2"; assertion
+grep -q 'Unknown Claude profile: teamOO2' "$ERR_LOG" \
+    || fail "typo, status: the message was '$(cat "$ERR_LOG")'"; assertion
 
 # 1g. MUTATION — AN OPTION IS NEVER A PROFILE. This is the case the
 # unconditional fallthrough got wrong: `pclaude --resume <id>` took `--resume`
@@ -1343,6 +1368,31 @@ launch "FAKE_TMUX_WINDOW=openXfactory-5" "FAKE_LANE_WITH_ROW=openXfactory-5" \
 [[ "$launch_status" -eq 1 ]] \
     || fail "shell, window already the lane's: the launcher exited $launch_status instead of handing back 1"; assertion
 
+# 5i. EVIDENCE 4 — THE BARE DROP CARRIES NO NAME, AND NO `--resume`. Measured
+# on this lane today: the transcript's `customTitle` is the lane, but every
+# process that resumed it through a bare `claude --resume <uuid>` has a DERIVED
+# record name (`openrepoproject-b9`, `-1e`, `-27`, `-45`), and that derived name
+# is what the statusline and `ListAgents` show. `lane-start` passes `--name
+# <lane>` on every launch it makes, so the third leg of the identity triple is
+# set whenever the restart goes THROUGH lane-start and lost whenever it does
+# not. The launcher's answer is in two halves, and this is the second: the drop
+# behind a refusal is a session with NO LANE, so it must not be named for one —
+# a Claude named `<lane>` that lane-start declined to take would put the lane's
+# own messaging address (Amendment 2) on a session the register does not know.
+# The first half is that every lane path runs lane-start; that is section 5's
+# matrix, and §6c audits that nothing here ever spells the bare resume itself.
+launch "WORKBENCHES_CLAUDE_TMUX_CHILD=1" \
+    "WORKBENCHES_CLAUDE_WINDOW=matrix-1" \
+    "FAKE_TMUX_WINDOW=matrix-1" "FAKE_LANE_WITH_ROW=matrix-1" \
+    "FAKE_SWAPPED_STATUS=8" "FAKE_LANE_START_STATUS=2" \
+    -- run team002
+[[ "$(cat "$CLAUDE_LOG")" == "$claude_args" ]] \
+    || fail "evidence 4: the bare drop's argv was '$(cat "$CLAUDE_LOG")', not the flags and nothing else"; assertion
+grep -Fq -- '--name' "$CLAUDE_LOG" \
+    && fail "evidence 4: the drop named a session for a lane lane-start refused to take"; assertion
+grep -Fq -- '--resume' "$CLAUDE_LOG" \
+    && fail "evidence 4: the launcher resumed a transcript of its own choosing"; assertion
+
 # 5h. THE WHOLE MATRIX, ASSERTED RATHER THAN ARGUED. Every lane source this
 # launcher has crossed with both of lane-start's documented refusals, IN A
 # CHILD — which is every path on which this process is the only command of a
@@ -1567,6 +1617,55 @@ grep -Fq 'profile_name="${CLAUDE_PROFILE_NAME:-}"' "$SKILL_MD" \
 # ...and the launcher is the one that exports it, so the two halves agree.
 grep -Fq 'export CLAUDE_PROFILE_NAME="$profile"' "$LAUNCHER" \
     || fail "R-A11-10: the launcher does not export CLAUDE_PROFILE_NAME, so the skill's profile sub-field is empty on every launch"; assertion
+
+# ===========================================================================
+# 6c. EVIDENCE 4 — NO SURFACE HERE PRINTS OR EXECS A BARE `claude --resume`.
+#
+# A bare `claude --resume <uuid>` continues the transcript and leaves the
+# session's RECORD NAME derived (`openrepoproject-b9`), which is what the
+# statusline and `ListAgents` display; `lane-start` passes `--name <lane>` on
+# every launch it makes (lane-start:823), so the identity triple's third leg is
+# correct exactly when the restart goes through it. The rule owed to this PR is
+# therefore negative — the launcher, the guard and the skill never offer that
+# command as the lane's act — and a negative rule is audited, not scenario'd.
+#
+# The launcher's own `--help` DESCRIBES lane-start's `--resume/--name <lane>`,
+# which is the correct thing to describe, so the audit is made against the
+# launcher's EXECUTABLE text with the help heredoc removed. A rule that grepped
+# the whole file could not be stated at all.
+# ===========================================================================
+
+scenario
+
+# The help heredoc first, then the comments: this file ARGUES about `--resume`
+# at length — Evidence 3's own paragraph quotes it — and a rule about what the
+# launcher DOES cannot be read off text that only says why.
+launcher_code="$(awk '/^      cat <<.EOF.$/ { skip = 1 } !skip { print } skip && $0 == "EOF" { skip = 0 }' "$LAUNCHER" \
+    | grep -v '^[[:space:]]*#')"
+[[ -n "$launcher_code" ]] \
+    || fail "evidence 4: the launcher's executable text could not be separated from its --help"; assertion
+printf '%s\n' "$launcher_code" | grep -Fq 'show this help' \
+    && fail "evidence 4: the --help heredoc was not removed, so this audit reads prose and proves nothing"; assertion
+printf '%s\n' "$launcher_code" | grep -q '^[[:space:]]*#' \
+    && fail "evidence 4: the comments were not removed, so this audit reads the argument rather than the code"; assertion
+printf '%s\n' "$launcher_code" | grep -Fq -- '--resume' \
+    && fail "evidence 4: the launcher spells --resume itself; a bare resume is never the lane's act (the operator's own --resume is passed through in \"\$@\")"; assertion
+printf '%s\n' "$launcher_code" | grep -Fq -- '--name' \
+    && fail "evidence 4: the launcher names a Claude session itself; --name <lane> is lane-start's act alone"; assertion
+# ...and the exec that starts the bare Claude carries the flags and the
+# operator's own argv, and nothing this launcher added.
+grep -Fq 'CLAUDE_CONFIG_DIR="$config_dir" exec "$claude_bin" "${claude_flags[@]}" "$@"' "$LAUNCHER" \
+    || fail "evidence 4: the bare Claude is not exec'd with the flags and the operator's argv alone"; assertion
+# The guard's one printed command is the restart, and it is `pclaude`.
+grep -Fq 'claude --resume' "$GUARD_SH" \
+    && fail "evidence 4: the usage guard prints a bare claude --resume as the way back"; assertion
+# The skill prints `pclaude <profile>`, refuses `claude --resume <title>` as a
+# lane surface by name, and ends the identity triple with the one act that can
+# fix a derived record name from inside a session.
+grep -Fq 'are not lane surfaces' "$SKILL_MD" \
+    || fail "evidence 4: the skill no longer refuses /resume and claude --resume as lane surfaces (A8 Addendum 2 R-A8-6)"; assertion
+grep -Fq '/rename <lane>' "$SKILL_MD" \
+    || fail "evidence 4(b): the skill's identity triple does not name /rename <lane>, the only act that fixes a derived session name from inside"; assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"
