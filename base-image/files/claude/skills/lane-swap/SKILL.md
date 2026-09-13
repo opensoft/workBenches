@@ -200,15 +200,24 @@ payload="$payload; workstation $(hostname -s)"
 # when LANES_SESSION is unset and the row yields nothing, and it has already done so four times in two
 # lanes. Refuse it here, before anything is written, and pass the uuid explicitly so the writer never guesses.
 if [[ -z "${uuid:-}" ]]; then
-  printf "REFUSED: no transcript uuid for this session, so nothing is written to the object log.\n"
+  printf "REFUSED (a), THE OBJECT LOG ONLY: no transcript uuid for this session, so nothing is written there.\n"
   printf "It is Amendment 6(c)'s session-cell append that supplies one: lane-start writes it at start, and /restart step 4 writes it for a session that started bare. Run that act, re-read the row in step 2, then come back.\n"
 else
   LANES_LANE="$lane" LANES_SESSION="$uuid" "$L" log PAUSED "lane:$lane" \
     → "$payload" \
     "on <operator>'s word: <sanitized verbatim>"
-  # (b) the LANES.md file-level line, the shape every prior PAUSED/RESUMED used
-  "$L" append-line "PAUSED — lane $lane, session $uuid@$(hostname -s), $(date -u +%Y-%m-%dT%H:%M:%SZ), on <operator>'s word \"<sanitized verbatim>\"; <what's open, or NOTHING CLAIMED>; handoff refreshed"
 fi
+# (b) the LANES.md file-level line, the shape every prior PAUSED/RESUMED used — AND IT IS WRITTEN ON BOTH
+# PATHS. It sits OUTSIDE the uuid guard deliberately (SPEC §7, A11 Addendum 2 `R-A11-11`): the refusal above
+# is about the OBJECT LOG, where a wrong session id is append-only and wrong for ever, and (b) carries no
+# session id of the kind that can be wrong — it carries the gap. A8(a) step 4's "never left unwritten" is
+# preserved by THIS line and by the row's state cell (c), so a lane that has never had a session recorded
+# gets both, with the gap NAMED in the session position rather than the line dropped. A reader of this line
+# can see that the lane was paused and that no session was ever recorded for it; a reader of nothing cannot,
+# and the launcher's restart reads the row, not the uuid.
+session_cell="${uuid:+$uuid@$(hostname -s)}"
+[[ -n "$session_cell" ]] || session_cell="none recorded@$(hostname -s)"
+"$L" append-line "PAUSED — lane $lane, session $session_cell, $(date -u +%Y-%m-%dT%H:%M:%SZ), on <operator>'s word \"<sanitized verbatim>\"; <what's open, or NOTHING CLAIMED>; handoff refreshed"
 # (c) the row: flip its leading state word, DERIVED from the row itself. row_write_refused is what step 5
 # reads: empty on success, "1" the moment either write below does not. Its tail restates the record's own
 # two facts for a person (SPEC §5), out of `$payload`, so the two writes cannot drift apart.
@@ -222,9 +231,12 @@ fi
 
 If (a) still exits 2, re-run it with the free-text argument **dropped entirely** and say so in the report:
 the PAUSED line is what the launcher reads on restart, and step 4 is never left unwritten. The **one**
-exception is the missing uuid: there, not writing is the point, because an `unknown` in an append-only log
-cannot be taken back and a wrong session id is worse for the next restart than no line at all. Report it,
-name the act that supplies the uuid, and do not work around it. If `$state` came
+exception is the missing uuid, and it is an exception for **(a) alone**: there, not writing the object-log
+line is the point, because an `unknown` in an append-only log cannot be taken back and a wrong session id is
+worse for the next restart than no line at all. **(b) and (c) are still written** — the file-level `PAUSED`
+line with `none recorded` in the session position, and the row flipped to `PAUSED` — because that is what
+A8(a) step 4's "never left unwritten" means and what a restart resolves this lane from. Report the gap, name
+it in the handoff, name the act that supplies the uuid, and do not work around it. If `$state` came
 back empty, re-read the row and take the first `| WORD ·` in it — `replace-in-row` requires exactly one
 occurrence and exits 2 on a guess. If (c) is still refused after that re-read — a rebase conflict, a push
 race, anything `replace-in-row`/`append-row-status` themselves report — leave `row_write_refused` set and

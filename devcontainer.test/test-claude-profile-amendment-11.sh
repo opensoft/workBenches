@@ -1245,6 +1245,34 @@ grep -q 'case "\$dir" in .*'"'"', '"'"'.*'"'"' — '"'"'.*refused' "$SKILL_MD" \
 grep -Fq 'LANES_SESSION="$uuid"' "$SKILL_MD" \
     || fail "§7/R-A11-5: the skill does not pass the uuid it has in hand"; assertion
 
+# SPEC §7 and A11 Addendum 2 `R-A11-11` — THE REGISTER'S FILE-LEVEL `PAUSED`
+# LINE SURVIVES THE UUID REFUSAL. §7 states it in terms: the lane that has never
+# had a session recorded "reaches the refusal, WHERE THE SWAP WRITES THE
+# REGISTER'S FILE-LEVEL `PAUSED` LINE AND THE ROW'S STATE CELL and names the gap
+# in the handoff". The refusal is about the OBJECT LOG, which is append-only and
+# where a wrong session id is wrong for ever; (b) and (c) are how A8(a) step 4's
+# "never left unwritten" is preserved, and a swap that drops them leaves the lane
+# with no record at all — the one state a restart cannot resolve from.
+#
+# THIS IS AUDITED STATICALLY BECAUSE NO SCENARIO CAN PROVOKE IT. The skill is
+# prose a model executes; what can be pinned is WHERE the write sits, and the
+# defect is exactly that it sat inside the `else`. So the guard's own extent is
+# extracted and read.
+uuid_guard="$(awk 'index($0,"if [[ -z \"${uuid:-}\" ]]; then"){inside=1} inside{print} inside && $0=="fi"{exit}' "$SKILL_MD")"
+[[ -n "$uuid_guard" ]] \
+    || fail "§7: the skill's uuid guard is not there at all, so the refusal this pins cannot happen"; assertion
+printf '%s\n' "$uuid_guard" | grep -Fq 'log PAUSED' \
+    || fail "§7: the object-log write is NOT inside the uuid guard, so an 'unknown' can still reach an append-only log"; assertion
+printf '%s\n' "$uuid_guard" | grep -Fq 'append-line' \
+    && fail "§7/R-A11-11: the register's file-level PAUSED line is written INSIDE the uuid guard, so a lane with no uuid gets neither half and A8(a) step 4's 'never left unwritten' is lost"; assertion
+grep -Fq '"$L" append-line "PAUSED — lane $lane, session $session_cell' "$SKILL_MD" \
+    || fail "§7/R-A11-11: the file-level PAUSED line does not take the session cell that names the gap"; assertion
+grep -Fq 'session_cell="none recorded@$(hostname -s)"' "$SKILL_MD" \
+    || fail "§7/R-A11-11: the gap is not NAMED in the session position, so the line either lies or is not written"; assertion
+# ...and the row's state cell (c) is outside it too: same clause, same reason.
+printf '%s\n' "$uuid_guard" | grep -Fq 'replace-in-row' \
+    && fail "§7/R-A11-11: the row's state cell is flipped only where a uuid exists, which is the same defect one write along"; assertion
+
 # SPEC §11 — the helper's reads, by their own names, in all three callers this
 # PR ships. `window-lane` has THREE (R-A11-6 on F17): the launcher's precedence
 # 3, /restart step 2(b) — the tooling PR's — and the skill's step 1.
