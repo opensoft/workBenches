@@ -223,12 +223,14 @@ this launcher at all. Two consequences, both of which this launcher and
 - **Skills belong in the shared skills directory, and `openRepoTools --install`
   is the one thing that writes them.** Every profile's `skills` is a symlink to
   `~/.claude-profiles/shared/skills`, so one write there is visible to every
-  profile at once. `--install` places `/lane-swap` at
-  `${CLAUDE_PROFILES_HOME:-~/.claude-profiles}/shared/skills/lane-swap/SKILL.md`
-  and a copy at `~/.claude/skills/lane-swap/SKILL.md` for a bare `claude`
-  outside the launcher, both at 0644, idempotently and byte-compared.
-  `scripts/setup-claude-profiles.sh` used to install that skill from its own
-  vendored copy; lane-collision-protocol Amendment 9's adoption act 4b deleted
+  profile at once. `--install` places EVERY skill in its own `SKILLS` array —
+  `/lane-swap` and, from Amendment 11's tooling commit, `/restart` — at
+  `${CLAUDE_PROFILES_HOME:-~/.claude-profiles}/shared/skills/<name>/SKILL.md`
+  and a copy of each at `~/.claude/skills/<name>/SKILL.md` for a bare `claude`
+  outside the launcher, all at 0644, idempotently and byte-compared. The set is
+  the shim's, not this document's: it is read from that array, never counted
+  here. `scripts/setup-claude-profiles.sh` used to install the `/lane-swap`
+  skill from its own vendored copy; lane-collision-protocol Amendment 9's adoption act 4b deleted
   that loop and the copy with it, because two installers of one file is a
   defect no exact-match idempotence can resolve. This script still creates the
   shared directory and still links each profile at it.
@@ -246,8 +248,8 @@ this launcher at all. Two consequences, both of which this launcher and
   openRepoTools#24 review): an entry running `lanes-edit.sh who` competes with
   nothing and is not refused, and `~/bin/lane-hook.sh session-start` does
   compete and is. Measured, with an unrelated `~/bin/herdr-agent-state.sh
-  session` already under `SessionStart`: `9 of 9 placed`, exit 0, the file left
-  carrying both commands at mode 600. It computes the merge before it places
+  session` already under `SessionStart`: `11 of 11 placed`, exit 0, the file
+  left carrying both commands at mode 600. It computes the merge before it places
   anything, so a merge it cannot compute costs a whole install rather than half
   of one.
   Adoption act 4b deleted the ensure `scripts/setup-claude-profiles.sh` carried

@@ -31,6 +31,8 @@ TOOLS_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/openRepoTools"
 PARK_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/park"
 RESUME_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/resume"
 STATUS_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/status"
+RESTART_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/restart"
+LANES_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/lanes"
 LANES_EDIT_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/lanes-edit.sh"
 LANE_START_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/lane-start"
 LANE_END_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/lane-end"
@@ -199,7 +201,7 @@ TOOLS_COMMIT="$(pin_commit_for openrepotools)"
 assert_matches "$SHAPE_COMMIT" '^[0-9a-f]{40}$' 'pin file yields a 40-hex openreposhape commit'
 assert_matches "$TOOLS_COMMIT" '^[0-9a-f]{40}$' 'pin file yields a 40-hex openrepotools commit'
 
-printf '%s\n' '--- Scenario (a): fresh bin dir installs all ten commands from the vendored copies ---'
+printf '%s\n' '--- Scenario (a): fresh bin dir installs all twelve commands from the vendored copies ---'
 BIN_A="$TMPDIR_ROOT/bin-a"
 mkdir -p "$BIN_A"
 STATUS_A=0
@@ -211,10 +213,13 @@ assert_file_executable "$BIN_A/openRepoTools" 'fresh install places openRepoTool
 assert_file_executable "$BIN_A/park" 'fresh install places park, executable'
 assert_file_executable "$BIN_A/resume" 'fresh install places resume, executable'
 assert_file_executable "$BIN_A/status" 'fresh install places status, executable'
-# Amendment 9 adoption act 4b: five more, from `--install`'s one INSTALLABLES
-# list. repos.tsv is DATA and is placed executable anyway -- Amendment 9(b)
-# takes that "one honest ugliness" so this script keeps one destination and
-# one mode.
+# Amendment 9 adoption act 4b: seven more, from `--install`'s one INSTALLABLES
+# list -- five at act 3's shim, plus Amendment 11's restart and lanes once the
+# pin moved to the tooling commit. repos.tsv is DATA and is placed executable
+# anyway -- Amendment 9(b) takes that "one honest ugliness" so this script
+# keeps one destination and one mode.
+assert_file_executable "$BIN_A/restart" 'fresh install places restart, executable'
+assert_file_executable "$BIN_A/lanes" 'fresh install places lanes, executable'
 assert_file_executable "$BIN_A/lanes-edit.sh" 'fresh install places lanes-edit.sh, executable'
 assert_file_executable "$BIN_A/lane-start" 'fresh install places lane-start, executable'
 assert_file_executable "$BIN_A/lane-end" 'fresh install places lane-end, executable'
@@ -225,6 +230,8 @@ assert_identical "$BIN_A/openRepoTools" "$TOOLS_VENDOR" 'fresh openRepoTools is 
 assert_identical "$BIN_A/park" "$PARK_VENDOR" 'fresh park is byte-identical to the vendored copy'
 assert_identical "$BIN_A/resume" "$RESUME_VENDOR" 'fresh resume is byte-identical to the vendored copy'
 assert_identical "$BIN_A/status" "$STATUS_VENDOR" 'fresh status is byte-identical to the vendored copy'
+assert_identical "$BIN_A/restart" "$RESTART_VENDOR" 'fresh restart is byte-identical to the vendored copy'
+assert_identical "$BIN_A/lanes" "$LANES_VENDOR" 'fresh lanes is byte-identical to the vendored copy'
 assert_identical "$BIN_A/lanes-edit.sh" "$LANES_EDIT_VENDOR" 'fresh lanes-edit.sh is byte-identical to the vendored copy'
 assert_identical "$BIN_A/lane-start" "$LANE_START_VENDOR" 'fresh lane-start is byte-identical to the vendored copy'
 assert_identical "$BIN_A/lane-end" "$LANE_END_VENDOR" 'fresh lane-end is byte-identical to the vendored copy'
@@ -237,16 +244,23 @@ assert_contains "$OUTPUT_A" 'openRepoTools: installed at' 'fresh install reports
 assert_contains "$OUTPUT_A" 'park: installed at' 'fresh install reports an installed verb for park'
 assert_contains "$OUTPUT_A" 'resume: installed at' 'fresh install reports an installed verb for resume'
 assert_contains "$OUTPUT_A" 'status: installed at' 'fresh install reports an installed verb for status'
+assert_contains "$OUTPUT_A" 'restart: installed at' 'fresh install reports an installed verb for restart'
+assert_contains "$OUTPUT_A" 'lanes: installed at' 'fresh install reports an installed verb for lanes'
 assert_contains "$OUTPUT_A" 'lanes-edit.sh: installed at' 'fresh install reports an installed verb for lanes-edit.sh'
 assert_contains "$OUTPUT_A" 'lane-start: installed at' 'fresh install reports an installed verb for lane-start'
 assert_contains "$OUTPUT_A" 'lane-end: installed at' 'fresh install reports an installed verb for lane-end'
 assert_contains "$OUTPUT_A" 'link-estates: installed at' 'fresh install reports an installed verb for link-estates'
 assert_contains "$OUTPUT_A" 'repos.tsv: installed at' 'fresh install reports an installed verb for repos.tsv'
-assert_contains "$OUTPUT_A" 'openRepoTools: 9 of 9 placed' 'the shim reports its own count, and it is nine'
-# The skill is placed too, from the pinned copy beside the shim and with no
-# fetch: the no-fetch sentinel this script exports would refuse one.
+assert_contains "$OUTPUT_A" 'openRepoTools: 11 of 11 placed' 'the shim reports its own count, and it is eleven'
+# BOTH skills are placed too, from the pinned copies beside the shim and with
+# no fetch: the no-fetch sentinel this script exports would refuse one. They
+# are asserted here and NOT in the pre-flight/verify lists for the reason the
+# script's own header gives -- they are not bin-directory targets, so this is
+# the only place in this suite that sees them placed at all.
 assert_file_present "$CLAUDE_PROFILES_HOME/shared/skills/lane-swap/SKILL.md" 'fresh install places the /lane-swap skill in the shared skills directory'
 assert_file_present "$CLAUDE_USER_DIR/skills/lane-swap/SKILL.md" 'fresh install places the /lane-swap skill for a bare claude too'
+assert_file_present "$CLAUDE_PROFILES_HOME/shared/skills/restart/SKILL.md" 'fresh install places the /restart skill in the shared skills directory'
+assert_file_present "$CLAUDE_USER_DIR/skills/restart/SKILL.md" 'fresh install places the /restart skill for a bare claude too'
 assert_contains "$OUTPUT_A" 'Estate commands verified against the vendored pin.' 'fresh install reports success only after post-install verification'
 # Scenario (f) folded in here: a brand-new temp dir is never on $PATH. Fix 4
 # removed this script's own PATH warning (the shims already print theirs),
@@ -508,8 +522,8 @@ assert_matches "$missing_file_block" '^for f in ' 'the missing-file pre-flight l
 
 PREFLIGHT_FILE_VARS=(
     UPDATE_UPSTREAM SHAPE_SHIM TOOLS_SHIM PARK_FILE RESUME_FILE STATUS_FILE
-    LANES_EDIT_FILE LANE_START_FILE LANE_END_FILE LINK_ESTATES_FILE
-    REPOS_TSV_FILE SKILL_FILE
+    RESTART_FILE LANES_FILE LANES_EDIT_FILE LANE_START_FILE LANE_END_FILE
+    LINK_ESTATES_FILE REPOS_TSV_FILE SKILL_FILE RESTART_SKILL_FILE
 )
 for v in "${PREFLIGHT_FILE_VARS[@]}"; do
     assert_contains "$missing_file_block" "\"\$$v\"" "missing-file pre-flight covers \$$v"
@@ -518,13 +532,14 @@ assert_equal "$(count_matches "$missing_file_block" '"$')" "${#PREFLIGHT_FILE_VA
     'the missing-file pre-flight loop holds exactly the entries asserted above and no others'
 
 # Every path `require_pin_row` demands a row for. This list is LONGER than the
-# two bin-directory lists by one: skills/lane-swap/SKILL.md must be present
-# and pinned, but it is not written into a bin directory, so it is neither
-# pre-flighted nor verified as an install target.
+# two bin-directory lists by TWO: both skills must be present and pinned, but
+# neither is written into a bin directory, so neither is pre-flighted nor
+# verified as an install target. 14 here against 12 there is that difference,
+# and asserting both numbers is what keeps it deliberate.
 PIN_ROW_PATHS=(
-    openRepoShape openRepoTools park resume status
+    openRepoShape openRepoTools park resume status restart lanes
     lanes-edit.sh lane-start lane-end link-estates repos.tsv
-    skills/lane-swap/SKILL.md
+    skills/lane-swap/SKILL.md skills/restart/SKILL.md
 )
 for p in "${PIN_ROW_PATHS[@]}"; do
     assert_contains "$SCRIPT_SOURCE" "require_pin_row \"$p\"" "require_pin_row covers $p"
@@ -541,6 +556,8 @@ TOOLS_BIN_TARGETS=(
     "park:PARK_FILE"
     "resume:RESUME_FILE"
     "status:STATUS_FILE"
+    "restart:RESTART_FILE"
+    "lanes:LANES_FILE"
     "lanes-edit.sh:LANES_EDIT_FILE"
     "lane-start:LANE_START_FILE"
     "lane-end:LANE_END_FILE"

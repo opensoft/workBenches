@@ -293,9 +293,19 @@ old_buggy_result="$(printf '%s' "$multi_pipe_row" | awk -F'|' '{print $(NF-2)}')
 
 # ---------------------------------------------------------------------------
 # 8. RV-S2 regression: step 5 must print --lane as a LEADING option, before
-# `run` — claude-profile accepts --lane only as a leading option (before the
-# action), so a trailing one would be handed to Claude itself, not to the
+# the profile — claude-profile accepts --lane only as a leading option (before
+# the action), so a trailing one would be handed to Claude itself, not to the
 # launcher. Executes the shipped branch itself, both ways.
+#
+# THE VERB MOVED WITH THE PIN, AND THE INVARIANT DID NOT. Until adoption act
+# 4b re-pinned this skill onto openRepoTools' Amendment 11 tooling commit the
+# shipped branch built `pclaude run <profile>`; A11 drops the verb — it was
+# always optional, and `pclaude <profile>` and `pclaude run <profile>` build
+# the same argv — so the branch now builds `pclaude <profile>`. The exact-match
+# assertions follow the PINNED text, because the pinned text is what every host
+# runs. The two assertions after them do not mention the verb at all: `--lane`
+# leads and the profile is last is the thing this scenario exists for, and it
+# is asserted separately so the next wording change cannot quietly take it too.
 scenario
 step5_snippet="$(sed -n '/if \[\[ -n "\${row_write_refused:-}" \]\]; then/,/^fi$/p' "$SKILL_SOURCE")"
 [[ -n "$step5_snippet" ]] \
@@ -304,12 +314,39 @@ lane=openRepoProject-1
 CLAUDE_PROFILE_NAME=work
 row_write_refused=""
 eval "$step5_snippet"
-[[ "$restart_cmd" == "pclaude run work" ]] \
-    || fail "RV-S2: normal-path restart_cmd='$restart_cmd', expected the unqualified command"; assertion
+restart_cmd_plain="$restart_cmd"
+[[ "$restart_cmd_plain" == "pclaude work" ]] \
+    || fail "RV-S2: normal-path restart_cmd='$restart_cmd_plain', expected the unqualified command"; assertion
 row_write_refused=1
 eval "$step5_snippet"
-[[ "$restart_cmd" == "pclaude --lane openRepoProject-1 run work" ]] \
-    || fail "RV-S2: refused-write restart_cmd='$restart_cmd', expected --lane as a LEADING option before run"; assertion
+restart_cmd_lane="$restart_cmd"
+[[ "$restart_cmd_lane" == "pclaude --lane openRepoProject-1 work" ]] \
+    || fail "RV-S2: refused-write restart_cmd='$restart_cmd_lane', expected --lane as a LEADING option before the profile"; assertion
+[[ "$restart_cmd_lane" == 'pclaude --lane openRepoProject-1 '* ]] \
+    || fail "RV-S2: refused-write restart_cmd='$restart_cmd_lane' does not LEAD with --lane, so claude-profile would hand it to Claude instead of reading it"; assertion
+[[ "$restart_cmd_lane" == *' work' ]] \
+    || fail "RV-S2: refused-write restart_cmd='$restart_cmd_lane' does not END in the profile"; assertion
+
+# AND THE PROSE HAS TO NAME THE COMMAND THE BRANCH ACTUALLY BUILDS. A skill
+# whose executed snippet hands the reader `pclaude <profile>` while the
+# sentence under it tells them to run `pclaude run <profile>` gives one answer
+# and explains another, and both halves are copied into a terminal by hand.
+#
+# This is not hypothetical and not a style check: openRepoTools#26 round 1
+# changed the snippet and left the sentence, which is how this assertion came
+# to exist (reported at opensoft/openRepoTools#26, for its round 2 absorb).
+#
+# The expected wording is DERIVED from the branch that just ran, never
+# hardcoded, so it holds across the verb change in both directions — it is
+# green on the pre-A11 text (`run` in both halves) and green on A11's
+# (`run` in neither) — and it does not fire on A11's deliberate equivalence
+# sentence elsewhere in the file, which names both forms on purpose.
+restart_bare_form="${restart_cmd_plain/% work/ <profile>}"
+restart_prose="$(grep -F 'That one command is the whole restart: bare' "$SKILL_SOURCE" || true)"
+[[ -n "$restart_prose" ]] \
+    || fail "RV-S2: could not find the sentence that explains step 5's restart command"; assertion
+[[ "$restart_prose" == *"\`$restart_bare_form\`"* ]] \
+    || fail "RV-S2: the branch builds '$restart_cmd_plain', so the sentence explaining it should name \`$restart_bare_form\`, but it reads: $restart_prose"; assertion
 
 # Every fenced shell block has to parse, or the skill is not copy-pasteable.
 block_count=0
