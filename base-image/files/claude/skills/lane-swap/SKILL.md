@@ -63,14 +63,26 @@ Only the second branch leaves anything blank, and it leaves it blank because not
 
 ## 2. Refresh the handoff
 
-The handoff path is the row's own handoff column. Derive it; do not guess it:
+The handoff path is the row's own handoff column. Derive it; do not guess it — and read the row FETCHED,
+because this decides state (Amendment 7's read-after-fetch rule governs it; step 1's window/record probe is
+the only no-fetch read this skill makes):
 
 ```sh
-row="$(LANES_NO_FETCH=1 "$L" register-row "$lane" 2>/dev/null | grep '^|' | tail -n 1)"
-handoff="$(printf '%s' "$row" | awk -F'|' '{print $(NF-2)}' | awk '{$1=$1};1')"
+row="$("$L" register-row "$lane" 2>/dev/null | grep '^|' | tail -n 1)"
+# The handoff path is the row's SIXTH column: awk field 7, because $1 is the empty string before the
+# leading pipe — lanes-edit.sh's own row_cell/handoff_of_lane convention. NEVER count back from NF: this
+# lane's own row alone carries 27 fields today, every extra one of them in the state history to the RIGHT
+# of the handoff column, so `$(NF-2)` landed on the empty string and this step used to `git add ""` and
+# commit nothing — silently, in the one step Amendment 6(e) exists for.
+handoff="$(printf '%s' "$row" | awk -F'|' '{print $7}' | awk '{$1=$1};1')"
 uuid="$(printf '%s' "$row" | awk -F'|' '{print $3}' \
   | grep -o '[0-9a-f]\{8\}-[0-9a-f]\{4\}-[0-9a-f]\{4\}-[0-9a-f]\{4\}-[0-9a-f]\{12\}' | tail -n 1)"
+printf 'handoff=%s\nuuid=%s\n' "${handoff:-<none>}" "${uuid:-<none>}"
 ```
+
+If `$handoff` came back empty, **stop here** — this row does not split the way `row_cell` expects, a
+`git add ""` below commits nothing while looking like it worked, and Amendment 6(e) exists for exactly this
+step. Read the row's own text by hand and take its handoff token; do not guess one.
 
 `$uuid` is the **last** id in the session cell — this session, and the only one Amendment 6(b) calls the
 lane's. Rewrite the handoff's state line, **every word given and not yet executed**, and the resume prompt;
@@ -115,21 +127,36 @@ LANES_LANE="$lane" "$L" log PAUSED "lane:$lane" \
   "on <operator>'s word: <sanitized verbatim>"
 # (b) the LANES.md file-level line, the shape every prior PAUSED/RESUMED used
 "$L" append-line "PAUSED — lane $lane, session $uuid@$(hostname -s), $(date -u +%Y-%m-%dT%H:%M:%SZ), on <operator>'s word \"<sanitized verbatim>\"; <what's open, or NOTHING CLAIMED>; handoff refreshed"
-# (c) the row: flip its leading state word, DERIVED from the row itself
+# (c) the row: flip its leading state word, DERIVED from the row itself. row_write_refused is what step 5
+# reads: empty on success, "1" the moment either write below does not.
 state="$(printf '%s' "$row" | grep -o '| [A-Z][A-Z]* ·' | head -n 1)"   # e.g. '| LIVE ·'
-"$L" replace-in-row "$lane" "$state" "| PAUSED ·" "swap"
-"$L" append-row-status "$lane" "PAUSED — swap; window $(tmux display-message -p '#S:#I'); workstation $(hostname -s)"
+row_write_refused=""
+"$L" replace-in-row "$lane" "$state" "| PAUSED ·" "swap" || row_write_refused=1
+if [[ -z "$row_write_refused" ]]; then
+  "$L" append-row-status "$lane" "PAUSED — swap; window $(tmux display-message -p '#S:#I'); workstation $(hostname -s)" \
+    || row_write_refused=1
+fi
 ```
 
 If (a) still exits 2, re-run it with the free-text argument **dropped entirely** and say so in the report:
 the PAUSED line is what the launcher reads on restart, and step 4 is never left unwritten. If `$state` came
 back empty, re-read the row and take the first `| WORD ·` in it — `replace-in-row` requires exactly one
-occurrence and exits 2 on a guess.
+occurrence and exits 2 on a guess. If (c) is still refused after that re-read — a rebase conflict, a push
+race, anything `replace-in-row`/`append-row-status` themselves report — leave `row_write_refused` set and
+say so in the report; step 5 reads it, because a restart cannot resolve this lane from a record that was
+never flipped to `PAUSED`.
 
 ## 5. Print the restart command — one command, no menu
 
 ```sh
-printf 'READY TO SWAP — restart with: pclaude run %s\n' "${CLAUDE_PROFILE_NAME:-<profile>}"
+if [[ -n "${row_write_refused:-}" ]]; then
+  restart_cmd="pclaude --lane $lane run ${CLAUDE_PROFILE_NAME:-<profile>}"
+  restart_note=' (row write was refused; the lane must be named explicitly)'
+else
+  restart_cmd="pclaude run ${CLAUDE_PROFILE_NAME:-<profile>}"
+  restart_note=''
+fi
+printf 'READY TO SWAP — restart with: %s%s\n' "$restart_cmd" "$restart_note"
 lane-start --help 2>/dev/null | grep -q -- '--confirm' \
   && echo 'restart stamps: written by lane-start (Amendment 8(d))' \
   || echo 'restart stamps: MANUAL, as the next session first act (Rule 3 / Amendment 6(c))'
@@ -137,8 +164,13 @@ lane-start --help 2>/dev/null | grep -q -- '--confirm' \
 
 That one command is the whole restart: bare `pclaude run <profile>` resolves this lane from the window name,
 and from the swap record step 4 just wrote when the window is gone (Amendment 8(c)). The profile argument is
-the only part the operator changes, and only when switching accounts. The capability probe above decides
-whether the RESUMED stamps are `lane-start`'s act or the next session's — do not assert either from memory.
+the only part the operator changes, and only when switching accounts. **`--lane <lane>` is printed only
+where step 4's row write was refused** — the row was never flipped to `PAUSED`, so a restart cannot resolve
+this lane from it and the operator must name it explicitly. `--lane` is a **leading** option to
+`claude-profile` (`claude-profile:555-560` accepts it only before the action), so it goes BEFORE `run`, never
+after the profile: `pclaude run <profile> --lane <lane>` would be handed to Claude itself, not to the
+launcher. The capability probe above decides whether the RESUMED stamps are `lane-start`'s act or the next
+session's — do not assert either from memory.
 
 **`/resume` and `claude --resume <title>` are not lane surfaces** (A8 Addendum 2, R-A8-6): a lane is entered
 through `pclaude run` or `lane-start`, and by no other door. Do not offer either as a fallback.
