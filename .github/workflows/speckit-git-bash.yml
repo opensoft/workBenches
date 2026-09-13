@@ -21,6 +21,8 @@ on:
       - devcontainer.test/test-setup-estate-commands.sh
       - scripts/setup-workspace-repo.sh
       - devcontainer.test/test-setup-workspace-repo.sh
+      - scripts/setup-claude-profiles.sh
+      - devcontainer.test/test-claude-profile-skill-install.sh
       - setup.sh
   pull_request:
     paths:
@@ -42,6 +44,8 @@ on:
       - devcontainer.test/test-setup-estate-commands.sh
       - scripts/setup-workspace-repo.sh
       - devcontainer.test/test-setup-workspace-repo.sh
+      - scripts/setup-claude-profiles.sh
+      - devcontainer.test/test-claude-profile-skill-install.sh
       - setup.sh
   workflow_dispatch:
 
@@ -82,6 +86,17 @@ jobs:
 
       - name: Run the setup-workspace-repo regression test
         run: bash ./devcontainer.test/test-setup-workspace-repo.sh
+
+      # lane-collision-protocol Amendment 9 adoption act 4b. This suite is the
+      # guard on the act's deletion -- that scripts/setup-claude-profiles.sh no
+      # longer installs the /lane-swap skill or ensures the SessionStart entry,
+      # and that `openRepoTools --install` is the one thing that does. Until
+      # this PR nothing in CI ran it, so restoring either writer would have
+      # gone green. It is host-run, needs only bash/jq/python3, and is
+      # hermetic: it redirects HOME, CLAUDE_PROFILES_HOME and CLAUDE_USER_DIR
+      # into its own sandbox.
+      - name: Run the lane-swap skill install regression test
+        run: bash ./devcontainer.test/test-claude-profile-skill-install.sh
 
       - name: Run bootstrap suite
         run: bash ./devBenches/devcontainer.test/test-openspeckit-bootstrap.sh
