@@ -27,7 +27,7 @@
 #     it never fails setup.sh.
 #
 # Guarantees added by the adversarial review round:
-#   - Refuses (exit 1) before running either shim if any of the five install
+#   - Refuses (exit 1) before running either shim if any of the ten install
 #     targets already exists as a symlink, as anything other than a regular
 #     file (e.g. a directory), or is not writable -- or if its bin dir exists
 #     and is not writable. Nothing is installed once any one target fails
@@ -43,10 +43,32 @@
 #     above, it fails loudly naming the sentinel rather than silently
 #     succeeding against whatever the operator's shell happened to export
 #     (D3, defense in depth).
-#   - After both installers exit 0, every one of the five placed files is
+#   - After both installers exit 0, every one of the ten placed files is
 #     re-checked: a regular, non-symlink file, mode exactly 0755, and
 #     `cmp`-identical to its vendored copy. Only then does this script
 #     report success (D1/D2/D3/D4 residue, closed in one place).
+#
+# lane-collision-protocol Amendment 9 adoption act 4b grew every list in
+# this file from five install targets to TEN, because `openRepoTools
+# --install` now places nine files instead of four: the lane helpers
+# lanes-edit.sh, lane-start, lane-end and link-estates, and the shipped alias
+# table repos.tsv, joined openRepoTools, park, resume and status in its one
+# INSTALLABLES list (Amendment 9 clause (b)). repos.tsv is placed in the bin
+# directory at 755 with the commands, which is what keeps this act a list
+# length: this script builds every pre-flight and verify target from
+# $shape_bin_dir / $tools_bin_dir and has no concept of a second destination.
+#
+# A TENTH VENDORED PATH THAT IS NOT AN INSTALL TARGET. `--install` also places
+# the /lane-swap skill, and it collects those bytes from `skills/lane-swap/
+# SKILL.md` BESIDE the shim it was invoked as. That path is therefore pinned
+# and required present here -- but it is NOT pre-flighted or verified as an
+# install target, because it is not written into a bin directory and this
+# script owns no second destination. Without the vendored copy the shim falls
+# through to a fetch, this script's own no-fetch sentinel below refuses it,
+# and `--install` dies having placed NOTHING at all: measured against
+# openRepoTools#24's shim, exit 2, "could not fetch skills/lane-swap/SKILL.md
+# from pinned-by-workBenches-no-fetch". setup.sh:185 would swallow that into
+# one warning line, which is the failure act 4b exists to prevent.
 #
 # Set WORKBENCHES_SKIP_ESTATE_COMMANDS=1 to skip this step entirely (prints
 # one line, exits 0).
@@ -94,6 +116,12 @@ TOOLS_SHIM="$BASE_IMAGE_DIR/files/openrepotools/openRepoTools"
 PARK_FILE="$BASE_IMAGE_DIR/files/openrepotools/park"
 RESUME_FILE="$BASE_IMAGE_DIR/files/openrepotools/resume"
 STATUS_FILE="$BASE_IMAGE_DIR/files/openrepotools/status"
+LANES_EDIT_FILE="$BASE_IMAGE_DIR/files/openrepotools/lanes-edit.sh"
+LANE_START_FILE="$BASE_IMAGE_DIR/files/openrepotools/lane-start"
+LANE_END_FILE="$BASE_IMAGE_DIR/files/openrepotools/lane-end"
+LINK_ESTATES_FILE="$BASE_IMAGE_DIR/files/openrepotools/link-estates"
+REPOS_TSV_FILE="$BASE_IMAGE_DIR/files/openrepotools/repos.tsv"
+SKILL_FILE="$BASE_IMAGE_DIR/files/openrepotools/skills/lane-swap/SKILL.md"
 
 if [ ! -f "$PIN_FILE" ]; then
     echo "Estate command install refused: the pin file is missing or" >&2
@@ -102,7 +130,9 @@ if [ ! -f "$PIN_FILE" ]; then
 fi
 
 missing=""
-for f in "$UPDATE_UPSTREAM" "$SHAPE_SHIM" "$TOOLS_SHIM" "$PARK_FILE" "$RESUME_FILE" "$STATUS_FILE"; do
+for f in "$UPDATE_UPSTREAM" "$SHAPE_SHIM" "$TOOLS_SHIM" "$PARK_FILE" "$RESUME_FILE" \
+         "$STATUS_FILE" "$LANES_EDIT_FILE" "$LANE_START_FILE" "$LANE_END_FILE" \
+         "$LINK_ESTATES_FILE" "$REPOS_TSV_FILE" "$SKILL_FILE"; do
     if [ ! -f "$f" ]; then
         missing="${missing:+$missing }$f"
     fi
@@ -180,6 +210,12 @@ require_pin_row "openRepoTools"
 require_pin_row "park"
 require_pin_row "resume"
 require_pin_row "status"
+require_pin_row "lanes-edit.sh"
+require_pin_row "lane-start"
+require_pin_row "lane-end"
+require_pin_row "link-estates"
+require_pin_row "repos.tsv"
+require_pin_row "skills/lane-swap/SKILL.md"
 
 echo "openRepoShape pinned at $shape_commit"
 echo "openRepoTools pinned at $tools_commit"
@@ -195,14 +231,14 @@ refuse_preflight() {
 
 refuse_postverify() {
     echo "Estate command install refused: $1" >&2
-    echo "One or more of the five commands may now be in a mixed state;" >&2
+    echo "One or more of the ten commands may now be in a mixed state;" >&2
     echo "fix the problem above and re-run this script." >&2
     exit 1
 }
 
 # D1/D2/most of D4: every target either shim is about to write to is
 # checked BEFORE either of them runs, so a bad target refuses before
-# anything at all is placed -- never after only some of the five are done.
+# anything at all is placed -- never after only some of the ten are done.
 check_target_preflight() {
     local target="$1" dir="$2"
     if [ -L "$target" ]; then
@@ -224,6 +260,11 @@ check_target_preflight "$tools_bin_dir/openRepoTools" "$tools_bin_dir"
 check_target_preflight "$tools_bin_dir/park" "$tools_bin_dir"
 check_target_preflight "$tools_bin_dir/resume" "$tools_bin_dir"
 check_target_preflight "$tools_bin_dir/status" "$tools_bin_dir"
+check_target_preflight "$tools_bin_dir/lanes-edit.sh" "$tools_bin_dir"
+check_target_preflight "$tools_bin_dir/lane-start" "$tools_bin_dir"
+check_target_preflight "$tools_bin_dir/lane-end" "$tools_bin_dir"
+check_target_preflight "$tools_bin_dir/link-estates" "$tools_bin_dir"
+check_target_preflight "$tools_bin_dir/repos.tsv" "$tools_bin_dir"
 
 # D3, defense in depth: every file the checks above proved is present and
 # pinned is about to be installed with no fetch ever reachable, because
@@ -258,7 +299,7 @@ fi
 # shims reported success above, but `cp` can write through a symlink or into
 # a directory without either shim noticing -- so every placed file is
 # re-checked against the vendored copy it was supposed to become, and only
-# once all five pass does this script report success itself.
+# once all ten pass does this script report success itself.
 file_mode_octal() {
     stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null
 }
@@ -282,6 +323,16 @@ verify_installed "$tools_bin_dir/openRepoTools" "$TOOLS_SHIM"
 verify_installed "$tools_bin_dir/park" "$PARK_FILE"
 verify_installed "$tools_bin_dir/resume" "$RESUME_FILE"
 verify_installed "$tools_bin_dir/status" "$STATUS_FILE"
+verify_installed "$tools_bin_dir/lanes-edit.sh" "$LANES_EDIT_FILE"
+verify_installed "$tools_bin_dir/lane-start" "$LANE_START_FILE"
+verify_installed "$tools_bin_dir/lane-end" "$LANE_END_FILE"
+verify_installed "$tools_bin_dir/link-estates" "$LINK_ESTATES_FILE"
+# repos.tsv is DATA and carries an executable bit it has no use for. That is
+# Amendment 9 clause (b)'s deliberate cost: `--install` stamps 755 on
+# everything in its one INSTALLABLES list, and this verify refuses any mode
+# but 755, so a data file in a second destination at a second mode would have
+# cost this script a second destination and a second mode as well.
+verify_installed "$tools_bin_dir/repos.tsv" "$REPOS_TSV_FILE"
 
 echo "Estate commands verified against the vendored pin."
 
