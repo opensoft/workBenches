@@ -1800,8 +1800,15 @@ grep -Fq 'brett-wip' "$ERR_LOG" \
     && fail "R-A11-13: the install act still names a repository this machine never chose ('$(cat "$ERR_LOG")')"; assertion
 grep -Fq "$note" "$ERR_LOG" \
     && fail "Evidence 5: the standing no-lane note told the operator to run a command this machine does not have ('$(cat "$ERR_LOG")')"; assertion
-[[ "$(wc -l < "$ERR_LOG")" -eq 2 ]] \
-    || fail "Evidence 5: one situation printed $(wc -l < "$ERR_LOG") lines ($(cat "$ERR_LOG"))"; assertion
+# ONE SITUATION, ONE LINE — SPEC rev 5 §16(a) and the amendment text's rule (a)
+# ("A8 gives the one-notice shape `pclaude: <reason>; <note>` … One situation,
+# one line"). The reason and the act were on two lines; the act now rides on the
+# reason's own line, which is also the FIRST line, so both halves of the ruling
+# are on one read.
+[[ "$(wc -l < "$ERR_LOG")" -eq 1 ]] \
+    || fail "Evidence 5/§16(a): one situation printed $(wc -l < "$ERR_LOG") lines ($(cat "$ERR_LOG"))"; assertion
+head -n 1 "$ERR_LOG" | grep -Fq 'fix:' \
+    || fail "§16(a): the install act is not on the same line as the reason ('$(cat "$ERR_LOG")')"; assertion
 
 # 5h-ii. ...AND `--no-lane` IS TOLD NOTHING. The operator said no lane, so there
 # is no degradation to report: a notice that fires where nothing was lost is a
@@ -1837,8 +1844,8 @@ grep -Fq 'openRepoTools --install' "$ERR_LOG" \
     || fail "R-A11-13: an openRepoTools that places the lane tools is not the act named ('$(cat "$ERR_LOG")')"; assertion
 grep -Fq 'link-estates' "$ERR_LOG" \
     && fail "R-A11-13: the superseded mechanism is named beside the one that works, so the operator has to decide which is current ('$(cat "$ERR_LOG")')"; assertion
-[[ "$(wc -l < "$ERR_LOG")" -eq 2 ]] \
-    || fail "R-A11-13: one situation printed $(wc -l < "$ERR_LOG") lines ($(cat "$ERR_LOG"))"; assertion
+[[ "$(wc -l < "$ERR_LOG")" -eq 1 ]] \
+    || fail "R-A11-13/§16(a): one situation printed $(wc -l < "$ERR_LOG") lines ($(cat "$ERR_LOG"))"; assertion
 
 # 5h-v. ...AND THE COPY INSTALLED TODAY IS NOT THAT PLACER. `/usr/local/bin/
 # openRepoTools` on this workstation places park, resume, status and itself —
@@ -2059,6 +2066,18 @@ grep -Fq 'pclaude run ' "$GUARD_SH" \
     && fail "§1: the guard still prints the long form of the restart command"; assertion
 grep -Fq 'restart_cmd="pclaude ${CLAUDE_PROFILE_NAME:-<profile>}"' "$SKILL_MD" \
     || fail "§9/§1: the skill does not print the one-word restart command"; assertion
+# ...AND THE LAUNCHER DOES NOT TELL A MAINTAINER THE GUARD PERFORMS THE SWAP.
+# SPEC §9 and the amendment text (clause (g)) rule the opposite in terms: the
+# hook "cannot act", it composes one line and printf's it, and the SESSION
+# performs the act. A comment that says otherwise sends the next person
+# debugging a missing PAUSED record into the wrong file. Both artefacts are
+# audited: the guard already says it (`:122`), and now so does the launcher.
+grep -Fq 'performs the swap itself' "$LAUNCHER" \
+    && fail "§9: the launcher tells a maintainer the guard performs the swap; it is a UserPromptSubmit hook that prints one line (claude-usage-guard.sh:167-179)"; assertion
+grep -Fq 'THE GUARD ITSELF PERFORMS NO STEP OF IT' "$LAUNCHER" \
+    || fail "§9: the launcher does not say what the guard actually does at the breakpoint"; assertion
+grep -Fq 'THE GUARD DOES NOT PERFORM THE SWAP' "$GUARD_SH" \
+    || fail "§9: the guard itself no longer says it performs no step of the swap"; assertion
 
 # ===========================================================================
 # 6b. THE SWAP RECORD'S WRITER — RV-W1, RV-W6 and R-A11-10 (A11 Addendum 2).

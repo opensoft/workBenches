@@ -760,9 +760,20 @@ profile_metadata() {
 #
 # and one thing about the swap that is not in this file: at the 95% breakpoint
 # the usage guard (`claude-usage-guard.sh`, wired into every profile by
-# configure_profile_runtime above) performs the swap itself — the PAUSED
-# record and the one restart command — with no question asked, so the record
-# rule 3 reads is written whether or not anybody ran `/lane-swap`.
+# configure_profile_runtime above) turns its top five-hour line from ADVICE
+# into a DIRECTIVE — run `/lane-swap` now, with no question asked — and THE
+# SESSION performs the swap.
+#
+# THE GUARD ITSELF PERFORMS NO STEP OF IT, and this comment used to say it did.
+# It is a `UserPromptSubmit` hook: it composes one string and `printf`s it
+# (`claude-usage-guard.sh:167-179`) and that is the whole of what it can do —
+# gated, latched and fail-quiet are why, and none of the three may be traded
+# away for an act behind a keystroke (SPEC §9; the amendment text, clause (g):
+# "It cannot act. It can put one line into the session's context … the
+# automatic swap is not a new actor: it is the guard's existing top `five`
+# threshold line changing from advice into a directive, and the session
+# performing it"). So a swap with no PAUSED record is a session that did not
+# take the directive, and the file to open is the skill, not the guard.
 
 lanes_edit_bin() {
   # Found the way lane-start is, and never as a path spelled for one
@@ -949,8 +960,19 @@ lane_note_no_lane_start() {
   # line can say the TOOL is missing. It replaces the standing note rather than
   # printing beside it, because "run lane-start <repo> <n>" names a command this
   # machine does not have.
-  echo "pclaude: lane-start is not on PATH, so this launch takes NO LANE: no register stamp, a session name the harness derives, and this window left as it is (new-workstation#20, Evidence 5)." >&2
-  echo "pclaude:   fix: $(lane_start_install_act)" >&2
+  #
+  # ONE SITUATION, ONE LINE — and the act rides on it rather than under it.
+  # This printed the reason and then `pclaude:   fix: <act>` beneath it, which
+  # is one situation on two lines. SPEC rev 5 §16(a) and the amendment text
+  # (rule (a), "It composes with Amendment 8(c) step 4 rather than repealing
+  # it": A8 gives the one-notice shape `pclaude: <reason>; <note>` "for exactly
+  # the case where the launcher has something of its own to report beside the
+  # standing no-lane note, and this line is that reason half. One situation,
+  # one line.") give the shape, and the shape is a single `pclaude: ...; ...`.
+  # The substance is unchanged and is what the ruling actually names: never
+  # silent, the act named, printed FIRST, and replacing the standing note
+  # rather than doubling it.
+  echo "pclaude: lane-start is not on PATH, so this launch takes NO LANE: no register stamp, a session name the harness derives, and this window left as it is (new-workstation#20, Evidence 5); fix: $(lane_start_install_act)" >&2
 }
 
 lane_note_no_lane() {
@@ -1940,8 +1962,10 @@ case "$action" in
       run)
         if [[ -n "${lane:-}" ]]; then
           command -v lane-start >/dev/null 2>&1 || {
-            echo "pclaude: --lane $lane needs lane-start on PATH. Fix:" >&2
-            echo "  $(lane_start_install_act)" >&2
+            # One situation, one line, here too: this is the other place the
+            # install act is printed, and an operator who meets both should
+            # not meet two shapes of one notice (SPEC rev 5 §16(a)).
+            echo "pclaude: --lane $lane needs lane-start on PATH; fix: $(lane_start_install_act)" >&2
             exit 2
           }
         fi
