@@ -71,7 +71,7 @@ fail() {
 # pinned, as in test-claude-profile-lane-default.sh, so a scenario silently
 # dropped (or a run that quietly stopped happening) fails the suite instead of
 # just shrinking a number nobody reads.
-EXPECTED_SCENARIOS=16
+EXPECTED_SCENARIOS=17
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -512,6 +512,40 @@ grep -qF 'compaction is imminent' <<<"$guard_out" \
     || fail "context+five: expected exactly two lines (five + ctx), got $(wc -l <<<"$guard_out") (out=[$guard_out])"; assertion
 [[ "$guard_status" -eq 0 ]] \
     || fail "context+five: exited $guard_status instead of 0"; assertion
+
+# ---------------------------------------------------------------------------
+# 17. A DIRECTIVE IS ADDRESSED TO A SESSION, and a payload that names none gets
+# the ADVICE it got before Amendment 11. `sid` falls back to the literal
+# `nosession` when the hook's JSON cannot be parsed, and two things then go
+# wrong at once that do not go wrong for advice: the latch key becomes
+# `nosession.five.95`, shared by every session whose payload failed the same
+# way, so the first to reach it silences the rest — "warn once per session"
+# collapsing into "warn once per workstation" — and the line stops being a
+# remark and becomes an instruction to perform an act, in a session this hook
+# could not identify.
+#
+# It is reachable only under the GLOBAL arming file, because the per-directory
+# gate walks up from a `cwd` such a payload does not carry. That is the one
+# path on which FAIL-QUIET does not cover the whole hook: the profile snapshot
+# is keyed by CLAUDE_CONFIG_DIR alone, independent of cwd and session_id, so a
+# globally-armed workstation still has numbers to report from a payload it
+# could not read. SPEC §9 leaves the global file at Open, and this is one more
+# reason for that.
+NOSESSION_HOME=$(fresh_home)
+mkdir -p "$NOSESSION_HOME/.claude"
+: > "$NOSESSION_HOME/.claude/usage-guard.on"          # the global arm — "arms everything"
+write_profile_snapshot "$NOSESSION_HOME" "" 96 "$FIVE_RESET_EPOCH" null null >/dev/null
+run_guard_raw "$NOSESSION_HOME" 'not json at all'
+grep -qF 'AUTOMATIC SWAP' <<<"$guard_out" \
+    && fail "nosession: a directive to act was addressed to a session this hook could not identify (out=[$guard_out])"; assertion
+grep -qF '/lane-swap' <<<"$guard_out" \
+    && fail "nosession: the payload named no session and /lane-swap was still ordered (out=[$guard_out])"; assertion
+grep -qF 'STOP at a breakpoint' <<<"$guard_out" \
+    || fail "nosession: the pre-Amendment-11 advice did not stand in for the directive (out=[$guard_out])"; assertion
+grep -qF 'named no session' <<<"$guard_out" \
+    || fail "nosession: it does not say WHY the automatic swap is not directed here (out=[$guard_out])"; assertion
+[[ "$guard_status" -eq 0 ]] \
+    || fail "nosession: exited $guard_status instead of 0"; assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"

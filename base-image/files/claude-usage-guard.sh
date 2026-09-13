@@ -133,8 +133,27 @@ hhmm() { [ -n "${1:-}" ] && [ "$1" != "null" ] && date -u -d "@$1" +%H:%MZ 2>/de
 # The directive names `/lane-swap` by its canonical name and `/swap` as its
 # alias, because the session may have either installed, and it names the one
 # fact the skill cannot derive from inside a hook: that nobody is being asked.
+#
+# AND IT IS ADDRESSED TO A SESSION, so it is emitted only where the payload
+# named one. `sid` falls back to the literal `nosession` when the hook's JSON
+# cannot be parsed or carries no `session_id`, and two things then go wrong at
+# once that do not go wrong for advice. The latch key becomes
+# `nosession.five.95`, shared by every session whose payload failed the same
+# way, so the first one to reach it silences the rest — the "warn once per
+# session" property collapsing into "warn once per workstation". And the line
+# itself stops being a remark and becomes an instruction to perform an act, in
+# a session this hook could not identify. Advice is safe to repeat and safe to
+# address to nobody; a directive is neither, so at 95 a payload with no session
+# keeps the words the threshold had before Amendment 11. It is reachable only
+# under the GLOBAL arming file (`~/.claude/usage-guard.on`), because the
+# per-directory gate walks up from a `cwd` that such a payload does not carry —
+# which is one more reason SPEC §9 leaves that global file at Open.
 auto_swap_directive() {
   local pct="$1" reset="$2"
+  if [ "$sid" = nosession ]; then
+    printf '%s' "⚠ 5-HOUR WINDOW AT ${pct}% (resets ${reset}). Per global CLAUDE.md: STOP at a breakpoint, write or refresh the handoff doc, then small tasks only. (The automatic swap of Amendment 11(4) is not directed here: this hook's payload named no session, so there is nothing to address it to and nothing to latch it against.)"
+    return 0
+  fi
   printf '%s' "⚠ 5-HOUR WINDOW AT ${pct}% (resets ${reset}). AUTOMATIC SWAP (lane-collision-protocol Amendment 11(4)): run /lane-swap (alias /swap) NOW, every step in order, and do not ask the operator whether to — the 95% breakpoint is the decision. Bound step 3's wait on the writers: name any writer still holding unpushed work in the handoff and proceed, killing nothing and pushing nobody's work. The swap record it writes is what the next launch resolves this lane from, so it is never left unwritten. Then print the one restart command — pclaude ${CLAUDE_PROFILE_NAME:-<profile>} — and stop."
 }
 
