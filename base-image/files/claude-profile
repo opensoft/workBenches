@@ -258,25 +258,200 @@ claude_run_is_interactive() {
   claude_args_start_session "$@"
 }
 
+# ---------------------------------------------------------------------------
+# ACT 1 — THE LAUNCHER REUSES THE TMUX WINDOW (Amendment 11(b) act 1, SPEC §3).
+#
+# Inside tmux this is already true and is now a contract rather than an
+# accident: no session is created, the launch happens in the current window,
+# and the launcher NEVER renames it — renaming is lane-start's act alone
+# (Amendment 5(f)) — so the name and the `@id` both survive a restart and
+# precedence 2 answers with nothing asked.
+#
+# Outside tmux there is no window to keep, and act 1 is three steps:
+#
+#   1. RESOLVE THE LANE BEFORE THE SESSION IS CREATED. Today the resolution
+#      happens in the child, after the session exists, which is why the child
+#      has to be handed the parent's window name at all. Out here precedences 1,
+#      4 and 5 answer as they do today, and precedence 3 — which has no `<@id>`
+#      to compare, there being no window this process is standing in — is tried
+#      on the RECORD's `<session>:<index>` alone and only where tmux resolves it
+#      NOW. Where nothing resolves, step 3 gives no answer at all; it is not
+#      "matched loosely".
+#   2. REUSE THE RECORDED WINDOW WHERE IT STILL EXISTS. Respawn that window's
+#      pane with the launch command and attach to its session instead of making
+#      one. The name and the id both survive, and the lane's next record writes
+#      the same id back. Where the id names no window, nothing is lost: step 3.
+#   3. OTHERWISE CREATE THE SESSION AS BEFORE, naming its window for the lane at
+#      birth ONLY for a lane nobody has to confirm.
+#
+# WHAT THE PARENT RESOLVES IS NEVER HANDED DOWN AS THE ANSWER. The lane found
+# here decides which window to reuse and nothing else: it is not exported as
+# CLAUDE_LANE and not passed as `--lane`, so a lane that came from the
+# newest-first guess still reaches lane-start as `--confirm` in the child and is
+# still asked about. Pre-answering that question in the parent is exactly what
+# act 1 step 3's fence exists to prevent, and it would be no better done here.
+
+act1_reuse_lane=""
+act1_reuse_pane=""
+act1_reuse_window=""
+act1_reuse_session=""
+act1_reuse_name=""
+act1_reuse_ref=""
+act1_reuse_id=""
+act1_reuse_kill=false
+
+act1_window_probe() {
+  # One read of one window, by whichever ref names it: `<@id>` or
+  # `<session>:<index>`. Prints `<@id>|<session>:<index>|<%pane>|<name>` and
+  # exits non-zero where tmux resolves nothing — which IS the answer whenever a
+  # record names a window that is gone, and the reason the match is fenced on
+  # liveness at all: a `<session>:<index>` is reused the instant a window closes
+  # and the next one takes its index, so matching a dead ref is how a lane would
+  # bind to a stranger's pane.
+  tmux display-message -p -t "$1" \
+    '#{window_id}|#{session_name}:#{window_index}|#{pane_id}|#{window_name}' \
+    2>/dev/null
+}
+
+act1_resolve_lane() {
+  # ACT 1 STEP 1. Sets `act1_reuse_lane`, which is used for step 2 and for
+  # nothing else. Precedence 1 first — the operator's own word, the only lane
+  # that is certain out here. Then precedence 3 on the records' own window refs,
+  # newest first, taking the first record whose window tmux resolves NOW. Then
+  # precedence 4, the newest swap, which is a guess and is treated as one.
+  local row ref probe
+  act1_reuse_lane=""
+  [[ "${no_lane:-false}" == false ]] || return 0
+  if [[ -n "${lane:-}" ]]; then
+    act1_reuse_lane="$lane"
+    return 0
+  fi
+  claude_args_start_session "$@" || return 0
+  command -v lane-start >/dev/null 2>&1 || return 0
+  swapped_read
+  [[ "${swapped_status:-8}" -eq 0 && -n "${swapped_rows:-}" ]] || return 0
+  while IFS= read -r row; do
+    [[ "$row" == *$'\t'* ]] || continue
+    for ref in $(printf '%s' "$row" | cut -f 3); do
+      probe="$(act1_window_probe "$ref" || true)"
+      [[ -n "$probe" ]] || continue
+      act1_reuse_lane="${row%%$'\t'*}"
+      [[ "$act1_reuse_lane" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || act1_reuse_lane=""
+      [[ -z "$act1_reuse_lane" ]] || return 0
+    done
+  done <<< "$swapped_rows"
+  # Precedence 3 answered nothing: no record names a window that still exists.
+  # Precedence 4's newest row is the guess, and it is only ever a reuse
+  # candidate here — the child asks about it.
+  row="$(printf '%s\n' "$swapped_rows" | head -n 1)"
+  [[ "$row" == *$'\t'* ]] || return 0
+  act1_reuse_lane="${row%%$'\t'*}"
+  [[ "$act1_reuse_lane" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] || act1_reuse_lane=""
+  return 0
+}
+
+act1_find_window() {
+  # ACT 1 STEP 2's probe. Sets `act1_reuse_*` where the lane's own swap record
+  # names a window that STILL EXISTS, and leaves them empty otherwise.
+  local lane_name="$1" row window_field ref probe want
+  act1_reuse_pane=""; act1_reuse_window=""; act1_reuse_session=""
+  act1_reuse_name=""; act1_reuse_ref=""; act1_reuse_id=""; act1_reuse_kill=false
+  [[ -n "$lane_name" ]] || return 1
+  [[ "${WORKBENCHES_CLAUDE_WINDOW_REUSE:-on}" != off ]] || return 1
+  row="$(lane_swapped_row "$lane_name" || true)"
+  [[ -n "$row" ]] || return 1
+  window_field="$(printf '%s' "$row" | cut -f 3)"
+  [[ -n "$window_field" ]] || return 1
+  # The `<@id>` is tried FIRST and the `<session>:<index>` second — clause (b)'s
+  # own order, and the id is the better key because it is never reissued for the
+  # life of the server. A probe that answers must answer about the ref it was
+  # ASKED about: tmux resolves `<session>:<index>` to whatever holds that index
+  # now, so the returned ref is compared back against the one we asked for.
+  for want in $(printf '%s' "$window_field" | tr ' \t' '\n\n' | grep '^@[0-9]\+$' || true) \
+              $(printf '%s' "$window_field" | tr ' \t' '\n\n' | grep -v '^@[0-9]\+$' || true); do
+    [[ -n "$want" ]] || continue
+    probe="$(act1_window_probe "$want" || true)"
+    [[ -n "$probe" ]] || continue
+    ref="${probe%%|*}"
+    if [[ "$want" == @* ]]; then
+      [[ "$ref" == "$want" ]] || continue
+    else
+      [[ "$(printf '%s' "$probe" | cut -d '|' -f 2)" == "$want" ]] || continue
+    fi
+    act1_reuse_id="$ref"
+    act1_reuse_ref="$(printf '%s' "$probe" | cut -d '|' -f 2)"
+    act1_reuse_pane="$(printf '%s' "$probe" | cut -d '|' -f 3)"
+    act1_reuse_name="$(printf '%s' "$probe" | cut -d '|' -f 4-)"
+    act1_reuse_window="$act1_reuse_ref"
+    act1_reuse_session="${act1_reuse_ref%:*}"
+    break
+  done
+  [[ -n "$act1_reuse_pane" ]] || return 1
+
+  # WHOSE PANE IS IT. Killing somebody else's pane to reuse its window is the
+  # one act Amendment 8(f) refuses by name, and a record can outlive the window
+  # it names being given to another lane: `lane-start` renames a window to the
+  # lane when it takes it (Amendment 5(f)), so the window's CURRENT NAME is the
+  # estate's own word about whose it is now.
+  #
+  #   * the name IS this lane's  → the pane's own process is the session this
+  #     restart replaces, which is the text's condition for `-k`, and the
+  #     ordinary state right after a swap because /lane-swap kills nothing.
+  #   * the name is ANOTHER LANE'S, per the register  → this window is not ours
+  #     to take at all. Do not reuse it; step 3 makes a session.
+  #   * anything else — no name, an unreadable one, a name the register does not
+  #     know  → not provably another lane's and not provably ours, so never
+  #     `-k`: a plain `respawn-pane` on a live pane exits 1, which is not an
+  #     error to report but the window being in use, and step 3 follows.
+  if [[ "$act1_reuse_name" == "$lane_name" ]]; then
+    act1_reuse_kill=true
+  elif [[ -n "$act1_reuse_name" ]]; then
+    local lanes_edit
+    lanes_edit="$(lanes_edit_bin || true)"
+    if [[ -n "$lanes_edit" ]] \
+      && LANES_NO_FETCH=1 "$lanes_edit" register-row "$act1_reuse_name" >/dev/null 2>&1; then
+      act1_reuse_pane=""
+      return 1
+    fi
+  fi
+  return 0
+}
+
 start_profile_tmux() {
   local profile="$1"
   shift
-  local launcher session_name command_string="" argument
+  local launcher session_name command_string="" argument reuse_status
   local -a env_prefix
   # AMENDMENT 11(2), ACT 1 — THE WINDOW IS REUSED, NEVER REPLACED.
-  # This function exists for the launch that came from NO tmux window: it makes
-  # one. Called from inside tmux it would replace the lane's own window with a
-  # brand-new session whose window is named for the command that made it, and
-  # the lane's name and id — the two things precedence 2 and the swap record
-  # are keyed on — would not survive the restart. `claude_run_is_interactive`
-  # already requires an empty $TMUX, so this is unreachable today; it is here
-  # because the property is the amendment and not an emergent consequence of
-  # that function's fourth test, and a refactor that loses it must fail loudly
-  # rather than quietly start creating sessions again.
+  # This function exists for the launch that came from NO tmux window. Called
+  # from inside tmux it would replace the lane's own window with a brand-new
+  # session, and the lane's name and id — the two things precedence 2 and the
+  # swap record are keyed on — would not survive the restart.
+  # `claude_run_is_interactive` already requires an empty $TMUX, so this is
+  # unreachable today; it is here because the property is the amendment and not
+  # an emergent consequence of that function's fourth test, and a refactor that
+  # loses it must fail loudly rather than quietly start creating sessions again.
   [[ -z "${TMUX:-}" ]] || {
     echo "pclaude: refusing to create a tmux session from inside one; the lane's window is reused (Amendment 11(2))." >&2
     return 1
   }
+  command -v tmux >/dev/null 2>&1 || {
+    echo "pclaude: tmux is required for interactive profile launches." >&2
+    return 1
+  }
+
+  # ACT 1 STEPS 1 AND 2, in that order and before anything is created.
+  act1_resolve_lane "$@"
+  if act1_find_window "$act1_reuse_lane"; then
+    # The window survives, so the values the child is handed are ITS values and
+    # not the empty ones this side of a launch outside tmux would otherwise
+    # thread: the child comes up in a real window whose name and id the estate
+    # already knows, and binds by precedence 2 or 3 with nothing asked.
+    lane_window="$act1_reuse_name"
+    lane_window_ref="$act1_reuse_ref"
+    lane_window_id="$act1_reuse_id"
+  fi
+
   env_prefix=(env WORKBENCHES_CLAUDE_TMUX_CHILD=1)
   # --lane/CLAUDE_LANE must survive this re-exec into a new tmux session.
   # tmux does not reliably hand a freshly-exported variable to a new session
@@ -284,25 +459,21 @@ start_profile_tmux() {
   # rather than relied on via inheritance — same idiom as the guard above.
   [[ -n "${lane:-}" ]] && env_prefix+=("CLAUDE_LANE=$lane")
   [[ "${no_lane:-false}" == true ]] && env_prefix+=("CLAUDE_NO_LANE=1")
-  # So must the name of the window this was typed in. The session created here
-  # is brand new and its window is named for the command that made it, never
-  # for a lane, so the child must read the name captured on this side of the
-  # re-exec instead of asking tmux again (capture_lane_window).
+  # So must the name of the window this was typed in — or, on the reuse path,
+  # the name of the window being reused. A session created fresh below has its
+  # window named for the command that made it unless the lane is certain, so the
+  # child must read what was captured on this side of the re-exec instead of
+  # asking tmux again (capture_lane_window).
   [[ -n "${lane_window:-}" ]] && env_prefix+=("WORKBENCHES_CLAUDE_WINDOW=$lane_window")
   # The window's ADDRESS travels the same way, and for the same reason. It is
   # information (Amendment 11(5): the id is stored, the NAME stays the key) —
-  # the swap record's `window <session>:<index> <@id>` field — and the child
-  # would otherwise record the address of the session this function just made.
+  # the swap record's `window <session>:<index> <@id>` field.
   [[ -n "${lane_window_ref:-}" ]] && env_prefix+=("WORKBENCHES_CLAUDE_WINDOW_REF=$lane_window_ref")
   [[ -n "${lane_window_id:-}" ]] && env_prefix+=("WORKBENCHES_CLAUDE_WINDOW_ID=$lane_window_id")
   # And the lane's directory, when the operator named one: `--dir` is this
   # launcher's own option, so nothing downstream would see it otherwise.
   [[ -n "${lane_dir_flag:-}" ]] && env_prefix+=("CLAUDE_LANE_DIR=$lane_dir_flag")
 
-  command -v tmux >/dev/null 2>&1 || {
-    echo "pclaude: tmux is required for interactive profile launches." >&2
-    return 1
-  }
   launcher="$(readlink -f "${BASH_SOURCE[0]}")"
   session_name="claude-${profile//[^a-zA-Z0-9_-]/-}-$(date +%Y%m%d%H%M%S)-$$"
   for argument in "${env_prefix[@]}" "$launcher" run "$profile" "$@"; do
@@ -310,7 +481,29 @@ start_profile_tmux() {
     command_string+="${command_string:+ }$argument"
   done
 
-  # THE NEW WINDOW IS NAMED FOR THE LANE AT BIRTH — SPEC §3, outside tmux.
+  # ACT 1 STEP 2 — RESPAWN THE RECORDED WINDOW'S PANE AND ATTACH TO ITS SESSION.
+  # No `-c`: the pane keeps its own start directory, which is the lane's tree
+  # rather than the terminal the operator happened to type this in. A non-zero
+  # status is NOT an error to report — on a live pane a plain `respawn-pane`
+  # exits 1 saying the pane is still active, which is the launcher being told
+  # the window is in use — so it falls to step 3 and makes a session.
+  if [[ -n "$act1_reuse_pane" ]]; then
+    set +e
+    if [[ "$act1_reuse_kill" == true ]]; then
+      tmux respawn-pane -k -t "$act1_reuse_pane" "$command_string" >/dev/null 2>&1
+    else
+      tmux respawn-pane -t "$act1_reuse_pane" "$command_string" >/dev/null 2>&1
+    fi
+    reuse_status=$?
+    set -e
+    if [[ "$reuse_status" -eq 0 ]]; then
+      tmux select-window -t "$act1_reuse_window" >/dev/null 2>&1 || true
+      exec tmux attach-session -t "$act1_reuse_session"
+    fi
+  fi
+
+  # ACT 1 STEP 3 — OTHERWISE CREATE THE SESSION, AND NAME ITS WINDOW FOR THE
+  # LANE AT BIRTH, ONLY FOR A LANE NOBODY HAS TO CONFIRM.
   # Without `-n`, tmux names the window for the command that made it and global
   # `automatic-rename` then renames it again for whatever is running: on Eagle,
   # 8 of 16 live windows are called `claude`, and a window called `claude` has
@@ -321,21 +514,25 @@ start_profile_tmux() {
   # question, instead of falling to the swap record's.
   #
   # ONLY FOR A LANE THAT IS CERTAIN. `--lane`/`CLAUDE_LANE` is the operator's
-  # word and is the only lane knowable on this side of the re-exec: the window
-  # rule has no window to read and the swap record's newest-first row is an
-  # INFERENCE, which Amendment 8(c) hands over as `--confirm` precisely so
-  # lane-start asks before it takes a window. Naming the window for it here
-  # would answer that question in advance and in the wrong place — the child
-  # would then find a window named for the lane and bind by name, silently,
-  # from a guess nobody confirmed. So the inference is left exactly where it
-  # is: the child resolves it inside tmux and lane-start asks.
+  # word. The swap record's newest-first row is an INFERENCE, which Amendment
+  # 8(c) hands over as `--confirm` precisely so lane-start asks before it takes
+  # a window. Naming the window for it here would answer that question in
+  # advance and in the wrong place — the child would then find a window named
+  # for the lane and bind by name, silently, from a guess nobody confirmed. So
+  # the inference is left exactly where it is: the child resolves it inside tmux
+  # and lane-start asks. Precedence 3 cannot arise here either, because a record
+  # whose window resolves was reused at step 2 and one whose window does not
+  # resolve is not an answer at all.
   #
   # `automatic-rename off` is what makes the name stick: `rename-window` turns
   # it off as a side effect (tmux(1)) and `-n` does not, so without this the
-  # first command the window runs renames it straight back.
+  # first command the window runs renames it straight back. (`-n` alone already
+  # sets `automatic-rename` to 0 — verified — so this is belt and braces, not
+  # the load-bearing half.)
   # `lane` is non-empty HERE only when `--lane` or `CLAUDE_LANE` gave it:
-  # resolve_lane has not run yet on this side of the re-exec, and `--no-lane`
-  # already emptied it. So the test for certainty is simply that there is one.
+  # resolve_lane has not run on this side of the re-exec, act 1's own resolution
+  # is deliberately not written back to it, and `--no-lane` already emptied it.
+  # So the test for certainty is simply that there is one.
   if [[ -n "${lane:-}" ]]; then
     tmux new-session -d -s "$session_name" -n "$lane" -c "$PWD" "$command_string" || {
       echo "pclaude: failed to start tmux session $session_name" >&2
@@ -484,8 +681,10 @@ profile_metadata() {
 #       that asks nothing, is the one that fires. Before this, every launch
 #       made a fresh tmux session whose window is named for the command that
 #       made it, so rule 2 could never fire on a restart and rule 3's one
-#       question always could (new-workstation#20, Evidence 1). Outside tmux a
-#       session is still created, and there rule 3 is still what binds.
+#       question always could (new-workstation#20, Evidence 1). Outside tmux
+#       the launcher first REUSES the window a swap record names where that
+#       window still exists, and only failing that creates a session — whose
+#       window it names for the lane at birth when the lane is certain.
 #   (3) the lane's DIRECTORY is learnt and passed as `--dir`
 #       (resolve_lane_dir), and lane-start is RUN rather than exec'd on every
 #       path, so a refusal can never leave a window with no Claude in it.

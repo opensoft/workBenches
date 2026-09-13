@@ -170,12 +170,24 @@ tmux, the launcher creates no session of its own: it launches in the window
 the operator is already sitting in and never renames it — renaming a window
 is `lane-start`'s act, and only its act (Amendment 5(f)). So the window's name
 and its tmux id both survive a restart, and the window-name step below fires
-with zero questions. Run outside tmux, the launcher still creates a session of
-its own, exactly as before; where the lane is known with certainty at that
-moment — an explicit `--lane` or `CLAUDE_LANE`, the only thing knowable before
-the new window exists — that new window is named for the lane at birth, with
-tmux's `automatic-rename` turned off, so the *next* restart typed in it binds
-by name instead of falling through. Before Amendment 11, every outside-tmux
+with zero questions. Run outside tmux there is no window to keep, and act 1 is
+three steps. **One**, the lane is resolved *before* the session is created —
+an explicit `--lane`/`CLAUDE_LANE` first, then the swap records' own window
+refs, taking the first record whose window tmux resolves *now*, then the
+newest swap as the guess it is. **Two**, where that lane's record names a
+window that still exists, the launcher **respawns that window's pane** with
+the launch command and attaches to its session instead of making one, so the
+name and the id both survive; `-k` is used only where the window carries the
+lane's own name, which is `lane-start`'s own word that the pane's process is
+the session this restart replaces, and a plain `respawn-pane` that exits 1 is
+not an error but the window being in use. A window the register knows as
+*another* lane's is not taken at all. **Three**, failing both, a session is
+created exactly as before, and where the lane is certain — `--lane` or
+`CLAUDE_LANE`, the operator's own word — that new window is named for the lane
+at birth with tmux's `automatic-rename` turned off, so the *next* restart
+typed in it binds by name. What the parent resolved is never handed down as
+the answer: a lane that was an inference still reaches `lane-start` as
+`--confirm` in the child. Before Amendment 11, every outside-tmux
 launch made a fresh session whose window tmux named for whatever command was
 running in it instead — on Eagle, eight of sixteen live windows were simply
 called `claude` when this was measured — so a restart could never bind by
@@ -205,8 +217,10 @@ since (`lanes-edit.sh swapped <workstation>`, first row) — handed over as
 `--confirm`, so `lane-start` asks before it takes the window. That lane is a
 guess about a *window*, and taking it means renaming one, so outside tmux it
 is not read at all. The window's name and its id are both read before the
-tmux re-exec and carried across it, since a freshly created session's window
-is named for the command that made it rather than for a lane. All three
+tmux re-exec and carried across it — on the reuse path they are the *reused*
+window's, so the child comes up in a window the estate already knows; on the
+fresh-session path a newly created window is named for the command that made
+it unless the lane was certain. All three
 register reads are made with `LANES_NO_FETCH=1`, so a launch never waits on
 the network.
 

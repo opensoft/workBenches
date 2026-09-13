@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=45
+EXPECTED_SCENARIOS=51
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -141,6 +141,29 @@ set -euo pipefail
 printf '%s\n' "$*" >> "${FAKE_TMUX_LOG:?}"
 case "${1:-}" in
     display-message)
+        # TWO FORMS, and act 1 is why there are two. `-p <fmt>` asks about the
+        # window this process is standing in, which is what capture_lane_window
+        # reads. `-p -t <ref> <fmt>` asks about a window by ADDRESS, which is
+        # act 1's liveness fence: a record whose window is gone must resolve
+        # NOTHING, because a `<session>:<index>` is reused the instant a window
+        # closes and matching a dead ref is how a lane binds to a stranger's
+        # pane. FAKE_TMUX_WINDOWS lists the live windows, one per line, as
+        # `<@id>|<session>:<index>|<%pane>|<name>`; UNSET IS THE ESTATE AS
+        # MEASURED on 2026-09-13, where 0 of 5 swap records name a window that
+        # still exists, so every `-t` probe fails and act 1 falls to step 3.
+        if [[ "${2:-}" == -p && "${3:-}" == -t ]]; then
+            target="${4:-}"
+            while IFS= read -r live; do
+                [[ -n "$live" ]] || continue
+                if [[ "${live%%|*}" == "$target" \
+                    || "$(printf '%s' "$live" | cut -d '|' -f 2)" == "$target" ]]; then
+                    printf '%s\n' "$live"
+                    exit 0
+                fi
+            done <<< "${FAKE_TMUX_WINDOWS:-}"
+            echo "can't find window: $target" >&2
+            exit 1
+        fi
         case "${3:-}" in
             '#W')
                 if [[ -n "${FAKE_TMUX_WINDOW_FILE:-}" && -s "${FAKE_TMUX_WINDOW_FILE}" ]]; then
@@ -154,9 +177,23 @@ case "${1:-}" in
             *) printf 'fake\n' ;;
         esac
         ;;
+    respawn-pane)
+        # MEASURED ON A PRIVATE SOCKET (SPEC §0.9): `respawn-pane` on a LIVE
+        # pane exits 1 with "still active"; `respawn-pane -k` on the same pane
+        # exits 0 and leaves the window's name and its automatic-rename off
+        # intact. A live pane is the ORDINARY state right after a swap, because
+        # /lane-swap kills nothing, so live is this fake's default.
+        if [[ "${2:-}" == -k ]]; then
+            exit 0
+        fi
+        [[ "${FAKE_TMUX_PANE_LIVE:-1}" == 1 ]] || exit 0
+        echo "respawn pane failed: pane ${3:-} still active" >&2
+        exit 1
+        ;;
     rename-window)
         [[ -z "${FAKE_TMUX_WINDOW_FILE:-}" ]] || printf '%s\n' "${2:-}" > "$FAKE_TMUX_WINDOW_FILE"
         ;;
+    select-window) exit 0 ;;
     attach-session) exit 0 ;;
 esac
 EOF
@@ -498,6 +535,120 @@ tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=openRepoProject
 grep -q 'new-session' "$TMUX_LOG" || fail "outside tmux, no certain lane: no session was created"; assertion
 grep -q -- ' -n ' "$TMUX_LOG" \
     && fail "outside tmux, no certain lane: the window was named from a guess nobody confirmed ($(cat "$TMUX_LOG"))"; assertion
+
+# ---------------------------------------------------------------------------
+# ACT 1 STEPS 1 AND 2 — resolve the lane BEFORE the session is created, and
+# REUSE THE RECORDED WINDOW where it still exists (SPEC §3, `R-A11-3`/F3+F4).
+# These five are what SPEC §13.2 owed this PR, and the row of §3's own table
+# they move is `pclaude <profile>`, fresh terminal outside tmux: 1 question
+# today, 0 once a record names a window that is still there.
+
+# 2g. STEP 2 — THE RECORDED WINDOW IS REUSED AND NO SESSION IS CREATED. The
+# lane is certain (`--lane`), its record names `claude-y:0 @97`, that window
+# still exists, and it CARRIES THE LANE'S OWN NAME — which is lane-start's own
+# word that the window is this lane's (A5(f)), and therefore that the pane's
+# process is the session this restart replaces. That is the text's condition
+# for `-k`, and the ordinary state right after a swap.
+tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
+    "FAKE_TMUX_WINDOWS=@97|claude-y:0|%12|mine-5" \
+    -- --lane mine-5 run team002 --resume session-reuse
+grep -q 'new-session' "$TMUX_LOG" \
+    && fail "act 1 step 2: a session was created although the recorded window still exists ($(cat "$TMUX_LOG"))"; assertion
+grep -q 'respawn-pane -k -t %12' "$TMUX_LOG" \
+    || fail "act 1 step 2: the recorded window's pane was not respawned ($(cat "$TMUX_LOG"))"; assertion
+grep -q 'attach-session -t claude-y' "$TMUX_LOG" \
+    || fail "act 1 step 2: it did not attach to the reused window's session ($(cat "$TMUX_LOG"))"; assertion
+grep -q 'WORKBENCHES_CLAUDE_WINDOW=mine-5' "$TMUX_LOG" \
+    || fail "act 1 step 2: the REUSED window's name was not threaded to the child ($(cat "$TMUX_LOG"))"; assertion
+grep -q 'WORKBENCHES_CLAUDE_WINDOW_ID=@97' "$TMUX_LOG" \
+    || fail "act 1 step 2: the reused window's id was not threaded to the child ($(cat "$TMUX_LOG"))"; assertion
+
+# 2h. MUTATION — `-k` ONLY WHERE THE PANE IS THE LANE'S OWN. The same record,
+# the same live window, but the window is called `zsh`: the register does not
+# know that name, so nothing here can prove the pane is the session this
+# restart replaces. Never `-k` then. A plain `respawn-pane` on a live pane
+# exits 1 — "still active", measured — which is not an error to report but the
+# launcher being told the window is in use, and step 3 makes a session.
+tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
+    "FAKE_TMUX_WINDOWS=@97|claude-y:0|%12|zsh" \
+    -- --lane mine-5 run team002 --resume session-reuse-nokill
+grep -q 'respawn-pane -k' "$TMUX_LOG" \
+    && fail "act 1 step 2: a pane that is not provably the lane's own was KILLED ($(cat "$TMUX_LOG"))"; assertion
+grep -q 'respawn-pane -t %12' "$TMUX_LOG" \
+    || fail "act 1 step 2: the plain respawn was not attempted ($(cat "$TMUX_LOG"))"; assertion
+grep -q 'new-session' "$TMUX_LOG" \
+    || fail "act 1 step 2: a window in use did not fall to step 3 ($(cat "$TMUX_LOG"))"; assertion
+
+# 2h-i. ...and a DEAD pane in that same window IS reused, without `-k`. This is
+# the other half of the measurement: `respawn-pane` exits 0 where the pane's own
+# process has ended, so the window is taken back without killing anything.
+tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
+    "FAKE_TMUX_WINDOWS=@97|claude-y:0|%12|zsh" "FAKE_TMUX_PANE_LIVE=0" \
+    -- --lane mine-5 run team002 --resume session-reuse-dead
+grep -q 'new-session' "$TMUX_LOG" \
+    && fail "act 1 step 2: a dead pane's window was not reused ($(cat "$TMUX_LOG"))"; assertion
+grep -q 'respawn-pane -k' "$TMUX_LOG" \
+    && fail "act 1 step 2: a dead pane was killed, which is one act too many"; assertion
+
+# 2i. MUTATION — A WINDOW THAT IS ANOTHER LANE'S IS NOT TAKEN AT ALL. The
+# record still names `@97`, but that window has since been renamed for
+# `otherlane-2` and the register has a row for it. Killing somebody else's pane
+# to reuse its window is the one act Amendment 8(f) refuses by name, so there is
+# no respawn here at all — not even a plain one.
+tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=otherlane-2" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
+    "FAKE_TMUX_WINDOWS=@97|claude-y:0|%12|otherlane-2" \
+    -- --lane mine-5 run team002 --resume session-reuse-other
+grep -q 'respawn-pane' "$TMUX_LOG" \
+    && fail "act 1 step 2: another lane's window was respawned ($(cat "$TMUX_LOG"))"; assertion
+grep -q 'new-session' "$TMUX_LOG" \
+    || fail "act 1 step 2: it did not fall to step 3 ($(cat "$TMUX_LOG"))"; assertion
+
+# 2j. TODAY'S ESTATE — A RECORD WHOSE WINDOW IS GONE IS NOT AN ANSWER. Measured
+# on Eagle 2026-09-13: 0 of 5 swap records name a window that still exists, and
+# not one carries an `<@id>`. So step 2 answers nothing until the cutover has
+# run for the lane, and the launch is byte-for-byte today's.
+tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0\n" \
+    -- --lane mine-5 run team002 --resume session-reuse-gone
+grep -q 'respawn-pane' "$TMUX_LOG" \
+    && fail "act 1 step 2: a record naming a window that is GONE was matched ($(cat "$TMUX_LOG"))"; assertion
+grep -q 'new-session' "$TMUX_LOG" \
+    || fail "act 1 step 2: no session was created for a lane whose window is gone"; assertion
+
+# 2k. STEP 1 — THE LANE IS RESOLVED BEFORE THE SESSION EXISTS, and precedence 3
+# answers there. No `--lane` at all. The NEWEST record is `newest-9`, whose
+# window is gone; the older one is `mine-5`, whose window still exists. Outside
+# tmux precedence 3 has no `<@id>` of its own to compare, so it is tried on the
+# RECORDS' own refs and takes the first whose window tmux resolves NOW — which
+# is `mine-5`, not the newest row. A launcher that resolved in the child would
+# have created a session first and never had the chance.
+tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=newest-9\t2026-09-13T03:31:56Z\tclaude-x:0 @12\nmine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
+    "FAKE_TMUX_WINDOWS=@97|claude-y:0|%12|mine-5" \
+    -- run team002 --resume session-step1
+grep -q 'new-session' "$TMUX_LOG" \
+    && fail "act 1 step 1: a session was created although a record names a live window ($(cat "$TMUX_LOG"))"; assertion
+grep -q 'respawn-pane -k -t %12' "$TMUX_LOG" \
+    || fail "act 1 step 1: the newest row beat the record whose window still exists ($(cat "$TMUX_LOG"))"; assertion
+
+# 2k-i. ...AND WHAT THE PARENT RESOLVED IS NEVER HANDED DOWN AS THE ANSWER. The
+# lane found in the parent decides which window to reuse and nothing else: it is
+# not exported as CLAUDE_LANE and not passed as `--lane`, so a lane that was an
+# inference still reaches lane-start as `--confirm` in the child and is still
+# asked about. Pre-answering that question in the parent is exactly what act 1
+# step 3's fence exists to prevent, and it is no better done at step 2.
+grep -q 'CLAUDE_LANE=' "$TMUX_LOG" \
+    && fail "act 1 step 1: the parent's own resolution was handed to the child as the operator's word ($(cat "$TMUX_LOG"))"; assertion
 
 # 2d. The window's ADDRESS crosses the re-exec beside its name. Amendment 11(5):
 # the id is information and the name is the key, so both travel and neither is
