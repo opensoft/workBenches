@@ -241,8 +241,26 @@ With neither, the launch is exactly as described above plus one line saying how
 to take a lane in this window — and not even that where the `SessionStart` hook
 below is installed, since that hook says the same thing with the repository and
 the number filled in. `--no-lane` (or `CLAUDE_NO_LANE=1`) opts out of the
-resolution entirely and wins over `--lane`; a machine with no `lane-start` on
-`PATH` has no lane estate and is neither asked nor told anything.
+resolution entirely and wins over `--lane`, and a launch that starts no
+conversation at all takes no lane in the first place; neither is told anything,
+because neither is a degradation.
+
+**A missing `lane-start` is said, not passed over (new-workstation#20, Evidence
+5).** Where the tool is not on `PATH` there is no lane to take, and the launch
+still happens — but the **first** line it prints says so and names the one
+install act (`scripts/link-estates`). This branch used to return in silence, on
+the reasoning that a machine with no lane estate should not hear about one; that
+was measured wrong. When this workstation was rebuilt on 2026-09-13 the
+`~/.local/bin` symlinks were gone while `/usr/local/bin/claude-profile` was
+still in place, so every restart took this branch and came up with no register
+stamp, a record name the harness derived for itself and a window still called
+`claude` — three times in one afternoon, with nothing said, because
+`--resume <uuid>` went on continuing the right transcript. The launcher cannot
+tell a machine that never had the estate from one whose links vanished this
+morning, which is exactly why it states the fact instead of choosing between
+them. The note does **not** stand down for the `SessionStart` hook the way the
+no-lane notice does: that hook reports the lane it could not bind, and nothing
+but this line can say the tool itself is missing.
 
 **The lane's directory is resolved, not assumed (Amendment 11(3)).**
 `lane-start`'s own default is `$PROJECTS_ROOT/<repo>`, and a checkout that

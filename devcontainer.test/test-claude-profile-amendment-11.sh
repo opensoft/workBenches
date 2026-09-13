@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=83
+EXPECTED_SCENARIOS=85
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -554,6 +554,8 @@ grep -Fq 'AND THE LAUNCH RUNS IN IT' "$TEST_ROOT/help.out" \
     || fail "RV-W5/Evidence 3: --help does not say the launcher enters the lane's directory"; assertion
 grep -Fq 'refusal that names the path, never a quiet fall to the default' "$TEST_ROOT/help.out" \
     || fail "RV-W2: --help does not say what happens to a recorded directory that is gone"; assertion
+grep -Fq 'NEVER DEGRADES IN SILENCE' "$TEST_ROOT/help.out" \
+    || fail "Evidence 5: --help does not say what happens when lane-start is absent, which is the case a rebuilt machine meets"; assertion
 
 # 1i-ii. RV-W3 — AND THE SCOPE OF "NO PATH EXITS THE PANE" IS STATED, with the
 # case it does NOT cover documented beside it. The invariant is held for every
@@ -1536,22 +1538,66 @@ done
 # is the other way an `exec`ed one used to die (`lane-start:337`'s sibling: a
 # helper that is not on PATH). The launcher refuses the launch only where the
 # operator NAMED a lane and it cannot be taken; with no lane named, the whole
-# feature is simply absent and Claude starts.
-reset_logs
-scenario
-set +e
-env "PATH=$TEST_ROOT/empty-bin:/usr/bin:/bin" \
-    "HOME=$FAKE_HOME" "CLAUDE_BIN=$FAKE_CLAUDE" \
-    "CLAUDE_PROFILES_HOME=$PROFILE_BASE" "CLAUDE_PROFILES_MANIFEST=$MANIFEST" \
-    "FAKE_CLAUDE_LOG=$CLAUDE_LOG" "WORKBENCHES_SHARED_MCP_FAMILIES=disabled" \
-    "WORKBENCHES_CLAUDE_TMUX_CHILD=1" "WORKBENCHES_CLAUDE_WINDOW=matrix-1" \
-    "$LAUNCHER" run team002 --resume session-no-lane-start >"$OUT_LOG" 2>"$ERR_LOG"
-launch_status=$?
-set -e
+# feature is absent, Claude starts — AND THE LAUNCHER SAYS SO (Evidence 5).
+#
+# An estate that is not on PATH at all: no lane-start, no lanes-edit.sh, nothing
+# this feature can read.
+launch_without_estate() {
+    reset_logs
+    scenario
+    set +e
+    env "PATH=$TEST_ROOT/empty-bin:/usr/bin:/bin" \
+        "HOME=$FAKE_HOME" "CLAUDE_BIN=$FAKE_CLAUDE" \
+        "CLAUDE_PROFILES_HOME=$PROFILE_BASE" "CLAUDE_PROFILES_MANIFEST=$MANIFEST" \
+        "FAKE_CLAUDE_LOG=$CLAUDE_LOG" "WORKBENCHES_SHARED_MCP_FAMILIES=disabled" \
+        "WORKBENCHES_CLAUDE_TMUX_CHILD=1" "WORKBENCHES_CLAUDE_WINDOW=matrix-1" \
+        "$LAUNCHER" "$@" >"$OUT_LOG" 2>"$ERR_LOG"
+    launch_status=$?
+    set -e
+}
+
+launch_without_estate run team002 --resume session-no-lane-start
 grep -Fxq -- "$claude_args --resume session-no-lane-start" "$CLAUDE_LOG" \
     || fail "no lane-start on PATH: the pane was left with no Claude in it ($(cat "$CLAUDE_LOG" 2>/dev/null))"; assertion
 [[ "$launch_status" -eq 0 ]] \
     || fail "no lane-start on PATH: the launcher exited $launch_status"; assertion
+# EVIDENCE 5 — AND IT IS SAID, ON THE FIRST LINE, WITH THE INSTALL ACT NAMED.
+# Measured 2026-09-13T17:29:58Z: after this workstation was rebuilt the
+# `~/.local/bin` links `scripts/link-estates` places were gone while
+# `/usr/local/bin/claude-profile` was still there, so every restart took this
+# branch — no stamp, a derived record name, a window left as `claude` — and
+# said nothing three times in one afternoon, because `--resume <uuid>` went on
+# continuing the right transcript. A launcher that cannot tell "never
+# installed" from "the links vanished this morning" must state the fact rather
+# than choose between them.
+head -n 1 "$ERR_LOG" | grep -Fq 'lane-start is not on PATH' \
+    || fail "Evidence 5: the missing tool is not named on the FIRST line ('$(cat "$ERR_LOG")')"; assertion
+head -n 1 "$ERR_LOG" | grep -Fq 'NO LANE' \
+    || fail "Evidence 5: the first line does not say what the launch degraded TO ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'scripts/link-estates' "$ERR_LOG" \
+    || fail "Evidence 5: the install act is not named ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq "$note" "$ERR_LOG" \
+    && fail "Evidence 5: the standing no-lane note told the operator to run a command this machine does not have ('$(cat "$ERR_LOG")')"; assertion
+[[ "$(wc -l < "$ERR_LOG")" -eq 2 ]] \
+    || fail "Evidence 5: one situation printed $(wc -l < "$ERR_LOG") lines ($(cat "$ERR_LOG"))"; assertion
+
+# 5h-ii. ...AND `--no-lane` IS TOLD NOTHING. The operator said no lane, so there
+# is no degradation to report: a notice that fires where nothing was lost is a
+# notice that gets filtered out before the one that matters.
+launch_without_estate --no-lane run team002 --resume session-no-estate-nolane
+grep -Fxq -- "$claude_args --resume session-no-estate-nolane" "$CLAUDE_LOG" \
+    || fail "no lane-start, --no-lane: Claude did not start"; assertion
+[[ ! -s "$ERR_LOG" ]] \
+    || fail "Evidence 5: a launch that asked for no lane was told the lane tool is missing ('$(cat "$ERR_LOG")')"; assertion
+
+# 5h-iii. ...and neither is a launch that starts no conversation. `--print` is
+# one of the forms `claude_args_start_session` excludes, and a one-shot takes no
+# lane on a machine that HAS the estate either, so nothing here degraded.
+launch_without_estate run team002 --print env-check
+grep -Fxq -- "$claude_args --print env-check" "$CLAUDE_LOG" \
+    || fail "no lane-start, --print: Claude did not start"; assertion
+[[ ! -s "$ERR_LOG" ]] \
+    || fail "Evidence 5: a one-shot that takes no lane anywhere was told the lane tool is missing ('$(cat "$ERR_LOG")')"; assertion
 
 # ===========================================================================
 # 6. EVERY FIELD NAME IS THE SPEC'S, BYTE FOR BYTE — SPEC §4, §5 and §11.
@@ -1627,6 +1673,21 @@ grep -Fq 'the case it does not cover' "$DOCS_MD" \
     || fail "RV-W3: the docs state the pane invariant without the case it does not cover"; assertion
 grep -Fq 'entered' "$DOCS_MD" \
     || fail "RV-W5/Evidence 3: the docs do not say the launcher enters the lane's directory"; assertion
+grep -Fq 'A missing `lane-start` is said, not passed over' "$DOCS_MD" \
+    || fail "Evidence 5: the docs still describe the silent degradation this launcher no longer performs"; assertion
+grep -Fq 'neither asked nor told anything' "$DOCS_MD" \
+    && fail "Evidence 5: the docs still carry the sentence Evidence 5 overturned"; assertion
+
+# EVIDENCE 5 — ONE INSTALL ACT, IN ONE SPELLING. Two places name it: the
+# `--lane` refusal and the notice above. An operator handed two different
+# commands for one missing tool has to decide which is current, and the one
+# that is wrong is the one they will try first.
+grep -Fq "lane_start_install_act='git clone git@github.com:opensoft/brett-wip.git" "$LAUNCHER" \
+    || fail "Evidence 5: the install act is not held in one place"; assertion
+[[ "$(grep -Fc '~/projects/brett-wip/scripts/link-estates' "$LAUNCHER")" -eq 1 ]] \
+    || fail "Evidence 5: the install act is spelled $(grep -Fc '~/projects/brett-wip/scripts/link-estates' "$LAUNCHER") times in the launcher, so two callers can drift apart"; assertion
+[[ "$(grep -c '\$lane_start_install_act' "$LAUNCHER")" -eq 2 ]] \
+    || fail "Evidence 5: the shared install act has $(grep -c '\$lane_start_install_act' "$LAUNCHER") callers, and it has two — the --lane refusal and the missing-tool notice"; assertion
 
 # SPEC §9 — `/swap` is a one-line command file that INVOKES the skill, and the
 # 176-line skill is not duplicated into it. Two texts that must stay byte-equal

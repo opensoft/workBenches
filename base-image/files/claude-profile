@@ -835,6 +835,40 @@ export_lane_identity() {
 }
 
 lane_no_lane_note='no lane for this window; run lane-start <repo> <n> inside it'
+# ONE INSTALL ACT, IN ONE SPELLING. Two places name it — the `--lane` refusal
+# below and Evidence 5's notice — and an operator who is handed two different
+# commands for one missing tool has to decide which is current.
+lane_start_install_act='git clone git@github.com:opensoft/brett-wip.git ~/projects/brett-wip && ~/projects/brett-wip/scripts/link-estates'
+
+lane_note_no_lane_start() {
+  # LANE-START IS ABSENT, AND THE LAUNCHER SAYS SO — Evidence 5
+  # (new-workstation#20, 2026-09-13T17:29:58Z). This branch used to return in
+  # silence, on the reasoning that a machine with no lane estate should not be
+  # told about one on every launch. It was measured wrong. After this
+  # workstation was rebuilt, the `~/.local/bin` symlinks that
+  # `scripts/link-estates` places were gone while `/usr/local/bin/claude-profile`
+  # was still there, so every restart took this branch: a Claude with no lane —
+  # no register stamp, a record name the harness derives for itself (Evidence 4)
+  # and a window left called `claude` — three times in one afternoon, with
+  # nothing said. `--resume <uuid>` still continued the transcript, which is why
+  # the loss was invisible.
+  #
+  # THE LAUNCHER CANNOT TELL THE TWO CASES APART, and that is the argument: a
+  # machine that never had the estate and a machine whose links vanished this
+  # morning present identically here. So the fact is stated on the FIRST line
+  # this launch prints, the install act is named beside it, and the launch still
+  # happens — nothing here refuses one (A8 Addendum 2 `R-A8-3`).
+  #
+  # It is NOT routed through lane_note_no_lane and does NOT stand down for the
+  # SessionStart hook (`R-A8-7`, one no-lane notice not two): that block reports
+  # the lane it could not bind, which is a different fact and one it can still
+  # report — Evidence 5 measured it doing exactly that — and nothing but this
+  # line can say the TOOL is missing. It replaces the standing note rather than
+  # printing beside it, because "run lane-start <repo> <n>" names a command this
+  # machine does not have.
+  echo "pclaude: lane-start is not on PATH, so this launch takes NO LANE: no register stamp, a session name the harness derives, and this window left as it is (new-workstation#20, Evidence 5)." >&2
+  echo "pclaude:   fix: $lane_start_install_act" >&2
+}
 
 lane_note_no_lane() {
   # One situation, ONE line (F-W3). A caller that has something of its own to
@@ -1000,9 +1034,14 @@ resolve_lane() {
   fi
   [[ "$no_lane" == false ]] || return 0
   claude_args_start_session "$@" || return 0
-  # No lane estate on this machine: the whole feature is absent, and saying so
-  # on every launch would be noise.
-  command -v lane-start >/dev/null 2>&1 || return 0
+  # NO LANE-START ON THIS MACHINE — said, never silent (Evidence 5). The two
+  # fences above stand: `--no-lane` is the operator's own word, and a launch
+  # that starts no conversation takes no lane in the first place, so neither is
+  # a degradation to report.
+  if ! command -v lane-start >/dev/null 2>&1; then
+    lane_note_no_lane_start
+    return 0
+  fi
   lanes_edit="$(lanes_edit_bin || true)"
   if [[ -z "$lanes_edit" ]]; then
     lane_note_no_lane
@@ -1466,6 +1505,16 @@ answers on every workstation whose helper is not upgraded yet. With no answer
 at all, and with --no-lane, behaviour is unchanged. There is no /restart on
 this path.
 
+AND THIS LAUNCHER NEVER DEGRADES IN SILENCE (new-workstation#20, Evidence 5).
+Every lane above is taken by running `lane-start`, which is also what passes
+`--name <lane>` — the third leg of the lane's identity, beside the window's name
+and the transcript. Where lane-start is NOT on PATH there is no lane to take:
+the launch still happens, and the FIRST line it prints says so and names the one
+install act. This machine cannot tell an estate that was never installed from
+one whose `~/.local/bin` links a rebuild removed while this launcher stayed in
+/usr/local/bin — which is what happened on 2026-09-13, and three restarts came
+up with no stamp, no lane and a derived session name before anything said so.
+
 THE WINDOW IS REUSED (Amendment 11(2), act 1). Run inside tmux, this launcher
 keeps the CURRENT window: it sets CLAUDE_CONFIG_DIR and execs in place, so the
 window's name and its id survive a restart and the window name resolves the
@@ -1617,7 +1666,7 @@ case "$action" in
         if [[ -n "${lane:-}" ]]; then
           command -v lane-start >/dev/null 2>&1 || {
             echo "pclaude: --lane $lane needs lane-start on PATH. Fix:" >&2
-            echo "  git clone git@github.com:opensoft/brett-wip.git ~/projects/brett-wip && ~/projects/brett-wip/scripts/link-estates" >&2
+            echo "  $lane_start_install_act" >&2
             exit 2
           }
         fi

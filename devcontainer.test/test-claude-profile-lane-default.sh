@@ -549,10 +549,25 @@ grep -Fxq -- "$claude_args --resume session-nolanesedit" "$CLAUDE_LOG" \
     || fail "no lanes-edit.sh: Claude did not receive its arguments unchanged"; assertion
 grep -q "$note" "$ERR_LOG" || fail "no lanes-edit.sh: the note was not printed"; assertion
 
-# 9a. A machine with no lane estate at all — no lane-start on PATH — is the one
-# degrade-table row that is SILENT: the feature is absent there, the note would
-# be noise on every launch, and the register is never read either, because the
+# 9a. A machine with no lane estate at all — no lane-start on PATH. This was
+# Amendment 8(c)'s one SILENT degrade-table row, on the reasoning that a machine
+# without the feature should not hear about it on every launch. **Evidence 5
+# (new-workstation#20, 2026-09-13T17:29:58Z) overturned it**, and this suite
+# moves with the rule rather than pinning the version of it that was measured
+# wrong: after this workstation was rebuilt the `~/.local/bin` links were gone
+# while `/usr/local/bin/claude-profile` was still there, so three restarts took
+# this row and came up with no register stamp, a record name the harness derived
+# and a window left as `claude` — in silence, because `--resume <uuid>` went on
+# continuing the right transcript. The launcher now states the fact on its first
+# line and names the install act. What is UNCHANGED, and is what this scenario
+# still holds, is everything else about the row: Claude starts, the launcher
+# exits 0, lane-start is never invoked, and the register is never read — the
 # resolution stops before it has anything to read it with.
+#
+# The A11 suite's 5h-i holds the wording of the notice itself; here it is the
+# A8(c) degrade table that has to agree with it, because these two suites test
+# one resolution from two amendments and must not drift into two pictures of
+# the estate.
 NO_ESTATE_BIN="$TEST_ROOT/bin-no-estate"
 mkdir -p "$NO_ESTATE_BIN"
 cp "$FAKE_CLAUDE" "$NO_ESTATE_BIN/claude"
@@ -566,7 +581,12 @@ env "${common_env[@]}" "PATH=$NO_ESTATE_BIN:/usr/bin:/bin" "FAKE_TMUX_WINDOW=ope
     "$LAUNCHER" run team002 --resume session-noestate >/dev/null 2>"$ERR_LOG"
 grep -Fxq -- "$claude_args --resume session-noestate" "$CLAUDE_LOG" \
     || fail "no lane estate: Claude did not receive its arguments unchanged"; assertion
-[[ ! -s "$ERR_LOG" ]] || fail "no lane estate: the launcher said something ($(cat "$ERR_LOG"))"; assertion
+grep -Fq 'lane-start is not on PATH' "$ERR_LOG" \
+    || fail "no lane estate: the launcher degraded in silence, which Evidence 5 ruled out ($(cat "$ERR_LOG"))"; assertion
+grep -Fq 'link-estates' "$ERR_LOG" \
+    || fail "no lane estate: the notice does not name the install act ($(cat "$ERR_LOG"))"; assertion
+grep -Fq "$note" "$ERR_LOG" \
+    && fail "no lane estate: the standing note told the operator to run the tool that is missing ($(cat "$ERR_LOG"))"; assertion
 [[ ! -e "$LANE_START_LOG" ]] || fail "no lane estate: lane-start was invoked ('$(lane_start_argv)')"; assertion
 [[ ! -e "$LANES_EDIT_LOG" ]] \
     || fail "no lane estate: the register was read with no lane-start to hand a lane to ($(cat "$LANES_EDIT_LOG"))"; assertion
