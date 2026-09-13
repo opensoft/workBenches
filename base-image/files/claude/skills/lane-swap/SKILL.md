@@ -319,12 +319,14 @@ payload="swap"
 # line that also names the act that fixes it, because the variable now has an owner: the launcher sets it.
 # What is NOT done here is invent a third option. `@unknown-workstation` was one: a word that is plainly not
 # a hostname, in the position `swapped <ws>` keys on, which `append-line` does not validate and no reader
-# would ever catch. (c) below still runs, so the row IS flipped to PAUSED and A8(a) step 4 keeps its
-# substance; the gap is named in the handoff, exactly as the missing-uuid case already names its own.
+# would ever catch. AND (c) BELOW IS REFUSED WITH THEM — `R-A11-27`, the ruling that corrected an earlier
+# revision of this very sentence (it said "(c) below still runs, so the row IS flipped to PAUSED"). What
+# survives the refusal is step 2's handoff: a commit in the lane's own repository, keyed on no workstation,
+# naming the gap exactly as the missing-uuid case already names its own.
 ws_write_refused=""
 if [[ -z "$ws" ]]; then
   ws_write_refused=1
-  printf 'REFUSED: no workstation for this lane, so (a) the object-log line and (b) the register line are NOT written — LANES_WORKSTATION names the workstation, nothing here may guess one (`hostname` in a container is the container id, Evidence 6), and both logs are append-only; the launcher owns the value, so `pclaude` exports it from the host into every session and `wave-container-shell.sh` into every container it opens: set LANES_WORKSTATION=<workstation> in this session and run step 4 again. (c) below still runs, so the row is still flipped to PAUSED, and step 2 names the gap in the handoff (`R-A11-14`).\n'
+  printf 'REFUSED: no workstation for this lane, so (a) the object-log line, (b) the register line and (c) the row-status flip are NOT written — LANES_WORKSTATION names the workstation, nothing here may guess one (`hostname` in a container is the container id, Evidence 6), and both logs are append-only; the launcher owns the value, so `pclaude` exports it from the host into every session and `wave-container-shell.sh` into every container it opens: set LANES_WORKSTATION=<workstation> in this session and run step 4 again. Step 2 still refreshes the handoff and names the gap there, and step 5 prints `--lane` because the row was never flipped (`R-A11-14`, `R-A11-27`).\n'
 fi
 # (a) the Amendment 7 object-log PAUSED line — the record `swapped` reads. The uuid is checked BEFORE the
 # write: `unknown` is not a transcript uuid and the object log is append-only, so a line written wrong there
@@ -369,13 +371,42 @@ else
   "$L" append-line "PAUSED — lane $lane, ${session_field}$(date -u +%Y-%m-%dT%H:%M:%SZ), on <operator>'s word \"<sanitized verbatim>\";${session_gap} <what's open, or NOTHING CLAIMED>; handoff refreshed"
 fi
 # (c) the row: flip its leading state word, DERIVED from the row itself. row_write_refused is what step 5
-# reads: empty on success, "1" the moment either write below does not. Its tail restates the record's own
-# two facts for a person (SPEC §5), out of `$payload`, so the two writes cannot drift apart.
-state="$(printf '%s' "$row" | grep -o '| [A-Z][A-Z]* ·' | head -n 1)"   # e.g. '| LIVE ·'
+# reads: empty on success, "1" the moment either write below does not — or the moment the workstation
+# refusal above takes the row writes with it. Its tail restates the record's own two facts for a person
+# (SPEC §5), out of `$payload`, so the two writes cannot drift apart.
+#
+# AND (c) IS REFUSED WITH (a) AND (b) WHERE THERE IS NO WORKSTATION — `R-A11-27` (A11 Addendum 4 ruling 11,
+# RATIFIED by Brett Heap 2026-09-13T21:08:26Z, verbatim "a11 addendum 4 yes"). The amendment text at
+# `brettheap/new-workstation#21` :2025-2048 at `613452f` rules it in these words, and names this file while
+# doing so:
+#
+#   "So the `/lane-swap` act in a container with no `LANES_WORKSTATION` refuses (a) the lane's object-log
+#    `PAUSED` line and (b) the register's own line and row-status flip, naming the variable and the launcher
+#    that sets it — and it still performs step 2, refreshing, committing and pushing the handoff with the
+#    gap named in it, and still polls the writers and still prints the one restart command."
+#
+# An earlier revision of this step said "(c) below still runs, so the row is still flipped to PAUSED", and
+# the text quotes that exact string back at this PR. The reason it is wrong: the row-status flip IS a
+# register write. `replace-in-row` and `append-row-status` each file a commit whose subject the helper keys
+# on the workstation, so keeping (c) would put in the register's own history the container id the two
+# refusals above exist to keep out of it — one file along, through the one act that was left running.
+# THIS DOES NOT WAIT FOR THE HELPER TO REFUSE FOR US. The helper this vendored skill actually invokes is
+# `opensoft/brett-wip`'s `lanes-edit.sh`, whose `:233` is `WS="${LANES_WORKSTATION:-$(hostname -s)}"` and
+# which carries no dispatcher guard at all, so from a container (c) does not fail safely — it SUCCEEDS, and
+# writes `LANES(<lane>@<container id>)` twice. `opensoft/openRepoTools#26` adds that guard; this file must
+# hold without it. What the swap still does from that container is everything that is not a register write:
+# step 2's handoff commit with the gap named in it, step 3's poll, and step 5's one command — which is the
+# half `#26` @`dae38be` got wrong in the other direction by exiting 2 at step 1.
 row_write_refused=""
-"$L" replace-in-row "$lane" "$state" "| PAUSED ·" "swap" || row_write_refused=1
-if [[ -z "$row_write_refused" ]]; then
-  "$L" append-row-status "$lane" "PAUSED — $payload" || row_write_refused=1
+if [[ -n "$ws_write_refused" ]]; then
+  row_write_refused=1
+  printf 'NOT WRITTEN: (c) is a register write too — `replace-in-row` and `append-row-status` each file a commit the helper keys on the workstation — so the row is NOT flipped to PAUSED and step 5 prints `--lane` (`R-A11-27`).\n'
+else
+  state="$(printf '%s' "$row" | grep -o '| [A-Z][A-Z]* ·' | head -n 1)"   # e.g. '| LIVE ·'
+  "$L" replace-in-row "$lane" "$state" "| PAUSED ·" "swap" || row_write_refused=1
+  if [[ -z "$row_write_refused" ]]; then
+    "$L" append-row-status "$lane" "PAUSED — $payload" || row_write_refused=1
+  fi
 fi
 ```
 
@@ -388,11 +419,16 @@ line with the session field LEFT OUT and the gap said in its own free text, and 
 say the swap writes them and names the gap, which is how A8(a) step 4's *"never left unwritten"* survives a
 lane that has never had a session recorded (RV-W1, `R-A11-11`). Name that gap in the handoff too: step 2's
 file is the one a reader meets first, so its state line says the record carries no session id and names the
-act that supplies one. **A missing WORKSTATION is the other refusal, and it is (a) and (b) together**
-(`R-A11-14`): LANES_WORKSTATION has an owner now — `pclaude` exports it from the host into every session it
-starts and `wave-container-shell.sh` into every bench container — so a session without one was started
-around them, and the answer is to set it and run step 4 again, never to write a placeholder into an
-append-only log. (c) still runs there too, so the row is flipped and the handoff carries the gap. Report it, name the act that supplies the uuid, and do not work around it. If `$state` came
+act that supplies one. **A missing WORKSTATION is the other refusal, and it takes all three writes**
+(`R-A11-14`, and `R-A11-27` for the third): LANES_WORKSTATION has an owner now — `pclaude` exports it from
+the host into every session it starts and `wave-container-shell.sh` into every bench container — so a
+session without one was started around them, and the answer is to set it and run step 4 again, never to
+write a placeholder into an append-only log. **(c) is refused with (a) and (b)**, because the row-status
+flip is a register write too and the helper keys the commit it files for it on the workstation. What
+survives instead is **step 2** — a commit in the lane's own repository, keyed on no workstation — refreshed
+with the gap named in it, which is where A8(a) step 4's *"never left unwritten"* keeps its substance from a
+container; step 5 then prints `--lane`, because a restart cannot resolve this lane from a row that was never
+flipped. Report it, name the act that supplies the uuid, and do not work around it. If `$state` came
 back empty, re-read the row and take the first `| WORD ·` in it — `replace-in-row` requires exactly one
 occurrence and exits 2 on a guess. If (c) is still refused after that re-read — a rebase conflict, a push
 race, anything `replace-in-row`/`append-row-status` themselves report — leave `row_write_refused` set and

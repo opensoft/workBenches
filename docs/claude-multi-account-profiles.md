@@ -381,9 +381,18 @@ Where there is no answer at all, **nothing is exported and nothing is
 invented**: the `/lane-swap` skill and every other writer then **refuse**, in
 one line that names `LANES_WORKSTATION` and the launcher that sets it, because
 the register and the object log are both append-only and a workstation that is
-not a workstation is wrong for ever. The row's own state cell is still flipped
-to `PAUSED`, so Amendment 8(a) step 4's *"never left unwritten"* keeps its
-substance, and the handoff carries the gap. `@unknown-workstation` and
+not a workstation is wrong for ever. **The row's own state cell is refused with
+them** (`R-A11-27`, A11 Addendum 4 ruling 11, ratified 2026-09-13T21:08:26Z
+*"a11 addendum 4 yes"*): the flip is a register write too, and the helper keys
+the commit it files for it on the workstation, so leaving it running would put
+the container id in the register's own history through the one write that had
+been spared. An earlier revision of this paragraph said it was still flipped.
+What survives instead is the **handoff** — a commit in the lane's own
+repository, keyed on no workstation — refreshed with the gap named in it, which
+is where Amendment 8(a) step 4's *"never left unwritten"* keeps its substance
+from a container; the swap also still polls the writers and still prints the one
+restart command, with `--lane` in it because the row was never flipped.
+`@unknown-workstation` and
 `none recorded` are **gone from the skill**: the first is a word that is plainly
 not a hostname in the position `swapped <ws>` keys on and `append-line`
 validates neither half, so it would have landed and no reader would ever have

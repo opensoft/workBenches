@@ -2759,11 +2759,52 @@ grep -F 'REFUSED: no workstation for this lane' "$SKILL_MD" | grep -Fq 'LANES_WO
     || fail "R-A11-14: the refusal does not name the variable that fixes it"; assertion
 grep -F 'REFUSED: no workstation for this lane' "$SKILL_MD" | grep -Fq 'pclaude' \
     || fail "R-A11-14: the refusal does not name the launcher that sets the variable"; assertion
-# ...and (c) is NOT refused with them: the row is still flipped to PAUSED, which
-# is how A8(a) step 4's "never left unwritten" keeps its substance.
-ws_refusal_block="$(awk 'index($0,"if [[ -z \"$ws\" ]]; then"){inside=1} inside{print} inside && $0=="fi"{exit}' "$SKILL_MD")"
-printf '%s\n' "$ws_refusal_block" | grep -Fq 'replace-in-row' \
-    && fail "R-A11-14: the row's state cell is inside the workstation refusal, so a swap from a container leaves the row LIVE"; assertion
+# ...AND (c) IS REFUSED WITH THEM — `R-A11-27` (A11 Addendum 4 ruling 11,
+# RATIFIED by Brett Heap 2026-09-13T21:08:26Z, verbatim "a11 addendum 4 yes";
+# the encoding is `brettheap/new-workstation#21` :2025-2048 at `613452f`).
+#
+# THIS ASSERTION SAID THE OPPOSITE until round 5, and its comment gave the
+# pre-ruling reason: that keeping the flip is how A8(a) step 4's "never left
+# unwritten" keeps its substance. The ruling settles it the other way and the
+# text quotes this PR's own shipped string — "(c) below still runs, so the row is
+# still flipped to PAUSED" — back at it. The row-status flip IS a register write:
+# `replace-in-row` and `append-row-status` each file a commit the helper
+# subject-keys `LANES(<lane>@<ws>)`, so the one write left running is the one that
+# lands the container id in the register's history. Nor does it fail safely on
+# this estate — `opensoft/brett-wip`'s `lanes-edit.sh` has no dispatcher guard at
+# all and its `:233` is the `${LANES_WORKSTATION:-$(hostname -s)}` default, so
+# from a container (c) SUCCEEDS. What survives the refusal is step 2's handoff, a
+# commit in the lane's own repository. Inverted here so the next writer who
+# restores the write is told by the suite rather than by a review.
+c_section="$(awk '/^# \(c\) the row: flip its leading state word/{inside=1} inside{print} inside && /^```$/{exit}' "$SKILL_MD")"
+[[ -n "$c_section" ]] \
+    || fail "R-A11-27: write (c) is not in the skill at all, so nothing can be said about what fences it"; assertion
+# ...on the section's SHELL, comments stripped, because the comment above the
+# fence ARGUES about `replace-in-row` at length and would answer for the code.
+c_fence="$(printf '%s\n' "$c_section" | grep -v '^[[:space:]]*#' | awk '
+    index($0, "if [[ -n \"$ws_write_refused\" ]]; then") { phase = "refused"; next }
+    phase == "refused" && $0 == "else" { phase = "written"; next }
+    phase == "refused" && index($0, "row_write_refused=1") { set = 1 }
+    phase == "written" && index($0, "replace-in-row") { fenced = 1 }
+    phase == "" && index($0, "replace-in-row") { loose = 1 }
+    END { printf "set=%d fenced=%d loose=%d", set, fenced, loose }')"
+[[ "$c_fence" == "set=1 fenced=1 loose=0" ]] \
+    || fail "R-A11-27: write (c) is not refused with (a) and (b) where no workstation is configured ($c_fence), so a swap from a container still flips the row and files a commit keyed on the container id"; assertion
+grep -Fq 'NOT WRITTEN: (c) is a register write too' "$SKILL_MD" \
+    || fail "R-A11-27: (c) is skipped without saying so — a swap that writes nothing has to name which writes it refused"; assertion
+grep -F 'REFUSED: no workstation for this lane' "$SKILL_MD" | grep -Fq '(c) the row-status flip' \
+    || fail "R-A11-27: the one refusal line still promises the row-status flip the ruling refuses"; assertion
+# ...and the retired promise is QUOTED, never meant — counted the way the
+# `$(hostname` read above is counted rather than the word, because a comment that
+# records a corrected sentence must not be indistinguishable from one that still
+# asserts it. Two halves: the string is in no SHELL line at all, and every line
+# that carries it calls itself a superseded revision.
+printf '%s\n' "$skill_write_code" | grep -Fq '(c) below still runs' \
+    && fail "R-A11-27: the skill's shell still prints '(c) below still runs' — the exact string the amendment text quotes back at this PR"; assertion
+still_runs_total="$(grep -Fc '(c) below still runs' "$SKILL_MD" || true)"
+still_runs_quoted="$(grep -F '(c) below still runs' "$SKILL_MD" | grep -Fc 'revision' || true)"
+[[ "$still_runs_total" -eq "$still_runs_quoted" ]] \
+    || fail "R-A11-27: $still_runs_total line(s) of the skill say '(c) below still runs' and $still_runs_quoted name it as a superseded revision — the rest assert the promise the ruling refuses"; assertion
 
 # THE LAUNCHER IS THE OWNER, IN BOTH OF THE PLACES IT STARTS SOMETHING.
 printf '%s\n' "$ws_launcher_code" | grep -Fq 'name="$(lane_workstation)"' \
