@@ -227,6 +227,26 @@ this launcher at all. Two consequences, both of which this launcher and
   `~/.claude/skills` for a bare `claude` outside the launcher. The copy is
   idempotent by content: a destination already holding the vendored bytes is
   left untouched.
+- **The bare-`claude` path gets the hook too, from a second writer of the same
+  entry.** `claude-profile` only ever ensures the `SessionStart` entry in the
+  profile it is about to exec into, so a bare `claude` run — the one case
+  `~/.claude/settings.json` exists for — used to get the skill above and
+  nothing else. `scripts/setup-claude-profiles.sh` now ensures the identical
+  entry (same command string, same `"matcher": "startup|resume|clear|fork"`,
+  same `"timeout": 5`, same exact-string idempotence, additive beside every
+  other hook kind) into `~/.claude/settings.json` on every setup run, gated on
+  the same estate probe. The command string is the idempotence key for *both*
+  writers of *both* files; change it in one and the other goes stale.
+
+**Live state, so this section is not mistaken for a live measurement.** Both
+writers above are gated on `~/projects/xFactory/lanes-edit.sh` having a
+`session-start` subcommand, and on `opensoft/brett-wip` `main` that subcommand
+does not exist yet — so today, correctly, neither writer ensures anything: no
+profile `settings.json` under `~/.claude-profiles/profiles/` carries a
+`SessionStart` hook, and `~/.claude/settings.json` only carries one where an
+operator hand-wrote it before this script could. This section describes what
+the code now does once the brett-wip half of Amendment 8 lands, not a
+measurement of any workstation today.
 
 Profile launches default to
 `xhigh` effort and always start Claude with `bypassPermissions` plus
