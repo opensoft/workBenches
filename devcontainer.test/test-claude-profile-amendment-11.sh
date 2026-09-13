@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=85
+EXPECTED_SCENARIOS=89
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -1748,7 +1748,10 @@ printf '%s\n' "$guard_block" | grep -Fq 'append-line' \
 # uuid. Deleting the line altogether would satisfy the assertion above.
 grep -Fq '"$L" append-line "PAUSED — lane $lane, session $session_field' "$SKILL_MD" \
     || fail "RV-W1: the file-level PAUSED line is not written from a session field that can carry the gap"; assertion
-grep -Fq 'session_field="none recorded@$(hostname -s)"' "$SKILL_MD" \
+# ...and BOTH halves of that position name their gap: the uuid's, and — since
+# Evidence 6 — the workstation's, which used to be `$(hostname -s)` and is a
+# container id inside a bench container.
+grep -Fq 'session_field="none recorded@${ws:-unknown-workstation}"' "$SKILL_MD" \
     || fail "RV-W1: a lane with no recorded session does not NAME the gap in the line's session position"; assertion
 # ...and write (c), the row's state cell, is outside the guard too — SPEC §7 names
 # the two together, and a state cell flipped only where a uuid exists is the same
@@ -1841,6 +1844,113 @@ grep -Fq 'are not lane surfaces' "$SKILL_MD" \
     || fail "evidence 4: the skill no longer refuses /resume and claude --resume as lane surfaces (A8 Addendum 2 R-A8-6)"; assertion
 grep -Fq '/rename <lane>' "$SKILL_MD" \
     || fail "evidence 4(b): the skill's identity triple does not name /rename <lane>, the only act that fixes a derived session name from inside"; assertion
+
+# ===========================================================================
+# 7. THE WORKSTATION THE RECORDS ARE KEYED TO — Evidence 6 (new-workstation#20,
+#    2026-09-13T17:57:45Z).
+#
+# `swapped <ws>` answers with the rows THAT WORKSTATION wrote, and this lane's
+# records say `Eagle`. Inside a bench container `hostname -s` is the container's
+# id — `0e7d1a79a07e`, measured — so a launcher that passes it asks about a
+# machine that has existed for an hour: the read answers nothing, precedence 4
+# falls through, and nothing says why. That is Evidence 5's silence one function
+# along. A WRITER that passes it is worse, and is what the forked orchestrator
+# of Evidence 6 did: the id went into an append-only log.
+#
+# This suite runs INSIDE such a container, so the two branches are forced by the
+# `container=` marker rather than left to the host: `container=docker` is a
+# container everywhere, which makes both scenarios below say the same thing on
+# any machine they are run on.
+# ===========================================================================
+
+# 7a. CONFIGURATION WINS, AND IT WINS INSIDE A CONTAINER. LANES_WORKSTATION is
+# the estate's own word; the container marker does not override it, because the
+# rule is "configured, not guessed" and not "never inside a container".
+launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" "container=docker" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
+    -- run team002 --resume session-ws-configured
+grep -Fxq 'argv=swapped Eagle' "$LANES_EDIT_LOG" \
+    || fail "Evidence 6: the configured workstation was not the one asked about ($(cat "$LANES_EDIT_LOG"))"; assertion
+grep -Fxq -- "--confirm mine-5 -- $claude_args --resume session-ws-configured" "$LANE_START_LOG" \
+    || fail "Evidence 6: the configured workstation's newest swap did not answer ('$(lane_start_argv)')"; assertion
+
+# 7b. A CONTAINER THAT NAMES NO WORKSTATION READS NOTHING, AND SAYS SO. Passing
+# the container id would ask about the wrong machine; passing nothing would let
+# the helper derive the same id one process later. So the read is not made at
+# all, and the step that wanted it names the gap — in the one line precedence 5
+# already prints, because R-A8-7 is one no-lane notice and not two.
+launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+    "LANES_WORKSTATION=" "container=docker" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
+    -- run team002 --resume session-ws-unknown
+grep -q '^argv=swapped' "$LANES_EDIT_LOG" \
+    && fail "Evidence 6: the swap records were read for a workstation this container cannot name ($(cat "$LANES_EDIT_LOG"))"; assertion
+[[ ! -e "$LANE_START_LOG" ]] \
+    || fail "Evidence 6: a lane was taken from records that are not this workstation's ('$(lane_start_argv)')"; assertion
+grep -Fq 'Evidence 6' "$ERR_LOG" \
+    || fail "Evidence 6: the read that could not be made was not named ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'LANES_WORKSTATION' "$ERR_LOG" \
+    || fail "Evidence 6: the notice does not name the one word that fixes it ('$(cat "$ERR_LOG")')"; assertion
+[[ "$(wc -l < "$ERR_LOG")" -eq 1 ]] \
+    || fail "Evidence 6: one situation printed $(wc -l < "$ERR_LOG") lines ($(cat "$ERR_LOG"))"; assertion
+grep -Fxq -- "$claude_args --resume session-ws-unknown" "$CLAUDE_LOG" \
+    || fail "Evidence 6: the launch was refused over a workstation name"; assertion
+[[ "$launch_status" -eq 0 ]] \
+    || fail "Evidence 6: the launcher exited $launch_status over a Claude that started"; assertion
+
+# 7c. ...AND THE STEPS THAT DO NOT NEED A WORKSTATION ARE UNTOUCHED. Precedence
+# 3 asks the helper about THIS window, which is a fact about this process and
+# not about the machine's name: the lane binds bare, nothing is read for a
+# workstation nobody named, and there is nothing to report.
+launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+    "LANES_WORKSTATION=" "container=docker" \
+    "FAKE_TMUX_WINDOW_ID=@97" "FAKE_TMUX_WINDOW_REF=claude-y:0" \
+    "FAKE_WINDOW_LANE_MAP=@97=mine-5" \
+    -- run team002 --resume session-ws-unknown-window
+grep -Fxq -- "mine-5 -- $claude_args --resume session-ws-unknown-window" "$LANE_START_LOG" \
+    || fail "Evidence 6: the window's own record stopped answering because the machine has no name ('$(lane_start_argv)')"; assertion
+grep -q '^pclaude:' "$ERR_LOG" \
+    && fail "Evidence 6: a launch that never needed the workstation was told about it ('$(cat "$ERR_LOG")')"; assertion
+
+# 7d. THE RULE IS IN ONE PLACE IN EACH ARTEFACT, AND IT IS FENCED. A static
+# audit, because the failure is the one a scenario cannot reach: a second
+# `hostname` read somewhere else in the file, which fires only on the machine
+# the suite is not running on.
+scenario
+ws_launcher_code="$(awk '/^      cat <<.EOF.$/ { skip = 1 } !skip { print } skip && $0 == "EOF" { skip = 0 }' "$LAUNCHER" \
+    | grep -v '^[[:space:]]*#')"
+[[ "$(printf '%s\n' "$ws_launcher_code" | grep -c 'hostname')" -eq 1 ]] \
+    || fail "Evidence 6: the launcher's shell reads hostname $(printf '%s\n' "$ws_launcher_code" | grep -c 'hostname') times, and one of them is outside the container fence"; assertion
+printf '%s\n' "$ws_launcher_code" | grep -Fq 'if [[ -z "$name" ]] && ! lane_in_container; then' \
+    || fail "Evidence 6: the launcher's hostname read is not fenced on lane_in_container"; assertion
+printf '%s\n' "$ws_launcher_code" | grep -Fq 'name="${LANES_WORKSTATION:-}"' \
+    || fail "Evidence 6: the launcher does not take the configured workstation first"; assertion
+printf '%s\n' "$ws_launcher_code" | grep -Fq '[[ -e /.dockerenv || -e /run/.containerenv || -n "${container:-}" ]]' \
+    || fail "Evidence 6: the container fence does not test the three markers a container leaves"; assertion
+# ...and the skill, which is the WRITER, and the half of Evidence 6 that cannot
+# be taken back: the id the fork wrote is in an append-only log for ever.
+ws_skill_code="$(grep -v '^[[:space:]]*#' "$SKILL_MD")"
+[[ "$(printf '%s\n' "$ws_skill_code" | grep -c 'hostname')" -eq 1 ]] \
+    || fail "Evidence 6: the skill's shell reads hostname $(printf '%s\n' "$ws_skill_code" | grep -c 'hostname') times, and the record it writes is append-only"; assertion
+printf '%s\n' "$ws_skill_code" | grep -Fq 'ws="${LANES_WORKSTATION:-}"' \
+    || fail "Evidence 6: the skill does not take the configured workstation first"; assertion
+printf '%s\n' "$ws_skill_code" | grep -Fq 'if [[ -z "$ws" && ! -e /.dockerenv && ! -e /run/.containerenv && -z "${container:-}" ]]; then' \
+    || fail "Evidence 6: the skill's hostname read is not fenced on the container markers"; assertion
+printf '%s\n' "$ws_skill_code" | grep -Fq '"$L" swapped "$ws"' \
+    || fail "Evidence 6: the skill's step 1 does not read the records for the configured workstation"; assertion
+printf '%s\n' "$ws_skill_code" | grep -Fq '[[ -z "$ws" ]] || payload="$payload; workstation $ws"' \
+    || fail "Evidence 6: the record's workstation sub-field is not written from \$ws, or is written even where none is known"; assertion
+printf '%s\n' "$ws_skill_code" | grep -Fq '${ws:-unknown-workstation}' \
+    || fail "Evidence 6: the register line's session position can still name a container"; assertion
+grep -Fq 'NO workstation sub-field' "$SKILL_MD" \
+    || fail "Evidence 6: a record written with no workstation says nothing about the gap"; assertion
+# ...and the two documents say it.
+grep -Fq 'AND THE WORKSTATION STEP 4 READS IS CONFIGURED' "$TEST_ROOT/help.out" \
+    || fail "Evidence 6: --help does not say where the workstation comes from"; assertion
+grep -Fq 'never taken from' "$DOCS_MD" \
+    || fail "Evidence 6: the docs do not carry the rule at all"; assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"

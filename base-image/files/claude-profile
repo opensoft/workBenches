@@ -917,6 +917,43 @@ lane_start_supports() {
   [[ "$lane_start_help" == *"$flag"* ]]
 }
 
+lane_in_container() {
+  # The three markers a container leaves for a process that is not root and
+  # cannot read the host: Docker's own file, the OCI/podman one, and the
+  # `container=` the systemd convention exports. Any of them is enough; none of
+  # them can be faked by the estate, which is the point.
+  [[ -e /.dockerenv || -e /run/.containerenv || -n "${container:-}" ]]
+}
+
+lane_workstation() {
+  # THE WORKSTATION NAME COMES FROM CONFIGURATION, AND NEVER FROM `hostname`
+  # INSIDE A CONTAINER — Evidence 6 (new-workstation#20, 2026-09-13T17:57:45Z).
+  #
+  # The register is keyed on the WORKSTATION: `swapped <ws>` answers with the
+  # rows that workstation wrote, and this lane's own records say `Eagle`. Inside
+  # a bench container `hostname -s` is the container id — `0e7d1a79a07e`, as
+  # measured — and a launcher that passes it asks for the swap records of a
+  # machine that has existed for an hour and will not exist tomorrow. The read
+  # answers nothing, precedence 4 falls through, and NOTHING SAYS WHY: that is
+  # the same silence Evidence 5 ruled out one function along. Worse, the forked
+  # orchestrator of Evidence 6 WROTE records under that id, so an id that comes
+  # back tomorrow on another container would read a stranger's rows back as this
+  # workstation's.
+  #
+  # `LANES_WORKSTATION` is the estate's own word and is honoured everywhere,
+  # container or not — it is the configuration the ruling names. Failing that,
+  # `hostname` stands exactly as it did, but only where this is NOT a container.
+  # Inside one with nothing configured there is NO answer, and the caller says
+  # so rather than guessing: R-A9-13's seam is this, and the tooling half of it
+  # is the tooling PR's.
+  local name
+  name="${LANES_WORKSTATION:-}"
+  if [[ -z "$name" ]] && ! lane_in_container; then
+    name="$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)"
+  fi
+  printf '%s\n' "$name"
+}
+
 # THE SWAP RECORDS, READ AT MOST ONCE PER LAUNCH. Two callers want them — the
 # lane order's precedence 4 and the directory order's rung 2 — and `swapped` is
 # on the path of every launch, so the read is cached rather than repeated. It
@@ -930,11 +967,22 @@ swapped_read() {
   swapped_rows=""
   swapped_status=8
   swapped_reason=""
+  swapped_ws_unknown=""
   swapped_argv=(swapped)
   lanes_edit="$(lanes_edit_bin || true)"
   [[ -n "$lanes_edit" ]] || return 0
-  ws="${LANES_WORKSTATION:-$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)}"
-  [[ -z "$ws" ]] || swapped_argv+=("$ws")
+  ws="$(lane_workstation)"
+  # NO WORKSTATION, NO READ (Evidence 6). Passing nothing would leave the helper
+  # to derive one from the same `hostname` this just refused, which is the wrong
+  # answer arrived at one process later; passing the container id would ask for
+  # a machine that is not this one. So the records are not read at all, the
+  # caller that needed them names the gap, and every step that does not need
+  # them is untouched.
+  if [[ -z "$ws" ]]; then
+    swapped_ws_unknown=1
+    return 0
+  fi
+  swapped_argv+=("$ws")
   err="$(mktemp "${TMPDIR:-/tmp}/pclaude-swapped.XXXXXX")"
   set +e
   swapped_rows="$(LANES_NO_FETCH=1 "$lanes_edit" "${swapped_argv[@]}" 2>"$err")"
@@ -1117,6 +1165,17 @@ resolve_lane() {
   # 0 with rows `<lane>\t<UTC>\t<window>[\t<dir>]`, most recent first; 8 with
   # none. The contract is the TAB: a row without one is not that shape.
   swapped_read
+  # ...and where the read could not be MADE because this container names no
+  # workstation (Evidence 6), that is named HERE — at the one step that wanted
+  # it — and not by the read itself, which the directory order also calls and
+  # which has its own line for a directory it could not learn.
+  # NO APOSTROPHE IN THIS DEFAULT, and that is not style: bash reads a `'` inside
+  # a `${x:-word}` as opening a quote, so one here swallows the rest of the file
+  # and every function defined below it goes missing at run time while `bash -n`
+  # still says the syntax is fine.
+  if [[ -n "${swapped_ws_unknown:-}" ]]; then
+    lane_read_note="${lane_read_note:-this is a container and LANES_WORKSTATION names no workstation, so the swap records for this workstation were not read (new-workstation#20, Evidence 6); set LANES_WORKSTATION=<workstation>}"
+  fi
   first_row="$(printf '%s\n' "${swapped_rows:-}" | head -n 1)"
   if [[ "${swapped_status:-8}" -eq 0 && -n "${swapped_rows:-}" && "$first_row" == *$'\t'* ]]; then
     candidate="${first_row%%$'\t'*}"
@@ -1412,6 +1471,9 @@ swapped_read_done=""
 swapped_rows=""
 swapped_status=8
 swapped_reason=""
+# Set by swapped_read where this is a container with no configured workstation,
+# so precedence 4 can name the read it could not make (Evidence 6).
+swapped_ws_unknown=""
 swapped_argv=(swapped)
 # The first failed read of the lane order, named where it failed and carried
 # down the order so the notice is printed once (SPEC §2).
@@ -1514,6 +1576,13 @@ install act. This machine cannot tell an estate that was never installed from
 one whose `~/.local/bin` links a rebuild removed while this launcher stayed in
 /usr/local/bin — which is what happened on 2026-09-13, and three restarts came
 up with no stamp, no lane and a derived session name before anything said so.
+
+AND THE WORKSTATION STEP 4 READS IS CONFIGURED, NOT GUESSED (Evidence 6). The
+swap records are keyed on the workstation, and LANES_WORKSTATION is the estate's
+own word for it. Inside a container `hostname` is the container's id — a machine
+that has existed for an hour — so where nothing is configured THERE, the records
+are not read at all and the one line says so and names LANES_WORKSTATION.
+Outside a container `hostname` stands exactly as it always did.
 
 THE WINDOW IS REUSED (Amendment 11(2), act 1). Run inside tmux, this launcher
 keeps the CURRENT window: it sets CLAUDE_CONFIG_DIR and execs in place, so the

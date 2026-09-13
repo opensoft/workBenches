@@ -22,6 +22,19 @@ copy-pasteable as written once `lane` is derived in step 1.
 
 ```sh
 L=~/projects/xFactory/lanes-edit.sh
+# THE WORKSTATION, DERIVED ONCE AND NEVER FROM `hostname` INSIDE A CONTAINER (Evidence 6,
+# new-workstation#20 2026-09-13T17:57:45Z). The register is keyed on it: `swapped <ws>` answers with the
+# rows that workstation wrote, and this lane's own records say `Eagle`. Inside a bench container
+# `hostname -s` is the container id — `0e7d1a79a07e`, as measured — so a record written from one names a
+# machine that will not exist tomorrow, and the forked orchestrator of Evidence 6 wrote exactly that into
+# the log. `LANES_WORKSTATION` is the estate's own word and is honoured everywhere; `hostname` stands as it
+# was, but only where this is NOT a container; inside one with nothing configured there is NO answer, and
+# every use below says so rather than guessing. `$L` and `$ws` are the two values the later steps reuse.
+ws="${LANES_WORKSTATION:-}"
+if [[ -z "$ws" && ! -e /.dockerenv && ! -e /run/.containerenv && -z "${container:-}" ]]; then
+  ws="$(hostname -s 2>/dev/null || true)"
+fi
+printf 'ws=%s\n' "${ws:-<none: set LANES_WORKSTATION>}"
 ```
 
 ## 1. Usage, then the identity triple — derived, not asked
@@ -54,7 +67,15 @@ if [[ -z "$lane" ]]; then
   # whether there is an answer at all, and the contract is the tab. A row that
   # printed before a failed read, or one with no tab, is not a record row —
   # `cut -f 1` would hand back the whole line, lane-shaped and wrong.
-  rows="$(LANES_NO_FETCH=1 "$L" swapped "$(hostname -s)" 2>/dev/null)" || rows=""
+  # NO WORKSTATION, NO READ (Evidence 6): `swapped` with nothing would let the helper derive one from the
+  # same `hostname` the preamble refused, and `swapped <container id>` asks about a machine that is not
+  # this one. Either way the answer is not this workstation's, so the step answers nothing and says why.
+  if [[ -n "$ws" ]]; then
+    rows="$(LANES_NO_FETCH=1 "$L" swapped "$ws" 2>/dev/null)" || rows=""
+  else
+    rows=""
+    printf 'NO workstation: this is a container and LANES_WORKSTATION names none, so the swap records were not read (Evidence 6); set LANES_WORKSTATION=<workstation>.\n'
+  fi
   first="$(printf '%s\n' "$rows" | head -n 1)"
   if [[ -n "$rows" && "$first" == *$'\t'* ]]; then
     candidate="${first%%$'\t'*}"
@@ -221,7 +242,13 @@ payload="swap"
 [[ -z "$win" ]] || payload="$payload; window $win"
 [[ -z "$dir" ]] || payload="$payload; dir $dir"
 [[ -z "$profile_name" ]] || payload="$payload; profile $profile_name"
-payload="$payload; workstation $(hostname -s)"
+# `workstation <ws>` is $ws and never `hostname` (Evidence 6): the sub-field is what `swapped <ws>` keys
+# on, so a record carrying a container id is a record no restart of this workstation will ever find — and
+# it is a lie in an append-only log, which is the half that cannot be taken back. Where nothing is
+# configured the sub-field is OMITTED and the omission is said, exactly as `dir` and `profile` are: a
+# record with no workstation is incomplete in a way a reader can see, one naming a container is not.
+[[ -z "$ws" ]] || payload="$payload; workstation $ws"
+[[ -n "$ws" ]] || printf 'NO workstation sub-field: this is a container and LANES_WORKSTATION names none, so the record is written without one and `swapped <ws>` will not list it (Evidence 6); set LANES_WORKSTATION=<workstation> and swap again to record it.\n'
 # (a) the Amendment 7 object-log PAUSED line — the record `swapped` reads. The uuid is checked BEFORE the
 # write: `unknown` is not a transcript uuid and the object log is append-only, so a line written wrong there
 # is wrong for ever (Amendment 11, SPEC §7). `lanes-edit.sh`'s own session_for() substitutes that literal
@@ -243,8 +270,11 @@ fi
 # does not. The two are not the same act and the difference is the file: the OBJECT LOG is append-only and a
 # wrong session id there is wrong for ever, while this line is the register's own and its session position
 # SAYS in words that none was recorded — a reader is told the gap instead of being handed silence.
-session_field="${uuid:+$uuid@$(hostname -s)}"
-[[ -n "$session_field" ]] || session_field="none recorded@$(hostname -s)"
+# The session position is `<uuid>@<workstation>`, and BOTH halves name their gap rather than inventing a
+# value: no uuid is `none recorded`, and no configured workstation is `unknown-workstation` — a word that
+# is plainly not a hostname, where a container id would read back as one (Evidence 6).
+session_field="${uuid:+$uuid@${ws:-unknown-workstation}}"
+[[ -n "$session_field" ]] || session_field="none recorded@${ws:-unknown-workstation}"
 "$L" append-line "PAUSED — lane $lane, session $session_field, $(date -u +%Y-%m-%dT%H:%M:%SZ), on <operator>'s word \"<sanitized verbatim>\"; <what's open, or NOTHING CLAIMED>; handoff refreshed"
 # (c) the row: flip its leading state word, DERIVED from the row itself. row_write_refused is what step 5
 # reads: empty on success, "1" the moment either write below does not. Its tail restates the record's own

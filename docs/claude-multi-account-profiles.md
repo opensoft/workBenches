@@ -262,6 +262,23 @@ them. The note does **not** stand down for the `SessionStart` hook the way the
 no-lane notice does: that hook reports the lane it could not bind, and nothing
 but this line can say the tool itself is missing.
 
+**The workstation those records are keyed to is configured, never taken from
+`hostname` inside a container (new-workstation#20, Evidence 6).** Step four
+above reads `lanes-edit.sh swapped <workstation>`, and the swap records this
+machine wrote say `Eagle`. Inside a bench container `hostname -s` is the
+container's id — `0e7d1a79a07e`, as measured on 2026-09-13 — so a launcher that
+passes it asks for the records of a machine that has existed for an hour, gets
+nothing, and falls through with no reason given; and a *writer* that passes it
+puts that id into an append-only log, which is what the forked orchestrator of
+Evidence 6 did. `LANES_WORKSTATION` is honoured everywhere, container or not.
+Failing that, `hostname` stands exactly as it did — but only where this is not a
+container; inside one with nothing configured the records are **not read**, and
+the launcher's one line names the gap and `LANES_WORKSTATION`. The `/lane-swap`
+skill follows the same rule at all three of its uses: the record it writes
+carries `workstation <ws>` or **omits the sub-field and says so**, and the
+register line's session position reads `<uuid>@unknown-workstation` rather than
+naming a container.
+
 **The lane's directory is resolved, not assumed (Amendment 11(3)).**
 `lane-start`'s own default is `$PROJECTS_ROOT/<repo>`, and a checkout that
 lives somewhere else used to end the launch outright:

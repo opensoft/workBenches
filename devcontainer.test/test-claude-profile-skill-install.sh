@@ -225,8 +225,16 @@ printf '%s\n' "$uuid_guard" | grep -Fq 'append-line' \
     && fail "text: the register's file-level PAUSED line is inside the uuid guard, so a lane with no uuid gets neither half (SPEC §7/R-A11-11)"; assertion
 printf '%s\n' "$uuid_guard" | grep -Fq 'replace-in-row' \
     && fail "text: the row's state cell is flipped only where a uuid exists, which is the same defect one write along (SPEC §7/R-A11-11)"; assertion
-grep -Fq 'session_field="none recorded@$(hostname -s)"' "$SKILL_SOURCE" \
+# BOTH HALVES OF THE SESSION POSITION NAME THEIR GAP. `<uuid>@<workstation>`:
+# the uuid's gap is `none recorded` (RV-W1), and since Evidence 6 the
+# workstation's is `unknown-workstation` — it was `$(hostname -s)`, which inside
+# a bench container is the container id and goes into an append-only log.
+grep -Fq 'session_field="none recorded@${ws:-unknown-workstation}"' "$SKILL_SOURCE" \
     || fail "text: the file-level PAUSED line does not NAME the gap in the session position (SPEC §7/R-A11-11)"; assertion
+grep -Fq 'ws="${LANES_WORKSTATION:-}"' "$SKILL_SOURCE" \
+    || fail "text: the workstation is not taken from configuration first (Evidence 6)"; assertion
+[[ "$(grep -v '^[[:space:]]*#' "$SKILL_SOURCE" | grep -c 'hostname')" -eq 1 ]] \
+    || fail "text: the skill reads hostname more than once, so one read is outside the container fence (Evidence 6)"; assertion
 grep -q "Amendment 6(c)'s session-cell append that supplies one" "$SKILL_SOURCE" \
     || fail "text: the refusal does not name which act supplies the uuid (SPEC §7)"; assertion
 grep -q 'LANES_SESSION="\$uuid"' "$SKILL_SOURCE" \
