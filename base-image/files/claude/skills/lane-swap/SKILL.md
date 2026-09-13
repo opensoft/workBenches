@@ -255,7 +255,9 @@ payload="swap"
 [[ -z "$ws" ]] || payload="$payload; workstation $ws"
 # AND WITHOUT ONE THIS WRITER REFUSES — `R-A11-14` (A11 Addendum 3, ratified by Brett Heap 2026-09-13
 # "a11 addendum 3 yes"), which is clause (k) rule (d) and SPEC §16(d) in their own words: a writer inside a
-# container with no configured value refuses and names LANES_WORKSTATION, because both lane logs are
+# container with no configured value refuses and names LANES_WORKSTATION — SPEC rev 5 §7 puts the same
+# refusal on BOTH halves of the session field and says R-A11-11 is a rule about which LINES are written and
+# never a licence to invent a value for one — because both lane logs are
 # append-only and a workstation that is not a workstation is wrong for ever. The cost is stated rather than
 # hidden — until the value is configured, every lane write from a container stops — and it is stated in ONE
 # line that also names the act that fixes it, because the variable now has an owner: the launcher sets it.
@@ -361,8 +363,11 @@ lane-start --help 2>/dev/null | grep -q -- '--confirm' \
 # the operator lands in after a swap has the name the harness derived — `openrepoproject-b9`, Evidence 4 —
 # and nothing else in flight tells them. Step 1 says this for the session running the skill; this says it
 # for the one that comes next, because a lane whose messaging address (Amendment 2) is a derived name is a
-# lane nobody can address. Adoption act 0 puts the stamp on the resume branches and this line goes.
-echo 'then, in the session that comes up: if its name is not the lane, type /rename <lane> (lane-start names only the session it CREATES; adoption act 0 removes this line)'
+# lane nobody can address. WHICH ACT REMOVES THIS LINE: the one that puts `--name <lane>` on lane-start's
+# two resume branches, which SPEC §13.3 gives to the TOOLING PR — not adoption act 0, which ships
+# `session-lane` and its three callers and no stamp (act 0 landed as `opensoft/brett-wip#5` @`3719d97`
+# with this still open, which is why the attribution is worth getting right rather than inheriting).
+echo 'then, in the session that comes up: if its name is not the lane, type /rename <lane> (lane-start names only the session it CREATES; this line goes when it names the ones it RESUMES, SPEC §13.3)'
 ```
 
 That one command is the whole restart: bare `pclaude <profile>` resolves this lane from the window name,
@@ -382,8 +387,8 @@ session's — do not assert either from memory.
 **The session that comes up after the restart is not named by `lane-start` unless it CREATES one.** Its two
 resume branches carry no `--name`, so the third leg of the identity triple — Amendment 2's messaging address
 — is whatever the harness derived, and `/rename <lane>` typed in that session is the only act that fixes it
-from inside. Step 5 prints that line beside the restart command for exactly as long as it is true: adoption
-act 0 stamps the resume branches, and the line goes with it (`R-A11-16`, CF-W5).
+from inside. Step 5 prints that line beside the restart command for exactly as long as it is true: the
+tooling half stamps the resume branches (SPEC §13.3), and the line goes with it (`R-A11-16`, CF-W5).
 
 **`/resume` and `claude --resume <title>` are not lane surfaces** (A8 Addendum 2, R-A8-6): a lane is entered
 through `pclaude` or `lane-start`, and by no other door. Do not offer either as a fallback.
