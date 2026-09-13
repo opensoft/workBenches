@@ -42,7 +42,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=4
+EXPECTED_SCENARIOS=7
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -88,6 +88,12 @@ cmp -s "$SKILL_SOURCE" "$SHARED_SKILL" \
     || fail "install: nothing at $DEFAULT_SKILL for a bare claude"; assertion
 cmp -s "$SKILL_SOURCE" "$DEFAULT_SKILL" \
     || fail "install: the ~/.claude copy is not the vendored file"; assertion
+# RV-W2 (workBenches#63 re-verification): with no lane estate on this machine
+# at all, the bare-claude SessionStart hook is gated exactly like the
+# per-profile one, so nothing is written yet.
+DEFAULT_SETTINGS="$DEFAULT_CLAUDE/settings.json"
+jq -e '.hooks.SessionStart // empty' "$DEFAULT_SETTINGS" >/dev/null 2>&1 \
+    && fail "install: a SessionStart hook was written with no lanes-edit.sh estate at all"; assertion
 [[ -L "$PROFILE_DIR/skills" ]] \
     || fail "install: the profile's skills is not a symlink ($(ls -ld "$PROFILE_DIR/skills" 2>&1))"; assertion
 cmp -s "$SKILL_SOURCE" "$PROFILE_DIR/skills/lane-swap/SKILL.md" \
@@ -153,6 +159,57 @@ grep -q 'are not lane surfaces' "$SKILL_SOURCE" \
     || fail "text: /resume is not ruled out as a lane surface (R-A8-6)"; assertion
 grep -q -- '--no-launch <repo> <n>' "$SKILL_SOURCE" \
     && fail "text: a copy-pasteable command still carries literal <repo> <n>, which the shell reads as redirections"; assertion
+
+# ---------------------------------------------------------------------------
+# 5. RV-W2 (workBenches#63 re-verification; new-workstation#16 adoption act 6
+# owns this). A bare `claude` run reads $DEFAULT_CLAUDE/settings.json, never a
+# profile's, so the SessionStart hook has to be ensured HERE too, not only by
+# claude-profile — the same canonical string, matcher and timeout, gated the
+# same way on the estate's lanes-edit.sh actually having the subcommand.
+SESSION_START_SNIPPET='~/projects/xFactory/lanes-edit.sh session-start || true'
+SESSION_START_MATCHER='startup|resume|clear|fork'
+XFACTORY="$FAKE_HOME/projects/xFactory"
+mkdir -p "$XFACTORY"
+printf '#!/usr/bin/env bash\ncase "$1" in session-start) exit 0 ;; esac\nexit 2\n' \
+    > "$XFACTORY/lanes-edit.sh"
+chmod +x "$XFACTORY/lanes-edit.sh"
+default_session_start_entries() { jq '.hooks.SessionStart // []' "$DEFAULT_SETTINGS"; }
+default_session_start_count() { jq '(.hooks.SessionStart // []) | length' "$DEFAULT_SETTINGS"; }
+default_entry_with_snippet() {
+    jq --arg c "$SESSION_START_SNIPPET" '
+        [.hooks.SessionStart[]? | select(any(.hooks[]?; .command == $c))] | .[0] // empty
+    ' "$DEFAULT_SETTINGS"
+}
+run_setup
+[[ "$(default_session_start_count)" -eq 1 ]] \
+    || fail "default hook: $(default_session_start_count) SessionStart entries, expected 1 ($(default_session_start_entries))"; assertion
+[[ "$(default_entry_with_snippet | jq -r '.matcher')" == "$SESSION_START_MATCHER" ]] \
+    || fail "default hook: matcher was $(default_entry_with_snippet | jq -r '.matcher')"; assertion
+[[ "$(default_entry_with_snippet | jq -r '.hooks[0].timeout')" == 5 ]] \
+    || fail "default hook: timeout was $(default_entry_with_snippet | jq -r '.hooks[0].timeout'), expected 5"; assertion
+[[ "$(default_entry_with_snippet | jq -r '.hooks[0].command')" == "$SESSION_START_SNIPPET" ]] \
+    || fail "default hook: the command is not claude-profile's own canonical snippet"; assertion
+
+# ---------------------------------------------------------------------------
+# 6. Idempotent: a second run against the same estate appends nothing.
+before_default_entries="$(default_session_start_entries)"
+run_setup
+[[ "$(default_session_start_count)" -eq 1 ]] \
+    || fail "default hook idempotent: a second run left $(default_session_start_count) entries"; assertion
+[[ "$(default_session_start_entries)" == "$before_default_entries" ]] \
+    || fail "default hook idempotent: the entry changed on a second run"; assertion
+
+# ---------------------------------------------------------------------------
+# 7. Additive: an unrelated hook kind set by hand survives the next run
+# alongside the ensured SessionStart entry, exactly like the per-profile
+# rewrite (F-W8's property, carried to this second writer of the same kind).
+jq '.hooks.PreToolUse = [{matcher: "Bash", hooks: [{type: "command", command: "true"}]}]' \
+    "$DEFAULT_SETTINGS" > "$DEFAULT_SETTINGS.tmp" && mv "$DEFAULT_SETTINGS.tmp" "$DEFAULT_SETTINGS"
+run_setup
+[[ "$(jq -r '.hooks.PreToolUse[0].hooks[0].command' "$DEFAULT_SETTINGS")" == true ]] \
+    || fail "default hook additive: an unrelated hook kind was lost"; assertion
+[[ "$(default_session_start_count)" -eq 1 ]] \
+    || fail "default hook additive: SessionStart did not survive beside it"; assertion
 
 # Every fenced shell block has to parse, or the skill is not copy-pasteable.
 block_count=0
