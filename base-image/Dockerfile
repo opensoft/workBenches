@@ -182,6 +182,7 @@ COPY files/workbenches-mcp-sync /usr/local/bin/workbenches-mcp-sync
 COPY files/provider-profile /usr/local/bin/provider-profile
 COPY files/pi-profile /usr/local/bin/pi-profile
 COPY files/claude-statusline-command.sh /usr/local/share/workbenches/claude/statusline-command.sh
+COPY files/claude-usage-guard.sh /usr/local/share/workbenches/claude/usage-guard.sh
 RUN chmod 0755 /usr/local/bin/claude-profile \
     /usr/local/bin/codex-profile \
     /usr/local/bin/opencode-profile \
@@ -189,6 +190,7 @@ RUN chmod 0755 /usr/local/bin/claude-profile \
     /usr/local/bin/provider-profile \
     /usr/local/bin/pi-profile \
     /usr/local/share/workbenches/claude/statusline-command.sh \
+    /usr/local/share/workbenches/claude/usage-guard.sh \
     && ln -sfn claude-profile /usr/local/bin/pclaude \
     && ln -sfn codex-profile /usr/local/bin/pcodex \
     && ln -sfn opencode-profile /usr/local/bin/popencode \
