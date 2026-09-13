@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=110
+EXPECTED_SCENARIOS=111
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -191,7 +191,7 @@ case "${1:-}" in
             while IFS= read -r live; do
                 [[ -n "$live" ]] || continue
                 if [[ "${live%%|*}" == "$target" \
-                    || "$(printf '%s' "$live" | cut -d '|' -f 2)" == "$target" ]]; then
+                    || "$(cut -d '|' -f 2 <<<"$live")" == "$target" ]]; then
                     printf '%s\n' "$live"
                     exit 0
                 fi
@@ -628,6 +628,79 @@ done < <(grep -hE '#21' "${cite_files[@]}" 2>/dev/null || true)
 [[ "$cite_qualified" -ge 1 ]] \
     || fail "citation: the gate found no head-qualified #21 line citation at all, so it is passing on an empty set rather than on the corrected one"; assertion
 
+# A TEXT AUDIT READS A STRING. IT DOES NOT GO THROUGH A PIPE — this file's own
+# defect, found while confirming round 5, and the reason it is a gate rather
+# than forty corrected lines.
+#
+# MEASURED: this suite was NON-DETERMINISTIC. On `d5d252a`, before any round-5
+# commit, twelve sequential runs from a pristine `git archive` of that head
+# produced ONE failure — `FAIL: R-A11-14: the launcher resolves a workstation
+# and never exports it` — a STATIC STRING AUDIT over a variable, which cannot be
+# false while the launcher carries the line it looks for. A second sample gave
+# one in eight, on a different assertion of the same shape.
+#
+# THE CAUSE is the shape, not any one assertion: a payload written into a reader
+# that STOPS EARLY, under `set -o pipefail` (line 45). `grep -q` exits at its
+# first match and closes the read end; the writer is a `printf` of a multi-
+# kilobyte variable, which bash flushes in stdio-sized chunks and so takes more
+# than one `write(2)`; the write after the close raises SIGPIPE and the writer
+# exits 141; `pipefail` makes 141 the PIPELINE's status; `|| fail` fires on an
+# assertion that MATCHED. It is a race between two processes and it is won
+# either way on different runs. Measured on the real payloads at `cfc9254`:
+# `$ws_launcher_code` is 37,796 bytes and the three needles §7d looks for in it
+# returned a spurious 141 in 2, 3 and 6 runs of 300; a 1.3 MB payload returns one
+# in 400 of 400.
+#
+# AND IT CUTS BOTH WAYS, which is worse than a flake. A NEGATIVE audit is
+# `<payload> | grep -Fq FORBIDDEN && fail`, and on a 141 the `&&` does not fire:
+# the suite goes GREEN while the artefact carries the string the assertion
+# exists to refuse. `R-A11-27`'s own negative — the skill must not print
+# "(c) below still runs" — is one of those, so the gate this PR built for a
+# ratified ruling could have passed on a file that broke it.
+#
+# THE FIX IS TO STOP MAKING A PIPELINE. A here-string feeds the reader from
+# bash itself: there is no second process to kill, no exit status to poison, and
+# `grep`'s flags, patterns and `-c` counts are unchanged, so every assertion
+# means exactly what it meant before. `<<<"$x"` appends one newline exactly as
+# `printf '%s\n' "$x"` did. Re-measured after the change: 0 spurious failures in
+# 300 on each of the three needles, and 0 in 400 on the 1.3 MB payload.
+#
+# THE GATE, and WHAT IT DOES NOT COVER, said rather than left to be noticed.
+# It refuses the shape that was MEASURED to fail: a shell VARIABLE written into
+# a reader that can stop early. Seventeen pipelines remain in these two suites
+# whose writer is a command rather than a variable — `head -n 1 "$ERR_LOG"`,
+# `lane_start_argv`, `grep -F '<one string>' "$SKILL_MD"` — and they are out of
+# scope on a measured bound, not on a hope: the race needs the writer to still
+# be writing after the reader has gone, which needs MORE THAN ONE `write(2)`,
+# which needs an output above one stdio flush. The largest of them is 680 bytes
+# (`grep -F 'REFUSED: no workstation for this lane' "$SKILL_MD"`, 678; the wave
+# launcher's `--help`, 680), every other one is a single line, and one `write`
+# into a 64 KiB pipe buffer completes before a reader can have read anything at
+# all. If one of those writers ever grows past a few kilobytes this gate will
+# not catch it, and that sentence is here so the next writer knows.
+#
+# Comments are stripped first — the paragraph you are reading names the shape it
+# refuses, and a gate that read its own explanation would report the
+# explanation, which is the trap the citation gate above had to be told about as
+# well. The pattern is assembled from two fragments for the same reason: the
+# line that builds it must not be an instance of what it looks for.
+scenario
+audit_writer="print""f '%s"
+audit_suites=(
+    "$REPO_ROOT/devcontainer.test/test-claude-profile-amendment-11.sh"
+    "$REPO_ROOT/devcontainer.test/test-claude-profile-skill-install.sh"
+)
+audit_missing=""
+for audit_file in "${audit_suites[@]}"; do
+    [[ -f "$audit_file" ]] || audit_missing="$audit_missing $audit_file"
+done
+[[ -z "$audit_missing" ]] \
+    || fail "text audit: the gate names suite(s) this checkout does not have ($audit_missing), so it would pass by not reading them"; assertion
+audit_pipes="$(grep -hv '^[[:space:]]*#' "${audit_suites[@]}" \
+    | grep -cE "$audit_writer.*\| *(grep|head|sed)" || true)"
+[[ "$audit_pipes" -eq 0 ]] \
+    || fail "text audit: $audit_pipes line(s) still write a variable into a reader that can stop early, so under pipefail a matched assertion can fail on SIGPIPE and a refused string can pass — feed the reader from a here-string instead"; assertion
+
 # ===========================================================================
 # 1. ONE WORD STARTS A LANE — Amendment 11(1), SPEC §1.
 # ===========================================================================
@@ -903,11 +976,11 @@ grep -q 'new-session' "$TMUX_LOG" \
 # command string on purpose, and a grep of the whole log could not tell them
 # apart.
 tmux_new_session_line="$(grep 'new-session' "$TMUX_LOG" | head -n 1)"
-printf '%s\n' "$tmux_new_session_line" | grep -Fq 'WORKBENCHES_CLAUDE_WINDOW_ID' \
+grep -Fq 'WORKBENCHES_CLAUDE_WINDOW_ID' <<<"$tmux_new_session_line" \
     && fail "act 1 fall-through: the child of the NEW session was handed the id of the window the respawn failed to reuse ($tmux_new_session_line)"; assertion
-printf '%s\n' "$tmux_new_session_line" | grep -Fq 'WORKBENCHES_CLAUDE_WINDOW_REF' \
+grep -Fq 'WORKBENCHES_CLAUDE_WINDOW_REF' <<<"$tmux_new_session_line" \
     && fail "act 1 fall-through: the child of the NEW session was handed the ref of the window the respawn failed to reuse ($tmux_new_session_line)"; assertion
-printf '%s\n' "$tmux_new_session_line" | grep -Fq 'WORKBENCHES_CLAUDE_WINDOW=' \
+grep -Fq 'WORKBENCHES_CLAUDE_WINDOW=' <<<"$tmux_new_session_line" \
     && fail "act 1 fall-through: the child of the NEW session was handed the NAME of the window the respawn failed to reuse ($tmux_new_session_line)"; assertion
 # ...and the respawn that failed DID carry them, so this is a difference the
 # fall-through makes and not a value that was never threaded at all.
@@ -2187,7 +2260,7 @@ without_estate_env=()
 space_act="$(sed -n 's/.*; fix: //p' "$ERR_LOG" | head -n 1)"
 [[ -n "$space_act" ]] \
     || fail "space path: no install act was printed ('$(cat "$ERR_LOG")')"; assertion
-space_target="$(printf '%s' "$space_act" | sed -n 's/^git clone [^ ]* \(.*\) && .*$/\1/p')"
+space_target="$(sed -n 's/^git clone [^ ]* \(.*\) && .*$/\1/p' <<<"$space_act")"
 [[ -n "$space_target" ]] \
     || fail "space path: the printed act is not the clone form, so this scenario proves nothing ('$space_act')"; assertion
 eval "set -- $space_target"
@@ -2383,26 +2456,26 @@ install_act_code="$(awk '/^lane_start_install_act\(\) \{$/ { inside = 1 } inside
     | grep -v '^[[:space:]]*#')"
 [[ -n "$install_act_code" ]] \
     || fail "R-A11-13: there is no lane_start_install_act function, so the act is not resolved in one place"; assertion
-printf '%s\n' "$install_act_code" | grep -Fq 'openRepoTools --help' \
+grep -Fq 'openRepoTools --help' <<<"$install_act_code" \
     || fail "R-A11-13: the act is not chosen by asking the INSTALLED openRepoTools what it can do"; assertion
-printf '%s\n' "$install_act_code" | grep -Fq '*lane-start*' \
+grep -Fq '*lane-start*' <<<"$install_act_code" \
     || fail "R-A11-13: the capability probe does not test for the LANE tools, so any openRepoTools at all would answer it"; assertion
-printf '%s\n' "$install_act_code" | grep -Fq "lane_start_install_act_answer='openRepoTools --install'" \
+grep -Fq "lane_start_install_act_answer='openRepoTools --install'" <<<"$install_act_code" \
     || fail "R-A11-13: the act Amendment 9(b) names is never printed at all"; assertion
-printf '%s\n' "$install_act_code" | grep -Fq 'workspace.yaml' \
+grep -Fq 'workspace.yaml' <<<"$install_act_code" \
     || fail "R-A11-13: the interval act names no workspace repository, so it names link-estates alone"; assertion
 # ...and ALL of it lives in that function. A second spelling anywhere in the
 # launcher's executable text is exactly the drift the one-spelling rule is for,
 # so the counts are compared rather than the sites listed.
 launcher_exec_code="$(awk '/^      cat <<.EOF.$/ { skip = 1 } !skip { print } skip && $0 == "EOF" { skip = 0 }' "$LAUNCHER" \
     | grep -v '^[[:space:]]*#')"
-[[ "$(printf '%s\n' "$launcher_exec_code" | grep -Fc 'link-estates')" \
-    -eq "$(printf '%s\n' "$install_act_code" | grep -Fc 'link-estates')" ]] \
+[[ "$(grep -Fc 'link-estates' <<<"$launcher_exec_code")" \
+    -eq "$(grep -Fc 'link-estates' <<<"$install_act_code")" ]] \
     || fail "R-A11-13: link-estates is spelled outside lane_start_install_act, so two callers can drift apart"; assertion
-[[ "$(printf '%s\n' "$launcher_exec_code" | grep -Fc 'openRepoTools')" \
-    -eq "$(printf '%s\n' "$install_act_code" | grep -Fc 'openRepoTools')" ]] \
+[[ "$(grep -Fc 'openRepoTools' <<<"$launcher_exec_code")" \
+    -eq "$(grep -Fc 'openRepoTools' <<<"$install_act_code")" ]] \
     || fail "R-A11-13: openRepoTools is named outside lane_start_install_act"; assertion
-printf '%s\n' "$launcher_exec_code" | grep -Fq 'github.com:opensoft/brett-wip.git' \
+grep -Fq 'github.com:opensoft/brett-wip.git' <<<"$launcher_exec_code" \
     && fail "R-A11-13: the launcher still hard-codes one operator's workspace repository as the install act"; assertion
 
 # ONE RULE FOR READING `workspace.yaml`, AND TWO NECESSARY COPIES OF IT — the
@@ -2520,9 +2593,9 @@ guard_block="$(sed -n "${guard_start},${guard_end}p" "$SKILL_MD")"
 # (a), the OBJECT-LOG write, must still be INSIDE it: that log is append-only and
 # an `unknown` there is wrong for ever, so moving the guard off it is the same
 # defect from the other side.
-printf '%s\n' "$guard_block" | grep -Fq 'log PAUSED' \
+grep -Fq 'log PAUSED' <<<"$guard_block" \
     || fail "SPEC §7: the object-log write is not inside the uuid guard, so an unknown session id can still reach an append-only log"; assertion
-printf '%s\n' "$guard_block" | grep -Fq 'append-line' \
+grep -Fq 'append-line' <<<"$guard_block" \
     && fail "RV-W1/R-A11-11: the register's file-level PAUSED line is inside the uuid guard (lines $guard_start-$guard_end), so a lane with no uuid gets neither write and A8(a) step 4's 'never left unwritten' is lost"; assertion
 # ...and it is still written, with the gap in the SESSION position rather than a
 # uuid. Deleting the line altogether would satisfy the assertion above.
@@ -2542,7 +2615,7 @@ grep -Fq 'NO session recorded for this lane' "$SKILL_MD" \
 # comments stripped — and not on its prose, which ARGUES about both words at
 # length and would answer for the code if it were read.
 skill_write_code="$(awk '/^```/ { fence = !fence; next } fence' "$SKILL_MD" | grep -v '^[[:space:]]*#')"
-printf '%s\n' "$skill_write_code" | grep -Fq 'none recorded' \
+grep -Fq 'none recorded' <<<"$skill_write_code" \
     && fail "R-A11-14: the skill still writes 'none recorded' — two tokens with a space, in a field Amendment 7(b) gives one uuid"; assertion
 # ...and `unknown` is counted as a VALUE and not as the word, exactly as the
 # `$(hostname` read is counted above and for the same reason. Since the step-1
@@ -2552,12 +2625,12 @@ printf '%s\n' "$skill_write_code" | grep -Fq 'none recorded' \
 # helper's message, not writing a placeholder into a record, so it is removed
 # before the word is looked for — a count that could not tell the two apart
 # would force the skill to misspell the one string it must match exactly.
-printf '%s\n' "$skill_write_code" | sed 's/unknown subcommand//g' | grep -Fq 'unknown' \
+grep -Fq 'unknown' <<<"$(sed 's/unknown subcommand//g' <<<"$skill_write_code")" \
     && fail "R-A11-14: the skill still writes a placeholder workstation into a position 'swapped <ws>' keys on, which append-line does not validate"; assertion
 # ...and write (c), the row's state cell, is outside the guard too — SPEC §7 names
 # the two together, and a state cell flipped only where a uuid exists is the same
 # defect one write along.
-printf '%s\n' "$guard_block" | grep -Fq 'replace-in-row' \
+grep -Fq 'replace-in-row' <<<"$guard_block" \
     && fail "RV-W1/R-A11-11: the row's state cell is flipped only where a uuid exists, and SPEC §7 says it survives the refusal beside the file-level line"; assertion
 
 # RV-W6 / R-A11-11 — THE `dir` THE SKILL RECORDS IS THE LANE'S CHECKOUT, NEVER A
@@ -2576,9 +2649,9 @@ grep -Fq 'select((.sessionId // "") == $id) | .cwd // empty' "$SKILL_MD" \
 # the comment above the assignment names them as retired, and a rule that
 # grepped the whole file could never be stated at all.
 skill_code="$(grep -v '^[[:space:]]*#' "$SKILL_MD")"
-printf '%s\n' "$skill_code" | grep -Fq 'git rev-parse --show-toplevel' \
+grep -Fq 'git rev-parse --show-toplevel' <<<"$skill_code" \
     && fail "RV-W6/R-A11-11: the skill's shell still derives a directory from the git toplevel of wherever it stands, which in a subagent's scratchpad is a worktree"; assertion
-printf '%s\n' "$skill_code" | grep -Fq '"$PWD"' \
+grep -Fq '"$PWD"' <<<"$skill_code" \
     && fail "RV-W6/R-A11-11: the skill's shell still falls back to \$PWD for the lane's dir"; assertion
 # ...and where neither source answers, the sub-field is OMITTED and the omission
 # is SAID. A record with no `dir` is complete the way SPEC §5 says a record with
@@ -2633,13 +2706,13 @@ launcher_code="$(awk '/^      cat <<.EOF.$/ { skip = 1 } !skip { print } skip &&
     | grep -v '^[[:space:]]*#')"
 [[ -n "$launcher_code" ]] \
     || fail "evidence 4: the launcher's executable text could not be separated from its --help"; assertion
-printf '%s\n' "$launcher_code" | grep -Fq 'show this help' \
+grep -Fq 'show this help' <<<"$launcher_code" \
     && fail "evidence 4: the --help heredoc was not removed, so this audit reads prose and proves nothing"; assertion
-printf '%s\n' "$launcher_code" | grep -q '^[[:space:]]*#' \
+grep -q '^[[:space:]]*#' <<<"$launcher_code" \
     && fail "evidence 4: the comments were not removed, so this audit reads the argument rather than the code"; assertion
-printf '%s\n' "$launcher_code" | grep -Fq -- '--resume' \
+grep -Fq -- '--resume' <<<"$launcher_code" \
     && fail "evidence 4: the launcher spells --resume itself; a bare resume is never the lane's act (the operator's own --resume is passed through in \"\$@\")"; assertion
-printf '%s\n' "$launcher_code" | grep -Fq -- '--name' \
+grep -Fq -- '--name' <<<"$launcher_code" \
     && fail "evidence 4: the launcher names a Claude session itself; --name <lane> is lane-start's act alone"; assertion
 # ...and the exec that starts the bare Claude carries the flags and the
 # operator's own argv, and nothing this launcher added.
@@ -2668,7 +2741,7 @@ grep -Fq '/rename <lane>' "$SKILL_MD" \
 skill_step5_code="$(awk '/^## 5\./ { inside = 1 } inside && /^```/ { fence = !fence; next } inside && fence' "$SKILL_MD")"
 [[ -n "$skill_step5_code" ]] \
     || fail "CF-W5: step 5 of the skill has no shell at all, so nothing it prints can be audited"; assertion
-printf '%s\n' "$skill_step5_code" | grep -Fq '/rename <lane>' \
+grep -Fq '/rename <lane>' <<<"$skill_step5_code" \
     || fail "CF-W5/R-A11-16: step 5 PRINTS the restart command and says nothing about the derived name the session it starts comes up with"; assertion
 
 # ===========================================================================
@@ -2780,13 +2853,13 @@ grep -Fxq 'LANES_WORKSTATION=' "$LANE_START_ENV_LOG" \
 scenario
 ws_launcher_code="$(awk '/^      cat <<.EOF.$/ { skip = 1 } !skip { print } skip && $0 == "EOF" { skip = 0 }' "$LAUNCHER" \
     | grep -v '^[[:space:]]*#')"
-[[ "$(printf '%s\n' "$ws_launcher_code" | grep -c 'hostname')" -eq 1 ]] \
-    || fail "Evidence 6: the launcher's shell reads hostname $(printf '%s\n' "$ws_launcher_code" | grep -c 'hostname') times, and one of them is outside the container fence"; assertion
-printf '%s\n' "$ws_launcher_code" | grep -Fq 'if [[ -z "$name" ]] && ! lane_in_container; then' \
+[[ "$(grep -c 'hostname' <<<"$ws_launcher_code")" -eq 1 ]] \
+    || fail "Evidence 6: the launcher's shell reads hostname $(grep -c 'hostname' <<<"$ws_launcher_code") times, and one of them is outside the container fence"; assertion
+grep -Fq 'if [[ -z "$name" ]] && ! lane_in_container; then' <<<"$ws_launcher_code" \
     || fail "Evidence 6: the launcher's hostname read is not fenced on lane_in_container"; assertion
-printf '%s\n' "$ws_launcher_code" | grep -Fq 'name="${LANES_WORKSTATION:-}"' \
+grep -Fq 'name="${LANES_WORKSTATION:-}"' <<<"$ws_launcher_code" \
     || fail "Evidence 6: the launcher does not take the configured workstation first"; assertion
-printf '%s\n' "$ws_launcher_code" | grep -Fq '[[ -e /.dockerenv || -e /run/.containerenv || -n "${container:-}" ]]' \
+grep -Fq '[[ -e /.dockerenv || -e /run/.containerenv || -n "${container:-}" ]]' <<<"$ws_launcher_code" \
     || fail "Evidence 6: the container fence does not test the three markers a container leaves"; assertion
 # ...and the skill, which is the WRITER, and the half of Evidence 6 that cannot
 # be taken back: the id the fork wrote is in an append-only log for ever.
@@ -2795,23 +2868,23 @@ ws_skill_code="$(grep -v '^[[:space:]]*#' "$SKILL_MD")"
 # the skill's refusal SAYS why a container id is not a workstation, and a count
 # of the word alone would make naming the hazard indistinguishable from
 # committing it. `$(hostname` is the read; the fence below is what it is under.
-[[ "$(printf '%s\n' "$ws_skill_code" | grep -Fc '$(hostname')" -eq 1 ]] \
-    || fail "Evidence 6: the skill's shell reads hostname $(printf '%s\n' "$ws_skill_code" | grep -Fc '$(hostname') times, and the record it writes is append-only"; assertion
-printf '%s\n' "$ws_skill_code" | grep -Fq 'ws="${LANES_WORKSTATION:-}"' \
+[[ "$(grep -Fc '$(hostname' <<<"$ws_skill_code")" -eq 1 ]] \
+    || fail "Evidence 6: the skill's shell reads hostname $(grep -Fc '$(hostname' <<<"$ws_skill_code") times, and the record it writes is append-only"; assertion
+grep -Fq 'ws="${LANES_WORKSTATION:-}"' <<<"$ws_skill_code" \
     || fail "Evidence 6: the skill does not take the configured workstation first"; assertion
-printf '%s\n' "$ws_skill_code" | grep -Fq 'if [[ -z "$ws" && ! -e /.dockerenv && ! -e /run/.containerenv && -z "${container:-}" ]]; then' \
+grep -Fq 'if [[ -z "$ws" && ! -e /.dockerenv && ! -e /run/.containerenv && -z "${container:-}" ]]; then' <<<"$ws_skill_code" \
     || fail "Evidence 6: the skill's hostname read is not fenced on the container markers"; assertion
-printf '%s\n' "$ws_skill_code" | grep -Fq '"$L" swapped "$ws"' \
+grep -Fq '"$L" swapped "$ws"' <<<"$ws_skill_code" \
     || fail "Evidence 6: the skill's step 1 does not read the records for the configured workstation"; assertion
-printf '%s\n' "$ws_skill_code" | grep -Fq '[[ -z "$ws" ]] || payload="$payload; workstation $ws"' \
+grep -Fq '[[ -z "$ws" ]] || payload="$payload; workstation $ws"' <<<"$ws_skill_code" \
     || fail "Evidence 6: the record's workstation sub-field is not written from \$ws, or is written even where none is known"; assertion
 # ...and the writer REFUSES where it has none, rather than writing a third thing
 # nobody declared (`R-A11-14`; the register line's session position used to read
 # `<uuid>@unknown-workstation`, which `append-line` does not validate, so it
 # would have landed and no reader would ever have caught it).
-printf '%s\n' "$ws_skill_code" | grep -Fq 'if [[ -z "$ws" ]]; then' \
+grep -Fq 'if [[ -z "$ws" ]]; then' <<<"$ws_skill_code" \
     || fail "R-A11-14: the skill does not refuse where no workstation is configured"; assertion
-printf '%s\n' "$ws_skill_code" | grep -Fq 'ws_write_refused=1' \
+grep -Fq 'ws_write_refused=1' <<<"$ws_skill_code" \
     || fail "R-A11-14: the skill's workstation refusal does not stop the two writes that carry it"; assertion
 grep -Fq 'REFUSED: no workstation for this lane' "$SKILL_MD" \
     || fail "R-A11-14: the refusal is not stated in one line of its own"; assertion
@@ -2843,7 +2916,7 @@ c_section="$(awk '/^# \(c\) the row: flip its leading state word/{inside=1} insi
     || fail "R-A11-27: write (c) is not in the skill at all, so nothing can be said about what fences it"; assertion
 # ...on the section's SHELL, comments stripped, because the comment above the
 # fence ARGUES about `replace-in-row` at length and would answer for the code.
-c_fence="$(printf '%s\n' "$c_section" | grep -v '^[[:space:]]*#' | awk '
+c_fence="$(grep -v '^[[:space:]]*#' <<<"$c_section" | awk '
     index($0, "if [[ -n \"$ws_write_refused\" ]]; then") { phase = "refused"; next }
     phase == "refused" && $0 == "else" { phase = "written"; next }
     phase == "refused" && index($0, "row_write_refused=1") { set = 1 }
@@ -2861,7 +2934,7 @@ grep -F 'REFUSED: no workstation for this lane' "$SKILL_MD" | grep -Fq '(c) the 
 # records a corrected sentence must not be indistinguishable from one that still
 # asserts it. Two halves: the string is in no SHELL line at all, and every line
 # that carries it calls itself a superseded revision.
-printf '%s\n' "$skill_write_code" | grep -Fq '(c) below still runs' \
+grep -Fq '(c) below still runs' <<<"$skill_write_code" \
     && fail "R-A11-27: the skill's shell still prints '(c) below still runs' — the exact string the amendment text quotes back at this PR"; assertion
 still_runs_total="$(grep -Fc '(c) below still runs' "$SKILL_MD" || true)"
 still_runs_quoted="$(grep -F '(c) below still runs' "$SKILL_MD" | grep -Fc 'revision' || true)"
@@ -2869,13 +2942,13 @@ still_runs_quoted="$(grep -F '(c) below still runs' "$SKILL_MD" | grep -Fc 'revi
     || fail "R-A11-27: $still_runs_total line(s) of the skill say '(c) below still runs' and $still_runs_quoted name it as a superseded revision — the rest assert the promise the ruling refuses"; assertion
 
 # THE LAUNCHER IS THE OWNER, IN BOTH OF THE PLACES IT STARTS SOMETHING.
-printf '%s\n' "$ws_launcher_code" | grep -Fq 'name="$(lane_workstation)"' \
+grep -Fq 'name="$(lane_workstation)"' <<<"$ws_launcher_code" \
     || fail "R-A11-14: the exported workstation is not the one lane_workstation resolves, so the reader and the writers could disagree"; assertion
-printf '%s\n' "$ws_launcher_code" | grep -Fq 'export LANES_WORKSTATION="$name"' \
+grep -Fq 'export LANES_WORKSTATION="$name"' <<<"$ws_launcher_code" \
     || fail "R-A11-14: the launcher resolves a workstation and never exports it, which is the contract with no owner Evidence 6 left"; assertion
-printf '%s\n' "$ws_launcher_code" | grep -Fq 'env_prefix+=("LANES_WORKSTATION=$LANES_WORKSTATION")' \
+grep -Fq 'env_prefix+=("LANES_WORKSTATION=$LANES_WORKSTATION")' <<<"$ws_launcher_code" \
     || fail "R-A11-14: the workstation is not threaded across the re-exec, where a fresh export is not reliably inherited"; assertion
-printf '%s\n' "$ws_launcher_code" | grep -Fq 'lane_export_workstation' \
+grep -Fq 'lane_export_workstation' <<<"$ws_launcher_code" \
     || fail "R-A11-14: nothing calls the export, so the session comes up without the value anyway"; assertion
 # ...and the container half, which is the case Evidence 6 was measured in: a
 # bench container cannot name itself, so the host names it on the way in.

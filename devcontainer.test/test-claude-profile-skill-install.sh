@@ -221,9 +221,9 @@ grep -q "REFUSED: no transcript uuid" "$SKILL_SOURCE" \
 grep -q "so nothing is written to the object log — (b) and (c) below still run" "$SKILL_SOURCE" \
     || fail "text: the refusal does not say WHICH of the three writes it refuses (SPEC §7/R-A11-11)"; assertion
 uuid_guard="$(awk 'index($0,"if [[ -z \"${uuid:-}\" ]]; then"){inside=1} inside{print} inside && $0=="fi"{exit}' "$SKILL_SOURCE")"
-printf '%s\n' "$uuid_guard" | grep -Fq 'append-line' \
+grep -Fq 'append-line' <<<"$uuid_guard" \
     && fail "text: the register's file-level PAUSED line is inside the uuid guard, so a lane with no uuid gets neither half (SPEC §7/R-A11-11)"; assertion
-printf '%s\n' "$uuid_guard" | grep -Fq 'replace-in-row' \
+grep -Fq 'replace-in-row' <<<"$uuid_guard" \
     && fail "text: the row's state cell is flipped only where a uuid exists, which is the same defect one write along (SPEC §7/R-A11-11)"; assertion
 # THE SESSION POSITION IS `session <uuid>@<workstation>` AND NOTHING ELSE —
 # `R-A11-14` (A11 Addendum 3, ratified by Brett Heap 2026-09-13 "a11 addendum 3
@@ -241,7 +241,7 @@ grep -Fq 'NO session recorded for this lane' "$SKILL_SOURCE" \
 # The skill's SHELL — its fenced code blocks, comments stripped — because the
 # prose argues about both words at length and would answer for the code.
 skill_code_only="$(awk '/^```/ { fence = !fence; next } fence' "$SKILL_SOURCE" | grep -v '^[[:space:]]*#')"
-printf '%s\n' "$skill_code_only" | grep -Fq 'none recorded' \
+grep -Fq 'none recorded' <<<"$skill_code_only" \
     && fail "R-A11-14: the skill still writes 'none recorded' into a field that takes one uuid"; assertion
 # ...and `unknown` is counted as a VALUE and not as the word, exactly as the
 # `$(hostname` read is counted above and for the same reason. Since the step-1
@@ -251,7 +251,7 @@ printf '%s\n' "$skill_code_only" | grep -Fq 'none recorded' \
 # helper's message, not writing a placeholder into a record, so it is removed
 # before the word is looked for — a count that could not tell the two apart
 # would force the skill to misspell the one string it must match exactly.
-printf '%s\n' "$skill_code_only" | sed 's/unknown subcommand//g' | grep -Fq 'unknown' \
+grep -Fq 'unknown' <<<"$(sed 's/unknown subcommand//g' <<<"$skill_code_only")" \
     && fail "R-A11-14: the skill still writes a placeholder workstation into the register"; assertion
 grep -Fq 'REFUSED: no workstation for this lane' "$SKILL_SOURCE" \
     || fail "R-A11-14: a writer with no configured workstation does not refuse"; assertion
@@ -267,16 +267,16 @@ grep -Fq 'REFUSED: no workstation for this lane' "$SKILL_SOURCE" \
 # not the act, and what the operator reads at the end of a swap is what the
 # shell prints.
 step5_code="$(awk '/^## 5\./ { inside = 1 } inside && /^```/ { fence = !fence; next } inside && fence' "$SKILL_SOURCE")"
-printf '%s\n' "$step5_code" | grep -Fq '/rename <lane>' \
+grep -Fq '/rename <lane>' <<<"$step5_code" \
     || fail "CF-W5: step 5 PRINTS the restart command without the act that fixes the derived name the next session comes up with"; assertion
 # ...and what it prints beside it is the TRUE premise. The false one is refused
 # by its own words in BOTH the printed line and the step's comment, so a revert
 # of either fails here.
-printf '%s\n' "$step5_code" | grep -Fq 'names every session it launches' \
+grep -Fq 'names every session it launches' <<<"$step5_code" \
     || fail "CF2-W1: step 5's printed act does not say lane-start names every branch it launches, which act 0 made true at 3719d97"; assertion
-printf '%s\n' "$step5_code" | grep -Fq '3719d97' \
+grep -Fq '3719d97' <<<"$step5_code" \
     || fail "CF2-W1: step 5's printed act makes a claim about lane-start and cites no commit for it"; assertion
-printf '%s\n' "$step5_code" | grep -Fq 'names only the session it CREATES' \
+grep -Fq 'names only the session it CREATES' <<<"$step5_code" \
     && fail "CF2-W1: step 5 still prints that lane-start names only the session it creates, which is false since 3719d97"; assertion
 grep -Fq 'with this still open' "$SKILL_SOURCE" \
     && fail "CF2-W1: the skill still says adoption act 0 landed with the --name gap open; it closed it (3719d97)"; assertion
@@ -306,9 +306,9 @@ grep -Fq '=~ ^@[0-9]+$' "$SKILL_SOURCE" \
 step1_code="$(awk '/^## 1\./ { inside = 1; next } inside && /^## / { exit } inside && /^```/ { fence = !fence; next } inside && fence' "$SKILL_SOURCE")"
 [[ -n "$step1_code" ]] \
     || fail "non-blocking 4: step 1's shell block could not be found, so nothing can be said about the refs it passes"; assertion
-printf '%s\n' "$step1_code" | grep -Fq '[[ "$win_ref" =~ ^.+:[0-9]+$ ]] || win_ref=""' \
+grep -Fq '[[ "$win_ref" =~ ^.+:[0-9]+$ ]] || win_ref=""' <<<"$step1_code" \
     || fail "non-blocking 4: step 1 hands window-lane a <session>:<index> it never shape-checked"; assertion
-printf '%s\n' "$step1_code" | grep -Fq '[[ "$win_id" =~ ^@[0-9]+$ ]] || win_id=""' \
+grep -Fq '[[ "$win_id" =~ ^@[0-9]+$ ]] || win_id=""' <<<"$step1_code" \
     || fail "non-blocking 4: step 1 hands window-lane a window id it never shape-checked"; assertion
 # ...AND STEP 1 READS `window-lane`'s STATUS RATHER THAN SWALLOWING IT (round-4
 # non-blocking 5, clause (k)'s "never degrades silently"). `2>/dev/null ||
@@ -319,13 +319,13 @@ printf '%s\n' "$step1_code" | grep -Fq '[[ "$win_id" =~ ^@[0-9]+$ ]] || win_id="
 # for exactly that reason, and the two are told apart by the helper's WORDS and
 # never by its status. The step still falls through on every failure: what is
 # added is that a real one is NAMED.
-printf '%s\n' "$step1_code" | grep -Fq '2>/dev/null)" || candidate=""' \
+grep -Fq '2>/dev/null)" || candidate=""' <<<"$step1_code" \
     && fail "non-blocking 5: step 1 still swallows every window-lane failure, so a failed read is indistinguishable from a helper predating Amendment 11"; assertion
-printf '%s\n' "$step1_code" | grep -Fq 'window-lane "$ref" 2>"$err")" || status=$?' \
+grep -Fq 'window-lane "$ref" 2>"$err")" || status=$?' <<<"$step1_code" \
     || fail "non-blocking 5: step 1 does not capture window-lane's exit status, which is what tells an old helper from a failed read"; assertion
-printf '%s\n' "$step1_code" | grep -Fq 'unknown subcommand' \
+grep -Fq 'unknown subcommand' <<<"$step1_code" \
     || fail "non-blocking 5: step 1 does not tell an old helper from a failed read by the helper's own words, which is how the launcher tells them apart"; assertion
-printf '%s\n' "$step1_code" | grep -Fq 'FAILED READ' \
+grep -Fq 'FAILED READ' <<<"$step1_code" \
     || fail "non-blocking 5: a window-lane failure that is not an old helper is not named anywhere, so the skill degrades silently"; assertion
 grep -Fq 'ws="${LANES_WORKSTATION:-}"' "$SKILL_SOURCE" \
     || fail "text: the workstation is not taken from configuration first (Evidence 6)"; assertion
@@ -424,7 +424,7 @@ row="$plain_row"; eval "$handoff_line"
 row="$multi_pipe_row"; eval "$handoff_line"
 [[ "$handoff" == "handoffs/openRepoProject/session-handoff-2026-09-11-lane-openRepoProject-1.md" ]] \
     || fail "RV-S1: a row with extra '|' characters (this lane's own shape) derived handoff='$handoff', expected the real handoff column"; assertion
-old_buggy_result="$(printf '%s' "$multi_pipe_row" | awk -F'|' '{print $(NF-2)}')"
+old_buggy_result="$(awk -F'|' '{print $(NF-2)}' <<<"$multi_pipe_row")"
 [[ "$old_buggy_result" != "$handoff" ]] \
     || fail "RV-S1: the fixture does not actually distinguish a right split from a left split"; assertion
 
