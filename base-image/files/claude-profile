@@ -30,6 +30,13 @@ command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
 # string it writes. The tilde is the harness's to expand;
 # `lane_session_start_script` is the same path again, for this script's own
 # reads of it.
+#
+# `scripts/setup-claude-profiles.sh` carries its own copy of these same three
+# values (RV-W2, workBenches#63 re-verification; new-workstation#16 adoption
+# act 6) so a bare `claude` run — the one case that script's
+# `$default_claude_dir/settings.json` exists for — gets this entry too, not
+# only the profiles this launcher execs into. Change the string here and there
+# together; it is the idempotence key in both files.
 lane_session_start_script="$HOME/projects/xFactory/lanes-edit.sh"
 lane_session_start_command='~/projects/xFactory/lanes-edit.sh session-start || true'
 lane_session_start_matcher='startup|resume|clear|fork'
@@ -103,7 +110,6 @@ configure_profile_runtime() {
     && grep -qF 'session-start' "$lane_session_start_script" 2>/dev/null; then
     session_start_ok=true
   fi
-  lane_session_start_ensured="$session_start_ok"
 
   settings="$config_dir/settings.json"
   if [[ -e "$settings" ]] && ! jq -e 'type == "object"' "$settings" >/dev/null 2>&1; then
@@ -152,6 +158,18 @@ configure_profile_runtime() {
   fi
   chmod 600 "$settings_tmp"
   mv -f "$settings_tmp" "$settings"
+  # RV-W1 (workBenches#63 re-verification): set only now, for THIS profile,
+  # after its settings.json actually carries the entry — not at probe time.
+  # A probe of the estate says the entry CAN be ensured; it says nothing about
+  # a profile that has not been through this function yet, and the two came
+  # apart the moment the probe could answer true for every profile: a fresh
+  # profile's first launch would print neither the launcher's no-lane notice
+  # nor the hook's block, because lane_note_no_lane stood down on the probe
+  # while the write that makes it true had not happened yet. One launch,
+  # self-healing on the next (this function runs on every one) — but the
+  # ruling is that the flag names what THIS run wrote, not what the estate
+  # merely allows.
+  lane_session_start_ensured="$session_start_ok"
 }
 
 load_profile_setup_token() {
