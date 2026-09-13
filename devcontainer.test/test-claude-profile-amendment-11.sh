@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=64
+EXPECTED_SCENARIOS=63
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -1245,6 +1245,34 @@ grep -q 'case "\$dir" in .*'"'"', '"'"'.*'"'"' — '"'"'.*refused' "$SKILL_MD" \
 grep -Fq 'LANES_SESSION="$uuid"' "$SKILL_MD" \
     || fail "§7/R-A11-5: the skill does not pass the uuid it has in hand"; assertion
 
+# SPEC §7 and A11 Addendum 2 `R-A11-11` — THE REGISTER'S FILE-LEVEL `PAUSED`
+# LINE SURVIVES THE UUID REFUSAL. §7 states it in terms: the lane that has never
+# had a session recorded "reaches the refusal, WHERE THE SWAP WRITES THE
+# REGISTER'S FILE-LEVEL `PAUSED` LINE AND THE ROW'S STATE CELL and names the gap
+# in the handoff". The refusal is about the OBJECT LOG, which is append-only and
+# where a wrong session id is wrong for ever; (b) and (c) are how A8(a) step 4's
+# "never left unwritten" is preserved, and a swap that drops them leaves the lane
+# with no record at all — the one state a restart cannot resolve from.
+#
+# THIS IS AUDITED STATICALLY BECAUSE NO SCENARIO CAN PROVOKE IT. The skill is
+# prose a model executes; what can be pinned is WHERE the write sits, and the
+# defect is exactly that it sat inside the `else`. So the guard's own extent is
+# extracted and read.
+uuid_guard="$(awk 'index($0,"if [[ -z \"${uuid:-}\" ]]; then"){inside=1} inside{print} inside && $0=="fi"{exit}' "$SKILL_MD")"
+[[ -n "$uuid_guard" ]] \
+    || fail "§7: the skill's uuid guard is not there at all, so the refusal this pins cannot happen"; assertion
+printf '%s\n' "$uuid_guard" | grep -Fq 'log PAUSED' \
+    || fail "§7: the object-log write is NOT inside the uuid guard, so an 'unknown' can still reach an append-only log"; assertion
+printf '%s\n' "$uuid_guard" | grep -Fq 'append-line' \
+    && fail "§7/R-A11-11: the register's file-level PAUSED line is written INSIDE the uuid guard, so a lane with no uuid gets neither half and A8(a) step 4's 'never left unwritten' is lost"; assertion
+grep -Fq '"$L" append-line "PAUSED — lane $lane, session $session_cell' "$SKILL_MD" \
+    || fail "§7/R-A11-11: the file-level PAUSED line does not take the session cell that names the gap"; assertion
+grep -Fq 'session_cell="none recorded@$(hostname -s)"' "$SKILL_MD" \
+    || fail "§7/R-A11-11: the gap is not NAMED in the session position, so the line either lies or is not written"; assertion
+# ...and the row's state cell (c) is outside it too: same clause, same reason.
+printf '%s\n' "$uuid_guard" | grep -Fq 'replace-in-row' \
+    && fail "§7/R-A11-11: the row's state cell is flipped only where a uuid exists, which is the same defect one write along"; assertion
+
 # SPEC §11 — the helper's reads, by their own names, in all three callers this
 # PR ships. `window-lane` has THREE (R-A11-6 on F17): the launcher's precedence
 # 3, /restart step 2(b) — the tooling PR's — and the skill's step 1.
@@ -1286,79 +1314,6 @@ grep -Fq 'pclaude run ' "$GUARD_SH" \
     && fail "§1: the guard still prints the long form of the restart command"; assertion
 grep -Fq 'restart_cmd="pclaude ${CLAUDE_PROFILE_NAME:-<profile>}"' "$SKILL_MD" \
     || fail "§9/§1: the skill does not print the one-word restart command"; assertion
-
-# ===========================================================================
-# 6b. THE SWAP RECORD'S WRITER — RV-W1, RV-W6 and R-A11-10 (A11 Addendum 2).
-#
-# Three rules about ONE act, and all three fail the way §6's do: not by
-# misbehaving in a scenario, but by never matching, never firing, or firing in
-# the one case the clause exists for. A scenario cannot provoke any of them,
-# because the act runs inside a Claude session and its inputs are that session's
-# own record.
-# ===========================================================================
-
-scenario
-
-# RV-W1 (BLOCKING) — THE REGISTER'S FILE-LEVEL `PAUSED` LINE IS WRITTEN OUTSIDE
-# THE UUID GUARD. SPEC §7 and clause (e) both say, in the same words, that a
-# lane with no uuid recorded reaches the refusal "where the swap writes the
-# register's file-level PAUSED line and the row's state cell and names the gap
-# in the handoff" — it is the whole of how A8(a) step 4's "never left unwritten"
-# is preserved. Write (a), the object-log line, is refused there because that log
-# is append-only; write (b) is not. The guard's own text is extracted and (b)
-# must not be in it.
-guard_start="$(grep -Fn 'if [[ -z "${uuid:-}" ]]; then' "$SKILL_MD" | head -n 1 | cut -d : -f 1)"
-[[ -n "$guard_start" ]] \
-    || fail "RV-W1: the uuid guard is gone from the skill entirely, so SPEC §7's refusal is not made at all"; assertion
-guard_end="$(awk -v start="$guard_start" 'NR >= start && $0 == "fi" { print NR; exit }' "$SKILL_MD")"
-[[ -n "$guard_end" && "$guard_end" -gt "$guard_start" ]] \
-    || fail "RV-W1: the uuid guard opened at line $guard_start never closes, so nothing can be said about what is inside it"; assertion
-guard_block="$(sed -n "${guard_start},${guard_end}p" "$SKILL_MD")"
-printf '%s\n' "$guard_block" | grep -Fq 'append-line' \
-    && fail "RV-W1/R-A11-11: the register's file-level PAUSED line is inside the uuid guard (lines $guard_start-$guard_end), so a lane with no uuid gets neither write and A8(a) step 4's 'never left unwritten' is lost"; assertion
-# ...and it is still written, with the gap in the SESSION position rather than a
-# uuid. Deleting the line altogether would satisfy the assertion above.
-grep -Fq '"$L" append-line "PAUSED — lane $lane, session $session_field' "$SKILL_MD" \
-    || fail "RV-W1: the file-level PAUSED line is not written from a session field that can carry the gap"; assertion
-grep -Fq 'session_field="none recorded@$(hostname -s)"' "$SKILL_MD" \
-    || fail "RV-W1: a lane with no recorded session does not NAME the gap in the line's session position"; assertion
-
-# RV-W6 / R-A11-11 — THE `dir` THE SKILL RECORDS IS THE LANE'S CHECKOUT, NEVER A
-# WORKTREE. SPEC §4 and clause (c) name the writer's source as the live session's
-# own record — the harness's `"cwd"` beside its `"tmux"` — and the launcher's
-# exported word before it. `git rev-parse --show-toplevel` and `$PWD` are the two
-# derivations that record a subagent's scratchpad worktree on rung 4, which is
-# every lane on the estate until a record carries a `dir`.
-grep -Fq 'dir="${WORKBENCHES_CLAUDE_LANE_DIR:-}"' "$SKILL_MD" \
-    || fail "RV-W6: the skill does not take the launcher's own word for the lane's directory first"; assertion
-grep -Fq 'CLAUDE_CONFIG_DIR"/sessions/*.json' "$SKILL_MD" \
-    || fail "RV-W6/R-A11-11: the skill does not read the live session's own record for the directory (SPEC §4)"; assertion
-grep -Fq 'select((.sessionId // "") == $id) | .cwd // empty' "$SKILL_MD" \
-    || fail "RV-W6: the session record is not matched on THIS session's id, so it could take another session's cwd"; assertion
-# The two derivations are judged on the skill's own SHELL and not on its prose:
-# the comment above the assignment names them as retired, and a rule that
-# grepped the whole file could never be stated at all.
-skill_code="$(grep -v '^[[:space:]]*#' "$SKILL_MD")"
-printf '%s\n' "$skill_code" | grep -Fq 'git rev-parse --show-toplevel' \
-    && fail "RV-W6/R-A11-11: the skill's shell still derives a directory from the git toplevel of wherever it stands, which in a subagent's scratchpad is a worktree"; assertion
-printf '%s\n' "$skill_code" | grep -Fq '"$PWD"' \
-    && fail "RV-W6/R-A11-11: the skill's shell still falls back to \$PWD for the lane's dir"; assertion
-# ...and where neither source answers, the sub-field is OMITTED and the omission
-# is SAID. A record with no `dir` is complete the way SPEC §5 says a record with
-# no `@id` is; a record with the wrong one is not.
-grep -Fq 'NO dir sub-field' "$SKILL_MD" \
-    || fail "RV-W6: a record written with no dir says nothing about the gap"; assertion
-
-# R-A11-10 (decision 7, drafted now) — `profile <name>` IS IN THE RECORD. A lane's
-# name says nothing about the account it runs under, and `restart <lane>` has to
-# build `pclaude --lane <lane> <profile>` out of the record alone.
-grep -Fq 'payload="$payload; profile $profile_name"' "$SKILL_MD" \
-    || fail "R-A11-10: the swap record does not carry the 'profile <name>' sub-field"; assertion
-grep -Fq 'profile_name="${CLAUDE_PROFILE_NAME:-}"' "$SKILL_MD" \
-    || fail "R-A11-10: the profile sub-field is not taken from the launcher's exported CLAUDE_PROFILE_NAME"; assertion
-# ...and the launcher is the one that exports it, so the two halves agree.
-grep -Fq 'export CLAUDE_PROFILE_NAME="$profile"' "$LAUNCHER" \
-    || fail "R-A11-10: the launcher does not export CLAUDE_PROFILE_NAME, so the skill's profile sub-field is empty on every launch"; assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"

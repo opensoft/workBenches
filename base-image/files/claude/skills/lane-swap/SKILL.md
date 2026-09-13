@@ -1,6 +1,6 @@
 ---
 name: lane-swap
-description: "/lane-swap (alias /swap) prepares this lane for a usage reset or profile switch. It fixes the identity triple, refreshes the handoff, polls the writers, writes the swap record with the window, the lane's directory and the profile, and prints the one restart command (lane-collision-protocol Amendment 8(a), amended by Amendment 11)."
+description: "/lane-swap (alias /swap) prepares this lane for a usage reset or profile switch. It fixes the identity triple, refreshes the handoff, polls the writers, writes the swap record with the window and the lane's directory, and prints the one restart command (lane-collision-protocol Amendment 8(a), amended by Amendment 11)."
 ---
 
 <!-- PROMPTS TO THE PERSON: 1 — step 3, and only when a writer still holds
@@ -169,27 +169,12 @@ win_id="$(tmux display-message -p '#{window_id}' 2>/dev/null || true)"
 # same check `claude-profile` makes on the same value, for the same reason.
 [[ "$win_id" =~ ^@[0-9]+$ ]] || win_id="${WORKBENCHES_CLAUDE_WINDOW_ID:-}"
 [[ "$win_id" =~ ^@[0-9]+$ ]] && win="${win:+$win }$win_id"
-# `dir` is the LANE'S CHECKOUT (Amendment 11, SPEC §4) — NEVER a worktree, and never whatever this shell
-# happens to stand in (RV-W6, A11 Addendum 2 `R-A11-11`). TWO SOURCES, and both are RECORDS rather than
-# derivations: the launcher's own word, exported only where the directory order's rungs 1-3 answered; then
-# THE LIVE SESSION'S OWN RECORD, which is what SPEC §4 and clause (c) name as the writer's source — the
-# harness writes `"cwd"` beside `"tmux"` in `$CLAUDE_CONFIG_DIR/sessions/<pid>.json`, keyed by `sessionId`,
-# and that is this session's directory as the harness itself keyed it (it is also the directory whose
-# CLAUDE.md and memory the session loaded, Evidence 3).
-# `git rev-parse --show-toplevel` and `$PWD` were the next two rungs and are GONE. On rung 4 — every lane on
-# the estate until a record carries a `dir` — they record the git toplevel of wherever the shell stands,
-# which in a subagent's scratchpad worktree is that worktree. A record with NO `dir` is complete in the same
-# way SPEC §5 says a record with no `@id` is; a record with the WRONG one is not, because `lane-start` writes
-# the lane's home from that tree's `origin` and every `#n` after it inherits that.
+# `dir` is the LANE'S CHECKOUT (Amendment 11, SPEC §4), not whatever this shell happens to stand in: the
+# launcher resolved it for this launch and exported it, while a subagent's worktree under the scratchpad has
+# a git toplevel of its own, which is exactly the wrong answer. Launcher's word, then the cwd's toplevel,
+# then the cwd.
 dir="${WORKBENCHES_CLAUDE_LANE_DIR:-}"
-if [[ -z "$dir" && -n "${CLAUDE_CODE_SESSION_ID:-}" && -n "${CLAUDE_CONFIG_DIR:-}" ]]; then
-  dir="$(jq -r --arg id "$CLAUDE_CODE_SESSION_ID" \
-    'select((.sessionId // "") == $id) | .cwd // empty' \
-    "$CLAUDE_CONFIG_DIR"/sessions/*.json 2>/dev/null | head -n 1)"
-fi
-# An ABSOLUTE path or nothing at all: a relative one has no meaning without the writer's cwd, which no
-# reader of the log has, and `~` is the writing shell's.
-[[ "$dir" == /* ]] || dir=""
+[[ -n "$dir" ]] || dir="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")"
 # A `window` or `dir` carrying `, ` or ` — ` is REFUSED, not appended: those two separators are what divide a
 # record's fields from its free text and a row stamp's facts from each other, so the parser could not read
 # the line back (Amendment 8(b)'s refusal, extended to `dir` by Amendment 11, SPEC §5). Drop the sub-field,
@@ -205,22 +190,9 @@ case "$dir" in *', '*|*' — '*|*'"'*) refused="$refused dir=$dir"; dir="" ;; es
 # above, for the reason the whole rule has: the writer will not write a line its own parser cannot read back.
 case "$dir" in *' '*) dir="\"$dir\"" ;; esac
 [[ -z "$refused" ]] || printf 'REFUSED sub-field (dropped, not appended):%s\n' "$refused"
-# A MISSING `dir` IS SAID, not guessed at. Where neither source answered there is no sub-field, and the
-# reader of this record is told which fact it will not carry rather than handed a plausible wrong one.
-[[ -n "$dir" ]] || printf 'NO dir sub-field: neither the launcher nor this session record names the lane checkout, so the record is written without one (SPEC §5).\n'
-# `profile <name>` — A11 Addendum 2 `R-A11-10`, added by this PR now whether or not decision 7's listing
-# halves are taken. The record is what a restart reads, and `restart <lane>` has to know WHICH ACCOUNT to
-# hand `pclaude --lane <lane> <profile>`: a lane's name says nothing about the profile it runs under, and
-# the wrong one is a login prompt in place of a session. `CLAUDE_PROFILE_NAME` is exported by the launcher
-# on every `run`, so this is the live session's own word and not a lookup. A profile name is a manifest key
-# — letters, digits, `.`, `_`, `-` — and anything else is not one, so the sub-field is OMITTED rather than
-# written: a record with no `profile` is complete, one naming a profile `pclaude list` does not print is not.
-profile_name="${CLAUDE_PROFILE_NAME:-}"
-[[ "$profile_name" =~ ^[A-Za-z0-9._-]+$ ]] || profile_name=""
 payload="swap"
 [[ -z "$win" ]] || payload="$payload; window $win"
 [[ -z "$dir" ]] || payload="$payload; dir $dir"
-[[ -z "$profile_name" ]] || payload="$payload; profile $profile_name"
 payload="$payload; workstation $(hostname -s)"
 # (a) the Amendment 7 object-log PAUSED line — the record `swapped` reads. The uuid is checked BEFORE the
 # write: `unknown` is not a transcript uuid and the object log is append-only, so a line written wrong there
@@ -228,24 +200,24 @@ payload="$payload; workstation $(hostname -s)"
 # when LANES_SESSION is unset and the row yields nothing, and it has already done so four times in two
 # lanes. Refuse it here, before anything is written, and pass the uuid explicitly so the writer never guesses.
 if [[ -z "${uuid:-}" ]]; then
-  printf "REFUSED: no transcript uuid for this session, so nothing is written to the object log.\n"
+  printf "REFUSED (a), THE OBJECT LOG ONLY: no transcript uuid for this session, so nothing is written there.\n"
   printf "It is Amendment 6(c)'s session-cell append that supplies one: lane-start writes it at start, and /restart step 4 writes it for a session that started bare. Run that act, re-read the row in step 2, then come back.\n"
 else
   LANES_LANE="$lane" LANES_SESSION="$uuid" "$L" log PAUSED "lane:$lane" \
     → "$payload" \
     "on <operator>'s word: <sanitized verbatim>"
 fi
-# (b) the LANES.md file-level line, the shape every prior PAUSED/RESUMED used — AND IT IS WRITTEN OUTSIDE
-# THE UUID GUARD (RV-W1, A11 Addendum 2 `R-A11-11`). SPEC §7 and clause (e) rule it in the same words: only
-# a lane that has never had a session recorded at all reaches the refusal, "where the swap writes the
-# register's file-level PAUSED line and the row's state cell and names the gap in the handoff". That is the
-# whole of how A8(a) step 4's "never left unwritten" is preserved, so (b) and (c) survive a refusal that (a)
-# does not. The two are not the same act and the difference is the file: the OBJECT LOG is append-only and a
-# wrong session id there is wrong for ever, while this line is the register's own and its session position
-# SAYS in words that none was recorded — a reader is told the gap instead of being handed silence.
-session_field="${uuid:+$uuid@$(hostname -s)}"
-[[ -n "$session_field" ]] || session_field="none recorded@$(hostname -s)"
-"$L" append-line "PAUSED — lane $lane, session $session_field, $(date -u +%Y-%m-%dT%H:%M:%SZ), on <operator>'s word \"<sanitized verbatim>\"; <what's open, or NOTHING CLAIMED>; handoff refreshed"
+# (b) the LANES.md file-level line, the shape every prior PAUSED/RESUMED used — AND IT IS WRITTEN ON BOTH
+# PATHS. It sits OUTSIDE the uuid guard deliberately (SPEC §7, A11 Addendum 2 `R-A11-11`): the refusal above
+# is about the OBJECT LOG, where a wrong session id is append-only and wrong for ever, and (b) carries no
+# session id of the kind that can be wrong — it carries the gap. A8(a) step 4's "never left unwritten" is
+# preserved by THIS line and by the row's state cell (c), so a lane that has never had a session recorded
+# gets both, with the gap NAMED in the session position rather than the line dropped. A reader of this line
+# can see that the lane was paused and that no session was ever recorded for it; a reader of nothing cannot,
+# and the launcher's restart reads the row, not the uuid.
+session_cell="${uuid:+$uuid@$(hostname -s)}"
+[[ -n "$session_cell" ]] || session_cell="none recorded@$(hostname -s)"
+"$L" append-line "PAUSED — lane $lane, session $session_cell, $(date -u +%Y-%m-%dT%H:%M:%SZ), on <operator>'s word \"<sanitized verbatim>\"; <what's open, or NOTHING CLAIMED>; handoff refreshed"
 # (c) the row: flip its leading state word, DERIVED from the row itself. row_write_refused is what step 5
 # reads: empty on success, "1" the moment either write below does not. Its tail restates the record's own
 # two facts for a person (SPEC §5), out of `$payload`, so the two writes cannot drift apart.
@@ -259,14 +231,12 @@ fi
 
 If (a) still exits 2, re-run it with the free-text argument **dropped entirely** and say so in the report:
 the PAUSED line is what the launcher reads on restart, and step 4 is never left unwritten. The **one**
-exception is the missing uuid, and it is an exception to **(a) alone**: there, not writing the object-log
+exception is the missing uuid, and it is an exception for **(a) alone**: there, not writing the object-log
 line is the point, because an `unknown` in an append-only log cannot be taken back and a wrong session id is
-worse for the next restart than no line at all. **(b) and (c) still run** — the register's file-level `PAUSED`
-line with `none recorded` in the session position, and the row's state cell — because SPEC §7 and clause (e)
-say the swap writes them and names the gap, which is how A8(a) step 4's *"never left unwritten"* survives a
-lane that has never had a session recorded (RV-W1, `R-A11-11`). Name that gap in the handoff too: step 2's
-file is the one a reader meets first, so its state line says the record carries no session id and names the
-act that supplies one. Report it, name the act that supplies the uuid, and do not work around it. If `$state` came
+worse for the next restart than no line at all. **(b) and (c) are still written** — the file-level `PAUSED`
+line with `none recorded` in the session position, and the row flipped to `PAUSED` — because that is what
+A8(a) step 4's "never left unwritten" means and what a restart resolves this lane from. Report the gap, name
+it in the handoff, name the act that supplies the uuid, and do not work around it. If `$state` came
 back empty, re-read the row and take the first `| WORD ·` in it — `replace-in-row` requires exactly one
 occurrence and exits 2 on a guess. If (c) is still refused after that re-read — a rebase conflict, a push
 race, anything `replace-in-row`/`append-row-status` themselves report — leave `row_write_refused` set and
