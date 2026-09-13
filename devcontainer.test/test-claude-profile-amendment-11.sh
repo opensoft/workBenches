@@ -83,7 +83,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=40
+EXPECTED_SCENARIOS=43
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -560,6 +560,45 @@ launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     -- run team002 --resume session-noexact
 grep -Fxq -- "--confirm newest-9 -- $claude_args --resume session-noexact" "$LANE_START_LOG" \
     || fail "no exact record: lane-start argv was '$(lane_start_argv)'"; assertion
+
+# 3c-i. MUTATION — A ROW WHOSE ID IS NOT OURS IS INELIGIBLE ON ITS REF. This is
+# the reuse the id exists to catch: a window paused as `claude-y:0 @97` closes,
+# the next window takes the index and is `claude-y:0 @200`, and a launcher that
+# scanned each row's refs for whichever matched would bind THIS window to a
+# lane that was paused in a different one — silently, because step 3 asks
+# nothing. The id disagreeing is proof, not absence of evidence, so the launch
+# falls to precedence 4 and is CONFIRMED.
+launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_TMUX_WINDOW_ID=@200" "FAKE_TMUX_WINDOW_REF=claude-y:0" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=newest-9\t2026-09-13T03:31:56Z\tclaude-x:0 @12\nmine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
+    -- run team002 --resume session-reused-index
+grep -Fq 'mine-5' "$LANE_START_LOG" \
+    && fail "reused index: a record whose @id is NOT ours was matched on its ref ('$(lane_start_argv)')"; assertion
+grep -Fxq -- "--confirm newest-9 -- $claude_args --resume session-reused-index" "$LANE_START_LOG" \
+    || fail "reused index: it did not fall to the confirmed guess ('$(lane_start_argv)')"; assertion
+
+# 3c-ii. ...and the ID BEATS A REF ON ANOTHER ROW, wherever the two rows sit.
+# A single per-row scan takes whichever row comes first; the id is the better
+# key and is tried across every row before any ref is.
+launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_TMUX_WINDOW_ID=@97" "FAKE_TMUX_WINDOW_REF=claude-x:0" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=refmatch-9\t2026-09-13T03:31:56Z\tclaude-x:0\nidmatch-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
+    -- run team002 --resume session-idfirst
+grep -Fxq -- "idmatch-5 -- $claude_args --resume session-idfirst" "$LANE_START_LOG" \
+    || fail "id first: the ref on an earlier row won ('$(lane_start_argv)')"; assertion
+
+# 3c-iii. With NO id of our own, a row that names one is skipped rather than
+# matched on its ref: nothing here can prove it is this window, and the cost of
+# being wrong is silence. One question is the right answer for a guess.
+launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_TMUX_WINDOW_ID=" "FAKE_TMUX_WINDOW_REF=claude-y:0" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=newest-9\t2026-09-13T03:31:56Z\tclaude-x:0 @12\nmine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
+    -- run team002 --resume session-noid
+grep -Fxq -- "--confirm newest-9 -- $claude_args --resume session-noid" "$LANE_START_LOG" \
+    || fail "no id of our own: a row naming an id was matched on its ref anyway ('$(lane_start_argv)')"; assertion
 
 # 3d. The WINDOW NAME still beats the record, and when it answers the record is
 # not read at all. Precedence 2 is first for a reason: it is the register's own

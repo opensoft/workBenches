@@ -700,19 +700,47 @@ resolve_lane() {
   #
   # This is what makes a restart in the lane's own window silent even when the
   # window has LOST its name: a tmux `automatic-rename` that fired, a window
-  # renamed by hand, a pane that came back as `zsh`. The id is the better key
-  # of the two and is tried first, because a session:index is reused the
-  # moment a window is closed and another takes its place, while an id is
-  # never reissued for the life of the server.
+  # renamed by hand, a pane that came back as `zsh`.
+  #
+  # THE ID IS THE BETTER KEY AND IS TRIED FIRST — ACROSS ALL ROWS, and a row
+  # that names an id which is not ours is then INELIGIBLE for the ref match.
+  # Both halves of that matter, and a single scan that took whichever ref a row
+  # happened to carry has neither. A `<session>:<index>` is reused the instant a
+  # window closes and the next one takes its index, while an id is never
+  # reissued for the life of the server: so a record reading
+  # `claude-y:0 @97`, met from the window that later took `claude-y:0` as
+  # `@200`, names a DIFFERENT window, and matching its ref would bind this
+  # window to a lane that was paused in another one — silently, since step 3
+  # asks nothing. The id disagreeing is proof, not absence of evidence.
+  #
+  # Where THIS window has no id to offer (a tmux too old to know the format,
+  # anything that failed the shape check in capture_lane_window), rows that
+  # name one are skipped rather than matched on their ref: nothing here can
+  # prove they are this window, and the cost of being wrong is silence. Such a
+  # launch falls to precedence 4 and is CONFIRMED, which is the right answer
+  # for a guess — degrading to one question, never to a wrong silent bind.
   if [[ "$status" -eq 0 && -n "$rows" ]] \
     && { [[ -n "${lane_window_id:-}" ]] || [[ -n "${lane_window_ref:-}" ]]; }; then
     candidate="$(printf '%s\n' "$rows" | awk -F'\t' -v id="${lane_window_id:-}" -v ref="${lane_window_ref:-}" '
       NF < 3 { next }
       {
+        rows_seen++
+        lane_of[rows_seen] = $1
+        window_of[rows_seen] = $3
+        id_of[rows_seen] = ""
         n = split($3, w, /[ \t]+/)
-        for (i = 1; i <= n; i++) {
-          if ((id != "" && w[i] == id) || (ref != "" && w[i] == ref)) { print $1; exit }
-        }
+        for (i = 1; i <= n; i++) if (w[i] ~ /^@[0-9]+$/) id_of[rows_seen] = w[i]
+      }
+      END {
+        if (id != "")
+          for (r = 1; r <= rows_seen; r++)
+            if (id_of[r] == id) { print lane_of[r]; exit }
+        if (ref != "")
+          for (r = 1; r <= rows_seen; r++) {
+            if (id_of[r] != "") continue
+            n = split(window_of[r], w, /[ \t]+/)
+            for (i = 1; i <= n; i++) if (w[i] == ref) { print lane_of[r]; exit }
+          }
       }')"
     if [[ "$candidate" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
       lane="$candidate"

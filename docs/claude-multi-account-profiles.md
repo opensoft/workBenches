@@ -144,6 +144,18 @@ only in the deployed shared copy, a routine `setup-claude-profiles.sh` run
 overwrote it with this file's then-unpatched contents, and every profile's
 snapshot went stale until the shared copy was restored by hand.
 
+Since lane-collision-protocol Amendment 11(1), the verb is optional:
+`pclaude <profile>` and `pclaude run <profile>` build the identical argv. A
+first word that is not one of the four actions — `list`, `login`, `status`, `run` — is
+read as a profile, and only when it names one; the four action words win over
+a profile of the same name, so a profile literally called `run` is reached as
+`pclaude run run`. A first word that names neither an action nor a known
+profile still exits 2 with `Unknown Claude profile: <name>` — the same words
+`run` has always used, said one step earlier — so a typo is refused by name
+rather than launched as something else. `--lane`, `--dir`, and `--no-lane`
+stay LEADING options, read only before the action or the profile, so
+everything meant for Claude itself passes through untouched.
+
 Interactive `pclaude PROFILE` launches are tmux-backed by default when started
 from a terminal outside tmux. The panel reserves its first segment for the
 exact `tmux:<session>/<pane>` target, so AgentTower can use the session portion
@@ -151,7 +163,23 @@ with `tmux attach -t`. When Claude is not running in tmux, the panel explicitly
 shows `[TMUX] none` instead of silently dropping the field. Set
 `WORKBENCHES_CLAUDE_TMUX=off` for a direct interactive launch. Noninteractive
 commands such as `mcp`, `doctor`, `--help`, `--version`, and `--print` remain
-direct, and a `pclaude` command run inside an existing tmux session reuses it.
+direct.
+
+**The window is reused, never replaced (Amendment 11(2), act 1).** Run inside
+tmux, the launcher creates no session of its own: it launches in the window
+the operator is already sitting in and never renames it — renaming a window
+is `lane-start`'s act, and only its act (Amendment 5(f)). So the window's name
+and its tmux id both survive a restart, and the window-name step below fires
+with zero questions. Run outside tmux, the launcher still creates a session of
+its own, exactly as before; where the lane is known with certainty at that
+moment — an explicit `--lane` or `CLAUDE_LANE`, the only thing knowable before
+the new window exists — that new window is named for the lane at birth, with
+tmux's `automatic-rename` turned off, so the *next* restart typed in it binds
+by name instead of falling through. Before Amendment 11, every outside-tmux
+launch made a fresh session whose window tmux named for whatever command was
+running in it instead — on Eagle, eight of sixteen live windows were simply
+called `claude` when this was measured — so a restart could never bind by
+window name and always fell to the swap record's one confirmation below.
 
 Pass `--lane <repo>-<n>` (or set `CLAUDE_LANE=<repo>-<n>` in the environment)
 to hand the launch to `lane-start` instead of exec'ing Claude directly.
@@ -167,15 +195,20 @@ Since lane-collision-protocol Amendment 8(c) the lane is also the default: a
 the current tmux window's name, when `lanes-edit.sh register-row` says the
 register has a row for it — handed to `lane-start` bare, exactly as an explicit
 `--lane` always was, because the operator is standing in the lane's own window
-and there is nothing to confirm. Failing that, and only inside tmux, the lane
-this workstation last paused for a swap and has not resumed since
-(`lanes-edit.sh swapped <workstation>`, first row) — handed over as
-`--confirm`, so `lane-start` asks before it takes the window. That second lane
-is a guess about a *window*, and taking it means renaming one, so outside tmux
-it is not read at all. The window name is read before the tmux re-exec and
-carried across it, since the new session's window is named for the command that
-made it rather than for a lane. Both register reads are made with
-`LANES_NO_FETCH=1`, so a launch never waits on the network.
+and there is nothing to confirm. Failing that, Amendment 11(2) adds one step:
+the swap record whose `window` field names *this* window — its tmux id first,
+else its `<session>:<index>` — which is not a guess either, but the same
+certainty as the window's name, read from the record's side instead of the
+window's, so it too goes to `lane-start` bare. Failing both, and only inside
+tmux, the lane this workstation last paused for a swap and has not resumed
+since (`lanes-edit.sh swapped <workstation>`, first row) — handed over as
+`--confirm`, so `lane-start` asks before it takes the window. That lane is a
+guess about a *window*, and taking it means renaming one, so outside tmux it
+is not read at all. The window's name and its id are both read before the
+tmux re-exec and carried across it, since a freshly created session's window
+is named for the command that made it rather than for a lane. All three
+register reads are made with `LANES_NO_FETCH=1`, so a launch never waits on
+the network.
 
 With neither, the launch is exactly as described above plus one line saying how
 to take a lane in this window — and not even that where the `SessionStart` hook
@@ -184,16 +217,64 @@ the number filled in. `--no-lane` (or `CLAUDE_NO_LANE=1`) opts out of the
 resolution entirely and wins over `--lane`; a machine with no `lane-start` on
 `PATH` has no lane estate and is neither asked nor told anything.
 
-**Nothing in the resolution can refuse a launch, and the one question it can
-ask has two answers that both start Claude.** A `lanes-edit.sh` with no
-`swapped` subcommand, a `lane-start` with no `--confirm`, a missing
-`lanes-edit.sh` and a launch outside tmux all fall back to the unchanged
-behaviour. When `lane-start` *is* asked to confirm, the launcher runs it rather
-than `exec`ing it: a `lane-start` that declines the window (exit 2) falls
-through to a bare Claude with one line saying so, and a `lane-start` that took
-the lane has its status handed back unchanged, so the launcher can never start
-a second Claude behind the first. See `claude-profile --help` for the exact
-options.
+**The lane's directory is resolved, not assumed (Amendment 11(3)).**
+`lane-start`'s own default is `$PROJECTS_ROOT/<repo>`, and a checkout that
+lives somewhere else used to end the launch outright:
+`pclaude --lane openXfactory-5 run team01l` printed `[exited]` over a window
+with no Claude in it, because that lane's checkout is `~/projects/xFactory/openxFactory`, not
+`$PROJECTS_ROOT/openXfactory`. The launcher now learns the directory and
+passes `--dir` when it can, checked in order and never guessed: `--dir`
+itself, else `CLAUDE_LANE_DIR`, else a `dir <path>` field in the swap record
+for the lane the record itself named, else one in the lane's own register
+row, else — only where `$PROJECTS_ROOT/<repo>` does not exist — the cwd's own
+checkout, when its name is the lane's `<repo>` token
+(`WORKBENCHES_CLAUDE_LANE_DIR_FROM_CWD=off` turns that last rung off). Failing
+every rung, `lane-start`'s own default stands exactly as it did before this
+existed. The two recorded-directory rungs degrade silently against today's
+helpers, which do not record a directory yet — `lanes-edit.sh swapped` prints
+no fourth field and no register row carries one, so both simply find nothing
+and the next rung is tried; a helper that starts recording one is picked up
+with no change here, because the field is read by its label and never
+positionally.
+
+**Nothing here can close the window (Amendment 11(3)).** `lane-start` is now
+*run*, never `exec`'d, on every path above that resolves a lane — before this,
+only the swap-record confirmation ran it, and the window-name and `--lane`
+paths still `exec`'ed it, byte for byte. `lane-start` refuses in exactly two
+ways: exit 1 for its environment (no tmux, no register, no such directory) and
+exit 2 for its own refusal (a bad argument, a name a window cannot take, a lane
+already live elsewhere); every other status, including 0, is Claude's own,
+because `lane-start` execs Claude itself once it succeeds. On a 1 or a 2,
+`lane-start`'s own words are already on the terminal, the launcher adds one
+line, and Claude starts bare in the same window — except where the window was
+already named for the lane, in which case the rename `lane-start` would have
+performed is a no-op, so a 1 or a 2 there could equally mean the lane's own
+Claude just exited on its own terms, and the launcher cannot tell the two
+apart. There, uniquely, the status is handed back unchanged rather than
+covered over with a bare Claude, because a bare Claude started behind a
+session that may still be the lane's would mint a new transcript in the
+lane's own window — exactly the lineage fault the whole protocol exists to
+prevent. See `claude-profile --help` for the exact options.
+
+**`/swap`, manual and automatic (Amendment 11(4)).** `/swap` is an alias of
+`/lane-swap` — the canonical name and its skill stay exactly where they are;
+`/swap` is a one-line command file that invokes it, not a second copy.
+`/lane-swap` remains the manual trigger for a usage reset or a profile switch.
+Since Amendment 11(4), the usage guard (`claude-usage-guard.sh`, wired as the
+`UserPromptSubmit` hook for every profile) turns its own top warning into a
+directive at the same 95%-of-the-5-hour-window line that used to read only
+"STOP at a breakpoint, write or refresh the handoff doc": at that point the
+guard tells the session to run `/lane-swap` now, every step in order, with no
+question put to the operator. The steps are Amendment 8(a)'s five, unchanged
+— the identity triple derived; the handoff refreshed, committed, and pushed;
+every running writer told to commit and push; the `PAUSED` swap record (now
+carrying `dir` and `window`) together with the register's event line and the
+row's state cell; and the one restart command printed — so the operator's
+entire part in the restart is re-running `pclaude <profile>`. The guard stays
+gated exactly as before: silent unless `.claude/usage-guard.on` exists in the
+session's working directory or an ancestor, up to `$HOME` (or
+`~/.claude/usage-guard.on`, for every session on the machine). The Fable
+weekly bucket's own 95% line is not part of this and keeps today's warning.
 
 ### The Amendment 8 `SessionStart` hook, and where skills have to live
 
