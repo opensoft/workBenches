@@ -321,8 +321,22 @@ names the `scripts/link-estates` of the repository `~/.agents/workspace.yaml`
 names, with the `git clone` in front of it only where that checkout is not there
 yet. Neither spelling is `link-estates` on its own — a script inside a
 repository, with no repository named in front of it, is not an act anyone can
-run — and neither is a repository this launcher chose for the operator. This
-branch used to return in silence, on
+run — and neither is a repository this launcher chose for the operator.
+
+**And the interval has two ends** (`CF2-W11`). It opens with the installed
+`openRepoTools` not listing the lane tools and it closes twice over: with
+Amendment 9 **act 3**, when `--install`'s list grows to carry them, and with
+Amendment 9 **act 5** (`opensoft/brett-wip#6`, *"the workspace repository keeps
+data only"*), which **deletes `scripts/link-estates`** from the workspace
+repository. Those are not the same event as the probe, which reads the
+*installed* copy's `--help`, so a host that has not re-run `--install` since act
+3 merged is still on the fallback when act 5 lands. In that state — the checkout
+present, its script gone — the line names `openRepoTools --install` with the
+reason beside it and **never a path that is not there**, and never a `git clone`
+of a checkout the operator is standing in. The clone form is fenced on the
+checkout not existing, which is the only state it was ever right for.
+
+This branch used to return in silence, on
 the reasoning that a machine with no lane estate should not hear about one; that
 was measured wrong. When this workstation was rebuilt on 2026-09-13 the
 `~/.local/bin` symlinks were gone while `/usr/local/bin/claude-profile` was

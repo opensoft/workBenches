@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=104
+EXPECTED_SCENARIOS=108
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -1978,6 +1978,15 @@ grep -Fq "$TEST_ROOT/estate-wip/scripts/link-estates" "$ERR_LOG" \
     || fail "R-A11-13: an openRepoTools that cannot place the lane tools was named as the act anyway ('$(cat "$ERR_LOG")')"; assertion
 grep -Fq 'openRepoTools --install' "$ERR_LOG" \
     && fail "R-A11-13: the act named cannot place lane-start on this machine ('$(cat "$ERR_LOG")')"; assertion
+# ...AND THIS SCENARIO SAYS WHICH BRANCH IT IS ON. The checkout does not exist
+# here (5h-vii creates it and removes it again), so the act is the CLONE form —
+# and the substring above matches the clone form's tail just as well as the
+# script-alone branch, which is exactly why the assertion above could not tell
+# `:915` from `:917` and why `CF2-W11`'s cases below are separate scenarios.
+grep -Fq "git clone git@github.com:opensoft/estate-wip.git" "$ERR_LOG" \
+    || fail "R-A11-13: a checkout that is not there was not offered a clone ('$(cat "$ERR_LOG")')"; assertion
+[[ ! -d "$TEST_ROOT/estate-wip" ]] \
+    || fail "R-A11-13: this scenario is meant to run with the checkout ABSENT, and it is present"; assertion
 
 # 5h-vi. ...AND A MACHINE THAT NAMES NO WORKSPACE REPOSITORY IS TOLD WHERE TO
 # NAME ONE. `link-estates` on its own is a script inside a repository and not an
@@ -2002,6 +2011,98 @@ grep -Fq "fix: $TEST_ROOT/estate-wip/scripts/link-estates" "$ERR_LOG" \
 grep -Fq 'git clone' "$ERR_LOG" \
     && fail "R-A11-13: an operator with the repository already cloned is told to clone it ('$(cat "$ERR_LOG")')"; assertion
 rm -rf "$TEST_ROOT/estate-wip"
+
+# 5h-viii. `CF2-W11` — THE CHECKOUT IS THERE AND THE SCRIPT IS NOT, which is
+# what `opensoft/brett-wip#6` @`1483d55` (Amendment 9 act 5, "the workspace
+# repository keeps data only") does: it DELETES `scripts/link-estates`. The `-e`
+# test on the script is what makes act 5 bite rather than what saves it — with
+# the script gone it goes false, and the resolver's second branch then printed a
+# `git clone` FOR A PATH THAT IS ALREADY THERE: a clone that fails with
+# "destination path already exists", followed by a script that is not in the
+# repository any more. Two failures in the one act rule (a) exists to name.
+#
+# The interval act no longer exists on this machine, so the line names the one
+# act that can ever place the lane tools — `openRepoTools --install`, the
+# capability branch's own — with the reason beside it, and NEVER a path that is
+# not there. This is the mirror of 5h-vii and the scenario the addendum asked
+# for: it is the only one of the six that can tell the third branch from the
+# second.
+mkdir -p "$TEST_ROOT/estate-wip"
+[[ ! -e "$TEST_ROOT/estate-wip/scripts/link-estates" ]] \
+    || fail "CF2-W11: this scenario needs the checkout WITHOUT the script, and the script is there"; assertion
+launch_without_estate run team002 --resume session-act5-script-gone
+grep -Fq 'git clone' "$ERR_LOG" \
+    && fail "CF2-W11: the checkout is already there and the operator is told to clone it — the clone fails with 'destination path already exists' ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq "$TEST_ROOT/estate-wip/scripts/link-estates" "$ERR_LOG" \
+    && fail "CF2-W11: the act names a path that is not there (Amendment 9 act 5 deletes it) ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'openRepoTools --install' "$ERR_LOG" \
+    || fail "CF2-W11: with the interval act gone the line names no act at all ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'act 5' "$ERR_LOG" \
+    || fail "CF2-W11: the line names the act without the reason it changed, so an operator cannot tell it from a plain --install ('$(cat "$ERR_LOG")')"; assertion
+[[ "$(wc -l < "$ERR_LOG")" -eq 1 ]] \
+    || fail "CF2-W11/§16(a): one situation printed $(wc -l < "$ERR_LOG") lines ($(cat "$ERR_LOG"))"; assertion
+rm -rf "$TEST_ROOT/estate-wip"
+
+# 5h-ix. THE MANIFEST'S INLINE COMMENT DOES NOT REACH THE PRINTED ACT (the
+# automated reviewer's YAML item, judged real). `path: "<checkout>" # default
+# checkout` is the exact form `scripts/setup-workspace-repo.sh:171-177`
+# documents as supported, and the launcher's own reader kept everything after
+# the `#`: the printed act became `git clone … "<path>" # default checkout &&
+# "<path>" # default checkout/scripts/link-estates`, where everything after the
+# `#` is COMMENTED OUT and what an operator would actually run is a bare clone
+# into a quoted path. Both halves are now the repo's own `yaml_value` rule.
+mkdir -p "$TEST_ROOT/comment-home/.agents"
+printf 'repository: opensoft/estate-wip   # the workspace repo\npath: "%s/commented-wip" # default checkout\n' \
+    "$TEST_ROOT" > "$TEST_ROOT/comment-home/.agents/workspace.yaml"
+without_estate_env=("HOME=$TEST_ROOT/comment-home")
+launch_without_estate run team002 --resume session-yaml-comment
+without_estate_env=()
+grep -Fq 'default checkout' "$ERR_LOG" \
+    && fail "YAML: the manifest's inline comment reached the printed act, where everything after the # is commented out ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq "$TEST_ROOT/commented-wip" "$ERR_LOG" \
+    || fail "YAML: the quoted path was not read back at all ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq '"' "$ERR_LOG" \
+    && fail "YAML: the manifest's own quotes reached the printed act ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'git clone git@github.com:opensoft/estate-wip.git' "$ERR_LOG" \
+    || fail "YAML: the repository's own inline comment broke the clone URL ('$(cat "$ERR_LOG")')"; assertion
+
+# 5h-x. AND AN INDENTED KEY IS NOT A TOP-LEVEL ONE. Amendment 9(a) puts the
+# `orgs:` map out of scope and `yaml_value` anchors to column 0 for exactly that
+# reason; the launcher's copy allowed leading whitespace, so a `path:` nested
+# under `orgs:` could answer for the workspace's own.
+mkdir -p "$TEST_ROOT/indent-home/.agents"
+printf 'orgs:\n  opensoft:\n    path: %s/WRONG-nested\n    repository: opensoft/WRONG\n' \
+    "$TEST_ROOT" > "$TEST_ROOT/indent-home/.agents/workspace.yaml"
+without_estate_env=("HOME=$TEST_ROOT/indent-home")
+launch_without_estate run team002 --resume session-yaml-indent
+without_estate_env=()
+grep -Fq 'WRONG' "$ERR_LOG" \
+    && fail "YAML: an INDENTED key under orgs: answered for the top-level workspace path ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq "$TEST_ROOT/indent-home/.agents/workspace.yaml" "$ERR_LOG" \
+    || fail "YAML: with no top-level key the operator is not told where to name their repository ('$(cat "$ERR_LOG")')"; assertion
+
+# 5h-xi. A WORKSPACE PATH WITH A SPACE PRINTS A COMMAND THAT RUNS (the automated
+# reviewer's other half, judged HALF real: the act is printed and never
+# executed, so "can execute unintended commands" does not arise, but a command
+# that will not run does). The clone target is checked by word-splitting it the
+# way a shell would: one word is right, two is the bug.
+mkdir -p "$TEST_ROOT/space-home/.agents"
+printf 'repository: opensoft/estate-wip\npath: %s/my estate\n' "$TEST_ROOT" \
+    > "$TEST_ROOT/space-home/.agents/workspace.yaml"
+without_estate_env=("HOME=$TEST_ROOT/space-home")
+launch_without_estate run team002 --resume session-yaml-space
+without_estate_env=()
+space_act="$(sed -n 's/.*; fix: //p' "$ERR_LOG" | head -n 1)"
+[[ -n "$space_act" ]] \
+    || fail "space path: no install act was printed ('$(cat "$ERR_LOG")')"; assertion
+space_target="$(printf '%s' "$space_act" | sed -n 's/^git clone [^ ]* \(.*\) && .*$/\1/p')"
+[[ -n "$space_target" ]] \
+    || fail "space path: the printed act is not the clone form, so this scenario proves nothing ('$space_act')"; assertion
+eval "set -- $space_target"
+[[ "$#" -eq 1 ]] \
+    || fail "space path: the clone target word-splits into $# words, so the printed command clones into the wrong place ('$space_target')"; assertion
+[[ "$1" == "$TEST_ROOT/my estate" ]] \
+    || fail "space path: the clone target reads back as '$1', not '$TEST_ROOT/my estate'"; assertion
 
 # ===========================================================================
 # 6. EVERY FIELD NAME IS THE SPEC'S, BYTE FOR BYTE — SPEC §4, §5 and §11.
@@ -2137,7 +2238,15 @@ grep -Fq 'neither asked nor told anything' "$DOCS_MD" \
 # choice lives in one function and that both callers print what it returns.
 [[ "$(grep -Fc '$(lane_start_install_act)' "$LAUNCHER")" -eq 2 ]] \
     || fail "R-A11-13: the install act has $(grep -Fc '$(lane_start_install_act)' "$LAUNCHER") callers, and it has two — the --lane refusal and the missing-tool notice"; assertion
-install_act_code="$(awk '/^lane_start_install_act\(\) \{$/ { inside = 1 } inside { print } inside && $0 == "}" { exit }' "$LAUNCHER")"
+# COMMENTS STRIPPED ON BOTH SIDES OF THE COUNT BELOW. The property is "all of
+# the act is inside one function", and it is measured by comparing how many
+# times each spelling occurs in the function against how many times it occurs
+# in the whole executable file. `launcher_exec_code` already drops comments, so
+# this side has to as well — otherwise the function ARGUING about `link-estates`
+# (which it must, since `CF2-W11` is a rule about when not to name it) counts as
+# spelling it, and the two sides can never agree.
+install_act_code="$(awk '/^lane_start_install_act\(\) \{$/ { inside = 1 } inside { print } inside && $0 == "}" { exit }' "$LAUNCHER" \
+    | grep -v '^[[:space:]]*#')"
 [[ -n "$install_act_code" ]] \
     || fail "R-A11-13: there is no lane_start_install_act function, so the act is not resolved in one place"; assertion
 printf '%s\n' "$install_act_code" | grep -Fq 'openRepoTools --help' \
@@ -2161,6 +2270,58 @@ launcher_exec_code="$(awk '/^      cat <<.EOF.$/ { skip = 1 } !skip { print } sk
     || fail "R-A11-13: openRepoTools is named outside lane_start_install_act"; assertion
 printf '%s\n' "$launcher_exec_code" | grep -Fq 'github.com:opensoft/brett-wip.git' \
     && fail "R-A11-13: the launcher still hard-codes one operator's workspace repository as the install act"; assertion
+
+# ONE RULE FOR READING `workspace.yaml`, AND TWO NECESSARY COPIES OF IT — the
+# automated reviewer's YAML item, judged real. `scripts/setup-workspace-repo.sh`
+# has this repository's own reader (`yaml_value`, :171-189) and states the two
+# things a looser one gets wrong in its own comment: TOP LEVEL ONLY, and the
+# inline comment stripped BEFORE the quotes. The launcher cannot call it — the
+# launcher is copied into the base image and that script stays in the checkout,
+# so inside a container there is nothing to source — so the rule is copied, and
+# what keeps a copy from becoming a second rule is this: both functions are
+# extracted verbatim and run over the same table, and every answer must agree.
+# A drift in either file fails here rather than at a restart on somebody's
+# machine.
+YAML_READERS="$TEST_ROOT/yaml-readers.sh"
+{
+    printf '#!/usr/bin/env bash\n'
+    awk '/^lane_workspace_field\(\) \{$/ { inside = 1 } inside { print } inside && $0 == "}" { exit }' "$LAUNCHER"
+    awk '/^yaml_value\(\) \{$/ { inside = 1 } inside { print } inside && $0 == "}" { exit }' \
+        "$REPO_ROOT/scripts/setup-workspace-repo.sh"
+} > "$YAML_READERS"
+grep -Fq 'lane_workspace_field()' "$YAML_READERS" \
+    || fail "YAML: the launcher's reader could not be extracted, so the comparison below proves nothing"; assertion
+grep -Fq 'yaml_value()' "$YAML_READERS" \
+    || fail "YAML: setup-workspace-repo.sh's reader could not be extracted, so the comparison below proves nothing"; assertion
+# shellcheck disable=SC1090
+. "$YAML_READERS"
+yaml_probe="$TEST_ROOT/yaml-probe.yaml"
+yaml_mismatch=""
+while IFS= read -r yaml_case; do
+    [[ -n "$yaml_case" ]] || continue
+    printf '%s\n' "$yaml_case" > "$yaml_probe"
+    for yaml_key in path repository; do
+        mine="$(lane_workspace_field "$yaml_probe" "$yaml_key")"
+        theirs="$(yaml_value "$yaml_key" "$yaml_probe")"
+        [[ "$mine" == "$theirs" ]] \
+            || yaml_mismatch="$yaml_mismatch|$yaml_key on <$yaml_case>: launcher='$mine' setup-workspace-repo='$theirs'"
+    done
+done <<'YAMLCASES'
+path: /plain/checkout
+path: "/quoted/checkout"
+path: '/single/quoted'
+path: "/with/comment" # default checkout
+path: /bare/comment # a trailing note
+path: /trailing/space
+path: ~/tilde/checkout
+path: ~
+path: /has#hash/inside
+  path: /indented/under/orgs
+repository: opensoft/estate-wip   # the workspace repo
+repository: "opensoft/quoted-wip"
+YAMLCASES
+[[ -z "$yaml_mismatch" ]] \
+    || fail "YAML: the launcher's reader and this repo's own yaml_value disagree — two implementations of one rule${yaml_mismatch}"; assertion
 
 # SPEC §9 — `/swap` is a one-line command file that INVOKES the skill, and the
 # 176-line skill is not duplicated into it. Two texts that must stay byte-equal

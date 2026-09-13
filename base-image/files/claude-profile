@@ -968,6 +968,17 @@ lane_no_lane_note='no lane for this window; run lane-start <repo> <n> inside it'
 # `scripts/link-estates`. The probe costs one process on the one path where the
 # lane tool is already missing, and nothing at all on any other launch.
 #
+# AND THE INTERVAL HAS TWO ENDS, NOT ONE. The text bounds it on Amendment 9 act
+# 3 LANDING; this probe fires on the INSTALLED copy's `--help`, and those are
+# not the same event, so a host that has not re-run `--install` since act 3
+# merged is still on the fallback afterwards. Amendment 9 **act 5**
+# (`opensoft/brett-wip#6` @`1483d55`, "the workspace repository keeps data
+# only") lands inside that window and DELETES `scripts/link-estates` — the very
+# file this fallback names. So the second end of the interval is act 5, and the
+# resolver below has a branch for the state act 5 leaves behind: the checkout
+# present and its script gone, where the act is `openRepoTools --install` with
+# the reason, and never a path that is not there (`CF2-W11`).
+#
 # AND THE REPOSITORY IS THE ONE THIS MACHINE NAMES. `workspace.yaml` is where a
 # person names their own workspace repository — this repo's own README gives it
 # as the whole of that step's idempotence, and AGENT_PROTOCOL_ROOT moves the
@@ -979,10 +990,49 @@ lane_workspace_field() {
   # One scalar out of workspace.yaml, without a YAML parser: the file is one
   # level deep, `yq` is on no machine this is guaranteed to run on, and the two
   # keys read here are the two `setup.sh` writes.
-  local file="$1" key="$2"
-  sed -n "s/^[[:space:]]*$key:[[:space:]]*//p" "$file" 2>/dev/null \
-    | head -n 1 \
-    | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+  #
+  # THIS IS `scripts/setup-workspace-repo.sh`'s `yaml_value` RULE, NOT A SECOND
+  # ONE. That function is this repository's own reader of this same file and it
+  # already states the two things a looser one gets wrong, in its own comment:
+  # "One key, first occurrence, TOP LEVEL ONLY -- the `orgs:` map Amendment 9(a)
+  # puts out of scope is indented, so an anchored match never reaches into it"
+  # and "The comment and trailing whitespace are stripped BEFORE the surrounding
+  # quotes: `path: "~/projects/wip" # default checkout` must not leave a
+  # trailing quote stuck to the end of the value."
+  #
+  # This copy used to allow leading whitespace (so an indented key under `orgs:`
+  # could match) and strip no inline comment (so `path: "<checkout>" # default
+  # checkout` printed the comment INSIDE the remediation command, where
+  # everything after the `#` is commented out and what an operator would
+  # actually run is a bare `git clone` into a quoted path). Both are gone, and
+  # the two implementations are compared field-by-field over a table by
+  # `test-claude-profile-amendment-11.sh` — the launcher is copied into the base
+  # image while that script stays in the checkout, so one file cannot source the
+  # other, and a differential test is what keeps one rule from becoming two.
+  local file="$1" key="$2" line
+  line="$(sed -n "s/^$key:[[:space:]]*//p" "$file" 2>/dev/null | head -n 1)" || return 0
+  line="${line%%[[:space:]]#*}"
+  line="${line%"${line##*[![:space:]]}"}"
+  line="${line%\"}"; line="${line#\"}"
+  line="${line%\'}"; line="${line#\'}"
+  case "$line" in
+    "~/"*) line="$HOME/${line#\~/}" ;;
+    "~")   line="$HOME" ;;
+  esac
+  printf '%s\n' "$line"
+}
+
+lane_print_path() {
+  # A PATH THAT IS PRINTED INSIDE A COMMAND AN OPERATOR WILL PASTE. The install
+  # act is the one line rule (a) exists to make runnable, and a workspace path
+  # carrying a space printed bare is a command that will not run — it is never
+  # executed here, so the "unintended commands" half of the automated reviewer's
+  # reading does not arise, but the broken-command half does. `%q` quotes only
+  # where quoting changes anything, so the ordinary path stays copy-pasteable
+  # and greppable exactly as it reads.
+  local quoted
+  printf -v quoted '%q' "$1"
+  printf '%s\n' "$quoted"
 }
 
 lane_start_install_act() {
@@ -1011,13 +1061,38 @@ lane_start_install_act() {
     repository="$(lane_workspace_field "$yaml" repository)"
     path="$(lane_workspace_field "$yaml" path)"
   fi
-  [[ "$path" != '~'* ]] || path="$HOME${path#\~}"
+  # `~` EXPANSION IS THE READER'S, not this caller's: one rule, one place, and
+  # `~user` — which no `$HOME${path#\~}` can expand correctly — is left alone
+  # there rather than mangled here.
+  #
+  # FOUR BRANCHES, AND THE THIRD IS NEW (`CF2-W11`, the act-5 addendum on
+  # `opensoft/brett-wip#6` @`1483d55`, which DELETES `scripts/link-estates` from
+  # the workspace repository). The `-e` test below is what makes act 5 bite
+  # rather than what saves it: with the script gone it goes false, and the old
+  # second branch then printed a `git clone` FOR A PATH THAT IS ALREADY THERE —
+  # a clone that fails with "destination path already exists", followed by a
+  # script that is not in the repository any more. Two failures in the one act
+  # rule (a) exists to name.
+  #
+  # So the clone form is fenced on the checkout NOT EXISTING, and the case it
+  # used to swallow — checkout present, script absent — gets a branch that names
+  # a real command instead of a path that is not there. It is the capability
+  # branch's own act, `openRepoTools --install`, with the reason beside it:
+  # after act 5 there is no interval act left on this machine, and the only act
+  # that can ever place the lane tools is the one Amendment 9 act 3 makes work.
+  # Naming it is not naming two spellings at once — it is the same one act,
+  # arrived at because the other no longer exists.
+  #
+  # Why this is not simply act 3's problem: the text bounds the interval on act
+  # 3 LANDING, while the probe above fires on the INSTALLED copy's `--help`. A
+  # host that has not re-run `--install` since act 3 merged is still on this
+  # fallback when act 5 lands, and that window is what this branch is for.
   if [[ -n "$path" && -e "$path/scripts/link-estates" ]]; then
-    lane_start_install_act_answer="$path/scripts/link-estates"
-  elif [[ -n "$path" && -n "$repository" ]]; then
-    lane_start_install_act_answer="git clone git@github.com:$repository.git $path && $path/scripts/link-estates"
-  elif [[ -n "$path" ]]; then
-    lane_start_install_act_answer="$path/scripts/link-estates"
+    lane_start_install_act_answer="$(lane_print_path "$path/scripts/link-estates")"
+  elif [[ -n "$path" && -n "$repository" && ! -d "$path" ]]; then
+    lane_start_install_act_answer="git clone git@github.com:$repository.git $(lane_print_path "$path") && $(lane_print_path "$path/scripts/link-estates")"
+  elif [[ -n "$path" && -d "$path" ]]; then
+    lane_start_install_act_answer="openRepoTools --install (the interval act is gone: $(lane_print_path "$path") has no scripts/link-estates, which Amendment 9 act 5 removes, so the act that places the lane tools is the one act 3 adds to --install's list)"
   else
     lane_start_install_act_answer="name your workspace repository in $yaml (repository: <owner>/<name>, path: <checkout>), then run its scripts/link-estates"
   fi
