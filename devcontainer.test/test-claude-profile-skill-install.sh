@@ -211,6 +211,22 @@ grep -q 'if \[\[ -z "\${uuid:-}" \]\]; then' "$SKILL_SOURCE" \
     || fail "text: step 4 writes the PAUSED line without first checking it has a uuid (SPEC §7)"; assertion
 grep -q "REFUSED: no transcript uuid" "$SKILL_SOURCE" \
     || fail "text: the missing-uuid path does not refuse in as many words (SPEC §7)"; assertion
+# ...AND THE REFUSAL IS (a)'s ALONE (SPEC §7, A11 Addendum 2 `R-A11-11`). The
+# clause says the lane that has never had a session recorded reaches the refusal
+# "where the swap writes the register's file-level PAUSED line and the row's
+# state cell", so (b) and (c) sit OUTSIDE the uuid guard and the gap is named in
+# the session position. A skill that drops them leaves a paused lane with no
+# record at all, which is the one state a restart cannot resolve from. The line
+# says which of the three writes it refuses, so a reader is not left to infer it.
+grep -q "so nothing is written to the object log — (b) and (c) below still run" "$SKILL_SOURCE" \
+    || fail "text: the refusal does not say WHICH of the three writes it refuses (SPEC §7/R-A11-11)"; assertion
+uuid_guard="$(awk 'index($0,"if [[ -z \"${uuid:-}\" ]]; then"){inside=1} inside{print} inside && $0=="fi"{exit}' "$SKILL_SOURCE")"
+printf '%s\n' "$uuid_guard" | grep -Fq 'append-line' \
+    && fail "text: the register's file-level PAUSED line is inside the uuid guard, so a lane with no uuid gets neither half (SPEC §7/R-A11-11)"; assertion
+printf '%s\n' "$uuid_guard" | grep -Fq 'replace-in-row' \
+    && fail "text: the row's state cell is flipped only where a uuid exists, which is the same defect one write along (SPEC §7/R-A11-11)"; assertion
+grep -Fq 'session_field="none recorded@$(hostname -s)"' "$SKILL_SOURCE" \
+    || fail "text: the file-level PAUSED line does not NAME the gap in the session position (SPEC §7/R-A11-11)"; assertion
 grep -q "Amendment 6(c)'s session-cell append that supplies one" "$SKILL_SOURCE" \
     || fail "text: the refusal does not name which act supplies the uuid (SPEC §7)"; assertion
 grep -q 'LANES_SESSION="\$uuid"' "$SKILL_SOURCE" \
