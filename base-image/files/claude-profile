@@ -1298,7 +1298,25 @@ enter_lane_dir() {
   # word.
   local reason
   lane_dir_entered=""
-  [[ -n "${lane:-}" && -n "${lane_dir:-}" ]] || return 0
+  lane_dir_note=""
+  [[ -n "${lane:-}" ]] || return 0
+  if [[ -z "${lane_dir:-}" ]]; then
+    # RUNG 4 — NOTHING WAS LEARNT, SO NOTHING IS ENTERED, AND THE LAUNCHER SAYS
+    # SO. This is every lane on the estate until §13.5's cutover has run for it,
+    # and it is the OTHER half of Evidence 3: `lane-start` cds for its own
+    # launch, so where it takes the lane the session is keyed to the directory
+    # IT chose and there is nothing here to report — but where it does not, the
+    # bare Claude behind SPEC §2's run-not-exec drop starts wherever this was
+    # typed, and that session loads neither the repository's CLAUDE.md nor the
+    # lane's memory while `--resume` still continues the transcript, which is
+    # exactly why nobody noticed for an afternoon.
+    #
+    # CARRIED, NOT PRINTED (F-W3, `R-A8-7`: one situation, ONE line). The drop
+    # already prints one line and this is the same launch, so the fact goes into
+    # it and arrives at the moment it bites rather than one launch early.
+    lane_dir_note="no directory is recorded for $lane, so this Claude starts in $PWD and loads whatever that tree carries (Evidence 3); name it once with --dir <path>"
+    return 0
+  fi
   if [[ -d "$lane_dir" ]]; then
     if cd -- "$lane_dir" 2>/dev/null; then
       lane_dir_entered="$lane_dir"
@@ -1362,6 +1380,9 @@ lane_read_note=""
 lane_dir=""
 lane_dir_source=""
 lane_dir_flag=""
+# What enter_lane_dir could NOT do, carried into the one line the bare-Claude
+# drop already prints rather than printed beside it (F-W3, R-A8-7).
+lane_dir_note=""
 # The directory this launch actually entered (Evidence 3), empty where none was
 # learnt. Published for the record the swap writes, and for nothing else.
 lane_dir_entered=""
@@ -1697,7 +1718,7 @@ case "$action" in
           # captured here, so nothing swallows it and nothing repeats it. This
           # is the launcher's one line beside it (F-W3), and it says what
           # happens next.
-          lane_note_no_lane "lane-start did not take $lane (exit $lane_status); starting Claude with no lane in this window"
+          lane_note_no_lane "lane-start did not take $lane (exit $lane_status); starting Claude with no lane in this window${lane_dir_note:+; $lane_dir_note}"
           # And this session is not in that lane, so nothing downstream may
           # read that it is — the usage guard's automatic swap would otherwise
           # write a PAUSED record for a lane this window never took.
