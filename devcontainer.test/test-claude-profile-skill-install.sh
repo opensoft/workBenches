@@ -225,15 +225,36 @@ printf '%s\n' "$uuid_guard" | grep -Fq 'append-line' \
     && fail "text: the register's file-level PAUSED line is inside the uuid guard, so a lane with no uuid gets neither half (SPEC §7/R-A11-11)"; assertion
 printf '%s\n' "$uuid_guard" | grep -Fq 'replace-in-row' \
     && fail "text: the row's state cell is flipped only where a uuid exists, which is the same defect one write along (SPEC §7/R-A11-11)"; assertion
-# BOTH HALVES OF THE SESSION POSITION NAME THEIR GAP. `<uuid>@<workstation>`:
-# the uuid's gap is `none recorded` (RV-W1), and since Evidence 6 the
-# workstation's is `unknown-workstation` — it was `$(hostname -s)`, which inside
-# a bench container is the container id and goes into an append-only log.
-grep -Fq 'session_field="none recorded@${ws:-unknown-workstation}"' "$SKILL_SOURCE" \
-    || fail "text: the file-level PAUSED line does not NAME the gap in the session position (SPEC §7/R-A11-11)"; assertion
+# THE SESSION POSITION IS `session <uuid>@<workstation>` AND NOTHING ELSE —
+# `R-A11-14` (A11 Addendum 3, ratified by Brett Heap 2026-09-13 "a11 addendum 3
+# yes"). Where there is no uuid the FIELD IS LEFT OUT and the line's own free
+# text names the gap: `none recorded` was two tokens with a space inside a field
+# Amendment 7(b):137 gives one uuid, which its :140 has REPORTED as
+# `unreadable`, so the skill was writing a line its own parser cannot read back.
+# And where there is no WORKSTATION the write is refused outright rather than
+# filled with `unknown-workstation`: `append-line` validates neither half, so a
+# placeholder lands in the register and no reader on the estate ever notices.
+grep -Fq 'session_field="session $uuid@$ws, "' "$SKILL_SOURCE" \
+    || fail "R-A11-14: the session position is not built from the uuid and the workstation alone"; assertion
+grep -Fq 'NO session recorded for this lane' "$SKILL_SOURCE" \
+    || fail "text: the file-level PAUSED line does not NAME the gap where no session is recorded (SPEC §7/R-A11-11)"; assertion
+# The skill's SHELL — its fenced code blocks, comments stripped — because the
+# prose argues about both words at length and would answer for the code.
+skill_code_only="$(awk '/^```/ { fence = !fence; next } fence' "$SKILL_SOURCE" | grep -v '^[[:space:]]*#')"
+printf '%s\n' "$skill_code_only" | grep -Fq 'none recorded' \
+    && fail "R-A11-14: the skill still writes 'none recorded' into a field that takes one uuid"; assertion
+printf '%s\n' "$skill_code_only" | grep -Fq 'unknown' \
+    && fail "R-A11-14: the skill still writes a placeholder workstation into the register"; assertion
+grep -Fq 'REFUSED: no workstation for this lane' "$SKILL_SOURCE" \
+    || fail "R-A11-14: a writer with no configured workstation does not refuse"; assertion
+grep -F 'REFUSED: no workstation for this lane' "$SKILL_SOURCE" | grep -Fq 'pclaude' \
+    || fail "R-A11-14: the refusal does not name the launcher that sets LANES_WORKSTATION"; assertion
 grep -Fq 'ws="${LANES_WORKSTATION:-}"' "$SKILL_SOURCE" \
     || fail "text: the workstation is not taken from configuration first (Evidence 6)"; assertion
-[[ "$(grep -v '^[[:space:]]*#' "$SKILL_SOURCE" | grep -c 'hostname')" -eq 1 ]] \
+# ONE hostname READ — the read, `$(hostname`, and not the word: the `R-A11-14`
+# refusal names the hazard in its own message, and a count of the word would
+# make saying it indistinguishable from doing it.
+[[ "$(grep -v '^[[:space:]]*#' "$SKILL_SOURCE" | grep -Fc '$(hostname')" -eq 1 ]] \
     || fail "text: the skill reads hostname more than once, so one read is outside the container fence (Evidence 6)"; assertion
 grep -q "Amendment 6(c)'s session-cell append that supplies one" "$SKILL_SOURCE" \
     || fail "text: the refusal does not name which act supplies the uuid (SPEC §7)"; assertion

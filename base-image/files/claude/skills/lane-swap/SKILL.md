@@ -29,12 +29,16 @@ L=~/projects/xFactory/lanes-edit.sh
 # machine that will not exist tomorrow, and the forked orchestrator of Evidence 6 wrote exactly that into
 # the log. `LANES_WORKSTATION` is the estate's own word and is honoured everywhere; `hostname` stands as it
 # was, but only where this is NOT a container; inside one with nothing configured there is NO answer, and
-# every use below says so rather than guessing. `$L` and `$ws` are the two values the later steps reuse.
+# every use below REFUSES rather than guessing. `$L` and `$ws` are the two values the later steps reuse.
+# THE LAUNCHER SETS IT (`R-A11-14`, A11 Addendum 3, ratified 2026-09-13 "a11 addendum 3 yes"): `pclaude`
+# resolves the workstation on the host and exports LANES_WORKSTATION into every session it starts, and
+# `wave-container-shell.sh` carries the same value through `docker exec` into a bench container. So a
+# session that reaches step 4 without one was started around those two, and that is what its refusal says.
 ws="${LANES_WORKSTATION:-}"
 if [[ -z "$ws" && ! -e /.dockerenv && ! -e /run/.containerenv && -z "${container:-}" ]]; then
   ws="$(hostname -s 2>/dev/null || true)"
 fi
-printf 'ws=%s\n' "${ws:-<none: set LANES_WORKSTATION>}"
+printf 'ws=%s\n' "${ws:-<none: LANES_WORKSTATION is unset and this is a container; pclaude exports it from the host, and step 4 refuses without it>}"
 ```
 
 ## 1. Usage, then the identity triple — derived, not asked
@@ -74,7 +78,7 @@ if [[ -z "$lane" ]]; then
     rows="$(LANES_NO_FETCH=1 "$L" swapped "$ws" 2>/dev/null)" || rows=""
   else
     rows=""
-    printf 'NO workstation: this is a container and LANES_WORKSTATION names none, so the swap records were not read (Evidence 6); set LANES_WORKSTATION=<workstation>.\n'
+    printf 'NO workstation: this is a container and LANES_WORKSTATION names none, so the swap records were not read (Evidence 6); set LANES_WORKSTATION=<workstation> — pclaude exports it from the host into every session and container it starts (`R-A11-14`).\n'
   fi
   first="$(printf '%s\n' "$rows" | head -n 1)"
   if [[ -n "$rows" && "$first" == *$'\t'* ]]; then
@@ -244,11 +248,26 @@ payload="swap"
 [[ -z "$profile_name" ]] || payload="$payload; profile $profile_name"
 # `workstation <ws>` is $ws and never `hostname` (Evidence 6): the sub-field is what `swapped <ws>` keys
 # on, so a record carrying a container id is a record no restart of this workstation will ever find — and
-# it is a lie in an append-only log, which is the half that cannot be taken back. Where nothing is
-# configured the sub-field is OMITTED and the omission is said, exactly as `dir` and `profile` are: a
-# record with no workstation is incomplete in a way a reader can see, one naming a container is not.
+# it is a lie in an append-only log, which is the half that cannot be taken back. It is NOT omitted the way
+# `dir` and `profile` are, and that is the difference `R-A11-14` settles: those two say something about the
+# lane, and this one is the KEY the records are filed under, so a record without it is not incomplete — it
+# is unfindable, and the write is refused instead (below).
 [[ -z "$ws" ]] || payload="$payload; workstation $ws"
-[[ -n "$ws" ]] || printf 'NO workstation sub-field: this is a container and LANES_WORKSTATION names none, so the record is written without one and `swapped <ws>` will not list it (Evidence 6); set LANES_WORKSTATION=<workstation> and swap again to record it.\n'
+# AND WITHOUT ONE THIS WRITER REFUSES — `R-A11-14` (A11 Addendum 3, ratified by Brett Heap 2026-09-13
+# "a11 addendum 3 yes"), which is clause (k) rule (d) and SPEC §16(d) in their own words: a writer inside a
+# container with no configured value refuses and names LANES_WORKSTATION, because both lane logs are
+# append-only and a workstation that is not a workstation is wrong for ever. The cost is stated rather than
+# hidden — until the value is configured, every lane write from a container stops — and it is stated in ONE
+# line that also names the act that fixes it, because the variable now has an owner: the launcher sets it.
+# What is NOT done here is invent a third option. `@unknown-workstation` was one: a word that is plainly not
+# a hostname, in the position `swapped <ws>` keys on, which `append-line` does not validate and no reader
+# would ever catch. (c) below still runs, so the row IS flipped to PAUSED and A8(a) step 4 keeps its
+# substance; the gap is named in the handoff, exactly as the missing-uuid case already names its own.
+ws_write_refused=""
+if [[ -z "$ws" ]]; then
+  ws_write_refused=1
+  printf 'REFUSED: no workstation for this lane, so (a) the object-log line and (b) the register line are NOT written — LANES_WORKSTATION names the workstation, nothing here may guess one (`hostname` in a container is the container id, Evidence 6), and both logs are append-only; the launcher owns the value, so `pclaude` exports it from the host into every session and `wave-container-shell.sh` into every container it opens: set LANES_WORKSTATION=<workstation> in this session and run step 4 again. (c) below still runs, so the row is still flipped to PAUSED, and step 2 names the gap in the handoff (`R-A11-14`).\n'
+fi
 # (a) the Amendment 7 object-log PAUSED line — the record `swapped` reads. The uuid is checked BEFORE the
 # write: `unknown` is not a transcript uuid and the object log is append-only, so a line written wrong there
 # is wrong for ever (Amendment 11, SPEC §7). `lanes-edit.sh`'s own session_for() substitutes that literal
@@ -257,6 +276,8 @@ payload="swap"
 if [[ -z "${uuid:-}" ]]; then
   printf "REFUSED: no transcript uuid for this session, so nothing is written to the object log — (b) and (c) below still run, with the gap named.\n"
   printf "It is Amendment 6(c)'s session-cell append that supplies one: lane-start writes it at start, and /restart step 4 writes it for a session that started bare. Run that act, re-read the row in step 2, then come back.\n"
+elif [[ -n "$ws_write_refused" ]]; then
+  printf 'NOT WRITTEN: (a) carries `workstation <ws>` in its payload, and this session has none (refused above).\n'
 else
   LANES_LANE="$lane" LANES_SESSION="$uuid" "$L" log PAUSED "lane:$lane" \
     → "$payload" \
@@ -270,12 +291,25 @@ fi
 # does not. The two are not the same act and the difference is the file: the OBJECT LOG is append-only and a
 # wrong session id there is wrong for ever, while this line is the register's own and its session position
 # SAYS in words that none was recorded — a reader is told the gap instead of being handed silence.
-# The session position is `<uuid>@<workstation>`, and BOTH halves name their gap rather than inventing a
-# value: no uuid is `none recorded`, and no configured workstation is `unknown-workstation` — a word that
-# is plainly not a hostname, where a container id would read back as one (Evidence 6).
-session_field="${uuid:+$uuid@${ws:-unknown-workstation}}"
-[[ -n "$session_field" ]] || session_field="none recorded@${ws:-unknown-workstation}"
-"$L" append-line "PAUSED — lane $lane, session $session_field, $(date -u +%Y-%m-%dT%H:%M:%SZ), on <operator>'s word \"<sanitized verbatim>\"; <what's open, or NOTHING CLAIMED>; handoff refreshed"
+# The session position is `session <uuid>@<workstation>` — ONE transcript uuid and ONE workstation, which is
+# Amendment 7(b):137 — and where there is no uuid THE FIELD IS LEFT OUT and the gap is said in the line's own
+# free text, which is free text by that grammar. `none recorded` was two tokens with a space inside a field
+# the grammar gives one uuid: a reader splitting on `, ` gets `session none recorded@...`, which no parser of
+# this grammar reads back, and A7(b):140 has a line the parser cannot read REPORTED as `unreadable:
+# <file>:<n>` — the skill writing its own unreadable line. `@unknown-workstation` is gone for the reason one
+# field along: `append-line` validates neither half, so it would land and nothing on the estate would ever
+# notice (`R-A11-14`, CF-W2). No workstation is not a value to write here; it is the refusal above.
+session_field=""
+session_gap=" NO session recorded for this lane — Amendment 6(c)'s session-cell append supplies one;"
+if [[ -n "${uuid:-}" ]]; then
+  session_field="session $uuid@$ws, "
+  session_gap=""
+fi
+if [[ -n "$ws_write_refused" ]]; then
+  printf 'NOT WRITTEN: (b) carries the workstation in its session position, and this session has none (refused above).\n'
+else
+  "$L" append-line "PAUSED — lane $lane, ${session_field}$(date -u +%Y-%m-%dT%H:%M:%SZ), on <operator>'s word \"<sanitized verbatim>\";${session_gap} <what's open, or NOTHING CLAIMED>; handoff refreshed"
+fi
 # (c) the row: flip its leading state word, DERIVED from the row itself. row_write_refused is what step 5
 # reads: empty on success, "1" the moment either write below does not. Its tail restates the record's own
 # two facts for a person (SPEC §5), out of `$payload`, so the two writes cannot drift apart.
@@ -292,11 +326,15 @@ the PAUSED line is what the launcher reads on restart, and step 4 is never left 
 exception is the missing uuid, and it is an exception to **(a) alone**: there, not writing the object-log
 line is the point, because an `unknown` in an append-only log cannot be taken back and a wrong session id is
 worse for the next restart than no line at all. **(b) and (c) still run** — the register's file-level `PAUSED`
-line with `none recorded` in the session position, and the row's state cell — because SPEC §7 and clause (e)
+line with the session field LEFT OUT and the gap said in its own free text, and the row's state cell — because SPEC §7 and clause (e)
 say the swap writes them and names the gap, which is how A8(a) step 4's *"never left unwritten"* survives a
 lane that has never had a session recorded (RV-W1, `R-A11-11`). Name that gap in the handoff too: step 2's
 file is the one a reader meets first, so its state line says the record carries no session id and names the
-act that supplies one. Report it, name the act that supplies the uuid, and do not work around it. If `$state` came
+act that supplies one. **A missing WORKSTATION is the other refusal, and it is (a) and (b) together**
+(`R-A11-14`): LANES_WORKSTATION has an owner now — `pclaude` exports it from the host into every session it
+starts and `wave-container-shell.sh` into every bench container — so a session without one was started
+around them, and the answer is to set it and run step 4 again, never to write a placeholder into an
+append-only log. (c) still runs there too, so the row is flipped and the handoff carries the gap. Report it, name the act that supplies the uuid, and do not work around it. If `$state` came
 back empty, re-read the row and take the first `| WORD ·` in it — `replace-in-row` requires exactly one
 occurrence and exits 2 on a guess. If (c) is still refused after that re-read — a rebase conflict, a push
 race, anything `replace-in-row`/`append-row-status` themselves report — leave `row_write_refused` set and

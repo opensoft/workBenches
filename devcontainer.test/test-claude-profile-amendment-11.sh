@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=95
+EXPECTED_SCENARIOS=98
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -102,6 +102,7 @@ CLAUDE_LOG="$TEST_ROOT/claude.log"
 TMUX_LOG="$TEST_ROOT/tmux.log"
 LANE_START_LOG="$TEST_ROOT/lane-start.log"
 LANE_START_CWD_LOG="$TEST_ROOT/lane-start-cwd.log"
+LANE_START_ENV_LOG="$TEST_ROOT/lane-start-env.log"
 CLAUDE_CWD_LOG="$TEST_ROOT/claude-cwd.log"
 LANES_EDIT_LOG="$TEST_ROOT/lanes-edit.log"
 ERR_LOG="$TEST_ROOT/stderr.log"
@@ -298,6 +299,11 @@ printf '%s\n' "$*" >> "${FAKE_LANE_START_LOG:?}"
 # execs inherits and the harness keys the session to (Evidence 3). Logged after
 # the --help early exit above, so a capability probe never creates either file.
 printf '%s\n' "$PWD" >> "${FAKE_LANE_START_CWD_LOG:-/dev/null}"
+# ...and the one ENVIRONMENT value the session it starts is judged on: since
+# `R-A11-14` the launcher resolves the workstation on the host and exports it,
+# and everything downstream — this fake stands for the real lane-start, and the
+# /lane-swap skill stands behind that — reads it or refuses.
+printf 'LANES_WORKSTATION=%s\n' "${LANES_WORKSTATION:-}" >> "${FAKE_LANE_START_ENV_LOG:-/dev/null}"
 lane_argument=""; rest=(); seen=false
 for argument in "$@"; do
     if [[ "$seen" == true ]]; then rest+=("$argument")
@@ -374,6 +380,7 @@ common_env=(
     "FAKE_TMUX_LOG=$TMUX_LOG"
     "FAKE_LANE_START_LOG=$LANE_START_LOG"
     "FAKE_LANE_START_CWD_LOG=$LANE_START_CWD_LOG"
+    "FAKE_LANE_START_ENV_LOG=$LANE_START_ENV_LOG"
     "FAKE_CLAUDE_CWD_LOG=$CLAUDE_CWD_LOG"
     "FAKE_LANES_EDIT_LOG=$LANES_EDIT_LOG"
     "FAKE_LANE_START_HELP=$AMENDMENT_11_HELP"
@@ -393,7 +400,7 @@ note='no lane for this window; run lane-start <repo> <n> inside it'
 
 reset_logs() {
     rm -f "$CLAUDE_LOG" "$TMUX_LOG" "$LANE_START_LOG" "$LANES_EDIT_LOG" "$ERR_LOG" "$OUT_LOG" \
-        "$LANE_START_CWD_LOG" "$CLAUDE_CWD_LOG"
+        "$LANE_START_CWD_LOG" "$CLAUDE_CWD_LOG" "$LANE_START_ENV_LOG"
 }
 
 # launch <scenario env>... -- <launcher args>...
@@ -1941,13 +1948,26 @@ printf '%s\n' "$guard_block" | grep -Fq 'append-line' \
     && fail "RV-W1/R-A11-11: the register's file-level PAUSED line is inside the uuid guard (lines $guard_start-$guard_end), so a lane with no uuid gets neither write and A8(a) step 4's 'never left unwritten' is lost"; assertion
 # ...and it is still written, with the gap in the SESSION position rather than a
 # uuid. Deleting the line altogether would satisfy the assertion above.
-grep -Fq '"$L" append-line "PAUSED — lane $lane, session $session_field' "$SKILL_MD" \
+grep -Fq '"$L" append-line "PAUSED — lane $lane, ${session_field}$(date -u' "$SKILL_MD" \
     || fail "RV-W1: the file-level PAUSED line is not written from a session field that can carry the gap"; assertion
-# ...and BOTH halves of that position name their gap: the uuid's, and — since
-# Evidence 6 — the workstation's, which used to be `$(hostname -s)` and is a
-# container id inside a bench container.
-grep -Fq 'session_field="none recorded@${ws:-unknown-workstation}"' "$SKILL_MD" \
-    || fail "RV-W1: a lane with no recorded session does not NAME the gap in the line's session position"; assertion
+# ...and THE GAP IS NAMED WITHOUT INVENTING A VALUE (`R-A11-14`, CF-W2). The
+# position is `session <uuid>@<workstation>`: one uuid, one workstation
+# (A7(b):137). Where there is no uuid the FIELD IS LEFT OUT and the line's own
+# free text says so — `none recorded` was two tokens with a space in a field the
+# grammar gives one uuid, which A7(b):140 has REPORTED as `unreadable:
+# <file>:<n>`, so the skill was writing its own unreadable line.
+grep -Fq 'session_field="session $uuid@$ws, "' "$SKILL_MD" \
+    || fail "R-A11-14: the session position is not built from the uuid and the workstation alone"; assertion
+grep -Fq 'NO session recorded for this lane' "$SKILL_MD" \
+    || fail "RV-W1: a lane with no recorded session does not NAME the gap in the line it still writes"; assertion
+# The audit is made on the skill's SHELL — its fenced code blocks with their
+# comments stripped — and not on its prose, which ARGUES about both words at
+# length and would answer for the code if it were read.
+skill_write_code="$(awk '/^```/ { fence = !fence; next } fence' "$SKILL_MD" | grep -v '^[[:space:]]*#')"
+printf '%s\n' "$skill_write_code" | grep -Fq 'none recorded' \
+    && fail "R-A11-14: the skill still writes 'none recorded' — two tokens with a space, in a field Amendment 7(b) gives one uuid"; assertion
+printf '%s\n' "$skill_write_code" | grep -Fq 'unknown' \
+    && fail "R-A11-14: the skill still writes a placeholder workstation into a position 'swapped <ws>' keys on, which append-line does not validate"; assertion
 # ...and write (c), the row's state cell, is outside the guard too — SPEC §7 names
 # the two together, and a state cell flipped only where a uuid exists is the same
 # defect one write along.
@@ -2117,6 +2137,39 @@ grep -Fxq -- "mine-5 -- $claude_args --resume session-ws-unknown-window" "$LANE_
 grep -q '^pclaude:' "$ERR_LOG" \
     && fail "Evidence 6: a launch that never needed the workstation was told about it ('$(cat "$ERR_LOG")')"; assertion
 
+# 7e. THE LAUNCHER OWNS THE VALUE AND EXPORTS IT — `R-A11-14` (A11 Addendum 3,
+# ratified by Brett Heap 2026-09-13 "a11 addendum 3 yes"). Before this, the
+# reader honoured LANES_WORKSTATION and the writer refused without it and
+# NOTHING ON THE ESTATE SET IT — a contract with no owner, which inside a bench
+# container means every lane write stops. The owner is this launcher, because it
+# is the one process that runs on the HOST: it resolves the name once and
+# exports it, so the session it starts, the /lane-swap skill in that session and
+# every other writer read the host's word instead of asking a container for one.
+launch "FAKE_TMUX_WINDOW=mine-5" "FAKE_LANE_WITH_ROW=mine-5" "LANES_WORKSTATION=Eagle" \
+    -- run team002 --resume session-ws-exported
+grep -Fxq 'LANES_WORKSTATION=Eagle' "$LANE_START_ENV_LOG" \
+    || fail "R-A11-14: the workstation was not exported into the session the launcher started ('$(cat "$LANE_START_ENV_LOG" 2>/dev/null)')"; assertion
+
+# ...and THREADED ACROSS THE RE-EXEC, where inheritance is not reliable: tmux
+# does not reliably hand a freshly-exported variable to a new session on an
+# already-running server, which is why every other value act 1 needs is put on
+# the command string explicitly.
+tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_SWAPPED_STATUS=8" "CLAUDE_LANE=ws-carried-2" \
+    "LANES_WORKSTATION=Eagle" -- run team002 --resume session-ws-threaded
+grep -q 'LANES_WORKSTATION=Eagle' "$TMUX_LOG" \
+    || fail "R-A11-14: the workstation was not threaded into the tmux session act 1 created ($(cat "$TMUX_LOG"))"; assertion
+
+# 7f. ...AND A CONTAINER THAT NAMES NONE EXPORTS NOTHING. The launcher invents
+# no value where it has none — that is the whole of Evidence 6 — so the session
+# comes up with the variable still unset and the writers in it refuse and say
+# which variable is missing, rather than writing a container id into an
+# append-only log or a placeholder that reads back as a hostname.
+launch "FAKE_TMUX_WINDOW=mine-5" "FAKE_LANE_WITH_ROW=mine-5" \
+    "LANES_WORKSTATION=" "container=docker" \
+    -- run team002 --resume session-ws-not-invented
+grep -Fxq 'LANES_WORKSTATION=' "$LANE_START_ENV_LOG" \
+    || fail "R-A11-14: a container that names no workstation handed the session one anyway ('$(cat "$LANE_START_ENV_LOG" 2>/dev/null)')"; assertion
+
 # 7d. THE RULE IS IN ONE PLACE IN EACH ARTEFACT, AND IT IS FENCED. A static
 # audit, because the failure is the one a scenario cannot reach: a second
 # `hostname` read somewhere else in the file, which fires only on the machine
@@ -2135,8 +2188,12 @@ printf '%s\n' "$ws_launcher_code" | grep -Fq '[[ -e /.dockerenv || -e /run/.cont
 # ...and the skill, which is the WRITER, and the half of Evidence 6 that cannot
 # be taken back: the id the fork wrote is in an append-only log for ever.
 ws_skill_code="$(grep -v '^[[:space:]]*#' "$SKILL_MD")"
-[[ "$(printf '%s\n' "$ws_skill_code" | grep -c 'hostname')" -eq 1 ]] \
-    || fail "Evidence 6: the skill's shell reads hostname $(printf '%s\n' "$ws_skill_code" | grep -c 'hostname') times, and the record it writes is append-only"; assertion
+# ONE hostname READ, counted as the read and not as the word: since `R-A11-14`
+# the skill's refusal SAYS why a container id is not a workstation, and a count
+# of the word alone would make naming the hazard indistinguishable from
+# committing it. `$(hostname` is the read; the fence below is what it is under.
+[[ "$(printf '%s\n' "$ws_skill_code" | grep -Fc '$(hostname')" -eq 1 ]] \
+    || fail "Evidence 6: the skill's shell reads hostname $(printf '%s\n' "$ws_skill_code" | grep -Fc '$(hostname') times, and the record it writes is append-only"; assertion
 printf '%s\n' "$ws_skill_code" | grep -Fq 'ws="${LANES_WORKSTATION:-}"' \
     || fail "Evidence 6: the skill does not take the configured workstation first"; assertion
 printf '%s\n' "$ws_skill_code" | grep -Fq 'if [[ -z "$ws" && ! -e /.dockerenv && ! -e /run/.containerenv && -z "${container:-}" ]]; then' \
@@ -2145,10 +2202,54 @@ printf '%s\n' "$ws_skill_code" | grep -Fq '"$L" swapped "$ws"' \
     || fail "Evidence 6: the skill's step 1 does not read the records for the configured workstation"; assertion
 printf '%s\n' "$ws_skill_code" | grep -Fq '[[ -z "$ws" ]] || payload="$payload; workstation $ws"' \
     || fail "Evidence 6: the record's workstation sub-field is not written from \$ws, or is written even where none is known"; assertion
-printf '%s\n' "$ws_skill_code" | grep -Fq '${ws:-unknown-workstation}' \
-    || fail "Evidence 6: the register line's session position can still name a container"; assertion
-grep -Fq 'NO workstation sub-field' "$SKILL_MD" \
-    || fail "Evidence 6: a record written with no workstation says nothing about the gap"; assertion
+# ...and the writer REFUSES where it has none, rather than writing a third thing
+# nobody declared (`R-A11-14`; the register line's session position used to read
+# `<uuid>@unknown-workstation`, which `append-line` does not validate, so it
+# would have landed and no reader would ever have caught it).
+printf '%s\n' "$ws_skill_code" | grep -Fq 'if [[ -z "$ws" ]]; then' \
+    || fail "R-A11-14: the skill does not refuse where no workstation is configured"; assertion
+printf '%s\n' "$ws_skill_code" | grep -Fq 'ws_write_refused=1' \
+    || fail "R-A11-14: the skill's workstation refusal does not stop the two writes that carry it"; assertion
+grep -Fq 'REFUSED: no workstation for this lane' "$SKILL_MD" \
+    || fail "R-A11-14: the refusal is not stated in one line of its own"; assertion
+[[ "$(grep -Fc 'REFUSED: no workstation for this lane' "$SKILL_MD")" -eq 1 ]] \
+    || fail "R-A11-14: one situation is refused in $(grep -Fc 'REFUSED: no workstation for this lane' "$SKILL_MD") lines, and the ruling says one"; assertion
+grep -F 'REFUSED: no workstation for this lane' "$SKILL_MD" | grep -Fq 'LANES_WORKSTATION' \
+    || fail "R-A11-14: the refusal does not name the variable that fixes it"; assertion
+grep -F 'REFUSED: no workstation for this lane' "$SKILL_MD" | grep -Fq 'pclaude' \
+    || fail "R-A11-14: the refusal does not name the launcher that sets the variable"; assertion
+# ...and (c) is NOT refused with them: the row is still flipped to PAUSED, which
+# is how A8(a) step 4's "never left unwritten" keeps its substance.
+ws_refusal_block="$(awk 'index($0,"if [[ -z \"$ws\" ]]; then"){inside=1} inside{print} inside && $0=="fi"{exit}' "$SKILL_MD")"
+printf '%s\n' "$ws_refusal_block" | grep -Fq 'replace-in-row' \
+    && fail "R-A11-14: the row's state cell is inside the workstation refusal, so a swap from a container leaves the row LIVE"; assertion
+
+# THE LAUNCHER IS THE OWNER, IN BOTH OF THE PLACES IT STARTS SOMETHING.
+printf '%s\n' "$ws_launcher_code" | grep -Fq 'name="$(lane_workstation)"' \
+    || fail "R-A11-14: the exported workstation is not the one lane_workstation resolves, so the reader and the writers could disagree"; assertion
+printf '%s\n' "$ws_launcher_code" | grep -Fq 'export LANES_WORKSTATION="$name"' \
+    || fail "R-A11-14: the launcher resolves a workstation and never exports it, which is the contract with no owner Evidence 6 left"; assertion
+printf '%s\n' "$ws_launcher_code" | grep -Fq 'env_prefix+=("LANES_WORKSTATION=$LANES_WORKSTATION")' \
+    || fail "R-A11-14: the workstation is not threaded across the re-exec, where a fresh export is not reliably inherited"; assertion
+printf '%s\n' "$ws_launcher_code" | grep -Fq 'lane_export_workstation' \
+    || fail "R-A11-14: nothing calls the export, so the session comes up without the value anyway"; assertion
+# ...and the container half, which is the case Evidence 6 was measured in: a
+# bench container cannot name itself, so the host names it on the way in.
+WAVE_SHELL="$REPO_ROOT/scripts/wave-container-shell.sh"
+grep -Fq 'lanes_workstation_env=(--env "LANES_WORKSTATION=$lanes_workstation")' "$WAVE_SHELL" \
+    || fail "R-A11-14: the bench container is opened without the workstation, so every lane write inside it refuses"; assertion
+grep -Fq '${lanes_workstation_env[@]+"${lanes_workstation_env[@]}"}' "$WAVE_SHELL" \
+    || fail "R-A11-14: the workstation is resolved for the container and never passed to docker exec"; assertion
+grep -Fq 'lanes_workstation="${LANES_WORKSTATION:-}"' "$WAVE_SHELL" \
+    || fail "R-A11-14: the container launcher does not take an already-configured workstation first"; assertion
+# ...resolved BEFORE this script assigns `container` for its own purposes. The
+# systemd container marker is an environment variable of exactly that name, and
+# after `container="py-bench"` has run it cannot be read at all: a host that is
+# itself a container would then guess a hostname that is a container id.
+ws_resolve_line="$(grep -n 'lanes_workstation="${LANES_WORKSTATION:-}"' "$WAVE_SHELL" | head -n 1 | cut -d : -f 1)"
+ws_container_line="$(grep -n '^container="py-bench"' "$WAVE_SHELL" | head -n 1 | cut -d : -f 1)"
+[[ -n "$ws_resolve_line" && -n "$ws_container_line" && "$ws_resolve_line" -lt "$ws_container_line" ]] \
+    || fail "R-A11-14: the container marker is read at line $ws_resolve_line, after this script overwrites \$container at line $ws_container_line"; assertion
 # ...and the two documents say it.
 grep -Fq 'AND THE WORKSTATION STEP 4 READS IS CONFIGURED' "$TEST_ROOT/help.out" \
     || fail "Evidence 6: --help does not say where the workstation comes from"; assertion

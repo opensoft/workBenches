@@ -500,6 +500,13 @@ start_profile_tmux() {
   act1_resolve_start_dir
 
   env_prefix=(env WORKBENCHES_CLAUDE_TMUX_CHILD=1)
+  # THE WORKSTATION, THREADED INTO THE SESSION THIS LAUNCH CREATES (`R-A11-14`).
+  # `lane_export_workstation` has already exported it on this side of the
+  # re-exec; tmux does not reliably hand a freshly-exported variable to a new
+  # session on an already-running server, which is why every other value below
+  # is threaded explicitly, and this one is what every WRITER in the session
+  # reads — a session that comes up without it can write no lane record at all.
+  [[ -z "${LANES_WORKSTATION:-}" ]] || env_prefix+=("LANES_WORKSTATION=$LANES_WORKSTATION")
   # --lane/CLAUDE_LANE must survive this re-exec into a new tmux session.
   # tmux does not reliably hand a freshly-exported variable to a new session
   # on an already-running server, so it is threaded through explicitly here
@@ -1030,6 +1037,30 @@ lane_workstation() {
   printf '%s\n' "$name"
 }
 
+lane_export_workstation() {
+  # THE LAUNCHER OWNS `LANES_WORKSTATION` — `R-A11-14` (A11 Addendum 3 on
+  # new-workstation#20, ratified by Brett Heap 2026-09-13 "a11 addendum 3
+  # yes"). Evidence 6 left the reader honouring this variable and the writer
+  # refusing without it, and NOTHING ON THE ESTATE SET IT: a contract with no
+  # owner, which in a bench container means every lane write stops.
+  #
+  # The owner is this launcher, because it is the one process that runs on the
+  # HOST and starts the sessions everything else runs in. The name is resolved
+  # once, here, by the same function precedence 4 reads — configured value
+  # first, `hostname` only where this is not a container — and EXPORTED, so the
+  # Claude this launch starts, the /lane-swap skill inside it and every other
+  # writer downstream read the host's word instead of asking a container what
+  # its name is. An already-configured value wins, because `lane_workstation`
+  # takes it first; where there is no answer at all, nothing is exported and
+  # nothing is invented, and the writers refuse and say which variable is
+  # missing (SKILL.md step 4). The container half of the same ruling is
+  # `scripts/wave-container-shell.sh`, which passes it through `docker exec`.
+  local name
+  name="$(lane_workstation)"
+  [[ -n "$name" ]] || return 0
+  export LANES_WORKSTATION="$name"
+}
+
 # THE SWAP RECORDS, READ AT MOST ONCE PER LAUNCH. Two callers want them — the
 # lane order's precedence 4 and the directory order's rung 2 — and `swapped` is
 # on the path of every launch, so the read is cached rather than repeated. It
@@ -1250,7 +1281,7 @@ resolve_lane() {
   # and every function defined below it goes missing at run time while `bash -n`
   # still says the syntax is fine.
   if [[ -n "${swapped_ws_unknown:-}" ]]; then
-    lane_read_note="${lane_read_note:-this is a container and LANES_WORKSTATION names no workstation, so the swap records for this workstation were not read (new-workstation#20, Evidence 6); set LANES_WORKSTATION=<workstation>}"
+    lane_read_note="${lane_read_note:-this is a container and LANES_WORKSTATION names no workstation, so the swap records for this workstation were not read (new-workstation#20, Evidence 6); the launcher on the host exports it into every session and container it starts, so set LANES_WORKSTATION=<workstation> here}"
   fi
   first_row="$(printf '%s\n' "${swapped_rows:-}" | head -n 1)"
   if [[ "${swapped_status:-8}" -eq 0 && -n "${swapped_rows:-}" && "$first_row" == *$'\t'* ]]; then
@@ -1672,6 +1703,17 @@ that has existed for an hour — so where nothing is configured THERE, the recor
 are not read at all and the one line says so and names LANES_WORKSTATION.
 Outside a container `hostname` stands exactly as it always did.
 
+AND THIS LAUNCHER IS WHAT SETS IT (`R-A11-14`). The value is resolved once on
+the HOST and exported into the session this launch starts — threaded across the
+tmux re-exec beside the window's name and id — so the Claude that comes up, the
+/lane-swap skill in it and every other writer read the host's word rather than
+asking a container what its name is. An already-set LANES_WORKSTATION wins.
+Where there is no answer at all nothing is exported and nothing is invented:
+the writers then REFUSE, each naming this variable, because both lane logs are
+append-only and a workstation that is not a workstation is wrong for ever.
+scripts/wave-container-shell.sh carries the same value through `docker exec`
+into the bench containers it opens.
+
 THE WINDOW IS REUSED (Amendment 11(2), act 1). Run inside tmux, this launcher
 keeps the CURRENT window: it sets CLAUDE_CONFIG_DIR and execs in place, so the
 window's name and its id survive a restart and the window name resolves the
@@ -1827,6 +1869,10 @@ case "$action" in
             exit 2
           }
         fi
+        # THE WORKSTATION IS RESOLVED AND EXPORTED BEFORE ANYTHING IS
+        # STARTED (`R-A11-14`): act 1 threads it into the session it creates,
+        # and the Claude this launch execs inherits it either way.
+        lane_export_workstation
         capture_lane_window
         if claude_run_is_interactive "$@"; then
           start_profile_tmux "$profile" "$@"

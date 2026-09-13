@@ -337,11 +337,34 @@ puts that id into an append-only log, which is what the forked orchestrator of
 Evidence 6 did. `LANES_WORKSTATION` is honoured everywhere, container or not.
 Failing that, `hostname` stands exactly as it did — but only where this is not a
 container; inside one with nothing configured the records are **not read**, and
-the launcher's one line names the gap and `LANES_WORKSTATION`. The `/lane-swap`
-skill follows the same rule at all three of its uses: the record it writes
-carries `workstation <ws>` or **omits the sub-field and says so**, and the
-register line's session position reads `<uuid>@unknown-workstation` rather than
-naming a container.
+the launcher's one line names the gap and `LANES_WORKSTATION`.
+
+**And this launcher is what SETS it** (`R-A11-14`, A11 Addendum 3, ratified by
+Brett Heap 2026-09-13 *"a11 addendum 3 yes"*). Before this the reader honoured
+`LANES_WORKSTATION`, every writer refused without it, and nothing on the estate
+wrote it — a contract with no owner, which inside a bench container means every
+lane write stops. The owner is the launcher, because it is the one process that
+runs on the **host**: `claude-profile` resolves the name once (configured value
+first, `hostname -s` only where this is not a container) and **exports** it into
+the session it starts, threading it across the tmux re-exec beside the window's
+name and id; `scripts/wave-container-shell.sh` passes the same value through
+`docker exec` into the bench container it opens, resolved before that script
+assigns `container` for its own purposes — the systemd container marker is an
+environment variable of exactly that name. An already-set value always wins.
+Where there is no answer at all, **nothing is exported and nothing is
+invented**: the `/lane-swap` skill and every other writer then **refuse**, in
+one line that names `LANES_WORKSTATION` and the launcher that sets it, because
+the register and the object log are both append-only and a workstation that is
+not a workstation is wrong for ever. The row's own state cell is still flipped
+to `PAUSED`, so Amendment 8(a) step 4's *"never left unwritten"* keeps its
+substance, and the handoff carries the gap. `@unknown-workstation` and
+`none recorded` are **gone from the skill**: the first is a word that is plainly
+not a hostname in the position `swapped <ws>` keys on and `append-line`
+validates neither half, so it would have landed and no reader would ever have
+caught it; the second put a space inside a field Amendment 7(b) gives one
+transcript uuid, which that clause has *reported* as `unreadable`. Where there
+is no uuid the session field is **left out** and the line's own free text says
+so.
 
 **The lane's directory is resolved, not assumed (Amendment 11(3)).**
 `lane-start`'s own default is `$PROJECTS_ROOT/<repo>`, and a checkout that
