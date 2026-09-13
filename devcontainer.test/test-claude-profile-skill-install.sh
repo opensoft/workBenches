@@ -687,6 +687,18 @@ done
 handover_items="$(sed -n '/SO THE SIX BEHAVIOURS BELOW ARE THE HANDOVER/,/-->/p' "$SKILL_SOURCE" | grep -cE '^ +[1-6]\. ')"
 [[ "$handover_items" -eq 6 ]] \
     || fail "ruling 10: the handover lists $handover_items items where the ruling names six"; assertion
+# ...AND ITEM 5 TRAVELS WITH ITS QUALIFICATION, not just with its act. Ruling 10
+# is "every sentence that placed `R-A11-16`'s closing act in the launcher's
+# vendored file is REHOMED — the ruling moves with the act rather than dying
+# with the file". Since Amendment 12 went in force (2026-09-13T18:20:44Z) that
+# act has two performers: A12's guard TYPES `/rename <lane>` into the pane with
+# `tmux send-keys`, and A11's own reconciliation section makes this printed line
+# the fallback "wherever that guard is not installed". A #26 copy that absorbs
+# the act and drops that sentence would re-assert a claim the text has already
+# corrected, in the one file every host will have.
+handover_block="$(sed -n '/SO THE SIX BEHAVIOURS BELOW ARE THE HANDOVER/,/-->/p' "$SKILL_SOURCE")"
+grep -Fq 'tmux send-keys' <<<"$handover_block" \
+    || fail "ruling 10: handover item 5 hands over the /rename act without the Amendment 12 qualification that now governs it"; assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"

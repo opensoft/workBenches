@@ -230,10 +230,17 @@ and a `lane-start` that refused, both of which start bare Claude in the same
 window — a `claude` typed by hand, and a workstation whose `lane-start`
 **predates `3719d97`**, since the fix lives in a checkout rather than in the
 air. From inside a session already running
-under a derived name, `/rename <lane>` is the only act that fixes it: there is no
-API to rename a running session, which is why every surface prints the act rather
-than performing it, and prints it **conditionally** — *if its name is not the
-lane* — rather than always.
+under a derived name, `/rename <lane>` is what fixes it — and **that act now has
+two performers.** There is still no API to rename a running session, which is why
+every surface HERE prints the act rather than performing it, and prints it
+**conditionally** — *if its name is not the lane* — rather than always. But since
+**Amendment 12** (the name guard, in force 2026-09-13T18:20:44Z) its
+`UserPromptSubmit` guard and its `SessionStart` hook TYPE that same line into the
+session's own tmux pane with `tmux send-keys` — a keystroke rather than an API —
+and Amendment 11's own reconciliation section rules that **A12 governs the act
+while this printed line is the fallback wherever that guard is not installed**,
+which is every workstation until A12's adoption act 3 lands. Nothing here is the
+only way, and nothing here performs it.
 
 **What precedence step 3 can answer depends on the tmux server, and one case is
 still owed to the helper (`RV-W7`).** Window ids are reissued from `@0` when the
@@ -528,9 +535,14 @@ entire part in the restart is re-running `pclaude <profile>`. **The guard
 performs no step of the swap itself** — it is a hook, it can put one line into
 the session's context and nothing else — and **the directive fires only in a
 session that HOLDS a lane.** That second fence matters because the guard is
-wired for every profile and armed per *directory*: a bare `claude`, or a second
-window in a lane's checkout, is armed too, and telling it to swap would have it
-pause a lane it does not hold. `WORKBENCHES_CLAUDE_LANE` — exported by the
+wired for every profile and armed per *directory*: a second window in a lane's
+checkout, or the bare Claude this launcher starts behind a `lane-start` refusal,
+is armed too, and telling it to swap would have it pause a lane it does not hold.
+(A `claude` typed by hand is a different case and is **not** covered: it reads
+`~/.claude`, which `scripts/setup-claude-profiles.sh` gives the shared status
+line and the `SessionStart` entry and **no** `UserPromptSubmit` entry, so the
+guard never runs there at all. That is the wiring's scope stated rather than
+assumed — the automatic swap is a **launcher-managed profile** behaviour.) `WORKBENCHES_CLAUDE_LANE` — exported by the
 launcher only after `lane-start` took the lane, and unset again where
 `lane-start` declined — is the fence, and the directive names the lane it is
 about. Where the session carries no lane, the guard prints today's advice at

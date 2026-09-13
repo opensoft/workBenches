@@ -2452,8 +2452,76 @@ grep -Fq 'deliberately not for' "$DOCS_MD" \
 # lane-start at all: the failure Evidence 4 measured.
 grep -Fq 'openrepoproject-b9' "$DOCS_MD" \
     || fail "Evidence 4: the docs claim a derived name without the one that was measured"; assertion
-grep -Fq '`/rename <lane>` is the only act that fixes it' "$DOCS_MD" \
-    || fail "Evidence 4(b): the docs do not name the one act that fixes a derived name from inside a session"; assertion
+grep -Fq '`/rename <lane>` is what fixes it' "$DOCS_MD" \
+    || fail "Evidence 4(b): the docs do not name the act that fixes a derived name from inside a session"; assertion
+
+# ...AND SINCE AMENDMENT 12 THAT ACT HAS TWO PERFORMERS, so no document here may
+# call it the only one. A11 is IN FORCE (ratified 2026-09-13T19:41:04Z, verbatim
+# "ratify 21 and 71 when ready", landed `0e40d6e` with ratification commit
+# `f12f96b`), and the section its ratification commit added — "Amendments 12 and
+# 13, which went in force while this text was in confirmation", `:2164-2177` at
+# `0e40d6e` — rules the first bullet in these words: "A RUNNING session's name:
+# AMENDMENT 12 GOVERNS THE ACT; this text keeps the fallback." A12's
+# `UserPromptSubmit` guard and `SessionStart` hook TYPE `/rename <lane>` into the
+# session's own tmux pane with `tmux send-keys`, "which is a keystroke rather
+# than an API". So the NO-API half of every sentence here stays exactly true and
+# the "nothing else can" half is superseded, and this PR's printed line is "what
+# a person still has wherever it is not" installed — every workstation until
+# A12's adoption act 3 lands.
+#
+# BOTH HALVES ARE PINNED, in the three documents that print the act: the
+# performer must be named, and the retired claim must be gone. The retired
+# string was asserted POSITIVELY by this suite until this round, which is why it
+# is inverted here rather than merely deleted — a suite that only stopped
+# requiring it would let the next writer put it back.
+for rename_file in "$DOCS_MD" "$SKILL_MD" "$LAUNCHER"; do
+    grep -Fq 'tmux send-keys' "$rename_file" \
+        || fail "A12 reconciliation: $(basename "$rename_file") prints the /rename act and never names Amendment 12's guard, which types it"; assertion
+    grep -Fq 'is the only act that fixes it' "$rename_file" \
+        && fail "A12 reconciliation: $(basename "$rename_file") still calls /rename the ONLY act; A12 governs it and this text is the fallback"; assertion
+    grep -Fq 'the only act there is' "$rename_file" \
+        && fail "A12 reconciliation: $(basename "$rename_file") still says /rename is the only act there is"; assertion
+done
+# ...and the no-API half is NOT dropped with it: it is the half A12's own note
+# calls "still exactly true", and a document that lost it would read as if an
+# API had appeared.
+grep -Fq 'no API to rename a running session' "$SKILL_MD" \
+    || fail "A12 reconciliation: the skill dropped the half that is still true — there is no API, and the keystroke is not one"; assertion
+
+# THE AMENDMENT IS IN FORCE, AND ITS CITATIONS NAME THE LANDED FILE. Until this
+# round the text was a DRAFT on a PR and every citation here was qualified by a
+# draft head. It landed as `0e40d6e`, and the ratification commit MOVED THE
+# LINES ONE LAST TIME — clause (c)'s window paragraph `:663` -> `:687`, the
+# `R-A11-27` paragraph `:2025` -> `:2035` — which is the citation gate's own
+# rule proving itself a third time. Two things are required of this PR: the
+# landed path is named where a reader would go looking, and NOTHING here claims
+# the word ratified this PR, because the amendment's own list says the launcher
+# half lands under it when its own confirmation says READY.
+grep -Fq 'home/.agents/protocols/lane-collision-protocol-amendment-11.md' "$LAUNCHER" \
+    || fail "in force: the launcher cites the amendment and never names the file it landed as, so a reader is sent to a PR diff"; assertion
+grep -Fq '0e40d6e' "$SKILL_MD" \
+    || fail "in force: the skill's R-A11-27 citation still reads only at a DRAFT head"; assertion
+grep -Fq 'in force' "$SKILL_MD" \
+    || fail "in force: the skill quotes a ruling from a text it still presents as unratified"; assertion
+grep -Fq 'still a DRAFT' "$LAUNCHER" \
+    && fail "in force: the launcher still calls the amendment text a DRAFT; it was ratified 2026-09-13T19:41:04Z and landed at 0e40d6e"; assertion
+grep -Fq 'when its own confirmation says READY' "$LAUNCHER" \
+    || fail "in force: nothing says the ratifying word did NOT ratify this PR, so a reader could take this file as ratified too"; assertion
+
+# THE GUARD'S WIRING SCOPE, said rather than assumed (the automated reviewer's
+# `setup-claude-profiles.sh:175`). ARMED is the per-directory walk and reaches
+# anything started under the tree; WIRED is the `hooks.UserPromptSubmit` entry,
+# which `configure_profile_runtime` writes into a PROFILE's settings.json and
+# nowhere else. A `claude` typed by hand reads `~/.claude`, whose settings.json
+# `setup-claude-profiles.sh` gives the status line and the SessionStart entry and
+# no UserPromptSubmit entry — so the guard never runs there, and a sentence
+# opening its list with "a bare `claude`" reads as a claim to cover it.
+[[ "$(grep -c 'UserPromptSubmit' "$REPO_ROOT/scripts/setup-claude-profiles.sh")" -eq 1 ]] \
+    || fail "guard scope: setup-claude-profiles.sh now mentions UserPromptSubmit more than once — if it WIRES the guard for bare claude, the scope sentences below are wrong"; assertion
+grep -Fq 'WIRED AND ARMED ARE NOT THE SAME WORD' "$GUARD_SH" \
+    || fail "guard scope: the guard's lane fence does not distinguish armed from wired, so a reader takes a hand-typed claude as covered"; assertion
+grep -Fq 'launcher-managed profile' "$DOCS_MD" \
+    || fail "guard scope: the docs claim the fence without saying the automatic swap is a profile behaviour"; assertion
 # ...and they state WHAT IS TRUE AT THE HEAD, with the commit that made it so —
 # CF2-W1. SPEC rev 3 §0.9 measured `--name` on the new-session branch alone and
 # this document said so; adoption act 0 then merged as `opensoft/brett-wip#5` at
@@ -2787,7 +2855,7 @@ grep -Fq 'claude --resume' "$GUARD_SH" \
 grep -Fq 'are not lane surfaces' "$SKILL_MD" \
     || fail "evidence 4: the skill no longer refuses /resume and claude --resume as lane surfaces (A8 Addendum 2 R-A8-6)"; assertion
 grep -Fq '/rename <lane>' "$SKILL_MD" \
-    || fail "evidence 4(b): the skill's identity triple does not name /rename <lane>, the only act that fixes a derived session name from inside"; assertion
+    || fail "evidence 4(b): the skill's identity triple does not name /rename <lane>, the act that fixes a derived session name from inside"; assertion
 # ...AND IT ENDS WITH THE SAME ACT, for the session that comes NEXT (CF-W5,
 # `R-A11-16`). Step 1's `/rename` is the incoming one, for the session running
 # the skill. The restart step 5 prints RESUMES, and `lane-start` passes

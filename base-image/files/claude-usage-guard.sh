@@ -148,13 +148,25 @@ hhmm() { [ -n "${1:-}" ] && [ "$1" != "null" ] && date -u -d "@$1" +%H:%MZ 2>/de
 # AND IT IS ADDRESSED TO A SESSION THAT HOLDS A LANE — TWO FENCES, and the
 # second is SPEC §9's own (A11 Addendum 1 `R-A11-6`, on the review's F14).
 #
-# THE LANE FENCE. This guard is wired for EVERY profile (claude-profile:122,
+# THE LANE FENCE. This guard is wired for EVERY PROFILE (claude-profile:122,
 # 138, 155) and armed per DIRECTORY, and clause (g) has lane-start arm the
-# lane's own checkout. So a bare `claude`, a second window in that checkout, or
-# any other session started under it is armed too — and telling such a session
-# to "run /lane-swap NOW, and do not ask the operator" would have it swap a lane
-# IT DOES NOT HOLD, which is the collision this whole protocol exists to
-# prevent. The fence is the lane the launcher already knows it handed over:
+# lane's own checkout. So a second window in that checkout, the bare Claude this
+# launcher starts behind a lane-start refusal, or any other PROFILE session
+# started under it is armed too — and telling such a session to "run /lane-swap
+# NOW, and do not ask the operator" would have it swap a lane IT DOES NOT HOLD,
+# which is the collision this whole protocol exists to prevent.
+#
+# WIRED AND ARMED ARE NOT THE SAME WORD, and the difference is the scope of this
+# guard rather than a quibble. ARMED is the per-directory `.claude/usage-guard.on`
+# walk and reaches anything started under that tree; WIRED is the
+# `hooks.UserPromptSubmit` entry, and `configure_profile_runtime` writes that
+# into a PROFILE's settings.json and nowhere else. A `claude` typed by hand reads
+# `~/.claude`, which `scripts/setup-claude-profiles.sh` gives the shared status
+# line and the SessionStart entry and NO UserPromptSubmit entry — so this guard
+# never runs there, armed or not, and the automatic swap is a launcher-managed
+# profile behaviour. Said here because an earlier revision of this paragraph
+# opened its list with "a bare `claude`", which reads as a claim to cover the
+# one session that is outside the wiring altogether. The fence is the lane the launcher already knows it handed over:
 # `WORKBENCHES_CLAUDE_LANE`, exported by claude-profile only after lane-start
 # took the lane and UNSET again where lane-start declined it. Where the session
 # carries no lane the guard prints today's advice at the same threshold and

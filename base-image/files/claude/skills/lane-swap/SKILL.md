@@ -43,7 +43,12 @@ description: "/lane-swap (alias /swap) prepares this lane for a usage reset or p
           `CF2-W1` CORRECTED HERE, not as it stood at `fa0230d`: `lane-start`
           names every branch it launches since adoption act 0 merged at
           `3719d97`, so the line is for the session that came up WITHOUT
-          `lane-start`, and no act is scheduled to remove it;
+          `lane-start`, and no act is scheduled to remove it — AND CARRIED WITH
+          THE A12 QUALIFICATION TOO: Amendment 12 governs the act and types it
+          with `tmux send-keys` where its guard is installed, this printed line
+          being the fallback until A12's act 3 lands (A11's own reconciliation
+          section). A copy of this ruling that keeps the act and drops that
+          sentence re-asserts a claim the text has already corrected;
        6. `/swap` in the description above.
 
      A copy of #26's that lacks any of the six is a REGRESSION on the day #74
@@ -419,8 +424,14 @@ fi
 #
 # AND (c) IS REFUSED WITH (a) AND (b) WHERE THERE IS NO WORKSTATION — `R-A11-27` (A11 Addendum 4 ruling 11,
 # RATIFIED by Brett Heap 2026-09-13T21:08:26Z, verbatim "a11 addendum 4 yes"). The amendment text at
-# `brettheap/new-workstation#21` :2025-2048 at `613452f` rules it in these words, and names this file while
-# doing so:
+# `brettheap/new-workstation#21` :2035-2058 at `0e40d6e` rules it in these words, and names this file while
+# doing so. That head is the MERGE that landed the ratified text on `brettheap/new-workstation` main as
+# `home/.agents/protocols/lane-collision-protocol-amendment-11.md`, whose Status line now reads `in force`
+# — ratified by Brett Heap 2026-09-13T19:41:04Z, verbatim "ratify 21 and 71 when ready", ratification
+# commit `f12f96b`. The paragraph was `:2025-2048` at `613452f`, the DRAFT head this citation first named,
+# and landing moved it ten lines: cite the ruling, and read the number only beside the head it is given at.
+# That word does not ratify THIS file — the amendment's own list says the launcher half lands under it when
+# its own confirmation says READY.
 #
 #   "So the `/lane-swap` act in a container with no `LANES_WORKSTATION` refuses (a) the lane's object-log
 #    `PAUSED` line and (b) the register's own line and row-status flip, naming the variable and the launcher
@@ -512,8 +523,18 @@ lane-start --help 2>/dev/null | grep -q -- '--confirm' \
 #
 # WHICH ACT REMOVES THIS LINE: none is scheduled, and that is exactly why it is printed CONDITIONALLY
 # rather than always. There is no API to rename a running session from inside, so wherever a session comes
-# up outside `lane-start` the operator's `/rename <lane>` is the only act there is — the amendment says the
-# same at clause (i) point 2, where a `/restart` in a session already running "needs it always".
+# up outside `lane-start` the `/rename <lane>` act is what fixes it — the amendment says the same at clause
+# (i) point 2, where a `/restart` in a session already running "needs it always".
+#
+# BUT IT IS NO LONGER THE ONLY PERFORMER, and Amendment 11's own text says which governs. Amendment 12 (the
+# name guard) went in force 2026-09-13T18:20:44Z, and A11's "Amendments 12 and 13" reconciliation section —
+# added by the ratification commit, `:2164-2177` at `0e40d6e` — rules: "A RUNNING session's name: AMENDMENT
+# 12 GOVERNS THE ACT; this text keeps the fallback". A12's `UserPromptSubmit` guard and `SessionStart` hook
+# TYPE `/rename <lane>` into the session's own tmux pane with `tmux send-keys`, "which is a keystroke rather
+# than an API", so the no-API half stays exactly true and the "nothing can set the name from inside a
+# running session" half is superseded. This printed line is "what a person still has wherever it is not"
+# installed — "every workstation until Amendment 12's own adoption act 3 lands". One act, two performers,
+# and this file claims to be neither the only one nor the governing one.
 echo 'then, in the session that comes up: if its name is not the lane, type /rename <lane> (lane-start names every session it launches, the resume branches included, since adoption act 0 landed as opensoft/brett-wip#5 @3719d97; a session that came up WITHOUT it — a missing or refusing lane-start, or a bare claude — carries the name the harness derived, and no API renames one from inside)'
 ```
 
@@ -540,9 +561,12 @@ quietly made. So the third leg of the identity triple — Amendment 2's messagin
 wherever the restart reaches `lane-start`. What is left is the session that does NOT reach it: a launcher
 that found no `lane-start` (Evidence 5) or one that refused, both of which start bare Claude in the same
 window, and a `claude` typed by hand. There the name is whatever the harness derived, and `/rename <lane>`
-typed in that session is the only act that fixes it, because there is no API to rename a running session
-from inside. Step 5 therefore prints the act CONDITIONALLY — *if its name is not the lane* — which is why it
-needs no expiry: it is silent on every path `lane-start` named (`R-A11-16`, CF-W5).
+typed in that session is what fixes it: there is still no API to rename a running session from inside, and
+since Amendment 12 the name guard TYPES that same line into the pane with `tmux send-keys` where it is
+installed — which is nowhere until A12's adoption act 3 lands, so the printed act is the live fallback and
+not a claim to be the only one (A11's reconciliation section, `:2164-2177` at `0e40d6e`). Step 5 therefore
+prints the act CONDITIONALLY — *if its name is not the lane* — which is why it needs no expiry: it is
+silent on every path `lane-start` named (`R-A11-16`, CF-W5).
 
 **`/resume` and `claude --resume <title>` are not lane surfaces** (A8 Addendum 2, R-A8-6): a lane is entered
 through `pclaude` or `lane-start`, and by no other door. Do not offer either as a fallback.
