@@ -198,12 +198,62 @@ running in it instead — on Eagle, eight of sixteen live windows were simply
 called `claude` when this was measured — so a restart could never bind by
 window name and always fell to the swap record's one confirmation below.
 
+**The lane's session is NAMED by `lane-start`, which is why every path runs it
+(new-workstation#20, Evidence 4).** Amendment 2 makes the Claude session's name
+the lane's messaging address — the third leg of the identity triple, beside the
+window's name and the transcript. Measured on `openRepoProject-1` on
+2026-09-13: the transcript carries `customTitle: openRepoProject-1`, set once by
+`/rename`, while every process that resumed it that day through a bare
+`claude --resume <uuid>` carried a *derived* record name — `openrepoproject-b9`,
+`-1e`, `-27`, `-45` — and the derived name is what the status line's
+`session_name` and `ListAgents` display. So no surface here ever prints or execs
+a bare `claude --resume` as the way back into a lane: the way back is
+`pclaude <profile>`, which reaches `lane-start`. The bare Claude behind a refusal
+is left **unnamed** on purpose, because it holds no lane, and naming it for one
+would put the lane's own address on a session the register does not know.
+
+**And `lane-start` names only the session it CREATES.** `--name "$LANE"` is on
+its new-session branch (`lane-start:823`); its two resume branches build
+`claude --resume "$row_sid"` (`:803`) and `claude --resume "$LANE"` (`:812`) and
+carry no `--name` at all — read back at the head this was written against. So a
+restart that *does* go through `lane-start` and resumes is still left with a
+derived record name today; closing that is the tooling PR's (`SPEC` rev 3 §0.9
+and §13.3). From inside a session already running under a derived name,
+`/rename <lane>` is the only act that fixes it — there is no API to rename a
+running session, which is why every surface prints the act rather than
+performing it.
+
+**What precedence step 3 can answer depends on the tmux server, and one case is
+still owed to the helper (`RV-W7`).** Window ids are reissued from `@0` when the
+server is replaced, so after a reboot every record the old server's sessions
+wrote names a window that is gone: on Eagle at 15:5x on 2026-09-13, `@0`…`@4`
+across five sessions, four of the five windows called `claude`, and all five swap
+records naming sessions from the server that had just been replaced. That is the
+**safe** half — nothing matches, the step answers nothing, and the launch falls
+to the next one — and it is also why a restart taken right after a reboot still
+meets the swap record's one confirmation. The unsafe half is this PR's ninth
+divergence: a record carrying an `<@id>` whose `<session>:<index>` now belongs to
+a *different* window would bind this lane to a stranger's window if it were
+matched on the ref alone. The rule that closes it — *a record carrying an
+`<@id>` is matched on its `<session>:<index>` only where the window now holding
+that ref reports that same id* — belongs in `lanes-edit.sh window-lane`, where
+the launcher, `/restart` and the `/lane-swap` skill share one implementation.
+This PR **withdrew its own private copy** of that rule rather than keep a second
+implementation of the one thing that stops the three callers disagreeing about
+which lane a window is; `SPEC` rev 3 §5 now owns it and gives it to `window-lane`
+(§11), and the tooling PR implements it (§13.3). It is `RV-T6`/`RV-W7` on the two
+reviews — `RV-T7` is the neighbouring rule, which scopes `window-lane` to the
+asking workstation. Until the helper carries both, this launcher matches exactly
+what the helper answers and adds nothing of its own.
+
 Pass `--lane <repo>-<n>` (or set `CLAUDE_LANE=<repo>-<n>` in the environment)
 to hand the launch to `lane-start` instead of exec'ing Claude directly.
 `lane-start` (from `opensoft/brett-wip`'s `lanes/`, put on `PATH` by that
 repository's `scripts/link-estates`) renames the current tmux window to the
 lane, records the lane in the lane register, and starts this same Claude
-binary under this same profile with `--resume`/`--name <lane>` as appropriate.
+binary under this same profile — `--name <lane>` where it creates a session,
+`--resume` where it continues one (see Evidence 4 above for which branch carries
+which).
 Naming a lane while `lane-start` is not on `PATH` refuses with the fix instead
 of launching an unnamed session.
 

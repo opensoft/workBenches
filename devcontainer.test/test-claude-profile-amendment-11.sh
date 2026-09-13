@@ -1675,6 +1675,36 @@ grep -Fq 'entered' "$DOCS_MD" \
     || fail "RV-W5/Evidence 3: the docs do not say the launcher enters the lane's directory"; assertion
 grep -Fq 'A missing `lane-start` is said, not passed over' "$DOCS_MD" \
     || fail "Evidence 5: the docs still describe the silent degradation this launcher no longer performs"; assertion
+
+# EVIDENCE 4 IN THE DOCUMENT A PERSON READS. §6c pins what the CODE does about
+# the session's name — nothing, which is the rule. This pins what the docs SAY,
+# because "the way back is `pclaude <profile>`" is an instruction to a person,
+# and a person who reaches for `claude --resume <uuid>` instead gets a session
+# that resumes correctly, reports a derived name and never goes through
+# lane-start at all: the failure Evidence 4 measured.
+grep -Fq 'openrepoproject-b9' "$DOCS_MD" \
+    || fail "Evidence 4: the docs claim a derived name without the one that was measured"; assertion
+grep -Fq '`/rename <lane>` is the only act that fixes it' "$DOCS_MD" \
+    || fail "Evidence 4(b): the docs do not name the one act that fixes a derived name from inside a session"; assertion
+# ...and they state §0.9's CORRECTION rather than the overclaim: lane-start names
+# the session it creates, and its two resume branches carry no --name today.
+grep -Fq 'names only the session it CREATES' "$DOCS_MD" \
+    || fail "Evidence 4/SPEC rev 3 §0.9: the docs still say lane-start names every launch it makes, which is the overclaim the SPEC measured"; assertion
+grep -Fq 'carry no `--name` at all' "$DOCS_MD" \
+    || fail "SPEC rev 3 §0.9: the docs do not say which branches leave a resumed session derived"; assertion
+
+# RV-W7 — DIVERGENCE 9's RESIDUE IS NAMED, with the finding ids the two reviews
+# actually gave it. A rule this PR withdrew and nobody had implemented is a hole
+# with no owner; rev 3 §5 gave it to `window-lane` and §13.3 to the tooling PR,
+# and the next reader of this launcher meets it warned or not at all.
+grep -Fq 'RV-W7' "$DOCS_MD" \
+    || fail "RV-W7: divergence 9's residue is named in no document"; assertion
+grep -Fq 'reissued from `@0`' "$DOCS_MD" \
+    || fail "RV-W7/SPEC §0.7: the docs do not say that a replaced tmux server empties precedence step 3, which is exactly when a restart happens"; assertion
+grep -Fq 'only where the window now holding' "$DOCS_MD" \
+    || fail "RV-W7: the residue is named without the rule that closes it"; assertion
+grep -Fq 'RV-T6' "$DOCS_MD" \
+    || fail "RV-W7: the text half of this finding is cited by the wrong id, and RV-T6 is the one that carries the agreement rule"; assertion
 grep -Fq 'neither asked nor told anything' "$DOCS_MD" \
     && fail "Evidence 5: the docs still carry the sentence Evidence 5 overturned"; assertion
 
@@ -1801,11 +1831,19 @@ grep -Fq 'export CLAUDE_PROFILE_NAME="$profile"' "$LAUNCHER" \
 #
 # A bare `claude --resume <uuid>` continues the transcript and leaves the
 # session's RECORD NAME derived (`openrepoproject-b9`), which is what the
-# statusline and `ListAgents` display; `lane-start` passes `--name <lane>` on
-# every launch it makes (lane-start:823), so the identity triple's third leg is
-# correct exactly when the restart goes through it. The rule owed to this PR is
-# therefore negative — the launcher, the guard and the skill never offer that
-# command as the lane's act — and a negative rule is audited, not scenario'd.
+# statusline and `ListAgents` display.
+#
+# WHAT `lane-start` ACTUALLY DOES ABOUT IT, corrected against SPEC rev 3 §0.9
+# and read back at `lane-start` itself: `--name "$LANE"` is on the NEW-SESSION
+# branch alone (`:823`); the two resume branches build `claude --resume
+# "$row_sid"` (`:803`) and `claude --resume "$LANE"` (`:812`) and carry NO
+# `--name`. An earlier pass of this comment said lane-start names every launch
+# it makes, which is the overclaim the SPEC measured: a restart that goes
+# through lane-start and RESUMES is still derived today, and closing that is the
+# tooling PR's (§13.3). What is true here is the negative rule owed to THIS PR —
+# the launcher, the guard and the skill never offer a bare `claude --resume` as
+# the lane's act, and never name a session themselves — and a negative rule is
+# audited, not scenario'd.
 #
 # The launcher's own `--help` DESCRIBES lane-start's `--resume/--name <lane>`,
 # which is the correct thing to describe, so the audit is made against the
@@ -1949,6 +1987,10 @@ grep -Fq 'NO workstation sub-field' "$SKILL_MD" \
 # ...and the two documents say it.
 grep -Fq 'AND THE WORKSTATION STEP 4 READS IS CONFIGURED' "$TEST_ROOT/help.out" \
     || fail "Evidence 6: --help does not say where the workstation comes from"; assertion
+grep -Fq 'passes `--name <lane>` on the session it CREATES' "$TEST_ROOT/help.out" \
+    || fail "SPEC rev 3 §0.9: --help overclaims what lane-start names"; assertion
+grep -Fq '/rename <lane>' "$TEST_ROOT/help.out" \
+    || fail "Evidence 4(b): --help does not name the one act that fixes a derived session name from inside"; assertion
 grep -Fq 'never taken from' "$DOCS_MD" \
     || fail "Evidence 6: the docs do not carry the rule at all"; assertion
 

@@ -1519,7 +1519,8 @@ Options:
                         CLAUDE_LANE=<repo>-<n> in the environment).
                         lane-start renames the tmux window to the lane,
                         records the lane register row, and starts Claude
-                        with --resume/--name <lane> under this same profile.
+                        under this same profile: --name <lane> on a session it
+                        creates, --resume on one it continues.
                         Requires lane-start on PATH (opensoft/brett-wip,
                         lanes/, linked by that repo's scripts/link-estates).
   --dir <path>         the lane's checkout, passed through to lane-start
@@ -1568,9 +1569,16 @@ at all, and with --no-lane, behaviour is unchanged. There is no /restart on
 this path.
 
 AND THIS LAUNCHER NEVER DEGRADES IN SILENCE (new-workstation#20, Evidence 5).
-Every lane above is taken by running `lane-start`, which is also what passes
-`--name <lane>` — the third leg of the lane's identity, beside the window's name
-and the transcript. Where lane-start is NOT on PATH there is no lane to take:
+Every lane above is taken by RUNNING `lane-start`, which is also the only thing
+that names the session for the lane — Amendment 2's messaging address, the third
+leg of the identity beside the window's name and the transcript. (`lane-start`
+passes `--name <lane>` on the session it CREATES; its two resume branches carry
+none today, so a resumed session is still left with the name Claude derives, and
+closing that is the tooling half's. A bare `claude --resume <uuid>` reaches
+neither, which is why no line here ever prints one as the way back into a lane;
+from inside a session already running under a derived name, `/rename <lane>` is
+the only act that fixes it.) Where lane-start is NOT on PATH there is no lane to
+take:
 the launch still happens, and the FIRST line it prints says so and names the one
 install act. This machine cannot tell an estate that was never installed from
 one whose `~/.local/bin` links a rebuild removed while this launcher stayed in
