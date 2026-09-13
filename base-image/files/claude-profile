@@ -461,6 +461,60 @@ act1_resolve_start_dir() {
   return 0
 }
 
+# THE CHILD'S ENVIRONMENT AND ITS ARGV, COMPOSED FROM WHAT IS TRUE *NOW*.
+#
+# This is called TWICE, and the second call is the fix for a real defect. Act 1
+# step 2 copies the recorded window's name and address into `lane_window*` the
+# moment `act1_find_window` succeeds, and they are threaded to the child here.
+# If the `respawn-pane` then FAILS — a live pane that is not provably this
+# lane's, a tmux that refuses the option twice — the launch falls through to
+# step 3 and creates a BRAND-NEW session, and the child in that new window was
+# still being handed `WORKBENCHES_CLAUDE_WINDOW`/`_REF`/`_ID` for the window it
+# is not in. The swap record that child later writes names that window, where
+# the amendment makes the `window` sub-field a fact about the writer's own
+# window (#21 :630-635) — a lie in an append-only log, and one that would send
+# the next restart's precedence 3 at a stranger's pane.
+#
+# So the fall-through CLEARS the three and composes again. Recomposing is the
+# whole reason this is a function: `command_string` is built from `env_prefix`,
+# and a `command_string` built before the failure cannot be corrected after it.
+act1_compose_child_command() {
+  env_prefix=(env WORKBENCHES_CLAUDE_TMUX_CHILD=1)
+  # THE WORKSTATION, THREADED INTO THE SESSION THIS LAUNCH CREATES (`R-A11-14`).
+  # `lane_export_workstation` has already exported it on this side of the
+  # re-exec; tmux does not reliably hand a freshly-exported variable to a new
+  # session on an already-running server, which is why every other value below
+  # is threaded explicitly, and this one is what every WRITER in the session
+  # reads — a session that comes up without it can write no lane record at all.
+  [[ -z "${LANES_WORKSTATION:-}" ]] || env_prefix+=("LANES_WORKSTATION=$LANES_WORKSTATION")
+  # --lane/CLAUDE_LANE must survive this re-exec into a new tmux session.
+  # tmux does not reliably hand a freshly-exported variable to a new session
+  # on an already-running server, so it is threaded through explicitly here
+  # rather than relied on via inheritance — same idiom as the guard above.
+  [[ -n "${lane:-}" ]] && env_prefix+=("CLAUDE_LANE=$lane")
+  [[ "${no_lane:-false}" == true ]] && env_prefix+=("CLAUDE_NO_LANE=1")
+  # So must the name of the window this was typed in — or, on the reuse path,
+  # the name of the window being reused. A session created fresh below has its
+  # window named for the command that made it unless the lane is certain, so the
+  # child must read what was captured on this side of the re-exec instead of
+  # asking tmux again (capture_lane_window).
+  [[ -n "${lane_window:-}" ]] && env_prefix+=("WORKBENCHES_CLAUDE_WINDOW=$lane_window")
+  # The window's ADDRESS travels the same way, and for the same reason. It is
+  # information (Amendment 11(5): the id is stored, the NAME stays the key) —
+  # the swap record's `window <session>:<index> <@id>` field.
+  [[ -n "${lane_window_ref:-}" ]] && env_prefix+=("WORKBENCHES_CLAUDE_WINDOW_REF=$lane_window_ref")
+  [[ -n "${lane_window_id:-}" ]] && env_prefix+=("WORKBENCHES_CLAUDE_WINDOW_ID=$lane_window_id")
+  # And the lane's directory, when the operator named one: `--dir` is this
+  # launcher's own option, so nothing downstream would see it otherwise.
+  [[ -n "${lane_dir_flag:-}" ]] && env_prefix+=("CLAUDE_LANE_DIR=$lane_dir_flag")
+
+  command_string=""
+  for argument in "${env_prefix[@]}" "$launcher" run "$profile" "$@"; do
+    printf -v argument '%q' "$argument"
+    command_string+="${command_string:+ }$argument"
+  done
+}
+
 start_profile_tmux() {
   local profile="$1"
   shift
@@ -499,41 +553,9 @@ start_profile_tmux() {
   # step 2's answer and so is resolved after it.
   act1_resolve_start_dir
 
-  env_prefix=(env WORKBENCHES_CLAUDE_TMUX_CHILD=1)
-  # THE WORKSTATION, THREADED INTO THE SESSION THIS LAUNCH CREATES (`R-A11-14`).
-  # `lane_export_workstation` has already exported it on this side of the
-  # re-exec; tmux does not reliably hand a freshly-exported variable to a new
-  # session on an already-running server, which is why every other value below
-  # is threaded explicitly, and this one is what every WRITER in the session
-  # reads — a session that comes up without it can write no lane record at all.
-  [[ -z "${LANES_WORKSTATION:-}" ]] || env_prefix+=("LANES_WORKSTATION=$LANES_WORKSTATION")
-  # --lane/CLAUDE_LANE must survive this re-exec into a new tmux session.
-  # tmux does not reliably hand a freshly-exported variable to a new session
-  # on an already-running server, so it is threaded through explicitly here
-  # rather than relied on via inheritance — same idiom as the guard above.
-  [[ -n "${lane:-}" ]] && env_prefix+=("CLAUDE_LANE=$lane")
-  [[ "${no_lane:-false}" == true ]] && env_prefix+=("CLAUDE_NO_LANE=1")
-  # So must the name of the window this was typed in — or, on the reuse path,
-  # the name of the window being reused. A session created fresh below has its
-  # window named for the command that made it unless the lane is certain, so the
-  # child must read what was captured on this side of the re-exec instead of
-  # asking tmux again (capture_lane_window).
-  [[ -n "${lane_window:-}" ]] && env_prefix+=("WORKBENCHES_CLAUDE_WINDOW=$lane_window")
-  # The window's ADDRESS travels the same way, and for the same reason. It is
-  # information (Amendment 11(5): the id is stored, the NAME stays the key) —
-  # the swap record's `window <session>:<index> <@id>` field.
-  [[ -n "${lane_window_ref:-}" ]] && env_prefix+=("WORKBENCHES_CLAUDE_WINDOW_REF=$lane_window_ref")
-  [[ -n "${lane_window_id:-}" ]] && env_prefix+=("WORKBENCHES_CLAUDE_WINDOW_ID=$lane_window_id")
-  # And the lane's directory, when the operator named one: `--dir` is this
-  # launcher's own option, so nothing downstream would see it otherwise.
-  [[ -n "${lane_dir_flag:-}" ]] && env_prefix+=("CLAUDE_LANE_DIR=$lane_dir_flag")
-
   launcher="$(readlink -f "${BASH_SOURCE[0]}")"
   session_name="claude-${profile//[^a-zA-Z0-9_-]/-}-$(date +%Y%m%d%H%M%S)-$$"
-  for argument in "${env_prefix[@]}" "$launcher" run "$profile" "$@"; do
-    printf -v argument '%q' "$argument"
-    command_string+="${command_string:+ }$argument"
-  done
+  act1_compose_child_command "$@"
 
   # ACT 1 STEP 2 — RESPAWN THE RECORDED WINDOW'S PANE AND ATTACH TO ITS SESSION.
   # `-c` THE LANE'S OWN DIRECTORY where act 1 learnt one (Evidence 3): without
@@ -569,6 +591,17 @@ start_profile_tmux() {
       tmux select-window -t "$act1_reuse_window" >/dev/null 2>&1 || true
       exec tmux attach-session -t "$act1_reuse_session"
     fi
+    # THE REUSE FAILED, SO THE WINDOW IT WAS FOR IS NOT THE CHILD'S WINDOW.
+    # Step 3 below creates a new session; a child in it that carried the
+    # recorded window's name and address would bind by precedence 2 or 3 to a
+    # window it is not standing in, and would write that window into its own
+    # swap record. Clear the three and compose the command again — the values
+    # go back to exactly what this side of a launch outside tmux holds when no
+    # record named a live window at all.
+    lane_window=""
+    lane_window_ref=""
+    lane_window_id=""
+    act1_compose_child_command "$@"
   fi
 
   # ACT 1 STEP 3 — OTHERWISE CREATE THE SESSION, AND NAME ITS WINDOW FOR THE

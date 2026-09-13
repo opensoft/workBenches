@@ -186,12 +186,19 @@ its free text.
 # `window` sub-field is TWO space-separated refs, `<session>:<index> <@id>` (Amendment 11, SPEC §5); the id
 # is written where one is knowable and the sub-field is `<session>:<index>` alone where it is not, because a
 # record with no id is still complete — the NAME is the key and the id is only information.
+# BOTH REFS ARE SHAPE-CHECKED, and for one reason. A tmux too old to know a format prints the FORMAT BACK,
+# and a shim on PATH may print anything at all; recording that string would put a lie in an append-only log.
+# That argument never depended on which of the two formats was asked for, and until now only the id carried
+# the check. A `<session>:<index>` is a session name, a colon and digits — `^.+:[0-9]+$`, the same shape
+# `claude-profile` validates this same value against (`lane_window_ref`), so the reader and the writer agree
+# on what a ref is. The ENV fallback is checked too: it is a value from another process and this writer has
+# no more reason to trust it unread.
 win="$(tmux display-message -p '#S:#I' 2>/dev/null || true)"
+[[ "$win" =~ ^.+:[0-9]+$ ]] || win=""
 [[ -n "$win" ]] || win="${WORKBENCHES_CLAUDE_WINDOW_REF:-}"
+[[ "$win" =~ ^.+:[0-9]+$ ]] || win=""
 win_id="$(tmux display-message -p '#{window_id}' 2>/dev/null || true)"
-# An id is `@<digits>` and nothing else. A tmux too old to know the format prints the format back, and a
-# shim may print anything at all; recording that string would put a lie in an append-only log. This is the
-# same check `claude-profile` makes on the same value, for the same reason.
+# An id is `@<digits>` and nothing else, by the same rule.
 [[ "$win_id" =~ ^@[0-9]+$ ]] || win_id="${WORKBENCHES_CLAUDE_WINDOW_ID:-}"
 [[ "$win_id" =~ ^@[0-9]+$ ]] && win="${win:+$win }$win_id"
 # `dir` is the LANE'S CHECKOUT (Amendment 11, SPEC §4) — NEVER a worktree, and never whatever this shell

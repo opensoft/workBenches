@@ -278,6 +278,15 @@ grep -Fq 'SPEC §13.3 gives to the TOOLING PR' "$SKILL_SOURCE" \
 # `cmp -s` assertions below, so proving it here would be proving it twice)
 grep -F 'REFUSED: no workstation for this lane' "$SKILL_SOURCE" | grep -Fq 'pclaude' \
     || fail "R-A11-14: the refusal does not name the launcher that sets LANES_WORKSTATION"; assertion
+# BOTH WINDOW REFS ARE SHAPE-CHECKED (non-blocking 9). The skill's own reason
+# for checking the id — "a tmux too old to know the format prints the format
+# back … recording that string would put a lie in an append-only log" — reaches
+# the `<session>:<index>` exactly as far, and only the id carried the check. The
+# shape is the launcher's own (`^.+:[0-9]+$`), so writer and reader agree.
+[[ "$(grep -Fc '=~ ^.+:[0-9]+$' "$SKILL_SOURCE")" -ge 2 ]] \
+    || fail "the skill records a <session>:<index> without checking its shape, or checks it only once — the env fallback is another process's value and is unread too"; assertion
+grep -Fq '=~ ^@[0-9]+$' "$SKILL_SOURCE" \
+    || fail "the skill records a window id without checking its shape"; assertion
 grep -Fq 'ws="${LANES_WORKSTATION:-}"' "$SKILL_SOURCE" \
     || fail "text: the workstation is not taken from configuration first (Evidence 6)"; assertion
 # ONE hostname READ — the read, `$(hostname`, and not the word: the `R-A11-14`

@@ -37,6 +37,17 @@ MAX_AGE=600   # seconds; older snapshot is treated as absent, not trusted
 input=$(cat 2>/dev/null || true)
 cwd=$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null || true)
 sid=$(jq -r '.session_id // "nosession"' <<<"$input" 2>/dev/null || echo nosession)
+# ...AND AN EMPTY session_id IS NOT AN IDENTIFIED SESSION. jq's `//` replaces
+# `null` and `false` and nothing else, so a payload carrying `"session_id": ""`
+# yields the empty string and the `[ "$sid" = nosession ]` fence below never
+# fires. Both of the things that fence exists to stop would then happen at
+# once: the latch key becomes `.five.95`, shared by every session whose payload
+# is empty the same way, so the first to reach it silences the rest; and a
+# DIRECTIVE to perform an act is addressed to a session this hook could not
+# identify. Measured on this workstation:
+#   $ echo '{"session_id":""}' | jq -r '.session_id // "nosession"'
+#   (one empty line)
+[ -n "$sid" ] || sid=nosession
 
 # --- gate ---
 # Armed by a flag file, found by walking UP from the session's cwd: arming a

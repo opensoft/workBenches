@@ -822,6 +822,29 @@ grep -q 'respawn-pane -t %12' "$TMUX_LOG" \
     || fail "act 1 step 2: the plain respawn was not attempted ($(cat "$TMUX_LOG"))"; assertion
 grep -q 'new-session' "$TMUX_LOG" \
     || fail "act 1 step 2: a window in use did not fall to step 3 ($(cat "$TMUX_LOG"))"; assertion
+# ...AND THE CHILD IN THAT NEW SESSION IS NOT HANDED THE WINDOW THE RESPAWN
+# FAILED TO REUSE (non-blocking 6). `act1_find_window` copies the recorded
+# window's name and address into `lane_window*` the moment it succeeds, and the
+# command string was built from them BEFORE the respawn was attempted — so the
+# child created here carried `WORKBENCHES_CLAUDE_WINDOW`/`_REF`/`_ID` for
+# `claude-y:0 @97`, a window it is not in. It would bind by precedence 2 or 3 to
+# that window and write it into its own swap record, where the amendment makes
+# the `window` sub-field a fact about the WRITER's own window. The command is
+# now composed again after the fall-through, with the three cleared. Asserted on
+# the `new-session` line alone: the failed `respawn-pane` line carries the old
+# command string on purpose, and a grep of the whole log could not tell them
+# apart.
+tmux_new_session_line="$(grep 'new-session' "$TMUX_LOG" | head -n 1)"
+printf '%s\n' "$tmux_new_session_line" | grep -Fq 'WORKBENCHES_CLAUDE_WINDOW_ID' \
+    && fail "act 1 fall-through: the child of the NEW session was handed the id of the window the respawn failed to reuse ($tmux_new_session_line)"; assertion
+printf '%s\n' "$tmux_new_session_line" | grep -Fq 'WORKBENCHES_CLAUDE_WINDOW_REF' \
+    && fail "act 1 fall-through: the child of the NEW session was handed the ref of the window the respawn failed to reuse ($tmux_new_session_line)"; assertion
+printf '%s\n' "$tmux_new_session_line" | grep -Fq 'WORKBENCHES_CLAUDE_WINDOW=' \
+    && fail "act 1 fall-through: the child of the NEW session was handed the NAME of the window the respawn failed to reuse ($tmux_new_session_line)"; assertion
+# ...and the respawn that failed DID carry them, so this is a difference the
+# fall-through makes and not a value that was never threaded at all.
+grep 'respawn-pane' "$TMUX_LOG" | grep -Fq 'WORKBENCHES_CLAUDE_WINDOW_ID=@97' \
+    || fail "act 1 fall-through: the reuse attempt itself did not carry the recorded window, so the assertions above prove nothing ($(cat "$TMUX_LOG"))"; assertion
 
 # 2h-i. ...and a DEAD pane in that same window IS reused, without `-k`. This is
 # the other half of the measurement: `respawn-pane` exits 0 where the pane's own

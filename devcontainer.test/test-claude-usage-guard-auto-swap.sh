@@ -21,7 +21,7 @@
 #   PRINTS,     the guard never shells out to perform the swap it names —
 #   NEVER ACTS  fakes for every binary the swap needs sit at the front of
 #               PATH and log their own invocations, so a >=95 run that
-#               touches any of them, or writes anywhing under $HOME/projects
+#               touches any of them, or writes anything under $HOME/projects
 #               or any other register, is caught rather than assumed absent.
 #   GATED /     the three properties the guard already had (header comment,
 #   LATCHED /   claude-usage-guard.sh:8-15) still hold with the directive
@@ -71,7 +71,7 @@ fail() {
 # pinned, as in test-claude-profile-lane-default.sh, so a scenario silently
 # dropped (or a run that quietly stopped happening) fails the suite instead of
 # just shrinking a number nobody reads.
-EXPECTED_SCENARIOS=22
+EXPECTED_SCENARIOS=23
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -637,6 +637,40 @@ for shellout in "$SHELLOUT_CLAUDE_USAGE_LOG" "$SHELLOUT_LANES_EDIT_LOG" \
     [[ ! -e "$shellout" ]] \
         || fail "lane fence mutation: the guard shelled out to $(basename "$shellout") ($(cat "$shellout"))"; assertion
 done
+
+# ---------------------------------------------------------------------------
+# 19. AN EMPTY `session_id` IS NOT AN IDENTIFIED SESSION EITHER. jq's `//`
+# replaces `null` and `false` and NOTHING ELSE, so `{"cwd":…,"session_id":""}`
+# came through as the empty string and scenario 17's fence — which tests for
+# the literal `nosession` — never fired. Both halves of what that fence is for
+# then went wrong at once: the latch key became `.five.95`, shared by every
+# session whose payload was empty the same way, and a DIRECTIVE to perform an
+# act was addressed to a session the hook could not identify.
+#
+# This payload is WELL-FORMED JSON carrying a real `cwd`, which is why the
+# per-directory arm is used here and the global file is not needed: this is not
+# scenario 17's unparseable payload, it is a parseable one with an empty field,
+# and that is the case the one-word fix covers.
+read -r EMPTYSID_HOME EMPTYSID_CWD < <(new_lane)
+write_profile_snapshot "$EMPTYSID_HOME" "" 96 "$FIVE_RESET_EPOCH" null null >/dev/null
+run_guard "$EMPTYSID_HOME" "$EMPTYSID_CWD" "" "WORKBENCHES_CLAUDE_LANE=openRepoProject-1"
+grep -qF 'AUTOMATIC SWAP' <<<"$guard_out" \
+    && fail "empty session_id: a directive to act was addressed to a session this hook could not identify (out=[$guard_out])"; assertion
+grep -qF '/lane-swap' <<<"$guard_out" \
+    && fail "empty session_id: the payload named no session and /lane-swap was still ordered (out=[$guard_out])"; assertion
+grep -qF 'STOP at a breakpoint' <<<"$guard_out" \
+    || fail "empty session_id: the pre-Amendment-11 advice did not stand in for the directive (out=[$guard_out])"; assertion
+grep -qF 'named no session' <<<"$guard_out" \
+    || fail "empty session_id: it does not say WHY the automatic swap is not directed here (out=[$guard_out])"; assertion
+[[ "$guard_status" -eq 0 ]] \
+    || fail "empty session_id: exited $guard_status instead of 0"; assertion
+# ...and the latch it wrote is the SHARED `nosession` key rather than a key with
+# an empty session in it, which is the half a reader of the latch directory can
+# check. `find` rather than a glob: the bug's own key begins with a `.`.
+[[ -e "$EMPTYSID_HOME/.claude/usage-latch/nosession.five.95" ]] \
+    || fail "empty session_id: the latch was not written under the nosession key ($(ls -A "$EMPTYSID_HOME/.claude/usage-latch" 2>/dev/null))"; assertion
+[[ -z "$(find "$EMPTYSID_HOME/.claude/usage-latch" -maxdepth 1 -name '.five.95' -print -quit 2>/dev/null)" ]] \
+    || fail "empty session_id: the latch key is the empty-session one, shared by every payload that fails the same way"; assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"
