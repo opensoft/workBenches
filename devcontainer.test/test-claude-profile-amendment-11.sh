@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=111
+EXPECTED_SCENARIOS=113
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -1956,6 +1956,66 @@ launch "TMUX=fake-session" "TMUX_PANE=%9" "PATH=$PS_BIN:$FAKE_BIN:/usr/bin:/bin"
     || fail "R-A11-16: a bare Claude was started behind a shell's own prompt ($(cat "$CLAUDE_LOG"))"; assertion
 [[ "$launch_status" -eq 1 ]] \
     || fail "R-A11-16: the launcher exited $launch_status instead of handing 1 back to the prompt behind it"; assertion
+
+# 5g-iv. EVIDENCE 7 — THE AUTO-SELECTED LANE WHOSE CHECKOUT IS NESTED
+# (2026-09-13T23:01:02Z, `brettheap/new-workstation#20` issuecomment-5656793094).
+# Reported by Brett Heap from another session, on the LIVE Amendment 8 launcher:
+# `pclaude team03m` in a window that is not a lane, the swap record named
+# `opsXfactory-5`, and `lane-start:336` — `DIR="$PROJECTS_ROOT/$repo"` where no
+# `--dir` was passed — derived `/home/brett/projects/opsXfactory`, which does not
+# exist. The lane's real checkout is nested: `~/projects/xFactory/xFactories/
+# OpsxFactory`. lane-start exited 1, the A8 launcher had EXEC'd it, and tmux
+# printed `[exited]` over a window with no Claude in it. The operator saw NO
+# WORDS AT ALL and had to guess at `--no-lane`.
+#
+# It is Evidence 2's defect through the RECORD door, and the record's own `dir`
+# is absent because no Amendment 11 writer has written one for that lane yet:
+# its PAUSED line carries `window …; workstation docker-desktop` and no `dir`.
+# So the composition is what matters and no existing scenario has it — a lane
+# from the RECORD (which makes it a `--confirm` question), RUNG 4 (no `dir` in
+# the row and a helper with no `lane-dir`), and lane-start's environment
+# refusal. Three halves each covered elsewhere; the report is the three at once.
+#
+# WHAT THIS HEAD OWES, and it is not "print `--no-lane`": `--no-lane` was the
+# interim because the exec left nothing running. Here the launch is RUN, not
+# exec'd (SPEC §2), so the window keeps a Claude and the operator needs no
+# escape at all. What they need is to be TOLD, in one line, which lane was
+# taken from the record, that lane-start refused it, and the one word that
+# fixes it for good — `--dir`, which is also what writes the record's field on
+# the next swap.
+launch "FAKE_TMUX_WINDOW=claude" "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=opsXfactory-5\t2026-09-13T22:31:00Z\tclaude-y:0 @97; workstation docker-desktop\n" \
+    "FAKE_WINDOW_LANE_NONE=1" "FAKE_LANE_START_STATUS=1" \
+    -- run team002 --resume session-evidence7
+lane_start_argv | grep -Fq -- '--confirm' \
+    || fail "Evidence 7: the record lane did not reach lane-start as a question ($(lane_start_argv))"; assertion
+lane_start_argv | grep -Fq -- '--dir' \
+    && fail "Evidence 7: a record carrying no dir produced one anyway ($(lane_start_argv))"; assertion
+grep -Fxq -- "$claude_args --resume session-evidence7" "$CLAUDE_LOG" \
+    || fail "Evidence 7: the window was left with no Claude in it — [exited], which is the whole report ($(cat "$CLAUDE_LOG" 2>/dev/null))"; assertion
+[[ "$launch_status" -eq 0 ]] \
+    || fail "Evidence 7: the launcher exited $launch_status over a Claude that started"; assertion
+grep -q 'did not take opsXfactory-5 (exit 1)' "$ERR_LOG" \
+    || fail "Evidence 7: the operator was not told which lane was refused ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq -- '--dir' "$ERR_LOG" \
+    || fail "Evidence 7: the notice named no way to fix the lane's directory ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'lane-start: refused (fake)' "$ERR_LOG" \
+    || fail "Evidence 7: lane-start's own refusal was swallowed, so the derived path it names never reached the operator"; assertion
+
+# 5g-v. ...AND WITH THE FIELD PRESENT THE DERIVATION NEVER HAPPENS. The same
+# auto-selection, the same `--confirm`, but the row carries the `dir` Amendment
+# 11 adds — which is what `#26`'s writer will put there the first time this lane
+# is swapped from a `lane-start --dir` launch. `lane-start:336`'s
+# `$PROJECTS_ROOT/$repo` branch is not reached at all, so the nested checkout is
+# not a special case: it is just the path in the record.
+launch "FAKE_TMUX_WINDOW=claude" "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=opsXfactory-5\t2026-09-13T22:31:00Z\tswap; window claude-y:0 @97; dir $RECORD_TREE; workstation docker-desktop\n" \
+    "FAKE_WINDOW_LANE_NONE=1" \
+    -- run team002 --resume session-evidence7-dir
+grep -Fxq -- "--dir $RECORD_TREE --confirm opsXfactory-5 -- $claude_args --resume session-evidence7-dir" "$LANE_START_LOG" \
+    || fail "Evidence 7: the record's dir did not reach lane-start on the auto-selected path ($(lane_start_argv))"; assertion
+grep -Fxq "$RECORD_TREE" "$LANE_START_CWD_LOG" \
+    || fail "Evidence 7: the launcher did not enter the recorded checkout before launching ($(cat "$LANE_START_CWD_LOG"))"; assertion
 
 # 5i. EVIDENCE 4 — THE BARE DROP CARRIES NO NAME, AND NO `--resume`. Measured
 # on this lane today: the transcript's `customTitle` is the lane, but every
