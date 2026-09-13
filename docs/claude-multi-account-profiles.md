@@ -248,8 +248,10 @@ what the helper answers and adds nothing of its own.
 
 Pass `--lane <repo>-<n>` (or set `CLAUDE_LANE=<repo>-<n>` in the environment)
 to hand the launch to `lane-start` instead of exec'ing Claude directly.
-`lane-start` (from `opensoft/brett-wip`'s `lanes/`, put on `PATH` by that
-repository's `scripts/link-estates`) renames the current tmux window to the
+`lane-start` (from the workspace repository's `lanes/` — `~/.agents/workspace.yaml`
+is where a person names that repository, and its own `scripts/link-estates` is
+what puts the helpers on `PATH` until Amendment 9 act 3 makes
+`openRepoTools --install` place them) renames the current tmux window to the
 lane, records the lane in the lane register, and starts this same Claude
 binary under this same profile — `--name <lane>` where it creates a session,
 `--resume` where it continues one (see Evidence 4 above for which branch carries
@@ -298,7 +300,19 @@ because neither is a degradation.
 **A missing `lane-start` is said, not passed over (new-workstation#20, Evidence
 5).** Where the tool is not on `PATH` there is no lane to take, and the launch
 still happens — but the **first** line it prints says so and names the one
-install act (`scripts/link-estates`). This branch used to return in silence, on
+install act. **Which act that is, is decided by capability and not by which
+amendment is in force** (`R-A11-13`, A11 Addendum 3, ratified by Brett Heap
+2026-09-13 *"a11 addendum 3 yes"*): the installed `openRepoTools --help` is
+asked, and a copy that lists the lane tools is their placer, so the line names
+`openRepoTools --install` — the act workBenches' own `setup.sh` already runs, so
+the fix is a step this estate has and never a second installer. A copy that does
+not list them cannot fix the machine, whatever the amendment says, so the line
+names the `scripts/link-estates` of the repository `~/.agents/workspace.yaml`
+names, with the `git clone` in front of it only where that checkout is not there
+yet. Neither spelling is `link-estates` on its own — a script inside a
+repository, with no repository named in front of it, is not an act anyone can
+run — and neither is a repository this launcher chose for the operator. This
+branch used to return in silence, on
 the reasoning that a machine with no lane estate should not hear about one; that
 was measured wrong. When this workstation was rebuilt on 2026-09-13 the
 `~/.local/bin` symlinks were gone while `/usr/local/bin/claude-profile` was

@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=91
+EXPECTED_SCENARIOS=95
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -320,6 +320,37 @@ exit "${FAKE_LANE_START_STATUS:-0}"
 EOF
 
 chmod +x "$FAKE_CLAUDE" "$FAKE_BIN/tmux" "$FAKE_BIN/lanes-edit.sh" "$FAKE_BIN/lane-start"
+
+# THE WORKSTATION'S WORKSPACE MANIFEST — `R-A11-13`. `~/.agents/workspace.yaml`
+# is where a person names their own workspace repository (this repo's README
+# gives it as the whole of that setup step's idempotence), and since A11
+# Addendum 3 it is where the launcher reads the repository whose
+# `scripts/link-estates` places the lane tools. $FAKE_HOME is this suite's HOME,
+# so the file below is the one every scenario here reads — and it names a
+# repository that is NOT the one the launcher used to hard-code.
+mkdir -p "$FAKE_HOME/.agents"
+WORKSPACE_YAML="$FAKE_HOME/.agents/workspace.yaml"
+printf 'repository: opensoft/estate-wip\npath: %s/estate-wip\n' "$TEST_ROOT" > "$WORKSPACE_YAML"
+
+# `openRepoTools`, whose own `--help` is the capability probe's only source.
+# TWO texts, and the difference between them is the whole of `R-A11-13`: the
+# copy installed on this workstation today places park, resume, status and
+# itself — measured, `--help` says "does nothing else" — and the copy Amendment
+# 9 act 3 ships lists the lane tools beside them.
+ORT_BIN="$TEST_ROOT/openrepotools-bin"
+mkdir -p "$ORT_BIN"
+cat > "$ORT_BIN/openRepoTools" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "${FAKE_OPENREPOTOOLS_HELP:-}"
+EOF
+chmod +x "$ORT_BIN/openRepoTools"
+OPENREPOTOOLS_HELP_TODAY='openRepoTools --install            install (or update) park, resume, status and
+                                   this command into ~/.local/bin
+
+This command installs the estate commands and does nothing else.'
+OPENREPOTOOLS_HELP_ACT3='openRepoTools --install            install (or update) park, resume, status,
+                                   lane-start, lanes-edit.sh and this command
+                                   into ~/.local/bin'
 
 AMENDMENT_11_HELP='OPTIONS
   --dir <path>     the lane s checkout
@@ -1572,6 +1603,11 @@ done
 #
 # An estate that is not on PATH at all: no lane-start, no lanes-edit.sh, nothing
 # this feature can read.
+# `without_estate_env` is spliced in AFTER the fixed values, so a scenario that
+# sets it wins: `env` applies its assignments left to right. It is what the
+# install-act scenarios use to put an `openRepoTools` on PATH or to take the
+# workspace manifest away, and it is reset by each caller that sets it.
+without_estate_env=()
 launch_without_estate() {
     reset_logs
     scenario
@@ -1581,6 +1617,7 @@ launch_without_estate() {
         "CLAUDE_PROFILES_HOME=$PROFILE_BASE" "CLAUDE_PROFILES_MANIFEST=$MANIFEST" \
         "FAKE_CLAUDE_LOG=$CLAUDE_LOG" "WORKBENCHES_SHARED_MCP_FAMILIES=disabled" \
         "WORKBENCHES_CLAUDE_TMUX_CHILD=1" "WORKBENCHES_CLAUDE_WINDOW=matrix-1" \
+        ${without_estate_env[@]+"${without_estate_env[@]}"} \
         "$LAUNCHER" "$@" >"$OUT_LOG" 2>"$ERR_LOG"
     launch_status=$?
     set -e
@@ -1606,6 +1643,15 @@ head -n 1 "$ERR_LOG" | grep -Fq 'NO LANE' \
     || fail "Evidence 5: the first line does not say what the launch degraded TO ('$(cat "$ERR_LOG")')"; assertion
 grep -Fq 'scripts/link-estates' "$ERR_LOG" \
     || fail "Evidence 5: the install act is not named ('$(cat "$ERR_LOG")')"; assertion
+# ...AND IT IS THIS MACHINE'S OWN WORKSPACE REPOSITORY, READ OUT OF
+# `~/.agents/workspace.yaml` — `R-A11-13`. No openRepoTools is on this PATH, so
+# the capability probe cannot answer and the act is the manifest's repository
+# and its checkout. The hard-coded `git clone git@github.com:opensoft/brett-wip`
+# this line used to print is one operator's estate printed at everybody else's.
+grep -Fq "$TEST_ROOT/estate-wip/scripts/link-estates" "$ERR_LOG" \
+    || fail "R-A11-13: the install act does not name the workspace repository ~/.agents/workspace.yaml names ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'brett-wip' "$ERR_LOG" \
+    && fail "R-A11-13: the install act still names a repository this machine never chose ('$(cat "$ERR_LOG")')"; assertion
 grep -Fq "$note" "$ERR_LOG" \
     && fail "Evidence 5: the standing no-lane note told the operator to run a command this machine does not have ('$(cat "$ERR_LOG")')"; assertion
 [[ "$(wc -l < "$ERR_LOG")" -eq 2 ]] \
@@ -1628,6 +1674,65 @@ grep -Fxq -- "$claude_args --print env-check" "$CLAUDE_LOG" \
     || fail "no lane-start, --print: Claude did not start"; assertion
 [[ ! -s "$ERR_LOG" ]] \
     || fail "Evidence 5: a one-shot that takes no lane anywhere was told the lane tool is missing ('$(cat "$ERR_LOG")')"; assertion
+
+# 5h-iv. THE ACT IS NAMED BY CAPABILITY, AND THE CAPABILITY IS THE INSTALLED
+# TOOL'S OWN `--help` — `R-A11-13` (A11 Addendum 3, ratified by Brett Heap
+# 2026-09-13 "a11 addendum 3 yes"). An `openRepoTools` that LISTS the lane tools
+# is their placer, and Amendment 9(b)'s act is the one to print: workBenches'
+# setup.sh already runs `openRepoTools --install`, so the fix is a step this
+# estate has rather than a second installer.
+without_estate_env=(
+    "PATH=$ORT_BIN:$TEST_ROOT/empty-bin:/usr/bin:/bin"
+    "FAKE_OPENREPOTOOLS_HELP=$OPENREPOTOOLS_HELP_ACT3"
+)
+launch_without_estate run team002 --resume session-act3-openrepotools
+without_estate_env=()
+grep -Fq 'openRepoTools --install' "$ERR_LOG" \
+    || fail "R-A11-13: an openRepoTools that places the lane tools is not the act named ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'link-estates' "$ERR_LOG" \
+    && fail "R-A11-13: the superseded mechanism is named beside the one that works, so the operator has to decide which is current ('$(cat "$ERR_LOG")')"; assertion
+[[ "$(wc -l < "$ERR_LOG")" -eq 2 ]] \
+    || fail "R-A11-13: one situation printed $(wc -l < "$ERR_LOG") lines ($(cat "$ERR_LOG"))"; assertion
+
+# 5h-v. ...AND THE COPY INSTALLED TODAY IS NOT THAT PLACER. `/usr/local/bin/
+# openRepoTools` on this workstation places park, resume, status and itself —
+# its `--help` says "does nothing else", measured 2026-09-13 — so naming
+# `--install` to an operator whose lane-start is missing hands them a command
+# that cannot fix their machine. The interval act is the workspace repository's.
+without_estate_env=(
+    "PATH=$ORT_BIN:$TEST_ROOT/empty-bin:/usr/bin:/bin"
+    "FAKE_OPENREPOTOOLS_HELP=$OPENREPOTOOLS_HELP_TODAY"
+)
+launch_without_estate run team002 --resume session-today-openrepotools
+without_estate_env=()
+grep -Fq "$TEST_ROOT/estate-wip/scripts/link-estates" "$ERR_LOG" \
+    || fail "R-A11-13: an openRepoTools that cannot place the lane tools was named as the act anyway ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'openRepoTools --install' "$ERR_LOG" \
+    && fail "R-A11-13: the act named cannot place lane-start on this machine ('$(cat "$ERR_LOG")')"; assertion
+
+# 5h-vi. ...AND A MACHINE THAT NAMES NO WORKSPACE REPOSITORY IS TOLD WHERE TO
+# NAME ONE. `link-estates` on its own is a script inside a repository and not an
+# act anybody can run, so the line names the FILE that decides which repository
+# it is — never the bare word.
+without_estate_env=("HOME=$TEST_ROOT/no-manifest-home")
+launch_without_estate run team002 --resume session-no-manifest
+without_estate_env=()
+grep -Fq "$TEST_ROOT/no-manifest-home/.agents/workspace.yaml" "$ERR_LOG" \
+    || fail "R-A11-13: with no workspace manifest the operator is not told where to name their repository ('$(cat "$ERR_LOG")')"; assertion
+grep -Eq '(^|[^/])link-estates' "$ERR_LOG" \
+    && fail "R-A11-13: the act is named as bare link-estates, with no repository in front of it ('$(cat "$ERR_LOG")')"; assertion
+
+# 5h-vii. ...and where the workspace repository is ALREADY CLONED the act is the
+# script alone: an operator whose links a rebuild removed does not need to be
+# told to clone a checkout they are standing next to.
+mkdir -p "$TEST_ROOT/estate-wip/scripts"
+printf '#!/bin/sh\n' > "$TEST_ROOT/estate-wip/scripts/link-estates"
+launch_without_estate run team002 --resume session-manifest-cloned
+grep -Fq "fix: $TEST_ROOT/estate-wip/scripts/link-estates" "$ERR_LOG" \
+    || fail "R-A11-13: the act is not the workspace repository's own script ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'git clone' "$ERR_LOG" \
+    && fail "R-A11-13: an operator with the repository already cloned is told to clone it ('$(cat "$ERR_LOG")')"; assertion
+rm -rf "$TEST_ROOT/estate-wip"
 
 # ===========================================================================
 # 6. EVERY FIELD NAME IS THE SPEC'S, BYTE FOR BYTE — SPEC §4, §5 and §11.
@@ -1746,16 +1851,38 @@ grep -Fq 'RV-T6' "$DOCS_MD" \
 grep -Fq 'neither asked nor told anything' "$DOCS_MD" \
     && fail "Evidence 5: the docs still carry the sentence Evidence 5 overturned"; assertion
 
-# EVIDENCE 5 — ONE INSTALL ACT, IN ONE SPELLING. Two places name it: the
-# `--lane` refusal and the notice above. An operator handed two different
-# commands for one missing tool has to decide which is current, and the one
-# that is wrong is the one they will try first.
-grep -Fq "lane_start_install_act='git clone git@github.com:opensoft/brett-wip.git" "$LAUNCHER" \
-    || fail "Evidence 5: the install act is not held in one place"; assertion
-[[ "$(grep -Fc '~/projects/brett-wip/scripts/link-estates' "$LAUNCHER")" -eq 1 ]] \
-    || fail "Evidence 5: the install act is spelled $(grep -Fc '~/projects/brett-wip/scripts/link-estates' "$LAUNCHER") times in the launcher, so two callers can drift apart"; assertion
-[[ "$(grep -c '\$lane_start_install_act' "$LAUNCHER")" -eq 2 ]] \
-    || fail "Evidence 5: the shared install act has $(grep -c '\$lane_start_install_act' "$LAUNCHER") callers, and it has two — the --lane refusal and the missing-tool notice"; assertion
+# EVIDENCE 5 / `R-A11-13` — ONE INSTALL ACT, RESOLVED IN ONE FUNCTION. Two
+# places name it: the `--lane` refusal and the notice above. An operator handed
+# two different commands for one missing tool has to decide which is current,
+# and the one that is wrong is the one they will try first. Since A11 Addendum 3
+# the act is CHOSEN rather than written down, so what is pinned is that the
+# choice lives in one function and that both callers print what it returns.
+[[ "$(grep -Fc '$(lane_start_install_act)' "$LAUNCHER")" -eq 2 ]] \
+    || fail "R-A11-13: the install act has $(grep -Fc '$(lane_start_install_act)' "$LAUNCHER") callers, and it has two — the --lane refusal and the missing-tool notice"; assertion
+install_act_code="$(awk '/^lane_start_install_act\(\) \{$/ { inside = 1 } inside { print } inside && $0 == "}" { exit }' "$LAUNCHER")"
+[[ -n "$install_act_code" ]] \
+    || fail "R-A11-13: there is no lane_start_install_act function, so the act is not resolved in one place"; assertion
+printf '%s\n' "$install_act_code" | grep -Fq 'openRepoTools --help' \
+    || fail "R-A11-13: the act is not chosen by asking the INSTALLED openRepoTools what it can do"; assertion
+printf '%s\n' "$install_act_code" | grep -Fq '*lane-start*' \
+    || fail "R-A11-13: the capability probe does not test for the LANE tools, so any openRepoTools at all would answer it"; assertion
+printf '%s\n' "$install_act_code" | grep -Fq "lane_start_install_act_answer='openRepoTools --install'" \
+    || fail "R-A11-13: the act Amendment 9(b) names is never printed at all"; assertion
+printf '%s\n' "$install_act_code" | grep -Fq 'workspace.yaml' \
+    || fail "R-A11-13: the interval act names no workspace repository, so it names link-estates alone"; assertion
+# ...and ALL of it lives in that function. A second spelling anywhere in the
+# launcher's executable text is exactly the drift the one-spelling rule is for,
+# so the counts are compared rather than the sites listed.
+launcher_exec_code="$(awk '/^      cat <<.EOF.$/ { skip = 1 } !skip { print } skip && $0 == "EOF" { skip = 0 }' "$LAUNCHER" \
+    | grep -v '^[[:space:]]*#')"
+[[ "$(printf '%s\n' "$launcher_exec_code" | grep -Fc 'link-estates')" \
+    -eq "$(printf '%s\n' "$install_act_code" | grep -Fc 'link-estates')" ]] \
+    || fail "R-A11-13: link-estates is spelled outside lane_start_install_act, so two callers can drift apart"; assertion
+[[ "$(printf '%s\n' "$launcher_exec_code" | grep -Fc 'openRepoTools')" \
+    -eq "$(printf '%s\n' "$install_act_code" | grep -Fc 'openRepoTools')" ]] \
+    || fail "R-A11-13: openRepoTools is named outside lane_start_install_act"; assertion
+printf '%s\n' "$launcher_exec_code" | grep -Fq 'github.com:opensoft/brett-wip.git' \
+    && fail "R-A11-13: the launcher still hard-codes one operator's workspace repository as the install act"; assertion
 
 # SPEC §9 — `/swap` is a one-line command file that INVOKES the skill, and the
 # 176-line skill is not duplicated into it. Two texts that must stay byte-equal

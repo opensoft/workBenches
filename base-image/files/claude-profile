@@ -835,10 +835,86 @@ export_lane_identity() {
 }
 
 lane_no_lane_note='no lane for this window; run lane-start <repo> <n> inside it'
-# ONE INSTALL ACT, IN ONE SPELLING. Two places name it — the `--lane` refusal
-# below and Evidence 5's notice — and an operator who is handed two different
-# commands for one missing tool has to decide which is current.
-lane_start_install_act='git clone git@github.com:opensoft/brett-wip.git ~/projects/brett-wip && ~/projects/brett-wip/scripts/link-estates'
+# ONE INSTALL ACT, IN ONE SPELLING, AND IT IS NAMED BY CAPABILITY — `R-A11-13`
+# (A11 Addendum 3 on new-workstation#20, ratified by Brett Heap 2026-09-13
+# "a11 addendum 3 yes"). Two places name it — the `--lane` refusal below and
+# Evidence 5's notice — and an operator handed two different commands for one
+# missing tool has to decide which is current, so both read the one function
+# below and no second spelling of the act exists in this file.
+#
+# WHICH act it is, is a question about THIS MACHINE and not about which
+# amendment is in force. Amendment 9 clause (b) makes `openRepoTools --install`
+# the placer of the lane helpers, superseding Amendment 5's "reach PATH through
+# its scripts/link-estates", and workBenches' own setup.sh ALREADY runs that
+# command (setup.sh -> setup-estate-commands.sh): the lane tools become part of
+# a step this estate already has, so NO SECOND INSTALLER is named here and none
+# is wanted. But until Amendment 9 act 3 lands, the copy installed on this
+# machine places park, resume, status and itself and nothing else — its own
+# `--help` says exactly that, measured — and naming it to an operator whose
+# lane-start is missing hands them a command that cannot fix their machine.
+#
+# So the installed tool's own `--help` is asked, because it is the only thing
+# that can say which interval this machine is in: a copy that lists the lane
+# tools IS their placer and `openRepoTools --install` is the act; a copy that
+# does not, is not, and the act is the workspace repository's own
+# `scripts/link-estates`. The probe costs one process on the one path where the
+# lane tool is already missing, and nothing at all on any other launch.
+#
+# AND THE REPOSITORY IS THE ONE THIS MACHINE NAMES. `workspace.yaml` is where a
+# person names their own workspace repository — this repo's own README gives it
+# as the whole of that step's idempotence, and AGENT_PROTOCOL_ROOT moves the
+# file — so a hard-coded `git clone git@github.com:opensoft/brett-wip.git` is
+# one operator's estate printed at everybody else's. `link-estates` on its own
+# is not an act either: it is a script inside a repository, and a word with no
+# repository in front of it is not something anyone can run.
+lane_workspace_field() {
+  # One scalar out of workspace.yaml, without a YAML parser: the file is one
+  # level deep, `yq` is on no machine this is guaranteed to run on, and the two
+  # keys read here are the two `setup.sh` writes.
+  local file="$1" key="$2"
+  sed -n "s/^[[:space:]]*$key:[[:space:]]*//p" "$file" 2>/dev/null \
+    | head -n 1 \
+    | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+}
+
+lane_start_install_act() {
+  # Resolved at most once per launch and printed; the two callers below print
+  # what this returns and hold no copy of their own.
+  if [[ -n "${lane_start_install_act_answer+set}" ]]; then
+    printf '%s\n' "$lane_start_install_act_answer"
+    return 0
+  fi
+  local help yaml repository path
+  lane_start_install_act_answer=""
+  if command -v openRepoTools >/dev/null 2>&1; then
+    help="$(openRepoTools --help 2>&1 || true)"
+    case "$help" in
+      *lane-start*)
+        lane_start_install_act_answer='openRepoTools --install'
+        printf '%s\n' "$lane_start_install_act_answer"
+        return 0
+        ;;
+    esac
+  fi
+  yaml="${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/workspace.yaml"
+  repository=""
+  path=""
+  if [[ -r "$yaml" ]]; then
+    repository="$(lane_workspace_field "$yaml" repository)"
+    path="$(lane_workspace_field "$yaml" path)"
+  fi
+  [[ "$path" != '~'* ]] || path="$HOME${path#\~}"
+  if [[ -n "$path" && -e "$path/scripts/link-estates" ]]; then
+    lane_start_install_act_answer="$path/scripts/link-estates"
+  elif [[ -n "$path" && -n "$repository" ]]; then
+    lane_start_install_act_answer="git clone git@github.com:$repository.git $path && $path/scripts/link-estates"
+  elif [[ -n "$path" ]]; then
+    lane_start_install_act_answer="$path/scripts/link-estates"
+  else
+    lane_start_install_act_answer="name your workspace repository in $yaml (repository: <owner>/<name>, path: <checkout>), then run its scripts/link-estates"
+  fi
+  printf '%s\n' "$lane_start_install_act_answer"
+}
 
 lane_note_no_lane_start() {
   # LANE-START IS ABSENT, AND THE LAUNCHER SAYS SO — Evidence 5
@@ -867,7 +943,7 @@ lane_note_no_lane_start() {
   # printing beside it, because "run lane-start <repo> <n>" names a command this
   # machine does not have.
   echo "pclaude: lane-start is not on PATH, so this launch takes NO LANE: no register stamp, a session name the harness derives, and this window left as it is (new-workstation#20, Evidence 5)." >&2
-  echo "pclaude:   fix: $lane_start_install_act" >&2
+  echo "pclaude:   fix: $(lane_start_install_act)" >&2
 }
 
 lane_note_no_lane() {
@@ -1521,8 +1597,12 @@ Options:
                         records the lane register row, and starts Claude
                         under this same profile: --name <lane> on a session it
                         creates, --resume on one it continues.
-                        Requires lane-start on PATH (opensoft/brett-wip,
-                        lanes/, linked by that repo's scripts/link-estates).
+                        Requires lane-start on PATH. Where it is missing
+                        the notice below names the act THIS machine can use:
+                        `openRepoTools --install` where the installed copy
+                        lists the lane tools, else the scripts/link-estates of
+                        the workspace repository ~/.agents/workspace.yaml
+                        names (`R-A11-13`).
   --dir <path>         the lane's checkout, passed through to lane-start
                         (also settable as CLAUDE_LANE_DIR in the
                         environment). Without it the directory is derived —
@@ -1743,7 +1823,7 @@ case "$action" in
         if [[ -n "${lane:-}" ]]; then
           command -v lane-start >/dev/null 2>&1 || {
             echo "pclaude: --lane $lane needs lane-start on PATH. Fix:" >&2
-            echo "  $lane_start_install_act" >&2
+            echo "  $(lane_start_install_act)" >&2
             exit 2
           }
         fi

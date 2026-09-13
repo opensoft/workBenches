@@ -141,13 +141,27 @@ cp "$FAKE_CLAUDE" "$NO_LANE_START_BIN/claude"
 cp "$FAKE_BIN/tmux" "$NO_LANE_START_BIN/tmux"
 NO_LANE_TMUX_LOG="$TEST_ROOT/tmux-no-lane-start.log"
 
+# THE ACT THE REFUSAL NAMES IS CHOSEN BY CAPABILITY — `R-A11-13` (A11 Addendum
+# 3 on new-workstation#20, ratified by Brett Heap 2026-09-13 "a11 addendum 3
+# yes"). The launcher asks the installed `openRepoTools --help` whether it
+# places the lane tools; where it does not, the act is the `scripts/link-estates`
+# of the repository `~/.agents/workspace.yaml` names. So this scenario brings its
+# own HOME and its own manifest: what is pinned is that the refusal names THIS
+# machine's workspace repository, and a suite that read the real `$HOME` would
+# pass or fail on whatever the workstation running it happens to have.
+REFUSAL_HOME="$TEST_ROOT/refusal-home"
+mkdir -p "$REFUSAL_HOME/.agents"
+printf 'repository: opensoft/estate-wip\npath: %s/estate-wip\n' "$TEST_ROOT" \
+    > "$REFUSAL_HOME/.agents/workspace.yaml"
+
 refusal_env=(
     # A real lane-start may already be installed (e.g. ~/.local/bin on a
-    # workstation that has run brett-wip's scripts/link-estates) — PATH must
-    # exclude it entirely to simulate it being genuinely absent, not just
-    # shadowed. /usr/bin and /bin cover every standard tool the launcher and
-    # the fakes need (jq, mktemp, date, coreutils).
+    # workstation whose workspace repository has run its scripts/link-estates)
+    # — PATH must exclude it entirely to simulate it being genuinely absent,
+    # not just shadowed. /usr/bin and /bin cover every standard tool the
+    # launcher and the fakes need (jq, mktemp, date, coreutils).
     "PATH=$NO_LANE_START_BIN:/usr/bin:/bin"
+    "HOME=$REFUSAL_HOME"
     "CLAUDE_BIN=$NO_LANE_START_BIN/claude"
     "CLAUDE_PROFILES_HOME=$PROFILE_BASE"
     "CLAUDE_PROFILES_MANIFEST=$MANIFEST"
@@ -169,12 +183,43 @@ set -e
     || fail "missing lane-start: exit status was $refusal_status, not 2"
 grep -q 'lane-start' "$TEST_ROOT/typescript-refusal.log" \
     || fail "missing lane-start: refusal did not mention lane-start"
-grep -q 'opensoft/brett-wip' "$TEST_ROOT/typescript-refusal.log" \
-    || fail "missing lane-start: refusal did not name the fix (clone opensoft/brett-wip)"
-grep -q 'link-estates' "$TEST_ROOT/typescript-refusal.log" \
-    || fail "missing lane-start: refusal did not name scripts/link-estates"
+grep -q "$TEST_ROOT/estate-wip/scripts/link-estates" "$TEST_ROOT/typescript-refusal.log" \
+    || fail "missing lane-start: the refusal did not name the fix this machine can use — the scripts/link-estates of the repository its workspace.yaml names (R-A11-13)"
+grep -q 'opensoft/estate-wip' "$TEST_ROOT/typescript-refusal.log" \
+    || fail "missing lane-start: the refusal names no repository to clone, so link-estates stands with nothing in front of it (R-A11-13)"
+grep -q 'brett-wip' "$TEST_ROOT/typescript-refusal.log" \
+    && fail "missing lane-start: the refusal names a repository this machine never chose (R-A11-13)"
 [[ ! -s "$NO_LANE_TMUX_LOG" ]] \
     || fail "missing lane-start: a tmux command ran before the refusal ($(cat "$NO_LANE_TMUX_LOG"))"
+
+# 3b. ...AND ON A MACHINE WHOSE `openRepoTools` PLACES THE LANE TOOLS, THE SAME
+# REFUSAL NAMES `openRepoTools --install` INSTEAD — the act workBenches' own
+# setup.sh already runs, so the fix is a step this estate has and not a second
+# installer. The capability is the installed tool's own `--help` and nothing
+# else, so a fake one carrying Amendment 9 act 3's line is the whole scenario.
+ORT_REFUSAL_BIN="$TEST_ROOT/bin-openrepotools"
+mkdir -p "$ORT_REFUSAL_BIN"
+cat > "$ORT_REFUSAL_BIN/openRepoTools" <<'ORTEOF'
+#!/usr/bin/env bash
+printf '%s\n' 'openRepoTools --install   install park, resume, status, lane-start, lanes-edit.sh'
+ORTEOF
+chmod +x "$ORT_REFUSAL_BIN/openRepoTools"
+printf -v tty_command 'env'
+for value in "${refusal_env[@]}" "PATH=$ORT_REFUSAL_BIN:$NO_LANE_START_BIN:/usr/bin:/bin" \
+    "$LAUNCHER" run team002 --resume session-3b; do
+    printf -v value '%q' "$value"
+    tty_command+=" $value"
+done
+set +e
+script -qefc "$tty_command" "$TEST_ROOT/typescript-refusal-ort.log" >/dev/null
+refusal_ort_status=$?
+set -e
+[[ "$refusal_ort_status" -eq 2 ]] \
+    || fail "missing lane-start, openRepoTools present: exit status was $refusal_ort_status, not 2"
+grep -q 'openRepoTools --install' "$TEST_ROOT/typescript-refusal-ort.log" \
+    || fail "missing lane-start: an openRepoTools that places the lane tools is not the act named (R-A11-13)"
+grep -q 'link-estates' "$TEST_ROOT/typescript-refusal-ort.log" \
+    && fail "missing lane-start: the superseded mechanism is named beside the one that works (R-A11-13)"
 
 # ---------------------------------------------------------------------------
 # 4. CLAUDE_LANE (env, no --lane flag) works the same as --lane.
