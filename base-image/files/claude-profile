@@ -604,8 +604,9 @@ Options:
                         lane-start renames the tmux window to the lane,
                         records the lane register row, and starts Claude
                         with --resume/--name <lane> under this same profile.
-                        Requires lane-start on PATH (opensoft/brett-wip,
-                        lanes/, linked by that repo's scripts/link-estates).
+                        Requires lane-start on PATH, placed by
+                        `openRepoTools --install` (workBenches' ./setup.sh
+                        runs it; lane-collision-protocol Amendment 9(b)).
   --no-lane            take no lane: exec Claude directly, whatever the
                         window or the swap record says (also settable as
                         CLAUDE_NO_LANE=1 in the environment). Wins over
@@ -668,9 +669,19 @@ case "$action" in
       status) CLAUDE_CONFIG_DIR="$config_dir" "$claude_bin" auth status "${@---text}" ;;
       run)
         if [[ -n "${lane:-}" ]]; then
+          # THE FIX IS THE INSTALL ACT, NOT A PATH INTO SOMEBODY'S WIP.
+          # lane-collision-protocol Amendment 9(b) moves the lane tooling to
+          # opensoft/openRepoTools and makes `openRepoTools --install` their
+          # placer; Amendment 9's adoption act 5 then STRIPS
+          # `scripts/link-estates` out of the workspace repository altogether
+          # (opensoft/brett-wip#6 @1483d55). A refusal that told a person to
+          # clone that repository and run that script would name a path that
+          # stops existing -- and it named one operator's estate at everybody
+          # else's terminal besides.
           command -v lane-start >/dev/null 2>&1 || {
             echo "pclaude: --lane $lane needs lane-start on PATH. Fix:" >&2
-            echo "  git clone git@github.com:opensoft/brett-wip.git ~/projects/brett-wip && ~/projects/brett-wip/scripts/link-estates" >&2
+            echo "  openRepoTools --install" >&2
+            echo "  (workBenches: ./setup.sh, which runs scripts/setup-estate-commands.sh)" >&2
             exit 2
           }
         fi
