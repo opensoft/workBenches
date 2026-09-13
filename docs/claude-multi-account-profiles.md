@@ -238,9 +238,18 @@ this launcher at all. Two consequences, both of which this launcher and
   bare `claude` run reads — is merged by `openRepoTools --install`, which adds
   exactly one entry, by exact-string match on the command, additive beside
   every other hook kind, and writes the file back at mode 600. It refuses
-  rather than repairing a file it cannot parse or an entry under `SessionStart`
-  whose command differs, and it computes the merge before it places anything,
-  so a merge it cannot compute costs a whole install rather than half of one.
+  rather than repairing a file it cannot parse, and it refuses on an entry
+  under `SessionStart` that itself runs `session-start` under a different
+  command string. **Not on any differing command.** The clause is about a
+  second program running the same hook verb, which merging beside would fire
+  twice (R-A9-8, narrowed from `lanes-edit.sh` to the verb by R-A9-14 in the
+  openRepoTools#24 review): an entry running `lanes-edit.sh who` competes with
+  nothing and is not refused, and `~/bin/lane-hook.sh session-start` does
+  compete and is. Measured, with an unrelated `~/bin/herdr-agent-state.sh
+  session` already under `SessionStart`: `9 of 9 placed`, exit 0, the file left
+  carrying both commands at mode 600. It computes the merge before it places
+  anything, so a merge it cannot compute costs a whole install rather than half
+  of one.
   Adoption act 4b deleted the ensure `scripts/setup-claude-profiles.sh` carried
   for the same file. **One path, one writer, in both halves:** a profile's
   `settings.json` is the launcher's, `~/.claude/settings.json` is
