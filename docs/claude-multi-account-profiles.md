@@ -198,8 +198,14 @@ whatever command was running in it instead — on Eagle, eight of sixteen live
 windows were simply called `claude` when this was measured — so a restart
 could never bind by window name and always fell to the picker below.
 
-**The lane's session is NAMED by `lane-start`, which is why every path runs it
-(new-workstation#20, Evidence 4).** Amendment 2 makes the Claude session's name
+**The lane's session is NAMED by `lane-start`, which is why every path that
+resolves to a NEW OR RESUMED SESSION runs it (new-workstation#20, Evidence
+4).** That is every step through Amendment 11(3) and THE PICKER's own
+AVAILABLE branch — another launch of this same launcher — but not its other
+two: LIVE HERE attaches a session that is already running and BOUND ELSEWHERE
+exits into a refusal, and neither runs `lane-start`, because neither is a
+launch (lane-collision-protocol Amendment 18 Addendum 1, clause (h) and
+clause (c)). Amendment 2 makes the Claude session's name
 the lane's messaging address — the third leg of the identity triple, beside the
 window's name and the transcript. Measured on `openRepoProject-1` on
 2026-09-13: the transcript carries `customTitle: openRepoProject-1`, set once by
@@ -324,11 +330,17 @@ pick being acted on *and* a decline (`q`, or a blank line) at a question that
 had at least one lane to offer; exit 8 is narrower than "the operator
 quit" — it means there was *nothing* to pick at all, whether that came back as
 a listing, as a `q`/`f`-only question, or as a decline of one of those. Either
-way this launcher starts nothing here; only exit 2, a refusal — or the two
-statuses `lane --help` documents and this launcher does not special-case, a
-read that failed and a usage error the bare form here cannot trigger — falls
-through to the plain session below, exactly as no `lane` on `PATH` or no
-terminal already does. This step reads no swap record at all any more:
+way this launcher starts nothing here; only exit 2, a refusal — or the other
+status `lane --help` documents and this launcher does not special-case, a
+read that failed (a usage error is unreachable from the bare form here) —
+falls through to the plain session below, and only where this window's name
+says a lane was never actually taken first. `lane`'s AVAILABLE branch does
+not run and wait for the launch it picks, it `exec`s into one that renames
+this window the moment it takes a lane and exits with whatever THAT chain
+ends with — so 2 and the read-failure code are trusted as pre-pick only
+where the window is unchanged; renamed, and the status is kept exactly like
+an acted-on pick's (Copilot round 2 on #82, `claude-profile:1743`). This step
+reads no swap record at all any more:
 confirming the workstation's newest one is what put `openRepoShape-2` — a
 person's own lane, but not the one they wanted — in front of an operator who
 typed `pclaude team-01b` on 2026-09-14T12:04Z, whose `N` three minutes later
@@ -350,7 +362,12 @@ conversation at all takes no lane in the first place; neither is told anything,
 because neither is a degradation.
 
 **A missing `lane-start` is said, not passed over (new-workstation#20, Evidence
-5).** Where the tool is not on `PATH` there is no lane to take, and the launch
+5) — and it no longer skips THE PICKER either** (Copilot round on #82,
+`claude-profile:1698`): two of `lane`'s three branches never touch
+`lane-start` at all, so a workstation with `lane` and a tmux pane but no
+`lane-start` still gets the numbered pick, and only falls back to a bare
+Claude where the picker also finds nothing. Where the tool is not on `PATH`
+there is no lane THIS LAUNCHER'S OWN THREE STEPS can take, and the launch
 still happens — but the **first** line it prints says so and names the one
 install act. **Which act that is, is decided by capability and not by which
 amendment is in force** (`R-A11-13`, A11 Addendum 3, ratified by Brett Heap

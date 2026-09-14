@@ -1559,6 +1559,7 @@ resolve_lane() {
   # terminal on stdin still return here, with `lane` empty and precedence 5
   # next, exactly as no answer at precedence 4 always meant.
   local lanes_edit ref lane_picker_status
+  local lane_window_before lane_window_after lane_picker_documented_prepick
   window_lane_answer=""
   if [[ -n "${lane:-}" ]]; then
     lane_source=flag
@@ -1692,54 +1693,97 @@ resolve_lane() {
   # A READ FAILED (never "there are no lanes", Amendment 7(d)), and 64, a
   # usage error — unreachable from here anyway, since this launcher hands
   # `lane` no argument for a flag to be unknown or missing a value ABOUT.
-  # Both are, like 2, PROVABLY BEFORE ANY PICK: every `die` call `lane` has
+  # Both are, like 2, documented as PRE-PICK — every `die` call `lane` has
   # for them runs during argument parsing or the read phase, never after an
-  # attach or an exec, so falling through to precedence 5 behind either risks
-  # nothing a fall-through behind 2 does not already risk. A STATUS THIS
-  # LAUNCHER DOES NOT RECOGNISE AT ALL — a signal (130), a crash, anything
-  # `lane --help` does not name — gets NO SUCH BENEFIT OF THE DOUBT: `lane`
-  # may already have attached a live lane or exec'd an available one before
-  # dying this way, and starting a bare Claude behind that would be the
-  # second process this whole protocol exists to prevent. So it is
-  # propagated exactly as 0 and 8 are (below), never treated as a refusal
-  # this launcher can safely walk past.
+  # attach or an exec — so falling through to precedence 5 behind either
+  # risks nothing a fall-through behind 2 does not already risk, PROVIDED
+  # the pick really was never reached.
+  #
+  # AND "PROVIDED" IS NOT RHETORICAL (Copilot round 2 on #82,
+  # `claude-profile:1743`, a gap in this round's own first pass): `lane`'s
+  # AVAILABLE branch does not run and wait for the launch it picks, it
+  # `exec`s into `pclaude --lane <lane> <profile>` and exits with whatever
+  # THAT chain ends with — Claude's own status, ordinarily, which can
+  # plausibly BE 1 or 2 just as `lane`'s own pre-pick codes can, and this
+  # launcher cannot tell the two apart by NUMBER ALONE once an unbroken
+  # chain of `exec`s is what carried it out. The window's name is the one
+  # thing an actually-taken lane changes on the way through — lane-start
+  # renames it the moment it takes one (Amendment 5(f)) — so 1, 2 and 64 are
+  # trusted as pre-pick only where the window was NOT renamed; a renamed
+  # window means a lane WAS taken and this status is Claude's own to keep,
+  # exactly like 0 and 8 below.
+  #
+  # A STATUS THIS LAUNCHER DOES NOT RECOGNISE AT ALL — a signal (130), a
+  # crash, anything `lane --help` does not name — gets NO SUCH BENEFIT OF
+  # THE DOUBT EITHER WAY: `lane` may already have attached a live lane or
+  # exec'd an available one before dying this way, and starting a bare
+  # Claude behind that would be the second process this whole protocol
+  # exists to prevent. So it is propagated exactly as 0 and 8 are (below),
+  # never treated as a refusal this launcher can safely walk past.
   #
   # NO TERMINAL, NO QUESTION: an agent's stdin is not one, and a picker that
   # asked it would hang the one caller that can never answer — precedence 5's
   # own fence, asked here one step early so the picker is never even started.
   if command -v lane >/dev/null 2>&1 && [[ -n "${TMUX:-}" ]] && [[ -t 0 ]]; then
+    # THE WINDOW'S NAME, READ BEFORE `lane` RUNS AT ALL (Copilot round 2 on
+    # #82, `claude-profile:1743`; a gap in this same round's own first pass).
+    # `lane`'s AVAILABLE branch does not run and wait for the launch it
+    # picks — it `exec`s straight into `pclaude --lane <lane> <profile>`
+    # (adopted by the same pull request), which this launcher's own code
+    # elsewhere `run`s rather than `exec`s lane-start from, but STILL ENDS
+    # by exiting with the status THAT run produced — Claude's own, in the
+    # ordinary case. So a status this function reads back from `lane` is not
+    # always `lane`'s OWN: an unbroken chain of `exec`s can carry a fully-run
+    # Claude session's exit code all the way out through `lane`'s own pid,
+    # indistinguishable by NUMBER ALONE from a `die` `lane` raised before
+    # ever picking anything. 1 and 2 are `lane --help`'s own read-failure and
+    # refusal codes, but Claude can plausibly exit with either too — so
+    # "provably pre-pick" (below) is only true when NOTHING was picked, and
+    # the window's name is the one thing an actually-taken lane changes on
+    # its way through: lane-start renames it the moment it takes one
+    # (Amendment 5(f)), exactly the tell `lane_window_is` already reads
+    # elsewhere in this file for the SAME ambiguity one layer up (a
+    # lane-start that declined a confirm versus one that took the lane and
+    # whose Claude then exited on its own).
+    lane_window_before="$(tmux display-message -p '#W' 2>/dev/null || true)"
     set +e
     lane
     lane_picker_status=$?
     set -e
+    lane_window_after="$(tmux display-message -p '#W' 2>/dev/null || true)"
+    lane_picker_documented_prepick=false
     case "$lane_picker_status" in
-      1|2|64)
-        # DOCUMENTED AND PROVABLY PRE-PICK (above): falls through to
-        # precedence 5 exactly as a missing `lane` or no terminal already do.
-        ;;
-      *)
-        # 0, 8, AND ANYTHING THIS LAUNCHER DOES NOT RECOGNISE land here
-        # together: the first two because the pick was acted on, declined, or
-        # there was nothing to offer, and the rest because an UNDOCUMENTED
-        # status earns no assumption that `lane` did nothing — see above.
-        # Either way `lane`'s own status is this launcher's own.
-        #
-        # A NOTE QUEUED BY AN EARLIER PRECEDENCE IS NOT THIS EXIT'S TO SWALLOW.
-        # `lane_read_note` at this point is never about the picker — it is a
-        # caller-bug diagnostic left behind by precedence 3's own read (SPEC
-        # §2's "a failed read … is named where it failed"), and this launcher
-        # never degrades in silence (Evidence 5) whether or not the step after
-        # the failure goes on to answer. Precedence 5 flushes the same note the
-        # same way when the picker is never reached at all; this is the one
-        # exit that bypasses precedence 5 entirely, so it flushes here instead.
-        lane_note_read_failed
-        exit "$lane_picker_status"
-        ;;
+      1|2|64) [[ "$lane_window_after" == "$lane_window_before" ]] && lane_picker_documented_prepick=true ;;
     esac
-    # NEVER CALLED "A REFUSAL": 2 is, but 1 is not, and this line does not
-    # know which of the three documented, pre-pick statuses it is looking at.
-    # The number is kept rather than paraphrased, so whoever reads it can
-    # look the status up in `lane --help` themselves.
+    if [[ "$lane_picker_documented_prepick" == false ]]; then
+      # 0, 8, AN UNDOCUMENTED STATUS, OR ANY OF 1/2/64 BEHIND A RENAMED
+      # WINDOW land here together: the first two because the pick was acted
+      # on, declined, or there was nothing to offer; the third because it
+      # earns no assumption that `lane` did nothing (above); the fourth
+      # because the window already proved otherwise — a lane WAS taken, so
+      # this status is whatever that run ended with, never lane's own to
+      # walk past. Either way this launcher must not start a second Claude
+      # behind whatever already ran, so `lane`'s own status is this
+      # launcher's own.
+      #
+      # A NOTE QUEUED BY AN EARLIER PRECEDENCE IS NOT THIS EXIT'S TO SWALLOW.
+      # `lane_read_note` at this point is never about the picker — it is a
+      # caller-bug diagnostic left behind by precedence 3's own read (SPEC
+      # §2's "a failed read … is named where it failed"), and this launcher
+      # never degrades in silence (Evidence 5) whether or not the step after
+      # the failure goes on to answer. Precedence 5 flushes the same note the
+      # same way when the picker is never reached at all; this is the one
+      # exit that bypasses precedence 5 entirely, so it flushes here instead.
+      lane_note_read_failed
+      exit "$lane_picker_status"
+    fi
+    # DOCUMENTED, AND PRE-PICK ONLY WHERE THE WINDOW SAYS SO TOO (checked
+    # above): an unrenamed window is what actually proves nothing was
+    # picked, and falling through here risks nothing a fall-through behind a
+    # plain refusal (2) does not already risk. NEVER CALLED "A REFUSAL"
+    # itself: 2 is, but 1 is not, and this line does not know which of the
+    # three it is looking at. The number is kept rather than paraphrased, so
+    # whoever reads it can look the status up in `lane --help` themselves.
     lane_read_note="${lane_read_note:-lane exited $lane_picker_status, so this window takes no lane}"
   fi
   # PRECEDENCE 5 — no lane, one notice, and still a launch. `lane_note_no_lane_start`
@@ -2156,9 +2200,13 @@ or a DECLINE of a question that had a lane on it (`lane` exit 0) starts nothing
 here at all, and neither does NOTHING TO PICK (`lane` exit 8, which is what a
 decline is too where nothing was offered) — only a REFUSAL (`lane` exit 2, or
 `lane`'s own read failing, exit 1) falls through to step 5, exactly as no
-`lane` on PATH or no terminal does; an exit this launcher does not recognise
-at all is propagated rather than treated as either. With no answer at all, and
-with --no-lane, behaviour is unchanged. There is no /restart on this path. Nor
+`lane` on PATH or no terminal does, and only where this window's name says a
+lane was never actually taken first (`lane`'s own AVAILABLE branch execs
+into a launch that can end with any status once it renames this window for
+the lane it took, and that status is kept rather than walked past); an exit
+this launcher does not recognise at all is propagated rather than treated as
+either. With no answer at all, and with --no-lane, behaviour is unchanged.
+There is no /restart on this path. Nor
 does missing `lane-start` or its sibling `lanes-edit.sh` skip this step: two of
 `lane`'s three branches (attaching to a lane already live, or a named refusal
 for one bound elsewhere) never touch `lane-start` at all, so this launcher

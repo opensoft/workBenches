@@ -25,12 +25,17 @@
 # NOTHING to start, because starting a Claude behind a pick already acted on —
 # or behind a decline nobody asked to be overridden — is worse than the lane
 # collision this protocol exists to prevent. `lane` exit 2, A REFUSAL, falls
-# through to step 4 — and so does exit 1, A READ FAILED, provably before any
-# pick and no riskier a fall-through than 2's; a status `lane --help` does not
-# document at all gets no such benefit of the doubt and is propagated exactly
-# as 0/8 are (Copilot round on opensoft/workBenches#82, `claude-profile:1704`).
-# Missing `lane-start` no longer skips this step either (same round,
-# `claude-profile:1698`): two of the picker's three branches never touch it.
+# through to step 4 — and so does exit 1, A READ FAILED, documented as
+# pre-pick and no riskier a fall-through than 2's PROVIDED the window's name
+# agrees nothing was taken (`lane`'s AVAILABLE branch execs into a launch
+# that renames this window and exits with whatever THAT run ends with, so a
+# renamed window means 1/2/64 are kept exactly like an acted-on pick's
+# 0 — Copilot round 2 on opensoft/workBenches#82, `claude-profile:1743`); a
+# status `lane --help` does not document at all gets no such benefit of the
+# doubt either way and is propagated exactly as 0/8 are (same PR, round 1,
+# `claude-profile:1704`). Missing `lane-start` no longer skips this step
+# either (round 1, `claude-profile:1698`): two of the picker's three
+# branches never touch it.
 # `--yes`/`--confirm` are gone from this order entirely: they were
 # lane-start's, for the swap-record guess step 3 used to be before Amendment 18
 # Addendum 1 replaced it with the picker.
@@ -69,7 +74,7 @@ fail() {
 # quietly changing a number; the assertion count is printed and not pinned,
 # because checks are added to existing scenarios all the time and a scenario
 # that stops running is the thing worth catching.
-EXPECTED_SCENARIOS=32
+EXPECTED_SCENARIOS=33
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -247,10 +252,21 @@ EOF
 # with whatever this scenario says its pick came to. Exit 0 is a pick ACTED
 # ON, exit 8 is a QUIT or nothing to pick, exit 2 is A REFUSAL; this launcher
 # never hands it `--dir`, `--confirm`, `--resume` or anything else.
+#
+# FAKE_LANE_RENAME simulates the AVAILABLE branch's real shape: `lane` does
+# not run and wait for the launch it picks, it `exec`s straight into
+# `pclaude --lane <lane> <profile>`, which — through lane-start — renames the
+# window the moment it takes the lane (Amendment 5(f)) and THEN exits with
+# whatever that whole chain, Claude included, ends with. A scenario that sets
+# this renames the window BEFORE exiting with FAKE_LANE_EXIT, so the fake can
+# stand in for "a lane WAS taken and this status is Claude's own" as well as
+# for `lane`'s own pre-pick statuses (Copilot round 2 on #82,
+# `claude-profile:1743`).
 cat > "$FAKE_BIN/lane" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "${FAKE_LANE_LOG:?}"
+[[ -z "${FAKE_LANE_RENAME:-}" ]] || tmux rename-window "$FAKE_LANE_RENAME" >/dev/null 2>&1 || true
 exit "${FAKE_LANE_EXIT:-8}"
 EOF
 
@@ -475,6 +491,29 @@ tty_launch "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
     || fail "picker undocumented status: this launcher also ran lane-start ('$(lane_start_argv)')"; assertion
 [[ ! -e "$CLAUDE_LOG" ]] \
     || fail "picker undocumented status: this launcher started a bare Claude behind an unrecognised status"; assertion
+
+# 2c-3. AND A DOCUMENTED STATUS BEHIND A RENAMED WINDOW IS NEVER PRE-PICK
+# EITHER (Copilot round 2 on #82, `claude-profile:1743`): `lane`'s AVAILABLE
+# branch does not run and wait for the launch it picks, it `exec`s straight
+# into one that renames this window the moment lane-start takes the lane
+# (Amendment 5(f)) and THEN exits with whatever that whole chain ends with —
+# Claude's own status, in the ordinary case, which can plausibly BE 1 or 2
+# just as `lane`'s own pre-pick codes can. The window says which: renamed
+# here, so this status is Claude's, not lane's, and starting a bare Claude
+# behind it would be the second process this whole protocol exists to
+# prevent.
+WINDOW_FILE="$TEST_ROOT/tmux-window-picker-taken.name"
+printf 'claude\n' > "$WINDOW_FILE"
+tty_launch "FAKE_TMUX_WINDOW_FILE=$WINDOW_FILE" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
+    "FAKE_LANE_EXIT=2" "FAKE_LANE_RENAME=openRepoProject-1" \
+    -- run team002 --resume session-picker-taken-then-2
+[[ "$tty_launch_status" -eq 2 ]] \
+    || fail "picker took a lane, status 2 after: the launcher exited $tty_launch_status instead of lane's own 2"; assertion
+[[ -e "$LANE_PICKER_LOG" ]] || fail "picker took a lane, status 2 after: lane was never invoked"; assertion
+[[ ! -e "$CLAUDE_LOG" ]] \
+    || fail "picker took a lane, status 2 after: this launcher started a SECOND Claude behind the one lane already took"; assertion
+[[ "$(cat "$WINDOW_FILE")" == openRepoProject-1 ]] \
+    || fail "picker took a lane, status 2 after: the window was not left renamed for the lane ('$(cat "$WINDOW_FILE")')"; assertion
 
 # 2d. No `lane` on PATH at all — a machine opensoft/openRepoTools#43 has not
 # reached yet. Given the SAME terminal 2/2b/2c had, step 3 still answers
