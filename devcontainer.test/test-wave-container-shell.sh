@@ -96,6 +96,9 @@ printf '%s\n' "$*" >> "$MOCK_DOCKER_LOG"
 
 if [[ "${1:-}" == "compose" ]]; then
     printf '%s\n' compose >> "$MOCK_LIFECYCLE_LOG"
+    if [[ " $* " == *" up "* ]]; then
+        : > "$MOCK_CONTAINER_STATE"
+    fi
 fi
 
 if [[ "${1:-}" == "network" && "${2:-}" == "inspect" ]]; then
@@ -114,7 +117,7 @@ if [[ "${1:-}" == "compose" && -n "$MOCK_EXPECT_ENV_DIR" ]]; then
 fi
 
 if [[ "${1:-}" == "container" && "${2:-}" == "inspect" ]]; then
-    if [[ "$MOCK_CONTAINER_EXISTS" != true ]]; then
+    if [[ "$MOCK_CONTAINER_EXISTS" != true && ! -f "$MOCK_CONTAINER_STATE" ]]; then
         exit 1
     fi
     if [[ "${3:-}" == "-f" ]]; then
@@ -181,6 +184,9 @@ MOCK
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'devcontainer %s\n' "$*" >> "$MOCK_DOCKER_LOG"
+if [[ "${1:-}" == "up" ]]; then
+    : > "$MOCK_CONTAINER_STATE"
+fi
 MOCK
     chmod +x "$mock_bin/devcontainer"
 
@@ -200,6 +206,7 @@ MOCK
             MOCK_EXPECT_ENV_DIR="$expected_env_dir" \
             WAVE_WSLG_ROOT="$wslg_root" \
             MOCK_CONTAINER_EXISTS="${CASE_CONTAINER_EXISTS:-true}" \
+            MOCK_CONTAINER_STATE="$case_root/container-created" \
             MOCK_PREPARE_LOG="$prepare_log" \
             MOCK_ENSURE_IMAGES_LOG="$ensure_images_log" \
             MOCK_ROCM_LOG="$rocm_log" \
