@@ -19,6 +19,8 @@ case "$1" in
             *'{{.Id}}'*)
                 if [[ "$image" == sha256:* ]]; then
                     echo "$image"
+                elif [[ "$image" == test-bench:brett* ]]; then
+                    echo "${FAKE_DOCKER_USER_IMAGE_ID:-sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd}"
                 else
                     echo "${FAKE_DOCKER_IMAGE_ID:-sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}"
                 fi
@@ -27,7 +29,8 @@ case "$1" in
                 echo "${FAKE_DOCKER_LAYER3_RECIPE_SHA256:-}"
                 ;;
             *'{{.Created}}'*)
-                if [ "$image" = "test-bench:brett" ]; then
+                if [[ "$image" == "test-bench:brett" \
+                    || "$image" == "${FAKE_DOCKER_USER_IMAGE_ID:-sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd}" ]]; then
                     echo "2026-09-10T01:00:01Z"
                 else
                     echo "2026-09-10T01:00:00Z"

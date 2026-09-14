@@ -364,6 +364,7 @@ check_selected_image() {
         IMAGE_PROBE_FAILURES=$((IMAGE_PROBE_FAILURES + 1))
         return
     fi
+    EXPECTED_IMAGE_IDS["$image"]="$expected_id"
 
     print_layer_header "Layer 2: Selected Bench" "$image"
     if ! probe_output=$(probe_image_commands "$probe_reference" 2>/dev/null); then
@@ -445,6 +446,7 @@ check_layer3_image() {
     local running_container
     local base_created
     local user_created
+    local user_image_id
     local user_recipe
 
     running_container="${RUNNING_CONTAINER_BY_IMAGE[$user_image]:-}"
@@ -456,7 +458,8 @@ check_layer3_image() {
         return
     fi
 
-    if ! docker image inspect "$user_image" >/dev/null 2>&1; then
+    user_image_id="$(image_id "$user_image")"
+    if [[ -z "$user_image_id" ]]; then
         if [ "$JSON_OUTPUT" = false ]; then
             echo -e "${YELLOW}↷ Layer 3 $user_image is missing; activation has not occurred${NC}"
         fi
@@ -465,29 +468,29 @@ check_layer3_image() {
     fi
 
     base_created=$(image_created_at "$base_image_id")
-    user_created=$(image_created_at "$user_image")
-    user_recipe="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.recipe-sha256" }}' "$user_image" 2>/dev/null || true)"
+    user_created=$(image_created_at "$user_image_id")
+    user_recipe="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.recipe-sha256" }}' "$user_image_id" 2>/dev/null || true)"
     if [[ "$user_recipe" != "$LAYER3_RECIPE_SHA256" ]]; then
         if [ "$JSON_OUTPUT" = false ]; then
             echo -e "${YELLOW}↷ Layer 3 $user_image has a stale recipe; activation is required${NC}"
         fi
-        record_image "$user_image" "3" "activation-stale"
+        record_image "$user_image" "3" "activation-stale" "$user_image_id"
     elif [[ -z "$base_created" || -z "$user_created" \
         || "$user_created" < "$base_created" || "$user_created" == "$base_created" ]]; then
         if [ "$JSON_OUTPUT" = false ]; then
             echo -e "${YELLOW}↷ Layer 3 $user_image is older than $base_image; activation is required${NC}"
         fi
-        record_image "$user_image" "3" "activation-stale"
-    elif layer3_identity_is_current "$user_image"; then
+        record_image "$user_image" "3" "activation-stale" "$user_image_id"
+    elif layer3_identity_is_current "$user_image_id"; then
         if [ "$JSON_OUTPUT" = false ]; then
             echo -e "${GREEN}✓ Layer 3 $user_image is current${NC}"
         fi
-        record_image "$user_image" "3" "current"
+        record_image "$user_image" "3" "current" "$user_image_id"
     else
         if [ "$JSON_OUTPUT" = false ]; then
             echo -e "${YELLOW}↷ Layer 3 $user_image has stale user/group configuration; activation is required${NC}"
         fi
-        record_image "$user_image" "3" "activation-stale"
+        record_image "$user_image" "3" "activation-stale" "$user_image_id"
     fi
 }
 
