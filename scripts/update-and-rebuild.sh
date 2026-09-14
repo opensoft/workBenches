@@ -254,7 +254,7 @@ build_layer2_bench() {
         fi
     fi
 
-    record_rebuilt_cascade_image "$image" "$bench_name"
+    record_rebuilt_cascade_image "$image" "$bench_name" "$build_script" "$bench_dir"
 }
 
 # Cascade rebuild all downstream dependents of a base image

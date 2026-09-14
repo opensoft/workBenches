@@ -40,9 +40,10 @@ must remain untouched by image refresh automation.
   `ensure-layer3.sh`. Recipe fingerprinting is shared with the managed
   activation path, and a network-disabled disposable probe verifies the image's
   user/group contract before `current` is reported.
-- Discover post-build `:latest` references from Docker under the normalized
-  bench prefix so Compose service images are verified alongside conventional
-  single-image benches.
+- Discover `:latest` references declared by the selected build script and
+  Compose metadata under the normalized bench prefix, then require those exact
+  references to exist after the build. This includes Compose service images
+  without admitting unrelated pre-existing daemon images.
 - Gate manifest persistence behind `--write-manifest`; normal verification
   remains read-only with respect to the checkout.
 

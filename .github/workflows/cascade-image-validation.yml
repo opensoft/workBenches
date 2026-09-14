@@ -4,7 +4,9 @@ on:
   push:
     paths:
       - .github/workflows/cascade-image-validation.yml
+      - base-image/Dockerfile
       - base-image/ai-cli-contract.sh
+      - base-image/install-ai-clis.sh
       - devcontainer.test/fixtures/fake-docker-cascade-validation.sh
       - devcontainer.test/test-cascade-image-validation.sh
       - scripts/check-versions.sh
@@ -15,7 +17,9 @@ on:
   pull_request:
     paths:
       - .github/workflows/cascade-image-validation.yml
+      - base-image/Dockerfile
       - base-image/ai-cli-contract.sh
+      - base-image/install-ai-clis.sh
       - devcontainer.test/fixtures/fake-docker-cascade-validation.sh
       - devcontainer.test/test-cascade-image-validation.sh
       - scripts/check-versions.sh

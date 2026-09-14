@@ -52,6 +52,11 @@ FAKE_DOCKER_LOG="$log" \
 
 test ! -e "$manifest"
 grep -Fq 'Layer 3 test-bench:brett is current' "$temp_dir/success.out"
+grep -Fq "$default_image_id sh -c" "$log"
+if grep -Fq 'test-bench:latest sh -c' "$log"; then
+    echo "standalone verification followed a mutable image tag" >&2
+    exit 1
+fi
 test "$(grep -cx 'probe-batch' "$log")" -eq 1
 test "$(grep -c '^container ls --format ' "$log")" -eq 1
 
@@ -141,10 +146,13 @@ test "${CASCADE_IMAGE_RECORDS[*]}" = "test-bench:latest=$captured_image_id"
 
 CASCADE_IMAGES=()
 CASCADE_IMAGE_RECORDS=()
+compose_metadata="$temp_dir/sim-build.sh"
+printf '%s\n' \
+    'echo "Image: sim-bench-gene_bench:latest"' \
+    'echo "Image: sim-bench-ui:latest"' > "$compose_metadata"
 PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
 FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
-FAKE_DOCKER_IMAGE_REFS=$'sim-bench-gene_bench:latest\nsim-bench-ui:latest' \
-    record_rebuilt_cascade_image sim-bench:latest simBench
+    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata"
 test "${CASCADE_IMAGES[*]}" = "sim-bench-gene_bench:latest sim-bench-ui:latest"
 test "${#CASCADE_IMAGE_RECORDS[@]}" -eq 2
 if grep -Eq '(^| )(build|rm|stop|restart)( |$)' "$log"; then

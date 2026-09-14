@@ -349,11 +349,17 @@ check_selected_image() {
     local probe_status
     local probe_index=0
     local expected_id="${EXPECTED_IMAGE_IDS[$image]:-}"
-    local probe_reference="${EXPECTED_IMAGE_IDS[$image]:-$image}"
+    local probe_reference
     local passed=true
 
-    if ! docker image inspect "$probe_reference" >/dev/null 2>&1; then
-        echo -e "${RED}✗ Selected Layer 2 image ($image at $probe_reference) not found${NC}" >&2
+    if [[ -n "$expected_id" ]]; then
+        probe_reference="$expected_id"
+    else
+        probe_reference="$(image_id "$image")"
+        expected_id="$probe_reference"
+    fi
+    if [[ -z "$probe_reference" ]] || ! docker image inspect "$probe_reference" >/dev/null 2>&1; then
+        echo -e "${RED}✗ Selected Layer 2 image ($image) not found${NC}" >&2
         record_image "$image" "2" "missing" "$expected_id"
         IMAGE_PROBE_FAILURES=$((IMAGE_PROBE_FAILURES + 1))
         return

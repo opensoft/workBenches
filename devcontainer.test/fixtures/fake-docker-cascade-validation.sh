@@ -12,7 +12,7 @@ case "$1" in
         [ "$2" = "inspect" ] || exit 1
         image="${!#}"
         case "$image" in
-            test-bench:latest|test-bench:brett*|sim-bench:*|sim-bench-*|sha256:*) ;;
+            test-bench:latest|test-bench:brett*|sim-bench-gene_bench:*|sim-bench-ui:*|sha256:*) ;;
             *) exit 1 ;;
         esac
         case "$*" in
