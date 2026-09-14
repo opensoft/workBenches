@@ -16,6 +16,9 @@ set -euo pipefail
 printf '%s\n' "$*" >> "$DOCKER_LOG"
 
 case "$1 $2" in
+    "run --rm")
+        printf '%s\n' 'codex-cli 0.199.0'
+        ;;
     "image inspect")
         if [[ "$3" == "--format" ]]; then
             if [[ "$4" == *recipe-sha256* ]]; then

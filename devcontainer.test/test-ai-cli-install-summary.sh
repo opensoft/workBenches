@@ -36,7 +36,8 @@ cursor_destination="$cursor_case_root/opt/cursor-agent"
 cursor_global_launcher="$cursor_case_root/usr/local/bin/cursor-agent"
 mkdir -p "$cursor_bundle_dir" "$cursor_bin_dir"
 printf '%s\n' '#!/usr/bin/env bash' \
-    'script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"' \
+    'script_path="$(readlink -f -- "${BASH_SOURCE[0]}")"' \
+    'script_dir="$(cd -- "$(dirname -- "$script_path")" && pwd)"' \
     'test -x "$script_dir/node"' \
     'test -f "$script_dir/index.js"' \
     'printf "%s\n" "cursor-agent-test"' > "$cursor_bundle_dir/agent"
