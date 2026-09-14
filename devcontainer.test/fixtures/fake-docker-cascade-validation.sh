@@ -5,10 +5,14 @@ printf '%s\n' "$*" >> "${FAKE_DOCKER_LOG:?FAKE_DOCKER_LOG is required}"
 
 case "$1" in
     image)
+        if [ "$2" = "ls" ]; then
+            printf '%s\n' "${FAKE_DOCKER_IMAGE_REFS:-test-bench:latest}"
+            exit 0
+        fi
         [ "$2" = "inspect" ] || exit 1
         image="${!#}"
         case "$image" in
-            test-bench:latest|test-bench:brett*|sha256:*) ;;
+            test-bench:latest|test-bench:brett*|sim-bench:*|sim-bench-*|sha256:*) ;;
             *) exit 1 ;;
         esac
         case "$*" in
@@ -16,8 +20,11 @@ case "$1" in
                 if [[ "$image" == sha256:* ]]; then
                     echo "$image"
                 else
-                    echo "${FAKE_DOCKER_IMAGE_ID:-sha256:${image//[:]/-}}"
+                    echo "${FAKE_DOCKER_IMAGE_ID:-sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}"
                 fi
+                ;;
+            *'recipe-sha256'*)
+                echo "${FAKE_DOCKER_LAYER3_RECIPE_SHA256:-}"
                 ;;
             *'{{.Created}}'*)
                 if [ "$image" = "test-bench:brett" ]; then
@@ -36,6 +43,9 @@ case "$1" in
         exit 1
         ;;
     run)
+        if [[ " $* " == *' layer3-identity-probe '* ]]; then
+            exit "${FAKE_DOCKER_LAYER3_IDENTITY_STATUS:-0}"
+        fi
         printf '%s\n' probe-batch >> "${FAKE_DOCKER_LOG:?FAKE_DOCKER_LOG is required}"
         [[ " $* " == *' --network none '* ]]
         [[ " $* " == *' --cap-drop ALL '* ]]

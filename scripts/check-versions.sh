@@ -9,6 +9,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/image-names.sh"
+# shellcheck source=lib/layer3-recipe.sh
+source "$SCRIPT_DIR/lib/layer3-recipe.sh"
 # shellcheck source=../base-image/ai-cli-contract.sh
 . "$REPO_DIR/base-image/ai-cli-contract.sh"
 # Windows shells often export USERNAME with different casing (e.g. Brett).
@@ -76,11 +78,16 @@ declare -a JSON_IMAGE_ENTRIES=()
 declare -A RUNNING_CONTAINER_BY_IMAGE=()
 declare -A EXPECTED_IMAGE_IDS=()
 IMAGE_PROBE_FAILURES=0
+LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256 "$REPO_DIR/user-layer")"
+DOCKER_SOCKET_GID=""
+if [ -S /var/run/docker.sock ]; then
+    DOCKER_SOCKET_GID="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || true)"
+fi
 
 for image_id_record in "${TARGET_IMAGE_ID_RECORDS[@]}"; do
     image_reference="${image_id_record%%=*}"
     expected_image_id="${image_id_record#*=}"
-    if [[ -z "$image_reference" || -z "$expected_image_id" || "$image_reference" == "$expected_image_id" ]]; then
+    if [[ -z "$image_reference" || ! "$expected_image_id" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
         echo "Invalid --image-ids entry: $image_id_record" >&2
         exit 1
     fi
@@ -402,6 +409,29 @@ check_selected_images() {
     done
 }
 
+layer3_identity_is_current() {
+    local image="$1"
+
+    run_with_optional_timeout 30 docker run --rm \
+        --network none \
+        --cap-drop ALL \
+        --security-opt no-new-privileges \
+        --read-only \
+        --entrypoint="" \
+        "$image" \
+        sh -c '
+            username="$1"
+            socket_gid="$2"
+            id "$username" >/dev/null 2>&1 || exit 1
+            [ -z "$socket_gid" ] && exit 0
+            for gid in $(id -G "$username"); do
+                [ "$gid" = "$socket_gid" ] && exit 0
+            done
+            exit 1
+        ' layer3-identity-probe "$USERNAME" "$DOCKER_SOCKET_GID" \
+        >/dev/null 2>&1
+}
+
 check_layer3_image() {
     local base_image="$1"
     local base_image_id="${EXPECTED_IMAGE_IDS[$base_image]:-$base_image}"
@@ -409,6 +439,7 @@ check_layer3_image() {
     local running_container
     local base_created
     local user_created
+    local user_recipe
 
     running_container="${RUNNING_CONTAINER_BY_IMAGE[$user_image]:-}"
     if [[ -n "$running_container" ]]; then
@@ -429,14 +460,26 @@ check_layer3_image() {
 
     base_created=$(image_created_at "$base_image_id")
     user_created=$(image_created_at "$user_image")
-    if [[ -n "$base_created" && -n "$user_created" && "$user_created" > "$base_created" ]]; then
+    user_recipe="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.recipe-sha256" }}' "$user_image" 2>/dev/null || true)"
+    if [[ "$user_recipe" != "$LAYER3_RECIPE_SHA256" ]]; then
+        if [ "$JSON_OUTPUT" = false ]; then
+            echo -e "${YELLOW}↷ Layer 3 $user_image has a stale recipe; activation is required${NC}"
+        fi
+        record_image "$user_image" "3" "activation-stale"
+    elif [[ -z "$base_created" || -z "$user_created" \
+        || "$user_created" < "$base_created" || "$user_created" == "$base_created" ]]; then
+        if [ "$JSON_OUTPUT" = false ]; then
+            echo -e "${YELLOW}↷ Layer 3 $user_image is older than $base_image; activation is required${NC}"
+        fi
+        record_image "$user_image" "3" "activation-stale"
+    elif layer3_identity_is_current "$user_image"; then
         if [ "$JSON_OUTPUT" = false ]; then
             echo -e "${GREEN}✓ Layer 3 $user_image is current${NC}"
         fi
         record_image "$user_image" "3" "current"
     else
         if [ "$JSON_OUTPUT" = false ]; then
-            echo -e "${YELLOW}↷ Layer 3 $user_image is older than $base_image; activation is required${NC}"
+            echo -e "${YELLOW}↷ Layer 3 $user_image has stale user/group configuration; activation is required${NC}"
         fi
         record_image "$user_image" "3" "activation-stale"
     fi

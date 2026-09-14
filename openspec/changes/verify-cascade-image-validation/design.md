@@ -37,7 +37,12 @@ must remain untouched by image refresh automation.
   provider authentication remains outside image validation.
 - Make Layer 3 checking opt-in through `--check-layer3`. It reports missing,
   stale, current, and running-container-deferred states without invoking
-  `ensure-layer3.sh`.
+  `ensure-layer3.sh`. Recipe fingerprinting is shared with the managed
+  activation path, and a network-disabled disposable probe verifies the image's
+  user/group contract before `current` is reported.
+- Discover post-build `:latest` references from Docker under the normalized
+  bench prefix so Compose service images are verified alongside conventional
+  single-image benches.
 - Gate manifest persistence behind `--write-manifest`; normal verification
   remains read-only with respect to the checkout.
 

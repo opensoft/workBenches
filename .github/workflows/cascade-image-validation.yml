@@ -1,0 +1,40 @@
+name: Cascade Image Validation
+
+on:
+  push:
+    paths:
+      - .github/workflows/cascade-image-validation.yml
+      - base-image/ai-cli-contract.sh
+      - devcontainer.test/fixtures/fake-docker-cascade-validation.sh
+      - devcontainer.test/test-cascade-image-validation.sh
+      - scripts/check-versions.sh
+      - scripts/ensure-layer3.sh
+      - scripts/lib/cascade-image-validation.sh
+      - scripts/lib/layer3-recipe.sh
+      - scripts/update-and-rebuild.sh
+  pull_request:
+    paths:
+      - .github/workflows/cascade-image-validation.yml
+      - base-image/ai-cli-contract.sh
+      - devcontainer.test/fixtures/fake-docker-cascade-validation.sh
+      - devcontainer.test/test-cascade-image-validation.sh
+      - scripts/check-versions.sh
+      - scripts/ensure-layer3.sh
+      - scripts/lib/cascade-image-validation.sh
+      - scripts/lib/layer3-recipe.sh
+      - scripts/update-and-rebuild.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Run cascade image validation regression
+        run: bash devcontainer.test/test-cascade-image-validation.sh

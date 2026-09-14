@@ -10,6 +10,9 @@ fake_bin="$temp_dir/bin"
 manifest="$(mktemp "$repo_root/config/.version-manifest.test.XXXXXX")"
 rm -f -- "$manifest"
 log="$temp_dir/docker.log"
+default_image_id="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+retagged_image_id="sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+captured_image_id="sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 
 cleanup() {
     rm -f -- "$manifest"
@@ -27,6 +30,8 @@ bash -n "$repo_root/scripts/update-and-rebuild.sh"
 test "$(bash -c 'source "$1"; bench_dir_to_image_repo 365Bench' _ "$repo_root/scripts/lib/image-names.sh")" = "m365-bench"
 
 source "$repo_root/base-image/ai-cli-contract.sh"
+source "$repo_root/scripts/lib/layer3-recipe.sh"
+export FAKE_DOCKER_LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256 "$repo_root/user-layer")"
 test "${WORKBENCHES_REQUIRED_AI_CLIS[0]}" = claude
 test "${WORKBENCHES_REQUIRED_AI_CLIS[-1]}" = cursor-agent
 grep -Fq 'required_clis=("${WORKBENCHES_REQUIRED_AI_CLIS[@]}")' "$installer"
@@ -49,6 +54,20 @@ test ! -e "$manifest"
 grep -Fq 'Layer 3 test-bench:brett is current' "$temp_dir/success.out"
 test "$(grep -cx 'probe-batch' "$log")" -eq 1
 test "$(grep -c '^container ls --format ' "$log")" -eq 1
+
+PATH="$fake_bin:$PATH" \
+FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_LAYER3_RECIPE_SHA256=stale \
+"$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
+    > "$temp_dir/stale-recipe.out"
+grep -Fq 'has a stale recipe' "$temp_dir/stale-recipe.out"
+
+PATH="$fake_bin:$PATH" \
+FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_LAYER3_IDENTITY_STATUS=1 \
+"$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
+    > "$temp_dir/stale-identity.out"
+grep -Fq 'has stale user/group configuration' "$temp_dir/stale-identity.out"
 
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
@@ -82,23 +101,28 @@ test -s "$manifest"
 jq -e '.user == "brett\"qa"' "$manifest" >/dev/null
 grep -Fq '"image": "test-bench:latest"' "$manifest"
 grep -Fq '"image": "test-bench:brett\"qa"' "$manifest"
-grep -Fq '"id": "sha256:test-bench-latest"' "$manifest"
+grep -Fq "\"id\": \"$default_image_id\"" "$manifest"
 
 rm -f -- "$manifest"
 : > "$log"
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
-FAKE_DOCKER_IMAGE_ID=sha256:retagged \
+FAKE_DOCKER_IMAGE_ID="$retagged_image_id" \
 "$checker" --layer 0 \
     --images test-bench:latest \
-    --image-ids test-bench:latest=sha256:captured \
+    --image-ids "test-bench:latest=$captured_image_id" \
     --write-manifest \
     --manifest-file "$manifest" \
     --user brett > /dev/null
-jq -e '.images[] | select(.image == "test-bench:latest" and .id == "sha256:captured" and .status == "verified")' "$manifest" >/dev/null
-grep -Fq 'sha256:captured sh -c' "$log"
+jq -e --arg id "$captured_image_id" '.images[] | select(.image == "test-bench:latest" and .id == $id and .status == "verified")' "$manifest" >/dev/null
+grep -Fq "$captured_image_id sh -c" "$log"
 if grep -Fq 'test-bench:latest sh -c' "$log"; then
     echo "immutable cascade verification followed a moved tag" >&2
+    exit 1
+fi
+if "$checker" --layer 0 --images test-bench:latest \
+    --image-ids test-bench:latest=mutable-tag >/dev/null 2>&1; then
+    echo "expected a mutable --image-ids value to be rejected" >&2
     exit 1
 fi
 if "$checker" --layer 0 --write-manifest --manifest-file "$temp_dir/outside.json" >/dev/null 2>&1; then
@@ -110,10 +134,19 @@ source "$repo_root/scripts/lib/cascade-image-validation.sh"
 NO_CACHE=true
 CASCADE_IMAGES=()
 CASCADE_IMAGE_RECORDS=()
-PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" FAKE_DOCKER_IMAGE_ID=sha256:captured \
+PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
     record_rebuilt_cascade_image test-bench:latest testBench
 test "${CASCADE_IMAGES[*]}" = test-bench:latest
-test "${CASCADE_IMAGE_RECORDS[*]}" = test-bench:latest=sha256:captured
+test "${CASCADE_IMAGE_RECORDS[*]}" = "test-bench:latest=$captured_image_id"
+
+CASCADE_IMAGES=()
+CASCADE_IMAGE_RECORDS=()
+PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
+FAKE_DOCKER_IMAGE_REFS=$'sim-bench-gene_bench:latest\nsim-bench-ui:latest' \
+    record_rebuilt_cascade_image sim-bench:latest simBench
+test "${CASCADE_IMAGES[*]}" = "sim-bench-gene_bench:latest sim-bench-ui:latest"
+test "${#CASCADE_IMAGE_RECORDS[@]}" -eq 2
 if grep -Eq '(^| )(build|rm|stop|restart)( |$)' "$log"; then
     echo "Layer 3 inspection attempted a Docker mutation" >&2
     exit 1
