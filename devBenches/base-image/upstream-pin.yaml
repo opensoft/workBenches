@@ -57,11 +57,11 @@ sources:
     source_repository: opensoft/openRepoTools
     materialization: copied
     revision_kind: commit
-    commit: "0eb29b34daed39960c9ecf89c2600644a9fed784"
+    commit: "8a36eb344935444e36ff5af5551e5bf9157f7f15"
     vendor_dir: files/openrepotools
     files:
       - path: openRepoTools
-        sha256: "636a8aa268c70ec414c700d72974e029ab45ffc1051a213bcd955ad73fc0dd9a"
+        sha256: "9779b0fe29d9fdbb7b7185d4d47b6bcd7cbeb21e59f3aa674562c06428854784"
         mode: "100755"
       - path: park
         sha256: "b0bcf13a97f4c6688bb6bbc4637e6b1f3142448bbb0b66c105396765f0b7d62b"
@@ -70,5 +70,35 @@ sources:
         sha256: "db6fe6237648714936467be7236cd6450db23e9d5bd96c415a6ae1322becab07"
         mode: "100755"
       - path: status
-        sha256: "ffc8084389c7f4278d7f7925e32eea70981bb3a260f957e8868b454d9b1ce1a5"
+        sha256: "40d05e45ee46f240a094f5e380f173dca38166c76ece4d9a2fcc380f6163dc9d"
         mode: "100755"
+      - path: restart
+        sha256: "9f7ba84f3eaf141b030b07505d8289cdec8e23d10e36cf7fced5c25573a8fac5"
+        mode: "100755"
+      - path: lanes
+        sha256: "0eef49fd24eba9ce6bafe48aa9621523bfd9e6b59fccc986e24ba8a8d7bcd6ab"
+        mode: "100755"
+      - path: lanes-edit.sh
+        sha256: "0738e17e257ea7876f4d63d85ad475068d139e493f8b4ba32c87188230e4427a"
+        mode: "100755"
+      - path: lane-start
+        sha256: "ae3f3f607ac54eefc9771f8108b20eb13ad045f74fb2cee44a8a8feb6fa4a99a"
+        mode: "100755"
+      - path: lane-end
+        sha256: "3bb62adb89b739b89cc13c9f31607dadb4e6500e47830d2026b1ffdf0f7a7c74"
+        mode: "100755"
+      - path: link-estates
+        sha256: "660b087e2b9391fed637a16128ac1716ad512fc326095e623e630864cd5a0f40"
+        mode: "100755"
+      - path: repos.tsv
+        sha256: "e4f9160a07ea528d89903912ecbed2c22041d693bdc0637bbd52843abbd3b959"
+        mode: "100644"
+      - path: skills/lane-swap/SKILL.md
+        sha256: "c67664b00d76b4175c8f603d236a24c9e35bef2d7de4c11d0fb9205380cdae0f"
+        mode: "100644"
+      - path: skills/restart/SKILL.md
+        sha256: "94dc7f29b4cefb1bd10b23fd7ac7eddc9a2e99b9f57d443ede054c77541f607a"
+        mode: "100644"
+      - path: commands/swap.md
+        sha256: "06de7b4be283ee59e9f26371e22efc6ccb492ea9a95e68d20921e477828245af"
+        mode: "100644"
