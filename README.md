@@ -26,8 +26,10 @@ scripts and reports configured scripts that are not installed.
 SHA-256. The installer tries the authenticated GitHub API before raw download,
 verifies bytes before replacing anything, journals publication so an
 interrupted upgrade can resume, and rolls back ordinary partial multi-file
-replacement failures. A failed download/digest check preserves the existing
-executable. A symlink, directory,
+replacement failures. A persistent per-directory lock serializes installation,
+removal, status, and legacy execution; launchers run the verified byte snapshot
+instead of reopening a pathname after verification. A failed download/digest
+check preserves the existing executable. A symlink, directory,
 read-only target, or unrelated existing `project` command refuses. After
 reviewing a name collision, use `--replace-existing` to take ownership;
 uninstall removes only an artifact whose ownership record and digest agree.

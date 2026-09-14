@@ -15,6 +15,9 @@ offline source option and journaled, rollback-protected replacement. Stage only
 verified bytes; a pending ownership record recognizes the new digest and, only
 for a verified owned upgrade, the pre-upgrade digest so an interrupted publish
 can resume without adopting an unowned command.
+Serialize readers and writers through a persistent per-install-directory lock.
+Legacy execution compiles and runs the verified byte snapshot while holding a
+shared lock, so verification and execution do not reopen a mutable pathname.
 Record installer ownership and the installed digest separately; automatic
 installation refuses an unowned name collision, and uninstall rechecks both.
 Use the existing host-local .workbenches-path convention for discovery.

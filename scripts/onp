@@ -2,7 +2,9 @@
 # Legacy name/parent arguments are handled by project new.
 set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$script_dir/new-project.sh" ]; then
+if [ -f "$script_dir/new-project.sh" ] \
+    && [ -f "$script_dir/setup-project-command.py" ] \
+    && [ -f "$script_dir/../config/bench-config.json" ]; then
     exec bash "$script_dir/new-project.sh" "$@"
 fi
 # setup-workbenches also supports copying onp beside the installed executable.

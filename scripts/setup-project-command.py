@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Install the commit-pinned openRepoProject executable. Apache-2.0."""
 import argparse
+import fcntl
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -14,6 +16,7 @@ import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+LOCK_NAME = ".workbenches-project.lock"
 
 
 def validate_target(path):
@@ -54,36 +57,89 @@ def file_sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def owned_target(target, owner_marker, repository):
+def owned_target_data(target, owner_marker, repository):
     if (not target.is_file() or target.is_symlink()
             or not owner_marker.is_file() or owner_marker.is_symlink()):
-        return False
+        return None
     try:
         owner = json.loads(owner_marker.read_text())
     except (OSError, ValueError, TypeError):
-        return False
+        return None
     if (not isinstance(owner, dict)
             or owner.get("schema_version") != 1
             or owner.get("repository") != repository
+            or re.fullmatch(r"[0-9a-f]{40}", owner.get("commit", "")) is None
             or re.fullmatch(r"[0-9a-f]{64}", owner.get("sha256", "")) is None):
-        return False
+        return None
     allowed_digests = {owner["sha256"]}
     if owner.get("state") == "pending":
         previous_owned = owner.get("previous_owned")
         if not isinstance(previous_owned, bool):
-            return False
+            return None
         previous_digest = owner.get("previous_sha256", "")
         if previous_digest and re.fullmatch(r"[0-9a-f]{64}", previous_digest) is None:
-            return False
+            return None
         if previous_owned:
             if not previous_digest:
-                return False
+                return None
             allowed_digests.add(previous_digest)
         elif previous_digest:
-            return False
+            return None
     elif owner.get("state") not in (None, "owned"):
-        return False
-    return file_sha256(target) in allowed_digests
+        return None
+    data = target.read_bytes()
+    return data if hashlib.sha256(data).hexdigest() in allowed_digests else None
+
+
+def owned_target(target, owner_marker, repository):
+    return owned_target_data(target, owner_marker, repository) is not None
+
+
+def path_fingerprint(path):
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return ("missing",)
+    if not stat.S_ISREG(metadata.st_mode):
+        return ("other", metadata.st_dev, metadata.st_ino, metadata.st_mode)
+    return ("file", metadata.st_dev, metadata.st_ino, metadata.st_mode,
+            hashlib.sha256(path.read_bytes()).hexdigest())
+
+
+def acquire_project_lock(directory, exclusive):
+    lock_path = directory / LOCK_NAME
+    flags = os.O_RDONLY
+    if exclusive:
+        flags = os.O_RDWR | os.O_CREAT
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(lock_path, flags, 0o644)
+    if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+        os.close(descriptor)
+        raise ValueError(f"Refusing non-regular project lock: {lock_path}")
+    if exclusive:
+        os.fchmod(descriptor, 0o644)
+    fcntl.flock(descriptor, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+    return descriptor
+
+
+def execute_project(data, target, command_args):
+    code = compile(data, str(target), "exec")
+    original_argv = sys.argv
+    original_path0 = sys.path[0]
+    sys.argv = [str(target), *command_args]
+    sys.path[0] = str(target.parent)
+    namespace = {
+        "__name__": "__main__",
+        "__file__": str(target),
+        "__package__": None,
+        "__cached__": None,
+    }
+    try:
+        exec(code, namespace)
+    finally:
+        sys.argv = original_argv
+        sys.path[0] = original_path0
+    return 0
 
 
 def replace_transaction(replacements, staged):
@@ -128,12 +184,16 @@ def main(argv=None):
                         help="remove only a project command owned by this installer")
     operation.add_argument("--resolve-owned", action="store_true",
                            help="print the command path only when installer ownership verifies")
+    operation.add_argument("--exec-owned", action="store_true",
+                           help="verify and execute the owned command while holding a shared lock")
+    parser.add_argument("command_args", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     if (os.environ.get("WORKBENCHES_SKIP_PROJECT_COMMAND") == "1"
-            and not args.resolve_owned and not args.remove):
+            and not args.resolve_owned and not args.exec_owned and not args.remove):
         print("project installation skipped by WORKBENCHES_SKIP_PROJECT_COMMAND=1")
         return 0
     staged = []
+    lock_descriptor = None
     try:
         pin = json.loads(args.pin.read_text())
         if (not isinstance(pin, dict) or pin.get("schema_version") != 1
@@ -144,29 +204,49 @@ def main(argv=None):
         directory = args.bin_dir.expanduser()
         target, marker = directory / "project", directory / ".workbenches-path"
         owner_marker = directory / ".workbenches-project.json"
+        lock_path = directory / LOCK_NAME
+        read_operation = args.resolve_owned or args.exec_owned
+        if read_operation and not lock_path.is_file():
+            print(f"project: refused unlocked command at {target}", file=sys.stderr)
+            return 3
+        if not read_operation:
+            if directory.exists() and (not directory.is_dir() or not os.access(directory, os.W_OK)):
+                raise ValueError(f"Unwritable install directory: {directory}")
+            directory.mkdir(parents=True, exist_ok=True)
+        lock_descriptor = acquire_project_lock(directory, exclusive=not read_operation)
         if args.resolve_owned:
             if owned_target(target, owner_marker, pin["repository"]):
                 print(target)
                 return 0
             print(f"project: refused unowned command at {target}", file=sys.stderr)
             return 3
+        if args.exec_owned:
+            data = owned_target_data(target, owner_marker, pin["repository"])
+            if data is None:
+                print(f"project: refused unowned command at {target}", file=sys.stderr)
+                return 3
+            command_args = args.command_args[1:] if args.command_args[:1] == ["--"] else args.command_args
+            return execute_project(data, target, command_args)
         validate_target(target)
         validate_target(marker)
         validate_target(owner_marker)
         if args.remove:
             if owned_target(target, owner_marker, pin["repository"]):
+                removal_state = (path_fingerprint(target), path_fingerprint(owner_marker))
+                if (not owned_target(target, owner_marker, pin["repository"])
+                        or removal_state != (path_fingerprint(target), path_fingerprint(owner_marker))):
+                    raise ValueError("Project command changed during removal; nothing removed")
                 target.unlink()
                 owner_marker.unlink()
                 print(f"project: removed installer-owned command from {target}")
                 return 0
             print(f"project: preserved unowned command at {target}", file=sys.stderr)
             return 3
-        if directory.exists() and (not directory.is_dir() or not os.access(directory, os.W_OK)):
-            raise ValueError(f"Unwritable install directory: {directory}")
         wb = args.workbenches.expanduser().resolve()
         if not (wb / "config/bench-config.json").is_file():
             raise ValueError(f"Not a workBenches checkout: {wb}")
-        target_digest = file_sha256(target) if target.is_file() else ""
+        initial_install_state = (path_fingerprint(target), path_fingerprint(owner_marker))
+        target_digest = file_sha256(target) if target.is_file() and not target.is_symlink() else ""
         target_owned = owned_target(target, owner_marker, pin["repository"])
         if target_digest and not target_owned and not args.replace_existing:
             raise ValueError(
@@ -217,6 +297,8 @@ def main(argv=None):
             validate_target(target)
             validate_target(marker)
             validate_target(owner_marker)
+            if initial_install_state != (path_fingerprint(target), path_fingerprint(owner_marker)):
+                raise ValueError("Project command changed during installation; nothing replaced")
             replace_transaction((
                 (owner_marker, pending_owner_stage),
                 (target, command_stage),
@@ -234,6 +316,8 @@ def main(argv=None):
     finally:
         for path in staged:
             path.unlink(missing_ok=True)
+        if lock_descriptor is not None:
+            os.close(lock_descriptor)
 
 
 if __name__ == "__main__":

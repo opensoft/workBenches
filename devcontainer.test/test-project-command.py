@@ -1,6 +1,8 @@
 """Offline installer and legacy entrypoint regression tests."""
 import hashlib
 import importlib.util
+import io
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -8,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -84,6 +87,33 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(installer.main([*self.args, "--remove"]), 3)
         self.assertEqual(target.read_text(), "unowned replacement")
 
+    def test_invalid_owner_commit_is_never_trusted(self):
+        self.assertEqual(self.install(), 0)
+        owner = self.bin / ".workbenches-project.json"
+        record = json.loads(owner.read_text())
+        record["commit"] = "not-a-commit"
+        owner.write_text(json.dumps(record))
+        self.assertEqual(installer.main([*self.args, "--resolve-owned"]), 3)
+        self.assertEqual(installer.main([*self.args, "--remove"]), 3)
+        self.assertTrue((self.bin / "project").is_file())
+
+    def test_remove_rechecks_target_before_unlink(self):
+        self.assertEqual(self.install(), 0)
+        target = self.bin / "project"
+        real_owned_target = installer.owned_target
+        checks = 0
+
+        def replace_before_final_check(*args):
+            nonlocal checks
+            checks += 1
+            if checks == 2:
+                target.write_text("concurrent replacement")
+            return real_owned_target(*args)
+
+        with patch.object(installer, "owned_target", side_effect=replace_before_final_check):
+            self.assertEqual(installer.main([*self.args, "--remove"]), 2)
+        self.assertEqual(target.read_text(), "concurrent replacement")
+
     def test_partial_publish_failures_roll_back_owned_upgrade(self):
         self.assertEqual(self.install(), 0)
         target = self.bin / "project"
@@ -116,6 +146,24 @@ class InstallTests(unittest.TestCase):
                     self.assertEqual(path.read_bytes(), data)
         self.assertEqual(self.install(), 0)
         self.assertEqual(target.read_bytes(), self.source.read_bytes())
+
+    def test_install_rechecks_collision_after_staging(self):
+        real_stage = installer.stage
+        stage_count = 0
+        target = self.bin / "project"
+
+        def create_collision_after_staging(*args):
+            nonlocal stage_count
+            staged = real_stage(*args)
+            stage_count += 1
+            if stage_count == 4:
+                target.write_text("concurrent unowned command")
+            return staged
+
+        with patch.object(installer, "stage", side_effect=create_collision_after_staging):
+            self.assertEqual(self.install(), 2)
+        self.assertEqual(target.read_text(), "concurrent unowned command")
+        self.assertFalse((self.bin / ".workbenches-project.json").exists())
 
     def test_pending_owned_upgrade_recovers_after_interruption(self):
         self.assertEqual(self.install(), 0)
@@ -225,10 +273,14 @@ class InstallTests(unittest.TestCase):
         (self.wb / "config/openrepoproject-pin.json").write_bytes(self.pin.read_bytes())
         copied = self.bin / "onp"
         copied.write_bytes((ROOT / "scripts/onp").read_bytes())
+        bypass_marker = self.base / "copied-new-project-ran"
+        (self.bin / "new-project.sh").write_text(
+            f'#!/usr/bin/env bash\nprintf ran > {str(bypass_marker)!r}\n')
         result = subprocess.run(["bash", str(copied), "Copied", "parent with spaces"], env=env,
                                 text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), ["new", "Copied", "parent with spaces"])
+        self.assertFalse(bypass_marker.exists())
         self.source.write_text("#!/usr/bin/env python3\nimport sys\nsys.exit(19)\n")
         pin = json.loads(self.pin.read_text())
         pin["sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
@@ -259,6 +311,43 @@ class InstallTests(unittest.TestCase):
                                 env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), ["new", "FromPath"])
+
+    def test_exec_owned_runs_verified_snapshot_if_path_is_replaced(self):
+        self.assertEqual(self.install(), 0)
+        target = self.bin / "project"
+        malicious = self.base / "malicious-ran"
+        real_owned_target_data = installer.owned_target_data
+
+        def replace_after_verified_read(*args):
+            data = real_owned_target_data(*args)
+            target.write_text(
+                f'#!/usr/bin/env python3\nfrom pathlib import Path\nPath({str(malicious)!r}).write_text("ran")\n')
+            return data
+
+        output = io.StringIO()
+        with patch.object(installer, "owned_target_data", side_effect=replace_after_verified_read):
+            with redirect_stdout(output):
+                self.assertEqual(installer.main([*self.args, "--exec-owned", "--", "safe"]), 0)
+        self.assertEqual(json.loads(output.getvalue()), ["safe"])
+        self.assertFalse(malicious.exists())
+
+    def test_owned_resolution_waits_for_project_lock(self):
+        self.assertEqual(self.install(), 0)
+        lock = (self.bin / installer.LOCK_NAME).open("rb")
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        process = subprocess.Popen(
+            [sys.executable, str(ROOT / "scripts/setup-project-command.py"),
+             *self.args, "--resolve-owned"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            with self.assertRaises(subprocess.TimeoutExpired):
+                process.wait(timeout=0.1)
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+            lock.close()
+        stdout, stderr = process.communicate(timeout=5)
+        self.assertEqual(process.returncode, 0, stderr)
+        self.assertEqual(Path(stdout.strip()), self.bin / "project")
 
     @unittest.skipUnless(sys.platform.startswith("linux"),
                          "command installer requires Bash 4 associative arrays")

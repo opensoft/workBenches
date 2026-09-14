@@ -222,9 +222,6 @@ install_commands() {
     # Install the authoritative executable; do not replace it with a wrapper.
     python3 "$SCRIPT_DIR/setup-project-command.py" --bin-dir "$install_dir" || return $?
     
-    # Store workbenches path for wrappers
-    echo "$WORKBENCHES_ROOT" > "$install_dir/.workbenches-path"
-    
     # Install each command
     local installed_count=0
     for cmd_name in "${!COMMANDS[@]}"; do

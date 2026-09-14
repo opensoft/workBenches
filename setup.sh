@@ -212,7 +212,8 @@ fi
 
 # The project command is authored in openRepoProject and distributed at a pin.
 if command -v python3 >/dev/null 2>&1; then
-    python3 "${SCRIPT_DIR}/scripts/setup-project-command.py" || echo "Project command installation failed; see the refusal above."
+    run_logged "PROJECT COMMAND" python3 "${SCRIPT_DIR}/scripts/setup-project-command.py" \
+        || echo "Project command installation failed; see the refusal above."
 fi
 
 # Claude workflow setup is host-user state. The benches bind-mount ~/.claude, so

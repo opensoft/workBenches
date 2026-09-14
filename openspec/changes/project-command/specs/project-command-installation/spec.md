@@ -20,6 +20,14 @@ The installer SHALL verify commit identity and SHA-256 before replacing project.
 - **WHEN** status encounters an unrelated or digest-tampered project command
 - **THEN** it reports the command as unowned or tampered rather than installed.
 
+#### Scenario: Concurrent install or removal
+- **WHEN** project installation, replacement, removal, status, or execution overlap
+- **THEN** a persistent per-directory lock serializes writers and protects readers from partial publication.
+
+#### Scenario: Target changes during a guarded operation
+- **WHEN** the executable or ownership marker changes after initial inspection
+- **THEN** installation or removal refuses before overwriting or unlinking the changed target.
+
 ### Requirement: Legacy forwarding
 onp and new-project.sh SHALL forward name and parent arguments to project new.
 
@@ -34,3 +42,7 @@ onp and new-project.sh SHALL forward name and parent arguments to project new.
 #### Scenario: Alternate install directory
 - **WHEN** command installation selects a directory other than the user-local default
 - **THEN** the legacy entrypoint verifies and executes project from that selected directory.
+
+#### Scenario: Executable path changes after verification
+- **WHEN** a project pathname is replaced while a legacy launch is being resolved
+- **THEN** the launcher executes only the verified byte snapshot while holding a shared project lock.
