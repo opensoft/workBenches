@@ -369,7 +369,9 @@ check_selected_image() {
         fi
         probe_index=$((probe_index + 1))
         if [[ "$probe_status" == "ok" ]]; then
-            printf "  ${GREEN}%-3s${NC} %-25s %s\n" "✓" "$command" "$command_path"
+            if [ "$JSON_OUTPUT" = false ]; then
+                printf "  ${GREEN}%-3s${NC} %-25s %s\n" "✓" "$command" "$command_path"
+            fi
         elif [[ "$probe_status" == "missing" ]]; then
             printf "  ${RED}%-3s${NC} %-25s missing\n" "✗" "$command" >&2
             passed=false
@@ -410,13 +412,17 @@ check_layer3_image() {
 
     running_container="${RUNNING_CONTAINER_BY_IMAGE[$user_image]:-}"
     if [[ -n "$running_container" ]]; then
-        echo -e "${YELLOW}↷ Layer 3 $user_image activation deferred by running container '$running_container'${NC}"
+        if [ "$JSON_OUTPUT" = false ]; then
+            echo -e "${YELLOW}↷ Layer 3 $user_image activation deferred by running container '$running_container'${NC}"
+        fi
         record_image "$user_image" "3" "activation-deferred-running"
         return
     fi
 
     if ! docker image inspect "$user_image" >/dev/null 2>&1; then
-        echo -e "${YELLOW}↷ Layer 3 $user_image is missing; activation has not occurred${NC}"
+        if [ "$JSON_OUTPUT" = false ]; then
+            echo -e "${YELLOW}↷ Layer 3 $user_image is missing; activation has not occurred${NC}"
+        fi
         record_image "$user_image" "3" "activation-missing"
         return
     fi
@@ -424,10 +430,14 @@ check_layer3_image() {
     base_created=$(image_created_at "$base_image_id")
     user_created=$(image_created_at "$user_image")
     if [[ -n "$base_created" && -n "$user_created" && "$user_created" > "$base_created" ]]; then
-        echo -e "${GREEN}✓ Layer 3 $user_image is current${NC}"
+        if [ "$JSON_OUTPUT" = false ]; then
+            echo -e "${GREEN}✓ Layer 3 $user_image is current${NC}"
+        fi
         record_image "$user_image" "3" "current"
     else
-        echo -e "${YELLOW}↷ Layer 3 $user_image is older than $base_image; activation is required${NC}"
+        if [ "$JSON_OUTPUT" = false ]; then
+            echo -e "${YELLOW}↷ Layer 3 $user_image is older than $base_image; activation is required${NC}"
+        fi
         record_image "$user_image" "3" "activation-stale"
     fi
 }

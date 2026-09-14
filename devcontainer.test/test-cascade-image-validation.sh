@@ -50,6 +50,13 @@ grep -Fq 'Layer 3 test-bench:brett is current' "$temp_dir/success.out"
 test "$(grep -cx 'probe-batch' "$log")" -eq 1
 test "$(grep -c '^container ls --format ' "$log")" -eq 1
 
+PATH="$fake_bin:$PATH" \
+FAKE_DOCKER_LOG="$log" \
+"$checker" --layer 0 --images test-bench:latest --check-layer3 --json --user brett \
+    > "$temp_dir/success.json" 2> "$temp_dir/success-json.err"
+jq -e '.user == "brett" and ([.images[].status] | index("verified") != null) and ([.images[].status] | index("current") != null)' \
+    "$temp_dir/success.json" >/dev/null
+
 : > "$log"
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
