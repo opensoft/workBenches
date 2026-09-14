@@ -148,6 +148,31 @@ while IFS= read -r family; do
 done < <(jq -r '[(.families[]?), .profiles[].family] | unique[]' "$manifest")
 install -m 0755 "$repo_dir/base-image/files/claude-statusline-command.sh" \
   "$base/shared/statusline-command.sh"
+# AND THE USAGE GUARD BESIDE IT — round-3 confirmation review 5192133162,
+# non-blocking 5. `claude-profile`'s configure_profile_runtime looks for the
+# guard at `$base/shared/usage-guard.sh` and then at
+# `/usr/local/share/workbenches/claude/usage-guard.sh`, and sets `guard_ok`
+# false when it finds neither — in which case the `UserPromptSubmit` entry is
+# not written and the hook never runs. Nothing in this repository put the file
+# in either place: the statusline is installed here and copied by
+# `base-image/Dockerfile:184`, and `base-image/files/claude-usage-guard.sh` had
+# no equivalent in either file (`grep -c 'claude-usage-guard'
+# base-image/Dockerfile` = 0). That is PRE-EXISTING on `main` and not this PR's
+# regression — but this is the PR that makes the guard load-bearing for a
+# RATIFIED decision (Amendment 11(4)'s automatic swap), and a ratified swap that
+# no profile ever wires is worth the one line that wires it.
+#
+# This is the HOST half. The container half is `base-image/Dockerfile`, which is
+# not in this PR's remit; the PR body names the line it owes.
+# A vendored source that is not there is SKIPPED rather than fatal, the same
+# `[[ -f ]] || continue` the two vendoring loops below carry and for the same
+# reason: this file runs on checkouts that predate the guard, and `set -euo
+# pipefail` at the top of it turns one unguarded read of a missing source into a
+# failed setup for every profile on the machine.
+if [[ -f "$repo_dir/base-image/files/claude-usage-guard.sh" ]]; then
+  install -m 0755 "$repo_dir/base-image/files/claude-usage-guard.sh" \
+    "$base/shared/usage-guard.sh"
+fi
 
 link_path() {
   local target="$1" link="$2"
@@ -174,25 +199,39 @@ fi
 default_statusline_relative="$(realpath -m --relative-to="$default_claude_dir" "$base/shared/statusline-command.sh")"
 ln -sfn "$default_statusline_relative" "$default_statusline"
 
-# lane-collision-protocol Amendment 9 adoption act 4b DELETED two writers from
-# here, and nothing replaced them in this file.
+# lane-collision-protocol Amendment 9 adoption act 4b DELETES three writers
+# from here, and nothing replaces them in this file:
 #
 #   * the `for skill in lane-swap` loop that installed SKILL.md into
 #     "$base/shared/skills/lane-swap/" and into "$default_claude_dir/skills/
 #     lane-swap/", together with the vendored copy it installed from
 #     (base-image/files/claude/skills/lane-swap/SKILL.md);
+#   * the `for command in swap` loop that installed swap.md into
+#     "$base/shared/commands/" and into "$default_claude_dir/commands/",
+#     together with the vendored copy it installed from
+#     (base-image/files/claude/commands/swap.md). That loop was TRANSITIONAL
+#     by its own comment, conditional on `openRepoTools --install` placing
+#     `commands/swap.md` first: A11 Addendum 4 ruling 9 (ratified by Brett
+#     Heap 2026-09-13T21:08:26Z, brettheap/new-workstation#20
+#     issuecomment-5656154524) put that file on `--install`'s list, built in
+#     `opensoft/openRepoTools#26` round 2, and the pin
+#     (`devBenches/base-image/upstream-pin.yaml`, commit `8a36eb3`) landed it
+#     here as `opensoft/workBenches#78` (merged `d17bd28`) — so the one
+#     condition this loop's own comment set for its own deletion is met;
 #   * the SessionStart ensure that appended Amendment 8(e)'s entry to
 #     "$default_claude_dir/settings.json".
 #
-# `openRepoTools --install` owns all three of those paths from Amendment 9's
-# adoption act 3 (clause (b), on A8 Addendum 2's ratified R-A8-5), so keeping
-# either here would leave two writers of one path -- the defect act 4b exists
-# to close. The shared skills directory is still created above, and the
-# statusLine write below is untouched and still this script's.
+# `openRepoTools --install` owns all four of those paths (two skills, the one
+# command, and the one settings entry) from Amendment 9's adoption act 3
+# (clause (b), on A8 Addendum 2's ratified R-A8-5, and A11 Addendum 4 ruling 9
+# for the command), so keeping any of them here would leave two writers of one
+# path — the defect act 4b exists to close. The shared skills/agents/commands/
+# rules directories are still created above, and the statusLine write below is
+# untouched and still this script's.
 #
 # WHAT IS NOT DELETED: the launcher's own SessionStart ensure in
 # base-image/files/claude-profile. R-A8-5(b) is ratified and `--install` never
-# writes a PROFILE's settings.json at all -- one path, one writer, in both
+# writes a PROFILE's settings.json at all — one path, one writer, in both
 # halves.
 
 default_settings="$default_claude_dir/settings.json"

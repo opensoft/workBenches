@@ -97,9 +97,11 @@ After the estate commands are installed, `setup.sh` runs `openRepoTools wip init
 gh repo clone opensoft/workBenches && cd workBenches && ./setup.sh   # the host, and the estate commands
 openRepoTools --install                            # (setup.sh already did this for you)
 openRepoTools wip init                             # your workspace repository
-pclaude run <profile> --lane <repo>-<n>
+pclaude <profile>
 lane-start <repo> <n>
 ```
+
+`pclaude <profile>` alone starts the lane: the launcher binds by the tmux window — its name, else the swap record for that window — so the normal path needs no lane named at all, and `--lane <repo>-<n>` / `--dir <path>` remain leading options for the cases that still do.
 
 The workspace repository (`<org>/<login>-wip`) holds your lane register, your handoffs and your workspace manifests. It holds **no code**: the lane tooling is installed from `opensoft/openRepoTools`.
 

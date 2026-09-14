@@ -36,23 +36,59 @@ and fall back to the symlink Amendment 5 left:
 ```sh
 L="$(command -v lanes-edit.sh || printf '%s' ~/projects/xFactory/lanes-edit.sh)"
 WS="$("$L" workstation 2>/dev/null | cut -f1)"    # decision 8(d): configuration, never `hostname`
+
+# EVERY READ BELOW GOES THROUGH THIS ONE FENCE, and Amendment 7(d) is the whole
+# of it: `0` an answer · `8` NO ANSWER · `2` a helper predating the read — both
+# of those fall to the next rung — and ANYTHING ELSE is a read that FAILED,
+# which is a REFUSAL naming the read and never a rung. It sets a VARIABLE rather
+# than printing, because a refusal inside `$( )` would only kill the
+# substitution's subshell and the skill would carry on with an empty answer.
+lread() {                      # lread <var> "<what the failure is NOT>" <verb> [args…]
+  ln_var="$1"; ln_not="$2"; shift 2
+  ln_out=""; ln_rc=0
+  ln_out="$(LANES_NO_FETCH=1 "$L" "$@" 2>/dev/null)" || ln_rc=$?
+  case "$ln_rc" in
+    0)   : ;;
+    8|2) ln_out="" ;;
+    *)   printf 'REFUSED: `%s %s` failed (exit %s). That is NOT %s — a read that failed is never an answer (Amendment 7(d)), and this skill will not bind a window, write a stamp or print a resume command on one. Run it by hand to see what it says.\n' \
+           "$L" "$1" "$ln_rc" "$ln_not" >&2
+         exit 1 ;;
+  esac
+  eval "$ln_var=\$ln_out"
+}
 ```
 
 ## 1. The window
 
 ```sh
-tmux display-message -p '#{session_name}:#{window_index} #{window_id} #{window_name}'
+# THE PROBE'S OWN STATUS IS THE REFUSAL, not a sentence below it (#26, the
+# review of `37632b1`, this file's `:64`). The paragraph under this block has
+# always said "No tmux → REFUSED", and nothing here captured or tested the
+# status: `tmux display-message` on a host with no server prints its error and
+# exits non-zero, and the steps below would then go on resolving a lane for a
+# window that does not exist — which is the one thing this skill binds.
+win_line=""
+win_line="$(tmux display-message -p '#{session_name}:#{window_index} #{window_id} #{window_name}' 2>/dev/null)" || win_line=""
+if [ -z "$win_line" ]; then
+  printf 'REFUSED: there is no tmux window to bind (`tmux display-message` answered nothing). This skill binds a WINDOW; with no window there is nothing to bind. The manual act is: lane-start --no-launch --dir <path> <lane>\n' >&2
+  exit 1
+fi
+printf '%s\n' "$win_line"
 ```
 
 **No tmux → REFUSED**, naming the manual act: `lane-start --no-launch --dir <path> <lane>`. This skill binds
-a **window**; with no window there is nothing to bind.
+a **window**; with no window there is nothing to bind — and the block above is where that refusal happens,
+rather than in this sentence.
 
 ## 2. The lane
 
 **With a `<lane>` argument, SKIP THIS STEP ENTIRELY and go to step 3 with that lane** — the operator's word
 beats every inference, exactly as `--lane` does at clause (b)'s precedence 1 (decision 7 point 6). Check only
-that the register has a row for it (`"$L" register-row <lane>`, exit 0); a lane the register does not carry
-is a **REFUSED** naming `lanes`.
+that the register has a row for it — `lread row_probe "'the register has no row for this lane'" register-row
+<lane>`, through the same fence as every other read here, so the check is LOCAL (`LANES_NO_FETCH=1`, like
+every read in this skill: a check in front of a bind must not sit on the network or block on ssh) and a read
+that FAILED refuses instead of being read as "no such lane". An empty answer — the contract's 8 — is a
+**REFUSED** naming `lanes`.
 
 With no argument, four rungs, **first answer wins, and every one of them is an exact match**:
 
@@ -61,7 +97,8 @@ With no argument, four rungs, **first answer wins, and every one of them is an e
 #     so the name is a statement of intent in the way `--lane` is.
 lane=""
 win_name="$(tmux display-message -p '#{window_name}')"
-LANES_NO_FETCH=1 "$L" register-row "$win_name" >/dev/null 2>&1 && lane="$win_name"
+lread row_probe "'this window is not a lane'" register-row "$win_name"
+[ -z "$row_probe" ] || lane="$win_name"
 
 # (b) THIS SESSION'S OWN UUID, in the register's session cell (R-A11-7).
 #     THE READ THAT ANSWERED ON THIS ESTATE THE MORNING THIS WAS WRITTEN: this
@@ -73,7 +110,7 @@ LANES_NO_FETCH=1 "$L" register-row "$win_name" >/dev/null 2>&1 && lane="$win_nam
 #     workstation's newest swap, which was a different lane. THE HOOK KNEW,
 #     exactly and with no question, through this same read — `lane_of_session`,
 #     which clause (h) exposes as a subcommand. One implementation, two callers.
-[ -n "$lane" ] || lane="$(LANES_NO_FETCH=1 "$L" session-lane "$CLAUDE_CODE_SESSION_ID" 2>/dev/null)" || lane=""
+[ -n "$lane" ] || lread lane "'no row names this session'" session-lane "$CLAUDE_CODE_SESSION_ID"
 
 # (c) THE WINDOW THE OPERATOR IS STANDING IN, out of the swap records. The
 #     `<@id>` first and the `<session>:<index>` second, and either only where
@@ -83,8 +120,8 @@ LANES_NO_FETCH=1 "$L" register-row "$win_name" >/dev/null 2>&1 && lane="$win_nam
 #     implementation: this skill, the launcher's precedence 3 and `/lane-swap`.
 if [ -z "$lane" ]; then
   wid="$(tmux display-message -p '#{window_id}')"
-  lane="$(LANES_NO_FETCH=1 "$L" window-lane "$WS" "$wid" 2>/dev/null)" || lane=""
-  [ -n "$lane" ] || lane="$(LANES_NO_FETCH=1 "$L" window-lane "$WS" "$(tmux display-message -p '#S:#I')" 2>/dev/null)" || lane=""
+  lread lane "'no lane is bound to this window'" window-lane "$WS" "$wid"
+  [ -n "$lane" ] || lread lane "'no lane is bound to this window'" window-lane "$WS" "$(tmux display-message -p '#S:#I')"
 fi
 
 # (d) NOTHING MATCHED — PRINT THE PER-REPO LISTING AND STOP (decision 7 point 6).
@@ -93,7 +130,23 @@ fi
 if [ -z "$lane" ]; then
   root="$(git rev-parse --show-toplevel 2>/dev/null)"
   origin="$(git -C "${root:-.}" remote get-url origin 2>/dev/null | sed -E 's#\.git$##; s#^git@[^:]+:##; s#^ssh://[^/]+/##; s#^https?://[^/]+/##')"
-  LANES_NO_FETCH=1 "$L" lanes ${origin:+--repo "$origin"} ${root:+--dir "$root"}
+  # AND THIS ONE GOES THROUGH THE FENCE TOO, which the stop below made matter
+  # (#26, the review of `90cef58`, this file's `:133`). It was the last read in
+  # the file that ignored its own status, and while the block fell through that
+  # cost nothing; the moment it ENDS in an outcome, a `lanes` that exited 1 or
+  # 64 would be printed as **[8]**, *no lane for this window* — a refusal turned
+  # into a no-answer, at the one rung whose next act is `lane-start`, which
+  # CREATES a row. `lread` sets a variable rather than printing, so the listing
+  # is printed from it.
+  lread listing "'no lane of this checkout is in the register'" lanes ${origin:+--repo "$origin"} ${root:+--dir "$root"}
+  [ -z "$listing" ] || printf '%s\n' "$listing"
+  # AND THIS RUNG IS TERMINAL, WHICH THE BLOCK SAID EVERYWHERE BUT IN ITS CODE
+  # (#26, the review of `29d3417`, this file's `:134`). The heading says PRINT
+  # THE LISTING AND STOP and the outcome table ends step 2 here; with `$lane`
+  # still empty the lines below would carry on — into a step 3 that resolves a
+  # directory for no lane and a step 5 that binds one.
+  printf 'NO LANE FOR THIS WINDOW [8] — the listing above is every lane of this checkout. Open one with: lane-start --no-launch <repo> <n>, filled in from this window name where it parses.\n' >&2
+  exit 8
 fi
 ```
 
@@ -110,18 +163,91 @@ refuse everywhere (`R-A11-8`, on RV-T3).
 ## 3. The directory
 
 ```sh
-dir="$(LANES_NO_FETCH=1 "$L" lane-dir "$lane" 2>/dev/null)" || dir=""
-[ -n "$dir" ] || dir="$PROJECTS_ROOT/${lane%-*}"      # 8 → the default; nothing is backfilled
+lread dir "'this lane has no recorded directory'" lane-dir "$lane"
+if [ -z "$dir" ]; then                                # 8 → the default; nothing is backfilled
+  # `<repo>` IS THE NAME WITH ITS POSITION REMOVED, AND A POSITION IS DIGITS.
+  # `${lane%-*}` strips the last `-`-separated token WHATEVER it is, so for
+  # `openxfactory-4-opendox-extraction` — a lane this estate has — it answered
+  # `openxfactory-4-opendox`, a repository that does not exist. The rule is
+  # `lane-start:565-578`'s, which is the writer of these names: a lane is
+  # `<repo>-<position>` where the position matches `[0-9]+[A-Za-z]?`, and a name
+  # that does not end that way has no position to strip and is its own `<repo>`.
+  tail="${lane##*-}"
+  case "${tail%[A-Za-z]}" in
+    '' | *[!0-9]*) repo="$lane" ;;
+    *)             repo="${lane%-*}" ;;
+  esac
+  dir="$PROJECTS_ROOT/$repo"
+  # AND A DEFAULT THAT IS NOT THERE IS NOT A REFUSAL — IT IS `lane-start`'s
+  # QUESTION (#26, the review of `c3ebcfe`, this file's `:152`). This rung is a
+  # SECOND COPY of `lane-start`'s rung 4 and of nothing else, and `708395e` gave
+  # that ladder two more: the estate's `project.yaml` legs, and a checkout named
+  # for the lane's recorded home one or two levels under `$PROJECTS_ROOT`, each
+  # PROVED by that directory's own `origin`. The paragraph below this step has
+  # said since then that where those answer "step 5 resolves it and this step
+  # never fires" — and that was not true, because this step fires FIRST: it
+  # refused for EVIDENCE 7's own lane, whose checkout rung 5 or 6 can prove, and
+  # told the operator to name a directory the estate could already find.
+  # So where the DERIVED default is not there, none is passed on: step 5 runs
+  # `lane-start` without `--dir`, the one implementation of clause (c)'s order
+  # answers, and its own exit 2 is the line this step would have printed. Clause
+  # (h) forbids the second implementation the alternative would need here.
+  [ -d "$dir" ] || dir=""
+fi
 ```
 
-**Not a directory → REFUSED**, naming `--dir`. A restart that lands in the right transcript and the wrong
-directory loses the repository's `CLAUDE.md` and the lane's memory, silently (Evidence 3).
+**A directory the lane's own RECORD names, which is not there → REFUSED**, and the refusal is ONE LINE that
+names the act which RECORDS the directory — not just the flag that gets past this run. A restart that lands
+in the right transcript and the wrong directory loses the repository's `CLAUDE.md` and the lane's memory,
+silently (Evidence 3).
+
+**A DERIVED default that is not there is a different case and is not that refusal.** Nothing was recorded,
+so there is nothing to contradict; `$dir` is left empty and `lane-start`'s own ladder — rungs 2 to 6, three
+of which this step cannot see — answers next. Step 5 passes no `--dir` there, and `lane-start`'s exit 2 is
+this step's refusal, printed once by the command that owns the resolution.
+
+**EVIDENCE 7 is this case, and it is why the refusal must be a refusal.** Measured 2026-09-13T23:01Z: a lane
+whose record predates clause (c) carries `home` and `estate` and **no `dir`**, and whose checkout is nested —
+`opsXfactory-5`, at `~/projects/xFactory/xFactories/OpsxFactory`. `lane-start` derived
+`$PROJECTS_ROOT/<repo>`, found nothing, and **exited 1 behind the launcher's `exec`**: a pane that said
+`[exited]` with the message scrolled past it. So print, verbatim and filled in:
+
+```text
+lane-start --dir <the lane's checkout> <repo> <n>
+```
+
+and say that it RECORDS the directory in the lane's own log, so no later restart on any surface has to be
+told again (Amendment 11 clause (c); nothing is backfilled, Amendment 7(i)). **Do not guess a directory**:
+`lane-start` writes the lane's home from that directory's `origin`, so a checkout that merely has the right
+name re-homes the lane for every `#n` it writes afterwards. `lane-start` itself now tries two further rungs
+before it refuses — the estate's `project.yaml` legs and a checkout of the lane's recorded home one or two
+levels under `$PROJECTS_ROOT`, each **proved by that directory's own `origin`** — so where those answer, step
+5 resolves it and this step never fires.
 
 ## 4. The decision — **before** anything is written
 
 ```sh
-row="$(LANES_NO_FETCH=1 "$L" register-row "$lane")"
-cell_last="$(LANES_NO_FETCH=1 "$L" last-session "$lane" 2>/dev/null)" || cell_last=""
+lread row "'the register has no row for this lane'" register-row "$lane"
+# AND AN EMPTY ANSWER IS A REFUSAL HERE, not a rung: step 4 decides what to
+# WRITE, and `lane-start --no-launch` on a lane-shaped name the register has
+# never carried CREATES a row. A read that answered 8 must not reach it.
+[ -n "$row" ] || { printf 'REFUSED: the register has no row for lane %s. Find it with `lanes`, or open it with `lane-start <repo> <n>` — this skill binds an existing lane and never creates one.\n' "$lane" >&2; exit 1; }
+# `last-session` AND NOT `register-row` ALONE, AND THAT IS RULED RATHER THAN
+# ASSUMED (A11 Addendum 4 ruling 14, ratified "a11 addendum 4 yes": *"`/restart`'s
+# step 4 may read `last-session` (the cell, then the log) rather than clause
+# (f)'s `register-row`, and clause (f) is corrected to say so."*).
+#
+# WHAT IT CHANGES, said rather than left to be found (F-X15). Clause (f) step 4
+# named the last uuid in the PUBLISHED SESSION CELL. `last-session` reads that
+# cell first and falls through to the LANE'S OWN LOG where the cell names none
+# — the session field of its last `PAUSED`/`RESUMED` — so outcome 4(a)'s *"or
+# the cell names no uuid"* stops being reachable for a lane whose log carries
+# one, and 4(b) or 4(c) fires there instead. That is the better answer: a lane
+# whose row was never stamped but whose log records the session it paused in
+# HAS a resume target, and 4(a) would have walked past it into a bind that
+# silently orphaned the transcript. The cost is that two sources answer where
+# the clause named one, which is why it is a ruling and not a preference.
+lread cell_last "'this lane has no resume target'" last-session "$lane"
 ```
 
 Compare `$cell_last` with `$CLAUDE_CODE_SESSION_ID`:
@@ -132,6 +258,11 @@ Compare `$cell_last` with `$CLAUDE_CODE_SESSION_ID`:
   object line. Outcome `RESUME REQUIRED <lane>` **[0]**.
 - **(c) they DIFFER and that uuid has no transcript here → step 5**, and step 5's report says so and names
   Amendment 8(d)'s deferral.
+- **`$dir` is empty — the record names no directory and no default exists → (b) CANNOT BE DECIDED AND IS NOT
+  CLAIMED.** That test is a look inside the lane's directory and there is no directory yet. Say so, go to
+  step 5 as (a) and (c) both do, and let `lane-start`'s own rungs resolve it; the report names the uuid step
+  4 read and says the transcript could not be looked for — never (c)'s *"no transcript here"* about a place
+  this skill never looked.
 
 **THE DECISION COMES BEFORE THE BIND, AND THAT IS `R-A11-2`.** Binding first and comparing after makes the
 comparison a **tautology**: `lane-start --no-launch` performs step 3b and the `append-session-id` itself, so
@@ -143,8 +274,13 @@ rename the lane's window or stamp its row on the way to telling the operator whe
 ## 5. The bind
 
 ```sh
-lane-start --no-launch --dir "$dir" "$lane"
+lane-start --no-launch ${dir:+--dir "$dir"} "$lane"
 ```
+
+`--dir` is passed only where step 3 HAS a directory — the lane's own record, or a default that exists. Where
+it has none, the flag is absent and not empty: `--dir` with an empty value is refused by the two spellings of
+that arm, and passing a directory this skill DERIVED as `--dir` would put a guess at rung 1, the operator's
+own word, in front of the five rungs `lane-start` reads for itself.
 
 It renames the window, writes the row stamp, Amendment 6(c)'s session-cell append where it can prove the
 window is the lane's, the lane's `RESUMED` object line with clause (c)'s `dir`, `profile` and `window`
@@ -154,16 +290,30 @@ sub-fields, and the handoff's Rule 3 stamp — and it prints the `claude` comman
 ## 6. The cell — **on 4(c) only**, and only after step 5 exited 0 and renamed the window
 
 ```sh
-"$L" append-session-id "$lane" "<the uuid step 4 read>" \
-  "→ harness <this session's uuid> (transcript uuid; profile ${CLAUDE_PROFILE_NAME:-unknown})"
+# THE `profile` SUB-FIELD IS WRITTEN ONLY WHERE THERE IS ONE. No
+# `$CLAUDE_PROFILE_NAME` is a lane started outside the launcher, and inventing
+# `unknown` for it is the same defect clause (e) refuses in the session field —
+# which is the rule `lane-start` states and follows at `:1553-1558`, in this
+# clause's own words: *"each sub-field is appended only where its value is
+# actually in hand"*. The `:-unknown` that was here wrote the one literal the
+# writer refuses, into the one cell Amendment 6(b) resumes from.
+cell="→ harness <this session's uuid> (transcript uuid"
+[ -n "${CLAUDE_PROFILE_NAME:-}" ] && cell="$cell; profile $CLAUDE_PROFILE_NAME"
+"$L" append-session-id "$lane" "<the uuid step 4 read>" "$cell)"
 ```
 
 Exit 0 → the cell now names the conversation the operator is in. **Refused → the cell is REPORTED STALE and
 the act is printed verbatim; `RESTARTED` is never printed over a cell that stayed stale.**
 
-**It is `/restart`'s act and not `lane-start`'s, and the reason is mechanical.** Under clause (d) rule 1
-`lane-start` proves ownership by the window's **name** or by `live-holder` answering `here`; on the 2(c) path
-the rename is `lane-start`'s own act a hundred lines **after** step 3b, so it correctly declines. `/restart`
+**It is `/restart`'s act and not `lane-start`'s, and it is a step that can find its work already done.**
+Under clause (d) rule 1 as corrected, `lane-start` takes the window's live session **unless a veto fires** —
+so on the 4(c) path there are two cases and not one. Where the helper carries both reads, neither veto has
+anything to fire on (step 2(b) already answered 8, so no row's cell names this session; and the window's name
+is not yet the lane, because `lane-start` renames it a hundred lines **after** step 3b), and `lane-start`
+performs Amendment 6(c)'s append **itself** — step 6 then finds the cell already naming this session and
+appends nothing. Where the helper does **not** carry them, `lane-start` leaves the cell alone and step 6 is
+the act that extends it: a helper predating `session-lane` exits 2 and the fence fails closed, which is the
+state of every workstation until adoption act 0's read reaches it. Either way `/restart`
 has the proof already: step 2 resolved this window to this lane out of the register, and step 4 read the
 anchor out of the published cell. The cell is **appended to**, never replaced — Amendment 6(c)'s own act, so
 the old id stays in the row as history.
@@ -215,9 +365,16 @@ of the register and step 4 compared the ids, so by then neither veto has anythin
 step 6 is `/restart`'s act and not `lane-start`'s.
 
 **A live FORK of this lane's transcript is a defect, and it is named wherever this skill meets one**
-(ratified decision 8(e), from Evidence 6). `"$L" forks <lane>` lists them. A fork is never the holder and
-must never write the register; retiring one is `kill <pid>`, typed by a person, because ending somebody's
-process is not a tool's act (Amendment 8(f)).
+(ratified decision 8(e), from Evidence 6). `"$L" forks <lane>` lists them, one `<uuid> <pid> <kind> <cwd>`
+per fork. A fork is never the holder and must never write the register, and the ONE act is clause (k) rule
+(e)'s — **`lane-end <lane> --retire <pid|uuid>`**, typed by a person. It is the DOOR to Amendment 6(d)'s
+retire act, not a record of one: it proves the pid or uuid is this lane's live fork and prints 6(d) filled
+in — the `/rename <lane> · retired <date>` for a session with a prompt, 6(d)'s *"an idle background session
+still holding a lane name is ended"* for a `kind: bg` holder that has none. It writes **nothing** (a
+`RETIRED` carrying a payload would be a seventh edit to in-force text, and Amendment 7(b) gives that verb
+none) and it does **not** kill the process, because ending somebody's process is not a tool's act
+(Amendment 8(f)). This skill used to print `kill <pid>` here, which is the act the ruling says neither
+surface prints.
 
 **`/restart` binds a window. It does not choose a conversation.** Those are two questions and this skill
 answers only the first; the second is Amendment 6(b)'s and stays there.
