@@ -14,7 +14,9 @@ Install a PATH-facing verifier launcher plus a separately stored executable
 payload with a commit/SHA-256 pin, API-first fetching, offline source option and
 journaled, rollback-protected replacement. Direct and legacy launches both pass
 through ownership and digest verification before executing a private payload
-snapshot. Stage only verified bytes; a pending ownership record recognizes the
+snapshot. The generated launcher contains the source pin but no checkout or pin
+file path, so a verified install remains owned when workBenches moves. Stage
+only verified bytes; a pending ownership record recognizes the
 new digest and, only for a verified owned upgrade, the pre-upgrade digest so an
 interrupted publish can resume without adopting an unowned command.
 Serialize readers and writers through a persistent per-install-directory lock.

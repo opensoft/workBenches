@@ -238,7 +238,7 @@ class InstallTests(unittest.TestCase):
         pin["commit"] = "b" * 40
         pin["sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
         self.pin.write_text(json.dumps(pin))
-        launcher_data = installer.launcher_bytes(self.wb, self.pin.resolve())
+        launcher_data = installer.launcher_bytes(pin)
         owner.write_text(json.dumps({
             "schema_version": 1,
             "state": "pending",
@@ -346,11 +346,20 @@ class InstallTests(unittest.TestCase):
         bypass_marker = self.base / "copied-new-project-ran"
         (self.bin / "new-project.sh").write_text(
             f'#!/usr/bin/env bash\nprintf ran > {str(bypass_marker)!r}\n')
-        result = subprocess.run(["bash", str(copied), "Copied", "parent with spaces"], env=env,
+        hostile_root = self.base / "hostile-workbenches"
+        (hostile_root / "scripts").mkdir(parents=True)
+        marker_bypass = self.base / "marker-project-ran"
+        (hostile_root / "scripts/project").write_text(
+            f'#!/usr/bin/env bash\nprintf ran > {str(marker_bypass)!r}\n')
+        (self.bin / ".workbenches-path").write_text(str(hostile_root) + "\n")
+        copied_env = env.copy()
+        copied_env.pop("WORKBENCHES_ROOT")
+        result = subprocess.run(["bash", str(copied), "Copied", "parent with spaces"], env=copied_env,
                                 text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), ["new", "Copied", "parent with spaces"])
         self.assertFalse(bypass_marker.exists())
+        self.assertFalse(marker_bypass.exists())
         self.source.write_text("#!/usr/bin/env python3\nimport sys\nsys.exit(19)\n")
         pin = json.loads(self.pin.read_text())
         pin["trusted_previous"] = [{"commit": pin["commit"], "sha256": pin["sha256"]}]
@@ -387,6 +396,8 @@ class InstallTests(unittest.TestCase):
     def test_direct_project_launch_verifies_the_separate_payload(self):
         self.assertEqual(self.install(), 0)
         target = self.bin / "project"
+        self.assertNotIn(str(self.wb).encode(), target.read_bytes())
+        self.assertNotIn(str(self.pin).encode(), target.read_bytes())
         result = subprocess.run([str(target), "direct", "argument with spaces"],
                                 text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -398,8 +409,26 @@ class InstallTests(unittest.TestCase):
             f'#!/usr/bin/env python3\nfrom pathlib import Path\nPath({str(malicious)!r}).write_text("ran")\n')
         result = subprocess.run([str(target), "unsafe"], text=True, capture_output=True)
         self.assertEqual(result.returncode, 3)
-        self.assertIn("refused unowned command", result.stderr)
+        self.assertIn("refused payload", result.stderr)
         self.assertFalse(malicious.exists())
+
+    def test_checkout_and_pin_path_migration_preserves_ownership(self):
+        self.assertEqual(self.install(), 0)
+        target = self.bin / "project"
+        launcher_before = target.read_bytes()
+        moved_wb = self.base / "moved workBenches"
+        (moved_wb / "config").mkdir(parents=True)
+        (moved_wb / "config/bench-config.json").write_text('{"benches": {}}')
+        moved_pin = self.base / "moved-pin.json"
+        moved_pin.write_bytes(self.pin.read_bytes())
+        moved_args = ["--pin", str(moved_pin), "--bin-dir", str(self.bin),
+                      "--workbenches", str(moved_wb)]
+
+        self.assertEqual(installer.main([*moved_args, "--resolve-owned"]), 0)
+        self.assertEqual(installer.main([*moved_args, "--source", str(self.source)]), 0)
+        self.assertEqual(target.read_bytes(), launcher_before)
+        self.assertEqual((self.bin / ".workbenches-path").read_text().strip(), str(moved_wb))
+        self.assertEqual(installer.main([*moved_args, "--remove"]), 0)
 
     def test_exec_owned_runs_verified_snapshot_if_path_is_replaced(self):
         self.source.write_text(

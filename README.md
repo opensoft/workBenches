@@ -26,7 +26,9 @@ scripts and reports configured scripts that are not installed.
 SHA-256. The PATH-facing `project` command is a verifier launcher; the pinned
 upstream executable is stored separately as `.workbenches-project.payload`, so
 normal direct invocations perform the same ownership and digest check as legacy
-forwarders. The installer tries the authenticated GitHub API before raw download,
+forwarders. The launcher embeds the pinned source identity, not checkout or pin
+file paths; it uses `WORKBENCHES_ROOT` or the local discovery marker only after
+the executable payload verifies. The installer tries the authenticated GitHub API before raw download,
 verifies bytes before replacing anything, journals publication so an
 interrupted upgrade can resume, and rolls back ordinary partial multi-file
 replacement failures. A persistent per-directory lock serializes installation,

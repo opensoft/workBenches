@@ -1,6 +1,6 @@
 # Verification
 
-Twenty-nine focused installation and forwarding tests pass locally when
+Thirty focused installation and forwarding tests pass locally when
 OPENREPOPROJECT_TEST_SOURCE names the local upstream executable. The
 cross-repository case installs the real CLI and creates a disposable project
 through onp. CI runs the standalone tests on Linux/macOS; that integration case
