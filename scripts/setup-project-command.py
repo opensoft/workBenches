@@ -17,6 +17,7 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK_NAME = ".workbenches-project.lock"
+PAYLOAD_NAME = ".workbenches-project.payload"
 
 
 def validate_target(path):
@@ -57,8 +58,9 @@ def file_sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def owned_target_data(target, owner_marker, pin):
+def owned_target_data(target, payload, owner_marker, pin, expected_launcher_digest):
     if (not target.is_file() or target.is_symlink()
+            or not payload.is_file() or payload.is_symlink()
             or not owner_marker.is_file() or owner_marker.is_symlink()):
         return None
     try:
@@ -76,33 +78,68 @@ def owned_target_data(target, owner_marker, pin):
     )
     owner_artifact = (owner.get("commit", ""), owner.get("sha256", ""))
     allowed_digests = set()
+    allowed_launcher_digests = set()
     if owner.get("state") == "pending":
         if owner_artifact != (pin["commit"], pin["sha256"]):
             return None
         allowed_digests.add(pin["sha256"])
+        launcher_digest = owner.get("launcher_sha256", "")
+        if re.fullmatch(r"[0-9a-f]{64}", launcher_digest) is None:
+            return None
+        allowed_launcher_digests.add(launcher_digest)
         previous_owned = owner.get("previous_owned")
         if not isinstance(previous_owned, bool):
             return None
         previous_commit = owner.get("previous_commit", "")
         previous_digest = owner.get("previous_sha256", "")
+        previous_launcher_digest = owner.get("previous_launcher_sha256", "")
         if previous_owned:
-            if (previous_commit, previous_digest) not in trusted_artifacts:
+            if ((previous_commit, previous_digest) not in trusted_artifacts
+                    or re.fullmatch(r"[0-9a-f]{64}", previous_launcher_digest) is None):
                 return None
             allowed_digests.add(previous_digest)
-        elif previous_commit or previous_digest:
+            allowed_launcher_digests.add(previous_launcher_digest)
+        elif previous_commit or previous_digest or previous_launcher_digest:
             return None
     elif owner.get("state") in (None, "owned"):
         if owner_artifact not in trusted_artifacts:
             return None
+        launcher_digest = owner.get("launcher_sha256", "")
+        if re.fullmatch(r"[0-9a-f]{64}", launcher_digest) is None:
+            return None
         allowed_digests.add(owner["sha256"])
+        allowed_launcher_digests.add(launcher_digest)
     else:
         return None
-    data = target.read_bytes()
+    if (file_sha256(target) != expected_launcher_digest
+            or expected_launcher_digest not in allowed_launcher_digests):
+        return None
+    data = payload.read_bytes()
     return data if hashlib.sha256(data).hexdigest() in allowed_digests else None
 
 
-def owned_target(target, owner_marker, pin):
-    return owned_target_data(target, owner_marker, pin) is not None
+def owned_target(target, payload, owner_marker, pin, expected_launcher_digest):
+    return owned_target_data(target, payload, owner_marker, pin,
+                             expected_launcher_digest) is not None
+
+
+def launcher_bytes(workbenches, pin_path):
+    """Build the PATH entry that delegates execution through ownership checks."""
+    installer = workbenches / "scripts/setup-project-command.py"
+    return (
+        "#!/usr/bin/env python3\n"
+        "import os\n"
+        "from pathlib import Path\n"
+        "import sys\n"
+        f"workbenches = Path({str(workbenches)!r})\n"
+        f"installer = Path({str(installer)!r})\n"
+        f"pin = Path({str(pin_path)!r})\n"
+        "os.environ.setdefault('WORKBENCHES_ROOT', str(workbenches))\n"
+        "bin_dir = Path(__file__).resolve().parent\n"
+        "os.execv(sys.executable, [sys.executable, str(installer), "
+        "'--pin', str(pin), '--bin-dir', str(bin_dir), '--workbenches', "
+        "str(workbenches), '--exec-owned', '--', *sys.argv[1:]])\n"
+    ).encode()
 
 
 def path_fingerprint(path):
@@ -193,7 +230,8 @@ def main(argv=None):
     parser.add_argument("--bin-dir", type=Path, default=Path(os.environ.get("OPENREPOPROJECT_BIN_DIR", str(Path.home() / ".local/bin"))))
     parser.add_argument("--pin", type=Path, default=Path(os.environ.get(
         "OPENREPOPROJECT_PIN", ROOT / "config/openrepoproject-pin.json")))
-    parser.add_argument("--workbenches", type=Path, default=ROOT)
+    parser.add_argument("--workbenches", type=Path, default=Path(os.environ.get(
+        "WORKBENCHES_ROOT", ROOT)))
     parser.add_argument("--replace-existing", action="store_true",
                         help="replace a non-workBenches project command after explicit approval")
     operation = parser.add_mutually_exclusive_group()
@@ -225,12 +263,20 @@ def main(argv=None):
                        for item in trusted_previous)):
             raise ValueError("Invalid openRepoProject pin")
         directory = args.bin_dir.expanduser()
-        target, marker = directory / "project", directory / ".workbenches-path"
+        target, payload = directory / "project", directory / PAYLOAD_NAME
+        marker = directory / ".workbenches-path"
         owner_marker = directory / ".workbenches-project.json"
         lock_path = directory / LOCK_NAME
+        wb = args.workbenches.expanduser().resolve()
+        pin_path = args.pin.expanduser().resolve()
+        launcher_data = launcher_bytes(wb, pin_path)
+        launcher_digest = hashlib.sha256(launcher_data).hexdigest()
         read_operation = args.resolve_owned or args.exec_owned
         if args.remove and not directory.exists():
             print(f"project: no install directory at {directory}", file=sys.stderr)
+            return 3
+        if args.remove and not target.exists() and not owner_marker.exists():
+            print(f"project: no installer-owned command at {target}", file=sys.stderr)
             return 3
         if read_operation and not lock_path.is_file():
             print(f"project: refused unlocked command at {target}", file=sys.stderr)
@@ -241,13 +287,14 @@ def main(argv=None):
             directory.mkdir(parents=True, exist_ok=True)
         lock_descriptor = acquire_project_lock(directory, exclusive=not read_operation)
         if args.resolve_owned:
-            if owned_target(target, owner_marker, pin):
+            if owned_target(target, payload, owner_marker, pin, launcher_digest):
                 print(target)
                 return 0
             print(f"project: refused unowned command at {target}", file=sys.stderr)
             return 3
         if args.exec_owned:
-            data = owned_target_data(target, owner_marker, pin)
+            data = owned_target_data(target, payload, owner_marker, pin,
+                                     launcher_digest)
             if data is None:
                 print(f"project: refused unowned command at {target}", file=sys.stderr)
                 return 3
@@ -255,41 +302,45 @@ def main(argv=None):
             os.close(lock_descriptor)
             lock_descriptor = None
             return execute_project(data, target, command_args)
-        validate_target(target)
-        validate_target(marker)
-        validate_target(owner_marker)
         if args.remove:
-            if owned_target(target, owner_marker, pin):
-                removal_state = (path_fingerprint(target), path_fingerprint(owner_marker))
-                if (not owned_target(target, owner_marker, pin)
-                        or removal_state != (path_fingerprint(target), path_fingerprint(owner_marker))):
+            if owned_target(target, payload, owner_marker, pin, launcher_digest):
+                removal_state = (path_fingerprint(target), path_fingerprint(payload),
+                                 path_fingerprint(owner_marker))
+                if (not owned_target(target, payload, owner_marker, pin, launcher_digest)
+                        or removal_state != (path_fingerprint(target), path_fingerprint(payload),
+                                             path_fingerprint(owner_marker))):
                     raise ValueError("Project command changed during removal; nothing removed")
                 target.unlink()
+                payload.unlink()
                 owner_marker.unlink()
                 print(f"project: removed installer-owned command from {target}")
                 return 0
             print(f"project: preserved unowned command at {target}", file=sys.stderr)
             return 3
-        wb = args.workbenches.expanduser().resolve()
         if not (wb / "config/bench-config.json").is_file():
             raise ValueError(f"Not a workBenches checkout: {wb}")
-        initial_install_state = (path_fingerprint(target), path_fingerprint(owner_marker))
-        target_digest = file_sha256(target) if target.is_file() and not target.is_symlink() else ""
-        target_owned = owned_target(target, owner_marker, pin)
+        initial_install_state = (path_fingerprint(target), path_fingerprint(payload),
+                                 path_fingerprint(owner_marker))
+        target_digest = file_sha256(payload) if payload.is_file() and not payload.is_symlink() else ""
+        target_owned = owned_target(target, payload, owner_marker, pin, launcher_digest)
         previous_commit = ""
+        previous_launcher_digest = ""
         if target_owned:
             trusted_artifacts = [pin, *pin.get("trusted_previous", [])]
             previous_commit = next(item["commit"] for item in trusted_artifacts
                                    if item["sha256"] == target_digest)
-        if target_digest and not target_owned and not args.replace_existing:
+            previous_launcher_digest = file_sha256(target)
+        install_artifacts_exist = any(path.exists() or path.is_symlink()
+                                      for path in (target, payload, owner_marker))
+        if install_artifacts_exist and not target_owned and not args.replace_existing:
             raise ValueError(
                 f"Refusing to replace unowned project command: {target}; "
                 "use --replace-existing after reviewing it"
             )
         if args.source:
             data = args.source.expanduser().read_bytes()
-        elif target.is_file() and hashlib.sha256(target.read_bytes()).hexdigest() == pin["sha256"]:
-            data = target.read_bytes()
+        elif payload.is_file() and hashlib.sha256(payload.read_bytes()).hexdigest() == pin["sha256"]:
+            data = payload.read_bytes()
         else:
             data = fetch(pin)
         if hashlib.sha256(data).hexdigest() != pin["sha256"]:
@@ -304,6 +355,7 @@ def main(argv=None):
             "repository": pin["repository"],
             "commit": pin["commit"],
             "sha256": pin["sha256"],
+            "launcher_sha256": launcher_digest,
         }, sort_keys=True) + "\n").encode()
         pending_owner_data = (json.dumps({
             "schema_version": 1,
@@ -311,17 +363,24 @@ def main(argv=None):
             "repository": pin["repository"],
             "commit": pin["commit"],
             "sha256": pin["sha256"],
+            "launcher_sha256": launcher_digest,
             "previous_owned": target_owned,
             "previous_commit": previous_commit,
             "previous_sha256": target_digest if target_owned else "",
+            "previous_launcher_sha256": previous_launcher_digest,
         }, sort_keys=True) + "\n").encode()
-        unchanged = target.is_file() and target.read_bytes() == data and target.stat().st_mode & 0o777 == 0o755
+        unchanged = (target.is_file() and target.read_bytes() == launcher_data
+                     and target.stat().st_mode & 0o777 == 0o755
+                     and payload.is_file() and payload.read_bytes() == data
+                     and payload.stat().st_mode & 0o777 == 0o644)
         marker_same = marker.is_file() and marker.read_bytes() == marker_data
         owner_same = owner_marker.is_file() and owner_marker.read_bytes() == owner_data
         if not unchanged or not marker_same or not owner_same:
             directory.mkdir(parents=True, exist_ok=True)
-            command_stage = stage(directory, data, 0o755)
+            command_stage = stage(directory, launcher_data, 0o755)
             staged.append(command_stage)
+            payload_stage = stage(directory, data, 0o644)
+            staged.append(payload_stage)
             marker_stage = stage(directory, marker_data, 0o644)
             staged.append(marker_stage)
             owner_stage = stage(directory, owner_data, 0o644)
@@ -329,12 +388,15 @@ def main(argv=None):
             pending_owner_stage = stage(directory, pending_owner_data, 0o644)
             staged.append(pending_owner_stage)
             validate_target(target)
+            validate_target(payload)
             validate_target(marker)
             validate_target(owner_marker)
-            if initial_install_state != (path_fingerprint(target), path_fingerprint(owner_marker)):
+            if initial_install_state != (path_fingerprint(target), path_fingerprint(payload),
+                                         path_fingerprint(owner_marker)):
                 raise ValueError("Project command changed during installation; nothing replaced")
             replace_transaction((
                 (owner_marker, pending_owner_stage),
+                (payload, payload_stage),
                 (target, command_stage),
                 (marker, marker_stage),
                 (owner_marker, owner_stage),

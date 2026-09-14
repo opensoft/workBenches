@@ -10,11 +10,13 @@ generators and estate command distribution under their existing owners.
 
 ## Decisions
 
-Install a single executable with a commit/SHA-256 pin, API-first fetching,
-offline source option and journaled, rollback-protected replacement. Stage only
-verified bytes; a pending ownership record recognizes the new digest and, only
-for a verified owned upgrade, the pre-upgrade digest so an interrupted publish
-can resume without adopting an unowned command.
+Install a PATH-facing verifier launcher plus a separately stored executable
+payload with a commit/SHA-256 pin, API-first fetching, offline source option and
+journaled, rollback-protected replacement. Direct and legacy launches both pass
+through ownership and digest verification before executing a private payload
+snapshot. Stage only verified bytes; a pending ownership record recognizes the
+new digest and, only for a verified owned upgrade, the pre-upgrade digest so an
+interrupted publish can resume without adopting an unowned command.
 Serialize readers and writers through a persistent per-install-directory lock.
 Legacy execution compiles and runs the verified byte snapshot while holding a
 shared lock, so verification and execution do not reopen a mutable pathname.

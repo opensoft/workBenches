@@ -32,6 +32,10 @@ The installer SHALL verify commit identity and SHA-256 before replacing project.
 - **WHEN** the executable or ownership marker changes after initial inspection
 - **THEN** installation or removal refuses before overwriting or unlinking the changed target.
 
+#### Scenario: Direct command execution
+- **WHEN** a user invokes the PATH-facing project command directly
+- **THEN** its verifier launcher executes only a separately stored payload whose ownership record and digest verify.
+
 ### Requirement: Legacy forwarding
 onp and new-project.sh SHALL forward name and parent arguments to project new.
 

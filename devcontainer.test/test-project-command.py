@@ -28,6 +28,9 @@ class InstallTests(unittest.TestCase):
         self.wb = self.base / "work benches"
         (self.wb / "config").mkdir(parents=True)
         (self.wb / "config/bench-config.json").write_text('{"benches": {}}')
+        (self.wb / "scripts").mkdir(exist_ok=True)
+        (self.wb / "scripts/setup-project-command.py").write_bytes(
+            (ROOT / "scripts/setup-project-command.py").read_bytes())
         self.source = self.base / "project"
         self.source.write_text('#!/usr/bin/env python3\nimport json, sys\nprint(json.dumps(sys.argv[1:]))\n')
         self.pin = self.base / "pin.json"
@@ -46,6 +49,7 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(self.install(), 0)
         self.assertEqual(target.stat().st_mtime_ns, before)
         self.assertEqual(target.stat().st_mode & 0o777, 0o755)
+        self.assertEqual((self.bin / installer.PAYLOAD_NAME).read_bytes(), self.source.read_bytes())
         self.assertEqual((self.bin / ".workbenches-path").read_text().strip(), str(self.wb))
 
     def test_corrupt_source_leaves_installed_command_unchanged(self):
@@ -63,7 +67,8 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(target.read_text(), "other project command")
         self.assertEqual(installer.main([*self.args, "--source", str(self.source),
                                          "--replace-existing"]), 0)
-        self.assertEqual(target.read_bytes(), self.source.read_bytes())
+        self.assertNotEqual(target.read_bytes(), self.source.read_bytes())
+        self.assertEqual((self.bin / installer.PAYLOAD_NAME).read_bytes(), self.source.read_bytes())
 
     def test_matching_unowned_command_is_not_silently_adopted(self):
         self.bin.mkdir()
@@ -82,6 +87,7 @@ class InstallTests(unittest.TestCase):
         with patch.dict(os.environ, {"WORKBENCHES_SKIP_PROJECT_COMMAND": "1"}):
             self.assertEqual(installer.main([*self.args, "--remove"]), 0)
         self.assertFalse(target.exists())
+        self.assertFalse((self.bin / installer.PAYLOAD_NAME).exists())
         self.assertFalse(owner.exists())
         target.write_text("unowned replacement")
         self.assertEqual(installer.main([*self.args, "--remove"]), 3)
@@ -91,6 +97,29 @@ class InstallTests(unittest.TestCase):
         missing = self.base / "missing-bin"
         self.assertEqual(installer.main([*self.args, "--bin-dir", str(missing), "--remove"]), 3)
         self.assertFalse(missing.exists())
+
+    def test_remove_missing_target_does_not_require_write_or_create_lock(self):
+        self.bin.mkdir()
+        self.bin.chmod(0o555)
+        try:
+            self.assertEqual(installer.main([*self.args, "--remove"]), 3)
+            self.assertFalse((self.bin / installer.LOCK_NAME).exists())
+        finally:
+            self.bin.chmod(0o755)
+
+    def test_remove_owned_command_ignores_discovery_marker_state(self):
+        self.assertEqual(self.install(), 0)
+        marker = self.bin / ".workbenches-path"
+        marker.chmod(0o444)
+        self.assertEqual(installer.main([*self.args, "--remove"]), 0)
+        self.assertTrue(marker.is_file())
+        marker.chmod(0o644)
+
+        self.assertEqual(self.install(), 0)
+        marker.unlink()
+        marker.symlink_to(self.base / "unrelated-discovery")
+        self.assertEqual(installer.main([*self.args, "--remove"]), 0)
+        self.assertTrue(marker.is_symlink())
 
     def test_invalid_owner_commit_is_never_trusted(self):
         self.assertEqual(self.install(), 0)
@@ -106,14 +135,17 @@ class InstallTests(unittest.TestCase):
         self.bin.mkdir()
         target = self.bin / "project"
         target.write_text('#!/usr/bin/env python3\nprint("untrusted")\n')
-        digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        target.chmod(0o755)
+        payload = self.bin / installer.PAYLOAD_NAME
+        payload.write_bytes(self.source.read_bytes())
         pin = json.loads(self.pin.read_text())
         (self.bin / ".workbenches-project.json").write_text(json.dumps({
             "schema_version": 1,
             "state": "owned",
             "repository": pin["repository"],
             "commit": pin["commit"],
-            "sha256": digest,
+            "sha256": pin["sha256"],
+            "launcher_sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
         }))
         (self.bin / installer.LOCK_NAME).touch()
         self.assertEqual(installer.main([*self.args, "--resolve-owned"]), 3)
@@ -143,7 +175,8 @@ class InstallTests(unittest.TestCase):
         target = self.bin / "project"
         marker = self.bin / ".workbenches-path"
         owner = self.bin / ".workbenches-project.json"
-        original = {path: path.read_bytes() for path in (target, marker, owner)}
+        payload = self.bin / installer.PAYLOAD_NAME
+        original = {path: path.read_bytes() for path in (target, payload, marker, owner)}
 
         self.source.write_text('#!/usr/bin/env python3\nprint("updated")\n')
         pin = json.loads(self.pin.read_text())
@@ -152,7 +185,7 @@ class InstallTests(unittest.TestCase):
         pin["sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
         self.pin.write_text(json.dumps(pin))
         real_replace = os.replace
-        for fail_at in (2, 3, 4):
+        for fail_at in (2, 3, 4, 5):
             with self.subTest(fail_at=fail_at):
                 for path, data in original.items():
                     path.write_bytes(data)
@@ -171,7 +204,7 @@ class InstallTests(unittest.TestCase):
                 for path, data in original.items():
                     self.assertEqual(path.read_bytes(), data)
         self.assertEqual(self.install(), 0)
-        self.assertEqual(target.read_bytes(), self.source.read_bytes())
+        self.assertEqual(payload.read_bytes(), self.source.read_bytes())
 
     def test_install_rechecks_collision_after_staging(self):
         real_stage = installer.stage
@@ -194,8 +227,10 @@ class InstallTests(unittest.TestCase):
     def test_pending_owned_upgrade_recovers_after_interruption(self):
         self.assertEqual(self.install(), 0)
         target = self.bin / "project"
+        payload = self.bin / installer.PAYLOAD_NAME
         owner = self.bin / ".workbenches-project.json"
-        previous_digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        previous_digest = hashlib.sha256(payload.read_bytes()).hexdigest()
+        previous_launcher_digest = hashlib.sha256(target.read_bytes()).hexdigest()
         self.source.write_text('#!/usr/bin/env python3\nprint("updated")\n')
         pin = json.loads(self.pin.read_text())
         pin["trusted_previous"] = [{"commit": pin["commit"], "sha256": pin["sha256"]}]
@@ -203,18 +238,23 @@ class InstallTests(unittest.TestCase):
         pin["commit"] = "b" * 40
         pin["sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
         self.pin.write_text(json.dumps(pin))
+        launcher_data = installer.launcher_bytes(self.wb, self.pin.resolve())
         owner.write_text(json.dumps({
             "schema_version": 1,
             "state": "pending",
             "repository": pin["repository"],
             "commit": pin["commit"],
             "sha256": pin["sha256"],
+            "launcher_sha256": hashlib.sha256(launcher_data).hexdigest(),
             "previous_owned": True,
             "previous_commit": previous_commit,
             "previous_sha256": previous_digest,
+            "previous_launcher_sha256": previous_launcher_digest,
         }))
-        target.write_bytes(self.source.read_bytes())
+        target.write_bytes(launcher_data)
         target.chmod(0o755)
+        payload.write_bytes(self.source.read_bytes())
+        payload.chmod(0o644)
         self.assertEqual(self.install(), 0)
         self.assertEqual(json.loads(owner.read_text())["state"], "owned")
 
@@ -297,7 +337,7 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(json.loads(result.stdout), ["new", "MyApp", "parent with spaces", "--yes"])
         # The older setup menu copies onp directly into the bin directory. Its
         # repository handoff still verifies the sibling executable first.
-        (self.wb / "scripts").mkdir()
+        (self.wb / "scripts").mkdir(exist_ok=True)
         for name in ("project", "setup-project-command.py"):
             (self.wb / "scripts" / name).write_bytes((ROOT / "scripts" / name).read_bytes())
         (self.wb / "config/openrepoproject-pin.json").write_bytes(self.pin.read_bytes())
@@ -343,6 +383,23 @@ class InstallTests(unittest.TestCase):
                                 env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), ["new", "FromPath"])
+
+    def test_direct_project_launch_verifies_the_separate_payload(self):
+        self.assertEqual(self.install(), 0)
+        target = self.bin / "project"
+        result = subprocess.run([str(target), "direct", "argument with spaces"],
+                                text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), ["direct", "argument with spaces"])
+
+        payload = self.bin / installer.PAYLOAD_NAME
+        malicious = self.base / "direct-malicious-ran"
+        payload.write_text(
+            f'#!/usr/bin/env python3\nfrom pathlib import Path\nPath({str(malicious)!r}).write_text("ran")\n')
+        result = subprocess.run([str(target), "unsafe"], text=True, capture_output=True)
+        self.assertEqual(result.returncode, 3)
+        self.assertIn("refused unowned command", result.stderr)
+        self.assertFalse(malicious.exists())
 
     def test_exec_owned_runs_verified_snapshot_if_path_is_replaced(self):
         self.source.write_text(
@@ -434,7 +491,8 @@ class InstallTests(unittest.TestCase):
         target = status_bin / "project"
         target.write_text("unrelated project command")
         target.chmod(0o755)
-        env = {**os.environ, "HOME": str(self.base), "OPENREPOPROJECT_PIN": str(self.pin)}
+        env = {**os.environ, "HOME": str(self.base), "OPENREPOPROJECT_PIN": str(self.pin),
+               "WORKBENCHES_ROOT": str(self.wb)}
         command = ["bash", str(ROOT / "scripts/install-workbench-commands.sh"), "--status"]
 
         result = subprocess.run(command, env=env, text=True, capture_output=True)
@@ -443,8 +501,10 @@ class InstallTests(unittest.TestCase):
                       result.stdout)
 
         target.unlink()
-        self.assertEqual(installer.main([*self.args, "--bin-dir", str(status_bin),
-                                         "--source", str(self.source)]), 0)
+        self.assertEqual(installer.main([
+            "--pin", str(self.pin), "--bin-dir", str(status_bin),
+            "--workbenches", str(ROOT), "--source", str(self.source),
+        ]), 0)
         result = subprocess.run(command, env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("project              Create, inspect, diagnose and maintain projects", result.stdout)

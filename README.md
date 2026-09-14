@@ -23,7 +23,10 @@ remain owned by their bench repositories. The creation list excludes update
 scripts and reports configured scripts that are not installed.
 
 `config/openrepoproject-pin.json` identifies an exact source commit and executable
-SHA-256. The installer tries the authenticated GitHub API before raw download,
+SHA-256. The PATH-facing `project` command is a verifier launcher; the pinned
+upstream executable is stored separately as `.workbenches-project.payload`, so
+normal direct invocations perform the same ownership and digest check as legacy
+forwarders. The installer tries the authenticated GitHub API before raw download,
 verifies bytes before replacing anything, journals publication so an
 interrupted upgrade can resume, and rolls back ordinary partial multi-file
 replacement failures. A persistent per-directory lock serializes installation,
@@ -42,10 +45,14 @@ same pinned bytes, `--bin-dir PATH` for another command directory, or
 in the host-local `.workbenches-path` beside the command; `WORKBENCHES_ROOT`
 overrides it at runtime.
 
-When advancing the pin, first publish the tested source commit, obtain `project`
-from that commit, compute its SHA-256, and update both fields in one change. If
-the source PR will squash-merge, re-pin to the resulting main commit before
-landing the workBenches integration. Never adjust the digest to accept drift.
+When advancing the pin, first copy the current `commit` and `sha256` pair into
+the `trusted_previous` array. Then publish the tested source commit, obtain
+`project` from that commit, compute its SHA-256, and update the top-level
+`commit` and `sha256` fields in the same change. Retain each previous pair only
+for the upgrade window in which an existing installer-owned payload must be
+recognized. If the source PR will squash-merge, re-pin to the resulting main
+commit before landing the workBenches integration. Never adjust a digest to
+accept drift.
 
 Offline integration tests: `python3 devcontainer.test/test-project-command.py`
 inside a Python workBench. Command behavior and migration notes live in
