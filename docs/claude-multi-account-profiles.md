@@ -191,12 +191,12 @@ directory its Claude runs in. `WORKBENCHES_CLAUDE_WINDOW_REUSE=off` turns step
 two off for one launch, for the emergency where a record names a window that
 must not be touched; the ownership fence above already refuses another lane's
 window without it. What the parent resolved is never handed down as
-the answer: a lane that was an inference still reaches `lane-start` as
-`--confirm` in the child. Before Amendment 11, every outside-tmux
-launch made a fresh session whose window tmux named for whatever command was
-running in it instead — on Eagle, eight of sixteen live windows were simply
-called `claude` when this was measured — so a restart could never bind by
-window name and always fell to the swap record's one confirmation below.
+the answer: a lane that was an inference still reaches only the picker in the
+child (lane-collision-protocol Amendment 18 Addendum 1). Before Amendment 11,
+every outside-tmux launch made a fresh session whose window tmux named for
+whatever command was running in it instead — on Eagle, eight of sixteen live
+windows were simply called `claude` when this was measured — so a restart
+could never bind by window name and always fell to the picker below.
 
 **The lane's session is NAMED by `lane-start`, which is why every path runs it
 (new-workstation#20, Evidence 4).** Amendment 2 makes the Claude session's name
@@ -250,7 +250,7 @@ across five sessions, four of the five windows called `claude`, and all five swa
 records naming sessions from the server that had just been replaced. That is the
 **safe** half — nothing matches, the step answers nothing, and the launch falls
 to the next one — and it is also why a restart taken right after a reboot still
-meets the swap record's one confirmation. The unsafe half is this PR's ninth
+meets the picker below. The unsafe half is this PR's ninth
 divergence: a record carrying an `<@id>` whose `<session>:<index>` now belongs to
 a *different* window would bind this lane to a stranger's window if it were
 matched on the ref alone. The rule that closes it — *a record carrying an
@@ -311,18 +311,30 @@ implementations of one rule is how the three come to disagree about which lane
 a window is. A `lanes-edit.sh` predating Amendment 11 has no such subcommand —
 it says so and exits 2, which is an old helper, expected and silent — and a
 read that *failed* names itself and falls to the **next** step rather than to
-the bare-Claude end of the order. Failing both, and only inside
-tmux, the lane this workstation last paused for a swap and has not resumed
-since (`lanes-edit.sh swapped <workstation>`, first row) — handed over as
-`--confirm`, so `lane-start` asks before it takes the window. That lane is a
-guess about a *window*, and taking it means renaming one, so outside tmux it
-is not read at all. The window's name and its id are both read before the
-tmux re-exec and carried across it — on the reuse path they are the *reused*
-window's, so the child comes up in a window the estate already knows; on the
-fresh-session path a newly created window is named for the command that made
-it unless the lane was certain. All three
-register reads are made with `LANES_NO_FETCH=1`, so a launch never waits on
-the network.
+the bare-Claude end of the order. **Failing both, and only inside tmux, THE
+PICKER** (lane-collision-protocol Amendment 18 Addendum 1, clause (i-5)):
+`lane` (`opensoft/openRepoTools#43`), on `PATH`, given a terminal to ask on,
+lists this checkout's lanes — or, standing outside every checkout, every
+repository — as a numbered pick, asks one question, and acts on the pick
+itself: an available lane through `lane-start`, a lane live here through the
+attach, a lane bound elsewhere through the handoff request. So this launcher
+hands it the pane and **stops** — no `--dir`, no `--confirm`, nothing else —
+and exits with whatever `lane` decided. `lane`'s own exit 0 (the pick was
+acted on) and exit 8 (the operator quit, or there was nothing to pick) both
+leave nothing for this launcher to start; only exit 2, a refusal, falls
+through to the plain session below, exactly as no `lane` on `PATH` or no
+terminal already does. This step reads no swap record at all any more:
+confirming the workstation's newest one is what put `openRepoShape-2` — a
+person's own lane, but not the one they wanted — in front of an operator who
+typed `pclaude team-01b` on 2026-09-14T12:04Z, whose `N` three minutes later
+fell back to a bare resume (`opensoft/workBenches#77`); `lane` asks instead of
+guessing, so a lane taken here was always the one the operator picked. The
+window's name and its id are both read before the tmux re-exec and carried
+across it — on the reuse path they are the *reused* window's, so the child
+comes up in a window the estate already knows; on the fresh-session path a
+newly created window is named for the command that made it unless the lane was
+certain. Both register reads (the window's name and the window's record) are
+made with `LANES_NO_FETCH=1`, so a launch never waits on the network.
 
 With neither, the launch is exactly as described above plus one line saying how
 to take a lane in this window — and not even that where the `SessionStart` hook
@@ -380,9 +392,12 @@ no-lane notice does: that hook reports the lane it could not bind, and nothing
 but this line can say the tool itself is missing.
 
 **The workstation those records are keyed to is configured, never taken from
-`hostname` inside a container (new-workstation#20, Evidence 6).** Step four
-above reads `lanes-edit.sh swapped <workstation>`, and the swap records this
-machine wrote say `Eagle`. Inside a bench container `hostname -s` is the
+`hostname` inside a container (new-workstation#20, Evidence 6).** The
+directory order's rung two and act 1's own window-reuse guess read
+`lanes-edit.sh swapped <workstation>` — step four of the lane order no longer
+does, since lane-collision-protocol Amendment 18 Addendum 1 replaced its
+swap-record guess with the picker — and the swap records this machine wrote
+say `Eagle`. Inside a bench container `hostname -s` is the
 container's id — `0e7d1a79a07e`, as measured on 2026-09-13 — so a launcher that
 passes it asks for the records of a machine that has existed for an hour, gets
 nothing, and falls through with no reason given; and a *writer* that passes it

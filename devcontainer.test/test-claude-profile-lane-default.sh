@@ -1,28 +1,34 @@
 #!/usr/bin/env bash
 # Regression tests for claude-profile's LANE DEFAULT — lane-collision-protocol
-# Amendment 8(c). `--lane` used to be opt-in; a `run` that starts a
-# conversation now resolves the lane itself, in this order:
+# Amendment 8(c), and its Amendment 18 Addendum 1 picker (opensoft/workBenches#79).
+# `--lane` used to be opt-in; a `run` that starts a conversation now resolves
+# the lane itself, in this order:
 #
 #   1. --lane / CLAUDE_LANE            -> handed to lane-start bare
 #   2. the current tmux window's name, when `lanes-edit.sh register-row`
 #      answers 0 for it                -> handed to lane-start bare
-#   3. `lanes-edit.sh swapped <ws>`, first row, inside tmux only
-#                                      -> handed to lane-start as --confirm
+#   3. THE PICKER: `lane`, on PATH, given a terminal to ask on, inside
+#      tmux only (Amendment 18 Addendum 1, clause (i-5))
+#                                      -> `lane` runs bare in the pane and
+#                                         this launcher exits with its status
 #   4. nothing                         -> today's behaviour, plus one line,
 #                                         and not even that where the clause
 #                                         (e) SessionStart hook is ensured
 #
-# and never refuses — A8 Addendum 2 R-A8-3, the ruling on F-W1: a lanes-edit.sh
-# with no `swapped` subcommand, a lane-start with no `--confirm`, a lane-start
-# that DECLINES the confirm question, a missing lanes-edit.sh, no tmux to take
-# a window in, and `--no-lane` all end in a Claude, and the confirm path is the
-# one path that does not exec, so that an exit 2 falls through to a bare launch
-# instead of an exited pane — while an exit 2 from a lane-start that DID take
-# the lane is handed back, because a second Claude behind the first would be
-# worse than the dead end. `--yes` is passed nowhere (F-W2): it is inert
-# without `--confirm`, and `--confirm` is the one case it must never accompany.
+# and never refuses on ITS OWN ACCOUNT — A8 Addendum 2 R-A8-3, the ruling on
+# F-W1: a missing lanes-edit.sh, no tmux to take a window in, and `--no-lane`
+# all end in a Claude. Step 3 is now the one exception, and it is `lane`'s own
+# contract rather than a refusal: `lane` exit 0 (the pick was ACTED ON) or exit
+# 8 (the operator QUIT, or there was nothing to pick) both leave this launcher
+# with NOTHING to start, because starting a Claude behind a pick already acted
+# on — or behind a quit nobody asked to be overridden — is worse than the lane
+# collision this protocol exists to prevent. Only `lane` exit 2, A REFUSAL,
+# falls through to step 4 exactly as no `lane` on PATH or no terminal does.
+# `--yes`/`--confirm` are gone from this order entirely: they were
+# lane-start's, for the swap-record guess step 3 used to be before Amendment 18
+# Addendum 1 replaced it with the picker.
 # Everything the launcher shells out to is faked here — tmux, lanes-edit.sh,
-# lane-start and claude — so the assertions are about the launcher's own
+# lane-start, lane and claude — so the assertions are about the launcher's own
 # resolution and nothing else.
 
 set -euo pipefail
@@ -56,7 +62,7 @@ fail() {
 # quietly changing a number; the assertion count is printed and not pinned,
 # because checks are added to existing scenarios all the time and a scenario
 # that stops running is the thing worth catching.
-EXPECTED_SCENARIOS=31
+EXPECTED_SCENARIOS=25
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -71,6 +77,7 @@ CLAUDE_LOG="$TEST_ROOT/claude.log"
 TMUX_LOG="$TEST_ROOT/tmux.log"
 LANE_START_LOG="$TEST_ROOT/lane-start.log"
 LANES_EDIT_LOG="$TEST_ROOT/lanes-edit.log"
+LANE_PICKER_LOG="$TEST_ROOT/lane-picker.log"
 ERR_LOG="$TEST_ROOT/stderr.log"
 # A HOME of this test's own: lanes_edit_bin's last resort is the
 # ~/projects/xFactory/lanes-edit.sh symlink the protocol names, and the real
@@ -203,7 +210,21 @@ case "${FAKE_LANE_START_DECLINE:-}" in
 esac
 EOF
 
-chmod +x "$FAKE_CLAUDE" "$FAKE_BIN/tmux" "$FAKE_BIN/lanes-edit.sh" "$FAKE_BIN/lane-start"
+# THE PICKER (lane-collision-protocol Amendment 18 Addendum 1, clause (i-5)).
+# `lane` does not exist yet on any real machine (opensoft/openRepoTools#43
+# builds it in parallel), so this fake stands in for its whole contract: it
+# logs the argv it was run with — bare, always, per clause (i-5) — and exits
+# with whatever this scenario says its pick came to. Exit 0 is a pick ACTED
+# ON, exit 8 is a QUIT or nothing to pick, exit 2 is A REFUSAL; this launcher
+# never hands it `--dir`, `--confirm`, `--resume` or anything else.
+cat > "$FAKE_BIN/lane" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${FAKE_LANE_LOG:?}"
+exit "${FAKE_LANE_EXIT:-8}"
+EOF
+
+chmod +x "$FAKE_CLAUDE" "$FAKE_BIN/tmux" "$FAKE_BIN/lanes-edit.sh" "$FAKE_BIN/lane-start" "$FAKE_BIN/lane"
 
 AMENDMENT_8_HELP='OPTIONS
   --dir <path>     the lane s checkout
@@ -232,6 +253,7 @@ common_env=(
     "FAKE_TMUX_LOG=$TMUX_LOG"
     "FAKE_LANE_START_LOG=$LANE_START_LOG"
     "FAKE_LANES_EDIT_LOG=$LANES_EDIT_LOG"
+    "FAKE_LANE_LOG=$LANE_PICKER_LOG"
     "FAKE_LANE_START_HELP=$AMENDMENT_8_HELP"
     "WORKBENCHES_SHARED_MCP_FAMILIES=disabled"
     "LANES_WORKSTATION=Eagle"
@@ -242,10 +264,17 @@ claude_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions
 note='no lane for this window; run lane-start <repo> <n> inside it'
 
 reset_logs() {
-    rm -f "$CLAUDE_LOG" "$TMUX_LOG" "$LANE_START_LOG" "$LANES_EDIT_LOG" "$ERR_LOG"
+    rm -f "$CLAUDE_LOG" "$TMUX_LOG" "$LANE_START_LOG" "$LANES_EDIT_LOG" "$LANE_PICKER_LOG" "$ERR_LOG"
 }
 
 # launch <scenario env>... -- <launcher args>...
+#
+# STDIN IS ALWAYS /dev/null HERE — never a terminal — so THE PICKER (step 3,
+# Amendment 18 Addendum 1) never fires by accident in a scenario that is not
+# testing it: every scenario below that reaches step 3 with nothing to offer
+# is thereby testing "no terminal on stdin", the same fall-through no `lane` on
+# PATH gets, whether or not it says so. Scenarios that must prove the picker
+# DOES fire use `tty_launch` below instead, which gives it a real one.
 launch() {
     local -a scenario_env=()
     while [[ $# -gt 0 && "$1" != "--" ]]; do
@@ -257,12 +286,42 @@ launch() {
     scenario
     set +e
     env "${common_env[@]}" "${scenario_env[@]}" "$LAUNCHER" "$@" \
-        >/dev/null 2>"$ERR_LOG"
+        </dev/null >/dev/null 2>"$ERR_LOG"
     launch_status=$?
     set -e
 }
 
 lane_start_argv() { cat "$LANE_START_LOG" 2>/dev/null || true; }
+lane_picker_argv() { cat "$LANE_PICKER_LOG" 2>/dev/null || true; }
+
+# tty_launch <scenario env>... -- <launcher args>...
+#
+# A REAL pty on stdin AND stdout (via `script -qefc`), so THE PICKER's own
+# `[[ -t 0 ]]` (step 3, Amendment 18 Addendum 1) reads true here where
+# `launch`'s /dev/null makes it false — this is how a scenario proves the
+# picker DOES fire. `-e` is `script`'s own flag to return the wrapped
+# command's exit status rather than its own, so `tty_launch_status` is
+# `env ... "$LAUNCHER" ...`'s status and not `script`'s.
+tty_launch() {
+    local -a scenario_env=()
+    while [[ $# -gt 0 && "$1" != "--" ]]; do
+        scenario_env+=("$1")
+        shift
+    done
+    shift
+    reset_logs
+    local tty_command value
+    printf -v tty_command 'env'
+    for value in "${common_env[@]}" "${scenario_env[@]}" "$LAUNCHER" "$@"; do
+        printf -v value '%q' "$value"
+        tty_command+=" $value"
+    done
+    scenario
+    set +e
+    script -qefc "$tty_command" "$TEST_ROOT/typescript.log" >/dev/null
+    tty_launch_status=$?
+    set -e
+}
 
 # ---------------------------------------------------------------------------
 # 0. --help documents the default and the way out of it.
@@ -305,132 +364,104 @@ grep -Fxq 'LANES_NO_FETCH=1' "$LANES_EDIT_LOG" \
 grep -q "$note" "$ERR_LOG" && fail "window lane: printed the no-lane note anyway"; assertion
 
 # ---------------------------------------------------------------------------
-# 2. Window is not a lane, the record has one: the record's FIRST row, and
-# --confirm — nothing has named this window, so lane-start asks before it does.
-launch \
-    "FAKE_TMUX_WINDOW=claude" \
-    "FAKE_LANE_WITH_ROW=openRepoProject-1" \
-    "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=openRepoProject-1\t2026-09-12T17:04Z\tclaude-a:0\nxFactory-2\t2026-09-12T15:00Z\tclaude-b:1\n" \
-    -- run team002 --resume session-r
-grep -Fxq -- "--confirm openRepoProject-1 -- $claude_args --resume session-r" "$LANE_START_LOG" \
-    || fail "record lane: lane-start argv was '$(lane_start_argv)'"; assertion
-grep -Fq 'xFactory-2' "$LANE_START_LOG" \
-    && fail "record lane: a row other than the first was taken"; assertion
-[[ ! -e "$CLAUDE_LOG" ]] || fail "record lane: Claude was exec'd directly"; assertion
-grep -Fq 'argv=swapped Eagle' "$LANES_EDIT_LOG" \
-    || fail "record lane: swapped was not asked about this workstation ($(cat "$LANES_EDIT_LOG"))"; assertion
-
-# 2b. The record's rows are `<lane>\t<UTC>\t<window>`. A row that does not
-# separate them with a tab is not a row this launcher can read a lane out of,
-# and it hands lane-start nothing rather than a whole line.
-launch \
-    "FAKE_TMUX_WINDOW=claude" \
-    "FAKE_LANE_WITH_ROW=openRepoProject-1" \
-    "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=openRepoProject-1 2026-09-12T17:04Z claude-a:0\n" \
-    -- run team002 --resume session-untabbed
+# 2. THE PICKER (lane-collision-protocol Amendment 18 Addendum 1, clause
+# (i-5)). Window is not a lane and nothing names it, `lane` is on PATH and
+# stdin is a REAL terminal (tty_launch), so this launcher hands it the pane —
+# BARE, no `--dir`, no `--confirm`, no `--resume`, nothing at all — and STOPS.
+# `lane` exit 0 is the pick ACTED ON: an available lane through lane-start
+# (another launch of this same launcher), a live one through the attach, an
+# elsewhere one through the handoff request — any of which may already have
+# started a Claude of its own, so this launcher starts NOTHING behind it and
+# exits with `lane`'s own status instead.
+tty_launch "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
+    "FAKE_LANE_EXIT=0" -- run team002 --resume session-picker-acted
+[[ "$tty_launch_status" -eq 0 ]] \
+    || fail "picker acted on: the launcher exited $tty_launch_status instead of lane's own 0"; assertion
+[[ -e "$LANE_PICKER_LOG" ]] || fail "picker acted on: lane was never invoked"; assertion
+[[ -z "$(lane_picker_argv)" ]] \
+    || fail "picker acted on: lane argv was '$(lane_picker_argv)', not bare"; assertion
 [[ ! -e "$LANE_START_LOG" ]] \
-    || fail "untabbed record row: lane-start was handed '$(lane_start_argv)'"; assertion
-grep -Fxq -- "$claude_args --resume session-untabbed" "$CLAUDE_LOG" \
-    || fail "untabbed record row: Claude did not receive its arguments unchanged"; assertion
-grep -q "$note" "$ERR_LOG" || fail "untabbed record row: the note was not printed"; assertion
+    || fail "picker acted on: this launcher also ran lane-start ('$(lane_start_argv)')"; assertion
+[[ ! -e "$CLAUDE_LOG" ]] \
+    || fail "picker acted on: this launcher also launched a Claude of its own"; assertion
 
-# 2c. And the untabbed row that is LANE-SHAPED all by itself — one field, no
-# tab, nothing to reject it on but the missing tab. `cut -f 1` hands back the
-# whole line when there is none, so a launcher that took the first field would
-# take this, from output that never had the contract's shape at all.
-launch \
-    "FAKE_TMUX_WINDOW=claude" \
-    "FAKE_LANE_WITH_ROW=openRepoProject-1" \
-    "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=openRepoProject-1\n" \
-    -- run team002 --resume session-onefield
+# 2b. `lane` exit 8 is a QUIT, or nothing was there to pick. Declining the
+# picker is not asking for a bare session instead (F-W1's own reasoning, aimed
+# the other way): this launcher starts nothing here either, and exits with
+# `lane`'s status exactly as an acted-on pick does.
+tty_launch "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
+    "FAKE_LANE_EXIT=8" -- run team002 --resume session-picker-quit
+[[ "$tty_launch_status" -eq 8 ]] \
+    || fail "picker quit: the launcher exited $tty_launch_status instead of lane's own 8"; assertion
+[[ -e "$LANE_PICKER_LOG" ]] || fail "picker quit: lane was never invoked"; assertion
 [[ ! -e "$LANE_START_LOG" ]] \
-    || fail "one-field record row: lane-start was handed '$(lane_start_argv)'"; assertion
-grep -Fxq -- "$claude_args --resume session-onefield" "$CLAUDE_LOG" \
-    || fail "one-field record row: Claude did not receive its arguments unchanged"; assertion
-grep -q "$note" "$ERR_LOG" || fail "one-field record row: the note was not printed"; assertion
+    || fail "picker quit: this launcher also ran lane-start ('$(lane_start_argv)')"; assertion
+[[ ! -e "$CLAUDE_LOG" ]] \
+    || fail "picker quit: this launcher launched a Claude of its own after a quit"; assertion
 
-# 2d. A row of exactly the right SHAPE whose first field is not a lane name.
-# The tab is there, so the tab check passes it; only the lane-shape check can
-# refuse it, and a window name that is not lane-shaped never reaches here
-# because register-row answered 2 for it (scenario 5).
-launch \
-    "FAKE_TMUX_WINDOW=claude" \
-    "FAKE_LANE_WITH_ROW=openRepoProject-1" \
-    "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=not a lane\t2026-09-12T17:04Z\tclaude-a:0\n" \
-    -- run team002 --resume session-unshaped
+# 2c. `lane` exit 2 is A REFUSAL — not an answer at all — and it falls through
+# to step 4 exactly as no `lane` on PATH or no terminal does: a bare Claude,
+# and one line naming why.
+tty_launch "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
+    "FAKE_LANE_EXIT=2" -- run team002 --resume session-picker-refused
+[[ "$tty_launch_status" -eq 0 ]] \
+    || fail "picker refused: the launcher exited $tty_launch_status instead of falling through"; assertion
+[[ -e "$LANE_PICKER_LOG" ]] || fail "picker refused: lane was never invoked"; assertion
 [[ ! -e "$LANE_START_LOG" ]] \
-    || fail "unshaped record lane: lane-start was handed '$(lane_start_argv)'"; assertion
-grep -Fxq -- "$claude_args --resume session-unshaped" "$CLAUDE_LOG" \
-    || fail "unshaped record lane: Claude did not receive its arguments unchanged"; assertion
-grep -q "$note" "$ERR_LOG" || fail "unshaped record lane: the note was not printed"; assertion
+    || fail "picker refused: lane-start was invoked ('$(lane_start_argv)')"; assertion
+grep -Fxq -- "$claude_args --resume session-picker-refused" "$CLAUDE_LOG" \
+    || fail "picker refused: Claude did not receive its arguments unchanged"; assertion
+grep -q 'lane exited 2' "$TEST_ROOT/typescript.log" \
+    || fail "picker refused: the reason was not named ($(cat "$TEST_ROOT/typescript.log"))"; assertion
+grep -q "$note" "$TEST_ROOT/typescript.log" || fail "picker refused: the note was not printed"; assertion
+
+# 2d. No `lane` on PATH at all — a machine opensoft/openRepoTools#43 has not
+# reached yet. Given the SAME terminal 2/2b/2c had, step 3 still answers
+# nothing, exactly as a `lane` that refused does: a bare Claude, one line, and
+# the picker never even attempted.
+NO_LANE_PICKER_BIN="$TEST_ROOT/bin-no-lane-picker"
+mkdir -p "$NO_LANE_PICKER_BIN"
+cp "$FAKE_CLAUDE" "$NO_LANE_PICKER_BIN/claude"
+cp "$FAKE_BIN/tmux" "$NO_LANE_PICKER_BIN/tmux"
+cp "$FAKE_BIN/lanes-edit.sh" "$NO_LANE_PICKER_BIN/lanes-edit.sh"
+cp "$FAKE_BIN/lane-start" "$NO_LANE_PICKER_BIN/lane-start"
+chmod +x "$NO_LANE_PICKER_BIN"/*
+tty_launch "PATH=$NO_LANE_PICKER_BIN:/usr/bin:/bin" "FAKE_TMUX_WINDOW=claude" \
+    "FAKE_LANE_WITH_ROW=openRepoProject-1" -- run team002 --resume session-nolanebin
+[[ "$tty_launch_status" -eq 0 ]] \
+    || fail "no lane on PATH: the launcher exited $tty_launch_status"; assertion
+[[ ! -e "$LANE_PICKER_LOG" ]] \
+    || fail "no lane on PATH: something answered for lane ('$(lane_picker_argv)')"; assertion
+[[ ! -e "$LANE_START_LOG" ]] \
+    || fail "no lane on PATH: lane-start was invoked ('$(lane_start_argv)')"; assertion
+grep -Fxq -- "$claude_args --resume session-nolanebin" "$CLAUDE_LOG" \
+    || fail "no lane on PATH: Claude did not receive its arguments unchanged"; assertion
+grep -q "$note" "$TEST_ROOT/typescript.log" || fail "no lane on PATH: the note was not printed"; assertion
+
+# 2e. --lane keeps skipping the picker (clause (i-5)): given the SAME terminal
+# and the SAME `lane` on PATH that 2/2b/2c would have used, the operator's own
+# word at precedence 1 never lets the launch reach step 3 at all.
+tty_launch "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
+    -- --lane spoken-bypass run team002 --resume session-lane-bypass
+[[ ! -e "$LANE_PICKER_LOG" ]] \
+    || fail "--lane bypass: the picker ran anyway ('$(lane_picker_argv)')"; assertion
+grep -Fxq -- "spoken-bypass -- $claude_args --resume session-lane-bypass" "$LANE_START_LOG" \
+    || fail "--lane bypass: lane-start argv was '$(lane_start_argv)'"; assertion
 
 # ---------------------------------------------------------------------------
-# 3. No window lane and no swapped lane: today's behaviour, and one line.
+# 3. NO TERMINAL ON STDIN: `lane` is on PATH (common_env's FAKE_BIN carries it)
+# and would answer, but `launch`'s stdin is /dev/null, so step 3 answers
+# nothing exactly as no `lane` on PATH does — today's behaviour, and one line.
 launch \
     "FAKE_TMUX_WINDOW=claude" \
     "FAKE_LANE_WITH_ROW=openRepoProject-1" \
-    "FAKE_SWAPPED_STATUS=8" \
     -- run team002 --resume session-n
 [[ ! -e "$LANE_START_LOG" ]] || fail "no lane: lane-start was invoked ('$(lane_start_argv)')"; assertion
+[[ ! -e "$LANE_PICKER_LOG" ]] \
+    || fail "no lane: the picker ran with no terminal on stdin ('$(lane_picker_argv)')"; assertion
 grep -Fxq -- "$claude_args --resume session-n" "$CLAUDE_LOG" \
     || fail "no lane: Claude did not receive its arguments unchanged ($(cat "$CLAUDE_LOG" 2>/dev/null))"; assertion
 grep -q "$note" "$ERR_LOG" || fail "no lane: the note was not printed ($(cat "$ERR_LOG"))"; assertion
-
-# ---------------------------------------------------------------------------
-# 4. A lanes-edit.sh from before Amendment 8 has no `swapped` subcommand: it
-# says so, and exits 2. The launcher degrades to today's behaviour rather than
-# reading that as a lane, and says nothing beyond the standing note.
-launch \
-    "FAKE_TMUX_WINDOW=claude" \
-    "FAKE_LANE_WITH_ROW=openRepoProject-1" \
-    "FAKE_SWAPPED_UNKNOWN=1" \
-    -- run team002 --resume session-old
-[[ ! -e "$LANE_START_LOG" ]] || fail "no swapped subcommand: lane-start was invoked ('$(lane_start_argv)')"; assertion
-grep -Fxq -- "$claude_args --resume session-old" "$CLAUDE_LOG" \
-    || fail "no swapped subcommand: Claude did not receive its arguments unchanged"; assertion
-grep -q "$note" "$ERR_LOG" || fail "no swapped subcommand: the note was not printed"; assertion
-grep -q 'caller bug' "$ERR_LOG" \
-    && fail "no swapped subcommand: an old helper was reported as a caller bug (F-W4: $(cat "$ERR_LOG"))"; assertion
-[[ "$(wc -l < "$ERR_LOG")" -eq 1 ]] \
-    || fail "no swapped subcommand: one situation printed $(wc -l < "$ERR_LOG") lines ($(cat "$ERR_LOG"))"; assertion
-
-# 4b. And a `swapped` that fails HALFWAY, after printing a row a launcher could
-# otherwise read as a lane: output from a read that did not succeed is not a
-# lane either.
-launch \
-    "FAKE_TMUX_WINDOW=claude" \
-    "FAKE_LANE_WITH_ROW=openRepoProject-1" \
-    "FAKE_SWAPPED_STATUS=2" \
-    "FAKE_SWAPPED_ROWS_ANYWAY=1" \
-    "FAKE_SWAPPED_ROWS=openRepoProject-1\t2026-09-12T17:04Z\tclaude-a:0\n" \
-    -- run team002 --resume session-halfread
-[[ ! -e "$LANE_START_LOG" ]] \
-    || fail "failed swapped read: its output was taken as a lane ('$(lane_start_argv)')"; assertion
-grep -Fxq -- "$claude_args --resume session-halfread" "$CLAUDE_LOG" \
-    || fail "failed swapped read: Claude did not receive its arguments unchanged"; assertion
-grep -q "$note" "$ERR_LOG" || fail "failed swapped read: the note was not printed"; assertion
-
-# ---------------------------------------------------------------------------
-# 4c. A `swapped` that IS there and exits 2 anyway is a caller bug, not an old
-# helper — 2 is also lanes-edit.sh's usage code (F-W4). It reads no lane either
-# way, but it says which of the two it met, and it still launches Claude.
-launch \
-    "FAKE_TMUX_WINDOW=claude" \
-    "FAKE_LANE_WITH_ROW=openRepoProject-1" \
-    "FAKE_SWAPPED_STATUS=2" \
-    -- run team002 --resume session-callerbug
-[[ ! -e "$LANE_START_LOG" ]] || fail "swapped caller bug: lane-start was invoked ('$(lane_start_argv)')"; assertion
-grep -Fxq -- "$claude_args --resume session-callerbug" "$CLAUDE_LOG" \
-    || fail "swapped caller bug: Claude did not receive its arguments unchanged"; assertion
-grep -q 'caller bug' "$ERR_LOG" \
-    || fail "swapped caller bug: it was reported as an old helper ($(cat "$ERR_LOG"))"; assertion
-grep -q "$note" "$ERR_LOG" || fail "swapped caller bug: the note was not printed"; assertion
-[[ "$(wc -l < "$ERR_LOG")" -eq 1 ]] \
-    || fail "swapped caller bug: one situation printed $(wc -l < "$ERR_LOG") lines ($(cat "$ERR_LOG"))"; assertion
 
 # ---------------------------------------------------------------------------
 # 5. A window name that is not even lane-shaped: register-row answers 2, not 8,
@@ -504,36 +535,17 @@ launch \
 [[ ! -e "$LANE_START_LOG" ]] || fail "CLAUDE_NO_LANE: lane-start was invoked ('$(lane_start_argv)')"; assertion
 
 # ---------------------------------------------------------------------------
-# 8. A lane-start from before Amendment 8, which knows neither flag. The
-# window's lane still goes to it, bare — that is today's behaviour. The
-# record's guess does not: a lane-start that cannot ask must not be handed a
-# window to take on a guess.
+# 8. A lane-start from before Amendment 8, which knows neither `--confirm` nor
+# `--yes` (this launcher passes it neither any more either way). The window's
+# lane still goes to it, bare — that is today's behaviour, unaffected by which
+# flags a lane-start does or does not know.
 launch \
     "FAKE_TMUX_WINDOW=openRepoProject-1" \
     "FAKE_LANE_WITH_ROW=openRepoProject-1" \
     "FAKE_LANE_START_HELP=$OLD_HELP" \
-    "FAKE_SWAPPED_STATUS=8" \
     -- run team002 --resume session-oldls
 grep -Fxq -- "openRepoProject-1 -- $claude_args --resume session-oldls" "$LANE_START_LOG" \
     || fail "old lane-start, window lane: lane-start argv was '$(lane_start_argv)'"; assertion
-
-launch \
-    "FAKE_TMUX_WINDOW=claude" \
-    "FAKE_LANE_WITH_ROW=openRepoProject-1" \
-    "FAKE_LANE_START_HELP=$OLD_HELP" \
-    "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=openRepoProject-1\t2026-09-12T17:04Z\tclaude-a:0\n" \
-    -- run team002 --resume session-oldls-record
-[[ ! -e "$LANE_START_LOG" ]] \
-    || fail "old lane-start, record lane: it was handed a guess it cannot ask about ('$(lane_start_argv)')"; assertion
-grep -Fxq -- "$claude_args --resume session-oldls-record" "$CLAUDE_LOG" \
-    || fail "old lane-start, record lane: Claude did not receive its arguments unchanged"; assertion
-grep -q -- '--confirm' "$ERR_LOG" || fail "old lane-start, record lane: the reason was not named ($(cat "$ERR_LOG"))"; assertion
-grep -q "$note" "$ERR_LOG" || fail "old lane-start, record lane: the note was not printed"; assertion
-grep -Fq 'openRepoProject-1' "$ERR_LOG" \
-    || fail "old lane-start, record lane: the line does not name the lane it left (F-W3)"; assertion
-[[ "$(wc -l < "$ERR_LOG")" -eq 1 ]] \
-    || fail "old lane-start, record lane: one situation printed $(wc -l < "$ERR_LOG") lines (F-W3: $(cat "$ERR_LOG"))"; assertion
 
 # ---------------------------------------------------------------------------
 # 9. No lanes-edit.sh to read: nothing can be resolved, and the launcher says
@@ -641,110 +653,35 @@ grep -Fq 'argv=register-row' "$LANES_EDIT_LOG" \
 # re-exec happens only when the launch did NOT come from a tmux window at all
 # (claude_run_is_interactive requires an empty TMUX) — there is nothing to
 # carry, and the child must not invent one.
-tty_launch() {
-    local -a scenario_env=("$@")
-    reset_logs
-    local tty_command value
-    printf -v tty_command 'env'
-    for value in "${common_env[@]}" "${scenario_env[@]}" "$LAUNCHER" run team002 --resume session-tty; do
-        printf -v value '%q' "$value"
-        tty_command+=" $value"
-    done
-    scenario
-    script -qefc "$tty_command" "$TEST_ROOT/typescript.log" >/dev/null
-}
 tty_launch "TMUX=" "FAKE_TMUX_WINDOW=openRepoProject-1" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
-    "CLAUDE_LANE=carried-1"
+    "CLAUDE_LANE=carried-1" -- run team002 --resume session-tty
 grep -q 'new-session' "$TMUX_LOG" || fail "re-exec: no tmux session was created ($(cat "$TMUX_LOG" 2>/dev/null))"; assertion
 grep -q 'CLAUDE_LANE=carried-1' "$TMUX_LOG" || fail "re-exec: the lane was not carried into the new session"; assertion
 grep -q 'WORKBENCHES_CLAUDE_WINDOW=' "$TMUX_LOG" \
     && fail "re-exec: a window name was carried from a launch that came from no window"; assertion
 
 tty_launch "TMUX=" "FAKE_TMUX_WINDOW=openRepoProject-1" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
-    "CLAUDE_NO_LANE=1"
+    "CLAUDE_NO_LANE=1" -- run team002 --resume session-tty
 grep -q 'CLAUDE_NO_LANE=1' "$TMUX_LOG" || fail "re-exec: --no-lane was not carried into the new session"; assertion
 
 # ---------------------------------------------------------------------------
-# 11. THE DECLINED CONFIRM (A8 Addendum 2 R-A8-3, the ruling on F-W1). The
-# record's lane is a guess, lane-start asks, and the operator says no. Both
-# answers must end in a Claude: the launcher may never leave a pane exited.
-#
-# 11a. The interim brett-wip lane-start exits 2 and launches nothing. The
-# launcher does not exec that path, so it is still here to catch the 2, and it
-# launches Claude bare with one line saying so — and exits 0.
-launch \
-    "FAKE_TMUX_WINDOW=claude" \
-    "FAKE_LANE_WITH_ROW=openRepoProject-1" \
-    "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=openRepoProject-1\t2026-09-12T17:04Z\tclaude-a:0\n" \
-    "FAKE_LANE_START_DECLINE=exit2" \
-    -- run team002 --resume session-declined
-grep -Fxq -- "--confirm openRepoProject-1 -- $claude_args --resume session-declined" "$LANE_START_LOG" \
-    || fail "declined confirm: lane-start argv was '$(lane_start_argv)'"; assertion
-grep -Fxq -- "$claude_args --resume session-declined" "$CLAUDE_LOG" \
-    || fail "declined confirm: Claude was not launched bare ($(cat "$CLAUDE_LOG" 2>/dev/null))"; assertion
-[[ "$(wc -l < "$CLAUDE_LOG")" -eq 1 ]] \
-    || fail "declined confirm: Claude was launched $(wc -l < "$CLAUDE_LOG") times"; assertion
-[[ "$launch_status" -eq 0 ]] \
-    || fail "declined confirm: the launcher exited $launch_status, leaving the pane with no Claude (F-W1)"; assertion
-grep -Fq 'openRepoProject-1' "$ERR_LOG" \
-    || fail "declined confirm: the notice does not name the lane ($(cat "$ERR_LOG"))"; assertion
-[[ "$(wc -l < "$ERR_LOG")" -eq 1 ]] \
-    || fail "declined confirm: one situation printed $(wc -l < "$ERR_LOG") lines ($(cat "$ERR_LOG"))"; assertion
-
-# 11b. The ruled lane-start answers `N` by launching Claude bare ITSELF and
-# exiting 0. The launcher must take that 0 as a Claude that has already run and
-# must not start a second one.
-launch \
-    "FAKE_TMUX_WINDOW=claude" \
-    "FAKE_LANE_WITH_ROW=openRepoProject-1" \
-    "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=openRepoProject-1\t2026-09-12T17:04Z\tclaude-a:0\n" \
-    "FAKE_LANE_START_DECLINE=bare" \
-    -- run team002 --resume session-declined-bare
-grep -Fxq -- "--confirm openRepoProject-1 -- $claude_args --resume session-declined-bare" "$LANE_START_LOG" \
-    || fail "declined, launched by lane-start: lane-start argv was '$(lane_start_argv)'"; assertion
-[[ "$(wc -l < "$CLAUDE_LOG")" -eq 1 ]] \
-    || fail "declined, launched by lane-start: Claude ran $(wc -l < "$CLAUDE_LOG") times ($(cat "$CLAUDE_LOG"))"; assertion
-[[ "$launch_status" -eq 0 ]] \
-    || fail "declined, launched by lane-start: the launcher exited $launch_status"; assertion
-grep -q 'did not take' "$ERR_LOG" \
-    && fail "declined, launched by lane-start: the launcher second-guessed a lane-start that had already launched Claude"; assertion
-
-# 11c. A lane-start that TAKES the lane and whose Claude exits non-zero hands
-# that status back unchanged: only 2 is the decline, and only 2 falls through.
+# 11. A lane-start that TAKES a certain lane (the window's own name, precedence
+# 2) and whose Claude exits non-zero hands that status back unchanged: 1 and 2
+# are lane-start's own two refusal codes elsewhere in this order, but this
+# window is already the lane's, so a refusal here would leave tmux printing
+# `[exited]` over a window with no Claude in it — the same fence that used to
+# disambiguate a DECLINED `--confirm` from a taken lane whose own Claude
+# happened to exit 2, before Amendment 18 Addendum 1 removed `--confirm` from
+# this file entirely (that disambiguation is untouched — Amendment 11's own
+# suite still exercises it — and does not depend on the picker in any way).
 launch \
     "FAKE_TMUX_WINDOW=openRepoProject-1" \
     "FAKE_LANE_WITH_ROW=openRepoProject-1" \
-    "FAKE_SWAPPED_STATUS=8" \
     -- run team002 --resume session-taken
 grep -Fxq -- "openRepoProject-1 -- $claude_args --resume session-taken" "$LANE_START_LOG" \
     || fail "taken lane: lane-start argv was '$(lane_start_argv)'"; assertion
 [[ ! -e "$CLAUDE_LOG" ]] \
     || fail "taken lane: the launcher launched a Claude of its own behind lane-start"; assertion
-
-# 11d. A lane-start that TOOK the lane on the confirm path and whose Claude
-# exited 2 by itself. 2 is the decline's status, but this 2 came from a Claude
-# that already ran, and a launcher that read it as a decline would start a
-# SECOND Claude behind the first. The window is what tells them apart: taking a
-# lane renames it, declining leaves it alone.
-WINDOW_FILE="$TEST_ROOT/tmux-window.name"
-printf 'claude\n' > "$WINDOW_FILE"
-launch \
-    "FAKE_TMUX_WINDOW_FILE=$WINDOW_FILE" \
-    "FAKE_LANE_WITH_ROW=openRepoProject-1" \
-    "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=openRepoProject-1\t2026-09-12T17:04Z\tclaude-a:0\n" \
-    "FAKE_LANE_START_DECLINE=took2" \
-    -- run team002 --resume session-took2
-grep -Fxq -- "--confirm openRepoProject-1 -- $claude_args --resume session-took2" "$LANE_START_LOG" \
-    || fail "took the lane, Claude exited 2: lane-start argv was '$(lane_start_argv)'"; assertion
-[[ "$(wc -l < "$CLAUDE_LOG")" -eq 1 ]] \
-    || fail "took the lane, Claude exited 2: Claude ran $(wc -l < "$CLAUDE_LOG") times ($(cat "$CLAUDE_LOG"))"; assertion
-[[ "$launch_status" -eq 2 ]] \
-    || fail "took the lane, Claude exited 2: the launcher exited $launch_status instead of handing back 2"; assertion
-grep -q 'did not take' "$ERR_LOG" \
-    && fail "took the lane, Claude exited 2: a taken lane was reported as a decline ($(cat "$ERR_LOG"))"; assertion
 
 # ---------------------------------------------------------------------------
 # 12. OUTSIDE TMUX there is no window to take, so the record is not even read.
