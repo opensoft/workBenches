@@ -215,30 +215,6 @@ if [[ "$check_only" != true ]]; then
     echo "Opening '$block_title' container shell..."
 fi
 
-run_devcontainer_up() {
-    local remove_flag=()
-    local devcontainer_timeout="${WAVE_DEVCONTAINER_UP_TIMEOUT:-25s}"
-    if [[ "${1:-}" == "--remove-existing-container" ]]; then
-        remove_flag=(--remove-existing-container)
-    fi
-
-    run_with_timeout() {
-        if command -v timeout >/dev/null 2>&1; then
-            timeout --foreground "$devcontainer_timeout" "$@"
-        else
-            "$@"
-        fi
-    }
-
-    if command -v devcontainer >/dev/null 2>&1; then
-        run_with_timeout devcontainer up --workspace-folder "$bench_dir" "${remove_flag[@]}"
-    elif command -v npx >/dev/null 2>&1; then
-        run_with_timeout npx -y @devcontainers/cli up --workspace-folder "$bench_dir" "${remove_flag[@]}"
-    else
-        return 127
-    fi
-}
-
 ensure_host_sources() {
     mkdir -p \
         "$home_dir/projects" \
@@ -355,6 +331,34 @@ create_with_compose() {
     local compose_args
     override_file="$(write_wave_compose_override)"
     compose_args=(-f "$compose_file")
+    if [[ "$container" == "py-bench" ]]; then
+        local shared_network="devbench-shared"
+        local sonarqube_mcp_script="$workbenches_root/devBenches/scripts/ensure-sonarqube-mcp.sh"
+        local rocm_configure_script="$bench_dir/scripts/configure-amd-rocm-wsl.sh"
+        local rocm_compose_file="$bench_dir/.devcontainer/docker-compose.amd-rocm.generated.yml"
+        if [[ ! -x "$sonarqube_mcp_script" ]]; then
+            echo "pyBench SonarQube MCP bootstrap helper is missing or not executable: $sonarqube_mcp_script" >&2
+            exit 1
+        fi
+        if [[ ! -x "$rocm_configure_script" ]]; then
+            echo "pyBench AMD ROCm configuration helper is missing or not executable: $rocm_configure_script" >&2
+            exit 1
+        fi
+        if ! docker network inspect "$shared_network" >/dev/null 2>&1; then
+            if ! docker network create "$shared_network" >/dev/null 2>&1 \
+                && ! docker network inspect "$shared_network" >/dev/null 2>&1; then
+                echo "Could not create the external pyBench network: $shared_network" >&2
+                exit 1
+            fi
+        fi
+        "$sonarqube_mcp_script"
+        "$rocm_configure_script"
+        if [[ ! -f "$rocm_compose_file" ]]; then
+            echo "pyBench AMD ROCm override was not generated: $rocm_compose_file" >&2
+            exit 1
+        fi
+        compose_args+=(-f "$rocm_compose_file")
+    fi
     if [[ "$container" == "rust-bench" && -d "$wslg_root" ]]; then
         local wslg_compose_file="$bench_dir/.devcontainer/docker-compose.wslg.yml"
         if [[ ! -f "$wslg_compose_file" ]]; then
@@ -449,18 +453,10 @@ container_missing_required_mounts() {
 if [[ "$repair_requested" == true && "$container_exists" == true ]]; then
     recreate_with_compose
 elif [[ "$container_exists" != true ]]; then
-    if [[ "$compose_file_explicit" == true ]]; then
-        create_with_compose
-    elif [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]]; then
-        echo "Creating $container with Dev Containers CLI..."
-        if ! run_devcontainer_up; then
-            echo "Dev Containers CLI did not complete; creating $container with Wave compose mounts." >&2
-            docker rm -f "$container" >/dev/null 2>&1 || true
-            create_with_compose
-        fi
-    else
-        create_with_compose
-    fi
+    # Wave is a persistent terminal launcher, not a Dev Containers client. Its
+    # explicit Compose invocation includes Wave's mounts and declared bench
+    # overlays while keeping Compose project/network ownership deterministic.
+    create_with_compose
 elif [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]] && container_missing_required_mounts; then
     recreate_stopped_with_compose
 fi
