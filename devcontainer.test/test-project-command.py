@@ -209,22 +209,55 @@ class InstallTests(unittest.TestCase):
 
     def test_forwarders_preserve_legacy_argv_and_exit_code(self):
         self.assertEqual(self.install(), 0)
-        env = {**os.environ, "OPENREPOPROJECT_BIN_DIR": str(self.bin), "WORKBENCHES_ROOT": str(self.wb)}
+        env = {**os.environ, "OPENREPOPROJECT_BIN_DIR": str(self.bin),
+               "OPENREPOPROJECT_PIN": str(self.pin), "WORKBENCHES_ROOT": str(self.wb)}
         for command in ("onp", "new-project.sh"):
             result = subprocess.run(["bash", str(ROOT / "scripts" / command), "MyApp", "parent with spaces", "--yes"],
                                     env=env, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout), ["new", "MyApp", "parent with spaces", "--yes"])
-        # The older setup menu copies onp directly into the bin directory.
+        # The older setup menu copies onp directly into the bin directory. Its
+        # repository handoff still verifies the sibling executable first.
+        (self.wb / "scripts").mkdir()
+        for name in ("project", "setup-project-command.py"):
+            (self.wb / "scripts" / name).write_bytes((ROOT / "scripts" / name).read_bytes())
+        (self.wb / "config/openrepoproject-pin.json").write_bytes(self.pin.read_bytes())
         copied = self.bin / "onp"
         copied.write_bytes((ROOT / "scripts/onp").read_bytes())
         result = subprocess.run(["bash", str(copied), "Copied", "parent with spaces"], env=env,
                                 text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), ["new", "Copied", "parent with spaces"])
-        (self.bin / "project").write_text("import sys\nsys.exit(19)\n")
+        self.source.write_text("#!/usr/bin/env python3\nimport sys\nsys.exit(19)\n")
+        pin = json.loads(self.pin.read_text())
+        pin["sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.pin.write_text(json.dumps(pin))
+        self.assertEqual(self.install(), 0)
         result = subprocess.run(["bash", str(ROOT / "scripts/onp"), "App"], env=env)
         self.assertEqual(result.returncode, 19)
+
+    def test_forwarder_refuses_unowned_command_and_finds_owned_path_entry(self):
+        self.bin.mkdir()
+        target = self.bin / "project"
+        executed = self.base / "executed"
+        target.write_text(f'#!/usr/bin/env python3\nfrom pathlib import Path\nPath({str(executed)!r}).write_text("ran")\n')
+        target.chmod(0o755)
+        env = {**os.environ, "OPENREPOPROJECT_BIN_DIR": str(self.bin),
+               "OPENREPOPROJECT_PIN": str(self.pin), "WORKBENCHES_ROOT": str(self.wb)}
+        result = subprocess.run(["bash", str(ROOT / "scripts/project"), "new", "Unsafe"], env=env)
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse(executed.exists())
+
+        target.unlink()
+        self.assertEqual(self.install(), 0)
+        target.chmod(0o555)
+        (self.bin / ".workbenches-project.json").chmod(0o444)
+        env.pop("OPENREPOPROJECT_BIN_DIR")
+        env["PATH"] = str(self.bin) + os.pathsep + env["PATH"]
+        result = subprocess.run(["bash", str(ROOT / "scripts/project"), "new", "FromPath"],
+                                env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), ["new", "FromPath"])
 
     @unittest.skipUnless(os.environ.get("OPENREPOPROJECT_TEST_SOURCE"), "Set OPENREPOPROJECT_TEST_SOURCE for cross-repository integration")
     def test_real_cli_install_and_legacy_creation(self):
@@ -238,7 +271,8 @@ class InstallTests(unittest.TestCase):
         (self.wb / "config/bench-config.json").write_text(json.dumps({"benches": {"testBench": {
             "path": "devBenches/testBench", "project_scripts": [{"name": "test", "script": "new.sh"}]}}}))
         self.assertEqual(self.install(), 0)
-        env = {**os.environ, "WORKBENCHES_ROOT": str(self.wb), "OPENREPOPROJECT_BIN_DIR": str(self.bin)}
+        env = {**os.environ, "WORKBENCHES_ROOT": str(self.wb),
+               "OPENREPOPROJECT_BIN_DIR": str(self.bin), "OPENREPOPROJECT_PIN": str(self.pin)}
         parent = self.base / "new projects"
         result = subprocess.run(["bash", str(ROOT / "scripts/onp"), "Example", str(parent), "--type", "test", "--yes"],
                                 env=env, capture_output=True, text=True)

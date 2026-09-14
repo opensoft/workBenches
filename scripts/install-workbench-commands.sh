@@ -144,6 +144,12 @@ create_command_wrapper() {
 # Get the directory where this wrapper is located
 WRAPPER_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 
+# Legacy project creation must resolve the executable from the same directory
+# selected by this installer, including /usr/local/bin.
+if [ "$command_name" = "onp" ]; then
+    export OPENREPOPROJECT_BIN_DIR="\$WRAPPER_DIR"
+fi
+
 # Try to find workBenches installation
 WORKBENCHES_ROOT=""
 

@@ -16,9 +16,11 @@ project update MyApp
 ```
 
 `onp NAME [PARENT]` and `scripts/new-project.sh NAME [PARENT]` forward to
-`project new` and accept its flags. Bench-specific generators remain owned by
-their bench repositories. The creation list excludes update scripts and reports
-configured scripts that are not installed.
+`project new` and accept its flags. The forwarders resolve the directory chosen
+by command installation (including `/usr/local/bin`) and execute only a
+`project` whose ownership marker and digest verify. Bench-specific generators
+remain owned by their bench repositories. The creation list excludes update
+scripts and reports configured scripts that are not installed.
 
 `config/openrepoproject-pin.json` identifies an exact source commit and executable
 SHA-256. The installer tries the authenticated GitHub API before raw download,

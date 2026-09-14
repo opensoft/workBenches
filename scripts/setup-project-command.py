@@ -118,14 +118,18 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, help="Offline source executable; must match the pin")
     parser.add_argument("--bin-dir", type=Path, default=Path(os.environ.get("OPENREPOPROJECT_BIN_DIR", str(Path.home() / ".local/bin"))))
-    parser.add_argument("--pin", type=Path, default=ROOT / "config/openrepoproject-pin.json")
+    parser.add_argument("--pin", type=Path, default=Path(os.environ.get(
+        "OPENREPOPROJECT_PIN", ROOT / "config/openrepoproject-pin.json")))
     parser.add_argument("--workbenches", type=Path, default=ROOT)
     parser.add_argument("--replace-existing", action="store_true",
                         help="replace a non-workBenches project command after explicit approval")
-    parser.add_argument("--remove", action="store_true",
+    operation = parser.add_mutually_exclusive_group()
+    operation.add_argument("--remove", action="store_true",
                         help="remove only a project command owned by this installer")
+    operation.add_argument("--resolve-owned", action="store_true",
+                           help="print the command path only when installer ownership verifies")
     args = parser.parse_args(argv)
-    if os.environ.get("WORKBENCHES_SKIP_PROJECT_COMMAND") == "1":
+    if os.environ.get("WORKBENCHES_SKIP_PROJECT_COMMAND") == "1" and not args.resolve_owned:
         print("project installation skipped by WORKBENCHES_SKIP_PROJECT_COMMAND=1")
         return 0
     staged = []
@@ -139,6 +143,12 @@ def main(argv=None):
         directory = args.bin_dir.expanduser()
         target, marker = directory / "project", directory / ".workbenches-path"
         owner_marker = directory / ".workbenches-project.json"
+        if args.resolve_owned:
+            if owned_target(target, owner_marker, pin["repository"]):
+                print(target)
+                return 0
+            print(f"project: refused unowned command at {target}", file=sys.stderr)
+            return 3
         validate_target(target)
         validate_target(marker)
         validate_target(owner_marker)

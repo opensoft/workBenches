@@ -22,3 +22,11 @@ onp and new-project.sh SHALL forward name and parent arguments to project new.
 #### Scenario: Quoted parent
 - **WHEN** the parent directory contains spaces
 - **THEN** it reaches project new as one argument.
+
+#### Scenario: Unowned executable collision
+- **WHEN** a legacy entrypoint resolves an unrelated project executable
+- **THEN** forwarding is refused unless the installer ownership marker and digest verify.
+
+#### Scenario: Alternate install directory
+- **WHEN** command installation selects a directory other than the user-local default
+- **THEN** the legacy entrypoint verifies and executes project from that selected directory.

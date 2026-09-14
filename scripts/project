@@ -3,9 +3,23 @@
 set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export WORKBENCHES_ROOT="${WORKBENCHES_ROOT:-$(dirname "$script_dir")}"
-project_bin="${OPENREPOPROJECT_BIN_DIR:-$HOME/.local/bin}/project"
-if [ ! -f "$project_bin" ] || [ "$project_bin" -ef "$script_dir/project" ]; then
-    echo 'project is not installed. Run: python3 scripts/setup-project-command.py' >&2
-    exit 2
+installer="$script_dir/setup-project-command.py"
+candidate_dirs=()
+if [ -n "${OPENREPOPROJECT_BIN_DIR:-}" ]; then
+    candidate_dirs+=("$OPENREPOPROJECT_BIN_DIR")
+else
+    command_path="$(command -v project 2>/dev/null || true)"
+    if [ -n "$command_path" ]; then
+        candidate_dirs+=("$(dirname "$command_path")")
+    fi
+    candidate_dirs+=("$HOME/.local/bin" "/usr/local/bin")
 fi
-exec python3 "$project_bin" "$@"
+
+for candidate_dir in "${candidate_dirs[@]}"; do
+    if project_bin="$(python3 "$installer" --bin-dir "$candidate_dir" --resolve-owned 2>/dev/null)"; then
+        exec python3 "$project_bin" "$@"
+    fi
+done
+
+echo 'project is not installed or is not owned by workBenches. Run: python3 scripts/setup-project-command.py' >&2
+exit 2
