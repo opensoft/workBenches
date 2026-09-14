@@ -129,7 +129,8 @@ def main(argv=None):
     operation.add_argument("--resolve-owned", action="store_true",
                            help="print the command path only when installer ownership verifies")
     args = parser.parse_args(argv)
-    if os.environ.get("WORKBENCHES_SKIP_PROJECT_COMMAND") == "1" and not args.resolve_owned:
+    if (os.environ.get("WORKBENCHES_SKIP_PROJECT_COMMAND") == "1"
+            and not args.resolve_owned and not args.remove):
         print("project installation skipped by WORKBENCHES_SKIP_PROJECT_COMMAND=1")
         return 0
     staged = []

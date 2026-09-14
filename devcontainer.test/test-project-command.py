@@ -76,7 +76,8 @@ class InstallTests(unittest.TestCase):
         target = self.bin / "project"
         owner = self.bin / ".workbenches-project.json"
         self.assertTrue(owner.is_file())
-        self.assertEqual(installer.main([*self.args, "--remove"]), 0)
+        with patch.dict(os.environ, {"WORKBENCHES_SKIP_PROJECT_COMMAND": "1"}):
+            self.assertEqual(installer.main([*self.args, "--remove"]), 0)
         self.assertFalse(target.exists())
         self.assertFalse(owner.exists())
         target.write_text("unowned replacement")
