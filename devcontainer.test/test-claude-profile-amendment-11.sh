@@ -3190,6 +3190,19 @@ grep -Fq 'does not exist yet — so today, correctly' "$DOCS_MD" \
 # takes it for a second estate will conclude the gate can never open.
 grep -Fq 'link-estates' "$LAUNCHER" \
     || fail "landed tooling: nothing in the launcher says who keeps ~/projects/xFactory/lanes-edit.sh pointed at the installed helper"; assertion
+# AND THE ONE PER-HOST ACT IS WRITTEN DOWN — clause (k) rule (d) gives the value
+# an OWNER and no file, which leaves exactly one thing a person may have to do
+# on a host whose `hostname -s` is not the name its rows are keyed to. Until
+# this round no document said what it was, and "the launcher exports it" is not
+# an instruction to anybody standing on such a host. The rejected alternative is
+# named with it, because the obvious fix — a key in `workspace.yaml` — is the
+# one the amendment refuses by name.
+grep -Fq 'export LANES_WORKSTATION=Eagle' "$DOCS_MD" \
+    || fail "R-A11-14: no document gives the one per-host act for a workstation whose hostname is not its name"; assertion
+grep -Fq 'SECOND PLACE FOR THE TRUTH TO BE WRONG' "$DOCS_MD" \
+    || fail "R-A11-14: the docs give the act without the alternative the amendment refuses, so the next reader adds a workstation: key to workspace.yaml"; assertion
+grep -Fq 'lanes-edit.sh workstation' "$DOCS_MD" \
+    || fail "R-A11-14: the docs tell a person to set the variable and not how to read back what it resolved to"; assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"

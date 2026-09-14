@@ -392,6 +392,28 @@ Failing that, `hostname` stands exactly as it did — but only where this is not
 container; inside one with nothing configured the records are **not read**, and
 the launcher's one line names the gap and `LANES_WORKSTATION`.
 
+**What a person does on each host, once — and usually nothing.** The name is
+not read from a file and there is no file to write: the amendment rejects a
+`workstation:` key in `workspace.yaml` by name, calling such a key
+*"a SECOND PLACE FOR THE TRUTH TO BE WRONG beside the variable the launcher already sets"*. So wherever
+the host's own `hostname -s` already IS the name the register is keyed to,
+there is nothing to do and this launcher exports that. Where the two differ —
+Eagle and Raven are keyed by those names, and a host whose `hostname -s` says
+something else would key its rows to a machine no reader knows — the act is one
+exported variable in the **host's** login shell, never inside a bench container
+and never in this repository:
+
+```sh
+echo 'export LANES_WORKSTATION=Eagle' >> ~/.zshrc   # and Raven, on Raven
+```
+
+An already-set value always wins, so that one line reaches every session and
+every bench container this launcher starts. To read back what a shell is
+carrying, `lanes-edit.sh workstation` prints `<name><TAB><source>` — `seam`
+where the variable is set, `hostname` on a host where it is not, and
+`container-unset` inside a container where it is not, which is the one answer
+every writer refuses on.
+
 **And this launcher is what SETS it** (`R-A11-14`, A11 Addendum 3, ratified by
 Brett Heap 2026-09-13 *"a11 addendum 3 yes"*). Before this the reader honoured
 `LANES_WORKSTATION`, every writer refused without it, and nothing on the estate
