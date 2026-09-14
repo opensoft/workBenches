@@ -220,14 +220,30 @@ install_commands() {
     print_info "Installing to: $install_dir"
 
     # Install the authoritative executable; do not replace it with a wrapper.
+    # A skip is successful but does not authorize project-dependent wrappers.
+    local project_available=false
     python3 "$SCRIPT_DIR/setup-project-command.py" --bin-dir "$install_dir" || return $?
+    if python3 "$SCRIPT_DIR/setup-project-command.py" \
+        --bin-dir "$install_dir" --resolve-owned >/dev/null 2>&1; then
+        project_available=true
+    elif [ "${WORKBENCHES_SKIP_PROJECT_COMMAND:-0}" = "1" ]; then
+        print_warning "Project command was skipped; preserving any existing command and omitting onp"
+    else
+        print_error "Project command installation did not produce a verified executable"
+        return 1
+    fi
     
     # Install each command
     local installed_count=0
     for cmd_name in "${!COMMANDS[@]}"; do
         if [ "$cmd_name" = "project" ]; then
-            # Already installed and verified by its dedicated installer above.
-            installed_count=$((installed_count + 1))
+            if [ "$project_available" = true ]; then
+                # Already installed and verified by its dedicated installer above.
+                installed_count=$((installed_count + 1))
+            fi
+            continue
+        fi
+        if [ "$cmd_name" = "onp" ] && [ "$project_available" = false ]; then
             continue
         fi
         local cmd_desc="${COMMANDS[$cmd_name]}"

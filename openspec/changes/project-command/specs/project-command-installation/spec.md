@@ -16,6 +16,10 @@ The installer SHALL verify commit identity and SHA-256 before replacing project.
 - **WHEN** the target contains a command not owned by this installer
 - **THEN** automatic installation and uninstall preserve it unless replacement is explicitly requested.
 
+#### Scenario: Command installation explicitly skips project
+- **WHEN** project installation is skipped and no verified owned project exists
+- **THEN** global installation omits both the project success count and the dependent onp wrapper.
+
 #### Scenario: Installation status with a collision
 - **WHEN** status encounters an unrelated or digest-tampered project command
 - **THEN** it reports the command as unowned or tampered rather than installed.

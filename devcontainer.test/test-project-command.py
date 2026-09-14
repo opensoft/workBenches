@@ -373,6 +373,27 @@ class InstallTests(unittest.TestCase):
         self.assertIn("project              Create, inspect, diagnose and maintain projects", result.stdout)
         self.assertNotIn("projects (unowned or tampered)", result.stdout)
 
+    @unittest.skipUnless(sys.platform.startswith("linux"),
+                         "command installer requires Bash 4 associative arrays")
+    def test_global_install_skip_omits_project_and_onp(self):
+        home = self.base / "skip-home"
+        install_bin = home / ".local/bin"
+        install_bin.mkdir(parents=True)
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "PATH": str(install_bin) + os.pathsep + os.environ["PATH"],
+            "OPENREPOPROJECT_PIN": str(self.pin),
+            "WORKBENCHES_SKIP_PROJECT_COMMAND": "1",
+        }
+        result = subprocess.run(
+            ["bash", str(ROOT / "scripts/install-workbench-commands.sh"), "--install"],
+            env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((install_bin / "project").exists())
+        self.assertFalse((install_bin / "onp").exists())
+        self.assertIn("Project command was skipped", result.stdout)
+
     @unittest.skipUnless(os.environ.get("OPENREPOPROJECT_TEST_SOURCE"), "Set OPENREPOPROJECT_TEST_SOURCE for cross-repository integration")
     def test_real_cli_install_and_legacy_creation(self):
         self.source.write_bytes(Path(os.environ["OPENREPOPROJECT_TEST_SOURCE"]).read_bytes())
