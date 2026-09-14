@@ -279,7 +279,11 @@ grep -q -- '--yes' "$TEST_ROOT/help.out" \
 # ---------------------------------------------------------------------------
 # 1. The window's own name, when the register has a row for it: the lane, and
 # --yes — the operator is standing in the lane's window, there is nothing to
-# ask. The record is not even read.
+# ask. The record is not read TO RESOLVE A LANE: precedence 3's own read,
+# `lanes-edit.sh window-lane`, is never made, because precedence 2 answered
+# above it. (Amendment 11(3) gives the launcher one other reason to read
+# `swapped` — the lane's own recorded DIRECTORY, rung 2 of SPEC §4's four —
+# and that is a question about a directory, not about which lane this is.)
 launch \
     "FAKE_TMUX_WINDOW=openRepoProject-1" \
     "FAKE_LANE_WITH_ROW=openRepoProject-1" \
@@ -294,8 +298,8 @@ grep -q -- '--yes' "$LANE_START_LOG" \
 [[ ! -e "$CLAUDE_LOG" ]] || fail "window lane: Claude was exec'd directly"; assertion
 grep -Fq 'argv=register-row openRepoProject-1' "$LANES_EDIT_LOG" \
     || fail "window lane: register-row was not asked about the window name"; assertion
-grep -Fq 'argv=swapped' "$LANES_EDIT_LOG" \
-    && fail "window lane: the swap record was read even though the window answered"; assertion
+grep -Fq 'argv=window-lane' "$LANES_EDIT_LOG" \
+    && fail "window lane: precedence 3 was read even though the window answered"; assertion
 grep -Fxq 'LANES_NO_FETCH=1' "$LANES_EDIT_LOG" \
     || fail "window lane: the register read was not made with LANES_NO_FETCH=1"; assertion
 grep -q "$note" "$ERR_LOG" && fail "window lane: printed the no-lane note anyway"; assertion
@@ -443,7 +447,16 @@ grep -q "$note" "$ERR_LOG" || fail "unshaped window name: the note was not print
 
 # ---------------------------------------------------------------------------
 # 6. An explicit --lane beats both, and is not confirmed: it is what the
-# operator said. The register is not read at all.
+# operator said. The register is not read to RESOLVE a lane — neither the
+# window name nor the swap record is looked up, which is the whole of what
+# "beats both" means. (Amendment 11(3) added ONE other reason to read it: where
+# lane-start's own default directory does not exist, the launcher asks the
+# lane's OWN swap record and its own log where the lane lives, so a checkout
+# that is not `$PROJECTS_ROOT/<repo>` does not end the launch. That is a
+# question about a directory, not about which lane this is, and it is asked
+# about the lane the operator named and no other. What must never happen is a
+# read that could RESOLVE a lane — no `register-row <window>`, no
+# `window-lane` — and those are what the two assertions below pin.)
 launch \
     "FAKE_TMUX_WINDOW=openRepoProject-1" \
     "FAKE_LANE_WITH_ROW=openRepoProject-1" \
@@ -452,8 +465,10 @@ launch \
     -- --lane spoken-3 run team002 --resume session-f
 grep -Fxq -- "spoken-3 -- $claude_args --resume session-f" "$LANE_START_LOG" \
     || fail "--lane: lane-start argv was '$(lane_start_argv)'"; assertion
-[[ ! -e "$LANES_EDIT_LOG" ]] \
-    || fail "--lane: the register was read for a lane the operator named ($(cat "$LANES_EDIT_LOG"))"; assertion
+grep -Fq 'argv=register-row openRepoProject-1' "$LANES_EDIT_LOG" \
+    && fail "--lane: the window name was looked up for a lane the operator named ($(cat "$LANES_EDIT_LOG"))"; assertion
+grep -Fq 'argv=window-lane' "$LANES_EDIT_LOG" \
+    && fail "--lane: precedence 3 was read for a lane the operator named ($(cat "$LANES_EDIT_LOG"))"; assertion
 
 # CLAUDE_LANE is the same thing by another route.
 launch \
@@ -534,10 +549,25 @@ grep -Fxq -- "$claude_args --resume session-nolanesedit" "$CLAUDE_LOG" \
     || fail "no lanes-edit.sh: Claude did not receive its arguments unchanged"; assertion
 grep -q "$note" "$ERR_LOG" || fail "no lanes-edit.sh: the note was not printed"; assertion
 
-# 9a. A machine with no lane estate at all — no lane-start on PATH — is the one
-# degrade-table row that is SILENT: the feature is absent there, the note would
-# be noise on every launch, and the register is never read either, because the
+# 9a. A machine with no lane estate at all — no lane-start on PATH. This was
+# Amendment 8(c)'s one SILENT degrade-table row, on the reasoning that a machine
+# without the feature should not hear about it on every launch. **Evidence 5
+# (new-workstation#20, 2026-09-13T17:29:58Z) overturned it**, and this suite
+# moves with the rule rather than pinning the version of it that was measured
+# wrong: after this workstation was rebuilt the `~/.local/bin` links were gone
+# while `/usr/local/bin/claude-profile` was still there, so three restarts took
+# this row and came up with no register stamp, a record name the harness derived
+# and a window left as `claude` — in silence, because `--resume <uuid>` went on
+# continuing the right transcript. The launcher now states the fact on its first
+# line and names the install act. What is UNCHANGED, and is what this scenario
+# still holds, is everything else about the row: Claude starts, the launcher
+# exits 0, lane-start is never invoked, and the register is never read — the
 # resolution stops before it has anything to read it with.
+#
+# The A11 suite's 5h-i holds the wording of the notice itself; here it is the
+# A8(c) degrade table that has to agree with it, because these two suites test
+# one resolution from two amendments and must not drift into two pictures of
+# the estate.
 NO_ESTATE_BIN="$TEST_ROOT/bin-no-estate"
 mkdir -p "$NO_ESTATE_BIN"
 cp "$FAKE_CLAUDE" "$NO_ESTATE_BIN/claude"
@@ -551,7 +581,12 @@ env "${common_env[@]}" "PATH=$NO_ESTATE_BIN:/usr/bin:/bin" "FAKE_TMUX_WINDOW=ope
     "$LAUNCHER" run team002 --resume session-noestate >/dev/null 2>"$ERR_LOG"
 grep -Fxq -- "$claude_args --resume session-noestate" "$CLAUDE_LOG" \
     || fail "no lane estate: Claude did not receive its arguments unchanged"; assertion
-[[ ! -s "$ERR_LOG" ]] || fail "no lane estate: the launcher said something ($(cat "$ERR_LOG"))"; assertion
+grep -Fq 'lane-start is not on PATH' "$ERR_LOG" \
+    || fail "no lane estate: the launcher degraded in silence, which Evidence 5 ruled out ($(cat "$ERR_LOG"))"; assertion
+grep -Fq 'link-estates' "$ERR_LOG" \
+    || fail "no lane estate: the notice does not name the install act ($(cat "$ERR_LOG"))"; assertion
+grep -Fq "$note" "$ERR_LOG" \
+    && fail "no lane estate: the standing note told the operator to run the tool that is missing ($(cat "$ERR_LOG"))"; assertion
 [[ ! -e "$LANE_START_LOG" ]] || fail "no lane estate: lane-start was invoked ('$(lane_start_argv)')"; assertion
 [[ ! -e "$LANES_EDIT_LOG" ]] \
     || fail "no lane estate: the register was read with no lane-start to hand a lane to ($(cat "$LANES_EDIT_LOG"))"; assertion

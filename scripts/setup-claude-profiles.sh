@@ -148,6 +148,31 @@ while IFS= read -r family; do
 done < <(jq -r '[(.families[]?), .profiles[].family] | unique[]' "$manifest")
 install -m 0755 "$repo_dir/base-image/files/claude-statusline-command.sh" \
   "$base/shared/statusline-command.sh"
+# AND THE USAGE GUARD BESIDE IT — round-3 confirmation review 5192133162,
+# non-blocking 5. `claude-profile`'s configure_profile_runtime looks for the
+# guard at `$base/shared/usage-guard.sh` and then at
+# `/usr/local/share/workbenches/claude/usage-guard.sh`, and sets `guard_ok`
+# false when it finds neither — in which case the `UserPromptSubmit` entry is
+# not written and the hook never runs. Nothing in this repository put the file
+# in either place: the statusline is installed here and copied by
+# `base-image/Dockerfile:184`, and `base-image/files/claude-usage-guard.sh` had
+# no equivalent in either file (`grep -c 'claude-usage-guard'
+# base-image/Dockerfile` = 0). That is PRE-EXISTING on `main` and not this PR's
+# regression — but this is the PR that makes the guard load-bearing for a
+# RATIFIED decision (Amendment 11(4)'s automatic swap), and a ratified swap that
+# no profile ever wires is worth the one line that wires it.
+#
+# This is the HOST half. The container half is `base-image/Dockerfile`, which is
+# not in this PR's remit; the PR body names the line it owes.
+# A vendored source that is not there is SKIPPED rather than fatal, the same
+# `[[ -f ]] || continue` the two vendoring loops below carry and for the same
+# reason: this file runs on checkouts that predate the guard, and `set -euo
+# pipefail` at the top of it turns one unguarded read of a missing source into a
+# failed setup for every profile on the machine.
+if [[ -f "$repo_dir/base-image/files/claude-usage-guard.sh" ]]; then
+  install -m 0755 "$repo_dir/base-image/files/claude-usage-guard.sh" \
+    "$base/shared/usage-guard.sh"
+fi
 
 link_path() {
   local target="$1" link="$2"
@@ -184,8 +209,30 @@ ln -sfn "$default_statusline_relative" "$default_statusline"
 #
 # These are the same paths Amendment 9 later assigns to `openRepoTools
 # --install`. Ruled on opensoft/workBenches#68 (F5): this loop STANDS for
-# Amendment 8 and is their sole writer until A9's adoption act 3 lands, and
-# A9's act 4 deletes it. Until then the copy is idempotent BY CONTENT — a
+# Amendment 8 and was their sole writer until A9's adoption act 3 landed.
+#
+# ACT 3 HAS LANDED — `opensoft/openRepoTools#26`, merged as `63a74af` — so the
+# two-writer interval Amendment 9 describes is not a forecast any more, it is
+# the state of every host that has re-run `--install`. TWO CORRECTIONS GO WITH
+# that, and both are measured rather than argued:
+#
+#   * THE DELETER IS ACT 4b, NOT ACT 4. Amendment 9's own text rules it —
+#     "Adoption act 4b deletes that loop", and it belongs in 4b "because the
+#     deletion is only safe once `--install` is already placing them, which is
+#     act 3". This comment said act 4, which is the defect A11 Addendum 4
+#     ruling 9 corrected in the COMMANDS loop below, one loop along.
+#   * THE COLLISION IS CONTENT, NOT MODE. Amendment 9 argued the clash from the
+#     "755 `--install` stamps on everything it places"; the landed code places a
+#     SKILL at 644 and says so where it does it, so the modes agree. What does
+#     not agree is the bytes: this loop installs workBenches' vendored copy and
+#     `--install` installs openRepoTools', and they are not the same file.
+#     Measured on this workstation 2026-09-14, after `--install` ran:
+#     `~/.claude/skills/lane-swap/SKILL.md` and
+#     `~/.claude-profiles/shared/skills/lane-swap/SKILL.md` both hold
+#     openRepoTools' copy, mode 644 — so the last writer to run wins, until 4b
+#     leaves exactly one.
+#
+# Until then the copy is idempotent BY CONTENT — a
 # destination already holding the vendored bytes is left alone, mtime and all,
 # so a later `--install` write of the same bytes is not clobbered by the next
 # setup run.
@@ -197,6 +244,63 @@ for skill in lane-swap; do
                       "$default_claude_dir/skills/$skill/SKILL.md"; do
     if ! cmp -s "$skill_source" "$skill_target"; then
       install -m 0644 "$skill_source" "$skill_target"
+    fi
+  done
+done
+
+# Commands vendored by this repository, on exactly the contract of the skills
+# loop above and for exactly its reason: claude-profile execs Claude with
+# CLAUDE_CONFIG_DIR=<profile dir>, so ~/.claude/commands is NOT read under the
+# launcher, and the SHARED commands directory every profile's `commands`
+# symlink points at (created above, linked per profile below) is the one write
+# that reaches all of them. The ~/.claude copy stays for a bare `claude` run
+# outside the launcher.
+#
+# `/swap` is an ALIAS of `/lane-swap` (lane-collision-protocol Amendment 11,
+# SPEC §9): the canonical name stays `lane-swap` and its skill is NOT
+# duplicated here, so the installed file is a few lines that invoke the skill.
+# Two copies of one procedure that must stay byte-equal is the rejected
+# alternative — the same reason Amendment 9(b) gives about two writers of one
+# file — which is why this loop installs a command and not a second skill.
+#
+# THIS LOOP'S HANDOVER IS NOT THE SKILLS LOOP'S, and saying it was is the
+# correction here. An earlier revision read "A9's act 4 deletes it" unqualified,
+# copied from the loop above; that was measured wrong. `openRepoTools --install`
+# placed SKILLS and the SessionStart hook and NO COMMAND FILE, so deleting this
+# loop on act 4's word alone would have left `/swap` with no writer at all on
+# every host.
+#
+# What settles it is **A11 Addendum 4 ruling 9**, RATIFIED by Brett Heap
+# 2026-09-13T21:08:26Z, verbatim "a11 addendum 4 yes"
+# (brettheap/new-workstation#20 issuecomment-5656154524, rulings at
+# issuecomment-5656076583): `openRepoTools --install` TAKES `commands/swap.md`,
+# built in `opensoft/openRepoTools#26` round 2, "because workBenches#74 removes
+# the launcher's copy and `/swap` would otherwise be installed by nobody". So
+# this loop is TRANSITIONAL and its deletion is Amendment 9 act 4b's
+# (`opensoft/workBenches#74`), CONDITIONAL on `--install` placing the command
+# file first — not on act 3, and not on act 4 as this comment used to say.
+#
+# THAT CONDITION IS NOW MET, which is a fact about the estate and not a
+# permission for this PR to act on it. `#26` merged as `63a74af`; its `--help`
+# names "ONE COMMAND FILE at the matching pair,
+# `~/.claude-profiles/shared/commands/swap.md` and `~/.claude/commands/swap.md`";
+# and measured on this workstation 2026-09-14 both files are there at 644 after
+# `--install` ran. So 4b may now delete this loop without leaving `/swap` with
+# no writer — 4b's act, in 4b's PR, and nothing here does it early.
+#
+# Until then the copy is idempotent BY CONTENT — a destination
+# already holding the vendored bytes is left alone, mtime and all, so a later
+# `openRepoTools --install` write of the same bytes is not clobbered by the next
+# setup run. A vendored source that is not there is skipped rather than failing:
+# this file also runs on checkouts that predate the command.
+for command in swap; do
+  command_source="$repo_dir/base-image/files/claude/commands/$command.md"
+  [[ -f "$command_source" ]] || continue
+  mkdir -p "$base/shared/commands" "$default_claude_dir/commands"
+  for command_target in "$base/shared/commands/$command.md" \
+                        "$default_claude_dir/commands/$command.md"; do
+    if ! cmp -s "$command_source" "$command_target"; then
+      install -m 0644 "$command_source" "$command_target"
     fi
   done
 done

@@ -3,6 +3,29 @@
 
 set -euo pipefail
 
+# THE WORKSTATION THIS CONTAINER BELONGS TO — `R-A11-14` (A11 Addendum 3 on
+# brettheap/new-workstation#20, ratified by Brett Heap 2026-09-13 "a11 addendum
+# 3 yes"). The lane register and the Amendment 7 object log are keyed on the
+# workstation, and `hostname -s` INSIDE a bench container is the container id —
+# an identifier that has existed for an hour and will not exist tomorrow
+# (new-workstation#20, Evidence 6, where a forked orchestrator wrote one into an
+# append-only log). Every lane writer therefore reads LANES_WORKSTATION and
+# REFUSES without it, and the two things that START the sessions those writers
+# run in are this script and `claude-profile`: so the host names itself HERE,
+# where the name is still true, and the value travels in with the shell.
+#
+# An already-configured value wins. A host that is itself a container guesses
+# nothing — and this test is made HERE, at the top, because `container` is a
+# variable of this script's own a few lines below, and by the time that
+# assignment has run the environment marker cannot be read any more.
+lanes_workstation="${LANES_WORKSTATION:-}"
+if [[ -z "$lanes_workstation" && ! -e /.dockerenv && ! -e /run/.containerenv && -z "${container:-}" ]]; then
+    lanes_workstation="$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)"
+fi
+lanes_workstation_env=()
+[[ -z "$lanes_workstation" ]] \
+    || lanes_workstation_env=(--env "LANES_WORKSTATION=$lanes_workstation")
+
 home_dir="${HOME:?HOME is required}"
 default_user="$(id -un 2>/dev/null || printf 'user')"
 workbenches_root="${WORKBENCHES_ROOT:-$home_dir/projects/workBenches}"
@@ -602,6 +625,7 @@ if [[ "$(basename "$shell_path")" == "zsh" ]]; then
 fi
 
 exec docker exec "${tty_args[@]}" \
+    ${lanes_workstation_env[@]+"${lanes_workstation_env[@]}"} \
     --env "TERM=$term_name" \
     --env "COLORTERM=$color_term" \
     --env "CLICOLOR=1" \
