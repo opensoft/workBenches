@@ -28,7 +28,10 @@ ARG USER_GID=1000
 ARG DOCKER_SOCKET_GID=""
 ARG EXTRA_CHOWN_DIRS=""
 ARG LAYER3_RECIPE_SHA256="unknown"
-ARG CODEX_VERSION="0.153.4"
+# Keep the writable user overlay aligned with the shared Layer 0 installer.
+# An explicit build argument can still pin a version when reproducibility is
+# required, but the normal cascade must not shadow a newer shared Codex binary.
+ARG CODEX_VERSION="latest"
 
 LABEL io.opensoft.workbenches.layer3.recipe-sha256="${LAYER3_RECIPE_SHA256}"
 

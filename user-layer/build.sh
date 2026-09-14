@@ -26,7 +26,7 @@ BASE_IMAGE=""
 EXTRA_CHOWN_DIRS=""
 NO_CACHE="${NO_CACHE:-false}"
 LAYER3_RECIPE_SHA256=""
-CODEX_VERSION="0.153.4"
+CODEX_VERSION="latest"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
