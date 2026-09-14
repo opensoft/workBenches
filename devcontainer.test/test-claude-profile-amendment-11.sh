@@ -2383,7 +2383,7 @@ payload_order="$(grep -o 'payload="$payload; [a-z]*' "$SKILL_MD" | sed 's/.*; //
     || fail "§5: the payload is built as '$payload_order', and rev 3's order is 'window dir profile workstation'"; assertion
 # ...and the window sub-field's two refs are SPACE-separated within it, which is
 # Amendment 7(b)'s rule for several refs in one sub-field.
-grep -Fq 'win="${win:+$win }$win_id"' "$SKILL_MD" \
+grep -Fq 'win="${win:+$win }$wid"' "$SKILL_MD" \
     || fail "§5: the window sub-field's two refs are not space-separated"; assertion
 # ...and a space in a path is QUOTED, while `, `, ` — ` and a `"` are refused.
 grep -Fq 'case "$dir" in *'"'"' '"'"'*) dir=' "$SKILL_MD" \
