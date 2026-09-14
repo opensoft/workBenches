@@ -362,12 +362,25 @@ show_status() {
     local locations=("$HOME/.local/bin" "/usr/local/bin")
     
     for location in "${locations[@]}"; do
+        local location_header_printed=false
         local found_in_location=false
         
         for cmd_name in "${!COMMANDS[@]}"; do
             if [ -f "$location/$cmd_name" ]; then
-                if [ "$found_in_location" = false ]; then
+                if [ "$location_header_printed" = false ]; then
                     echo -e "${BLUE}$location:${NC}"
+                    location_header_printed=true
+                fi
+
+                if [ "$cmd_name" = "project" ] \
+                    && ! python3 "$SCRIPT_DIR/setup-project-command.py" \
+                        --bin-dir "$location" --resolve-owned >/dev/null 2>&1; then
+                    printf "  ${RED}✗${NC} %-20s %s (unowned or tampered)\n" \
+                        "$cmd_name" "${COMMANDS[$cmd_name]}"
+                    continue
+                fi
+
+                if [ "$found_in_location" = false ]; then
                     found_in_location=true
                     found_installations=$((found_installations + 1))
                 fi
@@ -387,7 +400,7 @@ show_status() {
             fi
         done
         
-        if [ "$found_in_location" = true ]; then
+        if [ "$location_header_printed" = true ]; then
             echo ""
         fi
     done

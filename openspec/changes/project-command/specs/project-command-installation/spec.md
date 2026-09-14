@@ -16,6 +16,10 @@ The installer SHALL verify commit identity and SHA-256 before replacing project.
 - **WHEN** the target contains a command not owned by this installer
 - **THEN** automatic installation and uninstall preserve it unless replacement is explicitly requested.
 
+#### Scenario: Installation status with a collision
+- **WHEN** status encounters an unrelated or digest-tampered project command
+- **THEN** it reports the command as unowned or tampered rather than installed.
+
 ### Requirement: Legacy forwarding
 onp and new-project.sh SHALL forward name and parent arguments to project new.
 

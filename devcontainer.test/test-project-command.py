@@ -260,6 +260,28 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), ["new", "FromPath"])
 
+    def test_status_distinguishes_unowned_and_verified_project_commands(self):
+        status_bin = self.base / ".local/bin"
+        status_bin.mkdir(parents=True)
+        target = status_bin / "project"
+        target.write_text("unrelated project command")
+        target.chmod(0o755)
+        env = {**os.environ, "HOME": str(self.base), "OPENREPOPROJECT_PIN": str(self.pin)}
+        command = ["bash", str(ROOT / "scripts/install-workbench-commands.sh"), "--status"]
+
+        result = subprocess.run(command, env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("project              Create, inspect, diagnose and maintain projects (unowned or tampered)",
+                      result.stdout)
+
+        target.unlink()
+        self.assertEqual(installer.main([*self.args, "--bin-dir", str(status_bin),
+                                         "--source", str(self.source)]), 0)
+        result = subprocess.run(command, env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("project              Create, inspect, diagnose and maintain projects", result.stdout)
+        self.assertNotIn("projects (unowned or tampered)", result.stdout)
+
     @unittest.skipUnless(os.environ.get("OPENREPOPROJECT_TEST_SOURCE"), "Set OPENREPOPROJECT_TEST_SOURCE for cross-repository integration")
     def test_real_cli_install_and_legacy_creation(self):
         self.source.write_bytes(Path(os.environ["OPENREPOPROJECT_TEST_SOURCE"]).read_bytes())
