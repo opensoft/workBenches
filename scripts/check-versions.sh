@@ -16,6 +16,8 @@ source "$SCRIPT_DIR/lib/layer3-recipe.sh"
 # Windows shells often export USERNAME with different casing (e.g. Brett).
 # Default to the actual WSL/container user; use --user for an explicit override.
 USERNAME="$(whoami)"
+USER_UID="$(id -u)"
+USER_GID="$(id -g)"
 LAYER="all"
 JSON_OUTPUT=false
 CHECK_LAYER3=false
@@ -418,25 +420,20 @@ check_selected_images() {
 
 layer3_identity_is_current() {
     local image="$1"
+    local image_username
+    local image_uid
+    local image_gid
+    local image_docker_gid
 
-    run_with_optional_timeout 30 docker run --rm \
-        --network none \
-        --cap-drop ALL \
-        --security-opt no-new-privileges \
-        --read-only \
-        --entrypoint="" \
-        "$image" \
-        sh -c '
-            username="$1"
-            socket_gid="$2"
-            id "$username" >/dev/null 2>&1 || exit 1
-            [ -z "$socket_gid" ] && exit 0
-            for gid in $(id -G "$username"); do
-                [ "$gid" = "$socket_gid" ] && exit 0
-            done
-            exit 1
-        ' layer3-identity-probe "$USERNAME" "$DOCKER_SOCKET_GID" \
-        >/dev/null 2>&1
+    image_username="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.username" }}' "$image" 2>/dev/null || true)"
+    image_uid="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.uid" }}' "$image" 2>/dev/null || true)"
+    image_gid="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.gid" }}' "$image" 2>/dev/null || true)"
+    image_docker_gid="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.docker-socket-gid" }}' "$image" 2>/dev/null || true)"
+
+    [[ "$image_username" == "$USERNAME" \
+        && "$image_uid" == "$USER_UID" \
+        && "$image_gid" == "$USER_GID" \
+        && "$image_docker_gid" == "$DOCKER_SOCKET_GID" ]]
 }
 
 check_layer3_image() {

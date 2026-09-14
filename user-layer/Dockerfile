@@ -31,6 +31,10 @@ ARG LAYER3_RECIPE_SHA256="unknown"
 ARG CODEX_VERSION="0.153.4"
 
 LABEL io.opensoft.workbenches.layer3.recipe-sha256="${LAYER3_RECIPE_SHA256}"
+LABEL io.opensoft.workbenches.layer3.username="${USERNAME}"
+LABEL io.opensoft.workbenches.layer3.uid="${USER_UID}"
+LABEL io.opensoft.workbenches.layer3.gid="${USER_GID}"
+LABEL io.opensoft.workbenches.layer3.docker-socket-gid="${DOCKER_SOCKET_GID}"
 
 USER root
 

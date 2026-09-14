@@ -32,6 +32,7 @@ test "$(bash -c 'source "$1"; bench_dir_to_image_repo 365Bench' _ "$repo_root/sc
 source "$repo_root/base-image/ai-cli-contract.sh"
 source "$repo_root/scripts/lib/layer3-recipe.sh"
 export FAKE_DOCKER_LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256 "$repo_root/user-layer")"
+export FAKE_DOCKER_LAYER3_DOCKER_SOCKET_GID="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || true)"
 test "${WORKBENCHES_REQUIRED_AI_CLIS[0]}" = claude
 test "${WORKBENCHES_REQUIRED_AI_CLIS[-1]}" = cursor-agent
 grep -Fq 'required_clis=("${WORKBENCHES_REQUIRED_AI_CLIS[@]}")' "$installer"
@@ -59,6 +60,10 @@ if grep -Fq 'test-bench:latest sh -c' "$log"; then
 fi
 test "$(grep -cx 'probe-batch' "$log")" -eq 1
 test "$(grep -c '^container ls --format ' "$log")" -eq 1
+if grep -Fq 'layer3-identity-probe' "$log"; then
+    echo "Layer 3 inspection created an identity-probe container" >&2
+    exit 1
+fi
 
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
@@ -69,7 +74,7 @@ grep -Fq 'has a stale recipe' "$temp_dir/stale-recipe.out"
 
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
-FAKE_DOCKER_LAYER3_IDENTITY_STATUS=1 \
+FAKE_DOCKER_LAYER3_USERNAME=other-user \
 "$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
     > "$temp_dir/stale-identity.out"
 grep -Fq 'has stale user/group configuration' "$temp_dir/stale-identity.out"
@@ -155,7 +160,7 @@ FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
     record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata"
 test "${CASCADE_IMAGES[*]}" = "sim-bench-gene_bench:latest sim-bench-ui:latest"
 test "${#CASCADE_IMAGE_RECORDS[@]}" -eq 2
-if grep -Eq '(^| )(build|rm|stop|restart)( |$)' "$log"; then
+if grep -Eq '(^| )(build|create|rm|stop|restart)( |$)' "$log"; then
     echo "Layer 3 inspection attempted a Docker mutation" >&2
     exit 1
 fi

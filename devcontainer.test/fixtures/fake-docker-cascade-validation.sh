@@ -28,6 +28,18 @@ case "$1" in
             *'recipe-sha256'*)
                 echo "${FAKE_DOCKER_LAYER3_RECIPE_SHA256:-}"
                 ;;
+            *'layer3.username'*)
+                echo "${FAKE_DOCKER_LAYER3_USERNAME:-brett}"
+                ;;
+            *'layer3.uid'*)
+                echo "${FAKE_DOCKER_LAYER3_UID:-$(id -u)}"
+                ;;
+            *'layer3.gid'*)
+                echo "${FAKE_DOCKER_LAYER3_GID:-$(id -g)}"
+                ;;
+            *'layer3.docker-socket-gid'*)
+                echo "${FAKE_DOCKER_LAYER3_DOCKER_SOCKET_GID:-}"
+                ;;
             *'{{.Created}}'*)
                 if [[ "$image" == "test-bench:brett" \
                     || "$image" == "${FAKE_DOCKER_USER_IMAGE_ID:-sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd}" ]]; then
@@ -46,9 +58,6 @@ case "$1" in
         exit 1
         ;;
     run)
-        if [[ " $* " == *' layer3-identity-probe '* ]]; then
-            exit "${FAKE_DOCKER_LAYER3_IDENTITY_STATUS:-0}"
-        fi
         printf '%s\n' probe-batch >> "${FAKE_DOCKER_LOG:?FAKE_DOCKER_LOG is required}"
         [[ " $* " == *' --network none '* ]]
         [[ " $* " == *' --cap-drop ALL '* ]]

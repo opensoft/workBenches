@@ -12,6 +12,7 @@ on:
       - scripts/check-versions.sh
       - scripts/ensure-layer3.sh
       - scripts/lib/cascade-image-validation.sh
+      - scripts/lib/image-names.sh
       - scripts/lib/layer3-recipe.sh
       - scripts/update-and-rebuild.sh
   pull_request:
@@ -25,6 +26,7 @@ on:
       - scripts/check-versions.sh
       - scripts/ensure-layer3.sh
       - scripts/lib/cascade-image-validation.sh
+      - scripts/lib/image-names.sh
       - scripts/lib/layer3-recipe.sh
       - scripts/update-and-rebuild.sh
   workflow_dispatch:
