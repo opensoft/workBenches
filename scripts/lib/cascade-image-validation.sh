@@ -18,9 +18,18 @@ record_rebuilt_cascade_image() {
     local -a declared_images=()
 
     [[ -f "$build_script" ]] && metadata_files+=("$build_script")
-    if [[ -d "$bench_dir" ]]; then
+    if [[ -f "$build_script" && -d "$bench_dir" ]]; then
+        local build_dir
+        local compose_relative_to_bench
+        local compose_relative_to_build
+        build_dir="$(dirname "$build_script")"
         while IFS= read -r -d '' compose_file; do
-            metadata_files+=("$compose_file")
+            compose_relative_to_bench="$(realpath --relative-to="$bench_dir" "$compose_file")"
+            compose_relative_to_build="$(realpath --relative-to="$build_dir" "$compose_file")"
+            if grep -Fq -- "$compose_relative_to_bench" "$build_script" \
+                || grep -Fq -- "$compose_relative_to_build" "$build_script"; then
+                metadata_files+=("$compose_file")
+            fi
         done < <(find "$bench_dir" -maxdepth 3 -type f \
             \( -name 'compose.yml' -o -name 'compose.yaml' \
                 -o -name 'docker-compose.yml' -o -name 'docker-compose.yaml' \) \

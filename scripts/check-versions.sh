@@ -59,12 +59,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 manifest_config_dir="$(realpath -m -- "$REPO_DIR/config")"
-manifest_parent="$(realpath -m -- "$(dirname -- "$MANIFEST_FILE")")"
+manifest_target="$(realpath -m -- "$MANIFEST_FILE")"
+manifest_parent="$(dirname -- "$manifest_target")"
 if [[ "$manifest_parent" != "$manifest_config_dir" ]]; then
     echo "Manifest output must stay inside $manifest_config_dir" >&2
     exit 1
 fi
-MANIFEST_FILE="$manifest_parent/$(basename -- "$MANIFEST_FILE")"
+MANIFEST_FILE="$manifest_target"
 
 # Colors
 RED='\033[0;31m'

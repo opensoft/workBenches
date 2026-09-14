@@ -140,6 +140,10 @@ if "$checker" --layer 0 --write-manifest --manifest-file "$temp_dir/outside.json
     echo "expected an out-of-config manifest path to be rejected" >&2
     exit 1
 fi
+if "$checker" --layer 0 --write-manifest --manifest-file "$repo_root/config/.." >/dev/null 2>&1; then
+    echo "expected a normalized manifest path outside config to be rejected" >&2
+    exit 1
+fi
 
 source "$repo_root/scripts/lib/cascade-image-validation.sh"
 NO_CACHE=true
@@ -152,21 +156,35 @@ test "${CASCADE_IMAGE_RECORDS[*]}" = "test-bench:latest=$captured_image_id"
 
 CASCADE_IMAGES=()
 CASCADE_IMAGE_RECORDS=()
-compose_metadata="$temp_dir/sim-build.sh"
+compose_bench_dir="$temp_dir/sim-bench"
+mkdir -p "$compose_bench_dir"
+compose_metadata="$compose_bench_dir/sim-build.sh"
+printf '%s\n' 'docker compose -f docker-compose.yml build' > "$compose_metadata"
 printf '%s\n' \
-    'echo "Image: sim-bench-gene_bench:latest"' \
-    'echo "Image: sim-bench-ui:latest"' > "$compose_metadata"
+    'services:' \
+    '  gene:' \
+    '    image: sim-bench-gene_bench:latest' \
+    '  ui:' \
+    '    image: sim-bench-ui:latest' > "$compose_bench_dir/docker-compose.yml"
+printf '%s\n' \
+    'services:' \
+    '  dev:' \
+    '    image: sim-bench-dev:latest' > "$compose_bench_dir/docker-compose.dev.yml"
 PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
 FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
-    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata"
+    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"
 test "${CASCADE_IMAGES[*]}" = "sim-bench-gene_bench:latest sim-bench-ui:latest"
 test "${#CASCADE_IMAGE_RECORDS[@]}" -eq 2
+if grep -Fq 'sim-bench-dev:latest' "$log"; then
+    echo "cascade capture inspected an unrelated Compose output" >&2
+    exit 1
+fi
 
 CASCADE_IMAGES=()
 CASCADE_IMAGE_RECORDS=()
 if PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
     FAKE_DOCKER_MISSING_IMAGE=sim-bench-ui:latest \
-    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata"; then
+    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"; then
     echo "expected a missing declared Compose image to fail cascade capture" >&2
     exit 1
 fi
