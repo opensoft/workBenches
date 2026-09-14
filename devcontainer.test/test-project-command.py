@@ -102,6 +102,25 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(installer.main([*self.args, "--remove"]), 3)
         self.assertTrue((self.bin / "project").is_file())
 
+    def test_self_authored_owner_marker_cannot_adopt_arbitrary_bytes(self):
+        self.bin.mkdir()
+        target = self.bin / "project"
+        target.write_text('#!/usr/bin/env python3\nprint("untrusted")\n')
+        digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        pin = json.loads(self.pin.read_text())
+        (self.bin / ".workbenches-project.json").write_text(json.dumps({
+            "schema_version": 1,
+            "state": "owned",
+            "repository": pin["repository"],
+            "commit": pin["commit"],
+            "sha256": digest,
+        }))
+        (self.bin / installer.LOCK_NAME).touch()
+        self.assertEqual(installer.main([*self.args, "--resolve-owned"]), 3)
+        self.assertEqual(installer.main([*self.args, "--exec-owned"]), 3)
+        self.assertEqual(installer.main([*self.args, "--remove"]), 3)
+        self.assertTrue(target.is_file())
+
     def test_remove_rechecks_target_before_unlink(self):
         self.assertEqual(self.install(), 0)
         target = self.bin / "project"
@@ -128,6 +147,8 @@ class InstallTests(unittest.TestCase):
 
         self.source.write_text('#!/usr/bin/env python3\nprint("updated")\n')
         pin = json.loads(self.pin.read_text())
+        pin["trusted_previous"] = [{"commit": pin["commit"], "sha256": pin["sha256"]}]
+        pin["commit"] = "b" * 40
         pin["sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
         self.pin.write_text(json.dumps(pin))
         real_replace = os.replace
@@ -177,6 +198,9 @@ class InstallTests(unittest.TestCase):
         previous_digest = hashlib.sha256(target.read_bytes()).hexdigest()
         self.source.write_text('#!/usr/bin/env python3\nprint("updated")\n')
         pin = json.loads(self.pin.read_text())
+        pin["trusted_previous"] = [{"commit": pin["commit"], "sha256": pin["sha256"]}]
+        previous_commit = pin["commit"]
+        pin["commit"] = "b" * 40
         pin["sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
         self.pin.write_text(json.dumps(pin))
         owner.write_text(json.dumps({
@@ -186,6 +210,7 @@ class InstallTests(unittest.TestCase):
             "commit": pin["commit"],
             "sha256": pin["sha256"],
             "previous_owned": True,
+            "previous_commit": previous_commit,
             "previous_sha256": previous_digest,
         }))
         target.write_bytes(self.source.read_bytes())
@@ -288,6 +313,8 @@ class InstallTests(unittest.TestCase):
         self.assertFalse(bypass_marker.exists())
         self.source.write_text("#!/usr/bin/env python3\nimport sys\nsys.exit(19)\n")
         pin = json.loads(self.pin.read_text())
+        pin["trusted_previous"] = [{"commit": pin["commit"], "sha256": pin["sha256"]}]
+        pin["commit"] = "b" * 40
         pin["sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
         self.pin.write_text(json.dumps(pin))
         self.assertEqual(self.install(), 0)
@@ -363,6 +390,24 @@ class InstallTests(unittest.TestCase):
         self.assertFalse((home / ".local/bin/onp").exists())
         self.assertIn("onp installation skipped", result.stdout)
 
+    def test_exec_owned_releases_shared_lock_before_delegated_work(self):
+        lock_path = self.bin / installer.LOCK_NAME
+        self.source.write_text(
+            '#!/usr/bin/env python3\n'
+            'import fcntl, os\n'
+            'fd = os.open(os.environ["PROJECT_TEST_LOCK"], os.O_RDWR)\n'
+            'try:\n'
+            '    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n'
+            'finally:\n'
+            '    os.close(fd)\n'
+        )
+        pin = json.loads(self.pin.read_text())
+        pin["sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.pin.write_text(json.dumps(pin))
+        self.assertEqual(self.install(), 0)
+        with patch.dict(os.environ, {"PROJECT_TEST_LOCK": str(lock_path)}):
+            self.assertEqual(installer.main([*self.args, "--exec-owned"]), 0)
+
     def test_owned_resolution_waits_for_project_lock(self):
         self.assertEqual(self.install(), 0)
         lock = (self.bin / installer.LOCK_NAME).open("rb")
@@ -404,6 +449,16 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("project              Create, inspect, diagnose and maintain projects", result.stdout)
         self.assertNotIn("projects (unowned or tampered)", result.stdout)
+
+        shadow_bin = self.base / "shadow-bin"
+        shadow_bin.mkdir()
+        shadow = shadow_bin / "project"
+        shadow.write_text('#!/bin/sh\nexit 0\n')
+        shadow.chmod(0o755)
+        env["PATH"] = str(shadow_bin) + os.pathsep + str(status_bin) + os.pathsep + os.environ["PATH"]
+        result = subprocess.run(command, env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"Shadowed in PATH by {shadow}", result.stdout)
 
     @unittest.skipUnless(sys.platform.startswith("linux"),
                          "command installer requires Bash 4 associative arrays")

@@ -57,7 +57,7 @@ def file_sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def owned_target_data(target, owner_marker, repository):
+def owned_target_data(target, owner_marker, pin):
     if (not target.is_file() or target.is_symlink()
             or not owner_marker.is_file() or owner_marker.is_symlink()):
         return None
@@ -67,32 +67,42 @@ def owned_target_data(target, owner_marker, repository):
         return None
     if (not isinstance(owner, dict)
             or owner.get("schema_version") != 1
-            or owner.get("repository") != repository
-            or re.fullmatch(r"[0-9a-f]{40}", owner.get("commit", "")) is None
-            or re.fullmatch(r"[0-9a-f]{64}", owner.get("sha256", "")) is None):
+            or owner.get("repository") != pin["repository"]):
         return None
-    allowed_digests = {owner["sha256"]}
+    trusted_artifacts = {(pin["commit"], pin["sha256"])}
+    trusted_artifacts.update(
+        (item["commit"], item["sha256"])
+        for item in pin.get("trusted_previous", [])
+    )
+    owner_artifact = (owner.get("commit", ""), owner.get("sha256", ""))
+    allowed_digests = set()
     if owner.get("state") == "pending":
+        if owner_artifact != (pin["commit"], pin["sha256"]):
+            return None
+        allowed_digests.add(pin["sha256"])
         previous_owned = owner.get("previous_owned")
         if not isinstance(previous_owned, bool):
             return None
+        previous_commit = owner.get("previous_commit", "")
         previous_digest = owner.get("previous_sha256", "")
-        if previous_digest and re.fullmatch(r"[0-9a-f]{64}", previous_digest) is None:
-            return None
         if previous_owned:
-            if not previous_digest:
+            if (previous_commit, previous_digest) not in trusted_artifacts:
                 return None
             allowed_digests.add(previous_digest)
-        elif previous_digest:
+        elif previous_commit or previous_digest:
             return None
-    elif owner.get("state") not in (None, "owned"):
+    elif owner.get("state") in (None, "owned"):
+        if owner_artifact not in trusted_artifacts:
+            return None
+        allowed_digests.add(owner["sha256"])
+    else:
         return None
     data = target.read_bytes()
     return data if hashlib.sha256(data).hexdigest() in allowed_digests else None
 
 
-def owned_target(target, owner_marker, repository):
-    return owned_target_data(target, owner_marker, repository) is not None
+def owned_target(target, owner_marker, pin):
+    return owned_target_data(target, owner_marker, pin) is not None
 
 
 def path_fingerprint(path):
@@ -203,10 +213,16 @@ def main(argv=None):
     lock_descriptor = None
     try:
         pin = json.loads(args.pin.read_text())
+        trusted_previous = pin.get("trusted_previous", []) if isinstance(pin, dict) else None
         if (not isinstance(pin, dict) or pin.get("schema_version") != 1
                 or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", pin.get("repository", ""))
                 or not re.fullmatch(r"[0-9a-f]{40}", pin.get("commit", ""))
-                or not re.fullmatch(r"[0-9a-f]{64}", pin.get("sha256", ""))):
+                or not re.fullmatch(r"[0-9a-f]{64}", pin.get("sha256", ""))
+                or not isinstance(trusted_previous, list)
+                or any(not isinstance(item, dict)
+                       or re.fullmatch(r"[0-9a-f]{40}", item.get("commit", "")) is None
+                       or re.fullmatch(r"[0-9a-f]{64}", item.get("sha256", "")) is None
+                       for item in trusted_previous)):
             raise ValueError("Invalid openRepoProject pin")
         directory = args.bin_dir.expanduser()
         target, marker = directory / "project", directory / ".workbenches-path"
@@ -225,25 +241,27 @@ def main(argv=None):
             directory.mkdir(parents=True, exist_ok=True)
         lock_descriptor = acquire_project_lock(directory, exclusive=not read_operation)
         if args.resolve_owned:
-            if owned_target(target, owner_marker, pin["repository"]):
+            if owned_target(target, owner_marker, pin):
                 print(target)
                 return 0
             print(f"project: refused unowned command at {target}", file=sys.stderr)
             return 3
         if args.exec_owned:
-            data = owned_target_data(target, owner_marker, pin["repository"])
+            data = owned_target_data(target, owner_marker, pin)
             if data is None:
                 print(f"project: refused unowned command at {target}", file=sys.stderr)
                 return 3
             command_args = args.command_args[1:] if args.command_args[:1] == ["--"] else args.command_args
+            os.close(lock_descriptor)
+            lock_descriptor = None
             return execute_project(data, target, command_args)
         validate_target(target)
         validate_target(marker)
         validate_target(owner_marker)
         if args.remove:
-            if owned_target(target, owner_marker, pin["repository"]):
+            if owned_target(target, owner_marker, pin):
                 removal_state = (path_fingerprint(target), path_fingerprint(owner_marker))
-                if (not owned_target(target, owner_marker, pin["repository"])
+                if (not owned_target(target, owner_marker, pin)
                         or removal_state != (path_fingerprint(target), path_fingerprint(owner_marker))):
                     raise ValueError("Project command changed during removal; nothing removed")
                 target.unlink()
@@ -257,7 +275,12 @@ def main(argv=None):
             raise ValueError(f"Not a workBenches checkout: {wb}")
         initial_install_state = (path_fingerprint(target), path_fingerprint(owner_marker))
         target_digest = file_sha256(target) if target.is_file() and not target.is_symlink() else ""
-        target_owned = owned_target(target, owner_marker, pin["repository"])
+        target_owned = owned_target(target, owner_marker, pin)
+        previous_commit = ""
+        if target_owned:
+            trusted_artifacts = [pin, *pin.get("trusted_previous", [])]
+            previous_commit = next(item["commit"] for item in trusted_artifacts
+                                   if item["sha256"] == target_digest)
         if target_digest and not target_owned and not args.replace_existing:
             raise ValueError(
                 f"Refusing to replace unowned project command: {target}; "
@@ -289,6 +312,7 @@ def main(argv=None):
             "commit": pin["commit"],
             "sha256": pin["sha256"],
             "previous_owned": target_owned,
+            "previous_commit": previous_commit,
             "previous_sha256": target_digest if target_owned else "",
         }, sort_keys=True) + "\n").encode()
         unchanged = target.is_file() and target.read_bytes() == data and target.stat().st_mode & 0o777 == 0o755

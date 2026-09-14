@@ -402,8 +402,11 @@ show_status() {
                 
                 # Check if it's executable and in PATH
                 if [ -x "$location/$cmd_name" ]; then
-                    if command -v "$cmd_name" >/dev/null 2>&1; then
+                    resolved_command="$(command -v "$cmd_name" 2>/dev/null || true)"
+                    if [ "$resolved_command" = "$location/$cmd_name" ]; then
                         echo "    ${GREEN}✓ Available globally${NC}"
+                    elif [ -n "$resolved_command" ]; then
+                        echo "    ${YELLOW}⚠ Shadowed in PATH by $resolved_command${NC}"
                     else
                         echo "    ${YELLOW}⚠ Not in PATH${NC}"
                     fi
