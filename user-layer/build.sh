@@ -26,7 +26,7 @@ BASE_IMAGE=""
 EXTRA_CHOWN_DIRS=""
 NO_CACHE="${NO_CACHE:-false}"
 LAYER3_RECIPE_SHA256=""
-CODEX_VERSION="latest"
+CODEX_VERSION=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -50,7 +50,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --gid GID       User GID (default: \$(id -g))"
             echo "  --chown DIRS    Space-separated dirs to chown to user (e.g. \"/opt/vcpkg /go\")"
             echo "  --recipe-sha256 SHA256  Layer 3 recipe fingerprint (computed automatically by default)"
-            echo "  --codex-version VERSION  Pinned Codex version baked into Layer 3 (default: $CODEX_VERSION)"
+            echo "  --codex-version VERSION  Exact Codex version baked into Layer 3 (default: inherit from base image)"
             echo "  --no-cache      Force Docker to rebuild without cached layers"
             exit 0
             ;;
@@ -61,6 +61,14 @@ done
 if [ -z "$BASE_IMAGE" ]; then
     echo "❌ Error: --base is required"
     echo "Run $0 --help for usage"
+    exit 1
+fi
+
+# Check if base image exists
+if ! docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
+    echo "❌ Error: Base image '$BASE_IMAGE' not found!"
+    echo ""
+    echo "Please build the Layer 2 image first."
     exit 1
 fi
 
@@ -78,6 +86,21 @@ fi
 # Derive output tag: replace :latest with :$USERNAME
 OUTPUT_IMAGE="${BASE_IMAGE%%:*}:${USERNAME}"
 
+# Resolve the default from the exact base image rather than npm's mutable
+# latest dist-tag. The resulting build argument also invalidates Docker's
+# Layer 3 cache whenever the shared Layer 0 Codex version changes.
+if [ -z "$CODEX_VERSION" ]; then
+    CODEX_VERSION="$(
+        docker run --rm --network none --entrypoint="" "$BASE_IMAGE" \
+            sh -c 'codex --version' 2>/dev/null \
+            | awk 'NR == 1 { print $NF; exit }'
+    )"
+fi
+if [[ ! "$CODEX_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+    echo "❌ Error: could not resolve an exact Codex version from '$BASE_IMAGE': '$CODEX_VERSION'" >&2
+    exit 1
+fi
+
 echo "Configuration:"
 echo "  Base image:  $BASE_IMAGE"
 echo "  Output:      $OUTPUT_IMAGE"
@@ -89,14 +112,6 @@ echo "  No cache:    $NO_CACHE"
 echo "  Recipe SHA:  $LAYER3_RECIPE_SHA256"
 echo "  Codex:       $CODEX_VERSION"
 echo ""
-
-# Check if base image exists
-if ! docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
-    echo "❌ Error: Base image '$BASE_IMAGE' not found!"
-    echo ""
-    echo "Please build the Layer 2 image first."
-    exit 1
-fi
 
 # Build Layer 3
 echo "Building $OUTPUT_IMAGE..."
