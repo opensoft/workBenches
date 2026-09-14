@@ -1566,83 +1566,88 @@ resolve_lane() {
   fi
   [[ "$no_lane" == false ]] || return 0
   claude_args_start_session "$@" || return 0
-  # NO LANE-START ON THIS MACHINE — said, never silent (Evidence 5). The two
-  # fences above stand: `--no-lane` is the operator's own word, and a launch
-  # that starts no conversation takes no lane in the first place, so neither is
-  # a degradation to report.
-  if ! command -v lane-start >/dev/null 2>&1; then
-    lane_note_no_lane_start
-    return 0
+  # NO LANE-START ON THIS MACHINE no longer returns HERE (Copilot round on
+  # #82, `claude-profile:1698`): two of `lane`'s three branches — LIVE HERE,
+  # the attach, and BOUND ELSEWHERE, the named refusal — never touch
+  # `lane-start` at all, so returning before precedence 4 denied both of them
+  # to a workstation that has `lane` and a tmux pane and is missing only
+  # `lane-start` or its sibling `lanes-edit.sh`. Precedences 2 and 3 below are
+  # THIS launcher's own reads and skip cleanly without them; the picker has
+  # its own copy of that same resolution and finds out for itself, refusing
+  # (exit 2) into precedence 5 exactly where this launcher used to stop
+  # anyway. `lane_note_no_lane_start`'s own richer line still runs there, said
+  # once and never doubled with the generic one (Evidence 5, F-W3).
+  lanes_edit=""
+  if command -v lane-start >/dev/null 2>&1; then
+    lanes_edit="$(lanes_edit_bin || true)"
   fi
-  lanes_edit="$(lanes_edit_bin || true)"
-  if [[ -z "$lanes_edit" ]]; then
-    lane_note_no_lane
-    return 0
-  fi
-
-  # LANES_NO_FETCH=1 on every read below: they are on the path of every launch,
-  # and lanes-edit.sh otherwise fetches origin before it answers.
-  #
-  # PRECEDENCE 2 — THE WINDOW'S NAME. Only 0 is a lane. `register-row` answers
-  # 8 for a name with no row and 2 for a window name that is not even
-  # lane-shaped (`zsh`, `1:vim*`).
-  if [[ -n "${lane_window:-}" ]] \
-    && LANES_NO_FETCH=1 "$lanes_edit" register-row "$lane_window" >/dev/null 2>&1; then
-    lane="$lane_window"
-    lane_source=window
-    return 0
-  fi
-
-  # The record's lane is a guess about a WINDOW: `lane-start` takes it by
-  # renaming the current tmux window (Amendment 5(f)), so there has to be one.
-  # Outside tmux there is not — `WORKBENCHES_CLAUDE_TMUX=off`, a launch that is
-  # not on a tty — and a lane-start handed a lane it cannot take is how a
-  # resolution that "never refuses a launch" refuses one. An interactive launch
-  # with no TMUX re-execs into a session of its own before this runs, and the
-  # child resolves INSIDE tmux, where this test passes; so the case this closes
-  # is exactly the documented direct launch, which keeps its documented
-  # behaviour. The window rule above needs no such test: it has no lane to
-  # offer unless tmux named the window in the first place.
-  if [[ -z "${TMUX:-}" ]]; then
-    lane_note_no_lane
-    return 0
-  fi
-
-  # PRECEDENCE 3 (SPEC §2 row 3, new in Amendment 11) — THE RECORD FOR *THIS*
-  # WINDOW, and it is not a guess. Where a swap record's `window` sub-field
-  # names the window this command was typed in, the lane is an exact match on
-  # the window the operator is standing in — the same certainty the window NAME
-  # carries in precedence 2, arrived at from the other side — so it goes to
-  # lane-start BARE, with no `--confirm` and no question. Only if nothing names
-  # this window does precedence 4 apply, and that one is now a question `lane`
-  # asks (Amendment 18 Addendum 1) rather than a guess this launcher confirms.
-  #
-  # This is what makes a restart in the lane's own window silent even when the
-  # window has LOST its name: a tmux `automatic-rename` that fired, a window
-  # renamed by hand, a pane that came back as `zsh`.
-  #
-  # THE `<@id>` IS TRIED FIRST AND THE `<session>:<index>` SECOND, which is the
-  # amendment's own words (clause (b), SPEC §2 row 3). The id is the better key
-  # — a `<session>:<index>` is reused the instant a window closes and the next
-  # one takes its index, while an id is never reissued for the life of the
-  # server — so it is asked about before the ref is, and the ref is asked about
-  # only where the id answered nothing.
-  #
-  # AND EITHER IS TAKEN ONLY WHERE THAT WINDOW STILL EXISTS. Here that fence
-  # costs nothing to hold: both refs were read out of `tmux display-message` in
-  # `capture_lane_window` a moment ago, for the window this process is standing
-  # in, so the window they name is this one and it exists by construction.
-  # Outside tmux — act 1, where there is no current window — the fence is a
-  # live `display-message -t` probe, and `act1_window_reuse` makes it.
-  for ref in "${lane_window_id:-}" "${lane_window_ref:-}"; do
-    [[ -n "$ref" ]] || continue
-    if window_lane_read "$ref"; then
-      lane="$window_lane_answer"
-      lane_source=window-record
-      lane_note_read_failed
+  if [[ -n "$lanes_edit" ]]; then
+    # LANES_NO_FETCH=1 on every read below: they are on the path of every launch,
+    # and lanes-edit.sh otherwise fetches origin before it answers.
+    #
+    # PRECEDENCE 2 — THE WINDOW'S NAME. Only 0 is a lane. `register-row` answers
+    # 8 for a name with no row and 2 for a window name that is not even
+    # lane-shaped (`zsh`, `1:vim*`).
+    if [[ -n "${lane_window:-}" ]] \
+      && LANES_NO_FETCH=1 "$lanes_edit" register-row "$lane_window" >/dev/null 2>&1; then
+      lane="$lane_window"
+      lane_source=window
       return 0
     fi
-  done
+
+    # The record's lane is a guess about a WINDOW: `lane-start` takes it by
+    # renaming the current tmux window (Amendment 5(f)), so there has to be one.
+    # Outside tmux there is not — `WORKBENCHES_CLAUDE_TMUX=off`, a launch that is
+    # not on a tty — and a lane-start handed a lane it cannot take is how a
+    # resolution that "never refuses a launch" refuses one. An interactive launch
+    # with no TMUX re-execs into a session of its own before this runs, and the
+    # child resolves INSIDE tmux, where this test passes; so the case this closes
+    # is exactly the documented direct launch, which keeps its documented
+    # behaviour. The window rule above needs no such test: it has no lane to
+    # offer unless tmux named the window in the first place. THE PICKER BELOW
+    # NEEDS A TMUX PANE TOO (to ask in), so this stays a hard return rather
+    # than a fall-through to precedence 4 — unlike the two returns above it.
+    if [[ -z "${TMUX:-}" ]]; then
+      lane_note_no_lane
+      return 0
+    fi
+
+    # PRECEDENCE 3 (SPEC §2 row 3, new in Amendment 11) — THE RECORD FOR *THIS*
+    # WINDOW, and it is not a guess. Where a swap record's `window` sub-field
+    # names the window this command was typed in, the lane is an exact match on
+    # the window the operator is standing in — the same certainty the window NAME
+    # carries in precedence 2, arrived at from the other side — so it goes to
+    # lane-start BARE, with no `--confirm` and no question. Only if nothing names
+    # this window does precedence 4 apply, and that one is now a question `lane`
+    # asks (Amendment 18 Addendum 1) rather than a guess this launcher confirms.
+    #
+    # This is what makes a restart in the lane's own window silent even when the
+    # window has LOST its name: a tmux `automatic-rename` that fired, a window
+    # renamed by hand, a pane that came back as `zsh`.
+    #
+    # THE `<@id>` IS TRIED FIRST AND THE `<session>:<index>` SECOND, which is the
+    # amendment's own words (clause (b), SPEC §2 row 3). The id is the better key
+    # — a `<session>:<index>` is reused the instant a window closes and the next
+    # one takes its index, while an id is never reissued for the life of the
+    # server — so it is asked about before the ref is, and the ref is asked about
+    # only where the id answered nothing.
+    #
+    # AND EITHER IS TAKEN ONLY WHERE THAT WINDOW STILL EXISTS. Here that fence
+    # costs nothing to hold: both refs were read out of `tmux display-message` in
+    # `capture_lane_window` a moment ago, for the window this process is standing
+    # in, so the window they name is this one and it exists by construction.
+    # Outside tmux — act 1, where there is no current window — the fence is a
+    # live `display-message -t` probe, and `act1_window_reuse` makes it.
+    for ref in "${lane_window_id:-}" "${lane_window_ref:-}"; do
+      [[ -n "$ref" ]] || continue
+      if window_lane_read "$ref"; then
+        lane="$window_lane_answer"
+        lane_source=window-record
+        lane_note_read_failed
+        return 0
+      fi
+    done
+  fi
 
   # PRECEDENCE 4 — THE PICKER (lane-collision-protocol Amendment 18 Addendum 1,
   # clause (i-5)). THE WORKSTATION'S NEWEST SWAP RECORD IS NOT READ HERE ANY
@@ -1682,29 +1687,45 @@ resolve_lane() {
   #   exit 2  A REFUSAL — not an answer at all — and it falls through to
   #           precedence 5 exactly as no `lane` on PATH, or no terminal, does.
   #
-  # `lane --help` NAMES TWO MORE STATUSES THIS LAUNCHER NEVER SPECIAL-CASES: 1,
-  # A READ FAILED (never "there are no lanes", Amendment 7(d)), and 64, a usage
-  # error — unreachable from here anyway, since this launcher hands `lane` no
-  # argument for a flag to be unknown or missing a value ABOUT. Neither is 0 or
-  # 8, so both fall through to precedence 5 exactly as 2 does: this launcher
-  # was never going to act differently on a code `lane --help` does not
-  # document as "acted on" or "declined", and a launch that "never refuses on
-  # its own account" does not start inventing new refusals for statuses its
-  # own contract partner might one day add.
+  # `lane --help` NAMES TWO MORE STATUSES, AND ONLY ONE OF THEM IS THIS
+  # LAUNCHER'S TO WALK PAST (Copilot round on #82, `claude-profile:1704`): 1,
+  # A READ FAILED (never "there are no lanes", Amendment 7(d)), and 64, a
+  # usage error — unreachable from here anyway, since this launcher hands
+  # `lane` no argument for a flag to be unknown or missing a value ABOUT.
+  # Both are, like 2, PROVABLY BEFORE ANY PICK: every `die` call `lane` has
+  # for them runs during argument parsing or the read phase, never after an
+  # attach or an exec, so falling through to precedence 5 behind either risks
+  # nothing a fall-through behind 2 does not already risk. A STATUS THIS
+  # LAUNCHER DOES NOT RECOGNISE AT ALL — a signal (130), a crash, anything
+  # `lane --help` does not name — gets NO SUCH BENEFIT OF THE DOUBT: `lane`
+  # may already have attached a live lane or exec'd an available one before
+  # dying this way, and starting a bare Claude behind that would be the
+  # second process this whole protocol exists to prevent. So it is
+  # propagated exactly as 0 and 8 are (below), never treated as a refusal
+  # this launcher can safely walk past.
   #
   # NO TERMINAL, NO QUESTION: an agent's stdin is not one, and a picker that
   # asked it would hang the one caller that can never answer — precedence 5's
   # own fence, asked here one step early so the picker is never even started.
-  if command -v lane >/dev/null 2>&1 && [[ -t 0 ]]; then
+  if command -v lane >/dev/null 2>&1 && [[ -n "${TMUX:-}" ]] && [[ -t 0 ]]; then
     set +e
     lane
     lane_picker_status=$?
     set -e
     case "$lane_picker_status" in
-      0|8)
+      1|2|64)
+        # DOCUMENTED AND PROVABLY PRE-PICK (above): falls through to
+        # precedence 5 exactly as a missing `lane` or no terminal already do.
+        ;;
+      *)
+        # 0, 8, AND ANYTHING THIS LAUNCHER DOES NOT RECOGNISE land here
+        # together: the first two because the pick was acted on, declined, or
+        # there was nothing to offer, and the rest because an UNDOCUMENTED
+        # status earns no assumption that `lane` did nothing — see above.
+        # Either way `lane`'s own status is this launcher's own.
+        #
         # A NOTE QUEUED BY AN EARLIER PRECEDENCE IS NOT THIS EXIT'S TO SWALLOW.
-        # `lane_read_note` at this point is never about the picker — precedence
-        # 4 has not failed, it has just SUCCEEDED or been DECLINED — it is a
+        # `lane_read_note` at this point is never about the picker — it is a
         # caller-bug diagnostic left behind by precedence 3's own read (SPEC
         # §2's "a failed read … is named where it failed"), and this launcher
         # never degrades in silence (Evidence 5) whether or not the step after
@@ -1715,15 +1736,20 @@ resolve_lane() {
         exit "$lane_picker_status"
         ;;
     esac
-    # NEVER CALLED "A REFUSAL": 2 is, but 1 (a read failed) is not, and this
-    # line does not know which of `lane`'s own statuses it is looking at — only
-    # that it is neither 0 nor 8, so nothing was acted on and nothing was
-    # declined either. The number is kept rather than paraphrased, so whoever
-    # reads it can look the status up in `lane --help` themselves.
+    # NEVER CALLED "A REFUSAL": 2 is, but 1 is not, and this line does not
+    # know which of the three documented, pre-pick statuses it is looking at.
+    # The number is kept rather than paraphrased, so whoever reads it can
+    # look the status up in `lane --help` themselves.
     lane_read_note="${lane_read_note:-lane exited $lane_picker_status, so this window takes no lane}"
   fi
-  # PRECEDENCE 5 — no lane, one notice, and still a launch.
-  if [[ -n "${lane_read_note:-}" ]]; then
+  # PRECEDENCE 5 — no lane, one notice, and still a launch. `lane_note_no_lane_start`
+  # RUNS HERE, NOT ABOVE, THE ONE TIME IT IS NEEDED (Copilot round on #82,
+  # `claude-profile:1698`): `lane-start` being missing no longer exits this
+  # function early, so its own richer line waits until every other door —
+  # the picker included — has already been tried and found nothing.
+  if ! command -v lane-start >/dev/null 2>&1; then
+    lane_note_no_lane_start
+  elif [[ -n "${lane_read_note:-}" ]]; then
     lane_note_no_lane "$lane_read_note"
     lane_read_note=""
   else
@@ -2126,13 +2152,22 @@ STEP 4 IS NO LONGER A GUESS THIS LAUNCHER CONFIRMS (lane-collision-protocol
 Amendment 18 Addendum 1, clause (i-5)): it hands the pane to `lane`, which
 lists lanes and asks ONE question of its own, and this launcher exits with
 whatever `lane` decided rather than starting anything itself. An ACTED-ON pick
-or a QUIT (`lane` exit 0 or 8) starts nothing here at all — only a REFUSAL
-(`lane` exit 2) falls through to step 5, exactly as no `lane` on PATH or no
-terminal does. With no answer at all, and with --no-lane, behaviour is
-unchanged. There is no /restart on this path.
+or a DECLINE of a question that had a lane on it (`lane` exit 0) starts nothing
+here at all, and neither does NOTHING TO PICK (`lane` exit 8, which is what a
+decline is too where nothing was offered) — only a REFUSAL (`lane` exit 2, or
+`lane`'s own read failing, exit 1) falls through to step 5, exactly as no
+`lane` on PATH or no terminal does; an exit this launcher does not recognise
+at all is propagated rather than treated as either. With no answer at all, and
+with --no-lane, behaviour is unchanged. There is no /restart on this path. Nor
+does missing `lane-start` or its sibling `lanes-edit.sh` skip this step: two of
+`lane`'s three branches (attaching to a lane already live, or a named refusal
+for one bound elsewhere) never touch `lane-start` at all, so this launcher
+still hands `lane` the pane and lets IT find out what it can do.
 
 AND THIS LAUNCHER NEVER DEGRADES IN SILENCE (new-workstation#20, Evidence 5).
-Every lane above is taken by RUNNING `lane-start`, which is also the only thing
+Every lane taken through THIS LAUNCHER'S OWN lane-start call — steps 1 through
+3, and step 4's AVAILABLE branch, which is another launch of this launcher —
+is taken by RUNNING `lane-start`, which is also the only thing
 that names the session for the lane — Amendment 2's messaging address, the third
 leg of the identity beside the window's name and the transcript. (`lane-start`
 passes `--name <lane>` on EVERY launch branch it has — the two that RESUME as
@@ -2229,9 +2264,11 @@ existence, exactly as rung 1 already was. Where nothing was learnt, nothing is
 entered and the launcher says so in the one line it prints.
 
 NO PATH THE LAUNCHER OPENED EXITS THE PANE. lane-start is run, never exec'd:
-if it refuses — a directory that is not there, a lane held live elsewhere, a
-declined confirm — its own refusal is printed and Claude starts bare in the
-same window, with one line saying so.
+if it refuses — a directory that is not there, a lane held live elsewhere —
+its own refusal is printed and Claude starts bare in the same window, with
+one line saying so. (Not "a declined confirm": this launcher hands lane-start
+no lane source that carries `--confirm` any more — that was the retired
+swap-record guess's alone, lane-collision-protocol Amendment 18 Addendum 1.)
 
 THE SCOPE OF THAT PROMISE, EXACTLY (Amendment 11, `R-A11-4`; RV-W3, closed by
 `R-A11-16`). It is held wherever this process is the only command of its pane.

@@ -24,8 +24,13 @@
 # PICK at all, a decline included. Either way this launcher is left with
 # NOTHING to start, because starting a Claude behind a pick already acted on —
 # or behind a decline nobody asked to be overridden — is worse than the lane
-# collision this protocol exists to prevent. Only `lane` exit 2, A REFUSAL,
-# falls through to step 4 exactly as no `lane` on PATH or no terminal does.
+# collision this protocol exists to prevent. `lane` exit 2, A REFUSAL, falls
+# through to step 4 — and so does exit 1, A READ FAILED, provably before any
+# pick and no riskier a fall-through than 2's; a status `lane --help` does not
+# document at all gets no such benefit of the doubt and is propagated exactly
+# as 0/8 are (Copilot round on opensoft/workBenches#82, `claude-profile:1704`).
+# Missing `lane-start` no longer skips this step either (same round,
+# `claude-profile:1698`): two of the picker's three branches never touch it.
 # `--yes`/`--confirm` are gone from this order entirely: they were
 # lane-start's, for the swap-record guess step 3 used to be before Amendment 18
 # Addendum 1 replaced it with the picker.
@@ -64,7 +69,7 @@ fail() {
 # quietly changing a number; the assertion count is printed and not pinned,
 # because checks are added to existing scenarios all the time and a scenario
 # that stops running is the thing worth catching.
-EXPECTED_SCENARIOS=28
+EXPECTED_SCENARIOS=32
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -440,6 +445,37 @@ grep -q 'lane exited 2' "$TEST_ROOT/typescript.log" \
     || fail "picker refused: the reason was not named ($(cat "$TEST_ROOT/typescript.log"))"; assertion
 grep -q "$note" "$TEST_ROOT/typescript.log" || fail "picker refused: the note was not printed"; assertion
 
+# 2c-1. `lane` exit 1 — A READ FAILED (`lane --help`'s own words, never "there
+# are no lanes", Amendment 7(d)) — falls through exactly as exit 2 does
+# (Copilot round on #82, `claude-profile:1704`): `lane`'s own `die` for it
+# runs during the read phase, provably before any pick, so this is no riskier
+# a fall-through than a refusal is.
+tty_launch "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
+    "FAKE_LANE_EXIT=1" -- run team002 --resume session-picker-readfailed
+[[ "$tty_launch_status" -eq 0 ]] \
+    || fail "picker read failed: the launcher exited $tty_launch_status instead of falling through"; assertion
+[[ -e "$LANE_PICKER_LOG" ]] || fail "picker read failed: lane was never invoked"; assertion
+grep -Fxq -- "$claude_args --resume session-picker-readfailed" "$CLAUDE_LOG" \
+    || fail "picker read failed: Claude did not receive its arguments unchanged"; assertion
+grep -q 'lane exited 1' "$TEST_ROOT/typescript.log" \
+    || fail "picker read failed: the reason was not named ($(cat "$TEST_ROOT/typescript.log"))"; assertion
+
+# 2c-2. A STATUS `lane --help` DOES NOT NAME AT ALL — a signal (130), a crash
+# — is NEVER read as a refusal (Copilot round on #82, `claude-profile:1704`):
+# unlike 1 and 2, this launcher cannot prove `lane` failed before a pick, so
+# treating it as safe to walk past could start a SECOND Claude behind
+# whatever `lane` already did. It is propagated exactly as an ACTED-ON pick
+# would be.
+tty_launch "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
+    "FAKE_LANE_EXIT=130" -- run team002 --resume session-picker-signal
+[[ "$tty_launch_status" -eq 130 ]] \
+    || fail "picker undocumented status: the launcher exited $tty_launch_status instead of lane's own 130"; assertion
+[[ -e "$LANE_PICKER_LOG" ]] || fail "picker undocumented status: lane was never invoked"; assertion
+[[ ! -e "$LANE_START_LOG" ]] \
+    || fail "picker undocumented status: this launcher also ran lane-start ('$(lane_start_argv)')"; assertion
+[[ ! -e "$CLAUDE_LOG" ]] \
+    || fail "picker undocumented status: this launcher started a bare Claude behind an unrecognised status"; assertion
+
 # 2d. No `lane` on PATH at all — a machine opensoft/openRepoTools#43 has not
 # reached yet. Given the SAME terminal 2/2b/2c had, step 3 still answers
 # nothing, exactly as a `lane` that refused does: a bare Claude, one line, and
@@ -472,6 +508,50 @@ tty_launch "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
     || fail "--lane bypass: the picker ran anyway ('$(lane_picker_argv)')"; assertion
 grep -Fxq -- "spoken-bypass -- $claude_args --resume session-lane-bypass" "$LANE_START_LOG" \
     || fail "--lane bypass: lane-start argv was '$(lane_start_argv)'"; assertion
+
+# 2f. LANE-START MISSING DOES NOT SKIP THE PICKER (Copilot round on #82,
+# `claude-profile:1698`): two of `lane`'s three branches — LIVE HERE and BOUND
+# ELSEWHERE — never touch lane-start at all, so a workstation that has `lane`
+# and a terminal but is missing lane-start still hands the picker the pane
+# rather than giving up before it is even tried. A REFUSAL (exit 2) falls
+# through to precedence 5 exactly as it would with lane-start present,
+# landing on the SAME lane-start-missing notice 9a pins — proving the picker
+# was tried and lane-start, not the picker, is what precedence 5 blames.
+NO_LANE_START_BIN="$TEST_ROOT/bin-no-lane-start"
+mkdir -p "$NO_LANE_START_BIN"
+cp "$FAKE_CLAUDE" "$NO_LANE_START_BIN/claude"
+cp "$FAKE_BIN/tmux" "$NO_LANE_START_BIN/tmux"
+cp "$FAKE_BIN/lanes-edit.sh" "$NO_LANE_START_BIN/lanes-edit.sh"
+cp "$FAKE_BIN/lane" "$NO_LANE_START_BIN/lane"
+chmod +x "$NO_LANE_START_BIN"/*
+tty_launch "PATH=$NO_LANE_START_BIN:/usr/bin:/bin" "FAKE_TMUX_WINDOW=claude" \
+    "FAKE_LANE_EXIT=2" -- run team002 --resume session-nolanestart-refused
+[[ "$tty_launch_status" -eq 0 ]] \
+    || fail "no lane-start, picker refused: the launcher exited $tty_launch_status"; assertion
+[[ -e "$LANE_PICKER_LOG" ]] \
+    || fail "no lane-start, picker refused: the picker was skipped instead of tried"; assertion
+[[ -z "$(lane_picker_argv)" ]] \
+    || fail "no lane-start, picker refused: lane argv was '$(lane_picker_argv)', not bare"; assertion
+grep -Fxq -- "$claude_args --resume session-nolanestart-refused" "$CLAUDE_LOG" \
+    || fail "no lane-start, picker refused: Claude did not receive its arguments unchanged"; assertion
+grep -q 'lane-start is not on PATH' "$TEST_ROOT/typescript.log" \
+    || fail "no lane-start, picker refused: precedence 5 did not name lane-start ($(cat "$TEST_ROOT/typescript.log"))"; assertion
+grep -q "$note" "$TEST_ROOT/typescript.log" \
+    && fail "no lane-start, picker refused: the standing note told the operator to run the tool that is missing"; assertion
+
+# 2g. AND WHERE THE PICKER FINDS SOMETHING TO ACT ON OR DECLINE, ITS STATUS IS
+# STILL THIS LAUNCHER'S — lane-start missing changes what precedence 5 says,
+# never whether precedence 4 governs first. Exit 8 (nothing to pick) leaves
+# this launcher with NOTHING to start, not even the bare Claude lane-start's
+# own absence would otherwise still have produced.
+tty_launch "PATH=$NO_LANE_START_BIN:/usr/bin:/bin" "FAKE_TMUX_WINDOW=claude" \
+    "FAKE_LANE_EXIT=8" -- run team002 --resume session-nolanestart-quit
+[[ "$tty_launch_status" -eq 8 ]] \
+    || fail "no lane-start, picker quit: the launcher exited $tty_launch_status instead of lane's own 8"; assertion
+[[ -e "$LANE_PICKER_LOG" ]] \
+    || fail "no lane-start, picker quit: the picker was skipped instead of tried"; assertion
+[[ ! -e "$CLAUDE_LOG" ]] \
+    || fail "no lane-start, picker quit: this launcher launched a Claude of its own after a quit"; assertion
 
 # ---------------------------------------------------------------------------
 # 3. NO TERMINAL ON STDIN: `lane` is on PATH (common_env's FAKE_BIN carries it)
