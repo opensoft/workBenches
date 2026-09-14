@@ -27,10 +27,14 @@
 #       Dockerfile, not installed by this script
 #
 # Usage in Dockerfile:
-#   COPY install-ai-clis.sh /tmp/
+#   COPY install-ai-clis.sh ai-cli-contract.sh /tmp/
 #   RUN bash /tmp/install-ai-clis.sh
 
 set -e
+
+INSTALL_SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=ai-cli-contract.sh
+. "$INSTALL_SCRIPT_DIR/ai-cli-contract.sh"
 
 # ========================================
 # DEBUG AND TIMEOUT CONFIGURATION
@@ -692,7 +696,7 @@ log_info "AI CLI Tools Installation Complete!"
 log_info "=========================================="
 log_info ""
 
-required_clis=(claude codex gemini pi herdr copilot opencode omo letta notebooklm nlm kimi qwen aider openhands amp cursor-agent)
+required_clis=("${WORKBENCHES_REQUIRED_AI_CLIS[@]}")
 missing_clis=()
 for cli in "${required_clis[@]}"; do
     if ! command -v "$cli" >/dev/null 2>&1; then

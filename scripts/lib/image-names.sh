@@ -111,6 +111,7 @@ bench_dir_to_image_repo() {
 
     case "$bench_dir_name" in
         dotNetBench) printf '%s\n' "dotnet-bench" ;;
+        365Bench) printf '%s\n' "m365-bench" ;;
         *)
             printf '%s\n' "$bench_dir_name" | perl -pe 's/([a-z0-9])([A-Z])/$1-$2/g; $_ = lc($_);'
             ;;

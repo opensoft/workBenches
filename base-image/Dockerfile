@@ -164,13 +164,14 @@ ENV PATH="/opt/bun/bin:${PATH}"
 # ========================================
 
 # Copy and run AI CLI installation script
-COPY install-ai-clis.sh /tmp/
+COPY install-ai-clis.sh ai-cli-contract.sh /tmp/
 ARG AI_CLI_REFRESH=2026-09-03
 ARG HERDR_INSTALL_SHA256=""
 RUN echo "AI CLI refresh marker: ${AI_CLI_REFRESH}"
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/root/.npm \
-    bash /tmp/install-ai-clis.sh && rm /tmp/install-ai-clis.sh
+    bash /tmp/install-ai-clis.sh \
+    && rm /tmp/install-ai-clis.sh /tmp/ai-cli-contract.sh
 
 # Provider-specific multi-account launchers. Credential profiles are host state
 # mounted under provider-specific profile roots; only launchers belong in the

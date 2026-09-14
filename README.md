@@ -65,6 +65,21 @@ Built automatically by `ensure-layer3.sh` (called from devcontainer `initializeC
 bash scripts/ensure-layer3.sh --base java-bench:latest
 ```
 
+### Cascade Rebuild Verification
+
+To refresh all user-agnostic layers and verify the rebuilt bench images:
+
+```bash
+scripts/update-and-rebuild.sh --all --cascade --no-cache --user brett
+```
+
+The cascade verification probes the required shared CLI commands in every
+rebuilt Layer 2 `:latest` image and reports the state of the related Layer 3
+`:<user>` image. It does not create, replace, or restart a Layer 3 image or a
+running bench. Add `--write-manifest` only when a durable version snapshot at
+`config/version-manifest.json` is required; ordinary verification leaves the
+checkout unchanged.
+
 ## setup.sh Flow
 
 ```

@@ -21,6 +21,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/image-names.sh"
+source "$SCRIPT_DIR/lib/cascade-image-validation.sh"
 # Windows shells often export USERNAME with different casing (e.g. Brett).
 # Default to the actual WSL/container user; use --user for an explicit override.
 USERNAME="$(whoami)"
@@ -29,9 +30,12 @@ PUSH=false
 BUILD_ALL=false
 CASCADE=false
 NO_CACHE=false
+WRITE_MANIFEST=false
 DATE_TAG=$(date '+%Y%m%d')
 LAYER3_BASE=""
 LAYER3_CHOWN=""
+declare -a CASCADE_IMAGES=()
+declare -a CASCADE_IMAGE_RECORDS=()
 
 # Registry config
 REGISTRY_ENV="$REPO_DIR/config/registry.env"
@@ -56,11 +60,12 @@ while [[ $# -gt 0 ]]; do
         --push) PUSH=true; shift ;;
         --cascade) CASCADE=true; shift ;;
         --no-cache) NO_CACHE=true; shift ;;
+        --write-manifest) WRITE_MANIFEST=true; shift ;;
         --user) USERNAME="$2"; shift 2 ;;
         --base) LAYER3_BASE="$2"; shift 2 ;;
         --chown) LAYER3_CHOWN="$2"; shift 2 ;;
         -h|--help)
-            echo "Usage: $0 [--layer 0|1a|1b|1c|3] [--all] [--push] [--cascade] [--no-cache] [--user USERNAME]"
+            echo "Usage: $0 [--layer 0|1a|1b|1c|3] [--all] [--push] [--cascade] [--no-cache] [--write-manifest] [--user USERNAME]"
             echo ""
             echo "Options:"
             echo "  --layer LAYER   Rebuild a specific layer (0, 1a, 1b, 1c, 3)"
@@ -68,6 +73,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --push          Push rebuilt images to Docker Hub ($REGISTRY)"
             echo "  --cascade       Also rebuild all downstream layers that depend on the rebuilt layer"
             echo "  --no-cache      Force Docker to rerun install layers and pick up latest floating tools"
+            echo "  --write-manifest Write the post-build version manifest to config/version-manifest.json"
             echo "  --user NAME     Username for Layer 3 image tags (default: $(whoami))"
             echo "  --base IMAGE    Base image for Layer 3 (e.g. cpp-bench:latest)"
             echo "  --chown DIRS    Extra dirs to chown in Layer 3 (e.g. /opt/vcpkg)"
@@ -188,7 +194,9 @@ find_downstream_benches() {
 build_layer2_bench() {
     local bench_dir="$1"
     local bench_name
+    local image
     bench_name=$(basename "$bench_dir")
+    image="$(bench_dir_to_image_repo "$bench_name"):latest"
 
     echo ""
     echo -e "${BOLD}${CYAN}═══ Rebuilding Layer 2: $bench_name ═══${NC}"
@@ -242,8 +250,11 @@ build_layer2_bench() {
             build_timer_end "Layer 2: $bench_name"
         else
             echo -e "${YELLOW}  No build script or Dockerfile found in $bench_dir — skipping${NC}"
+            return
         fi
     fi
+
+    record_rebuilt_cascade_image "$image" "$bench_name"
 }
 
 # Cascade rebuild all downstream dependents of a base image
@@ -429,6 +440,7 @@ echo "User: $USERNAME"
 echo "Registry: $REGISTRY"
 echo "Push: $PUSH"
 echo "No cache: $NO_CACHE"
+echo "Write manifest: $WRITE_MANIFEST"
 echo "Date: $(date '+%Y-%m-%d %H:%M:%S')"
 
 # Check Docker
@@ -506,12 +518,23 @@ echo "=========================================="
 echo -e "${GREEN}✓ Build complete in ${TOTAL_MINS}m ${TOTAL_SECS}s${NC}"
 echo "=========================================="
 
-# Run version check after build. A cascade touches multiple layers, so audit the
-# full stack rather than only the initially requested layer.
+# Run version checks after build. Cascades also probe each rebuilt Layer 2 image
+# and report Layer 3 activation state without changing live containers.
 echo ""
 echo -e "${CYAN}Running version check on rebuilt images...${NC}"
+CHECK_ARGS=(--user "$USERNAME")
 if [ "$BUILD_ALL" = true ] || [ "$CASCADE" = true ]; then
-    "$SCRIPT_DIR/check-versions.sh" --user "$USERNAME"
+    CHECK_ARGS+=(--layer all)
 else
-    "$SCRIPT_DIR/check-versions.sh" --layer "$LAYER" --user "$USERNAME"
+    CHECK_ARGS+=(--layer "$LAYER")
 fi
+
+if [ "$CASCADE" = true ] && [ "${#CASCADE_IMAGES[@]}" -gt 0 ]; then
+    CASCADE_IMAGE_LIST=$(IFS=,; echo "${CASCADE_IMAGES[*]}")
+    CASCADE_IMAGE_ID_LIST=$(IFS=,; echo "${CASCADE_IMAGE_RECORDS[*]}")
+    CHECK_ARGS+=(--images "$CASCADE_IMAGE_LIST" --image-ids "$CASCADE_IMAGE_ID_LIST" --check-layer3)
+fi
+if [ "$WRITE_MANIFEST" = true ]; then
+    CHECK_ARGS+=(--write-manifest)
+fi
+"$SCRIPT_DIR/check-versions.sh" "${CHECK_ARGS[@]}"
