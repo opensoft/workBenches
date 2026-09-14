@@ -1264,6 +1264,23 @@ lane_window_is() {
   [[ -n "$now" && "$now" == "$want" ]]
 }
 
+lane_defect_retire_line() {
+  # DECISION 8(e) (lanes-edit.sh, live-holder): a live FORK of this lane's
+  # transcript is a DEFECT, never a holder, printed to stderr as one line
+  # ending "Retire it: lane-end <lane> --retire <pid>" — and lane-start still
+  # asks before taking the window, because a fork is not a holder either
+  # (opensoft/workBenches#77). This reads that ONE clause back out of a
+  # capture of lane-start's stderr, so the caller can name the same act
+  # rather than paraphrase it. Empty (and exit 1) where no such line was
+  # captured, which is every ordinary run.
+  local capture="$1" line
+  [[ -s "$capture" ]] || return 1
+  line="$(grep -m1 'DEFECT.*Retire it:' "$capture" 2>/dev/null \
+    | sed -n 's/.*\(Retire it:.*\)/\1/p')"
+  [[ -n "$line" ]] || return 1
+  printf '%s\n' "$line"
+}
+
 lane_is_pane_root() {
   # WHETHER THIS PROCESS IS THE PANE'S ROOT COMMAND — i.e. whether there is a
   # prompt behind a refusal, or nothing at all. `R-A11-16` (A11 Addendum 3 on
@@ -2381,11 +2398,34 @@ case "$action" in
           # the one place that could keep that window alive was gone before the
           # refusal happened. There is no lane source for which that trade is
           # worth making, so there is now one path for all of them.
+          # STDERR IS ALSO CAPTURED, LIVE, INTO A FILE (opensoft/workBenches#77).
+          # `lane-start --confirm` still asks even where `lanes-edit.sh
+          # live-holder` named a live FORK of this lane's transcript first
+          # (decision 8(e): a fork is a DEFECT, never a holder) — and a
+          # decline there must not risk a second live process on that same
+          # transcript. The confirm question itself needs the REAL terminal,
+          # so this TEES rather than redirects: fd 9 carries a copy of every
+          # byte lane-start (or whatever it execs) writes to stderr into
+          # $lane_defect_capture, and the `tee` on the far end puts the same
+          # byte back on the real stderr (`>&2`) unchanged — the operator
+          # sees exactly what they always saw, in the same order, live.
+          # `wait` is on the TEE's own pid, not this command's: the pipe's
+          # reader is a separate process, and a read of the capture file
+          # made before that process has drained it would race an
+          # almost-instantly-declined confirm (the fake this PR's test uses
+          # is exactly that race, made deterministic by this wait).
+          lane_defect_capture="$(mktemp "${TMPDIR:-/tmp}/pclaude-lane-defect.XXXXXX")"
           set +e
+          exec 9> >(tee "$lane_defect_capture" >&2)
+          lane_defect_tee_pid=$!
           CLAUDE_CONFIG_DIR="$config_dir" CLAUDE_BIN="$claude_bin" \
-            "${lane_argv[@]}" "$lane" -- "${claude_flags[@]}" "$@"
+            "${lane_argv[@]}" "$lane" -- "${claude_flags[@]}" "$@" 2>&9
           lane_status=$?
+          exec 9>&-
+          wait "$lane_defect_tee_pid" 2>/dev/null
           set -e
+          lane_defect_line="$(lane_defect_retire_line "$lane_defect_capture" || true)"
+          rm -f "$lane_defect_capture"
           # WHICH STATUSES ARE LANE-START'S OWN. It documents exactly two:
           # 1 environment — not inside tmux, no register, NO SUCH DIRECTORY —
           # and 2 refusal — an argument error, a name a window cannot take, a
@@ -2430,6 +2470,22 @@ case "$action" in
           # sets: the window whose only command is `pclaude` and which this
           # launcher did not create — RV-W3's open case — is now inside the
           # fence, because the pane's own root process says so.
+          # A LIVE FORK NAMED, AND THIS WINDOW DID NOT TAKE THE LANE, IS A STOP,
+          # NOT A LAUNCH (opensoft/workBenches#77, Amendment 18 DRAFT clause
+          # (h)). `lane_status` is 0 either way here — the same 0 a lane-start
+          # that TOOK the lane returns — so the window is what tells them
+          # apart, exactly as it already does two checks below: taking the
+          # lane renames it (Amendment 5(f)), and a decline leaves the name
+          # alone. Where the defect was named and the window was NOT renamed,
+          # whatever lane-start (or a Claude it may have exec'd bare) already
+          # did is done; this launcher starts NOTHING further in this window
+          # rather than risk a second live process on the fork decision 8(e)
+          # just named — it prints the retire act named for it and stops.
+          if [[ "$lane_status" -eq 0 ]] && [[ -n "$lane_defect_line" ]] \
+            && ! lane_window_is "$lane"; then
+            echo "pclaude: $lane is not taken in this window — a live fork of its transcript exists; $lane_defect_line" >&2
+            exit 1
+          fi
           if [[ "$lane_status" -eq 0 ]] \
             || { [[ "$lane_status" -ne 1 && "$lane_status" -ne 2 ]]; } \
             || { ! lane_is_pane_root && lane_window_is "$lane"; }; then
