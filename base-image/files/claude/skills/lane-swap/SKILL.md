@@ -90,11 +90,18 @@ description: "/lane-swap (alias /swap) prepares this lane for a usage reset or p
 Lane-collision-protocol Amendment 8(a), amended by Amendment 11. Run every step, in order, before telling
 the operator it is safe to reset usage or switch profiles. `/swap` is an alias and nothing else: it is a
 command file that invokes this skill, so that the act has one text and not two copies of one that must stay
-byte-equal (Amendment 11, SPEC §9). `$L` below is the symlink Amendment 5 left in place; every command is
-copy-pasteable as written once `lane` is derived in step 1.
+byte-equal (Amendment 11, SPEC §9). `$L` below is the helper ON PATH, with the symlink Amendment 5 left in
+place as the fallback; every command is copy-pasteable as written once `lane` is derived in step 1.
 
 ```sh
-L=~/projects/xFactory/lanes-edit.sh
+# THE HELPER IS RESOLVED, NOT SPELLED. Amendment 9 act 3 (`opensoft/openRepoTools#26`, merged as
+# `63a74af`) puts `lanes-edit.sh` in `~/.local/bin`, and `link-estates` adds the
+# `~/projects/xFactory/lanes-edit.sh` symlink ONLY where `~/projects/xFactory` exists — it says
+# `SKIP the lane register — no <path> on this workstation` otherwise. A hard-coded path therefore
+# names nothing on a host that has the tools and not that directory, and every write below would fail
+# with no helper to blame. This is the line `openRepoTools`' own `/restart` skill uses and the rule
+# `claude-profile`'s `lanes_edit_bin` follows: PATH first, the protocol's symlink second.
+L="$(command -v lanes-edit.sh || printf '%s' ~/projects/xFactory/lanes-edit.sh)"
 # THE WORKSTATION, DERIVED ONCE AND NEVER FROM `hostname` INSIDE A CONTAINER (Evidence 6,
 # new-workstation#20 2026-09-13T17:57:45Z). The register is keyed on it: `swapped <ws>` answers with the
 # rows that workstation wrote, and this lane's own records say `Eagle`. Inside a bench container

@@ -3203,6 +3203,26 @@ grep -Fq 'SECOND PLACE FOR THE TRUTH TO BE WRONG' "$DOCS_MD" \
     || fail "R-A11-14: the docs give the act without the alternative the amendment refuses, so the next reader adds a workstation: key to workspace.yaml"; assertion
 grep -Fq 'lanes-edit.sh workstation' "$DOCS_MD" \
     || fail "R-A11-14: the docs tell a person to set the variable and not how to read back what it resolved to"; assertion
+# THE GUARD CARRIED A FIFTH COPY OF THE PROMISE `R-A11-27` REFUSES, and the
+# automated reviewer found it where four rounds of this PR had not: the
+# directive told the session the swap record "is never left unwritten", which
+# is the sentence the ruling corrects — in a container with no
+# `LANES_WORKSTATION` every register and object-log write is refused and the
+# restart the skill prints carries `--lane`. Both halves pinned.
+grep -Fq 'it is never left unwritten' "$GUARD_SH" \
+    && fail "R-A11-27: the guard's directive still promises the swap record is never left unwritten, which a container with no LANES_WORKSTATION refuses"; assertion
+grep -Fq 'R-A11-27' "$GUARD_SH" \
+    || fail "R-A11-27: the guard directs an act whose writes can be refused and never names the ruling that refuses them"; assertion
+# AND THE SKILL RESOLVES ITS HELPER instead of spelling one path. `link-estates`
+# adds the `~/projects/xFactory` symlink ONLY where that directory exists, so on
+# a host with the tools and no such directory a hard-coded `$L` names nothing
+# and every write in the skill fails with no helper to blame. PATH first, the
+# symlink second — `claude-profile`'s own rule, and the line openRepoTools'
+# `/restart` skill already uses.
+grep -Fq 'L="$(command -v lanes-edit.sh' "$SKILL_MD" \
+    || fail "helper: the skill spells one path for lanes-edit.sh instead of resolving it, so a host without ~/projects/xFactory cannot swap"; assertion
+grep -q '^L=~/projects/xFactory/lanes-edit.sh$' "$SKILL_MD" \
+    && fail "helper: the skill is back to a hard-coded helper path"; assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"

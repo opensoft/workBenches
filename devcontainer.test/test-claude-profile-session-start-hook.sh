@@ -42,7 +42,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=10
+EXPECTED_SCENARIOS=12
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -171,6 +171,23 @@ run_launcher
     || fail "additive: an unrelated hook kind was lost ($(jq -c '.hooks' "$SETTINGS"))"; assertion
 [[ "$(jq -r '.hooks.UserPromptSubmit | length' "$SETTINGS")" -eq 1 ]] \
     || fail "additive: the launcher's own UserPromptSubmit hook is not there"; assertion
+# ...AND ADDITIVE WITHIN THAT KIND TOO, which is where it was not. The guard
+# entry was ASSIGNED — `.hooks.UserPromptSubmit = [ours]` — so anybody else's
+# UserPromptSubmit hook was dropped on the next launch, in the same function
+# that preserves every other kind. Raised by the automated reviewer on
+# `setup-claude-profiles.sh:175`, which is the install that makes `guard_ok`
+# true; the defect was this write. Now: foreign entries kept, exactly ONE of
+# ours, and its timeout refreshed (each `run_launcher` below counts itself).
+jq '.hooks.UserPromptSubmit = [{hooks: [{type: "command", command: "foreign-hook"}]}]' \
+    "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+run_launcher
+[[ "$(jq -r '[.hooks.UserPromptSubmit[]?|.hooks[]?|select(.command == "foreign-hook")]|length' "$SETTINGS")" -eq 1 ]] \
+    || fail "additive: a foreign UserPromptSubmit hook was dropped by the guard write ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[]?|.hooks[]?|select(.command|test("usage-guard"))]|length' "$SETTINGS")" -eq 1 ]] \
+    || fail "additive: the guard entry is not there exactly once beside it ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+run_launcher
+[[ "$(jq -r '.hooks.UserPromptSubmit | length' "$SETTINGS")" -eq 2 ]] \
+    || fail "additive: a second launch did not leave exactly the foreign entry and one of ours ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
 [[ "$(session_start_count)" -eq 1 ]] \
     || fail "additive: SessionStart did not survive beside them"; assertion
 

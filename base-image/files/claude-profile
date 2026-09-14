@@ -52,6 +52,26 @@ lane_session_start_ensured=false
 # already carries it is left exactly as it is — wherever it sits, whatever
 # matcher it shares, whatever else the operator put beside it — and nothing
 # else under .hooks is touched. Reused verbatim by both branches below.
+# THE GUARD ENTRY IS MERGED, NOT ASSIGNED — and until this round it was assigned.
+# `.hooks.UserPromptSubmit = [ours]` REPLACED the array, so a profile carrying
+# anybody else's `UserPromptSubmit` hook lost it on its next launch, in the same
+# function whose SessionStart write goes to some trouble to preserve exactly
+# that. One file, two rules for one kind of merge, and the asymmetry is the
+# whole argument: the entry is keyed on the command string here too, so OUR
+# entry is filtered out and re-appended — one of ours, its timeout refreshed,
+# every foreign entry kept, and identical output on a settings file that has
+# none, which is every profile measured on this workstation (80 of them carry
+# the guard, 0 carry anything else). Raised by the automated reviewer against
+# `setup-claude-profiles.sh:175` — the install that makes `guard_ok` true — and
+# it is this write that had the defect, not that install.
+lane_guard_jq='
+      .hooks = (.hooks // {})
+      | .hooks.UserPromptSubmit = (
+          [ (.hooks.UserPromptSubmit // [])[]
+            | select(([(.hooks // [])[]? | .command] | index($guard)) | not) ]
+          + [{hooks: [{type: "command", command: $guard, timeout: $guard_timeout}]}]
+        )'
+
 lane_session_start_jq='
       .hooks = (.hooks // {})
       | .hooks.SessionStart = (
@@ -154,10 +174,7 @@ configure_profile_runtime() {
       | .permissions.defaultMode = "bypassPermissions"
       | .effortLevel = (.effortLevel // "xhigh")
       | .model = (.model // $model)
-      | (if $guard_ok then
-            .hooks = (.hooks // {})
-            | .hooks.UserPromptSubmit = [{hooks: [{type: "command", command: $guard, timeout: $guard_timeout}]}]
-         else . end)
+      | (if $guard_ok then'"$lane_guard_jq"' else . end)
       | (if $session_start_ok then'"$lane_session_start_jq"' else . end)
     ' "$settings" > "$settings_tmp"
   else
@@ -173,9 +190,7 @@ configure_profile_runtime() {
       effortLevel: "xhigh",
       model: $model
     }
-    | (if $guard_ok then
-          .hooks = {UserPromptSubmit: [{hooks: [{type: "command", command: $guard, timeout: $guard_timeout}]}]}
-       else . end)
+    | (if $guard_ok then'"$lane_guard_jq"' else . end)
     | (if $session_start_ok then'"$lane_session_start_jq"' else . end)' > "$settings_tmp"
   fi
   chmod 600 "$settings_tmp"
