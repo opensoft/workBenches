@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - .github/workflows/ai-cli-layer3.yml
+      - base-image/Dockerfile
       - base-image/ai-cli-install-helpers.sh
       - base-image/install-ai-clis.sh
       - devBenches/base-image/install-ai-clis.sh
@@ -15,6 +16,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/ai-cli-layer3.yml
+      - base-image/Dockerfile
       - base-image/ai-cli-install-helpers.sh
       - base-image/install-ai-clis.sh
       - devBenches/base-image/install-ai-clis.sh
