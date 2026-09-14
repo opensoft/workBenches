@@ -568,8 +568,9 @@ Since Amendment 11(4), the usage guard (`claude-usage-guard.sh`, wired as the
 `UserPromptSubmit` hook for every profile) turns its own top warning into a
 directive at the same 95%-of-the-5-hour-window line that used to read only
 "STOP at a breakpoint, write or refresh the handoff doc": at that point the
-guard tells the session to run `/lane-swap` now, every step in order, with no
-question put to the operator. The steps are Amendment 8(a)'s five, unchanged
+guard tells the session to run `/handoff` (alias `/lane-swap`) now, every step
+in order, with no question put to the operator. The steps are Amendment 8(a)'s
+five, unchanged
 — the identity triple derived; the handoff refreshed, committed, and pushed;
 every running writer told to commit and push; the `PAUSED` swap record (now
 carrying `dir`, `window` and `profile`) together with the register's event line and the
@@ -593,8 +594,14 @@ the same threshold and names nothing; the 90 and 80 lines, and the context
 block, are unchanged for every session either way. The guard stays gated
 exactly as before: silent unless `.claude/usage-guard.on` exists in the
 session's working directory or an ancestor, up to `$HOME` (or
-`~/.claude/usage-guard.on`, for every session on the machine). The Fable
-weekly bucket's own 95% line is not part of this and keeps today's warning.
+`~/.claude/usage-guard.on`, for every session on the machine).
+`configure_profile_runtime` now places that global flag itself — on every
+launch that wires the guard, `$HOME/.claude/usage-guard.on` is created if it is
+not already there — so a workstation this launcher has configured is never
+left running every lane unguarded for want of someone arming it by hand; an
+existing flag, armed or later disarmed by an operator, is never touched. The
+Fable weekly bucket's own 95% line is not part of this and keeps today's
+warning.
 
 ### The Amendment 8 `SessionStart` hook, and where skills have to live
 

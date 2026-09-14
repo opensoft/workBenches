@@ -56,7 +56,7 @@ fail() {
 # quietly changing a number; the assertion count is printed and not pinned,
 # because checks are added to existing scenarios all the time and a scenario
 # that stops running is the thing worth catching.
-EXPECTED_SCENARIOS=31
+EXPECTED_SCENARIOS=33
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -199,6 +199,29 @@ case "${FAKE_LANE_START_DECLINE:-}" in
         tmux rename-window "$lane_argument" >/dev/null 2>&1 || true
         "${CLAUDE_BIN:?}" ${rest[@]+"${rest[@]}"}
         exit 2
+        ;;
+    defect)
+        # lanes-edit.sh live-holder's own DEFECT wording (decision 8(e)), read
+        # by lane-start before it asks the confirm question at all: a live
+        # FORK is never a holder, so lane-start still asks, and this fake
+        # answers the question the same way `bare` does but launches NOTHING
+        # itself — isolating whether THE LAUNCHER, not lane-start, is the one
+        # that stops rather than starts a second live process on the fork.
+        echo "DEFECT: d1ac715c is a live FORK of lane $lane_argument's transcript (pid 1721264, bg, cwd /workspace/projects/openRepoTools) — it is NOT a holder of this lane and must not write the register. Retire it: lane-end $lane_argument --retire 1721264" >&2
+        exit 0
+        ;;
+    defect_taken)
+        # The SAME DEFECT, answered Y: a live fork is never a holder (decision
+        # 8(e)) and does not stand in front of the question, so taking the
+        # lane in THIS window anyway — retiring the fork as a separate act —
+        # is a legitimate answer. The window IS renamed and Claude IS
+        # launched, exactly as an ordinary take, isolating that claude-profile
+        # must key its new stop on the window staying UNRENAMED (the `defect`
+        # case above), never on the DEFECT line existing by itself.
+        echo "DEFECT: d1ac715c is a live FORK of lane $lane_argument's transcript (pid 1721264, bg, cwd /workspace/projects/openRepoTools) — it is NOT a holder of this lane and must not write the register. Retire it: lane-end $lane_argument --retire 1721264" >&2
+        tmux rename-window "$lane_argument" >/dev/null 2>&1 || true
+        "${CLAUDE_BIN:?}" ${rest[@]+"${rest[@]}"}
+        exit 0
         ;;
 esac
 EOF
@@ -745,6 +768,68 @@ grep -Fxq -- "--confirm openRepoProject-1 -- $claude_args --resume session-took2
     || fail "took the lane, Claude exited 2: the launcher exited $launch_status instead of handing back 2"; assertion
 grep -q 'did not take' "$ERR_LOG" \
     && fail "took the lane, Claude exited 2: a taken lane was reported as a decline ($(cat "$ERR_LOG"))"; assertion
+
+# 11e. THE LIVE-FORK DEFECT (opensoft/workBenches#77, Amendment 18 DRAFT
+# clause (h), found 2026-09-14T12:07Z). lane-start still asks even where
+# lanes-edit.sh's live-holder has already named a live FORK of this lane's
+# transcript as a DEFECT — a fork is never a holder (decision 8(e)) — and the
+# operator answers `N` at 0, exactly as 11b. But a decline here must not risk
+# a SECOND live process on that same forked transcript, so this launcher must
+# not treat lane-start's own account of the confirm (0, "handled") as license
+# to fall through: it starts NOTHING of its own in this window, names the
+# retire act the DEFECT line itself named, and stops — never a bare Claude
+# that resumes the transcript lane-start had just called a live fork.
+launch \
+    "FAKE_TMUX_WINDOW=claude" \
+    "FAKE_LANE_WITH_ROW=openRepoProject-1" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=openRepoProject-1\t2026-09-12T17:04Z\tclaude-a:0\n" \
+    "FAKE_LANE_START_DECLINE=defect" \
+    -- run team002 --resume session-defect
+grep -Fxq -- "--confirm openRepoProject-1 -- $claude_args --resume session-defect" "$LANE_START_LOG" \
+    || fail "live-fork defect: lane-start argv was '$(lane_start_argv)'"; assertion
+[[ ! -e "$CLAUDE_LOG" ]] \
+    || fail "live-fork defect: the launcher started a Claude of its own in this window ($(cat "$CLAUDE_LOG" 2>/dev/null)), risking a second live process on the fork"; assertion
+grep -Fq 'DEFECT' "$ERR_LOG" \
+    || fail "live-fork defect: lane-start's own DEFECT line did not reach the operator ($(cat "$ERR_LOG"))"; assertion
+grep -Fq 'Retire it: lane-end openRepoProject-1 --retire 1721264' "$ERR_LOG" \
+    || fail "live-fork defect: the retire act lane-start named was not printed back ($(cat "$ERR_LOG"))"; assertion
+grep -q -- '--resume' "$ERR_LOG" \
+    && fail "live-fork defect: the launcher's own argv or notice named a --resume ($(cat "$ERR_LOG"))"; assertion
+[[ "$launch_status" -ne 0 ]] \
+    || fail "live-fork defect: the launcher exited 0, as if a Claude had safely started here"; assertion
+
+# 11f. THE SAME DEFECT, ANSWERED Y (opensoft/workBenches#77). lane-start still
+# asks after naming a live-fork DEFECT (decision 8(e): a fork is not a
+# holder, so it never stands in front of the question) — and the operator can
+# still take the lane in this window, retiring the fork as a separate act.
+# The window IS renamed here, unlike 11e, so the new defect-stop must NOT
+# fire: it is the window staying UNRENAMED that says the confirm was
+# declined, never the DEFECT line by itself — a lane that WAS taken launches
+# exactly as an ordinary take does.
+WINDOW_FILE="$TEST_ROOT/tmux-window-defect-taken.name"
+printf 'claude\n' > "$WINDOW_FILE"
+launch \
+    "FAKE_TMUX_WINDOW_FILE=$WINDOW_FILE" \
+    "FAKE_LANE_WITH_ROW=openRepoProject-1" \
+    "FAKE_SWAPPED_STATUS=0" \
+    "FAKE_SWAPPED_ROWS=openRepoProject-1\t2026-09-12T17:04Z\tclaude-a:0\n" \
+    "FAKE_LANE_START_DECLINE=defect_taken" \
+    -- run team002 --resume session-defect-taken
+grep -Fxq -- "--confirm openRepoProject-1 -- $claude_args --resume session-defect-taken" "$LANE_START_LOG" \
+    || fail "live-fork defect, taken: lane-start argv was '$(lane_start_argv)'"; assertion
+[[ "$(wc -l < "$CLAUDE_LOG")" -eq 1 ]] \
+    || fail "live-fork defect, taken: Claude ran $(wc -l < "$CLAUDE_LOG") times ($(cat "$CLAUDE_LOG"))"; assertion
+[[ "$launch_status" -eq 0 ]] \
+    || fail "live-fork defect, taken: the launcher exited $launch_status instead of relaying lane-start's 0"; assertion
+# lane-start's own DEFECT line (tee'd straight through) names "Retire it:"
+# once on its own account; the launcher's stop wording ("is not taken in
+# this window") is the tell of a SECOND, unwanted verdict layered on a lane
+# that was, in fact, taken.
+grep -q 'is not taken in this window' "$ERR_LOG" \
+    && fail "live-fork defect, taken: a taken lane was stopped for a defect it took anyway ($(cat "$ERR_LOG"))"; assertion
+[[ "$(grep -c 'Retire it' "$ERR_LOG")" -eq 1 ]] \
+    || fail "live-fork defect, taken: 'Retire it' appeared $(grep -c 'Retire it' "$ERR_LOG") times, not lane-start's one ($(cat "$ERR_LOG"))"; assertion
 
 # ---------------------------------------------------------------------------
 # 12. OUTSIDE TMUX there is no window to take, so the record is not even read.
