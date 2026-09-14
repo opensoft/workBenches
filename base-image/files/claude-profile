@@ -116,6 +116,19 @@ configure_profile_runtime() {
       ln -sfn "$guard_source" "$guard_link"
     fi
     guard_ok=true
+    # ARM GLOBALLY (opensoft/workBenches#76). The guard is silent unless
+    # armed (claude-usage-guard.sh:52-66) and nothing before this line ever
+    # set the flag, so a workstation this launcher had fully wired for the
+    # guard still ran every lane on it unguarded until an operator armed it
+    # BY HAND — measured on Eagle, 2026-09-14: absent, every lane there ran
+    # unguarded. Ensuring the flag here, on every launch that wires the
+    # guard, closes that gap for good. Idempotent and NEVER REMOVED: an
+    # existing file — armed by an operator, or later disarmed by one — is
+    # left exactly as it is; this only ever creates an absent one.
+    mkdir -p "$HOME/.claude" 2>/dev/null || true
+    if [[ ! -e "$HOME/.claude/usage-guard.on" ]]; then
+      : > "$HOME/.claude/usage-guard.on" 2>/dev/null || true
+    fi
   fi
 
   # The SessionStart hook is ensured only where the estate it calls can answer
@@ -859,8 +872,8 @@ profile_metadata() {
 # and one thing about the swap that is not in this file: at the 95% breakpoint
 # the usage guard (`claude-usage-guard.sh`, wired into every profile by
 # configure_profile_runtime above) turns its top five-hour line from ADVICE
-# into a DIRECTIVE — run `/lane-swap` now, with no question asked — and THE
-# SESSION performs the swap.
+# into a DIRECTIVE — run `/handoff` (alias `/lane-swap`) now, with no question
+# asked — and THE SESSION performs the swap.
 #
 # THE GUARD ITSELF PERFORMS NO STEP OF IT, and this comment used to say it did.
 # It is a `UserPromptSubmit` hook: it composes one string and `printf`s it

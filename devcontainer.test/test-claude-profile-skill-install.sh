@@ -53,7 +53,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=17
+EXPECTED_SCENARIOS=18
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -626,6 +626,28 @@ guard_hook="$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].command // empty' \
     || fail "guard: the launcher wrote no UserPromptSubmit entry ('$guard_hook'), so the ratified automatic swap is wired by nobody"; assertion
 cmp -s "$GUARD_SOURCE" "$PROFILE_DIR/usage-guard.sh" \
     || fail "guard: the profile's usage-guard.sh does not resolve to the vendored guard"; assertion
+
+# ---------------------------------------------------------------------------
+# 13c. THE GLOBAL ARM IS IDEMPOTENT AND NEVER REMOVED (opensoft/workBenches#76).
+# configure_profile_runtime places $HOME/.claude/usage-guard.on itself now, so
+# no launcher-configured workstation runs unguarded for want of someone arming
+# it by hand (the guard is silent unless armed — claude-usage-guard.sh:52-66 —
+# and nothing before this ever set the flag). The write must never clobber a
+# flag that is already there, whichever way an operator left it: proven here
+# by giving the file content of its own and re-running configure over it.
+scenario
+GUARD_FLAG="$FAKE_HOME/.claude/usage-guard.on"
+[[ -e "$GUARD_FLAG" ]] \
+    || fail "arm: configure_profile_runtime wired the guard but did not arm $GUARD_FLAG — a launcher-configured workstation still runs unguarded until someone arms it by hand"; assertion
+printf 'operator-armed-marker\n' > "$GUARD_FLAG"
+env HOME="$FAKE_HOME" XDG_CONFIG_HOME="$FAKE_HOME/.config" \
+    CLAUDE_PROFILES_HOME="$BASE" CLAUDE_PROFILES_MANIFEST="$MANIFEST" \
+    CLAUDE_BIN="$GUARD_BIN/claude" WORKBENCHES_SHARED_MCP_FAMILIES=disabled \
+    "$REPO_ROOT/base-image/files/claude-profile" status team002 >/dev/null 2>&1
+[[ -e "$GUARD_FLAG" ]] \
+    || fail "arm: a second configure run REMOVED \$HOME/.claude/usage-guard.on"; assertion
+[[ "$(cat "$GUARD_FLAG")" == "operator-armed-marker" ]] \
+    || fail "arm: a second configure run overwrote an operator's existing flag file instead of leaving it alone (content=[$(cat "$GUARD_FLAG")])"; assertion
 
 # ---------------------------------------------------------------------------
 # 14. The alias file's own text. SPEC §9 rules that the canonical name stays

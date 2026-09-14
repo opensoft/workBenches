@@ -11,7 +11,7 @@
 # line into the session's context" (claude-usage-guard.sh:122-131). Four
 # properties are pinned here, against the real script and real jq/date/awk:
 #
-#   DIRECTIVE   at five_hour>=95 the printed line names /lane-swap and /swap,
+#   DIRECTIVE   at five_hour>=95 the printed line names /handoff and /lane-swap,
 #               says the operator is asked nothing, and ends with the single
 #               restart command (pclaude <profile>) — never the old advice.
 #   UNCHANGED   90-94% and 80-89% keep today's advice/note lines and carry
@@ -29,6 +29,10 @@
 #               (SPEC §0.6 measured exactly this miss on the lane Brett
 #               cited), one warning per (session, metric, threshold), and
 #               silent on any malformed input or stale/missing snapshot.
+#
+# Since lane-collision-protocol Amendment 17, the directive's canonical name
+# is /handoff and /lane-swap is its alias — SPEC §9 above still describes
+# Amendment 11(4)'s own mechanics, which this rename does not change.
 #
 # The Fable weekly bucket's own 95% is left as SPEC §9 leaves it — "Open",
 # today's plain warning, deliberately not an automatic swap, because the
@@ -266,9 +270,10 @@ grep -qF '/lane-swap' <<<"$guard_out" \
 
 # ---------------------------------------------------------------------------
 # 1. THE AUTOMATIC SWAP DIRECTIVE — Amendment 11(4)/SPEC §9's whole point. At
-# five_hour>=95 the top line names /lane-swap (canonical) and /swap (SPEC §9's
-# one-line command-file alias), says outright that the operator is asked
-# nothing, and closes with the single restart command — pclaude, with
+# five_hour>=95 the top line names /handoff (canonical, lane-collision-
+# protocol Amendment 17) and /lane-swap (its alias, SPEC §9's original
+# canonical name), says outright that the operator is asked nothing, and
+# closes with the single restart command — pclaude, with
 # CLAUDE_PROFILE_NAME substituted in, never left as the literal placeholder,
 # because that command is the operator's entire remaining part in the
 # restart. The OLD wording ("STOP at a breakpoint, write or refresh the
@@ -283,10 +288,10 @@ grep -qF '5-HOUR WINDOW AT 96%' <<<"$guard_out" \
     || fail "directive: the percentage did not appear verbatim (out=[$guard_out])"; assertion
 grep -qF "resets ${FIVE_RESET_HHMM}" <<<"$guard_out" \
     || fail "directive: the reset time did not appear as hh:mmZ (out=[$guard_out])"; assertion
+grep -qF '/handoff' <<<"$guard_out" \
+    || fail "directive: /handoff was not named as the canonical act, Amendment 17 (out=[$guard_out])"; assertion
 grep -qF '/lane-swap' <<<"$guard_out" \
-    || fail "directive: /lane-swap was not named (out=[$guard_out])"; assertion
-grep -qF '/swap' <<<"$guard_out" \
-    || fail "directive: /swap was not named as the alias (out=[$guard_out])"; assertion
+    || fail "directive: /lane-swap was not named as the alias (out=[$guard_out])"; assertion
 grep -qF 'do not ask the operator' <<<"$guard_out" \
     || fail "directive: it did not say the operator is asked nothing (out=[$guard_out])"; assertion
 grep -qF 'pclaude team-swaptest' <<<"$guard_out" \
@@ -549,6 +554,8 @@ grep -qF 'AUTOMATIC SWAP' <<<"$guard_out" \
     && fail "nosession: a directive to act was addressed to a session this hook could not identify (out=[$guard_out])"; assertion
 grep -qF '/lane-swap' <<<"$guard_out" \
     && fail "nosession: the payload named no session and /lane-swap was still ordered (out=[$guard_out])"; assertion
+grep -qF '/handoff' <<<"$guard_out" \
+    && fail "nosession: the payload named no session and /handoff was still ordered (out=[$guard_out])"; assertion
 grep -qF 'STOP at a breakpoint' <<<"$guard_out" \
     || fail "nosession: the pre-Amendment-11 advice did not stand in for the directive (out=[$guard_out])"; assertion
 grep -qF 'named no session' <<<"$guard_out" \
@@ -562,7 +569,7 @@ grep -qF 'named no session' <<<"$guard_out" \
 # EVERY profile and armed per DIRECTORY, and clause (g) has lane-start arm the
 # lane's own checkout — so a bare `claude`, a second window, or any other
 # session started in that checkout is armed too. Telling such a session to "run
-# /lane-swap NOW, and do not ask the operator" would have it swap A LANE IT
+# /handoff NOW, and do not ask the operator" would have it swap A LANE IT
 # DOES NOT HOLD, which is the collision this protocol exists to prevent.
 #
 # 18a. A session with no lane, armed, at 96%: TODAY'S ADVICE at the same
@@ -577,6 +584,8 @@ grep -qF 'AUTOMATIC SWAP' <<<"$guard_out" \
     && fail "lane fence: a session holding no lane was told to swap one (out=[$guard_out])"; assertion
 grep -qF '/lane-swap' <<<"$guard_out" \
     && fail "lane fence: /lane-swap was ordered in a session that holds no lane (out=[$guard_out])"; assertion
+grep -qF '/handoff' <<<"$guard_out" \
+    && fail "lane fence: /handoff was ordered in a session that holds no lane (out=[$guard_out])"; assertion
 grep -qF 'STOP at a breakpoint, write or refresh the handoff doc' <<<"$guard_out" \
     || fail "lane fence: today's advice did not stand in for the directive (out=[$guard_out])"; assertion
 grep -qF 'holds no lane' <<<"$guard_out" \
@@ -658,6 +667,8 @@ grep -qF 'AUTOMATIC SWAP' <<<"$guard_out" \
     && fail "empty session_id: a directive to act was addressed to a session this hook could not identify (out=[$guard_out])"; assertion
 grep -qF '/lane-swap' <<<"$guard_out" \
     && fail "empty session_id: the payload named no session and /lane-swap was still ordered (out=[$guard_out])"; assertion
+grep -qF '/handoff' <<<"$guard_out" \
+    && fail "empty session_id: the payload named no session and /handoff was still ordered (out=[$guard_out])"; assertion
 grep -qF 'STOP at a breakpoint' <<<"$guard_out" \
     || fail "empty session_id: the pre-Amendment-11 advice did not stand in for the directive (out=[$guard_out])"; assertion
 grep -qF 'named no session' <<<"$guard_out" \
