@@ -8,7 +8,9 @@ on:
       - devBenches/scripts/test-helper-safety.sh
       - devBenches/scripts/reconcile-devcontainer-container.sh
       - scripts/workbenches-mcp-sync
+      - scripts/wave-container-shell.sh
       - base-image/files/workbenches-mcp-sync
+      - devcontainer.test/test-wave-container-shell.sh
   pull_request:
     paths:
       - .github/workflows/devbenches-helper-safety.yml
@@ -16,7 +18,9 @@ on:
       - devBenches/scripts/test-helper-safety.sh
       - devBenches/scripts/reconcile-devcontainer-container.sh
       - scripts/workbenches-mcp-sync
+      - scripts/wave-container-shell.sh
       - base-image/files/workbenches-mcp-sync
+      - devcontainer.test/test-wave-container-shell.sh
   workflow_dispatch:
 
 permissions:
@@ -38,3 +42,6 @@ jobs:
 
       - name: Run devBenches helper safety suite
         run: bash ./devBenches/scripts/test-helper-safety.sh
+
+      - name: Run Wave container lifecycle suite
+        run: bash ./devcontainer.test/test-wave-container-shell.sh

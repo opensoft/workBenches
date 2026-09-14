@@ -288,6 +288,13 @@ if grep -q '^devcontainer ' <<<"$CASE_DOCKER_LOG"; then
     fail "first creation ignored the explicit Compose file through Dev Containers CLI"
 fi
 
+CASE_CONTAINER_EXISTS=false run_launcher_case dotnet-devcontainer-first-create false missing false false dotNetBench
+grep -q -- "^devcontainer up --workspace-folder .*/devBenches/dotNetBench$" <<<"$CASE_DOCKER_LOG" \
+    || fail "default first creation did not preserve the declared Dev Containers lifecycle"
+if grep -q '^compose ' <<<"$CASE_DOCKER_LOG"; then
+    fail "default first creation replaced the declared Dev Containers lifecycle with direct Compose"
+fi
+
 CASE_CONTAINER_EXISTS=false CASE_NETWORK_EXISTS=false run_launcher_case wave-default-compose-first-create false missing false false py-bench
 grep -q -- "compose -f .*/devBenches/pyBench/.devcontainer/docker-compose.yml -f .*/devBenches/pyBench/.devcontainer/docker-compose.amd-rocm.generated.yml -f .*/py-bench.override.yml up -d py-bench" <<<"$CASE_DOCKER_LOG" \
     || fail "Wave first creation did not use the bench Compose file, generated ROCm overlay, and Wave override"

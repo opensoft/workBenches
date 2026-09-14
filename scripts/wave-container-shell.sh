@@ -215,6 +215,30 @@ if [[ "$check_only" != true ]]; then
     echo "Opening '$block_title' container shell..."
 fi
 
+run_devcontainer_up() {
+    local remove_flag=()
+    local devcontainer_timeout="${WAVE_DEVCONTAINER_UP_TIMEOUT:-25s}"
+    if [[ "${1:-}" == "--remove-existing-container" ]]; then
+        remove_flag=(--remove-existing-container)
+    fi
+
+    run_with_timeout() {
+        if command -v timeout >/dev/null 2>&1; then
+            timeout --foreground "$devcontainer_timeout" "$@"
+        else
+            "$@"
+        fi
+    }
+
+    if command -v devcontainer >/dev/null 2>&1; then
+        run_with_timeout devcontainer up --workspace-folder "$bench_dir" "${remove_flag[@]}"
+    elif command -v npx >/dev/null 2>&1; then
+        run_with_timeout npx -y @devcontainers/cli up --workspace-folder "$bench_dir" "${remove_flag[@]}"
+    else
+        return 127
+    fi
+}
+
 ensure_host_sources() {
     mkdir -p \
         "$home_dir/projects" \
@@ -378,10 +402,37 @@ recreate_with_compose() {
     create_with_compose
 }
 
-recreate_stopped_with_compose() {
-    echo "Recreating stopped container $container with Wave compose mounts..."
-    if docker rm "$container" >/dev/null 2>&1; then
+uses_devcontainer_lifecycle() {
+    [[ "$compose_file_explicit" != true \
+        && "$container" != "py-bench" \
+        && -f "$bench_dir/.devcontainer/devcontainer.json" ]]
+}
+
+create_for_declared_lifecycle() {
+    if uses_devcontainer_lifecycle; then
+        echo "Creating $container with Dev Containers CLI..."
+        if ! run_devcontainer_up; then
+            echo "Dev Containers CLI did not complete; the declared devcontainer lifecycle was not replaced with a partial Compose launch." >&2
+            return 1
+        fi
+    else
         create_with_compose
+    fi
+}
+
+repair_for_declared_lifecycle() {
+    if uses_devcontainer_lifecycle; then
+        echo "Recreating $container with Dev Containers CLI..."
+        run_devcontainer_up --remove-existing-container
+    else
+        recreate_with_compose
+    fi
+}
+
+recreate_stopped_for_declared_lifecycle() {
+    echo "Recreating stopped container $container with its declared lifecycle..."
+    if docker rm "$container" >/dev/null 2>&1; then
+        create_for_declared_lifecycle
         return 0
     fi
 
@@ -451,14 +502,14 @@ container_missing_required_mounts() {
 }
 
 if [[ "$repair_requested" == true && "$container_exists" == true ]]; then
-    recreate_with_compose
+    repair_for_declared_lifecycle
 elif [[ "$container_exists" != true ]]; then
-    # Wave is a persistent terminal launcher, not a Dev Containers client. Its
-    # explicit Compose invocation includes Wave's mounts and declared bench
-    # overlays while keeping Compose project/network ownership deterministic.
-    create_with_compose
+    # pyBench's initialize command and Compose overlays are reproduced by
+    # prepare-bench-start plus create_with_compose. Other devcontainer.json
+    # benches retain their declared lifecycle and additional Compose files.
+    create_for_declared_lifecycle
 elif [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]] && container_missing_required_mounts; then
-    recreate_stopped_with_compose
+    recreate_stopped_for_declared_lifecycle
 fi
 
 if [[ "$(docker container inspect -f '{{.State.Running}}' "$container")" != "true" ]]; then
