@@ -189,6 +189,16 @@ if [[ ! -x "$prepare_script" ]]; then
     exit 1
 fi
 
+if [[ "$container" == "py-bench" && "$container_exists" != true ]] \
+    && ! docker image inspect "$base_image" >/dev/null 2>&1; then
+    pybench_ensure_images="$bench_dir/scripts/ensure-images.sh"
+    if [[ ! -x "$pybench_ensure_images" ]]; then
+        echo "pyBench image bootstrap helper is missing or not executable: $pybench_ensure_images" >&2
+        exit 1
+    fi
+    "$pybench_ensure_images" --user "$container_user"
+fi
+
 prepare_args=(
     --container "$container"
     --base "$base_image"
