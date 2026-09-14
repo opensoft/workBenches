@@ -10,7 +10,7 @@ A layered Docker-based development environment system. Each "bench" is a self-co
 
 This single command:
 1. Configures your shell (zsh + Oh My Zsh + Powerlevel10k)
-2. Installs the estate commands from workBenches' own pin (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status`)
+2. Installs the estate commands from workBenches' own pin (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status`, and the lane tools `lanes-edit.sh`, `lane-start`, `lane-end`, `link-estates` with the shipped `repos.tsv`)
 3. Creates your workspace repository, if you have none, with `openRepoTools wip init` — it asks you nothing
 4. Checks workstation VPN clients and patches 0dcloud TUN MTU for large Git/Docker transfers
 5. Installs or updates Wave Terminal widgets for workBenches
@@ -23,7 +23,7 @@ After setup, open any bench in VS Code → "Reopen in Container" to start develo
 
 ### Re-running setup.sh
 
-Safe to run repeatedly. Installed benches show `✓ up to date` and are skipped. Only new selections or missing images trigger builds. The estate commands (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status`) are checked against workBenches' pin on every run and are re-placed only when a host copy differs from it. The workspace repository step does nothing at all once you have one: it is a file test on `~/.agents/workspace.yaml`, so a second `./setup.sh` neither asks you anything nor touches the network for it.
+Safe to run repeatedly. Installed benches show `✓ up to date` and are skipped. Only new selections or missing images trigger builds. The estate commands (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status` and the five lane tools) are checked against workBenches' pin on every run and are re-placed only when a host copy differs from it. The workspace repository step does nothing at all once you have one: it is a file test on `~/.agents/workspace.yaml`, so a second `./setup.sh` neither asks you anything nor touches the network for it.
 
 ## Docker Image Layers
 
@@ -87,7 +87,7 @@ setup.sh
   └── Summary + log file path
 ```
 
-Your host's `openRepoShape`, `openRepoTools`, `park`, `resume` and `status` commands come from workBenches' own pin (`devBenches/base-image/upstream-pin.yaml`). `setup.sh` places them from the vendored copies in `devBenches/base-image/files/openreposhape/` and `devBenches/base-image/files/openrepotools/`, and re-places them whenever a host copy differs from the pin, in either direction — behind, ahead, or hand-edited. To move them to a new upstream commit, move the pin with `update-upstream.py apply` and re-run `setup.sh`; do not edit the vendored files or the installed commands directly. The step refuses to run over a symlinked, non-regular, or read-only target, and verifies the five placed files against the vendored copies before it reports success. Set `WORKBENCHES_SKIP_ESTATE_COMMANDS=1` to skip this step.
+Your host's `openRepoShape`, `openRepoTools`, `park`, `resume`, `status`, `restart`, `lanes`, `lanes-edit.sh`, `lane-start`, `lane-end`, `link-estates` and `repos.tsv` come from workBenches' own pin (`devBenches/base-image/upstream-pin.yaml`). `setup.sh` places them from the vendored copies in `devBenches/base-image/files/openreposhape/` and `devBenches/base-image/files/openrepotools/`, and re-places them whenever a host copy differs from the pin, in either direction — behind, ahead, or hand-edited. To move them to a new upstream commit, move the pin with `update-upstream.py apply` and re-run `setup.sh`; do not edit the vendored files or the installed commands directly. The step refuses to run over a symlinked, non-regular, or read-only target, and verifies the twelve placed files against the vendored copies before it reports success. Set `WORKBENCHES_SKIP_ESTATE_COMMANDS=1` to skip this step.
 
 ## Your Workspace Repository
 
@@ -105,6 +105,8 @@ lane-start <repo> <n>
 
 The workspace repository (`<org>/<login>-wip`) holds your lane register, your handoffs and your workspace manifests. It holds **no code**: the lane tooling is installed from `opensoft/openRepoTools`.
 
+**`openRepoTools --install` is the single writer of everything it places** (lane-collision-protocol Amendment 9(b), adoption act 4b). It places eleven files into `${OPENREPOTOOLS_BIN_DIR:-~/.local/bin}` at 755 — `openRepoTools`, `park`, `resume`, `status`, `restart`, `lanes`, `lanes-edit.sh`, `lane-start`, `lane-end`, `link-estates` and the shipped alias table `repos.tsv` — plus five artifacts that are not in that directory: the `/lane-swap` and `/restart` skills at `${CLAUDE_PROFILES_HOME:-~/.claude-profiles}/shared/skills/<name>/SKILL.md`, a copy of each at `~/.claude/skills/<name>/SKILL.md` for a bare `claude` outside the launcher, and one merged `SessionStart` entry in `~/.claude/settings.json`. **None of those counts is written by hand:** they are what the pinned shim's own `INSTALLABLES` and `SKILLS` arrays say, and `scripts/setup-estate-commands.sh` derives its pre-flight and verify lists from the same read, so a shim that grows cannot leave this paragraph or that script behind. Nothing else in this repository writes any of those sixteen: `scripts/setup-claude-profiles.sh` used to install the skill and ensure that hook entry, and adoption act 4b deleted both. The one `SessionStart` ensure that is NOT `--install`'s is the launcher's own, in each *profile's* `settings.json` — a different file for a different run. That merge refuses — placing nothing at all, exit 2, bin directory untouched — on one condition only: a `SessionStart` entry that itself runs `session-start` under a different command string, which is a second program running the same hook verb and would fire it twice (R-A9-8, narrowed from `lanes-edit.sh` to the verb by R-A9-14). An unrelated `SessionStart` entry is merged beside it and the install exits 0.
+
 **This step asks you nothing.** The login comes from `gh api user -q .login`, lowercased; the organisation is your home organisation (`opensoft` in this estate). There is no prompt in it in any path — where nothing can be derived it prints the one command that fixes that (`gh auth login`) and continues rather than asking you for what it could not read.
 
 **It does nothing on a host that already has one.** `~/.agents/workspace.yaml` naming a repository and a checkout of it is the whole of the idempotence, and it is a file test, not a network call. Re-run `./setup.sh` as often as you like.
@@ -113,7 +115,7 @@ The workspace repository (`<org>/<login>-wip`) holds your lane register, your ha
 
 **Two things it cannot do for you, and says so rather than attempting.** Where your account cannot create a repository in the organisation, `wip init` prints the exact `gh repo create` and the team-permission `gh api --method PUT` for an administrator; and a newly created workspace repository must be excluded from the organisation's PR-only ruleset before the lane register can be written at all. Both are administrator acts. This step never captures or summarises that output — it relays every byte of it to your terminal. Because that block can still scroll off screen under the headers that follow it, a non-zero exit here also leaves `$AGENT_PROTOCOL_ROOT/.workspace-step-needs-attention` behind; `setup.sh`'s own SETUP COMPLETE summary checks for it and points back at this step's slice of the log, and a later clean run removes it.
 
-**Until `openRepoTools` ships `wip init`**, this step prints what you would run and continues. `wip init` arrives with Amendment 9's adoption act 3, in `opensoft/openRepoTools`; workBenches then moves its pin to that commit with `update-upstream.py apply` and the step starts working on the next `./setup.sh`.
+**`wip init` is live from the pin this repository carries.** It arrived with Amendment 9's adoption act 3 in `opensoft/openRepoTools`, and adoption act 4b moved the pin to it. Against an `openRepoTools` that does not carry the subcommand the step still degrades rather than failing: it prints what you would run and continues, and capability is read from `openRepoTools --help`, never from an exit code.
 
 | Variable | Effect |
 |----------|--------|

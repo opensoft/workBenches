@@ -199,146 +199,40 @@ fi
 default_statusline_relative="$(realpath -m --relative-to="$default_claude_dir" "$base/shared/statusline-command.sh")"
 ln -sfn "$default_statusline_relative" "$default_statusline"
 
-# Skills vendored by this repository, installed into the SHARED skills
-# directory every profile's `skills` symlink points at (created above, linked
-# per profile below). claude-profile execs Claude with
-# CLAUDE_CONFIG_DIR=<profile dir>, so ~/.claude/skills is NOT read under the
-# launcher and the shared directory is the one write that reaches all of them
-# (lane-collision-protocol Amendment 8(a), A8 Addendum 2 R-A8-5(a)). The
-# ~/.claude copy stays for a bare `claude` run outside the launcher.
+# lane-collision-protocol Amendment 9 adoption act 4b DELETES three writers
+# from here, and nothing replaces them in this file:
 #
-# These are the same paths Amendment 9 later assigns to `openRepoTools
-# --install`. Ruled on opensoft/workBenches#68 (F5): this loop STANDS for
-# Amendment 8 and was their sole writer until A9's adoption act 3 landed.
+#   * the `for skill in lane-swap` loop that installed SKILL.md into
+#     "$base/shared/skills/lane-swap/" and into "$default_claude_dir/skills/
+#     lane-swap/", together with the vendored copy it installed from
+#     (base-image/files/claude/skills/lane-swap/SKILL.md);
+#   * the `for command in swap` loop that installed swap.md into
+#     "$base/shared/commands/" and into "$default_claude_dir/commands/",
+#     together with the vendored copy it installed from
+#     (base-image/files/claude/commands/swap.md). That loop was TRANSITIONAL
+#     by its own comment, conditional on `openRepoTools --install` placing
+#     `commands/swap.md` first: A11 Addendum 4 ruling 9 (ratified by Brett
+#     Heap 2026-09-13T21:08:26Z, brettheap/new-workstation#20
+#     issuecomment-5656154524) put that file on `--install`'s list, built in
+#     `opensoft/openRepoTools#26` round 2, and the pin
+#     (`devBenches/base-image/upstream-pin.yaml`, commit `8a36eb3`) landed it
+#     here as `opensoft/workBenches#78` (merged `d17bd28`) — so the one
+#     condition this loop's own comment set for its own deletion is met;
+#   * the SessionStart ensure that appended Amendment 8(e)'s entry to
+#     "$default_claude_dir/settings.json".
 #
-# ACT 3 HAS LANDED — `opensoft/openRepoTools#26`, merged as `63a74af` — so the
-# two-writer interval Amendment 9 describes is not a forecast any more, it is
-# the state of every host that has re-run `--install`. TWO CORRECTIONS GO WITH
-# that, and both are measured rather than argued:
+# `openRepoTools --install` owns all four of those paths (two skills, the one
+# command, and the one settings entry) from Amendment 9's adoption act 3
+# (clause (b), on A8 Addendum 2's ratified R-A8-5, and A11 Addendum 4 ruling 9
+# for the command), so keeping any of them here would leave two writers of one
+# path — the defect act 4b exists to close. The shared skills/agents/commands/
+# rules directories are still created above, and the statusLine write below is
+# untouched and still this script's.
 #
-#   * THE DELETER IS ACT 4b, NOT ACT 4. Amendment 9's own text rules it —
-#     "Adoption act 4b deletes that loop", and it belongs in 4b "because the
-#     deletion is only safe once `--install` is already placing them, which is
-#     act 3". This comment said act 4, which is the defect A11 Addendum 4
-#     ruling 9 corrected in the COMMANDS loop below, one loop along.
-#   * THE COLLISION IS CONTENT, NOT MODE. Amendment 9 argued the clash from the
-#     "755 `--install` stamps on everything it places"; the landed code places a
-#     SKILL at 644 and says so where it does it, so the modes agree. What does
-#     not agree is the bytes: this loop installs workBenches' vendored copy and
-#     `--install` installs openRepoTools', and they are not the same file.
-#     Measured on this workstation 2026-09-14, after `--install` ran:
-#     `~/.claude/skills/lane-swap/SKILL.md` and
-#     `~/.claude-profiles/shared/skills/lane-swap/SKILL.md` both hold
-#     openRepoTools' copy, mode 644 — so the last writer to run wins, until 4b
-#     leaves exactly one.
-#
-# Until then the copy is idempotent BY CONTENT — a
-# destination already holding the vendored bytes is left alone, mtime and all,
-# so a later `--install` write of the same bytes is not clobbered by the next
-# setup run.
-for skill in lane-swap; do
-  skill_source="$repo_dir/base-image/files/claude/skills/$skill/SKILL.md"
-  [[ -f "$skill_source" ]] || continue
-  mkdir -p "$base/shared/skills/$skill" "$default_claude_dir/skills/$skill"
-  for skill_target in "$base/shared/skills/$skill/SKILL.md" \
-                      "$default_claude_dir/skills/$skill/SKILL.md"; do
-    if ! cmp -s "$skill_source" "$skill_target"; then
-      install -m 0644 "$skill_source" "$skill_target"
-    fi
-  done
-done
-
-# Commands vendored by this repository, on exactly the contract of the skills
-# loop above and for exactly its reason: claude-profile execs Claude with
-# CLAUDE_CONFIG_DIR=<profile dir>, so ~/.claude/commands is NOT read under the
-# launcher, and the SHARED commands directory every profile's `commands`
-# symlink points at (created above, linked per profile below) is the one write
-# that reaches all of them. The ~/.claude copy stays for a bare `claude` run
-# outside the launcher.
-#
-# `/swap` is an ALIAS of `/lane-swap` (lane-collision-protocol Amendment 11,
-# SPEC §9): the canonical name stays `lane-swap` and its skill is NOT
-# duplicated here, so the installed file is a few lines that invoke the skill.
-# Two copies of one procedure that must stay byte-equal is the rejected
-# alternative — the same reason Amendment 9(b) gives about two writers of one
-# file — which is why this loop installs a command and not a second skill.
-#
-# THIS LOOP'S HANDOVER IS NOT THE SKILLS LOOP'S, and saying it was is the
-# correction here. An earlier revision read "A9's act 4 deletes it" unqualified,
-# copied from the loop above; that was measured wrong. `openRepoTools --install`
-# placed SKILLS and the SessionStart hook and NO COMMAND FILE, so deleting this
-# loop on act 4's word alone would have left `/swap` with no writer at all on
-# every host.
-#
-# What settles it is **A11 Addendum 4 ruling 9**, RATIFIED by Brett Heap
-# 2026-09-13T21:08:26Z, verbatim "a11 addendum 4 yes"
-# (brettheap/new-workstation#20 issuecomment-5656154524, rulings at
-# issuecomment-5656076583): `openRepoTools --install` TAKES `commands/swap.md`,
-# built in `opensoft/openRepoTools#26` round 2, "because workBenches#74 removes
-# the launcher's copy and `/swap` would otherwise be installed by nobody". So
-# this loop is TRANSITIONAL and its deletion is Amendment 9 act 4b's
-# (`opensoft/workBenches#74`), CONDITIONAL on `--install` placing the command
-# file first — not on act 3, and not on act 4 as this comment used to say.
-#
-# THAT CONDITION IS NOW MET, which is a fact about the estate and not a
-# permission for this PR to act on it. `#26` merged as `63a74af`; its `--help`
-# names "ONE COMMAND FILE at the matching pair,
-# `~/.claude-profiles/shared/commands/swap.md` and `~/.claude/commands/swap.md`";
-# and measured on this workstation 2026-09-14 both files are there at 644 after
-# `--install` ran. So 4b may now delete this loop without leaving `/swap` with
-# no writer — 4b's act, in 4b's PR, and nothing here does it early.
-#
-# Until then the copy is idempotent BY CONTENT — a destination
-# already holding the vendored bytes is left alone, mtime and all, so a later
-# `openRepoTools --install` write of the same bytes is not clobbered by the next
-# setup run. A vendored source that is not there is skipped rather than failing:
-# this file also runs on checkouts that predate the command.
-for command in swap; do
-  command_source="$repo_dir/base-image/files/claude/commands/$command.md"
-  [[ -f "$command_source" ]] || continue
-  mkdir -p "$base/shared/commands" "$default_claude_dir/commands"
-  for command_target in "$base/shared/commands/$command.md" \
-                        "$default_claude_dir/commands/$command.md"; do
-    if ! cmp -s "$command_source" "$command_target"; then
-      install -m 0644 "$command_source" "$command_target"
-    fi
-  done
-done
-
-# lane-collision-protocol Amendment 8(e) / RV-W2 (workBenches#63
-# re-verification; brettheap/new-workstation#16 adoption act 6 OWNS this
-# entry for the bare-`claude` path). `claude-profile` ensures the canonical
-# SessionStart entry only in the profile it execs into, so until now a bare
-# `claude` run — the one case this file's `$default_claude_dir` exists for —
-# got the skill (the loop above) and no hook. These three values MUST stay
-# byte-identical to `base-image/files/claude-profile`'s
-# `lane_session_start_command`/`_matcher`/`_timeout`: the command string is
-# the idempotence key for BOTH writers, of two different settings.json files.
-default_session_start_script="$HOME/projects/xFactory/lanes-edit.sh"
-default_session_start_command='~/projects/xFactory/lanes-edit.sh session-start || true'
-default_session_start_matcher='startup|resume|clear|fork'
-default_session_start_timeout=5
-default_session_start_ok=false
-if [[ -f "$default_session_start_script" ]] \
-  && grep -qF 'session-start' "$default_session_start_script" 2>/dev/null; then
-  default_session_start_ok=true
-fi
-# Ensuring it is an append, matched by the EXACT command string — the same
-# shape as claude-profile's own ensure: an entry already carrying that command
-# is left exactly as it is, whatever else sits beside it, and nothing else
-# under .hooks is touched.
-default_session_start_jq='
-      .hooks = (.hooks // {})
-      | .hooks.SessionStart = (
-          (.hooks.SessionStart // []) as $entries
-          | if ([$entries[]? | (.hooks // [])[]? | .command] | index($session_start))
-            then $entries
-            else $entries + [{
-              matcher: $session_start_matcher,
-              hooks: [{type: "command", command: $session_start, timeout: $session_start_timeout}]
-            }]
-            end
-        )'
+# WHAT IS NOT DELETED: the launcher's own SessionStart ensure in
+# base-image/files/claude-profile. R-A8-5(b) is ratified and `--install` never
+# writes a PROFILE's settings.json at all — one path, one writer, in both
+# halves.
 
 default_settings="$default_claude_dir/settings.json"
 if [[ -e "$default_settings" ]] && ! jq -e 'type == "object"' "$default_settings" >/dev/null 2>&1; then
@@ -348,22 +242,12 @@ fi
 default_settings_tmp="$(mktemp "$default_claude_dir/.settings.XXXXXX.tmp")"
 default_statusline_command="bash $default_statusline"
 if [[ -f "$default_settings" ]]; then
-  jq --arg command "$default_statusline_command" \
-    --arg session_start "$default_session_start_command" \
-    --arg session_start_matcher "$default_session_start_matcher" \
-    --argjson session_start_timeout "$default_session_start_timeout" \
-    --argjson session_start_ok "$default_session_start_ok" '
+  jq --arg command "$default_statusline_command" '
     .statusLine = {type: "command", command: $command, refreshInterval: 10}
-    | (if $session_start_ok then'"$default_session_start_jq"' else . end)
   ' "$default_settings" > "$default_settings_tmp"
 else
-  jq -n --arg command "$default_statusline_command" \
-    --arg session_start "$default_session_start_command" \
-    --arg session_start_matcher "$default_session_start_matcher" \
-    --argjson session_start_timeout "$default_session_start_timeout" \
-    --argjson session_start_ok "$default_session_start_ok" '
-    {statusLine: {type: "command", command: $command, refreshInterval: 10}}
-    | (if $session_start_ok then'"$default_session_start_jq"' else . end)' \
+  jq -n --arg command "$default_statusline_command" '
+    {statusLine: {type: "command", command: $command, refreshInterval: 10}}' \
     > "$default_settings_tmp"
 fi
 chmod 600 "$default_settings_tmp"

@@ -2289,6 +2289,15 @@ case "$action" in
       status) CLAUDE_CONFIG_DIR="$config_dir" "$claude_bin" auth status "${@---text}" ;;
       run)
         if [[ -n "${lane:-}" ]]; then
+          # THE FIX IS THE INSTALL ACT, NOT A PATH INTO SOMEBODY'S WIP.
+          # lane-collision-protocol Amendment 9(b) moves the lane tooling to
+          # opensoft/openRepoTools and makes `openRepoTools --install` their
+          # placer; Amendment 9's adoption act 5 then STRIPS
+          # `scripts/link-estates` out of the workspace repository altogether
+          # (opensoft/brett-wip#6 @1483d55). A refusal that told a person to
+          # clone that repository and run that script would name a path that
+          # stops existing -- and it named one operator's estate at everybody
+          # else's terminal besides.
           command -v lane-start >/dev/null 2>&1 || {
             # One situation, one line, here too: this is the other place the
             # install act is printed, and an operator who meets both should
