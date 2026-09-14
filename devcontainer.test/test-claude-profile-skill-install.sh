@@ -762,6 +762,23 @@ grep -Fq 'does not fail safely' "$SKILL_SOURCE" \
     && fail "R-A11-27: the skill still says (c) does not fail safely in the present tense; at 63a74af the helper refuses it too"; assertion
 grep -Fq 'AND THIS FENCE STAYS' "$SKILL_SOURCE" \
     || fail "R-A11-27: nothing says the skill's own refusal survives the helper's — a host whose helper predates 63a74af is the population it is for"; assertion
+# RULING 10's LIST IS A MEASUREMENT NOW, NOT A FORECAST, and the one item the
+# successor has NOT absorbed is named in it. `#26` merged as `63a74af`; read at
+# that head, item 5's act travels with the `CF2-W1` premise and WITHOUT the
+# Amendment 12 qualification — `Amendment 12` and `tmux send-keys` appear zero
+# times in that checkout — which is the half ruling 10 warned about by name. It
+# is openRepoTools' to close and cannot be closed from a file `#74` deletes, so
+# what this file owes is the RECORD, and these three keep it: the head, the
+# gap, and the item-5 sentence that says which half is missing. A later editor
+# tidying the header away would otherwise take the only in-tree note that the
+# handover is incomplete.
+handover_block="$(sed -n '/SO THE SIX BEHAVIOURS BELOW ARE THE HANDOVER/,/-->/p' "$SKILL_SOURCE")"
+grep -Fq 'merged as `63a74af`' <<<"$handover_block" \
+    || fail "ruling 10: the handover still names its successor as an open PR and not as the head it MERGED at — a bare sha somewhere in the block is not that claim, which is how the first version of this assertion passed a mutation that unlanded it"; assertion
+grep -Fq 'ITEM 5 IS THE GAP' <<<"$handover_block" \
+    || fail "ruling 10: the handover does not record which of the six the landed copy has yet to absorb"; assertion
+grep -Fq 'is the only act there is' <<<"$handover_block" \
+    || fail "ruling 10: the gap is recorded without the sentence the successor still carries, so a reader cannot check it"; assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"

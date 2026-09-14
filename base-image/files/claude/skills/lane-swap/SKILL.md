@@ -52,7 +52,38 @@ description: "/lane-swap (alias /swap) prepares this lane for a usage reset or p
        6. `/swap` in the description above.
 
      A copy of #26's that lacks any of the six is a REGRESSION on the day #74
-     lands, which is why the list is contract and not a courtesy. -->
+     lands, which is why the list is contract and not a courtesy.
+
+     AND #26 HAS LANDED, SO THE LIST IS NOW A MEASUREMENT AND NOT A FORECAST.
+     It merged as `63a74af` on `opensoft/openRepoTools` main, and that copy is
+     the one `--install` places: measured on this workstation,
+     `~/.claude/skills/lane-swap/SKILL.md` and
+     `~/.claude-profiles/shared/skills/lane-swap/SKILL.md` are byte-identical to
+     it and not to this file. Read at that head, FIVE of the six are absorbed
+     and ONE IS HALF ABSORBED:
+
+       * item 1 — the `^@[0-9]+$` id check is there, verbatim, on the tmux read
+         and on the env fallback. ITS TWIN IS THERE IN SUBSTANCE AND LOOSER IN
+         SHAPE: the `<session>:<index>` is checked with `case ... in *:[0-9]*)`
+         rather than `^.+:[0-9]+$`, which refuses the failure the rule exists
+         for — a tmux too old to know `#S:#I` prints the format back, and the
+         format has no digit after its colon — and admits a ref with trailing
+         junk, which the regex does not. Named here rather than called
+         equivalent, because the next writer of that file is the one who can
+         decide whether the difference matters;
+       * items 2, 3, 4 and 6 — the no-worktree `dir` rungs with `git rev-parse
+         --show-toplevel` and `$PWD` gone, the refusal list carrying `; ` for
+         `dir` and deliberately not for `window`, the missing `dir` SAID rather
+         than guessed, and `/swap` in its front matter — all absorbed;
+       * ITEM 5 IS THE GAP, and it is the half ruling 10 warned about by name.
+         The act travels with the CF2-W1 premise corrected — act 0 at `3719d97`,
+         the third case included — and WITHOUT the Amendment 12 qualification:
+         `Amendment 12` and `tmux send-keys` appear ZERO times in that whole
+         checkout, and its own comment still reads, at `63a74af`, that the operator's `/rename <lane>` is the only act there is.
+         That is the sentence A11's reconciliation section supersedes, in the
+         one file every host will have after #74.
+         It is `openRepoTools`' to close, not this file's: this copy is deleted
+         by #74 and cannot fix the copy that survives it. -->
 
 # `/lane-swap` (alias `/swap`) — pause this lane for a reset or profile switch
 

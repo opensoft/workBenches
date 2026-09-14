@@ -2479,8 +2479,15 @@ for rename_file in "$DOCS_MD" "$SKILL_MD" "$LAUNCHER"; do
         || fail "A12 reconciliation: $(basename "$rename_file") prints the /rename act and never names Amendment 12's guard, which types it"; assertion
     grep -Fq 'is the only act that fixes it' "$rename_file" \
         && fail "A12 reconciliation: $(basename "$rename_file") still calls /rename the ONLY act; A12 governs it and this text is the fallback"; assertion
-    grep -Fq 'the only act there is' "$rename_file" \
-        && fail "A12 reconciliation: $(basename "$rename_file") still says /rename is the only act there is"; assertion
+    # QUOTING ANOTHER FILE'S SENTENCE IS NOT ASSERTING IT, and the head is what
+    # tells the two apart: a line carrying `63a74af` is reporting what the
+    # LANDED successor still says — ruling 10's item-5 gap, recorded in the
+    # file being handed over — while the same words with no head on the line
+    # are this estate's own claim, which A12 superseded. Counted rather than
+    # matched, the way this suite counts every other corrected sentence.
+    rename_claims="$(grep -F 'the only act there is' "$rename_file" | grep -cv '63a74af' || true)"
+    [[ "$rename_claims" -eq 0 ]] \
+        && : || fail "A12 reconciliation: $(basename "$rename_file") still says /rename is the only act there is, on $rename_claims line(s) that name no head"; assertion
 done
 # ...and the no-API half is NOT dropped with it: it is the half A12's own note
 # calls "still exactly true", and a document that lost it would read as if an
