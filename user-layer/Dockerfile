@@ -72,6 +72,10 @@ RUN set -eux && \
 # effective passwd identity. Fail the build instead of publishing labels for a
 # user whose inherited UID/GID does not match the requested host identity.
 RUN set -eux && \
+    if [ "$USERNAME" = root ] || [ "$USER_UID" = 0 ] || [ "$USER_GID" = 0 ]; then \
+        echo "Layer 3 refuses to replace the inherited root identity" >&2; \
+        exit 1; \
+    fi && \
     if getent passwd "$USERNAME" >/dev/null; then \
         userdel --force --remove "$USERNAME"; \
     fi && \

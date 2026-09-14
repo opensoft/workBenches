@@ -16,6 +16,7 @@ on:
       - scripts/lib/image-names.sh
       - scripts/lib/layer3-recipe.sh
       - scripts/update-and-rebuild.sh
+      - user-layer/build.sh
       - user-layer/Dockerfile
   pull_request:
     paths:
@@ -32,6 +33,7 @@ on:
       - scripts/lib/image-names.sh
       - scripts/lib/layer3-recipe.sh
       - scripts/update-and-rebuild.sh
+      - user-layer/build.sh
       - user-layer/Dockerfile
   workflow_dispatch:
 

@@ -82,9 +82,10 @@ declare -A RUNNING_CONTAINER_BY_IMAGE=()
 declare -A EXPECTED_IMAGE_IDS=()
 IMAGE_PROBE_FAILURES=0
 LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256 "$REPO_DIR/user-layer")"
+DOCKER_SOCKET_PATH="${WORKBENCHES_DOCKER_SOCKET_PATH:-/var/run/docker.sock}"
 DOCKER_SOCKET_GID=""
-if [ -S /var/run/docker.sock ]; then
-    DOCKER_SOCKET_GID="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || true)"
+if [ -S "$DOCKER_SOCKET_PATH" ]; then
+    DOCKER_SOCKET_GID="$(stat -c '%g' "$DOCKER_SOCKET_PATH" 2>/dev/null || true)"
 fi
 
 for image_id_record in "${TARGET_IMAGE_ID_RECORDS[@]}"; do
@@ -433,8 +434,10 @@ layer3_identity_is_current() {
 
     [[ "$image_username" == "$USERNAME" \
         && "$image_uid" == "$USER_UID" \
-        && "$image_gid" == "$USER_GID" \
-        && "$image_docker_gid" == "$DOCKER_SOCKET_GID" ]] || return 1
+        && "$image_gid" == "$USER_GID" ]] || return 1
+    if [[ -n "$DOCKER_SOCKET_GID" && "$image_docker_gid" != "$DOCKER_SOCKET_GID" ]]; then
+        return 1
+    fi
 
     run_with_optional_timeout 90 docker image save "$image" 2>/dev/null \
         | python3 "$SCRIPT_DIR/lib/check-image-identity.py" \

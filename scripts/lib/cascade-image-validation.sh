@@ -4,6 +4,35 @@ image_id_if_present() {
     docker image inspect --format '{{.Id}}' "$1" 2>/dev/null || true
 }
 
+build_uses_default_compose_file() {
+    local build_script="$1"
+    local command
+    local trimmed
+    local compose_command_pattern='(^|[[:space:];&|()])docker[[:space:]]+compose([[:space:]]|$)'
+    local compose_file_pattern='(^|[[:space:]])(-f|--file)(=|[[:space:]])'
+
+    while IFS= read -r command; do
+        trimmed="${command#"${command%%[![:space:]]*}"}"
+        [[ "$trimmed" == \#* ]] && continue
+        if [[ "$command" =~ $compose_command_pattern \
+            && ! "$command" =~ $compose_file_pattern ]]; then
+            return 0
+        fi
+    done < <(awk '
+        {
+            command = command $0
+            if (command ~ /\\$/) {
+                sub(/\\$/, " ", command)
+                next
+            }
+            print command
+            command = ""
+        }
+        END { if (command != "") print command }
+    ' "$build_script")
+    return 1
+}
+
 record_rebuilt_cascade_image() {
     local image="$1"
     local bench_name="$2"
@@ -22,7 +51,20 @@ record_rebuilt_cascade_image() {
         local build_dir
         local compose_relative_to_bench
         local compose_relative_to_build
+        local compose_dir
+        local default_compose_name
         build_dir="$(dirname "$build_script")"
+        if build_uses_default_compose_file "$build_script"; then
+            for compose_dir in "$build_dir" "$bench_dir"; do
+                for default_compose_name in \
+                    compose.yaml compose.yml docker-compose.yaml docker-compose.yml; do
+                    if [[ -f "$compose_dir/$default_compose_name" ]]; then
+                        metadata_files+=("$compose_dir/$default_compose_name")
+                        break 2
+                    fi
+                done
+            done
+        fi
         while IFS= read -r -d '' compose_file; do
             compose_relative_to_bench="$(realpath --relative-to="$bench_dir" "$compose_file")"
             compose_relative_to_build="$(realpath --relative-to="$build_dir" "$compose_file")"

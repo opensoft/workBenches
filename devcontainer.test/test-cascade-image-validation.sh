@@ -36,6 +36,17 @@ export FAKE_DOCKER_LAYER3_DOCKER_SOCKET_GID="$(stat -c '%g' /var/run/docker.sock
 test "${WORKBENCHES_REQUIRED_AI_CLIS[0]}" = claude
 test "${WORKBENCHES_REQUIRED_AI_CLIS[-1]}" = cursor-agent
 grep -Fq 'required_clis=("${WORKBENCHES_REQUIRED_AI_CLIS[@]}")' "$installer"
+test "$(grep -Fc -- '- user-layer/build.sh' "$repo_root/.github/workflows/cascade-image-validation.yml")" -eq 2
+
+: > "$log"
+if PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+    "$repo_root/user-layer/build.sh" --base test-bench:latest \
+        --user root --uid 0 --gid 0 > "$temp_dir/root-layer3.out" 2>&1; then
+    echo "expected Layer 3 to reject the inherited root identity" >&2
+    exit 1
+fi
+grep -Fq 'requires a non-root username and UID/GID' "$temp_dir/root-layer3.out"
+test ! -s "$log"
 
 checker_help="$("$checker" --help)"
 grep -Fq -- '--images IMAGE,...' <<< "$checker_help"
@@ -65,6 +76,14 @@ if grep -Fq 'layer3-identity-probe' "$log"; then
     exit 1
 fi
 grep -Fq 'image save sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' "$log"
+
+PATH="$fake_bin:$PATH" \
+FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_LAYER3_DOCKER_SOCKET_GID=1234 \
+WORKBENCHES_DOCKER_SOCKET_PATH="$temp_dir/missing-docker.sock" \
+"$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
+    > "$temp_dir/no-socket.out"
+grep -Fq 'Layer 3 test-bench:brett is current' "$temp_dir/no-socket.out"
 
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
@@ -177,6 +196,19 @@ test "${CASCADE_IMAGES[*]}" = "sim-bench-gene_bench:latest sim-bench-ui:latest"
 test "${#CASCADE_IMAGE_RECORDS[@]}" -eq 2
 if grep -Fq 'sim-bench-dev:latest' "$log"; then
     echo "cascade capture inspected an unrelated Compose output" >&2
+    exit 1
+fi
+
+CASCADE_IMAGES=()
+CASCADE_IMAGE_RECORDS=()
+printf '%s\n' 'docker compose build' > "$compose_metadata"
+PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
+    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"
+test "${CASCADE_IMAGES[*]}" = "sim-bench-gene_bench:latest sim-bench-ui:latest"
+test "${#CASCADE_IMAGE_RECORDS[@]}" -eq 2
+if grep -Fq 'sim-bench-dev:latest' "$log"; then
+    echo "default Compose discovery inspected an unrelated Compose output" >&2
     exit 1
 fi
 

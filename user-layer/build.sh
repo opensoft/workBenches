@@ -64,6 +64,14 @@ if [ -z "$BASE_IMAGE" ]; then
     exit 1
 fi
 
+# Layer 3 is a host-user personalization layer. Building it as UID/GID 0 would
+# either delete the inherited root account or move its state away from /root.
+# Keep root images at Layer 2 and require a non-root identity here.
+if [ "$USERNAME" = "root" ] || [ "$USER_UID" = "0" ] || [ "$USER_GID" = "0" ]; then
+    echo "❌ Error: Layer 3 requires a non-root username and UID/GID"
+    exit 1
+fi
+
 if [ -z "$LAYER3_RECIPE_SHA256" ]; then
     LAYER3_RECIPE_SHA256="$(
         cd "$SCRIPT_DIR"
