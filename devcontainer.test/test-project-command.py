@@ -87,6 +87,11 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(installer.main([*self.args, "--remove"]), 3)
         self.assertEqual(target.read_text(), "unowned replacement")
 
+    def test_remove_missing_directory_does_not_create_it(self):
+        missing = self.base / "missing-bin"
+        self.assertEqual(installer.main([*self.args, "--bin-dir", str(missing), "--remove"]), 3)
+        self.assertFalse(missing.exists())
+
     def test_invalid_owner_commit_is_never_trusted(self):
         self.assertEqual(self.install(), 0)
         owner = self.bin / ".workbenches-project.json"
@@ -313,7 +318,17 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout), ["new", "FromPath"])
 
     def test_exec_owned_runs_verified_snapshot_if_path_is_replaced(self):
+        self.source.write_text(
+            '#!/usr/bin/env python3\n'
+            'import hashlib, json, sys\n'
+            'from pathlib import Path\n'
+            'print(json.dumps({"args": sys.argv[1:], "digest": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}))\n'
+        )
+        pin = json.loads(self.pin.read_text())
+        pin["sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.pin.write_text(json.dumps(pin))
         self.assertEqual(self.install(), 0)
+        expected_digest = hashlib.sha256(self.source.read_bytes()).hexdigest()
         target = self.bin / "project"
         malicious = self.base / "malicious-ran"
         real_owned_target_data = installer.owned_target_data
@@ -328,8 +343,25 @@ class InstallTests(unittest.TestCase):
         with patch.object(installer, "owned_target_data", side_effect=replace_after_verified_read):
             with redirect_stdout(output):
                 self.assertEqual(installer.main([*self.args, "--exec-owned", "--", "safe"]), 0)
-        self.assertEqual(json.loads(output.getvalue()), ["safe"])
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["args"], ["safe"])
+        self.assertEqual(result["digest"], expected_digest)
         self.assertFalse(malicious.exists())
+
+    def test_setup_menu_helper_honors_project_install_skip(self):
+        home = self.base / "menu-skip-home"
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "WORKBENCHES_SKIP_PROJECT_COMMAND": "1",
+        }
+        result = subprocess.run(
+            ["bash", "-c", 'source "$1"; install_onp_command', "_",
+             str(ROOT / "scripts/setup-workbenches.sh")],
+            env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((home / ".local/bin/onp").exists())
+        self.assertIn("onp installation skipped", result.stdout)
 
     def test_owned_resolution_waits_for_project_lock(self):
         self.assertEqual(self.install(), 0)

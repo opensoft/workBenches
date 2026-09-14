@@ -128,14 +128,21 @@ def execute_project(data, target, command_args):
     original_path0 = sys.path[0]
     sys.argv = [str(target), *command_args]
     sys.path[0] = str(target.parent)
-    namespace = {
-        "__name__": "__main__",
-        "__file__": str(target),
-        "__package__": None,
-        "__cached__": None,
-    }
     try:
-        exec(code, namespace)
+        # The verified target path can be replaced by another process after it
+        # is read. Keep __file__ on a private copy so code such as --version
+        # cannot reopen and report bytes that were never ownership-checked.
+        with tempfile.TemporaryDirectory(prefix="workbenches-project-exec-") as snapshot_dir:
+            snapshot = Path(snapshot_dir) / "project"
+            snapshot.write_bytes(data)
+            snapshot.chmod(0o400)
+            namespace = {
+                "__name__": "__main__",
+                "__file__": str(snapshot),
+                "__package__": None,
+                "__cached__": None,
+            }
+            exec(code, namespace)
     finally:
         sys.argv = original_argv
         sys.path[0] = original_path0
@@ -206,6 +213,9 @@ def main(argv=None):
         owner_marker = directory / ".workbenches-project.json"
         lock_path = directory / LOCK_NAME
         read_operation = args.resolve_owned or args.exec_owned
+        if args.remove and not directory.exists():
+            print(f"project: no install directory at {directory}", file=sys.stderr)
+            return 3
         if read_operation and not lock_path.is_file():
             print(f"project: refused unlocked command at {target}", file=sys.stderr)
             return 3

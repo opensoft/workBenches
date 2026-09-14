@@ -263,6 +263,10 @@ clone_repo() {
 
 # Install onp command
 install_onp_command() {
+    if [[ "${WORKBENCHES_SKIP_PROJECT_COMMAND:-}" == "1" ]]; then
+        echo -e "${YELLOW}Project command and onp installation skipped by WORKBENCHES_SKIP_PROJECT_COMMAND=1${NC}"
+        return 0
+    fi
     python3 "$SCRIPT_DIR/setup-project-command.py" || return $?
     echo -e "${BLUE}Installing onp (Opensoft New Project) command...${NC}"
     
@@ -1152,5 +1156,7 @@ main() {
     echo "  source ~/.zshrc  # or ~/.bashrc"
 }
 
-# Run main function
-main "$@"
+# Run main function unless this file is sourced for a focused helper invocation.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
