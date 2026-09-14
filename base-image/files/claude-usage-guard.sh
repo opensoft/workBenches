@@ -141,9 +141,10 @@ hhmm() { [ -n "${1:-}" ] && [ "$1" != "null" ] && date -u -d "@$1" +%H:%MZ 2>/de
 # the one thing a hook can do well — put the right instruction in front of the
 # session at the right instant — and the session does the act.
 #
-# The directive names `/lane-swap` by its canonical name and `/swap` as its
-# alias, because the session may have either installed, and it names the one
-# fact the skill cannot derive from inside a hook: that nobody is being asked.
+# The directive names `/handoff` by its canonical name (lane-collision-protocol
+# Amendment 17) and `/lane-swap` as its alias, because the session may have
+# either installed, and it names the one fact the skill cannot derive from
+# inside a hook: that nobody is being asked.
 #
 # AND IT IS ADDRESSED TO A SESSION THAT HOLDS A LANE — TWO FENCES, and the
 # second is SPEC §9's own (A11 Addendum 1 `R-A11-6`, on the review's F14).
@@ -198,7 +199,7 @@ auto_swap_directive() {
     printf '%s' "$advice (The automatic swap of Amendment 11(4) is not directed here and names nothing: this session holds no lane, and swapping one it does not hold is the collision the protocol exists to prevent.)"
     return 0
   fi
-  printf '%s' "⚠ 5-HOUR WINDOW AT ${pct}% (resets ${reset}). AUTOMATIC SWAP (lane-collision-protocol Amendment 11(4)) for lane ${WORKBENCHES_CLAUDE_LANE}: run /lane-swap (alias /swap) NOW, every step in order, and do not ask the operator whether to — the 95% breakpoint is the decision. Bound step 3's wait on the writers: name any writer still holding unpushed work in the handoff and proceed, killing nothing and pushing nobody's work. The swap record it writes is what the next launch resolves this lane from, so write it wherever the skill can — and in a container with no LANES_WORKSTATION it cannot (R-A11-27): there the register and object-log writes are refused, the handoff still carries the gap, and the restart command names the lane with --lane because there is no record to resolve it from. Then print the one restart command the skill derives — pclaude ${CLAUDE_PROFILE_NAME:-<profile>} — and stop."
+  printf '%s' "⚠ 5-HOUR WINDOW AT ${pct}% (resets ${reset}). AUTOMATIC SWAP (lane-collision-protocol Amendment 11(4)) for lane ${WORKBENCHES_CLAUDE_LANE}: run /handoff (alias /lane-swap) NOW, every step in order, and do not ask the operator whether to — the 95% breakpoint is the decision. Bound step 3's wait on the writers: name any writer still holding unpushed work in the handoff and proceed, killing nothing and pushing nobody's work. The swap record it writes is what the next launch resolves this lane from, so write it wherever the skill can — and in a container with no LANES_WORKSTATION it cannot (R-A11-27): there the register and object-log writes are refused, the handoff still carries the gap, and the restart command names the lane with --lane because there is no record to resolve it from. Then print the one restart command the skill derives — pclaude ${CLAUDE_PROFILE_NAME:-<profile>} — and stop."
 }
 
 out=""

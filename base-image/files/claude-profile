@@ -116,6 +116,19 @@ configure_profile_runtime() {
       ln -sfn "$guard_source" "$guard_link"
     fi
     guard_ok=true
+    # ARM GLOBALLY (opensoft/workBenches#76). The guard is silent unless
+    # armed (claude-usage-guard.sh:52-66) and nothing before this line ever
+    # set the flag, so a workstation this launcher had fully wired for the
+    # guard still ran every lane on it unguarded until an operator armed it
+    # BY HAND — measured on Eagle, 2026-09-14: absent, every lane there ran
+    # unguarded. Ensuring the flag here, on every launch that wires the
+    # guard, closes that gap for good. Idempotent and NEVER REMOVED: an
+    # existing file — armed by an operator, or later disarmed by one — is
+    # left exactly as it is; this only ever creates an absent one.
+    mkdir -p "$HOME/.claude" 2>/dev/null || true
+    if [[ ! -e "$HOME/.claude/usage-guard.on" ]]; then
+      : > "$HOME/.claude/usage-guard.on" 2>/dev/null || true
+    fi
   fi
 
   # The SessionStart hook is ensured only where the estate it calls can answer
@@ -841,15 +854,17 @@ profile_metadata() {
 #
 # NOTHING HERE REFUSES A LAUNCH, WITH ONE NEW EXCEPTION AT 4. Every probe that
 # cannot be made — no lane-start, no lanes-edit.sh, no tmux to take a window in
-# — still falls back to 5, exactly as before. But `lane`'s own exit 8 (the
-# operator quit the picker, or there was nothing to pick) IS nothing launched
-# here: a person who declined the picker did not ask for a bare session
-# instead, so this launcher exits with `lane`'s own status rather than starting
-# one behind it. `lane`'s exit 0 (the pick was acted on) exits the same way,
-# for the same reason — a second Claude behind an attach or a lane-start that
-# already ran one would be the very collision this protocol exists to prevent.
-# Only `lane`'s exit 2, A REFUSAL, falls through to 5, exactly as no `lane` on
-# PATH or no terminal already did.
+# — still falls back to 5, exactly as before. `lane`'s own exit 8 IS nothing
+# launched here, but it is NOT "the operator quit": it is narrower, meaning
+# there was NOTHING THERE TO PICK at all, whichever way that came back — a
+# listing, a `q`/`f`-only question, or a decline of one of those. Declining a
+# question that DID have a lane on it is exit 0, the same code an ACTED-ON
+# pick returns, because a person who declined the picker did not ask for a
+# bare session instead either: this launcher exits with `lane`'s own status
+# rather than starting one behind it, for the same reason a second Claude
+# behind an attach or a lane-start that already ran one would be the very
+# collision this protocol exists to prevent. Only `lane`'s exit 2, A REFUSAL,
+# falls through to 5, exactly as no `lane` on PATH or no terminal already did.
 #
 # AMENDMENT 11 (ratified 2026-09-13, "a11 1–5 yes, push them") changes three
 # things about the above and nothing about its order:
@@ -873,8 +888,8 @@ profile_metadata() {
 # and one thing about the swap that is not in this file: at the 95% breakpoint
 # the usage guard (`claude-usage-guard.sh`, wired into every profile by
 # configure_profile_runtime above) turns its top five-hour line from ADVICE
-# into a DIRECTIVE — run `/lane-swap` now, with no question asked — and THE
-# SESSION performs the swap.
+# into a DIRECTIVE — run `/handoff` (alias `/lane-swap`) now, with no question
+# asked — and THE SESSION performs the swap.
 #
 # THE GUARD ITSELF PERFORMS NO STEP OF IT, and this comment used to say it did.
 # It is a `UserPromptSubmit` hook: it composes one string and `printf`s it
@@ -1262,6 +1277,23 @@ lane_window_is() {
   [[ -n "$now" && "$now" == "$want" ]]
 }
 
+lane_defect_retire_line() {
+  # DECISION 8(e) (lanes-edit.sh, live-holder): a live FORK of this lane's
+  # transcript is a DEFECT, never a holder, printed to stderr as one line
+  # ending "Retire it: lane-end <lane> --retire <pid>" — and lane-start still
+  # asks before taking the window, because a fork is not a holder either
+  # (opensoft/workBenches#77). This reads that ONE clause back out of a
+  # capture of lane-start's stderr, so the caller can name the same act
+  # rather than paraphrase it. Empty (and exit 1) where no such line was
+  # captured, which is every ordinary run.
+  local capture="$1" line
+  [[ -s "$capture" ]] || return 1
+  line="$(grep -m1 'DEFECT.*Retire it:' "$capture" 2>/dev/null \
+    | sed -n 's/.*\(Retire it:.*\)/\1/p')"
+  [[ -n "$line" ]] || return 1
+  printf '%s\n' "$line"
+}
+
 lane_is_pane_root() {
   # WHETHER THIS PROCESS IS THE PANE'S ROOT COMMAND — i.e. whether there is a
   # prompt behind a refusal, or nothing at all. `R-A11-16` (A11 Addendum 3 on
@@ -1629,20 +1661,36 @@ resolve_lane() {
   # THE CONTRACT IS `lane`'S OWN, adopted alongside it by the same pull
   # request:
   #
-  #   exit 0  the pick was ACTED ON — an available lane through lane-start
-  #           (another launch of this same launcher, under the profile the
-  #           picker recorded), a lane live here through the attach, or a lane
-  #           bound elsewhere through clause (c)'s handoff request. Every one
-  #           of the three may already have started a Claude of its own or
-  #           moved this window's contents somewhere else, so this launcher
-  #           EXITS WITH `lane`'S OWN STATUS instead of starting a second one
-  #           behind it.
-  #   exit 8  the operator QUIT the picker, or there was nothing to pick.
-  #           Quitting is not asking for a bare session instead, so this
-  #           launcher starts nothing here either: it exits with `lane`'s
-  #           status, the same as an acted-on pick.
+  #   exit 0  EITHER the pick was ACTED ON — an available lane through
+  #           lane-start (another launch of this same launcher, under the
+  #           profile the picker recorded), a lane live here through the
+  #           attach, or a lane bound elsewhere through clause (c)'s handoff
+  #           request — OR the operator DECLINED (`q`, or a blank line) a
+  #           question that had at least one lane to offer. Every one of the
+  #           first three may already have started a Claude of its own or
+  #           moved this window's contents somewhere else, and a decline asked
+  #           for nothing in this window either, so this launcher EXITS WITH
+  #           `lane`'S OWN STATUS instead of starting a second one behind it.
+  #   exit 8  NOTHING WAS THERE TO PICK, full stop — `lane`'s own count of
+  #           available-or-live-or-elsewhere lanes was zero, whether that was
+  #           printed as a listing (no terminal), asked as `f`/`q` only (a
+  #           terminal, but nothing to number), or reached by declining that
+  #           narrower question. A decline is 8 ONLY because there was nothing
+  #           behind it either — declining a question that DID have lanes on
+  #           it is exit 0, above, the same as taking one. Either way this
+  #           launcher starts nothing here: it exits with `lane`'s status.
   #   exit 2  A REFUSAL — not an answer at all — and it falls through to
   #           precedence 5 exactly as no `lane` on PATH, or no terminal, does.
+  #
+  # `lane --help` NAMES TWO MORE STATUSES THIS LAUNCHER NEVER SPECIAL-CASES: 1,
+  # A READ FAILED (never "there are no lanes", Amendment 7(d)), and 64, a usage
+  # error — unreachable from here anyway, since this launcher hands `lane` no
+  # argument for a flag to be unknown or missing a value ABOUT. Neither is 0 or
+  # 8, so both fall through to precedence 5 exactly as 2 does: this launcher
+  # was never going to act differently on a code `lane --help` does not
+  # document as "acted on" or "declined", and a launch that "never refuses on
+  # its own account" does not start inventing new refusals for statuses its
+  # own contract partner might one day add.
   #
   # NO TERMINAL, NO QUESTION: an agent's stdin is not one, and a picker that
   # asked it would hang the one caller that can never answer — precedence 5's
@@ -1667,7 +1715,12 @@ resolve_lane() {
         exit "$lane_picker_status"
         ;;
     esac
-    lane_read_note="${lane_read_note:-lane exited $lane_picker_status, which is a refusal and not a pick, so this window takes no lane}"
+    # NEVER CALLED "A REFUSAL": 2 is, but 1 (a read failed) is not, and this
+    # line does not know which of `lane`'s own statuses it is looking at — only
+    # that it is neither 0 nor 8, so nothing was acted on and nothing was
+    # declined either. The number is kept rather than paraphrased, so whoever
+    # reads it can look the status up in `lane --help` themselves.
+    lane_read_note="${lane_read_note:-lane exited $lane_picker_status, so this window takes no lane}"
   fi
   # PRECEDENCE 5 — no lane, one notice, and still a launch.
   if [[ -n "${lane_read_note:-}" ]]; then
@@ -2285,6 +2338,15 @@ case "$action" in
       status) CLAUDE_CONFIG_DIR="$config_dir" "$claude_bin" auth status "${@---text}" ;;
       run)
         if [[ -n "${lane:-}" ]]; then
+          # THE FIX IS THE INSTALL ACT, NOT A PATH INTO SOMEBODY'S WIP.
+          # lane-collision-protocol Amendment 9(b) moves the lane tooling to
+          # opensoft/openRepoTools and makes `openRepoTools --install` their
+          # placer; Amendment 9's adoption act 5 then STRIPS
+          # `scripts/link-estates` out of the workspace repository altogether
+          # (opensoft/brett-wip#6 @1483d55). A refusal that told a person to
+          # clone that repository and run that script would name a path that
+          # stops existing -- and it named one operator's estate at everybody
+          # else's terminal besides.
           command -v lane-start >/dev/null 2>&1 || {
             # One situation, one line, here too: this is the other place the
             # install act is printed, and an operator who meets both should
@@ -2387,11 +2449,34 @@ case "$action" in
           # the one place that could keep that window alive was gone before the
           # refusal happened. There is no lane source for which that trade is
           # worth making, so there is now one path for all of them.
+          # STDERR IS ALSO CAPTURED, LIVE, INTO A FILE (opensoft/workBenches#77).
+          # `lane-start --confirm` still asks even where `lanes-edit.sh
+          # live-holder` named a live FORK of this lane's transcript first
+          # (decision 8(e): a fork is a DEFECT, never a holder) — and a
+          # decline there must not risk a second live process on that same
+          # transcript. The confirm question itself needs the REAL terminal,
+          # so this TEES rather than redirects: fd 9 carries a copy of every
+          # byte lane-start (or whatever it execs) writes to stderr into
+          # $lane_defect_capture, and the `tee` on the far end puts the same
+          # byte back on the real stderr (`>&2`) unchanged — the operator
+          # sees exactly what they always saw, in the same order, live.
+          # `wait` is on the TEE's own pid, not this command's: the pipe's
+          # reader is a separate process, and a read of the capture file
+          # made before that process has drained it would race an
+          # almost-instantly-declined confirm (the fake this PR's test uses
+          # is exactly that race, made deterministic by this wait).
+          lane_defect_capture="$(mktemp "${TMPDIR:-/tmp}/pclaude-lane-defect.XXXXXX")"
           set +e
+          exec 9> >(tee "$lane_defect_capture" >&2)
+          lane_defect_tee_pid=$!
           CLAUDE_CONFIG_DIR="$config_dir" CLAUDE_BIN="$claude_bin" \
-            "${lane_argv[@]}" "$lane" -- "${claude_flags[@]}" "$@"
+            "${lane_argv[@]}" "$lane" -- "${claude_flags[@]}" "$@" 2>&9
           lane_status=$?
+          exec 9>&-
+          wait "$lane_defect_tee_pid" 2>/dev/null
           set -e
+          lane_defect_line="$(lane_defect_retire_line "$lane_defect_capture" || true)"
+          rm -f "$lane_defect_capture"
           # WHICH STATUSES ARE LANE-START'S OWN. It documents exactly two:
           # 1 environment — not inside tmux, no register, NO SUCH DIRECTORY —
           # and 2 refusal — an argument error, a name a window cannot take, a
@@ -2436,6 +2521,22 @@ case "$action" in
           # sets: the window whose only command is `pclaude` and which this
           # launcher did not create — RV-W3's open case — is now inside the
           # fence, because the pane's own root process says so.
+          # A LIVE FORK NAMED, AND THIS WINDOW DID NOT TAKE THE LANE, IS A STOP,
+          # NOT A LAUNCH (opensoft/workBenches#77, Amendment 18 DRAFT clause
+          # (h)). `lane_status` is 0 either way here — the same 0 a lane-start
+          # that TOOK the lane returns — so the window is what tells them
+          # apart, exactly as it already does two checks below: taking the
+          # lane renames it (Amendment 5(f)), and a decline leaves the name
+          # alone. Where the defect was named and the window was NOT renamed,
+          # whatever lane-start (or a Claude it may have exec'd bare) already
+          # did is done; this launcher starts NOTHING further in this window
+          # rather than risk a second live process on the fork decision 8(e)
+          # just named — it prints the retire act named for it and stops.
+          if [[ "$lane_status" -eq 0 ]] && [[ -n "$lane_defect_line" ]] \
+            && ! lane_window_is "$lane"; then
+            echo "pclaude: $lane is not taken in this window — a live fork of its transcript exists; $lane_defect_line" >&2
+            exit 1
+          fi
           if [[ "$lane_status" -eq 0 ]] \
             || { [[ "$lane_status" -ne 1 && "$lane_status" -ne 2 ]]; } \
             || { ! lane_is_pane_root && lane_window_is "$lane"; }; then

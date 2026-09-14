@@ -319,9 +319,14 @@ repository — as a numbered pick, asks one question, and acts on the pick
 itself: an available lane through `lane-start`, a lane live here through the
 attach, a lane bound elsewhere through the handoff request. So this launcher
 hands it the pane and **stops** — no `--dir`, no `--confirm`, nothing else —
-and exits with whatever `lane` decided. `lane`'s own exit 0 (the pick was
-acted on) and exit 8 (the operator quit, or there was nothing to pick) both
-leave nothing for this launcher to start; only exit 2, a refusal, falls
+and exits with whatever `lane` decided. `lane`'s own exit 0 covers both the
+pick being acted on *and* a decline (`q`, or a blank line) at a question that
+had at least one lane to offer; exit 8 is narrower than "the operator
+quit" — it means there was *nothing* to pick at all, whether that came back as
+a listing, as a `q`/`f`-only question, or as a decline of one of those. Either
+way this launcher starts nothing here; only exit 2, a refusal — or the two
+statuses `lane --help` documents and this launcher does not special-case, a
+read that failed and a usage error the bare form here cannot trigger — falls
 through to the plain session below, exactly as no `lane` on `PATH` or no
 terminal already does. This step reads no swap record at all any more:
 confirming the workstation's newest one is what put `openRepoShape-2` — a
@@ -583,8 +588,9 @@ Since Amendment 11(4), the usage guard (`claude-usage-guard.sh`, wired as the
 `UserPromptSubmit` hook for every profile) turns its own top warning into a
 directive at the same 95%-of-the-5-hour-window line that used to read only
 "STOP at a breakpoint, write or refresh the handoff doc": at that point the
-guard tells the session to run `/lane-swap` now, every step in order, with no
-question put to the operator. The steps are Amendment 8(a)'s five, unchanged
+guard tells the session to run `/handoff` (alias `/lane-swap`) now, every step
+in order, with no question put to the operator. The steps are Amendment 8(a)'s
+five, unchanged
 — the identity triple derived; the handoff refreshed, committed, and pushed;
 every running writer told to commit and push; the `PAUSED` swap record (now
 carrying `dir`, `window` and `profile`) together with the register's event line and the
@@ -608,8 +614,14 @@ the same threshold and names nothing; the 90 and 80 lines, and the context
 block, are unchanged for every session either way. The guard stays gated
 exactly as before: silent unless `.claude/usage-guard.on` exists in the
 session's working directory or an ancestor, up to `$HOME` (or
-`~/.claude/usage-guard.on`, for every session on the machine). The Fable
-weekly bucket's own 95% line is not part of this and keeps today's warning.
+`~/.claude/usage-guard.on`, for every session on the machine).
+`configure_profile_runtime` now places that global flag itself — on every
+launch that wires the guard, `$HOME/.claude/usage-guard.on` is created if it is
+not already there — so a workstation this launcher has configured is never
+left running every lane unguarded for want of someone arming it by hand; an
+existing flag, armed or later disarmed by an operator, is never touched. The
+Fable weekly bucket's own 95% line is not part of this and keeps today's
+warning.
 
 ### The Amendment 8 `SessionStart` hook, and where skills have to live
 
@@ -635,24 +647,53 @@ this launcher at all. Two consequences, both of which this launcher and
   next launch, because the ensure runs on every one. Any installer that wants a
   hook to fire for profile launches should write it into the profile
   `settings.json` files the same way, not into `~/.claude/settings.json`.
-- **Skills belong in the shared skills directory.** Every profile's `skills` is
-  a symlink to `~/.claude-profiles/shared/skills`, so one write there is
-  visible to every profile at once. `scripts/setup-claude-profiles.sh` installs
-  this repository's vendored skills — currently `/lane-swap`, from
-  `base-image/files/claude/skills/` — into that directory and into
-  `~/.claude/skills` for a bare `claude` outside the launcher. The copy is
-  idempotent by content: a destination already holding the vendored bytes is
-  left untouched.
-- **The bare-`claude` path gets the hook too, from a second writer of the same
-  entry.** `claude-profile` only ever ensures the `SessionStart` entry in the
-  profile it is about to exec into, so a bare `claude` run — the one case
-  `~/.claude/settings.json` exists for — used to get the skill above and
-  nothing else. `scripts/setup-claude-profiles.sh` now ensures the identical
-  entry (same command string, same `"matcher": "startup|resume|clear|fork"`,
-  same `"timeout": 5`, same exact-string idempotence, additive beside every
-  other hook kind) into `~/.claude/settings.json` on every setup run, gated on
-  the same estate probe. The command string is the idempotence key for *both*
-  writers of *both* files; change it in one and the other goes stale.
+- **Skills belong in the shared skills directory, and `openRepoTools --install`
+  is the one thing that writes them.** Every profile's `skills` is a symlink to
+  `~/.claude-profiles/shared/skills`, so one write there is visible to every
+  profile at once. `--install` places EVERY skill in its own `SKILLS` array —
+  `/lane-swap` and, from Amendment 11's tooling commit, `/restart` — at
+  `${CLAUDE_PROFILES_HOME:-~/.claude-profiles}/shared/skills/<name>/SKILL.md`
+  and a copy of each at `~/.claude/skills/<name>/SKILL.md` for a bare `claude`
+  outside the launcher, all at 0644, idempotently and byte-compared. The set is
+  the shim's, not this document's: it is read from that array, never counted
+  here. `scripts/setup-claude-profiles.sh` used to install the `/lane-swap`
+  skill from its own vendored copy; lane-collision-protocol Amendment 9's adoption act 4b deleted
+  that loop and the copy with it, because two installers of one file is a
+  defect no exact-match idempotence can resolve. This script still creates the
+  shared directory and still links each profile at it.
+- **`/swap`'s command file belongs beside the skills, on the same contract.**
+  `--install` places every command in its `COMMANDS` array — `/swap` alone,
+  once `opensoft/openRepoTools#26` round 2 landed it (A11 Addendum 4 ruling 9)
+  — into the shared `commands` directory every profile's `commands` symlinks
+  to, and a copy at `~/.claude/commands/swap.md` for a bare `claude`, at 0644,
+  idempotently and byte-compared. `scripts/setup-claude-profiles.sh` used to
+  install it from its own vendored copy on the same `for command in swap` loop
+  as the skill; Amendment 9's adoption act 4b deleted that loop and the copy
+  with it too, once the pin (`devBenches/base-image/upstream-pin.yaml`, commit
+  `8a36eb3`, `opensoft/workBenches#78`) carried `commands/swap.md` and made
+  `--install` capable of placing it with no writer left behind.
+- **The bare-`claude` hook entry is `--install`'s too, and there is no second
+  writer of it.** `claude-profile` ensures the `SessionStart` entry only in the
+  profile it is about to exec into; `~/.claude/settings.json` — the one file a
+  bare `claude` run reads — is merged by `openRepoTools --install`, which adds
+  exactly one entry, by exact-string match on the command, additive beside
+  every other hook kind, and writes the file back at mode 600. It refuses
+  rather than repairing a file it cannot parse, and it refuses on an entry
+  under `SessionStart` that itself runs `session-start` under a different
+  command string. **Not on any differing command.** The clause is about a
+  second program running the same hook verb, which merging beside would fire
+  twice (R-A9-8, narrowed from `lanes-edit.sh` to the verb by R-A9-14 in the
+  openRepoTools#24 review): an entry running `lanes-edit.sh who` competes with
+  nothing and is not refused, and `~/bin/lane-hook.sh session-start` does
+  compete and is. Measured, with an unrelated `~/bin/herdr-agent-state.sh
+  session` already under `SessionStart`: `11 of 11 placed`, exit 0, the file
+  left carrying both commands at mode 600. It computes the merge before it places
+  anything, so a merge it cannot compute costs a whole install rather than half
+  of one.
+  Adoption act 4b deleted the ensure `scripts/setup-claude-profiles.sh` carried
+  for the same file. **One path, one writer, in both halves:** a profile's
+  `settings.json` is the launcher's, `~/.claude/settings.json` is
+  `--install`'s, and the two never write one file.
 
 **Live state, and the gate has since opened.** Both writers above are gated on
 `~/projects/xFactory/lanes-edit.sh` having a `session-start` subcommand. That

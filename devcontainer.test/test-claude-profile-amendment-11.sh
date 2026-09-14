@@ -628,11 +628,23 @@ fi
 # It is deliberately narrow in the other direction too. It fires only on a `#21`
 # citation that carries a line number and no `at <sha>` beside it; a citation
 # naming only a clause is the preferred form and is not touched.
+#
+# EIGHT DROPPED TO SIX: lane-collision-protocol Amendment 9 adoption act 4b
+# (`opensoft/workBenches#74`) deleted this repository's own copies of the
+# `/lane-swap` skill and the `/swap` command file — `base-image/files/claude/
+# skills/lane-swap/SKILL.md` and `base-image/files/claude/commands/swap.md` —
+# together with the loops that installed from them, once `openRepoTools
+# --install` took over both paths (A9 act 3, A11 Addendum 4 ruling 9) and the
+# pin (`devBenches/base-image/upstream-pin.yaml`, commit `8a36eb3`,
+# `opensoft/workBenches#78`) started vendoring them. What ships at
+# `devBenches/base-image/files/openrepotools/skills/lane-swap/SKILL.md` and
+# `.../commands/swap.md` is `opensoft/openRepoTools`' own prose now, copied
+# in byte for byte and read by ITS repository's own citation convention, not
+# this one's `#21` numbering — so the two drop out of this gate's remit
+# rather than move within it.
 cite_files=(
     "$LAUNCHER"
     "$REPO_ROOT/base-image/files/claude-usage-guard.sh"
-    "$REPO_ROOT/base-image/files/claude/skills/lane-swap/SKILL.md"
-    "$REPO_ROOT/base-image/files/claude/commands/swap.md"
     "$REPO_ROOT/docs/claude-multi-account-profiles.md"
     "$REPO_ROOT/README.md"
     "$REPO_ROOT/scripts/setup-claude-profiles.sh"
@@ -2402,8 +2414,15 @@ eval "set -- $space_target"
 # ===========================================================================
 
 scenario
-SKILL_MD="$REPO_ROOT/base-image/files/claude/skills/lane-swap/SKILL.md"
-SWAP_MD="$REPO_ROOT/base-image/files/claude/commands/swap.md"
+# Amendment 9 adoption act 4b (`opensoft/workBenches#74`) deleted this
+# repository's own copies of these two files along with the loops that
+# installed from them; `openRepoTools --install` places both now, from the
+# pin (`devBenches/base-image/upstream-pin.yaml`, commit `8a36eb3`,
+# `opensoft/workBenches#78`). The SPEC spellings audited below are a property
+# of the shipped bytes, not of which repository's checkout holds them, so
+# this scenario reads the vendored copy the pin carries.
+SKILL_MD="$REPO_ROOT/devBenches/base-image/files/openrepotools/skills/lane-swap/SKILL.md"
+SWAP_MD="$REPO_ROOT/devBenches/base-image/files/openrepotools/commands/swap.md"
 
 # SPEC §5 (rev 3) — the swap record's payload, in the SPEC's own ORDER and
 # spelling: `swap; window <session>:<index> <@id>; dir <path>; profile <name>;
@@ -2425,7 +2444,7 @@ payload_order="$(grep -o 'payload="$payload; [a-z]*' "$SKILL_MD" | sed 's/.*; //
     || fail "§5: the payload is built as '$payload_order', and rev 3's order is 'window dir profile workstation'"; assertion
 # ...and the window sub-field's two refs are SPACE-separated within it, which is
 # Amendment 7(b)'s rule for several refs in one sub-field.
-grep -Fq 'win="${win:+$win }$win_id"' "$SKILL_MD" \
+grep -Fq 'win="${win:+$win }$wid"' "$SKILL_MD" \
     || fail "§5: the window sub-field's two refs are not space-separated"; assertion
 # ...and a space in a path is QUOTED, while `, `, ` — ` and a `"` are refused.
 grep -Fq 'case "$dir" in *'"'"' '"'"'*) dir=' "$SKILL_MD" \

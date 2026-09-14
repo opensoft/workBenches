@@ -183,6 +183,15 @@ set -e
     || fail "missing lane-start: exit status was $refusal_status, not 2"
 grep -q 'lane-start' "$TEST_ROOT/typescript-refusal.log" \
     || fail "missing lane-start: refusal did not mention lane-start"
+# THIS MACHINE HAS NO CAPABLE `openRepoTools` AND NO LOCAL CHECKOUT YET
+# (scenario 3b below covers the capable-tool case), so `lane_start_install_act`
+# falls to its workspace.yaml branch and, with the checkout not present, prints
+# the CLONE form -- never a hardcoded `opensoft/brett-wip`, one operator's own
+# estate, but THIS machine's own workspace.yaml repository (`R-A11-13`).
+# Amendment 9 adoption act 4b (`opensoft/workBenches#74`) does not change this
+# branch: it deletes workBenches' OWN duplicate writers of the skill and the
+# `/swap` command, not this fallback, which is `base-image/files/claude-profile`
+# and is unchanged by 4b's merge.
 grep -q "$TEST_ROOT/estate-wip/scripts/link-estates" "$TEST_ROOT/typescript-refusal.log" \
     || fail "missing lane-start: the refusal did not name the fix this machine can use — the scripts/link-estates of the repository its workspace.yaml names (R-A11-13)"
 grep -q 'opensoft/estate-wip' "$TEST_ROOT/typescript-refusal.log" \
