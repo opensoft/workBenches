@@ -53,7 +53,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=16
+EXPECTED_SCENARIOS=17
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -699,6 +699,69 @@ handover_items="$(sed -n '/SO THE SIX BEHAVIOURS BELOW ARE THE HANDOVER/,/-->/p'
 handover_block="$(sed -n '/SO THE SIX BEHAVIOURS BELOW ARE THE HANDOVER/,/-->/p' "$SKILL_SOURCE")"
 grep -Fq 'tmux send-keys' <<<"$handover_block" \
     || fail "ruling 10: handover item 5 hands over the /rename act without the Amendment 12 qualification that now governs it"; assertion
+
+# ---------------------------------------------------------------------------
+# 17. THE OTHER WRITER OF THESE PATHS EXISTS NOW — Amendment 9's adoption act 3,
+# `opensoft/openRepoTools#26`, MERGED as `63a74af`.
+#
+# Both loops above were written while `--install` placed neither the skill nor
+# the command file. It places both today, and two facts in this file went with
+# that, each measured on this workstation after `--install` ran:
+#
+#   * THE SKILLS LOOP'S DELETER IS ACT 4b, NOT ACT 4. Amendment 9's own text
+#     rules it — "Adoption act 4b deletes that loop", and 4b "because the
+#     deletion is only safe once `--install` is already placing them, which is
+#     act 3". This comment said act 4, which is exactly the defect A11 Addendum
+#     4 ruling 9 corrected in the COMMANDS loop, one loop along, and the same
+#     reader would have drawn the same wrong conclusion from it.
+#   * THE COLLISION IS CONTENT, NOT MODE. Amendment 9 argued it from the 755
+#     `--install` stamps "on everything it places"; the landed code places a
+#     SKILL at 644 and says so where it does it, so the modes agree and the
+#     bytes do not. Measured: `~/.claude/skills/lane-swap/SKILL.md` and
+#     `~/.claude-profiles/shared/skills/lane-swap/SKILL.md` both hold
+#     openRepoTools' copy at 644, so the last writer to run wins until 4b
+#     leaves one.
+#
+# And the `/swap` command file's handover CONDITION IS MET: ruling 9 made act
+# 4b's deletion of the commands loop conditional on `--install` placing that
+# file first, and `63a74af` places it at both paths. That is a fact about the
+# estate recorded here, not a licence for this PR to delete anything — 4b is a
+# different PR and does it there.
+scenario
+grep -Fq 'Adoption act 4b deletes that loop' "$SETUP" \
+    || fail "act 3 landed: the skills loop does not carry Amendment 9's own words about which act deletes it"; assertion
+# The retired string is allowed on a line that calls itself a superseded
+# revision — the commands loop quotes it as the wording ruling 9 corrected —
+# and refused anywhere else, counted the way this suite counts every other
+# corrected sentence, so recording one is not indistinguishable from asserting
+# it.
+setup_act4="$(grep -F "A9's act 4 deletes it" "$SETUP" | grep -cv 'An earlier revision' || true)"
+[[ "$setup_act4" -eq 0 ]] \
+    || fail "act 3 landed: $setup_act4 line(s) still say act 4 deletes a loop of this file; Amendment 9 gives both to act 4b, for the reason act 4b gives itself"; assertion
+grep -Fq 'THAT CONDITION IS NOW MET' "$SETUP" \
+    || fail "act 3 landed: the commands loop still leaves ruling 9's condition open, and --install has placed commands/swap.md since 63a74af"; assertion
+grep -Fq '63a74af' "$SETUP" \
+    || fail "act 3 landed: setup-claude-profiles.sh names no head for the claims it makes about --install, so a reader cannot check one"; assertion
+# ...AND NEITHER LOOP IS DELETED HERE. The handover is recorded, not performed:
+# a takeover round that deleted 4b's work early would leave every host that has
+# not re-run `--install` with no `/swap` and no skill at all.
+grep -q '^for skill in lane-swap; do' "$SETUP" \
+    || fail "act 3 landed: the skills loop is gone from this file, which is Amendment 9 act 4b's act and not this PR's"; assertion
+grep -q '^for command in swap; do' "$SETUP" \
+    || fail "act 3 landed: the commands loop is gone from this file, which is act 4b's act and not this PR's"; assertion
+# THE SKILL'S OWN R-A11-27 FENCE IS RE-MEASURED AGAINST THE LANDED HELPER, and
+# it STAYS. The fence was built while `lanes-edit.sh` would have let write (c)
+# through from a container; that helper now refuses nine writers at the
+# dispatcher, (c)'s two among them, exit 2 before any write — measured in a
+# bench container with `LANES_WORKSTATION` unset. Both halves are pinned: the
+# file must record what the helper does now, and it must not go back to saying
+# the helper lets (c) through.
+grep -Fq 'has since MERGED as `63a74af`' "$SKILL_SOURCE" \
+    || fail "R-A11-27: the skill still describes the helper it was written against and not the one a host runs"; assertion
+grep -Fq 'does not fail safely' "$SKILL_SOURCE" \
+    && fail "R-A11-27: the skill still says (c) does not fail safely in the present tense; at 63a74af the helper refuses it too"; assertion
+grep -Fq 'AND THIS FENCE STAYS' "$SKILL_SOURCE" \
+    || fail "R-A11-27: nothing says the skill's own refusal survives the helper's — a host whose helper predates 63a74af is the population it is for"; assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"

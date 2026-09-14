@@ -86,7 +86,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=113
+EXPECTED_SCENARIOS=114
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -3116,6 +3116,73 @@ grep -Fq '/rename <lane>' "$TEST_ROOT/help.out" \
 # ...and the docs' half of the same fact is pinned in the doc audit above.
 grep -Fq 'never taken from' "$DOCS_MD" \
     || fail "Evidence 6: the docs do not carry the rule at all"; assertion
+
+# ---------------------------------------------------------------------------
+# THE HELPER HALF HAS LANDED, AND EVERY SENTENCE ABOUT IT IS RE-MEASURED — the
+# takeover round's own finding, and the reason it is a pair of audits rather
+# than four corrected comments.
+#
+# This PR was written against a helper that did not exist yet: `opensoft/
+# openRepoTools#26`, Amendment 9's adoption act 3, has since MERGED as
+# `63a74af`, and with it `lanes-edit.sh window-lane`, `lane-dir`, `swapped`'s
+# fourth and fifth fields, the `session-start` subcommand, and the dispatcher
+# guard that refuses nine writers from a container with no `LANES_WORKSTATION`.
+# Nothing in the launcher changed — every one of those reads was written
+# tolerantly for the day it would answer, and the day came — but four sentences
+# said "today's helper has none of this", and a sentence about another program
+# that the other program no longer supports is `CF2-W1`'s defect one repository
+# along.
+#
+# MEASURED AGAINST THE INSTALLED COPIES, with the launcher's own resolvers
+# extracted and run against them: `lanes-edit.sh` resolves on PATH to
+# `~/.local/bin/lanes-edit.sh`; `swapped <ws>` exits 0 with FIVE tab-separated
+# fields and an empty fourth on this workstation's pre-cutover rows; `lane-dir
+# openRepoProject-1` exits 0 with `/workspace/projects/openRepoProject` and
+# `lane-dir openRepoTools-3` exits 8; `window-lane @999999` exits 8 and the
+# launcher's reader answers nothing WITHOUT a note, which is the contract's
+# silent "none"; an unknown subcommand still exits 2; and the resolver answers
+# `openRepoTools --install` from the capability branch.
+#
+# The audits are on the SUBSTANCE and in both directions: the corrected claim
+# must be there WITH the head it was measured at, and the superseded one must
+# not, so a later pass cannot restore the old premise by tidying the new one
+# away. Rung 3 is the one that moved from "finds nothing" to "answers", so it
+# is the one named in the failure text.
+scenario
+grep -Fq '63a74af' "$LAUNCHER" \
+    || fail "landed tooling: the launcher makes claims about what lanes-edit.sh answers and names no head to read them at, so a reader cannot check one"; assertion
+grep -Fq 'RUNG 3 NOW ANSWERS' "$LAUNCHER" \
+    || fail "landed tooling: the launcher does not say that lane-dir now answers, which is the whole of what act 3 changed for the directory order"; assertion
+grep -Fq "today's \`lanes-edit.sh swapped\` prints" "$LAUNCHER" \
+    && fail "landed tooling: the launcher still says today's swapped prints no fourth field; at 63a74af it prints five and the fourth is empty, which is not the same fact"; assertion
+grep -Fq '\`lane-dir\` subcommand at all' "$LAUNCHER" \
+    && fail "landed tooling: the launcher still says the helper has no lane-dir subcommand, which it has had since 63a74af"; assertion
+grep -Fq "is the tooling PR's" "$LAUNCHER" \
+    && fail "landed tooling: the launcher still hands a live behaviour to an unlanded PR; act 3 merged as 63a74af"; assertion
+# ...and the tolerance STAYS, with the population it is for named rather than
+# assumed. A host that has not re-run `openRepoTools --install` still answers
+# the old way, and an audit that only refused the old sentences would invite the
+# next writer to delete the fallback with them.
+grep -Fq 'predates' "$LAUNCHER" \
+    || fail "landed tooling: the launcher no longer names the host its tolerant reads are for — one whose lanes-edit.sh predates that merge"; assertion
+grep -Fq 'unknown subcommand' "$LAUNCHER" \
+    || fail "landed tooling: the launcher stopped naming the line an older helper prints, which is the one thing rung 3 must never read as a path"; assertion
+# THE DOCUMENT SAYS IT TOO, both halves. The docs are what an operator reads
+# before the comments, and a document that still says the rung finds nothing
+# sends them to fix a launcher that is working.
+grep -Fq 'That helper has landed' "$DOCS_MD" \
+    || fail "landed tooling: the docs still describe the helper as unlanded"; assertion
+grep -Fq 'degrade silently against today' "$DOCS_MD" \
+    && fail "landed tooling: the docs still say rungs 2 and 3 degrade against today's helpers, which is false on any host that has re-run --install"; assertion
+grep -Fq 'the gate has since opened' "$DOCS_MD" \
+    || fail "landed tooling: the docs' live-state paragraph does not record that the SessionStart gate now opens"; assertion
+grep -Fq 'does not exist yet — so today, correctly' "$DOCS_MD" \
+    && fail "landed tooling: the docs still say the session-start subcommand does not exist; ~/projects/xFactory/lanes-edit.sh links the installed helper, which has it"; assertion
+# ...and the launcher's own probe comment says which file it is really reading,
+# because `~/projects/xFactory/lanes-edit.sh` is a symlink and a reader who
+# takes it for a second estate will conclude the gate can never open.
+grep -Fq 'link-estates' "$LAUNCHER" \
+    || fail "landed tooling: nothing in the launcher says who keeps ~/projects/xFactory/lanes-edit.sh pointed at the installed helper"; assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"

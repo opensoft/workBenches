@@ -209,8 +209,30 @@ ln -sfn "$default_statusline_relative" "$default_statusline"
 #
 # These are the same paths Amendment 9 later assigns to `openRepoTools
 # --install`. Ruled on opensoft/workBenches#68 (F5): this loop STANDS for
-# Amendment 8 and is their sole writer until A9's adoption act 3 lands, and
-# A9's act 4 deletes it. Until then the copy is idempotent BY CONTENT — a
+# Amendment 8 and was their sole writer until A9's adoption act 3 landed.
+#
+# ACT 3 HAS LANDED — `opensoft/openRepoTools#26`, merged as `63a74af` — so the
+# two-writer interval Amendment 9 describes is not a forecast any more, it is
+# the state of every host that has re-run `--install`. TWO CORRECTIONS GO WITH
+# that, and both are measured rather than argued:
+#
+#   * THE DELETER IS ACT 4b, NOT ACT 4. Amendment 9's own text rules it —
+#     "Adoption act 4b deletes that loop", and it belongs in 4b "because the
+#     deletion is only safe once `--install` is already placing them, which is
+#     act 3". This comment said act 4, which is the defect A11 Addendum 4
+#     ruling 9 corrected in the COMMANDS loop below, one loop along.
+#   * THE COLLISION IS CONTENT, NOT MODE. Amendment 9 argued the clash from the
+#     "755 `--install` stamps on everything it places"; the landed code places a
+#     SKILL at 644 and says so where it does it, so the modes agree. What does
+#     not agree is the bytes: this loop installs workBenches' vendored copy and
+#     `--install` installs openRepoTools', and they are not the same file.
+#     Measured on this workstation 2026-09-14, after `--install` ran:
+#     `~/.claude/skills/lane-swap/SKILL.md` and
+#     `~/.claude-profiles/shared/skills/lane-swap/SKILL.md` both hold
+#     openRepoTools' copy, mode 644 — so the last writer to run wins, until 4b
+#     leaves exactly one.
+#
+# Until then the copy is idempotent BY CONTENT — a
 # destination already holding the vendored bytes is left alone, mtime and all,
 # so a later `--install` write of the same bytes is not clobbered by the next
 # setup run.
@@ -257,6 +279,14 @@ done
 # this loop is TRANSITIONAL and its deletion is Amendment 9 act 4b's
 # (`opensoft/workBenches#74`), CONDITIONAL on `--install` placing the command
 # file first — not on act 3, and not on act 4 as this comment used to say.
+#
+# THAT CONDITION IS NOW MET, which is a fact about the estate and not a
+# permission for this PR to act on it. `#26` merged as `63a74af`; its `--help`
+# names "ONE COMMAND FILE at the matching pair,
+# `~/.claude-profiles/shared/commands/swap.md` and `~/.claude/commands/swap.md`";
+# and measured on this workstation 2026-09-14 both files are there at 644 after
+# `--install` ran. So 4b may now delete this loop without leaving `/swap` with
+# no writer — 4b's act, in 4b's PR, and nothing here does it early.
 #
 # Until then the copy is idempotent BY CONTENT — a destination
 # already holding the vendored bytes is left alone, mtime and all, so a later

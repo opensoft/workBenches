@@ -99,12 +99,24 @@ configure_profile_runtime() {
   fi
 
   # The SessionStart hook is ensured only where the estate it calls can answer
-  # it: the script has to be there, and it has to HAVE the subcommand. On
-  # opensoft/brett-wip `main` today it does not, and an entry written against
-  # it would spend a process per session start printing a usage block. The
-  # probe is one local grep of one regular file — no execution, no network, and
-  # no way to hang — and a later install is picked up by the next run, because
-  # this runs on every one.
+  # it: the script has to be there, and it has to HAVE the subcommand. An entry
+  # written against one that does not would spend a process per session start
+  # printing a usage block.
+  #
+  # THE SUBCOMMAND HAS SINCE LANDED, AND THIS PROBE IS WHAT NOTICED. The path
+  # above is not a second spelling of the estate: `link-estates` keeps
+  # `~/projects/xFactory/lanes-edit.sh` pointed at the INSTALLED helper
+  # precisely because the hook's command string names it, and at
+  # `opensoft/openRepoTools` `63a74af` — Amendment 9's adoption act 3, merged —
+  # that helper carries `session-start`. Measured on this workstation
+  # 2026-09-14: the link resolves to `~/.local/bin/lanes-edit.sh`, the gate
+  # OPENS, `~/.claude/settings.json` carries the canonical entry beside an
+  # unrelated hook it left alone, and 15 of 383 profile `settings.json` carry it
+  # — not 383, because the write happens on a profile's NEXT launch and this
+  # function is what makes it. The probe stays for the workstation whose copy
+  # predates that merge. It is one local grep of one regular file — no
+  # execution, no network, and no way to hang — and a later install is picked up
+  # by the next run, because this runs on every one.
   session_start_ok=false
   if [[ -f "$lane_session_start_script" ]] \
     && grep -qF 'session-start' "$lane_session_start_script" 2>/dev/null; then
@@ -849,7 +861,11 @@ profile_metadata() {
 lanes_edit_bin() {
   # Found the way lane-start is, and never as a path spelled for one
   # workstation: on PATH, else beside the lane-start that IS on PATH (both are
-  # `lanes/` in opensoft/brett-wip), else the symlink the protocol names.
+  # placed in `~/.local/bin` by `openRepoTools --install` since Amendment 9 act
+  # 3, merged as `63a74af`, and both were `lanes/` in the workspace repository
+  # before it), else the symlink the protocol names. Measured on this
+  # workstation: `lanes-edit.sh` resolves on PATH to
+  # `~/.local/bin/lanes-edit.sh`, the copy that merge installs.
   local candidate lane_start
   candidate="${WORKBENCHES_LANES_EDIT_BIN:-$(command -v lanes-edit.sh 2>/dev/null || true)}"
   if [[ -z "$candidate" ]]; then
@@ -994,10 +1010,16 @@ lane_no_lane_note='no lane for this window; run lane-start <repo> <n> inside it'
 # its scripts/link-estates", and workBenches' own setup.sh ALREADY runs that
 # command (setup.sh -> setup-estate-commands.sh): the lane tools become part of
 # a step this estate already has, so NO SECOND INSTALLER is named here and none
-# is wanted. But until Amendment 9 act 3 lands, the copy installed on this
-# machine places park, resume, status and itself and nothing else — its own
-# `--help` says exactly that, measured — and naming it to an operator whose
-# lane-start is missing hands them a command that cannot fix their machine.
+# is wanted. But a copy installed BEFORE Amendment 9 act 3 places park, resume,
+# status and itself and nothing else — its own `--help` says exactly that, as
+# measured when this was written — and naming it to an operator whose lane-start
+# is missing hands them a command that cannot fix their machine. ACT 3 HAS SINCE
+# MERGED, as `opensoft/openRepoTools` `63a74af`: its `--help` names eleven
+# commands, `lane-start` among them, so on a host that has re-run `--install`
+# this probe takes the capability branch — measured here 2026-09-14, the
+# resolver answers `openRepoTools --install`. The probe is what tells the two
+# hosts apart, and that is why it reads the installed copy rather than the
+# calendar.
 #
 # So the installed tool's own `--help` is asked, because it is the only thing
 # that can say which interval this machine is in: a copy that lists the lane
@@ -1266,9 +1288,14 @@ lane_is_pane_root() {
 }
 
 lane_start_supports() {
-  # `--confirm` arrives with the brett-wip half of Amendment 8. Until it does,
-  # a lane-start that has never heard of it must not be handed it, and its own
-  # --help is the only thing that can say.
+  # `--confirm` arrived with the Amendment 8 half of the helpers, and `--dir` is
+  # lane-start's oldest option. BOTH ARE IN THE INSTALLED COPY, measured at
+  # `opensoft/openRepoTools` `63a74af`: its `lane-start --help` OPTIONS block
+  # carries `--dir <path>` and `--confirm` (and `--yes`, which this launcher
+  # passes nowhere). The probe stays for the lane-start that has never heard of
+  # one — a workstation that has not re-run `openRepoTools --install` — because
+  # a lane-start handed a flag it does not know refuses the ARGUMENT instead of
+  # taking the lane, and its own --help is the only thing that can say.
   local flag="$1"
   if [[ -z "${lane_start_help+set}" ]]; then
     lane_start_help="$(lane-start --help 2>/dev/null || true)"
@@ -1304,7 +1331,16 @@ lane_workstation() {
   # `hostname` stands exactly as it did, but only where this is NOT a container.
   # Inside one with nothing configured there is NO answer, and the caller says
   # so rather than guessing: R-A9-13's seam is this, and the tooling half of it
-  # is the tooling PR's.
+  # HAS LANDED — `opensoft/openRepoTools#26`, merged as `63a74af`. That helper
+  # answers the name WITH ITS SOURCE (`lanes_workstation_pair`: `seam`,
+  # `hostname`, or `container-unset`), refuses nine writers at the dispatcher
+  # where the source is `container-unset`, and substitutes no placeholder.
+  # Measured inside a bench container with the value unset: `lanes-edit.sh
+  # replace-in-row` and `append-row-status` exit 2 before any write, in one line
+  # naming `LANES_WORKSTATION` and this launcher; with `LANES_WORKSTATION` set
+  # they reach their own usage error instead. Reader and writer now agree, and
+  # this function is still the one that decides, because it is what sets the
+  # variable they both read.
   local name
   name="${LANES_WORKSTATION:-}"
   if [[ -z "$name" ]] && ! lane_in_container; then
@@ -1662,12 +1698,30 @@ resolve_lane() {
 # so an inference that can silently re-home a lane is not worth the refusal it
 # saves — and the refusal names `--dir`, which is one word. Evidence 2's own
 # command is served by rung 1 today and by rung 2 the moment the swap writes a
-# `dir`, which is the tooling PR's act (SPEC §13.3 and §13.5).
+# `dir`, which is the tooling half's act (SPEC §13.3 and §13.5) — AND THAT HALF
+# HAS LANDED: `opensoft/openRepoTools#26`, merged as `63a74af`, which is the
+# head every measurement below was taken at.
 #
-# Rungs 2 and 3 are read TOLERANTLY: today's `lanes-edit.sh swapped` prints
-# `<lane>\t<UTC>\t<window>` with no fourth field and today's helper has no
-# `lane-dir` subcommand at all, so both simply find nothing and rung 4 stands.
-# A helper that starts recording one is picked up with no change here.
+# WHAT THE LANDED HELPER ANSWERS, MEASURED HERE RATHER THAN PREDICTED, with the
+# copies `openRepoTools --install` places in `~/.local/bin`:
+#
+#   * `lanes-edit.sh swapped <ws>` prints FIVE tab-separated fields —
+#     `<lane>\t<UTC>\t<window>\t<dir>\t<profile>` — and the fourth is EMPTY on
+#     every row written before the cutover, which is every row this workstation
+#     has. So rung 2 reads an empty field and falls through exactly as it did.
+#   * `lanes-edit.sh lane-dir <lane>` exits 0 with an absolute path for a lane
+#     whose log carries one (`openRepoProject-1` → `/workspace/projects/
+#     openRepoProject`) and 8 for a lane that does not (`openRepoTools-3`). So
+#     RUNG 3 NOW ANSWERS, which is the whole of what changed — and nothing in
+#     this file changed with it, because the rung was already written for the
+#     day it would.
+#
+# Rungs 2 and 3 STAY read TOLERANTLY, and the population that tolerance is for
+# is now NAMED rather than assumed: a workstation whose `lanes-edit.sh` predates
+# that merge, which prints no fourth field and answers `lane-dir` with its
+# `unknown subcommand` line on exit 2. Both find nothing there and leave rung 4
+# standing, and a helper that starts recording one is picked up with no change
+# here.
 
 lane_dir_field() {
   # The SPEC's field and only the SPEC's field: `dir <path>`, a payload
@@ -1749,9 +1803,12 @@ resolve_lane_dir() {
   # one; 0 a path, 8 none, 64 usage, 2 a helper predating Amendment 11). Read
   # with the same LANES_NO_FETCH=1 as every other register read on the path of
   # a launch — a launcher must not sit on the network to open a terminal. ONLY
-  # 0 WITH AN ABSOLUTE PATH is an answer, so the unknown-subcommand line
-  # today's helper prints can never be mistaken for a path, and every other
-  # code simply leaves rung 4 standing. The path is NOT tested for existence,
+  # 0 WITH AN ABSOLUTE PATH is an answer, so the `unknown subcommand` line a
+  # helper predating `opensoft/openRepoTools` `63a74af` prints on exit 2 can
+  # never be mistaken for a path, and every other code simply leaves rung 4
+  # standing. Measured against the landed helper: 0 with the path for a lane
+  # whose log carries a `dir`, 8 for one that does not, and the 8 is silent
+  # here because it is the contract's "none" and not a failure. The path is NOT tested for existence,
   # for rung 2's reason: what the lane's log recorded is this lane's tree, and
   # a tree that is gone is a refusal naming it, never a fall to rung 4's guess
   # (RV-W2, `R-A11-11`).

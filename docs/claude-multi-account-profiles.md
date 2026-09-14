@@ -260,22 +260,31 @@ the launcher, `/restart` and the `/lane-swap` skill share one implementation.
 This PR **withdrew its own private copy** of that rule rather than keep a second
 implementation of the one thing that stops the three callers disagreeing about
 which lane a window is; `SPEC` rev 3 §5 now owns it and gives it to `window-lane`
-(§11), and the tooling PR implements it (§13.3). It is `RV-T6`/`RV-W7` on the two
+(§11), and the tooling half implements it (§13.3). It is `RV-T6`/`RV-W7` on the two
 reviews — `RV-T7` is the neighbouring rule, which scopes `window-lane` to the
-asking workstation. Until the helper carries both, this launcher matches exactly
-what the helper answers and adds nothing of its own.
+asking workstation. **The helper now carries both**, read at
+`opensoft/openRepoTools` `63a74af`: its `window_lane` continues past a record
+whose recorded `<@id>` is not the id the window now holding that
+`<session>:<index>` reports, and it answers a workstation that is not this one
+from that workstation's records alone, because the window name and the liveness
+fence are facts about the tmux server running here. This launcher matches
+exactly what the helper answers and adds nothing of its own, which is why
+nothing here changed when the helper arrived.
 
 Pass `--lane <repo>-<n>` (or set `CLAUDE_LANE=<repo>-<n>` in the environment)
 to hand the launch to `lane-start` instead of exec'ing Claude directly.
-`lane-start` (from the workspace repository's `lanes/` — `~/.agents/workspace.yaml`
-is where a person names that repository, and its own `scripts/link-estates` is
-what puts the helpers on `PATH` until Amendment 9 act 3 makes
-`openRepoTools --install` place them) renames the current tmux window to the
+`lane-start` (from `opensoft/openRepoTools`, whose `--install` places it in
+`~/.local/bin` — Amendment 9 act 3, merged as `63a74af`; before that act it came
+from the workspace repository's own `lanes/`, and on a host that has not re-run
+`--install` that repository's `scripts/link-estates` is still what puts the
+helpers on `PATH`) renames the current tmux window to the
 lane, records the lane in the lane register, and starts this same Claude
 binary under this same profile — with `--name "$LANE"` on **every** branch it
 launches, the two that `--resume` an existing transcript as well as the one that
 starts a new session, since **adoption act 0** merged as `opensoft/brett-wip#5`
-at `3719d97` (`lane-start:846`, `:855`, `:866`), exactly as the `lane-start`
+at `3719d97` (`lane-start:846`, `:855`, `:866` at that head; the same three
+branches are `:1559`, `:1568` and `:1579` of the copy `openRepoTools` `63a74af`
+installs, which is the one a host runs today), exactly as the `lane-start`
 paragraph above says. **An earlier revision of this sentence split the two** and
 sent the reader up to Evidence 4 to decide which was which; act 0 abolished that
 distinction and the correction is recorded rather than quietly made (`CF3-W2`,
@@ -344,7 +353,11 @@ run — and neither is a repository this launcher chose for the operator.
 Amendment 9 **act 3**, when `--install`'s list grows to carry them, and with
 Amendment 9 **act 5** (`opensoft/brett-wip#6`, *"the workspace repository keeps
 data only"*), which **deletes `scripts/link-estates`** from the workspace
-repository. Those are not the same event as the probe, which reads the
+repository. **Act 3 has since merged** as `opensoft/openRepoTools` `63a74af`,
+and on a host that has re-run `--install` the first end has arrived: measured
+here 2026-09-14, `openRepoTools --help` lists `lane-start` and the resolver
+answers `openRepoTools --install` from the capability branch, which is the
+branch the amendment wants asked. Those are not the same event as the probe, which reads the
 *installed* copy's `--help`, so a host that has not re-run `--install` since act
 3 merged is still on the fallback when act 5 lands. In that state — the checkout
 present, its script gone — the line names `openRepoTools --install` with the
@@ -433,9 +446,17 @@ name:** `lane-start` writes the lane's *home* into its Amendment 7 `STARTED`
 line from that directory's `origin`, and every `#n` the lane afterwards writes
 inherits it, so an inference that can silently re-home a lane is not worth the
 refusal it saves — and the refusal names `--dir`, which is one word. Rungs 2
-and 3 degrade silently against today's helpers, which do not record a directory
-yet — `lanes-edit.sh swapped` prints no fourth field and `lane-dir` does not
-exist — so both simply find nothing and rung 4 stands. A path containing a
+and 3 degrade silently against a helper that records no directory — one
+predating `opensoft/openRepoTools` `63a74af`, where `lanes-edit.sh swapped`
+prints no fourth field and `lane-dir` does not exist, so both simply find
+nothing and rung 4 stands. **That helper has landed**, and the two rungs are
+measured rather than predicted from here on: at `63a74af` `swapped <ws>` prints
+five tab-separated fields — `<lane>`, `<UTC>`, `<window>`, `<dir>`, `<profile>`
+— with the fourth empty on every row written before the cutover, and `lane-dir
+<lane>` exits 0 with an absolute path for a lane whose log carries one and 8 for
+a lane that does not. So rung 2 still falls through on this workstation's own
+rows and **rung 3 now answers**, which is what the order was written for and
+changed nothing in the launcher when it happened. A path containing a
 space is written quoted and read back unquoted; one containing `, `, ` — `, `; `
 or a `"` is refused by the writer and never reaches a reader. **The
 semicolon-space is on that list for `dir` and `profile` and deliberately not for
@@ -596,15 +617,21 @@ this launcher at all. Two consequences, both of which this launcher and
   the same estate probe. The command string is the idempotence key for *both*
   writers of *both* files; change it in one and the other goes stale.
 
-**Live state, so this section is not mistaken for a live measurement.** Both
-writers above are gated on `~/projects/xFactory/lanes-edit.sh` having a
-`session-start` subcommand, and on `opensoft/brett-wip` `main` that subcommand
-does not exist yet — so today, correctly, neither writer ensures anything: no
-profile `settings.json` under `~/.claude-profiles/profiles/` carries a
-`SessionStart` hook, and `~/.claude/settings.json` only carries one where an
-operator hand-wrote it before this script could. This section describes what
-the code now does once the brett-wip half of Amendment 8 lands, not a
-measurement of any workstation today.
+**Live state, and the gate has since opened.** Both writers above are gated on
+`~/projects/xFactory/lanes-edit.sh` having a `session-start` subcommand. That
+path is not a second spelling of the estate: `link-estates` keeps it pointed at
+the installed helper precisely because the hook's command string names it, and
+the helper it points at now carries the subcommand — `opensoft/openRepoTools`
+`63a74af`, Amendment 9's adoption act 3, merged. **Measured on this workstation
+2026-09-14**, after `openRepoTools --install` ran: the link resolves to
+`~/.local/bin/lanes-edit.sh`; `~/.claude/settings.json` carries the canonical
+entry — same command string, `"matcher": "startup|resume|clear|fork"`,
+`"timeout": 5` — beside an unrelated `SessionStart` hook it left exactly as it
+was; and **15 of 383** profile `settings.json` under
+`~/.claude-profiles/profiles/` carry it, which is the number of profiles
+launched since, because the launcher writes the entry on a profile's NEXT launch
+rather than into all of them at once. A workstation whose copy predates that
+merge still fails the probe and still, correctly, ensures nothing.
 
 Profile launches default to
 `xhigh` effort and always start Claude with `bypassPermissions` plus

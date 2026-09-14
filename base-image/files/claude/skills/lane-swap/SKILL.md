@@ -443,11 +443,18 @@ fi
 # register write. `replace-in-row` and `append-row-status` each file a commit whose subject the helper keys
 # on the workstation, so keeping (c) would put in the register's own history the container id the two
 # refusals above exist to keep out of it — one file along, through the one act that was left running.
-# THIS DOES NOT WAIT FOR THE HELPER TO REFUSE FOR US. The helper this vendored skill actually invokes is
-# `opensoft/brett-wip`'s `lanes-edit.sh`, whose `:233` is `WS="${LANES_WORKSTATION:-$(hostname -s)}"` and
-# which carries no dispatcher guard at all, so from a container (c) does not fail safely — it SUCCEEDS, and
-# writes `LANES(<lane>@<container id>)` twice. `opensoft/openRepoTools#26` adds that guard; this file must
-# hold without it. What the swap still does from that container is everything that is not a register write:
+# THIS DOES NOT WAIT FOR THE HELPER TO REFUSE FOR US, AND IT NO LONGER HAS TO. When this fence was written
+# the helper this skill invokes was `opensoft/brett-wip`'s `lanes-edit.sh`, whose `:233` AT THAT HEAD was
+# `WS="${LANES_WORKSTATION:-$(hostname -s)}"` and which carried no dispatcher guard at all, so from a
+# container (c) did not fail safely — it SUCCEEDED, and wrote `LANES(<lane>@<container id>)` twice.
+# `opensoft/openRepoTools#26` has since MERGED as `63a74af`, and its `lanes-edit.sh` carries ONE guard at
+# the dispatcher refusing nine writers where this is a container with no `LANES_WORKSTATION` —
+# `append-row-status` and `replace-in-row`, which are (c)'s two, among them — exit 2, in one line naming
+# the variable and the launcher that sets it. Measured inside a bench container with the value unset: both
+# exit 2 before any write; with `LANES_WORKSTATION` set they reach their own usage error instead. So the
+# two refusals now agree — AND THIS FENCE STAYS. A workstation whose helper predates that merge is the
+# population it is for, and a skill that reads its own safety out of whichever helper it happens to find
+# stops being safe the moment that helper moves. What the swap still does from that container is everything that is not a register write:
 # step 2's handoff commit with the gap named in it, step 3's poll, and step 5's one command — which is the
 # half `#26` @`dae38be` got wrong in the other direction by exiting 2 at step 1.
 row_write_refused=""
