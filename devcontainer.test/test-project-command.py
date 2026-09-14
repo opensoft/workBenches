@@ -260,6 +260,8 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), ["new", "FromPath"])
 
+    @unittest.skipUnless(sys.platform.startswith("linux"),
+                         "command installer requires Bash 4 associative arrays")
     def test_status_distinguishes_unowned_and_verified_project_commands(self):
         status_bin = self.base / ".local/bin"
         status_bin.mkdir(parents=True)
