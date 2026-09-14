@@ -68,24 +68,32 @@ RUN set -eux && \
 # USER CREATION
 # ========================================
 
-# Remove any existing user/group with target UID/GID, then create new user
+# Remove any conflicting user, create the requested account, and verify the
+# effective passwd identity. Fail the build instead of publishing labels for a
+# user whose inherited UID/GID does not match the requested host identity.
 RUN set -eux && \
-    # Remove existing user with target UID if exists
+    if getent passwd "$USERNAME" >/dev/null; then \
+        userdel --force --remove "$USERNAME"; \
+    fi && \
     if getent passwd "$USER_UID" >/dev/null; then \
-        existing_user=$(getent passwd "$USER_UID" | cut -d: -f1) && \
-        userdel --force --remove $existing_user 2>/dev/null || true; \
+        existing_user=$(getent passwd "$USER_UID" | cut -d: -f1); \
+        userdel --force --remove "$existing_user"; \
     fi && \
     # Handle existing group with target GID
     if getent group "$USER_GID" >/dev/null; then \
-        existing_group=$(getent group "$USER_GID" | cut -d: -f1) && \
-        groupmod -n $USERNAME $existing_group 2>/dev/null || true; \
+        existing_group=$(getent group "$USER_GID" | cut -d: -f1); \
+        if getent group "$USERNAME" >/dev/null && [ "$existing_group" != "$USERNAME" ]; then \
+            groupdel "$USERNAME"; \
+        fi; \
+        [ "$existing_group" = "$USERNAME" ] || groupmod -n "$USERNAME" "$existing_group"; \
+    elif getent group "$USERNAME" >/dev/null; then \
+        groupmod -g "$USER_GID" "$USERNAME"; \
     else \
-        groupadd --gid $USER_GID $USERNAME 2>/dev/null || true; \
+        groupadd --gid "$USER_GID" "$USERNAME"; \
     fi && \
-    # Create user (-m copies /etc/skel to home directory)
-    if ! getent passwd "$USERNAME" >/dev/null; then \
-        useradd --uid $USER_UID --gid $USERNAME -m -s /bin/zsh $USERNAME 2>/dev/null || true; \
-    fi && \
+    useradd --uid "$USER_UID" --gid "$USERNAME" -m -s /bin/zsh "$USERNAME" && \
+    getent passwd "$USERNAME" | awk -F: -v uid="$USER_UID" -v gid="$USER_GID" \
+        '$3 == uid && $4 == gid { found = 1 } END { exit !found }' && \
     # Add to sudoers
     mkdir -p /etc/sudoers.d && \
     echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME && \

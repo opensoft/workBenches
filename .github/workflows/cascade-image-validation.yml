@@ -10,11 +10,13 @@ on:
       - devcontainer.test/fixtures/fake-docker-cascade-validation.sh
       - devcontainer.test/test-cascade-image-validation.sh
       - scripts/check-versions.sh
+      - scripts/lib/check-image-identity.py
       - scripts/ensure-layer3.sh
       - scripts/lib/cascade-image-validation.sh
       - scripts/lib/image-names.sh
       - scripts/lib/layer3-recipe.sh
       - scripts/update-and-rebuild.sh
+      - user-layer/Dockerfile
   pull_request:
     paths:
       - .github/workflows/cascade-image-validation.yml
@@ -24,11 +26,13 @@ on:
       - devcontainer.test/fixtures/fake-docker-cascade-validation.sh
       - devcontainer.test/test-cascade-image-validation.sh
       - scripts/check-versions.sh
+      - scripts/lib/check-image-identity.py
       - scripts/ensure-layer3.sh
       - scripts/lib/cascade-image-validation.sh
       - scripts/lib/image-names.sh
       - scripts/lib/layer3-recipe.sh
       - scripts/update-and-rebuild.sh
+      - user-layer/Dockerfile
   workflow_dispatch:
 
 permissions:

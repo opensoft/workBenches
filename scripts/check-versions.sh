@@ -433,7 +433,11 @@ layer3_identity_is_current() {
     [[ "$image_username" == "$USERNAME" \
         && "$image_uid" == "$USER_UID" \
         && "$image_gid" == "$USER_GID" \
-        && "$image_docker_gid" == "$DOCKER_SOCKET_GID" ]]
+        && "$image_docker_gid" == "$DOCKER_SOCKET_GID" ]] || return 1
+
+    run_with_optional_timeout 90 docker image save "$image" 2>/dev/null \
+        | python3 "$SCRIPT_DIR/lib/check-image-identity.py" \
+            "$USERNAME" "$USER_UID" "$USER_GID" "$DOCKER_SOCKET_GID"
 }
 
 check_layer3_image() {

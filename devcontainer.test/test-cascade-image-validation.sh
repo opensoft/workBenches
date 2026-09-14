@@ -64,6 +64,7 @@ if grep -Fq 'layer3-identity-probe' "$log"; then
     echo "Layer 3 inspection created an identity-probe container" >&2
     exit 1
 fi
+grep -Fq 'image save sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' "$log"
 
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
@@ -74,7 +75,7 @@ grep -Fq 'has a stale recipe' "$temp_dir/stale-recipe.out"
 
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
-FAKE_DOCKER_LAYER3_USERNAME=other-user \
+FAKE_DOCKER_LAYER3_PASSWD_USERNAME=other-user \
 "$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
     > "$temp_dir/stale-identity.out"
 grep -Fq 'has stale user/group configuration' "$temp_dir/stale-identity.out"

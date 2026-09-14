@@ -9,6 +9,40 @@ case "$1" in
             printf '%s\n' "${FAKE_DOCKER_IMAGE_REFS:-test-bench:latest}"
             exit 0
         fi
+        if [ "$2" = "save" ]; then
+            python3 - <<'PY'
+import io
+import json
+import os
+import sys
+import tarfile
+
+username = os.environ.get("FAKE_DOCKER_LAYER3_PASSWD_USERNAME", "brett")
+uid = os.environ.get("FAKE_DOCKER_LAYER3_UID", str(os.getuid()))
+gid = os.environ.get("FAKE_DOCKER_LAYER3_GID", str(os.getgid()))
+docker_gid = os.environ.get("FAKE_DOCKER_LAYER3_DOCKER_SOCKET_GID", "")
+passwd = f"root:x:0:0:root:/root:/bin/sh\n{username}:x:{uid}:{gid}:User:/home/{username}:/bin/sh\n".encode()
+group = b"root:x:0:\n"
+if docker_gid and docker_gid != gid:
+    group += f"docker-host:x:{docker_gid}:{username}\n".encode()
+
+layer_buffer = io.BytesIO()
+with tarfile.open(fileobj=layer_buffer, mode="w") as layer:
+    for name, data in (("etc/passwd", passwd), ("etc/group", group)):
+        member = tarfile.TarInfo(name)
+        member.size = len(data)
+        layer.addfile(member, io.BytesIO(data))
+layer_data = layer_buffer.getvalue()
+manifest_data = json.dumps([{"Config": "config.json", "RepoTags": [], "Layers": ["layer/layer.tar"]}]).encode()
+
+with tarfile.open(fileobj=sys.stdout.buffer, mode="w|") as archive:
+    for name, data in (("manifest.json", manifest_data), ("layer/layer.tar", layer_data)):
+        member = tarfile.TarInfo(name)
+        member.size = len(data)
+        archive.addfile(member, io.BytesIO(data))
+PY
+            exit 0
+        fi
         [ "$2" = "inspect" ] || exit 1
         image="${!#}"
         if [[ "$image" == "${FAKE_DOCKER_MISSING_IMAGE:-}" ]]; then
