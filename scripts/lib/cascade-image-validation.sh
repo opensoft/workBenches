@@ -13,7 +13,9 @@ record_rebuilt_cascade_image() {
     local produced_image
     local current_image_id
     local found=false
+    local missing=false
     local -a metadata_files=()
+    local -a declared_images=()
 
     [[ -f "$build_script" ]] && metadata_files+=("$build_script")
     if [[ -d "$bench_dir" ]]; then
@@ -29,15 +31,7 @@ record_rebuilt_cascade_image() {
     # sim-bench-gene_bench:latest). Limit discovery to references declared by
     # the selected build script/Compose files so an unrelated pre-existing
     # daemon image cannot enter the cascade result merely by sharing a prefix.
-    while IFS= read -r produced_image; do
-        [[ -n "$produced_image" ]] || continue
-        current_image_id="$(image_id_if_present "$produced_image")"
-        [[ -n "$current_image_id" ]] || continue
-        CASCADE_IMAGES+=("$produced_image")
-        CASCADE_IMAGE_RECORDS+=("$produced_image=$current_image_id")
-        found=true
-    done < <({
-        printf '%s\n' "$image"
+    mapfile -t declared_images < <({
         if [[ "${#metadata_files[@]}" -gt 0 ]]; then
             grep -Eho '[A-Za-z0-9][A-Za-z0-9._/-]*:latest' "${metadata_files[@]}" 2>/dev/null || true
             grep -Eho '[A-Za-z0-9][A-Za-z0-9._/-]*:\$\{USER:-[^}]+\}' "${metadata_files[@]}" 2>/dev/null \
@@ -46,8 +40,23 @@ record_rebuilt_cascade_image() {
     } | awk -v repo="$image_repo" '
         $0 == repo ":latest" || (index($0, repo "-") == 1 && $0 ~ /:latest$/)
     ' | LC_ALL=C sort -u)
+    if [[ "${#declared_images[@]}" -eq 0 ]]; then
+        declared_images=("$image")
+    fi
 
-    if [ "$found" = false ]; then
+    for produced_image in "${declared_images[@]}"; do
+        current_image_id="$(image_id_if_present "$produced_image")"
+        if [[ -z "$current_image_id" ]]; then
+            echo "Declared Layer 2 image $produced_image was not produced by $bench_name" >&2
+            missing=true
+            continue
+        fi
+        CASCADE_IMAGES+=("$produced_image")
+        CASCADE_IMAGE_RECORDS+=("$produced_image=$current_image_id")
+        found=true
+    done
+
+    if [ "$missing" = true ] || [ "$found" = false ]; then
         echo "Expected Layer 2 image $image was not produced by $bench_name" >&2
         return 1
     fi

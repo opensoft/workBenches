@@ -11,6 +11,9 @@ case "$1" in
         fi
         [ "$2" = "inspect" ] || exit 1
         image="${!#}"
+        if [[ "$image" == "${FAKE_DOCKER_MISSING_IMAGE:-}" ]]; then
+            exit 1
+        fi
         case "$image" in
             test-bench:latest|test-bench:brett*|sim-bench-gene_bench:*|sim-bench-ui:*|sha256:*) ;;
             *) exit 1 ;;

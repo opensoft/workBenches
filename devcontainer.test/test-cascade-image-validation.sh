@@ -160,6 +160,17 @@ FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
     record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata"
 test "${CASCADE_IMAGES[*]}" = "sim-bench-gene_bench:latest sim-bench-ui:latest"
 test "${#CASCADE_IMAGE_RECORDS[@]}" -eq 2
+
+CASCADE_IMAGES=()
+CASCADE_IMAGE_RECORDS=()
+if PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+    FAKE_DOCKER_MISSING_IMAGE=sim-bench-ui:latest \
+    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata"; then
+    echo "expected a missing declared Compose image to fail cascade capture" >&2
+    exit 1
+fi
+test "${CASCADE_IMAGES[*]}" = sim-bench-gene_bench:latest
+test "${#CASCADE_IMAGE_RECORDS[@]}" -eq 1
 if grep -Eq '(^| )(build|create|rm|stop|restart)( |$)' "$log"; then
     echo "Layer 3 inspection attempted a Docker mutation" >&2
     exit 1
