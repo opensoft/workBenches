@@ -11,11 +11,16 @@
 # openRepoShape's own two), and the script places them, re-places them when
 # they differ from the pin (either direction), and refuses to place anything
 # when the vendored copies themselves no longer match the pin. Every scenario
-# runs with $HOME sandboxed under a throwaway directory, because the skills,
-# the command file and the hook are written under $HOME
+# runs with $HOME sandboxed under a throwaway directory, AND
+# CLAUDE_PROFILES_HOME/CLAUDE_USER_DIR pinned explicitly to that same
+# directory's .claude-profiles/.claude -- `skills_home`/`claude_home` read
+# those two variables first and only fall back to $HOME when either is unset,
+# so sandboxing $HOME alone is not enough if the invoking shell (a developer's,
+# or CI's) happens to export one of them for its own purposes. The skills, the
+# command file and the hook are written under there
 # (~/.claude-profiles/... and ~/.claude/...), not just under the bin dir the
 # *_BIN_DIR overrides reach -- so a run of this suite never touches the real
-# machine's profiles, skills or settings.json.
+# machine's profiles, skills or settings.json, nor any other profile's.
 #
 # Scenarios (g)-(m) guard the adversarial review round's D1-D6 findings: a
 # symlinked target (D1), a directory target (D2), unpinned bytes reaching
@@ -247,7 +252,10 @@ BIN_A="$TMPDIR_ROOT/bin-a"
 HOME_A="$TMPDIR_ROOT/home-a"
 mkdir -p "$BIN_A" "$HOME_A"
 STATUS_A=0
-OUTPUT_A="$(HOME="$HOME_A" OPENREPOSHAPE_BIN_DIR="$BIN_A" OPENREPOTOOLS_BIN_DIR="$BIN_A" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_A=$?
+OUTPUT_A="$(HOME="$HOME_A" \
+    CLAUDE_PROFILES_HOME="$HOME_A/.claude-profiles" CLAUDE_USER_DIR="$HOME_A/.claude" \
+    OPENREPOSHAPE_BIN_DIR="$BIN_A" OPENREPOTOOLS_BIN_DIR="$BIN_A" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_A=$?
 
 assert_equal '0' "$STATUS_A" 'fresh install exit code'
 assert_file_executable "$BIN_A/openRepoShape" 'fresh install places openRepoShape, executable'
@@ -282,7 +290,10 @@ assert_equal '2' "$path_warning_count" 'exactly two PATH warnings (one per shim;
 
 printf '%s\n' '--- Scenario (b): a second run over an already-installed bin dir and $HOME reports unchanged ---'
 STATUS_B=0
-OUTPUT_B="$(HOME="$HOME_A" OPENREPOSHAPE_BIN_DIR="$BIN_A" OPENREPOTOOLS_BIN_DIR="$BIN_A" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_B=$?
+OUTPUT_B="$(HOME="$HOME_A" \
+    CLAUDE_PROFILES_HOME="$HOME_A/.claude-profiles" CLAUDE_USER_DIR="$HOME_A/.claude" \
+    OPENREPOSHAPE_BIN_DIR="$BIN_A" OPENREPOTOOLS_BIN_DIR="$BIN_A" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_B=$?
 
 assert_equal '0' "$STATUS_B" 'second run exit code'
 assert_contains "$OUTPUT_B" 'openRepoShape: already installed at' 'second run reports openRepoShape unchanged'
@@ -305,7 +316,10 @@ assert_hook_present "$HOME_A" 'second run still has the hook'
 printf '%s\n' '--- Scenario (c): a locally-modified park is replaced and reported updated ---'
 printf '%s\n' '# a local edit, not the vendored bytes' >> "$BIN_A/park"
 STATUS_C=0
-OUTPUT_C="$(HOME="$HOME_A" OPENREPOSHAPE_BIN_DIR="$BIN_A" OPENREPOTOOLS_BIN_DIR="$BIN_A" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_C=$?
+OUTPUT_C="$(HOME="$HOME_A" \
+    CLAUDE_PROFILES_HOME="$HOME_A/.claude-profiles" CLAUDE_USER_DIR="$HOME_A/.claude" \
+    OPENREPOSHAPE_BIN_DIR="$BIN_A" OPENREPOTOOLS_BIN_DIR="$BIN_A" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_C=$?
 
 assert_equal '0' "$STATUS_C" 'updated-park run exit code'
 assert_contains "$OUTPUT_C" 'park: updated at' 'the locally-modified park is reported updated'
@@ -337,7 +351,11 @@ BIN_D="$TMPDIR_ROOT/bin-d"
 HOME_D="$TMPDIR_ROOT/home-d"
 mkdir -p "$BIN_D" "$HOME_D"
 STATUS_D=0
-OUTPUT_D="$(HOME="$HOME_D" OPENREPOSHAPE_BIN_DIR="$BIN_D" OPENREPOTOOLS_BIN_DIR="$BIN_D" WORKBENCHES_BASE_IMAGE_DIR="$CORRUPT_BASE" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_D=$?
+OUTPUT_D="$(HOME="$HOME_D" \
+    CLAUDE_PROFILES_HOME="$HOME_D/.claude-profiles" CLAUDE_USER_DIR="$HOME_D/.claude" \
+    OPENREPOSHAPE_BIN_DIR="$BIN_D" OPENREPOTOOLS_BIN_DIR="$BIN_D" \
+    WORKBENCHES_BASE_IMAGE_DIR="$CORRUPT_BASE" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_D=$?
 
 assert_equal '1' "$STATUS_D" 'corrupted vendor copy exit code'
 assert_contains "$OUTPUT_D" 'REFUSED' "the check's REFUSED finding is in the output"
@@ -352,7 +370,11 @@ BIN_E="$TMPDIR_ROOT/bin-e"
 HOME_E="$TMPDIR_ROOT/home-e"
 mkdir -p "$BIN_E" "$HOME_E"
 STATUS_E=0
-OUTPUT_E="$(HOME="$HOME_E" WORKBENCHES_SKIP_ESTATE_COMMANDS=1 OPENREPOSHAPE_BIN_DIR="$BIN_E" OPENREPOTOOLS_BIN_DIR="$BIN_E" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_E=$?
+OUTPUT_E="$(HOME="$HOME_E" \
+    CLAUDE_PROFILES_HOME="$HOME_E/.claude-profiles" CLAUDE_USER_DIR="$HOME_E/.claude" \
+    WORKBENCHES_SKIP_ESTATE_COMMANDS=1 \
+    OPENREPOSHAPE_BIN_DIR="$BIN_E" OPENREPOTOOLS_BIN_DIR="$BIN_E" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_E=$?
 
 assert_equal '0' "$STATUS_E" 'skip-var run exit code'
 assert_contains "$OUTPUT_E" 'skipped' 'skip-var run says skipped'
@@ -368,7 +390,10 @@ chmod +x "$OTHER_REPO_G/park"
 LINK_TARGET_BEFORE="$(cat "$OTHER_REPO_G/park")"
 ln -s "$OTHER_REPO_G/park" "$BIN_G/park"
 STATUS_G=0
-OUTPUT_G="$(HOME="$HOME_G" OPENREPOSHAPE_BIN_DIR="$BIN_G" OPENREPOTOOLS_BIN_DIR="$BIN_G" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_G=$?
+OUTPUT_G="$(HOME="$HOME_G" \
+    CLAUDE_PROFILES_HOME="$HOME_G/.claude-profiles" CLAUDE_USER_DIR="$HOME_G/.claude" \
+    OPENREPOSHAPE_BIN_DIR="$BIN_G" OPENREPOTOOLS_BIN_DIR="$BIN_G" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_G=$?
 
 assert_equal '1' "$STATUS_G" 'symlinked park target exit code'
 assert_contains "$OUTPUT_G" "$BIN_G/park" 'the refusal names the symlinked path'
@@ -381,7 +406,10 @@ BIN_H="$TMPDIR_ROOT/bin-h"
 HOME_H="$TMPDIR_ROOT/home-h"
 mkdir -p "$BIN_H/park" "$HOME_H"
 STATUS_H=0
-OUTPUT_H="$(HOME="$HOME_H" OPENREPOSHAPE_BIN_DIR="$BIN_H" OPENREPOTOOLS_BIN_DIR="$BIN_H" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_H=$?
+OUTPUT_H="$(HOME="$HOME_H" \
+    CLAUDE_PROFILES_HOME="$HOME_H/.claude-profiles" CLAUDE_USER_DIR="$HOME_H/.claude" \
+    OPENREPOSHAPE_BIN_DIR="$BIN_H" OPENREPOTOOLS_BIN_DIR="$BIN_H" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_H=$?
 
 assert_equal '1' "$STATUS_H" 'directory-target park exit code'
 assert_contains "$OUTPUT_H" "$BIN_H/park" 'the refusal names the directory path'
@@ -395,7 +423,10 @@ mkdir -p "$BIN_I" "$HOME_I"
 cp "$PARK_VENDOR" "$BIN_I/park"
 chmod 0444 "$BIN_I/park"
 STATUS_I=0
-OUTPUT_I="$(HOME="$HOME_I" OPENREPOSHAPE_BIN_DIR="$BIN_I" OPENREPOTOOLS_BIN_DIR="$BIN_I" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_I=$?
+OUTPUT_I="$(HOME="$HOME_I" \
+    CLAUDE_PROFILES_HOME="$HOME_I/.claude-profiles" CLAUDE_USER_DIR="$HOME_I/.claude" \
+    OPENREPOSHAPE_BIN_DIR="$BIN_I" OPENREPOTOOLS_BIN_DIR="$BIN_I" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_I=$?
 
 assert_equal '1' "$STATUS_I" 'read-only park exit code'
 assert_contains "$OUTPUT_I" 'not writable' 'the refusal says park is not writable'
@@ -415,7 +446,11 @@ BIN_J="$TMPDIR_ROOT/bin-j"
 HOME_J="$TMPDIR_ROOT/home-j"
 mkdir -p "$BIN_J" "$HOME_J"
 STATUS_J=0
-OUTPUT_J="$(HOME="$HOME_J" OPENREPOSHAPE_BIN_DIR="$BIN_J" OPENREPOTOOLS_BIN_DIR="$BIN_J" WORKBENCHES_BASE_IMAGE_DIR="$NOPIN_BASE" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_J=$?
+OUTPUT_J="$(HOME="$HOME_J" \
+    CLAUDE_PROFILES_HOME="$HOME_J/.claude-profiles" CLAUDE_USER_DIR="$HOME_J/.claude" \
+    OPENREPOSHAPE_BIN_DIR="$BIN_J" OPENREPOTOOLS_BIN_DIR="$BIN_J" \
+    WORKBENCHES_BASE_IMAGE_DIR="$NOPIN_BASE" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_J=$?
 
 assert_equal '2' "$STATUS_J" 'missing pin file exit code'
 assert_contains "$OUTPUT_J" 'missing' 'the refusal says the pin is missing'
@@ -470,7 +505,11 @@ BIN_K="$TMPDIR_ROOT/bin-k"
 HOME_K="$TMPDIR_ROOT/home-k"
 mkdir -p "$BIN_K" "$HOME_K"
 STATUS_K=0
-OUTPUT_K="$(HOME="$HOME_K" OPENREPOSHAPE_BIN_DIR="$BIN_K" OPENREPOTOOLS_BIN_DIR="$BIN_K" WORKBENCHES_BASE_IMAGE_DIR="$NOROW_BASE" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_K=$?
+OUTPUT_K="$(HOME="$HOME_K" \
+    CLAUDE_PROFILES_HOME="$HOME_K/.claude-profiles" CLAUDE_USER_DIR="$HOME_K/.claude" \
+    OPENREPOSHAPE_BIN_DIR="$BIN_K" OPENREPOTOOLS_BIN_DIR="$BIN_K" \
+    WORKBENCHES_BASE_IMAGE_DIR="$NOROW_BASE" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_K=$?
 
 assert_equal '2' "$STATUS_K" 'row-and-file-removed resume exit code'
 assert_contains "$OUTPUT_K" 'resume' 'the pre-flight refusal names resume'
@@ -506,6 +545,7 @@ ESTATE_SENTINEL_VALUE="$(sed -n 's/^ESTATE_SENTINEL="\(.*\)"$/\1/p' "$SCRIPT_UND
 assert_matches "$ESTATE_SENTINEL_VALUE" '.' "scenario (k) part two setup: the sentinel value was read from $SCRIPT_UNDER_TEST"
 STATUS_K2=0
 OUTPUT_K2="$(HOME="$HOME_K2" \
+    CLAUDE_PROFILES_HOME="$HOME_K2/.claude-profiles" CLAUDE_USER_DIR="$HOME_K2/.claude" \
     OPENREPOTOOLS_BIN_DIR="$BIN_K2" \
     OPENREPOTOOLS_REPO="$ESTATE_SENTINEL_VALUE" OPENREPOTOOLS_REF="$ESTATE_SENTINEL_VALUE" \
     "$SHIM_ONLY_DIR/openRepoTools" --install 2>&1)" || STATUS_K2=$?
@@ -533,6 +573,7 @@ HOME_M="$TMPDIR_ROOT/home-m"
 mkdir -p "$BIN_M" "$HOME_M"
 STATUS_M=0
 OUTPUT_M="$(HOME="$HOME_M" \
+    CLAUDE_PROFILES_HOME="$HOME_M/.claude-profiles" CLAUDE_USER_DIR="$HOME_M/.claude" \
     OPENREPOSHAPE_REF='operator-branch' OPENREPOTOOLS_REF='operator-branch' \
     OPENREPOSHAPE_REPO='operator/fork' OPENREPOTOOLS_REPO='operator/fork' \
     OPENREPOSHAPE_BIN_DIR="$BIN_M" OPENREPOTOOLS_BIN_DIR="$BIN_M" \

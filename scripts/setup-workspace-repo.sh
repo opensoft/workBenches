@@ -40,21 +40,25 @@
 # Brett's direction allows is deliberately unspent.
 #
 # IT DEGRADES RATHER THAN FAILING, AND IT DEGRADES ON `--help`, NOT ON AN EXIT
-# CODE. The openRepoTools this repository vendors today has no `wip` subcommand
-# at all: Amendment 9's adoption act 3 sequences that change after
-# opensoft/brett-wip's Amendment 8 PR merges, so for now `openRepoTools wip
-# init` is an unknown argument. An unknown argument makes openRepoTools `die`,
-# and `die`'s default exit is 2 -- which is ALSO the exit Amendment 9(c) gives
-# `wip init`'s own refusals. One number, two meanings. So capability is decided
-# by asking `openRepoTools --help` whether it documents the VERB PAIR `wip
-# init`, never by a bare mention of the word `wip` (prose can name the
-# workspace repository without shipping the command, and a probe that matched
-# the word would call that capable) and never by running the verb and reading
-# what comes back: a probe that read the exit code would report a genuine
-# refusal -- the administrator's `gh repo create` block of Amendment 9(c) step
-# 4, printed and then exited 2 -- as "no such subcommand", and would swallow
-# the one piece of output the person most needs to see. (The same shape as the
-# launcher's `lane-start --help` probe for `--confirm`, opensoft/workBenches#63.)
+# CODE. The verb ARRIVED with the 8a36eb3 pin (opensoft/openRepoTools#24, Amendment
+# 9's adoption act 3, which sequenced that change after opensoft/brett-wip's
+# Amendment 8 PR merged): the openRepoTools this repository vendors today DOES carry
+# `wip init`, and the `--help` probe below is what turns this step live rather than
+# a Dockerfile or pin-file change on its own -- the probe is what decides, every
+# time this script runs, not a fact frozen in this comment. The degradation path
+# stays, for an EARLIER or hand-installed openRepoTools that predates act 3: there,
+# `openRepoTools wip init` is an unknown argument. An unknown argument makes
+# openRepoTools `die`, and `die`'s default exit is 2 -- which is ALSO the exit
+# Amendment 9(c) gives `wip init`'s own refusals. One number, two meanings. So
+# capability is decided by asking `openRepoTools --help` whether it documents the
+# VERB PAIR `wip init`, never by a bare mention of the word `wip` (prose can name
+# the workspace repository without shipping the command, and a probe that matched
+# the word would call that capable) and never by running the verb and reading what
+# comes back: a probe that read the exit code would report a genuine refusal --
+# the administrator's `gh repo create` block of Amendment 9(c) step 4, printed and
+# then exited 2 -- as "no such subcommand", and would swallow the one piece of
+# output the person most needs to see. (The same shape as the launcher's
+# `lane-start --help` probe for `--confirm`, opensoft/workBenches#63.)
 #
 # NOTHING THIS STEP RUNS HAS ITS OUTPUT CAPTURED. `openRepoTools wip init`
 # writes straight to this script's stdout and stderr, which are setup.sh's,

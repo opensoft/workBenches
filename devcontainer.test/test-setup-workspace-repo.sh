@@ -23,7 +23,12 @@
 #               spelling, https/git@/ssh://, with and without `.git` (RV-W1)
 #   (m)         the onboarding clone example is runnable as printed, in this
 #               script's own header and in README.md (RV-W4)
-#   (c)(c2)     the subcommand absent: it prints what to run and continues (0)
+#   (c)         the subcommand absent (a fake openRepoTools whose --help does
+#               not carry it): it prints what to run and continues (0)
+#   (c2)        the subcommand PRESENT in the REAL vendored copy (Amendment 9
+#               adoption act 3 landed as opensoft/openRepoTools#24): the step
+#               invokes the real `wip init` under a fake `gh` that grants
+#               nothing, and relays wip init's own sandboxed refusal (1)
 #   (c3)        MUTATION: absence is decided by `--help`, NEVER by an exit code
 #   (c4)        MUTATION: a bare `wip` in --help PROSE is not capability (F1)
 #   (c5)        the degraded path never repairs a noncompliant login (F7)
@@ -409,26 +414,67 @@ assert_not_contains "$(tools_argv)" 'argv=wip' '(c) wip init was NOT invoked'
 assert_contains "$(tools_argv)" 'argv=--help' '(c) the capability was probed with --help'
 
 printf '%s\n' '--- (c2) the same, against the openRepoTools this repo vendors TODAY ---'
-# Not a fake: the real vendored bytes. Adoption act 3 has not landed, so this
-# must degrade -- and the day it does land, this scenario is the one that
-# notices, because the real --help will then carry the verb. THAT DAY, the
-# act-3 pin-move PR must update this scenario (and (c)'s siblings that assert
-# "no `wip` subcommand yet") in the same commit, or CI (F4) lands red on this
-# suite rather than green on a stale assumption.
+# Not a fake: the real vendored bytes. Adoption act 3 has LANDED, as
+# opensoft/openRepoTools#24 (d4b5710, "Lane tooling moves home: filter-repo
+# from brett-wip, openRepoTools wip init, --install installs the lane skill
+# and hook (Amendment 9 act 3)") -- this suite noticed on 2026-09-14 when
+# workBenches' pin moved to 8a36eb3, exactly as this comment said it would the
+# day it happened.
+#
+# So the real --help now carries the verb pair, and this step no longer
+# degrades: it INVOKES the real `wip init`. Everything it does stays inside
+# the sandbox for a reason already in place above this scenario, not a new
+# one -- `env -i` with the fake `gh` first on $PATH means every `gh` call the
+# real `wip_init` makes (Amendment 9(c) steps 2, 4 and 5: the login, the
+# team, whether opensoft/brettheap-wip exists, and creating it) reaches the
+# FAKE, never a network. Read against that fake's own two rules (`gh api
+# user` answers from $FAKE_GH_LOGIN; every other call is refused, exit 1):
+# `wip_derive_team` finds no team, `gh repo view` and `gh repo create` both
+# fail, `wip_init` prints the administrator's block (every value already
+# substituted) and -- with stdin /dev/null, so it cannot prompt -- refuses
+# (exit 2, `wip_init`'s own numbering) rather than hang. This step relays
+# that as ITS OWN exit 1 ("wip init ran and refused"). That is a TRUE,
+# sandboxed behaviour, asserted verbatim below -- never forced to "pass"
+# with a --yes or an auto-create path this command does not have.
 AGENTS_C2="$TMPDIR_ROOT/agents-c2"
 REAL_BIN="$TMPDIR_ROOT/real-bin"
 mkdir -p "$AGENTS_C2" "$REAL_BIN"
 cp "$REAL_TOOLS" "$REAL_BIN/openRepoTools"
 chmod 755 "$REAL_BIN/openRepoTools"
+GH_LOG_C2="$TMPDIR_ROOT/c2-gh.log"
 STATUS_C2=0
 OUTPUT_C2="$(env -i "PATH=$FAKE_BIN:/usr/bin:/bin" "HOME=$TMPDIR_ROOT/home" \
-    "FAKE_TOOLS_LOG=$TMPDIR_ROOT/unused.log" "FAKE_GH_LOG=$TMPDIR_ROOT/unused-gh.log" \
+    "FAKE_TOOLS_LOG=$TMPDIR_ROOT/unused.log" "FAKE_GH_LOG=$GH_LOG_C2" \
     "FAKE_GH_LOGIN=brettheap" \
     "AGENT_PROTOCOL_ROOT=$AGENTS_C2" "OPENREPOTOOLS_BIN_DIR=$REAL_BIN" \
     "$SCRIPT_UNDER_TEST" 2>&1 </dev/null)" || STATUS_C2=$?
-assert_equal "$STATUS_C2" '0' '(c2) the real vendored openRepoTools degrades, exit 0'
-assert_contains "$OUTPUT_C2" 'no `wip` subcommand yet' '(c2) the real vendored copy is correctly seen to lack wip'
-assert_contains "$OUTPUT_C2" "$REAL_BIN/openRepoTools" '(c2) it names the openRepoTools it asked'
+GH_LOG_CONTENT_C2="$(cat "$GH_LOG_C2" 2>/dev/null || true)"
+
+# The real --help carries the verb: this step does not degrade.
+assert_contains "$("$REAL_BIN/openRepoTools" --help)" 'wip init' '(c2) the real vendored copy is correctly seen to CARRY wip (opensoft/openRepoTools#24)'
+assert_not_contains "$OUTPUT_C2" 'no `wip` subcommand yet' '(c2) it is no longer reported as degraded'
+assert_contains "$OUTPUT_C2" "$REAL_BIN/openRepoTools wip init" '(c2) it names the openRepoTools it asked, and that it invoked wip init'
+assert_contains "$OUTPUT_C2" 'target: opensoft/brettheap-wip (derived; you are asked nothing)' '(c2) the step invokes the real wip init on the derived target'
+
+# What it asked the fake `gh` -- Amendment 9(c) steps 2, 4 and 5, and nothing
+# past step 5: `gh repo clone` is never reached because the fake never lets
+# the repository exist.
+assert_contains "$GH_LOG_CONTENT_C2" 'argv=api user' '(c2) wip init asked the fake gh for the login (step 2)'
+assert_contains "$GH_LOG_CONTENT_C2" 'argv=api --paginate /user/teams' "(c2) wip init asked the fake gh for the person's teams (step 4)"
+assert_contains "$GH_LOG_CONTENT_C2" 'argv=repo view opensoft/brettheap-wip' '(c2) wip init asked the fake gh whether the repository already exists (step 5)'
+assert_contains "$GH_LOG_CONTENT_C2" 'argv=repo create opensoft/brettheap-wip --private' '(c2) wip init asked the fake gh to create it (step 5), which the fake refuses'
+assert_not_contains "$GH_LOG_CONTENT_C2" 'argv=repo clone' '(c2) wip init never reached the clone: the fake never let the repository exist'
+
+# The refusal itself, relayed verbatim -- a sandboxed refusal is a true
+# behaviour, not a reason to force a pass.
+assert_equal "$STATUS_C2" '1' '(c2) the step reports the refusal wip init itself gave (exit 1: it ran and refused)'
+assert_contains "$OUTPUT_C2" 'creating opensoft/brettheap-wip' '(c2) wip init reports trying to create the repository'
+assert_contains "$OUTPUT_C2" '`gh repo create opensoft/brettheap-wip` did not succeed' '(c2) wip init reports the create failing under the fake'
+assert_contains "$OUTPUT_C2" '# 1. create the repository (org-owned, private)' '(c2) the administrator block is relayed, every value already filled in'
+assert_contains "$OUTPUT_C2" 'gh repo create opensoft/brettheap-wip --private \' "(c2) the block's own gh repo create line names the derived target"
+assert_contains "$OUTPUT_C2" 'REFUSED: opensoft/brettheap-wip does not exist and this run has no terminal to wait on' '(c2) wip init'"'"'s own refusal is relayed verbatim (no prompt reachable: stdin is /dev/null)'
+assert_contains "$OUTPUT_C2" 'Workspace repository step refused: `openRepoTools wip init` exited 2.' '(c2) this step names the exit code wip init itself gave'
+assert_file_present "$AGENTS_C2/.workspace-step-needs-attention" "(c2) the refusal leaves the needs-attention marker (setup.sh's SETUP COMPLETE summary finds it)"
 
 printf '%s\n' '--- (c3) MUTATION: absence is read from --help, never from an exit code ---'
 # A `wip init` that REFUSES prints the administrator block and exits 2 -- the
