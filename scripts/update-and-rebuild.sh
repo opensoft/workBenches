@@ -249,8 +249,8 @@ build_layer2_bench() {
                 "$context_dir"
             build_timer_end "Layer 2: $bench_name"
         else
-            echo -e "${YELLOW}  No build script or Dockerfile found in $bench_dir — skipping${NC}"
-            return
+            echo -e "${RED}✗ No supported build script or Dockerfile found in $bench_dir${NC}" >&2
+            return 1
         fi
     fi
 

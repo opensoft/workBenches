@@ -87,6 +87,25 @@ record_rebuilt_cascade_image() {
             grep -Eho '[A-Za-z0-9][A-Za-z0-9._/-]*:latest' "${metadata_files[@]}" 2>/dev/null || true
             grep -Eho '[A-Za-z0-9][A-Za-z0-9._/-]*:\$\{USER:-[^}]+\}' "${metadata_files[@]}" 2>/dev/null \
                 | sed 's/:.*/:latest/' || true
+            awk '
+                /^[[:space:]]*image:[[:space:]]*/ {
+                    ref = $0
+                    sub(/^[[:space:]]*image:[[:space:]]*/, "", ref)
+                    sub(/[[:space:]]+#.*/, "", ref)
+                    gsub(/^[[:space:]]+/, "", ref)
+                    gsub(/[[:space:]]+$/, "", ref)
+                    quote = sprintf("%c", 39)
+                    if ((substr(ref, 1, 1) == "\"" && substr(ref, length(ref), 1) == "\"") \
+                        || (substr(ref, 1, 1) == quote && substr(ref, length(ref), 1) == quote)) {
+                        ref = substr(ref, 2, length(ref) - 2)
+                    }
+                    leaf = ref
+                    sub(/^.*\//, "", leaf)
+                    if (ref ~ /^[A-Za-z0-9][A-Za-z0-9._:\/-]*$/ && leaf !~ /:/) {
+                        print ref ":latest"
+                    }
+                }
+            ' "${metadata_files[@]}" 2>/dev/null || true
         fi
     } | awk -v repo="$image_repo" '
         $0 == repo ":latest" || (index($0, repo "-") == 1 && $0 ~ /:latest$/)

@@ -51,12 +51,14 @@ assert_layer3_identity_rejected() {
         echo "expected Layer 3 to reject a root-equivalent identity" >&2
         exit 1
     fi
-    grep -Fq 'requires a non-root username and canonical positive UID/GID' \
+    grep -Fq 'requires a valid non-root username and canonical positive UID/GID' \
         "$temp_dir/root-layer3.out"
     test ! -s "$log"
 }
 assert_layer3_identity_rejected --user root --uid 0 --gid 0
 assert_layer3_identity_rejected --user 00 --uid 1000 --gid 1000
+assert_layer3_identity_rejected --user '' --uid 1000 --gid 1000
+assert_layer3_identity_rejected --user 'bad.name' --uid 1000 --gid 1000
 assert_layer3_identity_rejected --user tester --uid 00 --gid 1000
 assert_layer3_identity_rejected --user tester --uid 1000 --gid 000
 
@@ -218,7 +220,7 @@ printf '%s\n' \
     '  gene:' \
     '    image: sim-bench-gene_bench:latest' \
     '  ui:' \
-    '    image: sim-bench-ui:latest' > "$compose_bench_dir/docker-compose.yml"
+    '    image: sim-bench-ui' > "$compose_bench_dir/docker-compose.yml"
 printf '%s\n' \
     'services:' \
     '  dev:' \
