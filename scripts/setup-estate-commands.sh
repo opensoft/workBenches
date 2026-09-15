@@ -61,6 +61,14 @@
 #     row removed the documented way (`apply --remove`) is caught here,
 #     before either shim could fall back to fetching that file over the
 #     network (D3).
+#   - Refuses (exit 2) if TOOLS_FILES, SKILL_NAMES or COMMAND_NAMES below
+#     ever disagrees with the vendored shim's own INSTALLABLES, SKILLS or
+#     COMMANDS array (`check_shim_list`, added for Copilot's review of
+#     opensoft/workBenches#91: those three lists here are still hand-kept,
+#     not generated -- there is no `--list-installables` to generate them
+#     from -- but a shim that grows past what this script lists no longer
+#     installs the new file's bytes while silently skipping its preflight
+#     and verification; it refuses the whole install and names both lists).
 #   - For the duration of both installer runs, OPENREPOSHAPE_REPO/_REF and
 #     OPENREPOTOOLS_REPO/_REF are overridden to a sentinel that cannot
 #     resolve, so that IF a fetch is ever attempted despite the checks
@@ -100,8 +108,10 @@
 # one of the two installers itself failed; or a placed file failed
 # verification after install); 2 tooling or configuration missing (no
 # python3; no jq; the pin file, update-upstream.py, or a file either shim
-# needs is missing; a file the shims would install has no row in the pin; or
-# update-upstream.py check itself refused structurally). setup.sh runs this
+# needs is missing; a file the shims would install has no row in the pin;
+# this script's TOOLS_FILES/SKILL_NAMES/COMMAND_NAMES disagrees with the
+# shim's own INSTALLABLES/SKILLS/COMMANDS; or update-upstream.py check itself
+# refused structurally). setup.sh runs this
 # under `log_header "ESTATE COMMANDS"` and treats any non-zero exit here as
 # best-effort, continuing either way; this script is also safe to run
 # directly, any time. A host that runs it now ends up with the same
@@ -151,8 +161,16 @@ TOOLS_SHIM="$BASE_IMAGE_DIR/files/openrepotools/openRepoTools"
 # so the file-existence check, the pin-row check, the preflight and the
 # post-install verification below cannot disagree about what a complete
 # bin-directory install is, the same reason openRepoTools's own INSTALLABLES
-# is one list there.
+# is one list there. Checked against that list itself below (`check_shim_list`),
+# not just kept in sync by a person's own care.
 TOOLS_FILES=(openRepoTools park resume status lane lanes lane-handoff lanes-edit.sh lane-start lane-end link-estates repos.tsv)
+# THE THREE SKILLS and THE THREE COMMAND FILES `openRepoTools --install` also
+# places (skill_source_path/command_source_path in that shim derive the two
+# paths each of these takes from the name alone, the same way this script's
+# own require_pin_row loops below do). Also checked against the shim's own
+# SKILLS/COMMANDS arrays below.
+SKILL_NAMES=(handoff lane-swap restart)
+COMMAND_NAMES=(handoff ctx swap)
 
 if [ ! -f "$PIN_FILE" ]; then
     echo "Estate command install refused: the pin file is missing or" >&2
@@ -202,6 +220,46 @@ elif [ "$check_status" -ne 0 ]; then
     exit 2
 fi
 
+# CHECKED AGAINST THE SHIM'S OWN LIST, not trusted on a person's care alone
+# (Copilot's review of opensoft/workBenches#91, README.md:108: "TOOLS_FILES
+# is a literal array... This sentence therefore promises a safeguard that
+# does not exist; a future upstream artifact could make --install succeed
+# while this wrapper omits its preflight/verification"). TOOLS_FILES,
+# SKILL_NAMES and COMMAND_NAMES above are still hand-kept mirrors, not
+# generated -- there is no `openRepoTools --list-installables` to generate
+# them from -- but from here on a shim whose own INSTALLABLES, SKILLS or
+# COMMANDS grew past what this script lists REFUSES the whole install rather
+# than silently omitting the new file's preflight and verification. Read
+# AFTER `check` above has already proven $TOOLS_SHIM's bytes match the pin,
+# so `eval`-ing its three one-line array assignments is evaluating content
+# already integrity-checked by sha256, not arbitrary vendored bytes.
+check_shim_list() {
+    local our_name="$1" shim_array_name="$2" expected_csv="$3" shim_line shim_csv
+    shim_line="$(grep -m1 "^${shim_array_name}=" "$TOOLS_SHIM")"
+    if [ -z "$shim_line" ]; then
+        echo "Estate command install refused: could not find '${shim_array_name}=' in" >&2
+        echo "$TOOLS_SHIM; this script's own $our_name may be stale. Nothing was installed." >&2
+        exit 2
+    fi
+    # Evaluated in a SEPARATE bash process, never in this script's own shell:
+    # a shim array named identically to this script's own local ($shim_line
+    # is always some upstream INSTALLABLES/SKILLS/COMMANDS, never TOOLS_FILES/
+    # SKILL_NAMES/COMMAND_NAMES, so this is defensive rather than live) would
+    # otherwise shadow it depending on which assignment ran last.
+    shim_csv="$(bash -c "$shim_line"$'\n'"IFS=,; echo \"\${${shim_array_name}[*]}\"")"
+    if [ "$shim_csv" != "$expected_csv" ]; then
+        echo "Estate command install refused: this script's $our_name list" >&2
+        echo "  ($expected_csv)" >&2
+        echo "does not match the vendored shim's own $shim_array_name" >&2
+        echo "  ($shim_csv)." >&2
+        echo "Nothing was installed. Update $our_name in $0 to match." >&2
+        exit 2
+    fi
+}
+check_shim_list TOOLS_FILES INSTALLABLES "$(IFS=,; echo "${TOOLS_FILES[*]}")"
+check_shim_list SKILL_NAMES SKILLS "$(IFS=,; echo "${SKILL_NAMES[*]}")"
+check_shim_list COMMAND_NAMES COMMANDS "$(IFS=,; echo "${COMMAND_NAMES[*]}")"
+
 # Ruling 1 ("version" means the pin): read the two pinned commits from
 # `update-upstream.py list`, which prints each source's id, then its
 # attributes (including "commit") in a stable, parseable form -- never from
@@ -248,12 +306,12 @@ require_pin_row "openRepoShape"
 for name in "${TOOLS_FILES[@]}"; do
     require_pin_row "$name"
 done
-require_pin_row "skills/handoff/SKILL.md"
-require_pin_row "skills/lane-swap/SKILL.md"
-require_pin_row "skills/restart/SKILL.md"
-require_pin_row "commands/handoff.md"
-require_pin_row "commands/ctx.md"
-require_pin_row "commands/swap.md"
+for name in "${SKILL_NAMES[@]}"; do
+    require_pin_row "skills/$name/SKILL.md"
+done
+for name in "${COMMAND_NAMES[@]}"; do
+    require_pin_row "commands/$name.md"
+done
 
 echo "openRepoShape pinned at $shape_commit"
 echo "openRepoTools pinned at $tools_commit"

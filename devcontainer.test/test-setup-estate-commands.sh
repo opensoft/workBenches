@@ -39,6 +39,14 @@
 # beside it, `openRepoTools --install` itself tries to fetch that file under
 # openRepoTools#26's all-or-nothing rule, and the sentinel this script
 # exports refuses it by name. Neither path ever reaches a real network.
+#
+# Scenarios (n) and (o) guard opensoft/openRepoTools#45's `RETIRED=(restart)`
+# (Copilot's review of opensoft/workBenches#91, `openRepoTools:277`, "not
+# exercised... a future change could therefore leave the retired executable
+# on PATH -- or delete the wrong one -- while the reported checks still
+# pass"): the two ownership branches `retire_commands` decides between, an
+# installer-owned stale copy (removed) and a person's own file of the same
+# name (named and left, byte for byte).
 
 set -euo pipefail
 
@@ -617,6 +625,136 @@ SCRIPT_SOURCE="$(cat "$SCRIPT_UNDER_TEST")"
 for var in OPENREPOSHAPE_REPO OPENREPOSHAPE_REF OPENREPOTOOLS_REPO OPENREPOTOOLS_REF; do
     assert_contains "$SCRIPT_SOURCE" "export $var=\"\$ESTATE_SENTINEL\"" "the script source exports $var to the fixed sentinel before installing"
 done
+
+printf '%s\n' '--- Scenario (n) [Copilot round on #91, openRepoTools:277]: a stale INSTALLER-OWNED restart is retired -- removed, and named ---'
+# `restart` left INSTALLABLES at this pin (Amendment 18 Addendum 2); the shim
+# does not merely stop copying it, it retires a copy IT PLACED. The test for
+# "this installer's own copy" is the header line every file this installer
+# owns carries -- `Installed on PATH by \`openRepoTools --install\`` -- which
+# is why the fixture below is not an empty file: `retire_commands` reads that
+# exact string out of the target, not out of anything this script asserts.
+BIN_N="$TMPDIR_ROOT/bin-n"
+HOME_N="$TMPDIR_ROOT/home-n"
+mkdir -p "$BIN_N" "$HOME_N"
+cat > "$BIN_N/restart" <<'RESTARTEOF'
+#!/usr/bin/env bash
+# Installed on PATH by `openRepoTools --install`. lane-collision-protocol
+echo "a stale restart this installer placed on an earlier run"
+RESTARTEOF
+chmod +x "$BIN_N/restart"
+STATUS_N=0
+OUTPUT_N="$(HOME="$HOME_N" \
+    CLAUDE_PROFILES_HOME="$HOME_N/.claude-profiles" CLAUDE_USER_DIR="$HOME_N/.claude" \
+    OPENREPOSHAPE_BIN_DIR="$BIN_N" OPENREPOTOOLS_BIN_DIR="$BIN_N" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_N=$?
+
+assert_equal '0' "$STATUS_N" 'retiring an installer-owned restart still exits 0'
+assert_absent "$BIN_N/restart" 'the installer-owned restart was removed'
+assert_contains "$OUTPUT_N" 'restart: RETIRED, removed from' 'the output names the removal, not a silent delete'
+assert_contains "$OUTPUT_N" "$BIN_N/restart" 'the removal line names the exact path removed'
+
+printf '%s\n' '--- Scenario (o) [Copilot round on #91, openRepoTools:277]: a stale USER-OWNED restart is named and left exactly as it is ---'
+# The other ownership branch: a file at the same path with no installer
+# header -- a person's own script happening to be called `restart` -- is
+# never this installer's to delete (`unplaceable_kind`'s own reasoning,
+# ported to retirement rather than to placement).
+BIN_O="$TMPDIR_ROOT/bin-o"
+HOME_O="$TMPDIR_ROOT/home-o"
+mkdir -p "$BIN_O" "$HOME_O"
+cat > "$BIN_O/restart" <<'RESTARTEOF'
+#!/usr/bin/env bash
+echo "a person's own restart script, unrelated to openRepoTools"
+RESTARTEOF
+chmod +x "$BIN_O/restart"
+USER_RESTART_BEFORE="$(sha256sum "$BIN_O/restart" | cut -d' ' -f1)"
+STATUS_O=0
+OUTPUT_O="$(HOME="$HOME_O" \
+    CLAUDE_PROFILES_HOME="$HOME_O/.claude-profiles" CLAUDE_USER_DIR="$HOME_O/.claude" \
+    OPENREPOSHAPE_BIN_DIR="$BIN_O" OPENREPOTOOLS_BIN_DIR="$BIN_O" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_O=$?
+
+assert_equal '0' "$STATUS_O" 'a user-owned restart in the way still exits 0'
+assert_file_executable "$BIN_O/restart" 'the user-owned restart is still there, still executable'
+assert_equal "$USER_RESTART_BEFORE" "$(sha256sum "$BIN_O/restart" | cut -d' ' -f1)" 'the user-owned restart is byte-for-byte untouched'
+assert_contains "$OUTPUT_O" "RETIRED by lane-collision-protocol Amendment 18 Addendum 2" 'the output names the retirement, even though nothing was removed'
+assert_contains "$OUTPUT_O" 'left exactly as it is' 'the output says the file was left alone'
+assert_contains "$OUTPUT_O" "rm -f -- \"$BIN_O/restart\"" 'the output prints the exact command that would remove it, for the person to run'
+
+printf '%s\n' '--- Scenario (p) [Copilot round on #91, README.md:108]: this script'"'"'s TOOLS_FILES refuses to run against a shim whose own INSTALLABLES disagrees ---'
+# The safeguard README.md:108 claims and Copilot found missing: TOOLS_FILES
+# is still a hand-kept literal array (there is no `--list-installables` to
+# generate it from), but from here it is CHECKED against the shim's own
+# INSTALLABLES, not merely assumed to agree with it forever. Proven by
+# editing a throwaway copy's shim to grow a file this script does not know
+# about, and hand-patching that ONE vendored copy's pin row so `check` still
+# passes -- exactly `update-upstream.py apply`'s own effect, without the
+# network call recomputing a real upstream commit's digest would need.
+MISMATCH_BASE="$TMPDIR_ROOT/mismatch-base-image"
+mkdir -p "$MISMATCH_BASE"
+cp -r "$BASE_IMAGE_DIR/." "$MISMATCH_BASE/"
+python3 - "$MISMATCH_BASE" <<'PYEOF'
+import hashlib
+import re
+import sys
+
+base = sys.argv[1]
+shim_path = f"{base}/files/openrepotools/openRepoTools"
+pin_path = f"{base}/upstream-pin.yaml"
+
+with open(shim_path, "r", encoding="utf-8") as f:
+    text = f.read()
+new_text, count = re.subn(
+    r"^INSTALLABLES=\(([^)]*)\)$",
+    r"INSTALLABLES=(\1 a-new-tool-this-script-does-not-list)",
+    text,
+    count=1,
+    flags=re.MULTILINE,
+)
+if count != 1:
+    raise SystemExit("could not find INSTALLABLES=(...) to widen")
+with open(shim_path, "w", encoding="utf-8") as f:
+    f.write(new_text)
+
+new_digest = hashlib.sha256(new_text.encode("utf-8")).hexdigest()
+
+with open(pin_path, "r", encoding="utf-8") as f:
+    lines = f.readlines()
+out = []
+i = 0
+patched = False
+while i < len(lines):
+    out.append(lines[i])
+    if lines[i].strip() == "- path: openRepoTools":
+        out.append(lines[i + 1].split(":")[0] + f': "{new_digest}"\n')
+        out.append(lines[i + 2])
+        i += 3
+        patched = True
+        continue
+    i += 1
+if not patched:
+    raise SystemExit("could not find the openRepoTools pin row to patch")
+with open(pin_path, "w", encoding="utf-8") as f:
+    f.writelines(out)
+PYEOF
+BIN_P="$TMPDIR_ROOT/bin-p"
+HOME_P="$TMPDIR_ROOT/home-p"
+mkdir -p "$BIN_P" "$HOME_P"
+MISMATCH_CHECK_STATUS=0
+python3 "$MISMATCH_BASE/update-upstream.py" check >"$TMPDIR_ROOT/mismatch-check.log" 2>&1 || MISMATCH_CHECK_STATUS=$?
+assert_equal '0' "$MISMATCH_CHECK_STATUS" "scenario (p) setup: 'check' passes on the widened-and-repinned copy (this is the precondition -- the two files agree with each other, and disagree with this script)"
+
+STATUS_P=0
+OUTPUT_P="$(HOME="$HOME_P" \
+    CLAUDE_PROFILES_HOME="$HOME_P/.claude-profiles" CLAUDE_USER_DIR="$HOME_P/.claude" \
+    OPENREPOSHAPE_BIN_DIR="$BIN_P" OPENREPOTOOLS_BIN_DIR="$BIN_P" \
+    WORKBENCHES_BASE_IMAGE_DIR="$MISMATCH_BASE" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_P=$?
+
+assert_equal '2' "$STATUS_P" 'a widened shim INSTALLABLES refuses (tooling/configuration, not a placement failure)'
+assert_contains "$OUTPUT_P" 'TOOLS_FILES list' 'the refusal names this script'"'"'s own list'
+assert_contains "$OUTPUT_P" 'a-new-tool-this-script-does-not-list' 'the refusal shows the file this script does not know about'
+assert_empty_dir "$BIN_P" 'nothing was installed once the two lists disagree'
+assert_absent "$HOME_P/.claude" 'nothing was written under $HOME/.claude either, for the widened shim'
 
 if (( failures == 0 )); then
     printf '%s\n' 'GREEN: setup-estate-commands regression test passed'
