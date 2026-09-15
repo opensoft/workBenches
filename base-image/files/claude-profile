@@ -1454,6 +1454,15 @@ lane_window_confirmed_elsewhere() {
   # whole PR exists to keep). The lane defect capture's keep/delete decision
   # is the only caller; nothing else needs this finer distinction.
   local want="$1" now
+  # Copilot round 3 on opensoft/workBenches#96: `lane_window_is` and
+  # `export_tmux_identity` both require $TMUX before asking tmux anything;
+  # this one didn't, so a `--lane` launched genuinely OUTSIDE tmux (lane-start
+  # refuses that as its own status-1 environment case) could query whatever
+  # DEFAULT tmux server happens to be running on the machine — a stranger's
+  # session, unrelated to this launch — and read ITS current window's name as
+  # "confirmed elsewhere", deleting a capture that was never ambiguous to
+  # begin with.
+  [[ -n "${TMUX:-}" ]] || return 1
   command -v tmux >/dev/null 2>&1 || return 1
   now="$(tmux display-message -p '#W' 2>/dev/null)" || return 1
   [[ -n "$now" && "$now" != "$want" ]]
@@ -2774,6 +2783,17 @@ case "$action" in
           # documented default instead of reaching that comparison at all.
           [[ "$lane_defect_fast_exit_seconds" =~ ^[0-9]+$ ]] \
             || lane_defect_fast_exit_seconds=20
+          # NORMALIZED, NOT JUST SHAPE-CHECKED (Copilot round 3 on
+          # opensoft/workBenches#96, claude-profile:2776): the regex above
+          # accepts "08"/"09"/"010" as digit strings, but `[[ -ge ]]` reads a
+          # leading-zero operand as OCTAL — "08" and "09" are not even valid
+          # octal digits and error outright, and "010" silently means 8, not
+          # the ten someone typed. Stripped down to the decimal number it
+          # looks like ("0" itself left alone) before it is ever compared.
+          while [[ "$lane_defect_fast_exit_seconds" == 0* \
+            && "${#lane_defect_fast_exit_seconds}" -gt 1 ]]; do
+            lane_defect_fast_exit_seconds="${lane_defect_fast_exit_seconds#0}"
+          done
           lane_defect_started="$SECONDS"
           set +e
           exec 9> >(tee "$lane_defect_capture" >&2)
@@ -2781,6 +2801,14 @@ case "$action" in
           CLAUDE_CONFIG_DIR="$config_dir" CLAUDE_BIN="$claude_bin" \
             "${lane_argv[@]}" "$lane" -- "${claude_flags[@]}" "$@" 2>&9
           lane_status=$?
+          # CAPTURED HERE, NOT AFTER `wait` (Copilot round 3 on
+          # opensoft/workBenches#96, claude-profile:2814): `wait` only
+          # rejoins the TEE process, which can still be draining buffered
+          # output for a moment after the command it was reading from has
+          # already exited. Timing the LANE COMMAND — was $lane_status
+          # decided fast? — means stopping the clock the instant it is
+          # decided, not after whatever the tee has left to flush.
+          lane_defect_elapsed=$(( SECONDS - lane_defect_started ))
           exec 9>&-
           wait "$lane_defect_tee_pid" 2>/dev/null
           set -e
@@ -2806,8 +2834,8 @@ case "$action" in
           # its tail printed below — "nothing to see" and "the evidence of
           # what broke" look identical from a status and an elapsed time
           # alone, and guessing wrong the deleting way is the bug this
-          # closes.
-          lane_defect_elapsed=$(( SECONDS - lane_defect_started ))
+          # closes. ($lane_defect_elapsed itself was captured right after
+          # $lane_status, above — before `wait`, not after.)
           lane_defect_clean=false
           if { [[ "$lane_status" -eq 1 || "$lane_status" -eq 2 ]] \
               && lane_window_confirmed_elsewhere "$lane"; } \
@@ -2819,31 +2847,43 @@ case "$action" in
             rm -f "$lane_defect_capture"
           else
             # BOUND WHAT IS KEPT, NOT JUST WHAT IS PRINTED (Copilot round 1 on
-            # opensoft/workBenches#96, claude-profile:2752, revised round 2):
-            # the tail below is 15 lines, but until now the FILE ITSELF
-            # carried the whole stderr stream, unbounded — one very chatty
-            # fast exit could keep megabytes. BY BYTES, not lines (round 2:
-            # a line-count cap does not bound storage against one very long
-            # line), and written with `mktemp` rather than a plain
-            # redirect (round 2: a plain `>` creates the replacement under
-            # the shell's umask — commonly world-readable, unlike the
-            # original capture's own 0600 — and a predictable `.trunc` name
-            # in a shared TMPDIR can be pre-planted as a symlink). 200000
-            # bytes is generous for a human reading it later with
-            # `tail`/`less` and still bounded; the sweep above bounds how
-            # many of these accumulate over TIME, this bounds how large any
-            # ONE of them gets — the LIVE stream this tees from is left
-            # unbounded on purpose, so the operator watching it live still
-            # sees everything, exactly as documented above. Best-effort: a
-            # failed `tail`/`mv` here leaves the untruncated file in place
-            # rather than losing it, and the mktemp'd scratch file is
-            # removed either way.
-            if [[ "$(wc -c < "$lane_defect_capture")" -gt 200000 ]]; then
-              lane_defect_trunc="$(mktemp "$lane_defect_capture.trunc.XXXXXX")"
-              if tail -c 200000 "$lane_defect_capture" > "$lane_defect_trunc"; then
-                mv -f "$lane_defect_trunc" "$lane_defect_capture"
-              else
-                rm -f "$lane_defect_trunc"
+            # opensoft/workBenches#96, claude-profile:2752, revised round 2
+            # and round 3): the tail below is 15 lines, but until now the
+            # FILE ITSELF carried the whole stderr stream, unbounded — one
+            # very chatty fast exit could keep megabytes. BY BYTES, not
+            # lines (round 2: a line-count cap does not bound storage
+            # against one very long line), and written with `mktemp` rather
+            # than a plain redirect (round 2: a plain `>` creates the
+            # replacement under the shell's umask — commonly
+            # world-readable, unlike the original capture's own 0600 — and
+            # a predictable `.trunc` name in a shared TMPDIR can be
+            # pre-planted as a symlink). There is NO sweep of OLD kept
+            # captures across separate invocations — round 1 added one,
+            # round 2 retracted it as unsafe (see the comment above the
+            # mktemp this file's own capture came from) — so 200000 bytes
+            # only bounds any ONE capture, never how many accumulate over
+            # time. The LIVE stream this tees from is left unbounded on
+            # purpose, so the operator watching it live still sees
+            # everything, exactly as documented above. EVERY STEP HERE IS
+            # GUARDED (round 3: `mktemp`/`tail`/`mv` were bare statements
+            # after `set -e` was restored, so any one of them failing —
+            # disk pressure, most plausibly — killed the launcher before it
+            # ever reached the tail-and-causes print below, the opposite of
+            # "best-effort"): a failed `mktemp` leaves nothing to truncate
+            # into and this is skipped; a failed `tail` or `mv` cleans up
+            # its own scratch file and leaves the untruncated capture in
+            # place, oversized rather than lost.
+            if [[ "$(wc -c < "$lane_defect_capture" 2>/dev/null)" -gt 200000 ]]; then
+              lane_defect_trunc=""
+              lane_defect_trunc="$(mktemp "$lane_defect_capture.trunc.XXXXXX" 2>/dev/null)" \
+                || lane_defect_trunc=""
+              if [[ -n "$lane_defect_trunc" ]]; then
+                if tail -c 200000 "$lane_defect_capture" > "$lane_defect_trunc" 2>/dev/null; then
+                  mv -f "$lane_defect_trunc" "$lane_defect_capture" 2>/dev/null \
+                    || rm -f "$lane_defect_trunc"
+                else
+                  rm -f "$lane_defect_trunc"
+                fi
               fi
             fi
             {

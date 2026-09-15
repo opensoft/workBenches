@@ -74,7 +74,7 @@ fail() {
 # quietly changing a number; the assertion count is printed and not pinned,
 # because checks are added to existing scenarios all the time and a scenario
 # that stops running is the thing worth catching.
-EXPECTED_SCENARIOS=41
+EXPECTED_SCENARIOS=43
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -1182,6 +1182,44 @@ if command -v stat >/dev/null 2>&1; then
     [[ -z "$capture_mode" || "$capture_mode" == "600" ]] \
         || fail "huge capture: the truncated file's mode was $capture_mode, not the 600 mktemp gives the original ($capture_path)"; assertion
 fi
+rm -f "$capture_path"
+
+# 11p. lane_window_confirmed_elsewhere REQUIRES $TMUX, LIKE ITS SIBLINGS
+# lane_window_is AND export_tmux_identity DO (Copilot round 3 on
+# opensoft/workBenches#96, claude-profile:1457): a --lane launch genuinely
+# outside tmux (lane-start's own status-1 environment refusal, "not inside
+# tmux") must not have its capture deleted because some UNRELATED tmux
+# server happens to be reachable and answers with a window name that is not
+# the lane's — that answer is not about THIS launch at all.
+launch \
+    "TMUX=" \
+    "FAKE_TMUX_WINDOW=some-other-sessions-window" \
+    "FAKE_LANE_START_DECLINE=exit2" \
+    -- --lane openRepoProject-1 run team002 --resume session-outside-tmux
+capture_path="$(grep -m1 -F 'lane defect capture:' "$ERR_LOG" | sed -n 's/.*lane defect capture: //p')"
+[[ -n "$capture_path" ]] \
+    || fail "outside tmux: the capture path was never printed ('$(cat "$ERR_LOG")')"; assertion
+[[ -e "$capture_path" ]] \
+    || fail "outside tmux: the capture was deleted based on an unrelated tmux server's window name, although this launch has no \$TMUX of its own ($capture_path)"; assertion
+rm -f "$capture_path"
+
+# 11q. A LEADING-ZERO WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS COMPARES AS
+# DECIMAL, NOT OCTAL (Copilot round 3 on opensoft/workBenches#96,
+# claude-profile:2776): bash's `[[ -ge ]]` reads a leading-zero operand as
+# octal, where "08"/"09" are not even valid octal digits and error outright
+# rather than merely misreading.
+launch \
+    "FAKE_TMUX_WINDOW=claude" \
+    "FAKE_LANE_START_DECLINE=fastexit" \
+    "WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS=08" \
+    -- --lane openRepoProject-1 run team002 --resume session-octal-threshold
+capture_path="$(grep -m1 -F 'lane defect capture:' "$ERR_LOG" | sed -n 's/.*lane defect capture: //p')"
+[[ -n "$capture_path" ]] \
+    || fail "octal threshold: the capture path was never printed ('$(cat "$ERR_LOG")')"; assertion
+grep -qi 'value too great for base\|syntax error in expression' "$ERR_LOG" \
+    && fail "octal threshold: the leading-zero override reached the comparison unnormalized ('$(cat "$ERR_LOG")')"; assertion
+[[ -e "$capture_path" ]] \
+    || fail "octal threshold: the capture was deleted although 0s is well under a threshold of 8 ($capture_path)"; assertion
 rm -f "$capture_path"
 
 # ---------------------------------------------------------------------------
