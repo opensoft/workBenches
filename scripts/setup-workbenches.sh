@@ -268,7 +268,8 @@ install_onp_command() {
         return 0
     fi
     local project_bin_dir="${OPENREPOPROJECT_BIN_DIR:-$HOME/.local/bin}"
-    python3 "$SCRIPT_DIR/setup-project-command.py" --bin-dir "$project_bin_dir" || return $?
+    python3 "$SCRIPT_DIR/setup-project-command.py" \
+        --bin-dir "$project_bin_dir" --install-onp || return $?
     if ! python3 "$SCRIPT_DIR/setup-project-command.py" \
         --bin-dir "$project_bin_dir" --resolve-owned >/dev/null 2>&1; then
         echo -e "${YELLOW}⚠ Refusing to install onp without a verified project command${NC}"
@@ -276,10 +277,7 @@ install_onp_command() {
     fi
     echo -e "${BLUE}Installing onp (Opensoft New Project) command...${NC}"
 
-    # Install the same self-verifying launcher under the compatibility name.
-    # The launcher detects argv[0] == onp and prepends the `new` subcommand.
-    if cp -- "$project_bin_dir/project" "$project_bin_dir/onp" \
-        && chmod 0755 "$project_bin_dir/onp"; then
+    if [ -x "$project_bin_dir/onp" ]; then
         echo -e "${GREEN}✓ onp command installed to $project_bin_dir/onp${NC}"
         echo "You can now run 'onp' from anywhere to create new projects."
     else

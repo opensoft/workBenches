@@ -222,7 +222,8 @@ install_commands() {
     # Install the authoritative executable; do not replace it with a wrapper.
     # A skip is successful but does not authorize project-dependent wrappers.
     local project_available=false
-    python3 "$SCRIPT_DIR/setup-project-command.py" --bin-dir "$install_dir" || return $?
+    python3 "$SCRIPT_DIR/setup-project-command.py" \
+        --bin-dir "$install_dir" --install-onp || return $?
     if python3 "$SCRIPT_DIR/setup-project-command.py" \
         --bin-dir "$install_dir" --resolve-owned >/dev/null 2>&1; then
         project_available=true
@@ -247,13 +248,8 @@ install_commands() {
             continue
         fi
         if [ "$cmd_name" = "onp" ]; then
-            if cp -- "$install_dir/project" "$install_dir/onp" \
-                && chmod 0755 "$install_dir/onp"; then
-                print_success "Installed: onp"
-                ((installed_count++))
-            else
-                print_error "Failed to install: onp"
-            fi
+            print_success "Installed: onp"
+            ((installed_count++))
             continue
         fi
         local cmd_desc="${COMMANDS[$cmd_name]}"

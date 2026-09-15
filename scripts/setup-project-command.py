@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Install the commit-pinned openRepoProject executable. Apache-2.0."""
 import argparse
+import ctypes
 import fcntl
 import hashlib
 import json
@@ -264,31 +265,80 @@ def execute_project(data, target, command_args):
     return 0
 
 
-def replace_transaction(replacements, staged):
-    """Replace related files and roll back any completed step on failure."""
+def atomic_exchange(left, right):
+    """Atomically exchange two existing paths on Linux or macOS."""
+    libc = ctypes.CDLL(None, use_errno=True)
+    left_bytes = os.fsencode(left)
+    right_bytes = os.fsencode(right)
+    if sys.platform.startswith("linux"):
+        try:
+            exchange = libc.renameat2
+        except AttributeError as exc:
+            raise OSError("renameat2 is unavailable on this Linux system") from exc
+        exchange.argtypes = (ctypes.c_int, ctypes.c_char_p,
+                             ctypes.c_int, ctypes.c_char_p, ctypes.c_uint)
+        exchange.restype = ctypes.c_int
+        result = exchange(-100, left_bytes, -100, right_bytes, 2)
+    elif sys.platform == "darwin":
+        try:
+            exchange = libc.renamex_np
+        except AttributeError as exc:
+            raise OSError("renamex_np is unavailable on this macOS system") from exc
+        exchange.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint)
+        exchange.restype = ctypes.c_int
+        result = exchange(left_bytes, right_bytes, 2)
+    else:
+        raise OSError("Atomic checked replacement is unsupported on this platform")
+    if result != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+
+
+def atomic_checked_replace(source, destination, expected_state):
+    """Publish source only if destination still has its expected identity."""
+    published_state = path_fingerprint(source)
+    if expected_state == ("missing",):
+        try:
+            os.link(source, destination, follow_symlinks=False)
+        except FileExistsError as exc:
+            raise ValueError(f"Refusing concurrent collision at {destination}") from exc
+        source.unlink()
+        return None, published_state
+    if expected_state[:1] != ("file",):
+        raise ValueError(f"Refusing non-regular replacement at {destination}")
+    atomic_exchange(source, destination)
+    if path_fingerprint(source) != expected_state:
+        atomic_exchange(source, destination)
+        raise ValueError(f"Refusing concurrent replacement at {destination}")
+    return source, published_state
+
+
+def replace_transaction(replacements, staged, expected_states):
+    """Publish related files with identity checks and roll back on failure."""
     backups = {}
     replaced = []
-    for destination, _source in replacements:
-        if destination in backups:
-            continue
-        if destination.is_file():
-            backup = stage(destination.parent, destination.read_bytes(),
-                           destination.stat().st_mode & 0o777)
-            staged.append(backup)
-            backups[destination] = backup
-        else:
-            backups[destination] = None
+    current_states = dict(expected_states)
     try:
         for destination, source in replacements:
-            os.replace(source, destination)
+            backup, published_state = atomic_checked_replace(
+                source, destination, current_states[destination])
+            if destination not in backups:
+                backups[destination] = backup
+            current_states[destination] = published_state
             replaced.append(destination)
-    except OSError:
+    except (OSError, ValueError):
+        restored = set()
         for destination in reversed(replaced):
+            if destination in restored:
+                continue
+            restored.add(destination)
             backup = backups[destination]
             if backup is None:
-                destination.unlink(missing_ok=True)
+                if path_fingerprint(destination) == current_states[destination]:
+                    destination.unlink(missing_ok=True)
             else:
-                os.replace(backup, destination)
+                atomic_checked_replace(backup, destination,
+                                       current_states[destination])
         raise
 
 
@@ -302,6 +352,8 @@ def main(argv=None):
         "WORKBENCHES_ROOT", ROOT)))
     parser.add_argument("--replace-existing", action="store_true",
                         help="replace a non-workBenches project command after explicit approval")
+    parser.add_argument("--install-onp", action="store_true",
+                        help="install the verified project launcher under the onp compatibility name")
     operation = parser.add_mutually_exclusive_group()
     operation.add_argument("--remove", action="store_true",
                         help="remove only a project command owned by this installer")
@@ -332,6 +384,7 @@ def main(argv=None):
             raise ValueError("Invalid openRepoProject pin")
         directory = args.bin_dir.expanduser()
         target, payload = directory / "project", directory / PAYLOAD_NAME
+        onp = directory / "onp"
         marker = directory / ".workbenches-path"
         owner_marker = directory / ".workbenches-project.json"
         lock_path = directory / LOCK_NAME
@@ -347,11 +400,21 @@ def main(argv=None):
             })).hexdigest()
             for item in trusted_previous
         )
+        onp_owned = (onp.is_file() and not onp.is_symlink()
+                     and onp.stat().st_mode & 0o777 == 0o755
+                     and file_sha256(onp) in expected_launcher_digests)
         read_operation = args.resolve_owned or args.exec_owned
         if args.remove and not directory.exists():
             print(f"project: no install directory at {directory}", file=sys.stderr)
             return 3
         if args.remove and not target.exists() and not owner_marker.exists():
+            if onp_owned:
+                onp_state = path_fingerprint(onp)
+                if onp_state != path_fingerprint(onp):
+                    raise ValueError("onp changed during removal; nothing removed")
+                onp.unlink()
+                print(f"project: removed installer-owned compatibility command from {onp}")
+                return 0
             print(f"project: no installer-owned command at {target}", file=sys.stderr)
             return 3
         if read_operation and not lock_path.is_file():
@@ -383,31 +446,33 @@ def main(argv=None):
             if owned_target(target, payload, owner_marker, pin,
                             expected_launcher_digests):
                 removal_state = (path_fingerprint(target), path_fingerprint(payload),
-                                 path_fingerprint(owner_marker))
+                                 path_fingerprint(owner_marker), path_fingerprint(onp))
                 if (not owned_target(target, payload, owner_marker, pin,
                                      expected_launcher_digests)
                         or removal_state != (path_fingerprint(target), path_fingerprint(payload),
-                                             path_fingerprint(owner_marker))):
+                                             path_fingerprint(owner_marker), path_fingerprint(onp))):
                     raise ValueError("Project command changed during removal; nothing removed")
                 target.unlink()
                 payload.unlink()
                 owner_marker.unlink()
+                if onp_owned:
+                    onp.unlink()
                 print(f"project: removed installer-owned command from {target}")
                 return 0
             print(f"project: preserved unowned command at {target}", file=sys.stderr)
             return 3
         if not (wb / "config/bench-config.json").is_file():
             raise ValueError(f"Not a workBenches checkout: {wb}")
-        onp = directory / "onp"
         initial_install_state = (path_fingerprint(target), path_fingerprint(payload),
-                                 path_fingerprint(owner_marker))
+                                 path_fingerprint(owner_marker), path_fingerprint(marker))
         initial_onp_state = path_fingerprint(onp)
         target_digest = file_sha256(payload) if payload.is_file() and not payload.is_symlink() else ""
         target_owned = owned_target(target, payload, owner_marker, pin,
                                     expected_launcher_digests)
-        onp_owned = (target_owned and onp.is_file() and not onp.is_symlink()
-                     and onp.stat().st_mode & 0o777 == 0o755
-                     and file_sha256(onp) in expected_launcher_digests)
+        onp_exists = onp.exists() or onp.is_symlink()
+        if args.install_onp and onp_exists and not onp_owned:
+            raise ValueError(f"Refusing to replace unowned onp command: {onp}")
+        manage_onp = onp_owned or args.install_onp
         previous_commit = ""
         previous_launcher_digest = ""
         if target_owned:
@@ -458,7 +523,7 @@ def main(argv=None):
                      and target.stat().st_mode & 0o777 == 0o755
                      and payload.is_file() and payload.read_bytes() == data
                      and payload.stat().st_mode & 0o777 == 0o644)
-        onp_same = (not onp_owned or onp.read_bytes() == launcher_data)
+        onp_same = (not manage_onp or (onp_owned and onp.read_bytes() == launcher_data))
         marker_same = marker.is_file() and marker.read_bytes() == marker_data
         owner_same = owner_marker.is_file() and owner_marker.read_bytes() == owner_data
         if not unchanged or not onp_same or not marker_same or not owner_same:
@@ -484,7 +549,7 @@ def main(argv=None):
             if onp_stage is not None:
                 validate_target(onp)
             if initial_install_state != (path_fingerprint(target), path_fingerprint(payload),
-                                         path_fingerprint(owner_marker)):
+                                         path_fingerprint(owner_marker), path_fingerprint(marker)):
                 raise ValueError("Project command changed during installation; nothing replaced")
             if onp_stage is not None and initial_onp_state != path_fingerprint(onp):
                 raise ValueError("onp changed during project installation; nothing replaced")
@@ -496,7 +561,15 @@ def main(argv=None):
             if onp_stage is not None:
                 replacements.append((onp, onp_stage))
             replacements.extend(((marker, marker_stage), (owner_marker, owner_stage)))
-            replace_transaction(replacements, staged)
+            expected_states = {
+                target: initial_install_state[0],
+                payload: initial_install_state[1],
+                owner_marker: initial_install_state[2],
+                marker: initial_install_state[3],
+            }
+            if onp_stage is not None:
+                expected_states[onp] = initial_onp_state
+            replace_transaction(replacements, staged, expected_states)
         fully_unchanged = unchanged and onp_same and marker_same and owner_same
         print(f"project: {'already installed' if fully_unchanged else 'installed'} at {target}")
         print(f"Source: {pin['repository']} @ {pin['commit']}")

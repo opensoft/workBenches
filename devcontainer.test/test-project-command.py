@@ -80,13 +80,18 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(target.read_bytes(), self.source.read_bytes())
 
     def test_remove_preserves_unowned_and_removes_owned_command(self):
-        self.assertEqual(self.install(), 0)
+        self.assertEqual(installer.main([
+            *self.args, "--source", str(self.source), "--install-onp",
+        ]), 0)
         target = self.bin / "project"
+        onp = self.bin / "onp"
         owner = self.bin / ".workbenches-project.json"
         self.assertTrue(owner.is_file())
+        self.assertTrue(onp.is_file())
         with patch.dict(os.environ, {"WORKBENCHES_SKIP_PROJECT_COMMAND": "1"}):
             self.assertEqual(installer.main([*self.args, "--remove"]), 0)
         self.assertFalse(target.exists())
+        self.assertFalse(onp.exists())
         self.assertFalse((self.bin / installer.PAYLOAD_NAME).exists())
         self.assertFalse(owner.exists())
         target.write_text("unowned replacement")
@@ -184,22 +189,23 @@ class InstallTests(unittest.TestCase):
         pin["commit"] = "b" * 40
         pin["sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
         self.pin.write_text(json.dumps(pin))
-        real_replace = os.replace
+        real_publish = installer.atomic_checked_replace
         for fail_at in (2, 3, 4, 5):
             with self.subTest(fail_at=fail_at):
                 for path, data in original.items():
                     path.write_bytes(data)
                 target.chmod(0o755)
-                replace_count = 0
+                publish_count = 0
 
-                def fail_replace(source, destination):
-                    nonlocal replace_count
-                    replace_count += 1
-                    if replace_count == fail_at:
+                def fail_publish(source, destination, expected_state):
+                    nonlocal publish_count
+                    publish_count += 1
+                    if publish_count == fail_at:
                         raise OSError("simulated publication failure")
-                    return real_replace(source, destination)
+                    return real_publish(source, destination, expected_state)
 
-                with patch.object(installer.os, "replace", side_effect=fail_replace):
+                with patch.object(installer, "atomic_checked_replace",
+                                  side_effect=fail_publish):
                     self.assertEqual(self.install(), 2)
                 for path, data in original.items():
                     self.assertEqual(path.read_bytes(), data)
@@ -223,6 +229,50 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(self.install(), 2)
         self.assertEqual(target.read_text(), "concurrent unowned command")
         self.assertFalse((self.bin / ".workbenches-project.json").exists())
+
+    def test_missing_target_collision_at_publication_is_preserved(self):
+        target = self.bin / "project"
+        real_link = installer.os.link
+        collision_created = False
+
+        def create_collision_before_link(source, destination, *args, **kwargs):
+            nonlocal collision_created
+            if Path(destination) == target and not collision_created:
+                target.write_text("concurrent unowned command")
+                collision_created = True
+            return real_link(source, destination, *args, **kwargs)
+
+        with patch.object(installer.os, "link", side_effect=create_collision_before_link):
+            self.assertEqual(self.install(), 2)
+        self.assertTrue(collision_created)
+        self.assertEqual(target.read_text(), "concurrent unowned command")
+        self.assertFalse((self.bin / ".workbenches-project.json").exists())
+
+    def test_owned_target_replacement_at_publication_is_preserved(self):
+        self.assertEqual(self.install(), 0)
+        target = self.bin / "project"
+        self.source.write_text('#!/usr/bin/env python3\nprint("updated")\n')
+        pin = json.loads(self.pin.read_text())
+        pin["trusted_previous"] = [{"commit": pin["commit"], "sha256": pin["sha256"]}]
+        pin["commit"] = "b" * 40
+        pin["sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.pin.write_text(json.dumps(pin))
+        real_exchange = installer.atomic_exchange
+        collision_created = False
+
+        def replace_before_exchange(left, right):
+            nonlocal collision_created
+            if Path(right) == target and not collision_created:
+                target.write_text("concurrent unowned command")
+                target.chmod(0o755)
+                collision_created = True
+            return real_exchange(left, right)
+
+        with patch.object(installer, "atomic_exchange", side_effect=replace_before_exchange):
+            self.assertEqual(self.install(), 2)
+        self.assertTrue(collision_created)
+        self.assertEqual(target.read_text(), "concurrent unowned command")
+        self.assertEqual(installer.main([*self.args, "--resolve-owned"]), 3)
 
     def test_pending_owned_upgrade_recovers_after_interruption(self):
         self.assertEqual(self.install(), 0)
@@ -263,17 +313,19 @@ class InstallTests(unittest.TestCase):
         target = self.bin / "project"
         target.write_text("unowned project command")
         original = target.read_bytes()
-        real_replace = os.replace
-        replace_count = 0
+        real_publish = installer.atomic_checked_replace
+        publish_count = 0
 
-        def interrupt_after_replace(source, destination):
-            nonlocal replace_count
-            replace_count += 1
-            real_replace(source, destination)
-            if replace_count == 1:
+        def interrupt_after_publish(source, destination, expected_state):
+            nonlocal publish_count
+            publish_count += 1
+            result = real_publish(source, destination, expected_state)
+            if publish_count == 1:
                 raise KeyboardInterrupt("simulated interruption")
+            return result
 
-        with patch.object(installer.os, "replace", side_effect=interrupt_after_replace):
+        with patch.object(installer, "atomic_checked_replace",
+                          side_effect=interrupt_after_publish):
             with self.assertRaises(KeyboardInterrupt):
                 installer.main([*self.args, "--source", str(self.source),
                                 "--replace-existing"])
@@ -528,6 +580,51 @@ class InstallTests(unittest.TestCase):
         result = subprocess.run([str(onp), "Upgrade"], text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), ["rotated", "new", "Upgrade"])
+
+    def test_clean_reinstall_refreshes_trusted_orphaned_onp(self):
+        self.assertEqual(installer.main([
+            *self.args, "--source", str(self.source), "--install-onp",
+        ]), 0)
+        onp = self.bin / "onp"
+        old_onp = onp.read_bytes()
+        self.assertEqual(installer.main([*self.args, "--remove"]), 0)
+        self.assertFalse(onp.exists())
+
+        # Recreate the orphan left by installers from before --remove managed
+        # the compatibility launcher, then rotate to a pin that trusts it.
+        onp.write_bytes(old_onp)
+        onp.chmod(0o755)
+        old_pin = json.loads(self.pin.read_text())
+        self.source.write_text(
+            '#!/usr/bin/env python3\nimport json, sys\n'
+            'print(json.dumps(["rotated", *sys.argv[1:]]))\n')
+        self.pin.write_text(json.dumps({
+            **old_pin,
+            "commit": "b" * 40,
+            "sha256": hashlib.sha256(self.source.read_bytes()).hexdigest(),
+            "trusted_previous": [{
+                "commit": old_pin["commit"],
+                "sha256": old_pin["sha256"],
+            }],
+        }))
+        self.assertEqual(self.install(), 0)
+        self.assertEqual(onp.read_bytes(), (self.bin / "project").read_bytes())
+        result = subprocess.run([str(onp), "Reinstall"], text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), ["rotated", "new", "Reinstall"])
+
+    def test_install_onp_refuses_symlink_collision(self):
+        self.bin.mkdir()
+        external = self.base / "external-onp-target"
+        external.write_text("external command")
+        onp = self.bin / "onp"
+        onp.symlink_to(external)
+        self.assertEqual(installer.main([
+            *self.args, "--source", str(self.source), "--install-onp",
+        ]), 2)
+        self.assertTrue(onp.is_symlink())
+        self.assertEqual(external.read_text(), "external command")
+        self.assertFalse((self.bin / "project").exists())
 
     def test_exec_owned_releases_shared_lock_before_delegated_work(self):
         lock_path = self.bin / installer.LOCK_NAME
