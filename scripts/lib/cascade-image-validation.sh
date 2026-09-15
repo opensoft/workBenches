@@ -261,8 +261,10 @@ declared_cascade_images() {
                     if (line ~ /^#/) next
                     sub(/[[:space:]]+#.*/, "", line)
                     working = line
-                    while (match(working, /[A-Za-z0-9][A-Za-z0-9._\/-]*:latest/)) {
-                        print substr(working, RSTART, RLENGTH)
+                    while (match(working, /[A-Za-z0-9][A-Za-z0-9._\/-]*:latest([^A-Za-z0-9_.-]|$)/)) {
+                        ref = substr(working, RSTART, RLENGTH)
+                        if (ref !~ /:latest$/) ref = substr(ref, 1, length(ref) - 1)
+                        print ref
                         working = substr(working, RSTART + RLENGTH)
                     }
                     working = line

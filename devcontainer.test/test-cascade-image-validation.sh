@@ -274,6 +274,8 @@ printf '%s\n' \
     '    image: sim-bench-gene_bench:latest' \
     '  ui:' \
     '    image: sim-bench-ui' \
+    '  preview:' \
+    '    image: sim-bench-preview:latest-dev' \
     '  # image: sim-bench-retired:latest' > "$compose_bench_dir/docker-compose.yml"
 printf '%s\n' \
     'services:' \
@@ -290,6 +292,10 @@ if grep -Fq 'sim-bench-dev:latest' "$log"; then
 fi
 if grep -Fq 'sim-bench-retired:latest' "$log"; then
     echo "cascade capture inspected a commented Compose output" >&2
+    exit 1
+fi
+if grep -Fq 'sim-bench-preview:latest' "$log"; then
+    echo "cascade capture truncated a non-latest image tag" >&2
     exit 1
 fi
 
