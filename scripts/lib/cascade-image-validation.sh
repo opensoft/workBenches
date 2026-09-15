@@ -209,17 +209,34 @@ declared_cascade_images() {
         local build_dir
         local compose_dir
         local default_compose_name
+        local default_compose_file=""
+        local override_compose_name
+        local override_prefix
         build_dir="$(dirname "$build_script")"
         if build_uses_default_compose_file "$build_script"; then
             for compose_dir in "$build_dir" "$bench_dir"; do
                 for default_compose_name in \
                     compose.yaml compose.yml docker-compose.yaml docker-compose.yml; do
                     if [[ -f "$compose_dir/$default_compose_name" ]]; then
-                        metadata_files+=("$compose_dir/$default_compose_name")
+                        default_compose_file="$compose_dir/$default_compose_name"
+                        metadata_files+=("$default_compose_file")
                         break 2
                     fi
                 done
             done
+            if [[ -n "$default_compose_file" ]]; then
+                case "$(basename "$default_compose_file")" in
+                    compose.*) override_prefix="compose.override" ;;
+                    docker-compose.*) override_prefix="docker-compose.override" ;;
+                esac
+                for override_compose_name in \
+                    "$override_prefix.yaml" "$override_prefix.yml"; do
+                    if [[ -f "$(dirname "$default_compose_file")/$override_compose_name" ]]; then
+                        metadata_files+=("$(dirname "$default_compose_file")/$override_compose_name")
+                        break
+                    fi
+                done
+            fi
         fi
         while IFS= read -r -d '' compose_file; do
             if build_selects_compose_file "$build_script" "$compose_file"; then

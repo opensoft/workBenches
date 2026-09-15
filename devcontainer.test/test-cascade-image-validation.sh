@@ -294,12 +294,17 @@ test "${#CASCADE_IMAGE_RECORDS[@]}" -eq 0
 
 CASCADE_IMAGES=()
 CASCADE_IMAGE_RECORDS=()
+printf '%s\n' \
+    'services:' \
+    '  override:' \
+    '    image: sim-bench-override:latest' \
+    > "$compose_bench_dir/docker-compose.override.yml"
 printf '%s\n' 'docker compose build' > "$compose_metadata"
 PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
 FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
     record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"
-test "${CASCADE_IMAGES[*]}" = "sim-bench-gene_bench:latest sim-bench-ui:latest"
-test "${#CASCADE_IMAGE_RECORDS[@]}" -eq 2
+test "${CASCADE_IMAGES[*]}" = "sim-bench-gene_bench:latest sim-bench-override:latest sim-bench-ui:latest"
+test "${#CASCADE_IMAGE_RECORDS[@]}" -eq 3
 if grep -Fq 'sim-bench-dev:latest' "$log"; then
     echo "default Compose discovery inspected an unrelated Compose output" >&2
     exit 1
