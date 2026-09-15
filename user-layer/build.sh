@@ -68,7 +68,7 @@ fi
 # either delete the inherited root account or move its state away from /root.
 # Keep root images at Layer 2 and require a non-root identity here.
 if [ "$USERNAME" = "root" ] \
-    || [[ ! "$USERNAME" =~ ^[a-z_][a-z0-9_-]*[$]?$ ]] \
+    || [[ ! "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ ]] \
     || [[ ! "$USER_UID" =~ ^[1-9][0-9]*$ ]] \
     || [[ ! "$USER_GID" =~ ^[1-9][0-9]*$ ]]; then
     echo "❌ Error: Layer 3 requires a valid non-root username and canonical positive UID/GID"

@@ -59,6 +59,7 @@ assert_layer3_identity_rejected --user root --uid 0 --gid 0
 assert_layer3_identity_rejected --user 00 --uid 1000 --gid 1000
 assert_layer3_identity_rejected --user '' --uid 1000 --gid 1000
 assert_layer3_identity_rejected --user 'bad.name' --uid 1000 --gid 1000
+assert_layer3_identity_rejected --user 'bad$' --uid 1000 --gid 1000
 assert_layer3_identity_rejected --user tester --uid 00 --gid 1000
 assert_layer3_identity_rejected --user tester --uid 1000 --gid 000
 
