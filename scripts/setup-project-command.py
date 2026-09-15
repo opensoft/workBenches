@@ -222,6 +222,13 @@ def path_fingerprint(path):
             hashlib.sha256(path.read_bytes()).hexdigest())
 
 
+def trusted_launcher(path, expected_digests):
+    """Return whether path is a regular executable produced by this installer."""
+    return (path.is_file() and not path.is_symlink()
+            and path.stat().st_mode & 0o777 == 0o755
+            and file_sha256(path) in expected_digests)
+
+
 def acquire_project_lock(directory, exclusive):
     lock_path = directory / LOCK_NAME
     flags = os.O_RDONLY
@@ -400,21 +407,13 @@ def main(argv=None):
             })).hexdigest()
             for item in trusted_previous
         )
-        onp_owned = (onp.is_file() and not onp.is_symlink()
-                     and onp.stat().st_mode & 0o777 == 0o755
-                     and file_sha256(onp) in expected_launcher_digests)
+        prelock_onp_owned = trusted_launcher(onp, expected_launcher_digests)
         read_operation = args.resolve_owned or args.exec_owned
         if args.remove and not directory.exists():
             print(f"project: no install directory at {directory}", file=sys.stderr)
             return 3
-        if args.remove and not target.exists() and not owner_marker.exists():
-            if onp_owned:
-                onp_state = path_fingerprint(onp)
-                if onp_state != path_fingerprint(onp):
-                    raise ValueError("onp changed during removal; nothing removed")
-                onp.unlink()
-                print(f"project: removed installer-owned compatibility command from {onp}")
-                return 0
+        if (args.remove and not target.exists() and not owner_marker.exists()
+                and not prelock_onp_owned):
             print(f"project: no installer-owned command at {target}", file=sys.stderr)
             return 3
         if read_operation and not lock_path.is_file():
@@ -425,6 +424,7 @@ def main(argv=None):
                 raise ValueError(f"Unwritable install directory: {directory}")
             directory.mkdir(parents=True, exist_ok=True)
         lock_descriptor = acquire_project_lock(directory, exclusive=not read_operation)
+        onp_owned = trusted_launcher(onp, expected_launcher_digests)
         if args.resolve_owned:
             if owned_target(target, payload, owner_marker, pin,
                             expected_launcher_digests):
@@ -446,11 +446,15 @@ def main(argv=None):
             if owned_target(target, payload, owner_marker, pin,
                             expected_launcher_digests):
                 removal_state = (path_fingerprint(target), path_fingerprint(payload),
-                                 path_fingerprint(owner_marker), path_fingerprint(onp))
+                                 path_fingerprint(owner_marker))
+                onp_state = path_fingerprint(onp) if onp_owned else None
                 if (not owned_target(target, payload, owner_marker, pin,
                                      expected_launcher_digests)
                         or removal_state != (path_fingerprint(target), path_fingerprint(payload),
-                                             path_fingerprint(owner_marker), path_fingerprint(onp))):
+                                             path_fingerprint(owner_marker))
+                        or (onp_owned and (not trusted_launcher(
+                            onp, expected_launcher_digests)
+                            or onp_state != path_fingerprint(onp)))):
                     raise ValueError("Project command changed during removal; nothing removed")
                 target.unlink()
                 payload.unlink()
@@ -458,6 +462,14 @@ def main(argv=None):
                 if onp_owned:
                     onp.unlink()
                 print(f"project: removed installer-owned command from {target}")
+                return 0
+            if onp_owned:
+                onp_state = path_fingerprint(onp)
+                if (not trusted_launcher(onp, expected_launcher_digests)
+                        or onp_state != path_fingerprint(onp)):
+                    raise ValueError("onp changed during removal; nothing removed")
+                onp.unlink()
+                print(f"project: removed installer-owned compatibility command from {onp}")
                 return 0
             print(f"project: preserved unowned command at {target}", file=sys.stderr)
             return 3

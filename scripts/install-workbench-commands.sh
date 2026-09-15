@@ -338,11 +338,16 @@ uninstall_commands() {
                 python3 "$SCRIPT_DIR/setup-project-command.py" --bin-dir "$location" --remove
                 project_remove_status=$?
                 if [ "$project_remove_status" -eq 0 ]; then
-                    print_success "Removed installer-owned project from $location"
+                    print_success "Removed installer-owned project artifacts from $location"
                     removed_any=true
                 elif [ "$project_remove_status" -ne 3 ]; then
                     print_error "Failed to verify project ownership in $location"
                 fi
+                continue
+            fi
+            # The project installer verifies and removes its onp alias. Never
+            # pass a colliding user-owned command to the generic remover.
+            if [ "$cmd_name" = "onp" ]; then
                 continue
             fi
             if [ -f "$location/$cmd_name" ]; then

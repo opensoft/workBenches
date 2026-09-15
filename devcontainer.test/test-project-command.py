@@ -98,6 +98,18 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(installer.main([*self.args, "--remove"]), 3)
         self.assertEqual(target.read_text(), "unowned replacement")
 
+    def test_remove_preserves_unowned_project_and_removes_owned_onp(self):
+        self.assertEqual(installer.main([
+            *self.args, "--source", str(self.source), "--install-onp",
+        ]), 0)
+        target = self.bin / "project"
+        onp = self.bin / "onp"
+        target.write_text("unowned project collision")
+        target.chmod(0o755)
+        self.assertEqual(installer.main([*self.args, "--remove"]), 0)
+        self.assertEqual(target.read_text(), "unowned project collision")
+        self.assertFalse(onp.exists())
+
     def test_remove_missing_directory_does_not_create_it(self):
         missing = self.base / "missing-bin"
         self.assertEqual(installer.main([*self.args, "--bin-dir", str(missing), "--remove"]), 3)
@@ -747,6 +759,39 @@ class InstallTests(unittest.TestCase):
         self.assertFalse((install_bin / "project").exists())
         self.assertFalse((install_bin / "onp").exists())
         self.assertIn("Project command was skipped", result.stdout)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"),
+                         "command installer requires Bash 4 associative arrays")
+    def test_global_uninstall_never_generically_removes_onp(self):
+        home = self.base / "uninstall-home"
+        install_bin = home / ".local/bin"
+        install_bin.mkdir(parents=True)
+        onp = install_bin / "onp"
+        onp.write_text("unowned compatibility command")
+        onp.chmod(0o755)
+        fake_bin = self.base / "fake-bin"
+        fake_bin.mkdir()
+        remove_log = self.base / "remove.log"
+        fake_python = fake_bin / "python3"
+        fake_python.write_text("#!/usr/bin/env bash\nexit 3\n")
+        fake_python.chmod(0o755)
+        fake_rm = fake_bin / "rm"
+        fake_rm.write_text(
+            '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$REMOVE_LOG"\n')
+        fake_rm.chmod(0o755)
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "PATH": str(fake_bin) + os.pathsep + "/usr/bin:/bin",
+            "REMOVE_LOG": str(remove_log),
+        }
+        result = subprocess.run(
+            ["bash", str(ROOT / "scripts/install-workbench-commands.sh"), "--uninstall"],
+            env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(onp.is_file())
+        self.assertFalse(remove_log.exists(),
+                         remove_log.read_text() if remove_log.exists() else "")
 
     @unittest.skipUnless(os.environ.get("OPENREPOPROJECT_TEST_SOURCE"), "Set OPENREPOPROJECT_TEST_SOURCE for cross-repository integration")
     def test_real_cli_install_and_legacy_creation(self):
