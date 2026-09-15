@@ -662,7 +662,16 @@ load_git_worktrees() {
             GIT_WORKTREE_BRANCH_REFS=("${_GIT_WORKTREE_STAGED_BRANCH_REFS[@]}")
             GIT_WORKTREE_HEADS=("${_GIT_WORKTREE_STAGED_HEADS[@]}")
             GIT_WORKTREE_DETACHED=("${_GIT_WORKTREE_STAGED_DETACHED[@]}")
-            GIT_WORKTREE_PRUNABLE_PATHS=("${_GIT_WORKTREE_STAGED_PRUNABLE_PATHS[@]}")
+            # Guarded, not a plain assignment: the main worktree is never
+            # prunable, so unlike the arrays above this one is routinely
+            # empty, and "${arr[@]}" of an empty array is an unbound
+            # variable under nounset on Bash 3.2 (fixed only in 4.4+; the
+            # CI matrix still runs 3.2). GIT_WORKTREE_PRUNABLE_PATHS was
+            # already reset to () above, so skipping the reassignment
+            # leaves it correctly empty.
+            if [ "${#_GIT_WORKTREE_STAGED_PRUNABLE_PATHS[@]}" -gt 0 ]; then
+                GIT_WORKTREE_PRUNABLE_PATHS=("${_GIT_WORKTREE_STAGED_PRUNABLE_PATHS[@]}")
+            fi
             _git_worktree_remove_temp_file "$output_file" || return 1
             return 0
         fi
@@ -675,7 +684,10 @@ load_git_worktrees() {
             GIT_WORKTREE_BRANCH_REFS=("${_GIT_WORKTREE_STAGED_BRANCH_REFS[@]}")
             GIT_WORKTREE_HEADS=("${_GIT_WORKTREE_STAGED_HEADS[@]}")
             GIT_WORKTREE_DETACHED=("${_GIT_WORKTREE_STAGED_DETACHED[@]}")
-            GIT_WORKTREE_PRUNABLE_PATHS=("${_GIT_WORKTREE_STAGED_PRUNABLE_PATHS[@]}")
+            # See the -z branch above: guarded for the same Bash 3.2 reason.
+            if [ "${#_GIT_WORKTREE_STAGED_PRUNABLE_PATHS[@]}" -gt 0 ]; then
+                GIT_WORKTREE_PRUNABLE_PATHS=("${_GIT_WORKTREE_STAGED_PRUNABLE_PATHS[@]}")
+            fi
             _git_worktree_remove_temp_file "$output_file" || return 1
             return 0
         fi
