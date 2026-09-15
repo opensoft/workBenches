@@ -93,18 +93,86 @@ build_uses_default_compose_file() {
     return 1
 }
 
+static_shell_assignment() {
+    local build_script="$1"
+    local variable_name="$2"
+
+    [[ "$variable_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
+    awk -v variable_name="$variable_name" '
+        {
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            if (line ~ /^#/) next
+            sub(/[[:space:]]+#.*/, "", line)
+            prefix = "^((export|local|readonly)[[:space:]]+)?" variable_name "="
+            if (line ~ prefix) {
+                sub(prefix, "", line)
+                value = line
+            }
+        }
+        END { if (value != "") print value }
+    ' "$build_script"
+}
+
+resolve_compose_file_argument() {
+    local selected_file="$1"
+    local build_script="$2"
+    local build_dir
+    local variable_name
+    local suffix
+    local replacement
+    local iteration
+
+    build_dir="$(dirname "$build_script")"
+    for iteration in 1 2 3 4 5 6; do
+        variable_name=""
+        suffix=""
+        if [[ "$selected_file" =~ ^\$\{([A-Za-z_][A-Za-z0-9_]*)\}(.*)$ ]]; then
+            variable_name="${BASH_REMATCH[1]}"
+            suffix="${BASH_REMATCH[2]}"
+        elif [[ "$selected_file" =~ ^\$([A-Za-z_][A-Za-z0-9_]*)(/.*)?$ ]]; then
+            variable_name="${BASH_REMATCH[1]}"
+            suffix="${BASH_REMATCH[2]:-}"
+        else
+            break
+        fi
+        if [[ "$variable_name" == "SCRIPT_DIR" ]]; then
+            replacement="$build_dir"
+        else
+            replacement="$(static_shell_assignment "$build_script" "$variable_name")"
+            [[ -n "$replacement" ]] || return 1
+            replacement="${replacement#\"}"
+            replacement="${replacement%\"}"
+            replacement="${replacement#\'}"
+            replacement="${replacement%\'}"
+        fi
+        selected_file="$replacement$suffix"
+    done
+    [[ "$selected_file" != *'$'* && "$selected_file" != *'`'* ]] || return 1
+    printf '%s\n' "$selected_file"
+}
+
 build_selects_compose_file() {
     local build_script="$1"
-    local relative_to_bench="$2"
-    local relative_to_build="$3"
+    local compose_file="$2"
+    local build_dir
     local command
     local selected_file
+    local selected_path
+
+    build_dir="$(dirname "$build_script")"
+    compose_file="$(realpath -m -- "$compose_file")"
 
     while IFS= read -r command; do
         while IFS= read -r selected_file; do
-            selected_file="${selected_file#./}"
-            if [[ "$selected_file" == "$relative_to_bench" \
-                || "$selected_file" == "$relative_to_build" ]]; then
+            selected_file="$(resolve_compose_file_argument \
+                "$selected_file" "$build_script")" || continue
+            if [[ "$selected_file" == /* ]]; then
+                selected_path="$(realpath -m -- "$selected_file")"
+            else
+                selected_path="$(realpath -m -- "$build_dir/$selected_file")"
+            fi
+            if [[ "$selected_path" == "$compose_file" ]]; then
                 return 0
             fi
         done < <(compose_command_files "$command")
@@ -122,8 +190,6 @@ declared_cascade_images() {
     [[ -f "$build_script" ]] && metadata_files+=("$build_script")
     if [[ -f "$build_script" && -d "$bench_dir" ]]; then
         local build_dir
-        local compose_relative_to_bench
-        local compose_relative_to_build
         local compose_dir
         local default_compose_name
         build_dir="$(dirname "$build_script")"
@@ -139,10 +205,7 @@ declared_cascade_images() {
             done
         fi
         while IFS= read -r -d '' compose_file; do
-            compose_relative_to_bench="$(realpath --relative-to="$bench_dir" "$compose_file")"
-            compose_relative_to_build="$(realpath --relative-to="$build_dir" "$compose_file")"
-            if build_selects_compose_file "$build_script" \
-                "$compose_relative_to_bench" "$compose_relative_to_build"; then
+            if build_selects_compose_file "$build_script" "$compose_file"; then
                 metadata_files+=("$compose_file")
             fi
         done < <(find "$bench_dir" -maxdepth 3 -type f \

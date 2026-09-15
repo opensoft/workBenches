@@ -292,6 +292,22 @@ if grep -Fq 'sim-bench-dev:latest' "$log"; then
     exit 1
 fi
 
+printf '%s\n' \
+    'SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"' \
+    'COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"' \
+    'docker compose -f "$COMPOSE_FILE" build' > "$compose_metadata"
+CASCADE_IMAGES=()
+CASCADE_IMAGE_RECORDS=()
+: > "$log"
+PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
+    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"
+test "${CASCADE_IMAGES[*]}" = "sim-bench-gene_bench:latest sim-bench-ui:latest"
+if grep -Fq 'sim-bench-dev:latest' "$log"; then
+    echo "variable-backed Compose selection captured the wrong metadata" >&2
+    exit 1
+fi
+
 first_build_dir="$temp_dir/first-build"
 mkdir -p "$first_build_dir"
 printf '%s\n' '#!/usr/bin/env bash' 'docker build -t first-bench:latest .' \
