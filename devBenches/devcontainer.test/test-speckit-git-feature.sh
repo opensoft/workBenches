@@ -1016,7 +1016,11 @@ test_git_worktree_prune_visible_keeps_unmounted_and_prunes_visible() {
     local repo="$FIXTURE_ROOT/prune-visible"
     local config=$'checkout_mode: worktree\nbase_branch: main\nworktree_root: ../prune-visible-worktrees'
     local root="$FIXTURE_ROOT/prune-visible-worktrees"
-    local unmounted_root="$FIXTURE_ROOT/prune-visible-not-mounted-here"
+    # Deliberately NOT under $FIXTURE_ROOT: that directory is real, so an
+    # ancestor walk that reached it would land there rather than at "/",
+    # which is the shape a genuine mount boundary leaves, not a directory
+    # that merely happens to exist nearby.
+    local unmounted_root="/nonexistent-for-speckit-tests/prune-visible-not-mounted-here"
     local gone_path unmounted_path common_dir gitdir_file stderr_file
 
     # Given: a worktree whose directory is genuinely deleted, and one whose
@@ -1177,27 +1181,34 @@ test_git_worktree_first_existing_ancestor_terminates_on_a_relative_path() {
     assert_equal '/' "$result" 'ancestor of an unresolvable relative path'
 }
 
-# A worktree directory can survive while only its OWN .git file is deleted
-# (as opposed to the whole directory being gone). Git still reports the
-# registration prunable, but `git worktree remove --force` alone refuses
-# it — Git validates that the worktree's own .git file is there before
-# touching the registration. This proves the shared helper finishes the
-# job `remove` would not, rather than leaving the registration behind
-# with nothing but a warning forever (Copilot round 2 on
-# opensoft/workBenches#92).
-test_git_worktree_prune_visible_clears_a_worktree_missing_only_its_own_git_file() {
+# A worktree directory can survive while only its OWN .git file is
+# deleted (as opposed to the whole directory being gone), and Git still
+# reports that registration prunable. `git worktree remove --force` alone
+# refuses it (Git validates the worktree's own .git file is there before
+# touching the registration) — an earlier version of this helper "finished
+# the job" with a plain `rm -rf` of the leftover directory, but Copilot
+# round 2 caught that a directory in this exact state can still hold real,
+# uncommitted content (this is exactly the shape of
+# opensoft/workBenches#87's own "64 dirty files" worktree), so that
+# `rm -rf` risked the very data loss this helper exists to prevent. This
+# proves the safe outcome instead: the registration is left in place, a
+# warning names it, and — the point of the whole scenario — the
+# uncommitted file already sitting in the directory survives untouched.
+test_git_worktree_prune_visible_warns_without_deleting_a_worktree_missing_only_its_own_git_file() {
     local repo="$FIXTURE_ROOT/prune-visible-half-gone"
     local config=$'checkout_mode: worktree\nbase_branch: main\nworktree_root: ../prune-visible-half-gone-worktrees'
     local root="$FIXTURE_ROOT/prune-visible-half-gone-worktrees"
     local half_gone_path stderr_file
 
-    # Given: a worktree whose own .git file is deleted, but whose directory
-    # otherwise still exists.
+    # Given: a worktree whose own .git file is deleted, but whose
+    # directory otherwise still exists — with an uncommitted file in it,
+    # standing in for another lane's dirty work.
     initialize_fixture "$repo" "$config" || return 1
     mkdir -p "$root" || return 1
     git -C "$repo" branch half-gone || return 1
     git -C "$repo" worktree add -q "$root/half-gone" half-gone || return 1
     half_gone_path="$root/half-gone"
+    printf 'uncommitted work\n' > "$half_gone_path/dirty.txt" || return 1
     rm -f "$half_gone_path/.git" || return 1
     if ! git -C "$repo" worktree list --porcelain | grep -Fq "worktree $half_gone_path"; then
         printf 'assertion failed: fixture setup lost the registration before the test even ran\n' >&2
@@ -1208,19 +1219,72 @@ test_git_worktree_prune_visible_clears_a_worktree_missing_only_its_own_git_file(
     stderr_file="$FIXTURE_ROOT/prune-visible-half-gone.stderr"
     (source "$GIT_COMMON_SCRIPT" && git_worktree_prune_visible "$repo" "$root") 2>"$stderr_file"
 
-    # Then: the registration is gone. `remove --force` alone cannot clear
-    # it, so the helper must fall back to clearing the leftover directory
-    # itself and asking `remove` again.
-    if git -C "$repo" worktree list --porcelain | grep -Fq "worktree $half_gone_path"; then
-        printf 'assertion failed: a worktree missing only its own .git file was left registered\n%s\n' \
+    # Then: the registration is left exactly as it was...
+    if ! git -C "$repo" worktree list --porcelain | grep -Fq "worktree $half_gone_path"; then
+        printf 'assertion failed: a worktree missing only its own .git file was deregistered\n%s\n' \
             "$(git -C "$repo" worktree list --porcelain)" >&2
         return 1
     fi
-    if grep -Fq 'could not clear the stale worktree registration' "$stderr_file"; then
-        printf 'assertion failed: the helper warned instead of clearing it\n%s\n' "$(<"$stderr_file")" >&2
+    if ! grep -Fq "could not clear the stale worktree registration '$half_gone_path'" "$stderr_file"; then
+        printf 'assertion failed: no warning naming the uncleared registration\n%s\n' "$(<"$stderr_file")" >&2
         return 1
     fi
-    assert_equal '1' "$(worktree_record_count "$repo")" 'only the main checkout remains registered'
+    if ! grep -Fq 'Recovering an orphaned worktree registration' "$stderr_file"; then
+        printf 'assertion failed: the warning did not point at the recovery note\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+
+    # ...and, the point of the scenario, its uncommitted content is
+    # untouched: nothing here ever deletes what it did not create.
+    assert_equal 'uncommitted work' "$(cat "$half_gone_path/dirty.txt" 2>/dev/null)" \
+        'the uncommitted file in the half-gone worktree survives'
+}
+
+# A prunable registration outside the configured worktree root entirely
+# (some manually-added worktree, unrelated to this repo's managed layout)
+# is a DIFFERENT situation from one merely invisible from this mount: this
+# process can see it just fine, it is simply out of scope. Saying "not
+# visible from this mount" for it would misdiagnose a perfectly visible,
+# merely unrelated path as a mount problem (Copilot round 3 on
+# opensoft/workBenches#92).
+test_git_worktree_prune_visible_distinguishes_out_of_scope_from_unmounted() {
+    local repo="$FIXTURE_ROOT/prune-visible-out-of-scope"
+    local config=$'checkout_mode: worktree\nbase_branch: main\nworktree_root: ../prune-visible-out-of-scope-worktrees'
+    local root="$FIXTURE_ROOT/prune-visible-out-of-scope-worktrees"
+    local elsewhere_path stderr_file
+
+    # Given: a worktree registered somewhere else entirely, fully visible
+    # from here, then genuinely deleted.
+    initialize_fixture "$repo" "$config" || return 1
+    mkdir -p "$root" || return 1
+    elsewhere_path="$FIXTURE_ROOT/prune-visible-elsewhere/manual-worktree"
+    mkdir -p "$(dirname "$elsewhere_path")" || return 1
+    git -C "$repo" branch elsewhere || return 1
+    git -C "$repo" worktree add -q "$elsewhere_path" elsewhere || return 1
+    rm -rf "$elsewhere_path"
+
+    # When: the shared helper prunes this repo against its OWN configured
+    # root, which does not contain the elsewhere-registered path at all.
+    stderr_file="$FIXTURE_ROOT/prune-visible-out-of-scope.stderr"
+    (source "$GIT_COMMON_SCRIPT" && git_worktree_prune_visible "$repo" "$root") 2>"$stderr_file"
+
+    # Then: it is left registered — this call's job is the configured
+    # root, not the whole repository — but named as OUT OF SCOPE, not as
+    # unmounted, since this process can see perfectly well that it is
+    # gone; it is just not this call's to clear.
+    if ! git -C "$repo" worktree list --porcelain | grep -Fq "worktree $elsewhere_path"; then
+        printf 'assertion failed: an out-of-scope registration was pruned anyway\n%s\n' \
+            "$(git -C "$repo" worktree list --porcelain)" >&2
+        return 1
+    fi
+    if grep -Fq 'is not visible from this mount' "$stderr_file"; then
+        printf 'assertion failed: an out-of-scope registration was misdiagnosed as unmounted\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    if ! grep -Fq "'$elsewhere_path' is outside" "$stderr_file"; then
+        printf 'assertion failed: no out-of-scope notice for the elsewhere registration\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
 }
 
 test_concurrent_sequential_number_reservations() {
@@ -2198,7 +2262,9 @@ test_three_leg_rollback_leaves_unmounted_registrations() {
         printf 'assertion failed: no admin gitdir file for the unmounted fixture worktree\n' >&2
         return 1
     fi
-    unmounted_path="$FIXTURE_ROOT/three-leg-rollback-not-mounted-here/unmounted-lane"
+    # Deliberately NOT under $FIXTURE_ROOT: see the unit-level prune-visible
+    # test for why a genuinely unmounted ancestor walk must land at "/".
+    unmounted_path="/nonexistent-for-speckit-tests/three-leg-rollback-not-mounted-here/unmounted-lane"
     printf '%s/.git\n' "$unmounted_path" > "$gitdir_file" || return 1
     rm -rf "$root/worktrees/unmounted-lane"
     install_code_worktree_failure_shim "$shim_dir" || return 1
@@ -3795,7 +3861,9 @@ test_resume_rollback_leaves_unmounted_registrations() {
         printf 'assertion failed: no admin gitdir file for the unmounted fixture worktree\n' >&2
         return 1
     fi
-    unmounted_path="$FIXTURE_ROOT/resume-rollback-not-mounted-here/unmounted-lane"
+    # Deliberately NOT under $FIXTURE_ROOT: see the unit-level prune-visible
+    # test for why a genuinely unmounted ancestor walk must land at "/".
+    unmounted_path="/nonexistent-for-speckit-tests/resume-rollback-not-mounted-here/unmounted-lane"
     printf '%s/.git\n' "$unmounted_path" > "$gitdir_file" || return 1
     rm -rf "$clone/worktrees/unmounted-lane"
 
@@ -4126,7 +4194,8 @@ run_scenario 'git_worktree_prune_visible keeps an unmounted registration and pru
 run_scenario 'git_worktree_prune_visible prunes a registration beneath, not only at, the worktree root' test_git_worktree_prune_visible_prunes_beneath_the_root_too
 run_scenario 'git_worktree_prune_visible refuses to treat "/" as a pruning witness' test_git_worktree_prune_visible_refuses_the_filesystem_root
 run_scenario 'the ancestor walk terminates on a slash-free relative path' test_git_worktree_first_existing_ancestor_terminates_on_a_relative_path
-run_scenario 'git_worktree_prune_visible clears a worktree missing only its own .git file' test_git_worktree_prune_visible_clears_a_worktree_missing_only_its_own_git_file
+run_scenario 'git_worktree_prune_visible warns without deleting a worktree missing only its own .git file' test_git_worktree_prune_visible_warns_without_deleting_a_worktree_missing_only_its_own_git_file
+run_scenario 'git_worktree_prune_visible distinguishes out-of-scope from unmounted' test_git_worktree_prune_visible_distinguishes_out_of_scope_from_unmounted
 run_scenario 'three-leg feature creates a worktree in both legs and none at the root' test_three_leg_creates_both_leg_worktrees
 run_scenario 'three-leg dry run creates nothing' test_three_leg_dry_run_creates_nothing
 run_scenario 'three-leg refuses branch checkout mode' test_three_leg_refuses_branch_checkout_mode
