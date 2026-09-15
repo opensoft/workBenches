@@ -74,7 +74,7 @@ fail() {
 # quietly changing a number; the assertion count is printed and not pinned,
 # because checks are added to existing scenarios all the time and a scenario
 # that stops running is the thing worth catching.
-EXPECTED_SCENARIOS=38
+EXPECTED_SCENARIOS=41
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -233,6 +233,16 @@ case "${FAKE_LANE_START_DECLINE:-}" in
         tmux rename-window "$lane_argument" >/dev/null 2>&1 || true
         "${CLAUDE_BIN:?}" ${rest[@]+"${rest[@]}"}
         exit 130
+        ;;
+    hugestderr)
+        # Enough bytes to prove the retained file is bounded regardless of
+        # how much the exec'd chain wrote before dying fast (Copilot round 2
+        # on opensoft/workBenches#96, claude-profile:2813). `|| true`: `yes`
+        # exits on SIGPIPE once `head` stops reading, which is itself a
+        # nonzero status `pipefail` would otherwise hand to this `set -e`
+        # script.
+        yes 'x' | head -c 300000 >&2 || true
+        exit 0
         ;;
     defect)
         # lanes-edit.sh live-holder's own DEFECT wording (decision 8(e)), read
@@ -1109,6 +1119,69 @@ capture_path="$(grep -m1 -F 'lane defect capture:' "$ERR_LOG" | sed -n 's/.*lane
     || fail "status 130: the capture was deleted although the run's status was neither 1, 2 nor a long-held 0 ($capture_path)"; assertion
 grep -Fq 'lane defect capture kept' "$ERR_LOG" \
     || fail "status 130: no kept-capture notice was printed ('$(cat "$ERR_LOG")')"; assertion
+rm -f "$capture_path"
+
+# 11m. A MALFORMED WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS FALLS BACK TO THE
+# DOCUMENTED DEFAULT (Copilot round 2 on opensoft/workBenches#96,
+# claude-profile:2756): a non-numeric override must not reach the `-ge`
+# comparison at all, and must not silently defeat the retention rule either
+# — a well-under-20s run still keeps.
+launch \
+    "FAKE_TMUX_WINDOW=claude" \
+    "FAKE_LANE_START_DECLINE=fastexit" \
+    "WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS=not-a-number" \
+    -- --lane openRepoProject-1 run team002 --resume session-malformed-threshold
+[[ "$launch_status" -eq 0 ]] \
+    || fail "malformed threshold: the launcher exited $launch_status instead of relaying lane-start's 0"; assertion
+capture_path="$(grep -m1 -F 'lane defect capture:' "$ERR_LOG" | sed -n 's/.*lane defect capture: //p')"
+[[ -n "$capture_path" ]] \
+    || fail "malformed threshold: the capture path was never printed ('$(cat "$ERR_LOG")')"; assertion
+[[ -e "$capture_path" ]] \
+    || fail "malformed threshold: the capture was deleted — a malformed override must fall back to the real default, and this run is well under 20s ($capture_path)"; assertion
+grep -q 'integer expression expected' "$ERR_LOG" \
+    && fail "malformed threshold: the malformed value reached the comparison unvalidated ('$(cat "$ERR_LOG")')"; assertion
+rm -f "$capture_path"
+
+# 11n. ...AND SO DOES A NEGATIVE ONE — Copilot round 2's own sharper case: a
+# negative override would otherwise make "elapsed >= threshold" true for
+# EVERY status-0 run, no matter how fast it exited, defeating the rule
+# entirely rather than merely erroring.
+launch \
+    "FAKE_TMUX_WINDOW=claude" \
+    "FAKE_LANE_START_DECLINE=fastexit" \
+    "WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS=-5" \
+    -- --lane openRepoProject-1 run team002 --resume session-negative-threshold
+capture_path="$(grep -m1 -F 'lane defect capture:' "$ERR_LOG" | sed -n 's/.*lane defect capture: //p')"
+[[ -n "$capture_path" ]] \
+    || fail "negative threshold: the capture path was never printed ('$(cat "$ERR_LOG")')"; assertion
+[[ -e "$capture_path" ]] \
+    || fail "negative threshold: the capture was deleted — a negative override defeated the retention rule instead of falling back to the default ($capture_path)"; assertion
+rm -f "$capture_path"
+
+# 11o. A CAPTURE LARGER THAN THE BYTE CAP IS TRUNCATED TO ITS OWN TAIL, AND
+# KEEPS THE ORIGINAL'S 0600 PERMISSIONS (Copilot round 2 on
+# opensoft/workBenches#96, claude-profile:2813): bounded by BYTES so one very
+# long stream cannot escape the cap the way a line count could, and written
+# via `mktemp` rather than a plain `>` so the replacement is not created
+# world-readable under the shell's umask.
+launch \
+    "FAKE_TMUX_WINDOW=claude" \
+    "FAKE_LANE_START_DECLINE=hugestderr" \
+    "WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS=9999" \
+    -- --lane openRepoProject-1 run team002 --resume session-huge
+capture_path="$(grep -m1 -F 'lane defect capture:' "$ERR_LOG" | sed -n 's/.*lane defect capture: //p')"
+[[ -n "$capture_path" ]] \
+    || fail "huge capture: the capture path was never printed ('$(cat "$ERR_LOG")')"; assertion
+[[ -e "$capture_path" ]] \
+    || fail "huge capture: the capture was deleted although this is a fast exit ($capture_path)"; assertion
+capture_size="$(wc -c < "$capture_path")"
+[[ "$capture_size" -le 200000 ]] \
+    || fail "huge capture: the retained file was $capture_size bytes, not bounded to the 200000-byte cap ($capture_path)"; assertion
+if command -v stat >/dev/null 2>&1; then
+    capture_mode="$(stat -c '%a' "$capture_path" 2>/dev/null || stat -f '%Lp' "$capture_path" 2>/dev/null || true)"
+    [[ -z "$capture_mode" || "$capture_mode" == "600" ]] \
+        || fail "huge capture: the truncated file's mode was $capture_mode, not the 600 mktemp gives the original ($capture_path)"; assertion
+fi
 rm -f "$capture_path"
 
 # ---------------------------------------------------------------------------

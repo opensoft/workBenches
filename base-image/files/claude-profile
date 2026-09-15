@@ -2732,18 +2732,28 @@ case "$action" in
           # made before that process has drained it would race an
           # almost-instantly-declined confirm (the fake this PR's test uses
           # is exactly that race, made deterministic by this wait).
-          # A SWEEP OF OLD KEPT CAPTURES, AGE-GATED (Copilot round 1 on
-          # opensoft/workBenches#96, claude-profile:2752): keeping ever grows
-          # $TMPDIR in a long-lived container across repeated fast exits
-          # nobody has acted on yet. `-mmin +60` is the guard that makes this
-          # safe beside a concurrent `pclaude` of another lane on the same
-          # workstation — its capture, if any, is always younger than the one
-          # this sweep is willing to touch, so this can never race a capture
-          # another process still owns. This is a sweep, not a promise: it
-          # runs once per launch and only reaches files this old, never a cap
-          # on the newest N.
-          find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'pclaude-lane-defect.*' \
-            -mmin +60 -delete 2>/dev/null || true
+          # NO AGE-BASED SWEEP OF OLD KEPT CAPTURES (Copilot round 1 on
+          # opensoft/workBenches#96 added one, `-mmin +60`, on the reasoning
+          # that a capture's mtime stops moving once the tee that owns it
+          # stops writing; round 2 found the reasoning wrong — an ordinary
+          # interactive Claude session's own display goes to stdout, so a
+          # session can sit fully alive for well over an hour without ONE
+          # byte landing on the stderr this tees, leaving a live capture's
+          # mtime just as stale as an abandoned one's. `rm`ing it out from
+          # under that still-open tee does not corrupt the WRITING
+          # process's own data (the inode survives as long as its fd is
+          # open), but it does mean that same launch's own later keep/print
+          # logic — path-based, like the truncation right below — finds
+          # nothing there once it finally runs. A time-only signal cannot
+          # tell "quiet but alive" from "abandoned", and getting this wrong
+          # loses evidence a live session still owns, which is worse than
+          # the unbounded-across-TIME accumulation it would have bounded;
+          # a correct version needs to know the owning process is actually
+          # dead (a pid recorded alongside the capture, checked with `kill
+          # -0`), which is a distinct feature this issue never asked for.
+          # The per-file byte cap right below still bounds any ONE capture,
+          # kept or not, and carries no such risk — it only ever touches
+          # the file THIS invocation itself owns.
           lane_defect_capture="$(mktemp "${TMPDIR:-/tmp}/pclaude-lane-defect.XXXXXX")"
           # THE PATH IS PRINTED BEFORE THE EXEC (opensoft/workBenches#95): a
           # launcher-made window that exits fast can take this whole pane —
@@ -2754,6 +2764,16 @@ case "$action" in
           # the keep-and-print below, never the load-bearing half alone.
           echo "pclaude: lane defect capture: $lane_defect_capture" >&2
           lane_defect_fast_exit_seconds="${WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS:-20}"
+          # VALIDATED (Copilot round 2 on opensoft/workBenches#96,
+          # claude-profile:2756): a malformed or negative override reaching
+          # the `-ge` comparison below is not just a stray "integer
+          # expression expected" on stderr — a NEGATIVE number would make
+          # that comparison true for status 0 no matter how fast the run
+          # was, silently defeating the whole keep rule it guards. Anything
+          # that is not a bare non-negative integer falls back to the
+          # documented default instead of reaching that comparison at all.
+          [[ "$lane_defect_fast_exit_seconds" =~ ^[0-9]+$ ]] \
+            || lane_defect_fast_exit_seconds=20
           lane_defect_started="$SECONDS"
           set +e
           exec 9> >(tee "$lane_defect_capture" >&2)
@@ -2799,17 +2819,32 @@ case "$action" in
             rm -f "$lane_defect_capture"
           else
             # BOUND WHAT IS KEPT, NOT JUST WHAT IS PRINTED (Copilot round 1 on
-            # opensoft/workBenches#96, claude-profile:2752): the tail below is
-            # 15 lines, but until now the FILE ITSELF carried the whole
-            # stderr stream, unbounded — one very chatty fast exit could keep
-            # megabytes. 2000 lines is generous for a human reading it later
-            # with `tail`/`less` and still bounded; the sweep above bounds how
+            # opensoft/workBenches#96, claude-profile:2752, revised round 2):
+            # the tail below is 15 lines, but until now the FILE ITSELF
+            # carried the whole stderr stream, unbounded — one very chatty
+            # fast exit could keep megabytes. BY BYTES, not lines (round 2:
+            # a line-count cap does not bound storage against one very long
+            # line), and written with `mktemp` rather than a plain
+            # redirect (round 2: a plain `>` creates the replacement under
+            # the shell's umask — commonly world-readable, unlike the
+            # original capture's own 0600 — and a predictable `.trunc` name
+            # in a shared TMPDIR can be pre-planted as a symlink). 200000
+            # bytes is generous for a human reading it later with
+            # `tail`/`less` and still bounded; the sweep above bounds how
             # many of these accumulate over TIME, this bounds how large any
-            # ONE of them gets. Best-effort: a failed `tail`/`mv` here leaves
-            # the untruncated file in place rather than losing it.
-            if [[ "$(wc -l < "$lane_defect_capture")" -gt 2000 ]]; then
-              tail -n 2000 "$lane_defect_capture" > "$lane_defect_capture.trunc" \
-                && mv -f "$lane_defect_capture.trunc" "$lane_defect_capture"
+            # ONE of them gets — the LIVE stream this tees from is left
+            # unbounded on purpose, so the operator watching it live still
+            # sees everything, exactly as documented above. Best-effort: a
+            # failed `tail`/`mv` here leaves the untruncated file in place
+            # rather than losing it, and the mktemp'd scratch file is
+            # removed either way.
+            if [[ "$(wc -c < "$lane_defect_capture")" -gt 200000 ]]; then
+              lane_defect_trunc="$(mktemp "$lane_defect_capture.trunc.XXXXXX")"
+              if tail -c 200000 "$lane_defect_capture" > "$lane_defect_trunc"; then
+                mv -f "$lane_defect_trunc" "$lane_defect_capture"
+              else
+                rm -f "$lane_defect_trunc"
+              fi
             fi
             {
               echo "pclaude: $lane exited after ${lane_defect_elapsed}s (status $lane_status); lane defect capture kept: $lane_defect_capture"
