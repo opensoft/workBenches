@@ -26,6 +26,10 @@ run_launcher_case() {
     local mock_bin="$case_root/bin"
     local docker_log="$case_root/docker.log"
     local prepare_log="$case_root/prepare.log"
+    local ensure_images_log="$case_root/ensure-images.log"
+    local rocm_log="$case_root/rocm.log"
+    local sonarqube_log="$case_root/sonarqube.log"
+    local lifecycle_log="$case_root/lifecycle.log"
     local wslg_root="$case_root/no-wslg"
     local explicit_compose="$fake_root/custom-compose.yml"
     local expected_env_dir=""
@@ -37,7 +41,7 @@ run_launcher_case() {
         custom-bench) expected_config_image="custom-bench:tester" ;;
         *) expected_config_image="${bench}:tester" ;;
     esac
-    mkdir -p "$fake_home" "$fake_root/devBenches/pyBench/.devcontainer" "$fake_root/devBenches/dotNetBench/.devcontainer" "$fake_root/devBenches/rustBench/.devcontainer" "$fake_root/customBench/.devcontainer" "$fake_root/scripts" "$mock_bin"
+    mkdir -p "$fake_home" "$fake_root/devBenches/pyBench/.devcontainer" "$fake_root/devBenches/pyBench/scripts" "$fake_root/devBenches/dotNetBench/.devcontainer" "$fake_root/devBenches/rustBench/.devcontainer" "$fake_root/customBench/.devcontainer" "$fake_root/devBenches/scripts" "$fake_root/scripts" "$mock_bin"
     : > "$fake_root/devBenches/pyBench/.devcontainer/devcontainer.json"
     : > "$fake_root/devBenches/pyBench/.devcontainer/docker-compose.yml"
     : > "$fake_root/devBenches/dotNetBench/.devcontainer/devcontainer.json"
@@ -48,6 +52,27 @@ run_launcher_case() {
     : > "$fake_root/custom-compose.yml"
     : > "$fake_root/customBench/.devcontainer/docker-compose.yml"
     printf '%s\n' 'CUSTOM_BENCH_VALUE=present' > "$fake_root/customBench/.env"
+    cat > "$fake_root/devBenches/pyBench/scripts/configure-amd-rocm-wsl.sh" <<'ROCM'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' configured > "$MOCK_ROCM_LOG"
+printf '%s\n' rocm >> "$MOCK_LIFECYCLE_LOG"
+: > "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.devcontainer" && pwd)/docker-compose.amd-rocm.generated.yml"
+ROCM
+    chmod +x "$fake_root/devBenches/pyBench/scripts/configure-amd-rocm-wsl.sh"
+    cat > "$fake_root/devBenches/pyBench/scripts/ensure-images.sh" <<'IMAGES'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" > "$MOCK_ENSURE_IMAGES_LOG"
+IMAGES
+    chmod +x "$fake_root/devBenches/pyBench/scripts/ensure-images.sh"
+    cat > "$fake_root/devBenches/scripts/ensure-sonarqube-mcp.sh" <<'SONARQUBE'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' configured > "$MOCK_SONARQUBE_LOG"
+printf '%s\n' sonarqube >> "$MOCK_LIFECYCLE_LOG"
+SONARQUBE
+    chmod +x "$fake_root/devBenches/scripts/ensure-sonarqube-mcp.sh"
     if [[ "${CASE_GENERIC_COMPOSE:-false}" == true ]]; then
         explicit_compose="$fake_root/customBench/.devcontainer/docker-compose.yml"
         expected_env_dir="$fake_root/customBench/.devcontainer"
@@ -69,13 +94,30 @@ PREPARE
 set -euo pipefail
 printf '%s\n' "$*" >> "$MOCK_DOCKER_LOG"
 
+if [[ "${1:-}" == "compose" ]]; then
+    printf '%s\n' compose >> "$MOCK_LIFECYCLE_LOG"
+    if [[ " $* " == *" up "* ]]; then
+        : > "$MOCK_CONTAINER_STATE"
+    fi
+fi
+
+if [[ "${1:-}" == "network" && "${2:-}" == "inspect" ]]; then
+    [[ "$MOCK_NETWORK_EXISTS" == true ]]
+    exit
+fi
+
+if [[ "${1:-}" == "network" && "${2:-}" == "create" ]]; then
+    printf '%s\n' network-create >> "$MOCK_LIFECYCLE_LOG"
+    exit 0
+fi
+
 if [[ "${1:-}" == "compose" && -n "$MOCK_EXPECT_ENV_DIR" ]]; then
     [[ -f "$MOCK_EXPECT_ENV_DIR/.env" ]] || exit 1
     printf '%s\n' compose-env-present >> "$MOCK_DOCKER_LOG"
 fi
 
 if [[ "${1:-}" == "container" && "${2:-}" == "inspect" ]]; then
-    if [[ "$MOCK_CONTAINER_EXISTS" != true ]]; then
+    if [[ "$MOCK_CONTAINER_EXISTS" != true && ! -f "$MOCK_CONTAINER_STATE" ]]; then
         exit 1
     fi
     if [[ "${3:-}" == "-f" ]]; then
@@ -122,6 +164,9 @@ MOUNTS
 fi
 
 if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
+    if [[ "${!#}" == "py-bench:latest" && "$MOCK_LAYER2_EXISTS" != true ]]; then
+        exit 1
+    fi
     printf '%s\n' "$MOCK_EXPECTED_IMAGE_ID"
     exit 0
 fi
@@ -139,6 +184,9 @@ MOCK
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'devcontainer %s\n' "$*" >> "$MOCK_DOCKER_LOG"
+if [[ "${1:-}" == "up" ]]; then
+    : > "$MOCK_CONTAINER_STATE"
+fi
 MOCK
     chmod +x "$mock_bin/devcontainer"
 
@@ -158,7 +206,14 @@ MOCK
             MOCK_EXPECT_ENV_DIR="$expected_env_dir" \
             WAVE_WSLG_ROOT="$wslg_root" \
             MOCK_CONTAINER_EXISTS="${CASE_CONTAINER_EXISTS:-true}" \
+            MOCK_CONTAINER_STATE="$case_root/container-created" \
             MOCK_PREPARE_LOG="$prepare_log" \
+            MOCK_ENSURE_IMAGES_LOG="$ensure_images_log" \
+            MOCK_ROCM_LOG="$rocm_log" \
+            MOCK_SONARQUBE_LOG="$sonarqube_log" \
+            MOCK_LIFECYCLE_LOG="$lifecycle_log" \
+            MOCK_NETWORK_EXISTS="${CASE_NETWORK_EXISTS:-true}" \
+            MOCK_LAYER2_EXISTS="${CASE_LAYER2_EXISTS:-true}" \
             MOCK_RUNNING="$running" \
             MOCK_MOUNTS="$mounts" \
             MOCK_RM_REFUSE="$rm_refuse" \
@@ -184,6 +239,10 @@ MOCK
     CASE_OUTPUT="$output"
     CASE_DOCKER_LOG="$(cat "$docker_log")"
     CASE_PREPARE_LOG="$(cat "$prepare_log" 2>/dev/null || true)"
+    CASE_ENSURE_IMAGES_LOG="$(cat "$ensure_images_log" 2>/dev/null || true)"
+    CASE_ROCM_LOG="$(cat "$rocm_log" 2>/dev/null || true)"
+    CASE_SONARQUBE_LOG="$(cat "$sonarqube_log" 2>/dev/null || true)"
+    CASE_LIFECYCLE_LOG="$(cat "$lifecycle_log" 2>/dev/null || true)"
     rm -rf "$case_root"
 }
 
@@ -247,6 +306,28 @@ grep -q -- "compose -f .*/custom-compose.yml" <<<"$CASE_DOCKER_LOG" \
     || fail "first creation did not use the explicitly supplied Compose file"
 if grep -q '^devcontainer ' <<<"$CASE_DOCKER_LOG"; then
     fail "first creation ignored the explicit Compose file through Dev Containers CLI"
+fi
+
+CASE_CONTAINER_EXISTS=false run_launcher_case dotnet-devcontainer-first-create false missing false false dotNetBench
+grep -q -- "^devcontainer up --workspace-folder .*/devBenches/dotNetBench$" <<<"$CASE_DOCKER_LOG" \
+    || fail "default first creation did not preserve the declared Dev Containers lifecycle"
+if grep -q '^compose ' <<<"$CASE_DOCKER_LOG"; then
+    fail "default first creation replaced the declared Dev Containers lifecycle with direct Compose"
+fi
+
+CASE_CONTAINER_EXISTS=false CASE_NETWORK_EXISTS=false CASE_LAYER2_EXISTS=false run_launcher_case wave-default-compose-first-create false missing false false py-bench
+[[ "$CASE_ENSURE_IMAGES_LOG" == "--user tester" ]] \
+    || fail "Wave first creation did not bootstrap a missing pyBench image stack"
+grep -q -- "compose -f .*/devBenches/pyBench/.devcontainer/docker-compose.yml -f .*/devBenches/pyBench/.devcontainer/docker-compose.amd-rocm.generated.yml -f .*/py-bench.override.yml up -d py-bench" <<<"$CASE_DOCKER_LOG" \
+    || fail "Wave first creation did not use the bench Compose file, generated ROCm overlay, and Wave override"
+grep -q '^network create devbench-shared$' <<<"$CASE_DOCKER_LOG" \
+    || fail "Wave first creation did not create pyBench's missing external network"
+[[ "$CASE_ROCM_LOG" == configured ]] || fail "Wave first creation did not regenerate the pyBench ROCm override"
+[[ "$CASE_SONARQUBE_LOG" == configured ]] || fail "Wave first creation did not bootstrap the reusable SonarQube MCP service"
+[[ "$CASE_LIFECYCLE_LOG" == $'network-create\nsonarqube\nrocm\ncompose' ]] \
+    || fail "Wave first creation did not prepare the network, SonarQube MCP, and ROCm before Compose"
+if grep -q '^devcontainer ' <<<"$CASE_DOCKER_LOG"; then
+    fail "Wave first creation used Dev Containers CLI instead of its Compose lifecycle"
 fi
 
 CASE_CONTAINER_EXISTS=false CASE_EXPLICIT_COMPOSE=true CASE_WSLG_ENABLED=true run_launcher_case rust-explicit-compose-first-create false missing false false rustBench
