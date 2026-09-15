@@ -812,8 +812,23 @@ git_worktree_prune_visible() {
             "$canonical_root"|"$canonical_root"/*)
                 remove_error=""
                 if ! remove_error=$(git -C "$repo" worktree remove --force "$path" 2>&1); then
-                    >&2 echo "[specify] Warning: could not clear the stale worktree registration '$path'."
-                    [ -z "$remove_error" ] || >&2 printf '  %s\n' "$remove_error"
+                    # A directory that still exists but is missing its OWN
+                    # .git file (as opposed to being gone outright) fails
+                    # `remove`'s validation even under --force: Git will
+                    # not clear the registration without confirming the
+                    # directory it names is still the working tree it
+                    # expects. This path is already established safe to
+                    # clear — visible from this mount, and prunable — so
+                    # finish what `remove` would not, exactly as the
+                    # rollback callers already do for the one worktree
+                    # they just created: take the leftover directory down
+                    # ourselves, then ask `remove` again now that nothing
+                    # is left for it to validate against.
+                    rm -rf "$path" >/dev/null 2>&1 || true
+                    if ! remove_error=$(git -C "$repo" worktree remove --force "$path" 2>&1); then
+                        >&2 echo "[specify] Warning: could not clear the stale worktree registration '$path'."
+                        [ -z "$remove_error" ] || >&2 printf '  %s\n' "$remove_error"
+                    fi
                 fi
                 ;;
             *)

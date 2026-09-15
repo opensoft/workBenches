@@ -292,10 +292,16 @@ Nothing here restores the registration for you — recover it by hand:
    ```
    mv <path> <path>.orphaned
    ```
-2. Recreate the registration on the same branch, either from `origin` or a
-   local branch that already has the commits you expect:
+2. Recreate the registration on the same branch. When a local branch
+   already has the commits you expect:
    ```
    git worktree add <path> <branch>
+   ```
+   When the branch exists only on `origin` (a fresh clone that never
+   fetched it, say) — `<branch>` alone would try to resolve a LOCAL branch
+   that is not there yet, so create it from the remote instead:
+   ```
+   git worktree add -b <branch> <path> origin/<branch>
    ```
 3. Copy the moved-aside files back over the fresh worktree — everything
    except its own `.git` file, which the `add` above just wrote. The

@@ -1177,6 +1177,52 @@ test_git_worktree_first_existing_ancestor_terminates_on_a_relative_path() {
     assert_equal '/' "$result" 'ancestor of an unresolvable relative path'
 }
 
+# A worktree directory can survive while only its OWN .git file is deleted
+# (as opposed to the whole directory being gone). Git still reports the
+# registration prunable, but `git worktree remove --force` alone refuses
+# it — Git validates that the worktree's own .git file is there before
+# touching the registration. This proves the shared helper finishes the
+# job `remove` would not, rather than leaving the registration behind
+# with nothing but a warning forever (Copilot round 2 on
+# opensoft/workBenches#92).
+test_git_worktree_prune_visible_clears_a_worktree_missing_only_its_own_git_file() {
+    local repo="$FIXTURE_ROOT/prune-visible-half-gone"
+    local config=$'checkout_mode: worktree\nbase_branch: main\nworktree_root: ../prune-visible-half-gone-worktrees'
+    local root="$FIXTURE_ROOT/prune-visible-half-gone-worktrees"
+    local half_gone_path stderr_file
+
+    # Given: a worktree whose own .git file is deleted, but whose directory
+    # otherwise still exists.
+    initialize_fixture "$repo" "$config" || return 1
+    mkdir -p "$root" || return 1
+    git -C "$repo" branch half-gone || return 1
+    git -C "$repo" worktree add -q "$root/half-gone" half-gone || return 1
+    half_gone_path="$root/half-gone"
+    rm -f "$half_gone_path/.git" || return 1
+    if ! git -C "$repo" worktree list --porcelain | grep -Fq "worktree $half_gone_path"; then
+        printf 'assertion failed: fixture setup lost the registration before the test even ran\n' >&2
+        return 1
+    fi
+
+    # When: the shared helper prunes this repo.
+    stderr_file="$FIXTURE_ROOT/prune-visible-half-gone.stderr"
+    (source "$GIT_COMMON_SCRIPT" && git_worktree_prune_visible "$repo" "$root") 2>"$stderr_file"
+
+    # Then: the registration is gone. `remove --force` alone cannot clear
+    # it, so the helper must fall back to clearing the leftover directory
+    # itself and asking `remove` again.
+    if git -C "$repo" worktree list --porcelain | grep -Fq "worktree $half_gone_path"; then
+        printf 'assertion failed: a worktree missing only its own .git file was left registered\n%s\n' \
+            "$(git -C "$repo" worktree list --porcelain)" >&2
+        return 1
+    fi
+    if grep -Fq 'could not clear the stale worktree registration' "$stderr_file"; then
+        printf 'assertion failed: the helper warned instead of clearing it\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    assert_equal '1' "$(worktree_record_count "$repo")" 'only the main checkout remains registered'
+}
+
 test_concurrent_sequential_number_reservations() {
     local repo="$FIXTURE_ROOT/concurrent-numbering"
     local shim_dir="$FIXTURE_ROOT/concurrent-numbering-git-shim"
@@ -4080,6 +4126,7 @@ run_scenario 'git_worktree_prune_visible keeps an unmounted registration and pru
 run_scenario 'git_worktree_prune_visible prunes a registration beneath, not only at, the worktree root' test_git_worktree_prune_visible_prunes_beneath_the_root_too
 run_scenario 'git_worktree_prune_visible refuses to treat "/" as a pruning witness' test_git_worktree_prune_visible_refuses_the_filesystem_root
 run_scenario 'the ancestor walk terminates on a slash-free relative path' test_git_worktree_first_existing_ancestor_terminates_on_a_relative_path
+run_scenario 'git_worktree_prune_visible clears a worktree missing only its own .git file' test_git_worktree_prune_visible_clears_a_worktree_missing_only_its_own_git_file
 run_scenario 'three-leg feature creates a worktree in both legs and none at the root' test_three_leg_creates_both_leg_worktrees
 run_scenario 'three-leg dry run creates nothing' test_three_leg_dry_run_creates_nothing
 run_scenario 'three-leg refuses branch checkout mode' test_three_leg_refuses_branch_checkout_mode
