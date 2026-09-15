@@ -3,18 +3,21 @@
 # scripts/setup-estate-commands.sh
 #
 # Installs the estate commands on this host from workBenches' own vendored
-# pin: openRepoShape, and openRepoTools's own EIGHTEEN artifacts, placed by
+# pin: openRepoShape, and openRepoTools's own TWENTY-SIX artifacts, placed by
 # the vendored shims' own `--install` (devBenches/base-image/files/
 # openreposhape/openRepoShape and devBenches/base-image/files/openrepotools/
-# openRepoTools). `openRepoTools --install` places ELEVEN files on $PATH
-# (itself, park, resume, status, restart, lanes, and the four lane helpers
-# `lanes-edit.sh`, `lane-start`, `lane-end` and `link-estates` with the alias
-# table `repos.tsv` they read -- lane-collision-protocol Amendment 11,
-# opensoft/openRepoTools#26), TWO skills (`lane-swap`, `restart`) at
+# openRepoTools). `openRepoTools --install` places TWELVE files on $PATH
+# (itself, park, resume, status, lane, lanes, lane-handoff, and the four
+# lane helpers `lanes-edit.sh`, `lane-start`, `lane-end` and `link-estates`
+# with the alias table `repos.tsv` they read -- lane-collision-
+# protocol Amendments 11, 17(a) and 18, opensoft/openRepoTools#26 and #45),
+# THREE skills (`handoff`, `lane-swap`, `restart`) at
 # `~/.claude-profiles/shared/skills/<name>/SKILL.md` and
-# `~/.claude/skills/<name>/SKILL.md`, ONE command file (`/swap`) at that same
-# pair of paths under `commands/`, and merges one `SessionStart` entry into
-# `~/.claude/settings.json`. This script adds no install logic of its own: it
+# `~/.claude/skills/<name>/SKILL.md`, THREE command files (`handoff`, `ctx`,
+# `swap`) at that same pair of paths under `commands/`, and merges two
+# entries into `~/.claude/settings.json` -- the `SessionStart` entry and
+# lane-collision-protocol Amendment 12's `UserPromptSubmit` name guard. This
+# script adds no install logic of its own: it
 # runs `update-upstream.py check`, then the two shims, and relays their own
 # output unchanged -- but it pre-flights every bin-directory install target
 # and verifies every one of them afterward, because the shims' own `cp` can
@@ -35,12 +38,15 @@
 #     is best-effort and default-on in setup.sh, like the Wave widgets step:
 #     it never fails setup.sh.
 #
-# Guarantees added by the adversarial review round, extended to the ELEVEN
-# bin-directory files now that opensoft/openRepoTools#26 grew the installable
-# set from four to eleven (the two skills, the command file and the hook are
+# Guarantees added by the adversarial review round, extended to the ELEVEN,
+# now TWELVE, bin-directory files: opensoft/openRepoTools#26 grew the
+# installable set from four to eleven, and opensoft/openRepoTools#45
+# (lane-collision-protocol Amendment 18 Addendum 2) retired `restart` from
+# $PATH while Amendment 17(a) added `lane-handoff` beside it, net one file
+# (the three skills, the three command files and the two hook entries are
 # placed and verified by `openRepoTools --install` itself, under its own
 # all-or-nothing rule -- see "Ruling 2" below):
-#   - Refuses (exit 1) before running either shim if any of the eleven
+#   - Refuses (exit 1) before running either shim if any of the twelve
 #     openRepoTools install targets (or openRepoShape's own) already exists
 #     as a symlink, as anything other than a regular file (e.g. a
 #     directory), or is not writable -- or if its bin dir exists and is not
@@ -49,35 +55,43 @@
 #   - Refuses (exit 2) if the pin file itself is missing, if a file this
 #     script or either shim needs is missing, if `jq` is not on $PATH (the
 #     shim needs it to merge the SessionStart entry, and refusing here means
-#     NOTHING is installed rather than ten of eleven bin files landing before
-#     the shim discovers jq is missing on its own), or if a file the shims
-#     would install has no row in the pin's own `list` output -- so a row
-#     removed the documented way (`apply --remove`) is caught here, before
-#     either shim could fall back to fetching that file over the network
-#     (D3).
+#     NOTHING is installed rather than eleven of twelve bin files landing
+#     before the shim discovers jq is missing on its own), or if a file the
+#     shims would install has no row in the pin's own `list` output -- so a
+#     row removed the documented way (`apply --remove`) is caught here,
+#     before either shim could fall back to fetching that file over the
+#     network (D3).
+#   - Refuses (exit 2) if TOOLS_FILES, SKILL_NAMES or COMMAND_NAMES below
+#     ever disagrees with the vendored shim's own INSTALLABLES, SKILLS or
+#     COMMANDS array (`check_shim_list`, added for Copilot's review of
+#     opensoft/workBenches#91: those three lists here are still hand-kept,
+#     not generated -- there is no `--list-installables` to generate them
+#     from -- but a shim that grows past what this script lists no longer
+#     installs the new file's bytes while silently skipping its preflight
+#     and verification; it refuses the whole install and names both lists).
 #   - For the duration of both installer runs, OPENREPOSHAPE_REPO/_REF and
 #     OPENREPOTOOLS_REPO/_REF are overridden to a sentinel that cannot
 #     resolve, so that IF a fetch is ever attempted despite the checks
 #     above, it fails loudly naming the sentinel rather than silently
 #     succeeding against whatever the operator's shell happened to export
 #     (D3, defense in depth). Under openRepoTools#26's all-or-nothing rule
-#     this now guards FOURTEEN pinned paths, not five: the eleven bin files
-#     plus the two skills' SKILL.md and the one command file, because
-#     `--install` places all eleven files, both skills and the command file,
-#     or none -- one missing or unpinned refuses the WHOLE install, bin
-#     files included.
-#   - After both installers exit 0, every one of the ELEVEN openRepoTools
+#     this now guards EIGHTEEN pinned paths, not five: the twelve bin files
+#     plus the three skills' SKILL.md and the three command files, because
+#     `--install` places all twelve files, all three skills and all three
+#     command files, or none -- one missing or unpinned refuses the WHOLE
+#     install, bin files included.
+#   - After both installers exit 0, every one of the TWELVE openRepoTools
 #     bin files (and openRepoShape's own) is re-checked: a regular,
 #     non-symlink file, mode exactly 0755, and `cmp`-identical to its
 #     vendored copy. Only then does this script report success (D1/D2/D3/D4
-#     residue, closed in one place). The two skills, the command file and
-#     the merged settings.json are NOT re-verified here the same way: they
-#     are per-user artifacts under $HOME with their own modes (0644, 0600)
-#     and their own all-or-nothing preflight inside `openRepoTools --install`
-#     (`plan_skill_targets`, `plan_hook_merge`) -- this script trusts that
-#     shim's own exit code for them, exactly as ruling 2 already trusted it
-#     for the bin files before this script added its own belt-and-braces
-#     re-check.
+#     residue, closed in one place). The three skills, the three command
+#     files and the merged settings.json are NOT re-verified here the same
+#     way: they are per-user artifacts under $HOME with their own modes
+#     (0644, 0600) and their own all-or-nothing preflight inside
+#     `openRepoTools --install` (`plan_skill_targets`, `plan_hook_merge`) --
+#     this script trusts that shim's own exit code for them, exactly as
+#     ruling 2 already trusted it for the bin files before this script added
+#     its own belt-and-braces re-check.
 #
 # Set WORKBENCHES_SKIP_ESTATE_COMMANDS=1 to skip this step entirely (prints
 # one line, exits 0).
@@ -94,12 +108,14 @@
 # one of the two installers itself failed; or a placed file failed
 # verification after install); 2 tooling or configuration missing (no
 # python3; no jq; the pin file, update-upstream.py, or a file either shim
-# needs is missing; a file the shims would install has no row in the pin; or
-# update-upstream.py check itself refused structurally). setup.sh runs this
+# needs is missing; a file the shims would install has no row in the pin;
+# this script's TOOLS_FILES/SKILL_NAMES/COMMAND_NAMES disagrees with the
+# shim's own INSTALLABLES/SKILLS/COMMANDS; or update-upstream.py check itself
+# refused structurally). setup.sh runs this
 # under `log_header "ESTATE COMMANDS"` and treats any non-zero exit here as
 # best-effort, continuing either way; this script is also safe to run
-# directly, any time. A host that runs it now ends up with the same EIGHTEEN
-# artifacts `openRepoTools --install` places by hand.
+# directly, any time. A host that runs it now ends up with the same
+# TWENTY-SIX artifacts `openRepoTools --install` places by hand.
 
 set -euo pipefail
 
@@ -120,18 +136,18 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 # jq, preflighted HERE rather than left to the shim: `openRepoTools --install`
-# needs it to merge the SessionStart entry into ~/.claude/settings.json under
-# openRepoTools#26's all-or-nothing rule, and refuses (placing nothing) the
-# moment it discovers jq is missing -- but that discovery happens AFTER the
-# eleven bin files are already staged, so refusing before either shim runs
-# means a host with no jq never sees openRepoShape or any of the eleven land
-# either, one refusal instead of a install that reads like it got most of
-# the way there.
+# needs it to merge the SessionStart and UserPromptSubmit entries into
+# ~/.claude/settings.json under openRepoTools#26's all-or-nothing rule, and
+# refuses (placing nothing) the moment it discovers jq is missing -- but that
+# discovery happens AFTER the twelve bin files are already staged, so
+# refusing before either shim runs means a host with no jq never sees
+# openRepoShape or any of the twelve land either, one refusal instead of a
+# install that reads like it got most of the way there.
 if ! command -v jq >/dev/null 2>&1; then
     echo "Estate command install refused: jq is not available, and" >&2
-    echo "openRepoTools --install needs it to merge one SessionStart entry" >&2
-    echo "into ~/.claude/settings.json. Nothing was installed. Install jq," >&2
-    echo "then re-run." >&2
+    echo "openRepoTools --install needs it to merge the SessionStart and" >&2
+    echo "UserPromptSubmit entries into ~/.claude/settings.json. Nothing was" >&2
+    echo "installed. Install jq, then re-run." >&2
     exit 2
 fi
 
@@ -140,12 +156,21 @@ PIN_FILE="$BASE_IMAGE_DIR/upstream-pin.yaml"
 SHAPE_SHIM="$BASE_IMAGE_DIR/files/openreposhape/openRepoShape"
 TOOLS_SHIM="$BASE_IMAGE_DIR/files/openrepotools/openRepoTools"
 
-# THE ELEVEN FILES `openRepoTools --install` PLACES ON $PATH (openRepoTools#26,
-# lane-collision-protocol Amendment 11) -- one list, so the file-existence
-# check, the pin-row check, the preflight and the post-install verification
-# below cannot disagree about what a complete bin-directory install is, the
-# same reason openRepoTools's own INSTALLABLES is one list there.
-TOOLS_FILES=(openRepoTools park resume status restart lanes lanes-edit.sh lane-start lane-end link-estates repos.tsv)
+# THE TWELVE FILES `openRepoTools --install` PLACES ON $PATH (openRepoTools#26
+# and #45, lane-collision-protocol Amendments 11, 17(a) and 18) -- one list,
+# so the file-existence check, the pin-row check, the preflight and the
+# post-install verification below cannot disagree about what a complete
+# bin-directory install is, the same reason openRepoTools's own INSTALLABLES
+# is one list there. Checked against that list itself below (`check_shim_list`),
+# not just kept in sync by a person's own care.
+TOOLS_FILES=(openRepoTools park resume status lane lanes lane-handoff lanes-edit.sh lane-start lane-end link-estates repos.tsv)
+# THE THREE SKILLS and THE THREE COMMAND FILES `openRepoTools --install` also
+# places (skill_source_path/command_source_path in that shim derive the two
+# paths each of these takes from the name alone, the same way this script's
+# own require_pin_row loops below do). Also checked against the shim's own
+# SKILLS/COMMANDS arrays below.
+SKILL_NAMES=(handoff lane-swap restart)
+COMMAND_NAMES=(handoff ctx swap)
 
 if [ ! -f "$PIN_FILE" ]; then
     echo "Estate command install refused: the pin file is missing or" >&2
@@ -195,6 +220,46 @@ elif [ "$check_status" -ne 0 ]; then
     exit 2
 fi
 
+# CHECKED AGAINST THE SHIM'S OWN LIST, not trusted on a person's care alone
+# (Copilot's review of opensoft/workBenches#91, README.md:108: "TOOLS_FILES
+# is a literal array... This sentence therefore promises a safeguard that
+# does not exist; a future upstream artifact could make --install succeed
+# while this wrapper omits its preflight/verification"). TOOLS_FILES,
+# SKILL_NAMES and COMMAND_NAMES above are still hand-kept mirrors, not
+# generated -- there is no `openRepoTools --list-installables` to generate
+# them from -- but from here on a shim whose own INSTALLABLES, SKILLS or
+# COMMANDS grew past what this script lists REFUSES the whole install rather
+# than silently omitting the new file's preflight and verification. Read
+# AFTER `check` above has already proven $TOOLS_SHIM's bytes match the pin,
+# so `eval`-ing its three one-line array assignments is evaluating content
+# already integrity-checked by sha256, not arbitrary vendored bytes.
+check_shim_list() {
+    local our_name="$1" shim_array_name="$2" expected_csv="$3" shim_line shim_csv
+    shim_line="$(grep -m1 "^${shim_array_name}=" "$TOOLS_SHIM")"
+    if [ -z "$shim_line" ]; then
+        echo "Estate command install refused: could not find '${shim_array_name}=' in" >&2
+        echo "$TOOLS_SHIM; this script's own $our_name may be stale. Nothing was installed." >&2
+        exit 2
+    fi
+    # Evaluated in a SEPARATE bash process, never in this script's own shell:
+    # a shim array named identically to this script's own local ($shim_line
+    # is always some upstream INSTALLABLES/SKILLS/COMMANDS, never TOOLS_FILES/
+    # SKILL_NAMES/COMMAND_NAMES, so this is defensive rather than live) would
+    # otherwise shadow it depending on which assignment ran last.
+    shim_csv="$(bash -c "$shim_line"$'\n'"IFS=,; echo \"\${${shim_array_name}[*]}\"")"
+    if [ "$shim_csv" != "$expected_csv" ]; then
+        echo "Estate command install refused: this script's $our_name list" >&2
+        echo "  ($expected_csv)" >&2
+        echo "does not match the vendored shim's own $shim_array_name" >&2
+        echo "  ($shim_csv)." >&2
+        echo "Nothing was installed. Update $our_name in $0 to match." >&2
+        exit 2
+    fi
+}
+check_shim_list TOOLS_FILES INSTALLABLES "$(IFS=,; echo "${TOOLS_FILES[*]}")"
+check_shim_list SKILL_NAMES SKILLS "$(IFS=,; echo "${SKILL_NAMES[*]}")"
+check_shim_list COMMAND_NAMES COMMANDS "$(IFS=,; echo "${COMMAND_NAMES[*]}")"
+
 # Ruling 1 ("version" means the pin): read the two pinned commits from
 # `update-upstream.py list`, which prints each source's id, then its
 # attributes (including "commit") in a stable, parseable form -- never from
@@ -223,11 +288,11 @@ fi
 # dropped the documented way (`apply --remove`, which deletes the row AND
 # the file together) is refused here explicitly, naming the file, rather
 # than ever reaching a shim that would fall back to fetching it over the
-# network. FOURTEEN rows now, not five: the eleven bin files plus the two
-# skills' SKILL.md and the one command file -- openRepoTools#26's
-# all-or-nothing rule means any one of the fourteen missing a row refuses
-# the WHOLE install, bin files included, so all fourteen are checked here,
-# not only the eleven this script itself places into a bin dir.
+# network. EIGHTEEN rows now, not five: the twelve bin files plus the three
+# skills' SKILL.md and the three command files -- openRepoTools#26's
+# all-or-nothing rule means any one of the eighteen missing a row refuses
+# the WHOLE install, bin files included, so all eighteen are checked here,
+# not only the twelve this script itself places into a bin dir.
 require_pin_row() {
     local path="$1"
     if ! grep -Eq "^    [0-9a-f]{12}  ${path}\$" <<<"$list_output"; then
@@ -241,9 +306,12 @@ require_pin_row "openRepoShape"
 for name in "${TOOLS_FILES[@]}"; do
     require_pin_row "$name"
 done
-require_pin_row "skills/lane-swap/SKILL.md"
-require_pin_row "skills/restart/SKILL.md"
-require_pin_row "commands/swap.md"
+for name in "${SKILL_NAMES[@]}"; do
+    require_pin_row "skills/$name/SKILL.md"
+done
+for name in "${COMMAND_NAMES[@]}"; do
+    require_pin_row "commands/$name.md"
+done
 
 echo "openRepoShape pinned at $shape_commit"
 echo "openRepoTools pinned at $tools_commit"
@@ -259,14 +327,14 @@ refuse_preflight() {
 
 refuse_postverify() {
     echo "Estate command install refused: $1" >&2
-    echo "One or more of the eleven openRepoTools commands may now be in a" >&2
+    echo "One or more of the twelve openRepoTools commands may now be in a" >&2
     echo "mixed state; fix the problem above and re-run this script." >&2
     exit 1
 }
 
 # D1/D2/most of D4: every bin-directory target either shim is about to write
 # to is checked BEFORE either of them runs, so a bad target refuses before
-# anything at all is placed -- never after only some of the eleven are done.
+# anything at all is placed -- never after only some of the twelve are done.
 # (The skills, the command file and the settings.json merge have their own
 # preflight inside `openRepoTools --install` -- `plan_skill_targets` -- under
 # the same all-or-nothing rule; this script does not duplicate it.)
@@ -307,12 +375,13 @@ export OPENREPOTOOLS_REF="$ESTATE_SENTINEL"
 
 # Ruling 2 (the host follows the pin, both ways): each shim, invoked as a
 # FILE, installs its own bytes -- and openRepoTools also copies the other
-# ten files beside itself (park, resume, status, restart, lanes, the four
-# lane helpers and repos.tsv), places the lane-swap and restart skills and
-# the /swap command file under $HOME (~/.claude-profiles/shared/... and
-# ~/.claude/...), and merges the SessionStart entry into
+# eleven files beside itself (park, resume, status, lane, lanes,
+# lane-handoff, the four lane helpers and repos.tsv), places the handoff,
+# lane-swap and restart skills and the handoff, ctx and swap command files
+# under $HOME (~/.claude-profiles/shared/... and ~/.claude/...), and merges
+# the SessionStart entry and the UserPromptSubmit name guard entry into
 # ~/.claude/settings.json, ALL from beside itself, under openRepoTools#26's
-# all-or-nothing rule: no fetch is reachable once every one of the fourteen
+# all-or-nothing rule: no fetch is reachable once every one of the eighteen
 # checks above has passed. It reports each target `already installed ...
 # (unchanged)`, `updated`, or `installed`. That per-file report is relayed
 # unchanged below -- this script adds no version logic and no flags of its
@@ -331,7 +400,7 @@ fi
 # shims reported success above, but `cp` can write through a symlink or into
 # a directory without either shim noticing -- so every placed bin file is
 # re-checked against the vendored copy it was supposed to become, and only
-# once openRepoShape and all eleven openRepoTools files pass does this
+# once openRepoShape and all twelve openRepoTools files pass does this
 # script report success itself. (Why not the skills/command/hook too: see
 # the guarantees note above.)
 file_mode_octal() {
