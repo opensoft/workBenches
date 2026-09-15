@@ -52,6 +52,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --write-manifest    Persist the version manifest (default: do not write)"
             echo "  --manifest-file FILE Write inside config/ instead of the default manifest path"
             echo "  --json              Print the manifest JSON to stdout"
+            echo "  WORKBENCHES_LAYER3_IDENTITY_TIMEOUT_SECONDS  Image-export timeout (default: 600)"
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -82,6 +83,11 @@ declare -A RUNNING_CONTAINER_BY_IMAGE=()
 declare -A EXPECTED_IMAGE_IDS=()
 IMAGE_PROBE_FAILURES=0
 LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256 "$REPO_DIR/user-layer")"
+LAYER3_IDENTITY_TIMEOUT_SECONDS="${WORKBENCHES_LAYER3_IDENTITY_TIMEOUT_SECONDS:-600}"
+if [[ ! "$LAYER3_IDENTITY_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "WORKBENCHES_LAYER3_IDENTITY_TIMEOUT_SECONDS must be a positive integer" >&2
+    exit 1
+fi
 DOCKER_SOCKET_PATH="${WORKBENCHES_DOCKER_SOCKET_PATH:-/var/run/docker.sock}"
 DOCKER_SOCKET_GID=""
 if [ -S "$DOCKER_SOCKET_PATH" ]; then
@@ -426,6 +432,7 @@ layer3_identity_is_current() {
     local image_uid
     local image_gid
     local image_docker_gid
+    local -a pipeline_status
 
     image_username="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.username" }}' "$image" 2>/dev/null || true)"
     image_uid="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.uid" }}' "$image" 2>/dev/null || true)"
@@ -439,9 +446,15 @@ layer3_identity_is_current() {
         return 1
     fi
 
-    run_with_optional_timeout 90 docker image save "$image" 2>/dev/null \
+    run_with_optional_timeout "$LAYER3_IDENTITY_TIMEOUT_SECONDS" \
+        docker image save "$image" 2>/dev/null \
         | python3 "$SCRIPT_DIR/lib/check-image-identity.py" \
             "$USERNAME" "$USER_UID" "$USER_GID" "$DOCKER_SOCKET_GID"
+    pipeline_status=("${PIPESTATUS[@]}")
+    if [[ "${pipeline_status[0]}" -ne 0 ]]; then
+        return 2
+    fi
+    return "${pipeline_status[1]}"
 }
 
 check_layer3_image() {
@@ -453,6 +466,7 @@ check_layer3_image() {
     local user_created
     local user_image_id
     local user_recipe
+    local identity_status=0
 
     running_container="${RUNNING_CONTAINER_BY_IMAGE[$user_image]:-}"
     if [[ -n "$running_container" ]]; then
@@ -486,16 +500,27 @@ check_layer3_image() {
             echo -e "${YELLOW}↷ Layer 3 $user_image is older than $base_image; activation is required${NC}"
         fi
         record_image "$user_image" "3" "activation-stale" "$user_image_id"
-    elif layer3_identity_is_current "$user_image_id"; then
-        if [ "$JSON_OUTPUT" = false ]; then
-            echo -e "${GREEN}✓ Layer 3 $user_image is current${NC}"
-        fi
-        record_image "$user_image" "3" "current" "$user_image_id"
     else
-        if [ "$JSON_OUTPUT" = false ]; then
-            echo -e "${YELLOW}↷ Layer 3 $user_image has stale user/group configuration; activation is required${NC}"
-        fi
-        record_image "$user_image" "3" "activation-stale" "$user_image_id"
+        layer3_identity_is_current "$user_image_id" || identity_status=$?
+        case "$identity_status" in
+            0)
+                if [ "$JSON_OUTPUT" = false ]; then
+                    echo -e "${GREEN}✓ Layer 3 $user_image is current${NC}"
+                fi
+                record_image "$user_image" "3" "current" "$user_image_id"
+                ;;
+            1)
+                if [ "$JSON_OUTPUT" = false ]; then
+                    echo -e "${YELLOW}↷ Layer 3 $user_image has stale user/group configuration; activation is required${NC}"
+                fi
+                record_image "$user_image" "3" "activation-stale" "$user_image_id"
+                ;;
+            *)
+                echo "Could not inspect Layer 3 identity for $user_image; activation state is unknown" >&2
+                record_image "$user_image" "3" "activation-inspection-failed" "$user_image_id"
+                IMAGE_PROBE_FAILURES=$((IMAGE_PROBE_FAILURES + 1))
+                ;;
+        esac
     fi
 }
 

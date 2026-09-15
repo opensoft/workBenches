@@ -27,6 +27,11 @@ chmod +x "$fake_bin/docker"
 
 bash -n "$checker"
 bash -n "$repo_root/scripts/update-and-rebuild.sh"
+identity_parser_status=0
+printf 'not-an-image-archive' \
+    | python3 "$repo_root/scripts/lib/check-image-identity.py" brett 1000 1000 '' \
+    || identity_parser_status=$?
+test "$identity_parser_status" -eq 2
 test "$(bash -c 'source "$1"; bench_dir_to_image_repo 365Bench' _ "$repo_root/scripts/lib/image-names.sh")" = "m365-bench"
 
 source "$repo_root/base-image/ai-cli-contract.sh"
@@ -38,15 +43,22 @@ test "${WORKBENCHES_REQUIRED_AI_CLIS[-1]}" = cursor-agent
 grep -Fq 'required_clis=("${WORKBENCHES_REQUIRED_AI_CLIS[@]}")' "$installer"
 test "$(grep -Fc -- '- user-layer/build.sh' "$repo_root/.github/workflows/cascade-image-validation.yml")" -eq 2
 
-: > "$log"
-if PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
-    "$repo_root/user-layer/build.sh" --base test-bench:latest \
-        --user root --uid 0 --gid 0 > "$temp_dir/root-layer3.out" 2>&1; then
-    echo "expected Layer 3 to reject the inherited root identity" >&2
-    exit 1
-fi
-grep -Fq 'requires a non-root username and UID/GID' "$temp_dir/root-layer3.out"
-test ! -s "$log"
+assert_layer3_identity_rejected() {
+    : > "$log"
+    if PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+        "$repo_root/user-layer/build.sh" --base test-bench:latest "$@" \
+            > "$temp_dir/root-layer3.out" 2>&1; then
+        echo "expected Layer 3 to reject a root-equivalent identity" >&2
+        exit 1
+    fi
+    grep -Fq 'requires a non-root username and canonical positive UID/GID' \
+        "$temp_dir/root-layer3.out"
+    test ! -s "$log"
+}
+assert_layer3_identity_rejected --user root --uid 0 --gid 0
+assert_layer3_identity_rejected --user 00 --uid 1000 --gid 1000
+assert_layer3_identity_rejected --user tester --uid 00 --gid 1000
+assert_layer3_identity_rejected --user tester --uid 1000 --gid 000
 
 checker_help="$("$checker" --help)"
 grep -Fq -- '--images IMAGE,...' <<< "$checker_help"
@@ -54,6 +66,7 @@ grep -Fq -- '--image-ids IMAGE=ID,...' <<< "$checker_help"
 grep -Fq -- '--check-layer3' <<< "$checker_help"
 grep -Fq -- '--write-manifest' <<< "$checker_help"
 grep -Fq -- '--manifest-file FILE' <<< "$checker_help"
+grep -Fq -- 'WORKBENCHES_LAYER3_IDENTITY_TIMEOUT_SECONDS' <<< "$checker_help"
 rebuild_help="$("$repo_root/scripts/update-and-rebuild.sh" --help)"
 grep -Fq -- '--write-manifest' <<< "$rebuild_help"
 grep -Fq 'CHECK_ARGS+=(--images "$CASCADE_IMAGE_LIST" --image-ids "$CASCADE_IMAGE_ID_LIST" --check-layer3)' "$repo_root/scripts/update-and-rebuild.sh"
@@ -98,6 +111,27 @@ FAKE_DOCKER_LAYER3_PASSWD_USERNAME=other-user \
 "$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
     > "$temp_dir/stale-identity.out"
 grep -Fq 'has stale user/group configuration' "$temp_dir/stale-identity.out"
+
+if PATH="$fake_bin:$PATH" \
+    FAKE_DOCKER_LOG="$log" \
+    FAKE_DOCKER_IMAGE_SAVE_FAIL=true \
+    "$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
+        > "$temp_dir/inspection-failed.out" 2>&1; then
+    echo "expected a failed image export to fail inspection" >&2
+    exit 1
+fi
+grep -Fq 'activation state is unknown' "$temp_dir/inspection-failed.out"
+if grep -Fq 'has stale user/group configuration' "$temp_dir/inspection-failed.out"; then
+    echo "failed image export was misclassified as a stale identity" >&2
+    exit 1
+fi
+
+if WORKBENCHES_LAYER3_IDENTITY_TIMEOUT_SECONDS=invalid \
+    "$checker" --layer 0 >/dev/null 2> "$temp_dir/invalid-timeout.err"; then
+    echo "expected an invalid Layer 3 identity timeout to fail" >&2
+    exit 1
+fi
+grep -Fq 'must be a positive integer' "$temp_dir/invalid-timeout.err"
 
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \

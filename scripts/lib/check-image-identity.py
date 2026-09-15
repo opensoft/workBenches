@@ -95,7 +95,7 @@ def main(argv):
         files = image_identity_files(sys.stdin.buffer)
         return 0 if identity_matches(files, *argv[1:]) else 1
     except (OSError, ValueError, json.JSONDecodeError, tarfile.TarError):
-        return 1
+        return 2
 
 
 if __name__ == "__main__":

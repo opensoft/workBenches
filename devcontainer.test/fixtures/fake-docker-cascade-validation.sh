@@ -10,6 +10,9 @@ case "$1" in
             exit 0
         fi
         if [ "$2" = "save" ]; then
+            if [ "${FAKE_DOCKER_IMAGE_SAVE_FAIL:-false}" = true ]; then
+                exit 124
+            fi
             python3 - <<'PY'
 import io
 import json

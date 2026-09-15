@@ -67,8 +67,10 @@ fi
 # Layer 3 is a host-user personalization layer. Building it as UID/GID 0 would
 # either delete the inherited root account or move its state away from /root.
 # Keep root images at Layer 2 and require a non-root identity here.
-if [ "$USERNAME" = "root" ] || [ "$USER_UID" = "0" ] || [ "$USER_GID" = "0" ]; then
-    echo "❌ Error: Layer 3 requires a non-root username and UID/GID"
+if [ "$USERNAME" = "root" ] || [[ "$USERNAME" =~ ^0+$ ]] \
+    || [[ ! "$USER_UID" =~ ^[1-9][0-9]*$ ]] \
+    || [[ ! "$USER_GID" =~ ^[1-9][0-9]*$ ]]; then
+    echo "❌ Error: Layer 3 requires a non-root username and canonical positive UID/GID"
     exit 1
 fi
 
