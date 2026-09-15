@@ -889,6 +889,20 @@ export_tmux_identity() {
   pane="$(tmux display-message -p '#{pane_id}' 2>/dev/null || true)"
   [[ -n "$session" ]] && export WORKBENCHES_TMUX_SESSION="$session"
   [[ -n "$pane" ]] && export WORKBENCHES_TMUX_PANE="$pane"
+  # PRE-EXISTING, found while testing opensoft/workBenches#96's fast-exit
+  # disambiguation (Copilot round 1): with no explicit return, this
+  # function's own exit status was its LAST command's — the `pane` line
+  # above — so a $TMUX set but pointing at a session or pane tmux can no
+  # longer answer for (exactly what an already-closed pane looks like from
+  # here) left both $session and $pane empty, made that last `&&` false, and
+  # this bare call at its one call site then killed the whole script under
+  # `set -e` before ever reaching lane resolution. Never reached before
+  # because every prior scenario had tmux answer SOMETHING for a live
+  # session; #96's own new coverage (FAKE_TMUX_DISPLAY_FAIL) is the first to
+  # make tmux fail outright — which is also the one production case, a pane
+  # already gone, that this whole function must not let a masked exit status
+  # cut the launch short over.
+  return 0
 }
 
 # Native Claude records ~/.local/bin/claude as its expected installation path.
@@ -1424,6 +1438,25 @@ lane_window_is() {
   command -v tmux >/dev/null 2>&1 || return 1
   now="$(tmux display-message -p '#W' 2>/dev/null || true)"
   [[ -n "$now" && "$now" == "$want" ]]
+}
+
+lane_window_confirmed_elsewhere() {
+  # UNLIKE lane_window_is, false here means "not confirmed" rather than "no" —
+  # it covers both the window genuinely carrying this lane's name AND tmux
+  # being unreachable altogether (no tmux, or `display-message` itself
+  # failing, which is exactly what asking about a pane or session that has
+  # ALREADY CLOSED looks like). Only a read that SUCCEEDED and returned a
+  # DIFFERENT, non-empty name counts as confirmed (Copilot round 1 on
+  # opensoft/workBenches#96, claude-profile:2742 — `! lane_window_is` treated
+  # "unreadable" the same as "reads as something else", so a fast exit whose
+  # pane had already gone by the time this asked was misread as lane-start's
+  # own harmless refusal and its capture deleted, which is the one case this
+  # whole PR exists to keep). The lane defect capture's keep/delete decision
+  # is the only caller; nothing else needs this finer distinction.
+  local want="$1" now
+  command -v tmux >/dev/null 2>&1 || return 1
+  now="$(tmux display-message -p '#W' 2>/dev/null)" || return 1
+  [[ -n "$now" && "$now" != "$want" ]]
 }
 
 lane_defect_retire_line() {
@@ -2699,6 +2732,18 @@ case "$action" in
           # made before that process has drained it would race an
           # almost-instantly-declined confirm (the fake this PR's test uses
           # is exactly that race, made deterministic by this wait).
+          # A SWEEP OF OLD KEPT CAPTURES, AGE-GATED (Copilot round 1 on
+          # opensoft/workBenches#96, claude-profile:2752): keeping ever grows
+          # $TMPDIR in a long-lived container across repeated fast exits
+          # nobody has acted on yet. `-mmin +60` is the guard that makes this
+          # safe beside a concurrent `pclaude` of another lane on the same
+          # workstation — its capture, if any, is always younger than the one
+          # this sweep is willing to touch, so this can never race a capture
+          # another process still owns. This is a sweep, not a promise: it
+          # runs once per launch and only reaches files this old, never a cap
+          # on the newest N.
+          find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'pclaude-lane-defect.*' \
+            -mmin +60 -delete 2>/dev/null || true
           lane_defect_capture="$(mktemp "${TMPDIR:-/tmp}/pclaude-lane-defect.XXXXXX")"
           # THE PATH IS PRINTED BEFORE THE EXEC (opensoft/workBenches#95): a
           # launcher-made window that exits fast can take this whole pane —
@@ -2726,20 +2771,26 @@ case "$action" in
           # provably nothing new: statuses 1 and 2 are lane-start's own two
           # documented refusals (below) — nothing renamed, nothing written,
           # Claude never started — so they are redundant with what already
-          # printed live, PROVIDED the window is not already the lane's own;
-          # where it is, that same status could just as easily be a Claude
-          # lane-start took the lane and exec'd (Evidence 2/5g), and that
-          # ambiguity is exactly why this keeps rather than guesses. A status
-          # 0 that held the pane at least $lane_defect_fast_exit_seconds is an
-          # ordinary long-lived run and is deleted; anything faster, or any
-          # other status, is kept with its tail printed below — "nothing to
-          # see" and "the evidence of what broke" look identical from a
-          # status and an elapsed time alone, and guessing wrong the deleting
-          # way is the bug this closes.
+          # printed live, PROVIDED the window is CONFIRMED not already the
+          # lane's own — a read that succeeded and named something else, not
+          # merely a read that failed (`lane_window_confirmed_elsewhere`,
+          # Copilot round 1 on #96: tmux being unreachable looks exactly like
+          # the pane this launcher would be keeping evidence FOR having
+          # already closed, so unreadable keeps rather than deletes). Where
+          # the window IS the lane's, or is unreadable, that same status could
+          # just as easily be a Claude lane-start took the lane and exec'd
+          # (Evidence 2/5g), and the ambiguity is exactly why this keeps
+          # rather than guesses. A status 0 that held the pane at least
+          # $lane_defect_fast_exit_seconds is an ordinary long-lived run and
+          # is deleted; anything faster, or any other status, is kept with
+          # its tail printed below — "nothing to see" and "the evidence of
+          # what broke" look identical from a status and an elapsed time
+          # alone, and guessing wrong the deleting way is the bug this
+          # closes.
           lane_defect_elapsed=$(( SECONDS - lane_defect_started ))
           lane_defect_clean=false
           if { [[ "$lane_status" -eq 1 || "$lane_status" -eq 2 ]] \
-              && ! lane_window_is "$lane"; } \
+              && lane_window_confirmed_elsewhere "$lane"; } \
             || { [[ "$lane_status" -eq 0 ]] \
               && [[ "$lane_defect_elapsed" -ge "$lane_defect_fast_exit_seconds" ]]; }; then
             lane_defect_clean=true
@@ -2747,6 +2798,19 @@ case "$action" in
           if [[ "$lane_defect_clean" == true ]]; then
             rm -f "$lane_defect_capture"
           else
+            # BOUND WHAT IS KEPT, NOT JUST WHAT IS PRINTED (Copilot round 1 on
+            # opensoft/workBenches#96, claude-profile:2752): the tail below is
+            # 15 lines, but until now the FILE ITSELF carried the whole
+            # stderr stream, unbounded — one very chatty fast exit could keep
+            # megabytes. 2000 lines is generous for a human reading it later
+            # with `tail`/`less` and still bounded; the sweep above bounds how
+            # many of these accumulate over TIME, this bounds how large any
+            # ONE of them gets. Best-effort: a failed `tail`/`mv` here leaves
+            # the untruncated file in place rather than losing it.
+            if [[ "$(wc -l < "$lane_defect_capture")" -gt 2000 ]]; then
+              tail -n 2000 "$lane_defect_capture" > "$lane_defect_capture.trunc" \
+                && mv -f "$lane_defect_capture.trunc" "$lane_defect_capture"
+            fi
             {
               echo "pclaude: $lane exited after ${lane_defect_elapsed}s (status $lane_status); lane defect capture kept: $lane_defect_capture"
               tail -n 15 "$lane_defect_capture"

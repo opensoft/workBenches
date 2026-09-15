@@ -492,6 +492,14 @@ common_env=(
     # scenario that means to test the keep-and-print behaviour overrides this
     # back up per-launch instead of relying on real elapsed time.
     "WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS=0"
+    # Copilot round 1 on opensoft/workBenches#96: the 0 override above stops
+    # an INSTANT status-0 run from being mistaken for a fast exit, but
+    # several scenarios in this suite (5c, 5g and others) exercise the
+    # genuinely ambiguous status-1/2-in-the-lane's-own-window case on
+    # purpose, and the launcher KEEPS that capture by design. A test-local
+    # TMPDIR means every one of those still lands under $TEST_ROOT — cleaned
+    # by this file's own EXIT trap — rather than the real host /tmp.
+    "TMPDIR=$TEST_ROOT"
 )
 
 claude_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions --permission-mode bypassPermissions'

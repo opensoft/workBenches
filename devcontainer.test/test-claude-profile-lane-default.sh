@@ -74,7 +74,7 @@ fail() {
 # quietly changing a number; the assertion count is printed and not pinned,
 # because checks are added to existing scenarios all the time and a scenario
 # that stops running is the thing worth catching.
-EXPECTED_SCENARIOS=35
+EXPECTED_SCENARIOS=38
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -123,6 +123,11 @@ set -euo pipefail
 printf '%s\n' "$*" >> "${FAKE_TMUX_LOG:?}"
 case "${1:-}" in
     display-message)
+        # FAKE_TMUX_DISPLAY_FAIL simulates tmux being unable to answer at
+        # all — "no such session"/"no such pane" is exactly what asking
+        # about a window whose pane has ALREADY closed looks like
+        # (opensoft/workBenches#95/#96's lane_window_confirmed_elsewhere).
+        [[ -z "${FAKE_TMUX_DISPLAY_FAIL:-}" ]] || exit 1
         case "${3:-}" in
             '#W')
                 if [[ -n "${FAKE_TMUX_WINDOW_FILE:-}" && -s "${FAKE_TMUX_WINDOW_FILE}" ]]; then
@@ -218,6 +223,16 @@ case "${FAKE_LANE_START_DECLINE:-}" in
         tmux rename-window "$lane_argument" >/dev/null 2>&1 || true
         "${CLAUDE_BIN:?}" ${rest[@]+"${rest[@]}"}
         exit 2
+        ;;
+    took_sigint)
+        # A Claude lane-start took the lane for (the window IS renamed) and
+        # that then died to a signal — 130, neither of lane-start's own two
+        # documented codes nor the clean 0 a long-lived run ends in
+        # (opensoft/workBenches#96, Copilot round 1: coverage for a status
+        # this launcher's rule keeps regardless of the window).
+        tmux rename-window "$lane_argument" >/dev/null 2>&1 || true
+        "${CLAUDE_BIN:?}" ${rest[@]+"${rest[@]}"}
+        exit 130
         ;;
     defect)
         # lanes-edit.sh live-holder's own DEFECT wording (decision 8(e)), read
@@ -322,6 +337,13 @@ common_env=(
     # scenario that means to test the keep-and-print behaviour overrides this
     # back up per-launch instead of relying on real elapsed time.
     "WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS=0"
+    # Copilot round 1 on opensoft/workBenches#96: a KEPT capture is deliberate
+    # (11g), but its file still lands wherever the launcher's own
+    # `${TMPDIR:-/tmp}` points — the real host /tmp unless this suite says
+    # otherwise — and this trap only removes $TEST_ROOT. A test-local TMPDIR
+    # means every capture this suite's scenarios keep OR delete is cleaned
+    # with the sandbox regardless.
+    "TMPDIR=$TEST_ROOT"
 )
 
 claude_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions --permission-mode bypassPermissions'
@@ -871,6 +893,21 @@ grep -Fxq -- "openRepoProject-1 -- $claude_args --resume session-took2" "$LANE_S
     || fail "took the lane, Claude exited 2: the launcher exited $launch_status instead of handing back 2"; assertion
 grep -q 'did not take' "$ERR_LOG" \
     && fail "took the lane, Claude exited 2: a taken lane was reported as a decline ($(cat "$ERR_LOG"))"; assertion
+# ...AND THE CAPTURE IS KEPT, WITH ITS TAIL PRINTED (Copilot round 1 on
+# opensoft/workBenches#96, extending this scenario per that round's own
+# request): status 2 in a window ALREADY the lane's is exactly the ambiguous
+# case `lane_window_confirmed_elsewhere` cannot clear — this ex-Claude status
+# could just as easily be lane-start's own environment refusal as Claude's
+# own exit code — so the launcher keeps rather than guesses, here as much as
+# on the genuinely fast paths 11g covers.
+capture_path="$(grep -m1 -F 'lane defect capture:' "$ERR_LOG" | sed -n 's/.*lane defect capture: //p')"
+[[ -n "$capture_path" ]] \
+    || fail "took the lane, Claude exited 2: the capture path was never printed ('$(cat "$ERR_LOG")')"; assertion
+[[ -e "$capture_path" ]] \
+    || fail "took the lane, Claude exited 2: the capture was deleted although the window is already the lane's own, an ambiguous status ($capture_path)"; assertion
+grep -Fq 'lane defect capture kept' "$ERR_LOG" \
+    || fail "took the lane, Claude exited 2: no kept-capture notice was printed ('$(cat "$ERR_LOG")')"; assertion
+rm -f "$capture_path"
 
 # 11e. THE LIVE-FORK DEFECT (opensoft/workBenches#77, Amendment 18 DRAFT
 # clause (h), found 2026-09-14T12:07Z), rebased onto precedence 1 for the same
@@ -1009,6 +1046,70 @@ fi
 assertion
 [[ "$(wc -l < "$ERR_LOG")" -eq 1 ]] \
     || fail "clean run: printed $(wc -l < "$ERR_LOG") lines, not just the capture breadcrumb ('$(cat "$ERR_LOG")')"; assertion
+
+# 11i. STATUS 2, WINDOW CONFIRMED ELSEWHERE (Copilot round 1 on
+# opensoft/workBenches#96): lane-start's own documented refusal — nothing
+# renamed, nothing written, Claude never started — in a window a tmux read
+# actually SUCCEEDED at naming something other than the lane. This is the one
+# half of the 1/2 disjunct that DOES delete; 11j (next) and the extension on
+# 11d above are its other two.
+launch \
+    "FAKE_TMUX_WINDOW=claude" \
+    "FAKE_LANE_START_DECLINE=exit2" \
+    -- --lane openRepoProject-1 run team002 --resume session-status2-elsewhere
+[[ "$launch_status" -eq 0 ]] \
+    || fail "status 2, window elsewhere: the launcher exited $launch_status instead of dropping to a bare Claude"; assertion
+capture_path="$(grep -m1 -F 'lane defect capture:' "$ERR_LOG" | sed -n 's/.*lane defect capture: //p')"
+[[ -n "$capture_path" ]] \
+    || fail "status 2, window elsewhere: the capture path was never printed ('$(cat "$ERR_LOG")')"; assertion
+if [[ -e "$capture_path" ]]; then
+    rm -f "$capture_path"
+    fail "status 2, window elsewhere: the capture survived lane-start's own documented refusal in a confirmed-different window ($capture_path)"
+fi
+assertion
+
+# 11j. STATUS 2, TMUX UNREADABLE (Copilot round 1 on opensoft/workBenches#96,
+# claude-profile:2742): the window read that would settle whether this status
+# is lane-start's own refusal or a taken lane's own Claude FAILS OUTRIGHT —
+# `FAKE_TMUX_DISPLAY_FAIL` stands for a session or pane that has already
+# closed, which is indistinguishable from "not yet asked" and is exactly the
+# case `lane_window_confirmed_elsewhere` exists to keep for rather than
+# mis-delete via a bare `! lane_window_is` (this scenario is the regression
+# that fix closes: it fails against the launcher this PR opened with).
+launch \
+    "FAKE_TMUX_DISPLAY_FAIL=1" \
+    "FAKE_LANE_START_DECLINE=exit2" \
+    -- --lane openRepoProject-1 run team002 --resume session-status2-unreadable
+capture_path="$(grep -m1 -F 'lane defect capture:' "$ERR_LOG" | sed -n 's/.*lane defect capture: //p')"
+[[ -n "$capture_path" ]] \
+    || fail "status 2, tmux unreadable: the capture path was never printed ('$(cat "$ERR_LOG")')"; assertion
+[[ -e "$capture_path" ]] \
+    || fail "status 2, tmux unreadable: the capture was deleted although this launcher could not confirm the window was NOT the lane's own ($capture_path)"; assertion
+grep -Fq 'lane defect capture kept' "$ERR_LOG" \
+    || fail "status 2, tmux unreadable: no kept-capture notice was printed ('$(cat "$ERR_LOG")')"; assertion
+rm -f "$capture_path"
+
+# 11k. A STATUS THAT IS NEITHER 1, 2 NOR 0 — a signal, here 130 — from a
+# Claude lane-start DID take the lane for (Copilot round 1 on
+# opensoft/workBenches#96): the rule keeps on this status regardless of the
+# window, because only status 0 is ever eligible for the elapsed-time
+# "ordinary long-lived run" branch at all.
+WINDOW_FILE="$TEST_ROOT/tmux-window-sigint.name"
+printf 'claude\n' > "$WINDOW_FILE"
+launch \
+    "FAKE_TMUX_WINDOW_FILE=$WINDOW_FILE" \
+    "FAKE_LANE_START_DECLINE=took_sigint" \
+    -- --lane openRepoProject-1 run team002 --resume session-sigint
+[[ "$launch_status" -eq 130 ]] \
+    || fail "status 130: the launcher exited $launch_status instead of handing back 130"; assertion
+capture_path="$(grep -m1 -F 'lane defect capture:' "$ERR_LOG" | sed -n 's/.*lane defect capture: //p')"
+[[ -n "$capture_path" ]] \
+    || fail "status 130: the capture path was never printed ('$(cat "$ERR_LOG")')"; assertion
+[[ -e "$capture_path" ]] \
+    || fail "status 130: the capture was deleted although the run's status was neither 1, 2 nor a long-held 0 ($capture_path)"; assertion
+grep -Fq 'lane defect capture kept' "$ERR_LOG" \
+    || fail "status 130: no kept-capture notice was printed ('$(cat "$ERR_LOG")')"; assertion
+rm -f "$capture_path"
 
 # ---------------------------------------------------------------------------
 # 12. OUTSIDE TMUX there is no window to take, so the record is not even read.
