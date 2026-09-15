@@ -309,10 +309,14 @@ Nothing here restores the registration for you — recover it by hand:
    ```
    git worktree add <path> <branch>
    ```
-   When the branch exists only on `origin` (a fresh clone that never
-   fetched it, say) — `<branch>` alone would try to resolve a LOCAL branch
-   that is not there yet, so create it from the remote instead:
+   When the branch exists only on `origin` (a checkout that predates the
+   branch's own push, say) — `<branch>` alone would try to resolve a LOCAL
+   branch that is not there yet. `origin/<branch>` needs a fetch first:
+   `git worktree add` does not fetch on its own, so without one this fails
+   with `fatal: invalid reference: origin/<branch>` whenever the local
+   remote-tracking ref is not already there:
    ```
+   git fetch origin <branch>
    git worktree add -b <branch> <path> origin/<branch>
    ```
 3. Copy the moved-aside files back over the fresh worktree — everything

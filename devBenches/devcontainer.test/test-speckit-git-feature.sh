@@ -1325,6 +1325,49 @@ test_recovery_note_clears_a_still_registered_worktree_before_readding_it() {
     assert_worktree 'half-gone' "$half_gone_path"
 }
 
+# The recovery note's "from origin" form (`git worktree add -b <branch>
+# <path> origin/<branch>`) does not fetch anything itself. On a checkout
+# that predates the orphaned branch's own push — recovery often happens on
+# a DIFFERENT workstation than the one that created the feature, which is
+# exactly when the local remote-tracking ref is most likely stale — the
+# undocumented-until-now fetch step is required, not optional (Copilot
+# round 5 on opensoft/workBenches#92).
+test_recovery_note_origin_form_requires_a_fetch_on_a_stale_checkout() {
+    local base="$FIXTURE_ROOT/recovery-fetch-required"
+    local origin="$base/origin.git" seed="$base/seed" stale_clone="$base/stale-clone"
+    local recovered="$base/recovered-wt"
+
+    # Given: a clone made BEFORE the feature branch was ever pushed to
+    # origin — its remote-tracking refs have never heard of that branch.
+    mkdir -p "$base" || return 1
+    git init -q -b main "$origin" --bare || return 1
+    git clone -q "$origin" "$seed" || return 1
+    git -C "$seed" config user.email 'spec-kit-test@example.invalid' || return 1
+    git -C "$seed" config user.name 'Spec Kit test' || return 1
+    git -C "$seed" commit -q --allow-empty -m init || return 1
+    git -C "$seed" push -q origin main || return 1
+    git clone -q "$origin" "$stale_clone" || return 1
+    git -C "$stale_clone" config user.email 'spec-kit-test@example.invalid' || return 1
+    git -C "$stale_clone" config user.name 'Spec Kit test' || return 1
+    git -C "$seed" checkout -qb orphaned-elsewhere || return 1
+    git -C "$seed" commit -q --allow-empty -m 'feature work' || return 1
+    git -C "$seed" push -q origin orphaned-elsewhere || return 1
+
+    # When: the documented command runs without fetching first.
+    if git -C "$stale_clone" worktree add -b orphaned-elsewhere "$recovered" origin/orphaned-elsewhere >/dev/null 2>&1; then
+        printf 'assertion failed: the origin form resolved a branch this clone never fetched (fixture no longer matches the documented scenario)\n' >&2
+        return 1
+    fi
+
+    # Then: the documented fetch step makes it work.
+    git -C "$stale_clone" fetch -q origin orphaned-elsewhere || return 1
+    if ! git -C "$stale_clone" worktree add -b orphaned-elsewhere "$recovered" origin/orphaned-elsewhere >/dev/null 2>&1; then
+        printf 'assertion failed: the origin form still failed after fetching the branch\n' >&2
+        return 1
+    fi
+    assert_worktree 'orphaned-elsewhere' "$recovered"
+}
+
 test_concurrent_sequential_number_reservations() {
     local repo="$FIXTURE_ROOT/concurrent-numbering"
     local shim_dir="$FIXTURE_ROOT/concurrent-numbering-git-shim"
@@ -4235,6 +4278,7 @@ run_scenario 'the ancestor walk terminates on a slash-free relative path' test_g
 run_scenario 'git_worktree_prune_visible warns without deleting a worktree missing only its own .git file' test_git_worktree_prune_visible_warns_without_deleting_a_worktree_missing_only_its_own_git_file
 run_scenario 'git_worktree_prune_visible distinguishes out-of-scope from unmounted' test_git_worktree_prune_visible_distinguishes_out_of_scope_from_unmounted
 run_scenario 'the recovery note clears a still-registered worktree before re-adding it' test_recovery_note_clears_a_still_registered_worktree_before_readding_it
+run_scenario "the recovery note's origin form requires a fetch on a stale checkout" test_recovery_note_origin_form_requires_a_fetch_on_a_stale_checkout
 run_scenario 'three-leg feature creates a worktree in both legs and none at the root' test_three_leg_creates_both_leg_worktrees
 run_scenario 'three-leg dry run creates nothing' test_three_leg_dry_run_creates_nothing
 run_scenario 'three-leg refuses branch checkout mode' test_three_leg_refuses_branch_checkout_mode
