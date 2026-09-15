@@ -74,7 +74,7 @@ fail() {
 # quietly changing a number; the assertion count is printed and not pinned,
 # because checks are added to existing scenarios all the time and a scenario
 # that stops running is the thing worth catching.
-EXPECTED_SCENARIOS=33
+EXPECTED_SCENARIOS=35
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -242,6 +242,17 @@ case "${FAKE_LANE_START_DECLINE:-}" in
         "${CLAUDE_BIN:?}" ${rest[@]+"${rest[@]}"}
         exit 0
         ;;
+    fastexit)
+        # opensoft/workBenches#95: the exec'd Claude exits AT ONCE, status 0 —
+        # today's two measured causes are a title `--resume` opening the
+        # interactive picker in a pane whose only command then ends, and (what
+        # this fake's own text stands for) the harness refusing `--resume
+        # <uuid>` because a bg/fork record already holds that id. Nothing is
+        # renamed and nothing reaches $CLAUDE_BIN, because the process that
+        # would have done either never got that far.
+        echo "Session 4a91f1dc is running as a background session (pid 4242). Add --fork-session to start a new one." >&2
+        exit 0
+        ;;
 esac
 EOF
 
@@ -304,6 +315,13 @@ common_env=(
     "WORKBENCHES_SHARED_MCP_FAMILIES=disabled"
     "LANES_WORKSTATION=Eagle"
     "TMUX=fake-session"
+    # opensoft/workBenches#95: the lane defect capture is kept, and its tail
+    # printed, on a run that exits FAST — every fake here always does, having
+    # no interactive session to hold open — so 0 tells the launcher that
+    # merely being instant is not "fast" for this suite's purposes. A
+    # scenario that means to test the keep-and-print behaviour overrides this
+    # back up per-launch instead of relying on real elapsed time.
+    "WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS=0"
 )
 
 claude_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions --permission-mode bypassPermissions'
@@ -914,6 +932,83 @@ grep -q 'is not taken in this window' "$ERR_LOG" \
     && fail "live-fork defect, taken: a taken lane was stopped for a defect it took anyway ($(cat "$ERR_LOG"))"; assertion
 [[ "$(grep -c 'Retire it' "$ERR_LOG")" -eq 1 ]] \
     || fail "live-fork defect, taken: 'Retire it' appeared $(grep -c 'Retire it' "$ERR_LOG") times, not lane-start's one ($(cat "$ERR_LOG"))"; assertion
+
+# 11g. THE LANE DEFECT CAPTURE ITSELF (opensoft/workBenches#95,
+# `claude-profile` around the mktemp/tee that wraps every lane-start
+# invocation): three properties, one scenario, because the scenario that
+# proves the third also has both pieces of content the first two need.
+#
+#   1. THE PATH IS PRINTED BEFORE THE EXEC — the one line an operator
+#      glancing at a pane already on its way out, or a scrollback that
+#      outlives the pane by a moment, might still catch. Checked here by
+#      LINE NUMBER against lane-start's own teed-through text, not merely by
+#      presence: "before" means before, not "also present somewhere".
+#   2. A FAST EXIT — status 0 that did NOT hold the pane open for
+#      $WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS — KEEPS the capture file
+#      rather than deleting it, because the window this launcher may have
+#      just made can close in the same breath lane-start returns.
+#   3. AND ITS TAIL, PLUS THE TWO KNOWN CAUSES WITH THEIR CURES, ARE PRINTED
+#      to this launcher's OWN stderr (the parent shell outlives the tmux
+#      window): a title resume's picker with its cure (resume by the exact
+#      uuid), and a background/fork holder's with its three (`claude
+#      agents`, `claude attach <id>`, `lane-end <lane> --retire <pid>`).
+#
+# `WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS` is overridden UP, per-launch, so
+# this fake's near-instant return still counts as "fast" against a real
+# threshold — exactly as a real Claude that exited in under 20s would,
+# without this suite waiting out a real 20s per scenario. common_env's own
+# override to 0 is what a CLEAN run relies on instead (11h, next).
+launch \
+    "FAKE_TMUX_WINDOW=claude" \
+    "FAKE_LANE_START_DECLINE=fastexit" \
+    "WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS=9999" \
+    -- --lane openRepoProject-1 run team002 --resume session-fastexit
+[[ "$launch_status" -eq 0 ]] \
+    || fail "fast exit: the launcher exited $launch_status instead of relaying lane-start's 0"; assertion
+[[ ! -e "$CLAUDE_LOG" ]] \
+    || fail "fast exit: a Claude ran although the exec'd chain never reached one ($(cat "$CLAUDE_LOG" 2>/dev/null))"; assertion
+capture_path="$(grep -m1 -F 'lane defect capture:' "$ERR_LOG" | sed -n 's/.*lane defect capture: //p')"
+[[ -n "$capture_path" ]] \
+    || fail "fast exit: the capture path was never printed ('$(cat "$ERR_LOG")')"; assertion
+capture_line="$(grep -n -F 'lane defect capture:' "$ERR_LOG" | head -n 1 | cut -d : -f 1)"
+lanestart_line="$(grep -n -F 'background session' "$ERR_LOG" | head -n 1 | cut -d : -f 1)"
+[[ -n "$capture_line" && -n "$lanestart_line" && "$capture_line" -lt "$lanestart_line" ]] \
+    || fail "fast exit: the capture path did not print before the exec (breadcrumb line ${capture_line:-?}, lane-start's own output line ${lanestart_line:-?}: '$(cat "$ERR_LOG")')"; assertion
+[[ -e "$capture_path" ]] \
+    || fail "fast exit: the capture file was deleted although the run exited fast ($capture_path)"; assertion
+grep -Fq 'lane defect capture kept' "$ERR_LOG" \
+    || fail "fast exit: no kept-capture notice was printed ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'background session' "$ERR_LOG" \
+    || fail "fast exit: the capture's own tail was not printed to this launcher's stderr ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'title resume' "$ERR_LOG" \
+    || fail "fast exit: the title-resume cause was not named ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'claude agents' "$ERR_LOG" \
+    || fail "fast exit: the background/fork holder's claude-agents cure was not named ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'lane-end openRepoProject-1 --retire' "$ERR_LOG" \
+    || fail "fast exit: the background/fork holder's lane-end cure was not named with THIS lane ('$(cat "$ERR_LOG")')"; assertion
+rm -f "$capture_path"
+
+# 11h. ...AND THE ORDINARY, LONG-HELD RUN DELETES IT AND SAYS NOTHING BEYOND
+# THE BREADCRUMB. A status 0 that held the pane at least
+# $WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS is what common_env's 0 override
+# makes even this instant fake count as, so no per-launch override is needed
+# here — this IS the default this suite otherwise runs under throughout.
+launch \
+    "FAKE_TMUX_WINDOW=claude" \
+    "FAKE_LANE_START_DECLINE=bare" \
+    -- --lane openRepoProject-1 run team002 --resume session-cleanrun
+[[ "$launch_status" -eq 0 ]] \
+    || fail "clean run: the launcher exited $launch_status"; assertion
+capture_path="$(grep -m1 -F 'lane defect capture:' "$ERR_LOG" | sed -n 's/.*lane defect capture: //p')"
+[[ -n "$capture_path" ]] \
+    || fail "clean run: the capture path was never printed ('$(cat "$ERR_LOG")')"; assertion
+if [[ -e "$capture_path" ]]; then
+    rm -f "$capture_path"
+    fail "clean run: the capture file survived a clean, long-held run ($capture_path)"
+fi
+assertion
+[[ "$(wc -l < "$ERR_LOG")" -eq 1 ]] \
+    || fail "clean run: printed $(wc -l < "$ERR_LOG") lines, not just the capture breadcrumb ('$(cat "$ERR_LOG")')"; assertion
 
 # ---------------------------------------------------------------------------
 # 12. OUTSIDE TMUX there is no window to take, so the record is not even read.

@@ -485,6 +485,13 @@ common_env=(
     # exists is made with the retired rung's first fence wide open.
     "PROJECTS_ROOT=$TEST_ROOT/projects"
     "GIT_CEILING_DIRECTORIES=$TEST_ROOT"
+    # opensoft/workBenches#95: the lane defect capture is kept, and its tail
+    # printed, on a run that exits FAST — every fake here always does, having
+    # no interactive session to hold open — so 0 tells the launcher that
+    # merely being instant is not "fast" for this suite's purposes. A
+    # scenario that means to test the keep-and-print behaviour overrides this
+    # back up per-launch instead of relying on real elapsed time.
+    "WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS=0"
 )
 
 claude_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions --permission-mode bypassPermissions'
@@ -1679,8 +1686,12 @@ grep -Fq 'no directory is recorded for mine-5' "$ERR_LOG" \
     || fail "Evidence 3: the launcher does not say it could not learn the lane's directory ('$(cat "$ERR_LOG")')"; assertion
 grep -Fq -- '--dir <path>' "$ERR_LOG" \
     || fail "Evidence 3: the notice does not name the one word that fixes it ('$(cat "$ERR_LOG")')"; assertion
-[[ "$(wc -l < "$ERR_LOG")" -eq 2 ]] \
-    || fail "Evidence 3: one situation printed $(wc -l < "$ERR_LOG") lines beside lane-start's own ($(cat "$ERR_LOG"))"; assertion
+# opensoft/workBenches#95 adds ONE line ahead of both of these — the capture
+# path, printed before every lane-start invocation regardless of how it
+# turns out — so "beside lane-start's own" is now 3, not 2: the breadcrumb,
+# lane-start's own refusal (tee'd through), and this launcher's one note.
+[[ "$(wc -l < "$ERR_LOG")" -eq 3 ]] \
+    || fail "Evidence 3: one situation printed $(wc -l < "$ERR_LOG") lines beside lane-start's own and the capture breadcrumb ($(cat "$ERR_LOG"))"; assertion
 grep -Fxq -- "$claude_args --resume session-nodir-note" "$CLAUDE_LOG" \
     || fail "Evidence 3: the pane was left with no Claude in it"; assertion
 
@@ -1708,8 +1719,10 @@ grep -Fq 'directory' "$ERR_LOG" \
 # 4m-vi. `restart <lane>`'s OWN CALL SHAPE (decision 7, `R-A11-10`): the
 # launcher accepts being called as `pclaude --lane <lane> <profile>`, takes the
 # lane from the operator's word with NO question, learns the directory from that
-# lane's own record, enters it, and says nothing. That is the whole of what the
-# tooling PR's `restart` needs from this half.
+# lane's own record, enters it, and says nothing OF ITS OWN beyond the one
+# capture-path breadcrumb opensoft/workBenches#95 now prints ahead of every
+# lane launch, clean or not. That is the whole of what the tooling PR's
+# `restart` needs from this half.
 launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     "FAKE_SWAPPED_STATUS=0" \
     "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\t$RECORD_TREE\n" \
@@ -1720,8 +1733,10 @@ grep -q -- '--confirm' "$LANE_START_LOG" \
     && fail "restart's call shape: the operator's own --lane was handed over as a guess to confirm ($(lane_start_argv))"; assertion
 grep -Fxq "$RECORD_TREE" "$LANE_START_CWD_LOG" \
     || fail "restart's call shape: lane-start ran in '$(cat "$LANE_START_CWD_LOG" 2>/dev/null)' and not in the lane's own tree"; assertion
-grep -q '^pclaude:' "$ERR_LOG" \
-    && fail "restart's call shape: a launch with a known lane and a known directory still had something to say ('$(cat "$ERR_LOG")')"; assertion
+[[ "$(grep -c '^pclaude:' "$ERR_LOG")" -eq 1 ]] \
+    || fail "restart's call shape: this launcher had $(grep -c '^pclaude:' "$ERR_LOG" 2>/dev/null) things of its own to say, not just the capture breadcrumb ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'lane defect capture:' "$ERR_LOG" \
+    || fail "restart's call shape: the capture-path breadcrumb itself is missing ('$(cat "$ERR_LOG")')"; assertion
 
 # 4n. ACT 1 CREATES THE SESSION WITH `-c` THE LANE'S DIRECTORY (Evidence 3).
 # The evidence's own shape: no window to reuse, a session made, and the pane it
@@ -1798,8 +1813,10 @@ grep -Fxq -- "$claude_args --resume session-evidence2" "$CLAUDE_LOG" \
     || fail "evidence 2: the launcher exited $launch_status over a Claude that started"; assertion
 grep -q 'did not take openXfactory-5 (exit 1)' "$ERR_LOG" \
     || fail "evidence 2: the notice was '$(cat "$ERR_LOG")'"; assertion
-[[ "$(wc -l < "$ERR_LOG")" -eq 2 ]] \
-    || fail "evidence 2: one situation printed $(wc -l < "$ERR_LOG") lines beside lane-start's own ($(cat "$ERR_LOG"))"; assertion
+# opensoft/workBenches#95 adds the capture-path breadcrumb ahead of both of
+# these, so 3 lines is now the whole of "one situation" here, not 2.
+[[ "$(wc -l < "$ERR_LOG")" -eq 3 ]] \
+    || fail "evidence 2: one situation printed $(wc -l < "$ERR_LOG") lines beside lane-start's own and the capture breadcrumb ($(cat "$ERR_LOG"))"; assertion
 
 # 5b. The same on the RECORD path, which is the restart Evidence 1 describes.
 launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
@@ -3082,7 +3099,9 @@ grep -q -- '--dir' "$LANE_START_LOG" \
 # 7c. ...AND THE STEPS THAT DO NOT NEED A WORKSTATION ARE UNTOUCHED. Precedence
 # 3 asks the helper about THIS window, which is a fact about this process and
 # not about the machine's name: the lane binds bare, nothing is read for a
-# workstation nobody named, and there is nothing to report.
+# workstation nobody named, and this launcher has nothing OF ITS OWN to
+# report — beyond the one capture-path breadcrumb opensoft/workBenches#95
+# prints ahead of every lane launch regardless of workstation.
 launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     "LANES_WORKSTATION=" "container=docker" \
     "FAKE_TMUX_WINDOW_ID=@97" "FAKE_TMUX_WINDOW_REF=claude-y:0" \
@@ -3090,8 +3109,10 @@ launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     -- run team002 --resume session-ws-unknown-window
 grep -Fxq -- "mine-5 -- $claude_args --resume session-ws-unknown-window" "$LANE_START_LOG" \
     || fail "Evidence 6: the window's own record stopped answering because the machine has no name ('$(lane_start_argv)')"; assertion
-grep -q '^pclaude:' "$ERR_LOG" \
-    && fail "Evidence 6: a launch that never needed the workstation was told about it ('$(cat "$ERR_LOG")')"; assertion
+[[ "$(grep -c '^pclaude:' "$ERR_LOG")" -eq 1 ]] \
+    || fail "Evidence 6: a launch that never needed the workstation was told $(grep -c '^pclaude:' "$ERR_LOG" 2>/dev/null) things of this launcher's own, not just the capture breadcrumb ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'lane defect capture:' "$ERR_LOG" \
+    || fail "Evidence 6: the capture-path breadcrumb itself is missing ('$(cat "$ERR_LOG")')"; assertion
 
 # 7e. THE LAUNCHER OWNS THE VALUE AND EXPORTS IT — `R-A11-14` (A11 Addendum 3,
 # ratified by Brett Heap 2026-09-13 "a11 addendum 3 yes"). Before this, the

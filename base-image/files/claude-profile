@@ -2700,6 +2700,16 @@ case "$action" in
           # almost-instantly-declined confirm (the fake this PR's test uses
           # is exactly that race, made deterministic by this wait).
           lane_defect_capture="$(mktemp "${TMPDIR:-/tmp}/pclaude-lane-defect.XXXXXX")"
+          # THE PATH IS PRINTED BEFORE THE EXEC (opensoft/workBenches#95): a
+          # launcher-made window that exits fast can take this whole pane —
+          # and the live tee below with it — the instant the command below
+          # returns, so this is the one line an operator glancing at a pane
+          # already on its way out, or a terminal whose scrollback outlives
+          # the pane by a moment, might still catch. Belt and braces beside
+          # the keep-and-print below, never the load-bearing half alone.
+          echo "pclaude: lane defect capture: $lane_defect_capture" >&2
+          lane_defect_fast_exit_seconds="${WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS:-20}"
+          lane_defect_started="$SECONDS"
           set +e
           exec 9> >(tee "$lane_defect_capture" >&2)
           lane_defect_tee_pid=$!
@@ -2710,7 +2720,39 @@ case "$action" in
           wait "$lane_defect_tee_pid" 2>/dev/null
           set -e
           lane_defect_line="$(lane_defect_retire_line "$lane_defect_capture" || true)"
-          rm -f "$lane_defect_capture"
+          # opensoft/workBenches#95: an UNCONDITIONAL `rm -f` here deleted the
+          # only evidence of a fast exit in the same breath the window that
+          # showed it live could also be gone. KEPT now unless this run is
+          # provably nothing new: statuses 1 and 2 are lane-start's own two
+          # documented refusals (below) — nothing renamed, nothing written,
+          # Claude never started — so they are redundant with what already
+          # printed live, PROVIDED the window is not already the lane's own;
+          # where it is, that same status could just as easily be a Claude
+          # lane-start took the lane and exec'd (Evidence 2/5g), and that
+          # ambiguity is exactly why this keeps rather than guesses. A status
+          # 0 that held the pane at least $lane_defect_fast_exit_seconds is an
+          # ordinary long-lived run and is deleted; anything faster, or any
+          # other status, is kept with its tail printed below — "nothing to
+          # see" and "the evidence of what broke" look identical from a
+          # status and an elapsed time alone, and guessing wrong the deleting
+          # way is the bug this closes.
+          lane_defect_elapsed=$(( SECONDS - lane_defect_started ))
+          lane_defect_clean=false
+          if { [[ "$lane_status" -eq 1 || "$lane_status" -eq 2 ]] \
+              && ! lane_window_is "$lane"; } \
+            || { [[ "$lane_status" -eq 0 ]] \
+              && [[ "$lane_defect_elapsed" -ge "$lane_defect_fast_exit_seconds" ]]; }; then
+            lane_defect_clean=true
+          fi
+          if [[ "$lane_defect_clean" == true ]]; then
+            rm -f "$lane_defect_capture"
+          else
+            {
+              echo "pclaude: $lane exited after ${lane_defect_elapsed}s (status $lane_status); lane defect capture kept: $lane_defect_capture"
+              tail -n 15 "$lane_defect_capture"
+              echo "pclaude: known causes — a title resume opened the interactive picker: resume by the exact uuid instead; a background or fork holder: claude agents, or claude attach <id>, or lane-end $lane --retire <pid>"
+            } >&2
+          fi
           # WHICH STATUSES ARE LANE-START'S OWN. It documents exactly two:
           # 1 environment — not inside tmux, no register, NO SUCH DIRECTORY —
           # and 2 refusal — an argument error, a name a window cannot take, a
