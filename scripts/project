@@ -12,6 +12,13 @@ else
     if [ -n "$command_path" ]; then
         candidate_dirs+=("$(dirname "$command_path")")
     fi
+    discovery_file="${WORKBENCHES_PROJECT_DISCOVERY_FILE:-$HOME/.config/workbenches/project-bin}"
+    if [ -f "$discovery_file" ] && [ ! -L "$discovery_file" ]; then
+        IFS= read -r discovered_dir < "$discovery_file" || true
+        if [[ "$discovered_dir" == /* ]]; then
+            candidate_dirs+=("$discovered_dir")
+        fi
+    fi
     candidate_dirs+=("$HOME/.local/bin" "/usr/local/bin")
 fi
 

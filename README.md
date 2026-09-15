@@ -49,8 +49,10 @@ development bench.
 Use `--source /path/to/openRepoProject/project` for offline installation of the
 same pinned bytes, `--bin-dir PATH` for another command directory, or
 `WORKBENCHES_SKIP_PROJECT_COMMAND=1` to skip. The installer records this checkout
-in the host-local `.workbenches-path` beside the command; `WORKBENCHES_ROOT`
-overrides it at runtime.
+in the host-local `.workbenches-path` beside the command and records the selected
+command directory in `~/.config/workbenches/project-bin`. Checkout legacy
+entrypoints use that verified pointer when the custom directory is no longer on
+`PATH`; `WORKBENCHES_ROOT` overrides checkout discovery at runtime.
 
 When advancing the pin, first copy the current `commit` and `sha256` pair into
 the `trusted_previous` array. Then publish the tested source commit, obtain

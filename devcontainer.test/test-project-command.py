@@ -28,6 +28,12 @@ class InstallTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name).resolve()
+        self.discovery = self.base / "state/project-bin"
+        environment = patch.dict(os.environ, {
+            "WORKBENCHES_PROJECT_DISCOVERY_FILE": str(self.discovery),
+        })
+        environment.start()
+        self.addCleanup(environment.stop)
         self.bin = self.base / "bin"
         self.wb = self.base / "work benches"
         (self.wb / "config").mkdir(parents=True)
@@ -55,6 +61,7 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(target.stat().st_mode & 0o777, 0o755)
         self.assertEqual((self.bin / installer.PAYLOAD_NAME).read_bytes(), self.source.read_bytes())
         self.assertEqual((self.bin / ".workbenches-path").read_text().strip(), str(self.wb))
+        self.assertEqual(self.discovery.read_text().strip(), str(self.bin.resolve()))
 
     def test_corrupt_source_leaves_installed_command_unchanged(self):
         self.assertEqual(self.install(), 0)
@@ -98,6 +105,7 @@ class InstallTests(unittest.TestCase):
         self.assertFalse(onp.exists())
         self.assertFalse((self.bin / installer.PAYLOAD_NAME).exists())
         self.assertFalse(owner.exists())
+        self.assertFalse(self.discovery.exists())
         target.write_text("unowned replacement")
         self.assertEqual(installer.main([*self.args, "--remove"]), 3)
         self.assertEqual(target.read_text(), "unowned replacement")
@@ -250,6 +258,36 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(payload.read_text(), "concurrent payload replacement")
         self.assertTrue(owner.is_file())
         self.assertEqual(list(self.bin.glob(".project-remove-*")), [])
+
+    def test_grouped_remove_restores_all_files_when_quarantine_delete_fails(self):
+        self.assertEqual(self.install(), 0)
+        paths = [
+            self.bin / "project",
+            self.bin / installer.PAYLOAD_NAME,
+            self.bin / ".workbenches-project.json",
+            self.discovery,
+        ]
+        original = {path: path.read_bytes() for path in paths}
+        real_unlink = Path.unlink
+        delete_count = 0
+
+        def fail_second_quarantine_delete(path, *args, **kwargs):
+            nonlocal delete_count
+            if (path.name.startswith(".project-remove-")
+                    and not path.name.startswith(".project-remove-backup-")
+                    and path.exists() and path.stat().st_size > 0):
+                delete_count += 1
+                if delete_count == 2:
+                    raise OSError("simulated quarantine deletion failure")
+            return real_unlink(path, *args, **kwargs)
+
+        with patch.object(Path, "unlink", new=fail_second_quarantine_delete):
+            self.assertEqual(installer.main([*self.args, "--remove"]), 2)
+        self.assertEqual(delete_count, 2)
+        for path, data in original.items():
+            self.assertEqual(path.read_bytes(), data)
+        self.assertEqual(list(self.bin.glob(".project-remove-*")), [])
+        self.assertEqual(list(self.discovery.parent.glob(".project-remove-*")), [])
 
     def test_partial_publish_failures_roll_back_owned_upgrade(self):
         self.assertEqual(self.install(), 0)
@@ -637,6 +675,13 @@ class InstallTests(unittest.TestCase):
                                 env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), ["new", "FromPath"])
+
+        env["PATH"] = os.environ["PATH"]
+        result = subprocess.run(
+            ["bash", str(ROOT / "scripts/project"), "new", "FromDiscovery"],
+            env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), ["new", "FromDiscovery"])
 
     def test_direct_project_launch_verifies_the_separate_payload(self):
         self.assertEqual(self.install(), 0)

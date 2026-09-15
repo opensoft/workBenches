@@ -21,6 +21,22 @@ LOCK_NAME = ".workbenches-project.lock"
 PAYLOAD_NAME = ".workbenches-project.payload"
 
 
+def project_discovery_path():
+    configured = os.environ.get(
+        "WORKBENCHES_PROJECT_DISCOVERY_FILE",
+        str(Path.home() / ".config/workbenches/project-bin"),
+    )
+    path = Path(configured).expanduser()
+    if not path.is_absolute():
+        raise ValueError("WORKBENCHES_PROJECT_DISCOVERY_FILE must be absolute")
+    return path
+
+
+def discovery_points_to(path, directory):
+    return (path.is_file() and not path.is_symlink()
+            and path.read_bytes() == (str(directory.resolve()) + "\n").encode())
+
+
 def validate_target(path):
     if path.is_symlink() or (path.exists() and not path.is_file()):
         raise ValueError(f"Refusing non-regular target: {path}")
@@ -383,19 +399,47 @@ def atomic_checked_unlink(path, expected_state):
 
 
 def remove_transaction(removals):
-    """Quarantine every verified artifact before committing grouped removal."""
+    """Keep a complete hard-link recovery set until every target is absent."""
     quarantined = []
+    backups = []
     try:
         for path, expected_state in removals:
             quarantine = atomic_checked_quarantine(path, expected_state)
             quarantined.append((path, quarantine))
+        for _path, quarantine in quarantined:
+            descriptor, name = tempfile.mkstemp(
+                prefix=".project-remove-backup-", dir=quarantine.parent)
+            os.close(descriptor)
+            backup = Path(name)
+            backup.unlink()
+            os.link(quarantine, backup, follow_symlinks=False)
+            backups.append(backup)
+        for _path, quarantine in quarantined:
+            quarantine.unlink()
     except BaseException:
-        for path, quarantine in reversed(quarantined):
-            if quarantine.exists() and not path.exists():
+        for index in range(len(quarantined) - 1, -1, -1):
+            path, quarantine = quarantined[index]
+            if path.exists() or path.is_symlink():
+                continue
+            if quarantine.exists():
                 atomic_move_noreplace(quarantine, path)
+            elif index < len(backups) and backups[index].exists():
+                atomic_move_noreplace(backups[index], path)
+        for backup in backups:
+            backup.unlink(missing_ok=True)
         raise
-    for _path, quarantine in quarantined:
-        quarantine.unlink()
+    # The removal is committed once every original target is absent; cleanup
+    # after this point cannot leave a partially installed command set.
+    cleanup_failed = False
+    for backup in backups:
+        try:
+            backup.unlink()
+        except OSError:
+            cleanup_failed = True
+    if cleanup_failed:
+        remaining = ", ".join(str(path) for path in backups if path.exists())
+        print(f"project: removal committed; recovery files remain at {remaining}",
+              file=sys.stderr)
 
 
 def atomic_checked_replace(source, destination, expected_state):
@@ -509,6 +553,7 @@ def main(argv=None):
         marker = directory / ".workbenches-path"
         owner_marker = directory / ".workbenches-project.json"
         lock_path = directory / LOCK_NAME
+        discovery = project_discovery_path()
         wb = args.workbenches.expanduser().resolve()
         launcher_data = launcher_bytes(pin)
         launcher_digest = hashlib.sha256(launcher_data).hexdigest()
@@ -578,13 +623,19 @@ def main(argv=None):
                 removal_state = (path_fingerprint(target), path_fingerprint(payload),
                                  path_fingerprint(owner_marker))
                 onp_state = path_fingerprint(onp) if onp_owned else None
+                discovery_owned = discovery_points_to(discovery, directory)
+                discovery_state = (path_fingerprint(discovery)
+                                   if discovery_owned else None)
                 if (not owned_target(target, payload, owner_marker, pin,
                                      expected_launcher_digests)
                         or removal_state != (path_fingerprint(target), path_fingerprint(payload),
                                              path_fingerprint(owner_marker))
                         or (onp_owned and (not trusted_launcher(
                             onp, expected_launcher_digests)
-                            or onp_state != path_fingerprint(onp)))):
+                            or onp_state != path_fingerprint(onp)))
+                        or (discovery_owned and (
+                            not discovery_points_to(discovery, directory)
+                            or discovery_state != path_fingerprint(discovery)))):
                     raise ValueError("Project command changed during removal; nothing removed")
                 removals = [
                     (target, removal_state[0]),
@@ -593,6 +644,8 @@ def main(argv=None):
                 ]
                 if onp_owned:
                     removals.append((onp, onp_state))
+                if discovery_owned:
+                    removals.append((discovery, discovery_state))
                 remove_transaction(removals)
                 print(f"project: removed installer-owned command from {target}")
                 return 0
@@ -611,6 +664,7 @@ def main(argv=None):
         initial_install_state = (path_fingerprint(target), path_fingerprint(payload),
                                  path_fingerprint(owner_marker), path_fingerprint(marker))
         initial_onp_state = path_fingerprint(onp)
+        initial_discovery_state = path_fingerprint(discovery)
         target_digest = file_sha256(payload) if payload.is_file() and not payload.is_symlink() else ""
         target_owned = owned_target(target, payload, owner_marker, pin,
                                     expected_launcher_digests)
@@ -647,6 +701,7 @@ def main(argv=None):
             raise ValueError("Pinned artifact is not a Python project executable")
         compile(data, "project", "exec")
         marker_data = (str(wb) + "\n").encode()
+        discovery_data = (str(directory.resolve()) + "\n").encode()
         owner_data = (json.dumps({
             "schema_version": 1,
             "state": "owned",
@@ -679,7 +734,9 @@ def main(argv=None):
                        and marker.read_bytes() == marker_data)
         owner_same = (owner_marker.is_file() and not owner_marker.is_symlink()
                       and owner_marker.read_bytes() == owner_data)
-        if not unchanged or not onp_same or not marker_same or not owner_same:
+        discovery_same = discovery_points_to(discovery, directory)
+        if (not unchanged or not onp_same or not marker_same or not owner_same
+                or not discovery_same):
             directory.mkdir(parents=True, exist_ok=True)
             command_stage = stage(directory, launcher_data, 0o755)
             staged.append(command_stage)
@@ -691,6 +748,12 @@ def main(argv=None):
             staged.append(owner_stage)
             pending_owner_stage = stage(directory, pending_owner_data, 0o644)
             staged.append(pending_owner_stage)
+            discovery_stage = None
+            if not discovery_same:
+                discovery.parent.mkdir(parents=True, exist_ok=True)
+                validate_target(discovery)
+                discovery_stage = stage(discovery.parent, discovery_data, 0o644)
+                staged.append(discovery_stage)
             onp_stage = None
             if not onp_same:
                 onp_stage = stage(directory, launcher_data, 0o755)
@@ -706,6 +769,9 @@ def main(argv=None):
                 raise ValueError("Project command changed during installation; nothing replaced")
             if onp_stage is not None and initial_onp_state != path_fingerprint(onp):
                 raise ValueError("onp changed during project installation; nothing replaced")
+            if (discovery_stage is not None
+                    and initial_discovery_state != path_fingerprint(discovery)):
+                raise ValueError("Project discovery pointer changed during installation; nothing replaced")
             replacements = [
                 (owner_marker, pending_owner_stage),
                 (payload, payload_stage),
@@ -713,7 +779,10 @@ def main(argv=None):
             ]
             if onp_stage is not None:
                 replacements.append((onp, onp_stage))
-            replacements.extend(((marker, marker_stage), (owner_marker, owner_stage)))
+            replacements.append((marker, marker_stage))
+            if discovery_stage is not None:
+                replacements.append((discovery, discovery_stage))
+            replacements.append((owner_marker, owner_stage))
             expected_states = {
                 target: initial_install_state[0],
                 payload: initial_install_state[1],
@@ -722,8 +791,11 @@ def main(argv=None):
             }
             if onp_stage is not None:
                 expected_states[onp] = initial_onp_state
+            if discovery_stage is not None:
+                expected_states[discovery] = initial_discovery_state
             replace_transaction(replacements, staged, expected_states)
-        fully_unchanged = unchanged and onp_same and marker_same and owner_same
+        fully_unchanged = (unchanged and onp_same and marker_same
+                           and owner_same and discovery_same)
         print(f"project: {'already installed' if fully_unchanged else 'installed'} at {target}")
         print(f"Source: {pin['repository']} @ {pin['commit']}")
         if str(directory.resolve()) not in os.environ.get("PATH", "").split(os.pathsep):
