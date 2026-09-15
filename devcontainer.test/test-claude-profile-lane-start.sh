@@ -18,7 +18,34 @@ LAUNCHER="${1:-$REPO_ROOT/base-image/files/claude-profile}"
 # inherited from whatever shell runs the test — including a shell that is
 # itself a claude-profile-launched tmux child (WORKBENCHES_CLAUDE_TMUX_CHILD=1)
 # or already inside some other tmux session (TMUX set to a real socket).
-unset TMUX WORKBENCHES_CLAUDE_TMUX_CHILD WORKBENCHES_TMUX_SESSION WORKBENCHES_TMUX_PANE TMUX_PANE 2>/dev/null || true
+#
+# THE LANE VARS WERE MISSING HERE (found post-merge of opensoft/workBenches#96,
+# lane openRepoTools-3, 2026-09-15): this suite's own comment already promised
+# "ambient lane... state... must not reach the launcher", but the unset list
+# only ever covered tmux identity, never CLAUDE_LANE (precedence 1 for WHICH
+# lane), CLAUDE_NO_LANE (an override that wins over --lane/CLAUDE_LANE
+# entirely, per claude-profile's own --help) or CLAUDE_LANE_DIR (rung 1 of
+# the SEPARATE directory-resolution order, not the lane-name one) — three
+# vars whose ambient leakage this suite's own scenarios must not inherit.
+# Run from a shell that is itself bound to a lane (CLAUDE_LANE=<that lane> in
+# the environment, ordinary for an agent running this suite from inside its
+# own lane), scenario 0's "no --lane, no CLAUDE_LANE" baseline inherited that
+# ambient CLAUDE_LANE anyway, resolved a lane nobody asked for, handed the
+# whole call to the fake lane-start — which this suite's own fake, correctly
+# simulating a real one, never runs Claude through — and failed with "claude
+# args did not arrive unchanged" for a claude.log that was never going to
+# exist. Pre-existing and NOT a regression of #96: reproduced identically
+# against the launcher and this suite as they stood immediately before #96
+# merged. #96's new "lane defect capture: <path>" breadcrumb only made the
+# fake lane-start's involvement visible on the FIRST line of the failure;
+# the cause was always this suite's own incomplete isolation, matched here
+# to the fuller list test-claude-profile-amendment-11.sh already uses.
+unset TMUX TMUX_PANE WORKBENCHES_CLAUDE_TMUX WORKBENCHES_CLAUDE_TMUX_CHILD \
+    WORKBENCHES_CLAUDE_WINDOW WORKBENCHES_CLAUDE_WINDOW_ID \
+    WORKBENCHES_CLAUDE_WINDOW_REF WORKBENCHES_TMUX_SESSION \
+    WORKBENCHES_TMUX_PANE CLAUDE_LANE CLAUDE_NO_LANE CLAUDE_LANE_DIR \
+    LANES_WORKSTATION PROJECTS_ROOT \
+    2>/dev/null || true
 
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
