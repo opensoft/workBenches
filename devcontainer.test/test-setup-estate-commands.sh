@@ -1,23 +1,25 @@
 #!/usr/bin/env bash
 # Regression test for scripts/setup-estate-commands.sh (opensoft/workBenches#37,
-# grown for opensoft/openRepoTools#26): the host's openRepoShape, and
-# openRepoTools's own EIGHTEEN artifacts -- the ELEVEN files `openRepoTools
-# --install` places on $PATH (itself, park, resume, status, restart, lanes,
-# and the four lane helpers `lanes-edit.sh`, `lane-start`, `lane-end` and
-# `link-estates` with the alias table `repos.tsv` they read), the `lane-swap`
-# and `restart` skills, the `/swap` command file, and the merged
-# `SessionStart` entry in `~/.claude/settings.json` -- all come from
-# workBenches' own vendored pin (FOURTEEN pinned openrepotools paths, plus
-# openRepoShape's own two), and the script places them, re-places them when
-# they differ from the pin (either direction), and refuses to place anything
-# when the vendored copies themselves no longer match the pin. Every scenario
-# runs with $HOME sandboxed under a throwaway directory, AND
-# CLAUDE_PROFILES_HOME/CLAUDE_USER_DIR pinned explicitly to that same
-# directory's .claude-profiles/.claude -- `skills_home`/`claude_home` read
-# those two variables first and only fall back to $HOME when either is unset,
-# so sandboxing $HOME alone is not enough if the invoking shell (a developer's,
+# grown for opensoft/openRepoTools#26 and re-grown for opensoft/openRepoTools
+# #45): the host's openRepoShape, and openRepoTools's own TWENTY-SIX
+# artifacts -- the TWELVE files `openRepoTools --install` places on $PATH
+# (itself, park, resume, status, lane, lanes, lane-handoff, and the four
+# lane helpers `lanes-edit.sh`, `lane-start`, `lane-end` and `link-estates`
+# with the alias table `repos.tsv` they read), the `handoff`, `lane-swap`
+# and `restart` skills, the `handoff`, `ctx` and `swap` command files, and
+# the merged `SessionStart` and `UserPromptSubmit` entries in
+# `~/.claude/settings.json` -- all come from workBenches' own vendored pin
+# (EIGHTEEN pinned openrepotools paths, plus openRepoShape's own two), and
+# the script places them, re-places them when they differ from the pin
+# (either direction), and refuses to place anything when the vendored
+# copies themselves no longer match the pin. Every scenario runs with $HOME
+# sandboxed under a throwaway directory, AND CLAUDE_PROFILES_HOME/
+# CLAUDE_USER_DIR pinned explicitly to that same directory's
+# .claude-profiles/.claude -- `skills_home`/`claude_home` read those two
+# variables first and only fall back to $HOME when either is unset, so
+# sandboxing $HOME alone is not enough if the invoking shell (a developer's,
 # or CI's) happens to export one of them for its own purposes. The skills, the
-# command file and the hook are written under there
+# command files and the hook are written under there
 # (~/.claude-profiles/... and ~/.claude/...), not just under the bin dir the
 # *_BIN_DIR overrides reach -- so a run of this suite never touches the real
 # machine's profiles, skills or settings.json, nor any other profile's.
@@ -28,7 +30,7 @@
 # shim transactions (D4), the pin file itself missing, and the placed
 # files' mode. D3 now has two parts, both inside scenario (k): the first
 # proves scripts/setup-estate-commands.sh's OWN pre-flight (`require_pin_row`,
-# now checking all fourteen openrepotools paths) refuses a documented
+# now checking all eighteen openrepotools paths) refuses a documented
 # row-and-file removal before either shim runs, so no fetch is ever
 # reachable through this script's front door -- exactly the guarantee this
 # scenario always proved, just extended past the original five names. The
@@ -52,14 +54,14 @@ PARK_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/park"
 RESUME_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/resume"
 STATUS_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/status"
 
-# THE ELEVEN FILES `openRepoTools --install` places on $PATH (openRepoTools#26).
-# One list, so scenarios (a), (b) and (l) cannot disagree about what a
-# complete bin-directory install is.
-TOOLS_FILES=(openRepoTools park resume status restart lanes lanes-edit.sh lane-start lane-end link-estates repos.tsv)
+# THE TWELVE FILES `openRepoTools --install` places on $PATH (openRepoTools#26
+# and #45). One list, so scenarios (a), (b) and (l) cannot disagree about
+# what a complete bin-directory install is.
+TOOLS_FILES=(openRepoTools park resume status lane lanes lane-handoff lanes-edit.sh lane-start lane-end link-estates repos.tsv)
 tools_vendor_path() { printf '%s/files/openrepotools/%s\n' "$BASE_IMAGE_DIR" "$1"; }
 
-SKILL_NAMES=(lane-swap restart)
-COMMAND_NAMES=(swap)
+SKILL_NAMES=(handoff lane-swap restart)
+COMMAND_NAMES=(handoff ctx swap)
 
 TMPDIR_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_ROOT"' EXIT
@@ -247,7 +249,22 @@ assert_hook_present() {
     assert_mode "$settings" '600' "$label: settings.json is mode 0600"
 }
 
-printf '%s\n' '--- Scenario (a): fresh bin dir + fresh $HOME installs all EIGHTEEN openRepoTools artifacts, plus openRepoShape ---'
+# lane-collision-protocol Amendment 12's UserPromptSubmit name guard, merged
+# into the same file as the SessionStart entry above -- one write for the
+# pair, so this is a second assertion on the same settings.json rather than
+# a second file.
+assert_guard_hook_present() {
+    local home="$1" label="$2"
+    local settings="$home/.claude/settings.json"
+    if [ ! -f "$settings" ]; then
+        fail "$label: $settings does not exist"
+        return
+    fi
+    assert_contains "$(cat "$settings")" 'lanes-edit.sh guard' "$label: settings.json carries the UserPromptSubmit guard command"
+    assert_mode "$settings" '600' "$label: settings.json is mode 0600"
+}
+
+printf '%s\n' '--- Scenario (a): fresh bin dir + fresh $HOME installs all TWENTY-SIX openRepoTools artifacts, plus openRepoShape ---'
 BIN_A="$TMPDIR_ROOT/bin-a"
 HOME_A="$TMPDIR_ROOT/home-a"
 mkdir -p "$BIN_A" "$HOME_A"
@@ -266,7 +283,7 @@ for name in "${TOOLS_FILES[@]}"; do
     assert_identical "$BIN_A/$name" "$(tools_vendor_path "$name")" "fresh $name is byte-identical to the vendored copy"
     assert_contains "$OUTPUT_A" "$name: installed at" "fresh install reports an installed verb for $name"
 done
-assert_contains "$OUTPUT_A" 'openRepoTools: 11 of 11 placed in' 'fresh install reports all eleven openRepoTools bin files placed'
+assert_contains "$OUTPUT_A" 'openRepoTools: 12 of 12 placed in' 'fresh install reports all twelve openRepoTools bin files placed'
 for name in "${SKILL_NAMES[@]}"; do
     assert_skill_pair "$HOME_A" "$name" "fresh install places the $name skill"
     assert_contains "$OUTPUT_A" "$name: installed at" "fresh install reports an installed verb for the $name skill"
@@ -277,14 +294,16 @@ for name in "${COMMAND_NAMES[@]}"; do
 done
 assert_hook_present "$HOME_A" 'fresh install merges the SessionStart hook'
 assert_contains "$OUTPUT_A" 'SessionStart hook: installed in' 'fresh install reports the hook as installed (new file)'
+assert_guard_hook_present "$HOME_A" 'fresh install merges the UserPromptSubmit guard hook'
+assert_contains "$OUTPUT_A" 'UserPromptSubmit guard: installed in' 'fresh install reports the guard hook as installed (new file)'
 assert_contains "$OUTPUT_A" "openRepoShape pinned at $SHAPE_COMMIT" 'fresh install prints the openRepoShape pin commit'
 assert_contains "$OUTPUT_A" "openRepoTools pinned at $TOOLS_COMMIT" 'fresh install prints the openRepoTools pin commit'
 assert_contains "$OUTPUT_A" 'Estate commands verified against the vendored pin.' 'fresh install reports success only after post-install verification'
 # Scenario (f) folded in here: a brand-new temp dir is never on $PATH. Fix 4
 # removed this script's own PATH warning (the shims already print theirs),
 # so the substring must appear exactly twice -- once per shim -- not three
-# times. Eighteen more report lines from the skills, the command file and
-# the hook do not add a third: none of them mentions $PATH at all.
+# times. Twenty-six more report lines from the skills, the command files and
+# the two hook entries do not add a third: none of them mentions $PATH at all.
 path_warning_count="$(count_occurrences "$OUTPUT_A" 'is not on $PATH')"
 assert_equal '2' "$path_warning_count" 'exactly two PATH warnings (one per shim; this script prints no third copy)'
 
@@ -312,6 +331,8 @@ for name in "${COMMAND_NAMES[@]}"; do
 done
 assert_contains "$OUTPUT_B" 'SessionStart hook: already installed in' 'second run reports the hook unchanged'
 assert_hook_present "$HOME_A" 'second run still has the hook'
+assert_contains "$OUTPUT_B" 'UserPromptSubmit guard: already installed in' 'second run reports the guard hook unchanged'
+assert_guard_hook_present "$HOME_A" 'second run still has the guard hook'
 
 printf '%s\n' '--- Scenario (c): a locally-modified park is replaced and reported updated ---'
 printf '%s\n' '# a local edit, not the vendored bytes' >> "$BIN_A/park"
@@ -326,7 +347,7 @@ assert_contains "$OUTPUT_C" 'park: updated at' 'the locally-modified park is rep
 assert_identical "$BIN_A/park" "$PARK_VENDOR" 'park is byte-identical to the vendored copy again after being updated'
 # The rest were untouched, so this run still reports them unchanged -- a
 # representative few from each of the four kinds of artifact, not all
-# eighteen again.
+# twenty-six again.
 assert_contains "$OUTPUT_C" 'openRepoShape: already installed at' 'updated-park run still reports openRepoShape unchanged'
 assert_contains "$OUTPUT_C" 'resume: already installed at' 'updated-park run still reports resume unchanged'
 assert_contains "$OUTPUT_C" 'status: already installed at' 'updated-park run still reports status unchanged'
@@ -433,7 +454,7 @@ assert_contains "$OUTPUT_I" 'not writable' 'the refusal says park is not writabl
 assert_equal '0' "$([ -e "$BIN_I/openRepoShape" ] && echo 1 || echo 0)" 'openRepoShape was NOT placed (D4 regression guard)'
 assert_equal '0' "$([ -e "$BIN_I/openRepoTools" ] && echo 1 || echo 0)" 'openRepoTools was NOT placed (D4 regression guard)'
 assert_equal '0' "$([ -e "$BIN_I/resume" ] && echo 1 || echo 0)" 'resume was NOT placed (D4 regression guard)'
-assert_equal '0' "$([ -e "$BIN_I/repos.tsv" ] && echo 1 || echo 0)" 'repos.tsv (last of the eleven) was NOT placed (D4 regression guard)'
+assert_equal '0' "$([ -e "$BIN_I/repos.tsv" ] && echo 1 || echo 0)" 'repos.tsv (last of the twelve) was NOT placed (D4 regression guard)'
 assert_absent "$HOME_I/.claude" 'nothing was written under $HOME/.claude either (D4 regression guard)'
 chmod 0755 "$BIN_I/park"
 
@@ -466,15 +487,15 @@ printf '%s\n' '--- Scenario (k) [D3, part one]: resume'"'"'s row AND vendored fi
 # gone together, `check` none the wiser.
 #
 # UNCHANGED FROM BEFORE opensoft/openRepoTools#26, deliberately: this script's
-# own `require_pin_row`, now checking all FOURTEEN openrepotools paths
+# own `require_pin_row`, now checking all EIGHTEEN openrepotools paths
 # instead of four, still catches "resume" missing a row before either shim
 # runs, for the same reason it always did -- a file the shims would install
 # with no row in the pin is refused here, explicitly, rather than ever
 # reaching a shim that could fall back to fetching it. The all-or-nothing
 # rule does not change this half of D3 at all: it only raises the stakes of
 # the OTHER half, proved directly in part two below, because now the same
-# missing file would cost the whole eighteen-artifact install, not one file
-# among five.
+# missing file would cost the whole twenty-six-artifact install, not one
+# file among five.
 NOROW_BASE="$TMPDIR_ROOT/norow-base-image"
 mkdir -p "$NOROW_BASE"
 cp -r "$BASE_IMAGE_DIR/." "$NOROW_BASE/"
@@ -557,7 +578,7 @@ assert_contains "$OUTPUT_K2" "$ESTATE_SENTINEL_VALUE" "the shim's own refusal na
 assert_empty_dir "$BIN_K2" "nothing was installed by the shim's own refusal either"
 assert_absent "$HOME_K2/.claude" "nothing under \$HOME/.claude either, from the shim's own refusal"
 
-printf '%s\n' '--- Scenario (l): every one of the ELEVEN placed openRepoTools bin files is mode 0755, and so is openRepoShape ---'
+printf '%s\n' '--- Scenario (l): every one of the TWELVE placed openRepoTools bin files is mode 0755, and so is openRepoShape ---'
 assert_mode "$BIN_A/openRepoShape" '755' 'placed openRepoShape is mode 0755'
 for name in "${TOOLS_FILES[@]}"; do
     assert_mode "$BIN_A/$name" '755' "placed $name is mode 0755"

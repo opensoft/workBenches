@@ -161,23 +161,30 @@ RUN chmod 0755 /usr/local/bin/speckit-worktree-enable && \
 # rather than once per standard, and `status` — the read-only view of the same
 # estate, which runs nothing — was added there on the same resolver. That
 # vendor directory held four files then: itself, `park`, `resume` and
-# `status`. `openRepoTools --install` now places ELEVEN (lane-collision-
-# protocol Amendment 11): those four plus `restart`, `lanes`, and the four
+# `status`. `openRepoTools --install` grew to ELEVEN under lane-collision-
+# protocol Amendment 11 (those four plus `restart`, `lanes`, and the four
 # lane helpers `lanes-edit.sh`, `lane-start`, `lane-end` and `link-estates`
-# with the alias table `repos.tsv` they read. All eleven are vendored under
-# files/openrepotools/ and all eleven are COPIED into this image below, chmod
-# 0755 — `repos.tsv` included, because the installer stamps every one of the
-# eleven executable and this image mirrors that, not the upstream mode its
-# own pin row records for that one file. files/openreposhape/ still vendors
-# only the shim (`openRepoShape` itself) and the manifest template below.
+# with the alias table `repos.tsv` they read), and now places TWELVE:
+# Amendment 18 Addendums 1 and 2 retired `restart` from `$PATH` — `lane
+# <name>` does its act and more, so the count did not move when one word
+# left as another arrived — and Amendment 17(a) added `lane-handoff` as the
+# swap's shell form, which is the file that raised eleven to twelve. All
+# twelve are vendored under files/openrepotools/ and all twelve are COPIED
+# into this image below, chmod 0755 — `repos.tsv` included, because the
+# installer stamps every one of the twelve executable and this image mirrors
+# that, not the upstream mode its own pin row records for that one file.
+# files/openreposhape/ still vendors only the shim (`openRepoShape` itself)
+# and the manifest template below.
 #
-# THE OTHER THREE ARTIFACTS `--install` ALSO PLACES ARE NOT HERE. The
-# `lane-swap` and `restart` skills' `SKILL.md`, and the `/swap` command file,
-# are vendored under files/openrepotools/skills/ and files/openrepotools/
-# commands/ so `--install` can place them from beside itself with no fetch —
-# and the merged `SessionStart` entry in `~/.claude/settings.json` needs no
-# vendored bytes at all. None of the three is `COPY`'d into this image: they
-# are PER-USER, written under a `$HOME` (`~/.claude-profiles/shared/...` and
+# THE OTHER SIX ARTIFACTS `--install` ALSO PLACES ARE NOT HERE. The
+# `handoff`, `lane-swap` and `restart` skills' `SKILL.md`, and the `handoff`,
+# `ctx` and `swap` command files, are vendored under files/openrepotools/
+# skills/ and files/openrepotools/commands/ so `--install` can place them
+# from beside itself with no fetch — and the two merged entries in
+# `~/.claude/settings.json` (the `SessionStart` entry and lane-collision-
+# protocol Amendment 12's `UserPromptSubmit` name guard) need no vendored
+# bytes at all. None of the six is `COPY`'d into this image: they are
+# PER-USER, written under a `$HOME` (`~/.claude-profiles/shared/...` and
 # `~/.claude/...`), and this build has no user's `$HOME` to write them into.
 # `scripts/setup-estate-commands.sh` places them on the host instead, the same
 # ones `openRepoTools --install` would place by hand.
@@ -206,8 +213,9 @@ COPY files/openrepotools/openRepoTools /usr/local/bin/openRepoTools
 COPY files/openrepotools/park /usr/local/bin/park
 COPY files/openrepotools/resume /usr/local/bin/resume
 COPY files/openrepotools/status /usr/local/bin/status
-COPY files/openrepotools/restart /usr/local/bin/restart
+COPY files/openrepotools/lane /usr/local/bin/lane
 COPY files/openrepotools/lanes /usr/local/bin/lanes
+COPY files/openrepotools/lane-handoff /usr/local/bin/lane-handoff
 COPY files/openrepotools/lanes-edit.sh /usr/local/bin/lanes-edit.sh
 COPY files/openrepotools/lane-start /usr/local/bin/lane-start
 COPY files/openrepotools/lane-end /usr/local/bin/lane-end
@@ -215,7 +223,8 @@ COPY files/openrepotools/link-estates /usr/local/bin/link-estates
 COPY files/openrepotools/repos.tsv /usr/local/bin/repos.tsv
 RUN chmod 0755 /usr/local/bin/openRepoShape /usr/local/bin/openRepoTools \
     /usr/local/bin/park /usr/local/bin/resume /usr/local/bin/status \
-    /usr/local/bin/restart /usr/local/bin/lanes /usr/local/bin/lanes-edit.sh \
+    /usr/local/bin/lane /usr/local/bin/lanes /usr/local/bin/lane-handoff \
+    /usr/local/bin/lanes-edit.sh \
     /usr/local/bin/lane-start /usr/local/bin/lane-end /usr/local/bin/link-estates \
     /usr/local/bin/repos.tsv
 
