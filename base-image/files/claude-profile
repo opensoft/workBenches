@@ -48,6 +48,26 @@ lane_session_start_timeout=5
 # against it (lane_note_no_lane).
 lane_session_start_ensured=false
 
+# lane-collision-protocol Amendment 12 adoption act 3: the UserPromptSubmit
+# NAME GUARD, ensured beside the SessionStart entry above "the way it ensures
+# the SessionStart hook today" (the amendment's own words for this launcher's
+# half). Byte for byte `opensoft/openRepoTools`'s own GUARD_COMMAND /
+# GUARD_TIMEOUT (`openRepoTools:460-461`, `guard_block_text()`), which
+# `--install` already merges into a bare `claude`'s `~/.claude/settings.json`
+# (Amendment 12 adoption act 3, first half); this is the PROFILE half, ruled
+# by Brett Heap 2026-09-15, verbatim "install the hook when 25 lands".
+#
+# NO matcher — `UserPromptSubmit` has no source to match on, unlike
+# `SessionStart`'s `startup|resume|clear|fork`. NO `|| true` — on
+# `SessionStart` that suffix is the whole safety property (a hook that dies
+# must not break the session it was meant to orient); on `UserPromptSubmit`
+# it would be the OPPOSITE, because exit 2 is what BLOCKS a prompt
+# (code.claude.com/docs/en/hooks) and `cmd || true` always exits 0. Copying
+# the SessionStart string's suffix here would install a guard that refuses
+# nothing, silently — the exact state Amendment 12 exists to end.
+lane_name_guard_command='~/projects/xFactory/lanes-edit.sh guard'
+lane_name_guard_timeout=5
+
 # Ensuring it is an append, matched by the EXACT command string: an entry that
 # already carries it is left exactly as it is — wherever it sits, whatever
 # matcher it shares, whatever else the operator put beside it — and nothing
@@ -85,9 +105,30 @@ lane_session_start_jq='
             end
         )'
 
+# THE NAME GUARD IS PRESERVED-IF-PRESENT, LIKE SessionStart, NOT
+# FILTERED-AND-REFRESHED LIKE THE USAGE GUARD ABOVE — an entry that already
+# carries the command is left exactly as it is, whatever timeout an operator
+# gave it, and otherwise the canonical one is appended; nothing else under
+# `.hooks.UserPromptSubmit` is touched, so the usage guard entry and any
+# foreign hook survive beside it either way. This mirrors
+# `opensoft/openRepoTools --install`'s own merge for this exact entry into a
+# bare `claude`'s settings.json: present costs no write, absent appends one.
+lane_name_guard_jq='
+      .hooks = (.hooks // {})
+      | .hooks.UserPromptSubmit = (
+          (.hooks.UserPromptSubmit // []) as $entries
+          | if ([$entries[]? | (.hooks // [])[]? | .command] | index($name_guard))
+            then $entries
+            else $entries + [{
+              hooks: [{type: "command", command: $name_guard, timeout: $name_guard_timeout}]
+            }]
+            end
+        )'
+
 configure_profile_runtime() {
   local config_dir="$1" statusline_source statusline_link settings settings_tmp statusline_command default_model
   local guard_source guard_link guard_command guard_ok guard_timeout session_start_ok
+  local name_guard_ok
 
   statusline_source="$base/shared/statusline-command.sh"
   if [[ ! -f "$statusline_source" && -f /usr/local/share/workbenches/claude/statusline-command.sh ]]; then
@@ -156,6 +197,38 @@ configure_profile_runtime() {
     session_start_ok=true
   fi
 
+  # THE SAME TOLERANCE, FOR THE GRAVER REASON. Amendment 12's guard carries NO
+  # `|| true` — exit 2 is the whole mechanism — and it is also exactly the
+  # code `lanes-edit.sh` falls through to on an unrecognised first argument
+  # (its final dispatch arm, `*) die "unknown subcommand …" 2 ;;`). Wiring
+  # this entry against an estate whose linked `lanes-edit.sh` predates the
+  # `guard` subcommand would therefore BLOCK EVERY PROMPT the profile ever
+  # submits — not merely print a block the way an ungated SessionStart entry
+  # would, because that one's `|| true` catches every exit before the harness
+  # ever sees it.
+  #
+  # A BARE `grep -qF guard` CANNOT TELL THE TWO STATES APART, MEASURED: the
+  # word is one of this estate's favourite metaphors for a defensive check
+  # (14 mentions in `opensoft/workBenches`'s own pre-Amendment-12 vendored
+  # copy, `devBenches/base-image/files/openrepotools/lanes-edit.sh`, none of
+  # them the subcommand), and even a plain `guard)` case-label shape false-
+  # positives on that same file's comment "the dispatcher guard), so no READ
+  # can return it" — measured, not assumed. What that file does NOT carry,
+  # and what `opensoft/openRepoTools`'s live copy does, is the verb inside
+  # the dispatcher's own enumeration of every subcommand it knows: the
+  # `unknown subcommand '$cmd' (…|session-start|guard|idle-holders|…)` die
+  # lists it pipe-delimited, and the workspace-check exemption right above
+  # the dispatch table reads `session-start|guard) : ;;` — so `|guard|`,
+  # `|guard)` (that exemption, or the verb landing last in the die's list)
+  # and `(guard|` (landing first) are the three shapes only a dispatcher that
+  # truly implements it can write, and none of them is the shape the false
+  # positive above took.
+  name_guard_ok=false
+  if [[ -f "$lane_session_start_script" ]] \
+    && grep -qE '\|guard\||\|guard\)|\(guard\|' "$lane_session_start_script" 2>/dev/null; then
+    name_guard_ok=true
+  fi
+
   settings="$config_dir/settings.json"
   if [[ -e "$settings" ]] && ! jq -e 'type == "object"' "$settings" >/dev/null 2>&1; then
     echo "Claude profile settings are not valid JSON: $settings" >&2
@@ -181,7 +254,10 @@ configure_profile_runtime() {
        --arg session_start "$lane_session_start_command" \
        --arg session_start_matcher "$lane_session_start_matcher" \
        --argjson session_start_timeout "$lane_session_start_timeout" \
-       --argjson session_start_ok "$session_start_ok" '
+       --argjson session_start_ok "$session_start_ok" \
+       --arg name_guard "$lane_name_guard_command" \
+       --argjson name_guard_ok "$name_guard_ok" \
+       --argjson name_guard_timeout "$lane_name_guard_timeout" '
       .statusLine = {type: "command", command: $command, refreshInterval: 10}
       | .permissions = (.permissions // {})
       | .permissions.defaultMode = "bypassPermissions"
@@ -189,6 +265,7 @@ configure_profile_runtime() {
       | .model = (.model // $model)
       | (if $guard_ok then'"$lane_guard_jq"' else . end)
       | (if $session_start_ok then'"$lane_session_start_jq"' else . end)
+      | (if $name_guard_ok then'"$lane_name_guard_jq"' else . end)
     ' "$settings" > "$settings_tmp"
   else
     jq -n --arg command "$statusline_command" --arg model "$default_model" \
@@ -197,14 +274,18 @@ configure_profile_runtime() {
        --arg session_start "$lane_session_start_command" \
        --arg session_start_matcher "$lane_session_start_matcher" \
        --argjson session_start_timeout "$lane_session_start_timeout" \
-       --argjson session_start_ok "$session_start_ok" '{
+       --argjson session_start_ok "$session_start_ok" \
+       --arg name_guard "$lane_name_guard_command" \
+       --argjson name_guard_ok "$name_guard_ok" \
+       --argjson name_guard_timeout "$lane_name_guard_timeout" '{
       statusLine: {type: "command", command: $command, refreshInterval: 10},
       permissions: {defaultMode: "bypassPermissions"},
       effortLevel: "xhigh",
       model: $model
     }
     | (if $guard_ok then'"$lane_guard_jq"' else . end)
-    | (if $session_start_ok then'"$lane_session_start_jq"' else . end)' > "$settings_tmp"
+    | (if $session_start_ok then'"$lane_session_start_jq"' else . end)
+    | (if $name_guard_ok then'"$lane_name_guard_jq"' else . end)' > "$settings_tmp"
   fi
   chmod 600 "$settings_tmp"
   mv -f "$settings_tmp" "$settings"

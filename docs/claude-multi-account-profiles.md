@@ -627,6 +627,25 @@ this launcher at all. Two consequences, both of which this launcher and
   next launch, because the ensure runs on every one. Any installer that wants a
   hook to fire for profile launches should write it into the profile
   `settings.json` files the same way, not into `~/.claude/settings.json`.
+- **Amendment 12's `UserPromptSubmit` NAME GUARD is ensured the same way,
+  beside the usage guard entry in that same array.** `configure_profile_runtime`
+  appends `opensoft/openRepoTools`'s own `GUARD_COMMAND` —
+  `~/projects/xFactory/lanes-edit.sh guard`, `"timeout": 5`, and deliberately
+  **no** `matcher` (`UserPromptSubmit` has no source to match on) and **no**
+  `|| true` (exit 2 is the whole mechanism; that suffix would swallow it and
+  install a guard that refuses nothing) — matched by the same exact-command
+  idempotence as the SessionStart entry: present costs no write, absent
+  appends, and an operator's own timeout or note on an existing entry is never
+  rewritten. It is written only where `~/projects/xFactory/lanes-edit.sh`
+  exists *and* answers the `guard` subcommand, checked by the shape only a
+  dispatcher that implements the verb can write (`|guard|`, `|guard)` or
+  `(guard|`) rather than by the bare word, which this estate's own comments use
+  as a generic term for a defensive check with or without the subcommand — a
+  bare-substring probe was measured to false-positive on
+  `opensoft/workBenches`'s own pre-Amendment-12 vendored copy. This is the
+  profile half of Amendment 12 adoption act 3; the bare-`claude` half is
+  `openRepoTools --install`'s own merge into `~/.claude/settings.json`, one
+  path and one writer in both halves exactly as the SessionStart entry above.
 - **Skills belong in the shared skills directory, and `openRepoTools --install`
   is the one thing that writes them.** Every profile's `skills` is a symlink to
   `~/.claude-profiles/shared/skills`, so one write there is visible to every

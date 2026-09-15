@@ -99,6 +99,11 @@ test_tool "Claude statusline usage snapshots" "/test/test-claude-statusline-snap
 # against the installed launcher with no lane estate in the image.
 test_tool "Claude profile lane default (Amendment 8(c))" "/test/test-claude-profile-lane-default.sh /usr/local/bin/claude-profile"
 test_tool "Claude profile SessionStart hook (Amendment 8(e))" "/test/test-claude-profile-session-start-hook.sh /usr/local/bin/claude-profile"
+# lane-collision-protocol Amendment 12 adoption act 3: the launcher ensures
+# the UserPromptSubmit NAME GUARD beside the SessionStart entry above, "the
+# way it ensures the SessionStart hook today". Same fakery, same hermetic run
+# against the installed launcher with no lane estate in the image.
+test_tool "Claude profile UserPromptSubmit name guard (Amendment 12)" "/test/test-claude-profile-name-guard-hook.sh /usr/local/bin/claude-profile"
 test_tool "codex" "command -v codex"
 test_tool "codex-profile" "command -v codex-profile"
 test_tool "pcodex" "command -v pcodex"
