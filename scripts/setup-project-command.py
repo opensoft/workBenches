@@ -272,8 +272,8 @@ def execute_project(data, target, command_args):
     return 0
 
 
-def atomic_exchange(left, right):
-    """Atomically exchange two existing paths on Linux or macOS."""
+def atomic_rename(left, right, linux_flags, mac_flags):
+    """Invoke the platform atomic rename primitive with explicit flags."""
     libc = ctypes.CDLL(None, use_errno=True)
     left_bytes = os.fsencode(left)
     right_bytes = os.fsencode(right)
@@ -285,7 +285,7 @@ def atomic_exchange(left, right):
         exchange.argtypes = (ctypes.c_int, ctypes.c_char_p,
                              ctypes.c_int, ctypes.c_char_p, ctypes.c_uint)
         exchange.restype = ctypes.c_int
-        result = exchange(-100, left_bytes, -100, right_bytes, 2)
+        result = exchange(-100, left_bytes, -100, right_bytes, linux_flags)
     elif sys.platform == "darwin":
         try:
             exchange = libc.renamex_np
@@ -293,12 +293,45 @@ def atomic_exchange(left, right):
             raise OSError("renamex_np is unavailable on this macOS system") from exc
         exchange.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint)
         exchange.restype = ctypes.c_int
-        result = exchange(left_bytes, right_bytes, 2)
+        result = exchange(left_bytes, right_bytes, mac_flags)
     else:
         raise OSError("Atomic checked replacement is unsupported on this platform")
     if result != 0:
         error = ctypes.get_errno()
         raise OSError(error, os.strerror(error))
+
+
+def atomic_exchange(left, right):
+    """Atomically exchange two existing paths on Linux or macOS."""
+    atomic_rename(left, right, 2, 2)  # RENAME_EXCHANGE / RENAME_SWAP
+
+
+def atomic_move_noreplace(source, destination):
+    """Atomically move source only when destination does not exist."""
+    atomic_rename(source, destination, 1, 4)  # RENAME_NOREPLACE / RENAME_EXCL
+
+
+def atomic_checked_unlink(path, expected_state):
+    """Quarantine path atomically and delete only the expected file."""
+    descriptor, name = tempfile.mkstemp(prefix=".project-remove-", dir=path.parent)
+    os.close(descriptor)
+    quarantine = Path(name)
+    quarantine.unlink()
+    atomic_move_noreplace(path, quarantine)
+    try:
+        if path_fingerprint(quarantine) != expected_state:
+            try:
+                atomic_move_noreplace(quarantine, path)
+            except OSError as exc:
+                raise ValueError(
+                    f"Refusing concurrent removal at {path}; preserved replacement at {quarantine}"
+                ) from exc
+            raise ValueError(f"Refusing concurrent removal at {path}")
+        quarantine.unlink()
+    except BaseException:
+        if quarantine.exists() and not path.exists():
+            atomic_move_noreplace(quarantine, path)
+        raise
 
 
 def atomic_checked_replace(source, destination, expected_state):
@@ -309,7 +342,11 @@ def atomic_checked_replace(source, destination, expected_state):
             os.link(source, destination, follow_symlinks=False)
         except FileExistsError as exc:
             raise ValueError(f"Refusing concurrent collision at {destination}") from exc
-        source.unlink()
+        try:
+            source.unlink()
+        except OSError:
+            atomic_checked_unlink(destination, published_state)
+            raise
         return None, published_state
     if expected_state[:1] != ("file",):
         raise ValueError(f"Refusing non-regular replacement at {destination}")
@@ -342,7 +379,7 @@ def replace_transaction(replacements, staged, expected_states):
             backup = backups[destination]
             if backup is None:
                 if path_fingerprint(destination) == current_states[destination]:
-                    destination.unlink(missing_ok=True)
+                    atomic_checked_unlink(destination, current_states[destination])
             else:
                 atomic_checked_replace(backup, destination,
                                        current_states[destination])
@@ -456,11 +493,11 @@ def main(argv=None):
                             onp, expected_launcher_digests)
                             or onp_state != path_fingerprint(onp)))):
                     raise ValueError("Project command changed during removal; nothing removed")
-                target.unlink()
-                payload.unlink()
-                owner_marker.unlink()
+                atomic_checked_unlink(target, removal_state[0])
+                atomic_checked_unlink(payload, removal_state[1])
+                atomic_checked_unlink(owner_marker, removal_state[2])
                 if onp_owned:
-                    onp.unlink()
+                    atomic_checked_unlink(onp, onp_state)
                 print(f"project: removed installer-owned command from {target}")
                 return 0
             if onp_owned:
@@ -468,7 +505,7 @@ def main(argv=None):
                 if (not trusted_launcher(onp, expected_launcher_digests)
                         or onp_state != path_fingerprint(onp)):
                     raise ValueError("onp changed during removal; nothing removed")
-                onp.unlink()
+                atomic_checked_unlink(onp, onp_state)
                 print(f"project: removed installer-owned compatibility command from {onp}")
                 return 0
             print(f"project: preserved unowned command at {target}", file=sys.stderr)

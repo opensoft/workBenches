@@ -53,6 +53,17 @@ check_install_location() {
     fi
 }
 
+configured_install_location() {
+    local install_dir="${OPENREPOPROJECT_BIN_DIR:-}"
+    [ -n "$install_dir" ] || return 1
+    case "$install_dir" in
+        '~') install_dir="$HOME" ;;
+        '~/'*) install_dir="$HOME/${install_dir#'~/'}" ;;
+    esac
+    [[ "$install_dir" == /* ]] || return 2
+    printf '%s\n' "$install_dir"
+}
+
 # Create user-local bin directory if it doesn't exist
 create_local_bin() {
     if [ ! -d "$HOME/.local/bin" ]; then
@@ -203,7 +214,22 @@ install_commands() {
     
     # Determine installation directory
     local install_dir
-    install_dir=$(check_install_location)
+    if [ -n "${OPENREPOPROJECT_BIN_DIR:-}" ]; then
+        if ! install_dir="$(configured_install_location)"; then
+            print_error "OPENREPOPROJECT_BIN_DIR must be an absolute path"
+            return 1
+        fi
+        if [ -e "$install_dir" ] && [ ! -d "$install_dir" ]; then
+            print_error "Configured installation path is not a directory: $install_dir"
+            return 1
+        fi
+        if [ -d "$install_dir" ] && [ ! -w "$install_dir" ]; then
+            print_error "Configured installation directory is not writable: $install_dir"
+            return 1
+        fi
+    else
+        install_dir=$(check_install_location)
+    fi
     
     if [ -z "$install_dir" ]; then
         print_error "No suitable installation directory found"
@@ -328,9 +354,22 @@ install_commands() {
 # Uninstall workBench commands
 uninstall_commands() {
     local removed_any=false
+    local uninstall_failed=false
+    local project_remove_status
+    local configured_dir=""
     
     # Check common installation locations
     local locations=("$HOME/.local/bin" "/usr/local/bin")
+    if [ -n "${OPENREPOPROJECT_BIN_DIR:-}" ]; then
+        if ! configured_dir="$(configured_install_location)"; then
+            print_error "OPENREPOPROJECT_BIN_DIR must be an absolute path"
+            return 1
+        fi
+        if [ "$configured_dir" != "$HOME/.local/bin" ] \
+            && [ "$configured_dir" != "/usr/local/bin" ]; then
+            locations=("$configured_dir" "${locations[@]}")
+        fi
+    fi
     
     for location in "${locations[@]}"; do
         for cmd_name in "${!COMMANDS[@]}"; do
@@ -342,6 +381,7 @@ uninstall_commands() {
                     removed_any=true
                 elif [ "$project_remove_status" -ne 3 ]; then
                     print_error "Failed to verify project ownership in $location"
+                    uninstall_failed=true
                 fi
                 continue
             fi
@@ -359,17 +399,24 @@ uninstall_commands() {
                     removed_any=true
                 else
                     print_error "Failed to remove $cmd_name from $location"
+                    uninstall_failed=true
                 fi
             fi
         done
         
         # Remove workbenches path file
         if [ -f "$location/.workbenches-path" ]; then
-            rm -f "$location/.workbenches-path"
+            if ! rm -f "$location/.workbenches-path"; then
+                print_error "Failed to remove workBenches path marker from $location"
+                uninstall_failed=true
+            fi
         fi
     done
     
-    if [ "$removed_any" = true ]; then
+    if [ "$uninstall_failed" = true ]; then
+        print_error "One or more installer-owned project artifacts could not be removed"
+        return 1
+    elif [ "$removed_any" = true ]; then
         print_success "WorkBenches commands uninstalled successfully"
         print_warning "PATH modifications in shell profiles were not removed automatically"
     else
@@ -383,7 +430,18 @@ show_status() {
     echo ""
     
     local found_installations=0
+    local configured_dir=""
     local locations=("$HOME/.local/bin" "/usr/local/bin")
+    if [ -n "${OPENREPOPROJECT_BIN_DIR:-}" ]; then
+        if ! configured_dir="$(configured_install_location)"; then
+            print_error "OPENREPOPROJECT_BIN_DIR must be an absolute path"
+            return 1
+        fi
+        if [ "$configured_dir" != "$HOME/.local/bin" ] \
+            && [ "$configured_dir" != "/usr/local/bin" ]; then
+            locations=("$configured_dir" "${locations[@]}")
+        fi
+    fi
     
     for location in "${locations[@]}"; do
         local location_header_printed=false
@@ -493,7 +551,7 @@ main() {
             ;;
         --status)
             show_status
-            exit 0
+            exit $?
             ;;
         --help|-h)
             show_help

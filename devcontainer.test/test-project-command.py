@@ -187,6 +187,28 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(installer.main([*self.args, "--remove"]), 2)
         self.assertEqual(target.read_text(), "concurrent replacement")
 
+    def test_remove_quarantines_and_restores_concurrent_target(self):
+        self.assertEqual(self.install(), 0)
+        target = self.bin / "project"
+        real_move = installer.atomic_move_noreplace
+        collision_created = False
+
+        def replace_before_quarantine(source, destination):
+            nonlocal collision_created
+            if Path(source) == target and not collision_created:
+                target.write_text("concurrent replacement")
+                target.chmod(0o755)
+                collision_created = True
+            return real_move(source, destination)
+
+        with patch.object(installer, "atomic_move_noreplace",
+                          side_effect=replace_before_quarantine):
+            self.assertEqual(installer.main([*self.args, "--remove"]), 2)
+        self.assertTrue(collision_created)
+        self.assertEqual(target.read_text(), "concurrent replacement")
+        self.assertTrue((self.bin / installer.PAYLOAD_NAME).is_file())
+        self.assertTrue((self.bin / ".workbenches-project.json").is_file())
+
     def test_partial_publish_failures_roll_back_owned_upgrade(self):
         self.assertEqual(self.install(), 0)
         target = self.bin / "project"
@@ -259,6 +281,26 @@ class InstallTests(unittest.TestCase):
         self.assertTrue(collision_created)
         self.assertEqual(target.read_text(), "concurrent unowned command")
         self.assertFalse((self.bin / ".workbenches-project.json").exists())
+
+    def test_failed_stage_unlink_rolls_back_new_publication(self):
+        owner = self.bin / ".workbenches-project.json"
+        real_unlink = Path.unlink
+        failure_injected = False
+
+        def fail_staged_unlink(path, *args, **kwargs):
+            nonlocal failure_injected
+            if (not failure_injected and path.name.startswith(".project-install-")
+                    and owner.is_file()):
+                failure_injected = True
+                raise OSError("simulated staged unlink failure")
+            return real_unlink(path, *args, **kwargs)
+
+        with patch.object(Path, "unlink", new=fail_staged_unlink):
+            self.assertEqual(self.install(), 2)
+        self.assertTrue(failure_injected)
+        self.assertFalse((self.bin / "project").exists())
+        self.assertFalse((self.bin / installer.PAYLOAD_NAME).exists())
+        self.assertFalse(owner.exists())
 
     def test_owned_target_replacement_at_publication_is_preserved(self):
         self.assertEqual(self.install(), 0)
@@ -741,6 +783,27 @@ class InstallTests(unittest.TestCase):
 
     @unittest.skipUnless(sys.platform.startswith("linux"),
                          "command installer requires Bash 4 associative arrays")
+    def test_global_install_honors_configured_directory(self):
+        self.assertEqual(self.install(), 0)
+        home = self.base / "custom-global-home"
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "PATH": str(self.bin) + os.pathsep + os.environ["PATH"],
+            "OPENREPOPROJECT_BIN_DIR": str(self.bin),
+            "OPENREPOPROJECT_PIN": str(self.pin),
+            "WORKBENCHES_ROOT": str(self.wb),
+        }
+        result = subprocess.run(
+            ["bash", str(ROOT / "scripts/install-workbench-commands.sh"), "--install"],
+            env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.bin / "project").is_file())
+        self.assertTrue((self.bin / "onp").is_file())
+        self.assertFalse((home / ".local/bin/project").exists())
+
+    @unittest.skipUnless(sys.platform.startswith("linux"),
+                         "command installer requires Bash 4 associative arrays")
     def test_global_install_skip_omits_project_and_onp(self):
         home = self.base / "skip-home"
         install_bin = home / ".local/bin"
@@ -792,6 +855,28 @@ class InstallTests(unittest.TestCase):
         self.assertTrue(onp.is_file())
         self.assertFalse(remove_log.exists(),
                          remove_log.read_text() if remove_log.exists() else "")
+
+    @unittest.skipUnless(sys.platform.startswith("linux"),
+                         "command installer requires Bash 4 associative arrays")
+    def test_global_uninstall_propagates_project_removal_failure(self):
+        home = self.base / "failed-uninstall-home"
+        (home / ".local/bin").mkdir(parents=True)
+        fake_bin = self.base / "failed-uninstall-bin"
+        fake_bin.mkdir()
+        fake_python = fake_bin / "python3"
+        fake_python.write_text("#!/usr/bin/env bash\nexit 2\n")
+        fake_python.chmod(0o755)
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "PATH": str(fake_bin) + os.pathsep + "/usr/bin:/bin",
+        }
+        result = subprocess.run(
+            ["bash", str(ROOT / "scripts/install-workbench-commands.sh"), "--uninstall"],
+            env=env, text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("could not be removed", result.stdout)
+        self.assertNotIn("uninstalled successfully", result.stdout)
 
     @unittest.skipUnless(os.environ.get("OPENREPOPROJECT_TEST_SOURCE"), "Set OPENREPOPROJECT_TEST_SOURCE for cross-repository integration")
     def test_real_cli_install_and_legacy_creation(self):
