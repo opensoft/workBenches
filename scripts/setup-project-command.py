@@ -398,11 +398,16 @@ def main(argv=None):
             return 3
         if not (wb / "config/bench-config.json").is_file():
             raise ValueError(f"Not a workBenches checkout: {wb}")
+        onp = directory / "onp"
         initial_install_state = (path_fingerprint(target), path_fingerprint(payload),
                                  path_fingerprint(owner_marker))
+        initial_onp_state = path_fingerprint(onp)
         target_digest = file_sha256(payload) if payload.is_file() and not payload.is_symlink() else ""
         target_owned = owned_target(target, payload, owner_marker, pin,
                                     expected_launcher_digests)
+        onp_owned = (target_owned and onp.is_file() and not onp.is_symlink()
+                     and onp.stat().st_mode & 0o777 == 0o755
+                     and file_sha256(onp) in expected_launcher_digests)
         previous_commit = ""
         previous_launcher_digest = ""
         if target_owned:
@@ -453,9 +458,10 @@ def main(argv=None):
                      and target.stat().st_mode & 0o777 == 0o755
                      and payload.is_file() and payload.read_bytes() == data
                      and payload.stat().st_mode & 0o777 == 0o644)
+        onp_same = (not onp_owned or onp.read_bytes() == launcher_data)
         marker_same = marker.is_file() and marker.read_bytes() == marker_data
         owner_same = owner_marker.is_file() and owner_marker.read_bytes() == owner_data
-        if not unchanged or not marker_same or not owner_same:
+        if not unchanged or not onp_same or not marker_same or not owner_same:
             directory.mkdir(parents=True, exist_ok=True)
             command_stage = stage(directory, launcher_data, 0o755)
             staged.append(command_stage)
@@ -467,21 +473,32 @@ def main(argv=None):
             staged.append(owner_stage)
             pending_owner_stage = stage(directory, pending_owner_data, 0o644)
             staged.append(pending_owner_stage)
+            onp_stage = None
+            if not onp_same:
+                onp_stage = stage(directory, launcher_data, 0o755)
+                staged.append(onp_stage)
             validate_target(target)
             validate_target(payload)
             validate_target(marker)
             validate_target(owner_marker)
+            if onp_stage is not None:
+                validate_target(onp)
             if initial_install_state != (path_fingerprint(target), path_fingerprint(payload),
                                          path_fingerprint(owner_marker)):
                 raise ValueError("Project command changed during installation; nothing replaced")
-            replace_transaction((
+            if onp_stage is not None and initial_onp_state != path_fingerprint(onp):
+                raise ValueError("onp changed during project installation; nothing replaced")
+            replacements = [
                 (owner_marker, pending_owner_stage),
                 (payload, payload_stage),
                 (target, command_stage),
-                (marker, marker_stage),
-                (owner_marker, owner_stage),
-            ), staged)
-        print(f"project: {'already installed' if unchanged and marker_same else 'installed'} at {target}")
+            ]
+            if onp_stage is not None:
+                replacements.append((onp, onp_stage))
+            replacements.extend(((marker, marker_stage), (owner_marker, owner_stage)))
+            replace_transaction(replacements, staged)
+        fully_unchanged = unchanged and onp_same and marker_same and owner_same
+        print(f"project: {'already installed' if fully_unchanged else 'installed'} at {target}")
         print(f"Source: {pin['repository']} @ {pin['commit']}")
         if str(directory.resolve()) not in os.environ.get("PATH", "").split(os.pathsep):
             print(f"Add {directory} to PATH to run project from anywhere.")

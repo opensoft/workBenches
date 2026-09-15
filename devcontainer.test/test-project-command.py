@@ -506,6 +506,29 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(invoked.returncode, 0, invoked.stderr)
         self.assertEqual(json.loads(invoked.stdout), ["new", "Configured"])
 
+    def test_project_pin_rotation_refreshes_installer_owned_onp(self):
+        self.assertEqual(self.install(), 0)
+        onp = self.bin / "onp"
+        onp.write_bytes((self.bin / "project").read_bytes())
+        onp.chmod(0o755)
+        old_pin = json.loads(self.pin.read_text())
+        self.source.write_text('#!/usr/bin/env python3\nimport json, sys\nprint(json.dumps(["rotated", *sys.argv[1:]]))\n')
+        new_pin = {
+            **old_pin,
+            "commit": "b" * 40,
+            "sha256": hashlib.sha256(self.source.read_bytes()).hexdigest(),
+            "trusted_previous": [{
+                "commit": old_pin["commit"],
+                "sha256": old_pin["sha256"],
+            }],
+        }
+        self.pin.write_text(json.dumps(new_pin))
+        self.assertEqual(self.install(), 0)
+        self.assertEqual(onp.read_bytes(), (self.bin / "project").read_bytes())
+        result = subprocess.run([str(onp), "Upgrade"], text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), ["rotated", "new", "Upgrade"])
+
     def test_exec_owned_releases_shared_lock_before_delegated_work(self):
         lock_path = self.bin / installer.LOCK_NAME
         self.source.write_text(
