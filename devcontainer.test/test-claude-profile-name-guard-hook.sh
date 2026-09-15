@@ -51,7 +51,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=16
+EXPECTED_SCENARIOS=22
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -371,7 +371,81 @@ run_launcher
     || fail "re-upgrade: the entry was not restored on the next launch"; assertion
 
 # ---------------------------------------------------------------------------
-# 12. An invalid settings.json is refused before anything is written — the
+# 12. THE GROUPED-ENTRY DOWNGRADE REMOVAL (Copilot round 2, PR #88). The
+# first cut of the downgrade removal gated the OUTER UserPromptSubmit entry's
+# survival on `select` over a GENERATOR of per-nested-hook booleans: an entry
+# grouping the stale name-guard command with even one foreign hook was kept
+# WHOLE — stale command included — because the foreign hook made the
+# generator yield a `true`; one grouped with TWO foreign hooks was
+# DUPLICATED, because `select` passes the outer entry through once per
+# `true`. Both measured. This is not a shape any writer here produces on its
+# own (every entry this file or the usage guard's own merge ever appends is
+# single-command); it is what a person's hand-edit could leave, and a
+# downgrade must still heal it: filter the NESTED array, drop the outer
+# entry only when nothing nested survives.
+printf '%s\n' '{}' > "$SETTINGS"
+jq --arg c "$SNIPPET" '.hooks.UserPromptSubmit = [{
+      hooks: [
+        {type: "command", command: $c},
+        {type: "command", command: "foreign-1"},
+        {type: "command", command: "foreign-2"}
+      ]
+    }]' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+lanes_edit_pre_amendment_12
+run_launcher
+# Two entries survive, not one: the filtered grouped entry (foreign-1,
+# foreign-2, stale command gone) AND the usage guard's own separate entry,
+# which this whole suite always wires alongside (guard_ok is unconditionally
+# true throughout). Counted by what each IS, not by a total that would also
+# pass if the outer entry had been duplicated instead of filtered.
+[[ "$(guard_count)" -eq 0 ]] \
+    || fail "grouped downgrade: the stale command survived somewhere in the array ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[]?|.hooks[]?|select(.command|test("usage-guard"))]|length' "$SETTINGS")" -eq 1 ]] \
+    || fail "grouped downgrade: the usage guard entry beside it is not exactly one ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[] | select(any(.hooks[]?; .command == "foreign-1"))] | length' "$SETTINGS")" -eq 1 ]] \
+    || fail "grouped downgrade: foreign-1 does not survive exactly once — the outer entry was duplicated or dropped ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[] | select(any(.hooks[]?; .command == "foreign-2"))] | length' "$SETTINGS")" -eq 1 ]] \
+    || fail "grouped downgrade: foreign-2 does not survive exactly once — the outer entry was duplicated or dropped ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[] | select(any(.hooks[]?; .command == "foreign-1"))] | .[0].hooks | length' "$SETTINGS")" -eq 2 ]] \
+    || fail "grouped downgrade: foreign-1 and foreign-2 are not still grouped in ONE surviving entry ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+
+# ---------------------------------------------------------------------------
+# 13. THE LARGE-FILE PROBE, NO PIPE TO SIGPIPE (Copilot round 2, PR #88,
+# citing this repository's own measured defect at
+# `test-claude-profile-amendment-11.sh:654-678`). A two-stage `grep -v … |
+# grep -q …` under this script's own `set -o pipefail` can report a false
+# `name_guard_ok=false` on a REAL (comfortably-over-64-KiB) `lanes-edit.sh`
+# whose match sits late in the file: the second grep exits at its first
+# match and closes the pipe while the first still has lines queued, that
+# write raises SIGPIPE, the first grep exits 141, and pipefail reports the
+# PIPELINE's status as 141 even though the match was real. The probe reads
+# the file directly with `awk` — one process, no pipe, nothing to SIGPIPE —
+# so this is a deterministic assertion rather than a flake rate: built once,
+# asserted five times, the same as the citation's own re-measurement style.
+BIG_LANES_EDIT="$XFACTORY/lanes-edit.sh"
+{
+  printf '#!/usr/bin/env bash\n'
+  for _ in $(seq 1 20000); do
+    printf '# padding line about guards and other estate mechanisms, not a dispatch arm\n'
+  done
+  printf 'case "$1" in\n'
+  printf '  session-start) exit 0 ;;\n'
+  printf '  guard) exit 0 ;;\n'
+  printf '  *) exit 2 ;;\n'
+  printf 'esac\n'
+} > "$BIG_LANES_EDIT"
+chmod +x "$BIG_LANES_EDIT"
+[[ "$(wc -c < "$BIG_LANES_EDIT")" -gt 65536 ]] \
+    || fail "large-file setup: the fixture is not even past one pipe buffer, so it would not have caught the SIGPIPE regression"; assertion
+for _ in 1 2 3 4 5; do
+  printf '%s\n' '{}' > "$SETTINGS"
+  run_launcher
+  [[ "$(guard_count)" -eq 1 ]] \
+      || fail "large-file probe: name_guard_ok was false against a real dispatch arm in a $(wc -c < "$BIG_LANES_EDIT")-byte file"; assertion
+done
+
+# ---------------------------------------------------------------------------
+# 14. An invalid settings.json is refused before anything is written — the
 # pre-existing guard, checked here because a name-guard entry that bypassed it
 # would mean two writers disagreeing about when this file may be touched.
 lanes_edit_with_guard

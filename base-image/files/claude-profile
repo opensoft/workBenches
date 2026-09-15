@@ -130,6 +130,20 @@ lane_session_start_jq='
 # ensuring it. `$name_guard_present` is read once, before either branch, so
 # a profile with neither the entry nor a supported estate costs no write and
 # creates no `hooks.UserPromptSubmit` key that was not there.
+#
+# THE REMOVAL FILTERS THE NESTED `.hooks` ARRAY, NOT THE OUTER ENTRY (Copilot
+# round 2, PR #88). The first cut gated the OUTER entry's survival on
+# `select` over a GENERATOR — `(.hooks // [])[]? | .command) != $name_guard`
+# yields one boolean per nested hook, and `select` passes `.` through once
+# per TRUE — so an entry grouping the stale command with even one foreign
+# hook was kept WHOLE, stale command included (the foreign hook made the
+# generator yield a `true`), and one grouped with TWO foreign hooks was
+# DUPLICATED (`true` twice). Both measured: a downgrade could still leave
+# the profile locked out, which is the exact failure this fragment exists to
+# prevent. Now each outer entry's OWN nested array is filtered down to
+# `$kept` first, the entry is dropped only when `$kept` is empty, and a
+# surviving entry is reassigned `.hooks = $kept` — one pass, one outer
+# element in, at most one out, no generator anywhere near `select`.
 lane_name_guard_jq='
       ((.hooks.UserPromptSubmit // [])
         | any((.hooks // [])[]? | .command == $name_guard)) as $name_guard_present
@@ -144,7 +158,12 @@ lane_name_guard_jq='
                   }]
                   end
                 else
-                  [ $entries[] | select((((.hooks // [])[]? | .command) // "") != $name_guard) ]
+                  [ $entries[]
+                    | (.hooks // []) as $inner
+                    | ($inner | map(select(.command != $name_guard))) as $kept
+                    | select(($kept | length) > 0)
+                    | .hooks = $kept
+                  ]
                 end
             )
         else . end'
@@ -253,10 +272,28 @@ configure_profile_runtime() {
   # copy, and the false positive above, have neither once comments are
   # excluded — reproduced as its own regression case in
   # `test-claude-profile-name-guard-hook.sh`.
+  #
+  # ONE PROCESS, NEVER A PIPE (Copilot round 2, PR #88, citing this very
+  # repository's own measured defect at
+  # `devcontainer.test/test-claude-profile-amendment-11.sh:654-678`): a
+  # two-stage `grep -v … | grep -q …` reads this script's own top,
+  # `set -o pipefail`, so on a REAL `lanes-edit.sh` — comfortably past the
+  # 64 KiB pipe buffer — a match late in the file lets the second `grep -q`
+  # exit the instant it finds one, closing the pipe while the first `grep`
+  # still has lines to write; that write raises SIGPIPE, the first `grep`
+  # exits 141, and pipefail reports the PIPELINE'S status as 141 even though
+  # the match was real — a false `name_guard_ok=false` on an estate that
+  # answers the verb, cited here rather than re-measured because the citation
+  # already carries the counts (2, 3 and 6 spurious failures in 300 runs on a
+  # 37 KB payload; 1 in 400 on 1.3 MB). `awk` reads the file directly — no
+  # second process, no pipe, nothing to SIGPIPE — and does both the comment
+  # exclusion and the shape match in the one pass a single `NR` walk allows.
   name_guard_ok=false
-  if [[ -f "$lane_session_start_script" ]] \
-    && grep -vE '^[[:space:]]*#' "$lane_session_start_script" 2>/dev/null \
-       | grep -qE '^[[:space:]]*([A-Za-z0-9_-]+\|)*guard(\|[A-Za-z0-9_-]+)*\)'; then
+  if [[ -f "$lane_session_start_script" ]] && awk '
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*([A-Za-z0-9_-]+\|)*guard(\|[A-Za-z0-9_-]+)*\)/ { found=1; exit }
+    END { exit !found }
+  ' "$lane_session_start_script" 2>/dev/null; then
     name_guard_ok=true
   fi
 
