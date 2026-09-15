@@ -627,6 +627,34 @@ this launcher at all. Two consequences, both of which this launcher and
   next launch, because the ensure runs on every one. Any installer that wants a
   hook to fire for profile launches should write it into the profile
   `settings.json` files the same way, not into `~/.claude/settings.json`.
+- **Amendment 12's `UserPromptSubmit` NAME GUARD is ensured the same way,
+  beside the usage guard entry in that same array.** `configure_profile_runtime`
+  appends `opensoft/openRepoTools`'s own `GUARD_COMMAND` —
+  `~/projects/xFactory/lanes-edit.sh guard`, `"timeout": 5`, and deliberately
+  **no** `matcher` (`UserPromptSubmit` has no source to match on) and **no**
+  `|| true` (exit 2 is the whole mechanism; that suffix would swallow it and
+  install a guard that refuses nothing) — matched by the same exact-command
+  idempotence as the SessionStart entry: present costs no write, absent
+  appends, and an operator's own timeout or note on an existing entry is never
+  rewritten. On a downgrade — an estate that once answered `guard` and no
+  longer does — the entry is **removed** on the profile's next launch rather
+  than left behind to block every prompt with "unknown subcommand"; the
+  removal filters the entry's own nested `hooks` array rather than gating the
+  whole array-entry, so a hand-grouped entry that also carries a foreign
+  command loses only the stale one. It is written only where
+  `~/projects/xFactory/lanes-edit.sh` exists *and* answers the `guard`
+  subcommand, checked with a single `awk` pass (never a `grep | grep` pipe,
+  which can false-negative on a real file under this launcher's own
+  `set -o pipefail`) that excludes comment lines first and then anchors the
+  shape to where a line begins, so a comment merely containing the same
+  characters a dispatch line would — this estate's comments use "guard" as a
+  generic term for a defensive check constantly, with or without the
+  subcommand — cannot pass it; a bare substring probe was measured to
+  false-positive on `opensoft/workBenches`'s own pre-Amendment-12 vendored
+  copy. This is the profile half of Amendment 12 adoption act 3; the
+  bare-`claude` half is `openRepoTools --install`'s own merge into
+  `~/.claude/settings.json`, one path and one writer in both halves exactly as
+  the SessionStart entry above.
 - **Skills belong in the shared skills directory, and `openRepoTools --install`
   is the one thing that writes them.** Every profile's `skills` is a symlink to
   `~/.claude-profiles/shared/skills`, so one write there is visible to every
@@ -675,8 +703,14 @@ this launcher at all. Two consequences, both of which this launcher and
   `settings.json` is the launcher's, `~/.claude/settings.json` is
   `--install`'s, and the two never write one file.
 
-**Live state, and the gate has since opened.** Both writers above are gated on
-`~/projects/xFactory/lanes-edit.sh` having a `session-start` subcommand. That
+**Live state, and the gate has since opened.** This paragraph is about the
+`SessionStart` entry specifically: its two writers — the launcher's profile
+ensure and `--install`'s bare-`claude` merge — are gated on
+`~/projects/xFactory/lanes-edit.sh` having a `session-start` subcommand. The
+name guard bullet above has its **own**, independent gate, keyed on the
+`guard` subcommand rather than `session-start`, and is not part of the
+workstation measurement this paragraph reports; an estate can carry one
+subcommand without the other; nothing below this line describes it. That
 path is not a second spelling of the estate: `link-estates` keeps it pointed at
 the installed helper precisely because the hook's command string names it, and
 the helper it points at now carries the subcommand — `opensoft/openRepoTools`
