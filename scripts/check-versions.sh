@@ -463,10 +463,14 @@ layer3_identity_is_current() {
     local image_docker_gid
     local -a pipeline_status
 
-    image_username="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.username" }}' "$image" 2>/dev/null || true)"
-    image_uid="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.uid" }}' "$image" 2>/dev/null || true)"
-    image_gid="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.gid" }}' "$image" 2>/dev/null || true)"
-    image_docker_gid="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.docker-socket-gid" }}' "$image" 2>/dev/null || true)"
+    image_username="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.username" }}' "$image" 2>/dev/null)" \
+        || return 2
+    image_uid="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.uid" }}' "$image" 2>/dev/null)" \
+        || return 2
+    image_gid="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.gid" }}' "$image" 2>/dev/null)" \
+        || return 2
+    image_docker_gid="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.docker-socket-gid" }}' "$image" 2>/dev/null)" \
+        || return 2
 
     [[ "$image_username" == "$USERNAME" \
         && "$image_uid" == "$USER_UID" \

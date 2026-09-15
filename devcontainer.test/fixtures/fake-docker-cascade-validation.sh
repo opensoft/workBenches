@@ -69,15 +69,19 @@ PY
                 echo "${FAKE_DOCKER_LAYER3_RECIPE_SHA256:-}"
                 ;;
             *'layer3.username'*)
+                [ "${FAKE_DOCKER_LABEL_INSPECT_FAIL:-false}" = false ] || exit 1
                 echo "${FAKE_DOCKER_LAYER3_USERNAME:-brett}"
                 ;;
             *'layer3.uid'*)
+                [ "${FAKE_DOCKER_LABEL_INSPECT_FAIL:-false}" = false ] || exit 1
                 echo "${FAKE_DOCKER_LAYER3_UID:-$(id -u)}"
                 ;;
             *'layer3.gid'*)
+                [ "${FAKE_DOCKER_LABEL_INSPECT_FAIL:-false}" = false ] || exit 1
                 echo "${FAKE_DOCKER_LAYER3_GID:-$(id -g)}"
                 ;;
             *'layer3.docker-socket-gid'*)
+                [ "${FAKE_DOCKER_LABEL_INSPECT_FAIL:-false}" = false ] || exit 1
                 echo "${FAKE_DOCKER_LAYER3_DOCKER_SOCKET_GID:-}"
                 ;;
             *'{{.Created}}'*)

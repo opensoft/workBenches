@@ -152,6 +152,20 @@ if grep -Fq 'has stale user/group configuration' "$temp_dir/inspection-failed.ou
     exit 1
 fi
 
+if PATH="$fake_bin:$PATH" \
+    FAKE_DOCKER_LOG="$log" \
+    FAKE_DOCKER_LABEL_INSPECT_FAIL=true \
+    "$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
+        > "$temp_dir/metadata-inspection-failed.out" 2>&1; then
+    echo "expected failed Layer 3 metadata inspection to fail validation" >&2
+    exit 1
+fi
+grep -Fq 'activation state is unknown' "$temp_dir/metadata-inspection-failed.out"
+if grep -Fq 'has stale user/group configuration' "$temp_dir/metadata-inspection-failed.out"; then
+    echo "failed metadata inspection was misclassified as stale identity" >&2
+    exit 1
+fi
+
 if WORKBENCHES_LAYER3_IDENTITY_TIMEOUT_SECONDS=invalid \
     "$checker" --layer 0 >/dev/null 2> "$temp_dir/invalid-timeout.err"; then
     echo "expected an invalid Layer 3 identity timeout to fail" >&2
