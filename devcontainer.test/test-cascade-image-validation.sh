@@ -220,7 +220,8 @@ printf '%s\n' \
     '  gene:' \
     '    image: sim-bench-gene_bench:latest' \
     '  ui:' \
-    '    image: sim-bench-ui' > "$compose_bench_dir/docker-compose.yml"
+    '    image: sim-bench-ui' \
+    '  # image: sim-bench-retired:latest' > "$compose_bench_dir/docker-compose.yml"
 printf '%s\n' \
     'services:' \
     '  dev:' \
@@ -234,6 +235,23 @@ if grep -Fq 'sim-bench-dev:latest' "$log"; then
     echo "cascade capture inspected an unrelated Compose output" >&2
     exit 1
 fi
+if grep -Fq 'sim-bench-retired:latest' "$log"; then
+    echo "cascade capture inspected a commented Compose output" >&2
+    exit 1
+fi
+
+CASCADE_IMAGES=()
+CASCADE_IMAGE_RECORDS=()
+if PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+    FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
+    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir" \
+        "sim-bench-gene_bench:latest=$captured_image_id
+sim-bench-ui:latest=$captured_image_id"; then
+    echo "expected unchanged pre-build Compose images to fail cascade capture" >&2
+    exit 1
+fi
+test "${#CASCADE_IMAGES[@]}" -eq 0
+test "${#CASCADE_IMAGE_RECORDS[@]}" -eq 0
 
 CASCADE_IMAGES=()
 CASCADE_IMAGE_RECORDS=()

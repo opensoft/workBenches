@@ -195,6 +195,7 @@ build_layer2_bench() {
     local bench_dir="$1"
     local bench_name
     local image
+    local prebuild_image_records=""
     bench_name=$(basename "$bench_dir")
     image="$(bench_dir_to_image_repo "$bench_name"):latest"
 
@@ -217,6 +218,7 @@ build_layer2_bench() {
     done
 
     if [ -n "$build_script" ]; then
+        prebuild_image_records="$(capture_cascade_image_ids "$image" "$build_script" "$bench_dir")"
         build_timer_start
         if [ "$NO_CACHE" = true ]; then
             DOCKER_BUILD_NO_CACHE=1 "$build_script" --user "$USERNAME" 2>/dev/null || \
@@ -237,6 +239,7 @@ build_layer2_bench() {
         done
 
         if [ -n "$dockerfile" ]; then
+            prebuild_image_records="$(capture_cascade_image_ids "$image" "" "$bench_dir")"
             build_timer_start
             local context_dir
             local image_repo
@@ -254,7 +257,8 @@ build_layer2_bench() {
         fi
     fi
 
-    record_rebuilt_cascade_image "$image" "$bench_name" "$build_script" "$bench_dir"
+    record_rebuilt_cascade_image \
+        "$image" "$bench_name" "$build_script" "$bench_dir" "$prebuild_image_records"
 }
 
 # Cascade rebuild all downstream dependents of a base image

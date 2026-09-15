@@ -33,18 +33,12 @@ build_uses_default_compose_file() {
     return 1
 }
 
-record_rebuilt_cascade_image() {
+declared_cascade_images() {
     local image="$1"
-    local bench_name="$2"
-    local build_script="${3:-}"
-    local bench_dir="${4:-}"
+    local build_script="${2:-}"
+    local bench_dir="${3:-}"
     local image_repo="${image%:*}"
-    local produced_image
-    local current_image_id
-    local found=false
-    local missing=false
     local -a metadata_files=()
-    local -a declared_images=()
 
     [[ -f "$build_script" ]] && metadata_files+=("$build_script")
     if [[ -f "$build_script" && -d "$bench_dir" ]]; then
@@ -82,16 +76,30 @@ record_rebuilt_cascade_image() {
     # sim-bench-gene_bench:latest). Limit discovery to references declared by
     # the selected build script/Compose files so an unrelated pre-existing
     # daemon image cannot enter the cascade result merely by sharing a prefix.
-    mapfile -t declared_images < <({
+    {
         if [[ "${#metadata_files[@]}" -gt 0 ]]; then
-            grep -Eho '[A-Za-z0-9][A-Za-z0-9._/-]*:latest' "${metadata_files[@]}" 2>/dev/null || true
-            grep -Eho '[A-Za-z0-9][A-Za-z0-9._/-]*:\$\{USER:-[^}]+\}' "${metadata_files[@]}" 2>/dev/null \
-                | sed 's/:.*/:latest/' || true
             awk '
+                {
+                    line = $0
+                    sub(/^[[:space:]]+/, "", line)
+                    if (line ~ /^#/) next
+                    sub(/[[:space:]]+#.*/, "", line)
+                    working = line
+                    while (match(working, /[A-Za-z0-9][A-Za-z0-9._\/-]*:latest/)) {
+                        print substr(working, RSTART, RLENGTH)
+                        working = substr(working, RSTART + RLENGTH)
+                    }
+                    working = line
+                    while (match(working, /[A-Za-z0-9][A-Za-z0-9._\/-]*:[$][{]USER:-[^}]+[}]/)) {
+                        ref = substr(working, RSTART, RLENGTH)
+                        sub(/:.*/, ":latest", ref)
+                        print ref
+                        working = substr(working, RSTART + RLENGTH)
+                    }
+                }
                 /^[[:space:]]*image:[[:space:]]*/ {
-                    ref = $0
+                    ref = line
                     sub(/^[[:space:]]*image:[[:space:]]*/, "", ref)
-                    sub(/[[:space:]]+#.*/, "", ref)
                     gsub(/^[[:space:]]+/, "", ref)
                     gsub(/[[:space:]]+$/, "", ref)
                     quote = sprintf("%c", 39)
@@ -109,7 +117,46 @@ record_rebuilt_cascade_image() {
         fi
     } | awk -v repo="$image_repo" '
         $0 == repo ":latest" || (index($0, repo "-") == 1 && $0 ~ /:latest$/)
-    ' | LC_ALL=C sort -u)
+    ' | LC_ALL=C sort -u
+}
+
+capture_cascade_image_ids() {
+    local image="$1"
+    local build_script="${2:-}"
+    local bench_dir="${3:-}"
+    local declared_image
+    local image_id
+    local found=false
+
+    while IFS= read -r declared_image; do
+        [[ -n "$declared_image" ]] || continue
+        found=true
+        image_id="$(image_id_if_present "$declared_image")"
+        [[ -n "$image_id" ]] && printf '%s=%s\n' "$declared_image" "$image_id"
+    done < <(declared_cascade_images "$image" "$build_script" "$bench_dir")
+    if [[ "$found" = false ]]; then
+        image_id="$(image_id_if_present "$image")"
+        [[ -n "$image_id" ]] && printf '%s=%s\n' "$image" "$image_id"
+    fi
+}
+
+record_rebuilt_cascade_image() {
+    local image="$1"
+    local bench_name="$2"
+    local build_script="${3:-}"
+    local bench_dir="${4:-}"
+    local prebuild_image_records="${5:-}"
+    local produced_image
+    local current_image_id
+    local prior_image
+    local prior_id
+    local prior_image_id
+    local found=false
+    local missing=false
+    local stale=false
+    local -a declared_images=()
+
+    mapfile -t declared_images < <(declared_cascade_images "$image" "$build_script" "$bench_dir")
     if [[ "${#declared_images[@]}" -eq 0 ]]; then
         declared_images=("$image")
     fi
@@ -121,12 +168,24 @@ record_rebuilt_cascade_image() {
             missing=true
             continue
         fi
+        prior_image_id=""
+        while IFS='=' read -r prior_image prior_id; do
+            if [[ "$prior_image" == "$produced_image" ]]; then
+                prior_image_id="$prior_id"
+                break
+            fi
+        done <<< "$prebuild_image_records"
+        if [[ -n "$prior_image_id" && "$current_image_id" == "$prior_image_id" ]]; then
+            echo "Declared Layer 2 image $produced_image was not refreshed by $bench_name" >&2
+            stale=true
+            continue
+        fi
         CASCADE_IMAGES+=("$produced_image")
         CASCADE_IMAGE_RECORDS+=("$produced_image=$current_image_id")
         found=true
     done
 
-    if [ "$missing" = true ] || [ "$found" = false ]; then
+    if [ "$missing" = true ] || [ "$stale" = true ] || [ "$found" = false ]; then
         echo "Expected Layer 2 image $image was not produced by $bench_name" >&2
         return 1
     fi
