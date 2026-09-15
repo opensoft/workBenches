@@ -1287,6 +1287,44 @@ test_git_worktree_prune_visible_distinguishes_out_of_scope_from_unmounted() {
     fi
 }
 
+# The recovery note's step 1 (move the orphaned directory aside) is not
+# enough on its own when the registration is the kind
+# git_worktree_prune_visible deliberately LEFT IN PLACE (missing only its
+# own .git file): step 2's `git worktree add` refuses a still-registered
+# path even though nothing is there any more, so the note adds a `git
+# worktree remove --force <path>` in between. This proves that documented
+# sequence actually works end to end (Copilot round 4 on
+# opensoft/workBenches#92).
+test_recovery_note_clears_a_still_registered_worktree_before_readding_it() {
+    local repo="$FIXTURE_ROOT/recovery-still-registered"
+    local half_gone_path orphaned_path
+
+    # Given: exactly the scenario git_worktree_prune_visible warns about —
+    # a worktree missing only its own .git file, left registered.
+    initialize_fixture "$repo" $'checkout_mode: worktree\nbase_branch: main' || return 1
+    half_gone_path="$FIXTURE_ROOT/recovery-still-registered-wt"
+    git -C "$repo" branch half-gone || return 1
+    git -C "$repo" worktree add -q "$half_gone_path" half-gone || return 1
+    rm -f "$half_gone_path/.git" || return 1
+
+    # When: the recovery note's steps run in order — move aside, THEN
+    # clear the still-present registration, THEN recreate.
+    orphaned_path="$half_gone_path.orphaned"
+    mv "$half_gone_path" "$orphaned_path" || return 1
+    if git -C "$repo" worktree add "$half_gone_path" half-gone >/dev/null 2>&1; then
+        printf 'assertion failed: add succeeded without clearing the stale registration first (fixture no longer matches the documented scenario)\n' >&2
+        return 1
+    fi
+    git -C "$repo" worktree remove --force "$half_gone_path" || return 1
+    if ! git -C "$repo" worktree add "$half_gone_path" half-gone >/dev/null 2>&1; then
+        printf 'assertion failed: add still refused the path after clearing the stale registration\n' >&2
+        return 1
+    fi
+
+    # Then: the recreated worktree is real and on the right branch.
+    assert_worktree 'half-gone' "$half_gone_path"
+}
+
 test_concurrent_sequential_number_reservations() {
     local repo="$FIXTURE_ROOT/concurrent-numbering"
     local shim_dir="$FIXTURE_ROOT/concurrent-numbering-git-shim"
@@ -4196,6 +4234,7 @@ run_scenario 'git_worktree_prune_visible refuses to treat "/" as a pruning witne
 run_scenario 'the ancestor walk terminates on a slash-free relative path' test_git_worktree_first_existing_ancestor_terminates_on_a_relative_path
 run_scenario 'git_worktree_prune_visible warns without deleting a worktree missing only its own .git file' test_git_worktree_prune_visible_warns_without_deleting_a_worktree_missing_only_its_own_git_file
 run_scenario 'git_worktree_prune_visible distinguishes out-of-scope from unmounted' test_git_worktree_prune_visible_distinguishes_out_of_scope_from_unmounted
+run_scenario 'the recovery note clears a still-registered worktree before re-adding it' test_recovery_note_clears_a_still_registered_worktree_before_readding_it
 run_scenario 'three-leg feature creates a worktree in both legs and none at the root' test_three_leg_creates_both_leg_worktrees
 run_scenario 'three-leg dry run creates nothing' test_three_leg_dry_run_creates_nothing
 run_scenario 'three-leg refuses branch checkout mode' test_three_leg_refuses_branch_checkout_mode

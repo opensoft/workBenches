@@ -292,6 +292,18 @@ Nothing here restores the registration for you — recover it by hand:
    ```
    mv <path> <path>.orphaned
    ```
+   If what you saw was specifically a "could not clear the stale worktree
+   registration" warning — a directory `git_worktree_prune_visible` found
+   missing only its own `.git` file, and deliberately left registered
+   rather than risk deleting whatever else was still in it — the
+   registration is still there even after this move, and step 2's `add`
+   will refuse it: `fatal: '<path>' is a missing but already registered
+   worktree; use 'add -f' to override, or 'prune' or 'remove' to clear`.
+   Clear that one registration, now that nothing is left at `<path>` for
+   `remove` to validate against:
+   ```
+   git worktree remove --force <path>
+   ```
 2. Recreate the registration on the same branch. When a local branch
    already has the commits you expect:
    ```
