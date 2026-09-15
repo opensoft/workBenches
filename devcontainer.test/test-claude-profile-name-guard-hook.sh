@@ -24,7 +24,15 @@
 #     lanes-edit.sh, or one that has no `guard` subcommand — and the probe
 #     for that must not be fooled by the word "guard" appearing in this
 #     estate's own comments, which it does constantly, with and without the
-#     subcommand.
+#     subcommand, in a CODE line or a COMMENT line alike (Copilot round 1,
+#     PR #88);
+#   - a profile that already carries the entry SELF-HEALS the other way too:
+#     if the estate is later downgraded to one that cannot answer `guard`,
+#     the entry is REMOVED on the profile's next launch rather than left
+#     behind to block every prompt with "unknown subcommand" (Copilot round
+#     1, PR #88) — SessionStart's `|| true` makes that failure mode
+#     impossible for it, which is why this suite tests it and that one does
+#     not.
 
 set -euo pipefail
 
@@ -43,7 +51,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=12
+EXPECTED_SCENARIOS=16
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -121,6 +129,26 @@ EOF
     chmod +x "$XFACTORY/lanes-edit.sh"
 }
 lanes_edit_absent() { rm -f "$XFACTORY/lanes-edit.sh"; }
+
+# THE SECOND FALSE-POSITIVE SHAPE (Copilot round 1, PR #88): no `guard)`
+# dispatch arm anywhere, but a COMMENT containing the exact substrings a
+# plain `|guard\||\|guard\)|\(guard\|` alternation would have matched —
+# `|guard|` mid-list, `|guard)` at the end, `(guard|` at the start — none of
+# them on a real dispatch line. A probe that checks raw file text rather than
+# a line-anchored, comment-excluded shape wires the hook here; the correct
+# one does not, because `guard` never dispatches to anything.
+lanes_edit_guard_only_in_prose() {
+    cat > "$XFACTORY/lanes-edit.sh" <<'EOF'
+#!/usr/bin/env bash
+# Related verbs seen in the wild: (guard|shield), a fence|guard|wall, and
+# some configs still spell it guard) with the paren glued on.
+case "$1" in
+  session-start) exit 0 ;;
+  *) echo "unknown subcommand '$1' (session-start|who|swapped)" >&2; exit 2 ;;
+esac
+EOF
+    chmod +x "$XFACTORY/lanes-edit.sh"
+}
 
 common_env=(
     "PATH=$FAKE_BIN:/usr/bin:/bin"
@@ -302,7 +330,48 @@ run_launcher
     || fail "false-positive regression: the comment '(the dispatcher guard)' wired a hook that would block every prompt"; assertion
 
 # ---------------------------------------------------------------------------
-# 10. An invalid settings.json is refused before anything is written — the
+# 10. THE SECOND FALSE-POSITIVE SHAPE (Copilot round 1, PR #88): no dispatch
+# arm at all, but a COMMENT carrying the exact `|guard|`, `(guard|` and
+# `guard)` substrings a plain alternation over raw file text would have
+# matched. The probe must exclude comment lines and anchor the shape to where
+# a line begins, not merely search for the substring anywhere.
+lanes_edit_guard_only_in_prose
+printf '%s\n' '{}' > "$SETTINGS"
+run_launcher
+[[ "$(guard_count)" -eq 0 ]] \
+    || fail "false-positive regression (prose): a comment merely containing |guard| shapes wired a hook that would block every prompt"; assertion
+
+# ---------------------------------------------------------------------------
+# 11. THE DOWNGRADE FAIL-SAFE (Copilot round 1, PR #88). A profile that
+# already carries the entry, on an estate later downgraded to one that
+# cannot answer `guard`, must have the entry REMOVED on its next launch —
+# not left behind. Left in place, that exact command would fall through the
+# downgraded lanes-edit.sh's "unknown subcommand" die, WHICH ALSO EXITS 2,
+# blocking every prompt with the very entry meant to protect it.
+# SessionStart cannot have this failure mode (its command ends in `|| true`),
+# which is why only this suite tests a supported-to-unsupported transition.
+lanes_edit_with_guard
+printf '%s\n' '{}' > "$SETTINGS"
+run_launcher
+[[ "$(guard_count)" -eq 1 ]] \
+    || fail "downgrade setup: the entry was not ensured while the estate supported it"; assertion
+lanes_edit_pre_amendment_12
+run_launcher
+[[ "$(guard_count)" -eq 0 ]] \
+    || fail "downgrade: the entry survived an estate that can no longer answer guard, and would block every prompt"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[]?|.hooks[]?|select(.command|test("usage-guard"))]|length' "$SETTINGS")" -eq 1 ]] \
+    || fail "downgrade: the usage guard entry beside it was wrongly touched too"; assertion
+[[ "$(jq -r '(.hooks.SessionStart // [])|length' "$SETTINGS")" -eq 1 ]] \
+    || fail "downgrade: the SessionStart entry, which this lanes-edit.sh still supports, was wrongly removed too"; assertion
+# 11b. And an upgrade after that heals it again on the very next launch —
+# the two transitions are symmetric, self-healing in both directions.
+lanes_edit_with_guard
+run_launcher
+[[ "$(guard_count)" -eq 1 ]] \
+    || fail "re-upgrade: the entry was not restored on the next launch"; assertion
+
+# ---------------------------------------------------------------------------
+# 12. An invalid settings.json is refused before anything is written — the
 # pre-existing guard, checked here because a name-guard entry that bypassed it
 # would mean two writers disagreeing about when this file may be touched.
 lanes_edit_with_guard

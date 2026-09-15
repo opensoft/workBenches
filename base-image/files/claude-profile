@@ -105,25 +105,49 @@ lane_session_start_jq='
             end
         )'
 
-# THE NAME GUARD IS PRESERVED-IF-PRESENT, LIKE SessionStart, NOT
-# FILTERED-AND-REFRESHED LIKE THE USAGE GUARD ABOVE — an entry that already
-# carries the command is left exactly as it is, whatever timeout an operator
-# gave it, and otherwise the canonical one is appended; nothing else under
-# `.hooks.UserPromptSubmit` is touched, so the usage guard entry and any
-# foreign hook survive beside it either way. This mirrors
-# `opensoft/openRepoTools --install`'s own merge for this exact entry into a
-# bare `claude`'s settings.json: present costs no write, absent appends one.
+# THE NAME GUARD IS PRESERVED-IF-PRESENT WHILE SUPPORTED, LIKE SessionStart —
+# an entry that already carries the command is left exactly as it is,
+# whatever timeout an operator gave it, and otherwise the canonical one is
+# appended while `$name_guard_ok`; nothing else under `.hooks.UserPromptSubmit`
+# is touched, so the usage guard entry and any foreign hook survive beside it
+# either way. This mirrors `opensoft/openRepoTools --install`'s own merge for
+# this exact entry into a bare `claude`'s settings.json: present costs no
+# write, absent appends one.
+#
+# UNLIKE SessionStart, IT ALSO REMOVES ITS OWN ENTRY THE MOMENT `$name_guard_ok`
+# GOES FALSE (Copilot round 1, PR #88). SessionStart's command ends in
+# `|| true`, so an entry already written stays harmless forever even if the
+# estate is later downgraded — the downgrade only stops NEW installs. This
+# entry has no such suffix by design (exit 2 is the whole mechanism), so an
+# entry left behind after a downgrade is not inert: `lanes-edit.sh guard`
+# against an estate that no longer answers the verb falls through to
+# "unknown subcommand", which ALSO exits 2 — the profile would be locked out
+# of every prompt it submits, by the very entry meant to protect it. So the
+# fragment is unconditional (no outer `if $name_guard_ok then … else . end` at
+# the call site): while ok, it ensures the entry as before; the moment ok
+# turns false, it strips any entry carrying the exact command, self-healing
+# on the profile's very next launch, same as an upgrade self-heals into
+# ensuring it. `$name_guard_present` is read once, before either branch, so
+# a profile with neither the entry nor a supported estate costs no write and
+# creates no `hooks.UserPromptSubmit` key that was not there.
 lane_name_guard_jq='
-      .hooks = (.hooks // {})
-      | .hooks.UserPromptSubmit = (
-          (.hooks.UserPromptSubmit // []) as $entries
-          | if ([$entries[]? | (.hooks // [])[]? | .command] | index($name_guard))
-            then $entries
-            else $entries + [{
-              hooks: [{type: "command", command: $name_guard, timeout: $name_guard_timeout}]
-            }]
-            end
-        )'
+      ((.hooks.UserPromptSubmit // [])
+        | any((.hooks // [])[]? | .command == $name_guard)) as $name_guard_present
+      | if ($name_guard_ok or $name_guard_present) then
+          .hooks = (.hooks // {})
+          | .hooks.UserPromptSubmit = (
+              (.hooks.UserPromptSubmit // []) as $entries
+              | if $name_guard_ok then
+                  if $name_guard_present then $entries
+                  else $entries + [{
+                    hooks: [{type: "command", command: $name_guard, timeout: $name_guard_timeout}]
+                  }]
+                  end
+                else
+                  [ $entries[] | select((((.hooks // [])[]? | .command) // "") != $name_guard) ]
+                end
+            )
+        else . end'
 
 configure_profile_runtime() {
   local config_dir="$1" statusline_source statusline_link settings settings_tmp statusline_command default_model
@@ -212,20 +236,27 @@ configure_profile_runtime() {
   # (14 mentions in `opensoft/workBenches`'s own pre-Amendment-12 vendored
   # copy, `devBenches/base-image/files/openrepotools/lanes-edit.sh`, none of
   # them the subcommand), and even a plain `guard)` case-label shape false-
-  # positives on that same file's comment "the dispatcher guard), so no READ
-  # can return it" — measured, not assumed. What that file does NOT carry,
-  # and what `opensoft/openRepoTools`'s live copy does, is the verb inside
-  # the dispatcher's own enumeration of every subcommand it knows: the
-  # `unknown subcommand '$cmd' (…|session-start|guard|idle-holders|…)` die
-  # lists it pipe-delimited, and the workspace-check exemption right above
-  # the dispatch table reads `session-start|guard) : ;;` — so `|guard|`,
-  # `|guard)` (that exemption, or the verb landing last in the die's list)
-  # and `(guard|` (landing first) are the three shapes only a dispatcher that
-  # truly implements it can write, and none of them is the shape the false
-  # positive above took.
+  # positives on that same file's COMMENT "the dispatcher guard), so no READ
+  # can return it" — measured, not assumed.
+  #
+  # SO THE PROBE EXCLUDES COMMENTS AND ANCHORS THE SHAPE TO WHERE A LINE
+  # BEGINS (Copilot round 1, PR #88: "accepting arbitrary file text" — a
+  # plain substring match on `|guard|`, `|guard)` or `(guard|` anywhere in
+  # the file, comments included, can still be fooled by prose that happens to
+  # contain one of those three character sequences). A dispatcher's own case
+  # arm is a LINE, not a substring: `guard)` alone, or a pipe-separated run of
+  # verbs ending or beginning with it — `session-start|guard)`, the workspace-
+  # check exemption right above the real dispatch table — starts at that
+  # line's first non-blank character once `#`-led comment lines are dropped.
+  # `opensoft/openRepoTools`'s live copy has both such lines and the die's own
+  # enumeration of every subcommand it knows; the vendored pre-Amendment-12
+  # copy, and the false positive above, have neither once comments are
+  # excluded — reproduced as its own regression case in
+  # `test-claude-profile-name-guard-hook.sh`.
   name_guard_ok=false
   if [[ -f "$lane_session_start_script" ]] \
-    && grep -qE '\|guard\||\|guard\)|\(guard\|' "$lane_session_start_script" 2>/dev/null; then
+    && grep -vE '^[[:space:]]*#' "$lane_session_start_script" 2>/dev/null \
+       | grep -qE '^[[:space:]]*([A-Za-z0-9_-]+\|)*guard(\|[A-Za-z0-9_-]+)*\)'; then
     name_guard_ok=true
   fi
 
@@ -265,7 +296,7 @@ configure_profile_runtime() {
       | .model = (.model // $model)
       | (if $guard_ok then'"$lane_guard_jq"' else . end)
       | (if $session_start_ok then'"$lane_session_start_jq"' else . end)
-      | (if $name_guard_ok then'"$lane_name_guard_jq"' else . end)
+      | '"$lane_name_guard_jq"'
     ' "$settings" > "$settings_tmp"
   else
     jq -n --arg command "$statusline_command" --arg model "$default_model" \
@@ -285,7 +316,7 @@ configure_profile_runtime() {
     }
     | (if $guard_ok then'"$lane_guard_jq"' else . end)
     | (if $session_start_ok then'"$lane_session_start_jq"' else . end)
-    | (if $name_guard_ok then'"$lane_name_guard_jq"' else . end)' > "$settings_tmp"
+    | '"$lane_name_guard_jq"'' > "$settings_tmp"
   fi
   chmod 600 "$settings_tmp"
   mv -f "$settings_tmp" "$settings"

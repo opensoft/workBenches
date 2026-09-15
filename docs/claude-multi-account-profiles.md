@@ -694,8 +694,14 @@ this launcher at all. Two consequences, both of which this launcher and
   `settings.json` is the launcher's, `~/.claude/settings.json` is
   `--install`'s, and the two never write one file.
 
-**Live state, and the gate has since opened.** Both writers above are gated on
-`~/projects/xFactory/lanes-edit.sh` having a `session-start` subcommand. That
+**Live state, and the gate has since opened.** This paragraph is about the
+`SessionStart` entry specifically: its two writers — the launcher's profile
+ensure and `--install`'s bare-`claude` merge — are gated on
+`~/projects/xFactory/lanes-edit.sh` having a `session-start` subcommand. The
+name guard bullet above has its **own**, independent gate, keyed on the
+`guard` subcommand rather than `session-start`, and is not part of the
+workstation measurement this paragraph reports; an estate can carry one
+subcommand without the other; nothing below this line describes it. That
 path is not a second spelling of the estate: `link-estates` keeps it pointed at
 the installed helper precisely because the hook's command string names it, and
 the helper it points at now carries the subcommand — `opensoft/openRepoTools`
