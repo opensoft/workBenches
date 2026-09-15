@@ -999,6 +999,88 @@ test_explicit_decoy_only_root_reports_no_worktrees() {
     fi
 }
 
+# git_worktree_prune_visible (git-common.sh) is what resume.sh and
+# create-new-feature.sh now call instead of a blanket `git worktree prune`
+# (opensoft/workBenches#87): a symlinked projects directory means Git can
+# register a worktree under its REAL, resolved path, and a container that
+# mounts the repository at the symlink's own spelling without also mounting
+# its target sees that registration as gone and, with the old blanket call,
+# pruned it — along with every other lane's worktree in the same shared
+# .git. This exercises the helper directly against a plain repository:
+# a registration whose directory is genuinely gone under a root this
+# process CAN see is pruned; one rewritten to a path nothing here mounts is
+# left registered with the explanatory line; and asked to prune against a
+# root this process cannot see AT ALL, nothing is touched, not even a
+# genuinely gone one.
+test_git_worktree_prune_visible_keeps_unmounted_and_prunes_visible() {
+    local repo="$FIXTURE_ROOT/prune-visible"
+    local config=$'checkout_mode: worktree\nbase_branch: main\nworktree_root: ../prune-visible-worktrees'
+    local root="$FIXTURE_ROOT/prune-visible-worktrees"
+    local unmounted_root="$FIXTURE_ROOT/prune-visible-not-mounted-here"
+    local gone_path unmounted_path common_dir gitdir_file stderr_file
+
+    # Given: a worktree whose directory is genuinely deleted, and one whose
+    # registration has been rewritten to a path nothing here ever mounts —
+    # the shape of another lane's worktree on the far side of a symlinked
+    # projects directory.
+    initialize_fixture "$repo" "$config" || return 1
+    mkdir -p "$root" || return 1
+    git -C "$repo" branch gone || return 1
+    git -C "$repo" worktree add -q "$root/gone" gone || return 1
+    gone_path="$root/gone"
+    rm -rf "$gone_path"
+
+    git -C "$repo" branch unmounted || return 1
+    git -C "$repo" worktree add -q "$root/unmounted" unmounted || return 1
+    common_dir="$(git -C "$repo" rev-parse --git-common-dir)"
+    case "$common_dir" in /*) ;; *) common_dir="$repo/$common_dir" ;; esac
+    gitdir_file="$common_dir/worktrees/unmounted/gitdir"
+    if [ ! -f "$gitdir_file" ]; then
+        printf 'assertion failed: no admin gitdir file for the unmounted fixture worktree\n' >&2
+        return 1
+    fi
+    unmounted_path="$unmounted_root/unmounted-lane"
+    printf '%s/.git\n' "$unmounted_path" > "$gitdir_file" || return 1
+    rm -rf "$root/unmounted"
+
+    # When: the shared helper prunes this repo against the worktree root
+    # this process actually computed.
+    stderr_file="$FIXTURE_ROOT/prune-visible.stderr"
+    (source "$GIT_COMMON_SCRIPT" && git_worktree_prune_visible "$repo" "$root") 2>"$stderr_file"
+
+    # Then: the genuinely gone worktree, reachable through the mounted
+    # root, is pruned...
+    if git -C "$repo" worktree list --porcelain | grep -Fq "worktree $gone_path"; then
+        printf 'assertion failed: a truly deleted worktree under the mounted root was not pruned\n%s\n' \
+            "$(git -C "$repo" worktree list --porcelain)" >&2
+        return 1
+    fi
+
+    # ...and the one this process cannot see stays registered, with the
+    # explanatory line naming it.
+    if ! git -C "$repo" worktree list --porcelain | grep -Fq "worktree $unmounted_path"; then
+        printf 'assertion failed: an unmounted registration was pruned instead of left alone\n%s\n' \
+            "$(git -C "$repo" worktree list --porcelain)" >&2
+        return 1
+    fi
+    if ! grep -Fq "'$unmounted_path' is not visible from this mount; left registered." "$stderr_file"; then
+        printf 'assertion failed: no not-visible notice for the unmounted registration\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+
+    # Then: asked to prune against a root THIS process cannot see either,
+    # nothing at all is touched — not even a genuinely gone registration.
+    git -C "$repo" branch also-gone || return 1
+    git -C "$repo" worktree add -q "$root/also-gone" also-gone || return 1
+    rm -rf "$root/also-gone"
+    (source "$GIT_COMMON_SCRIPT" && git_worktree_prune_visible "$repo" "$unmounted_root") >/dev/null 2>&1
+    if ! git -C "$repo" worktree list --porcelain | grep -Fq "worktree $root/also-gone"; then
+        printf 'assertion failed: pruning against an unreachable root touched a registration anyway\n%s\n' \
+            "$(git -C "$repo" worktree list --porcelain)" >&2
+        return 1
+    fi
+}
+
 test_concurrent_sequential_number_reservations() {
     local repo="$FIXTURE_ROOT/concurrent-numbering"
     local shim_dir="$FIXTURE_ROOT/concurrent-numbering-git-shim"
@@ -1950,6 +2032,64 @@ test_three_leg_rolls_back_when_code_leg_fails() {
     assert_equal '1' "$(worktree_record_count "$root/spec")" 'rollback spec worktree records' || return 1
     if [ -e "$root/worktrees/001-routing-core" ]; then
         printf 'assertion failed: rollback left the feature directory behind\n' >&2
+        return 1
+    fi
+}
+
+test_three_leg_rollback_leaves_unmounted_registrations() {
+    local stderr_file="$FIXTURE_ROOT/three-leg-rollback-unmounted.stderr"
+    local shim_dir="$FIXTURE_ROOT/three-leg-rollback-unmounted-bin"
+    local root common_dir gitdir_file unmounted_path
+
+    # Given: the same forced code-leg failure as the plain rollback test,
+    # but the spec leg ALSO carries a registration this process cannot see
+    # — another lane's worktree on the far side of a symlinked projects
+    # directory (opensoft/workBenches#87), not actually gone.
+    initialize_three_leg_fixture 'three-leg-rollback-unmounted' "$THREE_LEG_CONFIG" || return 1
+    root="$THREE_LEG_ROOT"
+    git -C "$root/spec" branch unmounted-lane || return 1
+    git -C "$root/spec" worktree add -q "$root/worktrees/unmounted-lane" unmounted-lane || return 1
+    common_dir="$(git -C "$root/spec" rev-parse --git-common-dir)"
+    case "$common_dir" in /*) ;; *) common_dir="$root/spec/$common_dir" ;; esac
+    gitdir_file="$common_dir/worktrees/unmounted-lane/gitdir"
+    if [ ! -f "$gitdir_file" ]; then
+        printf 'assertion failed: no admin gitdir file for the unmounted fixture worktree\n' >&2
+        return 1
+    fi
+    unmounted_path="$FIXTURE_ROOT/three-leg-rollback-not-mounted-here/unmounted-lane"
+    printf '%s/.git\n' "$unmounted_path" > "$gitdir_file" || return 1
+    rm -rf "$root/worktrees/unmounted-lane"
+    install_code_worktree_failure_shim "$shim_dir" || return 1
+
+    # When: the hook runs with the failing shim first on PATH.
+    if (cd "$root" && PATH="$shim_dir:$PATH" SPECKIT_TEST_REAL_GIT="$REAL_GIT" \
+        bash "$FEATURE_SCRIPT" --json 'Add routing core' >/dev/null 2>"$stderr_file"); then
+        printf 'assertion failed: the hook succeeded although the code leg failed\n' >&2
+        return 1
+    fi
+
+    # Then: the spec leg worktree this run actually created is still rolled
+    # back, exactly as the plain rollback test asserts...
+    if ! grep -Fq 'Rolling back the spec leg worktree' "$stderr_file"; then
+        printf 'assertion failed: no rollback message\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+    assert_equal 'main unmounted-lane ' "$(leg_branches "$root/spec")" \
+        'rollback spec leg branches, unmounted-lane branch untouched' || return 1
+    if [ -e "$root/worktrees/001-routing-core" ]; then
+        printf 'assertion failed: rollback left the feature directory behind\n' >&2
+        return 1
+    fi
+
+    # ...and the unmounted registration is untouched: not visible from
+    # here, so never swept up as collateral by the fixed rollback.
+    if ! git -C "$root/spec" worktree list --porcelain | grep -Fq "worktree $unmounted_path"; then
+        printf 'assertion failed: rollback pruned a registration this process cannot see\n%s\n' \
+            "$(git -C "$root/spec" worktree list --porcelain)" >&2
+        return 1
+    fi
+    if ! grep -Fq "'$unmounted_path' is not visible from this mount; left registered." "$stderr_file"; then
+        printf 'assertion failed: no not-visible notice for the unmounted registration\n%s\n' "$(<"$stderr_file")" >&2
         return 1
     fi
 }
@@ -3492,6 +3632,65 @@ test_resume_rollback_names_the_leg_for_an_attached_worktree() {
         'the pre-existing branch was not deleted'
 }
 
+test_resume_rollback_leaves_unmounted_registrations() {
+    local stderr_file="$FIXTURE_ROOT/resume-rollback-unmounted.stderr"
+    local clone shim_dir spec_tree common_dir gitdir_file unmounted_path
+
+    # Given: the same attach-then-rollback scenario as the plain resume
+    # rollback test, but the clone's spec leg ALSO carries a registration
+    # this process cannot see (opensoft/workBenches#87).
+    park_then_clone 'resume-rollback-unmounted' "$stderr_file" || return 1
+    clone="$RESUME_ROOT"
+    git -C "$clone/spec" fetch -q origin '001-routing-core:001-routing-core' || return 1
+    spec_tree="$clone/worktrees/001-routing-core/spec"
+
+    git -C "$clone/spec" branch unmounted-lane || return 1
+    git -C "$clone/spec" worktree add -q "$clone/worktrees/unmounted-lane" unmounted-lane || return 1
+    common_dir="$(git -C "$clone/spec" rev-parse --git-common-dir)"
+    case "$common_dir" in /*) ;; *) common_dir="$clone/spec/$common_dir" ;; esac
+    gitdir_file="$common_dir/worktrees/unmounted-lane/gitdir"
+    if [ ! -f "$gitdir_file" ]; then
+        printf 'assertion failed: no admin gitdir file for the unmounted fixture worktree\n' >&2
+        return 1
+    fi
+    unmounted_path="$FIXTURE_ROOT/resume-rollback-not-mounted-here/unmounted-lane"
+    printf '%s/.git\n' "$unmounted_path" > "$gitdir_file" || return 1
+    rm -rf "$clone/worktrees/unmounted-lane"
+
+    # When: the code leg's worktree add fails, so the run rolls back.
+    shim_dir="$FIXTURE_ROOT/resume-rollback-unmounted-shim"
+    install_code_worktree_failure_shim "$shim_dir" || return 1
+    RESUME_OUTPUT=''
+    RESUME_STATUS=0
+    RESUME_OUTPUT="$(cd "$clone" && env \
+        SPECKIT_WORKSTATION=Fixture SPECKIT_LANE=fixture-lane \
+        SPECKIT_TEST_REAL_GIT="$REAL_GIT" PATH="$shim_dir:$PATH" \
+        bash .specify/extensions/git/scripts/bash/resume.sh \
+        --workspace "$WORKSPACE_DIR" 2>"$stderr_file")" || RESUME_STATUS=$?
+
+    # Then: the attached spec worktree this run actually created is really
+    # gone, exactly as the plain rollback test asserts...
+    assert_equal '2' "$RESUME_STATUS" 'rollback resume exit code' || return 1
+    assert_file_absent "$spec_tree" 'the rolled-back spec worktree' || return 1
+    if git -C "$clone/spec" worktree list --porcelain | grep -Fq "worktree $spec_tree"; then
+        printf 'assertion failed: the spec leg still registers the removed worktree\n%s\n' \
+            "$(git -C "$clone/spec" worktree list --porcelain)" >&2
+        return 1
+    fi
+
+    # ...and the unmounted registration is untouched: not visible from
+    # here, so never swept up as collateral by the fixed rollback.
+    if ! git -C "$clone/spec" worktree list --porcelain | grep -Fq "worktree $unmounted_path"; then
+        printf 'assertion failed: rollback pruned a registration this process cannot see\n%s\n' \
+            "$(git -C "$clone/spec" worktree list --porcelain)" >&2
+        return 1
+    fi
+    if ! grep -Fq "'$unmounted_path' is not visible from this mount; left registered." "$stderr_file"; then
+        printf 'assertion failed: no not-visible notice for the unmounted registration\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+}
+
 test_per_org_workspace_override() {
     local stderr_file="$FIXTURE_ROOT/org-override.stderr"
     local root home config default_workspace override_workspace status other_root
@@ -3781,12 +3980,14 @@ run_scenario 'legacy line porcelain rejects directory and forged candidates with
 run_scenario 'Git discovery failures are not reported as zero records' test_discovery_failure_is_not_reported_as_zero_records
 run_scenario 'fallback root detection ignores decoy directories' test_fallback_root_ignores_decoy_directories
 run_scenario 'explicit decoy-only root reports no registered worktrees' test_explicit_decoy_only_root_reports_no_worktrees
+run_scenario 'git_worktree_prune_visible keeps an unmounted registration and prunes a truly gone one' test_git_worktree_prune_visible_keeps_unmounted_and_prunes_visible
 run_scenario 'three-leg feature creates a worktree in both legs and none at the root' test_three_leg_creates_both_leg_worktrees
 run_scenario 'three-leg dry run creates nothing' test_three_leg_dry_run_creates_nothing
 run_scenario 'three-leg refuses branch checkout mode' test_three_leg_refuses_branch_checkout_mode
 run_scenario 'three-leg refuses an uninitialised leg' test_three_leg_refuses_uninitialised_leg
 run_scenario 'three-leg refuses an existing feature directory' test_three_leg_refuses_existing_feature_directory
 run_scenario 'three-leg rolls back the spec leg when the code leg fails' test_three_leg_rolls_back_when_code_leg_fails
+run_scenario "three-leg rollback leaves another lane's unmounted registration alone" test_three_leg_rollback_leaves_unmounted_registrations
 run_scenario 'three-leg discovery reports the feature and both leg worktrees' test_three_leg_get_last_worktree_reports_feature
 run_scenario 'three-leg auto-commit commits both legs and never the root' test_three_leg_auto_commit_commits_both_legs_only
 run_scenario 'park commits and pushes a WIP commit in both legs and never at the root' test_park_commits_and_pushes_both_legs
@@ -3813,6 +4014,7 @@ run_scenario 'two workstations share one workspace repository' test_two_workstat
 run_scenario 'park against a stale workspace keeps a refused feature entry' test_park_against_a_stale_workspace_keeps_a_refused_entry
 run_scenario 'park refuses a dirty workspace by name, not as a rebase conflict' test_park_refuses_a_dirty_workspace_by_name
 run_scenario "resume's rollback removes an attached worktree through its own leg" test_resume_rollback_names_the_leg_for_an_attached_worktree
+run_scenario "resume's rollback leaves another lane's unmounted registration alone" test_resume_rollback_leaves_unmounted_registrations
 run_scenario 'a per-org workspace override keeps that org out of the default repository' test_per_org_workspace_override
 run_scenario 'single-repository park and resume' test_single_repo_park_and_resume
 

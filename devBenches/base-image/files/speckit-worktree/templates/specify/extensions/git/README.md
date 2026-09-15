@@ -262,3 +262,49 @@ published through it.
 **The PowerShell mirror has neither.** `scripts/powershell/*.ps1` are not
 shape-aware and gain nothing here: **native Windows parks nothing.** Use the
 dev container, or WSL, on Windows.
+
+## Recovering an orphaned worktree registration
+
+`resume.sh` and `create-new-feature.sh` only ever roll back the worktree the
+current run itself just created, through `git_worktree_prune_visible`
+(`git-common.sh`): it removes a registration `git worktree list --porcelain`
+reports `prunable` only when this process can see the worktree root the
+registration lives under and the directory beneath it is genuinely gone, and
+leaves alone one merely outside this container's mount, printing a line so a
+person sees it. A registration can still end up orphaned some other way —
+most commonly a workstation where a symlinked projects directory (say
+`~/projects` -> `/workspace/projects`) means Git stores a worktree's REAL,
+resolved path, and a container that mounts the repository at the symlink's
+own spelling without also mounting its target runs a plain `git worktree
+prune` by hand, or an older build of these scripts that still ran one
+unconditionally. Either way the symptom is the same: the directory is still
+there, full of its files, but every Git command inside it fails, because its
+`.git` file points at a registration that is no longer in
+`.git/worktrees/`.
+
+Nothing here restores the registration for you — recover it by hand:
+
+1. Move the orphaned directory aside; it still holds every file the
+   worktree ever had, and `git worktree add` refuses a path that already
+   exists.
+   ```
+   mv <path> <path>.orphaned
+   ```
+2. Recreate the registration on the same branch, either from `origin` or a
+   local branch that already has the commits you expect:
+   ```
+   git worktree add <path> <branch>
+   ```
+3. Copy the moved-aside files back over the fresh worktree — everything
+   except its own `.git` file, which the `add` above just wrote:
+   ```
+   rsync -a --exclude=.git "<path>.orphaned/" "<path>/"
+   ```
+4. Diff the fresh worktree against the backup before deleting it, to
+   confirm nothing was lost in the move:
+   ```
+   git -C <path> status
+   diff -rq --exclude=.git "<path>.orphaned" "<path>"
+   ```
+   Once the diff and `git status` agree with what you expect, remove
+   `<path>.orphaned`.
