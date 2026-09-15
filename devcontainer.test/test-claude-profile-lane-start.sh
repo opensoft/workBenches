@@ -93,6 +93,18 @@ common_env=(
     "FAKE_LANE_START_ENV=$FAKE_LANE_START_ENV"
     "WORKBENCHES_SHARED_MCP_FAMILIES=disabled"
     "TMUX=fake-session"
+    # opensoft/workBenches#95: this suite is about the argv hand-off shape,
+    # not the lane defect capture's own keep/delete semantics (pinned in
+    # test-claude-profile-lane-default.sh), so 0 keeps every fake lane-start
+    # call here — always instant, having no interactive session to hold open
+    # — from being treated as a "fast exit" and leaving a kept capture file
+    # behind in /tmp on every run of this suite.
+    "WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS=0"
+    # Copilot round 1 on opensoft/workBenches#96: belt and braces beside the
+    # override above — a test-local TMPDIR means even a scenario that someday
+    # exercises a kept capture here is cleaned by this file's own EXIT trap
+    # rather than left in the real host /tmp.
+    "TMPDIR=$TEST_ROOT"
 )
 
 expected_claude_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions --permission-mode bypassPermissions'

@@ -889,6 +889,20 @@ export_tmux_identity() {
   pane="$(tmux display-message -p '#{pane_id}' 2>/dev/null || true)"
   [[ -n "$session" ]] && export WORKBENCHES_TMUX_SESSION="$session"
   [[ -n "$pane" ]] && export WORKBENCHES_TMUX_PANE="$pane"
+  # PRE-EXISTING, found while testing opensoft/workBenches#96's fast-exit
+  # disambiguation (Copilot round 1): with no explicit return, this
+  # function's own exit status was its LAST command's — the `pane` line
+  # above — so a $TMUX set but pointing at a session or pane tmux can no
+  # longer answer for (exactly what an already-closed pane looks like from
+  # here) left both $session and $pane empty, made that last `&&` false, and
+  # this bare call at its one call site then killed the whole script under
+  # `set -e` before ever reaching lane resolution. Never reached before
+  # because every prior scenario had tmux answer SOMETHING for a live
+  # session; #96's own new coverage (FAKE_TMUX_DISPLAY_FAIL) is the first to
+  # make tmux fail outright — which is also the one production case, a pane
+  # already gone, that this whole function must not let a masked exit status
+  # cut the launch short over.
+  return 0
 }
 
 # Native Claude records ~/.local/bin/claude as its expected installation path.
@@ -1424,6 +1438,34 @@ lane_window_is() {
   command -v tmux >/dev/null 2>&1 || return 1
   now="$(tmux display-message -p '#W' 2>/dev/null || true)"
   [[ -n "$now" && "$now" == "$want" ]]
+}
+
+lane_window_confirmed_elsewhere() {
+  # UNLIKE lane_window_is, false here means "not confirmed" rather than "no" —
+  # it covers both the window genuinely carrying this lane's name AND tmux
+  # being unreachable altogether (no tmux, or `display-message` itself
+  # failing, which is exactly what asking about a pane or session that has
+  # ALREADY CLOSED looks like). Only a read that SUCCEEDED and returned a
+  # DIFFERENT, non-empty name counts as confirmed (Copilot round 1 on
+  # opensoft/workBenches#96, claude-profile:2742 — `! lane_window_is` treated
+  # "unreadable" the same as "reads as something else", so a fast exit whose
+  # pane had already gone by the time this asked was misread as lane-start's
+  # own harmless refusal and its capture deleted, which is the one case this
+  # whole PR exists to keep). The lane defect capture's keep/delete decision
+  # is the only caller; nothing else needs this finer distinction.
+  local want="$1" now
+  # Copilot round 3 on opensoft/workBenches#96: `lane_window_is` and
+  # `export_tmux_identity` both require $TMUX before asking tmux anything;
+  # this one didn't, so a `--lane` launched genuinely OUTSIDE tmux (lane-start
+  # refuses that as its own status-1 environment case) could query whatever
+  # DEFAULT tmux server happens to be running on the machine — a stranger's
+  # session, unrelated to this launch — and read ITS current window's name as
+  # "confirmed elsewhere", deleting a capture that was never ambiguous to
+  # begin with.
+  [[ -n "${TMUX:-}" ]] || return 1
+  command -v tmux >/dev/null 2>&1 || return 1
+  now="$(tmux display-message -p '#W' 2>/dev/null)" || return 1
+  [[ -n "$now" && "$now" != "$want" ]]
 }
 
 lane_defect_retire_line() {
@@ -2699,18 +2741,157 @@ case "$action" in
           # made before that process has drained it would race an
           # almost-instantly-declined confirm (the fake this PR's test uses
           # is exactly that race, made deterministic by this wait).
+          # NO AGE-BASED SWEEP OF OLD KEPT CAPTURES (Copilot round 1 on
+          # opensoft/workBenches#96 added one, `-mmin +60`, on the reasoning
+          # that a capture's mtime stops moving once the tee that owns it
+          # stops writing; round 2 found the reasoning wrong — an ordinary
+          # interactive Claude session's own display goes to stdout, so a
+          # session can sit fully alive for well over an hour without ONE
+          # byte landing on the stderr this tees, leaving a live capture's
+          # mtime just as stale as an abandoned one's. `rm`ing it out from
+          # under that still-open tee does not corrupt the WRITING
+          # process's own data (the inode survives as long as its fd is
+          # open), but it does mean that same launch's own later keep/print
+          # logic — path-based, like the truncation right below — finds
+          # nothing there once it finally runs. A time-only signal cannot
+          # tell "quiet but alive" from "abandoned", and getting this wrong
+          # loses evidence a live session still owns, which is worse than
+          # the unbounded-across-TIME accumulation it would have bounded;
+          # a correct version needs to know the owning process is actually
+          # dead (a pid recorded alongside the capture, checked with `kill
+          # -0`), which is a distinct feature this issue never asked for.
+          # The per-file byte cap right below still bounds any ONE capture,
+          # kept or not, and carries no such risk — it only ever touches
+          # the file THIS invocation itself owns.
           lane_defect_capture="$(mktemp "${TMPDIR:-/tmp}/pclaude-lane-defect.XXXXXX")"
+          # THE PATH IS PRINTED BEFORE THE EXEC (opensoft/workBenches#95): a
+          # launcher-made window that exits fast can take this whole pane —
+          # and the live tee below with it — the instant the command below
+          # returns, so this is the one line an operator glancing at a pane
+          # already on its way out, or a terminal whose scrollback outlives
+          # the pane by a moment, might still catch. Belt and braces beside
+          # the keep-and-print below, never the load-bearing half alone.
+          echo "pclaude: lane defect capture: $lane_defect_capture" >&2
+          lane_defect_fast_exit_seconds="${WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS:-20}"
+          # VALIDATED (Copilot round 2 on opensoft/workBenches#96,
+          # claude-profile:2756): a malformed or negative override reaching
+          # the `-ge` comparison below is not just a stray "integer
+          # expression expected" on stderr — a NEGATIVE number would make
+          # that comparison true for status 0 no matter how fast the run
+          # was, silently defeating the whole keep rule it guards. Anything
+          # that is not a bare non-negative integer falls back to the
+          # documented default instead of reaching that comparison at all.
+          [[ "$lane_defect_fast_exit_seconds" =~ ^[0-9]+$ ]] \
+            || lane_defect_fast_exit_seconds=20
+          # NORMALIZED, NOT JUST SHAPE-CHECKED (Copilot round 3 on
+          # opensoft/workBenches#96, claude-profile:2776): the regex above
+          # accepts "08"/"09"/"010" as digit strings, but `[[ -ge ]]` reads a
+          # leading-zero operand as OCTAL — "08" and "09" are not even valid
+          # octal digits and error outright, and "010" silently means 8, not
+          # the ten someone typed. Stripped down to the decimal number it
+          # looks like ("0" itself left alone) before it is ever compared.
+          while [[ "$lane_defect_fast_exit_seconds" == 0* \
+            && "${#lane_defect_fast_exit_seconds}" -gt 1 ]]; do
+            lane_defect_fast_exit_seconds="${lane_defect_fast_exit_seconds#0}"
+          done
+          lane_defect_started="$SECONDS"
           set +e
           exec 9> >(tee "$lane_defect_capture" >&2)
           lane_defect_tee_pid=$!
           CLAUDE_CONFIG_DIR="$config_dir" CLAUDE_BIN="$claude_bin" \
             "${lane_argv[@]}" "$lane" -- "${claude_flags[@]}" "$@" 2>&9
           lane_status=$?
+          # CAPTURED HERE, NOT AFTER `wait` (Copilot round 3 on
+          # opensoft/workBenches#96, claude-profile:2814): `wait` only
+          # rejoins the TEE process, which can still be draining buffered
+          # output for a moment after the command it was reading from has
+          # already exited. Timing the LANE COMMAND — was $lane_status
+          # decided fast? — means stopping the clock the instant it is
+          # decided, not after whatever the tee has left to flush.
+          lane_defect_elapsed=$(( SECONDS - lane_defect_started ))
           exec 9>&-
           wait "$lane_defect_tee_pid" 2>/dev/null
           set -e
           lane_defect_line="$(lane_defect_retire_line "$lane_defect_capture" || true)"
-          rm -f "$lane_defect_capture"
+          # opensoft/workBenches#95: an UNCONDITIONAL `rm -f` here deleted the
+          # only evidence of a fast exit in the same breath the window that
+          # showed it live could also be gone. KEPT now unless this run is
+          # provably nothing new: statuses 1 and 2 are lane-start's own two
+          # documented refusals (below) — nothing renamed, nothing written,
+          # Claude never started — so they are redundant with what already
+          # printed live, PROVIDED the window is CONFIRMED not already the
+          # lane's own — a read that succeeded and named something else, not
+          # merely a read that failed (`lane_window_confirmed_elsewhere`,
+          # Copilot round 1 on #96: tmux being unreachable looks exactly like
+          # the pane this launcher would be keeping evidence FOR having
+          # already closed, so unreadable keeps rather than deletes). Where
+          # the window IS the lane's, or is unreadable, that same status could
+          # just as easily be a Claude lane-start took the lane and exec'd
+          # (Evidence 2/5g), and the ambiguity is exactly why this keeps
+          # rather than guesses. A status 0 that held the pane at least
+          # $lane_defect_fast_exit_seconds is an ordinary long-lived run and
+          # is deleted; anything faster, or any other status, is kept with
+          # its tail printed below — "nothing to see" and "the evidence of
+          # what broke" look identical from a status and an elapsed time
+          # alone, and guessing wrong the deleting way is the bug this
+          # closes. ($lane_defect_elapsed itself was captured right after
+          # $lane_status, above — before `wait`, not after.)
+          lane_defect_clean=false
+          if { [[ "$lane_status" -eq 1 || "$lane_status" -eq 2 ]] \
+              && lane_window_confirmed_elsewhere "$lane"; } \
+            || { [[ "$lane_status" -eq 0 ]] \
+              && [[ "$lane_defect_elapsed" -ge "$lane_defect_fast_exit_seconds" ]]; }; then
+            lane_defect_clean=true
+          fi
+          if [[ "$lane_defect_clean" == true ]]; then
+            rm -f "$lane_defect_capture"
+          else
+            # BOUND WHAT IS KEPT, NOT JUST WHAT IS PRINTED (Copilot round 1 on
+            # opensoft/workBenches#96, claude-profile:2752, revised round 2
+            # and round 3): the tail below is 15 lines, but until now the
+            # FILE ITSELF carried the whole stderr stream, unbounded — one
+            # very chatty fast exit could keep megabytes. BY BYTES, not
+            # lines (round 2: a line-count cap does not bound storage
+            # against one very long line), and written with `mktemp` rather
+            # than a plain redirect (round 2: a plain `>` creates the
+            # replacement under the shell's umask — commonly
+            # world-readable, unlike the original capture's own 0600 — and
+            # a predictable `.trunc` name in a shared TMPDIR can be
+            # pre-planted as a symlink). There is NO sweep of OLD kept
+            # captures across separate invocations — round 1 added one,
+            # round 2 retracted it as unsafe (see the comment above the
+            # mktemp this file's own capture came from) — so 200000 bytes
+            # only bounds any ONE capture, never how many accumulate over
+            # time. The LIVE stream this tees from is left unbounded on
+            # purpose, so the operator watching it live still sees
+            # everything, exactly as documented above. EVERY STEP HERE IS
+            # GUARDED (round 3: `mktemp`/`tail`/`mv` were bare statements
+            # after `set -e` was restored, so any one of them failing —
+            # disk pressure, most plausibly — killed the launcher before it
+            # ever reached the tail-and-causes print below, the opposite of
+            # "best-effort"): a failed `mktemp` leaves nothing to truncate
+            # into and this is skipped; a failed `tail` or `mv` cleans up
+            # its own scratch file and leaves the untruncated capture in
+            # place, oversized rather than lost.
+            if [[ "$(wc -c < "$lane_defect_capture" 2>/dev/null)" -gt 200000 ]]; then
+              lane_defect_trunc=""
+              lane_defect_trunc="$(mktemp "$lane_defect_capture.trunc.XXXXXX" 2>/dev/null)" \
+                || lane_defect_trunc=""
+              if [[ -n "$lane_defect_trunc" ]]; then
+                if tail -c 200000 "$lane_defect_capture" > "$lane_defect_trunc" 2>/dev/null; then
+                  mv -f "$lane_defect_trunc" "$lane_defect_capture" 2>/dev/null \
+                    || rm -f "$lane_defect_trunc"
+                else
+                  rm -f "$lane_defect_trunc"
+                fi
+              fi
+            fi
+            {
+              echo "pclaude: $lane exited after ${lane_defect_elapsed}s (status $lane_status); lane defect capture kept: $lane_defect_capture"
+              tail -n 15 "$lane_defect_capture"
+              echo "pclaude: known causes — a title resume opened the interactive picker: resume by the exact uuid instead; a background or fork holder: claude agents, or claude attach <id>, or lane-end $lane --retire <pid>"
+            } >&2
+          fi
           # WHICH STATUSES ARE LANE-START'S OWN. It documents exactly two:
           # 1 environment — not inside tmux, no register, NO SUCH DIRECTORY —
           # and 2 refusal — an argument error, a name a window cannot take, a
