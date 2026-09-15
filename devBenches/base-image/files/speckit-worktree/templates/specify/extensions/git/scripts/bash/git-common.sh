@@ -723,12 +723,20 @@ load_git_worktrees() {
 # (possibly <path> itself) that IS a directory here, canonicalised the same
 # way _git_worktree_canonicalize_dir resolves any other directory. <path>
 # need not exist — that is exactly the case this exists to test. "/" always
-# exists, so the walk always terminates.
+# exists, so the walk always terminates; a relative <path> with no "/" left
+# to strip cannot be climbed any further either, and is treated the same
+# way, as unresolvable, rather than left spinning on a no-op trim.
 _git_worktree_first_existing_ancestor() {
     local candidate="$1"
+    local previous
 
     while [ -n "$candidate" ] && [ "$candidate" != "/" ] && [ ! -d "$candidate" ]; do
+        previous="$candidate"
         candidate="${candidate%/*}"
+        if [ "$candidate" = "$previous" ]; then
+            candidate="/"
+            break
+        fi
         [ -n "$candidate" ] || candidate="/"
     done
     [ -d "$candidate" ] || candidate="/"
@@ -749,43 +757,69 @@ _git_worktree_first_existing_ancestor() {
 #
 # For every registration `git worktree list --porcelain` reports
 # `prunable`: walk up from its path to the nearest existing ancestor here.
-# When that ancestor IS <root> itself — this process can see the worktree
-# root, so anything it does not find beneath it is genuinely gone — remove
-# the registration. Otherwise this process stopped climbing before reaching
-# <root>: the mount does not reach that far, the registration may be
-# exactly right on the workstation that made it, and it is left exactly as
-# it is, with one line on stderr so a person sees it. Never touches a
-# LOCKED registration: `git worktree list` never reports one as prunable.
+# When that ancestor is <root> itself, OR somewhere BENEATH <root> (the
+# three-leg layout nests a feature's worktrees two deep, under
+# <root>/<branch>/{spec,code}, so a missing leg whose sibling leg's
+# directory still exists stops the climb one level short of <root> without
+# meaning anything about visibility) — this process can see at least that
+# much of <root>, so anything it does not find beneath it is genuinely
+# gone — remove the registration. Otherwise this process stopped climbing
+# before reaching <root> at all: the mount does not reach that far, the
+# registration may be exactly right on the workstation that made it, and
+# it is left exactly as it is, with one line on stderr so a person sees
+# it. Never touches a LOCKED registration: `git worktree list` never
+# reports one as prunable.
 #
 # <root> not being a directory here refuses the whole call: nothing is
-# provably prunable relative to a root this process cannot itself see.
+# provably prunable relative to a root this process cannot itself see. So
+# does <root> canonicalising to "/": the filesystem root exists on every
+# mount, so seeing it proves nothing about whether THIS mount reaches the
+# registration's actual, unrelated path — treating it as a witness would
+# let every invisible registration's ancestor walk land on the one
+# directory that is trivially always there, reintroducing the collateral
+# deletion this helper exists to prevent.
 git_worktree_prune_visible() {
     local repo="$1"
     local root="$2"
-    local canonical_root="" index path ancestor remove_error
+    local canonical_root="" index path resolved_path ancestor remove_error
 
     [ -d "$repo" ] || return 1
     if _git_worktree_canonicalize_dir "$root"; then
         canonical_root="$_GIT_WORKTREE_CANONICAL_RESULT"
     fi
-    [ -n "$canonical_root" ] || return 0
+    [ -n "$canonical_root" ] && [ "$canonical_root" != "/" ] || return 0
 
     load_git_worktrees "$repo" || return 1
     index=0
     while [ "$index" -lt "${#GIT_WORKTREE_PRUNABLE_PATHS[@]}" ]; do
         path="${GIT_WORKTREE_PRUNABLE_PATHS[$index]}"
         index=$((index + 1))
-        _git_worktree_first_existing_ancestor "$path"
+        # Git normally reports worktree paths absolute; resolve against
+        # $repo on the rare chance one comes back relative (e.g. a future
+        # Git honouring worktree.useRelativePaths), so the walk climbs the
+        # registration's own directory chain rather than whatever this
+        # process's cwd happens to be. $path itself — not $resolved_path —
+        # is what gets removed and named on stderr: that is the spelling
+        # `git worktree remove` and a reader of `git worktree list` both
+        # recognise.
+        case "$path" in
+            /*) resolved_path="$path" ;;
+            *) resolved_path="$repo/$path" ;;
+        esac
+        _git_worktree_first_existing_ancestor "$resolved_path"
         ancestor="$_GIT_WORKTREE_ANCESTOR_RESULT"
-        if [ "$ancestor" = "$canonical_root" ]; then
-            remove_error=""
-            if ! remove_error=$(git -C "$repo" worktree remove --force "$path" 2>&1); then
-                >&2 echo "[specify] Warning: could not clear the stale worktree registration '$path'."
-                [ -z "$remove_error" ] || >&2 printf '  %s\n' "$remove_error"
-            fi
-        else
-            >&2 echo "[specify] '$path' is not visible from this mount; left registered."
-        fi
+        case "$ancestor" in
+            "$canonical_root"|"$canonical_root"/*)
+                remove_error=""
+                if ! remove_error=$(git -C "$repo" worktree remove --force "$path" 2>&1); then
+                    >&2 echo "[specify] Warning: could not clear the stale worktree registration '$path'."
+                    [ -z "$remove_error" ] || >&2 printf '  %s\n' "$remove_error"
+                fi
+                ;;
+            *)
+                >&2 echo "[specify] '$path' is not visible from this mount; left registered."
+                ;;
+        esac
     done
 }
 

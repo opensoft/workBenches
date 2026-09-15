@@ -265,13 +265,15 @@ dev container, or WSL, on Windows.
 
 ## Recovering an orphaned worktree registration
 
-`resume.sh` and `create-new-feature.sh` only ever roll back the worktree the
-current run itself just created, through `git_worktree_prune_visible`
-(`git-common.sh`): it removes a registration `git worktree list --porcelain`
-reports `prunable` only when this process can see the worktree root the
-registration lives under and the directory beneath it is genuinely gone, and
-leaves alone one merely outside this container's mount, printing a line so a
-person sees it. A registration can still end up orphaned some other way —
+`resume.sh`'s rollback and `create-new-feature.sh`'s rollback both call
+`git_worktree_prune_visible` (`git-common.sh`) after undoing the one
+worktree the current run itself just created. That helper is not scoped to
+only the worktree the rollback meant to undo: it sweeps every registration
+`git worktree list --porcelain` reports `prunable` under the same worktree
+root, and removes each one it can positively confirm is genuinely gone —
+never one merely outside this container's mount, which it leaves registered
+and names on stderr instead. A registration can still end up orphaned some
+other way —
 most commonly a workstation where a symlinked projects directory (say
 `~/projects` -> `/workspace/projects`) means Git stores a worktree's REAL,
 resolved path, and a container that mounts the repository at the symlink's
@@ -296,15 +298,20 @@ Nothing here restores the registration for you — recover it by hand:
    git worktree add <path> <branch>
    ```
 3. Copy the moved-aside files back over the fresh worktree — everything
-   except its own `.git` file, which the `add` above just wrote:
+   except its own `.git` file, which the `add` above just wrote. The
+   leading `/` anchors the exclusion to the transfer's own root, so a
+   submodule's `.git` further down the tree is copied, not skipped:
    ```
-   rsync -a --exclude=.git "<path>.orphaned/" "<path>/"
+   rsync -a --exclude=/.git "<path>.orphaned/" "<path>/"
    ```
 4. Diff the fresh worktree against the backup before deleting it, to
-   confirm nothing was lost in the move:
+   confirm nothing was lost in the move. `diff --exclude` has no such
+   anchor — it matches `.git` at every depth — so leave it out and expect
+   exactly one difference, the worktree's own top-level `.git` file,
+   which the `add` above legitimately rewrote:
    ```
    git -C <path> status
-   diff -rq --exclude=.git "<path>.orphaned" "<path>"
+   diff -rq "<path>.orphaned" "<path>"
    ```
    Once the diff and `git status` agree with what you expect, remove
    `<path>.orphaned`.

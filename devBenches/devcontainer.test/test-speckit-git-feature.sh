@@ -1081,6 +1081,102 @@ test_git_worktree_prune_visible_keeps_unmounted_and_prunes_visible() {
     fi
 }
 
+# The three-leg layout nests a feature two levels under the worktree root
+# (<root>/<branch>/{spec,code}). A missing leg whose sibling leg directory
+# still exists stops the ancestor climb one level short of <root> itself —
+# this proves that still counts as visible, not only landing exactly on
+# <root> (Copilot round 1 on opensoft/workBenches#92).
+test_git_worktree_prune_visible_prunes_beneath_the_root_too() {
+    local repo="$FIXTURE_ROOT/prune-visible-nested"
+    local config=$'checkout_mode: worktree\nbase_branch: main\nworktree_root: worktrees'
+    local root="$repo/worktrees"
+    local gone_path stderr_file
+
+    # Given: two sibling "leg" worktrees share a branch directory; one is
+    # deleted, the other stays, so the branch directory itself still exists.
+    initialize_fixture "$repo" "$config" || return 1
+    git -C "$repo" branch 001-feature/spec || return 1
+    git -C "$repo" branch 001-feature/code || return 1
+    git -C "$repo" worktree add -q "$root/001-feature/spec" 001-feature/spec || return 1
+    git -C "$repo" worktree add -q "$root/001-feature/code" 001-feature/code || return 1
+    gone_path="$root/001-feature/spec"
+    rm -rf "$gone_path"
+    if [ ! -d "$root/001-feature" ]; then
+        printf 'assertion failed: fixture setup left no sibling leg directory behind\n' >&2
+        return 1
+    fi
+
+    # When: the shared helper prunes this repo; the missing leg's nearest
+    # existing ancestor is "<root>/001-feature", not <root> itself.
+    stderr_file="$FIXTURE_ROOT/prune-visible-nested.stderr"
+    (source "$GIT_COMMON_SCRIPT" && git_worktree_prune_visible "$repo" "$root") 2>"$stderr_file"
+
+    # Then: it is still pruned — the root and everything down to its
+    # sibling are visible here, so this is genuinely gone, not unmounted.
+    if git -C "$repo" worktree list --porcelain | grep -Fq "worktree $gone_path"; then
+        printf 'assertion failed: a registration beneath (not at) the worktree root was left alone\n%s\n' \
+            "$(git -C "$repo" worktree list --porcelain)" >&2
+        return 1
+    fi
+    if grep -Fq 'is not visible from this mount' "$stderr_file"; then
+        printf 'assertion failed: a visible registration was reported as unmounted\n%s\n' "$(<"$stderr_file")" >&2
+        return 1
+    fi
+}
+
+# worktree_root resolving to "/" must never become a pruning witness: every
+# mount has a "/", so seeing it proves nothing about whether THIS mount can
+# see any PARTICULAR unmounted registration — treating it as a witness
+# would reintroduce the collateral deletion this helper exists to prevent
+# (Copilot round 1 on opensoft/workBenches#92).
+test_git_worktree_prune_visible_refuses_the_filesystem_root() {
+    local repo="$FIXTURE_ROOT/prune-visible-root-guard"
+    local config=$'checkout_mode: worktree\nbase_branch: main\nworktree_root: ../prune-visible-root-guard-worktrees'
+    local root="$FIXTURE_ROOT/prune-visible-root-guard-worktrees"
+    local gone_path
+
+    # Given: a genuinely deleted worktree, exactly as the ordinary
+    # "truly gone under a mounted root" case.
+    initialize_fixture "$repo" "$config" || return 1
+    mkdir -p "$root" || return 1
+    git -C "$repo" branch gone || return 1
+    git -C "$repo" worktree add -q "$root/gone" gone || return 1
+    gone_path="$root/gone"
+    rm -rf "$gone_path"
+
+    # When: the helper is asked to prune against "/" itself as the root.
+    (source "$GIT_COMMON_SCRIPT" && git_worktree_prune_visible "$repo" "/") >/dev/null 2>&1
+
+    # Then: nothing is touched — "/" is never a trustworthy witness, no
+    # matter how genuinely gone the registration looks.
+    if ! git -C "$repo" worktree list --porcelain | grep -Fq "worktree $gone_path"; then
+        printf 'assertion failed: pruning against "/" as the root touched a registration anyway\n%s\n' \
+            "$(git -C "$repo" worktree list --porcelain)" >&2
+        return 1
+    fi
+}
+
+# "${candidate%/*}" leaves a slash-free string unchanged, so the ancestor
+# walk must recognise "no progress" and stop rather than spin forever on a
+# relative, slash-free candidate (Copilot round 1 on
+# opensoft/workBenches#92; a future Git honouring
+# worktree.useRelativePaths is the realistic way this path shape arrives).
+test_git_worktree_first_existing_ancestor_terminates_on_a_relative_path() {
+    local result status
+
+    result="$(timeout 5 bash -c 'source "$1"; _git_worktree_first_existing_ancestor "a-relative-name-with-no-slash"; printf "%s" "$_GIT_WORKTREE_ANCESTOR_RESULT"' _ "$GIT_COMMON_SCRIPT")"
+    status=$?
+    if [ "$status" -eq 124 ]; then
+        printf 'assertion failed: the ancestor walk did not terminate on a slash-free relative path\n' >&2
+        return 1
+    fi
+    if [ "$status" -ne 0 ]; then
+        printf 'assertion failed: the ancestor walk exited %s on a slash-free relative path\n' "$status" >&2
+        return 1
+    fi
+    assert_equal '/' "$result" 'ancestor of an unresolvable relative path'
+}
+
 test_concurrent_sequential_number_reservations() {
     local repo="$FIXTURE_ROOT/concurrent-numbering"
     local shim_dir="$FIXTURE_ROOT/concurrent-numbering-git-shim"
@@ -3981,6 +4077,9 @@ run_scenario 'Git discovery failures are not reported as zero records' test_disc
 run_scenario 'fallback root detection ignores decoy directories' test_fallback_root_ignores_decoy_directories
 run_scenario 'explicit decoy-only root reports no registered worktrees' test_explicit_decoy_only_root_reports_no_worktrees
 run_scenario 'git_worktree_prune_visible keeps an unmounted registration and prunes a truly gone one' test_git_worktree_prune_visible_keeps_unmounted_and_prunes_visible
+run_scenario 'git_worktree_prune_visible prunes a registration beneath, not only at, the worktree root' test_git_worktree_prune_visible_prunes_beneath_the_root_too
+run_scenario 'git_worktree_prune_visible refuses to treat "/" as a pruning witness' test_git_worktree_prune_visible_refuses_the_filesystem_root
+run_scenario 'the ancestor walk terminates on a slash-free relative path' test_git_worktree_first_existing_ancestor_terminates_on_a_relative_path
 run_scenario 'three-leg feature creates a worktree in both legs and none at the root' test_three_leg_creates_both_leg_worktrees
 run_scenario 'three-leg dry run creates nothing' test_three_leg_dry_run_creates_nothing
 run_scenario 'three-leg refuses branch checkout mode' test_three_leg_refuses_branch_checkout_mode
