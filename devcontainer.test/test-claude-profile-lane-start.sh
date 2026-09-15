@@ -22,8 +22,11 @@ LAUNCHER="${1:-$REPO_ROOT/base-image/files/claude-profile}"
 # THE LANE VARS WERE MISSING HERE (found post-merge of opensoft/workBenches#96,
 # lane openRepoTools-3, 2026-09-15): this suite's own comment already promised
 # "ambient lane... state... must not reach the launcher", but the unset list
-# only ever covered tmux identity, never CLAUDE_LANE/CLAUDE_NO_LANE/
-# CLAUDE_LANE_DIR — the three the launcher actually reads for precedence 1.
+# only ever covered tmux identity, never CLAUDE_LANE (precedence 1 for WHICH
+# lane), CLAUDE_NO_LANE (an override that wins over --lane/CLAUDE_LANE
+# entirely, per claude-profile's own --help) or CLAUDE_LANE_DIR (rung 1 of
+# the SEPARATE directory-resolution order, not the lane-name one) — three
+# vars whose ambient leakage this suite's own scenarios must not inherit.
 # Run from a shell that is itself bound to a lane (CLAUDE_LANE=<that lane> in
 # the environment, ordinary for an agent running this suite from inside its
 # own lane), scenario 0's "no --lane, no CLAUDE_LANE" baseline inherited that

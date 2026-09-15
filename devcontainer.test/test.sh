@@ -98,6 +98,14 @@ test_tool "Claude statusline usage snapshots" "/test/test-claude-statusline-snap
 # (clause (e)). Both fake everything they shell out to, so they run here
 # against the installed launcher with no lane estate in the image.
 test_tool "Claude profile lane default (Amendment 8(c))" "/test/test-claude-profile-lane-default.sh /usr/local/bin/claude-profile"
+# The opt-in --lane/CLAUDE_LANE hand-off Amendment 8(c) supersedes but does
+# not retire (opensoft/workBenches#77's lane defect capture, and any lane
+# still passed explicitly, both run through it): registered here alongside
+# its sibling above (Copilot round on opensoft/workBenches#97) so an
+# isolation regression like that PR's own — this suite silently inheriting
+# an ambient CLAUDE_LANE and failing its baseline scenario — has a standard
+# path to be caught in, not only a person's own ad-hoc run.
+test_tool "Claude profile --lane hand-off" "/test/test-claude-profile-lane-start.sh /usr/local/bin/claude-profile"
 test_tool "Claude profile SessionStart hook (Amendment 8(e))" "/test/test-claude-profile-session-start-hook.sh /usr/local/bin/claude-profile"
 # lane-collision-protocol Amendment 12 adoption act 3: the launcher ensures
 # the UserPromptSubmit NAME GUARD beside the SessionStart entry above, "the
