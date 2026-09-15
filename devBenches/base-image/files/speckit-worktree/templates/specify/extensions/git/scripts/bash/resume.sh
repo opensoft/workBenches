@@ -691,7 +691,12 @@ while [ "$selection" -lt "${#SELECTED_INDEXES[@]}" ]; do
             undo=$((undo + 1))
             git -C "$owner" worktree remove --force "$undo_tree" >/dev/null 2>&1 \
                 || rm -rf "$undo_tree" >/dev/null 2>&1 || true
-            git -C "$owner" worktree prune >/dev/null 2>&1 || true
+            # Not a blanket `worktree prune`: that drops every registration
+            # this process cannot see, including another lane's worktree
+            # merely outside this container's mount (opensoft/workBenches#87).
+            # git_worktree_prune_visible (git-common.sh) clears only what it
+            # can actually tell is gone.
+            git_worktree_prune_visible "$owner" "$WORKTREE_ROOT" || true
             if [ "$undo_new_branch" = true ]; then
                 git -C "$owner" branch -D "$branch" >/dev/null 2>&1 || true
             fi
