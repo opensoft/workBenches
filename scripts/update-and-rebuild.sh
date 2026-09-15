@@ -202,20 +202,10 @@ build_layer2_bench() {
     echo ""
     echo -e "${BOLD}${CYAN}═══ Rebuilding Layer 2: $bench_name ═══${NC}"
 
-    # Look for a build script
+    # Only invoke helpers that are scoped to Layer 2. build-layer.sh is a full
+    # Layer 2 + Layer 3 lifecycle and would cross the live-activation boundary.
     local build_script=""
-    for candidate in \
-        "$bench_dir/build-layer2.sh" \
-        "$bench_dir/scripts/build-layer2.sh" \
-        "$bench_dir/build-layer.sh" \
-        "$bench_dir/scripts/build-layer.sh" \
-        "$bench_dir/build.sh" \
-        "$bench_dir/.devcontainer/build.sh"; do
-        if [ -x "$candidate" ]; then
-            build_script="$candidate"
-            break
-        fi
-    done
+    build_script="$(select_layer2_build_script "$bench_dir" || true)"
 
     if [ -n "$build_script" ]; then
         prebuild_image_records="$(capture_cascade_image_ids "$image" "$build_script" "$bench_dir")"

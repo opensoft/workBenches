@@ -189,6 +189,12 @@ image_created_at() {
     docker image inspect --format '{{.Created}}' "$1" 2>/dev/null || true
 }
 
+image_repository_leaf() {
+    local reference="${1%@*}"
+    reference="${reference##*/}"
+    printf '%s\n' "${reference%%:*}"
+}
+
 record_image() {
     local image="$1"
     local layer="$2"
@@ -211,6 +217,8 @@ snapshot_running_containers() {
     local configured_image
     local actual_image_id
     local container_name
+    local layer3_username
+    local repository_leaf
 
     if ! snapshot=$(run_with_optional_timeout "$timeout_seconds" \
         docker container ls --format '{{.Image}}\t{{.Names}}'); then
@@ -225,8 +233,21 @@ snapshot_running_containers() {
             return 1
         fi
         RUNNING_CONTAINER_BY_IMAGE["$configured_image"]="$container_name"
-        [[ -n "$actual_image_id" ]] \
-            && RUNNING_CONTAINER_BY_IMAGE["$actual_image_id"]="$container_name"
+        if [[ -n "$actual_image_id" ]]; then
+            RUNNING_CONTAINER_BY_IMAGE["$actual_image_id"]="$container_name"
+            if ! layer3_username=$(run_with_optional_timeout "$timeout_seconds" \
+                docker image inspect --format \
+                    '{{ index .Config.Labels "io.opensoft.workbenches.layer3.username" }}' \
+                    "$actual_image_id"); then
+                echo "Could not inspect running container '$container_name' image metadata" >&2
+                return 1
+            fi
+            if [[ "$layer3_username" == "$USERNAME" ]]; then
+                repository_leaf="$(image_repository_leaf "$configured_image")"
+                [[ -n "$repository_leaf" ]] \
+                    && RUNNING_CONTAINER_BY_IMAGE["layer3-repository:$repository_leaf:$USERNAME"]="$container_name"
+            fi
+        fi
     done <<< "$snapshot"
 }
 
@@ -474,12 +495,17 @@ check_layer3_image() {
     local user_created
     local user_image_id
     local user_recipe
+    local user_repository_leaf
     local identity_status=0
 
     user_image_id="$(image_id "$user_image")"
     running_container="${RUNNING_CONTAINER_BY_IMAGE[$user_image]:-}"
     if [[ -z "$running_container" && -n "$user_image_id" ]]; then
         running_container="${RUNNING_CONTAINER_BY_IMAGE[$user_image_id]:-}"
+    fi
+    if [[ -z "$running_container" ]]; then
+        user_repository_leaf="$(image_repository_leaf "$user_image")"
+        running_container="${RUNNING_CONTAINER_BY_IMAGE[layer3-repository:$user_repository_leaf:$USERNAME]:-}"
     fi
     if [[ -n "$running_container" ]]; then
         if [ "$JSON_OUTPUT" = false ]; then

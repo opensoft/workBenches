@@ -4,6 +4,23 @@ image_id_if_present() {
     docker image inspect --format '{{.Id}}' "$1" 2>/dev/null || true
 }
 
+select_layer2_build_script() {
+    local bench_dir="$1"
+    local candidate
+
+    for candidate in \
+        "$bench_dir/build-layer2.sh" \
+        "$bench_dir/scripts/build-layer2.sh" \
+        "$bench_dir/build.sh" \
+        "$bench_dir/.devcontainer/build.sh"; do
+        if [[ -x "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 compose_build_commands() {
     local build_script="$1"
     awk '

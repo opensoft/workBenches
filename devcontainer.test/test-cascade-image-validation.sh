@@ -102,6 +102,20 @@ FAKE_DOCKER_RUNNING_CONTAINERS=$'registry.example/test-bench@sha256:old\tid-benc
 grep -Fq "activation deferred by running container 'id-bench'" "$temp_dir/running-id.out"
 grep -Fq "container inspect --format {{.Image}} id-bench" "$log"
 
+: > "$log"
+PATH="$fake_bin:$PATH" \
+FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_RUNNING_CONTAINERS=$'registry.example/test-bench@sha256:old\told-digest-bench\n' \
+FAKE_DOCKER_RUNNING_CONTAINER_IMAGE_ID=sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee \
+"$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
+    > "$temp_dir/running-retagged.out"
+grep -Fq "activation deferred by running container 'old-digest-bench'" \
+    "$temp_dir/running-retagged.out"
+if grep -Fq 'image save' "$log"; then
+    echo "retagged running Layer 3 image was inspected as the current tag" >&2
+    exit 1
+fi
+
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
 FAKE_DOCKER_LAYER3_DOCKER_SOCKET_GID=1234 \
@@ -214,6 +228,21 @@ source "$repo_root/scripts/lib/cascade-image-validation.sh"
 NO_CACHE=true
 CASCADE_IMAGES=()
 CASCADE_IMAGE_RECORDS=()
+
+layer2_selection_dir="$temp_dir/layer2-selection"
+mkdir -p "$layer2_selection_dir/scripts"
+printf '%s\n' '#!/usr/bin/env bash' > "$layer2_selection_dir/build-layer.sh"
+printf '%s\n' '#!/usr/bin/env bash' > "$layer2_selection_dir/scripts/build-layer.sh"
+chmod +x "$layer2_selection_dir/build-layer.sh" "$layer2_selection_dir/scripts/build-layer.sh"
+if select_layer2_build_script "$layer2_selection_dir" >/dev/null; then
+    echo "Layer 2 cascade selected a full Layer 2 + Layer 3 build helper" >&2
+    exit 1
+fi
+printf '%s\n' '#!/usr/bin/env bash' > "$layer2_selection_dir/scripts/build-layer2.sh"
+chmod +x "$layer2_selection_dir/scripts/build-layer2.sh"
+test "$(select_layer2_build_script "$layer2_selection_dir")" \
+    = "$layer2_selection_dir/scripts/build-layer2.sh"
+
 PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
     record_rebuilt_cascade_image test-bench:latest testBench
 test "${CASCADE_IMAGES[*]}" = test-bench:latest
