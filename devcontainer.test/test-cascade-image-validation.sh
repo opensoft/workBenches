@@ -93,6 +93,15 @@ if grep -Fq 'layer3-identity-probe' "$log"; then
 fi
 grep -Fq 'image save sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' "$log"
 
+: > "$log"
+PATH="$fake_bin:$PATH" \
+FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_RUNNING_CONTAINERS=$'registry.example/test-bench@sha256:old\tid-bench\n' \
+"$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
+    > "$temp_dir/running-id.out"
+grep -Fq "activation deferred by running container 'id-bench'" "$temp_dir/running-id.out"
+grep -Fq "container inspect --format {{.Image}} id-bench" "$log"
+
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
 FAKE_DOCKER_LAYER3_DOCKER_SOCKET_GID=1234 \
@@ -266,6 +275,33 @@ if grep -Fq 'sim-bench-dev:latest' "$log"; then
     echo "default Compose discovery inspected an unrelated Compose output" >&2
     exit 1
 fi
+
+printf '%s\n' \
+    '# docker compose -f docker-compose.dev.yml build' \
+    'docker compose -f docker-compose.dev.yml down' \
+    'docker compose -f docker-compose.yml build' > "$compose_metadata"
+CASCADE_IMAGES=()
+CASCADE_IMAGE_RECORDS=()
+: > "$log"
+PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
+    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"
+test "${CASCADE_IMAGES[*]}" = "sim-bench-gene_bench:latest sim-bench-ui:latest"
+if grep -Fq 'sim-bench-dev:latest' "$log"; then
+    echo "non-build Compose metadata entered cascade capture" >&2
+    exit 1
+fi
+
+first_build_dir="$temp_dir/first-build"
+mkdir -p "$first_build_dir"
+printf '%s\n' '#!/usr/bin/env bash' 'docker build -t first-bench:latest .' \
+    > "$first_build_dir/build.sh"
+PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_MISSING_IMAGE=first-bench:latest \
+    capture_cascade_image_ids first-bench:latest \
+        "$first_build_dir/build.sh" "$first_build_dir" \
+        > "$temp_dir/first-build.records"
+test ! -s "$temp_dir/first-build.records"
 
 CASCADE_IMAGES=()
 CASCADE_IMAGE_RECORDS=()

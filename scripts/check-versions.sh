@@ -209,6 +209,7 @@ snapshot_running_containers() {
     local timeout_seconds="${DOCKER_INSPECT_TIMEOUT:-30}"
     local snapshot
     local configured_image
+    local actual_image_id
     local container_name
 
     if ! snapshot=$(run_with_optional_timeout "$timeout_seconds" \
@@ -218,7 +219,14 @@ snapshot_running_containers() {
     fi
     while IFS=$'\t' read -r configured_image container_name; do
         [[ -n "$configured_image" && -n "$container_name" ]] || continue
+        if ! actual_image_id=$(run_with_optional_timeout "$timeout_seconds" \
+            docker container inspect --format '{{.Image}}' "$container_name"); then
+            echo "Could not inspect running container '$container_name' for Layer 3 activation state" >&2
+            return 1
+        fi
         RUNNING_CONTAINER_BY_IMAGE["$configured_image"]="$container_name"
+        [[ -n "$actual_image_id" ]] \
+            && RUNNING_CONTAINER_BY_IMAGE["$actual_image_id"]="$container_name"
     done <<< "$snapshot"
 }
 
@@ -468,7 +476,11 @@ check_layer3_image() {
     local user_recipe
     local identity_status=0
 
+    user_image_id="$(image_id "$user_image")"
     running_container="${RUNNING_CONTAINER_BY_IMAGE[$user_image]:-}"
+    if [[ -z "$running_container" && -n "$user_image_id" ]]; then
+        running_container="${RUNNING_CONTAINER_BY_IMAGE[$user_image_id]:-}"
+    fi
     if [[ -n "$running_container" ]]; then
         if [ "$JSON_OUTPUT" = false ]; then
             echo -e "${YELLOW}↷ Layer 3 $user_image activation deferred by running container '$running_container'${NC}"
@@ -477,7 +489,6 @@ check_layer3_image() {
         return
     fi
 
-    user_image_id="$(image_id "$user_image")"
     if [[ -z "$user_image_id" ]]; then
         if [ "$JSON_OUTPUT" = false ]; then
             echo -e "${YELLOW}↷ Layer 3 $user_image is missing; activation has not occurred${NC}"

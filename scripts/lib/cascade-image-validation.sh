@@ -4,32 +4,111 @@ image_id_if_present() {
     docker image inspect --format '{{.Id}}' "$1" 2>/dev/null || true
 }
 
-build_uses_default_compose_file() {
+compose_build_commands() {
     local build_script="$1"
-    local command
-    local trimmed
-    local compose_command_pattern='(^|[[:space:];&|()])docker[[:space:]]+compose([[:space:]]|$)'
-    local compose_file_pattern='(^|[[:space:]])(-f|--file)(=|[[:space:]])'
-
-    while IFS= read -r command; do
-        trimmed="${command#"${command%%[![:space:]]*}"}"
-        [[ "$trimmed" == \#* ]] && continue
-        if [[ "$command" =~ $compose_command_pattern \
-            && ! "$command" =~ $compose_file_pattern ]]; then
-            return 0
-        fi
-    done < <(awk '
+    awk '
+        function emit(command, count, segment_index, word_count, word_index, subcommand, segment, words) {
+            sub(/^[[:space:]]+/, "", command)
+            if (command ~ /^#/) return
+            sub(/[[:space:]]+#.*/, "", command)
+            count = split(command, segments, /[;&|]+/)
+            for (segment_index = 1; segment_index <= count; segment_index++) {
+                segment = segments[segment_index]
+                gsub(/[()]/, " ", segment)
+                sub(/^[[:space:]]+/, "", segment)
+                sub(/[[:space:]]+$/, "", segment)
+                word_count = split(segment, words, /[[:space:]]+/)
+                for (word_index = 1; word_index < word_count; word_index++) {
+                    if (words[word_index] == "docker" \
+                            && words[word_index + 1] == "compose") {
+                        for (subcommand = word_index + 2; subcommand <= word_count; subcommand++) {
+                            if (words[subcommand] ~ /^(build|config|cp|create|down|events|exec|images|kill|logs|ls|pause|port|ps|pull|push|restart|rm|run|start|stop|top|unpause|up|version|wait|watch)$/) {
+                                if (words[subcommand] == "build") print segment
+                                break
+                            }
+                        }
+                        break
+                    }
+                }
+            }
+        }
         {
             command = command $0
             if (command ~ /\\$/) {
                 sub(/\\$/, " ", command)
                 next
             }
-            print command
+            emit(command)
             command = ""
         }
-        END { if (command != "") print command }
-    ' "$build_script")
+        END { if (command != "") emit(command) }
+    ' "$build_script"
+}
+
+compose_command_files() {
+    local command="$1"
+    local expect_file=false
+    local token
+    local value
+    local -a words=()
+
+    read -r -a words <<< "$command"
+    for token in "${words[@]}"; do
+        if [[ "$expect_file" = true ]]; then
+            value="$token"
+            expect_file=false
+        else
+            case "$token" in
+                -f|--file)
+                    expect_file=true
+                    continue
+                    ;;
+                -f=*|--file=*)
+                    value="${token#*=}"
+                    ;;
+                *)
+                    continue
+                    ;;
+            esac
+        fi
+        value="${value#\"}"
+        value="${value%\"}"
+        value="${value#\'}"
+        value="${value%\'}"
+        printf '%s\n' "$value"
+    done
+}
+
+build_uses_default_compose_file() {
+    local build_script="$1"
+    local command
+    local selected_file
+
+    while IFS= read -r command; do
+        selected_file="$(compose_command_files "$command")"
+        if [[ -z "$selected_file" ]]; then
+            return 0
+        fi
+    done < <(compose_build_commands "$build_script")
+    return 1
+}
+
+build_selects_compose_file() {
+    local build_script="$1"
+    local relative_to_bench="$2"
+    local relative_to_build="$3"
+    local command
+    local selected_file
+
+    while IFS= read -r command; do
+        while IFS= read -r selected_file; do
+            selected_file="${selected_file#./}"
+            if [[ "$selected_file" == "$relative_to_bench" \
+                || "$selected_file" == "$relative_to_build" ]]; then
+                return 0
+            fi
+        done < <(compose_command_files "$command")
+    done < <(compose_build_commands "$build_script")
     return 1
 }
 
@@ -62,8 +141,8 @@ declared_cascade_images() {
         while IFS= read -r -d '' compose_file; do
             compose_relative_to_bench="$(realpath --relative-to="$bench_dir" "$compose_file")"
             compose_relative_to_build="$(realpath --relative-to="$build_dir" "$compose_file")"
-            if grep -Fq -- "$compose_relative_to_bench" "$build_script" \
-                || grep -Fq -- "$compose_relative_to_build" "$build_script"; then
+            if build_selects_compose_file "$build_script" \
+                "$compose_relative_to_bench" "$compose_relative_to_build"; then
                 metadata_files+=("$compose_file")
             fi
         done < <(find "$bench_dir" -maxdepth 3 -type f \
@@ -138,6 +217,7 @@ capture_cascade_image_ids() {
         image_id="$(image_id_if_present "$image")"
         [[ -n "$image_id" ]] && printf '%s=%s\n' "$image" "$image_id"
     fi
+    return 0
 }
 
 record_rebuilt_cascade_image() {

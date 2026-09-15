@@ -95,6 +95,10 @@ PY
             printf '%b' "${FAKE_DOCKER_RUNNING_CONTAINERS:-}"
             exit 0
         fi
+        if [ "$2" = "inspect" ]; then
+            echo "${FAKE_DOCKER_RUNNING_CONTAINER_IMAGE_ID:-${FAKE_DOCKER_USER_IMAGE_ID:-sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd}}"
+            exit 0
+        fi
         exit 1
         ;;
     run)
