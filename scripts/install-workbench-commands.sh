@@ -64,6 +64,45 @@ configured_install_location() {
     printf '%s\n' "$install_dir"
 }
 
+ensure_workbenches_marker() {
+    local install_dir="$1"
+    local marker="$install_dir/.workbenches-path"
+    local staged_marker
+
+    staged_marker="$(mktemp "$install_dir/.workbenches-path.stage.XXXXXX")" || return 1
+    if ! printf '%s\n' "$WORKBENCHES_ROOT" > "$staged_marker" \
+        || ! chmod 0644 "$staged_marker"; then
+        rm -f -- "$staged_marker"
+        return 1
+    fi
+    if [ -L "$marker" ] || { [ -e "$marker" ] && [ ! -f "$marker" ]; }; then
+        print_error "Refusing non-regular workBenches path marker: $marker"
+        rm -f -- "$staged_marker"
+        return 1
+    fi
+    if [ -f "$marker" ]; then
+        if cmp -s "$staged_marker" "$marker"; then
+            rm -f -- "$staged_marker"
+            return 0
+        fi
+        print_error "Refusing to replace a different workBenches path marker: $marker"
+        rm -f -- "$staged_marker"
+        return 1
+    fi
+    if ln "$staged_marker" "$marker" 2>/dev/null; then
+        rm -f -- "$staged_marker"
+        return 0
+    fi
+    if [ -f "$marker" ] && [ ! -L "$marker" ] \
+        && cmp -s "$staged_marker" "$marker"; then
+        rm -f -- "$staged_marker"
+        return 0
+    fi
+    print_error "Concurrent workBenches path marker collision: $marker"
+    rm -f -- "$staged_marker"
+    return 1
+}
+
 # Create user-local bin directory if it doesn't exist
 create_local_bin() {
     if [ ! -d "$HOME/.local/bin" ]; then
@@ -260,17 +299,22 @@ install_commands() {
     # Install the authoritative executable; do not replace it with a wrapper.
     # A skip is successful but does not authorize project-dependent wrappers.
     local project_available=false
-    python3 "$SCRIPT_DIR/setup-project-command.py" \
-        --bin-dir "$install_dir" --install-onp || return $?
-    if python3 "$SCRIPT_DIR/setup-project-command.py" \
-        --bin-dir "$install_dir" --resolve-owned >/dev/null 2>&1; then
-        project_available=true
-    elif [ "${WORKBENCHES_SKIP_PROJECT_COMMAND:-0}" = "1" ]; then
+    if [ "${WORKBENCHES_SKIP_PROJECT_COMMAND:-0}" = "1" ]; then
         print_warning "Project command was skipped; preserving any existing command and omitting onp"
     else
-        print_error "Project command installation did not produce a verified executable"
-        return 1
+        python3 "$SCRIPT_DIR/setup-project-command.py" \
+            --bin-dir "$install_dir" --workbenches "$WORKBENCHES_ROOT" \
+            --install-onp || return $?
+        if python3 "$SCRIPT_DIR/setup-project-command.py" \
+            --bin-dir "$install_dir" --resolve-owned >/dev/null 2>&1; then
+            project_available=true
+        else
+            print_error "Project command installation did not produce a verified executable"
+            return 1
+        fi
     fi
+
+    ensure_workbenches_marker "$install_dir" || return $?
     
     # Install each command
     local installed_count=0
@@ -466,9 +510,12 @@ show_status() {
                     location_header_printed=true
                 fi
 
-                if [ "$cmd_name" = "project" ] \
+                local ownership_option=""
+                [ "$cmd_name" = "project" ] && ownership_option="--resolve-owned"
+                [ "$cmd_name" = "onp" ] && ownership_option="--resolve-onp-owned"
+                if [ -n "$ownership_option" ] \
                     && ! python3 "$SCRIPT_DIR/setup-project-command.py" \
-                        --bin-dir "$location" --resolve-owned >/dev/null 2>&1; then
+                        --bin-dir "$location" "$ownership_option" >/dev/null 2>&1; then
                     printf "  ${RED}✗${NC} %-20s %s (unowned or tampered)\n" \
                         "$cmd_name" "${COMMANDS[$cmd_name]}"
                     continue

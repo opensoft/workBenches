@@ -20,8 +20,9 @@ only verified bytes; a pending ownership record recognizes the
 new digest and, only for a verified owned upgrade, the pre-upgrade digest so an
 interrupted publish can resume without adopting an unowned command.
 Serialize readers and writers through a persistent per-install-directory lock.
-Legacy execution compiles and runs the verified byte snapshot while holding a
-shared lock, so verification and execution do not reopen a mutable pathname.
+Legacy execution captures the verified byte snapshot while holding a shared
+lock, then releases the lock before compiling and running that immutable
+private snapshot so delegated setup operations cannot deadlock against an upgrade.
 Record installer ownership and the installed digest separately; automatic
 installation refuses an unowned name collision, and uninstall rechecks both.
 Use the existing host-local .workbenches-path convention for discovery.

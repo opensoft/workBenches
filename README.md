@@ -32,8 +32,9 @@ the executable payload verifies. The installer tries the authenticated GitHub AP
 verifies bytes before replacing anything, journals publication so an
 interrupted upgrade can resume, and rolls back ordinary partial multi-file
 replacement failures. A persistent per-directory lock serializes installation,
-removal, status, and legacy execution; launchers run the verified byte snapshot
-instead of reopening a pathname after verification. A failed download/digest
+removal, status, and legacy snapshot capture; launchers release it before
+running the verified private snapshot so delegated setup operations can acquire
+the writer lock. A failed download/digest
 check preserves the existing executable. A symlink, directory,
 read-only target, or unrelated existing `project` command refuses. After
 reviewing a name collision, use `--replace-existing` to take ownership;

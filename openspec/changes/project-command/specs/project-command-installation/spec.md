@@ -53,4 +53,4 @@ onp and new-project.sh SHALL forward name and parent arguments to project new.
 
 #### Scenario: Executable path changes after verification
 - **WHEN** a project pathname is replaced while a legacy launch is being resolved
-- **THEN** the launcher executes only the verified byte snapshot while holding a shared project lock.
+- **THEN** the launcher captures the verified bytes while holding a shared project lock and executes only the immutable private snapshot after releasing the lock.

@@ -17,6 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("project_installer", ROOT / "scripts/setup-project-command.py")
 installer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
+TEST_BASH = os.environ.get("WORKBENCHES_TEST_BASH", "bash")
+MODERN_BASH = subprocess.run(
+    [TEST_BASH, "-c", 'test "${BASH_VERSINFO[0]}" -ge 4'],
+    check=False, capture_output=True).returncode == 0
 
 
 class InstallTests(unittest.TestCase):
@@ -387,6 +391,27 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(self.install(), 0)
         self.assertEqual(json.loads(owner.read_text())["state"], "owned")
 
+    def test_fresh_pending_journal_recovers_without_replace_override(self):
+        self.bin.mkdir()
+        pin = json.loads(self.pin.read_text())
+        launcher_digest = hashlib.sha256(installer.launcher_bytes(pin)).hexdigest()
+        owner = self.bin / ".workbenches-project.json"
+        owner.write_text(json.dumps({
+            "schema_version": 1,
+            "state": "pending",
+            "repository": pin["repository"],
+            "commit": pin["commit"],
+            "sha256": pin["sha256"],
+            "launcher_sha256": launcher_digest,
+            "previous_owned": False,
+            "previous_commit": "",
+            "previous_sha256": "",
+            "previous_launcher_sha256": "",
+        }))
+        self.assertEqual(self.install(), 0)
+        self.assertTrue((self.bin / "project").is_file())
+        self.assertEqual(json.loads(owner.read_text())["state"], "owned")
+
     def test_interrupted_unowned_replacement_is_not_adopted_or_removed(self):
         self.bin.mkdir()
         target = self.bin / "project"
@@ -429,6 +454,19 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(self.install(), 2)
         target.chmod(0o644)
         self.assertEqual(target.read_text(), "keep")
+
+    def test_matching_symlink_is_not_accepted_by_replace_fast_path(self):
+        self.assertEqual(self.install(), 0)
+        target = self.bin / "project"
+        external = self.base / "matching-launcher"
+        external.write_bytes(target.read_bytes())
+        external.chmod(0o755)
+        target.unlink()
+        target.symlink_to(external)
+        self.assertEqual(installer.main([
+            *self.args, "--source", str(self.source), "--replace-existing",
+        ]), 2)
+        self.assertTrue(target.is_symlink())
 
     def test_fetch_failure_and_bad_digest_preserve_existing(self):
         self.bin.mkdir()
@@ -600,6 +638,38 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(result["digest"], expected_digest)
         self.assertFalse(malicious.exists())
 
+    def test_verified_execution_does_not_import_from_install_directory(self):
+        self.source.write_text(
+            '#!/usr/bin/env python3\n'
+            'import json, shlex\n'
+            'print(json.dumps(shlex.split("safe import")))\n'
+        )
+        pin = json.loads(self.pin.read_text())
+        pin["sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.pin.write_text(json.dumps(pin))
+        self.assertEqual(self.install(), 0)
+
+        malicious = self.base / "install-directory-import-ran"
+        (self.bin / "shlex.py").write_text(
+            'from pathlib import Path\n'
+            f'Path({str(malicious)!r}).write_text("ran")\n'
+            'raise RuntimeError("loaded unverified install-directory module")\n'
+        )
+
+        target = self.bin / "project"
+        direct = subprocess.run([str(target)], text=True, capture_output=True)
+        self.assertEqual(direct.returncode, 0, direct.stderr)
+        self.assertEqual(json.loads(direct.stdout), ["safe", "import"])
+        self.assertFalse(malicious.exists())
+
+        delegated = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/setup-project-command.py"),
+             *self.args, "--exec-owned"],
+            text=True, capture_output=True)
+        self.assertEqual(delegated.returncode, 0, delegated.stderr)
+        self.assertEqual(json.loads(delegated.stdout), ["safe", "import"])
+        self.assertFalse(malicious.exists())
+
     def test_setup_menu_helper_honors_project_install_skip(self):
         home = self.base / "menu-skip-home"
         env = {
@@ -763,7 +833,7 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(process.returncode, 0, stderr)
         self.assertEqual(Path(stdout.strip()), self.bin / "project")
 
-    @unittest.skipUnless(sys.platform.startswith("linux"),
+    @unittest.skipUnless(MODERN_BASH,
                          "command installer requires Bash 4 associative arrays")
     def test_status_distinguishes_unowned_and_verified_project_commands(self):
         status_bin = self.base / ".local/bin"
@@ -771,24 +841,38 @@ class InstallTests(unittest.TestCase):
         target = status_bin / "project"
         target.write_text("unrelated project command")
         target.chmod(0o755)
+        onp = status_bin / "onp"
+        onp.write_text("unrelated compatibility command")
+        onp.chmod(0o755)
         env = {**os.environ, "HOME": str(self.base), "OPENREPOPROJECT_PIN": str(self.pin),
                "WORKBENCHES_ROOT": str(self.wb)}
-        command = ["bash", str(ROOT / "scripts/install-workbench-commands.sh"), "--status"]
+        command = [TEST_BASH, str(ROOT / "scripts/install-workbench-commands.sh"), "--status"]
 
         result = subprocess.run(command, env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("project              Create, inspect, diagnose and maintain projects (unowned or tampered)",
                       result.stdout)
+        self.assertIn("onp                  Opensoft New Project - Quick project creation command (unowned or tampered)",
+                      result.stdout)
 
         target.unlink()
+        onp.unlink()
         self.assertEqual(installer.main([
             "--pin", str(self.pin), "--bin-dir", str(status_bin),
-            "--workbenches", str(ROOT), "--source", str(self.source),
+            "--workbenches", str(ROOT), "--source", str(self.source), "--install-onp",
         ]), 0)
         result = subprocess.run(command, env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("project              Create, inspect, diagnose and maintain projects", result.stdout)
+        self.assertIn("onp                  Opensoft New Project - Quick project creation command", result.stdout)
         self.assertNotIn("projects (unowned or tampered)", result.stdout)
+
+        onp.write_text("tampered compatibility command")
+        onp.chmod(0o755)
+        result = subprocess.run(command, env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("onp                  Opensoft New Project - Quick project creation command (unowned or tampered)",
+                      result.stdout)
 
         shadow_bin = self.base / "shadow-bin"
         shadow_bin.mkdir()
@@ -800,7 +884,7 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(f"Shadowed in PATH by {shadow}", result.stdout)
 
-    @unittest.skipUnless(sys.platform.startswith("linux"),
+    @unittest.skipUnless(MODERN_BASH,
                          "command installer requires Bash 4 associative arrays")
     def test_global_install_uses_verified_launcher_for_onp(self):
         home = self.base / "global-home"
@@ -818,7 +902,7 @@ class InstallTests(unittest.TestCase):
             "WORKBENCHES_ROOT": str(self.wb),
         }
         result = subprocess.run(
-            ["bash", str(ROOT / "scripts/install-workbench-commands.sh"), "--install"],
+            [TEST_BASH, str(ROOT / "scripts/install-workbench-commands.sh"), "--install"],
             env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((install_bin / "onp").read_bytes(),
@@ -828,7 +912,7 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(invoked.returncode, 0, invoked.stderr)
         self.assertEqual(json.loads(invoked.stdout), ["new", "Global"])
 
-    @unittest.skipUnless(sys.platform.startswith("linux"),
+    @unittest.skipUnless(MODERN_BASH,
                          "command installer requires Bash 4 associative arrays")
     def test_global_install_honors_configured_directory(self):
         self.assertEqual(self.install(), 0)
@@ -842,14 +926,14 @@ class InstallTests(unittest.TestCase):
             "WORKBENCHES_ROOT": str(self.wb),
         }
         result = subprocess.run(
-            ["bash", str(ROOT / "scripts/install-workbench-commands.sh"), "--install"],
+            [TEST_BASH, str(ROOT / "scripts/install-workbench-commands.sh"), "--install"],
             env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((self.bin / "project").is_file())
         self.assertTrue((self.bin / "onp").is_file())
         self.assertFalse((home / ".local/bin/project").exists())
 
-    @unittest.skipUnless(sys.platform.startswith("linux"),
+    @unittest.skipUnless(MODERN_BASH,
                          "command installer requires Bash 4 associative arrays")
     def test_global_install_skip_omits_project_and_onp(self):
         home = self.base / "skip-home"
@@ -863,35 +947,73 @@ class InstallTests(unittest.TestCase):
             "WORKBENCHES_SKIP_PROJECT_COMMAND": "1",
         }
         result = subprocess.run(
-            ["bash", str(ROOT / "scripts/install-workbench-commands.sh"), "--install"],
+            [TEST_BASH, str(ROOT / "scripts/install-workbench-commands.sh"), "--install"],
             env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((install_bin / "project").exists())
         self.assertFalse((install_bin / "onp").exists())
         self.assertIn("Project command was skipped", result.stdout)
 
-    @unittest.skipUnless(sys.platform.startswith("linux"),
+    @unittest.skipUnless(MODERN_BASH,
                          "command installer requires Bash 4 associative arrays")
-    def test_global_skip_creates_configured_wrapper_directory(self):
-        home = self.base / "custom-skip-home"
-        install_bin = home / "configured/bin"
+    def test_global_skip_preserves_owned_project_without_claiming_onp(self):
+        home = self.base / "skip-existing-home"
+        install_bin = home / ".local/bin"
+        install_bin.mkdir(parents=True)
+        self.assertEqual(installer.main([
+            "--pin", str(self.pin), "--bin-dir", str(install_bin),
+            "--workbenches", str(ROOT), "--source", str(self.source),
+        ]), 0)
         env = {
             **os.environ,
             "HOME": str(home),
-            "PATH": os.environ["PATH"],
-            "OPENREPOPROJECT_BIN_DIR": str(install_bin),
+            "PATH": str(install_bin) + os.pathsep + os.environ["PATH"],
             "OPENREPOPROJECT_PIN": str(self.pin),
             "WORKBENCHES_SKIP_PROJECT_COMMAND": "1",
         }
         result = subprocess.run(
-            ["bash", str(ROOT / "scripts/install-workbench-commands.sh"), "--install"],
+            [TEST_BASH, str(ROOT / "scripts/install-workbench-commands.sh"), "--install"],
+            env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((install_bin / "project").is_file())
+        self.assertFalse((install_bin / "onp").exists())
+        self.assertNotIn("Installed: onp", result.stdout)
+
+    @unittest.skipUnless(MODERN_BASH,
+                         "command installer requires Bash 4 associative arrays")
+    def test_global_skip_creates_configured_wrapper_directory(self):
+        home = self.base / "custom-skip-home"
+        install_bin = home / "configured/bin"
+        fake_bin = self.base / "skip-fake-bin"
+        fake_bin.mkdir()
+        python_invoked = self.base / "skip-python-invoked"
+        fake_python = fake_bin / "python3"
+        fake_python.write_text(
+            '#!/usr/bin/env bash\n'
+            'printf invoked > "$PYTHON_INVOKED"\n'
+            'exit 99\n'
+        )
+        fake_python.chmod(0o755)
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "PATH": str(fake_bin) + os.pathsep + os.environ["PATH"],
+            "OPENREPOPROJECT_BIN_DIR": str(install_bin),
+            "OPENREPOPROJECT_PIN": str(self.pin),
+            "WORKBENCHES_SKIP_PROJECT_COMMAND": "1",
+            "PYTHON_INVOKED": str(python_invoked),
+        }
+        result = subprocess.run(
+            [TEST_BASH, str(ROOT / "scripts/install-workbench-commands.sh"), "--install"],
             env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(install_bin.is_dir())
         self.assertFalse((install_bin / "project").exists())
         self.assertFalse((install_bin / "onp").exists())
+        self.assertEqual((install_bin / ".workbenches-path").read_text().strip(), str(ROOT))
+        self.assertFalse(python_invoked.exists())
 
-    @unittest.skipUnless(sys.platform.startswith("linux"),
+    @unittest.skipUnless(MODERN_BASH,
                          "command installer requires Bash 4 associative arrays")
     def test_global_uninstall_never_generically_removes_onp(self):
         home = self.base / "uninstall-home"
@@ -917,14 +1039,14 @@ class InstallTests(unittest.TestCase):
             "REMOVE_LOG": str(remove_log),
         }
         result = subprocess.run(
-            ["bash", str(ROOT / "scripts/install-workbench-commands.sh"), "--uninstall"],
+            [TEST_BASH, str(ROOT / "scripts/install-workbench-commands.sh"), "--uninstall"],
             env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(onp.is_file())
         self.assertFalse(remove_log.exists(),
                          remove_log.read_text() if remove_log.exists() else "")
 
-    @unittest.skipUnless(sys.platform.startswith("linux"),
+    @unittest.skipUnless(MODERN_BASH,
                          "command installer requires Bash 4 associative arrays")
     def test_global_uninstall_propagates_project_removal_failure(self):
         home = self.base / "failed-uninstall-home"
@@ -940,7 +1062,7 @@ class InstallTests(unittest.TestCase):
             "PATH": str(fake_bin) + os.pathsep + "/usr/bin:/bin",
         }
         result = subprocess.run(
-            ["bash", str(ROOT / "scripts/install-workbench-commands.sh"), "--uninstall"],
+            [TEST_BASH, str(ROOT / "scripts/install-workbench-commands.sh"), "--uninstall"],
             env=env, text=True, capture_output=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("could not be removed", result.stdout)

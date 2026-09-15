@@ -125,6 +125,30 @@ def owned_target(target, payload, owner_marker, pin, expected_launcher_digests):
                              expected_launcher_digests) is not None
 
 
+def recoverable_fresh_pending(target, payload, owner_marker, pin,
+                              launcher_digest):
+    """Recognize a journal written before any fresh-install payload published."""
+    if (target.exists() or target.is_symlink()
+            or payload.exists() or payload.is_symlink()
+            or not owner_marker.is_file() or owner_marker.is_symlink()):
+        return False
+    try:
+        owner = json.loads(owner_marker.read_text())
+    except (OSError, ValueError, TypeError):
+        return False
+    return (isinstance(owner, dict)
+            and owner.get("schema_version") == 1
+            and owner.get("state") == "pending"
+            and owner.get("repository") == pin["repository"]
+            and owner.get("commit") == pin["commit"]
+            and owner.get("sha256") == pin["sha256"]
+            and owner.get("launcher_sha256") == launcher_digest
+            and owner.get("previous_owned") is False
+            and owner.get("previous_commit", "") == ""
+            and owner.get("previous_sha256", "") == ""
+            and owner.get("previous_launcher_sha256", "") == "")
+
+
 def launcher_bytes(pin):
     """Build a checkout-independent PATH entry that verifies the pinned payload."""
     return (
@@ -200,11 +224,11 @@ def launcher_bytes(pin):
         "if Path(sys.argv[0]).name == 'onp':\n"
         "    command_args = ['new', *command_args]\n"
         "sys.argv = [str(target), *command_args]\n"
-        "sys.path[0] = str(directory)\n"
         "with tempfile.TemporaryDirectory(prefix='workbenches-project-exec-') as snapshot_dir:\n"
         "    snapshot = Path(snapshot_dir) / 'project'\n"
         "    snapshot.write_bytes(data)\n"
         "    snapshot.chmod(0o400)\n"
+        "    sys.path[0] = str(snapshot.parent)\n"
         "    namespace = {'__name__': '__main__', '__file__': str(snapshot), "
         "'__package__': None, '__cached__': None}\n"
         "    exec(code, namespace)\n"
@@ -250,7 +274,6 @@ def execute_project(data, target, command_args):
     original_argv = sys.argv
     original_path0 = sys.path[0]
     sys.argv = [str(target), *command_args]
-    sys.path[0] = str(target.parent)
     try:
         # The verified target path can be replaced by another process after it
         # is read. Keep __file__ on a private copy so code such as --version
@@ -259,6 +282,7 @@ def execute_project(data, target, command_args):
             snapshot = Path(snapshot_dir) / "project"
             snapshot.write_bytes(data)
             snapshot.chmod(0o400)
+            sys.path[0] = str(snapshot.parent)
             namespace = {
                 "__name__": "__main__",
                 "__file__": str(snapshot),
@@ -430,12 +454,15 @@ def main(argv=None):
                         help="remove only a project command owned by this installer")
     operation.add_argument("--resolve-owned", action="store_true",
                            help="print the command path only when installer ownership verifies")
+    operation.add_argument("--resolve-onp-owned", action="store_true",
+                           help="print the onp path only when its trusted launcher verifies")
     operation.add_argument("--exec-owned", action="store_true",
                            help="verify and execute the owned command while holding a shared lock")
     parser.add_argument("command_args", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     if (os.environ.get("WORKBENCHES_SKIP_PROJECT_COMMAND") == "1"
-            and not args.resolve_owned and not args.exec_owned and not args.remove):
+            and not args.resolve_owned and not args.resolve_onp_owned
+            and not args.exec_owned and not args.remove):
         print("project installation skipped by WORKBENCHES_SKIP_PROJECT_COMMAND=1")
         return 0
     staged = []
@@ -472,7 +499,7 @@ def main(argv=None):
             for item in trusted_previous
         )
         prelock_onp_owned = trusted_launcher(onp, expected_launcher_digests)
-        read_operation = args.resolve_owned or args.exec_owned
+        read_operation = args.resolve_owned or args.resolve_onp_owned or args.exec_owned
         if args.remove and not directory.exists():
             print(f"project: no install directory at {directory}", file=sys.stderr)
             return 3
@@ -495,6 +522,12 @@ def main(argv=None):
                 print(target)
                 return 0
             print(f"project: refused unowned command at {target}", file=sys.stderr)
+            return 3
+        if args.resolve_onp_owned:
+            if onp_owned:
+                print(onp)
+                return 0
+            print(f"project: refused unowned compatibility command at {onp}", file=sys.stderr)
             return 3
         if args.exec_owned:
             data = owned_target_data(target, payload, owner_marker, pin,
@@ -561,7 +594,10 @@ def main(argv=None):
             previous_launcher_digest = file_sha256(target)
         install_artifacts_exist = any(path.exists() or path.is_symlink()
                                       for path in (target, payload, owner_marker))
-        if install_artifacts_exist and not target_owned and not args.replace_existing:
+        recoverable_pending = recoverable_fresh_pending(
+            target, payload, owner_marker, pin, launcher_digest)
+        if (install_artifacts_exist and not target_owned
+                and not recoverable_pending and not args.replace_existing):
             raise ValueError(
                 f"Refusing to replace unowned project command: {target}; "
                 "use --replace-existing after reviewing it"
@@ -598,13 +634,18 @@ def main(argv=None):
             "previous_sha256": target_digest if target_owned else "",
             "previous_launcher_sha256": previous_launcher_digest,
         }, sort_keys=True) + "\n").encode()
-        unchanged = (target.is_file() and target.read_bytes() == launcher_data
+        unchanged = (target.is_file() and not target.is_symlink()
+                     and target.read_bytes() == launcher_data
                      and target.stat().st_mode & 0o777 == 0o755
-                     and payload.is_file() and payload.read_bytes() == data
+                     and payload.is_file() and not payload.is_symlink()
+                     and payload.read_bytes() == data
                      and payload.stat().st_mode & 0o777 == 0o644)
-        onp_same = (not manage_onp or (onp_owned and onp.read_bytes() == launcher_data))
-        marker_same = marker.is_file() and marker.read_bytes() == marker_data
-        owner_same = owner_marker.is_file() and owner_marker.read_bytes() == owner_data
+        onp_same = (not manage_onp or (onp_owned and not onp.is_symlink()
+                                      and onp.read_bytes() == launcher_data))
+        marker_same = (marker.is_file() and not marker.is_symlink()
+                       and marker.read_bytes() == marker_data)
+        owner_same = (owner_marker.is_file() and not owner_marker.is_symlink()
+                      and owner_marker.read_bytes() == owner_data)
         if not unchanged or not onp_same or not marker_same or not owner_same:
             directory.mkdir(parents=True, exist_ok=True)
             command_stage = stage(directory, launcher_data, 0o755)
