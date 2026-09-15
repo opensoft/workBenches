@@ -209,8 +209,8 @@ declared_cascade_images() {
                 metadata_files+=("$compose_file")
             fi
         done < <(find "$bench_dir" -maxdepth 3 -type f \
-            \( -name 'compose.yml' -o -name 'compose.yaml' \
-                -o -name 'docker-compose.yml' -o -name 'docker-compose.yaml' \) \
+            \( -name 'compose*.yml' -o -name 'compose*.yaml' \
+                -o -name 'docker-compose*.yml' -o -name 'docker-compose*.yaml' \) \
             -print0 2>/dev/null)
     fi
 
@@ -233,6 +233,13 @@ declared_cascade_images() {
                     }
                     working = line
                     while (match(working, /[A-Za-z0-9][A-Za-z0-9._\/-]*:[$][{]USER:-[^}]+[}]/)) {
+                        ref = substr(working, RSTART, RLENGTH)
+                        sub(/:.*/, ":latest", ref)
+                        print ref
+                        working = substr(working, RSTART + RLENGTH)
+                    }
+                    working = line
+                    while (match(working, /[A-Za-z0-9][A-Za-z0-9._\/-]*:[$][{][A-Za-z_][A-Za-z0-9_]*:-latest[}]/)) {
                         ref = substr(working, RSTART, RLENGTH)
                         sub(/:.*/, ":latest", ref)
                         print ref

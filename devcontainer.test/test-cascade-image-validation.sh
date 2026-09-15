@@ -308,6 +308,20 @@ if grep -Fq 'sim-bench-dev:latest' "$log"; then
     exit 1
 fi
 
+printf '%s\n' \
+    'services:' \
+    '  variable:' \
+    '    image: sim-bench-variable:${IMAGE_TAG:-latest}' \
+    > "$compose_bench_dir/docker-compose.variable.yml"
+printf '%s\n' 'docker compose -f docker-compose.variable.yml build' > "$compose_metadata"
+CASCADE_IMAGES=()
+CASCADE_IMAGE_RECORDS=()
+PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
+    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"
+test "${CASCADE_IMAGES[*]}" = "sim-bench-variable:latest"
+test "${CASCADE_IMAGE_RECORDS[*]}" = "sim-bench-variable:latest=$captured_image_id"
+
 first_build_dir="$temp_dir/first-build"
 mkdir -p "$first_build_dir"
 printf '%s\n' '#!/usr/bin/env bash' 'docker build -t first-bench:latest .' \
@@ -321,6 +335,7 @@ test ! -s "$temp_dir/first-build.records"
 
 CASCADE_IMAGES=()
 CASCADE_IMAGE_RECORDS=()
+printf '%s\n' 'docker compose -f docker-compose.yml build' > "$compose_metadata"
 if PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
     FAKE_DOCKER_MISSING_IMAGE=sim-bench-ui:latest \
     record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"; then
