@@ -246,6 +246,16 @@ install_commands() {
         if [ "$cmd_name" = "onp" ] && [ "$project_available" = false ]; then
             continue
         fi
+        if [ "$cmd_name" = "onp" ]; then
+            if cp -- "$install_dir/project" "$install_dir/onp" \
+                && chmod 0755 "$install_dir/onp"; then
+                print_success "Installed: onp"
+                ((installed_count++))
+            else
+                print_error "Failed to install: onp"
+            fi
+            continue
+        fi
         local cmd_desc="${COMMANDS[$cmd_name]}"
         local source_script=""
         

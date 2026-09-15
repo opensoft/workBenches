@@ -335,14 +335,15 @@ class InstallTests(unittest.TestCase):
                                     env=env, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout), ["new", "MyApp", "parent with spaces", "--yes"])
-        # The older setup menu copies onp directly into the bin directory. Its
-        # repository handoff still verifies the sibling executable first.
+        # The setup menu installs the self-verifying project launcher under the
+        # compatibility name rather than trusting a sibling executable.
         (self.wb / "scripts").mkdir(exist_ok=True)
         for name in ("project", "setup-project-command.py"):
             (self.wb / "scripts" / name).write_bytes((ROOT / "scripts" / name).read_bytes())
         (self.wb / "config/openrepoproject-pin.json").write_bytes(self.pin.read_bytes())
         copied = self.bin / "onp"
-        copied.write_bytes((ROOT / "scripts/onp").read_bytes())
+        copied.write_bytes((self.bin / "project").read_bytes())
+        copied.chmod(0o755)
         bypass_marker = self.base / "copied-new-project-ran"
         (self.bin / "new-project.sh").write_text(
             f'#!/usr/bin/env bash\nprintf ran > {str(bypass_marker)!r}\n')
@@ -352,14 +353,21 @@ class InstallTests(unittest.TestCase):
         (hostile_root / "scripts/project").write_text(
             f'#!/usr/bin/env bash\nprintf ran > {str(marker_bypass)!r}\n')
         (self.bin / ".workbenches-path").write_text(str(hostile_root) + "\n")
+        sibling_bypass = self.base / "sibling-project-ran"
+        (self.bin / "project").write_text(
+            f'#!/usr/bin/env python3\nfrom pathlib import Path\nPath({str(sibling_bypass)!r}).write_text("ran")\n')
+        (self.bin / "project").chmod(0o755)
         copied_env = env.copy()
         copied_env.pop("WORKBENCHES_ROOT")
-        result = subprocess.run(["bash", str(copied), "Copied", "parent with spaces"], env=copied_env,
+        result = subprocess.run([str(copied), "Copied", "parent with spaces"], env=copied_env,
                                 text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), ["new", "Copied", "parent with spaces"])
         self.assertFalse(bypass_marker.exists())
         self.assertFalse(marker_bypass.exists())
+        self.assertFalse(sibling_bypass.exists())
+        (self.bin / "project").write_bytes(copied.read_bytes())
+        (self.bin / "project").chmod(0o755)
         self.source.write_text("#!/usr/bin/env python3\nimport sys\nsys.exit(19)\n")
         pin = json.loads(self.pin.read_text())
         pin["trusted_previous"] = [{"commit": pin["commit"], "sha256": pin["sha256"]}]
@@ -476,6 +484,28 @@ class InstallTests(unittest.TestCase):
         self.assertFalse((home / ".local/bin/onp").exists())
         self.assertIn("onp installation skipped", result.stdout)
 
+    def test_setup_menu_installs_verified_onp_in_configured_directory(self):
+        self.assertEqual(self.install(), 0)
+        home = self.base / "menu-custom-home"
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "OPENREPOPROJECT_BIN_DIR": str(self.bin),
+            "OPENREPOPROJECT_PIN": str(self.pin),
+            "WORKBENCHES_ROOT": str(self.wb),
+        }
+        result = subprocess.run(
+            ["bash", "-c", 'source "$1"; install_onp_command', "_",
+             str(ROOT / "scripts/setup-workbenches.sh")],
+            env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.bin / "onp").is_file())
+        self.assertFalse((home / ".local/bin/onp").exists())
+        invoked = subprocess.run([str(self.bin / "onp"), "Configured"], env=env,
+                                 text=True, capture_output=True)
+        self.assertEqual(invoked.returncode, 0, invoked.stderr)
+        self.assertEqual(json.loads(invoked.stdout), ["new", "Configured"])
+
     def test_exec_owned_releases_shared_lock_before_delegated_work(self):
         lock_path = self.bin / installer.LOCK_NAME
         self.source.write_text(
@@ -548,6 +578,34 @@ class InstallTests(unittest.TestCase):
         result = subprocess.run(command, env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(f"Shadowed in PATH by {shadow}", result.stdout)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"),
+                         "command installer requires Bash 4 associative arrays")
+    def test_global_install_uses_verified_launcher_for_onp(self):
+        home = self.base / "global-home"
+        install_bin = home / ".local/bin"
+        install_bin.mkdir(parents=True)
+        self.assertEqual(installer.main([
+            "--pin", str(self.pin), "--bin-dir", str(install_bin),
+            "--workbenches", str(self.wb), "--source", str(self.source),
+        ]), 0)
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "PATH": str(install_bin) + os.pathsep + os.environ["PATH"],
+            "OPENREPOPROJECT_PIN": str(self.pin),
+            "WORKBENCHES_ROOT": str(self.wb),
+        }
+        result = subprocess.run(
+            ["bash", str(ROOT / "scripts/install-workbench-commands.sh"), "--install"],
+            env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((install_bin / "onp").read_bytes(),
+                         (install_bin / "project").read_bytes())
+        invoked = subprocess.run([str(install_bin / "onp"), "Global"], env=env,
+                                 text=True, capture_output=True)
+        self.assertEqual(invoked.returncode, 0, invoked.stderr)
+        self.assertEqual(json.loads(invoked.stdout), ["new", "Global"])
 
     @unittest.skipUnless(sys.platform.startswith("linux"),
                          "command installer requires Bash 4 associative arrays")

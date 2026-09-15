@@ -7,12 +7,5 @@ if [ -f "$script_dir/new-project.sh" ] \
     && [ -f "$script_dir/../config/bench-config.json" ]; then
     exec bash "$script_dir/new-project.sh" "$@"
 fi
-# setup-workbenches also supports copying onp beside the installed verifier
-# launcher. Execute that sibling directly; .workbenches-path is discovery data,
-# not executable authority.
-if [ -f "$script_dir/project" ] && [ ! -L "$script_dir/project" ] \
-    && [ -x "$script_dir/project" ]; then
-    exec "$script_dir/project" new "$@"
-fi
-echo 'project is not installed or is not owned by workBenches; run workBenches/scripts/setup-project-command.py' >&2
+echo 'this legacy onp script must run from workBenches; reinstall commands to get the verified PATH launcher' >&2
 exit 2
