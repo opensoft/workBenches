@@ -27,6 +27,10 @@ Record installer ownership and the installed digest separately; automatic
 installation refuses an unowned name collision, and uninstall rechecks both.
 Use the existing host-local .workbenches-path convention for discovery.
 Legacy scripts forward to the executable; generic logic exists only upstream.
+The PATH entry is user-writable and therefore cannot authenticate its own code
+against hostile replacement before that code begins executing. Installer,
+status, and legacy resolution use the trusted generator to detect replacement;
+host filesystem permissions remain the direct-execution trust boundary.
 
 ## Risks / Trade-offs
 

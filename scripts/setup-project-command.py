@@ -129,9 +129,12 @@ def recoverable_fresh_pending(target, payload, owner_marker, pin,
                               launcher_digest):
     """Recognize a journal written before any fresh-install payload published."""
     if (target.exists() or target.is_symlink()
-            or payload.exists() or payload.is_symlink()
             or not owner_marker.is_file() or owner_marker.is_symlink()):
         return False
+    if payload.exists() or payload.is_symlink():
+        if (not payload.is_file() or payload.is_symlink()
+                or hashlib.sha256(payload.read_bytes()).hexdigest() != pin["sha256"]):
+            return False
     try:
         owner = json.loads(owner_marker.read_text())
     except (OSError, ValueError, TypeError):
@@ -200,7 +203,7 @@ def launcher_bytes(pin):
         "        refuse('refused unowned payload')\n"
         "    launcher = read_regular(Path(__file__), 2 * 1024 * 1024)\n"
         "    if hashlib.sha256(launcher).hexdigest() != owner.get('launcher_sha256'):\n"
-        "        refuse('refused a tampered launcher')\n"
+        "        refuse('refused a launcher that does not match its ownership record')\n"
         "    data = read_regular(directory / PAYLOAD_NAME, 2 * 1024 * 1024)\n"
         "    if hashlib.sha256(data).hexdigest() != EXPECTED_SHA256:\n"
         "        refuse('refused payload with a mismatched digest')\n"
@@ -335,6 +338,16 @@ def atomic_move_noreplace(source, destination):
     atomic_rename(source, destination, 1, 4)  # RENAME_NOREPLACE / RENAME_EXCL
 
 
+def preserve_staged_collision(source):
+    """Move unexpected staged bytes to a private diagnostic path."""
+    descriptor, name = tempfile.mkstemp(prefix=".project-collision-",
+                                        dir=source.parent)
+    os.close(descriptor)
+    collision = Path(name)
+    os.replace(source, collision)
+    return collision
+
+
 def atomic_checked_quarantine(path, expected_state):
     """Move path aside atomically and return it only when identity matches."""
     descriptor, name = tempfile.mkstemp(prefix=".project-remove-", dir=path.parent)
@@ -402,9 +415,19 @@ def atomic_checked_replace(source, destination, expected_state):
     if expected_state[:1] != ("file",):
         raise ValueError(f"Refusing non-regular replacement at {destination}")
     atomic_exchange(source, destination)
-    if path_fingerprint(source) != expected_state:
+    if (path_fingerprint(source) != expected_state
+            or path_fingerprint(destination) != published_state):
         atomic_exchange(source, destination)
-        raise ValueError(f"Refusing concurrent replacement at {destination}")
+        collision = preserve_staged_collision(source)
+        if path_fingerprint(destination) != expected_state:
+            raise ValueError(
+                f"Refusing concurrent replacement at {destination}; "
+                f"original identity could not be restored and staged bytes remain at {collision}"
+            )
+        raise ValueError(
+            f"Refusing concurrent replacement at {destination}; "
+            f"preserved unexpected staged bytes at {collision}"
+        )
     return source, published_state
 
 
@@ -498,15 +521,25 @@ def main(argv=None):
             })).hexdigest()
             for item in trusted_previous
         )
-        prelock_onp_owned = trusted_launcher(onp, expected_launcher_digests)
         read_operation = args.resolve_owned or args.resolve_onp_owned or args.exec_owned
         if args.remove and not directory.exists():
             print(f"project: no install directory at {directory}", file=sys.stderr)
             return 3
-        if (args.remove and not target.exists() and not owner_marker.exists()
-                and not prelock_onp_owned):
-            print(f"project: no installer-owned command at {target}", file=sys.stderr)
-            return 3
+        if args.remove:
+            if not lock_path.is_file():
+                print(f"project: no installer-owned command at {target}", file=sys.stderr)
+                return 3
+            preliminary_lock = acquire_project_lock(directory, exclusive=False)
+            try:
+                preliminarily_owned = owned_target(
+                    target, payload, owner_marker, pin, expected_launcher_digests)
+                preliminary_onp_owned = trusted_launcher(
+                    onp, expected_launcher_digests)
+            finally:
+                os.close(preliminary_lock)
+            if not preliminarily_owned and not preliminary_onp_owned:
+                print(f"project: preserved unowned command at {target}", file=sys.stderr)
+                return 3
         if read_operation and not lock_path.is_file():
             print(f"project: refused unlocked command at {target}", file=sys.stderr)
             return 3

@@ -39,6 +39,10 @@ check preserves the existing executable. A symlink, directory,
 read-only target, or unrelated existing `project` command refuses. After
 reviewing a name collision, use `--replace-existing` to take ownership;
 uninstall removes only an artifact whose ownership record and digest agree.
+The user-writable PATH entry is not itself an integrity root: status and legacy
+forwarders authenticate it against the installer template, while protection
+against hostile same-user replacement before direct execution depends on host
+filesystem permissions.
 Python 3.10+ is required; YAML inspection needs PyYAML, available in the
 development bench.
 

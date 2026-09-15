@@ -128,6 +128,19 @@ class InstallTests(unittest.TestCase):
         finally:
             self.bin.chmod(0o755)
 
+    def test_remove_unowned_command_does_not_require_directory_write_access(self):
+        self.bin.mkdir()
+        target = self.bin / "project"
+        target.write_text("unowned command")
+        target.chmod(0o755)
+        self.bin.chmod(0o555)
+        try:
+            self.assertEqual(installer.main([*self.args, "--remove"]), 3)
+            self.assertEqual(target.read_text(), "unowned command")
+            self.assertFalse((self.bin / installer.LOCK_NAME).exists())
+        finally:
+            self.bin.chmod(0o755)
+
     def test_remove_owned_command_ignores_discovery_marker_state(self):
         self.assertEqual(self.install(), 0)
         marker = self.bin / ".workbenches-path"
@@ -183,7 +196,7 @@ class InstallTests(unittest.TestCase):
         def replace_before_final_check(*args):
             nonlocal checks
             checks += 1
-            if checks == 2:
+            if checks == 3:
                 target.write_text("concurrent replacement")
             return real_owned_target(*args)
 
@@ -357,6 +370,37 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(target.read_text(), "concurrent unowned command")
         self.assertEqual(installer.main([*self.args, "--resolve-owned"]), 3)
 
+    def test_published_destination_fingerprint_is_checked(self):
+        self.assertEqual(self.install(), 0)
+        target = self.bin / "project"
+        original_target = target.read_bytes()
+        self.source.write_text('#!/usr/bin/env python3\nprint("updated")\n')
+        pin = json.loads(self.pin.read_text())
+        pin["trusted_previous"] = [{"commit": pin["commit"], "sha256": pin["sha256"]}]
+        pin["commit"] = "b" * 40
+        pin["sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.pin.write_text(json.dumps(pin))
+        real_exchange = installer.atomic_exchange
+        replacement_injected = False
+
+        def replace_after_target_exchange(left, right):
+            nonlocal replacement_injected
+            real_exchange(left, right)
+            if Path(right) == target and not replacement_injected:
+                right.write_text("concurrent published replacement")
+                right.chmod(0o755)
+                replacement_injected = True
+
+        with patch.object(installer, "atomic_exchange",
+                          side_effect=replace_after_target_exchange):
+            self.assertEqual(self.install(), 2)
+        self.assertTrue(replacement_injected)
+        self.assertEqual(target.read_bytes(), original_target)
+        collisions = list(self.bin.glob(".project-collision-*"))
+        self.assertEqual(len(collisions), 1)
+        self.assertEqual(collisions[0].read_text(),
+                         "concurrent published replacement")
+
     def test_pending_owned_upgrade_recovers_after_interruption(self):
         self.assertEqual(self.install(), 0)
         target = self.bin / "project"
@@ -408,6 +452,30 @@ class InstallTests(unittest.TestCase):
             "previous_sha256": "",
             "previous_launcher_sha256": "",
         }))
+        self.assertEqual(self.install(), 0)
+        self.assertTrue((self.bin / "project").is_file())
+        self.assertEqual(json.loads(owner.read_text())["state"], "owned")
+
+    def test_fresh_pending_with_published_payload_recovers(self):
+        self.bin.mkdir()
+        pin = json.loads(self.pin.read_text())
+        owner = self.bin / ".workbenches-project.json"
+        owner.write_text(json.dumps({
+            "schema_version": 1,
+            "state": "pending",
+            "repository": pin["repository"],
+            "commit": pin["commit"],
+            "sha256": pin["sha256"],
+            "launcher_sha256": hashlib.sha256(
+                installer.launcher_bytes(pin)).hexdigest(),
+            "previous_owned": False,
+            "previous_commit": "",
+            "previous_sha256": "",
+            "previous_launcher_sha256": "",
+        }))
+        payload = self.bin / installer.PAYLOAD_NAME
+        payload.write_bytes(self.source.read_bytes())
+        payload.chmod(0o644)
         self.assertEqual(self.install(), 0)
         self.assertTrue((self.bin / "project").is_file())
         self.assertEqual(json.loads(owner.read_text())["state"], "owned")
