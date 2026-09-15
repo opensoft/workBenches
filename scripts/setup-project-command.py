@@ -311,8 +311,8 @@ def atomic_move_noreplace(source, destination):
     atomic_rename(source, destination, 1, 4)  # RENAME_NOREPLACE / RENAME_EXCL
 
 
-def atomic_checked_unlink(path, expected_state):
-    """Quarantine path atomically and delete only the expected file."""
+def atomic_checked_quarantine(path, expected_state):
+    """Move path aside atomically and return it only when identity matches."""
     descriptor, name = tempfile.mkstemp(prefix=".project-remove-", dir=path.parent)
     os.close(descriptor)
     quarantine = Path(name)
@@ -327,11 +327,38 @@ def atomic_checked_unlink(path, expected_state):
                     f"Refusing concurrent removal at {path}; preserved replacement at {quarantine}"
                 ) from exc
             raise ValueError(f"Refusing concurrent removal at {path}")
+    except BaseException:
+        if quarantine.exists() and not path.exists():
+            atomic_move_noreplace(quarantine, path)
+        raise
+    return quarantine
+
+
+def atomic_checked_unlink(path, expected_state):
+    """Quarantine path atomically and delete only the expected file."""
+    quarantine = atomic_checked_quarantine(path, expected_state)
+    try:
         quarantine.unlink()
     except BaseException:
         if quarantine.exists() and not path.exists():
             atomic_move_noreplace(quarantine, path)
         raise
+
+
+def remove_transaction(removals):
+    """Quarantine every verified artifact before committing grouped removal."""
+    quarantined = []
+    try:
+        for path, expected_state in removals:
+            quarantine = atomic_checked_quarantine(path, expected_state)
+            quarantined.append((path, quarantine))
+    except BaseException:
+        for path, quarantine in reversed(quarantined):
+            if quarantine.exists() and not path.exists():
+                atomic_move_noreplace(quarantine, path)
+        raise
+    for _path, quarantine in quarantined:
+        quarantine.unlink()
 
 
 def atomic_checked_replace(source, destination, expected_state):
@@ -493,11 +520,14 @@ def main(argv=None):
                             onp, expected_launcher_digests)
                             or onp_state != path_fingerprint(onp)))):
                     raise ValueError("Project command changed during removal; nothing removed")
-                atomic_checked_unlink(target, removal_state[0])
-                atomic_checked_unlink(payload, removal_state[1])
-                atomic_checked_unlink(owner_marker, removal_state[2])
+                removals = [
+                    (target, removal_state[0]),
+                    (payload, removal_state[1]),
+                    (owner_marker, removal_state[2]),
+                ]
                 if onp_owned:
-                    atomic_checked_unlink(onp, onp_state)
+                    removals.append((onp, onp_state))
+                remove_transaction(removals)
                 print(f"project: removed installer-owned command from {target}")
                 return 0
             if onp_owned:
@@ -505,7 +535,7 @@ def main(argv=None):
                 if (not trusted_launcher(onp, expected_launcher_digests)
                         or onp_state != path_fingerprint(onp)):
                     raise ValueError("onp changed during removal; nothing removed")
-                atomic_checked_unlink(onp, onp_state)
+                remove_transaction([(onp, onp_state)])
                 print(f"project: removed installer-owned compatibility command from {onp}")
                 return 0
             print(f"project: preserved unowned command at {target}", file=sys.stderr)

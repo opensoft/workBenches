@@ -203,8 +203,9 @@ else
     exit 1
 fi
 EOF
-    
-    chmod +x "$install_path/$command_name"
+    local write_status=$?
+    [ "$write_status" -eq 0 ] || return "$write_status"
+    chmod +x "$install_path/$command_name" || return $?
     return 0
 }
 
@@ -241,6 +242,17 @@ install_commands() {
             print_error "Installation failed"
             return 1
         fi
+    fi
+
+    if [ ! -d "$install_dir" ]; then
+        if ! mkdir -p "$install_dir"; then
+            print_error "Failed to create installation directory: $install_dir"
+            return 1
+        fi
+    fi
+    if [ ! -w "$install_dir" ]; then
+        print_error "Installation directory is not writable: $install_dir"
+        return 1
     fi
     
     print_info "Installing to: $install_dir"

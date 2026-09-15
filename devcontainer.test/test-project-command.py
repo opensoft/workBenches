@@ -209,6 +209,31 @@ class InstallTests(unittest.TestCase):
         self.assertTrue((self.bin / installer.PAYLOAD_NAME).is_file())
         self.assertTrue((self.bin / ".workbenches-project.json").is_file())
 
+    def test_grouped_remove_restores_earlier_quarantines_on_failure(self):
+        self.assertEqual(self.install(), 0)
+        target = self.bin / "project"
+        payload = self.bin / installer.PAYLOAD_NAME
+        owner = self.bin / ".workbenches-project.json"
+        original_target = target.read_bytes()
+        real_move = installer.atomic_move_noreplace
+        collision_created = False
+
+        def replace_payload_before_quarantine(source, destination):
+            nonlocal collision_created
+            if Path(source) == payload and not collision_created:
+                payload.write_text("concurrent payload replacement")
+                collision_created = True
+            return real_move(source, destination)
+
+        with patch.object(installer, "atomic_move_noreplace",
+                          side_effect=replace_payload_before_quarantine):
+            self.assertEqual(installer.main([*self.args, "--remove"]), 2)
+        self.assertTrue(collision_created)
+        self.assertEqual(target.read_bytes(), original_target)
+        self.assertEqual(payload.read_text(), "concurrent payload replacement")
+        self.assertTrue(owner.is_file())
+        self.assertEqual(list(self.bin.glob(".project-remove-*")), [])
+
     def test_partial_publish_failures_roll_back_owned_upgrade(self):
         self.assertEqual(self.install(), 0)
         target = self.bin / "project"
@@ -612,6 +637,28 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(invoked.returncode, 0, invoked.stderr)
         self.assertEqual(json.loads(invoked.stdout), ["new", "Configured"])
 
+    def test_setup_menu_expands_tilde_in_configured_directory(self):
+        home = self.base / "menu-tilde-home"
+        tilde_bin = home / "bin"
+        self.assertEqual(installer.main([
+            *self.args, "--bin-dir", str(tilde_bin),
+            "--source", str(self.source),
+        ]), 0)
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "OPENREPOPROJECT_BIN_DIR": "~/bin",
+            "OPENREPOPROJECT_PIN": str(self.pin),
+            "WORKBENCHES_ROOT": str(self.wb),
+        }
+        result = subprocess.run(
+            ["bash", "-c", 'source "$1"; install_onp_command', "_",
+             str(ROOT / "scripts/setup-workbenches.sh")],
+            env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((tilde_bin / "onp").is_file())
+        self.assertIn(str(tilde_bin / "onp"), result.stdout)
+
     def test_project_pin_rotation_refreshes_installer_owned_onp(self):
         self.assertEqual(self.install(), 0)
         onp = self.bin / "onp"
@@ -822,6 +869,27 @@ class InstallTests(unittest.TestCase):
         self.assertFalse((install_bin / "project").exists())
         self.assertFalse((install_bin / "onp").exists())
         self.assertIn("Project command was skipped", result.stdout)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"),
+                         "command installer requires Bash 4 associative arrays")
+    def test_global_skip_creates_configured_wrapper_directory(self):
+        home = self.base / "custom-skip-home"
+        install_bin = home / "configured/bin"
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "PATH": os.environ["PATH"],
+            "OPENREPOPROJECT_BIN_DIR": str(install_bin),
+            "OPENREPOPROJECT_PIN": str(self.pin),
+            "WORKBENCHES_SKIP_PROJECT_COMMAND": "1",
+        }
+        result = subprocess.run(
+            ["bash", str(ROOT / "scripts/install-workbench-commands.sh"), "--install"],
+            env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(install_bin.is_dir())
+        self.assertFalse((install_bin / "project").exists())
+        self.assertFalse((install_bin / "onp").exists())
 
     @unittest.skipUnless(sys.platform.startswith("linux"),
                          "command installer requires Bash 4 associative arrays")

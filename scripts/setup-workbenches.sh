@@ -268,6 +268,10 @@ install_onp_command() {
         return 0
     fi
     local project_bin_dir="${OPENREPOPROJECT_BIN_DIR:-$HOME/.local/bin}"
+    case "$project_bin_dir" in
+        '~') project_bin_dir="$HOME" ;;
+        '~/'*) project_bin_dir="$HOME/${project_bin_dir#'~/'}" ;;
+    esac
     python3 "$SCRIPT_DIR/setup-project-command.py" \
         --bin-dir "$project_bin_dir" --install-onp || return $?
     if ! python3 "$SCRIPT_DIR/setup-project-command.py" \
