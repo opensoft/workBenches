@@ -88,6 +88,7 @@ declare -A RUNNING_CONTAINER_BY_IMAGE=()
 declare -A RUNNING_IMAGE_ID_BY_KEY=()
 declare -A EXPECTED_IMAGE_IDS=()
 IMAGE_PROBE_FAILURES=0
+MANIFEST_IMAGE_ID_FAILURES=0
 LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256 "$REPO_DIR/user-layer")"
 LAYER3_IDENTITY_TIMEOUT_SECONDS="${WORKBENCHES_LAYER3_IDENTITY_TIMEOUT_SECONDS:-600}"
 if [[ ! "$LAYER3_IDENTITY_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
@@ -596,6 +597,7 @@ check_layer3_image() {
             echo -e "${YELLOW}↷ Layer 3 $user_image is missing; activation has not occurred${NC}"
         fi
         record_image "$user_image" "3" "activation-missing"
+        MANIFEST_IMAGE_ID_FAILURES=$((MANIFEST_IMAGE_ID_FAILURES + 1))
         return
     fi
 
@@ -991,7 +993,9 @@ if [ "$WRITE_MANIFEST" = true ] || [ "$JSON_OUTPUT" = true ]; then
     fi
 fi
 
-if [ "$WRITE_MANIFEST" = true ] && [ "$IMAGE_PROBE_FAILURES" -eq 0 ]; then
+if [ "$WRITE_MANIFEST" = true ] \
+    && [ "$IMAGE_PROBE_FAILURES" -eq 0 ] \
+    && [ "$MANIFEST_IMAGE_ID_FAILURES" -eq 0 ]; then
     manifest_temp="$(mktemp "$manifest_config_dir/.version-manifest.XXXXXX")"
     if ! printf '%s\n' "$manifest_json" > "$manifest_temp" || ! mv -f -- "$manifest_temp" "$MANIFEST_FILE"; then
         rm -f -- "$manifest_temp"
@@ -1003,13 +1007,14 @@ if [ "$WRITE_MANIFEST" = true ] && [ "$IMAGE_PROBE_FAILURES" -eq 0 ]; then
         echo "Version manifest written to ${MANIFEST_FILE#$REPO_DIR/}"
     fi
 elif [ "$WRITE_MANIFEST" = true ]; then
-    echo "Version manifest not written because one or more image probes failed" >&2
+    echo "Version manifest not written because an image probe failed or an immutable image ID is missing" >&2
 fi
 
 if [ "$JSON_OUTPUT" = true ]; then
     printf '%s\n' "$manifest_json"
 fi
 
-if [ "$IMAGE_PROBE_FAILURES" -gt 0 ]; then
+if [ "$IMAGE_PROBE_FAILURES" -gt 0 ] \
+    || { [ "$WRITE_MANIFEST" = true ] && [ "$MANIFEST_IMAGE_ID_FAILURES" -gt 0 ]; }; then
     exit 1
 fi

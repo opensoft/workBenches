@@ -81,10 +81,10 @@ RUN set -eux && \
 # effective passwd identity. Fail the build instead of publishing labels for a
 # user whose inherited UID/GID does not match the requested host identity.
 RUN set -eux && \
-    if [ "$USERNAME" = root ] || ! printf '%s\n' "$USERNAME" | grep -Eq '^[a-z_][a-z0-9_-]*$'; then \
-        echo "Layer 3 requires a valid non-root username" >&2; \
-        exit 1; \
-    fi && \
+    case "$USERNAME" in \
+        root|''|[!a-z_]*|*[!a-z0-9_-]*) \
+            echo "Layer 3 requires a valid non-root username" >&2; exit 1;; \
+    esac && \
     case "$USER_UID" in ''|0*|*[!0-9]*) echo "Layer 3 requires a canonical positive UID" >&2; exit 1;; esac && \
     case "$USER_GID" in ''|0*|*[!0-9]*) echo "Layer 3 requires a canonical positive GID" >&2; exit 1;; esac && \
     if getent passwd "$USERNAME" >/dev/null; then \

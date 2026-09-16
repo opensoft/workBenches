@@ -57,7 +57,7 @@ PY
             exit 1
         fi
         case "$image" in
-            test-bench:latest|test-bench:brett*|sim-bench-gene_bench:*|sim-bench-ui:*|sim-bench-variable:*|sim-bench-override:*|sha256:*) ;;
+            test-bench:latest|test-bench:brett*|sim-bench-*:*|sha256:*) ;;
             *) exit 1 ;;
         esac
         case "$*" in

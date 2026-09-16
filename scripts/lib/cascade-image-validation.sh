@@ -28,9 +28,7 @@ select_layer2_build_script() {
 
     for candidate in \
         "$bench_dir/build-layer2.sh" \
-        "$bench_dir/scripts/build-layer2.sh" \
-        "$bench_dir/build.sh" \
-        "$bench_dir/.devcontainer/build.sh"; do
+        "$bench_dir/scripts/build-layer2.sh"; do
         if [[ -x "$candidate" ]]; then
             printf '%s\n' "$candidate"
             return 0
@@ -154,6 +152,7 @@ resolve_compose_file_argument() {
     local build_script="$2"
     local build_dir
     local variable_name
+    local default_value
     local suffix
     local replacement
     local iteration
@@ -161,8 +160,13 @@ resolve_compose_file_argument() {
     build_dir="$(dirname "$build_script")"
     for iteration in 1 2 3 4 5 6; do
         variable_name=""
+        default_value=""
         suffix=""
-        if [[ "$selected_file" =~ ^\$\{([A-Za-z_][A-Za-z0-9_]*)\}(.*)$ ]]; then
+        if [[ "$selected_file" =~ ^\$\{([A-Za-z_][A-Za-z0-9_]*):-([^\}]+)\}(.*)$ ]]; then
+            variable_name="${BASH_REMATCH[1]}"
+            default_value="${BASH_REMATCH[2]}"
+            suffix="${BASH_REMATCH[3]}"
+        elif [[ "$selected_file" =~ ^\$\{([A-Za-z_][A-Za-z0-9_]*)\}(.*)$ ]]; then
             variable_name="${BASH_REMATCH[1]}"
             suffix="${BASH_REMATCH[2]}"
         elif [[ "$selected_file" =~ ^\$([A-Za-z_][A-Za-z0-9_]*)(/.*)?$ ]]; then
@@ -171,7 +175,13 @@ resolve_compose_file_argument() {
         else
             break
         fi
-        if [[ "$variable_name" == "SCRIPT_DIR" ]]; then
+        if [[ -n "$default_value" ]]; then
+            if [[ -n "${!variable_name+x}" && -n "${!variable_name}" ]]; then
+                replacement="${!variable_name}"
+            else
+                replacement="$default_value"
+            fi
+        elif [[ "$variable_name" == "SCRIPT_DIR" ]]; then
             replacement="$build_dir"
         else
             replacement="$(static_shell_assignment "$build_script" "$variable_name")"
@@ -185,6 +195,63 @@ resolve_compose_file_argument() {
     done
     [[ "$selected_file" != *'$'* && "$selected_file" != *'`'* ]] || return 1
     printf '%s\n' "$selected_file"
+}
+
+compose_generated_build_images() {
+    local compose_file="$1"
+    local default_project="$2"
+
+    awk -v default_project="$default_project" '
+        function flush_service() {
+            if (service != "" && has_build && !has_image) {
+                print project "-" service ":latest"
+            }
+            service = ""
+            has_build = 0
+            has_image = 0
+        }
+        BEGIN { project = default_project; in_services = 0; service_indent = -1 }
+        {
+            raw = $0
+            sub(/[[:space:]]+#.*/, "", raw)
+            if (raw ~ /^[[:space:]]*$/) next
+            match(raw, /^[[:space:]]*/)
+            indent = RLENGTH
+            line = raw
+            sub(/^[[:space:]]+/, "", line)
+            sub(/[[:space:]]+$/, "", line)
+            if (indent == 0 && line ~ /^name:[[:space:]]*/) {
+                candidate = line
+                sub(/^name:[[:space:]]*/, "", candidate)
+                gsub(/^["\047]|["\047]$/, "", candidate)
+                if (candidate ~ /^[a-z0-9][a-z0-9_-]*$/) project = candidate
+                next
+            }
+            if (indent == 0 && line == "services:") {
+                in_services = 1
+                next
+            }
+            if (indent == 0) {
+                flush_service()
+                in_services = 0
+                next
+            }
+            if (!in_services) next
+            if (line ~ /^[A-Za-z0-9_.-]+:[[:space:]]*$/ \
+                    && (service_indent < 0 || indent <= service_indent)) {
+                flush_service()
+                service = line
+                sub(/:.*/, "", service)
+                service_indent = indent
+                next
+            }
+            if (service != "" && indent > service_indent) {
+                if (line ~ /^build:([[:space:]]|$)/) has_build = 1
+                if (line ~ /^image:([[:space:]]|$)/) has_image = 1
+            }
+        }
+        END { flush_service() }
+    ' "$compose_file"
 }
 
 build_selects_compose_file() {
@@ -221,6 +288,7 @@ declared_cascade_images() {
     local bench_dir="${3:-}"
     local image_repo="${image%:*}"
     local -a metadata_files=()
+    local -a compose_files=()
 
     [[ -f "$build_script" ]] && metadata_files+=("$build_script")
     if [[ -f "$build_script" && -d "$bench_dir" ]]; then
@@ -238,6 +306,7 @@ declared_cascade_images() {
                     if [[ -f "$compose_dir/$default_compose_name" ]]; then
                         default_compose_file="$compose_dir/$default_compose_name"
                         metadata_files+=("$default_compose_file")
+                        compose_files+=("$default_compose_file")
                         break 2
                     fi
                 done
@@ -251,6 +320,7 @@ declared_cascade_images() {
                     "$override_prefix.yaml" "$override_prefix.yml"; do
                     if [[ -f "$(dirname "$default_compose_file")/$override_compose_name" ]]; then
                         metadata_files+=("$(dirname "$default_compose_file")/$override_compose_name")
+                        compose_files+=("$(dirname "$default_compose_file")/$override_compose_name")
                         break
                     fi
                 done
@@ -259,6 +329,7 @@ declared_cascade_images() {
         while IFS= read -r -d '' compose_file; do
             if build_selects_compose_file "$build_script" "$compose_file"; then
                 metadata_files+=("$compose_file")
+                compose_files+=("$compose_file")
             fi
         done < <(find "$bench_dir" -maxdepth 3 -type f \
             \( -name 'compose*.yml' -o -name 'compose*.yaml' \
@@ -310,13 +381,34 @@ declared_cascade_images() {
                         || (substr(ref, 1, 1) == quote && substr(ref, length(ref), 1) == quote)) {
                         ref = substr(ref, 2, length(ref) - 2)
                     }
+                    while (match(ref, /[$][{][A-Za-z_][A-Za-z0-9_]*:-[A-Za-z0-9._\/-]+[}]/)) {
+                        expression = substr(ref, RSTART, RLENGTH)
+                        inner = substr(expression, 3, length(expression) - 3)
+                        separator = index(inner, ":-")
+                        variable_name = substr(inner, 1, separator - 1)
+                        fallback = substr(inner, separator + 2)
+                        replacement = ENVIRON[variable_name]
+                        if (replacement == "") replacement = fallback
+                        ref = substr(ref, 1, RSTART - 1) replacement substr(ref, RSTART + RLENGTH)
+                    }
                     leaf = ref
                     sub(/^.*\//, "", leaf)
-                    if (ref ~ /^[A-Za-z0-9][A-Za-z0-9._:\/-]*$/ && leaf !~ /:/) {
-                        print ref ":latest"
+                    if (ref ~ /^[A-Za-z0-9][A-Za-z0-9._:\/-]*$/) {
+                        if (leaf ~ /:latest$/) print ref
+                        else if (leaf !~ /:/) print ref ":latest"
                     }
                 }
             ' "${metadata_files[@]}" 2>/dev/null || true
+        fi
+        if [[ "${#compose_files[@]}" -gt 0 ]]; then
+            local compose_file
+            local compose_project
+            compose_project="$(basename "$bench_dir" \
+                | tr '[:upper:]' '[:lower:]' \
+                | sed -E 's/[^a-z0-9_-]+/-/g; s/^[^a-z0-9]+//')"
+            for compose_file in "${compose_files[@]}"; do
+                compose_generated_build_images "$compose_file" "$compose_project"
+            done
         fi
     } | awk -v repo="$image_repo" '
         $0 == repo ":latest" || (index($0, repo "-") == 1 && $0 ~ /:latest$/)

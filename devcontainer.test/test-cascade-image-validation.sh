@@ -43,6 +43,11 @@ test "${WORKBENCHES_REQUIRED_AI_CLIS[0]}" = claude
 test "${WORKBENCHES_REQUIRED_AI_CLIS[-1]}" = cursor-agent
 grep -Fq 'required_clis=("${WORKBENCHES_REQUIRED_AI_CLIS[@]}")' "$installer"
 test "$(grep -Fc -- '- user-layer/**' "$repo_root/.github/workflows/cascade-image-validation.yml")" -eq 2
+grep -Fq "root|''|[!a-z_]*|*[!a-z0-9_-]*" "$repo_root/user-layer/Dockerfile"
+if grep -Fq "grep -Eq '^[a-z_][a-z0-9_-]*$'" "$repo_root/user-layer/Dockerfile"; then
+    echo "Layer 3 Dockerfile still uses line-oriented username validation" >&2
+    exit 1
+fi
 
 assert_layer3_identity_rejected() {
     : > "$log"
@@ -199,6 +204,20 @@ FAKE_DOCKER_MISSING_IMAGE=test-bench:brett \
 jq -e \
     '.images[] | select(.image == "test-bench:brett" and .status == "activation-missing")' \
     "$temp_dir/user-image-missing.json" >/dev/null
+
+printf '%s\n' 'previous-valid-manifest' > "$manifest"
+if PATH="$fake_bin:$PATH" \
+    FAKE_DOCKER_LOG="$log" \
+    FAKE_DOCKER_MISSING_IMAGE=test-bench:brett \
+    "$checker" --layer 0 --images test-bench:latest --check-layer3 --write-manifest \
+        --manifest-file "$manifest" --user brett \
+        > "$temp_dir/missing-image-manifest.out" 2> "$temp_dir/missing-image-manifest.err"; then
+    echo "expected a missing Layer 3 image ID to reject manifest persistence" >&2
+    exit 1
+fi
+test "$(cat "$manifest")" = 'previous-valid-manifest'
+grep -Fq 'immutable image ID is missing' "$temp_dir/missing-image-manifest.err"
+rm -f -- "$manifest"
 
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
@@ -364,10 +383,13 @@ CASCADE_IMAGES=()
 CASCADE_IMAGE_RECORDS=()
 
 layer2_selection_dir="$temp_dir/layer2-selection"
-mkdir -p "$layer2_selection_dir/scripts"
+mkdir -p "$layer2_selection_dir/scripts" "$layer2_selection_dir/.devcontainer"
 printf '%s\n' '#!/usr/bin/env bash' > "$layer2_selection_dir/build-layer.sh"
 printf '%s\n' '#!/usr/bin/env bash' > "$layer2_selection_dir/scripts/build-layer.sh"
+printf '%s\n' '#!/usr/bin/env bash' > "$layer2_selection_dir/build.sh"
+printf '%s\n' '#!/usr/bin/env bash' > "$layer2_selection_dir/.devcontainer/build.sh"
 chmod +x "$layer2_selection_dir/build-layer.sh" "$layer2_selection_dir/scripts/build-layer.sh"
+chmod +x "$layer2_selection_dir/build.sh" "$layer2_selection_dir/.devcontainer/build.sh"
 if select_layer2_build_script "$layer2_selection_dir" >/dev/null; then
     echo "Layer 2 cascade selected a full Layer 2 + Layer 3 build helper" >&2
     exit 1
@@ -481,6 +503,45 @@ if grep -Fq 'sim-bench-dev:latest' "$log"; then
     echo "variable-backed Compose selection captured the wrong metadata" >&2
     exit 1
 fi
+
+printf '%s\n' \
+    'SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"' \
+    'COMPOSE_FILE="${COMPOSE_FILE:-$SCRIPT_DIR/docker-compose.yml}"' \
+    'docker compose -f "$COMPOSE_FILE" build' > "$compose_metadata"
+CASCADE_IMAGES=()
+CASCADE_IMAGE_RECORDS=()
+PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
+    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"
+test "${CASCADE_IMAGES[*]}" = "sim-bench-gene_bench:latest sim-bench-ui:latest"
+
+printf '%s\n' \
+    'services:' \
+    '  api:' \
+    '    build: .' \
+    '    image: ${API_IMAGE:-sim-bench-api}:latest' \
+    > "$compose_bench_dir/docker-compose.repository-variable.yml"
+printf '%s\n' 'docker compose -f docker-compose.repository-variable.yml build' > "$compose_metadata"
+CASCADE_IMAGES=()
+CASCADE_IMAGE_RECORDS=()
+PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
+    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"
+test "${CASCADE_IMAGES[*]}" = "sim-bench-api:latest"
+
+printf '%s\n' \
+    'services:' \
+    '  worker:' \
+    '    build: .' \
+    > "$compose_bench_dir/docker-compose.generated.yml"
+printf '%s\n' 'docker compose -f docker-compose.generated.yml build' > "$compose_metadata"
+CASCADE_IMAGES=()
+CASCADE_IMAGE_RECORDS=()
+PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
+    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"
+test "${CASCADE_IMAGES[*]}" = "sim-bench-worker:latest"
+test "${CASCADE_IMAGE_RECORDS[*]}" = "sim-bench-worker:latest=$captured_image_id"
 
 printf '%s\n' \
     'services:' \
