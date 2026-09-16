@@ -1035,8 +1035,11 @@ grep -q 'new-session' "$TMUX_LOG" \
 # now composed again after the fall-through, with the three cleared. Asserted on
 # the `new-session` line alone: the failed `respawn-pane` line carries the old
 # command string on purpose, and a grep of the whole log could not tell them
-# apart.
-tmux_new_session_line="$(grep 'new-session' "$TMUX_LOG" | head -n 1)"
+# apart. `|| true` (opensoft/workBenches#93 round 10, the same shape #102
+# reported and this PR already fixed once for the uuid guard): zero matches is
+# a legitimate scenario outcome, not a script bug, and this assignment sits
+# under this file's own `set -e` with nothing else to catch it.
+tmux_new_session_line="$(grep 'new-session' "$TMUX_LOG" | head -n 1 || true)"
 grep -Fq 'WORKBENCHES_CLAUDE_WINDOW_ID' <<<"$tmux_new_session_line" \
     && fail "act 1 fall-through: the child of the NEW session was handed the id of the window the respawn failed to reuse ($tmux_new_session_line)"; assertion
 grep -Fq 'WORKBENCHES_CLAUDE_WINDOW_REF' <<<"$tmux_new_session_line" \
@@ -2493,8 +2496,10 @@ grep -Fq 'payload="$payload; workstation ' "$HANDOFF_MD" \
 # (`payload="$payload; agent $agent_name; transcript $transcript_id"`), and
 # this regex, unchanged from before, only ever sees the field that opens a
 # `payload="$payload; ` assignment -- a pre-existing limit of the detection,
-# not a new gap this rename introduces.
-payload_order="$(grep -o 'payload="$payload; [a-z]*' "$HANDOFF_MD" | sed 's/.*; //' | tr '\n' ' ')"
+# not a new gap this rename introduces. `|| true` (opensoft/workBenches#93
+# round 10): zero matches would otherwise abort this line under `set -e`
+# with no FAIL: printed, same shape #102 reported.
+payload_order="$(grep -o 'payload="$payload; [a-z]*' "$HANDOFF_MD" | sed 's/.*; //' | tr '\n' ' ' || true)"
 [[ "$payload_order" == "window dir profile workstation agent kind " ]] \
     || fail "§5: the payload is built as '$payload_order', and the current order is 'window dir profile workstation agent kind'"; assertion
 # ...and the window sub-field's two refs are SPACE-separated within it, which is
@@ -2678,17 +2683,21 @@ grep -Fq 'home/.agents/protocols/lane-collision-protocol-amendment-11.md' "$LAUN
 # Addendum 4 ruling 11, ratified \"a11 addendum 4 yes\"". That is what a reader
 # actually meets, so that is what this checks for.
 #
-# SCOPED TO THE CITATION ITSELF (round 7, joined round 8): `ruling 11` appears
-# four times in this file (`:98`, `:265`, `:474`, `:501`) and the ratification
-# quote could have drifted onto an unrelated one of them while THIS citation
-# regressed to draft wording, so round 7 required both on one LINE — but the
-# citation itself wraps: "A11 Addendum 4" closes `:97`'s parenthetical and
-# "ruling 11, ratified …" opens `:98`, two lines for one phrase. Joined on the
-# comment prose already built above (`$handoff_prose`, the same technique the
-# no-API sentence a few lines up needed for the same reason), so the addendum
-# number, the ruling number and the ratification quote are all required
-# together rather than "ruling 11" alone standing in for the whole citation.
-grep -Fq 'A11 Addendum 4 ruling 11, ratified "a11 addendum 4 yes"' <<<"$handoff_prose" \
+# SCOPED TO THE CITATION ITSELF (round 7, joined round 8, anchored round 9-10):
+# `ruling 11` appears four times in this file (`:98`, `:265`, `:474`, `:501`)
+# and the ratification quote could have drifted onto an unrelated one of them
+# while THIS citation regressed to draft wording, so round 7 required both on
+# one LINE — but the citation itself wraps: "A11 Addendum 4" closes `:97`'s
+# parenthetical and "ruling 11, ratified …" opens `:98`, two lines for one
+# phrase, joined on `$handoff_prose` (round 8). Round 10: `$handoff_prose` is
+# the WHOLE file's comment prose joined into one line, so the same exact
+# combined phrase sitting in some unrelated paragraph would also have passed —
+# extracted the three-line window after the one heading that opens this
+# paragraph, "WHAT STOPS IS THE REGISTER AND LOG WRITES" (unique in the file),
+# and require the phrase inside THAT window rather than anywhere at all.
+citation_block="$(grep -A2 -F 'WHAT STOPS IS THE REGISTER AND LOG WRITES' "$HANDOFF_MD" \
+    | sed 's/^# \{0,1\}//' | tr '\n' ' ')"
+grep -Fq 'A11 Addendum 4 ruling 11, ratified "a11 addendum 4 yes"' <<<"$citation_block" \
     || fail "in force: the skill's 'A11 Addendum 4 ruling 11' citation does not carry the ratification quote ('ratified \"a11 addendum 4 yes\"'), so the R-A11-27 citation may read as a draft again"; assertion
 grep -Fq 'in force' "$HANDOFF_MD" \
     || fail "in force: the skill quotes a ruling from a text it still presents as unratified"; assertion
@@ -3463,8 +3472,8 @@ grep -Fq 'lanes_workstation="${LANES_WORKSTATION:-}"' "$WAVE_SHELL" \
 # systemd container marker is an environment variable of exactly that name, and
 # after `container="py-bench"` has run it cannot be read at all: a host that is
 # itself a container would then guess a hostname that is a container id.
-ws_resolve_line="$(grep -n 'lanes_workstation="${LANES_WORKSTATION:-}"' "$WAVE_SHELL" | head -n 1 | cut -d : -f 1)"
-ws_container_line="$(grep -n '^container="py-bench"' "$WAVE_SHELL" | head -n 1 | cut -d : -f 1)"
+ws_resolve_line="$(grep -n 'lanes_workstation="${LANES_WORKSTATION:-}"' "$WAVE_SHELL" | head -n 1 | cut -d : -f 1 || true)"
+ws_container_line="$(grep -n '^container="py-bench"' "$WAVE_SHELL" | head -n 1 | cut -d : -f 1 || true)"
 [[ -n "$ws_resolve_line" && -n "$ws_container_line" && "$ws_resolve_line" -lt "$ws_container_line" ]] \
     || fail "R-A11-14: the container marker is read at line $ws_resolve_line, after this script overwrites \$container at line $ws_container_line"; assertion
 # ...and the two documents say it.
@@ -3618,10 +3627,14 @@ grep -Fq 'R-A11-27' "$GUARD_SH" \
 # third, differently-spelled `L=` assignment sitting beside either of the
 # other two would have left both specific counts exactly as expected while a
 # stray extra assignment silently decided the effective `$L`. `total_l_count`
-# catches any `^L=` this file has that is neither counted pattern.
+# catches any `^L=` this file has that is neither counted pattern. Round 10:
+# `^L=` alone missed an INDENTED extra assignment (this file's shell blocks
+# are not all column-zero) — widened to tolerate leading whitespace, which
+# only ever WIDENS the catch (an indented decoy now raises `total_l_count`
+# without satisfying either exact-form count, so it still fails closed).
 fixed_l_count="$(grep -Fxc 'L="$(command -v lanes-edit.sh || printf '"'"'%s'"'"' ~/projects/xFactory/lanes-edit.sh)"' <<<"$skill_write_code" || true)"
 hardcoded_l_count="$(grep -Fxc 'L=~/projects/xFactory/lanes-edit.sh' <<<"$skill_write_code" || true)"
-total_l_count="$(grep -Ec '^L=' <<<"$skill_write_code" || true)"
+total_l_count="$(grep -Ec '^[[:space:]]*L=' <<<"$skill_write_code" || true)"
 if [[ "$total_l_count" -eq 1 && "$fixed_l_count" -eq 1 && "$hardcoded_l_count" -eq 0 ]]; then
     :
 elif [[ "$total_l_count" -eq 1 && "$fixed_l_count" -eq 0 && "$hardcoded_l_count" -eq 1 ]]; then
