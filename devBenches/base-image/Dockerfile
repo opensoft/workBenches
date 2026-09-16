@@ -228,6 +228,50 @@ RUN chmod 0755 /usr/local/bin/openRepoShape /usr/local/bin/openRepoTools \
     /usr/local/bin/lane-start /usr/local/bin/lane-end /usr/local/bin/link-estates \
     /usr/local/bin/repos.tsv
 
+# THE WHOLE VENDORED TREE, A SECOND TIME, UNDER /usr/local/share — and the two
+# are not redundant (opensoft/workBenches#90). The thirteen copies above are
+# the ones a non-interactive `docker exec` resolves through this image's ENV
+# PATH. THESE are the ones `--install` is run FROM at container start, and it
+# needs its whole install set laid out beside it: `--install` copies each of
+# its twenty-six artifacts from its own directory when they are there and
+# FETCHES the ones that are not (openRepoTools#26's all-or-nothing rule). Run
+# from /usr/local/bin, where skills/ and commands/ are not, six of the
+# twenty-six would go to the network — which is exactly what the vendoring
+# note above forbids. Run from here, none of them can.
+#
+# WHY A CONTAINER RUNS `--install` AT ALL, when the thirteen above are already
+# on PATH: `~/.local/bin` is not a mount (docker-compose.mounts.yml persists
+# ~/.claude, ~/.claude-profiles, ~/.agents, ~/.local/lib/workbenches and
+# ~/.local/state/workbenches, never ~/.local/bin), so a RECREATE resets it to
+# what this image baked and takes the estate's lane commands with it. The image
+# copies cannot stand in for them: they place none of the six per-user
+# artifacts (`--install` writes those under a $HOME this build does not have —
+# see THE OTHER SIX above), neither of the two `~/.claude/settings.json`
+# entries, and nothing re-points `~/projects/xFactory/lanes-edit.sh`, whose
+# target is the INSTALLED path. files/estate/estate-commands-start carries the
+# full account, measured.
+COPY files/openrepotools/ /usr/local/share/openrepotools/
+RUN find /usr/local/share/openrepotools -maxdepth 1 -type f -exec chmod 0755 {} + && \
+    find /usr/local/share/openrepotools/skills /usr/local/share/openrepotools/commands \
+        -type f -exec chmod 0644 {} + && \
+    test -x /usr/local/share/openrepotools/openRepoTools && \
+    test -x /usr/local/share/openrepotools/link-estates && \
+    test -f /usr/local/share/openrepotools/skills/handoff/SKILL.md && \
+    test -f /usr/local/share/openrepotools/commands/handoff.md
+
+# THE START-UP STEP AND THE ENTRYPOINT THAT RUNS IT. The entrypoint is wired
+# here, ABOVE this file's own `CMD` at the bottom, and the order is load-
+# bearing: an ENTRYPOINT instruction resets a CMD inherited from the base
+# image, so a `CMD` declared before it would be discarded and every dev bench
+# would come up with no default command. devcontainer.test/test-base-image-
+# dockerfile.sh asserts that ordering statically, because no suite in this
+# repository can run `docker build`.
+COPY files/estate/estate-commands-start /usr/local/share/workbenches/estate-commands-start
+COPY files/estate/workbench-entrypoint /usr/local/bin/workbench-entrypoint
+RUN chmod 0755 /usr/local/share/workbenches/estate-commands-start \
+    /usr/local/bin/workbench-entrypoint
+ENTRYPOINT ["/usr/local/bin/workbench-entrypoint"]
+
 # ========================================
 # AI META-HARNESS (OMNIGENT)
 # ========================================
@@ -350,5 +394,8 @@ RUN echo '# Force zsh when bash is requested' > /etc/skel/.bash_profile && \
 # Add git credential helper to /etc/skel/.gitconfig
 RUN git config --system credential.helper gh
 
-# Default command
+# Default command. It is the ARGUMENT LIST of the ENTRYPOINT wired in the
+# ESTATE COMMANDS section above, which runs the start-up step and then execs
+# this — and it must stay BELOW that instruction, because an ENTRYPOINT resets
+# a CMD inherited from the base image (opensoft/workBenches#90).
 CMD ["sleep", "infinity"]
