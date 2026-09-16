@@ -43,15 +43,16 @@ The `test.sh` script validates:
 - ✅ Claude profile lane default and SessionStart hook
   (lane-collision-protocol Amendment 8(c) and 8(e))
 
-Three suites in this directory are **host-run** rather than container-run,
+Four suites in this directory are **host-run** rather than container-run,
 because they need the repository's own `scripts/` and `base-image/`, which are
 not mounted in the container: `test-setup-estate-commands.sh`,
-`test-claude-profile-skill-install.sh` and `test-claude-profile-amendment-11.sh`
-(lane-collision-protocol Amendment 11, opensoft/workBenches#93). Run them from
-the repository root:
+`test-setup-workspace-repo.sh`, `test-claude-profile-skill-install.sh` and
+`test-claude-profile-amendment-11.sh` (lane-collision-protocol Amendment 11,
+opensoft/workBenches#93). Run them from the repository root:
 
 ```bash
 bash devcontainer.test/test-setup-estate-commands.sh
+bash devcontainer.test/test-setup-workspace-repo.sh
 bash devcontainer.test/test-claude-profile-skill-install.sh
 bash devcontainer.test/test-claude-profile-amendment-11.sh
 ```

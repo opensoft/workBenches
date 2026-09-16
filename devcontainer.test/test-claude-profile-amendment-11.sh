@@ -2924,15 +2924,20 @@ grep -Fq 'none recorded' <<<"$skill_write_code" \
 # helper's message, not writing a placeholder into a record, so it is removed
 # before the word is looked for — a count that could not tell the two apart
 # would force the skill to misspell the one string it must match exactly.
-# RETARGETED (opensoft/workBenches#93): the exclusion above pre-dates Amendment
-# 17 Addendum 1's `kind="${kind:-unknown}"` and its `$kind == unknown` branch —
-# a legitimate, ratified THIRD use of the bare word `unknown`, for the swap's
-# `kind` sub-field, not a placeholder workstation. Stripping only `unknown
-# subcommand` left these two literal `unknown` values as a false positive the
-# day the `kind` field landed (Amendment 17 Addendum 1); every `kind`-bearing
-# line is dropped here too, so the check goes back to auditing what it was
-# written for instead of a field this section does not name.
-grep -Fq 'unknown' <<<"$(grep -Fv 'kind' <<<"$(sed 's/unknown subcommand//g' <<<"$skill_write_code")")" \
+# RETARGETED (opensoft/workBenches#93, narrowed round 2/3 on Copilot's review):
+# the exclusion above pre-dates Amendment 17 Addendum 1's `kind="${kind:-
+# unknown}"` and its `$kind == unknown` branch — a legitimate, ratified THIRD
+# use of the bare word `unknown`, for the swap's `kind` sub-field, not a
+# placeholder workstation. Stripping only `unknown subcommand` left these two
+# literal `unknown` values as a false positive the day the `kind` field landed.
+# Dropping every `kind`-bearing LINE (the first cut at this) was too wide —
+# `payload="$payload; kind $kind"` is a different line from either legitimate
+# `unknown`, but a REGRESSION that leaked a placeholder workstation onto a line
+# that also happened to mention `kind` would then go uncaught. Only the four
+# exact substrings that carry the ratified `unknown` (the assignment, its
+# trailing comment, the comparison, and the `why_text` concatenation) are
+# removed, by name, so anything else stays visible to the check.
+grep -Fq 'unknown' <<<"$(sed -e 's/unknown subcommand//g' -e 's/kind="${kind:-unknown}"//g' -e 's/# in-process | respawn | unknown//g' -e 's/"$kind" == unknown//g' -e 's/kind unknown//g' <<<"$skill_write_code")" \
     && fail "R-A11-14: the skill still writes a placeholder workstation into a position 'swapped <ws>' keys on, which append-line does not validate"; assertion
 # ...and write (c), the row's state cell, must be outside any uuid guard too —
 # SPEC §7 names the two together. Moot on the shipped bytes (opensoft/
@@ -3312,10 +3317,19 @@ still_runs_quoted="$(grep -F '(c) below still runs' "$HANDOFF_MD" | grep -Fc 'pr
 # which correctly gates write (c) behind `ws_missing`). Confirmed pre-existing
 # against `git show 8a36eb3:skills/lane-swap/SKILL.md`'s equivalent comment too
 # — a real shipped-bytes gap, not a test-methodology one.
+#
+# FAIL-CLOSED (Copilot round 2/3 on opensoft/workBenches#93): the known shape
+# TODAY is exactly two occurrences, one of them properly attributed — anything
+# else, including a WORSE regression (a third unqualified line, or the
+# attributed one losing its attribution), must still fail rather than fall
+# through this skip silently. Only that one exact shape is let through; #99
+# landing (both occurrences equal) is the other and only other passing case.
 if [[ "$still_runs_total" -eq "$still_runs_quoted" ]]; then
     :
-else
+elif [[ "$still_runs_total" -eq 2 && "$still_runs_quoted" -eq 1 ]]; then
     echo "KNOWN (opensoft/openRepoTools#99, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md:474 still asserts '(c) below still runs' unqualified ($still_runs_total total, $still_runs_quoted quoted as superseded)" >&2
+else
+    fail "R-A11-27: $still_runs_total line(s) say '(c) below still runs', $still_runs_quoted attributed — neither the known gap (2 total, 1 attributed) nor fixed (equal); something else changed and needs a human read"
 fi
 assertion
 
@@ -3473,10 +3487,17 @@ grep -Fq 'R-A11-27' "$GUARD_SH" \
 # xFactory/lanes-edit.sh)"`. Confirmed pre-existing against `git show
 # 8a36eb3:skills/lane-swap/SKILL.md:39` too (the pre-Amendment-17(a) home of
 # this same line) — a real shipped-bytes gap, not a test-methodology one.
+#
+# FAIL-CLOSED (Copilot round 2/3 on opensoft/workBenches#93): the known gap is
+# specifically TODAY's exact hard-coded line, not "anything that isn't the
+# fixed form" — a third, differently-broken `L=` would otherwise also fall
+# through this skip unnoticed. Only that one exact line is let through.
 if grep -Fq 'L="$(command -v lanes-edit.sh' "$HANDOFF_MD"; then
     :
-else
+elif grep -q '^L=~/projects/xFactory/lanes-edit.sh$' "$HANDOFF_MD"; then
     echo "KNOWN (opensoft/openRepoTools#100, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md:39 hard-codes lanes-edit.sh's path instead of resolving it" >&2
+else
+    fail "helper: \$L is neither the PATH-first form nor the known hard-coded line — something else changed here and needs a human read"
 fi
 assertion
 
