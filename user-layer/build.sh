@@ -26,6 +26,7 @@ USER_GID=$(id -g)
 DOCKER_SOCKET_GID=""
 BASE_IMAGE=""
 BASE_IMAGE_ID=""
+REQUESTED_BASE_IMAGE_ID=""
 EXTRA_CHOWN_DIRS=""
 NO_CACHE="${NO_CACHE:-false}"
 LAYER3_RECIPE_SHA256=""
@@ -59,6 +60,7 @@ run_with_optional_timeout() {
 while [[ $# -gt 0 ]]; do
     case $1 in
         --base) BASE_IMAGE="$2"; shift 2 ;;
+        --base-image-id) REQUESTED_BASE_IMAGE_ID="$2"; shift 2 ;;
         --user) USERNAME="$2"; shift 2 ;;
         --uid) USER_UID="$2"; shift 2 ;;
         --gid) USER_GID="$2"; shift 2 ;;
@@ -72,6 +74,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --base IMAGE    Base Layer 2 image (required). e.g. cpp-bench:latest"
+            echo "  --base-image-id ID  Use a previously captured immutable base image ID"
             echo "  --user NAME     Username (default: \$(whoami))"
             echo "  --uid UID       User UID (default: \$(id -u))"
             echo "  --gid GID       User GID (default: \$(id -g))"
@@ -114,7 +117,16 @@ fi
 # Resolve the mutable caller-facing tag once. The same immutable image ID is
 # used for both the version probe and Dockerfile FROM so a concurrent retag
 # cannot make those operations observe different Layer 2 images.
-if ! BASE_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$BASE_IMAGE" 2>/dev/null)" \
+if [[ -n "$REQUESTED_BASE_IMAGE_ID" ]]; then
+    if [[ ! "$REQUESTED_BASE_IMAGE_ID" =~ ^sha256:[0-9a-fA-F]{64}$ ]] \
+        || ! BASE_IMAGE_ID="$(
+            docker image inspect --format '{{.Id}}' "$REQUESTED_BASE_IMAGE_ID" 2>/dev/null
+        )" \
+        || [[ "$BASE_IMAGE_ID" != "$REQUESTED_BASE_IMAGE_ID" ]]; then
+        echo "❌ Error: could not inspect requested immutable base image ID '$REQUESTED_BASE_IMAGE_ID'" >&2
+        exit 1
+    fi
+elif ! BASE_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$BASE_IMAGE" 2>/dev/null)" \
     || [[ ! "$BASE_IMAGE_ID" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
     echo "❌ Error: could not resolve '$BASE_IMAGE' to an immutable image ID"
     echo ""

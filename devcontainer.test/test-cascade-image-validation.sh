@@ -146,7 +146,8 @@ grep -Fq -- '--write-manifest' <<< "$rebuild_help"
 grep -Fq 'build_args+=(--docker-gid "$docker_socket_gid")' "$repo_root/scripts/update-and-rebuild.sh"
 grep -Fq 'CHECK_ARGS+=(--images "$CASCADE_IMAGE_LIST" --image-ids "$CASCADE_IMAGE_ID_LIST")' "$repo_root/scripts/update-and-rebuild.sh"
 grep -Fq 'CHECK_ARGS+=(--layer3-images "$CASCADE_LAYER3_IMAGE_LIST" --check-layer3)' "$repo_root/scripts/update-and-rebuild.sh"
-grep -Fq 'CHECK_ARGS+=(--layer all --images "$LAYER3_BASE" --check-layer3)' "$repo_root/scripts/update-and-rebuild.sh"
+grep -Fq -- '--base-image-id "$LAYER3_BASE_IMAGE_ID"' "$repo_root/scripts/update-and-rebuild.sh"
+grep -Fq -- '--image-ids "$LAYER3_BASE=$LAYER3_BASE_IMAGE_ID"' "$repo_root/scripts/update-and-rebuild.sh"
 
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
@@ -428,6 +429,7 @@ if PATH="$fake_bin:$PATH" \
     exit 1
 fi
 grep -Fq 'claude' "$temp_dir/missing.out"
+grep -Fq 'test-bench:latest' "$temp_dir/missing.out"
 
 printf '%s\n' 'previous-valid-manifest' > "$manifest"
 if PATH="$fake_bin:$PATH" \
@@ -553,6 +555,13 @@ grep -Fq 'Cannot safely derive Compose dependency build outputs' \
     "$temp_dir/with-dependencies.err"
 
 printf '%s\n' 'docker compose -f docker-compose.yml build -- worker' \
+    > "$script_compose_build"
+test "$(PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+    declared_cascade_images sim-bench:latest "$script_compose_build" "$script_compose_bench")" \
+    = 'sim-bench-script-worker:latest'
+
+printf '%s\n' \
+    'docker compose -f docker-compose.yml build --no-cache-filter worker worker' \
     > "$script_compose_build"
 test "$(PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
     declared_cascade_images sim-bench:latest "$script_compose_build" "$script_compose_bench")" \

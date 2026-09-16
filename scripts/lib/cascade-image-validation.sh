@@ -295,11 +295,11 @@ compose_config_images_for_command() {
             --)
                 service_options=true
                 ;;
-            --build-arg|--builder|-m|--memory|--progress|--provenance|--sbom|--ssh)
+            --build-arg|--builder|-m|--memory|--no-cache-filter|--progress|--provenance|--sbom|--ssh)
                 ((index++))
                 ((index < ${#words[@]})) || return 1
                 ;;
-            --build-arg=*|--builder=*|--memory=*|--progress=*|--provenance=*|--sbom=*|--ssh=*|-[mq]*)
+            --build-arg=*|--builder=*|--memory=*|--no-cache-filter=*|--progress=*|--provenance=*|--sbom=*|--ssh=*|-[mq]*)
                 ;;
             --with-dependencies)
                 echo "Cannot safely derive Compose dependency build outputs from '$command'" >&2

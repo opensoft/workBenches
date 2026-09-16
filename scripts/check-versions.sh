@@ -517,7 +517,8 @@ check_selected_image() {
                 printf "  ${GREEN}%-3s${NC} %-25s %s\n" "✓" "$command" "$command_path"
             fi
         elif [[ "$probe_status" == "missing" ]]; then
-            printf "  ${RED}%-3s${NC} %-25s missing\n" "✗" "$command" >&2
+            printf "  ${RED}%-3s${NC} %-25s missing in %s\n" \
+                "✗" "$command" "$image" >&2
             passed=false
         else
             echo -e "${RED}✗ Invalid command probe status for $image: $probe_status${NC}" >&2

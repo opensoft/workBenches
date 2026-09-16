@@ -33,6 +33,7 @@ NO_CACHE=false
 WRITE_MANIFEST=false
 DATE_TAG=$(date '+%Y%m%d')
 LAYER3_BASE=""
+LAYER3_BASE_IMAGE_ID=""
 LAYER3_CHOWN=""
 declare -a CASCADE_IMAGES=()
 declare -a CASCADE_IMAGE_RECORDS=()
@@ -414,8 +415,19 @@ build_layer3() {
         return 1
     fi
 
+    if ! LAYER3_BASE_IMAGE_ID="$(
+        docker image inspect --format '{{.Id}}' "$LAYER3_BASE" 2>/dev/null
+    )" || [[ ! "$LAYER3_BASE_IMAGE_ID" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
+        echo -e "${RED}✗ Could not resolve $LAYER3_BASE to an immutable image ID${NC}" >&2
+        return 1
+    fi
+
     build_timer_start
-    local -a build_args=(--base "$LAYER3_BASE" --user "$USERNAME")
+    local -a build_args=(
+        --base "$LAYER3_BASE"
+        --base-image-id "$LAYER3_BASE_IMAGE_ID"
+        --user "$USERNAME"
+    )
     if [ -n "$LAYER3_CHOWN" ]; then
         build_args+=(--chown "$LAYER3_CHOWN")
     fi
@@ -526,7 +538,12 @@ echo ""
 echo -e "${CYAN}Running version check on rebuilt images...${NC}"
 CHECK_ARGS=(--user "$USERNAME")
 if [ "$BUILD_ALL" = false ] && [ "$LAYER" = "3" ]; then
-    CHECK_ARGS+=(--layer all --images "$LAYER3_BASE" --check-layer3)
+    CHECK_ARGS+=(
+        --layer all
+        --images "$LAYER3_BASE"
+        --image-ids "$LAYER3_BASE=$LAYER3_BASE_IMAGE_ID"
+        --check-layer3
+    )
 elif [ "$BUILD_ALL" = true ] || [ "$CASCADE" = true ]; then
     CHECK_ARGS+=(--layer all)
 else
