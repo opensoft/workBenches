@@ -19,6 +19,7 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1]
 LOCK_NAME = ".workbenches-project.lock"
 PAYLOAD_NAME = ".workbenches-project.payload"
+REMOVAL_JOURNAL_NAME = ".workbenches-project.remove.json"
 
 
 def project_discovery_path():
@@ -35,6 +36,29 @@ def project_discovery_path():
 def discovery_points_to(path, directory):
     return (path.is_file() and not path.is_symlink()
             and path.read_bytes() == (str(directory.resolve()) + "\n").encode())
+
+
+def paths_alias(left, right):
+    """Recognize lexical, symlink-parent, and existing hard-link aliases."""
+    try:
+        if left.resolve(strict=False) == right.resolve(strict=False):
+            return True
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(f"Refusing unresolvable path alias check: {left}") from exc
+    try:
+        return os.path.samefile(left, right)
+    except (FileNotFoundError, OSError):
+        return False
+
+
+def require_unique_paths(paths, context):
+    paths = list(paths)
+    for index, path in enumerate(paths):
+        for previous in paths[:index]:
+            if paths_alias(path, previous):
+                raise ValueError(
+                    f"Refusing duplicate {context} destination: {path} aliases {previous}"
+                )
 
 
 def validate_target(path):
@@ -272,6 +296,106 @@ def trusted_launcher(path, expected_digests):
             and file_sha256(path) in expected_digests)
 
 
+def legacy_copied_onp_bytes(workbenches):
+    """Exact historical scripts/onp bytes for this workBenches checkout."""
+    root = str(workbenches)
+    if any(character in root for character in ('"', "\n", "\r")):
+        return b""
+    return (
+        "#!/bin/bash\n\n"
+        "# onp (Opensoft New Project) - Command wrapper for workBenches new-project.sh\n"
+        "# This script forwards all arguments to the new-project.sh script in the workBenches directory\n\n"
+        "# Find the workBenches directory by locating this script's installation source\n"
+        f'WORKBENCHES_DIR="{root}"\n\n'
+        "# Check if the new-project.sh script exists\n"
+        'if [ ! -f "$WORKBENCHES_DIR/scripts/new-project.sh" ]; then\n'
+        '    echo "Error: workBenches new-project.sh not found at $WORKBENCHES_DIR/scripts/new-project.sh"\n'
+        '    echo "Please ensure workBenches is properly installed."\n'
+        "    exit 1\n"
+        "fi\n\n"
+        "# Execute new-project.sh with all forwarded arguments\n"
+        'exec "$WORKBENCHES_DIR/scripts/new-project.sh" "$@"\n'
+    ).encode()
+
+
+def legacy_generated_onp_bytes(workbenches, include_bin_dir_export=True):
+    """Exact onp wrapper emitted by either previous global-installer form."""
+    root = str(workbenches)
+    if any(character in root for character in ('"', "\n", "\r")):
+        return b""
+    template = r'''#!/bin/bash
+# Opensoft New Project - Quick project creation command
+# Auto-generated wrapper by workBenches installer
+
+# Get the directory where this wrapper is located
+WRAPPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+@BIN_DIR_EXPORT@# Try to find workBenches installation
+WORKBENCHES_ROOT=""
+
+# Check if we have a stored path
+if [ -f "$WRAPPER_DIR/.workbenches-path" ]; then
+    WORKBENCHES_ROOT="$(cat "$WRAPPER_DIR/.workbenches-path")"
+fi
+
+# Validate the stored path
+if [ -z "$WORKBENCHES_ROOT" ] || [ ! -f "$WORKBENCHES_ROOT/scripts/onp" ]; then
+    # Try to find workBenches in common locations
+    SEARCH_PATHS=(
+        "@WORKBENCHES_ROOT@"
+        "$HOME/projects/workBenches"
+        "$HOME/workBenches"
+        "$HOME/Projects/workBenches"
+        "$HOME/code/workBenches"
+        "$HOME/development/workBenches"
+    )
+@INDENTED_BLANK@
+    for path in "${SEARCH_PATHS[@]}"; do
+        if [ -f "$path/scripts/onp" ]; then
+            WORKBENCHES_ROOT="$path"
+            # Store the found path for next time
+            echo "$WORKBENCHES_ROOT" > "$WRAPPER_DIR/.workbenches-path"
+            break
+        fi
+    done
+fi
+
+# Execute the actual command
+if [ -n "$WORKBENCHES_ROOT" ] && [ -f "$WORKBENCHES_ROOT/scripts/onp" ]; then
+    exec "$WORKBENCHES_ROOT/scripts/onp" "$@"
+else
+    echo "❌ Error: Could not locate workBenches installation"
+    echo "Expected to find: workBenches/scripts/onp"
+    echo ""
+    echo "Please ensure workBenches is properly installed and try:"
+    echo "  setup-workbenches --install-commands"
+    exit 1
+fi
+'''
+    bin_dir_export = '''# Legacy project creation must resolve the executable from the same directory
+# selected by this installer, including /usr/local/bin.
+if [ "onp" = "onp" ]; then
+    export OPENREPOPROJECT_BIN_DIR="$WRAPPER_DIR"
+fi
+
+''' if include_bin_dir_export else ""
+    return (template.replace("@WORKBENCHES_ROOT@", root)
+            .replace("@BIN_DIR_EXPORT@", bin_dir_export)
+            .replace("@INDENTED_BLANK@", "    ").encode())
+
+
+def trusted_legacy_onp(path, workbenches):
+    if (not path.is_file() or path.is_symlink()
+            or path.stat().st_mode & 0o777 != 0o755):
+        return False
+    data = path.read_bytes()
+    return bool(data) and data in {
+        legacy_copied_onp_bytes(workbenches),
+        legacy_generated_onp_bytes(workbenches),
+        legacy_generated_onp_bytes(workbenches, include_bin_dir_export=False),
+    }
+
+
 def acquire_project_lock(directory, exclusive):
     lock_path = directory / LOCK_NAME
     flags = os.O_RDONLY
@@ -398,47 +522,235 @@ def atomic_checked_unlink(path, expected_state):
         raise
 
 
-def remove_transaction(removals):
-    """Keep a complete hard-link recovery set until every target is absent."""
-    quarantined = []
-    backups = []
+def fsync_directory(directory):
+    descriptor = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def removal_journal_data(state, entries):
+    return (json.dumps({
+        "schema_version": 1,
+        "state": state,
+        "entries": [
+            {
+                "path": str(path),
+                "quarantine": str(quarantine),
+                "backup": str(backup),
+                "fingerprint": list(expected_state),
+            }
+            for path, quarantine, backup, expected_state in entries
+        ],
+    }, sort_keys=True) + "\n").encode()
+
+
+def write_removal_journal(journal, state, entries, replace=False):
+    staged_journal = stage(journal.parent, removal_journal_data(state, entries), 0o600)
+    descriptor = os.open(staged_journal, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    try:
+        if replace:
+            if not journal.is_file() or journal.is_symlink():
+                raise ValueError(f"Refusing invalid removal journal: {journal}")
+            os.replace(staged_journal, journal)
+        else:
+            os.link(staged_journal, journal, follow_symlinks=False)
+            staged_journal.unlink()
+        fsync_directory(journal.parent)
+    finally:
+        staged_journal.unlink(missing_ok=True)
+
+
+def read_removal_journal(journal, allowed_paths):
+    descriptor = None
+    try:
+        descriptor = os.open(journal, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 65536:
+            raise ValueError(f"Refusing invalid removal journal: {journal}")
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            record = json.loads(stream.read(65537))
+    except (OSError, ValueError, TypeError) as exc:
+        raise ValueError(f"Refusing unreadable removal journal: {journal}") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    if (not isinstance(record, dict) or record.get("schema_version") != 1
+            or record.get("state") not in ("prepared", "committed")
+            or not isinstance(record.get("entries"), list)
+            or not record["entries"]):
+        raise ValueError(f"Refusing malformed removal journal: {journal}")
+    allowed = {str(path): path for path in allowed_paths}
+    entries = []
+    for item in record["entries"]:
+        if not isinstance(item, dict) or set(item) != {
+                "path", "quarantine", "backup", "fingerprint"}:
+            raise ValueError(f"Refusing malformed removal journal: {journal}")
+        path = allowed.get(item["path"])
+        quarantine = Path(item["quarantine"])
+        backup = Path(item["backup"])
+        fingerprint = item["fingerprint"]
+        if (path is None or quarantine.parent != path.parent
+                or backup.parent != path.parent
+                or not quarantine.name.startswith(".project-remove-")
+                or quarantine.name.startswith(".project-remove-backup-")
+                or not backup.name.startswith(".project-remove-backup-")
+                or not isinstance(fingerprint, list)
+                or not fingerprint or fingerprint[0] != "file"):
+            raise ValueError(f"Refusing unauthorized removal journal entry: {journal}")
+        entries.append((path, quarantine, backup, tuple(fingerprint)))
+    require_unique_paths((entry[0] for entry in entries), "journal")
+    require_unique_paths((entry[1] for entry in entries), "journal quarantine")
+    require_unique_paths((entry[2] for entry in entries), "journal backup")
+    return record["state"], entries
+
+
+def cleanup_removal_copy(path, expected_state):
+    state = path_fingerprint(path)
+    if state == ("missing",):
+        return
+    if not recovery_copy_matches(path, expected_state):
+        raise ValueError(f"Refusing changed removal recovery file: {path}")
+    path.unlink()
+
+
+def recovery_copy_matches(path, expected_state):
+    """Match copied recovery bytes without requiring the original inode."""
+    state = path_fingerprint(path)
+    return (state[:1] == ("file",) and expected_state[:1] == ("file",)
+            and state[3:] == expected_state[3:])
+
+
+def recover_removal_journal(journal, allowed_paths):
+    """Restore a prepared transaction or finish cleanup of a committed one."""
+    if not journal.exists() and not journal.is_symlink():
+        return None
+    state, entries = read_removal_journal(journal, allowed_paths)
+    if state == "prepared":
+        changed_targets = []
+        for path, quarantine, backup, expected_state in reversed(entries):
+            current = path_fingerprint(path)
+            if current == expected_state:
+                continue
+            if current != ("missing",):
+                changed_targets.append(path)
+                continue
+            source = quarantine if recovery_copy_matches(
+                quarantine, expected_state) else backup
+            if not recovery_copy_matches(source, expected_state):
+                raise ValueError(f"Missing authenticated recovery copy for {path}")
+            atomic_move_noreplace(source, path)
+        for _path, quarantine, backup, expected_state in entries:
+            cleanup_removal_copy(quarantine, expected_state)
+            cleanup_removal_copy(backup, expected_state)
+        result = "restored"
+    else:
+        for path, _quarantine, _backup, _expected_state in entries:
+            if path_fingerprint(path) != ("missing",):
+                raise ValueError(f"Committed removal target reappeared: {path}")
+        for _path, quarantine, backup, expected_state in entries:
+            cleanup_removal_copy(quarantine, expected_state)
+            cleanup_removal_copy(backup, expected_state)
+        result = "committed"
+    journal.unlink()
+    fsync_directory(journal.parent)
+    if state == "prepared" and changed_targets:
+        changed = ", ".join(str(path) for path in changed_targets)
+        raise ValueError(f"Preserved changed removal target during recovery: {changed}")
+    return result
+
+
+def reserve_removal_path(directory, prefix):
+    descriptor, name = tempfile.mkstemp(prefix=prefix, dir=directory)
+    os.close(descriptor)
+    path = Path(name)
+    path.unlink()
+    return path
+
+
+def create_removal_backup(path, backup, expected_state):
+    """Copy verified bytes through no-follow descriptors into a fresh inode."""
+    source_descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        metadata = os.fstat(source_descriptor)
+        if (not stat.S_ISREG(metadata.st_mode)
+                or ("file", metadata.st_dev, metadata.st_ino, metadata.st_mode)
+                != expected_state[:4]):
+            raise ValueError(f"Removal target changed before backup: {path}")
+        chunks = []
+        digest = hashlib.sha256()
+        while True:
+            chunk = os.read(source_descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            digest.update(chunk)
+        if digest.hexdigest() != expected_state[4]:
+            raise ValueError(f"Removal target changed during backup: {path}")
+    finally:
+        os.close(source_descriptor)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    backup_descriptor = None
+    try:
+        backup_descriptor = os.open(backup, flags, expected_state[3] & 0o7777)
+        for chunk in chunks:
+            view = memoryview(chunk)
+            while view:
+                written = os.write(backup_descriptor, view)
+                view = view[written:]
+        os.fchmod(backup_descriptor, expected_state[3] & 0o7777)
+        os.fsync(backup_descriptor)
+    except BaseException:
+        backup.unlink(missing_ok=True)
+        raise
+    finally:
+        if backup_descriptor is not None:
+            os.close(backup_descriptor)
+
+
+def remove_transaction(removals, journal):
+    """Journal a recoverable all-or-nothing removal across process death."""
+    require_unique_paths((path for path, _state in removals), "removal")
+    if journal.exists() or journal.is_symlink():
+        raise ValueError(f"Removal recovery is already pending at {journal}")
+    entries = []
     try:
         for path, expected_state in removals:
-            quarantine = atomic_checked_quarantine(path, expected_state)
-            quarantined.append((path, quarantine))
-        for _path, quarantine in quarantined:
-            descriptor, name = tempfile.mkstemp(
-                prefix=".project-remove-backup-", dir=quarantine.parent)
-            os.close(descriptor)
-            backup = Path(name)
-            backup.unlink()
-            os.link(quarantine, backup, follow_symlinks=False)
-            backups.append(backup)
-        for _path, quarantine in quarantined:
-            quarantine.unlink()
+            if path_fingerprint(path) != expected_state:
+                raise ValueError(f"Removal target changed before journaling: {path}")
+            quarantine = reserve_removal_path(path.parent, ".project-remove-")
+            backup = reserve_removal_path(path.parent, ".project-remove-backup-")
+            create_removal_backup(path, backup, expected_state)
+            entries.append((path, quarantine, backup, expected_state))
+            if not recovery_copy_matches(backup, expected_state):
+                raise ValueError(f"Refusing unauthenticated removal backup: {backup}")
+        write_removal_journal(journal, "prepared", entries)
+        for path, quarantine, _backup, expected_state in entries:
+            if path_fingerprint(path) != expected_state:
+                raise ValueError(f"Removal target changed before quarantine: {path}")
+            atomic_move_noreplace(path, quarantine)
+            if path_fingerprint(quarantine) != expected_state:
+                if path_fingerprint(path) == ("missing",):
+                    atomic_move_noreplace(quarantine, path)
+                raise ValueError(f"Removal target changed during quarantine: {path}")
+        write_removal_journal(journal, "committed", entries, replace=True)
     except BaseException:
-        for index in range(len(quarantined) - 1, -1, -1):
-            path, quarantine = quarantined[index]
-            if path.exists() or path.is_symlink():
-                continue
-            if quarantine.exists():
-                atomic_move_noreplace(quarantine, path)
-            elif index < len(backups) and backups[index].exists():
-                atomic_move_noreplace(backups[index], path)
-        for backup in backups:
-            backup.unlink(missing_ok=True)
+        if journal.exists() and not journal.is_symlink():
+            recover_removal_journal(journal, (path for path, _state in removals))
+        else:
+            for _path, quarantine, backup, expected_state in entries:
+                cleanup_removal_copy(quarantine, expected_state)
+                cleanup_removal_copy(backup, expected_state)
         raise
-    # The removal is committed once every original target is absent; cleanup
-    # after this point cannot leave a partially installed command set.
-    cleanup_failed = False
-    for backup in backups:
-        try:
-            backup.unlink()
-        except OSError:
-            cleanup_failed = True
-    if cleanup_failed:
-        remaining = ", ".join(str(path) for path in backups if path.exists())
-        print(f"project: removal committed; recovery files remain at {remaining}",
+    try:
+        recover_removal_journal(journal, (path for path, _state in removals))
+    except (OSError, ValueError) as exc:
+        print(f"project: removal committed; recovery cleanup remains at {journal}: {exc}",
               file=sys.stderr)
 
 
@@ -477,6 +789,8 @@ def atomic_checked_replace(source, destination, expected_state):
 
 def replace_transaction(replacements, staged, expected_states):
     """Publish related files with identity checks and roll back on failure."""
+    require_unique_paths((destination for destination, _source in replacements),
+                         "replacement")
     backups = {}
     replaced = []
     current_states = dict(expected_states)
@@ -548,12 +862,24 @@ def main(argv=None):
                        for item in trusted_previous)):
             raise ValueError("Invalid openRepoProject pin")
         directory = args.bin_dir.expanduser()
+        if not directory.is_absolute():
+            raise ValueError("OPENREPOPROJECT_BIN_DIR/--bin-dir must be absolute")
+        directory = directory.resolve(strict=False)
         target, payload = directory / "project", directory / PAYLOAD_NAME
         onp = directory / "onp"
         marker = directory / ".workbenches-path"
         owner_marker = directory / ".workbenches-project.json"
         lock_path = directory / LOCK_NAME
+        removal_journal = directory / REMOVAL_JOURNAL_NAME
         discovery = project_discovery_path()
+        managed_paths = (target, payload, onp, marker, owner_marker,
+                         lock_path, removal_journal)
+        removable_paths = (target, payload, owner_marker, onp)
+        for managed_path in managed_paths:
+            if paths_alias(discovery, managed_path):
+                raise ValueError(
+                    f"Project discovery pointer aliases managed artifact: {managed_path}"
+                )
         wb = args.workbenches.expanduser().resolve()
         launcher_data = launcher_bytes(pin)
         launcher_digest = hashlib.sha256(launcher_data).hexdigest()
@@ -574,17 +900,18 @@ def main(argv=None):
             if not lock_path.is_file():
                 print(f"project: no installer-owned command at {target}", file=sys.stderr)
                 return 3
-            preliminary_lock = acquire_project_lock(directory, exclusive=False)
-            try:
-                preliminarily_owned = owned_target(
-                    target, payload, owner_marker, pin, expected_launcher_digests)
-                preliminary_onp_owned = trusted_launcher(
-                    onp, expected_launcher_digests)
-            finally:
-                os.close(preliminary_lock)
-            if not preliminarily_owned and not preliminary_onp_owned:
-                print(f"project: preserved unowned command at {target}", file=sys.stderr)
-                return 3
+            if not removal_journal.exists() and not removal_journal.is_symlink():
+                preliminary_lock = acquire_project_lock(directory, exclusive=False)
+                try:
+                    preliminarily_owned = owned_target(
+                        target, payload, owner_marker, pin, expected_launcher_digests)
+                    preliminary_onp_owned = trusted_launcher(
+                        onp, expected_launcher_digests)
+                finally:
+                    os.close(preliminary_lock)
+                if not preliminarily_owned and not preliminary_onp_owned:
+                    print(f"project: preserved unowned command at {target}", file=sys.stderr)
+                    return 3
         if read_operation and not lock_path.is_file():
             print(f"project: refused unlocked command at {target}", file=sys.stderr)
             return 3
@@ -593,6 +920,17 @@ def main(argv=None):
                 raise ValueError(f"Unwritable install directory: {directory}")
             directory.mkdir(parents=True, exist_ok=True)
         lock_descriptor = acquire_project_lock(directory, exclusive=not read_operation)
+        if read_operation and (removal_journal.exists() or removal_journal.is_symlink()):
+            print(f"project: refused command with pending removal recovery at {removal_journal}",
+                  file=sys.stderr)
+            return 3
+        recovery_result = None
+        if not read_operation:
+            recovery_result = recover_removal_journal(
+                removal_journal, removable_paths)
+            if args.remove and recovery_result == "committed":
+                print(f"project: completed interrupted removal from {target}")
+                return 0
         onp_owned = trusted_launcher(onp, expected_launcher_digests)
         if args.resolve_owned:
             if owned_target(target, payload, owner_marker, pin,
@@ -644,9 +982,16 @@ def main(argv=None):
                 ]
                 if onp_owned:
                     removals.append((onp, onp_state))
+                remove_transaction(removals, removal_journal)
                 if discovery_owned:
-                    removals.append((discovery, discovery_state))
-                remove_transaction(removals)
+                    try:
+                        atomic_checked_unlink(discovery, discovery_state)
+                    except (OSError, ValueError) as exc:
+                        print(
+                            "project: removed owned command; preserved discovery "
+                            f"pointer at {discovery}: {exc}",
+                            file=sys.stderr,
+                        )
                 print(f"project: removed installer-owned command from {target}")
                 return 0
             if onp_owned:
@@ -654,7 +999,7 @@ def main(argv=None):
                 if (not trusted_launcher(onp, expected_launcher_digests)
                         or onp_state != path_fingerprint(onp)):
                     raise ValueError("onp changed during removal; nothing removed")
-                remove_transaction([(onp, onp_state)])
+                remove_transaction([(onp, onp_state)], removal_journal)
                 print(f"project: removed installer-owned compatibility command from {onp}")
                 return 0
             print(f"project: preserved unowned command at {target}", file=sys.stderr)
@@ -669,9 +1014,10 @@ def main(argv=None):
         target_owned = owned_target(target, payload, owner_marker, pin,
                                     expected_launcher_digests)
         onp_exists = onp.exists() or onp.is_symlink()
-        if args.install_onp and onp_exists and not onp_owned:
+        legacy_onp_owned = trusted_legacy_onp(onp, wb)
+        if args.install_onp and onp_exists and not onp_owned and not legacy_onp_owned:
             raise ValueError(f"Refusing to replace unowned onp command: {onp}")
-        manage_onp = onp_owned or args.install_onp
+        manage_onp = onp_owned or legacy_onp_owned or args.install_onp
         previous_commit = ""
         previous_launcher_digest = ""
         if target_owned:
@@ -773,7 +1119,6 @@ def main(argv=None):
                     and initial_discovery_state != path_fingerprint(discovery)):
                 raise ValueError("Project discovery pointer changed during installation; nothing replaced")
             replacements = [
-                (owner_marker, pending_owner_stage),
                 (payload, payload_stage),
                 (target, command_stage),
             ]
@@ -782,18 +1127,28 @@ def main(argv=None):
             replacements.append((marker, marker_stage))
             if discovery_stage is not None:
                 replacements.append((discovery, discovery_stage))
-            replacements.append((owner_marker, owner_stage))
             expected_states = {
                 target: initial_install_state[0],
                 payload: initial_install_state[1],
-                owner_marker: initial_install_state[2],
                 marker: initial_install_state[3],
             }
             if onp_stage is not None:
                 expected_states[onp] = initial_onp_state
             if discovery_stage is not None:
                 expected_states[discovery] = initial_discovery_state
-            replace_transaction(replacements, staged, expected_states)
+            pending_backup, pending_state = atomic_checked_replace(
+                pending_owner_stage, owner_marker, initial_install_state[2])
+            replacements.append((owner_marker, owner_stage))
+            expected_states[owner_marker] = pending_state
+            try:
+                replace_transaction(replacements, staged, expected_states)
+            except (OSError, ValueError):
+                if pending_backup is None:
+                    atomic_checked_unlink(owner_marker, pending_state)
+                else:
+                    atomic_checked_replace(pending_backup, owner_marker,
+                                           pending_state)
+                raise
         fully_unchanged = (unchanged and onp_same and marker_same
                            and owner_same and discovery_same)
         print(f"project: {'already installed' if fully_unchanged else 'installed'} at {target}")

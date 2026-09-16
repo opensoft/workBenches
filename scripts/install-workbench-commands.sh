@@ -40,17 +40,8 @@ declare -A COMMANDS=(
 
 # Check if running with sufficient privileges
 check_install_location() {
-    # Try user-local installation first (recommended)
-    if [ -d "$HOME/.local/bin" ]; then
-        echo "$HOME/.local/bin"
-        return 0
-    elif [ -w "/usr/local/bin" ]; then
-        echo "/usr/local/bin"
-        return 0
-    else
-        echo ""
-        return 1
-    fi
+    # User-local installation is always the default. The caller creates it.
+    echo "$HOME/.local/bin"
 }
 
 configured_install_location() {
@@ -62,6 +53,29 @@ configured_install_location() {
     esac
     [[ "$install_dir" == /* ]] || return 2
     printf '%s\n' "$install_dir"
+}
+
+configured_discovery_file() {
+    local discovery_file="${WORKBENCHES_PROJECT_DISCOVERY_FILE:-$HOME/.config/workbenches/project-bin}"
+    case "$discovery_file" in
+        '~') discovery_file="$HOME" ;;
+        '~/'*) discovery_file="$HOME/${discovery_file#'~/'}" ;;
+    esac
+    [[ "$discovery_file" == /* ]] || return 2
+    printf '%s\n' "$discovery_file"
+}
+
+persisted_install_location() {
+    local discovery_file discovered_dir extra_line
+    discovery_file="$(configured_discovery_file)" || return $?
+    [ -f "$discovery_file" ] && [ ! -L "$discovery_file" ] || return 1
+    IFS= read -r discovered_dir < "$discovery_file" || return 1
+    IFS= read -r extra_line < <(sed -n '2p' "$discovery_file") || true
+    [ -z "$extra_line" ] || return 1
+    [[ "$discovered_dir" == /* ]] || return 1
+    python3 "$SCRIPT_DIR/setup-project-command.py" \
+        --bin-dir "$discovered_dir" --resolve-owned >/dev/null 2>&1 || return 1
+    printf '%s\n' "$discovered_dir"
 }
 
 ensure_workbenches_marker() {
@@ -150,8 +164,11 @@ add_to_path() {
     
     print_info "Adding $dir to PATH in $shell_profile"
     
-    # Check if PATH modification already exists
-    if grep -q "export PATH.*$dir" "$shell_profile" 2>/dev/null; then
+    local quoted_dir
+    quoted_dir="'${dir//\'/\'\\\'\'}'"
+
+    # Check if this exact safely quoted path is already present.
+    if grep -Fq -- "$quoted_dir" "$shell_profile" 2>/dev/null; then
         print_warning "PATH modification already exists in $shell_profile"
         return 0
     fi
@@ -160,8 +177,8 @@ add_to_path() {
     {
         echo ""
         echo "# Added by workBenches installer"
-        echo "if [ -d \"$dir\" ]; then"
-        echo "    export PATH=\"$dir:\$PATH\""
+        printf 'if [ -d %s ]; then\n' "$quoted_dir"
+        printf '    export PATH=%s:"$PATH"\n' "$quoted_dir"
         echo "fi"
     } >> "$shell_profile"
     
@@ -193,12 +210,6 @@ create_command_wrapper() {
 
 # Get the directory where this wrapper is located
 WRAPPER_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
-
-# Legacy project creation must resolve the executable from the same directory
-# selected by this installer, including /usr/local/bin.
-if [ "$command_name" = "onp" ]; then
-    export OPENREPOPROJECT_BIN_DIR="\$WRAPPER_DIR"
-fi
 
 # Try to find workBenches installation
 WORKBENCHES_ROOT=""
@@ -318,6 +329,7 @@ install_commands() {
     
     # Install each command
     local installed_count=0
+    local install_failed=false
     for cmd_name in "${!COMMANDS[@]}"; do
         if [ "$cmd_name" = "project" ]; then
             if [ "$project_available" = true ]; then
@@ -351,9 +363,6 @@ install_commands() {
             "delete-workspace")
                 source_script="$SCRIPT_DIR/delete-workspace.sh"
                 ;;
-            "onp")
-                source_script="$SCRIPT_DIR/onp"
-                ;;
             "setup-workbenches")
                 source_script="$SCRIPT_DIR/setup-workbenches.sh"
                 ;;
@@ -377,6 +386,7 @@ install_commands() {
         # Verify source script exists
         if [ ! -f "$source_script" ]; then
             print_warning "Source script not found: $source_script"
+            install_failed=true
             continue
         fi
         
@@ -386,6 +396,7 @@ install_commands() {
             ((installed_count++))
         else
             print_error "Failed to install: $cmd_name"
+            install_failed=true
         fi
     done
     
@@ -404,6 +415,10 @@ install_commands() {
         print_success "Commands are now available globally!"
     fi
     
+    if [ "$install_failed" = true ]; then
+        print_error "One or more command wrappers could not be installed"
+        return 1
+    fi
     return 0
 }
 
@@ -422,6 +437,18 @@ uninstall_commands() {
             return 1
         fi
         if [ "$configured_dir" != "$HOME/.local/bin" ] \
+            && [ "$configured_dir" != "/usr/local/bin" ]; then
+            locations=("$configured_dir" "${locations[@]}")
+        fi
+    else
+        local discovery_status=0
+        configured_dir="$(persisted_install_location)" || discovery_status=$?
+        if [ "$discovery_status" -eq 2 ]; then
+            print_error "WORKBENCHES_PROJECT_DISCOVERY_FILE must be an absolute path"
+            return 1
+        fi
+        if [ "$discovery_status" -eq 0 ] \
+            && [ "$configured_dir" != "$HOME/.local/bin" ] \
             && [ "$configured_dir" != "/usr/local/bin" ]; then
             locations=("$configured_dir" "${locations[@]}")
         fi
@@ -494,6 +521,18 @@ show_status() {
             return 1
         fi
         if [ "$configured_dir" != "$HOME/.local/bin" ] \
+            && [ "$configured_dir" != "/usr/local/bin" ]; then
+            locations=("$configured_dir" "${locations[@]}")
+        fi
+    else
+        local discovery_status=0
+        configured_dir="$(persisted_install_location)" || discovery_status=$?
+        if [ "$discovery_status" -eq 2 ]; then
+            print_error "WORKBENCHES_PROJECT_DISCOVERY_FILE must be an absolute path"
+            return 1
+        fi
+        if [ "$discovery_status" -eq 0 ] \
+            && [ "$configured_dir" != "$HOME/.local/bin" ] \
             && [ "$configured_dir" != "/usr/local/bin" ]; then
             locations=("$configured_dir" "${locations[@]}")
         fi

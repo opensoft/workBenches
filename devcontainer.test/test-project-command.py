@@ -6,11 +6,12 @@ import fcntl
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -109,6 +110,116 @@ class InstallTests(unittest.TestCase):
         target.write_text("unowned replacement")
         self.assertEqual(installer.main([*self.args, "--remove"]), 3)
         self.assertEqual(target.read_text(), "unowned replacement")
+
+    def test_optional_discovery_removal_failure_does_not_block_core_removal(self):
+        self.assertEqual(self.install(), 0)
+        real_unlink = installer.atomic_checked_unlink
+
+        def refuse_discovery(path, expected_state):
+            if Path(path) == self.discovery:
+                raise PermissionError("simulated read-only discovery directory")
+            return real_unlink(path, expected_state)
+
+        errors = io.StringIO()
+        with patch.object(installer, "atomic_checked_unlink",
+                          side_effect=refuse_discovery), redirect_stderr(errors):
+            self.assertEqual(installer.main([*self.args, "--remove"]), 0)
+        self.assertFalse((self.bin / "project").exists())
+        self.assertFalse((self.bin / installer.PAYLOAD_NAME).exists())
+        self.assertFalse((self.bin / ".workbenches-project.json").exists())
+        self.assertTrue(self.discovery.is_file())
+        self.assertIn("preserved discovery pointer", errors.getvalue())
+
+    def test_known_legacy_onp_variants_migrate_but_collisions_do_not(self):
+        for legacy_bytes in (
+                installer.legacy_copied_onp_bytes(self.wb),
+                installer.legacy_generated_onp_bytes(self.wb),
+                installer.legacy_generated_onp_bytes(
+                    self.wb, include_bin_dir_export=False)):
+            with self.subTest(legacy=hashlib.sha256(legacy_bytes).hexdigest()):
+                self.bin.mkdir(exist_ok=True)
+                onp = self.bin / "onp"
+                onp.write_bytes(legacy_bytes)
+                onp.chmod(0o755)
+                self.assertEqual(installer.main([
+                    *self.args, "--source", str(self.source), "--install-onp",
+                ]), 0)
+                self.assertEqual(onp.read_bytes(), (self.bin / "project").read_bytes())
+                self.assertEqual(installer.main([*self.args, "--remove"]), 0)
+
+        self.bin.mkdir(exist_ok=True)
+        onp = self.bin / "onp"
+        onp.write_text("#!/bin/bash\necho user-owned\n")
+        onp.chmod(0o755)
+        self.assertEqual(installer.main([
+            *self.args, "--source", str(self.source), "--install-onp",
+        ]), 2)
+        self.assertEqual(onp.read_text(), "#!/bin/bash\necho user-owned\n")
+        onp.unlink()
+        target = self.base / "elsewhere"
+        target.write_bytes(installer.legacy_copied_onp_bytes(self.wb))
+        target.chmod(0o755)
+        onp.symlink_to(target)
+        self.assertEqual(installer.main([
+            *self.args, "--source", str(self.source), "--install-onp",
+        ]), 2)
+        self.assertTrue(onp.is_symlink())
+
+    def test_relative_bin_and_discovery_aliases_are_rejected_before_writes(self):
+        self.assertEqual(installer.main([
+            "--pin", str(self.pin), "--bin-dir", "relative/bin",
+            "--workbenches", str(self.wb), "--source", str(self.source),
+        ]), 2)
+        self.assertFalse(Path("relative/bin/project").exists())
+
+        aliased_discovery = self.bin / "project"
+        with patch.dict(os.environ, {
+                "WORKBENCHES_PROJECT_DISCOVERY_FILE": str(aliased_discovery)}):
+            self.assertEqual(self.install(), 2)
+        self.assertFalse(self.bin.exists())
+
+    def test_duplicate_transaction_destinations_fail_closed(self):
+        self.bin.mkdir()
+        target = self.bin / "owned"
+        target.write_text("owned")
+        target.chmod(0o644)
+        state = installer.path_fingerprint(target)
+        journal = self.bin / installer.REMOVAL_JOURNAL_NAME
+        with self.assertRaises(ValueError):
+            installer.remove_transaction([(target, state), (target, state)], journal)
+        self.assertEqual(target.read_text(), "owned")
+        self.assertFalse(journal.exists())
+
+    @unittest.skipUnless(hasattr(signal, "SIGKILL"), "SIGKILL is unavailable")
+    def test_sigkill_during_quarantine_is_recovered_and_removal_resumes(self):
+        self.assertEqual(installer.main([
+            *self.args, "--source", str(self.source), "--install-onp",
+        ]), 0)
+        driver = f'''import importlib.util, os, signal
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("crash_installer", {str(ROOT / "scripts/setup-project-command.py")!r})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+real_move = module.atomic_move_noreplace
+def crash_after_first_quarantine(source, destination):
+    real_move(source, destination)
+    name = Path(destination).name
+    if name.startswith(".project-remove-") and not name.startswith(".project-remove-backup-"):
+        os.kill(os.getpid(), signal.SIGKILL)
+module.atomic_move_noreplace = crash_after_first_quarantine
+raise SystemExit(module.main({[*self.args, "--remove"]!r}))
+'''
+        crashed = subprocess.run([sys.executable, "-c", driver], env=os.environ.copy())
+        self.assertEqual(crashed.returncode, -signal.SIGKILL)
+        journal = self.bin / installer.REMOVAL_JOURNAL_NAME
+        self.assertTrue(journal.is_file())
+        self.assertEqual(installer.main([*self.args, "--resolve-owned"]), 3)
+        self.assertEqual(installer.main([*self.args, "--remove"]), 0)
+        for path in (
+                self.bin / "project", self.bin / installer.PAYLOAD_NAME,
+                self.bin / ".workbenches-project.json", self.bin / "onp", journal):
+            self.assertFalse(path.exists() or path.is_symlink())
+        self.assertEqual(list(self.bin.glob(".project-remove-*")), [])
 
     def test_remove_preserves_unowned_project_and_removes_owned_onp(self):
         self.assertEqual(installer.main([
@@ -259,7 +370,7 @@ class InstallTests(unittest.TestCase):
         self.assertTrue(owner.is_file())
         self.assertEqual(list(self.bin.glob(".project-remove-*")), [])
 
-    def test_grouped_remove_restores_all_files_when_quarantine_delete_fails(self):
+    def test_grouped_remove_resumes_committed_cleanup_after_failure(self):
         self.assertEqual(self.install(), 0)
         paths = [
             self.bin / "project",
@@ -282,10 +393,13 @@ class InstallTests(unittest.TestCase):
             return real_unlink(path, *args, **kwargs)
 
         with patch.object(Path, "unlink", new=fail_second_quarantine_delete):
-            self.assertEqual(installer.main([*self.args, "--remove"]), 2)
-        self.assertEqual(delete_count, 2)
-        for path, data in original.items():
-            self.assertEqual(path.read_bytes(), data)
+            self.assertEqual(installer.main([*self.args, "--remove"]), 0)
+        self.assertGreaterEqual(delete_count, 2)
+        for path in original:
+            self.assertFalse(path.exists())
+        self.assertTrue((self.bin / installer.REMOVAL_JOURNAL_NAME).is_file())
+        self.assertEqual(installer.main([*self.args, "--remove"]), 0)
+        self.assertFalse((self.bin / installer.REMOVAL_JOURNAL_NAME).exists())
         self.assertEqual(list(self.bin.glob(".project-remove-*")), [])
         self.assertEqual(list(self.discovery.parent.glob(".project-remove-*")), [])
 
@@ -683,6 +797,52 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), ["new", "FromDiscovery"])
 
+    def test_forwarder_expands_tilde_and_rejects_relative_configuration(self):
+        home = self.base / "forwarder-home"
+        tilde_bin = home / "commands"
+        self.assertEqual(installer.main([
+            *self.args, "--bin-dir", str(tilde_bin), "--source", str(self.source),
+        ]), 0)
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "OPENREPOPROJECT_BIN_DIR": "~/commands",
+            "OPENREPOPROJECT_PIN": str(self.pin),
+            "WORKBENCHES_ROOT": str(self.wb),
+        }
+        result = subprocess.run(
+            ["bash", str(ROOT / "scripts/project"), "FromTilde"],
+            env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), ["FromTilde"])
+
+        env["OPENREPOPROJECT_BIN_DIR"] = "relative/bin"
+        result = subprocess.run(
+            ["bash", str(ROOT / "scripts/project"), "unsafe"],
+            env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("OPENREPOPROJECT_BIN_DIR must be an absolute path", result.stderr)
+
+        env.pop("OPENREPOPROJECT_BIN_DIR")
+        env["WORKBENCHES_PROJECT_DISCOVERY_FILE"] = "relative/discovery"
+        result = subprocess.run(
+            ["bash", str(ROOT / "scripts/project"), "unsafe"],
+            env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("WORKBENCHES_PROJECT_DISCOVERY_FILE must be an absolute path",
+                      result.stderr)
+
+        tilde_discovery = home / ".state/project-bin"
+        tilde_discovery.parent.mkdir(parents=True)
+        tilde_discovery.write_text(str(tilde_bin) + "\n")
+        env["WORKBENCHES_PROJECT_DISCOVERY_FILE"] = "~/.state/project-bin"
+        env["PATH"] = os.environ["PATH"]
+        result = subprocess.run(
+            ["bash", str(ROOT / "scripts/project"), "FromDiscoveryTilde"],
+            env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), ["FromDiscoveryTilde"])
+
     def test_direct_project_launch_verifies_the_separate_payload(self):
         self.assertEqual(self.install(), 0)
         target = self.bin / "project"
@@ -798,6 +958,22 @@ class InstallTests(unittest.TestCase):
         self.assertFalse((home / ".local/bin/onp").exists())
         self.assertIn("onp installation skipped", result.stdout)
 
+    def test_setup_dependency_preflight_requires_python3(self):
+        command = (
+            'source "$1"; '
+            'command() { '
+            'if [ "$1" = "-v" ] && [ "$2" = "python3" ]; then return 1; fi; '
+            'builtin command "$@"; '
+            '}; '
+            'check_dependencies'
+        )
+        result = subprocess.run(
+            ["bash", "-c", command, "_", str(ROOT / "scripts/setup-workbenches.sh")],
+            input="n\n", text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("python3", result.stdout)
+        self.assertIn("Missing required dependencies", result.stdout)
+
     def test_setup_menu_installs_verified_onp_in_configured_directory(self):
         self.assertEqual(self.install(), 0)
         home = self.base / "menu-custom-home"
@@ -841,6 +1017,20 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((tilde_bin / "onp").is_file())
         self.assertIn(str(tilde_bin / "onp"), result.stdout)
+
+    def test_setup_menu_rejects_relative_configured_directory(self):
+        env = {
+            **os.environ,
+            "OPENREPOPROJECT_BIN_DIR": "relative/bin",
+            "OPENREPOPROJECT_PIN": str(self.pin),
+            "WORKBENCHES_ROOT": str(self.wb),
+        }
+        result = subprocess.run(
+            ["bash", "-c", 'source "$1"; install_onp_command', "_",
+             str(ROOT / "scripts/setup-workbenches.sh")],
+            env=env, text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("OPENREPOPROJECT_BIN_DIR must be an absolute path", result.stdout)
 
     def test_project_pin_rotation_refreshes_installer_owned_onp(self):
         self.assertEqual(self.install(), 0)
@@ -1045,6 +1235,127 @@ class InstallTests(unittest.TestCase):
         self.assertTrue((self.bin / "project").is_file())
         self.assertTrue((self.bin / "onp").is_file())
         self.assertFalse((home / ".local/bin/project").exists())
+
+    @unittest.skipUnless(MODERN_BASH,
+                         "command installer requires Bash 4 associative arrays")
+    def test_global_default_prefers_and_creates_user_local_bin(self):
+        home = self.base / "default-local-home"
+        home.mkdir()
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "WORKBENCHES_SKIP_PROJECT_COMMAND": "1",
+        }
+        env.pop("OPENREPOPROJECT_BIN_DIR", None)
+        result = subprocess.run(
+            [TEST_BASH, str(ROOT / "scripts/install-workbench-commands.sh"), "--install"],
+            env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((home / ".local/bin/launchBench").is_file())
+
+    @unittest.skipUnless(MODERN_BASH,
+                         "command installer requires Bash 4 associative arrays")
+    def test_global_profile_update_shell_quotes_custom_path(self):
+        home = self.base / "quoted-path-home"
+        home.mkdir()
+        profile = home / ".bashrc"
+        profile.write_text("")
+        install_bin = self.base / "bin'$(touch PWNED)'"
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "PATH": os.environ["PATH"],
+            "OPENREPOPROJECT_BIN_DIR": str(install_bin),
+            "WORKBENCHES_SKIP_PROJECT_COMMAND": "1",
+            "SHELL": "/bin/bash",
+        }
+        result = subprocess.run(
+            [TEST_BASH, str(ROOT / "scripts/install-workbench-commands.sh"), "--install"],
+            env=env, cwd=self.base, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn(str(install_bin) + ':$PATH', profile.read_text())
+        sourced = subprocess.run(
+            [TEST_BASH, "-c", 'source "$HOME/.bashrc"; printf "%s" "$PATH"'],
+            env=env, cwd=self.base, text=True, capture_output=True)
+        self.assertEqual(sourced.returncode, 0, sourced.stderr)
+        self.assertFalse((self.base / "PWNED").exists())
+        self.assertEqual(sourced.stdout.split(os.pathsep)[0], str(install_bin))
+
+    @unittest.skipUnless(MODERN_BASH,
+                         "command installer requires Bash 4 associative arrays")
+    def test_global_wrapper_publication_failure_is_nonzero(self):
+        home = self.base / "wrapper-failure-home"
+        install_bin = home / "bin"
+        (install_bin / "launchBench").mkdir(parents=True)
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "PATH": str(install_bin) + os.pathsep + os.environ["PATH"],
+            "OPENREPOPROJECT_BIN_DIR": str(install_bin),
+            "WORKBENCHES_SKIP_PROJECT_COMMAND": "1",
+        }
+        result = subprocess.run(
+            [TEST_BASH, str(ROOT / "scripts/install-workbench-commands.sh"), "--install"],
+            env=env, text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("One or more command wrappers could not be installed", result.stdout)
+
+    @unittest.skipUnless(MODERN_BASH,
+                         "command installer requires Bash 4 associative arrays")
+    def test_status_and_uninstall_use_owned_persisted_custom_location(self):
+        custom_bin = self.base / "persisted-custom-bin"
+        self.assertEqual(installer.main([
+            *self.args, "--bin-dir", str(custom_bin), "--source", str(self.source),
+            "--install-onp",
+        ]), 0)
+        home = self.base / "persisted-home"
+        home.mkdir()
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "PATH": os.environ["PATH"],
+            "OPENREPOPROJECT_PIN": str(self.pin),
+            "WORKBENCHES_ROOT": str(self.wb),
+            "WORKBENCHES_PROJECT_DISCOVERY_FILE": str(self.discovery),
+        }
+        env.pop("OPENREPOPROJECT_BIN_DIR", None)
+        command = [TEST_BASH, str(ROOT / "scripts/install-workbench-commands.sh")]
+        status = subprocess.run([*command, "--status"], env=env,
+                                text=True, capture_output=True)
+        self.assertEqual(status.returncode, 0, status.stderr)
+        self.assertIn(f"{custom_bin}:", status.stdout)
+        self.assertIn("project              Create, inspect, diagnose", status.stdout)
+
+        fake_bin = self.base / "persisted-fake-bin"
+        fake_bin.mkdir()
+        fake_python = fake_bin / "python3"
+        fake_python.write_text(
+            '#!/bin/bash\n'
+            'previous=""\n'
+            'selected=""\n'
+            'for argument in "$@"; do\n'
+            '  [ "$previous" = "--bin-dir" ] && selected="$argument"\n'
+            '  previous="$argument"\n'
+            'done\n'
+            'if [ "$selected" = "$CUSTOM_BIN" ]; then\n'
+            '  exec "$REAL_PYTHON" "$@"\n'
+            'fi\n'
+            'exit 3\n'
+        )
+        fake_python.chmod(0o755)
+        fake_rm = fake_bin / "rm"
+        fake_rm.write_text("#!/bin/bash\nexit 0\n")
+        fake_rm.chmod(0o755)
+        env.update({
+            "PATH": str(fake_bin) + os.pathsep + "/usr/bin:/bin",
+            "CUSTOM_BIN": str(custom_bin),
+            "REAL_PYTHON": sys.executable,
+        })
+        removed = subprocess.run([*command, "--uninstall"], env=env,
+                                 text=True, capture_output=True)
+        self.assertEqual(removed.returncode, 0, removed.stderr)
+        self.assertFalse((custom_bin / "project").exists())
+        self.assertFalse((custom_bin / "onp").exists())
 
     @unittest.skipUnless(MODERN_BASH,
                          "command installer requires Bash 4 associative arrays")
