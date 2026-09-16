@@ -547,6 +547,31 @@ printf '%s\n' \
 test "$(declared_cascade_images sim-bench:latest "$tag_filter_build" "$temp_dir")" \
     = $'sim-bench-worker:latest\nsim-bench:latest'
 
+printf '%s\n' \
+    'docker build \' \
+    '  --tag sim-bench:latest \' \
+    '  --tag sim-bench-worker:latest .' \
+    'if true; then docker build -t sim-bench-control:latest .; fi' \
+    > "$tag_filter_build"
+test "$(declared_cascade_images sim-bench:latest "$tag_filter_build" "$temp_dir")" \
+    = $'sim-bench-control:latest\nsim-bench-worker:latest\nsim-bench:latest'
+
+printf '%s\n' 'docker build --tag "$(dynamic_image)" .' > "$tag_filter_build"
+if declared_cascade_images sim-bench:latest "$tag_filter_build" "$temp_dir" \
+    > "$temp_dir/unparsed-direct-build.out" 2> "$temp_dir/unparsed-direct-build.err"; then
+    echo "expected an unresolved direct Docker build tag to fail closed" >&2
+    exit 1
+fi
+test ! -s "$temp_dir/unparsed-direct-build.out"
+
+if grep -Eq '(^|[[:space:]])(userdel|groupdel)([[:space:]]|$)' \
+    "$repo_root/user-layer/Dockerfile"; then
+    echo "Layer 3 account setup still deletes inherited users or groups" >&2
+    exit 1
+fi
+grep -Fq 'username collides with an inherited account' "$repo_root/user-layer/Dockerfile"
+grep -Fq 'UID $USER_UID is already owned by inherited account' "$repo_root/user-layer/Dockerfile"
+
 script_compose_bench="$temp_dir/script-compose-bench"
 mkdir -p "$script_compose_bench/scripts"
 script_compose_build="$script_compose_bench/scripts/build-layer2.sh"

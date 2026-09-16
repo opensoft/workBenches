@@ -422,11 +422,16 @@ declared_cascade_images() {
                     leaf = ref
                     sub(/^.*\//, "", leaf)
                     if (ref ~ /^[A-Za-z0-9][A-Za-z0-9._:\/-]*$/) {
-                        if (leaf ~ /:latest$/) print ref
-                        else if (leaf !~ /:/) print ref ":latest"
+                        if (leaf ~ /:latest$/) {
+                            print ref
+                            emitted_tag_count++
+                        } else if (leaf !~ /:/) {
+                            print ref ":latest"
+                            emitted_tag_count++
+                        }
                     }
                 }
-                function emit_docker_build_tags(segment, word_count, command_index, tag_index, ref, words) {
+                function emit_docker_build_tags(segment, word_count, command_index, tag_index, ref, words, candidate_index, previous_word, emitted_before) {
                     gsub(/[()]/, " ", segment)
                     sub(/^[[:space:]]+/, "", segment)
                     sub(/[[:space:]]+$/, "", segment)
@@ -444,6 +449,17 @@ declared_cascade_images() {
                         }
                     }
                     if (words[command_index] == "sudo") command_index++
+                    if (words[command_index] != "docker") {
+                        for (candidate_index = command_index; candidate_index <= word_count; candidate_index++) {
+                            if (words[candidate_index] != "docker") continue
+                            previous_word = words[candidate_index - 1]
+                            if (candidate_index == command_index \
+                                    || previous_word ~ /^(then|do|if|elif|else|while|until|!)$/) {
+                                command_index = candidate_index
+                                break
+                            }
+                        }
+                    }
                     if (words[command_index] != "docker") return
                     if (words[command_index + 1] == "build") {
                         tag_index = command_index + 2
@@ -454,6 +470,8 @@ declared_cascade_images() {
                     } else {
                         return
                     }
+                    build_command_count++
+                    emitted_before = emitted_tag_count
                     for (; tag_index <= word_count; tag_index++) {
                         if (words[tag_index] == "-t" || words[tag_index] == "--tag") {
                             if (tag_index < word_count) emit_output(words[tag_index + 1])
@@ -463,11 +481,11 @@ declared_cascade_images() {
                             emit_output(ref)
                         }
                     }
+                    if (emitted_tag_count == emitted_before) unparsed_build = 1
                 }
-                {
-                    line = $0
+                function process_line(line, assignment, variable_name, segment_count, segment_index, segments) {
                     sub(/^[[:space:]]+/, "", line)
-                    if (line ~ /^#/) next
+                    if (line ~ /^#/) return
                     sub(/[[:space:]]+#.*/, "", line)
                     assignment = line
                     sub(/^(export|local|readonly)[[:space:]]+/, "", assignment)
@@ -484,7 +502,20 @@ declared_cascade_images() {
                         emit_docker_build_tags(segments[segment_index])
                     }
                 }
-            ' "$build_script" 2>/dev/null || true
+                {
+                    line = pending_line $0
+                    if (line ~ /\\[[:space:]]*$/) {
+                        sub(/\\[[:space:]]*$/, "", line)
+                        pending_line = line " "
+                        next
+                    }
+                    pending_line = ""
+                    process_line(line)
+                }
+                END {
+                    if (pending_line != "" || unparsed_build) exit 2
+                }
+            ' "$build_script" 2>/dev/null || return
         fi
         if [[ -f "$build_script" ]]; then
             local compose_command

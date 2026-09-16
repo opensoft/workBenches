@@ -77,9 +77,9 @@ RUN set -eux && \
 # USER CREATION
 # ========================================
 
-# Remove any conflicting user, create the requested account, and verify the
-# effective passwd identity. Fail the build instead of publishing labels for a
-# user whose inherited UID/GID does not match the requested host identity.
+# Create the requested account without deleting or repurposing inherited
+# service users. Fail closed on name/UID collisions, then verify the effective
+# passwd identity before publishing the personalized image.
 RUN set -eux && \
     case "$USERNAME" in \
         root|latest|''|[!a-z_]*|*[!a-z0-9_-]*) \
@@ -88,25 +88,24 @@ RUN set -eux && \
     case "$USER_UID" in ''|0*|*[!0-9]*) echo "Layer 3 requires a canonical positive UID" >&2; exit 1;; esac && \
     case "$USER_GID" in ''|0*|*[!0-9]*) echo "Layer 3 requires a canonical positive GID" >&2; exit 1;; esac && \
     if getent passwd "$USERNAME" >/dev/null; then \
-        userdel --force --remove "$USERNAME"; \
+        echo "Layer 3 username collides with an inherited account: $USERNAME" >&2; \
+        exit 1; \
     fi && \
     if getent passwd "$USER_UID" >/dev/null; then \
         existing_user=$(getent passwd "$USER_UID" | cut -d: -f1); \
-        userdel --force --remove "$existing_user"; \
+        echo "Layer 3 UID $USER_UID is already owned by inherited account: $existing_user" >&2; \
+        exit 1; \
     fi && \
-    # Handle existing group with target GID
-    if getent group "$USER_GID" >/dev/null; then \
-        existing_group=$(getent group "$USER_GID" | cut -d: -f1); \
-        if getent group "$USERNAME" >/dev/null && [ "$existing_group" != "$USERNAME" ]; then \
-            groupdel "$USERNAME"; \
+    if getent group "$USERNAME" >/dev/null; then \
+        existing_gid=$(getent group "$USERNAME" | cut -d: -f3); \
+        if [ "$existing_gid" != "$USER_GID" ]; then \
+            echo "Layer 3 group name $USERNAME already has GID $existing_gid" >&2; \
+            exit 1; \
         fi; \
-        [ "$existing_group" = "$USERNAME" ] || groupmod -n "$USERNAME" "$existing_group"; \
-    elif getent group "$USERNAME" >/dev/null; then \
-        groupmod -g "$USER_GID" "$USERNAME"; \
     else \
-        groupadd --gid "$USER_GID" "$USERNAME"; \
+        groupadd --non-unique --gid "$USER_GID" "$USERNAME"; \
     fi && \
-    useradd --uid "$USER_UID" --gid "$USERNAME" -m -s /bin/zsh "$USERNAME" && \
+    useradd --uid "$USER_UID" --gid "$USER_GID" -m -s /bin/zsh "$USERNAME" && \
     getent passwd "$USERNAME" | awk -F: -v uid="$USER_UID" -v gid="$USER_GID" \
         '$3 == uid && $4 == gid { found = 1 } END { exit !found }' && \
     # Add to sudoers
