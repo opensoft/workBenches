@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opensoft.example/schemas/ai-credential-keyvault-v1.json",
+  "title": "AI Credential Key Vault Manifest",
+  "type": "object",
+  "required": ["schemaVersion", "tenantId", "subscriptionId", "vaultName", "company", "entries"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "tenantId": {"type": "string", "minLength": 1},
+    "subscriptionId": {"type": "string", "minLength": 1},
+    "vaultName": {"type": "string", "minLength": 3, "maxLength": 24},
+    "company": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["provider", "profile", "credentialPath", "secretName", "enabled"],
+        "properties": {
+          "provider": {"enum": ["claude", "codex", "pi"]},
+          "profile": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+          "credentialPath": {"type": "string", "minLength": 1},
+          "secretName": {"type": "string", "pattern": "^ai-credential-[a-z0-9-]+-[a-z0-9-]+$"},
+          "enabled": {"type": "boolean"}
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

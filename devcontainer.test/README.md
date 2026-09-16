@@ -43,16 +43,46 @@ The `test.sh` script validates:
 - ✅ Claude profile lane default and SessionStart hook
   (lane-collision-protocol Amendment 8(c) and 8(e))
 
-Some suites in this directory are **host-run** rather than container-run,
-because they need the repository's own `scripts/`, `base-image/`, or Docker
-control surface, which are not mounted in the container. The cascade image
-validation suite is also registered in GitHub Actions. Run host suites from
-the repository root, for example:
+Seven suites in this directory are **host-run** rather than container-run,
+because they read the repository's own `scripts/`, `base-image/` and
+`devBenches/base-image/`, or require a fake Docker control surface that is not
+mounted in the container. All seven run in CI through
+`.github/workflows/speckit-git-bash.yml` or
+`.github/workflows/cascade-image-validation.yml`, and all seven are run from
+the repository root:
 
 ```bash
+bash devcontainer.test/test-setup-estate-commands.sh
+bash devcontainer.test/test-setup-workspace-repo.sh
 bash devcontainer.test/test-claude-profile-skill-install.sh
+bash devcontainer.test/test-base-image-dockerfile.sh
+bash devcontainer.test/test-claude-profile-name-guard-hook.sh
+bash devcontainer.test/test-claude-profile-amendment-11.sh
 bash devcontainer.test/test-cascade-image-validation.sh
 ```
+
+- `test-setup-estate-commands.sh` — `scripts/setup-estate-commands.sh` on a
+  host, and the container-start step that mirrors it
+  (`devBenches/base-image/files/estate/`, opensoft/workBenches#90).
+- `test-setup-workspace-repo.sh` — `scripts/setup-workspace-repo.sh`, the
+  workspace-repository step of the onboarding chain (lane-collision-protocol
+  Amendment 9(e)).
+- `test-claude-profile-skill-install.sh` — that `openRepoTools --install` is
+  the sole writer of the skills, command files and hook entries
+  (lane-collision-protocol Amendment 9 adoption act 4b).
+- `test-base-image-dockerfile.sh` — the source-only wiring check on BOTH
+  Dockerfiles. It never runs `docker build`, which is the point: nothing else
+  here can, so this is what catches a launcher dependency or a container-start
+  step that is referenced but never copied into the image.
+- `test-claude-profile-name-guard-hook.sh` — the launcher's `UserPromptSubmit`
+  name guard, including the downgrade that removes it and the line it prints
+  when it does (Amendment 12 adoption act 3).
+- `test-claude-profile-amendment-11.sh` — lane-collision-protocol Amendment 11
+  (the launcher's window reuse, directory and precedence-4 rules) plus the
+  vendored handoff/lane-swap skill's mechanics (opensoft/workBenches#93).
+- `test-cascade-image-validation.sh` — cascade output discovery, immutable
+  Layer 2 image probes, read-only Layer 3 state reporting, and atomic manifest
+  behavior against a fake Docker control surface.
 
 ## When to Use
 

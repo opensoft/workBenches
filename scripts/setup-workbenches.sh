@@ -97,6 +97,7 @@ check_dependencies() {
     
     local missing_deps=()
     local installed_deps=()
+    local unsupported_python=false
     
     # Check git
     if command -v git &> /dev/null; then
@@ -127,6 +128,23 @@ check_dependencies() {
         echo -e "  ${RED}✗ curl${NC} - not installed"
         missing_deps+=("curl")
     fi
+
+    # Python is required only when project-command installation is enabled.
+    if [ "${WORKBENCHES_SKIP_PROJECT_COMMAND:-0}" = "1" ]; then
+        echo -e "  ${YELLOW}↷ python3${NC} - project command installation skipped"
+    elif command -v python3 &> /dev/null; then
+        local python_version=$(python3 --version 2>&1 | awk '{print $2}')
+        if python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 10))'; then
+            echo -e "  ${GREEN}✓ python3${NC} - installed (version: $python_version)"
+            installed_deps+=("python3")
+        else
+            echo -e "  ${RED}✗ python3${NC} - unsupported (version: $python_version; requires 3.10+)"
+            unsupported_python=true
+        fi
+    else
+        echo -e "  ${RED}✗ python3${NC} - not installed"
+        missing_deps+=("python3")
+    fi
     
     # Check Node.js (recommended for AI CLI tools)
     if command -v node &> /dev/null; then
@@ -151,6 +169,11 @@ check_dependencies() {
     fi
     
     echo ""
+
+    if [ "$unsupported_python" = true ]; then
+        echo -e "${RED}Python 3.10 or newer is required to install and run the project command.${NC}"
+        return 1
+    fi
     
     if [ ${#missing_deps[@]} -ne 0 ]; then
         echo -e "${RED}⚠️  Missing required dependencies: ${missing_deps[*]}${NC}"
@@ -263,18 +286,35 @@ clone_repo() {
 
 # Install onp command
 install_onp_command() {
+    if [[ "${WORKBENCHES_SKIP_PROJECT_COMMAND:-}" == "1" ]]; then
+        echo -e "${YELLOW}Project command and onp installation skipped by WORKBENCHES_SKIP_PROJECT_COMMAND=1${NC}"
+        return 0
+    fi
+    local project_bin_dir="${OPENREPOPROJECT_BIN_DIR:-$HOME/.local/bin}"
+    case "$project_bin_dir" in
+        '~') project_bin_dir="$HOME" ;;
+        '~/'*) project_bin_dir="$HOME/${project_bin_dir#'~/'}" ;;
+    esac
+    if [[ "$project_bin_dir" != /* ]]; then
+        echo -e "${RED}Error: OPENREPOPROJECT_BIN_DIR must be an absolute path${NC}"
+        return 1
+    fi
+    python3 -I "$SCRIPT_DIR/setup-project-command.py" \
+        --bin-dir "$project_bin_dir" --install-onp || return $?
+    if ! python3 -I "$SCRIPT_DIR/setup-project-command.py" \
+        --bin-dir "$project_bin_dir" --resolve-owned >/dev/null 2>&1; then
+        echo -e "${YELLOW}⚠ Refusing to install onp without a verified project command${NC}"
+        return 1
+    fi
     echo -e "${BLUE}Installing onp (Opensoft New Project) command...${NC}"
-    
-    # Ensure ~/.local/bin exists
-    mkdir -p "$HOME/.local/bin"
-    
-    # Copy and make executable
-    if cp "$SCRIPT_DIR/onp" "$HOME/.local/bin/onp" && chmod +x "$HOME/.local/bin/onp"; then
-        echo -e "${GREEN}✓ onp command installed to ~/.local/bin/onp${NC}"
+
+    if [ -x "$project_bin_dir/onp" ]; then
+        echo -e "${GREEN}✓ onp command installed to $project_bin_dir/onp${NC}"
         echo "You can now run 'onp' from anywhere to create new projects."
     else
         echo -e "${YELLOW}⚠ Failed to install onp command${NC}"
-        echo "You can manually copy it later: cp onp ~/.local/bin/ && chmod +x ~/.local/bin/onp"
+        echo "Re-run this setup after checking write access to $project_bin_dir."
+        return 1
     fi
     echo ""
 }
@@ -1151,5 +1191,7 @@ main() {
     echo "  source ~/.zshrc  # or ~/.bashrc"
 }
 
-# Run main function
-main "$@"
+# Run main function unless this file is sourced for a focused helper invocation.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

@@ -3464,6 +3464,7 @@ make_fake_overlay_template() {
         "$root/specify/extensions/git/scripts/powershell" \
         "$root/specify/shell"
     printf '%s\n' 'name: git' > "$root/specify/extensions/git/extension.yml"
+    printf '%s\n' 'fixture config template' > "$root/specify/extensions/git/config-template.yml"
     for overlay_command in commit feature initialize park remote resume validate; do
         printf '%s\n' "# speckit.git.$overlay_command fixture" \
             > "$root/specify/extensions/git/commands/speckit.git.$overlay_command.md"
@@ -3503,6 +3504,35 @@ customize_installed_overlay() {
         > "$repo/.specify/shell/select-worktree.sh"
     printf '%s\n' 'repository-specific overlay skill customization' \
         > "$repo/.claude/skills/speckit-specify/SKILL.md"
+}
+
+# Stamps the installed overlay's content marker (scripts/bash/.speckit-overlay-content)
+# with the digest $template would currently produce, by calling the same
+# worktree_git_overlay_content_digest/write_overlay_content_marker functions
+# setup-openspeckit itself uses -- so a fixture can represent "this repo was
+# already fully synced to $template" without duplicating the hashing logic.
+stamp_overlay_content_marker() {
+    local repo="$1"
+    local template="$2"
+    if ! python3 - "$SETUP_SCRIPT" "$template" "$repo" <<'PY'
+from pathlib import Path
+import runpy
+import sys
+
+namespace = runpy.run_path(sys.argv[1], run_name="setup_openspeckit_test")
+digest_fn = namespace["worktree_git_overlay_content_digest"]
+write_marker = namespace["write_overlay_content_marker"]
+template_git_root = Path(sys.argv[2]) / "specify" / "extensions" / "git"
+repo_git_root = Path(sys.argv[3]) / ".specify" / "extensions" / "git"
+digest = digest_fn(template_git_root)
+if digest is None:
+    raise SystemExit(f"template digest unavailable under {template_git_root}")
+write_marker(repo_git_root, digest, False)
+PY
+    then
+        printf 'FAIL: could not stamp overlay content marker fixture for %s\n' "$repo" >&2
+        exit 1
+    fi
 }
 
 MARKED_TEMPLATE_ROOT="$TMPDIR_ROOT/marked-overlay-templates"
@@ -3638,10 +3668,13 @@ assert_contains "$TMPDIR_ROOT/linked-overlay.log" 'done' 'skill link replacement
 assert_contains "$LINKED_OVERLAY_DESTINATION/SKILL.md" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'replaced skill link receives the managed shape block'
 assert_contains "$LINKED_OVERLAY_REPO/.claude/skills/speckit-specify/SKILL.md" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'skill link replacement run still writes the other shape blocks'
 
-printf '%s\n' 'When: a marked template meets an installed overlay that already carries the marker'
+printf '%s\n' 'When: a marked template meets an installed overlay that already carries the marker and a current content digest'
 MARKED_OVERLAY_REPO="$TMPDIR_ROOT/marked-overlay-repo"
 MARKED_OVERLAY_PROTOCOL_ROOT="$TMPDIR_ROOT/marked-overlay-protocol"
 install_overlay_fixture "$MARKED_OVERLAY_REPO" "$MARKED_TEMPLATE_ROOT"
+stamp_overlay_content_marker "$MARKED_OVERLAY_REPO" "$MARKED_TEMPLATE_ROOT"
+MARKED_OVERLAY_CONTENT_MARKER="$MARKED_OVERLAY_REPO/.specify/extensions/git/scripts/bash/.speckit-overlay-content"
+cp "$MARKED_OVERLAY_CONTENT_MARKER" "$TMPDIR_ROOT/marked-overlay-content-marker.before"
 customize_installed_overlay "$MARKED_OVERLAY_REPO"
 export AGENT_PROTOCOL_ROOT="$MARKED_OVERLAY_PROTOCOL_ROOT"
 if ! python3 "$SETUP_SCRIPT" --repo "$MARKED_OVERLAY_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
@@ -3651,11 +3684,166 @@ if ! python3 "$SETUP_SCRIPT" --repo "$MARKED_OVERLAY_REPO" "${OVERLAY_REFRESH_FL
     exit 1
 fi
 
-printf '%s\n' 'Then: a compatible marked overlay keeps its repository customizations'
+printf '%s\n' 'Then: an overlay whose shape and content are both current keeps its customizations, unrefreshed'
 assert_not_contains "$TMPDIR_ROOT/marked-overlay.log" 'replacing incompatible Spec Kit git extension' 'marked overlay is treated as compatible'
+assert_not_contains "$TMPDIR_ROOT/marked-overlay.log" 'refreshing Spec Kit git extension scripts' 'marked overlay with a current content digest is not treated as stale'
 assert_contains "$MARKED_OVERLAY_REPO/.specify/extensions/git/scripts/bash/git-common.sh" 'repository-specific overlay customization' 'marked overlay keeps its git extension customization'
 assert_contains "$MARKED_OVERLAY_REPO/.specify/shell/select-worktree.sh" 'repository-specific shell customization' 'marked overlay keeps its shell customization'
 assert_contains "$MARKED_OVERLAY_REPO/.claude/skills/speckit-specify/SKILL.md" 'repository-specific overlay skill customization' 'marked overlay keeps its skill customization'
+if cmp -s "$TMPDIR_ROOT/marked-overlay-content-marker.before" "$MARKED_OVERLAY_CONTENT_MARKER"; then
+    pass 'marked overlay with a current content digest keeps its content marker unchanged'
+else
+    fail 'marked overlay with a current content digest rewrote its content marker'
+fi
+
+printf '%s\n' 'Given: a marked overlay template whose git-common.sh received a script-level bugfix'
+CONTENT_CURRENT_TEMPLATE_ROOT="$TMPDIR_ROOT/content-current-overlay-templates"
+CONTENT_STALE_TEMPLATE_ROOT="$TMPDIR_ROOT/content-stale-overlay-templates"
+make_fake_overlay_template "$CONTENT_CURRENT_TEMPLATE_ROOT" marked
+make_fake_overlay_template "$CONTENT_STALE_TEMPLATE_ROOT" marked
+cat > "$CONTENT_CURRENT_TEMPLATE_ROOT/specify/extensions/git/scripts/bash/git-common.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+# speckit-overlay-shape: 1
+# fixture overlay git-common
+load_git_worktrees() {
+    : # post-bugfix body -- opensoft/workBenches#94
+}
+EOF
+cat > "$CONTENT_STALE_TEMPLATE_ROOT/specify/extensions/git/scripts/bash/git-common.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+# speckit-overlay-shape: 1
+# fixture overlay git-common
+load_git_worktrees() {
+    : # pre-bugfix body -- opensoft/workBenches#94
+}
+EOF
+
+printf '%s\n' 'When: an overlay installed from the old template meets a rerun against the bugfixed template'
+CONTENT_STALE_OVERLAY_REPO="$TMPDIR_ROOT/content-stale-overlay-repo"
+CONTENT_STALE_OVERLAY_PROTOCOL_ROOT="$TMPDIR_ROOT/content-stale-overlay-protocol"
+install_overlay_fixture "$CONTENT_STALE_OVERLAY_REPO" "$CONTENT_STALE_TEMPLATE_ROOT"
+stamp_overlay_content_marker "$CONTENT_STALE_OVERLAY_REPO" "$CONTENT_STALE_TEMPLATE_ROOT"
+customize_installed_overlay "$CONTENT_STALE_OVERLAY_REPO"
+export AGENT_PROTOCOL_ROOT="$CONTENT_STALE_OVERLAY_PROTOCOL_ROOT"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$CONTENT_CURRENT_TEMPLATE_ROOT"
+if ! python3 "$SETUP_SCRIPT" --repo "$CONTENT_STALE_OVERLAY_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/content-stale-overlay.log" 2>&1; then
+    printf '%s\n' 'FAIL: content-stale-overlay bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/content-stale-overlay.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: the shape marker alone could not have caught this, but the content digest does, and the rerun refreshes it once'
+assert_not_contains "$TMPDIR_ROOT/content-stale-overlay.log" 'replacing incompatible Spec Kit git extension' 'stale content is not reported as a shape incompatibility'
+assert_contains "$TMPDIR_ROOT/content-stale-overlay.log" 'refreshing Spec Kit git extension scripts' 'stale content is reported by name'
+assert_contains "$TMPDIR_ROOT/content-stale-overlay.log" 'installed content digest is stale against the current template' 'stale content refresh names why it happened'
+CONTENT_STALE_GIT_COMMON="$CONTENT_STALE_OVERLAY_REPO/.specify/extensions/git/scripts/bash/git-common.sh"
+assert_contains "$CONTENT_STALE_GIT_COMMON" 'post-bugfix body' 'content-stale refresh installs the bugfixed script body'
+assert_not_contains "$CONTENT_STALE_GIT_COMMON" 'pre-bugfix body' 'content-stale refresh removes the pre-bugfix script body'
+assert_not_contains "$CONTENT_STALE_GIT_COMMON" 'repository-specific overlay customization' 'content-stale refresh replaces the git extension tree'
+assert_contains "$CONTENT_STALE_OVERLAY_REPO/.specify/shell/select-worktree.sh" 'repository-specific shell customization' 'a content-only refresh leaves the unrelated shell tree alone'
+assert_contains "$CONTENT_STALE_OVERLAY_REPO/.claude/skills/speckit-specify/SKILL.md" 'repository-specific overlay skill customization' 'a content-only refresh leaves the unrelated skill overlays alone'
+
+printf '%s\n' 'When: the same repository reruns again with nothing left to refresh'
+if ! python3 "$SETUP_SCRIPT" --repo "$CONTENT_STALE_OVERLAY_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/content-stale-overlay-second.log" 2>&1; then
+    printf '%s\n' 'FAIL: second content-stale-overlay bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/content-stale-overlay-second.log"
+    exit 1
+fi
+assert_not_contains "$TMPDIR_ROOT/content-stale-overlay-second.log" 'refreshing Spec Kit git extension scripts' 'the written content marker makes the next rerun a no-op'
+assert_not_contains "$TMPDIR_ROOT/content-stale-overlay-second.log" 'replacing incompatible Spec Kit git extension' 'the written content marker also satisfies the shape check on rerun'
+
+printf '%s\n' 'Given: a marked overlay installed before this content marker ever existed'
+NO_CONTENT_MARKER_OVERLAY_REPO="$TMPDIR_ROOT/no-content-marker-overlay-repo"
+NO_CONTENT_MARKER_OVERLAY_PROTOCOL_ROOT="$TMPDIR_ROOT/no-content-marker-overlay-protocol"
+install_overlay_fixture "$NO_CONTENT_MARKER_OVERLAY_REPO" "$CONTENT_CURRENT_TEMPLATE_ROOT"
+customize_installed_overlay "$NO_CONTENT_MARKER_OVERLAY_REPO"
+NO_CONTENT_MARKER_FILE="$NO_CONTENT_MARKER_OVERLAY_REPO/.specify/extensions/git/scripts/bash/.speckit-overlay-content"
+assert_not_exists "$NO_CONTENT_MARKER_FILE" 'fixture predates the content marker entirely'
+
+printf '%s\n' 'When: bootstrap first reruns against it'
+export AGENT_PROTOCOL_ROOT="$NO_CONTENT_MARKER_OVERLAY_PROTOCOL_ROOT"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$CONTENT_CURRENT_TEMPLATE_ROOT"
+if ! python3 "$SETUP_SCRIPT" --repo "$NO_CONTENT_MARKER_OVERLAY_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/no-content-marker-first.log" 2>&1; then
+    printf '%s\n' 'FAIL: first no-content-marker bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/no-content-marker-first.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: the absent marker is treated as stale and refreshed exactly once, and the marker is written'
+assert_contains "$TMPDIR_ROOT/no-content-marker-first.log" 'refreshing Spec Kit git extension scripts' 'an absent content marker is refreshed by name'
+assert_not_contains "$NO_CONTENT_MARKER_OVERLAY_REPO/.specify/extensions/git/scripts/bash/git-common.sh" 'repository-specific overlay customization' 'the first rerun after adopting the content marker replaces the git extension tree'
+assert_contains "$NO_CONTENT_MARKER_OVERLAY_REPO/.specify/shell/select-worktree.sh" 'repository-specific shell customization' 'the first rerun after adopting the content marker leaves the unrelated shell tree alone'
+assert_contains "$NO_CONTENT_MARKER_OVERLAY_REPO/.claude/skills/speckit-specify/SKILL.md" 'repository-specific overlay skill customization' 'the first rerun after adopting the content marker leaves the unrelated skill overlays alone'
+assert_file "$NO_CONTENT_MARKER_FILE" 'the first rerun writes the content marker'
+assert_contains "$NO_CONTENT_MARKER_FILE" '# speckit-overlay-content: ' 'the written content marker uses the documented prefix'
+
+printf '%s\n' 'When: bootstrap reruns again with the marker now in place'
+if ! python3 "$SETUP_SCRIPT" --repo "$NO_CONTENT_MARKER_OVERLAY_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/no-content-marker-second.log" 2>&1; then
+    printf '%s\n' 'FAIL: second no-content-marker bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/no-content-marker-second.log"
+    exit 1
+fi
+assert_not_contains "$TMPDIR_ROOT/no-content-marker-second.log" 'refreshing Spec Kit git extension scripts' 'the second rerun is idempotent once the marker is written'
+assert_not_contains "$TMPDIR_ROOT/no-content-marker-second.log" 'replacing incompatible Spec Kit git extension' 'the second rerun does not treat the now-marked overlay as shape-incompatible either'
+
+printf '%s\n' 'Given: a shape-compatible overlay whose reserved content-marker path is a directory, not a file'
+NON_REGULAR_MARKER_REPO="$TMPDIR_ROOT/non-regular-marker-repo"
+NON_REGULAR_MARKER_PROTOCOL_ROOT="$TMPDIR_ROOT/non-regular-marker-protocol"
+install_overlay_fixture "$NON_REGULAR_MARKER_REPO" "$CONTENT_CURRENT_TEMPLATE_ROOT"
+customize_installed_overlay "$NON_REGULAR_MARKER_REPO"
+NON_REGULAR_MARKER_PATH="$NON_REGULAR_MARKER_REPO/.specify/extensions/git/scripts/bash/.speckit-overlay-content"
+mkdir -p "$NON_REGULAR_MARKER_PATH"
+printf '%s\n' 'do not delete me' > "$NON_REGULAR_MARKER_PATH/sentinel.txt"
+NON_REGULAR_GIT_COMMON="$NON_REGULAR_MARKER_REPO/.specify/extensions/git/scripts/bash/git-common.sh"
+
+printf '%s\n' 'When: bootstrap reruns against it'
+export AGENT_PROTOCOL_ROOT="$NON_REGULAR_MARKER_PROTOCOL_ROOT"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$CONTENT_CURRENT_TEMPLATE_ROOT"
+if python3 "$SETUP_SCRIPT" --repo "$NON_REGULAR_MARKER_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/non-regular-marker.log" 2>&1; then
+    fail 'bootstrap accepts a directory standing in for the content marker'
+else
+    pass 'bootstrap refuses a directory standing in for the content marker'
+fi
+
+printf '%s\n' 'Then: the refusal happens before any destructive copy, not after one'
+assert_contains "$TMPDIR_ROOT/non-regular-marker.log" 'Refusing to treat non-regular path as the overlay content marker' 'the non-regular marker path is named in the refusal'
+assert_contains "$NON_REGULAR_GIT_COMMON" 'repository-specific overlay customization' 'the refusal is caught before the git extension tree is force-copied'
+assert_file "$NON_REGULAR_MARKER_PATH/sentinel.txt" 'the non-regular marker path and its contents are never touched'
+assert_contains "$NON_REGULAR_MARKER_PATH/sentinel.txt" 'do not delete me' 'the sentinel content inside it survives untouched'
+
+printf '%s\n' 'Given: an overlay that is ALSO shape-incompatible for an unrelated reason, with the same non-regular marker path'
+SHAPE_AND_NON_REGULAR_REPO="$TMPDIR_ROOT/shape-and-non-regular-marker-repo"
+SHAPE_AND_NON_REGULAR_PROTOCOL_ROOT="$TMPDIR_ROOT/shape-and-non-regular-marker-protocol"
+install_overlay_fixture "$SHAPE_AND_NON_REGULAR_REPO" "$UNMARKED_TEMPLATE_ROOT"
+customize_installed_overlay "$SHAPE_AND_NON_REGULAR_REPO"
+SHAPE_AND_NON_REGULAR_MARKER_PATH="$SHAPE_AND_NON_REGULAR_REPO/.specify/extensions/git/scripts/bash/.speckit-overlay-content"
+mkdir -p "$SHAPE_AND_NON_REGULAR_MARKER_PATH"
+printf '%s\n' 'do not delete me either' > "$SHAPE_AND_NON_REGULAR_MARKER_PATH/sentinel.txt"
+
+printf '%s\n' 'When: bootstrap reruns against a marked template, which would otherwise report this overlay shape-incompatible'
+export AGENT_PROTOCOL_ROOT="$SHAPE_AND_NON_REGULAR_PROTOCOL_ROOT"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$MARKED_TEMPLATE_ROOT"
+if python3 "$SETUP_SCRIPT" --repo "$SHAPE_AND_NON_REGULAR_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/shape-and-non-regular-marker.log" 2>&1; then
+    fail 'bootstrap accepts a non-regular marker even when the overlay is also shape-incompatible'
+else
+    pass 'bootstrap refuses a non-regular marker even when the overlay is also shape-incompatible'
+fi
+
+printf '%s\n' 'Then: the refusal happens before the shape-driven refresh ever reaches the git, shell, or skill trees'
+assert_contains "$TMPDIR_ROOT/shape-and-non-regular-marker.log" 'Refusing to treat non-regular path as the overlay content marker' 'the non-regular marker path is named in the refusal'
+assert_not_contains "$TMPDIR_ROOT/shape-and-non-regular-marker.log" 'replacing incompatible Spec Kit git extension' 'the shape-incompatibility message never gets a chance to print'
+assert_contains "$SHAPE_AND_NON_REGULAR_REPO/.specify/extensions/git/scripts/bash/git-common.sh" 'repository-specific overlay customization' 'the git extension tree is never force-copied'
+assert_contains "$SHAPE_AND_NON_REGULAR_REPO/.specify/shell/select-worktree.sh" 'repository-specific shell customization' 'the shell tree is never force-copied either'
+assert_contains "$SHAPE_AND_NON_REGULAR_REPO/.claude/skills/speckit-specify/SKILL.md" 'repository-specific overlay skill customization' 'nor are the skill overlays'
+assert_file "$SHAPE_AND_NON_REGULAR_MARKER_PATH/sentinel.txt" 'the non-regular marker path and its contents are never touched'
 
 printf '%s\n' 'When: an unmarked template meets an unmarked installed overlay'
 LEGACY_OVERLAY_REPO="$TMPDIR_ROOT/legacy-overlay-repo"
@@ -3681,6 +3869,31 @@ assert_contains "$LEGACY_OVERLAY_REPO/.specify/shell/select-worktree.sh" 'reposi
 assert_regular_directory "$LEGACY_OVERLAY_LINK" 'a symlinked overlay skill is replaced even without a forced refresh'
 assert_contains "$LEGACY_OVERLAY_LINK/SKILL.md" 'fixture overlay skill codex/speckit-git-feature' 'the compatible-overlay replacement installs the overlay skill'
 assert_contains "$LINKED_OVERLAY_EXTERNAL/SKILL.md" 'external validator skill' 'the compatible-overlay replacement leaves the link target untouched'
+
+printf '%s\n' 'Given: an unmarked template and an unmarked installed overlay, with a non-regular entry at the newly-reserved marker path'
+LEGACY_NON_REGULAR_REPO="$TMPDIR_ROOT/legacy-non-regular-marker-repo"
+LEGACY_NON_REGULAR_PROTOCOL_ROOT="$TMPDIR_ROOT/legacy-non-regular-marker-protocol"
+install_overlay_fixture "$LEGACY_NON_REGULAR_REPO" "$UNMARKED_TEMPLATE_ROOT"
+customize_installed_overlay "$LEGACY_NON_REGULAR_REPO"
+LEGACY_NON_REGULAR_MARKER_PATH="$LEGACY_NON_REGULAR_REPO/.specify/extensions/git/scripts/bash/.speckit-overlay-content"
+mkdir -p "$LEGACY_NON_REGULAR_MARKER_PATH"
+printf '%s\n' 'coincidental pre-existing content' > "$LEGACY_NON_REGULAR_MARKER_PATH/unrelated.txt"
+
+printf '%s\n' 'When: bootstrap reruns an unmarked template against it'
+export AGENT_PROTOCOL_ROOT="$LEGACY_NON_REGULAR_PROTOCOL_ROOT"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$UNMARKED_TEMPLATE_ROOT"
+if ! python3 "$SETUP_SCRIPT" --repo "$LEGACY_NON_REGULAR_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/legacy-non-regular-marker.log" 2>&1; then
+    printf '%s\n' 'FAIL: legacy-non-regular-marker bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/legacy-non-regular-marker.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: an unmarked template is unaffected by whatever coincidentally sits at the reserved marker path'
+assert_not_contains "$TMPDIR_ROOT/legacy-non-regular-marker.log" 'Refusing to treat non-regular path as the overlay content marker' 'a legacy rerun never validates a path it will never read or write'
+assert_contains "$LEGACY_NON_REGULAR_REPO/.specify/extensions/git/scripts/bash/git-common.sh" 'repository-specific overlay customization' 'the legacy overlay keeps its customization, unaffected'
+assert_file "$LEGACY_NON_REGULAR_MARKER_PATH/unrelated.txt" 'the coincidental directory at the marker path is left alone'
+assert_contains "$LEGACY_NON_REGULAR_MARKER_PATH/unrelated.txt" 'coincidental pre-existing content' 'its content is never touched either'
 
 export HOME="$FIXTURE_HOME"
 export SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT"
