@@ -3743,6 +3743,8 @@ CONTENT_STALE_GIT_COMMON="$CONTENT_STALE_OVERLAY_REPO/.specify/extensions/git/sc
 assert_contains "$CONTENT_STALE_GIT_COMMON" 'post-bugfix body' 'content-stale refresh installs the bugfixed script body'
 assert_not_contains "$CONTENT_STALE_GIT_COMMON" 'pre-bugfix body' 'content-stale refresh removes the pre-bugfix script body'
 assert_not_contains "$CONTENT_STALE_GIT_COMMON" 'repository-specific overlay customization' 'content-stale refresh replaces the git extension tree'
+assert_contains "$CONTENT_STALE_OVERLAY_REPO/.specify/shell/select-worktree.sh" 'repository-specific shell customization' 'a content-only refresh leaves the unrelated shell tree alone'
+assert_contains "$CONTENT_STALE_OVERLAY_REPO/.claude/skills/speckit-specify/SKILL.md" 'repository-specific overlay skill customization' 'a content-only refresh leaves the unrelated skill overlays alone'
 
 printf '%s\n' 'When: the same repository reruns again with nothing left to refresh'
 if ! python3 "$SETUP_SCRIPT" --repo "$CONTENT_STALE_OVERLAY_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
@@ -3775,6 +3777,8 @@ fi
 printf '%s\n' 'Then: the absent marker is treated as stale and refreshed exactly once, and the marker is written'
 assert_contains "$TMPDIR_ROOT/no-content-marker-first.log" 'refreshing Spec Kit git extension scripts' 'an absent content marker is refreshed by name'
 assert_not_contains "$NO_CONTENT_MARKER_OVERLAY_REPO/.specify/extensions/git/scripts/bash/git-common.sh" 'repository-specific overlay customization' 'the first rerun after adopting the content marker replaces the git extension tree'
+assert_contains "$NO_CONTENT_MARKER_OVERLAY_REPO/.specify/shell/select-worktree.sh" 'repository-specific shell customization' 'the first rerun after adopting the content marker leaves the unrelated shell tree alone'
+assert_contains "$NO_CONTENT_MARKER_OVERLAY_REPO/.claude/skills/speckit-specify/SKILL.md" 'repository-specific overlay skill customization' 'the first rerun after adopting the content marker leaves the unrelated skill overlays alone'
 assert_file "$NO_CONTENT_MARKER_FILE" 'the first rerun writes the content marker'
 assert_contains "$NO_CONTENT_MARKER_FILE" '# speckit-overlay-content: ' 'the written content marker uses the documented prefix'
 

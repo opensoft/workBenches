@@ -3248,7 +3248,14 @@ def ensure_worktree_overlay(
             )
         else:
             log("replacing incompatible Spec Kit git extension with worktree-aware overlay")
-    overlay_force = force or git_overlay_force
+    # A content-only mismatch says something about the git extension's own
+    # required files alone -- it says nothing about the shell tree or the
+    # skill overlays, which OVERLAY_CONTENT_DIGEST_FILES never touches -- so
+    # it must not propagate into overlay_force the way a genuine shape/
+    # signature incompatibility (or explicit --force) does; otherwise a
+    # rerun that only needed to catch up the git extension's scripts would
+    # also overwrite unrelated repository-specific shell/skill customizations.
+    overlay_force = force or (git_overlay_refresh_reason == "shape")
 
     copy_overlay_tree(git_overlay_template, git_overlay_root, dry_run, git_overlay_force)
     copy_overlay_tree(template_root / "specify" / "shell", repo / ".specify" / "shell", dry_run, overlay_force)
