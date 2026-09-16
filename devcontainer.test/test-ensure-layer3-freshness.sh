@@ -20,6 +20,11 @@ case "$1 $2" in
         printf '%s\n' 'codex-cli 0.199.0'
         ;;
     "image inspect")
+        image="${!#}"
+        if [[ "$image" == workbenches-layer3-base-pin:* ]]; then
+            [[ -f "$TEST_PINNED_TAG_FILE" \
+                && "$image" == "$(cat "$TEST_PINNED_TAG_FILE")" ]] || exit 1
+        fi
         if [[ "$3" == "--format" ]]; then
             if [[ "$4" == *recipe-sha256* ]]; then
                 printf '%s\n' "${TEST_IMAGE_RECIPE_SHA256:-}"
@@ -31,6 +36,12 @@ case "$1 $2" in
                 printf '%s\n' 'sha256:new-user-image'
             fi
         fi
+        ;;
+    "image rm")
+        rm -f "$TEST_PINNED_TAG_FILE"
+        ;;
+    "tag "*)
+        printf '%s\n' "$3" > "$TEST_PINNED_TAG_FILE"
         ;;
     "container ls")
         if [[ " $* " == *" --all "* && "${TEST_STALE_CONTAINER:-false}" == true ]]; then
@@ -85,6 +96,7 @@ chmod +x "$TEST_DIR/bin/docker"
 
 export PATH="$TEST_DIR/bin:$PATH"
 export TEST_SOCKET_GID="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || true)"
+export TEST_PINNED_TAG_FILE="$TEST_DIR/pinned-tag"
 
 recipe_sha256() {
     local hash_tool

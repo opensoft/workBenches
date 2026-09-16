@@ -8,6 +8,7 @@ trap 'rm -rf "$case_root"' EXIT
 mock_bin="$case_root/bin"
 docker_log="$case_root/docker.log"
 timeout_log="$case_root/timeout.log"
+pinned_tag_file="$case_root/pinned-tag"
 mkdir -p "$mock_bin"
 
 base_image_id="sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -16,7 +17,21 @@ printf '%s\n' \
     '#!/usr/bin/env bash' \
     'set -euo pipefail' \
     'if [[ "${1:-}" == image && "${2:-}" == inspect ]]; then' \
+    '  image="${!#}"' \
+    '  if [[ "$image" == workbenches-layer3-base-pin:* ]]; then' \
+    '    [[ -f "$MOCK_PINNED_TAG_FILE" && "$image" == "$(cat "$MOCK_PINNED_TAG_FILE")" ]] || exit 1' \
+    '  fi' \
     '  printf "%s\n" "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' \
+    '  exit 0' \
+    'fi' \
+    'if [[ "${1:-}" == tag ]]; then' \
+    '  printf "%s\n" "$*" >> "$MOCK_DOCKER_LOG"' \
+    '  printf "%s\n" "$3" > "$MOCK_PINNED_TAG_FILE"' \
+    '  exit 0' \
+    'fi' \
+    'if [[ "${1:-}" == image && "${2:-}" == rm ]]; then' \
+    '  printf "%s\n" "$*" >> "$MOCK_DOCKER_LOG"' \
+    '  rm -f "$MOCK_PINNED_TAG_FILE"' \
     '  exit 0' \
     'fi' \
     'if [[ "${1:-}" == run ]]; then' \
@@ -39,19 +54,25 @@ chmod 0755 "$mock_bin/timeout"
 run_build() {
     : > "$docker_log"
     : > "$timeout_log"
-    MOCK_DOCKER_LOG="$docker_log" MOCK_TIMEOUT_LOG="$timeout_log" PATH="$mock_bin:$PATH" \
+    MOCK_DOCKER_LOG="$docker_log" MOCK_TIMEOUT_LOG="$timeout_log" \
+        MOCK_PINNED_TAG_FILE="$pinned_tag_file" PATH="$mock_bin:$PATH" \
         "$repo_root/user-layer/build.sh" --base py-bench:latest --user tester "$@" >/dev/null
 }
 
 run_build
-grep -Fq -- "run --rm --network none --entrypoint= $base_image_id sh -c codex --version" "$docker_log"
-grep -Fq -- "--build-arg BASE_IMAGE=$base_image_id" "$docker_log"
+pinned_ref="$(awk '$1 == "tag" { print $3; exit }' "$docker_log")"
+[[ "$pinned_ref" == workbenches-layer3-base-pin:* ]]
+grep -Fq -- "tag $base_image_id $pinned_ref" "$docker_log"
+grep -Fq -- "run --rm --network none --entrypoint= $pinned_ref sh -c codex --version" "$docker_log"
+grep -Fq -- "--build-arg BASE_IMAGE=$pinned_ref" "$docker_log"
 grep -Fq -- "--build-arg BASE_IMAGE_ID=$base_image_id" "$docker_log"
 grep -Fq -- '--build-arg CODEX_VERSION=0.199.0' "$docker_log"
-grep -Fq -- "30s docker run --rm --network none --entrypoint= $base_image_id sh -c codex --version" "$timeout_log"
+grep -Fq -- "image rm $pinned_ref" "$docker_log"
+grep -Fq -- "30s docker run --rm --network none --entrypoint= $pinned_ref sh -c codex --version" "$timeout_log"
 
 WORKBENCHES_CODEX_VERSION_PROBE_TIMEOUT_SECONDS=7 run_build
-grep -Fq -- "7s docker run --rm --network none --entrypoint= $base_image_id sh -c codex --version" "$timeout_log"
+pinned_ref="$(awk '$1 == "tag" { print $3; exit }' "$docker_log")"
+grep -Fq -- "7s docker run --rm --network none --entrypoint= $pinned_ref sh -c codex --version" "$timeout_log"
 
 if WORKBENCHES_CODEX_VERSION_PROBE_TIMEOUT_SECONDS=0 run_build; then
     echo 'invalid Codex probe timeout was accepted' >&2
@@ -65,7 +86,8 @@ fi
 
 run_build --codex-version 0.200.0
 grep -Fq -- '--build-arg CODEX_VERSION=0.200.0' "$docker_log"
-grep -Fq -- "--build-arg BASE_IMAGE=$base_image_id" "$docker_log"
+pinned_ref="$(awk '$1 == "tag" { print $3; exit }' "$docker_log")"
+grep -Fq -- "--build-arg BASE_IMAGE=$pinned_ref" "$docker_log"
 grep -Fq -- "--build-arg BASE_IMAGE_ID=$base_image_id" "$docker_log"
 if grep -Fq -- 'run --rm --network none' "$docker_log"; then
     echo 'explicit Codex version unexpectedly probed the base image' >&2

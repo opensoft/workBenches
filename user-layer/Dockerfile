@@ -6,6 +6,7 @@
 # Usage:
 #   docker build \
 #     --build-arg BASE_IMAGE=cpp-bench:latest \
+#     --build-arg BASE_IMAGE_ID="$(docker image inspect --format '{{.Id}}' cpp-bench:latest)" \
 #     --build-arg CODEX_VERSION=0.199.0 \
 #     --build-arg USERNAME=brett \
 #     --build-arg USER_UID=1000 \
@@ -29,11 +30,13 @@ ARG USER_GID=1000
 ARG DOCKER_SOCKET_GID=""
 ARG EXTRA_CHOWN_DIRS=""
 ARG LAYER3_RECIPE_SHA256="unknown"
-ARG BASE_IMAGE_ID="unknown"
+ARG BASE_IMAGE_ID=""
 # Keep the writable user overlay aligned with the exact shared Layer 0
 # version. user-layer/build.sh derives this value from BASE_IMAGE; direct
 # Dockerfile callers must pass an exact reviewed version.
 ARG CODEX_VERSION=""
+
+RUN printf '%s\n' "$BASE_IMAGE_ID" | grep -Eq '^sha256:[0-9a-fA-F]{64}$'
 
 LABEL io.opensoft.workbenches.layer3.recipe-sha256="${LAYER3_RECIPE_SHA256}"
 LABEL io.opensoft.workbenches.layer3.base-image-id="${BASE_IMAGE_ID}"

@@ -29,6 +29,18 @@ NO_CACHE="${NO_CACHE:-false}"
 LAYER3_RECIPE_SHA256=""
 CODEX_VERSION=""
 CODEX_VERSION_PROBE_TIMEOUT_SECONDS="${WORKBENCHES_CODEX_VERSION_PROBE_TIMEOUT_SECONDS:-30}"
+PINNED_BASE_IMAGE=""
+
+cleanup_pinned_base_image() {
+    local status=$?
+    if [[ -n "$PINNED_BASE_IMAGE" ]]; then
+        docker image rm "$PINNED_BASE_IMAGE" >/dev/null 2>&1 || \
+            echo "⚠ Warning: could not remove temporary base tag '$PINNED_BASE_IMAGE'" >&2
+    fi
+    return "$status"
+}
+
+trap cleanup_pinned_base_image EXIT
 
 run_with_optional_timeout() {
     local timeout_seconds="$1"
@@ -92,6 +104,24 @@ if ! BASE_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$BASE_IMAGE" 2>/d
     exit 1
 fi
 
+# Dockerfile FROM requires an image reference, not a daemon-local image ID.
+# Publish a process-unique temporary tag for the captured ID and use that same
+# immutable reference for both the probe and the build.
+for pin_attempt in {1..10}; do
+    pin_candidate="workbenches-layer3-base-pin:$$-${RANDOM}-${pin_attempt}"
+    if docker image inspect "$pin_candidate" >/dev/null 2>&1; then
+        continue
+    fi
+    if docker tag "$BASE_IMAGE_ID" "$pin_candidate"; then
+        PINNED_BASE_IMAGE="$pin_candidate"
+        break
+    fi
+done
+if [[ -z "$PINNED_BASE_IMAGE" ]]; then
+    echo "❌ Error: could not create a temporary immutable reference for '$BASE_IMAGE'" >&2
+    exit 1
+fi
+
 if [ -z "$LAYER3_RECIPE_SHA256" ]; then
     LAYER3_RECIPE_SHA256="$(
         cd "$SCRIPT_DIR"
@@ -113,7 +143,7 @@ if [ -z "$CODEX_VERSION" ]; then
     codex_version_output=""
     if ! codex_version_output="$(run_with_optional_timeout \
         "$CODEX_VERSION_PROBE_TIMEOUT_SECONDS" \
-        docker run --rm --network none --entrypoint="" "$BASE_IMAGE_ID" \
+        docker run --rm --network none --entrypoint="" "$PINNED_BASE_IMAGE" \
             sh -c 'codex --version' 2>/dev/null)"; then
         echo "❌ Error: Codex version probe failed or timed out for '$BASE_IMAGE' ($BASE_IMAGE_ID)" >&2
         exit 1
@@ -128,6 +158,7 @@ fi
 echo "Configuration:"
 echo "  Base image:  $BASE_IMAGE"
 echo "  Base ID:     $BASE_IMAGE_ID"
+echo "  Base pin:    $PINNED_BASE_IMAGE"
 echo "  Output:      $OUTPUT_IMAGE"
 echo "  Username:    $USERNAME"
 echo "  UID/GID:     $USER_UID/$USER_GID"
@@ -142,7 +173,7 @@ echo ""
 echo "Building $OUTPUT_IMAGE..."
 docker build \
     $([ "$NO_CACHE" = true ] && printf '%s\n' "--no-cache") \
-    --build-arg BASE_IMAGE="$BASE_IMAGE_ID" \
+    --build-arg BASE_IMAGE="$PINNED_BASE_IMAGE" \
     --build-arg BASE_IMAGE_ID="$BASE_IMAGE_ID" \
     --build-arg USERNAME="$USERNAME" \
     --build-arg USER_UID="$USER_UID" \
@@ -154,6 +185,13 @@ docker build \
     -t "$OUTPUT_IMAGE" \
     -f "$SCRIPT_DIR/Dockerfile" \
     "$SCRIPT_DIR"
+
+if ! docker image rm "$PINNED_BASE_IMAGE" >/dev/null; then
+    echo "❌ Error: could not remove temporary base tag '$PINNED_BASE_IMAGE'" >&2
+    exit 1
+fi
+PINNED_BASE_IMAGE=""
+trap - EXIT
 
 echo ""
 echo "✓ Layer 3 built successfully!"
