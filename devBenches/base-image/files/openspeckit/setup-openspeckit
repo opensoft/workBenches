@@ -1646,16 +1646,20 @@ def worktree_git_overlay_content_digest(overlay_root: Path) -> str | None:
 
 
 def overlay_content_marker(overlay_root: Path) -> str | None:
-    """Read the digest an earlier run recorded with `write_overlay_content_marker`."""
+    """Read the digest an earlier run recorded with `write_overlay_content_marker`.
+
+    Callers deciding whether a rerun should force a refresh must call
+    `ensure_overlay_content_marker_is_regular` first: this function alone
+    cannot distinguish a genuinely absent marker from a non-regular entry
+    (a directory, a symlink) occupying that reserved path -- both read as
+    None here, as does a regular file that fails to decode as UTF-8, which
+    IS safe to treat as absent/stale (write_overlay_content_marker replaces
+    a marker in that specific state; it never reaches a non-regular path,
+    because the caller already raised first).
+    """
     try:
         content = read_destination_text(overlay_root / OVERLAY_CONTENT_MARKER_FILE)
     except (OSError, UnicodeError):
-        # A marker that cannot be read as UTF-8 (or fails some other
-        # metadata/content check) is exactly as untrustworthy as one that is
-        # missing outright -- treat it as absent rather than let a corrupted
-        # marker abort the whole bootstrap run. write_overlay_content_marker
-        # replaces a marker in this state instead of trying to compare
-        # against it.
         return None
     if content is None:
         return None
@@ -1664,6 +1668,26 @@ def overlay_content_marker(overlay_root: Path) -> str | None:
         if stripped.startswith(OVERLAY_CONTENT_MARKER_PREFIX):
             return stripped[len(OVERLAY_CONTENT_MARKER_PREFIX):].strip()
     return None
+
+
+def ensure_overlay_content_marker_is_regular(overlay_root: Path) -> None:
+    """Refuse a non-regular entry at the reserved content-marker path.
+
+    `overlay_content_marker` treats a directory or symlink there exactly
+    like an absent marker (both simply read as None), which would otherwise
+    make `worktree_git_overlay_refresh_reason` return "content" and let its
+    caller run a REAL git-overlay copy that overwrites repository
+    customizations -- before `write_overlay_content_marker` ever gets a
+    chance to refuse that same non-regular path itself, by which point the
+    copy has already happened. Call this before any of that is decided, not
+    only right before (re)writing the marker.
+    """
+    marker_path = overlay_root / OVERLAY_CONTENT_MARKER_FILE
+    marker_mode = mode_without_following(marker_path)
+    if marker_mode is not None and not stat.S_ISREG(marker_mode):
+        raise SystemExit(
+            f"Refusing to treat non-regular path as the overlay content marker: {marker_path}"
+        )
 
 
 def write_overlay_content_marker(overlay_root: Path, digest: str, dry_run: bool) -> None:
@@ -1677,19 +1701,8 @@ def write_overlay_content_marker(overlay_root: Path, digest: str, dry_run: bool)
     """
     marker_path = overlay_root / OVERLAY_CONTENT_MARKER_FILE
     content = f"{OVERLAY_CONTENT_MARKER_PREFIX}{digest}\n"
-    marker_mode = mode_without_following(marker_path)
-    if marker_mode is not None and not stat.S_ISREG(marker_mode):
-        # A directory, symlink, or other non-regular entry at this reserved
-        # dotfile path is never something of ours to clear automatically:
-        # remove_destination_without_following recursively deletes a
-        # directory's entire contents, and this path has no legitimate
-        # reason to be anything but the plain marker file we wrote
-        # ourselves. Refuse outright rather than risk deleting unrelated
-        # repository data that happens to sit here.
-        raise SystemExit(
-            f"Refusing to replace non-regular overlay content marker at {marker_path}"
-        )
-    if marker_mode is not None:
+    ensure_overlay_content_marker_is_regular(overlay_root)
+    if mode_without_following(marker_path) is not None:
         try:
             read_destination_text(marker_path)
         except (OSError, UnicodeError):
@@ -1756,6 +1769,16 @@ def worktree_git_overlay_refresh_reason(
         return None
     if not has_overlay_shape_marker(overlay_root):
         return "shape"
+
+    # Shape and signature both check out; before letting a stale-or-absent
+    # content marker turn into "content" below -- which the caller acts on
+    # by running a REAL git-overlay copy -- make sure the marker path
+    # itself is not a directory or symlink standing in for it. Left
+    # unchecked here, that would read as merely "absent" (same as every
+    # pre-existing install) and force that copy before
+    # write_overlay_content_marker ever gets a chance to refuse the same
+    # non-regular path, by which point the copy has already run.
+    ensure_overlay_content_marker_is_regular(overlay_root)
 
     template_digest = worktree_git_overlay_content_digest(
         template_root / "specify" / "extensions" / "git"

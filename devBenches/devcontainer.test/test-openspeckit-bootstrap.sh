@@ -3792,6 +3792,32 @@ fi
 assert_not_contains "$TMPDIR_ROOT/no-content-marker-second.log" 'refreshing Spec Kit git extension scripts' 'the second rerun is idempotent once the marker is written'
 assert_not_contains "$TMPDIR_ROOT/no-content-marker-second.log" 'replacing incompatible Spec Kit git extension' 'the second rerun does not treat the now-marked overlay as shape-incompatible either'
 
+printf '%s\n' 'Given: a shape-compatible overlay whose reserved content-marker path is a directory, not a file'
+NON_REGULAR_MARKER_REPO="$TMPDIR_ROOT/non-regular-marker-repo"
+NON_REGULAR_MARKER_PROTOCOL_ROOT="$TMPDIR_ROOT/non-regular-marker-protocol"
+install_overlay_fixture "$NON_REGULAR_MARKER_REPO" "$CONTENT_CURRENT_TEMPLATE_ROOT"
+customize_installed_overlay "$NON_REGULAR_MARKER_REPO"
+NON_REGULAR_MARKER_PATH="$NON_REGULAR_MARKER_REPO/.specify/extensions/git/scripts/bash/.speckit-overlay-content"
+mkdir -p "$NON_REGULAR_MARKER_PATH"
+printf '%s\n' 'do not delete me' > "$NON_REGULAR_MARKER_PATH/sentinel.txt"
+NON_REGULAR_GIT_COMMON="$NON_REGULAR_MARKER_REPO/.specify/extensions/git/scripts/bash/git-common.sh"
+
+printf '%s\n' 'When: bootstrap reruns against it'
+export AGENT_PROTOCOL_ROOT="$NON_REGULAR_MARKER_PROTOCOL_ROOT"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$CONTENT_CURRENT_TEMPLATE_ROOT"
+if python3 "$SETUP_SCRIPT" --repo "$NON_REGULAR_MARKER_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/non-regular-marker.log" 2>&1; then
+    fail 'bootstrap accepts a directory standing in for the content marker'
+else
+    pass 'bootstrap refuses a directory standing in for the content marker'
+fi
+
+printf '%s\n' 'Then: the refusal happens before any destructive copy, not after one'
+assert_contains "$TMPDIR_ROOT/non-regular-marker.log" 'Refusing to treat non-regular path as the overlay content marker' 'the non-regular marker path is named in the refusal'
+assert_contains "$NON_REGULAR_GIT_COMMON" 'repository-specific overlay customization' 'the refusal is caught before the git extension tree is force-copied'
+assert_file "$NON_REGULAR_MARKER_PATH/sentinel.txt" 'the non-regular marker path and its contents are never touched'
+assert_contains "$NON_REGULAR_MARKER_PATH/sentinel.txt" 'do not delete me' 'the sentinel content inside it survives untouched'
+
 printf '%s\n' 'When: an unmarked template meets an unmarked installed overlay'
 LEGACY_OVERLAY_REPO="$TMPDIR_ROOT/legacy-overlay-repo"
 LEGACY_OVERLAY_PROTOCOL_ROOT="$TMPDIR_ROOT/legacy-overlay-protocol"
