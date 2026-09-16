@@ -982,6 +982,13 @@ raise SystemExit(module.main({[*self.args, "--remove"]!r}))
         self.assertIn("python3", result.stdout)
         self.assertIn("Missing required dependencies", result.stdout)
 
+    def test_shared_installer_rejects_old_python3(self):
+        errors = io.StringIO()
+        with patch.object(installer.sys, "version_info", (3, 9, 18)), \
+                redirect_stderr(errors):
+            self.assertEqual(installer.main(self.args), 2)
+        self.assertIn("Python 3.10 or newer is required", errors.getvalue())
+
     def test_setup_dependency_preflight_rejects_old_python3(self):
         mock_bin = self.base / "old-python-bin"
         mock_bin.mkdir()

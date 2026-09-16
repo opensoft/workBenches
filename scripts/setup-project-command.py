@@ -851,6 +851,12 @@ def replace_transaction(replacements, staged, expected_states):
 
 
 def main(argv=None):
+    if sys.version_info < (3, 10):
+        print(
+            "project install refused: Python 3.10 or newer is required",
+            file=sys.stderr,
+        )
+        return 2
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, help="Offline source executable; must match the pin")
     parser.add_argument("--bin-dir", type=Path, default=Path(os.environ.get("OPENREPOPROJECT_BIN_DIR", str(Path.home() / ".local/bin"))))
