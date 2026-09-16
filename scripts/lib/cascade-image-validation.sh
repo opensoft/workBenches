@@ -78,52 +78,13 @@ compose_build_commands() {
     ' "$build_script"
 }
 
-compose_command_files() {
-    local command="$1"
-    local expect_file=false
-    local token
-    local value
-    local -a words=()
-
-    read -r -a words <<< "$command"
-    for token in "${words[@]}"; do
-        if [[ "$expect_file" = true ]]; then
-            value="$token"
-            expect_file=false
-        else
-            case "$token" in
-                -f|--file)
-                    expect_file=true
-                    continue
-                    ;;
-                -f=*|--file=*)
-                    value="${token#*=}"
-                    ;;
-                *)
-                    continue
-                    ;;
-            esac
-        fi
-        value="${value#\"}"
-        value="${value%\"}"
-        value="${value#\'}"
-        value="${value%\'}"
-        printf '%s\n' "$value"
-    done
-}
-
-build_uses_default_compose_file() {
-    local build_script="$1"
-    local command
-    local selected_file
-
-    while IFS= read -r command; do
-        selected_file="$(compose_command_files "$command")"
-        if [[ -z "$selected_file" ]]; then
-            return 0
-        fi
-    done < <(compose_build_commands "$build_script")
-    return 1
+strip_shell_quotes() {
+    local value="$1"
+    value="${value#\"}"
+    value="${value%\"}"
+    value="${value#\'}"
+    value="${value%\'}"
+    printf '%s\n' "$value"
 }
 
 static_shell_assignment() {
@@ -197,89 +158,164 @@ resolve_compose_file_argument() {
     printf '%s\n' "$selected_file"
 }
 
-compose_generated_build_images() {
-    local compose_file="$1"
-    local default_project="$2"
-
-    awk -v default_project="$default_project" '
-        function flush_service() {
-            if (service != "" && has_build && !has_image) {
-                print project "-" service ":latest"
-            }
-            service = ""
-            has_build = 0
-            has_image = 0
-        }
-        BEGIN { project = default_project; in_services = 0; service_indent = -1 }
-        {
-            raw = $0
-            sub(/[[:space:]]+#.*/, "", raw)
-            if (raw ~ /^[[:space:]]*$/) next
-            match(raw, /^[[:space:]]*/)
-            indent = RLENGTH
-            line = raw
-            sub(/^[[:space:]]+/, "", line)
-            sub(/[[:space:]]+$/, "", line)
-            if (indent == 0 && line ~ /^name:[[:space:]]*/) {
-                candidate = line
-                sub(/^name:[[:space:]]*/, "", candidate)
-                gsub(/^["\047]|["\047]$/, "", candidate)
-                if (candidate ~ /^[a-z0-9][a-z0-9_-]*$/) project = candidate
-                next
-            }
-            if (indent == 0 && line == "services:") {
-                in_services = 1
-                next
-            }
-            if (indent == 0) {
-                flush_service()
-                in_services = 0
-                next
-            }
-            if (!in_services) next
-            if (line ~ /^[A-Za-z0-9_.-]+:[[:space:]]*$/ \
-                    && (service_indent < 0 || indent <= service_indent)) {
-                flush_service()
-                service = line
-                sub(/:.*/, "", service)
-                service_indent = indent
-                next
-            }
-            if (service != "" && indent > service_indent) {
-                if (line ~ /^build:([[:space:]]|$)/) has_build = 1
-                if (line ~ /^image:([[:space:]]|$)/) has_image = 1
-            }
-        }
-        END { flush_service() }
-    ' "$compose_file"
-}
-
-build_selects_compose_file() {
-    local build_script="$1"
-    local compose_file="$2"
+compose_config_images_for_command() {
+    local command="$1"
+    local build_script="$2"
     local build_dir
-    local command
-    local selected_file
-    local selected_path
+    local docker_index=-1
+    local build_index=-1
+    local index
+    local token
+    local value
+    local variable_name
+    local resolved
+    local output
+    local service_options=false
+    local -a words=()
+    local -a compose_args=()
+    local -a compose_env=()
+    local -a services=()
 
     build_dir="$(dirname "$build_script")"
-    compose_file="$(realpath -m -- "$compose_file")"
+    read -r -a words <<< "$command"
 
-    while IFS= read -r command; do
-        while IFS= read -r selected_file; do
-            selected_file="$(resolve_compose_file_argument \
-                "$selected_file" "$build_script")" || continue
-            if [[ "$selected_file" == /* ]]; then
-                selected_path="$(realpath -m -- "$selected_file")"
-            else
-                selected_path="$(realpath -m -- "$build_dir/$selected_file")"
+    for ((index = 0; index + 1 < ${#words[@]}; index++)); do
+        if [[ "${words[index]}" == docker && "${words[index + 1]}" == compose ]]; then
+            docker_index=$index
+            break
+        fi
+    done
+    ((docker_index >= 0)) || return 1
+
+    # Preserve simple command-prefix assignments such as
+    # COMPOSE_PROJECT_NAME=sim-bench-ci without evaluating shell code.
+    for ((index = 0; index < docker_index; index++)); do
+        token="${words[index]}"
+        if [[ "$token" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] \
+            && [[ "$token" != *'`'* && "$token" != *'$('* ]]; then
+            variable_name="${token%%=*}"
+            value="$(strip_shell_quotes "${token#*=}")"
+            [[ "$value" != *'$'* ]] || return 1
+            if [[ "$variable_name" == COMPOSE_PROJECT_NAME ]]; then
+                [[ "$value" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || return 1
             fi
-            if [[ "$selected_path" == "$compose_file" ]]; then
-                return 0
+            compose_env+=("$variable_name=$value")
+        fi
+    done
+
+    index=$((docker_index + 2))
+    while ((index < ${#words[@]})); do
+        token="${words[index]}"
+        if [[ "$token" == build ]]; then
+            build_index=$index
+            break
+        fi
+        case "$token" in
+            -f|--file|--env-file|--project-directory)
+                ((index++))
+                ((index < ${#words[@]})) || return 1
+                value="$(strip_shell_quotes "${words[index]}")"
+                resolved="$(resolve_compose_file_argument "$value" "$build_script")" \
+                    || return 1
+                if [[ "$resolved" != /* ]]; then
+                    resolved="$(realpath -m -- "$build_dir/$resolved")"
+                fi
+                compose_args+=("$token" "$resolved")
+                ;;
+            -f=*|--file=*|--env-file=*|--project-directory=*)
+                value="${token#*=}"
+                value="$(strip_shell_quotes "$value")"
+                resolved="$(resolve_compose_file_argument "$value" "$build_script")" \
+                    || return 1
+                if [[ "$resolved" != /* ]]; then
+                    resolved="$(realpath -m -- "$build_dir/$resolved")"
+                fi
+                compose_args+=("${token%%=*}=$resolved")
+                ;;
+            -p|--project-name|--profile|--ansi|--parallel|--progress)
+                ((index++))
+                ((index < ${#words[@]})) || return 1
+                value="$(strip_shell_quotes "${words[index]}")"
+                if [[ "$token" == -p || "$token" == --project-name ]]; then
+                    value="$(resolve_compose_file_argument "$value" "$build_script")" \
+                        || return 1
+                    [[ "$value" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || return 1
+                fi
+                compose_args+=("$token" "$value")
+                ;;
+            --project-name=*|--profile=*|--ansi=*|--parallel=*|--progress=*)
+                value="$(strip_shell_quotes "${token#*=}")"
+                if [[ "$token" == --project-name=* ]]; then
+                    value="$(resolve_compose_file_argument "$value" "$build_script")" \
+                        || return 1
+                    [[ "$value" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || return 1
+                fi
+                compose_args+=("${token%%=*}=$value")
+                ;;
+            --compatibility|--dry-run)
+                compose_args+=("$token")
+                ;;
+            *)
+                echo "Unsupported Docker Compose build prefix in '$command': $token" >&2
+                return 1
+                ;;
+        esac
+        ((index++))
+    done
+    ((build_index >= 0)) || return 1
+
+    for ((index = build_index + 1; index < ${#words[@]}; index++)); do
+        token="${words[index]}"
+        if [[ "$service_options" == true ]]; then
+            value="$(strip_shell_quotes "$token")"
+            [[ "$value" =~ ^[A-Za-z0-9_.-]+$ ]] || return 1
+            services+=("$value")
+            continue
+        fi
+        case "$token" in
+            --)
+                service_options=true
+                ;;
+            --build-arg|--builder|-m|--memory|--progress|--provenance|--sbom|--ssh)
+                ((index++))
+                ((index < ${#words[@]})) || return 1
+                ;;
+            --build-arg=*|--builder=*|--memory=*|--progress=*|--provenance=*|--sbom=*|--ssh=*|-[mq]*)
+                ;;
+            --check|--no-cache|--pull|--push|-q|--quiet|--with-dependencies)
+                ;;
+            -*)
+                echo "Unsupported Docker Compose build option in '$command': $token" >&2
+                return 1
+                ;;
+            *)
+                value="$(strip_shell_quotes "$token")"
+                [[ "$value" =~ ^[A-Za-z0-9_.-]+$ ]] || return 1
+                services+=("$value")
+                ;;
+        esac
+    done
+
+    if ! output="$(
+        cd "$build_dir"
+        env "${compose_env[@]}" docker compose "${compose_args[@]}" \
+            config --images "${services[@]}"
+    )"; then
+        echo "Could not resolve Compose outputs for '$command'" >&2
+        return 1
+    fi
+
+    while IFS= read -r value; do
+        [[ -n "$value" ]] || continue
+        value="$(strip_shell_quotes "$value")"
+        if [[ "$value" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*$ ]]; then
+            local leaf="${value##*/}"
+            if [[ "$leaf" != *:* ]]; then
+                value+=":latest"
             fi
-        done < <(compose_command_files "$command")
-    done < <(compose_build_commands "$build_script")
-    return 1
+            printf '%s\n' "$value"
+        fi
+    done <<< "$output"
 }
 
 declared_cascade_images() {
@@ -287,62 +323,14 @@ declared_cascade_images() {
     local build_script="${2:-}"
     local bench_dir="${3:-}"
     local image_repo="${image%:*}"
-    local -a metadata_files=()
-    local -a compose_files=()
-
-    [[ -f "$build_script" ]] && metadata_files+=("$build_script")
-    if [[ -f "$build_script" && -d "$bench_dir" ]]; then
-        local build_dir
-        local compose_dir
-        local default_compose_name
-        local default_compose_file=""
-        local override_compose_name
-        local override_prefix
-        build_dir="$(dirname "$build_script")"
-        if build_uses_default_compose_file "$build_script"; then
-            for compose_dir in "$build_dir" "$bench_dir"; do
-                for default_compose_name in \
-                    compose.yaml compose.yml docker-compose.yaml docker-compose.yml; do
-                    if [[ -f "$compose_dir/$default_compose_name" ]]; then
-                        default_compose_file="$compose_dir/$default_compose_name"
-                        metadata_files+=("$default_compose_file")
-                        compose_files+=("$default_compose_file")
-                        break 2
-                    fi
-                done
-            done
-            if [[ -n "$default_compose_file" ]]; then
-                case "$(basename "$default_compose_file")" in
-                    compose.*) override_prefix="compose.override" ;;
-                    docker-compose.*) override_prefix="docker-compose.override" ;;
-                esac
-                for override_compose_name in \
-                    "$override_prefix.yaml" "$override_prefix.yml"; do
-                    if [[ -f "$(dirname "$default_compose_file")/$override_compose_name" ]]; then
-                        metadata_files+=("$(dirname "$default_compose_file")/$override_compose_name")
-                        compose_files+=("$(dirname "$default_compose_file")/$override_compose_name")
-                        break
-                    fi
-                done
-            fi
-        fi
-        while IFS= read -r -d '' compose_file; do
-            if build_selects_compose_file "$build_script" "$compose_file"; then
-                metadata_files+=("$compose_file")
-                compose_files+=("$compose_file")
-            fi
-        done < <(find "$bench_dir" -maxdepth 3 -type f \
-            \( -name 'compose*.yml' -o -name 'compose*.yaml' \
-                -o -name 'docker-compose*.yml' -o -name 'docker-compose*.yaml' \) \
-            -print0 2>/dev/null)
-    fi
 
     # A Compose bench can publish several service images (for example
-    # sim-bench-gene_bench:latest). Limit discovery to references declared by
-    # the selected build script/Compose files so an unrelated pre-existing
-    # daemon image cannot enter the cascade result merely by sharing a prefix.
+    # sim-bench-gene_bench:latest). Docker build tags come only from the selected
+    # build script. Compose outputs come from Compose's fully merged model for
+    # each build command, preserving file order, project selection, automatic
+    # overrides, and any selected services.
     {
-        if [[ "${#metadata_files[@]}" -gt 0 ]]; then
+        if [[ -f "$build_script" ]]; then
             awk '
                 function resolve_defaults(ref, expression, inner, separator, variable_name, fallback, replacement) {
                     while (match(ref, /[$][{][A-Za-z_][A-Za-z0-9_]*:-[A-Za-z0-9._\/-]+[}]/)) {
@@ -385,29 +373,14 @@ declared_cascade_images() {
                         }
                     }
                 }
-                /^[[:space:]]*image:[[:space:]]*/ {
-                    ref = line
-                    sub(/^[[:space:]]*image:[[:space:]]*/, "", ref)
-                    gsub(/^[[:space:]]+/, "", ref)
-                    gsub(/[[:space:]]+$/, "", ref)
-                    quote = sprintf("%c", 39)
-                    if ((substr(ref, 1, 1) == "\"" && substr(ref, length(ref), 1) == "\"") \
-                        || (substr(ref, 1, 1) == quote && substr(ref, length(ref), 1) == quote)) {
-                        ref = substr(ref, 2, length(ref) - 2)
-                    }
-                    emit_output(ref)
-                }
-            ' "${metadata_files[@]}" 2>/dev/null || true
+            ' "$build_script" 2>/dev/null || true
         fi
-        if [[ "${#compose_files[@]}" -gt 0 ]]; then
-            local compose_file
-            local compose_project
-            compose_project="$(basename "$bench_dir" \
-                | tr '[:upper:]' '[:lower:]' \
-                | sed -E 's/[^a-z0-9_-]+/-/g; s/^[^a-z0-9]+//')"
-            for compose_file in "${compose_files[@]}"; do
-                compose_generated_build_images "$compose_file" "$compose_project"
-            done
+        if [[ -f "$build_script" ]]; then
+            local compose_command
+            while IFS= read -r compose_command; do
+                compose_config_images_for_command "$compose_command" "$build_script" \
+                    || return
+            done < <(compose_build_commands "$build_script")
         fi
     } | awk -v repo="$image_repo" '
         $0 == repo ":latest" || (index($0, repo "-") == 1 && $0 ~ /:latest$/)
@@ -422,7 +395,10 @@ capture_cascade_image_ids() {
     local image_id
     local inspect_status
     local found=false
+    local declared_images
 
+    declared_images="$(declared_cascade_images "$image" "$build_script" "$bench_dir")" \
+        || return
     while IFS= read -r declared_image; do
         [[ -n "$declared_image" ]] || continue
         found=true
@@ -432,7 +408,7 @@ capture_cascade_image_ids() {
             inspect_status=$?
             [[ "$inspect_status" -eq 1 ]] || return "$inspect_status"
         fi
-    done < <(declared_cascade_images "$image" "$build_script" "$bench_dir")
+    done <<< "$declared_images"
     if [[ "$found" = false ]]; then
         if image_id="$(image_id_if_present "$image")"; then
             printf '%s=%s\n' "$image" "$image_id"

@@ -188,15 +188,19 @@ copy_image_file() {
     return "$status"
 }
 
-image_has_passwd_user() {
+image_user_identity_matches() {
     local image="$1"
     local username="$2"
+    local uid="$3"
+    local gid="$4"
     local passwd_file
     local status
 
     passwd_file="$(mktemp)"
     if copy_image_file "$image" "/etc/passwd" "$passwd_file"; then
-        awk -F: -v username="$username" '$1 == username { found = 1 } END { exit !found }' "$passwd_file"
+        awk -F: -v username="$username" -v uid="$uid" -v gid="$gid" \
+            '$1 == username && $3 == uid && $4 == gid { found = 1 } END { exit !found }' \
+            "$passwd_file"
         status=$?
     else
         status=1
@@ -265,8 +269,9 @@ if [ "$FORCE" = false ] && docker image inspect "$USER_IMAGE" >/dev/null 2>&1; t
     elif [[ -n "$BASE_CREATED" && -n "$USER_CREATED" ]]; then
         # Compare timestamps (ISO 8601 strings sort lexicographically)
         if [[ "$USER_CREATED" > "$BASE_CREATED" ]]; then
-            # Verify the user actually exists inside the image
-            if image_has_passwd_user "$USER_IMAGE" "$USERNAME"; then
+            # The tag is reusable only when it contains the requested host identity.
+            if image_user_identity_matches \
+                "$USER_IMAGE" "$USERNAME" "$USER_UID" "$USER_GID"; then
                 if [ -n "$DOCKER_SOCKET_GID" ] && \
                     ! image_user_primary_gid_matches "$USER_IMAGE" "$USERNAME" "$DOCKER_SOCKET_GID" && \
                     ! image_group_gid_has_member "$USER_IMAGE" "$DOCKER_SOCKET_GID" "$USERNAME"; then
@@ -282,7 +287,7 @@ if [ "$FORCE" = false ] && docker image inspect "$USER_IMAGE" >/dev/null 2>&1; t
                     fi
                 fi
             else
-                echo -e "${YELLOW}⟳ User '$USERNAME' missing from ${USER_IMAGE}, rebuilding...${NC}"
+                echo -e "${YELLOW}⟳ User '$USERNAME' in ${USER_IMAGE} does not match host UID:GID ${USER_UID}:${USER_GID}, rebuilding...${NC}"
             fi
         else
             echo -e "${YELLOW}⟳ ${USER_IMAGE} is stale (older than ${BASE_IMAGE}), rebuilding...${NC}"

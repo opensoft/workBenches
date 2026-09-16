@@ -4,6 +4,9 @@ set -euo pipefail
 printf '%s\n' "$*" >> "${FAKE_DOCKER_LOG:?FAKE_DOCKER_LOG is required}"
 
 case "$1" in
+    compose)
+        "${TEST_REAL_DOCKER:?TEST_REAL_DOCKER is required}" "$@"
+        ;;
     image)
         if [ "$2" = "ls" ]; then
             printf '%s\n' "${FAKE_DOCKER_IMAGE_REFS:-test-bench:latest}"

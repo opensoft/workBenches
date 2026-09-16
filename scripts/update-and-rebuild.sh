@@ -413,15 +413,19 @@ build_layer3() {
     fi
 
     build_timer_start
-    local chown_args=""
+    local -a build_args=(--base "$LAYER3_BASE" --user "$USERNAME")
     if [ -n "$LAYER3_CHOWN" ]; then
-        chown_args="--chown $LAYER3_CHOWN"
+        build_args+=(--chown "$LAYER3_CHOWN")
     fi
-    local no_cache_args=""
     if [ "$NO_CACHE" = true ]; then
-        no_cache_args="--no-cache"
+        build_args+=(--no-cache)
     fi
-    "$user_layer_dir/build.sh" --base "$LAYER3_BASE" --user "$USERNAME" $chown_args $no_cache_args
+    if [ -S /var/run/docker.sock ]; then
+        local docker_socket_gid
+        docker_socket_gid="$(stat -c '%g' /var/run/docker.sock)"
+        build_args+=(--docker-gid "$docker_socket_gid")
+    fi
+    "$user_layer_dir/build.sh" "${build_args[@]}"
     build_timer_end "Layer 3"
 }
 

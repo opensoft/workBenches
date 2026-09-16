@@ -5,6 +5,8 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 checker="$repo_root/scripts/check-versions.sh"
 installer="$repo_root/base-image/install-ai-clis.sh"
 fixture="$repo_root/devcontainer.test/fixtures/fake-docker-cascade-validation.sh"
+export TEST_REAL_DOCKER="$(command -v docker)"
+"$TEST_REAL_DOCKER" compose version >/dev/null
 temp_dir="$(mktemp -d)"
 fake_bin="$temp_dir/bin"
 manifest="$(mktemp "$repo_root/config/.version-manifest.test.XXXXXX")"
@@ -99,6 +101,7 @@ fi
 grep -Fq -- '--check-layer3 requires --images IMAGE,...' "$temp_dir/missing-layer3-images.out"
 rebuild_help="$("$repo_root/scripts/update-and-rebuild.sh" --help)"
 grep -Fq -- '--write-manifest' <<< "$rebuild_help"
+grep -Fq 'build_args+=(--docker-gid "$docker_socket_gid")' "$repo_root/scripts/update-and-rebuild.sh"
 grep -Fq 'CHECK_ARGS+=(--images "$CASCADE_IMAGE_LIST" --image-ids "$CASCADE_IMAGE_ID_LIST")' "$repo_root/scripts/update-and-rebuild.sh"
 grep -Fq 'CHECK_ARGS+=(--layer3-images "$CASCADE_LAYER3_IMAGE_LIST" --check-layer3)' "$repo_root/scripts/update-and-rebuild.sh"
 grep -Fq 'CHECK_ARGS+=(--layer all --images "$LAYER3_BASE" --check-layer3)' "$repo_root/scripts/update-and-rebuild.sh"
@@ -570,6 +573,42 @@ test "${CASCADE_IMAGE_RECORDS[*]}" = "sim-bench-worker:latest=$captured_image_id
 CASCADE_LAYER3_IMAGES=()
 record_cascade_layer3_base_if_captured sim-bench:latest
 test "${#CASCADE_LAYER3_IMAGES[@]}" -eq 0
+
+printf '%s\n' \
+    'services:' \
+    '  api:' \
+    '    build: .' \
+    '  worker:' \
+    '    build: .' \
+    > "$compose_bench_dir/docker-compose.services.yml"
+printf '%s\n' \
+    'services:' \
+    '  api:' \
+    '    image: sim-bench-api-custom:latest' \
+    > "$compose_bench_dir/docker-compose.services.override.yml"
+printf '%s\n' \
+    'docker compose -f docker-compose.services.yml -f docker-compose.services.override.yml -p sim-bench-ci build api' \
+    > "$compose_metadata"
+CASCADE_IMAGES=()
+CASCADE_IMAGE_RECORDS=()
+PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
+    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"
+test "${CASCADE_IMAGES[*]}" = "sim-bench-api-custom:latest"
+if grep -Fq 'sim-bench-ci-worker:latest' "$log"; then
+    echo "Compose service selection inspected an unrequested output" >&2
+    exit 1
+fi
+
+printf '%s\n' \
+    'COMPOSE_PROJECT_NAME=sim-bench-ci docker compose -f docker-compose.generated.yml build worker' \
+    > "$compose_metadata"
+CASCADE_IMAGES=()
+CASCADE_IMAGE_RECORDS=()
+PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
+    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"
+test "${CASCADE_IMAGES[*]}" = "sim-bench-ci-worker:latest"
 
 CASCADE_IMAGES=(sim-bench:latest)
 CASCADE_LAYER3_IMAGES=()
