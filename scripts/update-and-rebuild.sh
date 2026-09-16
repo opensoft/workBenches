@@ -209,7 +209,9 @@ build_layer2_bench() {
     build_script="$(select_layer2_build_script "$bench_dir" || true)"
 
     if [ -n "$build_script" ]; then
-        prebuild_image_records="$(capture_cascade_image_ids "$image" "$build_script" "$bench_dir")"
+        prebuild_image_records="$(
+            capture_cascade_image_ids "$image" "$build_script" "$bench_dir" true
+        )"
         build_timer_start
         if [ "$NO_CACHE" = true ]; then
             DOCKER_BUILD_NO_CACHE=1 "$build_script" --user "$USERNAME" 2>/dev/null || \

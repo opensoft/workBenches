@@ -365,7 +365,7 @@ if grep -Fq 'has stale user/group configuration' "$temp_dir/metadata-inspection-
     exit 1
 fi
 
-for failure_kind in created recipe base_image_label; do
+for failure_kind in recipe base_image_label; do
     failure_env="FAKE_DOCKER_${failure_kind^^}_INSPECT_FAIL"
     if env PATH="$fake_bin:$PATH" \
         FAKE_DOCKER_LOG="$log" \
@@ -385,6 +385,18 @@ for failure_kind in created recipe base_image_label; do
         exit 1
     fi
 done
+
+: > "$log"
+PATH="$fake_bin:$PATH" \
+FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_CREATED_INSPECT_FAIL=true \
+"$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
+    > "$temp_dir/immutable-ancestry.out"
+grep -Fq 'Layer 3 test-bench:brett is current' "$temp_dir/immutable-ancestry.out"
+if grep -Fq '{{.Created}}' "$log"; then
+    echo "Layer 3 ancestry validation still depends on image creation timestamps" >&2
+    exit 1
+fi
 
 if WORKBENCHES_LAYER3_IDENTITY_TIMEOUT_SECONDS=invalid \
     "$checker" --layer 0 >/dev/null 2> "$temp_dir/invalid-timeout.err"; then
@@ -693,6 +705,31 @@ test "${CASCADE_IMAGES[*]}" = "sim-bench-gene_bench:latest sim-bench-ui:latest"
 
 printf '%s\n' \
     'services:' \
+    '  first:' \
+    '    build: .' \
+    '    image: sim-bench-first:latest' \
+    > "$compose_bench_dir/docker-compose.first.yml"
+printf '%s\n' \
+    'services:' \
+    '  second:' \
+    '    build: .' \
+    '    image: sim-bench-second:latest' \
+    > "$compose_bench_dir/docker-compose.second.yml"
+printf '%s\n' \
+    'COMPOSE_FILE=docker-compose.first.yml' \
+    'docker compose -f "$COMPOSE_FILE" build' \
+    'COMPOSE_FILE=docker-compose.second.yml' \
+    'docker compose -f "$COMPOSE_FILE" build' \
+    > "$compose_metadata"
+CASCADE_IMAGES=()
+CASCADE_IMAGE_RECORDS=()
+PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
+    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"
+test "${CASCADE_IMAGES[*]}" = "sim-bench-first:latest sim-bench-second:latest"
+
+printf '%s\n' \
+    'services:' \
     '  api:' \
     '    build: .' \
     '    image: ${API_IMAGE:-sim-bench-api}:latest' \
@@ -789,6 +826,18 @@ FAKE_DOCKER_MISSING_IMAGE=first-bench:latest \
         "$first_build_dir/build.sh" "$first_build_dir" \
         > "$temp_dir/first-build.records"
 test ! -s "$temp_dir/first-build.records"
+
+generated_compose_build="$compose_bench_dir/generated-compose-build.sh"
+printf '%s\n' 'docker compose -f runtime-generated.yml build' \
+    > "$generated_compose_build"
+PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_IMAGE_REFS=sim-bench-generated:latest \
+FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
+    capture_cascade_image_ids sim-bench:latest \
+        "$generated_compose_build" "$compose_bench_dir" true \
+        > "$temp_dir/generated-prebuild.records"
+test "$(cat "$temp_dir/generated-prebuild.records")" \
+    = "sim-bench-generated:latest=$captured_image_id"
 
 if PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
     FAKE_DOCKER_IMAGE_INSPECT_FAIL=first-bench:latest \

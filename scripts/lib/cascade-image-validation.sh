@@ -40,7 +40,7 @@ select_layer2_build_script() {
 compose_build_commands() {
     local build_script="$1"
     awk '
-        function emit(command, count, segment_index, word_count, word_index, subcommand, segment, words) {
+        function emit(command, line_number, count, segment_index, word_count, word_index, subcommand, segment, words) {
             sub(/^[[:space:]]+/, "", command)
             if (command ~ /^#/) return
             sub(/[[:space:]]+#.*/, "", command)
@@ -56,7 +56,9 @@ compose_build_commands() {
                             && words[word_index + 1] == "compose") {
                         for (subcommand = word_index + 2; subcommand <= word_count; subcommand++) {
                             if (words[subcommand] ~ /^(build|config|cp|create|down|events|exec|images|kill|logs|ls|pause|port|ps|pull|push|restart|rm|run|start|stop|top|unpause|up|version|wait|watch)$/) {
-                                if (words[subcommand] == "build") print segment
+                                if (words[subcommand] == "build") {
+                                    print line_number "\t" segment
+                                }
                                 break
                             }
                         }
@@ -66,15 +68,16 @@ compose_build_commands() {
             }
         }
         {
+            if (command == "") command_line = NR
             command = command $0
             if (command ~ /\\$/) {
                 sub(/\\$/, " ", command)
                 next
             }
-            emit(command)
+            emit(command, command_line)
             command = ""
         }
-        END { if (command != "") emit(command) }
+        END { if (command != "") emit(command, command_line) }
     ' "$build_script"
 }
 
@@ -90,10 +93,12 @@ strip_shell_quotes() {
 static_shell_assignment() {
     local build_script="$1"
     local variable_name="$2"
+    local max_line="${3:-0}"
 
     [[ "$variable_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
-    awk -v variable_name="$variable_name" '
+    awk -v variable_name="$variable_name" -v max_line="$max_line" '
         {
+            if (max_line > 0 && NR > max_line) next
             line = $0
             sub(/^[[:space:]]+/, "", line)
             if (line ~ /^#/) next
@@ -111,6 +116,7 @@ static_shell_assignment() {
 resolve_compose_file_argument() {
     local selected_file="$1"
     local build_script="$2"
+    local max_assignment_line="${3:-0}"
     local build_dir
     local variable_name
     local default_value
@@ -145,7 +151,8 @@ resolve_compose_file_argument() {
         elif [[ "$variable_name" == "SCRIPT_DIR" ]]; then
             replacement="$build_dir"
         else
-            replacement="$(static_shell_assignment "$build_script" "$variable_name")"
+            replacement="$(static_shell_assignment \
+                "$build_script" "$variable_name" "$max_assignment_line")"
             [[ -n "$replacement" ]] || return 1
             replacement="${replacement#\"}"
             replacement="${replacement%\"}"
@@ -162,6 +169,7 @@ compose_config_images_for_command() {
     local command="$1"
     local build_script="$2"
     local bench_dir="${3:-}"
+    local command_line="${4:-0}"
     local build_dir
     local docker_index=-1
     local build_index=-1
@@ -222,7 +230,8 @@ compose_config_images_for_command() {
                 ((index++))
                 ((index < ${#words[@]})) || return 1
                 value="$(strip_shell_quotes "${words[index]}")"
-                resolved="$(resolve_compose_file_argument "$value" "$build_script")" \
+                resolved="$(resolve_compose_file_argument \
+                    "$value" "$build_script" "$command_line")" \
                     || return 1
                 if [[ "$resolved" != /* ]]; then
                     resolved="$(realpath -m -- "$build_dir/$resolved")"
@@ -232,7 +241,8 @@ compose_config_images_for_command() {
             -f=*|--file=*|--env-file=*|--project-directory=*)
                 value="${token#*=}"
                 value="$(strip_shell_quotes "$value")"
-                resolved="$(resolve_compose_file_argument "$value" "$build_script")" \
+                resolved="$(resolve_compose_file_argument \
+                    "$value" "$build_script" "$command_line")" \
                     || return 1
                 if [[ "$resolved" != /* ]]; then
                     resolved="$(realpath -m -- "$build_dir/$resolved")"
@@ -244,7 +254,8 @@ compose_config_images_for_command() {
                 ((index < ${#words[@]})) || return 1
                 value="$(strip_shell_quotes "${words[index]}")"
                 if [[ "$token" == -p || "$token" == --project-name ]]; then
-                    value="$(resolve_compose_file_argument "$value" "$build_script")" \
+                    value="$(resolve_compose_file_argument \
+                        "$value" "$build_script" "$command_line")" \
                         || return 1
                     [[ "$value" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || return 1
                 fi
@@ -253,7 +264,8 @@ compose_config_images_for_command() {
             --project-name=*|--profile=*|--ansi=*|--parallel=*|--progress=*)
                 value="$(strip_shell_quotes "${token#*=}")"
                 if [[ "$token" == --project-name=* ]]; then
-                    value="$(resolve_compose_file_argument "$value" "$build_script")" \
+                    value="$(resolve_compose_file_argument \
+                        "$value" "$build_script" "$command_line")" \
                         || return 1
                     [[ "$value" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || return 1
                 fi
@@ -476,9 +488,11 @@ declared_cascade_images() {
         fi
         if [[ -f "$build_script" ]]; then
             local compose_command
-            while IFS= read -r compose_command; do
+            local compose_command_line
+            while IFS=$'\t' read -r compose_command_line compose_command; do
                 compose_config_images_for_command \
                     "$compose_command" "$build_script" "$bench_dir" \
+                    "$compose_command_line" \
                     || return
             done < <(compose_build_commands "$build_script")
         fi
@@ -491,14 +505,40 @@ capture_cascade_image_ids() {
     local image="$1"
     local build_script="${2:-}"
     local bench_dir="${3:-}"
+    local allow_unresolved_declarations="${4:-false}"
     local declared_image
     local image_id
     local inspect_status
     local found=false
     local declared_images
+    local local_image_references
 
-    declared_images="$(declared_cascade_images "$image" "$build_script" "$bench_dir")" \
-        || return
+    if declared_images="$(declared_cascade_images "$image" "$build_script" "$bench_dir")"; then
+        :
+    elif [[ "$allow_unresolved_declarations" == true ]]; then
+        # A helper may generate Compose metadata at runtime. Snapshot every
+        # current local tag now; post-build discovery remains strict and uses
+        # only its exact declared outputs when comparing these prior IDs.
+        if ! local_image_references="$(
+            docker image ls --no-trunc --format '{{.Repository}}:{{.Tag}}'
+        )"; then
+            echo "Could not snapshot local Docker images before the Layer 2 build" >&2
+            return 2
+        fi
+        while IFS= read -r declared_image; do
+            [[ -n "$declared_image" \
+                && "$declared_image" != *'<none>'* ]] || continue
+            if image_id="$(image_id_if_present "$declared_image")"; then
+                printf '%s=%s\n' "$declared_image" "$image_id"
+            else
+                inspect_status=$?
+                [[ "$inspect_status" -eq 1 ]] || return "$inspect_status"
+            fi
+        done <<< "$local_image_references"
+        return 0
+    else
+        return
+    fi
     while IFS= read -r declared_image; do
         [[ -n "$declared_image" ]] || continue
         found=true

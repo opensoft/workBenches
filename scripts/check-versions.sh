@@ -247,10 +247,6 @@ image_id_if_present() {
     esac
 }
 
-image_created_at() {
-    docker image inspect --format '{{.Created}}' "$1" 2>/dev/null
-}
-
 image_repository_name() {
     local reference="${1%%@*}"
     local final_component="${reference##*/}"
@@ -590,9 +586,7 @@ check_layer3_image() {
     local base_image_id="${EXPECTED_IMAGE_IDS[$base_image]:-$base_image}"
     local user_image="${base_image%:*}:${USERNAME}"
     local running_container
-    local base_created
     local expected_base_image_id
-    local user_created
     local user_base_image_id
     local user_image_id
     local user_image_id_status=0
@@ -653,19 +647,13 @@ check_layer3_image() {
         || [[ ! "$expected_base_image_id" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
         metadata_inspection_failed=true
     fi
-    if ! base_created=$(image_created_at "$base_image_id"); then
-        metadata_inspection_failed=true
-    fi
-    if ! user_created=$(image_created_at "$user_image_id"); then
-        metadata_inspection_failed=true
-    fi
     if ! user_recipe=$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.recipe-sha256" }}' "$user_image_id" 2>/dev/null); then
         metadata_inspection_failed=true
     fi
     if ! user_base_image_id=$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.base-image-id" }}' "$user_image_id" 2>/dev/null); then
         metadata_inspection_failed=true
     fi
-    if [[ "$metadata_inspection_failed" == true || -z "$base_created" || -z "$user_created" ]]; then
+    if [[ "$metadata_inspection_failed" == true ]]; then
         echo "Could not inspect Layer 3 metadata for $user_image; activation state is unknown" >&2
         record_image "$user_image" "3" "activation-inspection-failed" "$user_image_id"
         IMAGE_PROBE_FAILURES=$((IMAGE_PROBE_FAILURES + 1))
@@ -677,11 +665,6 @@ check_layer3_image() {
     elif [[ "$user_recipe" != "$LAYER3_RECIPE_SHA256" ]]; then
         if [ "$JSON_OUTPUT" = false ]; then
             echo -e "${YELLOW}↷ Layer 3 $user_image has a stale recipe; activation is required${NC}"
-        fi
-        record_image "$user_image" "3" "activation-stale" "$user_image_id"
-    elif [[ "$user_created" < "$base_created" || "$user_created" == "$base_created" ]]; then
-        if [ "$JSON_OUTPUT" = false ]; then
-            echo -e "${YELLOW}↷ Layer 3 $user_image is older than $base_image; activation is required${NC}"
         fi
         record_image "$user_image" "3" "activation-stale" "$user_image_id"
     else
