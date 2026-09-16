@@ -45,6 +45,45 @@ $EDITOR ~/account-registry/config/ai-harness-accounts.json
 The manifest contains account labels and login identifiers, never passwords,
 OAuth tokens, API-key values, browser cookies, or encryption private keys.
 
+For Opensoft deployments, `opensoft/Opensoft-Tenant` is the authoritative
+company profile registry and its `ai/vault/azure-key-vault.json` records the
+non-secret mapping to Azure Key Vault `kv-opensoft-aiprof-p01`. Brett-owned
+profiles are separate `user/brettheap` records in the private
+`brettheap/AI-Credentials` repository; an `opensoft.one` email address does not
+make a credential company-owned. The private repository's SOPS ciphertext and
+Brett-held age identity remain the canonical personal recovery path.
+
+## Provider account catalogs
+
+Private owner repositories keep model-hoster account and subscription metadata
+under `ai/accounts/`. This layer is intentionally separate from profiles and
+credentials:
+
+```text
+provider hoster -> accountId -> profile -> credentialId -> durable custody
+```
+
+- `providers.json` maps product/profile provider names such as `claude` and
+  `glm` to normalized hosters such as `anthropic` and `z-ai`.
+- Hoster files contain account owner, login identity, lifecycle, declared plan,
+  billing model or `unknown`, profile references, and credential IDs.
+- `ai/source.json` remains the launcher-profile source.
+- Azure Key Vault or SOPS remains the only credential payload store.
+
+Generate a combined metadata-only report from authorized private registries:
+
+```bash
+python3 scripts/report-ai-provider-accounts.py \
+  --registry ~/projects/Opensoft-Tenant \
+  --registry ~/projects/AI-Credentials
+```
+
+Use `--json` for automation. Use `--strict` to return nonzero when an active
+credential lacks configured escrow as well as when structural validation
+fails. The report does not authenticate to Azure, decrypt SOPS, open local
+provider credentials, or claim that a configured credential is currently
+accepted by its provider.
+
 Important fields:
 
 - `provider`: one of the supported provider IDs above.
@@ -72,6 +111,42 @@ Open `http://127.0.0.1:8765`. The server binds only to loopback. It displays
 the source repository URL, verifies supported local profiles, and can start
 vendor login flows. It does not read, return, copy, or commit credential
 contents.
+
+## Durable credential custody and restore
+
+Company credential files under the Claude, Codex, and Pi profile roots are
+runtime materializations. Back up and verify one exact profile before relying
+on its Azure copy:
+
+```bash
+scripts/backup-ai-profile-credentials-to-kv.sh audit \
+  --provider claude --profile team-001
+scripts/backup-ai-profile-credentials-to-kv.sh backup \
+  --provider claude --profile team-001
+scripts/backup-ai-profile-credentials-to-kv.sh verify \
+  --provider claude --profile team-001
+```
+
+On an authorized replacement workstation, restore preserves an existing local
+credential by default:
+
+```bash
+scripts/backup-ai-profile-credentials-to-kv.sh restore \
+  --provider claude --profile team-001
+```
+
+Use `--force` only after selecting the exact profile whose current local login
+may be replaced. Restore validates tenant/subscription authority, the exact
+versioned secret URI, content type, ownership tags, payload shape, destination
+containment, and file mode before an atomic install. It never prints a secret
+value. The local state file records the restored version URI and timestamp,
+not the payload.
+
+The public workBenches repository contains no tenant IDs, vault secret values,
+or personal ciphertext. Private registries supply those contracts during
+bootstrap. Azure RBAC controls company payload access independently of Git
+access; Brett's personal SOPS recovery remains independently usable if company
+infrastructure is unavailable.
 
 Kimi, Qwen, and MiniMax are recognized in the shared CLI inventory and shell
 adapter, but the dashboard does not yet implement their profile-home or
@@ -139,6 +214,15 @@ OpenAI credential is treated as logged out and cannot fall back to the other
 profile. See
 [OpenCode multi-account OpenAI profiles](opencode-openai-multi-account-profiles.md)
 for the state layout, runtime contract, and verification procedure.
+
+On an authorized Opensoft workstation, setup attempts to recover the
+company-owned OmniRoute client credential before offering `opencode auth
+login`. The Key Vault payload contains only the standalone OmniRoute provider
+record, not OpenCode's complete mixed-provider `auth.json`. Recovery merges the
+`omniroute` member atomically and preserves unrelated provider records. If the
+registry mapping, Azure authority, RBAC, or payload validation is unavailable,
+setup leaves authentication unchanged and retains the interactive login
+fallback.
 
 ### Grok Build
 

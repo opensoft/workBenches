@@ -45,6 +45,18 @@ Each entry maps exactly one canonical source file to one Key Vault secret:
 }
 ```
 
+OpenCode's OmniRoute credential is intentionally captured as a standalone
+provider record before backup. Never map the complete shared OpenCode
+`auth.json`, because it can contain credentials with different owners:
+
+```bash
+scripts/opencode-omniroute-credential capture
+scripts/backup-ai-profile-credentials-to-kv.sh backup \
+  --provider omniroute --profile opencode
+scripts/backup-ai-profile-credentials-to-kv.sh verify \
+  --provider omniroute --profile opencode
+```
+
 ## Audit and backup
 
 Audit local files without contacting Azure:
@@ -95,3 +107,9 @@ credential file:
 
 Never merge token fields between versions. Refresh-token families are coherent
 credential bundles and must be restored as a unit.
+
+The standalone OmniRoute record is not a refresh-token family. On workstation
+setup, `restore-opencode-omniroute-from-kv.sh` restores the validated record and
+`opencode-omniroute-credential install` adds only the `omniroute` member to the
+shared OpenCode authentication object. A different existing OmniRoute record is
+preserved unless replacement is explicitly requested.

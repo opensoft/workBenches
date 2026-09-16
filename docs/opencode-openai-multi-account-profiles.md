@@ -87,6 +87,11 @@ the `openai` entry in memory. If that profile has no OpenAI credential, OpenCode
 sees OpenAI as logged out; it cannot silently fall back to another account's
 shared OpenAI record. Token refreshes are written to the selected profile file.
 
+The Opensoft OmniRoute client credential is escrowed independently from this
+mixed-provider file. workBenches stores a standalone `{type, key}` provider
+record in the Opensoft Key Vault and merges only that record during workstation
+bootstrap. Never escrow the complete shared `auth.json` as an Opensoft secret.
+
 ## Manifest
 
 The host manifest uses canonical names, aliases, expected emails, profile paths,

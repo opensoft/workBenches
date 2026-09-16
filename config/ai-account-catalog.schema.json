@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://workbenches.dev/schemas/ai-account-catalog.schema.json",
+  "title": "workBenches AI account catalog contracts",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/providerCatalog"
+    },
+    {
+      "$ref": "#/$defs/accountCatalog"
+    }
+  ],
+  "$defs": {
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {
+          "enum": ["tenant", "user", "product"]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providerId", "displayName", "profileProviderIds", "products"],
+      "properties": {
+        "providerId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "profileProviderIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          }
+        },
+        "products": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "providerCatalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "kind", "owner", "providers"],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "kind": {
+          "const": "workbenches-ai-provider-catalog"
+        },
+        "owner": {
+          "$ref": "#/$defs/owner"
+        },
+        "providers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/provider"
+          }
+        }
+      }
+    },
+    "profileRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "name"],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        }
+      }
+    },
+    "account": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accountId",
+        "owner",
+        "providerId",
+        "login",
+        "products",
+        "subscription",
+        "status",
+        "profileRefs",
+        "credentialIds",
+        "verifiedAt",
+        "notes"
+      ],
+      "properties": {
+        "accountId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "$ref": "#/$defs/owner"
+        },
+        "providerId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "login": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["email"],
+          "properties": {
+            "email": {
+              "type": "string",
+              "minLength": 3
+            }
+          }
+        },
+        "products": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "subscription": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["plan", "billingModel"],
+          "properties": {
+            "plan": {
+              "type": "string",
+              "minLength": 1
+            },
+            "billingModel": {
+              "enum": ["subscription", "pay-as-you-go", "free", "unknown"]
+            }
+          }
+        },
+        "status": {
+          "enum": ["active", "planned", "disabled", "retired"]
+        },
+        "profileRefs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/profileRef"
+          }
+        },
+        "credentialIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "verifiedAt": {
+          "type": ["string", "null"],
+          "format": "date"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "accountCatalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "kind", "owner", "providerId", "accounts"],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "kind": {
+          "const": "workbenches-ai-account-catalog"
+        },
+        "owner": {
+          "$ref": "#/$defs/owner"
+        },
+        "providerId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/account"
+          }
+        }
+      }
+    }
+  }
+}
