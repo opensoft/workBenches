@@ -38,6 +38,14 @@ OVERLAY_SHAPE_MARKER_FILES: Final = (
     "scripts/bash/resume.sh",
     "scripts/bash/workspace-common.sh",
 )
+# Sibling of the shape marker above: the shape marker can only say a required
+# file has *a* `load_git_worktrees` of the right shape, not that it is the
+# CURRENT one (opensoft/workBenches#94). This marker's value is never baked
+# into template text by hand -- it is a digest `setup-openspeckit` itself
+# computes from the template's required files at run time -- so it lives in
+# its own file beside the tracked scripts rather than as a line inside one.
+OVERLAY_CONTENT_MARKER_FILE: Final = "scripts/bash/.speckit-overlay-content"
+OVERLAY_CONTENT_MARKER_PREFIX: Final = "# speckit-overlay-content: "
 DIRECTORY_OPEN_FLAGS: Final = (
     os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
 )
@@ -63,6 +71,16 @@ WORKTREE_GIT_OVERLAY_REQUIRED_FILES: Final = (
     "scripts/powershell/create-new-feature.ps1",
     "scripts/powershell/git-common.ps1",
     "scripts/powershell/initialize-repo.ps1",
+)
+# The content digest's own file set: every WORKTREE_GIT_OVERLAY_REQUIRED_FILES
+# entry -- the presence check `worktree_git_overlay_refresh_reason` runs
+# against the INSTALLED overlay stays scoped to that tuple, unchanged -- plus
+# config-template.yml, which copy_overlay_tree also installs and extension.yml
+# declares as the Git extension's own config template. Read only from the
+# TEMPLATE (never the installed overlay), so a template-only fix to any of
+# these files changes the digest even when none of the required files do.
+OVERLAY_CONTENT_DIGEST_FILES: Final = WORKTREE_GIT_OVERLAY_REQUIRED_FILES + (
+    "config-template.yml",
 )
 LOAD_GIT_WORKTREES_DEFINITION: Final = re.compile(
     r"(?m)^[ \t]*(?:load_git_worktrees[ \t]*\(\)|"
@@ -1597,33 +1615,207 @@ def has_overlay_shape_marker(overlay_root: Path) -> bool:
     return True
 
 
-def has_compatible_worktree_git_overlay(
+def worktree_git_overlay_content_digest(overlay_root: Path) -> str | None:
+    """Digest the git extension overlay's own functional files.
+
+    Computed at run time from whichever tree is passed in -- always the
+    TEMPLATE in practice, so a template bugfix to any of OVERLAY_CONTENT_DIGEST_FILES
+    changes this value -- rather than a hand-bumped number nobody remembers to
+    bump. Returns None if one of those files cannot be read there, so callers
+    treat that tree as having nothing useful to compare.
+
+    Hashes raw bytes (read_destination_bytes), not decoded text: a text-mode
+    read translates CRLF/CR to LF, so an installed file that differs from the
+    template only by line ending would otherwise hash identically even
+    though copy_overlay_tree's own byte-for-byte copy would treat it as
+    different content.
+    """
+    hasher = hashlib.sha256()
+    try:
+        for relative_path in OVERLAY_CONTENT_DIGEST_FILES:
+            content = read_destination_bytes(overlay_root / relative_path)
+            if content is None:
+                return None
+            hasher.update(relative_path.encode("utf-8"))
+            hasher.update(b"\0")
+            hasher.update(content)
+            hasher.update(b"\0")
+    except OSError:
+        return None
+    return hasher.hexdigest()
+
+
+def overlay_content_marker(overlay_root: Path) -> str | None:
+    """Read the digest an earlier run recorded with `write_overlay_content_marker`.
+
+    Callers deciding whether a rerun should force a refresh must call
+    `ensure_overlay_content_marker_is_regular` first: this function alone
+    cannot distinguish a genuinely absent marker from a non-regular entry
+    (a directory, a symlink) occupying that reserved path -- both read as
+    None here, as does a regular file that fails to decode as UTF-8, which
+    IS safe to treat as absent/stale (write_overlay_content_marker replaces
+    a marker in that specific state; it never reaches a non-regular path,
+    because the caller already raised first).
+    """
+    try:
+        content = read_destination_text(overlay_root / OVERLAY_CONTENT_MARKER_FILE)
+    except (OSError, UnicodeError):
+        return None
+    if content is None:
+        return None
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(OVERLAY_CONTENT_MARKER_PREFIX):
+            return stripped[len(OVERLAY_CONTENT_MARKER_PREFIX):].strip()
+    return None
+
+
+def ensure_overlay_content_marker_is_regular(overlay_root: Path) -> None:
+    """Refuse a non-regular entry at the reserved content-marker path.
+
+    `overlay_content_marker` treats a directory or symlink there exactly
+    like an absent marker (both simply read as None), which would otherwise
+    make `worktree_git_overlay_refresh_reason` return "content" and let its
+    caller run a REAL git-overlay copy that overwrites repository
+    customizations -- before `write_overlay_content_marker` ever gets a
+    chance to refuse that same non-regular path itself, by which point the
+    copy has already happened. Call this before any of that is decided, not
+    only right before (re)writing the marker.
+    """
+    marker_path = overlay_root / OVERLAY_CONTENT_MARKER_FILE
+    try:
+        marker_mode = mode_without_following(marker_path)
+    except NotADirectoryError:
+        # A non-directory collision somewhere in the marker's OWN parent
+        # chain (e.g. .specify/extensions/git itself, or scripts/bash, is a
+        # stale regular file) means nothing can possibly exist at the
+        # marker path either -- treat that exactly like the marker being
+        # absent, so the caller's own required-file/shape checks run
+        # normally and can still classify a genuinely incompatible overlay
+        # as "shape", letting the existing forced copy replace that
+        # collision the same way it already replaces any other root/nested
+        # file collision. Crashing here instead would abort a run the rest
+        # of this codebase is otherwise equipped to recover from.
+        return
+    if marker_mode is not None and not stat.S_ISREG(marker_mode):
+        raise SystemExit(
+            f"Refusing to treat non-regular path as the overlay content marker: {marker_path}"
+        )
+
+
+def write_overlay_content_marker(overlay_root: Path, digest: str, dry_run: bool) -> None:
+    """Record the required-file digest a rerun should still find installed.
+
+    Lives beside the shape marker in the installed overlay as its own
+    sibling file rather than a line inside any tracked script: the digest
+    is computed at run time, not baked into the template's own committed
+    text the way the shape marker is, so it needs a destination-owned home
+    that copy_overlay_tree's template-driven file list will never touch.
+    """
+    marker_path = overlay_root / OVERLAY_CONTENT_MARKER_FILE
+    content = f"{OVERLAY_CONTENT_MARKER_PREFIX}{digest}\n"
+    ensure_overlay_content_marker_is_regular(overlay_root)
+    if mode_without_following(marker_path) is not None:
+        try:
+            read_destination_text(marker_path)
+        except (OSError, UnicodeError):
+            # write_text would hit this identical failure trying to compare
+            # against the EXISTING marker's decoded text before ever
+            # attempting to write the replacement. overlay_content_marker
+            # already treats an unreadable marker as absent/stale, so clear
+            # it here too -- but only THIS pre-existing-marker read, never
+            # the write below: a dry run must not touch disk even to clear
+            # it, so just report what a real run would do and return before
+            # reaching that write.
+            if dry_run:
+                log(f"would write {marker_path}")
+                return
+            remove_destination_without_following(marker_path)
+    write_text(marker_path, content, dry_run)
+
+
+def worktree_git_overlay_refresh_reason(
     repo: Path,
     template_root: Path | None = None,
-) -> bool:
+) -> str | None:
+    """Why the installed worktree git overlay needs a forced refresh, if it does.
+
+    None means the installed overlay is fully current and a rerun should
+    leave it alone. Otherwise one of two short labels:
+
+    - "shape": the overlay predates `load_git_worktrees` entirely (the
+      signature regex is the only fallback available then), or the
+      templates and the installed overlay disagree about the shape marker
+      itself. Exactly today's pre-existing check.
+    - "content": shape and signature both check out, but the installed
+      overlay's stored content digest does not match what the CURRENT
+      template would install. The shape marker alone cannot tell a stale
+      `load_git_worktrees` body from a fixed one -- both define the
+      function with the same shape (opensoft/workBenches#94) -- so this
+      compares a digest of the overlay's own required files instead,
+      computed from the template's current content rather than a
+      hand-bumped number. An installed overlay with no stored digest at
+      all -- every install from before this check existed -- counts as
+      stale here too, exactly like a digest mismatch.
+    """
     overlay_root = repo / ".specify" / "extensions" / "git"
+
+    # Checked first, ahead of every return below -- but ONLY when the
+    # template actually carries the shape marker: an unmarked/legacy
+    # template never reads or writes this marker at all
+    # (ensure_worktree_overlay gates write_overlay_content_marker the same
+    # way), so validating it for that path is both unnecessary and would
+    # needlessly break "nothing that works now stops working" for an old
+    # repository that happens to have something unrelated sitting at this
+    # newly-reserved path. For a template that DOES carry the marker, this
+    # still has to run ahead of every return below, not only ahead of the
+    # "content" branch: an EARLIER check (a missing required file, a stale
+    # signature, a shape-marker mismatch) can return "shape" first, and
+    # "shape" forces the shell and skill trees too, so the destructive copy
+    # this exists to prevent could still run first in that case.
+    if template_root is not None and has_overlay_shape_marker(
+        template_root / "specify" / "extensions" / "git"
+    ):
+        ensure_overlay_content_marker_is_regular(overlay_root)
+
     contents: dict[str, str] = {}
     try:
         for relative_path in WORKTREE_GIT_OVERLAY_REQUIRED_FILES:
             content = read_destination_text(overlay_root / relative_path)
             if content is None:
-                return False
+                return "shape"
             contents[relative_path] = content
     except (OSError, UnicodeError):
-        return False
+        return "shape"
 
     if LOAD_GIT_WORKTREES_DEFINITION.search(
         contents["scripts/bash/git-common.sh"]
     ) is None:
-        return False
+        return "shape"
 
     # The shape marker can only be demanded of an installed overlay once the
     # templates this bootstrap installs from carry it themselves.
-    if template_root is not None and has_overlay_shape_marker(
+    if template_root is None or not has_overlay_shape_marker(
         template_root / "specify" / "extensions" / "git"
     ):
-        return has_overlay_shape_marker(overlay_root)
-    return True
+        return None
+    if not has_overlay_shape_marker(overlay_root):
+        return "shape"
+
+    template_digest = worktree_git_overlay_content_digest(
+        template_root / "specify" / "extensions" / "git"
+    )
+    if template_digest is None or overlay_content_marker(overlay_root) == template_digest:
+        return None
+    return "content"
+
+
+def has_compatible_worktree_git_overlay(
+    repo: Path,
+    template_root: Path | None = None,
+) -> bool:
+    """Whether the installed worktree git overlay needs no forced refresh."""
+    return worktree_git_overlay_refresh_reason(repo, template_root) is None
 
 
 def strip_yaml_comment(line: str) -> str:
@@ -3104,16 +3296,33 @@ def ensure_worktree_overlay(
     if template_root is None:
         raise SystemExit("Speckit worktree template root not found.")
 
-    git_overlay_force = force or not has_compatible_worktree_git_overlay(
-        repo,
-        template_root,
-    )
+    git_overlay_template = template_root / "specify" / "extensions" / "git"
+    git_overlay_root = repo / ".specify" / "extensions" / "git"
+    git_overlay_refresh_reason = worktree_git_overlay_refresh_reason(repo, template_root)
+    git_overlay_force = force or (git_overlay_refresh_reason is not None)
     if git_overlay_force and not force:
-        log("replacing incompatible Spec Kit git extension with worktree-aware overlay")
-    overlay_force = force or git_overlay_force
+        if git_overlay_refresh_reason == "content":
+            log(
+                "refreshing Spec Kit git extension scripts: installed content "
+                "digest is stale against the current template"
+            )
+        else:
+            log("replacing incompatible Spec Kit git extension with worktree-aware overlay")
+    # A content-only mismatch says something about the git extension's own
+    # required files alone -- it says nothing about the shell tree or the
+    # skill overlays, which OVERLAY_CONTENT_DIGEST_FILES never touches -- so
+    # it must not propagate into overlay_force the way a genuine shape/
+    # signature incompatibility (or explicit --force) does; otherwise a
+    # rerun that only needed to catch up the git extension's scripts would
+    # also overwrite unrelated repository-specific shell/skill customizations.
+    overlay_force = force or (git_overlay_refresh_reason == "shape")
 
-    copy_overlay_tree(template_root / "specify" / "extensions" / "git", repo / ".specify" / "extensions" / "git", dry_run, git_overlay_force)
+    copy_overlay_tree(git_overlay_template, git_overlay_root, dry_run, git_overlay_force)
     copy_overlay_tree(template_root / "specify" / "shell", repo / ".specify" / "shell", dry_run, overlay_force)
+    if has_overlay_shape_marker(git_overlay_template):
+        git_overlay_template_digest = worktree_git_overlay_content_digest(git_overlay_template)
+        if git_overlay_template_digest is not None:
+            write_overlay_content_marker(git_overlay_root, git_overlay_template_digest, dry_run)
     skill_overlays = (
         (
             template_root / "agents" / "skills" / "speckit-specify",
