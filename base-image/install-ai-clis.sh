@@ -27,10 +27,14 @@
 #       Dockerfile, not installed by this script
 #
 # Usage in Dockerfile:
-#   COPY install-ai-clis.sh /tmp/
+#   COPY install-ai-clis.sh ai-cli-install-helpers.sh /tmp/
 #   RUN bash /tmp/install-ai-clis.sh
 
 set -e
+
+INSTALL_SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=ai-cli-install-helpers.sh
+. "$INSTALL_SCRIPT_DIR/ai-cli-install-helpers.sh"
 
 # ========================================
 # DEBUG AND TIMEOUT CONFIGURATION
@@ -368,17 +372,23 @@ log_info "Installing Cursor CLI..."
 # claim the unambiguous 'cursor-agent' name in /usr/local/bin; skip 'agent'
 # here entirely to avoid silently overriding or being shadowed by Grok's.
 if run_with_timeout "$COMMAND_TIMEOUT" "Cursor CLI install" bash -o pipefail -c 'curl -fsSL https://cursor.com/install | bash'; then
-    if [ -f "$HOME/.local/bin/cursor-agent" ] && [ ! -e /usr/local/bin/cursor-agent ]; then
-        cp "$HOME/.local/bin/cursor-agent" /usr/local/bin/cursor-agent
-        chmod +x /usr/local/bin/cursor-agent
-    elif [ -f "$HOME/.local/bin/agent" ] && [ ! -e /usr/local/bin/cursor-agent ]; then
-        cp "$HOME/.local/bin/agent" /usr/local/bin/cursor-agent
-        chmod +x /usr/local/bin/cursor-agent
+    cursor_launcher=""
+    if [ -e "$HOME/.local/bin/cursor-agent" ]; then
+        cursor_launcher="$HOME/.local/bin/cursor-agent"
+    elif [ -e "$HOME/.local/bin/agent" ]; then
+        cursor_launcher="$HOME/.local/bin/agent"
     fi
-    if command -v cursor-agent >/dev/null 2>&1; then
+
+    # Cursor's launcher resolves its own directory and expects the bundled
+    # node executable and index.js alongside it. Publish the complete bundle
+    # under a canonical launcher name, including for legacy agent-only layouts.
+    if [ -n "$cursor_launcher" ] && ! publish_cursor_bundle "$cursor_launcher"; then
+        log_error "Cursor CLI bundle is incomplete after installation (continuing)"
+    fi
+    if command -v cursor-agent >/dev/null 2>&1 && cursor-agent --version >/dev/null 2>&1; then
         log_info "Cursor CLI installed to $(command -v cursor-agent)"
     else
-        log_error "Cursor CLI binary not found on PATH after installation (continuing)"
+        log_error "Cursor CLI is not runnable after installation (continuing)"
     fi
 else
     log_error "Cursor CLI installation failed (continuing)"
@@ -702,6 +712,10 @@ done
 
 if command -v claude >/dev/null 2>&1 && ! claude --version >/dev/null 2>&1; then
     missing_clis+=("claude(runnable)")
+fi
+
+if command -v cursor-agent >/dev/null 2>&1 && ! cursor-agent --version >/dev/null 2>&1; then
+    missing_clis+=("cursor-agent(runnable)")
 fi
 
 if [ "${#missing_clis[@]}" -gt 0 ]; then
