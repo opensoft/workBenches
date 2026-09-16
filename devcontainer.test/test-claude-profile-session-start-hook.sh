@@ -42,7 +42,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=12
+EXPECTED_SCENARIOS=13
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -190,6 +190,54 @@ run_launcher
     || fail "additive: a second launch did not leave exactly the foreign entry and one of ours ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
 [[ "$(session_start_count)" -eq 1 ]] \
     || fail "additive: SessionStart did not survive beside them"; assertion
+
+# ---------------------------------------------------------------------------
+# 3b. ...AND THE MERGE FILTERS THE NESTED ARRAY, NOT THE OUTER ENTRY
+# (opensoft/workBenches#89). Section 3 pins that a foreign ENTRY survives the
+# guard write; this pins the shape it did not cover, and the shape the write
+# still got wrong: an entry that GROUPS the usage guard's command with somebody
+# else's. `select` over the whole entry asked "does this entry carry our command
+# anywhere inside it" and dropped the lot — the foreign command with it, and any
+# other key on the entry, such as a `note` or a hand-set `timeout` — then
+# appended a fresh guard-only entry in its place. The issue's own repro is the
+# fixture below, byte for byte in shape: one grouped entry, one foreign command
+# with a `timeout` of its own, one `note`.
+#
+# Nothing this codebase writes produces a grouped entry — every entry this file
+# appends carries exactly one command — so the only way one exists is a person's
+# hand-edit, which is precisely what an additive merge is for. The second entry
+# is the other shape the fix must not break: an entry with NO nested `hooks`
+# array at all cannot have carried our command, so it must come through
+# untouched rather than be dropped, and must not acquire a `hooks: []` key it
+# never had.
+printf '%s\n' '{}' > "$SETTINGS"
+jq '.hooks.UserPromptSubmit = [
+      {
+        hooks: [
+          {type: "command", command: "bash \"${CLAUDE_CONFIG_DIR}/usage-guard.sh\""},
+          {type: "command", command: "some-completely-unrelated-foreign-hook", timeout: 99}
+        ],
+        note: "operator grouped these"
+      },
+      {matcher: "Bash", note: "no nested hooks at all"}
+    ]' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+run_launcher
+[[ "$(jq -r '[.hooks.UserPromptSubmit[]?|.hooks[]?|select(.command|test("usage-guard"))]|length' "$SETTINGS")" -eq 1 ]] \
+    || fail "grouped: the guard command is not there exactly once ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[] | select(any(.hooks[]?; .command == "some-completely-unrelated-foreign-hook"))] | length' "$SETTINGS")" -eq 1 ]] \
+    || fail "grouped: the foreign hook grouped with ours does not survive exactly once — the entry was dropped or duplicated ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[] | select(any(.hooks[]?; .command == "some-completely-unrelated-foreign-hook"))] | .[0].note' "$SETTINGS")" == "operator grouped these" ]] \
+    || fail "grouped: the operator's note on the grouped entry was lost ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[] | select(any(.hooks[]?; .command == "some-completely-unrelated-foreign-hook"))] | .[0].hooks[0].timeout' "$SETTINGS")" == 99 ]] \
+    || fail "grouped: the foreign hook's own timeout was rewritten ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[] | select(any(.hooks[]?; .command == "some-completely-unrelated-foreign-hook"))] | .[0].hooks | length' "$SETTINGS")" -eq 1 ]] \
+    || fail "grouped: our command was left nested beside the foreign one instead of being filtered out of it ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[] | select(.note == "no nested hooks at all")] | length' "$SETTINGS")" -eq 1 ]] \
+    || fail "grouped: an entry with no nested hooks array — which cannot have carried our command — was dropped ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[] | select(.note == "no nested hooks at all")] | .[0] | has("hooks")' "$SETTINGS")" == false ]] \
+    || fail "grouped: an entry that had no nested hooks array was given an empty one ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(session_start_count)" -eq 1 ]] \
+    || fail "grouped: SessionStart did not survive the grouped-entry merge"; assertion
 
 # ---------------------------------------------------------------------------
 # 4. An entry that ALREADY carries the command is left exactly as it is —

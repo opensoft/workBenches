@@ -26,6 +26,63 @@ lanes_workstation_env=()
 [[ -z "$lanes_workstation" ]] \
     || lanes_workstation_env=(--env "LANES_WORKSTATION=$lanes_workstation")
 
+# ...AND WHERE THE LANE WILL BE RUNNING — lane-collision-protocol Amendment 18
+# clause (a) (opensoft/workBenches#98), the same ruling two variables along. The
+# record now carries `host <name>; os <linux|macos|wsl|windows>; container
+# <name|none>` beside the workstation, because a pid does not cross a pid
+# namespace and a lane live in one bench container read NOT LIVE from another on
+# the same host. `claude-profile` exports all three for the sessions it starts;
+# THIS script is the half that gets them into a bench container in the first
+# place, and it is the only place that can answer the third: a container cannot
+# name itself — its `hostname` is the id docker gave it — while the bench it is
+# about to open is named right here.
+#
+# An already-set value wins, as above, and the `hostname` read is under the same
+# container fence and for the same reason. Read HERE, at the top, for the same
+# reason the workstation is: `container` is a variable of this script's own a few
+# lines below and the environment marker cannot be read once it has been
+# assigned. LANES_CONTAINER alone is built at the `docker exec` itself, after
+# `resolve_bench_defaults` has settled which bench this is.
+lanes_host="${LANES_HOST:-}"
+if [[ -z "$lanes_host" && ! -e /.dockerenv && ! -e /run/.containerenv && -z "${container:-}" ]]; then
+    lanes_host="$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)"
+fi
+lanes_host_env=()
+[[ -z "$lanes_host" ]] \
+    || lanes_host_env=(--env "LANES_HOST=$lanes_host")
+
+# The four words are the amendment's whole vocabulary and the lane tooling drops
+# an `os` that is none of them (opensoft/openRepoTools#83), so a kernel this case
+# cannot name exports nothing rather than a fifth word. The HOST's word is what
+# travels in, and it is the container's word too: a container shares the host's
+# kernel, so the probe inside it would read the very same `/proc/version`.
+# `windows` is passed through and never derived here — this script is bash, and
+# on a Windows machine that is WSL2, which says `wsl`.
+lanes_os="${LANES_OS:-}"
+if [[ -z "$lanes_os" ]]; then
+    case "$(uname -s 2>/dev/null || true)" in
+        Darwin)
+            lanes_os=macos
+            ;;
+        Linux)
+            lanes_kernel=""
+            [[ ! -r /proc/version ]] || lanes_kernel="$(cat /proc/version 2>/dev/null || true)"
+            lanes_kernel="$lanes_kernel $(uname -r 2>/dev/null || true)"
+            lanes_kernel="$(printf '%s' "$lanes_kernel" | tr '[:upper:]' '[:lower:]')"
+            case "$lanes_kernel" in
+                *microsoft*|*wsl*) lanes_os=wsl ;;
+                *) lanes_os=linux ;;
+            esac
+            ;;
+        CYGWIN*|MINGW*|MSYS*|Windows_NT)
+            lanes_os=windows
+            ;;
+    esac
+fi
+lanes_os_env=()
+[[ -z "$lanes_os" ]] \
+    || lanes_os_env=(--env "LANES_OS=$lanes_os")
+
 home_dir="${HOME:?HOME is required}"
 default_user="$(id -un 2>/dev/null || printf 'user')"
 workbenches_root="${WORKBENCHES_ROOT:-$home_dir/projects/workBenches}"
@@ -681,8 +738,17 @@ if [[ "$(basename "$shell_path")" == "zsh" ]]; then
     shell_args=(-l)
 fi
 
+# THE BENCH NAMES ITSELF ON THE WAY IN (Amendment 18 clause (a)). `$container`
+# is this script's own resolved bench — `py-bench`, `cloud-bench`, or whatever
+# name the caller gave — which is exactly the `container <name>` the lane record
+# wants and the one thing the process inside cannot work out for itself. Always
+# passed, never conditional: this line is only ever reached for a container that
+# is about to be entered, so there is no case here in which the answer is `none`.
 exec docker exec "${tty_args[@]}" \
     ${lanes_workstation_env[@]+"${lanes_workstation_env[@]}"} \
+    ${lanes_host_env[@]+"${lanes_host_env[@]}"} \
+    ${lanes_os_env[@]+"${lanes_os_env[@]}"} \
+    --env "LANES_CONTAINER=$container" \
     --env "TERM=$term_name" \
     --env "COLORTERM=$color_term" \
     --env "CLICOLOR=1" \
