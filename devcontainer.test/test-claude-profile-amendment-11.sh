@@ -2634,11 +2634,11 @@ for rename_file in "$DOCS_MD" "$HANDOFF_MD" "$LAUNCHER"; do
         # byte, into skills/handoff/SKILL.md, where retargeting this scenario
         # onto the file that now carries the mechanics (see this suite's
         # header note) surfaces it for the first time -- it was never
-        # reachable against the emptied-out lane-swap alias, and this suite
-        # is not wired into CI (only test-claude-profile-skill-install.sh is,
-        # in .github/workflows/speckit-git-bash.yml), so nothing had run this
-        # check against real content since 8a36eb3 landed. Against the
-        # VENDORED BYTES, copied byte-for-byte, so filed upstream rather than
+        # reachable against the emptied-out lane-swap alias, and until
+        # opensoft/workBenches#93 wired this suite into CI (see this suite's
+        # header note) nothing had run this check against real content since
+        # 8a36eb3 landed. Against the VENDORED BYTES, copied byte-for-byte, so
+        # filed upstream rather than
         # fixed here (opensoft/openRepoTools#79) and not this PR's regression.
         echo "KNOWN (opensoft/openRepoTools#79, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): $(basename "$rename_file") still says /rename is the only act there is" >&2
     else
@@ -3288,11 +3288,22 @@ grep -F "NOT WRITTEN: the row's state cell stays as it is" "$HANDOFF_MD" | grep 
 # `$(hostname` read above is counted rather than the word, because a comment that
 # records a corrected sentence must not be indistinguishable from one that still
 # asserts it. Two halves: the string is in no SHELL line at all, and every line
-# that carries it calls itself a superseded revision.
+# that carries it calls itself somebody ELSE's past claim.
+#
+# RETARGETED (opensoft/workBenches#93, round 1 of Copilot's review of this PR):
+# `revision` was never the shipped marker even on the legitimate quote —
+# `SKILL.md:535` says "`#71`'s copy PROMISED …", never the word "revision" —
+# so the original check could never go green even after `:474` is fixed
+# upstream (opensoft/openRepoTools#99), and would keep reporting a closed gap
+# as open forever. `promised` is the word the shipped quote actually uses to
+# attribute the claim to another PR rather than assert it; once #99 lands
+# (only `:535`'s properly-attributed occurrence remains), `still_runs_total`
+# and `still_runs_quoted` become equal and this assertion goes green on its
+# own, with nothing here to update.
 grep -Fq '(c) below still runs' <<<"$skill_write_code" \
     && fail "R-A11-27: the skill's shell still prints '(c) below still runs' — the exact string the amendment text quotes back at this PR"; assertion
 still_runs_total="$(grep -Fc '(c) below still runs' "$HANDOFF_MD" || true)"
-still_runs_quoted="$(grep -F '(c) below still runs' "$HANDOFF_MD" | grep -Fc 'revision' || true)"
+still_runs_quoted="$(grep -F '(c) below still runs' "$HANDOFF_MD" | grep -Fc 'promised' || true)"
 # KNOWN GAP, NOT THIS PR'S (opensoft/workBenches#93, filed upstream as
 # opensoft/openRepoTools#99): `:474`'s "(c) below still runs" is a real,
 # unqualified leftover — the exact promise R-A11-27 refuses, asserted as

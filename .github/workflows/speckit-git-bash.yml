@@ -27,6 +27,8 @@ on:
       - base-image/files/claude-profile
       - base-image/files/claude-usage-guard.sh
       - docs/claude-multi-account-profiles.md
+      - README.md
+      - scripts/wave-container-shell.sh
       - setup.sh
   pull_request:
     paths:
@@ -54,6 +56,8 @@ on:
       - base-image/files/claude-profile
       - base-image/files/claude-usage-guard.sh
       - docs/claude-multi-account-profiles.md
+      - README.md
+      - scripts/wave-container-shell.sh
       - setup.sh
   workflow_dispatch:
 
