@@ -1,0 +1,46 @@
+name: project-command
+on:
+  push:
+    paths:
+      - scripts/setup-project-command.py
+      - scripts/project
+      - scripts/onp
+      - scripts/new-project.sh
+      - scripts/install-workbench-commands.sh
+      - scripts/setup-workbenches.sh
+      - setup.sh
+      - config/openrepoproject-pin.json
+      - devcontainer.test/test-project-command.py
+      - .github/workflows/project-command.yml
+  pull_request:
+    paths:
+      - scripts/setup-project-command.py
+      - scripts/project
+      - scripts/onp
+      - scripts/new-project.sh
+      - scripts/install-workbench-commands.sh
+      - scripts/setup-workbenches.sh
+      - setup.sh
+      - config/openrepoproject-pin.json
+      - devcontainer.test/test-project-command.py
+      - .github/workflows/project-command.yml
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.10'
+      - name: Install Bash 4+ for installer coverage
+        if: runner.os == 'macOS'
+        run: |
+          brew install bash
+          echo "WORKBENCHES_TEST_BASH=$(brew --prefix)/bin/bash" >> "$GITHUB_ENV"
+      - run: python3 devcontainer.test/test-project-command.py
+      - run: bash -n scripts/project scripts/onp scripts/new-project.sh scripts/install-workbench-commands.sh scripts/setup-workbenches.sh setup.sh
