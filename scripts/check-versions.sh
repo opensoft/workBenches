@@ -285,43 +285,45 @@ snapshot_running_containers() {
     local repository_key
 
     if ! snapshot=$(run_with_optional_timeout "$timeout_seconds" \
-        docker container ls --format '{{.Image}}\t{{.Names}}'); then
+        docker container ls --format '{{.Names}}'); then
         echo "Could not inspect running containers for Layer 3 activation state" >&2
         return 1
     fi
-    while IFS=$'\t' read -r configured_image container_name; do
-        [[ -n "$configured_image" && -n "$container_name" ]] || continue
+    while IFS= read -r container_name; do
+        [[ -n "$container_name" ]] || continue
         if ! actual_image_id=$(run_with_optional_timeout "$timeout_seconds" \
-            docker container inspect --format '{{.Image}}' "$container_name"); then
+            docker container inspect --format '{{.Image}}' "$container_name") \
+            || ! configured_image=$(run_with_optional_timeout "$timeout_seconds" \
+                docker container inspect --format '{{.Config.Image}}' "$container_name") \
+            || ! layer3_username=$(run_with_optional_timeout "$timeout_seconds" \
+                docker container inspect --format \
+                    '{{ index .Config.Labels "io.opensoft.workbenches.layer3.username" }}' \
+                    "$container_name"); then
             echo "Could not inspect running container '$container_name' for Layer 3 activation state" >&2
             return 1
         fi
+        [[ -n "$actual_image_id" && -n "$configured_image" ]] || {
+            echo "Running container '$container_name' returned incomplete image metadata" >&2
+            return 1
+        }
+        [[ "$layer3_username" == "<no value>" ]] && layer3_username=""
         RUNNING_CONTAINER_BY_IMAGE["$configured_image"]="$container_name"
-        if [[ -n "$actual_image_id" ]]; then
-            RUNNING_CONTAINER_BY_IMAGE["$actual_image_id"]="$container_name"
-            RUNNING_IMAGE_ID_BY_KEY["$configured_image"]="$actual_image_id"
-            RUNNING_IMAGE_ID_BY_KEY["$actual_image_id"]="$actual_image_id"
-            if ! layer3_username=$(run_with_optional_timeout "$timeout_seconds" \
-                docker image inspect --format \
-                    '{{ index .Config.Labels "io.opensoft.workbenches.layer3.username" }}' \
-                    "$actual_image_id"); then
-                echo "Could not inspect running container '$container_name' image metadata" >&2
-                return 1
-            fi
-            if [[ "$layer3_username" == "$USERNAME" ]]; then
-                repository_name="$(image_repository_name "$configured_image")"
-                if [[ -n "$repository_name" ]]; then
-                    repository_key="layer3-repository:$repository_name:$USERNAME"
-                    RUNNING_CONTAINER_BY_IMAGE["$repository_key"]="$container_name"
-                    RUNNING_IMAGE_ID_BY_KEY["$repository_key"]="$actual_image_id"
-                else
-                    # Docker may report Config.Image as only an immutable ID.
-                    # Without a repository we cannot associate it more narrowly,
-                    # so conservatively defer activation for this Layer 3 user.
-                    repository_key="layer3-unassociated-user:$USERNAME"
-                    RUNNING_CONTAINER_BY_IMAGE["$repository_key"]="$container_name"
-                    RUNNING_IMAGE_ID_BY_KEY["$repository_key"]="$actual_image_id"
-                fi
+        RUNNING_CONTAINER_BY_IMAGE["$actual_image_id"]="$container_name"
+        RUNNING_IMAGE_ID_BY_KEY["$configured_image"]="$actual_image_id"
+        RUNNING_IMAGE_ID_BY_KEY["$actual_image_id"]="$actual_image_id"
+        if [[ "$layer3_username" == "$USERNAME" ]]; then
+            repository_name="$(image_repository_name "$configured_image")"
+            if [[ -n "$repository_name" ]]; then
+                repository_key="layer3-repository:$repository_name:$USERNAME"
+                RUNNING_CONTAINER_BY_IMAGE["$repository_key"]="$container_name"
+                RUNNING_IMAGE_ID_BY_KEY["$repository_key"]="$actual_image_id"
+            else
+                # Docker may report Config.Image as only an immutable ID.
+                # Without a repository we cannot associate it more narrowly,
+                # so conservatively defer activation for this Layer 3 user.
+                repository_key="layer3-unassociated-user:$USERNAME"
+                RUNNING_CONTAINER_BY_IMAGE["$repository_key"]="$container_name"
+                RUNNING_IMAGE_ID_BY_KEY["$repository_key"]="$actual_image_id"
             fi
         fi
     done <<< "$snapshot"

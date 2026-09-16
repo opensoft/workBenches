@@ -189,6 +189,25 @@ FAKE_DOCKER_RUNNING_CONTAINERS=$'test-bench@sha256:old\tid-bench\n' \
     > "$temp_dir/running-id.out"
 grep -Fq "activation deferred by running container 'id-bench'" "$temp_dir/running-id.out"
 grep -Fq "container inspect --format {{.Image}} id-bench" "$log"
+grep -Fq "container inspect --format {{.Config.Image}} id-bench" "$log"
+
+: > "$log"
+PATH="$fake_bin:$PATH" \
+FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_RUNNING_CONTAINERS=$'sha256:eeeeeeeeeeee\tdeleted-image-bench\n' \
+FAKE_DOCKER_RUNNING_CONTAINER_CONFIG_IMAGE=test-bench:brett \
+FAKE_DOCKER_RUNNING_CONTAINER_IMAGE_ID="$running_image_id" \
+FAKE_DOCKER_RUNNING_CONTAINER_LAYER3_USERNAME='<no value>' \
+FAKE_DOCKER_MISSING_IMAGE="$running_image_id" \
+"$checker" --layer 0 --images test-bench:latest --check-layer3 --json --user brett \
+    > "$temp_dir/running-deleted-image.json"
+jq -e --arg id "$running_image_id" \
+    '.images[] | select(.image == "test-bench:brett" and .status == "activation-deferred-running" and .id == $id)' \
+    "$temp_dir/running-deleted-image.json" >/dev/null
+if grep -Fq "image inspect --format {{ index .Config.Labels" "$log"; then
+    echo "running container metadata fell back to its deleted image object" >&2
+    exit 1
+fi
 
 : > "$log"
 PATH="$fake_bin:$PATH" \

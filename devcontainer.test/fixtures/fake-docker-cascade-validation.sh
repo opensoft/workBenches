@@ -119,15 +119,35 @@ PY
         ;;
     container)
         if [ "$2" = "ls" ]; then
-            printf '%b' "${FAKE_DOCKER_RUNNING_CONTAINERS:-}"
+            while IFS=$'\t' read -r configured_image container_name; do
+                [[ -n "$configured_image" && -n "$container_name" ]] || continue
+                printf '%s\n' "$container_name"
+            done <<< "${FAKE_DOCKER_RUNNING_CONTAINERS:-}"
             exit 0
         fi
         if [ "$2" = "inspect" ]; then
-            if [[ "${!#}" == "${FAKE_DOCKER_CONTAINER_INSPECT_FAIL:-}" ]]; then
-                echo "simulated Docker container inspect failure for ${!#}" >&2
+            container_name="${!#}"
+            if [[ "$container_name" == "${FAKE_DOCKER_CONTAINER_INSPECT_FAIL:-}" ]]; then
+                echo "simulated Docker container inspect failure for $container_name" >&2
                 exit 2
             fi
-            echo "${FAKE_DOCKER_RUNNING_CONTAINER_IMAGE_ID:-${FAKE_DOCKER_USER_IMAGE_ID:-sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd}}"
+            configured_image="${FAKE_DOCKER_RUNNING_CONTAINER_CONFIG_IMAGE:-}"
+            if [[ -z "$configured_image" ]]; then
+                while IFS=$'\t' read -r candidate_image candidate_name; do
+                    if [[ "$candidate_name" == "$container_name" ]]; then
+                        configured_image="$candidate_image"
+                        break
+                    fi
+                done <<< "${FAKE_DOCKER_RUNNING_CONTAINERS:-}"
+            fi
+            actual_image_id="${FAKE_DOCKER_RUNNING_CONTAINER_IMAGE_ID:-${FAKE_DOCKER_USER_IMAGE_ID:-sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd}}"
+            layer3_username="${FAKE_DOCKER_RUNNING_CONTAINER_LAYER3_USERNAME:-${FAKE_DOCKER_LAYER3_USERNAME:-brett}}"
+            case "$*" in
+                *'{{.Config.Image}}'*) printf '%s\n' "$configured_image" ;;
+                *'layer3.username'*) printf '%s\n' "$layer3_username" ;;
+                *'{{.Image}}'*) printf '%s\n' "$actual_image_id" ;;
+                *) exit 1 ;;
+            esac
             exit 0
         fi
         exit 1
