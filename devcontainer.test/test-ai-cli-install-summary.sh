@@ -29,6 +29,45 @@ grep -Fq 'missing_clis+=("cursor-agent(runnable)")' "$repo_root/base-image/insta
 
 cursor_case_root="$(mktemp -d)"
 trap 'rm -rf "$cursor_case_root"' EXIT
+
+assert_cursor_publication_failure_preserves_source() {
+    local failing_command="$1"
+    local case_dir="$cursor_case_root/fail-$failing_command"
+    local versions_root="$case_dir/local/share/cursor-agent/versions"
+    local bin_dir="$case_dir/local/bin"
+    local bundle_dir="$versions_root/test-version"
+    local destination="$case_dir/opt/cursor-agent"
+    local global_launcher="$case_dir/usr/local/bin/cursor-agent"
+    local mock_bin="$case_dir/mock-bin"
+
+    mkdir -p "$bundle_dir" "$bin_dir" "$destination" "$mock_bin"
+    printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$bundle_dir/agent"
+    printf '%s\n' '#!/usr/bin/env sh' 'exit 0' > "$bundle_dir/node"
+    : > "$bundle_dir/index.js"
+    : > "$destination/original"
+    chmod 0755 "$bundle_dir/agent" "$bundle_dir/node"
+    ln -s "$bundle_dir/agent" "$bin_dir/agent"
+    printf '%s\n' '#!/usr/bin/env sh' 'exit 42' > "$mock_bin/$failing_command"
+    chmod 0755 "$mock_bin/$failing_command"
+
+    if PATH="$mock_bin:$PATH" publish_cursor_bundle \
+        "$bin_dir/agent" \
+        "$destination" \
+        "$global_launcher" \
+        "$versions_root" \
+        "$bin_dir"; then
+        echo "Cursor publication unexpectedly ignored $failing_command failure" >&2
+        exit 1
+    fi
+    test -e "$bundle_dir/agent"
+    test -L "$bin_dir/agent"
+    test -f "$destination/original"
+    test ! -e "$global_launcher"
+}
+
+assert_cursor_publication_failure_preserves_source cp
+assert_cursor_publication_failure_preserves_source chmod
+
 cursor_versions_root="$cursor_case_root/local/share/cursor-agent/versions"
 cursor_bin_dir="$cursor_case_root/local/bin"
 cursor_bundle_dir="$cursor_versions_root/agent-only"

@@ -23,6 +23,8 @@ case "$1 $2" in
         if [[ "$3" == "--format" ]]; then
             if [[ "$4" == *recipe-sha256* ]]; then
                 printf '%s\n' "${TEST_IMAGE_RECIPE_SHA256:-}"
+            elif [[ "$4" == *'.Id'* ]]; then
+                printf '%s\n' 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
             else
                 printf '%s\n' 'sha256:new-user-image'
             fi
