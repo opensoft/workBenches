@@ -1,5 +1,72 @@
 # workBenches
 
+## Project command
+
+Generic project creation now lives in
+[openRepoProject](https://github.com/opensoft/openRepoProject). workBenches
+installs its `project` executable during setup and command installation:
+
+```sh
+python3 scripts/setup-project-command.py
+project benches
+project new MyApp --bench flutterBench --type flutter --dry-run
+project status MyApp
+project doctor MyApp
+project update MyApp
+```
+
+`onp NAME [PARENT]` and `scripts/new-project.sh NAME [PARENT]` forward to
+`project new` and accept its flags. The forwarders resolve the directory chosen
+by command installation (including `/usr/local/bin`) and execute only a
+`project` whose ownership marker and digest verify. Bench-specific generators
+remain owned by their bench repositories. The creation list excludes update
+scripts and reports configured scripts that are not installed.
+
+`config/openrepoproject-pin.json` identifies an exact source commit and executable
+SHA-256. The PATH-facing `project` command is a verifier launcher; the pinned
+upstream executable is stored separately as `.workbenches-project.payload`, so
+normal direct invocations perform the same ownership and digest check as legacy
+forwarders. The launcher embeds the pinned source identity, not checkout or pin
+file paths; it uses `WORKBENCHES_ROOT` or the local discovery marker only after
+the executable payload verifies. The installer tries the authenticated GitHub API before raw download,
+verifies bytes before replacing anything, journals publication so an
+interrupted upgrade can resume, and rolls back ordinary partial multi-file
+replacement failures. A persistent per-directory lock serializes installation,
+removal, status, and legacy snapshot capture; launchers release it before
+running the verified private snapshot so delegated setup operations can acquire
+the writer lock. A failed download/digest
+check preserves the existing executable. A symlink, directory,
+read-only target, or unrelated existing `project` command refuses. After
+reviewing a name collision, use `--replace-existing` to take ownership;
+uninstall removes only an artifact whose ownership record and digest agree.
+The user-writable PATH entry is not itself an integrity root: status and legacy
+forwarders authenticate it against the installer template, while protection
+against hostile same-user replacement before direct execution depends on host
+filesystem permissions.
+Python 3.10+ is required; YAML inspection needs PyYAML, available in the
+development bench.
+
+Use `--source /path/to/openRepoProject/project` for offline installation of the
+same pinned bytes, `--bin-dir PATH` for another command directory, or
+`WORKBENCHES_SKIP_PROJECT_COMMAND=1` to skip. The installer records this checkout
+in the host-local `.workbenches-path` beside the command and records the selected
+command directory in `~/.config/workbenches/project-bin`. Checkout legacy
+entrypoints use that verified pointer when the custom directory is no longer on
+`PATH`; `WORKBENCHES_ROOT` overrides checkout discovery at runtime.
+
+When advancing the pin, first copy the current `commit` and `sha256` pair into
+the `trusted_previous` array. Then publish the tested source commit, obtain
+`project` from that commit, compute its SHA-256, and update the top-level
+`commit` and `sha256` fields in the same change. Retain each previous pair only
+for the upgrade window in which an existing installer-owned payload must be
+recognized. If the source PR will squash-merge, re-pin to the resulting main
+commit before landing the workBenches integration. Never adjust a digest to
+accept drift.
+
+Offline integration tests: `python3 devcontainer.test/test-project-command.py`
+inside a Python workBench. Command behavior and migration notes live in
+openRepoProject's README and `docs/migration-review.md`.
+
 A layered Docker-based development environment system. Each "bench" is a self-contained devcontainer for a specific tech stack (Flutter, Java, .NET, Python, Frappe, C++, etc.) built on shared base images.
 
 ## Quick Start
