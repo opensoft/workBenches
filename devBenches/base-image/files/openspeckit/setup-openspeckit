@@ -1623,18 +1623,24 @@ def worktree_git_overlay_content_digest(overlay_root: Path) -> str | None:
     changes this value -- rather than a hand-bumped number nobody remembers to
     bump. Returns None if one of those files cannot be read there, so callers
     treat that tree as having nothing useful to compare.
+
+    Hashes raw bytes (read_destination_bytes), not decoded text: a text-mode
+    read translates CRLF/CR to LF, so an installed file that differs from the
+    template only by line ending would otherwise hash identically even
+    though copy_overlay_tree's own byte-for-byte copy would treat it as
+    different content.
     """
     hasher = hashlib.sha256()
     try:
         for relative_path in OVERLAY_CONTENT_DIGEST_FILES:
-            content = read_destination_text(overlay_root / relative_path)
+            content = read_destination_bytes(overlay_root / relative_path)
             if content is None:
                 return None
             hasher.update(relative_path.encode("utf-8"))
             hasher.update(b"\0")
-            hasher.update(content.encode("utf-8"))
+            hasher.update(content)
             hasher.update(b"\0")
-    except (OSError, UnicodeError):
+    except OSError:
         return None
     return hasher.hexdigest()
 
