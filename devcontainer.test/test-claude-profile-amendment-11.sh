@@ -3291,6 +3291,18 @@ grep -Fq 'ws_missing=1' <<<"$ws_skill_code" \
     || fail "R-A11-8/R-A11-14: $(grep -Fc 'ws_missing=1' <<<"$ws_skill_code") case(s) set the refusal flag, and the ruling names two — a stale helper (exit 2) and a container with no \$LANES_WORKSTATION"; assertion
 grep -Fq 'if [[ -z "$ws_missing" ]]; then' <<<"$ws_skill_code" \
     || fail "R-A11-14: the skill's workstation refusal does not stop the two writes that carry it"; assertion
+# PROVES THE GUARD, NOT JUST ITS EXISTENCE (round 9): the check above only
+# found the string "if [[ -z ..." somewhere in the file — a regression could
+# move (a) and (b) below the guard's `fi` while leaving that dead condition
+# in place and still pass. Extracted the guard's own body (a single, unnested
+# if/fi, unlike write (c)'s two-command nest below) and require both writes
+# inside it, the same standard the (c) check already holds itself to.
+ab_guard_block="$(awk '/^if \[\[ -z "\$ws_missing" \]\]; then$/ { inside = 1; next } inside && /^fi$/ { exit } inside { print }' "$HANDOFF_MD" \
+    | grep -v '^[[:space:]]*#')"
+grep -Fq 'log PAUSED' <<<"$ab_guard_block" \
+    || fail "R-A11-14: write (a), the object-log line, is not inside the ws_missing guard"; assertion
+grep -Fq 'append-line' <<<"$ab_guard_block" \
+    || fail "R-A11-14: write (b), the file-level PAUSED line, is not inside the ws_missing guard"; assertion
 grep -Fq 'NO WORKSTATION READ:' "$HANDOFF_MD" \
     || fail "R-A11-8: the stale-helper case (exit 2 predates Amendment 11) is not named as its own situation"; assertion
 grep -Fq 'NO WORKSTATION: this is a container and \$LANES_WORKSTATION is not set' "$HANDOFF_MD" \
@@ -3334,14 +3346,31 @@ c_section="$(awk '/^# \(c\) the row: flip its leading state word/{inside=1} insi
 # of them out from under `ws_missing` used to still read `fenced=1 loose=0`
 # from `replace-in-row` alone and pass. `fenced`/`loose` are now true only when
 # BOTH commands agree on which side of the guard they are on.
+#
+# CLOSES THE OUTER `fi` (round 9): `phase` used to stay "written" for the rest
+# of the section once `else` opened it, so a write moved past the outer `if`'s
+# own closing `fi` — no longer inside the guard at all — still read as
+# "written" and passed. The shipped body nests a SECOND if/fi inside the else
+# (`append-row-status`'s own `if [[ -z "$row_write_refused" ]]; then … fi`), so
+# a bare depth counter is tracked: every line ending `then` opens one, every
+# bare `fi` closes one, and hitting depth 0 again closes the OUTER guard and
+# moves to a fourth phase, "closed", counted the same as never having entered
+# it at all.
 c_fence="$(grep -v '^[[:space:]]*#' <<<"$c_section" | awk '
-    index($0, "if [[ -n \"$ws_missing\" ]]; then") { phase = "refused"; next }
+    index($0, "if [[ -n \"$ws_missing\" ]]; then") { phase = "refused"; depth = 1; next }
     phase == "refused" && $0 == "else" { phase = "written"; next }
     phase == "refused" && index($0, "row_write_refused=1") { set = 1 }
+    phase == "written" {
+        if ($0 ~ /then$/) { depth++ }
+        else if ($0 == "fi") {
+            depth--
+            if (depth == 0) { phase = "closed"; next }
+        }
+    }
     phase == "written" && index($0, "replace-in-row") { fenced_replace = 1 }
     phase == "written" && index($0, "append-row-status") { fenced_status = 1 }
-    phase == "" && index($0, "replace-in-row") { loose_replace = 1 }
-    phase == "" && index($0, "append-row-status") { loose_status = 1 }
+    (phase == "" || phase == "closed") && index($0, "replace-in-row") { loose_replace = 1 }
+    (phase == "" || phase == "closed") && index($0, "append-row-status") { loose_status = 1 }
     END { printf "set=%d fenced=%d loose=%d", set, (fenced_replace && fenced_status), (loose_replace || loose_status) }')"
 [[ "$c_fence" == "set=1 fenced=1 loose=0" ]] \
     || fail "R-A11-27: write (c) is not refused with (a) and (b) where no workstation is configured ($c_fence), so a swap from a container still flips the row and files a commit keyed on the container id"; assertion
