@@ -542,7 +542,9 @@ check_layer3_image() {
     local user_image="${base_image%:*}:${USERNAME}"
     local running_container
     local base_created
+    local expected_base_image_id
     local user_created
+    local user_base_image_id
     local user_image_id
     local user_image_id_status=0
     local user_recipe
@@ -597,6 +599,10 @@ check_layer3_image() {
         return
     fi
 
+    if ! expected_base_image_id=$(docker image inspect --format '{{.Id}}' "$base_image_id" 2>/dev/null) \
+        || [[ ! "$expected_base_image_id" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
+        metadata_inspection_failed=true
+    fi
     if ! base_created=$(image_created_at "$base_image_id"); then
         metadata_inspection_failed=true
     fi
@@ -606,10 +612,18 @@ check_layer3_image() {
     if ! user_recipe=$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.recipe-sha256" }}' "$user_image_id" 2>/dev/null); then
         metadata_inspection_failed=true
     fi
+    if ! user_base_image_id=$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.base-image-id" }}' "$user_image_id" 2>/dev/null); then
+        metadata_inspection_failed=true
+    fi
     if [[ "$metadata_inspection_failed" == true || -z "$base_created" || -z "$user_created" ]]; then
         echo "Could not inspect Layer 3 metadata for $user_image; activation state is unknown" >&2
         record_image "$user_image" "3" "activation-inspection-failed" "$user_image_id"
         IMAGE_PROBE_FAILURES=$((IMAGE_PROBE_FAILURES + 1))
+    elif [[ "$user_base_image_id" != "$expected_base_image_id" ]]; then
+        if [ "$JSON_OUTPUT" = false ]; then
+            echo -e "${YELLOW}↷ Layer 3 $user_image was built from a different base image; activation is required${NC}"
+        fi
+        record_image "$user_image" "3" "activation-stale" "$user_image_id"
     elif [[ "$user_recipe" != "$LAYER3_RECIPE_SHA256" ]]; then
         if [ "$JSON_OUTPUT" = false ]; then
             echo -e "${YELLOW}↷ Layer 3 $user_image has a stale recipe; activation is required${NC}"

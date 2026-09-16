@@ -6,6 +6,8 @@
 # Usage:
 #   docker build \
 #     --build-arg BASE_IMAGE=cpp-bench:latest \
+#     --build-arg BASE_IMAGE_ID="$(docker image inspect --format '{{.Id}}' cpp-bench:latest)" \
+#     --build-arg CODEX_VERSION=0.199.0 \
 #     --build-arg USERNAME=brett \
 #     --build-arg USER_UID=1000 \
 #     --build-arg USER_GID=1000 \
@@ -28,13 +30,20 @@ ARG USER_GID=1000
 ARG DOCKER_SOCKET_GID=""
 ARG EXTRA_CHOWN_DIRS=""
 ARG LAYER3_RECIPE_SHA256="unknown"
-ARG CODEX_VERSION="0.153.4"
+ARG BASE_IMAGE_ID=""
+# Keep the writable user overlay aligned with the exact shared Layer 0
+# version. user-layer/build.sh derives this value from BASE_IMAGE; direct
+# Dockerfile callers must pass an exact reviewed version.
+ARG CODEX_VERSION=""
+
+RUN printf '%s\n' "$BASE_IMAGE_ID" | grep -Eq '^sha256:[0-9a-fA-F]{64}$'
 
 LABEL io.opensoft.workbenches.layer3.recipe-sha256="${LAYER3_RECIPE_SHA256}"
 LABEL io.opensoft.workbenches.layer3.username="${USERNAME}"
 LABEL io.opensoft.workbenches.layer3.uid="${USER_UID}"
 LABEL io.opensoft.workbenches.layer3.gid="${USER_GID}"
 LABEL io.opensoft.workbenches.layer3.docker-socket-gid="${DOCKER_SOCKET_GID}"
+LABEL io.opensoft.workbenches.layer3.base-image-id="${BASE_IMAGE_ID}"
 
 USER root
 
@@ -152,8 +161,11 @@ USER $USERNAME
 # allowing the runtime user to run `codex update` against this writable prefix.
 ENV NPM_CONFIG_PREFIX=/home/${USERNAME}/.npm-global
 ENV PATH=/home/${USERNAME}/.npm-global/bin:${PATH}
-RUN mkdir -p "$NPM_CONFIG_PREFIX" \
-    && npm install -g "@openai/codex@${CODEX_VERSION}"
+RUN test -n "$CODEX_VERSION" \
+    && printf '%s\n' "$CODEX_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$' \
+    && mkdir -p "$NPM_CONFIG_PREFIX" \
+    && npm install -g "@openai/codex@${CODEX_VERSION}" \
+    && test "$(codex --version | awk 'NR == 1 { print $NF; exit }')" = "$CODEX_VERSION"
 
 # Pre-create user-owned cache roots so first-use named volumes inherit the
 # runtime user's ownership instead of becoming root-only.

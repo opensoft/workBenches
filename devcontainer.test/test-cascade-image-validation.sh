@@ -209,6 +209,13 @@ grep -Fq 'has a stale recipe' "$temp_dir/stale-recipe.out"
 
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_LAYER3_BASE_IMAGE_ID="$retagged_image_id" \
+"$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
+    > "$temp_dir/stale-base-image.out"
+grep -Fq 'was built from a different base image' "$temp_dir/stale-base-image.out"
+
+PATH="$fake_bin:$PATH" \
+FAKE_DOCKER_LOG="$log" \
 FAKE_DOCKER_LAYER3_PASSWD_USERNAME=other-user \
 "$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
     > "$temp_dir/stale-identity.out"
@@ -242,7 +249,7 @@ if grep -Fq 'has stale user/group configuration' "$temp_dir/metadata-inspection-
     exit 1
 fi
 
-for failure_kind in created recipe; do
+for failure_kind in created recipe base_image_label; do
     failure_env="FAKE_DOCKER_${failure_kind^^}_INSPECT_FAIL"
     if env PATH="$fake_bin:$PATH" \
         FAKE_DOCKER_LOG="$log" \

@@ -30,13 +30,20 @@
 #       refusal can never leave a window with no Claude.
 #
 #   (4) THE RECORD FOR *THIS* WINDOW — precedence step 3 (SPEC §2), between the
-#       window name and the swapped guess. A row whose `window` sub-field names
-#       this window's `<@id>` or `<session>:<index>` is an exact match on the
-#       window the operator is standing in, so it goes to lane-start BARE. Only
-#       the newest-first row of step 4 is still a guess, and still `--confirm`.
+#       window name and the picker. A row whose `window` sub-field names this
+#       window's `<@id>` or `<session>:<index>` is an exact match on the window
+#       the operator is standing in, so it goes to lane-start BARE. Only where
+#       nothing names this window does precedence 4 apply — and since
+#       lane-collision-protocol Amendment 18 Addendum 1 (clause (i-5),
+#       opensoft/workBenches#79) that is no longer this launcher confirming a
+#       swap-record guess with `--confirm`: it hands the pane to `lane`, on
+#       PATH, given a terminal to ask on, and STOPS — `lane` exit 0 (acted on)
+#       or 8 (quit, or nothing to pick) leaves nothing for this launcher to
+#       start, and only exit 2, A REFUSAL, falls through to nothing exactly as
+#       no `lane` on PATH or no terminal does.
 #
 # Everything the launcher shells out to is faked — tmux, lanes-edit.sh,
-# lane-start and claude — so the assertions are about the launcher's own
+# lane-start, lane and claude — so the assertions are about the launcher's own
 # resolution and nothing else. The fakes are deliberately the SAME SHAPE as
 # test-claude-profile-lane-default.sh's, which pins Amendment 8(c): the two
 # suites test one resolution from two amendments and must not drift into two
@@ -86,7 +93,7 @@ fail() {
 # suite whose only output is the word "passed". The scenario count is pinned as
 # well as printed, so deleting one fails the suite rather than quietly changing
 # a number.
-EXPECTED_SCENARIOS=114
+EXPECTED_SCENARIOS=111
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -392,7 +399,23 @@ exit 1
 EOF
 chmod +x "$PS_BIN/ps"
 
-chmod +x "$FAKE_CLAUDE" "$FAKE_BIN/tmux" "$FAKE_BIN/lanes-edit.sh" "$FAKE_BIN/lane-start"
+# THE PICKER (lane-collision-protocol Amendment 18 Addendum 1, clause (i-5)),
+# precedence 4's replacement for the swap record's `--confirm`. `lane` does not
+# exist yet on any real machine (opensoft/openRepoTools#43 builds it in
+# parallel), so this fake stands in for its whole contract: it logs the argv it
+# was run with — bare, always, per clause (i-5) — and exits with whatever this
+# scenario says its pick came to. Exit 0 is a pick ACTED ON, exit 8 is a QUIT
+# or nothing to pick, exit 2 is A REFUSAL; this launcher hands it neither
+# `--dir`, `--confirm`, `--resume` nor anything else.
+LANE_PICKER_LOG="$TEST_ROOT/lane-picker.log"
+cat > "$FAKE_BIN/lane" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${FAKE_LANE_LOG:?}"
+exit "${FAKE_LANE_EXIT:-8}"
+EOF
+
+chmod +x "$FAKE_CLAUDE" "$FAKE_BIN/tmux" "$FAKE_BIN/lanes-edit.sh" "$FAKE_BIN/lane-start" "$FAKE_BIN/lane"
 
 # THE WORKSTATION'S WORKSPACE MANIFEST — `R-A11-13`. `~/.agents/workspace.yaml`
 # is where a person names their own workspace repository (this repo's README
@@ -451,6 +474,7 @@ common_env=(
     "FAKE_CLAUDE_CWD_LOG=$CLAUDE_CWD_LOG"
     "FAKE_CLAUDE_ENV_LOG=$CLAUDE_ENV_LOG"
     "FAKE_LANES_EDIT_LOG=$LANES_EDIT_LOG"
+    "FAKE_LANE_LOG=$LANE_PICKER_LOG"
     "FAKE_LANE_START_HELP=$AMENDMENT_11_HELP"
     "WORKBENCHES_SHARED_MCP_FAMILIES=disabled"
     "LANES_WORKSTATION=Eagle"
@@ -461,17 +485,40 @@ common_env=(
     # exists is made with the retired rung's first fence wide open.
     "PROJECTS_ROOT=$TEST_ROOT/projects"
     "GIT_CEILING_DIRECTORIES=$TEST_ROOT"
+    # opensoft/workBenches#95: the lane defect capture is kept, and its tail
+    # printed, on a run that exits FAST — every fake here always does, having
+    # no interactive session to hold open — so 0 tells the launcher that
+    # merely being instant is not "fast" for this suite's purposes. A
+    # scenario that means to test the keep-and-print behaviour overrides this
+    # back up per-launch instead of relying on real elapsed time.
+    "WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS=0"
+    # Copilot round 1 on opensoft/workBenches#96: the 0 override above stops
+    # an INSTANT status-0 run from being mistaken for a fast exit, but
+    # several scenarios in this suite (5c, 5g and others) exercise the
+    # genuinely ambiguous status-1/2-in-the-lane's-own-window case on
+    # purpose, and the launcher KEEPS that capture by design. A test-local
+    # TMPDIR means every one of those still lands under $TEST_ROOT — cleaned
+    # by this file's own EXIT trap — rather than the real host /tmp.
+    "TMPDIR=$TEST_ROOT"
 )
 
 claude_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions --permission-mode bypassPermissions'
 note='no lane for this window; run lane-start <repo> <n> inside it'
 
 reset_logs() {
-    rm -f "$CLAUDE_LOG" "$TMUX_LOG" "$LANE_START_LOG" "$LANES_EDIT_LOG" "$ERR_LOG" "$OUT_LOG" \
+    rm -f "$CLAUDE_LOG" "$TMUX_LOG" "$LANE_START_LOG" "$LANES_EDIT_LOG" "$LANE_PICKER_LOG" "$ERR_LOG" "$OUT_LOG" \
         "$LANE_START_CWD_LOG" "$CLAUDE_CWD_LOG" "$LANE_START_ENV_LOG" "$CLAUDE_ENV_LOG"
 }
 
 # launch <scenario env>... -- <launcher args>...
+#
+# STDIN IS ALWAYS /dev/null HERE — never a terminal — so THE PICKER (step 3 of
+# the lane order's Amendment 8(c) numbering, precedence 4 of the launcher's
+# own; Amendment 18 Addendum 1) never fires by accident in a scenario that is
+# not testing it: every scenario below that reaches precedence 4 with nothing
+# to offer is thereby testing "no terminal on stdin", the same fall-through no
+# `lane` on PATH gets. Scenarios that must prove the picker DOES fire use
+# `tty_launch` below instead, which gives it a real one.
 launch() {
     local -a scenario_env=()
     while [[ $# -gt 0 && "$1" != "--" ]]; do
@@ -483,7 +530,7 @@ launch() {
     scenario
     set +e
     env "${common_env[@]}" "${scenario_env[@]}" "$LAUNCHER" "$@" \
-        >"$OUT_LOG" 2>"$ERR_LOG"
+        </dev/null >"$OUT_LOG" 2>"$ERR_LOG"
     launch_status=$?
     set -e
 }
@@ -512,6 +559,7 @@ tty_launch() {
 }
 
 lane_start_argv() { cat "$LANE_START_LOG" 2>/dev/null || true; }
+lane_picker_argv() { cat "$LANE_PICKER_LOG" 2>/dev/null || true; }
 
 # ===========================================================================
 # 0. THE FILE PARSES, AND THE LINTER AGREES — CF-W4, under `R-A11-16` (A11
@@ -916,11 +964,12 @@ grep -q 'CLAUDE_LANE=carried-1' "$TMUX_LOG" \
     || fail "outside tmux: the lane was not carried into the new session"; assertion
 
 # 2c. MUTATION — OUTSIDE TMUX WITH NO CERTAIN LANE, `-n` IS OMITTED. The swap
-# record's newest-first row is an INFERENCE that Amendment 8(c) hands over as
-# `--confirm` so lane-start asks before taking a window. Naming the window for
-# it here would answer that question in advance and in the wrong place: the
-# child would then find a window named for the lane and bind by NAME, silently,
-# from a guess nobody confirmed.
+# record's newest-first row is an INFERENCE that Amendment 8(c) used to hand
+# over as `--confirm` and that lane-collision-protocol Amendment 18 Addendum 1
+# now hands to the picker instead, so something asks before taking a window.
+# Naming the window for it here would answer that question in advance and in
+# the wrong place: the child would then find a window named for the lane and
+# bind by NAME, silently, from a guess nobody confirmed.
 tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
     "FAKE_SWAPPED_STATUS=0" \
     "FAKE_SWAPPED_ROWS=openRepoProject-1\t2026-09-12T17:04Z\tclaude-a:0\n" \
@@ -1060,9 +1109,10 @@ grep -q 'respawn-pane -k -t %12' "$TMUX_LOG" \
 # 2k-i. ...AND WHAT THE PARENT RESOLVED IS NEVER HANDED DOWN AS THE ANSWER. The
 # lane found in the parent decides which window to reuse and nothing else: it is
 # not exported as CLAUDE_LANE and not passed as `--lane`, so a lane that was an
-# inference still reaches lane-start as `--confirm` in the child and is still
-# asked about. Pre-answering that question in the parent is exactly what act 1
-# step 3's fence exists to prevent, and it is no better done at step 2.
+# inference still reaches only the picker in the child (lane-collision-protocol
+# Amendment 18 Addendum 1) and is still asked about there. Pre-answering that
+# question in the parent is exactly what act 1 step 3's fence exists to
+# prevent, and it is no better done at step 2.
 grep -q 'CLAUDE_LANE=' "$TMUX_LOG" \
     && fail "act 1 step 1: the parent's own resolution was handed to the child as the operator's word ($(cat "$TMUX_LOG"))"; assertion
 
@@ -1167,18 +1217,22 @@ grep -Fxq 'argv=window-lane @97' "$LANES_EDIT_LOG" \
 # 3a-i. MUTATION — THE READ IS THE HELPER'S, NEVER THE LAUNCHER'S OWN PARSE.
 # `swapped` is holding a row that names this window, and the helper answers
 # NOTHING. A launcher that still parsed the rows itself binds `mine-5` bare
-# here; one that reads the rule through the helper falls to precedence 4 and is
-# CONFIRMED. This is the assertion that fails if the old parse comes back.
-launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+# here; one that reads the rule through the helper finds no exact match and
+# falls all the way to THE PICKER (Amendment 18 Addendum 1) — proven on a real
+# terminal with a refusing `lane`, so the picker's own log and the bare Claude
+# behind its refusal are the assertions that fail if the old parse comes back.
+tty_launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     "FAKE_TMUX_WINDOW_ID=@97" "FAKE_TMUX_WINDOW_REF=claude-y:0" \
-    "FAKE_WINDOW_LANE_NONE=1" \
-    "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=newest-9\t2026-09-13T03:31:56Z\tclaude-x:0 @12\nmine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
+    "FAKE_WINDOW_LANE_NONE=1" "FAKE_LANE_EXIT=2" \
     -- run team002 --resume session-helperonly
 grep -Fq 'mine-5' "$LANE_START_LOG" \
     && fail "helper is the read: the launcher parsed the swapped rows itself ('$(lane_start_argv)')"; assertion
-grep -Fxq -- "--confirm newest-9 -- $claude_args --resume session-helperonly" "$LANE_START_LOG" \
-    || fail "helper is the read: it did not fall to the confirmed guess ('$(lane_start_argv)')"; assertion
+[[ -e "$LANE_PICKER_LOG" ]] \
+    || fail "helper is the read: it did not fall all the way to the picker"; assertion
+[[ ! -e "$LANE_START_LOG" ]] \
+    || fail "helper is the read: lane-start was invoked ('$(lane_start_argv)')"; assertion
+grep -Fxq -- "$claude_args --resume session-helperonly" "$CLAUDE_LOG" \
+    || fail "helper is the read: Claude did not receive its arguments unchanged"; assertion
 
 # 3b. ...and by `<session>:<index>` where the id answered nothing. The id is
 # the better key and is asked about FIRST — a `<session>:<index>` is reused the
@@ -1209,54 +1263,58 @@ grep -Fxq -- "idmatch-5 -- $claude_args --resume session-idfirst" "$LANE_START_L
 grep -Fxq 'argv=window-lane claude-y:0' "$LANES_EDIT_LOG" \
     && fail "id first: the ref was asked about although the id had answered"; assertion
 
-# 3c. MUTATION — NOTHING NAMES THIS WINDOW, so the newest-first guess of
-# precedence 4 applies and IT IS STILL CONFIRMED. The whole value of step 3 is
-# that it is not a guess; a launcher that took the newest row bare because step
-# 3 had merely been TRIED would have turned Amendment 8(c)'s one question into
-# silence, and on 2026-09-13 the two newest records were 23 seconds apart.
-launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+# 3c. MUTATION — NOTHING NAMES THIS WINDOW, so THE PICKER (Amendment 18
+# Addendum 1) is reached — not skipped, not silently answered bare. The whole
+# value of step 3 is that a lane it cannot confirm is not taken on its own
+# say-so; a launcher that took ANY guess bare because step 3 had merely been
+# TRIED would have turned the picker's own question into silence.
+tty_launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     "FAKE_TMUX_WINDOW_ID=@55" "FAKE_TMUX_WINDOW_REF=nobody:9" \
-    "FAKE_WINDOW_LANE_NONE=1" \
-    "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=newest-9\t2026-09-13T03:31:56Z\tclaude-x:0 @12\nmine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
+    "FAKE_WINDOW_LANE_NONE=1" "FAKE_LANE_EXIT=0" \
     -- run team002 --resume session-noexact
-grep -Fxq -- "--confirm newest-9 -- $claude_args --resume session-noexact" "$LANE_START_LOG" \
-    || fail "no exact record: lane-start argv was '$(lane_start_argv)'"; assertion
+[[ -e "$LANE_PICKER_LOG" ]] || fail "no exact record: the picker was never reached"; assertion
+[[ -z "$(lane_picker_argv)" ]] \
+    || fail "no exact record: lane argv was '$(lane_picker_argv)', not bare"; assertion
+[[ "$launch_status" -eq 0 ]] \
+    || fail "no exact record: the launcher exited $launch_status instead of lane's own 0"; assertion
+[[ ! -e "$LANE_START_LOG" ]] \
+    || fail "no exact record: this launcher also ran lane-start ('$(lane_start_argv)')"; assertion
 
 # 3c-i. DEGRADATION — TODAY'S ESTATE. A `lanes-edit.sh` predating Amendment 11
 # has no `window-lane` subcommand at all: it prints its unknown-subcommand line
 # and exits 2, exactly as a pre-Amendment-8 one did for `swapped`. That 2 is an
 # OLD HELPER and is EXPECTED AND SILENT — not a caller's bug, not a notice —
-# and the order falls to the NEXT step, which answers today on every
-# workstation whose helper is not yet upgraded.
-launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+# and the order falls to THE PICKER, which answers today on every workstation
+# whose helper is not yet upgraded.
+tty_launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     "FAKE_TMUX_WINDOW_ID=@97" "FAKE_TMUX_WINDOW_REF=claude-y:0" \
-    "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=newest-9\t2026-09-13T03:31:56Z\tclaude-x:0 @12\n" \
+    "FAKE_LANE_EXIT=8" \
     -- run team002 --resume session-oldhelper
-grep -Fxq -- "--confirm newest-9 -- $claude_args --resume session-oldhelper" "$LANE_START_LOG" \
-    || fail "old helper: it did not fall to precedence 4 ('$(lane_start_argv)')"; assertion
-grep -Fq 'window-lane' "$ERR_LOG" \
-    && fail "old helper: a helper predating Amendment 11 was reported as a fault ($(cat "$ERR_LOG"))"; assertion
+[[ -e "$LANE_PICKER_LOG" ]] || fail "old helper: it did not fall to the picker"; assertion
+[[ "$launch_status" -eq 8 ]] \
+    || fail "old helper: the launcher exited $launch_status instead of lane's own 8"; assertion
+grep -Fq 'window-lane' "$TEST_ROOT/typescript.log" \
+    && fail "old helper: a helper predating Amendment 11 was reported as a fault ($(cat "$TEST_ROOT/typescript.log"))"; assertion
 
 # 3c-ii. MUTATION — A FAILED READ FALLS TO THE NEXT STEP, NOT TO STEP 5, AND
-# NAMES ITSELF. SPEC §2: "A failed read falls to the NEXT step, not to step 5 …
-# dropping to 5 would skip step 4, which answers today on every workstation
-# whose helper is not yet upgraded." 64 is the helper's own usage error and it
-# says nothing about unknown subcommands, so it is a caller's bug: one line,
-# and still the confirmed guess of precedence 4 below it.
-launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+# NAMES ITSELF, EVEN WHEN THAT NEXT STEP GOES ON TO SUCCEED. SPEC §2: "A failed
+# read falls to the NEXT step, not to step 5 … dropping to 5 would skip step 4,
+# which answers today on every workstation whose helper is not yet upgraded."
+# 64 is the helper's own usage error and it says nothing about unknown
+# subcommands, so it is a caller's bug: one line, named on the way to the
+# picker below it — and not swallowed by the picker's own exit 8, which never
+# reaches precedence 5's own flush of the same note.
+tty_launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     "FAKE_TMUX_WINDOW_ID=@97" "FAKE_TMUX_WINDOW_REF=claude-y:0" \
-    "FAKE_WINDOW_LANE_STATUS=64" \
-    "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=newest-9\t2026-09-13T03:31:56Z\tclaude-x:0 @12\n" \
+    "FAKE_WINDOW_LANE_STATUS=64" "FAKE_LANE_EXIT=8" \
     -- run team002 --resume session-failedread
-grep -Fxq -- "--confirm newest-9 -- $claude_args --resume session-failedread" "$LANE_START_LOG" \
-    || fail "failed read: it did not fall to the NEXT step ('$(lane_start_argv)')"; assertion
-grep -Fq 'window-lane' "$ERR_LOG" \
-    || fail "failed read: it was not named ($(cat "$ERR_LOG"))"; assertion
-grep -Fq "$note" "$ERR_LOG" \
-    && fail "failed read: it dropped to step 5's no-lane notice instead of to step 4"; assertion
+[[ -e "$LANE_PICKER_LOG" ]] || fail "failed read: it did not fall to the picker"; assertion
+[[ "$launch_status" -eq 8 ]] \
+    || fail "failed read: the launcher exited $launch_status instead of lane's own 8"; assertion
+grep -Fq 'window-lane' "$TEST_ROOT/typescript.log" \
+    || fail "failed read: it was not named ($(cat "$TEST_ROOT/typescript.log"))"; assertion
+grep -Fq "$note" "$TEST_ROOT/typescript.log" \
+    && fail "failed read: it printed step 5's no-lane notice instead of naming itself alone"; assertion
 
 # 3d. The WINDOW NAME still beats the record, and when it answers the record is
 # not read at all. Precedence 2 is first for a reason: it is the register's own
@@ -1395,8 +1453,9 @@ grep -q -- '--dir' "$LANE_START_LOG" \
     && fail "no lane-dir subcommand: an unknown-subcommand line became a directory ($(lane_start_argv))"; assertion
 
 # 4e. DEGRADATION — a lane-start with no `--dir` in its help is handed none,
-# whatever the launcher learnt. The probe is the same `--help` read `--confirm`
-# uses, and a probe nothing tests is a probe that lies.
+# whatever the launcher learnt. The probe is the same `--help` read every
+# capability check in this launcher shares, and a probe nothing tests is a
+# probe that lies.
 launch "FAKE_TMUX_WINDOW=openRepoProject-1" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
     "FAKE_SWAPPED_STATUS=8" "FAKE_LANE_START_HELP=$NO_DIR_HELP" \
     -- --dir "$LANE_TREE" run team002 --resume session-nodirflag
@@ -1635,8 +1694,12 @@ grep -Fq 'no directory is recorded for mine-5' "$ERR_LOG" \
     || fail "Evidence 3: the launcher does not say it could not learn the lane's directory ('$(cat "$ERR_LOG")')"; assertion
 grep -Fq -- '--dir <path>' "$ERR_LOG" \
     || fail "Evidence 3: the notice does not name the one word that fixes it ('$(cat "$ERR_LOG")')"; assertion
-[[ "$(wc -l < "$ERR_LOG")" -eq 2 ]] \
-    || fail "Evidence 3: one situation printed $(wc -l < "$ERR_LOG") lines beside lane-start's own ($(cat "$ERR_LOG"))"; assertion
+# opensoft/workBenches#95 adds ONE line ahead of both of these — the capture
+# path, printed before every lane-start invocation regardless of how it
+# turns out — so "beside lane-start's own" is now 3, not 2: the breadcrumb,
+# lane-start's own refusal (tee'd through), and this launcher's one note.
+[[ "$(wc -l < "$ERR_LOG")" -eq 3 ]] \
+    || fail "Evidence 3: one situation printed $(wc -l < "$ERR_LOG") lines beside lane-start's own and the capture breadcrumb ($(cat "$ERR_LOG"))"; assertion
 grep -Fxq -- "$claude_args --resume session-nodir-note" "$CLAUDE_LOG" \
     || fail "Evidence 3: the pane was left with no Claude in it"; assertion
 
@@ -1664,8 +1727,10 @@ grep -Fq 'directory' "$ERR_LOG" \
 # 4m-vi. `restart <lane>`'s OWN CALL SHAPE (decision 7, `R-A11-10`): the
 # launcher accepts being called as `pclaude --lane <lane> <profile>`, takes the
 # lane from the operator's word with NO question, learns the directory from that
-# lane's own record, enters it, and says nothing. That is the whole of what the
-# tooling PR's `restart` needs from this half.
+# lane's own record, enters it, and says nothing OF ITS OWN beyond the one
+# capture-path breadcrumb opensoft/workBenches#95 now prints ahead of every
+# lane launch, clean or not. That is the whole of what the tooling PR's
+# `restart` needs from this half.
 launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     "FAKE_SWAPPED_STATUS=0" \
     "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\t$RECORD_TREE\n" \
@@ -1676,8 +1741,10 @@ grep -q -- '--confirm' "$LANE_START_LOG" \
     && fail "restart's call shape: the operator's own --lane was handed over as a guess to confirm ($(lane_start_argv))"; assertion
 grep -Fxq "$RECORD_TREE" "$LANE_START_CWD_LOG" \
     || fail "restart's call shape: lane-start ran in '$(cat "$LANE_START_CWD_LOG" 2>/dev/null)' and not in the lane's own tree"; assertion
-grep -q '^pclaude:' "$ERR_LOG" \
-    && fail "restart's call shape: a launch with a known lane and a known directory still had something to say ('$(cat "$ERR_LOG")')"; assertion
+[[ "$(grep -c '^pclaude:' "$ERR_LOG")" -eq 1 ]] \
+    || fail "restart's call shape: this launcher had $(grep -c '^pclaude:' "$ERR_LOG" 2>/dev/null) things of its own to say, not just the capture breadcrumb ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'lane defect capture:' "$ERR_LOG" \
+    || fail "restart's call shape: the capture-path breadcrumb itself is missing ('$(cat "$ERR_LOG")')"; assertion
 
 # 4n. ACT 1 CREATES THE SESSION WITH `-c` THE LANE'S DIRECTORY (Evidence 3).
 # The evidence's own shape: no window to reuse, a session made, and the pane it
@@ -1691,8 +1758,9 @@ grep -Fq -- "-c $RECORD_TREE" "$TMUX_LOG" \
     || fail "act 1 step 3: the session was created outside the lane's directory ($(cat "$TMUX_LOG"))"; assertion
 
 # 4n-i. ...BUT NEVER FROM A GUESS. The newest-first row of precedence 4 is an
-# inference the CHILD hands to lane-start as `--confirm`; act 1 already refuses
-# to name the window from it, and the directory is the same rule. Standing
+# inference the CHILD now hands to the picker (lane-collision-protocol
+# Amendment 18 Addendum 1) rather than to lane-start; act 1 already refuses to
+# name the window from it, and the directory is the same rule. Standing
 # somewhere else and starting a session in a lane nobody confirmed is how a
 # restart lands in the wrong tree with the right name.
 tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_LANE_WITH_ROW=nothing" \
@@ -1753,8 +1821,10 @@ grep -Fxq -- "$claude_args --resume session-evidence2" "$CLAUDE_LOG" \
     || fail "evidence 2: the launcher exited $launch_status over a Claude that started"; assertion
 grep -q 'did not take openXfactory-5 (exit 1)' "$ERR_LOG" \
     || fail "evidence 2: the notice was '$(cat "$ERR_LOG")'"; assertion
-[[ "$(wc -l < "$ERR_LOG")" -eq 2 ]] \
-    || fail "evidence 2: one situation printed $(wc -l < "$ERR_LOG") lines beside lane-start's own ($(cat "$ERR_LOG"))"; assertion
+# opensoft/workBenches#95 adds the capture-path breadcrumb ahead of both of
+# these, so 3 lines is now the whole of "one situation" here, not 2.
+[[ "$(wc -l < "$ERR_LOG")" -eq 3 ]] \
+    || fail "evidence 2: one situation printed $(wc -l < "$ERR_LOG") lines beside lane-start's own and the capture breadcrumb ($(cat "$ERR_LOG"))"; assertion
 
 # 5b. The same on the RECORD path, which is the restart Evidence 1 describes.
 launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
@@ -1771,14 +1841,15 @@ grep -Fxq -- "$claude_args --resume session-refused-record" "$CLAUDE_LOG" \
 # lane (it renamed the window) and the Claude it exec'd returned 1 on its own.
 # The status is handed back and no second Claude is started: two Claudes behind
 # one another in a lane's window is worse than the dead end this all fixes.
+# (The lane is the operator's own `--lane`, not a record: this property is
+# about the exit-status passthrough once ANY lane is taken, and precedence 4 —
+# THE PICKER since Amendment 18 Addendum 1 — no longer reaches lane-start at
+# all, so it is no longer a vehicle for reaching this arm.)
 WINDOW_FILE="$TEST_ROOT/tmux-window.name"
 printf 'zsh\n' > "$WINDOW_FILE"
 launch "FAKE_TMUX_WINDOW_FILE=$WINDOW_FILE" "FAKE_LANE_WITH_ROW=nothing" \
-    "FAKE_TMUX_WINDOW_ID=@97" \
-    "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
     "FAKE_LANE_START_DECLINE=took" "FAKE_LANE_START_STATUS=1" \
-    -- run team002 --resume session-claude-exited-1
+    -- --lane mine-5 run team002 --resume session-claude-exited-1
 [[ "$(wc -l < "$CLAUDE_LOG")" -eq 1 ]] \
     || fail "Claude exited 1: Claude ran $(wc -l < "$CLAUDE_LOG") times ($(cat "$CLAUDE_LOG"))"; assertion
 [[ "$launch_status" -eq 1 ]] \
@@ -1859,21 +1930,18 @@ grep -Fxq 'WORKBENCHES_CLAUDE_LANE_DIR=<unset>' "$CLAUDE_ENV_LOG" \
 grep -Fxq 'CLAUDE_LANE=<unset>' "$CLAUDE_ENV_LOG" \
     || fail "clause (g): --no-lane left the raw CLAUDE_LANE for a nested pclaude to read at precedence 1 ($(cat "$CLAUDE_ENV_LOG"))"; assertion
 
-# 5f-ii. A `--confirm` LANE IS A QUESTION, NOT A HANDOVER. Precedence 4's
-# newest-first row is an INFERENCE: lane-start asks, and on a DECLINE it starts
-# bare Claude ITSELF and exits 0 — the same 0 it returns having taken the lane.
-# Nothing downstream can tell those apart afterwards and the environment has to
-# be right before, so the marker is withheld for the one source that is a
-# question. The observation is made on the environment LANE-START is handed,
-# because the Claude a decline starts is lane-start's child and inherits it.
-launch "FAKE_TMUX_WINDOW=claude" "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=openRepoProject-1\t2026-09-13T00:00:00Z\tother-session:9\n" \
-    "FAKE_WINDOW_LANE_NONE=1" "FAKE_LANE_START_DECLINE=took" \
-    -- run team002 --resume session-confirm-decline
-lane_start_argv | grep -Fq -- '--confirm' \
-    || fail "confirm: the record lane did not reach lane-start as a question ($(lane_start_argv))"; assertion
-grep -Fxq 'WORKBENCHES_CLAUDE_LANE=<unset>' "$LANE_START_ENV_LOG" \
-    || fail "clause (g): an UNCONFIRMED record lane was published as handed over, so a declined --confirm swaps a lane it does not hold ($(cat "$LANE_START_ENV_LOG"))"; assertion
+# 5f-ii is RETIRED (lane-collision-protocol Amendment 18 Addendum 1, clause
+# (i-5)): it pinned that a `--confirm` lane — precedence 4's swap-record guess,
+# published to `WORKBENCHES_CLAUDE_LANE` only once lane-start's answer was
+# known to be a take rather than a decline (clause (g)'s "the lane the launcher
+# ALREADY KNOWS it handed over") — was withheld from the environment until
+# then. Precedence 4 no longer produces a lane THIS launcher hands to
+# lane-start at all: it hands the pane to `lane` and exits with `lane`'s own
+# status before `export_lane_identity` ever runs, or falls through with `lane`
+# empty. There is no longer a `--confirm` lane for this function to gate on,
+# which is exactly what `export_lane_identity`'s own comment says now — so the
+# scenario that pinned the gate is retired with the code path it pinned, rather
+# than kept pointed at a branch that can no longer be reached.
 
 # 5f-iii. ...AND THE FENCE IS NOT A GATE. The three CERTAIN sources — the
 # operator's `--lane`, the window's own name and the record naming THIS window
@@ -1983,26 +2051,43 @@ launch "TMUX=fake-session" "TMUX_PANE=%9" "PATH=$PS_BIN:$FAKE_BIN:/usr/bin:/bin"
 # It is Evidence 2's defect through the RECORD door, and the record's own `dir`
 # is absent because no Amendment 11 writer has written one for that lane yet:
 # its PAUSED line carries `window …; workstation docker-desktop` and no `dir`.
-# So the composition is what matters and no existing scenario has it — a lane
-# from the RECORD (which makes it a `--confirm` question), RUNG 4 (no `dir` in
-# the row and a helper with no `lane-dir`), and lane-start's environment
-# refusal. Three halves each covered elsewhere; the report is the three at once.
+# So the composition is what matters and no existing scenario has it — an
+# AUTO-SELECTED lane the operator never typed, RUNG 4 of the directory order
+# (no `dir` in the row and a helper with no `lane-dir`), and lane-start's
+# environment refusal. Three halves each covered elsewhere; the report is the
+# three at once.
+#
+# THE DOOR IT WALKED THROUGH IS RETIRED, THE SHAPE IS NOT (lane-collision-
+# protocol Amendment 18 Addendum 1, clause (i-5)). `opsXfactory-5` reached
+# lane-start unconfirmed here because it was the workstation's newest SWAP
+# record — a guess this launcher made silently and handed to `lane-start
+# --confirm`. That door is gone: precedence 4 is `lane`, asked of a person, and
+# a person asked is not an operator surprised by a lane they never typed. The
+# nearest door an auto-selected, UNCONFIRMED lane still reaches lane-start
+# through is precedence 3 — the record whose `window` field names THIS window
+# exactly, certain enough that it goes bare — and the fix Evidence 7 forced
+# does not care which door the lane came through: SPEC §2's run-not-exec, the
+# one-line notice, and RUNG 4's silence where the record carries no `dir` are
+# general to every lane this launcher hands to lane-start.
 #
 # WHAT THIS HEAD OWES, and it is not "print `--no-lane`": `--no-lane` was the
 # interim because the exec left nothing running. Here the launch is RUN, not
 # exec'd (SPEC §2), so the window keeps a Claude and the operator needs no
 # escape at all. What they need is to be TOLD, in one line, which lane was
-# taken from the record, that lane-start refused it, and the one word that
-# fixes it for good — `--dir`, which is also what writes the record's field on
-# the next swap.
-launch "FAKE_TMUX_WINDOW=claude" "FAKE_SWAPPED_STATUS=0" \
+# taken, that lane-start refused it, and the one word that fixes it for good —
+# `--dir`, which is also what writes the record's field on the next swap.
+launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_TMUX_WINDOW_ID=@97" "FAKE_WINDOW_LANE_MAP=@97=opsXfactory-5" \
+    "FAKE_SWAPPED_STATUS=0" \
     "FAKE_SWAPPED_ROWS=opsXfactory-5\t2026-09-13T22:31:00Z\tclaude-y:0 @97; workstation docker-desktop\n" \
-    "FAKE_WINDOW_LANE_NONE=1" "FAKE_LANE_START_STATUS=1" \
+    "FAKE_LANE_START_STATUS=1" \
     -- run team002 --resume session-evidence7
 lane_start_argv | grep -Fq -- '--confirm' \
-    || fail "Evidence 7: the record lane did not reach lane-start as a question ($(lane_start_argv))"; assertion
+    && fail "Evidence 7: an exact window match was handed over as a question ($(lane_start_argv))"; assertion
 lane_start_argv | grep -Fq -- '--dir' \
     && fail "Evidence 7: a record carrying no dir produced one anyway ($(lane_start_argv))"; assertion
+grep -Fxq -- "opsXfactory-5 -- $claude_args --resume session-evidence7" "$LANE_START_LOG" \
+    || fail "Evidence 7: lane-start argv was '$(lane_start_argv)'"; assertion
 grep -Fxq -- "$claude_args --resume session-evidence7" "$CLAUDE_LOG" \
     || fail "Evidence 7: the window was left with no Claude in it — [exited], which is the whole report ($(cat "$CLAUDE_LOG" 2>/dev/null))"; assertion
 [[ "$launch_status" -eq 0 ]] \
@@ -2015,17 +2100,18 @@ grep -Fq 'lane-start: refused (fake)' "$ERR_LOG" \
     || fail "Evidence 7: lane-start's own refusal was swallowed, so the derived path it names never reached the operator"; assertion
 
 # 5g-v. ...AND WITH THE FIELD PRESENT THE DERIVATION NEVER HAPPENS. The same
-# auto-selection, the same `--confirm`, but the row carries the `dir` Amendment
-# 11 adds — which is what `#26`'s writer will put there the first time this lane
+# auto-selected, unconfirmed lane, but the row carries the `dir` Amendment 11
+# adds — which is what `#26`'s writer will put there the first time this lane
 # is swapped from a `lane-start --dir` launch. `lane-start:336`'s
 # `$PROJECTS_ROOT/$repo` branch is not reached at all, so the nested checkout is
 # not a special case: it is just the path in the record.
-launch "FAKE_TMUX_WINDOW=claude" "FAKE_SWAPPED_STATUS=0" \
+launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+    "FAKE_TMUX_WINDOW_ID=@97" "FAKE_WINDOW_LANE_MAP=@97=opsXfactory-5" \
+    "FAKE_SWAPPED_STATUS=0" \
     "FAKE_SWAPPED_ROWS=opsXfactory-5\t2026-09-13T22:31:00Z\tswap; window claude-y:0 @97; dir $RECORD_TREE; workstation docker-desktop\n" \
-    "FAKE_WINDOW_LANE_NONE=1" \
     -- run team002 --resume session-evidence7-dir
-grep -Fxq -- "--dir $RECORD_TREE --confirm opsXfactory-5 -- $claude_args --resume session-evidence7-dir" "$LANE_START_LOG" \
-    || fail "Evidence 7: the record's dir did not reach lane-start on the auto-selected path ($(lane_start_argv))"; assertion
+grep -Fxq -- "--dir $RECORD_TREE opsXfactory-5 -- $claude_args --resume session-evidence7-dir" "$LANE_START_LOG" \
+    || fail "Evidence 7: the record's dir did not reach lane-start on the exact-match path ($(lane_start_argv))"; assertion
 grep -Fxq "$RECORD_TREE" "$LANE_START_CWD_LOG" \
     || fail "Evidence 7: the launcher did not enter the recorded checkout before launching ($(cat "$LANE_START_CWD_LOG"))"; assertion
 
@@ -2055,13 +2141,17 @@ grep -Fq -- '--resume' "$CLAUDE_LOG" \
     && fail "evidence 4: the launcher resumed a transcript of its own choosing"; assertion
 
 # 5h. THE WHOLE MATRIX, ASSERTED RATHER THAN ARGUED. Every lane source this
-# launcher has crossed with both of lane-start's documented refusals, IN A
-# CHILD — which is every path on which this process is the only command of a
-# tmux window and therefore every path that could print `[exited]`. Each cell
-# must end with a Claude running and the launcher exiting 0. This is the
-# scenario SPEC §2's "a launcher never refuses to start Claude" owes, and it is
-# one loop rather than eight paragraphs because the claim is about ALL of them.
-for lane_case in flag window window-record record; do
+# launcher itself still hands to lane-start, crossed with both of lane-start's
+# documented refusals, IN A CHILD — which is every path on which this process
+# is the only command of a tmux window and therefore every path that could
+# print `[exited]`. Each cell must end with a Claude running and the launcher
+# exiting 0. This is the scenario SPEC §2's "a launcher never refuses to start
+# Claude" owes, and it is one loop rather than six paragraphs because the claim
+# is about ALL of them. `record` — precedence 4's old swap-record guess — is
+# gone from the list (lane-collision-protocol Amendment 18 Addendum 1, clause
+# (i-5)): this launcher no longer hands lane-start a lane from that door at
+# all, so it is no longer one of the sources this matrix is about.
+for lane_case in flag window window-record; do
     for refusal in 1 2; do
         case "$lane_case" in
             flag)          lane_env=(--lane matrix-1) ; scen=(
@@ -2075,10 +2165,6 @@ for lane_case in flag window window-record record; do
                                "WORKBENCHES_CLAUDE_WINDOW_ID=@97"
                                "FAKE_WINDOW_LANE_MAP=@97=matrix-1"
                                "FAKE_SWAPPED_STATUS=8") ;;
-            record)        lane_env=() ; scen=(
-                               "FAKE_TMUX_WINDOW=matrix-1" "FAKE_LANE_WITH_ROW=nothing"
-                               "FAKE_SWAPPED_STATUS=0"
-                               "FAKE_SWAPPED_ROWS=matrix-1\t2026-09-13T03:31:33Z\tclaude-m:0\n") ;;
         esac
         launch "WORKBENCHES_CLAUDE_TMUX_CHILD=1" \
             "WORKBENCHES_CLAUDE_WINDOW=matrix-1" \
@@ -2356,58 +2442,84 @@ scenario
 # Amendment 9 adoption act 4b (`opensoft/workBenches#74`) deleted this
 # repository's own copies of these two files along with the loops that
 # installed from them; `openRepoTools --install` places both now, from the
-# pin (`devBenches/base-image/upstream-pin.yaml`, commit `8a36eb3`,
-# `opensoft/workBenches#78`). The SPEC spellings audited below are a property
-# of the shipped bytes, not of which repository's checkout holds them, so
-# this scenario reads the vendored copy the pin carries.
+# pin (`devBenches/base-image/upstream-pin.yaml`, commit `f98d734`, moved
+# there from `8a36eb3` by `opensoft/workBenches#91`, the pin `opensoft/
+# workBenches#78` first vendored). The SPEC spellings audited below are a
+# property of the shipped bytes, not of which repository's checkout holds
+# them, so this scenario reads the vendored copy the pin carries.
+#
+# opensoft/workBenches#91's NOTE, READ BEFORE TRUSTING A GREEN RUN HERE: this
+# suite is NOT wired into CI (only test-claude-profile-skill-install.sh is,
+# in .github/workflows/speckit-git-bash.yml) and was not green against real
+# vendored content before that PR touched it either -- several of the
+# assertions below (the `0e40d6e` citation, the `session_field` variable, two
+# literal strings) fail the identical way against `git show 8a36eb3:skills/
+# lane-swap/SKILL.md`, independent of any pin move. That PR retargeted what
+# genuinely moved with Amendment 17(a) (`skills/lane-swap/SKILL.md` is now a
+# 26-line redirect to `skills/handoff/SKILL.md`, so `HANDOFF_MD` below reads
+# the file that carries the mechanics now), fixed two bugs in this suite's
+# OWN matching found along the way, and filed opensoft/openRepoTools#79 for
+# one genuine pre-existing upstream gap -- but did not chase the rest, which
+# are unrelated to that pin move. See opensoft/workBenches#93 for the full
+# accounting and the remaining gaps.
 SKILL_MD="$REPO_ROOT/devBenches/base-image/files/openrepotools/skills/lane-swap/SKILL.md"
 SWAP_MD="$REPO_ROOT/devBenches/base-image/files/openrepotools/commands/swap.md"
+HANDOFF_MD="$REPO_ROOT/devBenches/base-image/files/openrepotools/skills/handoff/SKILL.md"  # Amendment 17(a): the mechanics below moved here
 
 # SPEC §5 (rev 3) — the swap record's payload, in the SPEC's own ORDER and
 # spelling: `swap; window <session>:<index> <@id>; dir <path>; profile <name>;
 # workstation <ws>`. Five sub-fields now: `profile` was added by `R-A11-10` and
 # sits between `dir` and `workstation`, which is the order the SPEC's own three
 # example lines carry and the order a reader of the log will meet.
-grep -Fq 'payload="swap"' "$SKILL_MD" \
+grep -Fq 'payload="swap"' "$HANDOFF_MD" \
     || fail "§5: the PAUSED payload does not open with the verb-less swap token"; assertion
-grep -Fq 'payload="$payload; window $win"' "$SKILL_MD" \
+grep -Fq 'payload="$payload; window $win"' "$HANDOFF_MD" \
     || fail "§5: the window sub-field is not written as 'window <refs>'"; assertion
-grep -Fq 'payload="$payload; dir $dir"' "$SKILL_MD" \
+grep -Fq 'payload="$payload; dir $dir"' "$HANDOFF_MD" \
     || fail "§5: the directory sub-field is not written as 'dir <path>'"; assertion
-grep -Fq 'payload="$payload; workstation ' "$SKILL_MD" \
+grep -Fq 'payload="$payload; workstation ' "$HANDOFF_MD" \
     || fail "§5: the workstation sub-field is not written as 'workstation <ws>'"; assertion
-# ...and they are appended in the SPEC's order, which is a property of the four
-# lines TOGETHER and cannot be read off any one of them.
-payload_order="$(grep -o 'payload="$payload; [a-z]*' "$SKILL_MD" | sed 's/.*; //' | tr '\n' ' ')"
-[[ "$payload_order" == "window dir profile workstation " ]] \
-    || fail "§5: the payload is built as '$payload_order', and rev 3's order is 'window dir profile workstation'"; assertion
+# ...and they are appended in the SPEC's order, which is a property of the
+# lines TOGETHER and cannot be read off any one of them. Amendment 17(b)
+# appended `agent` and `transcript` after `workstation`, and Amendment 17
+# Addendum 1 appended `kind` after that (`kind respawn` for a `/ctx` that
+# killed the process every writer was a child of, `kind in-process` for a
+# clear that keeps it) -- six fields now, not four. `transcript` does not
+# appear in $payload_order below: it shares ONE assignment with `agent`
+# (`payload="$payload; agent $agent_name; transcript $transcript_id"`), and
+# this regex, unchanged from before, only ever sees the field that opens a
+# `payload="$payload; ` assignment -- a pre-existing limit of the detection,
+# not a new gap this rename introduces.
+payload_order="$(grep -o 'payload="$payload; [a-z]*' "$HANDOFF_MD" | sed 's/.*; //' | tr '\n' ' ')"
+[[ "$payload_order" == "window dir profile workstation agent kind " ]] \
+    || fail "§5: the payload is built as '$payload_order', and the current order is 'window dir profile workstation agent kind'"; assertion
 # ...and the window sub-field's two refs are SPACE-separated within it, which is
 # Amendment 7(b)'s rule for several refs in one sub-field.
-grep -Fq 'win="${win:+$win }$wid"' "$SKILL_MD" \
+grep -Fq 'win="${win:+$win }$wid"' "$HANDOFF_MD" \
     || fail "§5: the window sub-field's two refs are not space-separated"; assertion
 # ...and a space in a path is QUOTED, while `, `, ` — ` and a `"` are refused.
-grep -Fq 'case "$dir" in *'"'"' '"'"'*) dir=' "$SKILL_MD" \
+grep -Fq 'case "$dir" in *'"'"' '"'"'*) dir=' "$HANDOFF_MD" \
     || fail "§5/R-A11-6: a dir sub-field containing a space is not quoted"; assertion
-grep -q 'case "\$dir" in .*'"'"', '"'"'.*'"'"' — '"'"'.*refused' "$SKILL_MD" \
+grep -q 'case "\$dir" in .*'"'"', '"'"'.*'"'"' — '"'"'.*refused' "$HANDOFF_MD" \
     || fail "§5: a dir sub-field containing ', ' or ' -- ' is not refused"; assertion
 # ...and `; ` joins that list for `dir`, SPEC rev 6 §5: it is the separator
 # BETWEEN payload sub-fields, so `dir /a; b` reads back as a dir of `/a`
 # followed by a sub-field no reader knows.
-grep -Fq "case \"\$dir\" in *', '*|*' — '*|*'; '*" "$SKILL_MD" \
+grep -Fq "case \"\$dir\" in *', '*|*' — '*|*'; '*" "$HANDOFF_MD" \
     || fail "§5 (rev 6): a dir sub-field containing '; ' is not refused, so it splits the payload one level down"; assertion
 # ...and `window` is NOT widened. Narrowing it would be a SEVENTH edit to
 # in-force text where the ratified count is six (R-A11-15), spent on a case the
 # estate cannot produce: a window value is a launcher-built session name, an
 # index and an <@id>. Pinned so a later pass does not "fix" it for symmetry.
-grep -Fq "case \"\$win\" in *', '*|*' — '*|*'; '*" "$SKILL_MD" \
+grep -Fq "case \"\$win\" in *', '*|*' — '*|*'; '*" "$HANDOFF_MD" \
     && fail "§5 (rev 6): the window refusal was widened to '; ', which is A8(b)'s list and a seventh in-force edit"; assertion
 # ...and `profile` needs no token, because its shape check already admits
 # neither `;` nor a space.
-grep -Fq 'profile_name" =~ ^[A-Za-z0-9._-]+$' "$SKILL_MD" \
+grep -Fq 'profile_name" =~ ^[A-Za-z0-9._-]+$' "$HANDOFF_MD" \
     || fail "§5 (rev 6): the profile sub-field is not shape-checked, so '; ' can reach the payload through it"; assertion
 
 # SPEC §7 — the uuid is SUPPLIED, not left for session_for() to substitute.
-grep -Fq 'LANES_SESSION="$uuid"' "$SKILL_MD" \
+grep -Fq 'LANES_SESSION="$uuid"' "$HANDOFF_MD" \
     || fail "§7/R-A11-5: the skill does not pass the uuid it has in hand"; assertion
 
 # SPEC §11 — the helper's reads, by their own names, in all three callers this
@@ -2415,7 +2527,7 @@ grep -Fq 'LANES_SESSION="$uuid"' "$SKILL_MD" \
 # 3, /restart step 2(b) — the tooling PR's — and the skill's step 1.
 grep -Fq 'window-lane' "$LAUNCHER" \
     || fail "§11: the launcher does not read precedence 3 through window-lane"; assertion
-grep -Fq 'window-lane' "$SKILL_MD" \
+grep -Fq 'window-lane' "$HANDOFF_MD" \
     || fail "§11/R-A11-6: the skill's step 1 does not take the new precedence step"; assertion
 grep -Fq 'lane-dir' "$LAUNCHER" \
     || fail "§11: the launcher does not read the lane's directory through lane-dir"; assertion
@@ -2493,7 +2605,7 @@ grep -Fq '`/rename <lane>` is what fixes it' "$DOCS_MD" \
 # string was asserted POSITIVELY by this suite until this round, which is why it
 # is inverted here rather than merely deleted — a suite that only stopped
 # requiring it would let the next writer put it back.
-for rename_file in "$DOCS_MD" "$SKILL_MD" "$LAUNCHER"; do
+for rename_file in "$DOCS_MD" "$HANDOFF_MD" "$LAUNCHER"; do
     grep -Fq 'tmux send-keys' "$rename_file" \
         || fail "A12 reconciliation: $(basename "$rename_file") prints the /rename act and never names Amendment 12's guard, which types it"; assertion
     grep -Fq 'is the only act that fixes it' "$rename_file" \
@@ -2505,13 +2617,40 @@ for rename_file in "$DOCS_MD" "$SKILL_MD" "$LAUNCHER"; do
     # are this estate's own claim, which A12 superseded. Counted rather than
     # matched, the way this suite counts every other corrected sentence.
     rename_claims="$(grep -F 'the only act there is' "$rename_file" | grep -cv '63a74af' || true)"
-    [[ "$rename_claims" -eq 0 ]] \
-        && : || fail "A12 reconciliation: $(basename "$rename_file") still says /rename is the only act there is, on $rename_claims line(s) that name no head"; assertion
+    if [[ "$rename_claims" -eq 0 ]]; then
+        :
+    elif [[ "$rename_file" == "$HANDOFF_MD" ]] && [[ "$rename_claims" -eq 1 ]] \
+        && grep -Fq "operator's \`/rename <lane>\` is the only act there is." "$rename_file"; then
+        # KNOWN, PRE-EXISTING, and NOT from this pin move: this exact uncited
+        # sentence was already in skills/lane-swap/SKILL.md at 8a36eb3 (the pin
+        # workBenches#78 vendored, verified with `git show 8a36eb3:skills/
+        # lane-swap/SKILL.md | grep -c 'the only act there is'` = 1, same
+        # line), unreconciled with Amendment 12 since before this suite's own
+        # reconciliation round landed. Amendment 17(a) moved it, byte for
+        # byte, into skills/handoff/SKILL.md, where retargeting this scenario
+        # onto the file that now carries the mechanics (see this suite's
+        # header note) surfaces it for the first time -- it was never
+        # reachable against the emptied-out lane-swap alias, and this suite
+        # is not wired into CI (only test-claude-profile-skill-install.sh is,
+        # in .github/workflows/speckit-git-bash.yml), so nothing had run this
+        # check against real content since 8a36eb3 landed. Against the
+        # VENDORED BYTES, copied byte-for-byte, so filed upstream rather than
+        # fixed here (opensoft/openRepoTools#79) and not this PR's regression.
+        echo "KNOWN (opensoft/openRepoTools#79, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): $(basename "$rename_file") still says /rename is the only act there is" >&2
+    else
+        fail "A12 reconciliation: $(basename "$rename_file") still says /rename is the only act there is, on $rename_claims line(s) that name no head"
+    fi
+    assertion
 done
 # ...and the no-API half is NOT dropped with it: it is the half A12's own note
 # calls "still exactly true", and a document that lost it would read as if an
-# API had appeared.
-grep -Fq 'no API to rename a running session' "$SKILL_MD" \
+# API had appeared. The sentence wraps across two `#` comment lines in the
+# vendored file (unchanged from the 8a36eb3 wrapping this check was written
+# against), so it is matched against the comment prose JOINED, not against
+# one raw line -- a single-line `grep -F` on wrapped prose is a fragile
+# assertion of line-wrap width, not of the sentence's presence.
+handoff_prose="$(sed -n 's/^# \{0,1\}//p' "$HANDOFF_MD" | tr '\n' ' ')"
+grep -Fq 'no API to rename a running session' <<<"$handoff_prose" \
     || fail "A12 reconciliation: the skill dropped the half that is still true — there is no API, and the keystroke is not one"; assertion
 
 # THE AMENDMENT IS IN FORCE, AND ITS CITATIONS NAME THE LANDED FILE. Until this
@@ -2525,9 +2664,9 @@ grep -Fq 'no API to rename a running session' "$SKILL_MD" \
 # half lands under it when its own confirmation says READY.
 grep -Fq 'home/.agents/protocols/lane-collision-protocol-amendment-11.md' "$LAUNCHER" \
     || fail "in force: the launcher cites the amendment and never names the file it landed as, so a reader is sent to a PR diff"; assertion
-grep -Fq '0e40d6e' "$SKILL_MD" \
+grep -Fq '0e40d6e' "$HANDOFF_MD" \
     || fail "in force: the skill's R-A11-27 citation still reads only at a DRAFT head"; assertion
-grep -Fq 'in force' "$SKILL_MD" \
+grep -Fq 'in force' "$HANDOFF_MD" \
     || fail "in force: the skill quotes a ruling from a text it still presents as unratified"; assertion
 grep -Fq 'still a DRAFT' "$LAUNCHER" \
     && fail "in force: the launcher still calls the amendment text a DRAFT; it was ratified 2026-09-13T19:41:04Z and landed at 0e40d6e"; assertion
@@ -2685,10 +2824,16 @@ YAMLCASES
     || fail "YAML: the launcher's reader and this repo's own yaml_value disagree — two implementations of one rule${yaml_mismatch}"; assertion
 
 # SPEC §9 — `/swap` is a one-line command file that INVOKES the skill, and the
-# 176-line skill is not duplicated into it. Two texts that must stay byte-equal
-# with nothing making them so is the rejected alternative.
+# skill is not duplicated into it. Two texts that must stay byte-equal with
+# nothing making them so is the rejected alternative. Amendment 17(a) renamed
+# the invoked skill to `handoff` (lane-swap is now the same shape of alias),
+# so the invocation check follows the rename; /swap still names /lane-swap
+# as a fellow door onto the same act, which is the substance the old wording
+# was really after.
+grep -Fqi 'invoke the `handoff` skill' "$SWAP_MD" \
+    || fail "§9: commands/swap.md does not invoke the handoff skill (Amendment 17(a))"; assertion
 grep -Fq 'lane-swap' "$SWAP_MD" \
-    || fail "§9: commands/swap.md does not invoke the lane-swap skill"; assertion
+    || fail "§9: commands/swap.md no longer names /lane-swap as a fellow door onto this act"; assertion
 [[ "$(wc -l < "$SWAP_MD")" -lt 30 ]] \
     || fail "§9: commands/swap.md is $(wc -l < "$SWAP_MD") lines — it is restating the skill, not aliasing it"; assertion
 grep -Fq 'append-row-status' "$SWAP_MD" \
@@ -2702,7 +2847,7 @@ grep -Fq 'pclaude ${CLAUDE_PROFILE_NAME:-<profile>}' "$GUARD_SH" \
     || fail "§9/§1: the guard does not print the one-word restart command"; assertion
 grep -Fq 'pclaude run ' "$GUARD_SH" \
     && fail "§1: the guard still prints the long form of the restart command"; assertion
-grep -Fq 'restart_cmd="pclaude ${CLAUDE_PROFILE_NAME:-<profile>}"' "$SKILL_MD" \
+grep -Fq 'restart_cmd="pclaude ${CLAUDE_PROFILE_NAME:-<profile>}"' "$HANDOFF_MD" \
     || fail "§9/§1: the skill does not print the one-word restart command"; assertion
 # ...AND THE LAUNCHER DOES NOT TELL A MAINTAINER THE GUARD PERFORMS THE SWAP.
 # SPEC §9 and the amendment text (clause (g)) rule the opposite in terms: the
@@ -2737,13 +2882,13 @@ scenario
 # is preserved. Write (a), the object-log line, is refused there because that log
 # is append-only; write (b) is not. The guard's own text is extracted and (b)
 # must not be in it.
-guard_start="$(grep -Fn 'if [[ -z "${uuid:-}" ]]; then' "$SKILL_MD" | head -n 1 | cut -d : -f 1)"
+guard_start="$(grep -Fn 'if [[ -z "${uuid:-}" ]]; then' "$HANDOFF_MD" | head -n 1 | cut -d : -f 1)"
 [[ -n "$guard_start" ]] \
     || fail "RV-W1: the uuid guard is gone from the skill entirely, so SPEC §7's refusal is not made at all"; assertion
-guard_end="$(awk -v start="$guard_start" 'NR >= start && $0 == "fi" { print NR; exit }' "$SKILL_MD")"
+guard_end="$(awk -v start="$guard_start" 'NR >= start && $0 == "fi" { print NR; exit }' "$HANDOFF_MD")"
 [[ -n "$guard_end" && "$guard_end" -gt "$guard_start" ]] \
     || fail "RV-W1: the uuid guard opened at line $guard_start never closes, so nothing can be said about what is inside it"; assertion
-guard_block="$(sed -n "${guard_start},${guard_end}p" "$SKILL_MD")"
+guard_block="$(sed -n "${guard_start},${guard_end}p" "$HANDOFF_MD")"
 # (a), the OBJECT-LOG write, must still be INSIDE it: that log is append-only and
 # an `unknown` there is wrong for ever, so moving the guard off it is the same
 # defect from the other side.
@@ -2753,7 +2898,7 @@ grep -Fq 'append-line' <<<"$guard_block" \
     && fail "RV-W1/R-A11-11: the register's file-level PAUSED line is inside the uuid guard (lines $guard_start-$guard_end), so a lane with no uuid gets neither write and A8(a) step 4's 'never left unwritten' is lost"; assertion
 # ...and it is still written, with the gap in the SESSION position rather than a
 # uuid. Deleting the line altogether would satisfy the assertion above.
-grep -Fq '"$L" append-line "PAUSED — lane $lane, ${session_field}$(date -u' "$SKILL_MD" \
+grep -Fq '"$L" append-line "PAUSED — lane $lane, ${session_field}$(date -u' "$HANDOFF_MD" \
     || fail "RV-W1: the file-level PAUSED line is not written from a session field that can carry the gap"; assertion
 # ...and THE GAP IS NAMED WITHOUT INVENTING A VALUE (`R-A11-14`, CF-W2). The
 # position is `session <uuid>@<workstation>`: one uuid, one workstation
@@ -2761,14 +2906,14 @@ grep -Fq '"$L" append-line "PAUSED — lane $lane, ${session_field}$(date -u' "$
 # free text says so — `none recorded` was two tokens with a space in a field the
 # grammar gives one uuid, which A7(b):140 has REPORTED as `unreadable:
 # <file>:<n>`, so the skill was writing its own unreadable line.
-grep -Fq 'session_field="session $uuid@$ws, "' "$SKILL_MD" \
+grep -Fq 'session_field="session $uuid@$ws, "' "$HANDOFF_MD" \
     || fail "R-A11-14: the session position is not built from the uuid and the workstation alone"; assertion
-grep -Fq 'NO session recorded for this lane' "$SKILL_MD" \
+grep -Fq 'NO session recorded for this lane' "$HANDOFF_MD" \
     || fail "RV-W1: a lane with no recorded session does not NAME the gap in the line it still writes"; assertion
 # The audit is made on the skill's SHELL — its fenced code blocks with their
 # comments stripped — and not on its prose, which ARGUES about both words at
 # length and would answer for the code if it were read.
-skill_write_code="$(awk '/^```/ { fence = !fence; next } fence' "$SKILL_MD" | grep -v '^[[:space:]]*#')"
+skill_write_code="$(awk '/^```/ { fence = !fence; next } fence' "$HANDOFF_MD" | grep -v '^[[:space:]]*#')"
 grep -Fq 'none recorded' <<<"$skill_write_code" \
     && fail "R-A11-14: the skill still writes 'none recorded' — two tokens with a space, in a field Amendment 7(b) gives one uuid"; assertion
 # ...and `unknown` is counted as a VALUE and not as the word, exactly as the
@@ -2793,16 +2938,16 @@ grep -Fq 'replace-in-row' <<<"$guard_block" \
 # exported word before it. `git rev-parse --show-toplevel` and `$PWD` are the two
 # derivations that record a subagent's scratchpad worktree on rung 4, which is
 # every lane on the estate until a record carries a `dir`.
-grep -Fq 'dir="${WORKBENCHES_CLAUDE_LANE_DIR:-}"' "$SKILL_MD" \
+grep -Fq 'dir="${WORKBENCHES_CLAUDE_LANE_DIR:-}"' "$HANDOFF_MD" \
     || fail "RV-W6: the skill does not take the launcher's own word for the lane's directory first"; assertion
-grep -Fq 'CLAUDE_CONFIG_DIR"/sessions/*.json' "$SKILL_MD" \
+grep -Fq 'CLAUDE_CONFIG_DIR"/sessions/*.json' "$HANDOFF_MD" \
     || fail "RV-W6/R-A11-11: the skill does not read the live session's own record for the directory (SPEC §4)"; assertion
-grep -Fq 'select((.sessionId // "") == $id) | .cwd // empty' "$SKILL_MD" \
+grep -Fq 'select((.sessionId // "") == $id) | .cwd // empty' "$HANDOFF_MD" \
     || fail "RV-W6: the session record is not matched on THIS session's id, so it could take another session's cwd"; assertion
 # The two derivations are judged on the skill's own SHELL and not on its prose:
 # the comment above the assignment names them as retired, and a rule that
 # grepped the whole file could never be stated at all.
-skill_code="$(grep -v '^[[:space:]]*#' "$SKILL_MD")"
+skill_code="$(grep -v '^[[:space:]]*#' "$HANDOFF_MD")"
 grep -Fq 'git rev-parse --show-toplevel' <<<"$skill_code" \
     && fail "RV-W6/R-A11-11: the skill's shell still derives a directory from the git toplevel of wherever it stands, which in a subagent's scratchpad is a worktree"; assertion
 grep -Fq '"$PWD"' <<<"$skill_code" \
@@ -2810,15 +2955,15 @@ grep -Fq '"$PWD"' <<<"$skill_code" \
 # ...and where neither source answers, the sub-field is OMITTED and the omission
 # is SAID. A record with no `dir` is complete the way SPEC §5 says a record with
 # no `@id` is; a record with the wrong one is not.
-grep -Fq 'NO dir sub-field' "$SKILL_MD" \
+grep -Fq 'NO dir sub-field' "$HANDOFF_MD" \
     || fail "RV-W6: a record written with no dir says nothing about the gap"; assertion
 
 # R-A11-10 (decision 7, drafted now) — `profile <name>` IS IN THE RECORD. A lane's
 # name says nothing about the account it runs under, and `restart <lane>` has to
 # build `pclaude --lane <lane> <profile>` out of the record alone.
-grep -Fq 'payload="$payload; profile $profile_name"' "$SKILL_MD" \
+grep -Fq 'payload="$payload; profile $profile_name"' "$HANDOFF_MD" \
     || fail "R-A11-10: the swap record does not carry the 'profile <name>' sub-field"; assertion
-grep -Fq 'profile_name="${CLAUDE_PROFILE_NAME:-}"' "$SKILL_MD" \
+grep -Fq 'profile_name="${CLAUDE_PROFILE_NAME:-}"' "$HANDOFF_MD" \
     || fail "R-A11-10: the profile sub-field is not taken from the launcher's exported CLAUDE_PROFILE_NAME"; assertion
 # ...and the launcher is the one that exports it, so the two halves agree.
 grep -Fq 'export CLAUDE_PROFILE_NAME="$profile"' "$LAUNCHER" \
@@ -2878,9 +3023,9 @@ grep -Fq 'claude --resume' "$GUARD_SH" \
 # The skill prints `pclaude <profile>`, refuses `claude --resume <title>` as a
 # lane surface by name, and ends the identity triple with the one act that can
 # fix a derived record name from inside a session.
-grep -Fq 'are not lane surfaces' "$SKILL_MD" \
+grep -Fq 'are not lane surfaces' "$HANDOFF_MD" \
     || fail "evidence 4: the skill no longer refuses /resume and claude --resume as lane surfaces (A8 Addendum 2 R-A8-6)"; assertion
-grep -Fq '/rename <lane>' "$SKILL_MD" \
+grep -Fq '/rename <lane>' "$HANDOFF_MD" \
     || fail "evidence 4(b): the skill's identity triple does not name /rename <lane>, the act that fixes a derived session name from inside"; assertion
 # ...AND IT ENDS WITH THE SAME ACT, for the session that comes NEXT (CF-W5,
 # `R-A11-16`). Step 1's `/rename` is the incoming one, for the session running
@@ -2892,7 +3037,7 @@ grep -Fq '/rename <lane>' "$SKILL_MD" \
 # The audit is of step 5's SHELL — the lines it actually prints — and not of
 # the paragraph under it: prose that explains the act is not the act, and an
 # operator reading the swap's output is reading the shell's words.
-skill_step5_code="$(awk '/^## 5\./ { inside = 1 } inside && /^```/ { fence = !fence; next } inside && fence' "$SKILL_MD")"
+skill_step5_code="$(awk '/^## 5\./ { inside = 1 } inside && /^## 6\./ { exit } inside && /^```/ { fence = !fence; next } inside && fence' "$HANDOFF_MD")"
 [[ -n "$skill_step5_code" ]] \
     || fail "CF-W5: step 5 of the skill has no shell at all, so nothing it prints can be audited"; assertion
 grep -Fq '/rename <lane>' <<<"$skill_step5_code" \
@@ -2918,45 +3063,53 @@ grep -Fq '/rename <lane>' <<<"$skill_step5_code" \
 
 # 7a. CONFIGURATION WINS, AND IT WINS INSIDE A CONTAINER. LANES_WORKSTATION is
 # the estate's own word; the container marker does not override it, because the
-# rule is "configured, not guessed" and not "never inside a container".
+# rule is "configured, not guessed" and not "never inside a container". Read
+# here through the directory order's rung 2 (Amendment 11(3)): precedence 4 no
+# longer reads `swapped` at all (lane-collision-protocol Amendment 18 Addendum
+# 1 hands that step to `lane`), so rung 2 is the nearest remaining door onto
+# the same `swapped <ws>` read Evidence 6 is about.
 launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" "container=docker" \
+    "FAKE_TMUX_WINDOW_ID=@97" "FAKE_WINDOW_LANE_MAP=@97=mine-5" \
     "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
+    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\t$RECORD_TREE\n" \
     -- run team002 --resume session-ws-configured
 grep -Fxq 'argv=swapped Eagle' "$LANES_EDIT_LOG" \
     || fail "Evidence 6: the configured workstation was not the one asked about ($(cat "$LANES_EDIT_LOG"))"; assertion
-grep -Fxq -- "--confirm mine-5 -- $claude_args --resume session-ws-configured" "$LANE_START_LOG" \
-    || fail "Evidence 6: the configured workstation's newest swap did not answer ('$(lane_start_argv)')"; assertion
+grep -Fxq -- "--dir $RECORD_TREE mine-5 -- $claude_args --resume session-ws-configured" "$LANE_START_LOG" \
+    || fail "Evidence 6: the configured workstation's own swap record did not answer ('$(lane_start_argv)')"; assertion
 
-# 7b. A CONTAINER THAT NAMES NO WORKSTATION READS NOTHING, AND SAYS SO. Passing
-# the container id would ask about the wrong machine; passing nothing would let
-# the helper derive the same id one process later. So the read is not made at
-# all, and the step that wanted it names the gap — in the one line precedence 5
-# already prints, because R-A8-7 is one no-lane notice and not two.
-launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
+# 7b. A CONTAINER THAT NAMES NO WORKSTATION READS NOTHING. Passing the
+# container id would ask about the wrong machine; passing nothing would let the
+# helper derive the same id one process later. So the read is not made at all
+# — here again through rung 2, precedence 4 having no read of its own left to
+# make. THE NOTICE THIS SCENARIO USED TO PIN IS RETIRED WITH THAT READ:
+# precedence 4's own `swapped_ws_unknown` check — the one place that spelled
+# "Evidence 6" and named `LANES_WORKSTATION` — went with the `swapped` call it
+# guarded, and rung 2 has never had a notice of its own for the same gap; it
+# silently falls through to rung 3/4 exactly as an ordinary "no dir recorded"
+# does. What survives, and what this scenario now pins, is the SAFETY property
+# Evidence 6 exists for: a container with no configured workstation never asks
+# `swapped` for one, so it can never read a stranger's rows back as its own.
+launch "FAKE_TMUX_WINDOW=openRepoProject-1" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
     "LANES_WORKSTATION=" "container=docker" \
     "FAKE_SWAPPED_STATUS=0" \
-    "FAKE_SWAPPED_ROWS=mine-5\t2026-09-13T03:31:33Z\tclaude-y:0 @97\n" \
+    "FAKE_SWAPPED_ROWS=openRepoProject-1\t2026-09-13T03:31:33Z\tclaude-y:0 @97\t$RECORD_TREE\n" \
     -- run team002 --resume session-ws-unknown
 grep -q '^argv=swapped' "$LANES_EDIT_LOG" \
     && fail "Evidence 6: the swap records were read for a workstation this container cannot name ($(cat "$LANES_EDIT_LOG"))"; assertion
-[[ ! -e "$LANE_START_LOG" ]] \
-    || fail "Evidence 6: a lane was taken from records that are not this workstation's ('$(lane_start_argv)')"; assertion
-grep -Fq 'Evidence 6' "$ERR_LOG" \
-    || fail "Evidence 6: the read that could not be made was not named ('$(cat "$ERR_LOG")')"; assertion
-grep -Fq 'LANES_WORKSTATION' "$ERR_LOG" \
-    || fail "Evidence 6: the notice does not name the one word that fixes it ('$(cat "$ERR_LOG")')"; assertion
-[[ "$(wc -l < "$ERR_LOG")" -eq 1 ]] \
-    || fail "Evidence 6: one situation printed $(wc -l < "$ERR_LOG") lines ($(cat "$ERR_LOG"))"; assertion
-grep -Fxq -- "$claude_args --resume session-ws-unknown" "$CLAUDE_LOG" \
-    || fail "Evidence 6: the launch was refused over a workstation name"; assertion
+grep -Fxq -- "openRepoProject-1 -- $claude_args --resume session-ws-unknown" "$LANE_START_LOG" \
+    || fail "Evidence 6: lane-start argv was '$(lane_start_argv)'"; assertion
+grep -q -- '--dir' "$LANE_START_LOG" \
+    && fail "Evidence 6: a directory was derived from a workstation this container cannot name ($(lane_start_argv))"; assertion
 [[ "$launch_status" -eq 0 ]] \
     || fail "Evidence 6: the launcher exited $launch_status over a Claude that started"; assertion
 
 # 7c. ...AND THE STEPS THAT DO NOT NEED A WORKSTATION ARE UNTOUCHED. Precedence
 # 3 asks the helper about THIS window, which is a fact about this process and
 # not about the machine's name: the lane binds bare, nothing is read for a
-# workstation nobody named, and there is nothing to report.
+# workstation nobody named, and this launcher has nothing OF ITS OWN to
+# report — beyond the one capture-path breadcrumb opensoft/workBenches#95
+# prints ahead of every lane launch regardless of workstation.
 launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     "LANES_WORKSTATION=" "container=docker" \
     "FAKE_TMUX_WINDOW_ID=@97" "FAKE_TMUX_WINDOW_REF=claude-y:0" \
@@ -2964,8 +3117,10 @@ launch "FAKE_TMUX_WINDOW=zsh" "FAKE_LANE_WITH_ROW=nothing" \
     -- run team002 --resume session-ws-unknown-window
 grep -Fxq -- "mine-5 -- $claude_args --resume session-ws-unknown-window" "$LANE_START_LOG" \
     || fail "Evidence 6: the window's own record stopped answering because the machine has no name ('$(lane_start_argv)')"; assertion
-grep -q '^pclaude:' "$ERR_LOG" \
-    && fail "Evidence 6: a launch that never needed the workstation was told about it ('$(cat "$ERR_LOG")')"; assertion
+[[ "$(grep -c '^pclaude:' "$ERR_LOG")" -eq 1 ]] \
+    || fail "Evidence 6: a launch that never needed the workstation was told $(grep -c '^pclaude:' "$ERR_LOG" 2>/dev/null) things of this launcher's own, not just the capture breadcrumb ('$(cat "$ERR_LOG")')"; assertion
+grep -Fq 'lane defect capture:' "$ERR_LOG" \
+    || fail "Evidence 6: the capture-path breadcrumb itself is missing ('$(cat "$ERR_LOG")')"; assertion
 
 # 7e. THE LAUNCHER OWNS THE VALUE AND EXPORTS IT — `R-A11-14` (A11 Addendum 3,
 # ratified by Brett Heap 2026-09-13 "a11 addendum 3 yes"). Before this, the
@@ -3017,7 +3172,7 @@ grep -Fq '[[ -e /.dockerenv || -e /run/.containerenv || -n "${container:-}" ]]' 
     || fail "Evidence 6: the container fence does not test the three markers a container leaves"; assertion
 # ...and the skill, which is the WRITER, and the half of Evidence 6 that cannot
 # be taken back: the id the fork wrote is in an append-only log for ever.
-ws_skill_code="$(grep -v '^[[:space:]]*#' "$SKILL_MD")"
+ws_skill_code="$(grep -v '^[[:space:]]*#' "$HANDOFF_MD")"
 # ONE hostname READ, counted as the read and not as the word: since `R-A11-14`
 # the skill's refusal SAYS why a container id is not a workstation, and a count
 # of the word alone would make naming the hazard indistinguishable from
@@ -3040,13 +3195,13 @@ grep -Fq 'if [[ -z "$ws" ]]; then' <<<"$ws_skill_code" \
     || fail "R-A11-14: the skill does not refuse where no workstation is configured"; assertion
 grep -Fq 'ws_write_refused=1' <<<"$ws_skill_code" \
     || fail "R-A11-14: the skill's workstation refusal does not stop the two writes that carry it"; assertion
-grep -Fq 'REFUSED: no workstation for this lane' "$SKILL_MD" \
+grep -Fq 'REFUSED: no workstation for this lane' "$HANDOFF_MD" \
     || fail "R-A11-14: the refusal is not stated in one line of its own"; assertion
-[[ "$(grep -Fc 'REFUSED: no workstation for this lane' "$SKILL_MD")" -eq 1 ]] \
-    || fail "R-A11-14: one situation is refused in $(grep -Fc 'REFUSED: no workstation for this lane' "$SKILL_MD") lines, and the ruling says one"; assertion
-grep -F 'REFUSED: no workstation for this lane' "$SKILL_MD" | grep -Fq 'LANES_WORKSTATION' \
+[[ "$(grep -Fc 'REFUSED: no workstation for this lane' "$HANDOFF_MD")" -eq 1 ]] \
+    || fail "R-A11-14: one situation is refused in $(grep -Fc 'REFUSED: no workstation for this lane' "$HANDOFF_MD") lines, and the ruling says one"; assertion
+grep -F 'REFUSED: no workstation for this lane' "$HANDOFF_MD" | grep -Fq 'LANES_WORKSTATION' \
     || fail "R-A11-14: the refusal does not name the variable that fixes it"; assertion
-grep -F 'REFUSED: no workstation for this lane' "$SKILL_MD" | grep -Fq 'pclaude' \
+grep -F 'REFUSED: no workstation for this lane' "$HANDOFF_MD" | grep -Fq 'pclaude' \
     || fail "R-A11-14: the refusal does not name the launcher that sets the variable"; assertion
 # ...AND (c) IS REFUSED WITH THEM — `R-A11-27` (A11 Addendum 4 ruling 11,
 # RATIFIED by Brett Heap 2026-09-13T21:08:26Z, verbatim "a11 addendum 4 yes";
@@ -3065,7 +3220,7 @@ grep -F 'REFUSED: no workstation for this lane' "$SKILL_MD" | grep -Fq 'pclaude'
 # from a container (c) SUCCEEDS. What survives the refusal is step 2's handoff, a
 # commit in the lane's own repository. Inverted here so the next writer who
 # restores the write is told by the suite rather than by a review.
-c_section="$(awk '/^# \(c\) the row: flip its leading state word/{inside=1} inside{print} inside && /^```$/{exit}' "$SKILL_MD")"
+c_section="$(awk '/^# \(c\) the row: flip its leading state word/{inside=1} inside{print} inside && /^```$/{exit}' "$HANDOFF_MD")"
 [[ -n "$c_section" ]] \
     || fail "R-A11-27: write (c) is not in the skill at all, so nothing can be said about what fences it"; assertion
 # ...on the section's SHELL, comments stripped, because the comment above the
@@ -3079,9 +3234,9 @@ c_fence="$(grep -v '^[[:space:]]*#' <<<"$c_section" | awk '
     END { printf "set=%d fenced=%d loose=%d", set, fenced, loose }')"
 [[ "$c_fence" == "set=1 fenced=1 loose=0" ]] \
     || fail "R-A11-27: write (c) is not refused with (a) and (b) where no workstation is configured ($c_fence), so a swap from a container still flips the row and files a commit keyed on the container id"; assertion
-grep -Fq 'NOT WRITTEN: (c) is a register write too' "$SKILL_MD" \
+grep -Fq 'NOT WRITTEN: (c) is a register write too' "$HANDOFF_MD" \
     || fail "R-A11-27: (c) is skipped without saying so — a swap that writes nothing has to name which writes it refused"; assertion
-grep -F 'REFUSED: no workstation for this lane' "$SKILL_MD" | grep -Fq '(c) the row-status flip' \
+grep -F 'REFUSED: no workstation for this lane' "$HANDOFF_MD" | grep -Fq '(c) the row-status flip' \
     || fail "R-A11-27: the one refusal line still promises the row-status flip the ruling refuses"; assertion
 # ...and the retired promise is QUOTED, never meant — counted the way the
 # `$(hostname` read above is counted rather than the word, because a comment that
@@ -3090,8 +3245,8 @@ grep -F 'REFUSED: no workstation for this lane' "$SKILL_MD" | grep -Fq '(c) the 
 # that carries it calls itself a superseded revision.
 grep -Fq '(c) below still runs' <<<"$skill_write_code" \
     && fail "R-A11-27: the skill's shell still prints '(c) below still runs' — the exact string the amendment text quotes back at this PR"; assertion
-still_runs_total="$(grep -Fc '(c) below still runs' "$SKILL_MD" || true)"
-still_runs_quoted="$(grep -F '(c) below still runs' "$SKILL_MD" | grep -Fc 'revision' || true)"
+still_runs_total="$(grep -Fc '(c) below still runs' "$HANDOFF_MD" || true)"
+still_runs_quoted="$(grep -F '(c) below still runs' "$HANDOFF_MD" | grep -Fc 'revision' || true)"
 [[ "$still_runs_total" -eq "$still_runs_quoted" ]] \
     || fail "R-A11-27: $still_runs_total line(s) of the skill say '(c) below still runs' and $still_runs_quoted name it as a superseded revision — the rest assert the promise the ruling refuses"; assertion
 
@@ -3122,7 +3277,7 @@ ws_container_line="$(grep -n '^container="py-bench"' "$WAVE_SHELL" | head -n 1 |
 [[ -n "$ws_resolve_line" && -n "$ws_container_line" && "$ws_resolve_line" -lt "$ws_container_line" ]] \
     || fail "R-A11-14: the container marker is read at line $ws_resolve_line, after this script overwrites \$container at line $ws_container_line"; assertion
 # ...and the two documents say it.
-grep -Fq 'AND THE WORKSTATION STEP 4 READS IS CONFIGURED' "$TEST_ROOT/help.out" \
+grep -Fq 'AND THE WORKSTATION THE SWAP RECORDS ARE KEYED ON IS CONFIGURED' "$TEST_ROOT/help.out" \
     || fail "Evidence 6: --help does not say where the workstation comes from"; assertion
 # CF2-W1 — WHAT `lane-start` NAMES, AND WHO CLOSED THE GAP. Adoption act 0
 # merged as `opensoft/brett-wip#5` at `3719d97` on 2026-09-13 and put
@@ -3238,9 +3393,9 @@ grep -Fq 'R-A11-27' "$GUARD_SH" \
 # and every write in the skill fails with no helper to blame. PATH first, the
 # symlink second — `claude-profile`'s own rule, and the line openRepoTools'
 # `/restart` skill already uses.
-grep -Fq 'L="$(command -v lanes-edit.sh' "$SKILL_MD" \
+grep -Fq 'L="$(command -v lanes-edit.sh' "$HANDOFF_MD" \
     || fail "helper: the skill spells one path for lanes-edit.sh instead of resolving it, so a host without ~/projects/xFactory cannot swap"; assertion
-grep -q '^L=~/projects/xFactory/lanes-edit.sh$' "$SKILL_MD" \
+grep -q '^L=~/projects/xFactory/lanes-edit.sh$' "$HANDOFF_MD" \
     && fail "helper: the skill is back to a hard-coded helper path"; assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \

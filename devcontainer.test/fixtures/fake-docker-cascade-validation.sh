@@ -77,6 +77,13 @@ PY
                 fi
                 echo "${FAKE_DOCKER_LAYER3_RECIPE_SHA256:-}"
                 ;;
+            *'layer3.base-image-id'*)
+                if [ "${FAKE_DOCKER_BASE_IMAGE_LABEL_INSPECT_FAIL:-false}" = true ]; then
+                    echo "simulated base-image metadata inspection failure" >&2
+                    exit 2
+                fi
+                echo "${FAKE_DOCKER_LAYER3_BASE_IMAGE_ID:-${FAKE_DOCKER_IMAGE_ID:-sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}}"
+                ;;
             *'layer3.username'*)
                 [ "${FAKE_DOCKER_LABEL_INSPECT_FAIL:-false}" = false ] || exit 1
                 echo "${FAKE_DOCKER_LAYER3_USERNAME:-brett}"
