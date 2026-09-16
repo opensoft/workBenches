@@ -756,6 +756,158 @@ assert_contains "$OUTPUT_P" 'a-new-tool-this-script-does-not-list' 'the refusal 
 assert_empty_dir "$BIN_P" 'nothing was installed once the two lists disagree'
 assert_absent "$HOME_P/.claude" 'nothing was written under $HOME/.claude either, for the widened shim'
 
+# ===========================================================================
+# THE CONTAINER-START STEP (opensoft/workBenches#90)
+#
+# `devBenches/base-image/files/estate/estate-commands-start` is the same two
+# actions this script's subject takes -- the vendored `openRepoTools --install`
+# and then `link-estates` -- taken at CONTAINER START instead of at `setup.sh`
+# time, because `~/.local/bin` is not one of the paths the benches bind-mount
+# and a bench recreate therefore resets it to whatever the image baked. It is
+# tested here, beside the host step it mirrors, so the two cannot drift apart
+# about what a complete estate install is.
+#
+# It cannot live in scripts/ and be reached from a container: Layer 2's build
+# context is devBenches/base-image/, so the repository's own scripts/ is not
+# COPY-able into the image. What it shares with the script above is the
+# vendored tree and the no-fetch sentinel, not code -- and, like that script,
+# it adds no install logic of its own.
+#
+# Scenarios (q)-(v) pin the properties an entrypoint step must have and a
+# `setup.sh` step need not: it installs when the bin dir is empty, writes
+# NOTHING when it is already current, and NEVER exits nonzero -- not when the
+# workspace file a fresh workstation has not written yet is missing, not when
+# the switch turns it off, and not when the image predates the vendored tree
+# it installs from. A nonzero exit there is a container that will not start.
+START_STEP="$REPO_ROOT/devBenches/base-image/files/estate/estate-commands-start"
+VENDOR_DIR="$BASE_IMAGE_DIR/files/openrepotools"
+
+# Every run is sandboxed the way the scenarios above are, plus the two the
+# linking half reads: AGENT_PROTOCOL_ROOT (where workspace.yaml is looked for)
+# and PROJECTS_ROOT (where the estate folders are), so `link-estates` can never
+# reach the real ~/.agents or ~/projects of whoever runs this suite.
+run_start_step() {   # <home> <bin dir> [extra env assignments...]
+    local home="$1" bin="$2"
+    shift 2
+    env HOME="$home" \
+        CLAUDE_PROFILES_HOME="$home/.claude-profiles" CLAUDE_USER_DIR="$home/.claude" \
+        AGENT_PROTOCOL_ROOT="$home/.agents" PROJECTS_ROOT="$home/projects" \
+        OPENREPOTOOLS_BIN_DIR="$bin" \
+        WORKBENCHES_ESTATE_VENDOR_DIR="$VENDOR_DIR" \
+        "$@" bash "$START_STEP" 2>&1
+}
+
+# A manifest of everything the step could have written, by path, size and
+# modification time -- the only way to prove "already current" cost no write
+# rather than merely leaving the same bytes behind.
+state_manifest() {   # <dir>...
+    find "$@" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort
+}
+
+printf '%s\n' '--- Scenario (q): the container-start step installs into an empty bin dir, as a recreate leaves it ---'
+BIN_Q="$TMPDIR_ROOT/bin-q"
+HOME_Q="$TMPDIR_ROOT/home-q"
+mkdir -p "$BIN_Q" "$HOME_Q"
+STATUS_Q=0
+OUTPUT_Q="$(run_start_step "$HOME_Q" "$BIN_Q")" || STATUS_Q=$?
+
+assert_equal '0' "$STATUS_Q" 'the start step exits 0 on a fresh container'
+for name in "${TOOLS_FILES[@]}"; do
+    assert_file_executable "$BIN_Q/$name" "the start step places $name, executable"
+    assert_identical "$BIN_Q/$name" "$(tools_vendor_path "$name")" "the start step's $name is byte-identical to the vendored copy"
+done
+assert_contains "$OUTPUT_Q" 'openRepoTools: 12 of 12 placed in' 'the start step relays the installer'"'"'s own count line, not a summary of its own'
+for name in "${SKILL_NAMES[@]}"; do
+    assert_skill_pair "$HOME_Q" "$name" "the start step places the $name skill"
+done
+for name in "${COMMAND_NAMES[@]}"; do
+    assert_command_pair "$HOME_Q" "$name" "the start step places the /$name command file"
+done
+assert_hook_present "$HOME_Q" 'the start step merges the SessionStart hook'
+assert_guard_hook_present "$HOME_Q" 'the start step merges the UserPromptSubmit guard hook'
+# The six per-user artifacts and the two hook entries are the half the image's
+# own COPY into /usr/local/bin can never restore -- a build has no user's $HOME
+# -- which is why the step runs `--install` rather than trusting those copies.
+
+printf '%s\n' '--- Scenario (r): a second start is a no-op — every artifact reported unchanged, and not one byte written ---'
+BEFORE_R="$(state_manifest "$BIN_Q" "$HOME_Q")"
+STATUS_R=0
+OUTPUT_R="$(run_start_step "$HOME_Q" "$BIN_Q")" || STATUS_R=$?
+AFTER_R="$(state_manifest "$BIN_Q" "$HOME_Q")"
+
+assert_equal '0' "$STATUS_R" 'a second start exits 0'
+assert_equal "$BEFORE_R" "$AFTER_R" 'a second start writes nothing at all (same files, sizes and mtimes)'
+assert_not_contains "$OUTPUT_R" ': installed at' 'a second start installs nothing'
+for name in "${TOOLS_FILES[@]}"; do
+    assert_contains "$OUTPUT_R" "$name: already installed at" "a second start reports $name unchanged"
+done
+assert_contains "$OUTPUT_R" 'SessionStart hook: already installed in' 'a second start reports the SessionStart hook unchanged'
+assert_contains "$OUTPUT_R" 'UserPromptSubmit guard: already installed in' 'a second start reports the guard hook unchanged'
+
+printf '%s\n' '--- Scenario (s): no ~/.agents/workspace.yaml (a fresh workstation before `openRepoTools wip init`) does not fail container start ---'
+assert_absent "$HOME_Q/.agents/workspace.yaml" 'scenario (s) precondition: the sandbox has no workspace.yaml'
+assert_contains "$OUTPUT_Q" 'openRepoTools wip init' 'the linking half relays link-estates'"'"' own refusal, which names the one command that ends it'
+assert_contains "$OUTPUT_Q" 'Container start continues' 'the step says out loud that the refusal did not stop the container'
+# Asserted against scenario (q)'s own output, not a fresh run: (q) already ran
+# with no workspace.yaml, and its exit code -- asserted 0 above -- IS this
+# scenario's claim. link-estates exits 1 there; the step swallows it.
+
+printf '%s\n' '--- Scenario (t): with a workspace.yaml, the links land and the SessionStart hook path resolves again ---'
+BIN_T="$TMPDIR_ROOT/bin-t"
+HOME_T="$TMPDIR_ROOT/home-t"
+WIP_T="$HOME_T/brett-wip"
+mkdir -p "$BIN_T" "$HOME_T/.agents" "$HOME_T/projects/xFactory" "$WIP_T/handoffs/xFactory" "$WIP_T/lanes"
+git init -q "$WIP_T"
+git -C "$WIP_T" remote add origin git@github.com:acme/acme-wip.git
+: > "$WIP_T/lanes/LANES.md"
+printf 'repository: acme/acme-wip\npath: %s\n' "$WIP_T" > "$HOME_T/.agents/workspace.yaml"
+STATUS_T=0
+OUTPUT_T="$(run_start_step "$HOME_T" "$BIN_T")" || STATUS_T=$?
+
+assert_equal '0' "$STATUS_T" 'the start step exits 0 with a workspace repository present'
+# THE POINT OF THE WHOLE STEP, in one assertion: `~/projects/xFactory/
+# lanes-edit.sh` is the command string Amendment 8(e)'s SessionStart hook
+# names, and a recreate left it a symlink to a file that no longer existed.
+# `-e` follows the link, so this fails on a dangling one.
+if [ -L "$HOME_T/projects/xFactory/lanes-edit.sh" ] && [ -e "$HOME_T/projects/xFactory/lanes-edit.sh" ]; then
+    pass 'the SessionStart hook path ~/projects/xFactory/lanes-edit.sh is a link that resolves'
+else
+    fail 'the SessionStart hook path ~/projects/xFactory/lanes-edit.sh is missing or dangling after the start step'
+fi
+assert_identical "$HOME_T/projects/xFactory/lanes-edit.sh" "$BIN_T/lanes-edit.sh" 'that link resolves to the lanes-edit.sh this start step installed'
+assert_equal "$(readlink "$HOME_T/projects/xFactory/LANES.md")" "$WIP_T/lanes/LANES.md" 'the register link points into the workspace repository'
+assert_equal "$(readlink "$HOME_T/projects/xFactory/handoffs")" "$WIP_T/handoffs/xFactory" 'the handoffs link points into the workspace repository'
+assert_not_contains "$OUTPUT_T" 'openRepoTools wip init' 'nothing refuses for want of a workspace repository once there is one'
+
+printf '%s\n' '--- Scenario (u): WORKBENCHES_SKIP_ESTATE_COMMANDS=1 turns the step off from a bench'"'"'s own environment ---'
+BIN_U="$TMPDIR_ROOT/bin-u"
+HOME_U="$TMPDIR_ROOT/home-u"
+mkdir -p "$BIN_U" "$HOME_U"
+STATUS_U=0
+OUTPUT_U="$(run_start_step "$HOME_U" "$BIN_U" WORKBENCHES_SKIP_ESTATE_COMMANDS=1)" || STATUS_U=$?
+
+assert_equal '0' "$STATUS_U" 'the skip switch exits 0'
+assert_contains "$OUTPUT_U" 'WORKBENCHES_SKIP_ESTATE_COMMANDS=1' 'the skip switch says which switch turned it off'
+assert_empty_dir "$BIN_U" 'the skip switch installs nothing'
+assert_absent "$HOME_U/.claude" 'the skip switch writes nothing under $HOME either'
+
+printf '%s\n' '--- Scenario (v): an image built before #90 has no vendored tree, and still must not fail container start ---'
+BIN_V="$TMPDIR_ROOT/bin-v"
+HOME_V="$TMPDIR_ROOT/home-v"
+mkdir -p "$BIN_V" "$HOME_V"
+STATUS_V=0
+OUTPUT_V="$(env HOME="$HOME_V" \
+    CLAUDE_PROFILES_HOME="$HOME_V/.claude-profiles" CLAUDE_USER_DIR="$HOME_V/.claude" \
+    AGENT_PROTOCOL_ROOT="$HOME_V/.agents" PROJECTS_ROOT="$HOME_V/projects" \
+    OPENREPOTOOLS_BIN_DIR="$BIN_V" \
+    WORKBENCHES_ESTATE_VENDOR_DIR="$TMPDIR_ROOT/no-such-vendor-dir" \
+    bash "$START_STEP" 2>&1)" || STATUS_V=$?
+
+assert_equal '0' "$STATUS_V" 'a missing vendored tree exits 0 rather than refusing to start the container'
+assert_contains "$OUTPUT_V" 'no vendored openRepoTools at' 'a missing vendored tree says what is missing'
+assert_contains "$OUTPUT_V" 'build.sh' 'a missing vendored tree names the rebuild that ends it'
+assert_empty_dir "$BIN_V" 'a missing vendored tree installs nothing'
+
 if (( failures == 0 )); then
     printf '%s\n' 'GREEN: setup-estate-commands regression test passed'
 else

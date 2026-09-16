@@ -1,0 +1,46 @@
+#!/bin/sh
+#
+# workbench-entrypoint — the dev benches' ENTRYPOINT. It runs the estate
+# commands' start-up step once, at container start, and then execs the
+# container's own command unchanged (opensoft/workBenches#90).
+#
+# WHY AN ENTRYPOINT AND NOT A SHELL RC. The benches under devBenches/ are
+# separate repositories and submodules, each with its own devcontainer.json, so
+# a `postStartCommand` here would reach the generic DevBench and none of the
+# benches a lane actually runs in. The IMAGE is the one place workBenches owns
+# that every dev bench inherits. A shell rc (the pattern this Dockerfile uses
+# for the Speckit and SonarQube helpers) would reach them too, but it runs once
+# per SHELL rather than once per container start, and this step relays an
+# installer's output — which belongs in the container log, not in front of
+# every prompt a person opens.
+#
+# WHY /bin/sh AND NO `set -e`. This runs in front of every process any dev
+# bench will ever start. A shell feature that is missing, or one stray nonzero
+# exit, would mean a container that does not come up at all — recoverable only
+# with `docker run --entrypoint`. So: POSIX sh, nothing that can fail, every
+# failure swallowed, and the exec at the end is unconditional.
+#
+# WHY IT MUST SIT ABOVE `CMD` IN THE DOCKERFILE. An ENTRYPOINT instruction
+# resets a CMD inherited from the base image, so the image's own
+# `CMD ["sleep", "infinity"]` has to be declared AFTER this is wired or the
+# benches lose their default command. devcontainer.test/test-base-image-
+# dockerfile.sh asserts that ordering, because nothing else here can: this
+# repository's suites cannot run `docker build`.
+#
+# WORKBENCHES_SKIP_ESTATE_COMMANDS=1 in a bench's compose environment turns the
+# step off without touching the image — the same switch setup.sh honours.
+
+ESTATE_START=/usr/local/share/workbenches/estate-commands-start
+
+# A bench that declares no command of its own still has to come up. The image's
+# own default is the fallback, spelled here so an `--entrypoint`-only override
+# does not leave PID 1 with nothing to exec.
+if [ "$#" -eq 0 ]; then
+    set -- sleep infinity
+fi
+
+if [ -x "$ESTATE_START" ]; then
+    "$ESTATE_START" || true
+fi
+
+exec "$@"

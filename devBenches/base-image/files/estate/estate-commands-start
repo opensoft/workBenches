@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+#
+# estate-commands-start — put the estate's lane commands back where a lane
+# looks for them, at CONTAINER START, so a bench recreate is not a downgrade
+# (opensoft/workBenches#90). Run by /usr/local/bin/workbench-entrypoint before
+# the container's own command; safe to run by hand at any time afterwards.
+#
+# WHAT WAS MEASURED (2026-09-15 on Eagle, and re-measured inside the same
+# container while this was written). The py-bench container was recreated
+# (0e7d1a79a07e → cb999b9fd177). `/workspace/projects`, `~/.agents`,
+# `~/.claude` and `~/.claude-profiles` came back — they are bind mounts.
+# `~/.local/bin` came back holding one entry, the `claude` symlink, because it
+# is NOT a mount: `docker-compose.mounts.yml` and every devcontainer.json
+# beside it mount `~/.claude`, `~/.claude-profiles`, `~/.agents`,
+# `~/.local/lib/workbenches` and `~/.local/state/workbenches`, and never
+# `~/.local/bin`. That directory therefore lives in the container's writable
+# overlay, and a recreate resets it to exactly what the image baked. Everything
+# `openRepoTools --install` had put there since was gone, silently:
+#
+#   - the twelve lane commands left $PATH;
+#   - `~/projects/xFactory/lanes-edit.sh` — a symlink on the MOUNTED workspace,
+#     so it survived — went on pointing at `~/.local/bin/lanes-edit.sh`, which
+#     no longer existed, and dangled;
+#   - the SessionStart hook in the mounted `~/.claude/settings.json` kept
+#     calling that dangling path and became a no-op;
+#   - and the launcher's Amendment 12 downgrade rule removed the name-guard
+#     entry from each profile it launched, because the estate had stopped
+#     answering `guard`.
+#
+# WHY THE IMAGE'S OWN COPIES DO NOT CLOSE IT. devBenches/base-image/Dockerfile
+# COPYs the twelve into /usr/local/bin, and on a CURRENT image that does put
+# them back on $PATH. It still leaves three holes, and this step exists for
+# them: (1) nothing rebuilds Layer 2 when a bench starts — `prepare-bench-start`
+# ensures Layer 3 only — so the measured bench was running an image built
+# 2026-09-12, before those COPY lines landed, and held none of the eight lane
+# helpers; (2) the image places none of the six PER-USER artifacts `--install`
+# also places (the three skills, the three command files) or the two entries it
+# merges into `~/.claude/settings.json`, because a build has no user's $HOME;
+# and (3) nothing re-points `~/projects/xFactory/lanes-edit.sh`, whose target is
+# the INSTALLED path, not /usr/local/bin. Only `--install` plus `link-estates`
+# closes all three, which is what this does.
+#
+# THE RAVEN CASE IS THE SAME CASE. On a fresh workstation `setup.sh` runs
+# `scripts/setup-estate-commands.sh`, which runs the vendored shims' own
+# `--install` and relays their lines unchanged. A container cannot run that
+# script — Layer 2's build context is `devBenches/base-image/`, so the
+# repository's `scripts/` is not reachable to COPY — so this step takes the
+# same two actions against the same vendored bytes, with the same no-fetch
+# sentinel, and relays the same lines. It deliberately adds no install logic of
+# its own: installing twice changing nothing is openRepoTools' own promise
+# (`already installed ... (unchanged)`), and re-implementing a freshness check
+# here would be a second answer to a question the installer already answers.
+#
+# IT NEVER FAILS CONTAINER START. Every failure is relayed and swallowed:
+# exit 0 is the only exit. A refusal a person must act on is printed, in the
+# refusing program's own words, and the bench comes up either way.
+#
+# Environment:
+#   WORKBENCHES_SKIP_ESTATE_COMMANDS=1   skip entirely (one line, exit 0) —
+#                                        the same switch setup.sh and
+#                                        scripts/setup-estate-commands.sh honour
+#   WORKBENCHES_ESTATE_VENDOR_DIR        the vendored openRepoTools tree
+#                                        (default /usr/local/share/openrepotools;
+#                                        the test seam)
+#   OPENREPOTOOLS_BIN_DIR                honoured by the installer itself
+#                                        (default ~/.local/bin)
+
+# NOT `set -e`: a step in front of every container start may not exit nonzero
+# on a surprise. `set -u` still catches this script's own typos, and pipefail
+# is set for the same reason the rest of the estate sets it.
+set -uo pipefail
+
+ESTATE_VENDOR_DIR="${WORKBENCHES_ESTATE_VENDOR_DIR:-/usr/local/share/openrepotools}"
+
+say() {
+    printf 'estate-commands-start: %s\n' "$1" >&2
+}
+
+if [ "${WORKBENCHES_SKIP_ESTATE_COMMANDS:-}" = "1" ]; then
+    say "skipped by WORKBENCHES_SKIP_ESTATE_COMMANDS=1."
+    exit 0
+fi
+
+# $HOME IS READ, NEVER ASSUMED. Every bench's compose file exports it, but an
+# entrypoint runs before any shell profile could set it, and installing into
+# the wrong home is worse than installing into none: fall back to the passwd
+# entry of whoever the container's first process runs as, and stand down if
+# even that does not name a directory.
+if [ -z "${HOME:-}" ] || [ ! -d "${HOME:-}" ]; then
+    HOME="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)"
+    export HOME
+fi
+if [ -z "${HOME:-}" ] || [ ! -d "$HOME" ]; then
+    say "uid $(id -u) has no home directory, so there is nowhere to install the estate commands. Nothing installed."
+    exit 0
+fi
+
+# An image built before opensoft/workBenches#90 has no vendored tree to install
+# FROM. Say which rebuild ends that rather than fetching anything.
+if [ ! -x "$ESTATE_VENDOR_DIR/openRepoTools" ]; then
+    say "no vendored openRepoTools at $ESTATE_VENDOR_DIR, so this image predates opensoft/workBenches#90. Rebuild Layer 2 (devBenches/base-image/build.sh) to get it. Nothing installed."
+    exit 0
+fi
+
+# NOTHING IS EVER FETCHED AT CONTAINER START. The installer copies each of its
+# artifacts from beside itself when it is run as a file with them there, which
+# the COPY of this whole vendored tree guarantees. This sentinel is the same
+# defence in depth scripts/setup-estate-commands.sh takes, spelled the same
+# way: if a future change ever did reach for the network here, it fails loudly
+# naming the sentinel instead of quietly succeeding against whatever repo or
+# ref the container's environment happened to carry.
+ESTATE_SENTINEL="pinned-by-workBenches-no-fetch"
+
+# Relayed, not summarised: the installer's own per-file `installed` / `updated`
+# / `already installed ... (unchanged)` lines are this step's whole account of
+# what it did, and they go to the container log exactly as it wrote them.
+install_status=0
+OPENREPOTOOLS_REPO="$ESTATE_SENTINEL" OPENREPOTOOLS_REF="$ESTATE_SENTINEL" \
+    "$ESTATE_VENDOR_DIR/openRepoTools" --install || install_status=$?
+if [ "$install_status" -ne 0 ]; then
+    say "openRepoTools --install exited $install_status — its own refusal is above, and the estate commands may be incomplete. Container start continues."
+fi
+
+# THEN THE LINKS, because `~/projects/xFactory/lanes-edit.sh` is the path the
+# SessionStart hook names and it has to resolve to the file the install above
+# just placed. Prefer the installed copy over the vendored one: it is the one
+# the person's own $PATH will reach, and running it is the cheapest proof the
+# install really landed.
+bin_dir="${OPENREPOTOOLS_BIN_DIR:-$HOME/.local/bin}"
+link_estates="$bin_dir/link-estates"
+if [ ! -x "$link_estates" ]; then
+    link_estates="$ESTATE_VENDOR_DIR/link-estates"
+fi
+
+# A FRESH WORKSTATION HAS NO `~/.agents/workspace.yaml` YET, and link-estates
+# refuses (exit 1) when it cannot find one, naming `openRepoTools wip init` as
+# the one command that ends that. That refusal is CORRECT and is not this
+# step's to convert into a container that will not start: relay it and carry on.
+link_status=0
+"$link_estates" || link_status=$?
+if [ "$link_status" -ne 0 ]; then
+    say "link-estates exited $link_status — its own lines are above. On a workstation that has no ~/.agents/workspace.yaml yet this is the expected refusal and \`openRepoTools wip init\` ends it. Container start continues."
+fi
+
+exit 0

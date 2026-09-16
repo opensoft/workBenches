@@ -171,7 +171,7 @@ lane_name_guard_jq='
 configure_profile_runtime() {
   local config_dir="$1" statusline_source statusline_link settings settings_tmp statusline_command default_model
   local guard_source guard_link guard_command guard_ok guard_timeout session_start_ok
-  local name_guard_ok
+  local name_guard_ok name_guard_removed name_guard_why
 
   statusline_source="$base/shared/statusline-command.sh"
   if [[ ! -f "$statusline_source" && -f /usr/local/share/workbenches/claude/statusline-command.sh ]]; then
@@ -303,6 +303,46 @@ configure_profile_runtime() {
     return 1
   fi
 
+  # THE DOWNGRADE IS NEVER SILENT AGAIN (opensoft/workBenches#90). The
+  # `$name_guard_ok`-false branch of `lane_name_guard_jq` below strips this
+  # profile's name-guard entry, and on 2026-09-15 it did exactly that across
+  # every profile on this workstation without a word: a bench recreate had
+  # emptied `~/.local/bin`, so `~/projects/xFactory/lanes-edit.sh` dangled, the
+  # estate stopped answering `guard`, and Amendment 12's protection came off
+  # eighty profiles as a side effect of a container being rebuilt. The removal
+  # itself is right — an entry left behind would block every prompt with
+  # "unknown subcommand", which is the whole argument above — but a person has
+  # to be able to SEE that it happened and what to fix.
+  #
+  # ONE LINE, ONLY WHEN SOMETHING WAS ACTUALLY REMOVED, and the jq is untouched
+  # (opensoft/workBenches#89 owns that fragment): the probe below is a
+  # READ-ONLY question asked of the file the write is about to replace, and it
+  # is asked only on the one path where removal is possible — `$name_guard_ok`
+  # false AND a settings file that exists. An estate that answers `guard`, the
+  # common case on every launch, pays nothing for this. The question is the
+  # same one `$name_guard_present` asks inside the fragment, so the two cannot
+  # disagree about what "carries the entry" means.
+  name_guard_removed=false
+  name_guard_why=''
+  if [[ "$name_guard_ok" == false && -f "$settings" ]]; then
+    if jq -e --arg name_guard "$lane_name_guard_command" \
+         '[(.hooks.UserPromptSubmit // [])[]? | (.hooks // [])[]? | .command]
+            | index($name_guard) != null' \
+         "$settings" >/dev/null 2>&1; then
+      name_guard_removed=true
+      # The two distinct reasons the probe above can answer false, kept apart
+      # because they call for different repairs: nothing installed at that path
+      # at all (the #90 wipe — re-run `openRepoTools --install`), versus a
+      # lanes-edit.sh that is there but predates the verb (re-vendor/upgrade
+      # the estate).
+      if [[ -f "$lane_session_start_script" ]]; then
+        name_guard_why="$lane_session_start_script has no \`guard\` subcommand"
+      else
+        name_guard_why="$lane_session_start_script is not there"
+      fi
+    fi
+  fi
+
   statusline_command='bash "${CLAUDE_CONFIG_DIR}/statusline-command.sh"'
   default_model='claude-fable-5-1'
   guard_command='bash "${CLAUDE_CONFIG_DIR}/usage-guard.sh"'
@@ -357,6 +397,13 @@ configure_profile_runtime() {
   fi
   chmod 600 "$settings_tmp"
   mv -f "$settings_tmp" "$settings"
+  # Said AFTER the write, so the line reports what the file now is rather than
+  # what this run intended — and on stderr, beside every other notice this
+  # launcher prints, because it is a warning about a protection that just came
+  # off and not part of any session's output.
+  if [[ "$name_guard_removed" == true ]]; then
+    echo "claude-profile: removed the Amendment 12 name-guard hook ($lane_name_guard_command) from $settings because $name_guard_why. Restore the estate (openRepoTools --install, then link-estates) and the next launch of this profile puts it back." >&2
+  fi
   # RV-W1 (workBenches#63 re-verification): set only now, for THIS profile,
   # after its settings.json actually carries the entry — not at probe time.
   # A probe of the estate says the entry CAN be ensured; it says nothing about
