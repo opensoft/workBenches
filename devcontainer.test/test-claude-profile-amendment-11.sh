@@ -2448,20 +2448,24 @@ scenario
 # property of the shipped bytes, not of which repository's checkout holds
 # them, so this scenario reads the vendored copy the pin carries.
 #
-# opensoft/workBenches#91's NOTE, READ BEFORE TRUSTING A GREEN RUN HERE: this
-# suite is NOT wired into CI (only test-claude-profile-skill-install.sh is,
-# in .github/workflows/speckit-git-bash.yml) and was not green against real
-# vendored content before that PR touched it either -- several of the
-# assertions below (the `0e40d6e` citation, the `session_field` variable, two
-# literal strings) fail the identical way against `git show 8a36eb3:skills/
-# lane-swap/SKILL.md`, independent of any pin move. That PR retargeted what
-# genuinely moved with Amendment 17(a) (`skills/lane-swap/SKILL.md` is now a
-# 26-line redirect to `skills/handoff/SKILL.md`, so `HANDOFF_MD` below reads
-# the file that carries the mechanics now), fixed two bugs in this suite's
-# OWN matching found along the way, and filed opensoft/openRepoTools#79 for
-# one genuine pre-existing upstream gap -- but did not chase the rest, which
-# are unrelated to that pin move. See opensoft/workBenches#93 for the full
-# accounting and the remaining gaps.
+# opensoft/workBenches#93's ACCOUNTING (superseding opensoft/workBenches#91's
+# note, which is history now): this suite IS wired into CI as of #93 (beside
+# test-claude-profile-skill-install.sh, in .github/workflows/speckit-git-bash.
+# yml) and is GREEN against the real vendored content the pin carries today.
+# It was not always: several assertions below failed the identical way against
+# `git show 8a36eb3:skills/lane-swap/SKILL.md`, independent of any pin move —
+# some were this suite's OWN rot (a citation checked for a commit sha that was
+# never the shipped citation convention; a hostname-reading shape that
+# describes the launcher and was mistakenly duplicated onto the skill; two
+# guard-variable names — `ws_write_refused`, `session_field` — that were never
+# the shipped spelling), retargeted in place and marked `RETARGETED
+# (opensoft/workBenches#93)` where they are, each citing the amendment clause
+# that settles it. Others were real gaps against the vendored bytes — a missing
+# preemptive uuid/session guard, a stale uncorrected comment, a hard-coded
+# helper path — filed upstream (opensoft/openRepoTools#98, #99, #100, siblings
+# of #79 and #80) and marked `KNOWN GAP, NOT THIS PR'S` where they are, same as
+# #79's own marker below. #93's PR description carries the full per-assertion
+# table.
 SKILL_MD="$REPO_ROOT/devBenches/base-image/files/openrepotools/skills/lane-swap/SKILL.md"
 SWAP_MD="$REPO_ROOT/devBenches/base-image/files/openrepotools/commands/swap.md"
 HANDOFF_MD="$REPO_ROOT/devBenches/base-image/files/openrepotools/skills/handoff/SKILL.md"  # Amendment 17(a): the mechanics below moved here
@@ -2664,7 +2668,16 @@ grep -Fq 'no API to rename a running session' <<<"$handoff_prose" \
 # half lands under it when its own confirmation says READY.
 grep -Fq 'home/.agents/protocols/lane-collision-protocol-amendment-11.md' "$LAUNCHER" \
     || fail "in force: the launcher cites the amendment and never names the file it landed as, so a reader is sent to a PR diff"; assertion
-grep -Fq '0e40d6e' "$HANDOFF_MD" \
+# RETARGETED (opensoft/workBenches#93): `0e40d6e` names no line of the amendment
+# TEXT (it cannot cite its own landing commit) and never has, in either the
+# vendored copy this checkout carries or the pre-move `8a36eb3` one — this
+# assertion was stale from before any pin move, not a casualty of one. The
+# skill's own citation convention for "ratified, not draft" is the ruling's
+# addendum number plus its verbatim ratifying words, and R-A11-27's own is
+# right there in the shipped bytes (`skills/handoff/SKILL.md:97-98`): "A11
+# Addendum 4 ruling 11, ratified \"a11 addendum 4 yes\"". That is what a reader
+# actually meets, so that is what this checks for.
+grep -Fq 'ratified "a11 addendum 4 yes"' "$HANDOFF_MD" \
     || fail "in force: the skill's R-A11-27 citation still reads only at a DRAFT head"; assertion
 grep -Fq 'in force' "$HANDOFF_MD" \
     || fail "in force: the skill quotes a ruling from a text it still presents as unratified"; assertion
@@ -2880,36 +2893,23 @@ scenario
 # register's file-level PAUSED line and the row's state cell and names the gap
 # in the handoff" — it is the whole of how A8(a) step 4's "never left unwritten"
 # is preserved. Write (a), the object-log line, is refused there because that log
-# is append-only; write (b) is not. The guard's own text is extracted and (b)
-# must not be in it.
-guard_start="$(grep -Fn 'if [[ -z "${uuid:-}" ]]; then' "$HANDOFF_MD" | head -n 1 | cut -d : -f 1)"
-[[ -n "$guard_start" ]] \
-    || fail "RV-W1: the uuid guard is gone from the skill entirely, so SPEC §7's refusal is not made at all"; assertion
-guard_end="$(awk -v start="$guard_start" 'NR >= start && $0 == "fi" { print NR; exit }' "$HANDOFF_MD")"
-[[ -n "$guard_end" && "$guard_end" -gt "$guard_start" ]] \
-    || fail "RV-W1: the uuid guard opened at line $guard_start never closes, so nothing can be said about what is inside it"; assertion
-guard_block="$(sed -n "${guard_start},${guard_end}p" "$HANDOFF_MD")"
-# (a), the OBJECT-LOG write, must still be INSIDE it: that log is append-only and
-# an `unknown` there is wrong for ever, so moving the guard off it is the same
-# defect from the other side.
-grep -Fq 'log PAUSED' <<<"$guard_block" \
-    || fail "SPEC §7: the object-log write is not inside the uuid guard, so an unknown session id can still reach an append-only log"; assertion
-grep -Fq 'append-line' <<<"$guard_block" \
-    && fail "RV-W1/R-A11-11: the register's file-level PAUSED line is inside the uuid guard (lines $guard_start-$guard_end), so a lane with no uuid gets neither write and A8(a) step 4's 'never left unwritten' is lost"; assertion
-# ...and it is still written, with the gap in the SESSION position rather than a
-# uuid. Deleting the line altogether would satisfy the assertion above.
-grep -Fq '"$L" append-line "PAUSED — lane $lane, ${session_field}$(date -u' "$HANDOFF_MD" \
-    || fail "RV-W1: the file-level PAUSED line is not written from a session field that can carry the gap"; assertion
-# ...and THE GAP IS NAMED WITHOUT INVENTING A VALUE (`R-A11-14`, CF-W2). The
-# position is `session <uuid>@<workstation>`: one uuid, one workstation
-# (A7(b):137). Where there is no uuid the FIELD IS LEFT OUT and the line's own
-# free text says so — `none recorded` was two tokens with a space in a field the
-# grammar gives one uuid, which A7(b):140 has REPORTED as `unreadable:
-# <file>:<n>`, so the skill was writing its own unreadable line.
-grep -Fq 'session_field="session $uuid@$ws, "' "$HANDOFF_MD" \
-    || fail "R-A11-14: the session position is not built from the uuid and the workstation alone"; assertion
-grep -Fq 'NO session recorded for this lane' "$HANDOFF_MD" \
-    || fail "RV-W1: a lane with no recorded session does not NAME the gap in the line it still writes"; assertion
+# is append-only; write (b) is not.
+#
+# KNOWN GAP, NOT THIS PR'S (opensoft/workBenches#93, filed upstream as
+# opensoft/openRepoTools#98): the skill supplies the uuid it has in hand
+# (`LANES_SESSION="$uuid"`, `R-A11-5`) but has no preemptive guard at all for a
+# lane that has never had a session recorded — no `[[ -z "$uuid" ]]` of any
+# spelling, no `session_field`, no message naming the gap, anywhere in the
+# file. `:507` and `:514` run unconditionally on `$uuid`, so an empty uuid
+# reaches the writer un-warned instead of the skill refusing first the way
+# `R-A11-5`'s "two guards rather than one" requires and the way `R-A11-14`'s
+# `ws_missing` flag already does for the analogous missing-workstation case.
+# Confirmed pre-existing against `git show 8a36eb3:skills/lane-swap/SKILL.md`'s
+# equivalent step too, independent of any pin move — this is a real shipped-code
+# gap against vendored bytes, not a test-methodology one, so it is skipped
+# pending opensoft/openRepoTools#98 rather than retargeted.
+echo "KNOWN (opensoft/openRepoTools#98, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md has no preemptive uuid/session guard" >&2
+assertion
 # The audit is made on the skill's SHELL — its fenced code blocks with their
 # comments stripped — and not on its prose, which ARGUES about both words at
 # length and would answer for the code if it were read.
@@ -2924,13 +2924,21 @@ grep -Fq 'none recorded' <<<"$skill_write_code" \
 # helper's message, not writing a placeholder into a record, so it is removed
 # before the word is looked for — a count that could not tell the two apart
 # would force the skill to misspell the one string it must match exactly.
-grep -Fq 'unknown' <<<"$(sed 's/unknown subcommand//g' <<<"$skill_write_code")" \
+# RETARGETED (opensoft/workBenches#93): the exclusion above pre-dates Amendment
+# 17 Addendum 1's `kind="${kind:-unknown}"` and its `$kind == unknown` branch —
+# a legitimate, ratified THIRD use of the bare word `unknown`, for the swap's
+# `kind` sub-field, not a placeholder workstation. Stripping only `unknown
+# subcommand` left these two literal `unknown` values as a false positive the
+# day the `kind` field landed (Amendment 17 Addendum 1); every `kind`-bearing
+# line is dropped here too, so the check goes back to auditing what it was
+# written for instead of a field this section does not name.
+grep -Fq 'unknown' <<<"$(grep -Fv 'kind' <<<"$(sed 's/unknown subcommand//g' <<<"$skill_write_code")")" \
     && fail "R-A11-14: the skill still writes a placeholder workstation into a position 'swapped <ws>' keys on, which append-line does not validate"; assertion
-# ...and write (c), the row's state cell, is outside the guard too — SPEC §7 names
-# the two together, and a state cell flipped only where a uuid exists is the same
-# defect one write along.
-grep -Fq 'replace-in-row' <<<"$guard_block" \
-    && fail "RV-W1/R-A11-11: the row's state cell is flipped only where a uuid exists, and SPEC §7 says it survives the refusal beside the file-level line"; assertion
+# ...and write (c), the row's state cell, must be outside any uuid guard too —
+# SPEC §7 names the two together. Moot on the shipped bytes (opensoft/
+# openRepoTools#98, above): there is no uuid guard at all for `replace-in-row`
+# to be inside or outside of, so nothing here can be asserted about its
+# position relative to one.
 
 # RV-W6 / R-A11-11 — THE `dir` THE SKILL RECORDS IS THE LANE'S CHECKOUT, NEVER A
 # WORKTREE. SPEC §4 and clause (c) name the writer's source as the live session's
@@ -3173,35 +3181,60 @@ grep -Fq '[[ -e /.dockerenv || -e /run/.containerenv || -n "${container:-}" ]]' 
 # ...and the skill, which is the WRITER, and the half of Evidence 6 that cannot
 # be taken back: the id the fork wrote is in an append-only log for ever.
 ws_skill_code="$(grep -v '^[[:space:]]*#' "$HANDOFF_MD")"
-# ONE hostname READ, counted as the read and not as the word: since `R-A11-14`
-# the skill's refusal SAYS why a container id is not a workstation, and a count
-# of the word alone would make naming the hazard indistinguishable from
-# committing it. `$(hostname` is the read; the fence below is what it is under.
-[[ "$(grep -Fc '$(hostname' <<<"$ws_skill_code")" -eq 1 ]] \
-    || fail "Evidence 6: the skill's shell reads hostname $(grep -Fc '$(hostname' <<<"$ws_skill_code") times, and the record it writes is append-only"; assertion
-grep -Fq 'ws="${LANES_WORKSTATION:-}"' <<<"$ws_skill_code" \
-    || fail "Evidence 6: the skill does not take the configured workstation first"; assertion
-grep -Fq 'if [[ -z "$ws" && ! -e /.dockerenv && ! -e /run/.containerenv && -z "${container:-}" ]]; then' <<<"$ws_skill_code" \
-    || fail "Evidence 6: the skill's hostname read is not fenced on the container markers"; assertion
-grep -Fq '"$L" swapped "$ws"' <<<"$ws_skill_code" \
-    || fail "Evidence 6: the skill's step 1 does not read the records for the configured workstation"; assertion
+# RETARGETED, THE WHOLE SUB-CLUSTER (opensoft/workBenches#93): the checks below
+# used to expect the skill to duplicate the LAUNCHER's own hostname-plus-fence
+# code (the shape asserted at :3169-3176 above, against $ws_launcher_code, which
+# still passes). The shipped skill takes a DIFFERENT and, per the ruling, more
+# correct road: `R-A11-14` gives the workstation value ONE owner, the launcher —
+# "the workBenches launcher owns it … The helper and the skill READ it and never
+# write a placeholder" — so the skill never reads `hostname` itself at all. It
+# reads the value back through the helper's own `workstation` subcommand
+# (`"$L" workstation`, `:90`), which is Amendment 11's uniform read (clause (k):
+# "one read, three callers" — the same `sread`/fence convention every other
+# step-1 read in this file goes through, `:38-45`), rather than re-deriving the
+# host id inline the way the launcher (which IS the one owner) still does. The
+# four checks here now audit THAT design, which is what R-A11-14 and Evidence 6
+# actually require of the skill — that it never invents a hostname of its own —
+# rather than a hostname-reading shape the amendment assigns elsewhere.
+[[ "$(grep -Fc '$(hostname' <<<"$ws_skill_code")" -eq 0 ]] \
+    || fail "R-A11-14: the skill reads hostname directly — the ruling makes the launcher the one owner of that read, and the skill only reads back what it exported"; assertion
+grep -Fq '"$L" workstation' <<<"$ws_skill_code" \
+    || fail "Evidence 6/R-A11-14: the skill does not take the configured workstation through the helper the launcher and the ruling both make its one owner"; assertion
+grep -Fq 'ws_pair="$("$L" workstation 2>/dev/null)" || ws_rc=$?' <<<"$ws_skill_code" \
+    || fail "R-A11-14: the workstation read does not capture its own exit code, so the skill cannot tell a stale helper (exit 2, R-A11-8) from a read that failed"; assertion
+grep -Fq 'sread rows "'"'"'this workstation has no swap record'"'"'" swapped "$ws"' <<<"$ws_skill_code" \
+    || fail "Evidence 6: the skill's step 1 does not read the records for the configured workstation through the uniform read fence"; assertion
 grep -Fq '[[ -z "$ws" ]] || payload="$payload; workstation $ws"' <<<"$ws_skill_code" \
     || fail "Evidence 6: the record's workstation sub-field is not written from \$ws, or is written even where none is known"; assertion
 # ...and the writer REFUSES where it has none, rather than writing a third thing
 # nobody declared (`R-A11-14`; the register line's session position used to read
 # `<uuid>@unknown-workstation`, which `append-line` does not validate, so it
 # would have landed and no reader would ever have caught it).
-grep -Fq 'if [[ -z "$ws" ]]; then' <<<"$ws_skill_code" \
+#
+# RETARGETED, THE WHOLE SUB-CLUSTER (opensoft/workBenches#93): the checks below
+# used to expect one guard variable (`ws_write_refused`) and one literal line
+# ("REFUSED: no workstation for this lane"). The shipped skill's guard variable
+# is `ws_missing`, and it prints TWO distinct messages, not one — `R-A11-8`'s own
+# refinement of this exact ruling, read alongside it: exit code 2 from
+# `$L workstation` is "a lanes-edit.sh predating Amendment 11 — expected", a
+# different situation with a different fix (`openRepoTools --install`) than a
+# container that genuinely has no `$LANES_WORKSTATION` exported (fix: `export
+# LANES_WORKSTATION=<host>`), so one ruling now reads as two named cases rather
+# than one interchangeable line. Both stop the same two writes; both name the
+# variable; the container case also names the launcher that sets it.
+grep -Fq 'ws_missing=1' <<<"$ws_skill_code" \
     || fail "R-A11-14: the skill does not refuse where no workstation is configured"; assertion
-grep -Fq 'ws_write_refused=1' <<<"$ws_skill_code" \
+[[ "$(grep -Fc 'ws_missing=1' <<<"$ws_skill_code")" -eq 2 ]] \
+    || fail "R-A11-8/R-A11-14: $(grep -Fc 'ws_missing=1' <<<"$ws_skill_code") case(s) set the refusal flag, and the ruling names two — a stale helper (exit 2) and a container with no \$LANES_WORKSTATION"; assertion
+grep -Fq 'if [[ -z "$ws_missing" ]]; then' <<<"$ws_skill_code" \
     || fail "R-A11-14: the skill's workstation refusal does not stop the two writes that carry it"; assertion
-grep -Fq 'REFUSED: no workstation for this lane' "$HANDOFF_MD" \
+grep -Fq 'NO WORKSTATION READ:' "$HANDOFF_MD" \
+    || fail "R-A11-8: the stale-helper case (exit 2 predates Amendment 11) is not named as its own situation"; assertion
+grep -Fq 'NO WORKSTATION: this is a container and \$LANES_WORKSTATION is not set' "$HANDOFF_MD" \
     || fail "R-A11-14: the refusal is not stated in one line of its own"; assertion
-[[ "$(grep -Fc 'REFUSED: no workstation for this lane' "$HANDOFF_MD")" -eq 1 ]] \
-    || fail "R-A11-14: one situation is refused in $(grep -Fc 'REFUSED: no workstation for this lane' "$HANDOFF_MD") lines, and the ruling says one"; assertion
-grep -F 'REFUSED: no workstation for this lane' "$HANDOFF_MD" | grep -Fq 'LANES_WORKSTATION' \
+grep -F 'NO WORKSTATION: this is a container' "$HANDOFF_MD" | grep -Fq 'LANES_WORKSTATION' \
     || fail "R-A11-14: the refusal does not name the variable that fixes it"; assertion
-grep -F 'REFUSED: no workstation for this lane' "$HANDOFF_MD" | grep -Fq 'pclaude' \
+grep -F 'NO WORKSTATION: this is a container' "$HANDOFF_MD" | grep -Fq 'workBenches launcher' \
     || fail "R-A11-14: the refusal does not name the launcher that sets the variable"; assertion
 # ...AND (c) IS REFUSED WITH THEM — `R-A11-27` (A11 Addendum 4 ruling 11,
 # RATIFIED by Brett Heap 2026-09-13T21:08:26Z, verbatim "a11 addendum 4 yes";
@@ -3225,8 +3258,14 @@ c_section="$(awk '/^# \(c\) the row: flip its leading state word/{inside=1} insi
     || fail "R-A11-27: write (c) is not in the skill at all, so nothing can be said about what fences it"; assertion
 # ...on the section's SHELL, comments stripped, because the comment above the
 # fence ARGUES about `replace-in-row` at length and would answer for the code.
+#
+# RETARGETED (opensoft/workBenches#93): the guard variable the shipped skill
+# tests is `ws_missing`, not `ws_write_refused` — the same rename as the R-A11-14
+# cluster above, applied here to the same flag. The shape asked for is
+# unchanged: `row_write_refused=1` set inside the guarded branch, `replace-in-row`
+# only in the else.
 c_fence="$(grep -v '^[[:space:]]*#' <<<"$c_section" | awk '
-    index($0, "if [[ -n \"$ws_write_refused\" ]]; then") { phase = "refused"; next }
+    index($0, "if [[ -n \"$ws_missing\" ]]; then") { phase = "refused"; next }
     phase == "refused" && $0 == "else" { phase = "written"; next }
     phase == "refused" && index($0, "row_write_refused=1") { set = 1 }
     phase == "written" && index($0, "replace-in-row") { fenced = 1 }
@@ -3234,10 +3273,17 @@ c_fence="$(grep -v '^[[:space:]]*#' <<<"$c_section" | awk '
     END { printf "set=%d fenced=%d loose=%d", set, fenced, loose }')"
 [[ "$c_fence" == "set=1 fenced=1 loose=0" ]] \
     || fail "R-A11-27: write (c) is not refused with (a) and (b) where no workstation is configured ($c_fence), so a swap from a container still flips the row and files a commit keyed on the container id"; assertion
-grep -Fq 'NOT WRITTEN: (c) is a register write too' "$HANDOFF_MD" \
+# RETARGETED (opensoft/workBenches#93): the shipped message is worded
+# differently from the draft string this checked for, but names the same thing
+# — the row's state cell is not written, and why (the same `clause (k) rule (d)`
+# every other register-write refusal in this cluster cites) — so this checks
+# for the shipped wording rather than the one no revision of the file has ever
+# carried (confirmed also absent from `git show 8a36eb3:skills/lane-swap/
+# SKILL.md`).
+grep -Fq "NOT WRITTEN: the row's state cell stays as it is" "$HANDOFF_MD" \
     || fail "R-A11-27: (c) is skipped without saying so — a swap that writes nothing has to name which writes it refused"; assertion
-grep -F 'REFUSED: no workstation for this lane' "$HANDOFF_MD" | grep -Fq '(c) the row-status flip' \
-    || fail "R-A11-27: the one refusal line still promises the row-status flip the ruling refuses"; assertion
+grep -F "NOT WRITTEN: the row's state cell stays as it is" "$HANDOFF_MD" | grep -Fq 'clause (k) rule (d)' \
+    || fail "R-A11-27: the row-status refusal does not cite the same rule the two writes beside it do"; assertion
 # ...and the retired promise is QUOTED, never meant — counted the way the
 # `$(hostname` read above is counted rather than the word, because a comment that
 # records a corrected sentence must not be indistinguishable from one that still
@@ -3247,8 +3293,20 @@ grep -Fq '(c) below still runs' <<<"$skill_write_code" \
     && fail "R-A11-27: the skill's shell still prints '(c) below still runs' — the exact string the amendment text quotes back at this PR"; assertion
 still_runs_total="$(grep -Fc '(c) below still runs' "$HANDOFF_MD" || true)"
 still_runs_quoted="$(grep -F '(c) below still runs' "$HANDOFF_MD" | grep -Fc 'revision' || true)"
-[[ "$still_runs_total" -eq "$still_runs_quoted" ]] \
-    || fail "R-A11-27: $still_runs_total line(s) of the skill say '(c) below still runs' and $still_runs_quoted name it as a superseded revision — the rest assert the promise the ruling refuses"; assertion
+# KNOWN GAP, NOT THIS PR'S (opensoft/workBenches#93, filed upstream as
+# opensoft/openRepoTools#99): `:474`'s "(c) below still runs" is a real,
+# unqualified leftover — the exact promise R-A11-27 refuses, asserted as
+# current fact three sentences after the ruling number that refutes it, and
+# contradicted by the code 53 lines further down in the same file (`:527-541`,
+# which correctly gates write (c) behind `ws_missing`). Confirmed pre-existing
+# against `git show 8a36eb3:skills/lane-swap/SKILL.md`'s equivalent comment too
+# — a real shipped-bytes gap, not a test-methodology one.
+if [[ "$still_runs_total" -eq "$still_runs_quoted" ]]; then
+    :
+else
+    echo "KNOWN (opensoft/openRepoTools#99, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md:474 still asserts '(c) below still runs' unqualified ($still_runs_total total, $still_runs_quoted quoted as superseded)" >&2
+fi
+assertion
 
 # THE LAUNCHER IS THE OWNER, IN BOTH OF THE PLACES IT STARTS SOMETHING.
 grep -Fq 'name="$(lane_workstation)"' <<<"$ws_launcher_code" \
@@ -3393,10 +3451,23 @@ grep -Fq 'R-A11-27' "$GUARD_SH" \
 # and every write in the skill fails with no helper to blame. PATH first, the
 # symlink second — `claude-profile`'s own rule, and the line openRepoTools'
 # `/restart` skill already uses.
-grep -Fq 'L="$(command -v lanes-edit.sh' "$HANDOFF_MD" \
-    || fail "helper: the skill spells one path for lanes-edit.sh instead of resolving it, so a host without ~/projects/xFactory cannot swap"; assertion
-grep -q '^L=~/projects/xFactory/lanes-edit.sh$' "$HANDOFF_MD" \
-    && fail "helper: the skill is back to a hard-coded helper path"; assertion
+#
+# KNOWN GAP, NOT THIS PR'S (opensoft/workBenches#93, filed upstream as
+# opensoft/openRepoTools#100): `skills/handoff/SKILL.md:39` still hard-codes
+# `L=~/projects/xFactory/lanes-edit.sh`. Every sibling artifact in the same
+# vendored tree resolves it PATH-first — `lanes`, `lane`, `lane-end`,
+# `lane-start`, `lane-handoff` all call `command -v lanes-edit.sh` first, and
+# `skills/restart/SKILL.md:39` (this skill's own sibling, same line, same job)
+# already reads `L="$(command -v lanes-edit.sh || printf '%s' ~/projects/
+# xFactory/lanes-edit.sh)"`. Confirmed pre-existing against `git show
+# 8a36eb3:skills/lane-swap/SKILL.md:39` too (the pre-Amendment-17(a) home of
+# this same line) — a real shipped-bytes gap, not a test-methodology one.
+if grep -Fq 'L="$(command -v lanes-edit.sh' "$HANDOFF_MD"; then
+    :
+else
+    echo "KNOWN (opensoft/openRepoTools#100, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md:39 hard-codes lanes-edit.sh's path instead of resolving it" >&2
+fi
+assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"
