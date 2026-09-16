@@ -3505,6 +3505,35 @@ customize_installed_overlay() {
         > "$repo/.claude/skills/speckit-specify/SKILL.md"
 }
 
+# Stamps the installed overlay's content marker (scripts/bash/.speckit-overlay-content)
+# with the digest $template would currently produce, by calling the same
+# worktree_git_overlay_content_digest/write_overlay_content_marker functions
+# setup-openspeckit itself uses -- so a fixture can represent "this repo was
+# already fully synced to $template" without duplicating the hashing logic.
+stamp_overlay_content_marker() {
+    local repo="$1"
+    local template="$2"
+    if ! python3 - "$SETUP_SCRIPT" "$template" "$repo" <<'PY'
+from pathlib import Path
+import runpy
+import sys
+
+namespace = runpy.run_path(sys.argv[1], run_name="setup_openspeckit_test")
+digest_fn = namespace["worktree_git_overlay_content_digest"]
+write_marker = namespace["write_overlay_content_marker"]
+template_git_root = Path(sys.argv[2]) / "specify" / "extensions" / "git"
+repo_git_root = Path(sys.argv[3]) / ".specify" / "extensions" / "git"
+digest = digest_fn(template_git_root)
+if digest is None:
+    raise SystemExit(f"template digest unavailable under {template_git_root}")
+write_marker(repo_git_root, digest, False)
+PY
+    then
+        printf 'FAIL: could not stamp overlay content marker fixture for %s\n' "$repo" >&2
+        exit 1
+    fi
+}
+
 MARKED_TEMPLATE_ROOT="$TMPDIR_ROOT/marked-overlay-templates"
 UNMARKED_TEMPLATE_ROOT="$TMPDIR_ROOT/unmarked-overlay-templates"
 make_fake_overlay_template "$MARKED_TEMPLATE_ROOT" marked
@@ -3638,10 +3667,13 @@ assert_contains "$TMPDIR_ROOT/linked-overlay.log" 'done' 'skill link replacement
 assert_contains "$LINKED_OVERLAY_DESTINATION/SKILL.md" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'replaced skill link receives the managed shape block'
 assert_contains "$LINKED_OVERLAY_REPO/.claude/skills/speckit-specify/SKILL.md" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'skill link replacement run still writes the other shape blocks'
 
-printf '%s\n' 'When: a marked template meets an installed overlay that already carries the marker'
+printf '%s\n' 'When: a marked template meets an installed overlay that already carries the marker and a current content digest'
 MARKED_OVERLAY_REPO="$TMPDIR_ROOT/marked-overlay-repo"
 MARKED_OVERLAY_PROTOCOL_ROOT="$TMPDIR_ROOT/marked-overlay-protocol"
 install_overlay_fixture "$MARKED_OVERLAY_REPO" "$MARKED_TEMPLATE_ROOT"
+stamp_overlay_content_marker "$MARKED_OVERLAY_REPO" "$MARKED_TEMPLATE_ROOT"
+MARKED_OVERLAY_CONTENT_MARKER="$MARKED_OVERLAY_REPO/.specify/extensions/git/scripts/bash/.speckit-overlay-content"
+cp "$MARKED_OVERLAY_CONTENT_MARKER" "$TMPDIR_ROOT/marked-overlay-content-marker.before"
 customize_installed_overlay "$MARKED_OVERLAY_REPO"
 export AGENT_PROTOCOL_ROOT="$MARKED_OVERLAY_PROTOCOL_ROOT"
 if ! python3 "$SETUP_SCRIPT" --repo "$MARKED_OVERLAY_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
@@ -3651,11 +3683,109 @@ if ! python3 "$SETUP_SCRIPT" --repo "$MARKED_OVERLAY_REPO" "${OVERLAY_REFRESH_FL
     exit 1
 fi
 
-printf '%s\n' 'Then: a compatible marked overlay keeps its repository customizations'
+printf '%s\n' 'Then: an overlay whose shape and content are both current keeps its customizations, unrefreshed'
 assert_not_contains "$TMPDIR_ROOT/marked-overlay.log" 'replacing incompatible Spec Kit git extension' 'marked overlay is treated as compatible'
+assert_not_contains "$TMPDIR_ROOT/marked-overlay.log" 'refreshing Spec Kit git extension scripts' 'marked overlay with a current content digest is not treated as stale'
 assert_contains "$MARKED_OVERLAY_REPO/.specify/extensions/git/scripts/bash/git-common.sh" 'repository-specific overlay customization' 'marked overlay keeps its git extension customization'
 assert_contains "$MARKED_OVERLAY_REPO/.specify/shell/select-worktree.sh" 'repository-specific shell customization' 'marked overlay keeps its shell customization'
 assert_contains "$MARKED_OVERLAY_REPO/.claude/skills/speckit-specify/SKILL.md" 'repository-specific overlay skill customization' 'marked overlay keeps its skill customization'
+if cmp -s "$TMPDIR_ROOT/marked-overlay-content-marker.before" "$MARKED_OVERLAY_CONTENT_MARKER"; then
+    pass 'marked overlay with a current content digest keeps its content marker unchanged'
+else
+    fail 'marked overlay with a current content digest rewrote its content marker'
+fi
+
+printf '%s\n' 'Given: a marked overlay template whose git-common.sh received a script-level bugfix'
+CONTENT_CURRENT_TEMPLATE_ROOT="$TMPDIR_ROOT/content-current-overlay-templates"
+CONTENT_STALE_TEMPLATE_ROOT="$TMPDIR_ROOT/content-stale-overlay-templates"
+make_fake_overlay_template "$CONTENT_CURRENT_TEMPLATE_ROOT" marked
+make_fake_overlay_template "$CONTENT_STALE_TEMPLATE_ROOT" marked
+cat > "$CONTENT_CURRENT_TEMPLATE_ROOT/specify/extensions/git/scripts/bash/git-common.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+# speckit-overlay-shape: 1
+# fixture overlay git-common
+load_git_worktrees() {
+    : # post-bugfix body -- opensoft/workBenches#94
+}
+EOF
+cat > "$CONTENT_STALE_TEMPLATE_ROOT/specify/extensions/git/scripts/bash/git-common.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+# speckit-overlay-shape: 1
+# fixture overlay git-common
+load_git_worktrees() {
+    : # pre-bugfix body -- opensoft/workBenches#94
+}
+EOF
+
+printf '%s\n' 'When: an overlay installed from the old template meets a rerun against the bugfixed template'
+CONTENT_STALE_OVERLAY_REPO="$TMPDIR_ROOT/content-stale-overlay-repo"
+CONTENT_STALE_OVERLAY_PROTOCOL_ROOT="$TMPDIR_ROOT/content-stale-overlay-protocol"
+install_overlay_fixture "$CONTENT_STALE_OVERLAY_REPO" "$CONTENT_STALE_TEMPLATE_ROOT"
+stamp_overlay_content_marker "$CONTENT_STALE_OVERLAY_REPO" "$CONTENT_STALE_TEMPLATE_ROOT"
+customize_installed_overlay "$CONTENT_STALE_OVERLAY_REPO"
+export AGENT_PROTOCOL_ROOT="$CONTENT_STALE_OVERLAY_PROTOCOL_ROOT"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$CONTENT_CURRENT_TEMPLATE_ROOT"
+if ! python3 "$SETUP_SCRIPT" --repo "$CONTENT_STALE_OVERLAY_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/content-stale-overlay.log" 2>&1; then
+    printf '%s\n' 'FAIL: content-stale-overlay bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/content-stale-overlay.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: the shape marker alone could not have caught this, but the content digest does, and the rerun refreshes it once'
+assert_not_contains "$TMPDIR_ROOT/content-stale-overlay.log" 'replacing incompatible Spec Kit git extension' 'stale content is not reported as a shape incompatibility'
+assert_contains "$TMPDIR_ROOT/content-stale-overlay.log" 'refreshing Spec Kit git extension scripts' 'stale content is reported by name'
+assert_contains "$TMPDIR_ROOT/content-stale-overlay.log" 'installed content digest is stale against the current template' 'stale content refresh names why it happened'
+CONTENT_STALE_GIT_COMMON="$CONTENT_STALE_OVERLAY_REPO/.specify/extensions/git/scripts/bash/git-common.sh"
+assert_contains "$CONTENT_STALE_GIT_COMMON" 'post-bugfix body' 'content-stale refresh installs the bugfixed script body'
+assert_not_contains "$CONTENT_STALE_GIT_COMMON" 'pre-bugfix body' 'content-stale refresh removes the pre-bugfix script body'
+assert_not_contains "$CONTENT_STALE_GIT_COMMON" 'repository-specific overlay customization' 'content-stale refresh replaces the git extension tree'
+
+printf '%s\n' 'When: the same repository reruns again with nothing left to refresh'
+if ! python3 "$SETUP_SCRIPT" --repo "$CONTENT_STALE_OVERLAY_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/content-stale-overlay-second.log" 2>&1; then
+    printf '%s\n' 'FAIL: second content-stale-overlay bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/content-stale-overlay-second.log"
+    exit 1
+fi
+assert_not_contains "$TMPDIR_ROOT/content-stale-overlay-second.log" 'refreshing Spec Kit git extension scripts' 'the written content marker makes the next rerun a no-op'
+assert_not_contains "$TMPDIR_ROOT/content-stale-overlay-second.log" 'replacing incompatible Spec Kit git extension' 'the written content marker also satisfies the shape check on rerun'
+
+printf '%s\n' 'Given: a marked overlay installed before this content marker ever existed'
+NO_CONTENT_MARKER_OVERLAY_REPO="$TMPDIR_ROOT/no-content-marker-overlay-repo"
+NO_CONTENT_MARKER_OVERLAY_PROTOCOL_ROOT="$TMPDIR_ROOT/no-content-marker-overlay-protocol"
+install_overlay_fixture "$NO_CONTENT_MARKER_OVERLAY_REPO" "$CONTENT_CURRENT_TEMPLATE_ROOT"
+customize_installed_overlay "$NO_CONTENT_MARKER_OVERLAY_REPO"
+NO_CONTENT_MARKER_FILE="$NO_CONTENT_MARKER_OVERLAY_REPO/.specify/extensions/git/scripts/bash/.speckit-overlay-content"
+assert_not_exists "$NO_CONTENT_MARKER_FILE" 'fixture predates the content marker entirely'
+
+printf '%s\n' 'When: bootstrap first reruns against it'
+export AGENT_PROTOCOL_ROOT="$NO_CONTENT_MARKER_OVERLAY_PROTOCOL_ROOT"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$CONTENT_CURRENT_TEMPLATE_ROOT"
+if ! python3 "$SETUP_SCRIPT" --repo "$NO_CONTENT_MARKER_OVERLAY_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/no-content-marker-first.log" 2>&1; then
+    printf '%s\n' 'FAIL: first no-content-marker bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/no-content-marker-first.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: the absent marker is treated as stale and refreshed exactly once, and the marker is written'
+assert_contains "$TMPDIR_ROOT/no-content-marker-first.log" 'refreshing Spec Kit git extension scripts' 'an absent content marker is refreshed by name'
+assert_not_contains "$NO_CONTENT_MARKER_OVERLAY_REPO/.specify/extensions/git/scripts/bash/git-common.sh" 'repository-specific overlay customization' 'the first rerun after adopting the content marker replaces the git extension tree'
+assert_file "$NO_CONTENT_MARKER_FILE" 'the first rerun writes the content marker'
+assert_contains "$NO_CONTENT_MARKER_FILE" '# speckit-overlay-content: ' 'the written content marker uses the documented prefix'
+
+printf '%s\n' 'When: bootstrap reruns again with the marker now in place'
+if ! python3 "$SETUP_SCRIPT" --repo "$NO_CONTENT_MARKER_OVERLAY_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/no-content-marker-second.log" 2>&1; then
+    printf '%s\n' 'FAIL: second no-content-marker bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/no-content-marker-second.log"
+    exit 1
+fi
+assert_not_contains "$TMPDIR_ROOT/no-content-marker-second.log" 'refreshing Spec Kit git extension scripts' 'the second rerun is idempotent once the marker is written'
+assert_not_contains "$TMPDIR_ROOT/no-content-marker-second.log" 'replacing incompatible Spec Kit git extension' 'the second rerun does not treat the now-marked overlay as shape-incompatible either'
 
 printf '%s\n' 'When: an unmarked template meets an unmarked installed overlay'
 LEGACY_OVERLAY_REPO="$TMPDIR_ROOT/legacy-overlay-repo"
