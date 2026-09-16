@@ -707,6 +707,18 @@ act1_compose_child_command() {
   # is threaded explicitly, and this one is what every WRITER in the session
   # reads — a session that comes up without it can write no lane record at all.
   [[ -z "${LANES_WORKSTATION:-}" ]] || env_prefix+=("LANES_WORKSTATION=$LANES_WORKSTATION")
+  # ...AND WHERE THE LANE IS RUNNING, THE SAME WAY AND FOR THE SAME REASON
+  # (lane-collision-protocol Amendment 18 clause (a), opensoft/workBenches#98).
+  # `lane_export_binding_facts` has exported all three on this side of the
+  # re-exec and inheritance is no more reliable for them than it is for the
+  # workstation above, so each is written into the command string on a line of
+  # its own. A value the launcher had NO answer for is threaded as nothing at
+  # all rather than as an empty assignment: unset is what makes the tooling fall
+  # back to its own probe (openRepoTools#83), and `LANES_CONTAINER=` would tell
+  # it a container is named the empty string.
+  [[ -z "${LANES_HOST:-}" ]] || env_prefix+=("LANES_HOST=$LANES_HOST")
+  [[ -z "${LANES_OS:-}" ]] || env_prefix+=("LANES_OS=$LANES_OS")
+  [[ -z "${LANES_CONTAINER:-}" ]] || env_prefix+=("LANES_CONTAINER=$LANES_CONTAINER")
   # --lane/CLAUDE_LANE must survive this re-exec into a new tmux session.
   # tmux does not reliably hand a freshly-exported variable to a new session
   # on an already-running server, so it is threaded through explicitly here
@@ -1622,6 +1634,144 @@ lane_export_workstation() {
   export LANES_WORKSTATION="$name"
 }
 
+# WHERE THE LANE IS RUNNING, IN THREE MORE WORDS — lane-collision-protocol
+# Amendment 18 clause (a) (in force 2026-09-14T13:15Z), the launcher half,
+# opensoft/workBenches#98. A pid does not cross a pid namespace: two bench
+# containers on one host share this profile directory, so a lane live and
+# writing in cloudBench read NOT LIVE from pyBench and `lane-start` there took
+# the name — two bindings, one lane, one append-only log, reached through the
+# protocol's own liveness read. The record could not say otherwise because it
+# did not carry where a lane runs BELOW the workstation's name, so the
+# amendment puts `host <name>; os <linux|macos|wsl|windows>; container
+# <name|none>` on every STARTED, RESUMED and PAUSED, in its own words
+# "exported by the launcher like `LANES_WORKSTATION`".
+#
+# THE TOOLING HALF IS `opensoft/openRepoTools#83` AND ONLY EVER READS THEM: it
+# falls back to its own probes until this export reaches a workstation, and it
+# DROPS an exported `os` that is none of the four words. This launcher is what
+# sets them, for the reason `R-A11-14` gave it `LANES_WORKSTATION` one function
+# above — it is the one process that runs on the HOST and starts the sessions
+# every reader runs in.
+#
+# ONE RULE FOR ALL FOUR. An already-set value WINS. `hostname` is read only
+# where this is NOT a container, because inside one it is the container's id —
+# `0e7d1a79a07e`, measured (Evidence 6) — a machine that has existed for an
+# hour. And where there is no answer at all, NOTHING IS EXPORTED and nothing is
+# invented: both lane logs are append-only, so a fact that is not a fact is
+# wrong for ever, and the tooling's own fallback is a better answer than this
+# launcher's guess. Each value is resolved once here and threaded across the
+# tmux re-exec by `act1_compose_child_command`.
+lane_host() {
+  # THE MACHINE'S SHORT HOSTNAME AS IT READS OUTSIDE ANY CONTAINER, AND NEVER A
+  # CONTAINER ID. It is not a second spelling of `LANES_WORKSTATION`: the
+  # workstation is the estate's own word for a machine and the key the register
+  # and the object log are keyed on (`Eagle`), while this is what the machine
+  # calls itself (`eagle`, `Eagle.local`, a new-workstation's untouched default)
+  # — Amendment 18 gives the line both because the second is what a person
+  # standing at a terminal can check.
+  #
+  # Inside a container the answer is the value the launcher threaded IN on the
+  # way through — this function again, one process out, or
+  # `scripts/wave-container-shell.sh` — and where nothing was threaded in there
+  # is NO answer: the variable stays unset rather than carrying a container id
+  # into a line that says `host`, and openRepoTools#83's own fallback answers
+  # for it instead.
+  local name
+  name="${LANES_HOST:-}"
+  if [[ -z "$name" ]] && ! lane_in_container; then
+    name="$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)"
+  fi
+  printf '%s\n' "$name"
+}
+
+lane_os() {
+  # EXACTLY ONE OF `linux`, `macos`, `wsl` AND `windows` — OR NOTHING. The four
+  # words are the amendment's whole vocabulary and openRepoTools#83 drops an
+  # `os` that is none of them, so a kernel this case cannot name is left unset
+  # rather than exported as a fifth word or forced into the nearest of the four.
+  #
+  # `windows` IS A WORD THIS LAUNCHER ONLY EVER PASSES THROUGH. The estate's
+  # tooling is bash and runs in WSL2 on a Windows machine, where `uname -s` says
+  # `Linux` and `/proc/version` says Microsoft — the honest word there is `wsl`,
+  # and this derivation never produces `windows` on that path. It is derived for
+  # a bash that really is running on Windows itself (Git Bash, MSYS), and an
+  # already-set `LANES_OS=windows` wins here as every already-set value does.
+  #
+  # bash 3.2 — macOS's own /bin/bash, which this launcher runs on — has no
+  # `${x,,}`, so the WSL probe folds case through `tr` on a copy. Both kernel
+  # strings are read, and `/proc/version` first: a WSL2 kernel rebuilt without
+  # `Microsoft` in `uname -r` still says it in `/proc/version`, and a container
+  # on that host shares that very kernel, so the two reads agree wherever the
+  # lane is.
+  local name kernel release
+  name="${LANES_OS:-}"
+  if [[ -z "$name" ]]; then
+    kernel="$(uname -s 2>/dev/null || true)"
+    case "$kernel" in
+      Darwin)
+        name=macos
+        ;;
+      Linux)
+        release=""
+        [[ ! -r /proc/version ]] || release="$(cat /proc/version 2>/dev/null || true)"
+        release="$release $(uname -r 2>/dev/null || true)"
+        release="$(printf '%s' "$release" | tr '[:upper:]' '[:lower:]')"
+        case "$release" in
+          *microsoft*|*wsl*) name=wsl ;;
+          *) name=linux ;;
+        esac
+        ;;
+      CYGWIN*|MINGW*|MSYS*|Windows_NT)
+        name=windows
+        ;;
+    esac
+  fi
+  printf '%s\n' "$name"
+}
+
+lane_container() {
+  # THE BENCH'S NAME, OR `none` OUTSIDE A CONTAINER. `none` is a FACT and not a
+  # placeholder: it says this session is on the host itself, which is exactly
+  # what clause (b) needs to tell one place from another.
+  #
+  # A CONTAINER CANNOT NAME ITSELF, so the name is written in from OUTSIDE by
+  # whoever opened it and an already-set value is the whole mechanism here:
+  # `hostname` inside a bench container is the id docker gave it, nothing in the
+  # image records the compose service, and the launcher has no third source. The
+  # two places that DO know are `scripts/wave-container-shell.sh`, which passes
+  # `--env LANES_CONTAINER=<the bench it was asked for>` into the container it
+  # opens, and this launcher threading the value it already has across the tmux
+  # re-exec. Inside a container nobody named, the variable stays unset — never
+  # `none`, which would say this session is on the host, and never the host's
+  # own name — and openRepoTools#83's fallback (the container's own `hostname`)
+  # answers for it.
+  local name
+  name="${LANES_CONTAINER:-}"
+  if [[ -z "$name" ]] && ! lane_in_container; then
+    name=none
+  fi
+  printf '%s\n' "$name"
+}
+
+lane_export_binding_facts() {
+  # THE THREE, EXPORTED BESIDE `LANES_WORKSTATION` AND BY ITS RULE (Amendment 18
+  # clause (a)). Resolved once, on the host, before anything is started; then
+  # every reader downstream — lane-start, the guard, `lanes-edit.sh`'s own
+  # writers and the /handoff skill — reads what the launcher knew instead of
+  # probing from inside a container that cannot answer. A value with no answer
+  # exports NOTHING, which is not the same as exporting an empty one: an empty
+  # `LANES_CONTAINER` in the environment reads as "somebody set this to nothing"
+  # rather than "nobody knows", and the tooling's fallback is what should answer
+  # then.
+  local value
+  value="$(lane_host)"
+  [[ -z "$value" ]] || export LANES_HOST="$value"
+  value="$(lane_os)"
+  [[ -z "$value" ]] || export LANES_OS="$value"
+  value="$(lane_container)"
+  [[ -z "$value" ]] || export LANES_CONTAINER="$value"
+}
+
 # THE SWAP RECORDS, READ AT MOST ONCE PER LAUNCH. Two callers want them — the
 # lane order's precedence 4 and the directory order's rung 2 — and `swapped` is
 # on the path of every launch, so the read is cached rather than repeated. It
@@ -2464,6 +2614,26 @@ append-only and a workstation that is not a workstation is wrong for ever.
 scripts/wave-container-shell.sh carries the same value through `docker exec`
 into the bench containers it opens.
 
+AND WHERE THE LANE IS RUNNING IS EXPORTED BESIDE IT (lane-collision-protocol
+Amendment 18 clause (a), opensoft/workBenches#98). Three more variables under
+one more rule and no new one, because a pid does not cross a pid namespace and
+the record had no way to say which container a lane was live in. LANES_HOST is
+the machine's short hostname as it reads OUTSIDE any container — never a
+container id, and left unset rather than guessed inside a container nobody
+threaded a value into. LANES_OS is exactly one of linux, macos, wsl and
+windows: Darwin is macos, a Linux kernel whose /proc/version or uname -r names
+Microsoft or WSL is wsl, any other Linux is linux, and windows is a word this
+launcher only ever passes through, since the estate's bash runs in WSL2 on a
+Windows machine. LANES_CONTAINER is the bench's name, or none outside a
+container: a container cannot name itself — its hostname is the id docker gave
+it — so the name is whatever the thing that OPENED it passed in. An
+already-set value wins for all four, and a value with no answer is exported as
+nothing at all, because the lane tooling's own fallback
+(opensoft/openRepoTools#83) is a better answer than a guess this launcher made
+and both lane logs are append-only. scripts/wave-container-shell.sh carries
+the same three into the bench containers it opens, naming the bench it was
+asked for as LANES_CONTAINER.
+
 THE WINDOW IS REUSED (Amendment 11(2), act 1). Run inside tmux, this launcher
 keeps the CURRENT window: it sets CLAUDE_CONFIG_DIR and execs in place, so the
 window's name and its id survive a restart and the window name resolves the
@@ -2635,6 +2805,11 @@ case "$action" in
         # STARTED (`R-A11-14`): act 1 threads it into the session it creates,
         # and the Claude this launch execs inherits it either way.
         lane_export_workstation
+        # ...AND THE THREE FACTS THAT SAY WHERE IT IS RUNNING, in the same
+        # breath and by the same rule (Amendment 18 clause (a),
+        # opensoft/workBenches#98): host, os and container, resolved on the host
+        # and threaded into the session act 1 creates beside the workstation.
+        lane_export_binding_facts
         capture_lane_window
         if claude_run_is_interactive "$@"; then
           start_profile_tmux "$profile" "$@"
