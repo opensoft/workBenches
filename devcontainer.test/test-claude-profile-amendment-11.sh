@@ -3306,8 +3306,12 @@ grep -Fq 'if [[ -z "$ws_missing" ]]; then' <<<"$ws_skill_code" \
 # in place and still pass. Extracted the guard's own body (a single, unnested
 # if/fi, unlike write (c)'s two-command nest below) and require both writes
 # inside it, the same standard the (c) check already holds itself to.
+# `|| true` on the filter (round 11): an empty or comment-only body would
+# otherwise make `grep -v` exit 1 here with no `FAIL:` printed yet -- the
+# extraction failing is not itself informative, and the two assertions right
+# below already say precisely what is missing when `$ab_guard_block` is empty.
 ab_guard_block="$(awk '/^if \[\[ -z "\$ws_missing" \]\]; then$/ { inside = 1; next } inside && /^fi$/ { exit } inside { print }' "$HANDOFF_MD" \
-    | grep -v '^[[:space:]]*#')"
+    | grep -v '^[[:space:]]*#' || true)"
 grep -Fq 'log PAUSED' <<<"$ab_guard_block" \
     || fail "R-A11-14: write (a), the object-log line, is not inside the ws_missing guard"; assertion
 grep -Fq 'append-line' <<<"$ab_guard_block" \
@@ -3365,6 +3369,16 @@ c_section="$(awk '/^# \(c\) the row: flip its leading state word/{inside=1} insi
 # bare `fi` closes one, and hitting depth 0 again closes the OUTER guard and
 # moves to a fourth phase, "closed", counted the same as never having entered
 # it at all.
+# `|| true` at the end (round 11, the same shape flagged on the ab_guard_block
+# a few lines up): comment-only input would make the leading `grep -v` exit 1
+# and, under `pipefail`, that outranks awk's own 0 even though awk is the last
+# command in the pipe -- the assertion right below already says what is wrong
+# when `$c_fence` does not read `set=1 fenced=1 loose=0`.
+#
+# `loose_*` NOW ALSO COVERS `phase == "refused"` (round 11): only "before the
+# guard" and "after it closes" counted as loose before -- a write added INSIDE
+# the refusal branch itself (between the `if` and the `else`) is exactly the
+# violation R-A11-27 refuses and was invisible to this check.
 c_fence="$(grep -v '^[[:space:]]*#' <<<"$c_section" | awk '
     index($0, "if [[ -n \"$ws_missing\" ]]; then") { phase = "refused"; depth = 1; next }
     phase == "refused" && $0 == "else" { phase = "written"; next }
@@ -3378,9 +3392,9 @@ c_fence="$(grep -v '^[[:space:]]*#' <<<"$c_section" | awk '
     }
     phase == "written" && index($0, "replace-in-row") { fenced_replace = 1 }
     phase == "written" && index($0, "append-row-status") { fenced_status = 1 }
-    (phase == "" || phase == "closed") && index($0, "replace-in-row") { loose_replace = 1 }
-    (phase == "" || phase == "closed") && index($0, "append-row-status") { loose_status = 1 }
-    END { printf "set=%d fenced=%d loose=%d", set, (fenced_replace && fenced_status), (loose_replace || loose_status) }')"
+    phase != "written" && index($0, "replace-in-row") { loose_replace = 1 }
+    phase != "written" && index($0, "append-row-status") { loose_status = 1 }
+    END { printf "set=%d fenced=%d loose=%d", set, (fenced_replace && fenced_status), (loose_replace || loose_status) }' || true)"
 [[ "$c_fence" == "set=1 fenced=1 loose=0" ]] \
     || fail "R-A11-27: write (c) is not refused with (a) and (b) where no workstation is configured ($c_fence), so a swap from a container still flips the row and files a commit keyed on the container id"; assertion
 # RETARGETED (opensoft/workBenches#93): the shipped message is worded
@@ -3421,6 +3435,13 @@ still_runs_quoted="$(grep -F '(c) below still runs' "$HANDOFF_MD" | grep -Fc 'pr
 # about) right beside it; nothing else that could say "(c) below still runs"
 # unqualified has a reason to.
 still_runs_unqualified_is_known="$(grep -F '(c) below still runs' "$HANDOFF_MD" | grep -Fv 'promised' | grep -Fc 'ruling 11' || true)"
+# round 11: `promised` alone does not identify WHICH promise — an unrelated
+# line saying both "(c) below still runs" and "promised" (of some other claim
+# entirely) would satisfy `still_runs_quoted` too. The specific attribution is
+# "`#71`'s copy promised", on the line before the quote in the shipped file
+# (`:534-535`), so it is checked on the joined comment prose the same way the
+# citation and no-API sentences above are.
+still_runs_attribution_confirmed="$(grep -Fc '`#71`'"'"'s copy promised' <<<"$handoff_prose" || true)"
 # KNOWN GAP, NOT THIS PR'S (opensoft/workBenches#93, filed upstream as
 # opensoft/openRepoTools#99): `:474`'s "(c) below still runs" is a real,
 # unqualified leftover — the exact promise R-A11-27 refuses, asserted as
@@ -3441,12 +3462,12 @@ still_runs_unqualified_is_known="$(grep -F '(c) below still runs' "$HANDOFF_MD" 
 # file actually has room for. The fixed state is the ONE legitimate historical
 # quote at `:535` and nothing else, so the passing shape is now the EXACT
 # count (1, 1), not merely "equal and positive".
-if [[ "$still_runs_total" -eq 1 && "$still_runs_quoted" -eq 1 ]]; then
+if [[ "$still_runs_total" -eq 1 && "$still_runs_quoted" -eq 1 && "$still_runs_attribution_confirmed" -ge 1 ]]; then
     :
-elif [[ "$still_runs_total" -eq 2 && "$still_runs_quoted" -eq 1 && "$still_runs_unqualified_is_known" -eq 1 ]]; then
+elif [[ "$still_runs_total" -eq 2 && "$still_runs_quoted" -eq 1 && "$still_runs_unqualified_is_known" -eq 1 && "$still_runs_attribution_confirmed" -ge 1 ]]; then
     echo "KNOWN (opensoft/openRepoTools#99, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md:474 still asserts '(c) below still runs' unqualified ($still_runs_total total, $still_runs_quoted quoted as superseded)" >&2
 else
-    fail "R-A11-27: $still_runs_total line(s) say '(c) below still runs', $still_runs_quoted attributed, $still_runs_unqualified_is_known of the unqualified one(s) citing 'ruling 11' — neither the known gap (2 total, 1 attributed, 1 citing ruling 11) nor the one fixed state (1 total, 1 attributed); something else changed and needs a human read"
+    fail "R-A11-27: $still_runs_total line(s) say '(c) below still runs', $still_runs_quoted attributed, $still_runs_unqualified_is_known of the unqualified one(s) citing 'ruling 11', #71's attribution confirmed x$still_runs_attribution_confirmed — neither the known gap nor the one fixed state; something else changed and needs a human read"
 fi
 assertion
 
