@@ -2916,14 +2916,18 @@ scenario
 # be fixed or may have changed shape, and this fails rather than keep waiving
 # silently, so a human restores or extends the five checks that stood here.
 #
-# WIDENED, NOT PROVEN (round 5): a `grep` cannot enumerate every bash spelling
-# of "the uuid is empty" — round 4 covered `-z`/`-n` on a quoted `$uuid`; this
-# adds `-v uuid` and `"$uuid" ==/= ""`, the other common forms, and an
-# unquoted `$uuid` after `-z`/`-n`. It still cannot see one split across a line
-# break or an exotic predicate this suite has never needed elsewhere, so the
-# claim is bounded to what is checked, not to every conceivable rewrite.
+# WIDENED, NOT PROVEN (round 5, operator fixed round 6): a `grep` cannot
+# enumerate every bash spelling of "the uuid is empty" — round 4 covered
+# `-z`/`-n` on a quoted `$uuid`; this adds `-v uuid` and `"$uuid" =`/`==`/`!=`
+# `""`, the other common forms, and an unquoted `$uuid` after `-z`/`-n`.
+# `[=!]=` (round 5's own pattern) requires TWO operator characters and so
+# never matched bash's single-`=` string test despite the comment claiming to
+# — `[=!]?=` makes the first character optional, matching `=`, `==` and `!=`
+# alike. It still cannot see one split across a line break or an exotic
+# predicate this suite has never needed elsewhere, so the claim is bounded to
+# what is checked, not to every conceivable rewrite.
 uuid_guard_probe="$(grep -v '^[[:space:]]*#' "$HANDOFF_MD" \
-    | grep -E -- '-z "?\$\{?uuid|-n "?\$\{?uuid|-v uuid\b|"\$\{?uuid:?-?[^}]*\}?" *[=!]= *""' || true)"
+    | grep -E -- '-z "?\$\{?uuid|-n "?\$\{?uuid|-v uuid\b|"\$\{?uuid:?-?[^}]*\}?" *[=!]?= *""' || true)"
 if [[ -z "$uuid_guard_probe" ]]; then
     echo "KNOWN (opensoft/openRepoTools#98, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md has no preemptive uuid/session guard" >&2
 else
@@ -3351,22 +3355,23 @@ still_runs_quoted="$(grep -F '(c) below still runs' "$HANDOFF_MD" | grep -Fc 'pr
 # against `git show 8a36eb3:skills/lane-swap/SKILL.md`'s equivalent comment too
 # — a real shipped-bytes gap, not a test-methodology one.
 #
-# FAIL-CLOSED (Copilot round 2/3, tightened round 4, on opensoft/workBenches#93):
-# the known shape TODAY is exactly two occurrences, one of them properly
-# attributed — anything else, including a WORSE regression (a third unqualified
-# line, or the attributed one losing its attribution), must still fail rather
-# than fall through this skip silently. `-eq 0` on both sides would otherwise
-# also satisfy the equal branch — deleting BOTH the stale line and the
-# legitimate historical quote it sits beside — which is not the fixed state
-# either, so the equal branch additionally requires at least one occurrence to
-# remain. Only #99 landing (both occurrences equal AND positive) or today's
-# exact known gap are let through.
-if [[ "$still_runs_total" -gt 0 && "$still_runs_total" -eq "$still_runs_quoted" ]]; then
+# FAIL-CLOSED (Copilot round 2/3, tightened rounds 4/6, on
+# opensoft/workBenches#93): the known shape TODAY is exactly two occurrences,
+# one of them properly attributed — anything else, including a WORSE
+# regression (a third unqualified line, or the attributed one losing its
+# attribution), must still fail rather than fall through this skip silently.
+# `-gt 0 && equal` (round 4's fix for the `0 == 0` case) was still too loose —
+# a THIRD attributed occurrence (`total=3, quoted=3`) or any other equal-and-
+# positive pair would also pass, none of which is the one fixed state this
+# file actually has room for. The fixed state is the ONE legitimate historical
+# quote at `:535` and nothing else, so the passing shape is now the EXACT
+# count (1, 1), not merely "equal and positive".
+if [[ "$still_runs_total" -eq 1 && "$still_runs_quoted" -eq 1 ]]; then
     :
 elif [[ "$still_runs_total" -eq 2 && "$still_runs_quoted" -eq 1 ]]; then
     echo "KNOWN (opensoft/openRepoTools#99, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md:474 still asserts '(c) below still runs' unqualified ($still_runs_total total, $still_runs_quoted quoted as superseded)" >&2
 else
-    fail "R-A11-27: $still_runs_total line(s) say '(c) below still runs', $still_runs_quoted attributed — neither the known gap (2 total, 1 attributed) nor fixed (equal); something else changed and needs a human read"
+    fail "R-A11-27: $still_runs_total line(s) say '(c) below still runs', $still_runs_quoted attributed — neither the known gap (2 total, 1 attributed) nor the one fixed state (1 total, 1 attributed); something else changed and needs a human read"
 fi
 assertion
 
@@ -3525,7 +3530,7 @@ grep -Fq 'R-A11-27' "$GUARD_SH" \
 # 8a36eb3:skills/lane-swap/SKILL.md:39` too (the pre-Amendment-17(a) home of
 # this same line) — a real shipped-bytes gap, not a test-methodology one.
 #
-# FAIL-CLOSED (Copilot round 2/3, tightened rounds 4-5, on
+# FAIL-CLOSED (Copilot round 2/3, tightened rounds 4-6, on
 # opensoft/workBenches#93): the known gap is specifically TODAY's exact
 # hard-coded line, not "anything that isn't the fixed form" — a third,
 # differently-broken `L=` would otherwise also fall through this skip
@@ -3535,14 +3540,23 @@ grep -Fq 'R-A11-27' "$GUARD_SH" \
 # PREFIX match also passed a syntactically-valid but semantically broken
 # fallback (`L="$(command -v lanes-edit.sh || false)"` names no helper on a
 # host without one, same failure as today's hard-coded line, dressed as
-# fixed) — this now requires the WHOLE line to equal the complete form
+# fixed — this required the WHOLE line to equal the complete form
 # `skills/restart/SKILL.md:39` already ships, `printf` fallback included.
-if grep -Fxq 'L="$(command -v lanes-edit.sh || printf '"'"'%s'"'"' ~/projects/xFactory/lanes-edit.sh)"' <<<"$skill_write_code"; then
+# Round 6, two more: `grep -qx` (no `-F`) on the hard-coded pattern left the
+# `.` in `lanes-edit.sh` a wildcard, so `lanes-editXsh` would have counted as
+# today's exact gap; and neither branch checked that the OTHER assignment was
+# ABSENT, so a file carrying both somehow would have taken whichever branch
+# came first and missed that the wrong one might still be the effective `$L`.
+# Both are counted, `-F` and `-x` together, and each branch now requires the
+# other to be exactly zero.
+fixed_l_count="$(grep -Fxc 'L="$(command -v lanes-edit.sh || printf '"'"'%s'"'"' ~/projects/xFactory/lanes-edit.sh)"' <<<"$skill_write_code" || true)"
+hardcoded_l_count="$(grep -Fxc 'L=~/projects/xFactory/lanes-edit.sh' <<<"$skill_write_code" || true)"
+if [[ "$fixed_l_count" -eq 1 && "$hardcoded_l_count" -eq 0 ]]; then
     :
-elif grep -qx 'L=~/projects/xFactory/lanes-edit.sh' <<<"$skill_write_code"; then
+elif [[ "$fixed_l_count" -eq 0 && "$hardcoded_l_count" -eq 1 ]]; then
     echo "KNOWN (opensoft/openRepoTools#100, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md:39 hard-codes lanes-edit.sh's path instead of resolving it" >&2
 else
-    fail "helper: \$L is neither the exact fixed form (skills/restart/SKILL.md:39's) nor the known hard-coded line — something else changed here and needs a human read"
+    fail "helper: \$L assignment is ambiguous or unexpected (fixed form x$fixed_l_count, hard-coded form x$hardcoded_l_count) — neither the known gap nor the exact fixed form alone; something else changed here and needs a human read"
 fi
 assertion
 
