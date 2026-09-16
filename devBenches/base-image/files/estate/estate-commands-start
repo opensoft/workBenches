@@ -30,7 +30,7 @@
 # WHY THE IMAGE'S OWN COPIES DO NOT CLOSE IT. devBenches/base-image/Dockerfile
 # COPYs the twelve into /usr/local/bin, and on a CURRENT image that does put
 # them back on $PATH. It still leaves three holes, and this step exists for
-# them: (1) nothing rebuilds Layer 2 when a bench starts — `prepare-bench-start`
+# them: (1) nothing rebuilds Layer 1a when a bench starts — `prepare-bench-start`
 # ensures Layer 3 only — so the measured bench was running an image built
 # 2026-09-12, before those COPY lines landed, and held none of the eight lane
 # helpers; (2) the image places none of the six PER-USER artifacts `--install`
@@ -43,7 +43,7 @@
 # THE RAVEN CASE IS THE SAME CASE. On a fresh workstation `setup.sh` runs
 # `scripts/setup-estate-commands.sh`, which runs the vendored shims' own
 # `--install` and relays their lines unchanged. A container cannot run that
-# script — Layer 2's build context is `devBenches/base-image/`, so the
+# script — Layer 1a's build context is `devBenches/base-image/`, so the
 # repository's `scripts/` is not reachable to COPY — so this step takes the
 # same two actions against the same vendored bytes, with the same no-fetch
 # sentinel, and relays the same lines. It deliberately adds no install logic of
@@ -132,7 +132,7 @@ fi
 # An image built before opensoft/workBenches#90 has no vendored tree to install
 # FROM. Say which rebuild ends that rather than fetching anything.
 if [ ! -x "$ESTATE_VENDOR_DIR/openRepoTools" ]; then
-    say "no vendored openRepoTools at $ESTATE_VENDOR_DIR, so this image predates opensoft/workBenches#90. Rebuild Layer 2 (devBenches/base-image/build.sh) to get it. Nothing installed."
+    say "no vendored openRepoTools at $ESTATE_VENDOR_DIR, so this image predates opensoft/workBenches#90. Rebuild Layer 1a, the dev-bench base (devBenches/base-image/build.sh), to get it. Nothing installed."
     exit 0
 fi
 
@@ -181,7 +181,7 @@ for estate_rel in $estate_set; do
     [ -f "$ESTATE_VENDOR_DIR/$estate_rel" ] || estate_missing="${estate_missing:+$estate_missing }$estate_rel"
 done
 if [ -n "$estate_missing" ]; then
-    say "the vendored tree at $ESTATE_VENDOR_DIR is incomplete, so --install would go to the network for each missing file in front of every container start. Missing: $estate_missing. Nothing installed; rebuild Layer 2 (devBenches/base-image/build.sh)."
+    say "the vendored tree at $ESTATE_VENDOR_DIR is incomplete, so --install would go to the network for each missing file in front of every container start. Missing: $estate_missing. Nothing installed; rebuild Layer 1a, the dev-bench base (devBenches/base-image/build.sh)."
     exit 0
 fi
 

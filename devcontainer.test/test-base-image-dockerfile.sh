@@ -20,7 +20,8 @@ set -euo pipefail
 # Mutation-tested: deleting the `usage-guard.sh` COPY line (or its chmod
 # entry) from base-image/Dockerfile makes this fail; restoring it passes.
 #
-# Part 2 (Layer 2, devBenches/base-image/Dockerfile), added for opensoft/
+# Part 2 (Layer 1a, devBenches/base-image/Dockerfile — the dev-bench base;
+# Layer 2 is a specific bench's own image on top of it), added for opensoft/
 # workBenches#90: the container-start step that reinstalls the estate's lane
 # commands after a recreate is three instructions and a running script, and NO
 # suite in this repository can run `docker build` — the tests themselves run
@@ -161,5 +162,25 @@ cmd_line="$(grep -n '^CMD ' "$dev_dockerfile" | tail -n1 | cut -d: -f1)"
     exit 1
 }
 
-printf 'devBenches/base-image/Dockerfile wires the workBenches#90 container-start step: vendored tree at %s, step at %s, ENTRYPOINT (line %s) above CMD (line %s)\n' \
-    "$vendor_dir" "$start_dest" "$entrypoint_line" "$cmd_line"
+# AND THE TWO SPELLINGS OF THE DEFAULT COMMAND MUST AGREE. `workbench-entrypoint`
+# carries its own copy of the image's default, for the case where it is handed
+# no arguments at all, so the value lives in two files. Checking only that SOME
+# CMD follows ENTRYPOINT would let a future `CMD ["tail", "-f", "/dev/null"]`
+# pass here while the no-argument path still exec'd `sleep infinity` — and the
+# behavioural suite cannot catch that, because it stubs the fallback binary.
+# So both are read and compared, which is the closest this can get to one
+# source without the Dockerfile and a shell script sharing a file.
+cmd_argv="$(sed -n "${cmd_line}p" "$dev_dockerfile" \
+    | sed -e 's/^CMD *\[//' -e 's/\] *$//' -e 's/"//g' -e 's/, */ /g')"
+entrypoint_fallback_argv="$(sed -nE 's/^[[:space:]]*set -- (.+)$/\1/p' "$estate_entrypoint" | head -n1)"
+[ -n "$cmd_argv" ] && [ -n "$entrypoint_fallback_argv" ] || {
+    echo "FAIL: could not read the Dockerfile's CMD argv ('$cmd_argv') or workbench-entrypoint's no-argument fallback ('$entrypoint_fallback_argv') — one of the two changed shape" >&2
+    exit 1
+}
+[ "$cmd_argv" = "$entrypoint_fallback_argv" ] || {
+    echo "FAIL: devBenches/base-image/Dockerfile's default command is [$cmd_argv] but workbench-entrypoint falls back to [$entrypoint_fallback_argv] — an entrypoint handed no arguments would start something the image does not declare" >&2
+    exit 1
+}
+
+printf 'devBenches/base-image/Dockerfile wires the workBenches#90 container-start step: vendored tree at %s, step at %s, ENTRYPOINT (line %s) above CMD (line %s), both spelling the default command [%s]\n' \
+    "$vendor_dir" "$start_dest" "$entrypoint_line" "$cmd_line" "$cmd_argv"

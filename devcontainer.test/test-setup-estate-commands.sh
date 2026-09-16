@@ -767,7 +767,7 @@ assert_absent "$HOME_P/.claude" 'nothing was written under $HOME/.claude either,
 # tested here, beside the host step it mirrors, so the two cannot drift apart
 # about what a complete estate install is.
 #
-# It cannot live in scripts/ and be reached from a container: Layer 2's build
+# It cannot live in scripts/ and be reached from a container: Layer 1a's build
 # context is devBenches/base-image/, so the repository's own scripts/ is not
 # COPY-able into the image. What it shares with the script above is the
 # vendored tree and the no-fetch sentinel, not code -- and, like that script,
@@ -919,7 +919,7 @@ printf '%s\n' '--- Scenario (w): an incomplete vendored tree installs NOTHING, r
 # a fetch FAIL -- a DNS and TLS round trip in front of every container start --
 # so the guarantee has to be a preflight, not a sentinel. The set it checks is
 # read from the shim's own INSTALLABLES/SKILLS/COMMANDS, so this scenario also
-# covers the case that motivates it: an image whose Layer 2 was not rebuilt
+# covers the case that motivates it: an image whose Layer 1a was not rebuilt
 # after the shim grew an artifact.
 BIN_W="$TMPDIR_ROOT/bin-w"
 HOME_W="$TMPDIR_ROOT/home-w"
@@ -1037,8 +1037,17 @@ printf '%s\n' '--- Scenario (y): two benches sharing one host home do not instal
 # flock in the shared home. It WAITS rather than standing down, because
 # `~/.local/bin` is the one thing here that is not shared, and a timeout goes
 # ahead anyway: a slower race beats a bench with no lane commands.
+#
+# SKIPPED, NOT FAILED, WHERE THERE IS NO `flock`. This suite is host-run (see
+# devcontainer.test/README.md) and a developer's host is not always Linux;
+# `flock(1)` is util-linux and macOS does not ship it. The step under test has
+# a DEFINED fallback for exactly that — it says the start is not serialized and
+# carries on — so a host without flock is a supported configuration, and
+# failing the whole regression suite there would punish a valid run for the
+# absence of an optional utility. CI (ubuntu-24.04) always has it, so the
+# scenario is never quietly lost on the run that gates merges.
 if ! command -v flock >/dev/null 2>&1; then
-    fail 'scenario (y) cannot run: flock is not on $PATH, and the step needs it to serialize two bench starts'
+    printf 'SKIP: scenario (y) needs flock(1), which this host does not have; the step'"'"'s own no-flock fallback is what runs here. CI on ubuntu-24.04 exercises it.\n'
 else
     BIN_Y="$TMPDIR_ROOT/bin-y"
     HOME_Y="$TMPDIR_ROOT/home-y"
