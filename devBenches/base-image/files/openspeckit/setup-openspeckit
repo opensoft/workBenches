@@ -1677,20 +1677,34 @@ def write_overlay_content_marker(overlay_root: Path, digest: str, dry_run: bool)
     """
     marker_path = overlay_root / OVERLAY_CONTENT_MARKER_FILE
     content = f"{OVERLAY_CONTENT_MARKER_PREFIX}{digest}\n"
-    try:
-        read_destination_text(marker_path)
-    except (OSError, UnicodeError):
-        # write_text would hit this identical failure trying to compare
-        # against the EXISTING marker's decoded text before ever attempting
-        # to write the replacement. overlay_content_marker already treats an
-        # unreadable marker as absent/stale, so clear it here too -- but
-        # only THIS pre-existing-marker read, never the write below: a
-        # dry run must not touch disk even to clear it, so just report what
-        # a real run would do and return before reaching that write.
-        if dry_run:
-            log(f"would write {marker_path}")
-            return
-        remove_destination_without_following(marker_path)
+    marker_mode = mode_without_following(marker_path)
+    if marker_mode is not None and not stat.S_ISREG(marker_mode):
+        # A directory, symlink, or other non-regular entry at this reserved
+        # dotfile path is never something of ours to clear automatically:
+        # remove_destination_without_following recursively deletes a
+        # directory's entire contents, and this path has no legitimate
+        # reason to be anything but the plain marker file we wrote
+        # ourselves. Refuse outright rather than risk deleting unrelated
+        # repository data that happens to sit here.
+        raise SystemExit(
+            f"Refusing to replace non-regular overlay content marker at {marker_path}"
+        )
+    if marker_mode is not None:
+        try:
+            read_destination_text(marker_path)
+        except (OSError, UnicodeError):
+            # write_text would hit this identical failure trying to compare
+            # against the EXISTING marker's decoded text before ever
+            # attempting to write the replacement. overlay_content_marker
+            # already treats an unreadable marker as absent/stale, so clear
+            # it here too -- but only THIS pre-existing-marker read, never
+            # the write below: a dry run must not touch disk even to clear
+            # it, so just report what a real run would do and return before
+            # reaching that write.
+            if dry_run:
+                log(f"would write {marker_path}")
+                return
+            remove_destination_without_following(marker_path)
     write_text(marker_path, content, dry_run)
 
 
