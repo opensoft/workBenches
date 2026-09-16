@@ -118,16 +118,14 @@ def owned_target_data(target, payload, owner_marker, pin, expected_launcher_dige
         for item in pin.get("trusted_previous", [])
     )
     owner_artifact = (owner.get("commit", ""), owner.get("sha256", ""))
-    allowed_digests = set()
-    allowed_launcher_digests = set()
+    allowed_pairs = set()
     if owner.get("state") == "pending":
         if owner_artifact != (pin["commit"], pin["sha256"]):
             return None
-        allowed_digests.add(pin["sha256"])
         launcher_digest = owner.get("launcher_sha256", "")
         if re.fullmatch(r"[0-9a-f]{64}", launcher_digest) is None:
             return None
-        allowed_launcher_digests.add(launcher_digest)
+        allowed_pairs.add((launcher_digest, pin["sha256"]))
         previous_owned = owner.get("previous_owned")
         if not isinstance(previous_owned, bool):
             return None
@@ -138,8 +136,7 @@ def owned_target_data(target, payload, owner_marker, pin, expected_launcher_dige
             if ((previous_commit, previous_digest) not in trusted_artifacts
                     or re.fullmatch(r"[0-9a-f]{64}", previous_launcher_digest) is None):
                 return None
-            allowed_digests.add(previous_digest)
-            allowed_launcher_digests.add(previous_launcher_digest)
+            allowed_pairs.add((previous_launcher_digest, previous_digest))
         elif previous_commit or previous_digest or previous_launcher_digest:
             return None
     elif owner.get("state") in (None, "owned"):
@@ -148,21 +145,43 @@ def owned_target_data(target, payload, owner_marker, pin, expected_launcher_dige
         launcher_digest = owner.get("launcher_sha256", "")
         if re.fullmatch(r"[0-9a-f]{64}", launcher_digest) is None:
             return None
-        allowed_digests.add(owner["sha256"])
-        allowed_launcher_digests.add(launcher_digest)
+        allowed_pairs.add((launcher_digest, owner["sha256"]))
     else:
         return None
     actual_launcher_digest = file_sha256(target)
-    if (actual_launcher_digest not in expected_launcher_digests
-            or actual_launcher_digest not in allowed_launcher_digests):
+    if actual_launcher_digest not in expected_launcher_digests:
         return None
     data = payload.read_bytes()
-    return data if hashlib.sha256(data).hexdigest() in allowed_digests else None
+    payload_digest = hashlib.sha256(data).hexdigest()
+    return data if (actual_launcher_digest, payload_digest) in allowed_pairs else None
 
 
 def owned_target(target, payload, owner_marker, pin, expected_launcher_digests):
     return owned_target_data(target, payload, owner_marker, pin,
                              expected_launcher_digests) is not None
+
+
+def discovery_points_to_owned_install(discovery, pin, expected_launcher_digests):
+    """Recognize a pointer to a command installation authenticated by this pin."""
+    if not discovery.is_file() or discovery.is_symlink():
+        return False
+    try:
+        lines = discovery.read_text().splitlines()
+    except (OSError, UnicodeDecodeError):
+        return False
+    if len(lines) != 1 or not lines[0]:
+        return False
+    directory = Path(lines[0])
+    if not directory.is_absolute():
+        return False
+    directory = directory.resolve(strict=False)
+    return owned_target(
+        directory / "project",
+        directory / PAYLOAD_NAME,
+        directory / ".workbenches-project.json",
+        pin,
+        expected_launcher_digests,
+    )
 
 
 def recoverable_fresh_pending(target, payload, owner_marker, pin,
@@ -196,7 +215,7 @@ def launcher_bytes(pin):
     """Build a checkout-independent PATH entry that verifies the pinned payload."""
     return (
         "#!/bin/sh\n"
-        "'''exec' python3 -I \"$0\" \"$@\"\n"
+        "'''exec' sh -c 'python3 -c \"import sys; raise SystemExit(sys.version_info < (3, 10))\" || { printf \"%s\\n\" \"project: Python 3.10 or newer is required\" >&2; exit 3; }; exec python3 -I \"$0\" \"$@\"' \"$0\" \"$@\"\n"
         "' '''\n"
         "import fcntl\n"
         "import hashlib\n"
@@ -291,6 +310,16 @@ def path_fingerprint(path):
             hashlib.sha256(path.read_bytes()).hexdigest())
 
 
+def valid_file_fingerprint(value):
+    return (isinstance(value, (list, tuple))
+            and len(value) == 5
+            and value[0] == "file"
+            and all(type(component) is int for component in value[1:4])
+            and stat.S_ISREG(value[3])
+            and isinstance(value[4], str)
+            and re.fullmatch(r"[0-9a-f]{64}", value[4]) is not None)
+
+
 def trusted_launcher(path, expected_digests):
     """Return whether path is a regular executable produced by this installer."""
     return (path.is_file() and not path.is_symlink()
@@ -298,11 +327,9 @@ def trusted_launcher(path, expected_digests):
             and file_sha256(path) in expected_digests)
 
 
-def legacy_copied_onp_bytes(workbenches):
-    """Exact historical scripts/onp bytes for this workBenches checkout."""
-    root = str(workbenches)
-    if any(character in root for character in ('"', "\n", "\r")):
-        return b""
+def legacy_copied_onp_bytes(_workbenches=None):
+    """Exact bytes copied by the historical onp installer."""
+    root = "/home/brett/projects/workBenches"
     return (
         "#!/bin/bash\n\n"
         "# onp (Opensoft New Project) - Command wrapper for workBenches new-project.sh\n"
@@ -400,15 +427,28 @@ def trusted_legacy_onp(path, workbenches):
 
 def acquire_project_lock(directory, exclusive):
     lock_path = directory / LOCK_NAME
+    created = False
     flags = os.O_RDONLY
     if exclusive:
-        flags = os.O_RDWR | os.O_CREAT
-    flags |= getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(lock_path, flags, 0o644)
+        try:
+            descriptor = os.open(
+                lock_path,
+                os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+                0o644,
+            )
+            created = True
+        except FileExistsError:
+            descriptor = os.open(
+                lock_path, os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+            )
+    else:
+        descriptor = os.open(
+            lock_path, flags | getattr(os, "O_NOFOLLOW", 0), 0o644
+        )
     if not stat.S_ISREG(os.fstat(descriptor).st_mode):
         os.close(descriptor)
         raise ValueError(f"Refusing non-regular project lock: {lock_path}")
-    if exclusive:
+    if created:
         os.fchmod(descriptor, 0o644)
     fcntl.flock(descriptor, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
     return descriptor
@@ -632,8 +672,7 @@ def read_removal_journal(journal, allowed_paths):
                 or not quarantine.name.startswith(".project-remove-")
                 or quarantine.name.startswith(".project-remove-backup-")
                 or not backup.name.startswith(".project-remove-backup-")
-                or not isinstance(fingerprint, list)
-                or not fingerprint or fingerprint[0] != "file"):
+                or not valid_file_fingerprint(fingerprint)):
             raise ValueError(f"Refusing unauthorized removal journal entry: {journal}")
         entries.append((path, quarantine, backup, tuple(fingerprint)))
     require_unique_paths((entry[0] for entry in entries), "journal")
@@ -654,7 +693,8 @@ def cleanup_removal_copy(path, expected_state):
 def recovery_copy_matches(path, expected_state):
     """Match copied recovery bytes without requiring the original inode."""
     state = path_fingerprint(path)
-    return (state[:1] == ("file",) and expected_state[:1] == ("file",)
+    return (valid_file_fingerprint(state)
+            and valid_file_fingerprint(expected_state)
             and state[3:] == expected_state[3:])
 
 
@@ -784,6 +824,8 @@ def remove_transaction(removals, journal):
     except (OSError, ValueError) as exc:
         print(f"project: removal committed; recovery cleanup remains at {journal}: {exc}",
               file=sys.stderr)
+        return False
+    return True
 
 
 def atomic_checked_replace(source, destination, expected_state):
@@ -875,6 +917,8 @@ def main(argv=None):
                            help="print the command path only when installer ownership verifies")
     operation.add_argument("--resolve-onp-owned", action="store_true",
                            help="print the onp path only when its trusted launcher verifies")
+    operation.add_argument("--resolve-removal-pending", action="store_true",
+                           help="print the install directory only when an authenticated removal journal is pending")
     operation.add_argument("--exec-owned", action="store_true",
                            help="verify and execute the owned command while holding a shared lock")
     parser.add_argument("command_args", nargs=argparse.REMAINDER)
@@ -930,7 +974,8 @@ def main(argv=None):
             })).hexdigest()
             for item in trusted_previous
         )
-        read_operation = args.resolve_owned or args.resolve_onp_owned or args.exec_owned
+        read_operation = (args.resolve_owned or args.resolve_onp_owned
+                          or args.resolve_removal_pending or args.exec_owned)
         if args.remove and not directory.exists():
             print(f"project: no install directory at {directory}", file=sys.stderr)
             return 3
@@ -958,6 +1003,19 @@ def main(argv=None):
                 raise ValueError(f"Unwritable install directory: {directory}")
             directory.mkdir(parents=True, exist_ok=True)
         lock_descriptor = acquire_project_lock(directory, exclusive=not read_operation)
+        if args.resolve_removal_pending:
+            if not removal_journal.exists() and not removal_journal.is_symlink():
+                print(f"project: no pending removal recovery at {removal_journal}",
+                      file=sys.stderr)
+                return 3
+            try:
+                read_removal_journal(removal_journal, removable_paths)
+            except ValueError as exc:
+                print(f"project: refused unauthenticated removal recovery: {exc}",
+                      file=sys.stderr)
+                return 3
+            print(directory)
+            return 0
         if read_operation and (removal_journal.exists() or removal_journal.is_symlink()):
             print(f"project: refused command with pending removal recovery at {removal_journal}",
                   file=sys.stderr)
@@ -979,7 +1037,10 @@ def main(argv=None):
             print(f"project: refused unowned command at {target}", file=sys.stderr)
             return 3
         if args.resolve_onp_owned:
-            if onp_owned:
+            if (onp_owned
+                    and owned_target(target, payload, owner_marker, pin,
+                                     expected_launcher_digests)
+                    and file_sha256(onp) == file_sha256(target)):
                 print(onp)
                 return 0
             print(f"project: refused unowned compatibility command at {onp}", file=sys.stderr)
@@ -1021,10 +1082,17 @@ def main(argv=None):
                 ]
                 if onp_owned:
                     removals.append((onp, onp_state))
-                remove_transaction(removals, removal_journal)
+                cleanup_complete = remove_transaction(removals, removal_journal)
                 if discovery_owned:
-                    remove_owned_discovery_pointer(
-                        discovery, directory, discovery_state)
+                    if cleanup_complete:
+                        remove_owned_discovery_pointer(
+                            discovery, directory, discovery_state)
+                    else:
+                        print(
+                            "project: removal cleanup is pending; preserved discovery "
+                            f"pointer at {discovery}",
+                            file=sys.stderr,
+                        )
                 print(f"project: removed installer-owned command from {target}")
                 return 0
             if onp_owned:
@@ -1051,6 +1119,15 @@ def main(argv=None):
         if args.install_onp and onp_exists and not onp_owned and not legacy_onp_owned:
             raise ValueError(f"Refusing to replace unowned onp command: {onp}")
         manage_onp = onp_owned or legacy_onp_owned or args.install_onp
+        discovery_same = discovery_points_to(discovery, directory)
+        if (initial_discovery_state != ("missing",)
+                and not discovery_same
+                and not args.replace_existing
+                and not discovery_points_to_owned_install(
+                    discovery, pin, expected_launcher_digests)):
+            raise ValueError(
+                f"Refusing to replace unowned project discovery pointer: {discovery}"
+            )
         previous_commit = ""
         previous_launcher_digest = ""
         if target_owned:
@@ -1113,7 +1190,6 @@ def main(argv=None):
                        and marker.read_bytes() == marker_data)
         owner_same = (owner_marker.is_file() and not owner_marker.is_symlink()
                       and owner_marker.read_bytes() == owner_data)
-        discovery_same = discovery_points_to(discovery, directory)
         if (not unchanged or not onp_same or not marker_same or not owner_same
                 or not discovery_same):
             directory.mkdir(parents=True, exist_ok=True)

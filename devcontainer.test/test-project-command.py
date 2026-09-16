@@ -131,8 +131,11 @@ class InstallTests(unittest.TestCase):
         self.assertIn("preserved discovery pointer", errors.getvalue())
 
     def test_known_legacy_onp_variants_migrate_but_collisions_do_not(self):
+        historical = installer.legacy_copied_onp_bytes(self.wb)
+        self.assertEqual(historical, installer.legacy_copied_onp_bytes(ROOT))
+        self.assertIn(b'WORKBENCHES_DIR="/home/brett/projects/workBenches"', historical)
         for legacy_bytes in (
-                installer.legacy_copied_onp_bytes(self.wb),
+                historical,
                 installer.legacy_generated_onp_bytes(self.wb),
                 installer.legacy_generated_onp_bytes(
                     self.wb, include_bin_dir_export=False)):
@@ -178,6 +181,22 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(self.install(), 2)
         self.assertFalse(self.bin.exists())
 
+    def test_install_preserves_unowned_discovery_pointer(self):
+        self.discovery.parent.mkdir(parents=True)
+        self.discovery.write_text("unrelated user data\n")
+        self.assertEqual(self.install(), 2)
+        self.assertEqual(self.discovery.read_text(), "unrelated user data\n")
+        self.assertFalse((self.bin / "project").exists())
+
+    def test_preexisting_private_lock_mode_and_contents_are_preserved(self):
+        self.bin.mkdir()
+        lock = self.bin / installer.LOCK_NAME
+        lock.write_text("private lock contents")
+        lock.chmod(0o600)
+        self.assertEqual(self.install(), 0)
+        self.assertEqual(lock.read_text(), "private lock contents")
+        self.assertEqual(lock.stat().st_mode & 0o777, 0o600)
+
     def test_duplicate_transaction_destinations_fail_closed(self):
         self.bin.mkdir()
         target = self.bin / "owned"
@@ -189,6 +208,28 @@ class InstallTests(unittest.TestCase):
             installer.remove_transaction([(target, state), (target, state)], journal)
         self.assertEqual(target.read_text(), "owned")
         self.assertFalse(journal.exists())
+
+    def test_removal_journal_rejects_truncated_file_fingerprint(self):
+        self.bin.mkdir()
+        target = self.bin / "owned"
+        quarantine = self.bin / ".project-remove-test"
+        backup = self.bin / ".project-remove-backup-test"
+        journal = self.bin / installer.REMOVAL_JOURNAL_NAME
+        journal.write_text(json.dumps({
+            "schema_version": 1,
+            "state": "committed",
+            "entries": [{
+                "path": str(target),
+                "quarantine": str(quarantine),
+                "backup": str(backup),
+                "fingerprint": ["file"],
+            }],
+        }))
+        with self.assertRaises(ValueError):
+            installer.read_removal_journal(journal, [target])
+        quarantine.write_text("untrusted")
+        self.assertFalse(installer.recovery_copy_matches(
+            quarantine, ("file",)))
 
     @unittest.skipUnless(hasattr(signal, "SIGKILL"), "SIGKILL is unavailable")
     def test_sigkill_during_quarantine_is_recovered_and_removal_resumes(self):
@@ -395,11 +436,16 @@ raise SystemExit(module.main({[*self.args, "--remove"]!r}))
         with patch.object(Path, "unlink", new=fail_second_quarantine_delete):
             self.assertEqual(installer.main([*self.args, "--remove"]), 0)
         self.assertGreaterEqual(delete_count, 2)
-        for path in original:
+        for path in paths[:-1]:
             self.assertFalse(path.exists())
         self.assertTrue((self.bin / installer.REMOVAL_JOURNAL_NAME).is_file())
-        self.discovery.parent.mkdir(parents=True, exist_ok=True)
-        self.discovery.write_text(str(self.bin.resolve()) + "\n")
+        self.assertEqual(self.discovery.read_bytes(), original[self.discovery])
+        resolved = io.StringIO()
+        with redirect_stdout(resolved):
+            self.assertEqual(installer.main([
+                *self.args, "--resolve-removal-pending",
+            ]), 0)
+        self.assertEqual(Path(resolved.getvalue().strip()), self.bin.resolve())
         self.assertEqual(installer.main([*self.args, "--remove"]), 0)
         self.assertFalse((self.bin / installer.REMOVAL_JOURNAL_NAME).exists())
         self.assertFalse(self.discovery.exists())
@@ -589,6 +635,43 @@ raise SystemExit(module.main({[*self.args, "--remove"]!r}))
         payload.chmod(0o644)
         self.assertEqual(self.install(), 0)
         self.assertEqual(json.loads(owner.read_text())["state"], "owned")
+
+    def test_pending_owner_rejects_mixed_launcher_payload_generations(self):
+        self.assertEqual(self.install(), 0)
+        target = self.bin / "project"
+        payload = self.bin / installer.PAYLOAD_NAME
+        owner = self.bin / ".workbenches-project.json"
+        previous_payload = payload.read_bytes()
+        previous_digest = hashlib.sha256(previous_payload).hexdigest()
+        previous_launcher_digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        previous_commit = json.loads(self.pin.read_text())["commit"]
+
+        self.source.write_text('#!/usr/bin/env python3\nprint("updated")\n')
+        pin = json.loads(self.pin.read_text())
+        pin["trusted_previous"] = [{
+            "commit": previous_commit,
+            "sha256": previous_digest,
+        }]
+        pin["commit"] = "b" * 40
+        pin["sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.pin.write_text(json.dumps(pin))
+        new_launcher = installer.launcher_bytes(pin)
+        target.write_bytes(new_launcher)
+        target.chmod(0o755)
+        payload.write_bytes(previous_payload)
+        owner.write_text(json.dumps({
+            "schema_version": 1,
+            "state": "pending",
+            "repository": pin["repository"],
+            "commit": pin["commit"],
+            "sha256": pin["sha256"],
+            "launcher_sha256": hashlib.sha256(new_launcher).hexdigest(),
+            "previous_owned": True,
+            "previous_commit": previous_commit,
+            "previous_sha256": previous_digest,
+            "previous_launcher_sha256": previous_launcher_digest,
+        }))
+        self.assertEqual(installer.main([*self.args, "--resolve-owned"]), 3)
 
     def test_fresh_pending_journal_recovers_without_replace_override(self):
         self.bin.mkdir()
@@ -914,6 +997,52 @@ raise SystemExit(module.main({[*self.args, "--remove"]!r}))
         self.assertEqual(result["digest"], expected_digest)
         self.assertFalse(malicious.exists())
 
+    def test_checkout_forwarder_isolates_ownership_probe_from_pythonpath(self):
+        self.assertEqual(self.install(), 0)
+        hostile = self.base / "hostile-pythonpath"
+        hostile.mkdir()
+        marker = self.base / "pythonpath-import-ran"
+        (hostile / "ctypes.py").write_text(
+            "from pathlib import Path\n"
+            f"Path({str(marker)!r}).write_text('ran')\n"
+            "raise RuntimeError('loaded hostile ctypes')\n"
+        )
+        env = {
+            **os.environ,
+            "OPENREPOPROJECT_BIN_DIR": str(self.bin),
+            "OPENREPOPROJECT_PIN": str(self.pin),
+            "WORKBENCHES_ROOT": str(self.wb),
+            "PYTHONPATH": str(hostile),
+        }
+        result = subprocess.run(
+            ["bash", str(ROOT / "scripts/project"), "safe"],
+            env=env, text=True, capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), ["safe"])
+        self.assertFalse(marker.exists())
+
+    def test_installed_launcher_rejects_python_older_than_3_10(self):
+        self.assertEqual(self.install(), 0)
+        fake_bin = self.base / "old-python-bin"
+        fake_bin.mkdir()
+        executed = self.base / "old-python-executed-launcher"
+        fake_python = fake_bin / "python3"
+        fake_python.write_text(
+            "#!/bin/sh\n"
+            "if [ \"$1\" = -c ]; then exit 1; fi\n"
+            f"printf ran > {str(executed)!r}\n"
+            "exit 99\n"
+        )
+        fake_python.chmod(0o755)
+        env = {**os.environ, "PATH": str(fake_bin) + os.pathsep + os.environ["PATH"]}
+        result = subprocess.run(
+            [str(self.bin / "project")], env=env, text=True, capture_output=True,
+        )
+        self.assertEqual(result.returncode, 3)
+        self.assertIn("Python 3.10 or newer is required", result.stderr)
+        self.assertFalse(executed.exists())
+
     def test_verified_execution_does_not_import_from_install_directory(self):
         self.source.write_text(
             '#!/usr/bin/env python3\n'
@@ -981,6 +1110,23 @@ raise SystemExit(module.main({[*self.args, "--remove"]!r}))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("python3", result.stdout)
         self.assertIn("Missing required dependencies", result.stdout)
+
+    def test_setup_dependency_preflight_skips_python_when_project_is_disabled(self):
+        command = (
+            'source "$1"; '
+            'command() { '
+            'if [ "$1" = "-v" ] && [ "$2" = "python3" ]; then return 1; fi; '
+            'builtin command "$@"; '
+            '}; '
+            'WORKBENCHES_SKIP_PROJECT_COMMAND=1 check_dependencies'
+        )
+        result = subprocess.run(
+            ["bash", "-c", command, "_", str(ROOT / "scripts/setup-workbenches.sh")],
+            text=True, capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("project command installation skipped", result.stdout)
+        self.assertNotIn("Missing required dependencies: python3", result.stdout)
 
     def test_shared_installer_rejects_old_python3(self):
         errors = io.StringIO()
@@ -1222,6 +1368,29 @@ raise SystemExit(module.main({[*self.args, "--remove"]!r}))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(f"Shadowed in PATH by {shadow}", result.stdout)
 
+    def test_onp_resolution_requires_matching_owned_project_generation(self):
+        self.assertEqual(installer.main([
+            *self.args, "--source", str(self.source), "--install-onp",
+        ]), 0)
+        onp = self.bin / "onp"
+        old_onp = onp.read_bytes()
+        previous = json.loads(self.pin.read_text())
+        self.source.write_text('#!/usr/bin/env python3\nprint("updated")\n')
+        current = dict(previous)
+        current["trusted_previous"] = [{
+            "commit": previous["commit"],
+            "sha256": previous["sha256"],
+        }]
+        current["commit"] = "b" * 40
+        current["sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.pin.write_text(json.dumps(current))
+        self.assertEqual(self.install(), 0)
+        onp.write_bytes(old_onp)
+        onp.chmod(0o755)
+        self.assertEqual(installer.main([
+            *self.args, "--resolve-onp-owned",
+        ]), 3)
+
     @unittest.skipUnless(MODERN_BASH,
                          "command installer requires Bash 4 associative arrays")
     def test_global_install_uses_verified_launcher_for_onp(self):
@@ -1391,6 +1560,50 @@ raise SystemExit(module.main({[*self.args, "--remove"]!r}))
         self.assertEqual(removed.returncode, 0, removed.stderr)
         self.assertFalse((custom_bin / "project").exists())
         self.assertFalse((custom_bin / "onp").exists())
+
+    @unittest.skipUnless(MODERN_BASH,
+                         "command installer requires Bash 4 associative arrays")
+    def test_global_uninstall_resumes_persisted_pending_removal(self):
+        custom_bin = self.base / "pending-custom-bin"
+        self.assertEqual(installer.main([
+            *self.args, "--bin-dir", str(custom_bin), "--source", str(self.source),
+        ]), 0)
+        real_unlink = Path.unlink
+        failed = False
+
+        def leave_committed_cleanup(path, *args, **kwargs):
+            nonlocal failed
+            if (not failed and path.name.startswith(".project-remove-")
+                    and not path.name.startswith(".project-remove-backup-")
+                    and path.exists() and path.stat().st_size > 0):
+                failed = True
+                raise OSError("simulated cleanup interruption")
+            return real_unlink(path, *args, **kwargs)
+
+        with patch.object(Path, "unlink", new=leave_committed_cleanup):
+            self.assertEqual(installer.main([
+                *self.args, "--bin-dir", str(custom_bin), "--remove",
+            ]), 0)
+        self.assertTrue(failed)
+        self.assertTrue((custom_bin / installer.REMOVAL_JOURNAL_NAME).is_file())
+        self.assertTrue(self.discovery.is_file())
+
+        env = {
+            **os.environ,
+            "HOME": str(self.base / "pending-home"),
+            "OPENREPOPROJECT_PIN": str(self.pin),
+            "WORKBENCHES_ROOT": str(self.wb),
+            "WORKBENCHES_PROJECT_DISCOVERY_FILE": str(self.discovery),
+        }
+        env.pop("OPENREPOPROJECT_BIN_DIR", None)
+        result = subprocess.run(
+            [TEST_BASH, str(ROOT / "scripts/install-workbench-commands.sh"),
+             "--uninstall"],
+            env=env, text=True, capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((custom_bin / installer.REMOVAL_JOURNAL_NAME).exists())
+        self.assertFalse(self.discovery.exists())
 
     @unittest.skipUnless(MODERN_BASH,
                          "command installer requires Bash 4 associative arrays")

@@ -129,8 +129,10 @@ check_dependencies() {
         missing_deps+=("curl")
     fi
 
-    # The project command installer and launcher require Python 3.
-    if command -v python3 &> /dev/null; then
+    # Python is required only when project-command installation is enabled.
+    if [ "${WORKBENCHES_SKIP_PROJECT_COMMAND:-0}" = "1" ]; then
+        echo -e "  ${YELLOW}↷ python3${NC} - project command installation skipped"
+    elif command -v python3 &> /dev/null; then
         local python_version=$(python3 --version 2>&1 | awk '{print $2}')
         if python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 10))'; then
             echo -e "  ${GREEN}✓ python3${NC} - installed (version: $python_version)"
@@ -297,9 +299,9 @@ install_onp_command() {
         echo -e "${RED}Error: OPENREPOPROJECT_BIN_DIR must be an absolute path${NC}"
         return 1
     fi
-    python3 "$SCRIPT_DIR/setup-project-command.py" \
+    python3 -I "$SCRIPT_DIR/setup-project-command.py" \
         --bin-dir "$project_bin_dir" --install-onp || return $?
-    if ! python3 "$SCRIPT_DIR/setup-project-command.py" \
+    if ! python3 -I "$SCRIPT_DIR/setup-project-command.py" \
         --bin-dir "$project_bin_dir" --resolve-owned >/dev/null 2>&1; then
         echo -e "${YELLOW}⚠ Refusing to install onp without a verified project command${NC}"
         return 1

@@ -212,7 +212,7 @@ fi
 
 # The project command is authored in openRepoProject and distributed at a pin.
 if command -v python3 >/dev/null 2>&1; then
-    run_logged "PROJECT COMMAND" python3 "${SCRIPT_DIR}/scripts/setup-project-command.py" \
+    run_logged "PROJECT COMMAND" python3 -I "${SCRIPT_DIR}/scripts/setup-project-command.py" \
         || echo "Project command installation failed; see the refusal above."
 fi
 

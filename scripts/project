@@ -42,8 +42,8 @@ else
 fi
 
 for candidate_dir in "${candidate_dirs[@]}"; do
-    if python3 "$installer" --bin-dir "$candidate_dir" --resolve-owned >/dev/null 2>&1; then
-        exec python3 "$installer" --bin-dir "$candidate_dir" --exec-owned -- "$@"
+    if python3 -I "$installer" --bin-dir "$candidate_dir" --resolve-owned >/dev/null 2>&1; then
+        exec python3 -I "$installer" --bin-dir "$candidate_dir" --exec-owned -- "$@"
     fi
 done
 

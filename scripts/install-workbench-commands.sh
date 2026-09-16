@@ -66,6 +66,7 @@ configured_discovery_file() {
 }
 
 persisted_install_location() {
+    local mode="${1:-owned}"
     local discovery_file discovered_dir extra_line
     discovery_file="$(configured_discovery_file)" || return $?
     [ -f "$discovery_file" ] && [ ! -L "$discovery_file" ] || return 1
@@ -73,8 +74,15 @@ persisted_install_location() {
     IFS= read -r extra_line < <(sed -n '2p' "$discovery_file") || true
     [ -z "$extra_line" ] || return 1
     [[ "$discovered_dir" == /* ]] || return 1
-    python3 "$SCRIPT_DIR/setup-project-command.py" \
-        --bin-dir "$discovered_dir" --resolve-owned >/dev/null 2>&1 || return 1
+    if ! python3 -I "$SCRIPT_DIR/setup-project-command.py" \
+            --bin-dir "$discovered_dir" --resolve-owned >/dev/null 2>&1; then
+        if [ "$mode" != "remove" ] \
+            || ! python3 -I "$SCRIPT_DIR/setup-project-command.py" \
+                --bin-dir "$discovered_dir" --resolve-removal-pending \
+                >/dev/null 2>&1; then
+            return 1
+        fi
+    fi
     printf '%s\n' "$discovered_dir"
 }
 
@@ -313,10 +321,10 @@ install_commands() {
     if [ "${WORKBENCHES_SKIP_PROJECT_COMMAND:-0}" = "1" ]; then
         print_warning "Project command was skipped; preserving any existing command and omitting onp"
     else
-        python3 "$SCRIPT_DIR/setup-project-command.py" \
+        python3 -I "$SCRIPT_DIR/setup-project-command.py" \
             --bin-dir "$install_dir" --workbenches "$WORKBENCHES_ROOT" \
             --install-onp || return $?
-        if python3 "$SCRIPT_DIR/setup-project-command.py" \
+        if python3 -I "$SCRIPT_DIR/setup-project-command.py" \
             --bin-dir "$install_dir" --resolve-owned >/dev/null 2>&1; then
             project_available=true
         else
@@ -442,7 +450,7 @@ uninstall_commands() {
         fi
     else
         local discovery_status=0
-        configured_dir="$(persisted_install_location)" || discovery_status=$?
+        configured_dir="$(persisted_install_location remove)" || discovery_status=$?
         if [ "$discovery_status" -eq 2 ]; then
             print_error "WORKBENCHES_PROJECT_DISCOVERY_FILE must be an absolute path"
             return 1
@@ -457,7 +465,7 @@ uninstall_commands() {
     for location in "${locations[@]}"; do
         for cmd_name in "${!COMMANDS[@]}"; do
             if [ "$cmd_name" = "project" ]; then
-                python3 "$SCRIPT_DIR/setup-project-command.py" --bin-dir "$location" --remove
+                python3 -I "$SCRIPT_DIR/setup-project-command.py" --bin-dir "$location" --remove
                 project_remove_status=$?
                 if [ "$project_remove_status" -eq 0 ]; then
                     print_success "Removed installer-owned project artifacts from $location"
@@ -553,7 +561,7 @@ show_status() {
                 [ "$cmd_name" = "project" ] && ownership_option="--resolve-owned"
                 [ "$cmd_name" = "onp" ] && ownership_option="--resolve-onp-owned"
                 if [ -n "$ownership_option" ] \
-                    && ! python3 "$SCRIPT_DIR/setup-project-command.py" \
+                    && ! python3 -I "$SCRIPT_DIR/setup-project-command.py" \
                         --bin-dir "$location" "$ownership_option" >/dev/null 2>&1; then
                     printf "  ${RED}✗${NC} %-20s %s (unowned or tampered)\n" \
                         "$cmd_name" "${COMMANDS[$cmd_name]}"
