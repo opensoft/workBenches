@@ -2773,8 +2773,18 @@ grep -Fq 'workspace.yaml' <<<"$install_act_code" \
 # ...and ALL of it lives in that function. A second spelling anywhere in the
 # launcher's executable text is exactly the drift the one-spelling rule is for,
 # so the counts are compared rather than the sites listed.
+#
+# EXCEPT ONE LINE, NAMED RATHER THAN LEFT TO DRIFT THIS ASSERTION SILENT
+# (opensoft/workBenches#93, on opensoft/workBenches#99/#90's merge): the name
+# guard's downgrade notice — "Restore the estate (openRepoTools --install,
+# then link-estates) and the next launch of this profile puts it back." — says
+# both words too, but as ADVICE to a person reading a log, not as a SECOND
+# CALLER of the install act; it never calls `lane_start_install_act` and prints
+# no answer this rule is about two callers agreeing on. Excluded by the one
+# sentence that names it, so a real second caller elsewhere still trips this.
 launcher_exec_code="$(awk '/^      cat <<.EOF.$/ { skip = 1 } !skip { print } skip && $0 == "EOF" { skip = 0 }' "$LAUNCHER" \
-    | grep -v '^[[:space:]]*#')"
+    | grep -v '^[[:space:]]*#' \
+    | grep -Fv 'Restore the estate (openRepoTools --install, then link-estates)')"
 [[ "$(grep -Fc 'link-estates' <<<"$launcher_exec_code")" \
     -eq "$(grep -Fc 'link-estates' <<<"$install_act_code")" ]] \
     || fail "R-A11-13: link-estates is spelled outside lane_start_install_act, so two callers can drift apart"; assertion
