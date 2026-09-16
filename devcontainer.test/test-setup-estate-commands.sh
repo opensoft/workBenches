@@ -1109,6 +1109,81 @@ else
     fi
 fi
 
+printf '%s\n' '--- Scenario (z): a bench that shares the workstation'"'"'s own home installs nothing into it ---'
+# Copilot round 3 of opensoft/workBenches#99. The step runs from the image, so
+# it runs in EVERY dev bench -- and devBenches/.devcontainer/docker-compose.yml
+# mounts the WHOLE host home (`~:/home/${USER}`). There `$HOME/.local/bin` is
+# the workstation's, not a container overlay, and installing would put the
+# image's pin over whatever the host has: a silent downgrade at container start
+# on any workstation whose openRepoTools is newer than the image's, which is
+# #90 arriving from the other direction. A whole-home mount makes `$HOME`
+# itself a mount point; the per-path mounts every other bench uses make its
+# CHILDREN mount points and leave `$HOME` an ordinary directory. Field 5 of
+# /proc/self/mountinfo is the mount point, and WORKBENCHES_MOUNTINFO is the
+# seam that lets both shapes be exercised on one host.
+#
+# Every other scenario here runs against the REAL /proc/self/mountinfo with no
+# seam set, so "the guard does not fire in an ordinary bench" is already
+# asserted twenty-four times over; this scenario is the other half.
+BIN_Z="$TMPDIR_ROOT/bin-z"
+HOME_Z="$TMPDIR_ROOT/home-z"
+mkdir -p "$BIN_Z" "$HOME_Z"
+MOUNTINFO_WHOLE_HOME="$TMPDIR_ROOT/mountinfo-whole-home"
+printf '26 25 0:24 / %s rw,relatime shared:4 - ext4 /dev/sdd rw\n' "$HOME_Z" > "$MOUNTINFO_WHOLE_HOME"
+
+run_start_step_with_mountinfo() {   # <home> <bin dir> <mountinfo> [extra env...]
+    local home="$1" bin="$2" mountinfo="$3"
+    shift 3
+    env HOME="$home" \
+        CLAUDE_PROFILES_HOME="$home/.claude-profiles" CLAUDE_USER_DIR="$home/.claude" \
+        AGENT_PROTOCOL_ROOT="$home/.agents" PROJECTS_ROOT="$home/projects" \
+        OPENREPOTOOLS_BIN_DIR="$bin" WORKBENCHES_ESTATE_VENDOR_DIR="$VENDOR_DIR" \
+        WORKBENCHES_MOUNTINFO="$mountinfo" \
+        "$@" bash "$START_STEP" 2>&1
+}
+
+STATUS_Z=0
+OUTPUT_Z="$(run_start_step_with_mountinfo "$HOME_Z" "$BIN_Z" "$MOUNTINFO_WHOLE_HOME")" || STATUS_Z=$?
+assert_equal '0' "$STATUS_Z" 'a shared host home exits 0 rather than failing the container'
+assert_empty_dir "$BIN_Z" 'a shared host home has nothing installed into it — the image pin never lands on the workstation'
+assert_absent "$HOME_Z/.claude" 'a shared host home has nothing written under it either'
+assert_contains "$OUTPUT_Z" 'is itself a bind mount' 'the stand-down says what it detected'
+assert_contains "$OUTPUT_Z" 'WORKBENCHES_ESTATE_FORCE=1' 'the stand-down names the override for an operator who means it'
+
+# The other shape, the one every real lane bench has: children mounted, $HOME
+# its own. This must install, or the fix for #90 never runs anywhere.
+BIN_Z2="$TMPDIR_ROOT/bin-z2"
+HOME_Z2="$TMPDIR_ROOT/home-z2"
+mkdir -p "$BIN_Z2" "$HOME_Z2"
+# The rows name CHILDREN OF THE HOME THIS RUN IS GIVEN, and that is the whole
+# discrimination under test: a prefix match rather than an equality on the
+# mount point would fire here and strand every real bench with no lane
+# commands. Mutation-tested as exactly that.
+MOUNTINFO_CHILDREN="$TMPDIR_ROOT/mountinfo-children"
+{
+    printf '26 25 0:24 / %s rw,relatime shared:4 - ext4 /dev/sdd rw\n' "$HOME_Z2/.claude"
+    printf '27 25 0:24 / %s rw,relatime shared:5 - ext4 /dev/sdd rw\n' "$HOME_Z2/.claude-profiles"
+    printf '28 25 0:24 / %s rw,relatime shared:6 - ext4 /dev/sdd rw\n' "$HOME_Z2/.agents"
+} > "$MOUNTINFO_CHILDREN"
+STATUS_Z2=0
+OUTPUT_Z2="$(run_start_step_with_mountinfo "$HOME_Z2" "$BIN_Z2" "$MOUNTINFO_CHILDREN")" || STATUS_Z2=$?
+assert_equal '0' "$STATUS_Z2" 'a container home with per-path mounts exits 0'
+assert_not_contains "$OUTPUT_Z2" 'is itself a bind mount' 'a mounted ~/.claude is not mistaken for a mounted home'
+for name in "${TOOLS_FILES[@]}"; do
+    assert_identical "$BIN_Z2/$name" "$(tools_vendor_path "$name")" "a container home still gets $name — the guard did not over-fire"
+done
+
+# And the override does what it says.
+BIN_Z3="$TMPDIR_ROOT/bin-z3"
+HOME_Z3="$TMPDIR_ROOT/home-z3"
+mkdir -p "$BIN_Z3" "$HOME_Z3"
+MOUNTINFO_WHOLE_HOME3="$TMPDIR_ROOT/mountinfo-whole-home-3"
+printf '26 25 0:24 / %s rw,relatime shared:4 - ext4 /dev/sdd rw\n' "$HOME_Z3" > "$MOUNTINFO_WHOLE_HOME3"
+STATUS_Z3=0
+run_start_step_with_mountinfo "$HOME_Z3" "$BIN_Z3" "$MOUNTINFO_WHOLE_HOME3" WORKBENCHES_ESTATE_FORCE=1 >/dev/null 2>&1 || STATUS_Z3=$?
+assert_equal '0' "$STATUS_Z3" 'WORKBENCHES_ESTATE_FORCE=1 exits 0'
+assert_identical "$BIN_Z3/lanes-edit.sh" "$(tools_vendor_path lanes-edit.sh)" 'WORKBENCHES_ESTATE_FORCE=1 installs into a shared host home anyway'
+
 if (( failures == 0 )); then
     printf '%s\n' 'GREEN: setup-estate-commands regression test passed'
 else

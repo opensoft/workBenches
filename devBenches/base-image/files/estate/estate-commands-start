@@ -95,6 +95,40 @@ if [ -z "${HOME:-}" ] || [ ! -d "$HOME" ]; then
     exit 0
 fi
 
+# THE HOST'S OWN HOME IS NOT THIS STEP'S TO WRITE TO (Copilot round 3 of
+# opensoft/workBenches#99). This runs from the image, so it runs in EVERY dev
+# bench — and they do not all give the container a home of its own.
+# devBenches/.devcontainer/docker-compose.yml mounts the whole host home
+# (`~:/home/${USER}`), and there `$HOME/.local/bin` IS the workstation's, not a
+# container overlay. Installing into it would put THE IMAGE'S PIN over whatever
+# the host has, which on a workstation running a newer openRepoTools than the
+# image was built against is a silent downgrade at container start — the very
+# thing #90 is about, arriving from the other direction. Nothing here is
+# ephemeral to repair either: that home survives every recreate by definition.
+#
+# THE TWO CASES ARE TOLD APART BY A FACT, NOT A GUESS. A whole-home mount makes
+# `$HOME` itself a mount point; the per-path mounts the other benches use
+# (~/.claude, ~/.claude-profiles, ~/.agents, ...) make its CHILDREN mount points
+# and leave `$HOME` an ordinary directory in the image's own layer. Measured
+# both ways: in a py-bench `/proc/self/mountinfo` has no row whose mount point
+# is `/home/<user>`, and the generic DevBench compose above produces exactly
+# such a row. Field 5 of mountinfo is the mount point.
+#
+# WORKBENCHES_MOUNTINFO is the test seam for that file and
+# WORKBENCHES_ESTATE_FORCE=1 overrides the whole decision, for an operator who
+# means it.
+estate_home_is_host_mount() {
+    local mountinfo
+    mountinfo="${WORKBENCHES_MOUNTINFO:-/proc/self/mountinfo}"
+    [ -r "$mountinfo" ] || return 1
+    awk -v home="$1" '$5 == home { found = 1; exit } END { exit !found }' "$mountinfo"
+}
+
+if [ "${WORKBENCHES_ESTATE_FORCE:-}" != "1" ] && estate_home_is_host_mount "$HOME"; then
+    say "$HOME is itself a bind mount, so this bench shares the workstation's own home rather than a container home of its own. Nothing installed: the estate there is setup.sh's to place and a container start must not put this image's pin over it. Set WORKBENCHES_ESTATE_FORCE=1 to install anyway."
+    exit 0
+fi
+
 # An image built before opensoft/workBenches#90 has no vendored tree to install
 # FROM. Say which rebuild ends that rather than fetching anything.
 if [ ! -x "$ESTATE_VENDOR_DIR/openRepoTools" ]; then
