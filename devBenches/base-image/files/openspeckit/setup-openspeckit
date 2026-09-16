@@ -1760,15 +1760,23 @@ def worktree_git_overlay_refresh_reason(
     """
     overlay_root = repo / ".specify" / "extensions" / "git"
 
-    # Checked first, ahead of every return below: a non-regular entry at
-    # the reserved marker path must abort the whole run before ANY of
-    # shape/signature/content is even evaluated. Placing this only ahead of
-    # the "content" branch left it unreached whenever an EARLIER check (a
-    # missing required file, a stale signature, a shape-marker mismatch)
-    # already returned "shape" -- and "shape" forces the shell and skill
-    # trees too, so the destructive copy this exists to prevent could still
-    # run first in that case.
-    ensure_overlay_content_marker_is_regular(overlay_root)
+    # Checked first, ahead of every return below -- but ONLY when the
+    # template actually carries the shape marker: an unmarked/legacy
+    # template never reads or writes this marker at all
+    # (ensure_worktree_overlay gates write_overlay_content_marker the same
+    # way), so validating it for that path is both unnecessary and would
+    # needlessly break "nothing that works now stops working" for an old
+    # repository that happens to have something unrelated sitting at this
+    # newly-reserved path. For a template that DOES carry the marker, this
+    # still has to run ahead of every return below, not only ahead of the
+    # "content" branch: an EARLIER check (a missing required file, a stale
+    # signature, a shape-marker mismatch) can return "shape" first, and
+    # "shape" forces the shell and skill trees too, so the destructive copy
+    # this exists to prevent could still run first in that case.
+    if template_root is not None and has_overlay_shape_marker(
+        template_root / "specify" / "extensions" / "git"
+    ):
+        ensure_overlay_content_marker_is_regular(overlay_root)
 
     contents: dict[str, str] = {}
     try:

@@ -3870,6 +3870,31 @@ assert_regular_directory "$LEGACY_OVERLAY_LINK" 'a symlinked overlay skill is re
 assert_contains "$LEGACY_OVERLAY_LINK/SKILL.md" 'fixture overlay skill codex/speckit-git-feature' 'the compatible-overlay replacement installs the overlay skill'
 assert_contains "$LINKED_OVERLAY_EXTERNAL/SKILL.md" 'external validator skill' 'the compatible-overlay replacement leaves the link target untouched'
 
+printf '%s\n' 'Given: an unmarked template and an unmarked installed overlay, with a non-regular entry at the newly-reserved marker path'
+LEGACY_NON_REGULAR_REPO="$TMPDIR_ROOT/legacy-non-regular-marker-repo"
+LEGACY_NON_REGULAR_PROTOCOL_ROOT="$TMPDIR_ROOT/legacy-non-regular-marker-protocol"
+install_overlay_fixture "$LEGACY_NON_REGULAR_REPO" "$UNMARKED_TEMPLATE_ROOT"
+customize_installed_overlay "$LEGACY_NON_REGULAR_REPO"
+LEGACY_NON_REGULAR_MARKER_PATH="$LEGACY_NON_REGULAR_REPO/.specify/extensions/git/scripts/bash/.speckit-overlay-content"
+mkdir -p "$LEGACY_NON_REGULAR_MARKER_PATH"
+printf '%s\n' 'coincidental pre-existing content' > "$LEGACY_NON_REGULAR_MARKER_PATH/unrelated.txt"
+
+printf '%s\n' 'When: bootstrap reruns an unmarked template against it'
+export AGENT_PROTOCOL_ROOT="$LEGACY_NON_REGULAR_PROTOCOL_ROOT"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$UNMARKED_TEMPLATE_ROOT"
+if ! python3 "$SETUP_SCRIPT" --repo "$LEGACY_NON_REGULAR_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/legacy-non-regular-marker.log" 2>&1; then
+    printf '%s\n' 'FAIL: legacy-non-regular-marker bootstrap invocation failed:'
+    cat "$TMPDIR_ROOT/legacy-non-regular-marker.log"
+    exit 1
+fi
+
+printf '%s\n' 'Then: an unmarked template is unaffected by whatever coincidentally sits at the reserved marker path'
+assert_not_contains "$TMPDIR_ROOT/legacy-non-regular-marker.log" 'Refusing to treat non-regular path as the overlay content marker' 'a legacy rerun never validates a path it will never read or write'
+assert_contains "$LEGACY_NON_REGULAR_REPO/.specify/extensions/git/scripts/bash/git-common.sh" 'repository-specific overlay customization' 'the legacy overlay keeps its customization, unaffected'
+assert_file "$LEGACY_NON_REGULAR_MARKER_PATH/unrelated.txt" 'the coincidental directory at the marker path is left alone'
+assert_contains "$LEGACY_NON_REGULAR_MARKER_PATH/unrelated.txt" 'coincidental pre-existing content' 'its content is never touched either'
+
 export HOME="$FIXTURE_HOME"
 export SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT"
 export OPSX_COMMAND_TEMPLATE_ROOT="$COMMAND_TEMPLATE_ROOT"
