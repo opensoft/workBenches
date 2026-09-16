@@ -2968,6 +2968,16 @@ else
     fail "RV-W1/R-A11-5: a uuid-emptiness construct now exists in the skill ($uuid_guard_probe) — opensoft/openRepoTools#98 may be fixed or may have changed shape; re-examine by hand and restore or extend the checks this skip replaced"
 fi
 assertion
+# KEPT SEPARATE FROM THE GUARD SKIP (round 14): the missing PREEMPTIVE guard
+# (opensoft/openRepoTools#98, above) is one gap; the file-level PAUSED line's
+# session FIELD FORMAT — `session $uuid@$ws` — is a different, still-live
+# property that has nothing to do with whether a guard exists. The
+# `ab_guard_block` checks further down only prove `append-line` is called
+# inside the workstation guard, not what it writes; a regression could keep
+# today's no-guard shape while corrupting the field itself and still pass
+# everything else in this cluster.
+grep -Fq '"$L" append-line "PAUSED — lane $lane, session $uuid@$ws, $(date -u' "$HANDOFF_MD" \
+    || fail "RV-W1: the file-level PAUSED line is not written with the session field in the shipped 'session \$uuid@\$ws' format"; assertion
 # The audit is made on the skill's SHELL — its fenced code blocks with their
 # comments stripped — and not on its prose, which ARGUES about both words at
 # length and would answer for the code if it were read.
