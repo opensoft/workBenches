@@ -87,6 +87,7 @@ assert_layer3_ensure_identity_rejected --user 'bad.name'
 checker_help="$("$checker" --help)"
 grep -Fq -- '--images IMAGE,...' <<< "$checker_help"
 grep -Fq -- '--image-ids IMAGE=ID,...' <<< "$checker_help"
+grep -Fq -- '--layer3-images IMAGE,...' <<< "$checker_help"
 grep -Fq -- '--check-layer3' <<< "$checker_help"
 grep -Fq -- '--write-manifest' <<< "$checker_help"
 grep -Fq -- '--manifest-file FILE' <<< "$checker_help"
@@ -98,7 +99,8 @@ fi
 grep -Fq -- '--check-layer3 requires --images IMAGE,...' "$temp_dir/missing-layer3-images.out"
 rebuild_help="$("$repo_root/scripts/update-and-rebuild.sh" --help)"
 grep -Fq -- '--write-manifest' <<< "$rebuild_help"
-grep -Fq 'CHECK_ARGS+=(--images "$CASCADE_IMAGE_LIST" --image-ids "$CASCADE_IMAGE_ID_LIST" --check-layer3)' "$repo_root/scripts/update-and-rebuild.sh"
+grep -Fq 'CHECK_ARGS+=(--images "$CASCADE_IMAGE_LIST" --image-ids "$CASCADE_IMAGE_ID_LIST")' "$repo_root/scripts/update-and-rebuild.sh"
+grep -Fq 'CHECK_ARGS+=(--layer3-images "$CASCADE_LAYER3_IMAGE_LIST" --check-layer3)' "$repo_root/scripts/update-and-rebuild.sh"
 grep -Fq 'CHECK_ARGS+=(--layer all --images "$LAYER3_BASE" --check-layer3)' "$repo_root/scripts/update-and-rebuild.sh"
 
 PATH="$fake_bin:$PATH" \
@@ -119,6 +121,19 @@ if grep -Fq 'layer3-identity-probe' "$log"; then
     exit 1
 fi
 grep -Fq 'image save sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' "$log"
+
+: > "$log"
+PATH="$fake_bin:$PATH" \
+FAKE_DOCKER_LOG="$log" \
+"$checker" --layer 0 \
+    --images test-bench:latest,sim-bench-gene_bench:latest \
+    --layer3-images test-bench:latest \
+    --check-layer3 --user brett > "$temp_dir/separate-layer3-targets.out"
+grep -Fq 'Layer 3 test-bench:brett is current' "$temp_dir/separate-layer3-targets.out"
+if grep -Fq 'sim-bench-gene_bench:brett' "$log"; then
+    echo "Compose service output was incorrectly treated as a Layer 3 base" >&2
+    exit 1
+fi
 
 : > "$log"
 PATH="$fake_bin:$PATH" \
@@ -399,6 +414,13 @@ chmod +x "$layer2_selection_dir/scripts/build-layer2.sh"
 test "$(select_layer2_build_script "$layer2_selection_dir")" \
     = "$layer2_selection_dir/scripts/build-layer2.sh"
 
+tag_filter_build="$temp_dir/tag-filter-build.sh"
+printf '%s\n' \
+    'docker build --build-arg CACHE_IMAGE=sim-bench-cache:latest -t sim-bench:latest .' \
+    > "$tag_filter_build"
+test "$(declared_cascade_images sim-bench:latest "$tag_filter_build" "$temp_dir")" \
+    = 'sim-bench:latest'
+
 PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
     record_rebuilt_cascade_image test-bench:latest testBench
 test "${CASCADE_IMAGES[*]}" = test-bench:latest
@@ -428,6 +450,9 @@ FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
     record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"
 test "${CASCADE_IMAGES[*]}" = "sim-bench-gene_bench:latest sim-bench-ui:latest"
 test "${#CASCADE_IMAGE_RECORDS[@]}" -eq 2
+CASCADE_LAYER3_IMAGES=()
+record_cascade_layer3_base_if_captured sim-bench:latest
+test "${#CASCADE_LAYER3_IMAGES[@]}" -eq 0
 if grep -Fq 'sim-bench-dev:latest' "$log"; then
     echo "cascade capture inspected an unrelated Compose output" >&2
     exit 1
@@ -542,6 +567,15 @@ FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
     record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"
 test "${CASCADE_IMAGES[*]}" = "sim-bench-worker:latest"
 test "${CASCADE_IMAGE_RECORDS[*]}" = "sim-bench-worker:latest=$captured_image_id"
+CASCADE_LAYER3_IMAGES=()
+record_cascade_layer3_base_if_captured sim-bench:latest
+test "${#CASCADE_LAYER3_IMAGES[@]}" -eq 0
+
+CASCADE_IMAGES=(sim-bench:latest)
+CASCADE_LAYER3_IMAGES=()
+record_cascade_layer3_base_if_captured sim-bench:latest
+record_cascade_layer3_base_if_captured sim-bench:latest
+test "${CASCADE_LAYER3_IMAGES[*]}" = sim-bench:latest
 
 printf '%s\n' \
     'services:' \

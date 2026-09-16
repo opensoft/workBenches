@@ -344,31 +344,45 @@ declared_cascade_images() {
     {
         if [[ "${#metadata_files[@]}" -gt 0 ]]; then
             awk '
+                function resolve_defaults(ref, expression, inner, separator, variable_name, fallback, replacement) {
+                    while (match(ref, /[$][{][A-Za-z_][A-Za-z0-9_]*:-[A-Za-z0-9._\/-]+[}]/)) {
+                        expression = substr(ref, RSTART, RLENGTH)
+                        inner = substr(expression, 3, length(expression) - 3)
+                        separator = index(inner, ":-")
+                        variable_name = substr(inner, 1, separator - 1)
+                        fallback = substr(inner, separator + 2)
+                        replacement = ENVIRON[variable_name]
+                        if (replacement == "") replacement = fallback
+                        ref = substr(ref, 1, RSTART - 1) replacement substr(ref, RSTART + RLENGTH)
+                    }
+                    return ref
+                }
+                function emit_output(ref, leaf) {
+                    gsub(/^["\047]|["\047\\]+$/, "", ref)
+                    if (ref ~ /:[$][{]USER:-[^}]+[}]$/) sub(/:.*/, ":latest", ref)
+                    if (ref ~ /:[$][{][A-Za-z_][A-Za-z0-9_]*:-latest[}]$/) sub(/:.*/, ":latest", ref)
+                    ref = resolve_defaults(ref)
+                    leaf = ref
+                    sub(/^.*\//, "", leaf)
+                    if (ref ~ /^[A-Za-z0-9][A-Za-z0-9._:\/-]*$/) {
+                        if (leaf ~ /:latest$/) print ref
+                        else if (leaf !~ /:/) print ref ":latest"
+                    }
+                }
                 {
                     line = $0
                     sub(/^[[:space:]]+/, "", line)
                     if (line ~ /^#/) next
                     sub(/[[:space:]]+#.*/, "", line)
-                    working = line
-                    while (match(working, /[A-Za-z0-9][A-Za-z0-9._\/-]*:latest([^A-Za-z0-9_.-]|$)/)) {
-                        ref = substr(working, RSTART, RLENGTH)
-                        if (ref !~ /:latest$/) ref = substr(ref, 1, length(ref) - 1)
-                        print ref
-                        working = substr(working, RSTART + RLENGTH)
-                    }
-                    working = line
-                    while (match(working, /[A-Za-z0-9][A-Za-z0-9._\/-]*:[$][{]USER:-[^}]+[}]/)) {
-                        ref = substr(working, RSTART, RLENGTH)
-                        sub(/:.*/, ":latest", ref)
-                        print ref
-                        working = substr(working, RSTART + RLENGTH)
-                    }
-                    working = line
-                    while (match(working, /[A-Za-z0-9][A-Za-z0-9._\/-]*:[$][{][A-Za-z_][A-Za-z0-9_]*:-latest[}]/)) {
-                        ref = substr(working, RSTART, RLENGTH)
-                        sub(/:.*/, ":latest", ref)
-                        print ref
-                        working = substr(working, RSTART + RLENGTH)
+                    word_count = split(line, words, /[[:space:]]+/)
+                    for (word_index = 1; word_index <= word_count; word_index++) {
+                        if (words[word_index] == "-t" || words[word_index] == "--tag") {
+                            if (word_index < word_count) emit_output(words[word_index + 1])
+                        } else if (words[word_index] ~ /^(-t|--tag)=/) {
+                            ref = words[word_index]
+                            sub(/^[^=]*=/, "", ref)
+                            emit_output(ref)
+                        }
                     }
                 }
                 /^[[:space:]]*image:[[:space:]]*/ {
@@ -381,22 +395,7 @@ declared_cascade_images() {
                         || (substr(ref, 1, 1) == quote && substr(ref, length(ref), 1) == quote)) {
                         ref = substr(ref, 2, length(ref) - 2)
                     }
-                    while (match(ref, /[$][{][A-Za-z_][A-Za-z0-9_]*:-[A-Za-z0-9._\/-]+[}]/)) {
-                        expression = substr(ref, RSTART, RLENGTH)
-                        inner = substr(expression, 3, length(expression) - 3)
-                        separator = index(inner, ":-")
-                        variable_name = substr(inner, 1, separator - 1)
-                        fallback = substr(inner, separator + 2)
-                        replacement = ENVIRON[variable_name]
-                        if (replacement == "") replacement = fallback
-                        ref = substr(ref, 1, RSTART - 1) replacement substr(ref, RSTART + RLENGTH)
-                    }
-                    leaf = ref
-                    sub(/^.*\//, "", leaf)
-                    if (ref ~ /^[A-Za-z0-9][A-Za-z0-9._:\/-]*$/) {
-                        if (leaf ~ /:latest$/) print ref
-                        else if (leaf !~ /:/) print ref ":latest"
-                    }
+                    emit_output(ref)
                 }
             ' "${metadata_files[@]}" 2>/dev/null || true
         fi
@@ -500,4 +499,19 @@ record_rebuilt_cascade_image() {
         echo "Expected Layer 2 image $image was not produced by $bench_name" >&2
         return 1
     fi
+}
+
+record_cascade_layer3_base_if_captured() {
+    local layer2_base="$1"
+    local captured_image
+    local existing_image
+
+    for captured_image in "${CASCADE_IMAGES[@]}"; do
+        [[ "$captured_image" == "$layer2_base" ]] || continue
+        for existing_image in "${CASCADE_LAYER3_IMAGES[@]}"; do
+            [[ "$existing_image" == "$layer2_base" ]] && return 0
+        done
+        CASCADE_LAYER3_IMAGES+=("$layer2_base")
+        return 0
+    done
 }

@@ -36,6 +36,7 @@ LAYER3_BASE=""
 LAYER3_CHOWN=""
 declare -a CASCADE_IMAGES=()
 declare -a CASCADE_IMAGE_RECORDS=()
+declare -a CASCADE_LAYER3_IMAGES=()
 
 # Registry config
 REGISTRY_ENV="$REPO_DIR/config/registry.env"
@@ -249,6 +250,7 @@ build_layer2_bench() {
 
     record_rebuilt_cascade_image \
         "$image" "$bench_name" "$build_script" "$bench_dir" "$prebuild_image_records"
+    record_cascade_layer3_base_if_captured "$image"
 }
 
 # Cascade rebuild all downstream dependents of a base image
@@ -528,7 +530,11 @@ fi
 if [ "$CASCADE" = true ] && [ "${#CASCADE_IMAGES[@]}" -gt 0 ]; then
     CASCADE_IMAGE_LIST=$(IFS=,; echo "${CASCADE_IMAGES[*]}")
     CASCADE_IMAGE_ID_LIST=$(IFS=,; echo "${CASCADE_IMAGE_RECORDS[*]}")
-    CHECK_ARGS+=(--images "$CASCADE_IMAGE_LIST" --image-ids "$CASCADE_IMAGE_ID_LIST" --check-layer3)
+    CHECK_ARGS+=(--images "$CASCADE_IMAGE_LIST" --image-ids "$CASCADE_IMAGE_ID_LIST")
+    if [ "${#CASCADE_LAYER3_IMAGES[@]}" -gt 0 ]; then
+        CASCADE_LAYER3_IMAGE_LIST=$(IFS=,; echo "${CASCADE_LAYER3_IMAGES[*]}")
+        CHECK_ARGS+=(--layer3-images "$CASCADE_LAYER3_IMAGE_LIST" --check-layer3)
+    fi
 fi
 if [ "$WRITE_MANIFEST" = true ]; then
     CHECK_ARGS+=(--write-manifest)

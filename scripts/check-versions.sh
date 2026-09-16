@@ -2,7 +2,7 @@
 
 # Check installed tool versions across workBench container layers
 # Compares installed versions against upstream latest
-# Usage: ./check-versions.sh [--layer 0|1a|1b|1c|all] [--images image,...] [--image-ids image=id,...] [--check-layer3] [--write-manifest] [--manifest-file FILE] [--json]
+# Usage: ./check-versions.sh [--layer 0|1a|1b|1c|all] [--images image,...] [--image-ids image=id,...] [--layer3-images image,...] [--check-layer3] [--write-manifest] [--manifest-file FILE] [--json]
 
 set -euo pipefail
 
@@ -25,6 +25,7 @@ WRITE_MANIFEST=false
 MANIFEST_FILE="$REPO_DIR/config/version-manifest.json"
 declare -a TARGET_IMAGES=()
 declare -a TARGET_IMAGE_ID_RECORDS=()
+declare -a LAYER3_TARGET_IMAGES=()
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -38,16 +39,21 @@ while [[ $# -gt 0 ]]; do
             IFS=',' read -r -a TARGET_IMAGE_ID_RECORDS <<< "$2"
             shift 2
             ;;
+        --layer3-images)
+            IFS=',' read -r -a LAYER3_TARGET_IMAGES <<< "$2"
+            shift 2
+            ;;
         --check-layer3) CHECK_LAYER3=true; shift ;;
         --write-manifest) WRITE_MANIFEST=true; shift ;;
         --manifest-file) MANIFEST_FILE="$2"; shift 2 ;;
         --json) JSON_OUTPUT=true; shift ;;
         --user) USERNAME="$2"; shift 2 ;;
         -h|--help)
-            echo "Usage: $0 [--layer 0|1a|1b|1c|all] [--images image,...] [--image-ids image=id,...] [--check-layer3] [--write-manifest] [--manifest-file FILE] [--json] [--user USERNAME]"
+            echo "Usage: $0 [--layer 0|1a|1b|1c|all] [--images image,...] [--image-ids image=id,...] [--layer3-images image,...] [--check-layer3] [--write-manifest] [--manifest-file FILE] [--json] [--user USERNAME]"
             echo ""
             echo "  --images IMAGE,...  Verify required shared CLI commands in selected Layer 2 images"
             echo "  --image-ids IMAGE=ID,... Pin selected image references to captured immutable IDs"
+            echo "  --layer3-images IMAGE,... Limit Layer 3 activation checks to personalized Layer 2 bases"
             echo "  --check-layer3      Report Layer 3 image activation state without changing Docker state"
             echo "  --write-manifest    Persist the version manifest (default: do not write)"
             echo "  --manifest-file FILE Write inside config/ instead of the default manifest path"
@@ -59,7 +65,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [ "$CHECK_LAYER3" = true ] && [ "${#TARGET_IMAGES[@]}" -eq 0 ]; then
+if [ "$CHECK_LAYER3" = true ] && [ "${#LAYER3_TARGET_IMAGES[@]}" -eq 0 ]; then
+    LAYER3_TARGET_IMAGES=("${TARGET_IMAGES[@]}")
+fi
+if [ "$CHECK_LAYER3" = true ] && [ "${#LAYER3_TARGET_IMAGES[@]}" -eq 0 ]; then
     echo "--check-layer3 requires --images IMAGE,..." >&2
     exit 1
 fi
@@ -665,7 +674,7 @@ check_selected_layer3_images() {
 
     [ "$CHECK_LAYER3" = true ] || return 0
     snapshot_running_containers
-    for image in "${TARGET_IMAGES[@]}"; do
+    for image in "${LAYER3_TARGET_IMAGES[@]}"; do
         [[ -n "$image" ]] || continue
         check_layer3_image "$image"
     done
