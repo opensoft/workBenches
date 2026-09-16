@@ -1,23 +1,25 @@
 #!/usr/bin/env bash
 # Regression test for scripts/setup-estate-commands.sh (opensoft/workBenches#37,
-# grown for opensoft/openRepoTools#26): the host's openRepoShape, and
-# openRepoTools's own EIGHTEEN artifacts -- the ELEVEN files `openRepoTools
-# --install` places on $PATH (itself, park, resume, status, restart, lanes,
-# and the four lane helpers `lanes-edit.sh`, `lane-start`, `lane-end` and
-# `link-estates` with the alias table `repos.tsv` they read), the `lane-swap`
-# and `restart` skills, the `/swap` command file, and the merged
-# `SessionStart` entry in `~/.claude/settings.json` -- all come from
-# workBenches' own vendored pin (FOURTEEN pinned openrepotools paths, plus
-# openRepoShape's own two), and the script places them, re-places them when
-# they differ from the pin (either direction), and refuses to place anything
-# when the vendored copies themselves no longer match the pin. Every scenario
-# runs with $HOME sandboxed under a throwaway directory, AND
-# CLAUDE_PROFILES_HOME/CLAUDE_USER_DIR pinned explicitly to that same
-# directory's .claude-profiles/.claude -- `skills_home`/`claude_home` read
-# those two variables first and only fall back to $HOME when either is unset,
-# so sandboxing $HOME alone is not enough if the invoking shell (a developer's,
+# grown for opensoft/openRepoTools#26 and re-grown for opensoft/openRepoTools
+# #45): the host's openRepoShape, and openRepoTools's own TWENTY-SIX
+# artifacts -- the TWELVE files `openRepoTools --install` places on $PATH
+# (itself, park, resume, status, lane, lanes, lane-handoff, and the four
+# lane helpers `lanes-edit.sh`, `lane-start`, `lane-end` and `link-estates`
+# with the alias table `repos.tsv` they read), the `handoff`, `lane-swap`
+# and `restart` skills, the `handoff`, `ctx` and `swap` command files, and
+# the merged `SessionStart` and `UserPromptSubmit` entries in
+# `~/.claude/settings.json` -- all come from workBenches' own vendored pin
+# (EIGHTEEN pinned openrepotools paths, plus openRepoShape's own two), and
+# the script places them, re-places them when they differ from the pin
+# (either direction), and refuses to place anything when the vendored
+# copies themselves no longer match the pin. Every scenario runs with $HOME
+# sandboxed under a throwaway directory, AND CLAUDE_PROFILES_HOME/
+# CLAUDE_USER_DIR pinned explicitly to that same directory's
+# .claude-profiles/.claude -- `skills_home`/`claude_home` read those two
+# variables first and only fall back to $HOME when either is unset, so
+# sandboxing $HOME alone is not enough if the invoking shell (a developer's,
 # or CI's) happens to export one of them for its own purposes. The skills, the
-# command file and the hook are written under there
+# command files and the hook are written under there
 # (~/.claude-profiles/... and ~/.claude/...), not just under the bin dir the
 # *_BIN_DIR overrides reach -- so a run of this suite never touches the real
 # machine's profiles, skills or settings.json, nor any other profile's.
@@ -28,7 +30,7 @@
 # shim transactions (D4), the pin file itself missing, and the placed
 # files' mode. D3 now has two parts, both inside scenario (k): the first
 # proves scripts/setup-estate-commands.sh's OWN pre-flight (`require_pin_row`,
-# now checking all fourteen openrepotools paths) refuses a documented
+# now checking all eighteen openrepotools paths) refuses a documented
 # row-and-file removal before either shim runs, so no fetch is ever
 # reachable through this script's front door -- exactly the guarantee this
 # scenario always proved, just extended past the original five names. The
@@ -37,6 +39,14 @@
 # beside it, `openRepoTools --install` itself tries to fetch that file under
 # openRepoTools#26's all-or-nothing rule, and the sentinel this script
 # exports refuses it by name. Neither path ever reaches a real network.
+#
+# Scenarios (n) and (o) guard opensoft/openRepoTools#45's `RETIRED=(restart)`
+# (Copilot's review of opensoft/workBenches#91, `openRepoTools:277`, "not
+# exercised... a future change could therefore leave the retired executable
+# on PATH -- or delete the wrong one -- while the reported checks still
+# pass"): the two ownership branches `retire_commands` decides between, an
+# installer-owned stale copy (removed) and a person's own file of the same
+# name (named and left, byte for byte).
 
 set -euo pipefail
 
@@ -52,14 +62,14 @@ PARK_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/park"
 RESUME_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/resume"
 STATUS_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/status"
 
-# THE ELEVEN FILES `openRepoTools --install` places on $PATH (openRepoTools#26).
-# One list, so scenarios (a), (b) and (l) cannot disagree about what a
-# complete bin-directory install is.
-TOOLS_FILES=(openRepoTools park resume status restart lanes lanes-edit.sh lane-start lane-end link-estates repos.tsv)
+# THE TWELVE FILES `openRepoTools --install` places on $PATH (openRepoTools#26
+# and #45). One list, so scenarios (a), (b) and (l) cannot disagree about
+# what a complete bin-directory install is.
+TOOLS_FILES=(openRepoTools park resume status lane lanes lane-handoff lanes-edit.sh lane-start lane-end link-estates repos.tsv)
 tools_vendor_path() { printf '%s/files/openrepotools/%s\n' "$BASE_IMAGE_DIR" "$1"; }
 
-SKILL_NAMES=(lane-swap restart)
-COMMAND_NAMES=(swap)
+SKILL_NAMES=(handoff lane-swap restart)
+COMMAND_NAMES=(handoff ctx swap)
 
 TMPDIR_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_ROOT"' EXIT
@@ -247,7 +257,22 @@ assert_hook_present() {
     assert_mode "$settings" '600' "$label: settings.json is mode 0600"
 }
 
-printf '%s\n' '--- Scenario (a): fresh bin dir + fresh $HOME installs all EIGHTEEN openRepoTools artifacts, plus openRepoShape ---'
+# lane-collision-protocol Amendment 12's UserPromptSubmit name guard, merged
+# into the same file as the SessionStart entry above -- one write for the
+# pair, so this is a second assertion on the same settings.json rather than
+# a second file.
+assert_guard_hook_present() {
+    local home="$1" label="$2"
+    local settings="$home/.claude/settings.json"
+    if [ ! -f "$settings" ]; then
+        fail "$label: $settings does not exist"
+        return
+    fi
+    assert_contains "$(cat "$settings")" 'lanes-edit.sh guard' "$label: settings.json carries the UserPromptSubmit guard command"
+    assert_mode "$settings" '600' "$label: settings.json is mode 0600"
+}
+
+printf '%s\n' '--- Scenario (a): fresh bin dir + fresh $HOME installs all TWENTY-SIX openRepoTools artifacts, plus openRepoShape ---'
 BIN_A="$TMPDIR_ROOT/bin-a"
 HOME_A="$TMPDIR_ROOT/home-a"
 mkdir -p "$BIN_A" "$HOME_A"
@@ -266,7 +291,7 @@ for name in "${TOOLS_FILES[@]}"; do
     assert_identical "$BIN_A/$name" "$(tools_vendor_path "$name")" "fresh $name is byte-identical to the vendored copy"
     assert_contains "$OUTPUT_A" "$name: installed at" "fresh install reports an installed verb for $name"
 done
-assert_contains "$OUTPUT_A" 'openRepoTools: 11 of 11 placed in' 'fresh install reports all eleven openRepoTools bin files placed'
+assert_contains "$OUTPUT_A" 'openRepoTools: 12 of 12 placed in' 'fresh install reports all twelve openRepoTools bin files placed'
 for name in "${SKILL_NAMES[@]}"; do
     assert_skill_pair "$HOME_A" "$name" "fresh install places the $name skill"
     assert_contains "$OUTPUT_A" "$name: installed at" "fresh install reports an installed verb for the $name skill"
@@ -277,14 +302,16 @@ for name in "${COMMAND_NAMES[@]}"; do
 done
 assert_hook_present "$HOME_A" 'fresh install merges the SessionStart hook'
 assert_contains "$OUTPUT_A" 'SessionStart hook: installed in' 'fresh install reports the hook as installed (new file)'
+assert_guard_hook_present "$HOME_A" 'fresh install merges the UserPromptSubmit guard hook'
+assert_contains "$OUTPUT_A" 'UserPromptSubmit guard: installed in' 'fresh install reports the guard hook as installed (new file)'
 assert_contains "$OUTPUT_A" "openRepoShape pinned at $SHAPE_COMMIT" 'fresh install prints the openRepoShape pin commit'
 assert_contains "$OUTPUT_A" "openRepoTools pinned at $TOOLS_COMMIT" 'fresh install prints the openRepoTools pin commit'
 assert_contains "$OUTPUT_A" 'Estate commands verified against the vendored pin.' 'fresh install reports success only after post-install verification'
 # Scenario (f) folded in here: a brand-new temp dir is never on $PATH. Fix 4
 # removed this script's own PATH warning (the shims already print theirs),
 # so the substring must appear exactly twice -- once per shim -- not three
-# times. Eighteen more report lines from the skills, the command file and
-# the hook do not add a third: none of them mentions $PATH at all.
+# times. Twenty-six more report lines from the skills, the command files and
+# the two hook entries do not add a third: none of them mentions $PATH at all.
 path_warning_count="$(count_occurrences "$OUTPUT_A" 'is not on $PATH')"
 assert_equal '2' "$path_warning_count" 'exactly two PATH warnings (one per shim; this script prints no third copy)'
 
@@ -312,6 +339,8 @@ for name in "${COMMAND_NAMES[@]}"; do
 done
 assert_contains "$OUTPUT_B" 'SessionStart hook: already installed in' 'second run reports the hook unchanged'
 assert_hook_present "$HOME_A" 'second run still has the hook'
+assert_contains "$OUTPUT_B" 'UserPromptSubmit guard: already installed in' 'second run reports the guard hook unchanged'
+assert_guard_hook_present "$HOME_A" 'second run still has the guard hook'
 
 printf '%s\n' '--- Scenario (c): a locally-modified park is replaced and reported updated ---'
 printf '%s\n' '# a local edit, not the vendored bytes' >> "$BIN_A/park"
@@ -326,7 +355,7 @@ assert_contains "$OUTPUT_C" 'park: updated at' 'the locally-modified park is rep
 assert_identical "$BIN_A/park" "$PARK_VENDOR" 'park is byte-identical to the vendored copy again after being updated'
 # The rest were untouched, so this run still reports them unchanged -- a
 # representative few from each of the four kinds of artifact, not all
-# eighteen again.
+# twenty-six again.
 assert_contains "$OUTPUT_C" 'openRepoShape: already installed at' 'updated-park run still reports openRepoShape unchanged'
 assert_contains "$OUTPUT_C" 'resume: already installed at' 'updated-park run still reports resume unchanged'
 assert_contains "$OUTPUT_C" 'status: already installed at' 'updated-park run still reports status unchanged'
@@ -433,7 +462,7 @@ assert_contains "$OUTPUT_I" 'not writable' 'the refusal says park is not writabl
 assert_equal '0' "$([ -e "$BIN_I/openRepoShape" ] && echo 1 || echo 0)" 'openRepoShape was NOT placed (D4 regression guard)'
 assert_equal '0' "$([ -e "$BIN_I/openRepoTools" ] && echo 1 || echo 0)" 'openRepoTools was NOT placed (D4 regression guard)'
 assert_equal '0' "$([ -e "$BIN_I/resume" ] && echo 1 || echo 0)" 'resume was NOT placed (D4 regression guard)'
-assert_equal '0' "$([ -e "$BIN_I/repos.tsv" ] && echo 1 || echo 0)" 'repos.tsv (last of the eleven) was NOT placed (D4 regression guard)'
+assert_equal '0' "$([ -e "$BIN_I/repos.tsv" ] && echo 1 || echo 0)" 'repos.tsv (last of the twelve) was NOT placed (D4 regression guard)'
 assert_absent "$HOME_I/.claude" 'nothing was written under $HOME/.claude either (D4 regression guard)'
 chmod 0755 "$BIN_I/park"
 
@@ -466,15 +495,15 @@ printf '%s\n' '--- Scenario (k) [D3, part one]: resume'"'"'s row AND vendored fi
 # gone together, `check` none the wiser.
 #
 # UNCHANGED FROM BEFORE opensoft/openRepoTools#26, deliberately: this script's
-# own `require_pin_row`, now checking all FOURTEEN openrepotools paths
+# own `require_pin_row`, now checking all EIGHTEEN openrepotools paths
 # instead of four, still catches "resume" missing a row before either shim
 # runs, for the same reason it always did -- a file the shims would install
 # with no row in the pin is refused here, explicitly, rather than ever
 # reaching a shim that could fall back to fetching it. The all-or-nothing
 # rule does not change this half of D3 at all: it only raises the stakes of
 # the OTHER half, proved directly in part two below, because now the same
-# missing file would cost the whole eighteen-artifact install, not one file
-# among five.
+# missing file would cost the whole twenty-six-artifact install, not one
+# file among five.
 NOROW_BASE="$TMPDIR_ROOT/norow-base-image"
 mkdir -p "$NOROW_BASE"
 cp -r "$BASE_IMAGE_DIR/." "$NOROW_BASE/"
@@ -557,7 +586,7 @@ assert_contains "$OUTPUT_K2" "$ESTATE_SENTINEL_VALUE" "the shim's own refusal na
 assert_empty_dir "$BIN_K2" "nothing was installed by the shim's own refusal either"
 assert_absent "$HOME_K2/.claude" "nothing under \$HOME/.claude either, from the shim's own refusal"
 
-printf '%s\n' '--- Scenario (l): every one of the ELEVEN placed openRepoTools bin files is mode 0755, and so is openRepoShape ---'
+printf '%s\n' '--- Scenario (l): every one of the TWELVE placed openRepoTools bin files is mode 0755, and so is openRepoShape ---'
 assert_mode "$BIN_A/openRepoShape" '755' 'placed openRepoShape is mode 0755'
 for name in "${TOOLS_FILES[@]}"; do
     assert_mode "$BIN_A/$name" '755' "placed $name is mode 0755"
@@ -596,6 +625,136 @@ SCRIPT_SOURCE="$(cat "$SCRIPT_UNDER_TEST")"
 for var in OPENREPOSHAPE_REPO OPENREPOSHAPE_REF OPENREPOTOOLS_REPO OPENREPOTOOLS_REF; do
     assert_contains "$SCRIPT_SOURCE" "export $var=\"\$ESTATE_SENTINEL\"" "the script source exports $var to the fixed sentinel before installing"
 done
+
+printf '%s\n' '--- Scenario (n) [Copilot round on #91, openRepoTools:277]: a stale INSTALLER-OWNED restart is retired -- removed, and named ---'
+# `restart` left INSTALLABLES at this pin (Amendment 18 Addendum 2); the shim
+# does not merely stop copying it, it retires a copy IT PLACED. The test for
+# "this installer's own copy" is the header line every file this installer
+# owns carries -- `Installed on PATH by \`openRepoTools --install\`` -- which
+# is why the fixture below is not an empty file: `retire_commands` reads that
+# exact string out of the target, not out of anything this script asserts.
+BIN_N="$TMPDIR_ROOT/bin-n"
+HOME_N="$TMPDIR_ROOT/home-n"
+mkdir -p "$BIN_N" "$HOME_N"
+cat > "$BIN_N/restart" <<'RESTARTEOF'
+#!/usr/bin/env bash
+# Installed on PATH by `openRepoTools --install`. lane-collision-protocol
+echo "a stale restart this installer placed on an earlier run"
+RESTARTEOF
+chmod +x "$BIN_N/restart"
+STATUS_N=0
+OUTPUT_N="$(HOME="$HOME_N" \
+    CLAUDE_PROFILES_HOME="$HOME_N/.claude-profiles" CLAUDE_USER_DIR="$HOME_N/.claude" \
+    OPENREPOSHAPE_BIN_DIR="$BIN_N" OPENREPOTOOLS_BIN_DIR="$BIN_N" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_N=$?
+
+assert_equal '0' "$STATUS_N" 'retiring an installer-owned restart still exits 0'
+assert_absent "$BIN_N/restart" 'the installer-owned restart was removed'
+assert_contains "$OUTPUT_N" 'restart: RETIRED, removed from' 'the output names the removal, not a silent delete'
+assert_contains "$OUTPUT_N" "$BIN_N/restart" 'the removal line names the exact path removed'
+
+printf '%s\n' '--- Scenario (o) [Copilot round on #91, openRepoTools:277]: a stale USER-OWNED restart is named and left exactly as it is ---'
+# The other ownership branch: a file at the same path with no installer
+# header -- a person's own script happening to be called `restart` -- is
+# never this installer's to delete (`unplaceable_kind`'s own reasoning,
+# ported to retirement rather than to placement).
+BIN_O="$TMPDIR_ROOT/bin-o"
+HOME_O="$TMPDIR_ROOT/home-o"
+mkdir -p "$BIN_O" "$HOME_O"
+cat > "$BIN_O/restart" <<'RESTARTEOF'
+#!/usr/bin/env bash
+echo "a person's own restart script, unrelated to openRepoTools"
+RESTARTEOF
+chmod +x "$BIN_O/restart"
+USER_RESTART_BEFORE="$(sha256sum "$BIN_O/restart" | cut -d' ' -f1)"
+STATUS_O=0
+OUTPUT_O="$(HOME="$HOME_O" \
+    CLAUDE_PROFILES_HOME="$HOME_O/.claude-profiles" CLAUDE_USER_DIR="$HOME_O/.claude" \
+    OPENREPOSHAPE_BIN_DIR="$BIN_O" OPENREPOTOOLS_BIN_DIR="$BIN_O" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_O=$?
+
+assert_equal '0' "$STATUS_O" 'a user-owned restart in the way still exits 0'
+assert_file_executable "$BIN_O/restart" 'the user-owned restart is still there, still executable'
+assert_equal "$USER_RESTART_BEFORE" "$(sha256sum "$BIN_O/restart" | cut -d' ' -f1)" 'the user-owned restart is byte-for-byte untouched'
+assert_contains "$OUTPUT_O" "RETIRED by lane-collision-protocol Amendment 18 Addendum 2" 'the output names the retirement, even though nothing was removed'
+assert_contains "$OUTPUT_O" 'left exactly as it is' 'the output says the file was left alone'
+assert_contains "$OUTPUT_O" "rm -f -- \"$BIN_O/restart\"" 'the output prints the exact command that would remove it, for the person to run'
+
+printf '%s\n' '--- Scenario (p) [Copilot round on #91, README.md:108]: this script'"'"'s TOOLS_FILES refuses to run against a shim whose own INSTALLABLES disagrees ---'
+# The safeguard README.md:108 claims and Copilot found missing: TOOLS_FILES
+# is still a hand-kept literal array (there is no `--list-installables` to
+# generate it from), but from here it is CHECKED against the shim's own
+# INSTALLABLES, not merely assumed to agree with it forever. Proven by
+# editing a throwaway copy's shim to grow a file this script does not know
+# about, and hand-patching that ONE vendored copy's pin row so `check` still
+# passes -- exactly `update-upstream.py apply`'s own effect, without the
+# network call recomputing a real upstream commit's digest would need.
+MISMATCH_BASE="$TMPDIR_ROOT/mismatch-base-image"
+mkdir -p "$MISMATCH_BASE"
+cp -r "$BASE_IMAGE_DIR/." "$MISMATCH_BASE/"
+python3 - "$MISMATCH_BASE" <<'PYEOF'
+import hashlib
+import re
+import sys
+
+base = sys.argv[1]
+shim_path = f"{base}/files/openrepotools/openRepoTools"
+pin_path = f"{base}/upstream-pin.yaml"
+
+with open(shim_path, "r", encoding="utf-8") as f:
+    text = f.read()
+new_text, count = re.subn(
+    r"^INSTALLABLES=\(([^)]*)\)$",
+    r"INSTALLABLES=(\1 a-new-tool-this-script-does-not-list)",
+    text,
+    count=1,
+    flags=re.MULTILINE,
+)
+if count != 1:
+    raise SystemExit("could not find INSTALLABLES=(...) to widen")
+with open(shim_path, "w", encoding="utf-8") as f:
+    f.write(new_text)
+
+new_digest = hashlib.sha256(new_text.encode("utf-8")).hexdigest()
+
+with open(pin_path, "r", encoding="utf-8") as f:
+    lines = f.readlines()
+out = []
+i = 0
+patched = False
+while i < len(lines):
+    out.append(lines[i])
+    if lines[i].strip() == "- path: openRepoTools":
+        out.append(lines[i + 1].split(":")[0] + f': "{new_digest}"\n')
+        out.append(lines[i + 2])
+        i += 3
+        patched = True
+        continue
+    i += 1
+if not patched:
+    raise SystemExit("could not find the openRepoTools pin row to patch")
+with open(pin_path, "w", encoding="utf-8") as f:
+    f.writelines(out)
+PYEOF
+BIN_P="$TMPDIR_ROOT/bin-p"
+HOME_P="$TMPDIR_ROOT/home-p"
+mkdir -p "$BIN_P" "$HOME_P"
+MISMATCH_CHECK_STATUS=0
+python3 "$MISMATCH_BASE/update-upstream.py" check >"$TMPDIR_ROOT/mismatch-check.log" 2>&1 || MISMATCH_CHECK_STATUS=$?
+assert_equal '0' "$MISMATCH_CHECK_STATUS" "scenario (p) setup: 'check' passes on the widened-and-repinned copy (this is the precondition -- the two files agree with each other, and disagree with this script)"
+
+STATUS_P=0
+OUTPUT_P="$(HOME="$HOME_P" \
+    CLAUDE_PROFILES_HOME="$HOME_P/.claude-profiles" CLAUDE_USER_DIR="$HOME_P/.claude" \
+    OPENREPOSHAPE_BIN_DIR="$BIN_P" OPENREPOTOOLS_BIN_DIR="$BIN_P" \
+    WORKBENCHES_BASE_IMAGE_DIR="$MISMATCH_BASE" \
+    "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_P=$?
+
+assert_equal '2' "$STATUS_P" 'a widened shim INSTALLABLES refuses (tooling/configuration, not a placement failure)'
+assert_contains "$OUTPUT_P" 'TOOLS_FILES list' 'the refusal names this script'"'"'s own list'
+assert_contains "$OUTPUT_P" 'a-new-tool-this-script-does-not-list' 'the refusal shows the file this script does not know about'
+assert_empty_dir "$BIN_P" 'nothing was installed once the two lists disagree'
+assert_absent "$HOME_P/.claude" 'nothing was written under $HOME/.claude either, for the widened shim'
 
 if (( failures == 0 )); then
     printf '%s\n' 'GREEN: setup-estate-commands regression test passed'

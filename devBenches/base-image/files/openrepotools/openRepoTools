@@ -25,18 +25,24 @@
 # change (Amendment 9(b), and R-A9-1). The identity that survives is narrower
 # and truer.
 #
-# `--install` PLACES ELEVEN FILES, not four: this file, `park`, `resume`,
+# `--install` PLACES TWELVE FILES, not four: this file, `park`, `resume`,
 # `status` (openRepoShape #82; the fourth under Brett Heap's RULING of
-# 2026-09-10 in this repository, "lets go with a fourth file"), `restart` and
-# `lanes` (lane-collision-protocol Amendment 11, ratified decisions 7 and 6),
-# and the four lane helpers `lanes-edit.sh`, `lane-start`, `lane-end` and
-# `link-estates` with the alias table `repos.tsv` they read — which came here
-# from `opensoft/brett-wip` with their history under Amendment 9(b), because a
-# person's workspace repository holds their DATA and the code belongs where
-# code goes. It also places TWO skills, `/lane-swap` and `/restart`, at two
-# paths each, ONE command file, `/swap`, at that same pair of paths (A11
-# Addendum 4 ruling 9), and merges one SessionStart entry into
-# `~/.claude/settings.json` (Amendment 9(b), A8 Addendum 2 R-A8-5): EIGHTEEN
+# 2026-09-10 in this repository, "lets go with a fourth file"), `lane` and
+# `lanes` (lane-collision-protocol Amendment 18 Addendum 1 and Amendment 11's
+# ratified decision 6 — `lane` is where `restart` was, Addendum 2 having retired
+# that word from the PATH), `lane-handoff` (Amendment 17(a), ratified
+# 2026-09-14: the swap IS the handoff, and this is its shell form), and the four
+# lane helpers `lanes-edit.sh`, `lane-start`, `lane-end` and `link-estates` with
+# the alias table `repos.tsv` they read — which came here from
+# `opensoft/brett-wip` with their history under Amendment 9(b), because a
+# person's workspace repository holds their DATA and the code belongs where code
+# goes. It also places THREE skills, `/handoff`, `/lane-swap` and `/restart`, at
+# two paths each, THREE command files, `/handoff`, `/ctx` and `/swap`, at that
+# same pair of paths (A11 Addendum 4 ruling 9; Amendment 17(a) and (f)), and
+# merges TWO hook entries into
+# `~/.claude/settings.json` — the `SessionStart` one (Amendment 9(b), A8
+# Addendum 2 R-A8-5) and, since lane-collision-protocol Amendment 12 adoption
+# act 3, the `UserPromptSubmit` NAME GUARD beside it: TWENTY-SIX
 # artifacts, and the count is the invariant.
 #
 # One install line for the whole toolset, so a second engineer gets the estate
@@ -64,17 +70,19 @@ die() { printf '\nREFUSED: %s\n' "$1" >&2; exit "${2:-2}"; }
 
 usage() {
 	cat <<'USAGE'
-openRepoTools --install            install (or update) the eleven estate and
+openRepoTools --install            install (or update) the twelve estate and
                                    lane commands into ~/.local/bin, plus the
-                                   /lane-swap and /restart skills, the /swap
-                                   command file and the SessionStart hook entry
+                                   /handoff, /lane-swap and /restart skills, the
+                                   /handoff, /ctx and /swap command files, the
+                                   SessionStart hook entry and the
+                                   UserPromptSubmit name guard
 openRepoTools wip init             create your workspace repository, clone it,
                                    seed it, and point this workstation at it
 openRepoTools --help | --version
 
 `openRepoShape` is the standard's front door and scaffolds product
-repositories; this command scaffolds none. `--install` places eleven files
-beside each other — this command, the two verbs, the read-only view, the two
+repositories; this command scaffolds none. `--install` places twelve files
+beside each other — this command, the two verbs, the read-only view, the three
 lane words, the four lane helpers and the alias table they read:
 
   park [<Name>]                    commit, push and RECORD an estate's open
@@ -84,17 +92,25 @@ lane words, the four lane helpers and the alias table they read:
                                    recreate those features
   status [<Name>]                  what is in and out of sync across that
                                    estate, as of the last fetch; changes nothing
-  restart [<lane>]                 put yourself back in a lane: cd to its
-                                   recorded directory and relaunch it through
-                                   the launcher, asking nothing. With no lane,
-                                   the current window's lane — or the lanes of
-                                   the current checkout, listed
+  lane [<name> [<profile>]]        the lanes, NUMBERED, and one question: the
+                                   one you pick is bound — a parked lane
+                                   through the launcher in its own directory
+                                   and profile, one live here by attaching to
+                                   its window, one bound elsewhere by naming
+                                   where. With no terminal it asks nothing
   lanes [--all] [--fetch]          inside a checkout: that repository's lanes
                                    and the next free position, filled in;
                                    outside one, or with --all, every lane.
                                    Reads locally, changes nothing, asks nothing
   lane-start <repo> <n>            open a lane: name the window, register the
-                                   row, launch or resume the session
+                                   row, launch or resume the session — with
+                                   --agent <name>, from any agent that can read
+                                   the lane (Amendment 17(c))
+  lane-handoff [--restart|--exit]  hand this lane off: the identity triple, the
+                                   handoff refreshed, the writers polled, the
+                                   PAUSED record written, the restart line
+                                   printed. --restart is /ctx; --exit ends the
+                                   session a second place asked for the lane
   lane-end <lane>                  close it, and refuse while anything is in
                                    flight
   lanes-edit.sh <verb> …           the register's and the object logs' only
@@ -104,20 +120,28 @@ lane words, the four lane helpers and the alias table they read:
   repos.tsv                        the organisation's alias table, which
                                    `lanes-edit.sh` reads
 
-`--install` also places TWO SKILLS at two paths each —
+`--install` also places THREE SKILLS at two paths each —
 `~/.claude-profiles/shared/skills/<name>/SKILL.md` and
-`~/.claude/skills/<name>/SKILL.md`, for `lane-swap` and `restart` — and ONE
-COMMAND FILE at the matching pair, `~/.claude-profiles/shared/commands/swap.md`
-and `~/.claude/commands/swap.md`, which is clause (g)'s ratified `/swap` alias
-of `/lane-swap` and adds nothing to it. It merges ONE `SessionStart` entry into
-`~/.claude/settings.json` (needs `jq`, and refuses rather than rewriting a file
-it cannot parse). It never writes a profile's own settings.json: the launcher
-owns that one.
+`~/.claude/skills/<name>/SKILL.md`, for `handoff`, `lane-swap` and `restart` —
+and THREE COMMAND FILES at the matching pair,
+`~/.claude-profiles/shared/commands/<name>.md` and `~/.claude/commands/<name>.md`,
+for `handoff`, `ctx` and `swap`. `handoff` is the act itself (Amendment 17(a));
+`/ctx` is `/handoff --restart` (clause (f)); `/swap` and `/lane-swap` are the
+aliases the amendment keeps so that nothing written about them stops working,
+and each adds nothing to the skill it names. It merges TWO entries into
+`~/.claude/settings.json` — the `SessionStart` one and, since
+lane-collision-protocol Amendment 12, the `UserPromptSubmit` NAME GUARD, which
+refuses a prompt whose window, session name and register row are not one lane
+(needs `jq`, refuses rather than rewriting a file it cannot parse, and leaves
+every `UserPromptSubmit` hook of your own exactly where it is). It never writes
+a profile's own settings.json: the launcher owns that one.
 
-`/restart` is the INSIDE half of `restart` and has to be a skill: a running
-session cannot `exec` a launcher over itself, so it binds the window, stamps
-the record through `lane-start --no-launch` and prints — never a picker
-(Amendment 11 clause (f), ratified decisions 3 and 7).
+`/restart` is the INSIDE half and has to be a skill: a running session cannot
+`exec` a launcher over itself, so it binds the window, stamps the record
+through `lane-start --no-launch` and prints — never a picker (Amendment 11
+clause (f), ratified decisions 3 and 7). `lane` is the OUTSIDE half, and it is
+the whole of what a person is given: `restart` left the PATH under Amendment 18
+Addendum 2 (ratified 2026-09-14T16:50:32Z, verbatim "ratify").
 
 `wip init` — the workspace repository, which holds your lane register, your
 object logs, your handoffs and your workspace manifests, and no code at all:
@@ -193,7 +217,7 @@ fetch_from_repo() {
 	return 1
 }
 
-# THE ELEVEN FILES `--install` PLACES. One list, so the installer, the fetch
+# THE TWELVE FILES `--install` PLACES. One list, so the installer, the fetch
 # fallback and the tests cannot disagree about what a complete install is.
 # `openRepoTools` is first because it is the one a person types to get the
 # others.
@@ -210,14 +234,83 @@ fetch_from_repo() {
 # workBenches' `setup-estate-commands.sh`, whose post-install verify refuses any
 # target whose mode is not exactly 755. Amendment 9(b) chose the ugliness.
 #
-# ELEVEN SINCE AMENDMENT 11. `restart` and `lanes` join the list under RATIFIED
-# DECISIONS 7 and 6 (2026-09-13T18:05:29Z, "Ratify all four" and "Yes, build
-# `lanes` in A11"), and `openRepoTools --install` owns them because THIS IS THE
-# ONLY INSTALLER IN THE ESTATE THAT PUTS A WORD ON PATH. Adoption act 6 vendors
-# skills and command files through workBenches' `setup-claude-profiles.sh` into
-# the shared commands directory and `~/.claude/commands/`, and neither of those
-# is a `PATH` entry — which is exactly what decision 7 point 8 says.
-INSTALLABLES=(openRepoTools park resume status restart lanes lanes-edit.sh lane-start lane-end link-estates repos.tsv)
+# ELEVEN SINCE AMENDMENT 11. `restart` and `lanes` joined the list under
+# RATIFIED DECISIONS 7 and 6 (2026-09-13T18:05:29Z, "Ratify all four" and "Yes,
+# build `lanes` in A11"), and `openRepoTools --install` owns them because THIS
+# IS THE ONLY INSTALLER IN THE ESTATE THAT PUTS A WORD ON PATH. Adoption act 6
+# vendors skills and command files through workBenches' `setup-claude-profiles.sh`
+# into the shared commands directory and `~/.claude/commands/`, and neither of
+# those is a `PATH` entry — which is exactly what decision 7 point 8 says.
+#
+# ELEVEN STILL, AND ONE NAME CHANGED: `lane` takes `restart`'s place under
+# AMENDMENT 18 ADDENDUM 1 (the word, ratified 2026-09-14T14:05:54Z) and ADDENDUM
+# 2 (the retirement, ratified 2026-09-14T16:50:32Z, verbatim "ratify" on Brett
+# Heap's ruling *"i think we can drop restart as a cli command and keep it
+# inside a claude session with /restart … lane does all the things a user
+# wants"*). `lane <name>` is `restart <lane>`'s act to the byte — the launcher's
+# path, the lane's own recorded directory and profile, asking nothing — and adds
+# the pick, the attach and the handoff branch. The count did not move because
+# one word left as another arrived, which is why nothing below it is a number.
+# AND TWELVE SINCE AMENDMENT 17(a): `lane-handoff` is the swap's shell form,
+# placed beside the rest because it is a word a person has on PATH (#47).
+INSTALLABLES=(openRepoTools park resume status lane lanes lane-handoff lanes-edit.sh lane-start lane-end link-estates repos.tsv)
+
+# ---------------------------------------------- THE WORDS THAT WERE RETIRED
+#
+# A WORD THAT LEAVES THE LIST HAS TO LEAVE THE DIRECTORY (Copilot round 1 on
+# #45, `openRepoTools:234`). Dropping `restart` from `INSTALLABLES` stops THIS
+# run from copying it and does nothing at all about the copy the LAST run
+# placed — so a workstation that took the install before lane-collision-protocol
+# Amendment 18 Addendum 2 would keep `restart` on its PATH for ever, which is
+# the one thing that addendum says must stop: *"`restart` is no longer a command
+# a person is given"*, ratified 2026-09-14T16:50:32Z verbatim "ratify". An
+# installer whose only act is to stop writing a file is not a retirement; it is
+# a file nobody will ever clean up.
+#
+# AND IT REMOVES ONLY WHAT IT WROTE. The test is the header this installer puts
+# in every command it owns — `Installed on PATH by ` + the installer's own name
+# — so a person's own script that happens to be called `restart` is NAMED and
+# LEFT EXACTLY AS IT IS, with the one line to run printed beside it. Deleting a
+# file this command did not write is not an act an installer may take on
+# somebody's behalf, and a retirement that did would be the worst possible way
+# to learn the difference.
+RETIRED=(restart)
+retire_commands() {
+	local dir="${OPENREPOTOOLS_BIN_DIR:-$HOME/.local/bin}"
+	local name target
+	for name in "${RETIRED[@]}"; do
+		target="$dir/$name"
+		# `-e` FOLLOWS THE LINK AND IS FALSE FOR A DANGLING ONE (Copilot round 4 on
+		# #45, `openRepoTools:261`), so a `restart` SYMLINK whose target has since
+		# gone — and the pre-move `link-estates` put exactly such links in a
+		# workstation's `~/.local/bin`, pointing into a checkout that may no longer
+		# be there — was NEITHER removed NOR named: it stayed on PATH, and the one
+		# run that was going to mention it said nothing. `-L` is the other half of
+		# "is there anything at this path at all"; what happens next is the same as
+		# for any other link, which is that it is named and left.
+		[ -e "$target" ] || [ -L "$target" ] || continue
+		# `! -L` BEFORE `-f`, BECAUSE `-f` FOLLOWS THE LINK (Copilot round 2 on
+		# #45). A person's own `restart` SYMLINK pointing at a file that happens
+		# to carry this installer's header would otherwise be unlinked — and
+		# `plan_install_targets` refuses a `-L` target for exactly that reason
+		# (`unplaceable_kind`, which names the link rather than writing through
+		# it). A link is somebody's decision about their own PATH; it is named
+		# here and left, like every other file this installer did not write.
+		if [ ! -L "$target" ] && [ -f "$target" ] && grep -qF -e 'Installed on PATH by `openRepoTools --install`' -- "$target" 2>/dev/null; then
+			rm -f -- "$target"
+			say "$name: RETIRED, removed from $target (lane-collision-protocol Amendment 18 Addendum 2; \`lane <name>\` is that act now)"
+		else
+			# THE PRINTED REMOVAL IS QUOTED, AND IT IS THIS FILE'S OWN SPELLING
+			# (Copilot round 9 on #45, `openRepoTools:281`): both planners print
+			# `rm -f -- "<path>" "<path>"` out of a `paths` they build with the
+			# quotes IN, because `OPENREPOTOOLS_BIN_DIR` is a path a person chooses
+			# and a bare one with a space in it is a line that removes nothing. `-f`
+			# for the reason those two give: what a removal needs is the DIRECTORY's
+			# write bit, not the file's.
+			say "$name: RETIRED by lane-collision-protocol Amendment 18 Addendum 2, and $target is NOT this installer's copy — left exactly as it is. Remove it yourself if it is stale:  rm -f -- \"$target\""
+		fi
+	done
+}
 
 # ALL OF THEM IN HAND BEFORE ANY OF THEM IS PLACED (openRepoShape #82, F10 of
 # the review on its #83). One file at a time, dying on the first fetch that
@@ -262,12 +355,27 @@ collect_commands() {
     curl -fsSL https://raw.githubusercontent.com/$REPO/$REF/<file>"
 }
 
+# WHAT MODE A PLACED ARTIFACT IS AT, asked without `stat`. GNU spells that
+# `stat -c %a` and BSD `stat -f %Lp`, and nothing this repository ships may
+# reach for one of the two without the other beside it — so `find` answers it
+# instead, in the one spelling both agree on: with the octal preceded by
+# neither `-` nor `+`, GNU and BSD `find` each evaluate `-perm` true only where
+# the permission bits are EXACTLY that number.
+#
+# IT IS ASKED SO THAT A LINE CAN TELL THE TWO CASES APART. `--install` stamps
+# the documented mode on every artifact whether or not the bytes changed
+# (#40, findings 2 and 3), and a run that repaired a mode and reported
+# `unchanged` is a run that told a person there was nothing to look at.
+mode_is() {   # <octal> <path>
+	[ -n "$(find "$2" -maxdepth 0 -perm "$1" -print 2>/dev/null)" ]
+}
+
 install_commands() {
 	local dir="${OPENREPOTOOLS_BIN_DIR:-$HOME/.local/bin}"
 	local name target source verb placed=0
-	# ALL EIGHTEEN IN HAND BEFORE ANY IS PLACED. The eleven files, the two
-	# skills, the one command file, and the ONE artifact that is not a whole
-	# file — the merged `settings.json` —
+	# ALL TWENTY-SIX IN HAND BEFORE ANY IS PLACED. The twelve files, the
+	# three skills, the three command files, and the TWO artifacts that are not
+	# whole files — the two hook entries merged into one `settings.json` —
 	# are all computed here, so a fetch that failed replaces nothing and a merge
 	# that cannot be computed refuses having placed nothing. That last one is
 	# the same rule `--install` already had, extended to cover a merge: an
@@ -283,12 +391,28 @@ install_commands() {
     NOTHING was installed and nothing already installed was replaced."
 	plan_hook_merge
 	plan_skill_targets
-	mkdir -p "$dir"
+	# EVERY FAILURE FROM HERE IS A `die`, and this was the one that was not
+	# (#44 round 1, Sourcery's `README.md:237`). `plan_install_targets` has
+	# proved the nearest existing ancestor writable, so what is left for this to
+	# meet is a race or a full disk — and under `set -e` an unguarded `mkdir`
+	# exits 1, which reads as a report of findings from a run that placed none.
+	mkdir -p -- "$dir" || die "could not create $dir for the ${#INSTALLABLES[@]} commands.
+    NOTHING was installed and nothing already installed was replaced."
 	for name in "${INSTALLABLES[@]}"; do
 		source="$STAGED/$name"
 		target="$dir/$name"
 		if [ -e "$target" ] && cmp -s "$source" "$target"; then
-			verb="already installed at $target (unchanged)"
+			# THE BYTES WERE RIGHT, WHICH IS NOT THE SAME AS NOTHING TO DO
+			# (#40, finding 2). The `chmod` below has always run on this arm
+			# too — the eleven are the one set this installer never got wrong —
+			# but the line said `unchanged` over a mode it had just repaired.
+			# The mode is asked BEFORE it is stamped, and the line says which
+			# of the two happened.
+			if mode_is 755 "$target"; then
+				verb="already installed at $target (unchanged)"
+			else
+				verb="already installed at $target (mode restored to 755)"
+			fi
 		else
 			if [ -e "$target" ]; then verb="updated at $target"; else verb="installed at $target"; fi
 			cp -- "$source" "$target"
@@ -301,7 +425,15 @@ install_commands() {
 	# THE COUNT, out loud: a person reading eight lines cannot tell whether a
 	# ninth was meant to be there.
 	say "openRepoTools: $placed of ${#INSTALLABLES[@]} placed in $dir"
+	# THE RETIREMENT IS THE LAST ACT OF THE INSTALL, AFTER EVERY PLACEMENT
+	# (Copilot round 7 on #45, `openRepoTools:369`). It is the one DESTRUCTIVE
+	# step here, and it ran before `place_skill_and_hook` — so a skill directory
+	# or a `settings.json` this run could not write left a workstation with the
+	# old word already deleted and the adoption it was migrating to unfinished.
+	# Every other refusal in this file places NOTHING rather than half of it; this
+	# one removes nothing until the rest of the install has actually happened.
 	place_skill_and_hook
+	retire_commands
 	# ONE PATH NOTE for the four of them: the directory is the same one.
 	case ":${PATH:-}:" in
 	*":$dir:"*) ;;
@@ -314,7 +446,7 @@ install_commands() {
 
 
 # =========================================================================
-# THE SEVEN ARTIFACTS THAT ARE NOT ONE OF THE ELEVEN FILES
+# THE FOURTEEN ARTIFACTS THAT ARE NOT ONE OF THE TWELVE FILES
 # =========================================================================
 #
 # lane-collision-protocol Amendment 9(b), inheriting A8 Addendum 2's R-A8-5
@@ -332,13 +464,17 @@ install_commands() {
 #     run and preserves hook keys. This command never writes a profile's
 #     settings.json at all. One path, one writer, in both halves.
 #
-# EIGHTEEN ARTIFACTS, AND THE COUNT IS THE INVARIANT: eleven files in the bin
-# directory, two skills in the shared skills directory, their two bare-run
-# copies, ONE COMMAND FILE at those same two paths, and one merged entry in
-# `~/.claude/settings.json`. It was twelve before Amendment 11 added `restart`,
-# `lanes` and the `/restart` skill, and sixteen before ruling 9 added
-# `commands/swap.md`; the count moves with the lists rather than being restated
-# from memory.
+# TWENTY-SIX ARTIFACTS, AND THE COUNT IS THE INVARIANT: twelve files in the bin
+# directory, three skills in the shared skills directory, their three bare-run
+# copies, THREE COMMAND FILES at those same two paths, and TWO merged entries in
+# `~/.claude/settings.json`. It was twelve before Amendment 11 added a SECOND
+# WORD ON PATH — `restart` then, `lane` since Amendment 18 Addendum 2 retired
+# that one — `lanes` and the `/restart` skill, sixteen before ruling 9 added
+# `commands/swap.md`, eighteen before Amendment 12 adoption act 3 added the
+# `UserPromptSubmit` name guard beside the `SessionStart` entry, and nineteen
+# before Amendment 17 added `lane-handoff`, the `handoff` skill and the
+# `/handoff` and `/ctx` command files; the count moves
+# with the lists rather than being restated from memory.
 #
 # WHY A COMMAND FILE IS HERE AT ALL, WHEN ADOPTION ACT 6 SAYS THE LAUNCHER
 # VENDORS THEM (F-X28, A11 Addendum 4 ruling 9, ratified "a11 addendum 4 yes").
@@ -355,10 +491,11 @@ install_commands() {
 #: and every path is derived from one.
 #:
 #: `restart` joins `lane-swap` under Amendment 11 clause (f) and ratified
-#: decision 7: `/restart` is the INSIDE half of the restart and `restart` on
-#: `PATH` is the outside one, and the inside half has to be a skill because a
+#: decision 7: `/restart` is the INSIDE half and `lane <name>` on `PATH` is the
+#: outside one (Amendment 18 Addendum 2 retired `restart` from the PATH and
+#: moved its act to that word), and the inside half has to be a skill because a
 #: running session cannot `exec` a launcher over itself.
-SKILLS=(lane-swap restart)
+SKILLS=(handoff lane-swap restart)
 skill_source_path() { printf 'skills/%s/SKILL.md\n' "$1"; }
 
 #: THE COMMAND FILES THIS REPOSITORY SHIPS, each placed at the same two paths a
@@ -371,12 +508,14 @@ skill_source_path() { printf 'skills/%s/SKILL.md\n' "$1"; }
 #: `opensoft/workBenches#71`, which is where it was written, because two copies
 #: of one procedure that must stay byte-equal is the alternative that clause
 #: rejects by name — and `#74` deletes that copy, which is why this one exists.
-COMMANDS=(swap)
+COMMANDS=(handoff ctx swap)
 command_source_path() { printf 'commands/%s.md\n' "$1"; }
 #: Kept as a single name for the one thing that is still singular: the
-#: `SessionStart` hook's own entry, which belongs to `lane-swap`'s amendment
-#: and not to the skill set.
-SKILL_NAME="lane-swap"
+#: `SessionStart` hook's own entry, which belongs to the handoff skill's
+#: amendment and not to the skill set. The name moved with the skill under
+#: Amendment 17(a) — one act, three names — and the ENTRY it keys is unchanged,
+#: because its only idempotence is the exact command string.
+SKILL_NAME="handoff"
 SKILL_SOURCE_PATH="$(skill_source_path "$SKILL_NAME")"
 
 skills_home() { printf '%s\n' "${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}"; }
@@ -402,10 +541,40 @@ hook_block_text() {
 BLOCK
 }
 
+#: THE SECOND HOOK — lane-collision-protocol AMENDMENT 12's NAME GUARD, adoption
+#: act 3 (opensoft/openRepoTools#25). Same shape, same file, same all-or-nothing
+#: merge, and TWO deliberate differences from the entry above:
+#:
+#:   * NO `|| true`. On `SessionStart` that suffix is the whole safety property —
+#:     a hook that dies must not break the session it was meant to orient. On
+#:     `UserPromptSubmit` it would be the OPPOSITE of the mechanism: exit 2 is
+#:     what BLOCKS a prompt (code.claude.com/docs/en/hooks), and `cmd || true`
+#:     exits 0 for every code the command can produce. Copying the string with
+#:     its suffix would have installed a guard that refuses nothing, silently,
+#:     which is the exact state Amendment 12 exists to end.
+#:   * NO MATCHER. `UserPromptSubmit` has no source to match on; the `matcher`
+#:     key belongs to the events that do.
+#:
+#: The `~/projects/xFactory/lanes-edit.sh` spelling is the estate's convention
+#: and `link-estates` places that link — the same path the entry above uses, so
+#: one workstation has one spelling of one file.
+GUARD_COMMAND='~/projects/xFactory/lanes-edit.sh guard'
+GUARD_TIMEOUT=5
+
+guard_block_text() {
+	cat <<'BLOCK'
+  {
+    "hooks": [
+      { "type": "command", "command": "~/projects/xFactory/lanes-edit.sh guard", "timeout": 5 }
+    ]
+  }
+BLOCK
+}
+
 # EVERY SKILL'S BYTES, by `--install`'s own rule: from the checkout beside this
 # file when run from one, else fetched at this same ref. ALL OF THEM IN HAND
-# BEFORE ANY IS PLACED, which is the same all-or-nothing rule the eleven files
-# already have — a new `/restart` beside a `lane-swap` that could not be fetched
+# BEFORE ANY IS PLACED, which is the same all-or-nothing rule the twelve files
+# already have — a new `/restart` beside a `handoff` that could not be fetched
 # is a half-install that reads like a whole one.
 collect_skills() {
 	local selfdir="" name src
@@ -435,23 +604,30 @@ collect_skills() {
 	return 0
 }
 
-# THE MERGE INTO `~/.claude/settings.json`, COMPUTED BEFORE ANYTHING IS PLACED.
-# It is the same all-or-nothing rule `--install` already has, extended to the
-# one artifact that is not a whole file: a merge that cannot be computed
-# refuses having placed nothing.
+# THE TWO MERGES INTO `~/.claude/settings.json`, COMPUTED BEFORE ANYTHING IS
+# PLACED. It is the same all-or-nothing rule `--install` already has, extended
+# to the two artifacts that are not whole files: a merge that cannot be
+# computed refuses having placed nothing — and since Amendment 12 adoption act
+# 3 the rule covers the PAIR, because a settings file that took the
+# `SessionStart` entry and refused the `UserPromptSubmit` guard is a half
+# install of a hook pair and nothing on screen would say which half.
 #
 #   * it is written with `jq`, and refuses naming `jq` where it is absent. This
 #     repository carries no JSON-handling code otherwise, so the dependency is
 #     named rather than assumed. It is not bash, so the macOS bash-3.2 parse
 #     gate is unaffected;
 #   * it NEVER writes the file whole and never replaces it: the file already
-#     carries a `UserPromptSubmit` hook, and a user's settings are not an
-#     installer's to own;
+#     carries a `UserPromptSubmit` hook of the person's own — the usage guard
+#     — and a user's settings are not an installer's to own. THAT IS WHY THE
+#     `UserPromptSubmit` ARM KEYS ON THE VERB `guard` AS A WHOLE ARGUMENT and
+#     not as a substring: this command adds an entry to an event a person is
+#     already using, and every entry already there stays exactly where it is;
 #   * it is idempotent by EXACT MATCH on the entry's `command` string;
-#   * an entry under SessionStart whose `command` DIFFERS, a file it cannot
-#     parse, or a `hooks` value that is not an object → refuse, print the exact
-#     block, place nothing. An installer that repairs a file it does not
-#     understand is how a person loses a setting they meant;
+#   * an entry under SessionStart whose `command` DIFFERS, one under
+#     UserPromptSubmit that RUNS `guard` with a different string, a file it
+#     cannot parse, or a `hooks` value that is not an object → refuse, print
+#     the exact block, place nothing. An installer that repairs a file it does
+#     not understand is how a person loses a setting they meant;
 #   * it WRITES THE FILE BACK AT MODE 600 — it sets that mode, it does not
 #     preserve one (F8 of the #24 review: a pre-existing file at 640 comes out
 #     600, measured). workBenches' setup-claude-profiles.sh writes this same
@@ -460,17 +636,27 @@ collect_skills() {
 #     an installer that widened it would be silently undone or would widen it
 #     behind that script's back.
 HOOK_PLAN=""      # "absent" | "present" | "nofile"
+GUARD_PLAN=""     # the same three, for Amendment 12's UserPromptSubmit entry
 HOOK_MERGED=""    # a staged whole file, ready to move into place
 
-# THE THREE DESTINATIONS, PROVED WRITABLE BEFORE ANY OF THE ELEVEN IS PLACED.
+# THE DESTINATIONS, PROVED WRITABLE BEFORE ANY OF THE TWELVE IS PLACED — every
+# directory the artifacts that are not one of the twelve files go into, derived
+# from the two lists and NOT counted in this sentence. It said "THE THREE
+# DESTINATIONS" while the loop below built seven of them, which is the same
+# defect `collect_commands` names above: a number restated beside a list that
+# grew is a number that goes stale where nobody is looking.
+#
 # Amendment 9(b) computes the merge in hand "so a merge that cannot be computed
 # refuses having placed nothing" — and the merge computing fine against a
 # directory nobody may write to is the same failure one step later. A
-# filesystem gives no transaction, so this cannot make the three placements
+# filesystem gives no transaction, so this cannot make those placements
 # atomic; what it does is move the failure that actually happens — a directory
 # that is not ours to write — back to the planning phase, where the refusal
-# still costs nothing. The directories are created here, which is idempotent
-# and is what the placement would have done anyway.
+# still costs nothing. IT MAKES NONE OF THEM: the question is put to the nearest
+# ancestor that exists, so a run that refuses leaves a machine exactly as it
+# found it, and the placement's own guarded `mkdir -p` is the one writer of
+# these directories (#44 round 1, Sourcery's
+# `tests/test_install_skill_and_hook.py:658`).
 plan_skill_targets() {
 	local d name dirs=() target kind bad="" paths=""
 	for name in "${SKILLS[@]}"; do
@@ -484,12 +670,11 @@ plan_skill_targets() {
 	fi
 	dirs+=("$(claude_home)")
 	for d in "${dirs[@]}"; do
-		mkdir -p -- "$d" 2>/dev/null || die "\`--install\` cannot create $d, one of the places Amendment 9(b) has
-    it place this repository's skills and the SessionStart entry.
+		if kind="$(unusable_dir_kind "$d")"; then
+			die "\`--install\` places a skill, a command file or the SessionStart entry in
+    $d (Amendment 9(b)), and $kind.
     NOTHING was installed and nothing already installed was replaced."
-		[ -w "$d" ] || die "$d is not writable, and \`--install\` places a skill or the SessionStart
-    entry there (Amendment 9(b)).
-    NOTHING was installed and nothing already installed was replaced."
+		fi
 	done
 	# AND THE SIX FILES INSIDE THEM, BY R-A9-12 (F-X17). The loop above proved
 	# the DIRECTORIES writable and stopped there, while `place_skill_and_hook`
@@ -498,12 +683,16 @@ plan_skill_targets() {
 	# `~/.claude/skills/restart/SKILL.md` was followed and WRITTEN THROUGH: the
 	# skill stays uninstalled, the target stays a link, and the bytes land
 	# wherever it points. That is the same failure R-A9-12 was ruled on for the
-	# eleven in the bin directory, one directory along, and the ruling says
+	# twelve in the bin directory, one directory along, and the ruling says
 	# nothing about which path it applies to.
 	#
 	# `unplaceable_kind` is asked rather than re-tested, because two copies of
 	# one rule is how the bin half would come to refuse a dangling link and the
-	# skill half would not.
+	# skill half would not — and that is exactly what happened to the second
+	# half of the question it answers: a target that IS a regular file and is
+	# not this user's to write (#40, finding 4). The eleven were already placed
+	# by the time `cp` met it, on the one path that promises all or none, so the
+	# `-w` is asked here beside the `-L`.
 	for name in "${SKILLS[@]}"; do
 		for target in "$(skills_home)/shared/skills/$name/SKILL.md" "$(claude_home)/skills/$name/SKILL.md"; do
 			kind="$(unplaceable_kind "$target")" || continue
@@ -520,17 +709,21 @@ plan_skill_targets() {
 			paths="${paths:+$paths }\"$target\""
 		done
 	done
-	[ -z "$bad" ] || die "\`--install\` places REGULAR FILES, and these skill and command targets are not regular files:
+	[ -z "$bad" ] || die "\`--install\` places a REGULAR FILE IT CAN WRITE at each of these skill and
+    command targets, and these are not that:
 $bad
     \`cp\` follows a symlink, so installing over one would leave the skill
     UNINSTALLED — the target stays a link — and would write these bytes into
-    whatever is on the other end of it. NOTHING was installed and nothing
-    already installed was replaced.
-    Clear them, then re-run:
+    whatever is on the other end of it; and a target this user cannot write is
+    a \`cp\` that fails with the eleven commands already placed, which is the
+    half-install this phase exists to prevent. NOTHING was installed and
+    nothing already installed was replaced.
+    Clear them, then re-run — \`rm -f\` takes a read-only file, because what a
+    removal needs is the DIRECTORY's write bit and not the file's:
         rm -f -- $paths"
 }
 
-# THE ELEVEN TARGETS, PROVED PLACEABLE BEFORE ANY OF THE EIGHTEEN IS PLACED
+# THE TWELVE TARGETS, PROVED PLACEABLE BEFORE ANY OF THE TWENTY-SIX IS PLACED
 # (A9 Addendum 4, R-A9-12, ruled on F5 of the #24 review).
 #
 # `cp` FOLLOWS A SYMLINK. The loop below tests `[ -e "$target" ]`, compares
@@ -553,31 +746,155 @@ $bad
 # `--install` that carries this, and act 5 strips `brett-wip` to data. So the
 # refusal names every offending path, says what each one IS, and prints the one
 # `rm` that clears them — rather than leaving a person to remember a step.
-# WHAT A TARGET IS, WHERE IT IS NOT SOMETHING `--install` MAY PLACE OVER.
+# WHAT IS AT A PATH, WHERE IT IS NOT A REGULAR FILE.
 # ONE implementation of R-A9-12's test, for every path this command writes: the
-# eleven in the bin directory and the four `SKILL.md`s (F-X17). Prints the kind
-# and returns 0 where the path is unplaceable; returns 1 — saying nothing —
-# where it is absent or a regular file, which are the two placeable states.
+# twelve in the bin directory, the six `SKILL.md`s (F-X17), the six command
+# files, and `~/.claude/settings.json` (#44 round 1, `openRepoTools:878`).
+# Prints what is there and returns 0; returns 1 — saying nothing — where the
+# path is absent or is a regular file.
 #
 # `-L` AS WELL AS `-e`, because a DANGLING symlink is the sharper case: `[ -e ]`
 # is false on one, and `cp` through it creates the file at the far end — a write
 # into a repository this command was never told about.
-unplaceable_kind() {   # <target>
+#
+# IT IS ASKED APART FROM THE WRITE, because the writes are not one write. `cp`
+# needs the target file's own `w`; the SessionStart merge REPLACES its file
+# through `mktemp` + `mv -f` and needs the DIRECTORY's, so a `settings.json`
+# this user cannot write is one `--install` may still merge into — and a single
+# walk that asked `-w` of all three would refuse an install that works.
+path_kind() {   # <path>
 	local t="$1"
 	if [ -L "$t" ]; then
 		printf 'a symlink to %s' "$(readlink -- "$t" 2>/dev/null || printf '<unreadable>')"
-	elif [ ! -e "$t" ] || [ -f "$t" ]; then
-		return 1
-	elif [ -d "$t" ]; then
-		printf 'a directory'
-	else
-		printf 'not a regular file'
+		return 0
 	fi
+	if [ -d "$t" ]; then
+		printf 'a directory'
+		return 0
+	fi
+	if [ -e "$t" ] && [ ! -f "$t" ]; then
+		printf 'not a regular file'
+		return 0
+	fi
+	return 1
+}
+
+# AND WHETHER `cp` MAY WRITE OVER IT: `-w` as well as `-f` (#40, finding 4).
+# This answered "a regular file" with `return 1` and asked nothing else, so
+# every existing file counted as one `--install` may place over — and
+# `plan_skill_targets` let a READ-ONLY `SKILL.md` or command file through.
+# `install_commands` has already copied the twelve PATH files by the time
+# `place_skill_and_hook` reaches the `cp`, so an ordinary permission failure
+# there left a host with twelve of the twenty-six artifacts placed, on the one
+# path in this file that promises all or none. A mode is not an exotic state
+# either: `chmod 444` on a file a person did not want overwritten is what a
+# person does.
+#
+# WHAT `-w` DOES NOT PROVE IS THAT THE MODE STAMP CAN SUCCEED, and that limit is
+# deliberate (#44 round 1, the suppressed comment at `openRepoTools:635`). A
+# GROUP-WRITABLE file owned by another account takes the `cp` and refuses the
+# `chmod`, and the question that would settle it — `[ -O ]`, this euid against
+# the file's owner — is one no test in this suite can put: `tmp_path` cannot
+# make a second account, and it would refuse a root `--install` into another
+# user's home, where the `chmod` does in fact succeed. A guard no test reaches
+# is the guard R-A9-15 was ruled about, so this asks what it can prove and the
+# stamp's own failure stays a `die` naming the artifact it could not mode.
+#
+# THE REFUSAL'S ONE REMEDY STAYS TRUE OF THE NEW KIND, which is why it is
+# answered here rather than in a second walk: `rm -f` takes a read-only file —
+# what a removal needs is the DIRECTORY's write bit, not the file's — so the
+# `rm -f -- <paths>` both planners print clears every path either of them names.
+unplaceable_kind() {   # <target>
+	local t="$1" kind
+	if kind="$(path_kind "$t")"; then
+		printf '%s' "$kind"
+		return 0
+	fi
+	if [ -f "$t" ] && [ ! -w "$t" ]; then
+		printf 'a regular file this user cannot write'
+		return 0
+	fi
+	return 1
+}
+
+# WHETHER A DIRECTORY THIS RUN MUST CREATE A FILE IN CAN TAKE ONE — asked of the
+# NEAREST ANCESTOR THAT EXISTS, because a directory that is not there yet is
+# exactly as placeable as the directory it would be created in (#44 round 1,
+# `openRepoTools:653`, and Sourcery's `README.md:237`). `plan_install_targets`
+# asked `[ -d "$dir" ]` first and so asked NOTHING AT ALL where the answer was
+# "not yet": a `$OPENREPOTOOLS_BIN_DIR` under a parent this user cannot write
+# passed planning and met the `mkdir -p` in `install_commands`, which died with
+# the shell's own 1 under `set -e` — the code this toolset spends on "findings
+# were printed" — instead of the refusal this phase exists to print.
+#
+# `-x` AS WELL AS `-w`, because creating a file in a directory takes both of its
+# bits (#44 round 1, the suppressed comment at `openRepoTools:658`): a directory
+# at 0600 accepts no new file at all, and `-w` alone passed it. ONE
+# implementation for the bin directory and for the seven destinations
+# `plan_skill_targets` walks, for the reason `unplaceable_kind` is one: two
+# copies of one rule is how the bin half comes to refuse what the skill half
+# allows.
+#
+# AND IT CREATES NOTHING. `plan_skill_targets` proved a directory writable by
+# `mkdir -p`-ing it first, so a run that then REFUSED had already left seven
+# directories on a machine that had none — which is not what "NOTHING was
+# installed" says (#44 round 1, Sourcery's
+# `tests/test_install_skill_and_hook.py:658`). Every place this command writes
+# into is made in the PLACEMENT phase, by the guarded `mkdir -p` each `cp`
+# already carries.
+#
+# `-L` STOPS THE WALK TOO, not only `-e` (#44 round 2, `openRepoTools:701`).
+# `-e` follows a symlink, so it is FALSE on a DANGLING one — the walk read
+# that as "not there yet" and stepped past it to ask about ITS parent instead,
+# so a dangling `skills_home` or bin-directory ancestor passed this planner and
+# met `mkdir -p` after other artifacts were already placed, on the one path
+# that promises all or none. A symlink, dangling or not, is something AT that
+# path; the walk stops at the nearest one of those, exactly as it stops at the
+# nearest directory, file or anything else that is there.
+unusable_dir_kind() {   # <directory>
+	local d="$1" up
+	while [ ! -e "$d" ] && [ ! -L "$d" ]; do
+		up="$(dirname -- "$d")"
+		[ "$up" != "$d" ] || break
+		d="$up"
+	done
+	if [ -L "$d" ] && [ ! -e "$d" ]; then
+		printf '%s is a symlink to %s, which is not there' "$d" \
+			"$(readlink -- "$d" 2>/dev/null || printf '<unreadable>')"
+		return 0
+	fi
+	if [ ! -d "$d" ]; then
+		printf '%s is not a directory' "$d"
+		return 0
+	fi
+	if [ ! -w "$d" ]; then
+		printf '%s is not writable' "$d"
+		return 0
+	fi
+	if [ ! -x "$d" ]; then
+		printf '%s is not searchable (a create takes its `x` bit as well as its `w`)' "$d"
+		return 0
+	fi
+	return 1
 }
 
 plan_install_targets() {
 	local dir="${OPENREPOTOOLS_BIN_DIR:-$HOME/.local/bin}"
 	local name target kind bad="" paths=""
+	# THE DIRECTORY FIRST, which is the `-w` question for every target that is
+	# not there yet: an absent file is placeable exactly where the directory it
+	# would be created in takes a write. `plan_skill_targets` asks this of the
+	# ones it writes into; the bin directory is the same question for the eleven,
+	# and without it a `$OPENREPOTOOLS_BIN_DIR` that is not this user's failed at
+	# the first `cp` under `set -e` — exit 1, which this toolset spends on
+	# "findings were printed", from a run that placed nothing and said nothing.
+	# A directory that is not there YET is asked about through the nearest
+	# ancestor that is, because `install_commands` creates it and a parent that
+	# refuses the `mkdir -p` is a refusal this phase can print for nothing.
+	if kind="$(unusable_dir_kind "$dir")"; then
+		die "\`--install\` places the ${#INSTALLABLES[@]} commands in $dir, and $kind.
+    NOTHING was installed and nothing already installed was replaced."
+	fi
 	for name in "${INSTALLABLES[@]}"; do
 		target="$dir/$name"
 		kind="$(unplaceable_kind "$target")" || continue
@@ -585,13 +902,17 @@ plan_install_targets() {
 }    $target — $kind"
 		paths="${paths:+$paths }\"$target\""
 	done
-	[ -z "$bad" ] || die "\`--install\` places REGULAR FILES, and these targets are not regular files:
+	[ -z "$bad" ] || die "\`--install\` places a REGULAR FILE IT CAN WRITE at each of these, and these are
+    not that:
 $bad
     \`cp\` follows a symlink, so installing over one would leave the command
     UNINSTALLED — the target stays a link — and would write these bytes into
-    whatever is on the other end of it. NOTHING was installed and nothing
-    already installed was replaced.
-    Clear them, then re-run:
+    whatever is on the other end of it; and a target this user cannot write is
+    a \`cp\` that fails with the artifacts before it already placed, which is the
+    half-install this phase exists to prevent. NOTHING was installed and
+    nothing already installed was replaced.
+    Clear them, then re-run — \`rm -f\` takes a read-only file, because what a
+    removal needs is the DIRECTORY's write bit and not the file's:
         rm -f -- $paths
     (The pre-move \`link-estates\` puts exactly these links in a workstation's
     \`~/.local/bin\`, pointing into \`opensoft/brett-wip\` — the checkout every
@@ -601,33 +922,73 @@ $bad
 }
 
 plan_hook_merge() {
-	local settings existing
+	local settings existing kind
 	settings="$(claude_home)/settings.json"
-	command -v jq >/dev/null 2>&1 || die "\`--install\` needs \`jq\` to merge one SessionStart entry into
+	command -v jq >/dev/null 2>&1 || die "\`--install\` needs \`jq\` to merge its TWO hook entries into
     $settings, and there is no \`jq\` on this PATH. It refuses rather than
     rewriting a JSON file by hand, and NOTHING was installed. Install jq, then
-    re-run. The entry it would have merged:
-$(hook_block_text)"
+    re-run. The entries it would have merged — the \`SessionStart\` one and
+    Amendment 12's \`UserPromptSubmit\` name guard, which are ONE all-or-nothing
+    merge:
+$(hook_block_text)
+$(guard_block_text)"
+
+	# WHAT IS AT THAT PATH, BEFORE A BYTE OF IT IS READ (#44 round 1,
+	# `openRepoTools:878`). This file carries the LAST TWO artifacts — the
+	# twenty-fifth and twenty-sixth — since Amendment 12 adoption act 3 put the
+	# name guard beside the `SessionStart` entry, and it is the only path no
+	# walk asked about; the
+	# `present` arm now CHMODs it, and `chmod`
+	# follows a symlink, so a `~/.claude/settings.json` linked into a dotfiles
+	# checkout had the 600 stamped on the file at the far end — an unrelated
+	# file re-moded by an installer that reported `already installed
+	# (unchanged)` for it. The two merge arms are the older half of the same
+	# defect: `mv -f` REPLACES a symlink with the regular file it wrote, so the
+	# link a person put there was swallowed and the far end silently stopped
+	# being what `claude` reads.
+	#
+	# `path_kind` AND NOT `unplaceable_kind`, because this file is not placed
+	# with `cp`: the merge writes a temporary beside it and moves that into
+	# place, which takes the DIRECTORY's write bit and not the file's, so a
+	# read-only `settings.json` is one this command may still merge into.
+	if kind="$(path_kind "$settings")"; then
+		die "\`--install\` merges its two hook entries into a REGULAR FILE, and this is not
+    one:
+    $settings — $kind
+    A \`chmod\` follows a link, so the mode this installer stamps would land on
+    whatever is on the other end of it; and the merge itself writes a temporary
+    beside this path and moves it here, which would take the link away.
+    NOTHING was installed and nothing already installed was replaced.
+    Clear it — what is on the other end keeps its bytes and its mode — then
+    re-run:
+        rm -f -- \"$settings\""
+	fi
+
 	workdir
 	HOOK_MERGED="$WORKDIR/settings.json"
+	local staged="$WORKDIR/settings.stage.json"
 
 	if [ ! -e "$settings" ]; then
-		HOOK_PLAN="nofile"
+		HOOK_PLAN="nofile"; GUARD_PLAN="nofile"
 		jq -n --arg c "$HOOK_COMMAND" --arg m "$HOOK_MATCHER" --argjson t "$HOOK_TIMEOUT" \
-			'{hooks: {SessionStart: [{matcher: $m, hooks: [{type: "command", command: $c, timeout: $t}]}]}}' \
+		      --arg g "$GUARD_COMMAND" --argjson gt "$GUARD_TIMEOUT" \
+			'{hooks: {SessionStart: [{matcher: $m, hooks: [{type: "command", command: $c, timeout: $t}]}],
+			          UserPromptSubmit: [{hooks: [{type: "command", command: $g, timeout: $gt}]}]}}' \
 			>"$HOOK_MERGED" || die "could not compose $settings; nothing was installed."
 		return 0
 	fi
 
-	jq -e . "$settings" >/dev/null 2>&1 || die "$settings is not valid JSON, so \`--install\` cannot merge one entry into it
-    and will not rewrite it. NOTHING was installed and nothing already installed was
-    replaced. Fix that file, then re-run. The entry it would have merged:
-$(hook_block_text)"
+	jq -e . "$settings" >/dev/null 2>&1 || die "$settings is not valid JSON, so \`--install\` cannot merge its two entries into
+    it and will not rewrite it. NOTHING was installed and nothing already installed was
+    replaced. Fix that file, then re-run. The entries it would have merged:
+$(hook_block_text)
+$(guard_block_text)"
 
 	jq -e '(has("hooks") | not) or (.hooks | type == "object")' "$settings" >/dev/null 2>&1 ||
-		die "$settings has a \`hooks\` that is not an object, so there is nothing to merge an
-    entry into. NOTHING was installed. The entry it would have merged:
-$(hook_block_text)"
+		die "$settings has a \`hooks\` that is not an object, so there is nothing to merge
+    either entry into. NOTHING was installed. The entries it would have merged:
+$(hook_block_text)
+$(guard_block_text)"
 
 	# THE THREE ANSWERS, in one read: our exact command already there; some
 	# OTHER SessionStart entry that runs `session-start` (a second writer of
@@ -659,11 +1020,25 @@ $(hook_block_text)"
 		  elif ($cmds | map(select(test("session-start"))) | length) > 0 then "conflict"
 		  else "absent" end' "$settings" 2>/dev/null || printf 'error')"
 
+	# AND THE SAME THREE ANSWERS FOR AMENDMENT 12's ENTRY, keyed on its own verb.
+	#
+	# `guard` AS A WHOLE ARGUMENT, and not as a substring — the one place this
+	# read differs from the one above, and the difference is load-bearing. The
+	# `SessionStart` arm keys on `session-start`, a word that appears in nothing
+	# else; `guard` appears in `~/projects/xFactory/guard.sh`, a plain
+	# `UserPromptSubmit` hook a person's settings may already carry and one this
+	# installer must leave exactly where it is. So the test is the verb with a
+	# boundary on both sides: a command RUNNING `guard` collides, a file merely
+	# NAMED guard does not. That is R-A9-14's rule one event over — the verb is
+	# what collides; the file that carries it is not.
+	local existing_guard
+	existing_guard="$(jq -r --arg c "$GUARD_COMMAND" '
+		[ (.hooks.UserPromptSubmit // [])[]? | (.hooks // [])[]? | .command // empty ] as $cmds
+		| if ($cmds | index($c)) then "present"
+		  elif ($cmds | map(select(test("(^|\\s)guard(\\s|$)"))) | length) > 0 then "conflict"
+		  else "absent" end' "$settings" 2>/dev/null || printf 'error')"
+
 	case "$existing" in
-	present)
-		HOOK_PLAN="present"
-		cp -- "$settings" "$HOOK_MERGED"
-		;;
 	conflict)
 		die "$settings already carries a SessionStart entry that runs \`session-start\` with a
     DIFFERENT command string. Exact-string match is the only idempotence this entry
@@ -674,23 +1049,54 @@ $(hook_block_text)
     (Amendment 9's adoption act 6 removes the hand-installed entry on each
     workstation before the first \`--install\` that carries this.)"
 		;;
-	absent)
-		HOOK_PLAN="absent"
+	present | absent) HOOK_PLAN="$existing" ;;
+	*) die "$settings could not be read for a SessionStart entry; nothing was installed." ;;
+	esac
+
+	case "$existing_guard" in
+	conflict)
+		die "$settings already carries a UserPromptSubmit entry that runs \`guard\` with a
+    DIFFERENT command string. Exact-string match is the only idempotence this entry
+    has, so merging would fire the name guard twice — two refusals for one prompt.
+    Repairing a setting a person meant is not an installer's to do, so
+    NOTHING was installed. Remove that entry, then re-run.
+    The entry this places, byte for byte:
+$(guard_block_text)"
+		;;
+	present | absent) GUARD_PLAN="$existing_guard" ;;
+	*) die "$settings could not be read for a UserPromptSubmit entry; nothing was installed." ;;
+	esac
+
+	# BOTH MERGES ARE COMPUTED BEFORE EITHER IS PLACED, into one staged file, so
+	# the all-or-nothing rule covers the PAIR: a settings file that took the
+	# SessionStart entry and refused the guard is a half-install of a hook pair,
+	# and nothing on screen would say which half.
+	cp -- "$settings" "$HOOK_MERGED" ||
+		die "could not stage $settings for merging; nothing was installed."
+	if [ "$HOOK_PLAN" = absent ]; then
 		jq --arg c "$HOOK_COMMAND" --arg m "$HOOK_MATCHER" --argjson t "$HOOK_TIMEOUT" '
 			.hooks = (.hooks // {})
 			| .hooks.SessionStart = ((.hooks.SessionStart // []) + [{
 				matcher: $m,
 				hooks: [{type: "command", command: $c, timeout: $t}]
-			  }])' "$settings" >"$HOOK_MERGED" ||
+			  }])' "$HOOK_MERGED" >"$staged" ||
 			die "could not merge the SessionStart entry into $settings; nothing was installed."
-		;;
-	*)
-		die "$settings could not be read for a SessionStart entry; nothing was installed."
-		;;
-	esac
+		mv -f -- "$staged" "$HOOK_MERGED" ||
+			die "could not stage the merged $settings; nothing was installed."
+	fi
+	if [ "$GUARD_PLAN" = absent ]; then
+		jq --arg c "$GUARD_COMMAND" --argjson t "$GUARD_TIMEOUT" '
+			.hooks = (.hooks // {})
+			| .hooks.UserPromptSubmit = ((.hooks.UserPromptSubmit // []) + [{
+				hooks: [{type: "command", command: $c, timeout: $t}]
+			  }])' "$HOOK_MERGED" >"$staged" ||
+			die "could not merge the UserPromptSubmit entry into $settings; nothing was installed."
+		mv -f -- "$staged" "$HOOK_MERGED" ||
+			die "could not stage the merged $settings; nothing was installed."
+	fi
 }
 
-# The seven placements, AFTER the eleven files and the merge are all in hand.
+# The thirteen placements, AFTER the twelve files and the merge are all in hand.
 place_skill_and_hook() {
 	local shared_dir bare_dir settings target verb hook_tmp name
 	settings="$(claude_home)/settings.json"
@@ -701,29 +1107,40 @@ place_skill_and_hook() {
 	# EVERY FAILURE HERE IS A `die`, never the shell's own 1. `--install`'s
 	# codes are this toolset's — 0 done, 1 findings printed, 2 a refusal — and
 	# an unguarded `mkdir` or `cp` under `set -e` exits 1, which reads as a
-	# report of findings from a command that placed eleven of eighteen artifacts.
+	# report of findings from a command that placed twelve of twenty-six artifacts.
 	for target in "$shared_dir/SKILL.md" "$bare_dir/SKILL.md"; do
 		mkdir -p -- "$(dirname -- "$target")" ||
 			die "could not create $(dirname -- "$target") for the $name skill.
     The $placed commands above are placed; the skills and the hook are not."
 		if [ -e "$target" ] && cmp -s "$WORKDIR/skill-$name.md" "$target"; then
-			say "$name: already installed at $target (unchanged)"
+			# THE MODE IS STAMPED WHETHER OR NOT THE BYTES MOVED (#40, finding
+			# 2). This arm reported the file unchanged and then SKIPPED the
+			# `chmod` below, which sat inside the `else` — so a `SKILL.md` that
+			# had drifted to 755, or to anything else, kept that mode for as
+			# long as its bytes stayed right and no re-run of `--install` ever
+			# put it back. The eleven in the bin directory have been stamped
+			# every time all along; this is that same rule, one directory on.
+			if mode_is 644 "$target"; then
+				verb="already installed at $target (unchanged)"
+			else
+				verb="already installed at $target (mode restored to 644)"
+			fi
 		else
 			if [ -e "$target" ]; then verb="updated at $target"; else verb="installed at $target"; fi
 			cp -- "$WORKDIR/skill-$name.md" "$target" ||
 				die "could not write $target. The $placed commands above are placed;
     the skills and the hook are not."
-			# 644: a SKILL.md is a document a session READS, not a command. The
-			# eleven in the bin directory are stamped 755 for the reason that loop
-			# gives — "a copy that is not executable is not a command" — and
-			# that reason does not reach this file. Amendment 9(b) describes
-			# `--install` as stamping 755 "on everything it places" while
-			# arguing why adoption act 4b must delete workBenches#63's 0644
-			# loop; the deletion is required either way, because two writers of
-			# one path is the defect and the mode was only its symptom.
-			chmod 644 "$target" || die "could not set the mode on $target."
-			say "$name: $verb"
 		fi
+		# 644: a SKILL.md is a document a session READS, not a command. The
+		# twelve in the bin directory are stamped 755 for the reason that loop
+		# gives — "a copy that is not executable is not a command" — and
+		# that reason does not reach this file. Amendment 9(b) describes
+		# `--install` as stamping 755 "on everything it places" while
+		# arguing why adoption act 4b must delete workBenches#63's 0644
+		# loop; the deletion is required either way, because two writers of
+		# one path is the defect and the mode was only its symptom.
+		chmod 644 "$target" || die "could not set the mode on $target."
+		say "$name: $verb"
 	done
 	done
 
@@ -737,7 +1154,7 @@ place_skill_and_hook() {
 	# reason a skill has two.
 	#
 	# 644 for the same reason a `SKILL.md` is: a command file is a document a
-	# session READS. The 755 argument belongs to the eleven in the bin
+	# session READS. The 755 argument belongs to the twelve in the bin
 	# directory, where a copy that is not executable is not a command.
 	for name in "${COMMANDS[@]}"; do
 		for target in "$(skills_home)/shared/commands/$name.md" "$(claude_home)/commands/$name.md"; do
@@ -745,23 +1162,73 @@ place_skill_and_hook() {
 				die "could not create $(dirname -- "$target") for the /$name command.
     The $placed commands above are placed; the skills, the command files and the hook are not."
 			if [ -e "$target" ] && cmp -s "$WORKDIR/command-$name.md" "$target"; then
-				say "/$name: already installed at $target (unchanged)"
+				# The same stamp on the same arm, for the same reason a skill's
+				# is (#40, finding 2): the mode is this installer's to set on
+				# every artifact it places, and a mode it repaired is a line
+				# that says so rather than `unchanged`.
+				if mode_is 644 "$target"; then
+					verb="already installed at $target (unchanged)"
+				else
+					verb="already installed at $target (mode restored to 644)"
+				fi
 			else
 				if [ -e "$target" ]; then verb="updated at $target"; else verb="installed at $target"; fi
 				cp -- "$WORKDIR/command-$name.md" "$target" ||
 					die "could not write $target. The $placed commands above are placed;
     the skills, the command files and the hook are not."
-				chmod 644 "$target" || die "could not set the mode on $target."
-				say "/$name: $verb"
 			fi
+			chmod 644 "$target" || die "could not set the mode on $target."
+			say "/$name: $verb"
 		done
 	done
 
 	case "$HOOK_PLAN" in
-	present) say "SessionStart hook: already installed in $settings (unchanged)" ;;
-	nofile | absent)
+	present)
+		# THE ENTRY BEING THERE SAYS NOTHING ABOUT THE MODE (#40, finding 3).
+		# The two arms below write this file through `mktemp` + `chmod 600` +
+		# `mv -f`, so a file THEY wrote is 600 — and a file whose entry was
+		# already present was never given one, which is how a direct `--install`
+		# could leave `~/.claude/settings.json` world-readable for ever. 600 is
+		# the narrowing of the two and the mode workBenches'
+		# `setup-claude-profiles.sh` writes this same file at, so an installer
+		# that left it wider would be silently undone or would widen it behind
+		# that script's back.
+		#
+		# THIS CHMOD CAN FAIL FOR THE SAME REASON `unplaceable_kind`'s CAN (#44
+		# round 1, the suppressed comment at `openRepoTools:880`): a
+		# `settings.json` this euid can write but does not own takes `jq` and
+		# every check `plan_hook_merge` puts to it, then refuses the mode
+		# stamp, with the twelve commands, the skills and the command files —
+		# twenty-four of the twenty-six artifacts — already placed. The guard that
+		# would catch it first is the same `[ -O ]` `unplaceable_kind`'s own
+		# comment declines, for the same reason: no test in this suite can
+		# make a second account to own this file, and the check would refuse a
+		# root `--install` into another user's home, where this `chmod` does
+		# in fact succeed. The failure stays a `die` naming this file.
+		if mode_is 600 "$settings"; then
+			say "SessionStart hook: already installed in $settings (unchanged)"
+		else
+			chmod 600 "$settings" ||
+				die "could not set mode 600 on $settings, which already carries this entry.
+    Nothing in that file was changed."
+			say "SessionStart hook: already installed in $settings (mode restored to 600)"
+		fi
+		;;
+	esac
+	case "$GUARD_PLAN" in
+	present)
+		# THE GUARD ENTRY'S OWN LINE, AND NO SECOND `chmod`: the mode belongs to
+		# the FILE and not to either entry, so the arm above has already asked
+		# for it on every run that reaches this one. Saying it twice would tell
+		# a person their settings were re-moded twice for one file.
+		say "UserPromptSubmit guard: already installed in $settings (unchanged)"
+		;;
+	esac
+	# ONE WRITE FOR THE TWO ENTRIES: they live in one file, and writing it twice
+	# would move a person's settings through a state carrying one of the pair.
+	if [ "$HOOK_PLAN" != present ] || [ "$GUARD_PLAN" != present ]; then
 		mkdir -p -- "$(dirname -- "$settings")" ||
-			die "could not create $(dirname -- "$settings") for the SessionStart entry."
+			die "could not create $(dirname -- "$settings") for the hook entries."
 		# WRITTEN THROUGH A TEMPORARY IN THE SAME DIRECTORY, then moved into
 		# place: `mktemp` + `chmod 600` + `mv -f`, which is what workBenches'
 		# `scripts/setup-claude-profiles.sh:167-194` does to this very file on
@@ -780,13 +1247,15 @@ place_skill_and_hook() {
 			{ rm -f -- "$hook_tmp"; die "could not set mode 600 on the merged $settings."; }
 		mv -f -- "$hook_tmp" "$settings" ||
 			{ rm -f -- "$hook_tmp"; die "could not move the merged settings into $settings."; }
-		if [ "$HOOK_PLAN" = nofile ]; then
-			say "SessionStart hook: installed in $settings (the file was created, mode 600)"
-		else
-			say "SessionStart hook: merged into $settings (one entry added; written back at mode 600)"
-		fi
-		;;
-	esac
+		case "$HOOK_PLAN" in
+		nofile) say "SessionStart hook: installed in $settings (the file was created, mode 600)" ;;
+		absent) say "SessionStart hook: merged into $settings (one entry added; written back at mode 600)" ;;
+		esac
+		case "$GUARD_PLAN" in
+		nofile) say "UserPromptSubmit guard: installed in $settings (the file was created, mode 600)" ;;
+		absent) say "UserPromptSubmit guard: merged into $settings (one entry added; written back at mode 600)" ;;
+		esac
+	fi
 }
 # =========================================================================
 # `wip init` — THE ONE ACT THAT CREATES THE WORKSPACE THOSE COMMANDS READ
@@ -1150,8 +1619,17 @@ wip_fetch_template_file() {
 
 # --- the command itself -----------------------------------------------------
 wip_init() {
-	local config target checkout ref rel dest seeded=0
+	local config target checkout ref rel dest seeded=0 owed=0 kind
 	local existing_repo existing_path
+	# THE PATHS THE SEED OWES THIS CHECKOUT, which is what step 8 stages and
+	# commits and the whole of what it commits: the ones step 7 wrote (`seeded`)
+	# and the ones an earlier run wrote and could not commit (`owed`). Two
+	# counters rather than `${#written[@]}`: an empty array expanded as
+	# `"${written[@]}"` is an UNBOUND VARIABLE under `set -u` in the bash 3.2
+	# macOS ships, so every reader of this list is guarded on a count, and the
+	# count that says how many were COPIED is the one step 7's line prints.
+	local written
+	written=()
 
 	# ---- step 1: DETECT. A file test, not a network call, and the whole of the
 	# idempotence. A host that already has a workspace does nothing at all.
@@ -1298,6 +1776,47 @@ wip_init() {
 $WIP_LAST_ERR"
 	fi
 
+	# ---- step 6a: AN ADOPTED CHECKOUT CARRIES THE TEMPLATE AND NOTHING ELSE,
+	# OR THIS COMMAND STOPS (#40, finding 1).
+	#
+	# Step 8 staged with `git add -A -- .` and committed whatever
+	# `status --porcelain` had found, so a checkout ADOPTED at the derived path —
+	# or one a half-finished earlier run left behind — had every unrelated
+	# modified, deleted and untracked file it carried staged, committed and
+	# `push origin HEAD:main`ed as part of the seed. The repository on the other
+	# end of that push is the one a person keeps their unfinished work in, which
+	# is the last place a file should arrive by accident.
+	#
+	# ASKED HERE, BEFORE STEP 7 WRITES A SINGLE BYTE INTO THAT CHECKOUT, for the
+	# reason `plan_install_targets` is asked before the fetch: a refusal costs
+	# nothing at all at this point, and the person's own files are still exactly
+	# where they left them when they read it.
+	#
+	# THE TEMPLATE'S OWN PATHS ARE NOT `UNRELATED`, which is why the question is
+	# put to git as an EXCLUSION and not as "is it clean": a first run that
+	# fetched and copied the ${#WIP_TEMPLATE_FILES[@]} files and then could not
+	# commit them — no `user.email`, the case F9 is written about — leaves
+	# exactly those paths behind, and step 7's promise is that a re-run after a
+	# half-finished run is safe. `--untracked-files=all` because git collapses an
+	# untracked DIRECTORY to one line otherwise, and `handoffs/` is not a path
+	# any exclusion below spells.
+	local status_args unrelated
+	status_args=(status --porcelain --untracked-files=all -- .)
+	for rel in "${WIP_TEMPLATE_FILES[@]}"; do
+		status_args+=(":(exclude)$rel")
+	done
+	unrelated="$(git -C "$checkout" "${status_args[@]}" 2>/dev/null | sed -e 's/^/    /' || :)"
+	if [ -n "$unrelated" ]; then
+		die "$checkout carries changes this command did not write:
+$unrelated
+    A seed commit is $SHAPE_REPOSITORY's $WIP_TEMPLATE_DIR and nothing else, and the
+    push that follows it goes straight to $target's main — so anything else
+    staged beside it is somebody's unfinished work published. NOTHING was written
+    into that checkout on this run and nothing was staged.
+    Commit, stash or remove those paths, then re-run:
+        openRepoTools wip init"
+	fi
+
 	# ---- step 7: SEED IT FROM THE TEMPLATE, additively. A repository that
 	# already has a commit on `main` is NOT re-seeded: files the template would
 	# place and that are already there are left exactly as they are, and the
@@ -1306,17 +1825,156 @@ $WIP_LAST_ERR"
 	ref="$(wip_shape_ref)"
 	workdir
 	for rel in "${WIP_TEMPLATE_FILES[@]}"; do
-		if [ -e "$checkout/$rel" ]; then continue; fi
 		dest="$WORKDIR/tpl-$(printf '%s' "$rel" | tr '/' '_')"
+		if [ -e "$checkout/$rel" ] || [ -L "$checkout/$rel" ] ||
+			git -C "$checkout" cat-file -e ":$rel" 2>/dev/null ||
+			git -C "$checkout" cat-file -e "HEAD:$rel" 2>/dev/null ||
+			[ -n "$(git -C "$checkout" ls-files -u -- "$rel" 2>/dev/null)" ]
+		then
+			# ALREADY THERE, OR AS GOOD AS — AND THE SEED CAN STILL OWE IT. A template path the
+			# WORKTREE carries and HEAD does not is what an earlier run of this
+			# command leaves behind when it copied the template and could not
+			# commit it: no `user.email`, the case the refusal below is written
+			# about. Step 8 has to carry those, or the re-run this step promises
+			# commits nothing, pushes nothing, and writes the pointer file over
+			# an EMPTY main — the one state no later run can dig out of.
+			#
+			# A TEMPLATE PATH HEAD ALREADY CARRIES IS THE PERSON'S, whatever it
+			# says now: this command has never modified a committed file, so a
+			# change at one is not its leftover and never enters its commit
+			# (#44 round 1, `openRepoTools:1525`).
+			#
+			# `! cat-file -e HEAD:…` ALONE IS NOT PROOF (#44 round 2,
+			# `openRepoTools:1621`): a template path that is UNTRACKED and
+			# carries a PERSON'S OWN CONTENT is absent from HEAD exactly as
+			# this command's own leftover is, so it answered this question the
+			# same way and went into the seed regardless of whose bytes they
+			# were. The bytes settle what the question alone could not: this
+			# command's own leftover is what THIS RUN would itself write
+			# there, so the template is fetched and substituted the same way
+			# a MISSING file below is, and the two are compared before either
+			# is trusted as this command's own.
+			#
+			# THE WORKTREE TEST ALONE MISSES FOUR MORE SHAPES (#44 round 3,
+			# `openRepoTools:1613`/`:1615`/`:1699`): a DANGLING symlink answers
+			# `[ -e ]` false exactly as nothing-there-at-all does, so without
+			# the `-L` above the MISSING branch below would meet it at `cp` and
+			# follow it — writing this run's bytes wherever it points, inside
+			# this checkout or far outside it; a person's own `git add` of a
+			# template path, followed by removing the worktree file, leaves
+			# the INDEX carrying something the worktree no longer does, which
+			# the same MISSING branch would silently overwrite at `cp` and
+			# step 8 would then stage over; a `git rm` of a path HEAD already
+			# carries — staged, worktree gone, index gone too — passes none of
+			# the first three tests either, so without asking `HEAD` directly
+			# here the same MISSING branch would put the file straight back,
+			# undoing a deletion this command has never modified a committed
+			# file to make; and an UNRESOLVED MERGE CONFLICT can leave a path
+			# at stages 1-3 with no stage 0, no worktree file and no `HEAD`
+			# entry at all — invisible to all four other tests — so it is
+			# asked for directly too. All four are asked for here instead,
+			# beside the worktree.
+			if ! git -C "$checkout" cat-file -e "HEAD:$rel" 2>/dev/null; then
+				# THE SAME QUESTION `unplaceable_kind` ASKS OF AN INSTALL TARGET,
+				# asked of an owed candidate: a SYMLINK is never this command's
+				# own, dangling or not, because `cmp` reads through a live one to
+				# whatever it names — so one whose target happens to hold the
+				# template's own bytes would pass the comparison below, and a
+				# `git add` of it stages the LINK ITSELF, not the bytes at its far
+				# end — and a FIFO, a socket or a device node is worse: `cmp`
+				# opens it and can block waiting for a writer, or read whatever a
+				# device answers, rather than refusing. `path_kind` already
+				# answers all three the same way `--install`'s own planners rely
+				# on; this command has placed none of them at a template path, so
+				# any of them here is refused before either branch can act on it,
+				# open it, or write through it.
+				if kind="$(path_kind "$checkout/$rel")"; then
+					die "$checkout/$rel is $kind, and a seed commit is the template's own bytes
+    at a REGULAR FILE and nothing else there could be. Nothing beyond this run's own
+    template bytes was written into that checkout, and nothing was staged.
+    Remove or replace that path, then re-run:
+        openRepoTools wip init"
+				fi
+				# AN UNRESOLVED MERGE CONFLICT'S STAGES ARE INVISIBLE TO A
+				# STAGE-0 QUESTION: `:$rel` reads stage 0 alone, so a path with
+				# only stages 1-3 (added differently on both sides of a merge,
+				# say) answers `cat-file -e ":$rel"` false exactly as an empty
+				# index does, and step 6a's own exclusion of template paths
+				# means no earlier gate has seen it either. This command has
+				# never resolved anybody's merge, so a conflict here is refused
+				# rather than silently settled by whichever branch the
+				# worktree's own state happens to satisfy.
+				if [ -n "$(git -C "$checkout" ls-files -u -- "$rel" 2>/dev/null)" ]; then
+					die "$checkout has an unresolved merge conflict at $rel, and HEAD does not
+    carry $rel either, so this command cannot tell which side, if either, is its own
+    template substitution. This command has never resolved anybody's merge. Nothing beyond
+    this run's own template bytes was written into that checkout, and nothing was staged.
+    Resolve that conflict, then re-run:
+        openRepoTools wip init"
+				fi
+				# AND THE INDEX CAN OWE SOMETHING THE WORKTREE NO LONGER HAS AT ALL:
+				# this command has never staged a path and then removed its own file
+				# from under it, so an index entry with nothing on disk behind it is
+				# somebody else's, whatever it holds.
+				if [ ! -e "$checkout/$rel" ]; then
+					die "$checkout/$rel does not exist, HEAD does not carry $rel, and something is
+    staged there anyway — so this is somebody's own staged addition, removed from the
+    worktree after being added, and not this command's to overwrite or commit over. Nothing
+    beyond this run's own template bytes was written into that checkout, and nothing
+    already staged was changed.
+    Commit, stash or unstage that path, then re-run:
+        openRepoTools wip init"
+				fi
+				wip_fetch_template_file "$rel" "$dest" "$ref" ||
+					die "could not fetch $WIP_TEMPLATE_DIR/$rel from $SHAPE_REPOSITORY at $ref, so $rel
+    itself was NOT seeded. Nothing beyond an earlier template path's own bytes in
+    this same run, if it reached one before this fetch, was written into that
+    checkout, and nothing was staged; a re-run picks up from here. Both ways were tried:
+    gh api repos/$SHAPE_REPOSITORY/contents/$WIP_TEMPLATE_DIR/$rel?ref=$ref
+    curl -fsSL https://raw.githubusercontent.com/$SHAPE_REPOSITORY/$ref/$WIP_TEMPLATE_DIR/$rel"
+				wip_substitute "$dest"
+				# THE WORKTREE IS NOT THE ONLY PLACE THOSE BYTES CAN LIE EITHER (#44
+				# round 3, `openRepoTools:1647`): HEAD lacking `$rel` says nothing
+				# about the INDEX, so a person's own edit `git add`ed at this path
+				# — staged before this run and never committed — sits exactly
+				# where step 8's `add` would overwrite it, and a worktree that
+				# happens to read back as the template is not permission to stage
+				# over what is already staged there. The index is asked the same
+				# question the worktree already answers: no entry is this
+				# command's own leftover exactly as no file is, and an entry
+				# whose bytes are not the template fails it exactly as the
+				# worktree's would.
+				if cmp -s -- "$dest" "$checkout/$rel" &&
+					{ ! git -C "$checkout" cat-file -e ":$rel" 2>/dev/null ||
+					git -C "$checkout" cat-file -p ":$rel" 2>/dev/null |
+						cmp -s -- "$dest" -; }
+				then
+					written+=("$rel")
+					owed=$((owed + 1))
+				else
+					die "$checkout/$rel exists, HEAD does not carry it, and its worktree bytes, its staged
+    bytes, or both are not what $SHAPE_REPOSITORY's $WIP_TEMPLATE_DIR/$rel substitutes to at
+    $ref — so this is not an earlier run's own leftover; it is somebody's own file, staged or
+    not, at a path the template also names. A seed commit is the template and nothing else, and
+    this command will not publish it or stage over what is already staged there. Nothing beyond
+    this run's own template bytes was written into that checkout, and nothing was staged.
+    Commit, stash or remove that path, then re-run:
+        openRepoTools wip init"
+				fi
+			fi
+			continue
+		fi
 		wip_fetch_template_file "$rel" "$dest" "$ref" ||
-			die "could not fetch $WIP_TEMPLATE_DIR/$rel from $SHAPE_REPOSITORY at $ref, so the
-    workspace was NOT seeded. The clone at $checkout is untouched and a re-run
-    picks up from here. Both ways were tried:
+			die "could not fetch $WIP_TEMPLATE_DIR/$rel from $SHAPE_REPOSITORY at $ref, so $rel
+    itself was NOT seeded. Nothing beyond an earlier template path's own bytes in
+    this same run, if it reached one before this fetch, was written into that
+    checkout, and nothing was staged; a re-run picks up from here. Both ways were tried:
     gh api repos/$SHAPE_REPOSITORY/contents/$WIP_TEMPLATE_DIR/$rel?ref=$ref
     curl -fsSL https://raw.githubusercontent.com/$SHAPE_REPOSITORY/$ref/$WIP_TEMPLATE_DIR/$rel"
 		wip_substitute "$dest"
 		mkdir -p -- "$checkout/$(dirname -- "$rel")"
 		cp -- "$dest" "$checkout/$rel"
+		written+=("$rel")
 		seeded=$((seeded + 1))
 	done
 	if [ "$seeded" -gt 0 ]; then
@@ -1330,17 +1988,41 @@ $WIP_LAST_ERR"
 	# ruleset until an administrator excludes it, and until it is, every register
 	# write will be refused by the gate. So this push is not only the seed
 	# landing; it is the verification (Addendum 1(2)).
-	if [ -n "$(git -C "$checkout" status --porcelain 2>/dev/null)" ]; then
-		wip_quietly git -C "$checkout" add -A -- . ||
+	#
+	# EACH PATH BY NAME, NEVER `git add -A -- .` (#40, finding 1). Step 6a means
+	# there is nothing unrelated left in the worktree for a `-A` to sweep up —
+	# and this means that a path step 6a could not see as unrelated, because the
+	# template names it and a person had edited it, is still not published by a
+	# command that came to place a template. Two answers to one finding, and the
+	# cheaper one is the one that runs first.
+	if [ "$((seeded + owed))" -gt 0 ]; then
+		wip_quietly git -C "$checkout" add -- "${written[@]}" ||
 			die "could not stage the seed in $checkout.
     What it said:
 $WIP_LAST_ERR"
+	fi
+	# AND THE COMMIT IS THOSE PATHS AND NO OTHERS (#44 round 1,
+	# `openRepoTools:1525`). `git commit` with no pathspec commits THE INDEX, so
+	# a person's own `git add` of a file step 6a is deliberately blind to — a
+	# TEMPLATE path they had edited — rode into the seed commit and out to
+	# `main` on the push below, which is the finding this round was opened for
+	# one layer down. The pathspec commits the worktree at those paths and
+	# leaves every other staged change exactly where the person left it: staged,
+	# uncommitted, unpushed.
+	#
+	# THE `diff --cached` ASKS ABOUT THE SAME PATHS, because after an `add` of
+	# paths that are already in HEAD there can be nothing to commit at all — a
+	# checkout that had a template file DELETED gets it back from the template
+	# above, and where those bytes match HEAD `git commit` refuses with one.
+	if [ "$((seeded + owed))" -gt 0 ] &&
+		! git -C "$checkout" diff --cached --quiet -- "${written[@]}" 2>/dev/null; then
 		wip_quietly git -C "$checkout" commit -q \
 			-m "Seed this workspace repository from $SHAPE_REPOSITORY $WIP_TEMPLATE_DIR
 
 Written by \`openRepoTools wip init\` (lane-collision-protocol Amendment 9(c)).
 It holds data only: the register, the object logs, the handoffs and the
-workspace manifests. The lane tooling is installed from opensoft/openRepoTools." ||
+workspace manifests. The lane tooling is installed from opensoft/openRepoTools." \
+			-- "${written[@]}" ||
 			die "could not commit the seed in $checkout. A machine with no
     \`user.email\` configured is the usual reason, and git says so itself:
 $WIP_LAST_ERR"

@@ -48,6 +48,26 @@ lane_session_start_timeout=5
 # against it (lane_note_no_lane).
 lane_session_start_ensured=false
 
+# lane-collision-protocol Amendment 12 adoption act 3: the UserPromptSubmit
+# NAME GUARD, ensured beside the SessionStart entry above "the way it ensures
+# the SessionStart hook today" (the amendment's own words for this launcher's
+# half). Byte for byte `opensoft/openRepoTools`'s own GUARD_COMMAND /
+# GUARD_TIMEOUT (`openRepoTools:460-461`, `guard_block_text()`), which
+# `--install` already merges into a bare `claude`'s `~/.claude/settings.json`
+# (Amendment 12 adoption act 3, first half); this is the PROFILE half, ruled
+# by Brett Heap 2026-09-15, verbatim "install the hook when 25 lands".
+#
+# NO matcher — `UserPromptSubmit` has no source to match on, unlike
+# `SessionStart`'s `startup|resume|clear|fork`. NO `|| true` — on
+# `SessionStart` that suffix is the whole safety property (a hook that dies
+# must not break the session it was meant to orient); on `UserPromptSubmit`
+# it would be the OPPOSITE, because exit 2 is what BLOCKS a prompt
+# (code.claude.com/docs/en/hooks) and `cmd || true` always exits 0. Copying
+# the SessionStart string's suffix here would install a guard that refuses
+# nothing, silently — the exact state Amendment 12 exists to end.
+lane_name_guard_command='~/projects/xFactory/lanes-edit.sh guard'
+lane_name_guard_timeout=5
+
 # Ensuring it is an append, matched by the EXACT command string: an entry that
 # already carries it is left exactly as it is — wherever it sits, whatever
 # matcher it shares, whatever else the operator put beside it — and nothing
@@ -85,9 +105,73 @@ lane_session_start_jq='
             end
         )'
 
+# THE NAME GUARD IS PRESERVED-IF-PRESENT WHILE SUPPORTED, LIKE SessionStart —
+# an entry that already carries the command is left exactly as it is,
+# whatever timeout an operator gave it, and otherwise the canonical one is
+# appended while `$name_guard_ok`; nothing else under `.hooks.UserPromptSubmit`
+# is touched, so the usage guard entry and any foreign hook survive beside it
+# either way. This mirrors `opensoft/openRepoTools --install`'s own merge for
+# this exact entry into a bare `claude`'s settings.json: present costs no
+# write, absent appends one.
+#
+# UNLIKE SessionStart, IT ALSO REMOVES ITS OWN ENTRY THE MOMENT `$name_guard_ok`
+# GOES FALSE (Copilot round 1, PR #88). SessionStart's command ends in
+# `|| true`, so an entry already written stays harmless forever even if the
+# estate is later downgraded — the downgrade only stops NEW installs. This
+# entry has no such suffix by design (exit 2 is the whole mechanism), so an
+# entry left behind after a downgrade is not inert: `lanes-edit.sh guard`
+# against an estate that no longer answers the verb falls through to
+# "unknown subcommand", which ALSO exits 2 — the profile would be locked out
+# of every prompt it submits, by the very entry meant to protect it. So the
+# fragment is unconditional (no outer `if $name_guard_ok then … else . end` at
+# the call site): while ok, it ensures the entry as before; the moment ok
+# turns false, it strips any entry carrying the exact command, self-healing
+# on the profile's very next launch, same as an upgrade self-heals into
+# ensuring it. `$name_guard_present` is read once, before either branch, so
+# a profile with neither the entry nor a supported estate costs no write and
+# creates no `hooks.UserPromptSubmit` key that was not there.
+#
+# THE REMOVAL FILTERS THE NESTED `.hooks` ARRAY, NOT THE OUTER ENTRY (Copilot
+# round 2, PR #88). The first cut gated the OUTER entry's survival on
+# `select` over a GENERATOR — `(.hooks // [])[]? | .command) != $name_guard`
+# yields one boolean per nested hook, and `select` passes `.` through once
+# per TRUE — so an entry grouping the stale command with even one foreign
+# hook was kept WHOLE, stale command included (the foreign hook made the
+# generator yield a `true`), and one grouped with TWO foreign hooks was
+# DUPLICATED (`true` twice). Both measured: a downgrade could still leave
+# the profile locked out, which is the exact failure this fragment exists to
+# prevent. Now each outer entry's OWN nested array is filtered down to
+# `$kept` first, the entry is dropped only when `$kept` is empty, and a
+# surviving entry is reassigned `.hooks = $kept` — one pass, one outer
+# element in, at most one out, no generator anywhere near `select`.
+lane_name_guard_jq='
+      ((.hooks.UserPromptSubmit // [])
+        | any((.hooks // [])[]? | .command == $name_guard)) as $name_guard_present
+      | if ($name_guard_ok or $name_guard_present) then
+          .hooks = (.hooks // {})
+          | .hooks.UserPromptSubmit = (
+              (.hooks.UserPromptSubmit // []) as $entries
+              | if $name_guard_ok then
+                  if $name_guard_present then $entries
+                  else $entries + [{
+                    hooks: [{type: "command", command: $name_guard, timeout: $name_guard_timeout}]
+                  }]
+                  end
+                else
+                  [ $entries[]
+                    | (.hooks // []) as $inner
+                    | ($inner | map(select(.command != $name_guard))) as $kept
+                    | select(($kept | length) > 0)
+                    | .hooks = $kept
+                  ]
+                end
+            )
+        else . end'
+
 configure_profile_runtime() {
   local config_dir="$1" statusline_source statusline_link settings settings_tmp statusline_command default_model
   local guard_source guard_link guard_command guard_ok guard_timeout session_start_ok
+  local name_guard_ok
 
   statusline_source="$base/shared/statusline-command.sh"
   if [[ ! -f "$statusline_source" && -f /usr/local/share/workbenches/claude/statusline-command.sh ]]; then
@@ -156,6 +240,63 @@ configure_profile_runtime() {
     session_start_ok=true
   fi
 
+  # THE SAME TOLERANCE, FOR THE GRAVER REASON. Amendment 12's guard carries NO
+  # `|| true` — exit 2 is the whole mechanism — and it is also exactly the
+  # code `lanes-edit.sh` falls through to on an unrecognised first argument
+  # (its final dispatch arm, `*) die "unknown subcommand …" 2 ;;`). Wiring
+  # this entry against an estate whose linked `lanes-edit.sh` predates the
+  # `guard` subcommand would therefore BLOCK EVERY PROMPT the profile ever
+  # submits — not merely print a block the way an ungated SessionStart entry
+  # would, because that one's `|| true` catches every exit before the harness
+  # ever sees it.
+  #
+  # A BARE `grep -qF guard` CANNOT TELL THE TWO STATES APART, MEASURED: the
+  # word is one of this estate's favourite metaphors for a defensive check
+  # (14 mentions in `opensoft/workBenches`'s own pre-Amendment-12 vendored
+  # copy, `devBenches/base-image/files/openrepotools/lanes-edit.sh`, none of
+  # them the subcommand), and even a plain `guard)` case-label shape false-
+  # positives on that same file's COMMENT "the dispatcher guard), so no READ
+  # can return it" — measured, not assumed.
+  #
+  # SO THE PROBE EXCLUDES COMMENTS AND ANCHORS THE SHAPE TO WHERE A LINE
+  # BEGINS (Copilot round 1, PR #88: "accepting arbitrary file text" — a
+  # plain substring match on `|guard|`, `|guard)` or `(guard|` anywhere in
+  # the file, comments included, can still be fooled by prose that happens to
+  # contain one of those three character sequences). A dispatcher's own case
+  # arm is a LINE, not a substring: `guard)` alone, or a pipe-separated run of
+  # verbs ending or beginning with it — `session-start|guard)`, the workspace-
+  # check exemption right above the real dispatch table — starts at that
+  # line's first non-blank character once `#`-led comment lines are dropped.
+  # `opensoft/openRepoTools`'s live copy has both such lines and the die's own
+  # enumeration of every subcommand it knows; the vendored pre-Amendment-12
+  # copy, and the false positive above, have neither once comments are
+  # excluded — reproduced as its own regression case in
+  # `test-claude-profile-name-guard-hook.sh`.
+  #
+  # ONE PROCESS, NEVER A PIPE (Copilot round 2, PR #88, citing this very
+  # repository's own measured defect at
+  # `devcontainer.test/test-claude-profile-amendment-11.sh:654-678`): a
+  # two-stage `grep -v … | grep -q …` reads this script's own top,
+  # `set -o pipefail`, so on a REAL `lanes-edit.sh` — comfortably past the
+  # 64 KiB pipe buffer — a match late in the file lets the second `grep -q`
+  # exit the instant it finds one, closing the pipe while the first `grep`
+  # still has lines to write; that write raises SIGPIPE, the first `grep`
+  # exits 141, and pipefail reports the PIPELINE'S status as 141 even though
+  # the match was real — a false `name_guard_ok=false` on an estate that
+  # answers the verb, cited here rather than re-measured because the citation
+  # already carries the counts (2, 3 and 6 spurious failures in 300 runs on a
+  # 37 KB payload; 1 in 400 on 1.3 MB). `awk` reads the file directly — no
+  # second process, no pipe, nothing to SIGPIPE — and does both the comment
+  # exclusion and the shape match in the one pass a single `NR` walk allows.
+  name_guard_ok=false
+  if [[ -f "$lane_session_start_script" ]] && awk '
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*([A-Za-z0-9_-]+\|)*guard(\|[A-Za-z0-9_-]+)*\)/ { found=1; exit }
+    END { exit !found }
+  ' "$lane_session_start_script" 2>/dev/null; then
+    name_guard_ok=true
+  fi
+
   settings="$config_dir/settings.json"
   if [[ -e "$settings" ]] && ! jq -e 'type == "object"' "$settings" >/dev/null 2>&1; then
     echo "Claude profile settings are not valid JSON: $settings" >&2
@@ -181,7 +322,10 @@ configure_profile_runtime() {
        --arg session_start "$lane_session_start_command" \
        --arg session_start_matcher "$lane_session_start_matcher" \
        --argjson session_start_timeout "$lane_session_start_timeout" \
-       --argjson session_start_ok "$session_start_ok" '
+       --argjson session_start_ok "$session_start_ok" \
+       --arg name_guard "$lane_name_guard_command" \
+       --argjson name_guard_ok "$name_guard_ok" \
+       --argjson name_guard_timeout "$lane_name_guard_timeout" '
       .statusLine = {type: "command", command: $command, refreshInterval: 10}
       | .permissions = (.permissions // {})
       | .permissions.defaultMode = "bypassPermissions"
@@ -189,6 +333,7 @@ configure_profile_runtime() {
       | .model = (.model // $model)
       | (if $guard_ok then'"$lane_guard_jq"' else . end)
       | (if $session_start_ok then'"$lane_session_start_jq"' else . end)
+      | '"$lane_name_guard_jq"'
     ' "$settings" > "$settings_tmp"
   else
     jq -n --arg command "$statusline_command" --arg model "$default_model" \
@@ -197,14 +342,18 @@ configure_profile_runtime() {
        --arg session_start "$lane_session_start_command" \
        --arg session_start_matcher "$lane_session_start_matcher" \
        --argjson session_start_timeout "$lane_session_start_timeout" \
-       --argjson session_start_ok "$session_start_ok" '{
+       --argjson session_start_ok "$session_start_ok" \
+       --arg name_guard "$lane_name_guard_command" \
+       --argjson name_guard_ok "$name_guard_ok" \
+       --argjson name_guard_timeout "$lane_name_guard_timeout" '{
       statusLine: {type: "command", command: $command, refreshInterval: 10},
       permissions: {defaultMode: "bypassPermissions"},
       effortLevel: "xhigh",
       model: $model
     }
     | (if $guard_ok then'"$lane_guard_jq"' else . end)
-    | (if $session_start_ok then'"$lane_session_start_jq"' else . end)' > "$settings_tmp"
+    | (if $session_start_ok then'"$lane_session_start_jq"' else . end)
+    | '"$lane_name_guard_jq"'' > "$settings_tmp"
   fi
   chmod 600 "$settings_tmp"
   mv -f "$settings_tmp" "$settings"
@@ -327,9 +476,10 @@ claude_run_is_interactive() {
 # WHAT THE PARENT RESOLVES IS NEVER HANDED DOWN AS THE ANSWER. The lane found
 # here decides which window to reuse and nothing else: it is not exported as
 # CLAUDE_LANE and not passed as `--lane`, so a lane that came from the
-# newest-first guess still reaches lane-start as `--confirm` in the child and is
-# still asked about. Pre-answering that question in the parent is exactly what
-# act 1 step 3's fence exists to prevent, and it would be no better done here.
+# newest-first guess still reaches only the picker in the child
+# (lane-collision-protocol Amendment 18 Addendum 1) and is still asked about
+# there. Pre-answering that question in the parent is exactly what act 1 step
+# 3's fence exists to prevent, and it would be no better done here.
 
 act1_reuse_lane=""
 act1_reuse_pane=""
@@ -469,7 +619,7 @@ act1_resolve_start_dir() {
   # `CLAUDE_LANE` is the operator's word, and a window whose pane step 2 is
   # reusing was matched from that lane's own record. The newest-first guess of
   # precedence 4 names no directory here — the child resolves the lane, asks
-  # about it through `--confirm`, and enters the directory itself.
+  # about it through the picker, and enters the directory itself.
   local certain="" saved_lane
   act1_start_dir=""
   if [[ -n "${lane_dir_flag:-}" ]]; then
@@ -695,12 +845,14 @@ start_profile_tmux() {
   #
   # ONLY FOR A LANE THAT IS CERTAIN. `--lane`/`CLAUDE_LANE` is the operator's
   # word. The swap record's newest-first row is an INFERENCE, which Amendment
-  # 8(c) hands over as `--confirm` precisely so lane-start asks before it takes
-  # a window. Naming the window for it here would answer that question in
-  # advance and in the wrong place — the child would then find a window named
-  # for the lane and bind by name, silently, from a guess nobody confirmed. So
-  # the inference is left exactly where it is: the child resolves it inside tmux
-  # and lane-start asks. Precedence 3 cannot arise here either, because a record
+  # 8(c) used to hand over as `--confirm` and lane-collision-protocol Amendment
+  # 18 Addendum 1 now hands to the picker instead, precisely so something asks
+  # before it takes a window. Naming the window for it here would answer that
+  # question in advance and in the wrong place — the child would then find a
+  # window named for the lane and bind by name, silently, from a guess nobody
+  # confirmed. So the inference is left exactly where it is: the child resolves
+  # it inside tmux and the picker asks. Precedence 3 cannot arise here either,
+  # because a record
   # whose window resolves was reused at step 2 and one whose window does not
   # resolve is not an answer at all.
   #
@@ -737,6 +889,20 @@ export_tmux_identity() {
   pane="$(tmux display-message -p '#{pane_id}' 2>/dev/null || true)"
   [[ -n "$session" ]] && export WORKBENCHES_TMUX_SESSION="$session"
   [[ -n "$pane" ]] && export WORKBENCHES_TMUX_PANE="$pane"
+  # PRE-EXISTING, found while testing opensoft/workBenches#96's fast-exit
+  # disambiguation (Copilot round 1): with no explicit return, this
+  # function's own exit status was its LAST command's — the `pane` line
+  # above — so a $TMUX set but pointing at a session or pane tmux can no
+  # longer answer for (exactly what an already-closed pane looks like from
+  # here) left both $session and $pane empty, made that last `&&` false, and
+  # this bare call at its one call site then killed the whole script under
+  # `set -e` before ever reaching lane resolution. Never reached before
+  # because every prior scenario had tmux answer SOMETHING for a live
+  # session; #96's own new coverage (FAKE_TMUX_DISPLAY_FAIL) is the first to
+  # make tmux fail outright — which is also the one production case, a pane
+  # already gone, that this whole function must not let a masked exit status
+  # cut the launch short over.
+  return 0
 }
 
 # Native Claude records ~/.local/bin/claude as its expected installation path.
@@ -823,10 +989,12 @@ profile_metadata() {
 #      `<@id>` first, else its `<session>:<index>`. New in Amendment 11 (SPEC
 #      §2), and reachable only because act 1 keeps the window: an exact match
 #      on the window the operator is standing in, so no question is asked.
-#   4. `lanes-edit.sh swapped <workstation>`, first row — the lane this
-#      workstation last PAUSED for a swap and has not resumed since (the
-#      record, Amendment 8(b)), read only inside tmux, because taking it means
-#      renaming a window.
+#   4. THE PICKER — `lane`, on PATH, run bare in this pane, given a terminal to
+#      ask on (lane-collision-protocol Amendment 18 Addendum 1, clause (i-5)).
+#      It lists this checkout's lanes (or, standing outside every checkout,
+#      every repository) as a numbered pick and asks one question; the pick is
+#      acted on before this launcher runs anything else. Read only inside
+#      tmux, for the same reason precedence 3 is: there is a pane to ask in.
 #   5. nothing: exactly today's behaviour, plus one line saying how to take a
 #      lane in this window — and not even that where the SessionStart hook of
 #      clause (e) is ensured, since that block says the same thing with the
@@ -835,20 +1003,31 @@ profile_metadata() {
 # 2 and 3 are certain — the operator is standing in the lane's own window, and
 # the two rules differ only in which end of that fact they read it from, the
 # window's name or the record's copy of its address — so both go to lane-start
-# BARE, byte-for-byte as an explicit `--lane` always did. 4 is a guess: the
-# newest record on the workstation, which on 2026-09-13 was 23 seconds ahead of
-# the next one (Evidence 1). It goes as `--confirm` and lane-start asks before
-# it renames the window. `--yes` is passed nowhere: it is inert in lane-start
-# unless `--confirm` came with it, and `--confirm` is the one case it must
-# never come with (F-W2, F-T8).
+# BARE, byte-for-byte as an explicit `--lane` always did. 4 IS NO LONGER A
+# GUESS THIS LAUNCHER CONFIRMS: the workstation's newest swap record used to be
+# handed to lane-start as `--confirm`, and on 2026-09-14T12:04Z that guess put
+# `openRepoShape-2` in front of an operator who wanted an openXfactory lane —
+# whose `N` at 12:07Z fell back to a bare resume (opensoft/workBenches#77).
+# `lane` (opensoft/openRepoTools#43) asks instead: this launcher hands it the
+# pane and STOPS, and `lane` performs whichever of the pick's three branches
+# applies — an available lane through lane-start, a live one through the
+# attach, an elsewhere one through clause (c)'s handoff request. `--yes` is
+# passed nowhere and `--confirm` is no longer PASSED anywhere in this file:
+# both were lane-start's, and lane-start is no longer how precedence 4 asks.
 #
-# NOTHING HERE REFUSES A LAUNCH, and after A8 Addendum 2 R-A8-3 that is true of
-# the composition and not just of this file: every probe that cannot be made —
-# no lane-start, no lanes-edit.sh, a lanes-edit.sh with no `swapped` yet, a
-# lane-start with no `--confirm` yet, no tmux to take a window in — falls back
-# to 4, and the one path that asks the operator a question launches Claude on
-# BOTH answers, because the `--confirm` case runs lane-start instead of exec'ing
-# it and catches a decline.
+# NOTHING HERE REFUSES A LAUNCH, WITH ONE NEW EXCEPTION AT 4. Every probe that
+# cannot be made — no lane-start, no lanes-edit.sh, no tmux to take a window in
+# — still falls back to 5, exactly as before. `lane`'s own exit 8 IS nothing
+# launched here, but it is NOT "the operator quit": it is narrower, meaning
+# there was NOTHING THERE TO PICK at all, whichever way that came back — a
+# listing, a `q`/`f`-only question, or a decline of one of those. Declining a
+# question that DID have a lane on it is exit 0, the same code an ACTED-ON
+# pick returns, because a person who declined the picker did not ask for a
+# bare session instead either: this launcher exits with `lane`'s own status
+# rather than starting one behind it, for the same reason a second Claude
+# behind an attach or a lane-start that already ran one would be the very
+# collision this protocol exists to prevent. Only `lane`'s exit 2, A REFUSAL,
+# falls through to 5, exactly as no `lane` on PATH or no terminal already did.
 #
 # AMENDMENT 11 (ratified 2026-09-13, "a11 1–5 yes, push them") changes three
 # things about the above and nothing about its order:
@@ -979,21 +1158,18 @@ export_lane_identity() {
   # this one refused — the same defeat one variable along. Where a lane WAS
   # handed over they are left exactly as the operator set them.
   #
-  # AND A `--confirm` LANE IS NOT A LANE THIS LAUNCHER KNOWS IT HANDED OVER.
-  # Precedence 4's newest-first row is an INFERENCE: `lane-start --confirm`
-  # asks, and on a DECLINE it starts bare Claude itself and exits 0 — the same
-  # 0 it returns having taken the lane. Nothing here can tell those apart
-  # afterwards, and the environment has to be right BEFORE. So the marker is
-  # published for the sources that are certain — `--lane`/`CLAUDE_LANE`, the
-  # window's own name, and the record naming THIS window, all of which reach
-  # lane-start bare — and withheld for the one that is a question. The cost is
-  # that an ACCEPTED confirm gets the guard's advice at 95% instead of its
-  # directive; the alternative is a DECLINED one writing a PAUSED record for a
-  # lane it does not hold, which is the collision this protocol exists to
-  # prevent. Under-firing is recoverable and over-firing is not, and clause (g)
-  # picks the same side ("the lane the launcher ALREADY KNOWS it handed over").
+  # A PICKER LANE NEVER REACHES HERE AT ALL, so this function no longer needs
+  # to tell a certain lane from a guessed one the way it did when precedence 4
+  # was `lane-start --confirm`. Lane-collision-protocol Amendment 18 Addendum 1
+  # clause (i-5) moved precedence 4's question out of this launcher and into
+  # `lane`, which this launcher hands the pane and STOPS beside: an accepted or
+  # a declined pick EXITS resolve_lane's caller before this function is ever
+  # called (precedence 4's exit 0 or 8), and a picker REFUSAL clears `lane` on
+  # the way back through precedence 5. So every lane reaching this point —
+  # flag, window, window-record — is one this launcher KNOWS it handed over,
+  # and the export is unconditional on `lane` alone.
   local handed_over=""
-  if [[ -n "${lane:-}" && "${lane_source:-}" != record ]]; then
+  if [[ -n "${lane:-}" ]]; then
     handed_over="$lane"
   fi
   if [[ -n "$handed_over" ]]; then
@@ -1262,6 +1438,34 @@ lane_window_is() {
   command -v tmux >/dev/null 2>&1 || return 1
   now="$(tmux display-message -p '#W' 2>/dev/null || true)"
   [[ -n "$now" && "$now" == "$want" ]]
+}
+
+lane_window_confirmed_elsewhere() {
+  # UNLIKE lane_window_is, false here means "not confirmed" rather than "no" —
+  # it covers both the window genuinely carrying this lane's name AND tmux
+  # being unreachable altogether (no tmux, or `display-message` itself
+  # failing, which is exactly what asking about a pane or session that has
+  # ALREADY CLOSED looks like). Only a read that SUCCEEDED and returned a
+  # DIFFERENT, non-empty name counts as confirmed (Copilot round 1 on
+  # opensoft/workBenches#96, claude-profile:2742 — `! lane_window_is` treated
+  # "unreadable" the same as "reads as something else", so a fast exit whose
+  # pane had already gone by the time this asked was misread as lane-start's
+  # own harmless refusal and its capture deleted, which is the one case this
+  # whole PR exists to keep). The lane defect capture's keep/delete decision
+  # is the only caller; nothing else needs this finer distinction.
+  local want="$1" now
+  # Copilot round 3 on opensoft/workBenches#96: `lane_window_is` and
+  # `export_tmux_identity` both require $TMUX before asking tmux anything;
+  # this one didn't, so a `--lane` launched genuinely OUTSIDE tmux (lane-start
+  # refuses that as its own status-1 environment case) could query whatever
+  # DEFAULT tmux server happens to be running on the machine — a stranger's
+  # session, unrelated to this launch — and read ITS current window's name as
+  # "confirmed elsewhere", deleting a capture that was never ambiguous to
+  # begin with.
+  [[ -n "${TMUX:-}" ]] || return 1
+  command -v tmux >/dev/null 2>&1 || return 1
+  now="$(tmux display-message -p '#W' 2>/dev/null)" || return 1
+  [[ -n "$now" && "$now" != "$want" ]]
 }
 
 lane_defect_retire_line() {
@@ -1535,10 +1739,18 @@ window_lane_answer=""
 }
 
 resolve_lane() {
-  # Sets `lane` and `lane_source` (flag|window|window-record|record, empty for
-  # none) from the Claude arguments this launch carries. Never fails, never
-  # refuses: a lane that cannot be resolved is today's behaviour.
-  local lanes_edit candidate first_row ref
+  # Sets `lane` and `lane_source` (flag|window|window-record, empty for none)
+  # from the Claude arguments this launch carries. Precedences 1 through 3
+  # never fail and never refuse, exactly as before. PRECEDENCE 4 CAN NOW END
+  # THE WHOLE LAUNCH: the picker's exit 0 or 8 (lane-collision-protocol
+  # Amendment 18 Addendum 1, clause (i-5)) leaves nothing for this function's
+  # caller to do — `lane` already acted on the pick, or the operator already
+  # declined it — so this function exits the process outright instead of
+  # returning. Only a picker REFUSAL (exit 2), no `lane` on PATH, or no
+  # terminal on stdin still return here, with `lane` empty and precedence 5
+  # next, exactly as no answer at precedence 4 always meant.
+  local lanes_edit ref lane_picker_status
+  local lane_window_before lane_window_after lane_picker_documented_prepick
   window_lane_answer=""
   if [[ -n "${lane:-}" ]]; then
     lane_source=flag
@@ -1546,144 +1758,233 @@ resolve_lane() {
   fi
   [[ "$no_lane" == false ]] || return 0
   claude_args_start_session "$@" || return 0
-  # NO LANE-START ON THIS MACHINE — said, never silent (Evidence 5). The two
-  # fences above stand: `--no-lane` is the operator's own word, and a launch
-  # that starts no conversation takes no lane in the first place, so neither is
-  # a degradation to report.
+  # NO LANE-START ON THIS MACHINE no longer returns HERE (Copilot round on
+  # #82, `claude-profile:1698`): two of `lane`'s three branches — LIVE HERE,
+  # the attach, and BOUND ELSEWHERE, the named refusal — never touch
+  # `lane-start` at all, so returning before precedence 4 denied both of them
+  # to a workstation that has `lane` and a tmux pane and is missing only
+  # `lane-start` or its sibling `lanes-edit.sh`. Precedences 2 and 3 below are
+  # THIS launcher's own reads and skip cleanly without them; the picker has
+  # its own copy of that same resolution and finds out for itself, refusing
+  # (exit 2) into precedence 5 exactly where this launcher used to stop
+  # anyway. `lane_note_no_lane_start`'s own richer line still runs there, said
+  # once and never doubled with the generic one (Evidence 5, F-W3).
+  lanes_edit=""
+  if command -v lane-start >/dev/null 2>&1; then
+    lanes_edit="$(lanes_edit_bin || true)"
+  fi
+  if [[ -n "$lanes_edit" ]]; then
+    # LANES_NO_FETCH=1 on every read below: they are on the path of every launch,
+    # and lanes-edit.sh otherwise fetches origin before it answers.
+    #
+    # PRECEDENCE 2 — THE WINDOW'S NAME. Only 0 is a lane. `register-row` answers
+    # 8 for a name with no row and 2 for a window name that is not even
+    # lane-shaped (`zsh`, `1:vim*`).
+    if [[ -n "${lane_window:-}" ]] \
+      && LANES_NO_FETCH=1 "$lanes_edit" register-row "$lane_window" >/dev/null 2>&1; then
+      lane="$lane_window"
+      lane_source=window
+      return 0
+    fi
+
+    # The record's lane is a guess about a WINDOW: `lane-start` takes it by
+    # renaming the current tmux window (Amendment 5(f)), so there has to be one.
+    # Outside tmux there is not — `WORKBENCHES_CLAUDE_TMUX=off`, a launch that is
+    # not on a tty — and a lane-start handed a lane it cannot take is how a
+    # resolution that "never refuses a launch" refuses one. An interactive launch
+    # with no TMUX re-execs into a session of its own before this runs, and the
+    # child resolves INSIDE tmux, where this test passes; so the case this closes
+    # is exactly the documented direct launch, which keeps its documented
+    # behaviour. The window rule above needs no such test: it has no lane to
+    # offer unless tmux named the window in the first place. THE PICKER BELOW
+    # NEEDS A TMUX PANE TOO (to ask in), so this stays a hard return rather
+    # than a fall-through to precedence 4 — unlike the two returns above it.
+    if [[ -z "${TMUX:-}" ]]; then
+      lane_note_no_lane
+      return 0
+    fi
+
+    # PRECEDENCE 3 (SPEC §2 row 3, new in Amendment 11) — THE RECORD FOR *THIS*
+    # WINDOW, and it is not a guess. Where a swap record's `window` sub-field
+    # names the window this command was typed in, the lane is an exact match on
+    # the window the operator is standing in — the same certainty the window NAME
+    # carries in precedence 2, arrived at from the other side — so it goes to
+    # lane-start BARE, with no `--confirm` and no question. Only if nothing names
+    # this window does precedence 4 apply, and that one is now a question `lane`
+    # asks (Amendment 18 Addendum 1) rather than a guess this launcher confirms.
+    #
+    # This is what makes a restart in the lane's own window silent even when the
+    # window has LOST its name: a tmux `automatic-rename` that fired, a window
+    # renamed by hand, a pane that came back as `zsh`.
+    #
+    # THE `<@id>` IS TRIED FIRST AND THE `<session>:<index>` SECOND, which is the
+    # amendment's own words (clause (b), SPEC §2 row 3). The id is the better key
+    # — a `<session>:<index>` is reused the instant a window closes and the next
+    # one takes its index, while an id is never reissued for the life of the
+    # server — so it is asked about before the ref is, and the ref is asked about
+    # only where the id answered nothing.
+    #
+    # AND EITHER IS TAKEN ONLY WHERE THAT WINDOW STILL EXISTS. Here that fence
+    # costs nothing to hold: both refs were read out of `tmux display-message` in
+    # `capture_lane_window` a moment ago, for the window this process is standing
+    # in, so the window they name is this one and it exists by construction.
+    # Outside tmux — act 1, where there is no current window — the fence is a
+    # live `display-message -t` probe, and `act1_window_reuse` makes it.
+    for ref in "${lane_window_id:-}" "${lane_window_ref:-}"; do
+      [[ -n "$ref" ]] || continue
+      if window_lane_read "$ref"; then
+        lane="$window_lane_answer"
+        lane_source=window-record
+        lane_note_read_failed
+        return 0
+      fi
+    done
+  fi
+
+  # PRECEDENCE 4 — THE PICKER (lane-collision-protocol Amendment 18 Addendum 1,
+  # clause (i-5)). THE WORKSTATION'S NEWEST SWAP RECORD IS NOT READ HERE ANY
+  # MORE: confirming that guess is what put `openRepoShape-2` — Eagle's newest
+  # swap — in front of an operator who typed `pclaude team-01b` wanting an
+  # openXfactory lane and answered `N` (opensoft/workBenches#77, measured
+  # 2026-09-14T12:04Z, opensoft/workBenches#79). `lane`
+  # (opensoft/openRepoTools#43), on PATH, given a terminal to ask on, asks
+  # instead of guessing: run BARE, it lists this checkout's lanes — or,
+  # standing outside every checkout, every repository — as a numbered pick,
+  # asks ONE question, and acts on the answer itself. So this launcher hands
+  # it the pane and STOPS, exactly as clause (i-5) rules: no `--dir`, no
+  # `--confirm`, and no other argument, because `lane` is not lane-start and
+  # answers for itself which checkout it is standing in.
+  #
+  # THE CONTRACT IS `lane`'S OWN, adopted alongside it by the same pull
+  # request:
+  #
+  #   exit 0  EITHER the pick was ACTED ON — an available lane through
+  #           lane-start (another launch of this same launcher, under the
+  #           profile the picker recorded), a lane live here through the
+  #           attach, or a lane bound elsewhere through clause (c)'s handoff
+  #           request — OR the operator DECLINED (`q`, or a blank line) a
+  #           question that had at least one lane to offer. Every one of the
+  #           first three may already have started a Claude of its own or
+  #           moved this window's contents somewhere else, and a decline asked
+  #           for nothing in this window either, so this launcher EXITS WITH
+  #           `lane`'S OWN STATUS instead of starting a second one behind it.
+  #   exit 8  NOTHING WAS THERE TO PICK, full stop — `lane`'s own count of
+  #           available-or-live-or-elsewhere lanes was zero, whether that was
+  #           printed as a listing (no terminal), asked as `f`/`q` only (a
+  #           terminal, but nothing to number), or reached by declining that
+  #           narrower question. A decline is 8 ONLY because there was nothing
+  #           behind it either — declining a question that DID have lanes on
+  #           it is exit 0, above, the same as taking one. Either way this
+  #           launcher starts nothing here: it exits with `lane`'s status.
+  #   exit 2  A REFUSAL — not an answer at all — and it falls through to
+  #           precedence 5 exactly as no `lane` on PATH, or no terminal, does.
+  #
+  # `lane --help` NAMES TWO MORE STATUSES, AND ONLY ONE OF THEM IS THIS
+  # LAUNCHER'S TO WALK PAST (Copilot round on #82, `claude-profile:1704`): 1,
+  # A READ FAILED (never "there are no lanes", Amendment 7(d)), and 64, a
+  # usage error — unreachable from here anyway, since this launcher hands
+  # `lane` no argument for a flag to be unknown or missing a value ABOUT.
+  # Both are, like 2, documented as PRE-PICK — every `die` call `lane` has
+  # for them runs during argument parsing or the read phase, never after an
+  # attach or an exec — so falling through to precedence 5 behind either
+  # risks nothing a fall-through behind 2 does not already risk, PROVIDED
+  # the pick really was never reached.
+  #
+  # AND "PROVIDED" IS NOT RHETORICAL (Copilot round 2 on #82,
+  # `claude-profile:1743`, a gap in this round's own first pass): `lane`'s
+  # AVAILABLE branch does not run and wait for the launch it picks, it
+  # `exec`s into `pclaude --lane <lane> <profile>` and exits with whatever
+  # THAT chain ends with — Claude's own status, ordinarily, which can
+  # plausibly BE 1 or 2 just as `lane`'s own pre-pick codes can, and this
+  # launcher cannot tell the two apart by NUMBER ALONE once an unbroken
+  # chain of `exec`s is what carried it out. The window's name is the one
+  # thing an actually-taken lane changes on the way through — lane-start
+  # renames it the moment it takes one (Amendment 5(f)) — so 1, 2 and 64 are
+  # trusted as pre-pick only where the window was NOT renamed; a renamed
+  # window means a lane WAS taken and this status is Claude's own to keep,
+  # exactly like 0 and 8 below.
+  #
+  # A STATUS THIS LAUNCHER DOES NOT RECOGNISE AT ALL — a signal (130), a
+  # crash, anything `lane --help` does not name — gets NO SUCH BENEFIT OF
+  # THE DOUBT EITHER WAY: `lane` may already have attached a live lane or
+  # exec'd an available one before dying this way, and starting a bare
+  # Claude behind that would be the second process this whole protocol
+  # exists to prevent. So it is propagated exactly as 0 and 8 are (below),
+  # never treated as a refusal this launcher can safely walk past.
+  #
+  # NO TERMINAL, NO QUESTION: an agent's stdin is not one, and a picker that
+  # asked it would hang the one caller that can never answer — precedence 5's
+  # own fence, asked here one step early so the picker is never even started.
+  if command -v lane >/dev/null 2>&1 && [[ -n "${TMUX:-}" ]] && [[ -t 0 ]]; then
+    # THE WINDOW'S NAME, READ BEFORE `lane` RUNS AT ALL (Copilot round 2 on
+    # #82, `claude-profile:1743`; a gap in this same round's own first pass).
+    # `lane`'s AVAILABLE branch does not run and wait for the launch it
+    # picks — it `exec`s straight into `pclaude --lane <lane> <profile>`
+    # (adopted by the same pull request), which this launcher's own code
+    # elsewhere `run`s rather than `exec`s lane-start from, but STILL ENDS
+    # by exiting with the status THAT run produced — Claude's own, in the
+    # ordinary case. So a status this function reads back from `lane` is not
+    # always `lane`'s OWN: an unbroken chain of `exec`s can carry a fully-run
+    # Claude session's exit code all the way out through `lane`'s own pid,
+    # indistinguishable by NUMBER ALONE from a `die` `lane` raised before
+    # ever picking anything. 1 and 2 are `lane --help`'s own read-failure and
+    # refusal codes, but Claude can plausibly exit with either too — so
+    # "provably pre-pick" (below) is only true when NOTHING was picked, and
+    # the window's name is the one thing an actually-taken lane changes on
+    # its way through: lane-start renames it the moment it takes one
+    # (Amendment 5(f)), exactly the tell `lane_window_is` already reads
+    # elsewhere in this file for the SAME ambiguity one layer up (a
+    # lane-start that declined a confirm versus one that took the lane and
+    # whose Claude then exited on its own).
+    lane_window_before="$(tmux display-message -p '#W' 2>/dev/null || true)"
+    set +e
+    lane
+    lane_picker_status=$?
+    set -e
+    lane_window_after="$(tmux display-message -p '#W' 2>/dev/null || true)"
+    lane_picker_documented_prepick=false
+    case "$lane_picker_status" in
+      1|2|64) [[ "$lane_window_after" == "$lane_window_before" ]] && lane_picker_documented_prepick=true ;;
+    esac
+    if [[ "$lane_picker_documented_prepick" == false ]]; then
+      # 0, 8, AN UNDOCUMENTED STATUS, OR ANY OF 1/2/64 BEHIND A RENAMED
+      # WINDOW land here together: the first two because the pick was acted
+      # on, declined, or there was nothing to offer; the third because it
+      # earns no assumption that `lane` did nothing (above); the fourth
+      # because the window already proved otherwise — a lane WAS taken, so
+      # this status is whatever that run ended with, never lane's own to
+      # walk past. Either way this launcher must not start a second Claude
+      # behind whatever already ran, so `lane`'s own status is this
+      # launcher's own.
+      #
+      # A NOTE QUEUED BY AN EARLIER PRECEDENCE IS NOT THIS EXIT'S TO SWALLOW.
+      # `lane_read_note` at this point is never about the picker — it is a
+      # caller-bug diagnostic left behind by precedence 3's own read (SPEC
+      # §2's "a failed read … is named where it failed"), and this launcher
+      # never degrades in silence (Evidence 5) whether or not the step after
+      # the failure goes on to answer. Precedence 5 flushes the same note the
+      # same way when the picker is never reached at all; this is the one
+      # exit that bypasses precedence 5 entirely, so it flushes here instead.
+      lane_note_read_failed
+      exit "$lane_picker_status"
+    fi
+    # DOCUMENTED, AND PRE-PICK ONLY WHERE THE WINDOW SAYS SO TOO (checked
+    # above): an unrenamed window is what actually proves nothing was
+    # picked, and falling through here risks nothing a fall-through behind a
+    # plain refusal (2) does not already risk. NEVER CALLED "A REFUSAL"
+    # itself: 2 is, but 1 is not, and this line does not know which of the
+    # three it is looking at. The number is kept rather than paraphrased, so
+    # whoever reads it can look the status up in `lane --help` themselves.
+    lane_read_note="${lane_read_note:-lane exited $lane_picker_status, so this window takes no lane}"
+  fi
+  # PRECEDENCE 5 — no lane, one notice, and still a launch. `lane_note_no_lane_start`
+  # RUNS HERE, NOT ABOVE, THE ONE TIME IT IS NEEDED (Copilot round on #82,
+  # `claude-profile:1698`): `lane-start` being missing no longer exits this
+  # function early, so its own richer line waits until every other door —
+  # the picker included — has already been tried and found nothing.
   if ! command -v lane-start >/dev/null 2>&1; then
     lane_note_no_lane_start
-    return 0
-  fi
-  lanes_edit="$(lanes_edit_bin || true)"
-  if [[ -z "$lanes_edit" ]]; then
-    lane_note_no_lane
-    return 0
-  fi
-
-  # LANES_NO_FETCH=1 on every read below: they are on the path of every launch,
-  # and lanes-edit.sh otherwise fetches origin before it answers.
-  #
-  # PRECEDENCE 2 — THE WINDOW'S NAME. Only 0 is a lane. `register-row` answers
-  # 8 for a name with no row and 2 for a window name that is not even
-  # lane-shaped (`zsh`, `1:vim*`).
-  if [[ -n "${lane_window:-}" ]] \
-    && LANES_NO_FETCH=1 "$lanes_edit" register-row "$lane_window" >/dev/null 2>&1; then
-    lane="$lane_window"
-    lane_source=window
-    return 0
-  fi
-
-  # The record's lane is a guess about a WINDOW: `lane-start` takes it by
-  # renaming the current tmux window (Amendment 5(f)), so there has to be one.
-  # Outside tmux there is not — `WORKBENCHES_CLAUDE_TMUX=off`, a launch that is
-  # not on a tty — and a lane-start handed a lane it cannot take is how a
-  # resolution that "never refuses a launch" refuses one. An interactive launch
-  # with no TMUX re-execs into a session of its own before this runs, and the
-  # child resolves INSIDE tmux, where this test passes; so the case this closes
-  # is exactly the documented direct launch, which keeps its documented
-  # behaviour. The window rule above needs no such test: it has no lane to
-  # offer unless tmux named the window in the first place.
-  if [[ -z "${TMUX:-}" ]]; then
-    lane_note_no_lane
-    return 0
-  fi
-
-  # PRECEDENCE 3 (SPEC §2 row 3, new in Amendment 11) — THE RECORD FOR *THIS*
-  # WINDOW, and it is not a guess. Where a swap record's `window` sub-field
-  # names the window this command was typed in, the lane is an exact match on
-  # the window the operator is standing in — the same certainty the window NAME
-  # carries in precedence 2, arrived at from the other side — so it goes to
-  # lane-start BARE, with no `--confirm` and no question. Only if nothing names
-  # this window does the newest-first guess of precedence 4 apply, and that one
-  # is still confirmed.
-  #
-  # This is what makes a restart in the lane's own window silent even when the
-  # window has LOST its name: a tmux `automatic-rename` that fired, a window
-  # renamed by hand, a pane that came back as `zsh`.
-  #
-  # THE `<@id>` IS TRIED FIRST AND THE `<session>:<index>` SECOND, which is the
-  # amendment's own words (clause (b), SPEC §2 row 3). The id is the better key
-  # — a `<session>:<index>` is reused the instant a window closes and the next
-  # one takes its index, while an id is never reissued for the life of the
-  # server — so it is asked about before the ref is, and the ref is asked about
-  # only where the id answered nothing.
-  #
-  # AND EITHER IS TAKEN ONLY WHERE THAT WINDOW STILL EXISTS. Here that fence
-  # costs nothing to hold: both refs were read out of `tmux display-message` in
-  # `capture_lane_window` a moment ago, for the window this process is standing
-  # in, so the window they name is this one and it exists by construction.
-  # Outside tmux — act 1, where there is no current window — the fence is a
-  # live `display-message -t` probe, and `act1_window_reuse` makes it.
-  for ref in "${lane_window_id:-}" "${lane_window_ref:-}"; do
-    [[ -n "$ref" ]] || continue
-    if window_lane_read "$ref"; then
-      lane="$window_lane_answer"
-      lane_source=window-record
-      lane_note_read_failed
-      return 0
-    fi
-  done
-
-  # PRECEDENCE 4 — THE WORKSTATION'S NEWEST SWAP, and it IS a guess about which
-  # window, so it is handed to lane-start as `--confirm` and lane-start asks.
-  # 0 with rows `<lane>\t<UTC>\t<window>[\t<dir>]`, most recent first; 8 with
-  # none. The contract is the TAB: a row without one is not that shape.
-  swapped_read
-  # ...and where the read could not be MADE because this container names no
-  # workstation (Evidence 6), that is named HERE — at the one step that wanted
-  # it — and not by the read itself, which the directory order also calls and
-  # which has its own line for a directory it could not learn.
-  # NO APOSTROPHE IN THIS DEFAULT, and that is not style: bash reads a `'` inside
-  # a `${x:-word}` as opening a quote, so one here swallows the rest of the file
-  # and every function defined below it goes missing at run time.
-  #
-  # AND WHETHER `bash -n` CATCHES IT DEPENDS ON WHAT FOLLOWS, WHICH IS WHY THE
-  # SUITE NOW RUNS `shellcheck` BESIDE IT (CF-W4, corrected under `R-A11-16`).
-  # Measured on this workstation, GNU bash 5.2.21, by putting one apostrophe
-  # into this very default and running both tools over THIS file:
-  #   $ bash -n base-image/files/claude-profile      -> exit 0, says nothing
-  #   $ shellcheck -S error base-image/files/claude-profile
-  #                                                  -> SC1073/SC1072, :1382
-  # (the `$ ` prompts are load-bearing: a comment line that starts with the
-  # linter's own name is read as a shellcheck DIRECTIVE and fails the gate —
-  # measured here the moment this comment was first written.)
-  # `bash -n` sees a syntax error only where the stray quote is still open at
-  # END OF FILE. Every apostrophe below it can close it again — and a file this
-  # size has many — after which the file parses perfectly while everything
-  # between the two lives inside a string. The confirmation review measured a
-  # three-line file, where the quote does reach EOF unbalanced and `bash -n`
-  # does exit 2; both measurements are right, and the difference is exactly what
-  # follows the trap. So the claim this comment used to make is true of this
-  # file and false in general, and neither wording is a reason to skip the
-  # check: the linter is the half that holds this class, the gate at the top of
-  # `test-claude-profile-amendment-11.sh` runs both, and the comment stays
-  # because the failure mode is invisible on INSPECTION — the file still reads
-  # like bash, and the loss shows up as a function that is simply not there.
-  if [[ -n "${swapped_ws_unknown:-}" ]]; then
-    lane_read_note="${lane_read_note:-this is a container and LANES_WORKSTATION names no workstation, so the swap records for this workstation were not read (new-workstation#20, Evidence 6); the launcher on the host exports it into every session and container it starts, so set LANES_WORKSTATION=<workstation> here}"
-  fi
-  first_row="$(printf '%s\n' "${swapped_rows:-}" | head -n 1)"
-  if [[ "${swapped_status:-8}" -eq 0 && -n "${swapped_rows:-}" && "$first_row" == *$'\t'* ]]; then
-    candidate="${first_row%%$'\t'*}"
-    if [[ "$candidate" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
-      lane="$candidate"
-      lane_source=record
-      lane_note_read_failed
-      return 0
-    fi
-  fi
-  # A lanes-edit.sh from before Amendment 8 exits 2 because it has no `swapped`
-  # subcommand at all — but 2 is also its usage code, so a caller bug would look
-  # exactly like an old helper and degrade to case 5 in silence (F-W4). The
-  # status cannot tell them apart; the helper's own words can, because it says
-  # "unknown subcommand" for the one and not for the other. An old helper is
-  # expected and silent. A caller bug gets one line, and still a launch.
-  if [[ "${swapped_status:-8}" -ne 0 && "${swapped_status:-8}" -ne 8 \
-        && "${swapped_reason:-}" != *"unknown subcommand"* ]]; then
-    lane_read_note="lanes-edit.sh ${swapped_argv[*]} exited ${swapped_status} without calling it an unknown subcommand, so this is a caller bug and not an old helper"
-  fi
-  # PRECEDENCE 5 — no lane, one notice, and still a launch.
-  if [[ -n "${lane_read_note:-}" ]]; then
+  elif [[ -n "${lane_read_note:-}" ]]; then
     lane_note_no_lane "$lane_read_note"
     lane_read_note=""
   else
@@ -2069,24 +2370,43 @@ in FIVE steps, first answer wins and --no-lane beating all of them:
     where `lanes-edit.sh register-row <name>` exits 0
   3 the swap record whose `window` sub-field NAMES THIS WINDOW — its
     <@id> first, else its <session>:<index>                          no question
-  4 `lanes-edit.sh swapped <ws>`, first row — the lane this
-    workstation last paused for a swap and has not resumed since,
-    handed over as --confirm                                    ONE confirmation
+  4 THE PICKER: `lane`, on PATH, given a terminal to ask on — lists
+    lanes, asks ONE question, and acts on the pick itself (lane-       lane acts, this
+    collision-protocol Amendment 18 Addendum 1, clause (i-5))         launcher stops
   5 nothing: bare Claude, one notice, and still a launch
 
 STEP 3 IS NEW IN AMENDMENT 11 and it is the one that asks nothing where the
 window has LOST its name — an automatic-rename that fired, a rename by hand, a
 pane that came back as `zsh`. It is an exact match on the window you are
-standing in, so it goes to lane-start bare, exactly as steps 1 and 2 do. Only
-step 4 is a guess, and only step 4 is confirmed; BOTH of its answers start
-Claude, one of them with no lane. A read that FAILS falls to the next step and
-is named where it failed — never to step 5, which would skip the step that
-answers on every workstation whose helper is not upgraded yet. With no answer
-at all, and with --no-lane, behaviour is unchanged. There is no /restart on
-this path.
+standing in, so it goes to lane-start bare, exactly as steps 1 and 2 do. A read
+that FAILS falls to the next step and is named where it failed — never to step
+5, which would skip the step that answers on every workstation whose helper is
+not upgraded yet.
+
+STEP 4 IS NO LONGER A GUESS THIS LAUNCHER CONFIRMS (lane-collision-protocol
+Amendment 18 Addendum 1, clause (i-5)): it hands the pane to `lane`, which
+lists lanes and asks ONE question of its own, and this launcher exits with
+whatever `lane` decided rather than starting anything itself. An ACTED-ON pick
+or a DECLINE of a question that had a lane on it (`lane` exit 0) starts nothing
+here at all, and neither does NOTHING TO PICK (`lane` exit 8, which is what a
+decline is too where nothing was offered) — only a REFUSAL (`lane` exit 2, or
+`lane`'s own read failing, exit 1) falls through to step 5, exactly as no
+`lane` on PATH or no terminal does, and only where this window's name says a
+lane was never actually taken first (`lane`'s own AVAILABLE branch execs
+into a launch that can end with any status once it renames this window for
+the lane it took, and that status is kept rather than walked past); an exit
+this launcher does not recognise at all is propagated rather than treated as
+either. With no answer at all, and with --no-lane, behaviour is unchanged.
+There is no /restart on this path. Nor
+does missing `lane-start` or its sibling `lanes-edit.sh` skip this step: two of
+`lane`'s three branches (attaching to a lane already live, or a named refusal
+for one bound elsewhere) never touch `lane-start` at all, so this launcher
+still hands `lane` the pane and lets IT find out what it can do.
 
 AND THIS LAUNCHER NEVER DEGRADES IN SILENCE (new-workstation#20, Evidence 5).
-Every lane above is taken by RUNNING `lane-start`, which is also the only thing
+Every lane taken through THIS LAUNCHER'S OWN lane-start call — steps 1 through
+3, and step 4's AVAILABLE branch, which is another launch of this launcher —
+is taken by RUNNING `lane-start`, which is also the only thing
 that names the session for the lane — Amendment 2's messaging address, the third
 leg of the identity beside the window's name and the transcript. (`lane-start`
 passes `--name <lane>` on EVERY launch branch it has — the two that RESUME as
@@ -2113,22 +2433,25 @@ up with no stamp, no lane and a derived session name before anything said so.
 
 AND WHAT THE SESSION INHERITS IS WHAT THIS LAUNCH ACTUALLY HANDED OVER.
 WORKBENCHES_CLAUDE_LANE is the usage guard's fence for the automatic swap, and
-it is exported only for a lane this launcher KNOWS it handed over: steps 1, 2
-and 3, which reach lane-start bare. Step 4's --confirm lane is a QUESTION —
-lane-start asks, and a decline starts bare Claude itself and exits 0, the same
-status it returns having taken the lane — so the marker is withheld there and
-the guard gives its 95% advice rather than its directive. Where no lane is
+it is exported for every lane this launcher KNOWS it handed over: steps 1, 2
+and 3, which reach lane-start bare. STEP 4 NEVER REACHES THIS EXPORT AT ALL
+(Amendment 18 Addendum 1): `lane` asks its own question in its own process,
+and this launcher has already exited with `lane`'s status by the time an
+answer exists, with nothing of its own left to publish. Where no lane is
 handed over at all (--no-lane, a lane-start refusal, a recorded directory that
 is gone, or no answer from any step) every lane variable is REMOVED rather than
 merely not set, CLAUDE_LANE and CLAUDE_LANE_DIR included: an inherited one is a
 nested launch re-selecting a lane nobody handed it.
 
-AND THE WORKSTATION STEP 4 READS IS CONFIGURED, NOT GUESSED (Evidence 6). The
-swap records are keyed on the workstation, and LANES_WORKSTATION is the estate's
-own word for it. Inside a container `hostname` is the container's id — a machine
-that has existed for an hour — so where nothing is configured THERE, the records
-are not read at all and the one line says so and names LANES_WORKSTATION.
-Outside a container `hostname` stands exactly as it always did.
+AND THE WORKSTATION THE SWAP RECORDS ARE KEYED ON IS CONFIGURED, NOT GUESSED
+(Evidence 6) — read by the directory order's rung 2 and by act 1's own
+window-reuse guess, both still `swapped`'s, and no longer by step 4, which is
+`lane`'s question now and not a read this file makes. LANES_WORKSTATION is the
+estate's own word for it. Inside a container `hostname` is the container's id
+— a machine that has existed for an hour — so where nothing is configured
+THERE, the records are not read at all and the one line says so and names
+LANES_WORKSTATION. Outside a container `hostname` stands exactly as it always
+did.
 
 AND THIS LAUNCHER IS WHAT SETS IT (`R-A11-14`). The value is resolved once on
 the HOST and exported into the session this launch starts — threaded across the
@@ -2180,9 +2503,11 @@ existence, exactly as rung 1 already was. Where nothing was learnt, nothing is
 entered and the launcher says so in the one line it prints.
 
 NO PATH THE LAUNCHER OPENED EXITS THE PANE. lane-start is run, never exec'd:
-if it refuses — a directory that is not there, a lane held live elsewhere, a
-declined confirm — its own refusal is printed and Claude starts bare in the
-same window, with one line saying so.
+if it refuses — a directory that is not there, a lane held live elsewhere —
+its own refusal is printed and Claude starts bare in the same window, with
+one line saying so. (Not "a declined confirm": this launcher hands lane-start
+no lane source that carries `--confirm` any more — that was the retired
+swap-record guess's alone, lane-collision-protocol Amendment 18 Addendum 1.)
 
 THE SCOPE OF THAT PROMISE, EXACTLY (Amendment 11, `R-A11-4`; RV-W3, closed by
 `R-A11-16`). It is held wherever this process is the only command of its pane.
@@ -2357,7 +2682,8 @@ case "$action" in
         lane_argv=(lane-start)
         # Amendment 11(3). `--dir` is lane-start's oldest option, but a
         # lane-start that somehow has none must not be handed one: the probe is
-        # the same `--help` read `--confirm` uses, and it is made once.
+        # the same `--help` read every capability check in this launcher
+        # shares, and it is made once.
         if [[ -n "${lane:-}" && -n "${lane_dir:-}" ]]; then
           if lane_start_supports --dir; then
             lane_argv+=(--dir "$lane_dir")
@@ -2366,25 +2692,17 @@ case "$action" in
             lane_dir_source=""
           fi
         fi
-        if [[ -n "${lane:-}" && "$lane_source" == record ]]; then
-          # A lane read from the record is a guess about a window nobody has
-          # named yet, so lane-start must ask before it takes it — and a
-          # lane-start that cannot ask is not handed the guess at all. One
-          # operator, one situation, ONE line, and it names the lane it left
-          # (F-W3).
-          if lane_start_supports --confirm; then
-            lane_argv+=(--confirm)
-          else
-            lane_note_no_lane "$lane is the lane this workstation last paused for a swap, but this lane-start cannot ask before it takes a window (no --confirm), so it is left"
-            lane=""
-          fi
-        fi
-        # `--yes` is passed nowhere (F-W2, F-T8): it is inert in lane-start
-        # unless `--confirm` came with it, and `--confirm` is the one case it
-        # must never come with, since answering the question in advance is the
-        # opposite of asking it. A window lane and an operator's `--lane` go
-        # over bare — byte-for-byte what `--lane` did before this default
-        # existed.
+        # PRECEDENCE 4's swap-record guess no longer reaches this point at all
+        # (lane-collision-protocol Amendment 18 Addendum 1, clause (i-5)):
+        # `resolve_lane` either exits the whole launch already — the picker's
+        # exit 0 or 8 — or returns with `lane` empty on a picker refusal, no
+        # `lane` on PATH, or no terminal. So `lane_source` is never `record`
+        # here any more, and every lane this launcher still hands to
+        # lane-start — flag, window, window-record — is one lane-start may
+        # take BARE, byte for byte what `--lane` always did: no `--confirm`,
+        # and therefore no `--yes` beside it either (`--yes` was always inert
+        # unless `--confirm` came with it, and this launcher passes
+        # `--confirm` to lane-start nowhere any more).
         claude_flags=(--allow-dangerously-skip-permissions
                       --dangerously-skip-permissions
                       --permission-mode bypassPermissions)
@@ -2423,18 +2741,157 @@ case "$action" in
           # made before that process has drained it would race an
           # almost-instantly-declined confirm (the fake this PR's test uses
           # is exactly that race, made deterministic by this wait).
+          # NO AGE-BASED SWEEP OF OLD KEPT CAPTURES (Copilot round 1 on
+          # opensoft/workBenches#96 added one, `-mmin +60`, on the reasoning
+          # that a capture's mtime stops moving once the tee that owns it
+          # stops writing; round 2 found the reasoning wrong — an ordinary
+          # interactive Claude session's own display goes to stdout, so a
+          # session can sit fully alive for well over an hour without ONE
+          # byte landing on the stderr this tees, leaving a live capture's
+          # mtime just as stale as an abandoned one's. `rm`ing it out from
+          # under that still-open tee does not corrupt the WRITING
+          # process's own data (the inode survives as long as its fd is
+          # open), but it does mean that same launch's own later keep/print
+          # logic — path-based, like the truncation right below — finds
+          # nothing there once it finally runs. A time-only signal cannot
+          # tell "quiet but alive" from "abandoned", and getting this wrong
+          # loses evidence a live session still owns, which is worse than
+          # the unbounded-across-TIME accumulation it would have bounded;
+          # a correct version needs to know the owning process is actually
+          # dead (a pid recorded alongside the capture, checked with `kill
+          # -0`), which is a distinct feature this issue never asked for.
+          # The per-file byte cap right below still bounds any ONE capture,
+          # kept or not, and carries no such risk — it only ever touches
+          # the file THIS invocation itself owns.
           lane_defect_capture="$(mktemp "${TMPDIR:-/tmp}/pclaude-lane-defect.XXXXXX")"
+          # THE PATH IS PRINTED BEFORE THE EXEC (opensoft/workBenches#95): a
+          # launcher-made window that exits fast can take this whole pane —
+          # and the live tee below with it — the instant the command below
+          # returns, so this is the one line an operator glancing at a pane
+          # already on its way out, or a terminal whose scrollback outlives
+          # the pane by a moment, might still catch. Belt and braces beside
+          # the keep-and-print below, never the load-bearing half alone.
+          echo "pclaude: lane defect capture: $lane_defect_capture" >&2
+          lane_defect_fast_exit_seconds="${WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS:-20}"
+          # VALIDATED (Copilot round 2 on opensoft/workBenches#96,
+          # claude-profile:2756): a malformed or negative override reaching
+          # the `-ge` comparison below is not just a stray "integer
+          # expression expected" on stderr — a NEGATIVE number would make
+          # that comparison true for status 0 no matter how fast the run
+          # was, silently defeating the whole keep rule it guards. Anything
+          # that is not a bare non-negative integer falls back to the
+          # documented default instead of reaching that comparison at all.
+          [[ "$lane_defect_fast_exit_seconds" =~ ^[0-9]+$ ]] \
+            || lane_defect_fast_exit_seconds=20
+          # NORMALIZED, NOT JUST SHAPE-CHECKED (Copilot round 3 on
+          # opensoft/workBenches#96, claude-profile:2776): the regex above
+          # accepts "08"/"09"/"010" as digit strings, but `[[ -ge ]]` reads a
+          # leading-zero operand as OCTAL — "08" and "09" are not even valid
+          # octal digits and error outright, and "010" silently means 8, not
+          # the ten someone typed. Stripped down to the decimal number it
+          # looks like ("0" itself left alone) before it is ever compared.
+          while [[ "$lane_defect_fast_exit_seconds" == 0* \
+            && "${#lane_defect_fast_exit_seconds}" -gt 1 ]]; do
+            lane_defect_fast_exit_seconds="${lane_defect_fast_exit_seconds#0}"
+          done
+          lane_defect_started="$SECONDS"
           set +e
           exec 9> >(tee "$lane_defect_capture" >&2)
           lane_defect_tee_pid=$!
           CLAUDE_CONFIG_DIR="$config_dir" CLAUDE_BIN="$claude_bin" \
             "${lane_argv[@]}" "$lane" -- "${claude_flags[@]}" "$@" 2>&9
           lane_status=$?
+          # CAPTURED HERE, NOT AFTER `wait` (Copilot round 3 on
+          # opensoft/workBenches#96, claude-profile:2814): `wait` only
+          # rejoins the TEE process, which can still be draining buffered
+          # output for a moment after the command it was reading from has
+          # already exited. Timing the LANE COMMAND — was $lane_status
+          # decided fast? — means stopping the clock the instant it is
+          # decided, not after whatever the tee has left to flush.
+          lane_defect_elapsed=$(( SECONDS - lane_defect_started ))
           exec 9>&-
           wait "$lane_defect_tee_pid" 2>/dev/null
           set -e
           lane_defect_line="$(lane_defect_retire_line "$lane_defect_capture" || true)"
-          rm -f "$lane_defect_capture"
+          # opensoft/workBenches#95: an UNCONDITIONAL `rm -f` here deleted the
+          # only evidence of a fast exit in the same breath the window that
+          # showed it live could also be gone. KEPT now unless this run is
+          # provably nothing new: statuses 1 and 2 are lane-start's own two
+          # documented refusals (below) — nothing renamed, nothing written,
+          # Claude never started — so they are redundant with what already
+          # printed live, PROVIDED the window is CONFIRMED not already the
+          # lane's own — a read that succeeded and named something else, not
+          # merely a read that failed (`lane_window_confirmed_elsewhere`,
+          # Copilot round 1 on #96: tmux being unreachable looks exactly like
+          # the pane this launcher would be keeping evidence FOR having
+          # already closed, so unreadable keeps rather than deletes). Where
+          # the window IS the lane's, or is unreadable, that same status could
+          # just as easily be a Claude lane-start took the lane and exec'd
+          # (Evidence 2/5g), and the ambiguity is exactly why this keeps
+          # rather than guesses. A status 0 that held the pane at least
+          # $lane_defect_fast_exit_seconds is an ordinary long-lived run and
+          # is deleted; anything faster, or any other status, is kept with
+          # its tail printed below — "nothing to see" and "the evidence of
+          # what broke" look identical from a status and an elapsed time
+          # alone, and guessing wrong the deleting way is the bug this
+          # closes. ($lane_defect_elapsed itself was captured right after
+          # $lane_status, above — before `wait`, not after.)
+          lane_defect_clean=false
+          if { [[ "$lane_status" -eq 1 || "$lane_status" -eq 2 ]] \
+              && lane_window_confirmed_elsewhere "$lane"; } \
+            || { [[ "$lane_status" -eq 0 ]] \
+              && [[ "$lane_defect_elapsed" -ge "$lane_defect_fast_exit_seconds" ]]; }; then
+            lane_defect_clean=true
+          fi
+          if [[ "$lane_defect_clean" == true ]]; then
+            rm -f "$lane_defect_capture"
+          else
+            # BOUND WHAT IS KEPT, NOT JUST WHAT IS PRINTED (Copilot round 1 on
+            # opensoft/workBenches#96, claude-profile:2752, revised round 2
+            # and round 3): the tail below is 15 lines, but until now the
+            # FILE ITSELF carried the whole stderr stream, unbounded — one
+            # very chatty fast exit could keep megabytes. BY BYTES, not
+            # lines (round 2: a line-count cap does not bound storage
+            # against one very long line), and written with `mktemp` rather
+            # than a plain redirect (round 2: a plain `>` creates the
+            # replacement under the shell's umask — commonly
+            # world-readable, unlike the original capture's own 0600 — and
+            # a predictable `.trunc` name in a shared TMPDIR can be
+            # pre-planted as a symlink). There is NO sweep of OLD kept
+            # captures across separate invocations — round 1 added one,
+            # round 2 retracted it as unsafe (see the comment above the
+            # mktemp this file's own capture came from) — so 200000 bytes
+            # only bounds any ONE capture, never how many accumulate over
+            # time. The LIVE stream this tees from is left unbounded on
+            # purpose, so the operator watching it live still sees
+            # everything, exactly as documented above. EVERY STEP HERE IS
+            # GUARDED (round 3: `mktemp`/`tail`/`mv` were bare statements
+            # after `set -e` was restored, so any one of them failing —
+            # disk pressure, most plausibly — killed the launcher before it
+            # ever reached the tail-and-causes print below, the opposite of
+            # "best-effort"): a failed `mktemp` leaves nothing to truncate
+            # into and this is skipped; a failed `tail` or `mv` cleans up
+            # its own scratch file and leaves the untruncated capture in
+            # place, oversized rather than lost.
+            if [[ "$(wc -c < "$lane_defect_capture" 2>/dev/null)" -gt 200000 ]]; then
+              lane_defect_trunc=""
+              lane_defect_trunc="$(mktemp "$lane_defect_capture.trunc.XXXXXX" 2>/dev/null)" \
+                || lane_defect_trunc=""
+              if [[ -n "$lane_defect_trunc" ]]; then
+                if tail -c 200000 "$lane_defect_capture" > "$lane_defect_trunc" 2>/dev/null; then
+                  mv -f "$lane_defect_trunc" "$lane_defect_capture" 2>/dev/null \
+                    || rm -f "$lane_defect_trunc"
+                else
+                  rm -f "$lane_defect_trunc"
+                fi
+              fi
+            fi
+            {
+              echo "pclaude: $lane exited after ${lane_defect_elapsed}s (status $lane_status); lane defect capture kept: $lane_defect_capture"
+              tail -n 15 "$lane_defect_capture"
+              echo "pclaude: known causes — a title resume opened the interactive picker: resume by the exact uuid instead; a background or fork holder: claude agents, or claude attach <id>, or lane-end $lane --retire <pid>"
+            } >&2
+          fi
           # WHICH STATUSES ARE LANE-START'S OWN. It documents exactly two:
           # 1 environment — not inside tmux, no register, NO SUCH DIRECTORY —
           # and 2 refusal — an argument error, a name a window cannot take, a

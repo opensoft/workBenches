@@ -621,7 +621,12 @@ shape_rollback_spec_worktree() {
     >&2 echo "[specify] Rolling back the spec leg worktree after the code leg failed."
     git -C "$SPEC_LEG" worktree remove --force "$SPEC_WORKTREE_PATH" >/dev/null 2>&1 \
         || rm -rf "$SPEC_WORKTREE_PATH" >/dev/null 2>&1 || true
-    git -C "$SPEC_LEG" worktree prune >/dev/null 2>&1 || true
+    # Not a blanket `worktree prune`: that drops every registration this
+    # process cannot see, including another lane's worktree merely outside
+    # this container's mount (opensoft/workBenches#87).
+    # git_worktree_prune_visible (git-common.sh) clears only what it can
+    # actually tell is gone.
+    git_worktree_prune_visible "$SPEC_LEG" "$WORKTREE_ROOT" || true
     if [ "$created_branch" = true ]; then
         git -C "$SPEC_LEG" branch -D "$BRANCH_NAME" >/dev/null 2>&1 || true
     fi

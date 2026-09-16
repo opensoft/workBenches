@@ -189,6 +189,16 @@ if [[ ! -x "$prepare_script" ]]; then
     exit 1
 fi
 
+if [[ "$container" == "py-bench" && "$container_exists" != true ]] \
+    && ! docker image inspect "$base_image" >/dev/null 2>&1; then
+    pybench_ensure_images="$bench_dir/scripts/ensure-images.sh"
+    if [[ ! -x "$pybench_ensure_images" ]]; then
+        echo "pyBench image bootstrap helper is missing or not executable: $pybench_ensure_images" >&2
+        exit 1
+    fi
+    "$pybench_ensure_images" --user "$container_user"
+fi
+
 prepare_args=(
     --container "$container"
     --base "$base_image"
@@ -355,6 +365,34 @@ create_with_compose() {
     local compose_args
     override_file="$(write_wave_compose_override)"
     compose_args=(-f "$compose_file")
+    if [[ "$container" == "py-bench" ]]; then
+        local shared_network="devbench-shared"
+        local sonarqube_mcp_script="$workbenches_root/devBenches/scripts/ensure-sonarqube-mcp.sh"
+        local rocm_configure_script="$bench_dir/scripts/configure-amd-rocm-wsl.sh"
+        local rocm_compose_file="$bench_dir/.devcontainer/docker-compose.amd-rocm.generated.yml"
+        if [[ ! -x "$sonarqube_mcp_script" ]]; then
+            echo "pyBench SonarQube MCP bootstrap helper is missing or not executable: $sonarqube_mcp_script" >&2
+            exit 1
+        fi
+        if [[ ! -x "$rocm_configure_script" ]]; then
+            echo "pyBench AMD ROCm configuration helper is missing or not executable: $rocm_configure_script" >&2
+            exit 1
+        fi
+        if ! docker network inspect "$shared_network" >/dev/null 2>&1; then
+            if ! docker network create "$shared_network" >/dev/null 2>&1 \
+                && ! docker network inspect "$shared_network" >/dev/null 2>&1; then
+                echo "Could not create the external pyBench network: $shared_network" >&2
+                exit 1
+            fi
+        fi
+        "$sonarqube_mcp_script"
+        "$rocm_configure_script"
+        if [[ ! -f "$rocm_compose_file" ]]; then
+            echo "pyBench AMD ROCm override was not generated: $rocm_compose_file" >&2
+            exit 1
+        fi
+        compose_args+=(-f "$rocm_compose_file")
+    fi
     if [[ "$container" == "rust-bench" && -d "$wslg_root" ]]; then
         local wslg_compose_file="$bench_dir/.devcontainer/docker-compose.wslg.yml"
         if [[ ! -f "$wslg_compose_file" ]]; then
@@ -374,10 +412,37 @@ recreate_with_compose() {
     create_with_compose
 }
 
-recreate_stopped_with_compose() {
-    echo "Recreating stopped container $container with Wave compose mounts..."
-    if docker rm "$container" >/dev/null 2>&1; then
+uses_devcontainer_lifecycle() {
+    [[ "$compose_file_explicit" != true \
+        && "$container" != "py-bench" \
+        && -f "$bench_dir/.devcontainer/devcontainer.json" ]]
+}
+
+create_for_declared_lifecycle() {
+    if uses_devcontainer_lifecycle; then
+        echo "Creating $container with Dev Containers CLI..."
+        if ! run_devcontainer_up; then
+            echo "Dev Containers CLI did not complete; the declared devcontainer lifecycle was not replaced with a partial Compose launch." >&2
+            return 1
+        fi
+    else
         create_with_compose
+    fi
+}
+
+repair_for_declared_lifecycle() {
+    if uses_devcontainer_lifecycle; then
+        echo "Recreating $container with Dev Containers CLI..."
+        run_devcontainer_up --remove-existing-container
+    else
+        recreate_with_compose
+    fi
+}
+
+recreate_stopped_for_declared_lifecycle() {
+    echo "Recreating stopped container $container with its declared lifecycle..."
+    if docker rm "$container" >/dev/null 2>&1; then
+        create_for_declared_lifecycle
         return 0
     fi
 
@@ -447,22 +512,14 @@ container_missing_required_mounts() {
 }
 
 if [[ "$repair_requested" == true && "$container_exists" == true ]]; then
-    recreate_with_compose
+    repair_for_declared_lifecycle
 elif [[ "$container_exists" != true ]]; then
-    if [[ "$compose_file_explicit" == true ]]; then
-        create_with_compose
-    elif [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]]; then
-        echo "Creating $container with Dev Containers CLI..."
-        if ! run_devcontainer_up; then
-            echo "Dev Containers CLI did not complete; creating $container with Wave compose mounts." >&2
-            docker rm -f "$container" >/dev/null 2>&1 || true
-            create_with_compose
-        fi
-    else
-        create_with_compose
-    fi
+    # pyBench's initialize command and Compose overlays are reproduced by
+    # prepare-bench-start plus create_with_compose. Other devcontainer.json
+    # benches retain their declared lifecycle and additional Compose files.
+    create_for_declared_lifecycle
 elif [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]] && container_missing_required_mounts; then
-    recreate_stopped_with_compose
+    recreate_stopped_for_declared_lifecycle
 fi
 
 if [[ "$(docker container inspect -f '{{.State.Running}}' "$container")" != "true" ]]; then

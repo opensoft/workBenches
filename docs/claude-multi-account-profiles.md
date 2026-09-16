@@ -191,15 +191,21 @@ directory its Claude runs in. `WORKBENCHES_CLAUDE_WINDOW_REUSE=off` turns step
 two off for one launch, for the emergency where a record names a window that
 must not be touched; the ownership fence above already refuses another lane's
 window without it. What the parent resolved is never handed down as
-the answer: a lane that was an inference still reaches `lane-start` as
-`--confirm` in the child. Before Amendment 11, every outside-tmux
-launch made a fresh session whose window tmux named for whatever command was
-running in it instead — on Eagle, eight of sixteen live windows were simply
-called `claude` when this was measured — so a restart could never bind by
-window name and always fell to the swap record's one confirmation below.
+the answer: a lane that was an inference still reaches only the picker in the
+child (lane-collision-protocol Amendment 18 Addendum 1). Before Amendment 11,
+every outside-tmux launch made a fresh session whose window tmux named for
+whatever command was running in it instead — on Eagle, eight of sixteen live
+windows were simply called `claude` when this was measured — so a restart
+could never bind by window name and always fell to the picker below.
 
-**The lane's session is NAMED by `lane-start`, which is why every path runs it
-(new-workstation#20, Evidence 4).** Amendment 2 makes the Claude session's name
+**The lane's session is NAMED by `lane-start`, which is why every path that
+resolves to a NEW OR RESUMED SESSION runs it (new-workstation#20, Evidence
+4).** That is every step through Amendment 11(3) and THE PICKER's own
+AVAILABLE branch — another launch of this same launcher — but not its other
+two: LIVE HERE attaches a session that is already running and BOUND ELSEWHERE
+exits into a refusal, and neither runs `lane-start`, because neither is a
+launch (lane-collision-protocol Amendment 18 Addendum 1, clause (h) and
+clause (c)). Amendment 2 makes the Claude session's name
 the lane's messaging address — the third leg of the identity triple, beside the
 window's name and the transcript. Measured on `openRepoProject-1` on
 2026-09-13: the transcript carries `customTitle: openRepoProject-1`, set once by
@@ -250,7 +256,7 @@ across five sessions, four of the five windows called `claude`, and all five swa
 records naming sessions from the server that had just been replaced. That is the
 **safe** half — nothing matches, the step answers nothing, and the launch falls
 to the next one — and it is also why a restart taken right after a reboot still
-meets the swap record's one confirmation. The unsafe half is this PR's ninth
+meets the picker below. The unsafe half is this PR's ninth
 divergence: a record carrying an `<@id>` whose `<session>:<index>` now belongs to
 a *different* window would bind this lane to a stranger's window if it were
 matched on the ref alone. The rule that closes it — *a record carrying an
@@ -311,18 +317,41 @@ implementations of one rule is how the three come to disagree about which lane
 a window is. A `lanes-edit.sh` predating Amendment 11 has no such subcommand —
 it says so and exits 2, which is an old helper, expected and silent — and a
 read that *failed* names itself and falls to the **next** step rather than to
-the bare-Claude end of the order. Failing both, and only inside
-tmux, the lane this workstation last paused for a swap and has not resumed
-since (`lanes-edit.sh swapped <workstation>`, first row) — handed over as
-`--confirm`, so `lane-start` asks before it takes the window. That lane is a
-guess about a *window*, and taking it means renaming one, so outside tmux it
-is not read at all. The window's name and its id are both read before the
-tmux re-exec and carried across it — on the reuse path they are the *reused*
-window's, so the child comes up in a window the estate already knows; on the
-fresh-session path a newly created window is named for the command that made
-it unless the lane was certain. All three
-register reads are made with `LANES_NO_FETCH=1`, so a launch never waits on
-the network.
+the bare-Claude end of the order. **Failing both, and only inside tmux, THE
+PICKER** (lane-collision-protocol Amendment 18 Addendum 1, clause (i-5)):
+`lane` (`opensoft/openRepoTools#43`), on `PATH`, given a terminal to ask on,
+lists this checkout's lanes — or, standing outside every checkout, every
+repository — as a numbered pick, asks one question, and acts on the pick
+itself: an available lane through `lane-start`, a lane live here through the
+attach, a lane bound elsewhere through the handoff request. So this launcher
+hands it the pane and **stops** — no `--dir`, no `--confirm`, nothing else —
+and exits with whatever `lane` decided. `lane`'s own exit 0 covers both the
+pick being acted on *and* a decline (`q`, or a blank line) at a question that
+had at least one lane to offer; exit 8 is narrower than "the operator
+quit" — it means there was *nothing* to pick at all, whether that came back as
+a listing, as a `q`/`f`-only question, or as a decline of one of those. Either
+way this launcher starts nothing here; only exit 2, a refusal — or the other
+status `lane --help` documents and this launcher does not special-case, a
+read that failed (a usage error is unreachable from the bare form here) —
+falls through to the plain session below, and only where this window's name
+says a lane was never actually taken first. `lane`'s AVAILABLE branch does
+not run and wait for the launch it picks, it `exec`s into one that renames
+this window the moment it takes a lane and exits with whatever THAT chain
+ends with — so 2 and the read-failure code are trusted as pre-pick only
+where the window is unchanged; renamed, and the status is kept exactly like
+an acted-on pick's (Copilot round 2 on #82, `claude-profile:1743`). This step
+reads no swap record at all any more:
+confirming the workstation's newest one is what put `openRepoShape-2` — a
+person's own lane, but not the one they wanted — in front of an operator who
+typed `pclaude team-01b` on 2026-09-14T12:04Z, whose `N` three minutes later
+fell back to a bare resume (`opensoft/workBenches#77`); `lane` asks instead of
+guessing, so a lane taken here was always the one the operator picked. The
+window's name and its id are both read before the tmux re-exec and carried
+across it — on the reuse path they are the *reused* window's, so the child
+comes up in a window the estate already knows; on the fresh-session path a
+newly created window is named for the command that made it unless the lane was
+certain. Both register reads (the window's name and the window's record) are
+made with `LANES_NO_FETCH=1`, so a launch never waits on the network.
 
 With neither, the launch is exactly as described above plus one line saying how
 to take a lane in this window — and not even that where the `SessionStart` hook
@@ -333,7 +362,12 @@ conversation at all takes no lane in the first place; neither is told anything,
 because neither is a degradation.
 
 **A missing `lane-start` is said, not passed over (new-workstation#20, Evidence
-5).** Where the tool is not on `PATH` there is no lane to take, and the launch
+5) — and it no longer skips THE PICKER either** (Copilot round on #82,
+`claude-profile:1698`): two of `lane`'s three branches never touch
+`lane-start` at all, so a workstation with `lane` and a tmux pane but no
+`lane-start` still gets the numbered pick, and only falls back to a bare
+Claude where the picker also finds nothing. Where the tool is not on `PATH`
+there is no lane THIS LAUNCHER'S OWN THREE STEPS can take, and the launch
 still happens — but the **first** line it prints says so and names the one
 install act. **Which act that is, is decided by capability and not by which
 amendment is in force** (`R-A11-13`, A11 Addendum 3, ratified by Brett Heap
@@ -380,9 +414,12 @@ no-lane notice does: that hook reports the lane it could not bind, and nothing
 but this line can say the tool itself is missing.
 
 **The workstation those records are keyed to is configured, never taken from
-`hostname` inside a container (new-workstation#20, Evidence 6).** Step four
-above reads `lanes-edit.sh swapped <workstation>`, and the swap records this
-machine wrote say `Eagle`. Inside a bench container `hostname -s` is the
+`hostname` inside a container (new-workstation#20, Evidence 6).** The
+directory order's rung two and act 1's own window-reuse guess read
+`lanes-edit.sh swapped <workstation>` — step four of the lane order no longer
+does, since lane-collision-protocol Amendment 18 Addendum 1 replaced its
+swap-record guess with the picker — and the swap records this machine wrote
+say `Eagle`. Inside a bench container `hostname -s` is the
 container's id — `0e7d1a79a07e`, as measured on 2026-09-13 — so a launcher that
 passes it asks for the records of a machine that has existed for an hour, gets
 nothing, and falls through with no reason given; and a *writer* that passes it
@@ -627,6 +664,34 @@ this launcher at all. Two consequences, both of which this launcher and
   next launch, because the ensure runs on every one. Any installer that wants a
   hook to fire for profile launches should write it into the profile
   `settings.json` files the same way, not into `~/.claude/settings.json`.
+- **Amendment 12's `UserPromptSubmit` NAME GUARD is ensured the same way,
+  beside the usage guard entry in that same array.** `configure_profile_runtime`
+  appends `opensoft/openRepoTools`'s own `GUARD_COMMAND` —
+  `~/projects/xFactory/lanes-edit.sh guard`, `"timeout": 5`, and deliberately
+  **no** `matcher` (`UserPromptSubmit` has no source to match on) and **no**
+  `|| true` (exit 2 is the whole mechanism; that suffix would swallow it and
+  install a guard that refuses nothing) — matched by the same exact-command
+  idempotence as the SessionStart entry: present costs no write, absent
+  appends, and an operator's own timeout or note on an existing entry is never
+  rewritten. On a downgrade — an estate that once answered `guard` and no
+  longer does — the entry is **removed** on the profile's next launch rather
+  than left behind to block every prompt with "unknown subcommand"; the
+  removal filters the entry's own nested `hooks` array rather than gating the
+  whole array-entry, so a hand-grouped entry that also carries a foreign
+  command loses only the stale one. It is written only where
+  `~/projects/xFactory/lanes-edit.sh` exists *and* answers the `guard`
+  subcommand, checked with a single `awk` pass (never a `grep | grep` pipe,
+  which can false-negative on a real file under this launcher's own
+  `set -o pipefail`) that excludes comment lines first and then anchors the
+  shape to where a line begins, so a comment merely containing the same
+  characters a dispatch line would — this estate's comments use "guard" as a
+  generic term for a defensive check constantly, with or without the
+  subcommand — cannot pass it; a bare substring probe was measured to
+  false-positive on `opensoft/workBenches`'s own pre-Amendment-12 vendored
+  copy. This is the profile half of Amendment 12 adoption act 3; the
+  bare-`claude` half is `openRepoTools --install`'s own merge into
+  `~/.claude/settings.json`, one path and one writer in both halves exactly as
+  the SessionStart entry above.
 - **Skills belong in the shared skills directory, and `openRepoTools --install`
   is the one thing that writes them.** Every profile's `skills` is a symlink to
   `~/.claude-profiles/shared/skills`, so one write there is visible to every
@@ -675,8 +740,14 @@ this launcher at all. Two consequences, both of which this launcher and
   `settings.json` is the launcher's, `~/.claude/settings.json` is
   `--install`'s, and the two never write one file.
 
-**Live state, and the gate has since opened.** Both writers above are gated on
-`~/projects/xFactory/lanes-edit.sh` having a `session-start` subcommand. That
+**Live state, and the gate has since opened.** This paragraph is about the
+`SessionStart` entry specifically: its two writers — the launcher's profile
+ensure and `--install`'s bare-`claude` merge — are gated on
+`~/projects/xFactory/lanes-edit.sh` having a `session-start` subcommand. The
+name guard bullet above has its **own**, independent gate, keyed on the
+`guard` subcommand rather than `session-start`, and is not part of the
+workstation measurement this paragraph reports; an estate can carry one
+subcommand without the other; nothing below this line describes it. That
 path is not a second spelling of the estate: `link-estates` keeps it pointed at
 the installed helper precisely because the hook's command string names it, and
 the helper it points at now carries the subcommand — `opensoft/openRepoTools`

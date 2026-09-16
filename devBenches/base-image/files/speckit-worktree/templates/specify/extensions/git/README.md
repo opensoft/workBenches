@@ -262,3 +262,78 @@ published through it.
 **The PowerShell mirror has neither.** `scripts/powershell/*.ps1` are not
 shape-aware and gain nothing here: **native Windows parks nothing.** Use the
 dev container, or WSL, on Windows.
+
+## Recovering an orphaned worktree registration
+
+`resume.sh`'s rollback and `create-new-feature.sh`'s rollback both call
+`git_worktree_prune_visible` (`git-common.sh`) after undoing the one
+worktree the current run itself just created. That helper is not scoped to
+only the worktree the rollback meant to undo: it sweeps every registration
+`git worktree list --porcelain` reports `prunable` under the same worktree
+root, and removes each one it can positively confirm is genuinely gone —
+never one merely outside this container's mount, which it leaves registered
+and names on stderr instead. A registration can still end up orphaned some
+other way —
+most commonly a workstation where a symlinked projects directory (say
+`~/projects` -> `/workspace/projects`) means Git stores a worktree's REAL,
+resolved path, and a container that mounts the repository at the symlink's
+own spelling without also mounting its target runs a plain `git worktree
+prune` by hand, or an older build of these scripts that still ran one
+unconditionally. Either way the symptom is the same: the directory is still
+there, full of its files, but every Git command inside it fails, because its
+`.git` file points at a registration that is no longer in
+`.git/worktrees/`.
+
+Nothing here restores the registration for you — recover it by hand:
+
+1. Move the orphaned directory aside; it still holds every file the
+   worktree ever had, and `git worktree add` refuses a path that already
+   exists.
+   ```
+   mv <path> <path>.orphaned
+   ```
+   If what you saw was specifically a "could not clear the stale worktree
+   registration" warning — a directory `git_worktree_prune_visible` found
+   missing only its own `.git` file, and deliberately left registered
+   rather than risk deleting whatever else was still in it — the
+   registration is still there even after this move, and step 2's `add`
+   will refuse it: `fatal: '<path>' is a missing but already registered
+   worktree; use 'add -f' to override, or 'prune' or 'remove' to clear`.
+   Clear that one registration, now that nothing is left at `<path>` for
+   `remove` to validate against:
+   ```
+   git worktree remove --force <path>
+   ```
+2. Recreate the registration on the same branch. When a local branch
+   already has the commits you expect:
+   ```
+   git worktree add <path> <branch>
+   ```
+   When the branch exists only on `origin` (a checkout that predates the
+   branch's own push, say) — `<branch>` alone would try to resolve a LOCAL
+   branch that is not there yet. `origin/<branch>` needs a fetch first:
+   `git worktree add` does not fetch on its own, so without one this fails
+   with `fatal: invalid reference: origin/<branch>` whenever the local
+   remote-tracking ref is not already there:
+   ```
+   git fetch origin <branch>
+   git worktree add -b <branch> <path> origin/<branch>
+   ```
+3. Copy the moved-aside files back over the fresh worktree — everything
+   except its own `.git` file, which the `add` above just wrote. The
+   leading `/` anchors the exclusion to the transfer's own root, so a
+   submodule's `.git` further down the tree is copied, not skipped:
+   ```
+   rsync -a --exclude=/.git "<path>.orphaned/" "<path>/"
+   ```
+4. Diff the fresh worktree against the backup before deleting it, to
+   confirm nothing was lost in the move. `diff --exclude` has no such
+   anchor — it matches `.git` at every depth — so leave it out and expect
+   exactly one difference, the worktree's own top-level `.git` file,
+   which the `add` above legitimately rewrote:
+   ```
+   git -C <path> status
+   diff -rq "<path>.orphaned" "<path>"
+   ```
+   Once the diff and `git status` agree with what you expect, remove
+   `<path>.orphaned`.
