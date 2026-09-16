@@ -51,8 +51,13 @@ def image_identity_files(stream):
 
     if not isinstance(manifest, list) or len(manifest) != 1:
         raise ValueError("expected one Docker image manifest")
-    layer_order = manifest[0].get("Layers")
-    if not isinstance(layer_order, list):
+    manifest_entry = manifest[0]
+    if not isinstance(manifest_entry, dict):
+        raise ValueError("Docker image manifest entry is not an object")
+    layer_order = manifest_entry.get("Layers")
+    if not isinstance(layer_order, list) or not all(
+        isinstance(layer_name, str) for layer_name in layer_order
+    ):
         raise ValueError("Docker image manifest has no layer list")
 
     files = {}

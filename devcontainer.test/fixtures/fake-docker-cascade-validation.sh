@@ -123,6 +123,10 @@ PY
             exit 0
         fi
         if [ "$2" = "inspect" ]; then
+            if [[ "${!#}" == "${FAKE_DOCKER_CONTAINER_INSPECT_FAIL:-}" ]]; then
+                echo "simulated Docker container inspect failure for ${!#}" >&2
+                exit 2
+            fi
             echo "${FAKE_DOCKER_RUNNING_CONTAINER_IMAGE_ID:-${FAKE_DOCKER_USER_IMAGE_ID:-sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd}}"
             exit 0
         fi

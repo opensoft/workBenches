@@ -35,6 +35,22 @@ printf 'not-an-image-archive' \
     | python3 "$repo_root/scripts/lib/check-image-identity.py" brett 1000 1000 '' \
     || identity_parser_status=$?
 test "$identity_parser_status" -eq 2
+malformed_manifest_status=0
+python3 - <<'PY' \
+    | python3 "$repo_root/scripts/lib/check-image-identity.py" brett 1000 1000 '' \
+    || malformed_manifest_status=$?
+import io
+import json
+import sys
+import tarfile
+
+data = json.dumps([None]).encode()
+with tarfile.open(fileobj=sys.stdout.buffer, mode="w|") as archive:
+    member = tarfile.TarInfo("manifest.json")
+    member.size = len(data)
+    archive.addfile(member, io.BytesIO(data))
+PY
+test "$malformed_manifest_status" -eq 2
 test "$(bash -c 'source "$1"; bench_dir_to_image_repo 365Bench' _ "$repo_root/scripts/lib/image-names.sh")" = "m365-bench"
 
 source "$repo_root/base-image/ai-cli-contract.sh"
@@ -68,6 +84,7 @@ assert_layer3_identity_rejected --user 00 --uid 1000 --gid 1000
 assert_layer3_identity_rejected --user '' --uid 1000 --gid 1000
 assert_layer3_identity_rejected --user 'bad.name' --uid 1000 --gid 1000
 assert_layer3_identity_rejected --user 'bad$' --uid 1000 --gid 1000
+assert_layer3_identity_rejected --user latest --uid 1000 --gid 1000
 assert_layer3_identity_rejected --user tester --uid 00 --gid 1000
 assert_layer3_identity_rejected --user tester --uid 1000 --gid 000
 
@@ -85,6 +102,7 @@ assert_layer3_ensure_identity_rejected() {
 }
 assert_layer3_ensure_identity_rejected --user root
 assert_layer3_ensure_identity_rejected --user 'bad.name'
+assert_layer3_ensure_identity_rejected --user latest
 
 checker_help="$("$checker" --help)"
 grep -Fq -- '--images IMAGE,...' <<< "$checker_help"
@@ -99,6 +117,21 @@ if "$checker" --layer 0 --check-layer3 > "$temp_dir/missing-layer3-images.out" 2
     exit 1
 fi
 grep -Fq -- '--check-layer3 requires --images IMAGE,...' "$temp_dir/missing-layer3-images.out"
+if "$checker" --layer 0 --layer3-images test-bench:latest --check-layer3 \
+    > "$temp_dir/layer3-images-without-images.out" 2>&1; then
+    echo "expected --layer3-images without --images to fail" >&2
+    exit 1
+fi
+grep -Fq -- '--check-layer3 requires --images IMAGE,...' \
+    "$temp_dir/layer3-images-without-images.out"
+if "$checker" --layer 0 --images test-bench:latest \
+    --layer3-images other-bench:latest --check-layer3 \
+    > "$temp_dir/unselected-layer3-image.out" 2>&1; then
+    echo "expected an unselected --layer3-images entry to fail" >&2
+    exit 1
+fi
+grep -Fq -- '--layer3-images entry must also appear in --images' \
+    "$temp_dir/unselected-layer3-image.out"
 rebuild_help="$("$repo_root/scripts/update-and-rebuild.sh" --help)"
 grep -Fq -- '--write-manifest' <<< "$rebuild_help"
 grep -Fq 'build_args+=(--docker-gid "$docker_socket_gid")' "$repo_root/scripts/update-and-rebuild.sh"
@@ -211,6 +244,43 @@ jq -e \
 if jq -e '.images[] | select(.image == "test-bench:brett" and .status == "activation-missing")' \
     "$temp_dir/user-image-inspection-failed.json" >/dev/null; then
     echo "failed Layer 3 image-ID inspection was misclassified as missing" >&2
+    exit 1
+fi
+
+if PATH="$fake_bin:$PATH" \
+    FAKE_DOCKER_LOG="$log" \
+    FAKE_DOCKER_IMAGE_INSPECT_FAIL=test-bench:latest \
+    "$checker" --layer 0 --images test-bench:latest --json --user brett \
+        > "$temp_dir/selected-image-inspection-failed.json" \
+        2> "$temp_dir/selected-image-inspection-failed.err"; then
+    echo "expected selected-image inspection failure to fail validation" >&2
+    exit 1
+fi
+jq -e \
+    '.images[] | select(.image == "test-bench:latest" and .status == "inspection-failed")' \
+    "$temp_dir/selected-image-inspection-failed.json" >/dev/null
+if jq -e '.images[] | select(.image == "test-bench:latest" and .status == "missing")' \
+    "$temp_dir/selected-image-inspection-failed.json" >/dev/null; then
+    echo "selected-image inspection failure was misclassified as missing" >&2
+    exit 1
+fi
+
+: > "$log"
+if PATH="$fake_bin:$PATH" \
+    FAKE_DOCKER_LOG="$log" \
+    FAKE_DOCKER_RUNNING_CONTAINERS=$'test-bench:brett\tuninspectable-bench\n' \
+    FAKE_DOCKER_CONTAINER_INSPECT_FAIL=uninspectable-bench \
+    "$checker" --layer 0 --images test-bench:latest --check-layer3 --json --user brett \
+        > "$temp_dir/running-snapshot-inspection-failed.json" \
+        2> "$temp_dir/running-snapshot-inspection-failed.err"; then
+    echo "expected running-container snapshot failure to fail validation" >&2
+    exit 1
+fi
+jq -e \
+    '.images[] | select(.image == "test-bench:brett" and .status == "activation-inspection-failed")' \
+    "$temp_dir/running-snapshot-inspection-failed.json" >/dev/null
+if grep -Fq 'image save' "$log"; then
+    echo "Layer 3 content inspection continued after an incomplete running snapshot" >&2
     exit 1
 fi
 
@@ -433,6 +503,32 @@ printf '%s\n' \
 test "$(declared_cascade_images sim-bench:latest "$tag_filter_build" "$temp_dir")" \
     = $'sim-bench-worker:latest\nsim-bench:latest'
 
+script_compose_bench="$temp_dir/script-compose-bench"
+mkdir -p "$script_compose_bench/scripts"
+script_compose_build="$script_compose_bench/scripts/build-layer2.sh"
+printf '%s\n' 'docker compose -f docker-compose.yml build' > "$script_compose_build"
+printf '%s\n' \
+    'services:' \
+    '  worker:' \
+    '    build: .' \
+    '    image: sim-bench-script-worker:latest' \
+    > "$script_compose_bench/docker-compose.yml"
+test "$(PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+    declared_cascade_images sim-bench:latest "$script_compose_build" "$script_compose_bench")" \
+    = 'sim-bench-script-worker:latest'
+
+printf '%s\n' \
+    'docker compose -f docker-compose.yml build --with-dependencies worker' \
+    > "$script_compose_build"
+if PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+    declared_cascade_images sim-bench:latest "$script_compose_build" "$script_compose_bench" \
+        > "$temp_dir/with-dependencies.out" 2> "$temp_dir/with-dependencies.err"; then
+    echo "expected unsupported Compose dependency expansion to fail closed" >&2
+    exit 1
+fi
+grep -Fq 'Cannot safely derive Compose dependency build outputs' \
+    "$temp_dir/with-dependencies.err"
+
 PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
     record_rebuilt_cascade_image test-bench:latest testBench
 test "${CASCADE_IMAGES[*]}" = test-bench:latest
@@ -447,15 +543,21 @@ printf '%s\n' 'docker compose -f docker-compose.yml build' > "$compose_metadata"
 printf '%s\n' \
     'services:' \
     '  gene:' \
+    '    build: .' \
     '    image: sim-bench-gene_bench:latest' \
     '  ui:' \
+    '    build: .' \
     '    image: sim-bench-ui' \
     '  preview:' \
+    '    build: .' \
     '    image: sim-bench-preview:latest-dev' \
+    '  runtime:' \
+    '    image: sim-bench-runtime:latest' \
     '  # image: sim-bench-retired:latest' > "$compose_bench_dir/docker-compose.yml"
 printf '%s\n' \
     'services:' \
     '  dev:' \
+    '    build: .' \
     '    image: sim-bench-dev:latest' > "$compose_bench_dir/docker-compose.dev.yml"
 PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
 FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
@@ -475,6 +577,10 @@ if grep -Fq 'sim-bench-retired:latest' "$log"; then
 fi
 if grep -Fq 'sim-bench-preview:latest' "$log"; then
     echo "cascade capture truncated a non-latest image tag" >&2
+    exit 1
+fi
+if grep -Fq 'sim-bench-runtime:latest' "$log"; then
+    echo "cascade capture inspected a runtime-only Compose image" >&2
     exit 1
 fi
 
@@ -511,6 +617,7 @@ CASCADE_IMAGE_RECORDS=()
 printf '%s\n' \
     'services:' \
     '  override:' \
+    '    build: .' \
     '    image: sim-bench-override:latest' \
     > "$compose_bench_dir/docker-compose.override.yml"
 printf '%s\n' 'docker compose build' > "$compose_metadata"
@@ -643,6 +750,7 @@ test "${CASCADE_LAYER3_IMAGES[*]}" = sim-bench:latest
 printf '%s\n' \
     'services:' \
     '  variable:' \
+    '    build: .' \
     '    image: sim-bench-variable:${IMAGE_TAG:-latest}' \
     > "$compose_bench_dir/docker-compose.variable.yml"
 printf '%s\n' 'docker compose -f docker-compose.variable.yml build' > "$compose_metadata"

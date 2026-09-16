@@ -65,12 +65,27 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+if [ "$CHECK_LAYER3" = true ] && [ "${#TARGET_IMAGES[@]}" -eq 0 ]; then
+    echo "--check-layer3 requires --images IMAGE,..." >&2
+    exit 1
+fi
 if [ "$CHECK_LAYER3" = true ] && [ "${#LAYER3_TARGET_IMAGES[@]}" -eq 0 ]; then
     LAYER3_TARGET_IMAGES=("${TARGET_IMAGES[@]}")
 fi
-if [ "$CHECK_LAYER3" = true ] && [ "${#LAYER3_TARGET_IMAGES[@]}" -eq 0 ]; then
-    echo "--check-layer3 requires --images IMAGE,..." >&2
-    exit 1
+if [ "$CHECK_LAYER3" = true ]; then
+    for layer3_target in "${LAYER3_TARGET_IMAGES[@]}"; do
+        layer3_target_selected=false
+        for selected_target in "${TARGET_IMAGES[@]}"; do
+            if [[ "$layer3_target" == "$selected_target" ]]; then
+                layer3_target_selected=true
+                break
+            fi
+        done
+        if [ "$layer3_target_selected" = false ]; then
+            echo "--layer3-images entry must also appear in --images: $layer3_target" >&2
+            exit 1
+        fi
+    done
 fi
 
 manifest_config_dir="$(realpath -m -- "$REPO_DIR/config")"
@@ -445,17 +460,32 @@ check_selected_image() {
     local probe_index=0
     local expected_id="${EXPECTED_IMAGE_IDS[$image]:-}"
     local probe_reference
+    local inspected_id
+    local inspect_status=0
     local passed=true
 
     if [[ -n "$expected_id" ]]; then
         probe_reference="$expected_id"
+        if inspected_id="$(image_id_if_present "$probe_reference")"; then
+            :
+        else
+            inspect_status=$?
+        fi
     else
-        probe_reference="$(image_id "$image")"
-        expected_id="$probe_reference"
+        if probe_reference="$(image_id_if_present "$image")"; then
+            expected_id="$probe_reference"
+        else
+            inspect_status=$?
+        fi
     fi
-    if [[ -z "$probe_reference" ]] || ! docker image inspect "$probe_reference" >/dev/null 2>&1; then
-        echo -e "${RED}✗ Selected Layer 2 image ($image) not found${NC}" >&2
-        record_image "$image" "2" "missing" "$expected_id"
+    if [[ "$inspect_status" -ne 0 ]]; then
+        if [[ "$inspect_status" -eq 1 ]]; then
+            echo -e "${RED}✗ Selected Layer 2 image ($image) not found${NC}" >&2
+            record_image "$image" "2" "missing" "${expected_id:-n/a}"
+        else
+            echo -e "${RED}✗ Selected Layer 2 image ($image) could not be inspected${NC}" >&2
+            record_image "$image" "2" "inspection-failed" "${expected_id:-n/a}"
+        fi
         IMAGE_PROBE_FAILURES=$((IMAGE_PROBE_FAILURES + 1))
         return
     fi
@@ -673,7 +703,16 @@ check_selected_layer3_images() {
     local image
 
     [ "$CHECK_LAYER3" = true ] || return 0
-    snapshot_running_containers
+    if ! snapshot_running_containers; then
+        for image in "${LAYER3_TARGET_IMAGES[@]}"; do
+            [[ -n "$image" ]] || continue
+            echo "Could not determine whether Layer 3 ${image%:*}:${USERNAME} is running; activation state is unknown" >&2
+            record_image "${image%:*}:${USERNAME}" "3" \
+                "activation-inspection-failed" "n/a"
+            IMAGE_PROBE_FAILURES=$((IMAGE_PROBE_FAILURES + 1))
+        done
+        return
+    fi
     for image in "${LAYER3_TARGET_IMAGES[@]}"; do
         [[ -n "$image" ]] || continue
         check_layer3_image "$image"

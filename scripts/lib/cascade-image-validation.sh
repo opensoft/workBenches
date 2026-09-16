@@ -161,6 +161,7 @@ resolve_compose_file_argument() {
 compose_config_images_for_command() {
     local command="$1"
     local build_script="$2"
+    local bench_dir="${3:-}"
     local build_dir
     local docker_index=-1
     local build_index=-1
@@ -169,6 +170,8 @@ compose_config_images_for_command() {
     local value
     local variable_name
     local resolved
+    local compose_json
+    local selected_json
     local output
     local service_options=false
     local -a words=()
@@ -177,6 +180,10 @@ compose_config_images_for_command() {
     local -a services=()
 
     build_dir="$(dirname "$build_script")"
+    if [[ -n "$bench_dir" \
+        && "$(realpath -m -- "$build_dir")" == "$(realpath -m -- "$bench_dir/scripts")" ]]; then
+        build_dir="$bench_dir"
+    fi
     read -r -a words <<< "$command"
 
     for ((index = 0; index + 1 < ${#words[@]}; index++)); do
@@ -282,7 +289,11 @@ compose_config_images_for_command() {
                 ;;
             --build-arg=*|--builder=*|--memory=*|--progress=*|--provenance=*|--sbom=*|--ssh=*|-[mq]*)
                 ;;
-            --check|--no-cache|--pull|--push|-q|--quiet|--with-dependencies)
+            --with-dependencies)
+                echo "Cannot safely derive Compose dependency build outputs from '$command'" >&2
+                return 1
+                ;;
+            --check|--no-cache|--pull|--push|-q|--quiet)
                 ;;
             -*)
                 echo "Unsupported Docker Compose build option in '$command': $token" >&2
@@ -296,12 +307,35 @@ compose_config_images_for_command() {
         esac
     done
 
-    if ! output="$(
+    if ! compose_json="$(
         cd "$build_dir"
         env "${compose_env[@]}" docker compose "${compose_args[@]}" \
-            config --images "${services[@]}"
+            config --format json
     )"; then
         echo "Could not resolve Compose outputs for '$command'" >&2
+        return 1
+    fi
+    selected_json="$(printf '%s\n' "${services[@]}" \
+        | jq -Rsc 'split("\n") | map(select(length > 0))')"
+    if ! output="$(jq -r --argjson selected "$selected_json" '
+        (.services // {}) as $services
+        | if ($selected | length) > 0 and any($selected[];
+                (($services[.] // {}) | (.build // null)) == null)
+            then error("selected Compose service is not buildable")
+            else .
+          end
+        | .name as $project
+        | [
+            $services
+            | to_entries[]
+            | select((.value.build // null) != null)
+            | .key as $service
+            | select(($selected | length) == 0 or ($selected | index($service)) != null)
+            | (.value.image // ($project + "-" + $service))
+          ]
+        | if length == 0 then error("Compose command has no buildable services") else .[] end
+    ' <<< "$compose_json")"; then
+        echo "Could not derive buildable Compose outputs for '$command'" >&2
         return 1
     fi
 
@@ -411,7 +445,8 @@ declared_cascade_images() {
         if [[ -f "$build_script" ]]; then
             local compose_command
             while IFS= read -r compose_command; do
-                compose_config_images_for_command "$compose_command" "$build_script" \
+                compose_config_images_for_command \
+                    "$compose_command" "$build_script" "$bench_dir" \
                     || return
             done < <(compose_build_commands "$build_script")
         fi
