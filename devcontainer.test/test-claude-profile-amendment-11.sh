@@ -2695,8 +2695,12 @@ grep -Fq 'home/.agents/protocols/lane-collision-protocol-amendment-11.md' "$LAUN
 # extracted the three-line window after the one heading that opens this
 # paragraph, "WHAT STOPS IS THE REGISTER AND LOG WRITES" (unique in the file),
 # and require the phrase inside THAT window rather than anywhere at all.
+# `|| true` (round 12, the same shape flagged on ab_guard_block/c_fence): a
+# missing or renamed heading would make `grep -A2` exit 1 and, under this
+# file's `set -e`, abort the run before the assertion below can report the
+# citation regression by name -- the same failure mode #102 reported once.
 citation_block="$(grep -A2 -F 'WHAT STOPS IS THE REGISTER AND LOG WRITES' "$HANDOFF_MD" \
-    | sed 's/^# \{0,1\}//' | tr '\n' ' ')"
+    | sed 's/^# \{0,1\}//' | tr '\n' ' ' || true)"
 grep -Fq 'A11 Addendum 4 ruling 11, ratified "a11 addendum 4 yes"' <<<"$citation_block" \
     || fail "in force: the skill's 'A11 Addendum 4 ruling 11' citation does not carry the ratification quote ('ratified \"a11 addendum 4 yes\"'), so the R-A11-27 citation may read as a draft again"; assertion
 grep -Fq 'in force' "$HANDOFF_MD" \
@@ -2779,7 +2783,7 @@ grep -Fq 'neither asked nor told anything' "$DOCS_MD" \
 # (which it must, since `CF2-W11` is a rule about when not to name it) counts as
 # spelling it, and the two sides can never agree.
 install_act_code="$(awk '/^lane_start_install_act\(\) \{$/ { inside = 1 } inside { print } inside && $0 == "}" { exit }' "$LAUNCHER" \
-    | grep -v '^[[:space:]]*#')"
+    | grep -v '^[[:space:]]*#' || true)"
 [[ -n "$install_act_code" ]] \
     || fail "R-A11-13: there is no lane_start_install_act function, so the act is not resolved in one place"; assertion
 grep -Fq 'openRepoTools --help' <<<"$install_act_code" \
@@ -2804,7 +2808,7 @@ grep -Fq 'workspace.yaml' <<<"$install_act_code" \
 # sentence that names it, so a real second caller elsewhere still trips this.
 launcher_exec_code="$(awk '/^      cat <<.EOF.$/ { skip = 1 } !skip { print } skip && $0 == "EOF" { skip = 0 }' "$LAUNCHER" \
     | grep -v '^[[:space:]]*#' \
-    | grep -Fv 'Restore the estate (openRepoTools --install, then link-estates)')"
+    | grep -Fv 'Restore the estate (openRepoTools --install, then link-estates)' || true)"
 [[ "$(grep -Fc 'link-estates' <<<"$launcher_exec_code")" \
     -eq "$(grep -Fc 'link-estates' <<<"$install_act_code")" ]] \
     || fail "R-A11-13: link-estates is spelled outside lane_start_install_act, so two callers can drift apart"; assertion
@@ -2967,7 +2971,7 @@ assertion
 # The audit is made on the skill's SHELL — its fenced code blocks with their
 # comments stripped — and not on its prose, which ARGUES about both words at
 # length and would answer for the code if it were read.
-skill_write_code="$(awk '/^```/ { fence = !fence; next } fence' "$HANDOFF_MD" | grep -v '^[[:space:]]*#')"
+skill_write_code="$(awk '/^```/ { fence = !fence; next } fence' "$HANDOFF_MD" | grep -v '^[[:space:]]*#' || true)"
 grep -Fq 'none recorded' <<<"$skill_write_code" \
     && fail "R-A11-14: the skill still writes 'none recorded' — two tokens with a space, in a field Amendment 7(b) gives one uuid"; assertion
 # ...and `unknown` is counted as a VALUE and not as the word, exactly as the
@@ -3014,7 +3018,7 @@ grep -Fq 'select((.sessionId // "") == $id) | .cwd // empty' "$HANDOFF_MD" \
 # The two derivations are judged on the skill's own SHELL and not on its prose:
 # the comment above the assignment names them as retired, and a rule that
 # grepped the whole file could never be stated at all.
-skill_code="$(grep -v '^[[:space:]]*#' "$HANDOFF_MD")"
+skill_code="$(grep -v '^[[:space:]]*#' "$HANDOFF_MD" || true)"
 grep -Fq 'git rev-parse --show-toplevel' <<<"$skill_code" \
     && fail "RV-W6/R-A11-11: the skill's shell still derives a directory from the git toplevel of wherever it stands, which in a subagent's scratchpad is a worktree"; assertion
 grep -Fq '"$PWD"' <<<"$skill_code" \
@@ -3069,7 +3073,7 @@ scenario
 # at length — Evidence 3's own paragraph quotes it — and a rule about what the
 # launcher DOES cannot be read off text that only says why.
 launcher_code="$(awk '/^      cat <<.EOF.$/ { skip = 1 } !skip { print } skip && $0 == "EOF" { skip = 0 }' "$LAUNCHER" \
-    | grep -v '^[[:space:]]*#')"
+    | grep -v '^[[:space:]]*#' || true)"
 [[ -n "$launcher_code" ]] \
     || fail "evidence 4: the launcher's executable text could not be separated from its --help"; assertion
 grep -Fq 'show this help' <<<"$launcher_code" \
@@ -3228,7 +3232,7 @@ grep -Fxq 'LANES_WORKSTATION=' "$LANE_START_ENV_LOG" \
 # the suite is not running on.
 scenario
 ws_launcher_code="$(awk '/^      cat <<.EOF.$/ { skip = 1 } !skip { print } skip && $0 == "EOF" { skip = 0 }' "$LAUNCHER" \
-    | grep -v '^[[:space:]]*#')"
+    | grep -v '^[[:space:]]*#' || true)"
 # TWO READS SINCE lane-collision-protocol AMENDMENT 18 CLAUSE (a)
 # (opensoft/workBenches#98): `lane_workstation`'s, and `lane_host`'s beside it —
 # the machine's own short name, which the amendment's record line carries next
@@ -3252,7 +3256,7 @@ grep -Fq '[[ -e /.dockerenv || -e /run/.containerenv || -n "${container:-}" ]]' 
     || fail "Evidence 6: the container fence does not test the three markers a container leaves"; assertion
 # ...and the skill, which is the WRITER, and the half of Evidence 6 that cannot
 # be taken back: the id the fork wrote is in an append-only log for ever.
-ws_skill_code="$(grep -v '^[[:space:]]*#' "$HANDOFF_MD")"
+ws_skill_code="$(grep -v '^[[:space:]]*#' "$HANDOFF_MD" || true)"
 # RETARGETED, THE WHOLE SUB-CLUSTER (opensoft/workBenches#93): the checks below
 # used to expect the skill to duplicate the LAUNCHER's own hostname-plus-fence
 # code (the shape asserted at :3169-3176 above, against $ws_launcher_code, which
