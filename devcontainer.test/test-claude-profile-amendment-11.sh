@@ -2677,8 +2677,14 @@ grep -Fq 'home/.agents/protocols/lane-collision-protocol-amendment-11.md' "$LAUN
 # right there in the shipped bytes (`skills/handoff/SKILL.md:97-98`): "A11
 # Addendum 4 ruling 11, ratified \"a11 addendum 4 yes\"". That is what a reader
 # actually meets, so that is what this checks for.
-grep -Fq 'ratified "a11 addendum 4 yes"' "$HANDOFF_MD" \
-    || fail "in force: the skill's R-A11-27 citation still reads only at a DRAFT head"; assertion
+#
+# SCOPED TO THE CITATION ITSELF (round 7): `ruling 11` appears four times in
+# this file (`:98`, `:265`, `:474`, `:501`) and the ratification quote could
+# have drifted onto an unrelated one of them while THIS citation regressed to
+# draft wording, and a file-wide grep for the phrase would not have noticed.
+# Only a `ruling 11` line that ALSO carries the ratification quote passes.
+grep -F 'ruling 11' "$HANDOFF_MD" | grep -Fq 'ratified "a11 addendum 4 yes"' \
+    || fail "in force: no 'ruling 11' line in the skill carries the ratification quote ('ratified \"a11 addendum 4 yes\"'), so the R-A11-27 citation may read as a draft again"; assertion
 grep -Fq 'in force' "$HANDOFF_MD" \
     || fail "in force: the skill quotes a ruling from a text it still presents as unratified"; assertion
 grep -Fq 'still a DRAFT' "$LAUNCHER" \
@@ -3316,13 +3322,22 @@ c_section="$(awk '/^# \(c\) the row: flip its leading state word/{inside=1} insi
 # cluster above, applied here to the same flag. The shape asked for is
 # unchanged: `row_write_refused=1` set inside the guarded branch, `replace-in-row`
 # only in the else.
+#
+# TRACKS BOTH REGISTER WRITES (round 7): write (c) is TWO commands in the
+# shipped code, `replace-in-row` AND `append-row-status` (`:542-545`), both
+# needed for the row to actually land as PAUSED — a regression moving only one
+# of them out from under `ws_missing` used to still read `fenced=1 loose=0`
+# from `replace-in-row` alone and pass. `fenced`/`loose` are now true only when
+# BOTH commands agree on which side of the guard they are on.
 c_fence="$(grep -v '^[[:space:]]*#' <<<"$c_section" | awk '
     index($0, "if [[ -n \"$ws_missing\" ]]; then") { phase = "refused"; next }
     phase == "refused" && $0 == "else" { phase = "written"; next }
     phase == "refused" && index($0, "row_write_refused=1") { set = 1 }
-    phase == "written" && index($0, "replace-in-row") { fenced = 1 }
-    phase == "" && index($0, "replace-in-row") { loose = 1 }
-    END { printf "set=%d fenced=%d loose=%d", set, fenced, loose }')"
+    phase == "written" && index($0, "replace-in-row") { fenced_replace = 1 }
+    phase == "written" && index($0, "append-row-status") { fenced_status = 1 }
+    phase == "" && index($0, "replace-in-row") { loose_replace = 1 }
+    phase == "" && index($0, "append-row-status") { loose_status = 1 }
+    END { printf "set=%d fenced=%d loose=%d", set, (fenced_replace && fenced_status), (loose_replace || loose_status) }')"
 [[ "$c_fence" == "set=1 fenced=1 loose=0" ]] \
     || fail "R-A11-27: write (c) is not refused with (a) and (b) where no workstation is configured ($c_fence), so a swap from a container still flips the row and files a commit keyed on the container id"; assertion
 # RETARGETED (opensoft/workBenches#93): the shipped message is worded
@@ -3356,6 +3371,13 @@ grep -Fq '(c) below still runs' <<<"$skill_write_code" \
     && fail "R-A11-27: the skill's shell still prints '(c) below still runs' — the exact string the amendment text quotes back at this PR"; assertion
 still_runs_total="$(grep -Fc '(c) below still runs' "$HANDOFF_MD" || true)"
 still_runs_quoted="$(grep -F '(c) below still runs' "$HANDOFF_MD" | grep -Fc 'promised' || true)"
+# round 7: the unqualified occurrence must be the KNOWN one, not merely
+# outnumbered by an attributed one — a hypothetical unrelated unqualified
+# regression elsewhere would satisfy total=2/quoted=1 too. `:474`'s own
+# context cites `ruling 11` (the R-A11-27 ruling number this whole gap is
+# about) right beside it; nothing else that could say "(c) below still runs"
+# unqualified has a reason to.
+still_runs_unqualified_is_known="$(grep -F '(c) below still runs' "$HANDOFF_MD" | grep -Fv 'promised' | grep -Fc 'ruling 11' || true)"
 # KNOWN GAP, NOT THIS PR'S (opensoft/workBenches#93, filed upstream as
 # opensoft/openRepoTools#99): `:474`'s "(c) below still runs" is a real,
 # unqualified leftover — the exact promise R-A11-27 refuses, asserted as
@@ -3378,10 +3400,10 @@ still_runs_quoted="$(grep -F '(c) below still runs' "$HANDOFF_MD" | grep -Fc 'pr
 # count (1, 1), not merely "equal and positive".
 if [[ "$still_runs_total" -eq 1 && "$still_runs_quoted" -eq 1 ]]; then
     :
-elif [[ "$still_runs_total" -eq 2 && "$still_runs_quoted" -eq 1 ]]; then
+elif [[ "$still_runs_total" -eq 2 && "$still_runs_quoted" -eq 1 && "$still_runs_unqualified_is_known" -eq 1 ]]; then
     echo "KNOWN (opensoft/openRepoTools#99, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md:474 still asserts '(c) below still runs' unqualified ($still_runs_total total, $still_runs_quoted quoted as superseded)" >&2
 else
-    fail "R-A11-27: $still_runs_total line(s) say '(c) below still runs', $still_runs_quoted attributed — neither the known gap (2 total, 1 attributed) nor the one fixed state (1 total, 1 attributed); something else changed and needs a human read"
+    fail "R-A11-27: $still_runs_total line(s) say '(c) below still runs', $still_runs_quoted attributed, $still_runs_unqualified_is_known of the unqualified one(s) citing 'ruling 11' — neither the known gap (2 total, 1 attributed, 1 citing ruling 11) nor the one fixed state (1 total, 1 attributed); something else changed and needs a human read"
 fi
 assertion
 
@@ -3558,15 +3580,20 @@ grep -Fq 'R-A11-27' "$GUARD_SH" \
 # ABSENT, so a file carrying both somehow would have taken whichever branch
 # came first and missed that the wrong one might still be the effective `$L`.
 # Both are counted, `-F` and `-x` together, and each branch now requires the
-# other to be exactly zero.
+# other to be exactly zero. Round 7: neither branch checked the TOTAL — a
+# third, differently-spelled `L=` assignment sitting beside either of the
+# other two would have left both specific counts exactly as expected while a
+# stray extra assignment silently decided the effective `$L`. `total_l_count`
+# catches any `^L=` this file has that is neither counted pattern.
 fixed_l_count="$(grep -Fxc 'L="$(command -v lanes-edit.sh || printf '"'"'%s'"'"' ~/projects/xFactory/lanes-edit.sh)"' <<<"$skill_write_code" || true)"
 hardcoded_l_count="$(grep -Fxc 'L=~/projects/xFactory/lanes-edit.sh' <<<"$skill_write_code" || true)"
-if [[ "$fixed_l_count" -eq 1 && "$hardcoded_l_count" -eq 0 ]]; then
+total_l_count="$(grep -Ec '^L=' <<<"$skill_write_code" || true)"
+if [[ "$total_l_count" -eq 1 && "$fixed_l_count" -eq 1 && "$hardcoded_l_count" -eq 0 ]]; then
     :
-elif [[ "$fixed_l_count" -eq 0 && "$hardcoded_l_count" -eq 1 ]]; then
+elif [[ "$total_l_count" -eq 1 && "$fixed_l_count" -eq 0 && "$hardcoded_l_count" -eq 1 ]]; then
     echo "KNOWN (opensoft/openRepoTools#100, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md:39 hard-codes lanes-edit.sh's path instead of resolving it" >&2
 else
-    fail "helper: \$L assignment is ambiguous or unexpected (fixed form x$fixed_l_count, hard-coded form x$hardcoded_l_count) — neither the known gap nor the exact fixed form alone; something else changed here and needs a human read"
+    fail "helper: \$L assignment is ambiguous or unexpected (total x$total_l_count, fixed form x$fixed_l_count, hard-coded form x$hardcoded_l_count) — neither the known gap nor the exact fixed form alone; something else changed here and needs a human read"
 fi
 assertion
 
