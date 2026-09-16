@@ -1,0 +1,266 @@
+#!/usr/bin/env bash
+#
+# estate-commands-start — put the estate's lane commands back where a lane
+# looks for them, at CONTAINER START, so a bench recreate is not a downgrade
+# (opensoft/workBenches#90). Run by /usr/local/bin/workbench-entrypoint before
+# the container's own command; safe to run by hand at any time afterwards.
+#
+# WHAT WAS MEASURED (2026-09-15 on Eagle, and re-measured inside the same
+# container while this was written). The py-bench container was recreated
+# (0e7d1a79a07e → cb999b9fd177). `/workspace/projects`, `~/.agents`,
+# `~/.claude` and `~/.claude-profiles` came back — they are bind mounts.
+# `~/.local/bin` came back holding one entry, the `claude` symlink, because it
+# is NOT a mount: `docker-compose.mounts.yml` and every devcontainer.json
+# beside it mount `~/.claude`, `~/.claude-profiles`, `~/.agents`,
+# `~/.local/lib/workbenches` and `~/.local/state/workbenches`, and never
+# `~/.local/bin`. That directory therefore lives in the container's writable
+# overlay, and a recreate resets it to exactly what the image baked. Everything
+# `openRepoTools --install` had put there since was gone, silently:
+#
+#   - the twelve lane commands left $PATH;
+#   - `~/projects/xFactory/lanes-edit.sh` — a symlink on the MOUNTED workspace,
+#     so it survived — went on pointing at `~/.local/bin/lanes-edit.sh`, which
+#     no longer existed, and dangled;
+#   - the SessionStart hook in the mounted `~/.claude/settings.json` kept
+#     calling that dangling path and became a no-op;
+#   - and the launcher's Amendment 12 downgrade rule removed the name-guard
+#     entry from each profile it launched, because the estate had stopped
+#     answering `guard`.
+#
+# WHY THE IMAGE'S OWN COPIES DO NOT CLOSE IT. devBenches/base-image/Dockerfile
+# COPYs the twelve into /usr/local/bin, and on a CURRENT image that does put
+# them back on $PATH. It still leaves three holes, and this step exists for
+# them: (1) nothing rebuilds Layer 1a when a bench starts — `prepare-bench-start`
+# ensures Layer 3 only — so the measured bench was running an image built
+# 2026-09-12, before those COPY lines landed, and held none of the eight lane
+# helpers; (2) the image places none of the six PER-USER artifacts `--install`
+# also places (the three skills, the three command files) or the two entries it
+# merges into `~/.claude/settings.json`, because a build has no user's $HOME;
+# and (3) nothing re-points `~/projects/xFactory/lanes-edit.sh`, whose target is
+# the INSTALLED path, not /usr/local/bin. Only `--install` plus `link-estates`
+# closes all three, which is what this does.
+#
+# THE RAVEN CASE IS THE SAME CASE. On a fresh workstation `setup.sh` runs
+# `scripts/setup-estate-commands.sh`, which runs the vendored shims' own
+# `--install` and relays their lines unchanged. A container cannot run that
+# script — Layer 1a's build context is `devBenches/base-image/`, so the
+# repository's `scripts/` is not reachable to COPY — so this step takes the
+# same two actions against the same vendored bytes, with the same no-fetch
+# sentinel, and relays the same lines. It deliberately adds no install logic of
+# its own: installing twice changing nothing is openRepoTools' own promise
+# (`already installed ... (unchanged)`), and re-implementing a freshness check
+# here would be a second answer to a question the installer already answers.
+#
+# IT NEVER FAILS CONTAINER START. Every failure is relayed and swallowed:
+# exit 0 is the only exit. A refusal a person must act on is printed, in the
+# refusing program's own words, and the bench comes up either way.
+#
+# Environment:
+#   WORKBENCHES_SKIP_ESTATE_COMMANDS=1   skip entirely (one line, exit 0) —
+#                                        the same switch setup.sh and
+#                                        scripts/setup-estate-commands.sh honour
+#   WORKBENCHES_ESTATE_VENDOR_DIR        the vendored openRepoTools tree
+#                                        (default /usr/local/share/openrepotools;
+#                                        the test seam)
+#   OPENREPOTOOLS_BIN_DIR                honoured by the installer itself
+#                                        (default ~/.local/bin)
+
+# NOT `set -e`: a step in front of every container start may not exit nonzero
+# on a surprise. `set -u` still catches this script's own typos, and pipefail
+# is set for the same reason the rest of the estate sets it.
+set -uo pipefail
+
+ESTATE_VENDOR_DIR="${WORKBENCHES_ESTATE_VENDOR_DIR:-/usr/local/share/openrepotools}"
+
+say() {
+    printf 'estate-commands-start: %s\n' "$1" >&2
+}
+
+if [ "${WORKBENCHES_SKIP_ESTATE_COMMANDS:-}" = "1" ]; then
+    say "skipped by WORKBENCHES_SKIP_ESTATE_COMMANDS=1."
+    exit 0
+fi
+
+# $HOME IS READ, NEVER ASSUMED. Every bench's compose file exports it, but an
+# entrypoint runs before any shell profile could set it, and installing into
+# the wrong home is worse than installing into none: fall back to the passwd
+# entry of whoever the container's first process runs as, and stand down if
+# even that does not name a directory.
+if [ -z "${HOME:-}" ] || [ ! -d "${HOME:-}" ]; then
+    HOME="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)"
+    export HOME
+fi
+if [ -z "${HOME:-}" ] || [ ! -d "$HOME" ]; then
+    say "uid $(id -u) has no home directory, so there is nowhere to install the estate commands. Nothing installed."
+    exit 0
+fi
+
+# THE HOST'S OWN HOME IS NOT THIS STEP'S TO WRITE TO (Copilot round 3 of
+# opensoft/workBenches#99). This runs from the image, so it runs in EVERY dev
+# bench — and they do not all give the container a home of its own.
+# devBenches/.devcontainer/docker-compose.yml mounts the whole host home
+# (`~:/home/${USER}`), and there `$HOME/.local/bin` IS the workstation's, not a
+# container overlay. Installing into it would put THE IMAGE'S PIN over whatever
+# the host has, which on a workstation running a newer openRepoTools than the
+# image was built against is a silent downgrade at container start — the very
+# thing #90 is about, arriving from the other direction. Nothing here is
+# ephemeral to repair either: that home survives every recreate by definition.
+#
+# THE TWO CASES ARE TOLD APART BY A FACT, NOT A GUESS. A whole-home mount makes
+# `$HOME` itself a mount point; the per-path mounts the other benches use
+# (~/.claude, ~/.claude-profiles, ~/.agents, ...) make its CHILDREN mount points
+# and leave `$HOME` an ordinary directory in the image's own layer. Measured
+# both ways: in a py-bench `/proc/self/mountinfo` has no row whose mount point
+# is `/home/<user>`, and the generic DevBench compose above produces exactly
+# such a row. Field 5 of mountinfo is the mount point.
+#
+# WORKBENCHES_MOUNTINFO is the test seam for that file and
+# WORKBENCHES_ESTATE_FORCE=1 overrides the whole decision, for an operator who
+# means it.
+estate_home_is_host_mount() {
+    local mountinfo
+    mountinfo="${WORKBENCHES_MOUNTINFO:-/proc/self/mountinfo}"
+    [ -r "$mountinfo" ] || return 1
+    awk -v home="$1" '$5 == home { found = 1; exit } END { exit !found }' "$mountinfo"
+}
+
+if [ "${WORKBENCHES_ESTATE_FORCE:-}" != "1" ] && estate_home_is_host_mount "$HOME"; then
+    say "$HOME is itself a bind mount, so this bench shares the workstation's own home rather than a container home of its own. Nothing installed: the estate there is setup.sh's to place and a container start must not put this image's pin over it. Set WORKBENCHES_ESTATE_FORCE=1 to install anyway."
+    exit 0
+fi
+
+# An image built before opensoft/workBenches#90 has no vendored tree to install
+# FROM. Say which rebuild ends that rather than fetching anything.
+if [ ! -x "$ESTATE_VENDOR_DIR/openRepoTools" ]; then
+    say "no vendored openRepoTools at $ESTATE_VENDOR_DIR, so this image predates opensoft/workBenches#90. Rebuild Layer 1a, the dev-bench base (devBenches/base-image/build.sh), to get it. Nothing installed."
+    exit 0
+fi
+
+# NOTHING IS EVER FETCHED AT CONTAINER START, AND THE PREFLIGHT IS WHAT MAKES
+# THAT TRUE (Copilot's review of opensoft/workBenches#99). The installer copies
+# each artifact from beside itself when it is there and FETCHES the ones that
+# are not; the sentinel below only makes such a fetch FAIL, which is a DNS and
+# TLS round trip to api.github.com in front of every container start, not an
+# absence of one. So the whole install set is checked here first, and a tree
+# that is missing anything installs NOTHING -- the same shape
+# scripts/setup-estate-commands.sh takes on a host, where the file-existence
+# check runs before either shim does.
+#
+# THE SET IS READ FROM THE SHIM, NOT LISTED HERE. `openRepoTools` keeps its own
+# `INSTALLABLES`, `SKILLS` and `COMMANDS` as one-line arrays and derives every
+# skill and command path from a name (`skills/<name>/SKILL.md`,
+# `commands/<name>.md`), so reading those three lines is the one place this
+# cannot drift from what `--install` will actually look for -- including a
+# future shim that grows a new artifact the image was not rebuilt to carry,
+# which is precisely the partial tree this guards. No `eval`: the lines are
+# stripped to their words and split, never executed.
+shim_array_words() {   # <ARRAY NAME>
+    sed -n "s/^$1=(\\(.*\\))\$/\\1/p" "$ESTATE_VENDOR_DIR/openRepoTools" 2>/dev/null | head -n 1
+}
+
+estate_install_set() {
+    local name bins skills commands
+    bins="$(shim_array_words INSTALLABLES)"
+    skills="$(shim_array_words SKILLS)"
+    commands="$(shim_array_words COMMANDS)"
+    # A shim whose arrays this cannot read is not one to guess about.
+    if [ -z "$bins" ] || [ -z "$skills" ] || [ -z "$commands" ]; then
+        return 1
+    fi
+    for name in $bins; do printf '%s\n' "$name"; done
+    for name in $skills; do printf 'skills/%s/SKILL.md\n' "$name"; done
+    for name in $commands; do printf 'commands/%s.md\n' "$name"; done
+}
+
+estate_missing=''
+if ! estate_set="$(estate_install_set)"; then
+    say "could not read openRepoTools' own INSTALLABLES/SKILLS/COMMANDS lists from $ESTATE_VENDOR_DIR/openRepoTools, so there is no way to check the vendored tree is complete before installing from it. Nothing installed."
+    exit 0
+fi
+for estate_rel in $estate_set; do
+    [ -f "$ESTATE_VENDOR_DIR/$estate_rel" ] || estate_missing="${estate_missing:+$estate_missing }$estate_rel"
+done
+if [ -n "$estate_missing" ]; then
+    say "the vendored tree at $ESTATE_VENDOR_DIR is incomplete, so --install would go to the network for each missing file in front of every container start. Missing: $estate_missing. Nothing installed; rebuild Layer 1a, the dev-bench base (devBenches/base-image/build.sh)."
+    exit 0
+fi
+
+# Defence in depth BEHIND that preflight, not instead of it, and the same
+# sentinel scripts/setup-estate-commands.sh exports: if a fetch is ever
+# attempted despite every file being present, it fails loudly naming the
+# sentinel rather than quietly succeeding against whatever repo or ref the
+# container's environment happened to carry.
+ESTATE_SENTINEL="pinned-by-workBenches-no-fetch"
+
+# ONE ESTATE INSTALL AT A TIME ACROSS EVERY BENCH ON THIS WORKSTATION
+# (Copilot round 2 of opensoft/workBenches#99). Running this at container start
+# is what makes the race reachable: `~/.claude` and `~/.claude-profiles` are
+# bind-mounted from the SAME host home into every bench, `~/projects` resolves
+# to the same mounted workspace, and starting two benches at once therefore has
+# two `--install`s doing a read-modify-write of one `~/.claude/settings.json`
+# and two `link-estates` mutating one set of links. Neither program locks: the
+# settings merge is atomic per write (temp file, then `mv -f`) but not
+# read-to-write, so the later writer can drop the earlier one's entry.
+#
+# The lock lives beside the file it protects, in the shared home, so it is the
+# same inode for every container that mounts that home — which is what makes
+# `flock` serialize ACROSS containers at all (one kernel, one inode).
+#
+# AND IT WAITS RATHER THAN STANDING DOWN. A container that cannot take the lock
+# must still install, because `~/.local/bin` is the one thing here that is NOT
+# shared: the other container is filling its own. So the wait is bounded and a
+# timeout proceeds anyway, saying so — a slower race is better than a bench
+# that starts with no lane commands. WORKBENCHES_ESTATE_LOCK_WAIT is the test
+# seam for that bound and nothing but a test sets it.
+# THE OPEN IS PROBED IN A SUBSHELL, AND `exec` CARRIES NO REDIRECTION OF ITS
+# OWN. `exec 9>"$f" 2>/dev/null` is one redirection LIST applied to the current
+# shell: it opens the lock file AND sends this script's stderr to /dev/null for
+# everything after it — every `say`, and every line `--install` and
+# `link-estates` write there. Measured while this was written: the lock worked
+# and the whole step went mute. So the writability question is asked first, in
+# a subshell where a redirect cannot escape, with `>>` so an existing lock file
+# is never truncated under a holder.
+estate_lock_file="${CLAUDE_USER_DIR:-$HOME/.claude}/.workbenches-estate-start.lock"
+if ! command -v flock >/dev/null 2>&1; then
+    say "flock is not on PATH, so this start is not serialized against other benches sharing this home."
+elif ! { mkdir -p -- "${estate_lock_file%/*}" && : >> "$estate_lock_file"; } 2>/dev/null; then
+    say "could not open $estate_lock_file, so this start is not serialized against other benches sharing this home."
+else
+    exec 9>>"$estate_lock_file"
+    if ! flock -w "${WORKBENCHES_ESTATE_LOCK_WAIT:-120}" 9; then
+        say "another container still holds $estate_lock_file after ${WORKBENCHES_ESTATE_LOCK_WAIT:-120}s, so this start is going ahead without it. Both installs place the same vendored bytes; the one thing at risk is a settings.json entry written by both at once."
+    fi
+fi
+
+# Relayed, not summarised: the installer's own per-file `installed` / `updated`
+# / `already installed ... (unchanged)` lines are this step's whole account of
+# what it did, and they go to the container log exactly as it wrote them.
+install_status=0
+OPENREPOTOOLS_REPO="$ESTATE_SENTINEL" OPENREPOTOOLS_REF="$ESTATE_SENTINEL" \
+    "$ESTATE_VENDOR_DIR/openRepoTools" --install || install_status=$?
+if [ "$install_status" -ne 0 ]; then
+    say "openRepoTools --install exited $install_status — its own refusal is above, and the estate commands may be incomplete. Container start continues."
+fi
+
+# THEN THE LINKS, because `~/projects/xFactory/lanes-edit.sh` is the path the
+# SessionStart hook names and it has to resolve to the file the install above
+# just placed. Prefer the installed copy over the vendored one: it is the one
+# the person's own $PATH will reach, and running it is the cheapest proof the
+# install really landed.
+bin_dir="${OPENREPOTOOLS_BIN_DIR:-$HOME/.local/bin}"
+link_estates="$bin_dir/link-estates"
+if [ ! -x "$link_estates" ]; then
+    link_estates="$ESTATE_VENDOR_DIR/link-estates"
+fi
+
+# A FRESH WORKSTATION HAS NO `~/.agents/workspace.yaml` YET, and link-estates
+# refuses (exit 1) when it cannot find one, naming `openRepoTools wip init` as
+# the one command that ends that. That refusal is CORRECT and is not this
+# step's to convert into a container that will not start: relay it and carry on.
+link_status=0
+"$link_estates" || link_status=$?
+if [ "$link_status" -ne 0 ]; then
+    say "link-estates exited $link_status — its own lines are above. On a workstation that has no ~/.agents/workspace.yaml yet this is the expected refusal and \`openRepoTools wip init\` ends it. Container start continues."
+fi
+
+exit 0

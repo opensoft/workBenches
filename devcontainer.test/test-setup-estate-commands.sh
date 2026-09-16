@@ -756,6 +756,443 @@ assert_contains "$OUTPUT_P" 'a-new-tool-this-script-does-not-list' 'the refusal 
 assert_empty_dir "$BIN_P" 'nothing was installed once the two lists disagree'
 assert_absent "$HOME_P/.claude" 'nothing was written under $HOME/.claude either, for the widened shim'
 
+# ===========================================================================
+# THE CONTAINER-START STEP (opensoft/workBenches#90)
+#
+# `devBenches/base-image/files/estate/estate-commands-start` is the same two
+# actions this script's subject takes -- the vendored `openRepoTools --install`
+# and then `link-estates` -- taken at CONTAINER START instead of at `setup.sh`
+# time, because `~/.local/bin` is not one of the paths the benches bind-mount
+# and a bench recreate therefore resets it to whatever the image baked. It is
+# tested here, beside the host step it mirrors, so the two cannot drift apart
+# about what a complete estate install is.
+#
+# It cannot live in scripts/ and be reached from a container: Layer 1a's build
+# context is devBenches/base-image/, so the repository's own scripts/ is not
+# COPY-able into the image. What it shares with the script above is the
+# vendored tree and the no-fetch sentinel, not code -- and, like that script,
+# it adds no install logic of its own.
+#
+# Scenarios (q)-(v) pin the properties an entrypoint step must have and a
+# `setup.sh` step need not: it installs when the bin dir is empty, writes
+# NOTHING when it is already current, and NEVER exits nonzero -- not when the
+# workspace file a fresh workstation has not written yet is missing, not when
+# the switch turns it off, and not when the image predates the vendored tree
+# it installs from. A nonzero exit there is a container that will not start.
+START_STEP="$REPO_ROOT/devBenches/base-image/files/estate/estate-commands-start"
+VENDOR_DIR="$BASE_IMAGE_DIR/files/openrepotools"
+
+# Every run is sandboxed the way the scenarios above are, plus the two the
+# linking half reads: AGENT_PROTOCOL_ROOT (where workspace.yaml is looked for)
+# and PROJECTS_ROOT (where the estate folders are), so `link-estates` can never
+# reach the real ~/.agents or ~/projects of whoever runs this suite.
+run_start_step() {   # <home> <bin dir> [extra env assignments...]
+    local home="$1" bin="$2"
+    shift 2
+    env HOME="$home" \
+        CLAUDE_PROFILES_HOME="$home/.claude-profiles" CLAUDE_USER_DIR="$home/.claude" \
+        AGENT_PROTOCOL_ROOT="$home/.agents" PROJECTS_ROOT="$home/projects" \
+        OPENREPOTOOLS_BIN_DIR="$bin" \
+        WORKBENCHES_ESTATE_VENDOR_DIR="$VENDOR_DIR" \
+        "$@" bash "$START_STEP" 2>&1
+}
+
+# A manifest of everything the step could have written, by path, size and
+# modification time -- the only way to prove "already current" cost no write
+# rather than merely leaving the same bytes behind. `stat` is called on both
+# the GNU and the BSD spelling, the same way assert_mode above does it, rather
+# than with `find -printf`, which is GNU-only: this suite is host-run (see
+# devcontainer.test/README.md) and a developer's host is not always Linux.
+state_manifest() {   # <dir>...
+    find "$@" -type f 2>/dev/null | LC_ALL=C sort | while IFS= read -r manifest_file; do
+        printf '%s %s\n' "$manifest_file" \
+            "$(stat -c '%s %Y' "$manifest_file" 2>/dev/null || stat -f '%z %m' "$manifest_file" 2>/dev/null || true)"
+    done
+}
+
+printf '%s\n' '--- Scenario (q): the container-start step installs into an empty bin dir, as a recreate leaves it ---'
+BIN_Q="$TMPDIR_ROOT/bin-q"
+HOME_Q="$TMPDIR_ROOT/home-q"
+mkdir -p "$BIN_Q" "$HOME_Q"
+STATUS_Q=0
+OUTPUT_Q="$(run_start_step "$HOME_Q" "$BIN_Q")" || STATUS_Q=$?
+
+assert_equal '0' "$STATUS_Q" 'the start step exits 0 on a fresh container'
+for name in "${TOOLS_FILES[@]}"; do
+    assert_file_executable "$BIN_Q/$name" "the start step places $name, executable"
+    assert_identical "$BIN_Q/$name" "$(tools_vendor_path "$name")" "the start step's $name is byte-identical to the vendored copy"
+done
+assert_contains "$OUTPUT_Q" 'openRepoTools: 12 of 12 placed in' 'the start step relays the installer'"'"'s own count line, not a summary of its own'
+for name in "${SKILL_NAMES[@]}"; do
+    assert_skill_pair "$HOME_Q" "$name" "the start step places the $name skill"
+done
+for name in "${COMMAND_NAMES[@]}"; do
+    assert_command_pair "$HOME_Q" "$name" "the start step places the /$name command file"
+done
+assert_hook_present "$HOME_Q" 'the start step merges the SessionStart hook'
+assert_guard_hook_present "$HOME_Q" 'the start step merges the UserPromptSubmit guard hook'
+# The six per-user artifacts and the two hook entries are the half the image's
+# own COPY into /usr/local/bin can never restore -- a build has no user's $HOME
+# -- which is why the step runs `--install` rather than trusting those copies.
+
+printf '%s\n' '--- Scenario (r): a second start is a no-op — every artifact reported unchanged, and not one byte written ---'
+BEFORE_R="$(state_manifest "$BIN_Q" "$HOME_Q")"
+STATUS_R=0
+OUTPUT_R="$(run_start_step "$HOME_Q" "$BIN_Q")" || STATUS_R=$?
+AFTER_R="$(state_manifest "$BIN_Q" "$HOME_Q")"
+
+assert_equal '0' "$STATUS_R" 'a second start exits 0'
+assert_equal "$BEFORE_R" "$AFTER_R" 'a second start writes nothing at all (same files, sizes and mtimes)'
+assert_not_contains "$OUTPUT_R" ': installed at' 'a second start installs nothing'
+for name in "${TOOLS_FILES[@]}"; do
+    assert_contains "$OUTPUT_R" "$name: already installed at" "a second start reports $name unchanged"
+done
+assert_contains "$OUTPUT_R" 'SessionStart hook: already installed in' 'a second start reports the SessionStart hook unchanged'
+assert_contains "$OUTPUT_R" 'UserPromptSubmit guard: already installed in' 'a second start reports the guard hook unchanged'
+
+printf '%s\n' '--- Scenario (s): no ~/.agents/workspace.yaml (a fresh workstation before `openRepoTools wip init`) does not fail container start ---'
+assert_absent "$HOME_Q/.agents/workspace.yaml" 'scenario (s) precondition: the sandbox has no workspace.yaml'
+assert_contains "$OUTPUT_Q" 'openRepoTools wip init' 'the linking half relays link-estates'"'"' own refusal, which names the one command that ends it'
+assert_contains "$OUTPUT_Q" 'Container start continues' 'the step says out loud that the refusal did not stop the container'
+# Asserted against scenario (q)'s own output, not a fresh run: (q) already ran
+# with no workspace.yaml, and its exit code -- asserted 0 above -- IS this
+# scenario's claim. link-estates exits 1 there; the step swallows it.
+
+printf '%s\n' '--- Scenario (t): with a workspace.yaml, the links land and the SessionStart hook path resolves again ---'
+BIN_T="$TMPDIR_ROOT/bin-t"
+HOME_T="$TMPDIR_ROOT/home-t"
+WIP_T="$HOME_T/brett-wip"
+mkdir -p "$BIN_T" "$HOME_T/.agents" "$HOME_T/projects/xFactory" "$WIP_T/handoffs/xFactory" "$WIP_T/lanes"
+git init -q "$WIP_T"
+git -C "$WIP_T" remote add origin git@github.com:acme/acme-wip.git
+: > "$WIP_T/lanes/LANES.md"
+printf 'repository: acme/acme-wip\npath: %s\n' "$WIP_T" > "$HOME_T/.agents/workspace.yaml"
+STATUS_T=0
+OUTPUT_T="$(run_start_step "$HOME_T" "$BIN_T")" || STATUS_T=$?
+
+assert_equal '0' "$STATUS_T" 'the start step exits 0 with a workspace repository present'
+# THE POINT OF THE WHOLE STEP, in one assertion: `~/projects/xFactory/
+# lanes-edit.sh` is the command string Amendment 8(e)'s SessionStart hook
+# names, and a recreate left it a symlink to a file that no longer existed.
+# `-e` follows the link, so this fails on a dangling one.
+if [ -L "$HOME_T/projects/xFactory/lanes-edit.sh" ] && [ -e "$HOME_T/projects/xFactory/lanes-edit.sh" ]; then
+    pass 'the SessionStart hook path ~/projects/xFactory/lanes-edit.sh is a link that resolves'
+else
+    fail 'the SessionStart hook path ~/projects/xFactory/lanes-edit.sh is missing or dangling after the start step'
+fi
+assert_identical "$HOME_T/projects/xFactory/lanes-edit.sh" "$BIN_T/lanes-edit.sh" 'that link resolves to the lanes-edit.sh this start step installed'
+assert_equal "$(readlink "$HOME_T/projects/xFactory/LANES.md")" "$WIP_T/lanes/LANES.md" 'the register link points into the workspace repository'
+assert_equal "$(readlink "$HOME_T/projects/xFactory/handoffs")" "$WIP_T/handoffs/xFactory" 'the handoffs link points into the workspace repository'
+assert_not_contains "$OUTPUT_T" 'openRepoTools wip init' 'nothing refuses for want of a workspace repository once there is one'
+
+printf '%s\n' '--- Scenario (u): WORKBENCHES_SKIP_ESTATE_COMMANDS=1 turns the step off from a bench'"'"'s own environment ---'
+BIN_U="$TMPDIR_ROOT/bin-u"
+HOME_U="$TMPDIR_ROOT/home-u"
+mkdir -p "$BIN_U" "$HOME_U"
+STATUS_U=0
+OUTPUT_U="$(run_start_step "$HOME_U" "$BIN_U" WORKBENCHES_SKIP_ESTATE_COMMANDS=1)" || STATUS_U=$?
+
+assert_equal '0' "$STATUS_U" 'the skip switch exits 0'
+assert_contains "$OUTPUT_U" 'WORKBENCHES_SKIP_ESTATE_COMMANDS=1' 'the skip switch says which switch turned it off'
+assert_empty_dir "$BIN_U" 'the skip switch installs nothing'
+assert_absent "$HOME_U/.claude" 'the skip switch writes nothing under $HOME either'
+
+printf '%s\n' '--- Scenario (v): an image built before #90 has no vendored tree, and still must not fail container start ---'
+BIN_V="$TMPDIR_ROOT/bin-v"
+HOME_V="$TMPDIR_ROOT/home-v"
+mkdir -p "$BIN_V" "$HOME_V"
+STATUS_V=0
+OUTPUT_V="$(env HOME="$HOME_V" \
+    CLAUDE_PROFILES_HOME="$HOME_V/.claude-profiles" CLAUDE_USER_DIR="$HOME_V/.claude" \
+    AGENT_PROTOCOL_ROOT="$HOME_V/.agents" PROJECTS_ROOT="$HOME_V/projects" \
+    OPENREPOTOOLS_BIN_DIR="$BIN_V" \
+    WORKBENCHES_ESTATE_VENDOR_DIR="$TMPDIR_ROOT/no-such-vendor-dir" \
+    bash "$START_STEP" 2>&1)" || STATUS_V=$?
+
+assert_equal '0' "$STATUS_V" 'a missing vendored tree exits 0 rather than refusing to start the container'
+assert_contains "$OUTPUT_V" 'no vendored openRepoTools at' 'a missing vendored tree says what is missing'
+assert_contains "$OUTPUT_V" 'build.sh' 'a missing vendored tree names the rebuild that ends it'
+assert_empty_dir "$BIN_V" 'a missing vendored tree installs nothing'
+
+printf '%s\n' '--- Scenario (w): an incomplete vendored tree installs NOTHING, rather than sending --install to the network at container start ---'
+# Copilot's review of opensoft/workBenches#99: the no-fetch sentinel only makes
+# a fetch FAIL -- a DNS and TLS round trip in front of every container start --
+# so the guarantee has to be a preflight, not a sentinel. The set it checks is
+# read from the shim's own INSTALLABLES/SKILLS/COMMANDS, so this scenario also
+# covers the case that motivates it: an image whose Layer 1a was not rebuilt
+# after the shim grew an artifact.
+BIN_W="$TMPDIR_ROOT/bin-w"
+HOME_W="$TMPDIR_ROOT/home-w"
+VENDOR_W="$TMPDIR_ROOT/vendor-w"
+mkdir -p "$BIN_W" "$HOME_W"
+cp -R "$VENDOR_DIR" "$VENDOR_W"
+rm -f "$VENDOR_W/lane-handoff" "$VENDOR_W/skills/restart/SKILL.md" "$VENDOR_W/commands/swap.md"
+STATUS_W=0
+OUTPUT_W="$(env HOME="$HOME_W" \
+    CLAUDE_PROFILES_HOME="$HOME_W/.claude-profiles" CLAUDE_USER_DIR="$HOME_W/.claude" \
+    AGENT_PROTOCOL_ROOT="$HOME_W/.agents" PROJECTS_ROOT="$HOME_W/projects" \
+    OPENREPOTOOLS_BIN_DIR="$BIN_W" WORKBENCHES_ESTATE_VENDOR_DIR="$VENDOR_W" \
+    bash "$START_STEP" 2>&1)" || STATUS_W=$?
+
+assert_equal '0' "$STATUS_W" 'an incomplete vendored tree still exits 0 — a container start is not a place to refuse'
+assert_empty_dir "$BIN_W" 'an incomplete vendored tree installs NOTHING, so no fetch is ever reachable'
+assert_absent "$HOME_W/.claude" 'an incomplete vendored tree writes nothing under $HOME either'
+assert_contains "$OUTPUT_W" 'lane-handoff' 'the refusal names the missing bin file'
+assert_contains "$OUTPUT_W" 'skills/restart/SKILL.md' 'the refusal names the missing skill, derived from the shim'"'"'s own SKILLS list'
+assert_contains "$OUTPUT_W" 'commands/swap.md' 'the refusal names the missing command file, derived from the shim'"'"'s own COMMANDS list'
+assert_contains "$OUTPUT_W" 'build.sh' 'the refusal names the rebuild that ends it'
+
+printf '%s\n' '--- Scenario (x): the ENTRYPOINT runs the step and then execs the container'"'"'s own command, argument for argument ---'
+# Also Copilot's review of #99: "it never executes this ENTRYPOINT with a real
+# command... a bad image build, lost inherited CMD, or broken `exec` argument
+# forwarding could therefore pass". A `docker build` is still out of reach in
+# here (this suite runs INSIDE a bench), but everything below the image layer
+# is not: WORKBENCHES_ENTRYPOINT_STEP points the entrypoint at a recorder, and
+# the argv it forwards is compared byte for byte -- including an argument with
+# a space in it, which is what an `exec $@` without quotes would split.
+ENTRYPOINT_FILE="$REPO_ROOT/devBenches/base-image/files/estate/workbench-entrypoint"
+X_DIR="$TMPDIR_ROOT/entrypoint-x"
+mkdir -p "$X_DIR/bin"
+cat > "$X_DIR/step" <<EOF
+#!/bin/sh
+printf 'step ran\n' >> "$X_DIR/step.log"
+exit 0
+EOF
+cat > "$X_DIR/bin/recorder" <<EOF
+#!/bin/sh
+: > "$X_DIR/argv.log"
+for a in "\$@"; do printf '%s\n' "\$a" >> "$X_DIR/argv.log"; done
+exit 0
+EOF
+# The image's own CMD is `sleep infinity`; a stub of that name earlier on PATH
+# is how the no-argument fallback is asserted without hanging this suite.
+cat > "$X_DIR/bin/sleep" <<EOF
+#!/bin/sh
+printf '%s\n' "\$@" > "$X_DIR/sleep.log"
+exit 0
+EOF
+chmod 0755 "$X_DIR/step" "$X_DIR/bin/recorder" "$X_DIR/bin/sleep"
+
+: > "$X_DIR/step.log"
+STATUS_X=0
+env PATH="$X_DIR/bin:$PATH" WORKBENCHES_ENTRYPOINT_STEP="$X_DIR/step" \
+    sh "$ENTRYPOINT_FILE" recorder --flag "two words" -- trailing >/dev/null 2>&1 || STATUS_X=$?
+assert_equal '0' "$STATUS_X" 'the entrypoint exits with the status of the command it exec-ed'
+assert_equal "$(cat "$X_DIR/step.log" 2>/dev/null)" 'step ran' 'the entrypoint ran the start-up step exactly once before exec'
+assert_equal "$(cat "$X_DIR/argv.log" 2>/dev/null)" "$(printf '%s\n' --flag 'two words' -- trailing)" 'the entrypoint forwarded every argument unchanged, the one with a space included'
+
+# A step that FAILS must not stop the container: the exec is unconditional.
+printf '#!/bin/sh\nexit 3\n' > "$X_DIR/step"
+chmod 0755 "$X_DIR/step"
+rm -f "$X_DIR/argv.log"
+STATUS_XF=0
+env PATH="$X_DIR/bin:$PATH" WORKBENCHES_ENTRYPOINT_STEP="$X_DIR/step" \
+    sh "$ENTRYPOINT_FILE" recorder still-runs >/dev/null 2>&1 || STATUS_XF=$?
+assert_equal '0' "$STATUS_XF" 'a start-up step that fails does not fail the container'
+assert_equal "$(cat "$X_DIR/argv.log" 2>/dev/null)" 'still-runs' 'the command is exec-ed even when the start-up step failed'
+
+# A step that is not there at all (an image that predates this) likewise.
+rm -f "$X_DIR/argv.log"
+STATUS_XM=0
+env PATH="$X_DIR/bin:$PATH" WORKBENCHES_ENTRYPOINT_STEP="$X_DIR/no-such-step" \
+    sh "$ENTRYPOINT_FILE" recorder no-step >/dev/null 2>&1 || STATUS_XM=$?
+assert_equal '0' "$STATUS_XM" 'a missing start-up step does not fail the container'
+assert_equal "$(cat "$X_DIR/argv.log" 2>/dev/null)" 'no-step' 'the command is exec-ed even when the start-up step is not in the image'
+
+# NO arguments at all falls back to the image's own default command, so an
+# `--entrypoint` override that passes none still leaves PID 1 with something
+# to be.
+printf '#!/bin/sh\nexit 0\n' > "$X_DIR/step"
+chmod 0755 "$X_DIR/step"
+STATUS_XN=0
+env PATH="$X_DIR/bin:$PATH" WORKBENCHES_ENTRYPOINT_STEP="$X_DIR/step" \
+    sh "$ENTRYPOINT_FILE" >/dev/null 2>&1 || STATUS_XN=$?
+assert_equal '0' "$STATUS_XN" 'the no-argument fallback exits cleanly'
+assert_equal "$(cat "$X_DIR/sleep.log" 2>/dev/null)" 'infinity' 'with no arguments the entrypoint execs the image'"'"'s own default command, `sleep infinity`'
+
+# END TO END, minus Docker: the REAL start step under the REAL entrypoint,
+# against a sandboxed $HOME, then the recorder. This is the whole instruction
+# chain except `docker build` and the kernel's exec of PID 1.
+BIN_XE="$TMPDIR_ROOT/bin-xe"
+HOME_XE="$TMPDIR_ROOT/home-xe"
+mkdir -p "$BIN_XE" "$HOME_XE"
+rm -f "$X_DIR/argv.log"
+STATUS_XE=0
+env PATH="$X_DIR/bin:$PATH" WORKBENCHES_ENTRYPOINT_STEP="$START_STEP" \
+    HOME="$HOME_XE" CLAUDE_PROFILES_HOME="$HOME_XE/.claude-profiles" CLAUDE_USER_DIR="$HOME_XE/.claude" \
+    AGENT_PROTOCOL_ROOT="$HOME_XE/.agents" PROJECTS_ROOT="$HOME_XE/projects" \
+    OPENREPOTOOLS_BIN_DIR="$BIN_XE" WORKBENCHES_ESTATE_VENDOR_DIR="$VENDOR_DIR" \
+    sh "$ENTRYPOINT_FILE" recorder end-to-end >/dev/null 2>&1 || STATUS_XE=$?
+assert_equal '0' "$STATUS_XE" 'entrypoint + real start step + command exits 0'
+assert_equal "$(cat "$X_DIR/argv.log" 2>/dev/null)" 'end-to-end' 'the command still runs after the real start step did its work'
+for name in "${TOOLS_FILES[@]}"; do
+    assert_identical "$BIN_XE/$name" "$(tools_vendor_path "$name")" "end to end through the entrypoint, $name is installed and byte-identical"
+done
+
+printf '%s\n' '--- Scenario (y): two benches sharing one host home do not install over each other ---'
+# Copilot round 2 of opensoft/workBenches#99: `~/.claude` and `~/.claude-profiles`
+# are bind-mounted from the SAME host home into every bench, so running the
+# install at container start is what makes a race between two bench starts
+# reachable -- two read-modify-writes of one settings.json. The step takes an
+# flock in the shared home. It WAITS rather than standing down, because
+# `~/.local/bin` is the one thing here that is not shared, and a timeout goes
+# ahead anyway: a slower race beats a bench with no lane commands.
+#
+# SKIPPED, NOT FAILED, WHERE THERE IS NO `flock`. This suite is host-run (see
+# devcontainer.test/README.md) and a developer's host is not always Linux;
+# `flock(1)` is util-linux and macOS does not ship it. The step under test has
+# a DEFINED fallback for exactly that — it says the start is not serialized and
+# carries on — so a host without flock is a supported configuration, and
+# failing the whole regression suite there would punish a valid run for the
+# absence of an optional utility. CI (ubuntu-24.04) always has it, so the
+# scenario is never quietly lost on the run that gates merges.
+if ! command -v flock >/dev/null 2>&1; then
+    printf 'SKIP: scenario (y) needs flock(1), which this host does not have; the step'"'"'s own no-flock fallback is what runs here. CI on ubuntu-24.04 exercises it.\n'
+else
+    BIN_Y="$TMPDIR_ROOT/bin-y"
+    HOME_Y="$TMPDIR_ROOT/home-y"
+    mkdir -p "$BIN_Y" "$HOME_Y/.claude"
+    LOCK_Y="$HOME_Y/.claude/.workbenches-estate-start.lock"
+    : > "$LOCK_Y"
+
+    # A holder in another process stands in for the other bench. Confirmed held
+    # before the step runs, in a bounded loop, so this is a fact rather than a
+    # sleep and a hope.
+    flock "$LOCK_Y" -c 'sleep 10' &
+    LOCK_HOLDER=$!
+    held=0
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        if flock -n "$LOCK_Y" -c true >/dev/null 2>&1; then
+            sleep 0.3
+        else
+            held=1
+            break
+        fi
+    done
+    assert_equal '1' "$held" 'scenario (y) precondition: another process holds the estate lock'
+
+    STATUS_Y=0
+    OUTPUT_Y="$(env HOME="$HOME_Y" \
+        CLAUDE_PROFILES_HOME="$HOME_Y/.claude-profiles" CLAUDE_USER_DIR="$HOME_Y/.claude" \
+        AGENT_PROTOCOL_ROOT="$HOME_Y/.agents" PROJECTS_ROOT="$HOME_Y/projects" \
+        OPENREPOTOOLS_BIN_DIR="$BIN_Y" WORKBENCHES_ESTATE_VENDOR_DIR="$VENDOR_DIR" \
+        WORKBENCHES_ESTATE_LOCK_WAIT=1 \
+        bash "$START_STEP" 2>&1)" || STATUS_Y=$?
+    kill "$LOCK_HOLDER" 2>/dev/null || true
+    wait "$LOCK_HOLDER" 2>/dev/null || true
+
+    assert_equal '0' "$STATUS_Y" 'a contended lock still exits 0 — a bench start is never blocked on another bench'
+    assert_contains "$OUTPUT_Y" 'still holds' 'the step says it went ahead without the lock rather than doing it silently'
+    for name in "${TOOLS_FILES[@]}"; do
+        assert_identical "$BIN_Y/$name" "$(tools_vendor_path "$name")" "a contended lock still installs $name — the bin dir is per-container and nobody else fills it"
+    done
+
+    # THE LOCK MUST NOT MUTE THE STEP. `exec 9>"$lock" 2>/dev/null` is ONE
+    # redirection list applied to the shell: it opens the lock AND sends every
+    # later line -- every notice, and everything `--install` and `link-estates`
+    # write to stderr -- to /dev/null. That was the first cut here, measured
+    # mute while this scenario was written. Scenario (q)'s own output is the
+    # other half of this guard (its link-estates refusal is asserted in (s));
+    # this asserts it on the contended path too, where the lock code does the
+    # most work.
+    assert_contains "$OUTPUT_Y" 'Container start continues' 'the lock did not swallow the rest of the step'"'"'s output'
+
+    # And with the lock free there is no such line: a lock that always reports
+    # a timeout is not a working lock.
+    BIN_Y2="$TMPDIR_ROOT/bin-y2"
+    HOME_Y2="$TMPDIR_ROOT/home-y2"
+    mkdir -p "$BIN_Y2" "$HOME_Y2"
+    STATUS_Y2=0
+    OUTPUT_Y2="$(env HOME="$HOME_Y2" \
+        CLAUDE_PROFILES_HOME="$HOME_Y2/.claude-profiles" CLAUDE_USER_DIR="$HOME_Y2/.claude" \
+        AGENT_PROTOCOL_ROOT="$HOME_Y2/.agents" PROJECTS_ROOT="$HOME_Y2/projects" \
+        OPENREPOTOOLS_BIN_DIR="$BIN_Y2" WORKBENCHES_ESTATE_VENDOR_DIR="$VENDOR_DIR" \
+        WORKBENCHES_ESTATE_LOCK_WAIT=1 \
+        bash "$START_STEP" 2>&1)" || STATUS_Y2=$?
+    assert_equal '0' "$STATUS_Y2" 'an uncontended lock exits 0'
+    assert_not_contains "$OUTPUT_Y2" 'still holds' 'an uncontended lock is taken, not timed out'
+    if [ -f "$HOME_Y2/.claude/.workbenches-estate-start.lock" ]; then
+        pass 'the lock file is created beside the settings.json it protects, in the shared home'
+    else
+        fail 'the step took no lock at all: no lock file under the shared ~/.claude'
+    fi
+fi
+
+printf '%s\n' '--- Scenario (z): a bench that shares the workstation'"'"'s own home installs nothing into it ---'
+# Copilot round 3 of opensoft/workBenches#99. The step runs from the image, so
+# it runs in EVERY dev bench -- and devBenches/.devcontainer/docker-compose.yml
+# mounts the WHOLE host home (`~:/home/${USER}`). There `$HOME/.local/bin` is
+# the workstation's, not a container overlay, and installing would put the
+# image's pin over whatever the host has: a silent downgrade at container start
+# on any workstation whose openRepoTools is newer than the image's, which is
+# #90 arriving from the other direction. A whole-home mount makes `$HOME`
+# itself a mount point; the per-path mounts every other bench uses make its
+# CHILDREN mount points and leave `$HOME` an ordinary directory. Field 5 of
+# /proc/self/mountinfo is the mount point, and WORKBENCHES_MOUNTINFO is the
+# seam that lets both shapes be exercised on one host.
+#
+# Every other scenario here runs against the REAL /proc/self/mountinfo with no
+# seam set, so "the guard does not fire in an ordinary bench" is already
+# asserted twenty-four times over; this scenario is the other half.
+BIN_Z="$TMPDIR_ROOT/bin-z"
+HOME_Z="$TMPDIR_ROOT/home-z"
+mkdir -p "$BIN_Z" "$HOME_Z"
+MOUNTINFO_WHOLE_HOME="$TMPDIR_ROOT/mountinfo-whole-home"
+printf '26 25 0:24 / %s rw,relatime shared:4 - ext4 /dev/sdd rw\n' "$HOME_Z" > "$MOUNTINFO_WHOLE_HOME"
+
+run_start_step_with_mountinfo() {   # <home> <bin dir> <mountinfo> [extra env...]
+    local home="$1" bin="$2" mountinfo="$3"
+    shift 3
+    env HOME="$home" \
+        CLAUDE_PROFILES_HOME="$home/.claude-profiles" CLAUDE_USER_DIR="$home/.claude" \
+        AGENT_PROTOCOL_ROOT="$home/.agents" PROJECTS_ROOT="$home/projects" \
+        OPENREPOTOOLS_BIN_DIR="$bin" WORKBENCHES_ESTATE_VENDOR_DIR="$VENDOR_DIR" \
+        WORKBENCHES_MOUNTINFO="$mountinfo" \
+        "$@" bash "$START_STEP" 2>&1
+}
+
+STATUS_Z=0
+OUTPUT_Z="$(run_start_step_with_mountinfo "$HOME_Z" "$BIN_Z" "$MOUNTINFO_WHOLE_HOME")" || STATUS_Z=$?
+assert_equal '0' "$STATUS_Z" 'a shared host home exits 0 rather than failing the container'
+assert_empty_dir "$BIN_Z" 'a shared host home has nothing installed into it — the image pin never lands on the workstation'
+assert_absent "$HOME_Z/.claude" 'a shared host home has nothing written under it either'
+assert_contains "$OUTPUT_Z" 'is itself a bind mount' 'the stand-down says what it detected'
+assert_contains "$OUTPUT_Z" 'WORKBENCHES_ESTATE_FORCE=1' 'the stand-down names the override for an operator who means it'
+
+# The other shape, the one every real lane bench has: children mounted, $HOME
+# its own. This must install, or the fix for #90 never runs anywhere.
+BIN_Z2="$TMPDIR_ROOT/bin-z2"
+HOME_Z2="$TMPDIR_ROOT/home-z2"
+mkdir -p "$BIN_Z2" "$HOME_Z2"
+# The rows name CHILDREN OF THE HOME THIS RUN IS GIVEN, and that is the whole
+# discrimination under test: a prefix match rather than an equality on the
+# mount point would fire here and strand every real bench with no lane
+# commands. Mutation-tested as exactly that.
+MOUNTINFO_CHILDREN="$TMPDIR_ROOT/mountinfo-children"
+{
+    printf '26 25 0:24 / %s rw,relatime shared:4 - ext4 /dev/sdd rw\n' "$HOME_Z2/.claude"
+    printf '27 25 0:24 / %s rw,relatime shared:5 - ext4 /dev/sdd rw\n' "$HOME_Z2/.claude-profiles"
+    printf '28 25 0:24 / %s rw,relatime shared:6 - ext4 /dev/sdd rw\n' "$HOME_Z2/.agents"
+} > "$MOUNTINFO_CHILDREN"
+STATUS_Z2=0
+OUTPUT_Z2="$(run_start_step_with_mountinfo "$HOME_Z2" "$BIN_Z2" "$MOUNTINFO_CHILDREN")" || STATUS_Z2=$?
+assert_equal '0' "$STATUS_Z2" 'a container home with per-path mounts exits 0'
+assert_not_contains "$OUTPUT_Z2" 'is itself a bind mount' 'a mounted ~/.claude is not mistaken for a mounted home'
+for name in "${TOOLS_FILES[@]}"; do
+    assert_identical "$BIN_Z2/$name" "$(tools_vendor_path "$name")" "a container home still gets $name — the guard did not over-fire"
+done
+
+# And the override does what it says.
+BIN_Z3="$TMPDIR_ROOT/bin-z3"
+HOME_Z3="$TMPDIR_ROOT/home-z3"
+mkdir -p "$BIN_Z3" "$HOME_Z3"
+MOUNTINFO_WHOLE_HOME3="$TMPDIR_ROOT/mountinfo-whole-home-3"
+printf '26 25 0:24 / %s rw,relatime shared:4 - ext4 /dev/sdd rw\n' "$HOME_Z3" > "$MOUNTINFO_WHOLE_HOME3"
+STATUS_Z3=0
+run_start_step_with_mountinfo "$HOME_Z3" "$BIN_Z3" "$MOUNTINFO_WHOLE_HOME3" WORKBENCHES_ESTATE_FORCE=1 >/dev/null 2>&1 || STATUS_Z3=$?
+assert_equal '0' "$STATUS_Z3" 'WORKBENCHES_ESTATE_FORCE=1 exits 0'
+assert_identical "$BIN_Z3/lanes-edit.sh" "$(tools_vendor_path lanes-edit.sh)" 'WORKBENCHES_ESTATE_FORCE=1 installs into a shared host home anyway'
+
 if (( failures == 0 )); then
     printf '%s\n' 'GREEN: setup-estate-commands regression test passed'
 else

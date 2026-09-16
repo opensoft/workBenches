@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# workBenches owns discovery of its installation; openRepoProject owns the CLI.
+set -euo pipefail
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export WORKBENCHES_ROOT="${WORKBENCHES_ROOT:-$(dirname "$script_dir")}"
+installer="$script_dir/setup-project-command.py"
+candidate_dirs=()
+
+expand_absolute_path() {
+    local value="$1"
+    local name="$2"
+    case "$value" in
+        '~') value="$HOME" ;;
+        '~/'*) value="$HOME/${value#'~/'}" ;;
+    esac
+    if [[ "$value" != /* ]]; then
+        printf 'project: %s must be an absolute path\n' "$name" >&2
+        return 2
+    fi
+    printf '%s\n' "$value"
+}
+
+if [ -n "${OPENREPOPROJECT_BIN_DIR:-}" ]; then
+    configured_bin="$(expand_absolute_path "$OPENREPOPROJECT_BIN_DIR" \
+        OPENREPOPROJECT_BIN_DIR)" || exit $?
+    candidate_dirs+=("$configured_bin")
+else
+    command_path="$(command -v project 2>/dev/null || true)"
+    if [ -n "$command_path" ]; then
+        candidate_dirs+=("$(dirname "$command_path")")
+    fi
+    discovery_file="$(expand_absolute_path \
+        "${WORKBENCHES_PROJECT_DISCOVERY_FILE:-$HOME/.config/workbenches/project-bin}" \
+        WORKBENCHES_PROJECT_DISCOVERY_FILE)" || exit $?
+    if [ -f "$discovery_file" ] && [ ! -L "$discovery_file" ]; then
+        IFS= read -r discovered_dir < "$discovery_file" || true
+        discovered_dir="$(expand_absolute_path "$discovered_dir" \
+            'persisted project install directory')" || exit $?
+        candidate_dirs+=("$discovered_dir")
+    fi
+    candidate_dirs+=("$HOME/.local/bin" "/usr/local/bin")
+fi
+
+for candidate_dir in "${candidate_dirs[@]}"; do
+    if python3 -I "$installer" --bin-dir "$candidate_dir" --resolve-owned >/dev/null 2>&1; then
+        exec python3 -I "$installer" --bin-dir "$candidate_dir" --exec-owned -- "$@"
+    fi
+done
+
+echo 'project is not installed or is not owned by workBenches. Run: python3 scripts/setup-project-command.py' >&2
+exit 2
