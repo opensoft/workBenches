@@ -31,7 +31,19 @@ case "$1 $2" in
             elif [[ "$4" == *base-image-id* ]]; then
                 printf '%s\n' "${TEST_IMAGE_BASE_IMAGE_ID:-}"
             elif [[ "$4" == *'.Id'* ]]; then
-                printf '%s\n' 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+                if [[ "$image" == *:latest && "${TEST_RETAGS_BASE:-false}" == true ]]; then
+                    count=0
+                    [[ ! -f "$TEST_BASE_ID_COUNT_FILE" ]] || count="$(cat "$TEST_BASE_ID_COUNT_FILE")"
+                    count=$((count + 1))
+                    printf '%s\n' "$count" > "$TEST_BASE_ID_COUNT_FILE"
+                    if [[ "$count" -gt 1 ]]; then
+                        printf '%s\n' 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+                    else
+                        printf '%s\n' 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+                    fi
+                else
+                    printf '%s\n' 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+                fi
             else
                 printf '%s\n' 'sha256:new-user-image'
             fi
@@ -97,6 +109,7 @@ chmod +x "$TEST_DIR/bin/docker"
 export PATH="$TEST_DIR/bin:$PATH"
 export TEST_SOCKET_GID="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || true)"
 export TEST_PINNED_TAG_FILE="$TEST_DIR/pinned-tag"
+export TEST_BASE_ID_COUNT_FILE="$TEST_DIR/base-id-count"
 
 recipe_sha256() {
     local hash_tool
@@ -125,6 +138,7 @@ recipe_sha256() {
 
 run_check() {
     : > "$DOCKER_LOG"
+    rm -f "$TEST_BASE_ID_COUNT_FILE"
     "$ROOT_DIR/scripts/ensure-layer3.sh" --base dotnet-bench:latest --user brett
 }
 
@@ -139,6 +153,12 @@ run_check
 grep -q '^build ' "$DOCKER_LOG"
 
 export TEST_IMAGE_BASE_IMAGE_ID=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+export TEST_RETAGS_BASE=true
+retag_output="$(run_check)"
+grep -q 'changed during validation' <<< "$retag_output"
+grep -q '^build ' "$DOCKER_LOG"
+export TEST_RETAGS_BASE=false
+
 export TEST_STALE_CONTAINER=true
 run_check
 if grep -q '^build ' "$DOCKER_LOG"; then

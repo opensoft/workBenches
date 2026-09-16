@@ -287,9 +287,14 @@ if [ "$FORCE" = false ] && docker image inspect "$USER_IMAGE" >/dev/null 2>&1; t
                     ! image_group_gid_has_member "$USER_IMAGE" "$DOCKER_SOCKET_GID" "$USERNAME"; then
                     echo -e "${YELLOW}⟳ Docker socket group '$DOCKER_SOCKET_GID' missing from ${USER_IMAGE}, rebuilding...${NC}"
                 else
-                    reconcile_stopped_containers_for_image
-                    echo -e "${GREEN}✓ ${USER_IMAGE} is up-to-date (newer than ${BASE_IMAGE})${NC}"
-                    exit 0
+                    latest_base_image_id="$(docker image inspect --format '{{.Id}}' "$BASE_IMAGE" 2>/dev/null || true)"
+                    if [[ "$latest_base_image_id" != "$BASE_IMAGE_ID" ]]; then
+                        echo -e "${YELLOW}⟳ ${BASE_IMAGE} changed during validation, rebuilding from its current image...${NC}"
+                    else
+                        reconcile_stopped_containers_for_image
+                        echo -e "${GREEN}✓ ${USER_IMAGE} is up-to-date (newer than ${BASE_IMAGE})${NC}"
+                        exit 0
+                    fi
                 fi
             else
                 echo -e "${YELLOW}⟳ User '$USERNAME' missing from ${USER_IMAGE}, rebuilding...${NC}"
