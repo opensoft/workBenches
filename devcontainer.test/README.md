@@ -51,6 +51,7 @@ not mounted in the container: `test-setup-estate-commands.sh`,
 the repository root:
 
 ```bash
+bash devcontainer.test/test-setup-estate-commands.sh
 bash devcontainer.test/test-claude-profile-skill-install.sh
 bash devcontainer.test/test-claude-profile-amendment-11.sh
 ```
