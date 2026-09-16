@@ -2678,13 +2678,18 @@ grep -Fq 'home/.agents/protocols/lane-collision-protocol-amendment-11.md' "$LAUN
 # Addendum 4 ruling 11, ratified \"a11 addendum 4 yes\"". That is what a reader
 # actually meets, so that is what this checks for.
 #
-# SCOPED TO THE CITATION ITSELF (round 7): `ruling 11` appears four times in
-# this file (`:98`, `:265`, `:474`, `:501`) and the ratification quote could
-# have drifted onto an unrelated one of them while THIS citation regressed to
-# draft wording, and a file-wide grep for the phrase would not have noticed.
-# Only a `ruling 11` line that ALSO carries the ratification quote passes.
-grep -F 'ruling 11' "$HANDOFF_MD" | grep -Fq 'ratified "a11 addendum 4 yes"' \
-    || fail "in force: no 'ruling 11' line in the skill carries the ratification quote ('ratified \"a11 addendum 4 yes\"'), so the R-A11-27 citation may read as a draft again"; assertion
+# SCOPED TO THE CITATION ITSELF (round 7, joined round 8): `ruling 11` appears
+# four times in this file (`:98`, `:265`, `:474`, `:501`) and the ratification
+# quote could have drifted onto an unrelated one of them while THIS citation
+# regressed to draft wording, so round 7 required both on one LINE — but the
+# citation itself wraps: "A11 Addendum 4" closes `:97`'s parenthetical and
+# "ruling 11, ratified …" opens `:98`, two lines for one phrase. Joined on the
+# comment prose already built above (`$handoff_prose`, the same technique the
+# no-API sentence a few lines up needed for the same reason), so the addendum
+# number, the ruling number and the ratification quote are all required
+# together rather than "ruling 11" alone standing in for the whole citation.
+grep -Fq 'A11 Addendum 4 ruling 11, ratified "a11 addendum 4 yes"' <<<"$handoff_prose" \
+    || fail "in force: the skill's 'A11 Addendum 4 ruling 11' citation does not carry the ratification quote ('ratified \"a11 addendum 4 yes\"'), so the R-A11-27 citation may read as a draft again"; assertion
 grep -Fq 'in force' "$HANDOFF_MD" \
     || fail "in force: the skill quotes a ruling from a text it still presents as unratified"; assertion
 grep -Fq 'still a DRAFT' "$LAUNCHER" \
