@@ -1029,6 +1029,86 @@ for name in "${TOOLS_FILES[@]}"; do
     assert_identical "$BIN_XE/$name" "$(tools_vendor_path "$name")" "end to end through the entrypoint, $name is installed and byte-identical"
 done
 
+printf '%s\n' '--- Scenario (y): two benches sharing one host home do not install over each other ---'
+# Copilot round 2 of opensoft/workBenches#99: `~/.claude` and `~/.claude-profiles`
+# are bind-mounted from the SAME host home into every bench, so running the
+# install at container start is what makes a race between two bench starts
+# reachable -- two read-modify-writes of one settings.json. The step takes an
+# flock in the shared home. It WAITS rather than standing down, because
+# `~/.local/bin` is the one thing here that is not shared, and a timeout goes
+# ahead anyway: a slower race beats a bench with no lane commands.
+if ! command -v flock >/dev/null 2>&1; then
+    fail 'scenario (y) cannot run: flock is not on $PATH, and the step needs it to serialize two bench starts'
+else
+    BIN_Y="$TMPDIR_ROOT/bin-y"
+    HOME_Y="$TMPDIR_ROOT/home-y"
+    mkdir -p "$BIN_Y" "$HOME_Y/.claude"
+    LOCK_Y="$HOME_Y/.claude/.workbenches-estate-start.lock"
+    : > "$LOCK_Y"
+
+    # A holder in another process stands in for the other bench. Confirmed held
+    # before the step runs, in a bounded loop, so this is a fact rather than a
+    # sleep and a hope.
+    flock "$LOCK_Y" -c 'sleep 10' &
+    LOCK_HOLDER=$!
+    held=0
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        if flock -n "$LOCK_Y" -c true >/dev/null 2>&1; then
+            sleep 0.3
+        else
+            held=1
+            break
+        fi
+    done
+    assert_equal '1' "$held" 'scenario (y) precondition: another process holds the estate lock'
+
+    STATUS_Y=0
+    OUTPUT_Y="$(env HOME="$HOME_Y" \
+        CLAUDE_PROFILES_HOME="$HOME_Y/.claude-profiles" CLAUDE_USER_DIR="$HOME_Y/.claude" \
+        AGENT_PROTOCOL_ROOT="$HOME_Y/.agents" PROJECTS_ROOT="$HOME_Y/projects" \
+        OPENREPOTOOLS_BIN_DIR="$BIN_Y" WORKBENCHES_ESTATE_VENDOR_DIR="$VENDOR_DIR" \
+        WORKBENCHES_ESTATE_LOCK_WAIT=1 \
+        bash "$START_STEP" 2>&1)" || STATUS_Y=$?
+    kill "$LOCK_HOLDER" 2>/dev/null || true
+    wait "$LOCK_HOLDER" 2>/dev/null || true
+
+    assert_equal '0' "$STATUS_Y" 'a contended lock still exits 0 — a bench start is never blocked on another bench'
+    assert_contains "$OUTPUT_Y" 'still holds' 'the step says it went ahead without the lock rather than doing it silently'
+    for name in "${TOOLS_FILES[@]}"; do
+        assert_identical "$BIN_Y/$name" "$(tools_vendor_path "$name")" "a contended lock still installs $name — the bin dir is per-container and nobody else fills it"
+    done
+
+    # THE LOCK MUST NOT MUTE THE STEP. `exec 9>"$lock" 2>/dev/null` is ONE
+    # redirection list applied to the shell: it opens the lock AND sends every
+    # later line -- every notice, and everything `--install` and `link-estates`
+    # write to stderr -- to /dev/null. That was the first cut here, measured
+    # mute while this scenario was written. Scenario (q)'s own output is the
+    # other half of this guard (its link-estates refusal is asserted in (s));
+    # this asserts it on the contended path too, where the lock code does the
+    # most work.
+    assert_contains "$OUTPUT_Y" 'Container start continues' 'the lock did not swallow the rest of the step'"'"'s output'
+
+    # And with the lock free there is no such line: a lock that always reports
+    # a timeout is not a working lock.
+    BIN_Y2="$TMPDIR_ROOT/bin-y2"
+    HOME_Y2="$TMPDIR_ROOT/home-y2"
+    mkdir -p "$BIN_Y2" "$HOME_Y2"
+    STATUS_Y2=0
+    OUTPUT_Y2="$(env HOME="$HOME_Y2" \
+        CLAUDE_PROFILES_HOME="$HOME_Y2/.claude-profiles" CLAUDE_USER_DIR="$HOME_Y2/.claude" \
+        AGENT_PROTOCOL_ROOT="$HOME_Y2/.agents" PROJECTS_ROOT="$HOME_Y2/projects" \
+        OPENREPOTOOLS_BIN_DIR="$BIN_Y2" WORKBENCHES_ESTATE_VENDOR_DIR="$VENDOR_DIR" \
+        WORKBENCHES_ESTATE_LOCK_WAIT=1 \
+        bash "$START_STEP" 2>&1)" || STATUS_Y2=$?
+    assert_equal '0' "$STATUS_Y2" 'an uncontended lock exits 0'
+    assert_not_contains "$OUTPUT_Y2" 'still holds' 'an uncontended lock is taken, not timed out'
+    if [ -f "$HOME_Y2/.claude/.workbenches-estate-start.lock" ]; then
+        pass 'the lock file is created beside the settings.json it protects, in the shared home'
+    else
+        fail 'the step took no lock at all: no lock file under the shared ~/.claude'
+    fi
+fi
+
 if (( failures == 0 )); then
     printf '%s\n' 'GREEN: setup-estate-commands regression test passed'
 else

@@ -158,6 +158,46 @@ fi
 # container's environment happened to carry.
 ESTATE_SENTINEL="pinned-by-workBenches-no-fetch"
 
+# ONE ESTATE INSTALL AT A TIME ACROSS EVERY BENCH ON THIS WORKSTATION
+# (Copilot round 2 of opensoft/workBenches#99). Running this at container start
+# is what makes the race reachable: `~/.claude` and `~/.claude-profiles` are
+# bind-mounted from the SAME host home into every bench, `~/projects` resolves
+# to the same mounted workspace, and starting two benches at once therefore has
+# two `--install`s doing a read-modify-write of one `~/.claude/settings.json`
+# and two `link-estates` mutating one set of links. Neither program locks: the
+# settings merge is atomic per write (temp file, then `mv -f`) but not
+# read-to-write, so the later writer can drop the earlier one's entry.
+#
+# The lock lives beside the file it protects, in the shared home, so it is the
+# same inode for every container that mounts that home — which is what makes
+# `flock` serialize ACROSS containers at all (one kernel, one inode).
+#
+# AND IT WAITS RATHER THAN STANDING DOWN. A container that cannot take the lock
+# must still install, because `~/.local/bin` is the one thing here that is NOT
+# shared: the other container is filling its own. So the wait is bounded and a
+# timeout proceeds anyway, saying so — a slower race is better than a bench
+# that starts with no lane commands. WORKBENCHES_ESTATE_LOCK_WAIT is the test
+# seam for that bound and nothing but a test sets it.
+# THE OPEN IS PROBED IN A SUBSHELL, AND `exec` CARRIES NO REDIRECTION OF ITS
+# OWN. `exec 9>"$f" 2>/dev/null` is one redirection LIST applied to the current
+# shell: it opens the lock file AND sends this script's stderr to /dev/null for
+# everything after it — every `say`, and every line `--install` and
+# `link-estates` write there. Measured while this was written: the lock worked
+# and the whole step went mute. So the writability question is asked first, in
+# a subshell where a redirect cannot escape, with `>>` so an existing lock file
+# is never truncated under a holder.
+estate_lock_file="${CLAUDE_USER_DIR:-$HOME/.claude}/.workbenches-estate-start.lock"
+if ! command -v flock >/dev/null 2>&1; then
+    say "flock is not on PATH, so this start is not serialized against other benches sharing this home."
+elif ! { mkdir -p -- "${estate_lock_file%/*}" && : >> "$estate_lock_file"; } 2>/dev/null; then
+    say "could not open $estate_lock_file, so this start is not serialized against other benches sharing this home."
+else
+    exec 9>>"$estate_lock_file"
+    if ! flock -w "${WORKBENCHES_ESTATE_LOCK_WAIT:-120}" 9; then
+        say "another container still holds $estate_lock_file after ${WORKBENCHES_ESTATE_LOCK_WAIT:-120}s, so this start is going ahead without it. Both installs place the same vendored bytes; the one thing at risk is a settings.json entry written by both at once."
+    fi
+fi
+
 # Relayed, not summarised: the installer's own per-file `installed` / `updated`
 # / `already installed ... (unchanged)` lines are this step's whole account of
 # what it did, and they go to the container log exactly as it wrote them.
