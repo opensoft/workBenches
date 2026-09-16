@@ -1694,6 +1694,8 @@ raise SystemExit(module.main({[*self.args, "--remove"]!r}))
         onp = install_bin / "onp"
         onp.write_text("unowned compatibility command")
         onp.chmod(0o755)
+        marker = install_bin / ".workbenches-path"
+        marker.write_text("/unrelated/workBenches\n")
         fake_bin = self.base / "fake-bin"
         fake_bin.mkdir()
         remove_log = self.base / "remove.log"
@@ -1715,6 +1717,8 @@ raise SystemExit(module.main({[*self.args, "--remove"]!r}))
             env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(onp.is_file())
+        self.assertEqual(marker.read_text(), "/unrelated/workBenches\n")
+        self.assertIn("Preserved unowned workBenches path marker", result.stdout)
         self.assertFalse(remove_log.exists(),
                          remove_log.read_text() if remove_log.exists() else "")
 

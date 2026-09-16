@@ -495,11 +495,16 @@ uninstall_commands() {
             fi
         done
         
-        # Remove workbenches path file
-        if [ -f "$location/.workbenches-path" ]; then
-            if ! rm -f "$location/.workbenches-path"; then
-                print_error "Failed to remove workBenches path marker from $location"
-                uninstall_failed=true
+        # Remove only the marker whose exact contents identify this checkout.
+        local workbenches_marker="$location/.workbenches-path"
+        if [ -f "$workbenches_marker" ] && [ ! -L "$workbenches_marker" ]; then
+            if cmp -s "$workbenches_marker" <(printf '%s\n' "$WORKBENCHES_ROOT"); then
+                if ! rm -f "$workbenches_marker"; then
+                    print_error "Failed to remove workBenches path marker from $location"
+                    uninstall_failed=true
+                fi
+            else
+                print_warning "Preserved unowned workBenches path marker: $workbenches_marker"
             fi
         fi
     done
