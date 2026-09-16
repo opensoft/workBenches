@@ -1683,7 +1683,20 @@ def ensure_overlay_content_marker_is_regular(overlay_root: Path) -> None:
     only right before (re)writing the marker.
     """
     marker_path = overlay_root / OVERLAY_CONTENT_MARKER_FILE
-    marker_mode = mode_without_following(marker_path)
+    try:
+        marker_mode = mode_without_following(marker_path)
+    except NotADirectoryError:
+        # A non-directory collision somewhere in the marker's OWN parent
+        # chain (e.g. .specify/extensions/git itself, or scripts/bash, is a
+        # stale regular file) means nothing can possibly exist at the
+        # marker path either -- treat that exactly like the marker being
+        # absent, so the caller's own required-file/shape checks run
+        # normally and can still classify a genuinely incompatible overlay
+        # as "shape", letting the existing forced copy replace that
+        # collision the same way it already replaces any other root/nested
+        # file collision. Crashing here instead would abort a run the rest
+        # of this codebase is otherwise equipped to recover from.
+        return
     if marker_mode is not None and not stat.S_ISREG(marker_mode):
         raise SystemExit(
             f"Refusing to treat non-regular path as the overlay content marker: {marker_path}"
