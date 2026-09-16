@@ -43,13 +43,15 @@ The `test.sh` script validates:
 - ✅ Claude profile lane default and SessionStart hook
   (lane-collision-protocol Amendment 8(c) and 8(e))
 
-Two suites in this directory are **host-run** rather than container-run,
-because they need the repository's own `scripts/` and `base-image/`, which are
-not mounted in the container: `test-setup-estate-commands.sh` and
-`test-claude-profile-skill-install.sh`. Run them from the repository root:
+Some suites in this directory are **host-run** rather than container-run,
+because they need the repository's own `scripts/`, `base-image/`, or Docker
+control surface, which are not mounted in the container. The cascade image
+validation suite is also registered in GitHub Actions. Run host suites from
+the repository root, for example:
 
 ```bash
 bash devcontainer.test/test-claude-profile-skill-install.sh
+bash devcontainer.test/test-cascade-image-validation.sh
 ```
 
 ## When to Use

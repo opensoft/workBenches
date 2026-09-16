@@ -16,6 +16,8 @@ echo "=========================================="
 echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../scripts/lib/layer3-recipe.sh
+source "$SCRIPT_DIR/../scripts/lib/layer3-recipe.sh"
 
 # Defaults
 USERNAME=$(whoami)
@@ -24,6 +26,7 @@ USER_GID=$(id -g)
 DOCKER_SOCKET_GID=""
 BASE_IMAGE=""
 BASE_IMAGE_ID=""
+REQUESTED_BASE_IMAGE_ID=""
 EXTRA_CHOWN_DIRS=""
 NO_CACHE="${NO_CACHE:-false}"
 LAYER3_RECIPE_SHA256=""
@@ -57,6 +60,7 @@ run_with_optional_timeout() {
 while [[ $# -gt 0 ]]; do
     case $1 in
         --base) BASE_IMAGE="$2"; shift 2 ;;
+        --base-image-id) REQUESTED_BASE_IMAGE_ID="$2"; shift 2 ;;
         --user) USERNAME="$2"; shift 2 ;;
         --uid) USER_UID="$2"; shift 2 ;;
         --gid) USER_GID="$2"; shift 2 ;;
@@ -70,6 +74,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --base IMAGE    Base Layer 2 image (required). e.g. cpp-bench:latest"
+            echo "  --base-image-id ID  Use a previously captured immutable base image ID"
             echo "  --user NAME     Username (default: \$(whoami))"
             echo "  --uid UID       User UID (default: \$(id -u))"
             echo "  --gid GID       User GID (default: \$(id -g))"
@@ -93,10 +98,35 @@ if [[ ! "$CODEX_VERSION_PROBE_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
     exit 1
 fi
 
+# Derive the output before any Docker operation so a user value that would
+# overwrite the selected Layer 2 tag is rejected without touching the daemon.
+OUTPUT_IMAGE="${BASE_IMAGE%:*}:${USERNAME}"
+
+# Layer 3 is a host-user personalization layer. Reject an invalid identity or
+# colliding output tag before inspecting, tagging, or running any Docker image.
+if [ "$USERNAME" = "root" ] \
+    || [ "$USERNAME" = "latest" ] \
+    || [[ ! "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ ]] \
+    || [[ ! "$USER_UID" =~ ^[1-9][0-9]*$ ]] \
+    || [[ ! "$USER_GID" =~ ^[1-9][0-9]*$ ]] \
+    || [[ "$OUTPUT_IMAGE" == "$BASE_IMAGE" ]]; then
+    echo "❌ Error: Layer 3 requires a valid non-root username and canonical positive UID/GID, with a user tag distinct from the base image"
+    exit 1
+fi
+
 # Resolve the mutable caller-facing tag once. The same immutable image ID is
 # used for both the version probe and Dockerfile FROM so a concurrent retag
 # cannot make those operations observe different Layer 2 images.
-if ! BASE_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$BASE_IMAGE" 2>/dev/null)" \
+if [[ -n "$REQUESTED_BASE_IMAGE_ID" ]]; then
+    if [[ ! "$REQUESTED_BASE_IMAGE_ID" =~ ^sha256:[0-9a-fA-F]{64}$ ]] \
+        || ! BASE_IMAGE_ID="$(
+            docker image inspect --format '{{.Id}}' "$REQUESTED_BASE_IMAGE_ID" 2>/dev/null
+        )" \
+        || [[ "$BASE_IMAGE_ID" != "$REQUESTED_BASE_IMAGE_ID" ]]; then
+        echo "❌ Error: could not inspect requested immutable base image ID '$REQUESTED_BASE_IMAGE_ID'" >&2
+        exit 1
+    fi
+elif ! BASE_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$BASE_IMAGE" 2>/dev/null)" \
     || [[ ! "$BASE_IMAGE_ID" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
     echo "❌ Error: could not resolve '$BASE_IMAGE' to an immutable image ID"
     echo ""
@@ -123,18 +153,8 @@ if [[ -z "$PINNED_BASE_IMAGE" ]]; then
 fi
 
 if [ -z "$LAYER3_RECIPE_SHA256" ]; then
-    LAYER3_RECIPE_SHA256="$(
-        cd "$SCRIPT_DIR"
-        find . -type f -print0 \
-            | LC_ALL=C sort -z \
-            | xargs -0 sha256sum \
-            | sha256sum \
-            | awk '{print $1}'
-    )"
+    LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256 "$SCRIPT_DIR")"
 fi
-
-# Derive output tag: replace :latest with :$USERNAME
-OUTPUT_IMAGE="${BASE_IMAGE%%:*}:${USERNAME}"
 
 # Resolve the default from the exact base image rather than npm's mutable
 # latest dist-tag. The resulting build argument also invalidates Docker's

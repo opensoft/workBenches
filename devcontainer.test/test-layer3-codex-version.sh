@@ -21,7 +21,11 @@ printf '%s\n' \
     '  if [[ "$image" == workbenches-layer3-base-pin:* ]]; then' \
     '    [[ -f "$MOCK_PINNED_TAG_FILE" && "$image" == "$(cat "$MOCK_PINNED_TAG_FILE")" ]] || exit 1' \
     '  fi' \
-    '  printf "%s\n" "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' \
+    '  if [[ "$image" == py-bench:latest ]]; then' \
+    '    printf "%s\n" "${MOCK_TAG_IMAGE_ID:-sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb}"' \
+    '  else' \
+    '    printf "%s\n" "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' \
+    '  fi' \
     '  exit 0' \
     'fi' \
     'if [[ "${1:-}" == tag ]]; then' \
@@ -69,6 +73,12 @@ grep -Fq -- "--build-arg BASE_IMAGE_ID=$base_image_id" "$docker_log"
 grep -Fq -- '--build-arg CODEX_VERSION=0.199.0' "$docker_log"
 grep -Fq -- "image rm $pinned_ref" "$docker_log"
 grep -Fq -- "30s docker run --rm --network none --entrypoint= $pinned_ref sh -c codex --version" "$timeout_log"
+
+MOCK_TAG_IMAGE_ID=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc \
+    run_build --base-image-id "$base_image_id"
+pinned_ref="$(awk '$1 == "tag" { print $3; exit }' "$docker_log")"
+grep -Fq -- "tag $base_image_id $pinned_ref" "$docker_log"
+grep -Fq -- "--build-arg BASE_IMAGE_ID=$base_image_id" "$docker_log"
 
 WORKBENCHES_CODEX_VERSION_PROBE_TIMEOUT_SECONDS=7 run_build
 pinned_ref="$(awk '$1 == "tag" { print $3; exit }' "$docker_log")"

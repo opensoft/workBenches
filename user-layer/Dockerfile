@@ -39,6 +39,10 @@ ARG CODEX_VERSION=""
 RUN printf '%s\n' "$BASE_IMAGE_ID" | grep -Eq '^sha256:[0-9a-fA-F]{64}$'
 
 LABEL io.opensoft.workbenches.layer3.recipe-sha256="${LAYER3_RECIPE_SHA256}"
+LABEL io.opensoft.workbenches.layer3.username="${USERNAME}"
+LABEL io.opensoft.workbenches.layer3.uid="${USER_UID}"
+LABEL io.opensoft.workbenches.layer3.gid="${USER_GID}"
+LABEL io.opensoft.workbenches.layer3.docker-socket-gid="${DOCKER_SOCKET_GID}"
 LABEL io.opensoft.workbenches.layer3.base-image-id="${BASE_IMAGE_ID}"
 
 USER root
@@ -73,24 +77,38 @@ RUN set -eux && \
 # USER CREATION
 # ========================================
 
-# Remove any existing user/group with target UID/GID, then create new user
+# Remove any conflicting user, create the requested account, and verify the
+# effective passwd identity. Fail the build instead of publishing labels for a
+# user whose inherited UID/GID does not match the requested host identity.
 RUN set -eux && \
-    # Remove existing user with target UID if exists
+    case "$USERNAME" in \
+        root|latest|''|[!a-z_]*|*[!a-z0-9_-]*) \
+            echo "Layer 3 requires a valid non-root username" >&2; exit 1;; \
+    esac && \
+    case "$USER_UID" in ''|0*|*[!0-9]*) echo "Layer 3 requires a canonical positive UID" >&2; exit 1;; esac && \
+    case "$USER_GID" in ''|0*|*[!0-9]*) echo "Layer 3 requires a canonical positive GID" >&2; exit 1;; esac && \
+    if getent passwd "$USERNAME" >/dev/null; then \
+        userdel --force --remove "$USERNAME"; \
+    fi && \
     if getent passwd "$USER_UID" >/dev/null; then \
-        existing_user=$(getent passwd "$USER_UID" | cut -d: -f1) && \
-        userdel --force --remove $existing_user 2>/dev/null || true; \
+        existing_user=$(getent passwd "$USER_UID" | cut -d: -f1); \
+        userdel --force --remove "$existing_user"; \
     fi && \
     # Handle existing group with target GID
     if getent group "$USER_GID" >/dev/null; then \
-        existing_group=$(getent group "$USER_GID" | cut -d: -f1) && \
-        groupmod -n $USERNAME $existing_group 2>/dev/null || true; \
+        existing_group=$(getent group "$USER_GID" | cut -d: -f1); \
+        if getent group "$USERNAME" >/dev/null && [ "$existing_group" != "$USERNAME" ]; then \
+            groupdel "$USERNAME"; \
+        fi; \
+        [ "$existing_group" = "$USERNAME" ] || groupmod -n "$USERNAME" "$existing_group"; \
+    elif getent group "$USERNAME" >/dev/null; then \
+        groupmod -g "$USER_GID" "$USERNAME"; \
     else \
-        groupadd --gid $USER_GID $USERNAME 2>/dev/null || true; \
+        groupadd --gid "$USER_GID" "$USERNAME"; \
     fi && \
-    # Create user (-m copies /etc/skel to home directory)
-    if ! getent passwd "$USERNAME" >/dev/null; then \
-        useradd --uid $USER_UID --gid $USERNAME -m -s /bin/zsh $USERNAME 2>/dev/null || true; \
-    fi && \
+    useradd --uid "$USER_UID" --gid "$USERNAME" -m -s /bin/zsh "$USERNAME" && \
+    getent passwd "$USERNAME" | awk -F: -v uid="$USER_UID" -v gid="$USER_GID" \
+        '$3 == uid && $4 == gid { found = 1 } END { exit !found }' && \
     # Add to sudoers
     mkdir -p /etc/sudoers.d && \
     echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME && \

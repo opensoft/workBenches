@@ -83,7 +83,9 @@ case "$1 $2" in
         ;;
     "cp ensure-layer3-check"*)
         if [[ "$2" == *:/etc/passwd ]]; then
-            printf 'brett:x:1000:%s::/home/brett:/bin/zsh\n' "${TEST_SOCKET_GID:-1000}" > "$3"
+            printf 'brett:x:%s:%s::/home/brett:/bin/zsh\n' \
+                "${TEST_IMAGE_USER_UID:-$TEST_USER_UID}" \
+                "${TEST_IMAGE_USER_GID:-$TEST_USER_GID}" > "$3"
         else
             printf 'docker-host:x:%s:brett\n' "${TEST_SOCKET_GID:-1000}" > "$3"
         fi
@@ -108,6 +110,8 @@ chmod +x "$TEST_DIR/bin/docker"
 
 export PATH="$TEST_DIR/bin:$PATH"
 export TEST_SOCKET_GID="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || true)"
+export TEST_USER_UID="$(id -u)"
+export TEST_USER_GID="$(id -g)"
 export TEST_PINNED_TAG_FILE="$TEST_DIR/pinned-tag"
 export TEST_BASE_ID_COUNT_FILE="$TEST_DIR/base-id-count"
 
@@ -153,6 +157,18 @@ run_check
 grep -q '^build ' "$DOCKER_LOG"
 
 export TEST_IMAGE_BASE_IMAGE_ID=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+export TEST_IMAGE_USER_UID=4242
+identity_output="$(run_check)"
+grep -q 'does not match host UID:GID' <<< "$identity_output"
+grep -q '^build ' "$DOCKER_LOG"
+unset TEST_IMAGE_USER_UID
+
+export TEST_IMAGE_USER_GID=4242
+identity_output="$(run_check)"
+grep -q 'does not match host UID:GID' <<< "$identity_output"
+grep -q '^build ' "$DOCKER_LOG"
+unset TEST_IMAGE_USER_GID
+
 export TEST_RETAGS_BASE=true
 retag_output="$(run_check)"
 grep -q 'changed during validation' <<< "$retag_output"
