@@ -75,7 +75,7 @@ fail() {
 # quietly changing a number; the assertion count is printed and not pinned,
 # because checks are added to existing scenarios all the time and a scenario
 # that stops running is the thing worth catching.
-EXPECTED_SCENARIOS=48
+EXPECTED_SCENARIOS=49
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -1399,8 +1399,37 @@ for a18_pair in LANES_WORKSTATION=Eagle LANES_HOST=eagle LANES_OS=wsl LANES_CONT
     grep -q "$a18_pair" "$TMUX_LOG" \
         || fail "Amendment 18(a): $a18_pair was not threaded into the tmux session the launcher created ($(cat "$TMUX_LOG"))"; assertion
 done
+# ...and the three are CLEARED in the same command string before they are set
+# (Copilot round 1, opensoft/workBenches#101). Omitting an assignment does not
+# make the child's variable unset — the command runs in the tmux SERVER's
+# environment, which is the whole reason anything is threaded — so the clears
+# are what make "no answer" mean no answer.
+for a18_clear in '-u LANES_HOST' '-u LANES_OS' '-u LANES_CONTAINER'; do
+    grep -q -e "$a18_clear" "$TMUX_LOG" \
+        || fail "Amendment 18(a): the tmux command string does not clear ${a18_clear#-u } before setting it, so the server's own value reaches the child ($(cat "$TMUX_LOG"))"; assertion
+done
 
-# 14e. THE STATIC HALF. Every reader takes the configured value first, the
+# 14e. A VALUE THE LAUNCHER HAS NO ANSWER FOR IS CLEARED AND NOT PASSED — the
+# other half of the same fix, and the case it exists for: inside a container
+# nobody named, the child must come up with no `LANES_HOST` and no
+# `LANES_CONTAINER` at all, so the lane tooling falls back to its own probe
+# instead of reading whatever the tmux server was started with. The OS is still
+# assigned, because it is still answered.
+tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_SWAPPED_STATUS=8" "CLAUDE_LANE=a18-unanswered" \
+    "container=docker" "LANES_HOST=" "LANES_OS=" "LANES_CONTAINER=" \
+    -- run team002 --resume session-a18-unanswered
+grep -q 'LANES_HOST=' "$TMUX_LOG" \
+    && fail "Amendment 18(a): a host the launcher could not name was assigned into the tmux command string anyway ($(cat "$TMUX_LOG"))"; assertion
+grep -q 'LANES_CONTAINER=' "$TMUX_LOG" \
+    && fail "Amendment 18(a): a container the launcher could not name was assigned into the tmux command string anyway ($(cat "$TMUX_LOG"))"; assertion
+grep -Eq 'LANES_OS=(linux|macos|wsl|windows)' "$TMUX_LOG" \
+    || fail "Amendment 18(a): the OS, which IS answered in a container, was not threaded ($(cat "$TMUX_LOG"))"; assertion
+for a18_clear in '-u LANES_HOST' '-u LANES_OS' '-u LANES_CONTAINER'; do
+    grep -q -e "$a18_clear" "$TMUX_LOG" \
+        || fail "Amendment 18(a): ${a18_clear#-u } is neither cleared nor set, so the child inherits the tmux server's own ($(cat "$TMUX_LOG"))"; assertion
+done
+
+# 14f. THE STATIC HALF. Every reader takes the configured value first, the
 # export is called, all three are threaded, and the container launcher carries
 # the same three into the bench it opens — including the one fact only it can
 # answer, the bench's own name. A scenario cannot reach the second half at all:

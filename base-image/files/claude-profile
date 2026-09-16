@@ -730,7 +730,29 @@ act1_resolve_start_dir() {
 # whole reason this is a function: `command_string` is built from `env_prefix`,
 # and a `command_string` built before the failure cannot be corrected after it.
 act1_compose_child_command() {
-  env_prefix=(env WORKBENCHES_CLAUDE_TMUX_CHILD=1)
+  # THE THREE ARE CLEARED BEFORE THEY ARE SET (Copilot round 1, PR #101, on the
+  # Amendment 18 clause (a) lines below). Omitting an assignment does not leave
+  # the child's variable unset: `tmux new-session` runs the command string in
+  # the SERVER's environment, which is this file's own stated reason for
+  # threading anything at all, so a name the server happens to carry — an
+  # earlier launch's value, or whatever the shell that started the server had —
+  # reaches the child untouched. For these three that is worse than useless:
+  # UNSET is a value here. It is what tells the lane tooling to fall back to its
+  # own probe (opensoft/openRepoTools#83), so a stale `LANES_CONTAINER`
+  # inherited from the server would be read as this session's container and the
+  # binding it is meant to disambiguate would be wrong — which is the very
+  # collision Amendment 18 exists to end. `-u` therefore clears all three here,
+  # and each assignment below re-sets the one it has an answer for; the options
+  # precede every assignment, as POSIX `env` requires, and a name that is both
+  # cleared and assigned ends up with the assigned value (measured: `env -u X
+  # X=fresh` gives `X=fresh`).
+  #
+  # `LANES_WORKSTATION` is deliberately NOT cleared with them. Its rule is
+  # `R-A11-14`'s and predates this round — where no workstation is configured
+  # the writers REFUSE by name rather than falling back, so an inherited value
+  # there is a different question with a different answer, and it is filed
+  # rather than changed here.
+  env_prefix=(env -u LANES_HOST -u LANES_OS -u LANES_CONTAINER WORKBENCHES_CLAUDE_TMUX_CHILD=1)
   # THE WORKSTATION, THREADED INTO THE SESSION THIS LAUNCH CREATES (`R-A11-14`).
   # `lane_export_workstation` has already exported it on this side of the
   # re-exec; tmux does not reliably hand a freshly-exported variable to a new
