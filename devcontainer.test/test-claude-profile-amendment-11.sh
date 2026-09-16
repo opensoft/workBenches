@@ -2908,7 +2908,19 @@ scenario
 # equivalent step too, independent of any pin move — this is a real shipped-code
 # gap against vendored bytes, not a test-methodology one, so it is skipped
 # pending opensoft/openRepoTools#98 rather than retargeted.
-echo "KNOWN (opensoft/openRepoTools#98, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md has no preemptive uuid/session guard" >&2
+#
+# FAIL-CLOSED (Copilot round 4 on opensoft/workBenches#93): the skip above was
+# unconditional -- it never checked that the gap it waives is still the gap
+# that is there. Gated on the exact known shape (no uuid-emptiness construct of
+# any spelling anywhere in the skill's shell); the moment one appears, #98 may
+# be fixed or may have changed shape, and this fails rather than keep waiving
+# silently, so a human restores or extends the five checks that stood here.
+uuid_guard_probe="$(grep -v '^[[:space:]]*#' "$HANDOFF_MD" | grep -E -- '-z "\$\{?uuid|-n "\$\{?uuid' || true)"
+if [[ -z "$uuid_guard_probe" ]]; then
+    echo "KNOWN (opensoft/openRepoTools#98, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md has no preemptive uuid/session guard" >&2
+else
+    fail "RV-W1/R-A11-5: a uuid-emptiness construct now exists in the skill ($uuid_guard_probe) — opensoft/openRepoTools#98 may be fixed or may have changed shape; re-examine by hand and restore or extend the checks this skip replaced"
+fi
 assertion
 # The audit is made on the skill's SHELL — its fenced code blocks with their
 # comments stripped — and not on its prose, which ARGUES about both words at
@@ -3331,13 +3343,17 @@ still_runs_quoted="$(grep -F '(c) below still runs' "$HANDOFF_MD" | grep -Fc 'pr
 # against `git show 8a36eb3:skills/lane-swap/SKILL.md`'s equivalent comment too
 # — a real shipped-bytes gap, not a test-methodology one.
 #
-# FAIL-CLOSED (Copilot round 2/3 on opensoft/workBenches#93): the known shape
-# TODAY is exactly two occurrences, one of them properly attributed — anything
-# else, including a WORSE regression (a third unqualified line, or the
-# attributed one losing its attribution), must still fail rather than fall
-# through this skip silently. Only that one exact shape is let through; #99
-# landing (both occurrences equal) is the other and only other passing case.
-if [[ "$still_runs_total" -eq "$still_runs_quoted" ]]; then
+# FAIL-CLOSED (Copilot round 2/3, tightened round 4, on opensoft/workBenches#93):
+# the known shape TODAY is exactly two occurrences, one of them properly
+# attributed — anything else, including a WORSE regression (a third unqualified
+# line, or the attributed one losing its attribution), must still fail rather
+# than fall through this skip silently. `-eq 0` on both sides would otherwise
+# also satisfy the equal branch — deleting BOTH the stale line and the
+# legitimate historical quote it sits beside — which is not the fixed state
+# either, so the equal branch additionally requires at least one occurrence to
+# remain. Only #99 landing (both occurrences equal AND positive) or today's
+# exact known gap are let through.
+if [[ "$still_runs_total" -gt 0 && "$still_runs_total" -eq "$still_runs_quoted" ]]; then
     :
 elif [[ "$still_runs_total" -eq 2 && "$still_runs_quoted" -eq 1 ]]; then
     echo "KNOWN (opensoft/openRepoTools#99, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md:474 still asserts '(c) below still runs' unqualified ($still_runs_total total, $still_runs_quoted quoted as superseded)" >&2
@@ -3501,13 +3517,16 @@ grep -Fq 'R-A11-27' "$GUARD_SH" \
 # 8a36eb3:skills/lane-swap/SKILL.md:39` too (the pre-Amendment-17(a) home of
 # this same line) — a real shipped-bytes gap, not a test-methodology one.
 #
-# FAIL-CLOSED (Copilot round 2/3 on opensoft/workBenches#93): the known gap is
-# specifically TODAY's exact hard-coded line, not "anything that isn't the
-# fixed form" — a third, differently-broken `L=` would otherwise also fall
-# through this skip unnoticed. Only that one exact line is let through.
-if grep -Fq 'L="$(command -v lanes-edit.sh' "$HANDOFF_MD"; then
+# FAIL-CLOSED (Copilot round 2/3, tightened round 4, on opensoft/workBenches#93):
+# the known gap is specifically TODAY's exact hard-coded line, not "anything
+# that isn't the fixed form" — a third, differently-broken `L=` would otherwise
+# also fall through this skip unnoticed, and matching the raw Markdown (rather
+# than the extracted, comment-stripped `skill_write_code`) meant a PROSE mention
+# of the fixed form, with no code changed at all, could make this pass too.
+# Both patterns are anchored on the actual `L=` assignment line in the code.
+if grep -Eq '^L="\$\(command -v lanes-edit\.sh' <<<"$skill_write_code"; then
     :
-elif grep -q '^L=~/projects/xFactory/lanes-edit.sh$' "$HANDOFF_MD"; then
+elif grep -qx 'L=~/projects/xFactory/lanes-edit.sh' <<<"$skill_write_code"; then
     echo "KNOWN (opensoft/openRepoTools#100, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md:39 hard-codes lanes-edit.sh's path instead of resolving it" >&2
 else
     fail "helper: \$L is neither the PATH-first form nor the known hard-coded line — something else changed here and needs a human read"
