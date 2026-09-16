@@ -398,8 +398,11 @@ raise SystemExit(module.main({[*self.args, "--remove"]!r}))
         for path in original:
             self.assertFalse(path.exists())
         self.assertTrue((self.bin / installer.REMOVAL_JOURNAL_NAME).is_file())
+        self.discovery.parent.mkdir(parents=True, exist_ok=True)
+        self.discovery.write_text(str(self.bin.resolve()) + "\n")
         self.assertEqual(installer.main([*self.args, "--remove"]), 0)
         self.assertFalse((self.bin / installer.REMOVAL_JOURNAL_NAME).exists())
+        self.assertFalse(self.discovery.exists())
         self.assertEqual(list(self.bin.glob(".project-remove-*")), [])
         self.assertEqual(list(self.discovery.parent.glob(".project-remove-*")), [])
 
@@ -923,6 +926,11 @@ raise SystemExit(module.main({[*self.args, "--remove"]!r}))
         self.assertEqual(self.install(), 0)
 
         malicious = self.base / "install-directory-import-ran"
+        (self.bin / "json.py").write_text(
+            'from pathlib import Path\n'
+            f'Path({str(malicious)!r}).write_text("ran")\n'
+            'raise RuntimeError("loaded unverified launcher-directory module")\n'
+        )
         (self.bin / "shlex.py").write_text(
             'from pathlib import Path\n'
             f'Path({str(malicious)!r}).write_text("ran")\n'
@@ -973,6 +981,26 @@ raise SystemExit(module.main({[*self.args, "--remove"]!r}))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("python3", result.stdout)
         self.assertIn("Missing required dependencies", result.stdout)
+
+    def test_setup_dependency_preflight_rejects_old_python3(self):
+        mock_bin = self.base / "old-python-bin"
+        mock_bin.mkdir()
+        python = mock_bin / "python3"
+        python.write_text(
+            '#!/bin/sh\n'
+            'if [ "${1:-}" = "--version" ]; then echo "Python 3.9.18"; exit 0; fi\n'
+            'if [ "${1:-}" = "-c" ]; then exit 1; fi\n'
+            'exit 1\n'
+        )
+        python.chmod(0o755)
+        result = subprocess.run(
+            ["bash", "-c", 'source "$1"; check_dependencies', "_",
+             str(ROOT / "scripts/setup-workbenches.sh")],
+            env={**os.environ, "PATH": str(mock_bin) + os.pathsep + os.environ["PATH"]},
+            text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unsupported (version: 3.9.18; requires 3.10+)", result.stdout)
+        self.assertIn("Python 3.10 or newer is required", result.stdout)
 
     def test_setup_menu_installs_verified_onp_in_configured_directory(self):
         self.assertEqual(self.install(), 0)

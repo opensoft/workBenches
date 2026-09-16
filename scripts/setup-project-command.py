@@ -195,7 +195,9 @@ def recoverable_fresh_pending(target, payload, owner_marker, pin,
 def launcher_bytes(pin):
     """Build a checkout-independent PATH entry that verifies the pinned payload."""
     return (
-        "#!/usr/bin/env python3\n"
+        "#!/bin/sh\n"
+        "'''exec' python3 -I \"$0\" \"$@\"\n"
+        "' '''\n"
         "import fcntl\n"
         "import hashlib\n"
         "import json\n"
@@ -520,6 +522,36 @@ def atomic_checked_unlink(path, expected_state):
         if quarantine.exists() and not path.exists():
             atomic_move_noreplace(quarantine, path)
         raise
+
+
+def remove_owned_discovery_pointer(discovery, directory, expected_state=None):
+    """Best-effort removal of only the pointer owned by this install directory."""
+    if not discovery_points_to(discovery, directory):
+        return
+    current_state = path_fingerprint(discovery)
+    if expected_state is not None and current_state != expected_state:
+        print(
+            "project: removed owned command; preserved changed discovery "
+            f"pointer at {discovery}",
+            file=sys.stderr,
+        )
+        return
+    if (not discovery_points_to(discovery, directory)
+            or current_state != path_fingerprint(discovery)):
+        print(
+            "project: removed owned command; preserved changed discovery "
+            f"pointer at {discovery}",
+            file=sys.stderr,
+        )
+        return
+    try:
+        atomic_checked_unlink(discovery, current_state)
+    except (OSError, ValueError) as exc:
+        print(
+            "project: removed owned command; preserved discovery "
+            f"pointer at {discovery}: {exc}",
+            file=sys.stderr,
+        )
 
 
 def fsync_directory(directory):
@@ -929,6 +961,7 @@ def main(argv=None):
             recovery_result = recover_removal_journal(
                 removal_journal, removable_paths)
             if args.remove and recovery_result == "committed":
+                remove_owned_discovery_pointer(discovery, directory)
                 print(f"project: completed interrupted removal from {target}")
                 return 0
         onp_owned = trusted_launcher(onp, expected_launcher_digests)
@@ -984,14 +1017,8 @@ def main(argv=None):
                     removals.append((onp, onp_state))
                 remove_transaction(removals, removal_journal)
                 if discovery_owned:
-                    try:
-                        atomic_checked_unlink(discovery, discovery_state)
-                    except (OSError, ValueError) as exc:
-                        print(
-                            "project: removed owned command; preserved discovery "
-                            f"pointer at {discovery}: {exc}",
-                            file=sys.stderr,
-                        )
+                    remove_owned_discovery_pointer(
+                        discovery, directory, discovery_state)
                 print(f"project: removed installer-owned command from {target}")
                 return 0
             if onp_owned:

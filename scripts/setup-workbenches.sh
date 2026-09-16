@@ -97,6 +97,7 @@ check_dependencies() {
     
     local missing_deps=()
     local installed_deps=()
+    local unsupported_python=false
     
     # Check git
     if command -v git &> /dev/null; then
@@ -131,8 +132,13 @@ check_dependencies() {
     # The project command installer and launcher require Python 3.
     if command -v python3 &> /dev/null; then
         local python_version=$(python3 --version 2>&1 | awk '{print $2}')
-        echo -e "  ${GREEN}✓ python3${NC} - installed (version: $python_version)"
-        installed_deps+=("python3")
+        if python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 10))'; then
+            echo -e "  ${GREEN}✓ python3${NC} - installed (version: $python_version)"
+            installed_deps+=("python3")
+        else
+            echo -e "  ${RED}✗ python3${NC} - unsupported (version: $python_version; requires 3.10+)"
+            unsupported_python=true
+        fi
     else
         echo -e "  ${RED}✗ python3${NC} - not installed"
         missing_deps+=("python3")
@@ -161,6 +167,11 @@ check_dependencies() {
     fi
     
     echo ""
+
+    if [ "$unsupported_python" = true ]; then
+        echo -e "${RED}Python 3.10 or newer is required to install and run the project command.${NC}"
+        return 1
+    fi
     
     if [ ${#missing_deps[@]} -ne 0 ]; then
         echo -e "${RED}⚠️  Missing required dependencies: ${missing_deps[*]}${NC}"
