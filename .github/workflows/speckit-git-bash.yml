@@ -28,6 +28,11 @@ on:
       - devcontainer.test/test-setup-workspace-repo.sh
       - scripts/setup-claude-profiles.sh
       - devcontainer.test/test-claude-profile-skill-install.sh
+      - devcontainer.test/test-claude-profile-amendment-11.sh
+      - base-image/files/claude-usage-guard.sh
+      - docs/claude-multi-account-profiles.md
+      - README.md
+      - scripts/wave-container-shell.sh
       - setup.sh
   pull_request:
     paths:
@@ -56,6 +61,11 @@ on:
       - devcontainer.test/test-setup-workspace-repo.sh
       - scripts/setup-claude-profiles.sh
       - devcontainer.test/test-claude-profile-skill-install.sh
+      - devcontainer.test/test-claude-profile-amendment-11.sh
+      - base-image/files/claude-usage-guard.sh
+      - docs/claude-multi-account-profiles.md
+      - README.md
+      - scripts/wave-container-shell.sh
       - setup.sh
   workflow_dispatch:
 
@@ -120,6 +130,22 @@ jobs:
       # into its own sandbox.
       - name: Run the lane-swap skill install regression test
         run: bash ./devcontainer.test/test-claude-profile-skill-install.sh
+
+      # opensoft/workBenches#93. This suite audits lane-collision-protocol
+      # Amendment 11 (the launcher's window reuse, directory and precedence-4
+      # rules) plus the vendored handoff/lane-swap skill's mechanics, against
+      # `base-image/files/claude-profile`, `base-image/files/claude-usage-
+      # guard.sh`, `docs/claude-multi-account-profiles.md` and the vendored
+      # openrepotools skills/commands above. It was written but never wired in
+      # here, so real rot against the vendored bytes went uncaught for two
+      # pin moves; every assertion that had drifted from the shipped bytes
+      # without a genuine gap behind it is retargeted in the suite itself
+      # (cited inline as `RETARGETED (opensoft/workBenches#93)`), and every
+      # assertion behind a real upstream gap is skipped pending its own issue
+      # (`KNOWN GAP, NOT THIS PR'S`, opensoft/openRepoTools#79/#98/#99/#100).
+      # Host-run, hermetic (its own $TEST_ROOT, real HOME never touched).
+      - name: Run the claude-profile Amendment 11 regression test
+        run: bash ./devcontainer.test/test-claude-profile-amendment-11.sh
 
       - name: Run bootstrap suite
         run: bash ./devBenches/devcontainer.test/test-openspeckit-bootstrap.sh

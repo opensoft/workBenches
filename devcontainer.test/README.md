@@ -43,22 +43,27 @@ The `test.sh` script validates:
 - ✅ Claude profile lane default and SessionStart hook
   (lane-collision-protocol Amendment 8(c) and 8(e))
 
-Four suites in this directory are **host-run** rather than container-run,
+Six suites in this directory are **host-run** rather than container-run,
 because they read the repository's own `scripts/`, `base-image/` and
-`devBenches/base-image/`, which are not mounted in the container. All four run
-in CI (`.github/workflows/speckit-git-bash.yml`), and all four are run from the
+`devBenches/base-image/`, which are not mounted in the container. All six run
+in CI (`.github/workflows/speckit-git-bash.yml`), and all six are run from the
 repository root:
 
 ```bash
 bash devcontainer.test/test-setup-estate-commands.sh
+bash devcontainer.test/test-setup-workspace-repo.sh
 bash devcontainer.test/test-claude-profile-skill-install.sh
 bash devcontainer.test/test-base-image-dockerfile.sh
 bash devcontainer.test/test-claude-profile-name-guard-hook.sh
+bash devcontainer.test/test-claude-profile-amendment-11.sh
 ```
 
 - `test-setup-estate-commands.sh` — `scripts/setup-estate-commands.sh` on a
   host, and the container-start step that mirrors it
   (`devBenches/base-image/files/estate/`, opensoft/workBenches#90).
+- `test-setup-workspace-repo.sh` — `scripts/setup-workspace-repo.sh`, the
+  workspace-repository step of the onboarding chain (lane-collision-protocol
+  Amendment 9(e)).
 - `test-claude-profile-skill-install.sh` — that `openRepoTools --install` is
   the sole writer of the skills, command files and hook entries
   (lane-collision-protocol Amendment 9 adoption act 4b).
@@ -69,6 +74,9 @@ bash devcontainer.test/test-claude-profile-name-guard-hook.sh
 - `test-claude-profile-name-guard-hook.sh` — the launcher's `UserPromptSubmit`
   name guard, including the downgrade that removes it and the line it prints
   when it does (Amendment 12 adoption act 3).
+- `test-claude-profile-amendment-11.sh` — lane-collision-protocol Amendment 11
+  (the launcher's window reuse, directory and precedence-4 rules) plus the
+  vendored handoff/lane-swap skill's mechanics (opensoft/workBenches#93).
 
 ## When to Use
 
