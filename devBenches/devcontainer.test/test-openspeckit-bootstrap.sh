@@ -3818,6 +3818,33 @@ assert_contains "$NON_REGULAR_GIT_COMMON" 'repository-specific overlay customiza
 assert_file "$NON_REGULAR_MARKER_PATH/sentinel.txt" 'the non-regular marker path and its contents are never touched'
 assert_contains "$NON_REGULAR_MARKER_PATH/sentinel.txt" 'do not delete me' 'the sentinel content inside it survives untouched'
 
+printf '%s\n' 'Given: an overlay that is ALSO shape-incompatible for an unrelated reason, with the same non-regular marker path'
+SHAPE_AND_NON_REGULAR_REPO="$TMPDIR_ROOT/shape-and-non-regular-marker-repo"
+SHAPE_AND_NON_REGULAR_PROTOCOL_ROOT="$TMPDIR_ROOT/shape-and-non-regular-marker-protocol"
+install_overlay_fixture "$SHAPE_AND_NON_REGULAR_REPO" "$UNMARKED_TEMPLATE_ROOT"
+customize_installed_overlay "$SHAPE_AND_NON_REGULAR_REPO"
+SHAPE_AND_NON_REGULAR_MARKER_PATH="$SHAPE_AND_NON_REGULAR_REPO/.specify/extensions/git/scripts/bash/.speckit-overlay-content"
+mkdir -p "$SHAPE_AND_NON_REGULAR_MARKER_PATH"
+printf '%s\n' 'do not delete me either' > "$SHAPE_AND_NON_REGULAR_MARKER_PATH/sentinel.txt"
+
+printf '%s\n' 'When: bootstrap reruns against a marked template, which would otherwise report this overlay shape-incompatible'
+export AGENT_PROTOCOL_ROOT="$SHAPE_AND_NON_REGULAR_PROTOCOL_ROOT"
+export SPECKIT_WORKTREE_TEMPLATE_ROOT="$MARKED_TEMPLATE_ROOT"
+if python3 "$SETUP_SCRIPT" --repo "$SHAPE_AND_NON_REGULAR_REPO" "${OVERLAY_REFRESH_FLAGS[@]}" \
+    > "$TMPDIR_ROOT/shape-and-non-regular-marker.log" 2>&1; then
+    fail 'bootstrap accepts a non-regular marker even when the overlay is also shape-incompatible'
+else
+    pass 'bootstrap refuses a non-regular marker even when the overlay is also shape-incompatible'
+fi
+
+printf '%s\n' 'Then: the refusal happens before the shape-driven refresh ever reaches the git, shell, or skill trees'
+assert_contains "$TMPDIR_ROOT/shape-and-non-regular-marker.log" 'Refusing to treat non-regular path as the overlay content marker' 'the non-regular marker path is named in the refusal'
+assert_not_contains "$TMPDIR_ROOT/shape-and-non-regular-marker.log" 'replacing incompatible Spec Kit git extension' 'the shape-incompatibility message never gets a chance to print'
+assert_contains "$SHAPE_AND_NON_REGULAR_REPO/.specify/extensions/git/scripts/bash/git-common.sh" 'repository-specific overlay customization' 'the git extension tree is never force-copied'
+assert_contains "$SHAPE_AND_NON_REGULAR_REPO/.specify/shell/select-worktree.sh" 'repository-specific shell customization' 'the shell tree is never force-copied either'
+assert_contains "$SHAPE_AND_NON_REGULAR_REPO/.claude/skills/speckit-specify/SKILL.md" 'repository-specific overlay skill customization' 'nor are the skill overlays'
+assert_file "$SHAPE_AND_NON_REGULAR_MARKER_PATH/sentinel.txt" 'the non-regular marker path and its contents are never touched'
+
 printf '%s\n' 'When: an unmarked template meets an unmarked installed overlay'
 LEGACY_OVERLAY_REPO="$TMPDIR_ROOT/legacy-overlay-repo"
 LEGACY_OVERLAY_PROTOCOL_ROOT="$TMPDIR_ROOT/legacy-overlay-protocol"

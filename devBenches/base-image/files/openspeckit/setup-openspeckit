@@ -1746,6 +1746,17 @@ def worktree_git_overlay_refresh_reason(
       stale here too, exactly like a digest mismatch.
     """
     overlay_root = repo / ".specify" / "extensions" / "git"
+
+    # Checked first, ahead of every return below: a non-regular entry at
+    # the reserved marker path must abort the whole run before ANY of
+    # shape/signature/content is even evaluated. Placing this only ahead of
+    # the "content" branch left it unreached whenever an EARLIER check (a
+    # missing required file, a stale signature, a shape-marker mismatch)
+    # already returned "shape" -- and "shape" forces the shell and skill
+    # trees too, so the destructive copy this exists to prevent could still
+    # run first in that case.
+    ensure_overlay_content_marker_is_regular(overlay_root)
+
     contents: dict[str, str] = {}
     try:
         for relative_path in WORKTREE_GIT_OVERLAY_REQUIRED_FILES:
@@ -1769,16 +1780,6 @@ def worktree_git_overlay_refresh_reason(
         return None
     if not has_overlay_shape_marker(overlay_root):
         return "shape"
-
-    # Shape and signature both check out; before letting a stale-or-absent
-    # content marker turn into "content" below -- which the caller acts on
-    # by running a REAL git-overlay copy -- make sure the marker path
-    # itself is not a directory or symlink standing in for it. Left
-    # unchecked here, that would read as merely "absent" (same as every
-    # pre-existing install) and force that copy before
-    # write_overlay_content_marker ever gets a chance to refuse the same
-    # non-regular path, by which point the copy has already run.
-    ensure_overlay_content_marker_is_regular(overlay_root)
 
     template_digest = worktree_git_overlay_content_digest(
         template_root / "specify" / "extensions" / "git"
