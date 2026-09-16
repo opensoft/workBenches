@@ -7,23 +7,27 @@ STATE_FILE="${AI_CREDENTIAL_KV_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/work
 ACTION=""
 PROVIDER_FILTER=""
 PROFILE_FILTER=""
+FORCE=false
 MAX_SECRET_BYTES=24576
 TEMP_DIR=""
 
 usage() {
     cat <<'EOF'
 Usage:
-  backup-ai-profile-credentials-to-kv.sh {audit|backup|verify} [options]
+  backup-ai-profile-credentials-to-kv.sh {audit|backup|verify|restore} [options]
 
 Options:
   --manifest PATH      Private manifest (default: ~/.config/workbenches/ai-credential-keyvault.json)
   --state PATH         Private version registry (default: ~/.local/state/workbenches/ai-credential-keyvault-backups.json)
   --provider NAME      Process only one provider
   --profile NAME       Process only one profile name
+  --force              Replace an existing credential during restore
   -h, --help           Show this help
 
 The command never prints credential values. "backup" creates a new Key Vault
-secret version and verifies that exact version byte-for-byte.
+secret version and verifies that exact version byte-for-byte. "restore"
+validates and downloads one exact secret version, preserves existing local
+credentials by default, and installs an owner-only file atomically.
 EOF
 }
 
@@ -72,6 +76,13 @@ validate_manifest() {
       and (.vaultName | type == "string" and length > 0)
       and (.company | type == "string" and length > 0)
       and (.entries | type == "array")
+      and all(.entries[];
+        (.provider | type == "string" and length > 0)
+        and (.profile | type == "string" and length > 0)
+        and (.credentialPath | type == "string" and length > 0)
+        and (.secretName | type == "string" and length > 0)
+        and (.enabled | type == "boolean")
+      )
     ' "$MANIFEST" >/dev/null || die "manifest schema is invalid"
     jq -e '
       [.entries[] | select(.enabled == true) | "\(.provider)/\(.profile)"] as $profiles
@@ -109,10 +120,43 @@ validate_credential_shape() {
         pi)
             jq -e 'type == "object" and length > 0' "$path" >/dev/null
             ;;
+        omniroute)
+            jq -e '
+              type == "object"
+              and (keys | sort) == ["key", "type"]
+              and .type == "api"
+              and (.key | type == "string" and length > 0)
+            ' "$path" >/dev/null
+            ;;
         *)
             return 1
             ;;
     esac
+}
+
+validate_credential_file() {
+    local provider="$1"
+    local path="$2"
+    local size
+
+    [[ -f "$path" && ! -L "$path" ]] || return 1
+    size="$(stat -c '%s' "$path")"
+    (( size > 0 && size <= MAX_SECRET_BYTES )) || return 1
+    jq -e 'type == "object"' "$path" >/dev/null || return 1
+    validate_credential_shape "$provider" "$path"
+}
+
+validate_entry_metadata() {
+    local provider="$1"
+    local profile="$2"
+    local path="$3"
+    local secret_name="$4"
+
+    [[ "$provider" =~ ^[a-z0-9-]+$ ]] || return 1
+    [[ "$profile" =~ ^[a-z0-9-]+$ ]] || return 1
+    [[ "$secret_name" =~ ^[a-zA-Z0-9-]{1,127}$ ]] || return 1
+    [[ "$secret_name" == "ai-credential-$provider-$profile" ]] || return 1
+    [[ "$path" == /* ]] || return 1
 }
 
 validate_entry() {
@@ -120,19 +164,52 @@ validate_entry() {
     local profile="$2"
     local path="$3"
     local secret_name="$4"
-    local size
 
-    [[ "$provider" =~ ^[a-z0-9-]+$ ]] || return 1
-    [[ "$profile" =~ ^[a-z0-9-]+$ ]] || return 1
-    [[ "$secret_name" =~ ^[a-zA-Z0-9-]{1,127}$ ]] || return 1
-    [[ "$secret_name" == "ai-credential-$provider-$profile" ]] || return 1
+    validate_entry_metadata "$provider" "$profile" "$path" "$secret_name" || return 1
     [[ -f "$path" && ! -L "$path" ]] || return 1
     [[ "$(stat -c '%u' "$path")" == "$(id -u)" ]] || return 1
     owner_only_mode "$path" || return 1
-    size="$(stat -c '%s' "$path")"
-    (( size > 0 && size <= MAX_SECRET_BYTES )) || return 1
-    jq -e 'type == "object"' "$path" >/dev/null || return 1
-    validate_credential_shape "$provider" "$path"
+    validate_credential_file "$provider" "$path"
+}
+
+approved_profile_root() {
+    case "$1" in
+        claude) printf '%s/profiles\n' "${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}" ;;
+        codex) printf '%s/profiles\n' "${CODEX_PROFILES_HOME:-${CHATGPT_PROFILES_HOME:-$HOME/.chatgpt-profiles}}" ;;
+        pi) printf '%s/profiles\n' "${PI_PROFILES_HOME:-$HOME/.pi-profiles}" ;;
+        omniroute) printf '%s/opencode\n' "${WORKBENCHES_CREDENTIALS_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/credentials}" ;;
+        *) return 1 ;;
+    esac
+}
+
+validate_restore_target() {
+    local provider="$1"
+    local target="$2"
+    local root root_real target_real expected_suffix current parent
+
+    root="$(approved_profile_root "$provider" || true)"
+    [[ -n "$root" ]] || return 1
+    case "$provider" in
+        claude) expected_suffix='/.credentials.json' ;;
+        codex) expected_suffix='/auth.json' ;;
+        pi) expected_suffix='/agent/auth.json' ;;
+        omniroute) expected_suffix='/omniroute.json' ;;
+        *) return 1 ;;
+    esac
+    [[ "$target" == *"$expected_suffix" ]] || return 1
+    [[ ! -L "$root" && ! -L "$target" ]] || return 1
+
+    root_real="$(realpath -m -- "$root")"
+    target_real="$(realpath -m -- "$target")"
+    [[ "$target_real" == "$root_real/"* ]] || return 1
+
+    parent="$(dirname "$target")"
+    current="$parent"
+    while [[ "$current" == "$root" || "$current" == "$root/"* ]]; do
+        [[ ! -L "$current" ]] || return 1
+        [[ "$current" == "$root" ]] && break
+        current="$(dirname "$current")"
+    done
 }
 
 stable_snapshot() {
@@ -194,6 +271,42 @@ record_backup() {
             }]
           | sort_by(.provider, .profile)
         )
+      ' "$STATE_FILE" >"$state_tmp"
+    chmod 0600 "$state_tmp"
+    mv -f -- "$state_tmp" "$STATE_FILE"
+}
+
+record_restore() {
+    local provider="$1"
+    local profile="$2"
+    local target="$3"
+    local secret_id="$4"
+    local restored_at="$5"
+    local state_dir state_tmp
+
+    ensure_state_file
+    state_dir="$(dirname "$STATE_FILE")"
+    state_tmp="$(mktemp "$state_dir/.ai-credential-state.XXXXXX")"
+    jq \
+      --arg provider "$provider" \
+      --arg profile "$profile" \
+      --arg source "$target" \
+      --arg secretId "$secret_id" \
+      --arg restoredAt "$restored_at" \
+      '
+        ([.backups[] | select(.provider == $provider and .profile == $profile)][0] // {}) as $existing
+        | .backups = (
+            [.backups[] | select(.provider != $provider or .profile != $profile)]
+            + [($existing + {
+                provider: $provider,
+                profile: $profile,
+                source: $source,
+                secretId: $secretId,
+                restoredAt: $restoredAt,
+                status: "restored"
+              })]
+            | sort_by(.provider, .profile)
+          )
       ' "$STATE_FILE" >"$state_tmp"
     chmod 0600 "$state_tmp"
     mv -f -- "$state_tmp" "$STATE_FILE"
@@ -308,9 +421,81 @@ verify_entry() {
     printf 'OK    %-8s %-16s %s\n' "$provider" "$profile" "$secret_id"
 }
 
+restore_entry() {
+    local subscription_id="$1"
+    local vault_name="$2"
+    local company="$3"
+    local provider="$4"
+    local profile="$5"
+    local target="$6"
+    local secret_name="$7"
+    local metadata secret_id content_type tag_company tag_provider tag_profile tag_manager
+    local download target_dir target_tmp restored_at
+
+    validate_entry_metadata "$provider" "$profile" "$target" "$secret_name" ||
+        { printf 'FAIL  %-8s %-16s invalid manifest entry\n' "$provider" "$profile" >&2; return 1; }
+    validate_restore_target "$provider" "$target" ||
+        { printf 'FAIL  %-8s %-16s unsafe credential target\n' "$provider" "$profile" >&2; return 1; }
+
+    if [[ -e "$target" && "$FORCE" != true ]]; then
+        printf 'KEEP  %-8s %-16s existing credential preserved\n' "$provider" "$profile"
+        return 2
+    fi
+    [[ ! -e "$target" || ( -f "$target" && ! -L "$target" ) ]] ||
+        { printf 'FAIL  %-8s %-16s existing target is not a regular file\n' "$provider" "$profile" >&2; return 1; }
+
+    metadata="$TEMP_DIR/${provider}-${profile}.metadata.json"
+    az keyvault secret show \
+      --subscription "$subscription_id" \
+      --vault-name "$vault_name" \
+      --name "$secret_name" \
+      --query '{id:id,contentType:contentType,tags:tags}' \
+      -o json \
+      --only-show-errors >"$metadata" || return 1
+
+    secret_id="$(jq -r '.id // ""' "$metadata")"
+    content_type="$(jq -r '.contentType // ""' "$metadata")"
+    tag_company="$(jq -r '.tags.company // ""' "$metadata")"
+    tag_provider="$(jq -r '.tags.provider // ""' "$metadata")"
+    tag_profile="$(jq -r '.tags.profile // ""' "$metadata")"
+    tag_manager="$(jq -r '.tags.managedBy // ""' "$metadata")"
+    [[ "$secret_id" =~ ^https://${vault_name}\.vault\.azure\.net/secrets/${secret_name}/[a-zA-Z0-9]+$ ]] ||
+        { printf 'FAIL  %-8s %-16s Azure returned an unexpected secret version URI\n' "$provider" "$profile" >&2; return 1; }
+    [[ "$content_type" == "application/json; credential-format=$provider" ]] ||
+        { printf 'FAIL  %-8s %-16s secret content type does not match provider\n' "$provider" "$profile" >&2; return 1; }
+    [[ "$tag_company" == "$company" && "$tag_provider" == "$provider" && "$tag_profile" == "$profile" && "$tag_manager" == "workBenches" ]] ||
+        { printf 'FAIL  %-8s %-16s secret tags do not match manifest entry\n' "$provider" "$profile" >&2; return 1; }
+
+    download="$TEMP_DIR/${provider}-${profile}.restore"
+    az keyvault secret download \
+      --subscription "$subscription_id" \
+      --id "$secret_id" \
+      --file "$download" \
+      --encoding utf-8 \
+      --only-show-errors \
+      -o none || return 1
+    chmod 0600 "$download"
+    validate_credential_file "$provider" "$download" ||
+        { printf 'FAIL  %-8s %-16s downloaded credential has invalid format\n' "$provider" "$profile" >&2; return 1; }
+
+    target_dir="$(dirname "$target")"
+    mkdir -p -- "$target_dir"
+    [[ ! -L "$target_dir" && "$(stat -c '%u' "$target_dir")" == "$(id -u)" ]] ||
+        { printf 'FAIL  %-8s %-16s target directory is not owner-controlled\n' "$provider" "$profile" >&2; return 1; }
+    chmod 0700 "$target_dir"
+    target_tmp="$(mktemp "$target_dir/.credential.XXXXXX.tmp")"
+    chmod 0600 "$target_tmp"
+    cp -- "$download" "$target_tmp"
+    mv -f -- "$target_tmp" "$target"
+    restored_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+    record_restore "$provider" "$profile" "$target" "$secret_id" "$restored_at" ||
+        { printf 'FAIL  %-8s %-16s credential installed but version state could not be recorded\n' "$provider" "$profile" >&2; return 1; }
+    printf 'OK    %-8s %-16s %s\n' "$provider" "$profile" "$secret_id"
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        audit|backup|verify)
+        audit|backup|verify|restore)
             [[ -z "$ACTION" ]] || die "only one action may be specified"
             ACTION="$1"
             shift
@@ -335,6 +520,10 @@ while [[ $# -gt 0 ]]; do
             PROFILE_FILTER="$2"
             shift 2
             ;;
+        --force)
+            FORCE=true
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -350,9 +539,14 @@ require_command jq
 require_command stat
 require_command sha256sum
 require_command cmp
+require_command realpath
 validate_manifest
 
-if [[ "$ACTION" == "backup" || "$ACTION" == "verify" ]]; then
+if [[ "$FORCE" == true && "$ACTION" != "restore" ]]; then
+    die "--force is valid only with restore"
+fi
+
+if [[ "$ACTION" == "backup" || "$ACTION" == "verify" || "$ACTION" == "restore" ]]; then
     require_command az
 fi
 
@@ -364,12 +558,13 @@ subscription_id="$(jq -r '.subscriptionId' "$MANIFEST")"
 vault_name="$(jq -r '.vaultName' "$MANIFEST")"
 company="$(jq -r '.company' "$MANIFEST")"
 
-if [[ "$ACTION" == "backup" || "$ACTION" == "verify" ]]; then
+if [[ "$ACTION" == "backup" || "$ACTION" == "verify" || "$ACTION" == "restore" ]]; then
     verify_azure_context "$subscription_id" "$tenant_id" "$vault_name"
 fi
 
 selected=0
 passed=0
+preserved=0
 failed=0
 while IFS=$'\t' read -r provider profile credential_path secret_name; do
     [[ -z "$PROVIDER_FILTER" || "$provider" == "$PROVIDER_FILTER" ]] || continue
@@ -377,7 +572,12 @@ while IFS=$'\t' read -r provider profile credential_path secret_name; do
     selected=$((selected + 1))
 
     source="$(expand_home "$credential_path" || true)"
-    if [[ -z "$source" ]] || ! validate_entry "$provider" "$profile" "$source" "$secret_name"; then
+    if [[ -z "$source" ]] || ! validate_entry_metadata "$provider" "$profile" "$source" "$secret_name"; then
+        printf 'FAIL  %-8s %-16s invalid manifest entry\n' "$provider" "$profile" >&2
+        failed=$((failed + 1))
+        continue
+    fi
+    if [[ "$ACTION" != "restore" ]] && ! validate_entry "$provider" "$profile" "$source" "$secret_name"; then
         printf 'FAIL  %-8s %-16s invalid or missing canonical credential\n' "$provider" "$profile" >&2
         failed=$((failed + 1))
         continue
@@ -402,6 +602,15 @@ while IFS=$'\t' read -r provider profile credential_path secret_name; do
                 failed=$((failed + 1))
             fi
             ;;
+        restore)
+            restore_status=0
+            restore_entry "$subscription_id" "$vault_name" "$company" "$provider" "$profile" "$source" "$secret_name" || restore_status=$?
+            case "$restore_status" in
+                0) passed=$((passed + 1)) ;;
+                2) preserved=$((preserved + 1)) ;;
+                *) failed=$((failed + 1)) ;;
+            esac
+            ;;
     esac
 done < <(
     jq -r '
@@ -413,5 +622,5 @@ done < <(
 )
 
 (( selected > 0 )) || die "no manifest entries matched the filters"
-printf 'Summary: selected=%d passed=%d failed=%d\n' "$selected" "$passed" "$failed"
+printf 'Summary: selected=%d passed=%d preserved=%d failed=%d\n' "$selected" "$passed" "$preserved" "$failed"
 (( failed == 0 ))

@@ -266,7 +266,15 @@ check_component_status() {
             ;;
         opencode_cli)
             if command -v opencode &> /dev/null; then
-                [[ -s "$HOME/.local/share/opencode/auth.json" ]] && echo "installed" || echo "needs creds"
+                if jq -e '
+                    type == "object"
+                    and .omniroute.type == "api"
+                    and (.omniroute.key | type == "string" and length > 0)
+                ' "$HOME/.local/share/opencode/auth.json" >/dev/null 2>&1; then
+                    echo "installed"
+                else
+                    echo "needs creds"
+                fi
             else
                 echo "not installed"
             fi
@@ -2386,11 +2394,16 @@ process_selections() {
 
                 opencode)
                     echo -e "${CYAN}▶ Setting up OpenCode provider authentication...${NC}"
-                    read -p "Launch 'opencode auth login' now? [Y/n]: " launch_opencode
-                    if [[ ! $launch_opencode =~ ^[Nn] ]]; then
-                        opencode auth login
+                    if "$SCRIPT_DIR/restore-opencode-omniroute-from-kv.sh"; then
+                        echo -e "${GREEN}✓ Restored Opensoft OmniRoute authentication from approved durable storage${NC}"
                     else
-                        echo -e "${YELLOW}Skipped. Run 'opencode auth login' anytime.${NC}"
+                        echo -e "${YELLOW}Automatic OmniRoute recovery was unavailable.${NC}"
+                        read -p "Launch 'opencode auth login' now? [Y/n]: " launch_opencode
+                        if [[ ! $launch_opencode =~ ^[Nn] ]]; then
+                            opencode auth login
+                        else
+                            echo -e "${YELLOW}Skipped. Run 'opencode auth login' anytime.${NC}"
+                        fi
                     fi
                     echo ""
                     ;;

@@ -8,6 +8,7 @@ import fnmatch
 import json
 import os
 import pathlib
+import re
 import tempfile
 from typing import Any
 
@@ -23,6 +24,11 @@ SOURCE_KIND = "workbenches-ai-profile-source"
 PARITY_FIELDS = ("email", "family", "aliases")
 CREDENTIAL_CONTRACT_VERSION = 1
 ESCROW_STATES = {"available", "not-escrowed", "external-vault"}
+AZURE_CREDENTIAL_REF_RE = re.compile(
+    r"^azure-key-vault://(?P<vault>[a-z0-9][a-z0-9-]{1,22}[a-z0-9])/"
+    r"ai-credential-(?P<provider>claude|codex|pi)-(?P<profile>[a-z0-9][a-z0-9-]*)$"
+)
+REGISTRY_TO_RUNTIME_PROVIDER = {"claude": "claude", "openai": "codex"}
 
 
 class ProfileError(ValueError):
@@ -72,12 +78,29 @@ def validate_profile(profile: Any, provider: str, source: pathlib.Path) -> dict[
             raise ProfileError(
                 f"{source}: {provider} profile {result['name']} has invalid escrowStatus"
             )
-        credential_ref = pathlib.PurePosixPath(authentication["credentialRef"])
-        expected_root = pathlib.PurePosixPath("ai/secrets") / provider
-        if credential_ref.is_absolute() or ".." in credential_ref.parts or expected_root not in credential_ref.parents:
-            raise ProfileError(
-                f"{source}: {provider} profile {result['name']} credentialRef escapes {expected_root}"
-            )
+        credential_ref_value = authentication["credentialRef"]
+        azure_match = AZURE_CREDENTIAL_REF_RE.fullmatch(credential_ref_value)
+        if azure_match:
+            expected_runtime_provider = REGISTRY_TO_RUNTIME_PROVIDER.get(provider)
+            if (
+                expected_runtime_provider is None
+                or azure_match.group("provider") != expected_runtime_provider
+                or azure_match.group("profile") != result["name"]
+            ):
+                raise ProfileError(
+                    f"{source}: {provider} profile {result['name']} has mismatched Azure credentialRef"
+                )
+        else:
+            credential_ref = pathlib.PurePosixPath(credential_ref_value)
+            expected_root = pathlib.PurePosixPath("ai/secrets") / provider
+            if (
+                credential_ref.is_absolute()
+                or ".." in credential_ref.parts
+                or expected_root not in credential_ref.parents
+            ):
+                raise ProfileError(
+                    f"{source}: {provider} profile {result['name']} credentialRef escapes {expected_root}"
+                )
     return result
 
 

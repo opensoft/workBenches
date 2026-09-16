@@ -15,5 +15,5 @@ OpenSpec/Speckit protocol and project bootstrap contract.
 - Preserve unrelated changes in the parent checkout and in bench submodules.
 
 <!-- SPECKIT START -->
-Active implementation plan: `specs/001-pybench-sonarqube-mcp/plan.md`
+Active implementation plan: `specs/008-ai-credential-custody/plan.md`
 <!-- SPECKIT END -->
