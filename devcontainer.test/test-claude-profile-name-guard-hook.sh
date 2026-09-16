@@ -51,7 +51,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=22
+EXPECTED_SCENARIOS=27
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -456,6 +456,68 @@ if env "${common_env[@]}" "$LAUNCHER" --no-lane run team002 >/dev/null 2>"$TEST_
 fi; assertion
 grep -q 'not valid JSON' "$TEST_ROOT/stderr.log" \
     || fail "invalid settings: the refusal did not say why ($(cat "$TEST_ROOT/stderr.log"))"; assertion
+
+# ---------------------------------------------------------------------------
+# 15. THE DOWNGRADE SAYS SO, ONCE (opensoft/workBenches#90). Sections 11 and 12
+# pin that the entry is REMOVED when the estate stops answering `guard`; this
+# pins that the removal is never SILENT. It went silent on 2026-09-15: a bench
+# recreate emptied ~/.local/bin, `~/projects/xFactory/lanes-edit.sh` dangled,
+# and Amendment 12's protection came off every profile this launcher touched
+# with nothing said anywhere. The line has to name the three things a person
+# needs to act — WHICH settings.json, WHICH entry, and WHY — and it has to stay
+# quiet on every run that removed nothing, or it becomes noise on eighty
+# profiles' worth of ordinary launches.
+downgrade_lines() { grep -c 'removed the Amendment 12 name-guard hook' "$TEST_ROOT/stderr.log" 2>/dev/null || true; }
+
+# 15a. Nothing removed, nothing said — the supported estate, the common case.
+lanes_edit_with_guard
+printf '%s\n' '{}' > "$SETTINGS"
+run_launcher
+[[ "$(guard_count)" -eq 1 ]] \
+    || fail "downgrade line setup: the entry was not ensured while the estate supported it"; assertion
+[[ "$(downgrade_lines)" -eq 0 ]] \
+    || fail "downgrade line: an ensure run that removed nothing printed a removal line ($(cat "$TEST_ROOT/stderr.log"))"; assertion
+
+# 15b. The estate is downgraded to one that cannot answer the verb: exactly one
+# line, naming this profile's settings.json, the exact entry, and the reason.
+lanes_edit_pre_amendment_12
+run_launcher
+[[ "$(guard_count)" -eq 0 ]] \
+    || fail "downgrade line: the entry was not removed, so there is nothing to have announced"; assertion
+[[ "$(downgrade_lines)" -eq 1 ]] \
+    || fail "downgrade line: printed $(downgrade_lines) times, expected exactly 1 ($(cat "$TEST_ROOT/stderr.log"))"; assertion
+grep -Fq "$SETTINGS" "$TEST_ROOT/stderr.log" \
+    || fail "downgrade line: does not name the profile settings file it edited ($(cat "$TEST_ROOT/stderr.log"))"; assertion
+grep -Fq "$SNIPPET" "$TEST_ROOT/stderr.log" \
+    || fail "downgrade line: does not name the entry it removed ($(cat "$TEST_ROOT/stderr.log"))"; assertion
+grep -Fq 'has no `guard` subcommand' "$TEST_ROOT/stderr.log" \
+    || fail "downgrade line: does not say WHY for an estate that is installed but predates the verb ($(cat "$TEST_ROOT/stderr.log"))"; assertion
+grep -Fq "$XFACTORY/lanes-edit.sh" "$TEST_ROOT/stderr.log" \
+    || fail "downgrade line: does not name the estate path it probed ($(cat "$TEST_ROOT/stderr.log"))"; assertion
+
+# 15c. The very next launch, with the entry already gone, says nothing: the
+# line reports a REMOVAL, not a state, so it fires once and not once per launch
+# for as long as the estate stays downgraded.
+run_launcher
+[[ "$(downgrade_lines)" -eq 0 ]] \
+    || fail "downgrade line: repeated on a later launch that removed nothing ($(cat "$TEST_ROOT/stderr.log"))"; assertion
+
+# 15d. THE #90 SHAPE ITSELF — not a downgraded lanes-edit.sh but NO lanes-edit.sh,
+# which is what a wiped ~/.local/bin leaves behind (the symlink survives on the
+# mounted workspace and dangles). Same one line, different reason, because the
+# repairs differ: reinstall the estate versus upgrade it.
+lanes_edit_with_guard
+run_launcher
+[[ "$(guard_count)" -eq 1 ]] \
+    || fail "downgrade line: the re-upgrade did not restore the entry to remove again"; assertion
+lanes_edit_absent
+run_launcher
+[[ "$(guard_count)" -eq 0 ]] \
+    || fail "downgrade line: the entry survived an estate with no lanes-edit.sh at all"; assertion
+[[ "$(downgrade_lines)" -eq 1 ]] \
+    || fail "downgrade line: printed $(downgrade_lines) times for a wiped estate, expected exactly 1 ($(cat "$TEST_ROOT/stderr.log"))"; assertion
+grep -Fq 'is not there' "$TEST_ROOT/stderr.log" \
+    || fail "downgrade line: a wiped estate is reported as a missing subcommand rather than a missing file ($(cat "$TEST_ROOT/stderr.log"))"; assertion
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"

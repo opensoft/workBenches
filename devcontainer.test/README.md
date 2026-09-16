@@ -43,14 +43,32 @@ The `test.sh` script validates:
 - ✅ Claude profile lane default and SessionStart hook
   (lane-collision-protocol Amendment 8(c) and 8(e))
 
-Two suites in this directory are **host-run** rather than container-run,
-because they need the repository's own `scripts/` and `base-image/`, which are
-not mounted in the container: `test-setup-estate-commands.sh` and
-`test-claude-profile-skill-install.sh`. Run them from the repository root:
+Four suites in this directory are **host-run** rather than container-run,
+because they read the repository's own `scripts/`, `base-image/` and
+`devBenches/base-image/`, which are not mounted in the container. All four run
+in CI (`.github/workflows/speckit-git-bash.yml`), and all four are run from the
+repository root:
 
 ```bash
+bash devcontainer.test/test-setup-estate-commands.sh
 bash devcontainer.test/test-claude-profile-skill-install.sh
+bash devcontainer.test/test-base-image-dockerfile.sh
+bash devcontainer.test/test-claude-profile-name-guard-hook.sh
 ```
+
+- `test-setup-estate-commands.sh` — `scripts/setup-estate-commands.sh` on a
+  host, and the container-start step that mirrors it
+  (`devBenches/base-image/files/estate/`, opensoft/workBenches#90).
+- `test-claude-profile-skill-install.sh` — that `openRepoTools --install` is
+  the sole writer of the skills, command files and hook entries
+  (lane-collision-protocol Amendment 9 adoption act 4b).
+- `test-base-image-dockerfile.sh` — the source-only wiring check on BOTH
+  Dockerfiles. It never runs `docker build`, which is the point: nothing else
+  here can, so this is what catches a launcher dependency or a container-start
+  step that is referenced but never copied into the image.
+- `test-claude-profile-name-guard-hook.sh` — the launcher's `UserPromptSubmit`
+  name guard, including the downgrade that removes it and the line it prints
+  when it does (Amendment 12 adoption act 3).
 
 ## When to Use
 
