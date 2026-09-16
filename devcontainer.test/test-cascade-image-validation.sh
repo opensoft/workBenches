@@ -13,6 +13,7 @@ log="$temp_dir/docker.log"
 default_image_id="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 retagged_image_id="sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 captured_image_id="sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+running_image_id="sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 
 cleanup() {
     rm -f -- "$manifest"
@@ -41,7 +42,7 @@ export FAKE_DOCKER_LAYER3_DOCKER_SOCKET_GID="$(stat -c '%g' /var/run/docker.sock
 test "${WORKBENCHES_REQUIRED_AI_CLIS[0]}" = claude
 test "${WORKBENCHES_REQUIRED_AI_CLIS[-1]}" = cursor-agent
 grep -Fq 'required_clis=("${WORKBENCHES_REQUIRED_AI_CLIS[@]}")' "$installer"
-test "$(grep -Fc -- '- user-layer/build.sh' "$repo_root/.github/workflows/cascade-image-validation.yml")" -eq 2
+test "$(grep -Fc -- '- user-layer/**' "$repo_root/.github/workflows/cascade-image-validation.yml")" -eq 2
 
 assert_layer3_identity_rejected() {
     : > "$log"
@@ -70,9 +71,15 @@ grep -Fq -- '--check-layer3' <<< "$checker_help"
 grep -Fq -- '--write-manifest' <<< "$checker_help"
 grep -Fq -- '--manifest-file FILE' <<< "$checker_help"
 grep -Fq -- 'WORKBENCHES_LAYER3_IDENTITY_TIMEOUT_SECONDS' <<< "$checker_help"
+if "$checker" --layer 0 --check-layer3 > "$temp_dir/missing-layer3-images.out" 2>&1; then
+    echo "expected --check-layer3 without --images to fail" >&2
+    exit 1
+fi
+grep -Fq -- '--check-layer3 requires --images IMAGE,...' "$temp_dir/missing-layer3-images.out"
 rebuild_help="$("$repo_root/scripts/update-and-rebuild.sh" --help)"
 grep -Fq -- '--write-manifest' <<< "$rebuild_help"
 grep -Fq 'CHECK_ARGS+=(--images "$CASCADE_IMAGE_LIST" --image-ids "$CASCADE_IMAGE_ID_LIST" --check-layer3)' "$repo_root/scripts/update-and-rebuild.sh"
+grep -Fq 'CHECK_ARGS+=(--layer all --images "$LAYER3_BASE" --check-layer3)' "$repo_root/scripts/update-and-rebuild.sh"
 
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
@@ -96,7 +103,7 @@ grep -Fq 'image save sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddd
 : > "$log"
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
-FAKE_DOCKER_RUNNING_CONTAINERS=$'registry.example/test-bench@sha256:old\tid-bench\n' \
+FAKE_DOCKER_RUNNING_CONTAINERS=$'test-bench@sha256:old\tid-bench\n' \
 "$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
     > "$temp_dir/running-id.out"
 grep -Fq "activation deferred by running container 'id-bench'" "$temp_dir/running-id.out"
@@ -105,16 +112,27 @@ grep -Fq "container inspect --format {{.Image}} id-bench" "$log"
 : > "$log"
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
-FAKE_DOCKER_RUNNING_CONTAINERS=$'registry.example/test-bench@sha256:old\told-digest-bench\n' \
-FAKE_DOCKER_RUNNING_CONTAINER_IMAGE_ID=sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee \
-"$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
-    > "$temp_dir/running-retagged.out"
-grep -Fq "activation deferred by running container 'old-digest-bench'" \
-    "$temp_dir/running-retagged.out"
+FAKE_DOCKER_RUNNING_CONTAINERS=$'test-bench@sha256:old\told-digest-bench\n' \
+FAKE_DOCKER_RUNNING_CONTAINER_IMAGE_ID="$running_image_id" \
+"$checker" --layer 0 --images test-bench:latest --check-layer3 --json --user brett \
+    > "$temp_dir/running-retagged.json"
+jq -e --arg id "$running_image_id" \
+    '.images[] | select(.image == "test-bench:brett" and .status == "activation-deferred-running" and .id == $id)' \
+    "$temp_dir/running-retagged.json" >/dev/null
 if grep -Fq 'image save' "$log"; then
     echo "retagged running Layer 3 image was inspected as the current tag" >&2
     exit 1
 fi
+
+: > "$log"
+PATH="$fake_bin:$PATH" \
+FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_RUNNING_CONTAINERS=$'registry.example/team/test-bench:brett\tother-repository-bench\n' \
+FAKE_DOCKER_RUNNING_CONTAINER_IMAGE_ID="$running_image_id" \
+"$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
+    > "$temp_dir/different-repository.out"
+grep -Fq 'Layer 3 test-bench:brett is current' "$temp_dir/different-repository.out"
+grep -Fq 'image save sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' "$log"
 
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
@@ -123,6 +141,34 @@ WORKBENCHES_DOCKER_SOCKET_PATH="$temp_dir/missing-docker.sock" \
 "$checker" --layer 0 --images test-bench:latest --check-layer3 --user brett \
     > "$temp_dir/no-socket.out"
 grep -Fq 'Layer 3 test-bench:brett is current' "$temp_dir/no-socket.out"
+
+if PATH="$fake_bin:$PATH" \
+    FAKE_DOCKER_LOG="$log" \
+    FAKE_DOCKER_IMAGE_INSPECT_FAIL=test-bench:brett \
+    "$checker" --layer 0 --images test-bench:latest --check-layer3 --json --user brett \
+        > "$temp_dir/user-image-inspection-failed.json" \
+        2> "$temp_dir/user-image-inspection-failed.err"; then
+    echo "expected a failed Layer 3 image-ID inspection to fail validation" >&2
+    exit 1
+fi
+grep -Fq 'activation state is unknown' "$temp_dir/user-image-inspection-failed.err"
+jq -e \
+    '.images[] | select(.image == "test-bench:brett" and .status == "activation-inspection-failed" and .id == "n/a")' \
+    "$temp_dir/user-image-inspection-failed.json" >/dev/null
+if jq -e '.images[] | select(.image == "test-bench:brett" and .status == "activation-missing")' \
+    "$temp_dir/user-image-inspection-failed.json" >/dev/null; then
+    echo "failed Layer 3 image-ID inspection was misclassified as missing" >&2
+    exit 1
+fi
+
+PATH="$fake_bin:$PATH" \
+FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_MISSING_IMAGE=test-bench:brett \
+"$checker" --layer 0 --images test-bench:latest --check-layer3 --json --user brett \
+    > "$temp_dir/user-image-missing.json" 2> "$temp_dir/user-image-missing.err"
+jq -e \
+    '.images[] | select(.image == "test-bench:brett" and .status == "activation-missing")' \
+    "$temp_dir/user-image-missing.json" >/dev/null
 
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
@@ -166,6 +212,27 @@ if grep -Fq 'has stale user/group configuration' "$temp_dir/metadata-inspection-
     exit 1
 fi
 
+for failure_kind in created recipe; do
+    failure_env="FAKE_DOCKER_${failure_kind^^}_INSPECT_FAIL"
+    if env PATH="$fake_bin:$PATH" \
+        FAKE_DOCKER_LOG="$log" \
+        "$failure_env=true" \
+        "$checker" --layer 0 --images test-bench:latest --check-layer3 --json --user brett \
+            > "$temp_dir/${failure_kind}-inspection-failed.json" \
+            2> "$temp_dir/${failure_kind}-inspection-failed.err"; then
+        echo "expected failed Layer 3 $failure_kind inspection to fail validation" >&2
+        exit 1
+    fi
+    grep -Fq 'activation state is unknown' "$temp_dir/${failure_kind}-inspection-failed.err"
+    jq -e \
+        '.images[] | select(.image == "test-bench:brett" and .status == "activation-inspection-failed")' \
+        "$temp_dir/${failure_kind}-inspection-failed.json" >/dev/null
+    if grep -Fq 'activation is required' "$temp_dir/${failure_kind}-inspection-failed.err"; then
+        echo "failed $failure_kind inspection was misclassified as stale" >&2
+        exit 1
+    fi
+done
+
 if WORKBENCHES_LAYER3_IDENTITY_TIMEOUT_SECONDS=invalid \
     "$checker" --layer 0 >/dev/null 2> "$temp_dir/invalid-timeout.err"; then
     echo "expected an invalid Layer 3 identity timeout to fail" >&2
@@ -199,9 +266,11 @@ grep -Fq 'claude' "$temp_dir/missing.out"
 
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
-"$checker" --layer 0 --images test-bench:latest --check-layer3 --write-manifest --manifest-file "$manifest" --user 'brett"qa' > /dev/null
+"$checker" --layer 0 --images test-bench:latest --check-layer3 --json --write-manifest --manifest-file "$manifest" --user 'brett"qa' \
+    > "$temp_dir/written-manifest.json"
 
 test -s "$manifest"
+cmp -s "$manifest" "$temp_dir/written-manifest.json"
 jq -e '.user == "brett\"qa"' "$manifest" >/dev/null
 grep -Fq '"image": "test-bench:latest"' "$manifest"
 grep -Fq '"image": "test-bench:brett\"qa"' "$manifest"
@@ -386,6 +455,16 @@ FAKE_DOCKER_MISSING_IMAGE=first-bench:latest \
         "$first_build_dir/build.sh" "$first_build_dir" \
         > "$temp_dir/first-build.records"
 test ! -s "$temp_dir/first-build.records"
+
+if PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+    FAKE_DOCKER_IMAGE_INSPECT_FAIL=first-bench:latest \
+    capture_cascade_image_ids first-bench:latest \
+        "$first_build_dir/build.sh" "$first_build_dir" \
+        > "$temp_dir/failed-first-build.records" 2> "$temp_dir/failed-first-build.err"; then
+    echo "expected a failed pre-build image-ID inspection to fail" >&2
+    exit 1
+fi
+grep -Fq "Could not inspect Docker image 'first-bench:latest'" "$temp_dir/failed-first-build.err"
 
 CASCADE_IMAGES=()
 CASCADE_IMAGE_RECORDS=()

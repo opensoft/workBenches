@@ -59,6 +59,11 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+if [ "$CHECK_LAYER3" = true ] && [ "${#TARGET_IMAGES[@]}" -eq 0 ]; then
+    echo "--check-layer3 requires --images IMAGE,..." >&2
+    exit 1
+fi
+
 manifest_config_dir="$(realpath -m -- "$REPO_DIR/config")"
 manifest_target="$(realpath -m -- "$MANIFEST_FILE")"
 manifest_parent="$(dirname -- "$manifest_target")"
@@ -80,6 +85,7 @@ BOLD='\033[1m'
 declare -a JSON_ENTRIES=()
 declare -a JSON_IMAGE_ENTRIES=()
 declare -A RUNNING_CONTAINER_BY_IMAGE=()
+declare -A RUNNING_IMAGE_ID_BY_KEY=()
 declare -A EXPECTED_IMAGE_IDS=()
 IMAGE_PROBE_FAILURES=0
 LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256 "$REPO_DIR/user-layer")"
@@ -185,14 +191,41 @@ image_id() {
     docker image inspect --format '{{.Id}}' "$1" 2>/dev/null || true
 }
 
-image_created_at() {
-    docker image inspect --format '{{.Created}}' "$1" 2>/dev/null || true
+image_id_if_present() {
+    local image="$1"
+    local output
+
+    if output="$(docker image inspect --format '{{.Id}}' "$image" 2>&1)"; then
+        if [[ -z "$output" ]]; then
+            echo "Docker returned an empty image ID for '$image'" >&2
+            return 2
+        fi
+        printf '%s\n' "$output"
+        return 0
+    fi
+
+    case "$output" in
+        *"No such image"*|*"No such object"*) return 1 ;;
+        *)
+            echo "Could not inspect Docker image '$image'${output:+: $output}" >&2
+            return 2
+            ;;
+    esac
 }
 
-image_repository_leaf() {
-    local reference="${1%@*}"
-    reference="${reference##*/}"
-    printf '%s\n' "${reference%%:*}"
+image_created_at() {
+    docker image inspect --format '{{.Created}}' "$1" 2>/dev/null
+}
+
+image_repository_name() {
+    local reference="${1%%@*}"
+    local final_component="${reference##*/}"
+
+    [[ "$reference" == sha256:* ]] && return 0
+    if [[ "$final_component" == *:* ]]; then
+        reference="${reference%:*}"
+    fi
+    printf '%s\n' "$reference"
 }
 
 record_image() {
@@ -218,7 +251,8 @@ snapshot_running_containers() {
     local actual_image_id
     local container_name
     local layer3_username
-    local repository_leaf
+    local repository_name
+    local repository_key
 
     if ! snapshot=$(run_with_optional_timeout "$timeout_seconds" \
         docker container ls --format '{{.Image}}\t{{.Names}}'); then
@@ -235,6 +269,8 @@ snapshot_running_containers() {
         RUNNING_CONTAINER_BY_IMAGE["$configured_image"]="$container_name"
         if [[ -n "$actual_image_id" ]]; then
             RUNNING_CONTAINER_BY_IMAGE["$actual_image_id"]="$container_name"
+            RUNNING_IMAGE_ID_BY_KEY["$configured_image"]="$actual_image_id"
+            RUNNING_IMAGE_ID_BY_KEY["$actual_image_id"]="$actual_image_id"
             if ! layer3_username=$(run_with_optional_timeout "$timeout_seconds" \
                 docker image inspect --format \
                     '{{ index .Config.Labels "io.opensoft.workbenches.layer3.username" }}' \
@@ -243,9 +279,12 @@ snapshot_running_containers() {
                 return 1
             fi
             if [[ "$layer3_username" == "$USERNAME" ]]; then
-                repository_leaf="$(image_repository_leaf "$configured_image")"
-                [[ -n "$repository_leaf" ]] \
-                    && RUNNING_CONTAINER_BY_IMAGE["layer3-repository:$repository_leaf:$USERNAME"]="$container_name"
+                repository_name="$(image_repository_name "$configured_image")"
+                if [[ -n "$repository_name" ]]; then
+                    repository_key="layer3-repository:$repository_name:$USERNAME"
+                    RUNNING_CONTAINER_BY_IMAGE["$repository_key"]="$container_name"
+                    RUNNING_IMAGE_ID_BY_KEY["$repository_key"]="$actual_image_id"
+                fi
             fi
         fi
     done <<< "$snapshot"
@@ -498,24 +537,43 @@ check_layer3_image() {
     local base_created
     local user_created
     local user_image_id
+    local user_image_id_status=0
     local user_recipe
-    local user_repository_leaf
+    local user_repository_name
+    local running_image_id=""
+    local repository_key
+    local metadata_inspection_failed=false
     local identity_status=0
 
-    user_image_id="$(image_id "$user_image")"
+    if user_image_id="$(image_id_if_present "$user_image")"; then
+        :
+    else
+        user_image_id_status=$?
+    fi
     running_container="${RUNNING_CONTAINER_BY_IMAGE[$user_image]:-}"
+    running_image_id="${RUNNING_IMAGE_ID_BY_KEY[$user_image]:-}"
     if [[ -z "$running_container" && -n "$user_image_id" ]]; then
         running_container="${RUNNING_CONTAINER_BY_IMAGE[$user_image_id]:-}"
+        running_image_id="${RUNNING_IMAGE_ID_BY_KEY[$user_image_id]:-}"
     fi
     if [[ -z "$running_container" ]]; then
-        user_repository_leaf="$(image_repository_leaf "$user_image")"
-        running_container="${RUNNING_CONTAINER_BY_IMAGE[layer3-repository:$user_repository_leaf:$USERNAME]:-}"
+        user_repository_name="$(image_repository_name "$user_image")"
+        repository_key="layer3-repository:$user_repository_name:$USERNAME"
+        running_container="${RUNNING_CONTAINER_BY_IMAGE[$repository_key]:-}"
+        running_image_id="${RUNNING_IMAGE_ID_BY_KEY[$repository_key]:-}"
     fi
     if [[ -n "$running_container" ]]; then
         if [ "$JSON_OUTPUT" = false ]; then
             echo -e "${YELLOW}↷ Layer 3 $user_image activation deferred by running container '$running_container'${NC}"
         fi
-        record_image "$user_image" "3" "activation-deferred-running"
+        record_image "$user_image" "3" "activation-deferred-running" "$running_image_id"
+        return
+    fi
+
+    if [[ "$user_image_id_status" -eq 2 ]]; then
+        echo "Could not inspect Layer 3 image $user_image; activation state is unknown" >&2
+        record_image "$user_image" "3" "activation-inspection-failed" "n/a"
+        IMAGE_PROBE_FAILURES=$((IMAGE_PROBE_FAILURES + 1))
         return
     fi
 
@@ -527,16 +585,25 @@ check_layer3_image() {
         return
     fi
 
-    base_created=$(image_created_at "$base_image_id")
-    user_created=$(image_created_at "$user_image_id")
-    user_recipe="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.recipe-sha256" }}' "$user_image_id" 2>/dev/null || true)"
-    if [[ "$user_recipe" != "$LAYER3_RECIPE_SHA256" ]]; then
+    if ! base_created=$(image_created_at "$base_image_id"); then
+        metadata_inspection_failed=true
+    fi
+    if ! user_created=$(image_created_at "$user_image_id"); then
+        metadata_inspection_failed=true
+    fi
+    if ! user_recipe=$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.recipe-sha256" }}' "$user_image_id" 2>/dev/null); then
+        metadata_inspection_failed=true
+    fi
+    if [[ "$metadata_inspection_failed" == true || -z "$base_created" || -z "$user_created" ]]; then
+        echo "Could not inspect Layer 3 metadata for $user_image; activation state is unknown" >&2
+        record_image "$user_image" "3" "activation-inspection-failed" "$user_image_id"
+        IMAGE_PROBE_FAILURES=$((IMAGE_PROBE_FAILURES + 1))
+    elif [[ "$user_recipe" != "$LAYER3_RECIPE_SHA256" ]]; then
         if [ "$JSON_OUTPUT" = false ]; then
             echo -e "${YELLOW}↷ Layer 3 $user_image has a stale recipe; activation is required${NC}"
         fi
         record_image "$user_image" "3" "activation-stale" "$user_image_id"
-    elif [[ -z "$base_created" || -z "$user_created" \
-        || "$user_created" < "$base_created" || "$user_created" == "$base_created" ]]; then
+    elif [[ "$user_created" < "$base_created" || "$user_created" == "$base_created" ]]; then
         if [ "$JSON_OUTPUT" = false ]; then
             echo -e "${YELLOW}↷ Layer 3 $user_image is older than $base_image; activation is required${NC}"
         fi
@@ -890,9 +957,17 @@ render_manifest() {
         '{checked_at:$checked_at,user:$user,tools:$tools,images:$images}'
 }
 
+manifest_json=""
+if [ "$WRITE_MANIFEST" = true ] || [ "$JSON_OUTPUT" = true ]; then
+    if ! manifest_json="$(render_manifest)"; then
+        echo "Could not render the version manifest" >&2
+        exit 1
+    fi
+fi
+
 if [ "$WRITE_MANIFEST" = true ]; then
     manifest_temp="$(mktemp "$manifest_config_dir/.version-manifest.XXXXXX")"
-    if ! render_manifest > "$manifest_temp" || ! mv -f -- "$manifest_temp" "$MANIFEST_FILE"; then
+    if ! printf '%s\n' "$manifest_json" > "$manifest_temp" || ! mv -f -- "$manifest_temp" "$MANIFEST_FILE"; then
         rm -f -- "$manifest_temp"
         echo "Could not atomically write the version manifest" >&2
         exit 1
@@ -904,7 +979,7 @@ if [ "$WRITE_MANIFEST" = true ]; then
 fi
 
 if [ "$JSON_OUTPUT" = true ]; then
-    render_manifest
+    printf '%s\n' "$manifest_json"
 fi
 
 if [ "$IMAGE_PROBE_FAILURES" -gt 0 ]; then

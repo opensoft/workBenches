@@ -1,7 +1,25 @@
 #!/usr/bin/env bash
 
 image_id_if_present() {
-    docker image inspect --format '{{.Id}}' "$1" 2>/dev/null || true
+    local image="$1"
+    local output
+
+    if output="$(docker image inspect --format '{{.Id}}' "$image" 2>&1)"; then
+        if [[ -z "$output" ]]; then
+            echo "Docker returned an empty image ID for '$image'" >&2
+            return 2
+        fi
+        printf '%s\n' "$output"
+        return 0
+    fi
+
+    case "$output" in
+        *"No such image"*|*"No such object"*) return 1 ;;
+        *)
+            echo "Could not inspect Docker image '$image'${output:+: $output}" >&2
+            return 2
+            ;;
+    esac
 }
 
 select_layer2_build_script() {
@@ -311,17 +329,26 @@ capture_cascade_image_ids() {
     local bench_dir="${3:-}"
     local declared_image
     local image_id
+    local inspect_status
     local found=false
 
     while IFS= read -r declared_image; do
         [[ -n "$declared_image" ]] || continue
         found=true
-        image_id="$(image_id_if_present "$declared_image")"
-        [[ -n "$image_id" ]] && printf '%s=%s\n' "$declared_image" "$image_id"
+        if image_id="$(image_id_if_present "$declared_image")"; then
+            printf '%s=%s\n' "$declared_image" "$image_id"
+        else
+            inspect_status=$?
+            [[ "$inspect_status" -eq 1 ]] || return "$inspect_status"
+        fi
     done < <(declared_cascade_images "$image" "$build_script" "$bench_dir")
     if [[ "$found" = false ]]; then
-        image_id="$(image_id_if_present "$image")"
-        [[ -n "$image_id" ]] && printf '%s=%s\n' "$image" "$image_id"
+        if image_id="$(image_id_if_present "$image")"; then
+            printf '%s=%s\n' "$image" "$image_id"
+        else
+            inspect_status=$?
+            [[ "$inspect_status" -eq 1 ]] || return "$inspect_status"
+        fi
     fi
     return 0
 }
@@ -334,6 +361,7 @@ record_rebuilt_cascade_image() {
     local prebuild_image_records="${5:-}"
     local produced_image
     local current_image_id
+    local inspect_status
     local prior_image
     local prior_id
     local prior_image_id
@@ -348,11 +376,16 @@ record_rebuilt_cascade_image() {
     fi
 
     for produced_image in "${declared_images[@]}"; do
-        current_image_id="$(image_id_if_present "$produced_image")"
-        if [[ -z "$current_image_id" ]]; then
-            echo "Declared Layer 2 image $produced_image was not produced by $bench_name" >&2
-            missing=true
-            continue
+        if current_image_id="$(image_id_if_present "$produced_image")"; then
+            :
+        else
+            inspect_status=$?
+            if [[ "$inspect_status" -eq 1 ]]; then
+                echo "Declared Layer 2 image $produced_image was not produced by $bench_name" >&2
+                missing=true
+                continue
+            fi
+            return "$inspect_status"
         fi
         prior_image_id=""
         while IFS='=' read -r prior_image prior_id; do

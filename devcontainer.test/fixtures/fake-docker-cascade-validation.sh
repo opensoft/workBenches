@@ -48,7 +48,12 @@ PY
         fi
         [ "$2" = "inspect" ] || exit 1
         image="${!#}"
+        if [[ "$image" == "${FAKE_DOCKER_IMAGE_INSPECT_FAIL:-}" ]]; then
+            echo "simulated Docker image inspect failure for $image" >&2
+            exit 2
+        fi
         if [[ "$image" == "${FAKE_DOCKER_MISSING_IMAGE:-}" ]]; then
+            echo "Error response from daemon: No such image: $image" >&2
             exit 1
         fi
         case "$image" in
@@ -66,6 +71,10 @@ PY
                 fi
                 ;;
             *'recipe-sha256'*)
+                if [ "${FAKE_DOCKER_RECIPE_INSPECT_FAIL:-false}" = true ]; then
+                    echo "simulated recipe metadata inspection failure" >&2
+                    exit 2
+                fi
                 echo "${FAKE_DOCKER_LAYER3_RECIPE_SHA256:-}"
                 ;;
             *'layer3.username'*)
@@ -85,6 +94,10 @@ PY
                 echo "${FAKE_DOCKER_LAYER3_DOCKER_SOCKET_GID:-}"
                 ;;
             *'{{.Created}}'*)
+                if [ "${FAKE_DOCKER_CREATED_INSPECT_FAIL:-false}" = true ]; then
+                    echo "simulated creation metadata inspection failure" >&2
+                    exit 2
+                fi
                 if [[ "$image" == "test-bench:brett" \
                     || "$image" == "${FAKE_DOCKER_USER_IMAGE_ID:-sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd}" ]]; then
                     echo "2026-09-10T01:00:01Z"

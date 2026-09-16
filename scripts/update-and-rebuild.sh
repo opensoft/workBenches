@@ -517,7 +517,9 @@ echo "=========================================="
 echo ""
 echo -e "${CYAN}Running version check on rebuilt images...${NC}"
 CHECK_ARGS=(--user "$USERNAME")
-if [ "$BUILD_ALL" = true ] || [ "$CASCADE" = true ]; then
+if [ "$BUILD_ALL" = false ] && [ "$LAYER" = "3" ]; then
+    CHECK_ARGS+=(--layer all --images "$LAYER3_BASE" --check-layer3)
+elif [ "$BUILD_ALL" = true ] || [ "$CASCADE" = true ]; then
     CHECK_ARGS+=(--layer all)
 else
     CHECK_ARGS+=(--layer "$LAYER")
