@@ -3464,6 +3464,7 @@ make_fake_overlay_template() {
         "$root/specify/extensions/git/scripts/powershell" \
         "$root/specify/shell"
     printf '%s\n' 'name: git' > "$root/specify/extensions/git/extension.yml"
+    printf '%s\n' 'fixture config template' > "$root/specify/extensions/git/config-template.yml"
     for overlay_command in commit feature initialize park remote resume validate; do
         printf '%s\n' "# speckit.git.$overlay_command fixture" \
             > "$root/specify/extensions/git/commands/speckit.git.$overlay_command.md"

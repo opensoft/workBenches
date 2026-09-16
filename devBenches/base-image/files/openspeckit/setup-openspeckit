@@ -72,6 +72,16 @@ WORKTREE_GIT_OVERLAY_REQUIRED_FILES: Final = (
     "scripts/powershell/git-common.ps1",
     "scripts/powershell/initialize-repo.ps1",
 )
+# The content digest's own file set: every WORKTREE_GIT_OVERLAY_REQUIRED_FILES
+# entry -- the presence check `worktree_git_overlay_refresh_reason` runs
+# against the INSTALLED overlay stays scoped to that tuple, unchanged -- plus
+# config-template.yml, which copy_overlay_tree also installs and extension.yml
+# declares as the Git extension's own config template. Read only from the
+# TEMPLATE (never the installed overlay), so a template-only fix to any of
+# these files changes the digest even when none of the required files do.
+OVERLAY_CONTENT_DIGEST_FILES: Final = WORKTREE_GIT_OVERLAY_REQUIRED_FILES + (
+    "config-template.yml",
+)
 LOAD_GIT_WORKTREES_DEFINITION: Final = re.compile(
     r"(?m)^[ \t]*(?:load_git_worktrees[ \t]*\(\)|"
     r"function[ \t]+load_git_worktrees(?:[ \t]*\(\))?)[ \t]*\{"
@@ -1606,17 +1616,17 @@ def has_overlay_shape_marker(overlay_root: Path) -> bool:
 
 
 def worktree_git_overlay_content_digest(overlay_root: Path) -> str | None:
-    """Digest the git extension overlay's own required files.
+    """Digest the git extension overlay's own functional files.
 
     Computed at run time from whichever tree is passed in -- always the
-    TEMPLATE in practice, so a template bugfix to any required file changes
-    this value -- rather than a hand-bumped number nobody remembers to bump.
-    Returns None if a required file cannot be read there, so callers treat
-    that tree as having nothing useful to compare.
+    TEMPLATE in practice, so a template bugfix to any of OVERLAY_CONTENT_DIGEST_FILES
+    changes this value -- rather than a hand-bumped number nobody remembers to
+    bump. Returns None if one of those files cannot be read there, so callers
+    treat that tree as having nothing useful to compare.
     """
     hasher = hashlib.sha256()
     try:
-        for relative_path in WORKTREE_GIT_OVERLAY_REQUIRED_FILES:
+        for relative_path in OVERLAY_CONTENT_DIGEST_FILES:
             content = read_destination_text(overlay_root / relative_path)
             if content is None:
                 return None
@@ -1631,7 +1641,16 @@ def worktree_git_overlay_content_digest(overlay_root: Path) -> str | None:
 
 def overlay_content_marker(overlay_root: Path) -> str | None:
     """Read the digest an earlier run recorded with `write_overlay_content_marker`."""
-    content = read_destination_text(overlay_root / OVERLAY_CONTENT_MARKER_FILE)
+    try:
+        content = read_destination_text(overlay_root / OVERLAY_CONTENT_MARKER_FILE)
+    except (OSError, UnicodeError):
+        # A marker that cannot be read as UTF-8 (or fails some other
+        # metadata/content check) is exactly as untrustworthy as one that is
+        # missing outright -- treat it as absent rather than let a corrupted
+        # marker abort the whole bootstrap run. write_overlay_content_marker
+        # replaces a marker in this state instead of trying to compare
+        # against it.
+        return None
     if content is None:
         return None
     for line in content.splitlines():
@@ -1650,11 +1669,22 @@ def write_overlay_content_marker(overlay_root: Path, digest: str, dry_run: bool)
     text the way the shape marker is, so it needs a destination-owned home
     that copy_overlay_tree's template-driven file list will never touch.
     """
-    write_text(
-        overlay_root / OVERLAY_CONTENT_MARKER_FILE,
-        f"{OVERLAY_CONTENT_MARKER_PREFIX}{digest}\n",
-        dry_run,
-    )
+    marker_path = overlay_root / OVERLAY_CONTENT_MARKER_FILE
+    content = f"{OVERLAY_CONTENT_MARKER_PREFIX}{digest}\n"
+    try:
+        write_text(marker_path, content, dry_run)
+    except (OSError, UnicodeError):
+        # write_text compares against the EXISTING marker's decoded text
+        # before deciding whether to rewrite it. overlay_content_marker
+        # already treats an unreadable marker as absent/stale; replace it
+        # outright here too instead of letting that comparison abort the
+        # whole bootstrap run. A dry run must not touch disk even to clear
+        # it, so just report what a real run would do.
+        if dry_run:
+            log(f"would write {marker_path}")
+            return
+        remove_destination_without_following(marker_path)
+        write_text(marker_path, content, dry_run)
 
 
 def worktree_git_overlay_refresh_reason(
