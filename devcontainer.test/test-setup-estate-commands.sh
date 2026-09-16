@@ -799,9 +799,15 @@ run_start_step() {   # <home> <bin dir> [extra env assignments...]
 
 # A manifest of everything the step could have written, by path, size and
 # modification time -- the only way to prove "already current" cost no write
-# rather than merely leaving the same bytes behind.
+# rather than merely leaving the same bytes behind. `stat` is called on both
+# the GNU and the BSD spelling, the same way assert_mode above does it, rather
+# than with `find -printf`, which is GNU-only: this suite is host-run (see
+# devcontainer.test/README.md) and a developer's host is not always Linux.
 state_manifest() {   # <dir>...
-    find "$@" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort
+    find "$@" -type f 2>/dev/null | LC_ALL=C sort | while IFS= read -r manifest_file; do
+        printf '%s %s\n' "$manifest_file" \
+            "$(stat -c '%s %Y' "$manifest_file" 2>/dev/null || stat -f '%z %m' "$manifest_file" 2>/dev/null || true)"
+    done
 }
 
 printf '%s\n' '--- Scenario (q): the container-start step installs into an empty bin dir, as a recreate leaves it ---'

@@ -17,8 +17,13 @@ on:
       - devBenches/base-image/update-upstream.py
       - devBenches/base-image/files/openreposhape/**
       - devBenches/base-image/files/openrepotools/**
+      - devBenches/base-image/files/estate/**
+      - devBenches/base-image/Dockerfile
+      - base-image/files/claude-profile
       - scripts/setup-estate-commands.sh
       - devcontainer.test/test-setup-estate-commands.sh
+      - devcontainer.test/test-base-image-dockerfile.sh
+      - devcontainer.test/test-claude-profile-name-guard-hook.sh
       - scripts/setup-workspace-repo.sh
       - devcontainer.test/test-setup-workspace-repo.sh
       - scripts/setup-claude-profiles.sh
@@ -40,8 +45,13 @@ on:
       - devBenches/base-image/update-upstream.py
       - devBenches/base-image/files/openreposhape/**
       - devBenches/base-image/files/openrepotools/**
+      - devBenches/base-image/files/estate/**
+      - devBenches/base-image/Dockerfile
+      - base-image/files/claude-profile
       - scripts/setup-estate-commands.sh
       - devcontainer.test/test-setup-estate-commands.sh
+      - devcontainer.test/test-base-image-dockerfile.sh
+      - devcontainer.test/test-claude-profile-name-guard-hook.sh
       - scripts/setup-workspace-repo.sh
       - devcontainer.test/test-setup-workspace-repo.sh
       - scripts/setup-claude-profiles.sh
@@ -86,6 +96,19 @@ jobs:
 
       - name: Run the setup-workspace-repo regression test
         run: bash ./devcontainer.test/test-setup-workspace-repo.sh
+
+      # opensoft/workBenches#90. Two suites that guard the same estate install
+      # from the other end -- the container-start step's wiring, and the
+      # launcher's own account of removing the Amendment 12 name guard -- and
+      # until this PR nothing in CI ran either, so a regression in either went
+      # green. Both are host-run and hermetic: the first reads two Dockerfiles
+      # and never builds one, the second redirects HOME, CLAUDE_PROFILES_HOME
+      # and the profile manifest into its own sandbox and needs no tmux.
+      - name: Run the base-image Dockerfile wiring test
+        run: bash ./devcontainer.test/test-base-image-dockerfile.sh
+
+      - name: Run the claude-profile name-guard regression test
+        run: bash ./devcontainer.test/test-claude-profile-name-guard-hook.sh
 
       # lane-collision-protocol Amendment 9 adoption act 4b. This suite is the
       # guard on the act's deletion -- that scripts/setup-claude-profiles.sh no
