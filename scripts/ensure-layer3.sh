@@ -63,6 +63,17 @@ if [ -z "$BASE_IMAGE" ]; then
     exit 1
 fi
 
+# Validate the requested Layer 3 identity before the existing-image fast path.
+# Otherwise an invalid user such as root could reuse a previously tagged image
+# without reaching user-layer/build.sh's matching guard.
+if [ "$USERNAME" = "root" ] \
+    || [[ ! "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ ]] \
+    || [[ ! "$USER_UID" =~ ^[1-9][0-9]*$ ]] \
+    || [[ ! "$USER_GID" =~ ^[1-9][0-9]*$ ]]; then
+    echo -e "${RED}✗ Layer 3 requires a valid non-root username and canonical positive UID/GID${NC}" >&2
+    exit 1
+fi
+
 if [ -S /var/run/docker.sock ]; then
     DOCKER_SOCKET_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || true)
 fi

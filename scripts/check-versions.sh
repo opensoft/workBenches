@@ -284,6 +284,13 @@ snapshot_running_containers() {
                     repository_key="layer3-repository:$repository_name:$USERNAME"
                     RUNNING_CONTAINER_BY_IMAGE["$repository_key"]="$container_name"
                     RUNNING_IMAGE_ID_BY_KEY["$repository_key"]="$actual_image_id"
+                else
+                    # Docker may report Config.Image as only an immutable ID.
+                    # Without a repository we cannot associate it more narrowly,
+                    # so conservatively defer activation for this Layer 3 user.
+                    repository_key="layer3-unassociated-user:$USERNAME"
+                    RUNNING_CONTAINER_BY_IMAGE["$repository_key"]="$container_name"
+                    RUNNING_IMAGE_ID_BY_KEY["$repository_key"]="$actual_image_id"
                 fi
             fi
         fi
@@ -559,6 +566,11 @@ check_layer3_image() {
     if [[ -z "$running_container" ]]; then
         user_repository_name="$(image_repository_name "$user_image")"
         repository_key="layer3-repository:$user_repository_name:$USERNAME"
+        running_container="${RUNNING_CONTAINER_BY_IMAGE[$repository_key]:-}"
+        running_image_id="${RUNNING_IMAGE_ID_BY_KEY[$repository_key]:-}"
+    fi
+    if [[ -z "$running_container" ]]; then
+        repository_key="layer3-unassociated-user:$USERNAME"
         running_container="${RUNNING_CONTAINER_BY_IMAGE[$repository_key]:-}"
         running_image_id="${RUNNING_IMAGE_ID_BY_KEY[$repository_key]:-}"
     fi
@@ -965,7 +977,7 @@ if [ "$WRITE_MANIFEST" = true ] || [ "$JSON_OUTPUT" = true ]; then
     fi
 fi
 
-if [ "$WRITE_MANIFEST" = true ]; then
+if [ "$WRITE_MANIFEST" = true ] && [ "$IMAGE_PROBE_FAILURES" -eq 0 ]; then
     manifest_temp="$(mktemp "$manifest_config_dir/.version-manifest.XXXXXX")"
     if ! printf '%s\n' "$manifest_json" > "$manifest_temp" || ! mv -f -- "$manifest_temp" "$MANIFEST_FILE"; then
         rm -f -- "$manifest_temp"
@@ -976,6 +988,8 @@ if [ "$WRITE_MANIFEST" = true ]; then
         echo ""
         echo "Version manifest written to ${MANIFEST_FILE#$REPO_DIR/}"
     fi
+elif [ "$WRITE_MANIFEST" = true ]; then
+    echo "Version manifest not written because one or more image probes failed" >&2
 fi
 
 if [ "$JSON_OUTPUT" = true ]; then

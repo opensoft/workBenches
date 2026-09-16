@@ -64,6 +64,21 @@ assert_layer3_identity_rejected --user 'bad$' --uid 1000 --gid 1000
 assert_layer3_identity_rejected --user tester --uid 00 --gid 1000
 assert_layer3_identity_rejected --user tester --uid 1000 --gid 000
 
+assert_layer3_ensure_identity_rejected() {
+    : > "$log"
+    if PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+        "$repo_root/scripts/ensure-layer3.sh" --base test-bench:latest "$@" \
+            > "$temp_dir/root-layer3-ensure.out" 2>&1; then
+        echo "expected ensure-layer3 to reject an invalid identity before its fast path" >&2
+        exit 1
+    fi
+    grep -Fq 'requires a valid non-root username and canonical positive UID/GID' \
+        "$temp_dir/root-layer3-ensure.out"
+    test ! -s "$log"
+}
+assert_layer3_ensure_identity_rejected --user root
+assert_layer3_ensure_identity_rejected --user 'bad.name'
+
 checker_help="$("$checker" --help)"
 grep -Fq -- '--images IMAGE,...' <<< "$checker_help"
 grep -Fq -- '--image-ids IMAGE=ID,...' <<< "$checker_help"
@@ -108,6 +123,21 @@ FAKE_DOCKER_RUNNING_CONTAINERS=$'test-bench@sha256:old\tid-bench\n' \
     > "$temp_dir/running-id.out"
 grep -Fq "activation deferred by running container 'id-bench'" "$temp_dir/running-id.out"
 grep -Fq "container inspect --format {{.Image}} id-bench" "$log"
+
+: > "$log"
+PATH="$fake_bin:$PATH" \
+FAKE_DOCKER_LOG="$log" \
+FAKE_DOCKER_RUNNING_CONTAINERS="$running_image_id"$'\tid-only-bench\n' \
+FAKE_DOCKER_RUNNING_CONTAINER_IMAGE_ID="$running_image_id" \
+"$checker" --layer 0 --images test-bench:latest --check-layer3 --json --user brett \
+    > "$temp_dir/running-id-only.json"
+jq -e --arg id "$running_image_id" \
+    '.images[] | select(.image == "test-bench:brett" and .status == "activation-deferred-running" and .id == $id)' \
+    "$temp_dir/running-id-only.json" >/dev/null
+if grep -Fq 'image save' "$log"; then
+    echo "ID-only running Layer 3 image did not defer activation" >&2
+    exit 1
+fi
 
 : > "$log"
 PATH="$fake_bin:$PATH" \
@@ -263,6 +293,20 @@ if PATH="$fake_bin:$PATH" \
     exit 1
 fi
 grep -Fq 'claude' "$temp_dir/missing.out"
+
+printf '%s\n' 'previous-valid-manifest' > "$manifest"
+if PATH="$fake_bin:$PATH" \
+    FAKE_DOCKER_LOG="$log" \
+    FAKE_DOCKER_IMAGE_INSPECT_FAIL=test-bench:latest \
+    "$checker" --layer 0 --images test-bench:latest --write-manifest \
+        --manifest-file "$manifest" --user brett \
+        > "$temp_dir/failed-manifest.out" 2> "$temp_dir/failed-manifest.err"; then
+    echo "expected a failed image probe to reject manifest persistence" >&2
+    exit 1
+fi
+test "$(cat "$manifest")" = 'previous-valid-manifest'
+grep -Fq 'manifest not written' "$temp_dir/failed-manifest.err"
+rm -f -- "$manifest"
 
 PATH="$fake_bin:$PATH" \
 FAKE_DOCKER_LOG="$log" \
