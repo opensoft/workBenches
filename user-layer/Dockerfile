@@ -82,7 +82,7 @@ RUN set -eux && \
 # user whose inherited UID/GID does not match the requested host identity.
 RUN set -eux && \
     case "$USERNAME" in \
-        root|''|[!a-z_]*|*[!a-z0-9_-]*) \
+        root|latest|''|[!a-z_]*|*[!a-z0-9_-]*) \
             echo "Layer 3 requires a valid non-root username" >&2; exit 1;; \
     esac && \
     case "$USER_UID" in ''|0*|*[!0-9]*) echo "Layer 3 requires a canonical positive UID" >&2; exit 1;; esac && \

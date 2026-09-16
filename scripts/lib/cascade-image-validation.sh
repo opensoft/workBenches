@@ -414,6 +414,44 @@ declared_cascade_images() {
                         else if (leaf !~ /:/) print ref ":latest"
                     }
                 }
+                function emit_docker_build_tags(segment, word_count, command_index, tag_index, ref, words) {
+                    gsub(/[()]/, " ", segment)
+                    sub(/^[[:space:]]+/, "", segment)
+                    sub(/[[:space:]]+$/, "", segment)
+                    word_count = split(segment, words, /[[:space:]]+/)
+                    command_index = 1
+                    while (command_index <= word_count \
+                            && words[command_index] ~ /^[A-Za-z_][A-Za-z0-9_]*=/) {
+                        command_index++
+                    }
+                    if (words[command_index] == "env") {
+                        command_index++
+                        while (command_index <= word_count \
+                                && words[command_index] ~ /^[A-Za-z_][A-Za-z0-9_]*=/) {
+                            command_index++
+                        }
+                    }
+                    if (words[command_index] == "sudo") command_index++
+                    if (words[command_index] != "docker") return
+                    if (words[command_index + 1] == "build") {
+                        tag_index = command_index + 2
+                    } else if ((words[command_index + 1] == "buildx" \
+                            || words[command_index + 1] == "image") \
+                            && words[command_index + 2] == "build") {
+                        tag_index = command_index + 3
+                    } else {
+                        return
+                    }
+                    for (; tag_index <= word_count; tag_index++) {
+                        if (words[tag_index] == "-t" || words[tag_index] == "--tag") {
+                            if (tag_index < word_count) emit_output(words[tag_index + 1])
+                        } else if (words[tag_index] ~ /^(-t|--tag)=/) {
+                            ref = words[tag_index]
+                            sub(/^[^=]*=/, "", ref)
+                            emit_output(ref)
+                        }
+                    }
+                }
                 {
                     line = $0
                     sub(/^[[:space:]]+/, "", line)
@@ -429,15 +467,9 @@ declared_cascade_images() {
                             assignments[variable_name] = assignment
                         }
                     }
-                    word_count = split(line, words, /[[:space:]]+/)
-                    for (word_index = 1; word_index <= word_count; word_index++) {
-                        if (words[word_index] == "-t" || words[word_index] == "--tag") {
-                            if (word_index < word_count) emit_output(words[word_index + 1])
-                        } else if (words[word_index] ~ /^(-t|--tag)=/) {
-                            ref = words[word_index]
-                            sub(/^[^=]*=/, "", ref)
-                            emit_output(ref)
-                        }
+                    segment_count = split(line, segments, /[;&|]+/)
+                    for (segment_index = 1; segment_index <= segment_count; segment_index++) {
+                        emit_docker_build_tags(segments[segment_index])
                     }
                 }
             ' "$build_script" 2>/dev/null || true

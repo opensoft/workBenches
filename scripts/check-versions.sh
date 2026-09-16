@@ -65,15 +65,24 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [ "$CHECK_LAYER3" = true ] && [ "${#TARGET_IMAGES[@]}" -eq 0 ]; then
+target_image_count=0
+for target_image in "${TARGET_IMAGES[@]}"; do
+    [[ -n "$target_image" ]] && target_image_count=$((target_image_count + 1))
+done
+layer3_target_image_count=0
+for target_image in "${LAYER3_TARGET_IMAGES[@]}"; do
+    [[ -n "$target_image" ]] && layer3_target_image_count=$((layer3_target_image_count + 1))
+done
+if [ "$CHECK_LAYER3" = true ] && [ "$target_image_count" -eq 0 ]; then
     echo "--check-layer3 requires --images IMAGE,..." >&2
     exit 1
 fi
-if [ "$CHECK_LAYER3" = true ] && [ "${#LAYER3_TARGET_IMAGES[@]}" -eq 0 ]; then
+if [ "$CHECK_LAYER3" = true ] && [ "$layer3_target_image_count" -eq 0 ]; then
     LAYER3_TARGET_IMAGES=("${TARGET_IMAGES[@]}")
 fi
 if [ "$CHECK_LAYER3" = true ]; then
     for layer3_target in "${LAYER3_TARGET_IMAGES[@]}"; do
+        [[ -n "$layer3_target" ]] || continue
         layer3_target_selected=false
         for selected_target in "${TARGET_IMAGES[@]}"; do
             if [[ "$layer3_target" == "$selected_target" ]]; then

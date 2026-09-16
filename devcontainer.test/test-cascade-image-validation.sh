@@ -61,7 +61,7 @@ test "${WORKBENCHES_REQUIRED_AI_CLIS[0]}" = claude
 test "${WORKBENCHES_REQUIRED_AI_CLIS[-1]}" = cursor-agent
 grep -Fq 'required_clis=("${WORKBENCHES_REQUIRED_AI_CLIS[@]}")' "$installer"
 test "$(grep -Fc -- '- user-layer/**' "$repo_root/.github/workflows/cascade-image-validation.yml")" -eq 2
-grep -Fq "root|''|[!a-z_]*|*[!a-z0-9_-]*" "$repo_root/user-layer/Dockerfile"
+grep -Fq "root|latest|''|[!a-z_]*|*[!a-z0-9_-]*" "$repo_root/user-layer/Dockerfile"
 if grep -Fq "grep -Eq '^[a-z_][a-z0-9_-]*$'" "$repo_root/user-layer/Dockerfile"; then
     echo "Layer 3 Dockerfile still uses line-oriented username validation" >&2
     exit 1
@@ -124,6 +124,15 @@ if "$checker" --layer 0 --layer3-images test-bench:latest --check-layer3 \
 fi
 grep -Fq -- '--check-layer3 requires --images IMAGE,...' \
     "$temp_dir/layer3-images-without-images.out"
+for empty_images in '' ','; do
+    if "$checker" --layer 0 --images "$empty_images" --check-layer3 \
+        > "$temp_dir/empty-layer3-images.out" 2>&1; then
+        echo "expected empty --images entries to fail Layer 3 validation" >&2
+        exit 1
+    fi
+    grep -Fq -- '--check-layer3 requires --images IMAGE,...' \
+        "$temp_dir/empty-layer3-images.out"
+done
 if "$checker" --layer 0 --images test-bench:latest \
     --layer3-images other-bench:latest --check-layer3 \
     > "$temp_dir/unselected-layer3-image.out" 2>&1; then
@@ -489,6 +498,8 @@ test "$(select_layer2_build_script "$layer2_selection_dir")" \
 
 tag_filter_build="$temp_dir/tag-filter-build.sh"
 printf '%s\n' \
+    'docker run --rm -t sim-bench-run-input:latest true' \
+    'echo docker build -t sim-bench-documented:latest .' \
     'docker build --build-arg CACHE_IMAGE=sim-bench-cache:latest -t sim-bench:latest .' \
     > "$tag_filter_build"
 test "$(declared_cascade_images sim-bench:latest "$tag_filter_build" "$temp_dir")" \
@@ -528,6 +539,12 @@ if PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
 fi
 grep -Fq 'Cannot safely derive Compose dependency build outputs' \
     "$temp_dir/with-dependencies.err"
+
+printf '%s\n' 'docker compose -f docker-compose.yml build -- worker' \
+    > "$script_compose_build"
+test "$(PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+    declared_cascade_images sim-bench:latest "$script_compose_build" "$script_compose_bench")" \
+    = 'sim-bench-script-worker:latest'
 
 PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
     record_rebuilt_cascade_image test-bench:latest testBench
