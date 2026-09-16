@@ -194,6 +194,16 @@ MOCK
     if [[ "${CASE_EXPLICIT_COMPOSE:-false}" == true ]]; then
         launcher_args+=(--compose-file "$explicit_compose")
     fi
+    # `--check` stops at the verification shell, which is what every lifecycle
+    # case above wants. CASE_NO_CHECK lets a case run the launcher all the way
+    # to the `exec docker exec` a person actually lands in — the only place the
+    # lane environment it threads can be observed (lane-collision-protocol
+    # Amendment 18 clause (a), opensoft/workBenches#98; Copilot round 1 on
+    # PR #101, which asked for the runtime path this suite is the CI cover for).
+    # The mock `docker` logs its argv and exits 0, so the exec'd command is a
+    # log line rather than a shell.
+    local check_args=(--check)
+    [[ "${CASE_NO_CHECK:-false}" != true ]] || check_args=()
 
     local output
     local launcher_status=0
@@ -225,7 +235,7 @@ MOCK
             "$launcher" \
                 --workbenches-root "$fake_root" \
                 --shell sh \
-                --check \
+                ${check_args[@]+"${check_args[@]}"} \
                 "${launcher_args[@]}" \
                 "$@" \
                 "$bench" 2>&1
@@ -337,5 +347,57 @@ grep -q -- "compose -f .*/custom-compose.yml -f .*/devBenches/rustBench/.devcont
 CASE_CONTAINER_EXISTS=false CASE_EXPLICIT_COMPOSE=true CASE_GENERIC_COMPOSE=true run_launcher_case generic-explicit-compose-first-create false missing false false custom-bench
 grep -q '^compose-env-present$' <<<"$CASE_DOCKER_LOG" \
     || fail "generic container did not copy its bench-root .env beside the Compose file"
+
+# ---------------------------------------------------------------------------
+# THE LANE ENVIRONMENT THE CONTAINER IS OPENED WITH — lane-collision-protocol
+# Amendment 18 clause (a) (opensoft/workBenches#98), asserted on the `docker
+# exec` a person actually lands in rather than on this script's source (Copilot
+# round 1 on PR #101). The record carries `host <name>; os
+# <linux|macos|wsl|windows>; container <name|none>` beside the workstation,
+# because a pid does not cross a pid namespace and a lane live in one bench
+# container read NOT LIVE from another on the same host; this script is what
+# gets those facts INTO a bench container, and the container name is the one
+# fact the process inside cannot work out for itself.
+lanes_exec_line() { grep '^exec ' <<<"$CASE_DOCKER_LOG" | tail -n 1; }
+
+# 1. CONFIGURED VALUES TRAVEL IN, AND THE CONTAINER IS NAMED WITH THE BENCH
+# THIS SCRIPT RESOLVED — `dotNetBench` on the command line, `dotnet-bench` in
+# the environment, which is the name the lane record must carry.
+export LANES_WORKSTATION=Eagle LANES_HOST=eagle LANES_OS=wsl
+CASE_NO_CHECK=true run_launcher_case lanes-env-configured true complete false true dotNetBench
+unset LANES_WORKSTATION LANES_HOST LANES_OS
+grep -q -- '--env LANES_WORKSTATION=Eagle' <<<"$(lanes_exec_line)" \
+    || fail "the workstation did not reach the container's shell ($(lanes_exec_line))"
+grep -q -- '--env LANES_HOST=eagle' <<<"$(lanes_exec_line)" \
+    || fail "the host did not reach the container's shell ($(lanes_exec_line))"
+grep -q -- '--env LANES_OS=wsl' <<<"$(lanes_exec_line)" \
+    || fail "the OS did not reach the container's shell ($(lanes_exec_line))"
+grep -q -- '--env LANES_CONTAINER=dotnet-bench' <<<"$(lanes_exec_line)" \
+    || fail "the container was not told its own resolved bench name ($(lanes_exec_line))"
+
+# 2. WHAT THIS SCRIPT CANNOT ANSWER IT DOES NOT INVENT. Run from inside a
+# container itself — forced with the `container=` marker, which is a container
+# everywhere — with nothing configured: the host is not passed at all rather
+# than passed as the container id this script would otherwise read from
+# `hostname`, and neither is the workstation, whose own rule (`R-A11-14`) this
+# follows. The OS is still passed, because the kernel is readable from inside a
+# container and is the same kernel; and the bench is still named, because this
+# script knows which one it is opening.
+env_before_os="${LANES_OS:-}"
+unset LANES_WORKSTATION LANES_HOST LANES_OS LANES_CONTAINER 2>/dev/null || true
+export container=docker
+CASE_NO_CHECK=true run_launcher_case lanes-env-unconfigured true complete false true py-bench
+unset container
+[[ -z "$env_before_os" ]] || export LANES_OS="$env_before_os"
+if grep -q -- '--env LANES_HOST=' <<<"$(lanes_exec_line)"; then
+    fail "a container that could name no host passed one in anyway ($(lanes_exec_line))"
+fi
+if grep -q -- '--env LANES_WORKSTATION=' <<<"$(lanes_exec_line)"; then
+    fail "a container that could name no workstation passed one in anyway ($(lanes_exec_line))"
+fi
+grep -Eq -- '--env LANES_OS=(linux|macos|wsl|windows)( |$)' <<<"$(lanes_exec_line)" \
+    || fail "the OS was unanswered or is none of the four words ($(lanes_exec_line))"
+grep -q -- '--env LANES_CONTAINER=py-bench' <<<"$(lanes_exec_line)" \
+    || fail "the bench name, which this script always knows, was not passed ($(lanes_exec_line))"
 
 echo "PASS: wave container launcher lifecycle tests"
