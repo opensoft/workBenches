@@ -84,11 +84,42 @@ lane_name_guard_timeout=5
 # the guard, 0 carry anything else). Raised by the automated reviewer against
 # `setup-claude-profiles.sh:175` — the install that makes `guard_ok` true — and
 # it is this write that had the defect, not that install.
+#
+# AND IT IS THE NESTED ARRAY THAT IS FILTERED, NOT THE OUTER ENTRY
+# (opensoft/workBenches#89). Keying on the command string is right; doing it
+# with `select` over the WHOLE entry was not. `select(([(.hooks // [])[]? |
+# .command] | index($guard)) | not)` asks "does this entry carry our command
+# ANYWHERE inside it", so an entry that GROUPED our command with somebody
+# else's dropped both — the foreign command, and any other key on the entry
+# such as a `note` or a custom `timeout` — and a fresh guard-only entry was
+# appended in their place. Measured in the issue's own repro: an entry holding
+# the usage guard, `some-completely-unrelated-foreign-hook` and
+# `"note": "operator grouped these"` came out of this fragment as the guard
+# alone. Nothing this codebase writes ever produces a grouped entry — every
+# entry this file appends carries one command — so the only way one exists is a
+# person's hand-edit, which is exactly the thing an additive merge exists to
+# keep.
+#
+# The shape is the one the name guard's downgrade-removal below already uses:
+# filter the entry's own nested `.hooks` down to `$kept`, and drop the outer
+# entry only when nothing is left nested. IT DIFFERS IN TWO WAYS, because that
+# one runs on a downgrade and this one runs on EVERY launch over EVERY entry in
+# the array. An entry we removed nothing from is passed through UNTOUCHED
+# rather than reassigned `.hooks = $kept`: reassigning would add a `hooks: []`
+# key to a foreign entry that never had one, and this fragment must not perturb
+# what it did not write. And an entry whose nested array is empty or absent is
+# KEPT rather than dropped: it cannot have carried our command, so removing it
+# would be the same defect #89 is about, one shape along. One pass, one outer
+# element in, at most one out, no generator anywhere near `select`.
 lane_guard_jq='
       .hooks = (.hooks // {})
       | .hooks.UserPromptSubmit = (
           [ (.hooks.UserPromptSubmit // [])[]
-            | select(([(.hooks // [])[]? | .command] | index($guard)) | not) ]
+            | (.hooks // []) as $inner
+            | ($inner | map(select(.command != $guard))) as $kept
+            | select(($kept | length) > 0 or ($inner | length) == 0)
+            | if ($kept | length) == ($inner | length) then . else .hooks = $kept end
+          ]
           + [{hooks: [{type: "command", command: $guard, timeout: $guard_timeout}]}]
         )'
 
