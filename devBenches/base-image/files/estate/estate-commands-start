@@ -102,13 +102,60 @@ if [ ! -x "$ESTATE_VENDOR_DIR/openRepoTools" ]; then
     exit 0
 fi
 
-# NOTHING IS EVER FETCHED AT CONTAINER START. The installer copies each of its
-# artifacts from beside itself when it is run as a file with them there, which
-# the COPY of this whole vendored tree guarantees. This sentinel is the same
-# defence in depth scripts/setup-estate-commands.sh takes, spelled the same
-# way: if a future change ever did reach for the network here, it fails loudly
-# naming the sentinel instead of quietly succeeding against whatever repo or
-# ref the container's environment happened to carry.
+# NOTHING IS EVER FETCHED AT CONTAINER START, AND THE PREFLIGHT IS WHAT MAKES
+# THAT TRUE (Copilot's review of opensoft/workBenches#99). The installer copies
+# each artifact from beside itself when it is there and FETCHES the ones that
+# are not; the sentinel below only makes such a fetch FAIL, which is a DNS and
+# TLS round trip to api.github.com in front of every container start, not an
+# absence of one. So the whole install set is checked here first, and a tree
+# that is missing anything installs NOTHING -- the same shape
+# scripts/setup-estate-commands.sh takes on a host, where the file-existence
+# check runs before either shim does.
+#
+# THE SET IS READ FROM THE SHIM, NOT LISTED HERE. `openRepoTools` keeps its own
+# `INSTALLABLES`, `SKILLS` and `COMMANDS` as one-line arrays and derives every
+# skill and command path from a name (`skills/<name>/SKILL.md`,
+# `commands/<name>.md`), so reading those three lines is the one place this
+# cannot drift from what `--install` will actually look for -- including a
+# future shim that grows a new artifact the image was not rebuilt to carry,
+# which is precisely the partial tree this guards. No `eval`: the lines are
+# stripped to their words and split, never executed.
+shim_array_words() {   # <ARRAY NAME>
+    sed -n "s/^$1=(\\(.*\\))\$/\\1/p" "$ESTATE_VENDOR_DIR/openRepoTools" 2>/dev/null | head -n 1
+}
+
+estate_install_set() {
+    local name bins skills commands
+    bins="$(shim_array_words INSTALLABLES)"
+    skills="$(shim_array_words SKILLS)"
+    commands="$(shim_array_words COMMANDS)"
+    # A shim whose arrays this cannot read is not one to guess about.
+    if [ -z "$bins" ] || [ -z "$skills" ] || [ -z "$commands" ]; then
+        return 1
+    fi
+    for name in $bins; do printf '%s\n' "$name"; done
+    for name in $skills; do printf 'skills/%s/SKILL.md\n' "$name"; done
+    for name in $commands; do printf 'commands/%s.md\n' "$name"; done
+}
+
+estate_missing=''
+if ! estate_set="$(estate_install_set)"; then
+    say "could not read openRepoTools' own INSTALLABLES/SKILLS/COMMANDS lists from $ESTATE_VENDOR_DIR/openRepoTools, so there is no way to check the vendored tree is complete before installing from it. Nothing installed."
+    exit 0
+fi
+for estate_rel in $estate_set; do
+    [ -f "$ESTATE_VENDOR_DIR/$estate_rel" ] || estate_missing="${estate_missing:+$estate_missing }$estate_rel"
+done
+if [ -n "$estate_missing" ]; then
+    say "the vendored tree at $ESTATE_VENDOR_DIR is incomplete, so --install would go to the network for each missing file in front of every container start. Missing: $estate_missing. Nothing installed; rebuild Layer 2 (devBenches/base-image/build.sh)."
+    exit 0
+fi
+
+# Defence in depth BEHIND that preflight, not instead of it, and the same
+# sentinel scripts/setup-estate-commands.sh exports: if a fetch is ever
+# attempted despite every file being present, it fails loudly naming the
+# sentinel rather than quietly succeeding against whatever repo or ref the
+# container's environment happened to carry.
 ESTATE_SENTINEL="pinned-by-workBenches-no-fetch"
 
 # Relayed, not summarised: the installer's own per-file `installed` / `updated`

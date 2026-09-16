@@ -94,7 +94,11 @@ vendor_dir="$(sed -nE 's#^ESTATE_VENDOR_DIR="\$\{WORKBENCHES_ESTATE_VENDOR_DIR:-
     exit 1
 }
 
-start_dest="$(sed -nE 's#^ESTATE_START=(/[^ ]+)$#\1#p' "$estate_entrypoint" | head -n1)"
+# The DEFAULT of the entrypoint's own parameter expansion, not the seam that
+# overrides it: `WORKBENCHES_ENTRYPOINT_STEP` exists so the behavioural suite
+# can run that file for real, and reading the default here is what stops the
+# seam drifting away from the path the image actually COPYs the step to.
+start_dest="$(sed -nE 's#^ESTATE_START="\$\{WORKBENCHES_ENTRYPOINT_STEP:-(/[^}"]+)\}"$#\1#p' "$estate_entrypoint" | head -n1)"
 [ -n "$start_dest" ] || {
     echo "FAIL: could not read workbench-entrypoint's own path for the start-up step (the ESTATE_START assignment is missing or changed shape)" >&2
     exit 1

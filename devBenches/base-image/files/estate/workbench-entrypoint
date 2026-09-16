@@ -29,8 +29,20 @@
 #
 # WORKBENCHES_SKIP_ESTATE_COMMANDS=1 in a bench's compose environment turns the
 # step off without touching the image — the same switch setup.sh honours.
+#
+# WORKBENCHES_ENTRYPOINT_STEP is the TEST SEAM, and the only override
+# (Copilot's review of opensoft/workBenches#99: "it never executes this
+# ENTRYPOINT with a real command... a broken `exec` argument forwarding could
+# therefore pass"). No suite in this repository can run `docker build`, so
+# without a seam the one thing that matters most here — that whatever the
+# container was told to run is what ends up as PID 1, argument for argument —
+# could only be reviewed by eye. With it, devcontainer.test/
+# test-setup-estate-commands.sh runs this file for real. The DEFAULT is the
+# image path and nothing but a test ever sets the variable; the same suite's
+# Dockerfile half asserts the Dockerfile COPYs the step to exactly this
+# default, so the seam cannot drift away from what the image wires.
 
-ESTATE_START=/usr/local/share/workbenches/estate-commands-start
+ESTATE_START="${WORKBENCHES_ENTRYPOINT_STEP:-/usr/local/share/workbenches/estate-commands-start}"
 
 # A bench that declares no command of its own still has to come up. The image's
 # own default is the fallback, spelled here so an `--entrypoint`-only override

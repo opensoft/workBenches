@@ -914,6 +914,121 @@ assert_contains "$OUTPUT_V" 'no vendored openRepoTools at' 'a missing vendored t
 assert_contains "$OUTPUT_V" 'build.sh' 'a missing vendored tree names the rebuild that ends it'
 assert_empty_dir "$BIN_V" 'a missing vendored tree installs nothing'
 
+printf '%s\n' '--- Scenario (w): an incomplete vendored tree installs NOTHING, rather than sending --install to the network at container start ---'
+# Copilot's review of opensoft/workBenches#99: the no-fetch sentinel only makes
+# a fetch FAIL -- a DNS and TLS round trip in front of every container start --
+# so the guarantee has to be a preflight, not a sentinel. The set it checks is
+# read from the shim's own INSTALLABLES/SKILLS/COMMANDS, so this scenario also
+# covers the case that motivates it: an image whose Layer 2 was not rebuilt
+# after the shim grew an artifact.
+BIN_W="$TMPDIR_ROOT/bin-w"
+HOME_W="$TMPDIR_ROOT/home-w"
+VENDOR_W="$TMPDIR_ROOT/vendor-w"
+mkdir -p "$BIN_W" "$HOME_W"
+cp -R "$VENDOR_DIR" "$VENDOR_W"
+rm -f "$VENDOR_W/lane-handoff" "$VENDOR_W/skills/restart/SKILL.md" "$VENDOR_W/commands/swap.md"
+STATUS_W=0
+OUTPUT_W="$(env HOME="$HOME_W" \
+    CLAUDE_PROFILES_HOME="$HOME_W/.claude-profiles" CLAUDE_USER_DIR="$HOME_W/.claude" \
+    AGENT_PROTOCOL_ROOT="$HOME_W/.agents" PROJECTS_ROOT="$HOME_W/projects" \
+    OPENREPOTOOLS_BIN_DIR="$BIN_W" WORKBENCHES_ESTATE_VENDOR_DIR="$VENDOR_W" \
+    bash "$START_STEP" 2>&1)" || STATUS_W=$?
+
+assert_equal '0' "$STATUS_W" 'an incomplete vendored tree still exits 0 — a container start is not a place to refuse'
+assert_empty_dir "$BIN_W" 'an incomplete vendored tree installs NOTHING, so no fetch is ever reachable'
+assert_absent "$HOME_W/.claude" 'an incomplete vendored tree writes nothing under $HOME either'
+assert_contains "$OUTPUT_W" 'lane-handoff' 'the refusal names the missing bin file'
+assert_contains "$OUTPUT_W" 'skills/restart/SKILL.md' 'the refusal names the missing skill, derived from the shim'"'"'s own SKILLS list'
+assert_contains "$OUTPUT_W" 'commands/swap.md' 'the refusal names the missing command file, derived from the shim'"'"'s own COMMANDS list'
+assert_contains "$OUTPUT_W" 'build.sh' 'the refusal names the rebuild that ends it'
+
+printf '%s\n' '--- Scenario (x): the ENTRYPOINT runs the step and then execs the container'"'"'s own command, argument for argument ---'
+# Also Copilot's review of #99: "it never executes this ENTRYPOINT with a real
+# command... a bad image build, lost inherited CMD, or broken `exec` argument
+# forwarding could therefore pass". A `docker build` is still out of reach in
+# here (this suite runs INSIDE a bench), but everything below the image layer
+# is not: WORKBENCHES_ENTRYPOINT_STEP points the entrypoint at a recorder, and
+# the argv it forwards is compared byte for byte -- including an argument with
+# a space in it, which is what an `exec $@` without quotes would split.
+ENTRYPOINT_FILE="$REPO_ROOT/devBenches/base-image/files/estate/workbench-entrypoint"
+X_DIR="$TMPDIR_ROOT/entrypoint-x"
+mkdir -p "$X_DIR/bin"
+cat > "$X_DIR/step" <<EOF
+#!/bin/sh
+printf 'step ran\n' >> "$X_DIR/step.log"
+exit 0
+EOF
+cat > "$X_DIR/bin/recorder" <<EOF
+#!/bin/sh
+: > "$X_DIR/argv.log"
+for a in "\$@"; do printf '%s\n' "\$a" >> "$X_DIR/argv.log"; done
+exit 0
+EOF
+# The image's own CMD is `sleep infinity`; a stub of that name earlier on PATH
+# is how the no-argument fallback is asserted without hanging this suite.
+cat > "$X_DIR/bin/sleep" <<EOF
+#!/bin/sh
+printf '%s\n' "\$@" > "$X_DIR/sleep.log"
+exit 0
+EOF
+chmod 0755 "$X_DIR/step" "$X_DIR/bin/recorder" "$X_DIR/bin/sleep"
+
+: > "$X_DIR/step.log"
+STATUS_X=0
+env PATH="$X_DIR/bin:$PATH" WORKBENCHES_ENTRYPOINT_STEP="$X_DIR/step" \
+    sh "$ENTRYPOINT_FILE" recorder --flag "two words" -- trailing >/dev/null 2>&1 || STATUS_X=$?
+assert_equal '0' "$STATUS_X" 'the entrypoint exits with the status of the command it exec-ed'
+assert_equal "$(cat "$X_DIR/step.log" 2>/dev/null)" 'step ran' 'the entrypoint ran the start-up step exactly once before exec'
+assert_equal "$(cat "$X_DIR/argv.log" 2>/dev/null)" "$(printf '%s\n' --flag 'two words' -- trailing)" 'the entrypoint forwarded every argument unchanged, the one with a space included'
+
+# A step that FAILS must not stop the container: the exec is unconditional.
+printf '#!/bin/sh\nexit 3\n' > "$X_DIR/step"
+chmod 0755 "$X_DIR/step"
+rm -f "$X_DIR/argv.log"
+STATUS_XF=0
+env PATH="$X_DIR/bin:$PATH" WORKBENCHES_ENTRYPOINT_STEP="$X_DIR/step" \
+    sh "$ENTRYPOINT_FILE" recorder still-runs >/dev/null 2>&1 || STATUS_XF=$?
+assert_equal '0' "$STATUS_XF" 'a start-up step that fails does not fail the container'
+assert_equal "$(cat "$X_DIR/argv.log" 2>/dev/null)" 'still-runs' 'the command is exec-ed even when the start-up step failed'
+
+# A step that is not there at all (an image that predates this) likewise.
+rm -f "$X_DIR/argv.log"
+STATUS_XM=0
+env PATH="$X_DIR/bin:$PATH" WORKBENCHES_ENTRYPOINT_STEP="$X_DIR/no-such-step" \
+    sh "$ENTRYPOINT_FILE" recorder no-step >/dev/null 2>&1 || STATUS_XM=$?
+assert_equal '0' "$STATUS_XM" 'a missing start-up step does not fail the container'
+assert_equal "$(cat "$X_DIR/argv.log" 2>/dev/null)" 'no-step' 'the command is exec-ed even when the start-up step is not in the image'
+
+# NO arguments at all falls back to the image's own default command, so an
+# `--entrypoint` override that passes none still leaves PID 1 with something
+# to be.
+printf '#!/bin/sh\nexit 0\n' > "$X_DIR/step"
+chmod 0755 "$X_DIR/step"
+STATUS_XN=0
+env PATH="$X_DIR/bin:$PATH" WORKBENCHES_ENTRYPOINT_STEP="$X_DIR/step" \
+    sh "$ENTRYPOINT_FILE" >/dev/null 2>&1 || STATUS_XN=$?
+assert_equal '0' "$STATUS_XN" 'the no-argument fallback exits cleanly'
+assert_equal "$(cat "$X_DIR/sleep.log" 2>/dev/null)" 'infinity' 'with no arguments the entrypoint execs the image'"'"'s own default command, `sleep infinity`'
+
+# END TO END, minus Docker: the REAL start step under the REAL entrypoint,
+# against a sandboxed $HOME, then the recorder. This is the whole instruction
+# chain except `docker build` and the kernel's exec of PID 1.
+BIN_XE="$TMPDIR_ROOT/bin-xe"
+HOME_XE="$TMPDIR_ROOT/home-xe"
+mkdir -p "$BIN_XE" "$HOME_XE"
+rm -f "$X_DIR/argv.log"
+STATUS_XE=0
+env PATH="$X_DIR/bin:$PATH" WORKBENCHES_ENTRYPOINT_STEP="$START_STEP" \
+    HOME="$HOME_XE" CLAUDE_PROFILES_HOME="$HOME_XE/.claude-profiles" CLAUDE_USER_DIR="$HOME_XE/.claude" \
+    AGENT_PROTOCOL_ROOT="$HOME_XE/.agents" PROJECTS_ROOT="$HOME_XE/projects" \
+    OPENREPOTOOLS_BIN_DIR="$BIN_XE" WORKBENCHES_ESTATE_VENDOR_DIR="$VENDOR_DIR" \
+    sh "$ENTRYPOINT_FILE" recorder end-to-end >/dev/null 2>&1 || STATUS_XE=$?
+assert_equal '0' "$STATUS_XE" 'entrypoint + real start step + command exits 0'
+assert_equal "$(cat "$X_DIR/argv.log" 2>/dev/null)" 'end-to-end' 'the command still runs after the real start step did its work'
+for name in "${TOOLS_FILES[@]}"; do
+    assert_identical "$BIN_XE/$name" "$(tools_vendor_path "$name")" "end to end through the entrypoint, $name is installed and byte-identical"
+done
+
 if (( failures == 0 )); then
     printf '%s\n' 'GREEN: setup-estate-commands regression test passed'
 else
