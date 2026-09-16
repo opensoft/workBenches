@@ -24,6 +24,7 @@ print_error() { echo -e "${RED}❌ $1${NC}"; }
 
 # Commands to install globally
 declare -A COMMANDS=(
+    ["project"]="Create, inspect, diagnose and maintain projects"
     ["launchBench"]="Universal bench launcher with AI-powered routing"
     ["onp"]="Opensoft New Project - Quick project creation command"
     ["new-workspace"]="Intelligent workspace creator - routes to Frappe, Flutter, .NET, etc."
@@ -39,17 +40,89 @@ declare -A COMMANDS=(
 
 # Check if running with sufficient privileges
 check_install_location() {
-    # Try user-local installation first (recommended)
-    if [ -d "$HOME/.local/bin" ]; then
-        echo "$HOME/.local/bin"
-        return 0
-    elif [ -w "/usr/local/bin" ]; then
-        echo "/usr/local/bin"
-        return 0
-    else
-        echo ""
+    # User-local installation is always the default. The caller creates it.
+    echo "$HOME/.local/bin"
+}
+
+configured_install_location() {
+    local install_dir="${OPENREPOPROJECT_BIN_DIR:-}"
+    [ -n "$install_dir" ] || return 1
+    case "$install_dir" in
+        '~') install_dir="$HOME" ;;
+        '~/'*) install_dir="$HOME/${install_dir#'~/'}" ;;
+    esac
+    [[ "$install_dir" == /* ]] || return 2
+    printf '%s\n' "$install_dir"
+}
+
+configured_discovery_file() {
+    local discovery_file="${WORKBENCHES_PROJECT_DISCOVERY_FILE:-$HOME/.config/workbenches/project-bin}"
+    case "$discovery_file" in
+        '~') discovery_file="$HOME" ;;
+        '~/'*) discovery_file="$HOME/${discovery_file#'~/'}" ;;
+    esac
+    [[ "$discovery_file" == /* ]] || return 2
+    printf '%s\n' "$discovery_file"
+}
+
+persisted_install_location() {
+    local mode="${1:-owned}"
+    local discovery_file discovered_dir extra_line
+    discovery_file="$(configured_discovery_file)" || return $?
+    [ -f "$discovery_file" ] && [ ! -L "$discovery_file" ] || return 1
+    IFS= read -r discovered_dir < "$discovery_file" || return 1
+    IFS= read -r extra_line < <(sed -n '2p' "$discovery_file") || true
+    [ -z "$extra_line" ] || return 1
+    [[ "$discovered_dir" == /* ]] || return 1
+    if ! python3 -I "$SCRIPT_DIR/setup-project-command.py" \
+            --bin-dir "$discovered_dir" --resolve-owned >/dev/null 2>&1; then
+        if [ "$mode" != "remove" ] \
+            || ! python3 -I "$SCRIPT_DIR/setup-project-command.py" \
+                --bin-dir "$discovered_dir" --resolve-removal-pending \
+                >/dev/null 2>&1; then
+            return 1
+        fi
+    fi
+    printf '%s\n' "$discovered_dir"
+}
+
+ensure_workbenches_marker() {
+    local install_dir="$1"
+    local marker="$install_dir/.workbenches-path"
+    local staged_marker
+
+    staged_marker="$(mktemp "$install_dir/.workbenches-path.stage.XXXXXX")" || return 1
+    if ! printf '%s\n' "$WORKBENCHES_ROOT" > "$staged_marker" \
+        || ! chmod 0644 "$staged_marker"; then
+        rm -f -- "$staged_marker"
         return 1
     fi
+    if [ -L "$marker" ] || { [ -e "$marker" ] && [ ! -f "$marker" ]; }; then
+        print_error "Refusing non-regular workBenches path marker: $marker"
+        rm -f -- "$staged_marker"
+        return 1
+    fi
+    if [ -f "$marker" ]; then
+        if cmp -s "$staged_marker" "$marker"; then
+            rm -f -- "$staged_marker"
+            return 0
+        fi
+        print_error "Refusing to replace a different workBenches path marker: $marker"
+        rm -f -- "$staged_marker"
+        return 1
+    fi
+    if ln "$staged_marker" "$marker" 2>/dev/null; then
+        rm -f -- "$staged_marker"
+        return 0
+    fi
+    if [ -f "$marker" ] && [ ! -L "$marker" ] \
+        && cmp -s "$staged_marker" "$marker"; then
+        rm -f -- "$staged_marker"
+        return 0
+    fi
+    print_error "Concurrent workBenches path marker collision: $marker"
+    rm -f -- "$staged_marker"
+    return 1
 }
 
 # Create user-local bin directory if it doesn't exist
@@ -99,8 +172,11 @@ add_to_path() {
     
     print_info "Adding $dir to PATH in $shell_profile"
     
-    # Check if PATH modification already exists
-    if grep -q "export PATH.*$dir" "$shell_profile" 2>/dev/null; then
+    local quoted_dir
+    quoted_dir="'${dir//\'/\'\\\'\'}'"
+
+    # Check if this exact safely quoted path is already present.
+    if grep -Fq -- "$quoted_dir" "$shell_profile" 2>/dev/null; then
         print_warning "PATH modification already exists in $shell_profile"
         return 0
     fi
@@ -109,8 +185,8 @@ add_to_path() {
     {
         echo ""
         echo "# Added by workBenches installer"
-        echo "if [ -d \"$dir\" ]; then"
-        echo "    export PATH=\"$dir:\$PATH\""
+        printf 'if [ -d %s ]; then\n' "$quoted_dir"
+        printf '    export PATH=%s:"$PATH"\n' "$quoted_dir"
         echo "fi"
     } >> "$shell_profile"
     
@@ -185,8 +261,9 @@ else
     exit 1
 fi
 EOF
-    
-    chmod +x "$install_path/$command_name"
+    local write_status=$?
+    [ "$write_status" -eq 0 ] || return "$write_status"
+    chmod +x "$install_path/$command_name" || return $?
     return 0
 }
 
@@ -196,7 +273,22 @@ install_commands() {
     
     # Determine installation directory
     local install_dir
-    install_dir=$(check_install_location)
+    if [ -n "${OPENREPOPROJECT_BIN_DIR:-}" ]; then
+        if ! install_dir="$(configured_install_location)"; then
+            print_error "OPENREPOPROJECT_BIN_DIR must be an absolute path"
+            return 1
+        fi
+        if [ -e "$install_dir" ] && [ ! -d "$install_dir" ]; then
+            print_error "Configured installation path is not a directory: $install_dir"
+            return 1
+        fi
+        if [ -d "$install_dir" ] && [ ! -w "$install_dir" ]; then
+            print_error "Configured installation directory is not writable: $install_dir"
+            return 1
+        fi
+    else
+        install_dir=$(check_install_location)
+    fi
     
     if [ -z "$install_dir" ]; then
         print_error "No suitable installation directory found"
@@ -209,15 +301,59 @@ install_commands() {
             return 1
         fi
     fi
+
+    if [ ! -d "$install_dir" ]; then
+        if ! mkdir -p "$install_dir"; then
+            print_error "Failed to create installation directory: $install_dir"
+            return 1
+        fi
+    fi
+    if [ ! -w "$install_dir" ]; then
+        print_error "Installation directory is not writable: $install_dir"
+        return 1
+    fi
     
     print_info "Installing to: $install_dir"
-    
-    # Store workbenches path for wrappers
-    echo "$WORKBENCHES_ROOT" > "$install_dir/.workbenches-path"
+
+    # Install the authoritative executable; do not replace it with a wrapper.
+    # A skip is successful but does not authorize project-dependent wrappers.
+    local project_available=false
+    if [ "${WORKBENCHES_SKIP_PROJECT_COMMAND:-0}" = "1" ]; then
+        print_warning "Project command was skipped; preserving any existing command and omitting onp"
+    else
+        python3 -I "$SCRIPT_DIR/setup-project-command.py" \
+            --bin-dir "$install_dir" --workbenches "$WORKBENCHES_ROOT" \
+            --install-onp || return $?
+        if python3 -I "$SCRIPT_DIR/setup-project-command.py" \
+            --bin-dir "$install_dir" --resolve-owned >/dev/null 2>&1; then
+            project_available=true
+        else
+            print_error "Project command installation did not produce a verified executable"
+            return 1
+        fi
+    fi
+
+    ensure_workbenches_marker "$install_dir" || return $?
     
     # Install each command
     local installed_count=0
+    local install_failed=false
     for cmd_name in "${!COMMANDS[@]}"; do
+        if [ "$cmd_name" = "project" ]; then
+            if [ "$project_available" = true ]; then
+                # Already installed and verified by its dedicated installer above.
+                installed_count=$((installed_count + 1))
+            fi
+            continue
+        fi
+        if [ "$cmd_name" = "onp" ] && [ "$project_available" = false ]; then
+            continue
+        fi
+        if [ "$cmd_name" = "onp" ]; then
+            print_success "Installed: onp"
+            ((installed_count++))
+            continue
+        fi
         local cmd_desc="${COMMANDS[$cmd_name]}"
         local source_script=""
         
@@ -234,9 +370,6 @@ install_commands() {
                 ;;
             "delete-workspace")
                 source_script="$SCRIPT_DIR/delete-workspace.sh"
-                ;;
-            "onp")
-                source_script="$SCRIPT_DIR/onp"
                 ;;
             "setup-workbenches")
                 source_script="$SCRIPT_DIR/setup-workbenches.sh"
@@ -261,6 +394,7 @@ install_commands() {
         # Verify source script exists
         if [ ! -f "$source_script" ]; then
             print_warning "Source script not found: $source_script"
+            install_failed=true
             continue
         fi
         
@@ -270,6 +404,7 @@ install_commands() {
             ((installed_count++))
         else
             print_error "Failed to install: $cmd_name"
+            install_failed=true
         fi
     done
     
@@ -288,18 +423,64 @@ install_commands() {
         print_success "Commands are now available globally!"
     fi
     
+    if [ "$install_failed" = true ]; then
+        print_error "One or more command wrappers could not be installed"
+        return 1
+    fi
     return 0
 }
 
 # Uninstall workBench commands
 uninstall_commands() {
     local removed_any=false
+    local uninstall_failed=false
+    local project_remove_status
+    local configured_dir=""
     
     # Check common installation locations
     local locations=("$HOME/.local/bin" "/usr/local/bin")
+    if [ -n "${OPENREPOPROJECT_BIN_DIR:-}" ]; then
+        if ! configured_dir="$(configured_install_location)"; then
+            print_error "OPENREPOPROJECT_BIN_DIR must be an absolute path"
+            return 1
+        fi
+        if [ "$configured_dir" != "$HOME/.local/bin" ] \
+            && [ "$configured_dir" != "/usr/local/bin" ]; then
+            locations=("$configured_dir" "${locations[@]}")
+        fi
+    else
+        local discovery_status=0
+        configured_dir="$(persisted_install_location remove)" || discovery_status=$?
+        if [ "$discovery_status" -eq 2 ]; then
+            print_error "WORKBENCHES_PROJECT_DISCOVERY_FILE must be an absolute path"
+            return 1
+        fi
+        if [ "$discovery_status" -eq 0 ] \
+            && [ "$configured_dir" != "$HOME/.local/bin" ] \
+            && [ "$configured_dir" != "/usr/local/bin" ]; then
+            locations=("$configured_dir" "${locations[@]}")
+        fi
+    fi
     
     for location in "${locations[@]}"; do
         for cmd_name in "${!COMMANDS[@]}"; do
+            if [ "$cmd_name" = "project" ]; then
+                python3 -I "$SCRIPT_DIR/setup-project-command.py" --bin-dir "$location" --remove
+                project_remove_status=$?
+                if [ "$project_remove_status" -eq 0 ]; then
+                    print_success "Removed installer-owned project artifacts from $location"
+                    removed_any=true
+                elif [ "$project_remove_status" -ne 3 ]; then
+                    print_error "Failed to verify project ownership in $location"
+                    uninstall_failed=true
+                fi
+                continue
+            fi
+            # The project installer verifies and removes its onp alias. Never
+            # pass a colliding user-owned command to the generic remover.
+            if [ "$cmd_name" = "onp" ]; then
+                continue
+            fi
             if [ -f "$location/$cmd_name" ]; then
                 print_info "Removing $cmd_name from: $location"
                 rm -f "$location/$cmd_name"
@@ -309,17 +490,29 @@ uninstall_commands() {
                     removed_any=true
                 else
                     print_error "Failed to remove $cmd_name from $location"
+                    uninstall_failed=true
                 fi
             fi
         done
         
-        # Remove workbenches path file
-        if [ -f "$location/.workbenches-path" ]; then
-            rm -f "$location/.workbenches-path"
+        # Remove only the marker whose exact contents identify this checkout.
+        local workbenches_marker="$location/.workbenches-path"
+        if [ -f "$workbenches_marker" ] && [ ! -L "$workbenches_marker" ]; then
+            if cmp -s "$workbenches_marker" <(printf '%s\n' "$WORKBENCHES_ROOT"); then
+                if ! rm -f "$workbenches_marker"; then
+                    print_error "Failed to remove workBenches path marker from $location"
+                    uninstall_failed=true
+                fi
+            else
+                print_warning "Preserved unowned workBenches path marker: $workbenches_marker"
+            fi
         fi
     done
     
-    if [ "$removed_any" = true ]; then
+    if [ "$uninstall_failed" = true ]; then
+        print_error "One or more installer-owned project artifacts could not be removed"
+        return 1
+    elif [ "$removed_any" = true ]; then
         print_success "WorkBenches commands uninstalled successfully"
         print_warning "PATH modifications in shell profiles were not removed automatically"
     else
@@ -333,15 +526,54 @@ show_status() {
     echo ""
     
     local found_installations=0
+    local configured_dir=""
     local locations=("$HOME/.local/bin" "/usr/local/bin")
+    if [ -n "${OPENREPOPROJECT_BIN_DIR:-}" ]; then
+        if ! configured_dir="$(configured_install_location)"; then
+            print_error "OPENREPOPROJECT_BIN_DIR must be an absolute path"
+            return 1
+        fi
+        if [ "$configured_dir" != "$HOME/.local/bin" ] \
+            && [ "$configured_dir" != "/usr/local/bin" ]; then
+            locations=("$configured_dir" "${locations[@]}")
+        fi
+    else
+        local discovery_status=0
+        configured_dir="$(persisted_install_location)" || discovery_status=$?
+        if [ "$discovery_status" -eq 2 ]; then
+            print_error "WORKBENCHES_PROJECT_DISCOVERY_FILE must be an absolute path"
+            return 1
+        fi
+        if [ "$discovery_status" -eq 0 ] \
+            && [ "$configured_dir" != "$HOME/.local/bin" ] \
+            && [ "$configured_dir" != "/usr/local/bin" ]; then
+            locations=("$configured_dir" "${locations[@]}")
+        fi
+    fi
     
     for location in "${locations[@]}"; do
+        local location_header_printed=false
         local found_in_location=false
         
         for cmd_name in "${!COMMANDS[@]}"; do
             if [ -f "$location/$cmd_name" ]; then
-                if [ "$found_in_location" = false ]; then
+                if [ "$location_header_printed" = false ]; then
                     echo -e "${BLUE}$location:${NC}"
+                    location_header_printed=true
+                fi
+
+                local ownership_option=""
+                [ "$cmd_name" = "project" ] && ownership_option="--resolve-owned"
+                [ "$cmd_name" = "onp" ] && ownership_option="--resolve-onp-owned"
+                if [ -n "$ownership_option" ] \
+                    && ! python3 -I "$SCRIPT_DIR/setup-project-command.py" \
+                        --bin-dir "$location" "$ownership_option" >/dev/null 2>&1; then
+                    printf "  ${RED}✗${NC} %-20s %s (unowned or tampered)\n" \
+                        "$cmd_name" "${COMMANDS[$cmd_name]}"
+                    continue
+                fi
+
+                if [ "$found_in_location" = false ]; then
                     found_in_location=true
                     found_installations=$((found_installations + 1))
                 fi
@@ -350,8 +582,11 @@ show_status() {
                 
                 # Check if it's executable and in PATH
                 if [ -x "$location/$cmd_name" ]; then
-                    if command -v "$cmd_name" >/dev/null 2>&1; then
+                    resolved_command="$(command -v "$cmd_name" 2>/dev/null || true)"
+                    if [ "$resolved_command" = "$location/$cmd_name" ]; then
                         echo "    ${GREEN}✓ Available globally${NC}"
+                    elif [ -n "$resolved_command" ]; then
+                        echo "    ${YELLOW}⚠ Shadowed in PATH by $resolved_command${NC}"
                     else
                         echo "    ${YELLOW}⚠ Not in PATH${NC}"
                     fi
@@ -361,7 +596,7 @@ show_status() {
             fi
         done
         
-        if [ "$found_in_location" = true ]; then
+        if [ "$location_header_printed" = true ]; then
             echo ""
         fi
     done
@@ -427,7 +662,7 @@ main() {
             ;;
         --status)
             show_status
-            exit 0
+            exit $?
             ;;
         --help|-h)
             show_help
