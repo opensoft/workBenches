@@ -2915,7 +2915,15 @@ scenario
 # any spelling anywhere in the skill's shell); the moment one appears, #98 may
 # be fixed or may have changed shape, and this fails rather than keep waiving
 # silently, so a human restores or extends the five checks that stood here.
-uuid_guard_probe="$(grep -v '^[[:space:]]*#' "$HANDOFF_MD" | grep -E -- '-z "\$\{?uuid|-n "\$\{?uuid' || true)"
+#
+# WIDENED, NOT PROVEN (round 5): a `grep` cannot enumerate every bash spelling
+# of "the uuid is empty" — round 4 covered `-z`/`-n` on a quoted `$uuid`; this
+# adds `-v uuid` and `"$uuid" ==/= ""`, the other common forms, and an
+# unquoted `$uuid` after `-z`/`-n`. It still cannot see one split across a line
+# break or an exotic predicate this suite has never needed elsewhere, so the
+# claim is bounded to what is checked, not to every conceivable rewrite.
+uuid_guard_probe="$(grep -v '^[[:space:]]*#' "$HANDOFF_MD" \
+    | grep -E -- '-z "?\$\{?uuid|-n "?\$\{?uuid|-v uuid\b|"\$\{?uuid:?-?[^}]*\}?" *[=!]= *""' || true)"
 if [[ -z "$uuid_guard_probe" ]]; then
     echo "KNOWN (opensoft/openRepoTools#98, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md has no preemptive uuid/session guard" >&2
 else
@@ -3517,19 +3525,24 @@ grep -Fq 'R-A11-27' "$GUARD_SH" \
 # 8a36eb3:skills/lane-swap/SKILL.md:39` too (the pre-Amendment-17(a) home of
 # this same line) — a real shipped-bytes gap, not a test-methodology one.
 #
-# FAIL-CLOSED (Copilot round 2/3, tightened round 4, on opensoft/workBenches#93):
-# the known gap is specifically TODAY's exact hard-coded line, not "anything
-# that isn't the fixed form" — a third, differently-broken `L=` would otherwise
-# also fall through this skip unnoticed, and matching the raw Markdown (rather
-# than the extracted, comment-stripped `skill_write_code`) meant a PROSE mention
-# of the fixed form, with no code changed at all, could make this pass too.
-# Both patterns are anchored on the actual `L=` assignment line in the code.
-if grep -Eq '^L="\$\(command -v lanes-edit\.sh' <<<"$skill_write_code"; then
+# FAIL-CLOSED (Copilot round 2/3, tightened rounds 4-5, on
+# opensoft/workBenches#93): the known gap is specifically TODAY's exact
+# hard-coded line, not "anything that isn't the fixed form" — a third,
+# differently-broken `L=` would otherwise also fall through this skip
+# unnoticed, and matching the raw Markdown (rather than the extracted,
+# comment-stripped `skill_write_code`) meant a PROSE mention of the fixed form,
+# with no code changed at all, could make this pass too. Round 5: a mere
+# PREFIX match also passed a syntactically-valid but semantically broken
+# fallback (`L="$(command -v lanes-edit.sh || false)"` names no helper on a
+# host without one, same failure as today's hard-coded line, dressed as
+# fixed) — this now requires the WHOLE line to equal the complete form
+# `skills/restart/SKILL.md:39` already ships, `printf` fallback included.
+if grep -Fxq 'L="$(command -v lanes-edit.sh || printf '"'"'%s'"'"' ~/projects/xFactory/lanes-edit.sh)"' <<<"$skill_write_code"; then
     :
 elif grep -qx 'L=~/projects/xFactory/lanes-edit.sh' <<<"$skill_write_code"; then
     echo "KNOWN (opensoft/openRepoTools#100, pre-existing since 8a36eb3, not fixed here -- vendored byte-for-byte): skills/handoff/SKILL.md:39 hard-codes lanes-edit.sh's path instead of resolving it" >&2
 else
-    fail "helper: \$L is neither the PATH-first form nor the known hard-coded line — something else changed here and needs a human read"
+    fail "helper: \$L is neither the exact fixed form (skills/restart/SKILL.md:39's) nor the known hard-coded line — something else changed here and needs a human read"
 fi
 assertion
 
