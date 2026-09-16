@@ -345,10 +345,33 @@ declared_cascade_images() {
                     }
                     return ref
                 }
+                function resolve_static_reference(ref, variable_name, replacement, iteration) {
+                    for (iteration = 1; iteration <= 6; iteration++) {
+                        variable_name = ""
+                        if (ref ~ /^[$][A-Za-z_][A-Za-z0-9_]*$/) {
+                            variable_name = substr(ref, 2)
+                        } else if (ref ~ /^[$][{][A-Za-z_][A-Za-z0-9_]*[}]$/) {
+                            variable_name = substr(ref, 3, length(ref) - 3)
+                        } else {
+                            break
+                        }
+                        replacement = assignments[variable_name]
+                        if (replacement == "") replacement = ENVIRON[variable_name]
+                        if (replacement == "") break
+                        gsub(/^["\047]|["\047]$/, "", replacement)
+                        ref = replacement
+                    }
+                    return ref
+                }
                 function emit_output(ref, leaf) {
                     gsub(/^["\047]|["\047\\]+$/, "", ref)
-                    if (ref ~ /:[$][{]USER:-[^}]+[}]$/) sub(/:.*/, ":latest", ref)
-                    if (ref ~ /:[$][{][A-Za-z_][A-Za-z0-9_]*:-latest[}]$/) sub(/:.*/, ":latest", ref)
+                    ref = resolve_static_reference(ref)
+                    if (ref ~ /:[$][{]USER:-[^}]+[}]$/) {
+                        sub(/:[$][{]USER:-[^}]+[}]$/, ":latest", ref)
+                    }
+                    if (ref ~ /:[$][{][A-Za-z_][A-Za-z0-9_]*:-latest[}]$/) {
+                        sub(/:[$][{][A-Za-z_][A-Za-z0-9_]*:-latest[}]$/, ":latest", ref)
+                    }
                     ref = resolve_defaults(ref)
                     leaf = ref
                     sub(/^.*\//, "", leaf)
@@ -362,6 +385,16 @@ declared_cascade_images() {
                     sub(/^[[:space:]]+/, "", line)
                     if (line ~ /^#/) next
                     sub(/[[:space:]]+#.*/, "", line)
+                    assignment = line
+                    sub(/^(export|local|readonly)[[:space:]]+/, "", assignment)
+                    if (assignment ~ /^[A-Za-z_][A-Za-z0-9_]*=/) {
+                        variable_name = assignment
+                        sub(/=.*/, "", variable_name)
+                        assignment = substr(assignment, length(variable_name) + 2)
+                        if (assignment !~ /[[:space:]]/) {
+                            assignments[variable_name] = assignment
+                        }
+                    }
                     word_count = split(line, words, /[[:space:]]+/)
                     for (word_index = 1; word_index <= word_count; word_index++) {
                         if (words[word_index] == "-t" || words[word_index] == "--tag") {
@@ -435,9 +468,14 @@ record_rebuilt_cascade_image() {
     local found=false
     local missing=false
     local stale=false
+    local declared_image_output
     local -a declared_images=()
 
-    mapfile -t declared_images < <(declared_cascade_images "$image" "$build_script" "$bench_dir")
+    declared_image_output="$(declared_cascade_images "$image" "$build_script" "$bench_dir")" \
+        || return
+    if [[ -n "$declared_image_output" ]]; then
+        mapfile -t declared_images <<< "$declared_image_output"
+    fi
     if [[ "${#declared_images[@]}" -eq 0 ]]; then
         declared_images=("$image")
     fi

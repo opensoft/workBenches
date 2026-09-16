@@ -424,6 +424,15 @@ printf '%s\n' \
 test "$(declared_cascade_images sim-bench:latest "$tag_filter_build" "$temp_dir")" \
     = 'sim-bench:latest'
 
+printf '%s\n' \
+    'PRIMARY=sim-bench:latest' \
+    'WORKER="sim-bench-worker:latest"' \
+    'docker build -t "$PRIMARY" .' \
+    'docker build --tag="$WORKER" .' \
+    > "$tag_filter_build"
+test "$(declared_cascade_images sim-bench:latest "$tag_filter_build" "$temp_dir")" \
+    = $'sim-bench-worker:latest\nsim-bench:latest'
+
 PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
     record_rebuilt_cascade_image test-bench:latest testBench
 test "${CASCADE_IMAGES[*]}" = test-bench:latest
@@ -481,6 +490,21 @@ sim-bench-ui:latest=$captured_image_id"; then
 fi
 test "${#CASCADE_IMAGES[@]}" -eq 0
 test "${#CASCADE_IMAGE_RECORDS[@]}" -eq 0
+
+printf '%s\n' 'docker compose -f missing-compose.yml build' > "$compose_metadata"
+CASCADE_IMAGES=()
+CASCADE_IMAGE_RECORDS=()
+: > "$log"
+if PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$log" \
+    FAKE_DOCKER_IMAGE_ID="$captured_image_id" \
+    record_rebuilt_cascade_image sim-bench:latest simBench "$compose_metadata" "$compose_bench_dir"; then
+    echo "expected post-build Compose discovery failure to propagate" >&2
+    exit 1
+fi
+if grep -Fq 'image inspect --format {{.Id}} sim-bench:latest' "$log"; then
+    echo "failed Compose discovery fell back to the normalized bench image" >&2
+    exit 1
+fi
 
 CASCADE_IMAGES=()
 CASCADE_IMAGE_RECORDS=()
