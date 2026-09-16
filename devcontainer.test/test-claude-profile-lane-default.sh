@@ -54,7 +54,8 @@ LAUNCHER="${1:-$REPO_ROOT/base-image/files/claude-profile}"
 # launcher: every scenario below sets the tmux and lane state it means to test.
 unset TMUX TMUX_PANE WORKBENCHES_CLAUDE_TMUX WORKBENCHES_CLAUDE_TMUX_CHILD \
     WORKBENCHES_CLAUDE_WINDOW WORKBENCHES_TMUX_SESSION WORKBENCHES_TMUX_PANE \
-    CLAUDE_LANE CLAUDE_NO_LANE LANES_WORKSTATION 2>/dev/null || true
+    CLAUDE_LANE CLAUDE_NO_LANE LANES_WORKSTATION LANES_HOST LANES_OS \
+    LANES_CONTAINER 2>/dev/null || true
 
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
@@ -74,7 +75,7 @@ fail() {
 # quietly changing a number; the assertion count is printed and not pinned,
 # because checks are added to existing scenarios all the time and a scenario
 # that stops running is the thing worth catching.
-EXPECTED_SCENARIOS=43
+EXPECTED_SCENARIOS=49
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -88,6 +89,12 @@ FAKE_CLAUDE="$FAKE_BIN/claude"
 CLAUDE_LOG="$TEST_ROOT/claude.log"
 TMUX_LOG="$TEST_ROOT/tmux.log"
 LANE_START_LOG="$TEST_ROOT/lane-start.log"
+# THE ENVIRONMENT THE STARTED SESSION COMES UP WITH — the only place the
+# launcher's exports can be observed, since they are read by everything
+# downstream and printed by nothing (lane-collision-protocol Amendment 18
+# clause (a), opensoft/workBenches#98; `R-A11-14` for the workstation beside
+# them).
+LANE_START_ENV_LOG="$TEST_ROOT/lane-start-env.log"
 LANES_EDIT_LOG="$TEST_ROOT/lanes-edit.log"
 LANE_PICKER_LOG="$TEST_ROOT/lane-picker.log"
 ERR_LOG="$TEST_ROOT/stderr.log"
@@ -199,6 +206,18 @@ if [[ "${1:-}" == --help ]]; then
     exit 0
 fi
 printf '%s\n' "$*" >> "${FAKE_LANE_START_LOG:?}"
+# ...and the four values that say WHERE the session it is about to start is
+# running (Amendment 18 clause (a), beside `R-A11-14`'s workstation). Logged
+# with `${X-<unset>}` rather than `${X:-}`: "exported as nothing at all" and
+# "exported as an empty string" are different answers here — the first is what
+# makes the lane tooling fall back to its own probe — and a reader of this log
+# has to be able to tell them apart.
+{
+    printf 'LANES_WORKSTATION=%s\n' "${LANES_WORKSTATION-<unset>}"
+    printf 'LANES_HOST=%s\n' "${LANES_HOST-<unset>}"
+    printf 'LANES_OS=%s\n' "${LANES_OS-<unset>}"
+    printf 'LANES_CONTAINER=%s\n' "${LANES_CONTAINER-<unset>}"
+} >> "${FAKE_LANE_START_ENV_LOG:-/dev/null}"
 # The lane is the last argument before `--`; everything after it is Claude's.
 lane_argument=""; rest=(); seen=false
 for argument in "$@"; do
@@ -334,6 +353,7 @@ common_env=(
     "FAKE_CLAUDE_LOG=$CLAUDE_LOG"
     "FAKE_TMUX_LOG=$TMUX_LOG"
     "FAKE_LANE_START_LOG=$LANE_START_LOG"
+    "FAKE_LANE_START_ENV_LOG=$LANE_START_ENV_LOG"
     "FAKE_LANES_EDIT_LOG=$LANES_EDIT_LOG"
     "FAKE_LANE_LOG=$LANE_PICKER_LOG"
     "FAKE_LANE_START_HELP=$AMENDMENT_8_HELP"
@@ -360,7 +380,8 @@ claude_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions
 note='no lane for this window; run lane-start <repo> <n> inside it'
 
 reset_logs() {
-    rm -f "$CLAUDE_LOG" "$TMUX_LOG" "$LANE_START_LOG" "$LANES_EDIT_LOG" "$LANE_PICKER_LOG" "$ERR_LOG"
+    rm -f "$CLAUDE_LOG" "$TMUX_LOG" "$LANE_START_LOG" "$LANE_START_ENV_LOG" "$LANES_EDIT_LOG" \
+        "$LANE_PICKER_LOG" "$ERR_LOG"
 }
 
 # launch <scenario env>... -- <launcher args>...
@@ -1283,6 +1304,182 @@ grep -Fxq -- "$claude_args --resume session-hooked" "$CLAUDE_LOG" \
 jq -e '.hooks.SessionStart' "$PROFILE_DIR/settings.json" >/dev/null 2>&1 \
     || fail "hook ensured: no SessionStart entry in the profile's settings"; assertion
 rm -rf "$FAKE_HOME/projects"
+
+# ---------------------------------------------------------------------------
+# 14. WHERE THE LANE IS RUNNING — lane-collision-protocol Amendment 18 clause
+# (a) (in force 2026-09-14T13:15Z), the launcher half, opensoft/workBenches#98.
+#
+# `LANES_WORKSTATION` says whose register a lane's rows belong to. It cannot say
+# which CONTAINER on that machine the lane is live in, and a pid does not cross
+# a pid namespace: two bench containers on one host share the profile directory,
+# so a lane live and writing in cloudBench read NOT LIVE from pyBench and
+# `lane-start` there took the name — two bindings, one lane, one append-only
+# log. The amendment puts `host <name>; os <linux|macos|wsl|windows>; container
+# <name|none>` on every STARTED, RESUMED and PAUSED and has this launcher export
+# the three beside the workstation it already exports; opensoft/openRepoTools#83
+# is the half that READS them, falls back to its own probes where they are
+# unset, and DROPS an `os` that is none of the four words.
+#
+# Every scenario below is deterministic on both kinds of machine this suite runs
+# on. The container branch is FORCED with the `container=` environment marker,
+# which is a container everywhere. The one branch that needs the machine's real
+# answer reads whether the SUITE itself is in a container — the same three
+# markers the launcher's own fence reads — and asserts against that rather than
+# skipping, because a scenario that does not run is one the pinned count above
+# cannot see.
+suite_in_container=false
+[[ ! -e /.dockerenv && ! -e /run/.containerenv && -z "${container:-}" ]] || suite_in_container=true
+
+# 14a. DERIVED AND EXPORTED WITH NOTHING SET FOR THEM ANYWHERE. The OS is
+# knowable on any machine this can run on, so it is always one of the four
+# words; the other two are the host's own answers where this is a host, and
+# NOTHING AT ALL where it is a container nobody named — never a container id
+# offered as a machine's name, never `none` offered by a launcher standing
+# inside a container. `<unset>` in this log is the fake lane-start's way of
+# saying the variable does not exist in the started session's environment, which
+# is exactly what makes openRepoTools#83 fall back to its own probe.
+launch "FAKE_TMUX_WINDOW=mine-5" "FAKE_LANE_WITH_ROW=mine-5" \
+    -- run team002 --resume session-a18-derived
+grep -Eq '^LANES_OS=(linux|macos|wsl|windows)$' "$LANE_START_ENV_LOG" \
+    || fail "Amendment 18(a): the session was started with an OS that is none of the four words ('$(grep '^LANES_OS=' "$LANE_START_ENV_LOG" 2>/dev/null)')"; assertion
+if [[ "$suite_in_container" == true ]]; then
+    grep -Fxq 'LANES_HOST=<unset>' "$LANE_START_ENV_LOG" \
+        || fail "Amendment 18(a): a container that was told no host handed the session one anyway ('$(grep '^LANES_HOST=' "$LANE_START_ENV_LOG" 2>/dev/null)')"; assertion
+    grep -Fxq 'LANES_CONTAINER=<unset>' "$LANE_START_ENV_LOG" \
+        || fail "Amendment 18(a): a container nobody named was named by the launcher standing in it ('$(grep '^LANES_CONTAINER=' "$LANE_START_ENV_LOG" 2>/dev/null)')"; assertion
+else
+    grep -Fxq "LANES_HOST=$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)" "$LANE_START_ENV_LOG" \
+        || fail "Amendment 18(a): the host's own short name did not reach the session ('$(grep '^LANES_HOST=' "$LANE_START_ENV_LOG" 2>/dev/null)')"; assertion
+    grep -Fxq 'LANES_CONTAINER=none' "$LANE_START_ENV_LOG" \
+        || fail "Amendment 18(a): a session started on the host itself did not say so with the amendment's own word ('$(grep '^LANES_CONTAINER=' "$LANE_START_ENV_LOG" 2>/dev/null)')"; assertion
+fi
+
+# 14b. AN ALREADY-SET VALUE WINS, AND IT WINS INSIDE A CONTAINER — the rule the
+# workstation is resolved by, one variable along and three times, and the only
+# way a container's own name ever gets in at all: a container cannot name
+# itself, so `LANES_CONTAINER` is written in from outside by whoever opened it.
+# `windows` is here on purpose: it is the one word of the four this launcher
+# never derives — its bash is WSL2 on a Windows machine, which reads `wsl` — so
+# passing it through unchanged is the whole of how it can ever appear on a lane
+# line.
+launch "FAKE_TMUX_WINDOW=mine-5" "FAKE_LANE_WITH_ROW=mine-5" "container=docker" \
+    "LANES_HOST=eagle" "LANES_OS=windows" "LANES_CONTAINER=py-bench" \
+    -- run team002 --resume session-a18-configured
+grep -Fxq 'LANES_HOST=eagle' "$LANE_START_ENV_LOG" \
+    || fail "Amendment 18(a): a configured host did not survive the launch ('$(grep '^LANES_HOST=' "$LANE_START_ENV_LOG" 2>/dev/null)')"; assertion
+grep -Fxq 'LANES_OS=windows' "$LANE_START_ENV_LOG" \
+    || fail "Amendment 18(a): the one OS word the launcher only passes through was rewritten ('$(grep '^LANES_OS=' "$LANE_START_ENV_LOG" 2>/dev/null)')"; assertion
+grep -Fxq 'LANES_CONTAINER=py-bench' "$LANE_START_ENV_LOG" \
+    || fail "Amendment 18(a): the bench name threaded in from outside was lost ('$(grep '^LANES_CONTAINER=' "$LANE_START_ENV_LOG" 2>/dev/null)')"; assertion
+
+# 14c. A CONTAINER THAT NAMES NEITHER INVENTS NEITHER — the workstation's own
+# rule (`R-A11-14`: nothing is exported where there is no answer, because both
+# lane logs are append-only), twice. The OS is still answered, because the
+# kernel is readable from inside a container and is the same kernel: it is the
+# two NAMES a container cannot work out for itself, not the platform.
+launch "FAKE_TMUX_WINDOW=mine-5" "FAKE_LANE_WITH_ROW=mine-5" "container=docker" \
+    "LANES_HOST=" "LANES_OS=" "LANES_CONTAINER=" \
+    -- run team002 --resume session-a18-not-invented
+grep -Fxq 'LANES_HOST=' "$LANE_START_ENV_LOG" \
+    || fail "Amendment 18(a): a container with no host configured handed the session one ('$(grep '^LANES_HOST=' "$LANE_START_ENV_LOG" 2>/dev/null)')"; assertion
+grep -Fxq 'LANES_CONTAINER=' "$LANE_START_ENV_LOG" \
+    || fail "Amendment 18(a): a container nobody named named itself ('$(grep '^LANES_CONTAINER=' "$LANE_START_ENV_LOG" 2>/dev/null)')"; assertion
+grep -Eq '^LANES_OS=(linux|macos|wsl|windows)$' "$LANE_START_ENV_LOG" \
+    || fail "Amendment 18(a): the OS went unanswered in a container, where the kernel is readable ('$(grep '^LANES_OS=' "$LANE_START_ENV_LOG" 2>/dev/null)')"; assertion
+
+# 14d. ...AND ALL FOUR ARE THREADED ACROSS THE RE-EXEC, where inheritance is not
+# reliable: `tmux new-session` hands the child the SERVER's environment, so a
+# value reaches the session the launcher creates outside tmux only by being
+# written into the command string — the launcher's own reason for threading the
+# workstation, and the same reason for the three beside it.
+tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_SWAPPED_STATUS=8" "CLAUDE_LANE=a18-carried" \
+    "LANES_HOST=eagle" "LANES_OS=wsl" "LANES_CONTAINER=py-bench" \
+    -- run team002 --resume session-a18-threaded
+for a18_pair in LANES_WORKSTATION=Eagle LANES_HOST=eagle LANES_OS=wsl LANES_CONTAINER=py-bench; do
+    grep -q "$a18_pair" "$TMUX_LOG" \
+        || fail "Amendment 18(a): $a18_pair was not threaded into the tmux session the launcher created ($(cat "$TMUX_LOG"))"; assertion
+done
+# ...and the three are CLEARED in the same command string before they are set
+# (Copilot round 1, opensoft/workBenches#101). Omitting an assignment does not
+# make the child's variable unset — the command runs in the tmux SERVER's
+# environment, which is the whole reason anything is threaded — so the clears
+# are what make "no answer" mean no answer.
+for a18_clear in '-u LANES_HOST' '-u LANES_OS' '-u LANES_CONTAINER'; do
+    grep -q -e "$a18_clear" "$TMUX_LOG" \
+        || fail "Amendment 18(a): the tmux command string does not clear ${a18_clear#-u } before setting it, so the server's own value reaches the child ($(cat "$TMUX_LOG"))"; assertion
+done
+
+# 14e. A VALUE THE LAUNCHER HAS NO ANSWER FOR IS CLEARED AND NOT PASSED — the
+# other half of the same fix, and the case it exists for: inside a container
+# nobody named, the child must come up with no `LANES_HOST` and no
+# `LANES_CONTAINER` at all, so the lane tooling falls back to its own probe
+# instead of reading whatever the tmux server was started with. The OS is still
+# assigned, because it is still answered.
+tty_launch "TMUX=" "FAKE_TMUX_WINDOW=claude" "FAKE_SWAPPED_STATUS=8" "CLAUDE_LANE=a18-unanswered" \
+    "container=docker" "LANES_HOST=" "LANES_OS=" "LANES_CONTAINER=" \
+    -- run team002 --resume session-a18-unanswered
+grep -q 'LANES_HOST=' "$TMUX_LOG" \
+    && fail "Amendment 18(a): a host the launcher could not name was assigned into the tmux command string anyway ($(cat "$TMUX_LOG"))"; assertion
+grep -q 'LANES_CONTAINER=' "$TMUX_LOG" \
+    && fail "Amendment 18(a): a container the launcher could not name was assigned into the tmux command string anyway ($(cat "$TMUX_LOG"))"; assertion
+grep -Eq 'LANES_OS=(linux|macos|wsl|windows)' "$TMUX_LOG" \
+    || fail "Amendment 18(a): the OS, which IS answered in a container, was not threaded ($(cat "$TMUX_LOG"))"; assertion
+for a18_clear in '-u LANES_HOST' '-u LANES_OS' '-u LANES_CONTAINER'; do
+    grep -q -e "$a18_clear" "$TMUX_LOG" \
+        || fail "Amendment 18(a): ${a18_clear#-u } is neither cleared nor set, so the child inherits the tmux server's own ($(cat "$TMUX_LOG"))"; assertion
+done
+
+# 14f. THE STATIC HALF. Every reader takes the configured value first, the
+# export is called, all three are threaded, and the container launcher carries
+# the same three into the bench it opens — including the one fact only it can
+# answer, the bench's own name. A scenario cannot reach the second half at all:
+# `scripts/wave-container-shell.sh` runs `docker exec` against a real daemon.
+scenario
+WAVE_SHELL="$REPO_ROOT/scripts/wave-container-shell.sh"
+grep -Fq 'name="${LANES_HOST:-}"' "$LAUNCHER" \
+    || fail "Amendment 18(a): the launcher does not take an already-set LANES_HOST first"; assertion
+grep -Fq 'name="${LANES_OS:-}"' "$LAUNCHER" \
+    || fail "Amendment 18(a): the launcher does not take an already-set LANES_OS first, so the one word it never derives could never be passed through"; assertion
+grep -Fq 'name="${LANES_CONTAINER:-}"' "$LAUNCHER" \
+    || fail "Amendment 18(a): the launcher does not take an already-set LANES_CONTAINER first, which is the only way a container is ever named"; assertion
+grep -Fq 'lane_export_binding_facts' "$LAUNCHER" \
+    || fail "Amendment 18(a): nothing calls the export, so the session comes up without the three anyway"; assertion
+for a18_var in LANES_HOST LANES_OS LANES_CONTAINER; do
+    grep -Fq "env_prefix+=(\"$a18_var=\$$a18_var\")" "$LAUNCHER" \
+        || fail "Amendment 18(a): $a18_var is not threaded across the re-exec, where a fresh export is not reliably inherited"; assertion
+done
+grep -Fq 'lanes_host="${LANES_HOST:-}"' "$WAVE_SHELL" \
+    || fail "Amendment 18(a): the container launcher does not take an already-configured host first"; assertion
+grep -Fq 'lanes_os="${LANES_OS:-}"' "$WAVE_SHELL" \
+    || fail "Amendment 18(a): the container launcher does not take an already-configured OS first"; assertion
+grep -Fq 'lanes_host_env=(--env "LANES_HOST=$lanes_host")' "$WAVE_SHELL" \
+    || fail "Amendment 18(a): the bench container is opened without the host's name"; assertion
+grep -Fq 'lanes_os_env=(--env "LANES_OS=$lanes_os")' "$WAVE_SHELL" \
+    || fail "Amendment 18(a): the bench container is opened without the OS word"; assertion
+grep -Fq -e '--env "LANES_CONTAINER=$container"' "$WAVE_SHELL" \
+    || fail "Amendment 18(a): the bench container is opened without being told its own name, which is the one fact only that script has"; assertion
+grep -Fq '${lanes_host_env[@]+"${lanes_host_env[@]}"}' "$WAVE_SHELL" \
+    || fail "Amendment 18(a): the host is resolved for the container and never passed to docker exec"; assertion
+grep -Fq '${lanes_os_env[@]+"${lanes_os_env[@]}"}' "$WAVE_SHELL" \
+    || fail "Amendment 18(a): the OS is resolved for the container and never passed to docker exec"; assertion
+# ...and the host is resolved BEFORE that script assigns `container` for its own
+# purposes, for the same reason the workstation is: the systemd container marker
+# is an environment variable of exactly that name, and after `container=` has run
+# it cannot be read at all.
+a18_host_line="$(grep -n 'lanes_host="${LANES_HOST:-}"' "$WAVE_SHELL" | head -n 1 | cut -d : -f 1)"
+a18_bench_line="$(grep -n '^container="py-bench"' "$WAVE_SHELL" | head -n 1 | cut -d : -f 1)"
+[[ -n "$a18_host_line" && -n "$a18_bench_line" && "$a18_host_line" -lt "$a18_bench_line" ]] \
+    || fail "Amendment 18(a): the container marker is read at line $a18_host_line, after that script overwrites \$container at line $a18_bench_line"; assertion
+# ...and --help says where all four come from, because the one per-host act for
+# a machine whose values are not its defaults is to set them, and nothing else
+# in this launcher prints them.
+"$LAUNCHER" --help > "$TEST_ROOT/help.out" 2>&1 || true
+grep -Fq 'AND WHERE THE LANE IS RUNNING IS EXPORTED BESIDE IT' "$TEST_ROOT/help.out" \
+    || fail "Amendment 18(a): --help does not say where host, os and container come from"; assertion
+for a18_word in linux macos wsl windows; do
+    grep -Fq "$a18_word" "$TEST_ROOT/help.out" \
+        || fail "Amendment 18(a): --help does not name the OS word '$a18_word', and the tooling drops any word that is not one of the four"; assertion
+done
 
 [[ "$scenarios" -eq "$EXPECTED_SCENARIOS" ]] \
     || fail "$scenarios scenarios ran, $EXPECTED_SCENARIOS expected — one was added or lost without saying so"

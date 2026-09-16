@@ -3175,8 +3175,21 @@ grep -Fxq 'LANES_WORKSTATION=' "$LANE_START_ENV_LOG" \
 scenario
 ws_launcher_code="$(awk '/^      cat <<.EOF.$/ { skip = 1 } !skip { print } skip && $0 == "EOF" { skip = 0 }' "$LAUNCHER" \
     | grep -v '^[[:space:]]*#')"
-[[ "$(grep -c 'hostname' <<<"$ws_launcher_code")" -eq 1 ]] \
-    || fail "Evidence 6: the launcher's shell reads hostname $(grep -c 'hostname' <<<"$ws_launcher_code") times, and one of them is outside the container fence"; assertion
+# TWO READS SINCE lane-collision-protocol AMENDMENT 18 CLAUSE (a)
+# (opensoft/workBenches#98): `lane_workstation`'s, and `lane_host`'s beside it —
+# the machine's own short name, which the amendment's record line carries next
+# to the workstation's. The count is kept because it is what catches a THIRD
+# read appearing somewhere this suite cannot reach, and the fence is now audited
+# structurally as well, because a count alone says nothing about which of the
+# two an edit moved out from under `lane_in_container`.
+[[ "$(grep -c 'hostname' <<<"$ws_launcher_code")" -eq 2 ]] \
+    || fail "Evidence 6 / Amendment 18(a): the launcher's shell reads hostname $(grep -c 'hostname' <<<"$ws_launcher_code") times, and the two it may have are lane_workstation's and lane_host's"; assertion
+ws_unfenced_hostname="$(awk '
+    /\$\(hostname/ { if (prev !~ /! lane_in_container/) unfenced = unfenced " " NR }
+    { prev = $0 }
+    END { print unfenced }' <<<"$ws_launcher_code")"
+[[ -z "$ws_unfenced_hostname" ]] \
+    || fail "Evidence 6 / Amendment 18(a): a hostname read at line(s)$ws_unfenced_hostname of the launcher's shell is not under '! lane_in_container', so a bench container would export its own id as a machine name"; assertion
 grep -Fq 'if [[ -z "$name" ]] && ! lane_in_container; then' <<<"$ws_launcher_code" \
     || fail "Evidence 6: the launcher's hostname read is not fenced on lane_in_container"; assertion
 grep -Fq 'name="${LANES_WORKSTATION:-}"' <<<"$ws_launcher_code" \
