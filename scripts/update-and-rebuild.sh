@@ -21,6 +21,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/image-names.sh"
+source "$SCRIPT_DIR/lib/cascade-image-validation.sh"
 # Windows shells often export USERNAME with different casing (e.g. Brett).
 # Default to the actual WSL/container user; use --user for an explicit override.
 USERNAME="$(whoami)"
@@ -29,9 +30,14 @@ PUSH=false
 BUILD_ALL=false
 CASCADE=false
 NO_CACHE=false
+WRITE_MANIFEST=false
 DATE_TAG=$(date '+%Y%m%d')
 LAYER3_BASE=""
+LAYER3_BASE_IMAGE_ID=""
 LAYER3_CHOWN=""
+declare -a CASCADE_IMAGES=()
+declare -a CASCADE_IMAGE_RECORDS=()
+declare -a CASCADE_LAYER3_IMAGES=()
 
 # Registry config
 REGISTRY_ENV="$REPO_DIR/config/registry.env"
@@ -56,11 +62,12 @@ while [[ $# -gt 0 ]]; do
         --push) PUSH=true; shift ;;
         --cascade) CASCADE=true; shift ;;
         --no-cache) NO_CACHE=true; shift ;;
+        --write-manifest) WRITE_MANIFEST=true; shift ;;
         --user) USERNAME="$2"; shift 2 ;;
         --base) LAYER3_BASE="$2"; shift 2 ;;
         --chown) LAYER3_CHOWN="$2"; shift 2 ;;
         -h|--help)
-            echo "Usage: $0 [--layer 0|1a|1b|1c|3] [--all] [--push] [--cascade] [--no-cache] [--user USERNAME]"
+            echo "Usage: $0 [--layer 0|1a|1b|1c|3] [--all] [--push] [--cascade] [--no-cache] [--write-manifest] [--user USERNAME]"
             echo ""
             echo "Options:"
             echo "  --layer LAYER   Rebuild a specific layer (0, 1a, 1b, 1c, 3)"
@@ -68,6 +75,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --push          Push rebuilt images to Docker Hub ($REGISTRY)"
             echo "  --cascade       Also rebuild all downstream layers that depend on the rebuilt layer"
             echo "  --no-cache      Force Docker to rerun install layers and pick up latest floating tools"
+            echo "  --write-manifest Write the post-build version manifest to config/version-manifest.json"
             echo "  --user NAME     Username for Layer 3 image tags (default: $(whoami))"
             echo "  --base IMAGE    Base image for Layer 3 (e.g. cpp-bench:latest)"
             echo "  --chown DIRS    Extra dirs to chown in Layer 3 (e.g. /opt/vcpkg)"
@@ -188,27 +196,23 @@ find_downstream_benches() {
 build_layer2_bench() {
     local bench_dir="$1"
     local bench_name
+    local image
+    local prebuild_image_records=""
     bench_name=$(basename "$bench_dir")
+    image="$(bench_dir_to_image_repo "$bench_name"):latest"
 
     echo ""
     echo -e "${BOLD}${CYAN}═══ Rebuilding Layer 2: $bench_name ═══${NC}"
 
-    # Look for a build script
+    # Only invoke helpers that are scoped to Layer 2. build-layer.sh is a full
+    # Layer 2 + Layer 3 lifecycle and would cross the live-activation boundary.
     local build_script=""
-    for candidate in \
-        "$bench_dir/build-layer2.sh" \
-        "$bench_dir/scripts/build-layer2.sh" \
-        "$bench_dir/build-layer.sh" \
-        "$bench_dir/scripts/build-layer.sh" \
-        "$bench_dir/build.sh" \
-        "$bench_dir/.devcontainer/build.sh"; do
-        if [ -x "$candidate" ]; then
-            build_script="$candidate"
-            break
-        fi
-    done
+    build_script="$(select_layer2_build_script "$bench_dir" || true)"
 
     if [ -n "$build_script" ]; then
+        prebuild_image_records="$(
+            capture_cascade_image_ids "$image" "$build_script" "$bench_dir" true
+        )"
         build_timer_start
         if [ "$NO_CACHE" = true ]; then
             DOCKER_BUILD_NO_CACHE=1 "$build_script" --user "$USERNAME" 2>/dev/null || \
@@ -229,6 +233,7 @@ build_layer2_bench() {
         done
 
         if [ -n "$dockerfile" ]; then
+            prebuild_image_records="$(capture_cascade_image_ids "$image" "" "$bench_dir")"
             build_timer_start
             local context_dir
             local image_repo
@@ -241,9 +246,14 @@ build_layer2_bench() {
                 "$context_dir"
             build_timer_end "Layer 2: $bench_name"
         else
-            echo -e "${YELLOW}  No build script or Dockerfile found in $bench_dir — skipping${NC}"
+            echo -e "${RED}✗ No supported build script or Dockerfile found in $bench_dir${NC}" >&2
+            return 1
         fi
     fi
+
+    record_rebuilt_cascade_image \
+        "$image" "$bench_name" "$build_script" "$bench_dir" "$prebuild_image_records"
+    record_cascade_layer3_base_if_captured "$image"
 }
 
 # Cascade rebuild all downstream dependents of a base image
@@ -405,16 +415,31 @@ build_layer3() {
         return 1
     fi
 
+    if ! LAYER3_BASE_IMAGE_ID="$(
+        docker image inspect --format '{{.Id}}' "$LAYER3_BASE" 2>/dev/null
+    )" || [[ ! "$LAYER3_BASE_IMAGE_ID" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
+        echo -e "${RED}✗ Could not resolve $LAYER3_BASE to an immutable image ID${NC}" >&2
+        return 1
+    fi
+
     build_timer_start
-    local chown_args=""
+    local -a build_args=(
+        --base "$LAYER3_BASE"
+        --base-image-id "$LAYER3_BASE_IMAGE_ID"
+        --user "$USERNAME"
+    )
     if [ -n "$LAYER3_CHOWN" ]; then
-        chown_args="--chown $LAYER3_CHOWN"
+        build_args+=(--chown "$LAYER3_CHOWN")
     fi
-    local no_cache_args=""
     if [ "$NO_CACHE" = true ]; then
-        no_cache_args="--no-cache"
+        build_args+=(--no-cache)
     fi
-    "$user_layer_dir/build.sh" --base "$LAYER3_BASE" --user "$USERNAME" $chown_args $no_cache_args
+    if [ -S /var/run/docker.sock ]; then
+        local docker_socket_gid
+        docker_socket_gid="$(stat -c '%g' /var/run/docker.sock)"
+        build_args+=(--docker-gid "$docker_socket_gid")
+    fi
+    "$user_layer_dir/build.sh" "${build_args[@]}"
     build_timer_end "Layer 3"
 }
 
@@ -429,6 +454,7 @@ echo "User: $USERNAME"
 echo "Registry: $REGISTRY"
 echo "Push: $PUSH"
 echo "No cache: $NO_CACHE"
+echo "Write manifest: $WRITE_MANIFEST"
 echo "Date: $(date '+%Y-%m-%d %H:%M:%S')"
 
 # Check Docker
@@ -506,12 +532,34 @@ echo "=========================================="
 echo -e "${GREEN}✓ Build complete in ${TOTAL_MINS}m ${TOTAL_SECS}s${NC}"
 echo "=========================================="
 
-# Run version check after build. A cascade touches multiple layers, so audit the
-# full stack rather than only the initially requested layer.
+# Run version checks after build. Cascades also probe each rebuilt Layer 2 image
+# and report Layer 3 activation state without changing live containers.
 echo ""
 echo -e "${CYAN}Running version check on rebuilt images...${NC}"
-if [ "$BUILD_ALL" = true ] || [ "$CASCADE" = true ]; then
-    "$SCRIPT_DIR/check-versions.sh" --user "$USERNAME"
+CHECK_ARGS=(--user "$USERNAME")
+if [ "$BUILD_ALL" = false ] && [ "$LAYER" = "3" ]; then
+    CHECK_ARGS+=(
+        --layer all
+        --images "$LAYER3_BASE"
+        --image-ids "$LAYER3_BASE=$LAYER3_BASE_IMAGE_ID"
+        --check-layer3
+    )
+elif [ "$BUILD_ALL" = true ] || [ "$CASCADE" = true ]; then
+    CHECK_ARGS+=(--layer all)
 else
-    "$SCRIPT_DIR/check-versions.sh" --layer "$LAYER" --user "$USERNAME"
+    CHECK_ARGS+=(--layer "$LAYER")
 fi
+
+if [ "$CASCADE" = true ] && [ "${#CASCADE_IMAGES[@]}" -gt 0 ]; then
+    CASCADE_IMAGE_LIST=$(IFS=,; echo "${CASCADE_IMAGES[*]}")
+    CASCADE_IMAGE_ID_LIST=$(IFS=,; echo "${CASCADE_IMAGE_RECORDS[*]}")
+    CHECK_ARGS+=(--images "$CASCADE_IMAGE_LIST" --image-ids "$CASCADE_IMAGE_ID_LIST")
+    if [ "${#CASCADE_LAYER3_IMAGES[@]}" -gt 0 ]; then
+        CASCADE_LAYER3_IMAGE_LIST=$(IFS=,; echo "${CASCADE_LAYER3_IMAGES[*]}")
+        CHECK_ARGS+=(--layer3-images "$CASCADE_LAYER3_IMAGE_LIST" --check-layer3)
+    fi
+fi
+if [ "$WRITE_MANIFEST" = true ]; then
+    CHECK_ARGS+=(--write-manifest)
+fi
+"$SCRIPT_DIR/check-versions.sh" "${CHECK_ARGS[@]}"

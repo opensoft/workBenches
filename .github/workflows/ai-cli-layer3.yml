@@ -5,6 +5,7 @@ on:
     paths:
       - .github/workflows/ai-cli-layer3.yml
       - base-image/Dockerfile
+      - base-image/ai-cli-contract.sh
       - base-image/ai-cli-install-helpers.sh
       - base-image/install-ai-clis.sh
       - devBenches/base-image/install-ai-clis.sh
@@ -12,11 +13,13 @@ on:
       - devcontainer.test/test-ensure-layer3-freshness.sh
       - devcontainer.test/test-layer3-codex-version.sh
       - scripts/ensure-layer3.sh
+      - scripts/lib/layer3-recipe.sh
       - user-layer/**
   pull_request:
     paths:
       - .github/workflows/ai-cli-layer3.yml
       - base-image/Dockerfile
+      - base-image/ai-cli-contract.sh
       - base-image/ai-cli-install-helpers.sh
       - base-image/install-ai-clis.sh
       - devBenches/base-image/install-ai-clis.sh
@@ -24,6 +27,7 @@ on:
       - devcontainer.test/test-ensure-layer3-freshness.sh
       - devcontainer.test/test-layer3-codex-version.sh
       - scripts/ensure-layer3.sh
+      - scripts/lib/layer3-recipe.sh
       - user-layer/**
   workflow_dispatch:
 

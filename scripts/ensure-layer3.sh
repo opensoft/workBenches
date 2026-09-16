@@ -13,6 +13,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=lib/layer3-recipe.sh
+source "$SCRIPT_DIR/lib/layer3-recipe.sh"
 
 # Defaults
 BASE_IMAGE=""
@@ -61,46 +63,31 @@ if [ -z "$BASE_IMAGE" ]; then
     exit 1
 fi
 
+# Derive the user image before the existing-image fast path so a user value
+# that would collide with the selected Layer 2 tag is rejected up front.
+BASE_NAME="${BASE_IMAGE%:*}"
+USER_IMAGE="${BASE_NAME}:${USERNAME}"
+
+# Validate the requested Layer 3 identity before the existing-image fast path.
+# Otherwise an invalid or colliding user could reuse or overwrite a Layer 2
+# image without reaching user-layer/build.sh's matching guard.
+if [ "$USERNAME" = "root" ] \
+    || [ "$USERNAME" = "latest" ] \
+    || [[ ! "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ ]] \
+    || [[ ! "$USER_UID" =~ ^[1-9][0-9]*$ ]] \
+    || [[ ! "$USER_GID" =~ ^[1-9][0-9]*$ ]] \
+    || [[ "$USER_IMAGE" == "$BASE_IMAGE" ]]; then
+    echo -e "${RED}✗ Layer 3 requires a valid non-root username and canonical positive UID/GID, with a user tag distinct from the base image${NC}" >&2
+    exit 1
+fi
+
 if [ -S /var/run/docker.sock ]; then
     DOCKER_SOCKET_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || true)
 fi
 
-# Derive the user image name: replace tag with username
-# e.g. cpp-bench:latest -> cpp-bench:brett
-BASE_NAME="${BASE_IMAGE%%:*}"
-USER_IMAGE="${BASE_NAME}:${USERNAME}"
-
 echo -e "${CYAN}ensure-layer3: Checking ${USER_IMAGE}...${NC}"
 
-layer3_recipe_sha256() {
-    local hash_tool
-    if command -v sha256sum >/dev/null 2>&1; then
-        hash_tool=sha256sum
-    elif command -v shasum >/dev/null 2>&1; then
-        hash_tool=shasum
-    else
-        echo "sha256sum or shasum is required to fingerprint the Layer 3 recipe" >&2
-        return 1
-    fi
-
-    (
-        cd "$LAYER3_RECIPE_DIR"
-        find . -type f -print \
-            | LC_ALL=C sort \
-            | while IFS= read -r recipe_file; do
-                if [[ "$hash_tool" == sha256sum ]]; then
-                    file_sha="$(sha256sum "$recipe_file" | awk '{print $1}')"
-                else
-                    file_sha="$(shasum -a 256 "$recipe_file" | awk '{print $1}')"
-                fi
-                printf '%s  %s\n' "$file_sha" "$recipe_file"
-            done \
-            | if [[ "$hash_tool" == sha256sum ]]; then sha256sum; else shasum -a 256; fi \
-            | awk '{print $1}'
-    )
-}
-
-LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256)"
+LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256 "$LAYER3_RECIPE_DIR")"
 if ! BASE_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$BASE_IMAGE" 2>/dev/null)" \
     || [[ ! "$BASE_IMAGE_ID" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
     echo -e "${RED}✗ Could not resolve ${BASE_IMAGE} to an immutable image ID${NC}" >&2
@@ -203,15 +190,19 @@ copy_image_file() {
     return "$status"
 }
 
-image_has_passwd_user() {
+image_user_identity_matches() {
     local image="$1"
     local username="$2"
+    local uid="$3"
+    local gid="$4"
     local passwd_file
     local status
 
     passwd_file="$(mktemp)"
     if copy_image_file "$image" "/etc/passwd" "$passwd_file"; then
-        awk -F: -v username="$username" '$1 == username { found = 1 } END { exit !found }' "$passwd_file"
+        awk -F: -v username="$username" -v uid="$uid" -v gid="$gid" \
+            '$1 == username && $3 == uid && $4 == gid { found = 1 } END { exit !found }' \
+            "$passwd_file"
         status=$?
     else
         status=1
@@ -280,8 +271,9 @@ if [ "$FORCE" = false ] && docker image inspect "$USER_IMAGE" >/dev/null 2>&1; t
     elif [[ -n "$BASE_CREATED" && -n "$USER_CREATED" ]]; then
         # Compare timestamps (ISO 8601 strings sort lexicographically)
         if [[ "$USER_CREATED" > "$BASE_CREATED" ]]; then
-            # Verify the user actually exists inside the image
-            if image_has_passwd_user "$USER_IMAGE" "$USERNAME"; then
+            # The tag is reusable only when it contains the requested host identity.
+            if image_user_identity_matches \
+                "$USER_IMAGE" "$USERNAME" "$USER_UID" "$USER_GID"; then
                 if [ -n "$DOCKER_SOCKET_GID" ] && \
                     ! image_user_primary_gid_matches "$USER_IMAGE" "$USERNAME" "$DOCKER_SOCKET_GID" && \
                     ! image_group_gid_has_member "$USER_IMAGE" "$DOCKER_SOCKET_GID" "$USERNAME"; then
@@ -297,7 +289,7 @@ if [ "$FORCE" = false ] && docker image inspect "$USER_IMAGE" >/dev/null 2>&1; t
                     fi
                 fi
             else
-                echo -e "${YELLOW}⟳ User '$USERNAME' missing from ${USER_IMAGE}, rebuilding...${NC}"
+                echo -e "${YELLOW}⟳ User '$USERNAME' in ${USER_IMAGE} does not match host UID:GID ${USER_UID}:${USER_GID}, rebuilding...${NC}"
             fi
         else
             echo -e "${YELLOW}⟳ ${USER_IMAGE} is stale (older than ${BASE_IMAGE}), rebuilding...${NC}"

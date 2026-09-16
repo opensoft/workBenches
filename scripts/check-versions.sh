@@ -2,29 +2,109 @@
 
 # Check installed tool versions across workBench container layers
 # Compares installed versions against upstream latest
-# Usage: ./check-versions.sh [--layer 0|1a|1b|1c|all] [--json]
+# Usage: ./check-versions.sh [--layer 0|1a|1b|1c|all] [--images image,...] [--image-ids image=id,...] [--layer3-images image,...] [--check-layer3] [--write-manifest] [--manifest-file FILE] [--json]
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/image-names.sh"
+# shellcheck source=lib/layer3-recipe.sh
+source "$SCRIPT_DIR/lib/layer3-recipe.sh"
+# shellcheck source=../base-image/ai-cli-contract.sh
+. "$REPO_DIR/base-image/ai-cli-contract.sh"
 # Windows shells often export USERNAME with different casing (e.g. Brett).
 # Default to the actual WSL/container user; use --user for an explicit override.
 USERNAME="$(whoami)"
+USER_UID="$(id -u)"
+USER_GID="$(id -g)"
 LAYER="all"
 JSON_OUTPUT=false
+CHECK_LAYER3=false
+WRITE_MANIFEST=false
 MANIFEST_FILE="$REPO_DIR/config/version-manifest.json"
+declare -a TARGET_IMAGES=()
+declare -a TARGET_IMAGE_ID_RECORDS=()
+declare -a LAYER3_TARGET_IMAGES=()
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         --layer) LAYER="$2"; shift 2 ;;
+        --images)
+            IFS=',' read -r -a TARGET_IMAGES <<< "$2"
+            shift 2
+            ;;
+        --image-ids)
+            IFS=',' read -r -a TARGET_IMAGE_ID_RECORDS <<< "$2"
+            shift 2
+            ;;
+        --layer3-images)
+            IFS=',' read -r -a LAYER3_TARGET_IMAGES <<< "$2"
+            shift 2
+            ;;
+        --check-layer3) CHECK_LAYER3=true; shift ;;
+        --write-manifest) WRITE_MANIFEST=true; shift ;;
+        --manifest-file) MANIFEST_FILE="$2"; shift 2 ;;
         --json) JSON_OUTPUT=true; shift ;;
         --user) USERNAME="$2"; shift 2 ;;
+        -h|--help)
+            echo "Usage: $0 [--layer 0|1a|1b|1c|all] [--images image,...] [--image-ids image=id,...] [--layer3-images image,...] [--check-layer3] [--write-manifest] [--manifest-file FILE] [--json] [--user USERNAME]"
+            echo ""
+            echo "  --images IMAGE,...  Verify required shared CLI commands in selected Layer 2 images"
+            echo "  --image-ids IMAGE=ID,... Pin selected image references to captured immutable IDs"
+            echo "  --layer3-images IMAGE,... Limit Layer 3 activation checks to personalized Layer 2 bases"
+            echo "  --check-layer3      Report Layer 3 image activation state without changing Docker state"
+            echo "  --write-manifest    Persist the version manifest (default: do not write)"
+            echo "  --manifest-file FILE Write inside config/ instead of the default manifest path"
+            echo "  --json              Print the manifest JSON to stdout"
+            echo "  WORKBENCHES_LAYER3_IDENTITY_TIMEOUT_SECONDS  Image-export timeout (default: 600)"
+            exit 0
+            ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
+
+target_image_count=0
+for target_image in "${TARGET_IMAGES[@]}"; do
+    [[ -n "$target_image" ]] && target_image_count=$((target_image_count + 1))
+done
+layer3_target_image_count=0
+for target_image in "${LAYER3_TARGET_IMAGES[@]}"; do
+    [[ -n "$target_image" ]] && layer3_target_image_count=$((layer3_target_image_count + 1))
+done
+if [ "$CHECK_LAYER3" = true ] && [ "$target_image_count" -eq 0 ]; then
+    echo "--check-layer3 requires --images IMAGE,..." >&2
+    exit 1
+fi
+if [ "$CHECK_LAYER3" = true ] && [ "$layer3_target_image_count" -eq 0 ]; then
+    LAYER3_TARGET_IMAGES=("${TARGET_IMAGES[@]}")
+fi
+if [ "$CHECK_LAYER3" = true ]; then
+    for layer3_target in "${LAYER3_TARGET_IMAGES[@]}"; do
+        [[ -n "$layer3_target" ]] || continue
+        layer3_target_selected=false
+        for selected_target in "${TARGET_IMAGES[@]}"; do
+            if [[ "$layer3_target" == "$selected_target" ]]; then
+                layer3_target_selected=true
+                break
+            fi
+        done
+        if [ "$layer3_target_selected" = false ]; then
+            echo "--layer3-images entry must also appear in --images: $layer3_target" >&2
+            exit 1
+        fi
+    done
+fi
+
+manifest_config_dir="$(realpath -m -- "$REPO_DIR/config")"
+manifest_target="$(realpath -m -- "$MANIFEST_FILE")"
+manifest_parent="$(dirname -- "$manifest_target")"
+if [[ "$manifest_parent" != "$manifest_config_dir" ]]; then
+    echo "Manifest output must stay inside $manifest_config_dir" >&2
+    exit 1
+fi
+MANIFEST_FILE="$manifest_target"
 
 # Colors
 RED='\033[0;31m'
@@ -36,6 +116,33 @@ BOLD='\033[1m'
 
 # JSON accumulator
 declare -a JSON_ENTRIES=()
+declare -a JSON_IMAGE_ENTRIES=()
+declare -A RUNNING_CONTAINER_BY_IMAGE=()
+declare -A RUNNING_IMAGE_ID_BY_KEY=()
+declare -A EXPECTED_IMAGE_IDS=()
+IMAGE_PROBE_FAILURES=0
+MANIFEST_IMAGE_ID_FAILURES=0
+LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256 "$REPO_DIR/user-layer")"
+LAYER3_IDENTITY_TIMEOUT_SECONDS="${WORKBENCHES_LAYER3_IDENTITY_TIMEOUT_SECONDS:-600}"
+if [[ ! "$LAYER3_IDENTITY_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "WORKBENCHES_LAYER3_IDENTITY_TIMEOUT_SECONDS must be a positive integer" >&2
+    exit 1
+fi
+DOCKER_SOCKET_PATH="${WORKBENCHES_DOCKER_SOCKET_PATH:-/var/run/docker.sock}"
+DOCKER_SOCKET_GID=""
+if [ -S "$DOCKER_SOCKET_PATH" ]; then
+    DOCKER_SOCKET_GID="$(stat -c '%g' "$DOCKER_SOCKET_PATH" 2>/dev/null || true)"
+fi
+
+for image_id_record in "${TARGET_IMAGE_ID_RECORDS[@]}"; do
+    image_reference="${image_id_record%%=*}"
+    expected_image_id="${image_id_record#*=}"
+    if [[ -z "$image_reference" || ! "$expected_image_id" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
+        echo "Invalid --image-ids entry: $image_id_record" >&2
+        exit 1
+    fi
+    EXPECTED_IMAGE_IDS["$image_reference"]="$expected_image_id"
+done
 
 # ========================================
 # HELPERS
@@ -89,6 +196,137 @@ container_version() {
     else
         echo "not installed"
     fi
+}
+
+probe_image_commands() {
+    local image="$1"
+    local timeout_seconds="${CONTAINER_VERSION_TIMEOUT:-90}"
+
+    run_with_optional_timeout "$timeout_seconds" docker run --rm \
+        --network none \
+        --cap-drop ALL \
+        --security-opt no-new-privileges \
+        --read-only \
+        --entrypoint="" \
+        "$image" \
+        sh -c '
+            for command do
+                command_path="$(command -v "$command" 2>/dev/null || true)"
+                if [ -n "$command_path" ]; then
+                    printf "ok\t%s\t%s\n" "$command" "$command_path"
+                else
+                    printf "missing\t%s\t\n" "$command"
+                fi
+            done
+        ' sh "${WORKBENCHES_REQUIRED_AI_CLIS[@]}"
+}
+
+image_id() {
+    docker image inspect --format '{{.Id}}' "$1" 2>/dev/null || true
+}
+
+image_id_if_present() {
+    local image="$1"
+    local output
+
+    if output="$(docker image inspect --format '{{.Id}}' "$image" 2>&1)"; then
+        if [[ -z "$output" ]]; then
+            echo "Docker returned an empty image ID for '$image'" >&2
+            return 2
+        fi
+        printf '%s\n' "$output"
+        return 0
+    fi
+
+    case "$output" in
+        *"No such image"*|*"No such object"*) return 1 ;;
+        *)
+            echo "Could not inspect Docker image '$image'${output:+: $output}" >&2
+            return 2
+            ;;
+    esac
+}
+
+image_repository_name() {
+    local reference="${1%%@*}"
+    local final_component="${reference##*/}"
+
+    [[ "$reference" == sha256:* ]] && return 0
+    if [[ "$final_component" == *:* ]]; then
+        reference="${reference%:*}"
+    fi
+    printf '%s\n' "$reference"
+}
+
+record_image() {
+    local image="$1"
+    local layer="$2"
+    local status="$3"
+    local id="${4:-}"
+    if [[ -z "$id" ]]; then
+        id=$(image_id "$image")
+    fi
+    JSON_IMAGE_ENTRIES+=("$(jq -cn \
+        --arg image "$image" \
+        --arg id "${id:-n/a}" \
+        --arg layer "$layer" \
+        --arg status "$status" \
+        '{image:$image,id:$id,layer:$layer,status:$status}')")
+}
+
+snapshot_running_containers() {
+    local timeout_seconds="${DOCKER_INSPECT_TIMEOUT:-30}"
+    local snapshot
+    local configured_image
+    local actual_image_id
+    local container_name
+    local layer3_username
+    local repository_name
+    local repository_key
+
+    if ! snapshot=$(run_with_optional_timeout "$timeout_seconds" \
+        docker container ls --format '{{.Names}}'); then
+        echo "Could not inspect running containers for Layer 3 activation state" >&2
+        return 1
+    fi
+    while IFS= read -r container_name; do
+        [[ -n "$container_name" ]] || continue
+        if ! actual_image_id=$(run_with_optional_timeout "$timeout_seconds" \
+            docker container inspect --format '{{.Image}}' "$container_name") \
+            || ! configured_image=$(run_with_optional_timeout "$timeout_seconds" \
+                docker container inspect --format '{{.Config.Image}}' "$container_name") \
+            || ! layer3_username=$(run_with_optional_timeout "$timeout_seconds" \
+                docker container inspect --format \
+                    '{{ index .Config.Labels "io.opensoft.workbenches.layer3.username" }}' \
+                    "$container_name"); then
+            echo "Could not inspect running container '$container_name' for Layer 3 activation state" >&2
+            return 1
+        fi
+        [[ -n "$actual_image_id" && -n "$configured_image" ]] || {
+            echo "Running container '$container_name' returned incomplete image metadata" >&2
+            return 1
+        }
+        [[ "$layer3_username" == "<no value>" ]] && layer3_username=""
+        RUNNING_CONTAINER_BY_IMAGE["$configured_image"]="$container_name"
+        RUNNING_CONTAINER_BY_IMAGE["$actual_image_id"]="$container_name"
+        RUNNING_IMAGE_ID_BY_KEY["$configured_image"]="$actual_image_id"
+        RUNNING_IMAGE_ID_BY_KEY["$actual_image_id"]="$actual_image_id"
+        if [[ "$layer3_username" == "$USERNAME" ]]; then
+            repository_name="$(image_repository_name "$configured_image")"
+            if [[ -n "$repository_name" ]]; then
+                repository_key="layer3-repository:$repository_name:$USERNAME"
+                RUNNING_CONTAINER_BY_IMAGE["$repository_key"]="$container_name"
+                RUNNING_IMAGE_ID_BY_KEY["$repository_key"]="$actual_image_id"
+            else
+                # Docker may report Config.Image as only an immutable ID.
+                # Without a repository we cannot associate it more narrowly,
+                # so conservatively defer activation for this Layer 3 user.
+                repository_key="layer3-unassociated-user:$USERNAME"
+                RUNNING_CONTAINER_BY_IMAGE["$repository_key"]="$container_name"
+                RUNNING_IMAGE_ID_BY_KEY["$repository_key"]="$actual_image_id"
+            fi
+        fi
+    done <<< "$snapshot"
 }
 
 # Antigravity does not currently publish through npm. Its CLI changelog exposes
@@ -158,8 +396,15 @@ report_tool() {
         printf "  ${color}%-3s${NC} %-25s %-18s %-18s\n" "$status" "$tool" "$installed" "$latest"
     fi
 
-    # Accumulate JSON
-    JSON_ENTRIES+=("{\"tool\":\"$tool\",\"layer\":\"$layer\",\"installed\":\"$installed\",\"latest\":\"$latest\",\"status\":\"$([ "$status" = "✓" ] && echo "current" || ([ "$status" = "⬆" ] && echo "outdated" || echo "missing"))\"}")
+    local status_name
+    status_name="$([ "$status" = "✓" ] && echo "current" || ([ "$status" = "⬆" ] && echo "outdated" || echo "missing"))"
+    JSON_ENTRIES+=("$(jq -cn \
+        --arg tool "$tool" \
+        --arg layer "$layer" \
+        --arg installed "$installed" \
+        --arg latest "$latest" \
+        --arg status "$status_name" \
+        '{tool:$tool,layer:$layer,installed:$installed,latest:$latest,status:$status}')")
 }
 
 report_optional_tool() {
@@ -182,7 +427,12 @@ report_optional_tool() {
         if [ "$JSON_OUTPUT" = false ]; then
             printf "  ${GREEN}%-3s${NC} %-25s %-18s %-18s\n" "✓" "$tool" "$installed" "$latest"
         fi
-        JSON_ENTRIES+=("{\"tool\":\"$tool\",\"layer\":\"$layer\",\"installed\":\"$installed\",\"latest\":\"$latest\",\"status\":\"optional\"}")
+        JSON_ENTRIES+=("$(jq -cn \
+            --arg tool "$tool" \
+            --arg layer "$layer" \
+            --arg installed "$installed" \
+            --arg latest "$latest" \
+            '{tool:$tool,layer:$layer,installed:$installed,latest:$latest,status:"optional"}')")
     else
         report_tool "$tool" "$installed_raw" "$latest_raw" "$layer"
     fi
@@ -206,6 +456,262 @@ skip_layer() {
     else
         echo "$message" >&2
     fi
+}
+
+check_selected_image() {
+    local image="$1"
+    local command
+    local command_path
+    local probe_output
+    local probe_status
+    local probe_index=0
+    local expected_id="${EXPECTED_IMAGE_IDS[$image]:-}"
+    local probe_reference
+    local inspected_id
+    local inspect_status=0
+    local passed=true
+
+    if [[ -n "$expected_id" ]]; then
+        probe_reference="$expected_id"
+        if inspected_id="$(image_id_if_present "$probe_reference")"; then
+            :
+        else
+            inspect_status=$?
+        fi
+    else
+        if probe_reference="$(image_id_if_present "$image")"; then
+            expected_id="$probe_reference"
+        else
+            inspect_status=$?
+        fi
+    fi
+    if [[ "$inspect_status" -ne 0 ]]; then
+        if [[ "$inspect_status" -eq 1 ]]; then
+            echo -e "${RED}✗ Selected Layer 2 image ($image) not found${NC}" >&2
+            record_image "$image" "2" "missing" "${expected_id:-n/a}"
+        else
+            echo -e "${RED}✗ Selected Layer 2 image ($image) could not be inspected${NC}" >&2
+            record_image "$image" "2" "inspection-failed" "${expected_id:-n/a}"
+        fi
+        IMAGE_PROBE_FAILURES=$((IMAGE_PROBE_FAILURES + 1))
+        return
+    fi
+    EXPECTED_IMAGE_IDS["$image"]="$expected_id"
+
+    print_layer_header "Layer 2: Selected Bench" "$image"
+    if ! probe_output=$(probe_image_commands "$probe_reference" 2>/dev/null); then
+        echo -e "${RED}✗ Selected Layer 2 image ($image) could not be probed${NC}" >&2
+        record_image "$image" "2" "probe-failed" "$expected_id"
+        IMAGE_PROBE_FAILURES=$((IMAGE_PROBE_FAILURES + 1))
+        return
+    fi
+    while IFS=$'\t' read -r probe_status command command_path; do
+        [[ -n "$command" ]] || continue
+        if [[ "$probe_index" -ge "${#WORKBENCHES_REQUIRED_AI_CLIS[@]}" \
+            || "$command" != "${WORKBENCHES_REQUIRED_AI_CLIS[$probe_index]}" ]]; then
+            echo -e "${RED}✗ Unexpected command probe result for $image: $command${NC}" >&2
+            passed=false
+            continue
+        fi
+        probe_index=$((probe_index + 1))
+        if [[ "$probe_status" == "ok" ]]; then
+            if [ "$JSON_OUTPUT" = false ]; then
+                printf "  ${GREEN}%-3s${NC} %-25s %s\n" "✓" "$command" "$command_path"
+            fi
+        elif [[ "$probe_status" == "missing" ]]; then
+            printf "  ${RED}%-3s${NC} %-25s missing in %s\n" \
+                "✗" "$command" "$image" >&2
+            passed=false
+        else
+            echo -e "${RED}✗ Invalid command probe status for $image: $probe_status${NC}" >&2
+            passed=false
+        fi
+    done <<< "$probe_output"
+    if [[ "$probe_index" -ne "${#WORKBENCHES_REQUIRED_AI_CLIS[@]}" ]]; then
+        echo -e "${RED}✗ Incomplete command probe results for $image${NC}" >&2
+        passed=false
+    fi
+
+    if [ "$passed" = true ]; then
+        record_image "$image" "2" "verified" "$expected_id"
+    else
+        record_image "$image" "2" "missing-required-cli" "$expected_id"
+        IMAGE_PROBE_FAILURES=$((IMAGE_PROBE_FAILURES + 1))
+    fi
+}
+
+check_selected_images() {
+    local image
+
+    for image in "${TARGET_IMAGES[@]}"; do
+        [[ -n "$image" ]] || continue
+        check_selected_image "$image"
+    done
+}
+
+layer3_identity_is_current() {
+    local image="$1"
+    local image_username
+    local image_uid
+    local image_gid
+    local image_docker_gid
+    local -a pipeline_status
+
+    image_username="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.username" }}' "$image" 2>/dev/null)" \
+        || return 2
+    image_uid="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.uid" }}' "$image" 2>/dev/null)" \
+        || return 2
+    image_gid="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.gid" }}' "$image" 2>/dev/null)" \
+        || return 2
+    image_docker_gid="$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.docker-socket-gid" }}' "$image" 2>/dev/null)" \
+        || return 2
+
+    [[ "$image_username" == "$USERNAME" \
+        && "$image_uid" == "$USER_UID" \
+        && "$image_gid" == "$USER_GID" ]] || return 1
+    if [[ -n "$DOCKER_SOCKET_GID" && "$image_docker_gid" != "$DOCKER_SOCKET_GID" ]]; then
+        return 1
+    fi
+
+    run_with_optional_timeout "$LAYER3_IDENTITY_TIMEOUT_SECONDS" \
+        docker image save "$image" 2>/dev/null \
+        | python3 "$SCRIPT_DIR/lib/check-image-identity.py" \
+            "$USERNAME" "$USER_UID" "$USER_GID" "$DOCKER_SOCKET_GID"
+    pipeline_status=("${PIPESTATUS[@]}")
+    if [[ "${pipeline_status[0]}" -ne 0 ]]; then
+        return 2
+    fi
+    return "${pipeline_status[1]}"
+}
+
+check_layer3_image() {
+    local base_image="$1"
+    local base_image_id="${EXPECTED_IMAGE_IDS[$base_image]:-$base_image}"
+    local user_image="${base_image%:*}:${USERNAME}"
+    local running_container
+    local expected_base_image_id
+    local user_base_image_id
+    local user_image_id
+    local user_image_id_status=0
+    local user_recipe
+    local user_repository_name
+    local running_image_id=""
+    local repository_key
+    local metadata_inspection_failed=false
+    local identity_status=0
+
+    if user_image_id="$(image_id_if_present "$user_image")"; then
+        :
+    else
+        user_image_id_status=$?
+    fi
+    running_container="${RUNNING_CONTAINER_BY_IMAGE[$user_image]:-}"
+    running_image_id="${RUNNING_IMAGE_ID_BY_KEY[$user_image]:-}"
+    if [[ -z "$running_container" && -n "$user_image_id" ]]; then
+        running_container="${RUNNING_CONTAINER_BY_IMAGE[$user_image_id]:-}"
+        running_image_id="${RUNNING_IMAGE_ID_BY_KEY[$user_image_id]:-}"
+    fi
+    if [[ -z "$running_container" ]]; then
+        user_repository_name="$(image_repository_name "$user_image")"
+        repository_key="layer3-repository:$user_repository_name:$USERNAME"
+        running_container="${RUNNING_CONTAINER_BY_IMAGE[$repository_key]:-}"
+        running_image_id="${RUNNING_IMAGE_ID_BY_KEY[$repository_key]:-}"
+    fi
+    if [[ -z "$running_container" ]]; then
+        repository_key="layer3-unassociated-user:$USERNAME"
+        running_container="${RUNNING_CONTAINER_BY_IMAGE[$repository_key]:-}"
+        running_image_id="${RUNNING_IMAGE_ID_BY_KEY[$repository_key]:-}"
+    fi
+    if [[ -n "$running_container" ]]; then
+        if [ "$JSON_OUTPUT" = false ]; then
+            echo -e "${YELLOW}↷ Layer 3 $user_image activation deferred by running container '$running_container'${NC}"
+        fi
+        record_image "$user_image" "3" "activation-deferred-running" "$running_image_id"
+        return
+    fi
+
+    if [[ "$user_image_id_status" -eq 2 ]]; then
+        echo "Could not inspect Layer 3 image $user_image; activation state is unknown" >&2
+        record_image "$user_image" "3" "activation-inspection-failed" "n/a"
+        IMAGE_PROBE_FAILURES=$((IMAGE_PROBE_FAILURES + 1))
+        return
+    fi
+
+    if [[ -z "$user_image_id" ]]; then
+        if [ "$JSON_OUTPUT" = false ]; then
+            echo -e "${YELLOW}↷ Layer 3 $user_image is missing; activation has not occurred${NC}"
+        fi
+        record_image "$user_image" "3" "activation-missing"
+        MANIFEST_IMAGE_ID_FAILURES=$((MANIFEST_IMAGE_ID_FAILURES + 1))
+        return
+    fi
+
+    if ! expected_base_image_id=$(docker image inspect --format '{{.Id}}' "$base_image_id" 2>/dev/null) \
+        || [[ ! "$expected_base_image_id" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
+        metadata_inspection_failed=true
+    fi
+    if ! user_recipe=$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.recipe-sha256" }}' "$user_image_id" 2>/dev/null); then
+        metadata_inspection_failed=true
+    fi
+    if ! user_base_image_id=$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.base-image-id" }}' "$user_image_id" 2>/dev/null); then
+        metadata_inspection_failed=true
+    fi
+    if [[ "$metadata_inspection_failed" == true ]]; then
+        echo "Could not inspect Layer 3 metadata for $user_image; activation state is unknown" >&2
+        record_image "$user_image" "3" "activation-inspection-failed" "$user_image_id"
+        IMAGE_PROBE_FAILURES=$((IMAGE_PROBE_FAILURES + 1))
+    elif [[ "$user_base_image_id" != "$expected_base_image_id" ]]; then
+        if [ "$JSON_OUTPUT" = false ]; then
+            echo -e "${YELLOW}↷ Layer 3 $user_image was built from a different base image; activation is required${NC}"
+        fi
+        record_image "$user_image" "3" "activation-stale" "$user_image_id"
+    elif [[ "$user_recipe" != "$LAYER3_RECIPE_SHA256" ]]; then
+        if [ "$JSON_OUTPUT" = false ]; then
+            echo -e "${YELLOW}↷ Layer 3 $user_image has a stale recipe; activation is required${NC}"
+        fi
+        record_image "$user_image" "3" "activation-stale" "$user_image_id"
+    else
+        layer3_identity_is_current "$user_image_id" || identity_status=$?
+        case "$identity_status" in
+            0)
+                if [ "$JSON_OUTPUT" = false ]; then
+                    echo -e "${GREEN}✓ Layer 3 $user_image is current${NC}"
+                fi
+                record_image "$user_image" "3" "current" "$user_image_id"
+                ;;
+            1)
+                if [ "$JSON_OUTPUT" = false ]; then
+                    echo -e "${YELLOW}↷ Layer 3 $user_image has stale user/group configuration; activation is required${NC}"
+                fi
+                record_image "$user_image" "3" "activation-stale" "$user_image_id"
+                ;;
+            *)
+                echo "Could not inspect Layer 3 identity for $user_image; activation state is unknown" >&2
+                record_image "$user_image" "3" "activation-inspection-failed" "$user_image_id"
+                IMAGE_PROBE_FAILURES=$((IMAGE_PROBE_FAILURES + 1))
+                ;;
+        esac
+    fi
+}
+
+check_selected_layer3_images() {
+    local image
+
+    [ "$CHECK_LAYER3" = true ] || return 0
+    if ! snapshot_running_containers; then
+        for image in "${LAYER3_TARGET_IMAGES[@]}"; do
+            [[ -n "$image" ]] || continue
+            echo "Could not determine whether Layer 3 ${image%:*}:${USERNAME} is running; activation state is unknown" >&2
+            record_image "${image%:*}:${USERNAME}" "3" \
+                "activation-inspection-failed" "n/a"
+            IMAGE_PROBE_FAILURES=$((IMAGE_PROBE_FAILURES + 1))
+        done
+        return
+    fi
+    for image in "${LAYER3_TARGET_IMAGES[@]}"; do
+        [[ -n "$image" ]] || continue
+        check_layer3_image "$image"
+    done
 }
 
 # ========================================
@@ -489,6 +995,9 @@ case "$LAYER" in
         ;;
 esac
 
+check_selected_images
+check_selected_layer3_images
+
 # Count outdated
 outdated_count=0
 for entry in "${JSON_ENTRIES[@]}"; do
@@ -499,30 +1008,56 @@ done
 
 if [ "$JSON_OUTPUT" = false ]; then
     echo ""
-    echo -e "${BOLD}Summary:${NC} ${#JSON_ENTRIES[@]} tools checked, ${outdated_count} outdated"
+    echo -e "${BOLD}Summary:${NC} ${#JSON_ENTRIES[@]} tools checked, ${outdated_count} outdated, ${#JSON_IMAGE_ENTRIES[@]} images recorded"
     if [ "$outdated_count" -gt 0 ]; then
         echo -e "${YELLOW}Run scripts/update-and-rebuild.sh to update outdated layers${NC}"
     fi
 fi
 
-# Write manifest
-echo "{" > "$MANIFEST_FILE"
-echo "  \"checked_at\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\"," >> "$MANIFEST_FILE"
-echo "  \"user\": \"$USERNAME\"," >> "$MANIFEST_FILE"
-echo "  \"tools\": [" >> "$MANIFEST_FILE"
-for i in "${!JSON_ENTRIES[@]}"; do
-    if [ $i -lt $((${#JSON_ENTRIES[@]} - 1)) ]; then
-        echo "    ${JSON_ENTRIES[$i]}," >> "$MANIFEST_FILE"
-    else
-        echo "    ${JSON_ENTRIES[$i]}" >> "$MANIFEST_FILE"
+render_manifest() {
+    local tools_json
+    local images_json
+
+    tools_json="$(printf '%s\n' "${JSON_ENTRIES[@]}" | jq -s '.')"
+    images_json="$(printf '%s\n' "${JSON_IMAGE_ENTRIES[@]}" | jq -s '.')"
+    jq -n \
+        --arg checked_at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+        --arg user "$USERNAME" \
+        --argjson tools "$tools_json" \
+        --argjson images "$images_json" \
+        '{checked_at:$checked_at,user:$user,tools:$tools,images:$images}'
+}
+
+manifest_json=""
+if [ "$WRITE_MANIFEST" = true ] || [ "$JSON_OUTPUT" = true ]; then
+    if ! manifest_json="$(render_manifest)"; then
+        echo "Could not render the version manifest" >&2
+        exit 1
     fi
-done
-echo "  ]" >> "$MANIFEST_FILE"
-echo "}" >> "$MANIFEST_FILE"
+fi
+
+if [ "$WRITE_MANIFEST" = true ] \
+    && [ "$IMAGE_PROBE_FAILURES" -eq 0 ] \
+    && [ "$MANIFEST_IMAGE_ID_FAILURES" -eq 0 ]; then
+    manifest_temp="$(mktemp "$manifest_config_dir/.version-manifest.XXXXXX")"
+    if ! printf '%s\n' "$manifest_json" > "$manifest_temp" || ! mv -f -- "$manifest_temp" "$MANIFEST_FILE"; then
+        rm -f -- "$manifest_temp"
+        echo "Could not atomically write the version manifest" >&2
+        exit 1
+    fi
+    if [ "$JSON_OUTPUT" = false ]; then
+        echo ""
+        echo "Version manifest written to ${MANIFEST_FILE#$REPO_DIR/}"
+    fi
+elif [ "$WRITE_MANIFEST" = true ]; then
+    echo "Version manifest not written because an image probe failed or an immutable image ID is missing" >&2
+fi
 
 if [ "$JSON_OUTPUT" = true ]; then
-    cat "$MANIFEST_FILE"
-else
-    echo ""
-    echo "Version manifest written to config/version-manifest.json"
+    printf '%s\n' "$manifest_json"
+fi
+
+if [ "$IMAGE_PROBE_FAILURES" -gt 0 ] \
+    || { [ "$WRITE_MANIFEST" = true ] && [ "$MANIFEST_IMAGE_ID_FAILURES" -gt 0 ]; }; then
+    exit 1
 fi
