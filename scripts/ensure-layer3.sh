@@ -101,6 +101,11 @@ layer3_recipe_sha256() {
 }
 
 LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256)"
+if ! BASE_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$BASE_IMAGE" 2>/dev/null)" \
+    || [[ ! "$BASE_IMAGE_ID" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
+    echo -e "${RED}✗ Could not resolve ${BASE_IMAGE} to an immutable image ID${NC}" >&2
+    exit 1
+fi
 
 running_container_for_image() {
     local container_id
@@ -266,8 +271,11 @@ if [ "$FORCE" = false ] && docker image inspect "$USER_IMAGE" >/dev/null 2>&1; t
     BASE_CREATED=$(docker inspect --format '{{.Created}}' "$BASE_IMAGE" 2>/dev/null)
     USER_CREATED=$(docker inspect --format '{{.Created}}' "$USER_IMAGE" 2>/dev/null)
     IMAGE_RECIPE_SHA256=$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.recipe-sha256" }}' "$USER_IMAGE" 2>/dev/null || true)
+    IMAGE_BASE_IMAGE_ID=$(docker image inspect --format '{{ index .Config.Labels "io.opensoft.workbenches.layer3.base-image-id" }}' "$USER_IMAGE" 2>/dev/null || true)
 
-    if [[ "$IMAGE_RECIPE_SHA256" != "$LAYER3_RECIPE_SHA256" ]]; then
+    if [[ "$IMAGE_BASE_IMAGE_ID" != "$BASE_IMAGE_ID" ]]; then
+        echo -e "${YELLOW}⟳ ${USER_IMAGE} was built from a different base image, rebuilding...${NC}"
+    elif [[ "$IMAGE_RECIPE_SHA256" != "$LAYER3_RECIPE_SHA256" ]]; then
         echo -e "${YELLOW}⟳ ${USER_IMAGE} was built from a different Layer 3 recipe, rebuilding...${NC}"
     elif [[ -n "$BASE_CREATED" && -n "$USER_CREATED" ]]; then
         # Compare timestamps (ISO 8601 strings sort lexicographically)

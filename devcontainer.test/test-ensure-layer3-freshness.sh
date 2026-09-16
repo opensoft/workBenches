@@ -23,6 +23,8 @@ case "$1 $2" in
         if [[ "$3" == "--format" ]]; then
             if [[ "$4" == *recipe-sha256* ]]; then
                 printf '%s\n' "${TEST_IMAGE_RECIPE_SHA256:-}"
+            elif [[ "$4" == *base-image-id* ]]; then
+                printf '%s\n' "${TEST_IMAGE_BASE_IMAGE_ID:-}"
             elif [[ "$4" == *'.Id'* ]]; then
                 printf '%s\n' 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
             else
@@ -115,10 +117,16 @@ run_check() {
 }
 
 export TEST_IMAGE_RECIPE_SHA256=stale
+export TEST_IMAGE_BASE_IMAGE_ID=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 run_check
 grep -q '^build ' "$DOCKER_LOG"
 
 export TEST_IMAGE_RECIPE_SHA256="$(recipe_sha256)"
+export TEST_IMAGE_BASE_IMAGE_ID=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+run_check
+grep -q '^build ' "$DOCKER_LOG"
+
+export TEST_IMAGE_BASE_IMAGE_ID=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 export TEST_STALE_CONTAINER=true
 run_check
 if grep -q '^build ' "$DOCKER_LOG"; then

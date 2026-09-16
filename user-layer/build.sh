@@ -143,6 +143,7 @@ echo "Building $OUTPUT_IMAGE..."
 docker build \
     $([ "$NO_CACHE" = true ] && printf '%s\n' "--no-cache") \
     --build-arg BASE_IMAGE="$BASE_IMAGE_ID" \
+    --build-arg BASE_IMAGE_ID="$BASE_IMAGE_ID" \
     --build-arg USERNAME="$USERNAME" \
     --build-arg USER_UID="$USER_UID" \
     --build-arg USER_GID="$USER_GID" \

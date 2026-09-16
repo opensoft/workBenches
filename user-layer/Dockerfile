@@ -29,12 +29,14 @@ ARG USER_GID=1000
 ARG DOCKER_SOCKET_GID=""
 ARG EXTRA_CHOWN_DIRS=""
 ARG LAYER3_RECIPE_SHA256="unknown"
+ARG BASE_IMAGE_ID="unknown"
 # Keep the writable user overlay aligned with the exact shared Layer 0
 # version. user-layer/build.sh derives this value from BASE_IMAGE; direct
 # Dockerfile callers must pass an exact reviewed version.
 ARG CODEX_VERSION=""
 
 LABEL io.opensoft.workbenches.layer3.recipe-sha256="${LAYER3_RECIPE_SHA256}"
+LABEL io.opensoft.workbenches.layer3.base-image-id="${BASE_IMAGE_ID}"
 
 USER root
 

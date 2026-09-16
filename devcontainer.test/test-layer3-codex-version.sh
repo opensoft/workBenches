@@ -46,6 +46,7 @@ run_build() {
 run_build
 grep -Fq -- "run --rm --network none --entrypoint= $base_image_id sh -c codex --version" "$docker_log"
 grep -Fq -- "--build-arg BASE_IMAGE=$base_image_id" "$docker_log"
+grep -Fq -- "--build-arg BASE_IMAGE_ID=$base_image_id" "$docker_log"
 grep -Fq -- '--build-arg CODEX_VERSION=0.199.0' "$docker_log"
 grep -Fq -- "30s docker run --rm --network none --entrypoint= $base_image_id sh -c codex --version" "$timeout_log"
 
@@ -65,6 +66,7 @@ fi
 run_build --codex-version 0.200.0
 grep -Fq -- '--build-arg CODEX_VERSION=0.200.0' "$docker_log"
 grep -Fq -- "--build-arg BASE_IMAGE=$base_image_id" "$docker_log"
+grep -Fq -- "--build-arg BASE_IMAGE_ID=$base_image_id" "$docker_log"
 if grep -Fq -- 'run --rm --network none' "$docker_log"; then
     echo 'explicit Codex version unexpectedly probed the base image' >&2
     exit 1
