@@ -2,6 +2,15 @@
 # Profile launches use the newest locally installed native Claude Code binary.
 set -euo pipefail
 
+# A caller may itself be a claude-profile tmux child or lane. Neither the
+# normal launches nor the explicit CLAUDE_BIN case should inherit that routing.
+unset TMUX TMUX_PANE WORKBENCHES_CLAUDE_TMUX WORKBENCHES_CLAUDE_TMUX_CHILD \
+  WORKBENCHES_CLAUDE_WINDOW WORKBENCHES_CLAUDE_WINDOW_ID \
+  WORKBENCHES_CLAUDE_WINDOW_REF WORKBENCHES_TMUX_SESSION \
+  WORKBENCHES_TMUX_PANE CLAUDE_LANE CLAUDE_NO_LANE CLAUDE_LANE_DIR \
+  LANES_WORKSTATION LANES_HOST LANES_OS LANES_CONTAINER PROJECTS_ROOT \
+  AGENT_PROTOCOL_ROOT 2>/dev/null || true
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
 launcher="${1:-$repo_root/base-image/files/claude-profile}"

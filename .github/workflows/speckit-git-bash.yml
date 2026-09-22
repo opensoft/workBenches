@@ -24,6 +24,7 @@ on:
       - devcontainer.test/test-setup-estate-commands.sh
       - devcontainer.test/test-base-image-dockerfile.sh
       - devcontainer.test/test-claude-profile-name-guard-hook.sh
+      - devcontainer.test/test-claude-profile-binary-selection.sh
       - scripts/setup-workspace-repo.sh
       - devcontainer.test/test-setup-workspace-repo.sh
       - scripts/setup-claude-profiles.sh
@@ -57,6 +58,7 @@ on:
       - devcontainer.test/test-setup-estate-commands.sh
       - devcontainer.test/test-base-image-dockerfile.sh
       - devcontainer.test/test-claude-profile-name-guard-hook.sh
+      - devcontainer.test/test-claude-profile-binary-selection.sh
       - scripts/setup-workspace-repo.sh
       - devcontainer.test/test-setup-workspace-repo.sh
       - scripts/setup-claude-profiles.sh
@@ -119,6 +121,14 @@ jobs:
 
       - name: Run the claude-profile name-guard regression test
         run: bash ./devcontainer.test/test-claude-profile-name-guard-hook.sh
+
+      - name: Run the claude-profile binary-selection regression test
+        env:
+          WORKBENCHES_CLAUDE_TMUX_CHILD: "1"
+          WORKBENCHES_CLAUDE_WINDOW: ambient-lane
+          WORKBENCHES_CLAUDE_WINDOW_ID: "@999"
+          CLAUDE_LANE: ambient-lane
+        run: bash ./devcontainer.test/test-claude-profile-binary-selection.sh
 
       # lane-collision-protocol Amendment 9 adoption act 4b. This suite is the
       # guard on the act's deletion -- that scripts/setup-claude-profiles.sh no
