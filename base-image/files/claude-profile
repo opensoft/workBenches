@@ -470,9 +470,38 @@ load_profile_setup_token() {
   export CLAUDE_CODE_OAUTH_TOKEN
 }
 
-claude_bin="${CLAUDE_BIN:-$(command -v claude || true)}"
-if [[ -z "$claude_bin" && -x "$HOME/.local/bin/claude" ]]; then
-  claude_bin="$HOME/.local/bin/claude"
+latest_installed_claude() {
+  local versions_dir="$HOME/.local/share/claude/versions"
+  local candidate version major minor patch
+  local best="" best_major=-1 best_minor=-1 best_patch=-1
+
+  for candidate in "$versions_dir"/*; do
+    [[ -f "$candidate" && -x "$candidate" && ! -L "$candidate" ]] || continue
+    version="${candidate##*/}"
+    [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || continue
+    major=$((10#${BASH_REMATCH[1]}))
+    minor=$((10#${BASH_REMATCH[2]}))
+    patch=$((10#${BASH_REMATCH[3]}))
+    if (( major > best_major ||
+          (major == best_major && minor > best_minor) ||
+          (major == best_major && minor == best_minor && patch > best_patch) )); then
+      best="$candidate"
+      best_major=$major
+      best_minor=$minor
+      best_patch=$patch
+    fi
+  done
+  printf '%s' "$best"
+}
+
+if [[ -n "${CLAUDE_BIN:-}" ]]; then
+  claude_bin="$CLAUDE_BIN"
+else
+  claude_bin="$(latest_installed_claude)"
+  if [[ -z "$claude_bin" ]]; then
+    claude_bin="$(command -v claude || true)"
+    [[ -n "$claude_bin" || ! -x "$HOME/.local/bin/claude" ]] || claude_bin="$HOME/.local/bin/claude"
+  fi
 fi
 mcp_sync="${WORKBENCHES_MCP_SYNC_BIN:-$(command -v workbenches-mcp-sync || true)}"
 if [[ -z "$mcp_sync" ]]; then
