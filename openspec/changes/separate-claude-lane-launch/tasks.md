@@ -11,4 +11,4 @@
 
 ## 3. Integration
 
-- [ ] 3.1 Pin the landed openRepoTools version, validate the OpenSpec change and full PR checks, and verify the merged workBenches PR contains the new command and restart contract.
+- [x] 3.1 Pin the landed openRepoTools version, validate the OpenSpec change and full PR checks, and verify the merged workBenches PR contains the new command and restart contract.
