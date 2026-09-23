@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Regression test for scripts/setup-estate-commands.sh (opensoft/workBenches#37,
 # grown for opensoft/openRepoTools#26 and re-grown for opensoft/openRepoTools
-# #45): the host's openRepoShape, and openRepoTools's own TWENTY-SIX
-# artifacts -- the TWELVE files `openRepoTools --install` places on $PATH
+# #45): the host's openRepoShape, and openRepoTools's own TWENTY-SEVEN
+# artifacts -- the THIRTEEN files `openRepoTools --install` places on $PATH
 # (itself, park, resume, status, lane, lanes, lane-handoff, and the four
 # lane helpers `lanes-edit.sh`, `lane-start`, `lane-end` and `link-estates`
 # with the alias table `repos.tsv` they read), the `handoff`, `lane-swap`
 # and `restart` skills, the `handoff`, `ctx` and `swap` command files, and
 # the merged `SessionStart` and `UserPromptSubmit` entries in
 # `~/.claude/settings.json` -- all come from workBenches' own vendored pin
-# (EIGHTEEN pinned openrepotools paths, plus openRepoShape's own two), and
+# (NINETEEN pinned openrepotools paths, plus openRepoShape's own two), and
 # the script places them, re-places them when they differ from the pin
 # (either direction), and refuses to place anything when the vendored
 # copies themselves no longer match the pin. Every scenario runs with $HOME
@@ -30,7 +30,7 @@
 # shim transactions (D4), the pin file itself missing, and the placed
 # files' mode. D3 now has two parts, both inside scenario (k): the first
 # proves scripts/setup-estate-commands.sh's OWN pre-flight (`require_pin_row`,
-# now checking all eighteen openrepotools paths) refuses a documented
+# now checking all nineteen openrepotools paths) refuses a documented
 # row-and-file removal before either shim runs, so no fetch is ever
 # reachable through this script's front door -- exactly the guarantee this
 # scenario always proved, just extended past the original five names. The
@@ -62,10 +62,10 @@ PARK_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/park"
 RESUME_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/resume"
 STATUS_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/status"
 
-# THE TWELVE FILES `openRepoTools --install` places on $PATH (openRepoTools#26
+# THE THIRTEEN FILES `openRepoTools --install` places on $PATH (openRepoTools#26
 # and #45). One list, so scenarios (a), (b) and (l) cannot disagree about
 # what a complete bin-directory install is.
-TOOLS_FILES=(openRepoTools park resume status lane lanes lane-handoff lanes-edit.sh lane-start lane-end link-estates repos.tsv)
+TOOLS_FILES=(openRepoTools park resume status lane lanes lane-handoff lane-rename lanes-edit.sh lane-start lane-end link-estates repos.tsv)
 tools_vendor_path() { printf '%s/files/openrepotools/%s\n' "$BASE_IMAGE_DIR" "$1"; }
 
 SKILL_NAMES=(handoff lane-swap restart)
@@ -272,7 +272,7 @@ assert_guard_hook_present() {
     assert_mode "$settings" '600' "$label: settings.json is mode 0600"
 }
 
-printf '%s\n' '--- Scenario (a): fresh bin dir + fresh $HOME installs all TWENTY-SIX openRepoTools artifacts, plus openRepoShape ---'
+printf '%s\n' '--- Scenario (a): fresh bin dir + fresh $HOME installs all TWENTY-SEVEN openRepoTools artifacts, plus openRepoShape ---'
 BIN_A="$TMPDIR_ROOT/bin-a"
 HOME_A="$TMPDIR_ROOT/home-a"
 mkdir -p "$BIN_A" "$HOME_A"
@@ -291,7 +291,7 @@ for name in "${TOOLS_FILES[@]}"; do
     assert_identical "$BIN_A/$name" "$(tools_vendor_path "$name")" "fresh $name is byte-identical to the vendored copy"
     assert_contains "$OUTPUT_A" "$name: installed at" "fresh install reports an installed verb for $name"
 done
-assert_contains "$OUTPUT_A" 'openRepoTools: 12 of 12 placed in' 'fresh install reports all twelve openRepoTools bin files placed'
+assert_contains "$OUTPUT_A" 'openRepoTools: 13 of 13 placed in' 'fresh install reports all thirteen openRepoTools bin files placed'
 for name in "${SKILL_NAMES[@]}"; do
     assert_skill_pair "$HOME_A" "$name" "fresh install places the $name skill"
     assert_contains "$OUTPUT_A" "$name: installed at" "fresh install reports an installed verb for the $name skill"
@@ -355,7 +355,7 @@ assert_contains "$OUTPUT_C" 'park: updated at' 'the locally-modified park is rep
 assert_identical "$BIN_A/park" "$PARK_VENDOR" 'park is byte-identical to the vendored copy again after being updated'
 # The rest were untouched, so this run still reports them unchanged -- a
 # representative few from each of the four kinds of artifact, not all
-# twenty-six again.
+# twenty-seven again.
 assert_contains "$OUTPUT_C" 'openRepoShape: already installed at' 'updated-park run still reports openRepoShape unchanged'
 assert_contains "$OUTPUT_C" 'resume: already installed at' 'updated-park run still reports resume unchanged'
 assert_contains "$OUTPUT_C" 'status: already installed at' 'updated-park run still reports status unchanged'
@@ -462,7 +462,7 @@ assert_contains "$OUTPUT_I" 'not writable' 'the refusal says park is not writabl
 assert_equal '0' "$([ -e "$BIN_I/openRepoShape" ] && echo 1 || echo 0)" 'openRepoShape was NOT placed (D4 regression guard)'
 assert_equal '0' "$([ -e "$BIN_I/openRepoTools" ] && echo 1 || echo 0)" 'openRepoTools was NOT placed (D4 regression guard)'
 assert_equal '0' "$([ -e "$BIN_I/resume" ] && echo 1 || echo 0)" 'resume was NOT placed (D4 regression guard)'
-assert_equal '0' "$([ -e "$BIN_I/repos.tsv" ] && echo 1 || echo 0)" 'repos.tsv (last of the twelve) was NOT placed (D4 regression guard)'
+assert_equal '0' "$([ -e "$BIN_I/repos.tsv" ] && echo 1 || echo 0)" 'repos.tsv (last of the thirteen) was NOT placed (D4 regression guard)'
 assert_absent "$HOME_I/.claude" 'nothing was written under $HOME/.claude either (D4 regression guard)'
 chmod 0755 "$BIN_I/park"
 
@@ -495,14 +495,14 @@ printf '%s\n' '--- Scenario (k) [D3, part one]: resume'"'"'s row AND vendored fi
 # gone together, `check` none the wiser.
 #
 # UNCHANGED FROM BEFORE opensoft/openRepoTools#26, deliberately: this script's
-# own `require_pin_row`, now checking all EIGHTEEN openrepotools paths
+# own `require_pin_row`, now checking all NINETEEN openrepotools paths
 # instead of four, still catches "resume" missing a row before either shim
 # runs, for the same reason it always did -- a file the shims would install
 # with no row in the pin is refused here, explicitly, rather than ever
 # reaching a shim that could fall back to fetching it. The all-or-nothing
 # rule does not change this half of D3 at all: it only raises the stakes of
 # the OTHER half, proved directly in part two below, because now the same
-# missing file would cost the whole twenty-six-artifact install, not one
+# missing file would cost the whole twenty-seven-artifact install, not one
 # file among five.
 NOROW_BASE="$TMPDIR_ROOT/norow-base-image"
 mkdir -p "$NOROW_BASE"
@@ -586,7 +586,7 @@ assert_contains "$OUTPUT_K2" "$ESTATE_SENTINEL_VALUE" "the shim's own refusal na
 assert_empty_dir "$BIN_K2" "nothing was installed by the shim's own refusal either"
 assert_absent "$HOME_K2/.claude" "nothing under \$HOME/.claude either, from the shim's own refusal"
 
-printf '%s\n' '--- Scenario (l): every one of the TWELVE placed openRepoTools bin files is mode 0755, and so is openRepoShape ---'
+printf '%s\n' '--- Scenario (l): every one of the THIRTEEN placed openRepoTools bin files is mode 0755, and so is openRepoShape ---'
 assert_mode "$BIN_A/openRepoShape" '755' 'placed openRepoShape is mode 0755'
 for name in "${TOOLS_FILES[@]}"; do
     assert_mode "$BIN_A/$name" '755' "placed $name is mode 0755"
@@ -822,7 +822,7 @@ for name in "${TOOLS_FILES[@]}"; do
     assert_file_executable "$BIN_Q/$name" "the start step places $name, executable"
     assert_identical "$BIN_Q/$name" "$(tools_vendor_path "$name")" "the start step's $name is byte-identical to the vendored copy"
 done
-assert_contains "$OUTPUT_Q" 'openRepoTools: 12 of 12 placed in' 'the start step relays the installer'"'"'s own count line, not a summary of its own'
+assert_contains "$OUTPUT_Q" 'openRepoTools: 13 of 13 placed in' 'the start step relays the installer'"'"'s own count line, not a summary of its own'
 for name in "${SKILL_NAMES[@]}"; do
     assert_skill_pair "$HOME_Q" "$name" "the start step places the $name skill"
 done

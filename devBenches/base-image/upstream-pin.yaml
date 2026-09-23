@@ -114,3 +114,6 @@ sources:
       - path: commands/ctx.md
         sha256: "59ac4a2badb535e179c79a5d64ec708e8769782d6058e8d68c3118e03caf4bb6"
         mode: "100644"
+      - path: lane-rename
+        sha256: "81dc3297228a17e1dd1eabcb870ee583556e1ca7714f4de149e728d66524ca0f"
+        mode: "100755"
