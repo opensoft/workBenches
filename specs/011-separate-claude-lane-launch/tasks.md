@@ -17,4 +17,4 @@
 
 - [x] T006 [US3] Preserve explicit `pclaude --lane` compatibility and `--no-lane` precedence.
 - [x] T007 [US3] Update docs, usage guard restart text, openRepoTools pin, and installed command tests.
-- [ ] T008 [US3] Validate OpenSpec, focused shell tests, Bash 3.2, lint, and PR checks.
+- [x] T008 [US3] Validate OpenSpec, focused shell tests, Bash 3.2, lint, and PR checks.

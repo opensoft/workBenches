@@ -7,7 +7,7 @@
 
 ## 2. Implementation handoff
 
-- [ ] 2.1 Complete Speckit feature `011-separate-claude-lane-launch` for the launcher, packaging, docs, and regression coverage; verify its implementation tasks and focused tests pass.
+- [x] 2.1 Complete Speckit feature `011-separate-claude-lane-launch` for the launcher, packaging, docs, and regression coverage; verify its implementation tasks and focused tests pass.
 
 ## 3. Integration
 
