@@ -106,6 +106,7 @@ test_tool "Claude profile lane default (Amendment 8(c))" "/test/test-claude-prof
 # an ambient CLAUDE_LANE and failing its baseline scenario — has a standard
 # path to be caught in, not only a person's own ad-hoc run.
 test_tool "Claude profile --lane hand-off" "/test/test-claude-profile-lane-start.sh /usr/local/bin/claude-profile"
+test_tool "Claude profile native binary selection" "/test/test-claude-profile-binary-selection.sh /usr/local/bin/claude-profile"
 test_tool "Claude profile SessionStart hook (Amendment 8(e))" "/test/test-claude-profile-session-start-hook.sh /usr/local/bin/claude-profile"
 # lane-collision-protocol Amendment 12 adoption act 3: the launcher ensures
 # the UserPromptSubmit NAME GUARD beside the SessionStart entry above, "the

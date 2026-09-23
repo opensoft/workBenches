@@ -470,9 +470,57 @@ load_profile_setup_token() {
   export CLAUDE_CODE_OAUTH_TOKEN
 }
 
-claude_bin="${CLAUDE_BIN:-$(command -v claude || true)}"
-if [[ -z "$claude_bin" && -x "$HOME/.local/bin/claude" ]]; then
-  claude_bin="$HOME/.local/bin/claude"
+latest_installed_claude() {
+  local versions_dir="$HOME/.local/share/claude/versions"
+  local candidate version current previous index better
+  local best=""
+  local -a current_parts best_parts
+
+  for candidate in "$versions_dir"/*; do
+    [[ -f "$candidate" && -x "$candidate" && ! -L "$candidate" ]] || continue
+    version="${candidate##*/}"
+    [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || continue
+    current_parts=("${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")
+    better=false
+    if [[ -z "$best" ]]; then
+      better=true
+    else
+      # Compare digit strings so even components beyond Bash's integer range
+      # keep their numeric order. Ignore leading zeroes before comparing.
+      for index in 0 1 2; do
+        current="${current_parts[index]}"
+        previous="${best_parts[index]}"
+        current="${current#"${current%%[!0]*}"}"
+        previous="${previous#"${previous%%[!0]*}"}"
+        current="${current:-0}"
+        previous="${previous:-0}"
+        if (( ${#current} > ${#previous} )) ||
+           { (( ${#current} == ${#previous} )) && [[ "$current" > "$previous" ]]; }; then
+          better=true
+          break
+        fi
+        if (( ${#current} < ${#previous} )) ||
+           { (( ${#current} == ${#previous} )) && [[ "$current" < "$previous" ]]; }; then
+          break
+        fi
+      done
+    fi
+    if [[ "$better" == true ]]; then
+      best="$candidate"
+      best_parts=("${current_parts[@]}")
+    fi
+  done
+  printf '%s' "$best"
+}
+
+if [[ -n "${CLAUDE_BIN:-}" ]]; then
+  claude_bin="$CLAUDE_BIN"
+else
+  claude_bin="$(latest_installed_claude)"
+  if [[ -z "$claude_bin" ]]; then
+    claude_bin="$(command -v claude || true)"
+    [[ -n "$claude_bin" || ! -x "$HOME/.local/bin/claude" ]] || claude_bin="$HOME/.local/bin/claude"
+  fi
 fi
 mcp_sync="${WORKBENCHES_MCP_SYNC_BIN:-$(command -v workbenches-mcp-sync || true)}"
 if [[ -z "$mcp_sync" ]]; then
@@ -799,7 +847,8 @@ act1_compose_child_command() {
   # the writers REFUSE by name rather than falling back, so an inherited value
   # there is a different question with a different answer, and it is filed
   # rather than changed here.
-  env_prefix=(env -u LANES_HOST -u LANES_OS -u LANES_CONTAINER WORKBENCHES_CLAUDE_TMUX_CHILD=1)
+  env_prefix=(env -u LANES_HOST -u LANES_OS -u LANES_CONTAINER -u CLAUDE_BIN
+    WORKBENCHES_CLAUDE_TMUX_CHILD=1 "CLAUDE_BIN=$claude_bin")
   # THE WORKSTATION, THREADED INTO THE SESSION THIS LAUNCH CREATES (`R-A11-14`).
   # `lane_export_workstation` has already exported it on this side of the
   # re-exec; tmux does not reliably hand a freshly-exported variable to a new
