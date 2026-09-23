@@ -596,6 +596,8 @@ ensure_user_cargo_cache() {
 }
 
 claude_launcher="$workbenches_root/base-image/files/claude-profile"
+pclaude_launcher="$workbenches_root/base-image/files/pclaude"
+lclaude_launcher="$workbenches_root/base-image/files/lclaude"
 codex_launcher="$workbenches_root/base-image/files/codex-profile"
 opencode_launcher="$workbenches_root/base-image/files/opencode-profile"
 mcp_sync_launcher="$workbenches_root/base-image/files/workbenches-mcp-sync"
@@ -604,6 +606,8 @@ pi_launcher="$workbenches_root/base-image/files/pi-profile"
 
 install_ai_profile_launchers() {
     if [[ ! -f "$claude_launcher" \
+        && ! -f "$pclaude_launcher" \
+        && ! -f "$lclaude_launcher" \
         && ! -f "$codex_launcher" \
         && ! -f "$opencode_launcher" \
         && ! -f "$mcp_sync_launcher" \
@@ -614,6 +618,8 @@ install_ai_profile_launchers() {
 
     local launchers=(
         "$claude_launcher"
+        "$pclaude_launcher"
+        "$lclaude_launcher"
         "$codex_launcher"
         "$opencode_launcher"
         "$mcp_sync_launcher"
@@ -637,7 +643,16 @@ install_ai_profile_launchers() {
         if [[ -f "$claude_launcher" ]]; then
             docker cp "$claude_launcher" "$container:/usr/local/bin/claude-profile"
             docker exec --user root "$container" sh -c \
-                'chmod 0755 /usr/local/bin/claude-profile && ln -sfn claude-profile /usr/local/bin/pclaude'
+                'chmod 0755 /usr/local/bin/claude-profile'
+        fi
+        if [[ -f "$pclaude_launcher" ]]; then
+            docker exec --user root "$container" rm -f /usr/local/bin/pclaude
+            docker cp "$pclaude_launcher" "$container:/usr/local/bin/pclaude"
+            docker exec --user root "$container" sh -c 'chmod 0755 /usr/local/bin/pclaude'
+        fi
+        if [[ -f "$lclaude_launcher" ]]; then
+            docker cp "$lclaude_launcher" "$container:/usr/local/bin/lclaude"
+            docker exec --user root "$container" sh -c 'chmod 0755 /usr/local/bin/lclaude'
         fi
         if [[ -f "$codex_launcher" ]]; then
             docker cp "$codex_launcher" "$container:/usr/local/bin/codex-profile"
@@ -693,7 +708,7 @@ if [[ "$check_only" == true ]]; then
          whoami
          pwd
          test "$HISTFILE" = "$HOME/.workbenches-history/.zsh_history"
-         if test "$WORKBENCHES_HAS_CLAUDE_LAUNCHER" = 1; then command -v claude-profile; command -v pclaude; fi
+         if test "$WORKBENCHES_HAS_CLAUDE_LAUNCHER" = 1; then command -v claude-profile; command -v pclaude; command -v lclaude; fi
          if test "$WORKBENCHES_HAS_CODEX_LAUNCHER" = 1; then command -v codex-profile; command -v pcodex; fi
          if test "$WORKBENCHES_HAS_OPENCODE_LAUNCHER" = 1; then command -v opencode-profile; command -v popencode; test -f "$HOME/.config/workbenches/opencode-profiles.json"; test -d "$HOME/.opencode-profiles"; fi
          if test "$WORKBENCHES_HAS_CODEX_LAUNCHER" = 1; then command -v workbenches-mcp-sync; fi

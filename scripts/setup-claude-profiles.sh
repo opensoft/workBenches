@@ -329,7 +329,8 @@ done < <(find "$base/profiles" -mindepth 2 -type f -name settings.json -print0)
 
 mkdir -p "$HOME/.local/bin"
 ln -sfn "$repo_dir/scripts/claude-profile" "$HOME/.local/bin/claude-profile"
-ln -sfn "$repo_dir/scripts/claude-profile" "$HOME/.local/bin/pclaude"
+ln -sfn "$repo_dir/scripts/pclaude" "$HOME/.local/bin/pclaude"
+ln -sfn "$repo_dir/scripts/lclaude" "$HOME/.local/bin/lclaude"
 ln -sfn "$repo_dir/scripts/workbenches-mcp-sync" "$HOME/.local/bin/workbenches-mcp-sync"
 echo "Claude profiles configured under $base"
 echo "Run: claude-profile list"

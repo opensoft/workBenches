@@ -177,6 +177,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # mounted under provider-specific profile roots; only launchers belong in the
 # image.
 COPY files/claude-profile /usr/local/bin/claude-profile
+COPY files/pclaude /usr/local/bin/pclaude
+COPY files/lclaude /usr/local/bin/lclaude
 COPY files/codex-profile /usr/local/bin/codex-profile
 COPY files/opencode-profile /usr/local/bin/opencode-profile
 COPY files/workbenches-mcp-sync /usr/local/bin/workbenches-mcp-sync
@@ -185,6 +187,8 @@ COPY files/pi-profile /usr/local/bin/pi-profile
 COPY files/claude-statusline-command.sh /usr/local/share/workbenches/claude/statusline-command.sh
 COPY files/claude-usage-guard.sh /usr/local/share/workbenches/claude/usage-guard.sh
 RUN chmod 0755 /usr/local/bin/claude-profile \
+    /usr/local/bin/pclaude \
+    /usr/local/bin/lclaude \
     /usr/local/bin/codex-profile \
     /usr/local/bin/opencode-profile \
     /usr/local/bin/workbenches-mcp-sync \
@@ -192,7 +196,6 @@ RUN chmod 0755 /usr/local/bin/claude-profile \
     /usr/local/bin/pi-profile \
     /usr/local/share/workbenches/claude/statusline-command.sh \
     /usr/local/share/workbenches/claude/usage-guard.sh \
-    && ln -sfn claude-profile /usr/local/bin/pclaude \
     && ln -sfn codex-profile /usr/local/bin/pcodex \
     && ln -sfn opencode-profile /usr/local/bin/popencode \
     && ln -sfn pi-profile /usr/local/bin/ppi \

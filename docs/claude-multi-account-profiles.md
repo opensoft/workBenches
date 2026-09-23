@@ -1,5 +1,20 @@
 # Claude multi-account profiles
 
+## Choose a launcher
+
+`pclaude <profile>` selects a Claude account without resolving, starting, or
+inheriting a lane. Use it for ordinary profile sessions, including sessions
+started inside a tmux window whose name resembles a lane. `lclaude <profile>`
+uses the same profile selection and starts or resumes the current lane through
+`lane-start`. Use `lclaude` for lane work and after a lane handoff. Both commands
+select the newest installed Claude binary through the same profile manager.
+An explicit `pclaude --lane <lane> <profile>` remains supported for scripts and
+restarts that already name their lane; `--no-lane` still overrides it.
+
+The lane behavior described in older amendment sections below applies to
+`lclaude` now. `claude-profile` remains the underlying launcher for both entry
+points.
+
 workBenches can provision multiple Claude Code logins with separate credentials,
 shared reusable capabilities, and session history shared only within a trust
 family such as `personal`, `work`, or `client`. Every new workBenches user starts
@@ -50,7 +65,7 @@ The installer marks the profile's CLI onboarding as complete because login is
 performed explicitly with `claude-profile login`; this prevents Claude's
 first-run wizard from starting a second, redundant browser login.
 
-`claude-profile` and `pclaude` are the same launcher. Every profile also has a
+`claude-profile` supplies the shared profile and launch logic. Every profile also has a
 mode-`600` `.profile.json` containing its profile name, optional aliases,
 family, and login email. Aliases are declared in the private manifest and may
 be used anywhere the canonical profile name is accepted. This lets a bench
