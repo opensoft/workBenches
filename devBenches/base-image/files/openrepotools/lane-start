@@ -126,11 +126,12 @@
 #      that window (tmux(1) rename-window), so the name survives the next
 #      command the window runs;
 #   5. the row: `lanes-edit.sh add-row` when there is none, otherwise
-#      `append-row-status`. Never a hand edit and never a whole-file write.
-#      THE STATUS IS AMENDMENT 6(c)'s STAMP, written here rather than owed to
-#      the session afterwards:
-#        <UTC> RESUMED by <uuid> (lane <lane>) — lane-start on <ws>: window
-#        renamed, launching <the command>
+#      `set-row-state`. Never a hand edit and never a whole-file write.
+#      THE STATE IS AMENDMENT 6(c)'s STAMP, written here rather than owed to
+#      the session afterwards, and since Amendment 13(a) it is the WHOLE cell
+#      (`<STATE> · <UTC> · <one line>`, the UTC stamped by the writer):
+#        LIVE · <UTC> · RESUMED by <uuid> (lane <lane>) — lane-start on <ws>:
+#        window renamed, launching <the command>; dir <dir>; window <ref>
 #      The TAIL states what happened, so a `--no-launch` run ends `window
 #      renamed, no launch` and never claims to have launched anything.
 #      `STARTED` where a new session takes the name, and the uuid is the one
@@ -888,7 +889,7 @@ if [ -z "${LANES_FILE:-}" ]; then die "$(lanes_workspace_why)" 1; fi
 cl_out=""; cl_rc=0
 cl_out="$("$LANES_EDIT" canon-lane "$LANE" 2>/dev/null)" || cl_rc=$?
 cl_why=""; cl_pair=0
-[ "$cl_rc" = 2 ] && cl_why="$(LANES_NO_FETCH=1 "$LANES_EDIT" canon-lane "$LANE" 2>&1 >/dev/null || :)"
+case "$cl_rc" in 2 | 66) cl_why="$(LANES_NO_FETCH=1 "$LANES_EDIT" canon-lane "$LANE" 2>&1 >/dev/null || :)" ;; esac
 case "$cl_why" in *"Amendment 15(d)"*) cl_pair=1 ;; esac
 case "$cl_rc" in
   0)
@@ -901,6 +902,16 @@ case "$cl_rc" in
       printf '%s\n' "$cl_why" >&2
       die "the PUBLISHED register spells lane $LANE two ways (above), so no read and no write under that name is unambiguous and nothing here picks one — Amendment 15(d): merge the newer row's session id(s) into the older row's session cell, in order, remove the newer row in the SAME commit naming both spellings, push, and re-run. Nothing was launched, renamed or written." 2
     fi ;;
+  66)
+    # AMENDMENT 16(e) — THE ALIAS TABLE COULD NOT BE READ, AND THAT IS NOT A
+    # SPELLING QUESTION (Copilot round 4 on openRepoTools#81). `lanes/aliases.tsv`
+    # is what makes a lane's OLD name resolve to its row, so a table nobody can
+    # read makes a RENAMED lane look like a lane nobody has — and the next line
+    # of this command is the one that decides whether to add a row. Carrying on
+    # with the typed name there is a SECOND row for a lane that has been running
+    # all day, which is the duplicate Amendment 15(a) exists to refuse.
+    printf '%s\n' "$cl_why" >&2
+    die "lane $LANE's name could not be resolved: ${LANES_EDIT##*/} could not read the lane alias table (above, exit 66). Amendment 16(e) makes a renamed lane's old name resolve through that file for ever, so a name it cannot answer for may be a lane that is already running under another one — and this command would add a second row for it. Fix the read and re-run. Nothing was launched, renamed or written." 2 ;;
   *) note "$LANES_EDIT canon-lane $LANE failed (exit $cl_rc) — carrying on with the name as typed, which the register may spell differently" ;;
 esac
 
@@ -1539,8 +1550,43 @@ row_sid=""
 # THAT one falls through with a note, exactly as clause (h)'s other reads do,
 # because refusing every lane start on every workstation that has not installed
 # this yet is not a safety property.
-dup_check() {   # <session uuid> <what this run was about to do with it>
-  local dc_id="${1-}" dc_why="${2-}" dc_rows="" dc_rc=0 dc_other=""
+#
+# AND THE HARNESS HAS A FENCE OF ITS OWN ON THE SAME FILE, WHICH THIS RUN MUST
+# ASK BEFORE IT EXECS RATHER THAN AFTER (measured on Eagle 2026-09-15 against
+# `claude` 2.1.270, and reproduced live in a scratch config directory): a
+# `claude --resume <id>` whose id is carried by a live session record whose
+# `kind` is anything but `interactive` REFUSES AND EXITS 1 before it starts,
+# with
+#
+#   Error: Session <id> is running as a background session. Run `claude agents`
+#   to find its id, then `claude attach <id>` to open it, or `claude stop <id>`
+#   first to resume it here. Add --fork-session to branch off a copy instead.
+#
+# — the harness's own `H5`/`zpe` pair, which takes the FIRST live record for the
+# id whose `kind !== "interactive"` (a `--bg` job, a `bg-pty-host` child, the
+# `bg` COMPANION of Amendment 8 ruling (g)) and stops there. A second live
+# INTERACTIVE record does NOT stop it — the same measurement got past that check
+# and failed later, on authentication — which is exactly why 18(h) is this
+# tooling's to enforce and not the harness's.
+#
+# THE COST OF ASKING IT LATE IS A FALSE `RESUMED`. The row, the object log and
+# the handoff stamp are all written BEFORE the `exec` at the foot of this
+# command, so a launch the harness refuses leaves a lane recorded as RESUMED by
+# a session that never started, and in a launcher-created window — `pclaude
+# --lane <lane> <profile>`, whose pane's only command this is — tmux prints
+# `[exited]` over the message and closes it (opensoft/workBenches#77's shape,
+# one door along). So the `resume` rule below asks the harness's question in
+# front of the launch and prints the harness's own remedy beside this estate's.
+dup_check() {   # <session uuid> <what this run was about to do with it> [<rules>]
+  # THE RULES, AND THE THIRD ARGUMENT IS WHICH OF THEM APPLY:
+  #   bind         (the default) 18(h)'s duplicate count alone — the
+  #                window-binding call, which opens no transcript;
+  #   resume       both rules — the branch that is about to `--resume` this id
+  #                with no record of it in this window;
+  #   resume-here  the harness's fence alone — the same branch where the id IS
+  #                this window's own live session, whose duplicate count the
+  #                window-binding call above has already made.
+  local dc_id="${1-}" dc_why="${2-}" dc_rules="${3-bind}" dc_rows="" dc_rc=0 dc_other="" dc_bg="" dc_att=""
   local dc_pid dc_kind dc_tgt dc_prof dc_where dc_verdict dc_file
   [ -n "$dc_id" ] || return 0
   : > "$LS_TMP"
@@ -1582,15 +1628,55 @@ dup_check() {   # <session uuid> <what this run was about to do with it>
     # reach that state either — it rules on *"a row's EARLIER session ids …
     # still held by live but idle sessions"*, and this is the id the row ENDS
     # on, which is the one a resume opens.
+    #
+    # THE HARNESS'S OWN FENCE FIRST, because it decides whether the `exec` this
+    # branch is about to make can start at all, and it reads the record's KIND
+    # and not this read's verdict: the `bg` COMPANION of the session live in
+    # THIS window is `companion` here — benign, one session seen twice — and it
+    # is still a record whose kind is not `interactive`, so `claude --resume`
+    # stops on it. A record with no `kind` at all is written down as
+    # `interactive` by `transcript_holders` (an older harness wrote nothing
+    # else), which is the same reading the harness makes.
+    if [ "$dc_rules" != bind ] && [ -n "${dc_kind:-}" ] && [ "$dc_kind" != interactive ]; then
+      dc_bg="${dc_bg:+$dc_bg, }pid $dc_pid ($dc_where, kind $dc_kind, profile $dc_prof)"
+      if [ -z "$dc_att" ] && [ -n "${dc_tgt:-}" ] && [ "$dc_tgt" != none ]; then
+        dc_att="${dc_tgt%.*}"
+      fi
+    fi
+    # AND IT IS NOT A SECOND VERDICT, SO IT DOES NOT `continue` PAST 18(h)'s
+    # COUNT: one record can be both — a `bg` duplicate in another profile is a
+    # second process on the file AND the thing the harness will stop on — and a
+    # refusal that named only the newer of the two reasons would drop the one
+    # this suite has asserted since #52. `resume-here` is the exception and
+    # states why: the id is this window's own session, whose duplicate count the
+    # window-binding call above has already made.
+    [ "$dc_rules" = resume-here ] && continue
     case "$dc_verdict" in
       duplicate | unrelated) : ;;
       *) continue ;;
     esac
     dc_other="${dc_other:+$dc_other, }pid $dc_pid ($dc_where, kind $dc_kind, profile $dc_prof)"
+    if [ -z "$dc_att" ] && [ -n "${dc_tgt:-}" ] && [ "$dc_tgt" != none ]; then
+      dc_att="${dc_tgt%.*}"
+    fi
   done <<<"$dc_rows"
-  [ -n "$dc_other" ] || return 0
-  note "another live process already carries transcript $dc_id: $dc_other"
-  note "A transcript is held by ONE live process (Amendment 18(h)): two of them append to one file, each overwriting what the other wrote, and a row that records it has two processes answering for one lane. This run was about to $dc_why, and it has done NOTHING — no window renamed, no id appended, no session launched."
+  [ -n "$dc_bg" ] || [ -n "$dc_other" ] || return 0
+  if [ -n "$dc_other" ]; then
+    note "another live process already carries transcript $dc_id: $dc_other"
+    note "A transcript is held by ONE live process (Amendment 18(h)): two of them append to one file, each overwriting what the other wrote, and a row that records it has two processes answering for one lane. This run was about to $dc_why, and it has done NOTHING — no window renamed, no id appended, no session launched."
+  fi
+  if [ -n "$dc_bg" ]; then
+    note "a live BACKGROUND session already carries transcript $dc_id: $dc_bg"
+    note "\`$CLAUDE_BIN --resume $dc_id\` would REFUSE to start against it — \"Session $dc_id is running as a background session … Add --fork-session to branch off a copy instead\" — and exit 1 before anything ran (measured against claude 2.1.270, and reproduced in a scratch configuration directory). This run was about to $dc_why, and it has done NOTHING: no window renamed, no id appended, no session launched. A lane recorded RESUMED by a launch the harness refuses is a false transition in two append-only files, and in a window a launcher has just made — \`pclaude --lane <lane> <profile>\`, whose pane's only command this is — tmux prints \`[exited]\` over the message and closes it."
+    note "open the one that is running rather than a second copy of it: \`claude agents\` names its id, \`claude attach <id>\` opens it, \`claude stop <id>\` ends it."
+  fi
+  # WHERE THAT PROCESS IS, WHEN ITS RECORD SAYS SO (Amendment 18 Addendum 1's
+  # posture: the conversation that is already live is ATTACHED, never started a
+  # second time). The line is printed beside the retire act and not instead of
+  # it: which of the two this is — the lane running in another window, or a
+  # duplicate to retire — is the person's to read, and only one of them is a
+  # window to go to.
+  [ -n "$dc_att" ] && note "that process is in ${dc_att}: tmux switch-client -t $dc_att   (from outside tmux: tmux attach -t ${dc_att%%:*})"
   die "retire the other one first — \`lane-end\` proves it is this lane's duplicate and prints Amendment 6(d)'s act for it, and it ends, writes and kills nothing:
     lane-end $LANE --retire <pid>" 1
 }
@@ -2258,6 +2344,8 @@ new_sid=""
 # it is in another profile's directory. This runs BEFORE the branch below, so
 # `recorded_transcript` answers for a transcript this run has just moved here.
 rec_file=""
+resume_sid="$row_sid"
+restored_sid=""
 if [ -n "$row_sid" ] && [ "$AGENT" = claude ] && (( ! fresh )); then
   rec_file="$(recorded_transcript "$row_sid" 2>/dev/null || :)"
   if [ -n "$rec_file" ]; then
@@ -2297,6 +2385,61 @@ EOF
   fi
 fi
 
+# AMENDMENT 17(c) MAKES THE PAUSED RECORD A RESUME SOURCE, NOT MERELY A LABEL.
+# The row normally wins because its last transcript is the current one. A
+# harness restart can, however, append the process/session id it minted while
+# continuing an older Claude transcript. That id is then a perfectly readable
+# row entry but has no `<id>.jsonl`; falling through to `--resume <LANE>` opens
+# Claude's title picker and can immediately exit a launcher-created pane. The
+# last PAUSED record already carries the exact agent transcript for this case.
+# Where it names this same agent and that transcript exists, resume the exact id
+# and put it back at the end of the cell below. A live session being bound in
+# this window still wins: step 3b has first-hand evidence and must never be
+# replaced by an older handoff.
+#
+# AND "BEING BOUND" IS TWO VARIABLES, NOT ONE (Copilot round 2 on
+# openRepoTools#87). `$harness_sid` is set only where step 3b TAKES a session
+# the row does not name; where the window's live session IS the row's, step 3
+# has already said so with `holder_here` and `$harness_sid` stays empty — so
+# that test alone let this fallback fire on the one state it was written to
+# stand off: the lane live in THIS window, its transcript not under this
+# directory (the harness has been seen to keep one under another `cwd` key),
+# and an older PAUSED record beside it. It would have `--resume`d the older
+# conversation over the person's own, in the window they are sitting in. Both
+# halves of the evidence are asked for now.
+if [ -z "$rec_file" ] && [ -z "$harness_sid" ] && (( ! holder_here )) \
+   && [ "$AGENT" = claude ] \
+   && [ "$RECORDED_AGENT" = claude ] && (( ! fresh )); then
+  paused_sid=""; paused_rc=0
+  paused_sid="$("$LANES_EDIT" lane-transcript "$LANE" 2>/dev/null)" || paused_rc=$?
+  case "$paused_rc" in
+    0)
+      if [[ "$paused_sid" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
+         && [ "$paused_sid" != "$row_sid" ]; then
+        paused_file="$(recorded_transcript "$paused_sid" 2>/dev/null || :)"
+        if [ -z "$paused_file" ]; then
+          paused_follow_rc=0
+          follow_transcript "$paused_sid" || paused_follow_rc=$?
+          case "$paused_follow_rc" in
+            0) paused_file="$FOLLOW_FILE" ;;
+            2) die "$FOLLOW_WHY" 2 ;;
+            *) case "$FOLLOW_WHY" in
+                 dry-run:*) note "--dry-run: ${FOLLOW_WHY#dry-run:}. Nothing was moved; the title/new-session branch below remains the dry-run result" ;;
+               esac ;;
+          esac
+        fi
+        if [ -n "$paused_file" ]; then
+          resume_sid="$paused_sid"
+          rec_file="$paused_file"
+          restored_sid="$paused_sid"
+          step "the row's last session id $row_sid has no transcript here, but this same agent's last PAUSED record names transcript $paused_sid and it is here ($(basename -- "$rec_file")) — resuming that exact id"
+        fi
+      fi ;;
+    8|2) : ;;
+    *) note "$LANES_EDIT lane-transcript $LANE failed (exit $paused_rc) — carrying on without the last PAUSED record's exact resume id" ;;
+  esac
+fi
+
 # ---- THE LAUNCHER TABLE (Amendment 17(c)) -------------------------------
 #
 # ONE BRANCH PER AGENT, and a name this table does not carry is a REFUSAL that
@@ -2327,7 +2470,7 @@ if [ "$AGENT" != claude ]; then
     *)
       die "this command has no launcher for the agent '$AGENT'. It knows: claude (resume by id where its transcript is here, else a named new session with the handoff's top block as its first prompt) and codex (the top block as its first prompt). A lane is resumed by an agent whose launch this command has been taught and tested — never by a guessed argv (Amendment 17(c))." 2 ;;
   esac
-elif [ -n "$row_sid" ] && [ -n "$rec_file" ]; then
+elif [ -n "$resume_sid" ] && [ -n "$rec_file" ]; then
   # AMENDMENT 18(h), AND THIS IS THE ONLY LAUNCH BRANCH WITH AN ID TO COUNT
   # (`main`, #52). The clause is *"the id it is about to resume or bind"*: this
   # branch is the one that resumes an id, and the count is asked INSIDE it
@@ -2338,11 +2481,35 @@ elif [ -n "$row_sid" ] && [ -n "$rec_file" ]; then
   # touch. The title-fallback branch resumes through the PICKER, whose
   # transcript is not knowable here, and the new-session branch MINTS a fresh
   # uuid; neither has an id, which is stated rather than left to be noticed.
-  [ "$row_sid" != "$win_sid" ] && dup_check "$row_sid" "resume transcript $row_sid as lane $LANE"
-  step "the row's current session is $row_sid and its transcript is here ($(basename -- "$rec_file")) — resuming it by id"
+  # AND THE HARNESS'S OWN FENCE IS ASKED ON BOTH SIDES OF THAT TEST, because it
+  # is the one rule that still bites when the id IS this window's session: the
+  # `bg` companion of a live session carries its id, and `claude --resume` stops
+  # on a companion. `resume-here` asks that and nothing else — the duplicate
+  # count for this id was already made at the window-binding call above.
+  #
+  # ONLY WHERE AN `exec` IS ABOUT TO HAPPEN. `--no-launch` and `--dry-run` open
+  # no transcript and hand the harness nothing, so the harness's refusal is not
+  # theirs to inherit — and AMENDMENT 8 RULING (g) IS EXPLICIT about the shape
+  # that would otherwise break: a `bg` companion is one session seen twice and
+  # NEVER refuses the lane to the window its own session is running in, which is
+  # exactly what a `--no-launch` binding act in that window is. 18(h)'s count is
+  # asked in both, unchanged, because an id a second process holds is one this
+  # run must not WRITE DOWN either.
+  ls_rules=bind
+  if (( ! no_launch )) && (( ! dry_run )); then ls_rules=resume; fi
+  if [ "$resume_sid" != "$win_sid" ]; then
+    dup_check "$resume_sid" "resume transcript $resume_sid as lane $LANE" "$ls_rules"
+  elif [ "$ls_rules" = resume ]; then
+    dup_check "$resume_sid" "resume transcript $resume_sid as lane $LANE" resume-here
+  fi
+  if [ -n "$restored_sid" ]; then
+    step "the recovered resume session is $resume_sid and its transcript is here ($(basename -- "$rec_file")) — resuming it by id"
+  else
+    step "the row's current session is $resume_sid and its transcript is here ($(basename -- "$rec_file")) — resuming it by id"
+  fi
   (( holder_here )) && step "  (it is the session live in this window; --resume attaches to the same conversation)"
-  cmd=("$CLAUDE_BIN" --name "$LANE" --resume "$row_sid")
-  lane_verb=RESUMED; lane_sid="$row_sid"
+  cmd=("$CLAUDE_BIN" --name "$LANE" --resume "$resume_sid")
+  lane_verb=RESUMED; lane_sid="$resume_sid"
 elif (( fresh )) || (( AGENT_EXPLICIT )); then
   # `--agent claude` WITH NO TRANSCRIPT HERE, and the `/ctx` respawn: a NAMED
   # NEW SESSION, with the handoff's top block as its first prompt. It skips the
@@ -2492,6 +2659,45 @@ case "$env_name" in .claude|claude) env_name=default ;; esac
 # already carry the agent's kind (`harness <uuid>`, `Codex <id>`)"*. The
 # register has spelled Codex sessions that way since 2026-09-05, so the table
 # is the register's own and not a new convention.
+# --- BEGIN shared one-line cut (lane-collision-protocol Amendment 13(a)) ---
+# BYTE-IDENTICAL IN `lane-start`, `lane-end` AND `lane-handoff`, the three
+# commands that write a row's state cell — the same trade the four lane helpers
+# already make for their workspace resolver, and for the same reason: a drifted
+# copy is TWO ANSWERS to one question, and "what may this line contain, and
+# where may it be cut" is one question.
+#
+# FOUR THINGS THE CELL'S LINE MAY NOT CARRY, and `set-row-state` REFUSES all
+# four — which would cost the row its stamp or its closing write, so they are
+# fixed here rather than met there:
+#
+#   ` · `  the phrase's own separator. A second one reads back as a fourth part
+#          of `<STATE> · <UTC> · <one line>`; it is spelled `; `.
+#   `|`    a cell boundary in a Markdown table row. A launch command or a
+#          directory may legitimately hold one — `claude --flag 'a|b'`, a path
+#          with a pipe in it — and the row is where it would forge a column
+#          (Copilot round 1 on openRepoTools#82). It is spelled `¦`, the broken
+#          bar, which is not a separator anywhere here; the object log's own
+#          line keeps the character itself.
+#   CR/LF  a row is ONE LINE of a table, so a newline in this text would split
+#          it in two and every row after it would be read as a lane. Spelled
+#          `; ` for the same reason the separator is (Copilot round 2).
+#   >240   ratified decision O1's cap. Cut at 230 with the last partial WORD
+#          dropped, which is what makes the cut safe: `${s:0:n}` counts BYTES
+#          wherever the locale is not a UTF-8 one, and a byte offset can land
+#          inside the very characters above. 230 and not 240, so the ` ...`
+#          marker fits inside the cap however the two count.
+cut_to_line() {   # <line> — the row's one line, safe to hand to set-row-state
+  ctl="${1//$'\r'/ }"
+  ctl="${ctl//$'\n'/; }"
+  ctl="${ctl// · /; }"
+  ctl="${ctl//|/¦}"
+  [ "${#ctl}" -gt 230 ] || { printf '%s' "$ctl"; return 0; }
+  ctl="${ctl:0:230}"
+  case "$ctl" in *' '*) ctl="${ctl% *}" ;; esac
+  printf '%s ...' "$ctl"
+}
+# --- END shared one-line cut ---
+
 AGENT_WORD="$AGENT"
 case "$AGENT" in
   claude) AGENT_WORD=harness ;;
@@ -2516,7 +2722,16 @@ else
 fi
 
 if [ "$row_count" = 0 ]; then
-  new_row="| \`$LANE\` | $session_cell | $ws / $env_name / $user | $started | none | $handoff | STARTING |"
+  # AMENDMENT 13(a) — A NEW ROW IS BORN IN THE PHRASE. The state cell opened
+  # with the bare word `STARTING` for as long as the cell was a diary; it is one
+  # phrase now — `<STATE> · <UTC> · <one line>` — and a row created outside that
+  # shape is a row the first `set-row-state` would be the only thing to fix.
+  # `LIVE` is the state, because this row is written by the act that takes the
+  # lane live in this window, and the line says which act and on which
+  # workstation.
+  new_line="$lane_verb by $stamp_who (lane $LANE) — lane-start on $ws: row created"
+  new_state="LIVE · $utc · $(cut_to_line "$new_line")"
+  new_row="| \`$LANE\` | $session_cell | $ws / $env_name / $user | $started | none | $handoff | $new_state |"
   if (( dry_run )); then
     plan "lanes-edit.sh add-row"
     plan "  $new_row"
@@ -2549,39 +2764,37 @@ else
     fi
   fi
 
-  # AMENDMENT 6(c)'s STAMP, WRITTEN HERE. The row's first act after a resume is
-  # `RESUMED by <transcript uuid>`, and under Amendment 6(b) that stamp is
-  # load-bearing: it is what the NEXT lane-start resumes, so a missed one is not
-  # bookkeeping debt, it is a lost lane. It used to be owed to the session that
-  # lane-start had just exec'd — which is a stamp nobody writes when the session
-  # dies at a usage reset before its first act, the shape this estate hits daily.
-  # The verb follows the launch decision, exactly as the object-log line does: a
-  # resume is RESUMED and a new session is STARTED, and the uuid is the one this
-  # run actually resumes or mints, read from the PUBLISHED row (R33) or from the
-  # record live in this window (step 3b).
-  # THE TAIL STATES WHAT HAPPENED (Amendment 8(d), F-B5). The old line said
-  # `launching <cmd>` unconditionally, so a `--no-launch` run stamped the row
-  # with a launch that by definition did not happen — and `--no-launch` is now
-  # the PRESCRIBED act twice over in clause (d) (the harness-mint append, and
-  # the deferred writes of the title-fallback path), so the defect would have
-  # become the common case rather than an edge. The head of the stamp — the
-  # part Amendment 6(b) and clause (d) quote, up to and including `lane-start on
-  # <ws>:` — is unchanged.
-  if (( no_launch )); then
-    did="window renamed, dir $DIR${record_window:+, window $record_window}, no launch"
-  else
-    did="window renamed, dir $DIR${record_window:+, window $record_window}, launching $(quoted "${cmd[@]}")"
-  fi
-  # `$stamp_who` is computed with the launch decision above: the uuid for
-  # Claude, `<agent> <id>` for any other agent (Amendment 17(c)).
-  status_text="$utc $lane_verb by $stamp_who (lane $LANE) — lane-start on $ws: $did"
-  if (( dry_run )); then
-    plan "lanes-edit.sh append-row-status $LANE \"$status_text\""
-  else
-    LANES_LANE="$LANE" "$LANES_EDIT" append-row-status "$LANE" "$status_text"
-    step "row status appended: $lane_verb by ${lane_sid:-unknown}"
+  # The row is the next launch's first source, so make the exact transcript
+  # recovered from the lane's PAUSED record its final entry again. Without
+  # this, every subsequent launch would rediscover the same dead row id and
+  # need the fallback. This is written before the RESUMED status for the same
+  # ordering guarantee as the harness-minted append immediately above.
+  if [ -n "$restored_sid" ]; then
+    restored_cell="harness \`$restored_sid\` (transcript uuid; restored from the lane's last PAUSED record)"
+    restored_hint="LANES_LANE=$LANE $LANES_EDIT append-session-id $LANE \"<the session cell's last id>\" \"→ $restored_cell\""
+    if [ -z "$row_sid" ]; then
+      note "the row's session cell records no transcript uuid to append the recovered id to. STAMP IT AS THIS SESSION'S FIRST ACT:"
+      note "  $restored_hint"
+    elif (( dry_run )); then
+      plan "lanes-edit.sh append-session-id $LANE '$row_sid' '→ $restored_cell'"
+    elif LANES_LANE="$LANE" "$LANES_EDIT" append-session-id "$LANE" "$row_sid" "→ $restored_cell" "session cell: restored $restored_sid from the lane's last PAUSED record"; then
+      step "session cell updated: $row_sid → $restored_sid (the exact transcript from the lane's last PAUSED record)"
+    else
+      note "the session cell was NOT extended with recovered transcript $restored_sid (this checkout's copy of the row may be older than the published one). The launch is unaffected and so is the NEXT one: this recovery reads the lane's last PAUSED record and not the cell, so it finds the same transcript again and prints this same act — the row keeps naming an id no transcript answers to until somebody runs it. STAMP IT AS THIS SESSION'S FIRST ACT:"
+      note "  $restored_hint"
+    fi
   fi
 
+  # AMENDMENT 8's RULE, FOLLOWED HERE TOO: THE CELL FIRST, THEN THE STAMP
+  # (Copilot round 5 on openRepoTools#82). The harness path above says it in
+  # those words — the stamp names a uuid, so the cell that carries the uuid is
+  # written first — and this path did the opposite: it stamped the minted id and
+  # THEN tried to append it, so a refused append left the row's state naming a
+  # session its own session cell does not carry. The resume target is the
+  # SESSION CELL and nothing else (Amendment 6(b)), so that never resumed the
+  # wrong conversation — it resumed the id the register knew — but the row said
+  # two things a reader has to reconcile. Written in this order the common path
+  # says one thing, and a refused append still prints the act that cures it.
   # An EXISTING row that is about to run a NEW session: append the minted id
   # after the cell's last id, so the next start resumes by id instead of by
   # title. The append is `replace-in-row`, which refuses unless its anchor
@@ -2607,6 +2820,69 @@ else
       note "the session cell was NOT stamped (this checkout's copy of the row does not carry $row_sid exactly once IN ITS SESSION CELL — it may be older than the published one). STAMP IT AS THIS SESSION'S FIRST ACT:"
       note "  $stamp_hint"
     fi
+  fi
+
+  # AMENDMENT 6(c)'s STAMP, WRITTEN HERE. The row's first act after a resume is
+  # `RESUMED by <transcript uuid>`, and under Amendment 6(b) that stamp is
+  # load-bearing: it is what the NEXT lane-start resumes, so a missed one is not
+  # bookkeeping debt, it is a lost lane. It used to be owed to the session that
+  # lane-start had just exec'd — which is a stamp nobody writes when the session
+  # dies at a usage reset before its first act, the shape this estate hits daily.
+  # The verb follows the launch decision, exactly as the object-log line does: a
+  # resume is RESUMED and a new session is STARTED, and the uuid is the one this
+  # run actually resumes or mints, read from the PUBLISHED row (R33) or from the
+  # record live in this window (step 3b).
+  # THE TAIL STATES WHAT HAPPENED (Amendment 8(d), F-B5). The old line said
+  # `launching <cmd>` unconditionally, so a `--no-launch` run stamped the row
+  # with a launch that by definition did not happen — and `--no-launch` is now
+  # the PRESCRIBED act twice over in clause (d) (the harness-mint append, and
+  # the deferred writes of the title-fallback path), so the defect would have
+  # become the common case rather than an edge. The head of the stamp — the
+  # part Amendment 6(b) and clause (d) quote, up to and including `lane-start on
+  # <ws>:` — is unchanged.
+  # AMENDMENT 13(a) — WHAT HAPPENED FIRST, AND THE PLACE IT HAPPENED AFTER IT.
+  # The tail used to read `window renamed, dir <dir>, window <ref>, launching
+  # <cmd>`, and under a 240-character cap (ratified decision O1) that order puts
+  # the ONE FACT THAT IS NOWHERE ELSE — the exact command this run launched —
+  # behind two that are recorded twice over: clause (c) writes `dir` and
+  # `window` into the lane's own log as sub-fields of this very act's
+  # `STARTED`/`RESUMED` line, and Amendment 11's listing prints both as columns.
+  # So the launch clause comes first and the two sub-fields follow it, and a
+  # line long enough to be cut loses what a reader can look up rather than what
+  # they cannot.
+  if (( no_launch )); then
+    did="window renamed, no launch"
+  else
+    did="window renamed, launching $(quoted "${cmd[@]}")"
+  fi
+  did="$did; dir $DIR${record_window:+; window $record_window}"
+  # `$stamp_who` is computed with the launch decision above: the uuid for
+  # Claude, `<agent> <id>` for any other agent (Amendment 17(c)).
+  # AMENDMENT 13(a) — THE STAMP IS THE CELL NOW, not another entry appended to
+  # it. The `state` column holds ONE PHRASE, `<STATE> · <UTC> · <one line>`, and
+  # `set-row-state` stamps the UTC itself — so this builds the line alone, and
+  # the `$utc` this run computed stays where it is still needed (the handoff's
+  # Rule 3 stamp and the log line).
+  #
+  # THE STATE IS `LIVE` EITHER WAY. A launch takes the lane live in this window;
+  # `--no-launch` is the recording act of a session that is already in it
+  # (Amendment 6(c)), so the lane is live in both branches and the tail says
+  # which one happened.
+  #
+  # AND THE LINE KEEPS `<verb> by <uuid>` WORD FOR WORD, because
+  # `row_stamp_is_unknown` reads exactly that pair out of this cell — Amendment
+  # 8(e)'s "first cure carries one condition", which tells a wrong lineage from
+  # the title fallback. A ` · ` inside the line would read back as a fourth part
+  # of the phrase, so it is spelled `; ` here rather than refused at the writer,
+  # and a line over the cap is cut rather than costing the row its whole stamp:
+  # what will not fit is in the object log, one line along.
+  state_line="$lane_verb by $stamp_who (lane $LANE) — lane-start on $ws: $did"
+  state_line="$(cut_to_line "$state_line")"
+  if (( dry_run )); then
+    plan "lanes-edit.sh set-row-state $LANE \"LIVE · $state_line\""
+  else
+    LANES_LANE="$LANE" "$LANES_EDIT" set-row-state "$LANE" "LIVE · $state_line"
+    step "row state set: LIVE · $lane_verb by ${lane_sid:-unknown}"
   fi
 
   # AMENDMENT 17(c) — THE CELL, IN THE AGENT'S OWN SPELLING. A launch of an
