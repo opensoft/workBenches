@@ -848,6 +848,7 @@ act1_compose_child_command() {
   # there is a different question with a different answer, and it is filed
   # rather than changed here.
   env_prefix=(env -u LANES_HOST -u LANES_OS -u LANES_CONTAINER -u CLAUDE_BIN
+    -u CLAUDE_NO_LANE -u CLAUDE_LANE -u CLAUDE_LANE_DIR
     WORKBENCHES_CLAUDE_TMUX_CHILD=1 "CLAUDE_BIN=$claude_bin")
   # THE WORKSTATION, THREADED INTO THE SESSION THIS LAUNCH CREATES (`R-A11-14`).
   # `lane_export_workstation` has already exported it on this side of the
@@ -898,7 +899,9 @@ act1_compose_child_command() {
     && env_prefix+=("CLAUDE_LANE_DIR=${lane_dir_flag:-${CLAUDE_LANE_DIR:-}}")
 
   command_string=""
-  for argument in "${env_prefix[@]}" "$launcher" run "$profile" "$@"; do
+  local -a child_mode=()
+  [[ "${lane_mode:-false}" == true ]] && child_mode=(--with-lane)
+  for argument in "${env_prefix[@]}" "$launcher" "${child_mode[@]}" run "$profile" "$@"; do
     printf -v argument '%q' "$argument"
     command_string+="${command_string:+ }$argument"
   done
@@ -2596,22 +2599,29 @@ lane_dir_note=""
 # learnt. Published for the record the swap writes, and for nothing else.
 lane_dir_entered=""
 no_lane=false
+lane_mode=true
 [[ -z "${CLAUDE_NO_LANE:-}" ]] || no_lane=true
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --with-lane) lane_mode=true; shift ;;
     --lane)
       [[ $# -ge 2 ]] || { echo "pclaude: --lane needs a value: <repo>-<n>" >&2; exit 2; }
-      lane="$2"; shift 2 ;;
-    --lane=*) lane="${1#--lane=}"; shift ;;
+      lane="$2"; lane_mode=true; shift 2 ;;
+    --lane=*) lane="${1#--lane=}"; lane_mode=true; shift ;;
     --dir)
       [[ $# -ge 2 ]] || { echo "pclaude: --dir needs a value: the lane's checkout" >&2; exit 2; }
-      lane_dir_flag="$2"; shift 2 ;;
-    --dir=*) lane_dir_flag="${1#--dir=}"; shift ;;
+      lane_dir_flag="$2"; lane_mode=true; shift 2 ;;
+    --dir=*) lane_dir_flag="${1#--dir=}"; lane_mode=true; shift ;;
     --no-lane) no_lane=true; shift ;;
     -h|--help)
       cat <<'EOF'
 Usage: claude-profile {list|login|status|run} PROFILE [CLAUDE_ARGS...]
        pclaude PROFILE [CLAUDE_ARGS...]
+       lclaude PROFILE [CLAUDE_ARGS...]
+
+Bare pclaude selects a profile without a lane. lclaude uses the same profile
+and binary selection with lane resolution enabled. The lane behavior below
+applies to lclaude and explicit pclaude --lane invocations.
 
 Actions:
   list                 list configured profiles
@@ -2853,8 +2863,12 @@ EOF
     *) break ;;
   esac
 done
+[[ "$lane_mode" == true ]] || no_lane=true
 if [[ "$no_lane" == true ]]; then
   lane=""
+  lane_dir_flag=""
+  unset CLAUDE_LANE CLAUDE_LANE_DIR WORKBENCHES_CLAUDE_LANE \
+    WORKBENCHES_CLAUDE_LANE_SOURCE WORKBENCHES_CLAUDE_LANE_DIR
 fi
 
 # ---------------------------------------------------------------------------
@@ -2953,13 +2967,15 @@ case "$action" in
         # THE WORKSTATION IS RESOLVED AND EXPORTED BEFORE ANYTHING IS
         # STARTED (`R-A11-14`): act 1 threads it into the session it creates,
         # and the Claude this launch execs inherits it either way.
-        lane_export_workstation
+        if [[ "$no_lane" == false ]]; then
+          lane_export_workstation
         # ...AND THE THREE FACTS THAT SAY WHERE IT IS RUNNING, in the same
         # breath and by the same rule (Amendment 18 clause (a),
         # opensoft/workBenches#98): host, os and container, resolved on the host
         # and threaded into the session act 1 creates beside the workstation.
-        lane_export_binding_facts
-        capture_lane_window
+          lane_export_binding_facts
+          capture_lane_window
+        fi
         if claude_run_is_interactive "$@"; then
           start_profile_tmux "$profile" "$@"
         fi

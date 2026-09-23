@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Profile-only entry point. Explicit lane options remain compatible while
+# the bare command always bypasses lane resolution in claude-profile.
+set -euo pipefail
+
+lane_requested=false
+for argument in "$@"; do
+  case "$argument" in
+    --lane|--lane=*|--dir|--dir=*|--with-lane)
+      lane_requested=true
+      break ;;
+    --no-lane) ;;
+    *) break ;;
+  esac
+done
+
+if [[ "$lane_requested" == true ]]; then
+  exec claude-profile "$@"
+fi
+exec claude-profile --no-lane "$@"

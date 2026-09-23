@@ -48,7 +48,7 @@
 #
 # USAGE
 #   lanes-edit.sh [--no-sweep|--sweep] verify-row         <lane>
-#   lanes-edit.sh [--no-sweep|--sweep] append-row-status  <lane> "<text>"
+#   lanes-edit.sh [--no-sweep|--sweep] set-row-state      <lane> "<STATE> · <one line>"
 #   lanes-edit.sh [--no-sweep|--sweep] replace-in-row     <lane> "<old>" "<new>" ["<why>"]
 #   lanes-edit.sh [--no-sweep|--sweep] append-session-id  <lane> "<anchor>" "<text to append>" ["<why>"]
 #                                        (the anchor is matched INSIDE THE
@@ -59,6 +59,40 @@
 #                                         "lane <name>" the text itself names)
 #   lanes-edit.sh [--no-sweep|--sweep] add-row            "<full | row |>"
 #   lanes-edit.sh                      commit             "<message>"         # commit a hand edit
+#   lanes-edit.sh                      migrate-state-cells [--yes]            # Amendment 13(e), once
+#
+# AMENDMENT 13 — THE ROW IS CURRENT STATE; THE LOG IS HISTORY
+#   lanes-edit.sh set-row-state <lane> "<STATE> · <one line>"
+#   lanes-edit.sh log NOTED lane:<lane> "<what the lane did, found, launched, left>"
+#   lanes-edit.sh log RULED lane:<lane> [→ <object>] "<Brett Heap's words, verbatim>"
+#   lanes-edit.sh history <lane> [--since <UTC>]
+#   lanes-edit.sh migrate-state-cells [--yes]
+#
+#   The `state` column holds ONE PHRASE — `<STATE> · <UTC> · <one line>` — and
+#   every write REPLACES it. `set-row-state` stamps the UTC itself; the STATE is
+#   one of LIVE, PAUSED, LANDING #<n>, LANDED, ENDED, RETIRED, HANDED OFF (Rule
+#   6's reading of the cell is unchanged and is now the whole of what the cell
+#   says at that moment), and the line is at most 240 characters (ratified
+#   decision O1) carrying neither a `|` nor a second ` · `.
+#
+#   `append-row-status` is RETIRED and refuses, naming these. It appended and
+#   never replaced, which is how the column that says where a lane IS came to
+#   hold 96,228 characters in one row and 7,016 in another after ONE day — a
+#   diary in a table nobody can read in the table.
+#
+#   THE NARRATIVE GOES TO THE LANE'S OWN LOG, under two Amendment 7 verbs that
+#   are lane-kind lines and NOT transitions: `NOTED` is a status note and
+#   `RULED` a ruling recorded verbatim, with the object it bears on as its
+#   payload where there is one. Neither ever changes a lane's state on any
+#   object or on itself — `who`, `lane-end`, `lanes` and `swapped` skip them
+#   exactly as they skip `STARTED` and `RESUMED` — and `history` prints them in
+#   file order, which is the diary the cell used to be.
+#
+#   `migrate-state-cells` is clause (e)'s ONE act, on Brett Heap's word: a DRY
+#   RUN by default, and with `--yes` one commit carrying the archive
+#   `lanes/archive/LANES-pre-amendment-13-<UTC>.md`, every lane's log and the
+#   register. It REFUSES when no cell holds a ` · ` entry, so a second run is a
+#   no-op that says so.
 #
 # AMENDMENT 7 — the per-lane object log (`lanes/log/<lane>.md`)
 #   lanes-edit.sh log     <VERB> <object> [→|← <payload>] ["<text>"] [--text "<t>"]
@@ -77,10 +111,46 @@
 #   hook's JSON, takes the WINDOW from tmux, the SESSION's own name from the
 #   live record and the ROW from `origin/<branch>`, and where the three are not
 #   one name it REFUSES THE PROMPT (exit 2) with the triple and the one command
-#   that cures it. THE LOCK types `/rename <lane>` into this pane where the name
-#   has merely drifted; a PERSON's rename to another lane is an OFFER, answered
-#   `yes` or `no` at the next prompt. It is silent and cheap where the three
-#   agree, silent outside `$PROJECTS_ROOT` and silent for a subagent's prompt.
+#   that cures it. THE LOCK types `/rename <lane>` into this pane for the TWO
+#   drifts that are not decisions — a name differing from the row's only by
+#   CASE, which is the same lane under Amendment 15, and a name that is a
+#   FORMER name of the row's lane, which is the same lane under Amendment
+#   16(e) and is what a rename run from another window leaves behind. EVERY
+#   OTHER READABLE MISMATCH IS AN OFFER OF THREE CHOICES, answered `1` (allow
+#   this lane for this transcript), `2` (adjust the lane to the session) or `3`
+#   (adjust the session to the lane, which types the `/rename`) at the next
+#   prompt; an answer to a question the state has moved past is dropped rather
+#   than acted on, and the unreadable, ambiguous, duplicate and superseded still
+#   refuse outright. It is silent and cheap where the three agree, silent
+#   outside `$PROJECTS_ROOT` and silent for a subagent's prompt.
+#
+# AMENDMENT 16 — a lane is renamed by ONE WORD, in ONE COMMIT, and its old name
+# resolves for ever
+#   lanes-edit.sh rename-lane <old> <new> ["<why>"] [--verbatim] [--no-github]
+#
+#   `lane-rename <old> <new>` on PATH is the word; this is its write. ONE
+#   commit, refused or whole, and its four moves are the amendment's clauses
+#   (b)–(e): the row's key cell becomes `` `<new>` `` with `*(ex `<old>`,
+#   renamed <UTC>)*` beside it; `lanes/log/<old>.md` is renamed to
+#   `lanes/log/<new>.md` and gains a `RENAMED` line; the handoff the row names
+#   is renamed to the same date with `lane-<new>` and gains a Rule 3 stamp,
+#   with the row's handoff column following; and `lanes/aliases.tsv` gains
+#   `<old>	<new>	<UTC>`.
+#
+#   THE ALIAS TABLE IS WHAT MAKES THE OLD NAME KEEP WORKING (clause (e)).
+#   `canon_lane` — Amendment 15's resolver, which every `<lane>` argument and
+#   every `$LANES_LANE` already passes through — resolves a name with NO ROW
+#   through that table, case-insensitively, chains to their end, before it
+#   answers. So an old name in a line, a window, a session record or a person's
+#   typing lands on the current row, in every reader at once, rather than in a
+#   list of readers somebody has to keep complete. A ROW WINS OVER AN ALIAS:
+#   a name that is a lane today IS that lane, which is also what makes a rename
+#   back again readable.
+#
+#   `RENAMED` is a LANE-KIND verb that changes no object's state. Every
+#   last-line state reader here enumerates the five verbs that DO
+#   (`STARTED PAUSED RESUMED ENDED RETIRED`), so the new verb is outside that
+#   rule by construction and no reader had to be taught to skip it.
 #
 # AMENDMENT 18(h) — one live process per transcript
 #   lanes-edit.sh transcript-holders <uuid>      # every live process carrying it
@@ -230,9 +300,21 @@
 #  64  usage — a caller's bad arguments to one of the reads Amendment 11 added
 #      (`window-lane`, `lane-dir`, `lane-profile`, `last-session`, `forks`,
 #      `workstation`, `fetch-age`, `lanes`, `session-lane`, and `swapped`, which
-#      took it first), and to Amendment 15's `canon-lane`, which takes the same
+#      took it first), to Amendment 13's `history`, and to Amendment 15's
+#      `canon-lane`, which takes the same
 #      contract because its four callers sit in front of a launch as those do. IT WAS IN NO TABLE AT ALL until this round (F-X16), while
 #      being the code the contract gives every one of those reads.
+#
+#  66  EX_NOINPUT — AMENDMENT 16(e)'s ALIAS TABLE COULD NOT BE READ, and
+#      `canon-lane` is the one verb that spends it. `lanes/aliases.tsv` is what
+#      makes a renamed lane's OLD name resolve, so a table nobody can read is
+#      not an estate with no renames: a former name would read as a lane nobody
+#      has, and `lane-start` would append a SECOND row for one that has been
+#      running all day. It is a number of its own because 2 already carries two
+#      meanings to `lane-start`, `lane-end`, `lane` and `lane-handoff` — 15(d)'s
+#      two-rows refusal, told by its words, and the unknown-subcommand 2 of an
+#      older helper, which they carry on past — and a third meaning there is the
+#      fail-open this refusal exists to close.
 #
 #      WHY A SECOND USAGE CODE RATHER THAN 2. A read in front of a launch has to
 #      tell "you called me wrong" from "this helper has never heard of you" —
@@ -260,6 +342,7 @@
 #   8  no record — `who` found nothing; `lane-objects` has no log file for the
 #      lane; `live-holder` READ this workstation's session records and none of
 #      them holds it; `swapped` found no lane swapped on the workstation;
+#      `history` READ the lane's log and it carries no `NOTED` or `RULED` line;
 #      `window-session` found no live session in the window. A read that could
 #      not be performed is never 8 (R22). `session-start` never exits 8, or
 #      anything but 0: it is a hook. `guard` never exits 8 either — it is a hook
@@ -315,6 +398,10 @@
 #   LANES_REPOS_TSV    the per-wip alias OVERRIDE (default: <LANES_DIR>/repos.tsv)
 #   LANES_REPOS_TSV_SHIPPED  the organisation's alias table shipped by
 #                      openRepoTools (default: beside this command)
+#   LANES_ALIASES_TSV  Amendment 16(e)'s LANE alias table, `<old><TAB><new>
+#                      <TAB><UTC>` (default: <LANES_DIR>/aliases.tsv)
+#   LANES_ALIASES_PATH its pathspec relative to LANES_REPO
+#                      (default: `lanes/aliases.tsv`)
 #   LANES_SESSION      this session's TRANSCRIPT uuid, for the event lines
 #                      (default: the last uuid in the lane's row — Amendment 6(b))
 #   LANES_LANE_DIR     the lane's checkout, for project.yaml leg detection
@@ -659,8 +746,90 @@ release_lock() {
   return 0
 }
 
+# ====================================================== AMENDMENT 16 =======
+#
+# THE RENAME'S UNDO, AND WHY IT IS A TRAP AND NOT A LINE BEFORE EACH `die`.
+#
+# `rename-lane` is ONE COMMIT, REFUSED OR WHOLE, and its refusals all happen
+# before the first byte — but the four MOVES themselves can still fail on a
+# filesystem: a `mv` across a mount, a handoff this user may not write, a disk
+# that fills between the log and the alias table. Copilot round 1 on
+# openRepoTools#81 named the state that left: *"the log has already been moved
+# and its `RENAMED` line appended, and this `die` exits without rolling either
+# change back"* — a half-renamed checkout, which is exactly what the contract
+# says cannot happen and what no re-run can finish.
+#
+# So the writes are made against a SNAPSHOT taken before the first of them, and
+# every exit path between the first write and the commit restores it. It hangs
+# off `cleanup`, not off each `die`, for the reason `replace_line` makes
+# unavoidable: that function dies inside itself when its own proof fails, and a
+# caller cannot put a line after it. `cleanup` runs on EXIT and on the two
+# signals, so one hook covers every way out, the shell's included.
+#
+# THE REGISTER IS NOT IN IT. `replace_line` builds the new file in a temporary
+# directory and proves it — one line added, one removed, the same line count —
+# BEFORE it writes a byte of `LANES.md`, so the register is never half-written
+# and there is nothing there to restore.
+RL_ACTIVE=0; RL_SNAP=""; RL_HEAD_BEFORE=""
+RL_LOG_OLD=""; RL_LOG_NEW=""; RL_H_OLD=""; RL_H_NEW=""
+RL_ALIAS=""; RL_ALIAS_EXISTED=0; RL_REG=""
+RL_PATHS_FOR_UNDO=()
+rename_undo() {
+  [ "$RL_ACTIVE" = 1 ] || return 0
+  RL_ACTIVE=0
+  # A COMMIT THAT EXISTS IS NOT UNDONE. The undo is armed through `commit_push`
+  # because that function can die before it commits anything; once it HAS
+  # committed, the four moves are in that commit and restoring the working tree
+  # would be an inverse change nobody asked for, on top of a commit whose own
+  # recovery `commit_push` prints. HEAD is the whole test.
+  if [ -n "$RL_HEAD_BEFORE" ]; then
+    ru_head="$(git -C "$LANES_REPO" rev-parse HEAD 2>/dev/null || printf '')"
+    if [ -n "$ru_head" ] && [ "$ru_head" != "$RL_HEAD_BEFORE" ]; then
+      note "the rename is COMMITTED as $ru_head and is not rolled back; what follows is about getting that commit to origin, and the four files are whole."
+      return 0
+    fi
+  fi
+  [ -n "$RL_LOG_NEW" ] && [ -f "$RL_LOG_NEW" ] && rm -f -- "$RL_LOG_NEW"
+  [ -n "$RL_LOG_OLD" ] && [ -n "$RL_SNAP" ] && [ -f "$RL_SNAP/log" ] && cat -- "$RL_SNAP/log" > "$RL_LOG_OLD"
+  if [ -n "$RL_H_NEW" ] && [ "$RL_H_NEW" != "$RL_H_OLD" ] && [ -f "$RL_H_NEW" ]; then rm -f -- "$RL_H_NEW"; fi
+  [ -n "$RL_H_OLD" ] && [ -n "$RL_SNAP" ] && [ -f "$RL_SNAP/handoff" ] && cat -- "$RL_SNAP/handoff" > "$RL_H_OLD"
+  if [ -n "$RL_ALIAS" ]; then
+    if [ "$RL_ALIAS_EXISTED" = 1 ]; then
+      [ -n "$RL_SNAP" ] && [ -f "$RL_SNAP/aliases" ] && cat -- "$RL_SNAP/aliases" > "$RL_ALIAS"
+    else
+      rm -f -- "$RL_ALIAS"
+    fi
+  fi
+  # THE REGISTER LAST, and with the `cat >` every writer here uses for it: the
+  # register reached through `~/projects/<estate>/LANES.md` is a SYMLINK, and a
+  # redirect follows it where `mv` or `cp` would replace it with a regular file
+  # and detach the register from git — the hazard this file's own header opens
+  # with.
+  [ -n "$RL_REG" ] && [ -n "$RL_SNAP" ] && [ -f "$RL_SNAP/register" ] && cat -- "$RL_SNAP/register" > "$RL_REG"
+  # AND THE INDEX WITH IT, because `commit_push` STAGES before it commits: a
+  # `git add` that succeeded and a `git commit` that did not leaves the four
+  # paths staged, so restoring only the working tree would leave the rename in
+  # the index for the next writer to commit by accident.
+  # THE PATHSPECS STAY AN ARRAY (Copilot round 8 on openRepoTools#81). Flattened
+  # into one string and expanded unquoted, a handoff under `handoffs/team
+  # notes/…` — a path this estate supports, and the one every other line here
+  # quotes — became `handoffs/team` and `notes/…`, two pathspecs that match
+  # nothing. AND `git reset` SAYS NOTHING ABOUT ONE IT CANNOT MATCH: measured,
+  # it resets the paths it does match, leaves that file staged and exits 0, so
+  # the `|| :` above was never reached and no line of output said so. The
+  # rename then stayed in the index for the next writer to commit by accident,
+  # which is the half-transaction this whole snapshot exists to prevent.
+  if [ -n "$RL_REG" ] && [ "$NO_GIT" != 1 ] && [ "${#RL_PATHS_FOR_UNDO[@]}" -gt 0 ]; then
+    git -C "$LANES_REPO" reset -q HEAD -- "${RL_PATHS_FOR_UNDO[@]}" 2>/dev/null || :
+  fi
+  note "the rename was rolled back: the object log, the handoff and ${LANES_ALIASES_PATH:-lanes/aliases.tsv} are as they were, and nothing was committed. A rename is ONE commit, refused or whole (Amendment 16)."
+  return 0
+}
+
 cleanup() {
+  rename_undo
   if [ "$LOCK_HELD" = 1 ]; then release_lock; fi
+  [ -n "${RL_SNAP:-}" ] && [ -d "${RL_SNAP:-}" ] && rm -rf -- "$RL_SNAP"
   [ -n "${TMPD:-}" ] && [ -d "${TMPD:-}" ] && rm -rf -- "$TMPD"
   [ -n "${SE_CACHE_FILE:-}" ] && rm -f -- "$SE_CACHE_FILE" "$SE_CACHE_FILE".* 2>/dev/null
   return 0
@@ -816,6 +985,123 @@ row_split_session_cell() {   # <row>
 }
 rstrip_spaces() { s="$1"; while [ "${s% }" != "$s" ]; do s="${s% }"; done; printf '%s' "$s"; }
 
+# --------------------------------------------- AMENDMENT 13: THE ROW IS STATE
+#
+# **THE ROW IS THE LANE'S CURRENT STATE, ONE LINE A PERSON CAN READ; ITS HISTORY
+# IS THE LANE'S OWN LOG** — lane-collision-protocol Amendment 13, in force
+# 2026-09-13T21:08:36Z. Clause (a): the `state` column holds ONE PHRASE,
+# `<STATE> · <UTC> · <one line>`, and every write REPLACES it. `set-row-state`
+# is the writer; `append-row-status` is RETIRED, so the cell can never grow into
+# a diary again. Measured on the day the amendment was drafted: the register was
+# 1,141,283 bytes over 46 rows, its longest row 96,228 characters, and this
+# lane's own cell 7,016 characters after ONE day of appending.
+#
+# WHERE THE CELL IS: SPLIT THE ROW ON ` | `, AND SIX SEPARATORS ARE THE PROOF.
+# A seven-column row has exactly six of them, and then the two readings of the
+# row — count six from the left, take the last cell from the right — are the
+# same text. A row with MORE has a ` | ` inside one of its cells, and nothing
+# here can tell WHICH cell it is in: the two readings disagree, and one of them
+# writes the new state over the row's handoff path. So more than six is a
+# REFUSAL naming the row, never a choice between them.
+#
+# MEASURED ON THE LIVE REGISTER, 2026-09-15 (1,335,595 bytes, 52 rows): 50 of
+# them carry exactly six separators and split cleanly. `openXfactory-2` carries
+# seven — one of them is inside its `objects owned` cell, so the two readings
+# disagree about the HANDOFF PATH — and `openxfactory-4` eight, both inside its
+# state cell. Those two are refused by name, and the fix is a person's: escape
+# the pipe as `\|`, which is how a Markdown table carries a literal one, in a
+# hand edit wrapped by `lanes-edit.sh commit`. A BARE `|` THAT IS NOT SPELLED
+# ` | ` IS HARMLESS and stays inside whichever cell holds it: the state cells of
+# `openRepoProject-1` and `openRepoTools-3` carry nineteen and four of them
+# (`'| true'`, a quoted shell fragment), and both of those rows split exactly.
+#
+# It splits from the LEFT for the reason `row_split_session_cell` does — the
+# cells that may carry a stray separator are the free-text ones at the end — and
+# the three pieces are asserted to reassemble into the row before anything is
+# written.
+RSS_HEAD=""; RSS_CELL=""; RSS_TAIL=""
+row_split_state_cell() {   # <row> — 0 with the pieces · 1 not a row · 2 ambiguous
+  rss_row="$1"; RSS_HEAD=""; RSS_CELL=""; RSS_TAIL=""
+  case "$rss_row" in "|"*) : ;; *) return 1 ;; esac
+  rss_body="$(rstrip_spaces "$rss_row")"
+  case "$rss_body" in *"|") : ;; *) return 1 ;; esac
+  # `${row:N}` AND NEVER `${row#"$body"}`. Removing a literal prefix walks every
+  # prefix length in turn, so a 90,751-character row cost ELEVEN SECONDS in that
+  # one expansion — measured 2026-09-15 against the live register's longest row,
+  # and it is the whole of what made a dry run of the migration take a minute
+  # and a half. A substring by offset is linear, and both `${#s}` and `${s:n}`
+  # count CHARACTERS, so the two agree on a row full of `·`, `—` and `→`.
+  rss_pad="${rss_row:${#rss_body}}"         # the row's own trailing spaces, kept
+  rss_inner="${rss_body%|}"                 # everything before the closing pipe
+  rss_n="$(count_occurrences "$rss_inner" " | ")" || return 1
+  [ "$rss_n" = 6 ] || return 2
+  rss_rest="$rss_inner"; rss_head=""; rss_i=0
+  while [ "$rss_i" -lt 6 ]; do
+    rss_one="${rss_rest%% | *}"
+    rss_head="$rss_head$rss_one | "
+    rss_rest="${rss_rest:$(( ${#rss_one} + 3 ))}"     # 3 = the separator
+    rss_i=$((rss_i + 1))
+  done
+  RSS_HEAD="$rss_head"; RSS_CELL="$rss_rest"; RSS_TAIL="|$rss_pad"
+  [ "$RSS_HEAD$RSS_CELL$RSS_TAIL" = "$rss_row" ] || { RSS_HEAD=""; RSS_CELL=""; RSS_TAIL=""; return 1; }
+  return 0
+}
+
+# How many ` | ` a row carries, for the refusal above to be able to say so.
+row_sep_count() {   # <row>
+  count_occurrences "$(rstrip_spaces "$1")" " | " 2>/dev/null || printf '?'
+}
+
+# Clause (a)'s seven states, and O1's cap on the one line beside them.
+ROW_STATES='LIVE, PAUSED, LANDING #<n>, LANDED, ENDED, RETIRED, HANDED OFF'
+ROW_STATE_CAP=240
+ROW_STATE=""; ROW_STATE_LINE=""
+state_word_is_valid() {   # <STATE>
+  case "${1-}" in
+    LIVE|PAUSED|LANDED|ENDED|RETIRED|'HANDED OFF') return 0 ;;
+    'LANDING #'*)
+      # Rule 6's reading of the cell is unchanged by Amendment 13 and is now the
+      # whole of what the cell says at that moment, so the number is checked:
+      # `LANDING #` with nothing after it is a merge hold no lane can pair with
+      # a PR.
+      case "${1#LANDING #}" in
+        '' | *[!0-9]*) return 1 ;;
+        *) return 0 ;;
+      esac ;;
+  esac
+  return 1
+}
+
+# `<STATE> · <one line>` → ROW_STATE and ROW_STATE_LINE, or a refusal. Every
+# test is made BEFORE the lock and before the row is touched, so a refusal
+# leaves the register exactly as it found it.
+row_state_check() {   # "<STATE> · <one line>"
+  rst_in="${1-}"; ROW_STATE=""; ROW_STATE_LINE=""
+  case "$rst_in" in
+    *' · '*) : ;;
+    *) die "the phrase is '<STATE> · <one line>' and this carries no ' · ' separator: '$rst_in'. The STATE is one of $ROW_STATES; the line says what the last act was, in at most $ROW_STATE_CAP characters. The narrative goes to the lane's own log — \`log NOTED\` / \`log RULED\` (Amendment 13(b))." 2 ;;
+  esac
+  ROW_STATE="${rst_in%% · *}"
+  ROW_STATE_LINE="${rst_in#* · }"
+  state_word_is_valid "$ROW_STATE" ||
+    die "'$ROW_STATE' is not one of Amendment 13(a)'s states ($ROW_STATES). The cell is the lane's CURRENT STATE and nothing else, so an eighth word is a state no reader of Rule 6 or of the listing knows." 2
+  [ -n "$ROW_STATE_LINE" ] ||
+    die "the phrase is '<STATE> · <one line>' and the line is empty: say what the last act was. A state with no line is a cell a person cannot read anything out of." 2
+  case "$ROW_STATE_LINE" in
+    *' · '*) die "the line may not contain ' · ': that separator is what divides the cell's three parts — '<STATE> · <UTC> · <one line>' — and a second one inside the line reads back as a fourth part. Use a semicolon: '$ROW_STATE_LINE'" 2 ;;
+    *'|'*)   die "the line may not contain '|': it would forge a cell boundary in the row, which is the one edit no reader of the register could recover from. Got: '$ROW_STATE_LINE'" 2 ;;
+  esac
+  if [ "${ROW_STATE_LINE//[$'\n\r']/}" != "$ROW_STATE_LINE" ]; then
+    die "the line is ONE line: a newline in it would split the row in two and every row after it would be read as a lane" 2
+  fi
+  # ${#s} COUNTS CHARACTERS and the cap is O1's 240 of them — these lines are
+  # full of `·`, `—` and `→`, so a byte count would refuse a line that is inside
+  # the cap and accept one that is not.
+  [ "${#ROW_STATE_LINE}" -le "$ROW_STATE_CAP" ] ||
+    die "the line is ${#ROW_STATE_LINE} characters and the cap is $ROW_STATE_CAP (Amendment 13, ratified decision O1). Shorten it, and put what will not fit in the lane's own log, which is where the history lives: LANES_LANE=<lane> lanes-edit.sh log NOTED lane:<lane> \"<what happened>\"" 2
+  return 0
+}
+
 # Prints the row's OWN spelling of a lane name that matches $1 ignoring case,
 # when exactly one row does. Attribution only — never used to pick the line an
 # edit rewrites, which stays exact-match. Rule 10's wire form is lowercase
@@ -876,7 +1162,16 @@ replace_line() {
   [ "$before" = "$after" ] || die "line count changed ($before -> $after); refusing" 5
   stat="$(git --no-pager diff --no-index --numstat -- "$pre" "$out" 2>/dev/null | head -n1 | cut -f1,2)"
   [ "$stat" = "$(printf '1\t1')" ] || die "edit touched more than one line (numstat: ${stat:-none}); refusing" 5
-  cat -- "$out" > "$LANES_FILE"   # redirect FOLLOWS the symlink
+  # THE WRITE IS CHECKED (Copilot round 3 on openRepoTools#81). `cat > file`
+  # here is the last act of every row edit in this file — `append-row-status`,
+  # `replace-in-row`, `append-session-id` and Amendment 16's `rename-lane` —
+  # and unchecked it returns 0 having written NOTHING when `LANES.md` is not
+  # writable: the two proofs above pass (they are made against a temporary
+  # file), the note says the line was rewritten, and the caller commits whatever
+  # else it changed. For a rename that is the alias landing while the row it
+  # points at never moves.
+  cat -- "$out" > "$LANES_FILE" ||   # redirect FOLLOWS the symlink
+    die "the register at $LANES_FILE could not be written: its line $n is UNCHANGED and this edit is not made. Nothing else this write touched has been committed." 5
   note "line $n rewritten in $LANES_FILE"
 }
 
@@ -1420,6 +1715,16 @@ if [ -z "${LANES_REPOS_TSV_SHIPPED:-}" ]; then
     LANES_REPOS_TSV_SHIPPED="$SCRIPT_DIR/repos.tsv"
   fi
 fi
+
+# AMENDMENT 16(e) — THE LANE ALIAS TABLE, `lanes/aliases.tsv`, one layer and
+# not two. `repos.tsv` above has a shipped layer because a repository alias is
+# an ORGANISATION's fact; a lane rename is one person's register moving, so the
+# table lives beside the register it describes and openRepoTools ships none.
+# `<old>	<new>	<UTC>`, one line per rename, appended by `rename-lane` and by
+# nothing else — and read case-insensitively by `canon_lane`, which is the one
+# seat every `<lane>` argument in this file already passes through.
+LANES_ALIASES_TSV="${LANES_ALIASES_TSV:-${LANES_DIR:+$LANES_DIR/aliases.tsv}}"
+LANES_ALIASES_PATH="${LANES_ALIASES_PATH:-${LANES_PREFIX}aliases.tsv}"
 PROJECTS_ROOT="${PROJECTS_ROOT:-$HOME/projects}"
 NO_GITHUB="${LANES_NO_GITHUB:-0}"
 STALE_HOURS="${LANES_STALE_HOURS:-4}"     # Rule 1's threshold, reused
@@ -1464,10 +1769,31 @@ utc_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 is_open_verb()   { case "$1" in CLAIMED|TAKEOVER|OPENED|LANDING|WITHDRAWN) return 0 ;; esac; return 1; }
 is_closed_verb() { case "$1" in RELEASED|CLAIM-LOST|CLOSED|LANDED) return 0 ;; esac; return 1; }
 is_lane_verb()   { case "$1" in STARTED|PAUSED|RESUMED|ENDED|RETIRED) return 0 ;; esac; return 1; }
+# AMENDMENT 13(b) — THE TWO NARRATIVE VERBS, AND THEY ARE OUTSIDE EVERY STATE
+# THERE IS. `NOTED` is a status note and `RULED` a ruling recorded verbatim;
+# both are lane-kind lines whose object is the lane itself, and NEITHER IS A
+# TRANSITION OF ANYTHING. So they are their own set rather than members of
+# `is_lane_verb`: every reader that computes a lane's state by the per-lane
+# last-line rule takes the five lane verbs by name, and a sixth and seventh
+# inside that predicate would have made the narrative move the lane — a `NOTED`
+# after a swap's `PAUSED` would have made a paused lane read as neither paused
+# nor running, which is the one thing `swapped` and `restart` are built on.
+# The one reader that took the LAST lane-kind line whatever it was is
+# `swapped_candidates`, and it skips these by name for exactly that reason.
+#
+# AMENDMENT 16 PUTS `RENAMED` HERE, AND THE SET IS WHAT IT WAS RATHER THAN WHAT
+# IT IS CALLED: a LANE-KIND LINE THAT IS NOT A TRANSITION. Clause (c) says the
+# rename's line "changes no object's state, every last-line reader skips it",
+# which is Amendment 13(b)'s sentence about its own two in different words — and
+# `swapped_candidates` is the proof that `is_lane_verb` is the wrong home: it
+# takes a lane's last lane-kind line WHATEVER its verb is, so a `RENAMED` there
+# would make a swapped lane read as neither paused nor running and `restart`
+# would not find it. One predicate, three verbs, one property.
+is_note_verb()   { case "$1" in NOTED|RULED|RENAMED) return 0 ;; esac; return 1; }
 valid_verb() {
-  is_open_verb "$1" || is_closed_verb "$1" || is_lane_verb "$1"
+  is_open_verb "$1" || is_closed_verb "$1" || is_lane_verb "$1" || is_note_verb "$1"
 }
-VERB_LIST="CLAIMED RELEASED TAKEOVER CLOSED | OPENED LANDING LANDED WITHDRAWN | STARTED PAUSED RESUMED ENDED RETIRED | CLAIM-LOST"
+VERB_LIST="CLAIMED RELEASED TAKEOVER CLOSED | OPENED LANDING LANDED WITHDRAWN | STARTED PAUSED RESUMED ENDED RETIRED | CLAIM-LOST | NOTED RULED RENAMED"
 
 check_lane_name() {
   case "${1-}" in
@@ -1803,8 +2129,45 @@ object_slug()    { case "$1" in *:openspec/changes/*) printf '%s\n' "${1##*/}" ;
 # `match()` is used for every multi-byte separator: RSTART and RLENGTH are in
 # the same units as each other whatever the locale, and a hard-coded byte
 # offset for " — " is not.
+# AMENDMENT 16(e) — A LINE'S LANE IS THE LANE OF THE FILE IT IS IN, and that is
+# the whole of the rule.
+#
+# Clause (c) is explicit that a rename rewrites none of the lines above it:
+# *"the lines above it — which still say `lane <old>` — are never rewritten"*.
+# So after a rename a lane's log holds its whole history under two names, in one
+# file, about one lane — the exact shape Amendment 15 met when one lane's log
+# spelled it two ways, and the exact failure: `lane_objects`, `superseded_by`,
+# `holders_of`, `lane_row_facts` and `first_landed_of` all key on this field, so
+# read byte for byte HALF A RENAMED LANE'S HOLDS BECOME INVISIBLE — `who --lane`
+# calls a held object free and `lane-end` ends a lane that holds one.
+#
+# THE FIRST ANSWER WAS AN ALIAS LOOKUP IN THIS PARSE, AND IT WAS THE WRONG ONE
+# (Copilot round 1 on openRepoTools#81). A rename FREES the old name — no row
+# carries it, so `lane_next_free` hands the position out and a NEW lane can be
+# called it — and from that moment the field `lane <old>` is ambiguous: it is
+# the renamed lane's history in one file and the new lane's present in another.
+# No amount of resolving a NAME tells those apart, because the name is the same.
+#
+# THE FILE DOES. Amendment 7's first sentence is one file per lane, single
+# writer, and Amendment 15 makes its name the row's own spelling — so
+# `lanes/log/<lane>.md` IS the statement of which lane every line in it belongs
+# to, it MOVES with the rename (clause (c)), and it needs no table to read. The
+# field stays on the line as the spelling somebody typed; the FILE is what the
+# readers are keyed on. That also settles, with nothing added, the two spellings
+# of one lane Amendment 15 had to reason about line by line.
 LOG_AWK='
 function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+# The lane a FILE belongs to: its base name without `.md`. `FN` is the
+# repo-relative path `remote_log_events` hands in; `FILENAME` is awk-s own for a
+# file read from disk. Computed once per file rather than per line.
+function filelane(   f, n, parts) {
+  f = (FN != "" ? FN : FILENAME)
+  if (f == "") return ""
+  n = split(f, parts, "/")
+  f = parts[n]
+  sub(/\.[Mm][Dd]$/, "", f)
+  return f
+}
 # A LINE IS NEVER DROPPED SILENTLY. This log is append-only and nothing in it
 # is ever rewritten, so a line no parser can read is a hold no tool will
 # mention again — `who` would call the object free, and it is not.
@@ -1813,6 +2176,7 @@ function bad(why,   f) {
   printf "unreadable: %s:%d (%s)\n", f, FNR, why > "/dev/stderr"
   nbad++
 }
+FNR == 1 { FL = "" }
 {
   line = $0
   if (line ~ /^[ \t]*#/ || line ~ /^[ \t]*$/) next
@@ -1857,6 +2221,16 @@ function bad(why,   f) {
       else if (match(rest, /^← /)) { ref = "←"; payload = trim(substr(rest, RSTART + RLENGTH)) }
       else { payload = trim(rest) }
     }
+  }
+  if (FL == "") FL = filelane()
+  if (FL != "") {
+    # THE LANE-KIND OBJECT IS THE WRITING LANE AND NOTHING ELSE (Amendment
+    # 7(b)), so it follows the same rule: `lane:<old>` in a renamed lane-s own
+    # log is that lane under the name it had, and `who lane:<name>` asks
+    # `canon_object` -> `canon_lane` of the name it was given, which lands on
+    # the same answer from the other side.
+    lane = FL
+    if (substr(obj, 1, 5) == "lane:") obj = "lane:" FL
   }
   printf "%s%c%s%c%s%c%s%c%s%c%s%c%s%c%s%c%s%c%s%c%d\n", utc, 31, lane, 31, verb, 31, uuid, 31, ws, 31, obj, 31, ref, 31, payload, 31, txt, 31, (FN != "" ? FN : FILENAME), 31, FNR
 }
@@ -2686,7 +3060,7 @@ record_is_here() {   # <the record's JSON blob>
 live_holder() {
   local lane="$1" ids="${2-}" pats=() f blob pid name status target sid base src
   local lh_files lh_match lh_err kindv verdict c c_sid c_tgt c_name c_pid c_v
-  local lh_bg="" lh_windowed="" lh_here="" lh_here_tgt="" lh_else="" lh_orph=""
+  local lh_bg="" lh_windowed="" lh_here="" lh_here_tgt="" lh_else="" lh_orph="" lh_bres=""
   local cands=()
   SESSION_FILES_ERR=""
   [ -n "$ids" ] || ids="$(session_ids_of_lane "$lane" 2>/dev/null || :)"
@@ -2754,7 +3128,33 @@ live_holder() {
     # construction as its example). Amendment 9's adoption act 3, obligation 4.
     base_lc="$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')"
     lane_lc="$(printf '%s' "$lane" | tr '[:upper:]' '[:lower:]')"
-    if [ -n "$base" ] && [ "$base_lc" != "$lane_lc" ] && name_is_explicit "$src"; then continue; fi
+    if [ -n "$base" ] && [ "$base_lc" != "$lane_lc" ] && name_is_explicit "$src"; then
+      # AMENDMENT 16(e) — A NAME THIS LANE USED TO HAVE IS THIS LANE. The skip
+      # above is Amendment 8's: a session a PERSON named for ANOTHER lane is not
+      # this one's holder. After a rename the lane's own session still carries
+      # its FORMER name — the `/rename` is what clause (f) is for and it lands at
+      # the lane's next prompt, not before — and read byte for byte that record
+      # is "another lane's", so the lane's own live session stopped being its
+      # holder the instant the row moved. That would refuse the rename's own
+      # window its `/rename`, and tell `who` the lane is NOT LIVE while it is.
+      # Resolved through the same seat every other name goes through; anything
+      # that resolves elsewhere is still skipped, which is Amendment 8's rule
+      # unchanged.
+      # AND THE RESOLVER'S OWN STATUS IS KEPT (Copilot round 4). Piped into
+      # `grep | head || :` it was thrown away, so an unreadable alias table
+      # answered EMPTY here, the record was skipped, and `live_holder` returned
+      # 8 — "no live session holds it" — about a lane that is running. That is
+      # the read `lane-start` renames a window over.
+      lh_brc=0
+      lh_bres="$(rows_named_ci_alias "$base" 2>/dev/null)" || lh_brc=$?
+      if [ "$lh_brc" != 0 ]; then
+        SESSION_FILES_ERR="${LANES_ALIASES_PATH:-lanes/aliases.tsv} could not be read ($(lane_alias_err)), so whether the session named '$base' carries a FORMER name of lane $lane could not be established (Amendment 16(e))"
+        rm -f -- "$lh_match"
+        return 1
+      fi
+      lh_bres="$(printf '%s\n' "$lh_bres" | grep . | head -n1 || :)"
+      if [ -z "$lh_bres" ] || [ "$(lc "$lh_bres")" != "$lane_lc" ]; then continue; fi
+    fi
     if record_is_here "$blob"; then verdict=here
     elif [ -n "$target" ];     then verdict=elsewhere
     else                            verdict=orphan
@@ -3052,6 +3452,281 @@ rows_named_ci() {   # <typed name>
     }'
 }
 
+# ====================================================== AMENDMENT 16 =======
+#
+# THE LANE ALIAS TABLE — `lanes/aliases.tsv`, `<old>	<new>	<UTC>` — AND THE
+# ONE SEAT EVERY READER SHARES.
+#
+# Clause (e): *"Every reader that takes a lane name — `who`, `lanes`,
+# `live-holder`, `history`, Rule 6 attribution, `lane-start`'s row lookup, the
+# `SessionStart` block and Amendment 12's guard — resolves through it,
+# case-insensitively (Amendment 15), before it reads."* THAT LIST IS NOT BUILT
+# AS A LIST. Amendment 15 already put `canon_lane` in front of every one of
+# those reads — each subcommand arm below spells
+# `lane="$(canon_lane "$lane")" || exit 2`, and `lane-start`, `lane-end`, `lane`
+# and `lane-handoff` each call the `canon-lane` subcommand — so the resolution
+# is hooked THERE, once, and the guard's own two lookups take the same function
+# one layer down. A list of readers is a list somebody has to keep complete.
+#
+# READ FROM `origin/<branch>` LIKE THE REGISTER (R19), falling back to this
+# checkout's own file — `register_text`'s exact shape, for its exact reason:
+# `rename-lane` lands the row and this table in ONE commit, so a reader taking
+# one from the working tree and the other from `origin` could see an alias whose
+# row has not arrived here, or a row whose alias has not.
+LANES_ALIAS_CACHE=""
+LANES_ALIAS_ERR=""
+# THE REASON IS WRITTEN WHERE THE PARENT CAN READ IT, and that is not a
+# nicety: every caller of `lane_alias_text` reaches it through a COMMAND
+# SUBSTITUTION — `lane_alias_hop`, `lane_alias_target` and `lane_alias_keys`
+# are all taken with `$( )`, and `rows_named_ci_alias` is taken with one by
+# `canon_lane` — so a variable set here dies with the subshell, and every
+# refusal below printed `(unknown error)`: fail-closed, and silent about what
+# to fix. It goes in a file beside the events cache, which `cleanup` already
+# sweeps (`rm -f -- "$SE_CACHE_FILE".*`), exactly as `SE_WARN_FILE` carries a
+# warning raised inside the same kind of substitution. The variable is kept as
+# the answer for a process that has no temporary file at all — `mktemp` can
+# fail, and `SE_CACHE_FILE` is empty when it does.
+lane_alias_fail() {   # <reason>
+  LANES_ALIAS_ERR="${1-}"
+  laf_f="${SE_CACHE_FILE:+$SE_CACHE_FILE.aliaserr}"
+  [ -n "$laf_f" ] && printf '%s' "${1-}" > "$laf_f" 2>/dev/null
+  return 0
+}
+# AND IT IS NOT ITS OWN FALLBACK. The file is the reason THIS process last
+# failed with; the variable is the reason THIS SHELL last failed with; and
+# where there is neither, the sentence still has to read as English, so the
+# words are spelled out here rather than left to a caller's `${x:-…}`.
+lane_alias_err() {
+  lae_f="${SE_CACHE_FILE:+$SE_CACHE_FILE.aliaserr}"
+  if [ -n "$lae_f" ] && [ -s "$lae_f" ]; then cat -- "$lae_f"; return 0; fi
+  printf '%s' "${LANES_ALIAS_ERR:-unknown error}"
+  return 0
+}
+# A READ THAT FAILED IS NOT AN EMPTY TABLE (Copilot round 1 on openRepoTools#81).
+# `cat … 2>/dev/null || :` made a permission or IO fault on `lanes/aliases.tsv`
+# indistinguishable from an estate that has never renamed a lane — and the two
+# have opposite consequences: the second means a name resolves to itself, while
+# the first means a name whose row moved resolves to NOTHING, so a reader misses
+# that lane's whole history and `rename-lane` validates its cycle test against a
+# table it could not read. Clause (e) promises the old name resolves FOR EVER, so
+# this fails CLOSED: 5, with the reason in `LANES_ALIAS_ERR`, which the writer
+# turns into a refusal and every reader says out loud.
+lane_alias_text() {
+  if [ -n "$LANES_ALIAS_CACHE" ]; then printf '%s\n' "$LANES_ALIAS_CACHE"; return 0; fi
+  lat_c="${SE_CACHE_FILE:+$SE_CACHE_FILE.aliases}"
+  # THE CACHE'S OWN READ IS CHECKED (Copilot round 5 on openRepoTools#81). The
+  # `return 0` under an unchecked `cat` was the fail-closed rule with a hole in
+  # it: a cache this process wrote and cannot now read would answer EMPTY with
+  # status 0, and a former lane name would resolve as new — which is the one
+  # outcome every other branch of this function exists to refuse.
+  if [ -n "$lat_c" ] && [ -s "$lat_c" ]; then
+    cat -- "$lat_c" || {
+      lane_alias_fail "the cached copy at $lat_c could not be read"
+      return 5
+    }
+    return 0
+  fi
+  # A FRESH READ BEGINS HERE, so the reason the LAST one failed with goes: the
+  # file outlives the subshell that wrote it on purpose, and an answer kept
+  # past the read it belongs to is the stale kind of honesty.
+  lat_t=""; LANES_ALIAS_ERR=""
+  lat_e="${SE_CACHE_FILE:+$SE_CACHE_FILE.aliaserr}"
+  [ -n "$lat_e" ] && rm -f -- "$lat_e"
+  if have_remote_ref && git -C "$LANES_REPO" cat-file -e "origin/$LANES_BRANCH:$LANES_ALIASES_PATH" 2>/dev/null; then
+    lat_t="$(git -C "$LANES_REPO" show "origin/$LANES_BRANCH:$LANES_ALIASES_PATH" 2>/dev/null)" || {
+      lane_alias_fail "git show origin/$LANES_BRANCH:$LANES_ALIASES_PATH failed, and the object is there"
+      return 5
+    }
+  elif [ -n "${LANES_ALIASES_TSV:-}" ] && [ -f "$LANES_ALIASES_TSV" ]; then
+    lat_t="$(cat -- "$LANES_ALIASES_TSV" 2>/dev/null)" || {
+      lane_alias_fail "$LANES_ALIASES_TSV is there and could not be read"
+      return 5
+    }
+  elif [ -n "${LANES_ALIASES_TSV:-}" ] \
+       && { [ -e "$LANES_ALIASES_TSV" ] || [ -L "$LANES_ALIASES_TSV" ]; }; then
+    # SOMETHING IS THERE AND IT IS NOT A TABLE (Copilot round 8 on
+    # openRepoTools#81). A directory, a FIFO, a socket or a DANGLING symlink at
+    # this path makes `-f` false, and the branch was simply skipped: the empty
+    # answer below was cached and handed back with status 0, so a former lane
+    # name read as NEW — and `lane-start` then appends a SECOND row for a lane
+    # that has been running all day, which is Amendment 15(a)'s duplicate
+    # arrived at through a READ. `-L` is asked beside `-e` because `-e` is FALSE
+    # on a dangling link, the same pair the handoff's destination test uses.
+    #
+    # AND THE READER'S RULE IS NARROWER THAN THE WRITER'S, deliberately. The
+    # writer refuses a LIVE symlink to a regular file as well, because it
+    # appends in place and a redirect follows one into whatever is at the far
+    # end; a reader that follows the same link gets the table's own bytes and is
+    # right to, so `-f` above answers it and says nothing. What is refused here
+    # is only what cannot be READ — which is why the two say different words.
+    if [ -L "$LANES_ALIASES_TSV" ]; then
+      lane_alias_fail "$LANES_ALIASES_TSV is a symlink whose target is not a regular file"
+    else
+      lane_alias_fail "$LANES_ALIASES_TSV exists and is not a regular file"
+    fi
+    return 5
+  fi
+  # AND THE EMPTY ANSWER IS CACHED TOO, as one comment line in the table's own
+  # grammar. An estate that has never renamed a lane is the ordinary case, and
+  # without this the `cat-file -e` above would run again for every `canon_lane`
+  # of every command — which is the cost `table_lookup` one screen up exists to
+  # avoid, made per process instead of per lane.
+  LANES_ALIAS_CACHE="${lat_t:-# no lane aliases}"
+  if [ -n "$lat_c" ]; then
+    printf '%s\n' "$LANES_ALIAS_CACHE" > "$lat_c.${BASHPID:-$$}" 2>/dev/null &&
+      mv -f -- "$lat_c.${BASHPID:-$$}" "$lat_c" 2>/dev/null ||
+      rm -f -- "$lat_c.${BASHPID:-$$}"
+  fi
+  printf '%s\n' "$LANES_ALIAS_CACHE"
+}
+
+# BOTH COPIES OF IT, and the flag that says the awk file has been asked for:
+# the variable this shell holds, the file every subshell reads, and the path
+# `LOG_AWK` was handed (ruling 12's rule for the register cache, which this one
+# is a twin of). Called by `log_sync`, because a fetch moves the ref this is
+# read from, and by `rename-lane` after its own commit, because the alias it
+# just wrote is the one the comments below it are computed with.
+lane_alias_flush() {
+  LANES_ALIAS_CACHE=""
+  LANES_ALIAS_ERR=""
+  laf_e="${SE_CACHE_FILE:+$SE_CACHE_FILE.aliaserr}"
+  [ -n "$laf_e" ] && rm -f -- "$laf_e"
+  laf_c="${SE_CACHE_FILE:+$SE_CACHE_FILE.aliases}"
+  [ -n "$laf_c" ] && rm -f -- "$laf_c"
+  return 0
+}
+
+# lane_alias_target <typed> [<forbidden>] — the END of that name's alias chain.
+#   0 + the name   the table names it (a chain `a→b`, `b→c` answers `c`)
+#   1 + nothing    the table does not name it
+#   3 + nothing    the table holds a CYCLE through it
+#   4 + nothing    the chain VISITS <forbidden> — `rename-lane`'s cycle test,
+#                  which asks of the table as it WILL be: adding `<old> →
+#                  <new>` closes a cycle exactly when the chain from `<new>`
+#                  reaches `<old>`, and reaching it ANYWHERE counts, not only
+#                  at the end (a chain `new → old → x` ends at `x` and still
+#                  closes, because the new row is appended last and wins the
+#                  key `old`).
+#   5 + nothing    the table could not be READ (fail closed; `LANES_ALIAS_ERR`)
+#
+# Case-insensitive on both sides (Amendment 15). THE LAST ROW FOR A KEY WINS:
+# the file is append-ordered, and a name renamed away, minted again and renamed
+# again has two rows of which the later is the answer a reader today needs.
+#
+# THE WALK IS BOUNDED BY THE TABLE AND NOT BY A NUMBER (Copilot round 1 on
+# openRepoTools#81). It was `for (i = 0; i < 32; i++)`, which is a CAP on a
+# valid chain as well as on a cycle: an estate that renamed one lane thirty-three
+# times would have its earliest names resolve to an INTERMEDIATE one, which has
+# no row, so `canon_lane` would answer a name nothing carries and clause (e)'s
+# "for ever" would quietly end at hop 32. The `seen` set is what guarantees
+# termination — every hop consumes one key of a finite map — so the bound is the
+# number of keys plus one, which no honest chain can exceed and no cycle can
+# reach without closing first.
+lane_alias_target() {   # <typed name> [<forbidden name>]
+  lat_out="$(lane_alias_text)" || return 5
+  printf '%s\n' "$lat_out" | awk -F'\t' -v want="$1" -v stop="${2-}" '
+    /^[ \t]*#/ { next }
+    NF >= 2 {
+      k = $1; v = $2
+      gsub(/^[ \t]+|[ \t]+$/, "", k); gsub(/^[ \t]+|[ \t]+$/, "", v)
+      if (k == "" || v == "") next
+      if (!(tolower(k) in map)) nmap++
+      map[tolower(k)] = v
+    }
+    END {
+      cur = want; ls = tolower(stop)
+      for (i = 0; i <= nmap; i++) {
+        lk = tolower(cur)
+        if (stop != "" && lk == ls) { hit = 1; break }
+        if (lk in seen) { cyc = 1; break }
+        if (!(lk in map)) break
+        seen[lk] = 1; cur = map[lk]; hops++
+      }
+      if (hit) exit 4
+      if (cyc) exit 3
+      if (hops > 0) { print cur; exit 0 }
+      exit 1
+    }'
+}
+
+# ONE HOP, and the reason it exists apart from the walk above: "a ROW WINS OVER
+# AN ALIAS" has to be asked at EVERY hop and not only at the start (Copilot round
+# 1). After `A → B`, a lane legitimately minted under the name `A` again — the
+# position `A` freed is one `lane_next_free` will hand out — makes `A` both a row
+# and an alias key, and a chain `C → A` must then stop AT `A`, which is a lane,
+# rather than carry on to `B`, which is a different one. Walking hop by hop in
+# the shell is what lets the row test sit between the hops; the chains this
+# estate writes are one or two long, and `register_text` is cached, so the cost
+# is an awk per hop over a table of a few lines.
+#   0 + the next name · 1 + nothing · 5 the table could not be read
+lane_alias_hop() {   # <name>
+  lah_out="$(lane_alias_text)" || return 5
+  printf '%s\n' "$lah_out" | awk -F'\t' -v want="$1" '
+    /^[ \t]*#/ { next }
+    NF >= 2 {
+      k = $1; v = $2
+      gsub(/^[ \t]+|[ \t]+$/, "", k); gsub(/^[ \t]+|[ \t]+$/, "", v)
+      if (k == "" || v == "") next
+      map[tolower(k)] = v
+    }
+    END { if (tolower(want) in map) { print map[tolower(want)]; exit 0 } exit 1 }'
+}
+
+# lane_alias_keys — every key of the table, one per line, as written. The one
+# caller is `rename-lane`, which refuses a `<new>` that is already a key
+# (Copilot round 1): a row under a former name TAKES PRECEDENCE over the alias,
+# so minting one deliberately would end that former name's resolution — the one
+# thing clause (e) promises never happens.
+lane_alias_keys() {
+  lak_out="$(lane_alias_text)" || return 5
+  printf '%s\n' "$lak_out" | awk -F'\t' '
+    /^[ \t]*#/ { next }
+    NF >= 2 { k = $1; gsub(/^[ \t]+|[ \t]+$/, "", k); if (k != "") print k }'
+}
+
+# Every ROW SPELLING that answers for <typed>: its own rows, and where it has
+# none, the rows of the first name along its alias chain that HAS one. Used by
+# `canon_lane` below and by the guard's window and session lookups, which are
+# the two seats that read a row from a name without going through `canon_lane`.
+#
+# A ROW WINS OVER AN ALIAS, AT EVERY HOP AND NOT ONLY AT THE START (Copilot
+# round 1 on openRepoTools#81). A name that is a lane today IS that lane — which
+# is what makes renaming a lane BACK to a name readable — and the chain has to
+# be walked with that test BETWEEN the hops, because an alias key can become a
+# row again: `A → B` frees the name `A`, `lane_next_free` hands that position
+# out, and a later `C → A` must then answer `A`, the lane, rather than running
+# on to `B`, which is a different one. Taking only the END of the chain answered
+# `B` and lost `C`'s own lane.
+#
+# The loop is bounded by a `seen` list rather than by a number, for
+# `lane_alias_target`'s reason: every hop consumes one key of a finite table.
+#   0 + the row spellings (possibly none) · 5 the alias table could not be READ
+#
+# AND THE 5 IS CARRIED, NOT SWALLOWED (Copilot round 3 on openRepoTools#81). It
+# was `|| return 0`, which hands a caller an EMPTY answer — "no row under this
+# name" — for a table nobody could read. Every caller then falls to its own
+# not-a-lane branch: `canon_lane` answers the typed spelling, so `lane-start`
+# reads a renamed lane as new and appends a SECOND row; the guard falls to
+# `lane_shaped` and sends a running session to bind a row it already has. That
+# is the fail-OPEN direction on the one promise clause (e) makes, so the status
+# is propagated and each caller decides what to do with it.
+rows_named_ci_alias() {   # <typed name>
+  rna_hits="$(rows_named_ci "$1" 2>/dev/null || :)"
+  if [ -n "$rna_hits" ]; then printf '%s\n' "$rna_hits"; return 0; fi
+  rna_cur="$1"; rna_seen="$US$(lc "$1")$US"
+  while :; do
+    rna_rc=0
+    rna_next="$(lane_alias_hop "$rna_cur" 2>/dev/null)" || rna_rc=$?
+    [ "$rna_rc" = 5 ] && return 5
+    [ "$rna_rc" = 0 ] && [ -n "$rna_next" ] || return 0
+    case "$rna_seen" in *"$US$(lc "$rna_next")$US"*) return 0 ;; esac
+    rna_seen="$rna_seen$(lc "$rna_next")$US"
+    rna_hits="$(rows_named_ci "$rna_next" 2>/dev/null || :)"
+    if [ -n "$rna_hits" ]; then printf '%s\n' "$rna_hits"; return 0; fi
+    rna_cur="$rna_next"
+  done
+}
+
 # canon_lane <typed> — the name every `<lane>` argument and `$LANES_LANE` is
 # read through BEFORE anything is read or written under it.
 #
@@ -3075,17 +3750,72 @@ rows_named_ci() {   # <typed name>
 # the older row's cell, in order, and the newer row removed in the same commit —
 # because a tool that merged two rows of history on its own would be choosing
 # which lane's record survives.
+#
+# AMENDMENT 16(e) — AND A NAME WITH NO ROW IS ASKED OF THE ALIAS TABLE BEFORE
+# the typed spelling is handed back. This is clause (e)'s whole implementation
+# and it is one function deep: a renamed lane's OLD name, from a line, a window,
+# a session record or a person's typing, lands on the row it is now. The order
+# is row first and alias second — a name that is a lane today is that lane — and
+# the resolution SAYS SO on stderr, because every act under an old name is an
+# act on a lane the caller did not name.
 canon_lane() {   # <typed name>
   cl_want="${1-}"
   [ -n "$cl_want" ] || return 0
-  cl_hits="$(rows_named_ci "$cl_want" 2>/dev/null || :)"
+  cl_rc=0
+  cl_hits="$(rows_named_ci_alias "$cl_want" 2>/dev/null)" || cl_rc=$?
+  # AN ALIAS TABLE THAT CANNOT BE READ IS A REFUSAL HERE TOO (Copilot round 3
+  # on openRepoTools#81). This function's answer is what `lane-start` decides
+  # "is this lane new" by and what `register-row` reports, so carrying on with
+  # the typed spelling is not a read-only shrug: with a row under `<new>` and an
+  # unreadable table, `lane-start <repo> <n>` reads the former name as absent
+  # and appends a SECOND row — the duplicate Amendment 15(a) exists to refuse.
+  # R22's rule governs: a read that could not be performed is never an answer.
+  if [ "$cl_rc" = 5 ]; then
+    note "${LANES_ALIASES_PATH:-lanes/aliases.tsv} COULD NOT BE READ ($(lane_alias_err)), so whether '$cl_want' is a FORMER name of some lane is NOT established — which is not the same as it not being one (Amendment 16(e))."
+    note "Nothing is read or written under a name this register cannot resolve: a rename's alias would be invisible, and a lane that has one would read as new. Fix the read — the table is ${LANES_ALIASES_TSV:-<no path>} here and ${LANES_ALIASES_PATH:-lanes/aliases.tsv} on origin/$LANES_BRANCH — and re-run."
+    # 66 AND NOT 2, BECAUSE 2 ALREADY MEANS SOMETHING TO FOUR CALLERS (Copilot
+    # round 4). `lane-start`, `lane-end`, `lane` and `lane-handoff` each read
+    # `canon-lane`'s 2 as EITHER Amendment 15(d)'s two-rows refusal — told by
+    # the words in its message — or the unknown-subcommand 2 of a helper that
+    # predates Amendment 15, which they carry on past with the name as typed.
+    # A third meaning on that number lands in the second branch, which is the
+    # fail-OPEN this refusal exists to close. 66 is EX_NOINPUT: an input file
+    # that did not exist or could not be read, which is exactly what happened,
+    # and a code none of the four recognises makes `lane` and `lane-handoff`
+    # refuse where they stand — the other two are taught it in this same commit.
+    return 66
+  fi
   cl_n="$(printf '%s' "$cl_hits" | grep -c . || :)"
   if [ "$cl_n" -gt 1 ]; then
     note "the register has $cl_n rows whose lane names differ only by case for '$cl_want': $(printf '%s' "$cl_hits" | tr '\n' ' ')"
     note "a lane name is ONE name under any case (Amendment 15), so no read and no write under it is unambiguous. Merge them into one row (Amendment 15(d)): append the newer row's session id(s) to the older row's session cell, in order, remove the newer row in the SAME commit, and name both spellings in the commit message."
     return 2
   fi
-  if [ "$cl_n" = 1 ]; then printf '%s' "$cl_hits"; else printf '%s' "$cl_want"; fi
+  cl_out="$cl_want"
+  if [ "$cl_n" = 1 ]; then
+    cl_out="$cl_hits"
+  else
+    # NO ROW UNDER EITHER NAME. The alias still answers where the table names
+    # it — a lane whose row has since been archived keeps its log, and reading
+    # that log under the old name is the whole point of the table.
+    cl_al=""; cl_arc=0
+    cl_al="$(lane_alias_target "$cl_want" 2>/dev/null)" || cl_arc=$?
+    if [ "$cl_arc" = 3 ]; then
+      note "${LANES_ALIASES_PATH:-lanes/aliases.tsv} resolves '$cl_want' in a CYCLE, so it names no lane at all: a rename chain that returns to its own start has no end to resolve to. \`rename-lane\` refuses to write one, so this table was edited by hand — take the offending row out of it. Carrying on with '$cl_want' exactly as typed."
+    elif [ "$cl_arc" = 5 ]; then
+      # UNREACHABLE BY THE PATH ABOVE, which already refused a 5 — kept because
+      # this arm is the second reader of the same table and a silent
+      # disagreement between two readers of one file is worth a line of code.
+      note "${LANES_ALIASES_PATH:-lanes/aliases.tsv} could not be read ($(lane_alias_err))."
+      return 66
+    elif [ -n "$cl_al" ]; then
+      cl_out="$cl_al"
+    fi
+  fi
+  if [ "$(lc "$cl_out")" != "$(lc "$cl_want")" ]; then
+    note "'$cl_want' is a FORMER name of lane $cl_out (${LANES_ALIASES_PATH:-lanes/aliases.tsv}, Amendment 16(e)) — reading and writing $cl_out."
+  fi
+  printf '%s' "$cl_out"
   return 0
 }
 
@@ -3468,6 +4198,11 @@ log_sync() {
   # shell holds and the file every subshell reads (ruling 12).
   LANES_REGISTER_CACHE=""
   ls_rc="${SE_CACHE_FILE:+$SE_CACHE_FILE.register}"; [ -n "$ls_rc" ] && rm -f -- "$ls_rc"
+  # AND AMENDMENT 16's ALIAS TABLE, for the same reason and in the same breath:
+  # it is read from `origin/<branch>` beside the register and a fetch moves that
+  # ref. A rename lands both files in ONE commit, so a cache that kept one and
+  # dropped the other is exactly the disagreement the single commit prevents.
+  lane_alias_flush
   LOG_SYNC_FETCH=""
   [ "$NO_GIT" = 1 ] && { LOG_SYNC_FETCH="LANES_NO_GIT=1 is set, so nothing in this run touches git"; return 0; }
   [ "${LANES_NO_FETCH:-0}" = 1 ] && { LOG_SYNC_FETCH="LANES_NO_FETCH=1 is set in this environment"; note "LANES_NO_FETCH=1 — not fetching; reading origin/$LANES_BRANCH as the ref already stands here"; return 0; }
@@ -3916,14 +4651,30 @@ EOF
 # read from `origin/<branch>` like every other state read (R19). Rule 10's wire
 # form is lowercase and a tmux window may carry either, while the row's token is
 # camel (`openRepoProject-1`): an exact lookup alone loses the lane.
+#
+# AMENDMENT 16(e) — AND IT RESOLVES A FORMER NAME, through the same seat every
+# other reader takes. Clause (e) names the `SessionStart` block among the
+# readers that resolve, and this is the read behind it: a window still carrying
+# the name a lane had before its rename would otherwise orient the new session
+# to "no lane bound to this window" — which is the one thing that block exists
+# not to say — while the lane's row, log and handoff are all a `lane-rename`
+# away under another name.
+#
+# `rows_named_ci_alias` IS THAT SEAT AND THIS IS `head -n1` OF IT, which is
+# exactly what the `exit` in the awk above was: one answer and no refusal. The
+# hook never refuses, so where two rows differ only by case this still answers
+# with the first of them and `canon_lane` — the read every WRITER goes through
+# — is where that pair is refused.
+#   0 + one spelling (or nothing) · 5 the alias table could not be READ
+# The 5 is carried for `rows_named_ci_alias`-s reason: `session_start_block` is
+# a hook and may not refuse, but it must not print "no lane bound to this
+# window" about a window whose name it could not resolve.
 lane_named_ci() {
-  register_text | awk -v want="$1" '
-    substr($0,1,1) == "|" {
-      p1 = index($0, "`"); if (p1 == 0) next
-      rest = substr($0, p1 + 1); p2 = index(rest, "`"); if (p2 == 0) next
-      t = substr(rest, 1, p2 - 1)
-      if (tolower(t) == tolower(want)) { print t; exit }
-    }'
+  lnc_rc=0
+  lnc_out="$(rows_named_ci_alias "$1" 2>/dev/null)" || lnc_rc=$?
+  [ "$lnc_rc" = 5 ] && return 5
+  printf '%s\n' "$lnc_out" | grep . | head -n1
+  return 0
 }
 
 # The lane whose row's SESSION CELL names <uuid> — the second resolution the
@@ -5132,6 +5883,22 @@ swapped_candidates() {
     function pos(pf, pn) { return pf "\034" sprintf("%09d", pn) }
     BEGIN { FS = sep }
     $6 !~ /^lane:/ { next }
+    # AMENDMENT 13(b) — AND THE TWO NARRATIVE VERBS ARE NOT LANE-KIND STATE.
+    # AMENDMENT 16 ADDS THE THIRD, and it is the one reader that has to be told
+    # (Copilot round 6 on openRepoTools#81). `RENAMED` joined `is_note_verb` —
+    # lane-kind, and not a transition — but this awk names the verbs it skips
+    # rather than asking the predicate, so a lane whose LAST line was its rename
+    # stopped reading as PAUSED: `swapped` would not list it and `restart` would
+    # not find the lane it is meant to bring back.
+    # This read takes a lane-s LAST lane-kind line whatever its verb is and then
+    # asks whether it is a `PAUSED` carrying a swap payload; it is the ONE state
+    # reader in this file that does not name the five verbs it wants. `NOTED`
+    # and `RULED` are written into exactly the same lines and change nothing
+    # about where a lane is, so a lane that noted anything after its swap would
+    # have vanished from `swapped` — and `restart` reads `swapped` to find the
+    # lane whose window name a new tmux session has lost. Skipped by name, here
+    # and nowhere else, because every other reader already takes a whitelist.
+    $3 == "NOTED" || $3 == "RULED" || $3 == "RENAMED" { next }
     # AMENDMENT 15 — LOWER-CASED KEY, ORIGINAL SPELLING BESIDE IT. Which line is
     # a lane-s LAST is what decides whether that lane is SWAPPED at all, and
     # keyed on the raw `$2` a `PAUSED … swap;` under one spelling followed by a
@@ -5352,9 +6119,22 @@ session_start_block() {
   # name differs from `$ssb_lane` only by case is renamed to the ROW's spelling
   # like any other drift, which is what makes this line and Amendment 15 one
   # rule rather than two.
-  ssb_lane=""
-  [ -n "$ssb_win" ] && ssb_lane="$(lane_named_ci "$ssb_win" 2>/dev/null || :)"
+  ssb_lane=""; ssb_alias_unread=""
+  if [ -n "$ssb_win" ]; then
+    # AMENDMENT 16(e) — AND A TABLE THIS READ COULD NOT OPEN IS SAID, NOT
+    # SWALLOWED (Copilot round 3 on openRepoTools#81). This hook never refuses,
+    # so an unreadable `lanes/aliases.tsv` cannot stop the block — but printing
+    # "no lane bound to this window" about a window whose name might be a
+    # FORMER one is the block orienting a session wrongly, which is the one
+    # thing it exists not to do. It says so instead, and the line below it is
+    # then read as what it is.
+    ssb_rc=0
+    ssb_lane="$(lane_named_ci "$ssb_win" 2>/dev/null)" || ssb_rc=$?
+    [ "$ssb_rc" = 5 ] && { ssb_lane=""; ssb_alias_unread=1; }
+  fi
   [ -n "$ssb_lane" ] || [ -z "$ssb_id" ] || ssb_lane="$(lane_of_session "$ssb_id" 2>/dev/null || :)"
+  [ -n "$ssb_alias_unread" ] && [ -z "$ssb_lane" ] && \
+    printf 'WARNING: %s could not be read, so a window named for a lane RENAMED since could not be resolved to it (Amendment 16(e)) — this block may be about to say no lane binds a window that one does\n' "${LANES_ALIASES_PATH:-lanes/aliases.tsv}"
   # AMENDMENT 12 CLAUSE (f) AND AMENDMENT 18(h)'s READ — the name line and the
   # duplicate line, printed HERE rather than inside each of the three branches
   # below, because both are facts about this session and not about which of them
@@ -5911,18 +6691,46 @@ guard_lane_start() {
 # one command, which is F-B6's rule — filled in, never `<repo> <n>`.
 G_WINREF=""; G_WINNAME=""; G_ID=""; G_NAME=""; G_SRC=""; G_PID=""; G_PROF=""
 G_ROW=""; G_LANE=""; G_SES_LANE=""
+# AMENDMENT 16(f) — the former name this window still carried, and whether the
+# guard managed to rename the window to the lane's current one.
+G_WIN_WAS=""; G_WIN_FIXED=0
 GUARD_TRIPLE_DONE=0
-guard_triple() {
+GUARD_RENAME_SAID=0
+# SAID ONCE, WHEREVER THE RUN ENDS. The guard's own rename of a window is the
+# one act it takes that is not a refusal, so it is announced on the agreeing
+# path too — a lock that silently did something is a lock nobody knows about,
+# which is the rule `guard_lock_rename` already states for the typing.
+guard_window_renamed_note() {
+  [ -n "$G_WIN_WAS" ] || return 0
+  [ "$GUARD_RENAME_SAID" = 0 ] || return 0
+  GUARD_RENAME_SAID=1
+  if [ "$G_WIN_FIXED" = 1 ]; then
+    note "THIS WINDOW WAS NAMED '$G_WIN_WAS', WHICH IS A FORMER NAME OF LANE $G_LANE (${LANES_ALIASES_PATH:-lanes/aliases.tsv}, Amendment 16(e)) — so it has been renamed to $G_LANE for you (Amendment 16(f): a rename run from another window leaves this one to fix at its next prompt, and a window's name is one tmux call, not a typed one)."
+  else
+    note "THIS WINDOW IS NAMED '$G_WIN_WAS', WHICH IS A FORMER NAME OF LANE $G_LANE (${LANES_ALIASES_PATH:-lanes/aliases.tsv}, Amendment 16(e)), and tmux would not rename it. Rename it yourself: tmux rename-window -t ${G_WINREF:-<this window>} $G_LANE"
+  fi
+  return 0
+}
+#
+# THE HEADING IS AN ARGUMENT BECAUSE ONE CALLER DOES NOT REFUSE. An explicitly
+# allowed mismatch (choice 1 below) prints the same three names and then lets
+# the prompt through, and a line reading "THE NAME GUARD REFUSES THIS PROMPT"
+# over a prompt it has just allowed is the guard lying about its own act. Every
+# other caller passes nothing and gets the refusal heading unchanged.
+guard_triple() {   # [<heading>]
   [ "$GUARD_TRIPLE_DONE" = 0 ] || return 0
   GUARD_TRIPLE_DONE=1
   gt_s="${G_ID:-unknown} '${G_NAME:-none}'"
   [ -n "$G_SRC" ] && gt_s="$gt_s (nameSource $G_SRC)"
   [ -n "$G_PID" ] && gt_s="$gt_s pid $G_PID"
   [ -n "$G_PROF" ] && gt_s="$gt_s profile $G_PROF"
-  note "THE NAME GUARD REFUSES THIS PROMPT (lane-collision-protocol Amendment 12). The three names:"
-  note "  window   ${G_WINREF:-not in tmux} '${G_WINNAME:-none}'"
+  gt_w="${G_WINREF:-not in tmux} '${G_WINNAME:-none}'"
+  [ -n "$G_WIN_WAS" ] && gt_w="$gt_w — a former name of $G_LANE (Amendment 16(e))"
+  note "${1:-THE NAME GUARD REFUSES THIS PROMPT (lane-collision-protocol Amendment 12). The three names:}"
+  note "  window   $gt_w"
   note "  session  $gt_s"
   note "  row      ${G_ROW:-not read}"
+  guard_window_renamed_note
   return 0
 }
 
@@ -6085,7 +6893,31 @@ guard_run() {   # <the hook's JSON, on stdin already read>
   # ---- THE ROW, from `origin/<branch>` as this checkout last had it (R19), and
   # every comparison case-insensitive with the register's spelling printed
   # (Amendment 15).
-  gr_hits="$(rows_named_ci "$G_WINNAME" 2>/dev/null || :)"
+  # AMENDMENT 16(e) — BOTH LOOKUPS RESOLVE AN ALIAS. A rename run from another
+  # window leaves this one named for the lane as it was (clause (f) says so in
+  # as many words), and read byte for byte that window names no row at all: the
+  # guard would send a running lane to `lane-start --no-launch` for a row it
+  # already has, under a name the register no longer carries. `rows_named_ci_alias`
+  # is `rows_named_ci` with the table behind it, so the row this window's name
+  # answers for is the row the lane is in today.
+  # AND A TABLE THIS READ COULD NOT OPEN REFUSES THE PROMPT (Copilot round 3 on
+  # openRepoTools#81). `|| :` made an unreadable `lanes/aliases.tsv` look like
+  # "this name is no lane", and the `lane_shaped` fallback below then bound the
+  # window's own former spelling — sending a running lane to `lane-start
+  # --no-launch` for a row it already has. Clause (d) is fail CLOSED and this is
+  # exactly its shape: a triple that cannot be verified is not a triple that
+  # agrees.
+  # `gr_warc` AND NOT `gr_arc`, WHICH THIS FUNCTION NOW USES FOR THE ANSWER'S
+  # STATUS (#87). Both are set before every read of them, so nothing leaked;
+  # one name for two questions in one function is the kind of thing that only
+  # stays harmless until somebody moves a block. It pairs with `gr_sarc`, the
+  # session-name read below.
+  gr_warc=0
+  gr_hits="$(rows_named_ci_alias "$G_WINNAME" 2>/dev/null)" || gr_warc=$?
+  if [ "$gr_warc" = 5 ]; then
+    guard_refuse "${LANES_ALIASES_PATH:-lanes/aliases.tsv} could not be read ($(lane_alias_err)), so whether this window's name '$G_WINNAME' is a FORMER name of a lane could not be established — and an indeterminate read refuses (Amendment 12(d), Amendment 16(e)). $(guard_bypass)"
+    return 2
+  fi
   gr_n="$(printf '%s' "$gr_hits" | grep -c . || :)"
   if [ "$gr_n" -gt 1 ]; then
     guard_refuse "the register holds $gr_n rows whose lane names differ only by case for this window's name '$G_WINNAME': $(printf '%s' "$gr_hits" | tr '\n' ' '). A lane name is ONE name under any case (Amendment 15), so no read under it is unambiguous and a register that cannot be read is not a register that agrees (Amendment 12(b))." "merge them into one row (Amendment 15(d)) — append the newer row's session id(s) to the older row's session cell, in order, and remove the newer row in the SAME commit"
@@ -6095,7 +6927,36 @@ guard_run() {   # <the hook's JSON, on stdin already read>
   elif lane_shaped "$G_WINNAME"; then G_LANE="$G_WINNAME"
   fi
 
-  gr_snhits="$(rows_named_ci "$G_NAME" 2>/dev/null || :)"
+  # ---- AMENDMENT 16(f) — AND THE WINDOW IS RENAMED HERE, not merely reported.
+  # The two halves of the triple are fixed by different acts for a reason: a
+  # running session's NAME can only be changed from inside it, which is why
+  # (h)1's lock TYPES `/rename`, while a WINDOW's name is one tmux call any
+  # client can make — `lane-start:1849` makes exactly this one. So where this
+  # window still carries a former name of its lane, the guard renames it and
+  # says so, rather than refusing a prompt over a difference it can close
+  # itself. It costs nothing where no lane was ever renamed: `G_WIN_WAS` is set
+  # only when the alias table answered above.
+  #
+  # UNTARGETED, LIKE `lane-start:1849` AND `lane-handoff:517`. This hook runs
+  # INSIDE the session's own pane, so tmux's current window IS the one being
+  # named, and a `-t` here would be a second spelling of a window this file
+  # already has three of (Amendment 11(c)) — one more place for two of them to
+  # disagree. `rename-window` also turns automatic-rename OFF for the window,
+  # which is what makes the new name survive the next command that runs in it.
+  gr_wl="$(lc "$G_WINNAME")"
+  if [ -n "$G_LANE" ] && [ "$gr_wl" != "$(lc "$G_LANE")" ]; then
+    G_WIN_WAS="$G_WINNAME"
+    if tmux rename-window "$G_LANE" 2>/dev/null; then
+      G_WIN_FIXED=1
+    fi
+  fi
+
+  gr_sarc=0
+  gr_snhits="$(rows_named_ci_alias "$G_NAME" 2>/dev/null)" || gr_sarc=$?
+  if [ "$gr_sarc" = 5 ]; then
+    guard_refuse "${LANES_ALIASES_PATH:-lanes/aliases.tsv} could not be read ($(lane_alias_err)), so whether this session's name '${G_NAME:-none}' is a FORMER name of a lane could not be established — and an indeterminate read refuses (Amendment 12(d), Amendment 16(e)). $(guard_bypass)"
+    return 2
+  fi
   gr_snn="$(printf '%s' "$gr_snhits" | grep -c . || :)"
   if [ "$gr_snn" -gt 1 ]; then
     guard_refuse "the register holds $gr_snn rows whose lane names differ only by case for this session's name '$G_NAME': $(printf '%s' "$gr_snhits" | tr '\n' ' '). A lane name is ONE name under any case (Amendment 15)." "merge them into one row (Amendment 15(d))"
@@ -6121,7 +6982,7 @@ guard_run() {   # <the hook's JSON, on stdin already read>
   # ---- AMENDMENT 18(h) — ONE LIVE PROCESS PER TRANSCRIPT, ASKED BEFORE THE
   # PENDING OFFER IS ANSWERED. Clause (h) refuses *"every prompt in a process
   # that shares its session id with another live one"*, and THE ANSWER TO THIS
-  # GUARD'S OWN QUESTION IS A PROMPT: a `yes` consumed here runs `lane-start`,
+  # GUARD'S OWN QUESTION IS A PROMPT: a `2` consumed here runs `lane-start`,
   # writes a register row and appends a uuid to a cell, out of a process that
   # may not be writing anything at all — and the offer is held per SESSION ID,
   # so the second process answers the first one's question. The offer is KEPT
@@ -6146,10 +7007,26 @@ guard_run() {   # <the hook's JSON, on stdin already read>
   # triple still disagrees BECAUSE of the rename being answered — so this
   # cannot wait behind the table below. It DOES wait behind 18(h)'s count
   # above, for the reason stated there.
+  #
+  # AND AN `allow` FILE IS NOT A PENDING QUESTION, so it is not answered here:
+  # it is a STANDING ANSWER to one the person has already settled, and it is
+  # honoured at the row of the table that states the mismatch it allows — never
+  # in front of the table, where it would also silence the SUPERSEDED and the
+  # not-in-any-row refusals, which are states nobody allowed and which the
+  # amendment keeps closed (the requirement's own words: unreadable, ambiguous,
+  # duplicate or superseded identity still refuses).
   gr_off="$(guard_offer_file "$G_ID")"
-  if [ -f "$gr_off" ]; then
-    guard_answer "$gr_off" "$gr_prompt" "$gr_pane"
-    return 2
+  gr_mode=""
+  [ -f "$gr_off" ] && gr_mode="$(sed -n -e 's/^mode=//p' "$gr_off" 2>/dev/null | head -n1)"
+  if [ -f "$gr_off" ] && [ "$gr_mode" != allow ]; then
+    # 3 IS "THE OFFER WAS STALE AND HAS BEEN DROPPED", and it is the one answer
+    # that does not consume the prompt: the table below judges it, which asks
+    # the question again where the mismatch still stands and refuses where the
+    # state has become one the amendment keeps closed.
+    gr_arc=0
+    guard_answer "$gr_off" "$gr_prompt" "$gr_pane" || gr_arc=$?
+    [ "$gr_arc" = 3 ] || return 2
+    gr_mode=""
   fi
 
   # ---- AMENDMENT 18 CLAUSES (d) AND (e) PLUG IN HERE, AND NOT IN THIS PULL
@@ -6189,20 +7066,62 @@ guard_run() {   # <the hook's JSON, on stdin already read>
   # which of the next four rows applies, and the cell is a HISTORY written
   # oldest first whose LAST id is the lane (Amendment 6(b)).
   if [ -n "$gr_last" ] && [ "$G_ID" = "$gr_last" ]; then
-    if [ "$(lc "$G_NAME")" = "$(lc "$G_LANE")" ]; then
+    # ---- THE DRIFTS THAT ARE NOT DECISIONS, AND AMENDMENT 16 ADDS THE SECOND.
+    # openRepoTools#87 left the LOCK exactly one case — a session name differing
+    # from the row's only by CASE, which is the same lane under Amendment 15 —
+    # and made every other readable mismatch a three-choice OFFER, because a
+    # person who renames a session to ANOTHER lane's name is choosing something
+    # and a guard may not choose for them. A FORMER NAME OF THIS VERY LANE IS
+    # NOT SUCH A CHOICE: clause (e) makes it resolve to this row for ever, so a
+    # session still named `repoRen-1` on a lane the register now spells
+    # `repoRen-7` is this lane under the name it was renamed away from — drift
+    # left behind by a rename run in ANOTHER window, which is precisely the
+    # state clause (f) exists to finish. Offering three ways to repair it would
+    # ask a person to decide what the rename already decided, and two of the
+    # three answers would be wrong: `1` would make the old name permanent and
+    # `2` would move the lane BACK to the name it was renamed away from.
+    #
+    # `$G_SES_LANE` IS THE TEST BECAUSE IT IS ALREADY THE RESOLVED ANSWER: it is
+    # `rows_named_ci_alias "$G_NAME"` above, so it is this lane exactly when the
+    # session's name is this lane's under any case or any former spelling.
+    if [ "$(lc "$G_NAME")" = "$(lc "$G_LANE")" ] \
+       || { [ -n "$G_SES_LANE" ] && [ "$(lc "$G_SES_LANE")" = "$(lc "$G_LANE")" ]; }; then
       # THE THREE AGREE. Under Amendment 15 they agree under any case — and the
       # ROW's spelling is the one the session carries, so a name that differs
       # only by case is renamed to it rather than refused for ever.
-      [ "$G_NAME" = "$G_LANE" ] && return 0
-      guard_lock_rename "$gr_pane" "spells the lane '$G_NAME' where the register's row spells it '$G_LANE', and a lane name is ONE name under any case whose canonical spelling is the row's (Amendment 15)"
+      # AND AN ALLOWANCE DIES WITH THE MISMATCH IT ALLOWED: the names agreeing
+      # again is one of the two names having CHANGED, which is the requirement's
+      # own condition for it no longer applying. Leaving the file would let a
+      # rename back to the allowed spelling pass silently on a decision the
+      # person made about a state they have since left.
+      [ -f "$gr_off" ] && [ "$gr_mode" = allow ] && rm -f -- "$gr_off"
+      # AMENDMENT 16(f): the window may still have carried a former name a
+      # moment ago, in which case it has just been renamed and that is said
+      # here — the one thing this guard does that is not a refusal.
+      [ "$G_NAME" = "$G_LANE" ] && { guard_window_renamed_note; return 0; }
+      if [ "$(lc "$G_NAME")" = "$(lc "$G_LANE")" ]; then
+        guard_lock_rename "$gr_pane" "spells the lane '$G_NAME' where the register's row spells it '$G_LANE', and a lane name is ONE name under any case whose canonical spelling is the row's (Amendment 15)"
+      else
+        guard_lock_rename "$gr_pane" "is '$G_NAME', which is a FORMER name of lane $G_LANE (${LANES_ALIASES_PATH:-lanes/aliases.tsv}, Amendment 16(e)) — the same lane under the name it was renamed away from, and not a lane anybody is moving to"
+      fi
       return 2
     fi
-    if [ -n "$G_SES_LANE" ] && [ "$(lc "$G_SES_LANE")" != "$(lc "$G_LANE")" ] \
-       && [ "${G_SRC:-}" = user ] && guard_rename_is_newer "$G_LANE" "$gr_since"; then
-      guard_offer "$gr_off" "$gr_pane"
-      return 2
+    # ---- THE MISMATCH, AND THE ONE STATE THAT PASSES THROUGH IT. The
+    # allowance is honoured HERE and nowhere earlier: this is the row of the
+    # table it was given for — a readable current lane whose uuid is the row's
+    # LAST id and whose session name is not the lane's — so a superseded
+    # transcript, a uuid in no row, an ambiguous register and an unreadable
+    # read have all been refused above it, allowance or no allowance.
+    if [ "$gr_mode" = allow ] && guard_allow_active "$gr_off"; then
+      guard_triple "THE NAME GUARD ALLOWS THIS PROMPT ON AN EXPLICIT CHOICE (lane-collision-protocol Amendment 12). The three names:"
+      note "WARNING: this lane/session name mismatch was explicitly allowed for this transcript. It will remain allowed only while the lane and session names stay unchanged."
+      return 0
     fi
-    guard_lock_rename "$gr_pane" "is '${G_NAME:-none}', which is not the lane's name"
+    # AN ALLOWANCE THAT NO LONGER FITS IS DROPPED RATHER THAN CARRIED: either
+    # name having changed is exactly what invalidates it, and the person is
+    # asked again below.
+    [ "$gr_mode" = allow ] && rm -f -- "$gr_off"
+    guard_offer "$gr_off" "$gr_pane"
     return 2
   fi
 
@@ -6253,10 +7172,13 @@ guard_lock_rename() {   # <pane> <what is wrong with the name, as a clause>
     9) note "this pane is not running claude, so NOTHING was typed, for the reason above. Type it in the lane's own pane: /rename $G_LANE" ;;
     *) note "tmux would not take the keys, so NOTHING was typed. Type it yourself: /rename $G_LANE" ;;
   esac
-  glr_base="${G_NAME% (*)}"
-  if [ -n "$glr_base" ] && [ "$(lc "$glr_base")" = "$(lc "$G_LANE")" ] && [ "$glr_base" != "$G_NAME" ]; then
-    note "AND THE ' (N)' SUFFIX IS EVIDENCE: it is exactly what a rename into a title something else still holds mints, so another holder of '$G_LANE' was live when this session was named (Amendment 6(d), ratified decision D4). Naming them is a read of its own, kept off this hook's path because it costs about three seconds: \`lanes-edit.sh forks $G_LANE\`. Retiring one is \`lane-end $G_LANE --retire <pid>\`, which proves it is a fork, prints Amendment 6(d)'s act filled in, and ends, writes and kills nothing."
-  fi
+  # THE ' (N)' SUFFIX IS NOT READ HERE ANY MORE, and it is not lost. Two names
+  # reach this lock and NEITHER CAN CARRY ONE: a name differing from the lane's
+  # only by CASE, which has no room for a suffix, and a FORMER name of this lane
+  # (Amendment 16(e)), which is a KEY of the alias table — and `repoRen-1 (2)`
+  # is not that key, so a suffixed former name resolves to nothing and goes to
+  # the offer with every other wider mismatch. `guard_offer` prints ratified
+  # decision D4's reading of the suffix, where the state that has one arrives.
   return 2
 }
 
@@ -6268,8 +7190,8 @@ guard_lock_rename() {   # <pane> <what is wrong with the name, as a clause>
 # honest; RUNNING it is not. `lane-start --no-launch --dir '<path>' legacy-ui`
 # refuses on a directory that does not exist, and the offer that ran it would
 # ask the same question at every prompt afterwards (Copilot round 1 on this PR).
-# So the offer SAYS what it cannot fill in and the `yes` refuses instead of
-# running it, with the offer kept so that `no` still answers.
+# So the offer SAYS what it cannot fill in and choice `2` refuses instead of
+# running it, with the offer kept so that `1` and `3` still answer it.
 guard_args_filled() {   # <lane>
   gaf_a="$(lane_start_args "$1")"
   case "$gaf_a" in *'<path>'*) return 1 ;; esac
@@ -6285,35 +7207,58 @@ guard_args_filled() {   # <lane>
 guard_offer() {   # <offer file> <pane>
   go_f="${1-}"; go_pane="${2-}"
   mkdir -p -- "${go_f%/*}" 2>/dev/null || :
-  { printf 'from=%s\n' "$G_LANE"
+  { printf 'mode=name-drift\n'
+    printf 'from=%s\n' "$G_LANE"
     printf 'to=%s\n'   "$G_SES_LANE"
+    printf 'session=%s\n' "$G_NAME"
     printf 'uuid=%s\n' "$G_ID"
     printf 'utc=%s\n'  "$(utc_now)"
     printf 'window=%s\n' "$G_WINREF"
     printf 'pane=%s\n'   "$go_pane"
   } > "$go_f" 2>/dev/null || :
   guard_triple
-  go_row="$(row_of_lane "$G_SES_LANE" 2>/dev/null || :)"
-  if [ -n "$go_row" ]; then
-    go_last="$(last_session_id_of_lane "$G_SES_LANE" 2>/dev/null || :)"
-    note "you renamed this session to $G_SES_LANE — lane $G_SES_LANE EXISTS, last session ${go_last:-none recorded}."
+  note "WARNING: the lane and Claude session names disagree. This prompt is paused until you choose how to repair or explicitly allow this lane."
+  note "1) explicitly allow this lane for this transcript (future prompts warn but do not block while both names stay unchanged)"
+  if [ -n "$G_SES_LANE" ]; then
+    go_row="$(row_of_lane "$G_SES_LANE" 2>/dev/null || :)"
+    if [ -n "$go_row" ]; then
+      go_last="$(last_session_id_of_lane "$G_SES_LANE" 2>/dev/null || :)"
+      note "2) adjust the lane to session $G_SES_LANE (existing lane; last session ${go_last:-none recorded})"
+    else
+      note "2) adjust the lane to session $G_SES_LANE (create or move to this lane)"
+    fi
+    note "3) adjust the session to lane $G_LANE (types \`/rename $G_LANE\` into this pane)"
   else
-    note "you renamed this session to $G_SES_LANE — lane $G_SES_LANE DOES NOT EXIST yet."
+    note "2) adjust the lane to session — unavailable because '${G_NAME:-none}' is not a lane name the tooling can safely derive"
+    note "3) adjust the session to lane $G_LANE (types \`/rename $G_LANE\` into this pane)"
   fi
-  if guard_args_filled "$G_SES_LANE"; then
-    note "Reply \`yes\` to move this window to it (creating the lane if there is none: \`lane-start --no-launch $(lane_start_args "$G_SES_LANE")\` is run for you, this window is renamed, the row created or this uuid appended, and $G_LANE is marked MOVED)."
-  else
-    note "Reply \`yes\` and it will say what it cannot do: $G_SES_LANE is named before Rule 4's \`<repo>-<n>\` form, so \`lane-start\` needs that lane's DIRECTORY and nothing here knows which one it is. Moving this window to it is \`lane-start --no-launch --dir <that lane's checkout> $G_SES_LANE\`, yours to run with the path filled in."
+  # RATIFIED DECISION D4, WHERE THE STATE IT READS NOW ARRIVES. A `<lane> (N)`
+  # title is a mismatch and the SUFFIX IS EVIDENCE about another process, so it
+  # is said beside the choices rather than left for the person to notice.
+  go_base="${G_NAME% (*)}"
+  if [ -n "$go_base" ] && [ "$(lc "$go_base")" = "$(lc "$G_LANE")" ] && [ "$go_base" != "$G_NAME" ]; then
+    note "AND THE ' (N)' SUFFIX IS EVIDENCE: it is exactly what a rename into a title something else still holds mints, so another holder of '$G_LANE' was live when this session was named (Amendment 6(d), ratified decision D4). Naming them is a read of its own, kept off this hook's path because it costs about three seconds: \`lanes-edit.sh forks $G_LANE\`. Retiring one is \`lane-end $G_LANE --retire <pid>\`, which proves it is a fork, prints Amendment 6(d)'s act filled in, and ends, writes and kills nothing."
   fi
-  note "Reply \`no\` to stay $G_LANE — the session is renamed back with \`/rename $G_LANE\`."
-  note "The answer is the NEXT prompt, it is consumed here and never reaches the model, and anything but yes or no asks again. The offer expires with this session."
+  note "Reply \`1\`, \`2\` or \`3\`. The answer is the NEXT prompt, it is consumed here and never reaches the model; anything else asks again."
   [ -f "$go_f" ] || note "(the offer could not be written to $go_f, so the answer will be read as a fresh prompt and this question asked again — which is the safe direction)"
   return 2
 }
 
+# A choice of 1 is deliberately sticky only for the exact readable identity it
+# allowed. A renamed session, a different lane binding, or a new transcript
+# must come back through the numbered offer.
+guard_allow_active() {   # <offer file>
+  gaa_f="${1-}"
+  [ "$(sed -n -e 's/^mode=//p' "$gaa_f" 2>/dev/null | head -n1)" = allow ] || return 1
+  [ "$(sed -n -e 's/^from=//p' "$gaa_f" 2>/dev/null | head -n1)" = "$G_LANE" ] || return 1
+  [ "$(sed -n -e 's/^session=//p' "$gaa_f" 2>/dev/null | head -n1)" = "$G_NAME" ] || return 1
+  [ "$(sed -n -e 's/^uuid=//p' "$gaa_f" 2>/dev/null | head -n1)" = "$G_ID" ] || return 1
+  return 0
+}
+
 # ------------- THE UUID INTO THE NEW LANE'S CELL, WHICH `lane-start` MAY NOT DO
 #
-# CLAUSE (h) RULE 2 NAMES THE END STATE AND RULE 3 REPEATS IT: after a `yes`,
+# CLAUSE (h) RULE 2 NAMES THE END STATE AND RULE 3 REPEATS IT: after choice 2,
 # *"window X, session X, ROW X STAMPED WITH THIS UUID"*. `lane-start --no-launch`
 # performs every other part of that and CANNOT perform this one, by a fence that
 # is right and stays: its step 3b VETO 1 — Amendment 11 clause (d) rule 1 —
@@ -6321,7 +7266,7 @@ guard_offer() {   # <offer file> <pane>
 # belongs to `$ga_from`'s. So it mints a fresh id for the new lane instead and
 # the person's own transcript is left out of the cell the next resume follows.
 #
-# MEASURED, AND IT IS A LOOP AND NOT A BLEMISH. In the suite: `yes` moved the
+# MEASURED, AND IT IS A LOOP AND NOT A BLEMISH. In the suite: choice `2` moved the
 # window to `repoGD-2`, whose row then read `STARTED by 7a01ae69…` while this
 # session was `aaaa0012-1111…`. The NEXT prompt therefore finds a lane window
 # whose row does not name this transcript — the last row of the (b) table — and
@@ -6329,12 +7274,13 @@ guard_offer() {   # <offer file> <pane>
 # reason and changes nothing. A blocking hook that refuses for ever, on a state
 # it created by obeying the person, is the worst outcome this surface has.
 #
-# SO THE GUARD MAKES THE LAST WRITE ITSELF, and only after the person's `yes`.
+# SO THE GUARD MAKES THE LAST WRITE ITSELF, and only after the person's `2`.
 # That is not a hole in veto 1: the veto exists for the take nobody asked for —
 # *"`lane-start openXfactory-5` typed from a window named `openRepoProject-1`"*,
 # Evidence 2(b) — and clause (h) rule 4's own limit is that the lock *"never
-# moves a uuid between rows WITHOUT the person's `yes`"*. Here there is one, on
-# the record, answered at this very prompt.
+# moves a uuid between rows WITHOUT the person's `yes`"*. Here there is one —
+# choice `2` is that yes in the numbered offer — on the record, answered at this
+# very prompt.
 #
 # THE ANCHOR DISCIPLINE IS `lane-start`'s, unvaried: the anchor is the PUBLISHED
 # last id, so a checkout whose copy of the row is older than the one that landed
@@ -6366,7 +7312,7 @@ guard_bind_uuid() {   # <the lane moved to> <the lane moved from>
     # wrote by hand, and `pending — set by the session's first act` for a row
     # `lane-start` has just CREATED with neither a minted uuid nor one it was
     # allowed to take (`lane-start:1914`). The second is exactly the state a
-    # `yes` to a brand-new lane can leave — veto 1 refuses this window's uuid
+    # `2` to a brand-new lane can leave — veto 1 refuses this window's uuid
     # because the source row still records it, and a run that minted none has
     # nothing else to write — so anchoring only on the first left the cure for
     # the loop unreachable in the one case the loop most needs it (Copilot
@@ -6383,7 +7329,7 @@ guard_bind_uuid() {   # <the lane moved to> <the lane moved from>
     note "   $gbu_hint"
     return 1
   fi
-  if LANES_LANE="$gbu_to" "$RESOLVED" append-session-id "$gbu_to" "$gbu_anchor" "$gbu_add" "session cell: the name guard moved this window from $gbu_from on the person's yes (Amendment 12(h) rule 2)" >&2; then
+  if LANES_LANE="$gbu_to" "$RESOLVED" append-session-id "$gbu_to" "$gbu_anchor" "$gbu_add" "session cell: the name guard moved this window from $gbu_from on the person's choice 2 (Amendment 12(h) rule 2)" >&2; then
     note "…and $gbu_to's session cell now ends on $G_ID, which is what the next \`lane-start $gbu_to\` resumes."
     return 0
   fi
@@ -6395,23 +7341,68 @@ guard_bind_uuid() {   # <the lane moved to> <the lane moved from>
 # The answer, and it is the whole of clause (h) rule 2's second half.
 guard_answer() {   # <offer file> <the prompt> <pane>
   ga_f="${1-}"; ga_p="${2-}"; ga_pane="${3-}"
+  ga_mode="$(sed -n -e 's/^mode=//p' "$ga_f" 2>/dev/null | head -n1)"
   ga_from="$(sed -n -e 's/^from=//p' "$ga_f" 2>/dev/null | head -n1)"
   ga_to="$(sed -n -e 's/^to=//p' "$ga_f" 2>/dev/null | head -n1)"
+  ga_session="$(sed -n -e 's/^session=//p' "$ga_f" 2>/dev/null | head -n1)"
   ga_ans="$(printf '%s' "$ga_p" | tr 'A-Z' 'a-z' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-  if [ -z "$ga_from" ] || [ -z "$ga_to" ]; then
+  # THE OFFER IS READABLE WHEN IT NAMES ITS MODE AND THE LANE IT WAS MADE FOR,
+  # AND `session=` IS NOT PART OF THAT TEST. A session record carrying NO `name`
+  # at all is the (b) table's own untitled row and it reaches this offer with an
+  # empty name, so requiring one here made that state's offer UNANSWERABLE: the
+  # question was asked, the answer was dropped as unreadable, the next prompt
+  # asked it again, and choice 3 — the one that would have fixed it — could
+  # never be reached. An empty session name is a FACT about the session, and it
+  # is printed as `none` wherever this speaks.
+  if [ "$ga_mode" != name-drift ] || [ -z "$ga_from" ]; then
     rm -f -- "$ga_f"
     guard_refuse "the pending offer at $ga_f could not be read, so it has been dropped rather than answered on a guess. Send your prompt again and the question will be asked afresh."
     return 2
   fi
+  # AND THE QUESTION BEING ANSWERED MUST STILL BE THE QUESTION THAT WAS ASKED
+  # (Copilot round 1 on openRepoTools#87). The file is keyed by TRANSCRIPT, and
+  # a prompt is a later moment: between the offer and its answer the window can
+  # be renamed to another lane and the session renamed by hand, and every one of
+  # the three choices then acts on a state nobody was shown — `2` moves to a
+  # destination derived from a session name that has gone, `3` types `/rename`
+  # for a lane this window no longer is, and `1` records an allowance for a pair
+  # that does not exist. So the stored identity is compared with the live one,
+  # and a stale offer is DROPPED rather than answered: this prompt is not
+  # consumed, it is judged by the table below, which asks again where the
+  # mismatch still stands and refuses where the state has become one of the
+  # unsafe ones. 3 is that status, and `guard_run` is its only caller.
+  if [ "$ga_from" != "$G_LANE" ] || [ "$ga_session" != "$G_NAME" ]; then
+    rm -f -- "$ga_f"
+    note "the pending question was about lane $ga_from and session '${ga_session:-none}', and this window is now lane ${G_LANE:-none} with session '${G_NAME:-none}' — so the offer has been DROPPED rather than answered on a state you were never shown. Nothing was renamed or written. This prompt is judged afresh below."
+    return 3
+  fi
   case "$ga_ans" in
-  y|yes)
+  1)
+    if ! { printf 'mode=allow\n'
+      printf 'from=%s\n' "$ga_from"
+      printf 'to=%s\n' "$ga_to"
+      printf 'session=%s\n' "$ga_session"
+      printf 'uuid=%s\n' "$G_ID"
+      printf 'utc=%s\n' "$(utc_now)"
+    } > "$ga_f" 2>/dev/null; then
+      guard_refuse "the explicit allow could not be recorded at $ga_f, so the mismatch remains unapproved. Nothing was renamed or written; answer 1 again after the session state is writable."
+      return 2
+    fi
+    guard_triple
+    note "ALLOWED: this lane/session name mismatch is explicitly allowed for this transcript. This answer is consumed; send your work again. Future prompts will warn without blocking while the lane remains $ga_from and the session remains '${ga_session:-none}'."
+    return 2 ;;
+  2)
+    if [ -z "$ga_to" ]; then
+      guard_refuse "choice 2 is unavailable because the session name '${ga_session:-none}' is not a lane name the tooling can safely derive. Nothing was renamed or written; the offer is kept. Choose 1 or 3."
+      return 2
+    fi
     if ! guard_args_filled "$ga_to"; then
-      guard_refuse "lane $ga_to is named before Rule 4's \`<repo>-<n>\` form, so the act that moves this window to it cannot be filled in here: \`lane-start\` needs that lane's DIRECTORY and nothing in the register, the window or this session says which one it is. NOTHING has been renamed, moved or written, and the offer is KEPT — run it yourself with the path, or answer \`no\` to stay $ga_from." "lane-start --no-launch --dir <that lane's checkout> $ga_to"
+      guard_refuse "lane $ga_to is named before Rule 4's \`<repo>-<n>\` form, so choice 2 cannot be filled in here: \`lane-start\` needs that lane's DIRECTORY and nothing in the register, the window or this session says which one it is. NOTHING has been renamed, moved or written, and the offer is KEPT." "lane-start --no-launch --dir <that lane's checkout> $ga_to"
       return 2
     fi
     ga_start="$(guard_lane_start)"
     if [ -z "$ga_start" ] || [ ! -x "$ga_start" ]; then
-      guard_refuse "there is no \`lane-start\` beside this file or on PATH, so this window has NOT moved to $ga_to and NOTHING has been written. The offer is kept: answer \`yes\` again once it is installed (\`openRepoTools --install\`)."
+      guard_refuse "there is no \`lane-start\` beside this file or on PATH, so this window has NOT moved to $ga_to and NOTHING has been written. The offer is kept: answer \`2\` again once it is installed (\`openRepoTools --install\`)."
       return 2
     fi
     # THE WINDOW IS RENAMED FIRST, AND THAT ORDER IS LOAD-BEARING. Clause (h)
@@ -6419,7 +7410,7 @@ guard_answer() {   # <offer file> <the prompt> <pane>
     # appended to its cell"* — and `lane-start` will not do the second while the
     # first is undone: its step 3b VETO 2 refuses to take the session live in a
     # window NAMED FOR ANOTHER LANE (Amendment 11 clause (d) rule 1, veto 2,
-    # `R-A11-12`), which after a `yes` is exactly what this window is. Without
+    # `R-A11-12`), which after choice 2 is exactly what this window is. Without
     # the rename the lane would be started and stamped and the person's
     # transcript left OUT of its session cell — the one thing the next resume
     # follows. The veto is right and stays: what changes is that the person has
@@ -6437,7 +7428,7 @@ guard_answer() {   # <offer file> <the prompt> <pane>
     # shellcheck disable=SC2046
     "$ga_start" --no-launch $(lane_start_args "$ga_to") >&2 || ga_rc=$?
     if [ "$ga_rc" != 0 ]; then
-      guard_refuse "\`lane-start --no-launch $(lane_start_args "$ga_to")\` exited $ga_rc (its own words are above), so this window has NOT moved and $ga_from has NOT been marked MOVED. The offer is KEPT, so answer \`yes\` again once that refusal is settled, or \`no\` to stay $ga_from."
+      guard_refuse "\`lane-start --no-launch $(lane_start_args "$ga_to")\` exited $ga_rc (its own words are above), so this window has NOT moved and $ga_from has NOT been marked MOVED. The offer is KEPT, so answer \`2\` again once that refusal is settled, or choose \`3\` to rename the session back to $ga_from."
       return 2
     fi
     rm -f -- "$ga_f"
@@ -6445,29 +7436,51 @@ guard_answer() {   # <offer file> <the prompt> <pane>
     note "MOVED: this window is now lane $ga_to — renamed, and stamped. The prompt that answered the question is consumed; send your work again."
     guard_bind_uuid "$ga_to" "$ga_from" || :
     if [ -n "$(row_of_lane "$ga_from" 2>/dev/null || :)" ]; then
-      if "$RESOLVED" append-row-status "$ga_from" "MOVED → $ga_to" >&2; then
-        note "…and $ga_from's row records \`MOVED → $ga_to\`."
+      # AMENDMENT 13(a) — THE STATE IS SET, NOT APPENDED. This window has just
+      # moved to another lane, so the lane it LEFT is not running in it any
+      # more: `PAUSED` is where that lane now is, and the line says where it
+      # went. It used to be an `append-row-status` of `MOVED → <lane>`, which
+      # left the cell saying two things at once — whatever state it opened with,
+      # and this.
+      # THE LINE IS BOUNDED (Copilot round 5 on openRepoTools#82). A lane name is
+      # bounded in its CHARACTERS by `check_lane_name` and not in its length, and
+      # this line carried it twice: a long enough name makes `set-row-state`
+      # refuse the very write that records where the work went — after the window
+      # has already been renamed and moved. The name is said ONCE, and cut where
+      # even once does not fit, so the act always records something true.
+      ga_line="this window moved to lane $ga_to on the person's choice 2 at the guard"
+      if [ "${#ga_line}" -gt 230 ]; then
+        ga_line="${ga_line:0:230}"
+        case "$ga_line" in *' '*) ga_line="${ga_line% *}" ;; esac
+        ga_line="$ga_line ..."
+      fi
+      if "$RESOLVED" set-row-state "$ga_from" "PAUSED · $ga_line" >&2; then
+        note "…and $ga_from's row now reads PAUSED, naming the move to $ga_to."
       else
-        note "…but $ga_from's row could NOT be marked (its writer's words are above). Run: lanes-edit.sh append-row-status $ga_from \"MOVED → $ga_to\""
+        note "…but $ga_from's row could NOT be marked (its writer's words are above). Run: lanes-edit.sh set-row-state $ga_from \"PAUSED · $ga_line\""
       fi
     else
       note "…and the register has no row for $ga_from, so there is nothing to mark MOVED there."
     fi
     return 2 ;;
-  n|no)
+  3)
     ga_trc=0
     guard_type "$ga_pane" "/rename $ga_from" || ga_trc=$?
-    rm -f -- "$ga_f"
     guard_triple
     case "$ga_trc" in
-      0) note "STAYING $ga_from: \`/rename $ga_from\` was typed into this pane ($ga_pane) and the window is untouched. The prompt that answered the question is consumed; send your work again." ;;
-      *) note "STAYING $ga_from, but the rename could NOT be typed into this pane, so the session is still named $ga_to and the guard will ask again at the next prompt. Type it yourself: /rename $ga_from" ;;
+      0) rm -f -- "$ga_f"; note "ADJUSTED SESSION TO LANE $ga_from: \`/rename $ga_from\` was typed into this pane ($ga_pane). The prompt that answered the question is consumed; send your work again." ;;
+      *) note "the rename could NOT be typed into this pane, so the session is still named '${ga_session:-none}'. NOTHING was written; the offer is kept. Type it yourself: /rename $ga_from" ;;
     esac
     return 2 ;;
   *)
     guard_triple
-    note "that is not an answer to the pending question, so it has been refused rather than acted on: this window is lane $ga_from and this session is named $ga_to."
-    note "Reply \`yes\` to move this window to $ga_to, or \`no\` to stay $ga_from."
+    note "that is not an answer to the pending question, so it has been refused rather than acted on: this window is lane $ga_from and this session is named '${ga_session:-none}'."
+    note "1) allow this lane for this transcript   2) adjust the lane to session ${ga_to:-${ga_session:-none}}   3) adjust the session to lane $ga_from (types \`/rename $ga_from\`)"
+    # THE SAME SENTENCE THE OFFER ENDS ON, because a question asked again is
+    # asked in the words it was asked in: a person who is being re-asked has
+    # just typed something else, and two spellings of one question is how they
+    # come to believe the second one takes different answers.
+    note "Reply \`1\`, \`2\` or \`3\`. The answer is the NEXT prompt, it is consumed here and never reaches the model; anything else asks again."
     return 2 ;;
   esac
 }
@@ -6540,7 +7553,7 @@ ssb_name_line() {   # <session uuid> <lane, or empty>
   # TO UNDO. Clause (f) types the rename for (h)1's case — DRIFT, a name that is
   # no lane's — while (h) rule 2 makes a record whose `nameSource` is `user`,
   # whose name is another lane's, and whose `nameSince` is later than this
-  # window's binding an INSTRUCTION, answered `yes` or `no` at the next prompt.
+  # window's binding an INSTRUCTION, answered `1`, `2` or `3` at the next prompt.
   # This hook runs on every startup, resume, clear and fork, so typing over such
   # a name would erase the person's choice before the guard could put the
   # question (Copilot round 4 on this PR): a rename, then a `/clear`, and the
@@ -6751,6 +7764,564 @@ gh_stale_claim_url() {
      -q '.comments[] | select(.body | test("CLAIMED — lane '"$gs_lane"'")) | .url' 2>/dev/null | tail -n1
 }
 
+# ------------------------------- AMENDMENT 13(e): THE MIGRATION, ONE ACT -----
+#
+# `migrate-state-cells` empties every `state` cell of its diary INTO the lane's
+# own log, once, on Brett Heap's word (ratified decision O3: after the writer
+# changes are installed on both workstations — a cell must stop growing before
+# it is emptied). It is a DRY RUN unless `--yes` is passed, and it REFUSES to
+# run at all when no cell holds a ` · ` entry, so a second run is a no-op that
+# says so.
+#
+# NOTHING IS DELETED. The appended narrative exists in git history AND in
+# `lanes/archive/LANES-pre-amendment-13-<UTC>.md`, written in this same commit,
+# AND in the logs — three times over, which is the posture Amendment 3 took
+# after the 2026-09-08 loss.
+#
+# WHAT A ROW BECOMES. Its cell is split on ` · ` into entries, in cell order
+# (the cell grew by appending, so that is oldest first). Each entry becomes one
+# line in `lanes/log/<lane>.md`: `RULED` where the entry begins with RULING,
+# RULINGS or RATIFIED, else `NOTED`; the entry's own leading timestamp becomes
+# the line's UTC field rather than being repeated inside its text, and every
+# other character of the entry is carried verbatim — including the ` — ` these
+# entries are full of, which the log's parser reads as prose because a
+# lane-kind line's free text is introduced by the ` — ` right after its object.
+# The cell is then REPLACED by the state derived from the LAST entry's leading
+# verb where that verb is one of clause (a)'s, else by `MIGRATED`.
+#
+# THE FOUR FIELDS THAT ARE NOT IN THE ENTRY come from the row: the UTC of an
+# entry that carries none is the row's `started` (a date-only `started` is read
+# as midnight UTC that day, and the register's older minute-precision form is
+# accepted as Amendment 7(b) already accepts it); the session is the LAST uuid
+# of the row's session cell; the workstation is the first `/`-separated part of
+# the row's own column.
+#
+# AND A ROW THAT CANNOT BE MIGRATED IS SKIPPED AND NAMED, never guessed at and
+# never half-written. Its cell keeps its history, so a re-run after the row is
+# fixed by hand migrates exactly that row. Five reasons, all of them visible in
+# the dry run: an ambiguous row (more than six ` | ` separators — see
+# `row_split_state_cell`); a row whose session cell holds NO transcript uuid, so
+# the line could only name `unknown` in the one field this log must never carry
+# it in; two rows whose lane names differ only by case (Amendment 15(d)'s hand
+# merge); a lane whose object log is two files, or is published under a
+# spelling this checkout does not have; and a name that is not a lane name.
+# Measured against the live register on 2026-09-15 (52 rows): 20 rows migrate,
+# 1 has no uuid, 2 are ambiguous, and 29 hold no ` · ` entry at all and are
+# already one phrase.
+#
+# THE WORKSTATION IS A TOKEN OR IT IS `unknown`. Twelve of the live register's
+# rows carry `<workstation? — owner fills>` in that column, and that placeholder
+# holds a ` — `: written into the `session <uuid>@<ws>` field it would put a
+# THIRD ` — ` in the line, ahead of the object, and the log's own parser would
+# read the verb and the fields out of the wrong halves for ever. So the column
+# is read up to its first ` / `, and anything that is not one plain token
+# (letters, digits, `.`, `_`, `-`) is recorded as `unknown` — which is inert
+# here: no reader computes a lane's state, its window or its workstation from a
+# narrative line (Amendment 13(b)).
+
+# THESE FOUR ASSIGN A GLOBAL AND RETURN, rather than printing — the idiom
+# `table_lookup` states one screen up, for the same reason: *"a function whose
+# answer is taken with `$( … )` forks, which is the cost this exists to avoid"*.
+# They are asked once PER ENTRY, and the live register holds 2,206 entries
+# across its twenty diary cells. Measured on a copy of it, 2026-09-15: the
+# printing form took 94 seconds of a dry run, five forks an entry; this one
+# takes eleven.
+MIG_LEAD_UTC=""
+MIG_LEAD=""
+MIG_TRIM=""
+
+# Spaces off BOTH ends, forking nothing — `rstrip_spaces` and its mirror in one
+# place, for the one caller that runs them thousands of times in a row.
+mig_trim() {   # <text> — sets MIG_TRIM
+  MIG_TRIM="${1-}"
+  while [ "${MIG_TRIM# }" != "$MIG_TRIM" ]; do MIG_TRIM="${MIG_TRIM# }"; done
+  while [ "${MIG_TRIM% }" != "$MIG_TRIM" ]; do MIG_TRIM="${MIG_TRIM% }"; done
+}
+
+# The entry's own leading timestamp, or empty. Matched at the very start of the
+# entry and nowhere else: a UTC in the middle of a sentence is prose.
+mig_lead_utc() {   # <entry> — sets MIG_LEAD_UTC
+  MIG_LEAD_UTC=""
+  case "${1-}" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z*) MIG_LEAD_UTC="${1:0:20}" ;;
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]Z*)             MIG_LEAD_UTC="${1:0:17}" ;;
+  esac
+}
+
+# The row's `started` cell as an instant the log's grammar can read: the UTC it
+# already is, else midnight on the date it opens with, else empty — the live
+# register spells that column `2026-09-02`, `2026-09-04 ~15:30Z` and
+# `2026-09-13T17:41Z` in different rows.
+mig_started_utc() {   # <the started cell>
+  mig_trim "${1-}"
+  mig_lead_utc "$MIG_TRIM"
+  [ -n "$MIG_LEAD_UTC" ] && { printf '%s' "$MIG_LEAD_UTC"; return 0; }
+  case "$MIG_TRIM" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*) printf '%sT00:00Z' "${MIG_TRIM:0:10}" ;;
+  esac
+}
+
+# Everything a leading state word or timestamp can hide behind, stripped: the
+# register writes `**LIVE**`, `> RULING …` and `` `PAUSED` `` in the same column.
+mig_strip_lead() {   # <text> — sets MIG_LEAD
+  MIG_LEAD="${1-}"
+  while :; do
+    case "$MIG_LEAD" in
+      ' '*|'*'*|'_'*|'`'*|'>'*|'#'*) MIG_LEAD="${MIG_LEAD#?}" ;;
+      *) break ;;
+    esac
+  done
+  mig_lead_utc "$MIG_LEAD"
+  [ -n "$MIG_LEAD_UTC" ] && { MIG_LEAD="${MIG_LEAD#"$MIG_LEAD_UTC"}"; MIG_LEAD="${MIG_LEAD# }"; }
+  return 0
+}
+
+# Clause (e)'s test: does this entry RECORD A RULING? Case-folded, because the
+# register spells it `RULING`, `Ruling` and `RULINGS` in the same week.
+# A CHARACTER CLASS PER LETTER, which is how a `case` matches without regard to
+# case in POSIX shell — and it forks nothing, where the `tr` it replaces forked
+# once per entry. `RULINGS` is `RULING*` already.
+mig_is_ruling() {   # <entry>
+  mig_strip_lead "${1:0:64}"
+  case "$MIG_LEAD" in
+    [Rr][Uu][Ll][Ii][Nn][Gg]* | [Rr][Aa][Tt][Ii][Ff][Ii][Ee][Dd]*) return 0 ;;
+  esac
+  return 1
+}
+
+# The current state the last entry names, or empty. The word must END where the
+# state word ends — `LIVELY` is not `LIVE` — and `LANDING #<n>` keeps its number,
+# because Rule 6's reading of this cell is unchanged by Amendment 13 and is now
+# the whole of what the cell says at that moment.
+mig_lead_state() {   # <entry>
+  mig_strip_lead "${1:0:64}"
+  mls="$MIG_LEAD"
+  case "$mls" in
+    'LANDING #'*)
+      mls_n="${mls#LANDING #}"
+      mls_d=""
+      while :; do
+        case "$mls_n" in
+          [0-9]*) mls_d="$mls_d${mls_n:0:1}"; mls_n="${mls_n:1}" ;;
+          *) break ;;
+        esac
+      done
+      # THE NUMBER ENDS WHERE THE WORD ENDS, exactly as `state_word_is_valid`
+      # and the five states below bound theirs. Without the test `LANDING #123abc`
+      # derived the state `LANDING #123` — a merge hold Rule 6 would read, out of
+      # an entry that names no PR at all (Copilot round 1 on openRepoTools#82).
+      case "$mls_n" in
+        '' | [!A-Za-z0-9]*) [ -n "$mls_d" ] && printf 'LANDING #%s' "$mls_d" ;;
+      esac
+      return 0 ;;
+    'HANDED OFF' | 'HANDED OFF'[!A-Za-z0-9]*) printf 'HANDED OFF'; return 0 ;;
+    LIVE    | LIVE[!A-Za-z0-9]*)    printf 'LIVE';    return 0 ;;
+    PAUSED  | PAUSED[!A-Za-z0-9]*)  printf 'PAUSED';  return 0 ;;
+    LANDED  | LANDED[!A-Za-z0-9]*)  printf 'LANDED';  return 0 ;;
+    ENDED   | ENDED[!A-Za-z0-9]*)   printf 'ENDED';   return 0 ;;
+    RETIRED | RETIRED[!A-Za-z0-9]*) printf 'RETIRED'; return 0 ;;
+  esac
+  return 0
+}
+
+# IS THIS CELL ALREADY CLAUSE (a)'s PHRASE? `<STATE> · <UTC> · <one line>` —
+# exactly three parts, the first one of the seven states (or the migration's own
+# `MIGRATED`) and the second an instant.
+#
+# WITHOUT THIS THE MIGRATION READS ITS OWN OUTPUT AS A DIARY. The phrase it
+# writes carries two ` · ` of its own, so "the cell holds a ` · ` entry" is true
+# of every row the moment it has been migrated, and clause (e)'s refusal —
+# *"it REFUSES to run when no cell holds a ` · ` entry, so a second run is a
+# no-op that says so"* — could never fire on a register that had just been
+# migrated. Measured: the second run re-split every migrated cell into three
+# entries and would have appended them to the logs again.
+mig_cell_is_phrase() {   # <cell>
+  mcp="${1-}"
+  case "$mcp" in *' · '*) : ;; *) return 1 ;; esac
+  mcp_a="${mcp%% · *}"; mcp_r="${mcp#* · }"
+  case "$mcp_r" in *' · '*) : ;; *) return 1 ;; esac
+  mcp_b="${mcp_r%% · *}"; mcp_c="${mcp_r#* · }"
+  case "$mcp_c" in *' · '*) return 1 ;; esac       # a fourth part is not the phrase
+  [ -n "$mcp_c" ] || return 1
+  case "$mcp_a" in
+    MIGRATED) : ;;
+    *) state_word_is_valid "$mcp_a" || return 1 ;;
+  esac
+  mig_lead_utc "$mcp_b"
+  [ -n "$mcp_b" ] && [ "$MIG_LEAD_UTC" = "$mcp_b" ] || return 1
+  return 0
+}
+
+# The workstation field of a migrated line — see the paragraph above.
+mig_row_ws() {   # <the workstation column>
+  mrw="${1%% / *}"
+  mrw="$(rstrip_spaces "$mrw")"
+  case "$mrw" in
+    '' | *[!A-Za-z0-9._-]*) printf 'unknown' ;;
+    *) printf '%s' "$mrw" ;;
+  esac
+}
+
+# A BLOCK OF LINES APPENDED WITH THE SAME PROOF `append_text_line` MAKES FOR
+# ONE. A lane's whole migrated history is appended in a single act — the alt is
+# one call per entry, and on the live register that is hundreds of full copies
+# of a log and hundreds of `1 line appended to …` notes for what is one write.
+# The proof is the stronger of the two `append_text_line` states: the file
+# afterwards must be exactly its old bytes followed by exactly this block.
+append_text_block() {   # <target> <block, lines separated by newlines>
+  atb_t="$1"; atb_b="$2"
+  [ -n "$atb_b" ] || return 0
+  ATB_TMPD="$(mktemp -d)"
+  atb_pre="$ATB_TMPD/pre"
+  cat -- "$atb_t" > "$atb_pre"
+  atb_before="$(wc -l < "$atb_pre" | tr -d ' ')"
+  atb_n="$(printf '%s\n' "$atb_b" | wc -l | tr -d ' ')"
+  printf '%s\n' "$atb_b" >> "$atb_t"        # >> FOLLOWS the symlink
+  atb_after="$(wc -l < "$atb_t" | tr -d ' ')"
+  [ "$atb_after" -eq "$((atb_before + atb_n))" ] ||
+    die "append changed line count by $((atb_after - atb_before)) where $atb_n lines were appended; inspect $atb_t" 5
+  { cat -- "$atb_pre"; printf '%s\n' "$atb_b"; } | cmp -s -- "$atb_t" - ||
+    die "append rewrote existing bytes; inspect $atb_t" 5
+  # AND THE COPY GOES, because it is a whole log and there is one per lane: the
+  # live register's migration makes twenty of them in a run, and a dry run makes
+  # them while reporting that nothing was written (Copilot round 1 on
+  # openRepoTools#82). It is removed HERE, where the proof has just passed, and
+  # a `die` above leaves it for the same reason every other `mktemp -d` in this
+  # file leaves one: a refused write is evidence.
+  rm -rf -- "$ATB_TMPD"
+  note "$atb_n lines appended to $atb_t"
+}
+
+# The act itself. `<1>` writes; `<0>` is the dry run, which reads exactly the
+# same things, reports exactly the same rows, and touches nothing.
+migrate_state_cells() {   # <1 = the act, 0 = the dry run>
+  msc_do="${1:-0}"
+  msc_utc="$(utc_now)"
+  msc_tmp="$(mktemp -d)"
+  mkdir -p "$msc_tmp/block"
+  : > "$msc_tmp/report"; : > "$msc_tmp/skips"; : > "$msc_tmp/cells"; : > "$msc_tmp/targets"
+  msc_arch_rel="${LANES_PREFIX}archive/LANES-pre-amendment-13-$msc_utc.md"
+  msc_arch="$LANES_DIR/archive/LANES-pre-amendment-13-$msc_utc.md"
+
+  # THE FETCH FIRST (R30), AND A CHECKOUT THAT IS BEHIND IS REFUSED. This one
+  # act rewrites every row of the register and appends to every lane's log in a
+  # single commit; made against a register that is not the published one, each
+  # of those rewrites is a conflict for `commit_push`'s rebase to resolve, and
+  # the one it cannot resolve costs the whole migration its atomicity.
+  log_sync
+  if [ "$NO_GIT" != 1 ] && have_remote_ref; then
+    msc_behind="$(git -C "$LANES_REPO" rev-list --count "HEAD..origin/$LANES_BRANCH" 2>/dev/null || printf '')"
+    case "$msc_behind" in
+      '' | 0) : ;;
+      *) die "this checkout is $msc_behind commit(s) behind origin/$LANES_BRANCH. The migration rewrites EVERY row and every lane's log in ONE commit, so it is made against the published register or not at all. Pull first — \`git -C $LANES_REPO pull --rebase\` — and re-run. Nothing was written." 2 ;;
+    esac
+  fi
+  refuse_dirty_checkout "migrate-state-cells" "$LANES_PATH"
+
+  # THE MUTEX COMES BEFORE THE SCAN, NOT BETWEEN THE SCAN AND THE WRITE (Copilot
+  # round 2 on openRepoTools#82). This act reads every row's LINE NUMBER and its
+  # cell, and then rewrites those lines BY NUMBER: a peer's `add-row` or
+  # `replace-in-row` landing in this checkout between the two moves the lines
+  # under it, and `replace_line` then rewrites the wrong row — its one-line proof
+  # holds for the line it was given, not for the row a person meant. So the scan
+  # and the write happen inside ONE hold of the lock, and the register's
+  # pre-existing edit is captured BEFORE the scan rather than after it, so what
+  # is read is what is committed.
+  #
+  # THE DRY RUN TAKES NO LOCK AT ALL. It writes nothing, so a row that moves
+  # under it costs a report one line of accuracy and nothing else — and a read
+  # that holds the estate's one register mutex for the seconds this scan takes
+  # is a read that blocks every lane's write to say what it would have done.
+  if [ "$msc_do" = 1 ]; then
+    acquire_lock
+    handle_preexisting "$LANES_PATH"
+  fi
+
+  # TWO ROWS FOR ONE LANE UNDER TWO CASES ARE 15(d)'s HAND MERGE, and both of
+  # them are skipped rather than migrated into one log under a name that means
+  # two rows.
+  msc_dups="$(awk '
+    substr($0,1,1) == "|" {
+      p1 = index($0, "`"); if (p1 == 0) next
+      r = substr($0, p1 + 1); p2 = index(r, "`"); if (p2 == 0) next
+      print tolower(substr(r, 1, p2 - 1))
+    }' "$LANES_FILE" | LC_ALL=C sort | LC_ALL=C uniq -d)"
+
+  msc_rows=0; msc_ok=0; msc_lines=0; msc_noted=0; msc_ruled=0; msc_skipped=0
+  msc_phrase=0; msc_plain=0; msc_before=0; msc_after=0
+
+  while IFS="$(printf '\t')" read -r msc_n msc_lane; do
+    [ -n "${msc_n:-}" ] || continue
+    msc_rows=$((msc_rows + 1))
+    msc_why=""
+    case "$msc_lane" in
+      '' | *[!A-Za-z0-9._-]* | .* | -*) msc_why="'$msc_lane' is not a lane name (letters, digits, . _ -), so it names no log this writer would create" ;;
+    esac
+    if [ -z "$msc_why" ] && [ -n "$msc_dups" ]; then
+      msc_low="$(lc "$msc_lane")"
+      while IFS= read -r msc_d; do
+        [ -n "$msc_d" ] || continue
+        [ "$msc_d" = "$msc_low" ] && msc_why="the register holds more than one row whose lane name is $msc_lane under some case — one lane is ONE lane (Amendment 15), and the two are merged by hand into one row (15(d)) before either is migrated"
+      done <<EOF
+$msc_dups
+EOF
+    fi
+    msc_row="$(sed -n -e "${msc_n}p" "$LANES_FILE")"
+    if [ -z "$msc_why" ]; then
+      msc_rc=0; row_split_state_cell "$msc_row" || msc_rc=$?
+      case "$msc_rc" in
+        0) : ;;
+        2) msc_why="its row carries $(row_sep_count "$msc_row") ' | ' separators where a seven-column row carries 6, so which text is the state cell is not knowable from the row (escape the literal pipe inside a cell as \\| by hand, commit it, and re-run)" ;;
+        *) msc_why="its row does not open with '|' and end with '|'" ;;
+      esac
+    fi
+    if [ -z "$msc_why" ]; then
+      mig_trim "$RSS_CELL"; msc_cell="$MIG_TRIM"
+      msc_head="$RSS_HEAD"; msc_tail="$RSS_TAIL"
+      # TWO WAYS A CELL HOLDS NO HISTORY, AND THEY ARE NOT THE SAME FACT
+      # (Copilot round 1 on openRepoTools#82). A cell that is already
+      # `<STATE> · <UTC> · <one line>` is in clause (a)'s shape and there is
+      # nothing to do. A cell holding ONE WORD — `ACTIVE`, `LIVE`, the bare
+      # states this register is full of — has no diary to move either, so this
+      # act leaves it alone, but it is NOT in the shape: the next
+      # `set-row-state` on that lane puts it there, and reporting the two as one
+      # number would say the register was compliant when a third of it is not.
+      case "$msc_cell" in
+        *' · '*) : ;;
+        *) msc_plain=$((msc_plain + 1)); continue ;;
+      esac
+      if mig_cell_is_phrase "$msc_cell"; then msc_phrase=$((msc_phrase + 1)); continue; fi
+    fi
+    if [ -z "$msc_why" ]; then
+      # The row's own columns, walked from the LEFT out of the head this split
+      # already proved reassembles: 3 is `<workstation> / <env> / <user>` and 4
+      # is `started (UTC)`.
+      msc_h="${msc_head#| }"
+      msc_h="${msc_h#* | }"                    # past the lane cell
+      msc_h="${msc_h#* | }"                    # past the session cell
+      msc_c3="${msc_h%% | *}"                  # workstation / env / user
+      msc_c4="${msc_h#* | }"; msc_c4="${msc_c4%% | *}"   # started (UTC)
+      msc_ws="$(mig_row_ws "$msc_c3")"
+      msc_started="$(mig_started_utc "$msc_c4")"
+      [ -n "$msc_started" ] || msc_started="$msc_utc"
+      msc_uuid=""
+      if row_split_session_cell "$msc_row"; then
+        msc_uuid="$(printf '%s\n' "$RSC_CELL" | uuids_in_cell | tail -n1)"
+      fi
+      [ -n "$msc_uuid" ] ||
+        msc_why="its session cell holds no transcript uuid, and the session field of an event line is a transcript uuid and only that (Amendment 7(b)) — a migrated line naming 'unknown' there is wrong for ever in an append-only file. Read the cell and set the row by hand instead: lanes-edit.sh set-row-state $msc_lane \"<STATE> · <one line>\""
+    fi
+    if [ -z "$msc_why" ]; then
+      # The lane's log, found whatever its case, and never created beside one
+      # this checkout has not pulled (Amendment 15, `ensure_log`'s own guard).
+      msc_pub=""; msc_prc=0
+      msc_pub="$(log_path_ci "$msc_lane")" || msc_prc=$?
+      if [ "$msc_prc" != 0 ]; then
+        msc_why="its object log is published twice under names that differ only by case (above) — 15(d)'s hand merge"
+      else
+        msc_loc="$(log_files_named_ci "$msc_lane")"
+        msc_ln="$(printf '%s' "$msc_loc" | grep -c . || :)"
+        if [ "$msc_ln" -gt 1 ]; then
+          msc_why="this checkout holds $msc_ln object logs for it whose names differ only by case — 15(d)'s hand merge"
+        elif [ "$msc_ln" = 1 ]; then
+          msc_lf="$msc_loc"; msc_rel="${LANES_LOG_PREFIX}${msc_loc##*/}"
+          if [ "${msc_rel##*/}" != "${msc_pub##*/}" ]; then
+            msc_why="its object log is published as $msc_pub while this checkout has ${msc_rel##*/} — a case-only rename whose commit never landed. Pull first, or merge them (15(d))"
+          elif [ "$NO_GIT" != 1 ] && ! git -C "$LANES_REPO" ls-files --error-unmatch -- "$msc_rel" >/dev/null 2>&1; then
+            # AN UNTRACKED LOG IS SOMEBODY'S UNCOMMITTED WORK, AND THIS ACT WOULD
+            # COMMIT IT (Copilot round 2 on openRepoTools#82). A log that is
+            # TRACKED and dirty is already refused for the whole run by
+            # `refuse_dirty_checkout` above, which exempts the register alone and
+            # reads staged and unstaged alike; an untracked file is in neither of
+            # those lists, so appending to it here would put a peer's first lines
+            # into this migration's one commit under this migration's message.
+            # The row is skipped and the file named, exactly as the other five
+            # reasons are, and its cell keeps every character.
+            msc_why="its object log ${msc_rel} exists here but is NOT TRACKED — somebody's uncommitted work, which this act would commit inside the migration's own commit. Commit it first (\`git -C $LANES_REPO commit -m \"<what it is>\" -- $msc_rel\`) and re-run"
+          fi
+        else
+          msc_rel="$msc_pub"; msc_lf="$LANES_LOG_DIR/${msc_pub##*/}"
+        fi
+      fi
+    fi
+    if [ -n "$msc_why" ]; then
+      msc_skipped=$((msc_skipped + 1))
+      printf '  %-26s %s\n' "$msc_lane" "$msc_why" >> "$msc_tmp/skips"
+      continue
+    fi
+
+    # THE ENTRIES, IN CELL ORDER — which is oldest first, because the cell grew
+    # by appending.
+    #
+    # SPLIT BY `awk`, IN ONE PASS, and not by `${cell#* · }` in a loop. That
+    # expansion is the shortest-prefix form: bash walks every prefix length in
+    # turn, so its cost is quadratic in the DISTANCE TO THE MATCH — cheap while
+    # the entries are short and ruinous for one long entry near the end of a
+    # 94,341-character cell. Measured on this bash, 2026-09-15: six of those
+    # expansions over a 95,000-character string with no match at all take 16
+    # seconds. One pass of `awk` is linear in the cell whatever the entries look
+    # like. A register row is ONE LINE, so an entry can hold no newline and a
+    # line of this stream is exactly an entry.
+    : > "$msc_tmp/block/$msc_n"
+    msc_en=0; msc_last=""
+    while IFS= read -r msc_e; do
+      mig_trim "$msc_e"; msc_e="$MIG_TRIM"
+      if [ -n "$msc_e" ]; then
+        msc_last="$msc_e"
+        mig_lead_utc "$msc_e"; msc_eutc="$MIG_LEAD_UTC"
+        msc_text="$msc_e"
+        if [ -n "$msc_eutc" ]; then
+          msc_t2="${msc_e#"$msc_eutc"}"; mig_trim "$msc_t2"; msc_t2="$MIG_TRIM"
+          # AN ENTRY THAT IS NOTHING BUT A TIMESTAMP KEEPS IT AS ITS TEXT: a
+          # line whose free text is empty is a line with a dangling ` — `, and
+          # this log is never rewritten.
+          [ -n "$msc_t2" ] && msc_text="$msc_t2"
+        else
+          msc_eutc="$msc_started"
+        fi
+        if mig_is_ruling "$msc_e"; then msc_verb=RULED; msc_ruled=$((msc_ruled + 1))
+        else                            msc_verb=NOTED; msc_noted=$((msc_noted + 1)); fi
+        printf '%s — lane %s, session %s@%s, %s, lane:%s — %s\n' \
+          "$msc_verb" "$msc_lane" "$msc_uuid" "$msc_ws" "$msc_eutc" "$msc_lane" "$msc_text" >> "$msc_tmp/block/$msc_n"
+        msc_en=$((msc_en + 1)); msc_lines=$((msc_lines + 1))
+      fi
+    done <<EOF
+$(printf '%s\n' "$msc_cell" | awk '{ gsub(/ · /, "\n"); print }')
+EOF
+    if [ "$msc_en" = 0 ]; then
+      msc_plain=$((msc_plain + 1)); rm -f -- "$msc_tmp/block/$msc_n"; continue
+    fi
+
+    # THE CELL IT BECOMES — clause (e): the state the LAST entry's leading verb
+    # names, where that verb is one of clause (a)'s, else `MIGRATED`.
+    msc_state="$(mig_lead_state "$msc_last")"
+    [ -n "$msc_state" ] || msc_state=MIGRATED
+    # THE CAP IS THE CAP HERE TOO (Copilot round 5 on openRepoTools#82). This
+    # builds the cell directly rather than through `set-row-state`, so nothing
+    # else enforces ratified decision O1's 240 characters on the line — and the
+    # line carries a PATH whose length is the lane's name: `check_lane_name`
+    # bounds a name's characters and not its length, so a lane named with 216 of
+    # them would be migrated to a cell the writer itself would refuse. Cut back
+    # to the last space, for the reason the three commands' `cut_to_line` gives:
+    # `${s:0:n}` counts bytes wherever the locale is not a UTF-8 one.
+    msc_line="history in $msc_rel"
+    if [ "${#msc_line}" -gt 230 ]; then
+      msc_line="${msc_line:0:230}"
+      case "$msc_line" in *' '*) msc_line="${msc_line% *}" ;; esac
+      msc_line="$msc_line ..."
+    fi
+    msc_new="$msc_state · $msc_utc · $msc_line"
+    printf '%s%s%s%s%s%s%s\n' "$msc_n" "$US" "$msc_new" "$US" "$msc_head" "$US" "$msc_tail" >> "$msc_tmp/cells"
+    printf '%s%s%s%s%s\n' "$msc_n" "$US" "$msc_lf" "$US" "$msc_rel" >> "$msc_tmp/targets"
+    printf '  %-26s %4s entries  %7s chars → %s\n' \
+      "$msc_lane" "$msc_en" "${#msc_cell}" "$msc_new" >> "$msc_tmp/report"
+    msc_ok=$((msc_ok + 1))
+    msc_before=$((msc_before + ${#msc_cell})); msc_after=$((msc_after + ${#msc_new}))
+  done <<EOF
+$(awk 'substr($0,1,1) == "|" {
+         p1 = index($0, "`"); if (p1 == 0) next
+         r = substr($0, p1 + 1); p2 = index(r, "`"); if (p2 == 0) next
+         printf "%d\t%s\n", NR, substr(r, 1, p2 - 1)
+       }' "$LANES_FILE")
+EOF
+
+  # ------------------------------------------------------------- the report
+  printf 'migrate-state-cells — %s (lane-collision-protocol Amendment 13(e))\n' \
+    "$( [ "$msc_do" = 1 ] && printf 'THE ACT' || printf 'DRY RUN, nothing is written' )"
+  printf '  register : %s\n' "$LANES_FILE"
+  printf '  archive  : %s\n' "$msc_arch_rel"
+  printf '  rows     : %s read · %s to migrate · %s already the phrase · %s one word, no history · %s skipped\n' \
+    "$msc_rows" "$msc_ok" "$msc_phrase" "$msc_plain" "$msc_skipped"
+  if [ "$msc_ok" -gt 0 ]; then
+    printf '\n  lane                      entries    cell now → the phrase it becomes\n'
+    cat -- "$msc_tmp/report"
+  fi
+  if [ "$msc_skipped" -gt 0 ]; then
+    printf '\n  SKIPPED — nothing is written for these rows and their cells keep every\n'
+    printf '  character, so a re-run after each is settled migrates exactly it:\n'
+    cat -- "$msc_tmp/skips"
+  fi
+  if [ "$msc_plain" -gt 0 ]; then
+    printf '\n  %s row(s) hold ONE WORD and no history (`ACTIVE`, `LIVE`, …). This act leaves\n' "$msc_plain"
+    printf '  them exactly as they are — there is no diary in them to move — and they are NOT\n'
+    printf '  yet `<STATE> · <UTC> · <one line>`: the next set-row-state on each writes it.\n'
+  fi
+  printf '\n  log lines: %s (%s NOTED, %s RULED) into %s log(s)\n' "$msc_lines" "$msc_noted" "$msc_ruled" "$msc_ok"
+  printf '  state cells: %s characters → %s\n' "$msc_before" "$msc_after"
+
+  # THE REFUSAL CLAUSE (e) ASKS FOR, and it is the same answer in both modes:
+  # a register whose cells hold no ` · ` entry has already been migrated (or
+  # never needed it), and a second run is a no-op that says so.
+  if [ "$msc_ok" = 0 ]; then
+    msc_left=""
+    [ "$msc_skipped" -gt 0 ] && msc_left=" The $msc_skipped row(s) listed above still hold theirs and are the ones this act cannot take; each is settled by the line beside it, and a re-run then migrates exactly those."
+    rm -rf -- "$msc_tmp"
+    die "no cell holds a ' · ' entry this act can migrate: $msc_phrase row(s) are already in Amendment 13(a)'s shape and $msc_plain hold ONE WORD and no history, which this act leaves alone — the next \`set-row-state\` on each of those lanes writes it as the phrase.$msc_left The migration is ONE act and this was not it — nothing was written." 2
+  fi
+  if [ "$msc_do" != 1 ]; then
+    printf '\n  DRY RUN — nothing was written. Make it the one act with:  lanes-edit.sh migrate-state-cells --yes\n'
+    printf '  (Amendment 13(e): one commit carrying the archive, the logs and the register.)\n'
+    rm -rf -- "$msc_tmp"
+    return 0
+  fi
+
+  # --------------------------------------------------------------- the write
+  #
+  # THE LOCK IS ALREADY HELD and the register already captured — both were taken
+  # BEFORE the scan, so the line numbers rewritten below are the ones this
+  # invocation read (Copilot round 2 on openRepoTools#82).
+  #
+  # EVERYTHING BELOW IS ONE COMMIT OR NONE. The archive, the appended logs and
+  # the rewritten rows are made on disk first and published by the single
+  # `commit_push` at the end, so a refusal in the middle of them — a log whose
+  # append could not be proved, a row whose rewrite moved more than one line —
+  # leaves this checkout DIRTY and the register unpublished, which is what
+  # `git status` then shows and `git checkout -- lanes` undoes whole. Nothing is
+  # half-published, because the commit is the only thing that publishes; and a
+  # re-run on a checkout still holding that half is REFUSED by
+  # `refuse_dirty_checkout` above rather than made twice.
+  mkdir -p -- "$LANES_DIR/archive" || die "could not create $LANES_DIR/archive — the archive is written BEFORE anything else changes, so nothing has been" 6
+  # A `>` REDIRECT, WHICH FOLLOWS A SYMLINK, and the source read whole first:
+  # this copy is the file's state before this act and it is one of the three
+  # places clause (e) keeps it.
+  cat -- "$LANES_FILE" > "$msc_arch" || die "could not write the archive $msc_arch — nothing else has been touched" 6
+  cmp -s -- "$LANES_FILE" "$msc_arch" || die "the archive $msc_arch is not byte for byte the register it was copied from; nothing else has been touched" 5
+  note "archive written: $msc_arch_rel"
+
+  msc_paths=("$LANES_PATH" "$msc_arch_rel")
+  while IFS="$US" read -r msc_n msc_lf msc_rel; do
+    [ -n "${msc_n:-}" ] || continue
+    if [ ! -f "$msc_lf" ]; then
+      mkdir -p -- "$LANES_LOG_DIR"
+      msc_base="${msc_lf##*/}"
+      printf '# lane %s — object log (lane-collision-protocol Amendment 7)\n' "${msc_base%.md}" > "$msc_lf"
+      note "created $msc_lf"
+    fi
+    append_text_block "$msc_lf" "$(cat -- "$msc_tmp/block/$msc_n")"
+    msc_paths+=("$msc_rel")
+  done <<EOF
+$(cat -- "$msc_tmp/targets")
+EOF
+
+  while IFS="$US" read -r msc_n msc_new msc_head msc_tail; do
+    [ -n "${msc_n:-}" ] || continue
+    replace_line "$msc_n" "$msc_head$msc_new $msc_tail"
+  done <<EOF
+$(cat -- "$msc_tmp/cells")
+EOF
+
+  msc_msg="LANES(migrate@$WS): Amendment 13(e) — $msc_ok state cells become one phrase; $msc_lines lines ($msc_noted NOTED, $msc_ruled RULED) into the lanes' own logs; pre-migration register archived"
+  commit_push "$msc_msg" "${msc_paths[@]}"
+  msc_rc=$?
+  release_lock
+  # THE STAGING GOES ON THE WAY OUT, on both paths: this directory holds a block
+  # of log lines per migrated lane, and on the live register that is 2,206 lines
+  # (Copilot round 1 on openRepoTools#82). A `die` on the way here keeps it, like
+  # every other refused write in this file.
+  rm -rf -- "$msc_tmp"
+  return "$msc_rc"
+}
+
 # ---------------------------------------------------------------- subcommands
 
 cmd="${1-}"
@@ -6771,7 +8342,7 @@ shift || :
 # front of every launch may not refuse, and one that answers nothing for a
 # workstation nobody configured is telling the truth.
 case "$cmd" in
-  append-row-status|replace-in-row|append-session-id|append-line|add-row|commit|log|claim|release)
+  replace-in-row|append-session-id|append-line|add-row|set-row-state|migrate-state-cells|commit|log|claim|release|rename-lane)
     ws_why="$(lanes_workstation_why "$WS_SOURCE")"
     [ -z "$ws_why" ] || die "$ws_why" 2 ;;
 esac
@@ -6818,25 +8389,63 @@ case "$cmd" in
       "$lane" "$n" "${#row}" "${row:0:200}" "$row_tail"
     ;;
 
+  # AMENDMENT 13(a) — RETIRED, AND THE REFUSAL IS THE WHOLE OF IT.
+  #
+  # This verb appended to the `state` cell and never replaced it, which is how a
+  # column defined as the lane's CURRENT STATE came to hold a diary: 96,228
+  # characters in one row, 7,016 in this lane's own after a single day, in a
+  # table nobody can read in the table. The cell can never grow again because
+  # the act that grew it is gone — not because every caller remembered.
+  #
+  # IT REFUSES BEFORE THE WORKSTATION GUARD AND BEFORE THE REGISTER IS EVEN
+  # LOOKED FOR (it is out of the dispatcher's writer list above), so a caller on
+  # a machine that has neither still learns what to run instead. Two acts
+  # replace it, and they are two because the cell held two things: the STATE,
+  # which is one phrase a person reads, and the NARRATIVE, which is history and
+  # belongs in the lane's own append-only log.
   append-row-status)
-    lane="${1-}"; text="${2-}"
-    [ -n "$lane" ] && [ -n "$text" ] || die "usage: append-row-status <lane> \"<text>\"" 2
-    # AMENDMENT 15 — THE ROW'S OWN SPELLING, BEFORE THE LOCK AND BEFORE THE
-    # EDIT. `row_line` below finds the same line either way; this is what the
-    # COMMIT SUBJECT and every message here then carry, and a register whose
-    # rows differ only by case is refused here rather than edited at random.
+    die "append-row-status is RETIRED (lane-collision-protocol Amendment 13(a), in force 2026-09-13T21:08:36Z). The state cell is ONE PHRASE — '<STATE> · <UTC> · <one line>' — and every write REPLACES it, so that the column that says where a lane IS can never grow into a diary again.
+  the STATE:      LANES_LANE=${1:-<lane>} lanes-edit.sh set-row-state ${1:-<lane>} \"<STATE> · <one line>\"
+                  ($ROW_STATES; the line at most $ROW_STATE_CAP characters)
+  the NARRATIVE:  LANES_LANE=${1:-<lane>} lanes-edit.sh log NOTED lane:${1:-<lane>} \"<what the lane did, found, launched, left>\"
+  a RULING:       LANES_LANE=${1:-<lane>} lanes-edit.sh log RULED lane:${1:-<lane>} [→ <object>] \"<Brett Heap's words, verbatim>\"
+  read it back:   lanes-edit.sh history ${1:-<lane>} [--since <UTC>]
+Nothing was written." 2
+    ;;
+
+  # AMENDMENT 13(a) — THE ONE WRITER OF THE STATE CELL. It stamps the UTC itself
+  # and REPLACES the cell, so what the column holds after this call is exactly
+  # `<STATE> · <UTC> · <one line>` and nothing of what it held before. The
+  # history is not lost by that: it is in git, and — after `migrate-state-cells`
+  # — in the lane's own log, which is the file built to hold it.
+  set-row-state)
+    lane="${1-}"; phrase="${2-}"
+    [ -n "$lane" ] && [ -n "$phrase" ] || die "usage: set-row-state <lane> \"<STATE> · <one line>\"   (STATE: $ROW_STATES)" 2
+    [ "$#" -le 2 ] || die "set-row-state takes TWO arguments: the lane, and the phrase as ONE quoted string — set-row-state <lane> \"<STATE> · <one line>\". Got $# ; the shell has split the phrase, so quote it." 2
+    # EVERY TEST OF THE PHRASE IS MADE FIRST — before the resolver, before the
+    # lock and before the row is read — so a refusal leaves this checkout, the
+    # mutex and the register exactly as it found them.
+    row_state_check "$phrase"
+    # AMENDMENT 15 — the row's own spelling, which is what the commit subject
+    # and every message below then carry.
     lane="$(canon_lane "$lane")" || exit 2
     acquire_lock; handle_preexisting
     n="$(row_line "$lane")" || exit 2
     row="$(sed -n -e "${n}p" "$LANES_FILE")"
-    trimmed="$(rstrip_spaces "$row")"
-    case "$trimmed" in
-      *"|") : ;;
-      *) die "row $n does not end with '|' — refusing to append a status" 2 ;;
+    srs_rc=0; row_split_state_cell "$row" || srs_rc=$?
+    case "$srs_rc" in
+      0) : ;;
+      2) die "lane $lane's row (line $n) carries $(row_sep_count "$row") ' | ' separators where a seven-column row carries 6, so WHICH TEXT IS THE STATE CELL is not knowable from the row: read from the left this write lands on one cell, read from the right on another, and one of those readings overwrites the row's handoff path. Nothing was written. A Markdown table carries a literal pipe ESCAPED — \`\\|\` — so find the unescaped ' | ' inside a cell of that row, escape it by hand with an allowed tool, commit it (\`LANES_LANE=$lane lanes-edit.sh commit \"escape a literal pipe in row $lane\"\`), and re-run." 2 ;;
+      *) die "lane $lane's row (line $n) does not open with '|' and end with '|', so it is not a row this writer can take apart. Nothing was written." 2 ;;
     esac
-    body="$(rstrip_spaces "${trimmed%|}")"
-    replace_line "$n" "$body · $text |"
-    msg="LANES($lane@$WS): status · $text"
+    srs_new="$ROW_STATE · $(utc_now) · $ROW_STATE_LINE"
+    srs_was="$(rstrip_spaces "$RSS_CELL")"
+    replace_line "$n" "$RSS_HEAD$srs_new $RSS_TAIL"
+    note "state cell REPLACED: ${#srs_was} chars → ${#srs_new} chars"
+    # THE WHOLE LINE IN THE SUBJECT, as `append-row-status` put its whole text
+    # there: the line is capped at 240 characters by the act above, and a
+    # subject cut at 72 loses exactly the tail that says what happened.
+    msg="LANES($lane@$WS): state · $ROW_STATE · $ROW_STATE_LINE"
     [ -n "$PRE_DIRTY_LANES" ] && msg="$msg + sweeps uncommitted edit to row $PRE_DIRTY_LANES"
     commit_push "$msg"
     ;;
@@ -6942,9 +8551,17 @@ case "$cmd" in
       # the one register state the amendment says every writer refuses (Copilot
       # round 1 on openRepoTools#41). `canon_lane` is asked for its STATUS only;
       # which of "no row" and "one row" it is stays `row_lane_ci`-s answer.
+      #
+      # AMENDMENT 16(e) — AND THE NAME THE LINE CARRIES MAY BE A FORMER ONE.
+      # Rule 6 attribution is named in clause (e)'s own list of readers, and a
+      # line that says `lane <old>` is one lane's line whatever the register
+      # calls that lane today: `canon_lane` resolves it, and `row_lane_ci` still
+      # has the last word about whether any row answers at all, which is what
+      # keeps "…names no lane at all" from being attributed to a lane called
+      # "at".
       if [ -n "$cand" ]; then
-        canon_lane "$cand" >/dev/null || exit 2
-        lane_tag="$(row_lane_ci "$cand")"
+        cand_c="$(canon_lane "$cand")" || exit 2
+        lane_tag="$(row_lane_ci "${cand_c:-$cand}")"
       fi
     fi
     acquire_lock; handle_preexisting
@@ -6993,8 +8610,8 @@ case "$cmd" in
       if [ "$ar_n" -gt 0 ]; then
         ar_more=""
         [ "$ar_n" -gt 1 ] && ar_more=" Those $ar_n rows differ only by case and are themselves the refusal: merge them into one row first (Amendment 15(d))."
-        ar_where="Use append-row-status / replace-in-row on the row that is there."
-        [ "$ar_ln" = 0 ] && ar_where="That row is on origin/$LANES_BRANCH and this checkout has not pulled it, so adding one here would make two the moment this push rebases. Pull first — \`git -C $LANES_REPO pull --rebase\` — then use append-row-status / replace-in-row on the row that is there."
+        ar_where="Use set-row-state / replace-in-row on the row that is there."
+        [ "$ar_ln" = 0 ] && ar_where="That row is on origin/$LANES_BRANCH and this checkout has not pulled it, so adding one here would make two the moment this push rebases. Pull first — \`git -C $LANES_REPO pull --rebase\` — then use set-row-state / replace-in-row on the row that is there."
         die "lane '$lane_new' already has a row, spelled $(printf '%s\n' "$ar_all" | tr '\n' ' ')— a lane name is ONE name under any case (Amendment 15(a)), so a row under another case IS that lane's row and this would be a second one. $ar_where$ar_more" 2
       fi
     fi
@@ -7032,6 +8649,729 @@ case "$cmd" in
       fi
     fi
     commit_push "LANES(${LANES_LANE:-unknown}@$WS): $msg"
+    ;;
+
+  # ====================================================== AMENDMENT 16 =======
+  #
+  # `rename-lane <old> <new> ["<why>"] [--verbatim] [--no-github]` — A LANE IS
+  # RENAMED IN ONE COMMIT, REFUSED OR WHOLE, AND ITS OLD NAME RESOLVES FOR EVER.
+  #
+  # Ratified 2026-09-14T09:24:35Z, verbatim *"Ratify as drafted (Recommended)"*,
+  # on Brett Heap's request of the same day, verbatim *"we need the ability to
+  # rename a lane"*. `lane-rename <old> <new>` on PATH is the word a person
+  # types; THIS is its write. The two are one act only because the word also
+  # renames the tmux window and types `/rename <new>` into the pane — neither of
+  # which a register writer may do for a session it is not (Amendment 16(f), and
+  # Amendment 12(h)'s M1 for why the typing is the only path a running session's
+  # name has).
+  #
+  # FOUR MOVES, ONE COMMIT (clauses (b)–(e)): the row's key cell, the object
+  # log, the handoff, and `lanes/aliases.tsv`. They are one commit because ANY
+  # TWO OF THEM APART IS A STATE NO READER CAN READ — a row under `<new>` whose
+  # log is still `<old>.md` is a lane whose history `who --lane` cannot find, and
+  # an alias without the row it points at is a name that resolves to nothing. So
+  # every refusal in clause (a) is made BEFORE THE FIRST BYTE IS WRITTEN, and
+  # each one of them says "Nothing was written": this command moves four files
+  # and a half-done rename is not something a second run can finish.
+  #
+  # AND THE `git mv` OF CLAUSES (c) AND (d) IS A PLAIN `mv` PLUS A PATHSPEC.
+  # `git mv` is one command and it also STAGES, which is the one thing this file
+  # never does: `commit_push` commits from its PATHSPECS precisely so that a
+  # peer's uncommitted work in this shared checkout can never be swept into a
+  # lane's commit (Amendment 5(d), and the sweep that made `--no-sweep` the
+  # default). Both paths go in as pathspecs of the one commit and git records
+  # the rename from the content, as it always does. `ensure_log`'s two-step
+  # `mv` is not needed either: a case-ONLY rename is refused below, so the two
+  # names are two files on every filesystem this ships to.
+  rename-lane)
+    rl_old=""; rl_new=""; rl_why=""; rl_verbatim=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --verbatim)  rl_verbatim=1; shift ;;
+        --no-github) NO_GITHUB=1; shift ;;
+        --why)       rl_why="${2-}"; [ -n "$rl_why" ] || die "--why needs a reason" 2; shift 2 ;;
+        --why=*)     rl_why="${1#--why=}"; [ -n "$rl_why" ] || die "--why needs a reason" 2; shift ;;
+        --)          shift ;;
+        -*)          die "unknown option '$1' for rename-lane" 2 ;;
+        *)
+          if   [ -z "$rl_old" ]; then rl_old="$1"
+          elif [ -z "$rl_new" ]; then rl_new="$1"
+          elif [ -z "$rl_why" ]; then rl_why="$1"
+          else die "rename-lane takes <old> <new> [\"<why>\"] — '$1' is one argument too many" 2
+          fi
+          shift ;;
+      esac
+    done
+    [ -n "$rl_old" ] && [ -n "$rl_new" ] \
+      || die "usage: rename-lane <old> <new> [\"<why>\"] [--verbatim] [--no-github]" 2
+    check_lane_name "$rl_old"
+    check_lane_name "$rl_new"
+    # THE REASON IS FREE TEXT ON AN APPEND-ONLY LINE, so it takes the writer's
+    # own two rules before anything else is read (`write_event` states both): a
+    # third ` — ` leaves the line ambiguous to its own parser, and a newline
+    # appends lines to a file whose proof counts exactly one.
+    case "$rl_why" in
+      *" — "*) die "the reason may not contain ' — ': that separator divides an event line's verb from its fields and its fields from its free text, and a third one leaves the line ambiguous to its own parser, in a file nothing ever rewrites. Use a semicolon or a colon: '$rl_why'" 2 ;;
+    esac
+    if [ "${rl_why//[$'\n\r']/}" != "$rl_why" ]; then
+      die "the reason is ONE line: a newline in it would append several lines to an append-only log, and the proof that only one was added would fail after the write rather than before it" 2
+    fi
+    rl_utc="$(utc_now)"
+    [ -n "$rl_why" ] || rl_why="renamed with lane-rename (lane-collision-protocol Amendment 16)"
+
+    # ---- (a) THE REFUSALS. The fetch first, because every read below is of
+    # `origin/<branch>` (R19, R30) — a rename computed from a checkout that is
+    # behind is a rename whose push rebases into two rows.
+    log_sync
+    # AND THE OLD NAME GOES THROUGH THE RESOLVER LIKE ANY OTHER, WHICH MAKES
+    # RENAMING UNDER AN ANCIENT NAME WORK: `canon_lane` answers with the row's
+    # own spelling, and with clause (e) behind it a name this lane was called
+    # two renames ago renames the lane it is now.
+    rl_crc=0
+    rl_old="$(canon_lane "$rl_old")" || rl_crc=$?
+    # ONE CONDITION, ONE CODE (Copilot round 6 on openRepoTools#81). `canon_lane`
+    # answers 66 for an alias table it could not read so that `canon-lane`'s four
+    # callers can tell it from a refusal — but a flat `|| exit 2` here made THIS
+    # writer answer 2 or 1 for the same fault depending on whether the typed name
+    # happened to have a row of its own, because a name with one never reaches
+    # the table at all. Translated to this command's own 1, which is what its
+    # other two alias-read refusals already spend and what the amendment's
+    # fail-closed rule is about.
+    case "$rl_crc" in
+      0) : ;;
+      66) die "${LANES_ALIASES_PATH:-lanes/aliases.tsv} could not be read ($(lane_alias_err)), and a rename whose alias table cannot be read is a rename whose old name may stop resolving — which is the one thing clause (e) promises for ever, so this fails closed. Nothing was written." 1 ;;
+      *) exit 2 ;;
+    esac
+
+    # ---- THE MUTEX IS TAKEN BEFORE THE CHECKS, NOT BETWEEN THEM AND THE WRITE
+    # (Copilot round 6 on openRepoTools#81). Every refusal below reads a row, a
+    # log path, the alias table and a handoff, and every one of them is a
+    # question about what is NOT there — so two renames on one workstation could
+    # both answer "the target is free", and the second would move its log over
+    # the first's and rewrite a row it read before the first commit. The lock is
+    # this workstation's serialiser and it costs nothing to take it early: it is
+    # not a write, every refusal below still writes nothing, and `cleanup`
+    # releases it on every path out, the two signals included.
+    #
+    # ACROSS WORKSTATIONS the arbiter is the same one Rule 1's claim has:
+    # whichever commit lands on `main` first. `commit_push`'s rebase brings the
+    # other's row and log in, and the loser's next attempt meets its own
+    # refusals — a row under `<new>`, a published log — with nothing written.
+    acquire_lock
+
+    rl_oh="$(rows_named_ci "$rl_old" 2>/dev/null || :)"
+    rl_on="$(printf '%s' "$rl_oh" | grep -c . || :)"
+    rl_lh="$(rows_named_ci_local "$rl_old" 2>/dev/null || :)"
+    rl_ln="$(printf '%s' "$rl_lh" | grep -c . || :)"
+    if [ "$rl_on" -gt 1 ] || [ "$rl_ln" -gt 1 ]; then
+      die "the register holds rows whose lane names differ only by case for '$rl_old': $(printf '%s\n%s\n' "$rl_oh" "$rl_lh" | grep -v '^$' | LC_ALL=C sort -u | tr '\n' ' ')— a lane name is ONE name under any case (Amendment 15), so there is no ONE row to rename. Merge them first (Amendment 15(d)): append the newer row's session id(s) to the older row's session cell, in order, and remove the newer row in the SAME commit. Nothing was written." 2
+    fi
+    if [ "$rl_ln" = 0 ]; then
+      if [ "$rl_on" = 1 ]; then
+        die "lane $rl_old's row is on origin/$LANES_BRANCH and this checkout has not pulled it, so the row this rename must rewrite is not here — and a rename that appended a second row would be the very duplicate Amendment 15(a) refuses. Pull first — \`git -C $LANES_REPO pull --rebase\` — and re-run. Nothing was written." 2
+      fi
+      die "the register has no row for lane '$rl_old', in any case (Amendment 15(a)) and through no alias (Amendment 16(e)). A rename moves a row that exists; \`lanes --all\` lists the ones that do. Nothing was written." 2
+    fi
+
+    # A ROW UNDER `<new>` IN ANY CASE, asked of BOTH the published register and
+    # this copy of it — `add-row`'s own pair of scans, for its own reason: a row
+    # `origin` already carries is invisible to a local scan, and this push would
+    # rebase the two together.
+    rl_nh="$(printf '%s\n%s\n' "$(rows_named_ci "$rl_new" 2>/dev/null || :)" "$(rows_named_ci_local "$rl_new" 2>/dev/null || :)" | grep -v '^$' | LC_ALL=C sort -u || :)"
+    if [ -n "$rl_nh" ]; then
+      if [ "$(lc "$rl_old")" = "$(lc "$rl_new")" ]; then
+        die "'$rl_old' and '$rl_new' are ONE name under any case (Amendment 15), so this is not a rename at all: it is a change to the row's own SPELLING, which every reader already resolves to and which Amendment 15(d) makes a hand act — the newer row's session id(s) appended to the older row's cell, in one commit. Nothing was written." 2
+      fi
+      die "lane '$rl_new' already has a row, spelled $(printf '%s\n' "$rl_nh" | tr '\n' ' ')— a lane name is ONE name under any case (Amendment 15(a)), so renaming into it would make TWO rows for one name, which is the state every writer in this file refuses until 15(d)'s merge. Nothing was written." 2
+    fi
+
+    # `<new>` IS `<repo>-<n>` UNLESS `--verbatim` NAMES IT. Rule 4's form is
+    # what `lanes --prefix`, the next free position and `lane-start <repo> <n>`
+    # are all computed from, so a lane renamed out of it loses every one of
+    # them; Amendment 11's `--dir` lanes are the deliberate exception the flag
+    # exists for.
+    if [ "$rl_verbatim" = 0 ] && ! lane_shaped "$rl_new"; then
+      die "'$rl_new' is not of the form <repo>-<n> (Rule 4), and a lane renamed out of that form loses the next free position, the \`lane-start <repo> <n>\` that takes it and the whole of \`lanes --prefix\`. A lane deliberately named otherwise — Amendment 11's \`--dir\` lanes are the ones there are — is renamed with --verbatim. Nothing was written." 2
+    fi
+
+    # A `<new>` THAT IS ALREADY AN ALIAS KEY IS REFUSED (Copilot round 1 on
+    # openRepoTools#81). A row wins over an alias at every hop — that is what
+    # makes a name that is a lane today BE that lane — so minting a row under a
+    # name some other lane was renamed AWAY from would end that lane's old name
+    # resolving, which is the one thing clause (e) promises never happens. The
+    # refusal is here, at the one writer that can do it deliberately; a row
+    # minted under a freed name by `lane-start` is a different act and the
+    # readers handle it by the row-wins rule itself.
+    rl_krc=0
+    rl_keys="$(lane_alias_keys 2>/dev/null)" || rl_krc=$?
+    if [ "$rl_krc" = 5 ]; then
+      die "${LANES_ALIASES_PATH:-lanes/aliases.tsv} could not be read ($(lane_alias_err)), and a rename whose alias table cannot be read is a rename whose old name may stop resolving — which is the one thing clause (e) promises for ever, so this fails closed. Nothing was written." 1
+    fi
+    rl_kmatch="$(printf '%s\n' "$rl_keys" | awk -v w="$rl_new" 'BEGIN { lw = tolower(w) } NF && tolower($0) == lw { print; exit }')"
+    if [ -n "$rl_kmatch" ]; then
+      die "'$rl_new' is already a FORMER name in ${LANES_ALIASES_PATH:-lanes/aliases.tsv} (spelled '$rl_kmatch'), and a row under it would take precedence over that alias — which would end a lane's old name resolving, the one thing Amendment 16(e) promises for ever. Pick a name no lane has ever been called. Nothing was written." 2
+    fi
+
+    # A CYCLE, ASKED OF THE TABLE AS IT WILL BE (clause (e)). Adding `<old> →
+    # <new>` closes one exactly when the chain from `<new>` reaches `<old>`,
+    # anywhere along it — the new row is appended last and wins the key.
+    rl_arc=0
+    lane_alias_target "$rl_new" "$rl_old" >/dev/null 2>&1 || rl_arc=$?
+    case "$rl_arc" in
+      0 | 1) : ;;
+      3) die "${LANES_ALIASES_PATH:-lanes/aliases.tsv} already resolves '$rl_new' in a CYCLE, so nothing can be added through it until that row is taken out by hand. \`rename-lane\` writes no cycle, so this table was hand-edited. Nothing was written." 2 ;;
+      4) die "renaming $rl_old to $rl_new would close a CYCLE in ${LANES_ALIASES_PATH:-lanes/aliases.tsv}: '$rl_new' already resolves back through '$rl_old', and a chain that returns to its own start has no end for a reader to resolve to (Amendment 16(e)). Nothing was written." 2 ;;
+      *) die "${LANES_ALIASES_PATH:-lanes/aliases.tsv} could not be read ($(lane_alias_err)), and a rename whose alias table cannot be read is a rename whose old name may stop resolving — which is the one thing clause (e) promises for ever, so this fails closed. Nothing was written." 1 ;;
+    esac
+
+    # THE SESSION FIELD OF THE `RENAMED` LINE IS A TRANSCRIPT UUID AND ONLY
+    # THAT (Amendment 7(b), R-A11 (e)) — asked HERE, with the other refusals,
+    # rather than by `write_event`, because this write does not go through
+    # `write_event`: its line lands in the same commit as three file moves.
+    rl_uuid="$(session_for "$rl_old")"
+    if ! valid_uuid "$rl_uuid"; then
+      die "an event's session field is the TRANSCRIPT UUID and only that (Amendment 7(b)), and this rename's RENAMED line has none: '${rl_uuid:-<empty>}'. Name the session taking the act: LANES_SESSION=\"\$CLAUDE_CODE_SESSION_ID\" lanes-edit.sh rename-lane $rl_old $rl_new. Nothing was written." 2
+    fi
+
+    # A LIVE SESSION HOLDING `<old>` IN ANOTHER WINDOW.
+    #
+    # THE WINDOW THIS COMMAND RUNS IN IS EXEMPT, AND IT IS THE ORDINARY CASE: a
+    # lane renames ITSELF, from its own pane, which is the whole of clause (f).
+    # `live_holder`'s fifth field is the verdict that tells the two apart —
+    # `here`, `elsewhere`, `orphan` — and it is the same read `lane-start`
+    # refuses a name over. The id SET is the published row's union this
+    # checkout's (R25), for that rule's reason: liveness fails CLOSED here, so
+    # an id `origin` has not seen yet is one more reason to refuse.
+    rl_ids="$( { session_ids_of_lane "$rl_old" 2>/dev/null || :
+                 session_ids_local_of_lane "$rl_old" 2>/dev/null || :; } | awk 'NF && !seen[$0]++')"
+    rl_lhv=""; rl_lhrc=0
+    rl_lhv="$(live_holder "$rl_old" "$rl_ids" 2>/dev/null)" || rl_lhrc=$?
+    case "$rl_lhrc" in
+      8) : ;;
+      0)
+        IFS="$US" read -r rl_hsid rl_htgt rl_hname rl_hpid rl_hverdict <<EOF
+$rl_lhv
+EOF
+        if [ "${rl_hverdict:-}" != here ]; then
+          die "a LIVE session holds lane $rl_old and it is not this window's: session $rl_hsid, pid $rl_hpid, named '${rl_hname:-none}', window ${rl_htgt:-none} (${rl_hverdict:-unknown}). Clause (a) refuses that, and clause (f) is why: the session's own NAME is locked to the lane (Amendment 12(h)) and only the session itself can change it, so a rename made from anywhere else leaves a running conversation named for a lane the register no longer has. Run \`lane-rename $rl_old $rl_new\` in THAT window, or hand the lane off first (\`lane-handoff\`) and rename it once it is paused. Nothing was written." 2
+        fi ;;
+      *) die "could not read this workstation's session records for lane $rl_old: ${SESSION_FILES_ERR:-unknown error}. That is NOT 'no live session holds it' — clause (a) refuses on a LIVE holder, so a read that could not be made fails closed (R22). Fix the records or the permissions and re-run. Nothing was written." 1 ;;
+    esac
+
+    # ---- THE FOUR PATHS, ALL COMPUTED BEFORE ANYTHING MOVES.
+    rl_log_new_rel="$(log_path_for "$rl_new")"
+    rl_log_new="$(log_file_for "$rl_new")"
+    # THE TARGET LOG IS LOOKED FOR UNDER ANY CASE, here and on `origin`
+    # (Copilot round 1 on openRepoTools#81). The exact-path test missed an
+    # orphan `lanes/log/<NEW>.md` of another spelling on a case-SENSITIVE
+    # filesystem — Linux and WSL2, where this estate runs — and a rename into it
+    # would leave two case-variant histories for one lane, which is the state
+    # Amendment 15(d) makes a hand merge. `log_files_named_ci` and the published
+    # `ls-tree` scan are the same two reads every other case question here uses.
+    rl_nlocal="$(log_files_named_ci "$rl_new")"
+    if [ -n "$rl_nlocal" ]; then
+      die "lane '$rl_new' has no row and this checkout already carries $(printf '%s\n' "$rl_nlocal" | tr '\n' ' ')— an object log under that name, in some case. That file is not this rename's to write into, and appending one lane's history to another's is the one thing an append-only log cannot be walked back from. Nothing was written." 2
+    fi
+    if have_remote_ref; then
+      rl_npub="$(git -C "$LANES_REPO" ls-tree --name-only "origin/$LANES_BRANCH" -- "$LANES_LOG_PREFIX" 2>/dev/null \
+        | awk -v want="$rl_log_new_rel" 'BEGIN { w = tolower(want) } tolower($0) == w')"
+      if [ -n "$rl_npub" ]; then
+        die "$(printf '%s\n' "$rl_npub" | tr '\n' ' ')is published on origin/$LANES_BRANCH while lane '$rl_new' has no row — renaming into it would merge two lanes' histories into one append-only file. Nothing was written." 2
+      fi
+    fi
+    rl_lfhits="$(log_files_named_ci "$rl_old")"
+    rl_lfn="$(printf '%s' "$rl_lfhits" | grep -c . || :)"
+    if [ "$rl_lfn" -gt 1 ]; then
+      die "lane $rl_old has $rl_lfn object logs whose names differ only by case: $(printf '%s\n' "$rl_lfhits" | tr '\n' ' ')— one lane is ONE lane under any case and its log is ONE file (Amendment 15). Merge them by hand into $(log_file_for "$rl_old"), oldest lines first, remove the others in the same commit (15(d)), and re-run. Nothing was written." 2
+    fi
+    rl_log_old=""; rl_log_old_rel=""
+    if [ "$rl_lfn" = 1 ]; then
+      rl_log_old="$rl_lfhits"; rl_log_old_rel="${LANES_LOG_PREFIX}${rl_log_old##*/}"
+      # A SYMLINK IS NOT THIS LANE'S LOG (Copilot round 4 on openRepoTools#81).
+      # `ls` lists one like any other file, `mv` moves the LINK, and
+      # `append_text_line`'s `>>` then writes the RENAMED line THROUGH it — into
+      # whatever is at the far end, which may be outside this repository
+      # altogether, while the commit records only the link. The same rule
+      # `openRepoTools --install` states for every target it places: `cp`
+      # follows a symlink, so a symlink is a refusal and not a file.
+      if [ -L "$rl_log_old" ]; then
+        die "lane $rl_old's object log at $rl_log_old is a SYMLINK. An append-only log is written in place — the RENAMED line would go through the link into whatever is at the far end, and the commit would record the link — so this rename is not made over one. Replace it with the file itself and re-run. Nothing was written." 2
+      fi
+      # AND A REGULAR FILE, NOT MERELY NOT-A-SYMLINK (Copilot round 5). `ls`
+      # lists a FIFO like any other name, and the snapshot's `cat` of one BLOCKS
+      # — for ever, holding this lane's mutex — where a refusal costs a second.
+      if [ ! -f "$rl_log_old" ]; then
+        die "lane $rl_old's object log at $rl_log_old is not a regular file. An append-only log is read whole for the rollback copy and appended to in place, and neither can be done to that — a FIFO there would block this write, and its lock, indefinitely. Nothing was written." 2
+      fi
+      # AND GIT MUST ALREADY KNOW IT (Copilot round 6 on openRepoTools#81).
+      # `refuse_dirty_checkout` reads `tracked_dirty`, which reports no untracked
+      # file, so a peer's uncommitted `lanes/log/<old>.md` walked past it — and
+      # this rename would MOVE that file to a path it always stages, committing
+      # somebody else's lines under its own message. Round 3 kept the old path
+      # out of the pathspecs when it was untracked, which stopped `git add`
+      # failing and did nothing about the content.
+      if [ "$NO_GIT" != 1 ] \
+         && ! git -C "$LANES_REPO" ls-files --error-unmatch -- "$rl_log_old_rel" >/dev/null 2>&1; then
+        die "lane $rl_old's object log at $rl_log_old_rel exists here and git does not track it, so its lines have never been committed by anyone — and this rename would move them to $rl_log_new_rel and commit them under its own message. Whoever wrote them commits them first: \`git -C $LANES_REPO add -- $rl_log_old_rel && git -C $LANES_REPO commit -m \"handoff(<lane>@<workstation>): <what>\"\`. Nothing was written." 2
+      fi
+    fi
+    if have_remote_ref; then
+      rl_pub="$(log_path_ci "$rl_old")" || die "lane $rl_old's object log is published twice (above), and one lane is ONE lane under any case: its log is ONE file (Amendment 15). Merge them by hand (15(d)) and re-run. Nothing was written." 2
+      if [ "$rl_pub" != "$rl_log_old_rel" ] && git -C "$LANES_REPO" cat-file -e "origin/$LANES_BRANCH:$rl_pub" 2>/dev/null; then
+        die "lane $rl_old's object log is published as $rl_pub while this checkout has ${rl_log_old_rel:-no log for it at all}: a rename made from here would move one file and leave the other, which is two logs for one lane by the path \`ensure_log\` exists to close. Pull first — \`git -C $LANES_REPO pull --rebase\` — and re-run. Nothing was written." 2
+      fi
+    fi
+
+    # AND THE ALIAS TABLE `origin` CARRIES AND THIS CHECKOUT DOES NOT (Copilot
+    # round 3 on openRepoTools#81). The READ prefers `origin/<branch>`, while
+    # the APPEND is to the file on disk — so on a checkout that is behind, this
+    # would create a fresh table holding ONE mapping, and the commit would
+    # either drop every alias already published or meet an add/add conflict in
+    # its own rebase. Every name renamed before today would stop resolving,
+    # which is the one thing clause (e) promises never happens. The cure is the
+    # one the row and the log guards above already name.
+    # AND THE ALIAS TABLE IS A FILE, NOT A LINK (Copilot round 4). The append is
+    # a `>>`, which follows one: a live link would put this estate's permanent
+    # alias into an arbitrary target and a dangling one would create it, while
+    # git staged only the link path.
+    if [ -L "$LANES_ALIASES_TSV" ]; then
+      die "$LANES_ALIASES_PATH is a SYMLINK at $LANES_ALIASES_TSV. The alias row is appended in place and a redirect follows a link, so it would be written at the far end while this commit recorded the link — and the alias is the one thing that makes a renamed lane's old name resolve for ever (Amendment 16(e)). Replace it with the file itself and re-run. Nothing was written." 2
+    fi
+    if [ -e "$LANES_ALIASES_TSV" ] && [ ! -f "$LANES_ALIASES_TSV" ]; then
+      die "$LANES_ALIASES_PATH at $LANES_ALIASES_TSV is not a regular file. The alias row is appended in place and the table is read whole for the rollback copy — a FIFO there would block this write, and its lock, indefinitely. Nothing was written." 2
+    fi
+    # AN EXISTING UNTRACKED TABLE IS SOMEBODY'S HAND EDIT (Copilot round 5 on
+    # openRepoTools#81). `refuse_dirty_checkout` reads `tracked_dirty`, which
+    # deliberately omits untracked files — so before this estate's FIRST rename
+    # an untracked `lanes/aliases.tsv` walked past the guard and its contents
+    # were appended to and committed inside this lane's rename. The only writer
+    # of that file is this command, and this command commits what it writes, so
+    # an untracked one was written by hand or left by a run that died.
+    if [ "$NO_GIT" != 1 ] && [ -f "$LANES_ALIASES_TSV" ] \
+       && ! git -C "$LANES_REPO" ls-files --error-unmatch -- "$LANES_ALIASES_PATH" >/dev/null 2>&1; then
+      die "$LANES_ALIASES_PATH exists here and git does not track it, so it was written by hand or left behind by a run that died — and appending this rename's alias to it would commit somebody else's lines inside this lane's commit. \`rename-lane\` is the only writer of that file and it commits what it writes. Commit it or remove it, and re-run. Nothing was written." 2
+    fi
+    # AND A TABLE WHOSE LAST BYTE IS NOT A NEWLINE IS REFUSED (Copilot round 5).
+    # `append_text_line`'s `>>` would put this rename's record on the END of the
+    # previous line — and its own proof passes, because the bytes it builds to
+    # compare are concatenated the same way. The TSV parser then never sees the
+    # new alias at all: the rename would commit and the old name would not
+    # resolve, which is the one thing clause (e) promises. Refused rather than
+    # repaired, because appending a newline to a file this command did not write
+    # is an edit to somebody else's lines.
+    if [ -f "$LANES_ALIASES_TSV" ] && [ -s "$LANES_ALIASES_TSV" ] \
+       && [ "$(tail -c 1 -- "$LANES_ALIASES_TSV" | od -An -c | tr -d ' ')" != '\n' ]; then
+      die "$LANES_ALIASES_PATH does not end with a newline, so appending this rename's record would join it to the last line and the table's own parser would never see the new alias — the rename would land and '$rl_old' would stop resolving (Amendment 16(e)). Put a newline at its end and re-run. Nothing was written." 2
+    fi
+    if have_remote_ref && [ ! -f "$LANES_ALIASES_TSV" ] \
+       && git -C "$LANES_REPO" cat-file -e "origin/$LANES_BRANCH:$LANES_ALIASES_PATH" 2>/dev/null; then
+      die "$LANES_ALIASES_PATH is published on origin/$LANES_BRANCH and this checkout does not have it, so appending here would write a table holding only this one rename and drop every alias already published — every name renamed before today would stop resolving (Amendment 16(e)). Pull first — \`git -C $LANES_REPO pull --rebase\` — and re-run. Nothing was written." 2
+    fi
+
+    # THE ROW, AND ITS TWO CELLS. Read before the lock because nothing between
+    # here and the write changes a byte of it — `capture_register_edit` and
+    # `handle_preexisting` commit what is already there, they do not edit it.
+    rl_n="$(row_line "$rl_old")" || exit 2
+    rl_row="$(sed -n -e "${rl_n}p" "$LANES_FILE")"
+    case "$rl_row" in *"|"*) : ;; *) die "lane $rl_old's row (line $rl_n) has no '|' at all; refusing to touch it. Nothing was written." 2 ;; esac
+    rl_rest="${rl_row#*|}"
+    case "$rl_rest" in *"|"*) : ;; *) die "lane $rl_old's row (line $rl_n) has one cell and no second '|'; refusing to touch it. Nothing was written." 2 ;; esac
+    rl_head="${rl_row%%|*}|"
+    rl_cell="${rl_rest%%|*}"
+    rl_tail="|${rl_rest#*|}"
+    [ "$rl_head$rl_cell$rl_tail" = "$rl_row" ] || die "lane $rl_old's row (line $rl_n) does not reassemble from its first cell; refusing to touch it. Nothing was written." 2
+    rl_tok="\`$rl_old\`"
+    case "$rl_cell" in
+      *"$rl_tok"*) : ;;
+      *) die "lane $rl_old's row (line $rl_n) does not spell its lane \`$rl_old\` in its first cell, so there is no key cell to rewrite. Nothing was written." 2 ;;
+    esac
+    # (b) THE KEY CELL. Prefix and suffix, never `${cell/"$old"/"$new"}`: BASH
+    # 3.2 keeps the quotes around the REPLACEMENT half as characters, which is
+    # what once wrote a whole register cell wrapped in double quotes on the
+    # macOS job (`replace-in-row` states the measurement).
+    rl_cpre="${rl_cell%%"$rl_tok"*}"
+    rl_cpost="${rl_cell#*"$rl_tok"}"
+    rl_newcell="$(rstrip_spaces "$rl_cpre\`$rl_new\`$rl_cpost") *(ex \`$rl_old\`, renamed $rl_utc)* "
+    rl_newrow="$rl_head$rl_newcell$rl_tail"
+
+    # (d) THE HANDOFF CELL IS COUNTED FROM THE LEFT — awk field 7, the SIXTH
+    # cell — and never back from NF: the live register carries rows with a
+    # literal `|` inside a later cell, and counting back from the end puts the
+    # handoff two cells out on exactly those rows (`handoff_of_lane` says so at
+    # length). Six pipes consumed, then the cell, then the rest.
+    rl_pre=""; rl_rem="$rl_newrow"; rl_i=0
+    while [ "$rl_i" -lt 6 ]; do
+      case "$rl_rem" in *"|"*) : ;; *) break ;; esac
+      rl_pre="$rl_pre${rl_rem%%|*}|"; rl_rem="${rl_rem#*|}"; rl_i=$((rl_i + 1))
+    done
+    rl_hc=""; rl_hpost=""; rl_hsplit=0
+    if [ "$rl_i" = 6 ]; then
+      case "$rl_rem" in
+        *"|"*) rl_hc="${rl_rem%%|*}"; rl_hpost="|${rl_rem#*|}"; rl_hsplit=1 ;;
+      esac
+    fi
+    [ "$rl_hsplit" = 1 ] && [ "$rl_pre$rl_hc$rl_hpost" = "$rl_newrow" ] || {
+      rl_hsplit=0
+      note "lane $rl_old's row has fewer than seven '|' before its handoff column, so that column is left exactly as it is (Amendment 16(d) moves the file the row NAMES; this row names none in the place the header puts it)"
+    }
+    rl_hcell=""
+    [ "$rl_hsplit" = 1 ] && rl_hcell="$(printf '%s' "$rl_hc" | sed 's/^ *//; s/ *$//')"
+    rl_hpath_new="$rl_hcell"; rl_hmove=0
+    if [ -n "$rl_hcell" ]; then
+      rl_hbase="${rl_hcell##*/}"
+      rl_hdir="${rl_hcell%"$rl_hbase"}"
+      # `session-handoff-<date>-lane-<old>.md` → the same date with
+      # `lane-<new>` (clause (d)). ANY OTHER SHAPE IS LEFT WHERE IT IS: a
+      # handoff not named for its lane has no `lane-<name>` in it to rename,
+      # and inventing one would move a file the row points at to a path the
+      # row's own history never named. Matched case-insensitively and cut by
+      # LENGTH, because `${x%$suffix}` cannot match a suffix of another case.
+      rl_hsuf="-lane-$rl_old.md"
+      # BOTH SIDES LOWER-CASED INTO VARIABLES FIRST, and the `case` reads them:
+      # a command substitution inside a case PATTERN is the shape bash 3.2 —
+      # the bash the macOS job parses every shipped file with — mis-parses at
+      # the first `)`, which is the rule `tests/test_repo_hygiene.py` holds for
+      # every file here.
+      rl_hb_lc="$(lc "$rl_hbase")"
+      rl_hs_lc="$(lc "$rl_hsuf")"
+      case "$rl_hb_lc" in
+        *"$rl_hs_lc")
+          rl_hkeep=$(( ${#rl_hbase} - ${#rl_hsuf} ))
+          if [ "$rl_hkeep" -gt 0 ]; then
+            rl_hpath_new="$rl_hdir${rl_hbase:0:$rl_hkeep}-lane-$rl_new.md"
+            rl_hmove=1
+          fi ;;
+      esac
+    fi
+    rl_hfile=""; rl_hfile_new=""; rl_h_rel=""; rl_h_rel_new=""
+    if [ -n "$rl_hcell" ]; then
+      case "$rl_hcell" in
+        '~/'*) rl_hfile="$HOME/${rl_hcell#'~/'}"; rl_hfile_new="$HOME/${rl_hpath_new#'~/'}" ;;
+        /*)    rl_hfile="$rl_hcell"; rl_hfile_new="$rl_hpath_new" ;;
+        *)     rl_hfile="${LANES_REPO:+$LANES_REPO/}$rl_hcell"; rl_hfile_new="${LANES_REPO:+$LANES_REPO/}$rl_hpath_new" ;;
+      esac
+      # THE CONTAINMENT TEST IS PHYSICAL (Copilot round 5 on openRepoTools#81).
+      # A string prefix accepts `handoffs/../../outside/x.md` and accepts a path
+      # whose PARENT is a symlink out of the checkout — both of which resolve
+      # outside it, so the file would be moved and stamped before git refused
+      # the pathspec. The directory's own `cd -P` is the resolution
+      # `lane-start:2941` already makes for this very path, and for the same
+      # reason it gives: `readlink -f` is not in the stock macOS userland.
+      #
+      # THE QUESTION IS PUT TO THE NEAREST ANCESTOR THAT EXISTS, which is the
+      # rule `openRepoTools --install` already states for its own targets. A row
+      # names a handoff before anything writes one — `lane-start` puts the path
+      # in the row at the lane's first launch and `lane-handoff` creates the file
+      # (and its estate directory) at the first swap — so `cd -P` of the leaf
+      # directory fails for every lane that has not swapped yet, and taking that
+      # failure as "outside the workspace" refused the ordinary case.
+      if [ -n "${LANES_REPO:-}" ]; then
+        rl_repo_real="$( CDPATH=''; cd -P -- "$LANES_REPO" 2>/dev/null && pwd -P )" || rl_repo_real="$LANES_REPO"
+        rl_anc="$(dirname -- "$rl_hfile")"; rl_suffix=""; rl_hdir_real=""; rl_walk=0
+        while [ "$rl_walk" -lt 64 ]; do
+          if [ -d "$rl_anc" ]; then
+            rl_hdir_real="$( CDPATH=''; cd -P -- "$rl_anc" 2>/dev/null && pwd -P )" || rl_hdir_real=""
+            break
+          fi
+          case "$rl_anc" in */*) : ;; *) break ;; esac
+          rl_suffix="${rl_anc##*/}${rl_suffix:+/$rl_suffix}"
+          rl_anc="${rl_anc%/*}"
+          [ -n "$rl_anc" ] || rl_anc=/
+          rl_walk=$((rl_walk + 1))
+        done
+        # A `..` AMONG THE COMPONENTS THAT DO NOT EXIST RESOLVES TO NOTHING, so
+        # it is refused rather than guessed at: the physical answer is only the
+        # ancestor's, and the suffix is taken literally.
+        case "/$rl_suffix/" in *"/../"*) rl_hdir_real="" ;; esac
+        if [ -n "$rl_hdir_real" ]; then
+          [ -n "$rl_suffix" ] && rl_hdir_real="$rl_hdir_real/$rl_suffix"
+          case "$rl_hdir_real/" in
+            "$rl_repo_real"/*)
+              rl_hreal="$rl_hdir_real/$(basename -- "$rl_hfile")"
+              rl_h_rel="${rl_hreal#"$rl_repo_real"/}"
+              rl_h_rel_new="${rl_h_rel%/*}/$(basename -- "$rl_hpath_new")"
+              case "$rl_h_rel" in */*) : ;; *) rl_h_rel_new="$(basename -- "$rl_hpath_new")" ;; esac ;;
+          esac
+        fi
+      fi
+      # A HANDOFF OUTSIDE THE WORKSPACE REPOSITORY IS A REFUSAL, NOT A NOTE
+      # (Copilot round 1 on openRepoTools#81). It used to be moved and stamped
+      # and then left OUT of the commit, because a git commit cannot carry a
+      # file outside its own checkout — so "four moves, one commit" was not true
+      # of that row, and a failure afterwards had nothing to roll the outside
+      # file back from. The register's handoff column is repo-relative
+      # everywhere this estate writes it (`handoffs/<estate>/…`, the path
+      # `lane-start` computes), so a row naming one elsewhere is a hand edit,
+      # and the exit is to put the file where the row's own convention puts it.
+      if [ -z "$rl_h_rel" ]; then
+        die "lane $rl_old's row names the handoff '$rl_hcell', which resolves to $rl_hfile — outside the workspace repository ${LANES_REPO:-<unknown>}. A rename is FOUR MOVES IN ONE COMMIT (Amendment 16), and a commit cannot carry a file outside its own checkout, so this one would be three moves and a note. Move that handoff under $LANES_REPO — \`handoffs/<estate>/session-handoff-<date>-lane-$rl_old.md\` is the path \`lane-start\` computes — point the row's handoff column at it, and re-run. Nothing was written." 2
+      fi
+      # `-L` BESIDE `-e`, because `-e` IS FALSE ON A DANGLING LINK (Copilot
+      # round 5) — and `mv` would then replace that link, destroying a path this
+      # rename does not own, exactly as the source-side tests already say.
+      [ "$rl_hmove" = 1 ] && { [ -e "$rl_hfile_new" ] || [ -L "$rl_hfile_new" ]; } && \
+        die "the handoff would move to $rl_hfile_new and something is already there. That path belongs to lane $rl_new's own handoff and is not this rename's to overwrite. Move it aside and re-run. Nothing was written." 2
+    fi
+    # THE HANDOFF IS A PATHSPEC OF THIS COMMIT ONLY WHERE THERE IS A FILE TO
+    # COMMIT. `git add` FAILS on a pathspec matching nothing at all, and a row
+    # that names a handoff nobody ever wrote is ordinary — every lane has one
+    # until its first swap. A row that names one which cannot be READ is a
+    # different thing and is refused below, with the log already snapshotted.
+    # AND A PATH THAT EXISTS AND IS NOT A REGULAR FILE IS A REFUSAL, not a
+    # missing handoff (Copilot round 3 on openRepoTools#81). `-f` alone read a
+    # directory, a FIFO and a DANGLING SYMLINK as "the row names a handoff
+    # nobody wrote", so the rename committed the other three and left that path
+    # where it was. `-e` is false on a dangling link, which is why `-L` is asked
+    # beside it — the same pair `unplaceable_kind` in `openRepoTools` asks, for
+    # the same reason: `cat` through a dangling link CREATES the far end.
+    # A SYMLINK IS TESTED BEFORE `-f`, because `-f` is TRUE through one to a
+    # regular file (Copilot round 4 on openRepoTools#81) — and Rule 3's stamp is
+    # written with a redirect, which FOLLOWS it: the stamp would land in the
+    # link's target, possibly outside this repository, while the commit recorded
+    # the link and the rollback restored the wrong bytes.
+    if [ -n "$rl_hcell" ] && [ -L "$rl_hfile" ]; then
+      die "lane $rl_old's row names the handoff '$rl_hcell' and $rl_hfile is a SYMLINK. Rule 3's stamp is written in place and a redirect follows a link, so the stamp would land at the far end while this commit recorded the link (Amendment 16(d)). Point the row's column at the file itself and re-run. Nothing was written." 2
+    fi
+    if [ -n "$rl_hcell" ] && [ ! -f "$rl_hfile" ] && [ -e "$rl_hfile" ]; then
+      die "lane $rl_old's row names the handoff '$rl_hcell' and $rl_hfile is not a regular file. A rename moves and STAMPS the handoff the row names (Amendment 16(d)), and neither can be done to that; nor is it the absent handoff an un-swapped lane has, which is passed over. Put a handoff there, or point the row's column at one, and re-run. Nothing was written." 2
+    fi
+    rl_h_touch=0
+    [ -n "$rl_h_rel" ] && [ -f "$rl_hfile" ] && rl_h_touch=1
+    # AND AN UNTRACKED HANDOFF IS SOMEBODY'S UNCOMMITTED WORK (Copilot round 6).
+    # It is a pathspec of this commit the moment it exists, and `tracked_dirty`
+    # never reports it, so another lane's half-written handoff would be stamped
+    # and committed under this rename's message — which is the one thing
+    # `--no-sweep` was made the default for.
+    if [ "$rl_h_touch" = 1 ] && [ "$NO_GIT" != 1 ] \
+       && ! git -C "$LANES_REPO" ls-files --error-unmatch -- "$rl_h_rel" >/dev/null 2>&1; then
+      die "the handoff at $rl_h_rel exists here and git does not track it, so its lines have never been committed by anyone — and this rename would stamp it, move it and commit it under its own message. Whoever wrote it commits it first: \`git -C $LANES_REPO add -- $rl_h_rel && git -C $LANES_REPO commit -m \"handoff(<lane>@<workstation>): <what>\"\`. Nothing was written." 2
+    fi
+
+    # ---- NOTHING ABOVE HAS WRITTEN A BYTE. The four moves follow, in one
+    # commit, in the order the amendment lists them.
+    rl_paths=("$LANES_PATH" "$rl_log_new_rel" "$LANES_ALIASES_PATH")
+    # THE OLD LOG IS A PATHSPEC ONLY WHERE GIT KNOWS IT (Copilot round 3 on
+    # openRepoTools#81). A TRACKED path that has been moved away still matches
+    # in the index and `git add` stages its deletion; an UNTRACKED one — the log
+    # an earlier write created and never committed — matches nothing once it is
+    # gone, and `git add` FAILS on a pathspec that matches nothing at all,
+    # which would end this write inside `commit_push` with all four moves on
+    # disk. Nothing in the index refers to it, so there is nothing to stage.
+    if [ -n "$rl_log_old_rel" ] && [ "$rl_log_old_rel" != "$rl_log_new_rel" ] \
+       && { [ "$NO_GIT" = 1 ] || git -C "$LANES_REPO" ls-files --error-unmatch -- "$rl_log_old_rel" >/dev/null 2>&1; }; then
+      rl_paths+=("$rl_log_old_rel")
+    fi
+    if [ "$rl_h_touch" = 1 ]; then
+      rl_paths+=("$rl_h_rel_new")
+      [ "$rl_hmove" = 1 ] && rl_paths+=("$rl_h_rel")
+    fi
+    # THE ALIAS TABLE IS NOT EXEMPT FROM THE DIRTY-CHECKOUT REFUSAL (Copilot
+    # round 4 on openRepoTools#81). Every pathspec handed here is exempted, and
+    # `lanes/aliases.tsv` has ONE writer — this command — so a dirty one is not
+    # the ordinary mid-write state `lanes/LANES.md` is in half the day and there
+    # is no capture for it: exempted and uncaptured, a peer's half-finished
+    # rename would be appended to and swept into this lane's commit. So it is
+    # left OUT of the exemption list and the generic refusal names it.
+    rl_exempt=()
+    for rl_p in ${rl_paths[@]+"${rl_paths[@]}"}; do
+      [ "$rl_p" = "$LANES_ALIASES_PATH" ] && continue
+      rl_exempt+=("$rl_p")
+    done
+    refuse_dirty_checkout "rename lane $rl_old" ${rl_exempt[@]+"${rl_exempt[@]}"} "$LANES_PATH"
+    # THE CAPTURE IS GIVEN THE REGISTER AND NOTHING ELSE (Copilot round 3 on
+    # openRepoTools#81). `handle_preexisting` runs `git add -- <paths>` on the
+    # branch that captures a peer's uncommitted edit, and most of this write's
+    # pathspecs DO NOT EXIST YET — the new log, the alias table, the handoff's
+    # new name — so that `git add` would fail, the capture would not happen, and
+    # a peer's half-written row would be swept into this rename's commit. The
+    # register is the only file that can be dirty here at all: every OTHER
+    # tracked change was refused one line up, which is the same reasoning
+    # `capture_register_edit` states for its own single pathspec.
+    handle_preexisting "$LANES_PATH"
+
+    # ---- THE SNAPSHOT, BEFORE THE FIRST BYTE. Every exit path from here to the
+    # commit restores it (`rename_undo`, hooked into `cleanup`), because the
+    # four moves are one act and a filesystem can refuse the third of them.
+    RL_SNAP="$(mktemp -d)" || die "no temporary directory could be made under ${TMPDIR:-/tmp}, and this write is not made without somewhere to put the copy that undoes it. Nothing was written." 1
+    [ -n "$rl_log_old" ] && { cat -- "$rl_log_old" > "$RL_SNAP/log" || die "lane $rl_old's object log at $rl_log_old could not be read, so there is no copy to roll back to and this rename is not started. Nothing was written." 5; }
+    [ "$rl_h_touch" = 1 ] && { cat -- "$rl_hfile" > "$RL_SNAP/handoff" || die "the handoff at $rl_hfile is named by the row and could not be READ, so it can be neither stamped nor rolled back — and a rename that moved it unstamped is three moves and a half (Amendment 16(d)). Fix the permission, or point the row's column at a handoff that is there, and re-run. Nothing was written." 5; }
+    RL_ALIAS="$LANES_ALIASES_TSV"; RL_ALIAS_EXISTED=0
+    if [ -f "$LANES_ALIASES_TSV" ]; then
+      RL_ALIAS_EXISTED=1
+      cat -- "$LANES_ALIASES_TSV" > "$RL_SNAP/aliases" || die "$LANES_ALIASES_PATH is there and could not be read, so there is no copy to roll back to. Nothing was written." 5
+    fi
+    # AND THE REGISTER IS IN THE SNAPSHOT TOO (Copilot round 4 on
+    # openRepoTools#81). `replace_line` cannot half-write it — it proves the new
+    # file before it writes a byte — but the row IS written before
+    # `commit_push`, and `commit_push` can die before it commits anything. The
+    # undo then put the other three back and left the row renamed: a split
+    # rename, which is the state this whole mechanism exists to prevent.
+    RL_REG="$LANES_FILE"
+    cat -- "$LANES_FILE" > "$RL_SNAP/register" || die "the register at $LANES_FILE could not be read, so there is no copy to roll back to. Nothing was written." 5
+    RL_LOG_OLD="$rl_log_old"; RL_LOG_NEW="$rl_log_new"
+    RL_H_OLD=""; RL_H_NEW=""
+    RL_PATHS_FOR_UNDO=("${rl_paths[@]}")
+    RL_ACTIVE=1
+
+    # (c) THE LOG — moved, then appended to. The lines above the new one still
+    # say `lane <old>` and are NEVER rewritten (clause (c)): this file is
+    # append-only and those lines are what happened. `LOG_AWK` resolves the
+    # field on the way in, so every reader sees one lane.
+    if [ -n "$rl_log_old" ]; then
+      mv -- "$rl_log_old" "$rl_log_new" || die "could not rename $rl_log_old to $rl_log_new." 5
+      note "$rl_log_old_rel → $rl_log_new_rel"
+    else
+      [ -d "$LANES_LOG_DIR" ] || mkdir -p -- "$LANES_LOG_DIR"
+      printf '# lane %s — object log (lane-collision-protocol Amendment 7)\n' "$rl_new" > "$rl_log_new"
+      note "created $rl_log_new_rel — lane $rl_old has no object log (a pre-cutover lane, Amendment 7(i)), so this RENAMED is its first line"
+    fi
+    rl_line="$(event_line RENAMED "$rl_new" "$rl_uuid" "$rl_utc" "lane:$rl_new" "←" "lane:$rl_old" "$rl_why")"
+    append_text_line "$rl_line" "$rl_log_new"
+
+    # (d) THE HANDOFF — moved to the same date with `lane-<new>`, and stamped
+    # under its header block (Rule 3). THE FILE IS SPLICED AND NEVER REWRITTEN
+    # WHOLE, with the proof `lane-start` makes for its own `RESUMED by` stamp:
+    # one line in at the ruled position, and taking that line back out again
+    # gives the file back byte for byte. A handoff is the one document this
+    # protocol cannot afford to lose, and the act that dropped two lanes' rows
+    # on 2026-09-08 was a file written whole from what somebody remembered.
+    rl_hstamp="RENAMED from $rl_old by $rl_uuid (lane $rl_new) at $rl_utc"
+    rl_hdone=0
+    if [ -z "$rl_hcell" ]; then
+      note "the row names no handoff, so there is none to move or stamp (Amendment 16(d))"
+    elif [ ! -f "$rl_hfile" ]; then
+      note "the handoff the row names is not at $rl_hfile, so nothing was moved or stamped and the row's handoff column is left exactly as it is. If it turns up, rename it — $rl_hcell → $rl_hpath_new — and stamp it: $rl_hstamp"
+    else
+      if [ "$rl_hmove" = 1 ]; then
+        RL_H_OLD="$rl_hfile"; RL_H_NEW="$rl_hfile_new"
+        mv -- "$rl_hfile" "$rl_hfile_new" || die "could not rename $rl_hfile to $rl_hfile_new." 5
+        note "$rl_hcell → $rl_hpath_new"
+        rl_hdone=1
+      else
+        rl_hfile_new="$rl_hfile"
+        RL_H_OLD="$rl_hfile"; RL_H_NEW="$rl_hfile"
+        note "the handoff $rl_hcell is not named \`…-lane-$rl_old.md\`, so it has no lane in its name to rename; it is stamped where it is (Amendment 16(d))"
+      fi
+      # A STAMP THAT CANNOT BE WRITTEN IS A REFUSAL (Copilot round 1 on
+      # openRepoTools#81). It used to be a `note`, and the rename went on to
+      # commit — leaving a handoff MOVED and UNSTAMPED, which is clause (d) done
+      # by half, in the one document Rule 3 says the next session reads first.
+      # The redirect is checked for the same reason: this file runs `set -u` and
+      # not `set -e`, so an unwritable handoff would otherwise reach the
+      # "stamped" note having written nothing.
+      rl_hat="$(awk 'NR > 1 && /^[[:space:]]*$/ { print NR; exit }' "$rl_hfile_new" 2>/dev/null || :)"
+      [ -n "$rl_hat" ] || rl_hat=1
+      rl_htmpd="$(mktemp -d)" || die "no temporary directory could be made under ${TMPDIR:-/tmp} for the handoff's Rule 3 stamp." 1
+      cat -- "$rl_hfile_new" > "$rl_htmpd/pre" 2>/dev/null || { rm -rf -- "$rl_htmpd"; die "the handoff at $rl_hfile_new could not be read, so Rule 3's stamp cannot be written and this rename is not made without it." 5; }
+      { head -n "$rl_hat" -- "$rl_htmpd/pre"
+        printf '%s\n' "$rl_hstamp"
+        tail -n "+$((rl_hat + 1))" -- "$rl_htmpd/pre"
+      } > "$rl_htmpd/out"
+      if [ "$(sed -n -e "$((rl_hat + 1))p" "$rl_htmpd/out")" != "$rl_hstamp" ] ||
+         ! { head -n "$rl_hat" -- "$rl_htmpd/out"; tail -n "+$((rl_hat + 2))" -- "$rl_htmpd/out"; } | cmp -s - "$rl_htmpd/pre"
+      then
+        rm -rf -- "$rl_htmpd"
+        die "the handoff at $rl_hfile_new cannot take Rule 3's stamp without rewriting a byte of it, and a handoff written whole from anything but its own bytes is the act that lost two lanes' rows on 2026-09-08. The line it wants under its header block is: $rl_hstamp" 5
+      fi
+      cat -- "$rl_htmpd/out" > "$rl_hfile_new" || { rm -rf -- "$rl_htmpd"; die "the handoff at $rl_hfile_new could not be written, so Rule 3's stamp is not there and this rename is not made without it." 5; }
+      rm -rf -- "$rl_htmpd"
+      note "handoff stamped at line $((rl_hat + 1)) of $rl_hpath_new: $rl_hstamp"
+    fi
+    # The row's handoff column follows the file, and only where the file
+    # actually moved: a column pointed at a path nothing moved to is a column
+    # that names a file that is not there.
+    if [ "$rl_hdone" = 1 ] && [ "$rl_hsplit" = 1 ]; then
+      rl_hc_pre="${rl_hc%%"$rl_hcell"*}"; rl_hc_post="${rl_hc#*"$rl_hcell"}"
+      rl_newrow="$rl_pre$rl_hc_pre$rl_hpath_new$rl_hc_post$rl_hpost"
+    fi
+
+    # (e) THE ALIAS TABLE — the one write that makes the old name keep working,
+    # for ever and in every reader (clause (e)).
+    if [ ! -f "$LANES_ALIASES_TSV" ]; then
+      { printf '# lanes/aliases.tsv — lane-collision-protocol Amendment 16(e)\n'
+        printf '# <old lane>\t<new lane>\t<UTC of the rename>\n'
+        printf '# Appended by `lanes-edit.sh rename-lane` and by nothing else. Every reader of a\n'
+        printf '# lane name resolves through it, case-insensitively; a chain resolves to its end,\n'
+        printf '# stopping at any name that is a ROW again; a cycle is refused at write time; the\n'
+        printf '# LAST row for a key wins.\n'
+      } > "$LANES_ALIASES_TSV" || die "$LANES_ALIASES_PATH could not be created, and a rename without its alias row is a lane whose old name stops resolving (Amendment 16(e))." 5
+      note "created $LANES_ALIASES_PATH"
+    fi
+    append_text_line "$(printf '%s\t%s\t%s' "$rl_old" "$rl_new" "$rl_utc")" "$LANES_ALIASES_TSV"
+
+    # (b) THE ROW, LAST — so that a refusal anywhere above leaves the register
+    # itself untouched and `row_line` still finds the lane under its old name.
+    replace_line "$rl_n" "$rl_newrow"
+
+    # EVERY ONE OF THE FOUR IS ON DISK — AND THE UNDO STAYS ARMED THROUGH THE
+    # COMMIT (Copilot round 3 on openRepoTools#81). It was cleared here, and
+    # `commit_push` can die on `update-index`, `git add` or `git commit` BEFORE
+    # any commit exists: the four files would then be left moved and modified
+    # with nothing to show for them, which is the half-renamed state this whole
+    # mechanism exists to prevent.
+    #
+    # WHAT DECIDES IS WHETHER A COMMIT WAS MADE, not where the failure happened.
+    # `rename_undo` compares HEAD against the sha taken here: unchanged means no
+    # commit carries this work and the four are restored; moved means the commit
+    # exists, the work is IN it, and `commit_push` owns the recovery from there
+    # — its exit 3 says so in its own words, and undoing a committed rename
+    # behind its back would be a second, inverse change nobody asked for.
+    RL_HEAD_BEFORE="$(git -C "$LANES_REPO" rev-parse HEAD 2>/dev/null || printf '')"
+    rl_msg="LANES($rl_new@$WS): RENAMED lane $rl_old → $rl_new (Amendment 16) — the row, $rl_log_new_rel, the handoff and $LANES_ALIASES_PATH in one commit"
+    [ -n "$PRE_DIRTY_LANES" ] && rl_msg="$rl_msg + sweeps uncommitted edit to row $PRE_DIRTY_LANES"
+    commit_push "$rl_msg" "${rl_paths[@]}"
+    rl_rc=$?
+    # `commit_push` RETURNED, so either it committed or it had nothing staged;
+    # every other outcome exits from inside it and is the trap's business.
+    RL_ACTIVE=0
+    state_events_flush
+    lane_alias_flush
+    release_lock
+    [ "$rl_rc" = 0 ] || exit "$rl_rc"
+
+    rl_sha="$(git -C "$LANES_REPO" rev-parse HEAD 2>/dev/null || printf '')"
+    note "lane $rl_old is lane $rl_new (${rl_sha:-no sha}); '$rl_old' resolves to it for ever through $LANES_ALIASES_PATH"
+
+    # (g) ONE COMMENT PER OBJECT THE LANE HOLDS — Amendment 7(b)'s partition,
+    # the same set `lane-end` refuses on and `who --lane` reports. Posted only
+    # AFTER the commit has landed and citing its sha, exactly as `claim`'s
+    # comment is, and skipped entirely by `--no-github`.
+    if [ "$NO_GITHUB" != 1 ]; then
+      rl_body="$(printf 'Lane %s renamed %s at %s (lane-collision-protocol Amendment 16). Lane: %s (%s)\n\nRecorded in `%s` at `%s`. `%s` resolves `%s` to `%s` for every reader of a lane name, so every earlier comment, line and branch naming the old lane still finds it.\n' \
+                 "$rl_old" "$rl_new" "$rl_utc" "$(lc "$rl_new")" "$rl_new" \
+                 "$rl_log_new_rel" "${rl_sha:-unknown}" "${LANES_ALIASES_PATH:-lanes/aliases.tsv}" "$rl_old" "$rl_new")"
+      rl_posted=0; rl_missed=""
+      while IFS="$US" read -r rl_outc rl_overb rl_oobj rl_oref rl_osup; do
+        [ -n "${rl_overb:-}" ] || continue
+        is_open_verb "$rl_overb" || continue
+        rl_url="$(gh_comment "$rl_oobj" "$rl_body" 2>/dev/null || :)"
+        if [ -n "$rl_url" ]; then
+          note "comment posted on $rl_oobj: $rl_url"; rl_posted=$((rl_posted + 1))
+        else
+          rl_missed="$rl_missed $rl_oobj"
+        fi
+      done <<EOF
+$(lane_objects "$rl_new" 2>/dev/null || :)
+EOF
+      [ "$rl_posted" = 0 ] && [ -z "$rl_missed" ] && note "lane $rl_new holds nothing open, so there is no object to comment on (Amendment 16(g))"
+      [ -n "$rl_missed" ] && note "WARNING: the rename comment could not be posted on:$rl_missed. The commit IS the rename and it has landed; post them by hand so that a reader outside this estate can see it."
+    fi
+    note "THE WINDOW AND THE SESSION ARE NOT THIS WRITE'S (Amendment 16(f)): in the lane's own window, \`tmux rename-window $rl_new\` and \`/rename $rl_new\` typed into its pane. \`lane-rename\` does both when it is run there; from anywhere else the name guard renames the window at this lane's next prompt and types the \`/rename\` itself."
+    ;;
+
+  # AMENDMENT 13(e) — THE MIGRATION. A DRY RUN unless `--yes` is passed, and one
+  # act on Brett Heap's word when it is (ratified decision O3). Everything it
+  # does is argued above `migrate_state_cells`.
+  migrate-state-cells)
+    msc_yes=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --yes) msc_yes=1; shift ;;
+        --)    shift ;;
+        *)     die "usage: migrate-state-cells [--yes]   —  without --yes it is a DRY RUN that writes nothing; '$1' is neither" 2 ;;
+      esac
+    done
+    migrate_state_cells "$msc_yes"
     ;;
 
   log)
@@ -7086,6 +9426,15 @@ case "$cmd" in
         die "a RELEASED is not written by hand: 'release' also posts the Rule 1 comment. Use: LANES_LANE=$lane lanes-edit.sh release $obj_raw \"<why>\"" 2 ;;
       CLAIM-LOST)
         die "a CLAIM-LOST is written by 'claim' when it loses the race for an object, and by nothing else — there is no hand-written form of losing a race" 2 ;;
+      # AMENDMENT 16 — AND A `RENAMED` IS NOT WRITTEN BY HAND EITHER, for the
+      # reason the amendment itself was drafted for: two lanes renamed
+      # themselves on 2026-09-14 by appending exactly this line and nothing
+      # else, and *"the lines are honest and they are all there is: the rows
+      # still carry the old keys, the logs and handoffs the old names"*. The
+      # line is one of four moves that are one commit, and `log` makes the
+      # other three of them not at all.
+      RENAMED)
+        die "a RENAMED is not written by hand: it is one of the FOUR moves of a rename — the row's key, this log's own name, the handoff and lanes/aliases.tsv — which land in ONE commit, refused or whole (Amendment 16). A line on its own is the 2026-09-14 hand rename this amendment exists to replace: honest, and all there is. Use: lane-rename ${obj_raw#lane:} <new name>" 2 ;;
     esac
     # R30 — THE FETCH COMES FIRST. `log` had no `log_sync` of its own at all:
     # it read the STARTED line that REFUSES `--home` out of an `origin/<branch>`
@@ -7099,7 +9448,52 @@ case "$cmd" in
     lane="$(canon_lane "$lane")" || exit 2
     home="$(resolve_home "$lane" "$home_override")" || exit $?
     obj="$(canon_object "$obj_raw" "$home")" || exit 2
-    if is_lane_verb "$verb"; then
+    # AMENDMENT 13(b) — THE TWO NARRATIVE VERBS, AND WHAT EACH OF THEM TAKES.
+    # `NOTED` is a status note about the lane; `RULED` is a ruling recorded
+    # VERBATIM, with the object it bears on as its payload where there is one.
+    # Both are lane-kind lines in Amendment 7's own `STARTED`/`RESUMED` form —
+    # object `lane:<lane>`, one token — and neither is a transition, so no
+    # reader's state moves because one was written. They are the cell's old
+    # diary, in the file built to hold it.
+    if is_note_verb "$verb"; then
+      is_lane_object "$obj" ||
+        die "'$verb' is a lane-kind line (Amendment 13(b)): its object is the LANE itself, lane:$lane, and not $obj. The object a ruling BEARS ON is its payload: LANES_LANE=$lane lanes-edit.sh log RULED lane:$lane → $obj \"<the words, verbatim>\"" 2
+      # AND IT IS THIS LANE, NOT ANOTHER (Copilot round 5 on openRepoTools#82).
+      # `is_lane_object` reads the `lane:` prefix and nothing more, so
+      # `LANES_LANE=repoA … log NOTED lane:repoB` wrote a line into repoA's log
+      # whose object named repoB — a note about a lane in a file that is not its
+      # log, and `history repoB` would never show it. Clause (b) is explicit
+      # that these are "lane-kind lines whose object is the lane itself".
+      # COMPARED CASE-INSENSITIVELY, because `$lane` is already the row's own
+      # spelling and a caller may have typed another (Amendment 15).
+      [ "$(lc "${obj#lane:}")" = "$(lc "$lane")" ] ||
+        die "'$verb' is a line about THIS lane, and its object is this lane: lane:$lane, not $obj (Amendment 13(b)). A note is written into the log of the lane it names, so an object naming another lane is a note nobody reading that lane's history would ever see. To say something about another lane, write it in the text; to record a ruling about an OBJECT, that object is the payload: LANES_LANE=$lane lanes-edit.sh log RULED lane:$lane → <object> \"<the words>\"" 2
+      if [ -z "$text" ]; then
+        case "$verb" in
+          RULED) die "a RULED with no words is not a ruling. The text is the ruling, VERBATIM — it is what Amendment 13(b) put this verb in the log for: LANES_LANE=$lane lanes-edit.sh log RULED lane:$lane${payload:+ → $payload} \"<Brett Heap's words, verbatim>\"" 2 ;;
+          *)     die "a NOTED with no text is a note with nothing in it. The text is what the line is FOR — it is the narrative the state cell used to carry (Amendment 13(a)): LANES_LANE=$lane lanes-edit.sh log NOTED lane:$lane \"<what the lane did, found, launched, left>\"" 2 ;;
+        esac
+      fi
+      case "$verb" in
+        NOTED)
+          [ -z "$payload" ] ||
+            die "NOTED takes no payload: it is a note about the lane, and Amendment 13(b) gives it the object and the free text alone. Put it in the text — or, if it is a ruling about an object, write it as one: LANES_LANE=$lane lanes-edit.sh log RULED lane:$lane → $payload \"<the words>\"" 2 ;;
+        RULED)
+          if [ -n "$payload" ]; then
+            # `→` AND NOT `←`, because clause (b) spells the form `lane:<lane>[ →
+            # <object>]` and the arrow is the only thing that says which way the
+            # ruling points. AND THE OBJECT IS CANONICALISED like every other
+            # object this file writes (R20): a ruling recorded against `#29` in a
+            # lane whose home is `opensoft/openRepoTools` is a ruling about
+            # `opensoft/openRepoTools#29`, and one recorded against a legacy org
+            # spelling is a second key for one issue — which is the defect
+            # Amendment 7(a)'s alias table exists for.
+            [ "$ref" = '→' ] ||
+              die "RULED's payload is the object the ruling bears on and it is introduced by → (Amendment 13(b)): 'log RULED lane:$lane → <object> \"<the words>\"'. '←' points the other way and means nothing here." 2
+            payload="$(canon_object "$payload" "$home")" || exit 2
+          fi ;;
+      esac
+    elif is_lane_verb "$verb"; then
       is_lane_object "$obj" || die "'$verb' is a lane verb: its object is lane:<name>, not $obj" 2
     else
       ! is_lane_object "$obj" || die "'$verb' is an object verb: lane:<name> is not one of its objects" 2
@@ -7737,6 +10131,54 @@ EOF
     printf '%s\n' "$lt_out"
     ;;
 
+  # AMENDMENT 13(b) — THE DIARY THE CELL USED TO BE, IN THE FILE BUILT TO HOLD
+  # IT. A lane's `NOTED` and `RULED` lines in order — FILE order, which is the
+  # order that lane wrote them (R14), and never a sort on the UTC field: two
+  # workstations share no clock and this one has been measured jumping ±25s.
+  # `--since` is the one filter, and it compares the two instants after padding
+  # the register's older minute-precision form to seconds, so a line stamped
+  # `…T20:31Z` is on the right side of a `--since …T20:30:00Z`.
+  #
+  # 8 IS "THIS LANE HAS WRITTEN NO NARRATIVE", which a lane that has never taken
+  # a note and a lane with no log at all both are; a read that could not be made
+  # is never 8 (R22) and leaves through the die above it.
+  history)
+    lane=""; hi_since=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --since)   hi_since="${2-}"; [ -n "$hi_since" ] || die "--since needs a UTC instant" 64; shift 2 ;;
+        --since=*) hi_since="${1#--since=}"; [ -n "$hi_since" ] || die "--since needs a UTC instant" 64; shift ;;
+        --)        shift ;;
+        -*)        die "unknown option '$1' for history (history <lane> [--since <UTC>])" 64 ;;
+        *)         [ -z "$lane" ] || die "history takes ONE lane: history <lane> [--since <UTC>]" 64; lane="$1"; shift ;;
+      esac
+    done
+    [ -n "$lane" ] || die "usage: history <lane> [--since <UTC>]" 64
+    check_lane_name "$lane"
+    case "$hi_since" in
+      '') : ;;
+      [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]Z | [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) : ;;
+      *) die "--since takes a UTC instant spelled as this log spells it, YYYY-MM-DDTHH:MM[:SS]Z — '$hi_since' is not one" 64 ;;
+    esac
+    log_sync
+    lane="$(canon_lane "$lane")" || exit 2          # Amendment 15
+    hi_lines=""; hi_rc=0
+    hi_lines="$(lane_log_events "$lane")" || hi_rc=$?
+    case "$hi_rc" in
+      0) : ;;
+      2) exit 2 ;;
+      *) die "history could not read lane $lane's log (exit $hi_rc). That is NOT 'this lane has written no narrative' — a read that failed is never an answer (Amendment 7(d))." 1 ;;
+    esac
+    hi_out="$(printf '%s\n' "$hi_lines" | awk -F"$US" -v since="$hi_since" '
+      function pad(u) { return (length(u) == 17) ? substr(u, 1, 16) ":00Z" : u }
+      $3 == "NOTED" || $3 == "RULED" {
+        if (since != "" && pad($1) < pad(since)) next
+        printf "%-20s  %-5s  %s%s\n", $1, $3, ($8 != "" ? $8 " — " : ""), $9
+      }')"
+    [ -n "$hi_out" ] || exit 8
+    printf '%s\n' "$hi_out"
+    ;;
+
   # THE LANE'S LAST LANE-KIND LINE, in FILE ORDER — `<verb><TAB><utc><TAB><session><TAB><payload>`.
   # One caller: `lane-handoff --late`, which may only write the record a swap
   # never left where that line is still a `STARTED` or a `RESUMED` older than
@@ -8086,7 +10528,9 @@ EOF
     [ "$#" -le 1 ] || die "canon-lane takes one lane: canon-lane <lane>" 64
     check_lane_name "$cl_in"
     log_sync
-    cl_res="$(canon_lane "$cl_in")" || exit 2
+    # THE CODE IS CARRIED, not flattened to 2: 66 is the alias table that could
+    # not be read and its four callers tell it from 2 by that number alone.
+    cl_res="$(canon_lane "$cl_in")" || exit $?
     printf '%s\n' "$cl_res"
     ;;
 
@@ -8108,6 +10552,6 @@ EOF
     ;;
 
   *)
-    die "unknown subcommand '$cmd' (verify-row|append-row-status|replace-in-row|append-session-id|append-line|add-row|commit|log|claim|release|who|swapped|session-start|guard|idle-holders|live-holder|window-session|transcript-holders|session-lane|window-lane|lane-dir|lane-profile|lane-agent|lane-transcript|lane-last|workspace-root|last-session|forks|workstation|fetch-age|lanes|lane-groups|next-free|sibling-filter|resolve-repo|lane-objects|register-row|canon-lane|resolve-home)" 2
+    die "unknown subcommand '$cmd' (verify-row|set-row-state|append-row-status|replace-in-row|append-session-id|append-line|add-row|migrate-state-cells|commit|rename-lane|log|claim|release|who|history|swapped|session-start|guard|idle-holders|live-holder|window-session|transcript-holders|session-lane|window-lane|lane-dir|lane-profile|lane-agent|lane-transcript|lane-last|workspace-root|last-session|forks|workstation|fetch-age|lanes|lane-groups|next-free|sibling-filter|resolve-repo|lane-objects|register-row|canon-lane|resolve-home)" 2
     ;;
 esac

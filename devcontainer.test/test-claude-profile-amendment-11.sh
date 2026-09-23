@@ -2890,11 +2890,13 @@ grep -Fq 'append-row-status' "$SWAP_MD" \
 # restart command it prints is the one-word form of SPEC §1.
 grep -Fq 'WORKBENCHES_CLAUDE_LANE' "$GUARD_SH" \
     || fail "§9/R-A11-6: the guard's directive is not fenced on the session's lane"; assertion
-grep -Fq 'pclaude ${CLAUDE_PROFILE_NAME:-<profile>}' "$GUARD_SH" \
+grep -Fq 'lclaude ${CLAUDE_PROFILE_NAME:-<profile>}' "$GUARD_SH" \
     || fail "§9/§1: the guard does not print the one-word restart command"; assertion
+grep -Fq 'pclaude --lane ${WORKBENCHES_CLAUDE_LANE} ${CLAUDE_PROFILE_NAME:-<profile>}' "$GUARD_SH" \
+    || fail "§9/§1: the guard lacks an explicit-lane fallback"; assertion
 grep -Fq 'pclaude run ' "$GUARD_SH" \
     && fail "§1: the guard still prints the long form of the restart command"; assertion
-grep -Fq 'restart_cmd="pclaude ${CLAUDE_PROFILE_NAME:-<profile>}"' "$HANDOFF_MD" \
+grep -Fq 'restart_cmd="lclaude ${CLAUDE_PROFILE_NAME:-<profile>}"' "$HANDOFF_MD" \
     || fail "§9/§1: the skill does not print the one-word restart command"; assertion
 # ...AND THE LAUNCHER DOES NOT TELL A MAINTAINER THE GUARD PERFORMS THE SWAP.
 # SPEC §9 and the amendment text (clause (g)) rule the opposite in terms: the
@@ -3355,7 +3357,7 @@ grep -F 'NO WORKSTATION: this is a container' "$HANDOFF_MD" | grep -Fq 'workBenc
 # from a container (c) SUCCEEDS. What survives the refusal is step 2's handoff, a
 # commit in the lane's own repository. Inverted here so the next writer who
 # restores the write is told by the suite rather than by a review.
-c_section="$(awk '/^# \(c\) the row: flip its leading state word/{inside=1} inside{print} inside && /^```$/{exit}' "$HANDOFF_MD")"
+c_section="$(awk '/^# \(c\) the row:/{inside=1} inside{print} inside && /^```$/{exit}' "$HANDOFF_MD")"
 [[ -n "$c_section" ]] \
     || fail "R-A11-27: write (c) is not in the skill at all, so nothing can be said about what fences it"; assertion
 # ...on the section's SHELL, comments stripped, because the comment above the
@@ -3367,12 +3369,9 @@ c_section="$(awk '/^# \(c\) the row: flip its leading state word/{inside=1} insi
 # unchanged: `row_write_refused=1` set inside the guarded branch, `replace-in-row`
 # only in the else.
 #
-# TRACKS BOTH REGISTER WRITES (round 7): write (c) is TWO commands in the
-# shipped code, `replace-in-row` AND `append-row-status` (`:542-545`), both
-# needed for the row to actually land as PAUSED — a regression moving only one
-# of them out from under `ws_missing` used to still read `fenced=1 loose=0`
-# from `replace-in-row` alone and pass. `fenced`/`loose` are now true only when
-# BOTH commands agree on which side of the guard they are on.
+# The current upstream helper performs this as one `set-row-state` call. Older
+# copies used `replace-in-row` and `append-row-status`; keep the guard audit
+# valid for both shapes while the pinned upstream advances.
 #
 # CLOSES THE OUTER `fi` (round 9): `phase` used to stay "written" for the rest
 # of the section once `else` opened it, so a write moved past the outer `if`'s
@@ -3406,9 +3405,11 @@ c_fence="$(grep -v '^[[:space:]]*#' <<<"$c_section" | awk '
     }
     phase == "written" && index($0, "replace-in-row") { fenced_replace = 1 }
     phase == "written" && index($0, "append-row-status") { fenced_status = 1 }
+    phase == "written" && index($0, "set-row-state") { fenced_atomic = 1 }
     phase != "written" && index($0, "replace-in-row") { loose_replace = 1 }
     phase != "written" && index($0, "append-row-status") { loose_status = 1 }
-    END { printf "set=%d fenced=%d loose=%d", set, (fenced_replace && fenced_status), (loose_replace || loose_status) }' || true)"
+    phase != "written" && index($0, "set-row-state") { loose_atomic = 1 }
+    END { printf "set=%d fenced=%d loose=%d", set, (fenced_atomic || (fenced_replace && fenced_status)), (loose_replace || loose_status || loose_atomic) }' || true)"
 [[ "$c_fence" == "set=1 fenced=1 loose=0" ]] \
     || fail "R-A11-27: write (c) is not refused with (a) and (b) where no workstation is configured ($c_fence), so a swap from a container still flips the row and files a commit keyed on the container id"; assertion
 # RETARGETED (opensoft/workBenches#93): the shipped message is worded

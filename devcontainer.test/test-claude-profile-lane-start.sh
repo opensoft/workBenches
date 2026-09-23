@@ -70,6 +70,11 @@ FAKE_LANE_START="$FAKE_BIN/lane-start"
 FAKE_LANE_START_LOG="$TEST_ROOT/lane-start.log"
 FAKE_LANE_START_ENV="$TEST_ROOT/lane-start.env"
 mkdir -p "$PROFILE_DIR" "$FAKE_BIN"
+if [[ "${LAUNCHER##*/}" == lclaude ]]; then
+    launcher_dir="$(dirname "$LAUNCHER")"
+    ln -s "$launcher_dir/pclaude" "$FAKE_BIN/pclaude"
+    ln -s "$launcher_dir/claude-profile" "$FAKE_BIN/claude-profile"
+fi
 
 printf '%s\n' \
     '{"profiles":[{"name":"team-002","email":"test@example.invalid","family":"testing","aliases":["team002"],"profilePath":"opensoft/team/team-002"}]}' \
@@ -176,6 +181,10 @@ rm -f "$FAKE_LANE_START_LOG" "$FAKE_LANE_START_ENV"
 # and start_profile_tmux would fire.
 NO_LANE_START_BIN="$TEST_ROOT/bin-no-lane-start"
 mkdir -p "$NO_LANE_START_BIN"
+if [[ "${LAUNCHER##*/}" == lclaude ]]; then
+    ln -s "$launcher_dir/pclaude" "$NO_LANE_START_BIN/pclaude"
+    ln -s "$launcher_dir/claude-profile" "$NO_LANE_START_BIN/claude-profile"
+fi
 cp "$FAKE_CLAUDE" "$NO_LANE_START_BIN/claude"
 cp "$FAKE_BIN/tmux" "$NO_LANE_START_BIN/tmux"
 NO_LANE_TMUX_LOG="$TEST_ROOT/tmux-no-lane-start.log"

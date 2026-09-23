@@ -8,7 +8,7 @@
 #   gh repo clone opensoft/workBenches && cd workBenches && ./setup.sh
 #   openRepoTools --install                   <- scripts/setup-estate-commands.sh
 #   openRepoTools wip init                    <- THIS SCRIPT
-#   pclaude run <profile> --lane <repo>-<n>
+#   lclaude --lane <repo>-<n> <profile>
 #   lane-start <repo> <n>
 #
 # ORDER IS THE POINT, NOT AN ACCIDENT. `wip init` is a subcommand of the

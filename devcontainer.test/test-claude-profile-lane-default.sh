@@ -48,6 +48,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LAUNCHER="${1:-$REPO_ROOT/base-image/files/claude-profile}"
+LAUNCHER_SOURCE="$LAUNCHER"
+[[ "${LAUNCHER##*/}" != lclaude ]] || LAUNCHER_SOURCE="$(dirname "$LAUNCHER")/claude-profile"
 
 # Ambient lane/tmux state from the shell running this test — including a shell
 # that is itself a claude-profile-launched tmux child — must not reach the
@@ -103,6 +105,11 @@ ERR_LOG="$TEST_ROOT/stderr.log"
 # one is installed on the workstation that runs this.
 FAKE_HOME="$TEST_ROOT/home"
 mkdir -p "$PROFILE_DIR" "$FAKE_BIN" "$FAKE_HOME"
+if [[ "${LAUNCHER##*/}" == lclaude ]]; then
+    launcher_dir="$(dirname "$LAUNCHER")"
+    ln -s "$launcher_dir/pclaude" "$FAKE_BIN/pclaude"
+    ln -s "$launcher_dir/claude-profile" "$FAKE_BIN/claude-profile"
+fi
 
 printf '%s\n' \
     '{"profiles":[{"name":"team-002","email":"test@example.invalid","family":"testing","aliases":["team002"],"profilePath":"opensoft/team/team-002"}]}' \
@@ -592,6 +599,10 @@ tty_launch "FAKE_TMUX_WINDOW_FILE=$WINDOW_FILE" "FAKE_LANE_WITH_ROW=openRepoProj
 # the picker never even attempted.
 NO_LANE_PICKER_BIN="$TEST_ROOT/bin-no-lane-picker"
 mkdir -p "$NO_LANE_PICKER_BIN"
+if [[ "${LAUNCHER##*/}" == lclaude ]]; then
+    ln -s "$launcher_dir/pclaude" "$NO_LANE_PICKER_BIN/pclaude"
+    ln -s "$launcher_dir/claude-profile" "$NO_LANE_PICKER_BIN/claude-profile"
+fi
 cp "$FAKE_CLAUDE" "$NO_LANE_PICKER_BIN/claude"
 cp "$FAKE_BIN/tmux" "$NO_LANE_PICKER_BIN/tmux"
 cp "$FAKE_BIN/lanes-edit.sh" "$NO_LANE_PICKER_BIN/lanes-edit.sh"
@@ -629,6 +640,10 @@ grep -Fxq -- "spoken-bypass -- $claude_args --resume session-lane-bypass" "$LANE
 # was tried and lane-start, not the picker, is what precedence 5 blames.
 NO_LANE_START_BIN="$TEST_ROOT/bin-no-lane-start"
 mkdir -p "$NO_LANE_START_BIN"
+if [[ "${LAUNCHER##*/}" == lclaude ]]; then
+    ln -s "$launcher_dir/pclaude" "$NO_LANE_START_BIN/pclaude"
+    ln -s "$launcher_dir/claude-profile" "$NO_LANE_START_BIN/claude-profile"
+fi
 cp "$FAKE_CLAUDE" "$NO_LANE_START_BIN/claude"
 cp "$FAKE_BIN/tmux" "$NO_LANE_START_BIN/tmux"
 cp "$FAKE_BIN/lanes-edit.sh" "$NO_LANE_START_BIN/lanes-edit.sh"
@@ -797,6 +812,10 @@ grep -q "$note" "$ERR_LOG" || fail "no lanes-edit.sh: the note was not printed";
 # the estate.
 NO_ESTATE_BIN="$TEST_ROOT/bin-no-estate"
 mkdir -p "$NO_ESTATE_BIN"
+if [[ "${LAUNCHER##*/}" == lclaude ]]; then
+    ln -s "$launcher_dir/pclaude" "$NO_ESTATE_BIN/pclaude"
+    ln -s "$launcher_dir/claude-profile" "$NO_ESTATE_BIN/claude-profile"
+fi
 cp "$FAKE_CLAUDE" "$NO_ESTATE_BIN/claude"
 cp "$FAKE_BIN/tmux" "$NO_ESTATE_BIN/tmux"
 cp "$FAKE_BIN/lanes-edit.sh" "$NO_ESTATE_BIN/lanes-edit.sh"
@@ -1436,16 +1455,16 @@ done
 # `scripts/wave-container-shell.sh` runs `docker exec` against a real daemon.
 scenario
 WAVE_SHELL="$REPO_ROOT/scripts/wave-container-shell.sh"
-grep -Fq 'name="${LANES_HOST:-}"' "$LAUNCHER" \
+grep -Fq 'name="${LANES_HOST:-}"' "$LAUNCHER_SOURCE" \
     || fail "Amendment 18(a): the launcher does not take an already-set LANES_HOST first"; assertion
-grep -Fq 'name="${LANES_OS:-}"' "$LAUNCHER" \
+grep -Fq 'name="${LANES_OS:-}"' "$LAUNCHER_SOURCE" \
     || fail "Amendment 18(a): the launcher does not take an already-set LANES_OS first, so the one word it never derives could never be passed through"; assertion
-grep -Fq 'name="${LANES_CONTAINER:-}"' "$LAUNCHER" \
+grep -Fq 'name="${LANES_CONTAINER:-}"' "$LAUNCHER_SOURCE" \
     || fail "Amendment 18(a): the launcher does not take an already-set LANES_CONTAINER first, which is the only way a container is ever named"; assertion
-grep -Fq 'lane_export_binding_facts' "$LAUNCHER" \
+grep -Fq 'lane_export_binding_facts' "$LAUNCHER_SOURCE" \
     || fail "Amendment 18(a): nothing calls the export, so the session comes up without the three anyway"; assertion
 for a18_var in LANES_HOST LANES_OS LANES_CONTAINER; do
-    grep -Fq "env_prefix+=(\"$a18_var=\$$a18_var\")" "$LAUNCHER" \
+    grep -Fq "env_prefix+=(\"$a18_var=\$$a18_var\")" "$LAUNCHER_SOURCE" \
         || fail "Amendment 18(a): $a18_var is not threaded across the re-exec, where a fresh export is not reliably inherited"; assertion
 done
 grep -Fq 'lanes_host="${LANES_HOST:-}"' "$WAVE_SHELL" \
@@ -1473,7 +1492,7 @@ a18_bench_line="$(grep -n '^container="py-bench"' "$WAVE_SHELL" | head -n 1 | cu
 # ...and --help says where all four come from, because the one per-host act for
 # a machine whose values are not its defaults is to set them, and nothing else
 # in this launcher prints them.
-"$LAUNCHER" --help > "$TEST_ROOT/help.out" 2>&1 || true
+PATH="$FAKE_BIN:/usr/bin:/bin" "$LAUNCHER" --help > "$TEST_ROOT/help.out" 2>&1 || true
 grep -Fq 'AND WHERE THE LANE IS RUNNING IS EXPORTED BESIDE IT' "$TEST_ROOT/help.out" \
     || fail "Amendment 18(a): --help does not say where host, os and container come from"; assertion
 for a18_word in linux macos wsl windows; do

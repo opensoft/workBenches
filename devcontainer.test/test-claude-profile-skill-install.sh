@@ -344,7 +344,7 @@ grep -q 'PROMPTS TO THE PERSON: 1' "$HANDOFF_SOURCE" \
     || fail "text: the header does not state the prompt count (R-A8-7)"; assertion
 grep -q 'replace every ` — ` with `; `' "$HANDOFF_SOURCE" \
     || fail "text: nothing sanitises the separator Amendment 7(b)/R26 refuses (F-S6)"; assertion
-grep -q 'replace-in-row "\$lane" "\$state"' "$HANDOFF_SOURCE" \
+grep -q 'set-row-state "\$lane" "PAUSED · \$hs_line"' "$HANDOFF_SOURCE" \
     || fail "text: the row's state word is not derived from the row (F-S7)"; assertion
 grep -q "lane-start --help" "$HANDOFF_SOURCE" \
     || fail "text: there is no capability probe, so the restart stamps are asserted from memory (F-S8)"; assertion
@@ -504,25 +504,39 @@ old_buggy_result="$(printf '%s' "$multi_pipe_row" | awk -F'|' '{print $(NF-2)}')
 # leads and the profile is last is the thing this scenario exists for, and it
 # is asserted separately so the next wording change cannot quietly take it too.
 scenario
-step5_snippet="$(sed -n '/if \[\[ -n "\${row_write_refused:-}" \]\]; then/,/^fi$/p' "$HANDOFF_SOURCE")"
+step5_snippet="$(awk 'index($0, "if command -v lclaude >/dev/null 2>&1; then") == 1 { inside=1 } inside { print } inside && /^fi$/ { exit }' "$HANDOFF_SOURCE")"
 [[ -n "$step5_snippet" ]] \
     || fail "RV-S2: could not find step 5's restart-command branch to execute it"; assertion
 lane=openRepoProject-1
 CLAUDE_PROFILE_NAME=work
+step5_path="$TEST_ROOT/step5-path"
+mkdir -p "$step5_path"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$step5_path/lclaude"
+chmod +x "$step5_path/lclaude"
+saved_path="$PATH"
+PATH="$step5_path"
 row_write_refused=""
 eval "$step5_snippet"
 restart_cmd_plain="$restart_cmd"
-[[ "$restart_cmd_plain" == "pclaude work" ]] \
+[[ "$restart_cmd_plain" == "lclaude work" ]] \
     || fail "RV-S2: normal-path restart_cmd='$restart_cmd_plain', expected the unqualified command"; assertion
 row_write_refused=1
 eval "$step5_snippet"
 restart_cmd_lane="$restart_cmd"
-[[ "$restart_cmd_lane" == "pclaude --lane openRepoProject-1 work" ]] \
+[[ "$restart_cmd_lane" == "lclaude --lane openRepoProject-1 work" ]] \
     || fail "RV-S2: refused-write restart_cmd='$restart_cmd_lane', expected --lane as a LEADING option before the profile"; assertion
-[[ "$restart_cmd_lane" == 'pclaude --lane openRepoProject-1 '* ]] \
+[[ "$restart_cmd_lane" == 'lclaude --lane openRepoProject-1 '* ]] \
     || fail "RV-S2: refused-write restart_cmd='$restart_cmd_lane' does not LEAD with --lane, so claude-profile would hand it to Claude instead of reading it"; assertion
 [[ "$restart_cmd_lane" == *' work' ]] \
     || fail "RV-S2: refused-write restart_cmd='$restart_cmd_lane' does not END in the profile"; assertion
+PATH="$saved_path"
+mkdir -p "$TEST_ROOT/step5-empty"
+PATH="$TEST_ROOT/step5-empty"
+row_write_refused=""
+eval "$step5_snippet"
+[[ "$restart_cmd" == "pclaude --lane openRepoProject-1 work" ]] \
+    || fail "RV-S2: older installations must restart with explicit pclaude --lane"; assertion
+PATH="$saved_path"
 
 # AND THE PROSE HAS TO NAME THE COMMAND THE BRANCH ACTUALLY BUILDS. A skill
 # whose executed snippet hands the reader `pclaude <profile>` while the
@@ -539,7 +553,7 @@ restart_cmd_lane="$restart_cmd"
 # (`run` in neither) — and it does not fire on A11's deliberate equivalence
 # sentence elsewhere in the file, which names both forms on purpose.
 restart_bare_form="${restart_cmd_plain/% work/ <profile>}"
-restart_prose="$(grep -F 'That one command is the whole restart: bare' "$HANDOFF_SOURCE" || true)"
+restart_prose="$(grep -F 'That one command is the whole restart:' "$HANDOFF_SOURCE" || true)"
 [[ -n "$restart_prose" ]] \
     || fail "RV-S2: could not find the sentence that explains step 5's restart command"; assertion
 [[ "$restart_prose" == *"\`$restart_bare_form\`"* ]] \
@@ -561,7 +575,7 @@ restart_prose="$(grep -F 'That one command is the whole restart: bare' "$HANDOFF
 # openRepoTools#40 was filed under) -- this exemption names the exact text
 # so it stops being silent the day the pin moves past a fix, and any OTHER
 # parse failure, on this text or a new one, still fails loudly below.
-KNOWN_UNPARSEABLE_BLOCK='pclaude <profile>      # and only then'
+KNOWN_UNPARSEABLE_BLOCK='lclaude <profile>      # and only then'
 block_count=0
 while IFS= read -r block_file; do
     block_count=$((block_count + 1))
