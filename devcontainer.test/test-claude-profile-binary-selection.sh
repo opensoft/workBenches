@@ -43,7 +43,6 @@ common_env=(
   "CLAUDE_PROFILES_MANIFEST=$test_root/manifest.json"
   "WORKBENCHES_SHARED_MCP_FAMILIES=disabled"
   "WORKBENCHES_CLAUDE_LANE_DEFECT_SECONDS=0"
-  "TMUX=fake-session"
   "LAUNCH_LOG=$test_root/launch.log"
   "LANE_LOG=$test_root/lane.log"
   "TMPDIR=$test_root"
@@ -51,7 +50,7 @@ common_env=(
 
 launch() {
   env -u CLAUDE_BIN -u CLAUDE_LANE -u CLAUDE_NO_LANE -u CLAUDE_LANE_DIR \
-    "${common_env[@]}" "$launcher" "$@" >/dev/null
+    "${common_env[@]}" TMUX=fake-session "$launcher" "$@" >/dev/null
 }
 
 launch run team002 --resume fixture-session
@@ -66,6 +65,21 @@ launch run team002 --resume fixture-session
 [[ "$(< "$test_root/launch.log")" == "$versions/2.1.11" ]] || fail 'a version installed between launches was not selected'
 rm "$versions/2.1.11"
 
+cp "$fake_bin/claude" "$versions/2.1.9223372036854775808"
+cp "$fake_bin/claude" "$versions/99999999999999999999999999999.0.0"
+chmod +x "$versions/2.1.9223372036854775808" "$versions/99999999999999999999999999999.0.0"
+launch run team002 --resume fixture-session
+[[ "$(< "$test_root/launch.log")" == "$versions/99999999999999999999999999999.0.0" ]] || fail 'oversized numeric version was not selected'
+rm "$versions/99999999999999999999999999999.0.0"
+launch run team002 --resume fixture-session
+[[ "$(< "$test_root/launch.log")" == "$versions/2.1.9223372036854775808" ]] || fail 'oversized patch version was not selected'
+rm "$versions/2.1.9223372036854775808"
+cp "$fake_bin/claude" "$versions/2.0001.00011"
+chmod +x "$versions/2.0001.00011"
+launch run team002 --resume fixture-session
+[[ "$(< "$test_root/launch.log")" == "$versions/2.0001.00011" ]] || fail 'leading zeroes changed numeric version order'
+rm "$versions/2.0001.00011"
+
 cp "$fake_bin/claude" "$versions/not-a-version"
 cp "$fake_bin/claude" "$versions/2.1.99"
 chmod +x "$versions/not-a-version"
@@ -75,9 +89,40 @@ launch run team002 --resume fixture-session
 [[ "$(< "$test_root/launch.log")" == "$versions/2.1.10" ]] || fail 'invalid or nonexecutable entry was selected'
 
 env -u CLAUDE_LANE -u CLAUDE_NO_LANE -u CLAUDE_LANE_DIR \
-  "${common_env[@]}" "CLAUDE_BIN=$fake_bin/claude" \
+  "${common_env[@]}" TMUX=fake-session "CLAUDE_BIN=$fake_bin/claude" \
   "$launcher" run team002 --resume fixture-session >/dev/null
 [[ "$(< "$test_root/launch.log")" == "$fake_bin/claude" ]] || fail 'explicit CLAUDE_BIN did not win'
+
+# A running tmux server can have an older environment than this invocation.
+# Exercise the interactive parent-to-child command with that stale value.
+cat > "$fake_bin/tmux" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  new-session)
+    for child_command; do :; done
+    printf '%s\n' new-session > "$TMUX_LOG"
+    env CLAUDE_BIN="$STALE_CLAUDE_BIN" bash -c "$child_command"
+    ;;
+  attach-session) exit 0 ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$fake_bin/tmux"
+printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" stale > "$LAUNCH_LOG"' > "$fake_bin/stale-claude"
+chmod +x "$fake_bin/stale-claude"
+command_string=""
+printf -v command_string '%q ' "$launcher" run team002 --resume fixture-session
+env -u TMUX -u CLAUDE_LANE -u CLAUDE_LANE_DIR \
+  "${common_env[@]}" CLAUDE_NO_LANE=1 "CLAUDE_BIN=$fake_bin/claude" \
+  "STALE_CLAUDE_BIN=$fake_bin/stale-claude" "TMUX_LOG=$test_root/tmux.log" \
+  script -q -e -c "$command_string" /dev/null >/dev/null
+[[ "$(< "$test_root/tmux.log")" == new-session ]] || fail 'interactive tmux relaunch was not exercised'
+[[ "$(< "$test_root/launch.log")" == "$fake_bin/claude" ]] || fail 'tmux child lost explicit CLAUDE_BIN override'
+env -u TMUX -u CLAUDE_BIN -u CLAUDE_LANE -u CLAUDE_LANE_DIR \
+  "${common_env[@]}" CLAUDE_NO_LANE=1 \
+  "STALE_CLAUDE_BIN=$fake_bin/stale-claude" "TMUX_LOG=$test_root/tmux.log" \
+  script -q -e -c "$command_string" /dev/null >/dev/null
+[[ "$(< "$test_root/launch.log")" == "$versions/2.1.10" ]] || fail 'tmux server stale CLAUDE_BIN replaced newest native version'
 
 mv "$versions" "$test_root/versions-removed"
 launch run team002 --resume fixture-session
