@@ -60,7 +60,7 @@ GUARD="${1:-$REPO_ROOT/base-image/files/claude-usage-guard.sh}"
 # guard look for a snapshot at a completely different path, finding nothing,
 # forever — see the CLAUDE_CONFIG_DIR MANGLING scenario below, which is the
 # one built to fail loudly if this line is ever removed.
-unset CLAUDE_CONFIG_DIR CLAUDE_PROFILE_NAME TMUX WORKBENCHES_CLAUDE_LANE 2>/dev/null || true
+unset CLAUDE_CONFIG_DIR CLAUDE_PROFILE_NAME TMUX WORKBENCHES_CLAUDE_LANE LANES_WORKSTATION 2>/dev/null || true
 
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
@@ -75,7 +75,7 @@ fail() {
 # pinned, as in test-claude-profile-lane-default.sh, so a scenario silently
 # dropped (or a run that quietly stopped happening) fails the suite instead of
 # just shrinking a number nobody reads.
-EXPECTED_SCENARIOS=23
+EXPECTED_SCENARIOS=25
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -294,7 +294,7 @@ grep -qF '/lane-swap' <<<"$guard_out" \
     || fail "directive: /lane-swap was not named as the alias (out=[$guard_out])"; assertion
 grep -qF 'do not ask the operator' <<<"$guard_out" \
     || fail "directive: it did not say the operator is asked nothing (out=[$guard_out])"; assertion
-grep -qF 'pclaude team-swaptest' <<<"$guard_out" \
+grep -qF 'pclaude --lane swaptest-1 team-swaptest' <<<"$guard_out" \
     || fail "directive: CLAUDE_PROFILE_NAME was not substituted into the restart command (out=[$guard_out])"; assertion
 grep -qF 'STOP at a breakpoint, write or refresh the handoff doc' <<<"$guard_out" \
     && fail "directive: the OLD advice wording is still there (out=[$guard_out])"; assertion
@@ -304,6 +304,22 @@ grep -qF 'STOP at a breakpoint, write or refresh the handoff doc' <<<"$guard_out
     || fail "directive: stderr was not empty (err=[$guard_err])"; assertion
 [[ "$guard_status" -eq 0 ]] \
     || fail "directive: exited $guard_status instead of 0"; assertion
+
+printf '#!/usr/bin/env bash\nexit 0\n' > "$FAKE_BIN/lclaude"
+chmod +x "$FAKE_BIN/lclaude"
+read -r DIRECT_HOME DIRECT_CWD < <(new_lane)
+write_profile_snapshot "$DIRECT_HOME" "" 96 "$FIVE_RESET_EPOCH" null null >/dev/null
+run_guard "$DIRECT_HOME" "$DIRECT_CWD" "sid-direct-lane" \
+    "CLAUDE_PROFILE_NAME=team-swaptest" "LANES_WORKSTATION=Eagle"
+grep -qF 'lclaude team-swaptest' <<<"$guard_out" \
+    || fail "directive: installed lclaude was not selected (out=[$guard_out])"; assertion
+read -r NO_WS_HOME NO_WS_CWD < <(new_lane)
+write_profile_snapshot "$NO_WS_HOME" "" 96 "$FIVE_RESET_EPOCH" null null >/dev/null
+run_guard "$NO_WS_HOME" "$NO_WS_CWD" "sid-direct-no-workstation" \
+    "CLAUDE_PROFILE_NAME=team-swaptest" "LANES_WORKSTATION="
+grep -qF 'lclaude --lane swaptest-1 team-swaptest' <<<"$guard_out" \
+    || fail "directive: lclaude without a workstation did not name its lane (out=[$guard_out])"; assertion
+rm "$FAKE_BIN/lclaude"
 
 # ---------------------------------------------------------------------------
 # 2. 90-94% KEEPS TODAY'S ADVICE, NOT THE DIRECTIVE. This is the mutation that

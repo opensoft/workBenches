@@ -3,7 +3,7 @@
 ## 1. Governance and upstream handoff
 
 - [x] 1.1 Land the lane protocol amendment and verify the published restart contract names `lclaude`.
-- [ ] 1.2 Land openRepoTools compatibility and verify its lane picker and handoff tests pass with both new and older launcher installations.
+- [x] 1.2 Land openRepoTools compatibility and verify its lane picker and handoff tests pass with both new and older launcher installations.
 
 ## 2. Implementation handoff
 

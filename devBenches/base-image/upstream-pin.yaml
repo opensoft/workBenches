@@ -57,11 +57,11 @@ sources:
     source_repository: opensoft/openRepoTools
     materialization: copied
     revision_kind: commit
-    commit: "4218e6dacdafe51e67722bd26b5fd1199c0abca9"
+    commit: "69bf48d8bbcb498fa46d6ab62241be9830d40389"
     vendor_dir: files/openrepotools
     files:
       - path: openRepoTools
-        sha256: "196608963022aa723a71ee8fc51ec37c0abdd29d6a84799dabcf14d815952b90"
+        sha256: "16290d290040f8800ce837034adedd2918ff69e16cf13345691221f4603311fc"
         mode: "100755"
       - path: park
         sha256: "7a0b3893649459694ec79b09e49dd736ec53429c504ae15faaf82643664bd956"

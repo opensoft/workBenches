@@ -200,7 +200,11 @@ auto_swap_directive() {
     return 0
   fi
   if command -v lclaude >/dev/null 2>&1; then
-    restart_cmd="lclaude ${CLAUDE_PROFILE_NAME:-<profile>}"
+    if [ -n "${LANES_WORKSTATION:-}" ]; then
+      restart_cmd="lclaude ${CLAUDE_PROFILE_NAME:-<profile>}"
+    else
+      restart_cmd="lclaude --lane ${WORKBENCHES_CLAUDE_LANE} ${CLAUDE_PROFILE_NAME:-<profile>}"
+    fi
   else
     restart_cmd="pclaude --lane ${WORKBENCHES_CLAUDE_LANE} ${CLAUDE_PROFILE_NAME:-<profile>}"
   fi
