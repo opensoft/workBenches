@@ -229,7 +229,7 @@ window's name and the transcript. Measured on `openRepoProject-1` on
 `-1e`, `-27`, `-45` — and the derived name is what the status line's
 `session_name` and `ListAgents` display. So no surface here ever prints or execs
 a bare `claude --resume` as the way back into a lane: the way back is
-`pclaude <profile>`, which reaches `lane-start`. The bare Claude behind a refusal
+`lclaude <profile>`, which reaches `lane-start`. The bare Claude behind a refusal
 is left **unnamed** on purpose, because it holds no lane, and naming it for one
 would put the lane's own address on a session the register does not know.
 
@@ -627,7 +627,8 @@ five, unchanged
 every running writer told to commit and push; the `PAUSED` swap record (now
 carrying `dir`, `window` and `profile`) together with the register's event line and the
 row's state cell; and the one restart command printed — so the operator's
-entire part in the restart is re-running `pclaude <profile>`. **The guard
+entire part in the restart is re-running `lclaude <profile>` (or explicit
+`pclaude --lane <lane> <profile>` on an older installation). **The guard
 performs no step of the swap itself** — it is a hook, it can put one line into
 the session's context and nothing else — and **the directive fires only in a
 session that HOLDS a lane.** That second fence matters because the guard is

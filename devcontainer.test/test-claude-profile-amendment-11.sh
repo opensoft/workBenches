@@ -2892,6 +2892,8 @@ grep -Fq 'WORKBENCHES_CLAUDE_LANE' "$GUARD_SH" \
     || fail "§9/R-A11-6: the guard's directive is not fenced on the session's lane"; assertion
 grep -Fq 'lclaude ${CLAUDE_PROFILE_NAME:-<profile>}' "$GUARD_SH" \
     || fail "§9/§1: the guard does not print the one-word restart command"; assertion
+grep -Fq 'pclaude --lane ${WORKBENCHES_CLAUDE_LANE} ${CLAUDE_PROFILE_NAME:-<profile>}' "$GUARD_SH" \
+    || fail "§9/§1: the guard lacks an explicit-lane fallback"; assertion
 grep -Fq 'pclaude run ' "$GUARD_SH" \
     && fail "§1: the guard still prints the long form of the restart command"; assertion
 grep -Fq 'restart_cmd="lclaude ${CLAUDE_PROFILE_NAME:-<profile>}"' "$HANDOFF_MD" \
