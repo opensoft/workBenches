@@ -22,7 +22,9 @@ read_last_profile() {
     return 2
   fi
 
-  mode="$(stat -c '%a' "$last_profile_file" 2>/dev/null || true)"
+  mode="$(stat -c '%a' "$last_profile_file" 2>/dev/null \
+    || stat -f '%Lp' "$last_profile_file" 2>/dev/null \
+    || true)"
   if [[ "$mode" != 600 ]]; then
     echo "pclaude: last Claude profile record must have mode 0600: $last_profile_file (found ${mode:-unknown})" >&2
     return 2
@@ -243,22 +245,28 @@ lane_name_guard_jq='
           .hooks = (.hooks // {})
           | .hooks.UserPromptSubmit = (
               (.hooks.UserPromptSubmit // []) as $entries
-              | [ $entries[]
-                  | (.hooks // []) as $inner
-                  | ($inner | map(select(.command != $legacy_name_guard))) as $kept
-                  | select(($kept | length) > 0 or ($inner | length) == 0)
-                  | if ($kept | length) == ($inner | length) then . else .hooks = $kept end
-                ] as $without_legacy
               | if $name_guard_ok then
-                  if $name_guard_present then $without_legacy
-                  else $without_legacy + [{
+                  [ $entries[]
+                    | (.hooks // []) as $inner
+                    | ($inner | map(
+                        if .command == $legacy_name_guard
+                        then .command = $name_guard
+                        else .
+                        end
+                      )) as $migrated
+                    | if $migrated == $inner then . else .hooks = $migrated end
+                  ] as $migrated_entries
+                  | if ($name_guard_present or $legacy_name_guard_present) then $migrated_entries
+                  else $migrated_entries + [{
                     hooks: [{type: "command", command: $name_guard, timeout: $name_guard_timeout}]
                   }]
                   end
                 else
-                  [ $without_legacy[]
+                  [ $entries[]
                     | (.hooks // []) as $inner
-                    | ($inner | map(select(.command != $name_guard))) as $kept
+                    | ($inner | map(select(
+                        .command != $name_guard and .command != $legacy_name_guard
+                      ))) as $kept
                     | select(($kept | length) > 0)
                     | .hooks = $kept
                   ]
@@ -3059,7 +3067,6 @@ case "$action" in
             exit 2
           }
         fi
-        remember_profile "$profile"
         # THE WORKSTATION IS RESOLVED AND EXPORTED BEFORE ANYTHING IS
         # STARTED (`R-A11-14`): act 1 threads it into the session it creates,
         # and the Claude this launch execs inherits it either way.
@@ -3086,6 +3093,7 @@ case "$action" in
           if ! claude_add_has_scope "$@"; then
             managed_args=(mcp "$2" --scope user "${@:3}")
           fi
+          remember_profile "$profile"
           set +e
           CLAUDE_CONFIG_DIR="$config_dir" "$claude_bin" \
             --allow-dangerously-skip-permissions \
@@ -3104,6 +3112,7 @@ case "$action" in
         fi
         if [[ "$shared_mcp" == true && "${1:-}" == mcp && "${2:-}" == remove && -n "${3:-}" ]] \
           && "$mcp_sync" has "$family" "$3"; then
+          remember_profile "$profile"
           "$mcp_sync" remove "$family" "$3"
           "$mcp_sync" sync-claude-profile "$family" "$config_dir/.claude.json"
           exit 0
@@ -3146,6 +3155,11 @@ case "$action" in
         # came from, the window's address, and the directory that is actually
         # being passed rather than the one that was merely derived.
         export_lane_identity
+        # Remember only after every launcher-side lane decision and directory
+        # preflight has completed.  Interactive parent launches re-exec here in
+        # their tmux child, so a failed picker, directory refusal, or session
+        # creation cannot replace the prior selection.
+        remember_profile "$profile"
         if [[ -n "${lane:-}" ]]; then
           # LANE-START IS RUN, NEVER EXEC'D — A8 Addendum 2 R-A8-3, widened to
           # every lane source by Amendment 11(3).

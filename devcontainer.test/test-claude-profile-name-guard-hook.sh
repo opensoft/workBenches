@@ -50,7 +50,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=29
+EXPECTED_SCENARIOS=30
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -307,6 +307,23 @@ run_launcher
     || fail "legacy migration: grouped foreign hook was lost"; assertion
 [[ "$(jq -r '[.hooks.UserPromptSubmit[]?|select(.note == "operator grouped these")]|length' "$SETTINGS")" -eq 1 ]] \
     || fail "legacy migration: grouped entry metadata was lost"; assertion
+[[ "$(entry_with_snippet | jq -r --arg c "$SNIPPET" '.hooks[] | select(.command == $c) | .timeout')" == 30 ]] \
+    || fail "legacy migration: managed hook metadata was reset ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+
+# A legacy-only outer entry is rewritten in place rather than dropped and
+# recreated, so metadata on both levels survives the migration.
+printf '%s\n' '{}' > "$SETTINGS"
+jq --arg c "$LEGACY_SNIPPET" '.hooks.UserPromptSubmit = [{
+      note: "legacy-only outer metadata",
+      hooks: [{type: "command", command: $c, timeout: 41, custom: "keep-me"}]
+    }]' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+run_launcher
+[[ "$(legacy_guard_count)" -eq 0 && "$(guard_count)" -eq 1 ]] \
+    || fail "legacy-only migration did not replace exactly one command ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(entry_with_snippet | jq -r '.note')" == "legacy-only outer metadata" ]] \
+    || fail "legacy-only migration lost outer metadata"; assertion
+[[ "$(entry_with_snippet | jq -r --arg c "$SNIPPET" '.hooks[] | select(.command == $c) | [.timeout,.custom] | @tsv')" == $'41\tkeep-me' ]] \
+    || fail "legacy-only migration lost nested metadata ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
 
 # 6c. The installed command itself is mode-aware: profile-only returns without
 # consulting the lane guard, while lane-aware execution invokes it.

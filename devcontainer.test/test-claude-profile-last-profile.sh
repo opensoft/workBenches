@@ -89,8 +89,10 @@ grep -q 'no last Claude profile' "$ERR_LOG" \
 run_ok pclaude team002 --print hello
 [[ "$(cat "$LAST_PROFILE")" == team-002 ]] \
     || fail "alias did not persist canonical profile: $(cat "$LAST_PROFILE")"
-[[ "$(stat -c '%a' "$LAST_PROFILE")" == 600 ]] \
-    || fail "last-profile mode is $(stat -c '%a' "$LAST_PROFILE"), expected 600"
+last_profile_mode="$(stat -c '%a' "$LAST_PROFILE" 2>/dev/null \
+    || stat -f '%Lp' "$LAST_PROFILE" 2>/dev/null)"
+[[ "$last_profile_mode" == 600 ]] \
+    || fail "last-profile mode is $last_profile_mode, expected 600"
 grep -q "CONFIG=$PROFILE_BASE/profiles/opensoft/team/team-002" "$CLAUDE_LOG" \
     || fail "explicit alias used the wrong config: $(cat "$CLAUDE_LOG")"
 grep -q '^PROFILE=team-002$' "$CLAUDE_LOG" \
@@ -98,10 +100,49 @@ grep -q '^PROFILE=team-002$' "$CLAUDE_LOG" \
 grep -q '^PROFILE_ONLY=1$' "$CLAUDE_LOG" \
     || fail "pclaude did not export profile-only mode: $(cat "$CLAUDE_LOG")"
 
+# The reader falls back to BSD/macOS stat syntax when GNU stat is unavailable.
+cat > "$FAKE_BIN/stat" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == -c ]]; then
+    exit 1
+fi
+if [[ "${1:-}" == -f && "${2:-}" == %Lp ]]; then
+    printf '600\n'
+    exit 0
+fi
+exit 2
+EOF
+chmod +x "$FAKE_BIN/stat"
+: > "$CLAUDE_LOG"
+run_ok pclaude
+grep -q '^PROFILE=team-002$' "$CLAUDE_LOG" \
+    || fail "BSD stat fallback did not allow the remembered profile"
+rm -f "$FAKE_BIN/stat"
+
 # A run that fails required lane preflight does not replace the selection.
 run_fails pclaude --lane example-1 team003 --print hello
 [[ "$(cat "$LAST_PROFILE")" == team-002 ]] \
     || fail "failed lane preflight changed the remembered profile"
+
+# A later lane preflight refusal (after lane-start is found) also leaves the
+# remembered selection unchanged.
+cat > "$FAKE_BIN/lane-start" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+cat > "$FAKE_BIN/lanes-edit.sh" <<EOF
+#!/usr/bin/env bash
+case "\${1:-}" in
+  session-start|guard) exit 0 ;;
+  lane-dir) printf '%s\n' "$TEST_ROOT/missing-lane-checkout"; exit 0 ;;
+  *) exit 8 ;;
+esac
+EOF
+chmod +x "$FAKE_BIN/lane-start" "$FAKE_BIN/lanes-edit.sh"
+run_fails lclaude --lane example-1 team003 --print hello
+[[ "$(cat "$LAST_PROFILE")" == team-002 ]] \
+    || fail "late lane preflight refusal changed the remembered profile"
+rm -f "$FAKE_BIN/lane-start" "$FAKE_BIN/lanes-edit.sh"
 
 # Bare pclaude reuses the record and remains profile-only.
 : > "$CLAUDE_LOG"
