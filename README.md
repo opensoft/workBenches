@@ -183,7 +183,11 @@ pclaude <profile>
 lane-start <repo> <n>
 ```
 
-`pclaude <profile>` alone starts the lane: the launcher binds by the tmux window — its name, else the swap record for that window — so the normal path needs no lane named at all, and `--lane <repo>-<n>` / `--dir <path>` remain leading options for the cases that still do.
+`pclaude [<profile>]` is profile-only; without a profile it reuses the last
+profile accepted by a Claude run. Use `lclaude [<profile>]` when the same
+selection should bind by the tmux window or another lane-resolution source.
+Explicit `--lane <repo>-<n>` / `--dir <path>` remain leading `pclaude` options
+for scripts that already name their lane.
 
 The workspace repository (`<org>/<login>-wip`) holds your lane register, your handoffs and your workspace manifests. It holds **no code**: the lane tooling is installed from `opensoft/openRepoTools`.
 

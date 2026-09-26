@@ -788,14 +788,14 @@ grep -Fxq -- "$claude_args --resume session-alias" "$CLAUDE_LOG" \
     || fail "one word by alias: Claude's argv was '$(cat "$CLAUDE_LOG" 2>/dev/null)'"; assertion
 
 # 1c. THE ACTION WORDS WIN over a profile of the same name. This estate has a
-# profile called `run`; `pclaude run` is still the verb, so it reads the next
-# word as the profile and refuses when there is none, rather than launching the
-# profile called `run`.
+# profile called `run`; `pclaude run` is still the verb, so an omitted profile
+# reuses the last run profile established by 1b rather than launching the
+# profile literally called `run`.
 launch "FAKE_TMUX_WINDOW=claude" "FAKE_SWAPPED_STATUS=8" -- run
-[[ "$launch_status" -ne 0 ]] \
-    || fail "verb wins: bare 'run' launched something (status $launch_status)"; assertion
-[[ ! -e "$CLAUDE_LOG" ]] \
-    || fail "verb wins: 'run' with no profile launched Claude ($(cat "$CLAUDE_LOG"))"; assertion
+[[ "$launch_status" -eq 0 ]] \
+    || fail "verb wins: bare 'run' did not reuse the remembered profile (status $launch_status)"; assertion
+grep -Fxq -- "$claude_args" "$CLAUDE_LOG" \
+    || fail "verb wins: bare 'run' did not launch the remembered profile with unchanged argv ($(cat "$CLAUDE_LOG" 2>/dev/null))"; assertion
 
 # 1d. ...and `pclaude run run` is the way to it. The ambiguity is decided in the
 # one direction an operator can undo.

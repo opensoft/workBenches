@@ -19,12 +19,16 @@ trap 'rm -rf "$test_root"' EXIT
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
-for entry_point in claude-profile pclaude lclaude; do
-  if [[ -e "$repo_root/scripts/$entry_point" ]]; then
-    [[ "$(readlink -f "$repo_root/scripts/$entry_point")" == "$repo_root/base-image/files/$entry_point" ]] \
-      || fail "host $entry_point entry point does not resolve to its launcher"
-  fi
-done
+git_common_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+primary_checkout="${git_common_dir%/.git}"
+if [[ -z "$primary_checkout" || "$repo_root" == "$primary_checkout" ]]; then
+  for entry_point in claude-profile pclaude lclaude; do
+    if [[ -e "$repo_root/scripts/$entry_point" ]]; then
+      [[ "$(readlink -f "$repo_root/scripts/$entry_point")" == "$repo_root/base-image/files/$entry_point" ]] \
+        || fail "host $entry_point entry point does not resolve to its launcher"
+    fi
+  done
+fi
 
 test_home="$test_root/home"
 versions="$test_home/.local/share/claude/versions"

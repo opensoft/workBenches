@@ -56,6 +56,7 @@ LAUNCHER_SOURCE="$LAUNCHER"
 # launcher: every scenario below sets the tmux and lane state it means to test.
 unset TMUX TMUX_PANE WORKBENCHES_CLAUDE_TMUX WORKBENCHES_CLAUDE_TMUX_CHILD \
     WORKBENCHES_CLAUDE_WINDOW WORKBENCHES_TMUX_SESSION WORKBENCHES_TMUX_PANE \
+    WORKBENCHES_CLAUDE_PROFILE_ONLY \
     CLAUDE_LANE CLAUDE_NO_LANE LANES_WORKSTATION LANES_HOST LANES_OS \
     LANES_CONTAINER 2>/dev/null || true
 
@@ -897,6 +898,8 @@ grep -q 'WORKBENCHES_CLAUDE_WINDOW=' "$TMUX_LOG" \
 tty_launch "TMUX=" "FAKE_TMUX_WINDOW=openRepoProject-1" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
     "CLAUDE_NO_LANE=1" -- run team002 --resume session-tty
 grep -q 'CLAUDE_NO_LANE=1' "$TMUX_LOG" || fail "re-exec: --no-lane was not carried into the new session"; assertion
+grep -q 'WORKBENCHES_CLAUDE_PROFILE_ONLY=1' "$TMUX_LOG" \
+    || fail "re-exec: profile-only guard marker was not carried into the new session"; assertion
 
 # ---------------------------------------------------------------------------
 # 11. A lane-start that TAKES a certain lane (the window's own name, precedence

@@ -11,10 +11,9 @@
 # this suite does not touch.
 #
 # What is pinned:
-#   - the command is `opensoft/openRepoTools`'s own GUARD_COMMAND, byte for
-#     byte, with NO matcher (UserPromptSubmit has no source to match on) and
-#     NO `|| true` (exit 2 is the whole mechanism; swallowing it would install
-#     a guard that refuses nothing);
+#   - the command gates `opensoft/openRepoTools`'s GUARD_COMMAND on the
+#     profile-only process marker, with NO matcher and NO unconditional
+#     `|| true`: lane-aware exit 2 remains the blocking mechanism;
 #   - ensuring twice appends once — present costs no write, absent appends;
 #   - an entry already carrying that command is left exactly as it is,
 #     whatever timeout or note the operator gave it;
@@ -51,7 +50,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=27
+EXPECTED_SCENARIOS=29
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -61,7 +60,8 @@ assertion() { assertions=$((assertions + 1)); }
 # GUARD_COMMAND/GUARD_TIMEOUT spell it (`openRepoTools:460-461`,
 # `guard_block_text()`) — the test carries its own copy rather than reading
 # the launcher's, exactly as the SessionStart suite beside this one does.
-SNIPPET='~/projects/xFactory/lanes-edit.sh guard'
+SNIPPET='[ "${WORKBENCHES_CLAUDE_PROFILE_ONLY:-}" = 1 ] || ~/projects/xFactory/lanes-edit.sh guard'
+LEGACY_SNIPPET='~/projects/xFactory/lanes-edit.sh guard'
 
 PROFILE_BASE="$TEST_ROOT/profiles-home"
 PROFILE_DIR="$PROFILE_BASE/profiles/opensoft/team/team-002"
@@ -69,6 +69,7 @@ SETTINGS="$PROFILE_DIR/settings.json"
 MANIFEST="$TEST_ROOT/claude-profiles.json"
 FAKE_BIN="$TEST_ROOT/bin"
 FAKE_CLAUDE="$FAKE_BIN/claude"
+GUARD_LOG="$TEST_ROOT/guard.log"
 FAKE_HOME="$TEST_ROOT/home"
 XFACTORY="$FAKE_HOME/projects/xFactory"
 mkdir -p "$PROFILE_DIR" "$FAKE_BIN" "$XFACTORY" "$PROFILE_BASE/shared"
@@ -117,8 +118,9 @@ EOF
     chmod +x "$XFACTORY/lanes-edit.sh"
 }
 lanes_edit_with_guard() {
-    cat > "$XFACTORY/lanes-edit.sh" <<'EOF'
+cat > "$XFACTORY/lanes-edit.sh" <<'EOF'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >> "${FAKE_GUARD_LOG:-/dev/null}"
 case "$1" in session-start|guard) : ;; esac
 case "$1" in
   session-start) exit 0 ;;
@@ -157,6 +159,7 @@ common_env=(
     "CLAUDE_PROFILES_HOME=$PROFILE_BASE"
     "CLAUDE_PROFILES_MANIFEST=$MANIFEST"
     "WORKBENCHES_SHARED_MCP_FAMILIES=disabled"
+    "FAKE_GUARD_LOG=$GUARD_LOG"
 )
 
 # One run of the launcher. `--no-lane` keeps the lane resolution out of it
@@ -170,6 +173,7 @@ run_launcher() {
 
 guard_entries() { jq '[.hooks.UserPromptSubmit[]? | select(any(.hooks[]?; .command == "'"$SNIPPET"'"))]' "$SETTINGS"; }
 guard_count() { jq --arg c "$SNIPPET" '[.hooks.UserPromptSubmit[]? | select(any(.hooks[]?; .command == $c))] | length' "$SETTINGS"; }
+legacy_guard_count() { jq --arg c "$LEGACY_SNIPPET" '[.hooks.UserPromptSubmit[]? | select(any(.hooks[]?; .command == $c))] | length' "$SETTINGS"; }
 entry_with_snippet() {
     jq --arg c "$SNIPPET" '
         [.hooks.UserPromptSubmit[]? | select(any(.hooks[]?; .command == $c))] | .[0] // empty
@@ -281,6 +285,41 @@ run_launcher
     || fail "created: a fresh settings.json has $(guard_count) name-guard entries"; assertion
 [[ "$(entry_with_snippet | jq -r '.hooks[0].command')" == "$SNIPPET" ]] \
     || fail "created: the snippet is not in a freshly created settings.json"; assertion
+
+# ---------------------------------------------------------------------------
+# 6b. A profile carrying the legacy unconditional managed command is migrated
+# in place. A foreign hook grouped beside it and outer metadata survive; only
+# the command this launcher owns is replaced by one canonical gated entry.
+printf '%s\n' '{}' > "$SETTINGS"
+jq --arg c "$LEGACY_SNIPPET" '.hooks.UserPromptSubmit = [{
+      note: "operator grouped these",
+      hooks: [
+        {type: "command", command: $c, timeout: 30},
+        {type: "command", command: "foreign-grouped"}
+      ]
+    }]' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+run_launcher
+[[ "$(legacy_guard_count)" -eq 0 ]] \
+    || fail "legacy migration: the unconditional command survived ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(guard_count)" -eq 1 ]] \
+    || fail "legacy migration: expected one gated command, found $(guard_count)"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[]?|.hooks[]?|select(.command == "foreign-grouped")]|length' "$SETTINGS")" -eq 1 ]] \
+    || fail "legacy migration: grouped foreign hook was lost"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[]?|select(.note == "operator grouped these")]|length' "$SETTINGS")" -eq 1 ]] \
+    || fail "legacy migration: grouped entry metadata was lost"; assertion
+
+# 6c. The installed command itself is mode-aware: profile-only returns without
+# consulting the lane guard, while lane-aware execution invokes it.
+scenario
+: > "$GUARD_LOG"
+env "${common_env[@]}" WORKBENCHES_CLAUDE_PROFILE_ONLY=1 bash -c "$SNIPPET" \
+    || fail "profile-only gated command returned nonzero"
+[[ ! -s "$GUARD_LOG" ]] \
+    || fail "profile-only gated command consulted lanes-edit.sh: $(cat "$GUARD_LOG")"; assertion
+env -u WORKBENCHES_CLAUDE_PROFILE_ONLY "${common_env[@]}" bash -c "$SNIPPET" \
+    || fail "lane-aware gated command returned nonzero"
+grep -qx guard "$GUARD_LOG" \
+    || fail "lane-aware gated command did not invoke guard: $(cat "$GUARD_LOG")"; assertion
 
 # ---------------------------------------------------------------------------
 # 7. TOLERANCE: the estate is installed but its lanes-edit.sh has no `guard`

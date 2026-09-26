@@ -2,10 +2,11 @@
 
 ## Choose a launcher
 
-`pclaude <profile>` selects a Claude account without resolving, starting, or
-inheriting a lane. Use it for ordinary profile sessions, including sessions
-started inside a tmux window whose name resembles a lane. `lclaude <profile>`
-uses the same profile selection and starts or resumes the current lane through
+`pclaude [<profile>]` selects a Claude account without resolving, starting, or
+inheriting a lane. With no profile it reuses the last profile accepted by a
+Claude `run`. Use it for ordinary profile sessions, including sessions started
+inside a tmux window whose name resembles a lane. `lclaude [<profile>]` uses
+that same last-profile selection and starts or resumes the current lane through
 `lane-start`. Use `lclaude` for lane work and after a lane handoff. Both commands
 select the newest installed Claude binary through the same profile manager.
 An explicit `pclaude --lane <lane> <profile>` remains supported for scripts and
@@ -32,6 +33,8 @@ claude-profile login work
 claude-profile login personal
 pclaude work
 pclaude personal
+pclaude              # reopen personal without a lane
+lclaude              # reopen personal with lane resolution
 ```
 
 Alternatively, collect or confirm each email interactively:
@@ -170,6 +173,15 @@ profile still exits 2 with `Unknown Claude profile: <name>` — the same words
 rather than launched as something else. `--lane`, `--dir`, and `--no-lane`
 stay LEADING options, read only before the action or the profile, so
 everything meant for Claude itself passes through untouched.
+
+The launcher records the resolved canonical profile name for each accepted
+`run` in `${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}/.last-profile`.
+Aliases are never stored, and `list`, `login`, and `status` do not change the
+record. The file contains no credential or email address, is mode `0600`, and
+is replaced atomically. Bare `pclaude` reads it and stays profile-only; bare
+`lclaude` reads the same record and remains lane-aware. If it is missing,
+unsafe, malformed, or names a profile that is no longer configured, the
+launcher stops before Claude starts and asks for an explicit profile.
 
 Interactive `pclaude PROFILE` launches are tmux-backed by default when started
 from a terminal outside tmux. The panel reserves its first segment for the
