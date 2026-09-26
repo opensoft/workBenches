@@ -61,6 +61,13 @@ remember_profile() {
   fi
 }
 
+profile_file_identity() {
+  local path="$1"
+
+  stat -c '%d:%i' "$path" 2>/dev/null \
+    || stat -f '%d:%i' "$path" 2>/dev/null
+}
+
 # A lane-start handoff is synchronous: on success it execs Claude and does not
 # return until that session exits.  Publish the selected profile immediately
 # before the handoff so concurrent wrappers see it, while retaining enough
@@ -68,6 +75,7 @@ remember_profile() {
 profile_handoff_backup=""
 profile_handoff_had_record=false
 profile_handoff_active=false
+profile_handoff_identity=""
 
 begin_profile_handoff() {
   local profile="$1"
@@ -75,6 +83,12 @@ begin_profile_handoff() {
   profile_handoff_backup=""
   profile_handoff_had_record=false
   profile_handoff_active=false
+  profile_handoff_identity=""
+  mkdir -p "$base"
+  if ! profile_file_identity "$base" >/dev/null; then
+    echo "pclaude: cannot identify the last-profile state directory safely: $base" >&2
+    return 1
+  fi
   if [[ -f "$last_profile_file" && ! -L "$last_profile_file" ]]; then
     profile_handoff_backup="$(mktemp "$base/.last-profile.rollback.XXXXXX")"
     if ! cp -p "$last_profile_file" "$profile_handoff_backup"; then
@@ -90,6 +104,7 @@ begin_profile_handoff() {
     profile_handoff_backup=""
     return 1
   fi
+  profile_handoff_identity="$(profile_file_identity "$last_profile_file")"
   profile_handoff_active=true
 }
 
@@ -97,17 +112,26 @@ commit_profile_handoff() {
   [[ "$profile_handoff_active" == true ]] || return 0
   [[ -z "$profile_handoff_backup" ]] || rm -f "$profile_handoff_backup"
   profile_handoff_backup=""
+  profile_handoff_identity=""
   profile_handoff_active=false
 }
 
 rollback_profile_handoff() {
+  local current_identity=""
+
   [[ "$profile_handoff_active" == true ]] || return 0
-  if [[ "$profile_handoff_had_record" == true ]]; then
-    mv -f "$profile_handoff_backup" "$last_profile_file"
-  else
-    rm -f "$last_profile_file"
+  current_identity="$(profile_file_identity "$last_profile_file" 2>/dev/null || true)"
+  if [[ -n "$profile_handoff_identity" && "$current_identity" == "$profile_handoff_identity" ]]; then
+    if [[ "$profile_handoff_had_record" == true ]]; then
+      mv -f "$profile_handoff_backup" "$last_profile_file"
+      profile_handoff_backup=""
+    else
+      rm -f "$last_profile_file"
+    fi
   fi
+  [[ -z "$profile_handoff_backup" ]] || rm -f "$profile_handoff_backup"
   profile_handoff_backup=""
+  profile_handoff_identity=""
   profile_handoff_active=false
 }
 

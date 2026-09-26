@@ -211,6 +211,23 @@ run_fails TMUX=fake lclaude --lane example-1 team003 --print hello
     || fail "lane-start did not observe the new profile at handoff time"
 [[ ! -s "$CLAUDE_LOG" ]] \
     || fail "lane-start refusal unexpectedly launched Claude: $(cat "$CLAUDE_LOG")"
+
+# A refusal must not roll an older value back over a newer concurrent launch,
+# even when that launch selected the same profile as the refused handoff.
+cat > "$FAKE_BIN/lane-start" <<EOF
+#!/usr/bin/env bash
+state_tmp="\$(mktemp "$PROFILE_BASE/.last-profile.concurrent.XXXXXX")"
+printf '%s\n' team-003 > "\$state_tmp"
+chmod 600 "\$state_tmp"
+mv -f "\$state_tmp" "$LAST_PROFILE"
+exit 1
+EOF
+chmod +x "$FAKE_BIN/lane-start"
+run_fails TMUX=fake lclaude --lane example-1 team003 --print hello
+[[ "$(cat "$LAST_PROFILE")" == team-003 ]] \
+    || fail "lane-start rollback overwrote a newer concurrent profile selection"
+printf '%s\n' team-002 > "$LAST_PROFILE"
+chmod 600 "$LAST_PROFILE"
 rm -f "$FAKE_BIN/lane-start" "$FAKE_BIN/lanes-edit.sh" "$FAKE_BIN/tmux"
 
 # Bare pclaude reuses the record and remains profile-only.
