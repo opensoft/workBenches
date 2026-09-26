@@ -4,11 +4,70 @@ set -euo pipefail
 manifest="${CLAUDE_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/claude-profiles.json}"
 base="${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}"
 last_profile_file="$base/.last-profile"
+last_profile_lock_dir="$base/.last-profile.lock"
 command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
 
-read_last_profile() {
-  local line_count profile mode
+path_owner_uid() {
+  local path="$1"
 
+  stat -c '%u' "$path" 2>/dev/null \
+    || stat -f '%u' "$path" 2>/dev/null
+}
+
+validate_last_profile_directory() {
+  local owner
+
+  if [[ -L "$base" || ! -d "$base" ]]; then
+    echo "pclaude: last-profile state directory must be a regular directory: $base" >&2
+    return 2
+  fi
+  owner="$(path_owner_uid "$base" || true)"
+  if [[ -z "$owner" || "$owner" != "$(id -u)" ]]; then
+    echo "pclaude: last-profile state directory is not owned by the current user: $base" >&2
+    return 2
+  fi
+}
+
+profile_state_lock_active=false
+
+acquire_profile_state_lock() {
+  local attempt=0 owner
+
+  mkdir -p "$base"
+  validate_last_profile_directory || return $?
+  while ! mkdir "$last_profile_lock_dir" 2>/dev/null; do
+    if [[ -L "$last_profile_lock_dir" || ! -d "$last_profile_lock_dir" ]]; then
+      echo "pclaude: unsafe last-profile state lock: $last_profile_lock_dir" >&2
+      return 2
+    fi
+    owner="$(path_owner_uid "$last_profile_lock_dir" || true)"
+    if [[ -z "$owner" || "$owner" != "$(id -u)" ]]; then
+      echo "pclaude: last-profile state lock is not owned by the current user: $last_profile_lock_dir" >&2
+      return 2
+    fi
+    attempt=$((attempt + 1))
+    if [[ "$attempt" -ge 200 ]]; then
+      echo "pclaude: timed out waiting for last-profile state lock: $last_profile_lock_dir" >&2
+      return 1
+    fi
+    sleep 0.05
+  done
+  chmod 700 "$last_profile_lock_dir"
+  profile_state_lock_active=true
+}
+
+release_profile_state_lock() {
+  [[ "$profile_state_lock_active" == true ]] || return 0
+  rmdir "$last_profile_lock_dir" 2>/dev/null || true
+  profile_state_lock_active=false
+}
+
+trap 'release_profile_state_lock' EXIT
+
+read_last_profile() {
+  local line_count owner profile mode
+
+  validate_last_profile_directory || return $?
   if [[ -L "$last_profile_file" ]]; then
     echo "pclaude: last Claude profile record must not be a symbolic link: $last_profile_file" >&2
     return 2
@@ -19,6 +78,11 @@ read_last_profile() {
   fi
   if [[ ! -f "$last_profile_file" ]]; then
     echo "pclaude: last Claude profile record must be a regular file: $last_profile_file" >&2
+    return 2
+  fi
+  owner="$(path_owner_uid "$last_profile_file" || true)"
+  if [[ -z "$owner" || "$owner" != "$(id -u)" ]]; then
+    echo "pclaude: last Claude profile record is not owned by the current user: $last_profile_file" >&2
     return 2
   fi
 
@@ -40,12 +104,16 @@ read_last_profile() {
   printf '%s\n' "$profile"
 }
 
-remember_profile() {
+remember_profile_unlocked() {
   local profile="$1" state_tmp
 
-  mkdir -p "$base"
+  validate_last_profile_directory || return $?
   if [[ -L "$last_profile_file" || ( -e "$last_profile_file" && ! -f "$last_profile_file" ) ]]; then
     echo "pclaude: refusing to replace unsafe last Claude profile record: $last_profile_file" >&2
+    return 2
+  fi
+  if [[ -e "$last_profile_file" && "$(path_owner_uid "$last_profile_file" || true)" != "$(id -u)" ]]; then
+    echo "pclaude: refusing to replace a last Claude profile record not owned by the current user: $last_profile_file" >&2
     return 2
   fi
 
@@ -59,6 +127,15 @@ remember_profile() {
     rm -f "$state_tmp"
     return 1
   fi
+}
+
+remember_profile() {
+  local profile="$1" status=0
+
+  acquire_profile_state_lock || return $?
+  remember_profile_unlocked "$profile" || status=$?
+  release_profile_state_lock
+  return "$status"
 }
 
 profile_file_identity() {
@@ -78,15 +155,16 @@ profile_handoff_active=false
 profile_handoff_identity=""
 
 begin_profile_handoff() {
-  local profile="$1"
+  local profile="$1" status=0
 
   profile_handoff_backup=""
   profile_handoff_had_record=false
   profile_handoff_active=false
   profile_handoff_identity=""
-  mkdir -p "$base"
+  acquire_profile_state_lock || return $?
   if ! profile_file_identity "$base" >/dev/null; then
     echo "pclaude: cannot identify the last-profile state directory safely: $base" >&2
+    release_profile_state_lock
     return 1
   fi
   if [[ -f "$last_profile_file" && ! -L "$last_profile_file" ]]; then
@@ -94,18 +172,27 @@ begin_profile_handoff() {
     if ! cp -p "$last_profile_file" "$profile_handoff_backup"; then
       rm -f "$profile_handoff_backup"
       profile_handoff_backup=""
+      release_profile_state_lock
       return 1
     fi
     chmod 600 "$profile_handoff_backup"
     profile_handoff_had_record=true
   fi
-  if ! remember_profile "$profile"; then
+  remember_profile_unlocked "$profile" || status=$?
+  if [[ "$status" -ne 0 ]]; then
     [[ -z "$profile_handoff_backup" ]] || rm -f "$profile_handoff_backup"
     profile_handoff_backup=""
+    release_profile_state_lock
+    return "$status"
+  fi
+  if ! profile_handoff_identity="$(profile_file_identity "$last_profile_file")"; then
+    [[ -z "$profile_handoff_backup" ]] || rm -f "$profile_handoff_backup"
+    profile_handoff_backup=""
+    release_profile_state_lock
     return 1
   fi
-  profile_handoff_identity="$(profile_file_identity "$last_profile_file")"
   profile_handoff_active=true
+  release_profile_state_lock
 }
 
 commit_profile_handoff() {
@@ -117,9 +204,17 @@ commit_profile_handoff() {
 }
 
 rollback_profile_handoff() {
-  local current_identity=""
+  local current_identity="" status=0
 
   [[ "$profile_handoff_active" == true ]] || return 0
+  acquire_profile_state_lock || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    [[ -z "$profile_handoff_backup" ]] || rm -f "$profile_handoff_backup"
+    profile_handoff_backup=""
+    profile_handoff_identity=""
+    profile_handoff_active=false
+    return "$status"
+  fi
   current_identity="$(profile_file_identity "$last_profile_file" 2>/dev/null || true)"
   if [[ -n "$profile_handoff_identity" && "$current_identity" == "$profile_handoff_identity" ]]; then
     if [[ "$profile_handoff_had_record" == true ]]; then
@@ -133,6 +228,7 @@ rollback_profile_handoff() {
   profile_handoff_backup=""
   profile_handoff_identity=""
   profile_handoff_active=false
+  release_profile_state_lock
 }
 
 # lane-collision-protocol Amendment 8(e), as ruled by A8 Addendum 2 R-A8-5(b).
@@ -328,12 +424,12 @@ lane_name_guard_jq='
                     ]
                   elif $legacy_name_guard_present then
                     ($entries
-                      | [ paths(scalars) as $path
+                      | [ range(0; length) as $entry_index
+                          | range(0; ((.[$entry_index].hooks // []) | length)) as $hook_index
                           | select(
-                              ($path[-1] == "command")
-                              and (getpath($path) == $legacy_name_guard)
+                              .[$entry_index].hooks[$hook_index].command? == $legacy_name_guard
                             )
-                          | $path
+                          | [$entry_index, "hooks", $hook_index, "command"]
                         ] as $legacy_paths
                       | setpath($legacy_paths[0]; $name_guard)
                     ) as $migrated_once
@@ -3067,14 +3163,19 @@ fi
 # only as `pclaude run run`, which is what the verb being optional means: the
 # verb, where it is typed, is the verb. Ambiguity is decided in the one
 # direction an operator can undo.
-if [[ $# -eq 0 && "${WORKBENCHES_CLAUDE_DEFAULT_RUN:-}" == 1 ]]; then
+implicit_run_action=false
+if [[ "${WORKBENCHES_CLAUDE_DEFAULT_RUN:-}" == 1 \
+  && ( $# -eq 0 || "${1:-}" == -* ) ]]; then
   action=run
+  implicit_run_action=true
 else
   action="${1:-list}"
 fi
 case "$action" in
   list|login|status|run)
-    [[ $# -eq 0 ]] || shift ;;
+    if [[ "$implicit_run_action" == false && $# -gt 0 ]]; then
+      shift
+    fi ;;
   -*)
     echo "pclaude: '$action' is an option, not an action or a profile." >&2
     echo "Usage: claude-profile {login|status} PROFILE [ARGS...] | run [PROFILE] [CLAUDE_ARGS...] | list" >&2

@@ -50,7 +50,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=32
+EXPECTED_SCENARIOS=33
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -359,6 +359,20 @@ run_launcher
     || fail "duplicate legacy migration did not preserve the first managed hook metadata"; assertion
 [[ "$(jq -r '[.hooks.UserPromptSubmit[]? | .hooks[]? | select(.command == "foreign-between")] | length' "$SETTINGS")" -eq 1 ]] \
     || fail "duplicate legacy migration lost the grouped foreign hook"; assertion
+
+# A foreign metadata field named `command` is not a hook and must never be
+# selected as the migration target, even when it contains the legacy text.
+printf '%s\n' '{}' > "$SETTINGS"
+jq --arg old "$LEGACY_SNIPPET" '.hooks.UserPromptSubmit = [{
+      command: $old,
+      note: "foreign command metadata",
+      hooks: [{type: "command", command: $old, timeout: 61}]
+    }]' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+run_launcher
+[[ "$(jq -r '.hooks.UserPromptSubmit[0].command' "$SETTINGS")" == "$LEGACY_SNIPPET" ]] \
+    || fail "legacy migration corrupted a foreign metadata command field"; assertion
+[[ "$(legacy_guard_count)" -eq 0 && "$(guard_count)" -eq 1 ]] \
+    || fail "metadata-command migration did not replace the nested hook exactly once"; assertion
 
 # 6c. The installed command itself is mode-aware: profile-only returns without
 # consulting the lane guard, while lane-aware execution invokes it.

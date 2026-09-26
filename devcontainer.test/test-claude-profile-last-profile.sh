@@ -106,6 +106,10 @@ grep -q '^PROFILE_ONLY=1$' "$CLAUDE_LOG" \
 # The reader falls back to BSD/macOS stat syntax when GNU stat is unavailable.
 cat > "$FAKE_BIN/stat" <<'EOF'
 #!/usr/bin/env bash
+if [[ ( "${1:-}" == -c || "${1:-}" == -f ) && "${2:-}" == %u ]]; then
+    id -u
+    exit 0
+fi
 if [[ "${1:-}" == -c ]]; then
     exit 1
 fi
@@ -121,6 +125,15 @@ run_ok pclaude
 grep -q '^PROFILE=team-002$' "$CLAUDE_LOG" \
     || fail "BSD stat fallback did not allow the remembered profile"
 rm -f "$FAKE_BIN/stat"
+
+# Leading Claude options on the wrapper are an implicit remembered-profile
+# run; the options remain untouched in Claude's argv.
+: > "$CLAUDE_LOG"
+run_ok pclaude --print hello
+grep -q '^PROFILE=team-002$' "$CLAUDE_LOG" \
+    || fail "option-shaped wrapper invocation did not reuse the remembered profile"
+grep -q '^ARGS=.*--print hello$' "$CLAUDE_LOG" \
+    || fail "option-shaped wrapper invocation did not preserve Claude arguments: $(cat "$CLAUDE_LOG")"
 
 # An explicit run verb may omit the profile while still carrying Claude
 # options; the option remains in Claude's argv rather than being resolved as a
@@ -294,6 +307,27 @@ chmod 644 "$LAST_PROFILE"
 run_fails pclaude
 grep -q 'mode 0600' "$ERR_LOG" \
     || fail "unsafe-mode diagnostic was not explicit: $(cat "$ERR_LOG")"
+
+# Ownership is checked independently of mode for both the record and its
+# containing state directory.
+cat > "$FAKE_BIN/stat" <<'EOF'
+#!/usr/bin/env bash
+if [[ ( "${1:-}" == -c || "${1:-}" == -f ) && "${2:-}" == %u ]]; then
+    printf '4294967294\n'
+    exit 0
+fi
+if [[ "${1:-}" == -c && "${2:-}" == %a ]]; then
+    printf '600\n'
+    exit 0
+fi
+exit 2
+EOF
+chmod +x "$FAKE_BIN/stat"
+chmod 600 "$LAST_PROFILE"
+run_fails pclaude
+grep -q 'not owned by the current user' "$ERR_LOG" \
+    || fail "owner diagnostic was not explicit: $(cat "$ERR_LOG")"
+rm -f "$FAKE_BIN/stat"
 
 rm -f "$LAST_PROFILE"
 mkdir "$LAST_PROFILE"
