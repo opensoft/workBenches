@@ -119,6 +119,16 @@ grep -q '^PROFILE=team-002$' "$CLAUDE_LOG" \
     || fail "BSD stat fallback did not allow the remembered profile"
 rm -f "$FAKE_BIN/stat"
 
+# An explicit run verb may omit the profile while still carrying Claude
+# options; the option remains in Claude's argv rather than being resolved as a
+# profile name.
+: > "$CLAUDE_LOG"
+run_ok pclaude run --print hello
+grep -q '^PROFILE=team-002$' "$CLAUDE_LOG" \
+    || fail "run with an option did not reuse the remembered profile"
+grep -q '^ARGS=.*--print hello$' "$CLAUDE_LOG" \
+    || fail "run with an omitted profile did not preserve Claude arguments: $(cat "$CLAUDE_LOG")"
+
 # A run that fails required lane preflight does not replace the selection.
 run_fails pclaude --lane example-1 team003 --print hello
 [[ "$(cat "$LAST_PROFILE")" == team-002 ]] \

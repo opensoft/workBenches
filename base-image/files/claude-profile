@@ -3014,12 +3014,14 @@ case "$action" in
     ;;
   login|status|run)
     remembered_profile=false
-    if [[ $# -gt 0 ]]; then
-      profile="$1"
-      shift
-    elif [[ "$action" == run ]]; then
+    if [[ "$action" == run && ( $# -eq 0 || "${1:-}" == -* ) ]]; then
+      # An option belongs to Claude, not to profile selection.  Keep the
+      # complete remaining argv intact while choosing the remembered profile.
       profile="$(read_last_profile)" || exit $?
       remembered_profile=true
+    elif [[ $# -gt 0 ]]; then
+      profile="$1"
+      shift
     else
       echo "Usage: claude-profile $action PROFILE [arguments]" >&2
       exit 2
