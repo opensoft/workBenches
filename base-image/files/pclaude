@@ -4,6 +4,11 @@
 # command always bypasses lane resolution.
 set -euo pipefail
 
+# After claude-profile consumes any leading launcher options, an empty command
+# means "run the remembered profile" for this wrapper.  Direct claude-profile
+# invocations keep their historical empty-command list behavior.
+export WORKBENCHES_CLAUDE_DEFAULT_RUN=1
+
 if [[ $# -eq 0 ]]; then
   set -- run
 fi

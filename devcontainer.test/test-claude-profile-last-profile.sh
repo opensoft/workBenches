@@ -129,6 +129,25 @@ grep -q '^PROFILE=team-002$' "$CLAUDE_LOG" \
 grep -q '^ARGS=.*--print hello$' "$CLAUDE_LOG" \
     || fail "run with an omitted profile did not preserve Claude arguments: $(cat "$CLAUDE_LOG")"
 
+# Leading launcher options may be the entire wrapper invocation; after they
+# are consumed, pclaude still defaults to a remembered-profile run.
+: > "$CLAUDE_LOG"
+run_ok pclaude --no-lane
+grep -q '^PROFILE=team-002$' "$CLAUDE_LOG" \
+    || fail "launcher-only options listed profiles instead of running the remembered profile"
+
+# A delimiter makes omitted-profile positional Claude subcommands unambiguous
+# without turning an invalid explicit profile into a silent Claude argument.
+: > "$CLAUDE_LOG"
+run_ok pclaude run -- mcp list
+grep -q '^PROFILE=team-002$' "$CLAUDE_LOG" \
+    || fail "delimited positional command did not reuse the remembered profile"
+grep -q '^ARGS=.*mcp list$' "$CLAUDE_LOG" \
+    || fail "delimited positional command was not preserved: $(cat "$CLAUDE_LOG")"
+if grep -q '^ARGS=.*-- mcp list$' "$CLAUDE_LOG"; then
+    fail "launcher delimiter leaked into Claude arguments: $(cat "$CLAUDE_LOG")"
+fi
+
 # A run that fails required lane preflight does not replace the selection.
 run_fails pclaude --lane example-1 team003 --print hello
 [[ "$(cat "$LAST_PROFILE")" == team-002 ]] \

@@ -2703,7 +2703,10 @@ while [[ $# -gt 0 ]]; do
     --no-lane) no_lane=true; shift ;;
     -h|--help)
       cat <<'EOF'
-Usage: claude-profile {list|login|status|run} [PROFILE] [CLAUDE_ARGS...]
+Usage: claude-profile list
+       claude-profile {login|status} PROFILE [ARGS...]
+       claude-profile run [PROFILE] [CLAUDE_ARGS...]
+       claude-profile run -- CLAUDE_ARGS...
        pclaude [PROFILE] [CLAUDE_ARGS...]
        lclaude [PROFILE] [CLAUDE_ARGS...]
 
@@ -2985,13 +2988,17 @@ fi
 # only as `pclaude run run`, which is what the verb being optional means: the
 # verb, where it is typed, is the verb. Ambiguity is decided in the one
 # direction an operator can undo.
-action="${1:-list}"
+if [[ $# -eq 0 && "${WORKBENCHES_CLAUDE_DEFAULT_RUN:-}" == 1 ]]; then
+  action=run
+else
+  action="${1:-list}"
+fi
 case "$action" in
   list|login|status|run)
     [[ $# -eq 0 ]] || shift ;;
   -*)
     echo "pclaude: '$action' is an option, not an action or a profile." >&2
-    echo "Usage: claude-profile {list|login|status|run} PROFILE [CLAUDE_ARGS...]" >&2
+    echo "Usage: claude-profile {login|status} PROFILE [ARGS...] | run [PROFILE] [CLAUDE_ARGS...] | list" >&2
     echo "       pclaude PROFILE [CLAUDE_ARGS...]   (leading options: --lane, --dir, --no-lane)" >&2
     exit 2 ;;
   *)
@@ -3021,7 +3028,14 @@ case "$action" in
     ;;
   login|status|run)
     remembered_profile=false
-    if [[ "$action" == run && ( $# -eq 0 || "${1:-}" == -* ) ]]; then
+    if [[ "$action" == run && "${1:-}" == -- ]]; then
+      # `run -- ...` is the unambiguous omitted-profile form for positional
+      # Claude subcommands.  The delimiter is launcher syntax and is not
+      # forwarded to Claude.
+      shift
+      profile="$(read_last_profile)" || exit $?
+      remembered_profile=true
+    elif [[ "$action" == run && ( $# -eq 0 || "${1:-}" == -* ) ]]; then
       # An option belongs to Claude, not to profile selection.  Keep the
       # complete remaining argv intact while choosing the remembered profile.
       profile="$(read_last_profile)" || exit $?
@@ -3437,5 +3451,5 @@ case "$action" in
         ;;
     esac
     ;;
-  *) echo "Usage: claude-profile {list|login|status|run} [PROFILE]" >&2; exit 2 ;;
+  *) echo "Usage: claude-profile list | {login|status} PROFILE | run [PROFILE] [CLAUDE_ARGS...]" >&2; exit 2 ;;
 esac

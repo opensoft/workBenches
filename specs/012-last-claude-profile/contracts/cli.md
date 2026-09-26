@@ -26,10 +26,13 @@ pclaude list
 pclaude login PROFILE [ARGS...]
 pclaude status PROFILE [ARGS...]
 pclaude run [PROFILE] [CLAUDE_ARGS...]
+pclaude run -- CLAUDE_ARGS...
 ```
 
 - `list`, `login`, and `status` never change remembered selection.
 - `run` may omit `PROFILE`; other profile-requiring actions may not.
+- Use `run --` when an omitted profile is followed by a positional Claude
+  subcommand; this keeps invalid explicit profile names fail-closed.
 - Explicit profiles always override remembered selection.
 
 ## Error contract

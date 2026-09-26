@@ -176,6 +176,9 @@ everything meant for Claude itself passes through untouched.
 
 The launcher records the resolved canonical profile name for each accepted
 `run` in `${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}/.last-profile`.
+For positional Claude subcommands with the profile omitted, use
+`pclaude run -- <subcommand> ...`; option-shaped Claude arguments can follow
+`run` directly.
 Aliases are never stored, and `list`, `login`, and `status` do not change the
 record. The file contains no credential or email address, is mode `0600`, and
 is replaced atomically. Bare `pclaude` reads it and stays profile-only; bare
