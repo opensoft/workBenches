@@ -61,6 +61,56 @@ remember_profile() {
   fi
 }
 
+# A lane-start handoff is synchronous: on success it execs Claude and does not
+# return until that session exits.  Publish the selected profile immediately
+# before the handoff so concurrent wrappers see it, while retaining enough
+# state to roll back the two documented refusal paths that start no Claude.
+profile_handoff_backup=""
+profile_handoff_had_record=false
+profile_handoff_active=false
+
+begin_profile_handoff() {
+  local profile="$1"
+
+  profile_handoff_backup=""
+  profile_handoff_had_record=false
+  profile_handoff_active=false
+  if [[ -f "$last_profile_file" && ! -L "$last_profile_file" ]]; then
+    profile_handoff_backup="$(mktemp "$base/.last-profile.rollback.XXXXXX")"
+    if ! cp -p "$last_profile_file" "$profile_handoff_backup"; then
+      rm -f "$profile_handoff_backup"
+      profile_handoff_backup=""
+      return 1
+    fi
+    chmod 600 "$profile_handoff_backup"
+    profile_handoff_had_record=true
+  fi
+  if ! remember_profile "$profile"; then
+    [[ -z "$profile_handoff_backup" ]] || rm -f "$profile_handoff_backup"
+    profile_handoff_backup=""
+    return 1
+  fi
+  profile_handoff_active=true
+}
+
+commit_profile_handoff() {
+  [[ "$profile_handoff_active" == true ]] || return 0
+  [[ -z "$profile_handoff_backup" ]] || rm -f "$profile_handoff_backup"
+  profile_handoff_backup=""
+  profile_handoff_active=false
+}
+
+rollback_profile_handoff() {
+  [[ "$profile_handoff_active" == true ]] || return 0
+  if [[ "$profile_handoff_had_record" == true ]]; then
+    mv -f "$profile_handoff_backup" "$last_profile_file"
+  else
+    rm -f "$last_profile_file"
+  fi
+  profile_handoff_backup=""
+  profile_handoff_active=false
+}
+
 # lane-collision-protocol Amendment 8(e), as ruled by A8 Addendum 2 R-A8-5(b).
 # Claude reads THIS launcher's per-profile config dir (every exec below carries
 # CLAUDE_CONFIG_DIR="$config_dir"), so a SessionStart hook installed in
@@ -253,15 +303,20 @@ lane_name_guard_jq='
                       | if $without_legacy == $inner then . else .hooks = $without_legacy end
                     ]
                   elif $legacy_name_guard_present then
-                    [ $entries[]
+                    ($entries
+                      | [ paths(scalars) as $path
+                          | select(
+                              ($path[-1] == "command")
+                              and (getpath($path) == $legacy_name_guard)
+                            )
+                          | $path
+                        ] as $legacy_paths
+                      | setpath($legacy_paths[0]; $name_guard)
+                    ) as $migrated_once
+                    | [ $migrated_once[]
                       | (.hooks // []) as $inner
-                      | ($inner | map(
-                          if .command == $legacy_name_guard
-                          then .command = $name_guard
-                          else .
-                          end
-                        )) as $migrated
-                      | if $migrated == $inner then . else .hooks = $migrated end
+                      | ($inner | map(select(.command != $legacy_name_guard))) as $deduplicated
+                      | if $deduplicated == $inner then . else .hooks = $deduplicated end
                     ]
                   else
                     $entries + [{
@@ -3266,6 +3321,12 @@ case "$action" in
           set +e
           exec 9> >(tee "$lane_defect_capture" >&2)
           lane_defect_tee_pid=$!
+          if ! begin_profile_handoff "$profile"; then
+            exec 9>&-
+            wait "$lane_defect_tee_pid" 2>/dev/null
+            set -e
+            exit 1
+          fi
           CLAUDE_CONFIG_DIR="$config_dir" CLAUDE_BIN="$claude_bin" \
             "${lane_argv[@]}" "$lane" -- "${claude_flags[@]}" "$@" 2>&9
           lane_status=$?
@@ -3417,15 +3478,17 @@ case "$action" in
           # just named — it prints the retire act named for it and stops.
           if [[ "$lane_status" -eq 0 ]] && [[ -n "$lane_defect_line" ]] \
             && ! lane_window_is "$lane"; then
+            rollback_profile_handoff
             echo "pclaude: $lane is not taken in this window — a live fork of its transcript exists; $lane_defect_line" >&2
             exit 1
           fi
           if [[ "$lane_status" -eq 0 ]] \
             || { [[ "$lane_status" -ne 1 && "$lane_status" -ne 2 ]]; }; then
-            remember_profile "$profile"
+            commit_profile_handoff
             exit "$lane_status"
           fi
           if ! lane_is_pane_root && lane_window_is "$lane"; then
+            rollback_profile_handoff
             exit "$lane_status"
           fi
           # lane-start's own refusal is already on the terminal: it is never
@@ -3441,6 +3504,7 @@ case "$action" in
           # nested `pclaude` re-select the very lane lane-start just refused.
           unset WORKBENCHES_CLAUDE_LANE WORKBENCHES_CLAUDE_LANE_SOURCE \
                 WORKBENCHES_CLAUDE_LANE_DIR CLAUDE_LANE CLAUDE_LANE_DIR
+          commit_profile_handoff
         fi
         # The no-lane path, and a documented lane-start refusal that safely
         # falls back to bare Claude, persist immediately before Claude itself

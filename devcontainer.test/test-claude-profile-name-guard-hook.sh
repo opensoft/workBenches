@@ -50,7 +50,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=31
+EXPECTED_SCENARIOS=32
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -340,6 +340,25 @@ run_launcher
     || fail "dual-form migration did not leave exactly one canonical command ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
 [[ "$(jq -r '[.hooks.UserPromptSubmit[]? | select(.note == "mixed legacy") | .hooks[]? | select(.command == "foreign-beside-legacy" and .custom == "keep-me")] | length' "$SETTINGS")" -eq 1 ]] \
     || fail "dual-form migration lost grouped foreign metadata ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+
+# Multiple legacy occurrences with no canonical entry collapse to one command.
+# The first managed hook supplies its metadata; foreign hooks remain grouped.
+printf '%s\n' '{}' > "$SETTINGS"
+jq --arg old "$LEGACY_SNIPPET" '.hooks.UserPromptSubmit = [{
+      note: "duplicate legacy",
+      hooks: [
+        {type: "command", command: $old, timeout: 51, custom: "first"},
+        {type: "command", command: "foreign-between"},
+        {type: "command", command: $old, timeout: 52, custom: "second"}
+      ]
+    }]' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+run_launcher
+[[ "$(legacy_guard_count)" -eq 0 && "$(guard_count)" -eq 1 ]] \
+    || fail "duplicate legacy migration did not leave exactly one canonical command ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(entry_with_snippet | jq -r --arg c "$SNIPPET" '.hooks[] | select(.command == $c) | [.timeout,.custom] | @tsv')" == $'51\tfirst' ]] \
+    || fail "duplicate legacy migration did not preserve the first managed hook metadata"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[]? | .hooks[]? | select(.command == "foreign-between")] | length' "$SETTINGS")" -eq 1 ]] \
+    || fail "duplicate legacy migration lost the grouped foreign hook"; assertion
 
 # 6c. The installed command itself is mode-aware: profile-only returns without
 # consulting the lane guard, while lane-aware execution invokes it.

@@ -6,6 +6,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+CLAUDE_PROFILE_SOURCE="${1:-$REPO_ROOT/base-image/files/claude-profile}"
+PCLAUDE_SOURCE="${2:-$REPO_ROOT/base-image/files/pclaude}"
+LCLAUDE_SOURCE="${3:-$REPO_ROOT/base-image/files/lclaude}"
 
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
@@ -39,9 +42,9 @@ printf '%s\n' '{"name":"team-002","family":"testing","email":"two@example.invali
 printf '%s\n' '{"name":"team-003","family":"testing","email":"three@example.invalid","aliases":["team003"]}' \
     > "$PROFILE_BASE/profiles/opensoft/team/team-003/.profile.json"
 
-ln -s "$REPO_ROOT/base-image/files/claude-profile" "$FAKE_BIN/claude-profile"
-ln -s "$REPO_ROOT/base-image/files/pclaude" "$FAKE_BIN/pclaude"
-ln -s "$REPO_ROOT/base-image/files/lclaude" "$FAKE_BIN/lclaude"
+ln -s "$CLAUDE_PROFILE_SOURCE" "$FAKE_BIN/claude-profile"
+ln -s "$PCLAUDE_SOURCE" "$FAKE_BIN/pclaude"
+ln -s "$LCLAUDE_SOURCE" "$FAKE_BIN/lclaude"
 
 cat > "$FAKE_BIN/claude" <<'EOF'
 #!/usr/bin/env bash
@@ -175,8 +178,10 @@ rm -f "$FAKE_BIN/lane-start" "$FAKE_BIN/lanes-edit.sh"
 
 # A lane-start refusal in an existing lane window starts no Claude and must not
 # replace the remembered profile.
-cat > "$FAKE_BIN/lane-start" <<'EOF'
+HANDOFF_PROFILE_LOG="$TEST_ROOT/handoff-profile.log"
+cat > "$FAKE_BIN/lane-start" <<EOF
 #!/usr/bin/env bash
+cat "$LAST_PROFILE" > "$HANDOFF_PROFILE_LOG"
 exit 1
 EOF
 cat > "$FAKE_BIN/lanes-edit.sh" <<'EOF'
@@ -202,6 +207,8 @@ chmod +x "$FAKE_BIN/lane-start" "$FAKE_BIN/lanes-edit.sh" "$FAKE_BIN/tmux"
 run_fails TMUX=fake lclaude --lane example-1 team003 --print hello
 [[ "$(cat "$LAST_PROFILE")" == team-002 ]] \
     || fail "lane-start refusal changed the remembered profile"
+[[ "$(cat "$HANDOFF_PROFILE_LOG")" == team-003 ]] \
+    || fail "lane-start did not observe the new profile at handoff time"
 [[ ! -s "$CLAUDE_LOG" ]] \
     || fail "lane-start refusal unexpectedly launched Claude: $(cat "$CLAUDE_LOG")"
 rm -f "$FAKE_BIN/lane-start" "$FAKE_BIN/lanes-edit.sh" "$FAKE_BIN/tmux"

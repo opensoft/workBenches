@@ -110,7 +110,7 @@ test_tool "lclaude lane default" "/test/test-claude-profile-lane-default.sh /usr
 test_tool "Claude profile --lane hand-off" "/test/test-claude-profile-lane-start.sh /usr/local/bin/claude-profile"
 test_tool "lclaude --lane hand-off" "/test/test-claude-profile-lane-start.sh /usr/local/bin/lclaude"
 test_tool "Claude profile native binary selection" "/test/test-claude-profile-binary-selection.sh /usr/local/bin/claude-profile"
-test_tool "Claude profile remembered selection" "/test/test-claude-profile-last-profile.sh"
+test_tool "Claude profile remembered selection" "/test/test-claude-profile-last-profile.sh /usr/local/bin/claude-profile /usr/local/bin/pclaude /usr/local/bin/lclaude"
 test_tool "Claude profile SessionStart hook (Amendment 8(e))" "/test/test-claude-profile-session-start-hook.sh /usr/local/bin/claude-profile"
 # lane-collision-protocol Amendment 12 adoption act 3: the launcher ensures
 # the UserPromptSubmit NAME GUARD beside the SessionStart entry above, "the
