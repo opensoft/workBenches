@@ -154,6 +154,39 @@ run_fails lclaude --lane example-1 team003 --print hello
     || fail "late lane preflight refusal changed the remembered profile"
 rm -f "$FAKE_BIN/lane-start" "$FAKE_BIN/lanes-edit.sh"
 
+# A lane-start refusal in an existing lane window starts no Claude and must not
+# replace the remembered profile.
+cat > "$FAKE_BIN/lane-start" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+cat > "$FAKE_BIN/lanes-edit.sh" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+  session-start|guard) exit 0 ;;
+  lane-dir) exit 8 ;;
+  *) exit 8 ;;
+esac
+EOF
+cat > "$FAKE_BIN/tmux" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *'#W'*) printf 'example-1\n' ;;
+  *'#{pane_pid}'*) printf '999999\n' ;;
+  *'#S:#I'*) printf 'fake:0\n' ;;
+  *'#{window_id}'*) printf '@1\n' ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$FAKE_BIN/lane-start" "$FAKE_BIN/lanes-edit.sh" "$FAKE_BIN/tmux"
+: > "$CLAUDE_LOG"
+run_fails TMUX=fake lclaude --lane example-1 team003 --print hello
+[[ "$(cat "$LAST_PROFILE")" == team-002 ]] \
+    || fail "lane-start refusal changed the remembered profile"
+[[ ! -s "$CLAUDE_LOG" ]] \
+    || fail "lane-start refusal unexpectedly launched Claude: $(cat "$CLAUDE_LOG")"
+rm -f "$FAKE_BIN/lane-start" "$FAKE_BIN/lanes-edit.sh" "$FAKE_BIN/tmux"
+
 # Bare pclaude reuses the record and remains profile-only.
 : > "$CLAUDE_LOG"
 run_ok pclaude

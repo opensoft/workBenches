@@ -50,7 +50,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=30
+EXPECTED_SCENARIOS=31
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -324,6 +324,22 @@ run_launcher
     || fail "legacy-only migration lost outer metadata"; assertion
 [[ "$(entry_with_snippet | jq -r --arg c "$SNIPPET" '.hooks[] | select(.command == $c) | [.timeout,.custom] | @tsv')" == $'41\tkeep-me' ]] \
     || fail "legacy-only migration lost nested metadata ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+
+# If both forms already exist, keep the canonical entry and remove only the
+# stale managed hook. The grouped foreign hook and outer metadata stay put.
+printf '%s\n' '{}' > "$SETTINGS"
+jq --arg old "$LEGACY_SNIPPET" --arg new "$SNIPPET" '.hooks.UserPromptSubmit = [
+      {note: "canonical", hooks: [{type: "command", command: $new, timeout: 7}]},
+      {note: "mixed legacy", hooks: [
+        {type: "command", command: $old, timeout: 41},
+        {type: "command", command: "foreign-beside-legacy", custom: "keep-me"}
+      ]}
+    ]' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+run_launcher
+[[ "$(legacy_guard_count)" -eq 0 && "$(guard_count)" -eq 1 ]] \
+    || fail "dual-form migration did not leave exactly one canonical command ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[]? | select(.note == "mixed legacy") | .hooks[]? | select(.command == "foreign-beside-legacy" and .custom == "keep-me")] | length' "$SETTINGS")" -eq 1 ]] \
+    || fail "dual-form migration lost grouped foreign metadata ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
 
 # 6c. The installed command itself is mode-aware: profile-only returns without
 # consulting the lane guard, while lane-aware execution invokes it.

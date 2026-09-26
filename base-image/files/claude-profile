@@ -246,20 +246,27 @@ lane_name_guard_jq='
           | .hooks.UserPromptSubmit = (
               (.hooks.UserPromptSubmit // []) as $entries
               | if $name_guard_ok then
-                  [ $entries[]
-                    | (.hooks // []) as $inner
-                    | ($inner | map(
-                        if .command == $legacy_name_guard
-                        then .command = $name_guard
-                        else .
-                        end
-                      )) as $migrated
-                    | if $migrated == $inner then . else .hooks = $migrated end
-                  ] as $migrated_entries
-                  | if ($name_guard_present or $legacy_name_guard_present) then $migrated_entries
-                  else $migrated_entries + [{
-                    hooks: [{type: "command", command: $name_guard, timeout: $name_guard_timeout}]
-                  }]
+                  if $name_guard_present then
+                    [ $entries[]
+                      | (.hooks // []) as $inner
+                      | ($inner | map(select(.command != $legacy_name_guard))) as $without_legacy
+                      | if $without_legacy == $inner then . else .hooks = $without_legacy end
+                    ]
+                  elif $legacy_name_guard_present then
+                    [ $entries[]
+                      | (.hooks // []) as $inner
+                      | ($inner | map(
+                          if .command == $legacy_name_guard
+                          then .command = $name_guard
+                          else .
+                          end
+                        )) as $migrated
+                      | if $migrated == $inner then . else .hooks = $migrated end
+                    ]
+                  else
+                    $entries + [{
+                      hooks: [{type: "command", command: $name_guard, timeout: $name_guard_timeout}]
+                    }]
                   end
                 else
                   [ $entries[]
@@ -3157,11 +3164,6 @@ case "$action" in
         # came from, the window's address, and the directory that is actually
         # being passed rather than the one that was merely derived.
         export_lane_identity
-        # Remember only after every launcher-side lane decision and directory
-        # preflight has completed.  Interactive parent launches re-exec here in
-        # their tmux child, so a failed picker, directory refusal, or session
-        # creation cannot replace the prior selection.
-        remember_profile "$profile"
         if [[ -n "${lane:-}" ]]; then
           # LANE-START IS RUN, NEVER EXEC'D — A8 Addendum 2 R-A8-3, widened to
           # every lane source by Amendment 11(3).
@@ -3405,8 +3407,11 @@ case "$action" in
             exit 1
           fi
           if [[ "$lane_status" -eq 0 ]] \
-            || { [[ "$lane_status" -ne 1 && "$lane_status" -ne 2 ]]; } \
-            || { ! lane_is_pane_root && lane_window_is "$lane"; }; then
+            || { [[ "$lane_status" -ne 1 && "$lane_status" -ne 2 ]]; }; then
+            remember_profile "$profile"
+            exit "$lane_status"
+          fi
+          if ! lane_is_pane_root && lane_window_is "$lane"; then
             exit "$lane_status"
           fi
           # lane-start's own refusal is already on the terminal: it is never
@@ -3423,6 +3428,11 @@ case "$action" in
           unset WORKBENCHES_CLAUDE_LANE WORKBENCHES_CLAUDE_LANE_SOURCE \
                 WORKBENCHES_CLAUDE_LANE_DIR CLAUDE_LANE CLAUDE_LANE_DIR
         fi
+        # The no-lane path, and a documented lane-start refusal that safely
+        # falls back to bare Claude, persist immediately before Claude itself
+        # is execed.  Successful lane handoffs persist in their return path
+        # above; refusals that start nothing leave the prior selection intact.
+        remember_profile "$profile"
         CLAUDE_CONFIG_DIR="$config_dir" exec "$claude_bin" "${claude_flags[@]}" "$@"
         ;;
     esac
