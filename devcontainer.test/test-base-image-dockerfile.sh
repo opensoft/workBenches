@@ -216,8 +216,8 @@ grep -Fq 'ldd_output="$(ldd "$browser_path")"' "$sys_dockerfile" || {
     exit 1
 }
 
-grep -Fq "ldd \"\$browser_path\"" "$sys_dockerfile" || {
-    echo "FAIL: sys-bench-base does not verify Chromium's shared-library closure during the image build" >&2
+grep -Fq 'test -z "$(printf '\''%s\n'\'' "$ldd_output" | awk '\''/not found/{print}'\'')"' "$sys_dockerfile" || {
+    echo "FAIL: sys-bench-base does not reject unresolved Chromium shared libraries" >&2
     exit 1
 }
 
