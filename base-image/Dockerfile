@@ -7,6 +7,12 @@
 
 FROM ubuntu:24.04
 
+# Layer 3 personalizes the existing UID/GID 1000 identity as `brett`. The
+# upstream Ubuntu image reserves that identity for `ubuntu`, so free it here.
+RUN set -eux; \
+    if getent passwd ubuntu >/dev/null; then userdel --remove ubuntu; fi; \
+    if getent group ubuntu >/dev/null; then groupdel ubuntu; fi
+
 # Container version labels
 LABEL layer="0"
 LABEL layer.name="workbench-base"
@@ -157,7 +163,7 @@ ARG BUN_VERSION=1.3.14
 ENV BUN_INSTALL=/opt/bun
 RUN curl -fsSL https://bun.sh/install | BUN_VERSION=${BUN_VERSION} bash \
     && chmod -R a+rx /opt/bun
-ENV PATH="/opt/bun/bin:${PATH}"
+ENV PATH="/opt/grok/bin:/opt/minimax-code/bin:/opt/bun/bin:${PATH}"
 
 # ========================================
 # AI CLI TOOLS (installed as root to system paths)
@@ -165,7 +171,7 @@ ENV PATH="/opt/bun/bin:${PATH}"
 
 # Copy and run AI CLI installation script
 COPY install-ai-clis.sh ai-cli-contract.sh ai-cli-install-helpers.sh /tmp/
-ARG AI_CLI_REFRESH=2026-09-03
+ARG AI_CLI_REFRESH=2026-09-22
 ARG HERDR_INSTALL_SHA256=""
 RUN echo "AI CLI refresh marker: ${AI_CLI_REFRESH}"
 RUN --mount=type=cache,target=/root/.cache/uv \

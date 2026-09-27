@@ -6,7 +6,7 @@
 # All npm globals go to /usr/local (default root prefix).
 # Bun is expected at /opt/bun (set via BUN_INSTALL env in Dockerfile).
 # OpenCode plugin goes to /opt/opencode.
-# Claude Code goes to /usr/local/bin.
+# npm-installed CLIs use the system npm global-bin path.
 #
 # Installs:
 #   - Herdr terminal workspace manager
@@ -17,7 +17,7 @@
 #   - Auth plugins (opencode-gemini-auth, opencode-openai-codex-auth)
 #   - Other AI CLIs (Codex, Gemini, Copilot, etc.)
 #   - Google Antigravity CLI (agy), checksum-gated opt-in
-#   - Claude Code (via native installer, not npm)
+#   - Claude Code (current npm stable release)
 #   - Kimi Code (Moonshot AI, Kimi K3), Qwen Code (Alibaba), Z.AI GLM Coding
 #     Plan helper (chelper), DeepSeek Harness (dsh, developer preview)
 #   - Amp CLI (Sourcegraph), Aider, OpenHands CLI, Cursor CLI (cursor-agent),
@@ -130,48 +130,13 @@ check_system_resources() {
     log_debug "Available disk in /tmp: $(df -h /tmp | tail -1)"
 }
 
-resolve_claude_js_fallback_version() {
-    if [ -n "${CLAUDE_CODE_JS_FALLBACK_VERSION:-}" ]; then
-        printf '%s\n' "$CLAUDE_CODE_JS_FALLBACK_VERSION"
-        return 0
-    fi
-
-    curl --http1.1 -fsSL --retry 2 --connect-timeout 10 --max-time 120 \
-        https://registry.npmjs.org/@anthropic-ai%2fclaude-code \
-        | jq -r '.versions | to_entries[] | select(.value.bin.claude == "cli.js") | .key' \
-        | sort -V \
-        | tail -1
-}
-
-install_claude_js_fallback() {
-    local fallback_version
-
-    fallback_version="$(resolve_claude_js_fallback_version)"
-    if [ -z "$fallback_version" ]; then
-        log_error "Could not resolve a JS-based Claude Code fallback version"
-        return 1
-    fi
-
-    log_info "Installing Claude Code JS fallback ${fallback_version}..."
-    rm -f /usr/local/bin/claude /usr/bin/claude
-    hash -r || true
-    run_with_timeout "$NPM_INSTALL_TIMEOUT" "Claude Code JS fallback npm install" \
-        npm install -g "@anthropic-ai/claude-code@${fallback_version}"
-}
-
 ensure_claude_runnable() {
     if command -v claude >/dev/null 2>&1 && claude --version >/dev/null 2>&1; then
         log_info "Claude Code runnable check passed: $(claude --version)"
         return 0
     fi
 
-    log_error "Claude Code native binary failed runnable check; falling back to JS package"
-    if install_claude_js_fallback && command -v claude >/dev/null 2>&1 && claude --version >/dev/null 2>&1; then
-        log_info "Claude Code fallback runnable check passed: $(claude --version)"
-        return 0
-    fi
-
-    log_error "Claude Code fallback did not produce a runnable claude CLI"
+    log_error "Claude Code package did not produce a runnable claude CLI"
     return 1
 }
 
@@ -201,47 +166,40 @@ else
     log_error "Bun not found in PATH (expected at /opt/bun/bin)"
 fi
 
-log_info "Installing Claude Code CLI (native installer)..."
-# Native installer downloads to $HOME/.claude/downloads/ then runs 'claude install'
-# which places a launcher in ~/.local/bin/. Since we run as root, we need to
-# find the binary and copy it to /usr/local/bin ourselves.
-# Claude installer needs more time for download, use 5 minutes
-run_with_timeout "300" "Claude Code native install" bash -o pipefail -c 'curl -fsSL https://claude.ai/install.sh | bash' || true
-
-# Find the claude binary wherever the installer put it and copy to /usr/local/bin
-CLAUDE_BIN=""
-if [ -f "$HOME/.local/bin/claude" ]; then
-    CLAUDE_BIN="$HOME/.local/bin/claude"
-elif ls $HOME/.claude/downloads/claude-*-linux-* 2>/dev/null; then
-    # Installer downloaded but 'claude install' failed — grab the binary directly
-    CLAUDE_BIN=$(ls -t $HOME/.claude/downloads/claude-*-linux-* 2>/dev/null | head -1)
-fi
-
-if [ -n "$CLAUDE_BIN" ] && [ -f "$CLAUDE_BIN" ]; then
-    cp "$CLAUDE_BIN" /usr/local/bin/claude
-    chmod +x /usr/local/bin/claude
-    log_info "Claude Code installed to /usr/local/bin/claude"
-    # Clean up downloads
-    rm -rf "$HOME/.claude/downloads"
+log_info "Installing Claude Code CLI from the current npm stable release..."
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Claude Code npm install" \
+    npm install --prefer-online -g @anthropic-ai/claude-code@latest; then
+    log_error "Claude Code installation failed (continuing)"
 else
-    log_error "Claude Code binary not found after installation (continuing)"
+    # npm's selective install-script policy blocks Claude Code's native-binary
+    # hook. Run the package hook explicitly after the optional binary package
+    # has been installed so the global launcher is usable.
+    claude_package_root="$(npm root -g)/@anthropic-ai/claude-code"
+    if [ -f "$claude_package_root/install.cjs" ]; then
+        if ! run_with_timeout "$COMMAND_TIMEOUT" "Claude Code native binary setup" \
+            node "$claude_package_root/install.cjs"; then
+            log_error "Claude Code native binary setup failed (continuing)"
+        fi
+    else
+        log_error "Claude Code package install hook is missing (continuing)"
+    fi
 fi
 
 ensure_claude_runnable || true
 
 log_info "Installing OpenAI Codex CLI..."
-if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Codex npm install" npm install -g @openai/codex@latest; then
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Codex npm install" npm install --prefer-online -g @openai/codex@latest; then
     log_error "Codex installation failed (continuing)"
 fi
 
 log_info "Installing Google Gemini CLI..."
-if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Gemini npm install" npm install -g @google/gemini-cli; then
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Gemini npm install" npm install --prefer-online -g @google/gemini-cli; then
     log_error "Gemini CLI installation failed (continuing)"
 fi
 
 log_info "Installing Pi Coding Agent..."
 if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Pi Coding Agent npm install" \
-    npm install -g --ignore-scripts @earendil-works/pi-coding-agent; then
+    npm install --prefer-online -g --ignore-scripts @earendil-works/pi-coding-agent; then
     log_error "Pi Coding Agent installation failed (continuing)"
 fi
 
@@ -290,7 +248,7 @@ else
 fi
 
 log_info "Installing GitHub Copilot CLI..."
-if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "GitHub Copilot npm install" npm install -g @github/copilot; then
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "GitHub Copilot npm install" npm install --prefer-online -g @github/copilot; then
     log_error "GitHub Copilot installation failed (continuing)"
 fi
 
@@ -322,20 +280,20 @@ fi
 
 log_info "Installing Moonshot Kimi Code CLI (Kimi K3)..."
 # Kimi Code: Moonshot AI's terminal coding agent (https://github.com/MoonshotAI/kimi-code)
-if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Kimi Code npm install" npm install -g --allow-scripts="$NPM_NATIVE_ALLOW_SCRIPTS" @moonshot-ai/kimi-code@latest; then
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Kimi Code npm install" npm install --prefer-online -g --allow-scripts="$NPM_NATIVE_ALLOW_SCRIPTS" @moonshot-ai/kimi-code@latest; then
     log_error "Kimi Code installation failed (continuing)"
 fi
 
 log_info "Installing Qwen Code CLI..."
 # Qwen Code: Alibaba's terminal coding agent (https://github.com/QwenLM/qwen-code)
-if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Qwen Code npm install" npm install -g --allow-scripts="$NPM_NATIVE_ALLOW_SCRIPTS" @qwen-code/qwen-code@latest; then
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Qwen Code npm install" npm install --prefer-online -g --allow-scripts="$NPM_NATIVE_ALLOW_SCRIPTS" @qwen-code/qwen-code@latest; then
     log_error "Qwen Code installation failed (continuing)"
 fi
 
 log_info "Installing Z.AI GLM Coding Plan helper (chelper)..."
 # Coding Tool Helper: Z.AI's official wizard for wiring GLM Coding Plan into
 # Claude Code, OpenCode, Crush, and Factory Droid (not a standalone agent).
-if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Z.AI coding-helper npm install" npm install -g @z_ai/coding-helper@latest; then
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Z.AI coding-helper npm install" npm install --prefer-online -g @z_ai/coding-helper@latest; then
     log_error "Z.AI coding-helper installation failed (continuing)"
 fi
 
@@ -344,13 +302,26 @@ log_info "Installing DeepSeek Harness (dsh)..."
 # (https://github.com/deepseek-ai/deepseek-harness). Developer preview as of
 # this writing; not added to required_clis below since it may break between
 # releases.
-if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "DeepSeek Harness npm install" npm install -g --allow-scripts="$NPM_NATIVE_ALLOW_SCRIPTS" @deepseek-ai/dsh@latest; then
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "DeepSeek Harness npm install" npm install --prefer-online -g --allow-scripts="$NPM_NATIVE_ALLOW_SCRIPTS" @deepseek-ai/dsh@latest; then
     log_error "DeepSeek Harness installation failed (continuing)"
 fi
 
 log_info "Installing Amp CLI (Sourcegraph)..."
-if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Amp CLI npm install" npm install -g @ampcode/cli@latest; then
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Amp CLI npm install" npm install --prefer-online -g @ampcode/cli@latest; then
     log_error "Amp CLI installation failed (continuing)"
+else
+    # The package's postinstall can run before its optional platform package is
+    # available, leaving a placeholder launcher behind. Re-run it after npm has
+    # finished resolving optional dependencies so the native binary is linked.
+    amp_package_root="$(npm root -g)/@ampcode/cli"
+    if [ -f "$amp_package_root/install.cjs" ]; then
+        if ! run_with_timeout "$COMMAND_TIMEOUT" "Amp CLI native binary setup" \
+            node "$amp_package_root/install.cjs"; then
+            log_error "Amp CLI native binary setup failed (continuing)"
+        fi
+    else
+        log_error "Amp CLI package install hook is missing (continuing)"
+    fi
 fi
 
 log_info "Installing Aider..."
@@ -397,18 +368,45 @@ else
 fi
 
 log_info "Installing MiniMax Code CLI (mcode)..."
-# MiniMax's official terminal coding agent. Its installer targets a per-user
-# shell rc, so copy the resulting binary into /usr/local/bin for every user.
-if run_with_timeout "$COMMAND_TIMEOUT" "MiniMax Code CLI install" bash -o pipefail -c 'curl -fsSL https://filecdn.minimax.chat/public/install.sh | bash'; then
-    if [ -f "$HOME/.minimax-code/bin/mcode" ] && [ ! -e /usr/local/bin/mcode ]; then
-        cp "$HOME/.minimax-code/bin/mcode" /usr/local/bin/mcode
-        chmod +x /usr/local/bin/mcode
+# Keep MiniMax's self-relative launcher, current-release pointer, and runtime
+# together in one shared location instead of copying only its launcher script.
+if run_with_timeout "$COMMAND_TIMEOUT" "MiniMax Code CLI install" \
+    bash -o pipefail -c 'curl -fsSL https://filecdn.minimax.chat/public/install.sh | MCODE_INSTALL_DIR=/opt/minimax-code MCODE_NO_MODIFY_PATH=1 bash'; then
+    missing_mcode_launcher=false
+    for mcode_command in mcode mcode-tools; do
+        mcode_launcher="/opt/minimax-code/bin/$mcode_command"
+        if [ ! -x "$mcode_launcher" ]; then
+            log_error "MiniMax Code CLI launcher is missing: $mcode_launcher"
+            missing_mcode_launcher=true
+        fi
+    done
+    if [ "$missing_mcode_launcher" = true ]; then
+        exit 1
     fi
-    if command -v mcode >/dev/null 2>&1; then
-        log_info "MiniMax Code CLI installed to $(command -v mcode)"
+
+    # Upstream creates root-owned files with private modes; all bench users
+    # need read/execute access to the shared, immutable image installation.
+    chmod -R a+rX /opt/minimax-code
+
+    ln -sfn /opt/minimax-code/bin/mcode /usr/local/bin/mcode
+    ln -sfn /opt/minimax-code/bin/mcode-tools /usr/local/bin/mcode-tools
+
+    # MCode records active process IDs below the installation root even for
+    # read-only commands such as --version. Keep the image payload immutable,
+    # but provide a sticky shared runtime directory so arbitrary bench UIDs can
+    # create and remove only their own activity records.
+    install -d -m 1777 /opt/minimax-code/.mcode-active
+
+    if command -v mcode >/dev/null 2>&1 \
+        && command -v mcode-tools >/dev/null 2>&1 \
+        && mcode --version >/dev/null 2>&1 \
+        && mcode-tools --version >/dev/null 2>&1; then
+        log_info "MiniMax Code CLI installed to $(command -v mcode): $(mcode --version)"
+        log_info "MiniMax Code tools installed to $(command -v mcode-tools): $(mcode-tools --version)"
     else
-        log_error "MiniMax Code CLI binary not found on PATH after installation (continuing)"
+        log_error "MiniMax Code CLI is not runnable after installation (continuing)"
     fi
+
 else
     log_error "MiniMax Code CLI installation failed (continuing)"
 fi
@@ -673,7 +671,7 @@ fi
 
 log_info "Installing Letta Code..."
 # Letta Code: memory-first coding agent (https://github.com/letta-ai/letta-code)
-if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Letta Code npm install" npm install -g @letta-ai/letta-code@latest; then
+if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Letta Code npm install" npm install --prefer-online -g @letta-ai/letta-code@latest; then
     log_error "Letta Code installation failed (continuing)"
 fi
 
@@ -720,13 +718,29 @@ if command -v cursor-agent >/dev/null 2>&1 && ! cursor-agent --version >/dev/nul
     missing_clis+=("cursor-agent(runnable)")
 fi
 
+if command -v grok >/dev/null 2>&1 && ! grok --version >/dev/null 2>&1; then
+    missing_clis+=("grok(runnable)")
+fi
+
+if command -v mcode >/dev/null 2>&1 && ! mcode --version >/dev/null 2>&1; then
+    missing_clis+=("mcode(runnable)")
+fi
+
+if command -v mcode-tools >/dev/null 2>&1 && ! mcode-tools --version >/dev/null 2>&1; then
+    missing_clis+=("mcode-tools(runnable)")
+fi
+
+if command -v amp >/dev/null 2>&1 && ! amp --version >/dev/null 2>&1; then
+    missing_clis+=("amp(runnable)")
+fi
+
 if [ "${#missing_clis[@]}" -gt 0 ]; then
     log_error "Missing required AI CLIs after installation: ${missing_clis[*]}"
     exit 1
 fi
 
 log_info "Installed tools:"
-log_info "  - Claude Code (claude) [native installer]"
+log_info "  - Claude Code (claude) [npm stable package]"
 log_info "  - OpenAI Codex (codex)"
 log_info "  - Google Gemini (gemini)"
 log_info "  - Pi Coding Agent (pi)"
@@ -763,10 +777,10 @@ log_info "  - Amp CLI (amp)"
 log_info "  - Aider (aider)"
 log_info "  - OpenHands CLI (openhands)"
 log_info "  - Cursor CLI (cursor-agent)"
-if command -v mcode >/dev/null 2>&1 || [ -x "$HOME/.minimax-code/bin/mcode" ]; then
-    log_info "  - MiniMax Code (mcode)"
+if command -v mcode >/dev/null 2>&1 && command -v mcode-tools >/dev/null 2>&1; then
+    log_info "  - MiniMax Code (mcode, mcode-tools)"
 else
-    log_info "  - MiniMax Code (mcode) [install skipped or failed]"
+    log_info "  - MiniMax Code (mcode, mcode-tools) [install skipped or failed]"
 fi
 log_info ""
 log_info "Agent files (openagent.md, opencoder.md) provided via Dockerfile COPY"

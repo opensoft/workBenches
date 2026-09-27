@@ -12,12 +12,28 @@ for installer in \
     grep -Fq 'Z.AI Coding Plan helper (chelper)' <<<"$summary_block"
     grep -Fq '[install skipped or failed]' <<<"$summary_block"
 
-    minimax_summary_block="$(sed -n '/^if command -v mcode /,/^fi$/p' "$installer")"
-    grep -Fq 'command -v mcode' <<<"$minimax_summary_block"
-    grep -Fq "\$HOME/.minimax-code/bin/mcode" <<<"$minimax_summary_block"
-    grep -Fq 'MiniMax Code (mcode)' <<<"$minimax_summary_block"
-    grep -Fq '[install skipped or failed]' <<<"$minimax_summary_block"
 done
+
+shared_installer="$repo_root/base-image/install-ai-clis.sh"
+shared_minimax_summary="$(sed -n '/^if command -v mcode /,/^fi$/p' "$shared_installer" | tail -n 6)"
+grep -Fq 'command -v mcode' <<<"$shared_minimax_summary"
+grep -Fq 'command -v mcode-tools' <<<"$shared_minimax_summary"
+grep -Fq 'MiniMax Code (mcode, mcode-tools)' <<<"$shared_minimax_summary"
+grep -Fq '[install skipped or failed]' <<<"$shared_minimax_summary"
+if grep -Fq '$HOME/.minimax-code/bin/mcode' <<<"$shared_minimax_summary"; then
+    echo "shared installer summary still accepts the legacy user-local MiniMax path" >&2
+    exit 1
+fi
+
+developer_installer="$repo_root/devBenches/base-image/install-ai-clis.sh"
+developer_minimax_summary="$(sed -n '/^if command -v mcode /,/^fi$/p' "$developer_installer" | tail -n 5)"
+grep -Fq 'command -v mcode' <<<"$developer_minimax_summary"
+grep -Fq '$HOME/.minimax-code/bin/mcode' <<<"$developer_minimax_summary"
+grep -Fq 'MiniMax Code (mcode)' <<<"$developer_minimax_summary"
+grep -Fq '[install skipped or failed]' <<<"$developer_minimax_summary"
+
+grep -Fq 'missing_clis+=("mcode-tools(runnable)")' "$shared_installer"
+grep -Fq 'mcode-tools --version' "$shared_installer"
 
 cursor_install_block="$(sed -n '/^log_info "Installing Cursor CLI..."/,/^log_info "Installing MiniMax Code CLI/p' "$repo_root/base-image/install-ai-clis.sh")"
 grep -Fq 'publish_cursor_bundle "$cursor_launcher"' <<<"$cursor_install_block"
