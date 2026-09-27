@@ -54,7 +54,8 @@ RUN set -eux; \
     playwright install --with-deps chromium; \
     browser_path="$(find "$PLAYWRIGHT_BROWSERS_PATH" -path '*/chrome-linux*/chrome' -type f -print -quit)"; \
     test -n "$browser_path"; \
-    test -z "$(ldd "$browser_path" | awk '/not found/{print}')"
+    ldd_output="$(ldd "$browser_path")"; \
+    test -z "$(printf '%s\n' "$ldd_output" | awk '/not found/{print}')"
 
 # ========================================
 # ADMIN/DEVOPS TOOLS

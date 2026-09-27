@@ -211,6 +211,11 @@ grep -Fq 'playwright install --with-deps chromium' "$sys_dockerfile" || {
     exit 1
 }
 
+grep -Fq 'ldd_output="$(ldd "$browser_path")"' "$sys_dockerfile" || {
+    echo "FAIL: sys-bench-base does not fail closed when ldd cannot inspect Chromium" >&2
+    exit 1
+}
+
 grep -Fq "ldd \"\$browser_path\"" "$sys_dockerfile" || {
     echo "FAIL: sys-bench-base does not verify Chromium's shared-library closure during the image build" >&2
     exit 1
