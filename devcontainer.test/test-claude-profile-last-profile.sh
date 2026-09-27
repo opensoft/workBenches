@@ -102,15 +102,28 @@ run_ok pclaude team002 --print hello
 [[ "$(cat "$LAST_PROFILE")" == team-002 ]] \
     || fail "alias did not persist canonical profile: $(cat "$LAST_PROFILE")"
 
-# A writer killed after publishing its lock cannot permanently block future
-# profile selections. The next writer removes the unchanged dead-owner lock.
-printf '%s\n' 999999 > "$PROFILE_BASE/.last-profile.lock"
-chmod 600 "$PROFILE_BASE/.last-profile.lock"
-run_ok pclaude team003 --print stale-lock-recovery
+# A writer killed while holding the directory advisory lock cannot permanently
+# block future profile selections; the kernel releases the lock with the fd.
+lock_ready="$TEST_ROOT/profile-lock-ready"
+(
+    exec 9<"$PROFILE_BASE"
+    flock -x 9
+    : > "$lock_ready"
+    kill -STOP "$BASHPID"
+) &
+lock_holder_pid=$!
+for _ in $(seq 1 100); do
+    [[ -e "$lock_ready" ]] && break
+    sleep 0.01
+done
+[[ -e "$lock_ready" ]] || fail "test lock holder did not acquire the directory lock"
+kill -KILL "$lock_holder_pid"
+wait "$lock_holder_pid" 2>/dev/null || true
+run_ok pclaude team003 --print crash-released-lock
 [[ "$(cat "$LAST_PROFILE")" == team-003 ]] \
-    || fail "stale lock recovery did not persist the new profile"
+    || fail "crash-released lock did not allow the new profile"
 [[ ! -e "$PROFILE_BASE/.last-profile.lock" ]] \
-    || fail "stale lock remained after recovery"
+    || fail "launcher created a crash-persistent lock file"
 run_ok pclaude team002 --print restore-selection
 last_profile_mode="$(stat -c '%a' "$LAST_PROFILE" 2>/dev/null \
     || stat -f '%Lp' "$LAST_PROFILE" 2>/dev/null)"

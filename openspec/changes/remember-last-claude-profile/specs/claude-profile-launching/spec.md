@@ -78,5 +78,5 @@ The remembered-profile record SHALL contain only the canonical profile name, SHA
 - **THEN** the launcher exits with an error and does not launch Claude
 
 #### Scenario: Previous writer terminated while holding the lock
-- **WHEN** the private lock records a process that no longer exists
-- **THEN** the next writer safely removes that unchanged stale lock and records the new canonical profile
+- **WHEN** a writer terminates abruptly while holding the profile-state directory advisory lock
+- **THEN** the kernel releases the lock and the next writer records the new canonical profile without deleting a lock pathname

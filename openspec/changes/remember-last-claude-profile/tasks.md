@@ -20,4 +20,5 @@
 ## 4. Review hardening
 
 - [x] 4.1 Treat an absent profile home as ordinary missing remembered state without creating it during a bare launch.
-- [x] 4.2 Replace the crash-persistent lock directory with an owned atomic PID lock file and recover a lock whose owner no longer exists.
+- [x] 4.2 Add crash recovery to the serialized profile-state update path.
+- [x] 4.3 Replace PID-file reclamation with a kernel-released directory advisory lock and cover abrupt holder termination.

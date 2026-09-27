@@ -4,8 +4,8 @@ set -euo pipefail
 manifest="${CLAUDE_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/claude-profiles.json}"
 base="${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}"
 last_profile_file="$base/.last-profile"
-last_profile_lock_file="$base/.last-profile.lock"
 command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
+command -v flock >/dev/null 2>&1 || { echo "flock is required." >&2; exit 1; }
 
 path_owner_uid() {
   local path="$1"
@@ -29,73 +29,31 @@ validate_last_profile_directory() {
 }
 
 profile_state_lock_active=false
-profile_state_lock_identity=""
+profile_state_lock_fd=""
 
 acquire_profile_state_lock() {
-  local attempt=0 candidate current_identity lock_pid owner mode
-
   mkdir -p "$base"
   validate_last_profile_directory || return $?
-  while true; do
-    candidate="$(mktemp "$base/.last-profile.lock.XXXXXX.tmp")"
-    chmod 600 "$candidate"
-    printf '%s\n' "$$" > "$candidate"
-    if ln "$candidate" "$last_profile_lock_file" 2>/dev/null; then
-      profile_state_lock_identity="$(profile_file_identity "$last_profile_lock_file")"
-      rm -f "$candidate"
-      profile_state_lock_active=true
-      return 0
-    fi
-    rm -f "$candidate"
-
-    if [[ -L "$last_profile_lock_file" || ! -f "$last_profile_lock_file" ]]; then
-      echo "pclaude: unsafe last-profile state lock: $last_profile_lock_file" >&2
-      return 2
-    fi
-    owner="$(path_owner_uid "$last_profile_lock_file" || true)"
-    if [[ -z "$owner" || "$owner" != "$(id -u)" ]]; then
-      echo "pclaude: last-profile state lock is not owned by the current user: $last_profile_lock_file" >&2
-      return 2
-    fi
-    mode="$(stat -c '%a' "$last_profile_lock_file" 2>/dev/null \
-      || stat -f '%Lp' "$last_profile_lock_file" 2>/dev/null \
-      || true)"
-    if [[ "$mode" != 600 ]]; then
-      echo "pclaude: last-profile state lock must have mode 0600: $last_profile_lock_file (found ${mode:-unknown})" >&2
-      return 2
-    fi
-    IFS= read -r lock_pid < "$last_profile_lock_file" || true
-    if [[ ! "$lock_pid" =~ ^[1-9][0-9]*$ ]]; then
-      echo "pclaude: malformed last-profile state lock: $last_profile_lock_file" >&2
-      return 2
-    fi
-    if ! kill -0 "$lock_pid" 2>/dev/null; then
-      current_identity="$(profile_file_identity "$last_profile_lock_file" 2>/dev/null || true)"
-      if [[ -n "$current_identity" \
-        && "$current_identity" == "$(profile_file_identity "$last_profile_lock_file" 2>/dev/null || true)" ]]; then
-        rm -f "$last_profile_lock_file"
-        continue
-      fi
-    fi
-    attempt=$((attempt + 1))
-    if [[ "$attempt" -ge 200 ]]; then
-      echo "pclaude: timed out waiting for last-profile state lock: $last_profile_lock_file" >&2
-      return 1
-    fi
-    sleep 0.05
-  done
+  if ! exec {profile_state_lock_fd}<"$base"; then
+    echo "pclaude: cannot open the last-profile state directory for locking: $base" >&2
+    profile_state_lock_fd=""
+    return 1
+  fi
+  if ! flock -w 10 "$profile_state_lock_fd"; then
+    echo "pclaude: timed out waiting for the last-profile state lock: $base" >&2
+    exec {profile_state_lock_fd}>&-
+    profile_state_lock_fd=""
+    return 1
+  fi
+  profile_state_lock_active=true
 }
 
 release_profile_state_lock() {
-  local current_identity
-
   [[ "$profile_state_lock_active" == true ]] || return 0
-  current_identity="$(profile_file_identity "$last_profile_lock_file" 2>/dev/null || true)"
-  if [[ -n "$profile_state_lock_identity" && "$current_identity" == "$profile_state_lock_identity" ]]; then
-    rm -f "$last_profile_lock_file"
-  fi
+  flock -u "$profile_state_lock_fd" || true
+  exec {profile_state_lock_fd}>&-
   profile_state_lock_active=false
-  profile_state_lock_identity=""
+  profile_state_lock_fd=""
 }
 
 trap 'release_profile_state_lock' EXIT
