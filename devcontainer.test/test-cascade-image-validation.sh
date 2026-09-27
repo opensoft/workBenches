@@ -58,8 +58,14 @@ source "$repo_root/scripts/lib/layer3-recipe.sh"
 export FAKE_DOCKER_LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256 "$repo_root/user-layer")"
 export FAKE_DOCKER_LAYER3_DOCKER_SOCKET_GID="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || true)"
 test "${WORKBENCHES_REQUIRED_AI_CLIS[0]}" = claude
-test "${WORKBENCHES_REQUIRED_AI_CLIS[-1]}" = cursor-agent
+test "${WORKBENCHES_REQUIRED_AI_CLIS[-1]}" = mcode
+printf '%s\n' "${WORKBENCHES_REQUIRED_AI_CLIS[@]}" | grep -Fxq amp
 grep -Fq 'required_clis=("${WORKBENCHES_REQUIRED_AI_CLIS[@]}")' "$installer"
+grep -Fq 'npm install --prefer-online -g @ampcode/cli@latest' "$installer"
+grep -Fq 'npm install --prefer-online -g @anthropic-ai/claude-code@latest' "$installer"
+grep -Fq 'node "$claude_package_root/install.cjs"' "$installer"
+grep -Fq 'node "$amp_package_root/install.cjs"' "$installer"
+grep -Fq 'amp --version' "$installer"
 test "$(grep -Fc -- '- user-layer/**' "$repo_root/.github/workflows/cascade-image-validation.yml")" -eq 2
 grep -Fq "root|latest|''|[!a-z_]*|*[!a-z0-9_-]*" "$repo_root/user-layer/Dockerfile"
 if grep -Fq "grep -Eq '^[a-z_][a-z0-9_-]*$'" "$repo_root/user-layer/Dockerfile"; then

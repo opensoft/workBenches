@@ -215,11 +215,9 @@ build_layer2_bench() {
         )"
         build_timer_start
         if [ "$NO_CACHE" = true ]; then
-            DOCKER_BUILD_NO_CACHE=1 "$build_script" --user "$USERNAME" 2>/dev/null || \
-                DOCKER_BUILD_NO_CACHE=1 "$build_script" "$USERNAME" 2>/dev/null || \
-                DOCKER_BUILD_NO_CACHE=1 "$build_script"
+            DOCKER_BUILD_NO_CACHE=1 "$build_script" --user "$USERNAME"
         else
-            "$build_script" --user "$USERNAME" 2>/dev/null || "$build_script" "$USERNAME" 2>/dev/null || "$build_script"
+            "$build_script" --user "$USERNAME"
         fi
         build_timer_end "Layer 2: $bench_name"
     else
