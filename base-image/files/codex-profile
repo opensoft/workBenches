@@ -12,6 +12,11 @@ if [[ -n "${CODEX_BIN:-}" ]]; then
   codex_bin="$CODEX_BIN"
 elif [[ -x "$HOME/.local/bin/codex" ]]; then
   codex_bin="$HOME/.local/bin/codex"
+elif [[ -x "$HOME/.codex/packages/standalone/current/bin/codex" ]]; then
+  # Benches mount ~/.codex but intentionally do not mount the host's entire
+  # ~/.local/bin. Use the executable contained in the mounted standalone
+  # package so the CLI and app-server daemon payload remain one version.
+  codex_bin="$HOME/.codex/packages/standalone/current/bin/codex"
 else
   codex_bin="$(command -v codex || true)"
 fi

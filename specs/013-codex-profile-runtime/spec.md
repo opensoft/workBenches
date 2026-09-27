@@ -23,6 +23,7 @@ As a Codex profile user, I want a profile launch to use the supported standalone
 1. **Given** a standalone command is installed, **When** a profile starts without an explicit override, **Then** that standalone command is used.
 2. **Given** an explicit executable override, **When** a profile starts, **Then** the override is used.
 3. **Given** no standalone command, **When** a profile starts, **Then** the available command from the normal command path is used.
+4. **Given** a bench mounts the canonical standalone package but not the host's local bin directory, **When** a profile starts, **Then** the executable inside the mounted package is used.
 
 ### User Story 2 - Expose the daemon package to every profile (Priority: P1)
 
@@ -42,6 +43,7 @@ As a Codex profile user, I want every isolated profile home to see the canonical
 - An explicit runtime override remains authoritative even when the standalone command exists.
 - A profile with existing credentials, sessions, or history is not rewritten by runtime-link setup.
 - A machine without the standalone package cache remains compatible with a command found on its normal path.
+- An existing non-directory or symbolic-link `packages` path is preserved and the cache link is skipped.
 
 ## Requirements
 
