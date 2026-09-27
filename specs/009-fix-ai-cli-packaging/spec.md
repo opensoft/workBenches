@@ -75,7 +75,7 @@ As a bench user, I want Grok to resolve without editing my shell profile, so it 
 - **SC-001**: Every refreshed Layer 2 and personalized Layer 3 image resolves both `mcode` and `grok` successfully.
 - **SC-002**: `mcode --version` succeeds under UID/GID 1000 in every refreshed Layer 3 image.
 - **SC-003**: Each supported AI CLI in the refreshed shared image is at the latest stable version resolved by its configured upstream channel during that build.
-- **SC-004**: Every active Wave bench replaced during the refresh reports the new Layer 3 image and can invoke `mcode` and `grok` as `brett`.
+- **SC-004**: Disposable image checks can invoke `mcode`, `mcode-tools`, and `grok` as UID 1000 without replacing an active bench.
 - **SC-005**: No provider credential or account profile is added to a rebuilt image.
 
 ## Assumptions

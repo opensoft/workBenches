@@ -30,7 +30,7 @@ See [proposal.md](proposal.md) for motivation. Layer 0 installs shared AI CLIs a
 
 - [MiniMax may change its install tree contract] → The build requires its launcher and version command, so an incompatible installer fails the image build rather than producing a broken user command.
 - [Floating upstream versions can change between builds] → Record the resulting image IDs and tool versions after the cascade completes.
-- [Rebuilding all derived images takes substantial time and disk] → Build the dependency chain once, preserve existing caches only outside the requested no-cache run, and recreate active benches after the new Layer 3 images pass their CLI checks.
+- [Rebuilding all derived images takes substantial time and disk] → Build the dependency chain once, preserve existing caches only outside the requested no-cache run, and leave live activation to a separately authorized operation after image checks pass.
 
 ## Migration Plan
 

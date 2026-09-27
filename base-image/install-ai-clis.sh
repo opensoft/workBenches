@@ -372,16 +372,30 @@ log_info "Installing MiniMax Code CLI (mcode)..."
 # together in one shared location instead of copying only its launcher script.
 if run_with_timeout "$COMMAND_TIMEOUT" "MiniMax Code CLI install" \
     bash -o pipefail -c 'curl -fsSL https://filecdn.minimax.chat/public/install.sh | MCODE_INSTALL_DIR=/opt/minimax-code MCODE_NO_MODIFY_PATH=1 bash'; then
+    missing_mcode_launcher=false
     for mcode_command in mcode mcode-tools; do
         mcode_launcher="/opt/minimax-code/bin/$mcode_command"
         if [ ! -x "$mcode_launcher" ]; then
-            log_error "MiniMax Code CLI launcher is missing: $mcode_launcher (continuing)"
+            log_error "MiniMax Code CLI launcher is missing: $mcode_launcher"
+            missing_mcode_launcher=true
         fi
     done
+    if [ "$missing_mcode_launcher" = true ]; then
+        exit 1
+    fi
 
     # Upstream creates root-owned files with private modes; all bench users
     # need read/execute access to the shared, immutable image installation.
     chmod -R a+rX /opt/minimax-code
+
+    ln -sfn /opt/minimax-code/bin/mcode /usr/local/bin/mcode
+    ln -sfn /opt/minimax-code/bin/mcode-tools /usr/local/bin/mcode-tools
+
+    # MCode records active process IDs below the installation root even for
+    # read-only commands such as --version. Keep the image payload immutable,
+    # but provide a sticky shared runtime directory so arbitrary bench UIDs can
+    # create and remove only their own activity records.
+    install -d -m 1777 /opt/minimax-code/.mcode-active
 
     if command -v mcode >/dev/null 2>&1 && mcode --version >/dev/null 2>&1; then
         log_info "MiniMax Code CLI installed to $(command -v mcode): $(mcode --version)"
@@ -389,11 +403,6 @@ if run_with_timeout "$COMMAND_TIMEOUT" "MiniMax Code CLI install" \
         log_error "MiniMax Code CLI is not runnable after installation (continuing)"
     fi
 
-    # MCode records active process IDs below the installation root even for
-    # read-only commands such as --version. Keep the image payload immutable,
-    # but provide a sticky shared runtime directory so arbitrary bench UIDs can
-    # create and remove only their own activity records.
-    install -d -m 1777 /opt/minimax-code/.mcode-active
 else
     log_error "MiniMax Code CLI installation failed (continuing)"
 fi
