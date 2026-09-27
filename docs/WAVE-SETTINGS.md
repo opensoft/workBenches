@@ -19,7 +19,9 @@ Windows-native Wave application. Use `--waveterm-config PATH` or
 
 The helper preserves existing values and unrelated keys, validates that the
 file contains a JSON object, writes atomically, and keeps the existing file
-mode. It refuses malformed JSON rather than replacing it.
+mode. It refuses malformed or empty JSON rather than replacing it. It also
+refuses a symlinked `settings.json` so an atomic replacement cannot silently
+break a dotfile-managed link; update that link's target directly instead.
 
 This helper is not run by general workBenches setup or bench startup, does not
 restart Wave, and is not proof that an application-level clipboard regression

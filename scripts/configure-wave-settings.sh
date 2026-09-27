@@ -40,7 +40,14 @@ EOF
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --waveterm-config) waveterm_config_dir="$2"; shift 2 ;;
+        --waveterm-config)
+            if [[ $# -lt 2 || -z "$2" ]]; then
+                echo "--waveterm-config requires a path" >&2
+                exit 1
+            fi
+            waveterm_config_dir="$2"
+            shift 2
+            ;;
         -h|--help) usage; exit 0 ;;
         --*) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
         *) echo "Unexpected argument: $1" >&2; usage >&2; exit 1 ;;
@@ -63,7 +70,9 @@ import tempfile
 import sys
 
 settings_path = pathlib.Path(sys.argv[1])
-if settings_path.exists() and settings_path.stat().st_size:
+if settings_path.is_symlink():
+    raise SystemExit(f"{settings_path} is a symlink; refusing to replace it")
+if settings_path.exists():
     try:
         settings = json.loads(settings_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:

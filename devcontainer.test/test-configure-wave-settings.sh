@@ -3,7 +3,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-helper="$repo_root/scripts/configure-wave-settings.sh"
+helper="${1:-$repo_root/scripts/configure-wave-settings.sh}"
 test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT
 
@@ -52,5 +52,26 @@ if "$helper" --waveterm-config "$test_root/malformed" >/dev/null 2>&1; then
 fi
 cmp -s "$test_root/malformed/settings.before" "$test_root/malformed/settings.json" ||
     fail "malformed settings were modified"
+
+mkdir -p "$test_root/empty"
+: > "$test_root/empty/settings.json"
+if "$helper" --waveterm-config "$test_root/empty" >/dev/null 2>&1; then
+    fail "empty existing settings unexpectedly succeeded"
+fi
+[[ ! -s "$test_root/empty/settings.json" ]] || fail "empty settings were replaced"
+
+mkdir -p "$test_root/symlink-target" "$test_root/symlink"
+printf '%s\n' '{"custom":"target"}' > "$test_root/symlink-target/settings.json"
+ln -s "$test_root/symlink-target/settings.json" "$test_root/symlink/settings.json"
+if "$helper" --waveterm-config "$test_root/symlink" >/dev/null 2>&1; then
+    fail "symlinked settings unexpectedly succeeded"
+fi
+[[ -L "$test_root/symlink/settings.json" ]] || fail "settings symlink was replaced"
+grep -q '"custom":"target"' "$test_root/symlink-target/settings.json" ||
+    fail "symlink target was modified"
+
+if "$helper" --waveterm-config >/dev/null 2>&1; then
+    fail "missing --waveterm-config operand unexpectedly succeeded"
+fi
 
 echo "PASS: Wave settings defaults are safe, atomic, and preserve existing values"

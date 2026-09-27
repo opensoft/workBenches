@@ -29,6 +29,10 @@ and preserve the existing file mode.
 - **WHEN** the current settings file cannot be parsed as a JSON object
 - **THEN** the helper exits unsuccessfully without replacing the file
 
+#### Scenario: Settings file is a symbolic link
+- **WHEN** the settings path is a symbolic link
+- **THEN** the helper exits unsuccessfully without replacing the link or its target
+
 #### Scenario: Missing settings file
 - **WHEN** the target directory has no settings file
 - **THEN** the helper creates a valid settings object containing the documented defaults
