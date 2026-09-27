@@ -714,6 +714,10 @@ if command -v cursor-agent >/dev/null 2>&1 && ! cursor-agent --version >/dev/nul
     missing_clis+=("cursor-agent(runnable)")
 fi
 
+if command -v grok >/dev/null 2>&1 && ! grok --version >/dev/null 2>&1; then
+    missing_clis+=("grok(runnable)")
+fi
+
 if command -v mcode >/dev/null 2>&1 && ! mcode --version >/dev/null 2>&1; then
     missing_clis+=("mcode(runnable)")
 fi

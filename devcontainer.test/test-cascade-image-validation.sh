@@ -60,6 +60,7 @@ export FAKE_DOCKER_LAYER3_DOCKER_SOCKET_GID="$(stat -c '%g' /var/run/docker.sock
 test "${WORKBENCHES_REQUIRED_AI_CLIS[0]}" = claude
 test "${WORKBENCHES_REQUIRED_AI_CLIS[-1]}" = mcode-tools
 printf '%s\n' "${WORKBENCHES_REQUIRED_AI_CLIS[@]}" | grep -Fxq amp
+printf '%s\n' "${WORKBENCHES_REQUIRED_AI_CLIS[@]}" | grep -Fxq grok
 printf '%s\n' "${WORKBENCHES_REQUIRED_AI_CLIS[@]}" | grep -Fxq mcode
 grep -Fq 'required_clis=("${WORKBENCHES_REQUIRED_AI_CLIS[@]}")' "$installer"
 grep -Fq 'npm install --prefer-online -g @ampcode/cli@latest' "$installer"
@@ -67,6 +68,7 @@ grep -Fq 'npm install --prefer-online -g @anthropic-ai/claude-code@latest' "$ins
 grep -Fq 'node "$claude_package_root/install.cjs"' "$installer"
 grep -Fq 'node "$amp_package_root/install.cjs"' "$installer"
 grep -Fq 'amp --version' "$installer"
+grep -Fq 'grok --version' "$installer"
 grep -Fq 'ln -sfn /opt/minimax-code/bin/mcode /usr/local/bin/mcode' "$installer"
 grep -Fq 'ln -sfn /opt/minimax-code/bin/mcode-tools /usr/local/bin/mcode-tools' "$installer"
 grep -Fq 'install -d -m 1777 /opt/minimax-code/.mcode-active' "$installer"
