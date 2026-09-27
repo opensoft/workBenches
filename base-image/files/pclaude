@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
-# Profile-only entry point. Explicit lane options remain compatible while
-# the bare command always bypasses lane resolution in claude-profile.
+# Profile-only entry point. With no arguments claude-profile reuses the last
+# run profile; explicit lane options remain compatible while the ordinary
+# command always bypasses lane resolution.
 set -euo pipefail
+
+# After claude-profile consumes any leading launcher options, an empty command
+# means "run the remembered profile" for this wrapper.  Direct claude-profile
+# invocations keep their historical empty-command list behavior.
+export WORKBENCHES_CLAUDE_DEFAULT_RUN=1
+
+if [[ $# -eq 0 ]]; then
+  set -- run
+fi
 
 lane_requested=false
 for argument in "$@"; do

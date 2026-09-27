@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Lane-aware Claude profile entry point. Profile and binary selection stay in
-# pclaude, while this explicit command enables its lane resolution path.
+# Lane-aware Claude profile entry point. Profile and last-profile selection
+# stay in pclaude, while this explicit command enables lane resolution.
 set -euo pipefail
+if [[ $# -eq 0 ]]; then
+  set -- run
+fi
 exec pclaude --with-lane "$@"

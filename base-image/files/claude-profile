@@ -3,7 +3,231 @@ set -euo pipefail
 
 manifest="${CLAUDE_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/claude-profiles.json}"
 base="${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}"
+last_profile_file="$base/.last-profile"
 command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
+command -v flock >/dev/null 2>&1 || { echo "flock is required." >&2; exit 1; }
+
+path_owner_uid() {
+  local path="$1"
+
+  stat -c '%u' "$path" 2>/dev/null \
+    || stat -f '%u' "$path" 2>/dev/null
+}
+
+validate_last_profile_directory() {
+  local owner
+
+  if [[ -L "$base" || ! -d "$base" ]]; then
+    echo "pclaude: last-profile state directory must be a regular directory: $base" >&2
+    return 2
+  fi
+  owner="$(path_owner_uid "$base" || true)"
+  if [[ -z "$owner" || "$owner" != "$(id -u)" ]]; then
+    echo "pclaude: last-profile state directory is not owned by the current user: $base" >&2
+    return 2
+  fi
+}
+
+profile_state_lock_active=false
+profile_state_lock_fd=""
+
+acquire_profile_state_lock() {
+  mkdir -p "$base"
+  validate_last_profile_directory || return $?
+  if ! exec {profile_state_lock_fd}<"$base"; then
+    echo "pclaude: cannot open the last-profile state directory for locking: $base" >&2
+    profile_state_lock_fd=""
+    return 1
+  fi
+  if ! flock -w 10 "$profile_state_lock_fd"; then
+    echo "pclaude: timed out waiting for the last-profile state lock: $base" >&2
+    exec {profile_state_lock_fd}>&-
+    profile_state_lock_fd=""
+    return 1
+  fi
+  profile_state_lock_active=true
+}
+
+release_profile_state_lock() {
+  [[ "$profile_state_lock_active" == true ]] || return 0
+  flock -u "$profile_state_lock_fd" || true
+  exec {profile_state_lock_fd}>&-
+  profile_state_lock_active=false
+  profile_state_lock_fd=""
+}
+
+trap 'release_profile_state_lock' EXIT
+
+read_last_profile() {
+  local line_count owner profile mode
+
+  if [[ ! -e "$base" ]]; then
+    echo "pclaude: no last Claude profile is recorded; run pclaude PROFILE or lclaude PROFILE first." >&2
+    return 2
+  fi
+  validate_last_profile_directory || return $?
+  if [[ -L "$last_profile_file" ]]; then
+    echo "pclaude: last Claude profile record must not be a symbolic link: $last_profile_file" >&2
+    return 2
+  fi
+  if [[ ! -e "$last_profile_file" ]]; then
+    echo "pclaude: no last Claude profile is recorded; run pclaude PROFILE or lclaude PROFILE first." >&2
+    return 2
+  fi
+  if [[ ! -f "$last_profile_file" ]]; then
+    echo "pclaude: last Claude profile record must be a regular file: $last_profile_file" >&2
+    return 2
+  fi
+  owner="$(path_owner_uid "$last_profile_file" || true)"
+  if [[ -z "$owner" || "$owner" != "$(id -u)" ]]; then
+    echo "pclaude: last Claude profile record is not owned by the current user: $last_profile_file" >&2
+    return 2
+  fi
+
+  mode="$(stat -c '%a' "$last_profile_file" 2>/dev/null \
+    || stat -f '%Lp' "$last_profile_file" 2>/dev/null \
+    || true)"
+  if [[ "$mode" != 600 ]]; then
+    echo "pclaude: last Claude profile record must have mode 0600: $last_profile_file (found ${mode:-unknown})" >&2
+    return 2
+  fi
+
+  line_count="$(awk 'END { print NR + 0 }' "$last_profile_file" 2>/dev/null || true)"
+  IFS= read -r profile < "$last_profile_file" || true
+  if [[ "$line_count" != 1 || -z "$profile" ]]; then
+    echo "pclaude: last Claude profile record must contain exactly one profile name on a single line: $last_profile_file" >&2
+    return 2
+  fi
+
+  printf '%s\n' "$profile"
+}
+
+remember_profile_unlocked() {
+  local profile="$1" state_tmp
+
+  validate_last_profile_directory || return $?
+  if [[ -L "$last_profile_file" || ( -e "$last_profile_file" && ! -f "$last_profile_file" ) ]]; then
+    echo "pclaude: refusing to replace unsafe last Claude profile record: $last_profile_file" >&2
+    return 2
+  fi
+  if [[ -e "$last_profile_file" && "$(path_owner_uid "$last_profile_file" || true)" != "$(id -u)" ]]; then
+    echo "pclaude: refusing to replace a last Claude profile record not owned by the current user: $last_profile_file" >&2
+    return 2
+  fi
+
+  state_tmp="$(mktemp "$base/.last-profile.XXXXXX.tmp")"
+  chmod 600 "$state_tmp"
+  if ! printf '%s\n' "$profile" > "$state_tmp"; then
+    rm -f "$state_tmp"
+    return 1
+  fi
+  if ! mv -f "$state_tmp" "$last_profile_file"; then
+    rm -f "$state_tmp"
+    return 1
+  fi
+}
+
+remember_profile() {
+  local profile="$1" status=0
+
+  acquire_profile_state_lock || return $?
+  remember_profile_unlocked "$profile" || status=$?
+  release_profile_state_lock
+  return "$status"
+}
+
+profile_file_identity() {
+  local path="$1"
+
+  stat -c '%d:%i' "$path" 2>/dev/null \
+    || stat -f '%d:%i' "$path" 2>/dev/null
+}
+
+# A lane-start handoff is synchronous: on success it execs Claude and does not
+# return until that session exits.  Publish the selected profile immediately
+# before the handoff so concurrent wrappers see it, while retaining enough
+# state to roll back the two documented refusal paths that start no Claude.
+profile_handoff_backup=""
+profile_handoff_had_record=false
+profile_handoff_active=false
+profile_handoff_identity=""
+
+begin_profile_handoff() {
+  local profile="$1" status=0
+
+  profile_handoff_backup=""
+  profile_handoff_had_record=false
+  profile_handoff_active=false
+  profile_handoff_identity=""
+  acquire_profile_state_lock || return $?
+  if ! profile_file_identity "$base" >/dev/null; then
+    echo "pclaude: cannot identify the last-profile state directory safely: $base" >&2
+    release_profile_state_lock
+    return 1
+  fi
+  if [[ -f "$last_profile_file" && ! -L "$last_profile_file" ]]; then
+    profile_handoff_backup="$(mktemp "$base/.last-profile.rollback.XXXXXX")"
+    if ! cp -p "$last_profile_file" "$profile_handoff_backup"; then
+      rm -f "$profile_handoff_backup"
+      profile_handoff_backup=""
+      release_profile_state_lock
+      return 1
+    fi
+    chmod 600 "$profile_handoff_backup"
+    profile_handoff_had_record=true
+  fi
+  remember_profile_unlocked "$profile" || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    [[ -z "$profile_handoff_backup" ]] || rm -f "$profile_handoff_backup"
+    profile_handoff_backup=""
+    release_profile_state_lock
+    return "$status"
+  fi
+  if ! profile_handoff_identity="$(profile_file_identity "$last_profile_file")"; then
+    [[ -z "$profile_handoff_backup" ]] || rm -f "$profile_handoff_backup"
+    profile_handoff_backup=""
+    release_profile_state_lock
+    return 1
+  fi
+  profile_handoff_active=true
+  release_profile_state_lock
+}
+
+commit_profile_handoff() {
+  [[ "$profile_handoff_active" == true ]] || return 0
+  [[ -z "$profile_handoff_backup" ]] || rm -f "$profile_handoff_backup"
+  profile_handoff_backup=""
+  profile_handoff_identity=""
+  profile_handoff_active=false
+}
+
+rollback_profile_handoff() {
+  local current_identity="" status=0
+
+  [[ "$profile_handoff_active" == true ]] || return 0
+  acquire_profile_state_lock || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    [[ -z "$profile_handoff_backup" ]] || rm -f "$profile_handoff_backup"
+    profile_handoff_backup=""
+    profile_handoff_identity=""
+    profile_handoff_active=false
+    return "$status"
+  fi
+  current_identity="$(profile_file_identity "$last_profile_file" 2>/dev/null || true)"
+  if [[ -n "$profile_handoff_identity" && "$current_identity" == "$profile_handoff_identity" ]]; then
+    if [[ "$profile_handoff_had_record" == true ]]; then
+      mv -f "$profile_handoff_backup" "$last_profile_file"
+      profile_handoff_backup=""
+    else
+      rm -f "$last_profile_file"
+    fi
+  fi
+  [[ -z "$profile_handoff_backup" ]] || rm -f "$profile_handoff_backup"
+  profile_handoff_backup=""
+  profile_handoff_identity=""
+  profile_handoff_active=false
+  release_profile_state_lock
+}
 
 # lane-collision-protocol Amendment 8(e), as ruled by A8 Addendum 2 R-A8-5(b).
 # Claude reads THIS launcher's per-profile config dir (every exec below carries
@@ -51,27 +275,31 @@ lane_session_start_ensured=false
 # lane-collision-protocol Amendment 12 adoption act 3: the UserPromptSubmit
 # NAME GUARD, ensured beside the SessionStart entry above "the way it ensures
 # the SessionStart hook today" (the amendment's own words for this launcher's
-# half). Byte for byte `opensoft/openRepoTools`'s own GUARD_COMMAND /
-# GUARD_TIMEOUT (`openRepoTools:460-461`, `guard_block_text()`), which
-# `--install` already merges into a bare `claude`'s `~/.claude/settings.json`
-# (Amendment 12 adoption act 3, first half); this is the PROFILE half, ruled
-# by Brett Heap 2026-09-15, verbatim "install the hook when 25 lands".
+# half). The legacy command below is byte for byte `opensoft/openRepoTools`'s
+# own GUARD_COMMAND; the managed profile command keeps that guard as its
+# lane-aware right-hand side and adds one profile-only exemption in front of
+# it. `--install` still owns the bare `claude` entry in
+# `~/.claude/settings.json`; this launcher owns the PROFILE entry.
 #
 # NO matcher — `UserPromptSubmit` has no source to match on, unlike
-# `SessionStart`'s `startup|resume|clear|fork`. NO `|| true` — on
+# `SessionStart`'s `startup|resume|clear|fork`. NO unconditional `|| true` — on
 # `SessionStart` that suffix is the whole safety property (a hook that dies
 # must not break the session it was meant to orient); on `UserPromptSubmit`
 # it would be the OPPOSITE, because exit 2 is what BLOCKS a prompt
 # (code.claude.com/docs/en/hooks) and `cmd || true` always exits 0. Copying
 # the SessionStart string's suffix here would install a guard that refuses
-# nothing, silently — the exact state Amendment 12 exists to end.
-lane_name_guard_command='~/projects/xFactory/lanes-edit.sh guard'
+# nothing, silently. The left-hand test below exits 0 only for a process this
+# launcher has explicitly marked profile-only; every lane-aware process still
+# receives the original guard status unchanged.
+lane_name_guard_legacy_command='~/projects/xFactory/lanes-edit.sh guard'
+lane_name_guard_command='[ "${WORKBENCHES_CLAUDE_PROFILE_ONLY:-}" = 1 ] || ~/projects/xFactory/lanes-edit.sh guard'
 lane_name_guard_timeout=5
 
-# Ensuring it is an append, matched by the EXACT command string: an entry that
-# already carries it is left exactly as it is — wherever it sits, whatever
-# matcher it shares, whatever else the operator put beside it — and nothing
-# else under .hooks is touched. Reused verbatim by both branches below.
+# Ensuring it is an append, matched by the current exact command string: an
+# entry that already carries it is left exactly as it is — wherever it sits,
+# whatever matcher it shares, whatever else the operator put beside it — and
+# nothing else under .hooks is touched. The legacy exact command is removed
+# during the same nested-array pass and replaced once by the current command.
 # THE GUARD ENTRY IS MERGED, NOT ASSIGNED — and until this round it was assigned.
 # `.hooks.UserPromptSubmit = [ours]` REPLACED the array, so a profile carrying
 # anybody else's `UserPromptSubmit` hook lost it on its next launch, in the same
@@ -137,13 +365,14 @@ lane_session_start_jq='
         )'
 
 # THE NAME GUARD IS PRESERVED-IF-PRESENT WHILE SUPPORTED, LIKE SessionStart —
-# an entry that already carries the command is left exactly as it is,
+# an entry that already carries the current command is left exactly as it is,
 # whatever timeout an operator gave it, and otherwise the canonical one is
 # appended while `$name_guard_ok`; nothing else under `.hooks.UserPromptSubmit`
 # is touched, so the usage guard entry and any foreign hook survive beside it
 # either way. This mirrors `opensoft/openRepoTools --install`'s own merge for
-# this exact entry into a bare `claude`'s settings.json: present costs no
-# write, absent appends one.
+# the legacy behavior for this managed entry: present costs no write, absent
+# appends one. A legacy unconditional entry is the one exception, migrated to
+# the gated command so profile-only prompts cannot remain blocked.
 #
 # UNLIKE SessionStart, IT ALSO REMOVES ITS OWN ENTRY THE MOMENT `$name_guard_ok`
 # GOES FALSE (Copilot round 1, PR #88). SessionStart's command ends in
@@ -178,20 +407,46 @@ lane_session_start_jq='
 lane_name_guard_jq='
       ((.hooks.UserPromptSubmit // [])
         | any((.hooks // [])[]? | .command == $name_guard)) as $name_guard_present
-      | if ($name_guard_ok or $name_guard_present) then
+      | ((.hooks.UserPromptSubmit // [])
+        | any((.hooks // [])[]? | .command == $legacy_name_guard)) as $legacy_name_guard_present
+      | if ($name_guard_ok or $name_guard_present or $legacy_name_guard_present) then
           .hooks = (.hooks // {})
           | .hooks.UserPromptSubmit = (
               (.hooks.UserPromptSubmit // []) as $entries
               | if $name_guard_ok then
-                  if $name_guard_present then $entries
-                  else $entries + [{
-                    hooks: [{type: "command", command: $name_guard, timeout: $name_guard_timeout}]
-                  }]
+                  if $name_guard_present then
+                    [ $entries[]
+                      | (.hooks // []) as $inner
+                      | ($inner | map(select(.command != $legacy_name_guard))) as $without_legacy
+                      | if $without_legacy == $inner then . else .hooks = $without_legacy end
+                    ]
+                  elif $legacy_name_guard_present then
+                    ($entries
+                      | [ range(0; length) as $entry_index
+                          | range(0; ((.[$entry_index].hooks // []) | length)) as $hook_index
+                          | select(
+                              .[$entry_index].hooks[$hook_index].command? == $legacy_name_guard
+                            )
+                          | [$entry_index, "hooks", $hook_index, "command"]
+                        ] as $legacy_paths
+                      | setpath($legacy_paths[0]; $name_guard)
+                    ) as $migrated_once
+                    | [ $migrated_once[]
+                      | (.hooks // []) as $inner
+                      | ($inner | map(select(.command != $legacy_name_guard))) as $deduplicated
+                      | if $deduplicated == $inner then . else .hooks = $deduplicated end
+                    ]
+                  else
+                    $entries + [{
+                      hooks: [{type: "command", command: $name_guard, timeout: $name_guard_timeout}]
+                    }]
                   end
                 else
                   [ $entries[]
                     | (.hooks // []) as $inner
-                    | ($inner | map(select(.command != $name_guard))) as $kept
+                    | ($inner | map(select(
+                        .command != $name_guard and .command != $legacy_name_guard
+                      ))) as $kept
                     | select(($kept | length) > 0)
                     | .hooks = $kept
                   ]
@@ -357,8 +612,9 @@ configure_profile_runtime() {
   name_guard_why=''
   if [[ "$name_guard_ok" == false && -f "$settings" ]]; then
     if jq -e --arg name_guard "$lane_name_guard_command" \
+         --arg legacy_name_guard "$lane_name_guard_legacy_command" \
          '[(.hooks.UserPromptSubmit // [])[]? | (.hooks // [])[]? | .command]
-            | index($name_guard) != null' \
+            | (index($name_guard) != null or index($legacy_name_guard) != null)' \
          "$settings" >/dev/null 2>&1; then
       name_guard_removed=true
       # The two distinct reasons the probe above can answer false, kept apart
@@ -395,6 +651,7 @@ configure_profile_runtime() {
        --argjson session_start_timeout "$lane_session_start_timeout" \
        --argjson session_start_ok "$session_start_ok" \
        --arg name_guard "$lane_name_guard_command" \
+       --arg legacy_name_guard "$lane_name_guard_legacy_command" \
        --argjson name_guard_ok "$name_guard_ok" \
        --argjson name_guard_timeout "$lane_name_guard_timeout" '
       .statusLine = {type: "command", command: $command, refreshInterval: 10}
@@ -415,6 +672,7 @@ configure_profile_runtime() {
        --argjson session_start_timeout "$lane_session_start_timeout" \
        --argjson session_start_ok "$session_start_ok" \
        --arg name_guard "$lane_name_guard_command" \
+       --arg legacy_name_guard "$lane_name_guard_legacy_command" \
        --argjson name_guard_ok "$name_guard_ok" \
        --argjson name_guard_timeout "$lane_name_guard_timeout" '{
       statusLine: {type: "command", command: $command, refreshInterval: 10},
@@ -849,6 +1107,7 @@ act1_compose_child_command() {
   # rather than changed here.
   env_prefix=(env -u LANES_HOST -u LANES_OS -u LANES_CONTAINER -u CLAUDE_BIN
     -u CLAUDE_NO_LANE -u CLAUDE_LANE -u CLAUDE_LANE_DIR
+    -u WORKBENCHES_CLAUDE_PROFILE_ONLY
     WORKBENCHES_CLAUDE_TMUX_CHILD=1 "CLAUDE_BIN=$claude_bin")
   # THE WORKSTATION, THREADED INTO THE SESSION THIS LAUNCH CREATES (`R-A11-14`).
   # `lane_export_workstation` has already exported it on this side of the
@@ -874,7 +1133,9 @@ act1_compose_child_command() {
   # on an already-running server, so it is threaded through explicitly here
   # rather than relied on via inheritance — same idiom as the guard above.
   [[ -n "${lane:-}" ]] && env_prefix+=("CLAUDE_LANE=$lane")
-  [[ "${no_lane:-false}" == true ]] && env_prefix+=("CLAUDE_NO_LANE=1")
+  if [[ "${no_lane:-false}" == true ]]; then
+    env_prefix+=("CLAUDE_NO_LANE=1" "WORKBENCHES_CLAUDE_PROFILE_ONLY=1")
+  fi
   # So must the name of the window this was typed in — or, on the reuse path,
   # the name of the window being reused. A session created fresh below has its
   # window named for the command that made it unless the lane is certain, so the
@@ -2615,20 +2876,25 @@ while [[ $# -gt 0 ]]; do
     --no-lane) no_lane=true; shift ;;
     -h|--help)
       cat <<'EOF'
-Usage: claude-profile {list|login|status|run} PROFILE [CLAUDE_ARGS...]
-       pclaude PROFILE [CLAUDE_ARGS...]
-       lclaude PROFILE [CLAUDE_ARGS...]
+Usage: claude-profile list
+       claude-profile {login|status} PROFILE [ARGS...]
+       claude-profile run [PROFILE] [CLAUDE_ARGS...]
+       claude-profile run -- CLAUDE_ARGS...
+       pclaude [PROFILE] [CLAUDE_ARGS...]
+       lclaude [PROFILE] [CLAUDE_ARGS...]
 
-Bare pclaude selects a profile without a lane. lclaude uses the same profile
-and binary selection with lane resolution enabled. The lane behavior below
+Bare pclaude reuses the last run profile without a lane. Bare lclaude reuses
+that same profile with lane resolution enabled. An explicit profile wins and
+becomes the remembered profile for both commands. The lane behavior below
 applies to lclaude and explicit pclaude --lane invocations.
 
 Actions:
   list                 list configured profiles
   login PROFILE        authenticate a profile
   status PROFILE       show Claude auth status for a profile
-  run PROFILE [ARGS]   launch Claude under the profile (the default action;
-                        "run" itself may be omitted: claude-profile PROFILE)
+  run [PROFILE] [ARGS] launch Claude under the profile (the default action;
+                        omit PROFILE to reuse the last run profile, or omit
+                        "run" itself: claude-profile PROFILE)
 
 Options:
   --lane <repo>-<n>    take this lane: hand the final launch to
@@ -2867,8 +3133,11 @@ done
 if [[ "$no_lane" == true ]]; then
   lane=""
   lane_dir_flag=""
+  export WORKBENCHES_CLAUDE_PROFILE_ONLY=1
   unset CLAUDE_LANE CLAUDE_LANE_DIR WORKBENCHES_CLAUDE_LANE \
     WORKBENCHES_CLAUDE_LANE_SOURCE WORKBENCHES_CLAUDE_LANE_DIR
+else
+  unset WORKBENCHES_CLAUDE_PROFILE_ONLY
 fi
 
 # ---------------------------------------------------------------------------
@@ -2892,13 +3161,22 @@ fi
 # only as `pclaude run run`, which is what the verb being optional means: the
 # verb, where it is typed, is the verb. Ambiguity is decided in the one
 # direction an operator can undo.
-action="${1:-list}"
+implicit_run_action=false
+if [[ "${WORKBENCHES_CLAUDE_DEFAULT_RUN:-}" == 1 \
+  && ( $# -eq 0 || "${1:-}" == -* ) ]]; then
+  action=run
+  implicit_run_action=true
+else
+  action="${1:-list}"
+fi
 case "$action" in
   list|login|status|run)
-    [[ $# -eq 0 ]] || shift ;;
+    if [[ "$implicit_run_action" == false && $# -gt 0 ]]; then
+      shift
+    fi ;;
   -*)
     echo "pclaude: '$action' is an option, not an action or a profile." >&2
-    echo "Usage: claude-profile {list|login|status|run} PROFILE [CLAUDE_ARGS...]" >&2
+    echo "Usage: claude-profile {login|status} PROFILE [ARGS...] | run [PROFILE] [CLAUDE_ARGS...] | list" >&2
     echo "       pclaude PROFILE [CLAUDE_ARGS...]   (leading options: --lane, --dir, --no-lane)" >&2
     exit 2 ;;
   *)
@@ -2927,9 +3205,35 @@ case "$action" in
     } | awk -F '\t' '!seen[tolower($1)]++'
     ;;
   login|status|run)
-    profile="${1:?Usage: claude-profile $action PROFILE [arguments]}"; shift
+    remembered_profile=false
+    if [[ "$action" == run && "${1:-}" == -- ]]; then
+      # `run -- ...` is the unambiguous omitted-profile form for positional
+      # Claude subcommands.  The delimiter is launcher syntax and is not
+      # forwarded to Claude.
+      shift
+      profile="$(read_last_profile)" || exit $?
+      remembered_profile=true
+    elif [[ "$action" == run && ( $# -eq 0 || "${1:-}" == -* ) ]]; then
+      # An option belongs to Claude, not to profile selection.  Keep the
+      # complete remaining argv intact while choosing the remembered profile.
+      profile="$(read_last_profile)" || exit $?
+      remembered_profile=true
+    elif [[ $# -gt 0 ]]; then
+      profile="$1"
+      shift
+    else
+      echo "Usage: claude-profile $action PROFILE [arguments]" >&2
+      exit 2
+    fi
     row="$(profile_metadata "$profile" || true)"
-    [[ -n "$row" ]] || { echo "Unknown Claude profile: $profile" >&2; exit 2; }
+    if [[ -z "$row" ]]; then
+      if [[ "$remembered_profile" == true ]]; then
+        echo "pclaude: last Claude profile is no longer configured: $profile; run pclaude PROFILE or lclaude PROFILE to replace it." >&2
+      else
+        echo "Unknown Claude profile: $profile" >&2
+      fi
+      exit 2
+    fi
     IFS=$'\t' read -r profile email family profile_path <<<"$row"
     config_dir="$base/profiles/$profile_path"
     [[ -d "$config_dir" ]] || { echo "Claude profile is not configured: $config_dir" >&2; exit 2; }
@@ -2990,6 +3294,7 @@ case "$action" in
           if ! claude_add_has_scope "$@"; then
             managed_args=(mcp "$2" --scope user "${@:3}")
           fi
+          remember_profile "$profile"
           set +e
           CLAUDE_CONFIG_DIR="$config_dir" "$claude_bin" \
             --allow-dangerously-skip-permissions \
@@ -3008,6 +3313,7 @@ case "$action" in
         fi
         if [[ "$shared_mcp" == true && "${1:-}" == mcp && "${2:-}" == remove && -n "${3:-}" ]] \
           && "$mcp_sync" has "$family" "$3"; then
+          remember_profile "$profile"
           "$mcp_sync" remove "$family" "$3"
           "$mcp_sync" sync-claude-profile "$family" "$config_dir/.claude.json"
           exit 0
@@ -3138,6 +3444,12 @@ case "$action" in
           set +e
           exec 9> >(tee "$lane_defect_capture" >&2)
           lane_defect_tee_pid=$!
+          if ! begin_profile_handoff "$profile"; then
+            exec 9>&-
+            wait "$lane_defect_tee_pid" 2>/dev/null
+            set -e
+            exit 1
+          fi
           CLAUDE_CONFIG_DIR="$config_dir" CLAUDE_BIN="$claude_bin" \
             "${lane_argv[@]}" "$lane" -- "${claude_flags[@]}" "$@" 2>&9
           lane_status=$?
@@ -3289,12 +3601,17 @@ case "$action" in
           # just named — it prints the retire act named for it and stops.
           if [[ "$lane_status" -eq 0 ]] && [[ -n "$lane_defect_line" ]] \
             && ! lane_window_is "$lane"; then
+            rollback_profile_handoff
             echo "pclaude: $lane is not taken in this window — a live fork of its transcript exists; $lane_defect_line" >&2
             exit 1
           fi
           if [[ "$lane_status" -eq 0 ]] \
-            || { [[ "$lane_status" -ne 1 && "$lane_status" -ne 2 ]]; } \
-            || { ! lane_is_pane_root && lane_window_is "$lane"; }; then
+            || { [[ "$lane_status" -ne 1 && "$lane_status" -ne 2 ]]; }; then
+            commit_profile_handoff
+            exit "$lane_status"
+          fi
+          if ! lane_is_pane_root && lane_window_is "$lane"; then
+            rollback_profile_handoff
             exit "$lane_status"
           fi
           # lane-start's own refusal is already on the terminal: it is never
@@ -3310,10 +3627,16 @@ case "$action" in
           # nested `pclaude` re-select the very lane lane-start just refused.
           unset WORKBENCHES_CLAUDE_LANE WORKBENCHES_CLAUDE_LANE_SOURCE \
                 WORKBENCHES_CLAUDE_LANE_DIR CLAUDE_LANE CLAUDE_LANE_DIR
+          commit_profile_handoff
         fi
+        # The no-lane path, and a documented lane-start refusal that safely
+        # falls back to bare Claude, persist immediately before Claude itself
+        # is execed.  Successful lane handoffs persist in their return path
+        # above; refusals that start nothing leave the prior selection intact.
+        remember_profile "$profile"
         CLAUDE_CONFIG_DIR="$config_dir" exec "$claude_bin" "${claude_flags[@]}" "$@"
         ;;
     esac
     ;;
-  *) echo "Usage: claude-profile {list|login|status|run} [PROFILE]" >&2; exit 2 ;;
+  *) echo "Usage: claude-profile list | {login|status} PROFILE | run [PROFILE] [CLAUDE_ARGS...]" >&2; exit 2 ;;
 esac

@@ -11,10 +11,9 @@
 # this suite does not touch.
 #
 # What is pinned:
-#   - the command is `opensoft/openRepoTools`'s own GUARD_COMMAND, byte for
-#     byte, with NO matcher (UserPromptSubmit has no source to match on) and
-#     NO `|| true` (exit 2 is the whole mechanism; swallowing it would install
-#     a guard that refuses nothing);
+#   - the command gates `opensoft/openRepoTools`'s GUARD_COMMAND on the
+#     profile-only process marker, with NO matcher and NO unconditional
+#     `|| true`: lane-aware exit 2 remains the blocking mechanism;
 #   - ensuring twice appends once — present costs no write, absent appends;
 #   - an entry already carrying that command is left exactly as it is,
 #     whatever timeout or note the operator gave it;
@@ -51,7 +50,7 @@ fail() {
     exit 1
 }
 
-EXPECTED_SCENARIOS=27
+EXPECTED_SCENARIOS=33
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -61,7 +60,8 @@ assertion() { assertions=$((assertions + 1)); }
 # GUARD_COMMAND/GUARD_TIMEOUT spell it (`openRepoTools:460-461`,
 # `guard_block_text()`) — the test carries its own copy rather than reading
 # the launcher's, exactly as the SessionStart suite beside this one does.
-SNIPPET='~/projects/xFactory/lanes-edit.sh guard'
+SNIPPET='[ "${WORKBENCHES_CLAUDE_PROFILE_ONLY:-}" = 1 ] || ~/projects/xFactory/lanes-edit.sh guard'
+LEGACY_SNIPPET='~/projects/xFactory/lanes-edit.sh guard'
 
 PROFILE_BASE="$TEST_ROOT/profiles-home"
 PROFILE_DIR="$PROFILE_BASE/profiles/opensoft/team/team-002"
@@ -69,6 +69,7 @@ SETTINGS="$PROFILE_DIR/settings.json"
 MANIFEST="$TEST_ROOT/claude-profiles.json"
 FAKE_BIN="$TEST_ROOT/bin"
 FAKE_CLAUDE="$FAKE_BIN/claude"
+GUARD_LOG="$TEST_ROOT/guard.log"
 FAKE_HOME="$TEST_ROOT/home"
 XFACTORY="$FAKE_HOME/projects/xFactory"
 mkdir -p "$PROFILE_DIR" "$FAKE_BIN" "$XFACTORY" "$PROFILE_BASE/shared"
@@ -117,8 +118,9 @@ EOF
     chmod +x "$XFACTORY/lanes-edit.sh"
 }
 lanes_edit_with_guard() {
-    cat > "$XFACTORY/lanes-edit.sh" <<'EOF'
+cat > "$XFACTORY/lanes-edit.sh" <<'EOF'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >> "${FAKE_GUARD_LOG:-/dev/null}"
 case "$1" in session-start|guard) : ;; esac
 case "$1" in
   session-start) exit 0 ;;
@@ -157,6 +159,7 @@ common_env=(
     "CLAUDE_PROFILES_HOME=$PROFILE_BASE"
     "CLAUDE_PROFILES_MANIFEST=$MANIFEST"
     "WORKBENCHES_SHARED_MCP_FAMILIES=disabled"
+    "FAKE_GUARD_LOG=$GUARD_LOG"
 )
 
 # One run of the launcher. `--no-lane` keeps the lane resolution out of it
@@ -170,6 +173,7 @@ run_launcher() {
 
 guard_entries() { jq '[.hooks.UserPromptSubmit[]? | select(any(.hooks[]?; .command == "'"$SNIPPET"'"))]' "$SETTINGS"; }
 guard_count() { jq --arg c "$SNIPPET" '[.hooks.UserPromptSubmit[]? | select(any(.hooks[]?; .command == $c))] | length' "$SETTINGS"; }
+legacy_guard_count() { jq --arg c "$LEGACY_SNIPPET" '[.hooks.UserPromptSubmit[]? | select(any(.hooks[]?; .command == $c))] | length' "$SETTINGS"; }
 entry_with_snippet() {
     jq --arg c "$SNIPPET" '
         [.hooks.UserPromptSubmit[]? | select(any(.hooks[]?; .command == $c))] | .[0] // empty
@@ -281,6 +285,107 @@ run_launcher
     || fail "created: a fresh settings.json has $(guard_count) name-guard entries"; assertion
 [[ "$(entry_with_snippet | jq -r '.hooks[0].command')" == "$SNIPPET" ]] \
     || fail "created: the snippet is not in a freshly created settings.json"; assertion
+
+# ---------------------------------------------------------------------------
+# 6b. A profile carrying the legacy unconditional managed command is migrated
+# in place. A foreign hook grouped beside it and outer metadata survive; only
+# the command this launcher owns is replaced by one canonical gated entry.
+printf '%s\n' '{}' > "$SETTINGS"
+jq --arg c "$LEGACY_SNIPPET" '.hooks.UserPromptSubmit = [{
+      note: "operator grouped these",
+      hooks: [
+        {type: "command", command: $c, timeout: 30},
+        {type: "command", command: "foreign-grouped"}
+      ]
+    }]' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+run_launcher
+[[ "$(legacy_guard_count)" -eq 0 ]] \
+    || fail "legacy migration: the unconditional command survived ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(guard_count)" -eq 1 ]] \
+    || fail "legacy migration: expected one gated command, found $(guard_count)"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[]?|.hooks[]?|select(.command == "foreign-grouped")]|length' "$SETTINGS")" -eq 1 ]] \
+    || fail "legacy migration: grouped foreign hook was lost"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[]?|select(.note == "operator grouped these")]|length' "$SETTINGS")" -eq 1 ]] \
+    || fail "legacy migration: grouped entry metadata was lost"; assertion
+[[ "$(entry_with_snippet | jq -r --arg c "$SNIPPET" '.hooks[] | select(.command == $c) | .timeout')" == 30 ]] \
+    || fail "legacy migration: managed hook metadata was reset ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+
+# A legacy-only outer entry is rewritten in place rather than dropped and
+# recreated, so metadata on both levels survives the migration.
+printf '%s\n' '{}' > "$SETTINGS"
+jq --arg c "$LEGACY_SNIPPET" '.hooks.UserPromptSubmit = [{
+      note: "legacy-only outer metadata",
+      hooks: [{type: "command", command: $c, timeout: 41, custom: "keep-me"}]
+    }]' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+run_launcher
+[[ "$(legacy_guard_count)" -eq 0 && "$(guard_count)" -eq 1 ]] \
+    || fail "legacy-only migration did not replace exactly one command ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(entry_with_snippet | jq -r '.note')" == "legacy-only outer metadata" ]] \
+    || fail "legacy-only migration lost outer metadata"; assertion
+[[ "$(entry_with_snippet | jq -r --arg c "$SNIPPET" '.hooks[] | select(.command == $c) | [.timeout,.custom] | @tsv')" == $'41\tkeep-me' ]] \
+    || fail "legacy-only migration lost nested metadata ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+
+# If both forms already exist, keep the canonical entry and remove only the
+# stale managed hook. The grouped foreign hook and outer metadata stay put.
+printf '%s\n' '{}' > "$SETTINGS"
+jq --arg old "$LEGACY_SNIPPET" --arg new "$SNIPPET" '.hooks.UserPromptSubmit = [
+      {note: "canonical", hooks: [{type: "command", command: $new, timeout: 7}]},
+      {note: "mixed legacy", hooks: [
+        {type: "command", command: $old, timeout: 41},
+        {type: "command", command: "foreign-beside-legacy", custom: "keep-me"}
+      ]}
+    ]' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+run_launcher
+[[ "$(legacy_guard_count)" -eq 0 && "$(guard_count)" -eq 1 ]] \
+    || fail "dual-form migration did not leave exactly one canonical command ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[]? | select(.note == "mixed legacy") | .hooks[]? | select(.command == "foreign-beside-legacy" and .custom == "keep-me")] | length' "$SETTINGS")" -eq 1 ]] \
+    || fail "dual-form migration lost grouped foreign metadata ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+
+# Multiple legacy occurrences with no canonical entry collapse to one command.
+# The first managed hook supplies its metadata; foreign hooks remain grouped.
+printf '%s\n' '{}' > "$SETTINGS"
+jq --arg old "$LEGACY_SNIPPET" '.hooks.UserPromptSubmit = [{
+      note: "duplicate legacy",
+      hooks: [
+        {type: "command", command: $old, timeout: 51, custom: "first"},
+        {type: "command", command: "foreign-between"},
+        {type: "command", command: $old, timeout: 52, custom: "second"}
+      ]
+    }]' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+run_launcher
+[[ "$(legacy_guard_count)" -eq 0 && "$(guard_count)" -eq 1 ]] \
+    || fail "duplicate legacy migration did not leave exactly one canonical command ($(jq -c '.hooks.UserPromptSubmit' "$SETTINGS"))"; assertion
+[[ "$(entry_with_snippet | jq -r --arg c "$SNIPPET" '.hooks[] | select(.command == $c) | [.timeout,.custom] | @tsv')" == $'51\tfirst' ]] \
+    || fail "duplicate legacy migration did not preserve the first managed hook metadata"; assertion
+[[ "$(jq -r '[.hooks.UserPromptSubmit[]? | .hooks[]? | select(.command == "foreign-between")] | length' "$SETTINGS")" -eq 1 ]] \
+    || fail "duplicate legacy migration lost the grouped foreign hook"; assertion
+
+# A foreign metadata field named `command` is not a hook and must never be
+# selected as the migration target, even when it contains the legacy text.
+printf '%s\n' '{}' > "$SETTINGS"
+jq --arg old "$LEGACY_SNIPPET" '.hooks.UserPromptSubmit = [{
+      command: $old,
+      note: "foreign command metadata",
+      hooks: [{type: "command", command: $old, timeout: 61}]
+    }]' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+run_launcher
+[[ "$(jq -r '.hooks.UserPromptSubmit[0].command' "$SETTINGS")" == "$LEGACY_SNIPPET" ]] \
+    || fail "legacy migration corrupted a foreign metadata command field"; assertion
+[[ "$(legacy_guard_count)" -eq 0 && "$(guard_count)" -eq 1 ]] \
+    || fail "metadata-command migration did not replace the nested hook exactly once"; assertion
+
+# 6c. The installed command itself is mode-aware: profile-only returns without
+# consulting the lane guard, while lane-aware execution invokes it.
+scenario
+: > "$GUARD_LOG"
+env "${common_env[@]}" WORKBENCHES_CLAUDE_PROFILE_ONLY=1 bash -c "$SNIPPET" \
+    || fail "profile-only gated command returned nonzero"
+[[ ! -s "$GUARD_LOG" ]] \
+    || fail "profile-only gated command consulted lanes-edit.sh: $(cat "$GUARD_LOG")"; assertion
+env -u WORKBENCHES_CLAUDE_PROFILE_ONLY "${common_env[@]}" bash -c "$SNIPPET" \
+    || fail "lane-aware gated command returned nonzero"
+grep -qx guard "$GUARD_LOG" \
+    || fail "lane-aware gated command did not invoke guard: $(cat "$GUARD_LOG")"; assertion
 
 # ---------------------------------------------------------------------------
 # 7. TOLERANCE: the estate is installed but its lanes-edit.sh has no `guard`
