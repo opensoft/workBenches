@@ -83,6 +83,15 @@ run_fails() {
 # No remembered profile means no guess and no Claude launch.
 run_ok claude-profile
 [[ ! -e "$CLAUDE_LOG" ]] || fail "bare claude-profile no longer lists profiles"
+ABSENT_PROFILE_BASE="$TEST_ROOT/absent-profiles-home"
+if env "${common_env[@]}" "CLAUDE_PROFILES_HOME=$ABSENT_PROFILE_BASE" \
+    pclaude >/dev/null 2>"$ERR_LOG"; then
+    fail "bare pclaude unexpectedly succeeded with an absent profile home"
+fi
+grep -q 'no last Claude profile' "$ERR_LOG" \
+    || fail "absent profile home did not report missing state: $(cat "$ERR_LOG")"
+[[ ! -e "$ABSENT_PROFILE_BASE" ]] \
+    || fail "bare pclaude created the absent profile home"
 run_fails pclaude
 grep -q 'no last Claude profile' "$ERR_LOG" \
     || fail "missing-state diagnostic was not actionable: $(cat "$ERR_LOG")"
@@ -92,6 +101,17 @@ grep -q 'no last Claude profile' "$ERR_LOG" \
 run_ok pclaude team002 --print hello
 [[ "$(cat "$LAST_PROFILE")" == team-002 ]] \
     || fail "alias did not persist canonical profile: $(cat "$LAST_PROFILE")"
+
+# A writer killed after publishing its lock cannot permanently block future
+# profile selections. The next writer removes the unchanged dead-owner lock.
+printf '%s\n' 999999 > "$PROFILE_BASE/.last-profile.lock"
+chmod 600 "$PROFILE_BASE/.last-profile.lock"
+run_ok pclaude team003 --print stale-lock-recovery
+[[ "$(cat "$LAST_PROFILE")" == team-003 ]] \
+    || fail "stale lock recovery did not persist the new profile"
+[[ ! -e "$PROFILE_BASE/.last-profile.lock" ]] \
+    || fail "stale lock remained after recovery"
+run_ok pclaude team002 --print restore-selection
 last_profile_mode="$(stat -c '%a' "$LAST_PROFILE" 2>/dev/null \
     || stat -f '%Lp' "$LAST_PROFILE" 2>/dev/null)"
 [[ "$last_profile_mode" == 600 ]] \

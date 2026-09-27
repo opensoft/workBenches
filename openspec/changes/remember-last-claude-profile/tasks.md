@@ -16,3 +16,8 @@
 - [x] 3.1 Run shell syntax checks and all focused Claude profile launcher suites in `py-bench`; verify zero failures
 - [x] 3.2 Run strict OpenSpec validation and repository documentation/contract checks; verify the change is apply-ready and consistent
 - [x] 3.3 Complete the Speckit artifacts and mark implementation tasks finished; verify specification, plan, task, and checklist coverage is complete
+
+## 4. Review hardening
+
+- [x] 4.1 Treat an absent profile home as ordinary missing remembered state without creating it during a bare launch.
+- [x] 4.2 Replace the crash-persistent lock directory with an owned atomic PID lock file and recover a lock whose owner no longer exists.

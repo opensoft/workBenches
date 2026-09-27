@@ -23,7 +23,7 @@ See `proposal.md` for motivation. The shared launcher already resolves aliases t
 
 ### Store one canonical name under the Claude profile home
 
-The launcher will store one line in `${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}/.last-profile`. The value is non-secret, follows an existing profile-home override automatically, and does not pollute an individual profile directory. Writes use a same-directory temporary regular file, mode `0600`, followed by atomic rename. Reads reject symlinks, non-regular files, empty values, and additional lines.
+The launcher will store one line in `${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}/.last-profile`. The value is non-secret, follows an existing profile-home override automatically, and does not pollute an individual profile directory. Writes use a same-directory temporary regular file, mode `0600`, followed by atomic rename. Reads reject symlinks, non-regular files, empty values, and additional lines. A bare launch treats a profile home that has never been created as ordinary missing state. Writers serialize through an atomic, owned PID lock file; a later writer removes the lock only when its recorded owner process no longer exists and the lock identity is unchanged.
 
 Alternatives considered: shell startup variables would not follow profile changes reliably; storing the value inside every profile would make lookup circular; Key Vault is inappropriate for a local non-secret convenience pointer.
 

@@ -32,6 +32,10 @@ The launcher SHALL make `pclaude` with no arguments run the remembered profile i
 - **WHEN** an operator runs bare `pclaude` before any profile has been remembered
 - **THEN** the command exits without launching Claude and explains how to select a profile
 
+#### Scenario: Profile home has not been created
+- **WHEN** an operator runs bare `pclaude` on a first-use installation whose profile home does not exist
+- **THEN** the command reports missing remembered state without creating the profile home
+
 #### Scenario: Remembered profile is stale
 - **WHEN** the remembered name no longer resolves to a configured profile
 - **THEN** the command exits without launching Claude and identifies the stale remembered profile
@@ -72,3 +76,7 @@ The remembered-profile record SHALL contain only the canonical profile name, SHA
 #### Scenario: State path is unsafe
 - **WHEN** the state path is a symbolic link, non-regular object, empty record, or multi-line record
 - **THEN** the launcher exits with an error and does not launch Claude
+
+#### Scenario: Previous writer terminated while holding the lock
+- **WHEN** the private lock records a process that no longer exists
+- **THEN** the next writer safely removes that unchanged stale lock and records the new canonical profile

@@ -4,7 +4,7 @@ set -euo pipefail
 manifest="${CLAUDE_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/claude-profiles.json}"
 base="${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}"
 last_profile_file="$base/.last-profile"
-last_profile_lock_dir="$base/.last-profile.lock"
+last_profile_lock_file="$base/.last-profile.lock"
 command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
 
 path_owner_uid() {
@@ -29,37 +29,73 @@ validate_last_profile_directory() {
 }
 
 profile_state_lock_active=false
+profile_state_lock_identity=""
 
 acquire_profile_state_lock() {
-  local attempt=0 owner
+  local attempt=0 candidate current_identity lock_pid owner mode
 
   mkdir -p "$base"
   validate_last_profile_directory || return $?
-  while ! mkdir "$last_profile_lock_dir" 2>/dev/null; do
-    if [[ -L "$last_profile_lock_dir" || ! -d "$last_profile_lock_dir" ]]; then
-      echo "pclaude: unsafe last-profile state lock: $last_profile_lock_dir" >&2
+  while true; do
+    candidate="$(mktemp "$base/.last-profile.lock.XXXXXX.tmp")"
+    chmod 600 "$candidate"
+    printf '%s\n' "$$" > "$candidate"
+    if ln "$candidate" "$last_profile_lock_file" 2>/dev/null; then
+      profile_state_lock_identity="$(profile_file_identity "$last_profile_lock_file")"
+      rm -f "$candidate"
+      profile_state_lock_active=true
+      return 0
+    fi
+    rm -f "$candidate"
+
+    if [[ -L "$last_profile_lock_file" || ! -f "$last_profile_lock_file" ]]; then
+      echo "pclaude: unsafe last-profile state lock: $last_profile_lock_file" >&2
       return 2
     fi
-    owner="$(path_owner_uid "$last_profile_lock_dir" || true)"
+    owner="$(path_owner_uid "$last_profile_lock_file" || true)"
     if [[ -z "$owner" || "$owner" != "$(id -u)" ]]; then
-      echo "pclaude: last-profile state lock is not owned by the current user: $last_profile_lock_dir" >&2
+      echo "pclaude: last-profile state lock is not owned by the current user: $last_profile_lock_file" >&2
       return 2
+    fi
+    mode="$(stat -c '%a' "$last_profile_lock_file" 2>/dev/null \
+      || stat -f '%Lp' "$last_profile_lock_file" 2>/dev/null \
+      || true)"
+    if [[ "$mode" != 600 ]]; then
+      echo "pclaude: last-profile state lock must have mode 0600: $last_profile_lock_file (found ${mode:-unknown})" >&2
+      return 2
+    fi
+    IFS= read -r lock_pid < "$last_profile_lock_file" || true
+    if [[ ! "$lock_pid" =~ ^[1-9][0-9]*$ ]]; then
+      echo "pclaude: malformed last-profile state lock: $last_profile_lock_file" >&2
+      return 2
+    fi
+    if ! kill -0 "$lock_pid" 2>/dev/null; then
+      current_identity="$(profile_file_identity "$last_profile_lock_file" 2>/dev/null || true)"
+      if [[ -n "$current_identity" \
+        && "$current_identity" == "$(profile_file_identity "$last_profile_lock_file" 2>/dev/null || true)" ]]; then
+        rm -f "$last_profile_lock_file"
+        continue
+      fi
     fi
     attempt=$((attempt + 1))
     if [[ "$attempt" -ge 200 ]]; then
-      echo "pclaude: timed out waiting for last-profile state lock: $last_profile_lock_dir" >&2
+      echo "pclaude: timed out waiting for last-profile state lock: $last_profile_lock_file" >&2
       return 1
     fi
     sleep 0.05
   done
-  chmod 700 "$last_profile_lock_dir"
-  profile_state_lock_active=true
 }
 
 release_profile_state_lock() {
+  local current_identity
+
   [[ "$profile_state_lock_active" == true ]] || return 0
-  rmdir "$last_profile_lock_dir" 2>/dev/null || true
+  current_identity="$(profile_file_identity "$last_profile_lock_file" 2>/dev/null || true)"
+  if [[ -n "$profile_state_lock_identity" && "$current_identity" == "$profile_state_lock_identity" ]]; then
+    rm -f "$last_profile_lock_file"
+  fi
   profile_state_lock_active=false
+  profile_state_lock_identity=""
 }
 
 trap 'release_profile_state_lock' EXIT
@@ -67,6 +103,10 @@ trap 'release_profile_state_lock' EXIT
 read_last_profile() {
   local line_count owner profile mode
 
+  if [[ ! -e "$base" ]]; then
+    echo "pclaude: no last Claude profile is recorded; run pclaude PROFILE or lclaude PROFILE first." >&2
+    return 2
+  fi
   validate_last_profile_directory || return $?
   if [[ -L "$last_profile_file" ]]; then
     echo "pclaude: last Claude profile record must not be a symbolic link: $last_profile_file" >&2
