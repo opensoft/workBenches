@@ -184,3 +184,44 @@ entrypoint_fallback_argv="$(sed -nE 's/^[[:space:]]*set -- (.+)$/\1/p' "$estate_
 
 printf 'devBenches/base-image/Dockerfile wires the workBenches#90 container-start step: vendored tree at %s, step at %s, ENTRYPOINT (line %s) above CMD (line %s), both spelling the default command [%s]\n' \
     "$vendor_dir" "$start_dest" "$entrypoint_line" "$cmd_line" "$cmd_argv"
+
+# ---------------------------------------------------------------------------
+# Part 3: sysBenches/base-image/Dockerfile. Sys benches run browser-backed
+# administration tools too, so Layer 1b must provide a shared Chromium and its
+# complete runtime dependencies instead of relying on a per-user browser cache.
+
+sys_dockerfile="$repo_root/sysBenches/base-image/Dockerfile"
+[ -f "$sys_dockerfile" ] || {
+    echo "FAIL: $sys_dockerfile is missing" >&2
+    exit 1
+}
+
+grep -Fq 'ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright' "$sys_dockerfile" || {
+    echo "FAIL: sys-bench-base does not define the shared /ms-playwright browser cache" >&2
+    exit 1
+}
+
+grep -Fq 'npm install -g "playwright@${PLAYWRIGHT_VERSION}"' "$sys_dockerfile" || {
+    echo "FAIL: sys-bench-base does not install its pinned Playwright CLI" >&2
+    exit 1
+}
+
+grep -Fq 'playwright install --with-deps chromium' "$sys_dockerfile" || {
+    echo "FAIL: sys-bench-base does not install Chromium with its Linux runtime dependencies" >&2
+    exit 1
+}
+
+grep -Fq "ldd \"\$browser_path\"" "$sys_dockerfile" || {
+    echo "FAIL: sys-bench-base does not verify Chromium's shared-library closure during the image build" >&2
+    exit 1
+}
+
+dev_playwright_version="$(sed -nE 's/^PLAYWRIGHT_VERSION="\$\{PLAYWRIGHT_VERSION:-([^}]+)\}"$/\1/p' "$repo_root/devBenches/base-image/install-testing-tools.sh" | head -n1)"
+sys_playwright_version="$(sed -nE 's/^ARG PLAYWRIGHT_VERSION=(.+)$/\1/p' "$sys_dockerfile" | head -n1)"
+[ -n "$dev_playwright_version" ] && [ "$sys_playwright_version" = "$dev_playwright_version" ] || {
+    echo "FAIL: sys-bench-base Playwright version '$sys_playwright_version' differs from dev-bench-base '$dev_playwright_version'" >&2
+    exit 1
+}
+
+printf 'sysBenches/base-image/Dockerfile installs Playwright %s Chromium with complete dependencies in /ms-playwright and verifies its shared libraries\n' \
+    "$sys_playwright_version"
