@@ -62,14 +62,17 @@ fi
 cmp -s "$test_root/nonstandard/settings.before" "$test_root/nonstandard/settings.json" ||
     fail "non-standard JSON settings were modified"
 
-mkdir -p "$test_root/overflow"
-printf '%s\n' '{"value":1e999}' > "$test_root/overflow/settings.json"
-cp "$test_root/overflow/settings.json" "$test_root/overflow/settings.before"
-if "$helper" --waveterm-config "$test_root/overflow" >/dev/null 2>&1; then
-    fail "overflowed JSON number unexpectedly succeeded"
-fi
-cmp -s "$test_root/overflow/settings.before" "$test_root/overflow/settings.json" ||
-    fail "overflowed JSON settings were modified"
+mkdir -p "$test_root/numeric-precision"
+printf '%s\n' '{"large":1e999,"small":1e-999,"precise":0.12345678901234567890123456789}' \
+    > "$test_root/numeric-precision/settings.json"
+"$helper" --waveterm-config "$test_root/numeric-precision" >/dev/null
+grep -Fq '"large":1e999' "$test_root/numeric-precision/settings.json" ||
+    fail "large numeric representation was modified"
+grep -Fq '"small":1e-999' "$test_root/numeric-precision/settings.json" ||
+    fail "small numeric representation was modified"
+grep -Fq '"precise":0.12345678901234567890123456789' \
+    "$test_root/numeric-precision/settings.json" ||
+    fail "high-precision numeric representation was modified"
 
 mkdir -p "$test_root/empty"
 : > "$test_root/empty/settings.json"
