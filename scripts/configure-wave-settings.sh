@@ -3,8 +3,6 @@
 
 set -euo pipefail
 
-home_dir="${HOME:?HOME is required}"
-
 is_wsl() {
     [ -n "${WSL_DISTRO_NAME:-}" ] || grep -qi microsoft /proc/version 2>/dev/null
 }
@@ -31,7 +29,11 @@ default_waveterm_config_dir() {
         return
     fi
 
-    printf '%s\n' "$home_dir/.config/waveterm"
+    if [[ -z "${HOME:-}" ]]; then
+        echo "HOME is required when resolving the native Linux Wave settings path." >&2
+        return 1
+    fi
+    printf '%s\n' "$HOME/.config/waveterm"
 }
 
 waveterm_config_dir="${WAVETERM_CONFIG_DIR:-}"
@@ -76,6 +78,7 @@ settings_file="$waveterm_config_dir/settings.json"
 
 python3 - "$settings_file" <<'PY'
 import json
+import math
 import os
 import pathlib
 import tempfile
@@ -88,11 +91,18 @@ if settings_path.is_symlink():
 def reject_constant(value):
     raise ValueError(f"non-standard JSON constant: {value}")
 
+def parse_finite_float(value):
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError(f"non-finite JSON number: {value}")
+    return parsed
+
 if settings_path.exists():
     try:
         settings = json.loads(
             settings_path.read_text(encoding="utf-8"),
             parse_constant=reject_constant,
+            parse_float=parse_finite_float,
         )
     except (OSError, ValueError) as exc:
         raise SystemExit(f"{settings_path} could not be read as JSON: {exc}")
@@ -114,11 +124,11 @@ for key, value in defaults.items():
 
 if changed or not settings_path.exists():
     settings_path.parent.mkdir(parents=True, exist_ok=True)
-    mode = settings_path.stat().st_mode & 0o777 if settings_path.exists() else None
+    mode = settings_path.stat().st_mode & 0o7777 if settings_path.exists() else None
     fd, temporary_name = tempfile.mkstemp(prefix=f".{settings_path.name}.", dir=settings_path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as temporary:
-            json.dump(settings, temporary, indent=2)
+            json.dump(settings, temporary, indent=2, allow_nan=False)
             temporary.write("\n")
         if mode is not None:
             os.chmod(temporary_name, mode)
