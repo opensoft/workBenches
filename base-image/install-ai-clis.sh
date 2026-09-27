@@ -397,8 +397,12 @@ if run_with_timeout "$COMMAND_TIMEOUT" "MiniMax Code CLI install" \
     # create and remove only their own activity records.
     install -d -m 1777 /opt/minimax-code/.mcode-active
 
-    if command -v mcode >/dev/null 2>&1 && mcode --version >/dev/null 2>&1; then
+    if command -v mcode >/dev/null 2>&1 \
+        && command -v mcode-tools >/dev/null 2>&1 \
+        && mcode --version >/dev/null 2>&1 \
+        && mcode-tools --version >/dev/null 2>&1; then
         log_info "MiniMax Code CLI installed to $(command -v mcode): $(mcode --version)"
+        log_info "MiniMax Code tools installed to $(command -v mcode-tools): $(mcode-tools --version)"
     else
         log_error "MiniMax Code CLI is not runnable after installation (continuing)"
     fi
@@ -722,6 +726,10 @@ if command -v mcode >/dev/null 2>&1 && ! mcode --version >/dev/null 2>&1; then
     missing_clis+=("mcode(runnable)")
 fi
 
+if command -v mcode-tools >/dev/null 2>&1 && ! mcode-tools --version >/dev/null 2>&1; then
+    missing_clis+=("mcode-tools(runnable)")
+fi
+
 if command -v amp >/dev/null 2>&1 && ! amp --version >/dev/null 2>&1; then
     missing_clis+=("amp(runnable)")
 fi
@@ -769,10 +777,10 @@ log_info "  - Amp CLI (amp)"
 log_info "  - Aider (aider)"
 log_info "  - OpenHands CLI (openhands)"
 log_info "  - Cursor CLI (cursor-agent)"
-if command -v mcode >/dev/null 2>&1 || [ -x "$HOME/.minimax-code/bin/mcode" ]; then
-    log_info "  - MiniMax Code (mcode)"
+if command -v mcode >/dev/null 2>&1 && command -v mcode-tools >/dev/null 2>&1; then
+    log_info "  - MiniMax Code (mcode, mcode-tools)"
 else
-    log_info "  - MiniMax Code (mcode) [install skipped or failed]"
+    log_info "  - MiniMax Code (mcode, mcode-tools) [install skipped or failed]"
 fi
 log_info ""
 log_info "Agent files (openagent.md, opencoder.md) provided via Dockerfile COPY"

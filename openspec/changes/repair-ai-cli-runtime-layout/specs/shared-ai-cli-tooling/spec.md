@@ -10,8 +10,8 @@ runtime files SHALL remain resolvable by the non-root bench user.
 - **THEN** every required CLI command resolves from the inherited image-managed installation
 
 #### Scenario: MiniMax launcher resolves its runtime
-- **WHEN** the normal UID/GID 1000 bench user invokes `mcode --version`
-- **THEN** the command resolves its versioned runtime from the shared MiniMax install tree and exits successfully
+- **WHEN** the normal UID/GID 1000 bench user invokes `mcode --version` and `mcode-tools --version`
+- **THEN** both commands resolve their versioned runtime from the shared MiniMax install tree and exit successfully
 
 #### Scenario: Build has no provider credentials
 - **WHEN** the shared image is inspected after construction
@@ -27,8 +27,8 @@ without misrepresenting it as installed.
 - **THEN** the image build exits unsuccessfully and identifies the missing command
 
 #### Scenario: Required MiniMax command is unrunnable
-- **WHEN** `mcode` exists but cannot resolve or execute its shared runtime
-- **THEN** the image build exits unsuccessfully and identifies `mcode` as unrunnable
+- **WHEN** `mcode` or `mcode-tools` exists but cannot resolve or execute its shared runtime
+- **THEN** the image build exits unsuccessfully and identifies the affected command as unrunnable
 
 #### Scenario: Preview tool is unavailable
 - **WHEN** a preview or best-effort upstream installer fails

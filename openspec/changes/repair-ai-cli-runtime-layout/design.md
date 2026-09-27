@@ -22,7 +22,7 @@ See [proposal.md](proposal.md) for motivation. Layer 0 installs shared AI CLIs a
 ## Decisions
 
 - Configure MiniMax's official installer with `MCODE_INSTALL_DIR=/opt/minimax-code` and disable shell profile edits. The installer keeps versioned releases and the `current` pointer under this root; copying only its stable launcher to `/usr/local/bin` is not sufficient because that launcher derives its root from its own location.
-- Publish `mcode` and `mcode-tools` as symlinks to the launchers under `/opt/minimax-code/bin`. Make the exact install tree readable and executable for other users, then require `mcode --version` during the build. The alternative of installing under `/root/.minimax-code` leaves the image's other users unable to resolve or execute its runtime.
+- Publish `mcode` and `mcode-tools` as symlinks to the launchers under `/opt/minimax-code/bin`. Make the exact install tree readable and executable for other users, then require both version commands during the build and in the UID 1000 image harness. The alternative of installing under `/root/.minimax-code` leaves the image's other users unable to resolve or execute its runtime.
 - Add `/opt/grok/bin` to the Dockerfile's image-wide `PATH`, retaining the existing skeleton shell configuration. Editing only `.bashrc`/`.zshrc` would not fix noninteractive commands and would not update an existing user's copied startup files.
 - Keep the versioned AI packages on their established upstream floating channels. A no-cache rebuild will resolve each channel once for the image snapshot; maintain explicit upstream pins only where the repository already requires a verified checksum.
 
