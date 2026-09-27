@@ -101,6 +101,26 @@ settings_path = pathlib.Path(sys.argv[1])
 if settings_path.is_symlink():
     raise SystemExit(f"{settings_path} is a symlink; refusing to replace it")
 
+def file_signature(stat_result):
+    return (
+        stat_result.st_dev,
+        stat_result.st_ino,
+        stat_result.st_size,
+        stat_result.st_mtime_ns,
+        stat_result.st_ctime_ns,
+    )
+
+def read_snapshot(path):
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "r", encoding="utf-8") as source:
+        before = os.fstat(source.fileno())
+        content = source.read()
+        after = os.fstat(source.fileno())
+    if file_signature(before) != file_signature(after):
+        raise OSError("file changed while it was being read")
+    return content, file_signature(after)
+
 def reject_constant(value):
     raise ValueError(f"non-standard JSON constant: {value}")
 
@@ -111,9 +131,10 @@ def parse_finite_decimal(value):
     return parsed
 
 original_text = None
+original_signature = None
 if settings_path.exists():
     try:
-        original_text = settings_path.read_text(encoding="utf-8")
+        original_text, original_signature = read_snapshot(settings_path)
         settings = json.loads(
             original_text,
             parse_constant=reject_constant,
@@ -162,6 +183,22 @@ if additions or not settings_path.exists():
             temporary.write(updated_text)
         if mode is not None:
             os.chmod(temporary_name, mode)
+        if original_signature is None:
+            if settings_path.is_symlink() or settings_path.exists():
+                raise SystemExit(
+                    f"{settings_path} appeared during the update; refusing to replace it"
+                )
+        else:
+            try:
+                current_text, current_signature = read_snapshot(settings_path)
+            except (FileNotFoundError, OSError) as exc:
+                raise SystemExit(
+                    f"{settings_path} changed during the update; refusing to replace it: {exc}"
+                )
+            if current_signature != original_signature or current_text != original_text:
+                raise SystemExit(
+                    f"{settings_path} changed during the update; refusing to replace it"
+                )
         os.replace(temporary_name, settings_path)
     finally:
         try:

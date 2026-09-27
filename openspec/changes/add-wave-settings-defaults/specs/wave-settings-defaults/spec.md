@@ -36,3 +36,7 @@ and preserve the existing file mode.
 #### Scenario: Missing settings file
 - **WHEN** the target directory has no settings file
 - **THEN** the helper creates a valid settings object containing the documented defaults
+
+#### Scenario: Settings change during the update
+- **WHEN** the settings file identity, metadata, or contents change after validation and before replacement
+- **THEN** the helper exits unsuccessfully and preserves the newer settings file

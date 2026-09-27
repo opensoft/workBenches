@@ -74,6 +74,34 @@ grep -Fq '"precise":0.12345678901234567890123456789' \
     "$test_root/numeric-precision/settings.json" ||
     fail "high-precision numeric representation was modified"
 
+mkdir -p "$test_root/concurrent"
+python3 - "$test_root/concurrent/settings.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "w", encoding="utf-8") as target:
+    json.dump({"payload": "x" * 8_000_000}, target)
+    target.write("\n")
+PY
+(
+    for _ in $(seq 1 10000); do
+        if compgen -G "$test_root/concurrent/.settings.json.*" >/dev/null; then
+            printf '%s\n' '{"external":"new"}' > "$test_root/concurrent/settings.json"
+            exit 0
+        fi
+        sleep 0.001
+    done
+    exit 1
+) &
+concurrent_writer_pid=$!
+if "$helper" --waveterm-config "$test_root/concurrent" >/dev/null 2>&1; then
+    wait "$concurrent_writer_pid" || true
+    fail "concurrent settings replacement unexpectedly succeeded"
+fi
+wait "$concurrent_writer_pid" || fail "concurrent writer did not observe the temporary file"
+grep -Fq '"external":"new"' "$test_root/concurrent/settings.json" ||
+    fail "concurrent settings update was overwritten"
+
 mkdir -p "$test_root/empty"
 : > "$test_root/empty/settings.json"
 if "$helper" --waveterm-config "$test_root/empty" >/dev/null 2>&1; then

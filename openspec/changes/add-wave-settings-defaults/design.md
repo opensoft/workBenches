@@ -22,14 +22,17 @@ authoritative and must not be replaced.
 
 ## Decisions
 
-- Resolve the Windows profile through PowerShell when running under WSL, with a
-  Linux-home fallback for native Linux environments.
-- Parse and write JSON with Python already present in workBenches rather than
-  editing structured data with text substitution.
+- Resolve the Windows profile through PowerShell when running under WSL. On
+  native Linux, use `$XDG_CONFIG_HOME/waveterm` or fall back to
+  `$HOME/.config/waveterm`.
+- Validate JSON with Python already present in workBenches, preserve the exact
+  representation of existing values, and splice only missing defaults.
 - Apply defaults only when keys are absent. Existing true or false values both
   remain authoritative.
 - Write a temporary file in the destination directory and atomically replace the
-  settings file, preserving its existing mode.
+  settings file, preserving its existing mode. Immediately before replacement,
+  compare the source inode, metadata, and contents with the validated snapshot;
+  abort if Wave or another invocation changed it.
 
 ## Risks / Trade-offs
 
@@ -37,3 +40,5 @@ authoritative and must not be replaced.
   can update the explicit helper without touching unrelated settings.
 - [Settings JSON is malformed] → Refuse with the exact file and parse error
   rather than overwrite recoverable user data.
+- [Wave updates settings concurrently] → Refuse the stale replacement and ask
+  the operator to rerun against the new file.
