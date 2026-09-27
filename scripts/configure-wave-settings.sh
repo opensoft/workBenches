@@ -10,23 +10,31 @@ is_wsl() {
 }
 
 default_waveterm_config_dir() {
-    if is_wsl && command -v powershell.exe >/dev/null 2>&1 && command -v wslpath >/dev/null 2>&1; then
+    if is_wsl; then
         local windows_profile
         local wsl_profile
-        windows_profile="$(powershell.exe -NoProfile -Command '[Environment]::GetFolderPath("UserProfile")' 2>/dev/null | tr -d '\r' || true)"
-        if [[ -n "$windows_profile" ]]; then
-            wsl_profile="$(wslpath -u "$windows_profile" 2>/dev/null || true)"
-            if [[ -n "$wsl_profile" ]]; then
-                printf '%s\n' "$wsl_profile/.config/waveterm"
-                return
-            fi
+        if ! command -v powershell.exe >/dev/null 2>&1 || ! command -v wslpath >/dev/null 2>&1; then
+            echo "Unable to resolve Windows Wave settings: powershell.exe and wslpath are required under WSL." >&2
+            return 1
         fi
+        windows_profile="$(powershell.exe -NoProfile -Command '[Environment]::GetFolderPath("UserProfile")' 2>/dev/null | tr -d '\r' || true)"
+        if [[ -z "$windows_profile" ]]; then
+            echo "Unable to resolve the Windows user profile for Wave settings." >&2
+            return 1
+        fi
+        wsl_profile="$(wslpath -u "$windows_profile" 2>/dev/null || true)"
+        if [[ -z "$wsl_profile" ]]; then
+            echo "Unable to convert the Windows user profile to a WSL path." >&2
+            return 1
+        fi
+        printf '%s\n' "$wsl_profile/.config/waveterm"
+        return
     fi
 
     printf '%s\n' "$home_dir/.config/waveterm"
 }
 
-waveterm_config_dir="${WAVETERM_CONFIG_DIR:-$(default_waveterm_config_dir)}"
+waveterm_config_dir="${WAVETERM_CONFIG_DIR:-}"
 
 usage() {
     cat <<'EOF'
@@ -54,6 +62,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+if [[ -z "$waveterm_config_dir" ]]; then
+    waveterm_config_dir="$(default_waveterm_config_dir)"
+fi
+
 if ! command -v python3 >/dev/null 2>&1; then
     echo "Wave settings setup skipped: python3 is not available." >&2
     exit 0
@@ -72,10 +84,17 @@ import sys
 settings_path = pathlib.Path(sys.argv[1])
 if settings_path.is_symlink():
     raise SystemExit(f"{settings_path} is a symlink; refusing to replace it")
+
+def reject_constant(value):
+    raise ValueError(f"non-standard JSON constant: {value}")
+
 if settings_path.exists():
     try:
-        settings = json.loads(settings_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        settings = json.loads(
+            settings_path.read_text(encoding="utf-8"),
+            parse_constant=reject_constant,
+        )
+    except (OSError, ValueError) as exc:
         raise SystemExit(f"{settings_path} could not be read as JSON: {exc}")
 else:
     settings = {}

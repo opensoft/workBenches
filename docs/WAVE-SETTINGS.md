@@ -17,6 +17,9 @@ Under WSL the helper resolves the Windows user profile and targets
 Windows-native Wave application. Use `--waveterm-config PATH` or
 `WAVETERM_CONFIG_DIR` to target another directory.
 
+When WSL is detected, failure to resolve the Windows profile is fatal; the
+helper does not silently write a Linux-home file that Windows Wave will ignore.
+
 The helper preserves existing values and unrelated keys, validates that the
 file contains a JSON object, writes atomically, and keeps the existing file
 mode. It refuses malformed or empty JSON rather than replacing it. It also

@@ -53,6 +53,15 @@ fi
 cmp -s "$test_root/malformed/settings.before" "$test_root/malformed/settings.json" ||
     fail "malformed settings were modified"
 
+mkdir -p "$test_root/nonstandard"
+printf '%s\n' '{"value":NaN}' > "$test_root/nonstandard/settings.json"
+cp "$test_root/nonstandard/settings.json" "$test_root/nonstandard/settings.before"
+if "$helper" --waveterm-config "$test_root/nonstandard" >/dev/null 2>&1; then
+    fail "non-standard JSON constant unexpectedly succeeded"
+fi
+cmp -s "$test_root/nonstandard/settings.before" "$test_root/nonstandard/settings.json" ||
+    fail "non-standard JSON settings were modified"
+
 mkdir -p "$test_root/empty"
 : > "$test_root/empty/settings.json"
 if "$helper" --waveterm-config "$test_root/empty" >/dev/null 2>&1; then
@@ -73,5 +82,12 @@ grep -q '"custom":"target"' "$test_root/symlink-target/settings.json" ||
 if "$helper" --waveterm-config >/dev/null 2>&1; then
     fail "missing --waveterm-config operand unexpectedly succeeded"
 fi
+
+if env -u WAVETERM_CONFIG_DIR WSL_DISTRO_NAME=Test PATH=/usr/bin:/bin \
+    HOME="$test_root/wsl-home" "$helper" >/dev/null 2>&1; then
+    fail "WSL default resolution unexpectedly fell back to the Linux home"
+fi
+[[ ! -e "$test_root/wsl-home/.config/waveterm/settings.json" ]] ||
+    fail "failed WSL resolution wrote Linux-home settings"
 
 echo "PASS: Wave settings defaults are safe, atomic, and preserve existing values"
