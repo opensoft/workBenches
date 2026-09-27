@@ -24,6 +24,7 @@ on:
       - devcontainer.test/test-setup-estate-commands.sh
       - devcontainer.test/test-base-image-dockerfile.sh
       - sysBenches/base-image/Dockerfile
+      - devBenches/base-image/install-testing-tools.sh
       - devcontainer.test/test-claude-profile-name-guard-hook.sh
       - devcontainer.test/test-claude-profile-binary-selection.sh
       - scripts/setup-workspace-repo.sh
@@ -59,6 +60,7 @@ on:
       - devcontainer.test/test-setup-estate-commands.sh
       - devcontainer.test/test-base-image-dockerfile.sh
       - sysBenches/base-image/Dockerfile
+      - devBenches/base-image/install-testing-tools.sh
       - devcontainer.test/test-claude-profile-name-guard-hook.sh
       - devcontainer.test/test-claude-profile-binary-selection.sh
       - scripts/setup-workspace-repo.sh
