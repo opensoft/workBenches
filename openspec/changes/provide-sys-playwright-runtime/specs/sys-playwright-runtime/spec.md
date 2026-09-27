@@ -8,6 +8,10 @@ in an image-owned location available to every derived sys bench.
 - **WHEN** a derived sys-bench image starts a headless Chromium process
 - **THEN** the browser executable resolves from the inherited shared cache without a per-user browser download
 
+#### Scenario: Browser process cannot start
+- **WHEN** the installed Chromium binary cannot complete a bounded headless page launch during image construction
+- **THEN** the sys-bench base image build exits unsuccessfully before publishing the image
+
 ### Requirement: Chromium dependencies are complete at build time
 The sys-bench image build SHALL install Chromium's supported Linux runtime
 dependencies and SHALL fail when any browser shared library is unresolved.

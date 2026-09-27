@@ -211,6 +211,11 @@ grep -Fq 'playwright install --with-deps chromium' "$sys_dockerfile" || {
     exit 1
 }
 
+grep -Fq 'chmod -R a+rX "$PLAYWRIGHT_BROWSERS_PATH"' "$sys_dockerfile" || {
+    echo "FAIL: sys-bench-base does not make the installed browser tree readable and executable by derived bench users" >&2
+    exit 1
+}
+
 grep -Fq 'ldd_output="$(ldd "$browser_path")"' "$sys_dockerfile" || {
     echo "FAIL: sys-bench-base does not fail closed when ldd cannot inspect Chromium" >&2
     exit 1
@@ -218,6 +223,16 @@ grep -Fq 'ldd_output="$(ldd "$browser_path")"' "$sys_dockerfile" || {
 
 grep -Fq 'test -z "$(printf '\''%s\n'\'' "$ldd_output" | awk '\''/not found/{print}'\'')"' "$sys_dockerfile" || {
     echo "FAIL: sys-bench-base does not reject unresolved Chromium shared libraries" >&2
+    exit 1
+}
+
+grep -Fq 'timeout 30s "$browser_path" --headless --no-sandbox --disable-gpu --dump-dom about:blank' "$sys_dockerfile" || {
+    echo "FAIL: sys-bench-base does not perform a bounded headless Chromium launch" >&2
+    exit 1
+}
+
+grep -Fq "grep -Fq '<html'" "$sys_dockerfile" || {
+    echo "FAIL: sys-bench-base does not verify the headless launch produced page output" >&2
     exit 1
 }
 

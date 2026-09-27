@@ -52,10 +52,14 @@ RUN set -eux; \
     mkdir -p "$PLAYWRIGHT_BROWSERS_PATH"; \
     chmod 1777 "$PLAYWRIGHT_BROWSERS_PATH"; \
     playwright install --with-deps chromium; \
+    chmod -R a+rX "$PLAYWRIGHT_BROWSERS_PATH"; \
+    chmod 1777 "$PLAYWRIGHT_BROWSERS_PATH"; \
     browser_path="$(find "$PLAYWRIGHT_BROWSERS_PATH" -path '*/chrome-linux*/chrome' -type f -print -quit)"; \
     test -n "$browser_path"; \
     ldd_output="$(ldd "$browser_path")"; \
-    test -z "$(printf '%s\n' "$ldd_output" | awk '/not found/{print}')"
+    test -z "$(printf '%s\n' "$ldd_output" | awk '/not found/{print}')"; \
+    smoke_output="$(timeout 30s "$browser_path" --headless --no-sandbox --disable-gpu --dump-dom about:blank)"; \
+    printf '%s\n' "$smoke_output" | grep -Fq '<html'
 
 # ========================================
 # ADMIN/DEVOPS TOOLS

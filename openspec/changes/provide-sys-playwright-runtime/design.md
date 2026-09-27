@@ -28,8 +28,9 @@ outlive or disagree with its system library set.
   partial hand-written apt package list.
 - Store browsers under `/ms-playwright` with a shared sticky directory rather
   than a root or user cache.
-- Resolve the installed Chromium executable and run `ldd` during the build;
-  unresolved libraries fail the layer immediately.
+- Resolve the installed Chromium executable, normalize shared-cache permissions,
+  run `ldd`, and perform a bounded headless page launch during the build;
+  unresolved libraries or browser startup failure fail the layer immediately.
 
 ## Risks / Trade-offs
 
