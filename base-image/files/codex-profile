@@ -5,9 +5,15 @@ manifest="${CODEX_PROFILES_MANIFEST:-${CHATGPT_PROFILES_MANIFEST:-${XDG_CONFIG_H
 base="${CODEX_PROFILES_HOME:-${CHATGPT_PROFILES_HOME:-$HOME/.chatgpt-profiles}}"
 command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
 
-codex_bin="${CODEX_BIN:-$(command -v codex || true)}"
-if [[ -z "$codex_bin" && -x "$HOME/.local/bin/codex" ]]; then
+# The standalone installer owns the package cache expected by app-server daemon.
+# Prefer its command over a PATH-resolved npm install unless the caller explicitly
+# selected a different binary with CODEX_BIN.
+if [[ -n "${CODEX_BIN:-}" ]]; then
+  codex_bin="$CODEX_BIN"
+elif [[ -x "$HOME/.local/bin/codex" ]]; then
   codex_bin="$HOME/.local/bin/codex"
+else
+  codex_bin="$(command -v codex || true)"
 fi
 mcp_sync="${WORKBENCHES_MCP_SYNC_BIN:-$(command -v workbenches-mcp-sync || true)}"
 if [[ -z "$mcp_sync" ]]; then

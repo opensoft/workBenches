@@ -28,6 +28,7 @@ MANIFEST="$TEST_ROOT/openai-profiles.json"
 FAKE_CODEX="$TEST_ROOT/codex"
 FAKE_CODEX_LOG="$TEST_ROOT/codex.log"
 EXPECTED="$TEST_ROOT/expected.log"
+STANDALONE_HOME="$TEST_ROOT/standalone-home"
 
 mkdir -p "$PROFILE_DIR"
 
@@ -46,6 +47,8 @@ set -euo pipefail
     done
 } > "$FAKE_CODEX_LOG"
 EOF
+mkdir -p "$STANDALONE_HOME/.local/bin"
+ln -s "$FAKE_CODEX" "$STANDALONE_HOME/.local/bin/codex"
 chmod +x "$FAKE_CODEX"
 
 run_launcher() {
@@ -114,5 +117,44 @@ assert_file_equals "$EXPECTED" "$FAKE_CODEX_LOG"
     || fail "launcher changed an unrelated MCP setting"
 ! grep -q 'SONARQUBE_TOKEN' "$LAUNCHER" \
     || fail "launcher must not read or forward SonarQube tokens"
+
+rm -f "$FAKE_CODEX_LOG"
+env -u CODEX_BIN -u CODEX_SONARQUBE_MCP_URL \
+    HOME="$STANDALONE_HOME" \
+    CODEX_PROFILES_HOME="$PROFILE_BASE" \
+    CODEX_PROFILES_MANIFEST="$MANIFEST" \
+    FAKE_CODEX_LOG="$FAKE_CODEX_LOG" \
+    "$LAUNCHER" run max-002 --version
+{
+    printf 'CODEX_HOME=%s\n' "$PROFILE_DIR"
+    printf '%s\n' \
+        'arg=-c' \
+        'arg=forced_login_method="chatgpt"' \
+        'arg=-c' \
+        'arg=cli_auth_credentials_store="file"' \
+        'arg=--version'
+} > "$EXPECTED"
+assert_file_equals "$EXPECTED" "$FAKE_CODEX_LOG"
+
+SETUP_HOME="$TEST_ROOT/setup-home"
+SETUP_PROFILE_BASE="$TEST_ROOT/setup-profiles"
+SETUP_MANIFEST="$TEST_ROOT/setup-manifest.json"
+SETUP_PROFILE_DIR="$SETUP_PROFILE_BASE/profiles/max/max-002"
+mkdir -p "$SETUP_HOME/.codex/packages/standalone"
+printf '%s\n' \
+    '{"version":1,"families":["max"],"profiles":[{"name":"max-002","email":"test@example.invalid","family":"max","aliases":[],"profilePath":"max/max-002"}]}' \
+    > "$SETUP_MANIFEST"
+HOME="$SETUP_HOME" \
+XDG_CONFIG_HOME="$TEST_ROOT/setup-config" \
+CODEX_PROFILES_HOME="$SETUP_PROFILE_BASE" \
+CODEX_PROFILES_MANIFEST="$SETUP_MANIFEST" \
+CODEX_PROFILE_CONFIG_TEMPLATE="$TEST_ROOT/missing-config-template.toml" \
+    "$REPO_ROOT/scripts/setup-codex-profiles.sh" >/dev/null
+[[ -L "$SETUP_PROFILE_DIR/packages/standalone" ]] \
+    || fail "profile setup did not create the standalone package-cache link"
+[[ "$(realpath "$SETUP_PROFILE_DIR/packages/standalone")" == "$(realpath "$SETUP_HOME/.codex/packages/standalone")" ]] \
+    || fail "profile package-cache link does not resolve to the canonical cache"
+[[ ! -e "$SETUP_PROFILE_DIR/.credentials.json" ]] \
+    || fail "profile setup unexpectedly created a credential bundle"
 
 echo "codex-profile runtime override tests passed"
