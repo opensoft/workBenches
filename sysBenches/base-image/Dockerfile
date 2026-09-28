@@ -8,11 +8,18 @@ FROM workbench-base:latest
 # Container version labels
 LABEL layer="1b"
 LABEL layer.name="sys-bench-base"
-LABEL layer.version="2.0.1"
-LABEL layer.description="Sys/DevOps base with infrastructure and cloud tools (user-agnostic)"
+LABEL layer.version="2.1.0"
+LABEL layer.description="Sys/DevOps base with infrastructure, cloud tools, and Playwright Chromium (user-agnostic)"
 
 # Everything runs as root
 USER root
+
+ARG PLAYWRIGHT_VERSION=1.61.1
+
+# Shared Playwright browser cache for all sys benches. Browser binaries do not
+# belong in a user's Layer 3 home directory, and every derived sys bench needs
+# the same system libraries when it launches Chromium.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 # ========================================
 # SYSTEM PACKAGES FOR ADMIN TOOLS
@@ -36,6 +43,23 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     netcat-openbsd \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Chromium together with its complete Linux runtime dependency set.
+# A single package such as libglib2.0-0t64 is insufficient: Chromium also
+# requires NSS, ATK, X11/XCB, GBM, Cairo, Pango, ALSA, and related libraries.
+RUN set -eux; \
+    npm install -g "playwright@${PLAYWRIGHT_VERSION}"; \
+    mkdir -p "$PLAYWRIGHT_BROWSERS_PATH"; \
+    chmod 1777 "$PLAYWRIGHT_BROWSERS_PATH"; \
+    playwright install --with-deps chromium; \
+    chmod -R a+rX "$PLAYWRIGHT_BROWSERS_PATH"; \
+    chmod 1777 "$PLAYWRIGHT_BROWSERS_PATH"; \
+    browser_path="$(find "$PLAYWRIGHT_BROWSERS_PATH" -path '*/chrome-linux*/chrome' -type f -print -quit)"; \
+    test -n "$browser_path"; \
+    ldd_output="$(ldd "$browser_path")"; \
+    test -z "$(printf '%s\n' "$ldd_output" | awk '/not found/{print}')"; \
+    smoke_output="$(timeout 30s "$browser_path" --headless --no-sandbox --disable-gpu --dump-dom about:blank)"; \
+    printf '%s\n' "$smoke_output" | grep -Fq '<html'
 
 # ========================================
 # ADMIN/DEVOPS TOOLS
