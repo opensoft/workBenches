@@ -305,6 +305,20 @@ while IFS=$'\t' read -r name family profile_path; do
   for item in AGENTS.md tmux.conf; do
     [[ -e "$HOME/.codex/$item" ]] && link_path "$HOME/.codex/$item" "$profile_dir/$item"
   done
+  # app-server daemon resolves the standalone package relative to CODEX_HOME.
+  # One installer-managed cache remains authoritative while every profile sees
+  # it at the location the daemon expects.
+  if [[ -d "$HOME/.codex/packages/standalone" ]]; then
+    packages_dir="$profile_dir/packages"
+    if [[ ! -e "$packages_dir" && ! -L "$packages_dir" ]]; then
+      mkdir -p "$packages_dir"
+    fi
+    if [[ -d "$packages_dir" && ! -L "$packages_dir" ]]; then
+      link_path "$HOME/.codex/packages/standalone" "$packages_dir/standalone"
+    else
+      echo "Skipping standalone cache link; preserving non-directory path: $packages_dir" >&2
+    fi
+  fi
 done < <(jq -r '.profiles[] | [.name, .family, (.profilePath // .name)] | @tsv' "$manifest")
 
 mkdir -p "$HOME/.local/bin"

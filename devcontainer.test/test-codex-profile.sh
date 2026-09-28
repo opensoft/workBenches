@@ -28,6 +28,9 @@ MANIFEST="$TEST_ROOT/openai-profiles.json"
 FAKE_CODEX="$TEST_ROOT/codex"
 FAKE_CODEX_LOG="$TEST_ROOT/codex.log"
 EXPECTED="$TEST_ROOT/expected.log"
+STANDALONE_HOME="$TEST_ROOT/standalone-home"
+PATH_CODEX_DIR="$TEST_ROOT/path-bin"
+SELECTION_LOG="$TEST_ROOT/selection.log"
 
 mkdir -p "$PROFILE_DIR"
 
@@ -46,7 +49,23 @@ set -euo pipefail
     done
 } > "$FAKE_CODEX_LOG"
 EOF
+mkdir -p "$STANDALONE_HOME/.local/bin"
 chmod +x "$FAKE_CODEX"
+
+make_selector() {
+    local target="$1"
+    local source="$2"
+    mkdir -p "$(dirname "$target")"
+    cat > "$target" <<EOF
+#!/usr/bin/env bash
+printf '%s\\n' '$source' > '$SELECTION_LOG'
+exec '$FAKE_CODEX' "\$@"
+EOF
+    chmod +x "$target"
+}
+
+make_selector "$STANDALONE_HOME/.local/bin/codex" standalone-local
+make_selector "$PATH_CODEX_DIR/codex" path-fallback
 
 run_launcher() {
     local runtime_url="$1"
@@ -114,5 +133,98 @@ assert_file_equals "$EXPECTED" "$FAKE_CODEX_LOG"
     || fail "launcher changed an unrelated MCP setting"
 ! grep -q 'SONARQUBE_TOKEN' "$LAUNCHER" \
     || fail "launcher must not read or forward SonarQube tokens"
+
+rm -f "$FAKE_CODEX_LOG"
+env -u CODEX_BIN -u CODEX_SONARQUBE_MCP_URL \
+    HOME="$STANDALONE_HOME" \
+    PATH="$PATH_CODEX_DIR:$PATH" \
+    CODEX_PROFILES_HOME="$PROFILE_BASE" \
+    CODEX_PROFILES_MANIFEST="$MANIFEST" \
+    FAKE_CODEX_LOG="$FAKE_CODEX_LOG" \
+    "$LAUNCHER" run max-002 --version
+[[ "$(cat "$SELECTION_LOG")" == standalone-local ]] \
+    || fail "standalone executable did not take precedence over PATH"
+{
+    printf 'CODEX_HOME=%s\n' "$PROFILE_DIR"
+    printf '%s\n' \
+        'arg=-c' \
+        'arg=forced_login_method="chatgpt"' \
+        'arg=-c' \
+        'arg=cli_auth_credentials_store="file"' \
+        'arg=--version'
+} > "$EXPECTED"
+assert_file_equals "$EXPECTED" "$FAKE_CODEX_LOG"
+
+rm -f "$STANDALONE_HOME/.local/bin/codex" "$SELECTION_LOG"
+make_selector "$STANDALONE_HOME/.codex/packages/standalone/current/bin/codex" standalone-cache
+env -u CODEX_BIN -u CODEX_SONARQUBE_MCP_URL \
+    HOME="$STANDALONE_HOME" \
+    PATH="$PATH_CODEX_DIR:$PATH" \
+    CODEX_PROFILES_HOME="$PROFILE_BASE" \
+    CODEX_PROFILES_MANIFEST="$MANIFEST" \
+    FAKE_CODEX_LOG="$FAKE_CODEX_LOG" \
+    "$LAUNCHER" run max-002 --version
+[[ "$(cat "$SELECTION_LOG")" == standalone-cache ]] \
+    || fail "mounted standalone package executable did not take precedence over PATH"
+
+rm -f "$STANDALONE_HOME/.codex/packages/standalone/current/bin/codex" "$SELECTION_LOG"
+env -u CODEX_BIN -u CODEX_SONARQUBE_MCP_URL \
+    HOME="$STANDALONE_HOME" \
+    PATH="$PATH_CODEX_DIR:$PATH" \
+    CODEX_PROFILES_HOME="$PROFILE_BASE" \
+    CODEX_PROFILES_MANIFEST="$MANIFEST" \
+    FAKE_CODEX_LOG="$FAKE_CODEX_LOG" \
+    "$LAUNCHER" run max-002 --version
+[[ "$(cat "$SELECTION_LOG")" == path-fallback ]] \
+    || fail "PATH fallback was not selected when standalone executables were absent"
+
+SETUP_HOME="$TEST_ROOT/setup-home"
+SETUP_PROFILE_BASE="$TEST_ROOT/setup-profiles"
+SETUP_MANIFEST="$TEST_ROOT/setup-manifest.json"
+SETUP_PROFILE_DIR="$SETUP_PROFILE_BASE/profiles/max/max-002"
+mkdir -p "$SETUP_HOME/.codex/packages/standalone"
+mkdir -p "$SETUP_PROFILE_DIR"
+printf '%s\n' '{"tokens":{"access_token":"preserve-me"}}' > "$SETUP_PROFILE_DIR/auth.json"
+cp "$SETUP_PROFILE_DIR/auth.json" "$TEST_ROOT/auth.expected.json"
+printf '%s\n' \
+    '{"version":1,"families":["max"],"profiles":[{"name":"max-002","email":"test@example.invalid","family":"max","aliases":[],"profilePath":"max/max-002"}]}' \
+    > "$SETUP_MANIFEST"
+HOME="$SETUP_HOME" \
+XDG_CONFIG_HOME="$TEST_ROOT/setup-config" \
+CODEX_PROFILES_HOME="$SETUP_PROFILE_BASE" \
+CODEX_PROFILES_MANIFEST="$SETUP_MANIFEST" \
+CODEX_PROFILE_CONFIG_TEMPLATE="$TEST_ROOT/missing-config-template.toml" \
+    "$REPO_ROOT/scripts/setup-codex-profiles.sh" >/dev/null
+[[ -L "$SETUP_PROFILE_DIR/packages/standalone" ]] \
+    || fail "profile setup did not create the standalone package-cache link"
+[[ "$(realpath "$SETUP_PROFILE_DIR/packages/standalone")" == "$(realpath "$SETUP_HOME/.codex/packages/standalone")" ]] \
+    || fail "profile package-cache link does not resolve to the canonical cache"
+cmp -s "$TEST_ROOT/auth.expected.json" "$SETUP_PROFILE_DIR/auth.json" \
+    || fail "profile setup changed auth.json"
+
+ABSENT_HOME="$TEST_ROOT/absent-home"
+ABSENT_PROFILE_BASE="$TEST_ROOT/absent-profiles"
+HOME="$ABSENT_HOME" \
+XDG_CONFIG_HOME="$TEST_ROOT/absent-config" \
+CODEX_PROFILES_HOME="$ABSENT_PROFILE_BASE" \
+CODEX_PROFILES_MANIFEST="$SETUP_MANIFEST" \
+CODEX_PROFILE_CONFIG_TEMPLATE="$TEST_ROOT/missing-config-template.toml" \
+    "$REPO_ROOT/scripts/setup-codex-profiles.sh" >/dev/null
+[[ ! -e "$ABSENT_PROFILE_BASE/profiles/max/max-002/packages/standalone" ]] \
+    || fail "profile setup invented a standalone cache when the canonical cache was absent"
+
+CONFLICT_HOME="$TEST_ROOT/conflict-home"
+CONFLICT_PROFILE_BASE="$TEST_ROOT/conflict-profiles"
+CONFLICT_PROFILE_DIR="$CONFLICT_PROFILE_BASE/profiles/max/max-002"
+mkdir -p "$CONFLICT_HOME/.codex/packages/standalone" "$CONFLICT_PROFILE_DIR"
+printf '%s\n' preserve-packages-path > "$CONFLICT_PROFILE_DIR/packages"
+HOME="$CONFLICT_HOME" \
+XDG_CONFIG_HOME="$TEST_ROOT/conflict-config" \
+CODEX_PROFILES_HOME="$CONFLICT_PROFILE_BASE" \
+CODEX_PROFILES_MANIFEST="$SETUP_MANIFEST" \
+CODEX_PROFILE_CONFIG_TEMPLATE="$TEST_ROOT/missing-config-template.toml" \
+    "$REPO_ROOT/scripts/setup-codex-profiles.sh" >/dev/null
+grep -qx preserve-packages-path "$CONFLICT_PROFILE_DIR/packages" \
+    || fail "profile setup replaced a conflicting packages path"
 
 echo "codex-profile runtime override tests passed"
