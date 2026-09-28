@@ -10,6 +10,7 @@ services:
     volumes:
       # Mount test script
       - .:/test:cached
+      - ../scripts/configure-wave-settings.sh:/test/configure-wave-settings.sh:ro
       
     command: sleep infinity
     
