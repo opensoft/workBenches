@@ -2806,9 +2806,18 @@ grep -Fq 'workspace.yaml' <<<"$install_act_code" \
 # CALLER of the install act; it never calls `lane_start_install_act` and prints
 # no answer this rule is about two callers agreeing on. Excluded by the one
 # sentence that names it, so a real second caller elsewhere still trips this.
+#
+# AND ONE MORE, NAMED THE SAME WAY (opensoft/workBenches#119, the ratified
+# launch-current-claude, design.md Decision 4 step 4): the one assignment of
+# `claude_current_install_act`, the act that places `claude-current`, a
+# different tool, which ships in openRepoTools itself. The scenario "No usable
+# native version" requires the launch that finds no resolver to name the
+# command that installs it. Its two messages print the variable, so this
+# excludes only the assignment, and a real second caller still trips this.
 launcher_exec_code="$(awk '/^      cat <<.EOF.$/ { skip = 1 } !skip { print } skip && $0 == "EOF" { skip = 0 }' "$LAUNCHER" \
     | grep -v '^[[:space:]]*#' \
-    | grep -Fv 'Restore the estate (openRepoTools --install, then link-estates)' || true)"
+    | grep -Fv 'Restore the estate (openRepoTools --install, then link-estates)' \
+    | grep -Fxv "claude_current_install_act='openRepoTools --install'" || true)"
 [[ "$(grep -Fc 'link-estates' <<<"$launcher_exec_code")" \
     -eq "$(grep -Fc 'link-estates' <<<"$install_act_code")" ]] \
     || fail "R-A11-13: link-estates is spelled outside lane_start_install_act, so two callers can drift apart"; assertion

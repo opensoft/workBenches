@@ -128,6 +128,10 @@ jobs:
           WORKBENCHES_CLAUDE_WINDOW: ambient-lane
           WORKBENCHES_CLAUDE_WINDOW_ID: "@999"
           CLAUDE_LANE: ambient-lane
+          # What a session started by the launcher carries (opensoft/workBenches#119).
+          CLAUDE_BIN: /ambient/claude
+          CLAUDE_RESOLVED_BIN: /ambient/claude
+          CLAUDE_VERIFIED_VERSION: "0.0.1"
         run: bash ./devcontainer.test/test-claude-profile-binary-selection.sh
 
       # lane-collision-protocol Amendment 9 adoption act 4b. This suite is the

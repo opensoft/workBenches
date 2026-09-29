@@ -24,7 +24,8 @@ mapfile -t data < <(jq -r '[
     (.agent.name // ""),
     (.pr.number // ""),
     (.pr.review_state // ""),
-    (.permission_mode // .permissions.mode // "")
+    (.permission_mode // .permissions.mode // ""),
+    (.version // "")
 ] | .[]' <<<"$input")
 
 sid=$(jq -r '.session_id // empty' <<<"$input" 2>/dev/null)
@@ -46,6 +47,7 @@ agent_name=${data[13]:-}
 pr_number=${data[14]:-}
 pr_state=${data[15]:-}
 permission_mode=${data[16]:-}
+claude_version=${data[17]:-}
 
 columns=${COLUMNS:-120}
 [[ $columns =~ ^[0-9]+$ ]] || columns=120
@@ -470,6 +472,29 @@ line4_parts=(
     "$(countdown_segment '7d' "$weekly_reset" 604800 days)"
 )
 
+# A RUNNING SESSION IS TOLD WHEN ITS BINARY MOVED (opensoft/workBenches#119,
+# openspec/changes/launch-current-claude, claude-session-restart-notice). The
+# check is opensoft/openRepoTools' claude-restart-check: it reads only /proc
+# and small files, prints nothing or one line, and exits 0. $PPID is the
+# `/bin/sh -c` Claude runs this script under, and claude is that shell's
+# parent, which the check walks up to. It only warns: nothing here stops,
+# restarts or clears the session. When the check is absent or prints nothing,
+# the panel is exactly the four lines below. WORKBENCHES_CLAUDE_RESTART_CHECK_BIN
+# is the test seam; one that names no executable means no check.
+restart_line=""
+restart_check=${WORKBENCHES_CLAUDE_RESTART_CHECK_BIN:-$(command -v claude-restart-check 2>/dev/null || true)}
+if [[ -n $restart_check && -f $restart_check && -x $restart_check ]]; then
+    restart_args=(--pid "$PPID")
+    [[ -n $claude_version ]] && restart_args=(--running "$claude_version" "${restart_args[@]}")
+    if command -v timeout >/dev/null 2>&1; then
+        restart_line=$(timeout 1s "$restart_check" "${restart_args[@]}" 2>/dev/null)
+    else
+        restart_line=$("$restart_check" "${restart_args[@]}" 2>/dev/null)
+    fi
+    restart_line=${restart_line%%$'\n'*}
+fi
+
+[[ -n $restart_line ]] && printf '%s\n' "$restart_line"
 printf '%s\n' "$(join_parts "${line1_parts[@]}")"
 printf '%s\n' "$(join_parts "${line2_parts[@]}")"
 printf '%s\n' "$(join_parts "${line3_parts[@]}")"

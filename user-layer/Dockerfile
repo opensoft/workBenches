@@ -8,6 +8,7 @@
 #     --build-arg BASE_IMAGE=cpp-bench:latest \
 #     --build-arg BASE_IMAGE_ID="$(docker image inspect --format '{{.Id}}' cpp-bench:latest)" \
 #     --build-arg CODEX_VERSION=0.199.0 \
+#     --build-arg CLAUDE_CODE_VERSION=2.1.284 \
 #     --build-arg USERNAME=brett \
 #     --build-arg USER_UID=1000 \
 #     --build-arg USER_GID=1000 \
@@ -165,6 +166,27 @@ RUN test -n "$CODEX_VERSION" \
     && mkdir -p "$NPM_CONFIG_PREFIX" \
     && npm install -g "@openai/codex@${CODEX_VERSION}" \
     && test "$(codex --version | awk 'NR == 1 { print $NF; exit }')" = "$CODEX_VERSION"
+
+# User-owned Claude Code copy at npm latest (openspec/changes/
+# launch-current-claude, user-managed-claude-updates), in the same writable
+# prefix. user-layer/build.sh reads npm's latest version with the base image's
+# own npm and passes it here; a direct Dockerfile caller must pass an exact
+# version. The base image's root-owned install stays in place, untouched, as
+# the floor the required-CLI contract checks. npm's install-script policy can
+# skip the package's native-binary hook, so it is run here whenever
+# `claude --version` does not yet report the version, as
+# base-image/install-ai-clis.sh does for Layer 0. The ARG is declared at its
+# only use, so a new release invalidates Docker's cache from this step and no
+# earlier one.
+ARG CLAUDE_CODE_VERSION=""
+RUN test -n "$CLAUDE_CODE_VERSION" \
+    && printf '%s\n' "$CLAUDE_CODE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$' \
+    && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+    && if [ "$(claude --version 2>/dev/null | awk 'NR == 1 { print $1; exit }')" != "$CLAUDE_CODE_VERSION" ]; then \
+           node "$(npm root -g)/@anthropic-ai/claude-code/install.cjs"; \
+       fi \
+    && test "$(command -v claude)" = "$NPM_CONFIG_PREFIX/bin/claude" \
+    && test "$(claude --version | awk 'NR == 1 { print $1; exit }')" = "$CLAUDE_CODE_VERSION"
 
 # Pre-create user-owned cache roots so first-use named volumes inherit the
 # runtime user's ownership instead of becoming root-only.

@@ -7,6 +7,7 @@
 #   ./build.sh --base cpp-bench:latest --chown /opt/vcpkg # Extra dirs to chown
 #   ./build.sh --base go-bench:latest --chown "/go"       # Go bench
 #   ./build.sh --base cpp-bench:latest --user brett        # Explicit user
+#   ./build.sh --base py-bench:latest --claude-version 2.1.284  # Exact Claude Code
 
 set -euo pipefail
 
@@ -32,6 +33,8 @@ NO_CACHE="${NO_CACHE:-false}"
 LAYER3_RECIPE_SHA256=""
 CODEX_VERSION=""
 CODEX_VERSION_PROBE_TIMEOUT_SECONDS="${WORKBENCHES_CODEX_VERSION_PROBE_TIMEOUT_SECONDS:-30}"
+CLAUDE_CODE_VERSION=""
+CLAUDE_VERSION_PROBE_TIMEOUT_SECONDS="${WORKBENCHES_CLAUDE_VERSION_PROBE_TIMEOUT_SECONDS:-30}"
 PINNED_BASE_IMAGE=""
 
 cleanup_pinned_base_image() {
@@ -68,6 +71,7 @@ while [[ $# -gt 0 ]]; do
         --chown) EXTRA_CHOWN_DIRS="$2"; shift 2 ;;
         --recipe-sha256) LAYER3_RECIPE_SHA256="$2"; shift 2 ;;
         --codex-version) CODEX_VERSION="$2"; shift 2 ;;
+        --claude-version) CLAUDE_CODE_VERSION="$2"; shift 2 ;;
         --no-cache) NO_CACHE=true; shift ;;
         -h|--help)
             echo "Usage: $0 --base <image:latest> [--user USERNAME] [--chown \"dir1 dir2\"] [--no-cache]"
@@ -81,6 +85,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --chown DIRS    Space-separated dirs to chown to user (e.g. \"/opt/vcpkg /go\")"
             echo "  --recipe-sha256 SHA256  Layer 3 recipe fingerprint (computed automatically by default)"
             echo "  --codex-version VERSION  Exact Codex version baked into Layer 3 (default: inherit from base image)"
+            echo "  --claude-version VERSION  Exact Claude Code version for the user-owned copy (default: npm latest, read with the base image's npm)"
             echo "  --no-cache      Force Docker to rebuild without cached layers"
             exit 0
             ;;
@@ -95,6 +100,10 @@ if [ -z "$BASE_IMAGE" ]; then
 fi
 if [[ ! "$CODEX_VERSION_PROBE_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
     echo "❌ Error: WORKBENCHES_CODEX_VERSION_PROBE_TIMEOUT_SECONDS must be a positive integer" >&2
+    exit 1
+fi
+if [[ ! "$CLAUDE_VERSION_PROBE_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "❌ Error: WORKBENCHES_CLAUDE_VERSION_PROBE_TIMEOUT_SECONDS must be a positive integer" >&2
     exit 1
 fi
 
@@ -175,6 +184,33 @@ if [[ ! "$CODEX_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; th
     exit 1
 fi
 
+# The user-owned Claude Code copy takes npm's latest release, not the base
+# image's version (openspec/changes/launch-current-claude, design.md Decisions
+# 2 and 3). It is read with the base image's own npm, through the same pinned
+# reference the build uses, so the build host needs no npm; it needs the
+# registry, which the Codex overlay's install already does. A lookup that fails
+# ends the build and says so, rather than baking a version nobody chose, and
+# --claude-version names an exact one instead. The resulting build argument
+# also invalidates Docker's cache for that step on every new release.
+if [ -z "$CLAUDE_CODE_VERSION" ]; then
+    claude_version_output=""
+    if ! claude_version_output="$(run_with_optional_timeout \
+        "$CLAUDE_VERSION_PROBE_TIMEOUT_SECONDS" \
+        docker run --rm --entrypoint="" "$PINNED_BASE_IMAGE" \
+            sh -c 'npm view @anthropic-ai/claude-code version' 2>/dev/null)"; then
+        echo "❌ Error: the Claude Code version lookup (npm view @anthropic-ai/claude-code version, in '$BASE_IMAGE' ($BASE_IMAGE_ID)) failed or timed out; pass --claude-version VERSION to name one" >&2
+        exit 1
+    fi
+    CLAUDE_CODE_VERSION="$(printf '%s' "$claude_version_output" | tr -d '[:space:]')"
+    if [[ ! "$CLAUDE_CODE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+        echo "❌ Error: the Claude Code version lookup (npm view @anthropic-ai/claude-code version, in '$BASE_IMAGE') returned '$CLAUDE_CODE_VERSION', not an exact version; pass --claude-version VERSION to name one" >&2
+        exit 1
+    fi
+elif [[ ! "$CLAUDE_CODE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+    echo "❌ Error: --claude-version needs an exact version, not '$CLAUDE_CODE_VERSION'" >&2
+    exit 1
+fi
+
 echo "Configuration:"
 echo "  Base image:  $BASE_IMAGE"
 echo "  Base ID:     $BASE_IMAGE_ID"
@@ -187,6 +223,7 @@ echo "  Extra chown: ${EXTRA_CHOWN_DIRS:-none}"
 echo "  No cache:    $NO_CACHE"
 echo "  Recipe SHA:  $LAYER3_RECIPE_SHA256"
 echo "  Codex:       $CODEX_VERSION"
+echo "  Claude Code: $CLAUDE_CODE_VERSION"
 echo ""
 
 # Build Layer 3
@@ -202,6 +239,7 @@ docker build \
     --build-arg EXTRA_CHOWN_DIRS="$EXTRA_CHOWN_DIRS" \
     --build-arg LAYER3_RECIPE_SHA256="$LAYER3_RECIPE_SHA256" \
     --build-arg CODEX_VERSION="$CODEX_VERSION" \
+    --build-arg CLAUDE_CODE_VERSION="$CLAUDE_CODE_VERSION" \
     -t "$OUTPUT_IMAGE" \
     -f "$SCRIPT_DIR/Dockerfile" \
     "$SCRIPT_DIR"

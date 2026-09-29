@@ -513,15 +513,169 @@ latest_installed_claude() {
   printf '%s' "$best"
 }
 
-if [[ -n "${CLAUDE_BIN:-}" ]]; then
+# THE EXECUTABLE A LAUNCH STARTS: openspec/changes/launch-current-claude
+# (opensoft/workBenches#119, ratified 2026-09-29), design.md Decision 4. A
+# launch that starts a session runs the update check first, through the
+# `claude-current` resolver that `openRepoTools --install` places, and starts
+# the ABSOLUTE PATH that resolver prints; while it is installed nothing here
+# resolves `claude` through PATH. First answer wins:
+#
+#   1. An operator CLAUDE_BIN is a PIN: started verbatim, with no update check
+#      and no notice, exactly as before.
+#   2. A CLAUDE_BIN EQUAL TO CLAUDE_RESOLVED_BIN IS NOT A PIN. That pair is what
+#      this launcher exports from its own resolution, and it reaches a later
+#      launch through the environment of the session it started (a /ctx
+#      respawn, a nested pclaude, a tmux server that captured it), so it is
+#      resolved again instead of trusted for ever (scenario "Inherited
+#      resolution is not a pin").
+#   3. `claude-current --porcelain`, with `--offline` for a launch that starts
+#      no session, and its exit status decides: 0 starts the path it printed,
+#      2 is its refusal of a stale launch and this launch refuses with it, 1 is
+#      `Claude CLI not found.` as before. The resolver prints its own line
+#      about what it chose, and nothing here repeats it.
+#   4. With no claude-current, the #109 native ordering, then the PATH lookup
+#      that preceded it, and ONE notice that the launch is not verified
+#      against npm.
+#
+# RESOLVED ONCE, BY THE PROCESS THAT STARTS CLAUDE (require_claude_bin). A
+# launch from outside tmux re-execs itself into a tmux session of its own (act
+# 1 below), and the parent there only wraps tmux: it threads a pin and nothing
+# else, and the child resolves. A launch that the lane picker hands on resolves
+# in the launch the picker starts, not here. So the network check runs once
+# per launch.
+#
+# CLAUDE_VERIFIED_VERSION carries the version the resolver read to lane-start's
+# register line, on that one call and never exported: it must not reach a
+# running session, so one this environment carries is dropped here.
+claude_bin=""
+claude_bin_version=""
+claude_bin_source=""
+# The act that places the resolver, spelled once for the two lines below that
+# name it (scenario "No usable native version": the notice names the command
+# that installs the resolver). claude-current ships in openRepoTools itself, so
+# this is not the lane tools' install act, which lane_start_install_act chooses.
+claude_current_install_act='openRepoTools --install'
+if [[ -n "${CLAUDE_BIN:-}" && "$CLAUDE_BIN" != "${CLAUDE_RESOLVED_BIN:-}" ]]; then
   claude_bin="$CLAUDE_BIN"
-else
-  claude_bin="$(latest_installed_claude)"
-  if [[ -z "$claude_bin" ]]; then
-    claude_bin="$(command -v claude || true)"
-    [[ -n "$claude_bin" || ! -x "$HOME/.local/bin/claude" ]] || claude_bin="$HOME/.local/bin/claude"
-  fi
+  claude_bin_source=pin
+  unset CLAUDE_RESOLVED_BIN
 fi
+unset CLAUDE_VERIFIED_VERSION
+
+claude_current_bin() {
+  # Decision 1: the resolver is an opensoft/openRepoTools command, found on
+  # PATH and never vendored here. WORKBENCHES_CLAUDE_CURRENT_BIN is the test
+  # seam; a seam that names no executable file means there is no resolver.
+  local candidate
+  if [[ -n "${WORKBENCHES_CLAUDE_CURRENT_BIN:-}" ]]; then
+    candidate="$WORKBENCHES_CLAUDE_CURRENT_BIN"
+  else
+    candidate="$(command -v claude-current 2>/dev/null || true)"
+  fi
+  [[ -n "$candidate" && -f "$candidate" && -x "$candidate" ]] || return 1
+  printf '%s\n' "$candidate"
+}
+
+claude_launch_mode() {
+  # `session` for a launch that starts a conversation, `offline` for one that
+  # does not (auth, mcp, doctor, --version, --print and the rest of the list
+  # claude_args_start_session keeps for the tmux wrap and the lane default).
+  # An offline resolution reads nothing from npm and updates nothing, so those
+  # never wait on the network.
+  if claude_args_start_session "$@"; then
+    printf 'session\n'
+  else
+    printf 'offline\n'
+  fi
+}
+
+claude_launch_refused() {
+  # The one way a resolution ends a launch. Its reason is already on stderr
+  # (the resolver's own refusal, or `Claude CLI not found.`) and nothing here
+  # repeats it. Where this process is the only command of its tmux pane,
+  # exiting would close the window over that reason, the Evidence 2 shape the
+  # `R-A11-4` fence exists for, so the pane is kept on exit: the lines stay
+  # readable, tmux marks the pane dead, and the launch has still refused.
+  local status="$1"
+  local -a target=()
+  if lane_is_pane_root; then
+    [[ -z "${TMUX_PANE:-}" ]] || target=(-t "$TMUX_PANE")
+    tmux set-option -p ${target[@]+"${target[@]}"} remain-on-exit on >/dev/null 2>&1 \
+      || tmux set-window-option ${target[@]+"${target[@]}"} remain-on-exit on >/dev/null 2>&1 \
+      || true
+  fi
+  exit "$status"
+}
+
+resolve_claude_bin() {
+  # Decision 4, steps 2 to 4 (step 1, the pin, is settled above). Sets
+  # claude_bin, claude_bin_version (the resolver's version, empty otherwise)
+  # and claude_bin_source (pin, resolver or fallback), at most once.
+  local mode="$1" resolver output status line path="" version=""
+  local -a argv=()
+  [[ -z "$claude_bin_source" ]] || return 0
+  if resolver="$(claude_current_bin)"; then
+    argv=("$resolver" --porcelain)
+    [[ "$mode" == session ]] || argv+=(--offline)
+    # The resolver bounds its own npm read and its own update; this launcher
+    # adds no timeout of its own, which could only interrupt an install.
+    set +e
+    output="$("${argv[@]}")"
+    status=$?
+    set -e
+    case "$status" in
+      0) ;;
+      1)
+        claude_bin_source=resolver
+        return 0
+        ;;
+      2) claude_launch_refused 2 ;;
+      *)
+        echo "pclaude: claude-current exited $status, which is neither a resolution nor its stale refusal; not launching. Update it with $claude_current_install_act, or pin an executable with CLAUDE_BIN=<path>." >&2
+        claude_launch_refused 2
+        ;;
+    esac
+    while IFS= read -r line; do
+      case "$line" in
+        path=*) path="${line#path=}" ;;
+        version=*) version="${line#version=}" ;;
+      esac
+    done <<<"$output"
+    if [[ "$path" != /* || ! -f "$path" || ! -x "$path" ]]; then
+      echo "pclaude: claude-current exited 0 without naming an executable absolute path (${path:-none}); not launching." >&2
+      claude_launch_refused 2
+    fi
+    [[ "$version" =~ ^[0-9A-Za-z.+-]+$ ]] || version=""
+    claude_bin="$path"
+    claude_bin_version="$version"
+    claude_bin_source=resolver
+  else
+    claude_bin="$(latest_installed_claude)"
+    if [[ -z "$claude_bin" ]]; then
+      claude_bin="$(command -v claude || true)"
+      [[ -n "$claude_bin" || ! -x "$HOME/.local/bin/claude" ]] || claude_bin="$HOME/.local/bin/claude"
+    fi
+    claude_bin_source=fallback
+    [[ -z "$claude_bin" ]] \
+      || echo "pclaude: claude-current is not installed, so this launch of $claude_bin is not verified against npm; install it with $claude_current_install_act" >&2
+  fi
+  # MARKED AS THIS LAUNCHER'S OWN RESOLUTION (step 2): whatever this process
+  # starts inherits the pair, so a later launch from inside it resolves again.
+  if [[ -n "$claude_bin" ]]; then
+    export CLAUDE_BIN="$claude_bin" CLAUDE_RESOLVED_BIN="$claude_bin"
+  fi
+}
+
+require_claude_bin() {
+  # Resolve at most once, then end the launch here when there is nothing to
+  # start, with the words and the status it always had.
+  resolve_claude_bin "$1"
+  if [[ -z "$claude_bin" ]]; then
+    echo "Claude CLI not found." >&2
+    claude_launch_refused 1
+  fi
+  ensure_claude_home_link
+}
 mcp_sync="${WORKBENCHES_MCP_SYNC_BIN:-$(command -v workbenches-mcp-sync || true)}"
 if [[ -z "$mcp_sync" ]]; then
   launcher_dir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
@@ -847,7 +1001,18 @@ act1_compose_child_command() {
   # the writers REFUSE by name rather than falling back, so an inherited value
   # there is a different question with a different answer, and it is filed
   # rather than changed here.
+  #
+  # THE EXECUTABLE IS NOT RESOLVED ON THIS SIDE (opensoft/workBenches#119,
+  # design.md Decision 4). This process only wraps tmux, and running the
+  # update check here and again in the child would run it twice for one
+  # launch, so it threads a PIN and nothing else: `claude_bin` holds the
+  # operator's CLAUDE_BIN here or nothing, and an empty CLAUDE_BIN is what
+  # tells the child to resolve for itself. CLAUDE_RESOLVED_BIN and
+  # CLAUDE_VERIFIED_VERSION are cleared with it, so a pair the tmux server
+  # captured from an earlier session cannot turn a pin into an inherited
+  # resolution, and no stale version is handed on.
   env_prefix=(env -u LANES_HOST -u LANES_OS -u LANES_CONTAINER -u CLAUDE_BIN
+    -u CLAUDE_RESOLVED_BIN -u CLAUDE_VERIFIED_VERSION
     -u CLAUDE_NO_LANE -u CLAUDE_LANE -u CLAUDE_LANE_DIR
     WORKBENCHES_CLAUDE_TMUX_CHILD=1 "CLAUDE_BIN=$claude_bin")
   # THE WORKSTATION, THREADED INTO THE SESSION THIS LAUNCH CREATES (`R-A11-14`).
@@ -1072,15 +1237,20 @@ export_tmux_identity() {
 # Native Claude records ~/.local/bin/claude as its expected installation path.
 # Bench images install the immutable CLI in /usr/local/bin, so provide a
 # per-user compatibility link to keep Claude's installer health check accurate.
-if [[ ! -e /.dockerenv && "$claude_bin" == "/usr/local/bin/claude" ]]; then
-  if mkdir -p "$HOME/.local/bin" 2>/dev/null; then
-    if [[ ! -e "$HOME/.local/bin/claude" && ! -L "$HOME/.local/bin/claude" ]]; then
-      ln -s /usr/local/bin/claude "$HOME/.local/bin/claude"
-    elif [[ -L "$HOME/.local/bin/claude" && ! -e "$HOME/.local/bin/claude" ]]; then
-      ln -sfn /usr/local/bin/claude "$HOME/.local/bin/claude"
+# Ensured by require_claude_bin once the executable is known, because a launch
+# now resolves it lazily and it is not yet known when this file is read.
+ensure_claude_home_link() {
+  if [[ ! -e /.dockerenv && "$claude_bin" == "/usr/local/bin/claude" ]]; then
+    if mkdir -p "$HOME/.local/bin" 2>/dev/null; then
+      if [[ ! -e "$HOME/.local/bin/claude" && ! -L "$HOME/.local/bin/claude" ]]; then
+        ln -s /usr/local/bin/claude "$HOME/.local/bin/claude"
+      elif [[ -L "$HOME/.local/bin/claude" && ! -e "$HOME/.local/bin/claude" ]]; then
+        ln -sfn /usr/local/bin/claude "$HOME/.local/bin/claude"
+      fi
     fi
   fi
-fi
+  return 0
+}
 
 profile_metadata() {
   local requested="$1" normalized row metadata candidate profile_path fallback_row
@@ -2857,6 +3027,21 @@ prompt. There is no pane to exit, and a bare Claude started behind a session
 that may still be the lane's would mint a second transcript in the lane's own
 window. Every failure of the pane read answers the same way, so a machine with
 no `ps`, or a tmux that will not say, behaves exactly as it did before.
+
+THE CLAUDE EXECUTABLE (opensoft/workBenches#119). A launch that starts a
+conversation runs the update check first: `claude-current`, which
+`openRepoTools --install` places, compares each installed copy with the
+version npm publishes, updates your own copy when every one is behind, and
+names the absolute path this launcher starts. It says what it chose, as
+`claude <version> (verified against npm <published>)`. Offline, the highest
+installed copy starts marked UNVERIFIED; a launch still behind npm after the
+update is refused, and CLAUDE_ALLOW_STALE=1 starts it anyway. login, status
+and the commands that start no conversation resolve offline. CLAUDE_BIN=<path>
+pins the executable and skips all of this. A CLAUDE_BIN equal to
+CLAUDE_RESOLVED_BIN is this launcher's own earlier choice, inherited by a
+session it started, and is resolved again. Without claude-current, the newest
+native version, then the first `claude` on PATH, starts with one line saying
+it is not verified against npm.
 EOF
       exit 0
       ;;
@@ -2933,7 +3118,10 @@ case "$action" in
     IFS=$'\t' read -r profile email family profile_path <<<"$row"
     config_dir="$base/profiles/$profile_path"
     [[ -d "$config_dir" ]] || { echo "Claude profile is not configured: $config_dir" >&2; exit 2; }
-    [[ -n "$claude_bin" ]] || { echo "Claude CLI not found." >&2; exit 1; }
+    # login and status start no session, so they resolve offline and never
+    # wait on the network. A run resolves below, once its lane is settled and
+    # only in the process that starts Claude (require_claude_bin).
+    [[ "$action" == run ]] || require_claude_bin offline
     export CLAUDE_PROFILE_NAME="$profile"
     configure_profile_runtime "$config_dir"
     load_profile_setup_token "$config_dir"
@@ -2982,6 +3170,7 @@ case "$action" in
         export_tmux_identity
         if [[ "$shared_mcp" == true && "${1:-}" == mcp \
           && ( "${2:-}" == add || "${2:-}" == add-json ) ]]; then
+          require_claude_bin offline
           metadata="$config_dir/.claude.json"
           before="$(mktemp "$config_dir/.mcp-before.XXXXXX.json")"
           after="$(mktemp "$config_dir/.mcp-after.XXXXXX.json")"
@@ -3019,7 +3208,20 @@ case "$action" in
         # (RV-W2). Before the `--dir` probe below, because the `cd` is this
         # launcher's own act and holds whether or not lane-start can be told.
         enter_lane_dir
+        # THE EXECUTABLE, RESOLVED NOW AND ONCE (design.md Decision 4): after
+        # the lane is settled, so a pick the lane picker hands to another
+        # launch is resolved there and not twice, and before anything is
+        # handed over. A launch that starts a conversation runs the update
+        # check; one that starts none resolves offline.
+        require_claude_bin "$(claude_launch_mode "$@")"
+        # THE HAND-OFF (scenario "The launch says what launched"): lane-start
+        # gets the path as CLAUDE_BIN below, the CLAUDE_RESOLVED_BIN marker
+        # resolve_claude_bin exported beside it, and the resolver's version as
+        # CLAUDE_VERIFIED_VERSION on THIS call only, for its register line. It
+        # is never exported, because it must not reach a running session.
         lane_argv=(lane-start)
+        [[ -z "$claude_bin_version" ]] \
+          || lane_argv=(env "CLAUDE_VERIFIED_VERSION=$claude_bin_version" lane-start)
         # Amendment 11(3). `--dir` is lane-start's oldest option, but a
         # lane-start that somehow has none must not be handed one: the probe is
         # the same `--help` read every capability check in this launcher
