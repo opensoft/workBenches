@@ -30,10 +30,14 @@ snapshot_key() {
 
 # A non-tmux invocation with a fixed HOME/CLAUDE_CONFIG_DIR, isolated from any
 # ambient tmux session so results do not depend on how/where this test runs.
+# The restart-check seam names nothing, so a real claude-restart-check on the
+# host PATH cannot add its line to the four this suite counts
+# (opensoft/workBenches#119).
 run_statusline() {
     local home_dir="$1" payload="$2"
     env -u TMUX -u TMUX_PANE -u WORKBENCHES_TMUX_SESSION -u WORKBENCHES_TMUX_PANE \
         HOME="$home_dir" CLAUDE_CONFIG_DIR="$PROFILE_CONFIG" COLUMNS=120 \
+        WORKBENCHES_CLAUDE_RESTART_CHECK_BIN="$TEST_ROOT/no-claude-restart-check" \
         bash "$STATUSLINE" <<<"$payload"
 }
 
