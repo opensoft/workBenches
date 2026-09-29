@@ -1,3 +1,6 @@
+Status: ratified
+Ratified by: Brett Heap, 2026-09-29, verbatim "ratify the OpenSpec change when it's green" (lane openXfactory-5 RULED line, 2026-09-29T16:16:17Z), at baseline `34979348`. Record: [review/ratification-2026-09-29.md](review/ratification-2026-09-29.md).
+
 ## Why
 
 A profile or lane launch can start an old Claude Code, and nothing notices

@@ -50,6 +50,11 @@ See [proposal.md](proposal.md) for the motivation and the rulings.
 - Specify the resolver's internals. `claude-current` and
   `claude-restart-check` are `opensoft/openRepoTools` commands, and this
   change governs how this repository calls them.
+- Specify `lane-start`'s own resolution when it is run directly, the issue's
+  other uncovered path. The home ruling makes that `opensoft/openRepoTools`'
+  act: its `lane-start` resolves through the `claude-current` installed beside
+  it when `CLAUDE_BIN` is unset, and keeps its `PATH` default, with one
+  notice, where none is installed.
 
 ## Decisions
 

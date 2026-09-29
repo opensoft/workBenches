@@ -1,6 +1,7 @@
-## 1. Speckit handoff
+## 1. Governance and handoff
 
-- [ ] 1.1 After this change is ratified, define and implement Speckit feature `016-launch-current-claude` for the Layer 3 user copy, the launcher's resolution through `claude-current`, and the status line restart notice, with focused regression coverage.
+- [x] 1.1 Ratify the Layer 3, launch and restart-notice decisions in this change (Brett Heap, 2026-09-29, verbatim "ratify the OpenSpec change when it's green"; record in `review/ratification-2026-09-29.md`).
+- [ ] 1.2 Define and implement Speckit feature `016-launch-current-claude` for the Layer 3 user copy, the launcher's resolution through `claude-current`, and the status line restart notice, with focused regression coverage.
 
 ## 2. Verification and delivery
 
