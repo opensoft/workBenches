@@ -40,6 +40,7 @@ printf '%s\n' \
     'fi' \
     'if [[ "${1:-}" == run ]]; then' \
     '  printf "%s\n" "$*" >> "$MOCK_DOCKER_LOG"' \
+    '  if [[ "$*" == *"npm view @anthropic-ai/claude-code version"* ]]; then printf "%s\n" "2.1.284"; exit 0; fi' \
     '  printf "%s\n" "codex-cli 0.199.0"' \
     '  exit 0' \
     'fi' \

@@ -17,7 +17,11 @@ printf '%s\n' "$*" >> "$DOCKER_LOG"
 
 case "$1 $2" in
     "run --rm")
-        printf '%s\n' 'codex-cli 0.199.0'
+        if [[ "$*" == *'npm view @anthropic-ai/claude-code version'* ]]; then
+            printf '%s\n' '2.1.284'
+        else
+            printf '%s\n' 'codex-cli 0.199.0'
+        fi
         ;;
     "image inspect")
         image="${!#}"

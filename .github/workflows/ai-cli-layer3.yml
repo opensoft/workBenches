@@ -12,6 +12,7 @@ on:
       - devcontainer.test/test-ai-cli-install-summary.sh
       - devcontainer.test/test-ensure-layer3-freshness.sh
       - devcontainer.test/test-layer3-codex-version.sh
+      - devcontainer.test/test-layer3-claude-version.sh
       - scripts/ensure-layer3.sh
       - scripts/lib/layer3-recipe.sh
       - user-layer/**
@@ -26,6 +27,7 @@ on:
       - devcontainer.test/test-ai-cli-install-summary.sh
       - devcontainer.test/test-ensure-layer3-freshness.sh
       - devcontainer.test/test-layer3-codex-version.sh
+      - devcontainer.test/test-layer3-claude-version.sh
       - scripts/ensure-layer3.sh
       - scripts/lib/layer3-recipe.sh
       - user-layer/**
@@ -46,4 +48,5 @@ jobs:
         run: |
           bash devcontainer.test/test-ai-cli-install-summary.sh
           bash devcontainer.test/test-layer3-codex-version.sh
+          bash devcontainer.test/test-layer3-claude-version.sh
           bash devcontainer.test/test-ensure-layer3-freshness.sh
