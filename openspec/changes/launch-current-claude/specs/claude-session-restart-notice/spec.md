@@ -6,7 +6,7 @@ executable it was started from has been replaced or superseded on disk.
 ## ADDED Requirements
 
 ### Requirement: A running session is told when its binary moved
-The shared Claude status line SHALL print one green line, `RESTART NEEDED: running <old>, installed <new>; /ctx at your next breakpoint`, at the top of its panel whenever the Claude Code process it renders for was started from an executable since replaced on disk, or runs an older version than the one installed.
+The shared Claude status line SHALL print one green line, `RESTART NEEDED: running <old>, installed <new>; /ctx at your next breakpoint`, at the top of its panel whenever the restart check can read the process it renders for, and that process was started from an executable since replaced on disk or runs an older version than the one installed.
 
 #### Scenario: The binary was replaced under a running session
 - **WHEN** a launch's update or the CLI's auto-updater replaces the executable a running session started from
