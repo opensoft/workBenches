@@ -134,8 +134,9 @@ See [proposal.md](proposal.md) for the motivation and the rulings.
   and Layer 3] → In Layer 3 that already stopped holding for `codex` when
   `enable-user-codex-updates` put the user prefix first on `PATH`, and it
   stops holding for `claude` here. The baseline stays installed, root-owned
-  and runnable, as point 1's ruling keeps it. This change does not reword that
-  scenario; it is named here so the ratifier sees it.
+  and runnable, as point 1's ruling keeps it. This change rewords that
+  scenario to presence and runnability, allowing a Layer 3 user-owned copy
+  first on `PATH` (R3, ruled 2026-09-30: `review/amendment-2026-09-30.md`).
 
 ## Migration Plan
 
@@ -146,8 +147,8 @@ See [proposal.md](proposal.md) for the motivation and the rulings.
 3. A new launch picks the resolver up at once wherever it is installed.
    Rebuilt Layer 3 images carry the user copy. A running bench is recreated
    only on a separate authorization.
-4. Archive after `prefer-updated-claude` is archived and feature 016 has
-   landed.
+4. Archive after `prefer-updated-claude`, `refresh-shared-ai-cli-tooling` and
+   `repair-ai-cli-runtime-layout` are archived and feature 016 has landed.
 
 Rollback is a revert of the launcher hunk, which brings the native ordering
 back, or a `CLAUDE_BIN` pin.
