@@ -147,8 +147,8 @@ See [proposal.md](proposal.md) for the motivation and the rulings.
 3. A new launch picks the resolver up at once wherever it is installed.
    Rebuilt Layer 3 images carry the user copy. A running bench is recreated
    only on a separate authorization.
-4. Archive after `prefer-updated-claude` is archived and feature 016 has
-   landed.
+4. Archive after `prefer-updated-claude`, `refresh-shared-ai-cli-tooling` and
+   `repair-ai-cli-runtime-layout` are archived and feature 016 has landed.
 
 Rollback is a revert of the launcher hunk, which brings the native ordering
 back, or a `CLAUDE_BIN` pin.
