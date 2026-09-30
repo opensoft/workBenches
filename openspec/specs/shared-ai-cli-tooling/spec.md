@@ -1,7 +1,7 @@
 # shared-ai-cli-tooling Specification
 
 ## Purpose
-TBD - created by archiving change refresh-shared-ai-cli-tooling. Update Purpose after archive.
+Defines how supported AI CLIs are installed, verified, named, and exposed through the shared workBench images and profile selection, keeping explicit ownership and command-name boundaries and keeping rebuilt images separate from live bench activation.
 
 ## Requirements
 

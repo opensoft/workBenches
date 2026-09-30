@@ -1,7 +1,7 @@
 # claude-profile-binary-selection Specification
 
 ## Purpose
-TBD - created by archiving change prefer-updated-claude. Update Purpose after archive.
+Defines which installed Claude Code executable profile and lane launches use, preferring the newest native version installed for the current user while preserving an explicit CLAUDE_BIN override and the existing PATH-based fallback.
 
 ## Requirements
 
