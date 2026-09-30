@@ -45,7 +45,10 @@ mkdir -p "$versions" "$fake_bin" "$profiles/profiles/opensoft/team/team-002"
 printf '%s\n' '{"profiles":[{"name":"team-002","email":"test@example.invalid","family":"testing","aliases":["team002"],"profilePath":"opensoft/team/team-002"}]}' > "$test_root/manifest.json"
 printf '%s\n' '{"name":"team-002","family":"testing","email":"test@example.invalid"}' > "$profiles/profiles/opensoft/team/team-002/.profile.json"
 
-printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$0" > "$LAUNCH_LOG"' 'printf "%s" "${WORKBENCHES_CLAUDE_LANE:-}" > "$IDENTITY_LOG"' 'printf "%s" "${CLAUDE_NO_LANE-<unset>}" > "$MODE_LOG"' > "$fake_bin/claude"
+printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$0" > "$LAUNCH_LOG"' 'printf "%s" "${WORKBENCHES_CLAUDE_LANE:-}" > "$IDENTITY_LOG"' 'printf "%s" "${CLAUDE_NO_LANE-<unset>}" > "$MODE_LOG"' \
+  'if [[ -n "${REAL_GUARD:-}" ]]; then' \
+  '  printf "{\"session_id\":\"profile-fixture\",\"cwd\":\"%s\",\"prompt\":\"check profile-only mode\"}\n" "$PROJECTS_ROOT/example" | "$REAL_GUARD" guard || exit "$?"' \
+  'fi' > "$fake_bin/claude"
 chmod +x "$fake_bin/claude"
 cp "$fake_bin/claude" "$versions/2.1.9"
 cp "$fake_bin/claude" "$versions/2.1.10"
@@ -102,6 +105,14 @@ env "${common_env[@]}" TMUX=fake-session CLAUDE_LANE=example-1 \
 [[ ! -e "$test_root/lane.log" ]] || fail 'bare pclaude invoked lane-start'
 [[ ! -s "$test_root/identity.log" ]] || fail 'bare pclaude inherited lane identity'
 [[ "$(< "$test_root/mode.log")" == 1 ]] || fail 'bare pclaude did not publish no-lane mode'
+rm -f "$test_root/launch.log" "$test_root/mode.log"
+env "${common_env[@]}" TMUX=fake-session CLAUDE_LANE=example-1 \
+  WORKBENCHES_CLAUDE_LANE=example-1 PROJECTS_ROOT="$test_home/projects" \
+  AGENT_PROTOCOL_ROOT="$test_root/missing-protocol" \
+  REAL_GUARD="$repo_root/devBenches/base-image/files/openrepotools/lanes-edit.sh" \
+  "$fake_bin/pclaude" run team002 --resume fixture-session >/dev/null
+[[ -s "$test_root/launch.log" ]] || fail 'real vendored guard case did not launch Claude'
+[[ "$(< "$test_root/mode.log")" == 1 ]] || fail 'real vendored guard case lost no-lane mode'
 rm -f "$test_root/lane.log" "$test_root/lane-mode.log"
 env "${common_env[@]}" TMUX=fake-session CLAUDE_LANE=example-1 \
   "$fake_bin/lclaude" run team002 --resume fixture-session >/dev/null
