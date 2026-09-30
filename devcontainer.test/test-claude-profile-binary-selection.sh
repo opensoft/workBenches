@@ -102,22 +102,27 @@ env "${common_env[@]}" TMUX=fake-session CLAUDE_LANE=example-1 \
 [[ ! -e "$test_root/lane.log" ]] || fail 'bare pclaude invoked lane-start'
 [[ ! -s "$test_root/identity.log" ]] || fail 'bare pclaude inherited lane identity'
 [[ "$(< "$test_root/mode.log")" == 1 ]] || fail 'bare pclaude did not publish no-lane mode'
+rm -f "$test_root/lane.log" "$test_root/lane-mode.log"
 env "${common_env[@]}" TMUX=fake-session CLAUDE_LANE=example-1 \
   "$fake_bin/lclaude" run team002 --resume fixture-session >/dev/null
 [[ "$(< "$test_root/lane.log")" == "$versions/2.1.10" ]] || fail 'lclaude did not enable lane handoff'
 [[ "$(< "$test_root/lane-mode.log")" == '<unset>' ]] || fail 'lane handoff carried a guard exemption'
+rm -f "$test_root/lane.log" "$test_root/lane-mode.log"
 env "${common_env[@]}" TMUX=fake-session CLAUDE_LANE=example-1 CLAUDE_NO_LANE=1 \
   "$fake_bin/lclaude" run team002 --resume fixture-session >/dev/null
+[[ "$(< "$test_root/lane.log")" == "$versions/2.1.10" ]] || fail 'lclaude inherited no-lane routing'
 [[ "$(< "$test_root/lane-mode.log")" == '<unset>' ]] || fail 'lclaude inherited the profile session guard exemption'
+rm -f "$test_root/lane.log" "$test_root/lane-mode.log"
 env "${common_env[@]}" TMUX=fake-session CLAUDE_LANE=example-1 CLAUDE_NO_LANE=0 \
   "$launcher" run team002 --resume fixture-session >/dev/null
+[[ "$(< "$test_root/lane.log")" == "$versions/2.1.10" ]] || fail 'unsupported no-lane marker changed routing'
 [[ "$(< "$test_root/lane-mode.log")" == '<unset>' ]] || fail 'unsupported no-lane marker reached lane handoff'
-rm -f "$test_root/lane.log"
+rm -f "$test_root/lane.log" "$test_root/lane-mode.log"
 env "${common_env[@]}" TMUX=fake-session \
   "$fake_bin/pclaude" --lane example-1 run team002 --resume fixture-session >/dev/null
 [[ -s "$test_root/lane.log" ]] || fail 'explicit pclaude --lane did not call lane-start'
 [[ "$(< "$test_root/lane-name.log")" == example-1 ]] || fail 'explicit pclaude --lane lost compatibility'
-rm -f "$test_root/lane.log"
+rm -f "$test_root/lane.log" "$test_root/lane-mode.log"
 env "${common_env[@]}" TMUX=fake-session CLAUDE_NO_LANE=1 \
   "$fake_bin/pclaude" --lane example-1 run team002 --resume fixture-session >/dev/null
 [[ -s "$test_root/lane.log" ]] || fail 'explicit pclaude --lane inherited no-lane routing'
@@ -128,10 +133,12 @@ env "${common_env[@]}" TMUX=fake-session \
 [[ ! -e "$test_root/lane.log" ]] || fail '--no-lane did not override lclaude --lane'
 [[ ! -s "$test_root/identity.log" ]] || fail '--no-lane kept lane identity'
 [[ "$(< "$test_root/mode.log")" == 1 ]] || fail '--no-lane did not reach Claude'
+rm -f "$test_root/launch.log" "$test_root/mode.log" "$test_root/identity.log"
 env "${common_env[@]}" TMUX=fake-session \
   "$fake_bin/lclaude" --lane example-1 --no-lane run team002 --resume fixture-session >/dev/null
 [[ ! -e "$test_root/lane.log" ]] || fail '--no-lane lost precedence after --lane'
 [[ "$(< "$test_root/mode.log")" == 1 ]] || fail 'trailing --no-lane did not reach Claude'
+[[ -s "$test_root/launch.log" ]] || fail 'trailing --no-lane did not launch Claude'
 
 launch --lane example-1 run team002 --resume fixture-session
 [[ "$(< "$test_root/lane.log")" == "$versions/2.1.10" ]] || fail 'lane-start did not receive newest native version'
@@ -214,6 +221,7 @@ env -u TMUX -u CLAUDE_BIN -u CLAUDE_LANE -u CLAUDE_LANE_DIR \
   "STALE_CLAUDE_BIN=$fake_bin/stale-claude" "TMUX_LOG=$test_root/tmux.log" \
   script -q -e -c "$command_string" /dev/null >/dev/null
 [[ "$(< "$test_root/launch.log")" == "$versions/2.1.10" ]] || fail 'tmux server stale CLAUDE_BIN replaced newest native version'
+rm -f "$test_root/lane.log" "$test_root/lane-name.log" "$test_root/lane-mode.log"
 printf -v command_string '%q ' "$fake_bin/lclaude" run team002 --resume fixture-session
 rm -f "$test_root/lane.log"
 env -u TMUX -u CLAUDE_NO_LANE \
@@ -224,8 +232,11 @@ env -u TMUX -u CLAUDE_NO_LANE \
 [[ "$(< "$test_root/lane-name.log")" == example-1 ]] || fail 'tmux child inherited a stale lane'
 [[ "$(< "$test_root/lane-mode.log")" == '<unset>' ]] || fail 'lane tmux child kept the stale guard exemption'
 
+rm -f "$test_root/lane.log" "$test_root/lane-mode.log" "$test_root/launch.log" "$test_root/mode.log" "$test_root/identity.log"
 env "${common_env[@]}" TMUX=fake-session FAKE_TMUX_WINDOW=claude FAKE_LANE_STATUS=2 \
   "$fake_bin/lclaude" --lane example-1 run team002 --resume fixture-session >/dev/null
+[[ "$(< "$test_root/lane.log")" == "$versions/2.1.10" ]] || fail 'fallback did not attempt lane-start'
+[[ "$(< "$test_root/launch.log")" == "$versions/2.1.10" ]] || fail 'fallback did not launch Claude'
 [[ "$(< "$test_root/mode.log")" == 1 ]] || fail 'bare fallback after lane refusal did not publish no-lane mode'
 [[ ! -s "$test_root/identity.log" ]] || fail 'bare fallback kept the refused lane identity'
 
