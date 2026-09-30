@@ -16,7 +16,7 @@ None are open. The rulings this feature implements are Brett Heap's, 2026-09-29,
 - **Added scope** (comment 5891361098): a running session gets a green restart notice in the status line, and it only warns.
 - **The CLI's auto-updater stays on** (comment 5891339280).
 
-Held for the ratifier and **not in force**: R1 to R5 (RULING NEEDED on #119, comments 5894243795 and 5894338733). This feature implements the ratified text as it stands. In particular, a host with no `/proc` gets no restart line (the ratified "No process table" scenario), and the status line adds no version-only fallback.
+Ruled on 2026-09-30 and landed in #122 (`18a2fcad`): R1 to R5 (RULING NEEDED on #119, comments 5894243795 and 5894338733). Brett Heap ruled R1 to R4 with "amend as proposed" and R5 with "amend as (a) (Recommended)", that is alternative (a); the change's `review/amendment-2026-09-30.md` records the words. This feature implements the text as amended. In particular, R5's alternative (a) scopes the restart guarantee to a process the restart check can read: a host with no `/proc` still gets no restart line (the "No process table" scenario stands as ratified), and the status line adds no version-only fallback (alternative (b), which was not taken).
 
 ## User Scenarios & Testing
 
