@@ -115,5 +115,5 @@ As a bench user, I want a fresh personal image to already carry Claude Code at n
 ## Assumptions
 
 - `opensoft/openRepoTools#134` ships `claude-current` and `claude-restart-check` to the contract this feature calls. Until it lands and `openRepoTools --install` places them, launches take the fallback with its notice, and the status line prints no restart line.
-- `CLAUDE_VERIFIED_VERSION` is handed for every resolver outcome, which the ratified "The launch says what launched" scenario allows. It requires it for a verified launch and forbids it for no other.
+- `CLAUDE_VERIFIED_VERSION` is handed for every resolver outcome. The "The launch says what launched" scenario, as R4 amended it (ruled "amend as proposed" on 2026-09-30, landed in #122, `18a2fcad`), requires it for every launch the resolver answered, whether verified, ahead, unverified or stale. As ratified it required it for a verified launch and forbade it for no other.
 - The Layer 3 build host can reach the npm registry, as the Codex overlay already requires.
