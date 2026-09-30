@@ -1065,7 +1065,11 @@ act1_compose_child_command() {
 
   command_string=""
   local -a child_mode=()
-  [[ "${lane_mode:-false}" == true ]] && child_mode=(--with-lane)
+  if [[ "${no_lane:-false}" == true ]]; then
+    child_mode=(--no-lane)
+  elif [[ "${lane_mode:-false}" == true ]]; then
+    child_mode=(--with-lane)
+  fi
   for argument in "${env_prefix[@]}" "$launcher" "${child_mode[@]}" run "$profile" "$@"; do
     printf -v argument '%q' "$argument"
     command_string+="${command_string:+ }$argument"
@@ -2769,20 +2773,22 @@ lane_dir_note=""
 # learnt. Published for the record the swap writes, and for nothing else.
 lane_dir_entered=""
 no_lane=false
+no_lane_explicit=false
+lane_mode_explicit=false
 lane_mode=true
-[[ -z "${CLAUDE_NO_LANE:-}" ]] || no_lane=true
+[[ "${CLAUDE_NO_LANE:-}" != 1 ]] || no_lane=true
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --with-lane) lane_mode=true; shift ;;
+    --with-lane) lane_mode=true; lane_mode_explicit=true; shift ;;
     --lane)
       [[ $# -ge 2 ]] || { echo "pclaude: --lane needs a value: <repo>-<n>" >&2; exit 2; }
-      lane="$2"; lane_mode=true; shift 2 ;;
-    --lane=*) lane="${1#--lane=}"; lane_mode=true; shift ;;
+      lane="$2"; lane_mode=true; lane_mode_explicit=true; shift 2 ;;
+    --lane=*) lane="${1#--lane=}"; lane_mode=true; lane_mode_explicit=true; shift ;;
     --dir)
       [[ $# -ge 2 ]] || { echo "pclaude: --dir needs a value: the lane's checkout" >&2; exit 2; }
-      lane_dir_flag="$2"; lane_mode=true; shift 2 ;;
-    --dir=*) lane_dir_flag="${1#--dir=}"; lane_mode=true; shift ;;
-    --no-lane) no_lane=true; shift ;;
+      lane_dir_flag="$2"; lane_mode=true; lane_mode_explicit=true; shift 2 ;;
+    --dir=*) lane_dir_flag="${1#--dir=}"; lane_mode=true; lane_mode_explicit=true; shift ;;
+    --no-lane) no_lane=true; no_lane_explicit=true; shift ;;
     -h|--help)
       cat <<'EOF'
 Usage: claude-profile {list|login|status|run} PROFILE [CLAUDE_ARGS...]
@@ -2821,8 +2827,11 @@ Options:
                         see THE LANE'S DIRECTORY below.
   --no-lane            take no lane: exec Claude directly, whatever the
                         window or the swap record says (also settable as
-                        CLAUDE_NO_LANE=1 in the environment). Wins over
-                        --lane/CLAUDE_LANE, and the session it starts
+                        CLAUDE_NO_LANE=1 in the environment). Explicit
+                        --no-lane wins over lane options. An explicit lane
+                        request clears an inherited CLAUDE_NO_LANE marker.
+                        A no-lane launch exports CLAUDE_NO_LANE=1 so the
+                        prompt name guard skips this process. The session
                         INHERITS no lane either: CLAUDE_LANE, CLAUDE_LANE_DIR
                         and the WORKBENCHES_CLAUDE_LANE* markers are removed
                         from its environment, so neither the usage guard's
@@ -3048,12 +3057,20 @@ EOF
     *) break ;;
   esac
 done
+# A profile-only parent's marker is inherited by nested launchers. An explicit
+# lane request starts a fresh lane mode; an explicit opt-out still wins.
+if [[ "$lane_mode_explicit" == true && "$no_lane_explicit" == false ]]; then
+  no_lane=false
+fi
 [[ "$lane_mode" == true ]] || no_lane=true
 if [[ "$no_lane" == true ]]; then
+  export CLAUDE_NO_LANE=1
   lane=""
   lane_dir_flag=""
   unset CLAUDE_LANE CLAUDE_LANE_DIR WORKBENCHES_CLAUDE_LANE \
     WORKBENCHES_CLAUDE_LANE_SOURCE WORKBENCHES_CLAUDE_LANE_DIR
+else
+  unset CLAUDE_NO_LANE
 fi
 
 # ---------------------------------------------------------------------------
@@ -3513,6 +3530,9 @@ case "$action" in
           unset WORKBENCHES_CLAUDE_LANE WORKBENCHES_CLAUDE_LANE_SOURCE \
                 WORKBENCHES_CLAUDE_LANE_DIR CLAUDE_LANE CLAUDE_LANE_DIR
         fi
+        # This path starts Claude without a lane, including a refused handoff's
+        # bare fallback. Hooks must see the mode of this actual launch.
+        export CLAUDE_NO_LANE=1
         CLAUDE_CONFIG_DIR="$config_dir" exec "$claude_bin" "${claude_flags[@]}" "$@"
         ;;
     esac

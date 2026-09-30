@@ -183,7 +183,7 @@ pclaude <profile>
 lane-start <repo> <n>
 ```
 
-`pclaude <profile>` alone starts the lane: the launcher binds by the tmux window — its name, else the swap record for that window — so the normal path needs no lane named at all, and `--lane <repo>-<n>` / `--dir <path>` remain leading options for the cases that still do.
+`pclaude <profile>` starts a profile session without a lane. It exports `CLAUDE_NO_LANE=1` so the prompt name guard skips that process. Use `lclaude <profile>` to start or resume a lane; `pclaude --lane <repo>-<n> <profile>` remains supported. An explicit lane request clears an inherited no-lane marker, while explicit `--no-lane` wins over lane options. The hook stays installed in shared profile settings so concurrent lane sessions receive enforcement.
 
 The workspace repository (`<org>/<login>-wip`) holds your lane register, your handoffs and your workspace manifests. It holds **no code**: the lane tooling is installed from `opensoft/openRepoTools`.
 

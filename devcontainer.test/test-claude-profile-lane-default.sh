@@ -756,13 +756,19 @@ grep -Fxq -- "$claude_args --resume session-none" "$CLAUDE_LOG" \
     || fail "--no-lane: Claude did not receive its arguments unchanged"; assertion
 grep -q "$note" "$ERR_LOG" && fail "--no-lane: printed the no-lane note at an operator who opted out"; assertion
 
-# CLAUDE_NO_LANE=1 is the same thing by another route.
+# The low-level launcher honors inherited no-lane mode. lclaude is an explicit
+# lane request, so it clears a profile parent's marker instead.
 launch \
     "FAKE_TMUX_WINDOW=openRepoProject-1" \
     "FAKE_LANE_WITH_ROW=openRepoProject-1" \
     "CLAUDE_NO_LANE=1" \
     -- run team002 --resume session-none-env
-[[ ! -e "$LANE_START_LOG" ]] || fail "CLAUDE_NO_LANE: lane-start was invoked ('$(lane_start_argv)')"; assertion
+if [[ "${LAUNCHER##*/}" == lclaude ]]; then
+    grep -Fxq -- "openRepoProject-1 -- $claude_args --resume session-none-env" "$LANE_START_LOG" \
+        || fail "lclaude: inherited no-lane mode overrode the explicit lane request"; assertion
+else
+    [[ ! -e "$LANE_START_LOG" ]] || fail "CLAUDE_NO_LANE: lane-start was invoked ('$(lane_start_argv)')"; assertion
+fi
 
 # ---------------------------------------------------------------------------
 # 8. A lane-start from before Amendment 8, which knows neither `--confirm` nor
@@ -895,7 +901,7 @@ grep -q 'WORKBENCHES_CLAUDE_WINDOW=' "$TMUX_LOG" \
     && fail "re-exec: a window name was carried from a launch that came from no window"; assertion
 
 tty_launch "TMUX=" "FAKE_TMUX_WINDOW=openRepoProject-1" "FAKE_LANE_WITH_ROW=openRepoProject-1" \
-    "CLAUDE_NO_LANE=1" -- run team002 --resume session-tty
+    "CLAUDE_NO_LANE=1" -- --no-lane run team002 --resume session-tty
 grep -q 'CLAUDE_NO_LANE=1' "$TMUX_LOG" || fail "re-exec: --no-lane was not carried into the new session"; assertion
 
 # ---------------------------------------------------------------------------

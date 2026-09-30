@@ -11,6 +11,13 @@ select the newest installed Claude binary through the same profile manager.
 An explicit `pclaude --lane <lane> <profile>` remains supported for scripts and
 restarts that already name their lane; `--no-lane` still overrides it.
 
+Every Claude launch without a lane exports `CLAUDE_NO_LANE=1`. The prompt
+name guard skips that process; other profile hooks keep running. The hook stays
+installed in profile settings so another session using that profile can work
+in a lane. Explicit lane requests clear an inherited no-lane marker, while
+explicit `--no-lane` wins regardless of option order. A session's mode takes
+effect at launch; relaunch an existing session to change it.
+
 The lane behavior described in older amendment sections below applies to
 `lclaude` now. `claude-profile` remains the underlying launcher for both entry
 points.
@@ -371,9 +378,10 @@ made with `LANES_NO_FETCH=1`, so a launch never waits on the network.
 With neither, the launch is exactly as described above plus one line saying how
 to take a lane in this window — and not even that where the `SessionStart` hook
 below is installed, since that hook says the same thing with the repository and
-the number filled in. `--no-lane` (or `CLAUDE_NO_LANE=1`) opts out of the
-resolution entirely and wins over `--lane`, and a launch that starts no
-conversation at all takes no lane in the first place; neither is told anything,
+the number filled in. Explicit `--no-lane` opts out of the resolution entirely
+and wins over `--lane`. The underlying `claude-profile` also accepts inherited
+`CLAUDE_NO_LANE=1` unless an explicit lane request overrides it. A launch that
+starts no conversation at all takes no lane in the first place; neither is told anything,
 because neither is a degradation.
 
 **A missing `lane-start` is said, not passed over (new-workstation#20, Evidence
