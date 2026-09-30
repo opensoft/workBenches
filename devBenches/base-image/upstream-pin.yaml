@@ -57,7 +57,7 @@ sources:
     source_repository: opensoft/openRepoTools
     materialization: copied
     revision_kind: commit
-    commit: "69bf48d8bbcb498fa46d6ab62241be9830d40389"
+    commit: "a7d125716829dcc24b009e464d919a3e404afba4"
     vendor_dir: files/openrepotools
     files:
       - path: openRepoTools
@@ -76,7 +76,7 @@ sources:
         sha256: "ea10f37be3d57eabc0a15e36eedb44b13c9eb159f71149767239ec3733d921f3"
         mode: "100755"
       - path: lanes-edit.sh
-        sha256: "9d561418482d589112dfdf79f984edb341c28b142f119f3324e777e96903bb6a"
+        sha256: "84697d8fe8cfea6efa5d3acc12617d125ff29941dcb6fc06856e3768d3d800d9"
         mode: "100755"
       - path: lane-start
         sha256: "e4e670092ffa5a24872e125be259ae41aa3c8f69efeb07ee753f9207e498135d"

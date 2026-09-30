@@ -15,5 +15,5 @@ OpenSpec/Speckit protocol and project bootstrap contract.
 - Preserve unrelated changes in the parent checkout and in bench submodules.
 
 <!-- SPECKIT START -->
-Active implementation plan: `specs/016-launch-current-claude/plan.md`
+Active implementation plan: `specs/017-export-no-lane-mode/plan.md`
 <!-- SPECKIT END -->
