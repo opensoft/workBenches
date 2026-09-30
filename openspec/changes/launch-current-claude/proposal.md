@@ -1,6 +1,15 @@
 Status: ratified
 Ratified by: Brett Heap, 2026-09-29, verbatim "ratify the OpenSpec change when it's green" (lane openXfactory-5 RULED line, 2026-09-29T16:16:17Z), at baseline `34979348`. Record: [review/ratification-2026-09-29.md](review/ratification-2026-09-29.md).
 
+**AMENDMENT PENDING RULING (R1 to R5, 2026-09-30):** Copilot's review points that would change requirement or
+scenario text after the ratify word were put to Brett Heap as RULING NEEDED on opensoft/workBenches#119:
+[comment 5894243795](https://github.com/opensoft/workBenches/issues/119#issuecomment-5894243795) (R1, R2, R3) and
+[comment 5894338733](https://github.com/opensoft/workBenches/issues/119#issuecomment-5894338733) (R4, R5). This pull
+request carries R1 to R4 as proposed in `specs/` and holds R5 as ratified. It lands only on his words: "amend as
+proposed" for R1 to R4, each of which may be ruled apart, and for R5 one of "amend as (a)", "amend as (b)" or
+"keep as ratified". Until then the packet stands as ratified at `376ee6c`. Record:
+[review/amendment-pending-2026-09-30.md](review/amendment-pending-2026-09-30.md).
+
 ## Why
 
 A profile or lane launch can start an old Claude Code, and nothing notices
@@ -68,6 +77,12 @@ nothing told it to restart.
   resolves by absolute path through `claude-current` instead of `PATH`, and
   keeps the native ordering only as the fallback when `claude-current` is
   absent.
+- `shared-ai-cli-tooling` (introduced by the active changes
+  `refresh-shared-ai-cli-tooling` and `repair-ai-cli-runtime-layout`): the
+  scenario "Bench inherits the baseline" requires every required CLI command
+  to be present and runnable from the image-managed installation, and lets a
+  Layer 3 user-owned `claude` or `codex` resolve first on `PATH` (R3, pending
+  ruling).
 
 ## Rulings
 
@@ -110,6 +125,8 @@ Brett Heap, 2026-09-29, on #119:
 - Sequencing: `claude-profile-binary-selection` exists only in the active
   change `prefer-updated-claude`, so this change archives after that one does.
   Archive refuses a MODIFIED or RENAMED delta whose target spec does not exist
-  yet.
+  yet. Likewise `shared-ai-cli-tooling` exists only in the active changes
+  `refresh-shared-ai-cli-tooling` and `repair-ai-cli-runtime-layout`, so this
+  change also archives after both of them (R3, pending ruling).
 - Implementation hands off to Speckit feature `016-launch-current-claude`, in
   a separate pull request that lands after this change is ratified.

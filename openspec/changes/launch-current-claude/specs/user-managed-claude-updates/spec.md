@@ -6,7 +6,7 @@ latest that its runtime user owns, on top of the shared image baseline.
 ## ADDED Requirements
 
 ### Requirement: Layer 3 provides a user-owned Claude Code installation at npm latest
-The Layer 3 image SHALL install Claude Code, at the version npm publishes as `latest` when the image is built, into an npm prefix owned by its runtime user, and SHALL resolve `claude` from that prefix before any system-wide copy.
+The Layer 3 image SHALL install Claude Code, at the version npm publishes as `latest` when the image is built or at the exact version the build is given, into an npm prefix owned by its runtime user, and SHALL resolve `claude` from that prefix before any system-wide copy.
 
 #### Scenario: Runtime user resolves the writable Claude Code copy
 - **WHEN** a user starts a shell in a Layer 3 bench image

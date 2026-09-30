@@ -40,9 +40,9 @@ The profile launcher SHALL honor a nonempty `CLAUDE_BIN` that the operator set a
 The profile launcher SHALL obtain the executable from `claude-current` before it starts a session whenever `CLAUDE_BIN` is not an operator pin and the resolver is installed, and SHALL start exactly the absolute path the resolver returns.
 
 #### Scenario: New session launch
-- **WHEN** a user starts a profile or lane session
+- **WHEN** a user starts a profile or lane session while an installed candidate's `--version` equals npm's published version
 - **THEN** the launcher runs the resolver's bounded check of npm's published version before the session starts
-- **AND** the session starts on the absolute path whose `--version` equals the published version
+- **AND** the session starts on that candidate's absolute path, the one the resolver returned
 
 #### Scenario: Installed copies are behind
 - **WHEN** every installed candidate is older than npm's published version
@@ -58,9 +58,9 @@ The profile launcher SHALL obtain the executable from `claude-current` before it
 - **THEN** the session starts on the highest installed version and the launch prints `UNVERIFIED: could not reach npm`
 
 #### Scenario: The launch says what launched
-- **WHEN** a verified launch starts
-- **THEN** it prints `claude <version> (verified against npm <published>)`
-- **AND** it hands `lane-start` the same path as `CLAUDE_BIN`, with `CLAUDE_VERIFIED_VERSION` set to that version
+- **WHEN** a launch the resolver answered starts, whether verified, ahead, unverified or stale
+- **THEN** it prints the version it started and how that compares with npm, as `claude <version> (verified against npm <published>)` when they are equal
+- **AND** it hands `lane-start` the same path as `CLAUDE_BIN`, with `CLAUDE_VERIFIED_VERSION` set to the version the resolver read from it
 
 ## ADDED Requirements
 

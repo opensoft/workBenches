@@ -6,4 +6,4 @@
 ## 2. Verification and delivery
 
 - [ ] 2.1 Run the feature's suites in the declared bench test environment and record the local counts (#105: the claude-profile suites have no CI of their own), without altering running sessions.
-- [ ] 2.2 Archive this change only after feature 016 and the `opensoft/openRepoTools` commands it calls have landed, and after `prefer-updated-claude` is archived.
+- [ ] 2.2 Archive this change only after feature 016 and the `opensoft/openRepoTools` commands it calls have landed, and after `prefer-updated-claude`, `refresh-shared-ai-cli-tooling` and `repair-ai-cli-runtime-layout` are archived.

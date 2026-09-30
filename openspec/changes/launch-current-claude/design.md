@@ -134,8 +134,9 @@ See [proposal.md](proposal.md) for the motivation and the rulings.
   and Layer 3] → In Layer 3 that already stopped holding for `codex` when
   `enable-user-codex-updates` put the user prefix first on `PATH`, and it
   stops holding for `claude` here. The baseline stays installed, root-owned
-  and runnable, as point 1's ruling keeps it. This change does not reword that
-  scenario; it is named here so the ratifier sees it.
+  and runnable, as point 1's ruling keeps it. This change rewords that
+  scenario to presence and runnability, allowing a Layer 3 user-owned copy
+  first on `PATH` (R3, pending ruling: `review/amendment-pending-2026-09-30.md`).
 
 ## Migration Plan
 
