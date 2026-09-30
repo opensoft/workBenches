@@ -16,7 +16,7 @@ None are open. The rulings this feature implements are Brett Heap's, 2026-09-29,
 - **Added scope** (comment 5891361098): a running session gets a green restart notice in the status line, and it only warns.
 - **The CLI's auto-updater stays on** (comment 5891339280).
 
-Held for the ratifier and **not in force**: R1 to R5 (RULING NEEDED on #119, comments 5894243795 and 5894338733). This feature implements the ratified text as it stands. In particular, a host with no `/proc` gets no restart line (the ratified "No process table" scenario), and the status line adds no version-only fallback.
+Ruled on 2026-09-30 and landed in #122 (`18a2fcad`): R1 to R5 (RULING NEEDED on #119, comments 5894243795 and 5894338733). Brett Heap ruled R1 to R4 with "amend as proposed" and R5 with "amend as (a) (Recommended)", that is alternative (a); the change's `review/amendment-2026-09-30.md` records the words. This feature implements the text as amended. In particular, R5's alternative (a) scopes the restart guarantee to a process the restart check can read: a host with no `/proc` still gets no restart line (the "No process table" scenario stands as ratified), and the status line adds no version-only fallback (alternative (b), which was not taken).
 
 ## User Scenarios & Testing
 
@@ -115,5 +115,5 @@ As a bench user, I want a fresh personal image to already carry Claude Code at n
 ## Assumptions
 
 - `opensoft/openRepoTools#134` ships `claude-current` and `claude-restart-check` to the contract this feature calls. Until it lands and `openRepoTools --install` places them, launches take the fallback with its notice, and the status line prints no restart line.
-- `CLAUDE_VERIFIED_VERSION` is handed for every resolver outcome, which the ratified "The launch says what launched" scenario allows. It requires it for a verified launch and forbids it for no other.
+- `CLAUDE_VERIFIED_VERSION` is handed for every resolver outcome. The "The launch says what launched" scenario, as R4 amended it (ruled "amend as proposed" on 2026-09-30, landed in #122, `18a2fcad`), requires it for every launch the resolver answered, whether verified, ahead, unverified or stale. As ratified it required it for a verified launch and forbade it for no other.
 - The Layer 3 build host can reach the npm registry, as the Codex overlay already requires.

@@ -17,7 +17,7 @@
 - [x] Success criteria are measurable
 - [x] Acceptance and edge cases are identified
 - [x] Scope, dependencies (opensoft/openRepoTools#134) and assumptions are bounded
-- [x] Held review points (R1 to R5 on #119) are named as not in force
+- [x] Review points R1 to R5 on #119 are recorded as ruled on 2026-09-30 and landed in #122 (`18a2fcad`): "amend as proposed" for R1 to R4, "amend as (a) (Recommended)" for R5
 
 ## Feature Readiness
 
