@@ -414,6 +414,43 @@ resolve_case "PATH=$test_root/refusing-bin:$fake_bin:$PATH" -- "$launcher" --lan
 has_line 'CLAUDE_VERIFIED_VERSION=2.1.284' lane-env.log || fail 'refused hand-off: lane-start did not get the version'; ok
 has_line 'CLAUDE_VERIFIED_VERSION=<unset>' claude-env.log || fail 'refused hand-off: the version reached the bare session'; ok
 
+# THE HAND-OFF FOR EVERY ANSWER THE RESOLVER GIVES. The scenario "The launch
+# says what launched" covers a launch the resolver answered "whether verified,
+# ahead, unverified or stale": it prints the version it started and how that
+# compares with npm, and hands lane-start the same path as CLAUDE_BIN with
+# CLAUDE_VERIFIED_VERSION set to the version the resolver read from that copy.
+# The verified answer is pinned above. Each answer below reports an installed
+# version that differs from npm's published one, so a hand-off that sent npm's
+# version, or kept the version for a verified answer alone, fails here.
+# handoff_case <answer> <path> <version> <line the launch prints> <env assignment>...
+handoff_case() {
+  local answer="$1" path="$2" version="$3" said="$4"
+  shift 4
+  resolve_case "$@" -- "$launcher" --lane example-1 run team002 --resume fixture-session
+  [[ "$case_status" -eq 0 && "$(< "$test_root/current.log")" == --porcelain ]] \
+    || fail "hand-off $answer: the launch exited $case_status, or claude-current was not asked exactly once with --porcelain alone"; ok
+  # A lane launch also prints the path of its defect capture (#95); beside that
+  # line, the resolver's is the only one, and the launcher adds none of its own.
+  [[ "$(stderr_count "$said")" -eq 1 && "$(grep -cvF 'pclaude: lane defect capture:' "$test_root/stderr.log" || true)" -eq 1 ]] \
+    || fail "hand-off $answer: the launch did not print '$said' exactly once, alone ($(cat "$test_root/stderr.log"))"; ok
+  [[ "$(< "$test_root/lane.log")" == "$path" ]] || fail "hand-off $answer: lane-start did not get $path as CLAUDE_BIN"; ok
+  has_line "CLAUDE_RESOLVED_BIN=$path" lane-env.log || fail "hand-off $answer: lane-start did not get the resolution marker"; ok
+  has_line "CLAUDE_VERIFIED_VERSION=$version" lane-env.log \
+    || fail "hand-off $answer: lane-start did not get CLAUDE_VERIFIED_VERSION=$version ($(cat "$test_root/lane-env.log"))"; ok
+}
+# AHEAD: the copy is newer than npm's 2.1.284; lane-start gets that copy's 2.1.290.
+handoff_case ahead "$system_copy" 2.1.290 'claude 2.1.290 (ahead of npm 2.1.284)' \
+  "STUB_PATH=$system_copy" STUB_VERSION=2.1.290 STUB_STATE=ahead "STUB_SAYS=ahead of npm 2.1.284"
+# UNVERIFIED: npm was unreachable, so no published version; the highest installed
+# copy's 2.1.283 is what lane-start gets.
+handoff_case unverified "$user_copy" 2.1.283 'claude 2.1.283 (UNVERIFIED: could not reach npm)' \
+  STUB_VERSION=2.1.283 STUB_PUBLISHED= STUB_STATE=unverified "STUB_SAYS=UNVERIFIED: could not reach npm"
+# STALE, ALLOWED: CLAUDE_ALLOW_STALE=1 reaches the resolver, which starts the
+# behind copy, and lane-start gets that copy's 2.1.280, not npm's 2.1.284.
+handoff_case 'stale allowed' "$user_copy" 2.1.280 'claude 2.1.280 (STALE, started under CLAUDE_ALLOW_STALE=1)' \
+  CLAUDE_ALLOW_STALE=1 STUB_VERSION=2.1.280 STUB_STATE=stale "STUB_SAYS=STALE, started under CLAUDE_ALLOW_STALE=1"
+has_line 'CLAUDE_ALLOW_STALE=1' current-env.log || fail 'hand-off stale allowed: the escape did not reach claude-current'; ok
+
 # FROM A TERMINAL OUTSIDE TMUX the parent only wraps tmux: the child resolves,
 # once. The server's stale pair and version reach neither side.
 tmux_case -- "${bare[@]}"
