@@ -99,10 +99,11 @@ launch run team002 --resume fixture-session
 [[ "$(< "$test_root/launch.log")" == "$versions/2.1.10" ]] || fail 'newest numeric native version was not launched'
 [[ "$(< "$test_root/mode.log")" == 1 ]] || fail 'bare Claude launch did not publish no-lane mode'
 
-rm -f "$test_root/lane.log"
+rm -f "$test_root/lane.log" "$test_root/launch.log" "$test_root/mode.log" "$test_root/identity.log"
 env "${common_env[@]}" TMUX=fake-session CLAUDE_LANE=example-1 \
   WORKBENCHES_CLAUDE_LANE=example-1 "$fake_bin/pclaude" run team002 --resume fixture-session >/dev/null
 [[ ! -e "$test_root/lane.log" ]] || fail 'bare pclaude invoked lane-start'
+[[ "$(< "$test_root/launch.log")" == "$versions/2.1.10" ]] || fail 'bare pclaude did not launch the selected Claude'
 [[ ! -s "$test_root/identity.log" ]] || fail 'bare pclaude inherited lane identity'
 [[ "$(< "$test_root/mode.log")" == 1 ]] || fail 'bare pclaude did not publish no-lane mode'
 rm -f "$test_root/launch.log" "$test_root/mode.log"
@@ -138,10 +139,11 @@ env "${common_env[@]}" TMUX=fake-session CLAUDE_NO_LANE=1 \
   "$fake_bin/pclaude" --lane example-1 run team002 --resume fixture-session >/dev/null
 [[ -s "$test_root/lane.log" ]] || fail 'explicit pclaude --lane inherited no-lane routing'
 [[ "$(< "$test_root/lane-mode.log")" == '<unset>' ]] || fail 'explicit pclaude --lane inherited the guard exemption'
-rm -f "$test_root/lane.log"
+rm -f "$test_root/lane.log" "$test_root/launch.log" "$test_root/mode.log" "$test_root/identity.log"
 env "${common_env[@]}" TMUX=fake-session \
   "$fake_bin/lclaude" --no-lane --lane example-1 run team002 --resume fixture-session >/dev/null
 [[ ! -e "$test_root/lane.log" ]] || fail '--no-lane did not override lclaude --lane'
+[[ "$(< "$test_root/launch.log")" == "$versions/2.1.10" ]] || fail '--no-lane did not launch the selected Claude'
 [[ ! -s "$test_root/identity.log" ]] || fail '--no-lane kept lane identity'
 [[ "$(< "$test_root/mode.log")" == 1 ]] || fail '--no-lane did not reach Claude'
 rm -f "$test_root/launch.log" "$test_root/mode.log" "$test_root/identity.log"
