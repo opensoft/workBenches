@@ -136,7 +136,7 @@ See [proposal.md](proposal.md) for the motivation and the rulings.
   stops holding for `claude` here. The baseline stays installed, root-owned
   and runnable, as point 1's ruling keeps it. This change rewords that
   scenario to presence and runnability, allowing a Layer 3 user-owned copy
-  first on `PATH` (R3, pending ruling: `review/amendment-pending-2026-09-30.md`).
+  first on `PATH` (R3, ruled 2026-09-30: `review/amendment-2026-09-30.md`).
 
 ## Migration Plan
 

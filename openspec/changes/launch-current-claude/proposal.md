@@ -1,14 +1,16 @@
 Status: ratified
 Ratified by: Brett Heap, 2026-09-29, verbatim "ratify the OpenSpec change when it's green" (lane openXfactory-5 RULED line, 2026-09-29T16:16:17Z), at baseline `34979348`. Record: [review/ratification-2026-09-29.md](review/ratification-2026-09-29.md).
 
-**AMENDMENT PENDING RULING (R1 to R5, 2026-09-30):** Copilot's review points that would change requirement or
+**AMENDMENT RULED (R1 to R4, 2026-09-30); R5 PENDING RULING:** Copilot's review points that would change requirement or
 scenario text after the ratify word were put to Brett Heap as RULING NEEDED on opensoft/workBenches#119:
 [comment 5894243795](https://github.com/opensoft/workBenches/issues/119#issuecomment-5894243795) (R1, R2, R3) and
-[comment 5894338733](https://github.com/opensoft/workBenches/issues/119#issuecomment-5894338733) (R4, R5). This pull
-request carries R1 to R4 as proposed in `specs/` and holds R5 as ratified. It lands only on his words: "amend as
-proposed" for R1 to R4, each of which may be ruled apart, and for R5 one of "amend as (a)", "amend as (b)" or
-"keep as ratified". Until then the packet stands as ratified at `376ee6c`. Record:
-[review/amendment-pending-2026-09-30.md](review/amendment-pending-2026-09-30.md).
+[comment 5894338733](https://github.com/opensoft/workBenches/issues/119#issuecomment-5894338733) (R4, R5). Brett Heap,
+2026-09-30, in session, verbatim "amend as proposed" (lane openXfactory-5 RULED line, 2026-09-30T15:24:34Z,
+`opensoft/brett-wip` commit `531c01a09`): R1 to R4 take their After text as proposed, and `specs/` carries it. R5
+offered (a) or (b), which that word does not choose, so R5 stays as ratified and pending: it waits on "amend as
+(a)", "amend as (b)" or "keep as ratified". The amendment is not in force until it lands, and landing is not yet
+worded. Until then the packet stands as ratified at `376ee6c`. Record:
+[review/amendment-2026-09-30.md](review/amendment-2026-09-30.md).
 
 ## Why
 
@@ -81,8 +83,8 @@ nothing told it to restart.
   `refresh-shared-ai-cli-tooling` and `repair-ai-cli-runtime-layout`): the
   scenario "Bench inherits the baseline" requires every required CLI command
   to be present and runnable from the image-managed installation, and lets a
-  Layer 3 user-owned `claude` or `codex` resolve first on `PATH` (R3, pending
-  ruling).
+  Layer 3 user-owned `claude` or `codex` resolve first on `PATH` (R3, ruled
+  2026-09-30).
 
 ## Rulings
 
@@ -127,6 +129,6 @@ Brett Heap, 2026-09-29, on #119:
   Archive refuses a MODIFIED or RENAMED delta whose target spec does not exist
   yet. Likewise `shared-ai-cli-tooling` exists only in the active changes
   `refresh-shared-ai-cli-tooling` and `repair-ai-cli-runtime-layout`, so this
-  change also archives after both of them (R3, pending ruling).
+  change also archives after both of them (R3, ruled 2026-09-30).
 - Implementation hands off to Speckit feature `016-launch-current-claude`, in
   a separate pull request that lands after this change is ratified.
