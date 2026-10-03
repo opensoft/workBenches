@@ -14,7 +14,7 @@ See proposal.md. The audit found eighteen repositories, ten dirty children, eigh
 
 - Store binary patches, untracked-file archives, branch tips, and a parent Git bundle in a mode-0700 host-local recovery directory. This is more durable than relying on a stash.
 - Prepare existing child fixes in linked worktrees cut from their fetched default branches, keeping original checkout edits until landing is proven.
-- Validate devcontainer parsing and resolved history mount/environment values inside the declared bench using the existing devcontainer tooling. Do not launch containers as a validation side effect.
+- Validate devcontainer parsing plus service-level Compose history environment inside the declared bench using existing tooling. A post-start ownership initializer makes existing or fresh root-owned history directories and files writable by the remote user. Disposable isolated containers verify ownership migration and persistence; declared live services are never launched as a configuration-validation side effect.
 - Keep Flutter SDK changes separate from history changes; increment any required version header.
 - Preserve CloudBench temporary evidence outside the repository only after verifying an unchanged archive and checking for active users. Do not publish evidence or secrets.
 - Reconcile obsolete patch-equivalent local refs only after a recovery bundle and open-PR checks. Retain active worktrees, including container-path worktrees that merely appear prunable from the host.
