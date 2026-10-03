@@ -6,7 +6,7 @@
 - [ ] T004 Preserve CloudBench evidence outside the checkout; verify its archive and absence of active users.
 - [x] T005 Reconcile obsolete local profile branch and preserve active worktrees; the patch-equivalent local ref now matches its upstream after a recovery bundle. Four open-PR worktrees are preserved; container-only worktrees are locked against host pruning.
 - [x] T006 Push child changes and request exact-head Codex review; parent PR 127 and eleven child PRs are recorded in protected recovery metadata. Resolve review findings and request review again after meaningful updates.
-- [ ] T007 Merge reviewed, green children and synchronize original checkouts; verify no work was discarded.
+- [x] T007 Merge reviewed, green children and synchronize original checkouts; all eleven child PRs merged. Each original tracked patch matched its protected snapshot before reverse-application and fast-forward; no concurrent edits were discarded.
 - [ ] T008 Land parent governance and gitlink changes; verify all pins and upstream equality.
-- [ ] T009 Assess Frappe maintenance requirements and either safely synchronize or record the specific approval gate.
+- [x] T009 Complete the approved Frappe maintenance: all three original application repositories match upstream; both sites have verified database/config/public/private file backups and migrated successfully to Frappe 15.121.3. The user confirmed the external Dartwing source; a separate local clone was installed without modifying that source checkout and matches upstream/main. The supported BENCH_DISABLE_UV installer fallback handled indirect Git dependencies; virtual-environment package versions were resolved together and pip check passed. Assets built successfully. ERPNext is 15.121.6; Dartwing and payments are 0.0.1. No installed app or site data was removed.
 - [ ] T010 Refresh the eighteen-repository audit and report remaining exceptions.
