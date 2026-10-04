@@ -48,6 +48,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LAUNCHER="${1:-$REPO_ROOT/base-image/files/claude-profile}"
+# Temporary PATH symlinks must keep working when the caller passes a relative path.
+LAUNCHER="$(cd "$(dirname "$LAUNCHER")" && pwd)/${LAUNCHER##*/}"
 LAUNCHER_SOURCE="$LAUNCHER"
 [[ "${LAUNCHER##*/}" != lclaude ]] || LAUNCHER_SOURCE="$(dirname "$LAUNCHER")/claude-profile"
 

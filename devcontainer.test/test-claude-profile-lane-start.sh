@@ -16,6 +16,8 @@ assertion() { assertions=$((assertions + 1)); }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LAUNCHER="${1:-$REPO_ROOT/base-image/files/claude-profile}"
+# Temporary PATH symlinks must keep working when the caller passes a relative path.
+LAUNCHER="$(cd "$(dirname "$LAUNCHER")" && pwd)/${LAUNCHER##*/}"
 
 # This test's own scenarios (a plain terminal with no lane, and a terminal
 # already inside tmux) must not be undermined by ambient lane/tmux state
