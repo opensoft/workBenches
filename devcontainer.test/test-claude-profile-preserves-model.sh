@@ -2,6 +2,10 @@
 
 set -euo pipefail
 
+# Count successful explicit assertions, including repeated fixture checks.
+assertions=0
+assertion() { assertions=$((assertions + 1)); }
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 launcher="$repo_root/base-image/files/claude-profile"
 test_root="$(mktemp -d)"
@@ -31,10 +35,12 @@ run_status() {
 
 run_status
 jq -e '.model == "custom-model" and .effortLevel == "high"' "$profile_dir/settings.json" >/dev/null
+assertion
 
 printf '%s\n' '{"effortLevel":"high"}' > "$profile_dir/settings.json"
 run_status
 jq -e '.model == "claude-fable-5-1" and .effortLevel == "high"' "$profile_dir/settings.json" >/dev/null
+assertion
 
 setup_home="$test_root/setup-home"
 setup_config="$test_root/setup-config"
@@ -60,11 +66,16 @@ run_setup() {
 
 run_setup
 jq -e '.model == "custom-model" and .effortLevel == "high"' "$preserved_profile/settings.json" >/dev/null
+assertion
 jq -e '.model == "claude-fable-5-1"' "$fresh_profile/settings.json" >/dev/null
+assertion
 jq -e '.model == "retained-model"' "$retained_profile/settings.json" >/dev/null
+assertion
 
 printf '%s\n' '{"effortLevel":"high"}' > "$preserved_profile/settings.json"
 run_setup
 jq -e '.model == "claude-fable-5-1" and .effortLevel == "high"' "$preserved_profile/settings.json" >/dev/null
+assertion
 
 echo "PASS: Claude profile model preservation"
+printf "COUNT: %s assertions passed\n" "$assertions"

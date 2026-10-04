@@ -9,6 +9,10 @@
 
 set -euo pipefail
 
+# Count successful explicit assertions, including repeated fixture checks.
+assertions=0
+assertion() { assertions=$((assertions + 1)); }
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LAUNCHER="${1:-$REPO_ROOT/base-image/files/claude-profile}"
@@ -144,18 +148,18 @@ expected_claude_args='--allow-dangerously-skip-permissions --dangerously-skip-pe
 # ---------------------------------------------------------------------------
 # 0. --help documents --lane / CLAUDE_LANE (the Land proof's own command).
 env "${common_env[@]}" "$LAUNCHER" --help > "$TEST_ROOT/help.out"
-grep -q -- '--lane' "$TEST_ROOT/help.out" || fail "--help does not document --lane"
-grep -q 'CLAUDE_LANE' "$TEST_ROOT/help.out" || fail "--help does not document CLAUDE_LANE"
-grep -q 'lane-start' "$TEST_ROOT/help.out" || fail "--help does not mention lane-start"
+grep -q -- '--lane' "$TEST_ROOT/help.out" || fail "--help does not document --lane"; assertion
+grep -q 'CLAUDE_LANE' "$TEST_ROOT/help.out" || fail "--help does not document CLAUDE_LANE"; assertion
+grep -q 'lane-start' "$TEST_ROOT/help.out" || fail "--help does not mention lane-start"; assertion
 
 # ---------------------------------------------------------------------------
 # 1. No --lane, no CLAUDE_LANE: behaviour is the plain, direct Claude exec —
 # lane-start is never invoked, and Claude receives exactly the same args.
 env "${common_env[@]}" "$LAUNCHER" run team002 --resume session-1 >/dev/null
 grep -Fxq -- "$expected_claude_args --resume session-1" "$FAKE_CLAUDE_LOG" \
-    || fail "baseline: claude args did not arrive unchanged ($(cat "$FAKE_CLAUDE_LOG" 2>/dev/null))"
+    || fail "baseline: claude args did not arrive unchanged ($(cat "$FAKE_CLAUDE_LOG" 2>/dev/null))"; assertion
 [[ ! -e "$FAKE_LANE_START_LOG" ]] \
-    || fail "baseline: lane-start was invoked with no --lane/CLAUDE_LANE named"
+    || fail "baseline: lane-start was invoked with no --lane/CLAUDE_LANE named"; assertion
 rm -f "$FAKE_CLAUDE_LOG"
 
 # ---------------------------------------------------------------------------
@@ -163,15 +167,15 @@ rm -f "$FAKE_CLAUDE_LOG"
 # CLAUDE_CONFIG_DIR set for it, and never touches Claude directly.
 env "${common_env[@]}" "$LAUNCHER" --lane openRepoShape-2 run team002 --resume session-2 >/dev/null
 [[ ! -e "$FAKE_CLAUDE_LOG" ]] \
-    || fail "--lane: Claude was exec'd directly instead of being handed to lane-start"
+    || fail "--lane: Claude was exec'd directly instead of being handed to lane-start"; assertion
 [[ -e "$FAKE_LANE_START_LOG" ]] \
-    || fail "--lane: lane-start was never invoked"
+    || fail "--lane: lane-start was never invoked"; assertion
 grep -Fxq -- "openRepoShape-2 -- $expected_claude_args --resume session-2" "$FAKE_LANE_START_LOG" \
-    || fail "--lane: lane-start did not receive 'openRepoShape-2 -- <claude args>' ($(cat "$FAKE_LANE_START_LOG"))"
+    || fail "--lane: lane-start did not receive 'openRepoShape-2 -- <claude args>' ($(cat "$FAKE_LANE_START_LOG"))"; assertion
 grep -Fxq "CLAUDE_BIN=$FAKE_CLAUDE" "$FAKE_LANE_START_ENV" \
-    || fail "--lane: lane-start did not see CLAUDE_BIN=$FAKE_CLAUDE ($(cat "$FAKE_LANE_START_ENV"))"
+    || fail "--lane: lane-start did not see CLAUDE_BIN=$FAKE_CLAUDE ($(cat "$FAKE_LANE_START_ENV"))"; assertion
 grep -Fxq "CLAUDE_CONFIG_DIR=$PROFILE_DIR" "$FAKE_LANE_START_ENV" \
-    || fail "--lane: lane-start did not see CLAUDE_CONFIG_DIR=$PROFILE_DIR ($(cat "$FAKE_LANE_START_ENV"))"
+    || fail "--lane: lane-start did not see CLAUDE_CONFIG_DIR=$PROFILE_DIR ($(cat "$FAKE_LANE_START_ENV"))"; assertion
 rm -f "$FAKE_LANE_START_LOG" "$FAKE_LANE_START_ENV"
 
 # ---------------------------------------------------------------------------
@@ -228,9 +232,9 @@ script -qefc "$tty_command" "$TEST_ROOT/typescript-refusal.log" >/dev/null
 refusal_status=$?
 set -e
 [[ "$refusal_status" -eq 2 ]] \
-    || fail "missing lane-start: exit status was $refusal_status, not 2"
+    || fail "missing lane-start: exit status was $refusal_status, not 2"; assertion
 grep -q 'lane-start' "$TEST_ROOT/typescript-refusal.log" \
-    || fail "missing lane-start: refusal did not mention lane-start"
+    || fail "missing lane-start: refusal did not mention lane-start"; assertion
 # THIS MACHINE HAS NO CAPABLE `openRepoTools` AND NO LOCAL CHECKOUT YET
 # (scenario 3b below covers the capable-tool case), so `lane_start_install_act`
 # falls to its workspace.yaml branch and, with the checkout not present, prints
@@ -241,13 +245,13 @@ grep -q 'lane-start' "$TEST_ROOT/typescript-refusal.log" \
 # `/swap` command, not this fallback, which is `base-image/files/claude-profile`
 # and is unchanged by 4b's merge.
 grep -q "$TEST_ROOT/estate-wip/scripts/link-estates" "$TEST_ROOT/typescript-refusal.log" \
-    || fail "missing lane-start: the refusal did not name the fix this machine can use — the scripts/link-estates of the repository its workspace.yaml names (R-A11-13)"
+    || fail "missing lane-start: the refusal did not name the fix this machine can use — the scripts/link-estates of the repository its workspace.yaml names (R-A11-13)"; assertion
 grep -q 'opensoft/estate-wip' "$TEST_ROOT/typescript-refusal.log" \
-    || fail "missing lane-start: the refusal names no repository to clone, so link-estates stands with nothing in front of it (R-A11-13)"
+    || fail "missing lane-start: the refusal names no repository to clone, so link-estates stands with nothing in front of it (R-A11-13)"; assertion
 grep -q 'brett-wip' "$TEST_ROOT/typescript-refusal.log" \
-    && fail "missing lane-start: the refusal names a repository this machine never chose (R-A11-13)"
+    && fail "missing lane-start: the refusal names a repository this machine never chose (R-A11-13)"; assertion
 [[ ! -s "$NO_LANE_TMUX_LOG" ]] \
-    || fail "missing lane-start: a tmux command ran before the refusal ($(cat "$NO_LANE_TMUX_LOG"))"
+    || fail "missing lane-start: a tmux command ran before the refusal ($(cat "$NO_LANE_TMUX_LOG"))"; assertion
 
 # 3b. ...AND ON A MACHINE WHOSE `openRepoTools` PLACES THE LANE TOOLS, THE SAME
 # REFUSAL NAMES `openRepoTools --install` INSTEAD — the act workBenches' own
@@ -272,18 +276,19 @@ script -qefc "$tty_command" "$TEST_ROOT/typescript-refusal-ort.log" >/dev/null
 refusal_ort_status=$?
 set -e
 [[ "$refusal_ort_status" -eq 2 ]] \
-    || fail "missing lane-start, openRepoTools present: exit status was $refusal_ort_status, not 2"
+    || fail "missing lane-start, openRepoTools present: exit status was $refusal_ort_status, not 2"; assertion
 grep -q 'openRepoTools --install' "$TEST_ROOT/typescript-refusal-ort.log" \
-    || fail "missing lane-start: an openRepoTools that places the lane tools is not the act named (R-A11-13)"
+    || fail "missing lane-start: an openRepoTools that places the lane tools is not the act named (R-A11-13)"; assertion
 grep -q 'link-estates' "$TEST_ROOT/typescript-refusal-ort.log" \
-    && fail "missing lane-start: the superseded mechanism is named beside the one that works (R-A11-13)"
+    && fail "missing lane-start: the superseded mechanism is named beside the one that works (R-A11-13)"; assertion
 
 # ---------------------------------------------------------------------------
 # 4. CLAUDE_LANE (env, no --lane flag) works the same as --lane.
 env "${common_env[@]}" CLAUDE_LANE=openRepoShape-2 "$LAUNCHER" run team002 --resume session-4 >/dev/null
 [[ ! -e "$FAKE_CLAUDE_LOG" ]] \
-    || fail "CLAUDE_LANE: Claude was exec'd directly instead of being handed to lane-start"
+    || fail "CLAUDE_LANE: Claude was exec'd directly instead of being handed to lane-start"; assertion
 grep -Fxq -- "openRepoShape-2 -- $expected_claude_args --resume session-4" "$FAKE_LANE_START_LOG" \
-    || fail "CLAUDE_LANE: lane-start did not receive 'openRepoShape-2 -- <claude args>' ($(cat "$FAKE_LANE_START_LOG"))"
+    || fail "CLAUDE_LANE: lane-start did not receive 'openRepoShape-2 -- <claude args>' ($(cat "$FAKE_LANE_START_LOG"))"; assertion
 
 echo "claude-profile lane-start hand-off tests passed"
+printf "COUNT: %s assertions passed\n" "$assertions"
