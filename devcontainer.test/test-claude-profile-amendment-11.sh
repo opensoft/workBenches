@@ -54,6 +54,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LAUNCHER="${1:-$REPO_ROOT/base-image/files/claude-profile}"
+# Resolve caller-relative paths before the fixture changes its working directory.
+LAUNCHER="$(cd "$(dirname "$LAUNCHER")" && pwd)/${LAUNCHER##*/}"
 
 # Ambient lane/tmux state from the shell running this test — including a shell
 # that is itself a claude-profile-launched tmux child — must not reach the
