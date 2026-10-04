@@ -1,6 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
+# Count successful explicit assertions, including repeated fixture checks.
+assertions=0
+assertion() { assertions=$((assertions + 1)); }
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_DIR"' EXIT
@@ -154,29 +158,37 @@ export TEST_IMAGE_RECIPE_SHA256=stale
 export TEST_IMAGE_BASE_IMAGE_ID=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 run_check
 grep -q '^build ' "$DOCKER_LOG"
+assertion
 
 export TEST_IMAGE_RECIPE_SHA256="$(recipe_sha256)"
 export TEST_IMAGE_BASE_IMAGE_ID=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 run_check
 grep -q '^build ' "$DOCKER_LOG"
+assertion
 
 export TEST_IMAGE_BASE_IMAGE_ID=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 export TEST_IMAGE_USER_UID=4242
 identity_output="$(run_check)"
 grep -q 'does not match host UID:GID' <<< "$identity_output"
+assertion
 grep -q '^build ' "$DOCKER_LOG"
+assertion
 unset TEST_IMAGE_USER_UID
 
 export TEST_IMAGE_USER_GID=4242
 identity_output="$(run_check)"
 grep -q 'does not match host UID:GID' <<< "$identity_output"
+assertion
 grep -q '^build ' "$DOCKER_LOG"
+assertion
 unset TEST_IMAGE_USER_GID
 
 export TEST_RETAGS_BASE=true
 retag_output="$(run_check)"
 grep -q 'changed during validation' <<< "$retag_output"
+assertion
 grep -q '^build ' "$DOCKER_LOG"
+assertion
 export TEST_RETAGS_BASE=false
 
 export TEST_STALE_CONTAINER=true
@@ -185,12 +197,17 @@ if grep -q '^build ' "$DOCKER_LOG"; then
     echo "matching recipe fingerprint unexpectedly rebuilt Layer 3" >&2
     exit 1
 fi
+assertion
 grep -q '^rm stale-container$' "$DOCKER_LOG"
+assertion
 
 export TEST_RM_ALREADY_ABSENT=true
 export TEST_REMOVED_MARKER="$TEST_DIR/removed"
 run_check
 grep -q '^rm stale-container$' "$DOCKER_LOG"
+assertion
 grep -q '^container inspect stale-container$' "$DOCKER_LOG"
+assertion
 
 echo "ensure-layer3 recipe freshness tests passed"
+printf "COUNT: %s assertions passed\n" "$assertions"

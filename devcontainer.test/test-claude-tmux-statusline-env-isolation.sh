@@ -54,6 +54,10 @@
 
 set -euo pipefail
 
+# Count successful explicit assertions, including repeated fixture checks.
+assertions=0
+assertion() { assertions=$((assertions + 1)); }
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LAUNCHER="${1:-$REPO_ROOT/base-image/files/claude-profile}"
@@ -117,7 +121,7 @@ done
 # not locate" fail() below.
 guard_start_line="$(grep -n '^unset ' "$TARGET_TEST" | head -1 | cut -d: -f1 || true)"
 [[ -n "$guard_start_line" ]] \
-    || fail "could not locate the env-isolation guard's 'unset ...' line in $TARGET_TEST — did it move or get reworded?"
+    || fail "could not locate the env-isolation guard's 'unset ...' line in $TARGET_TEST — did it move or get reworded?"; assertion
 
 guard_end_line="$guard_start_line"
 while [[ "$(sed -n "${guard_end_line}p" "$TARGET_TEST")" == *\\ ]]; do
@@ -151,7 +155,7 @@ guard_status=$?
 set -e
 
 [[ "$guard_status" -eq 0 ]] \
-    || fail "guard probe itself errored (exit $guard_status) before it could report which names survived: $(cat "$GUARD_OUT")"
+    || fail "guard probe itself errored (exit $guard_status) before it could report which names survived: $(cat "$GUARD_OUT")"; assertion
 
 # `|| true` on the pipeline: under set -e -o pipefail, grep finding zero
 # STILL-SET lines (the guard doing its job — the expected, common case)
@@ -162,7 +166,7 @@ set -e
 still_set="$(grep '^STILL-SET:' "$GUARD_OUT" | cut -d: -f2 | tr '\n' ' ' || true)"
 still_set="${still_set% }"
 [[ -z "$still_set" ]] \
-    || fail "guard did not unset: $still_set (probe output: $(cat "$GUARD_OUT"))"
+    || fail "guard did not unset: $still_set (probe output: $(cat "$GUARD_OUT"))"; assertion
 
 # ---------------------------------------------------------------------------
 # 2. End-to-end: the real test, run as a subprocess, must still pass
@@ -174,8 +178,9 @@ status=$?
 set -e
 
 [[ "$status" -eq 0 ]] \
-    || fail "test-claude-tmux-statusline.sh did not survive representative tmux/lane contamination (exit $status): $(cat "$OUT")"
+    || fail "test-claude-tmux-statusline.sh did not survive representative tmux/lane contamination (exit $status): $(cat "$OUT")"; assertion
 grep -q 'claude tmux statusline tests passed' "$OUT" \
-    || fail "test-claude-tmux-statusline.sh exited 0 but did not print its pass line under contamination: $(cat "$OUT")"
+    || fail "test-claude-tmux-statusline.sh exited 0 but did not print its pass line under contamination: $(cat "$OUT")"; assertion
 
 echo "claude tmux statusline env-isolation regression passed"
+printf "COUNT: %s assertions passed\n" "$assertions"

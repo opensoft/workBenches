@@ -3,6 +3,10 @@
 
 set -euo pipefail
 
+# Count successful explicit assertions, including repeated fixture checks.
+assertions=0
+assertion() { assertions=$((assertions + 1)); }
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LAUNCHER="${1:-$REPO_ROOT/base-image/files/claude-profile}"
@@ -97,23 +101,23 @@ for value in "${common_env[@]}" "$LAUNCHER" run team002 --resume session-123; do
 done
 script -qefc "$tty_command" /dev/null >/dev/null
 grep -Eq '^new-session -d -s claude-team-002-[0-9]{14}-[0-9]+ ' "$FAKE_TMUX_LOG" \
-    || fail "interactive pclaude did not create a profile-named tmux session"
+    || fail "interactive pclaude did not create a profile-named tmux session"; assertion
 grep -q 'WORKBENCHES_CLAUDE_TMUX_CHILD=1' "$FAKE_TMUX_LOG" \
-    || fail "tmux child recursion guard was not exported"
+    || fail "tmux child recursion guard was not exported"; assertion
 grep -q -- '--resume session-123' "$FAKE_TMUX_LOG" \
-    || fail "interactive Claude arguments were not forwarded into tmux"
+    || fail "interactive Claude arguments were not forwarded into tmux"; assertion
 grep -Eq '^attach-session -t claude-team-002-' "$FAKE_TMUX_LOG" \
-    || fail "interactive pclaude did not attach to the created session"
+    || fail "interactive pclaude did not attach to the created session"; assertion
 [[ ! -e "$FAKE_CLAUDE_LOG" ]] \
-    || fail "fake tmux must own the interactive Claude launch"
+    || fail "fake tmux must own the interactive Claude launch"; assertion
 
 # Command-style invocations stay direct and do not create another tmux session.
 tmux_lines_before="$(wc -l < "$FAKE_TMUX_LOG")"
 env "${common_env[@]}" "$LAUNCHER" run team002 mcp list
 [[ "$(wc -l < "$FAKE_TMUX_LOG")" -eq "$tmux_lines_before" ]] \
-    || fail "noninteractive mcp command unexpectedly created tmux state"
+    || fail "noninteractive mcp command unexpectedly created tmux state"; assertion
 grep -q 'mcp list$' "$FAKE_CLAUDE_LOG" \
-    || fail "noninteractive mcp command did not reach Claude directly"
+    || fail "noninteractive mcp command did not reach Claude directly"; assertion
 
 status_input='{"workspace":{"current_dir":"/workspace/project"},"model":{"display_name":"Fable"},"context_window":{"used_percentage":12}}'
 status_config="$TEST_ROOT/status-config"
@@ -136,7 +140,7 @@ panel="$(env HOME="$status_home" CLAUDE_CONFIG_DIR="$status_config" CLAUDE_PROFI
     COLUMNS=70 bash "$STATUSLINE" <<< "$status_input" | strip_ansi)"
 first_line="${panel%%$'\n'*}"
 [[ "$first_line" == '[TMUX] | tmux:agent-tower-42/%7 | [WORK]'* ]] \
-    || fail "tmux attach target is not the first panel field: $first_line"
+    || fail "tmux attach target is not the first panel field: $first_line"; assertion
 
 # A direct Claude process reports the missing runtime instead of hiding it.
 panel="$(env -u TMUX -u TMUX_PANE -u WORKBENCHES_TMUX_SESSION \
@@ -145,7 +149,7 @@ panel="$(env -u TMUX -u TMUX_PANE -u WORKBENCHES_TMUX_SESSION \
     bash "$STATUSLINE" <<< "$status_input" | strip_ansi)"
 first_line="${panel%%$'\n'*}"
 [[ "$first_line" == '[TMUX] | none | [WORK]'* ]] \
-    || fail "non-tmux panel did not display an explicit none state: $first_line"
+    || fail "non-tmux panel did not display an explicit none state: $first_line"; assertion
 
 # A RUNNING SESSION IS TOLD WHEN ITS BINARY MOVED (opensoft/workBenches#119;
 # openspec/changes/launch-current-claude, claude-session-restart-notice). A
@@ -177,32 +181,33 @@ restart_text='RESTART NEEDED: running 2.1.283, installed 2.1.284; /ctx at your n
 # Not installed: the four-line panel, byte for byte.
 absent_panel="$(render WORKBENCHES_CLAUDE_RESTART_CHECK_BIN="$no_restart_check")"
 [[ "$(wc -l <<<"$absent_panel")" -eq 4 && "$(strip_ansi <<<"${absent_panel%%$'\n'*}")" == '[TMUX] | none | [WORK]'* ]] \
-    || fail "restart check absent: the panel changed: $absent_panel"
+    || fail "restart check absent: the panel changed: $absent_panel"; assertion
 
 # Installed, nothing to say: the same bytes, and it was asked about the
 # running version from the JSON and about the shell Claude started the panel in.
 rm -f "$restart_log"
 quiet_panel="$(render PATH="$restart_bin:$PATH" RESTART_CHECK_LOG="$restart_log")"
 [[ "$quiet_panel" == "$absent_panel" ]] \
-    || fail "restart check with nothing to say changed the panel: $quiet_panel"
+    || fail "restart check with nothing to say changed the panel: $quiet_panel"; assertion
 [[ "$(cat "$restart_log")" == "--running 2.1.283 --pid $(cat "$render_pid")" ]] \
-    || fail "restart check was not given the JSON version and the panel's parent: $(cat "$restart_log")"
+    || fail "restart check was not given the JSON version and the panel's parent: $(cat "$restart_log")"; assertion
 
 # Installed, the binary moved: its one green line comes FIRST, the four lines
 # after it are unchanged, and nothing else is printed.
 notice_panel="$(render PATH="$restart_bin:$PATH" RESTART_CHECK_LOG="$restart_log" \
     RESTART_CHECK_LINE=$'\033[32m'"$restart_text"$'\033[0m')"
 [[ "${notice_panel%%$'\n'*}" == $'\033[32m'"$restart_text"$'\033[0m' ]] \
-    || fail "restart line is not the first panel line: ${notice_panel%%$'\n'*}"
+    || fail "restart line is not the first panel line: ${notice_panel%%$'\n'*}"; assertion
 [[ "${notice_panel#*$'\n'}" == "$absent_panel" ]] \
-    || fail "restart line changed the rest of the panel: $notice_panel"
+    || fail "restart line changed the rest of the panel: $notice_panel"; assertion
 [[ "$(wc -l <<<"$notice_panel")" -eq 5 ]] \
-    || fail "restart line added more than one line: $notice_panel"
+    || fail "restart line added more than one line: $notice_panel"; assertion
 
 # A JSON with no version (an older Claude) asks without --running.
 printf '%s\n' "$status_input" > "$render_json"
 render PATH="$restart_bin:$PATH" RESTART_CHECK_LOG="$restart_log" >/dev/null
 [[ "$(cat "$restart_log")" == "--pid $(cat "$render_pid")" ]] \
-    || fail "restart check was given a running version the JSON did not carry: $(cat "$restart_log")"
+    || fail "restart check was given a running version the JSON did not carry: $(cat "$restart_log")"; assertion
 
 echo "claude tmux statusline tests passed"
+printf "COUNT: %s assertions passed\n" "$assertions"

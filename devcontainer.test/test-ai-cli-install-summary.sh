@@ -1,44 +1,66 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Count successful explicit assertions, including repeated fixture checks.
+assertions=0
+assertion() { assertions=$((assertions + 1)); }
+
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 for installer in \
     "$repo_root/base-image/install-ai-clis.sh" \
     "$repo_root/devBenches/base-image/install-ai-clis.sh"; do
     bash -n "$installer"
+    assertion
     summary_block="$(sed -n '/^if command -v chelper /,/^fi$/p' "$installer")"
     grep -Fq 'command -v chelper' <<<"$summary_block"
+    assertion
     grep -Fq 'Z.AI Coding Plan helper (chelper)' <<<"$summary_block"
+    assertion
     grep -Fq '[install skipped or failed]' <<<"$summary_block"
+    assertion
 
 done
 
 shared_installer="$repo_root/base-image/install-ai-clis.sh"
 shared_minimax_summary="$(sed -n '/^if command -v mcode /,/^fi$/p' "$shared_installer" | tail -n 6)"
 grep -Fq 'command -v mcode' <<<"$shared_minimax_summary"
+assertion
 grep -Fq 'command -v mcode-tools' <<<"$shared_minimax_summary"
+assertion
 grep -Fq 'MiniMax Code (mcode, mcode-tools)' <<<"$shared_minimax_summary"
+assertion
 grep -Fq '[install skipped or failed]' <<<"$shared_minimax_summary"
+assertion
 if grep -Fq '$HOME/.minimax-code/bin/mcode' <<<"$shared_minimax_summary"; then
     echo "shared installer summary still accepts the legacy user-local MiniMax path" >&2
     exit 1
 fi
+assertion
 
 developer_installer="$repo_root/devBenches/base-image/install-ai-clis.sh"
 developer_minimax_summary="$(sed -n '/^if command -v mcode /,/^fi$/p' "$developer_installer" | tail -n 5)"
 grep -Fq 'command -v mcode' <<<"$developer_minimax_summary"
+assertion
 grep -Fq '$HOME/.minimax-code/bin/mcode' <<<"$developer_minimax_summary"
+assertion
 grep -Fq 'MiniMax Code (mcode)' <<<"$developer_minimax_summary"
+assertion
 grep -Fq '[install skipped or failed]' <<<"$developer_minimax_summary"
+assertion
 
 grep -Fq 'missing_clis+=("mcode-tools(runnable)")' "$shared_installer"
+assertion
 grep -Fq 'mcode-tools --version' "$shared_installer"
+assertion
 
 cursor_install_block="$(sed -n '/^log_info "Installing Cursor CLI..."/,/^log_info "Installing MiniMax Code CLI/p' "$repo_root/base-image/install-ai-clis.sh")"
 grep -Fq 'publish_cursor_bundle "$cursor_launcher"' <<<"$cursor_install_block"
+assertion
 grep -Fq 'cursor-agent --version >/dev/null 2>&1' <<<"$cursor_install_block"
+assertion
 grep -Fq 'missing_clis+=("cursor-agent(runnable)")' "$repo_root/base-image/install-ai-clis.sh"
+assertion
 
 # shellcheck source=../base-image/ai-cli-install-helpers.sh
 . "$repo_root/base-image/ai-cli-install-helpers.sh"
@@ -75,10 +97,15 @@ assert_cursor_publication_failure_preserves_source() {
         echo "Cursor publication unexpectedly ignored $failing_command failure" >&2
         exit 1
     fi
+    assertion
     test -e "$bundle_dir/agent"
+    assertion
     test -L "$bin_dir/agent"
+    assertion
     test -f "$destination/original"
+    assertion
     test ! -e "$global_launcher"
+    assertion
 }
 
 assert_cursor_publication_failure_preserves_source cp
@@ -109,10 +136,17 @@ publish_cursor_bundle \
     "$cursor_bin_dir"
 
 test "$(readlink "$cursor_global_launcher")" = "$cursor_destination/cursor-agent"
+assertion
 test ! -e "$cursor_bundle_dir"
+assertion
 test ! -e "$cursor_bin_dir/agent"
+assertion
 test -x "$cursor_destination/node"
+assertion
 test -f "$cursor_destination/index.js"
+assertion
 test "$($cursor_global_launcher --version)" = "cursor-agent-test"
+assertion
 
 printf 'ai-cli optional install summaries are status-aware\n'
+printf "COUNT: %s assertions passed\n" "$assertions"

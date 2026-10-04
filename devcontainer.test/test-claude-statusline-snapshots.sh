@@ -8,6 +8,10 @@
 
 set -euo pipefail
 
+# Count successful explicit assertions, including repeated fixture checks.
+assertions=0
+assertion() { assertions=$((assertions + 1)); }
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 STATUSLINE="${1:-$REPO_ROOT/base-image/files/claude-statusline-command.sh}"
@@ -79,26 +83,26 @@ session_snap="$snap_dir/session.$SESSION_ID.json"
 run_statusline "$FAKE_HOME" "$payload_full" >/dev/null
 
 # (a) the profile snapshot file exists at the derived path.
-[[ -f $profile_snap ]] || fail "profile snapshot was not written to $profile_snap"
+[[ -f $profile_snap ]] || fail "profile snapshot was not written to $profile_snap"; assertion
 
 # (b) five_hour/fable_weekly match the payload; reset fields are numbers.
 [[ "$(jq -r '.five_hour' "$profile_snap")" == "$FIVE_HOUR_PCT" ]] \
-    || fail "profile snapshot five_hour did not match the payload"
+    || fail "profile snapshot five_hour did not match the payload"; assertion
 [[ "$(jq -r '.fable_weekly' "$profile_snap")" == "$FABLE_WEEKLY_PCT" ]] \
-    || fail "profile snapshot fable_weekly did not match the payload"
+    || fail "profile snapshot fable_weekly did not match the payload"; assertion
 [[ "$(jq -r '.five_hour_reset' "$profile_snap")" == "$FIVE_HOUR_RESET" ]] \
-    || fail "profile snapshot five_hour_reset did not match the payload"
+    || fail "profile snapshot five_hour_reset did not match the payload"; assertion
 [[ "$(jq -r '.fable_weekly_reset' "$profile_snap")" == "$FABLE_WEEKLY_RESET" ]] \
-    || fail "profile snapshot fable_weekly_reset did not match the payload"
+    || fail "profile snapshot fable_weekly_reset did not match the payload"; assertion
 [[ "$(jq -r '.five_hour_reset | type' "$profile_snap")" == "number" ]] \
-    || fail "five_hour_reset is not a JSON number"
+    || fail "five_hour_reset is not a JSON number"; assertion
 [[ "$(jq -r '.fable_weekly_reset | type' "$profile_snap")" == "number" ]] \
-    || fail "fable_weekly_reset is not a JSON number"
+    || fail "fable_weekly_reset is not a JSON number"; assertion
 
 # (c) the session-keyed file carries the context value.
-[[ -f $session_snap ]] || fail "session snapshot was not written to $session_snap"
+[[ -f $session_snap ]] || fail "session snapshot was not written to $session_snap"; assertion
 [[ "$(jq -r '.context_pct' "$session_snap")" == "$CONTEXT_PCT" ]] \
-    || fail "session snapshot context_pct did not match the payload"
+    || fail "session snapshot context_pct did not match the payload"; assertion
 
 echo "usage-snapshot publisher populated both files correctly"
 
@@ -112,21 +116,21 @@ set +e
 output_no_limits=$(run_statusline "$FAKE_HOME_NO_LIMITS" "$payload_no_limits")
 status=$?
 set -e
-[[ $status -eq 0 ]] || fail "statusline exited $status for a payload with no rate_limits"
+[[ $status -eq 0 ]] || fail "statusline exited $status for a payload with no rate_limits"; assertion
 [[ "$(wc -l <<<"$output_no_limits")" -eq 4 ]] \
-    || fail "statusline did not print a 4-line panel for a payload with no rate_limits"
+    || fail "statusline did not print a 4-line panel for a payload with no rate_limits"; assertion
 
 profile_snap_no_limits="$FAKE_HOME_NO_LIMITS/.claude/usage-snapshots/profile.$profile_key.json"
 [[ -f $profile_snap_no_limits ]] \
-    || fail "profile snapshot was not written for a payload with no rate_limits"
+    || fail "profile snapshot was not written for a payload with no rate_limits"; assertion
 [[ "$(jq -r '.five_hour' "$profile_snap_no_limits")" == "null" ]] \
-    || fail "five_hour was not null when rate_limits was absent"
+    || fail "five_hour was not null when rate_limits was absent"; assertion
 [[ "$(jq -r '.fable_weekly' "$profile_snap_no_limits")" == "null" ]] \
-    || fail "fable_weekly was not null when rate_limits was absent"
+    || fail "fable_weekly was not null when rate_limits was absent"; assertion
 [[ "$(jq -r '.five_hour_reset' "$profile_snap_no_limits")" == "null" ]] \
-    || fail "five_hour_reset was not null when rate_limits was absent"
+    || fail "five_hour_reset was not null when rate_limits was absent"; assertion
 [[ "$(jq -r '.fable_weekly_reset' "$profile_snap_no_limits")" == "null" ]] \
-    || fail "fable_weekly_reset was not null when rate_limits was absent"
+    || fail "fable_weekly_reset was not null when rate_limits was absent"; assertion
 
 echo "missing rate_limits still exits 0 and publishes fail-quiet nulls"
 
@@ -145,12 +149,13 @@ out_writable=$(run_statusline "$FAKE_HOME_WRITABLE" "$payload_full" | strip_ansi
 out_unwritable=$(run_statusline "$FAKE_HOME_UNWRITABLE" "$payload_full" | strip_ansi)
 
 [[ "$out_writable" == "$out_unwritable" ]] \
-    || fail "visible status line differed depending on snapshot-directory writability"
+    || fail "visible status line differed depending on snapshot-directory writability"; assertion
 [[ -f "$FAKE_HOME_UNWRITABLE/.claude/usage-snapshots" ]] \
-    || fail "sentinel file was unexpectedly replaced by a directory"
+    || fail "sentinel file was unexpectedly replaced by a directory"; assertion
 [[ -f "$FAKE_HOME_WRITABLE/.claude/usage-snapshots/profile.$profile_key.json" ]] \
-    || fail "control run with a writable HOME unexpectedly did not publish a snapshot"
+    || fail "control run with a writable HOME unexpectedly did not publish a snapshot"; assertion
 
 echo "an unwritable snapshot directory does not change the visible status line"
 
 echo "claude statusline snapshot tests passed"
+printf "COUNT: %s assertions passed\n" "$assertions"

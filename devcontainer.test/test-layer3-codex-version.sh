@@ -2,6 +2,10 @@
 
 set -euo pipefail
 
+# Count successful explicit assertions, including repeated fixture checks.
+assertions=0
+assertion() { assertions=$((assertions + 1)); }
+
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 case_root="$(mktemp -d)"
 trap 'rm -rf "$case_root"' EXIT
@@ -67,47 +71,66 @@ run_build() {
 run_build
 pinned_ref="$(awk '$1 == "tag" { print $3; exit }' "$docker_log")"
 [[ "$pinned_ref" == workbenches-layer3-base-pin:* ]]
+assertion
 grep -Fq -- "tag $base_image_id $pinned_ref" "$docker_log"
+assertion
 grep -Fq -- "run --rm --network none --entrypoint= $pinned_ref sh -c codex --version" "$docker_log"
+assertion
 grep -Fq -- "--build-arg BASE_IMAGE=$pinned_ref" "$docker_log"
+assertion
 grep -Fq -- "--build-arg BASE_IMAGE_ID=$base_image_id" "$docker_log"
+assertion
 grep -Fq -- '--build-arg CODEX_VERSION=0.199.0' "$docker_log"
+assertion
 grep -Fq -- "image rm $pinned_ref" "$docker_log"
+assertion
 grep -Fq -- "30s docker run --rm --network none --entrypoint= $pinned_ref sh -c codex --version" "$timeout_log"
+assertion
 
 MOCK_TAG_IMAGE_ID=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc \
     run_build --base-image-id "$base_image_id"
 pinned_ref="$(awk '$1 == "tag" { print $3; exit }' "$docker_log")"
 grep -Fq -- "tag $base_image_id $pinned_ref" "$docker_log"
+assertion
 grep -Fq -- "--build-arg BASE_IMAGE_ID=$base_image_id" "$docker_log"
+assertion
 
 WORKBENCHES_CODEX_VERSION_PROBE_TIMEOUT_SECONDS=7 run_build
 pinned_ref="$(awk '$1 == "tag" { print $3; exit }' "$docker_log")"
 grep -Fq -- "7s docker run --rm --network none --entrypoint= $pinned_ref sh -c codex --version" "$timeout_log"
+assertion
 
 if WORKBENCHES_CODEX_VERSION_PROBE_TIMEOUT_SECONDS=0 run_build; then
     echo 'invalid Codex probe timeout was accepted' >&2
     exit 1
 fi
+assertion
 
 if MOCK_TIMEOUT_FAIL=true run_build; then
     echo 'Codex probe timeout did not fail the build' >&2
     exit 1
 fi
+assertion
 
 run_build --codex-version 0.200.0
 grep -Fq -- '--build-arg CODEX_VERSION=0.200.0' "$docker_log"
+assertion
 pinned_ref="$(awk '$1 == "tag" { print $3; exit }' "$docker_log")"
 grep -Fq -- "--build-arg BASE_IMAGE=$pinned_ref" "$docker_log"
+assertion
 grep -Fq -- "--build-arg BASE_IMAGE_ID=$base_image_id" "$docker_log"
+assertion
 if grep -Fq -- 'run --rm --network none' "$docker_log"; then
     echo 'explicit Codex version unexpectedly probed the base image' >&2
     exit 1
 fi
+assertion
 
 if run_build --codex-version latest; then
     echo 'mutable Codex dist-tag was accepted as an exact version' >&2
     exit 1
 fi
+assertion
 
 printf 'layer3 Codex version inherits the exact base version and remains overridable\n'
+printf "COUNT: %s assertions passed\n" "$assertions"
