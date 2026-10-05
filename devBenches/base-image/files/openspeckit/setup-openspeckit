@@ -2355,8 +2355,14 @@ Claude sessions running this protocol pair it with the model-roles protocol
 (canonical memory: `speckit-model-roles` + `usage-balance-95-protocol` in the
 xFactory project memory; mirrored per-project as sessions adopt it):
 
-- **Fable** (the main session) thinks and orchestrates only — it does not
-  write code directly.
+- **The main session — Fable, or Opus 5.5 at max effort** — thinks and
+  orchestrates only; it does not write code directly. Opus 5.5 qualifies only
+  at max: in a tool shell, `echo $CLAUDE_EFFORT` must print `max` (Claude Code
+  injects the live session effort there; `claude-profile` defaults every
+  profile to `xhigh`). On any other main-loop model or effort, stop and tell
+  Brett before orchestrating; a session cannot switch itself (`/model`, or a
+  relaunch with `--effort max`). Amended 2026-09-30 on Brett Heap's word:
+  "update the rule so that the lane can run on fable or opus 5.5 if the opus 5.5 is set to max".
 - **Opus** manages, reviews, and writes the DIFFICULT tasks through the
   Speckit flow (plan authoring, hard implementation slices, review passes).
 - **Sonnet** writes small, well-scoped tasks.
