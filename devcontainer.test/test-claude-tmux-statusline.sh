@@ -152,7 +152,7 @@ first_line="${panel%%$'\n'*}"
     || fail "non-tmux panel did not display an explicit none state: $first_line"; assertion
 
 # A RUNNING SESSION IS TOLD WHEN ITS BINARY MOVED (opensoft/workBenches#119;
-# openspec/changes/launch-current-claude, claude-session-restart-notice). A
+# openspec/changes/archive/2026-10-05-launch-current-claude, claude-session-restart-notice). A
 # stub claude-restart-check on PATH stands in for opensoft/openRepoTools'
 # command and records its arguments. Claude runs the panel under `/bin/sh -c`,
 # which does not exec it, so the script's $PPID is that shell and claude is its
