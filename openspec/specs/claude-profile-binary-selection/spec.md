@@ -1,7 +1,7 @@
 # claude-profile-binary-selection Specification
 
 ## Purpose
-Defines which installed Claude Code executable profile and lane launches use, preferring the newest native version installed for the current user while preserving an explicit CLAUDE_BIN override and the existing PATH-based fallback.
+Defines which Claude Code executable profile and lane launches start: the copy the claude-current resolver verifies against npm's published version, updating the user-owned installation first and refusing a stale launch unless explicitly allowed; an operator-set CLAUDE_BIN pin, passed through untouched; and, where no resolver is installed, the newest installed native version with a notice that the launch was not verified.
 
 ## Requirements
 
