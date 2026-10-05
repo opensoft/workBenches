@@ -164,16 +164,20 @@ RUN chmod 0755 /usr/local/bin/speckit-worktree-enable && \
 # `status`. `openRepoTools --install` grew to ELEVEN under lane-collision-
 # protocol Amendment 11 (those four plus `restart`, `lanes`, and the four
 # lane helpers `lanes-edit.sh`, `lane-start`, `lane-end` and `link-estates`
-# with the alias table `repos.tsv` they read), and now places THIRTEEN:
+# with the alias table `repos.tsv` they read), and now places FIFTEEN:
 # Amendment 18 Addendums 1 and 2 retired `restart` from `$PATH` — `lane
 # <name>` does its act and more, so the count did not move when one word
 # left as another arrived — and Amendment 17(a) added `lane-handoff` as the
 # swap's shell form, which is the file that raised eleven to twelve. The
-# upstream `lane-rename` command raises the current count to thirteen. All
-# thirteen are vendored under files/openrepotools/ and all thirteen are COPIED
-# into this image below, chmod 0755 — `repos.tsv` included, because the
-# installer stamps every one of the thirteen executable and this image mirrors
-# that, not the upstream mode its own pin row records for that one file.
+# upstream `lane-rename` command raises it to thirteen, and
+# opensoft/workBenches#119's two Claude Code launch commands — `claude-current`,
+# the Claude Code a launch starts, and `claude-restart-check`, the RESTART
+# NEEDED line the shared status line prints — raise it to FIFTEEN, listed LAST
+# in the shim's own `INSTALLABLES`. All fifteen are vendored under
+# files/openrepotools/ and all fifteen are COPIED into this image below, chmod
+# 0755 — `repos.tsv` included, because the installer stamps every one of the
+# fifteen executable and this image mirrors that, not the upstream mode its
+# own pin row records for that one file.
 # files/openreposhape/ still vendors only the shim (`openRepoShape` itself)
 # and the manifest template below.
 #
@@ -223,25 +227,28 @@ COPY files/openrepotools/lane-start /usr/local/bin/lane-start
 COPY files/openrepotools/lane-end /usr/local/bin/lane-end
 COPY files/openrepotools/link-estates /usr/local/bin/link-estates
 COPY files/openrepotools/repos.tsv /usr/local/bin/repos.tsv
+COPY files/openrepotools/claude-current /usr/local/bin/claude-current
+COPY files/openrepotools/claude-restart-check /usr/local/bin/claude-restart-check
 RUN chmod 0755 /usr/local/bin/openRepoShape /usr/local/bin/openRepoTools \
     /usr/local/bin/park /usr/local/bin/resume /usr/local/bin/status \
     /usr/local/bin/lane /usr/local/bin/lanes /usr/local/bin/lane-handoff /usr/local/bin/lane-rename \
     /usr/local/bin/lanes-edit.sh \
     /usr/local/bin/lane-start /usr/local/bin/lane-end /usr/local/bin/link-estates \
-    /usr/local/bin/repos.tsv
+    /usr/local/bin/repos.tsv \
+    /usr/local/bin/claude-current /usr/local/bin/claude-restart-check
 
 # THE WHOLE VENDORED TREE, A SECOND TIME, UNDER /usr/local/share — and the two
-# are not redundant (opensoft/workBenches#90). The thirteen copies above are
+# are not redundant (opensoft/workBenches#90). The fifteen copies above are
 # the ones a non-interactive `docker exec` resolves through this image's ENV
 # PATH. THESE are the ones `--install` is run FROM at container start, and it
 # needs its whole install set laid out beside it: `--install` copies each of
-# its twenty-seven artifacts from its own directory when they are there and
+# its twenty-nine artifacts from its own directory when they are there and
 # FETCHES the ones that are not (openRepoTools#26's all-or-nothing rule). Run
 # from /usr/local/bin, where skills/ and commands/ are not, six of the
-# twenty-seven would go to the network — which is exactly what the vendoring
+# twenty-nine would go to the network — which is exactly what the vendoring
 # note above forbids. Run from here, none of them can.
 #
-# WHY A CONTAINER RUNS `--install` AT ALL, when the thirteen above are already
+# WHY A CONTAINER RUNS `--install` AT ALL, when the fifteen above are already
 # on PATH: `~/.local/bin` is not a mount (docker-compose.mounts.yml persists
 # ~/.claude, ~/.claude-profiles, ~/.agents, ~/.local/lib/workbenches and
 # ~/.local/state/workbenches, never ~/.local/bin), so a RECREATE resets it to
