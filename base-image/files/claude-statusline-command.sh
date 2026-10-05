@@ -473,7 +473,7 @@ line4_parts=(
 )
 
 # A RUNNING SESSION IS TOLD WHEN ITS BINARY MOVED (opensoft/workBenches#119,
-# openspec/changes/launch-current-claude, claude-session-restart-notice). The
+# openspec/changes/archive/2026-10-05-launch-current-claude, claude-session-restart-notice). The
 # check is opensoft/openRepoTools' claude-restart-check: it reads only /proc
 # and small files, prints nothing or one line, and exits 0. $PPID is the
 # `/bin/sh -c` Claude runs this script under, and claude is that shell's
