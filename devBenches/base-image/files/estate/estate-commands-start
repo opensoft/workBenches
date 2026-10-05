@@ -28,7 +28,7 @@
 #     answering `guard`.
 #
 # WHY THE IMAGE'S OWN COPIES DO NOT CLOSE IT. devBenches/base-image/Dockerfile
-# COPYs the twelve into /usr/local/bin, and on a CURRENT image that does put
+# COPYs the fifteen into /usr/local/bin, and on a CURRENT image that does put
 # them back on $PATH. It still leaves three holes, and this step exists for
 # them: (1) nothing rebuilds Layer 1a when a bench starts — `prepare-bench-start`
 # ensures Layer 3 only — so the measured bench was running an image built

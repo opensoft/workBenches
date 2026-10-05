@@ -57,11 +57,11 @@ sources:
     source_repository: opensoft/openRepoTools
     materialization: copied
     revision_kind: commit
-    commit: "a7d125716829dcc24b009e464d919a3e404afba4"
+    commit: "b1015f4672f9c107d939803c39846f8dbd3d78f3"
     vendor_dir: files/openrepotools
     files:
       - path: openRepoTools
-        sha256: "16290d290040f8800ce837034adedd2918ff69e16cf13345691221f4603311fc"
+        sha256: "d2de987e7d6888e42c68b0352d8aea097add6ba1160fb801a9f02f4d2e21a878"
         mode: "100755"
       - path: park
         sha256: "7a0b3893649459694ec79b09e49dd736ec53429c504ae15faaf82643664bd956"
@@ -73,16 +73,16 @@ sources:
         sha256: "137b38f25fa30197e849876c8530a387d58da0104d8d620cb0f7b96b3289befc"
         mode: "100755"
       - path: lanes
-        sha256: "ea10f37be3d57eabc0a15e36eedb44b13c9eb159f71149767239ec3733d921f3"
+        sha256: "853fea05b2232aebaf739e7f3b23e0ecc4f045ccd6f3bd8293ea90829fe00fad"
         mode: "100755"
       - path: lanes-edit.sh
-        sha256: "84697d8fe8cfea6efa5d3acc12617d125ff29941dcb6fc06856e3768d3d800d9"
+        sha256: "7c083a743f5f425cb8ede740d94da41ef545e44358b7673f7cb483010fc18e24"
         mode: "100755"
       - path: lane-start
-        sha256: "e4e670092ffa5a24872e125be259ae41aa3c8f69efeb07ee753f9207e498135d"
+        sha256: "cae6a097df6835b456efa1cf8fc425f76cf119249d2f9514811c97c69fee7356"
         mode: "100755"
       - path: lane-end
-        sha256: "01b415901c1d3e6aa119f1f27b6057618b101d3868f3b02aa1e347ae8755b4d6"
+        sha256: "f1fbd24350fe85d703e1a35758c264035fae7846150663db24f93f94521d2ee4"
         mode: "100755"
       - path: link-estates
         sha256: "660b087e2b9391fed637a16128ac1716ad512fc326095e623e630864cd5a0f40"
@@ -100,10 +100,10 @@ sources:
         sha256: "9dc2f404bdf1f018d7e25004fdd27390bdecd81a20ba3f0a07dd9c7a709cb67e"
         mode: "100644"
       - path: lane
-        sha256: "ab7ea771df702b1452d5461622e9c6e1fd22cd0c3e8d3096dcb16ed6ce705d9f"
+        sha256: "4f79af909fa2f1074d31ba7c497d9203ae5864692c6a1f16350ead44087f54c2"
         mode: "100755"
       - path: lane-handoff
-        sha256: "74331637dc1e2428044c1de6082fb02f96f986bb02aa1fe4f02d216e2ce377e8"
+        sha256: "8e5782dd76076d7bdfe38ac0a385231ff91fa153f1de58a2cc35c90b2138a51b"
         mode: "100755"
       - path: skills/handoff/SKILL.md
         sha256: "b7f1030a3a274af0d089ed7d4f68d1e93c886dc25b9d17cfcdce3d806dba945d"
@@ -116,4 +116,10 @@ sources:
         mode: "100644"
       - path: lane-rename
         sha256: "81dc3297228a17e1dd1eabcb870ee583556e1ca7714f4de149e728d66524ca0f"
+        mode: "100755"
+      - path: claude-current
+        sha256: "50b483609a6e80cc34ffd355effcaf417492bb336fd64a5c5bfb2c633deafd82"
+        mode: "100755"
+      - path: claude-restart-check
+        sha256: "129914d42f705587741715579e70fb52895e5fb56c40939a8b104f2f07a4c5ff"
         mode: "100755"
