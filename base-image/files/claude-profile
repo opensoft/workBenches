@@ -513,7 +513,7 @@ latest_installed_claude() {
   printf '%s' "$best"
 }
 
-# THE EXECUTABLE A LAUNCH STARTS: openspec/changes/launch-current-claude
+# THE EXECUTABLE A LAUNCH STARTS: openspec/changes/archive/2026-10-05-launch-current-claude
 # (opensoft/workBenches#119, ratified 2026-09-29), design.md Decision 4. A
 # launch that starts a session runs the update check first, through the
 # `claude-current` resolver that `openRepoTools --install` places, and starts
