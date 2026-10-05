@@ -1,8 +1,9 @@
 # user-managed-claude-updates Specification
 
 ## Purpose
-Provide each personalized bench image with a Claude Code installation at npm
-latest that its runtime user owns, on top of the shared image baseline.
+Provide each personalized bench image with a Claude Code installation that its
+runtime user owns, at npm latest unless the build names an exact version, on
+top of the shared image baseline.
 
 ## Requirements
 
