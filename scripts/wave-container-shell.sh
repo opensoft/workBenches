@@ -702,7 +702,7 @@ install_ai_profile_launchers
 
 # Apply after mounts, not just at build time: mounted homes hide image npmrc.
 if [[ -f "$claude_npm_guard" ]]; then
-    docker exec --user "$container_user" "$container" /usr/local/bin/claude-npm-guard --repair
+    docker exec --user "$container_user" "$container" "$shell_path" -lc '/usr/local/bin/claude-npm-guard --repair'
 fi
 
 if [[ "$check_only" == true ]]; then

@@ -60,3 +60,15 @@ An explicit Codex review was requested; the connector reported exhausted
 code-review quota, so no Codex review is claimed. Brett authorized opening and
 landing the PR after checks pass. This evidence-only update is rechecked
 before landing.
+
+## Post-landing implementation correction
+
+The final Wave smoke test exposed a PATH-context mismatch: direct docker exec
+selected cloud's shared 2.1.283 CLI, while its login shell selected native
+2.1.291. The guard now runs under Wave's declared login shell, matching the
+consuming environment. This preserves the existing specification and does not
+introduce a new resolver or require rebuilding any image.
+
+cpp-bench's CLI verification passed, but its full Wave check found missing
+legacy profile mounts. Recreating that live container is a separate action
+requiring approval; no such replacement is claimed here.

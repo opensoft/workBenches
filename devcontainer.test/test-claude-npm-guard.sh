@@ -135,6 +135,6 @@ PATH="$scratch/native:$PATH" bash "$guard" --repair | grep -q 'installation unch
 
 grep -Fq 'COPY --chmod=0755 claude-npm-guard /usr/local/bin/claude-npm-guard' "$repo/user-layer/Dockerfile"; ok
 grep -Fq '&& claude-npm-guard --configure' "$repo/user-layer/Dockerfile"; ok
-grep -Fq 'docker exec --user "$container_user" "$container" /usr/local/bin/claude-npm-guard --repair' "$repo/scripts/wave-container-shell.sh"; ok
+grep -Fq 'docker exec --user "$container_user" "$container" "$shell_path" -lc' "$repo/scripts/wave-container-shell.sh"; ok
 grep -Fq -- '--include=optional --allow-scripts=@anthropic-ai/claude-code --strict-allow-scripts' "$repo/base-image/install-ai-clis.sh"; ok
 echo "Claude npm guard: $checks checks passed"
