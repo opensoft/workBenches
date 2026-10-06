@@ -48,6 +48,8 @@ LABEL io.opensoft.workbenches.layer3.base-image-id="${BASE_IMAGE_ID}"
 
 USER root
 
+COPY --chmod=0755 claude-npm-guard /usr/local/bin/claude-npm-guard
+
 # Corepack's shared base-layer cache is root-owned. Route Corepack and its
 # package-manager shims through a runtime wrapper that selects a writable cache
 # from the effective user's passwd home. Preserve the original Corepack entry
@@ -181,7 +183,8 @@ RUN test -n "$CODEX_VERSION" \
 ARG CLAUDE_CODE_VERSION=""
 RUN test -n "$CLAUDE_CODE_VERSION" \
     && printf '%s\n' "$CLAUDE_CODE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$' \
-    && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+    && claude-npm-guard --configure \
+    && npm install -g --include=optional --strict-allow-scripts "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
     && if [ "$(claude --version 2>/dev/null | awk 'NR == 1 { print $1; exit }')" != "$CLAUDE_CODE_VERSION" ]; then \
            node "$(npm root -g)/@anthropic-ai/claude-code/install.cjs"; \
        fi \

@@ -10,6 +10,10 @@ on:
       - base-image/install-ai-clis.sh
       - devcontainer.test/fixtures/fake-docker-cascade-validation.sh
       - devcontainer.test/test-cascade-image-validation.sh
+      - devcontainer.test/test-claude-npm-guard.sh
+      - devcontainer.test/test-layer3-claude-version.sh
+      - devcontainer.test/test-wave-container-shell.sh
+      - scripts/wave-container-shell.sh
       - scripts/check-versions.sh
       - scripts/lib/check-image-identity.py
       - scripts/ensure-layer3.sh
@@ -27,6 +31,10 @@ on:
       - base-image/install-ai-clis.sh
       - devcontainer.test/fixtures/fake-docker-cascade-validation.sh
       - devcontainer.test/test-cascade-image-validation.sh
+      - devcontainer.test/test-claude-npm-guard.sh
+      - devcontainer.test/test-layer3-claude-version.sh
+      - devcontainer.test/test-wave-container-shell.sh
+      - scripts/wave-container-shell.sh
       - scripts/check-versions.sh
       - scripts/lib/check-image-identity.py
       - scripts/ensure-layer3.sh
@@ -50,3 +58,19 @@ jobs:
 
       - name: Run cascade image validation regression
         run: bash devcontainer.test/test-cascade-image-validation.sh
+
+  claude-npm-integrity:
+    runs-on: ubuntu-24.04
+    container: node:24-bookworm
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Use the affected npm lifecycle policy
+        run: npm install -g npm@12.0.2
+      - name: Test real npm policy and shared activation
+        shell: bash
+        run: |
+          runuser -u node -- bash devcontainer.test/test-claude-npm-guard.sh
+          runuser -u node -- bash devcontainer.test/test-layer3-claude-version.sh
+          runuser -u node -- bash devcontainer.test/test-wave-container-shell.sh

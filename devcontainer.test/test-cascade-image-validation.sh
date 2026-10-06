@@ -64,7 +64,7 @@ printf '%s\n' "${WORKBENCHES_REQUIRED_AI_CLIS[@]}" | grep -Fxq grok
 printf '%s\n' "${WORKBENCHES_REQUIRED_AI_CLIS[@]}" | grep -Fxq mcode
 grep -Fq 'required_clis=("${WORKBENCHES_REQUIRED_AI_CLIS[@]}")' "$installer"
 grep -Fq 'npm install --prefer-online -g @ampcode/cli@latest' "$installer"
-grep -Fq 'npm install --prefer-online -g @anthropic-ai/claude-code@latest' "$installer"
+grep -Fq 'npm install --prefer-online -g --include=optional --allow-scripts=@anthropic-ai/claude-code --strict-allow-scripts @anthropic-ai/claude-code@latest' "$installer"
 grep -Fq 'node "$claude_package_root/install.cjs"' "$installer"
 grep -Fq 'node "$amp_package_root/install.cjs"' "$installer"
 grep -Fq 'amp --version' "$installer"

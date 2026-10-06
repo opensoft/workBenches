@@ -101,6 +101,16 @@ Layer 0: workbench-base (THIS LAYER)
     └─→ Layer 1c: bio-bench-base (Bioinformatics tools)
 ```
 
+## Claude npm integrity regression
+
+\`bash devcontainer.test/test-claude-npm-guard.sh\` uses an isolated home/prefix
+and a loopback-only fixture registry to exercise npm 12's actual script policy.
+It does not read provider credentials, download Claude, or update the operator's
+installation. CI pins npm 12.0.2, where the original failure was observed.
+
+The Layer 3 guard also runs after Wave mounts, so a mounted home does not hide
+the policy. Existing native installations are not converted to npm.
+
 ## Exit Codes
 
 - `0` - All tests passed
