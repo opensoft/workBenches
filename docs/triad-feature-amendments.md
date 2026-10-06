@@ -129,7 +129,7 @@ Include workflow distribution, root/link repair and placement review in the migr
 
 ## Distribution and remaining delivery
 
-The installed shared protocol records the adopted manual workflow. `setup-openspeckit` currently creates missing global protocol files and leaves existing files intact; documenting adoption does not distribute it to every workstation. Its protocol templates and managed command/skill guidance need a subsequent implementation change. openRepoShape's placement contract needs the narrow amendment-folder exception upstream; never edit a consumer's pinned shape copies or hand-adjust its digest.
+The installed shared protocol records the adopted manual workflow. `setup-openspeckit` currently creates missing global protocol files and leaves existing files intact; documenting adoption does not distribute it to every workstation. Since workBenches [#131](https://github.com/opensoft/workBenches/pull/131), the workflow-protocol fallback template in `setup-openspeckit` carries the shared protocol's Triad Feature Amendments section, so new installations receive it, and `devBenches/devcontainer.test/test-openspeckit-bootstrap.sh` asserts that content. Existing installations keep their files (`write_text_if_missing`), and the global-entrypoint template, the bootstrap-contract template and the managed command/skill guidance still need a subsequent implementation change. openRepoShape's placement contract needs the narrow amendment-folder exception upstream; never edit a consumer's pinned shape copies or hand-adjust its digest.
 
 Optional `project` diagnostics can report a missing reconciliation record or unresolved amendments after the underlying contract exists. They must reuse the existing Git, shape and workflow owners.
 

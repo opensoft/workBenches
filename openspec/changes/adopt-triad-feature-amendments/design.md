@@ -52,7 +52,7 @@ Single-to-triad migration retains `adopt-project.py` and its reviewed plan, hist
 
 - [Working spec drifts while final reconciliation is deferred] → Apply accepted changes to Speckit immediately and reconcile the tested final result.
 - [Nested root silently changes archive destination] → Explicitly select and inspect roots; maintain manual records until schema/routing qualification.
-- [New workstations receive the old default] → Record distribution as pending and update bootstrap templates through a subsequent Speckit feature.
+- [Existing installations keep the old default, and the other templates and guidance lack the workflow] → New-install distribution of the workflow-protocol section is done (workBenches [#131](https://github.com/opensoft/workBenches/pull/131)). Record as pending the existing installations, which keep their files (`write_text_if_missing`), and the global-entrypoint template, bootstrap-contract template and managed command/skill guidance; task 2.1's Speckit feature handles them.
 - [Code folder conflicts with current placement policy] → Carry the exact exception upstream in openRepoShape; preserve consumer pins until that change lands. Use a documented project-local override if manual use precedes upstream qualification.
 - [Unreviewed scope is labeled small] → Classify by boundary impact and retain the decision source in each record.
 

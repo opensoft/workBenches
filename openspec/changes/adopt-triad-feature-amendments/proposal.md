@@ -35,3 +35,5 @@ The current repositories owning these tools are single repositories. Their full 
 Brett Heap directed adoption on 2026-10-04: "document this. lets use this for our triad repo and project workflow."
 
 This authorizes the documented workflow and manual use. It does not establish that automation is implemented or tested. The supporting brainstorm packet remains non-normative; the adopted operating instructions are in [the workflow](../../../docs/triad-feature-amendments.md).
+
+Deferred follow-up: on 2026-10-06T10:20:12Z Brett Heap stated: "the triad should be the prefered structure and should prompt or warn the user if working on a non Triad repo." That direction is governed by openxFactory's proposed change `prefer-triad-project-shape`, not by this change; this change neither adopts nor rules on it. The workflow's sentence "Do not turn a single-repository project into a triad solely to use this workflow" bars converting a repository solely for this workflow, so the direction does not affect it.
