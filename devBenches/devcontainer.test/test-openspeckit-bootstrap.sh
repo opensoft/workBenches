@@ -3874,10 +3874,11 @@ def run_on_terminal(repo, answers, interrupt=False, ci=None, timeout=120):
 reference = tree(reference_repo)
 for name, answers, expected_questions in (
     ("enter", [b"\n"], 1),
+    ("typed-y", [b"y\n"], 1),
+    ("typed-yes", [b"yes\n"], 1),
     ("unrecognised", [b"maybe later\n"], 1),
-    ("typed-no", [b"no\n"], 1),
     ("steps", [b"s\n", b"\n"], 2),
-    ("steps-then-anything", [b"SHOW\n", b"no\n"], 2),
+    ("steps-then-anything", [b"SHOW\n", b"maybe\n"], 2),
     ("end-of-file", [b"\x04"], 1),
 ):
     repo = make_repo(name)
@@ -3890,10 +3891,34 @@ for name, answers, expected_questions in (
     check("\ndone" in output.replace("\r\n", "\n"), f"{name}: the run continues to the end")
     check(tree(repo) == reference, f"{name}: the run writes exactly what a non-interactive run writes")
     check(not (repo / "single-repository.yaml").exists(), f"{name}: no record is written from the question")
+    check("n or Ctrl-C stops before anything is written" in output, f"{name}: the question names n and Ctrl-C as the stop")
     if name.startswith("steps"):
         check("./adopt-project.py plan --source" in output, f"{name}: the steps name adopt-project.py")
         check("kind: single-repository-record, decided_by, decided_on and reason" in output, f"{name}: the steps name the record's fields")
         check("The record is optional, is never owed, and confers nothing." in output, f"{name}: the steps restate the posture")
+
+# Design D2: "Answering no ends the run before it writes anything; that is the
+# person choosing to stop, not the advisory refusing". `n` or `no`, in any case
+# and with surrounding spaces, at either question, takes Ctrl-C's path.
+for name, answers, expected_questions in (
+    ("typed-n", [b"n\n"], 1),
+    ("typed-no", [b"no\n"], 1),
+    ("typed-NO", [b"NO\n"], 1),
+    ("typed-spaced-No", [b" No \n"], 1),
+    ("steps-then-n", [b"s\n", b"n\n"], 2),
+    ("steps-then-no", [b"steps\n", b"No\n"], 2),
+):
+    repo = make_repo(name)
+    before = tree(repo)
+    status, output, asked, timed_out = run_on_terminal(repo, answers)
+    check(not timed_out, f"{name}: the run never hangs")
+    check(status == -signal.SIGINT, f"{name}: the run ends as an interrupt ends, by SIGINT (got {status})")
+    check(asked == expected_questions, f"{name}: {expected_questions} question(s) asked (got {asked})")
+    check(output.count(NEEDLE) == 1, f"{name}: the advisory is shown once")
+    check("Stopped at your request; nothing was written." in output, f"{name}: the stop is said")
+    check("\ndone" not in output.replace("\r\n", "\n"), f"{name}: the run stops before the bootstrap runs")
+    check(tree(repo) == before, f"{name}: nothing was written")
+    check(not (repo / "single-repository.yaml").exists(), f"{name}: no record is written from the question")
 
 repo = make_repo("interrupt")
 before = tree(repo)
@@ -3914,9 +3939,9 @@ check(tree(repo) == reference, "CI: the run writes exactly what a non-interactiv
 raise SystemExit(1 if failures else 0)
 PY
 then
-    pass 'Triad advisory: the terminal question continues by default and converts nothing'
+    pass 'Triad advisory: the terminal question continues by default, stops on n, and converts nothing'
 else
-    fail 'Triad advisory: the terminal question continues by default and converts nothing'
+    fail 'Triad advisory: the terminal question continues by default, stops on n, and converts nothing'
 fi
 
 printf '%s\n' 'Given: skills and commands that should carry the managed shape block'

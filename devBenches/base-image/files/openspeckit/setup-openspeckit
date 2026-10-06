@@ -117,13 +117,17 @@ TRIAD_ADVISORY_LINES: Final = (
     "here changes; work continues.",
 )
 TRIAD_QUESTION: Final = (
-    "Press Enter to continue (s = show the steps; Ctrl-C stops before anything "
-    "is written): "
+    "Press Enter to continue (s = show the steps; n or Ctrl-C stops before "
+    "anything is written): "
 )
 TRIAD_STEPS_QUESTION: Final = (
-    "Press Enter to continue (Ctrl-C stops before anything is written): "
+    "Press Enter to continue (n or Ctrl-C stops before anything is written): "
 )
 TRIAD_SHOW_STEPS_ANSWERS: Final = ("s", "show", "steps")
+# Design D2 (prefer-triad-project-shape): "Answering no ends the run before it
+# writes anything; that is the person choosing to stop, not the advisory
+# refusing". The same stop as Ctrl-C, at either question.
+TRIAD_STOP_ANSWERS: Final = ("n", "no")
 CI_FALSE_VALUES: Final = ("", "0", "false", "no")
 
 
@@ -2314,11 +2318,13 @@ def triad_adoption_steps(repo: Path) -> list[str]:
 
 
 def stop_at_the_triad_question() -> None:
-    """End the run the way an interrupt anywhere else in it ends: by SIGINT.
+    """The person's own stop: ``n``, ``no`` or Ctrl-C at the question (design D2).
 
+    It ends the run the way an interrupt anywhere else in it ends: by SIGINT.
     The question comes before the first write, so nothing has been written. The
     advisory adds no exit status of its own: the status is the platform's own
-    for an interrupted process.
+    for an interrupted process, and nothing reads it as a verdict about the
+    repository.
     """
     emit_advisory_line(sys.stdout, "")
     emit_advisory_line(sys.stdout, "Stopped at your request; nothing was written.")
@@ -2328,13 +2334,22 @@ def stop_at_the_triad_question() -> None:
 
 
 def ask_triad_question(repo: Path) -> None:
-    """One question; continuing is the default and the answer to anything unrecognised."""
+    """One question; continuing is the default, and ``n`` or ``no`` is the person's stop.
+
+    Enter, end-of-file, ``y``, ``yes`` and any unrecognised answer continue.
+    ``s`` shows the steps and asks once more. ``n`` or ``no`` (any case,
+    surrounding spaces ignored), at either question, takes the same path as
+    Ctrl-C: the run ends before it writes anything (design D2, "Answering no
+    ends the run before it writes anything").
+    """
     try:
-        answer = input(TRIAD_QUESTION)
-        if answer.strip().lower() in TRIAD_SHOW_STEPS_ANSWERS:
+        answer = input(TRIAD_QUESTION).strip().lower()
+        if answer in TRIAD_SHOW_STEPS_ANSWERS:
             for line in triad_adoption_steps(repo):
                 emit_advisory_line(sys.stdout, line)
-            input(TRIAD_STEPS_QUESTION)
+            answer = input(TRIAD_STEPS_QUESTION).strip().lower()
+        if answer in TRIAD_STOP_ANSWERS:
+            stop_at_the_triad_question()
     except EOFError:
         emit_advisory_line(sys.stdout, "")
     except KeyboardInterrupt:
@@ -3244,8 +3259,7 @@ bootstrap (`make bootstrap`) stays schema-neutral and gives no advisory.
 ### Non-Triad advisory (2026-10-06)
 
 The advisory above, from openxFactory's ratified `prefer-triad-project-shape`,
-is realized in the script by opensoft/workBenches#138. Until that lands, the
-installed script only logs `shape: single repository`.
+is realized in the script under opensoft/workBenches#138.
 
 ### Adopted feature amendment workflow (2026-10-04)
 
