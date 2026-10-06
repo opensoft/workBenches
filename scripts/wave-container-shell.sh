@@ -702,7 +702,16 @@ install_ai_profile_launchers
 
 # Apply after mounts, not just at build time: mounted homes hide image npmrc.
 if [[ -f "$claude_npm_guard" ]]; then
-    docker exec --user "$container_user" "$container" /usr/local/bin/claude-npm-guard --repair
+    # Match the consuming terminal's startup files. Only zsh is launched as a
+    # login shell below; other configured shells must not be given -l here.
+    guard_shell_args=(-ic)
+    if [[ "$(basename "$shell_path")" == "zsh" ]]; then
+        guard_shell_args=(-lic)
+    fi
+    # Interactive startup also needs a terminal for prompt helpers such as
+    # gitstatus. -t works with piped host input; -i is deliberately omitted.
+    docker exec -t --user "$container_user" --workdir "$workdir" \
+        "$container" "$shell_path" "${guard_shell_args[@]}" '/usr/local/bin/claude-npm-guard --repair'
 fi
 
 if [[ "$check_only" == true ]]; then

@@ -2,11 +2,11 @@
 
 Executed in py-bench against the mounted feature worktree, as brett.
 
-- Real npm 12.0.2 integrity suite: 26 checks passed. Includes an isolated
+- Real npm 12.0.2 integrity suite: 28 checks passed. Includes an isolated
   loopback registry, exit-zero blocked-hook reproduction, plain npm reinstall
   with the configured approval, exact version, missing payload, hook timeout,
   concurrent configuration, config permissions, inherited approvals, symlink
-  preservation, native preservation, and shared wiring.
+  preservation, native preservation, native-only .zshrc startup, and shared wiring.
 - Layer 3 Claude suite: 43 checks passed.
 - Wave lifecycle regression: passed, including guard activation as bench user.
 - Cascade image validation regression: passed.
@@ -60,3 +60,27 @@ An explicit Codex review was requested; the connector reported exhausted
 code-review quota, so no Codex review is claimed. Brett authorized opening and
 landing the PR after checks pass. This evidence-only update is rechecked
 before landing.
+
+## Post-landing implementation correction
+
+The final Wave smoke test exposed a PATH-context mismatch: direct docker exec
+selected cloud's shared 2.1.283 CLI, while its login shell selected native
+2.1.291. The guard now runs under Wave's declared interactive shell, with login
+startup only for zsh, matching the consuming environment including .zshrc and
+.bashrc. Review follow-up added native-only .zshrc coverage and sh/bash/zsh
+argument regressions. This preserves the existing specification and does not
+introduce a new resolver or require rebuilding any image.
+
+Live non-TTY invocation also exposed prompt-helper warnings during interactive
+startup. Giving the guard its own Docker pseudo-terminal (-t, without forwarding
+stdin) removed those warnings while preserving the selected npm/native CLI.
+
+After Brett explicitly approved replacement, cpp-bench was recreated from
+the rebuilt image (sha256:5c315e0f2eece0195e9b23f8e2635a232d14ef90a43b9d0ce315540a00466bc2).
+Its legacy devcontainer definition still lacks some shared profile mounts;
+the declared Dev Containers lifecycle was retained with a host cache
+Compose overlay for those mounts. Config and shared launcher library mounts
+remain read-only, and the existing history volume was retained. Its full Wave
+check then passed as brett. Only cpp-bench was replaced; the other three live
+containers were preserved. The cache overlay is runtime repair, not a claim
+that the cppBench submodule's devcontainer definition was changed.
