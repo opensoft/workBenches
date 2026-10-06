@@ -620,9 +620,22 @@ assert_contains "$WORKFLOW_PROTOCOL" '| full `openspec/` (proposals, canonical s
 assert_contains "$WORKFLOW_PROTOCOL" '| optional feature amendment records | `features/<NNN-feature>/openspec/` | code feature worktree: `features/<NNN-feature>/openspec/` |' 'workflow protocol placement table carries the feature amendment records row'
 assert_contains "$WORKFLOW_PROTOCOL" 'Run full proposal operations at the canonical OpenSpec owner: the repo root' 'workflow protocol carries the full proposal operations paragraph'
 assert_contains "$WORKFLOW_PROTOCOL" 'Newer OpenSpec versions also support explicit registered-store selection with' 'workflow protocol carries the registered-store selection sentence'
+assert_contains "$WORKFLOW_PROTOCOL" '**The Triad is the preferred shape.**' 'workflow protocol carries the Triad preference paragraph'
+assert_contains "$WORKFLOW_PROTOCOL" 'the shape stays elective and confers nothing, and a single repository is' 'workflow protocol states the posture beside the preference'
+assert_contains "$WORKFLOW_PROTOCOL" '**Advise a single repository once.**' 'workflow protocol carries the once-per-session advisory paragraph'
+assert_contains "$WORKFLOW_PROTOCOL" 'It is silent only in these cases. No other class of repository, such as an' 'workflow protocol carries the advisory exemptions'
+assert_contains "$WORKFLOW_PROTOCOL" '`kind: single-repository-record`. That file is optional and never owed,' 'workflow protocol carries the optional staying-single record'
 assert_file "$BOOTSTRAP_PROTOCOL" 'generated bootstrap protocol exists'
 assert_contains "$BOOTSTRAP_PROTOCOL" '`.claude/skills`, `.codex/skills`, and `.agents/skills`' 'bootstrap protocol describes the repo-local skill homes'
 assert_not_contains "$BOOTSTRAP_PROTOCOL" 'skills links' 'bootstrap protocol does not describe repo-local skills as links'
+assert_contains "$BOOTSTRAP_PROTOCOL" '**The workspace config.**' 'bootstrap protocol carries the workspace config paragraph'
+assert_contains "$BOOTSTRAP_PROTOCOL" '## Non-Triad Advisory' 'bootstrap protocol carries the Non-Triad Advisory section'
+assert_contains "$BOOTSTRAP_PROTOCOL" 'bootstrap (`make bootstrap`) stays schema-neutral and gives no advisory.' 'bootstrap protocol keeps openRepoShape'"'"'s project bootstrap silent'
+assert_contains "$BOOTSTRAP_PROTOCOL" '### Non-Triad advisory (2026-10-06)' 'bootstrap protocol carries the Non-Triad advisory script-status entry'
+assert_contains "$BOOTSTRAP_PROTOCOL" '### Adopted feature amendment workflow (2026-10-04)' 'bootstrap protocol carries the feature amendment workflow script-status entry'
+assert_contains "$BOOTSTRAP_PROTOCOL" '### Earlier bootstrap delivery' 'bootstrap protocol carries the earlier-delivery script-status entry'
+assert_contains "$AGENT_PROTOCOL_ROOT/AGENTS.md" 'canonical `openspec/` content and Speckit `specs/` live in the spec leg;' 'global entrypoint carries the live shape bullet placement'
+assert_contains "$AGENT_PROTOCOL_ROOT/AGENTS.md" 'The Triad (three-leg) is preferred, elective and confers nothing: in a' 'global entrypoint carries the Triad preference with its posture'
 assert_file "$EXPLORE_COMMAND" 'generated explore command exists'
 if [[ -f "$EXPLORE_COMMAND" ]] && grep -Eiq 'executable work.{0,80}exclusively.{0,80}specs/<feature>/tasks\.md' "$EXPLORE_COMMAND"; then
     pass 'explore routes executable work exclusively to Speckit tasks'
@@ -3861,10 +3874,11 @@ def run_on_terminal(repo, answers, interrupt=False, ci=None, timeout=120):
 reference = tree(reference_repo)
 for name, answers, expected_questions in (
     ("enter", [b"\n"], 1),
+    ("typed-y", [b"y\n"], 1),
+    ("typed-yes", [b"yes\n"], 1),
     ("unrecognised", [b"maybe later\n"], 1),
-    ("typed-no", [b"no\n"], 1),
     ("steps", [b"s\n", b"\n"], 2),
-    ("steps-then-anything", [b"SHOW\n", b"no\n"], 2),
+    ("steps-then-anything", [b"SHOW\n", b"maybe\n"], 2),
     ("end-of-file", [b"\x04"], 1),
 ):
     repo = make_repo(name)
@@ -3877,10 +3891,34 @@ for name, answers, expected_questions in (
     check("\ndone" in output.replace("\r\n", "\n"), f"{name}: the run continues to the end")
     check(tree(repo) == reference, f"{name}: the run writes exactly what a non-interactive run writes")
     check(not (repo / "single-repository.yaml").exists(), f"{name}: no record is written from the question")
+    check("n or Ctrl-C stops before anything is written" in output, f"{name}: the question names n and Ctrl-C as the stop")
     if name.startswith("steps"):
         check("./adopt-project.py plan --source" in output, f"{name}: the steps name adopt-project.py")
         check("kind: single-repository-record, decided_by, decided_on and reason" in output, f"{name}: the steps name the record's fields")
         check("The record is optional, is never owed, and confers nothing." in output, f"{name}: the steps restate the posture")
+
+# Design D2: "Answering no ends the run before it writes anything; that is the
+# person choosing to stop, not the advisory refusing". `n` or `no`, in any case
+# and with surrounding spaces, at either question, takes Ctrl-C's path.
+for name, answers, expected_questions in (
+    ("typed-n", [b"n\n"], 1),
+    ("typed-no", [b"no\n"], 1),
+    ("typed-NO", [b"NO\n"], 1),
+    ("typed-spaced-No", [b" No \n"], 1),
+    ("steps-then-n", [b"s\n", b"n\n"], 2),
+    ("steps-then-no", [b"steps\n", b"No\n"], 2),
+):
+    repo = make_repo(name)
+    before = tree(repo)
+    status, output, asked, timed_out = run_on_terminal(repo, answers)
+    check(not timed_out, f"{name}: the run never hangs")
+    check(status == -signal.SIGINT, f"{name}: the run ends as an interrupt ends, by SIGINT (got {status})")
+    check(asked == expected_questions, f"{name}: {expected_questions} question(s) asked (got {asked})")
+    check(output.count(NEEDLE) == 1, f"{name}: the advisory is shown once")
+    check("Stopped at your request; nothing was written." in output, f"{name}: the stop is said")
+    check("\ndone" not in output.replace("\r\n", "\n"), f"{name}: the run stops before the bootstrap runs")
+    check(tree(repo) == before, f"{name}: nothing was written")
+    check(not (repo / "single-repository.yaml").exists(), f"{name}: no record is written from the question")
 
 repo = make_repo("interrupt")
 before = tree(repo)
@@ -3901,9 +3939,9 @@ check(tree(repo) == reference, "CI: the run writes exactly what a non-interactiv
 raise SystemExit(1 if failures else 0)
 PY
 then
-    pass 'Triad advisory: the terminal question continues by default and converts nothing'
+    pass 'Triad advisory: the terminal question continues by default, stops on n, and converts nothing'
 else
-    fail 'Triad advisory: the terminal question continues by default and converts nothing'
+    fail 'Triad advisory: the terminal question continues by default, stops on n, and converts nothing'
 fi
 
 printf '%s\n' 'Given: skills and commands that should carry the managed shape block'

@@ -88,16 +88,61 @@ These are the second half of packet task 5.4. They come after
 brettheap/new-workstation#52 (task 5.5, the shared protocol, issue #51) merges,
 as their own pull request under #138.
 
-- [ ] D001 Re-sync `openspec_speckit_protocol()` byte-identical to the shared
+- [x] D001 Re-sync `openspec_speckit_protocol()` byte-identical to the shared
   `openspec-speckit-workflow.md`. #52 adds about 40 lines to § Repository Shape
   and § Detecting the shape. The function is an f-string, so its braces are
   doubled.
-- [ ] D002 Re-sync `project_agent_bootstrap_protocol()` with the shared
+  Done in opensoft/workBenches#140, after #52 merged as e081c5a. The rendering
+  is byte-identical to the live file.
+- [x] D002 Re-sync `project_agent_bootstrap_protocol()` with the shared
   `project-agent-bootstrap.md`. It is already two sections behind on `main`,
   which predates this feature. #52 adds a `## Non-Triad Advisory` section and a
   Script Status entry citing #138.
-- [ ] D003 Re-sync `global_agent_entrypoint()` with the shared `AGENTS.md`, whose
+  Done in opensoft/workBenches#140. The rendering is byte-identical to the live
+  file.
+  D002 now tracks the corrected Script Status sentence from
+  brettheap/new-workstation#53 (head 35623857). That sentence reads "is realized
+  in the script under opensoft/workBenches#138.", and the stale "Until that
+  lands, the installed script only logs `shape: single repository`." is gone.
+  The rendering is byte-identical to `project-agent-bootstrap.md` at that head:
+  14821 bytes, md5 692f68037aa27d17eeb6f460b194597d. #140 merges after #53, so
+  the two match once both have landed.
+- [x] D003 Re-sync `global_agent_entrypoint()` with the shared `AGENTS.md`, whose
   shape bullet #52 changes.
+  Done in opensoft/workBenches#140. The shape bullet is byte-identical to the
+  live one. The entrypoint as a whole stays a curated subset of `AGENTS.md`.
+
+## Amendment, realized in this feature's own scope
+
+- [x] D004 Realize stop-on-no, as ratified `design.md` D2 (openxFactory
+  `a2dc658d`, lines 76-80) states it, verbatim:
+
+  > **The interactive answer "no" is the person's own stop.** Taking the default
+  > gives the run the person would have had without the advisory. Answering no
+  > ends the run before it writes anything; that is the person choosing to stop,
+  > not the advisory refusing, and the realization owner picks the exit status
+  > for it with the rule that nothing reads that status as a verdict about the
+  > repository.
+
+  #139 shipped `no` as an unrecognised answer that continues. That departed
+  from D2. The lane coordinator, acting as realization owner, ruled the
+  correction.
+
+  In `setup-openspeckit`, `TRIAD_STOP_ANSWERS = ("n", "no")`. Case is ignored,
+  and so are surrounding spaces. At either question, such an answer takes
+  Ctrl-C's path, `stop_at_the_triad_question()`: nothing has been written, the
+  stop is said, and the run ends by SIGINT. That status is the platform's own
+  for an interrupted process, and the advisory adds none. Both questions now
+  read "n or Ctrl-C stops before anything is written".
+
+  Pseudo-terminal tests cover these answers:
+  - stopping: `n`, `no`, `NO` and ` No ` at the first question, and `s` then
+    `n` and `steps` then `No`;
+  - continuing: Enter, `y`, `yes`, an unrecognised word, `SHOW` then an
+    unrecognised word, and end-of-file.
+
+  `spec.md` decision 2 and User Story 3 are amended to match. Done in
+  opensoft/workBenches#140.
 
 ## Dependencies
 

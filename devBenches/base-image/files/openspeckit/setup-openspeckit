@@ -117,13 +117,17 @@ TRIAD_ADVISORY_LINES: Final = (
     "here changes; work continues.",
 )
 TRIAD_QUESTION: Final = (
-    "Press Enter to continue (s = show the steps; Ctrl-C stops before anything "
-    "is written): "
+    "Press Enter to continue (s = show the steps; n or Ctrl-C stops before "
+    "anything is written): "
 )
 TRIAD_STEPS_QUESTION: Final = (
-    "Press Enter to continue (Ctrl-C stops before anything is written): "
+    "Press Enter to continue (n or Ctrl-C stops before anything is written): "
 )
 TRIAD_SHOW_STEPS_ANSWERS: Final = ("s", "show", "steps")
+# Design D2 (prefer-triad-project-shape): "Answering no ends the run before it
+# writes anything; that is the person choosing to stop, not the advisory
+# refusing". The same stop as Ctrl-C, at either question.
+TRIAD_STOP_ANSWERS: Final = ("n", "no")
 CI_FALSE_VALUES: Final = ("", "0", "false", "no")
 
 
@@ -2314,11 +2318,13 @@ def triad_adoption_steps(repo: Path) -> list[str]:
 
 
 def stop_at_the_triad_question() -> None:
-    """End the run the way an interrupt anywhere else in it ends: by SIGINT.
+    """The person's own stop: ``n``, ``no`` or Ctrl-C at the question (design D2).
 
+    It ends the run the way an interrupt anywhere else in it ends: by SIGINT.
     The question comes before the first write, so nothing has been written. The
     advisory adds no exit status of its own: the status is the platform's own
-    for an interrupted process.
+    for an interrupted process, and nothing reads it as a verdict about the
+    repository.
     """
     emit_advisory_line(sys.stdout, "")
     emit_advisory_line(sys.stdout, "Stopped at your request; nothing was written.")
@@ -2328,13 +2334,22 @@ def stop_at_the_triad_question() -> None:
 
 
 def ask_triad_question(repo: Path) -> None:
-    """One question; continuing is the default and the answer to anything unrecognised."""
+    """One question; continuing is the default, and ``n`` or ``no`` is the person's stop.
+
+    Enter, end-of-file, ``y``, ``yes`` and any unrecognised answer continue.
+    ``s`` shows the steps and asks once more. ``n`` or ``no`` (any case,
+    surrounding spaces ignored), at either question, takes the same path as
+    Ctrl-C: the run ends before it writes anything (design D2, "Answering no
+    ends the run before it writes anything").
+    """
     try:
-        answer = input(TRIAD_QUESTION)
-        if answer.strip().lower() in TRIAD_SHOW_STEPS_ANSWERS:
+        answer = input(TRIAD_QUESTION).strip().lower()
+        if answer in TRIAD_SHOW_STEPS_ANSWERS:
             for line in triad_adoption_steps(repo):
                 emit_advisory_line(sys.stdout, line)
-            input(TRIAD_STEPS_QUESTION)
+            answer = input(TRIAD_STEPS_QUESTION).strip().lower()
+        if answer in TRIAD_STOP_ANSWERS:
+            stop_at_the_triad_question()
     except EOFError:
         emit_advisory_line(sys.stdout, "")
     except KeyboardInterrupt:
@@ -2407,9 +2422,12 @@ Core rule:
   owns implementation tasks.
 - The protocol is shape-aware. Detect the shape first (single repository or
   openRepoShape three-leg, from `project.yaml`), then use the placement and
-  worktree rules for that shape. In a three-leg project `openspec/` and
-  `specs/` live in the spec leg, code lives in the code leg, and feature
-  worktrees live under `<root>/worktrees/<NNN-feature>/{{spec,code}}/`.
+  worktree rules for that shape. In a three-leg project full proposals,
+  canonical `openspec/` content and Speckit `specs/` live in the spec leg;
+  code lives in the code leg. Feature worktrees live under
+  `<root>/worktrees/<NNN-feature>/{{spec,code}}/`.
+  The Triad (three-leg) is preferred, elective and confers nothing: in a
+  non-exempt single repository, tell the person once per session and carry on.
 
 ## Repository Overrides
 
@@ -2472,6 +2490,14 @@ root commit that moves that leg's pin does. The bootstrap side of this shape
 is in `{agent_root / "protocols" / "project-agent-bootstrap.md"}`; the shape
 itself is the openRepoShape standard and its `AGENTS-shape.md` in every root.
 
+**The Triad is the preferred shape.** "Triad" names the three-leg project;
+"three-leg" and "three-repository" stay synonyms. Preferred is not required:
+the shape stays elective and confers nothing, and a single repository is
+reviewed identically. When a person asks to create a new project, offer the
+Triad first as the default, accept a single repository without asking why,
+and create nothing they have not confirmed. An existing repository converts
+only when a person deciding for it runs openRepoShape's `adopt-project.py`.
+
 ### Detecting the shape
 
 Read `project.yaml` at the checkout root. It is a three-leg project when the
@@ -2485,6 +2511,38 @@ a project, you are standing in a leg clone. Stop and move to the assembly
 root: a leg clone can see neither the manifest nor the other leg, and this
 protocol runs from the root. A `family.yaml` with `kind: family-manifest` and
 no `project.yaml` is a family holder, not a project; go to a member project.
+
+**Advise a single repository once.** When a session talking to a person
+starts work in a single repository that is not exempt, it tells them once per
+session, in a line or two, then carries on with the work it was asked to do:
+
+> This is a single repository. The Triad — an assembly root with a spec leg
+> and a code leg — is the preferred project shape: openRepoShape's
+> `adopt-project.py` converts a repository in place, and a project that stays
+> single can say so in `single-repository.yaml`. Nothing here changes; work
+> continues.
+
+Subagents, delegated workers and unattended runs never say it. Never record
+it: no commit, PR, comment, handoff or review output carries it. Never ask,
+block or convert on its account. No review, check, CI step or gate reads the
+shape or the doctor's `NOT A SHAPE ROOT` verdict, and building one would
+amend the doctrine; an elected Triad's own conformance gate is not such a
+reading.
+
+It is silent only in these cases. No other class of repository, such as an
+aggregation, a configuration or dotfile repository, or a vendored fork, is
+exempted by guessing:
+
+- an elected Triad root, detected as above;
+- a leg clone, where moving to the assembly root applies instead;
+- a family holder;
+- a `<user>-wip` workspace repository, known by its `-wip` name or because
+  `~/.agents/workspace.yaml` names it;
+- a repository whose root `single-repository.yaml` carries
+  `kind: single-repository-record`. That file is optional and never owed,
+  openRepoShape owns its schema, it confers nothing, and only this advisory
+  reads it. If it is unreadable or carries another `kind`, give the advisory,
+  say what is wrong with the file, and fail nothing.
 
 ### Placement
 
@@ -3028,6 +3086,17 @@ adds `/worktrees/` to the root's `.gitignore` (the root's own file, not a
 shape-pinned one) so nothing under it can reach the root repository. It does
 not create `worktrees/`; the Speckit feature hook does.
 
+**The workspace config.** Speckit's `park` and `resume` scripts
+(openRepoShape#77) read `~/.agents/workspace.yaml` to find the private
+repository a person uses to carry parked feature worktrees between
+workstations. It carries exactly two keys, `repository:` (an `owner/repo`
+GitHub slug) and `path:` (the local checkout, `~` allowed), and its `path:`
+may be overridden per invocation with `SPECKIT_WORKSPACE_PATH`.
+**`setup-openspeckit` and this bootstrap never write
+`~/.agents/workspace.yaml`** — a person names their own workspace
+repository once, by hand, and every later `park`/`resume` just reads it;
+there is no default and no auto-detection to fall back on.
+
 ## Three-leg Projects (openRepoShape)
 
 A project built to openRepoShape's shape spans three repositories: an assembly
@@ -3150,6 +3219,23 @@ push them in the spec repository, then move the gitlink, `commit:` in
 in one commit in the root. `--dry-run` prefixes every planned path with
 `[root]` or `[spec]`, so the split is visible before anything is written.
 
+## Non-Triad Advisory
+
+When the detected shape is a single repository that is not exempt under the
+shared workflow's "Detecting the shape", the bootstrap gives that advisory
+once, before it writes anything:
+
+- non-interactive run: print it as a warning, then write exactly what it
+  would have written and exit with the status it would have exited with;
+- interactive terminal: print it and ask whether to continue, with continue
+  as the default. Taking the default gives exactly the run the person would
+  have had without it. Answering no stops before anything is written; that
+  is the person's own stop, and nothing reads its exit status as a verdict
+  on the repository.
+
+It converts, creates and records nothing. openRepoShape's own project
+bootstrap (`make bootstrap`) stays schema-neutral and gives no advisory.
+
 ## New Project Checklist
 
 1. Create or clone the repo. A three-leg project is created with
@@ -3169,6 +3255,30 @@ in one commit in the root. `--dry-run` prefixes every planned path with
    files as pointers plus repo-specific overrides.
 
 ## Script Status
+
+### Non-Triad advisory (2026-10-06)
+
+The advisory above, from openxFactory's ratified `prefer-triad-project-shape`,
+is realized in the script under opensoft/workBenches#138.
+
+### Adopted feature amendment workflow (2026-10-04)
+
+Brett Heap adopted the manual two-layer workflow in "Triad Feature Amendments"
+in the shared OpenSpec/Speckit protocol. Full proposals and canonical Speckit
+files stay in the docs/spec leg. Bounded code-local amendments update working
+feature files immediately and are reconciled into governing docs once at the
+end, under one reconciliation issue per feature.
+
+The documentation adoption does not change the executable bootstrap. Its
+protocol templates and managed command/skill guidance still need distribution
+updates; the small amendment schema, explicit root routing and upstream shape
+placement checks are also pending. Existing global protocol files are written
+only when missing, so updating the template alone will not migrate existing
+workstations. Do not run a whole bootstrap merely to apply this manual decision
+or claim that every workstation already has it. The owning governance record
+is workBenches `openspec/changes/adopt-triad-feature-amendments/`.
+
+### Earlier bootstrap delivery
 
 Recorded 2026-09-08. The script at this revision implements the contract
 above: `project.yaml` detection, `--shape`, the spec-leg split, the shape-aware

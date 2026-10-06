@@ -133,14 +133,19 @@ written.
 1. **Given** stdin and stdout are terminals and `CI` is unset, **When** a
    non-exempt single repository is bootstrapped, **Then** the advisory is shown
    once, followed by one question whose default is to continue.
-2. **When** the person presses Enter, types anything unrecognised (`no`
-   included), or sends end-of-file, **Then** the run continues exactly as
+2. **When** the person presses Enter, types `y`, `yes` or anything
+   unrecognised, or sends end-of-file, **Then** the run continues exactly as
    without the advisory.
 3. **When** the person types `s`, **Then** the steps are shown: how to convert
    in place with `adopt-project.py`, and how to record staying single. The run
-   then waits for one more Enter, and any answer continues.
+   then waits for one more answer, and any answer except `n` or `no`
+   continues.
 4. **When** the person interrupts at the question, **Then** the run ends as an
    interrupt anywhere else in it ends, and nothing has been written.
+5. **When** the person answers `n` or `no` at either question (in any case,
+   with surrounding spaces ignored), **Then** the run ends exactly as in
+   scenario 4, and nothing has been written. This scenario was added by D004
+   (amended 2026-10-06, opensoft/workBenches#140).
 
 ---
 
@@ -236,9 +241,24 @@ The two things that contract fixes are honored as written:
    adds none: a scripted run is already non-interactive by this test, and
    `< /dev/null` makes any run so.
 2. **The question's answers, and how a person stops.**
-   - Enter, end-of-file and any unrecognised input continue. `s`, `show` or
-     `steps` shows the steps, then asks once more, and any answer continues.
-   - No "no" answer is defined, and typing `no` continues like any other
+   - **Amended 2026-10-06, D004 in tasks.md (opensoft/workBenches#140).**
+     - **What changed.** `n` or `no`, at either question, is now the person's
+       own stop and takes Ctrl-C's path. Case is ignored, and so are
+       surrounding spaces. Both questions now read "n or Ctrl-C stops before
+       anything is written".
+     - **Who ruled.** The lane coordinator, acting as realization owner under
+       the ratified `design.md` D2.
+     - **What D2 says** (`a2dc658d`, lines 76-80): "Answering no ends the run
+       before it writes anything; that is the person choosing to stop, not the
+       advisory refusing, and the realization owner picks the exit status for
+       it with the rule that nothing reads that status as a verdict about the
+       repository."
+     - **Superseded.** The bullet below beginning "No "no" answer is defined"
+       is superseded. It is kept as the record of what #139 shipped.
+   - Enter, end-of-file, `y`, `yes` and any other unrecognised input continue.
+     `s`, `show` or `steps` shows the steps and asks once more. Any answer to
+     that second question continues, except `n` or `no`.
+   - Superseded by D004: No "no" answer is defined, and typing `no` continues like any other
      unrecognised input. The person's own stop is an interrupt (Ctrl-C), and the
      question names it ("Ctrl-C stops before anything is written"). It ends the
      run exactly as an interrupt anywhere else in it does, by re-raising SIGINT
