@@ -89,7 +89,7 @@ common_env=(
   "TMPDIR=$test_root"
   # The cases up to the claude-current section below are the #109 native
   # ordering, which is the launcher's fallback when no claude-current is
-  # installed (openspec/changes/launch-current-claude). The seam names nothing,
+  # installed (openspec/changes/archive/2026-10-05-launch-current-claude). The seam names nothing,
   # so they stay that fallback on a host whose PATH carries a real resolver.
   "WORKBENCHES_CLAUDE_CURRENT_BIN=$test_root/no-claude-current"
 )
@@ -268,7 +268,7 @@ launch run team002 --resume fixture-session
 [[ "$(< "$test_root/launch.log")" == "$fake_bin/claude" ]] || fail 'PATH fallback failed with only unusable native versions'; assertion
 
 # ---------------------------------------------------------------------------
-# THE RESOLVER (opensoft/workBenches#119; openspec/changes/launch-current-claude,
+# THE RESOLVER (opensoft/workBenches#119; openspec/changes/archive/2026-10-05-launch-current-claude,
 # claude-profile-binary-selection as it MODIFIES it, design.md Decision 4). A
 # stub claude-current stands in for opensoft/openRepoTools' command, at the
 # contract this launcher calls: `--porcelain [--offline]` prints path=,

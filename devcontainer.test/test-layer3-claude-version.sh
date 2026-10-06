@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Layer 3's user-owned Claude Code copy at npm latest (opensoft/workBenches#119;
-# openspec/changes/launch-current-claude, user-managed-claude-updates, design.md
+# openspec/changes/archive/2026-10-05-launch-current-claude, user-managed-claude-updates, design.md
 # Decisions 2 and 3). Modeled on test-layer3-codex-version.sh:
 #
 #   1. user-layer/build.sh reads npm's latest version with the BASE IMAGE's own

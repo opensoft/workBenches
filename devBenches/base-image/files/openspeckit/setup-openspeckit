@@ -2130,8 +2130,9 @@ no `project.yaml` is a family holder, not a project; go to a member project.
 | `.specify/` (templates, memory, scripts, git extension) | repo root | assembly root |
 | agent context files and their managed blocks | repo root | assembly root |
 | `.claude/commands/opsx/*` and skill links | repo root | assembly root |
-| `openspec/` (changes, specs, archive) | repo root | spec leg: `<spec>/openspec/` |
+| full `openspec/` (proposals, canonical specs, archive) | repo root | spec leg: `<spec>/openspec/` |
 | Speckit feature directories `specs/NNN-*` | repo root | spec leg: `<spec>/specs/NNN-*` |
+| optional feature amendment records | `features/<NNN-feature>/openspec/` | code feature worktree: `features/<NNN-feature>/openspec/` |
 | implementation source and tests | repo root | code leg: `<code>/` |
 | feature worktrees | `../<repo>-worktrees/<NNN-feature>/` | `<root>/worktrees/<NNN-feature>/{{spec,code}}/` |
 
@@ -2139,10 +2140,13 @@ no `project.yaml` is a family holder, not a project; go to a member project.
 repository both resolve to the repository root, and every rule below that
 names a leg reads as "the repository".
 
-Run the `openspec` CLI with the current directory set to wherever `openspec/`
-lives: the repo root in a single repository, the spec leg checkout in a
-three-leg project. The CLI resolves `openspec/` from the current directory
-and has no flag for another location.
+Run full proposal operations at the canonical OpenSpec owner: the repo root
+in a single repository or the intended spec checkout in a three-leg project.
+Newer OpenSpec versions also support explicit registered-store selection with
+`--store`; verify that it resolves to the intended checkout and branch. Local
+feature amendment operations explicitly select the amendment root. A local
+planning root takes precedence over a docs-store pointer. See "Triad Feature
+Amendments" for the adopted workflow and current automation limits.
 
 ## When To Use OpenSpec
 
@@ -2183,6 +2187,109 @@ needs the root to see it, and always before the change is archived.
 For shipped-feature amendments, do not silently rewrite history. Capture the
 new interpretation as an OpenSpec change first, then update docs/specs/code
 through the normal handoff.
+
+## Triad Feature Amendments
+
+Adopted by Brett Heap on 2026-10-04 as the preferred manual default for triad
+repository and project work. The source decision and templates are in
+workBenches `docs/triad-feature-amendments.md` and
+`docs/triad-feature-amendment-templates.md`, governed by
+`openspec/changes/adopt-triad-feature-amendments/`.
+
+### Two layers and existing authority
+
+Full proposals, canonical capability specs/contracts and Speckit feature
+files remain in the docs/spec leg. The code feature worktree may hold bounded
+amendment records at `features/<NNN-feature>/openspec/`. This is a narrow
+placement exception, not a second complete spec baseline. Product decisions
+retain their existing approval authority. Moving canonical Speckit files into
+code requires a separate decision. In a single repository the existing
+canonical roots remain in place and the same optional amendment folder applies.
+
+Editorial and implementation-only fixes preserving specified behavior remain
+ordinary feature edits. A requirement refinement within approved boundaries
+gets a feature amendment. Larger scope, new capability, mandatory runtime,
+authority/security or external contract changes go through a full docs
+proposal/amendment before dependent implementation. A larger idea unnecessary
+for the current deliverable is linked to a future-proposal issue and excluded
+from current requirements/tasks. Changes after a feature ships use normal full
+OpenSpec governance. Classify by impact, not line count.
+
+### Current instructions and durable amendment records
+
+Each accepted amendment records a unique feature-local ID, governing proposal
+and immutable approved docs baseline, affected requirements/contracts and
+Speckit task IDs, reason and revised interpretation, decision authority/source,
+verification impact, implementation/evidence references and final disposition.
+Record repository identities and relative paths, not workstation paths.
+
+Update the working Speckit spec, plan, acceptance criteria and tasks in the
+paired docs worktree before implementing the accepted adjustment. Retain
+proposed, accepted, implemented, superseded, reverted and deferred records
+with explicit dispositions. Proposed/deferred changes are not current feature
+requirements. Existing user authorization persists; a record cannot manufacture
+approval. Speckit remains the only executable implementation task list.
+
+At the first amendment, create one reconciliation issue in the docs repository.
+Link every later amendment to it. Git holds the durable records; the issue
+tracks the accumulated obligation and does not duplicate executable tasks.
+
+### One final reconciliation and project landing
+
+After implementation and verification, perform one final docs reconciliation
+batch against tested code, working feature files and every amendment. Apply
+the net semantic effect; preserve superseded/reverted/deferred history and
+exclude inactive deltas. Update governing specs, contracts and design. Record
+dated departures from the original approved baseline and an as-built record,
+including amendment dispositions, verification, future-proposal issues and
+the corresponding landed code commit. Preserve archived approval history;
+record later changes through a new linked change or reconciliation record.
+
+Prepare docs and code PRs together. Code may land first, but the assembly
+cannot advance the completed feature to that code until reconciliation lands
+and matching docs/code are pinned through the existing mechanism. Close the
+reconciliation issue after the docs PR lands; the Speckit landing record tracks
+the assembly PR. Archive only after implementation and the assembly pin update
+land. Advance any subsequent archive-record docs commit through the ordinary
+pin process. Reopen reconciliation if behavior changes afterward. Cancellation
+records abandonment and dispositions, not an as-built result.
+
+### Single repository to triad migration
+
+Keep the existing reviewed adoption plan, approval, extraction, history and
+per-path verification mechanics. Put full proposals, archives, canonical specs
+and Speckit feature files in docs; genuine bounded amendment records stay in
+code. Review amendment paths explicitly in the plan until the upstream placement
+exception is qualified. A proposal created on a feature branch remains a full
+proposal if that is its role. Do not manufacture local amendments for historical
+features merely to migrate them.
+
+Repair cross-leg links, root selection and baseline references after extraction.
+Preserve the original repository/commit/path as approved provenance and record
+verified correspondence to extracted docs identities; filtering may change
+commit hashes. The selected source commit does not include every open feature
+branch. Preserve open work through existing parking/handoff procedures and
+explicitly plan paired-worktree continuation, respecting adoption prerequisites.
+Migration follow-ups and any bounded adjustments use the migration feature's
+single task list and final reconciliation before completed assembly advancement.
+
+### Manual adoption and automation limits
+
+The amendment schema, managed command/skill root routing, bootstrap template
+distribution and openRepoShape placement/verification changes are pending.
+Maintain local records manually until qualified. Local deltas describe changes
+relative to the docs baseline; do not promote them into a second product-spec
+store or use default local archive as proof of docs reconciliation. Every
+archive operation must explicitly identify its root and satisfy project landing.
+
+Store references provide context, not automatic scope inheritance or cross-root
+reconciliation. Explicit docs-store selection must use the intended feature
+checkout rather than a pinned base mount. Never alter a pinned shape copy or
+adjust its digest to accommodate the folder; carry the narrow exception
+upstream or record an explicit project-local placement override for manual use.
+
+This installed protocol amendment enables manual use on this workstation. It
+does not establish that new installs or other workstations have received it.
 
 ## Worktree Rules
 
@@ -2307,6 +2414,36 @@ this; never a bare `git submodule update` followed by a commit. Land the root
 branch by PR, then remove both leg worktrees and the feature's directory under
 `worktrees/`. Archive the OpenSpec change only after that root PR has merged.
 
+### Parking and resuming a feature
+
+Before leaving a workstation with open Speckit worktrees, run `make park`
+from the assembly root (or the repository root, single-repo shape). It
+commits any uncommitted work in each open feature's leg(s) as a WIP commit,
+pushes it, and records the branch, the leg commits and whether each leg is
+clean or WIP in a workspace manifest — a file the person owns, named once
+in `~/.agents/workspace.yaml` (`repository:` and `path:`), never in a
+shared or governed repository. On the next workstation, after cloning and
+`make bootstrap`, `make resume` reads that manifest, recreates the
+worktrees at the recorded commits, restores `.specify/feature.json` and the
+worktree state file, and un-commits exactly the WIP commit(s) `park` made,
+leaving the work back in its original staged or unstaged form.
+
+A parked WIP commit's subject always has the exact form
+`wip: park <YYYY-MM-DDTHH:MM:SSZ> — lane <lane>`. **A landing must never
+merge a commit with that subject** — reset or squash it out of the branch
+first; it exists only to carry work between workstations, not to enter a
+feature's real history.
+
+`resume` **refuses** whenever a leg's remote tip has moved since it was
+parked, naming the parked commit, the current tip, and the commands to
+reconcile by hand. That refusal is never worked around — nothing is ever
+reset over a commit this workstation did not park; reconcile by hand and
+re-run `make resume`.
+
+Native Windows has no `park`: the PowerShell mirror of the Speckit git
+extension is not shape-aware and carries neither script, so a native
+Windows checkout cannot park or resume a feature.
+
 ## Speckit Clarify Rules
 
 When running or prompting `/speckit.clarify`, use a maximum of **25** accepted
@@ -2355,8 +2492,14 @@ Claude sessions running this protocol pair it with the model-roles protocol
 (canonical memory: `speckit-model-roles` + `usage-balance-95-protocol` in the
 xFactory project memory; mirrored per-project as sessions adopt it):
 
-- **Fable** (the main session) thinks and orchestrates only — it does not
-  write code directly.
+- **The main session — Fable, or Opus 5.5 at max effort** — thinks and
+  orchestrates only; it does not write code directly. Opus 5.5 qualifies only
+  at max: in a tool shell, `echo $CLAUDE_EFFORT` must print `max` (Claude Code
+  injects the live session effort there; `claude-profile` defaults every
+  profile to `xhigh`). On any other main-loop model or effort, stop and tell
+  Brett before orchestrating; a session cannot switch itself (`/model`, or a
+  relaunch with `--effort max`). Amended 2026-09-30 on Brett Heap's word:
+  "update the rule so that the lane can run on fable or opus 5.5 if the opus 5.5 is set to max".
 - **Opus** manages, reviews, and writes the DIFFICULT tasks through the
   Speckit flow (plan authoring, hard implementation slices, review passes).
 - **Sonnet** writes small, well-scoped tasks.
