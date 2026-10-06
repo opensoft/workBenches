@@ -13,6 +13,7 @@ import json
 import os
 import re
 import secrets
+import signal
 import stat
 import subprocess
 import sys
@@ -86,6 +87,44 @@ LOAD_GIT_WORKTREES_DEFINITION: Final = re.compile(
     r"(?m)^[ \t]*(?:load_git_worktrees[ \t]*\(\)|"
     r"function[ \t]+load_git_worktrees(?:[ \t]*\(\))?)[ \t]*\{"
 )
+# The Triad advisory (openxFactory `prefer-triad-project-shape`, task 5.4;
+# opensoft/workBenches#138). The Triad is the PREFERRED project shape, and it
+# stays elective and confers nothing: the advisory is said once, at the start
+# of work, never blocks, never changes an exit status or a written byte, and
+# converts, creates, writes and records nothing. It is never a review input.
+# The optional staying-single record (OQ-1, ruled as recommended): its schema
+# is openRepoShape's, and the advisory is its only reader.
+SINGLE_REPOSITORY_RECORD: Final = "single-repository.yaml"
+SINGLE_REPOSITORY_RECORD_KIND: Final = "single-repository-record"
+# openRepoShape `contracts/repository-naming.yaml`, family `workspace`, the
+# pattern `scripts/validate-repository-naming.py` applies (openRepoShape main
+# 39d5c986). Unambiguous by construction, so it is matched as written, offline,
+# without importing openRepoShape.
+WORKSPACE_REPOSITORY_NAME: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*-wip$")
+# The line openRepoShape's `templates/spec-root/AGENTS.md` and
+# `templates/code-root/AGENTS.md` open every leg with (since 99b3774): the shared
+# protocol's "its AGENTS.md says it is a leg of a project".
+LEG_CLONE_AGENTS_LINE: Final = re.compile(r"(?m)^This is the \*\*(spec|code) leg\*\* of \S")
+# Human-facing text says "Triad" and states the posture beside the preference,
+# as the ratified restatement rule requires. ASCII only, so no locale can turn
+# the advisory into an encoding failure that would change the exit status.
+TRIAD_ADVISORY_LINES: Final = (
+    "This is a single repository. The Triad (an assembly root with a spec leg "
+    "and a code leg) is the preferred project shape; it stays elective and "
+    "confers nothing.",
+    "openRepoShape's adopt-project.py converts a repository in place, and a "
+    "project that stays single can say so in single-repository.yaml. Nothing "
+    "here changes; work continues.",
+)
+TRIAD_QUESTION: Final = (
+    "Press Enter to continue (s = show the steps; Ctrl-C stops before anything "
+    "is written): "
+)
+TRIAD_STEPS_QUESTION: Final = (
+    "Press Enter to continue (Ctrl-C stops before anything is written): "
+)
+TRIAD_SHOW_STEPS_ANSWERS: Final = ("s", "show", "steps")
+CI_FALSE_VALUES: Final = ("", "0", "false", "no")
 
 
 @dataclass(frozen=True, slots=True)
@@ -2007,6 +2046,330 @@ def resolve_project_shape(repo: Path, mode: str) -> ProjectShape | None:
     return shape
 
 
+def read_root_text(path: Path) -> tuple[str | None, str | None]:
+    """Read one small file the Triad advisory consults, without ever refusing.
+
+    Returns ``(text, None)`` for a readable regular UTF-8 file, ``(None, None)``
+    when nothing is there, and ``(None, problem)`` when something is there that
+    cannot be read as text. It never follows a symlink and never raises: the
+    advisory changes no exit status, so unlike ``read_destination_text`` (whose
+    symlink refusal is a ``SystemExit``) a read here can only ever answer.
+    """
+    try:
+        mode = path.lstat().st_mode
+    except FileNotFoundError:
+        return None, None
+    except OSError as exc:
+        return None, f"cannot be inspected ({exc.strerror or exc})"
+    if stat.S_ISLNK(mode):
+        return None, "is a symlink, which is never followed"
+    if not stat.S_ISREG(mode):
+        return None, "is not a regular file"
+    try:
+        descriptor = os.open(path, REGULAR_FILE_OPEN_FLAGS)
+        with os.fdopen(descriptor, encoding="utf-8") as file:
+            return file.read(), None
+    except UnicodeError:
+        return None, "is not UTF-8 text"
+    except OSError as exc:
+        return None, f"cannot be read ({exc.strerror or exc})"
+
+
+def root_entry_exists(path: Path) -> bool:
+    """Whether anything at all sits at ``path``; an unreadable entry counts."""
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def root_manifest_lines(path: Path) -> list[str] | None:
+    text, _ = read_root_text(path)
+    if text is None:
+        return None
+    return [strip_yaml_comment(line) for line in text.splitlines()]
+
+
+def declares_triad(repo: Path) -> bool:
+    """Whether ``project.yaml`` DECLARES the Triad, whatever layout --shape picked.
+
+    The same three facts ``detect_project_shape`` reads -- kind, schema, and a
+    spec and a code leg -- without its leg-path validation, so a Triad root run
+    with ``--shape off`` is still recognized as one and the advisory stays
+    silent there: ``--shape off`` is a layout choice, never a recorded decision.
+    """
+    lines = root_manifest_lines(repo / "project.yaml")
+    if lines is None:
+        return False
+    if manifest_top_level_value(lines, "kind") != "project-manifest":
+        return False
+    if manifest_top_level_value(lines, "schema") != "project-repo-schema":
+        return False
+    roles = {leg.get("role") for leg in manifest_legs(lines)}
+    return "spec" in roles and "code" in roles
+
+
+def declares_family_holder(repo: Path) -> bool:
+    """``is_family_holder``'s facts, read without any refusal."""
+    if root_entry_exists(repo / "project.yaml"):
+        return False
+    lines = root_manifest_lines(repo / "family.yaml")
+    return lines is not None and manifest_top_level_value(lines, "kind") == "family-manifest"
+
+
+def leg_clone_role(repo: Path) -> str | None:
+    """The leg role a clone's own ``AGENTS.md`` declares, or None.
+
+    The shared protocol's rule: no ``project.yaml``, and an ``AGENTS.md`` that
+    says the checkout is a leg of a project, in the words openRepoShape's leg
+    templates open every leg with.
+    """
+    if root_entry_exists(repo / "project.yaml"):
+        return None
+    text, _ = read_root_text(repo / "AGENTS.md")
+    if text is None:
+        return None
+    match = LEG_CLONE_AGENTS_LINE.search(text)
+    return match.group(1) if match else None
+
+
+def origin_repository(repo: Path) -> str | None:
+    """``owner/name`` (or a bare name) of this repository's ``origin``, offline.
+
+    Read only where ``repo`` is itself the top of a work tree, so a directory
+    inside some other repository never borrows that repository's name.
+    """
+    def git(*arguments: str) -> str | None:
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(repo), *arguments],
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
+        except (OSError, ValueError):
+            return None
+        output = result.stdout.strip()
+        return output if result.returncode == 0 and output else None
+
+    toplevel = git("rev-parse", "--show-toplevel")
+    try:
+        if toplevel is None or Path(toplevel).resolve() != repo.resolve():
+            return None
+    except (OSError, RuntimeError):
+        return None
+    url = (git("remote", "get-url", "origin") or "").rstrip("/")
+    if url.lower().endswith(".git"):
+        url = url[:-4]
+    parts = [part for part in re.split(r"[/:\\]", url) if part]
+    return "/".join(parts[-2:]) if parts else None
+
+
+def named_by_workspace_config(repo: Path, agent_root: Path, origin: str | None) -> bool:
+    """Whether the person's own ``workspace.yaml`` names this repository.
+
+    ``${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/workspace.yaml`` carries
+    ``repository:`` (an ``owner/repo`` slug) and ``path:`` (the local checkout,
+    ``~`` allowed). It is read, never written, and a missing or malformed file
+    names nothing.
+    """
+    try:
+        text = (agent_root / "workspace.yaml").read_text(encoding="utf-8")
+    except (OSError, UnicodeError, ValueError):
+        return False
+    lines = [strip_yaml_comment(line) for line in text.splitlines()]
+    declared_path = manifest_top_level_value(lines, "path")
+    if declared_path:
+        candidate = Path(os.path.expanduser(declared_path))
+        if candidate.is_absolute():
+            try:
+                if candidate.resolve() == repo.resolve():
+                    return True
+            except (OSError, RuntimeError):
+                pass
+    declared_repository = manifest_top_level_value(lines, "repository")
+    if declared_repository and origin and "/" in origin:
+        return declared_repository.strip().strip("/").lower() == origin.lower()
+    return False
+
+
+def is_workspace_repository(repo: Path, agent_root: Path) -> bool:
+    """A ``<user>-wip`` workspace repository, by its declared name or the person's config."""
+    origin = origin_repository(repo)
+    if origin is not None and WORKSPACE_REPOSITORY_NAME.match(origin.rsplit("/", 1)[-1]):
+        return True
+    return named_by_workspace_config(repo, agent_root, origin)
+
+
+def single_repository_record(repo: Path) -> tuple[bool, str | None]:
+    """``(silences, note)`` for the optional staying-single record.
+
+    Only a regular, readable file whose top-level ``kind:`` is
+    ``single-repository-record`` silences the advisory. openRepoShape owns the
+    record's schema, so no other field is validated here. A record that is
+    present but unreadable, or that carries another kind, does not silence it
+    and is reported in one line, without failing anything.
+    """
+    text, problem = read_root_text(repo / SINGLE_REPOSITORY_RECORD)
+    if problem is not None:
+        return False, (
+            f"{SINGLE_REPOSITORY_RECORD} is present but {problem}, so it does "
+            "not silence the Triad advisory."
+        )
+    if text is None:
+        return False, None
+    lines = [strip_yaml_comment(line) for line in text.splitlines()]
+    kind = manifest_top_level_value(lines, "kind")
+    if kind == SINGLE_REPOSITORY_RECORD_KIND:
+        return True, None
+    found = f"kind {kind!a}" if kind else "no kind"
+    return False, (
+        f"{SINGLE_REPOSITORY_RECORD} carries {found}, not "
+        f"{SINGLE_REPOSITORY_RECORD_KIND}, so it does not silence the Triad advisory."
+    )
+
+
+def triad_advisory_plan(
+    repo: Path,
+    shape: ProjectShape | None,
+    agent_root: Path,
+) -> tuple[bool, list[str]]:
+    """Whether to give the Triad advisory here, and the notes to print with it.
+
+    Silent exactly where the ratified scope says the shape question is answered
+    or does not arise, each read from a declared fact and never inferred: an
+    elected Triad assembly root, a leg clone (which gets the instruction to move
+    to the assembly root instead), a family holder, a ``<user>-wip`` workspace
+    repository, and a repository whose ``single-repository.yaml`` records staying
+    single. Every other repository -- aggregations, configuration and dotfile
+    repositories and vendored forks included -- gets the advisory: no class is
+    guessed.
+    """
+    if shape is not None or declares_triad(repo) or declares_family_holder(repo):
+        return False, []
+    role = leg_clone_role(repo)
+    if role is not None:
+        return False, [
+            f"This checkout is the {role} leg of a Triad (its AGENTS.md says so). "
+            "The shared protocol runs from the Triad's assembly root: move there "
+            "and run setup-openspeckit in it."
+        ]
+    if is_workspace_repository(repo, agent_root):
+        return False, []
+    silenced, note = single_repository_record(repo)
+    if silenced:
+        return False, []
+    return True, [note] if note else []
+
+
+def is_interactive_run() -> bool:
+    """A person at a terminal: stdin and stdout are both terminals, and not CI."""
+    if os.environ.get("CI", "").strip().lower() not in CI_FALSE_VALUES:
+        return False
+    try:
+        return bool(
+            sys.stdin is not None
+            and sys.stdin.isatty()
+            and sys.stdout is not None
+            and sys.stdout.isatty()
+        )
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
+def emit_advisory_line(stream: object, line: str) -> None:
+    """Write one advisory line that no encoding or closed pipe can turn into a failure."""
+    try:
+        encoding = getattr(stream, "encoding", None) or "ascii"
+        safe = line.encode(encoding, "backslashreplace").decode(encoding, "replace")
+        stream.write(safe + "\n")  # type: ignore[attr-defined]
+        stream.flush()  # type: ignore[attr-defined]
+    except (AttributeError, LookupError, OSError, ValueError):
+        pass
+
+
+def triad_adoption_steps(repo: Path) -> list[str]:
+    """What the question's ``s`` answer shows: text only, no step is taken."""
+    return [
+        "Converting is a decision for whoever decides for this project; this "
+        "bootstrap takes no step for it.",
+        "To convert in place, from an openRepoShape checkout, with this repository "
+        "on a clean default branch and no linked worktrees attached:",
+        f"  ./adopt-project.py plan --source {shlex_quote(str(repo))} --project <Project>",
+        "  (review and edit adoption-plan.yaml)",
+        "  ./adopt-project.py check --plan adoption-plan.yaml",
+        "  ./adopt-project.py execute --plan adoption-plan.yaml",
+        "  then run setup-openspeckit again in the assembly root.",
+        f"To stay single and stop meeting this advisory, commit {SINGLE_REPOSITORY_RECORD} "
+        "at the repository root carrying",
+        f"  schema_version: 1, kind: {SINGLE_REPOSITORY_RECORD_KIND}, decided_by, "
+        "decided_on and reason (revisit_on is optional).",
+        "  openRepoShape owns its schema. The record is optional, is never owed, "
+        "and confers nothing.",
+    ]
+
+
+def stop_at_the_triad_question() -> None:
+    """End the run the way an interrupt anywhere else in it ends: by SIGINT.
+
+    The question comes before the first write, so nothing has been written. The
+    advisory adds no exit status of its own: the status is the platform's own
+    for an interrupted process.
+    """
+    emit_advisory_line(sys.stdout, "")
+    emit_advisory_line(sys.stdout, "Stopped at your request; nothing was written.")
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    os.kill(os.getpid(), signal.SIGINT)
+    raise SystemExit(128 + signal.SIGINT)
+
+
+def ask_triad_question(repo: Path) -> None:
+    """One question; continuing is the default and the answer to anything unrecognised."""
+    try:
+        answer = input(TRIAD_QUESTION)
+        if answer.strip().lower() in TRIAD_SHOW_STEPS_ANSWERS:
+            for line in triad_adoption_steps(repo):
+                emit_advisory_line(sys.stdout, line)
+            input(TRIAD_STEPS_QUESTION)
+    except EOFError:
+        emit_advisory_line(sys.stdout, "")
+    except KeyboardInterrupt:
+        stop_at_the_triad_question()
+
+
+def give_triad_advisory(
+    repo: Path,
+    shape: ProjectShape | None,
+    agent_root: Path,
+) -> None:
+    """Say the Triad advisory once, at the start of the run, and carry on.
+
+    A warning in a non-interactive run; at a terminal, the same lines and one
+    question whose default is to continue. Either way the run's writes and its
+    exit status are the ones it would have had without the advisory, and nothing
+    records that the advisory was given.
+    """
+    give, notes = triad_advisory_plan(repo, shape, agent_root)
+    lines = [*notes, *(TRIAD_ADVISORY_LINES if give else ())]
+    if not lines:
+        return
+    if give and is_interactive_run():
+        for line in lines:
+            emit_advisory_line(sys.stdout, line)
+        ask_triad_question(repo)
+        return
+    try:
+        sys.stdout.flush()
+    except (AttributeError, OSError, ValueError):
+        pass
+    for line in lines:
+        emit_advisory_line(sys.stderr, f"warning: {line}")
+
+
 def can_write_path_or_parent(path: Path) -> bool:
     if path.exists():
         return os.access(path, os.W_OK)
@@ -3600,6 +3963,9 @@ def main() -> int:
     log(f"integration: {integration}")
 
     shape = resolve_project_shape(repo, args.shape)
+    # Once, at the start of work, before the first write: the advisory changes
+    # nothing this run writes and no exit status (prefer-triad-project-shape).
+    give_triad_advisory(repo, shape, agent_root)
     spec_root = shape.spec_leg if shape is not None else repo
     if shape is not None:
         enable_shape_log_scopes(args.dry_run)

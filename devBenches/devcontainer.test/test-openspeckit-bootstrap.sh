@@ -3338,6 +3338,574 @@ assert_not_contains "$SHAPE_OFF_ROOT/AGENTS.md" '### Repository shape: openRepoS
 assert_not_contains "$TMPDIR_ROOT/shape-off.log" '[spec] ' '--shape off prints no spec-leg log prefix'
 assert_not_contains "$TMPDIR_ROOT/shape-off.log" 'Two Repositories Means Two Commits' '--shape off prints no two-commit note'
 
+# ---------------------------------------------------------------------------
+# The Triad advisory: openxFactory's ratified `prefer-triad-project-shape`,
+# task 5.4 (opensoft/workBenches#138). The Triad is the preferred project shape
+# and it stays elective and confers nothing. The bootstrap warns in a
+# non-interactive run with its exit status and its written bytes unchanged,
+# asks once at a terminal with continuing as the default, and is silent in an
+# elected Triad, a leg clone, a family holder, a `<user>-wip` repository and a
+# repository that records staying single. Every fixture below is a temporary
+# repository; no check reads the shape of any repository under review.
+# ---------------------------------------------------------------------------
+TRIAD_ADVISORY_NEEDLE='is the preferred project shape; it stays elective and confers nothing.'
+TRIAD_ADVISORY_WARNING='warning: This is a single repository. The Triad (an assembly root with a spec leg and a code leg)'
+TRIAD_ADVISORY_CONVERT="openRepoShape's adopt-project.py converts a repository in place"
+TRIAD_ADVISORY_RECORD='a project that stays single can say so in single-repository.yaml. Nothing here changes; work continues.'
+TRIAD_QUESTION_NEEDLE='Press Enter to continue (s = show the steps'
+TRIAD_LEG_INSTRUCTION='leg of a Triad (its AGENTS.md says so). The shared protocol runs from the Triad'"'"'s assembly root: move there and run setup-openspeckit in it.'
+
+make_single_repo() {
+    local root="$1"
+    mkdir -p "$root"
+    git init -q -b main "$root"
+    seed_speckit_state "$root"
+}
+
+# Runs the bootstrap with no terminal on either end and records its status.
+TRIAD_RUN_STATUS=0
+run_triad_bootstrap() {
+    local repo="$1"
+    local log="$2"
+    shift 2
+    if python3 "$SETUP_SCRIPT" --repo "$repo" "${THREE_LEG_FLAGS[@]}" "$@" \
+        < /dev/null > "$log" 2>&1; then
+        TRIAD_RUN_STATUS=0
+    else
+        TRIAD_RUN_STATUS=$?
+    fi
+}
+
+snapshot_without_record() {
+    snapshot_repo "$1" | grep -v -F './single-repository.yaml' || true
+}
+
+snapshot_modes_without_record() {
+    snapshot_repo_modes "$1" | grep -v -F './single-repository.yaml' || true
+}
+
+write_staying_single_record() {
+    cat > "$1/single-repository.yaml" <<'EOF'
+# Optional, never owed. Its only reader is the Triad advisory, and it confers
+# nothing: no gate, no floor, no grant, no clearance eligibility, no lifecycle
+# state and no review difference.
+schema_version: 1
+kind: single-repository-record
+decided_by: "Fixture Person"
+decided_on: 2026-10-06
+reason: "fixture: this project stays a single repository"
+EOF
+}
+
+printf '%s\n' 'Given: two identical single repositories, one of which records staying single'
+ADVISORY_SINGLE_REPO="$TMPDIR_ROOT/advisory-plain/repo"
+ADVISORY_RECORDED_REPO="$TMPDIR_ROOT/advisory-recorded/repo"
+make_single_repo "$ADVISORY_SINGLE_REPO"
+make_single_repo "$ADVISORY_RECORDED_REPO"
+write_staying_single_record "$ADVISORY_RECORDED_REPO"
+
+printf '%s\n' 'When: both are bootstrapped with no terminal'
+run_triad_bootstrap "$ADVISORY_SINGLE_REPO" "$TMPDIR_ROOT/advisory-plain.log"
+ADVISORY_PLAIN_STATUS="$TRIAD_RUN_STATUS"
+run_triad_bootstrap "$ADVISORY_RECORDED_REPO" "$TMPDIR_ROOT/advisory-recorded.log"
+ADVISORY_RECORDED_STATUS="$TRIAD_RUN_STATUS"
+
+printf '%s\n' 'Then: the single repository is warned once and the run is otherwise unchanged'
+assert_equal "$ADVISORY_PLAIN_STATUS" 0 'Triad advisory: a single repository bootstrapped non-interactively exits 0'
+assert_contains "$TMPDIR_ROOT/advisory-plain.log" "$TRIAD_ADVISORY_WARNING" 'Triad advisory: a non-interactive run prints the advisory as a warning'
+assert_contains "$TMPDIR_ROOT/advisory-plain.log" "$TRIAD_ADVISORY_NEEDLE" 'Triad advisory: the preference is stated with its posture'
+assert_contains "$TMPDIR_ROOT/advisory-plain.log" "warning: $TRIAD_ADVISORY_CONVERT" 'Triad advisory: the warning names adopt-project.py as the way to convert'
+assert_contains "$TMPDIR_ROOT/advisory-plain.log" "$TRIAD_ADVISORY_RECORD" 'Triad advisory: the warning names single-repository.yaml and says work continues'
+assert_equal "$(grep -Fc -- "$TRIAD_ADVISORY_NEEDLE" "$TMPDIR_ROOT/advisory-plain.log")" 1 'Triad advisory: the advisory is given once per run'
+assert_not_contains "$TMPDIR_ROOT/advisory-plain.log" "$TRIAD_QUESTION_NEEDLE" 'Triad advisory: a non-interactive run asks nothing'
+assert_contains "$TMPDIR_ROOT/advisory-plain.log" 'done' 'Triad advisory: the warned run reaches the end of the bootstrap'
+assert_not_exists "$ADVISORY_SINGLE_REPO/single-repository.yaml" 'Triad advisory: nothing writes a staying-single record on the advisory'"'"'s account'
+assert_equal "$ADVISORY_RECORDED_STATUS" 0 'Triad advisory: a repository with a valid staying-single record exits 0'
+assert_not_contains "$TMPDIR_ROOT/advisory-recorded.log" "$TRIAD_ADVISORY_NEEDLE" 'Triad advisory: a valid staying-single record silences the advisory'
+assert_not_contains "$TMPDIR_ROOT/advisory-recorded.log" 'single-repository.yaml is present but' 'Triad advisory: a valid staying-single record draws no note'
+if cmp -s <(snapshot_without_record "$ADVISORY_SINGLE_REPO") <(snapshot_without_record "$ADVISORY_RECORDED_REPO"); then
+    pass 'Triad advisory: a warned run writes exactly the bytes a silent run writes'
+else
+    fail 'Triad advisory: a warned run writes different bytes from a silent run'
+fi
+if cmp -s <(snapshot_modes_without_record "$ADVISORY_SINGLE_REPO") <(snapshot_modes_without_record "$ADVISORY_RECORDED_REPO"); then
+    pass 'Triad advisory: a warned run leaves the same paths, types and modes as a silent run'
+else
+    fail 'Triad advisory: a warned run leaves different paths, types or modes from a silent run'
+fi
+assert_contains "$ADVISORY_RECORDED_REPO/single-repository.yaml" 'kind: single-repository-record' 'Triad advisory: the bootstrap leaves the staying-single record as it was'
+
+printf '%s\n' 'When: the warned repository is bootstrapped again with stdout and stderr apart'
+if python3 "$SETUP_SCRIPT" --repo "$ADVISORY_SINGLE_REPO" "${THREE_LEG_FLAGS[@]}" \
+    < /dev/null > "$TMPDIR_ROOT/advisory-plain-stdout.log" 2> "$TMPDIR_ROOT/advisory-plain-stderr.log"; then
+    pass 'Triad advisory: the rerun exits 0'
+else
+    fail 'Triad advisory: the rerun exits 0'
+fi
+assert_contains "$TMPDIR_ROOT/advisory-plain-stderr.log" "$TRIAD_ADVISORY_NEEDLE" 'Triad advisory: the warning goes to stderr'
+assert_not_contains "$TMPDIR_ROOT/advisory-plain-stdout.log" "$TRIAD_ADVISORY_NEEDLE" 'Triad advisory: the warning stays out of the stdout log'
+assert_contains "$TMPDIR_ROOT/advisory-plain-stdout.log" 'shape: single repository' 'Triad advisory: the stdout log is unchanged in form'
+
+printf '%s\n' 'Then: the Triad, the family holder and a Triad under --shape off were silent'
+for silent_log in \
+    "$THREE_LEG_DRY_RUN_LOG" \
+    "$THREE_LEG_LOG" \
+    "$TMPDIR_ROOT/three-leg-second.log" \
+    "$TMPDIR_ROOT/family-holder.log" \
+    "$TMPDIR_ROOT/shape-off.log"; do
+    assert_not_contains "$silent_log" "$TRIAD_ADVISORY_NEEDLE" "Triad advisory: silent in ${silent_log##*/}"
+    assert_not_contains "$silent_log" "$TRIAD_LEG_INSTRUCTION" "Triad advisory: no leg instruction in ${silent_log##*/}"
+done
+
+printf '%s\n' 'When: a single repository is bootstrapped with --shape off'
+ADVISORY_SHAPE_OFF_REPO="$TMPDIR_ROOT/advisory-shape-off/repo"
+make_single_repo "$ADVISORY_SHAPE_OFF_REPO"
+run_triad_bootstrap "$ADVISORY_SHAPE_OFF_REPO" "$TMPDIR_ROOT/advisory-shape-off.log" --shape off
+assert_equal "$TRIAD_RUN_STATUS" 0 'Triad advisory: --shape off in a single repository exits 0'
+assert_contains "$TMPDIR_ROOT/advisory-shape-off.log" "$TRIAD_ADVISORY_NEEDLE" 'Triad advisory: --shape off is a layout choice and does not silence the advisory'
+
+printf '%s\n' 'When: a repository whose origin names a <user>-wip repository is bootstrapped'
+ADVISORY_WIP_REMOTE_REPO="$TMPDIR_ROOT/advisory-wip-remote/checkout"
+make_single_repo "$ADVISORY_WIP_REMOTE_REPO"
+git -C "$ADVISORY_WIP_REMOTE_REPO" remote add origin 'git@github.com:fixture-org/alice-wip.git'
+run_triad_bootstrap "$ADVISORY_WIP_REMOTE_REPO" "$TMPDIR_ROOT/advisory-wip-remote.log"
+assert_equal "$TRIAD_RUN_STATUS" 0 'Triad advisory: a <user>-wip repository exits 0'
+assert_not_contains "$TMPDIR_ROOT/advisory-wip-remote.log" "$TRIAD_ADVISORY_NEEDLE" 'Triad advisory: silent in a repository whose origin is a <user>-wip repository'
+
+printf '%s\n' 'When: a repository whose origin is not a workspace name, but that workspace.yaml names, is bootstrapped'
+ADVISORY_WORKSPACE_HOME="$TMPDIR_ROOT/advisory-workspace-home"
+ADVISORY_WORKSPACE_PROTOCOL="$TMPDIR_ROOT/advisory-workspace-protocol"
+ADVISORY_WORKSPACE_PATH_REPO="$ADVISORY_WORKSPACE_HOME/personal-index"
+ADVISORY_WORKSPACE_SLUG_REPO="$TMPDIR_ROOT/advisory-workspace-slug/checkout"
+mkdir -p "$ADVISORY_WORKSPACE_HOME" "$ADVISORY_WORKSPACE_PROTOCOL"
+make_single_repo "$ADVISORY_WORKSPACE_PATH_REPO"
+make_single_repo "$ADVISORY_WORKSPACE_SLUG_REPO"
+git -C "$ADVISORY_WORKSPACE_PATH_REPO" remote add origin 'git@github.com:fixture-org/personal-index.git'
+git -C "$ADVISORY_WORKSPACE_SLUG_REPO" remote add origin 'https://github.com/Fixture-Org/Notes-Index.git'
+printf '%s\n' \
+    '# fixture workspace configuration: repository and path only' \
+    'repository: fixture-org/notes-index' \
+    'path: ~/personal-index' > "$ADVISORY_WORKSPACE_PROTOCOL/workspace.yaml"
+cp "$ADVISORY_WORKSPACE_PROTOCOL/workspace.yaml" "$TMPDIR_ROOT/advisory-workspace.yaml.before"
+for workspace_case in path slug; do
+    if [[ "$workspace_case" == path ]]; then
+        workspace_repo="$ADVISORY_WORKSPACE_PATH_REPO"
+    else
+        workspace_repo="$ADVISORY_WORKSPACE_SLUG_REPO"
+    fi
+    if HOME="$ADVISORY_WORKSPACE_HOME" AGENT_PROTOCOL_ROOT="$ADVISORY_WORKSPACE_PROTOCOL" \
+        python3 "$SETUP_SCRIPT" --repo "$workspace_repo" "${THREE_LEG_FLAGS[@]}" \
+        < /dev/null > "$TMPDIR_ROOT/advisory-workspace-$workspace_case.log" 2>&1; then
+        pass "Triad advisory: a workspace.yaml-named repository exits 0 ($workspace_case)"
+    else
+        fail "Triad advisory: a workspace.yaml-named repository exits 0 ($workspace_case)"
+    fi
+    assert_not_contains "$TMPDIR_ROOT/advisory-workspace-$workspace_case.log" "$TRIAD_ADVISORY_NEEDLE" "Triad advisory: silent where workspace.yaml names the repository by $workspace_case"
+done
+if cmp -s "$TMPDIR_ROOT/advisory-workspace.yaml.before" "$ADVISORY_WORKSPACE_PROTOCOL/workspace.yaml"; then
+    pass 'Triad advisory: workspace.yaml is read and never written'
+else
+    fail 'Triad advisory: workspace.yaml was changed'
+fi
+
+printf '%s\n' 'When: the same two repositories are bootstrapped without that workspace.yaml'
+for workspace_case in path slug; do
+    if [[ "$workspace_case" == path ]]; then
+        workspace_repo="$ADVISORY_WORKSPACE_PATH_REPO"
+    else
+        workspace_repo="$ADVISORY_WORKSPACE_SLUG_REPO"
+    fi
+    run_triad_bootstrap "$workspace_repo" "$TMPDIR_ROOT/advisory-unnamed-$workspace_case.log"
+    assert_contains "$TMPDIR_ROOT/advisory-unnamed-$workspace_case.log" "$TRIAD_ADVISORY_NEEDLE" "Triad advisory: no class is guessed from a repository's name or place ($workspace_case)"
+done
+
+printf '%s\n' 'When: a leg clone is bootstrapped'
+ADVISORY_LEG_REPO="$TMPDIR_ROOT/advisory-leg/Fixture-spec"
+make_single_repo "$ADVISORY_LEG_REPO"
+printf '%s\n' \
+    'This is the **spec leg** of Fixture (`fixture`): requirements, decisions' \
+    'and acceptance criteria.' > "$ADVISORY_LEG_REPO/AGENTS.md"
+run_triad_bootstrap "$ADVISORY_LEG_REPO" "$TMPDIR_ROOT/advisory-leg.log"
+assert_equal "$TRIAD_RUN_STATUS" 0 'Triad advisory: a leg clone exits as before'
+assert_not_contains "$TMPDIR_ROOT/advisory-leg.log" "$TRIAD_ADVISORY_NEEDLE" 'Triad advisory: silent in a leg clone'
+assert_contains "$TMPDIR_ROOT/advisory-leg.log" "warning: This checkout is the spec $TRIAD_LEG_INSTRUCTION" 'Triad advisory: a leg clone is told to move to the assembly root instead'
+
+printf '%s\n' 'Given: staying-single records that are present but cannot silence the advisory'
+ADVISORY_RECORD_EXTERNAL="$TMPDIR_ROOT/advisory-record-external.yaml"
+write_staying_single_record "$TMPDIR_ROOT"
+mv "$TMPDIR_ROOT/single-repository.yaml" "$ADVISORY_RECORD_EXTERNAL"
+cp "$ADVISORY_RECORD_EXTERNAL" "$TMPDIR_ROOT/advisory-record-external.before"
+for record_case in wrong-kind no-kind directory symlink; do
+    record_repo="$TMPDIR_ROOT/advisory-record-$record_case/repo"
+    make_single_repo "$record_repo"
+    case "$record_case" in
+        wrong-kind)
+            printf '%s\n' 'schema_version: 1' 'kind: project-manifest' 'decided_by: "Fixture Person"' \
+                > "$record_repo/single-repository.yaml"
+            record_note="warning: single-repository.yaml carries kind 'project-manifest', not single-repository-record, so it does not silence the Triad advisory."
+            ;;
+        no-kind)
+            printf '%s\n' 'schema_version: 1' 'reason: "no kind at all"' > "$record_repo/single-repository.yaml"
+            record_note='warning: single-repository.yaml carries no kind, not single-repository-record, so it does not silence the Triad advisory.'
+            ;;
+        directory)
+            mkdir "$record_repo/single-repository.yaml"
+            record_note='warning: single-repository.yaml is present but is not a regular file, so it does not silence the Triad advisory.'
+            ;;
+        symlink)
+            ln -s "$ADVISORY_RECORD_EXTERNAL" "$record_repo/single-repository.yaml"
+            record_note='warning: single-repository.yaml is present but is a symlink, which is never followed, so it does not silence the Triad advisory.'
+            ;;
+    esac
+    run_triad_bootstrap "$record_repo" "$TMPDIR_ROOT/advisory-record-$record_case.log"
+    assert_equal "$TRIAD_RUN_STATUS" 0 "Triad advisory: an unusable record changes no exit status ($record_case)"
+    assert_contains "$TMPDIR_ROOT/advisory-record-$record_case.log" "$record_note" "Triad advisory: an unusable record is reported in one line ($record_case)"
+    assert_contains "$TMPDIR_ROOT/advisory-record-$record_case.log" "$TRIAD_ADVISORY_NEEDLE" "Triad advisory: an unusable record does not silence the advisory ($record_case)"
+done
+if cmp -s "$TMPDIR_ROOT/advisory-record-external.before" "$ADVISORY_RECORD_EXTERNAL"; then
+    pass 'Triad advisory: a symlinked record is never followed or changed'
+else
+    fail 'Triad advisory: a symlinked record target was changed'
+fi
+
+printf '%s\n' 'Given: a repository whose AGENTS.md is a symlink to an external leg AGENTS.md'
+ADVISORY_LINKED_AGENTS_REPO="$TMPDIR_ROOT/advisory-linked-agents/repo"
+ADVISORY_LINKED_AGENTS_EXTERNAL="$TMPDIR_ROOT/advisory-linked-agents-external.md"
+make_single_repo "$ADVISORY_LINKED_AGENTS_REPO"
+printf '%s\n' 'This is the **code leg** of Elsewhere (`elsewhere`): the implementation' > "$ADVISORY_LINKED_AGENTS_EXTERNAL"
+cp "$ADVISORY_LINKED_AGENTS_EXTERNAL" "$TMPDIR_ROOT/advisory-linked-agents-external.before"
+ln -s "$ADVISORY_LINKED_AGENTS_EXTERNAL" "$ADVISORY_LINKED_AGENTS_REPO/AGENTS.md"
+
+printf '%s\n' 'When: it is bootstrapped without repository agent pointers, which never touched AGENTS.md'
+run_triad_bootstrap "$ADVISORY_LINKED_AGENTS_REPO" "$TMPDIR_ROOT/advisory-linked-agents.log" --no-repo-agent-pointers
+assert_equal "$TRIAD_RUN_STATUS" 0 'Triad advisory: a symlinked AGENTS.md never turns the advisory into a refusal'
+assert_contains "$TMPDIR_ROOT/advisory-linked-agents.log" "$TRIAD_ADVISORY_NEEDLE" 'Triad advisory: a symlinked AGENTS.md is not followed to find a leg'
+assert_not_contains "$TMPDIR_ROOT/advisory-linked-agents.log" "$TRIAD_LEG_INSTRUCTION" 'Triad advisory: a symlinked AGENTS.md is not taken for a leg clone'
+if cmp -s "$TMPDIR_ROOT/advisory-linked-agents-external.before" "$ADVISORY_LINKED_AGENTS_EXTERNAL" && [[ -L "$ADVISORY_LINKED_AGENTS_REPO/AGENTS.md" ]]; then
+    pass 'Triad advisory: the symlinked AGENTS.md and its target are untouched'
+else
+    fail 'Triad advisory: the symlinked AGENTS.md or its target changed'
+fi
+
+printf '%s\n' 'Given: the advisory'"'"'s helpers, loaded from the script'
+if python3 - "$SETUP_SCRIPT" "$TMPDIR_ROOT/triad-advisory-units" <<'PY'
+from pathlib import Path
+import io
+import os
+import runpy
+import subprocess
+import sys
+
+namespace = runpy.run_path(sys.argv[1], run_name="setup_openspeckit_test")
+fixture_root = Path(sys.argv[2])
+fixture_root.mkdir()
+failures = 0
+
+
+def check(condition, label):
+    global failures
+    if condition:
+        print(f"PASS: Triad advisory unit: {label}")
+    else:
+        print(f"FAIL: Triad advisory unit: {label}")
+        failures += 1
+
+
+def make_repo(name, files=None, remote=None):
+    repo = fixture_root / name
+    repo.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+    if remote is not None:
+        subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", remote], check=True)
+    for relative_name, content in (files or {}).items():
+        target = repo / relative_name
+        if isinstance(content, bytes):
+            target.write_bytes(content)
+        else:
+            target.write_text(content, encoding="utf-8")
+    return repo.resolve()
+
+
+pattern = namespace["WORKSPACE_REPOSITORY_NAME"]
+for name in ("brett-wip", "scott-wip", "a-b-wip", "x1-wip"):
+    check(pattern.match(name) is not None, f"{name} is a <user>-wip name")
+for name in ("Brett-wip", "brett-wip-old", "wip", "-wip", "brett--wip", "brettwip", "brett-WIP"):
+    check(pattern.match(name) is None, f"{name!r} is not a <user>-wip name")
+
+origin_repository = namespace["origin_repository"]
+for label, remote, expected in (
+    ("scp", "git@github.com:Org/name-wip.git", "Org/name-wip"),
+    ("https", "https://github.com/org/x-wip", "org/x-wip"),
+    ("ssh with a trailing slash", "ssh://git@github.com/org/x-wip.git/", "org/x-wip"),
+    ("local path", "/srv/mirrors/alice-wip.git", "mirrors/alice-wip"),
+):
+    repo = make_repo(f"origin-{label.replace(' ', '-')}", remote=remote)
+    check(origin_repository(repo) == expected, f"origin {label} reads as {expected}")
+no_origin = make_repo("origin-none")
+check(origin_repository(no_origin) is None, "no origin reads as None")
+nested = make_repo("origin-outer", remote="git@github.com:org/outer-wip.git") / "inner"
+nested.mkdir()
+check(origin_repository(nested) is None, "a directory inside another repository borrows no name")
+check(origin_repository(fixture_root / "not-a-repository") is None, "a missing directory reads as None")
+
+TRIAD = "kind: project-manifest\nschema: project-repo-schema\nlegs:\n  - role: assembly\n  - role: spec\n  - role: code\n"
+declares_triad = namespace["declares_triad"]
+check(declares_triad(make_repo("triad", {"project.yaml": TRIAD})), "a Triad manifest declares the Triad")
+check(
+    declares_triad(make_repo("triad-escaping", {"project.yaml": TRIAD + "    path: ../outside\n"})),
+    "a declared Triad is read without the layout's leg-path validation",
+)
+check(not declares_triad(make_repo("triad-no-code", {"project.yaml": "kind: project-manifest\nschema: project-repo-schema\nlegs:\n  - role: spec\n"})), "a manifest without a code leg is not a Triad")
+check(not declares_triad(make_repo("triad-wrong-kind", {"project.yaml": "kind: other\nschema: project-repo-schema\nlegs:\n  - role: spec\n  - role: code\n"})), "another kind is not a Triad")
+
+declares_family_holder = namespace["declares_family_holder"]
+check(declares_family_holder(make_repo("family", {"family.yaml": "kind: family-manifest\n"})), "family.yaml with kind family-manifest is a family holder")
+check(not declares_family_holder(make_repo("family-and-project", {"family.yaml": "kind: family-manifest\n", "project.yaml": TRIAD})), "family.yaml beside project.yaml is not a family holder")
+
+leg_clone_role = namespace["leg_clone_role"]
+check(leg_clone_role(make_repo("leg-spec", {"AGENTS.md": "This is the **spec leg** of X (`x`): requirements\n"})) == "spec", "the spec leg line names a spec leg")
+check(leg_clone_role(make_repo("leg-code", {"AGENTS.md": "# Agent Instructions\n\nThis is the **code leg** of X (`x`): code\n"})) == "code", "the code leg line names a code leg")
+check(leg_clone_role(make_repo("leg-with-project", {"AGENTS.md": "This is the **spec leg** of X (`x`)\n", "project.yaml": TRIAD})) is None, "a checkout with project.yaml is never a leg clone")
+check(leg_clone_role(make_repo("leg-quoted", {"AGENTS.md": "> This is the **spec leg** of X\n"})) is None, "a quoted mention is not the leg line")
+check(leg_clone_role(make_repo("leg-none")) is None, "no AGENTS.md is no leg clone")
+
+record = namespace["single_repository_record"]
+VALID = "schema_version: 1\nkind: single-repository-record   # the record kind\ndecided_by: x\ndecided_on: 2026-10-06\nreason: y\n"
+check(record(make_repo("record-valid", {"single-repository.yaml": VALID})) == (True, None), "a valid record silences, with no note")
+check(record(make_repo("record-quoted", {"single-repository.yaml": 'kind: "single-repository-record"\n'})) == (True, None), "a quoted kind is read as written")
+check(record(make_repo("record-absent")) == (False, None), "no record is no note")
+silenced, note = record(make_repo("record-wrong", {"single-repository.yaml": "kind: project-manifest\n"}))
+check(not silenced and "carries kind 'project-manifest'" in (note or ""), "a wrong kind is reported by name")
+silenced, note = record(make_repo("record-nested-kind", {"single-repository.yaml": "record:\n  kind: single-repository-record\n"}))
+check(not silenced and "carries no kind" in (note or ""), "only a top-level kind counts")
+silenced, note = record(make_repo("record-undecodable", {"single-repository.yaml": b"kind: single-repository-record\n\xff\xfe\n"}))
+check(not silenced and "is not UTF-8 text" in (note or ""), "an undecodable record is reported")
+silenced, note = record(make_repo("record-non-ascii", {"single-repository.yaml": "kind: sélection\n"}))
+check(not silenced and (note or "").isascii(), "a non-ASCII kind is reported in ASCII")
+
+is_interactive_run = namespace["is_interactive_run"]
+
+
+class Terminal(io.StringIO):
+    def isatty(self):
+        return True
+
+
+saved = (sys.stdin, sys.stdout, os.environ.get("CI"))
+results = {}
+try:
+    sys.stdin = Terminal()
+    terminal_stdout = Terminal()
+    sys.stdout = terminal_stdout
+    for value in (None, "", "0", "false", "False", "no", "true", "1", "yes"):
+        if value is None:
+            os.environ.pop("CI", None)
+        else:
+            os.environ["CI"] = value
+        results[value] = is_interactive_run()
+    os.environ.pop("CI", None)
+    sys.stdout = io.StringIO()
+    results["stdout redirected"] = is_interactive_run()
+    sys.stdout = terminal_stdout
+    sys.stdin = None
+    results["stdin closed"] = is_interactive_run()
+finally:
+    sys.stdin, sys.stdout = saved[0], saved[1]
+    if saved[2] is None:
+        os.environ.pop("CI", None)
+    else:
+        os.environ["CI"] = saved[2]
+for value in (None, "", "0", "false", "False", "no"):
+    check(results[value] is True, f"terminals with CI={value!r} are interactive")
+for value in ("true", "1", "yes"):
+    check(results[value] is False, f"CI={value!r} is never interactive")
+check(results["stdout redirected"] is False, "a redirected stdout is never interactive")
+check(results["stdin closed"] is False, "a closed stdin is never interactive")
+
+emit = namespace["emit_advisory_line"]
+ascii_stream = io.TextIOWrapper(io.BytesIO(), encoding="ascii")
+try:
+    emit(ascii_stream, "path with a non-ASCII é in it")
+    emit(None, "no stream at all")
+    check(True, "an advisory line never fails on encoding or a missing stream")
+except Exception as exc:  # noqa: BLE001 - any escape is the failure under test
+    check(False, f"an advisory line never fails on encoding or a missing stream ({exc!r})")
+
+raise SystemExit(1 if failures else 0)
+PY
+then
+    pass 'Triad advisory: helper units pass'
+else
+    fail 'Triad advisory: helper units pass'
+fi
+
+printf '%s\n' 'Given: single repositories bootstrapped on a pseudo-terminal'
+if python3 - "$SETUP_SCRIPT" "$TMPDIR_ROOT/triad-advisory-pty" "$ADVISORY_SINGLE_REPO" "${THREE_LEG_FLAGS[@]}" <<'PY'
+from pathlib import Path
+import os
+import select
+import signal
+import stat
+import subprocess
+import sys
+import time
+
+setup_script = sys.argv[1]
+fixture_root = Path(sys.argv[2])
+reference_repo = Path(sys.argv[3])
+flags = sys.argv[4:]
+fixture_root.mkdir()
+failures = 0
+QUESTION = b"Press Enter to continue"
+NEEDLE = "is the preferred project shape; it stays elective and confers nothing."
+
+
+def check(condition, label):
+    global failures
+    if condition:
+        print(f"PASS: Triad advisory terminal: {label}")
+    else:
+        print(f"FAIL: Triad advisory terminal: {label}")
+        failures += 1
+
+
+def tree(root):
+    entries = {}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root)
+        if relative.parts[0] == ".git":
+            continue
+        mode = path.lstat().st_mode
+        content = path.read_bytes() if stat.S_ISREG(mode) else None
+        entries[relative.as_posix()] = (stat.S_IFMT(mode), stat.S_IMODE(mode), content)
+    return entries
+
+
+def make_repo(name):
+    repo = fixture_root / name / "repo"
+    (repo / ".specify" / "templates").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+    for state in ("integration.json", "init-options.json"):
+        (repo / ".specify" / state).write_text('{"integration":"claude"}\n', encoding="utf-8")
+    (repo / ".specify" / "templates" / "spec-template.md").write_text("# Spec template\n", encoding="utf-8")
+    return repo
+
+
+def run_on_terminal(repo, answers, interrupt=False, ci=None, timeout=120):
+    """Run the bootstrap with stdin, stdout and stderr on one pseudo-terminal.
+
+    Each answer is written when the next question appears; with ``interrupt``
+    the first question is answered by SIGINT instead, sent again each second
+    until the process ends, because a signal landing between the prompt and the
+    blocking read is absorbed without interrupting that read. Bounded by
+    ``timeout``.
+    """
+    environment = {key: value for key, value in os.environ.items() if key != "CI"}
+    if ci is not None:
+        environment["CI"] = ci
+    master, slave = os.openpty()
+    process = subprocess.Popen(
+        [sys.executable, setup_script, "--repo", str(repo), *flags],
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
+        env=environment,
+        close_fds=True,
+        start_new_session=True,
+    )
+    os.close(slave)
+    output = b""
+    asked = 0
+    pending = list(answers)
+    deadline = time.monotonic() + timeout
+    timed_out = False
+    interrupted_at = None
+    try:
+        while True:
+            if time.monotonic() > deadline:
+                timed_out = True
+                process.kill()
+                break
+            if (
+                interrupted_at is not None
+                and process.poll() is None
+                and time.monotonic() - interrupted_at > 1.0
+            ):
+                process.send_signal(signal.SIGINT)
+                interrupted_at = time.monotonic()
+            ready, _, _ = select.select([master], [], [], 0.2)
+            if not ready:
+                if process.poll() is not None:
+                    break
+                continue
+            try:
+                chunk = os.read(master, 65536)
+            except OSError:
+                break
+            if not chunk:
+                break
+            output += chunk
+            while asked < output.count(QUESTION):
+                asked += 1
+                if interrupt:
+                    process.send_signal(signal.SIGINT)
+                    interrupted_at = time.monotonic()
+                elif pending:
+                    os.write(master, pending.pop(0))
+    finally:
+        os.close(master)
+    status = process.wait(timeout=30)
+    return status, output.decode("utf-8", "replace"), asked, timed_out
+
+
+reference = tree(reference_repo)
+for name, answers, expected_questions in (
+    ("enter", [b"\n"], 1),
+    ("unrecognised", [b"maybe later\n"], 1),
+    ("typed-no", [b"no\n"], 1),
+    ("steps", [b"s\n", b"\n"], 2),
+    ("steps-then-anything", [b"SHOW\n", b"no\n"], 2),
+    ("end-of-file", [b"\x04"], 1),
+):
+    repo = make_repo(name)
+    status, output, asked, timed_out = run_on_terminal(repo, answers)
+    check(not timed_out, f"{name}: the run never hangs")
+    check(status == 0, f"{name}: the run exits 0 (got {status})")
+    check(output.count(NEEDLE) == 1, f"{name}: the advisory is shown once")
+    check("warning: This is a single repository." not in output, f"{name}: at a terminal the advisory is said, not warned")
+    check(asked == expected_questions, f"{name}: {expected_questions} question(s) asked (got {asked})")
+    check("\ndone" in output.replace("\r\n", "\n"), f"{name}: the run continues to the end")
+    check(tree(repo) == reference, f"{name}: the run writes exactly what a non-interactive run writes")
+    check(not (repo / "single-repository.yaml").exists(), f"{name}: no record is written from the question")
+    if name.startswith("steps"):
+        check("./adopt-project.py plan --source" in output, f"{name}: the steps name adopt-project.py")
+        check("kind: single-repository-record, decided_by, decided_on and reason" in output, f"{name}: the steps name the record's fields")
+        check("The record is optional, is never owed, and confers nothing." in output, f"{name}: the steps restate the posture")
+
+repo = make_repo("interrupt")
+before = tree(repo)
+status, output, asked, timed_out = run_on_terminal(repo, [], interrupt=True)
+check(not timed_out, "interrupt: the run never hangs")
+check(status == -signal.SIGINT, f"interrupt: the run ends as an interrupt ends, by SIGINT (got {status})")
+check("Stopped at your request; nothing was written." in output, "interrupt: the stop is said")
+check(tree(repo) == before, "interrupt: nothing was written")
+
+repo = make_repo("ci")
+status, output, asked, timed_out = run_on_terminal(repo, [], ci="true")
+check(not timed_out, "CI: the run never hangs")
+check(status == 0, f"CI: the run exits 0 (got {status})")
+check(asked == 0, "CI: nothing is asked on a terminal under CI")
+check("warning: This is a single repository." in output, "CI: the advisory is a warning")
+check(tree(repo) == reference, "CI: the run writes exactly what a non-interactive run writes")
+
+raise SystemExit(1 if failures else 0)
+PY
+then
+    pass 'Triad advisory: the terminal question continues by default and converts nothing'
+else
+    fail 'Triad advisory: the terminal question continues by default and converts nothing'
+fi
+
 printf '%s\n' 'Given: skills and commands that should carry the managed shape block'
 SHAPE_BLOCK_ROOT="$TMPDIR_ROOT/shape-block-root"
 SHAPE_BLOCK_HOME="$TMPDIR_ROOT/shape-block-home"
