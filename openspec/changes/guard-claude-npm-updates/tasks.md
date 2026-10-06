@@ -7,5 +7,5 @@
 
 ## 2. Verification and delivery
 
-- [ ] 2.1 Record Speckit test and per-bench verification evidence, identifying
+- [x] 2.1 Record Speckit test and per-bench verification evidence, identifying
   source landing and image activation boundaries separately.

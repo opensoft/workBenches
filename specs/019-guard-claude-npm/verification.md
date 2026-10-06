@@ -21,7 +21,7 @@ Guard deployed in place, policy configured as brett, consuming CLI verified:
 | py-bench | npm 2.1.291 | verified |
 | cloud-bench | native 2.1.291 | verified, installation unchanged |
 | m365-bench | native 2.1.291 | verified, installation unchanged |
-| cpp-bench | shared 2.1.274 | verified, installation unchanged |
+| cpp-bench | npm 2.1.291 | verified, added user-owned copy; shared floor untouched |
 
 The three stopped managed containers were started for verification. No live
 container was replaced, no session was killed, and no provider credential was
@@ -40,7 +40,23 @@ personalized bench types passed.
 
 The patched Layer 3 recipe successfully built py-bench:brett with Claude
 2.1.291, UID/GID 1000, Docker socket group 1001 and persisted npm policy.
-Remaining Layer 3 image builds are in progress and will be recorded below.
+All 14 personalized images were rebuilt and passed network-disabled probes
+through their normal zsh login shell, as UID/GID 1000, with the npm executable
+reporting 2.1.291: py, cloud, m365, cpp, dotnet, flutter, frappe, go, rust, java,
+php, ops, gentec and sim. Each contains the guard and persisted npm policy.
+PHP and Frappe initially hit the 30-second Codex version-probe timeout; both
+succeeded with a 120-second bounded probe. A transient WSL service connection
+timeout was bypassed by routing the Windows Docker client to the same verified
+desktop-linux engine and named bench, without restarting WSL or Docker.
+
 Image builds do not replace running containers. Layer 0 source approval is
 included for the next shared rebuild; this work does not claim a Layer 0
 rebuild or unrelated CLI upgrades.
+
+## Delivery checks
+
+PR #136's CI, including the new real-npm job, passed at code head 09d8d15.
+An explicit Codex review was requested; the connector reported exhausted
+code-review quota, so no Codex review is claimed. Brett authorized opening and
+landing the PR after checks pass. This evidence-only update is rechecked
+before landing.
