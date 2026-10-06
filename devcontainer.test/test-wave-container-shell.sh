@@ -42,6 +42,8 @@ run_launcher_case() {
         *) expected_config_image="${bench}:tester" ;;
     esac
     mkdir -p "$fake_home" "$fake_root/devBenches/pyBench/.devcontainer" "$fake_root/devBenches/pyBench/scripts" "$fake_root/devBenches/dotNetBench/.devcontainer" "$fake_root/devBenches/rustBench/.devcontainer" "$fake_root/customBench/.devcontainer" "$fake_root/devBenches/scripts" "$fake_root/scripts" "$mock_bin"
+    mkdir -p "$fake_root/user-layer"
+    cp "$repo_root/user-layer/claude-npm-guard" "$fake_root/user-layer/claude-npm-guard"
     : > "$fake_root/devBenches/pyBench/.devcontainer/devcontainer.json"
     : > "$fake_root/devBenches/pyBench/.devcontainer/docker-compose.yml"
     : > "$fake_root/devBenches/dotNetBench/.devcontainer/devcontainer.json"
@@ -263,6 +265,8 @@ if grep -Fq 'ln -sfn /usr/local/bin/claude "$HOME/.local/bin/claude"' "$launcher
 fi
 
 run_launcher_case preserve-running true missing true true py-bench
+grep -Fq 'exec --user tester py-bench /usr/local/bin/claude-npm-guard --repair' <<<"$CASE_DOCKER_LOG" \
+    || fail "runtime Claude guard was not applied as the bench user"
 grep -q -- '--container py-bench --base py-bench:latest --user tester --project dev-benches --service py-bench' <<<"$CASE_PREPARE_LOG" \
     || fail "safe startup helper did not receive the pyBench lifecycle contract"
 grep -q 'preserving the live container' <<<"$CASE_OUTPUT" || fail "running container was not preserved with a warning"

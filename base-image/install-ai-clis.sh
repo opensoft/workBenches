@@ -168,7 +168,7 @@ fi
 
 log_info "Installing Claude Code CLI from the current npm stable release..."
 if ! run_with_timeout "$NPM_INSTALL_TIMEOUT" "Claude Code npm install" \
-    npm install --prefer-online -g @anthropic-ai/claude-code@latest; then
+    npm install --prefer-online -g --include=optional --allow-scripts=@anthropic-ai/claude-code --strict-allow-scripts @anthropic-ai/claude-code@latest; then
     log_error "Claude Code installation failed (continuing)"
 else
     # npm's selective install-script policy blocks Claude Code's native-binary

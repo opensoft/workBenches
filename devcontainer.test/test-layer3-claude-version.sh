@@ -193,6 +193,8 @@ printf '%s\n' "${FAKE_HOOK_RESULT:-$CLAUDE_CODE_VERSION}" > "$FAKE_CLAUDE_STATE"
 EOF
 printf '%s\n' '#!/usr/bin/env bash' 'echo "2.1.280 (Claude Code)"' > "$sandbox/system-bin/claude"
 chmod +x "$tools/npm" "$tools/node" "$sandbox/system-bin/claude"
+printf '%s\n' '#!/bin/sh' 'test "$1" = --configure' > "$tools/claude-npm-guard"
+chmod +x "$tools/claude-npm-guard"
 
 # run_step <env assignment>...: the RUN as /bin/sh runs it, as the runtime user.
 run_step() {
@@ -207,7 +209,7 @@ run_step() {
 }
 
 run_step || fail 'the RUN failed when npm ran the package hook itself'; ok
-grep -Fxq -- 'install -g @anthropic-ai/claude-code@2.1.284' "$sandbox/npm.log" \
+grep -Fxq -- 'install -g --include=optional --strict-allow-scripts @anthropic-ai/claude-code@2.1.284' "$sandbox/npm.log" \
     || fail "the RUN did not install the exact version into the user prefix ($(cat "$sandbox/npm.log"))"; ok
 [[ ! -e "$sandbox/node.log" ]] || fail 'the RUN ran install.cjs when claude already reported the version'; ok
 

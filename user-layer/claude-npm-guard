@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# Local integrity guard, not an updater or executable selector.
+set -euo pipefail
+
+fail() { printf 'claude-npm-guard: %s\n' "$*" >&2; exit 1; }
+mode="${1:---repair}"
+case "$mode" in
+    --configure|--repair) ;;
+    *) fail 'usage: claude-npm-guard [--configure|--repair]' ;;
+esac
+[[ $# -le 1 ]] || fail 'unexpected arguments'
+command -v npm >/dev/null || fail 'npm is unavailable'
+command -v node >/dev/null || fail 'node is unavailable'
+command -v timeout >/dev/null || fail 'timeout is unavailable'
+
+# Resolve npm settings outside any project. Never print npmrc (it can hold tokens).
+cd "$HOME"
+mkdir -p "$HOME/.local/state/workbenches"
+exec 9>"$HOME/.local/state/workbenches/claude-npm-guard.lock"
+flock -w 30 9 || fail 'another repair is active; try again after it completes'
+npm_config() { timeout -k 5s 15s npm config get "$1" --global; }
+[[ "$(npm_config ignore-scripts)" != true ]] \
+    || fail 'ignore-scripts=true prevents Claude setup; remove that override before updating'
+config_file="$(npm_config userconfig)"
+global_config_file="$(npm_config globalconfig)"
+
+# Append only our approval and optional inclusion. Normalize only those two
+# list keys; retain every other byte, including private registry configuration.
+node - "$config_file" "$global_config_file" <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+let file = process.argv[2];
+if (fs.existsSync(file)) file = fs.realpathSync(file);
+const exists = fs.existsSync(file);
+const stat = exists ? fs.statSync(file) : null;
+if (stat && (stat.uid !== process.getuid() || !stat.isFile()))
+  throw new Error('npm userconfig is not a regular file owned by the runtime user');
+const original = exists ? fs.readFileSync(file, 'utf8') : '';
+const lists = new Map([['allow-scripts', []], ['include', []]]);
+const pattern = /^\s*(allow-scripts|include)(?:\[\])?\s*=\s*(.*?)\s*\r?$/;
+const values = value => value.replace(/\s+[;#].*$/, '').replace(/^["']|["']$/g, '')
+  .split(',').map(v => v.trim()).filter(Boolean);
+const lines = original.split('\n');
+const kept = lines.filter(line => {
+  const match = line.match(pattern);
+  if (!match) return true;
+  lists.get(match[1]).push(...values(match[2]));
+  return false;
+});
+// A new user key shadows the global key: carry forward its effective list.
+const globalFile = process.argv[3];
+if (fs.existsSync(globalFile)) {
+  const inherited = new Map([['allow-scripts', []], ['include', []]]);
+  for (const line of fs.readFileSync(globalFile, 'utf8').split('\n')) {
+    const match = line.match(pattern);
+    if (match) inherited.get(match[1]).push(...values(match[2]));
+  }
+  for (const [key, entries] of lists)
+    if (!entries.length) entries.push(...inherited.get(key));
+}
+lists.get('allow-scripts').push('@anthropic-ai/claude-code');
+lists.get('include').push('optional');
+let updated = kept.join('\n').replace(/\n*$/, '\n');
+for (const [key, entries] of lists)
+  for (const value of new Set(entries)) updated += key + '[]=' + value + '\n';
+if (updated !== original) {
+  const temp = path.join(path.dirname(file), '.workbenches-npmrc-' + process.pid);
+  try {
+    fs.writeFileSync(temp, updated, {flag: 'wx', mode: stat ? stat.mode & 0o600 : 0o600});
+    fs.renameSync(temp, file);
+  } finally { if (fs.existsSync(temp)) fs.unlinkSync(temp); }
+}
+NODE
+
+# npm 11 does not understand allow-scripts yet, but the persisted key protects
+# its future upgrade to npm 12. npm 12 environment/global overrides must not
+# silently defeat the user policy.
+npm_version="$(timeout -k 5s 15s npm --version)"
+if [[ "${npm_version%%.*}" -ge 12 ]]; then
+    approvals="$(npm_config allow-scripts)"
+    [[ ",${approvals//$'\n'/,}," == *",@anthropic-ai/claude-code,"* ]] \
+        || fail 'effective allow-scripts overrides the Claude approval'
+fi
+[[ "$(npm_config include)" == *optional* ]] \
+    || fail 'effective include overrides optional dependencies'
+[[ "$mode" != --configure ]] || exit 0
+
+prefix="$(npm_config prefix)"
+package="$prefix/lib/node_modules/@anthropic-ai/claude-code"
+probe() { timeout -k 5s 15s "$1" --version 2>/dev/null | awk 'NR == 1 {print $1}'; }
+if [[ -f "$package/package.json" ]]; then
+    version="$(node -p 'require(process.argv[1]).version' "$package/package.json")"
+    [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] \
+        || fail 'installed Claude package has an invalid version'
+    binary="$prefix/bin/claude"
+    if [[ "$(probe "$binary" || true)" != "$version" ]]; then
+        [[ -O "$package/install.cjs" ]] \
+            || fail 'Claude install hook is missing or not owned by the runtime user'
+        timeout -k 5s 30s node "$package/install.cjs" >&2 \
+            || fail 'installed Claude postinstall failed'
+    fi
+    [[ "$(probe "$binary" || true)" == "$version" ]] \
+        || fail "native payload missing or wrong version; reinstall: npm install -g --include=optional @anthropic-ai/claude-code@$version"
+    printf 'claude-npm-guard: verified npm %s (%s)\n' "$version" "$binary"
+else
+    binary="$(command -v claude || true)"
+    [[ -n "$binary" ]] || fail 'no Claude installation found'
+    version="$(probe "$binary" || true)"
+    [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] \
+        || fail 'selected non-npm Claude installation is not runnable'
+    printf 'claude-npm-guard: verified existing %s (%s); installation unchanged\n' "$version" "$binary"
+fi

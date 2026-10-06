@@ -603,6 +603,7 @@ opencode_launcher="$workbenches_root/base-image/files/opencode-profile"
 mcp_sync_launcher="$workbenches_root/base-image/files/workbenches-mcp-sync"
 provider_launcher="$workbenches_root/base-image/files/provider-profile"
 pi_launcher="$workbenches_root/base-image/files/pi-profile"
+claude_npm_guard="$workbenches_root/user-layer/claude-npm-guard"
 
 install_ai_profile_launchers() {
     if [[ ! -f "$claude_launcher" \
@@ -625,6 +626,7 @@ install_ai_profile_launchers() {
         "$mcp_sync_launcher"
         "$provider_launcher"
         "$pi_launcher"
+        "$claude_npm_guard"
     )
     local bundle_hash
     bundle_hash="$(
@@ -640,6 +642,10 @@ install_ai_profile_launchers() {
     local installed_hash
     installed_hash="$(docker exec --user root "$container" sh -c "cat '$profile_launcher_marker' 2>/dev/null" || true)"
     if [[ "$installed_hash" != "$bundle_hash" ]]; then
+        if [[ -f "$claude_npm_guard" ]]; then
+            docker cp "$claude_npm_guard" "$container:/usr/local/bin/claude-npm-guard"
+            docker exec --user root "$container" chmod 0755 /usr/local/bin/claude-npm-guard
+        fi
         if [[ -f "$claude_launcher" ]]; then
             docker cp "$claude_launcher" "$container:/usr/local/bin/claude-profile"
             docker exec --user root "$container" sh -c \
@@ -693,6 +699,11 @@ install_ai_profile_launchers() {
 ensure_user_cargo_cache
 ensure_container_history
 install_ai_profile_launchers
+
+# Apply after mounts, not just at build time: mounted homes hide image npmrc.
+if [[ -f "$claude_npm_guard" ]]; then
+    docker exec --user "$container_user" "$container" /usr/local/bin/claude-npm-guard --repair
+fi
 
 if [[ "$check_only" == true ]]; then
     docker exec --user "$container_user" \
