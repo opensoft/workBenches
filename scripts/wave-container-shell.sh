@@ -708,7 +708,9 @@ if [[ -f "$claude_npm_guard" ]]; then
     if [[ "$(basename "$shell_path")" == "zsh" ]]; then
         guard_shell_args=(-lic)
     fi
-    docker exec --user "$container_user" --workdir "$workdir" \
+    # Interactive startup also needs a terminal for prompt helpers such as
+    # gitstatus. -t works with piped host input; -i is deliberately omitted.
+    docker exec -t --user "$container_user" --workdir "$workdir" \
         "$container" "$shell_path" "${guard_shell_args[@]}" '/usr/local/bin/claude-npm-guard --repair'
 fi
 

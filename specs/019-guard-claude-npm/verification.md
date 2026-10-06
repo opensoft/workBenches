@@ -71,6 +71,10 @@ startup only for zsh, matching the consuming environment including .zshrc and
 argument regressions. This preserves the existing specification and does not
 introduce a new resolver or require rebuilding any image.
 
+Live non-TTY invocation also exposed prompt-helper warnings during interactive
+startup. Giving the guard its own Docker pseudo-terminal (-t, without forwarding
+stdin) removed those warnings while preserving the selected npm/native CLI.
+
 After Brett explicitly approved replacement, cpp-bench was recreated from
 the rebuilt image (sha256:5c315e0f2eece0195e9b23f8e2635a232d14ef90a43b9d0ce315540a00466bc2).
 Its legacy devcontainer definition still lacks some shared profile mounts;

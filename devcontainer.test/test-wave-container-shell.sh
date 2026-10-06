@@ -265,7 +265,7 @@ if grep -Fq 'ln -sfn /usr/local/bin/claude "$HOME/.local/bin/claude"' "$launcher
 fi
 
 run_launcher_case preserve-running true missing true true py-bench
-grep -Fq 'exec --user tester --workdir /workspace py-bench sh -ic /usr/local/bin/claude-npm-guard --repair' <<<"$CASE_DOCKER_LOG" \
+grep -Fq 'exec -t --user tester --workdir /workspace py-bench sh -ic /usr/local/bin/claude-npm-guard --repair' <<<"$CASE_DOCKER_LOG" \
     || fail "runtime Claude guard was not applied as the bench user"
 grep -q -- '--container py-bench --base py-bench:latest --user tester --project dev-benches --service py-bench' <<<"$CASE_PREPARE_LOG" \
     || fail "safe startup helper did not receive the pyBench lifecycle contract"
