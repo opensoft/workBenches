@@ -236,7 +236,7 @@ MOCK
             MOCK_EXPECTED_IMAGE_ID="${CASE_EXPECTED_IMAGE_ID:-sha256:expected}" \
             "$launcher" \
                 --workbenches-root "$fake_root" \
-                --shell sh \
+                --shell "${CASE_SHELL:-sh}" \
                 ${check_args[@]+"${check_args[@]}"} \
                 "${launcher_args[@]}" \
                 "$@" \
@@ -265,7 +265,7 @@ if grep -Fq 'ln -sfn /usr/local/bin/claude "$HOME/.local/bin/claude"' "$launcher
 fi
 
 run_launcher_case preserve-running true missing true true py-bench
-grep -Fq 'exec --user tester py-bench sh -lc /usr/local/bin/claude-npm-guard --repair' <<<"$CASE_DOCKER_LOG" \
+grep -Fq 'exec --user tester --workdir /workspace py-bench sh -ic /usr/local/bin/claude-npm-guard --repair' <<<"$CASE_DOCKER_LOG" \
     || fail "runtime Claude guard was not applied as the bench user"
 grep -q -- '--container py-bench --base py-bench:latest --user tester --project dev-benches --service py-bench' <<<"$CASE_PREPARE_LOG" \
     || fail "safe startup helper did not receive the pyBench lifecycle contract"
@@ -273,6 +273,13 @@ grep -q 'preserving the live container' <<<"$CASE_OUTPUT" || fail "running conta
 if grep -q '^rm -f py-bench$' <<<"$CASE_DOCKER_LOG"; then
     fail "normal launch removed a running container"
 fi
+
+CASE_SHELL=zsh run_launcher_case guard-zsh-startup true complete false false py-bench
+grep -Fq 'py-bench zsh -lic /usr/local/bin/claude-npm-guard --repair' <<<"$CASE_DOCKER_LOG" \
+    || fail "zsh guard skipped the consuming terminal's interactive startup"
+CASE_SHELL=bash run_launcher_case guard-bash-startup true complete false false py-bench
+grep -Fq 'py-bench bash -ic /usr/local/bin/claude-npm-guard --repair' <<<"$CASE_DOCKER_LOG" \
+    || fail "bash guard did not match the consuming non-login terminal"
 
 CASE_EXPECT_STATUS=1 \
 CASE_CONFIG_IMAGE='ghcr.io/codexfactory/browser-ui-repair-bench:latest' \

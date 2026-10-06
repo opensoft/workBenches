@@ -133,8 +133,16 @@ before="$(sha256sum "$scratch/native/claude")"
 PATH="$scratch/native:$PATH" bash "$guard" --repair | grep -q 'installation unchanged'; ok
 [[ "$before" == "$(sha256sum "$scratch/native/claude")" ]]; ok
 
+# A native CLI exposed only by .zshrc must be selected in the Wave context.
+command -v zsh >/dev/null || fail 'this regression requires zsh'
+mkdir -p "$scratch/zsh-dot"
+printf 'export PATH="%s:$PATH"\n' "$scratch/native" > "$scratch/zsh-dot/.zshrc"
+[[ "$(ZDOTDIR="$scratch/zsh-dot" zsh -lc 'command -v claude' || true)" != "$scratch/native/claude" ]]; ok
+ZDOTDIR="$scratch/zsh-dot" zsh -lic "bash '$guard' --repair" \
+    | grep -q 'verified existing 2.3.4'; ok
+
 grep -Fq 'COPY --chmod=0755 claude-npm-guard /usr/local/bin/claude-npm-guard' "$repo/user-layer/Dockerfile"; ok
 grep -Fq '&& claude-npm-guard --configure' "$repo/user-layer/Dockerfile"; ok
-grep -Fq 'docker exec --user "$container_user" "$container" "$shell_path" -lc' "$repo/scripts/wave-container-shell.sh"; ok
+grep -Fq '"$container" "$shell_path" "${guard_shell_args[@]}"' "$repo/scripts/wave-container-shell.sh"; ok
 grep -Fq -- '--include=optional --allow-scripts=@anthropic-ai/claude-code --strict-allow-scripts' "$repo/base-image/install-ai-clis.sh"; ok
 echo "Claude npm guard: $checks checks passed"
