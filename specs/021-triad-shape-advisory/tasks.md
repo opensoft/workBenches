@@ -88,16 +88,22 @@ These are the second half of packet task 5.4. They come after
 brettheap/new-workstation#52 (task 5.5, the shared protocol, issue #51) merges,
 as their own pull request under #138.
 
-- [ ] D001 Re-sync `openspec_speckit_protocol()` byte-identical to the shared
+- [x] D001 Re-sync `openspec_speckit_protocol()` byte-identical to the shared
   `openspec-speckit-workflow.md`. #52 adds about 40 lines to § Repository Shape
   and § Detecting the shape. The function is an f-string, so its braces are
   doubled.
-- [ ] D002 Re-sync `project_agent_bootstrap_protocol()` with the shared
+  Done in opensoft/workBenches#140, after #52 merged as e081c5a. The rendering
+  is byte-identical to the live file.
+- [x] D002 Re-sync `project_agent_bootstrap_protocol()` with the shared
   `project-agent-bootstrap.md`. It is already two sections behind on `main`,
   which predates this feature. #52 adds a `## Non-Triad Advisory` section and a
   Script Status entry citing #138.
-- [ ] D003 Re-sync `global_agent_entrypoint()` with the shared `AGENTS.md`, whose
+  Done in opensoft/workBenches#140. The rendering is byte-identical to the live
+  file.
+- [x] D003 Re-sync `global_agent_entrypoint()` with the shared `AGENTS.md`, whose
   shape bullet #52 changes.
+  Done in opensoft/workBenches#140. The shape bullet is byte-identical to the
+  live one. The entrypoint as a whole stays a curated subset of `AGENTS.md`.
 
 ## Dependencies
 
