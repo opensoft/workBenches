@@ -76,9 +76,11 @@ with another [P] task.
   `verification.md`.
 - [x] T012 Scan the diff for secrets, tokens and workstation absolute paths
   before pushing, because opensoft/workBenches is public.
-- [ ] T013 Commit with pathspecs and the lane trailers, push the branch, and
+- [x] T013 Commit with pathspecs and the lane trailers, push the branch, and
   open one pull request into `main` that says `Refs #138`. Then comment
   `@codex review`. It is held for Brett Heap's merge word.
+  Done as opensoft/workBenches#139, opened from head `5988ad61`, with
+  `@codex review` posted.
 
 ## Deferred, not part of this pull request
 
