@@ -14,7 +14,7 @@ See [proposal.md](proposal.md). All fourteen child repositories have clean verif
 
 - Set Compose `init: true` at the bench service definition. Dev Containers inherits it from Compose; adding a second JSON setting is unnecessary. The existing Wave override remains defense in depth.
 - Preserve every other service field and keep GPU/user-map overlays unchanged. Templates with explicit patch-version rules receive their patch bump.
-- Check tracked canonical Compose files using Docker Compose's JSON configuration output. Disable interpolation, environment-file resolution and path resolution; do not print the resulting configuration or parser stderr.
+- Check tracked canonical Compose files using Docker Compose's JSON configuration output. Use an empty project env file and a minimal synthetic interpolation environment, disable service environment-file resolution and path resolution, and never print the resulting configuration or parser stderr. Synthetic interpolation avoids Compose 2.x volume-parser failures with unresolved expressions; real user variables and credentials are not inherited.
 - Discover bench-consuming services from their bench images, or the declared app build in Flutter templates; ignore infrastructure-only Compose files and partial override fragments. Missing services/configuration are failures, not silent passes.
 - One parent governance record and Speckit list owns cross-repository delivery. Child PRs link that record; child merge commits are verified before moving parent pins. This avoids fourteen duplicate planning systems for a configuration-only extension.
 

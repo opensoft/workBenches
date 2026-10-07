@@ -62,8 +62,10 @@ class BenchInitTests(unittest.TestCase):
         self.assertNotIn("fixture-secret", output.getvalue())
         command = run.call_args.args[0]
         self.assertEqual(command[command.index("--env-file") + 1], checker.os.devnull)
-        for flag in ("--no-interpolate", "--no-env-resolution", "--no-path-resolution"):
+        for flag in ("--no-env-resolution", "--no-path-resolution"):
             self.assertIn(flag, command)
+        self.assertEqual(run.call_args.kwargs["env"]["USER"], "bench-check")
+        self.assertNotIn("ANTHROPIC_API_KEY", run.call_args.kwargs["env"])
 
     def test_empty_checkout_fails(self):
         with patch.object(checker, "tracked_files", return_value=[]), \

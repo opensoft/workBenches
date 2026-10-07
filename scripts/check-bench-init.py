@@ -58,10 +58,19 @@ def check_root(root):
         for path in files:
             command.extend(["-f", str(root / path)])
         command.extend([
-            "config", "--no-interpolate", "--no-env-resolution",
+            "config", "--no-env-resolution",
             "--no-path-resolution", "--format", "json",
         ])
-        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+        # Compose 2.x cannot parse every volume expression without interpolation.
+        # Resolve schema variables using harmless fixtures, never the user's env.
+        environment = {
+            "PATH": os.environ.get("PATH", ""), "HOME": str(root),
+            "USER": "bench-check", "COMPOSE_PROJECT_NAME": "bench-init-check",
+            "PROJECT_NAME": "bench-init-check", "WORKSPACE_NAME": "bench-init-check",
+        }
+        if "SYSTEMROOT" in os.environ:
+            environment["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=30, env=environment)
         label = " + ".join(str(path) for path in files)
         # Never echo config/stderr: local overlays can contain credentials.
         if result.returncode:

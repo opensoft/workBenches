@@ -15,7 +15,7 @@ python3 scripts/check-bench-init.py . devBenches/pyBench sysBenches/cloudBench
 
 Pass any other child checkout paths as additional arguments. Only tracked full definitions and tracked override chains are checked. Ignored/generated personal overlays can be checked separately with the same Compose `config` flags; a personal override that sets `init: false` defeats the protection.
 
-The checker uses Compose's JSON parser with interpolation, environment-file resolution and path resolution disabled. It prints only repository/file/service identifiers and counts, not configuration values or parser stderr. Parent CI checks the eleven public child repositories: registered submodules at their parent-pinned commit, setup-cloned benches at their default branch. The three private children (goBench, phpBench and cloudBench) check their own checkout in their own CI context, using an immutable public checker commit. This avoids cross-repository access tokens.
+The checker uses Compose's JSON parser with an empty project env file, a minimal synthetic interpolation environment, and service environment-file/path resolution disabled. It prints only repository/file/service identifiers and counts, not configuration values or parser stderr. Parent CI checks the eleven public child repositories: registered submodules at their parent-pinned commit, setup-cloned benches at their default branch. The three private children (goBench, phpBench and cloudBench) check their own checkout in their own CI context, using an immutable public checker commit. This avoids cross-repository access tokens.
 
 ## Activate separately
 
