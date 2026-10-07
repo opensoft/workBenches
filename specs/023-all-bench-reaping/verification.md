@@ -53,6 +53,19 @@ All fourteen child PRs were reviewed at their final heads and squash-merged on 2
 
 Review also caught Java launchers still using the legacy `docker-compose` executable despite requiring the Compose plugin. Those launch and diagnostic commands now invoke `docker compose` directly. Bash syntax and native PowerShell AST checks passed; the final Java head received a fresh Codex review with no major issues.
 
+Repository-local CI follow-ups also passed their final-head checks and Codex reviews, then merged before the parent. All eight now use immutable checker `408aecf0a09e8e89519f7df0150c1ec43cda8daa`, run on every PR/main update without path filters and disable persisted checkout credentials.
+
+| Repository | Merged CI PR | Verified CI merge commit |
+|---|---|---|
+| flutterBench | [6](https://github.com/opensoft/flutterBench/pull/6) | e016cdb1baaf11d27ee4b17b3ce264bcd51a6a7b |
+| opsBench | [4](https://github.com/opensoft/opsBench/pull/4) | 9374001f451d7a3a4ad9e4dd438e4371d2f2d321 |
+| simBench | [3](https://github.com/opensoft/simBench/pull/3) | b3811768f342fe0dad0d6e0a91d42da74c3c8035 |
+| frappeBench | [3](https://github.com/opensoft/frappeBench/pull/3) | be545fc1a124951d455969be45b117a128ed8dd6 |
+| gentecBench | [3](https://github.com/opensoft/gentecBench/pull/3) | 1c12961f2f2fd7f5226671aad4c9ee245bba961e |
+| goBench | [5](https://github.com/opensoft/goBench/pull/5) | ef553d72eac023dbc9157a775cf4039763b09cab |
+| phpBench | [4](https://github.com/opensoft/phpBench/pull/4) | 301facaf67328d6f698ee9735520f2a6ab8841d1 |
+| cloudBench | [7](https://github.com/opensoft/cloudBench/pull/7) | 1d4623d9772e3d2fbe48e84ef4136d8108eda66d |
+
 ## Live activation boundary
 
 Source implementation initially preserved py-bench, cloud-bench and m365-bench. The user subsequently authorized replacing cloud-bench after being told it had eight open shell sessions. That separate operation retained persistent mounts and `sys-benches_cloudbench-zshhistory`; it did not delete volumes or restart WSL/Docker.
