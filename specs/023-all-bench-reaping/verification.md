@@ -4,7 +4,7 @@
 
 On 2026-10-07, the checker rejected all 61 original selected service configurations. Review identified an additional standalone build-only gentec user-map service; the checker now selects its BASE_IMAGE contract and validates it alone and merged.
 
-Eight regression tests pass, including absent/false/string/numeric init values, bench image selection, build-only Flutter/gentec services, infrastructure exclusions, overlay chains, empty checkouts and redacted parser errors. All 63 final service configurations pass with Compose 5.5.1 and an isolated Compose 2.40.3 binary. The Wave launcher lifecycle suite and strict OpenSpec validation pass. The generated pyBench AMD ROCm overlay resolves with init enabled. No images were rebuilt for this setting.
+Nine regression tests pass, including absent/false/string/numeric init values, bench image selection, build-only Flutter/gentec services, infrastructure exclusions, overlay chains, standard `.yml`/`.yaml` Compose names, empty checkouts and redacted parser errors. All 63 final service configurations pass with Compose 5.5.1 and an isolated Compose 2.40.3 binary. The Wave launcher lifecycle suite and strict OpenSpec validation pass. The generated pyBench AMD ROCm overlay resolves with init enabled. No images were rebuilt for this setting.
 
 | Repository | Checked service configurations |
 |---|---:|

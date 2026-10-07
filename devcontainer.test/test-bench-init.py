@@ -54,6 +54,17 @@ class BenchInitTests(unittest.TestCase):
     def test_enabled_service_passes(self):
         self.assertEqual(checker.init_errors({"services": {"cloud-bench": {"image": "cloud-bench:brett", "init": True}}}), [])
 
+    def test_yaml_and_modern_compose_names_are_checked(self):
+        files = [Path(".devcontainer") / name for name in (
+            "compose.yaml", "compose.override.yml", "docker-compose.yaml",
+            "docker-compose.usermap.yaml", "docker-compose-with-adb.yaml",
+        )]
+        chains = list(checker.configurations(files))
+        for index in (0, 2, 3, 4):
+            self.assertIn([files[index]], chains)
+        self.assertIn([files[0], files[1]], chains)
+        self.assertIn([files[2], files[3]], chains)
+
     def test_parser_failure_is_redacted_and_env_loading_disabled(self):
         result = checker.subprocess.CompletedProcess([], 1, "fixture-secret", "fixture-secret")
         output = io.StringIO()

@@ -37,19 +37,21 @@ def tracked_files(root):
 
 def configurations(files):
     """Check full definitions, then each tracked overlay against its base."""
-    bases = [path for path in files if path.name in (
-        "docker-compose.yml", "docker-compose-with-adb.yml", "docker-compose.usermap.yml",
+    bases = [path for path in files if path.suffix in (".yml", ".yaml") and path.stem in (
+        "docker-compose", "compose", "docker-compose-with-adb",
+        "docker-compose.usermap", "compose.usermap",
     )]
     for base in bases:
         yield [base]
     for overlay in files:
-        if overlay.name in (
-            "docker-compose.override.yml", "docker-compose.wslg.yml",
-            "docker-compose.usermap.yml",
+        if overlay.suffix in (".yml", ".yaml") and overlay.stem in (
+            "docker-compose.override", "docker-compose.wslg", "docker-compose.usermap",
+            "compose.override", "compose.wslg", "compose.usermap",
         ):
-            base = overlay.with_name("docker-compose.yml")
-            if base in bases:
-                yield [base, overlay]
+            base_stem = "compose" if overlay.stem.startswith("compose.") else "docker-compose"
+            for base in bases:
+                if base.parent == overlay.parent and base.stem == base_stem:
+                    yield [base, overlay]
 
 
 def check_root(root):
