@@ -28,6 +28,29 @@ Eight regression tests pass, including absent/false/string/numeric init values, 
 
 Compose 2.40.3 still checks whether required service env files exist when resolving with `--no-env-resolution`. The validator therefore stages only tracked Compose YAML plus empty env fixtures, uses a synthetic environment and suppresses configuration/parser output. This preserves full Compose schema checking without reading actual credential files. Eleven public children are checked from parent CI; the three private children use their own CI context and an immutable public checker commit.
 
+## Child publication
+
+All fourteen child PRs were reviewed at their final heads and squash-merged on 2026-10-07. Their default-branch commits were fetched and verified before advancing the eight registered parent gitlinks. The six setup clones remain separate repositories, not newly added submodules.
+
+| Repository | Merged PR | Verified default-branch commit |
+|---|---|---|
+| cppBench | [4](https://github.com/opensoft/cppBench/pull/4) | dd7ff022b8429faac68985f62da80a415cec0731 |
+| dotNetBench | [4](https://github.com/opensoft/dotNetBench/pull/4) | 28aef2202f674d15de1e8559b6e841df9f853197 |
+| flutterBench | [5](https://github.com/opensoft/flutterBench/pull/5) | 67eb337893b9c94337b765e2dc371b16900194eb |
+| frappeBench | [2](https://github.com/opensoft/frappeBench/pull/2) | a7b1f4ef007f21570c66cb1a2720c0b9d798ba5f |
+| goBench | [4](https://github.com/opensoft/goBench/pull/4) | fdf5a43a78eeba8d9fb359866e380e0e415bf68f |
+| javaBench | [4](https://github.com/opensoft/javaBench/pull/4) | 8c6aa973e7d27b55548a553ec401e429b1405426 |
+| phpBench | [3](https://github.com/opensoft/phpBench/pull/3) | 85d7f50f5c3a5e1ae77584a96c8002d845330c68 |
+| pyBench | [7](https://github.com/opensoft/pyBench/pull/7) | cf62c02f18b5a5003b2927c3f2edd83fa05c08d0 |
+| rustBench | [6](https://github.com/opensoft/rustBench/pull/6) | 6dff138ba8cfc697f46a3fb646dc598640f87c0c |
+| 365Bench | [2](https://github.com/opensoft/365Bench/pull/2) | 718cd32614bf5325e995654782b0c60da6e648f8 |
+| cloudBench | [6](https://github.com/opensoft/cloudBench/pull/6) | bc2982c56c1e4d3721237dabafdfe4b0d4f35c75 |
+| opsBench | [3](https://github.com/opensoft/opsBench/pull/3) | 199630a66cab5b68d282f6942c87eb54e698f37c |
+| gentecBench | [2](https://github.com/opensoft/gentecBench/pull/2) | 6212e7cb77d2513844ee0ef47835e935aaaddfa3 |
+| simBench | [2](https://github.com/opensoft/simBench/pull/2) | c7711fe0a8a7e2180acfc7a9c60c0f22914a6276 |
+
+Review also caught Java launchers still using the legacy `docker-compose` executable despite requiring the Compose plugin. Those launch and diagnostic commands now invoke `docker compose` directly. Bash syntax and native PowerShell AST checks passed; the final Java head received a fresh Codex review with no major issues.
+
 ## Live activation boundary
 
 Source implementation initially preserved py-bench, cloud-bench and m365-bench. The user subsequently authorized replacing cloud-bench after being told it had eight open shell sessions. That separate operation retained persistent mounts and `sys-benches_cloudbench-zshhistory`; it did not delete volumes or restart WSL/Docker.
