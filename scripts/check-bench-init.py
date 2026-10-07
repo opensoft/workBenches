@@ -54,7 +54,7 @@ def check_root(root):
     failures = 0
     checked = 0
     for files in configurations(tracked_files(root)):
-        command = ["docker", "compose", "--env-file", os.devnull]
+        command = ["docker", "compose", "--env-file", os.devnull, "--profile", "*"]
         for path in files:
             command.extend(["-f", str(root / path)])
         command.extend([

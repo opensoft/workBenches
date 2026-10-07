@@ -62,6 +62,7 @@ class BenchInitTests(unittest.TestCase):
         self.assertNotIn("fixture-secret", output.getvalue())
         command = run.call_args.args[0]
         self.assertEqual(command[command.index("--env-file") + 1], checker.os.devnull)
+        self.assertEqual(command[command.index("--profile") + 1], "*")
         for flag in ("--no-env-resolution", "--no-path-resolution"):
             self.assertIn(flag, command)
         self.assertEqual(run.call_args.kwargs["env"]["USER"], "bench-check")
