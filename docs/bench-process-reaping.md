@@ -19,7 +19,9 @@ Tracked YAML is staged in a temporary directory with empty env fixtures. Actual 
 
 The checker uses Compose's JSON parser with an empty project env file, a minimal synthetic interpolation environment, and service environment-file/path resolution disabled. It prints only repository/file/service identifiers and counts, not configuration values or parser stderr. Parent PR CI checks the eleven public child repositories: registered submodules at their parent-pinned commit, setup-cloned benches at their default branch. Child-reference validation is restricted to the PR context; push/manual runs check only the parent's own stacks and fixtures. Checkout credentials are not persisted. The three private children (goBench, phpBench and cloudBench) check their own checkout in their own CI context, using an immutable public checker commit. This avoids cross-repository access tokens.
 
-The other five setup clones (flutterBench, frappeBench, opsBench, gentecBench and simBench) also have repository-local checks. Those run on every PR and main update without path filters, so changes to Compose filenames or Dev Container selectors cannot skip the workflow. Registered public benches are checked at the exact proposed parent pin. Checker commits are preserved in parent `main` ancestry through a normal merge commit.
+The five public setup clones (flutterBench, frappeBench, opsBench, gentecBench and simBench) and three private benches have repository-local checks. Those run on every PR and main update without path filters, so changes to Compose filenames or Dev Container selectors cannot skip the workflow. Registered public benches are checked at the exact proposed parent pin. Checker commits are preserved in parent `main` ancestry through a normal merge commit.
+
+Each bench configuration must contain a recognized bench service; a valid sibling template cannot hide an empty or unrecognized variant. The dedicated Frappe `infrastructure/docker-compose.yml` dependency stack is exempt only when its services are MariaDB/Redis infrastructure, not bench services.
 
 ## Activate separately
 

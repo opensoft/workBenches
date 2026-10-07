@@ -19,6 +19,7 @@
 - [x] T007 Recheck live container identities/start times and record exact verification evidence in verification.md.
 - [x] T008 With user publication approval, open and land checked/reviewed child PRs; verify their default-branch commits.
 - [ ] T009 Advance only the eight registered parent gitlinks, land the parent PR and update clean operational checkouts without replacing containers.
+- [ ] T010 Close review gaps with unfiltered repository-local checks for the five public setup clones, align the three private checker references, and reject empty startup variants independently.
 
 ## Dependencies & Execution Order
 

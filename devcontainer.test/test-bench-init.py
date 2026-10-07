@@ -90,6 +90,34 @@ class BenchInitTests(unittest.TestCase):
              contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             self.assertGreater(checker.check_root(Path(".")), 0)
 
+    def test_empty_configuration_cannot_hide_behind_valid_configuration(self):
+        files = [Path("valid/docker-compose.yml"), Path("missing/docker-compose.yml")]
+        results = [checker.subprocess.CompletedProcess([], 0, checker.json.dumps(config), "")
+                   for config in (
+                       {"services": {"py-bench": {"image": "py-bench:brett", "init": True}}},
+                       {"services": {"cache": {"image": "redis:7"}}},
+                   )]
+        output = io.StringIO()
+        with patch.object(checker, "tracked_files", return_value=files), \
+             patch.object(checker.shutil, "copyfile"), \
+             patch.object(checker.subprocess, "run", side_effect=results), \
+             contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            self.assertEqual(checker.check_root(Path(".")), 1)
+        self.assertIn("missing/docker-compose.yml: no bench services found", output.getvalue())
+
+    def test_dedicated_infrastructure_stack_is_not_a_bench_variant(self):
+        files = [Path("docker-compose.yml"), Path("infrastructure/docker-compose.yml")]
+        results = [checker.subprocess.CompletedProcess([], 0, checker.json.dumps(config), "")
+                   for config in (
+                       {"services": {"frappe": {"image": "frappe-bench:brett", "init": True}}},
+                       {"services": {"cache": {"image": "redis:7"}, "db": {"image": "mariadb:11"}}},
+                   )]
+        with patch.object(checker, "tracked_files", return_value=files), \
+             patch.object(checker.shutil, "copyfile"), \
+             patch.object(checker.subprocess, "run", side_effect=results), \
+             contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(checker.check_root(Path(".")), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

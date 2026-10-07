@@ -96,6 +96,18 @@ def check_root(root):
             continue
         config = json.loads(result.stdout)
         services = list(bench_services(config))
+        if not services:
+            # Frappe declares its non-bench dependencies as a separate stack.
+            # Do not exempt canonical/template variants merely for using Redis.
+            infrastructure = config.get("services", {})
+            if files == [Path("infrastructure/docker-compose.yml")] and infrastructure and all(
+                service.get("image", "").split(":", 1)[0].rsplit("/", 1)[-1] in ("mariadb", "redis")
+                for service in infrastructure.values()
+            ):
+                continue
+            print(f"FAIL {repository}/{label}: no bench services found", file=sys.stderr)
+            failures += 1
+            continue
         checked += len(services)
         errors = init_errors(config)
         if errors:

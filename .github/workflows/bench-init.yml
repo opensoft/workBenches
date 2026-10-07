@@ -2,13 +2,6 @@ name: Bench process reaping
 
 on:
   pull_request:
-    paths:
-      - .github/workflows/bench-init.yml
-      - scripts/check-bench-init.py
-      - devcontainer.test/**
-      - devBenches/**
-      - sysBenches/**
-      - bioBenches/**
   push:
     branches: [main]
     paths:

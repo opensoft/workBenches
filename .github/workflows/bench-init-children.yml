@@ -4,13 +4,6 @@ name: Bench child process reaping
 # default-branch push or manual dispatch entry point.
 on:
   pull_request:
-    paths:
-      - .github/workflows/bench-init*.yml
-      - scripts/check-bench-init.py
-      - devcontainer.test/**
-      - devBenches/**
-      - sysBenches/**
-      - bioBenches/**
 
 permissions:
   contents: read
