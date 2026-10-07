@@ -1,6 +1,6 @@
 # Verification: Bench Process Reaping
 
-Date: 2026-10-07. Source branch: `021-fix-bench-reaping`.
+Date: 2026-10-07. Source branch: `022-fix-bench-reaping`.
 
 ## Source checks
 
@@ -31,3 +31,5 @@ The initial Docker diff probes did not complete. Their diagnostic clients were s
 ## Publication
 
 The normal Wave launcher reuses the repaired live container successfully. Durable source is isolated on this feature branch; future recreation from main requires publishing/landing the source fix. OpenSpec remains unarchived until delivery completes.
+
+Codex review identified an existing feature 021 on current main and divergent active-plan selectors. The git feature hook's dry-run confirmed 022 is the next available prefix; the feature and branch were renumbered accordingly. Both repository-wide selectors remain on the existing clean-sync plan, avoiding unrelated automation changes. The implementation checklist is referenced explicitly through OpenSpec's handoff.

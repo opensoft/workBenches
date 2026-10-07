@@ -22,4 +22,4 @@ None.
 
 ## Impact
 
-The parent repository's Wave launcher and launcher regression suite change. No Layer 0-3 image recipe, bench submodule, credentials, or unrelated live container changes. Spec Kit feature `021-fix-bench-reaping` owns implementation tasks; source remains in its linked feature worktree pending publication.
+The parent repository's Wave launcher and launcher regression suite change. No Layer 0-3 image recipe, bench submodule, credentials, or unrelated live container changes. Spec Kit feature `022-fix-bench-reaping` owns implementation tasks; source remains in its linked feature worktree pending publication. Repository-wide active-plan selectors remain unchanged.

@@ -1,6 +1,6 @@
 # Feature Specification: Bench Process Reaping
 
-**Feature Branch**: `021-fix-bench-reaping`
+**Feature Branch**: `022-fix-bench-reaping`
 
 **Created**: 2026-10-07
 
