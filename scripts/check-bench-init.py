@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -53,14 +54,14 @@ def check_root(root):
     failures = 0
     checked = 0
     for files in configurations(tracked_files(root)):
-        command = ["docker", "compose"]
+        command = ["docker", "compose", "--env-file", os.devnull]
         for path in files:
             command.extend(["-f", str(root / path)])
         command.extend([
             "config", "--no-interpolate", "--no-env-resolution",
             "--no-path-resolution", "--format", "json",
         ])
-        result = subprocess.run(command, capture_output=True, text=True)
+        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
         label = " + ".join(str(path) for path in files)
         # Never echo config/stderr: local overlays can contain credentials.
         if result.returncode:
@@ -87,7 +88,7 @@ def main():
     args = parser.parse_args()
     try:
         return int(sum(check_root(root) for root in args.roots) != 0)
-    except (OSError, subprocess.CalledProcessError, ValueError):
+    except (OSError, subprocess.SubprocessError, ValueError):
         print("FAIL: configuration check could not complete; verify Git/Docker Compose and checkout paths", file=sys.stderr)
         return 1
 

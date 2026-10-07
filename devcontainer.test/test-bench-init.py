@@ -2,8 +2,11 @@
 """Regression tests for bench service selection and missing/disabled init."""
 
 import importlib.util
+import contextlib
+import io
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 
 path = Path(__file__).resolve().parents[1] / "scripts" / "check-bench-init.py"
@@ -48,6 +51,24 @@ class BenchInitTests(unittest.TestCase):
 
     def test_enabled_service_passes(self):
         self.assertEqual(checker.init_errors({"services": {"cloud-bench": {"image": "cloud-bench:brett", "init": True}}}), [])
+
+    def test_parser_failure_is_redacted_and_env_loading_disabled(self):
+        result = checker.subprocess.CompletedProcess([], 1, "fixture-secret", "fixture-secret")
+        output = io.StringIO()
+        with patch.object(checker, "tracked_files", return_value=[Path("docker-compose.yml")]), \
+             patch.object(checker.subprocess, "run", return_value=result) as run, \
+             contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            self.assertGreater(checker.check_root(Path(".")), 0)
+        self.assertNotIn("fixture-secret", output.getvalue())
+        command = run.call_args.args[0]
+        self.assertEqual(command[command.index("--env-file") + 1], checker.os.devnull)
+        for flag in ("--no-interpolate", "--no-env-resolution", "--no-path-resolution"):
+            self.assertIn(flag, command)
+
+    def test_empty_checkout_fails(self):
+        with patch.object(checker, "tracked_files", return_value=[]), \
+             contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertGreater(checker.check_root(Path(".")), 0)
 
 
 if __name__ == "__main__":
