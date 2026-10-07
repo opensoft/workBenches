@@ -5,10 +5,58 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+
+
+BASE_STEMS = ("docker-compose", "compose", "docker-compose-with-adb",
+              "docker-compose.usermap", "compose.usermap")
+OVERLAY_STEMS = ("docker-compose.override", "docker-compose.wslg", "docker-compose.usermap",
+                 "compose.override", "compose.wslg", "compose.usermap")
+
+
+def jsonc(text):
+    """Preserve quoted strings while removing JSONC comments/trailing commas."""
+    string = r'"(?:\\.|[^"\\])*"'
+    text = re.sub("(" + string + r")|/\*.*?\*/|//[^\r\n]*",
+                  lambda match: match.group(1) or "", text, flags=re.S)
+    text = re.sub("(" + string + r")|,\s*([}\]])",
+                  lambda match: match.group(1) or match.group(2), text, flags=re.S)
+    return json.loads(text)
+
+
+def validate_declared_compose_files(root, files):
+    """Reject selectors the fixed-name source audit cannot actually validate."""
+    for source in files:
+        if source.name not in ("devcontainer.json", ".devcontainer.json"):
+            continue
+        config = jsonc((root / source).read_text())
+        if not isinstance(config, dict):
+            raise ValueError("Invalid Dev Container declaration")
+        references = config.get("dockerComposeFile", [])
+        if isinstance(references, str):
+            references = [references]
+        if not isinstance(references, list):
+            raise ValueError("Invalid Compose selector")
+        for reference in references:
+            if not isinstance(reference, str) or "://" in reference:
+                raise ValueError("Unsupported Compose selector")
+            reference = reference.replace("${localWorkspaceFolder}", str(root))
+            target = (root / source.parent / reference).resolve().relative_to(root)
+            if target not in files:
+                # Generated/personal overlays are outside tracked-source checks.
+                ignored = subprocess.run(
+                    ["git", "-C", str(root), "check-ignore", "--quiet", "--", str(target)],
+                    capture_output=True, shell=False,
+                )
+                if ignored.returncode == 0:
+                    continue
+                raise ValueError("Untracked Compose selector")
+            if target.suffix not in (".yml", ".yaml") or target.stem not in BASE_STEMS + OVERLAY_STEMS:
+                raise ValueError("Unsupported Compose filename; extend the checker explicitly")
 
 
 def bench_services(config):
@@ -37,17 +85,11 @@ def tracked_files(root):
 
 def configurations(files):
     """Check full definitions, then each tracked overlay against its base."""
-    bases = [path for path in files if path.suffix in (".yml", ".yaml") and path.stem in (
-        "docker-compose", "compose", "docker-compose-with-adb",
-        "docker-compose.usermap", "compose.usermap",
-    )]
+    bases = [path for path in files if path.suffix in (".yml", ".yaml") and path.stem in BASE_STEMS]
     for base in bases:
         yield [base]
     for overlay in files:
-        if overlay.suffix in (".yml", ".yaml") and overlay.stem in (
-            "docker-compose.override", "docker-compose.wslg", "docker-compose.usermap",
-            "compose.override", "compose.wslg", "compose.usermap",
-        ):
+        if overlay.suffix in (".yml", ".yaml") and overlay.stem in OVERLAY_STEMS:
             base_stem = "compose" if overlay.stem.startswith("compose.") else "docker-compose"
             for base in bases:
                 if base.parent == overlay.parent and base.stem == base_stem:
@@ -59,7 +101,9 @@ def check_root(root):
     repository = root.parent.name.removesuffix("-worktrees") if root.parent.name.endswith("-worktrees") else root.name
     failures = 0
     checked = 0
-    for files in configurations(tracked_files(root)):
+    tracked = tracked_files(root)
+    validate_declared_compose_files(root, tracked)
+    for files in configurations(tracked):
         with tempfile.TemporaryDirectory(prefix="bench-init-") as temporary:
             stage = Path(temporary)
             arguments = ["--env-file", os.devnull, "--profile", "*"]
@@ -127,7 +171,7 @@ def main():
     try:
         return int(sum(check_root(root) for root in args.roots) != 0)
     except (OSError, subprocess.SubprocessError, ValueError):
-        print("FAIL: configuration check could not complete; verify Git/Docker Compose and checkout paths", file=sys.stderr)
+        print("FAIL: configuration check could not complete; verify Git/Docker Compose, checkout paths and supported Compose selectors", file=sys.stderr)
         return 1
 
 

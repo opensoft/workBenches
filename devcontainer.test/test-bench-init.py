@@ -16,6 +16,37 @@ spec.loader.exec_module(checker)
 
 
 class BenchInitTests(unittest.TestCase):
+    def test_jsonc_preserves_strings_and_accepts_comments_and_trailing_commas(self):
+        text = r'''{
+            // comment
+            "url": "https://example.invalid/a/*literal*/",
+            "note": "value, }",
+            "dockerComposeFile": ["docker-compose.yml",],
+        }'''
+        config = checker.jsonc(text)
+        self.assertEqual(config["url"], "https://example.invalid/a/*literal*/")
+        self.assertEqual(config["note"], "value, }")
+        self.assertEqual(config["dockerComposeFile"], ["docker-compose.yml"])
+
+    def test_custom_selector_cannot_hide_behind_standard_sibling(self):
+        files = [Path(".devcontainer/devcontainer.json"),
+                 Path(".devcontainer/docker-compose.yml"),
+                 Path(".devcontainer/custom-compose.yml")]
+        text = '{"dockerComposeFile": ["docker-compose.yml", "custom-compose.yml"]}'
+        with patch.object(Path, "read_text", return_value=text):
+            with self.assertRaises(ValueError):
+                checker.validate_declared_compose_files(Path(".").resolve(), files)
+
+    def test_ignored_generated_selector_remains_outside_source_checks(self):
+        files = [Path(".devcontainer/devcontainer.json"), Path(".devcontainer/docker-compose.yml")]
+        text = '{"dockerComposeFile": ["docker-compose.yml", "docker-compose.amd-rocm.generated.yml"]}'
+        result = checker.subprocess.CompletedProcess([], 0, "", "")
+        with patch.object(Path, "read_text", return_value=text), \
+             patch.object(checker.subprocess, "run", return_value=result) as run:
+            checker.validate_declared_compose_files(Path(".").resolve(), files)
+        self.assertIn("check-ignore", run.call_args.args[0])
+        self.assertIs(run.call_args.kwargs["shell"], False)
+
     def test_missing_and_disabled_are_rejected(self):
         for setting in ({}, {"init": False}, {"init": "true"}, {"init": 1}):
             with self.subTest(setting=setting):

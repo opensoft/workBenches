@@ -20,6 +20,7 @@
 - [x] T008 With user publication approval, open and land checked/reviewed child PRs; verify their default-branch commits.
 - [ ] T009 Advance only the eight registered parent gitlinks, land the parent PR and update clean operational checkouts without replacing containers.
 - [x] T010 Close review gaps with unfiltered repository-local checks for the five public setup clones, align the three private checker references, and reject empty startup variants independently.
+- [ ] T011 Reject unsupported declared Compose selectors and align the final reviewed checker release in repository-local CI before parent publication.
 
 ## Dependencies & Execution Order
 

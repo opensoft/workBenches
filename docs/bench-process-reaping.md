@@ -23,6 +23,8 @@ The five public setup clones (flutterBench, frappeBench, opsBench, gentecBench a
 
 Each bench configuration must contain a recognized bench service; a valid sibling template cannot hide an empty or unrecognized variant. The dedicated Frappe `infrastructure/docker-compose.yml` dependency stack is exempt only when its services are MariaDB/Redis infrastructure, not bench services.
 
+Tracked `devcontainer.json` and `.devcontainer.json` Compose selectors are parsed as JSONC and checked against the audited filename contract. Unsupported tracked filenames, missing non-ignored files and references outside the checkout fail explicitly; renaming a startup file requires extending the checker before merging. Git-ignored generated/personal overlays remain outside tracked-source verification and must be checked separately.
+
 ## Activate separately
 
 This is a container creation setting, not an image setting. No Layer 0-3 rebuild is required. Rebuilding an image or restarting an existing container does not change its `HostConfig.Init`.
