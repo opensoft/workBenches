@@ -60,7 +60,7 @@ def check_root(root):
     for files in configurations(tracked_files(root)):
         with tempfile.TemporaryDirectory(prefix="bench-init-") as temporary:
             stage = Path(temporary)
-            command = ["docker", "compose", "--env-file", os.devnull, "--profile", "*"]
+            arguments = ["--env-file", os.devnull, "--profile", "*"]
             # Compose 2 still stats required env files with --no-env-resolution.
             # Stage only the tracked YAML and empty fixtures, never real env files.
             for path in files:
@@ -71,8 +71,8 @@ def check_root(root):
                     if not parent.is_relative_to(stage):
                         break
                     (parent / ".env").touch()
-                command.extend(["-f", str(target)])
-            command.extend([
+                arguments.extend(["-f", str(target)])
+            arguments.extend([
                 "config", "--no-env-resolution",
                 "--no-path-resolution", "--format", "json",
             ])
@@ -83,7 +83,8 @@ def check_root(root):
             }
             if "SYSTEMROOT" in os.environ:
                 environment["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
-            result = subprocess.run(command, capture_output=True, text=True, timeout=30, shell=False,
+            result = subprocess.run(["docker", "compose", *arguments],
+                                    capture_output=True, text=True, timeout=30, shell=False,
                                     env=environment, cwd=stage / files[0].parent)
         label = " + ".join(str(path) for path in files)
         # Never echo config/stderr: local overlays can contain credentials.
