@@ -255,7 +255,13 @@ MOCK
     CASE_ROCM_LOG="$(cat "$rocm_log" 2>/dev/null || true)"
     CASE_SONARQUBE_LOG="$(cat "$sonarqube_log" 2>/dev/null || true)"
     CASE_LIFECYCLE_LOG="$(cat "$lifecycle_log" 2>/dev/null || true)"
+    CASE_COMPOSE_OVERRIDE="$(cat "$fake_home/.cache/workbenches/wave-compose/${expected_config_image%%:*}.override.yml" 2>/dev/null || true)"
     rm -rf "$case_root"
+}
+
+assert_compose_init() {
+    grep -q '^    init: true$' <<<"$CASE_COMPOSE_OVERRIDE" \
+        || fail "$1 did not enable runtime process reaping in its Compose override"
 }
 
 bash -n "$launcher"
@@ -300,10 +306,12 @@ fi
 run_launcher_case explicit-repair true complete false true py-bench --repair
 grep -q '^rm -f py-bench$' <<<"$CASE_DOCKER_LOG" || fail "--repair did not remove the existing container"
 grep -q '^compose ' <<<"$CASE_DOCKER_LOG" || fail "--repair did not recreate the container"
+assert_compose_init "explicit repair"
 
 run_launcher_case stopped-auto-repair false missing false false py-bench
 grep -q '^rm py-bench$' <<<"$CASE_DOCKER_LOG" || fail "stopped container with missing mounts was not removed safely"
 grep -q '^compose ' <<<"$CASE_DOCKER_LOG" || fail "stopped container with missing mounts was not recreated"
+assert_compose_init "stopped automatic repair"
 
 run_launcher_case started-during-check false missing true true py-bench
 grep -q 'started while Wave mounts were being checked' <<<"$CASE_OUTPUT" || fail "container start race was not reported"
@@ -325,6 +333,7 @@ grep -q -- "compose -f .*/custom-compose.yml" <<<"$CASE_DOCKER_LOG" \
 CASE_CONTAINER_EXISTS=false CASE_EXPLICIT_COMPOSE=true run_launcher_case dotnet-explicit-compose-first-create false missing false false dotNetBench
 grep -q -- "compose -f .*/custom-compose.yml" <<<"$CASE_DOCKER_LOG" \
     || fail "first creation did not use the explicitly supplied Compose file"
+assert_compose_init "explicit Compose first creation"
 if grep -q '^devcontainer ' <<<"$CASE_DOCKER_LOG"; then
     fail "first creation ignored the explicit Compose file through Dev Containers CLI"
 fi
@@ -341,6 +350,7 @@ CASE_CONTAINER_EXISTS=false CASE_NETWORK_EXISTS=false CASE_LAYER2_EXISTS=false r
     || fail "Wave first creation did not bootstrap a missing pyBench image stack"
 grep -q -- "compose -f .*/devBenches/pyBench/.devcontainer/docker-compose.yml -f .*/devBenches/pyBench/.devcontainer/docker-compose.amd-rocm.generated.yml -f .*/py-bench.override.yml up -d py-bench" <<<"$CASE_DOCKER_LOG" \
     || fail "Wave first creation did not use the bench Compose file, generated ROCm overlay, and Wave override"
+assert_compose_init "Wave first creation"
 grep -q '^network create devbench-shared$' <<<"$CASE_DOCKER_LOG" \
     || fail "Wave first creation did not create pyBench's missing external network"
 [[ "$CASE_ROCM_LOG" == configured ]] || fail "Wave first creation did not regenerate the pyBench ROCm override"
@@ -358,6 +368,7 @@ grep -q -- "compose -f .*/custom-compose.yml -f .*/devBenches/rustBench/.devcont
 CASE_CONTAINER_EXISTS=false CASE_EXPLICIT_COMPOSE=true CASE_GENERIC_COMPOSE=true run_launcher_case generic-explicit-compose-first-create false missing false false custom-bench
 grep -q '^compose-env-present$' <<<"$CASE_DOCKER_LOG" \
     || fail "generic container did not copy its bench-root .env beside the Compose file"
+assert_compose_init "generic Compose first creation"
 
 # ---------------------------------------------------------------------------
 # THE LANE ENVIRONMENT THE CONTAINER IS OPENED WITH — lane-collision-protocol

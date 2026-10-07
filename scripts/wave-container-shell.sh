@@ -353,6 +353,8 @@ write_wave_compose_override() {
     cat > "$override_file" <<EOF
 services:
   $container:
+    # Reap orphaned shell/tool helpers without changing the personalized image.
+    init: true
     volumes:
       - ${home_dir}/projects:/workspace/projects:cached
       - ${history_volume}:${container_history_dir}
