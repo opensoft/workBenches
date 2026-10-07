@@ -30,7 +30,7 @@ def init_errors(config):
 def tracked_files(root):
     result = subprocess.run(
         ["git", "-C", str(root), "ls-files", "-z"],
-        capture_output=True, check=True,
+        capture_output=True, check=True, shell=False,
     )
     return [Path(path.decode()) for path in result.stdout.split(b"\0") if path]
 
@@ -83,7 +83,7 @@ def check_root(root):
             }
             if "SYSTEMROOT" in os.environ:
                 environment["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
-            result = subprocess.run(command, capture_output=True, text=True, timeout=30,
+            result = subprocess.run(command, capture_output=True, text=True, timeout=30, shell=False,
                                     env=environment, cwd=stage / files[0].parent)
         label = " + ".join(str(path) for path in files)
         # Never echo config/stderr: local overlays can contain credentials.

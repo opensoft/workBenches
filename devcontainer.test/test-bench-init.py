@@ -64,6 +64,9 @@ class BenchInitTests(unittest.TestCase):
             self.assertGreater(checker.check_root(Path(".")), 0)
         self.assertNotIn("fixture-secret", output.getvalue())
         command = run.call_args.args[0]
+        self.assertIsInstance(command, list)
+        self.assertEqual(command[:2], ["docker", "compose"])
+        self.assertIs(run.call_args.kwargs["shell"], False)
         self.assertEqual(command[command.index("--env-file") + 1], checker.os.devnull)
         self.assertEqual(command[command.index("--profile") + 1], "*")
         for flag in ("--no-env-resolution", "--no-path-resolution"):

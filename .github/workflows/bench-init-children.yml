@@ -1,0 +1,61 @@
+name: Bench child process reaping
+
+# Keep child-reference validation in the PR cache scope. This workflow has no
+# default-branch push or manual dispatch entry point.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/bench-init*.yml
+      - scripts/check-bench-init.py
+      - devcontainer.test/**
+      - devBenches/**
+      - sysBenches/**
+      - bioBenches/**
+
+permissions:
+  contents: read
+
+jobs:
+  benches:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {bench: cppBench, family: devBenches}
+          - {bench: dotNetBench, family: devBenches}
+          - {bench: flutterBench, family: devBenches}
+          - {bench: frappeBench, family: devBenches}
+          - {bench: javaBench, family: devBenches}
+          - {bench: pyBench, family: devBenches}
+          - {bench: rustBench, family: devBenches}
+          - {bench: 365Bench, family: sysBenches}
+          - {bench: opsBench, family: sysBenches}
+          - {bench: gentecBench, family: bioBenches}
+          - {bench: simBench, family: bioBenches}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          path: workBenches
+          persist-credentials: false
+      - name: Select pinned commit or setup-clone default branch
+        id: child
+        env:
+          BENCH_PATH: ${{ matrix.family }}/${{ matrix.bench }}
+        run: |
+          entry="$(git -C workBenches ls-tree HEAD -- "$BENCH_PATH")"
+          if [[ "$entry" == 160000* ]]; then
+            read -r mode type sha path <<< "$entry"
+            echo "ref=$sha" >> "$GITHUB_OUTPUT"
+          else
+            echo 'ref=main' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: opensoft/${{ matrix.bench }}
+          ref: ${{ steps.child.outputs.ref }}
+          path: bench
+          persist-credentials: false
+      - name: Check canonical services, templates and tracked overlays
+        run: python3 workBenches/scripts/check-bench-init.py bench
