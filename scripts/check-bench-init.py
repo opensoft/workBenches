@@ -5,15 +5,19 @@ import argparse
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
+import tempfile
 
 
 def bench_services(config):
     """Include bench images and Flutter's build-only app, not infrastructure."""
     for name, service in config.get("services", {}).items():
         image = service.get("image", "").split(":", 1)[0].rsplit("/", 1)[-1]
-        if image.endswith(("-bench", "bench-base")) or (
+        build = service.get("build", {})
+        base_image = build.get("args", {}).get("BASE_IMAGE", "") if isinstance(build, dict) else ""
+        if image.endswith(("-bench", "bench-base")) or base_image.startswith("gentec-bench:") or (
             name == "app" and "build" in service
         ):
             yield name, service
@@ -34,7 +38,7 @@ def tracked_files(root):
 def configurations(files):
     """Check full definitions, then each tracked overlay against its base."""
     bases = [path for path in files if path.name in (
-        "docker-compose.yml", "docker-compose-with-adb.yml",
+        "docker-compose.yml", "docker-compose-with-adb.yml", "docker-compose.usermap.yml",
     )]
     for base in bases:
         yield [base]
@@ -54,23 +58,33 @@ def check_root(root):
     failures = 0
     checked = 0
     for files in configurations(tracked_files(root)):
-        command = ["docker", "compose", "--env-file", os.devnull, "--profile", "*"]
-        for path in files:
-            command.extend(["-f", str(root / path)])
-        command.extend([
-            "config", "--no-env-resolution",
-            "--no-path-resolution", "--format", "json",
-        ])
-        # Compose 2.x cannot parse every volume expression without interpolation.
-        # Resolve schema variables using harmless fixtures, never the user's env.
-        environment = {
-            "PATH": os.environ.get("PATH", ""), "HOME": str(root),
-            "USER": "bench-check", "COMPOSE_PROJECT_NAME": "bench-init-check",
-            "PROJECT_NAME": "bench-init-check", "WORKSPACE_NAME": "bench-init-check",
-        }
-        if "SYSTEMROOT" in os.environ:
-            environment["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
-        result = subprocess.run(command, capture_output=True, text=True, timeout=30, env=environment)
+        with tempfile.TemporaryDirectory(prefix="bench-init-") as temporary:
+            stage = Path(temporary)
+            command = ["docker", "compose", "--env-file", os.devnull, "--profile", "*"]
+            # Compose 2 still stats required env files with --no-env-resolution.
+            # Stage only the tracked YAML and empty fixtures, never real env files.
+            for path in files:
+                target = stage / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(root / path, target)
+                for parent in (target.parent, *target.parent.parents):
+                    if not parent.is_relative_to(stage):
+                        break
+                    (parent / ".env").touch()
+                command.extend(["-f", str(target)])
+            command.extend([
+                "config", "--no-env-resolution",
+                "--no-path-resolution", "--format", "json",
+            ])
+            environment = {
+                "PATH": os.environ.get("PATH", ""), "HOME": str(stage),
+                "USER": "bench-check", "COMPOSE_PROJECT_NAME": "bench-init-check",
+                "PROJECT_NAME": "bench-init-check", "WORKSPACE_NAME": "bench-init-check",
+            }
+            if "SYSTEMROOT" in os.environ:
+                environment["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
+            result = subprocess.run(command, capture_output=True, text=True, timeout=30,
+                                    env=environment, cwd=stage / files[0].parent)
         label = " + ".join(str(path) for path in files)
         # Never echo config/stderr: local overlays can contain credentials.
         if result.returncode:

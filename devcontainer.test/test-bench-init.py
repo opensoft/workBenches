@@ -34,6 +34,7 @@ class BenchInitTests(unittest.TestCase):
         for image in ("workbench-base", "dev-bench-base", "sys-bench-base", "bio-bench-base"):
             self.assertEqual(checker.init_errors({"services": {"test": {"image": f"{image}:latest"}}}), ["test"])
         self.assertEqual(checker.init_errors({"services": {"app": {"build": {"context": "."}}}}), ["app"])
+        self.assertEqual(checker.init_errors({"services": {"gentec_bench": {"build": {"args": {"BASE_IMAGE": "gentec-bench:latest"}}}}}), ["gentec_bench"])
 
     def test_unrelated_infrastructure_is_not_selected(self):
         config = {"services": {"db": {"image": "mariadb:11"}, "cache": {"image": "redis:7"},
@@ -46,8 +47,9 @@ class BenchInitTests(unittest.TestCase):
             "docker-compose.usermap.yml", "docker-compose.override.example.yml",
         )]
         chains = list(checker.configurations(files))
-        self.assertEqual(len(chains), 4)
-        self.assertTrue(all(chain[0] == files[0] for chain in chains))
+        self.assertEqual(len(chains), 5)
+        self.assertIn([files[3]], chains)
+        self.assertIn([files[0], files[3]], chains)
 
     def test_enabled_service_passes(self):
         self.assertEqual(checker.init_errors({"services": {"cloud-bench": {"image": "cloud-bench:brett", "init": True}}}), [])
@@ -56,6 +58,7 @@ class BenchInitTests(unittest.TestCase):
         result = checker.subprocess.CompletedProcess([], 1, "fixture-secret", "fixture-secret")
         output = io.StringIO()
         with patch.object(checker, "tracked_files", return_value=[Path("docker-compose.yml")]), \
+             patch.object(checker.shutil, "copyfile"), \
              patch.object(checker.subprocess, "run", return_value=result) as run, \
              contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
             self.assertGreater(checker.check_root(Path(".")), 0)

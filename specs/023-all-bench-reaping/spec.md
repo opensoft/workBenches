@@ -59,7 +59,7 @@ New projects and test benches inherit the protection without interrupting existi
 
 - **SC-001**: All fourteen benches pass canonical configuration validation.
 - **SC-002**: All tracked bench templates and test definitions in scope pass validation.
-- **SC-003**: Zero existing live container identities or start times change during source implementation.
+- **SC-003**: Zero existing live container identities or start times change without separate user authorization.
 - **SC-004**: A regression removing or disabling reaping is rejected by automated checks.
 
 ## Assumptions
