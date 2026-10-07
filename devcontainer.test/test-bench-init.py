@@ -47,6 +47,23 @@ class BenchInitTests(unittest.TestCase):
         self.assertIn("check-ignore", run.call_args.args[0])
         self.assertIs(run.call_args.kwargs["shell"], False)
 
+    def test_empty_selectors_are_rejected(self):
+        files = [Path(".devcontainer/devcontainer.json"), Path(".devcontainer/docker-compose.yml")]
+        for value in ([], "", [""], None):
+            with self.subTest(value=value), \
+                 patch.object(Path, "read_text", return_value=checker.json.dumps({"dockerComposeFile": value})):
+                with self.assertRaises(ValueError):
+                    checker.validate_declared_compose_files(Path(".").resolve(), files)
+
+    def test_ignored_selector_requires_an_audited_tracked_base(self):
+        files = [Path(".devcontainer/devcontainer.json"), Path("other/docker-compose.yml")]
+        text = '{"dockerComposeFile": ["docker-compose.override.yml"]}'
+        result = checker.subprocess.CompletedProcess([], 0, "", "")
+        with patch.object(Path, "read_text", return_value=text), \
+             patch.object(checker.subprocess, "run", return_value=result):
+            with self.assertRaises(ValueError):
+                checker.validate_declared_compose_files(Path(".").resolve(), files)
+
     def test_missing_and_disabled_are_rejected(self):
         for setting in ({}, {"init": False}, {"init": "true"}, {"init": 1}):
             with self.subTest(setting=setting):

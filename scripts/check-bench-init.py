@@ -36,13 +36,16 @@ def validate_declared_compose_files(root, files):
         config = jsonc((root / source).read_text())
         if not isinstance(config, dict):
             raise ValueError("Invalid Dev Container declaration")
-        references = config.get("dockerComposeFile", [])
+        if "dockerComposeFile" not in config:
+            continue
+        references = config["dockerComposeFile"]
         if isinstance(references, str):
             references = [references]
-        if not isinstance(references, list):
+        if not isinstance(references, list) or not references:
             raise ValueError("Invalid Compose selector")
+        has_tracked_base = False
         for reference in references:
-            if not isinstance(reference, str) or "://" in reference:
+            if not isinstance(reference, str) or not reference.strip() or "://" in reference:
                 raise ValueError("Unsupported Compose selector")
             reference = reference.replace("${localWorkspaceFolder}", str(root))
             target = (root / source.parent / reference).resolve().relative_to(root)
@@ -57,6 +60,9 @@ def validate_declared_compose_files(root, files):
                 raise ValueError("Untracked Compose selector")
             if target.suffix not in (".yml", ".yaml") or target.stem not in BASE_STEMS + OVERLAY_STEMS:
                 raise ValueError("Unsupported Compose filename; extend the checker explicitly")
+            has_tracked_base |= target.stem in BASE_STEMS
+        if not has_tracked_base:
+            raise ValueError("Compose selector requires a tracked audited base")
 
 
 def bench_services(config):
