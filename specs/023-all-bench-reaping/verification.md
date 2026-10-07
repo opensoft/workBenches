@@ -36,6 +36,7 @@ Source implementation initially preserved py-bench, cloud-bench and m365-bench. 
 - cloud-bench changed from `68ad7acd4c60` to `4bd57d827ebc`, runtime init enabled, PID 1 docker-init, Brett UID/GID 1000, zero zombies.
 - The original cloud image had been removed from the image store; replacement used the existing `cloud-bench:brett` image `7439ac9cc30a` without rebuilding it.
 - Interactive cloud shell checks returned Claude Code 2.1.291 and Codex CLI 0.161.0.
+- Ten additional real PTY zsh startup/exit probes completed successfully; cloud-bench retained zero zombies afterward.
 - Initial Dev Containers creation attempts timed out even though the second attempt created a running container. A subsequent normal Wave `--check` passed and verified the consuming Claude guard without changing installation.
 - m365-bench retained container `8a07291bc7da` and its start time; live activation there is not authorized by the source rollout.
 
