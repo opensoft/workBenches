@@ -29,12 +29,17 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - name: Check parent stacks and negative fixtures
         run: |
           python3 devcontainer.test/test-bench-init.py
           python3 scripts/check-bench-init.py .
 
   benches:
+    # Child refs come from the proposed pins. Keep validation in PR cache scope,
+    # never the write-capable default-branch workflow_dispatch context.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
@@ -56,6 +61,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: workBenches
+          persist-credentials: false
       - name: Select pinned commit or setup-clone default branch
         id: child
         env:
@@ -73,5 +79,6 @@ jobs:
           repository: opensoft/${{ matrix.bench }}
           ref: ${{ steps.child.outputs.ref }}
           path: bench
+          persist-credentials: false
       - name: Check canonical services, templates and tracked overlays
         run: python3 workBenches/scripts/check-bench-init.py bench
