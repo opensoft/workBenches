@@ -190,9 +190,12 @@ Options:
   --check                  Verify that the container can run a command, then exit
   --repair                 Recreate an existing container before opening it
   -h, --help               Show this help
+
+Replacement discards container-only files; declared bind mounts and volumes remain.
 EOF
 }
 
+original_invocation_args=("$@")
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --workbenches-root) workbenches_root="$2"; shift 2 ;;
@@ -225,6 +228,7 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 expected_layer3_image="${base_image%%:*}:${container_user}"
+expected_image_id=""
 container_exists=false
 if docker container inspect "$container" >/dev/null 2>&1; then
     container_exists=true
@@ -238,6 +242,276 @@ if docker container inspect "$container" >/dev/null 2>&1; then
         echo "Leave the foreign container unchanged; stop it if needed, then rename or remove it to free this name before creating the workBench container." >&2
         exit 1
     fi
+fi
+
+if [[ "$compose_file_explicit" == true ]] && \
+   [[ "$container_exists" != true || "$repair_requested" == true || \
+      "$(docker container inspect -f '{{.State.Running}}' "$container")" != true ]]; then
+    project_config_args=(-f "$compose_file")
+    project_compose_dir="$(dirname "$compose_file")"
+    project_bench_dir="$bench_dir"
+    [[ "$bench_dir_resolved" == true ]] || project_bench_dir="$(dirname "$project_compose_dir")"
+    if [[ ! -f "$project_compose_dir/.env" && -f "$project_bench_dir/.env" ]]; then
+        project_config_args+=(--env-file "$project_bench_dir/.env")
+    fi
+    if ! command -v jq >/dev/null 2>&1 || \
+       ! compose_project="$(docker compose "${project_config_args[@]}" config --format json 2>/dev/null \
+            | jq -er '.name | select(type == "string" and length > 0)' 2>/dev/null)"; then
+        echo "Cannot determine the effective project from the explicit Compose configuration; refusing recovery." >&2
+        exit 1
+    fi
+fi
+
+validate_bind_source() {
+    local source="$1"
+    local destination="$2"
+    local container_home="/home/${container_user}"
+    local expected_type="existing source"
+    case "$destination" in
+        "$container_home"/.zshrc|"$container_home"/.p10k.zsh|"$container_home"/.bashrc|"$container_home"/.gitconfig|"$container_home"/.claude.json|\
+        /usr/lib/libdxcore.so|/usr/lib/libd3d12.so|/usr/lib/libd3d12core.so)
+            expected_type="regular file"
+            [[ -f "$source" ]] && return 0
+            ;;
+        /workspace|/workspace/projects|/mnt/wslg|"${ROCM_ROOT:-/opt/rocm-7.2.0}"|"$container_home"|\
+        "$container_home"/.ssh|"$container_home"/.azure|"$container_home"/.aws|"$container_home"/.kube|\
+        "$container_home"/.claude|"$container_home"/.claude-profiles|"$container_home"/.chatgpt-profiles|\
+        "$container_home"/.opencode-profiles|"$container_home"/.gemini-profiles|"$container_home"/.grok-profiles|\
+        "$container_home"/.glm-profiles|"$container_home"/.pi-profiles|"$container_home"/.oh-my-zsh|\
+        "$container_home"/.codex|"$container_home"/.omnigent|"$container_home"/.agents|"$container_home"/.pi|\
+        "$container_home"/.gemini|"$container_home"/.grok|"$container_home"/.copilot-cli|\
+        "$container_home"/.notebooklm|"$container_home"/.notebooklm-mcp-cli|\
+        "$container_home"/.config/gh|"$container_home"/.config/sonarqube|"$container_home"/.config/workbenches|\
+        "$container_home"/.local/lib/workbenches|"$container_home"/.local/state/workbenches|\
+        "$container_home"/.local/state/opensoft/agenttower/logs)
+            expected_type="directory"
+            [[ -d "$source" ]] && return 0
+            ;;
+        /var/run/docker.sock)
+            expected_type="socket"
+            [[ -S "$source" ]] && return 0
+            ;;
+        *) [[ -e "$source" ]] && return 0 ;;
+    esac
+    echo "Invalid bind source '$source' for '$destination': expected $expected_type. Restore the real source before attempting recovery." >&2
+    return 1
+}
+
+uses_devcontainer_lifecycle() {
+    [[ "$compose_file_explicit" != true \
+        && "$container" != "py-bench" \
+        && -f "$bench_dir/.devcontainer/devcontainer.json" ]]
+}
+
+declared_devcontainer_bind_sources() {
+    local cli=()
+    if command -v devcontainer >/dev/null 2>&1; then
+        cli=(devcontainer)
+    elif command -v npx >/dev/null 2>&1; then
+        cli=(npx -y @devcontainers/cli)
+    else
+        echo "Cannot read declared Dev Container mounts: its CLI is unavailable; refusing recovery." >&2
+        return 1
+    fi
+    cli+=(read-configuration --workspace-folder "$bench_dir" --log-level info)
+    # read-configuration parses JSONC and resolves localEnv/workspace variables
+    # without running initialization, creation, or user commands.
+    {
+        if command -v timeout >/dev/null 2>&1; then
+            timeout --foreground "${WAVE_DEVCONTAINER_UP_TIMEOUT:-25s}" "${cli[@]}"
+        else
+            "${cli[@]}"
+        fi
+    } 2>/dev/null | jq -r '
+        .configuration.mounts[]? |
+        if type == "string" then
+            split(",") | map(capture("^(?<key>[^=]+)=(?<value>.*)$")?) | from_entries
+        else . end |
+        select(.type == "bind") |
+        [(.source // .src), (.target // .destination // .dst)] | @tsv' 2>/dev/null
+}
+
+declared_compose_bind_sources() {
+    if ! command -v jq >/dev/null 2>&1 || [[ ! -f "$compose_file" ]]; then
+        echo "Cannot resolve staged bind sources: jq and the declared Compose file are required; refusing recovery." >&2
+        return 1
+    fi
+    local config_args=(-f "$compose_file")
+    local metadata_compose_dir metadata_bench_dir
+    metadata_compose_dir="$(dirname "$compose_file")"
+    metadata_bench_dir="$bench_dir"
+    [[ "$bench_dir_resolved" == true ]] || metadata_bench_dir="$(dirname "$metadata_compose_dir")"
+    if [[ ! -f "$metadata_compose_dir/.env" && -f "$metadata_bench_dir/.env" ]]; then
+        config_args+=(--env-file "$metadata_bench_dir/.env")
+    fi
+    local overlay
+    if [[ "$container" == py-bench ]]; then
+        overlay="$bench_dir/.devcontainer/docker-compose.amd-rocm.generated.yml"
+        [[ ! -f "$overlay" ]] || config_args+=(-f "$overlay")
+    elif [[ "$container" == rust-bench && -d "$wslg_root" ]]; then
+        overlay="$bench_dir/.devcontainer/docker-compose.wslg.yml"
+        [[ ! -f "$overlay" ]] || config_args+=(-f "$overlay")
+    fi
+    overlay="${WAVE_WORKBENCHES_COMPOSE_CACHE:-$home_dir/.cache/workbenches/wave-compose}/$container.override.yml"
+    [[ ! -f "$overlay" ]] || config_args+=(-f "$overlay")
+    # Render metadata only; do not run initialization, create host sources, or
+    # inspect Docker Desktop's internal paths from the user distro.
+    docker compose "${config_args[@]}" config --format json 2>/dev/null \
+        | jq -r --arg service "$container" '.services[$service].volumes[]? | select(.type == "bind") | [.source, .target] | @tsv' 2>/dev/null
+}
+
+wave_bind_source_for_destination() {
+    local destination="$1" relative
+    case "$destination" in
+        /workspace/projects) printf '%s\n' "$home_dir/projects"; return 0 ;;
+        /var/run/docker.sock) printf '%s\n' /var/run/docker.sock; return 0 ;;
+        "/home/${container_user}"/*)
+            relative="${destination#"/home/${container_user}/"}"
+            # These are the deterministic host binds emitted by the Wave
+            # override writer, not arbitrary paths underneath the user home.
+            case "$relative" in
+                .zshrc|.oh-my-zsh|.p10k.zsh|.bashrc|.gitconfig|.ssh|.config/gh|\
+                .azure|.aws|.kube|.claude|.claude.json|.claude-profiles|.codex|\
+                .chatgpt-profiles|.opencode-profiles|.config/workbenches|\
+                .local/lib/workbenches|.local/state/workbenches|.gemini-profiles|\
+                .grok-profiles|.glm-profiles|.omnigent|.agents|.pi|.pi-profiles|.config/sonarqube|\
+                .gemini|.grok|.copilot-cli|.notebooklm|.notebooklm-mcp-cli|\
+                .local/state/opensoft/agenttower/logs)
+                    printf '%s\n' "$home_dir/$relative"; return 0 ;;
+            esac
+            ;;
+    esac
+    return 1
+}
+
+generated_rocm_bind_source_for_destination() {
+    local destination="$1"
+    [[ "$container" == py-bench && ! -f "$bench_dir/.devcontainer/docker-compose.amd-rocm.generated.yml" ]] || return 1
+    # configure-amd-rocm-wsl.sh emits these deterministic bindings. Resolve
+    # its disposable overlay without writing it or running GPU initialization.
+    if [[ "$destination" == "${ROCM_ROOT:-/opt/rocm-7.2.0}" ]]; then
+        printf '%s\n' "$destination"
+        return 0
+    fi
+    case "$destination" in
+        /usr/lib/libdxcore.so|/usr/lib/libd3d12.so|/usr/lib/libd3d12core.so)
+            printf '/usr/lib/wsl/lib/%s\n' "${destination##*/}"
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+validate_existing_bind_sources() {
+    local binds
+    if ! binds="$(docker container inspect -f '{{range .Mounts}}{{if eq .Type "bind"}}{{printf "%s\t%s\n" .Source .Destination}}{{end}}{{end}}' "$container" 2>/dev/null)"; then
+        echo "Cannot inspect bind sources for '$container'; refusing recovery." >&2
+        return 1
+    fi
+    local source destination declared_binds="" declared_loaded=false
+    local original_source declared_source declared_destination devcontainer_binds
+    while IFS=$'\t' read -r source destination; do
+        [[ -n "$source" ]] || continue
+        if [[ "$source" == /run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/* ]]; then
+            if [[ "$declared_loaded" != true ]]; then
+                if [[ -f "$compose_file" ]]; then
+                    if ! declared_binds="$(declared_compose_bind_sources)"; then
+                        echo "Cannot render declared bind sources for '$container'; refusing recovery." >&2
+                        return 1
+                    fi
+                elif ! uses_devcontainer_lifecycle; then
+                    echo "Cannot render declared bind sources for '$container'; refusing recovery." >&2
+                    return 1
+                fi
+                if uses_devcontainer_lifecycle; then
+                    if ! devcontainer_binds="$(declared_devcontainer_bind_sources)"; then
+                        echo "Cannot read declared Dev Container bind sources for '$container'; refusing recovery." >&2
+                        return 1
+                    fi
+                    # Dev Container mounts override matching Compose targets.
+                    declared_binds="$devcontainer_binds"$'\n'"$declared_binds"
+                fi
+                declared_loaded=true
+            fi
+            original_source=""
+            while IFS=$'\t' read -r declared_source declared_destination; do
+                if [[ "$declared_destination" == "$destination" ]]; then
+                    original_source="$declared_source"
+                    break
+                fi
+            done <<<"$declared_binds"
+            if [[ -z "$original_source" ]]; then
+                original_source="$(wave_bind_source_for_destination "$destination" || true)"
+            fi
+            if [[ -z "$original_source" ]]; then
+                original_source="$(generated_rocm_bind_source_for_destination "$destination" || true)"
+            fi
+            if [[ -z "$original_source" || "$original_source" == /run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/* ]]; then
+                echo "Cannot resolve the real bind source for '$destination' from the declared lifecycle configuration; refusing recovery." >&2
+                return 1
+            fi
+            source="$original_source"
+        fi
+        validate_bind_source "$source" "$destination" || return 1
+    done <<<"$binds"
+}
+
+validate_wave_host_sources() {
+    validate_bind_source "$home_dir/.claude.json" "/home/${container_user}/.claude.json" || return 1
+    local file
+    for file in .zshrc .p10k.zsh .bashrc .gitconfig; do
+        if [[ -e "$home_dir/$file" || -L "$home_dir/$file" ]]; then
+            validate_bind_source "$home_dir/$file" "/home/${container_user}/$file" || return 1
+        fi
+    done
+    local directory target
+    for directory in projects .ssh .azure .aws .kube .config/gh .claude \
+        .claude-profiles .codex .chatgpt-profiles .opencode-profiles .gemini-profiles \
+        .grok-profiles .glm-profiles .omnigent .agents .pi .pi-profiles .oh-my-zsh \
+        .config/workbenches .local/lib/workbenches .local/state/workbenches \
+        .config/sonarqube .gemini .grok .copilot-cli .notebooklm .notebooklm-mcp-cli \
+        .local/state/opensoft/agenttower/logs; do
+        if [[ -e "$home_dir/$directory" || -L "$home_dir/$directory" ]]; then
+            target="/home/${container_user}/$directory"
+            [[ "$directory" != projects ]] || target=/workspace/projects
+            validate_bind_source "$home_dir/$directory" "$target" || return 1
+        fi
+    done
+}
+
+validate_repair_ownership() {
+    local configured_image current_image_id current_project current_service
+    configured_image="$(docker container inspect -f '{{.Config.Image}}' "$container")" || return 1
+    current_image_id="$(docker container inspect -f '{{.Image}}' "$container")" || return 1
+    if [[ "$configured_image" != "$expected_layer3_image" ]] && \
+       [[ -z "$expected_image_id" || "$current_image_id" != "$expected_image_id" ]]; then
+        echo "Refusing recovery for '$container': its image identity changed." >&2
+        return 1
+    fi
+    [[ -n "$compose_project" ]] || return 0
+    current_project="$(docker container inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$container")" || return 1
+    current_service="$(docker container inspect -f '{{ index .Config.Labels "com.docker.compose.service" }}' "$container")" || return 1
+    if [[ "$current_project" != "$compose_project" || "$current_service" != "$container" ]]; then
+        echo "Refusing recovery for '$container': Compose ownership does not match '$compose_project/$container'." >&2
+        return 1
+    fi
+}
+
+# Validate before preparation can remove a stopped stale-image container.
+# Normal running attaches do not inspect newly replaced host-file inodes.
+repair_container_was_running=false
+if [[ "$container_exists" == true ]]; then
+    initial_running="$(docker container inspect -f '{{.State.Running}}' "$container")"
+    [[ "$initial_running" != true ]] || repair_container_was_running=true
+    if [[ "$initial_running" != true || "$repair_requested" == true ]]; then
+        validate_existing_bind_sources || exit 1
+    fi
+fi
+if [[ "$container_exists" != true || "$repair_requested" == true || "$repair_container_was_running" != true ]]; then
+    validate_wave_host_sources || exit 1
+fi
+if [[ "$container_exists" == true && "$repair_requested" == true ]]; then
+    validate_repair_ownership || exit 1
 fi
 
 prepare_script="$workbenches_root/scripts/prepare-bench-start.sh"
@@ -307,6 +581,7 @@ run_devcontainer_up() {
 }
 
 ensure_host_sources() {
+    validate_wave_host_sources || return 1
     mkdir -p \
         "$home_dir/projects" \
         "$home_dir/.ssh" \
@@ -337,13 +612,13 @@ ensure_host_sources() {
         "$home_dir/.notebooklm-mcp-cli" \
         "$home_dir/.local/state/opensoft/agenttower/logs"
 
-    for file in "$home_dir/.zshrc" "$home_dir/.p10k.zsh" "$home_dir/.bashrc" "$home_dir/.gitconfig" "$home_dir/.claude.json"; do
+    for file in "$home_dir/.zshrc" "$home_dir/.p10k.zsh" "$home_dir/.bashrc" "$home_dir/.gitconfig"; do
         [[ -e "$file" ]] || touch "$file"
     done
 }
 
 write_wave_compose_override() {
-    ensure_host_sources
+    ensure_host_sources || return 1
 
     local override_dir="${WAVE_WORKBENCHES_COMPOSE_CACHE:-$home_dir/.cache/workbenches/wave-compose}"
     local override_file="$override_dir/$container.override.yml"
@@ -422,7 +697,7 @@ create_with_compose() {
 
     local override_file
     local compose_args
-    override_file="$(write_wave_compose_override)"
+    override_file="$(write_wave_compose_override)" || return 1
     compose_args=(-f "$compose_file")
     if [[ "$container" == "py-bench" ]]; then
         local shared_network="devbench-shared"
@@ -461,6 +736,7 @@ create_with_compose() {
         compose_args+=(-f "$wslg_compose_file")
     fi
     compose_args+=(-f "$override_file")
+    [[ -z "$compose_project" ]] || compose_args+=(-p "$compose_project")
     echo "Creating $container with docker compose..."
     docker compose "${compose_args[@]}" up -d "$container"
 }
@@ -469,12 +745,6 @@ recreate_with_compose() {
     echo "Recreating $container with Wave compose mounts..."
     docker rm -f "$container" >/dev/null 2>&1 || true
     create_with_compose
-}
-
-uses_devcontainer_lifecycle() {
-    [[ "$compose_file_explicit" != true \
-        && "$container" != "py-bench" \
-        && -f "$bench_dir/.devcontainer/devcontainer.json" ]]
 }
 
 create_for_declared_lifecycle() {
@@ -571,7 +841,13 @@ container_missing_required_mounts() {
 }
 
 if [[ "$repair_requested" == true && "$container_exists" == true ]]; then
-    repair_for_declared_lifecycle
+    validate_repair_ownership
+    validate_existing_bind_sources
+    if [[ "$repair_container_was_running" == true ]]; then
+        repair_for_declared_lifecycle
+    else
+        recreate_stopped_for_declared_lifecycle
+    fi
 elif [[ "$container_exists" != true ]]; then
     # pyBench's initialize command and Compose overlays are reproduced by
     # prepare-bench-start plus create_with_compose. Other devcontainer.json
@@ -581,9 +857,46 @@ elif [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]] && container_missing_
     recreate_stopped_for_declared_lifecycle
 fi
 
-if [[ "$(docker container inspect -f '{{.State.Running}}' "$container")" != "true" ]]; then
+start_container() {
+    local start_error start_status
     echo "Starting $container..."
-    docker start "$container" >/dev/null
+    if start_error="$(
+        if command -v timeout >/dev/null 2>&1; then
+            timeout --foreground 30s docker start "$container"
+        else
+            docker start "$container"
+        fi 2>&1
+    )"; then
+        return 0
+    else
+        start_status=$?
+    fi
+    if [[ "$(docker container inspect -f '{{.State.Running}}' "$container" 2>/dev/null || true)" == true ]]; then
+        echo "Container '$container' is now running; preserving the live container." >&2
+        return 0
+    fi
+    printf '%s\n' "$start_error" >&2
+    if [[ "$start_error" == *"OCI runtime create failed"* \
+        && "$start_error" == *"error mounting"* \
+        && "$start_error" == *"/docker-desktop-bind-mounts/"* \
+        && "$start_error" == *"no such file or directory"* ]]; then
+        validate_repair_ownership || return "$start_status"
+        validate_existing_bind_sources || return "$start_status"
+        echo "The real bind sources are valid, but '$container' has a stale Docker Desktop WSL bind mapping." >&2
+        if [[ "$repair_requested" == true ]]; then
+            echo "Repair was already attempted once; refusing another recreation. Check Docker Desktop integration and the declared mount configuration." >&2
+        else
+            echo "The failed start will not trigger recreation. Explicit --repair recreation discards container-only files but preserves declared bind mounts and volumes." >&2
+            printf 'Recovery command: ' >&2
+            printf '%q ' "$0" ${original_invocation_args[@]+"${original_invocation_args[@]}"} --repair --check >&2
+            printf '\n' >&2
+        fi
+    fi
+    return "$start_status"
+}
+
+if [[ "$(docker container inspect -f '{{.State.Running}}' "$container")" != "true" ]]; then
+    start_container
 fi
 
 ensure_container_history() {
