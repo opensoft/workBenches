@@ -244,7 +244,9 @@ if docker container inspect "$container" >/dev/null 2>&1; then
     fi
 fi
 
-if [[ "$compose_file_explicit" == true ]]; then
+if [[ "$compose_file_explicit" == true ]] && \
+   [[ "$container_exists" != true || "$repair_requested" == true || \
+      "$(docker container inspect -f '{{.State.Running}}' "$container")" != true ]]; then
     project_config_args=(-f "$compose_file")
     project_compose_dir="$(dirname "$compose_file")"
     project_bench_dir="$bench_dir"

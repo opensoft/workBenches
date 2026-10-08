@@ -379,6 +379,14 @@ CASE_EXPLICIT_COMPOSE=true CASE_START_ERROR="$stale_mount_error" CASE_EXPECT_STA
     run_launcher_case custom-recovery-command false complete false false py-bench
 grep -q -- '--compose-file .*/custom-compose.yml' <<<"$CASE_OUTPUT" || fail "recovery command dropped explicit Compose file"
 grep -q -- '--workbenches-root .*/workBenches' <<<"$CASE_OUTPUT" || fail "recovery command dropped explicit source root"
+CASE_EXPLICIT_COMPOSE=true CASE_COMPOSE_CONFIG_FAIL=true \
+    run_launcher_case running-custom-compose-unavailable true complete false false py-bench
+if grep -Eq '^compose .* config ' <<<"$CASE_DOCKER_LOG"; then
+    fail "normal running attach rendered Compose configuration"
+fi
+if grep -Eq '^(rm|devcontainer) ' <<<"$CASE_DOCKER_LOG"; then
+    fail "normal running custom attach reached replacement"
+fi
 
 CASE_NO_BIND_SOURCES=true CASE_HOST_SOURCE=missing CASE_EXPECT_STATUS=1 \
     run_launcher_case legacy-stopped-missing-credentials false complete false false py-bench
