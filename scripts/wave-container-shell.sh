@@ -190,6 +190,8 @@ Options:
   --check                  Verify that the container can run a command, then exit
   --repair                 Recreate an existing container before opening it
   -h, --help               Show this help
+
+Replacement discards container-only files; declared bind mounts and volumes remain.
 EOF
 }
 
@@ -225,6 +227,7 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 expected_layer3_image="${base_image%%:*}:${container_user}"
+expected_image_id=""
 container_exists=false
 if docker container inspect "$container" >/dev/null 2>&1; then
     container_exists=true
@@ -238,6 +241,88 @@ if docker container inspect "$container" >/dev/null 2>&1; then
         echo "Leave the foreign container unchanged; stop it if needed, then rename or remove it to free this name before creating the workBench container." >&2
         exit 1
     fi
+fi
+
+validate_bind_source() {
+    local source="$1"
+    local destination="$2"
+    local container_home="/home/${container_user}"
+    local expected_type="existing source"
+    case "$destination" in
+        "$container_home"/.zshrc|"$container_home"/.p10k.zsh|"$container_home"/.bashrc|"$container_home"/.gitconfig|"$container_home"/.claude.json)
+            expected_type="regular file"
+            [[ -f "$source" ]] && return 0
+            ;;
+        /workspace|/workspace/projects|"$container_home"|"$container_home"/.ssh|"$container_home"/.azure|"$container_home"/.aws|"$container_home"/.kube|"$container_home"/.claude|"$container_home"/.*-profiles|"$container_home"/.oh-my-zsh|"$container_home"/.config/workbenches|"$container_home"/.local/lib/workbenches|"$container_home"/.local/state/workbenches)
+            expected_type="directory"
+            [[ -d "$source" ]] && return 0
+            ;;
+        /var/run/docker.sock)
+            expected_type="socket"
+            [[ -S "$source" ]] && return 0
+            ;;
+        *) [[ -e "$source" ]] && return 0 ;;
+    esac
+    echo "Invalid bind source '$source' for '$destination': expected $expected_type. Restore the real source before attempting recovery." >&2
+    return 1
+}
+
+validate_existing_bind_sources() {
+    local binds
+    if ! binds="$(docker container inspect -f '{{range .Mounts}}{{if eq .Type "bind"}}{{printf "%s\t%s\n" .Source .Destination}}{{end}}{{end}}' "$container" 2>/dev/null)"; then
+        echo "Cannot inspect bind sources for '$container'; refusing recovery." >&2
+        return 1
+    fi
+    local source destination
+    while IFS=$'\t' read -r source destination; do
+        [[ -n "$source" ]] || continue
+        validate_bind_source "$source" "$destination" || return 1
+    done <<<"$binds"
+}
+
+validate_wave_host_file_sources() {
+    validate_bind_source "$home_dir/.claude.json" "/home/${container_user}/.claude.json" || return 1
+    local file
+    for file in .zshrc .p10k.zsh .bashrc .gitconfig; do
+        if [[ -e "$home_dir/$file" || -L "$home_dir/$file" ]]; then
+            validate_bind_source "$home_dir/$file" "/home/${container_user}/$file" || return 1
+        fi
+    done
+}
+
+validate_repair_ownership() {
+    local configured_image current_image_id current_project current_service
+    configured_image="$(docker container inspect -f '{{.Config.Image}}' "$container")" || return 1
+    current_image_id="$(docker container inspect -f '{{.Image}}' "$container")" || return 1
+    if [[ "$configured_image" != "$expected_layer3_image" ]] && \
+       [[ -z "$expected_image_id" || "$current_image_id" != "$expected_image_id" ]]; then
+        echo "Refusing recovery for '$container': its image identity changed." >&2
+        return 1
+    fi
+    [[ -n "$compose_project" ]] || return 0
+    current_project="$(docker container inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$container")" || return 1
+    current_service="$(docker container inspect -f '{{ index .Config.Labels "com.docker.compose.service" }}' "$container")" || return 1
+    if [[ "$current_project" != "$compose_project" || "$current_service" != "$container" ]]; then
+        echo "Refusing recovery for '$container': Compose ownership does not match '$compose_project/$container'." >&2
+        return 1
+    fi
+}
+
+# Validate before preparation can remove a stopped stale-image container.
+# Normal running attaches do not inspect newly replaced host-file inodes.
+repair_container_was_running=false
+if [[ "$container_exists" == true ]]; then
+    initial_running="$(docker container inspect -f '{{.State.Running}}' "$container")"
+    [[ "$initial_running" != true ]] || repair_container_was_running=true
+    if [[ "$initial_running" != true || "$repair_requested" == true ]]; then
+        validate_existing_bind_sources || exit 1
+    fi
+fi
+if [[ "$container_exists" != true || "$repair_requested" == true ]]; then
+    validate_wave_host_file_sources || exit 1
+fi
+if [[ "$container_exists" == true && "$repair_requested" == true ]]; then
+    validate_repair_ownership || exit 1
 fi
 
 prepare_script="$workbenches_root/scripts/prepare-bench-start.sh"
@@ -307,6 +392,7 @@ run_devcontainer_up() {
 }
 
 ensure_host_sources() {
+    validate_wave_host_file_sources || return 1
     mkdir -p \
         "$home_dir/projects" \
         "$home_dir/.ssh" \
@@ -337,7 +423,7 @@ ensure_host_sources() {
         "$home_dir/.notebooklm-mcp-cli" \
         "$home_dir/.local/state/opensoft/agenttower/logs"
 
-    for file in "$home_dir/.zshrc" "$home_dir/.p10k.zsh" "$home_dir/.bashrc" "$home_dir/.gitconfig" "$home_dir/.claude.json"; do
+    for file in "$home_dir/.zshrc" "$home_dir/.p10k.zsh" "$home_dir/.bashrc" "$home_dir/.gitconfig"; do
         [[ -e "$file" ]] || touch "$file"
     done
 }
@@ -571,7 +657,13 @@ container_missing_required_mounts() {
 }
 
 if [[ "$repair_requested" == true && "$container_exists" == true ]]; then
-    repair_for_declared_lifecycle
+    validate_repair_ownership
+    validate_existing_bind_sources
+    if [[ "$repair_container_was_running" == true ]]; then
+        repair_for_declared_lifecycle
+    else
+        recreate_stopped_for_declared_lifecycle
+    fi
 elif [[ "$container_exists" != true ]]; then
     # pyBench's initialize command and Compose overlays are reproduced by
     # prepare-bench-start plus create_with_compose. Other devcontainer.json
@@ -581,9 +673,46 @@ elif [[ -f "$bench_dir/.devcontainer/devcontainer.json" ]] && container_missing_
     recreate_stopped_for_declared_lifecycle
 fi
 
-if [[ "$(docker container inspect -f '{{.State.Running}}' "$container")" != "true" ]]; then
+start_container() {
+    local start_error start_status
     echo "Starting $container..."
-    docker start "$container" >/dev/null
+    if start_error="$(
+        if command -v timeout >/dev/null 2>&1; then
+            timeout --foreground 30s docker start "$container"
+        else
+            docker start "$container"
+        fi 2>&1
+    )"; then
+        return 0
+    else
+        start_status=$?
+    fi
+    if [[ "$(docker container inspect -f '{{.State.Running}}' "$container" 2>/dev/null || true)" == true ]]; then
+        echo "Container '$container' is now running; preserving the live container." >&2
+        return 0
+    fi
+    printf '%s\n' "$start_error" >&2
+    if [[ "$start_error" == *"OCI runtime create failed"* \
+        && "$start_error" == *"error mounting"* \
+        && "$start_error" == *"/docker-desktop-bind-mounts/"* \
+        && "$start_error" == *"no such file or directory"* ]]; then
+        validate_repair_ownership || return "$start_status"
+        validate_existing_bind_sources || return "$start_status"
+        echo "The real bind sources are valid, but '$container' has a stale Docker Desktop WSL bind mapping." >&2
+        if [[ "$repair_requested" == true ]]; then
+            echo "Repair was already attempted once; refusing another recreation. Check Docker Desktop integration and the declared mount configuration." >&2
+        else
+            echo "The failed start will not trigger recreation. Explicit --repair recreation discards container-only files but preserves declared bind mounts and volumes." >&2
+            printf 'Recovery command: ' >&2
+            printf '%q ' "$0" --user "$container_user" --repair --check "$container" >&2
+            printf '\n' >&2
+        fi
+    fi
+    return "$start_status"
+}
+
+if [[ "$(docker container inspect -f '{{.State.Running}}' "$container")" != "true" ]]; then
+    start_container
 fi
 
 ensure_container_history() {

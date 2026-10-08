@@ -1,0 +1,26 @@
+# Verification: Stale Bench Mount Recovery
+
+Date: 2026-10-08. All executable source tests ran as the bench user in the already-running cloud-bench, against the isolated feature worktree. Docker lifecycle calls in the test suites were mocked; neither suite replaced a real bench.
+
+## Results
+
+- Red regression: the new stale-bind fixture failed before implementation with `FAIL: stale bind failure was not explained`.
+- Green regression: `bash devcontainer.test/test-wave-container-shell.sh` passed after implementation, including missing/wrong-type sources, symlinks, unrelated errors, timeout status, changed sources, concurrent starts, cross-family diagnostics, ownership refusal, and bounded explicit repair.
+- Related helpers: `bash devBenches/scripts/test-helper-safety.sh` passed after explicitly isolating its MCP registry and renderer context in its temporary fixture.
+- Syntax: `bash -n scripts/wave-container-shell.sh devcontainer.test/test-wave-container-shell.sh devBenches/scripts/test-helper-safety.sh` passed.
+- Governance: `openspec validate fix-stale-bench-mounts --strict` passed. The OpenSpec handoff intentionally links the single executable Speckit checklist rather than duplicating tasks.
+- Patch hygiene: native Git `git diff --check` passed.
+
+The helper suite initially failed on both this feature and unchanged main: when executed inside a bench, its MCP helper selected the mounted shared registry rather than the expected temporary HOME fixture. Explicit `WORKBENCHES_SHARED_MCP_HOME` and host rendering context now keep the test independent of the execution surface and prevent mock routing updates from reaching the real registry. No production MCP routing behavior was changed.
+
+## Preserved runtime and source state
+
+Read-only inspection before publication confirmed that py-bench retained container ID prefix `988cd7d35898`, was stopped, and had init enabled. cloud-bench retained ID prefix `4bd57d827ebc`, remained running, and had init enabled. No container, image, daemon, volume, or WSL restart was performed by this implementation.
+
+The canonical checkout remained on base commit `6952c6f92b59f0923bb4d143feb6b66a99c677a9` with its eight unrelated pending bench gitlink changes preserved. They are not part of this feature. Installed Wave bench links point to the canonical shared launcher, not the isolated feature worktree.
+
+## Publication and remaining boundary
+
+The user approved opening and landing the tested source PR after checks and review pass. Publication must also update the canonical launcher used by Wave. CI and exact-head external review are verified during that publication; this file records the local implementation checks, not a claim that they have already completed remotely.
+
+Recreating the stopped py-bench remains a separate explicit operation. The source fix provides diagnosis and the `--repair` recovery path; publishing it does not repair Docker Desktop's stored mapping in an existing container.

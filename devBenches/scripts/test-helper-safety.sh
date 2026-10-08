@@ -64,6 +64,8 @@ chmod +x "$BIN_DIR/docker"
 run_sonar_case() {
   env -i \
     HOME="$TMP_ROOT/home" \
+    WORKBENCHES_SHARED_MCP_HOME="$TMP_ROOT/home/projects/.workbenches/mcp" \
+    WORKBENCHES_MCP_CONTEXT=host \
     PATH="$BIN_DIR:/usr/bin:/bin" \
     DOCKER_LOG="$DOCKER_LOG" \
     SONARQUBE_ENV_FILE="$TMP_ROOT/missing.env" \
@@ -93,6 +95,8 @@ jq -e '.servers.sonarqube.definition.url == "http://127.0.0.1:64130/mcp"' "$shar
 jq -e '.servers.sonarqube.definition.containerUrl == "http://sonarqube-mcp-proxy:64130/mcp"' \
   "$shared_mcp_registry" >/dev/null
 rendered_claude_config="$(env -i HOME="$TMP_ROOT/home" PATH="$BIN_DIR:/usr/bin:/bin" \
+  WORKBENCHES_SHARED_MCP_HOME="$TMP_ROOT/home/projects/.workbenches/mcp" \
+  WORKBENCHES_MCP_CONTEXT=host \
   "$REPO_ROOT/scripts/workbenches-mcp-sync" claude-config opensoft)"
 jq -e '.mcpServers.sonarqube.url == "http://127.0.0.1:64130/mcp"' "$rendered_claude_config" >/dev/null
 
