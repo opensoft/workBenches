@@ -273,9 +273,11 @@ validate_bind_source() {
             expected_type="regular file"
             [[ -f "$source" ]] && return 0
             ;;
-        /workspace|/workspace/projects|/mnt/wslg|/opt/rocm-*|"${ROCM_ROOT:-/opt/rocm-7.2.0}"|"$container_home"|\
+        /workspace|/workspace/projects|/mnt/wslg|"${ROCM_ROOT:-/opt/rocm-7.2.0}"|"$container_home"|\
         "$container_home"/.ssh|"$container_home"/.azure|"$container_home"/.aws|"$container_home"/.kube|\
-        "$container_home"/.claude|"$container_home"/.*-profiles|"$container_home"/.oh-my-zsh|\
+        "$container_home"/.claude|"$container_home"/.claude-profiles|"$container_home"/.chatgpt-profiles|\
+        "$container_home"/.opencode-profiles|"$container_home"/.gemini-profiles|"$container_home"/.grok-profiles|\
+        "$container_home"/.glm-profiles|"$container_home"/.pi-profiles|"$container_home"/.oh-my-zsh|\
         "$container_home"/.codex|"$container_home"/.omnigent|"$container_home"/.agents|"$container_home"/.pi|\
         "$container_home"/.gemini|"$container_home"/.grok|"$container_home"/.copilot-cli|\
         "$container_home"/.notebooklm|"$container_home"/.notebooklm-mcp-cli|\

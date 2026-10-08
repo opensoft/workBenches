@@ -471,6 +471,11 @@ grep -q '^rm py-bench$' <<<"$CASE_DOCKER_LOG" || fail "uncached ROCm mapping did
 CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated CASE_ROCM_BIND=true CASE_EXPECT_STATUS=1 \
     run_launcher_case staged-rocm-source-missing false complete false false py-bench --repair
 [[ -z "$CASE_PREPARE_LOG$CASE_LIFECYCLE_LOG" ]] || fail "missing ROCm source reached mutation"
+CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated CASE_ROCM_BIND=true \
+    CASE_BAD_HOST_DIRECTORY=rocm-fixture CASE_EXPECT_STATUS=1 \
+    run_launcher_case staged-rocm-source-wrong-type false complete false false py-bench --repair
+grep -q 'expected directory' <<<"$CASE_OUTPUT" || fail "ROCm root type was not validated"
+[[ -z "$CASE_PREPARE_LOG$CASE_LIFECYCLE_LOG" ]] || fail "wrong-type ROCm root reached mutation"
 (
     source <(sed -n '/^generated_rocm_bind_source_for_destination() {/,/^validate_existing_bind_sources() {/p' "$launcher" | sed '$d')
     container=py-bench
@@ -494,6 +499,10 @@ CASE_STAGED_SOURCE=true CASE_GENERIC_COMPOSE=true CASE_EXPLICIT_COMPOSE=true CAS
 CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated CASE_HOST_SOURCE=missing CASE_EXPECT_STATUS=1 \
     run_launcher_case staged-wave-cache-missing-real-source false complete false false py-bench --repair
 [[ -z "$CASE_PREPARE_LOG$CASE_LIFECYCLE_LOG" ]] || fail "missing uncached Wave source reached mutation"
+for file_destination in /home/tester/.claude-profiles/settings.json /home/tester/.claude-profiles/backup-profiles /opt/rocm-7.2.0/config.json; do
+    CASE_BIND_DESTINATION="$file_destination" \
+        run_launcher_case custom-file-below-directory-root false complete false false py-bench
+done
 for devcontainer_bench in dotNetBench rustBench; do
     CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated \
         run_launcher_case staged-devcontainer-source false complete false false "$devcontainer_bench"
