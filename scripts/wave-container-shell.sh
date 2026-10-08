@@ -268,11 +268,12 @@ validate_bind_source() {
     local container_home="/home/${container_user}"
     local expected_type="existing source"
     case "$destination" in
-        "$container_home"/.zshrc|"$container_home"/.p10k.zsh|"$container_home"/.bashrc|"$container_home"/.gitconfig|"$container_home"/.claude.json)
+        "$container_home"/.zshrc|"$container_home"/.p10k.zsh|"$container_home"/.bashrc|"$container_home"/.gitconfig|"$container_home"/.claude.json|\
+        /usr/lib/libdxcore.so|/usr/lib/libd3d12.so|/usr/lib/libd3d12core.so)
             expected_type="regular file"
             [[ -f "$source" ]] && return 0
             ;;
-        /workspace|/workspace/projects|/mnt/wslg|/opt/rocm-*|"$container_home"|\
+        /workspace|/workspace/projects|/mnt/wslg|/opt/rocm-*|"${ROCM_ROOT:-/opt/rocm-7.2.0}"|"$container_home"|\
         "$container_home"/.ssh|"$container_home"/.azure|"$container_home"/.aws|"$container_home"/.kube|\
         "$container_home"/.claude|"$container_home"/.*-profiles|"$container_home"/.oh-my-zsh|\
         "$container_home"/.codex|"$container_home"/.omnigent|"$container_home"/.agents|"$container_home"/.pi|\
@@ -381,6 +382,24 @@ wave_bind_source_for_destination() {
     return 1
 }
 
+generated_rocm_bind_source_for_destination() {
+    local destination="$1"
+    [[ "$container" == py-bench && ! -f "$bench_dir/.devcontainer/docker-compose.amd-rocm.generated.yml" ]] || return 1
+    # configure-amd-rocm-wsl.sh emits these deterministic bindings. Resolve
+    # its disposable overlay without writing it or running GPU initialization.
+    if [[ "$destination" == "${ROCM_ROOT:-/opt/rocm-7.2.0}" ]]; then
+        printf '%s\n' "$destination"
+        return 0
+    fi
+    case "$destination" in
+        /usr/lib/libdxcore.so|/usr/lib/libd3d12.so|/usr/lib/libd3d12core.so)
+            printf '/usr/lib/wsl/lib/%s\n' "${destination##*/}"
+            return 0
+            ;;
+    esac
+    return 1
+}
+
 validate_existing_bind_sources() {
     local binds
     if ! binds="$(docker container inspect -f '{{range .Mounts}}{{if eq .Type "bind"}}{{printf "%s\t%s\n" .Source .Destination}}{{end}}{{end}}' "$container" 2>/dev/null)"; then
@@ -421,6 +440,9 @@ validate_existing_bind_sources() {
             done <<<"$declared_binds"
             if [[ -z "$original_source" ]]; then
                 original_source="$(wave_bind_source_for_destination "$destination" || true)"
+            fi
+            if [[ -z "$original_source" ]]; then
+                original_source="$(generated_rocm_bind_source_for_destination "$destination" || true)"
             fi
             if [[ -z "$original_source" || "$original_source" == /run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/* ]]; then
                 echo "Cannot resolve the real bind source for '$destination' from the declared lifecycle configuration; refusing recovery." >&2

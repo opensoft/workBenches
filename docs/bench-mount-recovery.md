@@ -8,6 +8,8 @@ For default Dev Containers lifecycles, it also reads declared `devcontainer.json
 
 The generated Wave override is a disposable cache, not the sole source of mount identity. When its file is absent and other declarations omit a target, the launcher reconstructs only its known deterministic Wave bind mappings from the host home and configured user. It still validates the real source and refuses unknown mappings; it does not recreate the cache or any credential during validation.
 
+The same rule applies to pyBench's missing generated ROCm overlay: validation resolves the configured ROCm root and the three known WSL GPU library mappings without generating files. Missing or wrong-type sources still refuse recovery. Explicit recreation subsequently runs the existing ROCm generator through the declared lifecycle.
+
 Required Wave file sources and existing directory sources are also checked before preparation for stopped legacy containers, even when they do not yet have those mounts. The suggested recovery command retains the original invocation options, including custom checkout and Compose paths. With `--compose-file`, the effective Compose project is resolved before preparation and used consistently for ownership checks and creation; standard launches retain their declared bench-family project.
 
 A missing Docker Desktop WSL staged mount source can prevent `docker start` while the original host file is valid. The launcher reports the specific OCI failure and a shell-quoted recovery command. It does not infer this diagnosis from an exit code alone, automatically replace the container, or restart Docker/WSL.

@@ -168,7 +168,9 @@ if [[ "${1:-}" == "container" && "${2:-}" == "inspect" ]]; then
                     if [[ "$MOCK_STAGED_SOURCE" == true ]]; then
                         bind_source=/run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/fixture/hash
                     fi
-                    printf '%s\t%s\n' "$bind_source" "${MOCK_BIND_DESTINATION:-/home/$USER/.claude.json}"
+                    bind_destination="${MOCK_BIND_DESTINATION:-/home/$USER/.claude.json}"
+                    [[ "$MOCK_ROCM_BIND" != true ]] || bind_destination="$ROCM_ROOT"
+                    printf '%s\t%s\n' "$bind_source" "$bind_destination"
                 elif [[ "$MOCK_MOUNTS" == "complete" ]]; then
                     cat <<'MOUNTS'
 /workspace/projects
@@ -296,6 +298,8 @@ MOCK
             MOCK_SOURCE_DISAPPEARS_AFTER_PREPARE="${CASE_SOURCE_DISAPPEARS_AFTER_PREPARE:-false}" \
             MOCK_BIND_DESTINATION="${CASE_BIND_DESTINATION:-}" \
             MOCK_STAGED_SOURCE="${CASE_STAGED_SOURCE:-false}" \
+            MOCK_ROCM_BIND="${CASE_ROCM_BIND:-false}" \
+            ROCM_ROOT="$fake_home/rocm-fixture" \
             MOCK_COMPOSE_CONFIG_FAIL="${CASE_COMPOSE_CONFIG_FAIL:-false}" \
             MOCK_DECLARED_BIND_DESTINATION="${CASE_DECLARED_BIND_DESTINATION:-}" \
             MOCK_DECLARED_COMPOSE_PROJECT="${CASE_DECLARED_COMPOSE_PROJECT:-dev-benches}" \
@@ -455,6 +459,31 @@ CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated \
     run_launcher_case staged-wave-cache-missing-repair false complete false false py-bench --repair
 grep -q '^rm py-bench$' <<<"$CASE_DOCKER_LOG" || fail "uncached Wave source did not allow stopped repair"
 assert_compose_init "uncached Wave explicit repair"
+CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated CASE_ROCM_BIND=true \
+    CASE_EXTRA_HOST_DIRECTORY=rocm-fixture \
+    run_launcher_case staged-rocm-overlay-missing false complete false false py-bench
+[[ -z "$CASE_ROCM_LOG$CASE_LIFECYCLE_LOG" ]] || fail "ROCm validation regenerated the overlay or changed the lifecycle"
+CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated CASE_ROCM_BIND=true \
+    CASE_EXTRA_HOST_DIRECTORY=rocm-fixture \
+    run_launcher_case staged-rocm-overlay-missing-repair false complete false false py-bench --repair
+grep -q '^rm py-bench$' <<<"$CASE_DOCKER_LOG" || fail "uncached ROCm mapping did not allow stopped repair"
+[[ "$CASE_ROCM_LOG" == configured ]] || fail "explicit repair did not regenerate the ROCm overlay"
+CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated CASE_ROCM_BIND=true CASE_EXPECT_STATUS=1 \
+    run_launcher_case staged-rocm-source-missing false complete false false py-bench --repair
+[[ -z "$CASE_PREPARE_LOG$CASE_LIFECYCLE_LOG" ]] || fail "missing ROCm source reached mutation"
+(
+    source <(sed -n '/^generated_rocm_bind_source_for_destination() {/,/^validate_existing_bind_sources() {/p' "$launcher" | sed '$d')
+    container=py-bench
+    bench_dir="${TMPDIR:-/tmp}/absent-rocm-overlay-fixture"
+    for library in libdxcore.so libd3d12.so libd3d12core.so; do
+        [[ "$(generated_rocm_bind_source_for_destination "/usr/lib/$library")" == "/usr/lib/wsl/lib/$library" ]] \
+            || fail "uncached ROCm library mapping was not preserved"
+    done
+    container=cloud-bench
+    if generated_rocm_bind_source_for_destination /usr/lib/libdxcore.so >/dev/null; then
+        fail "ROCm fallback resolved another bench's undeclared mount"
+    fi
+)
 for wave_directory in .agents .pi; do
     CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated \
         CASE_BIND_DESTINATION="/home/tester/$wave_directory" CASE_EXTRA_HOST_DIRECTORY="$wave_directory" \
