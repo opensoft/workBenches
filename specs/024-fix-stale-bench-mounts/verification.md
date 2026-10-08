@@ -12,6 +12,7 @@ Date: 2026-10-08. All executable source tests ran as the bench user in the alrea
 - Syntax: `bash -n scripts/wave-container-shell.sh devcontainer.test/test-wave-container-shell.sh devBenches/scripts/test-helper-safety.sh` passed.
 - Governance: `openspec validate fix-stale-bench-mounts --strict` passed. The OpenSpec handoff intentionally links the single executable Speckit checklist rather than duplicating tasks.
 - Patch hygiene: native Git `git diff --check` passed.
+- Live metadata check: loaded only the new validation function definitions on the launcher's WSL host and validated every current py-bench bind, including internal staged metadata resolved to original sources. This read-only check did not run launcher preparation, creation, startup, or replacement.
 
 The helper suite initially failed on both this feature and unchanged main: when executed inside a bench, its MCP helper selected the mounted shared registry rather than the expected temporary HOME fixture. Explicit `WORKBENCHES_SHARED_MCP_HOME` and host rendering context now keep the test independent of the execution surface and prevent mock routing updates from reaching the real registry. No production MCP routing behavior was changed.
 

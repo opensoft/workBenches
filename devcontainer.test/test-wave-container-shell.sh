@@ -112,6 +112,7 @@ printf '%s\n' "$*" >> "$MOCK_DOCKER_LOG"
 
 if [[ "${1:-}" == "compose" ]]; then
     if [[ " $* " == *" config "* ]]; then
+        [[ "$MOCK_COMPOSE_CONFIG_FAIL" != true ]] || exit 1
         printf '{"services":{"%s":{"volumes":[{"type":"bind","source":"%s","target":"%s"}]}}}\n' \
             "$MOCK_SERVICE" "$HOME/.claude.json" "${MOCK_DECLARED_BIND_DESTINATION:-/home/$USER/.claude.json}"
         exit 0
@@ -280,6 +281,7 @@ MOCK
             MOCK_SOURCE_DISAPPEARS_AFTER_PREPARE="${CASE_SOURCE_DISAPPEARS_AFTER_PREPARE:-false}" \
             MOCK_BIND_DESTINATION="${CASE_BIND_DESTINATION:-}" \
             MOCK_STAGED_SOURCE="${CASE_STAGED_SOURCE:-false}" \
+            MOCK_COMPOSE_CONFIG_FAIL="${CASE_COMPOSE_CONFIG_FAIL:-false}" \
             MOCK_DECLARED_BIND_DESTINATION="${CASE_DECLARED_BIND_DESTINATION:-}" \
             MOCK_PROJECT="${CASE_COMPOSE_PROJECT:-dev-benches}" \
             MOCK_SERVICE="${CASE_COMPOSE_SERVICE:-${expected_config_image%%:*}}" \
@@ -384,6 +386,15 @@ CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated CASE_EXPECT_ST
 if grep -q '^rm ' <<<"$CASE_DOCKER_LOG"; then
     fail "unresolved staged source removed a container"
 fi
+CASE_STAGED_SOURCE=true CASE_COMPOSE_CONFIG_FAIL=true CASE_EXPECT_STATUS=1 \
+    run_launcher_case staged-config-unavailable false complete false false py-bench --repair
+[[ -z "$CASE_PREPARE_LOG$CASE_LIFECYCLE_LOG" ]] || fail "failed configuration rendering reached mutation"
+if grep -q '^rm ' <<<"$CASE_DOCKER_LOG"; then
+    fail "failed configuration rendering removed a container"
+fi
+CASE_STAGED_SOURCE=true run_launcher_case staged-explicit-repair false complete false false py-bench --repair
+grep -q '^rm py-bench$' <<<"$CASE_DOCKER_LOG" || fail "resolved staged source did not allow stopped explicit repair"
+assert_compose_init "staged explicit repair"
 
 CASE_HOST_SOURCE=missing CASE_EXPECT_STATUS=1 \
     run_launcher_case missing-claude-source false complete false false py-bench
