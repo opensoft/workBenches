@@ -350,6 +350,30 @@ declared_compose_bind_sources() {
         | jq -r --arg service "$container" '.services[$service].volumes[]? | select(.type == "bind") | [.source, .target] | @tsv' 2>/dev/null
 }
 
+wave_bind_source_for_destination() {
+    local destination="$1" relative
+    case "$destination" in
+        /workspace/projects) printf '%s\n' "$home_dir/projects"; return 0 ;;
+        /var/run/docker.sock) printf '%s\n' /var/run/docker.sock; return 0 ;;
+        "/home/${container_user}"/*)
+            relative="${destination#"/home/${container_user}/"}"
+            # These are the deterministic host binds emitted by the Wave
+            # override writer, not arbitrary paths underneath the user home.
+            case "$relative" in
+                .zshrc|.oh-my-zsh|.p10k.zsh|.bashrc|.gitconfig|.ssh|.config/gh|\
+                .azure|.aws|.kube|.claude|.claude.json|.claude-profiles|.codex|\
+                .chatgpt-profiles|.opencode-profiles|.config/workbenches|\
+                .local/lib/workbenches|.local/state/workbenches|.gemini-profiles|\
+                .grok-profiles|.glm-profiles|.omnigent|.pi-profiles|.config/sonarqube|\
+                .gemini|.grok|.copilot-cli|.notebooklm|.notebooklm-mcp-cli|\
+                .local/state/opensoft/agenttower/logs)
+                    printf '%s\n' "$home_dir/$relative"; return 0 ;;
+            esac
+            ;;
+    esac
+    return 1
+}
+
 validate_existing_bind_sources() {
     local binds
     if ! binds="$(docker container inspect -f '{{range .Mounts}}{{if eq .Type "bind"}}{{printf "%s\t%s\n" .Source .Destination}}{{end}}{{end}}' "$container" 2>/dev/null)"; then
@@ -388,6 +412,9 @@ validate_existing_bind_sources() {
                     break
                 fi
             done <<<"$declared_binds"
+            if [[ -z "$original_source" ]]; then
+                original_source="$(wave_bind_source_for_destination "$destination" || true)"
+            fi
             if [[ -z "$original_source" || "$original_source" == /run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/* ]]; then
                 echo "Cannot resolve the real bind source for '$destination' from the declared lifecycle configuration; refusing recovery." >&2
                 return 1

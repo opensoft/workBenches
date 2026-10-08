@@ -6,6 +6,8 @@ Docker may store an internal hashed staging path in mount metadata. The launcher
 
 For default Dev Containers lifecycles, it also reads declared `devcontainer.json` mounts with the existing CLI's `read-configuration` command. This handles JSONC and resolves host variables without running initialization or creating containers. Those mounts take precedence over matching Compose targets. Missing or unreadable lifecycle metadata is refused before replacement.
 
+The generated Wave override is a disposable cache, not the sole source of mount identity. When its file is absent and other declarations omit a target, the launcher reconstructs only its known deterministic Wave bind mappings from the host home and configured user. It still validates the real source and refuses unknown mappings; it does not recreate the cache or any credential during validation.
+
 Required Wave file sources and existing directory sources are also checked before preparation for stopped legacy containers, even when they do not yet have those mounts. The suggested recovery command retains the original invocation options, including custom checkout and Compose paths. With `--compose-file`, the effective Compose project is resolved before preparation and used consistently for ownership checks and creation; standard launches retain their declared bench-family project.
 
 A missing Docker Desktop WSL staged mount source can prevent `docker start` while the original host file is valid. The launcher reports the specific OCI failure and a shell-quoted recovery command. It does not infer this diagnosis from an exit code alone, automatically replace the container, or restart Docker/WSL.

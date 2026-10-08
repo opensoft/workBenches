@@ -426,7 +426,7 @@ CASE_STAGED_SOURCE=true CASE_HOST_SOURCE=missing CASE_EXPECT_STATUS=1 \
     run_launcher_case staged-real-source-missing false complete false false py-bench
 grep -q 'regular file' <<<"$CASE_OUTPUT" || fail "staged missing real source was not diagnosed"
 [[ -z "$CASE_PREPARE_LOG$CASE_LIFECYCLE_LOG" ]] || fail "missing staged real source reached mutation"
-CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated CASE_EXPECT_STATUS=1 \
+CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated CASE_BIND_DESTINATION=/unknown/bind CASE_EXPECT_STATUS=1 \
     run_launcher_case staged-source-unresolved false complete false false py-bench --repair
 [[ -z "$CASE_PREPARE_LOG$CASE_LIFECYCLE_LOG" ]] || fail "unresolved staged source reached mutation"
 if grep -q '^rm ' <<<"$CASE_DOCKER_LOG"; then
@@ -441,6 +441,18 @@ fi
 CASE_STAGED_SOURCE=true run_launcher_case staged-explicit-repair false complete false false py-bench --repair
 grep -q '^rm py-bench$' <<<"$CASE_DOCKER_LOG" || fail "resolved staged source did not allow stopped explicit repair"
 assert_compose_init "staged explicit repair"
+CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated \
+    run_launcher_case staged-wave-cache-missing false complete false false py-bench
+if grep -q '^rm ' <<<"$CASE_DOCKER_LOG"; then
+    fail "uncached Wave source resolution removed a container"
+fi
+CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated \
+    run_launcher_case staged-wave-cache-missing-repair false complete false false py-bench --repair
+grep -q '^rm py-bench$' <<<"$CASE_DOCKER_LOG" || fail "uncached Wave source did not allow stopped repair"
+assert_compose_init "uncached Wave explicit repair"
+CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated CASE_HOST_SOURCE=missing CASE_EXPECT_STATUS=1 \
+    run_launcher_case staged-wave-cache-missing-real-source false complete false false py-bench --repair
+[[ -z "$CASE_PREPARE_LOG$CASE_LIFECYCLE_LOG" ]] || fail "missing uncached Wave source reached mutation"
 for devcontainer_bench in dotNetBench rustBench; do
     CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated \
         run_launcher_case staged-devcontainer-source false complete false false "$devcontainer_bench"
