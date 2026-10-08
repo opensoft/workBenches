@@ -334,6 +334,13 @@ declared_compose_bind_sources() {
         return 1
     fi
     local config_args=(-f "$compose_file")
+    local metadata_compose_dir metadata_bench_dir
+    metadata_compose_dir="$(dirname "$compose_file")"
+    metadata_bench_dir="$bench_dir"
+    [[ "$bench_dir_resolved" == true ]] || metadata_bench_dir="$(dirname "$metadata_compose_dir")"
+    if [[ ! -f "$metadata_compose_dir/.env" && -f "$metadata_bench_dir/.env" ]]; then
+        config_args+=(--env-file "$metadata_bench_dir/.env")
+    fi
     local overlay
     if [[ "$container" == py-bench ]]; then
         overlay="$bench_dir/.devcontainer/docker-compose.amd-rocm.generated.yml"
@@ -364,7 +371,7 @@ wave_bind_source_for_destination() {
                 .azure|.aws|.kube|.claude|.claude.json|.claude-profiles|.codex|\
                 .chatgpt-profiles|.opencode-profiles|.config/workbenches|\
                 .local/lib/workbenches|.local/state/workbenches|.gemini-profiles|\
-                .grok-profiles|.glm-profiles|.omnigent|.pi-profiles|.config/sonarqube|\
+                .grok-profiles|.glm-profiles|.omnigent|.agents|.pi|.pi-profiles|.config/sonarqube|\
                 .gemini|.grok|.copilot-cli|.notebooklm|.notebooklm-mcp-cli|\
                 .local/state/opensoft/agenttower/logs)
                     printf '%s\n' "$home_dir/$relative"; return 0 ;;

@@ -58,6 +58,7 @@ run_launcher_case() {
         mkdir -p "$(dirname "$fake_home/$CASE_BAD_HOST_DIRECTORY")"
         : > "$fake_home/$CASE_BAD_HOST_DIRECTORY"
     fi
+    [[ -z "${CASE_EXTRA_HOST_DIRECTORY:-}" ]] || mkdir -p "$fake_home/$CASE_EXTRA_HOST_DIRECTORY"
     cp "$repo_root/user-layer/claude-npm-guard" "$fake_root/user-layer/claude-npm-guard"
     : > "$fake_root/devBenches/pyBench/.devcontainer/devcontainer.json"
     : > "$fake_root/devBenches/pyBench/.devcontainer/docker-compose.yml"
@@ -117,6 +118,9 @@ printf '%s\n' "$*" >> "$MOCK_DOCKER_LOG"
 if [[ "${1:-}" == "compose" ]]; then
     if [[ " $* " == *" config "* ]]; then
         [[ "$MOCK_COMPOSE_CONFIG_FAIL" != true ]] || exit 1
+        if [[ "$MOCK_REQUIRE_ENV_FALLBACK" == true && ! -f "$MOCK_EXPECT_ENV_DIR/.env" && " $* " != *" --env-file "* ]]; then
+            exit 1
+        fi
         printf '{"name":"%s","services":{"%s":{"volumes":[{"type":"bind","source":"%s","target":"%s"}]}}}\n' \
             "$MOCK_DECLARED_COMPOSE_PROJECT" "$MOCK_SERVICE" "$HOME/.claude.json" "${MOCK_DECLARED_BIND_DESTINATION:-/home/$USER/.claude.json}"
         exit 0
@@ -297,6 +301,7 @@ MOCK
             MOCK_DECLARED_COMPOSE_PROJECT="${CASE_DECLARED_COMPOSE_PROJECT:-dev-benches}" \
             MOCK_NO_BIND_SOURCES="${CASE_NO_BIND_SOURCES:-false}" \
             MOCK_DEVCONTAINER_READ_FAIL="${CASE_DEVCONTAINER_READ_FAIL:-false}" \
+            MOCK_REQUIRE_ENV_FALLBACK="${CASE_REQUIRE_ENV_FALLBACK:-false}" \
             MOCK_PROJECT="${CASE_COMPOSE_PROJECT:-dev-benches}" \
             MOCK_SERVICE="${CASE_COMPOSE_SERVICE:-${expected_config_image%%:*}}" \
             "$launcher" \
@@ -450,6 +455,13 @@ CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated \
     run_launcher_case staged-wave-cache-missing-repair false complete false false py-bench --repair
 grep -q '^rm py-bench$' <<<"$CASE_DOCKER_LOG" || fail "uncached Wave source did not allow stopped repair"
 assert_compose_init "uncached Wave explicit repair"
+for wave_directory in .agents .pi; do
+    CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated \
+        CASE_BIND_DESTINATION="/home/tester/$wave_directory" CASE_EXTRA_HOST_DIRECTORY="$wave_directory" \
+        run_launcher_case uncached-generated-directory false complete false false py-bench
+done
+CASE_STAGED_SOURCE=true CASE_GENERIC_COMPOSE=true CASE_EXPLICIT_COMPOSE=true CASE_REQUIRE_ENV_FALLBACK=true \
+    run_launcher_case staged-generic-bench-root-env false complete false false custom-bench
 CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated CASE_HOST_SOURCE=missing CASE_EXPECT_STATUS=1 \
     run_launcher_case staged-wave-cache-missing-real-source false complete false false py-bench --repair
 [[ -z "$CASE_PREPARE_LOG$CASE_LIFECYCLE_LOG" ]] || fail "missing uncached Wave source reached mutation"
