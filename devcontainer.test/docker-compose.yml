@@ -2,6 +2,7 @@ name: workbench-test
 
 services:
   test:
+    init: true
     image: workbench-base:${USER:-brett}
     container_name: workbench-test
     

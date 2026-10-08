@@ -2,6 +2,7 @@ name: dev-bench-base
 
 services:
   devbench:
+    init: true
     image: dev-bench-base:latest
     container_name: dev-bench-base
     

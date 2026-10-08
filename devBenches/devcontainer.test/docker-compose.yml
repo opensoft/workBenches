@@ -2,6 +2,7 @@ name: devbench-test
 
 services:
   test:
+    init: true
     image: dev-bench-base:${USER:-brett}
     container_name: devbench-test
     
