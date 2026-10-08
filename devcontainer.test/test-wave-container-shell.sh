@@ -99,6 +99,9 @@ SONARQUBE
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$MOCK_PREPARE_LOG"
+if [[ "$MOCK_SOURCE_DISAPPEARS_AFTER_PREPARE" == true ]]; then
+    rm -f "$HOME/.claude.json"
+fi
 PREPARE
     chmod +x "$fake_root/scripts/prepare-bench-start.sh"
 
@@ -265,6 +268,7 @@ MOCK
             MOCK_START_MARKER="$case_root/start-attempted" \
             MOCK_AFTER_START_RUNNING="${CASE_AFTER_START_RUNNING:-false}" \
             MOCK_SOURCE_DISAPPEARS="${CASE_SOURCE_DISAPPEARS:-false}" \
+            MOCK_SOURCE_DISAPPEARS_AFTER_PREPARE="${CASE_SOURCE_DISAPPEARS_AFTER_PREPARE:-false}" \
             MOCK_BIND_DESTINATION="${CASE_BIND_DESTINATION:-}" \
             MOCK_PROJECT="${CASE_COMPOSE_PROJECT:-dev-benches}" \
             MOCK_SERVICE="${CASE_COMPOSE_SERVICE:-${expected_config_image%%:*}}" \
@@ -362,6 +366,12 @@ fi
 CASE_CONTAINER_EXISTS=false CASE_HOST_SOURCE=missing CASE_EXPECT_STATUS=1 \
     run_launcher_case first-create-missing-claude false complete false false py-bench
 [[ -z "$CASE_PREPARE_LOG$CASE_ENSURE_IMAGES_LOG" ]] || fail "missing first-create credentials reached image preparation"
+CASE_CONTAINER_EXISTS=false CASE_SOURCE_DISAPPEARS_AFTER_PREPARE=true CASE_EXPECT_STATUS=1 \
+    run_launcher_case first-create-source-disappeared false complete false false py-bench
+grep -q 'regular file' <<<"$CASE_OUTPUT" || fail "late missing credential source was not diagnosed"
+if grep -Eq '^(start|rm|compose|devcontainer) ' <<<"$CASE_DOCKER_LOG"; then
+    fail "late invalid source reached container creation"
+fi
 CASE_HOST_SOURCE=missing run_launcher_case running-with-replaced-source true complete false false py-bench
 if grep -Eq '^(start|rm|compose|devcontainer) ' <<<"$CASE_DOCKER_LOG"; then
     fail "normal running attach tried to repair a replaced host source"

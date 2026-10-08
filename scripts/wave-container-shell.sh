@@ -429,7 +429,7 @@ ensure_host_sources() {
 }
 
 write_wave_compose_override() {
-    ensure_host_sources
+    ensure_host_sources || return 1
 
     local override_dir="${WAVE_WORKBENCHES_COMPOSE_CACHE:-$home_dir/.cache/workbenches/wave-compose}"
     local override_file="$override_dir/$container.override.yml"
@@ -508,7 +508,7 @@ create_with_compose() {
 
     local override_file
     local compose_args
-    override_file="$(write_wave_compose_override)"
+    override_file="$(write_wave_compose_override)" || return 1
     compose_args=(-f "$compose_file")
     if [[ "$container" == "py-bench" ]]; then
         local shared_network="devbench-shared"

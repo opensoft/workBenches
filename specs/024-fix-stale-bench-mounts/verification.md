@@ -5,6 +5,7 @@ Date: 2026-10-08. All executable source tests ran as the bench user in the alrea
 ## Results
 
 - Red regression: the new stale-bind fixture failed before implementation with `FAIL: stale bind failure was not explained`.
+- Late-source red regression: removing the mock credential file during preparation originally still reached Compose and returned success; explicit error propagation from the Compose override writer now refuses that creation.
 - Green regression: `bash devcontainer.test/test-wave-container-shell.sh` passed after implementation, including missing/wrong-type sources, symlinks, unrelated errors, timeout status, changed sources, concurrent starts, cross-family diagnostics, ownership refusal, and bounded explicit repair.
 - Related helpers: `bash devBenches/scripts/test-helper-safety.sh` passed after explicitly isolating its MCP registry and renderer context in its temporary fixture.
 - Syntax: `bash -n scripts/wave-container-shell.sh devcontainer.test/test-wave-container-shell.sh devBenches/scripts/test-helper-safety.sh` passed.
