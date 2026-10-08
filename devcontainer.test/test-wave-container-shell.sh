@@ -183,6 +183,7 @@ if [[ "${1:-}" == "container" && "${2:-}" == "inspect" ]]; then
 /home/tester/.grok-profiles
 /home/tester/.glm-profiles
 MOUNTS
+                    [[ "$MOCK_SERVICE" != rust-bench ]] || printf '/home/%s/.cargo\n' "$USER"
                 else
                     printf '%s\n' /workspace/projects
                 fi
@@ -230,6 +231,11 @@ MOCK
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'devcontainer %s\n' "$*" >> "$MOCK_DOCKER_LOG"
+if [[ "${1:-}" == "read-configuration" ]]; then
+    [[ "$MOCK_DEVCONTAINER_READ_FAIL" != true ]] || exit 1
+    printf '{"configuration":{"mounts":["type=bind,source=%s,target=/home/%s/.claude.json"]}}\n' "$HOME/.claude.json" "$USER"
+    exit 0
+fi
 if [[ "${1:-}" == "up" ]]; then
     : > "$MOCK_CONTAINER_STATE"
 fi
@@ -290,6 +296,7 @@ MOCK
             MOCK_DECLARED_BIND_DESTINATION="${CASE_DECLARED_BIND_DESTINATION:-}" \
             MOCK_DECLARED_COMPOSE_PROJECT="${CASE_DECLARED_COMPOSE_PROJECT:-dev-benches}" \
             MOCK_NO_BIND_SOURCES="${CASE_NO_BIND_SOURCES:-false}" \
+            MOCK_DEVCONTAINER_READ_FAIL="${CASE_DEVCONTAINER_READ_FAIL:-false}" \
             MOCK_PROJECT="${CASE_COMPOSE_PROJECT:-dev-benches}" \
             MOCK_SERVICE="${CASE_COMPOSE_SERVICE:-${expected_config_image%%:*}}" \
             "$launcher" \
@@ -434,6 +441,24 @@ fi
 CASE_STAGED_SOURCE=true run_launcher_case staged-explicit-repair false complete false false py-bench --repair
 grep -q '^rm py-bench$' <<<"$CASE_DOCKER_LOG" || fail "resolved staged source did not allow stopped explicit repair"
 assert_compose_init "staged explicit repair"
+for devcontainer_bench in dotNetBench rustBench; do
+    CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated \
+        run_launcher_case staged-devcontainer-source false complete false false "$devcontainer_bench"
+    grep -q '^devcontainer read-configuration ' <<<"$CASE_DOCKER_LOG" || fail "Dev Container mounts were not resolved"
+    if grep -Eq '^(rm|devcontainer up) ' <<<"$CASE_DOCKER_LOG"; then
+        fail "Dev Container source resolution reached recreation"
+    fi
+done
+CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated \
+    run_launcher_case staged-devcontainer-repair false complete false false dotNetBench --repair
+grep -q '^rm dotnet-bench$' <<<"$CASE_DOCKER_LOG" || fail "resolved Dev Container source did not allow stopped repair"
+grep -q '^devcontainer up ' <<<"$CASE_DOCKER_LOG" || fail "Dev Container repair did not retain its lifecycle"
+CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated CASE_DEVCONTAINER_READ_FAIL=true CASE_EXPECT_STATUS=1 \
+    run_launcher_case staged-devcontainer-read-failed false complete false false dotNetBench --repair
+[[ -z "$CASE_PREPARE_LOG" ]] || fail "failed Dev Container metadata read reached preparation"
+if grep -Eq '^(rm|devcontainer up) ' <<<"$CASE_DOCKER_LOG"; then
+    fail "failed Dev Container metadata read reached recreation"
+fi
 
 CASE_HOST_SOURCE=missing CASE_EXPECT_STATUS=1 \
     run_launcher_case missing-claude-source false complete false false py-bench

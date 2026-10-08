@@ -294,6 +294,40 @@ validate_bind_source() {
     return 1
 }
 
+uses_devcontainer_lifecycle() {
+    [[ "$compose_file_explicit" != true \
+        && "$container" != "py-bench" \
+        && -f "$bench_dir/.devcontainer/devcontainer.json" ]]
+}
+
+declared_devcontainer_bind_sources() {
+    local cli=()
+    if command -v devcontainer >/dev/null 2>&1; then
+        cli=(devcontainer)
+    elif command -v npx >/dev/null 2>&1; then
+        cli=(npx -y @devcontainers/cli)
+    else
+        echo "Cannot read declared Dev Container mounts: its CLI is unavailable; refusing recovery." >&2
+        return 1
+    fi
+    cli+=(read-configuration --workspace-folder "$bench_dir" --log-level info)
+    # read-configuration parses JSONC and resolves localEnv/workspace variables
+    # without running initialization, creation, or user commands.
+    {
+        if command -v timeout >/dev/null 2>&1; then
+            timeout --foreground "${WAVE_DEVCONTAINER_UP_TIMEOUT:-25s}" "${cli[@]}"
+        else
+            "${cli[@]}"
+        fi
+    } 2>/dev/null | jq -r '
+        .configuration.mounts[]? |
+        if type == "string" then
+            split(",") | map(capture("^(?<key>[^=]+)=(?<value>.*)$")?) | from_entries
+        else . end |
+        select(.type == "bind") |
+        [(.source // .src), (.target // .destination // .dst)] | @tsv' 2>/dev/null
+}
+
 declared_compose_bind_sources() {
     if ! command -v jq >/dev/null 2>&1 || [[ ! -f "$compose_file" ]]; then
         echo "Cannot resolve staged bind sources: jq and the declared Compose file are required; refusing recovery." >&2
@@ -323,14 +357,27 @@ validate_existing_bind_sources() {
         return 1
     fi
     local source destination declared_binds="" declared_loaded=false
-    local original_source declared_source declared_destination
+    local original_source declared_source declared_destination devcontainer_binds
     while IFS=$'\t' read -r source destination; do
         [[ -n "$source" ]] || continue
         if [[ "$source" == /run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/* ]]; then
             if [[ "$declared_loaded" != true ]]; then
-                if ! declared_binds="$(declared_compose_bind_sources)"; then
+                if [[ -f "$compose_file" ]]; then
+                    if ! declared_binds="$(declared_compose_bind_sources)"; then
+                        echo "Cannot render declared bind sources for '$container'; refusing recovery." >&2
+                        return 1
+                    fi
+                elif ! uses_devcontainer_lifecycle; then
                     echo "Cannot render declared bind sources for '$container'; refusing recovery." >&2
                     return 1
+                fi
+                if uses_devcontainer_lifecycle; then
+                    if ! devcontainer_binds="$(declared_devcontainer_bind_sources)"; then
+                        echo "Cannot read declared Dev Container bind sources for '$container'; refusing recovery." >&2
+                        return 1
+                    fi
+                    # Dev Container mounts override matching Compose targets.
+                    declared_binds="$devcontainer_binds"$'\n'"$declared_binds"
                 fi
                 declared_loaded=true
             fi
@@ -342,7 +389,7 @@ validate_existing_bind_sources() {
                 fi
             done <<<"$declared_binds"
             if [[ -z "$original_source" || "$original_source" == /run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/* ]]; then
-                echo "Cannot resolve the real bind source for '$destination' from declared Compose configuration; refusing recovery." >&2
+                echo "Cannot resolve the real bind source for '$destination' from the declared lifecycle configuration; refusing recovery." >&2
                 return 1
             fi
             source="$original_source"
@@ -640,12 +687,6 @@ recreate_with_compose() {
     echo "Recreating $container with Wave compose mounts..."
     docker rm -f "$container" >/dev/null 2>&1 || true
     create_with_compose
-}
-
-uses_devcontainer_lifecycle() {
-    [[ "$compose_file_explicit" != true \
-        && "$container" != "py-bench" \
-        && -f "$bench_dir/.devcontainer/devcontainer.json" ]]
 }
 
 create_for_declared_lifecycle() {

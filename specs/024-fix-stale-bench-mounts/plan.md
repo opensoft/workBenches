@@ -9,7 +9,7 @@ Add credential-safe source preflight and targeted missing-staging diagnostics to
 ## Technical Context
 
 **Language**: Bash.
-**Dependencies**: Existing Docker CLI, shared helpers' jq dependency for staged-source resolution, standard filesystem predicates, optional GNU timeout.
+**Dependencies**: Existing Docker/Dev Containers CLI tooling, shared helpers' jq dependency for staged-source resolution, standard filesystem predicates, optional GNU timeout.
 **Testing**: Existing mocked Wave lifecycle suite, related helper-safety suites, Bash syntax, OpenSpec strict validation.
 **Platform**: Shared workBenches host launcher, including Docker Desktop WSL.
 **Constraints**: No credential reads, daemon restarts, new dependencies, unrelated gitlink changes, or live replacement.
