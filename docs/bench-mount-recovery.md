@@ -4,6 +4,8 @@ The shared Wave launcher validates stopped containers' real bind sources before 
 
 Docker may store an internal hashed staging path in mount metadata. The launcher resolves such paths through read-only Compose configuration rendering, including existing Wave, ROCm, and WSLg overlays, and validates the original host sources instead. It refuses recovery if a staged source cannot be resolved. This uses `jq`, already required by shared bench helper tooling; it does not create or update overlays during validation.
 
+Required Wave file sources and existing directory sources are also checked before preparation for stopped legacy containers, even when they do not yet have those mounts. The suggested recovery command retains the original invocation options, including custom checkout and Compose paths. With `--compose-file`, the effective Compose project is resolved before preparation and used consistently for ownership checks and creation; standard launches retain their declared bench-family project.
+
 A missing Docker Desktop WSL staged mount source can prevent `docker start` while the original host file is valid. The launcher reports the specific OCI failure and a shell-quoted recovery command. It does not infer this diagnosis from an exit code alone, automatically replace the container, or restart Docker/WSL.
 
 ## Explicit recovery

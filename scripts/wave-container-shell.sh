@@ -195,6 +195,7 @@ Replacement discards container-only files; declared bind mounts and volumes rema
 EOF
 }
 
+original_invocation_args=("$@")
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --workbenches-root) workbenches_root="$2"; shift 2 ;;
@@ -243,6 +244,22 @@ if docker container inspect "$container" >/dev/null 2>&1; then
     fi
 fi
 
+if [[ "$compose_file_explicit" == true ]]; then
+    project_config_args=(-f "$compose_file")
+    project_compose_dir="$(dirname "$compose_file")"
+    project_bench_dir="$bench_dir"
+    [[ "$bench_dir_resolved" == true ]] || project_bench_dir="$(dirname "$project_compose_dir")"
+    if [[ ! -f "$project_compose_dir/.env" && -f "$project_bench_dir/.env" ]]; then
+        project_config_args+=(--env-file "$project_bench_dir/.env")
+    fi
+    if ! command -v jq >/dev/null 2>&1 || \
+       ! compose_project="$(docker compose "${project_config_args[@]}" config --format json 2>/dev/null \
+            | jq -er '.name | select(type == "string" and length > 0)' 2>/dev/null)"; then
+        echo "Cannot determine the effective project from the explicit Compose configuration; refusing recovery." >&2
+        exit 1
+    fi
+fi
+
 validate_bind_source() {
     local source="$1"
     local destination="$2"
@@ -253,7 +270,15 @@ validate_bind_source() {
             expected_type="regular file"
             [[ -f "$source" ]] && return 0
             ;;
-        /workspace|/workspace/projects|"$container_home"|"$container_home"/.ssh|"$container_home"/.azure|"$container_home"/.aws|"$container_home"/.kube|"$container_home"/.claude|"$container_home"/.*-profiles|"$container_home"/.oh-my-zsh|"$container_home"/.config/workbenches|"$container_home"/.local/lib/workbenches|"$container_home"/.local/state/workbenches)
+        /workspace|/workspace/projects|/mnt/wslg|/opt/rocm-*|"$container_home"|\
+        "$container_home"/.ssh|"$container_home"/.azure|"$container_home"/.aws|"$container_home"/.kube|\
+        "$container_home"/.claude|"$container_home"/.*-profiles|"$container_home"/.oh-my-zsh|\
+        "$container_home"/.codex|"$container_home"/.omnigent|"$container_home"/.agents|"$container_home"/.pi|\
+        "$container_home"/.gemini|"$container_home"/.grok|"$container_home"/.copilot-cli|\
+        "$container_home"/.notebooklm|"$container_home"/.notebooklm-mcp-cli|\
+        "$container_home"/.config/gh|"$container_home"/.config/sonarqube|"$container_home"/.config/workbenches|\
+        "$container_home"/.local/lib/workbenches|"$container_home"/.local/state/workbenches|\
+        "$container_home"/.local/state/opensoft/agenttower/logs)
             expected_type="directory"
             [[ -d "$source" ]] && return 0
             ;;
@@ -324,12 +349,25 @@ validate_existing_bind_sources() {
     done <<<"$binds"
 }
 
-validate_wave_host_file_sources() {
+validate_wave_host_sources() {
     validate_bind_source "$home_dir/.claude.json" "/home/${container_user}/.claude.json" || return 1
     local file
     for file in .zshrc .p10k.zsh .bashrc .gitconfig; do
         if [[ -e "$home_dir/$file" || -L "$home_dir/$file" ]]; then
             validate_bind_source "$home_dir/$file" "/home/${container_user}/$file" || return 1
+        fi
+    done
+    local directory target
+    for directory in projects .ssh .azure .aws .kube .config/gh .claude \
+        .claude-profiles .codex .chatgpt-profiles .opencode-profiles .gemini-profiles \
+        .grok-profiles .glm-profiles .omnigent .agents .pi .pi-profiles .oh-my-zsh \
+        .config/workbenches .local/lib/workbenches .local/state/workbenches \
+        .config/sonarqube .gemini .grok .copilot-cli .notebooklm .notebooklm-mcp-cli \
+        .local/state/opensoft/agenttower/logs; do
+        if [[ -e "$home_dir/$directory" || -L "$home_dir/$directory" ]]; then
+            target="/home/${container_user}/$directory"
+            [[ "$directory" != projects ]] || target=/workspace/projects
+            validate_bind_source "$home_dir/$directory" "$target" || return 1
         fi
     done
 }
@@ -362,8 +400,8 @@ if [[ "$container_exists" == true ]]; then
         validate_existing_bind_sources || exit 1
     fi
 fi
-if [[ "$container_exists" != true || "$repair_requested" == true ]]; then
-    validate_wave_host_file_sources || exit 1
+if [[ "$container_exists" != true || "$repair_requested" == true || "$repair_container_was_running" != true ]]; then
+    validate_wave_host_sources || exit 1
 fi
 if [[ "$container_exists" == true && "$repair_requested" == true ]]; then
     validate_repair_ownership || exit 1
@@ -436,7 +474,7 @@ run_devcontainer_up() {
 }
 
 ensure_host_sources() {
-    validate_wave_host_file_sources || return 1
+    validate_wave_host_sources || return 1
     mkdir -p \
         "$home_dir/projects" \
         "$home_dir/.ssh" \
@@ -591,6 +629,7 @@ create_with_compose() {
         compose_args+=(-f "$wslg_compose_file")
     fi
     compose_args+=(-f "$override_file")
+    [[ -z "$compose_project" ]] || compose_args+=(-p "$compose_project")
     echo "Creating $container with docker compose..."
     docker compose "${compose_args[@]}" up -d "$container"
 }
@@ -748,7 +787,7 @@ start_container() {
         else
             echo "The failed start will not trigger recreation. Explicit --repair recreation discards container-only files but preserves declared bind mounts and volumes." >&2
             printf 'Recovery command: ' >&2
-            printf '%q ' "$0" --user "$container_user" --repair --check "$container" >&2
+            printf '%q ' "$0" ${original_invocation_args[@]+"${original_invocation_args[@]}"} --repair --check >&2
             printf '\n' >&2
         fi
     fi

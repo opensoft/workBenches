@@ -54,6 +54,10 @@ run_launcher_case() {
             ;;
         *) : > "$fake_home/.claude.json" ;;
     esac
+    if [[ -n "${CASE_BAD_HOST_DIRECTORY:-}" ]]; then
+        mkdir -p "$(dirname "$fake_home/$CASE_BAD_HOST_DIRECTORY")"
+        : > "$fake_home/$CASE_BAD_HOST_DIRECTORY"
+    fi
     cp "$repo_root/user-layer/claude-npm-guard" "$fake_root/user-layer/claude-npm-guard"
     : > "$fake_root/devBenches/pyBench/.devcontainer/devcontainer.json"
     : > "$fake_root/devBenches/pyBench/.devcontainer/docker-compose.yml"
@@ -113,8 +117,8 @@ printf '%s\n' "$*" >> "$MOCK_DOCKER_LOG"
 if [[ "${1:-}" == "compose" ]]; then
     if [[ " $* " == *" config "* ]]; then
         [[ "$MOCK_COMPOSE_CONFIG_FAIL" != true ]] || exit 1
-        printf '{"services":{"%s":{"volumes":[{"type":"bind","source":"%s","target":"%s"}]}}}\n' \
-            "$MOCK_SERVICE" "$HOME/.claude.json" "${MOCK_DECLARED_BIND_DESTINATION:-/home/$USER/.claude.json}"
+        printf '{"name":"%s","services":{"%s":{"volumes":[{"type":"bind","source":"%s","target":"%s"}]}}}\n' \
+            "$MOCK_DECLARED_COMPOSE_PROJECT" "$MOCK_SERVICE" "$HOME/.claude.json" "${MOCK_DECLARED_BIND_DESTINATION:-/home/$USER/.claude.json}"
         exit 0
     fi
     printf '%s\n' compose >> "$MOCK_LIFECYCLE_LOG"
@@ -155,6 +159,7 @@ if [[ "${1:-}" == "container" && "${2:-}" == "inspect" ]]; then
                 ;;
             *Mounts*)
                 if [[ "${4:-}" == *Source* ]]; then
+                    [[ "$MOCK_NO_BIND_SOURCES" != true ]] || exit 0
                     bind_source="$HOME/.claude.json"
                     if [[ "$MOCK_STAGED_SOURCE" == true ]]; then
                         bind_source=/run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/fixture/hash
@@ -283,6 +288,8 @@ MOCK
             MOCK_STAGED_SOURCE="${CASE_STAGED_SOURCE:-false}" \
             MOCK_COMPOSE_CONFIG_FAIL="${CASE_COMPOSE_CONFIG_FAIL:-false}" \
             MOCK_DECLARED_BIND_DESTINATION="${CASE_DECLARED_BIND_DESTINATION:-}" \
+            MOCK_DECLARED_COMPOSE_PROJECT="${CASE_DECLARED_COMPOSE_PROJECT:-dev-benches}" \
+            MOCK_NO_BIND_SOURCES="${CASE_NO_BIND_SOURCES:-false}" \
             MOCK_PROJECT="${CASE_COMPOSE_PROJECT:-dev-benches}" \
             MOCK_SERVICE="${CASE_COMPOSE_SERVICE:-${expected_config_image%%:*}}" \
             "$launcher" \
@@ -368,6 +375,30 @@ if grep -Eq '^(rm|compose|devcontainer) ' <<<"$CASE_DOCKER_LOG"; then
     fail "normal stale-mount failure recreated a container"
 fi
 [[ "$(grep -c '^start py-bench$' <<<"$CASE_DOCKER_LOG")" == 1 ]] || fail "normal failure retried startup"
+CASE_EXPLICIT_COMPOSE=true CASE_START_ERROR="$stale_mount_error" CASE_EXPECT_STATUS=73 \
+    run_launcher_case custom-recovery-command false complete false false py-bench
+grep -q -- '--compose-file .*/custom-compose.yml' <<<"$CASE_OUTPUT" || fail "recovery command dropped explicit Compose file"
+grep -q -- '--workbenches-root .*/workBenches' <<<"$CASE_OUTPUT" || fail "recovery command dropped explicit source root"
+
+CASE_NO_BIND_SOURCES=true CASE_HOST_SOURCE=missing CASE_EXPECT_STATUS=1 \
+    run_launcher_case legacy-stopped-missing-credentials false complete false false py-bench
+[[ -z "$CASE_PREPARE_LOG" ]] || fail "legacy stopped missing credentials reached preparation"
+if grep -Eq '^(start|rm|devcontainer) ' <<<"$CASE_DOCKER_LOG"; then
+    fail "legacy stopped missing credentials reached mutation"
+fi
+for host_directory in .codex .config/gh .agents .pi .gemini .grok .copilot-cli .notebooklm .notebooklm-mcp-cli .local/state/opensoft/agenttower/logs; do
+    CASE_BAD_HOST_DIRECTORY="$host_directory" CASE_EXPECT_STATUS=1 \
+        run_launcher_case generated-directory-type false complete false false py-bench --repair
+    grep -q 'directory' <<<"$CASE_OUTPUT" || fail "generated directory type was not diagnosed"
+    [[ -z "$CASE_PREPARE_LOG$CASE_LIFECYCLE_LOG" ]] || fail "invalid generated directory reached preparation or recreation"
+    if grep -q '^rm ' <<<"$CASE_DOCKER_LOG"; then
+        fail "invalid generated directory removed the container"
+    fi
+done
+CASE_EXPLICIT_COMPOSE=true CASE_DECLARED_COMPOSE_PROJECT=custom-project CASE_COMPOSE_PROJECT=custom-project \
+    run_launcher_case custom-project-repair false complete false false py-bench --repair
+grep -q -- '--project custom-project' <<<"$CASE_PREPARE_LOG" || fail "custom effective project was not passed to preparation"
+grep -q -- '-p custom-project' <<<"$CASE_DOCKER_LOG" || fail "custom effective project was not used for creation"
 
 CASE_STAGED_SOURCE=true CASE_START_ERROR="$stale_mount_error" CASE_EXPECT_STATUS=73 \
     run_launcher_case staged-metadata-source false complete false false py-bench
@@ -521,7 +552,7 @@ fi
 CASE_CONTAINER_EXISTS=false CASE_NETWORK_EXISTS=false CASE_LAYER2_EXISTS=false run_launcher_case wave-default-compose-first-create false missing false false py-bench
 [[ "$CASE_ENSURE_IMAGES_LOG" == "--user tester" ]] \
     || fail "Wave first creation did not bootstrap a missing pyBench image stack"
-grep -q -- "compose -f .*/devBenches/pyBench/.devcontainer/docker-compose.yml -f .*/devBenches/pyBench/.devcontainer/docker-compose.amd-rocm.generated.yml -f .*/py-bench.override.yml up -d py-bench" <<<"$CASE_DOCKER_LOG" \
+grep -q -- "compose -f .*/devBenches/pyBench/.devcontainer/docker-compose.yml -f .*/devBenches/pyBench/.devcontainer/docker-compose.amd-rocm.generated.yml -f .*/py-bench.override.yml -p dev-benches up -d py-bench" <<<"$CASE_DOCKER_LOG" \
     || fail "Wave first creation did not use the bench Compose file, generated ROCm overlay, and Wave override"
 assert_compose_init "Wave first creation"
 grep -q '^network create devbench-shared$' <<<"$CASE_DOCKER_LOG" \
