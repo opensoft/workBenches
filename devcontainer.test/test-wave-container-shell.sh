@@ -111,6 +111,11 @@ set -euo pipefail
 printf '%s\n' "$*" >> "$MOCK_DOCKER_LOG"
 
 if [[ "${1:-}" == "compose" ]]; then
+    if [[ " $* " == *" config "* ]]; then
+        printf '{"services":{"%s":{"volumes":[{"type":"bind","source":"%s","target":"%s"}]}}}\n' \
+            "$MOCK_SERVICE" "$HOME/.claude.json" "${MOCK_DECLARED_BIND_DESTINATION:-/home/$USER/.claude.json}"
+        exit 0
+    fi
     printf '%s\n' compose >> "$MOCK_LIFECYCLE_LOG"
     if [[ " $* " == *" up "* ]]; then
         : > "$MOCK_CONTAINER_STATE"
@@ -149,7 +154,11 @@ if [[ "${1:-}" == "container" && "${2:-}" == "inspect" ]]; then
                 ;;
             *Mounts*)
                 if [[ "${4:-}" == *Source* ]]; then
-                    printf '%s\t%s\n' "$HOME/.claude.json" "${MOCK_BIND_DESTINATION:-/home/$USER/.claude.json}"
+                    bind_source="$HOME/.claude.json"
+                    if [[ "$MOCK_STAGED_SOURCE" == true ]]; then
+                        bind_source=/run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/fixture/hash
+                    fi
+                    printf '%s\t%s\n' "$bind_source" "${MOCK_BIND_DESTINATION:-/home/$USER/.claude.json}"
                 elif [[ "$MOCK_MOUNTS" == "complete" ]]; then
                     cat <<'MOUNTS'
 /workspace/projects
@@ -270,6 +279,8 @@ MOCK
             MOCK_SOURCE_DISAPPEARS="${CASE_SOURCE_DISAPPEARS:-false}" \
             MOCK_SOURCE_DISAPPEARS_AFTER_PREPARE="${CASE_SOURCE_DISAPPEARS_AFTER_PREPARE:-false}" \
             MOCK_BIND_DESTINATION="${CASE_BIND_DESTINATION:-}" \
+            MOCK_STAGED_SOURCE="${CASE_STAGED_SOURCE:-false}" \
+            MOCK_DECLARED_BIND_DESTINATION="${CASE_DECLARED_BIND_DESTINATION:-}" \
             MOCK_PROJECT="${CASE_COMPOSE_PROJECT:-dev-benches}" \
             MOCK_SERVICE="${CASE_COMPOSE_SERVICE:-${expected_config_image%%:*}}" \
             "$launcher" \
@@ -355,6 +366,24 @@ if grep -Eq '^(rm|compose|devcontainer) ' <<<"$CASE_DOCKER_LOG"; then
     fail "normal stale-mount failure recreated a container"
 fi
 [[ "$(grep -c '^start py-bench$' <<<"$CASE_DOCKER_LOG")" == 1 ]] || fail "normal failure retried startup"
+
+CASE_STAGED_SOURCE=true CASE_START_ERROR="$stale_mount_error" CASE_EXPECT_STATUS=73 \
+    run_launcher_case staged-metadata-source false complete false false py-bench
+grep -q 'stale Docker Desktop WSL bind mapping' <<<"$CASE_OUTPUT" || fail "staged metadata did not resolve to the real source"
+[[ -z "$CASE_LIFECYCLE_LOG" ]] || fail "staged-source validation changed the declared lifecycle"
+if grep -q '^rm ' <<<"$CASE_DOCKER_LOG"; then
+    fail "staged-source diagnosis removed a container"
+fi
+CASE_STAGED_SOURCE=true CASE_HOST_SOURCE=missing CASE_EXPECT_STATUS=1 \
+    run_launcher_case staged-real-source-missing false complete false false py-bench
+grep -q 'regular file' <<<"$CASE_OUTPUT" || fail "staged missing real source was not diagnosed"
+[[ -z "$CASE_PREPARE_LOG$CASE_LIFECYCLE_LOG" ]] || fail "missing staged real source reached mutation"
+CASE_STAGED_SOURCE=true CASE_DECLARED_BIND_DESTINATION=/unrelated CASE_EXPECT_STATUS=1 \
+    run_launcher_case staged-source-unresolved false complete false false py-bench --repair
+[[ -z "$CASE_PREPARE_LOG$CASE_LIFECYCLE_LOG" ]] || fail "unresolved staged source reached mutation"
+if grep -q '^rm ' <<<"$CASE_DOCKER_LOG"; then
+    fail "unresolved staged source removed a container"
+fi
 
 CASE_HOST_SOURCE=missing CASE_EXPECT_STATUS=1 \
     run_launcher_case missing-claude-source false complete false false py-bench

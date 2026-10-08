@@ -2,6 +2,8 @@
 
 The shared Wave launcher validates stopped containers' real bind sources before preparation. Known shell and Claude configuration targets require regular files; known workspace/profile targets require directories. Normal attaches to running containers preserve them, even if a host file was atomically replaced after startup.
 
+Docker may store an internal hashed staging path in mount metadata. The launcher resolves such paths through read-only Compose configuration rendering, including existing Wave, ROCm, and WSLg overlays, and validates the original host sources instead. It refuses recovery if a staged source cannot be resolved. This uses `jq`, already required by shared bench helper tooling; it does not create or update overlays during validation.
+
 A missing Docker Desktop WSL staged mount source can prevent `docker start` while the original host file is valid. The launcher reports the specific OCI failure and a shell-quoted recovery command. It does not infer this diagnosis from an exit code alone, automatically replace the container, or restart Docker/WSL.
 
 ## Explicit recovery

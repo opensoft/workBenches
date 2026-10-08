@@ -267,15 +267,59 @@ validate_bind_source() {
     return 1
 }
 
+declared_compose_bind_sources() {
+    if ! command -v jq >/dev/null 2>&1 || [[ ! -f "$compose_file" ]]; then
+        echo "Cannot resolve staged bind sources: jq and the declared Compose file are required; refusing recovery." >&2
+        return 1
+    fi
+    local config_args=(-f "$compose_file")
+    local overlay
+    if [[ "$container" == py-bench ]]; then
+        overlay="$bench_dir/.devcontainer/docker-compose.amd-rocm.generated.yml"
+        [[ ! -f "$overlay" ]] || config_args+=(-f "$overlay")
+    elif [[ "$container" == rust-bench && -d "$wslg_root" ]]; then
+        overlay="$bench_dir/.devcontainer/docker-compose.wslg.yml"
+        [[ ! -f "$overlay" ]] || config_args+=(-f "$overlay")
+    fi
+    overlay="${WAVE_WORKBENCHES_COMPOSE_CACHE:-$home_dir/.cache/workbenches/wave-compose}/$container.override.yml"
+    [[ ! -f "$overlay" ]] || config_args+=(-f "$overlay")
+    # Render metadata only; do not run initialization, create host sources, or
+    # inspect Docker Desktop's internal paths from the user distro.
+    docker compose "${config_args[@]}" config --format json 2>/dev/null \
+        | jq -r --arg service "$container" '.services[$service].volumes[]? | select(.type == "bind") | [.source, .target] | @tsv' 2>/dev/null
+}
+
 validate_existing_bind_sources() {
     local binds
     if ! binds="$(docker container inspect -f '{{range .Mounts}}{{if eq .Type "bind"}}{{printf "%s\t%s\n" .Source .Destination}}{{end}}{{end}}' "$container" 2>/dev/null)"; then
         echo "Cannot inspect bind sources for '$container'; refusing recovery." >&2
         return 1
     fi
-    local source destination
+    local source destination declared_binds="" declared_loaded=false
+    local original_source declared_source declared_destination
     while IFS=$'\t' read -r source destination; do
         [[ -n "$source" ]] || continue
+        if [[ "$source" == /run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/* ]]; then
+            if [[ "$declared_loaded" != true ]]; then
+                if ! declared_binds="$(declared_compose_bind_sources)"; then
+                    echo "Cannot render declared bind sources for '$container'; refusing recovery." >&2
+                    return 1
+                fi
+                declared_loaded=true
+            fi
+            original_source=""
+            while IFS=$'\t' read -r declared_source declared_destination; do
+                if [[ "$declared_destination" == "$destination" ]]; then
+                    original_source="$declared_source"
+                    break
+                fi
+            done <<<"$declared_binds"
+            if [[ -z "$original_source" || "$original_source" == /run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/* ]]; then
+                echo "Cannot resolve the real bind source for '$destination' from declared Compose configuration; refusing recovery." >&2
+                return 1
+            fi
+            source="$original_source"
+        fi
         validate_bind_source "$source" "$destination" || return 1
     done <<<"$binds"
 }
