@@ -14,6 +14,7 @@ Date: 2026-10-08. All executable source tests ran as the bench user in the alrea
 - Patch hygiene: native Git `git diff --check` passed.
 - Live metadata check: loaded only the new validation function definitions on the launcher's WSL host and validated every current py-bench bind, including internal staged metadata resolved to original sources. This read-only check did not run launcher preparation, creation, startup, or replacement.
 - External review follow-up: added regressions for retained custom recovery options, stopped legacy containers without credential binds, every generated directory mount type, and custom effective Compose project names. The new custom-recovery fixture failed before the fixes; the full suites and actual bind/Wave host-source validation passed afterwards.
+- CI prerequisite follow-up: the minimal Node integrity-test image lacked jq. Claude guard/version tests passed, but Wave metadata parsing refused the custom-Compose fixture. Added jq alongside zsh in that CI job; the existing host helper suite and live WSL host already have jq.
 
 The helper suite initially failed on both this feature and unchanged main: when executed inside a bench, its MCP helper selected the mounted shared registry rather than the expected temporary HOME fixture. Explicit `WORKBENCHES_SHARED_MCP_HOME` and host rendering context now keep the test independent of the execution surface and prevent mock routing updates from reaching the real registry. No production MCP routing behavior was changed.
 
