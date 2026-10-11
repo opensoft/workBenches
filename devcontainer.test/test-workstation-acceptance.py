@@ -142,7 +142,12 @@ def seed_vault():
     wrapped = '2.' + '|'.join(encode(value) for value in (iv, cipher, hmac.new(mac, iv + cipher, 'sha256').digest()))
     payload = {'email': EMAIL, 'name': 'Disposable acceptance account', 'masterPasswordHash': encode(auth),
                'key': wrapped, 'kdf': 0, 'kdfIterations': 600000}
-    request = urllib.request.Request(server + '/api/accounts/register', data=json.dumps(payload).encode(),
+    request = urllib.request.Request(server + '/identity/accounts/register/send-verification-email',
+                                     data=json.dumps({'email': EMAIL, 'name': 'Acceptance'}).encode(),
+                                     headers={'Content-Type': 'application/json', 'Accept': 'application/json'})
+    with urllib.request.urlopen(request, context=context, timeout=10) as response:
+        payload['emailVerificationToken'] = json.load(response)
+    request = urllib.request.Request(server + '/identity/accounts/register/finish', data=json.dumps(payload).encode(),
                                      headers={'Content-Type': 'application/json'})
     urllib.request.urlopen(request, context=context, timeout=10).close()
     # Keep certificate verification enabled. This is the only disposable clone
