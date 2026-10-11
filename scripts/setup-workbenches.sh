@@ -6,6 +6,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../bootstrap.sh"
 CONFIG_FILE="$SCRIPT_DIR/../config/bench-config.json"
 INSTALLED_FILE="$SCRIPT_DIR/../.installed-benches.json"
 
@@ -269,7 +270,7 @@ clone_repo() {
         mkdir -p "$parent_dir"
     fi
     
-    if git clone "$url" "$SCRIPT_DIR/../$path"; then
+    if workbenches_clone "$url" "$SCRIPT_DIR/../$path"; then
         echo -e "${GREEN}✓ Successfully cloned $name${NC}"
         # Update installed tracking
         local current_time

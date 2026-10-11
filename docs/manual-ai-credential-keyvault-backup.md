@@ -95,8 +95,19 @@ the immutable Key Vault version URI used for restore verification.
 
 ## Restore guardrail
 
-The tool intentionally does not automate restore. Before replacing a local
-credential file:
+Restore missing credentials from the private manifest with:
+
+```bash
+scripts/backup-ai-profile-credentials-to-kv.sh restore --azure-login
+```
+
+Existing credentials are preserved. `--azure-login` permits interactive tenant
+sign-in if no usable Azure session exists. The tool uses host Azure CLI first,
+then a temporary official Azure CLI container when Docker is available. Without
+either runtime it offers to install Azure CLI in a user-local Python virtual
+environment. See [credential recovery](credential-recovery.md) for details.
+
+Before explicitly replacing a local credential with `--force`:
 
 1. Stop every process that uses the target profile.
 2. Confirm the target provider, profile, company, and secret version.

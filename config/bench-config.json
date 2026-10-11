@@ -8,13 +8,13 @@
   },
   "benches": {
     "cloudBench": {
-      "url": "git@github.com:opensoft/cloudBench.git",
+      "url": "https://github.com/opensoft/cloudBench.git",
       "path": "sysBenches/cloudBench",
       "description": "Cloud infrastructure and operations tools",
       "ai_keywords": ["cloud", "infrastructure", "devops", "kubernetes", "docker", "deployment", "admin", "monitoring", "logging"]
     },
     "pyBench": {
-      "url": "git@github.com:opensoft/pyBench.git",
+      "url": "https://github.com/opensoft/pyBench.git",
       "path": "devBenches/pyBench",
       "description": "Python development environment and tools",
       "ai_keywords": ["python", "django", "flask", "fastapi", "pandas", "numpy", "machine learning", "ml", "data science", "AI", "artificial intelligence", "web scraping"],
@@ -28,7 +28,7 @@
       ]
     },
     "javaBench": {
-      "url": "git@github.com:opensoft/javaBench.git",
+      "url": "https://github.com/opensoft/javaBench.git",
       "path": "devBenches/javaBench",
       "description": "Java development environment and tools",
       "ai_keywords": ["java", "spring", "springboot", "hibernate", "maven", "gradle", "jvm", "enterprise", "microservices"],
@@ -42,7 +42,7 @@
       ]
     },
     "dotNetBench": {
-      "url": "git@github.com:opensoft/dotNetBench.git",
+      "url": "https://github.com/opensoft/dotNetBench.git",
       "path": "devBenches/dotNetBench",
       "description": ".NET development environment and tools",
       "ai_keywords": ["dotnet", ".net", "c#", "csharp", "asp.net", "core", "blazor", "entity framework", "microsoft", "visual studio"],
@@ -56,7 +56,7 @@
       ]
     },
     "flutterBench": {
-      "url": "git@github.com:opensoft/flutterBench.git",
+      "url": "https://github.com/opensoft/flutterBench.git",
       "path": "devBenches/flutterBench",
       "description": "Flutter/Dart development environment and tools",
       "ai_keywords": ["flutter", "dart", "mobile app", "android", "ios", "cross-platform", "widget", "material design", "cupertino"],
@@ -88,7 +88,7 @@
       ]
     },
     "cppBench": {
-      "url": "git@github.com:opensoft/cppBench.git",
+      "url": "https://github.com/opensoft/cppBench.git",
       "path": "devBenches/cppBench",
       "description": "C++ development environment and tools",
       "ai_keywords": ["c++", "cpp", "cmake", "makefile", "gcc", "clang", "system programming", "embedded", "game development", "native performance"],
@@ -102,7 +102,7 @@
       ]
     },
     "frappeBench": {
-      "url": "git@github.com:opensoft/frappeBench.git",
+      "url": "https://github.com/opensoft/frappeBench.git",
       "path": "devBenches/frappeBench",
       "description": "Frappe/ERPNext development environment and tools",
       "ai_keywords": ["frappe", "erpnext", "erp", "business software", "python", "mariadb", "redis", "web framework", "accounting", "crm", "hrms"],
@@ -116,13 +116,13 @@
       ]
     },
     "gentecBench": {
-      "url": "git@github.com:opensoft/gentecBench.git",
+      "url": "https://github.com/opensoft/gentecBench.git",
       "path": "bioBenches/gentecBench",
       "description": "Genetics and genomics workbench with BaseSpace CLI",
       "ai_keywords": ["genetics", "genomics", "bioinformatics", "sequencing", "illumina", "basespace", "dna", "rna", "variant calling"]
     },
     "simBench": {
-      "url": "git@github.com:opensoft/simBench.git",
+      "url": "https://github.com/opensoft/simBench.git",
       "path": "bioBenches/simBench",
       "description": "Molecular simulation workbench with ESMFold and AlphaFold",
       "ai_keywords": ["simulation", "protein", "esm", "esmfold", "alphafold", "molecular dynamics", "structure prediction", "folding"]

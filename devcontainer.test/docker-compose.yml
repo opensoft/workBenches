@@ -1,6 +1,56 @@
 name: workbench-test
 
 services:
+  npm-integrity:
+    profiles: [merge-validation]
+    image: workbenches-test:workstation
+    build:
+      context: workstation
+    user: node
+    working_dir: /source
+    volumes:
+      - ..:/source:ro
+    command: [bash, -ec, "bash devcontainer.test/test-claude-npm-guard.sh; bash devcontainer.test/test-layer3-claude-version.sh; bash devcontainer.test/test-wave-container-shell.sh"]
+
+  acceptance-engine:
+    profiles: [workstation-acceptance]
+    image: docker:28-dind
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    command: [dockerd, "--host=unix:///var/run/docker.sock", "--group=1000", "--bip=172.28.0.1/16", "--default-address-pool=base=172.29.0.0/16,size=24"]
+    volumes:
+      - acceptance-socket:/var/run
+      - acceptance-home:/home/node
+      - acceptance-tmp:/acceptance
+      - acceptance-data:/var/lib/docker
+    healthcheck:
+      test: [CMD, docker, info]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  workstation-acceptance:
+    profiles: [workstation-acceptance]
+    image: workbenches-test:workstation
+    build:
+      context: workstation
+    depends_on:
+      acceptance-engine:
+        condition: service_healthy
+    network_mode: service:acceptance-engine
+    environment:
+      WORKBENCHES_ACCEPTANCE_REF: ${WORKBENCHES_ACCEPTANCE_REF:-main}
+      WORKBENCHES_ACCEPTANCE_SHA: ${WORKBENCHES_ACCEPTANCE_SHA:-}
+      TMPDIR: /acceptance/tmp
+    volumes:
+      - acceptance-socket:/var/run
+      - acceptance-home:/home/node
+      - acceptance-tmp:/acceptance
+      - ..:/source:ro
+      - ../artifacts/workstation-acceptance:/report
+    command: [bash, -ec, "mkdir -p /acceptance/tmp; chown -R node:node /home/node /acceptance /report; exec runuser -u node -- python3 /source/devcontainer.test/test-workstation-acceptance.py"]
+
   test:
     image: workbench-base:${USER:-brett}
     container_name: workbench-test
@@ -17,3 +67,56 @@ services:
       # Basic environment
       - USER=${USER:-vscode}
       - HOME=/home/${USER:-vscode}
+
+  credential-bitwarden:
+    profiles: [credential-recovery]
+    image: workbenches-credential-recovery:bitwarden-2026.9.1-v3
+    build:
+      context: ../credential-container
+      target: bitwarden
+    entrypoint: bw
+    command: --version
+    user: "${UID:-1000}:${GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,nosuid,nodev,mode=1777,size=256m"]
+
+    environment:
+      HOME: /tmp/session
+      BITWARDENCLI_APPDATA_DIR: /tmp/session/bw
+
+  credential-1password:
+    profiles: [credential-recovery]
+    image: workbenches-credential-recovery:1password-2.40.0-v3
+    build:
+      context: ../credential-container
+      target: onepassword
+    entrypoint: op
+    command: --version
+    user: "${UID:-1000}:${GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,nosuid,nodev,mode=1777,size=256m"]
+    environment:
+      HOME: /tmp/session
+      OP_CONFIG_DIR: /tmp/session/op
+
+  credential-fixture:
+    profiles: [credential-test]
+    image: workbenches-credential-recovery:test-fixture-v3
+    build:
+      context: ..
+      dockerfile: devcontainer.test/credential-fixture/Dockerfile
+    user: "${UID:-1000}:${GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,nosuid,nodev,mode=1777,size=256m"]
+
+volumes:
+  acceptance-socket:
+  acceptance-home:
+  acceptance-tmp:
+  acceptance-data:

@@ -71,26 +71,48 @@ A layered Docker-based development environment system. Each "bench" is a self-co
 
 ## Quick Start
 
+On a new workstation, install Git and download the standalone bootstrap.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/opensoft/workBenches/main/bootstrap.sh -o workbenches-bootstrap.sh
+bash workbenches-bootstrap.sh --setup
+```
+
+Bootstrap clones to `~/Projects/workBenches`. Use `--directory PATH` to choose
+another location, or omit `--setup` to clone without running setup. It prefers
+SSH when your existing SSH configuration or agent can access the repository;
+otherwise it falls back to HTTPS. SSH probes are noninteractive and require a
+trusted host key, so a fresh workstation can download public repositories
+without a GitHub login, token, or SSH key. Private repositories still require
+authorized SSH access or HTTPS credentials.
+
+The setup TUI, registry clones, and Wave installer use the same transport
+selection. Existing checkout remotes and global Git/SSH settings are preserved.
+Public bench URLs in the catalog and `.gitmodules` use HTTPS for compatibility
+with ordinary Git commands. To initialize all pinned submodules with SSH
+preference and HTTPS fallback, run `bash bootstrap.sh --submodules "$PWD"`.
+
+From an existing checkout:
+
 ```bash
 ./setup.sh
 ```
 
 This single command:
-1. Configures your shell (zsh + Oh My Zsh + Powerlevel10k)
-2. Installs the estate commands from workBenches' own pin (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status`, and the lane tools `lanes-edit.sh`, `lane-start`, `lane-end`, `link-estates` with the shipped `repos.tsv`)
-3. Creates your workspace repository, if you have none, with `openRepoTools wip init` — it asks you nothing
-4. Checks workstation VPN clients and patches 0dcloud TUN MTU for large Git/Docker transfers
-5. Installs or updates Wave Terminal widgets for workBenches
-6. Ensures Docker is running and Layer 0 base image exists
-7. Opens an interactive TUI to select benches, AI tools, and workstation tools
-8. Builds Docker images for selected benches
-9. Installs AI coding CLIs and workstation tools (Claude, Copilot, Codex, Pi, etc.)
+
+1. Checks Docker access and common dependencies, offering installation when needed.
+2. Opens the TUI to select benches, AI assistants, and tools. An empty selection finishes without installs or image builds.
+3. Shows selected changes, shared host setup, and local credential readiness, then asks for confirmation before changing profiles, recovering credentials, or configuring the host.
+4. Checks Node/npm only for selected tools that require them. A system-owned npm location falls back to `~/.local`, with PATH configured for new terminals.
+5. Reuses valid local credentials, or offers direct sign-in, guided vault recovery, or authentication later for selected AI tools, with optional personal/organization profiles.
+6. Configures the shell and installs pinned estate commands, then initializes the workspace repository if needed.
+7. Installs selected tools and builds only selected bench dependencies. Wave widgets and VPN setup follow the selected tools.
 
 After setup, open any bench in VS Code → "Reopen in Container" to start developing.
 
 ### Re-running setup.sh
 
-Safe to run repeatedly. Installed benches show `✓ up to date` and are skipped. Only new selections or missing images trigger builds. The estate commands (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status` and the five lane tools) are checked against workBenches' pin on every run and are re-placed only when a host copy differs from it. The workspace repository step does nothing at all once you have one: it is a file test on `~/.agents/workspace.yaml`, so a second `./setup.sh` neither asks you anything nor touches the network for it.
+Installed items show their status and default to no changes. Space selects an install/update and pressing it again undoes the selection. D selects removal and pressing it again undoes removal. Only explicit selections are applied; an unchanged selection exits without host setup or builds. On runs with requested changes, the estate commands (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status` and the five lane tools) are checked against workBenches' pin on every run and are re-placed only when a host copy differs from it. The workspace repository step does nothing at all once you have one: it is a file test on `~/.agents/workspace.yaml`, so that step skips an existing workspace without asking questions or contacting the network.
 
 ## Docker Image Layers
 
@@ -151,23 +173,29 @@ checkout unchanged.
 
 ```
 setup.sh
-  ├── Shell setup (zsh + Oh My Zsh + Powerlevel10k)
-  ├── Estate commands (scripts/setup-estate-commands.sh — openRepoTools --install)
-  ├── Workspace repository (scripts/setup-workspace-repo.sh — openRepoTools wip init)
-  │     └── strictly after the estate commands: `wip init` is their subcommand
-  ├── VPN setup (AmneziaVPN + 0dcloud checks, 0dcloud MTU patch)
-  ├── Wave Terminal widgets (terminal, projects, and workBench containers)
-  ├── Docker check (is daemon running?)
-  ├── Layer 0 check (build workbench-base:latest if missing)
-  ├── Interactive TUI (scripts/interactive-setup.sh)
-  │     ├── 3-column selection: Benches | AI Assistants | Tools
-  │     ├── Status: ✓ installed  ⚠ needs setup  ✗ not installed
-  │     ├── Installed benches: check Docker images (Layer 2 + Layer 3)
-  │     ├── New benches: clone repo → run setup.sh or build-layer.sh
-  │     └── AI tools: install/update via npm
-  ├── Layer 1 builds (dev-bench-base, sys-bench-base, bio-bench-base)
+  ├── Docker access + Python/jq/git/curl preflight
+  ├── Component TUI: Benches | AI Assistants | Tools
+  │     └── Q/EOF cancels; empty Enter finishes without installs/builds
+  ├── Node/npm prerequisite for selected npm tools
+  ├── Selected AI tools: direct sign-in / recover from vault / configure later
+  │     ├── Optional personal/organization profiles
+  │     └── Guided vault item mappings or advanced JSON import
+  ├── Selected changes + per-profile local credential presence
+  ├── Shell + pinned estate commands → workspace repository
+  ├── Selected Wave widgets / Claude workflows
+  ├── Layer 0 only when benches are selected
+  ├── Apply saved component selection; native login for missing credentials
+  ├── Layer 1 builds only for selected bench categories
   └── Summary + log file path
 ```
+
+Docker verification runs before host installers and credential onboarding.
+Missing Docker prompts for installation in an interactive terminal; supported
+Linux package managers include apt, dnf, apk and Arch/Omarchy pacman. Local
+passwords are entered into sudo. A stopped local system Docker service can be
+started with the user's agreement. Declining, cancellation, installation
+failure or inaccessible Docker stops setup before later steps. Remote/rootless
+contexts use their configured daemon and local access policy.
 
 Your host's `openRepoShape`, `openRepoTools`, `park`, `resume`, `status`, `lane`, `lanes`, `lane-handoff`, `lane-rename`, `lanes-edit.sh`, `lane-start`, `lane-end`, `link-estates`, `repos.tsv`, `claude-current` and `claude-restart-check` come from workBenches' own pin (`devBenches/base-image/upstream-pin.yaml`). `setup.sh` places them from the vendored copies in `devBenches/base-image/files/openreposhape/` and `devBenches/base-image/files/openrepotools/`, and re-places them whenever a host copy differs from the pin, in either direction — behind, ahead, or hand-edited. To move them to a new upstream commit, move the pin with `update-upstream.py apply` and re-run `setup.sh`; do not edit the vendored files or the installed commands directly. The step refuses to run over a symlinked, non-regular, or read-only target, and verifies the fifteen placed openRepoTools files (and openRepoShape's own) against the vendored copies before it reports success. Set `WORKBENCHES_SKIP_ESTATE_COMMANDS=1` to skip this step.
 
@@ -236,6 +264,16 @@ automatically.
 First-run setup offers consent-based work and personal AI profile onboarding,
 including GitHub credential-registry discovery and a local manual fallback.
 See [Shared AI provider profiles](docs/multi-provider-profiles.md).
+Interactive profile setup asks whether AI tokens or profile credentials are in
+a vault and supports selecting Azure Key Vault, Bitwarden/Vaultwarden, and
+1Password. Recovery uses temporary containers and approved mappings; see
+[Credential recovery](docs/credential-recovery.md) for supported login methods.
+
+For common and per-option credential requirements, password-manager integrations
+and the broader recovery roadmap, see
+[Credentials for installation and recovery](docs/setup-credential-requirements.md).
+Preview selected requirements without reading secrets:
+`python3 scripts/plan-setup-credentials.py --option dotNetBench --option codex_cli`.
 Multi-account Claude details remain in
 [Claude multi-account profiles](docs/claude-multi-account-profiles.md).
 OpenCode users who switch between OpenAI ChatGPT accounts while retaining the

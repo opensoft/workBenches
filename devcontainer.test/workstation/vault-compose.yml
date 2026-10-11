@@ -1,0 +1,32 @@
+services:
+  vault:
+    image: vaultwarden/server:1.37.4
+    environment:
+      SIGNUPS_ALLOWED: "true"
+      SIGNUPS_VERIFY: "false"
+      WEB_VAULT_ENABLED: "false"
+      I_REALLY_WANT_VOLATILE_STORAGE: "true"
+      ROCKET_TLS: '{certs="/tls/cert.pem",key="/tls/key.pem"}'
+      ROCKET_PORT: "80"
+    ports: ["18443:80"]
+    volumes:
+      - /acceptance/tls:/tls:ro
+
+  credential-tools:
+    image: workbenches-credential-recovery:bitwarden-2026.9.1-v3
+    build:
+      context: /home/node/projects/workBenches/credential-container
+      target: bitwarden
+    entrypoint: bw
+    user: "1000:1000"
+    environment:
+      HOME: /tmp/session
+      BITWARDENCLI_APPDATA_DIR: /seed
+      BW_PASSWORD:
+      BW_SESSION:
+    volumes:
+      - /acceptance/seed:/seed
+    tmpfs: ["/tmp:rw,nosuid,nodev,mode=1777,size=256m"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]

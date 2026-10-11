@@ -5,6 +5,12 @@
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/bootstrap.sh"
+source "$SCRIPT_DIR/scripts/lib/setup-prerequisites.sh"
+
+# Cancellation during prerequisite/password prompts must stop the launcher.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # ========================================
 # LOGGING
@@ -46,64 +52,6 @@ log_header "SETUP STARTED"
 # Clean up old logs (keep last 10)
 ls -t "$LOG_DIR"/setup-*.log 2>/dev/null | tail -n +11 | xargs rm -f 2>/dev/null
 
-# Ensure Docker is installed and running
-ensure_docker() {
-    if ! command -v docker >/dev/null 2>&1; then
-        echo "Docker is not installed. It is required to build workBenches images."
-        if [ -t 0 ]; then
-            read -p "Attempt to install Docker now? [y/N]: " install_choice
-            case "$install_choice" in
-                [Yy]*)
-                    if [ -f /etc/os-release ]; then
-                        . /etc/os-release
-                        OS=$ID
-                    else
-                        OS=$(uname -s)
-                    fi
-                    case "$OS" in
-                        ubuntu|debian|pop)
-                            echo "Running: sudo apt update && sudo apt install -y docker.io"
-                            sudo apt update && sudo apt install -y docker.io || true
-                            ;;
-                        fedora|rhel|centos)
-                            echo "Running: sudo dnf install -y docker"
-                            sudo dnf install -y docker || true
-                            ;;
-                        alpine)
-                            echo "Running: sudo apk add docker"
-                            sudo apk add docker || true
-                            ;;
-                        Darwin|darwin|macos)
-                            echo "Please install Docker Desktop for macOS:"
-                            echo "  https://www.docker.com/products/docker-desktop/"
-                            ;;
-                        *)
-                            echo "Please install Docker for your OS:"
-                            echo "  https://docs.docker.com/get-docker/"
-                            ;;
-                    esac
-                    ;;
-                *)
-                    ;;
-            esac
-        fi
-        if ! command -v docker >/dev/null 2>&1; then
-            echo "Docker is still not available. Please install it, then re-run ./setup.sh"
-            exit 1
-        fi
-    fi
-
-    if ! docker info >/dev/null 2>&1; then
-        echo "Docker is installed but not running."
-        if command -v systemctl >/dev/null 2>&1; then
-            echo "Try: sudo systemctl start docker"
-        else
-            echo "Please start Docker Desktop or your Docker daemon."
-        fi
-        exit 1
-    fi
-}
-
 # Install or update Wave Terminal widgets for this workBenches checkout.
 # This is best-effort because Wave is a desktop convenience, not a build
 # prerequisite.
@@ -144,7 +92,7 @@ install_wave_terminal_widgets() {
         fi
 
         mkdir -p "$(dirname "$installer_dir")"
-        if ! git clone --depth 1 "$installer_repo" "$installer_dir"; then
+        if ! workbenches_clone "$installer_repo" "$installer_dir" --depth 1; then
             echo "Wave Terminal widget setup skipped: failed to clone $installer_repo."
             return 0
         fi
@@ -169,12 +117,101 @@ if [ "$USERNAME" = "--user" ]; then
     USERNAME="${2:-$(whoami)}"
 fi
 
+# Verify local prerequisites before host installers, account onboarding,
+# credential recovery or any image build can run.
+log_header "DOCKER CHECK"
+if ensure_docker; then
+    :
+else
+    prerequisite_status=$?
+    case "$prerequisite_status" in
+        130|143) log_header "SETUP CANCELLED" ;;
+        *) log_header "DOCKER PREREQUISITE FAILED" ;;
+    esac
+    exit "$prerequisite_status"
+fi
+
+# Select components before profile/host changes and before any image build.
+ensure_setup_dependencies || exit "$?"
+selection_file="$(mktemp "${TMPDIR:-/tmp}/workbenches-selection.XXXXXX")" || exit 1
+trap 'rm -f "$selection_file"' EXIT
+"${SCRIPT_DIR}/scripts/interactive-setup.sh" --select-only "$selection_file" || exit "$?"
+python3 "$SCRIPT_DIR/scripts/setup_selection.py" rows "$selection_file" >/dev/null || exit "$?"
+if python3 "$SCRIPT_DIR/scripts/setup_selection.py" empty "$selection_file"; then
+    echo "No components selected. Setup complete."
+    exit 0
+fi
+selected_bench_paths="$(python3 "$SCRIPT_DIR/scripts/setup_selection.py" benches "$selection_file")" || exit "$?"
+export WORKBENCHES_SELECTED_PROVIDERS="$(python3 "$SCRIPT_DIR/scripts/setup_selection.py" providers "$selection_file")"
+export WORKBENCHES_PROFILE_PROVIDERS="$(python3 -c 'import os; print(",".join(p for p in os.environ["WORKBENCHES_SELECTED_PROVIDERS"].split(",") if p in ("claude", "openai")))')"
+
+# Confirm the complete plan before dependency installation, credential/profile
+# writes, or host configuration. Recovery prompts then execute the approved plan.
+python3 "$SCRIPT_DIR/scripts/setup_selection.py" review "$selection_file" || exit "$?"
+if [[ -n "$WORKBENCHES_SELECTED_PROVIDERS" ]]; then
+    python3 "$SCRIPT_DIR/scripts/profile_credentials.py" summary || true
+fi
+echo "Setup also configures the shell and shared workBenches commands."
+echo "Selected tools may need dependency installation or a writable user npm location."
+if [[ -t 0 ]]; then
+    setup_read "Apply these changes? [Y/n]" apply_choice
+    case "${apply_choice,,}" in ""|y|yes) ;; *) exit 130 ;; esac
+fi
+auth_route_file="$(mktemp "${TMPDIR:-/tmp}/workbenches-route.XXXXXX")" || exit 1
+export WORKBENCHES_AUTH_ROUTE_FILE="$auth_route_file"
+trap 'rm -f "$selection_file" "$auth_route_file"' EXIT
+"${SCRIPT_DIR}/scripts/interactive-setup.sh" --dependencies-plan "$selection_file" || exit "$?"
+if python3 "$SCRIPT_DIR/scripts/setup_selection.py" node "$selection_file"; then
+    ensure_npm_install_location || exit "$?"
+fi
+
+# Apply existing provider profiles or obtain consent and collect the user's
+# work/personal ownership model on first setup. Standard provider credential
+# homes are detected and preserved; credentials are never copied implicitly.
+log_header "AI PROFILE SETUP"
+run_ai_profile_setup() {
+    if "${SCRIPT_DIR}/scripts/setup-ai-profiles.sh" "$@"; then
+        return 0
+    else
+        local profile_status=$?
+        case "$profile_status" in 130|143) exit "$profile_status" ;; esac
+        echo "⚠ AI profile setup failed; provider sign-in remains available."
+    fi
+}
+profile_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/workbenches"
+if [[ -z "$WORKBENCHES_SELECTED_PROVIDERS" ]]; then
+    echo "No AI tools selected; profile setup skipped."
+elif [[ -n "$WORKBENCHES_PROFILE_PROVIDERS" ]] && python3 - "$profile_config_dir" "$WORKBENCHES_PROFILE_PROVIDERS" <<'PROFILES'
+import json, pathlib, sys
+try:
+    root = pathlib.Path(sys.argv[1])
+    ready = all(json.loads((root / (provider + '-profiles.json')).read_text()).get('profiles')
+                for provider in sys.argv[2].split(','))
+except (OSError, ValueError, TypeError):
+    ready = False
+sys.exit(0 if ready else 1)
+PROFILES
+then
+    run_ai_profile_setup --apply-existing
+elif [ -t 0 ] && [ -t 1 ]; then
+    run_ai_profile_setup --interactive
+else
+    echo "AI profile onboarding skipped because no interactive terminal is available."
+fi
+export WORKBENCHES_AUTH_ROUTE="$(cat "$auth_route_file")"
+echo ""
+
+if [[ -n "$WORKBENCHES_SELECTED_PROVIDERS" ]]; then
+    python3 "$SCRIPT_DIR/scripts/profile_credentials.py" summary || true
+fi
+
 # Shell environment setup (zsh + Powerlevel10k + Oh My Zsh)
 log_header "SHELL SETUP"
 if [ -x "${SCRIPT_DIR}/scripts/setup-shell.sh" ]; then
     "${SCRIPT_DIR}/scripts/setup-shell.sh"
     echo ""
 fi
+persist_npm_user_path
 
 # Estate commands (openRepoShape, openRepoTools, park, resume, status) come from
 # workBenches' own vendored pin and are placed by their own installers; see
@@ -219,7 +256,7 @@ fi
 # Claude workflow setup is host-user state. The benches bind-mount ~/.claude, so
 # seed it before any container build without overwriting existing user workflows.
 log_header "CLAUDE WORKFLOW SETUP"
-if [ -x "${SCRIPT_DIR}/scripts/setup-claude-workflows.sh" ]; then
+if [[ ",$WORKBENCHES_SELECTED_PROVIDERS," == *,claude,* ]] && [ -x "${SCRIPT_DIR}/scripts/setup-claude-workflows.sh" ]; then
     "${SCRIPT_DIR}/scripts/setup-claude-workflows.sh" || echo "⚠ Claude workflow setup skipped or failed"
     echo ""
 fi
@@ -229,52 +266,34 @@ fi
 log_header "VPN SETUP"
 echo "VPN client setup is available from the interactive selector." >> "$LOG_FILE"
 
-# Apply existing provider profiles or obtain consent and collect the user's
-# work/personal ownership model on first setup. Standard provider credential
-# homes are detected and preserved; credentials are never copied implicitly.
-log_header "AI PROFILE SETUP"
-profile_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/workbenches"
-if find "$profile_config_dir" -maxdepth 1 -name '*-profiles.json' -print -quit 2>/dev/null | grep -q .; then
-    "${SCRIPT_DIR}/scripts/setup-ai-profiles.sh" --apply-existing \
-        || echo "⚠ Existing AI profile setup failed"
-elif [ -t 0 ] && [ -t 1 ]; then
-    "${SCRIPT_DIR}/scripts/setup-ai-profiles.sh" --interactive \
-        || echo "⚠ Interactive AI profile setup failed"
-else
-    echo "AI profile onboarding skipped because no interactive terminal is available."
-fi
-echo ""
-
 # Wave Terminal widgets are host-user state. Install them before any image
 # builds so the desktop terminal shortcuts track the current checkout.
 log_header "WAVE TERMINAL WIDGET SETUP"
-install_wave_terminal_widgets
+if python3 "$SCRIPT_DIR/scripts/setup_selection.py" rows "$selection_file" | grep -q $'wave\tinstall'; then install_wave_terminal_widgets; fi
 echo ""
-
-# Docker prerequisite
-log_header "DOCKER CHECK"
-ensure_docker
 
 # Ensure Layer 0 base image exists
 log_header "LAYER 0 BUILD"
-if ! docker image inspect "workbench-base:latest" >/dev/null 2>&1; then
-    echo "Layer 0 image not found. Building workbench-base:latest..."
-    "${SCRIPT_DIR}/base-image/build.sh" || { echo "✗ Layer 0 build failed"; exit 1; }
+if [[ -z "$selected_bench_paths" ]]; then
+    echo "No bench images selected; skipping Layer 0."
 else
-    echo "Layer 0 image (workbench-base:latest) already exists, skipping build."
+    python3 "${SCRIPT_DIR}/scripts/setup-bench-home.py" || exit "$?"
+    if ! docker image inspect "workbench-base:latest" >/dev/null 2>&1; then
+        echo "Layer 0 image not found. Building workbench-base:latest..."
+        "${SCRIPT_DIR}/base-image/build.sh" || { echo "✗ Layer 0 build failed"; exit 1; }
+    else
+        echo "Layer 0 image (workbench-base:latest) already exists, skipping build."
+    fi
 fi
 
 # Call the interactive setup script
 # NOTE: OpenTUI (TypeScript) UI is disabled — keyboard handling is broken and
 # requires Bun upgrade. Using Bash UI directly. See docs/setup-input-troubleshooting.md
 run_interactive_setup() {
-    "${SCRIPT_DIR}/scripts/interactive-setup.sh"
+    "${SCRIPT_DIR}/scripts/interactive-setup.sh" --apply-plan "$selection_file"
 }
 
-log_header "INTERACTIVE SETUP"
-run_interactive_setup
-
-# Build Layer 1 images for detected bench categories
+# Build the selected family layers before any bench setup consumes them.
 log_header "LAYER 1 BUILDS"
 BUILD_FAILED=false
 
@@ -284,13 +303,12 @@ if command -v jq >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/config/bench-config.json" 
     has_bio=false
 
     while IFS= read -r bench_path; do
-        [ -d "$SCRIPT_DIR/$bench_path" ] || continue
         case "$bench_path" in
             devBenches/*)   has_dev=true ;;
             sysBenches/*)   has_sys=true ;;
             bioBenches/*)   has_bio=true ;;
         esac
-    done < <(jq -r '.benches | to_entries[] | .value.path // empty' "$SCRIPT_DIR/config/bench-config.json")
+    done <<< "$selected_bench_paths"
 
     if [ "$has_dev" = true ] && [ -x "$SCRIPT_DIR/devBenches/setup.sh" ]; then
         echo ""
@@ -309,6 +327,24 @@ if command -v jq >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/config/bench-config.json" 
         echo "Bio benches detected. Building Layer 1c base image..."
         "$SCRIPT_DIR/bioBenches/setup.sh" --user "$USERNAME" || { echo "✗ Layer 1c (bioBenches) build failed"; BUILD_FAILED=true; }
     fi
+fi
+
+if [ "$BUILD_FAILED" = false ]; then
+    log_header "INTERACTIVE SETUP"
+    if run_interactive_setup; then
+        :
+    else
+        interactive_status=$?
+        if [ "$interactive_status" -eq 130 ]; then
+            log_header "SETUP CANCELLED"
+        else
+            log_header "INTERACTIVE SETUP FAILED"
+            echo "✗ Interactive setup stopped (exit $interactive_status)."
+        fi
+        exit "$interactive_status"
+    fi
+else
+    echo "Skipping component installation because a selected base layer failed."
 fi
 
 # ========================================

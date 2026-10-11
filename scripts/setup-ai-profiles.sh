@@ -18,22 +18,41 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$mode" == interactive ]]; then
+selected="${WORKBENCHES_SELECTED_PROVIDERS:-}"
+route="${WORKBENCHES_AUTH_ROUTE:-}"
+if [[ -n "$selected" && -t 0 && -t 1 && -z "$route" ]]; then
+  route_file="$(mktemp)"
+  trap 'rm -f "$route_file"' EXIT
+  python3 "$repo_dir/scripts/setup-credential-recovery.py" --choose-route "$route_file"
+  route="$(cat "$route_file")"
+  if [[ -n "${WORKBENCHES_AUTH_ROUTE_FILE:-}" ]]; then printf '%s' "$route" > "$WORKBENCHES_AUTH_ROUTE_FILE"; fi
+fi
+export WORKBENCHES_AUTH_ROUTE="$route"
+if [[ "$mode" == interactive && "$route" != later && "$route" != existing && ( -z "$selected" || ",$selected," == *,openai,* || ",$selected," == *,claude,* || ",$selected," == *,pi,* ) ]]; then
+  if [[ "$route" == vault ]]; then export WORKBENCHES_REQUIRE_PROFILE=1; fi
   python3 "$repo_dir/scripts/onboard-ai-profiles.py"
 fi
 
 applied=false
-if [[ -f "$config_dir/claude-profiles.json" ]]; then
+selected_provider() {
+  [[ -z "$selected" || ",$selected," == *",$1,"* ]]
+}
+usable_manifest() {
+  [[ -f "$1" ]] || return 1
+  # Standalone runs retain legacy family-only scaffolding.
+  [[ -z "$selected" ]] || jq -e '.profiles | length > 0' "$1" >/dev/null
+}
+if selected_provider claude && usable_manifest "$config_dir/claude-profiles.json"; then
   "$repo_dir/scripts/setup-claude-profiles.sh" --manifest "$config_dir/claude-profiles.json"
   applied=true
 fi
-if [[ -f "$config_dir/openai-profiles.json" ]]; then
+if selected_provider openai && usable_manifest "$config_dir/openai-profiles.json"; then
   "$repo_dir/scripts/setup-codex-profiles.sh" --manifest "$config_dir/openai-profiles.json"
   applied=true
 fi
 for provider in gemini grok glm; do
   manifest="$config_dir/$provider-profiles.json"
-  if [[ -f "$manifest" ]]; then
+  if selected_provider "$provider" && usable_manifest "$manifest"; then
     "$repo_dir/scripts/setup-provider-profiles.sh" --provider "$provider" --manifest "$manifest"
     applied=true
   fi
@@ -46,7 +65,7 @@ for provider in claude openai gemini grok glm; do
     break
   fi
 done
-if [[ "$compose_pi" == true ]]; then
+if selected_provider pi && [[ "$compose_pi" == true ]]; then
   pi_profile_roots=(
     --profile-root "claude=${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}/profiles"
     --profile-root "openai=${CODEX_PROFILES_HOME:-$HOME/.chatgpt-profiles}/profiles"
@@ -59,9 +78,25 @@ if [[ "$compose_pi" == true ]]; then
     "${pi_profile_roots[@]}" \
     --output "$config_dir/pi-profiles.json"
 fi
-if [[ -f "$config_dir/pi-profiles.json" ]]; then
+if selected_provider pi && usable_manifest "$config_dir/pi-profiles.json"; then
   "$repo_dir/scripts/setup-pi-profiles.sh" --manifest "$config_dir/pi-profiles.json"
   applied=true
+fi
+
+# Create every profile home before offering mapped recovery. Interactive setup
+# lets users select their stores; unattended runs retain configured Azure recovery.
+if [[ ( "$applied" == true || -n "$selected" ) && "$route" != later && "$route" != direct && "${WORKBENCHES_SKIP_CREDENTIAL_RECOVERY:-}" != 1 ]]; then
+  recovery_mode=--apply-existing
+  if [[ -t 0 && -t 1 ]]; then
+    recovery_mode=--interactive
+  fi
+  if python3 "$repo_dir/scripts/setup-credential-recovery.py" "$recovery_mode"; then
+    :
+  else
+    recovery_status=$?
+    case "$recovery_status" in 130|143) exit "$recovery_status" ;; esac
+    echo "Credential recovery was unavailable. Existing credentials are preserved; provider sign-in remains available."
+  fi
 fi
 
 if [[ "$applied" == true ]]; then
@@ -73,7 +108,7 @@ if [[ "$applied" == true ]]; then
       [[ -n "$family" ]] && "$repo_dir/scripts/workbenches-mcp-sync" ensure "$family"
     done
   fi
-  echo "AI profile setup complete. Provider credentials remain isolated and require their own login."
+  echo "AI profile setup complete. Credentials remain isolated; profiles without recovered credentials can sign in separately."
 else
   echo "No AI profile manifests were created or applied."
 fi
