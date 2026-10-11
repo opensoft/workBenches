@@ -23,6 +23,7 @@ services:
       - acceptance-socket:/var/run
       - acceptance-home:/home/node
       - acceptance-tmp:/acceptance
+      - acceptance-data:/var/lib/docker
     healthcheck:
       test: [CMD, docker, info]
       interval: 2s
@@ -118,3 +119,4 @@ volumes:
   acceptance-socket:
   acceptance-home:
   acceptance-tmp:
+  acceptance-data:
