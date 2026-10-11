@@ -69,19 +69,20 @@ class CredentialPlanTests(unittest.TestCase):
 
     def test_cli_ignores_user_secret_files_and_environment_and_rejects_unknown_options(self):
         with tempfile.TemporaryDirectory() as temporary:
-            secret = "credential-preview-must-not-read-this-value"
+            # Deliberately invalid test marker; never a credential.
+            sentinel = "credential-preview-must-not-read-this-value"
             fake_home = Path(temporary)
             (fake_home / ".codex").mkdir()
-            (fake_home / ".codex" / "auth.json").write_text(secret)
-            env = {**os.environ, "HOME": temporary, "OPENAI_API_KEY": secret, "BW_SESSION": secret}
+            (fake_home / ".codex" / "auth.json").write_text(sentinel)
+            env = {**os.environ, "HOME": temporary, "OPENAI_API_KEY": sentinel, "BW_SESSION": sentinel}
             result = subprocess.run(["python3", str(SCRIPT), "--option", "codex_cli", "--json"], env=env, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertNotIn(secret, result.stdout + result.stderr)
+            self.assertNotIn(sentinel, result.stdout + result.stderr)
             self.assertEqual(json.loads(result.stdout)["mode"], "requirements-preview")
             result = subprocess.run(["python3", str(SCRIPT), "--option", "unknown"], env=env, text=True, capture_output=True)
             self.assertEqual(result.returncode, 2)
             self.assertIn("Unknown option", result.stderr)
-            self.assertEqual((fake_home / ".codex" / "auth.json").read_text(), secret)
+            self.assertEqual((fake_home / ".codex" / "auth.json").read_text(), sentinel)
 
 
 if __name__ == "__main__":

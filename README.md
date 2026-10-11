@@ -73,16 +73,6 @@ A layered Docker-based development environment system. Each "bench" is a self-co
 
 On a new workstation, install Git and download the standalone bootstrap.
 
-The latest installer fixes are on `codex/workbenches-setup-recovery-2026-10-10`
-until that branch is merged into `main`. To use the tested installer now:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/opensoft/workBenches/codex/workbenches-setup-recovery-2026-10-10/bootstrap.sh -o workbenches-bootstrap.sh
-bash workbenches-bootstrap.sh --branch codex/workbenches-setup-recovery-2026-10-10 --setup
-```
-
-For the version released on `main`:
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/opensoft/workBenches/main/bootstrap.sh -o workbenches-bootstrap.sh
 bash workbenches-bootstrap.sh --setup
