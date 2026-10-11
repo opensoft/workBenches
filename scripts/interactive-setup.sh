@@ -220,6 +220,24 @@ init_components() {
     component_description["0dcloud_vpn"]="0dcloud VPN"
 }
 
+# Compare GitHub repository identities across HTTPS and SSH clone URLs.
+normalize_bench_remote() {
+    local url="$1"
+    case "${url,,}" in
+        https://github.com/*|ssh://git@github.com/*|git@github.com:*)
+            url="${url,,}"
+            case "$url" in
+                https://github.com/*) url="${url#https://github.com/}" ;;
+                ssh://git@github.com/*) url="${url#ssh://git@github.com/}" ;;
+                git@github.com:*) url="${url#git@github.com:}" ;;
+            esac
+            url="${url%/}"
+            printf 'github.com/%s\n' "${url%.git}"
+            ;;
+        *) printf '%s\n' "$url" ;;
+    esac
+}
+
 # Check current installation status
 check_component_status() {
     local component="$1"
@@ -407,11 +425,12 @@ check_component_status() {
             # Check if directory exists
             if [ -d "$full_path" ]; then
                 # Check if it has a git remote
-                if [ -d "$full_path/.git" ]; then
+                if { [ -d "$full_path/.git" ] || [ -f "$full_path/.git" ]; } && \
+                   git -C "$full_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
                     # Verify it has the correct remote (if URL is configured)
                     if [ -n "$bench_url" ] && [ "$bench_url" != "null" ]; then
                         local current_remote=$(cd "$full_path" && git remote get-url origin 2>/dev/null)
-                        if [ "$current_remote" = "$bench_url" ]; then
+                        if [ "$(normalize_bench_remote "$current_remote")" = "$(normalize_bench_remote "$bench_url")" ]; then
                             # Bench is installed with correct remote, check if it has infrastructure
                             if [ -d "$full_path/.devcontainer" ] || \
                                [ -d "$full_path/devcontainer.example" ] || \
@@ -854,7 +873,7 @@ handle_input() {
     local key
 
     # Read single character
-    IFS= read -rsn1 key
+    IFS= read -rsn1 key || return 2
 
     # Handle escape sequences (arrow keys, etc.)
     if [[ $key == $'\x1b' ]]; then
@@ -2722,7 +2741,7 @@ main() {
             clear
             echo -e "${YELLOW}Setup cancelled.${NC}"
             log "=== Setup script cancelled ==="
-            exit 0
+            exit 130
         fi
     done
 
@@ -2731,7 +2750,8 @@ main() {
 }
 
 # Cleanup on exit
-trap 'echo -e "${SHOW_CURSOR}"; exit' INT TERM
+trap 'echo -e "${SHOW_CURSOR}"; exit 130' INT
+trap 'echo -e "${SHOW_CURSOR}"; exit 143' TERM
 
 # Run if executed directly
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then

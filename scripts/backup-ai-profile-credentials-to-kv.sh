@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/azure-cli-runtime.sh"
 
 MANIFEST="${AI_CREDENTIAL_KV_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/ai-credential-keyvault.json}"
 STATE_FILE="${AI_CREDENTIAL_KV_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/workbenches/ai-credential-keyvault-backups.json}"
@@ -8,6 +9,7 @@ ACTION=""
 PROVIDER_FILTER=""
 PROFILE_FILTER=""
 FORCE=false
+AZURE_LOGIN=false
 MAX_SECRET_BYTES=24576
 TEMP_DIR=""
 
@@ -22,6 +24,7 @@ Options:
   --provider NAME      Process only one provider
   --profile NAME       Process only one profile name
   --force              Replace an existing credential during restore
+  --azure-login        Offer tenant sign-in and, without Docker, user-local CLI installation
   -h, --help           Show this help
 
 The command never prints credential values. "backup" creates a new Key Vault
@@ -42,6 +45,8 @@ cleanup() {
     fi
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 require_command() {
     command -v "$1" >/dev/null 2>&1 || die "$1 is required"
@@ -318,10 +323,24 @@ verify_azure_context() {
     local vault_name="$3"
     local actual_tenant
 
-    actual_tenant="$(az account show --subscription "$subscription_id" --query tenantId -o tsv --only-show-errors)"
+    if actual_tenant="$(run_azure_cli account show --subscription "$subscription_id" --query tenantId -o tsv --only-show-errors 2>/dev/null)"; then
+        :
+    else
+        local account_status=$?
+        case "$account_status" in 130|143) exit "$account_status" ;; esac
+        [[ "$AZURE_LOGIN" == true ]] || die "Azure sign-in is unavailable; rerun with --azure-login"
+        if azure_cli_sign_in "$tenant_id"; then
+            :
+        else
+            local login_status=$?
+            case "$login_status" in 130|143) exit "$login_status" ;; esac
+            die "Azure sign-in failed; local credentials were left unchanged"
+        fi
+        actual_tenant="$(run_azure_cli account show --subscription "$subscription_id" --query tenantId -o tsv --only-show-errors)"
+    fi
     [[ "$actual_tenant" == "$tenant_id" ]] ||
         die "subscription tenant does not match the manifest"
-    az keyvault show \
+    run_azure_cli keyvault show \
       --subscription "$subscription_id" \
       --name "$vault_name" \
       --query id \
@@ -346,7 +365,7 @@ backup_entry() {
         { printf 'FAIL  %-8s %-16s source changed during snapshot\n' "$provider" "$profile" >&2; return 1; }
 
     secret_id="$(
-      az keyvault secret set \
+      run_azure_cli keyvault secret set \
         --subscription "$subscription_id" \
         --vault-name "$vault_name" \
         --name "$secret_name" \
@@ -367,7 +386,7 @@ backup_entry() {
     [[ "$secret_id" =~ ^https://${vault_name}\.vault\.azure\.net/secrets/${secret_name}/[a-zA-Z0-9]+$ ]] ||
         { printf 'FAIL  %-8s %-16s Azure returned an unexpected secret version URI\n' "$provider" "$profile" >&2; return 1; }
 
-    az keyvault secret download \
+    run_azure_cli keyvault secret download \
       --subscription "$subscription_id" \
       --id "$secret_id" \
       --file "$download" \
@@ -408,7 +427,7 @@ verify_entry() {
     [[ "$secret_id" =~ ^https://${vault_name}\.vault\.azure\.net/secrets/ai-credential-${provider}-${profile}/[a-zA-Z0-9]+$ ]] ||
         { printf 'FAIL  %-8s %-16s recorded version URI is outside the configured secret\n' "$provider" "$profile" >&2; return 1; }
     download="$TEMP_DIR/${provider}-${profile}.verify"
-    az keyvault secret download \
+    run_azure_cli keyvault secret download \
       --subscription "$subscription_id" \
       --id "$secret_id" \
       --file "$download" \
@@ -445,7 +464,7 @@ restore_entry() {
         { printf 'FAIL  %-8s %-16s existing target is not a regular file\n' "$provider" "$profile" >&2; return 1; }
 
     metadata="$TEMP_DIR/${provider}-${profile}.metadata.json"
-    az keyvault secret show \
+    run_azure_cli keyvault secret show \
       --subscription "$subscription_id" \
       --vault-name "$vault_name" \
       --name "$secret_name" \
@@ -467,7 +486,7 @@ restore_entry() {
         { printf 'FAIL  %-8s %-16s secret tags do not match manifest entry\n' "$provider" "$profile" >&2; return 1; }
 
     download="$TEMP_DIR/${provider}-${profile}.restore"
-    az keyvault secret download \
+    run_azure_cli keyvault secret download \
       --subscription "$subscription_id" \
       --id "$secret_id" \
       --file "$download" \
@@ -524,6 +543,10 @@ while [[ $# -gt 0 ]]; do
             FORCE=true
             shift
             ;;
+        --azure-login)
+            AZURE_LOGIN=true
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -546,10 +569,6 @@ if [[ "$FORCE" == true && "$ACTION" != "restore" ]]; then
     die "--force is valid only with restore"
 fi
 
-if [[ "$ACTION" == "backup" || "$ACTION" == "verify" || "$ACTION" == "restore" ]]; then
-    require_command az
-fi
-
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ai-credential-kv.XXXXXX")"
 chmod 0700 "$TEMP_DIR"
 
@@ -559,6 +578,13 @@ vault_name="$(jq -r '.vaultName' "$MANIFEST")"
 company="$(jq -r '.company' "$MANIFEST")"
 
 if [[ "$ACTION" == "backup" || "$ACTION" == "verify" || "$ACTION" == "restore" ]]; then
+    if azure_cli_runtime_init "$TEMP_DIR" "$AZURE_LOGIN"; then
+        :
+    else
+        runtime_status=$?
+        case "$runtime_status" in 130|143) exit "$runtime_status" ;; esac
+        die "Azure CLI runtime is unavailable"
+    fi
     verify_azure_context "$subscription_id" "$tenant_id" "$vault_name"
 fi
 

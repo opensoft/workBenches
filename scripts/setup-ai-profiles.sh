@@ -39,6 +39,22 @@ for provider in gemini grok glm; do
   fi
 done
 
+# A private recovery mapping identifies the organization and its approved
+# credential store. Create profile directories first, then recover missing
+# credentials before tools offer their own interactive provider login.
+recovery_manifest="${AI_CREDENTIAL_KV_MANIFEST:-$config_dir/ai-credential-keyvault.json}"
+if [[ "$applied" == true && "${WORKBENCHES_SKIP_CREDENTIAL_RECOVERY:-}" != 1 && -f "$recovery_manifest" ]]; then
+  echo "Recovering missing AI credentials from the configured organization vault..."
+  if "$repo_dir/scripts/backup-ai-profile-credentials-to-kv.sh" restore \
+      --manifest "$recovery_manifest" --azure-login; then
+    :
+  else
+    recovery_status=$?
+    case "$recovery_status" in 130|143) exit "$recovery_status" ;; esac
+    echo "Credential recovery was unavailable. Existing credentials are preserved; provider sign-in remains available."
+  fi
+fi
+
 compose_pi=false
 for provider in claude openai gemini grok glm; do
   if [[ -f "$config_dir/$provider-profiles.json" ]]; then
@@ -73,7 +89,7 @@ if [[ "$applied" == true ]]; then
       [[ -n "$family" ]] && "$repo_dir/scripts/workbenches-mcp-sync" ensure "$family"
     done
   fi
-  echo "AI profile setup complete. Provider credentials remain isolated and require their own login."
+  echo "AI profile setup complete. Credentials remain isolated; profiles without recovered credentials can sign in separately."
 else
   echo "No AI profile manifests were created or applied."
 fi

@@ -233,13 +233,20 @@ echo "VPN client setup is available from the interactive selector." >> "$LOG_FIL
 # work/personal ownership model on first setup. Standard provider credential
 # homes are detected and preserved; credentials are never copied implicitly.
 log_header "AI PROFILE SETUP"
+run_ai_profile_setup() {
+    if "${SCRIPT_DIR}/scripts/setup-ai-profiles.sh" "$@"; then
+        return 0
+    else
+        local profile_status=$?
+        case "$profile_status" in 130|143) exit "$profile_status" ;; esac
+        echo "⚠ AI profile setup failed; provider sign-in remains available."
+    fi
+}
 profile_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/workbenches"
 if find "$profile_config_dir" -maxdepth 1 -name '*-profiles.json' -print -quit 2>/dev/null | grep -q .; then
-    "${SCRIPT_DIR}/scripts/setup-ai-profiles.sh" --apply-existing \
-        || echo "⚠ Existing AI profile setup failed"
+    run_ai_profile_setup --apply-existing
 elif [ -t 0 ] && [ -t 1 ]; then
-    "${SCRIPT_DIR}/scripts/setup-ai-profiles.sh" --interactive \
-        || echo "⚠ Interactive AI profile setup failed"
+    run_ai_profile_setup --interactive
 else
     echo "AI profile onboarding skipped because no interactive terminal is available."
 fi
@@ -272,7 +279,18 @@ run_interactive_setup() {
 }
 
 log_header "INTERACTIVE SETUP"
-run_interactive_setup
+if run_interactive_setup; then
+    :
+else
+    interactive_status=$?
+    if [ "$interactive_status" -eq 130 ]; then
+        log_header "SETUP CANCELLED"
+    else
+        log_header "INTERACTIVE SETUP FAILED"
+        echo "✗ Interactive setup stopped (exit $interactive_status)."
+    fi
+    exit "$interactive_status"
+fi
 
 # Build Layer 1 images for detected bench categories
 log_header "LAYER 1 BUILDS"

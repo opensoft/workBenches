@@ -25,11 +25,6 @@ if [[ -f "$credential_file" ]]; then
     exit 0
 fi
 
-command -v az >/dev/null 2>&1 || {
-    echo "OmniRoute recovery unavailable: Azure CLI is not installed." >&2
-    exit 1
-}
-
 candidates=()
 if [[ -n "${AI_CREDENTIAL_KV_MANIFEST:-}" ]]; then
     candidates+=("$AI_CREDENTIAL_KV_MANIFEST")
@@ -91,6 +86,7 @@ jq '
 chmod 0600 "$private_manifest"
 
 if ! "$escrow_tool" restore \
+    --azure-login \
     --manifest "$private_manifest" \
     --provider omniroute \
     --profile opencode; then
