@@ -1,6 +1,6 @@
 services:
   vault:
-    image: vaultwarden/server:1.35.0
+    image: vaultwarden/server:1.37.4
     environment:
       SIGNUPS_ALLOWED: "true"
       SIGNUPS_VERIFY: "false"

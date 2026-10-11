@@ -84,8 +84,8 @@ run_case 'closed input cancels without applying or building' '' 130 ''
 run_case 'UI failure stops setup' '' 7 '' 7
 run_case 'terminated UI stops setup' '' 143 '' 143
 run_case 'cancelled credential recovery stops the entire setup' $'\n' 130 '' '' 130
-run_case 'Enter still applies selections and builds' $'\n' 0 $'apply\nbuild\nbuild'
+run_case 'Enter builds required families before applying selections' $'\n' 0 $'build\nbuild\napply'
 
 TEST_EMPTY_SELECTION=1 run_case 'empty Enter exits without applying or building' $'\n' 0 ''
 
-TEST_APPLY_EXIT=9 run_case 'failed selected install stops before later builds' $'\n' 9 'apply'
+TEST_APPLY_EXIT=9 run_case 'failed selected install preserves its error after base builds' $'\n' 9 $'build\nbuild\napply'

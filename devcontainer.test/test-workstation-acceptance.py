@@ -107,7 +107,7 @@ def bw(*args, session=None):
 def seed_vault():
     """Register using Vaultwarden's API, then let native bw encrypt the item.
 
-    Account API contract: vaultwarden/1.35.0/src/api/core/accounts.rs.
+    Account API contract: vaultwarden/1.37.4/src/api/core/accounts.rs.
     Bitwarden type-2 user key: HKDF enc/mac + AES256-CBC + HMAC-SHA256.
     """
     tls = Path('/acceptance/tls')
@@ -197,7 +197,7 @@ def main():
     sha = subprocess.check_output(['git', '-C', str(REPO), 'rev-parse', 'HEAD'], text=True).strip()
     expected = os.environ.get('WORKBENCHES_ACCEPTANCE_SHA')
     assert not expected or sha == expected, 'remote moved; retest the intended commit'
-    (REPORT / 'environment.json').write_text(json.dumps({'sha': sha, 'ref': ref, 'vault': 'Vaultwarden 1.35.0',
+    (REPORT / 'environment.json').write_text(json.dumps({'sha': sha, 'ref': ref, 'vault': 'Vaultwarden 1.37.4',
         'credentials': 'generated test account and invalid AI key', 'hostSocketMounted': False,
         'tls': 'verified private test CA; appended only to disposable credential Dockerfile'}, indent=2) + '\n')
     terminal('quit', [(TUI, 'Q')], 130)
