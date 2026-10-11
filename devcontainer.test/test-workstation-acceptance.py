@@ -100,7 +100,11 @@ def bw(*args, session=None):
     result = subprocess.run(COMPOSE + ['run', '--rm', '--no-deps', 'credential-tools', *args],
                             env=env, capture_output=True, text=True)
     if result.returncode:
-        raise RuntimeError('native Bitwarden test-account operation failed: ' + args[0])
+        diagnostic = result.stderr
+        for marker in MARKERS:
+            diagnostic = diagnostic.replace(marker, '[redacted test value]')
+        diagnostic = re.sub(r'[A-Za-z0-9_+/=.-]{20,}', '[redacted]', diagnostic)
+        raise RuntimeError('native Bitwarden test-account operation failed: ' + args[0] + ': ' + diagnostic[:600])
     return result.stdout.strip()
 
 
@@ -135,13 +139,24 @@ def seed_vault():
     # Bitwarden expands the master key directly with HKDF-Expand.
     enc = hmac.new(mk, b'enc\x01', 'sha256').digest()
     mac = hmac.new(mk, b'mac\x01', 'sha256').digest()
-    iv = secrets.token_bytes(16)
-    cipher = subprocess.check_output(['openssl', 'enc', '-aes-256-cbc', '-K', enc.hex(), '-iv', iv.hex()],
-                                     input=secrets.token_bytes(64))
     encode = lambda value: base64.b64encode(value).decode()
-    wrapped = '2.' + '|'.join(encode(value) for value in (iv, cipher, hmac.new(mac, iv + cipher, 'sha256').digest()))
+    def wrap(value, encryption_key, mac_key):
+        iv = secrets.token_bytes(16)
+        result = subprocess.run(['openssl', 'enc', '-aes-256-cbc', '-K', encryption_key.hex(), '-iv', iv.hex()],
+                                input=value, capture_output=True)
+        if result.returncode:
+            raise RuntimeError('test account key encryption failed')
+        cipher = result.stdout
+        return '2.' + '|'.join(encode(part) for part in (iv, cipher, hmac.new(mac_key, iv + cipher, 'sha256').digest()))
+    user_key = secrets.token_bytes(64)
+    wrapped = wrap(user_key, enc, mac)
+    rsa = subprocess.check_output(['openssl', 'genpkey', '-algorithm', 'RSA', '-pkeyopt', 'rsa_keygen_bits:2048'],
+                                  stderr=subprocess.DEVNULL)
+    public = subprocess.check_output(['openssl', 'pkey', '-pubout', '-outform', 'DER'], input=rsa)
+    private = subprocess.check_output(['openssl', 'pkcs8', '-topk8', '-nocrypt', '-outform', 'DER'], input=rsa)
     payload = {'email': EMAIL, 'name': 'Disposable acceptance account', 'masterPasswordHash': encode(auth),
-               'key': wrapped, 'kdf': 0, 'kdfIterations': 600000}
+               'key': wrapped, 'kdf': 0, 'kdfIterations': 600000,
+               'keys': {'publicKey': encode(public), 'encryptedPrivateKey': wrap(private, user_key[:32], user_key[32:])}}
     request = urllib.request.Request(server + '/identity/accounts/register/send-verification-email',
                                      data=json.dumps({'email': EMAIL, 'name': 'Acceptance'}).encode(),
                                      headers={'Content-Type': 'application/json', 'Accept': 'application/json'})
