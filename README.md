@@ -99,15 +99,14 @@ From an existing checkout:
 ```
 
 This single command:
-1. Configures your shell (zsh + Oh My Zsh + Powerlevel10k)
-2. Installs the estate commands from workBenches' own pin (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status`, and the lane tools `lanes-edit.sh`, `lane-start`, `lane-end`, `link-estates` with the shipped `repos.tsv`)
-3. Creates your workspace repository, if you have none, with `openRepoTools wip init` — it asks you nothing
-4. Checks workstation VPN clients and patches 0dcloud TUN MTU for large Git/Docker transfers
-5. Installs or updates Wave Terminal widgets for workBenches
-6. Ensures Docker is running and Layer 0 base image exists
-7. Opens an interactive TUI to select benches, AI tools, and workstation tools
-8. Builds Docker images for selected benches
-9. Installs AI coding CLIs and workstation tools (Claude, Copilot, Codex, Pi, etc.)
+
+1. Checks Docker access and common dependencies, offering installation when needed.
+2. Opens the TUI to select benches, AI assistants, and tools. An empty selection finishes without installs or image builds.
+3. Checks Node/npm only for selected tools that require them.
+4. Offers direct sign-in, guided vault recovery, or authentication later for selected AI tools, with optional personal/organization profiles.
+5. Shows selected changes and local credential readiness before applying host setup.
+6. Configures the shell and installs pinned estate commands, then initializes the workspace repository if needed.
+7. Installs selected tools and builds only selected bench dependencies. Wave widgets and VPN setup follow the selected tools.
 
 After setup, open any bench in VS Code → "Reopen in Container" to start developing.
 
@@ -174,22 +173,19 @@ checkout unchanged.
 
 ```
 setup.sh
-  ├── Docker prerequisite (offer installation if missing; verify user/daemon access)
-  ├── Shell setup (zsh + Oh My Zsh + Powerlevel10k)
-  ├── Estate commands (scripts/setup-estate-commands.sh — openRepoTools --install)
-  ├── Workspace repository (scripts/setup-workspace-repo.sh — openRepoTools wip init)
-  │     └── strictly after the estate commands: `wip init` is their subcommand
-  ├── AI profile onboarding and approved credential recovery
-  ├── Wave Terminal widgets (terminal, projects, and workBench containers)
-  ├── Layer 0 check (build workbench-base:latest if missing)
-  ├── Interactive TUI (scripts/interactive-setup.sh)
-  │     ├── 3-column selection: Benches | AI Assistants | Tools
-  │     ├── Optional VPN clients in Tools
-  │     ├── Status: ✓ installed  ⚠ needs setup  ✗ not installed
-  │     ├── Installed benches: check Docker images (Layer 2 + Layer 3)
-  │     ├── New benches: clone repo → run setup.sh or build-layer.sh
-  │     └── AI tools: install/update via npm
-  ├── Layer 1 builds (dev-bench-base, sys-bench-base, bio-bench-base)
+  ├── Docker access + Python/jq/git/curl preflight
+  ├── Component TUI: Benches | AI Assistants | Tools
+  │     └── Q/EOF cancels; empty Enter finishes without installs/builds
+  ├── Node/npm prerequisite for selected npm tools
+  ├── Selected AI tools: direct sign-in / recover from vault / configure later
+  │     ├── Optional personal/organization profiles
+  │     └── Guided vault item mappings or advanced JSON import
+  ├── Selected changes + per-profile local credential presence
+  ├── Shell + pinned estate commands → workspace repository
+  ├── Selected Wave widgets / Claude workflows
+  ├── Layer 0 only when benches are selected
+  ├── Apply saved component selection; native login for missing credentials
+  ├── Layer 1 builds only for selected bench categories
   └── Summary + log file path
 ```
 

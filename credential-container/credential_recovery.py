@@ -10,13 +10,17 @@ import stat
 import subprocess
 import sys
 import tempfile
+import select
+import pty
+import termios
+import time
 from urllib.parse import urlsplit
 
 MAX_BYTES = 24576
 REPO = Path(__file__).resolve().parents[1]
 IMAGES = {
-    "bitwarden": "workbenches-credential-recovery:bitwarden-2026.9.1-v1",
-    "1password": "workbenches-credential-recovery:1password-2.40.0-v1",
+    "bitwarden": "workbenches-credential-recovery:bitwarden-2026.9.1-v2",
+    "1password": "workbenches-credential-recovery:1password-2.40.0-v2",
 }
 
 
@@ -76,6 +80,10 @@ def validate_mapping(data, service):
             raise RecoveryError("Each mapping entry requires enabled: true or false.")
         if not entry["enabled"]:
             continue
+        if entry.get("credentialFormat", "json") not in ("json", "api-key"):
+            raise RecoveryError("Unsupported stored credential format.")
+        if entry.get("credentialFormat") == "api-key" and entry.get("provider") not in ("codex", "omniroute"):
+            raise RecoveryError("Raw API-key recovery supports Codex and OmniRoute; other providers require credential JSON.")
         provider, profile = entry.get("provider", ""), entry.get("profile", "")
         if provider not in ("claude", "codex", "pi", "omniroute") or not isinstance(profile, str) or not re.fullmatch(r"[a-z0-9-]+", profile):
             raise RecoveryError("Invalid provider or profile in recovery mapping.")
@@ -88,6 +96,8 @@ def validate_mapping(data, service):
                 raise RecoveryError("Bitwarden entries require exact item UUIDs (JSON in secure notes).")
         else:
             source = entry.get("secretReference", "")
+            if isinstance(source, str) and any(not c.isprintable() for c in source):
+                raise RecoveryError("Invalid secret reference characters.")
             if not isinstance(source, str) or not re.fullmatch(r"op://[^/?#\s]+/[^/?#\s]+/(?:[^/?#\s]+/)?[^/?#\s]+", source):
                 raise RecoveryError("1Password entries require an op://vault/item/field reference.")
         if (provider, profile) in seen or source in sources:
@@ -173,6 +183,158 @@ def secret_input(prompt):
     return value
 
 
+def prompt(text):
+    try:
+        value = input(text).strip()
+    except EOFError:
+        raise SystemExit(130) from None
+    if value.lower() == "q":
+        raise SystemExit(130)
+    return value
+
+
+def native_signin(argv, env):
+    """Relay only known authentication prompts, capture CLI sessions privately.
+
+    The CLI gets its own controlling terminal. Raw CLI output (including error
+    messages and session tokens) is never printed or written to setup logs.
+    """
+    pid, terminal = pty.fork()
+    if pid == 0:
+        settings = termios.tcgetattr(0)
+        settings[3] &= ~termios.ECHO
+        termios.tcsetattr(0, termios.TCSANOW, settings)
+        os.execvpe(argv[0], argv, env)
+    buffer = b""
+    deadline = time.monotonic() + 300
+    try:
+        while True:
+            if time.monotonic() > deadline:
+                raise RecoveryError("Vault sign-in timed out.")
+            ready, _, _ = select.select([terminal], [], [], 1)
+            if ready:
+                try:
+                    chunk = os.read(terminal, 4096)
+                except OSError:
+                    chunk = b""
+                if not chunk:
+                    break
+                buffer = (buffer + chunk)[-8192:]
+                text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", buffer.decode(errors="replace"))
+                # Match the CLI's known prompts, never relay arbitrary output.
+                patterns = ((r"(?i)enter[^\r\n]*secret key[^\r\n]*:\s*$", "1Password Secret Key: "),
+                            (r"(?i)(?:enter|master)[^\r\n]*password[^\r\n]*:\s*$", "Vault account password: "),
+                            (r"(?i)(?:enter|verification|two.step)[^\r\n]*code[^\r\n]*:\s*$", "Vault verification code: "))
+                for pattern, label in patterns:
+                    if re.search(pattern, text):
+                        answer = secret_input(label)
+                        os.write(terminal, (answer + "\n").encode())
+                        buffer = b""
+                        break
+                # Unknown prompts can be cancelled rather than silently hanging.
+                if buffer and text.rstrip().endswith(":") and not any(re.search(pattern, text) for pattern, _ in patterns):
+                    raise RecoveryError("Unrecognized vault authentication prompt; use advanced login or native provider sign-in.")
+        if pid is not None:
+            _, status = os.waitpid(pid, 0)
+            pid = None
+            code = os.waitstatus_to_exitcode(status)
+            if code in (130, 143, -signal.SIGINT, -signal.SIGTERM):
+                raise SystemExit(130 if code in (130, -signal.SIGINT) else 143)
+            if code:
+                raise RecoveryError("Vault sign-in failed; check your account and authentication policy.")
+        text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", buffer.decode(errors="replace"))
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        session = lines[-1] if lines else ""
+        if not session or len(session) > 4096 or not re.fullmatch(r"[A-Za-z0-9_+/=.-]{20,}", session):
+            raise RecoveryError("Vault sign-in returned no usable session.")
+        return session
+    finally:
+        if pid is not None:
+            os.killpg(pid, signal.SIGKILL)
+            os.waitpid(pid, 0)
+        os.close(terminal)
+
+def validate_enrollment(mapping, service):
+    # Validate destinations with temporary, syntactically valid locators. The
+    # container will replace these only after the user chooses exact items.
+    if not isinstance(mapping, dict) or mapping.get("guided") is not True:
+        raise RecoveryError("Invalid guided recovery plan.")
+    data = dict(mapping, entries=[])
+    for index, entry in enumerate(mapping.get("entries", [])):
+        row = dict(entry)
+        row["itemId" if service == "bitwarden" else "secretReference"] = (
+            f"00000000-0000-0000-0000-{index:012d}" if service == "bitwarden" else f"op://vault/item{index}/field")
+        data["entries"].append(row)
+    return validate_mapping(data, service)
+
+
+def pick_item(mapping, entry, env):
+    service = mapping["service"]
+    while True:
+        search = prompt(f"Search {service} for {entry['provider']}/{entry['profile']} (S to skip): ")
+        if search.lower() == "s":
+            return None
+        if not search:
+            print("Enter part of the item name.")
+            continue
+        if service == "bitwarden":
+            # Bitwarden's response includes decrypted notes. They stay in this
+            # container; only item names/IDs are displayed, never note contents.
+            raw = vault_command(["bw", "list", "items", "--search", search], env, 8 * 1024 * 1024)
+            items = [{"id": item["id"], "title": item.get("name", "item")} for item in json.loads(raw) if item.get("type") == 2]
+        else:
+            raw = vault_command(["op", "item", "list", "--format=json"], env, 8 * 1024 * 1024)
+            items = [item for item in json.loads(raw) if search.casefold() in item.get("title", "").casefold()]
+        if not items:
+            print("No matching items. Bitwarden recovery uses secure notes containing credential JSON.")
+            continue
+        if len(items) > 50:
+            print("Too many matches; use a more specific search.")
+            continue
+        for index, item in enumerate(items, 1):
+            # Avoid terminal escape/control injection from remote metadata.
+            title = ''.join(c for c in str(item['title']) if c.isprintable())[:120]
+            identifier = str(item["id"])
+            if not re.fullmatch(r"[A-Za-z0-9-]+", identifier):
+                raise RecoveryError("Invalid vault item identifier.")
+            print(f"  {index}. {title} ({identifier})")
+        choice = prompt("Item number (S to skip, Enter to search again): ")
+        if choice.lower() == "s":
+            return None
+        if not choice.isdigit() or not 1 <= int(choice) <= len(items):
+            continue
+        item = items[int(choice) - 1]
+        result = dict(entry)
+        if service == "bitwarden":
+            result["itemId"] = item["id"]
+        else:
+            vault = item["vault"]["id"]
+            raw = vault_command(["op", "item", "get", item["id"], "--vault", vault, "--format=json"], env, 1024 * 1024)
+            # Display field IDs only. Values never leave the container picker.
+            fields = [field for field in json.loads(raw).get("fields", []) if field.get("id")]
+            for index, field in enumerate(fields, 1):
+                label = ''.join(c for c in str(field.get('label') or field['id']) if c.isprintable())[:120]
+                print(f"  {index}. {label}")
+            field_number = prompt("Field containing credential JSON (S to skip): ")
+            if field_number.lower() == "s":
+                return None
+            if not field_number.isdigit() or not 1 <= int(field_number) <= len(fields):
+                continue
+            field = fields[int(field_number) - 1]
+            section = field.get("section", {}).get("id")
+            reference = f"op://{vault}/{item['id']}/" + (section + "/" if section else "") + field["id"]
+            result["secretReference"] = reference
+        validate_mapping(dict(mapping, entries=[result]), service)
+        print(f"Use this item for {entry['provider']}/{entry['profile']}?")
+        if prompt("Confirm [y/N]: ").lower() in ("y", "yes"):
+            if entry['provider'] in ('codex', 'omniroute'):
+                value = prompt("Stored value: 1. Credential JSON  2. API key [1]: ") or "1"
+                if value not in ('1', '2'):
+                    continue
+                result['credentialFormat'] = 'api-key' if value == '2' else 'json'
+            return result
+
+
 def vault_command(argv, env, limit=MAX_BYTES):
     # Never relay CLI output or errors to setup logs: they can contain secrets.
     with tempfile.TemporaryFile() as output:
@@ -186,29 +348,65 @@ def vault_command(argv, env, limit=MAX_BYTES):
 
 def container_restore(mapping, staging):
     service = mapping["service"]
-    entries = validate_mapping(mapping, service)
+    entries = validate_enrollment(mapping, service) if mapping.get("guided") else validate_mapping(mapping, service)
     env = os.environ.copy()
     env.update(HOME="/tmp/session", XDG_CONFIG_HOME="/tmp/session/config", OP_CONFIG_DIR="/tmp/session/op",
                BITWARDENCLI_APPDATA_DIR="/tmp/session/bw", OP_BIOMETRIC_UNLOCK_ENABLED="false")
     Path(env["HOME"]).mkdir(mode=0o700, exist_ok=True)
     try:
         if service == "bitwarden":
-            print("Bitwarden API-key login and master-password unlock (inputs stay in this container).", flush=True)
             vault_command(["bw", "config", "server", mapping["server"]], env)
-            auth = dict(env, BW_CLIENTID=secret_input("Personal API client_id: "), BW_CLIENTSECRET=secret_input("Personal API client_secret: "))
-            vault_command(["bw", "login", "--apikey"], auth)
-            unlock = dict(env, BW_PASSWORD=secret_input("Vault master password: "))
-            env["BW_SESSION"] = vault_command(["bw", "unlock", "--passwordenv", "BW_PASSWORD", "--raw"], unlock, 4096).decode().strip()
+            method = mapping.get("authMode", "apikey")
+            if method == "signin":
+                email = prompt("Bitwarden login email: ")
+                if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+                    raise RecoveryError("Enter a valid Bitwarden email address.")
+                two_step = prompt("Two-step method: 0. Authenticator  1. Email  3. YubiKey OTP [0]: ") or "0"
+                if two_step not in ("0", "1", "3"):
+                    raise RecoveryError("Use a supported CLI two-step method or advanced API-key login.")
+                master = secret_input("Vault master password: ")
+                env["BW_SESSION"] = native_signin(["bw", "login", email, "--method", two_step,
+                                                   "--passwordenv", "BW_PASSWORD", "--raw"], dict(env, BW_PASSWORD=master))
+            elif method == "apikey":
+                print("Advanced Bitwarden API-key login (inputs stay in this container).", flush=True)
+                auth = dict(env, BW_CLIENTID=secret_input("Personal API client_id: "), BW_CLIENTSECRET=secret_input("Personal API client_secret: "))
+                vault_command(["bw", "login", "--apikey"], auth)
+                unlock = dict(env, BW_PASSWORD=secret_input("Vault master password: "))
+                env["BW_SESSION"] = vault_command(["bw", "unlock", "--passwordenv", "BW_PASSWORD", "--raw"], unlock, 4096).decode().strip()
+            else:
+                raise RecoveryError("Unsupported Bitwarden sign-in method.")
             if not env["BW_SESSION"]:
                 raise RecoveryError("Vault unlock returned no session.")
             vault_command(["bw", "sync"], env)
         else:
-            print("Use a 1Password service-account token with read access to the mapped vault.", flush=True)
-            env["OP_SERVICE_ACCOUNT_TOKEN"] = secret_input("1Password service-account token: ")
+            if mapping.get("authMode", "token") == "signin":
+                address = prompt("1Password sign-in address (e.g. my.1password.com): ")
+                email = prompt("1Password login email: ")
+                env["OP_SESSION"] = native_signin(["op", "account", "add", "--signin", "--raw", "--shorthand", "workbenches", "--address", address, "--email", email], env)
+                env["OP_ACCOUNT"] = "workbenches"
+            elif mapping.get("authMode", "token") == "token":
+                env["OP_SERVICE_ACCOUNT_TOKEN"] = secret_input("1Password service-account token: ")
+            else:
+                raise RecoveryError("Unsupported 1Password sign-in method.")
+        if mapping.get("guided"):
+            picked = []
+            for entry in mapping["entries"]:
+                choice = pick_item(mapping, entry, env)
+                if choice:
+                    picked.append(choice)
+            mapping = {key: value for key, value in mapping.items() if key != "guided"}
+            mapping["entries"] = entries = picked
+            validate_mapping(mapping, service)
+            (staging / "mapping.json").write_text(json.dumps(mapping))
         for index, entry in enumerate(entries):
             argv = (["bw", "get", "notes", entry["itemId"]] if service == "bitwarden"
                     else ["op", "read", "--no-newline", entry["secretReference"]])
             payload = vault_command(argv, env)
+            if entry.get("credentialFormat") == "api-key":
+                key = payload.decode().strip()
+                if not key or any(character.isspace() for character in key):
+                    raise RecoveryError("Stored API key must be a nonempty value without whitespace.")
+                payload = json.dumps({"OPENAI_API_KEY": key} if entry['provider'] == 'codex' else {"type": "api", "key": key}).encode()
             valid_payload(entry["provider"], payload)
             destination = staging / f"{index}.json"
             with destination.open("xb") as stream:
@@ -220,10 +418,17 @@ def container_restore(mapping, staging):
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def recover(service, manifest):
-    private_file(manifest)
-    mapping = json.loads(manifest.read_text())
-    entries = validate_mapping(mapping, service)
+def recover(service, manifest, guided_mapping=None):
+    if guided_mapping is None:
+        private_file(manifest)
+        mapping = json.loads(manifest.read_text())
+        entries = validate_mapping(mapping, service)
+    else:
+        mapping = guided_mapping
+        validate_enrollment(mapping, service)
+        entries = mapping["entries"]
+        if manifest.exists() or manifest.is_symlink():
+            raise RecoveryError("Guided recovery requires a new mapping path; import the existing mapping instead.")
     selected, targets, seen_targets = [], [], set()
     for entry in entries:
         target = target_path(entry)
@@ -258,6 +463,22 @@ def recover(service, manifest):
                      "--mount", f"type=bind,src={config},dst=/recovery/manifest.json,readonly",
                      "--mount", f"type=bind,src={staging},dst=/recovery/output",
                      image])
+        if guided_mapping is not None:
+            returned = staging / "mapping.json"
+            private_file(returned)
+            returned_mapping = json.loads(returned.read_text())
+            selected_entries = validate_mapping(returned_mapping, service)
+            approved = {(row["provider"], row["profile"], row["credentialPath"]) for row in selected}
+            if any((row["provider"], row["profile"], row["credentialPath"]) not in approved for row in selected_entries):
+                raise RecoveryError("Container returned an unapproved credential destination.")
+            if returned_mapping.get("server") != mapping.get("server"):
+                raise RecoveryError("Container changed the approved vault server.")
+            # Persist only validated metadata, never arbitrary container output.
+            fields = ("enabled", "provider", "profile", "credentialPath", "itemId", "secretReference", "credentialFormat")
+            returned_mapping = {key: mapping[key] for key in ("schemaVersion", "service", "server", "authMode") if key in mapping}
+            returned_mapping['entries'] = [{key: row[key] for key in fields if key in row} for row in selected_entries]
+            selected = selected_entries
+            targets = [target_path(row) for row in selected]
         # Validate the whole batch before installing anything. Containers never see profile homes.
         payloads = []
         for index, entry in enumerate(selected):
@@ -267,6 +488,15 @@ def recover(service, manifest):
             valid_payload(entry["provider"], payload)
             target_path(entry)
             payloads.append(payload)
+        if guided_mapping is not None and selected:
+            manifest.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+            # Save metadata without replacing an existing mapping.
+            with tempfile.NamedTemporaryFile(dir=manifest.parent) as stream:
+                stream.write(json.dumps(returned_mapping, indent=2).encode())
+                stream.flush()
+                os.fsync(stream.fileno())
+                os.link(stream.name, manifest)
+            print(f"Saved private recovery mapping: {manifest}")
         for entry, target, payload in zip(selected, targets, payloads):
             target_path(entry)
             target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)

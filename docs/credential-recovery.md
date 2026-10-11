@@ -11,16 +11,21 @@ cannot discover an organization's secret store or grant access to its secrets.
 
 ## Select credential stores during setup
 
-After Docker verification and profile directory creation, interactive setup asks:
-"Do you have AI assistant tokens or profile credentials stored in a vault?"
+Setup checks Docker and Python/jq/git/curl, then opens component selection.
+An empty selection exits without host setup or image builds. Node/npm are checked
+only for selected npm-based tools. For selected AI tools, choose **sign in
+directly**, **recover from a vault**, or **configure later**, independently of
+optional separate profile setup. Personal profiles need an account email;
+GitHub identity is needed only for explicit registry enrollment.
+
 Users can select several supported services:
 
-| Service | Implemented authentication and retrieval |
+| Service | Authentication and retrieval |
 | --- | --- |
-| Azure Key Vault | Entra tenant device-code sign-in; existing approved tenant/subscription/vault mapping. |
-| Bitwarden | Personal API `client_id`/`client_secret`, followed by master-password unlock; fetch JSON from secure notes by exact item UUID. |
-| Vaultwarden | Same Bitwarden CLI adapter with an explicit HTTPS instance URL; requires compatible personal API login/unlock support and organization policy. |
-| 1Password | Service-account token scoped to the required vault; fetch JSON from an explicit `op://vault/item/field` reference. |
+| Azure Key Vault | Tenant device-code sign-in; guided tenant/subscription/vault/secret mapping or existing approved mapping. |
+| Bitwarden | Account email/master password and supported verification codes; advanced personal API-key login. Pick secure notes by name. |
+| Vaultwarden | Bitwarden adapter with the user's explicit HTTPS instance URL. |
+| 1Password | Account address/email/Secret Key/password; advanced scoped service-account token. Pick a vault item and credential field. |
 
 The selector lists only these implemented adapters. Other stores can use native
 provider sign-in; the larger inventory is not a promise of installed support.
@@ -35,31 +40,37 @@ python3 scripts/setup-credential-recovery.py --interactive
 python3 scripts/setup-credential-recovery.py --list
 ```
 
-The selector asks for an owner-only mapping file for each selected store. Default
-paths are under `~/.config/workbenches/`: `ai-credential-keyvault.json`,
+If a store has no mapping, choose guided setup. Missing destinations come from
+the configured profiles for selected tools. Bitwarden/1Password authentication
+and item selection happen inside the temporary container; only item titles,
+IDs, and field labels are displayed. Confirm each item/profile association.
+The host validates all returned destinations and payloads before installation,
+then saves the mapping atomically with mode `0600`. Existing credential files
+and mapping files are preserved. Skip individual profiles with S.
+
+Advanced JSON import remains available. Default mapping paths are under
+`~/.config/workbenches/`: `ai-credential-keyvault.json`,
 `ai-credential-bitwarden.json`, `ai-credential-vaultwarden.json`, and
-`ai-credential-1password.json`. The Azure override `AI_CREDENTIAL_KV_MANIFEST`
-still works. Start from the corresponding `config/ai-credential-*.example.json`;
-Vaultwarden uses the Bitwarden example with its own HTTPS server. Copy the chosen
-example, edit its metadata/item references, and protect it with `chmod 600`.
-No passwords or tokens belong in these mapping files.
+`ai-credential-1password.json`. `AI_CREDENTIAL_KV_MANIFEST` still overrides the
+Azure path. Examples live at `config/ai-credential-*.example.json`; protect
+imported mappings with `chmod 600`. Mappings contain metadata, never tokens.
 
-Password-manager items must contain the complete credential JSON in the selected
-secure note or field, matching the destination harness (Claude OAuth, Codex
-OAuth/API-key auth JSON, Pi auth JSON, or OmniRoute API-key JSON). This increment
-restores mapped credential files into local profiles; it does not import profile
-definitions from a vault or convert arbitrary password items into auth files.
-Organization/profile metadata continues to come from profile onboarding.
+Items normally contain complete credential JSON matching the selected harness.
+For Codex and OmniRoute, guided recovery also accepts a raw API key and converts
+it to the harness's auth JSON. Bitwarden uses secure notes; 1Password uses the
+chosen field. Profile definitions come from onboarding, not arbitrary vault items.
+Local credential presence is shown per profile; live provider access is not tested.
 
-Bitwarden API credentials authenticate the user but do not unlock the vault;
-the master password is required separately. Trusted-device-only Bitwarden
-accounts cannot decrypt through the documented CLI. This adapter does not yet
-implement email/password or SSO login. The 1Password adapter currently requires
-an administrator/user-created service-account token; Connect and desktop sign-in
-remain outside this adapter. These restrictions are shown in the service menu.
-See [Bitwarden API-key authentication](https://bitwarden.com/help/personal-api-key/),
-[Bitwarden unlock](https://bitwarden.com/help/cli/), and
-[1Password service accounts](https://developer.1password.com/docs/service-accounts/use-with-1password-cli/).
+Bitwarden account sign-in supports authenticator, email, and YubiKey OTP methods;
+new-device email verification is prompted when requested by the CLI. CLI-incompatible
+SSO/trusted-device policies should use the organization's supported authentication
+route or direct AI provider sign-in. 1Password manual sign-in still requires its
+Secret Key and account password. Desktop-app integration and Connect are separate
+from this container adapter. Automation credentials remain available for admins.
+Native CLI prompts are relayed through known, hidden-input prompts; unsupported
+prompts fail rather than displaying raw CLI output or hanging indefinitely.
+See [Bitwarden CLI sign-in](https://bitwarden.com/help/cli/) and
+[1Password manual sign-in](https://developer.1password.com/docs/cli/sign-in-manually/).
 
 ## Temporary credential containers
 
@@ -113,7 +124,10 @@ Declining or cancelling stops setup, and failed daemon access must be resolved
 before setup continues. Standalone escrow commands retain the runtime selection
 below, including native Azure CLI operation without Docker.
 
-An administrator supplies an owner-only manifest at
+Guided Azure setup asks for tenant, subscription, vault, company ownership tag,
+and exact secret names for approved profiles. Existing secrets must carry the
+matching workBenches ownership tags; setup does not infer custody from email.
+An administrator can instead supply an owner-only manifest at
 `~/.config/workbenches/ai-credential-keyvault.json`, or the operator selects a
 manifest with `AI_CREDENTIAL_KV_MANIFEST`. Start from
 `config/ai-credential-keyvault.example.json` and set the organization's tenant,

@@ -9,10 +9,11 @@ mkdir -p "$fixture/scripts/lib" "$fixture/config" "$fixture/devBenches/testBench
     "$fixture/sysBenches/testBench" "$test_root/bin" "$test_root/home/.config/workbenches"
 cp "$repo_root/setup.sh" "$fixture/"
 cp "$repo_root/bootstrap.sh" "$fixture/"
-cp "$repo_root/scripts/lib/docker-prerequisite.sh" "$fixture/scripts/lib/"
+cp "$repo_root/scripts/lib/"{docker-prerequisite.sh,setup-prerequisites.sh,setup-prompts.sh} "$fixture/scripts/lib/"
+cp "$repo_root/scripts/setup_selection.py" "$fixture/scripts/"
 cp "$repo_root/scripts/interactive-setup.sh" "$fixture/scripts/interactive-setup-real.sh"
 cp "$repo_root/scripts/lib/image-names.sh" "$fixture/scripts/lib/"
-printf '{}' > "$test_root/home/.config/workbenches/test-profiles.json"
+printf '{"profiles":[{}]}' > "$test_root/home/.config/workbenches/openai-profiles.json"
 printf '%s\n' '{"benches":{"dev":{"path":"devBenches/testBench"},"sys":{"path":"sysBenches/testBench"}}}' > "$fixture/config/bench-config.json"
 
 # Run the actual input handler and main loop, with setup operations isolated.
@@ -20,14 +21,21 @@ cat > "$fixture/scripts/interactive-setup.sh" <<'EOF'
 #!/usr/bin/env bash
 source "$(dirname "$0")/interactive-setup-real.sh"
 check_and_install_dependencies() { :; }
-init_components() { :; }
+init_components() {
+  if [[ "${TEST_EMPTY_SELECTION:-}" != 1 ]]; then
+    component_checked[bench_dev]=true
+    component_checked[bench_sys]=true
+    component_checked[codex_cli]=true
+  fi
+}
 load_statuses() { :; }
 draw_ui() { :; }
 get_checked_state() { :; }
-process_selections() { echo apply >> "$TEST_ACTION_LOG"; }
+ensure_selected_dependencies() { :; }
+process_selections() { echo apply >> "$TEST_ACTION_LOG"; return "${TEST_APPLY_EXIT:-0}"; }
 clear() { :; }
 if [[ -n "${TEST_UI_EXIT:-}" ]]; then exit "$TEST_UI_EXIT"; fi
-main
+main "$@"
 EOF
 for category in devBenches sysBenches; do
     cat > "$fixture/$category/setup.sh" <<'EOF'
@@ -36,7 +44,14 @@ echo build >> "$TEST_ACTION_LOG"
 EOF
 done
 printf '#!/usr/bin/env bash\nexit 0\n' > "$test_root/bin/docker"
-printf '#!/usr/bin/env bash\nexit 0\n' > "$test_root/bin/python3"
+export TEST_REAL_PYTHON="$(command -v python3)"
+cat > "$test_root/bin/python3" <<'PYTHON'
+#!/usr/bin/env bash
+case "$1" in
+  */setup_selection.py|-|-c) exec "$TEST_REAL_PYTHON" "$@" ;;
+  *) exit 0 ;;
+esac
+PYTHON
 printf '#!/usr/bin/env bash\nexit "${TEST_AI_SETUP_EXIT:-0}"\n' > "$fixture/scripts/setup-ai-profiles.sh"
 chmod +x "$fixture/scripts/interactive-setup.sh" "$fixture/scripts/setup-ai-profiles.sh" \
     "$fixture/devBenches/setup.sh" "$fixture/sysBenches/setup.sh" "$test_root/bin/"*
@@ -64,5 +79,9 @@ run_case 'lowercase q cancels without applying or building' q 130 ''
 run_case 'closed input cancels without applying or building' '' 130 ''
 run_case 'UI failure stops setup' '' 7 '' 7
 run_case 'terminated UI stops setup' '' 143 '' 143
-run_case 'cancelled credential recovery stops the entire setup' '' 130 '' '' 130
+run_case 'cancelled credential recovery stops the entire setup' $'\n' 130 '' '' 130
 run_case 'Enter still applies selections and builds' $'\n' 0 $'apply\nbuild\nbuild'
+
+TEST_EMPTY_SELECTION=1 run_case 'empty Enter exits without applying or building' $'\n' 0 ''
+
+TEST_APPLY_EXIT=9 run_case 'failed selected install stops before later builds' $'\n' 9 'apply'

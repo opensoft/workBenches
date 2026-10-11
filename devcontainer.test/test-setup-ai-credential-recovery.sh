@@ -7,7 +7,7 @@ trap 'rm -rf "$test_root"' EXIT
 fixture="$test_root/workBenches"
 mkdir -p "$fixture/scripts" "$fixture/credential-container" "$test_root/bin" "$test_root/home/.config/workbenches"
 cp "$repo_root/scripts/setup-ai-profiles.sh" "$fixture/scripts/"
-cp "$repo_root/scripts/setup-credential-recovery.py" "$fixture/scripts/"
+cp "$repo_root/scripts/"{setup-credential-recovery.py,setup_prompts.py,profile_credentials.py} "$fixture/scripts/"
 cp "$repo_root/credential-container/credential_recovery.py" "$fixture/credential-container/"
 export TEST_PYTHON="$(command -v python3)"
 cat > "$fixture/scripts/setup-claude-profiles.sh" <<'EOF'

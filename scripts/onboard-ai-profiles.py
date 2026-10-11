@@ -14,6 +14,7 @@ import subprocess
 import sys
 from typing import Any
 from urllib.parse import quote
+from setup_prompts import prompt as metadata_prompt, cancellation_signals, propagate_cancel
 
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
@@ -37,14 +38,14 @@ REPO_RE = re.compile(r"(?:github\.com[:/])([^/]+)/([^/.]+)(?:\.git)?$")
 
 def ask(prompt: str, default: str = "") -> str:
     suffix = f" [{default}]" if default else ""
-    value = input(f"{prompt}{suffix}: ").strip()
+    value = metadata_prompt(f"{prompt}{suffix}: ")
     return value or default
 
 
 def ask_yes_no(prompt: str, default: bool = False) -> bool:
     marker = "Y/n" if default else "y/N"
     while True:
-        value = input(f"{prompt} [{marker}]: ").strip().lower()
+        value = metadata_prompt(f"{prompt} [{marker}]: ").lower()
         if not value:
             return default
         if value in {"y", "yes"}:
@@ -292,6 +293,7 @@ def materialize_registry(value: str | dict[str, str], root: pathlib.Path) -> pat
 
 def interactive_answers() -> dict[str, Any]:
     print("\nAI account profiles keep work and personal provider logins isolated.")
+    print("Q or closed input cancels setup at any prompt.")
     print("Profile setup stores names and login emails, never passwords, OAuth tokens, or API keys.")
     detected = [
         PROVIDER_LABELS[provider]
@@ -301,48 +303,49 @@ def interactive_answers() -> dict[str, Any]:
     if detected:
         print("Existing standard credential storage detected for: " + ", ".join(detected))
         print("It will be preserved in place and will not be copied into new profile homes.")
-    if not ask_yes_no("Set up separate AI profiles for this workstation now?", False):
+    if os.environ.get("WORKBENCHES_REQUIRE_PROFILE") != "1" and not ask_yes_no("Set up separate AI profiles for this workstation now?", False):
         return {"consent": False}
 
-    detected_login = github_login()
-    if not shutil.which("gh"):
-        print("GitHub CLI is not installed, so private registry discovery is unavailable.")
-        print("You may still enter registry URLs/local paths or use manual profiles.")
-    elif not detected_login and ask_yes_no("GitHub CLI is not authenticated. Sign in now for registry discovery?", True):
-        subprocess.run(["gh", "auth", "login"], check=True)
-        detected_login = github_login()
-    github_user = ask("Personal GitHub username", detected_login)
-    if not github_user:
-        raise RuntimeError("a personal GitHub username is required")
-
-    company_count = ask_count("How many companies do you work for using this workstation?")
-    companies: list[dict[str, Any]] = []
-    for index in range(1, company_count + 1):
-        print(f"\nCompany {index}")
-        email = ask_email("Company login email")
-        name = ask("Company name", company_name_from_email(email))
-        if not name:
-            raise RuntimeError("company name is required")
-        org = ask(f"GitHub organization for {name}", name)
-        if not org:
-            raise RuntimeError("company GitHub organization is required")
-        providers = parse_providers(
-            ask("AI providers for a manual fallback (all or comma-separated claude,gpt,gemini,grok,glm)", "all")
-        )
-        companies.append({"name": name, "email": email, "githubOrg": org, "providers": providers})
-
-    personal_count = ask_count("How many personal AI subscription login emails do you use?")
-    personal_accounts: list[dict[str, Any]] = []
-    for index in range(1, personal_count + 1):
-        email = ask_email(f"Personal AI subscription email {index}")
-        providers = parse_providers(ask("AI providers for this email if filled manually", "all"))
-        personal_accounts.append({"email": email, "providers": providers})
-    personal_org = ask("Personal GitHub username or organization that owns your credential registry", github_user)
-
-    print("\nSearching GitHub for credential registries. Only repository metadata and ai/source.json presence are checked.")
-    for company in companies:
-        company["registry"] = choose_registry(company["name"], company["githubOrg"])
-    personal_registry = choose_registry("personal accounts", personal_org)
+    scope = ask("Profile ownership: personal, organization, or registry (advanced)", "personal").lower()
+    if scope not in ("personal", "organization", "registry"):
+        raise ValueError("choose personal, organization, or registry")
+    registry_mode = scope == "registry"
+    if registry_mode:
+        scope = ask("Registry profile ownership: personal or organization", "organization").lower()
+        if scope not in ("personal", "organization"):
+            raise ValueError("choose personal or organization")
+    selected = os.environ.get("WORKBENCHES_PROFILE_PROVIDERS", "all")
+    if not selected:
+        selected = ask("AI provider for Pi profiles (claude,gpt,gemini,grok,glm)", "gpt")
+    providers = parse_providers(selected)
+    email = ask_email("AI account login email")
+    companies = []
+    personal_accounts = []
+    if scope == "organization":
+        name = ask("Organization name", company_name_from_email(email))
+        companies = [{"name": name, "email": email, "githubOrg": "",
+                      "providers": providers, "registry": "manual"}]
+    else:
+        personal_accounts = [{"email": email, "providers": providers}]
+    github_user = ""
+    personal_org = ""
+    personal_registry = "manual"
+    registry_requested = registry_mode or (
+        "WORKBENCHES_SELECTED_PROVIDERS" not in os.environ
+        and ask_yes_no("Use a GitHub credential registry (advanced)?", False)
+    )
+    if registry_requested:
+        github_user = ask("GitHub username for registry enrollment", github_login())
+        if not github_user:
+            raise ValueError("GitHub username is required for registry enrollment")
+        for company in companies:
+            company["githubOrg"] = ask("GitHub organization that owns the registry")
+            if not company["githubOrg"]:
+                raise ValueError("registry organization is required")
+            company["registry"] = choose_registry(company["name"], company["githubOrg"])
+        if personal_accounts:
+            personal_org = ask("GitHub owner of your personal registry", github_user)
+            personal_registry = choose_registry("personal accounts", personal_org)
 
     return {
         "consent": True,
@@ -360,16 +363,14 @@ def normalize_answers(payload: dict[str, Any]) -> dict[str, Any]:
     if not payload.get("consent"):
         return {"consent": False}
     github_user = str(payload.get("githubUser", "")).strip()
-    if not github_user:
-        raise ValueError("githubUser is required")
     companies = payload.get("companies", [])
     personal = payload.get("personal", {})
     if not isinstance(companies, list) or not isinstance(personal, dict):
         raise ValueError("companies and personal must be valid objects")
     company_slugs: set[str] = set()
     for company in companies:
-        if not all(str(company.get(field, "")).strip() for field in ("name", "email", "githubOrg")):
-            raise ValueError("each company requires name, email, and githubOrg")
+        if not all(str(company.get(field, "")).strip() for field in ("name", "email")):
+            raise ValueError("each company requires name and email")
         if not EMAIL_RE.match(company["email"]):
             raise ValueError(f"invalid company email: {company['email']}")
         company_slug = slugify(company["name"])
@@ -380,6 +381,9 @@ def normalize_answers(payload: dict[str, Any]) -> dict[str, Any]:
         company_slugs.add(company_slug)
         company["providers"] = parse_providers(company.get("providers"))
         company["registry"] = company.get("registry") or "manual"
+        company["githubOrg"] = company.get("githubOrg", "")
+        if not registry_is_manual(company["registry"]) and (not github_user or not company["githubOrg"]):
+            raise ValueError("registry enrollment requires githubUser and githubOrg")
     accounts = personal.get("accounts", [])
     if not isinstance(accounts, list):
         raise ValueError("personal.accounts must be an array")
@@ -389,6 +393,8 @@ def normalize_answers(payload: dict[str, Any]) -> dict[str, Any]:
         account["providers"] = parse_providers(account.get("providers"))
     personal["githubOrg"] = personal.get("githubOrg") or github_user
     personal["registry"] = personal.get("registry") or "manual"
+    if not registry_is_manual(personal["registry"]) and not github_user:
+        raise ValueError("registry enrollment requires githubUser")
     personal["accounts"] = accounts
     return {
         "consent": True,
@@ -471,6 +477,7 @@ def apply_scope_layout(
 
 
 def main() -> int:
+    cancellation_signals()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--answers", type=pathlib.Path, help="Use a JSON answer file instead of prompting")
     parser.add_argument(
@@ -568,8 +575,16 @@ def main() -> int:
         families = [slugify(company["name"]) for company in answers["companies"]]
         families.append("personal")
         for provider, filename in COMPOSER.PROVIDERS.items():
+            if not output[provider] and "WORKBENCHES_SELECTED_PROVIDERS" in os.environ:
+                continue
+            destination = args.output_dir / filename
+            if "WORKBENCHES_SELECTED_PROVIDERS" in os.environ and destination.is_file():
+                existing = json.loads(destination.read_text())
+                if existing.get("profiles"):
+                    print(f"Preserving configured {provider} profiles.")
+                    continue
             COMPOSER.atomic_json(
-                args.output_dir / filename,
+                destination,
                 {"version": 1, "families": families, "profiles": output[provider]},
             )
         if source_paths and not any(output.values()):
@@ -594,6 +609,8 @@ def main() -> int:
         print("Existing standard provider credential homes were preserved and were not copied into profiles.")
         return 0
     except (ValueError, RuntimeError, COMPOSER.ProfileError, json.JSONDecodeError, OSError, subprocess.CalledProcessError) as exc:
+        if isinstance(exc, subprocess.CalledProcessError):
+            propagate_cancel(exc.returncode)
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 

@@ -30,8 +30,9 @@ azure_cli_runtime_init() {
     fi
     if [[ "$allow_login" == true && -t 0 && -t 2 ]]; then
         local answer
-        printf 'Azure CLI is missing and Docker is unavailable. Install Azure CLI for your user account? [y/N]: ' >&2
-        IFS= read -r answer || return 1
+        printf 'Azure CLI is missing and Docker is unavailable. Install Azure CLI for your user account? [y/N] (Q to cancel): ' >&2
+        IFS= read -r answer || return 130
+        [[ "${answer,,}" != q ]] || return 130
         if [[ "$answer" == [Yy] || "$answer" == [Yy][Ee][Ss] ]]; then
             local installer_dir
             installer_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

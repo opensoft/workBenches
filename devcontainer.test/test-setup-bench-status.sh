@@ -7,6 +7,7 @@ trap 'rm -rf "$test_root"' EXIT
 mkdir -p "$test_root/scripts/lib" "$test_root/config" "$test_root/devBenches"
 cp "$repo_root/scripts/interactive-setup.sh" "$test_root/scripts/"
 cp "$repo_root/bootstrap.sh" "$test_root/"
+cp "$repo_root/scripts/lib/"{setup-prerequisites.sh,setup-prompts.sh,docker-prerequisite.sh} "$test_root/scripts/lib/"
 cp "$repo_root/scripts/lib/image-names.sh" "$test_root/scripts/lib/"
 printf '%s\n' '{"benches":{"testBench":{"path":"devBenches/testBench","url":"git@github.com:opensoft/testBench.git"}}}' > "$test_root/config/bench-config.json"
 source "$test_root/scripts/interactive-setup.sh"

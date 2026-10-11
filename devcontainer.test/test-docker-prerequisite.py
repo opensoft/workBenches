@@ -8,6 +8,7 @@ from pathlib import Path
 import pty
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -195,10 +196,13 @@ if ensure_docker; then exit 0; else exit $?; fi
         (fixture / "base-image").mkdir()
         (fixture / "config").mkdir()
         (self.directory / "home/.config/workbenches").mkdir(parents=True)
-        (self.directory / "home/.config/workbenches/test-profiles.json").write_text("{}")
+        (self.directory / "home/.config/workbenches/claude-profiles.json").write_text('{"profiles":[{}]}')
         for name in ("setup.sh", "bootstrap.sh"):
             shutil.copy(ROOT / name, fixture / name)
-        shutil.copy(ROOT / "scripts/lib/docker-prerequisite.sh", fixture / "scripts/lib")
+        for name in ("docker-prerequisite.sh", "setup-prerequisites.sh", "setup-prompts.sh"):
+            shutil.copy(ROOT / "scripts/lib" / name, fixture / "scripts/lib")
+        shutil.copy(ROOT / "scripts/setup_selection.py", fixture / "scripts")
+        (fixture / "config/bench-config.json").write_text('{"benches":{"dev":{"path":"devBenches/testBench"}}}')
         for name, action in (
             ("setup-shell.sh", "shell"), ("setup-estate-commands.sh", "estate"),
             ("setup-workspace-repo.sh", "workspace"), ("setup-claude-workflows.sh", "workflow"),
@@ -207,6 +211,13 @@ if ensure_docker; then exit 0; else exit $?; fi
             path = fixture / "scripts" / name
             path.write_text(f'#!/usr/bin/env bash\necho {action} >> "$TEST_LOG"\n')
             path.chmod(0o755)
+        (fixture / "scripts/interactive-setup.sh").write_text('''#!/usr/bin/env bash
+if [[ "$1" == --select-only ]]; then
+  echo selected >> "$TEST_LOG"
+  echo '{"schemaVersion":1,"components":[{"key":"bench_dev","action":"install"},{"key":"claude_cli","action":"install"}]}' > "$2"
+fi
+if [[ "$1" == --apply-plan ]]; then echo apply >> "$TEST_LOG"; fi
+''')
         path = fixture / "base-image/build.sh"
         path.write_text('#!/usr/bin/env bash\necho build >> "$TEST_LOG"\n')
         path.chmod(0o755)
@@ -220,7 +231,7 @@ if [[ "$1" == context ]]; then echo tcp://remote.example:2376; exit 0; fi
 exit 1
 ''')
         path.chmod(0o755)
-        (binaries / "python3").write_text('#!/usr/bin/env bash\nexit 0\n')
+        (binaries / "python3").write_text(f'#!/usr/bin/env bash\ncase "$1" in */setup_selection.py|-c|-) exec {sys.executable} "$@" ;; *) exit 0 ;; esac\n')
         (binaries / "python3").chmod(0o755)
         env = {**self.env, "HOME": str(self.directory / "home"),
                "XDG_CONFIG_HOME": str(self.directory / "home/.config"),
@@ -237,8 +248,8 @@ exit 1
                 if docker_status:
                     self.assertTrue(all(action.startswith("docker ") for action in actions), actions)
                 else:
-                    self.assertEqual(actions, ["docker info", "shell", "estate", "workspace", "workflow",
-                                               "recovery", "docker image", "build", "selected"])
+                    self.assertEqual(actions, ["docker info", "selected", "recovery", "shell", "estate", "workspace", "workflow",
+                                               "docker image", "build", "apply"])
 
 
 if __name__ == "__main__":

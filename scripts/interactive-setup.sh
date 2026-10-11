@@ -6,6 +6,7 @@
 # Setup logging
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/image-names.sh"
+source "$SCRIPT_DIR/lib/setup-prerequisites.sh"
 source "$SCRIPT_DIR/../bootstrap.sh"
 LOG_DIR="$SCRIPT_DIR/../logs"
 mkdir -p "$LOG_DIR"
@@ -248,7 +249,7 @@ check_component_status() {
         claude_cli)
             if command -v claude &> /dev/null; then
                 # Check if credentials exist
-                if [ -n "$ANTHROPIC_API_KEY" ] || [ -f "$HOME/.claude.json" ]; then
+                if python3 "$SCRIPT_DIR/profile_credentials.py" status claude; then
                     echo "installed"
                 else
                     echo "needs creds"
@@ -267,7 +268,7 @@ check_component_status() {
         codex_cli)
             if command -v codex &> /dev/null; then
                 # Check if authenticated (auth.json or API key)
-                if [ -f "$HOME/.codex/auth.json" ] || [ -n "$OPENAI_API_KEY" ]; then
+                if python3 "$SCRIPT_DIR/profile_credentials.py" status codex; then
                     echo "installed"
                 else
                     echo "needs creds"
@@ -285,11 +286,7 @@ check_component_status() {
             ;;
         opencode_cli)
             if command -v opencode &> /dev/null; then
-                if jq -e '
-                    type == "object"
-                    and .omniroute.type == "api"
-                    and (.omniroute.key | type == "string" and length > 0)
-                ' "$HOME/.local/share/opencode/auth.json" >/dev/null 2>&1; then
+                if python3 "$SCRIPT_DIR/profile_credentials.py" status omniroute; then
                     echo "installed"
                 else
                     echo "needs creds"
@@ -300,7 +297,7 @@ check_component_status() {
             ;;
         pi_cli)
             if command -v pi &>/dev/null || [[ -x "$HOME/.npm-global/bin/pi" ]]; then
-                if [[ -f "$HOME/.pi/agent/auth.json" ]] || find "$HOME/.pi-profiles/profiles" -mindepth 3 -maxdepth 6 -type f -name auth.json -print -quit 2>/dev/null | grep -q .; then
+                if python3 "$SCRIPT_DIR/profile_credentials.py" status pi; then
                     echo "installed"
                 else
                     echo "needs creds"
@@ -1009,16 +1006,16 @@ setup_openai_key_interactive() {
         echo -e "${CYAN}┌────────────────────────────────────────────────────────────┐${NC}"
         echo -e "${CYAN}│ ${BOLD}OpenAI API Key:${NC}${CYAN}                                             │${NC}"
         echo -e "${CYAN}└────────────────────────────────────────────────────────────┘${NC}"
-        read -p "  sk-" openai_key
+        setup_read "  sk-" openai_key
         openai_key="sk-$openai_key"
 
         if [ -z "$openai_key" ]; then
             echo -e "${RED}✗ API key cannot be empty.${NC}"
-            read -p "Try again? [Y/n]: " retry
+            setup_read "Try again? [Y/n]: " retry
             [[ "$retry" =~ ^[Nn] ]] && return 1
         elif [[ ! "$openai_key" =~ ^sk- ]]; then
             echo -e "${RED}✗ Invalid OpenAI API key format. Keys should start with 'sk-'${NC}"
-            read -p "Try again? [Y/n]: " retry
+            setup_read "Try again? [Y/n]: " retry
             [[ "$retry" =~ ^[Nn] ]] && return 1
         else
             echo -e "${YELLOW}Testing API key...${NC}"
@@ -1042,7 +1039,7 @@ setup_openai_key_interactive() {
                 echo -e "${RED}✗ API key validation failed.${NC}"
                 local error_msg=$(echo "$test_response" | grep -o '"message":"[^"]*"' | head -1)
                 [ -n "$error_msg" ] && echo "  Error: $error_msg"
-                read -p "Try again? [Y/n]: " retry
+                setup_read "Try again? [Y/n]: " retry
                 [[ "$retry" =~ ^[Nn] ]] && return 1
             fi
         fi
@@ -1072,16 +1069,16 @@ setup_anthropic_key_interactive() {
         echo -e "${CYAN}┌────────────────────────────────────────────────────────────┐${NC}"
         echo -e "${CYAN}│ ${BOLD}Anthropic API Key:${NC}${CYAN}                                          │${NC}"
         echo -e "${CYAN}└────────────────────────────────────────────────────────────┘${NC}"
-        read -p "  sk-" anthropic_key
+        setup_read "  sk-" anthropic_key
         anthropic_key="sk-$anthropic_key"
 
         if [ -z "$anthropic_key" ]; then
             echo -e "${RED}✗ API key cannot be empty.${NC}"
-            read -p "Try again? [Y/n]: " retry
+            setup_read "Try again? [Y/n]: " retry
             [[ "$retry" =~ ^[Nn] ]] && return 1
         elif [[ ! "$anthropic_key" =~ ^sk- ]]; then
             echo -e "${RED}✗ Invalid Anthropic API key format. Keys should start with 'sk-'${NC}"
-            read -p "Try again? [Y/n]: " retry
+            setup_read "Try again? [Y/n]: " retry
             [[ "$retry" =~ ^[Nn] ]] && return 1
         else
             echo -e "${YELLOW}Testing API key...${NC}"
@@ -1105,7 +1102,7 @@ setup_anthropic_key_interactive() {
                 echo -e "${RED}✗ API key validation failed.${NC}"
                 local error_msg=$(echo "$test_response" | grep -o '"message":"[^"]*"' | head -1)
                 [ -n "$error_msg" ] && echo "  Error: $error_msg"
-                read -p "Try again? [Y/n]: " retry
+                setup_read "Try again? [Y/n]: " retry
                 [[ "$retry" =~ ^[Nn] ]] && return 1
             fi
         fi
@@ -1136,15 +1133,15 @@ setup_claude_session_interactive() {
         echo -e "${CYAN}┌────────────────────────────────────────────────────────────┐${NC}"
         echo -e "${CYAN}│ ${BOLD}Claude Session Key:${NC}${CYAN}                                         │${NC}"
         echo -e "${CYAN}└────────────────────────────────────────────────────────────┘${NC}"
-        read -p "  " session_key
+        setup_read "  " session_key
 
         if [ -z "$session_key" ]; then
             echo -e "${RED}✗ Session key cannot be empty.${NC}"
-            read -p "Try again? [Y/n]: " retry
+            setup_read "Try again? [Y/n]: " retry
             [[ "$retry" =~ ^[Nn] ]] && return 1
         elif [[ ! "$session_key" =~ ^sk-ant-sid ]]; then
             echo -e "${YELLOW}⚠️  Warning: Session key format doesn't match expected pattern.${NC}"
-            read -p "Continue anyway? [y/N]: " continue_anyway
+            setup_read "Continue anyway? [y/N]: " continue_anyway
             [[ ! "$continue_anyway" =~ ^[Yy] ]] && continue
         fi
 
@@ -1776,21 +1773,21 @@ process_selections() {
 
                         # Install Claude Code CLI via native installer (npm method is deprecated)
                         # Native installer: no Node.js dependency, auto-updates, installs to ~/.local/bin
-                        trap '' INT
+                        trap 'exit 130' INT
                         (
                             curl -fsSL https://claude.ai/install.sh | bash >> "$LOG_FILE" 2>&1
                         ) &
                         local install_pid=$!
 
                         if show_spinner $install_pid "Installing Claude CLI" 180; then
-                            trap - INT
+                            trap 'exit 130' INT
                             log "Claude CLI installed successfully via native installer"
                             echo -e "  ${GREEN}✓ Claude Code CLI installed${NC}"
                             echo -e "  ${DIM}Run 'claude' to start using it${NC}"
                             ((success_count++))
                             items_needing_creds+=("claude")
                         else
-                            trap - INT
+                            trap 'exit 130' INT
                             log "ERROR: Claude CLI installation failed"
                             echo -e "  ${RED}✗ Failed to install Claude Code CLI${NC}"
                             echo -e "  ${DIM}Manual install: curl -fsSL https://claude.ai/install.sh | bash${NC}"
@@ -1881,14 +1878,14 @@ process_selections() {
                         echo -e "  ${BOLD}${RED}Please do not interrupt the installation (Ctrl+C)${NC}"
                         log "Starting Antigravity CLI installation via official installer"
 
-                        trap '' INT
+                        trap 'exit 130' INT
                         (
                             curl -fsSL https://antigravity.google/cli/install.sh | bash >> "$LOG_FILE" 2>&1
                         ) &
                         local install_pid=$!
 
                         if show_spinner $install_pid "Installing Antigravity CLI" 180; then
-                            trap - INT
+                            trap 'exit 130' INT
                             export PATH="$HOME/.local/bin:$PATH"
                             if command -v agy &> /dev/null; then
                                 log "Antigravity CLI installed successfully"
@@ -1903,7 +1900,7 @@ process_selections() {
                                 ((fail_count++))
                             fi
                         else
-                            trap - INT
+                            trap 'exit 130' INT
                             log "ERROR: Antigravity CLI installation failed"
                             echo -e "  ${RED}✗ Failed to install Antigravity CLI${NC}"
                             echo -e "  ${DIM}Manual install: curl -fsSL https://antigravity.google/cli/install.sh | bash${NC}"
@@ -2191,50 +2188,24 @@ process_selections() {
     echo ""
 
     # Handle credential setup for newly installed CLIs
+    for item in claude_cli codex_cli; do
+        if [[ "${component_checked[$item]}" == true && "${component_action[$item]}" != uninstall && "${component_status[$item]}" == "needs creds" ]]; then
+            [[ " ${items_needing_creds[*]} " == *" ${item%_cli} "* ]] || items_needing_creds+=("${item%_cli}")
+        fi
+    done
+    if [[ "${WORKBENCHES_AUTH_ROUTE:-}" == later ]]; then items_needing_creds=(); fi
     if [ ${#items_needing_creds[@]} -gt 0 ]; then
         echo -e "${BOLD}${BLUE}────────────────────────────────────────────────────────────────────────────${NC}"
         echo -e "${BOLD}${YELLOW}Setting up Credentials${NC}"
         echo -e "${BOLD}${BLUE}────────────────────────────────────────────────────────────────────────────${NC}"
         echo ""
 
-        guide_isolated_profile_logins() {
-            local provider="$1" manifest="$2" launcher="$3"
-            local profile_count name email answer
-
-            [[ -f "$manifest" ]] || return 1
-            command -v jq >/dev/null 2>&1 || return 1
-            profile_count="$(jq '.profiles | length' "$manifest" 2>/dev/null)" || return 1
-            [[ "$profile_count" =~ ^[0-9]+$ ]] || return 1
-
-            echo -e "${GREEN}✓ Isolated ${provider} profiles are configured${NC}"
-            jq -r '.profiles[] | "  \(.name)  <\(.email)>"' "$manifest"
-            echo -e "${DIM}Each profile has its own credential home; the default login is preserved separately.${NC}"
-            echo ""
-
-            if ! command -v "$launcher" >/dev/null 2>&1; then
-                echo -e "${YELLOW}Profile launcher '${launcher}' is not on PATH yet. Open a new shell, then run '${launcher} login <profile>'.${NC}"
-                echo ""
-                return 0
-            fi
-
-            read -r -p "Walk through login for these ${provider} profiles now? [y/N]: " answer
-            [[ "$answer" =~ ^[Yy] ]] || {
-                echo -e "${YELLOW}Skipped. Use '${launcher} login <profile>' when ready.${NC}"
-                echo ""
-                return 0
-            }
-
-            while IFS=$'\t' read -r name email; do
-                read -r -p "Login ${name} (${email}) now? [y/N]: " answer
-                if [[ "$answer" =~ ^[Yy] ]]; then
-                    "$launcher" login "$name"
-                    echo ""
-                fi
-            done < <(jq -r '.profiles[] | [.name, .email] | @tsv' "$manifest")
-            return 0
-        }
 
         for cli in "${items_needing_creds[@]}"; do
+            case "$cli" in
+                codex|claude|pi) python3 "$SCRIPT_DIR/profile_credentials.py" status "$cli" && continue ;;
+                opencode) python3 "$SCRIPT_DIR/profile_credentials.py" status omniroute && continue ;;
+            esac
             case "$cli" in
                 codex)
                     echo -e "${CYAN}▶ Setting up Codex CLI authentication...${NC}"
@@ -2257,7 +2228,7 @@ process_selections() {
                         echo ""
 
                         while true; do
-                            read -p "Launch Codex authentication now? [Y/n]: " launch_codex
+                            setup_read "Launch Codex authentication now? [Y/n]: " launch_codex
                             case $launch_codex in
                                 [Yy]* | "" )
                                     echo ""
@@ -2269,6 +2240,7 @@ process_selections() {
                                     # Launch codex login - handles authentication only
                                     if command -v codex &> /dev/null; then
                                         codex login
+                                        setup_propagate_cancel "$?"
                                     fi
                                     echo ""
                                     break
@@ -2333,7 +2305,7 @@ process_selections() {
                             echo ""
 
                             while true; do
-                                read -p "Launch Claude CLI authentication now? [Y/n]: " launch_claude
+                                setup_read "Launch Claude CLI authentication now? [Y/n]: " launch_claude
                                 case $launch_claude in
                                     [Yy]* | "" )
                                         echo ""
@@ -2344,6 +2316,7 @@ process_selections() {
 
                                         # Launch claude - will prompt for authentication
                                         claude
+                                        setup_propagate_cancel "$?"
                                         echo ""
                                         break
                                         ;;
@@ -2383,7 +2356,7 @@ process_selections() {
                         echo ""
 
                         while true; do
-                            read -p "Launch Antigravity CLI authentication now? [Y/n]: " launch_antigravity
+                            setup_read "Launch Antigravity CLI authentication now? [Y/n]: " launch_antigravity
                             case $launch_antigravity in
                                 [Yy]* | "" )
                                     echo ""
@@ -2418,9 +2391,10 @@ process_selections() {
                         echo -e "${GREEN}✓ Restored Opensoft OmniRoute authentication from approved durable storage${NC}"
                     else
                         echo -e "${YELLOW}Automatic OmniRoute recovery was unavailable.${NC}"
-                        read -p "Launch 'opencode auth login' now? [Y/n]: " launch_opencode
+                        setup_read "Launch 'opencode auth login' now? [Y/n]: " launch_opencode
                         if [[ ! $launch_opencode =~ ^[Nn] ]]; then
                             opencode auth login
+                            setup_propagate_cancel "$?"
                         else
                             echo -e "${YELLOW}Skipped. Run 'opencode auth login' anytime.${NC}"
                         fi
@@ -2431,14 +2405,16 @@ process_selections() {
                 pi)
                     echo -e "${CYAN}▶ Setting up Pi Coding Agent authentication...${NC}"
                     echo -e "${DIM}Pi credentials are isolated by canonical profile through ppi.${NC}"
-                    read -p "Launch a Pi profile login now? [Y/n]: " launch_pi
+                    setup_read "Launch a Pi profile login now? [Y/n]: " launch_pi
                     if [[ ! $launch_pi =~ ^[Nn] ]]; then
-                        read -r -p "Pi profile name or alias: " pi_profile
+                        setup_read "Pi profile name or alias: " pi_profile
                         echo -e "${YELLOW}Run /login, choose a provider, verify the matching identity, then exit Pi.${NC}"
                         if command -v ppi >/dev/null 2>&1; then
                             ppi login "$pi_profile"
+                            setup_propagate_cancel "$?"
                         elif [[ -x "$HOME/.local/bin/ppi" ]]; then
                             "$HOME/.local/bin/ppi" login "$pi_profile"
+                            setup_propagate_cancel "$?"
                         else
                             echo -e "${YELLOW}No isolated Pi profile launcher is configured; using the standard Pi login flow.${NC}"
                             pi_command="$(command -v pi || true)"
@@ -2455,7 +2431,7 @@ process_selections() {
                 warp)
                     echo -e "${CYAN}▶ Setting up Warp account authentication...${NC}"
                     echo -e "${DIM}Warp login is optional, but required for AI and collaboration features.${NC}"
-                    read -p "Open the Warp login page now? [Y/n]: " launch_warp
+                    setup_read "Open the Warp login page now? [Y/n]: " launch_warp
                     if [[ ! $launch_warp =~ ^[Nn] ]]; then
                         if is_wsl_windows; then
                             powershell.exe -NoProfile -Command 'Start-Process "https://app.warp.dev/login"' >/dev/null 2>&1 || true
@@ -2470,7 +2446,7 @@ process_selections() {
                 wave)
                     echo -e "${CYAN}▶ Setting up Wave AI credentials...${NC}"
                     echo -e "${DIM}Wave itself requires no account login. Provider keys belong in Wave's encrypted secrets store.${NC}"
-                    read -p "Open Wave's secrets UI now? [Y/n]: " launch_wave_secrets
+                    setup_read "Open Wave's secrets UI now? [Y/n]: " launch_wave_secrets
                     if [[ ! $launch_wave_secrets =~ ^[Nn] ]]; then
                         if command -v wsh &>/dev/null; then
                             wsh secret ui || true
@@ -2498,7 +2474,51 @@ process_selections() {
 
     echo -e "${BLUE}Note: You may need to restart your shell for changes to take effect.${NC}"
     echo ""
-    read -p "Press Enter to continue..."
+    setup_read "Press Enter to continue..." continue_answer
+    [[ "$fail_count" -eq 0 ]]
+}
+
+guide_isolated_profile_logins() {
+    local provider="$1" manifest="$2" launcher="$3"
+    local profile_count name email answer
+
+    [[ -f "$manifest" ]] || return 1
+    command -v jq >/dev/null 2>&1 || return 1
+    profile_count="$(jq '.profiles | length' "$manifest" 2>/dev/null)" || return 1
+    [[ "$profile_count" =~ ^[0-9]+$ && "$profile_count" -gt 0 ]] || return 1
+    python3 "$SCRIPT_DIR/profile_credentials.py" ready "$provider" && return 0
+
+    echo -e "${GREEN}✓ Isolated ${provider} profiles are configured${NC}"
+    jq -r '.profiles[] | "  \(.name)  <\(.email)>"' "$manifest"
+    echo -e "${DIM}Each profile has its own credential home; the default login is preserved separately.${NC}"
+    echo ""
+
+    if ! command -v "$launcher" >/dev/null 2>&1 && [[ -x "$HOME/.local/bin/$launcher" ]]; then
+        launcher="$HOME/.local/bin/$launcher"
+    fi
+    if ! command -v "$launcher" >/dev/null 2>&1; then
+        echo -e "${YELLOW}Profile launcher '${launcher}' is not on PATH yet. Open a new shell, then run '${launcher} login <profile>'.${NC}"
+        echo ""
+        return 0
+    fi
+
+    setup_read "Walk through login for these ${provider} profiles now? [y/N]: " answer
+    [[ "$answer" =~ ^[Yy] ]] || {
+        echo -e "${YELLOW}Skipped. Use '${launcher} login <profile>' when ready.${NC}"
+        echo ""
+        return 0
+    }
+
+    while IFS=$'\t' read -r -u 3 name email; do
+        python3 "$SCRIPT_DIR/profile_credentials.py" profile "$provider" "$name" && continue
+        setup_read "Login ${name} (${email}) now? [y/N]: " answer
+        if [[ "$answer" =~ ^[Yy] ]]; then
+            "$launcher" login "$name"
+            setup_propagate_cancel "$?"
+            echo ""
+        fi
+    done 3< <(jq -r '.profiles[] | [.name, .email] | @tsv' "$manifest")
+    return 0
 }
 
 # Install Node.js using recommended method
@@ -2546,6 +2566,10 @@ install_nodejs() {
                 return 1
             fi
             ;;
+        arch|endeavouros|manjaro|omarchy)
+            sudo pacman -S --needed nodejs npm
+            return $?
+            ;;
         alpine)
             echo -e "${CYAN}Installing Node.js via apk...${NC}"
             if sudo apk add nodejs npm; then
@@ -2580,119 +2604,70 @@ install_nodejs() {
     esac
 }
 
-# Check and install required dependencies
+# Node is only needed for selected npm-based installs/updates.
 check_and_install_dependencies() {
-    echo -e "${BOLD}${BLUE}════════════════════════════════════════════════════════════════${NC}"
-    echo -e "${BOLD}${BLUE}  Checking System Dependencies${NC}"
-    echo -e "${BOLD}${BLUE}════════════════════════════════════════════════════════════════${NC}"
-    echo ""
+    ensure_setup_dependencies || exit "$?"
+}
 
-    local all_ok=true
+ensure_selected_dependencies() {
+    local item needs_node=false choice major minor
+    for item in codex_cli copilot_cli pi_cli openspec; do
+        if [[ "${component_checked[$item]}" == true && "${component_action[$item]}" != uninstall ]]; then needs_node=true; fi
+    done
+    [[ "$needs_node" == true ]] || return 0
+    IFS=. read -r major minor _ <<< "$(node --version 2>/dev/null)"
+    major="${major#v}"
+    if [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]] && (( major > 20 || (major == 20 && minor >= 19) )) && command -v npm >/dev/null 2>&1; then return 0; fi
+    echo "The selected tools require Node.js 20.19+ and npm."
+    setup_read "Install/update Node.js now? [y/N]" choice
+    [[ "${choice,,}" == y || "${choice,,}" == yes ]] || exit 130
+    install_nodejs || { setup_propagate_cancel "$?"; exit 1; }
+    IFS=. read -r major minor _ <<< "$(node --version 2>/dev/null)"; major="${major#v}"
+    [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]] && (( major > 20 || (major == 20 && minor >= 19) )) && command -v npm >/dev/null 2>&1 || exit 1
+}
 
-    # Check git
-    if command -v git &> /dev/null; then
-        local git_version=$(git --version | awk '{print $3}')
-        echo -e "  ${GREEN}✓ git${NC} - installed (version: $git_version)"
-    else
-        echo -e "  ${RED}✗ git${NC} - not installed (required)"
-        all_ok=false
-    fi
-
-    # Check jq
-    if command -v jq &> /dev/null; then
-        local jq_version=$(jq --version 2>&1 | sed 's/jq-//')
-        echo -e "  ${GREEN}✓ jq${NC} - installed (version: $jq_version)"
-    else
-        echo -e "  ${RED}✗ jq${NC} - not installed (required)"
-        all_ok=false
-    fi
-
-    # Check curl
-    if command -v curl &> /dev/null; then
-        local curl_version=$(curl --version | head -n1 | awk '{print $2}')
-        echo -e "  ${GREEN}✓ curl${NC} - installed (version: $curl_version)"
-    else
-        echo -e "  ${RED}✗ curl${NC} - not installed (required)"
-        all_ok=false
-    fi
-
-    echo ""
-
-    # Check Node.js (important for many AI CLIs)
-    local node_needs_install=false
-    if command -v node &> /dev/null; then
-        local node_version=$(node --version | sed 's/v//')
-        local node_major=$(echo $node_version | cut -d'.' -f1)
-        if [ "$node_major" -ge 18 ]; then
-            echo -e "  ${GREEN}✓ Node.js${NC} - installed (version: v$node_version)"
-            if command -v npm &> /dev/null; then
-                local npm_version=$(npm --version)
-                echo -e "  ${GREEN}✓ npm${NC} - installed (version: $npm_version)"
-            fi
-        else
-            echo -e "  ${YELLOW}⚠ Node.js${NC} - outdated (v$node_version, need 18+)"
-            node_needs_install=true
+save_selection() {
+    local item action
+    local -a rows=()
+    for item in "${!component_checked[@]}"; do
+        if [[ "${component_checked[$item]}" == true ]]; then
+            action="${component_action[$item]:-install}"
+            rows+=("$item" "$action")
         fi
-    else
-        echo -e "  ${YELLOW}⚠ Node.js${NC} - not installed (required for Codex, Copilot, OpenSpec)"
-        node_needs_install=true
-    fi
+    done
+    python3 - "$selection_file" "${rows[@]}" <<'PLAN'
+import json, os, pathlib, sys
+os.umask(0o077)
+path = pathlib.Path(sys.argv[1])
+# Root setup creates this temporary file; never follow a caller's symlink.
+fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+with os.fdopen(fd, 'w') as stream:
+    json.dump({'schemaVersion': 1, 'components': [{'key': key, 'action': action}
+              for key, action in zip(sys.argv[2::2], sys.argv[3::2])]}, stream)
+PLAN
+}
 
-    echo ""
-
-    # Handle missing core dependencies
-    if [ "$all_ok" = false ]; then
-        echo -e "${RED}Missing required core dependencies.${NC}"
-        echo -e "${YELLOW}Please install manually:${NC}"
-        echo -e "  Ubuntu/Debian: ${CYAN}sudo apt update && sudo apt install -y git jq curl${NC}"
-        echo -e "  macOS:         ${CYAN}brew install git jq curl${NC}"
-        echo ""
-        read -p "Press Enter to exit..."
-        exit 1
-    fi
-
-    # Offer to install Node.js if needed
-    if [ "$node_needs_install" = true ]; then
-        echo -e "${YELLOW}Node.js is required for several AI coding assistants.${NC}"
-        echo ""
-        while true; do
-            read -p "Would you like to install Node.js now? [Y/n]: " install_choice
-            case $install_choice in
-                [Yy]* | "" )
-                    echo ""
-                    if install_nodejs; then
-                        echo ""
-                        echo -e "${GREEN}✓ Node.js installation complete!${NC}"
-                        echo ""
-                        sleep 2
-                        break
-                    else
-                        echo ""
-                        echo -e "${YELLOW}You can install Node.js later from: ${BLUE}https://nodejs.org/${NC}"
-                        echo ""
-                        sleep 2
-                        break
-                    fi
-                    ;;
-                [Nn]* )
-                    echo ""
-                    echo -e "${YELLOW}Skipping Node.js installation.${NC}"
-                    echo -e "  Note: AI CLIs requiring Node.js will not be installable."
-                    echo ""
-                    sleep 2
-                    break
-                    ;;
-                * )
-                    echo "Please answer yes or no."
-                    ;;
-            esac
-        done
-    fi
+load_selection() {
+    local item action rows
+    rows="$(python3 "$SCRIPT_DIR/setup_selection.py" rows "$selection_file")" || exit "$?"
+    for item in "${!component_checked[@]}"; do component_checked[$item]=false; done
+    while IFS=$'\t' read -r item action; do
+        [[ -n "$item" ]] || continue
+        component_checked[$item]=true
+        component_action[$item]="$action"
+    done <<< "$rows"
 }
 
 # Main function
 main() {
     log "Main function started"
+    local mode=interactive selection_file=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --select-only|--apply-plan|--dependencies-plan) mode="$1"; selection_file="$2"; shift 2 ;;
+            *) echo "Unknown setup option: $1" >&2; exit 2 ;;
+        esac
+    done
 
     # Check and install dependencies first
     log "Checking dependencies..."
@@ -2702,6 +2677,12 @@ main() {
     log "Initializing components and loading statuses..."
     init_components
     load_statuses
+    if [[ "$mode" == --apply-plan || "$mode" == --dependencies-plan ]]; then
+        load_selection
+        ensure_selected_dependencies
+        if [[ "$mode" == --apply-plan ]]; then process_selections || return "$?"; fi
+        return
+    fi
 
     # Main loop
     log "Entering main UI loop"
@@ -2733,7 +2714,12 @@ main() {
         if [ $result -eq 1 ]; then
             # Enter pressed - process selections
             log "User pressed Enter - processing selections"
-            process_selections
+            if [[ "$mode" == --select-only ]]; then
+                save_selection || exit "$?"
+            else
+                ensure_selected_dependencies
+                process_selections || return "$?"
+            fi
             break
         elif [ $result -eq 2 ]; then
             # Quit pressed
@@ -2756,5 +2742,5 @@ trap 'echo -e "${SHOW_CURSOR}"; exit 143' TERM
 
 # Run if executed directly
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-    main
+    main "$@"
 fi
