@@ -8,6 +8,7 @@ from pathlib import Path
 import pty
 import select
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -283,6 +284,198 @@ print('FAKE_SESSION_TOKEN_01234567890123456789')
             with self.assertRaises(SystemExit) as error:
                 runtime.native_signin([str(cli)], self.env)
         self.assertEqual(error.exception.code, 130)
+
+    def shell(self, command, input='', **env):
+        return subprocess.run(['bash', '-c', f'source "{ROOT}/scripts/interactive-setup.sh"; ' + command],
+                              input=input, env=dict(self.env, **env), capture_output=True, text=True, timeout=10)
+
+    def test_installed_items_default_to_no_changes_and_do_not_need_node(self):
+        plan = self.home / 'selection.json'
+        result = self.shell(f'''init_components
+check_component_status() {{ echo installed; }}
+load_statuses
+component_checked[codex_cli]=true  # A checkbox without an action still means keep.
+selection_file="{plan}"
+save_selection
+ensure_selected_dependencies
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(plan.read_text())['components'], [])
+
+    def test_space_updates_and_undoes_and_remove_has_a_separate_undo(self):
+        result = self.shell('''init_components
+component_status[codex_cli]=installed
+CURRENT_SECTION=1; current_selection=2
+for step in 1 2 3 4 5 6; do
+  handle_input
+  printf '%s:%s\\n' "${component_checked[codex_cli]}" "${component_action[codex_cli]}"
+done''', input='  DD D')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), ['true:update', 'false:', 'true:uninstall', 'false:', 'true:update', 'true:uninstall'])
+
+    def test_new_item_space_undoes_install_and_remove_is_ignored(self):
+        result = self.shell('''init_components
+component_status[codex_cli]='not installed'
+CURRENT_SECTION=1; current_selection=2
+for step in 1 2 3; do
+  handle_input
+  printf '%s:%s\\n' "${component_checked[codex_cli]}" "${component_action[codex_cli]}"
+done''', input='  D')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), ['true:install', 'false:', 'false:'])
+
+    def test_update_selection_derives_required_providers_and_node(self):
+        plan = self.home / 'selection.json'
+        plan.write_text(json.dumps({'schemaVersion': 1, 'components': [{'key': 'codex_cli', 'action': 'update'}]}))
+        plan.chmod(0o600)
+        for command, output in [('providers', 'openai\n'), ('node', '')]:
+            result = subprocess.run([sys.executable, str(ROOT / 'scripts/setup_selection.py'), command, str(plan)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, output)
+
+    def fake_npm(self, prefix, failure=0):
+        binary = self.home / 'bin'
+        binary.mkdir(exist_ok=True)
+        npm = binary / 'npm'
+        npm.write_text(f'''#!/bin/bash
+if [[ "$*" == "config get prefix" ]]; then echo "{prefix}"; exit 0; fi
+echo "$*" >> "$HOME/npm-actions"
+if [[ "$1" == config ]]; then exit 0; fi
+echo 'npm ERR! simulated failure' >&2
+exit {failure}
+''')
+        npm.chmod(0o755)
+        return str(binary) + ':' + self.env['PATH']
+
+    def test_npm_readonly_prefix_uses_user_location_and_persists_path_once(self):
+        prefix = self.home / 'readonly-prefix'
+        prefix.mkdir(mode=0o555)
+        path = self.fake_npm(prefix)
+        result = self.shell('''ensure_npm_install_location || exit $?
+persist_npm_user_path; persist_npm_user_path
+printf 'PREFIX:%s\\nPATH:%s\\n' "$npm_config_prefix" "$PATH"''', PATH=path, NPM_CONFIG_PREFIX=str(prefix))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f'PREFIX:{self.home}/.local', result.stdout)
+        self.assertIn(f'PATH:{self.home}/.local/bin:', result.stdout)
+        self.assertEqual((self.home / 'npm-actions').read_text().strip(), f'config set prefix {self.home}/.local --location=user')
+        for name in ('.profile', '.bashrc', '.zshrc'):
+            self.assertEqual((self.home / name).read_text().count('# workBenches user npm executables'), 1)
+        login = subprocess.run(['bash', '-c', '. "$HOME/.bashrc"; printf "%s" "$PATH"'],
+                               env=dict(self.env, PATH=f'/usr/bin:{self.home}/.local/bin'), capture_output=True, text=True)
+        self.assertTrue(login.stdout.startswith(f'{self.home}/.local/bin:'), login.stdout)
+
+    def test_writable_node_manager_prefix_is_preserved(self):
+        prefix = self.home / 'node-manager'
+        prefix.mkdir()
+        result = self.shell('ensure_npm_install_location; persist_npm_user_path', PATH=self.fake_npm(prefix))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.home / 'npm-actions').exists())
+        self.assertFalse((self.home / '.bashrc').exists())
+
+    def test_each_failed_npm_update_causes_installer_failure(self):
+        for item in ('codex_cli', 'copilot_cli', 'openspec'):
+            result = self.shell(f'''init_components
+component_checked[{item}]=true
+component_status[{item}]=installed
+component_action[{item}]=update
+process_selections''', input='\n', PATH=self.fake_npm(self.home, failure=13), WORKBENCHES_AUTH_ROUTE='later')
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn('update failed (exit 13)', result.stdout)
+            self.assertNotIn('updated', result.stdout)
+            self.assertNotIn('completed successfully', result.stdout)
+
+    def test_npm_prefix_migration_installs_instead_of_empty_update(self):
+        result = self.shell('npm_update_tool @openai/codex Codex', PATH=self.fake_npm(self.home), WORKBENCHES_NPM_PREFIX_CHANGED='1')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.home / 'npm-actions').read_text().strip(), 'install -g @openai/codex')
+
+    def test_update_cancellation_propagates(self):
+        for code in (130, 143):
+            result = self.shell('npm_update_tool @openai/codex Codex', PATH=self.fake_npm(self.home, failure=code))
+            self.assertEqual(result.returncode, code)
+
+    def test_recovered_credentials_skip_auth_route_and_vault_questions(self):
+        self.manifest()
+        self.target.parent.mkdir(parents=True)
+        self.target.write_bytes(self.payload)
+        route = self.home / 'route'
+        route.touch(mode=0o600)
+        env = dict(self.env, WORKBENCHES_SELECTED_PROVIDERS='openai')
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts/setup-credential-recovery.py'), '--choose-route', str(route)], env=env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(route.read_text(), 'existing')
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts/setup-credential-recovery.py'), '--interactive'], env=env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('Services (numbers', result.stdout)
+        self.assertIn('no missing selected credentials', result.stdout)
+
+    def test_standard_credentials_are_reused_without_creating_profiles(self):
+        target = self.home / '.codex/auth.json'
+        target.parent.mkdir()
+        target.write_bytes(self.payload)
+        status, output = terminal_run(['bash', str(ROOT / 'scripts/setup-ai-profiles.sh'), '--interactive'],
+                                     dict(self.env, WORKBENCHES_SELECTED_PROVIDERS='openai'), [])
+        self.assertEqual(status, 0, output)
+        self.assertNotIn('Authentication route [1]', output)
+        self.assertNotIn('Set up separate AI profiles', output)
+        self.assertNotIn('Services (numbers', output)
+        self.assertFalse((self.config / 'openai-profiles.json').exists())
+
+    def test_bitwarden_login_password_and_custom_field_picker_display_no_values(self):
+        item = {'id': '00000000-0000-0000-0000-000000000001', 'name': 'Codex login', 'type': 1,
+                'login': {'password': 'NEVER-DISPLAY-PASSWORD'},
+                'fields': [{'name': 'API key', 'type': 1, 'value': 'NEVER-DISPLAY-KEY'}]}
+        for choice, expected in [('1', 'password'), ('2', 'custom')]:
+            with patch.object(runtime, 'prompt', side_effect=['Codex', '1', choice, 'y', '']), patch.object(runtime, 'vault_command', return_value=json.dumps([item]).encode()), patch('sys.stdout') as output:
+                entry = runtime.pick_item(self.mapping, self.entry, {})
+            self.assertEqual(entry['itemField'], expected)
+            self.assertEqual(entry['credentialFormat'], 'api-key')
+            self.assertNotIn('NEVER-DISPLAY', str(output.mock_calls))
+            if expected == 'custom':
+                self.assertEqual(entry['customField'], 'API key')
+
+    def test_custom_field_lookup_is_exact_and_duplicate_names_are_rejected(self):
+        row = dict(self.entry, itemId='00000000-0000-0000-0000-000000000001', itemField='custom', customField='API key')
+        item = {'fields': [{'name': 'API key', 'type': 1, 'value': 'fake-key'}, {'name': 'Other key', 'type': 1, 'value': 'wrong-key'}]}
+        with patch.object(runtime, 'vault_command', return_value=json.dumps(item).encode()) as command:
+            self.assertEqual(runtime.bitwarden_payload(row, {}), b'fake-key')
+        self.assertEqual(command.call_args.args[0], ['bw', 'get', 'item', row['itemId']])
+        item['fields'].append(item['fields'][0])
+        with patch.object(runtime, 'vault_command', return_value=json.dumps(item).encode()), self.assertRaises(runtime.RecoveryError):
+            runtime.bitwarden_payload(row, {})
+        self.assertNotIn('API key', [field['label'] for field in runtime.bitwarden_fields(item)])
+
+    def test_mapping_field_metadata_is_validated_and_same_item_different_fields_allowed(self):
+        base = dict(self.entry, itemId='00000000-0000-0000-0000-000000000001')
+        data = dict(self.mapping, entries=[dict(base, itemField='password'), dict(base, profile='personal-2', itemField='custom', customField='API key')])
+        self.assertEqual(len(runtime.validate_mapping(data, 'bitwarden')), 2)
+        for row in (dict(base, itemField='shell'), dict(base, itemField='custom'), dict(base, itemField='custom', customField='\x1b[31m'), dict(base, customField='unexpected')):
+            with self.assertRaises(runtime.RecoveryError):
+                runtime.validate_mapping(dict(self.mapping, entries=[row]), 'bitwarden')
+
+    def test_root_decline_happens_before_authentication_or_profile_writes(self):
+        repo = self.home / 'workBenches'
+        repo.mkdir()
+        for directory in ('scripts', 'config', 'credential-container'):
+            shutil.copytree(ROOT / directory, repo / directory, ignore=shutil.ignore_patterns('__pycache__'))
+        for name in ('setup.sh', 'bootstrap.sh'):
+            shutil.copy(ROOT / name, repo / name)
+        binary = self.home / 'bin'
+        binary.mkdir()
+        docker = binary / 'docker'
+        docker.write_text('#!/bin/bash\nif [[ "$1" == info ]]; then exit 0; fi\nexit 1\n')
+        docker.chmod(0o755)
+        shell = repo / 'scripts/setup-shell.sh'
+        shell.write_text('#!/bin/bash\necho unexpected > "$HOME/host-changed"\n')
+        status, output = terminal_run(['bash', str(repo / 'setup.sh')],
+            dict(self.env, PATH=str(binary) + ':' + self.env['PATH']),
+            [('Changes selected: 0', '\x1b[C\x1b[B\x1b[B \n'), ('Apply these changes?', 'n\n')])
+        self.assertEqual(status, 130, output)
+        self.assertNotIn('Authentication route [1]', output)
+        self.assertNotIn('Profile ownership', output)
+        self.assertFalse((self.home / 'host-changed').exists())
+        self.assertFalse((self.config / 'openai-profiles.json').exists())
+        self.assertFalse((self.home / '.chatgpt-profiles').exists())
 
 
 if __name__ == '__main__':

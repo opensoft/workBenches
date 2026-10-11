@@ -11,9 +11,23 @@ if command == 'bw':
     if args[0] in ('login', 'unlock'):
         print('FAKE_SESSION_TOKEN_01234567890123456789')
     elif args[:2] == ['list', 'items']:
-        print(json.dumps([{'id': item_id, 'name': 'Codex fixture', 'type': 2, 'notes': 'NEVER-PRINT-THIS-NOTE'}]))
+        query = args[-1].lower()
+        if query == 'password':
+            item = {'id': item_id, 'name': 'Codex password fixture', 'type': 1,
+                    'login': {'password': 'NEVER-PRINT-THIS-PASSWORD'}}
+        elif query == 'custom':
+            item = {'id': item_id, 'name': 'Codex custom fixture', 'type': 1,
+                    'login': {'password': 'NEVER-PRINT-THIS-PASSWORD'},
+                    'fields': [{'name': 'API key', 'type': 1, 'value': 'NEVER-PRINT-THIS-FIELD'}]}
+        else:
+            item = {'id': item_id, 'name': 'Codex fixture', 'type': 2, 'notes': 'NEVER-PRINT-THIS-NOTE'}
+        print(json.dumps([item]))
     elif args[:2] == ['get', 'notes']:
         print(json.dumps({'OPENAI_API_KEY': 'fake-only-integration-key'}))
+    elif args[:2] == ['get', 'password']:
+        print('fake-only-integration-key')
+    elif args[:2] == ['get', 'item']:
+        print(json.dumps({'fields': [{'name': 'API key', 'type': 1, 'value': 'fake-only-integration-key'}]}))
     elif args[0] not in ('config', 'sync', 'logout'):
         sys.exit(1)
 elif command == 'op':

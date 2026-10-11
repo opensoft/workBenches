@@ -25,7 +25,7 @@ def load(path):
         raise ValueError('invalid selection')
     seen = set()
     for entry in data['components']:
-        if not isinstance(entry, dict) or entry.get('key') not in known or entry.get('action') not in ('install', 'uninstall') or entry['key'] in seen:
+        if not isinstance(entry, dict) or entry.get('key') not in known or entry.get('action') not in ('install', 'update', 'uninstall') or entry['key'] in seen:
             raise ValueError('invalid or duplicate component')
         seen.add(entry['key'])
     return data['components'], benches
@@ -34,7 +34,7 @@ def load(path):
 def main():
     entries, benches = load(sys.argv[2])
     command = sys.argv[1]
-    keys = {entry['key'] for entry in entries if entry['action'] == 'install'}
+    keys = {entry['key'] for entry in entries if entry['action'] in ('install', 'update')}
     if command == 'rows':
         for entry in entries:
             print(entry['key'] + '\t' + entry['action'])

@@ -3,6 +3,7 @@
 import argparse
 import os
 import json
+import re
 import tempfile
 from pathlib import Path
 import signal
@@ -87,7 +88,7 @@ def write_private(path, data):
         os.link(stream.name, path)
 
 
-def guided_recovery(service, manifest):
+def guided_recovery(service, manifest, advanced_auth=False):
     providers = os.environ.get("WORKBENCHES_SELECTED_PROVIDERS")
     selected = {"codex" if provider == "openai" else provider for provider in providers.split(",")} if providers else None
     rows = [entry for entry in profile_credentials.entries(selected) if not Path(entry["credentialPath"]).exists()]
@@ -113,11 +114,7 @@ def guided_recovery(service, manifest):
     if canonical == "bitwarden":
         default = "https://vault.bitwarden.com" if service == "bitwarden" else ""
         mapping["server"] = prompt(f"Vault HTTPS server [{default}]: ") or default
-    method = prompt("Vault login: 1. Sign in to your account  2. Advanced automation credentials [1]: ") or "1"
-    if method not in ("1", "2"):
-        print("Choose 1 or 2.", file=sys.stderr)
-        return 1
-    mapping["authMode"] = "signin" if method == "1" else ("apikey" if canonical == "bitwarden" else "token")
+    mapping["authMode"] = ("apikey" if canonical == "bitwarden" else "token") if advanced_auth else "signin"
     try:
         runtime.recover(canonical, manifest, guided_mapping=mapping)
         return 0
@@ -135,6 +132,12 @@ def main():
     parser.add_argument("--choose-route", type=Path)
     args = parser.parse_args()
     if args.choose_route:
+        if profile_credentials.selected_ready():
+            fd = os.open(args.choose_route, os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW)
+            with os.fdopen(fd, "w") as stream:
+                stream.write("existing")
+            print("Reusing existing credentials for the selected AI tools; vault recovery is unnecessary.")
+            return 0
         print("Authentication for selected AI tools (Q cancels setup):")
         print("  1. Sign in directly after installation")
         print("  2. Recover credentials from a vault")
@@ -154,10 +157,14 @@ def main():
         return 0
     if os.environ.get("WORKBENCHES_SKIP_CREDENTIAL_RECOVERY") == "1":
         return 0
+    if profile_credentials.selected_ready():
+        print("Reusing existing credentials; no missing selected credentials to recover.")
+        return 0
     config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "workbenches"
     manifests = {service: Path(os.environ.get("AI_CREDENTIAL_KV_MANIFEST", config / filename)) if service == "azure" else config / filename
                  for service, _, filename in SERVICES}
     guided_services = set()
+    advanced_services = set()
     if args.interactive:
         if not sys.stdin.isatty() or not sys.stdout.isatty():
             print("Vault selection requires an interactive terminal.", file=sys.stderr)
@@ -171,10 +178,14 @@ def main():
         for index, (_, label, _) in enumerate(SERVICES, 1):
             print(f"  {index}. {label}")
         print("  0. None of these / use native provider sign-in")
+        print("Append I to import mapping JSON, or A for automation login (e.g. 2I or 4A).")
         while True:
             answer = prompt("Services (numbers separated by commas or spaces) [0]: ") or "0"
             try:
-                choices = list(dict.fromkeys(int(value) for value in answer.replace(",", " ").split()))
+                tokens = answer.lower().replace(",", " ").split()
+                if any(not re.fullmatch(r"[0-4](?:i?a?|ai?)", value) for value in tokens):
+                    raise ValueError('invalid service')
+                choices = list(dict.fromkeys(int(value[0]) for value in tokens))
             except ValueError:
                 choices = []
             if choices and all(0 <= value <= len(SERVICES) for value in choices) and (0 not in choices or choices == [0]):
@@ -183,25 +194,17 @@ def main():
         if choices == [0]:
             return 0
         selected = [SERVICES[index - 1][0] for index in choices]
+        imports = {SERVICES[int(value[0]) - 1][0] for value in tokens if 'i' in value and value[0] != '0'}
+        advanced_services = {SERVICES[int(value[0]) - 1][0] for value in tokens if 'a' in value and value[0] != '0'}
         for service in selected:
-            if manifests[service].is_file():
-                answer = prompt(f"Mapping path [{manifests[service]}] (S to skip this service): ")
-                if answer.lower() == "s":
+            if service in imports:
+                answer = prompt("Private mapping JSON path (S to skip): ")
+                if answer.lower() == 's':
                     manifests[service] = None
-                elif answer:
-                    manifests[service] = Path(answer).expanduser()
-            else:
-                print(f"{service}: 1. Guided profile/item mapping  2. Import mapping JSON (advanced)")
-                answer = prompt("Mapping method [1] (S to skip): ") or "1"
-                if answer.lower() == "s":
-                    manifests[service] = None
-                elif answer == "1":
-                    guided_services.add(service)
-                elif answer == "2":
-                    manifests[service] = Path(prompt("Private mapping JSON path: ")).expanduser()
                 else:
-                    print("Invalid mapping method.", file=sys.stderr)
-                    return 1
+                    manifests[service] = Path(answer).expanduser()
+            elif not manifests[service].is_file():
+                guided_services.add(service)
 
     else:
         # Preserve existing unattended Azure recovery without inventing a store
@@ -213,7 +216,7 @@ def main():
         if manifest is None:
             continue
         if service in guided_services:
-            if guided_recovery(service, manifest):
+            if guided_recovery(service, manifest, service in advanced_services):
                 failed = True
             continue
         if not manifest.is_file():

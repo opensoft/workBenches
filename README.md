@@ -71,7 +71,17 @@ A layered Docker-based development environment system. Each "bench" is a self-co
 
 ## Quick Start
 
-On a new workstation, install Git and download the standalone bootstrap:
+On a new workstation, install Git and download the standalone bootstrap.
+
+The latest installer fixes are on `codex/workbenches-setup-recovery-2026-10-10`
+until that branch is merged into `main`. To use the tested installer now:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/opensoft/workBenches/codex/workbenches-setup-recovery-2026-10-10/bootstrap.sh -o workbenches-bootstrap.sh
+bash workbenches-bootstrap.sh --branch codex/workbenches-setup-recovery-2026-10-10 --setup
+```
+
+For the version released on `main`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/opensoft/workBenches/main/bootstrap.sh -o workbenches-bootstrap.sh
@@ -102,9 +112,9 @@ This single command:
 
 1. Checks Docker access and common dependencies, offering installation when needed.
 2. Opens the TUI to select benches, AI assistants, and tools. An empty selection finishes without installs or image builds.
-3. Checks Node/npm only for selected tools that require them.
-4. Offers direct sign-in, guided vault recovery, or authentication later for selected AI tools, with optional personal/organization profiles.
-5. Shows selected changes and local credential readiness before applying host setup.
+3. Shows selected changes, shared host setup, and local credential readiness, then asks for confirmation before changing profiles, recovering credentials, or configuring the host.
+4. Checks Node/npm only for selected tools that require them. A system-owned npm location falls back to `~/.local`, with PATH configured for new terminals.
+5. Reuses valid local credentials, or offers direct sign-in, guided vault recovery, or authentication later for selected AI tools, with optional personal/organization profiles.
 6. Configures the shell and installs pinned estate commands, then initializes the workspace repository if needed.
 7. Installs selected tools and builds only selected bench dependencies. Wave widgets and VPN setup follow the selected tools.
 
@@ -112,7 +122,7 @@ After setup, open any bench in VS Code → "Reopen in Container" to start develo
 
 ### Re-running setup.sh
 
-Safe to run repeatedly. Installed benches show `✓ up to date` and are skipped. Only new selections or missing images trigger builds. The estate commands (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status` and the five lane tools) are checked against workBenches' pin on every run and are re-placed only when a host copy differs from it. The workspace repository step does nothing at all once you have one: it is a file test on `~/.agents/workspace.yaml`, so a second `./setup.sh` neither asks you anything nor touches the network for it.
+Installed items show their status and default to no changes. Space selects an install/update and pressing it again undoes the selection. D selects removal and pressing it again undoes removal. Only explicit selections are applied; an unchanged selection exits without host setup or builds. On runs with requested changes, the estate commands (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status` and the five lane tools) are checked against workBenches' pin on every run and are re-placed only when a host copy differs from it. The workspace repository step does nothing at all once you have one: it is a file test on `~/.agents/workspace.yaml`, so that step skips an existing workspace without asking questions or contacting the network.
 
 ## Docker Image Layers
 

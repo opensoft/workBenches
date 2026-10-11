@@ -51,12 +51,9 @@ def present(entry):
         return False
 
 
-def main():
-    provider = {'openai': 'codex', 'Codex': 'codex', 'Claude': 'claude', 'Pi': 'pi'}.get(sys.argv[2], sys.argv[2]) if len(sys.argv) > 2 else None
-    selected = os.environ.get('WORKBENCHES_SELECTED_PROVIDERS')
-    requested = {provider} if provider else ({'codex' if p == 'openai' else p for p in selected.split(',')} if selected else None)
-    rows = entries(requested)
-    if sys.argv[1] == 'status':
+def status(provider):
+    try:
+        rows = entries({provider})
         if rows and provider != 'omniroute':
             return 0 if all(present(entry) for entry in rows) else 1
         if rows and all(present(entry) for entry in rows):
@@ -75,12 +72,35 @@ def main():
             payload = json.dumps(json.loads(payload).get('omniroute')).encode()
         RUNTIME.valid_payload(provider, payload)
         return 0
+    except (OSError, ValueError, KeyError, TypeError, RUNTIME.RecoveryError):
+        return 1
+
+
+def selected_ready():
+    selected = os.environ.get('WORKBENCHES_SELECTED_PROVIDERS', '')
+    providers = {'codex' if p == 'openai' else p for p in selected.split(',') if p}
+    return bool(providers) and all(status(provider) == 0 for provider in providers)
+
+
+def main():
+    provider = {'openai': 'codex', 'Codex': 'codex', 'Claude': 'claude', 'Pi': 'pi'}.get(sys.argv[2], sys.argv[2]) if len(sys.argv) > 2 else None
+    selected = os.environ.get('WORKBENCHES_SELECTED_PROVIDERS')
+    requested = {provider} if provider else ({'codex' if p == 'openai' else p for p in selected.split(',')} if selected else None)
+    if sys.argv[1] == 'selected-ready':
+        return 0 if selected_ready() else 1
+    if sys.argv[1] == 'status':
+        return status(provider)
+    rows = entries(requested)
     if sys.argv[1] == 'ready':
         return 0 if rows and all(present(entry) for entry in rows) else 1
     if sys.argv[1] == 'profile':
         return 0 if any(entry['profile'] == sys.argv[3] and present(entry) for entry in rows) else 1
     for entry in rows:
         print(f"  {entry['provider']}/{entry['profile']}: {'credentials present' if present(entry) else 'sign-in needed'}")
+    if requested:
+        configured = {entry['provider'] for entry in rows}
+        for name in sorted(requested - configured):
+            print(f"  {name}: {'existing credentials available' if status(name) == 0 else 'sign-in needed'}")
     print('Credential presence is local; provider access has not been verified.')
     return 0
 

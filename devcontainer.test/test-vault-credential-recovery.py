@@ -264,7 +264,7 @@ class SelectorTests(unittest.TestCase):
         self.assertFalse(self.log.exists())
 
     def test_multiple_services_selected_and_mapping_paths_used(self):
-        status, output = self.run_selector([b"y\n", b"2,4\n", b"\n", b"\n"])
+        status, output = self.run_selector([b"y\n", b"2,4\n"])
         self.assertEqual(status, 0, output)
         actions = self.log.read_text()
         self.assertIn("--service bitwarden", actions)
@@ -273,7 +273,7 @@ class SelectorTests(unittest.TestCase):
         self.assertIn("ai-credential-1password.json", actions)
 
     def test_q_at_each_prompt_cancels_before_recovery(self):
-        for answers in ([b"Q\n"], [b"y\n", b"q\n"], [b"y\n", b"1\n", b"Q\n"]):
+        for answers in ([b"Q\n"], [b"y\n", b"q\n"], [b"y\n", b"1I\n", b"Q\n"]):
             with self.subTest(answers=answers):
                 self.assertEqual(self.run_selector(answers)[0], 130)
                 self.assertFalse(self.log.exists())

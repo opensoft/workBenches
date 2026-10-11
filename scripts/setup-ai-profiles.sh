@@ -28,7 +28,7 @@ if [[ -n "$selected" && -t 0 && -t 1 && -z "$route" ]]; then
   if [[ -n "${WORKBENCHES_AUTH_ROUTE_FILE:-}" ]]; then printf '%s' "$route" > "$WORKBENCHES_AUTH_ROUTE_FILE"; fi
 fi
 export WORKBENCHES_AUTH_ROUTE="$route"
-if [[ "$mode" == interactive && "$route" != later && ( -z "$selected" || ",$selected," == *,openai,* || ",$selected," == *,claude,* || ",$selected," == *,pi,* ) ]]; then
+if [[ "$mode" == interactive && "$route" != later && "$route" != existing && ( -z "$selected" || ",$selected," == *,openai,* || ",$selected," == *,claude,* || ",$selected," == *,pi,* ) ]]; then
   if [[ "$route" == vault ]]; then export WORKBENCHES_REQUIRE_PROFILE=1; fi
   python3 "$repo_dir/scripts/onboard-ai-profiles.py"
 fi

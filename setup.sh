@@ -144,10 +144,26 @@ fi
 selected_bench_paths="$(python3 "$SCRIPT_DIR/scripts/setup_selection.py" benches "$selection_file")" || exit "$?"
 export WORKBENCHES_SELECTED_PROVIDERS="$(python3 "$SCRIPT_DIR/scripts/setup_selection.py" providers "$selection_file")"
 export WORKBENCHES_PROFILE_PROVIDERS="$(python3 -c 'import os; print(",".join(p for p in os.environ["WORKBENCHES_SELECTED_PROVIDERS"].split(",") if p in ("claude", "openai")))')"
+
+# Confirm the complete plan before dependency installation, credential/profile
+# writes, or host configuration. Recovery prompts then execute the approved plan.
+python3 "$SCRIPT_DIR/scripts/setup_selection.py" review "$selection_file" || exit "$?"
+if [[ -n "$WORKBENCHES_SELECTED_PROVIDERS" ]]; then
+    python3 "$SCRIPT_DIR/scripts/profile_credentials.py" summary || true
+fi
+echo "Setup also configures the shell and shared workBenches commands."
+echo "Selected tools may need dependency installation or a writable user npm location."
+if [[ -t 0 ]]; then
+    setup_read "Apply these changes? [Y/n]" apply_choice
+    case "${apply_choice,,}" in ""|y|yes) ;; *) exit 130 ;; esac
+fi
 auth_route_file="$(mktemp "${TMPDIR:-/tmp}/workbenches-route.XXXXXX")" || exit 1
 export WORKBENCHES_AUTH_ROUTE_FILE="$auth_route_file"
 trap 'rm -f "$selection_file" "$auth_route_file"' EXIT
 "${SCRIPT_DIR}/scripts/interactive-setup.sh" --dependencies-plan "$selection_file" || exit "$?"
+if python3 "$SCRIPT_DIR/scripts/setup_selection.py" node "$selection_file"; then
+    ensure_npm_install_location || exit "$?"
+fi
 
 # Apply existing provider profiles or obtain consent and collect the user's
 # work/personal ownership model on first setup. Standard provider credential
@@ -185,13 +201,8 @@ fi
 export WORKBENCHES_AUTH_ROUTE="$(cat "$auth_route_file")"
 echo ""
 
-python3 "$SCRIPT_DIR/scripts/setup_selection.py" review "$selection_file" || exit "$?"
 if [[ -n "$WORKBENCHES_SELECTED_PROVIDERS" ]]; then
     python3 "$SCRIPT_DIR/scripts/profile_credentials.py" summary || true
-fi
-if [[ -t 0 ]]; then
-    setup_read "Apply these changes? [Y/n]" apply_choice
-    case "${apply_choice,,}" in ""|y|yes) ;; *) exit 130 ;; esac
 fi
 
 # Shell environment setup (zsh + Powerlevel10k + Oh My Zsh)
@@ -200,6 +211,7 @@ if [ -x "${SCRIPT_DIR}/scripts/setup-shell.sh" ]; then
     "${SCRIPT_DIR}/scripts/setup-shell.sh"
     echo ""
 fi
+persist_npm_user_path
 
 # Estate commands (openRepoShape, openRepoTools, park, resume, status) come from
 # workBenches' own vendored pin and are placed by their own installers; see

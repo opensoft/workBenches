@@ -12,18 +12,20 @@ cannot discover an organization's secret store or grant access to its secrets.
 ## Select credential stores during setup
 
 Setup checks Docker and Python/jq/git/curl, then opens component selection.
-An empty selection exits without host setup or image builds. Node/npm are checked
-only for selected npm-based tools. For selected AI tools, choose **sign in
+An unchanged selection exits without host setup or image builds. The selected plan
+and local credential presence are reviewed before profile, credential or host
+changes. Node/npm are checked only for selected npm-based tools. For selected AI tools, choose **sign in
 directly**, **recover from a vault**, or **configure later**, independently of
-optional separate profile setup. Personal profiles need an account email;
-GitHub identity is needed only for explicit registry enrollment.
+optional separate profile setup. Valid local credentials are reused automatically,
+so repeat installs skip authentication and vault questions. Personal profiles
+need an account email; GitHub identity is needed only for explicit registry enrollment.
 
 Users can select several supported services:
 
 | Service | Authentication and retrieval |
 | --- | --- |
 | Azure Key Vault | Tenant device-code sign-in; guided tenant/subscription/vault/secret mapping or existing approved mapping. |
-| Bitwarden | Account email/master password and supported verification codes; advanced personal API-key login. Pick secure notes by name. |
+| Bitwarden | Account email/master password and supported verification codes; advanced personal API-key login. Pick notes, login passwords, or custom credential fields by name. |
 | Vaultwarden | Bitwarden adapter with the user's explicit HTTPS instance URL. |
 | 1Password | Account address/email/Secret Key/password; advanced scoped service-account token. Pick a vault item and credential field. |
 
@@ -40,13 +42,17 @@ python3 scripts/setup-credential-recovery.py --interactive
 python3 scripts/setup-credential-recovery.py --list
 ```
 
-If a store has no mapping, choose guided setup. Missing destinations come from
+Stores reuse existing mappings automatically; stores without mappings start guided
+setup. Append I to a service number to import advanced JSON, or A to use automation
+login (for example, 2I or 4A). Missing destinations come from
 the configured profiles for selected tools. Bitwarden/1Password authentication
 and item selection happen inside the temporary container; only item titles,
 IDs, and field labels are displayed. Confirm each item/profile association.
 The host validates all returned destinations and payloads before installation,
 then saves the mapping atomically with mode `0600`. Existing credential files
-and mapping files are preserved. Skip individual profiles with S.
+and mapping files are preserved. Skip individual profiles with S. Recovery runs
+after the initial plan confirmation, so there is no late install approval after
+credentials have already been saved.
 
 Advanced JSON import remains available. Default mapping paths are under
 `~/.config/workbenches/`: `ai-credential-keyvault.json`,
@@ -57,8 +63,10 @@ imported mappings with `chmod 600`. Mappings contain metadata, never tokens.
 
 Items normally contain complete credential JSON matching the selected harness.
 For Codex and OmniRoute, guided recovery also accepts a raw API key and converts
-it to the harness's auth JSON. Bitwarden uses secure notes; 1Password uses the
-chosen field. Profile definitions come from onboarding, not arbitrary vault items.
+it to the harness's auth JSON. Bitwarden supports notes, login passwords, and
+uniquely named text/hidden custom fields; 1Password uses the chosen field. Only field labels are displayed. Stored
+field locators are metadata, with no decrypted values in mappings. Profile
+definitions come from onboarding, not arbitrary vault items.
 Local credential presence is shown per profile; live provider access is not tested.
 
 Bitwarden account sign-in supports authenticator, email, and YubiKey OTP methods;
@@ -229,3 +237,8 @@ References: [official Azure CLI container](https://learn.microsoft.com/en-us/cli
 [tenant and device-code sign-in](https://learn.microsoft.com/en-us/cli/azure/authenticate-azure-cli-interactively),
 [Microsoft Azure CLI package](https://pypi.org/project/azure-cli/),
 [Keycloak organization and identity administration](https://www.keycloak.org/docs/latest/server_admin/).
+
+For advanced Bitwarden mappings, `itemId` is the exact item UUID. `itemField`
+selects `notes` (the backward-compatible default), `password`, or `custom`.
+Custom fields also require `customField` with the exact, unique field name.
+`credentialFormat` is `json` by default, or `api-key` for Codex/OmniRoute.

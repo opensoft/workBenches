@@ -26,6 +26,9 @@ init_components() {
     component_checked[bench_dev]=true
     component_checked[bench_sys]=true
     component_checked[codex_cli]=true
+    component_action[bench_dev]=install
+    component_action[bench_sys]=install
+    component_action[codex_cli]=install
   fi
 }
 load_statuses() { :; }
@@ -44,6 +47,7 @@ echo build >> "$TEST_ACTION_LOG"
 EOF
 done
 printf '#!/usr/bin/env bash\nexit 0\n' > "$test_root/bin/docker"
+printf '#!/usr/bin/env bash\nif [[ "$*" == "config get prefix" ]]; then echo "$HOME/.local"; fi\n' > "$test_root/bin/npm"
 export TEST_REAL_PYTHON="$(command -v python3)"
 cat > "$test_root/bin/python3" <<'PYTHON'
 #!/usr/bin/env bash

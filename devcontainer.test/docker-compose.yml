@@ -20,7 +20,7 @@ services:
 
   credential-bitwarden:
     profiles: [credential-recovery]
-    image: workbenches-credential-recovery:bitwarden-2026.9.1-v2
+    image: workbenches-credential-recovery:bitwarden-2026.9.1-v3
     build:
       context: ../credential-container
       target: bitwarden
@@ -37,7 +37,7 @@ services:
 
   credential-1password:
     profiles: [credential-recovery]
-    image: workbenches-credential-recovery:1password-2.40.0-v2
+    image: workbenches-credential-recovery:1password-2.40.0-v3
     build:
       context: ../credential-container
       target: onepassword
@@ -54,7 +54,7 @@ services:
 
   credential-fixture:
     profiles: [credential-test]
-    image: workbenches-credential-recovery:test-fixture-v2
+    image: workbenches-credential-recovery:test-fixture-v3
     build:
       context: ..
       dockerfile: devcontainer.test/credential-fixture/Dockerfile

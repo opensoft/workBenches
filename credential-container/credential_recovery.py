@@ -19,8 +19,8 @@ from urllib.parse import urlsplit
 MAX_BYTES = 24576
 REPO = Path(__file__).resolve().parents[1]
 IMAGES = {
-    "bitwarden": "workbenches-credential-recovery:bitwarden-2026.9.1-v2",
-    "1password": "workbenches-credential-recovery:1password-2.40.0-v2",
+    "bitwarden": "workbenches-credential-recovery:bitwarden-2026.9.1-v3",
+    "1password": "workbenches-credential-recovery:1password-2.40.0-v3",
 }
 
 
@@ -93,7 +93,17 @@ def validate_mapping(data, service):
         if service == "bitwarden":
             source = entry.get("itemId", "")
             if not isinstance(source, str) or not re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", source):
-                raise RecoveryError("Bitwarden entries require exact item UUIDs (JSON in secure notes).")
+                raise RecoveryError("Bitwarden entries require exact item UUIDs.")
+            field = entry.get('itemField', 'notes')
+            if field not in ('notes', 'password', 'custom'):
+                raise RecoveryError('Unsupported Bitwarden credential field.')
+            name = entry.get('customField')
+            if field == 'custom':
+                if not isinstance(name, str) or not name or len(name) > 120 or not all(c.isprintable() for c in name):
+                    raise RecoveryError('Custom credential fields require an exact printable field name.')
+            elif name is not None:
+                raise RecoveryError('Custom field names require itemField: custom.')
+            source = (source, field, name)
         else:
             source = entry.get("secretReference", "")
             if isinstance(source, str) and any(not c.isprintable() for c in source):
@@ -268,6 +278,37 @@ def validate_enrollment(mapping, service):
     return validate_mapping(data, service)
 
 
+def bitwarden_fields(item):
+    """Return locators and labels only; never return decrypted field values."""
+    fields = []
+    if item.get('notes'):
+        fields.append({'itemField': 'notes', 'label': 'Notes'})
+    if item.get('type') == 1 and item.get('login', {}).get('password'):
+        fields.append({'itemField': 'password', 'label': 'Login password'})
+    custom = item.get('fields') or []
+    for field in custom:
+        name = field.get('name')
+        if (field.get('type') in (0, 1) and field.get('value') and isinstance(name, str) and name
+                and len(name) <= 120 and all(c.isprintable() for c in name)
+                and sum(other.get('name') == name for other in custom) == 1):
+            fields.append({'itemField': 'custom', 'customField': name, 'label': name})
+    return fields
+
+
+def bitwarden_payload(entry, env):
+    field = entry.get('itemField', 'notes')
+    if field in ('notes', 'password'):
+        return vault_command(['bw', 'get', field, entry['itemId']], env)
+    item = json.loads(vault_command(['bw', 'get', 'item', entry['itemId']], env, 1024 * 1024))
+    matches = [row for row in (item.get('fields') or []) if row.get('name') == entry['customField']]
+    if len(matches) != 1 or matches[0].get('type') not in (0, 1) or not isinstance(matches[0].get('value'), str):
+        raise RecoveryError('The selected custom credential field is missing or ambiguous.')
+    value = matches[0]['value'].encode()
+    if len(value) > MAX_BYTES:
+        raise RecoveryError('Stored credential exceeds the supported size.')
+    return value
+
+
 def pick_item(mapping, entry, env):
     service = mapping["service"]
     while True:
@@ -281,12 +322,13 @@ def pick_item(mapping, entry, env):
             # Bitwarden's response includes decrypted notes. They stay in this
             # container; only item names/IDs are displayed, never note contents.
             raw = vault_command(["bw", "list", "items", "--search", search], env, 8 * 1024 * 1024)
-            items = [{"id": item["id"], "title": item.get("name", "item")} for item in json.loads(raw) if item.get("type") == 2]
+            items = [{"id": item["id"], "title": item.get("name", "item"), 'fields': bitwarden_fields(item)}
+                     for item in json.loads(raw) if bitwarden_fields(item)]
         else:
             raw = vault_command(["op", "item", "list", "--format=json"], env, 8 * 1024 * 1024)
             items = [item for item in json.loads(raw) if search.casefold() in item.get("title", "").casefold()]
         if not items:
-            print("No matching items. Bitwarden recovery uses secure notes containing credential JSON.")
+            print("No matching credential items. Try a different item name.")
             continue
         if len(items) > 50:
             print("Too many matches; use a more specific search.")
@@ -307,6 +349,19 @@ def pick_item(mapping, entry, env):
         result = dict(entry)
         if service == "bitwarden":
             result["itemId"] = item["id"]
+            fields = item['fields']
+            if len(fields) == 1:
+                field = fields[0]
+            else:
+                for index, field in enumerate(fields, 1):
+                    print(f"  {index}. {field['label']}")
+                choice = prompt('Field containing credentials (S to skip): ')
+                if choice.lower() == 's':
+                    return None
+                if not choice.isdigit() or not 1 <= int(choice) <= len(fields):
+                    continue
+                field = fields[int(choice) - 1]
+            result.update({key: value for key, value in field.items() if key != 'label'})
         else:
             vault = item["vault"]["id"]
             raw = vault_command(["op", "item", "get", item["id"], "--vault", vault, "--format=json"], env, 1024 * 1024)
@@ -315,7 +370,7 @@ def pick_item(mapping, entry, env):
             for index, field in enumerate(fields, 1):
                 label = ''.join(c for c in str(field.get('label') or field['id']) if c.isprintable())[:120]
                 print(f"  {index}. {label}")
-            field_number = prompt("Field containing credential JSON (S to skip): ")
+            field_number = prompt("Field containing credentials (S to skip): ")
             if field_number.lower() == "s":
                 return None
             if not field_number.isdigit() or not 1 <= int(field_number) <= len(fields):
@@ -328,7 +383,8 @@ def pick_item(mapping, entry, env):
         print(f"Use this item for {entry['provider']}/{entry['profile']}?")
         if prompt("Confirm [y/N]: ").lower() in ("y", "yes"):
             if entry['provider'] in ('codex', 'omniroute'):
-                value = prompt("Stored value: 1. Credential JSON  2. API key [1]: ") or "1"
+                default = '2' if result.get('itemField') in ('password', 'custom') else '1'
+                value = prompt(f"Stored value: 1. Credential JSON  2. API key [{default}]: ") or default
                 if value not in ('1', '2'):
                     continue
                 result['credentialFormat'] = 'api-key' if value == '2' else 'json'
@@ -399,9 +455,8 @@ def container_restore(mapping, staging):
             validate_mapping(mapping, service)
             (staging / "mapping.json").write_text(json.dumps(mapping))
         for index, entry in enumerate(entries):
-            argv = (["bw", "get", "notes", entry["itemId"]] if service == "bitwarden"
-                    else ["op", "read", "--no-newline", entry["secretReference"]])
-            payload = vault_command(argv, env)
+            payload = (bitwarden_payload(entry, env) if service == 'bitwarden'
+                       else vault_command(["op", "read", "--no-newline", entry["secretReference"]], env))
             if entry.get("credentialFormat") == "api-key":
                 key = payload.decode().strip()
                 if not key or any(character.isspace() for character in key):
@@ -474,7 +529,7 @@ def recover(service, manifest, guided_mapping=None):
             if returned_mapping.get("server") != mapping.get("server"):
                 raise RecoveryError("Container changed the approved vault server.")
             # Persist only validated metadata, never arbitrary container output.
-            fields = ("enabled", "provider", "profile", "credentialPath", "itemId", "secretReference", "credentialFormat")
+            fields = ("enabled", "provider", "profile", "credentialPath", "itemId", "itemField", "customField", "secretReference", "credentialFormat")
             returned_mapping = {key: mapping[key] for key in ("schemaVersion", "service", "server", "authMode") if key in mapping}
             returned_mapping['entries'] = [{key: row[key] for key in fields if key in row} for row in selected_entries]
             selected = selected_entries

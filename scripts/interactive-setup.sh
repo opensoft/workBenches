@@ -116,7 +116,7 @@ SHOW_CURSOR='\033[?25h'
 declare -A component_checked
 declare -A component_status
 declare -A component_description
-declare -A component_action  # "install" or "uninstall"
+declare -A component_action  # Empty means keep; otherwise install/update/uninstall.
 declare -a component_order
 
 # Current selection
@@ -468,10 +468,8 @@ load_statuses() {
         local status=$(check_component_status "$key")
         component_status["$key"]="$status"
 
-        # Auto-check if installed or needs creds
-        if [[ "$status" == "installed" || "$status" == "needs creds" ]]; then
-            component_checked["$key"]=true
-        fi
+        component_checked["$key"]=false
+        component_action["$key"]=""
     done
 
     # Load statuses for AI items
@@ -482,10 +480,8 @@ load_statuses() {
         local status=$(check_component_status "$item")
         component_status["$item"]="$status"
 
-        # Auto-check if installed or needs creds
-        if [[ "$status" == "installed" || "$status" == "needs creds" ]]; then
-            component_checked["$item"]=true
-        fi
+        component_checked["$item"]=false
+        component_action["$item"]=""
     done
 
     # Load statuses for tool items
@@ -493,10 +489,8 @@ load_statuses() {
         local status=$(check_component_status "$item")
         component_status["$item"]="$status"
 
-        # Auto-check if installed
-        if [[ "$status" == "installed" ]]; then
-            component_checked["$item"]=true
-        fi
+        component_checked["$item"]=false
+        component_action["$item"]=""
     done
 }
 
@@ -559,13 +553,13 @@ prev_checked_state=""
 get_checked_state() {
     local state=""
     for bench in "${bench_items[@]}"; do
-        state+="${component_checked[bench_$bench]},"
+        state+="${component_checked[bench_$bench]}:${component_action[bench_$bench]},"
     done
     for item in "${ai_items[@]}"; do
-        [[ "$item" != separator* ]] && state+="${component_checked[$item]},"
+        [[ "$item" != separator* ]] && state+="${component_checked[$item]}:${component_action[$item]},"
     done
     for item in "${tool_items[@]}"; do
-        state+="${component_checked[$item]},"
+        state+="${component_checked[$item]}:${component_action[$item]},"
     done
     echo "$state"
 }
@@ -722,7 +716,7 @@ draw_ui() {
     echo -e "${BOLD}${BLUE}║               WorkBenches Configuration Manager                    ║${NC}"
     echo -e "${BOLD}${BLUE}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${CYAN}Navigation:${NC} ↑/↓ Move  ${CYAN}←/→:${NC} Switch Section  ${CYAN}Space:${NC} Toggle  ${CYAN}Enter:${NC} Apply Changes  ${CYAN}Q:${NC} Quit"
+    echo -e "${CYAN}Navigation:${NC} ↑/↓ Move  ←/→ Section  Space Install/Update (again: undo)  D Remove/Undo  Enter Review  Q Quit"
     echo ""
 
     # Draw three sections side by side
@@ -927,7 +921,8 @@ handle_input() {
         esac
     else
         case "$key" in
-            ' ') # Spacebar - toggle selection
+            ' '|d|D) # Space toggles install/update; D toggles explicit removal.
+                local input_key="$key"
                 local key=""
                 if [ $CURRENT_SECTION -eq 0 ]; then
                     local bench="${bench_items[$current_selection]}"
@@ -948,27 +943,18 @@ handle_input() {
                 local is_installed=false
                 [[ "$status" == "installed" || "$status" == "needs creds" ]] && is_installed=true
 
-                if [ "${component_checked[$key]}" = true ]; then
-                    # Currently checked
-                    if [ "$is_installed" = true ]; then
-                        # Installed item: toggle to uninstall
-                        component_action["$key"]="uninstall"
-                        # Keep checked but marked for uninstall
-                    else
-                        # Not installed: uncheck (cancel install)
-                        component_checked["$key"]=false
-                        component_action["$key"]=""
-                    fi
+                local requested="install"
+                [[ "$is_installed" == true ]] && requested="update"
+                if [[ "$input_key" == d || "$input_key" == D ]]; then
+                    [[ "$is_installed" == true ]] || return 0
+                    requested="uninstall"
+                fi
+                if [[ "${component_action[$key]}" == "$requested" ]]; then
+                    component_checked["$key"]=false
+                    component_action["$key"]=""
                 else
-                    # Currently unchecked
                     component_checked["$key"]=true
-                    if [ "$is_installed" = true ]; then
-                        # Installed item: mark to keep (cancel uninstall)
-                        component_action["$key"]=""
-                    else
-                        # Not installed: mark to install
-                        component_action["$key"]="install"
-                    fi
+                    component_action["$key"]="$requested"
                 fi
                 ;;
             ''|$'\r'|$'\n') # Enter - confirm and process
@@ -1295,7 +1281,7 @@ process_selections() {
     # Process benches
     for bench in "${bench_items[@]}"; do
         local key="bench_$bench"
-        if [ "${component_checked[$key]}" = true ]; then
+        if [[ "${component_checked[$key]}" == true && -n "${component_action[$key]}" ]]; then
             local action="${component_action[$key]}"
             local status="${component_status[$key]}"
 
@@ -1688,7 +1674,7 @@ process_selections() {
             continue
         fi
 
-        if [ "${component_checked[$item]}" = true ]; then
+        if [[ "${component_checked[$item]}" == true && -n "${component_action[$item]}" ]]; then
             any_selected=true
             local desc="${component_description[$item]}"
             local action="${component_action[$item]}"
@@ -1800,14 +1786,10 @@ process_selections() {
                     if command -v npm &> /dev/null; then
                         if [ "$is_installed" = true ]; then
                             echo -e "  ${YELLOW}Checking for Copilot CLI updates...${NC}"
-                            # Check if update available
-                            local update_output=$(npm update -g @github/copilot 2>&1)
-                            if echo "$update_output" | grep -q "up to date\|unchanged"; then
-                                echo -e "  ${GREEN}✓ GitHub Copilot CLI is already up to date${NC}"
+                            if npm_update_tool "@github/copilot" "GitHub Copilot CLI"; then
                                 ((success_count++))
                             else
-                                echo -e "  ${GREEN}✓ GitHub Copilot CLI updated${NC}"
-                                ((success_count++))
+                                ((fail_count++))
                             fi
                         else
                             echo -e "  ${YELLOW}Installing GitHub Copilot CLI...${NC}"
@@ -1834,14 +1816,10 @@ process_selections() {
                         if [ -n "$node_version" ] && [ "$node_version" -ge 18 ]; then
                             if [ "$is_installed" = true ]; then
                                 echo -e "  ${YELLOW}Checking for Codex CLI updates...${NC}"
-                                # Check if update available
-                                local update_output=$(npm update -g @openai/codex 2>&1)
-                                if echo "$update_output" | grep -q "up to date\|unchanged"; then
-                                    echo -e "  ${GREEN}✓ Codex CLI is already up to date${NC}"
+                                if npm_update_tool "@openai/codex" "Codex CLI"; then
                                     ((success_count++))
                                 else
-                                    echo -e "  ${GREEN}✓ Codex CLI updated${NC}"
-                                    ((success_count++))
+                                    ((fail_count++))
                                 fi
                             else
                                 echo -e "  ${YELLOW}Installing OpenAI Codex CLI...${NC}"
@@ -1996,14 +1974,10 @@ process_selections() {
                     if command -v npm &> /dev/null; then
                         if [ "$is_installed" = true ]; then
                             echo -e "  ${YELLOW}Checking for OpenSpec updates...${NC}"
-                            # Check if update available
-                            local update_output=$(npm update -g @fission-ai/openspec 2>&1)
-                            if echo "$update_output" | grep -q "up to date\|unchanged"; then
-                                echo -e "  ${GREEN}✓ OpenSpec is already up to date${NC}"
+                            if npm_update_tool "@fission-ai/openspec" "OpenSpec"; then
                                 ((success_count++))
                             else
-                                echo -e "  ${GREEN}✓ OpenSpec updated${NC}"
-                                ((success_count++))
+                                ((fail_count++))
                             fi
                         else
                             echo -e "  ${YELLOW}Installing OpenSpec...${NC}"
@@ -2028,7 +2002,7 @@ process_selections() {
 
     # Process tool items
     for item in "${tool_items[@]}"; do
-        if [ "${component_checked[$item]}" = true ]; then
+        if [[ "${component_checked[$item]}" == true && -n "${component_action[$item]}" ]]; then
             any_selected=true
             local desc="${component_description[$item]}"
             local action="${component_action[$item]}"
@@ -2189,7 +2163,7 @@ process_selections() {
 
     # Handle credential setup for newly installed CLIs
     for item in claude_cli codex_cli; do
-        if [[ "${component_checked[$item]}" == true && "${component_action[$item]}" != uninstall && "${component_status[$item]}" == "needs creds" ]]; then
+        if [[ "${component_checked[$item]}" == true && "${component_action[$item]}" =~ ^(install|update)$ && "${component_status[$item]}" == "needs creds" ]]; then
             [[ " ${items_needing_creds[*]} " == *" ${item%_cli} "* ]] || items_needing_creds+=("${item%_cli}")
         fi
     done
@@ -2604,6 +2578,30 @@ install_nodejs() {
     esac
 }
 
+# Update failures must preserve the failure status and the installed CLI.
+# After moving from a system prefix, install into the new user prefix instead
+# of reporting an empty npm update there as an update of the system package.
+npm_update_tool() {
+    local package="$1" label="$2" output status
+    if [[ "${WORKBENCHES_NPM_PREFIX_CHANGED:-}" == 1 ]]; then
+        output="$(npm install -g "$package" 2>&1)"
+    else
+        output="$(npm update -g "$package" 2>&1)"
+    fi
+    status=$?
+    setup_propagate_cancel "$status"
+    if [[ "$status" != 0 ]]; then
+        log "ERROR: $label npm update failed (exit $status)"
+        echo -e "  ${RED}✗ $label update failed (exit $status). Retry with: npm update -g $package${NC}"
+        return "$status"
+    fi
+    if [[ "$output" == *"up to date"* || "$output" == *unchanged* ]]; then
+        echo -e "  ${GREEN}✓ $label is already up to date${NC}"
+    else
+        echo -e "  ${GREEN}✓ $label updated${NC}"
+    fi
+}
+
 # Node is only needed for selected npm-based installs/updates.
 check_and_install_dependencies() {
     ensure_setup_dependencies || exit "$?"
@@ -2612,18 +2610,24 @@ check_and_install_dependencies() {
 ensure_selected_dependencies() {
     local item needs_node=false choice major minor
     for item in codex_cli copilot_cli pi_cli openspec; do
-        if [[ "${component_checked[$item]}" == true && "${component_action[$item]}" != uninstall ]]; then needs_node=true; fi
+        if [[ "${component_checked[$item]}" == true && "${component_action[$item]}" =~ ^(install|update)$ ]]; then needs_node=true; fi
     done
     [[ "$needs_node" == true ]] || return 0
     IFS=. read -r major minor _ <<< "$(node --version 2>/dev/null)"
     major="${major#v}"
-    if [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]] && (( major > 20 || (major == 20 && minor >= 19) )) && command -v npm >/dev/null 2>&1; then return 0; fi
-    echo "The selected tools require Node.js 20.19+ and npm."
-    setup_read "Install/update Node.js now? [y/N]" choice
-    [[ "${choice,,}" == y || "${choice,,}" == yes ]] || exit 130
-    install_nodejs || { setup_propagate_cancel "$?"; exit 1; }
+    if ! { [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]] && (( major > 20 || (major == 20 && minor >= 19) )) && command -v npm >/dev/null 2>&1; }; then
+        echo "The selected tools require Node.js 20.19+ and npm."
+        setup_read "Install/update Node.js now? [y/N]" choice
+        [[ "${choice,,}" == y || "${choice,,}" == yes ]] || exit 130
+        install_nodejs || { setup_propagate_cancel "$?"; exit 1; }
+    fi
     IFS=. read -r major minor _ <<< "$(node --version 2>/dev/null)"; major="${major#v}"
     [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]] && (( major > 20 || (major == 20 && minor >= 19) )) && command -v npm >/dev/null 2>&1 || exit 1
+    # The root launcher exports the chosen location to all child installers.
+    if [[ "${1:-}" != --dependencies-plan ]]; then
+        ensure_npm_install_location || exit "$?"
+        persist_npm_user_path
+    fi
 }
 
 save_selection() {
@@ -2631,7 +2635,8 @@ save_selection() {
     local -a rows=()
     for item in "${!component_checked[@]}"; do
         if [[ "${component_checked[$item]}" == true ]]; then
-            action="${component_action[$item]:-install}"
+            action="${component_action[$item]}"
+            [[ -n "$action" ]] || continue
             rows+=("$item" "$action")
         fi
     done
@@ -2679,7 +2684,7 @@ main() {
     load_statuses
     if [[ "$mode" == --apply-plan || "$mode" == --dependencies-plan ]]; then
         load_selection
-        ensure_selected_dependencies
+        ensure_selected_dependencies "$mode"
         if [[ "$mode" == --apply-plan ]]; then process_selections || return "$?"; fi
         return
     fi
