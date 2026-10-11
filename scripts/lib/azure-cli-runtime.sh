@@ -7,12 +7,12 @@ azure_cli_runtime_init() {
     AZURE_CLI_WORK_DIR="$(realpath -- "$work_dir")"
     AZURE_CLI_BIN="$(type -P az || true)"
     AZURE_CLI_MODE=host
-    if [[ -n "$AZURE_CLI_BIN" ]]; then
+    if [[ -n "$AZURE_CLI_BIN" && "${WORKBENCHES_AZURE_CLI_RUNTIME:-auto}" != docker ]]; then
         return 0
     fi
 
     AZURE_CLI_BIN="${XDG_DATA_HOME:-$HOME/.local/share}/workbenches/tools/azure-cli/bin/az"
-    if [[ -x "$AZURE_CLI_BIN" ]]; then
+    if [[ -x "$AZURE_CLI_BIN" && "${WORKBENCHES_AZURE_CLI_RUNTIME:-auto}" != docker ]]; then
         return 0
     fi
 
@@ -24,6 +24,10 @@ azure_cli_runtime_init() {
         return 0
     fi
 
+    if [[ "${WORKBENCHES_AZURE_CLI_RUNTIME:-auto}" == docker ]]; then
+        printf 'Docker was selected for credential recovery but its daemon is unavailable.\n' >&2
+        return 1
+    fi
     if [[ "$allow_login" == true && -t 0 && -t 2 ]]; then
         local answer
         printf 'Azure CLI is missing and Docker is unavailable. Install Azure CLI for your user account? [y/N]: ' >&2

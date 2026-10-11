@@ -97,7 +97,10 @@ for credentials only when the user selects a tool/provider for use.
 
 ## Password and identity service adapters
 
-These are candidate adapters, not implemented recovery support. An organization
+Azure, Bitwarden/Vaultwarden API-key login plus unlock, and 1Password
+service-account recovery are implemented in the
+[setup vault selector](credential-recovery.md). The other integrations and
+authentication routes below are candidates. An organization
 selects its actual store and supplies a mapping from approved profile names to
 item IDs/fields. Never discover credentials by exporting an entire vault.
 
@@ -110,10 +113,10 @@ covered by the KDBX adapter. Proton Pass is another open source candidate.
 | --- | --- | --- |
 | Azure Key Vault | `az`; tenant/subscription/vault/item/version metadata; authorized Entra login | Already implemented with Docker fallback. Secret-read permission must be granted remotely. |
 | Keycloak plus credential broker | OIDC client and HTTP/JWT libraries; issuer, public client ID, broker URL, approved group/profile grants | Browser PKCE or enabled device flow proves identity. Broker separately authorizes and retrieves secrets. No Keycloak administrator password or CLI client secret for a public workstation client. [Keycloak OIDC](https://www.keycloak.org/securing-apps/oidc-layers). |
-| Bitwarden Password Manager | `bw`; server/region, user login plus master-password unlock and supported MFA, or API/SSO login followed by unlock | API login alone cannot decrypt vault data. Trusted-device-only members cannot access decrypted data with the documented CLI. Keep session state temporary. [Bitwarden CLI](https://bitwarden.com/help/cli/). |
+| Bitwarden Password Manager | `bw`; server/region, user login plus master-password unlock and supported MFA, or API/SSO login followed by unlock | Implemented: personal API-key login + master-password unlock, exact secure-note UUIDs. Other login routes are candidates. API login alone cannot decrypt vault data; trusted-device-only members cannot decrypt with this CLI. [Bitwarden CLI](https://bitwarden.com/help/cli/). |
 | Bitwarden Secrets Manager | `bws`; restricted machine-account access token and secret IDs | Separate product and access model from `bw`; suitable for org automation with an administrator-issued restricted token. [Secrets Manager CLI](https://bitwarden.com/help/secrets-manager-cli/). |
-| Vaultwarden | `bw`; self-hosted endpoint and user vault login/unlock | Test client/server versions and organization auth policy; do not assume Secrets Manager support. [Vaultwarden](https://github.com/dani-garcia/vaultwarden). |
-| 1Password | `op`; scoped service-account token or Connect endpoint/token; alternatively sign-in address, email, Secret Key and account-password prompt | Service-account/Connect routes suit containers. Desktop integration stays on the host. [Remote authentication](https://developer.1password.com/docs/cli/sign-in-manually/), [service accounts](https://developer.1password.com/docs/service-accounts/use-with-1password-cli/). |
+| Vaultwarden | `bw`; self-hosted endpoint and user vault login/unlock | Uses the implemented Bitwarden API-key/unlock adapter with an explicit HTTPS endpoint. Requires compatible server/account policy; do not assume Secrets Manager support. [Vaultwarden](https://github.com/dani-garcia/vaultwarden). |
+| 1Password | `op`; scoped service-account token or Connect endpoint/token; alternatively sign-in address, email, Secret Key and account-password prompt | Implemented: service-account token and mapped field references in a temporary container. Connect/manual/desktop routes remain candidates. [Remote authentication](https://developer.1password.com/docs/cli/sign-in-manually/), [service accounts](https://developer.1password.com/docs/service-accounts/use-with-1password-cli/). |
 | LastPass | `lpass`; username, master-password prompt and supported MFA | Validate current CLI and organization SSO/MFA compatibility before enabling; retain native/manual login fallback. Do not enable plaintext-key or MFA-trust options. [LastPass CLI](https://lastpass.github.io/lastpass-cli/lpass.1.html). |
 | KeePassXC / KeePass | `keepassxc-cli`; selected KDBX file, password/key file and any configured hardware challenge | CLI access suits containers when required unlock material is available. Hardware/desktop unlock should remain on the host. Copy/read only the chosen database and retrieve mapped entries. [KeePassXC CLI](https://github.com/keepassxreboot/keepassxc/blob/develop/docs/man/keepassxc-cli.1.adoc). |
 | Passbolt | API client/OpenPGP; instance URL, user key identity, private-key unlock, allowed resource IDs | Authentication and decryption are separate; API responses can require local OpenPGP decryption. Validate JWT/GPG and MFA policy. [Passbolt API](https://www.passbolt.com/docs/api/). |
@@ -127,6 +130,12 @@ covered by the KDBX adapter. Proton Pass is another open source candidate.
 | SOPS registries / Vault / cloud secret stores | SOPS/age plus authorized registry access; Vault/cloud CLI or API and narrowly scoped store identity | Preserve existing SOPS custody; backend-specific authorization and decrypting identity are required. Add AWS Secrets Manager/GCP Secret Manager adapters when selected. |
 
 ## Proposed recovery container
+
+The first increment uses the official Azure image and separate version-pinned
+Bitwarden/1Password images, built only when selected. The supported menu,
+authentication restrictions and runtime isolation are documented in
+[Credential recovery](credential-recovery.md). The broader bundle described
+below remains a roadmap.
 
 Use a dedicated recovery image, separate from AI/development images. Its core
 should contain CA certificates, Python, HTTP/OIDC clients, JSON tooling and the
@@ -201,5 +210,5 @@ The preview reads only `config/credential-requirements.json`. It never scans
 the user's credential files, reads secret environment variables, contacts a
 vault or authenticates. Conditional requirements remain conditional until the
 user chooses a provider, feature and profile. The TUI is not yet wired to this
-catalog, and adapter status in this proposal must not be displayed as installed
-support.
+catalog. The separate vault selector lists only the implemented routes documented
+in [Credential recovery](credential-recovery.md), not all candidates in this inventory.

@@ -5,8 +5,11 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT
 fixture="$test_root/workBenches"
-mkdir -p "$fixture/scripts" "$test_root/bin" "$test_root/home/.config/workbenches"
+mkdir -p "$fixture/scripts" "$fixture/credential-container" "$test_root/bin" "$test_root/home/.config/workbenches"
 cp "$repo_root/scripts/setup-ai-profiles.sh" "$fixture/scripts/"
+cp "$repo_root/scripts/setup-credential-recovery.py" "$fixture/scripts/"
+cp "$repo_root/credential-container/credential_recovery.py" "$fixture/credential-container/"
+export TEST_PYTHON="$(command -v python3)"
 cat > "$fixture/scripts/setup-claude-profiles.sh" <<'EOF'
 #!/usr/bin/env bash
 echo profiles >> "$TEST_LOG"
@@ -17,8 +20,16 @@ cat > "$fixture/scripts/backup-ai-profile-credentials-to-kv.sh" <<'EOF'
 echo recovery >> "$TEST_LOG"
 exit "${TEST_RECOVERY_EXIT:-0}"
 EOF
-printf '#!/usr/bin/env bash\nexit 0\n' > "$test_root/bin/python3"
-chmod +x "$fixture/scripts/"*.sh "$test_root/bin/python3"
+cat > "$test_root/bin/python3" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == */setup-credential-recovery.py ]]; then exec "$TEST_PYTHON" "$@"; fi
+exit 0
+EOF
+cat > "$test_root/bin/docker" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == context ]]; then echo unix:///var/run/docker.sock; fi
+EOF
+chmod +x "$fixture/scripts/"*.sh "$test_root/bin/"*
 config_dir="$test_root/home/.config/workbenches"
 printf '{"profiles":[]}' > "$config_dir/claude-profiles.json"
 printf '{}' > "$config_dir/ai-credential-keyvault.json"

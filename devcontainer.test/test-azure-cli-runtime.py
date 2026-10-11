@@ -144,6 +144,23 @@ os.execv(os.environ["TEST_FAKE_AZ"], [os.environ["TEST_FAKE_AZ"], *args[index + 
         self.assertTrue(self.target.exists())
         self.assertFalse(any("docker" in call for call in self.calls))
 
+    def test_setup_forces_container_even_with_native_cli(self):
+        (self.bin / "az").symlink_to(self.root / "fake-az")
+        self.docker()
+        self.env["WORKBENCHES_AZURE_CLI_RUNTIME"] = "docker"
+        self.assertEqual(self.run_restore()[0], 0)
+        self.assertTrue(self.target.exists())
+        self.assertTrue(any("docker" in call for call in self.calls))
+
+    def test_forced_container_failure_never_installs_or_uses_native_cli(self):
+        (self.bin / "az").symlink_to(self.root / "fake-az")
+        self.docker()
+        self.env.update(WORKBENCHES_AZURE_CLI_RUNTIME="docker", TEST_DOCKER_DOWN="1")
+        self.assertNotEqual(self.run_restore()[0], 0)
+        self.assertFalse(self.target.exists())
+        self.assertFalse(any("az" in call for call in self.calls))
+        self.assertFalse((self.home / ".local/share/workbenches/tools").exists())
+
     def test_container_device_login_and_restore(self):
         self.docker()
         self.env["TEST_NEEDS_LOGIN"] = "1"

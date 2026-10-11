@@ -39,22 +39,6 @@ for provider in gemini grok glm; do
   fi
 done
 
-# A private recovery mapping identifies the organization and its approved
-# credential store. Create profile directories first, then recover missing
-# credentials before tools offer their own interactive provider login.
-recovery_manifest="${AI_CREDENTIAL_KV_MANIFEST:-$config_dir/ai-credential-keyvault.json}"
-if [[ "$applied" == true && "${WORKBENCHES_SKIP_CREDENTIAL_RECOVERY:-}" != 1 && -f "$recovery_manifest" ]]; then
-  echo "Recovering missing AI credentials from the configured organization vault..."
-  if "$repo_dir/scripts/backup-ai-profile-credentials-to-kv.sh" restore \
-      --manifest "$recovery_manifest" --azure-login; then
-    :
-  else
-    recovery_status=$?
-    case "$recovery_status" in 130|143) exit "$recovery_status" ;; esac
-    echo "Credential recovery was unavailable. Existing credentials are preserved; provider sign-in remains available."
-  fi
-fi
-
 compose_pi=false
 for provider in claude openai gemini grok glm; do
   if [[ -f "$config_dir/$provider-profiles.json" ]]; then
@@ -78,6 +62,22 @@ fi
 if [[ -f "$config_dir/pi-profiles.json" ]]; then
   "$repo_dir/scripts/setup-pi-profiles.sh" --manifest "$config_dir/pi-profiles.json"
   applied=true
+fi
+
+# Create every profile home before offering mapped recovery. Interactive setup
+# lets users select their stores; unattended runs retain configured Azure recovery.
+if [[ "$applied" == true && "${WORKBENCHES_SKIP_CREDENTIAL_RECOVERY:-}" != 1 ]]; then
+  recovery_mode=--apply-existing
+  if [[ -t 0 && -t 1 ]]; then
+    recovery_mode=--interactive
+  fi
+  if python3 "$repo_dir/scripts/setup-credential-recovery.py" "$recovery_mode"; then
+    :
+  else
+    recovery_status=$?
+    case "$recovery_status" in 130|143) exit "$recovery_status" ;; esac
+    echo "Credential recovery was unavailable. Existing credentials are preserved; provider sign-in remains available."
+  fi
 fi
 
 if [[ "$applied" == true ]]; then

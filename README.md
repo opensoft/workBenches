@@ -268,8 +268,13 @@ automatically.
 First-run setup offers consent-based work and personal AI profile onboarding,
 including GitHub credential-registry discovery and a local manual fallback.
 See [Shared AI provider profiles](docs/multi-provider-profiles.md).
+Interactive profile setup asks whether AI tokens or profile credentials are in
+a vault and supports selecting Azure Key Vault, Bitwarden/Vaultwarden, and
+1Password. Recovery uses temporary containers and approved mappings; see
+[Credential recovery](docs/credential-recovery.md) for supported login methods.
+
 For common and per-option credential requirements, password-manager integrations
-and the proposed recovery container, see
+and the broader recovery roadmap, see
 [Credentials for installation and recovery](docs/setup-credential-requirements.md).
 Preview selected requirements without reading secrets:
 `python3 scripts/plan-setup-credentials.py --option dotNetBench --option codex_cli`.

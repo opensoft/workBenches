@@ -17,3 +17,37 @@ services:
       # Basic environment
       - USER=${USER:-vscode}
       - HOME=/home/${USER:-vscode}
+
+  credential-bitwarden:
+    profiles: [credential-recovery]
+    image: workbenches-credential-recovery:bitwarden-2026.9.1-v1
+    build:
+      context: ../credential-container
+      target: bitwarden
+    entrypoint: bw
+    command: --version
+    user: "${UID:-1000}:${GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,nosuid,nodev,mode=1777,size=256m"]
+    environment:
+      HOME: /tmp/session
+      BITWARDENCLI_APPDATA_DIR: /tmp/session/bw
+
+  credential-1password:
+    profiles: [credential-recovery]
+    image: workbenches-credential-recovery:1password-2.40.0-v1
+    build:
+      context: ../credential-container
+      target: onepassword
+    entrypoint: op
+    command: --version
+    user: "${UID:-1000}:${GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,nosuid,nodev,mode=1777,size=256m"]
+    environment:
+      HOME: /tmp/session
+      OP_CONFIG_DIR: /tmp/session/op
