@@ -543,6 +543,32 @@ process_selections'''
         self.assertIn('Setup failed', result.stdout)
         self.assertNotIn('completed successfully', result.stdout)
 
+    def test_shell_setup_has_one_owner_for_changing_the_login_shell(self):
+        binary = self.home / 'bin'
+        binary.mkdir()
+        tools = {
+            'curl': '''#!/bin/bash
+cat <<'INSTALLER'
+test "$CHSH" = no && test "$RUNZSH" = no && test "$KEEP_ZSHRC" = yes || exit 41
+mkdir -p "$HOME/.oh-my-zsh/custom"
+INSTALLER
+''',
+            'git': '#!/bin/bash\nmkdir -p "${@: -1}"\n',
+            'sudo': '#!/bin/bash\necho own-shell-change >> "$HOME/shell-actions"\n',
+            'zsh': '#!/bin/bash\necho fixture-zsh\n',
+        }
+        for name, content in tools.items():
+            path = binary / name
+            path.write_text(content)
+            path.chmod(0o755)
+        env = dict(self.env, PATH=str(binary) + ':' + self.env['PATH'])
+        for name in ('ZSH', 'ZSH_CUSTOM'):
+            env.pop(name, None)
+        result = subprocess.run(['bash', str(ROOT / 'scripts/setup-shell.sh')], env=env,
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((self.home / 'shell-actions').read_text().strip(), 'own-shell-change')
+
 
 if __name__ == '__main__':
     unittest.main()

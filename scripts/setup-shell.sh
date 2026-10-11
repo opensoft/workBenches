@@ -63,8 +63,9 @@ if [ -d "$HOME/.oh-my-zsh" ]; then
 else
     echo "Installing Oh My Zsh..."
     # RUNZSH=no prevents it from switching shell immediately
-    # KEEP_ZSHRC=yes prevents it from overwriting .zshrc (we deploy our own)
-    RUNZSH=no KEEP_ZSHRC=yes sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+    # KEEP_ZSHRC=yes preserves config. Our own shell-change step below owns
+    # authentication; suppress the upstream installer's duplicate prompt.
+    RUNZSH=no KEEP_ZSHRC=yes CHSH=no sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
     echo "✓ Oh My Zsh installed"
 fi
 echo ""
