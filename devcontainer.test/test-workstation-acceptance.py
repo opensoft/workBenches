@@ -252,8 +252,11 @@ def main():
     benches = sorted(json.loads((REPO / 'config/bench-config.json').read_text())['benches'])
     selection = (TUI, '\x1b[B' * benches.index('pyBench') + ' \n')
     terminal('bench-install', [selection, (REVIEW, '\n'), (DONE, '\n')], timeout=3600)
+    # Native bench setup has already started its container. Explicitly approve
+    # adding Wave mounts to this disposable container; normal launches preserve
+    # an existing live container and direct the user to --repair.
     run(['bash', str(REPO / 'scripts/wave-container-shell.sh'), '--workbenches-root', str(REPO),
-         '--shell', 'bash', '--check', 'pyBench'], cwd=REPO)
+         '--shell', 'bash', '--repair', '--check', 'pyBench'], cwd=REPO)
     run(['docker', 'exec', '--user', 'node', 'py-bench', 'python3', '--version'])
     run(['docker', 'exec', '--user', 'node', 'py-bench', 'codex', '--version'])
     before = snapshot()
