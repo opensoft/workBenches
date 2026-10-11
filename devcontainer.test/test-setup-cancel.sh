@@ -9,6 +9,7 @@ mkdir -p "$fixture/scripts/lib" "$fixture/config" "$fixture/devBenches/testBench
     "$fixture/sysBenches/testBench" "$test_root/bin" "$test_root/home/.config/workbenches"
 cp "$repo_root/setup.sh" "$fixture/"
 cp "$repo_root/bootstrap.sh" "$fixture/"
+cp "$repo_root/scripts/lib/docker-prerequisite.sh" "$fixture/scripts/lib/"
 cp "$repo_root/scripts/interactive-setup.sh" "$fixture/scripts/interactive-setup-real.sh"
 cp "$repo_root/scripts/lib/image-names.sh" "$fixture/scripts/lib/"
 printf '{}' > "$test_root/home/.config/workbenches/test-profiles.json"

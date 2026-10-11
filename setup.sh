@@ -6,6 +6,11 @@
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/bootstrap.sh"
+source "$SCRIPT_DIR/scripts/lib/docker-prerequisite.sh"
+
+# Cancellation during prerequisite/password prompts must stop the launcher.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # ========================================
 # LOGGING
@@ -46,64 +51,6 @@ log_header "SETUP STARTED"
 
 # Clean up old logs (keep last 10)
 ls -t "$LOG_DIR"/setup-*.log 2>/dev/null | tail -n +11 | xargs rm -f 2>/dev/null
-
-# Ensure Docker is installed and running
-ensure_docker() {
-    if ! command -v docker >/dev/null 2>&1; then
-        echo "Docker is not installed. It is required to build workBenches images."
-        if [ -t 0 ]; then
-            read -p "Attempt to install Docker now? [y/N]: " install_choice
-            case "$install_choice" in
-                [Yy]*)
-                    if [ -f /etc/os-release ]; then
-                        . /etc/os-release
-                        OS=$ID
-                    else
-                        OS=$(uname -s)
-                    fi
-                    case "$OS" in
-                        ubuntu|debian|pop)
-                            echo "Running: sudo apt update && sudo apt install -y docker.io"
-                            sudo apt update && sudo apt install -y docker.io || true
-                            ;;
-                        fedora|rhel|centos)
-                            echo "Running: sudo dnf install -y docker"
-                            sudo dnf install -y docker || true
-                            ;;
-                        alpine)
-                            echo "Running: sudo apk add docker"
-                            sudo apk add docker || true
-                            ;;
-                        Darwin|darwin|macos)
-                            echo "Please install Docker Desktop for macOS:"
-                            echo "  https://www.docker.com/products/docker-desktop/"
-                            ;;
-                        *)
-                            echo "Please install Docker for your OS:"
-                            echo "  https://docs.docker.com/get-docker/"
-                            ;;
-                    esac
-                    ;;
-                *)
-                    ;;
-            esac
-        fi
-        if ! command -v docker >/dev/null 2>&1; then
-            echo "Docker is still not available. Please install it, then re-run ./setup.sh"
-            exit 1
-        fi
-    fi
-
-    if ! docker info >/dev/null 2>&1; then
-        echo "Docker is installed but not running."
-        if command -v systemctl >/dev/null 2>&1; then
-            echo "Try: sudo systemctl start docker"
-        else
-            echo "Please start Docker Desktop or your Docker daemon."
-        fi
-        exit 1
-    fi
-}
 
 # Install or update Wave Terminal widgets for this workBenches checkout.
 # This is best-effort because Wave is a desktop convenience, not a build
@@ -168,6 +115,20 @@ install_wave_terminal_widgets() {
 USERNAME=${1:-$(whoami)}
 if [ "$USERNAME" = "--user" ]; then
     USERNAME="${2:-$(whoami)}"
+fi
+
+# Verify local prerequisites before host installers, account onboarding,
+# credential recovery or any image build can run.
+log_header "DOCKER CHECK"
+if ensure_docker; then
+    :
+else
+    prerequisite_status=$?
+    case "$prerequisite_status" in
+        130|143) log_header "SETUP CANCELLED" ;;
+        *) log_header "DOCKER PREREQUISITE FAILED" ;;
+    esac
+    exit "$prerequisite_status"
 fi
 
 # Shell environment setup (zsh + Powerlevel10k + Oh My Zsh)
@@ -258,10 +219,6 @@ echo ""
 log_header "WAVE TERMINAL WIDGET SETUP"
 install_wave_terminal_widgets
 echo ""
-
-# Docker prerequisite
-log_header "DOCKER CHECK"
-ensure_docker
 
 # Ensure Layer 0 base image exists
 log_header "LAYER 0 BUILD"

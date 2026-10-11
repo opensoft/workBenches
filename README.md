@@ -174,16 +174,17 @@ checkout unchanged.
 
 ```
 setup.sh
+  ├── Docker prerequisite (offer installation if missing; verify user/daemon access)
   ├── Shell setup (zsh + Oh My Zsh + Powerlevel10k)
   ├── Estate commands (scripts/setup-estate-commands.sh — openRepoTools --install)
   ├── Workspace repository (scripts/setup-workspace-repo.sh — openRepoTools wip init)
   │     └── strictly after the estate commands: `wip init` is their subcommand
-  ├── VPN setup (AmneziaVPN + 0dcloud checks, 0dcloud MTU patch)
+  ├── AI profile onboarding and approved credential recovery
   ├── Wave Terminal widgets (terminal, projects, and workBench containers)
-  ├── Docker check (is daemon running?)
   ├── Layer 0 check (build workbench-base:latest if missing)
   ├── Interactive TUI (scripts/interactive-setup.sh)
   │     ├── 3-column selection: Benches | AI Assistants | Tools
+  │     ├── Optional VPN clients in Tools
   │     ├── Status: ✓ installed  ⚠ needs setup  ✗ not installed
   │     ├── Installed benches: check Docker images (Layer 2 + Layer 3)
   │     ├── New benches: clone repo → run setup.sh or build-layer.sh
@@ -191,6 +192,14 @@ setup.sh
   ├── Layer 1 builds (dev-bench-base, sys-bench-base, bio-bench-base)
   └── Summary + log file path
 ```
+
+Docker verification runs before host installers and credential onboarding.
+Missing Docker prompts for installation in an interactive terminal; supported
+Linux package managers include apt, dnf, apk and Arch/Omarchy pacman. Local
+passwords are entered into sudo. A stopped local system Docker service can be
+started with the user's agreement. Declining, cancellation, installation
+failure or inaccessible Docker stops setup before later steps. Remote/rootless
+contexts use their configured daemon and local access policy.
 
 Your host's `openRepoShape`, `openRepoTools`, `park`, `resume`, `status`, `lane`, `lanes`, `lane-handoff`, `lane-rename`, `lanes-edit.sh`, `lane-start`, `lane-end`, `link-estates`, `repos.tsv`, `claude-current` and `claude-restart-check` come from workBenches' own pin (`devBenches/base-image/upstream-pin.yaml`). `setup.sh` places them from the vendored copies in `devBenches/base-image/files/openreposhape/` and `devBenches/base-image/files/openrepotools/`, and re-places them whenever a host copy differs from the pin, in either direction — behind, ahead, or hand-edited. To move them to a new upstream commit, move the pin with `update-upstream.py apply` and re-run `setup.sh`; do not edit the vendored files or the installed commands directly. The step refuses to run over a symlinked, non-regular, or read-only target, and verifies the fifteen placed openRepoTools files (and openRepoShape's own) against the vendored copies before it reports success. Set `WORKBENCHES_SKIP_ESTATE_COMMANDS=1` to skip this step.
 

@@ -11,6 +11,13 @@ cannot discover an organization's secret store or grant access to its secrets.
 
 ## Current Azure recovery
 
+`setup.sh` verifies Docker installation and daemon access before host setup,
+AI profile onboarding or recovery. Missing Docker offers an interactive install,
+including Arch/Omarchy. The user enters any local password directly into sudo.
+Declining or cancelling stops setup, and failed daemon access must be resolved
+before setup continues. Standalone escrow commands retain the runtime selection
+below, including native Azure CLI operation without Docker.
+
 An administrator supplies an owner-only manifest at
 `~/.config/workbenches/ai-credential-keyvault.json`, or the operator selects a
 manifest with `AI_CREDENTIAL_KV_MANIFEST`. Start from
