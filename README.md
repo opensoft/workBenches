@@ -259,6 +259,11 @@ automatically.
 First-run setup offers consent-based work and personal AI profile onboarding,
 including GitHub credential-registry discovery and a local manual fallback.
 See [Shared AI provider profiles](docs/multi-provider-profiles.md).
+For common and per-option credential requirements, password-manager integrations
+and the proposed recovery container, see
+[Credentials for installation and recovery](docs/setup-credential-requirements.md).
+Preview selected requirements without reading secrets:
+`python3 scripts/plan-setup-credentials.py --option dotNetBench --option codex_cli`.
 Multi-account Claude details remain in
 [Claude multi-account profiles](docs/claude-multi-account-profiles.md).
 OpenCode users who switch between OpenAI ChatGPT accounts while retaining the

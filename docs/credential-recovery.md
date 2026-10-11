@@ -1,5 +1,10 @@
 # Credential recovery during workstation setup
 
+For the common requirements, per-option credentials, password-manager adapter
+inventory and proposed shared recovery container, see
+[Credentials for installation and recovery](setup-credential-requirements.md).
+Preview selections with `python3 scripts/plan-setup-credentials.py --list`.
+
 Setup needs an organization-approved recovery mapping before it can know which
 identity authority and credential store to contact. Installing Azure CLI alone
 cannot discover an organization's secret store or grant access to its secrets.
