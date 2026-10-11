@@ -276,11 +276,14 @@ echo ""
 log_header "LAYER 0 BUILD"
 if [[ -z "$selected_bench_paths" ]]; then
     echo "No bench images selected; skipping Layer 0."
-elif ! docker image inspect "workbench-base:latest" >/dev/null 2>&1; then
-    echo "Layer 0 image not found. Building workbench-base:latest..."
-    "${SCRIPT_DIR}/base-image/build.sh" || { echo "✗ Layer 0 build failed"; exit 1; }
 else
-    echo "Layer 0 image (workbench-base:latest) already exists, skipping build."
+    python3 "${SCRIPT_DIR}/scripts/setup-bench-home.py" || exit "$?"
+    if ! docker image inspect "workbench-base:latest" >/dev/null 2>&1; then
+        echo "Layer 0 image not found. Building workbench-base:latest..."
+        "${SCRIPT_DIR}/base-image/build.sh" || { echo "✗ Layer 0 build failed"; exit 1; }
+    else
+        echo "Layer 0 image (workbench-base:latest) already exists, skipping build."
+    fi
 fi
 
 # Call the interactive setup script

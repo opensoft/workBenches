@@ -569,6 +569,52 @@ INSTALLER
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual((self.home / 'shell-actions').read_text().strip(), 'own-shell-change')
 
+    def prepare_bench_home(self):
+        return subprocess.run([sys.executable, str(ROOT / 'scripts/setup-bench-home.py')],
+                              env=self.env, capture_output=True, text=True)
+
+    def test_bench_mount_settings_are_created_privately_without_auth_files(self):
+        result = self.prepare_bench_home()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        settings = self.home / '.claude.json'
+        self.assertEqual(json.loads(settings.read_text()), {})
+        self.assertEqual(settings.stat().st_mode & 0o777, 0o600)
+        for name in ('.claude', '.claude-profiles', '.chatgpt-profiles', '.config/gh'):
+            self.assertEqual((self.home / name).stat().st_mode & 0o777, 0o700)
+        self.assertFalse((self.home / '.claude/.credentials.json').exists())
+        self.assertFalse((self.home / '.codex/auth.json').exists())
+
+    def test_bench_preparation_preserves_existing_settings_and_recovered_credentials(self):
+        settings = self.home / '.claude.json'
+        settings.write_text('{"testSetting": true}')
+        self.target.parent.mkdir(parents=True)
+        self.target.write_bytes(self.payload)
+        before = [(p.read_bytes(), p.stat().st_mtime_ns) for p in (settings, self.target)]
+        self.assertEqual(self.prepare_bench_home().returncode, 0)
+        self.assertEqual(self.prepare_bench_home().returncode, 0)
+        self.assertEqual([(p.read_bytes(), p.stat().st_mtime_ns) for p in (settings, self.target)], before)
+
+    def test_bench_preparation_refuses_wrong_types_before_creating_sources(self):
+        (self.home / '.claude.json').mkdir()
+        result = self.prepare_bench_home()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('Expected a settings file', result.stderr)
+        self.assertFalse((self.home / '.ssh').exists())
+
+    def test_bench_preparation_preserves_valid_settings_links_and_refuses_broken_links(self):
+        source = self.home / 'settings.json'
+        source.write_text('{"testSetting": true}')
+        settings = self.home / '.claude.json'
+        settings.symlink_to(source)
+        self.assertEqual(self.prepare_bench_home().returncode, 0)
+        self.assertTrue(settings.is_symlink())
+        self.assertEqual(source.read_text(), '{"testSetting": true}')
+        settings.unlink()
+        source.unlink()
+        settings.symlink_to(source)
+        self.assertEqual(self.prepare_bench_home().returncode, 1)
+        self.assertFalse(source.exists())
+
 
 if __name__ == '__main__':
     unittest.main()
