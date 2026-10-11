@@ -71,6 +71,29 @@ A layered Docker-based development environment system. Each "bench" is a self-co
 
 ## Quick Start
 
+On a new workstation, install Git and download the standalone bootstrap:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/opensoft/workBenches/main/bootstrap.sh -o workbenches-bootstrap.sh
+bash workbenches-bootstrap.sh --setup
+```
+
+Bootstrap clones to `~/Projects/workBenches`. Use `--directory PATH` to choose
+another location, or omit `--setup` to clone without running setup. It prefers
+SSH when your existing SSH configuration or agent can access the repository;
+otherwise it falls back to HTTPS. SSH probes are noninteractive and require a
+trusted host key, so a fresh workstation can download public repositories
+without a GitHub login, token, or SSH key. Private repositories still require
+authorized SSH access or HTTPS credentials.
+
+The setup TUI, registry clones, and Wave installer use the same transport
+selection. Existing checkout remotes and global Git/SSH settings are preserved.
+Public bench URLs in the catalog and `.gitmodules` use HTTPS for compatibility
+with ordinary Git commands. To initialize all pinned submodules with SSH
+preference and HTTPS fallback, run `bash bootstrap.sh --submodules "$PWD"`.
+
+From an existing checkout:
+
 ```bash
 ./setup.sh
 ```

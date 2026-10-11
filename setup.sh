@@ -5,6 +5,7 @@
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/bootstrap.sh"
 
 # ========================================
 # LOGGING
@@ -144,7 +145,7 @@ install_wave_terminal_widgets() {
         fi
 
         mkdir -p "$(dirname "$installer_dir")"
-        if ! git clone --depth 1 "$installer_repo" "$installer_dir"; then
+        if ! workbenches_clone "$installer_repo" "$installer_dir" --depth 1; then
             echo "Wave Terminal widget setup skipped: failed to clone $installer_repo."
             return 0
         fi

@@ -281,7 +281,7 @@ def materialize_registry(value: str | dict[str, str], root: pathlib.Path) -> pat
         raise RuntimeError(f"registry destination is not a Git repository: {destination}")
     else:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["git", "clone", value, str(destination)], check=True)
+        subprocess.run(["bash", str(REPO / "bootstrap.sh"), "--clone", value, str(destination)], check=True)
         if ref:
             subprocess.run(["git", "-C", str(destination), "switch", ref], check=True)
     source = destination / "ai"

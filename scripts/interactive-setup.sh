@@ -6,6 +6,7 @@
 # Setup logging
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/image-names.sh"
+source "$SCRIPT_DIR/../bootstrap.sh"
 LOG_DIR="$SCRIPT_DIR/../logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/setup-$(date +%Y%m%d-%H%M%S).log"
@@ -1243,7 +1244,7 @@ check_dir_safe_to_replace() {
 
         # Clone to temp location to see what files would be created
         local temp_dir=$(mktemp -d)
-        if git clone --depth=1 --quiet "$repo_url" "$temp_dir" 2>/dev/null; then
+        if workbenches_clone "$repo_url" "$temp_dir" --depth=1 --quiet 2>/dev/null; then
             # Get list of files/folders that would be created (top-level only)
             local repo_items
             repo_items=$(cd "$temp_dir" && ls -A | grep -v "^\.git$")
@@ -1538,7 +1539,7 @@ process_selections() {
 
                                         # Clone in background with spinner
                                         (
-                                            git clone "$bench_url" "$full_bench_path" >> "$LOG_FILE" 2>&1
+                                            workbenches_clone "$bench_url" "$full_bench_path" >> "$LOG_FILE" 2>&1
                                             echo $? > /tmp/clone_status_$$
                                         ) &
                                         local clone_pid=$!
@@ -1582,7 +1583,7 @@ process_selections() {
 
                                 # Clone in background with spinner
                                 (
-                                    git clone "$bench_url" "$full_bench_path" >> "$LOG_FILE" 2>&1
+                                    workbenches_clone "$bench_url" "$full_bench_path" >> "$LOG_FILE" 2>&1
                                     echo $? > /tmp/clone_status_$$
                                 ) &
                                 local clone_pid=$!
