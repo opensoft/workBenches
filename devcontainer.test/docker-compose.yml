@@ -18,7 +18,7 @@ services:
     privileged: true
     environment:
       DOCKER_TLS_CERTDIR: ""
-    command: ["--host=unix:///var/run/docker.sock", "--group=1000"]
+    command: [dockerd, "--host=unix:///var/run/docker.sock", "--group=1000", "--bip=172.28.0.1/16", "--default-address-pool=base=172.29.0.0/16,size=24"]
     volumes:
       - acceptance-socket:/var/run
       - acceptance-home:/home/node

@@ -1610,10 +1610,10 @@ process_selections() {
                                     echo -e "  ${GREEN}✓ Successfully set up $bench${NC}"
                                     ((success_count++))
                                 else
-                                    log "WARNING: Setup failed for $bench"
+                                    log "ERROR: Setup failed for $bench"
                                     echo -e "  ${YELLOW}⚠ Setup failed${NC}"
                                     echo -e "  ${DIM}You may need to run setup manually: $setup_script${NC}"
-                                    ((success_count++))
+                                    ((fail_count++))
                                 fi
                             else
                                 # No setup.sh — try inline: build-layer.sh

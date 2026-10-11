@@ -477,6 +477,72 @@ process_selections''', input='\n', PATH=self.fake_npm(self.home, failure=13), WO
         self.assertFalse((self.config / 'openai-profiles.json').exists())
         self.assertFalse((self.home / '.chatgpt-profiles').exists())
 
+    def test_fresh_bench_builds_family_before_setup_and_stops_on_family_failure(self):
+        for code in (0, 13):
+            with self.subTest(family_status=code), tempfile.TemporaryDirectory() as directory:
+                home = Path(directory)
+                repo = home / 'workBenches'
+                repo.mkdir()
+                for name in ('scripts', 'config', 'credential-container'):
+                    shutil.copytree(ROOT / name, repo / name, ignore=shutil.ignore_patterns('__pycache__'))
+                for name in ('setup.sh', 'bootstrap.sh'):
+                    shutil.copy(ROOT / name, repo / name)
+                binary = home / 'bin'
+                binary.mkdir()
+                docker = binary / 'docker'
+                docker.write_text('#!/bin/bash\nexit 0\n')
+                docker.chmod(0o755)
+                shell = repo / 'scripts/setup-shell.sh'
+                shell.write_text('#!/bin/bash\nexit 0\n')
+                interactive = repo / 'scripts/interactive-setup.sh'
+                interactive.write_text('''#!/bin/bash
+case "$1" in
+--select-only)
+  printf '%s' '{"schemaVersion":1,"components":[{"key":"bench_pyBench","action":"install"}]}' > "$2" ;;
+--dependencies-plan) exit 0 ;;
+--apply-plan)
+  test -f "$HOME/family-built" || exit 23
+  touch "$HOME/bench-set-up" ;;
+esac
+''')
+                interactive.chmod(0o755)
+                for category in ('devBenches', 'sysBenches', 'bioBenches'):
+                    path = repo / category
+                    path.mkdir()
+                    script = path / 'setup.sh'
+                    script.write_text(f'#!/bin/bash\ntouch "$HOME/{category}-called"\n'
+                                      + (f'touch "$HOME/family-built"\nexit {code}\n' if category == 'devBenches' else 'exit 24\n'))
+                    script.chmod(0o755)
+                env = dict(self.env, HOME=str(home), PATH=str(binary) + ':' + self.env['PATH'],
+                           WORKBENCHES_SKIP_ESTATE_COMMANDS='1', WORKBENCHES_SKIP_WORKSPACE_REPO='1',
+                           WORKBENCHES_SKIP_PROJECT_COMMAND='1')
+                result = subprocess.run(['bash', str(repo / 'setup.sh')], env=env,
+                                        capture_output=True, text=True, timeout=15)
+                self.assertEqual(result.returncode, 0 if code == 0 else 1, result.stdout + result.stderr)
+                self.assertEqual((home / 'bench-set-up').exists(), code == 0)
+                self.assertTrue((home / 'devBenches-called').exists())
+                self.assertFalse((home / 'sysBenches-called').exists())
+                self.assertFalse((home / 'bioBenches-called').exists())
+
+    def test_first_bench_setup_failure_is_not_counted_as_success(self):
+        repo = self.home / 'workBenches'
+        repo.mkdir()
+        for name in ('scripts', 'config'):
+            shutil.copytree(ROOT / name, repo / name, ignore=shutil.ignore_patterns('__pycache__'))
+        shutil.copy(ROOT / 'bootstrap.sh', repo / 'bootstrap.sh')
+        command = f'''source "{repo}/scripts/interactive-setup.sh"
+init_components
+component_checked[bench_pyBench]=true
+component_status[bench_pyBench]=not_installed
+component_action[bench_pyBench]=install
+workbenches_clone() {{ mkdir -p "$2"; printf '#!/bin/bash\\nexit 13\\n' > "$2/setup.sh"; }}
+process_selections'''
+        result = subprocess.run(['bash', '-c', command], input='\n', env=self.env,
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('Setup failed', result.stdout)
+        self.assertNotIn('completed successfully', result.stdout)
+
 
 if __name__ == '__main__':
     unittest.main()

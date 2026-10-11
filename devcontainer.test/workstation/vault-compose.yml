@@ -5,6 +5,7 @@ services:
       SIGNUPS_ALLOWED: "true"
       SIGNUPS_VERIFY: "false"
       WEB_VAULT_ENABLED: "false"
+      I_REALLY_WANT_VOLATILE_STORAGE: "true"
       ROCKET_TLS: '{certs="/tls/cert.pem",key="/tls/key.pem"}'
       ROCKET_PORT: "80"
     ports: ["18443:80"]

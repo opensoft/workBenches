@@ -290,21 +290,7 @@ run_interactive_setup() {
     "${SCRIPT_DIR}/scripts/interactive-setup.sh" --apply-plan "$selection_file"
 }
 
-log_header "INTERACTIVE SETUP"
-if run_interactive_setup; then
-    :
-else
-    interactive_status=$?
-    if [ "$interactive_status" -eq 130 ]; then
-        log_header "SETUP CANCELLED"
-    else
-        log_header "INTERACTIVE SETUP FAILED"
-        echo "✗ Interactive setup stopped (exit $interactive_status)."
-    fi
-    exit "$interactive_status"
-fi
-
-# Build Layer 1 images for detected bench categories
+# Build the selected family layers before any bench setup consumes them.
 log_header "LAYER 1 BUILDS"
 BUILD_FAILED=false
 
@@ -314,7 +300,6 @@ if command -v jq >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/config/bench-config.json" 
     has_bio=false
 
     while IFS= read -r bench_path; do
-        [ -d "$SCRIPT_DIR/$bench_path" ] || continue
         case "$bench_path" in
             devBenches/*)   has_dev=true ;;
             sysBenches/*)   has_sys=true ;;
@@ -339,6 +324,24 @@ if command -v jq >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/config/bench-config.json" 
         echo "Bio benches detected. Building Layer 1c base image..."
         "$SCRIPT_DIR/bioBenches/setup.sh" --user "$USERNAME" || { echo "✗ Layer 1c (bioBenches) build failed"; BUILD_FAILED=true; }
     fi
+fi
+
+if [ "$BUILD_FAILED" = false ]; then
+    log_header "INTERACTIVE SETUP"
+    if run_interactive_setup; then
+        :
+    else
+        interactive_status=$?
+        if [ "$interactive_status" -eq 130 ]; then
+            log_header "SETUP CANCELLED"
+        else
+            log_header "INTERACTIVE SETUP FAILED"
+            echo "✗ Interactive setup stopped (exit $interactive_status)."
+        fi
+        exit "$interactive_status"
+    fi
+else
+    echo "Skipping component installation because a selected base layer failed."
 fi
 
 # ========================================

@@ -58,6 +58,10 @@ def terminal(name, replies, expected=0, env=None, timeout=1800):
                     break
                 output += chunk
                 clean = ANSI.sub('', output.decode(errors='replace')).replace('\r', '')
+                safe = clean
+                for marker in MARKERS:
+                    safe = safe.replace(marker, '[redacted test value]')
+                (REPORT / (name + '.txt')).write_text(safe)
                 if answered < len(replies):
                     pattern, reply = replies[answered]
                     match = re.search(pattern, clean[last:])
@@ -145,6 +149,8 @@ def seed_vault():
     # modification: trust this test CA in Node, never disable TLS verification.
     container = REPO / 'credential-container'
     (container / 'acceptance-ca.pem').write_bytes((tls / 'cert.pem').read_bytes())
+    with (container / '.dockerignore').open('a') as stream:
+        stream.write('\n!acceptance-ca.pem\n')
     with (container / 'Dockerfile').open('a') as stream:
         stream.write('\nCOPY acceptance-ca.pem /opt/workbenches/acceptance-ca.pem\n'
                      'ENV NODE_EXTRA_CA_CERTS=/opt/workbenches/acceptance-ca.pem\n')

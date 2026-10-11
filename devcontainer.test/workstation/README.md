@@ -15,7 +15,8 @@ export WORKBENCHES_ACCEPTANCE_REF=your-branch
 export WORKBENCHES_ACCEPTANCE_SHA=$(git rev-parse HEAD)
 mkdir -p artifacts/workstation-acceptance
 docker compose -p workbenches-acceptance-test -f devcontainer.test/docker-compose.yml \
-  --profile workstation-acceptance run --build --rm workstation-acceptance
+  --profile workstation-acceptance up --build --abort-on-container-exit \
+  --exit-code-from workstation-acceptance acceptance-engine workstation-acceptance
 docker compose -p workbenches-acceptance-test -f devcontainer.test/docker-compose.yml \
   --profile workstation-acceptance down --volumes
 ```
