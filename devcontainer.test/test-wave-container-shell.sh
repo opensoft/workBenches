@@ -60,6 +60,21 @@ run_launcher_case() {
     fi
     [[ -z "${CASE_EXTRA_HOST_DIRECTORY:-}" ]] || mkdir -p "$fake_home/$CASE_EXTRA_HOST_DIRECTORY"
     cp "$repo_root/user-layer/claude-npm-guard" "$fake_root/user-layer/claude-npm-guard"
+    if [[ -n "${CASE_OPENCODE_PROFILE:-}" ]]; then
+        mkdir -p "$fake_root/base-image/files" "$fake_home/.config/workbenches"
+        : > "$fake_root/base-image/files/opencode-profile"
+        for directory in .claude-profiles .chatgpt-profiles .opencode-profiles .pi-profiles .gemini-profiles .grok-profiles .glm-profiles; do
+            mkdir -p "$fake_home/$directory"
+        done
+        for command in opencode-profile popencode; do
+            printf '#!/bin/sh\nexit 0\n' > "$mock_bin/$command"
+            chmod +x "$mock_bin/$command"
+        done
+        case "$CASE_OPENCODE_PROFILE" in
+            file) printf '{}\n' > "$fake_home/.config/workbenches/opencode-profiles.json" ;;
+            directory) mkdir "$fake_home/.config/workbenches/opencode-profiles.json" ;;
+        esac
+    fi
     : > "$fake_root/devBenches/pyBench/.devcontainer/devcontainer.json"
     : > "$fake_root/devBenches/pyBench/.devcontainer/docker-compose.yml"
     : > "$fake_root/devBenches/dotNetBench/.devcontainer/devcontainer.json"
@@ -114,6 +129,21 @@ PREPARE
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$MOCK_DOCKER_LOG"
+
+# Execute the actual verification body for profile cases instead of assuming
+# docker exec succeeds. Map only the container's history path to this fixture.
+if [[ "${1:-}" == exec && -n "$MOCK_OPENCODE_PROFILE" && "${!#}" == *wave-container-shell-ok* ]]; then
+    check_body="${!#}"
+    while [[ $# -gt 0 ]]; do
+        if [[ "$1" == --env ]]; then
+            export "$2"
+            shift
+        fi
+        shift
+    done
+    export HISTFILE="$HOME/.workbenches-history/.zsh_history"
+    exec bash -c "$check_body"
+fi
 
 if [[ "${1:-}" == "compose" ]]; then
     if [[ " $* " == *" config "* ]]; then
@@ -271,6 +301,7 @@ MOCK
             USER=tester \
             PATH="$mock_bin:$PATH" \
             MOCK_DOCKER_LOG="$docker_log" \
+            MOCK_OPENCODE_PROFILE="${CASE_OPENCODE_PROFILE:-}" \
             MOCK_EXPECT_ENV_DIR="$expected_env_dir" \
             WAVE_WSLG_ROOT="$wslg_root" \
             MOCK_CONTAINER_EXISTS="${CASE_CONTAINER_EXISTS:-true}" \
@@ -722,3 +753,9 @@ grep -q -- '--env LANES_CONTAINER=py-bench' <<<"$(lanes_exec_line)" \
     || fail "the bench name, which this script always knows, was not passed ($(lanes_exec_line))"
 
 echo "PASS: wave container launcher lifecycle tests"
+
+CASE_OPENCODE_PROFILE=missing run_launcher_case unselected-opencode-profile true complete false false py-bench
+grep -q 'wave-container-shell-ok' <<<"$CASE_OUTPUT" || fail "verification did not execute for an unselected provider"
+CASE_OPENCODE_PROFILE=file run_launcher_case configured-opencode-profile true complete false false py-bench
+CASE_OPENCODE_PROFILE=directory CASE_EXPECT_STATUS=1 run_launcher_case invalid-opencode-profile true complete false false py-bench
+echo "PASS: Wave verifies selected and unselected provider configurations"

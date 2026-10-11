@@ -1045,7 +1045,14 @@ if [[ "$check_only" == true ]]; then
          test "$HISTFILE" = "$HOME/.workbenches-history/.zsh_history"
          if test "$WORKBENCHES_HAS_CLAUDE_LAUNCHER" = 1; then command -v claude-profile; command -v pclaude; command -v lclaude; fi
          if test "$WORKBENCHES_HAS_CODEX_LAUNCHER" = 1; then command -v codex-profile; command -v pcodex; fi
-         if test "$WORKBENCHES_HAS_OPENCODE_LAUNCHER" = 1; then command -v opencode-profile; command -v popencode; test -f "$HOME/.config/workbenches/opencode-profiles.json"; test -d "$HOME/.opencode-profiles"; fi
+         if test "$WORKBENCHES_HAS_OPENCODE_LAUNCHER" = 1; then
+           command -v opencode-profile; command -v popencode
+           # Shared launchers exist even when this provider was not selected.
+           if test -e "$HOME/.config/workbenches/opencode-profiles.json" || test -L "$HOME/.config/workbenches/opencode-profiles.json"; then
+             test -f "$HOME/.config/workbenches/opencode-profiles.json"
+           fi
+           test -d "$HOME/.opencode-profiles"
+         fi
          if test "$WORKBENCHES_HAS_CODEX_LAUNCHER" = 1; then command -v workbenches-mcp-sync; fi
          if test "$WORKBENCHES_HAS_PROVIDER_LAUNCHER" = 1; then command -v pgemini; command -v pgrok; command -v pglm; fi
          if test "$WORKBENCHES_HAS_PI_LAUNCHER" = 1; then command -v ppi; fi
