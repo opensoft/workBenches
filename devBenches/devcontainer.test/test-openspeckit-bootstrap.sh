@@ -617,6 +617,9 @@ assert_not_contains "$WORKFLOW_PROTOCOL" 'Delegate via the Agent tool with expli
 assert_contains "$WORKFLOW_PROTOCOL" 'A repository with no `## Governed invariants` section gets no `[H]` tasks; its tasks are `[S]` at least.' 'workflow protocol gives no [H] task to a repository without a Governed invariants section'
 assert_contains "$WORKFLOW_PROTOCOL" '`availableModels` is' 'workflow protocol names availableModels in the fallback paragraph'
 assert_contains "$WORKFLOW_PROTOCOL" 'deliberately not used to block the fallback, because flagged work would' 'workflow protocol leaves the content-based fallback unblocked'
+assert_contains "$WORKFLOW_PROTOCOL" 'A configured `fallbackModel` chain is' 'workflow protocol names the fallbackModel chain as a second way for a subagent to switch model'
+assert_contains "$WORKFLOW_PROTOCOL" 'order, and the subagent continues on the model that accepts the request.' 'workflow protocol quotes the docs on a subagent whose request fails over'
+assert_contains "$WORKFLOW_PROTOCOL" 'three-leg project); the assembly root' 'workflow protocol reads the Governed invariants section in the code tree root, not the assembly root'
 assert_contains "$WORKFLOW_PROTOCOL" '## Triad Feature Amendments' 'workflow protocol carries the Triad Feature Amendments section'
 assert_contains "$WORKFLOW_PROTOCOL" '### Two layers and existing authority' 'workflow protocol carries the triad two-layers subsection'
 assert_contains "$WORKFLOW_PROTOCOL" '### Current instructions and durable amendment records' 'workflow protocol carries the triad current-instructions subsection'
@@ -4145,6 +4148,8 @@ assert_contains "$ROUTING_HOME/.codex/skills/speckit-analyze/SKILL.md" '## Model
 assert_not_contains "$ROUTING_LINKED_AGENTS/skills/speckit-implement/SKILL.md" 'OPENSPEC-SPECKIT-MODEL-ROUTING' 'routing block never writes through a symlinked user-global skills root'
 assert_not_contains "$ROUTING_LINKED_AGENTS/skills/speckit-implement/SKILL.md" 'OPENSPEC-SPECKIT-SHAPE' 'shape block never writes through a symlinked user-global skills root'
 assert_contains "$TMPDIR_ROOT/routing-block.log" 'symlinked ancestor' 'the skipped symlinked skills root is logged'
+assert_not_contains "$TMPDIR_ROOT/routing-block.log" 'maintained where the link points' 'the skip log claims nothing about who maintains a symlinked skills root'
+assert_contains "$TMPDIR_ROOT/routing-block.log" 'the installer does not write through a symlink' 'the skip log says what the installer does with a symlinked skills root'
 
 printf '%s\n' 'When: bootstrap reruns, then reruns with --no-skill-routing-blocks against a fresh skill'
 ROUTING_FIRST="$TMPDIR_ROOT/routing-first.snapshot"

@@ -3015,8 +3015,11 @@ marker and the story label, and two fields follow the description:
 
 A repository declares the paths whose edits move a governed invariant in a
 `## Governed invariants` section of its root `AGENTS.md`, or of `CLAUDE.md`
-when it has no `AGENTS.md`. A feature's `plan.md` may add its own under the
-same heading. Each entry is one bullet: a path in backticks (a file, a
+when it has no `AGENTS.md`. The root is the root of the code tree that
+`files:` is relative to (the feature worktree in a single repository, the
+`<code>` feature worktree in a three-leg project); the assembly root's own
+section does not count. A feature's `plan.md` may add its own under the same
+heading. Each entry is one bullet: a path in backticks (a file, a
 directory ending in `/`, or a glob), then ` — ` and what an edit moves.
 
 Governed in every repository, declared or not: `openspec/` text, CI workflow definitions such as `.github/workflows/`, submodule gitlinks and `.gitmodules`, and any file that records a pin, a digest or a measured value.
@@ -3057,7 +3060,11 @@ Pinning alone is not enough. Claude Code's model documentation says that in
 a subagent a safety-classifier flag re-runs the request on a fallback model
 without a prompt (for Opus 5.5, a cybersecurity flag re-runs on Opus 4.8),
 and that after a fallback the session continues on the fallback model;
-nothing there exempts a pinned model. On 2026-10-12 two `opus` subagents
+nothing there exempts a pinned model. A configured `fallbackModel` chain is
+a second documented way for a subagent to switch model: "When a subagent's
+request fails over, Claude Code tries your configured fallback models in
+order, and the subagent continues on the model that accepts the request."
+On 2026-10-12 two `opus` subagents
 switched from `claude-opus-5-5` to `claude-opus-4-8` without telling the
 orchestrator, and the cause is not established. `availableModels` is
 deliberately not used to block the fallback, because flagged work would
@@ -3726,10 +3733,11 @@ def global_shape_block_targets(home: Path) -> list[Path]:
 def has_symlinked_ancestor(path: Path) -> bool:
     """Whether a directory above ``path`` is a symlink.
 
-    The same walk ensure_safe_destination_parent refuses with SystemExit. A
-    user-global skills root reached through a symlink (``~/.agents`` linked
-    into a dotfiles checkout) is maintained in the repository the link points
-    to, so the global block passes skip it instead of ending the whole run.
+    The same walk ensure_safe_destination_parent refuses with SystemExit. The
+    installer never writes through a symlinked ancestor, so the global block
+    passes skip a user-global skills root reached through one (``~/.agents``
+    linked into a dotfiles checkout, say) and log the skip instead of ending
+    the whole run. What the link points to is left as it is.
     """
     current = path.parent
     while True:
@@ -3756,7 +3764,7 @@ def ensure_skill_shape_blocks(
     global_block = shape_block_body(str(agent_root))
     for path in global_shape_block_targets(Path.home()):
         if has_symlinked_ancestor(path):
-            log(f"skipped {path}: symlinked ancestor; maintained where the link points")
+            log(f"skipped {path}: symlinked ancestor; the installer does not write through a symlink")
             continue
         try:
             upsert_shape_block(path, global_block, dry_run)
@@ -3841,7 +3849,7 @@ def ensure_skill_routing_blocks(
         if skill not in templates:
             continue
         if has_symlinked_ancestor(path):
-            log(f"skipped {path}: symlinked ancestor; maintained where the link points")
+            log(f"skipped {path}: symlinked ancestor; the installer does not write through a symlink")
             continue
         global_block = templates[skill].replace(REPO_AGENT_ROOT, str(agent_root))
         try:
