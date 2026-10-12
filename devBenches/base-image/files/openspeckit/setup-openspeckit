@@ -26,6 +26,8 @@ START = "<!-- OPENSPEC-SPECKIT-GLOBAL:START -->"
 END = "<!-- OPENSPEC-SPECKIT-GLOBAL:END -->"
 SHAPE_START = "<!-- OPENSPEC-SPECKIT-SHAPE:START -->"
 SHAPE_END = "<!-- OPENSPEC-SPECKIT-SHAPE:END -->"
+ROUTING_START = "<!-- OPENSPEC-SPECKIT-MODEL-ROUTING:START -->"
+ROUTING_END = "<!-- OPENSPEC-SPECKIT-MODEL-ROUTING:END -->"
 REPO_AGENT_ROOT: Final = "${AGENT_PROTOCOL_ROOT:-$HOME/.agents}"
 SHAPE_FIRST_LINE_SENTINEL: Final = "AGENTS-shape.md"
 DEFAULT_LEG_PATHS: Final = {"spec": "spec", "code": "code"}
@@ -165,6 +167,16 @@ SKILLS = [
     "ct",
     "ctp",
 ]
+
+# The Speckit build skills that carry the managed Model Routing block (the
+# build tiers of the shared protocol's "Claude Model Roles and Usage Budget",
+# "Build Tiers"). The block text is not baked in here: it is read from the
+# protocol root's templates/speckit/model-routing/<skill>.md, so the protocol
+# and the block live in one repository and cannot become two diverging
+# copies, which is how the fallback protocol below had to be re-synced
+# (#130, #131).
+ROUTING_SKILLS: Final = ("speckit-tasks", "speckit-implement", "speckit-analyze")
+ROUTING_TEMPLATE_PARTS: Final = ("templates", "speckit", "model-routing")
 
 OPEN_SPEC_SKILLS = {
     "openspec-apply-change": "apply",
@@ -312,6 +324,14 @@ def parse_args() -> argparse.Namespace:
         "--no-skill-shape-blocks",
         action="store_true",
         help="Do not maintain the managed Repository Shape block in skills and commands.",
+    )
+    parser.add_argument(
+        "--no-skill-routing-blocks",
+        action="store_true",
+        help=(
+            "Do not maintain the managed Model Routing block in speckit-tasks, "
+            "speckit-implement and speckit-analyze."
+        ),
     )
     parser.add_argument(
         "--no-global-agent-pointers",
@@ -2924,17 +2944,145 @@ xFactory project memory; mirrored per-project as sessions adopt it):
 - **Opus** manages, reviews, and writes the DIFFICULT tasks through the
   Speckit flow (plan authoring, hard implementation slices, review passes).
 - **Sonnet** writes small, well-scoped tasks.
-- Delegate via the Agent tool with explicit `model` overrides; Fable tokens
-  are the scarcest budget, so judgment stays in the main loop and writing
-  goes to subagents.
+- **Haiku** writes only the build tasks that copy an existing pattern with
+  nothing left to decide (`[H]` under "Build Tiers").
+- Delegate via the Agent tool. A Speckit build task goes to its tier's agent
+  definition with no `model` override (see "Build Tiers"); any other
+  delegation names its model explicitly. Fable tokens are the scarcest
+  budget, so judgment stays in the main loop and writing goes to subagents.
 - Before any substantial task or agent fan-out, check the token balance
   (`claude-usage`; when the script is missing from the current shell, ask
   Brett to run `! claude-usage` instead of silently skipping). At ≥95% of
   the 5-hour window or the Fable weekly bucket: stop at a breakpoint, write
   or refresh the handoff doc, then small-tasks-only.
 
+### Build Tiers
+
+This applies when the Speckit flow is used for coding: the tasks that
+`/speckit-tasks` writes and `/speckit-implement` builds. Brett Heap chose it
+on 2026-10-12, verbatim: "Three tiers, tagged in tasks (Recommended)", "One
+try per model, then plan (Recommended)" and "Pin and verify (Recommended)".
+
+Every task carries one tier tag, and each tier has one agent definition:
+
+| tag | agent definition | model | effort |
+|---|---|---|---|
+| `[H]` | `haiku-high` | `claude-haiku-5-5` | `high` |
+| `[S]` | `sonnet-xhigh` | `claude-sonnet-5-5` | `xhigh` |
+| `[O]` | `opus-xhigh` | `claude-opus-5-5` | `xhigh` |
+
+`[H]` runs on `haiku-high`, `[S]` on `sonnet-xhigh`, `[O]` on `opus-xhigh`.
+
+#### The rubric
+
+Difficulty comes from coupling, not size.
+
+- **`[H]`** only when ALL of these hold:
+  - the task fully specifies the content, so no design choice is left;
+  - it copies an existing pattern, which it names;
+  - it lists its files and touches nothing else;
+  - a mechanical verify command proves it;
+  - none of its files falls under a governed invariant.
+
+  Unknown coupling means not `[H]`.
+  A repository with no `## Governed invariants` section gets no `[H]` tasks; its tasks are `[S]` at least.
+- **`[O]`** when ANY of these holds:
+  - a design choice or a new interface;
+  - a contract, schema or boundary;
+  - changes across modules;
+  - landing, archiving, carving, or any other irreversible or procedure-heavy act;
+  - security-sensitive work;
+  - the task already failed at `[S]`.
+- **`[S]`** otherwise.
+
+Archiving is never `[H]` in this estate: it is governed, not bookkeeping.
+
+#### The task line
+
+Spec Kit's checklist format is unchanged. The tier tag follows the `[P]`
+marker and the story label, and two fields follow the description:
+
+```text
+- [ ] T012 [P] [US1] [S] Create the User model in src/models/user.py — files: `src/models/user.py`, `tests/test_user.py` — verify: `python3 -m pytest tests/test_user.py -q`
+```
+
+- The tier tag is exactly one of `[H]`, `[S]` and `[O]`.
+- `files:` names, each in backticks and separated by commas, every path the task may create, change or delete, relative to the code tree (the feature worktree in a single repository, the `<code>` feature worktree in a three-leg project). A path ending in `/` covers everything under it; an `[H]` task names files only.
+- `verify:` is one command in backticks, run from the code tree, that exits 0 only when the task is done. A command that cannot fail, such as `true`, counts as a missing verify command.
+- ` — ` (space, em dash, space) separates the description and the two fields.
+
+#### Governed invariants
+
+A repository declares the paths whose edits move a governed invariant in a
+`## Governed invariants` section of its root `AGENTS.md`, or of `CLAUDE.md`
+when it has no `AGENTS.md`. The root is the root of the code tree that
+`files:` is relative to (the feature worktree in a single repository, the
+`<code>` feature worktree in a three-leg project); the assembly root's own
+section does not count. A feature's `plan.md` may add its own under the same
+heading. Each entry is one bullet: a path in backticks (a file, a
+directory ending in `/`, or a glob), then ` — ` and what an edit moves.
+
+Governed in every repository, declared or not: `openspec/` text, CI workflow definitions such as `.github/workflows/`, submodule gitlinks and `.gitmodules`, and any file that records a pin, a digest or a measured value.
+
+#### Building the tasks
+
+`/speckit-implement`, run by a Claude orchestrator:
+
+- **Dispatch by tag.** Each task goes to its tier's agent definition, with
+  no `model` parameter: a per-invocation `model` takes precedence over the
+  definition's pinned model. A task starts at its own tier.
+  The orchestrator may raise a task's tier at dispatch, never lower it.
+- **Batch the `[H]` tasks.** The ready `[H]` tasks of one phase go to one
+  `haiku-high` agent, which runs them in order, commits each passing task on
+  its own and reports a table. Only the failed tasks escalate.
+- **Check every task.** The orchestrator checks the task's scope (its
+  commit touches only its `files:`) and runs its verify command.
+  A task fails when its verify command fails, when its diff touches a file outside its `files:` list, or when the writer reports doubt or a block.
+- **Escalate.** Escalation is `[H]` → `[S]` → `[O]`, one attempt at each tier; when `[O]` fails, stop and send the task back to `/speckit-plan` or `/speckit-clarify` with a short failure record.
+  A task that fails at every tier points to a gap in the spec, not a weak
+  model.
+- **Pin and verify.** Each agent definition names its exact model ID.
+  Before accepting any task's work, the orchestrator reads the model from
+  the subagent's transcript:
+
+  ```sh
+  grep -o '"model":"[^"]*"' <the subagent's output file> | sort | uniq -c
+  ```
+
+  Every line must name the definition's model. Commit trailers name the
+  model that actually ran. On a mismatch, record it, then either re-verify
+  the work at the intended tier, or accept it explicitly with the mismatch
+  disclosed.
+- **Mark a task `[X]`** only after its scope check and its verify command
+  pass.
+
+Pinning alone is not enough. Claude Code's model documentation says that in
+a subagent a safety-classifier flag re-runs the request on a fallback model
+without a prompt (for Opus 5.5, a cybersecurity flag re-runs on Opus 4.8),
+and that after a fallback the session continues on the fallback model;
+nothing there exempts a pinned model. A configured `fallbackModel` chain is
+a second documented way for a subagent to switch model: "When a subagent's
+request fails over, Claude Code tries your configured fallback models in
+order, and the subagent continues on the model that accepts the request."
+On 2026-10-12 two `opus` subagents
+switched from `claude-opus-5-5` to `claude-opus-4-8` without telling the
+orchestrator, and the cause is not established. `availableModels` is
+deliberately not used to block the fallback, because flagged work would
+then just fail. The transcript check is what catches a switch. A
+`CLAUDE_CODE_EFFORT_LEVEL` in the environment overrides every definition's
+`effort`, so it must be unset when tasks are dispatched.
+
+Where no subagents are available, for example for an agent of another
+runtime, `/speckit-implement` keeps Spec Kit's stock path: one session runs
+the tasks in order, ignores the tier tags, and still runs each task's verify
+command before marking it `[X]`. A Claude main session bound by this section
+never takes that path for code: if the tier definitions are missing, it
+stops and tells Brett.
+
 This section is Claude-specific; other agents follow their own runtime's
-equivalent and the rest of this protocol unchanged.
+equivalent and the rest of this protocol unchanged. An agent of another
+runtime may ignore the tier tags, but keeps them, and the `files:` and
+`verify:` fields, whenever it writes or edits `tasks.md`.
 
 ## OpenSpec Runtime Placement
 
@@ -3582,6 +3730,25 @@ def global_shape_block_targets(home: Path) -> list[Path]:
     return targets
 
 
+def has_symlinked_ancestor(path: Path) -> bool:
+    """Whether a directory above ``path`` is a symlink.
+
+    The same walk ensure_safe_destination_parent refuses with SystemExit. The
+    installer never writes through a symlinked ancestor, so the global block
+    passes skip a user-global skills root reached through one (``~/.agents``
+    linked into a dotfiles checkout, say) and log the skip instead of ending
+    the whole run. What the link points to is left as it is.
+    """
+    current = path.parent
+    while True:
+        mode = mode_without_following(current)
+        if mode is not None and stat.S_ISLNK(mode):
+            return True
+        if current.parent == current:
+            return False
+        current = current.parent
+
+
 def ensure_skill_shape_blocks(
     repo: Path,
     agent_root: Path,
@@ -3596,8 +3763,97 @@ def ensure_skill_shape_blocks(
         return
     global_block = shape_block_body(str(agent_root))
     for path in global_shape_block_targets(Path.home()):
+        if has_symlinked_ancestor(path):
+            log(f"skipped {path}: symlinked ancestor; the installer does not write through a symlink")
+            continue
         try:
             upsert_shape_block(path, global_block, dry_run)
+        except PermissionError as exc:
+            log(f"skipped {path}: permission denied ({exc})")
+        except OSError as exc:
+            log(f"skipped {path}: {exc}")
+
+
+def routing_block_template(agent_root: Path, skill: str) -> str | None:
+    """The managed Model Routing block for one skill, read from the protocol root."""
+    path = agent_root.joinpath(*ROUTING_TEMPLATE_PARTS, f"{skill}.md")
+    mode = mode_without_following(path)
+    if mode is None:
+        return None
+    if not stat.S_ISREG(mode):
+        raise SystemExit(f"Refusing model-routing template {path}: not a regular file")
+    block = path.read_text(encoding="utf-8").strip("\n")
+    if (
+        not block.startswith(ROUTING_START)
+        or not block.endswith(ROUTING_END)
+        or block.count(ROUTING_START) != 1
+        or block.count(ROUTING_END) != 1
+    ):
+        raise SystemExit(
+            f"Refusing model-routing template {path}: it must hold exactly one "
+            f"{ROUTING_START} ... {ROUTING_END} block and nothing else"
+        )
+    return block
+
+
+def routing_block_applied(text: str, block: str) -> str:
+    """Replace the Model Routing block in place, else place it after the shape block."""
+    if ROUTING_START in text and ROUTING_END in text:
+        before, remainder = text.split(ROUTING_START, 1)
+        _, after = remainder.split(ROUTING_END, 1)
+        return before + block + after
+    if SHAPE_START in text and SHAPE_END in text:
+        before, after = text.split(SHAPE_END, 1)
+        head = f"{before}{SHAPE_END}\n\n{block}"
+        tail = after.lstrip("\n")
+        return f"{head}\n\n{tail}" if tail else f"{head}\n"
+    return shape_block_applied(text, block)
+
+
+def upsert_routing_block(path: Path, block: str, dry_run: bool) -> None:
+    try:
+        text = read_destination_text(path)
+    except (OSError, UnicodeError):
+        log(f"skipped {path}: not a readable regular file")
+        return
+    if text is None:
+        return
+    write_text(path, routing_block_applied(text, block), dry_run)
+
+
+def ensure_skill_routing_blocks(
+    repo: Path,
+    agent_root: Path,
+    dry_run: bool,
+    include_global: bool,
+) -> None:
+    """Maintain the managed Model Routing block in the Speckit build skills."""
+    templates: dict[str, str] = {}
+    for skill in ROUTING_SKILLS:
+        block = routing_block_template(agent_root, skill)
+        if block is None:
+            template = agent_root.joinpath(*ROUTING_TEMPLATE_PARTS, f"{skill}.md")
+            log(f"skipped model-routing block for {skill}: no template at {template}")
+            continue
+        templates[skill] = block
+    if not templates:
+        return
+    for path in repo_shape_block_targets(repo):
+        skill = path.parent.name
+        if skill in templates:
+            upsert_routing_block(path, templates[skill], dry_run)
+    if not include_global:
+        return
+    for path in global_shape_block_targets(Path.home()):
+        skill = path.parent.name
+        if skill not in templates:
+            continue
+        if has_symlinked_ancestor(path):
+            log(f"skipped {path}: symlinked ancestor; the installer does not write through a symlink")
+            continue
+        global_block = templates[skill].replace(REPO_AGENT_ROOT, str(agent_root))
+        try:
+            upsert_routing_block(path, global_block, dry_run)
         except PermissionError as exc:
             log(f"skipped {path}: permission denied ({exc})")
         except OSError as exc:
@@ -4128,6 +4384,14 @@ def main() -> int:
 
         if not args.no_skill_shape_blocks:
             ensure_skill_shape_blocks(
+                repo,
+                agent_root,
+                args.dry_run,
+                not args.no_global_agent_pointers,
+            )
+
+        if not args.no_skill_routing_blocks:
+            ensure_skill_routing_blocks(
                 repo,
                 agent_root,
                 args.dry_run,

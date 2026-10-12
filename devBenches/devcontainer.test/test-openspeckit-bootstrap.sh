@@ -609,6 +609,17 @@ assert_contains "$WORKFLOW_PROTOCOL" 'NNN-feature-name' 'workflow protocol reser
 assert_contains "$WORKFLOW_PROTOCOL" '**The main session — Fable, or Opus 5.5 at max effort**' 'workflow protocol admits Opus 5.5 at max effort as the main session'
 assert_contains "$WORKFLOW_PROTOCOL" 'echo $CLAUDE_EFFORT' 'workflow protocol tells the main session how to verify max effort'
 assert_not_contains "$WORKFLOW_PROTOCOL" '- **Fable** (the main session) thinks and orchestrates only' 'workflow protocol no longer carries the Fable-only main-session rule'
+assert_contains "$WORKFLOW_PROTOCOL" '### Build Tiers' 'workflow protocol carries the Speckit build tiers'
+assert_contains "$WORKFLOW_PROTOCOL" '`[H]` runs on `haiku-high`, `[S]` on `sonnet-xhigh`, `[O]` on `opus-xhigh`.' 'workflow protocol names the agent definition of each build tier'
+assert_contains "$WORKFLOW_PROTOCOL" 'A task fails when its verify command fails, when its diff touches a file outside its `files:` list, or when the writer reports doubt or a block.' 'workflow protocol defines a failed build task'
+assert_contains "$WORKFLOW_PROTOCOL" 'Escalation is `[H]` → `[S]` → `[O]`, one attempt at each tier; when `[O]` fails, stop and send the task back to `/speckit-plan` or `/speckit-clarify` with a short failure record.' 'workflow protocol carries the escalation ladder'
+assert_not_contains "$WORKFLOW_PROTOCOL" 'Delegate via the Agent tool with explicit `model` overrides' 'workflow protocol no longer tells build dispatch to pass a model override'
+assert_contains "$WORKFLOW_PROTOCOL" 'A repository with no `## Governed invariants` section gets no `[H]` tasks; its tasks are `[S]` at least.' 'workflow protocol gives no [H] task to a repository without a Governed invariants section'
+assert_contains "$WORKFLOW_PROTOCOL" '`availableModels` is' 'workflow protocol names availableModels in the fallback paragraph'
+assert_contains "$WORKFLOW_PROTOCOL" 'deliberately not used to block the fallback, because flagged work would' 'workflow protocol leaves the content-based fallback unblocked'
+assert_contains "$WORKFLOW_PROTOCOL" 'A configured `fallbackModel` chain is' 'workflow protocol names the fallbackModel chain as a second way for a subagent to switch model'
+assert_contains "$WORKFLOW_PROTOCOL" 'order, and the subagent continues on the model that accepts the request.' 'workflow protocol quotes the docs on a subagent whose request fails over'
+assert_contains "$WORKFLOW_PROTOCOL" 'three-leg project); the assembly root' 'workflow protocol reads the Governed invariants section in the code tree root, not the assembly root'
 assert_contains "$WORKFLOW_PROTOCOL" '## Triad Feature Amendments' 'workflow protocol carries the Triad Feature Amendments section'
 assert_contains "$WORKFLOW_PROTOCOL" '### Two layers and existing authority' 'workflow protocol carries the triad two-layers subsection'
 assert_contains "$WORKFLOW_PROTOCOL" '### Current instructions and durable amendment records' 'workflow protocol carries the triad current-instructions subsection'
@@ -4073,6 +4084,105 @@ if ! python3 "$SETUP_SCRIPT" \
     exit 1
 fi
 assert_not_contains "$SKIPPED_BLOCK_ROOT/.claude/skills/speckit-plan/SKILL.md" 'OPENSPEC-SPECKIT-SHAPE' '--no-skill-shape-blocks leaves skills alone'
+
+printf '%s\n' 'Given: Speckit build skills, model-routing templates, and a user-global skills root reached through a symlink'
+ROUTING_ROOT="$TMPDIR_ROOT/routing-root"
+ROUTING_HOME="$TMPDIR_ROOT/routing-home"
+ROUTING_PROTOCOL_ROOT="$TMPDIR_ROOT/routing-protocol"
+ROUTING_LINKED_AGENTS="$TMPDIR_ROOT/routing-linked-agents"
+make_three_leg_root "$ROUTING_ROOT"
+mkdir -p \
+    "$ROUTING_PROTOCOL_ROOT/templates/speckit/model-routing" \
+    "$ROUTING_ROOT/.claude/skills/speckit-tasks" \
+    "$ROUTING_ROOT/.claude/skills/speckit-plan" \
+    "$ROUTING_ROOT/.agents/skills/speckit-analyze" \
+    "$ROUTING_ROOT/.codex/skills/speckit-implement" \
+    "$ROUTING_HOME/.claude/skills/speckit-tasks" \
+    "$ROUTING_HOME/.codex/skills/speckit-analyze" \
+    "$ROUTING_LINKED_AGENTS/skills/speckit-implement"
+for routing_skill in speckit-tasks speckit-implement speckit-analyze; do
+    printf '%s\n' \
+        '<!-- OPENSPEC-SPECKIT-MODEL-ROUTING:START -->' \
+        "## Model Routing fixture for $routing_skill" \
+        'Full rules: `${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/protocols/openspec-speckit-workflow.md` ("Build Tiers").' \
+        '<!-- OPENSPEC-SPECKIT-MODEL-ROUTING:END -->' \
+        > "$ROUTING_PROTOCOL_ROOT/templates/speckit/model-routing/$routing_skill.md"
+done
+for routing_skill_file in \
+    "$ROUTING_ROOT/.claude/skills/speckit-tasks/SKILL.md" \
+    "$ROUTING_ROOT/.claude/skills/speckit-plan/SKILL.md" \
+    "$ROUTING_ROOT/.agents/skills/speckit-analyze/SKILL.md" \
+    "$ROUTING_ROOT/.codex/skills/speckit-implement/SKILL.md" \
+    "$ROUTING_HOME/.claude/skills/speckit-tasks/SKILL.md" \
+    "$ROUTING_HOME/.codex/skills/speckit-analyze/SKILL.md" \
+    "$ROUTING_LINKED_AGENTS/skills/speckit-implement/SKILL.md"; do
+    printf '%s\n' '---' 'name: fixture' '---' '' 'Stock Spec Kit body.' > "$routing_skill_file"
+done
+ln -s "$ROUTING_LINKED_AGENTS" "$ROUTING_HOME/.agents"
+
+printf '%s\n' 'When: bootstrap maintains the managed shape and model-routing blocks'
+export HOME="$ROUTING_HOME"
+export AGENT_PROTOCOL_ROOT="$ROUTING_PROTOCOL_ROOT"
+if python3 "$SETUP_SCRIPT" \
+    --repo "$ROUTING_ROOT" \
+    --no-speckit-registration \
+    --no-skill-links \
+    --preserve-readmes > "$TMPDIR_ROOT/routing-block.log" 2>&1; then
+    pass 'bootstrap completes when a user-global skills root is reached through a symlink'
+else
+    fail 'bootstrap completes when a user-global skills root is reached through a symlink'
+    cat "$TMPDIR_ROOT/routing-block.log"
+fi
+
+printf '%s\n' 'Then: the three build skills carry the routing block after the shape block, and no other skill does'
+ROUTING_TASKS="$ROUTING_ROOT/.claude/skills/speckit-tasks/SKILL.md"
+assert_equal "$(grep -A2 -F '<!-- OPENSPEC-SPECKIT-SHAPE:END -->' "$ROUTING_TASKS" | sed -n '3p')" '<!-- OPENSPEC-SPECKIT-MODEL-ROUTING:START -->' 'routing block follows the shape block after one blank line'
+assert_contains "$ROUTING_TASKS" '## Model Routing fixture for speckit-tasks' 'routing block reaches repo-local Claude speckit-tasks'
+assert_contains "$ROUTING_TASKS" '${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/protocols/openspec-speckit-workflow.md' 'repo-local routing block keeps the portable protocol root'
+assert_contains "$ROUTING_TASKS" 'Stock Spec Kit body.' 'routing block preserves the skill body'
+assert_contains "$ROUTING_ROOT/.agents/skills/speckit-analyze/SKILL.md" '## Model Routing fixture for speckit-analyze' 'routing block reaches repo-local Agents speckit-analyze'
+assert_contains "$ROUTING_ROOT/.codex/skills/speckit-implement/SKILL.md" '## Model Routing fixture for speckit-implement' 'routing block reaches repo-local Codex speckit-implement'
+assert_not_contains "$ROUTING_ROOT/.claude/skills/speckit-plan/SKILL.md" 'OPENSPEC-SPECKIT-MODEL-ROUTING' 'routing block skips skills outside the build tiers'
+assert_contains "$ROUTING_HOME/.claude/skills/speckit-tasks/SKILL.md" "$ROUTING_PROTOCOL_ROOT/protocols/openspec-speckit-workflow.md" 'user-global routing block uses the resolved protocol root'
+assert_contains "$ROUTING_HOME/.codex/skills/speckit-analyze/SKILL.md" '## Model Routing fixture for speckit-analyze' 'routing block reaches user-global Codex skills'
+assert_not_contains "$ROUTING_LINKED_AGENTS/skills/speckit-implement/SKILL.md" 'OPENSPEC-SPECKIT-MODEL-ROUTING' 'routing block never writes through a symlinked user-global skills root'
+assert_not_contains "$ROUTING_LINKED_AGENTS/skills/speckit-implement/SKILL.md" 'OPENSPEC-SPECKIT-SHAPE' 'shape block never writes through a symlinked user-global skills root'
+assert_contains "$TMPDIR_ROOT/routing-block.log" 'symlinked ancestor' 'the skipped symlinked skills root is logged'
+assert_not_contains "$TMPDIR_ROOT/routing-block.log" 'maintained where the link points' 'the skip log claims nothing about who maintains a symlinked skills root'
+assert_contains "$TMPDIR_ROOT/routing-block.log" 'the installer does not write through a symlink' 'the skip log says what the installer does with a symlinked skills root'
+
+printf '%s\n' 'When: bootstrap reruns, then reruns with --no-skill-routing-blocks against a fresh skill'
+ROUTING_FIRST="$TMPDIR_ROOT/routing-first.snapshot"
+ROUTING_SECOND="$TMPDIR_ROOT/routing-second.snapshot"
+snapshot_repo "$ROUTING_ROOT" > "$ROUTING_FIRST"
+python3 "$SETUP_SCRIPT" \
+    --repo "$ROUTING_ROOT" \
+    --no-speckit-registration \
+    --no-skill-links \
+    --preserve-readmes > "$TMPDIR_ROOT/routing-block-second.log" 2>&1 \
+    || fail 'second routing-block bootstrap invocation failed'
+snapshot_repo "$ROUTING_ROOT" > "$ROUTING_SECOND"
+if cmp -s "$ROUTING_FIRST" "$ROUTING_SECOND"; then
+    pass 'managed routing block is idempotent'
+else
+    fail 'managed routing block changes on rerun'
+fi
+assert_equal "$(grep -Fc '<!-- OPENSPEC-SPECKIT-MODEL-ROUTING:START -->' "$ROUTING_TASKS")" 1 'managed routing block keeps one start marker'
+assert_equal "$(grep -Fc '<!-- OPENSPEC-SPECKIT-MODEL-ROUTING:END -->' "$ROUTING_TASKS")" 1 'managed routing block keeps one end marker'
+mkdir -p "$ROUTING_ROOT/.claude/skills/speckit-implement"
+printf '%s\n' '---' 'name: fixture' '---' '' 'Stock Spec Kit body.' > "$ROUTING_ROOT/.claude/skills/speckit-implement/SKILL.md"
+python3 "$SETUP_SCRIPT" \
+    --repo "$ROUTING_ROOT" \
+    --no-speckit-registration \
+    --no-skill-links \
+    --no-skill-routing-blocks \
+    --preserve-readmes > "$TMPDIR_ROOT/routing-block-skipped.log" 2>&1 \
+    || fail '--no-skill-routing-blocks bootstrap invocation failed'
+assert_not_contains "$ROUTING_ROOT/.claude/skills/speckit-implement/SKILL.md" 'OPENSPEC-SPECKIT-MODEL-ROUTING' '--no-skill-routing-blocks leaves skills alone'
+# The scenarios below ran with the shape-block fixture's HOME and protocol root
+# before this scenario existed; give them back exactly that environment.
+export HOME="$SHAPE_BLOCK_HOME"
+export AGENT_PROTOCOL_ROOT="$SHAPE_BLOCK_PROTOCOL_ROOT"
 
 printf '%s\n' 'Given: overlay template trees with and without the shape compatibility marker'
 make_fake_overlay_template() {
