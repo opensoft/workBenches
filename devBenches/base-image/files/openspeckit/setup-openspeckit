@@ -2985,6 +2985,7 @@ Difficulty comes from coupling, not size.
   - none of its files falls under a governed invariant.
 
   Unknown coupling means not `[H]`.
+  A repository with no `## Governed invariants` section gets no `[H]` tasks; its tasks are `[S]` at least.
 - **`[O]`** when ANY of these holds:
   - a design choice or a new interface;
   - a contract, schema or boundary;
@@ -3058,10 +3059,11 @@ without a prompt (for Opus 5.5, a cybersecurity flag re-runs on Opus 4.8),
 and that after a fallback the session continues on the fallback model;
 nothing there exempts a pinned model. On 2026-10-12 two `opus` subagents
 switched from `claude-opus-5-5` to `claude-opus-4-8` without telling the
-orchestrator, and the cause is not established. The transcript check is
-what catches a switch. A `CLAUDE_CODE_EFFORT_LEVEL` in the environment
-overrides every definition's `effort`, so it must be unset when tasks are
-dispatched.
+orchestrator, and the cause is not established. `availableModels` is
+deliberately not used to block the fallback, because flagged work would
+then just fail. The transcript check is what catches a switch. A
+`CLAUDE_CODE_EFFORT_LEVEL` in the environment overrides every definition's
+`effort`, so it must be unset when tasks are dispatched.
 
 Where no subagents are available, for example for an agent of another
 runtime, `/speckit-implement` keeps Spec Kit's stock path: one session runs
