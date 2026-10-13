@@ -793,6 +793,13 @@ launcher also passes `--allow-dangerously-skip-permissions`, keeping bypass in
 the in-session Shift+Tab mode cycle if the user temporarily selects another
 permission mode.
 
+The launcher also seeds `CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK` = `"1"` under
+`env` in each profile's `settings.json`, which turns off the automatic switch
+to the fallback model when a safety classifier flags a request (the
+`switchModelsOnFlag` setting never protects a subagent; the variable does).
+Other `env` entries are kept, and an explicit value already in the file, such
+as `"0"` to opt a profile out, is left as it is.
+
 Do not resume the same Claude session concurrently from two profiles. Use email
 magic-link authentication for mailbox aliases; Microsoft or Google SSO may
 resolve an alias back to the mailbox's primary identity.
