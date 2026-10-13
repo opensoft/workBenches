@@ -236,7 +236,7 @@ def main():
     assert '# custom shell settings' in (HOME / '.zshrc').read_text()
     assert (HOME / '.p10k.zsh').read_text() == '# custom prompt settings\n'
     ENV['PATH'] = str(HOME / '.local/bin') + ':' + ENV['PATH']
-    terminal('cancel-account-setup', [CODEX_ACCOUNTS, (r'Authentication route \[1\]: ', 'Q')], 130)
+    terminal('cancel-account-setup', [CODEX_ACCOUNTS, (r'Authentication route \[1\]: ', 'Q\n')], 130)
     assert not (HOME / '.config/workbenches/openai-profiles.json').exists()
     server = seed_vault()
     replies = [CODEX_ACCOUNTS, (r'Authentication route \[1\]: ', '2V\n'),
