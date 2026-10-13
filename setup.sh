@@ -118,20 +118,6 @@ if [ "$USERNAME" = "--user" ]; then
     USERNAME="${2:-$(whoami)}"
 fi
 
-# Verify local prerequisites before host installers, account onboarding,
-# credential recovery or any image build can run.
-log_header "DOCKER CHECK"
-if ensure_docker; then
-    :
-else
-    prerequisite_status=$?
-    case "$prerequisite_status" in
-        130|143) log_header "SETUP CANCELLED" ;;
-        *) log_header "DOCKER PREREQUISITE FAILED" ;;
-    esac
-    exit "$prerequisite_status"
-fi
-
 # Select components before profile/host changes and before any image build.
 ensure_setup_dependencies || exit "$?"
 selection_file="$(mktemp "${TMPDIR:-/tmp}/workbenches-selection.XXXXXX")" || exit 1
@@ -145,6 +131,23 @@ fi
 selected_bench_paths="$(python3 "$SCRIPT_DIR/scripts/setup_selection.py" benches "$selection_file")" || exit "$?"
 export WORKBENCHES_SELECTED_PROVIDERS="$(python3 "$SCRIPT_DIR/scripts/setup_selection.py" providers "$selection_file")"
 export WORKBENCHES_PROFILE_PROVIDERS="$(python3 -c 'import os; print(",".join(p for p in os.environ["WORKBENCHES_SELECTED_PROVIDERS"].split(",") if p in ("claude", "openai")))')"
+
+# Verify local prerequisites before host installers, account onboarding,
+# credential recovery or any image build can run.
+log_header "DOCKER CHECK"
+if ! python3 "$SCRIPT_DIR/scripts/setup_selection.py" docker "$selection_file"; then
+    echo "Host-tool removal does not require Docker."
+elif ensure_docker; then
+    :
+else
+    prerequisite_status=$?
+    case "$prerequisite_status" in
+        130|143) log_header "SETUP CANCELLED" ;;
+        *) log_header "DOCKER PREREQUISITE FAILED" ;;
+    esac
+    exit "$prerequisite_status"
+fi
+
 
 # Enter in the TUI authorizes the selected changes. Account setup is opt-in.
 python3 "$SCRIPT_DIR/scripts/setup_selection.py" review "$selection_file" || exit "$?"

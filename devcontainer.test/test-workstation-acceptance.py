@@ -285,9 +285,12 @@ def main():
     local_note.write_text('preserve this local work')
     container_id = subprocess.check_output(['docker', 'inspect', '--format', '{{.Id}}', 'py-bench'], text=True)
     removal = (TUI, '\x1b[B' * benches.index('pyBench') + 'D\n')
-    output = terminal('bench-removal-preserves-local-work', [removal], 1)
-    assert 'Removal blocked' in output and local_note.read_text() == 'preserve this local work'
-    assert subprocess.check_output(['docker', 'inspect', '--format', '{{.Id}}', 'py-bench'], text=True) == container_id
+    output = terminal('bench-uninstall-preserves-local-work', [removal])
+    assert 'pyBench uninstalled' in output and local_note.read_text() == 'preserve this local work'
+    assert subprocess.run(['docker', 'inspect', 'py-bench'], capture_output=True).returncode != 0
+    assert subprocess.run(['docker', 'image', 'inspect', 'py-bench:latest'], capture_output=True).returncode != 0
+    assert subprocess.run(['docker', 'image', 'inspect', 'py-bench:node'], capture_output=True).returncode != 0
+    assert subprocess.run(['docker', 'image', 'inspect', 'workbench-base:latest', 'dev-bench-base:latest'], capture_output=True).returncode == 0
     for path in (REPO / 'logs').glob('*.log'):
         assert all(value not in path.read_text() for value in MARKERS), 'test value leaked to setup logs'
     assert not subprocess.check_output(['docker', 'ps', '-a', '--filter', 'ancestor=' + IMAGE, '-q']).strip(), 'credential worker left behind'

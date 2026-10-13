@@ -31,7 +31,7 @@ services:
     command: [bash, -ec, "bash devcontainer.test/test-claude-npm-guard.sh; bash devcontainer.test/test-layer3-claude-version.sh; bash devcontainer.test/test-wave-container-shell.sh"]
 
   acceptance-engine:
-    profiles: [workstation-acceptance]
+    profiles: [workstation-acceptance, component-lifecycle]
     image: docker:28-dind
     privileged: true
     environment:
@@ -69,6 +69,24 @@ services:
       - ..:/source:ro
       - ../artifacts/workstation-acceptance:/report
     command: [bash, -ec, "mkdir -p /acceptance/tmp; chown -R node:node /home/node /acceptance /report; exec runuser -u node -- python3 /source/devcontainer.test/test-workstation-acceptance.py"]
+
+  component-lifecycle:
+    profiles: [component-lifecycle]
+    image: workbenches-test:workstation
+    build:
+      context: workstation
+    depends_on:
+      acceptance-engine:
+        condition: service_healthy
+    environment:
+      TMPDIR: /acceptance/tmp
+      WORKBENCHES_LIFECYCLE_TEST: "1"
+    volumes:
+      - acceptance-socket:/var/run
+      - acceptance-home:/home/node
+      - acceptance-tmp:/acceptance
+      - ..:/source:ro
+    command: [bash, -ec, "mkdir -p /acceptance/tmp; chown -R node:node /home/node /acceptance; exec runuser -u node -- python3 /source/devcontainer.test/test-component-lifecycle.py"]
 
   test:
     image: workbench-base:${USER:-brett}

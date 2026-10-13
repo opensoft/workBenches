@@ -44,6 +44,8 @@ def main():
         print(','.join(sorted({AI[key] for key in keys if key in AI})))
     elif command == 'node':
         return 0 if keys & NODE else 1
+    elif command == 'docker':
+        return 0 if keys or any(entry['key'].startswith('bench_') for entry in entries) else 1
     elif command == 'benches':
         for key in sorted(keys):
             if key.startswith('bench_'):

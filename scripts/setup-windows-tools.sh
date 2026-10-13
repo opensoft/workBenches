@@ -64,7 +64,8 @@ if (-not \$winget) {
   Write-Output 'winget-not-found'
   exit 127
 }
-& \$winget $args"
+& \$winget $args
+exit \$LASTEXITCODE"
     run_powershell "$ps"
 }
 
@@ -181,8 +182,9 @@ install_pi_terminal() {
 usage() {
     cat <<'USAGE'
 Usage: setup-windows-tools.sh [vscode|warp|wave|pi_terminal|all]...
+       setup-windows-tools.sh --uninstall [vscode|warp|wave|amnezia|0dcloud]...
 
-Installs Windows workstation tools from WSL using winget where available.
+Installs or removes Windows workstation tools from WSL using winget.
 USAGE
 }
 
@@ -192,6 +194,12 @@ main() {
         exit 2
     fi
 
+    local action=install
+    if [[ "${1:-}" == --uninstall ]]; then
+        action=uninstall
+        shift
+        [[ $# -gt 0 ]] || { usage; exit 2; }
+    fi
     local tools=("$@")
     if [ "${#tools[@]}" -eq 0 ]; then
         tools=("all")
@@ -199,6 +207,21 @@ main() {
 
     local failed=0
     for tool in "${tools[@]}"; do
+        if [[ "$action" == uninstall ]]; then
+            local package=""
+            case "$tool" in
+                vscode) package=Microsoft.VisualStudioCode ;;
+                warp) package=Warp.Warp ;;
+                wave) package=CommandLine.Wave ;;
+                amnezia) package=AmneziaVPN.AmneziaVPN ;;
+                0dcloud)
+                    run_winget "uninstall --exact --name '0dcloud' --accept-source-agreements" || failed=1
+                    continue ;;
+                *) echo "No Windows uninstall adapter for $tool"; failed=1; continue ;;
+            esac
+            run_winget "uninstall --exact --id $(ps_quote "$package") --accept-source-agreements" || failed=1
+            continue
+        fi
         case "$tool" in
             all)
                 install_vscode || failed=1
@@ -224,7 +247,7 @@ main() {
     done
 
     if [ "$failed" -eq 0 ]; then
-        echo "✓ Windows workstation tool setup complete"
+        echo "✓ Windows workstation tool $action complete"
     else
         echo "⚠ Windows workstation tool setup completed with warnings"
         echo "  See: $LOG_FILE"

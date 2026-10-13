@@ -288,11 +288,31 @@ step.
 
 | State | Action |
 |-------|--------|
-| Installed + images exist | `✓ up to date` — skipped |
-| Installed + Layer 3 missing | `⚠ Layer 3 missing` — hint to run ensure-layer3.sh |
-| Needs setup (repo exists, no infra) | Runs `setup.sh` or `build-layer.sh` |
-| Not installed | Clones repo, then runs setup |
-| No setup.sh or build-layer.sh | Marks as ready for VS Code |
+| Installed images/container | Space selects an update; leaving it unchecked keeps it |
+| Checkout only, missing runtime | Shows `needs setup`; Space runs bench setup |
+| Not installed | Space selects cloning and installation |
+| Selected uninstall | D removes the selected runtime and verifies its absence |
+| Docker inventory unavailable | Shows `needs docker`; install/removal selections verify Docker before applying |
+| Different checkout/runtime ownership | Shows `needs check`; restore the expected checkout and refresh |
+
+Run `./setup.sh` again to manage installed components. Use **Space** to select
+or undo an install/update, **D** to select or undo an uninstall, **R** to
+refresh the installed state, **Enter** to apply, and **Q** to cancel.
+
+Bench uninstall stops/removes only the selected bench's containers and removes
+its `latest` and current-user image tags. The checkout, local work, mounted
+projects, credentials, volumes, and shared base images remain available.
+The source checkout then shows `needs setup` and can be installed again.
+
+Host-tool removal uses the recognized native, npm, uv, Linux package, or Windows
+WinGet installation method. It preserves account/profile data and verifies
+that the tool is gone. An unknown installation or failed removal reports a
+failure with an actionable message. Saved terminal settings alone are not
+evidence that the terminal application is installed. Host-only removal does
+not require Docker or install/update Node.js.
+
+Shell setup, Org workspace, and AI accounts are configuration actions; they can
+be configured again without deleting shell settings, workspaces, or credentials.
 
 ## Directory Structure
 
