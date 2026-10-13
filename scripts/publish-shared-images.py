@@ -7,7 +7,10 @@ import subprocess
 import tempfile
 import urllib.error
 import urllib.request
-import shared_images as shared
+import importlib.util
+spec = importlib.util.spec_from_file_location("shared_images", Path(__file__).with_name("shared-images.py"))
+shared = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(shared)
 
 ROOT = shared.ROOT
 

@@ -15,6 +15,11 @@ shared = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(shared)
 
 class ImageTests(unittest.TestCase):
+    def test_publisher_loads_the_same_shared_image_contract(self):
+        spec=importlib.util.spec_from_file_location('publisher',ROOT/'scripts/publish-shared-images.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        self.assertEqual(module.shared.release_tag(),shared.release_tag())
+
     def test_source_hash_is_path_independent_and_changes_with_helpers(self):
         with tempfile.TemporaryDirectory() as directory:
             roots = [Path(directory)/name for name in ('one','two')]

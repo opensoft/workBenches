@@ -43,6 +43,11 @@ def main():
     if initial and initial['State']['Running']:
         print(f'Needs attention: {container} is already running; preserving it. Stop it before applying setup changes.', file=sys.stderr)
         return 1
+    if initial:
+        labels = initial.get('Config', {}).get('Labels') or {}
+        if labels.get('com.docker.compose.project') != json.loads(config.stdout).get('name') or labels.get('com.docker.compose.service') != container:
+            print('Needs attention: existing container belongs to another Compose lifecycle; preserving it.', file=sys.stderr)
+            return 1
     wave = ['bash', str(ROOT / 'scripts/wave-container-shell.sh'), '--workbenches-root', str(ROOT), '--shell', 'bash']
     with tempfile.TemporaryDirectory(prefix='workbenches-bench-') as directory:
         work = Path(directory)
