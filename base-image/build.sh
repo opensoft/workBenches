@@ -28,8 +28,11 @@ echo "  No cache: $NO_CACHE"
 echo ""
 
 # Build the image
+source_hash="$(python3 "$SCRIPT_DIR/../scripts/shared-images.py" fingerprint base)"
 echo "Building workbench-base:latest..."
 docker build \
+    --label "io.workbenches.source=$source_hash" \
+    --label "org.opencontainers.image.source=https://github.com/opensoft/workBenches" \
     $([ "$NO_CACHE" = true ] && printf '%s\n' "--no-cache") \
     -t "workbench-base:latest" \
     .

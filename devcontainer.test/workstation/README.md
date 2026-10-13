@@ -6,8 +6,9 @@ The workstation uses a fresh home, public bootstrap and anonymous HTTPS fallback
 It installs a CLI, signs in to a real temporary Vaultwarden over verified HTTPS,
 recovers a generated invalid AI key, installs and opens pyBench, and checks
 repeat setup, cancellation, refusal and a real npm network failure.
-The Wave check uses `--repair` to add its mounts to the disposable container
-already started by native bench setup. Ordinary launches preserve live containers.
+Native bench setup must include Wave mounts at first creation. The acceptance
+check uses ordinary `--check` without repair, and simple Vaultwarden recovery
+requires at most ten responses. Ordinary launches preserve live containers.
 The only clone modification adds trust for the private test CA to the credential
 image. No TLS verification is disabled. Hosted MFA/SSO and paid AI authorization
 still require separate test accounts and are not claimed by this test.

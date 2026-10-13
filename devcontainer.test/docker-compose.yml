@@ -1,6 +1,24 @@
 name: workbench-test
 
 services:
+  image-release:
+    profiles: [image-release]
+    image: workbenches-test:workstation
+    build:
+      context: workstation
+    working_dir: /source
+    volumes:
+      - ..:/source:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../artifacts/shared-image-release:/release
+    environment:
+      GH_TOKEN: ${GH_TOKEN:-}
+      REGISTRY_USER: ${REGISTRY_USER:-}
+      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-opensoft/workBenches}
+      GITHUB_SHA: ${GITHUB_SHA:-}
+      BUILDKIT_PROGRESS: plain
+    command: [python3, scripts/publish-shared-images.py]
+
   npm-integrity:
     profiles: [merge-validation]
     image: workbenches-test:workstation

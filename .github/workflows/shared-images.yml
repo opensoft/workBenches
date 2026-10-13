@@ -1,0 +1,48 @@
+name: Shared workstation images
+on:
+  push:
+    paths:
+      - '.github/workflows/shared-images.yml'
+      - 'scripts/shared-images.py'
+      - 'scripts/publish-shared-images.py'
+      - 'scripts/setup-bench-runtime.py'
+      - 'base-image/**'
+      - 'devBenches/base-image/**'
+      - 'devcontainer.test/test-install-friction.py'
+  pull_request:
+    paths:
+      - '.github/workflows/shared-images.yml'
+      - 'scripts/shared-images.py'
+      - 'scripts/publish-shared-images.py'
+      - 'scripts/setup-bench-runtime.py'
+      - 'base-image/**'
+      - 'devBenches/base-image/**'
+      - 'devcontainer.test/test-install-friction.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - run: python3 devcontainer.test/test-install-friction.py
+  publish:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Build and verify anonymous shared images through the declared bench
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
+        run: |
+          mkdir -p artifacts/shared-image-release
+          docker compose -f devcontainer.test/docker-compose.yml --profile image-release run --build --rm --no-deps image-release

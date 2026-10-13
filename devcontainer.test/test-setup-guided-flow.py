@@ -85,6 +85,41 @@ class GuidedFlowTests(unittest.TestCase):
         (self.config / 'openai-profiles.json').write_text(json.dumps(data))
         return data
 
+    def test_compact_vault_choice_is_one_response_and_remembers_service(self):
+        route = self.home / 'route'
+        route.touch(mode=0o600)
+        status, output = terminal_run([sys.executable, str(ROOT / 'scripts/setup-credential-recovery.py'), '--choose-route', str(route)], self.env, [('Authentication route', '2V\n')])
+        self.assertEqual(status, 0, output)
+        self.assertEqual(route.read_text(), 'vault:vaultwarden')
+        self.assertNotIn('Services (numbers', output)
+
+    def test_compact_recovery_infers_key_and_keeps_explicit_destination_confirmation(self):
+        mapping = dict(self.mapping, compact=True)
+        item = {'id': '00000000-0000-0000-0000-000000000001', 'name': 'Codex test', 'type': 1, 'login': {'password': 'NEVER-PRINT'}}
+        answers = []
+        def answer(label):
+            answers.append(label)
+            return 'y'
+        def command(argv, env, limit=24576):
+            return json.dumps([item]).encode() if argv[1] == 'list' else b'fake-only-integration-key'
+        with patch.object(runtime, 'vault_command', side_effect=command), patch.object(runtime, 'prompt', side_effect=answer):
+            picked = runtime.pick_item(mapping, self.entry, {})
+        self.assertEqual(picked['credentialFormat'], 'api-key')
+        self.assertEqual(answers, ['Confirm [y/N]: '])
+
+    def test_compact_picker_requires_selection_when_items_are_ambiguous_and_cancels(self):
+        item = {'id': '00000000-0000-0000-0000-000000000001', 'name': 'Codex test', 'type': 2, 'notes': 'NEVER-PRINT'}
+        with patch.object(runtime, 'vault_command', return_value=json.dumps([item, dict(item, id='00000000-0000-0000-0000-000000000002')]).encode()), patch.object(runtime, 'prompt', return_value='s') as prompt:
+            self.assertIsNone(runtime.pick_item(dict(self.mapping,compact=True), self.entry, {}))
+        self.assertIn('Item number', prompt.call_args.args[0])
+
+    def test_profile_email_default_is_selected_metadata_and_ambiguous_accounts_have_no_default(self):
+        self.manifest()
+        self.assertEqual(profiles.login_email([self.entry]), 'personal-1@example.com')
+        self.manifest(('personal-1','personal-2'))
+        other = dict(self.entry,profile='personal-2')
+        self.assertEqual(profiles.login_email([self.entry,other]), '')
+
     def test_onboarding_q_and_eof_cancel_without_traceback_or_manifests(self):
         for reply in ('Q\n', '\x04'):
             status, output = terminal_run([sys.executable, str(ROOT / 'scripts/onboard-ai-profiles.py')], self.env,
@@ -490,6 +525,7 @@ process_selections''', input='\n', PATH=self.fake_npm(self.home, failure=13), WO
                 binary = home / 'bin'
                 binary.mkdir()
                 docker = binary / 'docker'
+                (repo / 'scripts/shared-images.py').write_text('import sys; sys.exit(0)\n')
                 docker.write_text('#!/bin/bash\nexit 0\n')
                 docker.chmod(0o755)
                 shell = repo / 'scripts/setup-shell.sh'

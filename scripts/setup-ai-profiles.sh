@@ -27,6 +27,10 @@ if [[ -n "$selected" && -t 0 && -t 1 && -z "$route" ]]; then
   route="$(cat "$route_file")"
   if [[ -n "${WORKBENCHES_AUTH_ROUTE_FILE:-}" ]]; then printf '%s' "$route" > "$WORKBENCHES_AUTH_ROUTE_FILE"; fi
 fi
+if [[ "$route" == vault:* ]]; then
+  export WORKBENCHES_VAULT_SERVICE="${route#vault:}"
+  route=vault
+fi
 export WORKBENCHES_AUTH_ROUTE="$route"
 if [[ "$mode" == interactive && "$route" != later && "$route" != existing && ( -z "$selected" || ",$selected," == *,openai,* || ",$selected," == *,claude,* || ",$selected," == *,pi,* ) ]]; then
   if [[ "$route" == vault ]]; then export WORKBENCHES_REQUIRE_PROFILE=1; fi

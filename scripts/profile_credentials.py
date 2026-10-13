@@ -40,6 +40,22 @@ def entries(providers=None):
     return result
 
 
+def login_email(rows):
+    """Use only matching selected-profile metadata, never credential contents."""
+    config = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'workbenches'
+    emails = set()
+    for row in rows:
+        provider = {'codex': 'openai'}.get(row['provider'], row['provider'])
+        path = config / (provider + '-profiles.json')
+        if not path.is_file():
+            continue
+        for profile in json.loads(path.read_text()).get('profiles', []):
+            email = profile.get('email', '')
+            if profile.get('name') == row['profile'] and isinstance(email, str) and RUNTIME.re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
+                emails.add(email)
+    return next(iter(emails)) if len(emails) == 1 else ''
+
+
 def present(entry):
     try:
         path = RUNTIME.target_path(entry)

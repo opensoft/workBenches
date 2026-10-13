@@ -6,9 +6,6 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$REPO_DIR/scripts/lib/image-names.sh"
-STATE_FILE="$SCRIPT_DIR/../.build-state.json"
-STATE_KEY="$(family_base_state_key dev)"
-LEGACY_STATE_KEY="$(legacy_family_base_state_key dev)"
 BASE_IMAGE="$(family_base_image dev)"
 
 # Ensure Docker is installed and running
@@ -89,71 +86,6 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-calc_hash() {
-    local -a files=("$SCRIPT_DIR/base-image/Dockerfile" "$SCRIPT_DIR/base-image/build.sh")
-    if command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "${files[@]}" 2>/dev/null | sha256sum | awk '{print $1}'
-    elif command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 "${files[@]}" 2>/dev/null | shasum -a 256 | awk '{print $1}'
-    else
-        echo ""
-    fi
-}
-
-read_state() {
-    local key="$1"
-    if [ ! -f "$STATE_FILE" ]; then
-        echo ""
-        return
-    fi
-    if command -v python3 >/dev/null 2>&1; then
-        python3 - "$STATE_FILE" "$key" <<'PY'
-import json
-import sys
-
-path = sys.argv[1]
-key = sys.argv[2]
-try:
-    with open(path, "r", encoding="utf-8") as fh:
-        data = json.load(fh)
-    print(data.get(key, ""))
-except Exception:
-    print("")
-PY
-    else
-        echo ""
-    fi
-}
-
-write_state() {
-    local key="$1"
-    local value="$2"
-    if command -v python3 >/dev/null 2>&1; then
-        python3 - "$STATE_FILE" "$key" "$value" <<'PY'
-import json
-import os
-import sys
-
-path = sys.argv[1]
-key = sys.argv[2]
-value = sys.argv[3]
-
-data = {}
-if os.path.exists(path):
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            data = json.load(fh)
-    except Exception:
-        data = {}
-
-data[key] = value
-tmp = path + ".tmp"
-with open(tmp, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, indent=2, sort_keys=True)
-os.replace(tmp, path)
-PY
-    fi
-}
 
 ensure_docker
 
@@ -181,38 +113,12 @@ echo "Configuration:"
 echo "  Tag: $BASE_IMAGE (user-agnostic)"
 echo ""
 
-current_hash=$(calc_hash)
-stored_hash=$(read_state "$STATE_KEY")
-if [ -z "$stored_hash" ] && [ -n "$LEGACY_STATE_KEY" ] && [ "$LEGACY_STATE_KEY" != "$STATE_KEY" ]; then
-    stored_hash=$(read_state "$LEGACY_STATE_KEY")
-fi
-if [ -z "$current_hash" ]; then
-    echo "Warning: sha256sum/shasum not found; skipping change detection."
-fi
-image_exists=0
-if docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
-    image_exists=1
-fi
-
-rebuild=0
-if [ "$FORCE_REBUILD" -eq 1 ] || [ "$image_exists" -eq 0 ]; then
-    rebuild=1
-elif [ -n "$current_hash" ] && [ "$current_hash" != "$stored_hash" ]; then
-    rebuild=1
-fi
-
-if [ "$rebuild" -eq 1 ]; then
-    if [ "$FORCE_REBUILD" -eq 1 ]; then
-        echo "Forcing rebuild of $BASE_IMAGE..."
-    elif [ "$image_exists" -eq 0 ]; then
-        echo "$BASE_IMAGE not found. Building..."
-    else
-        echo "Detected base-image changes. Rebuilding $BASE_IMAGE..."
-    fi
-    "$SCRIPT_DIR/base-image/build.sh" --user "$USERNAME"
-    if [ -n "$current_hash" ]; then
-        write_state "$STATE_KEY" "$current_hash"
-    fi
+if [ "$FORCE_REBUILD" -eq 0 ] && python3 "$REPO_DIR/scripts/shared-images.py" ensure dev; then
+    tag_family_base_legacy_alias dev
+    echo "$BASE_IMAGE is ready."
 else
-    echo "$BASE_IMAGE is up to date."
+    image_status=$?
+    case "$image_status" in 130|143) exit "$image_status" ;; esac
+    echo "Building the developer image from local sources..."
+    "$SCRIPT_DIR/base-image/build.sh" --user "$USERNAME"
 fi

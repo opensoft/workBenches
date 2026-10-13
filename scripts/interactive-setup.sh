@@ -80,10 +80,13 @@ show_spinner() {
     local spinner="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
     local i=0
     local elapsed=0
+    if [[ "${4:-}" == build ]]; then
+        printf "  Build log: %s\n  Follow live: tail -f %q\n" "$LOG_FILE" "$LOG_FILE"
+    fi
 
     while kill -0 $pid 2>/dev/null; do
         i=$(( (i+1) % 10 ))
-        printf "\r  ${YELLOW}${spinner:$i:1}${NC} ${message}"
+        printf "\r  ${YELLOW}${spinner:$i:1}${NC} ${message} ($((elapsed / 10))s elapsed)"
         sleep 0.1
         elapsed=$((elapsed + 1))
 
@@ -1398,18 +1401,18 @@ process_selections() {
 
                         # Run setup in background with spinner (cd to bench dir first)
                         (
-                            cd "$(dirname "$setup_script")" && bash "$setup_script" >> "$LOG_FILE" 2>&1
+                            python3 "$script_dir/setup-bench-runtime.py" --bench "$bench" --setup "$setup_script" >> "$LOG_FILE" 2>&1
                             echo $? > /tmp/setup_status_$$
                         ) &
                         local setup_pid=$!
-                        show_spinner $setup_pid "Setting up $bench" 1200
+                        show_spinner $setup_pid "Setting up $bench" 1200 build
 
                         local setup_status=$(cat /tmp/setup_status_$$ 2>/dev/null || echo "1")
                         rm -f /tmp/setup_status_$$
 
                         if [ "$setup_status" -eq 0 ]; then
                             log "Successfully set up $bench"
-                            echo -e "  ${GREEN}✓ Successfully set up $bench${NC}"
+                            echo -e "  ${GREEN}✓ $bench is ready (launch verified)${NC}"
                             echo -e "  ${DIM}Command 'new-${bench}-project' should now be available${NC}"
                             ((success_count++))
                         else
@@ -1596,18 +1599,18 @@ process_selections() {
 
                                 # Run setup in background with spinner (cd to bench dir first)
                                 (
-                                    cd "$(dirname "$setup_script")" && bash "$setup_script" >> "$LOG_FILE" 2>&1
+                                    python3 "$script_dir/setup-bench-runtime.py" --bench "$bench" --setup "$setup_script" >> "$LOG_FILE" 2>&1
                                     echo $? > /tmp/setup_status_$$
                                 ) &
                                 local setup_pid=$!
-                                show_spinner $setup_pid "Setting up $bench" 1200
+                                show_spinner $setup_pid "Setting up $bench" 1200 build
 
                                 local setup_status=$(cat /tmp/setup_status_$$ 2>/dev/null || echo "1")
                                 rm -f /tmp/setup_status_$$
 
                                 if [ "$setup_status" -eq 0 ]; then
                                     log "Successfully set up $bench"
-                                    echo -e "  ${GREEN}✓ Successfully set up $bench${NC}"
+                                    echo -e "  ${GREEN}✓ $bench is ready (launch verified)${NC}"
                                     ((success_count++))
                                 else
                                     log "ERROR: Setup failed for $bench"

@@ -311,8 +311,11 @@ def bitwarden_payload(entry, env):
 
 def pick_item(mapping, entry, env):
     service = mapping["service"]
+    compact = mapping.get("compact") is True
+    suggested = entry["provider"] if compact else ""
     while True:
-        search = prompt(f"Search {service} for {entry['provider']}/{entry['profile']} (S to skip): ")
+        search = suggested or prompt(f"Search {service} for {entry['provider']}/{entry['profile']} (S to skip): ")
+        suggested = ""
         if search.lower() == "s":
             return None
         if not search:
@@ -340,7 +343,7 @@ def pick_item(mapping, entry, env):
             if not re.fullmatch(r"[A-Za-z0-9-]+", identifier):
                 raise RecoveryError("Invalid vault item identifier.")
             print(f"  {index}. {title} ({identifier})")
-        choice = prompt("Item number (S to skip, Enter to search again): ")
+        choice = "1" if compact and len(items) == 1 else prompt("Item number (S to skip, Enter to search again): ")
         if choice.lower() == "s":
             return None
         if not choice.isdigit() or not 1 <= int(choice) <= len(items):
@@ -350,8 +353,9 @@ def pick_item(mapping, entry, env):
         if service == "bitwarden":
             result["itemId"] = item["id"]
             fields = item['fields']
-            if len(fields) == 1:
-                field = fields[0]
+            preferred = [field for field in fields if field['label'].casefold() in ('api key', 'credential json', 'auth.json')] if compact else []
+            if len(fields) == 1 or len(preferred) == 1:
+                field = preferred[0] if preferred else fields[0]
             else:
                 for index, field in enumerate(fields, 1):
                     print(f"  {index}. {field['label']}")
@@ -370,7 +374,7 @@ def pick_item(mapping, entry, env):
             for index, field in enumerate(fields, 1):
                 label = ''.join(c for c in str(field.get('label') or field['id']) if c.isprintable())[:120]
                 print(f"  {index}. {label}")
-            field_number = prompt("Field containing credentials (S to skip): ")
+            field_number = "1" if compact and len(fields) == 1 else prompt("Field containing credentials (S to skip): ")
             if field_number.lower() == "s":
                 return None
             if not field_number.isdigit() or not 1 <= int(field_number) <= len(fields):
@@ -380,9 +384,21 @@ def pick_item(mapping, entry, env):
             reference = f"op://{vault}/{item['id']}/" + (section + "/" if section else "") + field["id"]
             result["secretReference"] = reference
         validate_mapping(dict(mapping, entries=[result]), service)
-        print(f"Use this item for {entry['provider']}/{entry['profile']}?")
+        inferred = None
+        if compact and entry["provider"] in ("codex", "omniroute"):
+            payload = bitwarden_payload(result, env) if service == "bitwarden" else vault_command(["op", "read", "--no-newline", result["secretReference"]], env)
+            try:
+                valid_payload(entry["provider"], payload)
+                inferred = "json"
+            except (RecoveryError, ValueError, TypeError):
+                if re.fullmatch(rb"[A-Za-z0-9_./+=:-]{16,}", payload.strip()):
+                    inferred = "api-key"
+        print(f"Use this item for {entry['provider']}/{entry['profile']} at {entry['credentialPath']}?")
         if prompt("Confirm [y/N]: ").lower() in ("y", "yes"):
             if entry['provider'] in ('codex', 'omniroute'):
+                if inferred:
+                    result['credentialFormat'] = inferred
+                    return result
                 default = '2' if result.get('itemField') in ('password', 'custom') else '1'
                 value = prompt(f"Stored value: 1. Credential JSON  2. API key [{default}]: ") or default
                 if value not in ('1', '2'):
@@ -414,15 +430,20 @@ def container_restore(mapping, staging):
             vault_command(["bw", "config", "server", mapping["server"]], env)
             method = mapping.get("authMode", "apikey")
             if method == "signin":
-                email = prompt("Bitwarden login email: ")
+                default_email = mapping.get("loginEmail", "") if mapping.get("compact") else ""
+                if default_email and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", default_email):
+                    raise RecoveryError("Invalid default vault email.")
+                email = prompt(f"Bitwarden login email [{default_email}]: ") or default_email
                 if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
                     raise RecoveryError("Enter a valid Bitwarden email address.")
-                two_step = prompt("Two-step method: 0. Authenticator  1. Email  3. YubiKey OTP [0]: ") or "0"
-                if two_step not in ("0", "1", "3"):
-                    raise RecoveryError("Use a supported CLI two-step method or advanced API-key login.")
+                login_args = ["bw", "login", email]
+                if not mapping.get("compact"):
+                    two_step = prompt("Two-step method: 0. Authenticator  1. Email  3. YubiKey OTP [0]: ") or "0"
+                    if two_step not in ("0", "1", "3"):
+                        raise RecoveryError("Use a supported CLI two-step method or advanced API-key login.")
+                    login_args += ["--method", two_step]
                 master = secret_input("Vault master password: ")
-                env["BW_SESSION"] = native_signin(["bw", "login", email, "--method", two_step,
-                                                   "--passwordenv", "BW_PASSWORD", "--raw"], dict(env, BW_PASSWORD=master))
+                env["BW_SESSION"] = native_signin(login_args + ["--passwordenv", "BW_PASSWORD", "--raw"], dict(env, BW_PASSWORD=master))
             elif method == "apikey":
                 print("Advanced Bitwarden API-key login (inputs stay in this container).", flush=True)
                 auth = dict(env, BW_CLIENTID=secret_input("Personal API client_id: "), BW_CLIENTSECRET=secret_input("Personal API client_secret: "))
@@ -437,7 +458,8 @@ def container_restore(mapping, staging):
         else:
             if mapping.get("authMode", "token") == "signin":
                 address = prompt("1Password sign-in address (e.g. my.1password.com): ")
-                email = prompt("1Password login email: ")
+                default_email = mapping.get("loginEmail", "") if mapping.get("compact") else ""
+                email = prompt(f"1Password login email [{default_email}]: ") or default_email
                 env["OP_SESSION"] = native_signin(["op", "account", "add", "--signin", "--raw", "--shorthand", "workbenches", "--address", address, "--email", email], env)
                 env["OP_ACCOUNT"] = "workbenches"
             elif mapping.get("authMode", "token") == "token":

@@ -92,6 +92,7 @@ workdir="/workspace"
 shell_path="zsh"
 block_title="pyBench"
 check_only=false
+prepare_compose_output=""
 repair_requested=false
 profile_launcher_marker="/usr/local/share/workbenches/profile-launchers.sha256"
 bench_dir="$workbenches_root/devBenches/pyBench"
@@ -187,6 +188,7 @@ Options:
   --workdir PATH           Container working directory (default: /workspace)
   --shell PATH             Shell to run inside the container (default: zsh)
   --title TEXT             Wave block/terminal title (default: pyBench)
+  --prepare-compose PATH   Write first-start mounts without creating or replacing a container
   --check                  Verify that the container can run a command, then exit
   --repair                 Recreate an existing container before opening it
   -h, --help               Show this help
@@ -204,6 +206,7 @@ while [[ $# -gt 0 ]]; do
         --workdir) workdir="$2"; shift 2 ;;
         --shell) shell_path="$2"; shift 2 ;;
         --title) block_title="$2"; shift 2 ;;
+        --prepare-compose) prepare_compose_output="$2"; check_only=true; shift 2 ;;
         --check) check_only=true; shift ;;
         --repair) repair_requested=true; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -514,6 +517,7 @@ if [[ "$container_exists" == true && "$repair_requested" == true ]]; then
     validate_repair_ownership || exit 1
 fi
 
+if [[ -z "$prepare_compose_output" ]]; then
 prepare_script="$workbenches_root/scripts/prepare-bench-start.sh"
 if [[ ! -x "$prepare_script" ]]; then
     echo "Safe bench startup helper is missing or not executable: $prepare_script" >&2
@@ -547,6 +551,8 @@ fi
 container_exists=false
 if docker container inspect "$container" >/dev/null 2>&1; then
     container_exists=true
+fi
+
 fi
 
 if [[ "$check_only" != true ]]; then
@@ -674,6 +680,12 @@ EOF
 
     printf '%s\n' "$override_file"
 }
+
+if [[ -n "$prepare_compose_output" ]]; then
+    prepared_override="$(write_wave_compose_override)" || exit 1
+    cp -- "$prepared_override" "$prepare_compose_output"
+    exit 0
+fi
 
 create_with_compose() {
     if [[ ! -f "$compose_file" ]]; then

@@ -198,7 +198,9 @@ elif [ -t 0 ] && [ -t 1 ]; then
 else
     echo "AI profile onboarding skipped because no interactive terminal is available."
 fi
-export WORKBENCHES_AUTH_ROUTE="$(cat "$auth_route_file")"
+route_choice="$(cat "$auth_route_file")"
+export WORKBENCHES_AUTH_ROUTE="${route_choice%%:*}"
+if [[ "$route_choice" == vault:* ]]; then export WORKBENCHES_VAULT_SERVICE="${route_choice#vault:}"; fi
 echo ""
 
 if [[ -n "$WORKBENCHES_SELECTED_PROVIDERS" ]]; then
@@ -278,11 +280,13 @@ if [[ -z "$selected_bench_paths" ]]; then
     echo "No bench images selected; skipping Layer 0."
 else
     python3 "${SCRIPT_DIR}/scripts/setup-bench-home.py" || exit "$?"
-    if ! docker image inspect "workbench-base:latest" >/dev/null 2>&1; then
-        echo "Layer 0 image not found. Building workbench-base:latest..."
-        "${SCRIPT_DIR}/base-image/build.sh" || { echo "✗ Layer 0 build failed"; exit 1; }
+    if python3 "${SCRIPT_DIR}/scripts/shared-images.py" ensure base; then
+        echo "Layer 0 is ready."
     else
-        echo "Layer 0 image (workbench-base:latest) already exists, skipping build."
+        image_status=$?
+        case "$image_status" in 130|143) exit "$image_status" ;; esac
+        echo "Building workbench-base:latest from local sources..."
+        "${SCRIPT_DIR}/base-image/build.sh" || { echo "✗ Layer 0 build failed"; exit 1; }
     fi
 fi
 

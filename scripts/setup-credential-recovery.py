@@ -111,6 +111,9 @@ def guided_recovery(service, manifest, advanced_auth=False):
     runtime = profile_credentials.RUNTIME
     canonical = "bitwarden" if service == "vaultwarden" else service
     mapping = {"schemaVersion": 1, "service": canonical, "guided": True, "entries": rows}
+    if os.environ.get("WORKBENCHES_VAULT_SERVICE") == service:
+        mapping["compact"] = True
+        mapping["loginEmail"] = profile_credentials.login_email(rows)
     if canonical == "bitwarden":
         default = "https://vault.bitwarden.com" if service == "bitwarden" else ""
         mapping["server"] = prompt(f"Vault HTTPS server [{default}]: ") or default
@@ -140,15 +143,17 @@ def main():
             return 0
         print("Authentication for selected AI tools (Q cancels setup):")
         print("  1. Sign in directly after installation")
-        print("  2. Recover credentials from a vault")
+        print("  2B. Bitwarden   2V. Vaultwarden   2P. 1Password   2A. Azure Key Vault")
+        print("  2. Advanced vault selection / mapping imports")
         print("  3. Configure authentication later")
         while True:
             answer = prompt("Authentication route [1]: ") or "1"
-            if answer in ("1", "2", "3"):
+            compact_services = {"2b": "bitwarden", "2v": "vaultwarden", "2p": "1password", "2a": "azure"}
+            if answer.lower() in compact_services or answer in ("1", "2", "3"):
                 # The caller supplies a private temporary file.
                 fd = os.open(args.choose_route, os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW)
                 with os.fdopen(fd, "w") as stream:
-                    stream.write({"1": "direct", "2": "vault", "3": "later"}[answer])
+                    stream.write("vault:" + compact_services[answer.lower()] if answer.lower() in compact_services else {"1": "direct", "2": "vault", "3": "later"}[answer])
                 return 0
             print("Choose 1, 2, or 3.")
     if args.list:
@@ -169,43 +174,50 @@ def main():
         if not sys.stdin.isatty() or not sys.stdout.isatty():
             print("Vault selection requires an interactive terminal.", file=sys.stderr)
             return 1
+        compact_service = os.environ.get("WORKBENCHES_VAULT_SERVICE", "")
+        if compact_service and compact_service not in manifests:
+            raise ValueError("Unsupported credential service")
         print("AI credential recovery (Q cancels setup at any prompt).")
         answer = "y" if os.environ.get("WORKBENCHES_AUTH_ROUTE") == "vault" else prompt("Do you have AI assistant tokens or profile credentials stored in a vault? [y/N]: ")
         if answer.lower() not in ("y", "yes"):
             print("Profiles can use native provider sign-in.")
             return 0
-        print("Supported services; choose all that apply:")
-        for index, (_, label, _) in enumerate(SERVICES, 1):
-            print(f"  {index}. {label}")
-        print("  0. None of these / use native provider sign-in")
-        print("Append I to import mapping JSON, or A for automation login (e.g. 2I or 4A).")
-        while True:
-            answer = prompt("Services (numbers separated by commas or spaces) [0]: ") or "0"
-            try:
-                tokens = answer.lower().replace(",", " ").split()
-                if any(not re.fullmatch(r"[0-4](?:i?a?|ai?)", value) for value in tokens):
-                    raise ValueError('invalid service')
-                choices = list(dict.fromkeys(int(value[0]) for value in tokens))
-            except ValueError:
-                choices = []
-            if choices and all(0 <= value <= len(SERVICES) for value in choices) and (0 not in choices or choices == [0]):
-                break
-            print("Choose listed service numbers, or 0 to use native sign-in.")
-        if choices == [0]:
-            return 0
-        selected = [SERVICES[index - 1][0] for index in choices]
-        imports = {SERVICES[int(value[0]) - 1][0] for value in tokens if 'i' in value and value[0] != '0'}
-        advanced_services = {SERVICES[int(value[0]) - 1][0] for value in tokens if 'a' in value and value[0] != '0'}
-        for service in selected:
-            if service in imports:
-                answer = prompt("Private mapping JSON path (S to skip): ")
-                if answer.lower() == 's':
-                    manifests[service] = None
-                else:
-                    manifests[service] = Path(answer).expanduser()
-            elif not manifests[service].is_file():
-                guided_services.add(service)
-
+        if compact_service:
+            selected = [compact_service]
+            if not manifests[compact_service].is_file():
+                guided_services.add(compact_service)
+        else:
+            print("Supported services; choose all that apply:")
+            for index, (_, label, _) in enumerate(SERVICES, 1):
+                print(f"  {index}. {label}")
+            print("  0. None of these / use native provider sign-in")
+            print("Append I to import mapping JSON, or A for automation login (e.g. 2I or 4A).")
+            while True:
+                answer = prompt("Services (numbers separated by commas or spaces) [0]: ") or "0"
+                try:
+                    tokens = answer.lower().replace(",", " ").split()
+                    if any(not re.fullmatch(r"[0-4](?:i?a?|ai?)", value) for value in tokens):
+                        raise ValueError('invalid service')
+                    choices = list(dict.fromkeys(int(value[0]) for value in tokens))
+                except ValueError:
+                    choices = []
+                if choices and all(0 <= value <= len(SERVICES) for value in choices) and (0 not in choices or choices == [0]):
+                    break
+                print("Choose listed service numbers, or 0 to use native sign-in.")
+            if choices == [0]:
+                return 0
+            selected = [SERVICES[index - 1][0] for index in choices]
+            imports = {SERVICES[int(value[0]) - 1][0] for value in tokens if 'i' in value and value[0] != '0'}
+            advanced_services = {SERVICES[int(value[0]) - 1][0] for value in tokens if 'a' in value and value[0] != '0'}
+            for service in selected:
+                if service in imports:
+                    answer = prompt("Private mapping JSON path (S to skip): ")
+                    if answer.lower() == 's':
+                        manifests[service] = None
+                    else:
+                        manifests[service] = Path(answer).expanduser()
+                elif not manifests[service].is_file():
+                    guided_services.add(service)
     else:
         # Preserve existing unattended Azure recovery without inventing a store
         # or attempting password-manager authentication without a terminal.
