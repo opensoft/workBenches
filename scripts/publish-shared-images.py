@@ -78,6 +78,17 @@ def prepare_image(layer, platform):
             run(['docker', 'tag', shared.TAGS[layer], tag])
     return tag
 
+def published_digest(layer, tag):
+    # Dev images already came from the registry exporter or a public pull.
+    # Re-pushing can convert OCI media types and leave two repository digests.
+    if layer == 'base':
+        run(['docker', 'push', tag])
+    row = shared.inspect(tag)
+    refs = [ref for ref in row['RepoDigests'] if ref.startswith(shared.REGISTRIES[layer] + '@sha256:')]
+    if len(refs) != 1:
+        raise RuntimeError('Expected exactly one published digest.')
+    return refs[0]
+
 def main():
     # No workstation credentials or user-specific Layer 3 are ever published.
     platform = run(['docker', 'info', '--format', '{{.OSType}}/{{.Architecture}}'],
@@ -110,12 +121,7 @@ def main():
         # Smoke tests exercise installed binaries without any account login.
         run(['docker', 'run', '--rm', '--entrypoint', 'sh', tag, '-ec',
              'codex --version; claude --version; python3 --version; node --version'])
-        run(['docker', 'push', tag])
-        row = shared.inspect(tag)
-        refs = [ref for ref in row['RepoDigests'] if ref.startswith(shared.REGISTRIES[layer] + '@sha256:')]
-        if len(refs) != 1:
-            raise RuntimeError('Expected exactly one pushed digest.')
-        entry = {'sourceHash': shared.fingerprint(layer), 'image': refs[0]}
+        entry = {'sourceHash': shared.fingerprint(layer), 'image': published_digest(layer, tag)}
         if layer == 'dev':
             entry['parentImageId'] = shared.inspect(shared.TAGS['base'])['Id']
         manifest['images'][layer] = {platform: entry}

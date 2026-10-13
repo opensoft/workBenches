@@ -45,6 +45,14 @@ class ImageTests(unittest.TestCase):
             (roots[1]/'base-image/__pycache__/unrelated.pyc').write_text('ignored')
             self.assertEqual(cache_before,shared.fingerprint('base',roots[1]))
 
+    def test_publisher_preserves_the_exported_digest_without_a_second_push(self):
+        spec=importlib.util.spec_from_file_location('publisher',ROOT/'scripts/publish-shared-images.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        ref=shared.REGISTRIES['dev']+'@sha256:'+'d'*64
+        with patch.object(module.shared,'inspect',return_value={'RepoDigests':[ref]}), patch.object(module,'run') as command:
+            self.assertEqual(module.published_digest('dev','dev-tag'),ref)
+            command.assert_not_called()
+
     def test_publisher_exports_directly_and_rejects_a_changed_parent(self):
         spec=importlib.util.spec_from_file_location('publisher',ROOT/'scripts/publish-shared-images.py')
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
