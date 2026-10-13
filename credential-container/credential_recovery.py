@@ -391,7 +391,9 @@ def pick_item(mapping, entry, env):
                 valid_payload(entry["provider"], payload)
                 inferred = "json"
             except (RecoveryError, ValueError, TypeError):
-                if re.fullmatch(rb"[A-Za-z0-9_./+=:-]{16,}", payload.strip()):
+                if (re.fullmatch(rb"[A-Za-z0-9_./+=:-]{16,}", payload.strip())
+                        and (re.fullmatch(rb"sk-[A-Za-z0-9_-]{12,}", payload.strip())
+                             or str(result.get("customField", "")).casefold() == "api key")):
                     inferred = "api-key"
         print(f"Use this item for {entry['provider']}/{entry['profile']} at {entry['credentialPath']}?")
         if prompt("Confirm [y/N]: ").lower() in ("y", "yes"):

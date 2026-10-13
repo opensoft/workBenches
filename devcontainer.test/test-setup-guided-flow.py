@@ -101,11 +101,21 @@ class GuidedFlowTests(unittest.TestCase):
             answers.append(label)
             return 'y'
         def command(argv, env, limit=24576):
-            return json.dumps([item]).encode() if argv[1] == 'list' else b'fake-only-integration-key'
+            return json.dumps([item]).encode() if argv[1] == 'list' else b'sk-test-invalid-integration-key'
         with patch.object(runtime, 'vault_command', side_effect=command), patch.object(runtime, 'prompt', side_effect=answer):
             picked = runtime.pick_item(mapping, self.entry, {})
         self.assertEqual(picked['credentialFormat'], 'api-key')
         self.assertEqual(answers, ['Confirm [y/N]: '])
+
+
+    def test_compact_picker_does_not_infer_an_opaque_password_as_an_api_key(self):
+        item = {'id': '00000000-0000-0000-0000-000000000001', 'name': 'Codex test', 'type': 1, 'login': {'password': 'NEVER-PRINT'}}
+        def command(argv, env, limit=24576):
+            return json.dumps([item]).encode() if argv[1] == 'list' else b'an-opaque-login-password'
+        with patch.object(runtime, 'vault_command', side_effect=command), patch.object(runtime, 'prompt', side_effect=['y','2']) as prompt:
+            runtime.pick_item(dict(self.mapping, compact=True), self.entry, {})
+        self.assertEqual(prompt.call_count, 2)
+        self.assertIn('Stored value', prompt.call_args.args[0])
 
     def test_compact_picker_requires_selection_when_items_are_ambiguous_and_cancels(self):
         item = {'id': '00000000-0000-0000-0000-000000000001', 'name': 'Codex test', 'type': 2, 'notes': 'NEVER-PRINT'}

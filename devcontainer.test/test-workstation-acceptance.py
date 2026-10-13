@@ -203,7 +203,7 @@ REVIEW = r'Apply these changes\?.*\(Q to cancel\): '
 DONE = r'Press Enter to continue.*\(Q to cancel\): '
 EMAIL = 'acceptance@example.test'
 MASTER = secrets.token_urlsafe(32)
-API_VALUE = 'acceptance-' + secrets.token_hex(24)  # Invalid, nonbillable AI test value.
+API_VALUE = 'sk-test-invalid-' + secrets.token_hex(24)  # Invalid, nonbillable AI test value.
 MARKERS.extend([MASTER, API_VALUE])
 
 
