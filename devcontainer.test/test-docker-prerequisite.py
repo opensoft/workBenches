@@ -231,7 +231,7 @@ if [[ "$1" == context ]]; then echo tcp://remote.example:2376; exit 0; fi
 exit 1
 ''')
         path.chmod(0o755)
-        (binaries / "python3").write_text(f'#!/usr/bin/env bash\ncase "$1" in */setup_selection.py|-c|-) exec {sys.executable} "$@" ;; *) exit 0 ;; esac\n')
+        (binaries / "python3").write_text(f'#!/usr/bin/env bash\ncase "$1" in */shared-images.py) echo "image acquisition" >> "$TEST_LOG"; exit 1 ;; */setup_selection.py|-c|-) exec {sys.executable} "$@" ;; *) exit 0 ;; esac\n')
         (binaries / "python3").chmod(0o755)
         env = {**self.env, "HOME": str(self.directory / "home"),
                "XDG_CONFIG_HOME": str(self.directory / "home/.config"),
@@ -249,7 +249,7 @@ exit 1
                     self.assertTrue(all(action.startswith("docker ") for action in actions), actions)
                 else:
                     self.assertEqual(actions, ["docker info", "selected", "recovery", "shell", "estate", "workspace", "workflow",
-                                               "docker image", "build", "apply"])
+                                               "image acquisition", "build", "apply"])
 
 
 if __name__ == "__main__":
