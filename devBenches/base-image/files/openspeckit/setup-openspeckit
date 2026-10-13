@@ -1481,8 +1481,18 @@ def copy_missing_tree(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
 
 
 def link_or_copy_skill(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
-    entries = safe_source_tree_entries(src)
-    if not src.exists():
+    # A user-global skills root is often reached through a symlink (~/.agents
+    # linked into a dotfiles checkout), and copy_regular_file_at opens every
+    # source path component without following one. So the skill is read
+    # through its parent's real path, resolved once here. Only the path ABOVE
+    # the skill directory is followed: the skill directory itself and
+    # everything in it are still listed and opened without following a
+    # symlink, with the same device/inode check. The destination is never
+    # resolved, and every destination check below is unchanged. Log lines keep
+    # the spelling the caller passed.
+    source = src.parent.resolve() / src.name
+    entries = safe_source_tree_entries(source)
+    if not source.exists():
         return
     if dry_run:
         ensure_safe_destination_parent(dst, set())
@@ -1514,23 +1524,23 @@ def link_or_copy_skill(src: Path, dst: Path, dry_run: bool, force: bool) -> None
         )
         with managed_descriptor(root_descriptor):
             os.fchmod(root_descriptor, 0o755)
-            for source in (
+            for entry in (
                 entry for entry in entries if stat.S_ISDIR(entry.mode)
             ):
                 ensure_relative_directory(
                     root_descriptor,
-                    source.path.relative_to(src).parts,
+                    entry.path.relative_to(source).parts,
                     False,
                 )
-            for source in (
+            for entry in (
                 entry for entry in entries if not stat.S_ISDIR(entry.mode)
             ):
-                relative_parts = source.path.relative_to(src).parts
+                relative_parts = entry.path.relative_to(source).parts
                 with relative_directory_descriptor(
                     root_descriptor,
                     relative_parts[:-1],
                 ) as parent_descriptor:
-                    copy_regular_file_at(source, parent_descriptor, relative_parts[-1])
+                    copy_regular_file_at(entry, parent_descriptor, relative_parts[-1])
             if dst.name == "speckit-clarify":
                 skill_mode = mode_at(root_descriptor, "SKILL.md")
                 if skill_mode is not None and stat.S_ISREG(skill_mode):
@@ -3444,16 +3454,26 @@ as a single repository. Use the bash scripts (WSL2) for three-leg projects.
 """
 
 
-def ensure_agent_protocol_files(agent_root: Path, dry_run: bool) -> None:
-    write_text_if_missing(agent_root / "AGENTS.md", global_agent_entrypoint(agent_root), dry_run)
+def ensure_agent_protocol_files(
+    agent_root: Path,
+    dry_run: bool,
+    display_root: Path | None = None,
+) -> None:
+    """Write the protocol files if missing: at ``agent_root``, naming ``display_root``.
+
+    ``agent_root`` is the resolved path the writes go through. The text names
+    ``display_root`` (default ``agent_root``), the unresolved spelling.
+    """
+    shown = agent_root if display_root is None else display_root
+    write_text_if_missing(agent_root / "AGENTS.md", global_agent_entrypoint(shown), dry_run)
     write_text_if_missing(
         agent_root / "protocols" / "openspec-speckit-workflow.md",
-        openspec_speckit_protocol(agent_root),
+        openspec_speckit_protocol(shown),
         dry_run,
     )
     write_text_if_missing(
         agent_root / "protocols" / "project-agent-bootstrap.md",
-        project_agent_bootstrap_protocol(agent_root),
+        project_agent_bootstrap_protocol(shown),
         dry_run,
     )
 
@@ -3755,7 +3775,11 @@ def ensure_skill_shape_blocks(
     dry_run: bool,
     include_global: bool,
 ) -> None:
-    """Maintain the managed Repository Shape block in skills and commands."""
+    """Maintain the managed Repository Shape block in skills and commands.
+
+    ``agent_root`` is only named in the user-global block, never read, so
+    ``main`` passes the unresolved spelling.
+    """
     repo_block = shape_block_body(REPO_AGENT_ROOT)
     for path in repo_shape_block_targets(repo):
         upsert_shape_block(path, repo_block, dry_run)
@@ -3826,8 +3850,14 @@ def ensure_skill_routing_blocks(
     agent_root: Path,
     dry_run: bool,
     include_global: bool,
+    display_root: Path | None = None,
 ) -> None:
-    """Maintain the managed Model Routing block in the Speckit build skills."""
+    """Maintain the managed Model Routing block in the Speckit build skills.
+
+    The templates are read from ``agent_root``. A user-global block names
+    ``display_root`` (default ``agent_root``), the unresolved spelling.
+    """
+    shown = agent_root if display_root is None else display_root
     templates: dict[str, str] = {}
     for skill in ROUTING_SKILLS:
         block = routing_block_template(agent_root, skill)
@@ -3851,7 +3881,7 @@ def ensure_skill_routing_blocks(
         if has_symlinked_ancestor(path):
             log(f"skipped {path}: symlinked ancestor; the installer does not write through a symlink")
             continue
-        global_block = templates[skill].replace(REPO_AGENT_ROOT, str(agent_root))
+        global_block = templates[skill].replace(REPO_AGENT_ROOT, str(shown))
         try:
             upsert_routing_block(path, global_block, dry_run)
         except PermissionError as exc:
@@ -3861,6 +3891,10 @@ def ensure_skill_routing_blocks(
 
 
 def ensure_global_agent_pointers(agent_root: Path, dry_run: bool) -> None:
+    """Upsert the pointer block naming ``agent_root``, which is never read here.
+
+    ``main`` passes the unresolved spelling.
+    """
     for relative_path in USER_GLOBAL_AGENT_POINTER_FILES:
         path = Path.home() / relative_path
         if dry_run and not can_write_path_or_parent(path):
@@ -4316,7 +4350,17 @@ def main() -> int:
     args = parse_args()
     repo = (args.repo.resolve() if args.repo else git_root())
     ensure_safe_specify_destination(repo)
-    agent_root = Path(os.environ.get("AGENT_PROTOCOL_ROOT", Path.home() / ".agents")).resolve()
+    # Two spellings of one directory. The written text names
+    # agent_root_spelling: AGENT_PROTOCOL_ROOT as given, or ~/.agents, made
+    # absolute but never resolved. That way a ~/.agents linked into a
+    # dotfiles checkout keeps its stable spelling in every user-global block,
+    # and the checkout's own path never appears. Every read and write goes
+    # through agent_root, the resolved path, because the descriptor walks
+    # refuse a symlinked ancestor.
+    agent_root_spelling = Path(
+        os.environ.get("AGENT_PROTOCOL_ROOT", Path.home() / ".agents")
+    ).absolute()
+    agent_root = agent_root_spelling.resolve()
     worktree_templates, command_templates = preflight_source_roots(
         agent_root,
         args.no_worktrees,
@@ -4337,7 +4381,7 @@ def main() -> int:
         enable_shape_log_scopes(args.dry_run)
 
     with root_scope():
-        ensure_agent_protocol_files(agent_root, args.dry_run)
+        ensure_agent_protocol_files(agent_root, args.dry_run, agent_root_spelling)
     ensure_scaffold(repo, spec_root, args.dry_run, args.skip_init)
     with root_scope():
         ensure_speckit_initialized(repo, integration, args.dry_run, args.skip_init)
@@ -4385,7 +4429,7 @@ def main() -> int:
         if not args.no_skill_shape_blocks:
             ensure_skill_shape_blocks(
                 repo,
-                agent_root,
+                agent_root_spelling,
                 args.dry_run,
                 not args.no_global_agent_pointers,
             )
@@ -4396,10 +4440,11 @@ def main() -> int:
                 agent_root,
                 args.dry_run,
                 not args.no_global_agent_pointers,
+                agent_root_spelling,
             )
 
         if not args.no_global_agent_pointers:
-            ensure_global_agent_pointers(agent_root, args.dry_run)
+            ensure_global_agent_pointers(agent_root_spelling, args.dry_run)
 
     if shape is not None and not args.dry_run:
         report_two_commit_split(repo, shape)
