@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Installation evidence and scoped removal using disposable fixtures."""
 import importlib.util
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
@@ -240,6 +242,16 @@ class BenchRemovalTests(unittest.TestCase):
         self.images = {'dev-bench-base:latest'}; self.containers = []
         components.uninstall_bench('pyBench')
         self.assertEqual(self.calls, [])
+
+    def test_base_image_only_is_not_reported_as_a_complete_install(self):
+        self.containers = []; self.images = {'py-bench:latest', 'dev-bench-base:latest'}
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            components.bench_statuses()
+        self.assertEqual(output.getvalue(), 'pyBench\timage only\n')
+        self.images.add('py-bench:fixture')
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            components.bench_statuses()
+        self.assertEqual(output.getvalue(), 'pyBench\tinstalled\n')
 
 
 class TuiAndWindowsTests(unittest.TestCase):

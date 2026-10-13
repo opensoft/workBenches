@@ -254,7 +254,9 @@ def bench_statuses():
     for name in names:
         try:
             images, containers = bench_resources(name, inventory)
-            state = 'installed' if images or containers else 'needs setup'
+            _, repo, _ = bench_identity(name)
+            user = os.environ.get('USER') or getpass.getuser()
+            state = 'installed' if containers or repo + ':' + user in images else ('image only' if images else 'needs setup')
         except ValueError:
             state = 'needs check'
         print(name + '\t' + state)

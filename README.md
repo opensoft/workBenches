@@ -289,6 +289,7 @@ step.
 | State | Action |
 |-------|--------|
 | Installed images/container | Space selects an update; leaving it unchecked keeps it |
+| Base bench image only, missing user runtime | Shows `image only`; Space completes setup, D removes the cached image |
 | Checkout only, missing runtime | Shows `needs setup`; Space runs bench setup |
 | Not installed | Space selects cloning and installation |
 | Selected uninstall | D removes the selected runtime and verifies its absence |

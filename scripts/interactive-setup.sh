@@ -579,7 +579,7 @@ draw_component() {
     if [[ "$status" == "installed" || "$status" == "configured" ]]; then
         status_color="$GREEN"
         status_symbol="✓"
-    elif [[ "$status" == "needs creds" || "$status" == "needs setup" || "$status" == "needs check" || "$status" == "needs docker" ]]; then
+    elif [[ "$status" == "needs creds" || "$status" == "needs setup" || "$status" == "needs check" || "$status" == "needs docker" || "$status" == 'image only' ]]; then
         status_color="$YELLOW"
         status_symbol="⚠"
     fi
@@ -918,7 +918,7 @@ draw_item_compact() {
     if [[ "$status" == "installed" || "$status" == "configured" ]]; then
         status_color="$GREEN"
         status_symbol="✓"
-    elif [[ "$status" == "needs creds" || "$status" == "needs setup" || "$status" == "needs check" || "$status" == "needs docker" ]]; then
+    elif [[ "$status" == "needs creds" || "$status" == "needs setup" || "$status" == "needs check" || "$status" == "needs docker" || "$status" == 'image only' ]]; then
         status_color="$YELLOW"
         status_symbol="⚠"
     elif [[ "$status" == optional ]]; then
@@ -1020,7 +1020,7 @@ handle_input() {
                 local status="${component_status[$key]}"
                 local is_installed=false
                 [[ "$status" != 'needs check' ]] || return 0
-                [[ "$status" == "installed" || "$status" == "needs creds" ]] && is_installed=true
+                [[ "$status" == "installed" || "$status" == "needs creds" || "$status" == 'image only' ]] && is_installed=true
 
                 local requested="install"
                 [[ "$is_installed" == true ]] && requested="update"
@@ -1439,7 +1439,7 @@ process_selections() {
                 echo ""
             else
                 # Check if needs setup vs install
-                if [[ "$status" == "needs creds" || "$status" == "needs setup" || "$status" == "needs check" ]]; then
+                if [[ "$status" == "needs creds" || "$status" == "needs setup" || "$status" == "needs check" || "$status" == 'image only' ]]; then
                     # Bench is installed but not set up
                     log "Setting up bench: $bench"
                     echo -e "${BOLD}${CYAN}▶ Setting up: $bench${NC}"
@@ -2206,7 +2206,7 @@ process_selections() {
         [[ "$verified_item" != host_shell && "$verified_item" != workspace_repo && "$verified_item" != ai_accounts ]] || continue
         final_status="${component_status[$verified_item]}"
         if [[ "${component_action[$verified_item]}" == uninstall ]]; then
-            [[ "$final_status" != installed && "$final_status" != 'needs creds' && "$final_status" != 'needs check' && "$final_status" != 'needs docker' ]] && continue
+            [[ "$final_status" != installed && "$final_status" != 'needs creds' && "$final_status" != 'needs check' && "$final_status" != 'needs docker' && "$final_status" != 'image only' ]] && continue
         else
             [[ "$final_status" == installed || "$final_status" == 'needs creds' ]] && continue
         fi
