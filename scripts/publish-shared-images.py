@@ -28,6 +28,24 @@ def github(path, payload, content_type='application/json'):
     except urllib.error.HTTPError as error:
         raise RuntimeError(f'GitHub release operation failed (HTTP {error.code}).') from None
 
+def prepare_image(layer, platform):
+    source = shared.fingerprint(layer)
+    tag = shared.REGISTRIES[layer] + ':source-' + source
+    parent = shared.inspect(shared.TAGS['base'])['Id'] if layer == 'dev' else None
+    with tempfile.TemporaryDirectory() as directory:
+        pulled = subprocess.run(['docker', 'pull', '--platform', platform, tag],
+            env=dict(os.environ, DOCKER_CONFIG=directory), capture_output=True, text=True)
+    row = shared.inspect(tag) if pulled.returncode == 0 else None
+    if shared.compatible(row, layer, source, platform, parent):
+        print('Reusing compatible public image: ' + tag, flush=True)
+        run(['docker', 'tag', tag, shared.TAGS[layer]])
+    else:
+        run(['df', '-h', '/'])
+        run(['docker', 'system', 'df'])
+        run(['bash', str(ROOT / shared.CONTEXTS[layer] / 'build.sh')], cwd=ROOT)
+        run(['docker', 'tag', shared.TAGS[layer], tag])
+    return tag
+
 def main():
     # No workstation credentials or user-specific Layer 3 are ever published.
     platform = run(['docker', 'info', '--format', '{{.OSType}}/{{.Architecture}}'],
@@ -56,11 +74,7 @@ def main():
         input=os.environ['GH_TOKEN'], text=True, stdout=subprocess.DEVNULL)
     manifest = {'schemaVersion': 1, 'sourceCommit': os.environ['GITHUB_SHA'], 'images': {}}
     for layer in ('base', 'dev'):
-        run(['df', '-h', '/'])
-        run(['docker', 'system', 'df'])
-        run(['bash', str(ROOT / shared.CONTEXTS[layer] / 'build.sh')], cwd=ROOT)
-        tag = shared.REGISTRIES[layer] + ':source-' + shared.fingerprint(layer)
-        run(['docker', 'tag', shared.TAGS[layer], tag])
+        tag = prepare_image(layer, platform)
         # Smoke tests exercise installed binaries without any account login.
         run(['docker', 'run', '--rm', '--entrypoint', 'sh', tag, '-ec',
              'codex --version; claude --version; python3 --version; node --version'])
