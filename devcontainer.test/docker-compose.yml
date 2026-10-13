@@ -60,6 +60,7 @@ services:
     environment:
       WORKBENCHES_ACCEPTANCE_REF: ${WORKBENCHES_ACCEPTANCE_REF:-main}
       WORKBENCHES_ACCEPTANCE_SHA: ${WORKBENCHES_ACCEPTANCE_SHA:-}
+      WORKBENCHES_ACCEPTANCE_REQUIRE_PUBLIC: ${WORKBENCHES_ACCEPTANCE_REQUIRE_PUBLIC:-0}
       TMPDIR: /acceptance/tmp
     volumes:
       - acceptance-socket:/var/run

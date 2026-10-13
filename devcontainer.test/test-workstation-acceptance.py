@@ -210,6 +210,10 @@ MARKERS.extend([MASTER, API_VALUE])
 def main():
     assert str(HOME) == '/home/node' and not REPO.exists(), 'requires fresh declared workstation volumes'
     assert not (HOME / '.ssh').exists(), 'anonymous clone must have no SSH identity'
+    require_public = os.environ.get('WORKBENCHES_ACCEPTANCE_REQUIRE_PUBLIC') == '1'
+    if require_public:
+        for image in ('workbench-base:latest', 'dev-bench-base:latest'):
+            assert subprocess.run(['docker', 'image', 'inspect', image], capture_output=True).returncode != 0, 'public benchmark requires an empty shared-image cache'
     REPORT.mkdir(exist_ok=True)
     ref = os.environ.get('WORKBENCHES_ACCEPTANCE_REF', 'main')
     bootstrap = Path('/acceptance/bootstrap.sh')
@@ -252,7 +256,16 @@ def main():
     assert 'update failed' in output and 'Codex CLI updated' not in output
     benches = sorted(json.loads((REPO / 'config/bench-config.json').read_text())['benches'])
     selection = (TUI, '\x1b[B' * benches.index('pyBench') + ' \n')
-    terminal('bench-install', [selection, (REVIEW, '\n'), (DONE, '\n')], timeout=3600)
+    output = terminal('bench-install', [selection, (REVIEW, '\n'), (DONE, '\n')], timeout=3600)
+    if require_public:
+        logs = '\n'.join(path.read_text() for path in (REPO / 'logs').glob('*.log'))
+        for layer in ('base', 'dev'):
+            assert f'Pulling verified {layer} image for linux/amd64' in output + logs, 'public image download path was not exercised: ' + layer
+        assert 'Compatible public' not in output + logs, 'public benchmark fell back to a local build'
+        rows = json.loads(subprocess.check_output(['docker', 'image', 'inspect', 'workbench-base:latest', 'dev-bench-base:latest'], text=True))
+        (REPORT / 'public-images.json').write_text(json.dumps([
+            {'id': row['Id'], 'digests': row['RepoDigests'], 'labels': row['Config']['Labels']}
+            for row in rows], indent=2) + '\n')
     # Native setup must now create Wave-ready containers on first installation.
     run(['bash', str(REPO / 'scripts/wave-container-shell.sh'), '--workbenches-root', str(REPO),
          '--shell', 'bash', '--check', 'pyBench'], cwd=REPO)

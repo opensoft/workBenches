@@ -26,6 +26,12 @@ docker compose -p workbenches-acceptance-test -f devcontainer.test/docker-compos
 
 Run the npm 12 CI environment locally through the same declared bench:
 
+For a cold public-image benchmark, also export
+`WORKBENCHES_ACCEPTANCE_REQUIRE_PUBLIC=1` before creating a fresh project. This
+requires an empty shared-image cache and verified downloads of both shared
+images, rejects local-build fallback, and records their digests in
+`public-images.json`. `results.json` records elapsed time for each install case.
+
 ```bash
 docker compose -f devcontainer.test/docker-compose.yml --profile merge-validation \
   run --build --rm --no-deps npm-integrity
