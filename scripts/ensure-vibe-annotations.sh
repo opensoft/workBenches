@@ -91,8 +91,19 @@ fi
 COMPOSE_IGNORE_ORPHANS=True "${compose[@]}" up -d --build vibe-annotations
 
 for _ in {1..30}; do
-  if curl --fail --silent --max-time 2 "http://$HOST_BIND:$HOST_PORT/health" >/dev/null 2>&1; then
-    installed_version="$(docker exec "$CONTAINER_NAME" vibe-annotations-server --version)"
+  # The CLI's --version command can spin indefinitely. Read the running
+  # server's version from its bounded health request instead.
+  if health_response="$(curl --fail --silent --max-time 2 "http://$HOST_BIND:$HOST_PORT/health")" &&
+      installed_version="$(printf '%s' "$health_response" | python3 -c '
+import json, sys
+health = json.load(sys.stdin)
+if not isinstance(health, dict) or health.get("status") != "ok":
+    sys.exit(1)
+version = health.get("version")
+if not isinstance(version, str) or not version:
+    sys.exit(1)
+print(version)
+' 2>/dev/null)"; then
     if [[ "$installed_version" != "$VERSION" ]]; then
       log "Version mismatch: expected $VERSION, got $installed_version."
       exit 1
