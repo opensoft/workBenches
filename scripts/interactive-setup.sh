@@ -2233,7 +2233,10 @@ configure_selected_accounts() {
     if [[ ",$providers," == *,claude,* ]] && [[ -x "$SCRIPT_DIR/setup-claude-workflows.sh" ]]; then
         "$SCRIPT_DIR/setup-claude-workflows.sh" || return "$?"
     fi
-    [[ "$WORKBENCHES_AUTH_ROUTE" != later ]] || return 0
+    if [[ "$WORKBENCHES_AUTH_ROUTE" == later ]]; then
+        echo "Authentication pending. Select AI accounts to finish setup later."
+        return 0
+    fi
     if [ ${#items_needing_creds[@]} -gt 0 ]; then
         echo -e "${BOLD}${BLUE}────────────────────────────────────────────────────────────────────────────${NC}"
         echo -e "${BOLD}${YELLOW}Setting up Credentials${NC}"

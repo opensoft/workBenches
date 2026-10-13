@@ -73,6 +73,8 @@ class SelectedSetupTests(unittest.TestCase):
                 self.assertNotIn('Press Enter to continue', result.stdout)
                 if 'ai_accounts' not in keys:
                     self.assertNotIn('Authentication route', result.stdout)
+                elif not npm_status:
+                    self.assertIn('Authentication pending', result.stdout)
 
 
 class CheckoutRemovalTests(unittest.TestCase):
