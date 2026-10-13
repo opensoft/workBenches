@@ -39,6 +39,11 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - name: Prepare disk space on the disposable publisher runner
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android
+          df -h /
       - name: Build and verify anonymous shared images through the declared bench
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

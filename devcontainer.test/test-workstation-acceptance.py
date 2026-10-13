@@ -46,6 +46,7 @@ def terminal(name, replies, expected=0, env=None, timeout=1800):
     process = subprocess.Popen(['bash', 'setup.sh'], cwd=REPO, env=env or ENV,
                                stdin=slave, stdout=slave, stderr=slave, start_new_session=True)
     os.close(slave)
+    started = time.monotonic()
     output, last, answered = b'', 0, 0
     deadline = time.monotonic() + timeout
     try:
@@ -77,7 +78,7 @@ def terminal(name, replies, expected=0, env=None, timeout=1800):
         assert answered == len(replies), (name, 'unanswered prompts', answered)
         clean = ANSI.sub('', output.decode(errors='replace')).replace('\r', '')
         assert all(marker not in clean for marker in MARKERS), 'test value leaked to terminal'
-        RESULTS.append({'case': name, 'exitCode': process.returncode, 'prompts': answered})
+        RESULTS.append({'case': name, 'exitCode': process.returncode, 'prompts': answered, 'durationSeconds': round(time.monotonic() - started, 2)})
         print(f'PASS {name}', flush=True)
         return clean
     finally:

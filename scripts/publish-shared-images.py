@@ -56,6 +56,8 @@ def main():
         input=os.environ['GH_TOKEN'], text=True, stdout=subprocess.DEVNULL)
     manifest = {'schemaVersion': 1, 'sourceCommit': os.environ['GITHUB_SHA'], 'images': {}}
     for layer in ('base', 'dev'):
+        run(['df', '-h', '/'])
+        run(['docker', 'system', 'df'])
         run(['bash', str(ROOT / shared.CONTEXTS[layer] / 'build.sh')], cwd=ROOT)
         tag = shared.REGISTRIES[layer] + ':source-' + shared.fingerprint(layer)
         run(['docker', 'tag', shared.TAGS[layer], tag])
