@@ -12,13 +12,14 @@ cannot discover an organization's secret store or grant access to its secrets.
 ## Select credential stores during setup
 
 Setup checks Docker and Python/jq/git/curl, then opens component selection.
-An unchanged selection exits without host setup or image builds. The selected plan
-and local credential presence are reviewed before profile, credential or host
-changes. Node/npm are checked only for selected npm-based tools. For selected AI tools, choose **sign in
-directly**, **recover from a vault**, or **configure later**, independently of
-optional separate profile setup. Valid local credentials are reused automatically,
-so repeat installs skip authentication and vault questions. Personal profiles
-need an account email; GitHub identity is needed only for explicit registry enrollment.
+Enter applies the selected changes without a second install confirmation; an
+unchanged selection exits. Node/npm are checked only for selected npm-based tools.
+AI CLI installation succeeds without account setup and reports authentication
+pending when needed. Select **AI accounts** to configure profiles and choose
+**sign in directly**, **recover from a vault**, or **configure later** after
+installation. Existing profiles and credentials are preserved during repeat
+installs, without opening a vault. Personal profiles need an account email;
+GitHub identity is needed only for explicit registry enrollment.
 
 Users can select several supported services:
 
@@ -50,9 +51,8 @@ and item selection happen inside the temporary container; only item titles,
 IDs, and field labels are displayed. Confirm each item/profile association.
 The host validates all returned destinations and payloads before installation,
 then saves the mapping atomically with mode `0600`. Existing credential files
-and mapping files are preserved. Skip individual profiles with S. Recovery runs
-after the initial plan confirmation, so there is no late install approval after
-credentials have already been saved.
+and mapping files are preserved. Skip individual profiles with S. Recovery runs only when AI accounts is selected, after component installation.
+Each vault item/profile destination still requires explicit confirmation.
 
 Advanced JSON import remains available. Default mapping paths are under
 `~/.config/workbenches/`: `ai-credential-keyvault.json`,

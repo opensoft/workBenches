@@ -199,8 +199,7 @@ def snapshot():
 
 TUI = 'Changes selected: 0'
 CODEX = (TUI, '\x1b[C\x1b[B\x1b[B \n')
-REVIEW = r'Apply these changes\?.*\(Q to cancel\): '
-DONE = r'Press Enter to continue.*\(Q to cancel\): '
+CODEX_ACCOUNTS = (TUI, '\x1b[C\x1b[B\x1b[B \x1b[C' + '\x1b[B' * 7 + ' \n')
 EMAIL = 'acceptance@example.test'
 MASTER = secrets.token_urlsafe(32)
 API_VALUE = 'sk-test-invalid-' + secrets.token_hex(24)  # Invalid, nonbillable AI test value.
@@ -228,35 +227,42 @@ def main():
         'tls': 'verified private test CA; appended only to disposable credential Dockerfile'}, indent=2) + '\n')
     terminal('quit', [(TUI, 'Q')], 130)
     terminal('empty', [(TUI, '\n')])
-    terminal('decline', [CODEX, (REVIEW, 'n\n')], 130)
+    (HOME / '.zshrc').write_text('# custom shell settings\n')
+    (HOME / '.p10k.zsh').write_text('# custom prompt settings\n')
+    output = terminal('default-cli-install', [CODEX])
+    assert 'Authentication pending' in output and 'Apply these changes?' not in output
+    assert 'Authentication route' not in output and 'Profile ownership' not in output
+    assert 'Using ' + str(HOME / '.local') in output, 'global npm permission fallback missing'
+    assert '# custom shell settings' in (HOME / '.zshrc').read_text()
+    assert (HOME / '.p10k.zsh').read_text() == '# custom prompt settings\n'
+    ENV['PATH'] = str(HOME / '.local/bin') + ':' + ENV['PATH']
+    terminal('cancel-account-setup', [CODEX_ACCOUNTS, (r'Authentication route \[1\]: ', 'Q')], 130)
     assert not (HOME / '.config/workbenches/openai-profiles.json').exists()
     server = seed_vault()
-    replies = [CODEX, (REVIEW, '\n'), (r'Authentication route \[1\]: ', '2V\n'),
+    replies = [CODEX_ACCOUNTS, (r'Authentication route \[1\]: ', '2V\n'),
                (r'Profile ownership:.*: ', '\n'), (r'AI account login email: ', EMAIL + '\n'),
                (r'Vault HTTPS server.*: ', server + '\n'),
                (r'Bitwarden login email.*: ', '\n'),
-               (r'Vault master password: ', MASTER + '\n'), (r'Confirm \[y/N\]: ', 'y\n'),
-               (DONE, '\n')]
-    assert len(replies) <= 10, 'simple recovery flow grew beyond ten responses'
+               (r'Vault master password: ', MASTER + '\n'), (r'Confirm \[y/N\]: ', 'y\n')]
+    assert len(replies) <= 8, 'simple recovery flow grew beyond eight responses'
     output = terminal('live-vault-cli-install', replies)
     credential = HOME / '.chatgpt-profiles/profiles/personal/personal-1/auth.json'
     assert json.loads(credential.read_text())['OPENAI_API_KEY'] == API_VALUE
     assert credential.stat().st_mode & 0o777 == 0o600
-    assert 'Using ' + str(HOME / '.local') in output, 'global npm permission fallback missing'
     run([str(HOME / '.local/bin/codex'), '--version'])
     ENV['PATH'] = str(HOME / '.local/bin') + ':' + ENV['PATH']
     before = snapshot()
     terminal('repeat-unchanged', [(TUI, '\n')])
     assert snapshot() == before, 'unchanged selection modified installed configuration'
-    output = terminal('repeat-update', [CODEX, (REVIEW, '\n'), (DONE, '\n')])
-    assert 'Reusing existing credentials' in output and 'Authentication route [1]' not in output
+    output = terminal('repeat-update', [CODEX])
+    assert 'Reusing configured AI profiles' in output and 'Authentication route [1]' not in output
     assert credential.read_bytes() == dict((row[0], row[1]) for row in before)[str(credential)]
     fault_env = dict(ENV, NPM_CONFIG_REGISTRY='http://127.0.0.1:9', NPM_CONFIG_FETCH_RETRIES='0')
-    output = terminal('failed-npm-update', [CODEX, (REVIEW, '\n'), (DONE, '\n')], 1, env=fault_env)
+    output = terminal('failed-npm-update', [CODEX], 1, env=fault_env)
     assert 'update failed' in output and 'Codex CLI updated' not in output
     benches = sorted(json.loads((REPO / 'config/bench-config.json').read_text())['benches'])
     selection = (TUI, '\x1b[B' * benches.index('pyBench') + ' \n')
-    output = terminal('bench-install', [selection, (REVIEW, '\n'), (DONE, '\n')], timeout=3600)
+    output = terminal('bench-install', [selection], timeout=3600)
     if require_public:
         logs = '\n'.join(path.read_text() for path in (REPO / 'logs').glob('*.log'))
         for layer in ('base', 'dev'):
@@ -274,6 +280,14 @@ def main():
     before = snapshot()
     terminal('repeat-installed-bench', [(TUI, '\n')])
     assert snapshot() == before
+    checkout = REPO / 'devBenches/pyBench'
+    local_note = checkout / 'acceptance-local-work.txt'
+    local_note.write_text('preserve this local work')
+    container_id = subprocess.check_output(['docker', 'inspect', '--format', '{{.Id}}', 'py-bench'], text=True)
+    removal = (TUI, '\x1b[B' * benches.index('pyBench') + 'D\n')
+    output = terminal('bench-removal-preserves-local-work', [removal], 1)
+    assert 'Removal blocked' in output and local_note.read_text() == 'preserve this local work'
+    assert subprocess.check_output(['docker', 'inspect', '--format', '{{.Id}}', 'py-bench'], text=True) == container_id
     for path in (REPO / 'logs').glob('*.log'):
         assert all(value not in path.read_text() for value in MARKERS), 'test value leaked to setup logs'
     assert not subprocess.check_output(['docker', 'ps', '-a', '--filter', 'ancestor=' + IMAGE, '-q']).strip(), 'credential worker left behind'

@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/lib/setup-prerequisites.sh"
 source "$SCRIPT_DIR/../bootstrap.sh"
 LOG_DIR="$SCRIPT_DIR/../logs"
 mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/setup-$(date +%Y%m%d-%H%M%S).log"
+LOG_FILE="${WORKBENCHES_SETUP_LOG_FILE:-$LOG_DIR/setup-$(date +%Y%m%d-%H%M%S).log}"
 
 # Logging function
 log() {
@@ -206,6 +206,9 @@ init_components() {
         "wave"
         "amnezia_vpn"
         "0dcloud_vpn"
+        "host_shell"
+        "workspace_repo"
+        "ai_accounts"
     )
 
     # Initialize tool items
@@ -223,6 +226,12 @@ init_components() {
 
     component_checked["0dcloud_vpn"]=false
     component_description["0dcloud_vpn"]="0dcloud VPN"
+    for item in host_shell workspace_repo ai_accounts; do
+        component_checked[$item]=false
+    done
+    component_description[host_shell]="Shell setup"
+    component_description[workspace_repo]="Org workspace"
+    component_description[ai_accounts]="AI accounts"
 }
 
 # Compare GitHub repository identities across HTTPS and SSH clone URLs.
@@ -249,6 +258,9 @@ check_component_status() {
     log "Checking status: $component"
 
     case "$component" in
+        host_shell|workspace_repo|ai_accounts)
+            echo "optional"
+            ;;
         claude_cli)
             if command -v claude &> /dev/null; then
                 # Check if credentials exist
@@ -719,7 +731,7 @@ draw_ui() {
     echo -e "${BOLD}${BLUE}║               WorkBenches Configuration Manager                    ║${NC}"
     echo -e "${BOLD}${BLUE}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${CYAN}Navigation:${NC} ↑/↓ Move  ←/→ Section  Space Install/Update (again: undo)  D Remove/Undo  Enter Review  Q Quit"
+    echo -e "${CYAN}Navigation:${NC} ↑/↓ Move  ←/→ Section  Space Select/Undo  D Remove/Undo  Enter Apply  Q Quit"
     echo ""
 
     # Draw three sections side by side
@@ -728,7 +740,8 @@ draw_ui() {
     echo ""
 
     # Status legend
-    echo -e "${GREEN}✓${NC} Installed  ${DIM}│${NC}  ${YELLOW}⚠${NC} Needs setup ${DIM}(repo cloned but bench commands not configured — run setup)${NC}  ${DIM}│${NC}  ${RED}✗${NC} Not installed"
+    echo -e "${GREEN}✓${NC} Installed  ${DIM}│${NC}  ${YELLOW}⚠${NC} Needs setup/sign-in  ${DIM}│${NC}  ${RED}✗${NC} Not installed  ${DIM}│ · Optional${NC}"
+    echo "Shell setup replaces shell settings. Org workspace may create a GitHub repo."
     echo ""
 
     # Show selected count
@@ -849,6 +862,9 @@ draw_item_compact() {
     elif [[ "$status" == "needs creds" ]]; then
         status_color="$YELLOW"
         status_symbol="⚠"
+    elif [[ "$status" == optional ]]; then
+        status_color="$DIM"
+        status_symbol="·"
     fi
 
     # Selection highlight
@@ -1279,7 +1295,6 @@ process_selections() {
     local fail_count=0
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local config_file="$script_dir/../config/bench-config.json"
-    local -a items_needing_creds=()
 
     # Process benches
     for bench in "${bench_items[@]}"; do
@@ -1341,19 +1356,12 @@ process_selections() {
                 log "Uninstalling bench: $bench"
                 echo -e "${BOLD}${CYAN}▶ Uninstalling: $bench${NC}"
                 local bench_path=$(jq -r ".benches.${bench}.path // \"$bench\"" "$config_file" 2>/dev/null)
-                if [ -d "$script_dir/../$bench_path" ]; then
-                    log "Removing directory: $script_dir/../$bench_path"
-                    if rm -rf "$script_dir/../$bench_path"; then
-                        log "Successfully uninstalled $bench"
-                        echo -e "  ${GREEN}✓ Successfully uninstalled $bench${NC}"
-                        ((success_count++))
-                    else
-                        log "ERROR: Failed to uninstall $bench"
-                        echo -e "  ${RED}✗ Failed to uninstall $bench${NC}"
-                        ((fail_count++))
-                    fi
+                if python3 "$SCRIPT_DIR/remove-bench-checkout.py" --bench "$bench"; then
+                    ((success_count++))
                 else
-                    echo -e "  ${YELLOW}⚠ $bench not found, already uninstalled${NC}"
+                    local removal_status=$?
+                    setup_propagate_cancel "$removal_status"
+                    ((fail_count++))
                 fi
                 echo ""
             else
@@ -1774,7 +1782,6 @@ process_selections() {
                             echo -e "  ${GREEN}✓ Claude Code CLI installed${NC}"
                             echo -e "  ${DIM}Run 'claude' to start using it${NC}"
                             ((success_count++))
-                            items_needing_creds+=("claude")
                         else
                             trap 'exit 130' INT
                             log "ERROR: Claude CLI installation failed"
@@ -1799,7 +1806,6 @@ process_selections() {
                             if npm install -g @github/copilot; then
                                 echo -e "  ${GREEN}✓ GitHub Copilot CLI installed${NC}"
                                 ((success_count++))
-                                items_needing_creds+=("copilot")
                             else
                                 echo -e "  ${RED}✗ Failed to install GitHub Copilot CLI${NC}"
                                 ((fail_count++))
@@ -1829,7 +1835,6 @@ process_selections() {
                                 if npm install -g @openai/codex; then
                                     echo -e "  ${GREEN}✓ OpenAI Codex CLI installed${NC}"
                                     ((success_count++))
-                                    items_needing_creds+=("codex")
                                 else
                                     echo -e "  ${RED}✗ Failed to install Codex CLI${NC}"
                                     ((fail_count++))
@@ -1873,7 +1878,6 @@ process_selections() {
                                 echo -e "  ${GREEN}✓ Antigravity CLI installed${NC}"
                                 echo -e "  ${DIM}Run 'agy' to start using it${NC}"
                                 ((success_count++))
-                                items_needing_creds+=("antigravity")
                             else
                                 log "ERROR: Antigravity CLI installer completed but agy is not on PATH"
                                 echo -e "  ${RED}✗ Antigravity CLI installed but 'agy' is not on PATH${NC}"
@@ -1901,7 +1905,6 @@ process_selections() {
                         echo -e "  ${RED}✗ Failed to install OpenCode CLI${NC}"
                         ((fail_count++))
                     fi
-                    command -v opencode &>/dev/null && items_needing_creds+=("opencode")
                     ;;
 
                 pi_cli)
@@ -1918,7 +1921,6 @@ process_selections() {
                         echo -e "  ${RED}✗ Failed to install Pi Coding Agent${NC}"
                         ((fail_count++))
                     fi
-                    { command -v pi &>/dev/null || [[ -x "$HOME/.npm-global/bin/pi" ]]; } && items_needing_creds+=("pi")
                     ;;
 
                 spec_kit)
@@ -2012,6 +2014,21 @@ process_selections() {
             local status="${component_status[$item]}"
             local is_installed=false
             [[ "$status" == "installed" ]] && is_installed=true
+
+            if [[ "$item" == ai_accounts ]]; then continue; fi
+            if [[ "$item" == host_shell || "$item" == workspace_repo ]]; then
+                local optional_status=0
+                if [[ "$item" == host_shell ]]; then
+                    "$SCRIPT_DIR/setup-shell.sh" || optional_status=$?
+                else
+                    log "WORKSPACE REPOSITORY"
+                    { "$SCRIPT_DIR/setup-estate-commands.sh" && "$SCRIPT_DIR/setup-workspace-repo.sh"; } 2>&1 | tee -a "$LOG_FILE"
+                    optional_status=${PIPESTATUS[0]}
+                fi
+                setup_propagate_cancel "$optional_status"
+                if [[ "$optional_status" -eq 0 ]]; then ((success_count++)); else ((fail_count++)); fi
+                continue
+            fi
 
             # Handle uninstallation
             if [[ "$action" == "uninstall" ]]; then
@@ -2114,7 +2131,6 @@ process_selections() {
                             echo -e "  ${DIM}Visit: https://warp.dev${NC}"
                             echo -e "  ${YELLOW}Download and install .deb package from website${NC}"
                         fi
-                        items_needing_creds+=("warp")
                         ;;
                     wave)
                         # Check if running in WSL
@@ -2134,13 +2150,27 @@ process_selections() {
                             echo -e "  ${DIM}Visit: https://waveterm.dev${NC}"
                             echo -e "  ${YELLOW}Download and install from website${NC}"
                         fi
-                        items_needing_creds+=("wave")
                         ;;
                 esac
             fi
             echo ""
         fi
     done
+
+    if [[ "${component_checked[ai_accounts]}" == true ]]; then
+        if [[ "$fail_count" -gt 0 ]]; then
+            echo "AI accounts skipped because a selected change failed. Retry account setup after resolving it."
+        elif configure_selected_accounts; then
+            ((success_count++))
+        else
+            local account_status=$?
+            setup_propagate_cancel "$account_status"
+            echo "AI account setup needs attention; installed tools remain available."
+            ((fail_count++))
+        fi
+    else
+        show_pending_authentication
+    fi
 
     # Summary
     echo ""
@@ -2164,13 +2194,46 @@ process_selections() {
 
     echo ""
 
-    # Handle credential setup for newly installed CLIs
-    for item in claude_cli codex_cli; do
-        if [[ "${component_checked[$item]}" == true && "${component_action[$item]}" =~ ^(install|update)$ && "${component_status[$item]}" == "needs creds" ]]; then
-            [[ " ${items_needing_creds[*]} " == *" ${item%_cli} "* ]] || items_needing_creds+=("${item%_cli}")
+    [[ "$fail_count" -eq 0 ]]
+}
+
+configure_selected_accounts() {
+    local providers="${WORKBENCHES_SELECTED_PROVIDERS:-}" item cli choice route_file route account_status
+    local -a items_needing_creds=()
+    for item in claude_cli codex_cli pi_cli opencode_cli copilot_cli antigravity_cli warp wave; do
+        if [[ "${component_checked[$item]}" == true && "${component_action[$item]}" =~ ^(install|update)$ ]]; then
+            items_needing_creds+=("${item%_cli}")
         fi
     done
-    if [[ "${WORKBENCHES_AUTH_ROUTE:-}" == later ]]; then items_needing_creds=(); fi
+    if [[ -z "$providers" ]]; then
+        setup_read "AI assistant (codex/claude/pi/opencode/copilot/antigravity) [codex]" choice
+        cli="${choice:-codex}"
+        case "$cli" in
+            codex) providers=openai ;;
+            opencode) providers=omniroute ;;
+            claude|pi|copilot|antigravity) providers="$cli" ;;
+            *) echo "Unknown AI assistant; account setup stopped."; return 1 ;;
+        esac
+        items_needing_creds+=("$cli")
+    fi
+    export WORKBENCHES_SELECTED_PROVIDERS="$providers"
+    route_file="$(mktemp)" || return 1
+    WORKBENCHES_AUTH_ROUTE= WORKBENCHES_AUTH_ROUTE_FILE="$route_file" \
+        "$SCRIPT_DIR/setup-ai-profiles.sh" --interactive
+    account_status=$?
+    route="$(cat "$route_file")"
+    rm -f "$route_file"
+    [[ "$account_status" -eq 0 ]] || return "$account_status"
+    export WORKBENCHES_AUTH_ROUTE="${route%%:*}"
+    if [[ "$route" == vault:* ]]; then
+        export WORKBENCHES_VAULT_SERVICE="${route#vault:}"
+    else
+        unset WORKBENCHES_VAULT_SERVICE
+    fi
+    if [[ ",$providers," == *,claude,* ]] && [[ -x "$SCRIPT_DIR/setup-claude-workflows.sh" ]]; then
+        "$SCRIPT_DIR/setup-claude-workflows.sh" || return "$?"
+    fi
+    [[ "$WORKBENCHES_AUTH_ROUTE" != later ]] || return 0
     if [ ${#items_needing_creds[@]} -gt 0 ]; then
         echo -e "${BOLD}${BLUE}────────────────────────────────────────────────────────────────────────────${NC}"
         echo -e "${BOLD}${YELLOW}Setting up Credentials${NC}"
@@ -2364,10 +2427,10 @@ process_selections() {
 
                 opencode)
                     echo -e "${CYAN}▶ Setting up OpenCode provider authentication...${NC}"
-                    if "$SCRIPT_DIR/restore-opencode-omniroute-from-kv.sh"; then
+                    if [[ "$WORKBENCHES_AUTH_ROUTE" == vault && "${WORKBENCHES_VAULT_SERVICE:-}" == azure ]] && "$SCRIPT_DIR/restore-opencode-omniroute-from-kv.sh"; then
                         echo -e "${GREEN}✓ Restored Opensoft OmniRoute authentication from approved durable storage${NC}"
                     else
-                        echo -e "${YELLOW}Automatic OmniRoute recovery was unavailable.${NC}"
+                        echo -e "${YELLOW}OpenCode sign-in is needed.${NC}"
                         setup_read "Launch 'opencode auth login' now? [Y/n]: " launch_opencode
                         if [[ ! $launch_opencode =~ ^[Nn] ]]; then
                             opencode auth login
@@ -2449,10 +2512,23 @@ process_selections() {
         echo -e "${BOLD}${BLUE}────────────────────────────────────────────────────────────────────────────${NC}"
     fi
 
-    echo -e "${BLUE}Note: You may need to restart your shell for changes to take effect.${NC}"
-    echo ""
-    setup_read "Press Enter to continue..." continue_answer
-    [[ "$fail_count" -eq 0 ]]
+    return 0
+}
+
+show_pending_authentication() {
+    local item provider
+    local -a pending=()
+    for item in claude_cli codex_cli pi_cli opencode_cli; do
+        [[ "${component_checked[$item]}" == true && "${component_action[$item]}" =~ ^(install|update)$ ]] || continue
+        provider="${item%_cli}"
+        [[ "$provider" == opencode ]] && provider=omniroute
+        if ! python3 "$SCRIPT_DIR/profile_credentials.py" status "$provider"; then
+            pending+=("${component_description[$item]}")
+        fi
+    done
+    if [[ ${#pending[@]} -gt 0 ]]; then
+        printf 'Authentication pending: %s. Select AI accounts to configure later.\n' "$(IFS=,; echo "${pending[*]}")"
+    fi
 }
 
 guide_isolated_profile_logins() {

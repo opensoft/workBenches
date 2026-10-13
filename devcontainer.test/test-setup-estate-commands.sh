@@ -75,6 +75,9 @@ SKILL_NAMES=(handoff lane-swap restart)
 COMMAND_NAMES=(handoff ctx swap)
 
 TMPDIR_ROOT="$(mktemp -d)"
+# Each scenario supplies its own HOME. Host XDG/receipt overrides must not send
+# fixture installation records into the real user's data directory.
+unset XDG_DATA_HOME OPENREPOTOOLS_DATA_DIR
 trap 'rm -rf "$TMPDIR_ROOT"' EXIT
 
 failures=0

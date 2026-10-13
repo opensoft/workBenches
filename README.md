@@ -102,17 +102,17 @@ This single command:
 
 1. Checks Docker access and common dependencies, offering installation when needed.
 2. Opens the TUI to select benches, AI assistants, and tools. An empty selection finishes without installs or image builds.
-3. Shows selected changes, shared host setup, and local credential readiness, then asks for confirmation before changing profiles, recovering credentials, or configuring the host.
+3. Enter applies the selected changes immediately, with a compact install/update summary. Q cancels and an empty selection exits.
 4. Checks Node/npm only for selected tools that require them. A system-owned npm location falls back to `~/.local`, with PATH configured for new terminals.
-5. Reuses valid local credentials, or offers direct sign-in, guided vault recovery, or authentication later for selected AI tools, with optional personal/organization profiles.
-6. Configures the shell and installs pinned estate commands, then initializes the workspace repository if needed.
+5. Installs AI tools without requiring sign-in. Select **AI accounts** to configure accounts after installation, using direct sign-in or guided vault recovery. Existing profiles and credentials are preserved.
+6. Configures host shell settings only when **Shell setup** is selected. **Org workspace** explicitly initializes the workspace repository, after installing its pinned estate-command dependencies.
 7. Installs selected tools and builds only selected bench dependencies. Wave widgets and VPN setup follow the selected tools.
 
 After setup, open any bench in VS Code → "Reopen in Container" to start developing.
 
 ### Re-running setup.sh
 
-Installed items show their status and default to no changes. Space selects an install/update and pressing it again undoes the selection. D selects removal and pressing it again undoes removal. Only explicit selections are applied; an unchanged selection exits without host setup or builds. On runs with requested changes, the estate commands (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status` and the five lane tools) are checked against workBenches' pin on every run and are re-placed only when a host copy differs from it. The workspace repository step does nothing at all once you have one: it is a file test on `~/.agents/workspace.yaml`, so that step skips an existing workspace without asking questions or contacting the network.
+Installed items show their status and default to no changes. Space selects an install/update and pressing it again undoes the selection. D selects removal and pressing it again undoes removal. Only explicit selections are applied; an unchanged selection exits without host setup or builds. Bench checkout deletion requires a focused confirmation and refuses local changes, untracked/ignored files, local-only commits, or use by a running container. Docker images, volumes, and credentials are preserved. For selected bench installs or organization workspace setup, the estate commands (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status` and the five lane tools) are checked against workBenches' pin and are re-placed only when a host copy differs from it. The optional workspace repository step does nothing at all once you have one: it is a file test on `~/.agents/workspace.yaml`, so that step skips an existing workspace without asking questions or contacting the network.
 
 ## Docker Image Layers
 
@@ -175,18 +175,14 @@ checkout unchanged.
 setup.sh
   ├── Docker access + Python/jq/git/curl preflight
   ├── Component TUI: Benches | AI Assistants | Tools
-  │     └── Q/EOF cancels; empty Enter finishes without installs/builds
-  ├── Node/npm prerequisite for selected npm tools
-  ├── Selected AI tools: direct sign-in / recover from vault / configure later
-  │     ├── Optional personal/organization profiles
-  │     └── Guided vault item mappings or advanced JSON import
-  ├── Selected changes + per-profile local credential presence
-  ├── Shell + pinned estate commands → workspace repository
-  ├── Selected Wave widgets / Claude workflows
-  ├── Layer 0 only when benches are selected
-  ├── Apply saved component selection; native login for missing credentials
-  ├── Layer 1 builds only for selected bench categories
-  └── Summary + log file path
+  │     └── Enter applies; Q/EOF cancels; empty Enter finishes
+  ├── Compact selected-change summary + selected Node/npm prerequisites
+  ├── Reuse existing profiles; preserve host shell settings
+  ├── Selected bench dependencies: shared commands → Layer 0 → family Layer 1
+  ├── Install/update selected components
+  ├── Optional Shell setup / Org workspace
+  ├── Optional AI accounts: profiles, direct login or confirmed vault recovery
+  └── Summary + authentication pending where applicable + log path
 ```
 
 Docker verification runs before host installers and credential onboarding.
@@ -201,7 +197,7 @@ Your host's `openRepoShape`, `openRepoTools`, `park`, `resume`, `status`, `lane`
 
 ## Your Workspace Repository
 
-After the estate commands are installed, `setup.sh` runs `openRepoTools wip init` — the fourth link in the onboarding chain of lane-collision-protocol Amendment 9(e):
+When **Org workspace** is selected, setup installs the estate commands and runs `openRepoTools wip init` — the fourth link in the onboarding chain of lane-collision-protocol Amendment 9(e):
 
 ```text
 gh repo clone opensoft/workBenches && cd workBenches && ./setup.sh   # the host, and the estate commands
@@ -479,7 +475,7 @@ ordinary launch check before setup reports them ready. Existing running benches
 are preserved; stop them before applying setup changes or use Wave's explicit
 repair command when appropriate.
 
-At the authentication route prompt, use `2B` for Bitwarden, `2V` for Vaultwarden,
+Select **AI accounts** to open account setup after installation. At the authentication route prompt, use `2B` for Bitwarden, `2V` for Vaultwarden,
 `2P` for 1Password, or `2A` for Azure Key Vault. The compact password-manager flow
 uses editable email defaults and infers unambiguous credential formats. Item and
 destination confirmation remain explicit. Choose `2` for advanced imports,

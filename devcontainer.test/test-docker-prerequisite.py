@@ -248,7 +248,7 @@ exit 1
                 if docker_status:
                     self.assertTrue(all(action.startswith("docker ") for action in actions), actions)
                 else:
-                    self.assertEqual(actions, ["docker info", "selected", "recovery", "shell", "estate", "workspace", "workflow",
+                    self.assertEqual(actions, ["docker info", "selected", "recovery", "estate",
                                                "image acquisition", "build", "apply"])
 
 
