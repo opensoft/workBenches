@@ -40,6 +40,7 @@ def prepare_image(layer, platform):
         print('Reusing compatible public image: ' + tag, flush=True)
         run(['docker', 'tag', tag, shared.TAGS[layer]])
     else:
+        run(['free', '-h'])
         run(['df', '-h', '/'])
         run(['docker', 'system', 'df'])
         run(['bash', str(ROOT / shared.CONTEXTS[layer] / 'build.sh')], cwd=ROOT)

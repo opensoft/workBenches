@@ -42,7 +42,13 @@ jobs:
       - name: Prepare disk space on the disposable publisher runner
         run: |
           df -h /
+          free -h
           sudo rm -rf /usr/local/lib/android
+          sudo fallocate -l 8G /mnt/workbenches-image-swap
+          sudo chmod 600 /mnt/workbenches-image-swap
+          sudo mkswap /mnt/workbenches-image-swap
+          sudo swapon /mnt/workbenches-image-swap
+          free -h
           df -h /
       - name: Build and verify anonymous shared images through the declared bench
         env:
