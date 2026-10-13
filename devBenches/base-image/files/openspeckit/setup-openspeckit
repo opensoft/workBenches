@@ -3771,13 +3771,13 @@ def has_symlinked_ancestor(path: Path) -> bool:
 
 def ensure_skill_shape_blocks(
     repo: Path,
-    agent_root: Path,
+    display_root: Path,
     dry_run: bool,
     include_global: bool,
 ) -> None:
     """Maintain the managed Repository Shape block in skills and commands.
 
-    ``agent_root`` is only named in the user-global block, never read, so
+    ``display_root`` is only named in the user-global block, never read, so
     ``main`` passes the unresolved spelling.
     """
     repo_block = shape_block_body(REPO_AGENT_ROOT)
@@ -3785,7 +3785,7 @@ def ensure_skill_shape_blocks(
         upsert_shape_block(path, repo_block, dry_run)
     if not include_global:
         return
-    global_block = shape_block_body(str(agent_root))
+    global_block = shape_block_body(str(display_root))
     for path in global_shape_block_targets(Path.home()):
         if has_symlinked_ancestor(path):
             log(f"skipped {path}: symlinked ancestor; the installer does not write through a symlink")
@@ -3890,8 +3890,8 @@ def ensure_skill_routing_blocks(
             log(f"skipped {path}: {exc}")
 
 
-def ensure_global_agent_pointers(agent_root: Path, dry_run: bool) -> None:
-    """Upsert the pointer block naming ``agent_root``, which is never read here.
+def ensure_global_agent_pointers(display_root: Path, dry_run: bool) -> None:
+    """Upsert the pointer block naming ``display_root``, which is never read here.
 
     ``main`` passes the unresolved spelling.
     """
@@ -3901,7 +3901,7 @@ def ensure_global_agent_pointers(agent_root: Path, dry_run: bool) -> None:
             log(f"skipped {path}: permission denied")
             continue
         try:
-            upsert_block(path, global_pointer_block(agent_root), dry_run)
+            upsert_block(path, global_pointer_block(display_root), dry_run)
         except PermissionError as exc:
             log(f"skipped {path}: permission denied ({exc})")
         except OSError as exc:
@@ -4351,16 +4351,17 @@ def main() -> int:
     repo = (args.repo.resolve() if args.repo else git_root())
     ensure_safe_specify_destination(repo)
     # Two spellings of one directory. The written text names
-    # agent_root_spelling: AGENT_PROTOCOL_ROOT as given, or ~/.agents, made
-    # absolute but never resolved. That way a ~/.agents linked into a
+    # agent_root_spelling: AGENT_PROTOCOL_ROOT as given when it is absolute,
+    # or ~/.agents, never resolved. That way a ~/.agents linked into a
     # dotfiles checkout keeps its stable spelling in every user-global block,
-    # and the checkout's own path never appears. Every read and write goes
-    # through agent_root, the resolved path, because the descriptor walks
-    # refuse a symlinked ancestor.
-    agent_root_spelling = Path(
-        os.environ.get("AGENT_PROTOCOL_ROOT", Path.home() / ".agents")
-    ).absolute()
-    agent_root = agent_root_spelling.resolve()
+    # and the checkout's own path never appears. A relative
+    # AGENT_PROTOCOL_ROOT has no stable spelling (it would name <cwd>/..), so
+    # its blocks name the resolved path. Every read and write goes through
+    # agent_root, the resolved path, because the descriptor walks refuse a
+    # symlinked ancestor.
+    configured = Path(os.environ.get("AGENT_PROTOCOL_ROOT", Path.home() / ".agents"))
+    agent_root = configured.resolve()
+    agent_root_spelling = configured if configured.is_absolute() else agent_root
     worktree_templates, command_templates = preflight_source_roots(
         agent_root,
         args.no_worktrees,

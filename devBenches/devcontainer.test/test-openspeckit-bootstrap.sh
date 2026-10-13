@@ -4311,10 +4311,76 @@ assert_contains "$TMPDIR_ROOT/linked-agents-full.log" "copied $LINKED_AGENTS_SPE
 assert_not_contains "$TMPDIR_ROOT/linked-agents-full.log" 'Traceback' 'the full bootstrap raises no traceback'
 snapshot_repo "$LINKED_AGENTS_HOME" > "$LINKED_AGENTS_HOME_SECOND"
 if cmp -s "$LINKED_AGENTS_HOME_FIRST" "$LINKED_AGENTS_HOME_SECOND"; then
-    pass 'the full bootstrap renders the same unresolved spelling in every user-global block'
+    pass 'a full bootstrap leaves every user-global file as the --no-skill-links run wrote it'
 else
-    fail 'the full bootstrap renders the same unresolved spelling in every user-global block'
+    fail 'a full bootstrap leaves every user-global file as the --no-skill-links run wrote it'
 fi
+
+printf '%s\n' 'Given: a RELATIVE AGENT_PROTOCOL_ROOT, with the installer run from a subdirectory'
+# A relative root has no stable spelling: made absolute against the current
+# directory it would name <cwd>/../..., so every user-global block must name the
+# resolved root instead. Only an absolute root is spelled as given (the linked
+# ~/.agents scenario above).
+RELATIVE_ROOT_HOME="$TMPDIR_ROOT/relative-root-home"
+RELATIVE_ROOT_AGENTS="$TMPDIR_ROOT/relative-root-agents"
+RELATIVE_ROOT_CWD="$TMPDIR_ROOT/relative-root-work/sub"
+RELATIVE_ROOT_REPO="$TMPDIR_ROOT/relative-root-repo"
+RELATIVE_ROOT_VALUE='../../relative-root-agents'
+mkdir -p \
+    "$RELATIVE_ROOT_AGENTS/templates/speckit/model-routing" \
+    "$RELATIVE_ROOT_HOME/.claude/skills/speckit-tasks" \
+    "$RELATIVE_ROOT_HOME/.codex/skills/speckit-analyze" \
+    "$RELATIVE_ROOT_CWD" \
+    "$RELATIVE_ROOT_REPO"
+RELATIVE_ROOT_RESOLVED="$(cd "$RELATIVE_ROOT_AGENTS" && pwd -P)"
+for routing_skill in speckit-tasks speckit-implement speckit-analyze; do
+    printf '%s\n' \
+        '<!-- OPENSPEC-SPECKIT-MODEL-ROUTING:START -->' \
+        "## Model Routing fixture for $routing_skill" \
+        'Full rules: `${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/protocols/openspec-speckit-workflow.md` ("Build Tiers").' \
+        '<!-- OPENSPEC-SPECKIT-MODEL-ROUTING:END -->' \
+        > "$RELATIVE_ROOT_AGENTS/templates/speckit/model-routing/$routing_skill.md"
+done
+printf '%s\n' '---' 'name: fixture' '---' '' 'Stock Spec Kit body.' > "$RELATIVE_ROOT_HOME/.claude/skills/speckit-tasks/SKILL.md"
+printf '%s\n' '---' 'name: fixture' '---' '' 'Stock Spec Kit body.' > "$RELATIVE_ROOT_HOME/.codex/skills/speckit-analyze/SKILL.md"
+git init -q "$RELATIVE_ROOT_REPO"
+assert_equal "$(cd "$RELATIVE_ROOT_CWD" && cd "$RELATIVE_ROOT_VALUE" && pwd -P)" "$RELATIVE_ROOT_RESOLVED" 'the relative AGENT_PROTOCOL_ROOT names the protocol root when read from the subdirectory'
+
+printf '%s\n' 'When: bootstrap runs from the subdirectory with --no-skill-links'
+if (
+    cd "$RELATIVE_ROOT_CWD" &&
+    env AGENT_PROTOCOL_ROOT="$RELATIVE_ROOT_VALUE" \
+        HOME="$RELATIVE_ROOT_HOME" \
+        OPSX_COMMAND_TEMPLATE_ROOT="$COMMAND_TEMPLATE_ROOT" \
+        python3 "$SETUP_SCRIPT" \
+            --repo "$RELATIVE_ROOT_REPO" \
+            "${LINKED_AGENTS_FLAGS[@]}" \
+            --no-skill-links
+) > "$TMPDIR_ROOT/relative-root.log" 2>&1; then
+    pass 'bootstrap completes with a relative AGENT_PROTOCOL_ROOT'
+else
+    fail 'bootstrap completes with a relative AGENT_PROTOCOL_ROOT'
+    cat "$TMPDIR_ROOT/relative-root.log"
+fi
+
+printf '%s\n' 'Then: every user-global block names the resolved protocol root, and none contains /../'
+for pointer_file in "${LINKED_AGENTS_POINTER_FILES[@]}"; do
+    pointer_path="$RELATIVE_ROOT_HOME/$pointer_file"
+    assert_contains "$pointer_path" "Read \`$RELATIVE_ROOT_RESOLVED/AGENTS.md\` for user-global workflow rules" "user-global pointer names the resolved root of a relative AGENT_PROTOCOL_ROOT: $pointer_file"
+    assert_not_contains "$pointer_path" '/../' "user-global pointer omits /../ under a relative AGENT_PROTOCOL_ROOT: $pointer_file"
+done
+for global_skill in .claude/skills/speckit-tasks .codex/skills/speckit-analyze; do
+    global_skill_path="$RELATIVE_ROOT_HOME/$global_skill/SKILL.md"
+    assert_contains "$global_skill_path" "Full rules: \`$RELATIVE_ROOT_RESOLVED/protocols/openspec-speckit-workflow.md\` (\"Repository Shape\", \"Worktree Rules\")." "user-global shape block names the resolved root of a relative AGENT_PROTOCOL_ROOT: $global_skill"
+    assert_contains "$global_skill_path" "Full rules: \`$RELATIVE_ROOT_RESOLVED/protocols/openspec-speckit-workflow.md\` (\"Build Tiers\")." "user-global routing block names the resolved root of a relative AGENT_PROTOCOL_ROOT: $global_skill"
+    assert_not_contains "$global_skill_path" '/../' "user-global shape and routing blocks omit /../ under a relative AGENT_PROTOCOL_ROOT: $global_skill"
+done
+assert_contains "$RELATIVE_ROOT_AGENTS/AGENTS.md" "\`$RELATIVE_ROOT_RESOLVED/protocols/openspec-speckit-workflow.md\`" 'the entrypoint written under a relative AGENT_PROTOCOL_ROOT names the resolved root'
+assert_contains "$RELATIVE_ROOT_AGENTS/protocols/openspec-speckit-workflow.md" "\`$RELATIVE_ROOT_RESOLVED/protocols/project-agent-bootstrap.md\`" 'the workflow protocol written under a relative AGENT_PROTOCOL_ROOT names the resolved root'
+assert_contains "$RELATIVE_ROOT_AGENTS/protocols/project-agent-bootstrap.md" "\`$RELATIVE_ROOT_RESOLVED/protocols/openspec-speckit-workflow.md\`" 'the bootstrap protocol written under a relative AGENT_PROTOCOL_ROOT names the resolved root'
+for protocol_file in AGENTS.md protocols/openspec-speckit-workflow.md protocols/project-agent-bootstrap.md; do
+    assert_not_contains "$RELATIVE_ROOT_AGENTS/$protocol_file" '/../' "the file written under a relative AGENT_PROTOCOL_ROOT omits /../: $protocol_file"
+done
 
 printf '%s\n' 'Given: a skill source under a symlinked ancestor, and destinations a symlink would redirect'
 if python3 - "$SETUP_SCRIPT" "$TMPDIR_ROOT/linked-source-safety" <<'PY'
