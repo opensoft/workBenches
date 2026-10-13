@@ -117,13 +117,13 @@ if 'up' in args:
 sys.exit(0)
 ''');docker.chmod(0o700)
             spec=importlib.util.spec_from_file_location('bench',ROOT/'scripts/setup-bench-runtime.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-            log=root/'actions';env=dict(os.environ,PATH=str(binary)+os.pathsep+os.environ['PATH'],BENCH_LOG=str(log),COUNT=str(root/'count'),EXISTING=str(int(existing)),RACED=str(int(raced)),FAIL_CHECK=str(int(fail_check)))
+            log=root/'actions';env=dict(os.environ,HOME=str(root/'home'),PATH=str(binary)+os.pathsep+os.environ['PATH'],BENCH_LOG=str(log),COUNT=str(root/'count'),EXISTING=str(int(existing)),RACED=str(int(raced)),FAIL_CHECK=str(int(fail_check)))
             with patch.dict(os.environ,env),patch.object(module,'ROOT',repo),patch.object(module.sys,'argv',['setup','--bench','pyBench','--setup',str(setup)]): code=module.main()
             return code,log.read_text() if log.exists() else ''
 
     def test_first_creation_includes_wave_override_and_requires_launch_check(self):
         code,log=self.exercise();self.assertEqual(code,0)
-        self.assertIn('wave.yml up -d',log);self.assertIn('check',log)
+        self.assertIn('py-bench.override.yml up -d',log);self.assertIn('check',log)
         self.assertEqual(self.exercise(fail_check=True)[0],1)
 
     def test_existing_and_racing_live_containers_are_preserved(self):

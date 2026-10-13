@@ -51,7 +51,8 @@ def main():
     wave = ['bash', str(ROOT / 'scripts/wave-container-shell.sh'), '--workbenches-root', str(ROOT), '--shell', 'bash']
     with tempfile.TemporaryDirectory(prefix='workbenches-bench-') as directory:
         work = Path(directory)
-        override = work / 'wave.yml'
+        override = Path(os.environ.get('WAVE_WORKBENCHES_COMPOSE_CACHE', str(Path.home() / '.cache/workbenches/wave-compose'))) / (container + '.override.yml')
+        override.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         result = run(wave + ['--prepare-compose', str(override), container])
         if result.returncode:
             return result.returncode

@@ -1615,7 +1615,7 @@ process_selections() {
                                 else
                                     log "ERROR: Setup failed for $bench"
                                     echo -e "  ${YELLOW}⚠ Setup failed${NC}"
-                                    echo -e "  ${DIM}You may need to run setup manually: $setup_script${NC}"
+                                    echo -e "  ${DIM}Inspect the build log and rerun workBenches setup after stopping this bench; Wave will display a repair command if needed.${NC}"
                                     ((fail_count++))
                                 fi
                             else

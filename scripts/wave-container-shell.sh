@@ -683,7 +683,9 @@ EOF
 
 if [[ -n "$prepare_compose_output" ]]; then
     prepared_override="$(write_wave_compose_override)" || exit 1
-    cp -- "$prepared_override" "$prepare_compose_output"
+    if [[ ! "$prepared_override" -ef "$prepare_compose_output" ]]; then
+        cp -- "$prepared_override" "$prepare_compose_output"
+    fi
     exit 0
 fi
 
