@@ -12,6 +12,8 @@ cp "$repo_root/bootstrap.sh" "$fixture/"
 cp "$repo_root/scripts/lib/"{docker-prerequisite.sh,setup-prerequisites.sh,setup-prompts.sh} "$fixture/scripts/lib/"
 cp "$repo_root/scripts/setup_selection.py" "$fixture/scripts/"
 cp "$repo_root/scripts/setup-bench-home.py" "$fixture/scripts/"
+cp "$repo_root/scripts/shared-images.py" "$fixture/scripts/"
+export WORKBENCHES_BUILD_LOCAL=1
 cp "$repo_root/scripts/interactive-setup.sh" "$fixture/scripts/interactive-setup-real.sh"
 cp "$repo_root/scripts/lib/image-names.sh" "$fixture/scripts/lib/"
 printf '{"profiles":[{}]}' > "$test_root/home/.config/workbenches/openai-profiles.json"

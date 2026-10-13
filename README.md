@@ -471,3 +471,30 @@ sysBenches/cloudBench/docs/amnezia-server-runbook.md
 | pyBench | [opensoft/pyBench](https://github.com/opensoft/pyBench) |
 | gentecBench | [opensoft/gentecBench](https://github.com/opensoft/gentecBench) |
 | simBench | [opensoft/simBench](https://github.com/opensoft/simBench) |
+
+### Faster workstation setup
+
+New Compose benches are created with the shared Wave mounts and must pass an
+ordinary launch check before setup reports them ready. Existing running benches
+are preserved; stop them before applying setup changes or use Wave's explicit
+repair command when appropriate.
+
+At the authentication route prompt, use `2B` for Bitwarden, `2V` for Vaultwarden,
+`2P` for 1Password, or `2A` for Azure Key Vault. The compact password-manager flow
+uses editable email defaults and infers unambiguous credential formats. Item and
+destination confirmation remain explicit. Choose `2` for advanced imports,
+multiple vaults, and automation authentication.
+
+Shared base images are reused only when their source fingerprint, platform, and
+parent image match. Otherwise setup tries a public release manifest with pinned
+image digests, then builds locally if the matching release is unavailable.
+Set `WORKBENCHES_BUILD_LOCAL=1` to force local builds. Build spinners show elapsed
+time and print the command to follow their log in another terminal.
+
+Maintainers publish the first system/developer images by running **Shared
+workstation images** with `workflow_dispatch`. New GHCR packages must be set to
+public at their package settings. The workflow checks anonymous access before
+publishing its immutable `shared-images-…` release manifest; a private package
+cannot become the default download path. The initial release targets
+`linux/amd64`; other platforms retain local builds. Publishing never includes
+personalized Layer 3 or workstation credentials.

@@ -759,3 +759,12 @@ grep -q 'wave-container-shell-ok' <<<"$CASE_OUTPUT" || fail "verification did no
 CASE_OPENCODE_PROFILE=file run_launcher_case configured-opencode-profile true complete false false py-bench
 CASE_OPENCODE_PROFILE=directory CASE_EXPECT_STATUS=1 run_launcher_case invalid-opencode-profile true complete false false py-bench
 echo "PASS: Wave verifies selected and unselected provider configurations"
+
+prepared_file="$(mktemp)"
+CASE_CONTAINER_EXISTS=false CASE_LAYER2_EXISTS=false run_launcher_case prepare-first-start false missing false false py-bench --prepare-compose "$prepared_file"
+grep -q '^    init: true$' "$prepared_file" || fail 'first-start override omitted process reaping'
+grep -q '.pi-profiles' "$prepared_file" || fail 'first-start override omitted profile mounts'
+[[ -z "$CASE_PREPARE_LOG" && -z "$CASE_ENSURE_IMAGES_LOG" ]] || fail 'preparing mounts ran image/container preparation'
+if grep -Eq '^exec |^rm | up ' <<<"$CASE_DOCKER_LOG"; then fail 'preparing first-start mounts changed container lifecycle'; fi
+rm -f "$prepared_file"
+echo 'PASS: first-start mount preparation does not create or replace containers'

@@ -5,7 +5,8 @@
 # Used by ALL developer benches (Frappe, Flutter, .NET, etc.)
 # USER-AGNOSTIC: No user creation — Layer 3 handles user setup
 
-FROM workbench-base:latest
+ARG BASE_IMAGE=workbench-base:latest
+FROM ${BASE_IMAGE}
 
 # Container version labels
 LABEL layer="1"

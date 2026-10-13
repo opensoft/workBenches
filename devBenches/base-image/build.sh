@@ -44,8 +44,13 @@ if ! docker image inspect "workbench-base:latest" >/dev/null 2>&1; then
 fi
 
 # Build the image
+source_hash="$(python3 "$REPO_DIR/scripts/shared-images.py" fingerprint dev)"
+parent_id="$(docker image inspect workbench-base:latest --format '{{.Id}}')"
 echo "Building $CANONICAL_IMAGE..."
 docker build \
+    --label "io.workbenches.source=$source_hash" \
+    --label "io.workbenches.parent=$parent_id" \
+    --label "org.opencontainers.image.source=https://github.com/opensoft/workBenches" \
     $([ "$NO_CACHE" = true ] && printf '%s\n' "--no-cache") \
     -t "$CANONICAL_IMAGE" \
     .
