@@ -45,6 +45,21 @@ class ImageTests(unittest.TestCase):
             (roots[1]/'base-image/__pycache__/unrelated.pyc').write_text('ignored')
             self.assertEqual(cache_before,shared.fingerprint('base',roots[1]))
 
+    def test_publisher_exports_directly_and_rejects_a_changed_parent(self):
+        spec=importlib.util.spec_from_file_location('publisher',ROOT/'scripts/publish-shared-images.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        base={'RepoDigests':[shared.REGISTRIES['base']+'@sha256:'+'b'*64]}
+        wrong={'Os':'linux','Architecture':'amd64','Config':{'Labels':{shared.LABEL:shared.fingerprint('dev'),'io.workbenches.parent':'wrong'}}}
+        with patch.object(module.shared,'inspect',side_effect=[base,wrong]), patch.object(module.subprocess,'run',return_value=subprocess.CompletedProcess([],0)) as command:
+            with self.assertRaisesRegex(RuntimeError,'parent validation'):
+                module.build_dev_image('release-tag','expected','linux/amd64')
+        calls=[call.args[0] for call in command.call_args_list]
+        export=next(argv for argv in calls if argv[:3]==['docker','buildx','build'])
+        self.assertIn('BASE_IMAGE='+base['RepoDigests'][0],export)
+        self.assertIn('type=registry,name=release-tag,compression=gzip,compression-level=1',export)
+        self.assertTrue(any(argv[:3]==['docker','buildx','rm'] for argv in calls))
+        self.assertFalse(any(argv[:2]==['docker','tag'] for argv in calls))
+
     def exercise(self, manifest=None, local=False, force=False, pull_failure=False, bad_label=False):
         calls=[]
         source=shared.fingerprint('base')

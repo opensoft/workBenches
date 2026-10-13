@@ -28,6 +28,34 @@ def github(path, payload, content_type='application/json'):
     except urllib.error.HTTPError as error:
         raise RuntimeError(f'GitHub release operation failed (HTTP {error.code}).') from None
 
+def build_dev_image(tag, parent, platform):
+    """Export directly to GHCR, avoiding the large intermediate daemon import."""
+    base = shared.inspect(shared.TAGS['base'])
+    refs = [ref for ref in base['RepoDigests'] if ref.startswith(shared.REGISTRIES['base'] + '@sha256:')]
+    if len(refs) != 1:
+        raise RuntimeError('Developer publication requires the verified pushed base digest.')
+    builder = 'workbenches-release-' + str(os.getpid())
+    with tempfile.TemporaryDirectory() as directory:
+        config = Path(directory) / 'buildkitd.toml'
+        config.write_text('[worker.oci]\n  max-parallelism = 2\n')
+        run(['docker', 'buildx', 'create', '--name', builder, '--driver', 'docker-container',
+             '--config', str(config)])
+        try:
+            run(['docker', 'buildx', 'build', '--builder', builder, '--platform', platform,
+                 '--progress', 'plain', '--provenance=false',
+                 '--build-arg', 'BASE_IMAGE=' + refs[0],
+                 '--label', shared.LABEL + '=' + shared.fingerprint('dev'),
+                 '--label', 'io.workbenches.parent=' + parent,
+                 '--label', 'org.opencontainers.image.source=https://github.com/opensoft/workBenches',
+                 '--output', 'type=registry,name=' + tag + ',compression=gzip,compression-level=1',
+                 str(ROOT / shared.CONTEXTS['dev'])])
+        finally:
+            run(['docker', 'buildx', 'rm', builder])
+    run(['docker', 'pull', '--platform', platform, tag])
+    if not shared.compatible(shared.inspect(tag), 'dev', shared.fingerprint('dev'), platform, parent):
+        raise RuntimeError('Published developer image failed source or parent validation.')
+    run(['docker', 'tag', tag, shared.TAGS['dev']])
+
 def prepare_image(layer, platform):
     source = shared.fingerprint(layer)
     tag = shared.REGISTRIES[layer] + ':source-' + source
@@ -43,8 +71,11 @@ def prepare_image(layer, platform):
         run(['free', '-h'])
         run(['df', '-h', '/'])
         run(['docker', 'system', 'df'])
-        run(['bash', str(ROOT / shared.CONTEXTS[layer] / 'build.sh')], cwd=ROOT)
-        run(['docker', 'tag', shared.TAGS[layer], tag])
+        if layer == 'dev':
+            build_dev_image(tag, parent, platform)
+        else:
+            run(['bash', str(ROOT / shared.CONTEXTS[layer] / 'build.sh')], cwd=ROOT)
+            run(['docker', 'tag', shared.TAGS[layer], tag])
     return tag
 
 def main():
