@@ -4027,8 +4027,8 @@ assert_contains "$SHAPE_BLOCK_ROOT/.claude/commands/opsx/apply.md" '<!-- OPENSPE
 assert_equal "$(sed -n '1p' "$SHAPE_BLOCK_ROOT/.claude/skills/ct/SKILL.md")" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'managed shape block opens a file without frontmatter'
 assert_not_contains "$SHAPE_BLOCK_ROOT/.claude/skills/openspec-propose/SKILL.md" 'OPENSPEC-SPECKIT-SHAPE' 'managed shape block skips repo-local OpenSpec wrappers'
 
-printf '%s\n' 'Then: user-global targets carry the resolved protocol root and symlinks are skipped'
-assert_contains "$SHAPE_BLOCK_HOME/.claude/skills/speckit-plan/SKILL.md" "$SHAPE_BLOCK_PROTOCOL_ROOT/protocols/openspec-speckit-workflow.md" 'user-global shape block uses the resolved protocol root'
+printf '%s\n' 'Then: user-global targets carry the protocol root as configured and symlinks are skipped'
+assert_contains "$SHAPE_BLOCK_HOME/.claude/skills/speckit-plan/SKILL.md" "$SHAPE_BLOCK_PROTOCOL_ROOT/protocols/openspec-speckit-workflow.md" 'user-global shape block uses the protocol root as configured'
 assert_contains "$SHAPE_BLOCK_HOME/.claude/skills/ctp/SKILL.md" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'user-global shape block reaches ctp'
 assert_contains "$SHAPE_BLOCK_HOME/.agents/skills/speckit-tasks/SKILL.md" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'user-global shape block reaches Agents skills'
 assert_contains "$SHAPE_BLOCK_HOME/.codex/skills/openspec-apply-change/SKILL.md" '<!-- OPENSPEC-SPECKIT-SHAPE:START -->' 'user-global shape block reaches Codex OpenSpec skills'
@@ -4143,7 +4143,7 @@ assert_contains "$ROUTING_TASKS" 'Stock Spec Kit body.' 'routing block preserves
 assert_contains "$ROUTING_ROOT/.agents/skills/speckit-analyze/SKILL.md" '## Model Routing fixture for speckit-analyze' 'routing block reaches repo-local Agents speckit-analyze'
 assert_contains "$ROUTING_ROOT/.codex/skills/speckit-implement/SKILL.md" '## Model Routing fixture for speckit-implement' 'routing block reaches repo-local Codex speckit-implement'
 assert_not_contains "$ROUTING_ROOT/.claude/skills/speckit-plan/SKILL.md" 'OPENSPEC-SPECKIT-MODEL-ROUTING' 'routing block skips skills outside the build tiers'
-assert_contains "$ROUTING_HOME/.claude/skills/speckit-tasks/SKILL.md" "$ROUTING_PROTOCOL_ROOT/protocols/openspec-speckit-workflow.md" 'user-global routing block uses the resolved protocol root'
+assert_contains "$ROUTING_HOME/.claude/skills/speckit-tasks/SKILL.md" "$ROUTING_PROTOCOL_ROOT/protocols/openspec-speckit-workflow.md" 'user-global routing block uses the protocol root as configured'
 assert_contains "$ROUTING_HOME/.codex/skills/speckit-analyze/SKILL.md" '## Model Routing fixture for speckit-analyze' 'routing block reaches user-global Codex skills'
 assert_not_contains "$ROUTING_LINKED_AGENTS/skills/speckit-implement/SKILL.md" 'OPENSPEC-SPECKIT-MODEL-ROUTING' 'routing block never writes through a symlinked user-global skills root'
 assert_not_contains "$ROUTING_LINKED_AGENTS/skills/speckit-implement/SKILL.md" 'OPENSPEC-SPECKIT-SHAPE' 'shape block never writes through a symlinked user-global skills root'
@@ -4183,6 +4183,291 @@ assert_not_contains "$ROUTING_ROOT/.claude/skills/speckit-implement/SKILL.md" 'O
 # before this scenario existed; give them back exactly that environment.
 export HOME="$SHAPE_BLOCK_HOME"
 export AGENT_PROTOCOL_ROOT="$SHAPE_BLOCK_PROTOCOL_ROOT"
+
+printf '%s\n' 'Given: a home whose ~/.agents is a symlink into a dotfiles checkout, with AGENT_PROTOCOL_ROOT unset'
+# The shape of a workstation whose ~/.agents links into a new-workstation
+# checkout. Each run below sets its environment itself and unsets
+# AGENT_PROTOCOL_ROOT, so the installer's own ~/.agents default is what is
+# exercised, and the exported environment the later scenarios use is untouched.
+LINKED_AGENTS_HOME="$TMPDIR_ROOT/linked-agents-home"
+LINKED_AGENTS_CHECKOUT="$TMPDIR_ROOT/linked-agents-dotfiles/projects/new-workstation/home/.agents"
+LINKED_AGENTS_SPELLING="$LINKED_AGENTS_HOME/.agents"
+LINKED_AGENTS_POINTER_REPO="$TMPDIR_ROOT/linked-agents-pointer-repo"
+LINKED_AGENTS_REPO="$TMPDIR_ROOT/linked-agents-repo"
+LINKED_AGENTS_HOME_FIRST="$TMPDIR_ROOT/linked-agents-home-first.snapshot"
+LINKED_AGENTS_HOME_SECOND="$TMPDIR_ROOT/linked-agents-home-second.snapshot"
+mkdir -p \
+    "$LINKED_AGENTS_CHECKOUT/skills/ct/bin" \
+    "$LINKED_AGENTS_CHECKOUT/skills/speckit-tasks" \
+    "$LINKED_AGENTS_CHECKOUT/templates/speckit/model-routing" \
+    "$LINKED_AGENTS_HOME/.claude/skills/speckit-tasks" \
+    "$LINKED_AGENTS_HOME/.codex/skills/speckit-analyze" \
+    "$LINKED_AGENTS_POINTER_REPO" \
+    "$LINKED_AGENTS_REPO"
+printf '%s\n' 'skill read through a symlinked ~/.agents' > "$LINKED_AGENTS_CHECKOUT/skills/ct/SKILL.md"
+printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\\n" "linked skill script ran"' > "$LINKED_AGENTS_CHECKOUT/skills/ct/bin/run.sh"
+chmod 0755 "$LINKED_AGENTS_CHECKOUT/skills/ct/bin/run.sh"
+printf '%s\n' '---' 'name: fixture' '---' '' 'Checkout Spec Kit body.' > "$LINKED_AGENTS_CHECKOUT/skills/speckit-tasks/SKILL.md"
+for routing_skill in speckit-tasks speckit-implement speckit-analyze; do
+    printf '%s\n' \
+        '<!-- OPENSPEC-SPECKIT-MODEL-ROUTING:START -->' \
+        "## Model Routing fixture for $routing_skill" \
+        'Full rules: `${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/protocols/openspec-speckit-workflow.md` ("Build Tiers").' \
+        '<!-- OPENSPEC-SPECKIT-MODEL-ROUTING:END -->' \
+        > "$LINKED_AGENTS_CHECKOUT/templates/speckit/model-routing/$routing_skill.md"
+done
+printf '%s\n' '---' 'name: fixture' '---' '' 'Stock Spec Kit body.' > "$LINKED_AGENTS_HOME/.claude/skills/speckit-tasks/SKILL.md"
+printf '%s\n' '---' 'name: fixture' '---' '' 'Stock Spec Kit body.' > "$LINKED_AGENTS_HOME/.codex/skills/speckit-analyze/SKILL.md"
+ln -s "$LINKED_AGENTS_CHECKOUT" "$LINKED_AGENTS_SPELLING"
+git init -q "$LINKED_AGENTS_POINTER_REPO"
+git init -q "$LINKED_AGENTS_REPO"
+LINKED_AGENTS_FLAGS=(
+    --skip-init
+    --no-worktrees
+    --no-speckit-registration
+    --preserve-readmes
+)
+
+printf '%s\n' 'When: bootstrap runs with --no-skill-links, so the skill copy is not reached'
+if env -u AGENT_PROTOCOL_ROOT \
+    HOME="$LINKED_AGENTS_HOME" \
+    OPSX_COMMAND_TEMPLATE_ROOT="$COMMAND_TEMPLATE_ROOT" \
+    python3 "$SETUP_SCRIPT" \
+        --repo "$LINKED_AGENTS_POINTER_REPO" \
+        "${LINKED_AGENTS_FLAGS[@]}" \
+        --no-skill-links > "$TMPDIR_ROOT/linked-agents-pointers.log" 2>&1; then
+    pass 'bootstrap without skill links completes when ~/.agents is a symlink'
+else
+    fail 'bootstrap without skill links completes when ~/.agents is a symlink'
+    cat "$TMPDIR_ROOT/linked-agents-pointers.log"
+fi
+
+printf '%s\n' 'Then: every user-global block names ~/.agents as spelled, never the checkout it links into'
+LINKED_AGENTS_POINTER_FILES=(
+    .codex/AGENTS.md
+    .claude/CLAUDE.md
+    .config/opencode/AGENTS.md
+    .augment/rules/specify-rules.md
+    .cursor/rules/specify-rules.mdc
+    .gemini/GEMINI.md
+    .github/copilot-instructions.md
+    .junie/AGENTS.md
+    .kilocode/rules/specify-rules.md
+    .kimi/KIMI.md
+    .qoder/QODER.md
+    .qwen/QWEN.md
+    .roo/rules/specify-rules.md
+    .shai/SHAI.md
+    .tabnine/TABNINE.md
+    .trae/rules/project_rules.md
+    .vibe/agents/specify-agents.md
+    .windsurf/rules/specify-rules.md
+)
+for pointer_file in "${LINKED_AGENTS_POINTER_FILES[@]}"; do
+    pointer_path="$LINKED_AGENTS_HOME/$pointer_file"
+    assert_contains "$pointer_path" "Read \`$LINKED_AGENTS_SPELLING/AGENTS.md\` for user-global workflow rules" "user-global pointer names the unresolved agent root: $pointer_file"
+    assert_not_contains "$pointer_path" '/projects/new-workstation/' "user-global pointer omits the checkout path: $pointer_file"
+done
+for global_skill in .claude/skills/speckit-tasks .codex/skills/speckit-analyze; do
+    global_skill_path="$LINKED_AGENTS_HOME/$global_skill/SKILL.md"
+    assert_contains "$global_skill_path" "Full rules: \`$LINKED_AGENTS_SPELLING/protocols/openspec-speckit-workflow.md\` (\"Repository Shape\", \"Worktree Rules\")." "user-global shape block names the unresolved agent root: $global_skill"
+    assert_contains "$global_skill_path" "Full rules: \`$LINKED_AGENTS_SPELLING/protocols/openspec-speckit-workflow.md\` (\"Build Tiers\")." "user-global routing block names the unresolved agent root: $global_skill"
+    assert_not_contains "$global_skill_path" '/projects/new-workstation/' "user-global shape and routing blocks omit the checkout path: $global_skill"
+done
+assert_contains "$LINKED_AGENTS_CHECKOUT/AGENTS.md" "\`$LINKED_AGENTS_SPELLING/protocols/openspec-speckit-workflow.md\`" 'the entrypoint written into the checkout names the unresolved agent root'
+assert_contains "$LINKED_AGENTS_CHECKOUT/protocols/openspec-speckit-workflow.md" "\`$LINKED_AGENTS_SPELLING/protocols/project-agent-bootstrap.md\`" 'the workflow protocol written into the checkout names the unresolved agent root'
+assert_contains "$LINKED_AGENTS_CHECKOUT/protocols/project-agent-bootstrap.md" "\`$LINKED_AGENTS_SPELLING/protocols/openspec-speckit-workflow.md\`" 'the bootstrap protocol written into the checkout names the unresolved agent root'
+for protocol_file in AGENTS.md protocols/openspec-speckit-workflow.md protocols/project-agent-bootstrap.md; do
+    assert_not_contains "$LINKED_AGENTS_CHECKOUT/$protocol_file" '/projects/new-workstation/' "the file written into the checkout omits the checkout path: $protocol_file"
+done
+assert_not_contains "$LINKED_AGENTS_CHECKOUT/skills/speckit-tasks/SKILL.md" 'OPENSPEC-SPECKIT-SHAPE' 'the stable spelling still never writes a block through the symlinked skills root'
+
+printf '%s\n' 'When: bootstrap runs in full, copying skills, with ~/.agents a symlink'
+snapshot_repo "$LINKED_AGENTS_HOME" > "$LINKED_AGENTS_HOME_FIRST"
+if env -u AGENT_PROTOCOL_ROOT \
+    HOME="$LINKED_AGENTS_HOME" \
+    OPSX_COMMAND_TEMPLATE_ROOT="$COMMAND_TEMPLATE_ROOT" \
+    python3 "$SETUP_SCRIPT" \
+        --repo "$LINKED_AGENTS_REPO" \
+        "${LINKED_AGENTS_FLAGS[@]}" > "$TMPDIR_ROOT/linked-agents-full.log" 2>&1; then
+    pass 'a full bootstrap completes when ~/.agents is a symlink'
+else
+    fail 'a full bootstrap completes when ~/.agents is a symlink'
+    cat "$TMPDIR_ROOT/linked-agents-full.log"
+fi
+
+printf '%s\n' 'Then: skills are read through the symlink and copied into the repository as regular directories'
+LINKED_AGENTS_COPIED_SKILL="$LINKED_AGENTS_REPO/.agents/skills/ct"
+assert_regular_directory "$LINKED_AGENTS_COPIED_SKILL" 'a skill read through a symlinked ~/.agents is a regular directory in the repository'
+if cmp -s "$LINKED_AGENTS_CHECKOUT/skills/ct/SKILL.md" "$LINKED_AGENTS_COPIED_SKILL/SKILL.md"; then
+    pass 'a skill read through a symlinked ~/.agents keeps its source bytes'
+else
+    fail 'a skill read through a symlinked ~/.agents keeps its source bytes'
+fi
+assert_equal "$("$LINKED_AGENTS_COPIED_SKILL/bin/run.sh" 2>/dev/null)" 'linked skill script ran' 'a nested executable read through a symlinked ~/.agents runs from the repository'
+assert_contains "$LINKED_AGENTS_REPO/.agents/skills/speckit-tasks/SKILL.md" 'Checkout Spec Kit body.' 'a Speckit skill read through a symlinked ~/.agents keeps its body in the repository'
+assert_equal "$(find "$LINKED_AGENTS_REPO/.agents" -type l | wc -l)" 0 'the repository receives no symlink from the symlinked ~/.agents'
+assert_contains "$TMPDIR_ROOT/linked-agents-full.log" "copied $LINKED_AGENTS_SPELLING/skills/ct -> $LINKED_AGENTS_COPIED_SKILL" 'the copy log names the skill by its unresolved spelling'
+assert_not_contains "$TMPDIR_ROOT/linked-agents-full.log" 'Traceback' 'the full bootstrap raises no traceback'
+snapshot_repo "$LINKED_AGENTS_HOME" > "$LINKED_AGENTS_HOME_SECOND"
+if cmp -s "$LINKED_AGENTS_HOME_FIRST" "$LINKED_AGENTS_HOME_SECOND"; then
+    pass 'the full bootstrap renders the same unresolved spelling in every user-global block'
+else
+    fail 'the full bootstrap renders the same unresolved spelling in every user-global block'
+fi
+
+printf '%s\n' 'Given: a skill source under a symlinked ancestor, and destinations a symlink would redirect'
+if python3 - "$SETUP_SCRIPT" "$TMPDIR_ROOT/linked-source-safety" <<'PY'
+from pathlib import Path
+import runpy
+import sys
+
+namespace = runpy.run_path(sys.argv[1], run_name="setup_openspeckit_test")
+link_or_copy_skill = namespace["link_or_copy_skill"]
+fixture_root = Path(sys.argv[2])
+fixture_root.mkdir()
+failures = 0
+
+
+def check(condition, label):
+    global failures
+    if condition:
+        print(f"PASS: {label}")
+    else:
+        print(f"FAIL: {label}")
+        failures += 1
+
+
+def expect_refusal(action, label):
+    global failures
+    try:
+        action()
+    except SystemExit:
+        print(f"PASS: {label}")
+    except OSError as exc:
+        print(f"FAIL: {label}: unexpected {type(exc).__name__}: {exc}")
+        failures += 1
+    else:
+        print(f"FAIL: {label}: the unsafe path was accepted")
+        failures += 1
+
+
+def tree_state(root):
+    return sorted(
+        (
+            path.relative_to(root).as_posix(),
+            path.is_symlink(),
+            path.read_bytes() if path.is_file() and not path.is_symlink() else None,
+        )
+        for path in root.rglob("*")
+    )
+
+
+def linked_home(name, checkout):
+    home = fixture_root / name
+    home.mkdir()
+    (home / ".agents").symlink_to(checkout, target_is_directory=True)
+    return home
+
+
+checkout = fixture_root / "checkout"
+(checkout / "skills" / "ct" / "nested").mkdir(parents=True)
+(checkout / "skills" / "ct" / "SKILL.md").write_text("linked skill\n", encoding="utf-8")
+(checkout / "skills" / "ct" / "nested" / "data.txt").write_text("data\n", encoding="utf-8")
+(checkout / "skills" / "linked-skill").symlink_to(checkout / "skills" / "ct", target_is_directory=True)
+home = linked_home("home", checkout)
+linked_source = home / ".agents" / "skills" / "ct"
+
+plain_destination = fixture_root / "plain-repo" / ".agents" / "skills" / "ct"
+try:
+    link_or_copy_skill(linked_source, plain_destination, False, False)
+except OSError as exc:
+    check(False, f"linked-source: a skill under a symlinked ancestor is copied ({type(exc).__name__}: {exc})")
+else:
+    check(
+        plain_destination.is_dir()
+        and not plain_destination.is_symlink()
+        and (plain_destination / "nested" / "data.txt").read_text(encoding="utf-8") == "data\n",
+        "linked-source: a skill under a symlinked ancestor is copied",
+    )
+
+parent_case = fixture_root / "symlinked-destination-parent"
+parent_external = parent_case / "external-skills"
+parent_external.mkdir(parents=True)
+(parent_external / "sentinel.txt").write_text("external\n", encoding="utf-8")
+(parent_case / "repo" / ".agents").mkdir(parents=True)
+parent_link = parent_case / "repo" / ".agents" / "skills"
+parent_link.symlink_to(parent_external, target_is_directory=True)
+parent_before = tree_state(parent_external)
+expect_refusal(
+    lambda: link_or_copy_skill(linked_source, parent_link / "ct", False, True),
+    "linked-source: a symlinked destination parent still fails closed",
+)
+check(tree_state(parent_external) == parent_before, "linked-source: the symlinked destination parent's target is untouched")
+check(parent_link.is_symlink(), "linked-source: the symlinked destination parent stays a symlink")
+
+nested_case = fixture_root / "nested-destination-symlink"
+nested_destination = nested_case / "repo" / ".agents" / "skills" / "ct"
+nested_destination.mkdir(parents=True)
+nested_external = nested_case / "external.txt"
+nested_external.write_text("old\n", encoding="utf-8")
+(nested_destination / "linked.txt").symlink_to(nested_external)
+expect_refusal(
+    lambda: link_or_copy_skill(linked_source, nested_destination, False, True),
+    "linked-source: a nested destination symlink still fails closed under force",
+)
+check(nested_external.read_text(encoding="utf-8") == "old\n", "linked-source: the nested destination symlink's target is untouched")
+
+leaf_case = fixture_root / "symlinked-destination-leaf"
+leaf_external = leaf_case / "external-skill"
+leaf_external.mkdir(parents=True)
+(leaf_external / "SKILL.md").write_text("external skill\n", encoding="utf-8")
+(leaf_case / "repo" / ".agents" / "skills").mkdir(parents=True)
+leaf_link = leaf_case / "repo" / ".agents" / "skills" / "ct"
+leaf_link.symlink_to(leaf_external, target_is_directory=True)
+leaf_before = tree_state(leaf_external)
+try:
+    link_or_copy_skill(linked_source, leaf_link, False, False)
+except OSError as exc:
+    check(False, f"linked-source: a symlinked destination is replaced by a regular directory, as before ({type(exc).__name__}: {exc})")
+else:
+    check(
+        leaf_link.is_dir()
+        and not leaf_link.is_symlink()
+        and (leaf_link / "SKILL.md").read_text(encoding="utf-8") == "linked skill\n",
+        "linked-source: a symlinked destination is replaced by a regular directory, as before",
+    )
+check(tree_state(leaf_external) == leaf_before, "linked-source: the replaced destination symlink's target is untouched")
+
+leaf_skill_destination = fixture_root / "leaf-skill-repo" / ".agents" / "skills" / "linked-skill"
+expect_refusal(
+    lambda: link_or_copy_skill(home / ".agents" / "skills" / "linked-skill", leaf_skill_destination, False, False),
+    "linked-source: a skill directory that is itself a symlink is still refused",
+)
+check(not (fixture_root / "leaf-skill-repo").exists(), "linked-source: a refused symlinked skill directory leaves no destination")
+
+inner_checkout = fixture_root / "inner-checkout"
+(inner_checkout / "skills" / "ct").mkdir(parents=True)
+(inner_checkout / "skills" / "ct" / "SKILL.md").write_text("inner skill\n", encoding="utf-8")
+inner_outside = fixture_root / "inner-outside"
+inner_outside.mkdir()
+(inner_outside / "secret.txt").write_text("outside\n", encoding="utf-8")
+(inner_checkout / "skills" / "ct" / "escape").symlink_to(inner_outside, target_is_directory=True)
+inner_home = linked_home("inner-home", inner_checkout)
+inner_destination = fixture_root / "inner-repo" / ".agents" / "skills" / "ct"
+expect_refusal(
+    lambda: link_or_copy_skill(inner_home / ".agents" / "skills" / "ct", inner_destination, False, False),
+    "linked-source: a symlink inside a skill under a symlinked ancestor is still refused",
+)
+check(not (fixture_root / "inner-repo").exists(), "linked-source: a refused skill under a symlinked ancestor leaves no destination")
+
+raise SystemExit(1 if failures else 0)
+PY
+then
+    pass 'a skill source under a symlinked ancestor is read, while every destination and in-skill symlink check still holds'
+else
+    fail 'a skill source under a symlinked ancestor is read, while every destination and in-skill symlink check still holds'
+fi
 
 printf '%s\n' 'Given: overlay template trees with and without the shape compatibility marker'
 make_fake_overlay_template() {
