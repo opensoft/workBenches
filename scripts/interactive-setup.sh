@@ -216,7 +216,7 @@ init_components() {
 
     # Initialize tool items
     component_checked["vscode"]=false
-    component_description["vscode"]="Visual Studio Code"
+    component_description["vscode"]="VS Code"
 
     component_checked["warp"]=false
     component_description["warp"]="Warp Terminal"

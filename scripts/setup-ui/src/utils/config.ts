@@ -117,7 +117,7 @@ export const AI_CLI_DEFINITIONS: AICliDefinition[] = [
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     id: 'vscode',
-    name: 'Visual Studio Code',
+    name: 'VS Code',
     description: 'VS Code with Dev Containers extension',
     checkInstalled: async () => {
       // Will be implemented in statusChecks.ts
