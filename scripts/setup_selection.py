@@ -7,7 +7,7 @@ import sys
 REPO = Path(__file__).resolve().parents[1]
 TOOLS = {'claude_cli', 'copilot_cli', 'codex_cli', 'antigravity_cli', 'opencode_cli',
          'pi_cli', 'spec_kit', 'openspec', 'vscode', 'warp', 'wave', 'amnezia_vpn', '0dcloud_vpn',
-         'host_shell', 'workspace_repo', 'ai_accounts'}
+         'host_shell', 'workspace_repo', 'ai_accounts', 'workbenches_account'}
 AI = {'claude_cli': 'claude', 'codex_cli': 'openai', 'pi_cli': 'pi', 'opencode_cli': 'omniroute',
       'copilot_cli': 'copilot', 'antigravity_cli': 'antigravity'}
 NODE = {'codex_cli', 'copilot_cli', 'pi_cli', 'openspec'}
@@ -27,7 +27,7 @@ def load(path):
     for entry in data['components']:
         if not isinstance(entry, dict) or entry.get('key') not in known or entry.get('action') not in ('install', 'update', 'uninstall') or entry['key'] in seen:
             raise ValueError('invalid or duplicate component')
-        if entry['key'] in ('host_shell', 'workspace_repo', 'ai_accounts') and entry['action'] != 'install':
+        if entry['key'] in ('host_shell', 'workspace_repo', 'ai_accounts', 'workbenches_account') and entry['action'] != 'install':
             raise ValueError('optional setup entries only support configuration')
         seen.add(entry['key'])
     return data['components'], benches
@@ -59,7 +59,7 @@ def main():
         return 0 if sys.argv[3] in keys else 1
     elif command == 'review':
         labels = {'host_shell': 'Shell setup', 'workspace_repo': 'Org workspace',
-                  'ai_accounts': 'AI accounts', 'codex_cli': 'Codex', 'claude_cli': 'Claude',
+                  'ai_accounts': 'AI accounts', 'workbenches_account': 'workBenches account', 'codex_cli': 'Codex', 'claude_cli': 'Claude',
                   'copilot_cli': 'Copilot', 'pi_cli': 'Pi', 'opencode_cli': 'OpenCode'}
         for action, title in (('install', 'Installing'), ('update', 'Updating'), ('uninstall', 'Removing')):
             names = [labels.get(entry['key'], entry['key'].removeprefix('bench_'))

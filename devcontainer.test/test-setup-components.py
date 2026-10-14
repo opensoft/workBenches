@@ -122,7 +122,7 @@ class ToolRemovalTests(unittest.TestCase):
             components.uninstall_tool('antigravity_cli')
         self.assertTrue(binary.exists())
 
-    def test_setup_removes_host_cli_without_installing_docker_or_node(self):
+    def test_setup_removes_host_cli_after_required_docker_check_without_installing_node(self):
         repo = self.home / 'repo'; repo.mkdir()
         import shutil
         shutil.copytree(ROOT / 'scripts', repo / 'scripts', ignore=shutil.ignore_patterns('__pycache__'))
@@ -145,7 +145,7 @@ class ToolRemovalTests(unittest.TestCase):
             located = subprocess.check_output(['/bin/sh', '-c', 'command -v "$1"', 'sh', name], text=True).strip()
             (binary / name).symlink_to(located)
         for name, body in {
-            'docker': '#!/bin/bash\necho "docker $*" >> "$HOME/actions"\nexit 99\n',
+            'docker': '#!/bin/bash\necho "docker $*" >> "$HOME/actions"\nif [[ "$1" == info ]]; then echo linux; exit 0; fi\nexit 99\n',
             'npm': '#!/bin/bash\nif [[ "$1" == prefix ]]; then echo "$HOME/empty-prefix"; elif [[ "$1" == uninstall ]]; then echo uninstall >> "$HOME/actions"; rm "$HOME/.local/bin/codex"; else echo "unexpected npm $*" >> "$HOME/actions"; exit 99; fi\n',
         }.items():
             path = binary / name; path.write_text(body); path.chmod(0o755)
@@ -165,10 +165,11 @@ else exec bash "$(dirname "$0")/interactive-real.sh" "$@"; fi
                                 stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse(launcher.exists())
-        self.assertIn('Host-tool removal does not require Docker', result.stdout)
+        self.assertIn('Docker is available', result.stdout)
         actions = (self.home / 'actions').read_text().splitlines()
         self.assertIn('uninstall', actions)
-        self.assertFalse(any('docker info' in action or 'unexpected npm' in action for action in actions), actions)
+        self.assertTrue(any('docker info' in action for action in actions), actions)
+        self.assertFalse(any('unexpected npm' in action for action in actions), actions)
 
 
 class BenchRemovalTests(unittest.TestCase):

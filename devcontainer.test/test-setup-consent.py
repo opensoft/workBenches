@@ -24,6 +24,7 @@ class SelectedSetupTests(unittest.TestCase):
             (['codex_cli'], ['cli'], 0),
             (['host_shell'], ['shell'], 0),
             (['workspace_repo'], ['estate', 'workspace'], 0),
+            (['workbenches_account'], [], 0),
             (['codex_cli', 'ai_accounts'], ['cli', 'accounts'], 0),
             (['codex_cli', 'ai_accounts'], ['cli'], 42),
         ):
@@ -31,12 +32,13 @@ class SelectedSetupTests(unittest.TestCase):
                 home = Path(temporary); repo = home / 'repo'; repo.mkdir()
                 shutil.copytree(ROOT / 'scripts', repo / 'scripts', ignore=shutil.ignore_patterns('__pycache__'))
                 shutil.copytree(ROOT / 'config', repo / 'config')
+                shutil.copytree(ROOT / 'credential-container', repo / 'credential-container', ignore=shutil.ignore_patterns('__pycache__'))
                 shutil.copy(ROOT / 'setup.sh', repo / 'setup.sh')
                 shutil.copy(ROOT / 'bootstrap.sh', repo / 'bootstrap.sh')
                 binary = home / 'bin'; binary.mkdir()
                 action_log = home / 'actions'
                 scripts = {
-                    'docker': '#!/bin/bash\nexit 0\n',
+                    'docker': '#!/bin/bash\nif [[ "$1" == info ]]; then echo linux; fi\nexit 0\n',
                     'node': '#!/bin/bash\necho v24.0.0\n',
                     'codex': '#!/bin/bash\necho "codex-cli 1.0"\n',
                     'npm': '#!/bin/bash\nif [[ "$*" == "config get prefix" ]]; then echo "$HOME/.local"; elif [[ "$1" == install || "$1" == update ]]; then echo cli >> "$ACTION_LOG"; exit "${NPM_FAULT:-0}"; fi\n',
@@ -64,10 +66,14 @@ class SelectedSetupTests(unittest.TestCase):
                            AGENT_PROTOCOL_ROOT=str(home / '.agents'), ACTION_LOG=str(action_log),
                            NPM_FAULT=str(npm_status),
                            PATH=str(binary) + ':' + os.environ['PATH'], TERM='xterm')
+                input_options = {'input': '\n'} if 'workbenches_account' in keys else {'stdin': subprocess.DEVNULL}
                 result = subprocess.run(['bash', str(repo / 'setup.sh')], env=env,
-                                        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15)
+                                        **input_options, capture_output=True, text=True, timeout=15)
                 self.assertEqual(result.returncode, 1 if npm_status else 0, result.stdout + result.stderr)
-                self.assertEqual(action_log.read_text().splitlines(), expected)
+                self.assertEqual(action_log.read_text().splitlines() if action_log.exists() else [], expected)
+                if 'workbenches_account' in keys:
+                    self.assertIn('optional account setup deferred', result.stdout)
+                    self.assertFalse((home / '.config/workbenches/account-session.json').exists())
                 self.assertNotIn('Apply these changes?', result.stdout)
                 self.assertNotIn('Authentication requirements', result.stdout)
                 self.assertNotIn('Press Enter to continue', result.stdout)

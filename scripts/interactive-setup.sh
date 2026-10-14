@@ -127,11 +127,14 @@ declare -a component_order
 current_selection=0
 current_block=0
 
-# Three main sections: 0=Benches, 1=AI Assistants, 2=Tools
-CURRENT_SECTION=0  # 0=Benches, 1=AI Assistants, 2=Tools
+# Sections: 0=Benches, 1=AI Assistants, 2=Tools, 3=Requirements
+CURRENT_SECTION=0  # Requirements has a separate page for narrow terminals.
 declare -a bench_items
 declare -a ai_items
 declare -a tool_items
+declare -a requirement_items
+declare -A requirement_detail
+setup_os_label=""
 declare -A bench_status
 declare -A ai_status
 declare -A tool_status
@@ -209,7 +212,6 @@ init_components() {
         "0dcloud_vpn"
         "host_shell"
         "workspace_repo"
-        "ai_accounts"
     )
 
     # Initialize tool items
@@ -233,6 +235,43 @@ init_components() {
     component_description[host_shell]="Shell setup"
     component_description[workspace_repo]="Org workspace"
     component_description[ai_accounts]="AI accounts"
+    component_description[workbenches_account]="workBenches account"
+    component_checked[workbenches_account]=false
+    requirement_items=(docker setup_tools workbenches_account ai_accounts)
+    if is_wsl_windows; then requirement_items=(wsl "${requirement_items[@]}"); fi
+}
+
+load_requirements() {
+    local inventory key label state detail
+    inventory="$(python3 "$SCRIPT_DIR/setup-requirements.py" json)" || return "$?"
+    setup_os_label="$(jq -r '.os' <<< "$inventory")"
+    while IFS=$'\t' read -r key label state detail; do
+        component_description[$key]="$label"
+        component_status[$key]="$state"
+        requirement_detail[$key]="$detail"
+        component_checked[$key]=false
+    done < <(jq -r '.requirements[] | [.key,.label,(if .ready then "ready" else "missing" end),.detail] | @tsv' <<< "$inventory")
+    component_status[workbenches_account]="$(python3 "$SCRIPT_DIR/setup-workbenches-account.py" --status)"
+    requirement_detail[workbenches_account]='Optional Keycloak browser login / registration; organization settings required.'
+    component_status[ai_accounts]="$(check_component_status ai_accounts)"
+    requirement_detail[ai_accounts]='Optional: direct sign-in, Azure / password vault recovery, or configure later.'
+}
+
+draw_requirements() {
+    echo -e "${BOLD}${YELLOW}REQUIREMENTS${NC}  ← Back to Tools"
+    local item selected kind mark
+    for item in "${requirement_items[@]}"; do
+        selected='  '
+        [[ "$item" != "${requirement_items[$current_selection]}" ]] || selected='▶ '
+        kind=required
+        case "$item" in workbenches_account|ai_accounts) kind=optional ;; esac
+        mark='[ ]'
+        [[ "${component_checked[$item]}" != true ]] || mark='[✓]'
+        printf '%s%s %-20s (%s) — %s\n' "$selected" "$mark" "${component_description[$item]}" "$kind" "${component_status[$item]}"
+        printf '      %s\n' "${requirement_detail[$item]}"
+    done
+    echo 'Required items cannot be uninstalled here. Space configures; R rechecks.'
+    echo 'An account does not grant AI provider access or vault permissions.'
 }
 
 # Compare GitHub repository identities across HTTPS and SSH clone URLs.
@@ -498,8 +537,10 @@ refresh_component_statuses() {
     local item
     refresh_bench_inventory
     for item in "${!component_description[@]}"; do
+        case "$item" in docker|wsl|setup_tools|workbenches_account) continue ;; esac
         component_status[$item]="$(check_component_status "$item")"
     done
+    load_requirements
 }
 
 uninstall_component() {
@@ -556,6 +597,7 @@ load_statuses() {
         component_checked["$item"]=false
         component_action["$item"]=""
     done
+    load_requirements
 }
 
 # Draw a single component line
@@ -623,6 +665,9 @@ get_checked_state() {
         [[ "$item" != separator* ]] && state+="${component_checked[$item]}:${component_action[$item]},"
     done
     for item in "${tool_items[@]}"; do
+        state+="${component_checked[$item]}:${component_action[$item]},"
+    done
+    for item in workbenches_account ai_accounts; do
         state+="${component_checked[$item]}:${component_action[$item]},"
     done
     echo "$state"
@@ -777,14 +822,15 @@ draw_ui() {
 
     # Header
     echo -e "${BOLD}${BLUE}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BOLD}${BLUE}║               WorkBenches Configuration Manager                    ║${NC}"
+    echo -e "${BOLD}${BLUE}  workBenches Setup — ${setup_os_label}${NC}"
     echo -e "${BOLD}${BLUE}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${CYAN}Navigation:${NC} ↑/↓ Move  ←/→ Section  Space Install/Update  D Uninstall/Undo  R Refresh  Enter Apply  Q Quit"
+    echo -e "${CYAN}Navigation:${NC} ↑/↓ Move  ←/→ Section  P Requirements  Space Configure  D Remove  R Refresh  Enter Apply  Q Quit"
+    echo "Requirements: Docker ${component_status[docker]} | Account ${component_status[workbenches_account]} (optional)"
     echo ""
 
     # Draw three sections side by side
-    draw_three_sections
+    if [[ "$CURRENT_SECTION" == 3 ]]; then draw_requirements; else draw_three_sections; fi
 
     echo ""
 
@@ -797,6 +843,7 @@ draw_ui() {
         0) selected_item="bench_${bench_items[$current_selection]}" ;;
         1) selected_item="${ai_items[$current_selection]}" ;;
         2) selected_item="${tool_items[$current_selection]}" ;;
+        3) selected_item="${requirement_items[$current_selection]}" ;;
     esac
     if [[ -n "${component_description[$selected_item]:-}" ]]; then
         echo "${component_description[$selected_item]}: ${component_status[$selected_item]}${component_action[$selected_item]:+ → ${component_action[$selected_item]}}"
@@ -812,6 +859,9 @@ draw_ui() {
         [[ "$item" != separator* ]] && [ "${component_checked[$item]}" = true ] && ((selected_count++))
     done
     for item in "${tool_items[@]}"; do
+        [ "${component_checked[$item]}" = true ] && ((selected_count++))
+    done
+    for item in workbenches_account ai_accounts; do
         [ "${component_checked[$item]}" = true ] && ((selected_count++))
     done
 
@@ -968,8 +1018,10 @@ handle_input() {
                     max_idx=$((${#bench_items[@]} - 1))
                 elif [ $CURRENT_SECTION -eq 1 ]; then
                     max_idx=$((${#ai_items[@]} - 1))
-                else
+                elif [ $CURRENT_SECTION -eq 2 ]; then
                     max_idx=$((${#tool_items[@]} - 1))
+                else
+                    max_idx=$((${#requirement_items[@]} - 1))
                 fi
 
                 if [ $current_selection -lt $max_idx ]; then
@@ -985,7 +1037,7 @@ handle_input() {
                 fi
                 ;;
             '[C') # Right arrow - switch section right
-                if [ $CURRENT_SECTION -lt 2 ]; then
+                if [ $CURRENT_SECTION -lt 3 ]; then
                     ((CURRENT_SECTION++))
                     current_selection=0
                 fi
@@ -1011,9 +1063,22 @@ handle_input() {
                         return 0  # Skip separators
                     fi
                     key="$item"
-                else
+                elif [ $CURRENT_SECTION -eq 2 ]; then
                     local item="${tool_items[$current_selection]}"
                     key="$item"
+                else
+                    key="${requirement_items[$current_selection]}"
+                    case "$key" in
+                        docker|wsl|setup_tools)
+                            [[ "$input_key" != d && "$input_key" != D ]] || return 0
+                            echo -e "${SHOW_CURSOR}"
+                            if [[ "$key" == setup_tools ]]; then ensure_setup_dependencies; else ensure_workstation_requirements; fi
+                            local requirements_status=$?
+                            setup_propagate_cancel "$requirements_status"
+                            refresh_component_statuses
+                            draw_ui
+                            return 0 ;;
+                    esac
                 fi
 
                 # Determine action based on current status
@@ -1024,7 +1089,7 @@ handle_input() {
 
                 local requested="install"
                 [[ "$is_installed" == true ]] && requested="update"
-                if [[ "$key" == host_shell || "$key" == workspace_repo || "$key" == ai_accounts ]]; then
+                if [[ "$key" == host_shell || "$key" == workspace_repo || "$key" == ai_accounts || "$key" == workbenches_account ]]; then
                     [[ "$input_key" != d && "$input_key" != D ]] || return 0
                     requested=install
                 fi
@@ -1044,6 +1109,7 @@ handle_input() {
                 return 1
                 ;;
             'r'|'R') refresh_component_statuses; draw_ui ;;
+            'p'|'P') CURRENT_SECTION=3; current_selection=0 ;;
             'q'|'Q') # Quit
                 return 2
                 ;;
@@ -2203,7 +2269,7 @@ process_selections() {
     local verified_item final_status
     for verified_item in "${!component_action[@]}"; do
         [[ "${component_checked[$verified_item]}" == true ]] || continue
-        [[ "$verified_item" != host_shell && "$verified_item" != workspace_repo && "$verified_item" != ai_accounts ]] || continue
+        [[ "$verified_item" != host_shell && "$verified_item" != workspace_repo && "$verified_item" != ai_accounts && "$verified_item" != workbenches_account ]] || continue
         final_status="${component_status[$verified_item]}"
         if [[ "${component_action[$verified_item]}" == uninstall ]]; then
             [[ "$final_status" != installed && "$final_status" != 'needs creds' && "$final_status" != 'needs check' && "$final_status" != 'needs docker' && "$final_status" != 'image only' ]] && continue
@@ -2219,6 +2285,7 @@ process_selections() {
     done
 
     if [[ "${component_checked[ai_accounts]}" == true ]]; then
+        any_selected=true
         active_component=ai_accounts
         if [[ "$fail_count" -gt 0 ]]; then
             echo "AI accounts skipped because a selected change failed. Retry account setup after resolving it."
@@ -2232,6 +2299,18 @@ process_selections() {
         fi
     else
         show_pending_authentication
+    fi
+
+    if [[ "${component_checked[workbenches_account]}" == true ]]; then
+        any_selected=true
+        if python3 "$SCRIPT_DIR/setup-workbenches-account.py"; then
+            if [[ "$(python3 "$SCRIPT_DIR/setup-workbenches-account.py" --status)" == 'signed in' ]]; then ((success_count++)); fi
+        else
+            local workbenches_account_status=$?
+            setup_propagate_cancel "$workbenches_account_status"
+            echo 'Optional workBenches account sign-in failed; retry from Requirements.'
+            ((fail_count++))
+        fi
     fi
 
     # Summary
@@ -2249,8 +2328,10 @@ process_selections() {
             echo -e "\n${GREEN}${BOLD}✓ All selected changes completed successfully!${NC}"
         elif [ $success_count -gt 0 ]; then
             echo -e "\n${YELLOW}⚠ Some selected changes need attention.${NC}"
-        else
+        elif [ $fail_count -gt 0 ]; then
             echo -e "\n${RED}✗ Selected changes did not complete.${NC}"
+        else
+            echo 'No changes applied; optional account setup deferred.'
         fi
     fi
 
@@ -2821,6 +2902,10 @@ main() {
     # Check and install dependencies first
     log "Checking dependencies..."
     check_and_install_dependencies
+    if [[ "$mode" == interactive ]]; then
+        ensure_setup_platform || return "$?"
+        ensure_workstation_requirements || return "$?"
+    fi
 
     # Initialize
     log "Initializing components and loading statuses..."

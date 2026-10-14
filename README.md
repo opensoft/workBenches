@@ -100,11 +100,11 @@ From an existing checkout:
 
 This single command:
 
-1. Checks Docker access and common dependencies, offering installation when needed.
-2. Opens the TUI to select benches, AI assistants, and tools. An empty selection finishes without installs or image builds.
+1. Identifies the OS and checks required Docker access, Windows/WSL 2 readiness, and common dependencies. Missing requirements open a guided setup screen before component selection.
+2. Opens the TUI to select benches, AI assistants, and tools. Press **P** for the **Requirements** section, including optional workBenches account and AI credential setup. An empty component selection finishes without component installs or image builds.
 3. Enter applies the selected changes immediately, with a compact install/update summary. Q cancels and an empty selection exits.
 4. Checks Node/npm only for selected tools that require them. A system-owned npm location falls back to `~/.local`, with PATH configured for new terminals.
-5. Installs AI tools without requiring sign-in. Select **AI accounts** to configure accounts after installation, using direct sign-in or guided vault recovery. Existing profiles and credentials are preserved.
+5. Installs AI tools without requiring sign-in. Select **AI accounts** under Requirements to configure accounts after installation, using direct sign-in or guided vault recovery. Existing profiles and credentials are preserved. A workBenches account is optional; Keycloak login requires organization-provided settings.
 6. Configures host shell settings only when **Shell setup** is selected. **Org workspace** explicitly initializes the workspace repository, after installing its pinned estate-command dependencies.
 7. Installs selected tools and builds only selected bench dependencies. Wave widgets and VPN setup follow the selected tools.
 
@@ -173,14 +173,16 @@ checkout unchanged.
 
 ```
 setup.sh
-  ├── Docker access + Python/jq/git/curl preflight
-  ├── Component TUI: Benches | AI Assistants | Tools
+  ├── OS / Windows WSL 2 + Docker access + Python/jq/git/curl requirements
+  │     └── Missing requirements: guided configure / recheck / quit
+  ├── Component TUI: Benches | AI Assistants | Tools | Requirements (P)
   │     └── Enter applies; Q/EOF cancels; empty Enter finishes
   ├── Compact selected-change summary + selected Node/npm prerequisites
   ├── Reuse existing profiles; preserve host shell settings
   ├── Selected bench dependencies: shared commands → Layer 0 → family Layer 1
   ├── Install/update selected components
   ├── Optional Shell setup / Org workspace
+  ├── Optional workBenches account: organization Keycloak browser approval
   ├── Optional AI accounts: profiles, direct login or confirmed vault recovery
   └── Summary + authentication pending where applicable + log path
 ```
@@ -192,6 +194,8 @@ passwords are entered into sudo. A stopped local system Docker service can be
 started with the user's agreement. Declining, cancellation, installation
 failure or inaccessible Docker stops setup before later steps. Remote/rootless
 contexts use their configured daemon and local access policy.
+See [Workstation requirements and optional accounts](docs/setup-requirements.md)
+for Windows guidance and organization Keycloak configuration.
 
 Your host's `openRepoShape`, `openRepoTools`, `park`, `resume`, `status`, `lane`, `lanes`, `lane-handoff`, `lane-rename`, `lanes-edit.sh`, `lane-start`, `lane-end`, `link-estates`, `repos.tsv`, `claude-current` and `claude-restart-check` come from workBenches' own pin (`devBenches/base-image/upstream-pin.yaml`). `setup.sh` places them from the vendored copies in `devBenches/base-image/files/openreposhape/` and `devBenches/base-image/files/openrepotools/`, and re-places them whenever a host copy differs from the pin, in either direction — behind, ahead, or hand-edited. To move them to a new upstream commit, move the pin with `update-upstream.py apply` and re-run `setup.sh`; do not edit the vendored files or the installed commands directly. The step refuses to run over a symlinked, non-regular, or read-only target, and verifies the fifteen placed openRepoTools files (and openRepoShape's own) against the vendored copies before it reports success. Set `WORKBENCHES_SKIP_ESTATE_COMMANDS=1` to skip this step.
 
@@ -309,8 +313,9 @@ Host-tool removal uses the recognized native, npm, uv, Linux package, or Windows
 WinGet installation method. It preserves account/profile data and verifies
 that the tool is gone. An unknown installation or failed removal reports a
 failure with an actionable message. Saved terminal settings alone are not
-evidence that the terminal application is installed. Host-only removal does
-not require Docker or install/update Node.js.
+evidence that the terminal application is installed. Setup verifies required
+Docker access before selection, including host-only removal; removal does not
+install/update Node.js.
 
 Shell setup, Org workspace, and AI accounts are configuration actions; they can
 be configured again without deleting shell settings, workspaces, or credentials.

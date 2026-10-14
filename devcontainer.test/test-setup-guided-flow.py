@@ -508,7 +508,7 @@ process_selections''', input='\n', PATH=self.fake_npm(self.home, failure=13), WO
         binary = self.home / 'bin'
         binary.mkdir()
         docker = binary / 'docker'
-        docker.write_text('#!/bin/bash\nif [[ "$1" == info ]]; then exit 0; fi\nexit 1\n')
+        docker.write_text('#!/bin/bash\nif [[ "$1" == info ]]; then echo linux; exit 0; fi\nexit 1\n')
         docker.chmod(0o755)
         shell = repo / 'scripts/setup-shell.sh'
         shell.write_text('#!/bin/bash\necho unexpected > "$HOME/host-changed"\n')
@@ -546,7 +546,7 @@ process_selections''', input='\n', PATH=self.fake_npm(self.home, failure=13), WO
                 binary.mkdir()
                 docker = binary / 'docker'
                 (repo / 'scripts/shared-images.py').write_text('import sys; sys.exit(0)\n')
-                docker.write_text('#!/bin/bash\nexit 0\n')
+                docker.write_text('#!/bin/bash\nif [[ "$1" == info ]]; then echo linux; fi\nexit 0\n')
                 docker.chmod(0o755)
                 shell = repo / 'scripts/setup-shell.sh'
                 shell.write_text('#!/bin/bash\nexit 0\n')

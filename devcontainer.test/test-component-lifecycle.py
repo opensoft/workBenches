@@ -18,7 +18,7 @@ def run(argv, **kwargs):
     return subprocess.run(argv, check=True, capture_output=True, text=True, timeout=60, **kwargs).stdout.strip()
 
 
-def setup_tui(repo, keys, env):
+def setup_tui(repo, keys, env, expected_status=0):
     master, slave = pty.openpty()
     process = subprocess.Popen(['bash', str(repo / 'setup.sh')], cwd=repo, env=env,
                                stdin=slave, stdout=slave, stderr=slave, start_new_session=True)
@@ -40,7 +40,7 @@ def setup_tui(repo, keys, env):
         if process.poll() is None:
             process.kill()
             raise AssertionError('Setup did not finish: ' + output.decode(errors='replace')[-2500:])
-        assert process.wait() == 0, output.decode(errors='replace')[-3500:]
+        assert process.wait() == expected_status, output.decode(errors='replace')[-3500:]
         assert submitted
         return output.decode(errors='replace')
     finally:
@@ -100,6 +100,11 @@ def main():
         install_runtime()
         initial = statuses()
         assert initial == 'installed:installed', initial
+        requirements_output = setup_tui(repo, b'PQ', env, expected_status=130)
+        for text in ('workBenches Setup', 'Linux', 'REQUIREMENTS', 'Docker', '(required)',
+                     'workBenches account', '(optional)', 'AI accounts', 'Setup cancelled'):
+            assert text in requirements_output, requirements_output[-3500:]
+        assert statuses() == initial, 'Browsing Requirements must not change installed components'
         # Remove a running bench and the npm CLI in one real setup.sh TUI plan.
         output = setup_tui(repo, b'D\x1b[C\x1b[B\x1b[BD\n', env)
         assert 'pyBench uninstalled' in output, output[-2500:]

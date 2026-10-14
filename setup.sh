@@ -118,8 +118,10 @@ if [ "$USERNAME" = "--user" ]; then
     USERNAME="${2:-$(whoami)}"
 fi
 
-# Select components before profile/host changes and before any image build.
+# Required workstation setup precedes component selection and all account work.
+ensure_setup_platform || exit "$?"
 ensure_setup_dependencies || exit "$?"
+ensure_workstation_requirements || exit "$?"
 selection_file="$(mktemp "${TMPDIR:-/tmp}/workbenches-selection.XXXXXX")" || exit 1
 trap 'rm -f "$selection_file"' EXIT
 "${SCRIPT_DIR}/scripts/interactive-setup.sh" --select-only "$selection_file" || exit "$?"
@@ -135,9 +137,7 @@ export WORKBENCHES_PROFILE_PROVIDERS="$(python3 -c 'import os; print(",".join(p 
 # Verify local prerequisites before host installers, account onboarding,
 # credential recovery or any image build can run.
 log_header "DOCKER CHECK"
-if ! python3 "$SCRIPT_DIR/scripts/setup_selection.py" docker "$selection_file"; then
-    echo "Host-tool removal does not require Docker."
-elif ensure_docker; then
+if ensure_docker; then
     :
 else
     prerequisite_status=$?
