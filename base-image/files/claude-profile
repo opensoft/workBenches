@@ -385,6 +385,29 @@ configure_profile_runtime() {
   # prompt submit. So 5 seconds remains the outer bound on everything this hook
   # can be asked to do, and the entry is unchanged by Amendment 11.
   guard_timeout=5
+  # CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1 is seeded into every profile's `env`
+  # below, beside effortLevel and model. Claude Code's env-vars page defines it:
+  # "Set to `1` to turn off the automatic model switch when a safety classifier
+  # flags a request, the behavior the `switchModelsOnFlag` setting controls".
+  # The setting alone does not cover a subagent. The model-config page says "In
+  # a subagent, Claude Code doesn't show the prompt, and a flagged request that
+  # would switch models re-runs on the fallback model.", and that for Opus 5.5
+  # and Fable "cybersecurity-flagged requests re-run on Opus 4.8" -- so
+  # `switchModelsOnFlag` never protects a subagent and only the variable does.
+  # A settings `env` entry is what puts it in every process. The settings
+  # reference describes `env` as: "Set environment variables for every session
+  # and for the subprocesses Claude Code starts from it." The env-vars page
+  # adds "Claude Code writes each `env` entry into the process environment,
+  # replacing the value inherited from the shell." -- so the entry reaches the
+  # main session and every subagent, whatever shell started the launcher.
+  # Decision, Brett Heap, 2026-10-13: "we do not want the fallback to 4.8" and
+  # "ok lets add the env var to claude-profile and update pr 54". The shared
+  # protocol's Build Tiers preflight requires
+  # `echo "${CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK-unset}"` to print `1` before
+  # any build task is dispatched; this seeding is how a profile's session meets
+  # it. Like effortLevel and model, an explicit value already in the file wins
+  # (a profile opts out by setting it to "0"), and every other `env` entry in
+  # the file is kept as it is.
   settings_tmp="$(mktemp "$config_dir/.settings.XXXXXX.tmp")"
   if [[ -f "$settings" ]]; then
     jq --arg command "$statusline_command" --arg model "$default_model" \
@@ -402,6 +425,7 @@ configure_profile_runtime() {
       | .permissions.defaultMode = "bypassPermissions"
       | .effortLevel = (.effortLevel // "xhigh")
       | .model = (.model // $model)
+      | .env = ((.env // {}) + {CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK: ((.env // {}).CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK // "1")})
       | (if $guard_ok then'"$lane_guard_jq"' else . end)
       | (if $session_start_ok then'"$lane_session_start_jq"' else . end)
       | '"$lane_name_guard_jq"'
@@ -420,7 +444,8 @@ configure_profile_runtime() {
       statusLine: {type: "command", command: $command, refreshInterval: 10},
       permissions: {defaultMode: "bypassPermissions"},
       effortLevel: "xhigh",
-      model: $model
+      model: $model,
+      env: {CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK: "1"}
     }
     | (if $guard_ok then'"$lane_guard_jq"' else . end)
     | (if $session_start_ok then'"$lane_session_start_jq"' else . end)
