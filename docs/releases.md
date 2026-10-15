@@ -69,7 +69,9 @@ Prepare `RELEASE_NOTES.md` with the final tested changes and validation evidence
 before running the publication command. Tag checking verifies the annotated
 tag, version, clean assembly tree, and complete source-lock coverage. CI also
 performs this check for `v*` tags. Protect release tags from updates/deletion in
-the GitHub repository rules; this document does not configure those rules.
+the GitHub repository rules. The active **Immutable workBenches releases** tag
+ruleset protects `refs/tags/v*` against updates and deletion, with no bypass
+actors. Creating a new version tag remains allowed.
 
 ## Install a published release
 

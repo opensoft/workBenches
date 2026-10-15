@@ -37,7 +37,7 @@ Any pin change requires review and validation of the revised candidate.
 
 Local development evidence already recorded:
 
-- [x] Nine release/version checks passed, including execution through Tools.
+- [x] Ten release/version checks passed, including frozen removal with local work.
 - [x] All 21 setup regression suites passed.
 - [x] Declared Tools runtime acceptance passed, including Vault
   Install/Connect/cancel/sign-in/sign-out with queued changes preserved.
@@ -46,18 +46,28 @@ Local development evidence already recorded:
 
 These results precede the release commit. The following remain required:
 
-- [ ] Review and commit the candidate, including its version and source lock.
-- [ ] Pass the Release source freeze and full Workstation Setup CI checks on
-  the committed candidate; repeat on the final merge commit if it differs.
+- [x] Review and commit the candidate, including its version and source lock.
+  Candidate PR: [#157](https://github.com/opensoft/workBenches/pull/157).
+- [x] Pass the Release source freeze and full Workstation Setup CI checks on
+  candidate `dd355a1`; the PR also passed project-command, OpenSpeckit,
+  shared-image regression, and CodeQL checks.
+- [ ] Repeat required CI checks on the final merge commit.
 - [ ] Complete a fresh-workstation install using frozen-source mode.
 - [ ] Complete existing-workstation upgrade, add/remove, and cancellation
   checks; confirm projects, existing credentials, and unrelated resources remain.
-- [ ] Complete a real Keycloak login and a real recovery from a supported vault.
-  Automated account/provider responses so far are fixtures.
+- [x] Complete real Vaultwarden recovery using the actual server and Bitwarden
+  CLI with verified TLS, a generated test account, and a generated nonbillable
+  AI credential. The private profile received the expected credential bytes.
+- [ ] Complete a real QA Keycloak login. Browser approval remains pending;
+  fixture sign-in responses do not establish organization account login.
 - [ ] Complete live QA for every platform advertised as supported. Raven/Linux
-  has development coverage; Windows/WSL and macOS still need live workstation QA.
+  has development coverage; Windows/WSL QA is assigned to Eagle and remains
+  pending remote access. No Mac is available: macOS must be identified as
+  unvalidated in 1.5.0 rather than advertised as a validated platform.
 - [ ] Prepare final release notes with the tested commit, validation evidence,
   platform coverage, and known limitations.
+- [x] Protect version tags against updates/deletion: active repository ruleset
+  **Immutable workBenches releases**, covering `refs/tags/v*` without bypass actors.
 
 After these gates pass, follow [the release process](releases.md): merge the
 approved candidate, validate the exact final commit, create the annotated
