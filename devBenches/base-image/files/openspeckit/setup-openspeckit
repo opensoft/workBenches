@@ -3241,6 +3241,11 @@ It updates or creates:
 - `.claude/commands/opsx/*` from global templates when missing
 - `.claude/skills`, `.codex/skills`, and `.agents/skills` links for available
   global OpenSpec/Speckit skills
+- the managed Model Routing block in the three Speckit build skills,
+  `speckit-tasks`, `speckit-implement` and `speckit-analyze`, in their
+  repo-local skill copies and user-global skill homes, read from the protocol
+  root's `templates/speckit/model-routing/<skill>.md` — see Managed Skill
+  Blocks
 - minimal `openspec/changes/archive`, `openspec/specs`, and `.specify/`
   scaffolding when those directories are absent (in a three-leg project the
   OpenSpec half of that lands in the spec leg — see Three-leg Projects)
@@ -3253,11 +3258,19 @@ It updates or creates:
 
 ## Idempotency Rules
 
-The script only edits generated sections between:
+The script only edits generated sections between its three marker pairs:
+`OPENSPEC-SPECKIT-GLOBAL` in the agent context and entrypoint files,
+`OPENSPEC-SPECKIT-SHAPE` in skill and command files, and
+`OPENSPEC-SPECKIT-MODEL-ROUTING` in the three Speckit build skills (see
+Managed Skill Blocks):
 
 ```md
 <!-- OPENSPEC-SPECKIT-GLOBAL:START -->
 <!-- OPENSPEC-SPECKIT-GLOBAL:END -->
+<!-- OPENSPEC-SPECKIT-SHAPE:START -->
+<!-- OPENSPEC-SPECKIT-SHAPE:END -->
+<!-- OPENSPEC-SPECKIT-MODEL-ROUTING:START -->
+<!-- OPENSPEC-SPECKIT-MODEL-ROUTING:END -->
 ```
 
 Existing hand-written content outside those markers is preserved.
@@ -3470,6 +3483,75 @@ push them in the spec repository, then move the gitlink, `commit:` in
 in one commit in the root. `--dry-run` prefixes every planned path with
 `[root]` or `[spec]`, so the split is visible before anything is written.
 
+## Managed Skill Blocks
+
+Besides the managed block in the agent context files, the bootstrap keeps two
+managed blocks in skill and command files, each between its own markers (see
+Idempotency Rules). In a three-leg project their repo-local targets are the
+root's, beside the skill links.
+
+### The Repository Shape Block
+
+Between the `OPENSPEC-SPECKIT-SHAPE` markers, the installer upserts a
+Repository Shape block into the Speckit skills and the `ct` and `ctp`
+helpers, the repository's `.claude/commands/opsx/` command files and, in the
+user-global skill homes, the OpenSpec skills as well. It has an agent
+running the skill resolve the project shape once, and says where `openspec/`,
+`specs/NNN-*`, the code and the feature worktrees live in each shape: the
+split that "The Managed Block Names the Split" states in a three-leg root's
+agent context files, carried to where the skill runs. It is replaced in place
+when present and otherwise placed after the file's frontmatter, or at the top
+of a file without one; `--no-skill-shape-blocks` opts out.
+
+### The Model Routing Block
+
+Between the `OPENSPEC-SPECKIT-MODEL-ROUTING` markers, the Model Routing block
+carries the shared protocol's "Build Tiers" (under "Claude Model Roles and
+Usage Budget") rendered for the skill that holds it: in `speckit-tasks` the
+tiers, the task line, the governed invariants and the rubric to tag by; in
+`speckit-analyze` the category G checks that hold `tasks.md` to those rules;
+in `speckit-implement` the preflight, dispatch, acceptance, escalation and
+refusal rules it builds the tasks by.
+
+The installer does not bake the block in. It reads it from the protocol
+root's `templates/speckit/model-routing/<skill>.md`, one file per skill, so
+the protocol and the block live in one repository and cannot drift into two
+copies. The protocol root is the agent root the run resolves:
+`$AGENT_PROTOCOL_ROOT`, or `~/.agents` when that is unset.
+
+The block goes into the `SKILL.md` of those three skills under
+`.claude/skills`, `.agents/skills` and `.codex/skills`: the repo-local copies,
+and the user-global homes under the home directory. Only a real skill
+directory holding a regular `SKILL.md` is a target; a skill reached through a
+link is not. A block already present is replaced in place; otherwise the
+block is placed after the Repository Shape block, or, without one, where that
+block would go.
+
+- A missing template is logged and skipped for its skill. The installer's own
+  fallback protocol files ship no templates, so a run against an agent root
+  that holds only those writes no block.
+- A malformed template is refused: it must be a regular file that holds
+  exactly one block and nothing else. The refusal names the template and ends
+  the run. Every template is read before any block is written, so the passes
+  before this one have written, no Model Routing block has, and the passes
+  after it (the user-global entrypoint pointers, and in a three-leg root the
+  two-commit listing) do not run.
+- A user-global target under a symlinked ancestor is skipped with a log line:
+  the installer does not write through a symlink. A user-global target it
+  cannot write is skipped with a log line as well.
+- `--no-skill-routing-blocks` opts out of the block.
+  `--no-global-agent-pointers` also switches off its user-global half.
+
+The `Full rules:` line at the end of the block names the protocol file. The
+repo-local copies keep the template's `${{AGENT_PROTOCOL_ROOT:-$HOME/.agents}}`
+form; in the user-global homes the installer renders it with the agent root
+the run resolved, as it does for the Repository Shape block.
+
+The installer pass came in opensoft/workBenches#147, the templates and "Build
+Tiers" in brettheap/new-workstation#54, the fail-loud amendment in
+new-workstation#55, and the re-synced installer fallback protocol in
+workBenches#151.
+
 ## Non-Triad Advisory
 
 When the detected shape is a single repository that is not exempt under the
@@ -3506,6 +3588,18 @@ bootstrap (`make bootstrap`) stays schema-neutral and gives no advisory.
    files as pointers plus repo-specific overrides.
 
 ## Script Status
+
+### Model Routing block (2026-10-15)
+
+The Model Routing block in "Managed Skill Blocks" is realized in the script
+under opensoft/workBenches#147 (merged `54a11a5`, 2026-10-12). Its templates
+and the "Build Tiers" section they render came from
+brettheap/new-workstation#54 (merged `be907f4`, 2026-10-12), and the
+fail-loud amendment to that section from new-workstation#55 (merged
+`ecfabed`, 2026-10-14). The script's fallback copy of the workflow protocol
+was re-synced to the amended section in workBenches#151 (merged `75445fa`,
+2026-10-14). This entry records the contract "Managed Skill Blocks"
+describes.
 
 ### Non-Triad advisory (2026-10-06)
 
