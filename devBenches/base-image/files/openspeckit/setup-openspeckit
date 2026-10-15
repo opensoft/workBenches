@@ -3040,7 +3040,7 @@ Governed in every repository, declared or not: `openspec/` text, CI workflow def
   A task fails when its verify command fails, when its diff touches a file outside its `files:` list, or when the writer reports doubt or a block.
 - **Escalate.** Escalation is `[H]` → `[S]` → `[O]`, one attempt at each tier; when `[O]` fails, stop and send the task back to `/speckit-plan` or `/speckit-clarify` with a short failure record.
   A task that fails at every tier points to a gap in the spec, not a weak
-  model.
+  model. A writer's refusal is handled by "Refusals" below.
 - **Pin and verify.** Each agent definition names its exact model ID.
   Before accepting any task's work, the orchestrator reads the model from
   the subagent's transcript:
@@ -3052,34 +3052,137 @@ Governed in every repository, declared or not: `openspec/` text, CI workflow def
   Every line must name the definition's model. Commit trailers name the
   model that actually ran. On a mismatch, record it, then either re-verify
   the work at the intended tier, or accept it explicitly with the mismatch
-  disclosed.
+  disclosed. The check guards the switch paths that the fail-loud paragraphs
+  below name. The grep reads a transcript record Claude Code does not
+  document, so it stays the quick check; the documented record is what a
+  PostToolUse hook on the Agent tool receives in `tool_response`:
+  `resolvedModel` ("Model the subagent started on, which may differ from the
+  requested model") and `modelsUsed`, set only when the model was swapped
+  mid-run (Claude Code v2.1.212 or later).
 - **Mark a task `[X]`** only after its scope check and its verify command
   pass.
 
-Pinning alone is not enough. Claude Code's model documentation says that in
-a subagent a safety-classifier flag re-runs the request on a fallback model
-without a prompt (for Opus 5.5, a cybersecurity flag re-runs on Opus 4.8),
-and that after a fallback the session continues on the fallback model;
-nothing there exempts a pinned model. A configured `fallbackModel` chain is
-a second documented way for a subagent to switch model: "When a subagent's
-request fails over, Claude Code tries your configured fallback models in
-order, and the subagent continues on the model that accepts the request."
-On 2026-10-12 two `opus` subagents
-switched from `claude-opus-5-5` to `claude-opus-4-8` without telling the
-orchestrator, and the cause is not established. `availableModels` is
-deliberately not used to block the fallback, because flagged work would
-then just fail. The transcript check is what catches a switch. A
-`CLAUDE_CODE_EFFORT_LEVEL` in the environment overrides every definition's
-`effort`, so it must be unset when tasks are dispatched.
+**Fail loud.** Claude Code's model documentation says that "Fable models,
+Opus 5.5, Sonnet 5.5, and Opus 5 run with safety classifiers, which most
+often flag cybersecurity and biology content"; that from Opus 5.5
+"cybersecurity-flagged requests re-run on Opus 4.8", and from Sonnet 5.5 on
+Sonnet 5; that "In a subagent, Claude Code doesn't show the prompt, and a
+flagged request that would switch models re-runs on the fallback model.";
+and that "After a fallback, the session continues on the fallback model."
+That switch is turned off by `CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1`,
+documented as: "Set to `1` to turn off the automatic model switch when a
+safety classifier flags a request". `claude-profile` seeds the variable into
+the `env` block of every profile's `settings.json`, and that block is
+documented to "Set environment variables for every session and for the
+subprocesses Claude Code starts from it." A flagged request then ends
+with a refusal naming the model's safeguards, in the main session and in
+every subagent, and no other model runs. The `switchModelsOnFlag` setting is
+not the lever: it pauses only where a dialog can show, and a subagent shows
+none. Brett Heap chose this on 2026-10-13, verbatim:
+"we do not want the fallback to 4.8, what if the main 5.5 agent never did any actual pompts itself and only did interaction with the user? then that main agent always spawns a subagent with the nec ctx and does the task. Then if that subagent is blocked and needs to fallback, is the main agent informed first?"
+The 2026-10-12 decision to leave the fallback open is superseded. Under it,
+`availableModels` was deliberately not used to block the fallback, because flagged work would
+then just fail; flagged work now fails, loudly, and goes to "Refusals".
+
+On 2026-10-12 two `opus` subagents ran on `claude-opus-4-8` after the main
+session had itself fallen back. The sub-agents documentation explains it: a
+family alias such as `opus` in a definition runs the subagent on the main
+conversation's exact model when that model belongs to the family. The
+full-ID pins in the tier definitions close that path. The transcript check
+guards the documented switch paths that remain: a family alias left in a
+definition; `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`, under which every subagent
+ignores its definition's model; an `availableModels` allowlist, which
+substitutes another model for a blocked one; a mod's `agent.spawn` hook,
+whose model Claude Code uses in place of the per-invocation parameter, ahead
+of the definition's; and a configured `fallbackModel` chain: "When a
+subagent's request fails over, Claude Code tries your configured fallback
+models in order, and the subagent continues on the model that accepts the
+request." When tasks are dispatched,
+`echo "${{CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK-unset}}"` must print `1`;
+`CLAUDE_CODE_EFFORT_LEVEL` must be unset, because it overrides every
+definition's `effort`; and `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` must be unset,
+because it makes every subagent ignore its definition's `model`.
+
+#### Refusals
+
+Two kinds of refusal reach an orchestrator, and the message tells them apart.
+
+- **A usage-policy refusal** reads `Claude Code is unable to respond to this
+  request, which appears to violate our Usage Policy` or `<model> can't help
+  with this. Start a new session to continue`. It is a judgment of the whole
+  conversation against the Usage Policy ("The check evaluates the full
+  conversation, not only your latest prompt"), so what the work is for, as
+  the conversation states it, is part of what is judged.
+- **A safeguards flag** reads `API Error: <model>'s safeguards flagged this
+  message. Our intentionally broad safeguards allow us to deliver more
+  capabilities faster, but can sometimes flag legitimate cybersecurity work.
+  Apply to the Cyber Verification Program to reduce these interruptions. Send
+  feedback with /feedback or learn more:
+  https://support.claude.com/en/articles/14604842-real-time-cyber-safeguards-on-claude`;
+  on Opus 5.5 and Sonnet 5.5 it opens with `<model>'s safeguards flagged this
+  session`. A server-side classifier scores the content of the whole
+  request, tool results included. It is not a reviewer: a justification
+  written into the prompt is not a lever, and it adds text the classifier
+  can flag. The sanctioned route for legitimate work that keeps being
+  flagged is the Cyber Verification Program, and `/feedback` reports a false
+  positive.
+
+**What happens.** The writer's turn ends with the refusal, and the Agent tool
+returns it to the orchestrator. The failure record carries the refusal text
+verbatim, the tier and the model. A refusal is never answered by rewording
+the task to slip past the classifier, and never retried at the same tier. A
+safeguards flag at `[S]` gets the ladder's one `[O]` attempt; a safeguards
+flag at `[O]` goes to triage. A usage-policy refusal stops the ladder at the
+tier where it happened and goes to triage; it is never escalated to a larger
+model to get around it.
+
+**Triage.** The orchestrator triages before it dispatches that task again.
+It first writes a goal statement: what the task is for, what it touches, and
+whether any part of it asks for an attack capability rather than defensive
+or engineering work. Then exactly one of three outcomes:
+
+1. **The task asks for something forbidden.** Drop it at `/speckit-plan`,
+   with the reason.
+2. **The goal is legitimate and the material trips the classifier.** Find
+   the trigger by bisection, with a probe writer that changes nothing and
+   runs on a classifier model: `sonnet-xhigh`, never `haiku-high`, because
+   Haiku 5.5 is not among the models the documentation lists with safety
+   classifiers, so a probe there proves nothing. Send the bare brief first,
+   then add the task's files one at a time. A flag on the bare brief points
+   at the workspace context the first request carries: "Fallback can trigger
+   on the first request of a session, before you send anything unusual,
+   because the first request carries workspace context such as your
+   CLAUDE.md content and git status." `claude --safe-mode`, which disables
+   customizations such as CLAUDE.md, skills, MCP servers and hooks, is the
+   main-session analogue. The bisection locates material; it never tunes
+   wording. Then re-scope the task at `/speckit-plan` so the material is not
+   loaded: synthetic fixtures instead of the exploit corpus, for example, or
+   a person handles the one sensitive file.
+3. **The work is inherently in a flagged domain.** Stop and tell Brett; the
+   Cyber Verification Program is the route.
+
+The goal statement and the outcome go into the failure record and to Brett,
+never into a retry prompt as persuasion.
+
+**Brief hygiene** prevents most flags: state the goal in engineering terms,
+name the files, have writers return summaries rather than raw security
+content, and forbid writers to generate attack content.
+
+**The main session.** A flagged main-session turn ends with the same refusal,
+not a switch. Recover with `/rewind` to the checkpoint before the triggering
+turn, and change the approach. A writer's report that carries security
+content can itself be the trigger, which is why writers return summaries.
+
+#### Without subagents
 
 Where no subagents are available, for example for an agent of another
 runtime, `/speckit-implement` keeps Spec Kit's stock path: one session runs
 the tasks in order, ignores the tier tags, and still runs each task's verify
-command before marking it `[X]`. A Claude main session bound by this section
-never takes that path for code: if the tier definitions are missing, it
-stops and tells Brett.
+command before marking it `[X]`. A Claude main session bound by "Claude
+Model Roles and Usage Budget" never takes that path for code: if the tier
+definitions are missing, it stops and tells Brett.
 
-This section is Claude-specific; other agents follow their own runtime's
+"Build Tiers" is Claude-specific; other agents follow their own runtime's
 equivalent and the rest of this protocol unchanged. An agent of another
 runtime may ignore the tier tags, but keeps them, and the `files:` and
 `verify:` fields, whenever it writes or edits `tasks.md`.

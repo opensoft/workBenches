@@ -30,6 +30,7 @@ on:
       - scripts/setup-claude-profiles.sh
       - devcontainer.test/test-claude-profile-skill-install.sh
       - devcontainer.test/test-claude-profile-amendment-11.sh
+      - devcontainer.test/test-claude-profile-refusal-fallback.sh
       - base-image/files/claude-usage-guard.sh
       - docs/claude-multi-account-profiles.md
       - README.md
@@ -64,6 +65,7 @@ on:
       - scripts/setup-claude-profiles.sh
       - devcontainer.test/test-claude-profile-skill-install.sh
       - devcontainer.test/test-claude-profile-amendment-11.sh
+      - devcontainer.test/test-claude-profile-refusal-fallback.sh
       - base-image/files/claude-usage-guard.sh
       - docs/claude-multi-account-profiles.md
       - README.md
@@ -160,6 +162,15 @@ jobs:
       # Host-run, hermetic (its own $TEST_ROOT, real HOME never touched).
       - name: Run the claude-profile Amendment 11 regression test
         run: bash ./devcontainer.test/test-claude-profile-amendment-11.sh
+
+      # Every profile's settings.json gets CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1
+      # under `env` (Brett Heap, 2026-10-13: "we do not want the fallback to
+      # 4.8"); the shared protocol's Build Tiers preflight reads it back. This
+      # suite pins the seeding: a fresh file, an existing `env` kept whole, an
+      # explicit "0" preserved. Host-run, hermetic (its own sandbox for HOME,
+      # CLAUDE_PROFILES_HOME and the manifest), needs only bash and jq.
+      - name: Run the claude-profile refusal-fallback env regression test
+        run: bash ./devcontainer.test/test-claude-profile-refusal-fallback.sh
 
       - name: Run bootstrap suite
         run: bash ./devBenches/devcontainer.test/test-openspeckit-bootstrap.sh
