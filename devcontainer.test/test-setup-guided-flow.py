@@ -70,6 +70,7 @@ class GuidedFlowTests(unittest.TestCase):
         for key in list(self.env):
             if key.startswith(('WORKBENCHES_', 'CLAUDE_PROFILES_', 'CODEX_', 'CHATGPT_PROFILES_', 'PI_PROFILES_', 'AI_CREDENTIAL_', 'DOCKER_', 'OPENAI_', 'ANTHROPIC_')):
                 self.env.pop(key)
+        self.env["WORKBENCHES_TEST_NATIVE_TOOLS"] = "1"
         self.addCleanup(patch.stopall)
         patch.dict(os.environ, self.env, clear=True).start()
         self.target = self.home / '.chatgpt-profiles/profiles/personal/personal-1/auth.json'
@@ -270,8 +271,8 @@ class GuidedFlowTests(unittest.TestCase):
         self.assertEqual(json.loads((output / '0.json').read_text()), {'OPENAI_API_KEY': 'fake-only-key'})
 
     def fake_docker(self, argv, **kwargs):
-        if argv[1] == 'run':
-            output = Path(next(arg.split('src=', 1)[1].split(',', 1)[0] for arg in argv if 'dst=/recovery/output' in arg))
+        if argv[1] == 'exec':
+            output = Path(argv[argv.index('--output') + 1])
             self.output = output
             returned = dict(self.mapping, entries=[dict(self.entry, itemId='00000000-0000-0000-0000-000000000001')])
             returned.pop('guided')
@@ -520,7 +521,7 @@ process_selections''', input='\n', PATH=self.fake_npm(self.home, failure=13), WO
             path = binary / name; path.write_text(body); path.chmod(0o755)
         status, output = terminal_run(['bash', str(repo / 'setup.sh')],
             dict(self.env, PATH=str(binary) + ':' + self.env['PATH']),
-            [('Changes selected: 0', '\x1b[C\x1b[B\x1b[B \n')])
+            [('REQUIREMENTS · 2/2 ready', '\x1b[C\x1b[B\x1b[B \n')])
         self.assertEqual(status, 0, output)
         self.assertTrue((self.home / 'cli-installed').exists())
         self.assertNotIn('Apply these changes?', output)
@@ -570,7 +571,7 @@ esac
                                       + (f'touch "$HOME/family-built"\nexit {code}\n' if category == 'devBenches' else 'exit 24\n'))
                     script.chmod(0o755)
                 env = dict(self.env, HOME=str(home), PATH=str(binary) + ':' + self.env['PATH'],
-                           WORKBENCHES_SKIP_ESTATE_COMMANDS='1', WORKBENCHES_SKIP_WORKSPACE_REPO='1',
+                           WORKBENCHES_TEST_NATIVE_TOOLS='1', WORKBENCHES_SKIP_ESTATE_COMMANDS='1', WORKBENCHES_SKIP_WORKSPACE_REPO='1',
                            WORKBENCHES_SKIP_PROJECT_COMMAND='1')
                 result = subprocess.run(['bash', str(repo / 'setup.sh')], env=env,
                                         capture_output=True, text=True, timeout=15)

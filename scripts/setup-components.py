@@ -2,6 +2,7 @@
 """Inspect installation artifacts and remove explicitly selected components."""
 import argparse
 import getpass
+import functools
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,29 @@ import subprocess
 import sys
 
 from setup_prompts import cancellation_signals
+
+try:
+    import workbenches_host as host
+except ImportError:
+    if os.environ.get('WORKBENCHES_HOST_RPC'):
+        raise
+    host = None
+
+
+def native_which(name):
+    return host.which(name) if host else shutil.which(name)
+
+
+def native_resolve(path):
+    return host.resolve(path) if host else path.resolve()
+
+
+def native_read_text(path):
+    return host.read_text(path) if host else path.read_text()
+
+
+def native_access(path, mode):
+    return host.access(path, mode) if host else os.access(path, mode)
 
 ROOT = Path(__file__).resolve().parents[1]
 COMMANDS = {
@@ -39,11 +63,26 @@ FLATPAKS = {'vscode': 'com.visualstudio.code', 'warp': 'dev.warp.Warp',
 
 
 def read_command(argv, env=None):
+    if host and host.active() and Path(argv[0]).name != 'docker':
+        return host.run(argv, capture_output=True, text=True, timeout=15, env=env)
     return subprocess.run(argv, capture_output=True, text=True, timeout=15, env=env)
 
 
 def apply_command(argv, env=None):
-    result = subprocess.run(argv, env=env)
+    if host and host.active() and Path(argv[0]).name != 'docker':
+        # Enter in the TUI already approves these exact removals. Native
+        # package commands run without a second package-manager confirmation;
+        # sudo authentication, when needed, stays in the host launcher.
+        argv = list(argv)
+        if 'apt-get' in argv or 'dnf' in argv:
+            argv.insert(argv.index('apt-get' if 'apt-get' in argv else 'dnf') + 1, '-y')
+        elif 'pacman' in argv:
+            argv.insert(argv.index('pacman') + 1, '--noconfirm')
+        elif 'flatpak' in argv:
+            argv.insert(argv.index('flatpak') + 1, '-y')
+        result = host.run(argv, env=env, timeout=300)
+    else:
+        result = subprocess.run(argv, env=env)
     if result.returncode in (130, -2, 143, -15):
         raise SystemExit(130 if result.returncode in (130, -2) else 143)
     if result.returncode:
@@ -54,13 +93,13 @@ def executable_paths(component):
     home = Path.home()
     result = []
     for command in COMMANDS[component]:
-        located = shutil.which(command)
+        located = native_which(command)
         if located:
             result.append(Path(located).absolute())
         for prefix in (home / '.local/bin', home / '.npm-global/bin',
                        home / '.opencode/bin', home / '.antigravity/bin'):
             path = prefix / command
-            if path.is_file() and os.access(path, os.X_OK):
+            if path.is_file() and native_access(path, os.X_OK):
                 result.append(path.absolute())
     return list(dict.fromkeys(result))
 
@@ -68,24 +107,24 @@ def executable_paths(component):
 def package_installation(component, executable=None):
     """Only known package IDs are eligible; never remove a shared dependency."""
     allowed = PACKAGES[component]
-    if shutil.which('pacman'):
+    if native_which('pacman'):
         for name in allowed:
             if read_command(['pacman', '-Q', name]).returncode == 0:
                 return ['pacman', '-R', '--', name]
-    if shutil.which('dpkg-query') and shutil.which('apt-get'):
+    if native_which('dpkg-query') and native_which('apt-get'):
         for name in allowed:
             row = read_command(['dpkg-query', '-W', '-f=${Status}', name])
             if row.returncode == 0 and row.stdout.strip() == 'install ok installed':
                 return ['apt-get', 'remove', '--no-auto-remove', '--', name]
-    if shutil.which('rpm') and shutil.which('dnf'):
+    if native_which('rpm') and native_which('dnf'):
         for name in allowed:
             if read_command(['rpm', '-q', name]).returncode == 0:
                 return ['dnf', '--setopt=clean_requirements_on_remove=False', 'remove', name]
-    if shutil.which('snap'):
+    if native_which('snap'):
         for name in allowed:
             if read_command(['snap', 'list', name]).returncode == 0:
                 return ['snap', 'remove', name]
-    if component in FLATPAKS and shutil.which('flatpak'):
+    if component in FLATPAKS and native_which('flatpak'):
         name = FLATPAKS[component]
         for scope in ('--user', '--system'):
             if read_command(['flatpak', scope, 'info', name]).returncode == 0:
@@ -99,7 +138,7 @@ def tool_installed(component):
 
 def npm_removal(component, path):
     package = NPM.get(component)
-    npm = shutil.which('npm')
+    npm = native_which('npm')
     if not package or not npm:
         return None
     prefixes = [path.parent.parent]
@@ -109,12 +148,12 @@ def npm_removal(component, path):
     for prefix in dict.fromkeys(prefixes):
         directory = prefix / 'lib/node_modules' / package
         try:
-            metadata = json.loads((directory / 'package.json').read_text())
+            metadata = json.loads(native_read_text(directory / 'package.json'))
         except (OSError, ValueError):
             continue
-        if metadata.get('name') == package and path.resolve().is_relative_to(directory.resolve()):
+        if metadata.get('name') == package and native_resolve(path).is_relative_to(native_resolve(directory)):
             command = [npm, 'uninstall', '--global', '--ignore-scripts', '--prefix', str(prefix), package]
-            if not os.access(directory.parent, os.W_OK):
+            if not native_access(directory.parent, os.W_OK):
                 command.insert(0, 'sudo')
             return command
     return None
@@ -124,7 +163,7 @@ def native_removal(component, path):
     home = Path.home()
     if component == 'claude_cli' and path == home / '.local/bin/claude':
         payload = home / '.local/share/claude'
-        if payload.is_symlink() or not path.resolve().is_relative_to(payload):
+        if payload.is_symlink() or not native_resolve(path).is_relative_to(payload):
             return False
         path.unlink()
         if payload.exists():
@@ -133,7 +172,7 @@ def native_removal(component, path):
     known = {'opencode_cli': home / '.opencode/bin/opencode',
              'antigravity_cli': home / '.antigravity/bin/agy'}
     if known.get(component) == path:
-        if not path.resolve().is_relative_to(path.parent.resolve()):
+        if not native_resolve(path).is_relative_to(native_resolve(path.parent)):
             raise ValueError('Native launcher points outside its installation directory')
         path.unlink()
         return True
@@ -159,7 +198,7 @@ def uninstall_tool(component):
         if package:
             privileged = package[0] != 'flatpak' or '--system' in package
             apply_command(['sudo', *package] if privileged else package)
-        elif component == 'spec_kit' and shutil.which('uv'):
+        elif component == 'spec_kit' and native_which('uv'):
             apply_command(['uv', 'tool', 'uninstall', 'specify-cli'])
         else:
             path = paths[0]
@@ -283,15 +322,36 @@ def uninstall_bench(name):
     print(f'{name} uninstalled. Checkout, projects, credentials, volumes, and shared base images were preserved.')
 
 
+def tool_statuses():
+    """One native callback session for the entire workstation tool inventory."""
+    import profile_credentials
+    original_which = globals()['native_which']
+    globals()['native_which'] = functools.lru_cache(maxsize=None)(original_which)
+    providers = {'claude_cli': 'claude', 'codex_cli': 'codex', 'pi_cli': 'pi', 'opencode_cli': 'omniroute'}
+    try:
+        for component in COMMANDS:
+            try:
+                status = 'installed' if tool_installed(component) else 'not installed'
+                if status == 'installed' and component in providers and profile_credentials.status(providers[component]) != 0:
+                    status = 'needs creds'
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                status = 'needs check'
+            print(component + '\t' + status, flush=True)
+    finally:
+        globals()['native_which'] = original_which
+
+
 def main():
     cancellation_signals()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('tool-status', 'bench-statuses', 'uninstall'))
+    parser.add_argument('action', choices=('tool-status', 'tool-statuses', 'bench-statuses', 'uninstall'))
     parser.add_argument('component', nargs='?')
     args = parser.parse_args()
-    if args.action != 'bench-statuses' and not args.component:
+    if args.action not in ('bench-statuses', 'tool-statuses') and not args.component:
         parser.error('this action requires a component')
-    if args.action == 'bench-statuses':
+    if args.action == 'tool-statuses':
+        tool_statuses()
+    elif args.action == 'bench-statuses':
         bench_statuses()
     elif args.action == 'tool-status':
         print('installed' if tool_installed(args.component) else 'not installed')

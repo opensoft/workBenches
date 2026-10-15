@@ -30,6 +30,26 @@ services:
       - ..:/source:ro
     command: [bash, -ec, "bash devcontainer.test/test-claude-npm-guard.sh; bash devcontainer.test/test-layer3-claude-version.sh; bash devcontainer.test/test-wave-container-shell.sh"]
 
+  tools-runtime:
+    init: true
+    profiles: [tools-runtime]
+    image: workbenches-test:workstation
+    build:
+      context: workstation
+    user: "${WORKBENCHES_TEST_UID:-1000}:${WORKBENCHES_TEST_GID:-1000}"
+    group_add: ["${WORKBENCHES_DOCKER_GID:-0}"]
+    working_dir: ${WORKBENCHES_SOURCE_ROOT:-/source}
+    volumes:
+      - ..:${WORKBENCHES_SOURCE_ROOT:-/source}:ro
+      - /tmp:/tmp
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WORKBENCHES_RUNTIME_TEST: "1"
+      PYTHONUNBUFFERED: "1"
+      WORKBENCHES_TEST_VAULT: ${WORKBENCHES_TEST_VAULT:-1}
+      WORKBENCHES_TOOLS_BUILD_NETWORK: ${WORKBENCHES_TOOLS_BUILD_NETWORK:-host}
+    command: [python3, devcontainer.test/test-tools-runtime.py]
+
   acceptance-engine:
     profiles: [workstation-acceptance, component-lifecycle]
     image: docker:28-dind

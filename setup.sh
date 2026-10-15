@@ -6,6 +6,10 @@
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/bootstrap.sh"
+if [[ "${1:-}" == --version ]]; then
+    printf 'workBenches v%s\n' "$(workbenches_version)"
+    exit 0
+fi
 source "$SCRIPT_DIR/scripts/lib/setup-prerequisites.sh"
 
 # Cancellation during prerequisite/password prompts must stop the launcher.
@@ -47,6 +51,7 @@ log_header "SETUP STARTED"
     echo "Host: $(hostname)"
     echo "PWD: $PWD"
     echo "Shell: $SHELL"
+    echo "Version: $(workbenches_version)"
     [ -n "$WSL_DISTRO_NAME" ] && echo "WSL: $WSL_DISTRO_NAME"
 } >> "$LOG_FILE"
 
@@ -120,17 +125,27 @@ fi
 
 # Required workstation setup precedes component selection and all account work.
 ensure_setup_platform || exit "$?"
-ensure_setup_dependencies || exit "$?"
-ensure_workstation_requirements || exit "$?"
+if [[ ! -t 0 || ! -t 1 ]]; then ensure_workstation_requirements || exit "$?"; fi
 selection_file="$(mktemp "${TMPDIR:-/tmp}/workbenches-selection.XXXXXX")" || exit 1
 trap 'rm -f "$selection_file"' EXIT
 "${SCRIPT_DIR}/scripts/interactive-setup.sh" --select-only "$selection_file" || exit "$?"
+# The child TUI owns startup checks; adopt its ready runtime for applying the plan.
+if [[ -t 0 && -t 1 ]]; then ensure_workstation_requirements || exit "$?"; fi
 python3 "$SCRIPT_DIR/scripts/setup_selection.py" rows "$selection_file" >/dev/null || exit "$?"
+{
+    printf 'Assembly commit: '
+    git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || printf 'unavailable\n'
+} >> "$LOG_FILE"
 if python3 "$SCRIPT_DIR/scripts/setup_selection.py" empty "$selection_file"; then
     echo "No components selected. Setup complete."
     exit 0
 fi
 selected_bench_paths="$(python3 "$SCRIPT_DIR/scripts/setup_selection.py" benches "$selection_file")" || exit "$?"
+if workbenches_release_checkout; then
+    export WORKBENCHES_FROZEN=1
+    printf 'Source mode: frozen v%s\n' "$(workbenches_version)" >> "$LOG_FILE"
+    python3 "$SCRIPT_DIR/scripts/release-workbenches.py" prepare --selection "$selection_file" || exit "$?"
+fi
 export WORKBENCHES_SELECTED_PROVIDERS="$(python3 "$SCRIPT_DIR/scripts/setup_selection.py" providers "$selection_file")"
 export WORKBENCHES_PROFILE_PROVIDERS="$(python3 -c 'import os; print(",".join(p for p in os.environ["WORKBENCHES_SELECTED_PROVIDERS"].split(",") if p in ("claude", "openai")))')"
 

@@ -139,7 +139,7 @@ class ToolRemovalTests(unittest.TestCase):
         # the engineer's real CLI installations or package-manager executables.
         for name in ('bash', 'sh', 'python3', 'git', 'jq', 'curl', 'date', 'dirname',
                      'mkdir', 'tee', 'ls', 'tail', 'xargs', 'rm', 'mktemp', 'whoami',
-                     'uname', 'tput', 'clear', 'cat', 'cmp', 'hostname', 'grep', 'head'):
+                     'id', 'sleep', 'uname', 'tput', 'clear', 'cat', 'cmp', 'hostname', 'grep', 'head'):
             # shutil.which is patched for unit probes in this class; resolve
             # the utilities through the subprocess shell instead.
             located = subprocess.check_output(['/bin/sh', '-c', 'command -v "$1"', 'sh', name], text=True).strip()
@@ -158,7 +158,7 @@ else exec bash "$(dirname "$0")/interactive-real.sh" "$@"; fi
 ''')
         interactive.chmod(0o755)
         env = {key: value for key, value in os.environ.items() if not key.startswith(('WORKBENCHES_', 'OPENAI_', 'ANTHROPIC_', 'CODEX_', 'CLAUDE_'))}
-        env.update(HOME=str(self.home), XDG_CONFIG_HOME=str(self.home / '.config'),
+        env.update(WORKBENCHES_TEST_NATIVE_TOOLS="1", HOME=str(self.home), XDG_CONFIG_HOME=str(self.home / '.config'),
                    XDG_DATA_HOME=str(self.home / '.local/share'), AGENT_PROTOCOL_ROOT=str(self.home / '.agents'),
                    PATH=str(binary) + ':' + str(prefix / 'bin'), TERM='xterm')
         result = subprocess.run(['bash', str(repo / 'setup.sh')], env=env,

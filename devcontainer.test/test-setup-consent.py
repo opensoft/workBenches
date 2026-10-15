@@ -62,7 +62,7 @@ class SelectedSetupTests(unittest.TestCase):
                 interactive.chmod(0o755)
                 env = {key: value for key, value in os.environ.items()
                        if not key.startswith(('WORKBENCHES_', 'OPENAI_', 'ANTHROPIC_', 'CODEX_', 'CLAUDE_'))}
-                env.update(HOME=str(home), XDG_CONFIG_HOME=str(home / '.config'),
+                env.update(WORKBENCHES_TEST_NATIVE_TOOLS="1", HOME=str(home), XDG_CONFIG_HOME=str(home / '.config'),
                            AGENT_PROTOCOL_ROOT=str(home / '.agents'), ACTION_LOG=str(action_log),
                            NPM_FAULT=str(npm_status),
                            PATH=str(binary) + ':' + os.environ['PATH'], TERM='xterm')

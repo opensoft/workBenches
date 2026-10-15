@@ -15,5 +15,5 @@ OpenSpec/Speckit protocol and project bootstrap contract.
 - Preserve unrelated changes in the parent checkout and in bench submodules.
 
 <!-- SPECKIT START -->
-Active implementation plan: `specs/018-clean-sync-benches/plan.md`
+Active implementation plan: `specs/025-container-setup-runtime/plan.md`
 <!-- SPECKIT END -->

@@ -1,5 +1,9 @@
 # workBenches
 
+Release tracking starts at **v1.5.0**. Run `./setup.sh --version` to identify
+this checkout. See [the release process](docs/releases.md) for source freezes,
+immutable release tags, pinned installations, and validation requirements.
+
 ## Project command
 
 Generic project creation now lives in
@@ -70,6 +74,9 @@ openRepoProject's README and `docs/migration-review.md`.
 A layered Docker-based development environment system. Each "bench" is a self-contained devcontainer for a specific tech stack (Flutter, Java, .NET, Python, Frappe, C++, etc.) built on shared base images.
 
 ## Quick Start
+
+These commands follow `main`. For a frozen deployment, use the version-specific
+bootstrap in [the release guide](docs/releases.md#install-a-published-release).
 
 On a new workstation, install Git and download the standalone bootstrap.
 
@@ -173,8 +180,10 @@ checkout unchanged.
 
 ```
 setup.sh
-  ├── OS / Windows WSL 2 + Docker access + Python/jq/git/curl requirements
-  │     └── Missing requirements: guided configure / recheck / quit
+  ├── Immediate TUI with yellow Loading… states
+  ├── Background OS / WSL 2 + Docker + Tools checks (containerized Python/jq/Git/curl)
+  │     └── Results update live; missing requirements offer Install / Start
+  ├── Optional Vault Up: credential-access tools; provider sign-in when needed
   ├── Component TUI: Benches | AI Assistants | Tools | Requirements (P)
   │     └── Enter applies; Q/EOF cancels; empty Enter finishes
   ├── Compact selected-change summary + selected Node/npm prerequisites

@@ -7,7 +7,9 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/image-names.sh"
 source "$SCRIPT_DIR/lib/setup-prerequisites.sh"
+source "$SCRIPT_DIR/lib/setup-status-loader.sh"
 source "$SCRIPT_DIR/../bootstrap.sh"
+setup_version="$(workbenches_version)"
 LOG_DIR="$SCRIPT_DIR/../logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="${WORKBENCHES_SETUP_LOG_FILE:-$LOG_DIR/setup-$(date +%Y%m%d-%H%M%S).log}"
@@ -54,6 +56,7 @@ windows_command_exists() {
 
 # Log script start
 log "=== Setup script started ==="
+log "Version: $setup_version"
 log "User: $USER"
 log "PWD: $PWD"
 log "Shell: $SHELL"
@@ -65,12 +68,136 @@ fi
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+LOADING_COLOR='\033[38;5;220m\033[5m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 BOLD='\033[1m'
 DIM='\033[2m'
+
+# Neutral chrome leaves the component columns' existing colors untouched.
+SILVER='\033[38;5;252m'
+SILVER_MUTED='\033[38;5;245m'
+SILVER_EDGE='\033[38;5;239m'
+SILVER_FOCUS='\033[48;5;235m\033[38;5;255m'
+setup_ui_width=87
+setup_ui_painted=false
+setup_ui_frame_columns=0
+declare -a setup_ui_previous_lines=()
+
+setup_ui_rule() {
+    local rule
+    printf -v rule '%*s' "$1" ''
+    printf '%s' "${rule// /─}"
+}
+
+setup_ui_pair() {
+    local left="$1" right="$2" width="$3" gap
+    right="${right:0:$((width - 1))}"
+    left="${left:0:$((width - ${#right} - 1))}"
+    gap=$((width - ${#left} - ${#right}))
+    printf '%s%*s%s' "$left" "$gap" '' "$right"
+}
+
+draw_setup_banner() {
+    # Original OpenSoft wordmark, with inset half-block shading inspired by
+    # https://github.com/anomalyco/opencode/blob/dev/packages/tui/src/component/logo.tsx
+    local -a logo=(
+        '                                    ▄ '
+        '█▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀▀ ▀█▀▀'
+        '█__█ █__█ █^^^ █__█ ▀▀▀█ █__█ █^^   █__'
+        '▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀~~▀ ▀▀▀▀ ▀▀▀▀ ▀     ▀▀▀'
+    )
+    local -a tones=(255 252 250 246)
+    local line char tone index position
+    printf '\n'
+    if (( setup_ui_width < 42 )); then
+        printf '  %bOpensoft%b\n\n' "$SILVER" "$NC"
+        return
+    fi
+    for index in "${!logo[@]}"; do
+        line="${logo[$index]}"
+        tone="\033[38;5;${tones[$index]}m"
+        printf '  %b' "$tone"
+        for ((position=0; position<${#line}; position++)); do
+            char="${line:$position:1}"
+            case "$char" in
+                _) printf '\033[48;5;237m %b%b' "$NC" "$tone" ;;
+                '^') printf '\033[48;5;237m▀%b%b' "$NC" "$tone" ;;
+                '~') printf '%b▀%b' "$SILVER_EDGE" "$tone" ;;
+                *) printf '%s' "$char" ;;
+            esac
+        done
+        printf '%b\n' "$NC"
+    done
+    printf '\n'
+}
+
+setup_requirement_counts() {
+    requirements_ready=0
+    requirements_total=0
+    local key
+    for key in "${requirement_items[@]}"; do
+        case "$key" in vault|workbenches_account|ai_accounts) continue ;; esac
+        requirements_total=$((requirements_total + 1))
+        [[ "${component_status[$key]}" != up ]] || requirements_ready=$((requirements_ready + 1))
+    done
+}
+
+setup_panel_top() {
+    local label="$1" right="${2:-}" line
+    line="$(setup_ui_pair "$label" "$right" "$((setup_ui_width - 6))")"
+    printf '%b╭─ %b%s%b ─╮%b\n' "$SILVER_EDGE" "$SILVER" "$line" "$SILVER_EDGE" "$NC"
+}
+
+setup_panel_bottom() {
+    printf '%b╰%s╯%b\n' "$SILVER_EDGE" "$(setup_ui_rule "$((setup_ui_width - 2))")" "$NC"
+}
+
+draw_requirements_summary() {
+    setup_requirement_counts
+    local title="REQUIREMENTS · $requirements_ready/$requirements_total ready"
+    [[ "$status_checks_running" != true ]] || title="REQUIREMENTS · Loading…"
+    setup_panel_top "$title" 'P Manage'
+    local key label action color plain='' styled='' separator='' width=$((setup_ui_width - 4))
+    for key in "${requirement_items[@]}"; do
+        case "$key" in workbenches_account|ai_accounts) continue ;; esac
+        label="${component_description[$key]} $(setup_status_label "${component_status[$key]}")"
+        if [[ "$key" == vault && "${component_status[$key]}" != loading ]]; then
+            action="$(workbenches_requirement_action vault "${component_status[vault]}" "${component_status[workbenches_account]}")"
+            if [[ "$action" == Loading ]]; then label+=" · Loading…"; else label+=" [V $action]"; fi
+        fi
+        color="$GREEN"
+        [[ "${component_status[$key]}" == up ]] || color="$YELLOW"
+        [[ "${component_status[$key]}" != loading ]] || color="$LOADING_COLOR"
+        # Wrap between services, preserving Vault's action even in narrow terminals.
+        separator=''
+        [[ -z "$plain" ]] || separator='   '
+        if (( ${#plain} + ${#separator} + ${#label} > width )); then
+            printf '%b│%b %b%*s %b│%b\n' "$SILVER_EDGE" "$NC" "$styled" "$((width - ${#plain}))" '' "$SILVER_EDGE" "$NC"
+            plain=''; styled=''; separator=''
+        fi
+        plain+="$separator$label"
+        styled+="$separator${color}${label}${NC}"
+    done
+    printf '%b│%b %b%*s %b│%b\n' "$SILVER_EDGE" "$NC" "$styled" "$((width - ${#plain}))" '' "$SILVER_EDGE" "$NC"
+    setup_panel_bottom
+    [[ -z "$requirements_notice" ]] || printf '\n%b%s%b\n' "$YELLOW" "${requirements_notice:0:$setup_ui_width}" "$NC"
+}
+
+setup_status_label() {
+    case "$1" in
+        loading) printf 'Loading…' ;;
+        up) printf 'Up' ;;
+        down) printf 'Down' ;;
+        installed|ready) printf 'Ready' ;;
+        configured) printf 'Configured' ;;
+        missing) printf 'Missing' ;;
+        optional|'not configured') printf 'Not configured' ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
 
 # Spinner for long operations
 show_spinner() {
@@ -129,6 +256,9 @@ current_block=0
 
 # Sections: 0=Benches, 1=AI Assistants, 2=Tools, 3=Requirements
 CURRENT_SECTION=0  # Requirements has a separate page for narrow terminals.
+requirements_notice=""
+requirements_return_section=0
+requirements_return_selection=0
 declare -a bench_items
 declare -a ai_items
 declare -a tool_items
@@ -147,7 +277,7 @@ init_components() {
     local config_file="$script_dir/../config/bench-config.json"
     log "Config file: $config_file"
 
-    if [ -f "$config_file" ]; then
+    if [[ "${1:-}" != --loading && -f "$config_file" ]]; then
         # Get bench names from config
         while IFS= read -r bench_name; do
             bench_items+=("$bench_name")
@@ -157,7 +287,11 @@ init_components() {
     fi
 
     # If no benches found, add some defaults
-    if [ ${#bench_items[@]} -eq 0 ]; then
+    if [[ "${1:-}" == --loading ]]; then
+        bench_items=(loading)
+        component_checked[bench_loading]=false
+        component_description[bench_loading]="Loading benches"
+    elif [ ${#bench_items[@]} -eq 0 ]; then
         bench_items=("flutterBench" "javaBench" "dotNetBench" "pyBench")
         for bench in "${bench_items[@]}"; do
             component_checked["bench_$bench"]=false
@@ -237,41 +371,145 @@ init_components() {
     component_description[ai_accounts]="AI accounts"
     component_description[workbenches_account]="workBenches account"
     component_checked[workbenches_account]=false
-    requirement_items=(docker setup_tools workbenches_account ai_accounts)
+    component_description[docker]=Docker
+    component_description[setup_tools]=Tools
+    component_description[vault]=Vault
+    component_description[wsl]="WSL 2"
+    requirement_items=(docker setup_tools vault workbenches_account ai_accounts)
     if is_wsl_windows; then requirement_items=(wsl "${requirement_items[@]}"); fi
 }
 
 load_requirements() {
-    local inventory key label state detail
-    inventory="$(python3 "$SCRIPT_DIR/setup-requirements.py" json)" || return "$?"
-    setup_os_label="$(jq -r '.os' <<< "$inventory")"
+    local key label state detail
+    setup_os_label="$(workbenches_setup_os)"
     while IFS=$'\t' read -r key label state detail; do
         component_description[$key]="$label"
         component_status[$key]="$state"
         requirement_detail[$key]="$detail"
         component_checked[$key]=false
-    done < <(jq -r '.requirements[] | [.key,.label,(if .ready then "ready" else "missing" end),.detail] | @tsv' <<< "$inventory")
+    done < <(workbenches_requirement_rows)
     component_status[workbenches_account]="$(python3 "$SCRIPT_DIR/setup-workbenches-account.py" --status)"
-    requirement_detail[workbenches_account]='Optional Keycloak browser login / registration; organization settings required.'
+    requirement_detail[workbenches_account]='Organization sign-in. AI and vault access are managed separately.'
     component_status[ai_accounts]="$(check_component_status ai_accounts)"
-    requirement_detail[ai_accounts]='Optional: direct sign-in, Azure / password vault recovery, or configure later.'
+    requirement_detail[ai_accounts]='Sign in, restore assistant profiles, or recover credentials from a vault.'
 }
 
 draw_requirements() {
-    echo -e "${BOLD}${YELLOW}REQUIREMENTS${NC}  ← Back to Tools"
-    local item selected kind mark
+    setup_requirement_counts
+    printf '%bREQUIREMENTS%b\n\n' "$SILVER" "$NC"
+    setup_panel_top 'REQUIRED SOFTWARE' "$requirements_ready/$requirements_total ready"
+    local item
     for item in "${requirement_items[@]}"; do
-        selected='  '
-        [[ "$item" != "${requirement_items[$current_selection]}" ]] || selected='▶ '
-        kind=required
-        case "$item" in workbenches_account|ai_accounts) kind=optional ;; esac
-        mark='[ ]'
-        [[ "${component_checked[$item]}" != true ]] || mark='[✓]'
-        printf '%s%s %-20s (%s) — %s\n' "$selected" "$mark" "${component_description[$item]}" "$kind" "${component_status[$item]}"
-        printf '      %s\n' "${requirement_detail[$item]}"
+        case "$item" in vault|workbenches_account|ai_accounts) continue ;; esac
+        draw_requirement_item "$item" required
     done
-    echo 'Required items cannot be uninstalled here. Space configures; R rechecks.'
-    echo 'An account does not grant AI provider access or vault permissions.'
+    setup_panel_bottom
+    printf '\n'
+    setup_panel_top 'OPTIONAL VAULT & ACCOUNTS' 'Now or later'
+    for item in vault workbenches_account ai_accounts; do
+        draw_requirement_item "$item" optional
+    done
+    setup_panel_bottom
+    [[ -z "$requirements_notice" ]] || printf '\n%b%s%b\n' "$YELLOW" "${requirements_notice:0:$setup_ui_width}" "$NC"
+}
+
+# Service buttons act immediately; installation selections remain untouched.
+activate_requirement() {
+    local key=$1 action result=0
+    if [[ "${component_status[$key]}" == loading || ( "$key" == vault && "${component_status[workbenches_account]}" == loading ) ]]; then
+        requirements_notice='Checks are still loading. Q quits.'
+        draw_ui
+        return 0
+    fi
+    stop_status_loader
+    action="$(workbenches_requirement_action "$key" "${component_status[$key]}" "${component_status[workbenches_account]}")"
+    requirements_notice=''
+    # Interactive helpers can write anywhere on screen. Repaint once on return.
+    if [[ "$action" != Check ]]; then
+        # A partial update leaves the cursor on whichever row changed last.
+        # Put prompts below the TUI before handing the terminal to a helper.
+        printf '%b\033[%d;1H' "$SHOW_CURSOR" "$(( ${#setup_ui_previous_lines[@]} + 1 ))"
+        setup_ui_painted=false
+    fi
+    case "$action" in
+        Connect|'Sign out')
+            # Canceling the browser approval returns to the TUI, rather than
+            # canceling an unrelated component installation plan.
+            trap ':' INT
+            if [[ "$action" == Connect ]]; then
+                python3 "$SCRIPT_DIR/setup-workbenches-account.py" || result=$?
+            else
+                python3 "$SCRIPT_DIR/setup-workbenches-account.py" --logout || result=$?
+            fi
+            trap 'echo -e "${SHOW_CURSOR}"; exit 130' INT
+            case "$result" in
+                0) component_checked[workbenches_account]=false; component_action[workbenches_account]='' ;;
+                130) requirements_notice='Connection cancelled.' ;;
+                143) exit 143 ;;
+                *) requirements_notice='Connection needs attention. Select Connect to retry.' ;;
+            esac ;;
+        Check) ;;
+        *)
+            if [[ "$key" == docker ]]; then
+                ensure_docker "--${action,,}" && ensure_workstation_requirements || result=$?
+            elif [[ "$key" == vault ]]; then
+                ensure_workstation_requirements && workbenches_vault_start || result=$?
+            else
+                ensure_workstation_requirements || result=$?
+            fi
+            setup_propagate_cancel "$result"
+            [[ "$result" == 0 ]] || requirements_notice="$action failed. Check Docker access and try again." ;;
+    esac
+    refresh_component_statuses
+    draw_ui
+    return 0
+}
+
+draw_requirement_item() {
+    local item="$1" kind="$2" marker=' ' icon='✓' color="$GREEN" surface="$SILVER"
+    local status detail line action width=$((setup_ui_width - 4))
+    status="$(setup_status_label "${component_status[$item]}")"
+    if [[ "$kind" == optional && "$item" != vault ]]; then
+        icon='[ ]'; color="$SILVER_MUTED"
+        case "${component_status[$item]}" in
+            configured|installed) status='Connected'; color="$GREEN" ;;
+            'signed in') status='Signed in'; color="$GREEN" ;;
+            *) status='Not connected' ;;
+        esac
+        if [[ "${component_checked[$item]}" == true ]]; then
+            icon='[✓]'; status='Selected'; color="$GREEN"
+        fi
+    elif [[ "${component_status[$item]}" == loading ]]; then
+        icon='…'; color="$LOADING_COLOR"
+    elif [[ "${component_status[$item]}" != up ]]; then
+        icon='!'; color="$YELLOW"
+    fi
+    case "$item" in
+        docker|wsl|setup_tools|vault)
+            action="$(workbenches_requirement_action "$item" "${component_status[$item]}" "${component_status[workbenches_account]}")"
+            if [[ "$item" == vault && "${component_status[$item]}" == up ]]; then
+                if [[ "${component_status[workbenches_account]}" == 'signed in' ]]; then status+=' · Signed in'; else status+=' · Signed out'; fi
+            fi
+            [[ "${component_status[$item]}" == loading ]] || status+="  [$action]" ;;
+    esac
+    if [[ "$item" == "${requirement_items[$current_selection]}" ]]; then
+        marker='›'; surface="$SILVER_FOCUS"
+    fi
+    line="$(setup_ui_pair "${component_description[$item]}" "$status" "$((width - ${#icon} - 3))")"
+    printf '%b│%b %b%s %b%s%b %s %b%b│%b\n' "$SILVER_EDGE" "$NC" "$surface" "$marker" "$color" "$icon" "$surface" "$line" "$NC" "$SILVER_EDGE" "$NC"
+    detail="${requirement_detail[$item]}"
+    # Only the focused row needs its explanation; avoid repeated paragraphs.
+    if [[ "$marker" == '›' ]]; then
+        while [[ -n "$detail" ]]; do
+            line="${detail:0:$((width - 4))}"
+            if (( ${#detail} > width - 4 )) && [[ "$line" == *' '* ]]; then
+                line="${line% *}"
+            fi
+            detail="${detail:${#line}}"
+            detail="${detail# }"
+            printf '%b│%b     %b%-*s %b│%b\n' "$SILVER_EDGE" "$NC" "$SILVER_MUTED" "$((width - 4))" "$line" "$SILVER_EDGE" "$NC"
+        done
+    fi
 }
 
 # Compare GitHub repository identities across HTTPS and SSH clone URLs.
@@ -300,6 +538,9 @@ component_binary_present() {
 check_component_status() {
     local component="$1"
     log "Checking status: $component"
+    if [[ -n "${host_tool_status[$component]:-}" ]] && { ! is_wsl_windows || [[ ! "$component" =~ ^(vscode|warp|wave|amnezia_vpn|0dcloud_vpn)$ ]]; }; then
+        printf '%s\n' "${host_tool_status[$component]}"; return
+    fi
 
     case "$component" in
         host_shell)
@@ -534,6 +775,8 @@ bench_installation_status() {
 }
 
 refresh_component_statuses() {
+    if [[ "$status_async_ui" == true ]]; then start_status_loader; return; fi
+    refresh_host_tool_inventory
     local item
     refresh_bench_inventory
     for item in "${!component_description[@]}"; do
@@ -541,6 +784,7 @@ refresh_component_statuses() {
         component_status[$item]="$(check_component_status "$item")"
     done
     load_requirements
+    host_tool_status=()
 }
 
 uninstall_component() {
@@ -566,6 +810,7 @@ uninstall_component() {
 
 # Load all component statuses
 load_statuses() {
+    refresh_host_tool_inventory
     refresh_bench_inventory
     # Load statuses for benches
     for bench in "${bench_items[@]}"; do
@@ -598,6 +843,7 @@ load_statuses() {
         component_action["$item"]=""
     done
     load_requirements
+    host_tool_status=()
 }
 
 # Draw a single component line
@@ -618,7 +864,10 @@ draw_component() {
     # Determine status color
     local status_color="$RED"
     local status_symbol="✗"
-    if [[ "$status" == "installed" || "$status" == "configured" ]]; then
+    if [[ "$status" == loading ]]; then
+        status_color="$LOADING_COLOR"
+        status_symbol="…"
+    elif [[ "$status" == "installed" || "$status" == "configured" ]]; then
         status_color="$GREEN"
         status_symbol="✓"
     elif [[ "$status" == "needs creds" || "$status" == "needs setup" || "$status" == "needs check" || "$status" == "needs docker" || "$status" == 'image only' ]]; then
@@ -667,7 +916,7 @@ get_checked_state() {
     for item in "${tool_items[@]}"; do
         state+="${component_checked[$item]}:${component_action[$item]},"
     done
-    for item in workbenches_account ai_accounts; do
+    for item in vault workbenches_account ai_accounts; do
         state+="${component_checked[$item]}:${component_action[$item]},"
     done
     echo "$state"
@@ -804,68 +1053,97 @@ draw_row() {
     echo -e "${left_content}      ${middle_content}      ${right_content}"
 }
 
-# Draw the entire UI (full redraw)
+# Build a complete frame off-screen; discovery never runs in the renderer.
+render_setup_frame() {
+    local os_label
+    draw_setup_banner
+    os_label="${setup_os_label:0:$((setup_ui_width - 20))}"
+    printf '%b%s%b\n' "$SILVER" "$(setup_ui_pair "workBenches v$setup_version" "$os_label" "$setup_ui_width")" "$NC"
+    printf '%b%s%b\n\n' "$SILVER_EDGE" "$(setup_ui_rule "$setup_ui_width")" "$NC"
+
+    if [[ "$CURRENT_SECTION" == 3 ]]; then
+        draw_requirements
+    else
+        draw_requirements_summary
+        printf '\n'
+        draw_three_sections
+    fi
+    draw_setup_footer
+}
+
+# Commit only changed lines in one write, without blanking the screen first.
 draw_ui() {
-    tput clear
-    tput cup 0 0
-    echo -e "${HIDE_CURSOR}"
+    local columns frame output='' cursor index count
+    local -a lines=()
+    columns="$(tput cols 2>/dev/null)"
+    [[ "$columns" =~ ^[0-9]+$ ]] || columns=88
+    setup_ui_width=$((columns - 1))
+    (( setup_ui_width <= 87 )) || setup_ui_width=87
+    (( setup_ui_width >= 36 )) || setup_ui_width=36
+    frame="$(render_setup_frame)"
+    mapfile -t lines <<< "$frame"
 
-    # Opensoft Banner
-    echo -e "${BOLD}${CYAN}"
-    echo "   ___                            __ _   "
-    echo "  / _ \\ _ __    ___  _ __   ___ / _| |_ "
-    echo " | | | | '_ \\  / _ \\| '_ \\ / __| |_| __|"
-    echo " | |_| | |_) ||  __/| | | |\\__ \\  _| |_ "
-    echo "  \\___/| .__/  \\___||_| |_||___/_|  \\__|"
-    echo "       |_|                               "
-    echo -e "${NC}"
+    if [[ "$setup_ui_painted" != true || "$setup_ui_frame_columns" != "$columns" ]]; then
+        output=$'\033[?25l\033[0m\033[2J'
+        setup_ui_previous_lines=()
+    fi
+    count=${#lines[@]}
+    (( count >= ${#setup_ui_previous_lines[@]} )) || count=${#setup_ui_previous_lines[@]}
+    for ((index=0; index<count; index++)); do
+        if [[ "${lines[$index]:-}" != "${setup_ui_previous_lines[$index]:-}" ]]; then
+            printf -v cursor '\033[%d;1H' "$((index + 1))"
+            # Erase after writing, so shortening a row removes stale text
+            # without first flashing a blank line. Removed rows are erased too.
+            output+="${cursor}"$'\033[0m'"${lines[$index]:-}"$'\033[0m\033[K'
+        fi
+    done
+    [[ -z "$output" ]] || printf '%s' "$output"
+    setup_ui_previous_lines=("${lines[@]}")
+    setup_ui_frame_columns=$columns
+    setup_ui_painted=true
+}
 
-    # Header
-    echo -e "${BOLD}${BLUE}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BOLD}${BLUE}  workBenches Setup — ${setup_os_label}${NC}"
-    echo -e "${BOLD}${BLUE}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    echo -e "${CYAN}Navigation:${NC} ↑/↓ Move  ←/→ Section  P Requirements  Space Configure  D Remove  R Refresh  Enter Apply  Q Quit"
-    echo "Requirements: Docker ${component_status[docker]} | Account ${component_status[workbenches_account]} (optional)"
-    echo ""
-
-    # Draw three sections side by side
-    if [[ "$CURRENT_SECTION" == 3 ]]; then draw_requirements; else draw_three_sections; fi
-
-    echo ""
-
-    # Status legend
-    echo -e "${GREEN}✓${NC} Installed/configured  ${DIM}│${NC}  ${YELLOW}⚠${NC} Needs setup/sign-in/check  ${DIM}│${NC}  ${RED}✗${NC} Not installed  ${DIM}│ · Optional${NC}"
-    echo "Uninstall preserves projects, credentials, and Docker volumes."
-    echo "Shell setup replaces shell settings. Org workspace may create a GitHub repo."
-    local selected_item=""
+# Keep action hints together and show detail only for the focused component.
+draw_setup_footer() {
+    local selected_item='' selected_count=0 item bench context action space_hint='Select'
     case "$CURRENT_SECTION" in
         0) selected_item="bench_${bench_items[$current_selection]}" ;;
         1) selected_item="${ai_items[$current_selection]}" ;;
         2) selected_item="${tool_items[$current_selection]}" ;;
         3) selected_item="${requirement_items[$current_selection]}" ;;
     esac
-    if [[ -n "${component_description[$selected_item]:-}" ]]; then
-        echo "${component_description[$selected_item]}: ${component_status[$selected_item]}${component_action[$selected_item]:+ → ${component_action[$selected_item]}}"
+    for item in "${!component_checked[@]}"; do
+        [[ "${component_checked[$item]}" != true ]] || selected_count=$((selected_count + 1))
+    done
+    context="${component_description[$selected_item]} · $(setup_status_label "${component_status[$selected_item]}")"
+    action="${component_action[$selected_item]}"
+    if [[ -n "$action" ]]; then
+        case "$action" in
+            uninstall) context="${component_description[$selected_item]} · Remove; projects and credentials kept" ;;
+            *) context+=" → $action" ;;
+        esac
     fi
-    echo ""
-
-    # Show selected count
-    local selected_count=0
-    for bench in "${bench_items[@]}"; do
-        [ "${component_checked[bench_$bench]}" = true ] && ((selected_count++))
-    done
-    for item in "${ai_items[@]}"; do
-        [[ "$item" != separator* ]] && [ "${component_checked[$item]}" = true ] && ((selected_count++))
-    done
-    for item in "${tool_items[@]}"; do
-        [ "${component_checked[$item]}" = true ] && ((selected_count++))
-    done
-    for item in workbenches_account ai_accounts; do
-        [ "${component_checked[$item]}" = true ] && ((selected_count++))
-    done
-
-    echo -e "${MAGENTA}Changes selected: $selected_count${NC}"
+    case "$selected_item" in
+        host_shell) context='Shell setup · Replaces shell settings' ;;
+        workspace_repo) context='Org workspace · May create a GitHub repository' ;;
+    esac
+    printf '\n%b%s%b\n' "$SILVER_EDGE" "$(setup_ui_rule "$setup_ui_width")" "$NC"
+    printf '%b%s%b\n' "$SILVER" "$(setup_ui_pair "$context" "Changes selected: $selected_count" "$setup_ui_width")" "$NC"
+    if [[ "$CURRENT_SECTION" == 3 ]]; then
+        case "$selected_item" in
+            docker|wsl|setup_tools|vault)
+                space_hint="$(workbenches_requirement_action "$selected_item" "${component_status[$selected_item]}" "${component_status[workbenches_account]}")" ;;
+            *) [[ "${component_checked[$selected_item]}" != true ]] || space_hint='Undo' ;;
+        esac
+        printf '%bNavigation:%b ↑↓ Move  Space %s  ← Tools  P Back\n' "$SILVER_MUTED" "$NC" "$space_hint"
+    else
+        printf '%bNavigation:%b ↑↓ Move  ←→ Section  Space Select  D Remove  P Requirements\n' "$SILVER_MUTED" "$NC"
+    fi
+    if [[ "$CURRENT_SECTION" == 3 && "$selected_item" =~ ^(docker|wsl|setup_tools|vault)$ ]]; then
+        printf '%b            Enter %s  R Refresh  Q Quit%b\n' "$SILVER_MUTED" "$space_hint" "$NC"
+    else
+        printf '%b            R Refresh  Enter Apply  Q Quit%b\n' "$SILVER_MUTED" "$NC"
+    fi
 }
 
 
@@ -944,10 +1222,7 @@ draw_item_compact() {
     local checked="${component_checked[$key]}"
     local desc="${component_description[$key]}"
     local status="${component_status[$key]}"
-    if [ -z "$status" ]; then
-        status=$(check_component_status "$key")
-        component_status["$key"]="$status"
-    fi
+    [[ -n "$status" ]] || status=loading
 
     # Checkbox with action indicator
     local checkbox="[ ]"
@@ -965,7 +1240,10 @@ draw_item_compact() {
     local status_color="$RED"
     local status_symbol="✗"
 
-    if [[ "$status" == "installed" || "$status" == "configured" ]]; then
+    if [[ "$status" == loading ]]; then
+        status_color="$LOADING_COLOR"
+        status_symbol="…"
+    elif [[ "$status" == "installed" || "$status" == "configured" ]]; then
         status_color="$GREEN"
         status_symbol="✓"
     elif [[ "$status" == "needs creds" || "$status" == "needs setup" || "$status" == "needs check" || "$status" == "needs docker" || "$status" == 'image only' ]]; then
@@ -993,7 +1271,14 @@ handle_input() {
     local key
 
     # Read single character
-    IFS= read -rsn1 key || return 2
+    local read_status
+    local -a read_options=(-rsn1)
+    [[ "$status_checks_running" != true ]] || read_options+=(-t 0.15)
+    if IFS= read "${read_options[@]}" key; then :; else
+        read_status=$?
+        if [[ "$status_checks_running" == true && "$read_status" -gt 128 ]]; then return 3; fi
+        return 2
+    fi
 
     # Handle escape sequences (arrow keys, etc.)
     if [[ $key == $'\x1b' ]]; then
@@ -1038,6 +1323,10 @@ handle_input() {
                 ;;
             '[C') # Right arrow - switch section right
                 if [ $CURRENT_SECTION -lt 3 ]; then
+                    if [[ "$CURRENT_SECTION" == 2 ]]; then
+                        requirements_return_section=$CURRENT_SECTION
+                        requirements_return_selection=$current_selection
+                    fi
                     ((CURRENT_SECTION++))
                     current_selection=0
                 fi
@@ -1069,14 +1358,9 @@ handle_input() {
                 else
                     key="${requirement_items[$current_selection]}"
                     case "$key" in
-                        docker|wsl|setup_tools)
+                        docker|wsl|setup_tools|vault)
                             [[ "$input_key" != d && "$input_key" != D ]] || return 0
-                            echo -e "${SHOW_CURSOR}"
-                            if [[ "$key" == setup_tools ]]; then ensure_setup_dependencies; else ensure_workstation_requirements; fi
-                            local requirements_status=$?
-                            setup_propagate_cancel "$requirements_status"
-                            refresh_component_statuses
-                            draw_ui
+                            activate_requirement "$key" || return "$?"
                             return 0 ;;
                     esac
                 fi
@@ -1084,7 +1368,7 @@ handle_input() {
                 # Determine action based on current status
                 local status="${component_status[$key]}"
                 local is_installed=false
-                [[ "$status" != 'needs check' ]] || return 0
+                [[ "$status" != 'needs check' && "$status" != loading ]] || return 0
                 [[ "$status" == "installed" || "$status" == "needs creds" || "$status" == 'image only' ]] && is_installed=true
 
                 local requested="install"
@@ -1105,11 +1389,33 @@ handle_input() {
                     component_action["$key"]="$requested"
                 fi
                 ;;
-            ''|$'\r'|$'\n') # Enter - confirm and process
+            ''|$'\r'|$'\n') # Enter activates a focused service button.
+                if [[ "$CURRENT_SECTION" == 3 ]]; then
+                    local requirement="${requirement_items[$current_selection]}"
+                    case "$requirement" in
+                        docker|wsl|setup_tools|vault) activate_requirement "$requirement"; return "$?" ;;
+                    esac
+                fi
+                if [[ "$status_async_ui" == true ]] && { [[ "$status_checks_running" == true ]] || ! setup_required_ready; }; then
+                    requirements_notice='Wait for checks and resolve workstation requirements before Apply.'
+                    draw_ui
+                    return 0
+                fi
                 return 1
                 ;;
-            'r'|'R') refresh_component_statuses; draw_ui ;;
-            'p'|'P') CURRENT_SECTION=3; current_selection=0 ;;
+            'r'|'R') requirements_notice=''; refresh_component_statuses; draw_ui ;;
+            'p'|'P')
+                if [[ "$CURRENT_SECTION" == 3 ]]; then
+                    CURRENT_SECTION=$requirements_return_section
+                    current_selection=$requirements_return_selection
+                else
+                    requirements_return_section=$CURRENT_SECTION
+                    requirements_return_selection=$current_selection
+                    CURRENT_SECTION=3
+                    current_selection=0
+                fi ;;
+            'v'|'V') # Vault action is available beside its main-screen status.
+                activate_requirement vault || return "$?" ;;
             'q'|'Q') # Quit
                 return 2
                 ;;
@@ -1514,7 +1820,7 @@ process_selections() {
                     local setup_script="$full_bench_path/setup.sh"
 
                     # If it's a git repo, fetch latest updates first
-                    if [ -d "$full_bench_path/.git" ] || [ -f "$full_bench_path/.git" ]; then
+                    if [[ "${WORKBENCHES_FROZEN:-}" != 1 ]] && { [ -d "$full_bench_path/.git" ] || [ -f "$full_bench_path/.git" ]; }; then
                         local bench_url=$(jq -r ".benches.${bench}.url // \"\"" "$config_file" 2>/dev/null)
                         if [ -n "$bench_url" ] && [ "$bench_url" != "null" ]; then
                             echo -e "  ${YELLOW}Fetching latest updates from: $bench_url${NC}"
@@ -1623,30 +1929,34 @@ process_selections() {
                             if [ -d "$full_bench_path" ]; then
                                 # Directory exists - check if it has git
                                 if [ -d "$full_bench_path/.git" ] || [ -f "$full_bench_path/.git" ]; then
-                                    # Has git repo, do a fetch and pull
-                                    echo -e "  ${YELLOW}Directory exists, fetching updates from: $bench_url${NC}"
-                                    log "Fetching and pulling updates for $bench from $bench_url"
-
-                                    # Fetch and pull in background with spinner
-                                    (
-                                        cd "$full_bench_path" && git fetch --all >> "$LOG_FILE" 2>&1 && git pull >> "$LOG_FILE" 2>&1
-                                        echo $? > /tmp/fetch_status_$$
-                                    ) &
-                                    local fetch_pid=$!
-                                    show_spinner $fetch_pid "Updating $bench"
-
-                                    local fetch_status=$(cat /tmp/fetch_status_$$ 2>/dev/null || echo "1")
-                                    rm -f /tmp/fetch_status_$$
-
-                                    if [ "$fetch_status" -eq 0 ]; then
-                                        log "Successfully fetched and pulled updates for $bench"
-                                        echo -e "  ${GREEN}✓ Successfully updated to latest version${NC}"
+                                    # Release sources were prepared at their locked commit.
+                                    if [[ "${WORKBENCHES_FROZEN:-}" == 1 ]]; then
+                                        echo -e "  ${GREEN}Using frozen release source for $bench${NC}"
                                     else
-                                        log "ERROR: Failed to fetch/pull updates for $bench"
-                                        echo -e "  ${RED}✗ Failed to fetch updates${NC}"
-                                        failed_components[$active_component]=true; ((fail_count++))
-                                        echo ""
-                                        continue
+                                        echo -e "  ${YELLOW}Directory exists, fetching updates from: $bench_url${NC}"
+                                        log "Fetching and pulling updates for $bench from $bench_url"
+
+                                        # Fetch and pull in background with spinner
+                                        (
+                                            cd "$full_bench_path" && git fetch --all >> "$LOG_FILE" 2>&1 && git pull >> "$LOG_FILE" 2>&1
+                                            echo $? > /tmp/fetch_status_$$
+                                        ) &
+                                        local fetch_pid=$!
+                                        show_spinner $fetch_pid "Updating $bench"
+
+                                        local fetch_status=$(cat /tmp/fetch_status_$$ 2>/dev/null || echo "1")
+                                        rm -f /tmp/fetch_status_$$
+
+                                        if [ "$fetch_status" -eq 0 ]; then
+                                            log "Successfully fetched and pulled updates for $bench"
+                                            echo -e "  ${GREEN}✓ Successfully updated to latest version${NC}"
+                                        else
+                                            log "ERROR: Failed to fetch/pull updates for $bench"
+                                            echo -e "  ${RED}✗ Failed to fetch updates${NC}"
+                                            failed_components[$active_component]=true; ((fail_count++))
+                                            echo ""
+                                            continue
+                                        fi
                                     fi
                                 else
                                     # Directory exists but no git - check if safe to replace
@@ -2899,20 +3209,28 @@ main() {
         esac
     done
 
-    # Check and install dependencies first
-    log "Checking dependencies..."
-    check_and_install_dependencies
-    if [[ "$mode" == interactive ]]; then
-        ensure_setup_platform || return "$?"
+    ensure_setup_platform || return "$?"
+    if [[ ( "$mode" == interactive || "$mode" == --select-only ) && -t 0 && -t 1 ]]; then
+        status_async_ui=true
+        init_components --loading
+        setup_os_label="$(workbenches_setup_os)"
+        initialize_loading_statuses
+        status_checks_running=true
+        # Draw before Docker, tool activation, jq, or Python can run.
+        draw_ui
+        trap 'stop_status_loader; printf "%b" "$SHOW_CURSOR"' EXIT
+        start_status_loader
+    else
         ensure_workstation_requirements || return "$?"
+        init_components
+        if [[ "$mode" != --dependencies-plan ]]; then load_statuses; fi
     fi
-
-    # Initialize
-    log "Initializing components and loading statuses..."
-    init_components
-    load_statuses
     if [[ "$mode" == --apply-plan || "$mode" == --dependencies-plan ]]; then
         load_selection
+        if [[ "$mode" == --apply-plan ]] && workbenches_release_checkout; then
+            export WORKBENCHES_FROZEN=1
+            python3 "$SCRIPT_DIR/release-workbenches.py" prepare --selection "$selection_file" || return "$?"
+        fi
         ensure_selected_dependencies "$mode"
         if [[ "$mode" == --apply-plan ]]; then process_selections || return "$?"; fi
         return
@@ -2921,8 +3239,8 @@ main() {
     # Main loop
     log "Entering main UI loop"
 
-    # Initial full draw
-    draw_ui
+    # The asynchronous path already painted before starting discovery.
+    [[ "$status_async_ui" == true ]] || draw_ui
 
     # Store initial state
     local prev_sel=$current_selection
@@ -2932,14 +3250,15 @@ main() {
     while true; do
         handle_input
         local result=$?
+        poll_status_loader
 
-        # Simple approach: just redraw on any change
-        # This is more reliable than selective updates
+        # Render changed state; draw_ui commits only the lines that differ.
         local current_state=$(get_checked_state)
 
         # Check if anything changed (selection or checkboxes)
-        if [ $current_selection -ne $prev_sel ] || [ $CURRENT_SECTION -ne $prev_sect ] || [ "$current_state" != "$prev_state" ]; then
+        if [[ "$status_ui_dirty" == true ]] || [ $current_selection -ne $prev_sel ] || [ $CURRENT_SECTION -ne $prev_sect ] || [ "$current_state" != "$prev_state" ]; then
             draw_ui
+            status_ui_dirty=false
             prev_sel=$current_selection
             prev_sect=$CURRENT_SECTION
             prev_state="$current_state"
@@ -2966,6 +3285,7 @@ main() {
         fi
     done
 
+    stop_status_loader
     echo -e "${SHOW_CURSOR}"
     log "=== Setup script completed ==="
 }

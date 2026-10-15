@@ -1,0 +1,44 @@
+name: Release source freeze
+on:
+  push:
+    tags: ['v*']
+    branches: [main]
+    paths:
+      - VERSION
+      - bootstrap.sh
+      - config/release-lock.json
+      - config/bench-config.json
+      - .gitmodules
+      - scripts/release-workbenches.py
+      - devcontainer.test/test-release-version.py
+      - .github/workflows/release-version.yml
+  pull_request:
+    paths:
+      - VERSION
+      - bootstrap.sh
+      - config/release-lock.json
+      - config/bench-config.json
+      - .gitmodules
+      - scripts/release-workbenches.py
+      - devcontainer.test/test-release-version.py
+      - .github/workflows/release-version.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-freeze:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: python3 devcontainer.test/test-release-version.py
+      - name: Verify committed release source lock
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            python3 scripts/release-workbenches.py check --tag "${GITHUB_REF#refs/tags/}"
+          else
+            python3 scripts/release-workbenches.py check
+          fi

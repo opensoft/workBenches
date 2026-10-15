@@ -59,7 +59,7 @@ sudo() {
         [[ "$TEST_INSTALL_CLI" != 1 ]] || touch "$TEST_STATE/installed"
     fi
 }
-if ensure_docker; then exit 0; else exit $?; fi
+if ensure_docker "${TEST_SELECTED_ACTION:-}"; then exit 0; else exit $?; fi
 ''')
         self.env = {
             **os.environ,
@@ -71,6 +71,18 @@ if ensure_docker; then exit 0; else exit $?; fi
         }
         self.env.pop("DOCKER_HOST", None)
         self.env.pop("DOCKER_CONTEXT", None)
+
+    def test_selected_install_does_not_repeat_the_install_question(self):
+        status, output, actions = self.run_driver(terminal=True, TEST_INSTALLED='0', TEST_SELECTED_ACTION='--install')
+        self.assertEqual(status, 0, output)
+        self.assertNotIn('Attempt to install Docker now?', output)
+        self.assertTrue(any('sudo pacman' in action for action in actions), actions)
+
+    def test_selected_start_does_not_repeat_the_start_question(self):
+        status, output, actions = self.run_driver(terminal=True, TEST_ACCESS='0', TEST_SELECTED_ACTION='--start')
+        self.assertEqual(status, 0, output)
+        self.assertNotIn('Start the local Docker service now?', output)
+        self.assertTrue(any('sudo systemctl start docker.service' in action for action in actions), actions)
 
     def run_driver(self, *, terminal=False, answer=b"", **changes):
         env = {**self.env, **changes}
@@ -199,7 +211,7 @@ if ensure_docker; then exit 0; else exit $?; fi
         (self.directory / "home/.config/workbenches/claude-profiles.json").write_text('{"profiles":[{}]}')
         for name in ("setup.sh", "bootstrap.sh"):
             shutil.copy(ROOT / name, fixture / name)
-        for name in ("docker-prerequisite.sh", "setup-prerequisites.sh", "setup-prompts.sh"):
+        for name in ("docker-prerequisite.sh", "setup-prerequisites.sh", "setup-prompts.sh", "tools-container.sh", "setup-status-loader.sh"):
             shutil.copy(ROOT / "scripts/lib" / name, fixture / "scripts/lib")
         shutil.copy(ROOT / "scripts/setup_selection.py", fixture / "scripts")
         (fixture / "config/bench-config.json").write_text('{"benches":{"dev":{"path":"devBenches/testBench"}}}')
@@ -226,7 +238,7 @@ if [[ "$1" == --apply-plan ]]; then echo apply >> "$TEST_LOG"; fi
         path = binaries / "docker"
         path.write_text('''#!/usr/bin/env bash
 echo "docker $1" >> "$TEST_LOG"
-if [[ "$1" == info ]]; then exit "$TEST_DOCKER_EXIT"; fi
+if [[ "$1" == info ]]; then echo linux; exit "$TEST_DOCKER_EXIT"; fi
 if [[ "$1" == context ]]; then echo tcp://remote.example:2376; exit 0; fi
 exit 1
 ''')
@@ -236,7 +248,7 @@ exit 1
         env = {**self.env, "HOME": str(self.directory / "home"),
                "XDG_CONFIG_HOME": str(self.directory / "home/.config"),
                "AGENT_PROTOCOL_ROOT": str(self.directory / "home/.agents"),
-               "WORKBENCHES_SKIP_WAVE_WIDGETS": "1", "PATH": f"{binaries}:{os.environ['PATH']}"}
+               "WORKBENCHES_SKIP_WAVE_WIDGETS": "1", "WORKBENCHES_TEST_NATIVE_TOOLS": "1", "PATH": f"{binaries}:{os.environ['PATH']}"}
         for docker_status in (1, 130, 143, 0):
             with self.subTest(docker_status=docker_status):
                 self.actions.unlink(missing_ok=True)
@@ -244,12 +256,11 @@ exit 1
                                         env={**env, "TEST_DOCKER_EXIT": str(docker_status)},
                                         stdin=subprocess.DEVNULL, capture_output=True, timeout=10)
                 actions = self.actions.read_text().splitlines()
-                self.assertEqual(result.returncode, docker_status, result.stderr.decode())
+                self.assertEqual(result.returncode, 1 if docker_status else 0, result.stderr.decode())
                 if docker_status:
-                    self.assertEqual(actions[0], 'selected')
-                    self.assertTrue(all(action.startswith("docker ") for action in actions[1:]), actions)
+                    self.assertTrue(all(action.startswith("docker ") for action in actions), actions)
                 else:
-                    self.assertEqual(actions, ["selected", "docker info", "recovery", "estate",
+                    self.assertEqual(actions, ["docker info", "selected", "docker info", "recovery", "estate",
                                                "image acquisition", "build", "apply"])
 
 
