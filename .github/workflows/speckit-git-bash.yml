@@ -15,6 +15,7 @@ on:
       - devBenches/base-image/files/ct/ct-functions.zsh
       - devBenches/base-image/upstream-pin.yaml
       - devBenches/base-image/update-upstream.py
+      - devcontainer.test/test-update-upstream.py
       - devBenches/base-image/files/openreposhape/**
       - devBenches/base-image/files/openrepotools/**
       - devBenches/base-image/files/estate/**
@@ -50,6 +51,7 @@ on:
       - devBenches/base-image/files/ct/ct-functions.zsh
       - devBenches/base-image/upstream-pin.yaml
       - devBenches/base-image/update-upstream.py
+      - devcontainer.test/test-update-upstream.py
       - devBenches/base-image/files/openreposhape/**
       - devBenches/base-image/files/openrepotools/**
       - devBenches/base-image/files/estate/**
@@ -104,6 +106,14 @@ jobs:
 
       - name: Check the vendored upstream copies against their pin
         run: python3 ./devBenches/base-image/update-upstream.py check
+
+      # opensoft/workBenches#153. `apply`'s two ways to accept a commit: the
+      # default-branch rule, word for word as it was, and a release named by
+      # `--tag` and `--branch`. The real tool runs against a throwaway pin with
+      # a stub `gh` first on PATH, a failing `curl`, a bogus GH_TOKEN and an
+      # empty GH_CONFIG_DIR, so nothing reaches GitHub. Needs python3, git, jq.
+      - name: Run the update-upstream.py apply regression test
+        run: python3 ./devcontainer.test/test-update-upstream.py
 
       - name: Run the setup-estate-commands regression test
         run: bash ./devcontainer.test/test-setup-estate-commands.sh
