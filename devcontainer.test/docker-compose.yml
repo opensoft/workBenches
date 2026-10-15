@@ -56,7 +56,7 @@ services:
     privileged: true
     environment:
       DOCKER_TLS_CERTDIR: ""
-    command: [dockerd, "--host=unix:///var/run/docker.sock", "--group=1000", "--bip=172.28.0.1/16", "--default-address-pool=base=172.29.0.0/16,size=24"]
+    command: [dockerd, "--host=unix:///var/run/docker.sock", "--group=1000", "--bip=172.28.0.1/16", "--default-address-pool=base=172.29.0.0/16,size=24", "--mtu=1280"]
     volumes:
       - acceptance-socket:/var/run
       - acceptance-home:/home/node
@@ -81,6 +81,8 @@ services:
       WORKBENCHES_ACCEPTANCE_REF: ${WORKBENCHES_ACCEPTANCE_REF:-main}
       WORKBENCHES_ACCEPTANCE_SHA: ${WORKBENCHES_ACCEPTANCE_SHA:-}
       WORKBENCHES_ACCEPTANCE_REQUIRE_PUBLIC: ${WORKBENCHES_ACCEPTANCE_REQUIRE_PUBLIC:-0}
+      WORKBENCHES_ACCEPTANCE_FROZEN: ${WORKBENCHES_ACCEPTANCE_FROZEN:-0}
+      WORKBENCHES_ACCEPTANCE_EMAIL: ${WORKBENCHES_ACCEPTANCE_EMAIL:-acceptance@example.test}
       TMPDIR: /acceptance/tmp
     volumes:
       - acceptance-socket:/var/run
@@ -171,6 +173,11 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     tmpfs: ["/tmp:rw,nosuid,nodev,mode=1777,size=256m"]
+
+networks:
+  default:
+    driver_opts:
+      com.docker.network.driver.mtu: "1280"
 
 volumes:
   acceptance-socket:

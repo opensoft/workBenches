@@ -16,10 +16,12 @@ import re
 import secrets
 import select
 import signal
+import shutil
 import ssl
 import subprocess
 import time
 import urllib.request
+from terminal_screen import terminal_screen
 
 HOME = Path.home()
 REPO = HOME / 'projects/workBenches'
@@ -33,6 +35,8 @@ ENV = dict(os.environ, GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null',
            WORKBENCHES_SKIP_ESTATE_COMMANDS='1', WORKBENCHES_SKIP_WORKSPACE_REPO='1',
            WORKBENCHES_SKIP_PROJECT_COMMAND='1', NPM_CONFIG_USERCONFIG=str(HOME / '.npmrc'))
 ENV['BUILDKIT_PROGRESS'] = 'plain'
+if os.environ.get('WORKBENCHES_ACCEPTANCE_FROZEN') == '1':
+    ENV['WORKBENCHES_FROZEN'] = '1'
 MARKERS = []
 RESULTS = []
 
@@ -47,7 +51,7 @@ def terminal(name, replies, expected=0, env=None, timeout=1800):
                                stdin=slave, stdout=slave, stderr=slave, start_new_session=True)
     os.close(slave)
     started = time.monotonic()
-    output, last, answered = b'', 0, 0
+    output, answered = b'', 0
     deadline = time.monotonic() + timeout
     try:
         while time.monotonic() < deadline:
@@ -66,9 +70,8 @@ def terminal(name, replies, expected=0, env=None, timeout=1800):
                 (REPORT / (name + '.txt')).write_text(safe)
                 if answered < len(replies):
                     pattern, reply = replies[answered]
-                    match = re.search(pattern, clean[last:])
+                    match = re.search(pattern, terminal_screen(output))
                     if match:
-                        last += match.end()
                         os.write(master, reply.encode())
                         answered += 1
             if process.poll() is not None:
@@ -167,17 +170,28 @@ def seed_vault():
     request = urllib.request.Request(server + '/identity/accounts/register/finish', data=json.dumps(payload).encode(),
                                      headers={'Content-Type': 'application/json'})
     urllib.request.urlopen(request, context=context, timeout=10).close()
-    # Keep certificate verification enabled. This is the only disposable clone
-    # modification: trust this test CA in Node, never disable TLS verification.
-    container = REPO / 'credential-container'
+    # Keep the frozen checkout pristine. Build isolated test images with a
+    # trusted test CA; Node still verifies the real Vaultwarden TLS connection.
+    container = Path('/acceptance/vault-image')
+    shutil.copytree(REPO / 'credential-container', container)
     (container / 'acceptance-ca.pem').write_bytes((tls / 'cert.pem').read_bytes())
     with (container / '.dockerignore').open('a') as stream:
         stream.write('\n!acceptance-ca.pem\n')
     with (container / 'Dockerfile').open('a') as stream:
-        stream.write('\nCOPY acceptance-ca.pem /opt/workbenches/acceptance-ca.pem\n'
-                     'ENV NODE_EXTRA_CA_CERTS=/opt/workbenches/acceptance-ca.pem\n')
+        for stage, parent in (('acceptance-bitwarden', 'bitwarden'), ('acceptance-vault', 'vault')):
+            stream.write(f'\nFROM {parent} AS {stage}\n'
+                         'COPY acceptance-ca.pem /opt/workbenches/acceptance-ca.pem\n'
+                         'ENV NODE_EXTRA_CA_CERTS=/opt/workbenches/acceptance-ca.pem\n')
     Path('/acceptance/seed').mkdir(mode=0o700)
+    ENV['WORKBENCHES_ACCEPTANCE_VAULT_CONTEXT'] = str(container)
+    ENV['WORKBENCHES_ACCEPTANCE_VAULT_TARGET'] = 'acceptance-bitwarden'
     run(COMPOSE + ['build', 'credential-tools'])
+    fingerprint = subprocess.check_output(['bash', '-c',
+        'cksum "$1/credential-container/"{Dockerfile,credential_recovery.py} | cksum',
+        'fingerprint', str(REPO)], text=True).split()[0]
+    ENV['WORKBENCHES_VAULT_IMAGE'] = 'workbenches/vault:acceptance-test'
+    run(['docker', 'build', '--target', 'acceptance-vault', '--tag', ENV['WORKBENCHES_VAULT_IMAGE'],
+         '--label', 'dev.opensoft.workbenches.fingerprint=' + fingerprint, str(container)])
     bw('config', 'server', server)
     session = bw('login', EMAIL, '--passwordenv', 'BW_PASSWORD', '--raw')
     MARKERS.append(session)
@@ -197,10 +211,10 @@ def snapshot():
     return [(str(path), path.read_bytes(), path.stat().st_mtime_ns) for path in paths]
 
 
-TUI = 'Changes selected: 0'
+TUI = r'REQUIREMENTS · 2/2 ready[\s\S]*Navigation:'
 CODEX = (TUI, '\x1b[C\x1b[B\x1b[B \n')
-CODEX_ACCOUNTS = (TUI, '\x1b[C\x1b[B\x1b[B \x1b[C' + '\x1b[B' * 7 + ' \n')
-EMAIL = 'acceptance@example.test'
+CODEX_ACCOUNTS = (TUI, '\x1b[C\x1b[B\x1b[B P' + '\x1b[B' * 4 + ' P\n')
+EMAIL = os.environ.get('WORKBENCHES_ACCEPTANCE_EMAIL', 'acceptance@example.test')
 MASTER = secrets.token_urlsafe(32)
 API_VALUE = 'sk-test-invalid-' + secrets.token_hex(24)  # Invalid, nonbillable AI test value.
 MARKERS.extend([MASTER, API_VALUE])
@@ -222,7 +236,11 @@ def main():
     sha = subprocess.check_output(['git', '-C', str(REPO), 'rev-parse', 'HEAD'], text=True).strip()
     expected = os.environ.get('WORKBENCHES_ACCEPTANCE_SHA')
     assert not expected or sha == expected, 'remote moved; retest the intended commit'
+    source_lock = (REPO / 'config/release-lock.json').read_bytes()
+    if ENV.get('WORKBENCHES_FROZEN') == '1':
+        run(['python3', str(REPO / 'scripts/release-workbenches.py'), 'check'])
     (REPORT / 'environment.json').write_text(json.dumps({'sha': sha, 'ref': ref, 'vault': 'Vaultwarden 1.37.4',
+        'frozenSourceMode': ENV.get('WORKBENCHES_FROZEN') == '1',
         'credentials': 'generated test account and invalid AI key', 'hostSocketMounted': False,
         'tls': 'verified private test CA; appended only to disposable credential Dockerfile'}, indent=2) + '\n')
     terminal('quit', [(TUI, 'Q')], 130)
@@ -293,7 +311,14 @@ def main():
     assert subprocess.run(['docker', 'image', 'inspect', 'workbench-base:latest', 'dev-bench-base:latest'], capture_output=True).returncode == 0
     for path in (REPO / 'logs').glob('*.log'):
         assert all(value not in path.read_text() for value in MARKERS), 'test value leaked to setup logs'
-    assert not subprocess.check_output(['docker', 'ps', '-a', '--filter', 'ancestor=' + IMAGE, '-q']).strip(), 'credential worker left behind'
+    # The managed helper stays up; per-job manifests, sessions, and payloads do not.
+    jobs = HOME / '.cache/workbenches/vault/jobs'
+    assert not list(jobs.iterdir()), 'credential job files left behind'
+    assert subprocess.check_output(['git', '-C', str(REPO), 'rev-parse', 'HEAD'], text=True).strip() == sha
+    assert not subprocess.check_output(['git', '-C', str(REPO), 'status', '--porcelain', '--ignore-submodules=all']).strip()
+    assert (REPO / 'config/release-lock.json').read_bytes() == source_lock
+    locked_bench = next(item['commit'] for item in json.loads(source_lock)['repositories'] if item['path'] == 'devBenches/pyBench')
+    assert subprocess.check_output(['git', '-C', str(checkout), 'rev-parse', 'HEAD'], text=True).strip() == locked_bench
     print('PASS disposable workstation acceptance (AI service authorization intentionally untested)', flush=True)
 
 
