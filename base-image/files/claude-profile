@@ -199,10 +199,92 @@ lane_name_guard_jq='
             )
         else . end'
 
+# THE AGENT-MODEL RECORD HOOKS: a PostToolUse entry on the Agent tool and a
+# SubagentStop entry, both calling `~/.local/bin/claude-agent-model-record`, the
+# script new-workstation tracks (brettheap/new-workstation#59). After every
+# Agent call it appends the model the subagent STARTED on (`resolvedModel`) and
+# any mid-run swap (`modelsUsed`) to
+# `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/agent-models/<session_id>.jsonl`, and it
+# puts one `agent-model-record:` line into the orchestrator's context beside
+# the result; when a subagent stops it appends the model counts found in that
+# subagent's transcript.
+#
+# It serves the shared protocol's Build Tiers rule "Pin and verify": before it
+# accepts a writer's work the orchestrator checks the model the writer ran on
+# against the one its agent definition pins. The grep of the subagent's
+# transcript stays the quick check, but it reads a record Claude Code does not
+# document; the PostToolUse `tool_response` is the documented one, and this
+# hook is how the protocol's documented record comes to exist in every
+# profile. Ruled by Brett Heap, 2026-10-15, verbatim: "add the posttooluse hook
+# that records the resolved model".
+#
+# WHY THE LAUNCHER OWNS IT, for the reason SessionStart's entry above is here:
+# every `pclaude run` execs with CLAUDE_CONFIG_DIR=<profile dir>, so Claude
+# reads THAT directory's settings and an entry in ~/.claude/settings.json has
+# never fired for a profile session. The launcher rewrites each profile's
+# settings on every run anyway, so ensuring the two entries here makes a new
+# profile, a restored profile and a hand-edited one all correct without anybody
+# remembering an installer. A running session picks up new hook entries only
+# after a restart, so an entry written now fires from the profile's next launch.
+#
+# The values below ARE the canonical entries, byte for byte, and each command
+# string is its idempotence key, so neither is varied by anything downstream of
+# this line. `"timeout": 5` is part of both entries: the script never blocks
+# and exits 0 on every path, and 5 seconds is the outer bound on a hook that
+# runs after every Agent call. Only the PostToolUse entry carries a matcher
+# (`Agent`); SubagentStop has no tool to match on, as UserPromptSubmit has none.
+# Neither command ends in `|| true`: the script already exits 0 on every path,
+# and the entry is the one the script's own header prints for a bare `claude`.
+#
+# ENSURED THE WAY SessionStart IS, and for the same reasons: an append, matched
+# by the EXACT command string, so an entry that already carries it is left
+# exactly as it is (whatever matcher or timeout an operator gave it, whatever
+# sits beside it) and nothing else under `.hooks.PostToolUse`,
+# `.hooks.SubagentStop` or the rest of `.hooks` is touched. Both jq programs
+# below take the same fragment.
+#
+# PRESERVED-IF-PRESENT, NOT REMOVED when the script goes away, unlike the name
+# guard. The name guard is removed because an entry left behind blocks every
+# prompt (exit 2 is its whole mechanism). These two block nothing: the script
+# exits 0 on every path, and a shell that cannot find it exits 127, which is
+# not 2. So the gate (`agent_model_ok`, set in configure_profile_runtime) only
+# decides whether an entry is ADDED, and a profile whose entry is already
+# there keeps it.
+agent_model_script="$HOME/.local/bin/claude-agent-model-record"
+# The tilde is the harness's to expand, so SC2088's advice does not apply.
+# shellcheck disable=SC2088
+agent_model_post_command='~/.local/bin/claude-agent-model-record post-tool-use'
+# shellcheck disable=SC2088
+agent_model_stop_command='~/.local/bin/claude-agent-model-record subagent-stop'
+agent_model_matcher='Agent'
+agent_model_timeout=5
+
+agent_model_record_jq='
+      .hooks = (.hooks // {})
+      | .hooks.PostToolUse = (
+          (.hooks.PostToolUse // []) as $entries
+          | if ([$entries[]? | (.hooks // [])[]? | .command] | index($agent_model_post))
+            then $entries
+            else $entries + [{
+              matcher: $agent_model_matcher,
+              hooks: [{type: "command", command: $agent_model_post, timeout: $agent_model_timeout}]
+            }]
+            end
+        )
+      | .hooks.SubagentStop = (
+          (.hooks.SubagentStop // []) as $entries
+          | if ([$entries[]? | (.hooks // [])[]? | .command] | index($agent_model_stop))
+            then $entries
+            else $entries + [{
+              hooks: [{type: "command", command: $agent_model_stop, timeout: $agent_model_timeout}]
+            }]
+            end
+        )'
+
 configure_profile_runtime() {
   local config_dir="$1" statusline_source statusline_link settings settings_tmp statusline_command default_model
   local guard_source guard_link guard_command guard_ok guard_timeout session_start_ok
-  local name_guard_ok name_guard_removed name_guard_why
+  local name_guard_ok name_guard_removed name_guard_why agent_model_ok
 
   statusline_source="$base/shared/statusline-command.sh"
   if [[ ! -f "$statusline_source" && -f /usr/local/share/workbenches/claude/statusline-command.sh ]]; then
@@ -328,6 +410,19 @@ configure_profile_runtime() {
     name_guard_ok=true
   fi
 
+  # THE AGENT-MODEL RECORD HOOKS ARE ENSURED ONLY WHERE THE SCRIPT IS. Their
+  # commands name `~/.local/bin/claude-agent-model-record` (the tilde is the
+  # harness's to expand, as for the SessionStart entry), so the probe is that
+  # same path under $HOME and nothing broader: a script that is only on PATH
+  # somewhere else would be found by `command -v` and still not be what the
+  # entry runs. `scripts/link-home` in new-workstation links it there. The
+  # probe is one local test of one path, so it runs on every launch and a later
+  # install is picked up by the next one.
+  agent_model_ok=false
+  if [[ -f "$agent_model_script" && -x "$agent_model_script" ]]; then
+    agent_model_ok=true
+  fi
+
   settings="$config_dir/settings.json"
   if [[ -e "$settings" ]] && ! jq -e 'type == "object"' "$settings" >/dev/null 2>&1; then
     echo "Claude profile settings are not valid JSON: $settings" >&2
@@ -419,7 +514,12 @@ configure_profile_runtime() {
        --argjson session_start_ok "$session_start_ok" \
        --arg name_guard "$lane_name_guard_command" \
        --argjson name_guard_ok "$name_guard_ok" \
-       --argjson name_guard_timeout "$lane_name_guard_timeout" '
+       --argjson name_guard_timeout "$lane_name_guard_timeout" \
+       --arg agent_model_post "$agent_model_post_command" \
+       --arg agent_model_stop "$agent_model_stop_command" \
+       --arg agent_model_matcher "$agent_model_matcher" \
+       --argjson agent_model_timeout "$agent_model_timeout" \
+       --argjson agent_model_ok "$agent_model_ok" '
       .statusLine = {type: "command", command: $command, refreshInterval: 10}
       | .permissions = (.permissions // {})
       | .permissions.defaultMode = "bypassPermissions"
@@ -428,6 +528,7 @@ configure_profile_runtime() {
       | .env = ((.env // {}) + {CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK: ((.env // {}).CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK // "1")})
       | (if $guard_ok then'"$lane_guard_jq"' else . end)
       | (if $session_start_ok then'"$lane_session_start_jq"' else . end)
+      | (if $agent_model_ok then'"$agent_model_record_jq"' else . end)
       | '"$lane_name_guard_jq"'
     ' "$settings" > "$settings_tmp"
   else
@@ -440,7 +541,12 @@ configure_profile_runtime() {
        --argjson session_start_ok "$session_start_ok" \
        --arg name_guard "$lane_name_guard_command" \
        --argjson name_guard_ok "$name_guard_ok" \
-       --argjson name_guard_timeout "$lane_name_guard_timeout" '{
+       --argjson name_guard_timeout "$lane_name_guard_timeout" \
+       --arg agent_model_post "$agent_model_post_command" \
+       --arg agent_model_stop "$agent_model_stop_command" \
+       --arg agent_model_matcher "$agent_model_matcher" \
+       --argjson agent_model_timeout "$agent_model_timeout" \
+       --argjson agent_model_ok "$agent_model_ok" '{
       statusLine: {type: "command", command: $command, refreshInterval: 10},
       permissions: {defaultMode: "bypassPermissions"},
       effortLevel: "xhigh",
@@ -449,6 +555,7 @@ configure_profile_runtime() {
     }
     | (if $guard_ok then'"$lane_guard_jq"' else . end)
     | (if $session_start_ok then'"$lane_session_start_jq"' else . end)
+    | (if $agent_model_ok then'"$agent_model_record_jq"' else . end)
     | '"$lane_name_guard_jq"'' > "$settings_tmp"
   fi
   chmod 600 "$settings_tmp"

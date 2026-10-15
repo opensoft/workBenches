@@ -32,6 +32,7 @@ on:
       - devcontainer.test/test-claude-profile-skill-install.sh
       - devcontainer.test/test-claude-profile-amendment-11.sh
       - devcontainer.test/test-claude-profile-refusal-fallback.sh
+      - devcontainer.test/test-claude-profile-agent-model-hook.sh
       - base-image/files/claude-usage-guard.sh
       - docs/claude-multi-account-profiles.md
       - README.md
@@ -68,6 +69,7 @@ on:
       - devcontainer.test/test-claude-profile-skill-install.sh
       - devcontainer.test/test-claude-profile-amendment-11.sh
       - devcontainer.test/test-claude-profile-refusal-fallback.sh
+      - devcontainer.test/test-claude-profile-agent-model-hook.sh
       - base-image/files/claude-usage-guard.sh
       - docs/claude-multi-account-profiles.md
       - README.md
@@ -181,6 +183,20 @@ jobs:
       # CLAUDE_PROFILES_HOME and the manifest), needs only bash and jq.
       - name: Run the claude-profile refusal-fallback env regression test
         run: bash ./devcontainer.test/test-claude-profile-refusal-fallback.sh
+
+      # Every profile's settings.json gets the two agent-model-record hook
+      # entries, a PostToolUse on the Agent tool and a SubagentStop, when
+      # `~/.local/bin/claude-agent-model-record` is installed (Brett Heap,
+      # 2026-10-15: "add the posttooluse hook that records the resolved
+      # model"); the shared protocol's Build Tiers "Pin and verify" names the
+      # record they write. This suite pins the seeding: both entries byte for
+      # byte, ensuring twice appends once, an entry already carrying the
+      # command and every foreign entry are left as they are, and nothing is
+      # written (or removed) where the script is not. Host-run, hermetic (its
+      # own sandbox for HOME, CLAUDE_PROFILES_HOME and the manifest), needs
+      # only bash and jq.
+      - name: Run the claude-profile agent-model-record hook regression test
+        run: bash ./devcontainer.test/test-claude-profile-agent-model-hook.sh
 
       - name: Run bootstrap suite
         run: bash ./devBenches/devcontainer.test/test-openspeckit-bootstrap.sh

@@ -621,6 +621,7 @@ assert_contains "$WORKFLOW_PROTOCOL" 'The 2026-10-12 decision to leave the fallb
 assert_contains "$WORKFLOW_PROTOCOL" 'deliberately not used to block the fallback, because flagged work would' 'workflow protocol keeps the superseded availableModels decision as history'
 assert_contains "$WORKFLOW_PROTOCOL" 'and a configured `fallbackModel` chain: "When a' 'workflow protocol names the fallbackModel chain among the switch paths the transcript check guards'
 assert_contains "$WORKFLOW_PROTOCOL" 'models in order, and the subagent continues on the model that accepts the' 'workflow protocol quotes the docs on a subagent whose request fails over'
+assert_contains "$WORKFLOW_PROTOCOL" '`claude-agent-model-record`' 'workflow protocol names the agent-model-record hook as the documented model record'
 assert_contains "$WORKFLOW_PROTOCOL" '`echo "${CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK-unset}"` must print `1`' 'workflow protocol makes dispatch check that the refusal fallback is off'
 assert_contains "$WORKFLOW_PROTOCOL" '#### Refusals' 'workflow protocol carries the Refusals subsection of the build tiers'
 assert_contains "$WORKFLOW_PROTOCOL" 'never retried at the same tier' 'workflow protocol never retries a refusal at the same tier'
