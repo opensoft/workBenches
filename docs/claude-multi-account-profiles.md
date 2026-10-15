@@ -800,6 +800,12 @@ to the fallback model when a safety classifier flags a request (the
 Other `env` entries are kept, and an explicit value already in the file, such
 as `"0"` to opt a profile out, is left as it is.
 
+The launcher also seeds the two `claude-agent-model-record` hook entries (a
+`PostToolUse` on the `Agent` tool and a `SubagentStop`) into each profile's
+`settings.json` when `~/.local/bin/claude-agent-model-record` is installed; they
+record the model each subagent started on, and any swap, under `agent-models/`
+in the profile directory, and an entry already in the file is left as it is.
+
 Do not resume the same Claude session concurrently from two profiles. Use email
 magic-link authentication for mailbox aliases; Microsoft or Google SSO may
 resolve an alias back to the mailbox's primary identity.
