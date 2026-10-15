@@ -60,6 +60,22 @@ export VIBE_ANNOTATIONS_GID="${VIBE_ANNOTATIONS_GID:-$(id -g)}"
 
 compose=(docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE")
 
+health_response() {
+  if [[ "${WORKBENCHES_CONTAINER_TOOLS:-}" == 1 ]]; then
+    # Tools has its own loopback namespace. Query the running service from its
+    # container rather than mistaking Tools' localhost for the workstation.
+    # This invokes Node's bounded HTTP client, never the hanging server CLI.
+    docker exec "$CONTAINER_NAME" node -e '
+fetch("http://127.0.0.1:3846/health", {signal: AbortSignal.timeout(2000)})
+  .then(async response => {
+    if (!response.ok) process.exit(1);
+    process.stdout.write(await response.text());
+  }).catch(() => process.exit(1));'
+  else
+    curl --fail --silent --max-time 2 "http://$HOST_BIND:$HOST_PORT/health"
+  fi
+}
+
 case "$action" in
   stop)
     docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
@@ -72,7 +88,7 @@ case "$action" in
       exit 1
     fi
     docker inspect --format 'container={{.Name}} state={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} image={{.Config.Image}}' "$CONTAINER_NAME"
-    curl --fail --silent --show-error --max-time 3 "http://$HOST_BIND:$HOST_PORT/health"
+    health_response
     printf '\n'
     exit 0
     ;;
@@ -93,8 +109,8 @@ COMPOSE_IGNORE_ORPHANS=True "${compose[@]}" up -d --build vibe-annotations
 for _ in {1..30}; do
   # The CLI's --version command can spin indefinitely. Read the running
   # server's version from its bounded health request instead.
-  if health_response="$(curl --fail --silent --max-time 2 "http://$HOST_BIND:$HOST_PORT/health")" &&
-      installed_version="$(printf '%s' "$health_response" | python3 -c '
+  if response="$(health_response)" &&
+      installed_version="$(printf '%s' "$response" | python3 -c '
 import json, sys
 health = json.load(sys.stdin)
 if not isinstance(health, dict) or health.get("status") != "ok":

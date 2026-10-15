@@ -17,6 +17,7 @@ First release using a product version, a source freeze, and an annotated Git tag
 - Corrected OpenSoft header and concise setup controls.
 - Product version displayed in the TUI, setup logs, and `setup.sh --version`.
 - Frozen source pins for selected bench installations.
+- Correct Vibe Annotations readiness checks when setup tools run in a container.
 
 Single-login Microsoft/Keycloak credential recovery, Flutter apps, additional
 vault providers, production Keycloak migration, and full package/image locking

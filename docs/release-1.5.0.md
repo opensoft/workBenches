@@ -43,6 +43,10 @@ Local development evidence already recorded:
   Install/Connect/cancel/sign-in/sign-out with queued changes preserved.
 - [x] First TUI paint measured at 0.077 seconds on Raven; readiness at
   3.563 seconds. The measurement selected nothing and exited with Q.
+- [x] Release QA found and fixed a Tools loopback readiness error: Vibe
+  Annotations is queried from its own container with a bounded HTTP request.
+  Six focused readiness checks plus actual status and new-service startup
+  checks passed in the isolated workstation engine.
 
 These results precede the release commit. The following remain required:
 

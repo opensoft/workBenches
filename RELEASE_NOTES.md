@@ -21,6 +21,8 @@ Draft: publication is pending the remaining gates in
   establish frozen-source deployments beginning at v1.5.0. Frozen installation
   refuses to overwrite selected modified checkouts; removal preserves local work.
 - GitHub cloning prefers configured SSH access and falls back to HTTPS.
+- Shared-service readiness checks correctly locate Vibe Annotations while
+  setup runs through Tools, avoiding a false unhealthy-service warning.
 
 ## Validation and platforms
 
