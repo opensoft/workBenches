@@ -49,6 +49,15 @@
 # pass"): the two ownership branches `retire_commands` decides between, an
 # installer-owned stale copy (removed) and a person's own file of the same
 # name (named and left, byte for byte).
+#
+# Scenarios (ab)-(ag), at the END of this file (they test the host step, and sit
+# after the others only to keep the other letters where they were), guard
+# opensoft/workBenches#159: the host's openRepoShape is held on the pin's
+# commit by the record `openRepoShape --install` writes beside it, fetching
+# nothing (hazard 1: it used to record nothing and remove a record, so the
+# host followed main), and the caller's own $OPENREPOSHAPE_RECORD_REF never
+# reaches that install (hazard 2: with it set to 1 the install recorded the
+# no-fetch sentinel as the command's ref).
 
 set -euo pipefail
 
@@ -1268,6 +1277,258 @@ for name in "${SHIM_INSTALLABLES[@]}"; do
     assert_has_line "$DEV_DOCKERFILE_TEXT" "COPY files/openrepotools/$name /usr/local/bin/$name" "the Dockerfile COPYs $name into /usr/local/bin"
     assert_has_line "$DEV_CHMOD_WORDS" "/usr/local/bin/$name" "the Dockerfile's chmod 0755 block lists /usr/local/bin/$name"
 done
+
+# ===========================================================================
+# THE HOST'S openRepoShape RECORD (opensoft/workBenches#159, the host half of
+# #153)
+#
+# Scenarios (ab)-(ag) belong with the host step above and sit down here only
+# so that the letters of the scenarios in between stay as they were.
+#
+# The vendored openRepoShape launcher reads the ref it runs at from
+# `openRepoShape.ref` beside the installed command, and its `--install` writes
+# that record only when $OPENREPOSHAPE_RECORD_REF is 1, from
+# $OPENREPOSHAPE_REF. The script used to set neither on purpose and exported
+# the no-fetch sentinel as $OPENREPOSHAPE_REF, so two things went wrong on a
+# host:
+#   1. nothing was recorded, and a record already there was REMOVED, so the
+#      host's command followed openRepoShape's main while the image's command
+#      stayed on the release (hazard 1); and
+#   2. the caller's own $OPENREPOSHAPE_RECORD_REF=1 reached the install, which
+#      then recorded the SENTINEL as the host command's ref (hazard 2).
+# Every scenario here runs with a fetch trap first on $PATH: `gh` and `curl`
+# stubs that log what they were asked and fail, so no scenario can reach the
+# real network or the real gh, and the log shows whether an install fetched.
+TRAP_159="$TMPDIR_ROOT/fetch-trap-159"
+mkdir -p "$TRAP_159"
+for tool in gh curl; do
+    cat > "$TRAP_159/$tool" <<EOF
+#!/bin/sh
+printf '%s %s\n' "$tool" "\$*" >> "$TRAP_159/calls.log"
+exit 97
+EOF
+    chmod 0755 "$TRAP_159/$tool"
+done
+: > "$TRAP_159/calls.log"
+
+run_record_install() {   # <home> <bin dir> [env args...] -- the script under test, the fetch trap first on PATH
+    local home="$1" bin="$2"
+    shift 2
+    env "$@" HOME="$home" \
+        CLAUDE_PROFILES_HOME="$home/.claude-profiles" CLAUDE_USER_DIR="$home/.claude" \
+        OPENREPOSHAPE_BIN_DIR="$bin" OPENREPOTOOLS_BIN_DIR="$bin" \
+        PATH="$TRAP_159:$PATH" "$SCRIPT_UNDER_TEST" 2>&1
+}
+
+# The text of a record, or nothing at all when there is none: a missing file
+# must be a failed assertion below, never a stray `cat` error or an abort.
+record_text() {
+    cat -- "$1" 2>/dev/null || true
+}
+
+printf '%s\n' '--- Scenario (ab) [#159, hazard 1]: a fresh host install records the pin'"'"'s commit beside the command, and fetches nothing to do it ---'
+BIN_AB="$TMPDIR_ROOT/bin-ab"
+HOME_AB="$TMPDIR_ROOT/home-ab"
+mkdir -p "$BIN_AB" "$HOME_AB"
+: > "$TRAP_159/calls.log"
+STATUS_AB=0
+OUTPUT_AB="$(run_record_install "$HOME_AB" "$BIN_AB" -u OPENREPOSHAPE_RECORD_REF)" || STATUS_AB=$?
+CALLS_AB="$(cat "$TRAP_159/calls.log")"
+
+assert_equal '0' "$STATUS_AB" 'fresh install with no OPENREPOSHAPE_RECORD_REF in the caller'"'"'s shell: exit code'
+assert_equal "$(record_text "$BIN_AB/openRepoShape.ref")" "$SHAPE_COMMIT" "the record beside the host's openRepoShape holds the pin's openreposhape commit"
+assert_equal "$(wc -c < "$BIN_AB/openRepoShape.ref" 2>/dev/null | tr -d ' ')" '41' 'the record is the 40-hex commit and one newline, nothing else'
+assert_contains "$OUTPUT_AB" "openRepoShape: pinned to $SHAPE_COMMIT, recorded in $BIN_AB/openRepoShape.ref" "the launcher's own line says it recorded the pin"
+assert_not_contains "$OUTPUT_AB" 'follows main' 'the install does not say it removed a record and follows main'
+# What the command says it runs at, read from the installed copy itself, with the
+# two variables that would override the record taken out of its environment.
+VERSION_AB="$(env -u OPENREPOSHAPE_REF -u OPENREPOSHAPE_REPO PATH="$TRAP_159:$PATH" "$BIN_AB/openRepoShape" --version 2>&1)" || true
+assert_equal "$VERSION_AB" "openRepoShape (opensoft/openRepoShape @ $SHAPE_COMMIT)" "the installed command's --version names the pin's commit, the ref the image's command runs at"
+assert_not_contains "$VERSION_AB" "$ESTATE_SENTINEL_VALUE" 'the installed command does not report the sentinel as its ref'
+# Recording needs no fetch: the launcher run as a file installs the bytes beside
+# it. `gh auth status` is its own machine report, not a fetch.
+assert_not_contains "$CALLS_AB" 'gh api' 'recording the pin fetched nothing through gh api'
+assert_not_contains "$CALLS_AB" 'curl' 'recording the pin fetched nothing through curl'
+
+printf '%s\n' '--- Scenario (ac) [#159, hazard 1]: an older or damaged record is replaced by the pin'"'"'s commit, and a second run leaves it ---'
+BIN_AC="$TMPDIR_ROOT/bin-ac"
+HOME_AC="$TMPDIR_ROOT/home-ac"
+mkdir -p "$BIN_AC" "$HOME_AC"
+# What the one-line installer (install.sh) leaves: the release TAG.
+printf 'v1.0.0\n' > "$BIN_AC/openRepoShape.ref"
+STATUS_AC=0
+OUTPUT_AC="$(run_record_install "$HOME_AC" "$BIN_AC" -u OPENREPOSHAPE_RECORD_REF)" || STATUS_AC=$?
+assert_equal '0' "$STATUS_AC" 'an install over a v1.0.0 record: exit code'
+assert_equal "$(record_text "$BIN_AC/openRepoShape.ref")" "$SHAPE_COMMIT" 'the v1.0.0 record is replaced by the pin'"'"'s commit, not removed'
+assert_contains "$OUTPUT_AC" "pinned to $SHAPE_COMMIT (was v1.0.0), recorded in" 'the launcher says what the record held before'
+assert_not_contains "$OUTPUT_AC" 'no longer pinned' 'the install does not say it un-pinned the host'
+
+STATUS_AC2=0
+OUTPUT_AC2="$(run_record_install "$HOME_AC" "$BIN_AC" -u OPENREPOSHAPE_RECORD_REF)" || STATUS_AC2=$?
+assert_equal '0' "$STATUS_AC2" 'a second run over the pin'"'"'s record: exit code'
+assert_contains "$OUTPUT_AC2" "already pinned to $SHAPE_COMMIT in $BIN_AC/openRepoShape.ref (unchanged)" 'a second run reports the record unchanged'
+assert_equal "$(record_text "$BIN_AC/openRepoShape.ref")" "$SHAPE_COMMIT" 'a second run leaves the record as it was'
+
+# A host that hazard 2 had already damaged: the sentinel recorded as its ref.
+printf '%s\n' "$ESTATE_SENTINEL_VALUE" > "$BIN_AC/openRepoShape.ref"
+STATUS_AC3=0
+OUTPUT_AC3="$(run_record_install "$HOME_AC" "$BIN_AC" -u OPENREPOSHAPE_RECORD_REF)" || STATUS_AC3=$?
+assert_equal '0' "$STATUS_AC3" 'an install over a record that holds the sentinel: exit code'
+assert_equal "$(record_text "$BIN_AC/openRepoShape.ref")" "$SHAPE_COMMIT" 'a record that holds the sentinel is repaired to the pin'"'"'s commit'
+assert_contains "$OUTPUT_AC3" "(was $ESTATE_SENTINEL_VALUE)" 'the launcher names the sentinel record it replaced'
+
+printf '%s\n' '--- Scenario (ad) [#159, hazard 2]: the caller'"'"'s own OPENREPOSHAPE_RECORD_REF (and REF) never reaches the install, and the sentinel is never recorded ---'
+# `1` is the hazard: the install recorded $OPENREPOSHAPE_REF, which this script
+# had exported as the sentinel. `0` and `yes` are the other things a shell may
+# hold: the install used to record nothing for them (and remove a record), and
+# now records the pin whatever the caller's shell says. The last row is an
+# operator who names a branch of their own AND asks for it to be recorded.
+ad_run=0
+for ad_spec in '1|' '0|' 'yes|' '1|operator-branch'; do
+    ad_run=$((ad_run + 1))
+    ad_record_ref="${ad_spec%%|*}"
+    ad_ref="${ad_spec#*|}"
+    HOME_AD="$TMPDIR_ROOT/home-ad$ad_run"
+    BIN_AD="$TMPDIR_ROOT/bin-ad$ad_run"
+    mkdir -p "$HOME_AD" "$BIN_AD"
+    ad_env=(OPENREPOSHAPE_RECORD_REF="$ad_record_ref")
+    [ -z "$ad_ref" ] || ad_env+=(OPENREPOSHAPE_REF="$ad_ref")
+    ad_label="OPENREPOSHAPE_RECORD_REF=$ad_record_ref${ad_ref:+ OPENREPOSHAPE_REF=$ad_ref} in the caller's shell"
+    STATUS_AD=0
+    OUTPUT_AD="$(run_record_install "$HOME_AD" "$BIN_AD" "${ad_env[@]}")" || STATUS_AD=$?
+    assert_equal '0' "$STATUS_AD" "$ad_label: exit code"
+    assert_equal "$(record_text "$BIN_AD/openRepoShape.ref")" "$SHAPE_COMMIT" "$ad_label: the record holds the pin's commit"
+    assert_not_contains "$(record_text "$BIN_AD/openRepoShape.ref")" "$ESTATE_SENTINEL_VALUE" "$ad_label: the sentinel is not what was recorded"
+    assert_not_contains "$OUTPUT_AD" "pinned to $ESTATE_SENTINEL_VALUE" "$ad_label: the launcher does not say it pinned the sentinel"
+    assert_not_contains "$OUTPUT_AD" 'pinned to operator-branch' "$ad_label: the operator's own ref is not what was recorded"
+done
+# The reproduction RV154 gave on #159, read back through the installed command.
+BIN_AD1="$TMPDIR_ROOT/bin-ad1"
+VERSION_AD1="$(env -u OPENREPOSHAPE_REF -u OPENREPOSHAPE_REPO PATH="$TRAP_159:$PATH" "$BIN_AD1/openRepoShape" --version 2>&1)" || true
+assert_equal "$VERSION_AD1" "openRepoShape (opensoft/openRepoShape @ $SHAPE_COMMIT)" 'after an install with OPENREPOSHAPE_RECORD_REF=1 in the caller'"'"'s shell, the command reports the pin, not "@ pinned-by-workBenches-no-fetch"'
+
+printf '%s\n' '--- Scenario (ae) [#159]: a symlinked or non-regular record refuses before anything is placed, like every other target ---'
+BIN_AE="$TMPDIR_ROOT/bin-ae"
+HOME_AE="$TMPDIR_ROOT/home-ae"
+OTHER_AE="$TMPDIR_ROOT/other-ae"
+mkdir -p "$BIN_AE" "$HOME_AE" "$OTHER_AE"
+printf 'somebody else'"'"'s ref\n' > "$OTHER_AE/record"
+ln -s "$OTHER_AE/record" "$BIN_AE/openRepoShape.ref"
+STATUS_AE=0
+OUTPUT_AE="$(run_record_install "$HOME_AE" "$BIN_AE" -u OPENREPOSHAPE_RECORD_REF)" || STATUS_AE=$?
+assert_equal '1' "$STATUS_AE" 'a symlinked record: exit code'
+assert_contains "$OUTPUT_AE" "$BIN_AE/openRepoShape.ref" 'the refusal names the symlinked record'
+assert_contains "$OUTPUT_AE" 'symlink' 'the refusal says it is a symlink'
+assert_equal "somebody else's ref" "$(cat "$OTHER_AE/record")" 'what the symlink points at is byte for byte unchanged'
+assert_equal '1' "$(find "$BIN_AE" -mindepth 1 | wc -l | tr -d ' ')" 'nothing was placed into the bin dir (only the symlink remains)'
+assert_absent "$HOME_AE/.claude" 'nothing was written under $HOME/.claude either (neither shim ran)'
+
+BIN_AE2="$TMPDIR_ROOT/bin-ae2"
+HOME_AE2="$TMPDIR_ROOT/home-ae2"
+mkdir -p "$BIN_AE2/openRepoShape.ref" "$HOME_AE2"
+STATUS_AE2=0
+OUTPUT_AE2="$(run_record_install "$HOME_AE2" "$BIN_AE2" -u OPENREPOSHAPE_RECORD_REF)" || STATUS_AE2=$?
+assert_equal '1' "$STATUS_AE2" 'a directory standing in for the record: exit code'
+assert_contains "$OUTPUT_AE2" 'not a regular file' 'the refusal says the record is not a regular file'
+assert_equal '0' "$([ -e "$BIN_AE2/openRepoShape" ] && echo 1 || echo 0)" 'openRepoShape was NOT placed beside a record that cannot be written'
+assert_absent "$HOME_AE2/.claude" 'nothing was written under $HOME/.claude either (neither shim ran)'
+
+printf '%s\n' '--- Scenario (af) [#159]: a launcher that leaves no record, or the wrong one, is caught by the post-install check ---'
+# The vendored launcher is the one that records. If a re-pin ever took one that
+# did not (or that recorded something else), every file above would still
+# verify while the host command followed main, so the record is read back and
+# compared with the pin. Proved on throwaway copies of base-image with the ONE
+# launcher line changed and that one pin row re-digested by hand, which is what
+# `update-upstream.py apply` would have done, so `check` still passes.
+patch_shape_launcher() {   # <base dir> <old text> <new text>
+    python3 - "$1" "$2" "$3" <<'PYEOF'
+import hashlib
+import sys
+
+base, old, new = sys.argv[1:4]
+launcher = f"{base}/files/openreposhape/openRepoShape"
+pin_path = f"{base}/upstream-pin.yaml"
+
+with open(launcher, "r", encoding="utf-8") as f:
+    text = f.read()
+if text.count(old) != 1:
+    raise SystemExit(f"expected exactly one occurrence of {old!r}, found {text.count(old)}")
+text = text.replace(old, new)
+with open(launcher, "w", encoding="utf-8") as f:
+    f.write(text)
+digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+with open(pin_path, "r", encoding="utf-8") as f:
+    lines = f.readlines()
+out = []
+i = 0
+patched = False
+while i < len(lines):
+    out.append(lines[i])
+    if lines[i].strip() == "- path: openRepoShape":
+        out.append(lines[i + 1].split(":")[0] + f': "{digest}"\n')
+        out.append(lines[i + 2])
+        i += 3
+        patched = True
+        continue
+    i += 1
+if not patched:
+    raise SystemExit("could not find the openRepoShape pin row to patch")
+with open(pin_path, "w", encoding="utf-8") as f:
+    f.writelines(out)
+PYEOF
+}
+
+NORECORD_BASE="$TMPDIR_ROOT/norecord-base-image"
+mkdir -p "$NORECORD_BASE"
+cp -r "$BASE_IMAGE_DIR/." "$NORECORD_BASE/"
+patch_shape_launcher "$NORECORD_BASE" '	record_ref "$record" "$recording"
+' '	true
+'
+NORECORD_CHECK_STATUS=0
+python3 "$NORECORD_BASE/update-upstream.py" check >"$TMPDIR_ROOT/norecord-check.log" 2>&1 || NORECORD_CHECK_STATUS=$?
+assert_equal '0' "$NORECORD_CHECK_STATUS" "scenario (af) setup: 'check' passes on the copy whose launcher writes no record"
+BIN_AF="$TMPDIR_ROOT/bin-af"
+HOME_AF="$TMPDIR_ROOT/home-af"
+mkdir -p "$BIN_AF" "$HOME_AF"
+STATUS_AF=0
+OUTPUT_AF="$(run_record_install "$HOME_AF" "$BIN_AF" -u OPENREPOSHAPE_RECORD_REF WORKBENCHES_BASE_IMAGE_DIR="$NORECORD_BASE")" || STATUS_AF=$?
+assert_equal '1' "$STATUS_AF" 'a launcher that writes no record: exit code'
+assert_contains "$OUTPUT_AF" "$BIN_AF/openRepoShape.ref is not a regular file after install" 'the refusal names the missing record'
+assert_contains "$OUTPUT_AF" "$SHAPE_COMMIT" 'the refusal names the commit the host is not held on'
+assert_not_contains "$OUTPUT_AF" 'Estate commands verified against the vendored pin.' 'a host that follows main is not reported as verified against the pin'
+
+WRONGREF_BASE="$TMPDIR_ROOT/wrongref-base-image"
+mkdir -p "$WRONGREF_BASE"
+cp -r "$BASE_IMAGE_DIR/." "$WRONGREF_BASE/"
+patch_shape_launcher "$WRONGREF_BASE" 'printf '"'"'%s\n'"'"' "$REF" >"$record"' 'printf '"'"'%s\n'"'"' main >"$record"'
+WRONGREF_CHECK_STATUS=0
+python3 "$WRONGREF_BASE/update-upstream.py" check >"$TMPDIR_ROOT/wrongref-check.log" 2>&1 || WRONGREF_CHECK_STATUS=$?
+assert_equal '0' "$WRONGREF_CHECK_STATUS" "scenario (af) setup: 'check' passes on the copy whose launcher records main"
+BIN_AF2="$TMPDIR_ROOT/bin-af2"
+HOME_AF2="$TMPDIR_ROOT/home-af2"
+mkdir -p "$BIN_AF2" "$HOME_AF2"
+STATUS_AF2=0
+OUTPUT_AF2="$(run_record_install "$HOME_AF2" "$BIN_AF2" -u OPENREPOSHAPE_RECORD_REF WORKBENCHES_BASE_IMAGE_DIR="$WRONGREF_BASE")" || STATUS_AF2=$?
+assert_equal '1' "$STATUS_AF2" 'a launcher that records a ref other than the pin: exit code'
+assert_contains "$OUTPUT_AF2" "$BIN_AF2/openRepoShape.ref holds 'main' after install" 'the refusal names what the record holds'
+assert_not_contains "$OUTPUT_AF2" 'Estate commands verified against the vendored pin.' 'a record that is not the pin is not reported as verified'
+
+printf '%s\n' '--- Scenario (ag) [#159]: the record sits beside openRepoShape, wherever OPENREPOSHAPE_BIN_DIR puts it, and not beside openRepoTools ---'
+SHAPE_BIN_AG="$TMPDIR_ROOT/shape-bin-ag"
+TOOLS_BIN_AG="$TMPDIR_ROOT/tools-bin-ag"
+HOME_AG="$TMPDIR_ROOT/home-ag"
+mkdir -p "$SHAPE_BIN_AG" "$TOOLS_BIN_AG" "$HOME_AG"
+STATUS_AG=0
+OUTPUT_AG="$(env -u OPENREPOSHAPE_RECORD_REF HOME="$HOME_AG" \
+    CLAUDE_PROFILES_HOME="$HOME_AG/.claude-profiles" CLAUDE_USER_DIR="$HOME_AG/.claude" \
+    OPENREPOSHAPE_BIN_DIR="$SHAPE_BIN_AG" OPENREPOTOOLS_BIN_DIR="$TOOLS_BIN_AG" \
+    PATH="$TRAP_159:$PATH" "$SCRIPT_UNDER_TEST" 2>&1)" || STATUS_AG=$?
+assert_equal '0' "$STATUS_AG" 'separate bin directories for the two commands: exit code'
+assert_equal "$(record_text "$SHAPE_BIN_AG/openRepoShape.ref")" "$SHAPE_COMMIT" 'the record is beside openRepoShape'
+assert_contains "$OUTPUT_AG" "recorded in $SHAPE_BIN_AG/openRepoShape.ref" 'the launcher says where it recorded the pin'
+assert_absent "$TOOLS_BIN_AG/openRepoShape.ref" 'no record is placed beside the openRepoTools files'
+assert_absent "$TOOLS_BIN_AG/openRepoShape" 'openRepoShape itself is not placed in the openRepoTools bin directory either'
 
 if (( failures == 0 )); then
     printf '%s\n' 'GREEN: setup-estate-commands regression test passed'

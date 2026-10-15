@@ -84,19 +84,35 @@
 #     plus the three skills' SKILL.md and the three command files, because
 #     `--install` places all fifteen files, all three skills and all three
 #     command files, or none -- one missing or unpinned refuses the WHOLE
-#     install, bin files included.
+#     install, bin files included. The one exception is OPENREPOSHAPE_REF on
+#     the one call that records the pin (next bullet): there it is the pin's
+#     commit, and OPENREPOSHAPE_REPO is still the sentinel, so a fetch there
+#     still resolves to nothing real.
+#   - Holds the host's openRepoShape on the release the pin names, the same
+#     release the image holds (opensoft/workBenches#159, the host half of
+#     #153): the vendored launcher's own `--install` writes the pin's
+#     `openreposhape` commit to `openRepoShape.ref` beside the command it
+#     places, so the host command fetches setup.sh and clones the standard at
+#     that commit and stops following openRepoShape's main. The record is the
+#     launcher's to write, not this script's; this script names the ref and
+#     asks for it to be recorded, for that one call only, and the launcher
+#     reads nothing from the network to do it (see "THE RECORD" below). The
+#     caller's own $OPENREPOSHAPE_RECORD_REF is never read: it used to reach
+#     that call, and with it set to 1 the install recorded the sentinel as
+#     the host command's ref.
 #   - After both installers exit 0, every one of the FIFTEEN openRepoTools
 #     bin files (and openRepoShape's own) is re-checked: a regular,
 #     non-symlink file, mode exactly 0755, and `cmp`-identical to its
-#     vendored copy. Only then does this script report success (D1/D2/D3/D4
-#     residue, closed in one place). The three skills, the three command
-#     files and the merged settings.json are NOT re-verified here the same
-#     way: they are per-user artifacts under $HOME with their own modes
-#     (0644, 0600) and their own all-or-nothing preflight inside
-#     `openRepoTools --install` (`plan_skill_targets`, `plan_hook_merge`) --
-#     this script trusts that shim's own exit code for them, exactly as
-#     ruling 2 already trusted it for the bin files before this script added
-#     its own belt-and-braces re-check.
+#     vendored copy; and the record beside openRepoShape is re-read and must
+#     hold exactly the pin's commit. Only then does this script report
+#     success (D1/D2/D3/D4 residue, closed in one place). The three skills,
+#     the three command files and the merged settings.json are NOT
+#     re-verified here the same way: they are per-user artifacts under $HOME
+#     with their own modes (0644, 0600) and their own all-or-nothing
+#     preflight inside `openRepoTools --install` (`plan_skill_targets`,
+#     `plan_hook_merge`) -- this script trusts that shim's own exit code for
+#     them, exactly as ruling 2 already trusted it for the bin files before
+#     this script added its own belt-and-braces re-check.
 #
 # Set WORKBENCHES_SKIP_ESTATE_COMMANDS=1 to skip this step entirely (prints
 # one line, exits 0).
@@ -108,10 +124,11 @@
 # prove a corrupted vendor copy refuses to install; there is no reason to
 # set it on a real host.
 #
-# Exit codes when run directly: 0 ok; 1 refused (a target is a symlink, a
-# non-regular file, or not writable; update-upstream.py check found drift;
-# one of the two installers itself failed; or a placed file failed
-# verification after install); 2 tooling or configuration missing (no
+# Exit codes when run directly: 0 ok; 1 refused (a target -- openRepoShape's
+# record included -- is a symlink, a non-regular file, or not writable;
+# update-upstream.py check found drift; one of the two installers itself
+# failed; or a placed file, or the record, failed verification after
+# install); 2 tooling or configuration missing (no
 # python3; no jq; the pin file, update-upstream.py, or a file either shim
 # needs is missing; a file the shims would install has no row in the pin;
 # this script's TOOLS_FILES/SKILL_NAMES/COMMAND_NAMES disagrees with the
@@ -362,6 +379,10 @@ check_target_preflight() {
 }
 
 check_target_preflight "$shape_bin_dir/openRepoShape" "$shape_bin_dir"
+# The record the launcher writes beside openRepoShape is a target of this run
+# too (see "THE RECORD" below): the launcher would write through a symlink
+# there, or remove one, exactly as `cp` writes through one for the files above.
+check_target_preflight "$shape_bin_dir/openRepoShape.ref" "$shape_bin_dir"
 for name in "${TOOLS_FILES[@]}"; do
     check_target_preflight "$tools_bin_dir/$name" "$tools_bin_dir"
 done
@@ -373,7 +394,8 @@ done
 # a future change, a race -- these four must resolve to nothing real, so a
 # fetch this sentinel can never satisfy fails loudly, naming it, instead of
 # quietly succeeding against whichever ref/repo the operator's own shell
-# happened to export.
+# happened to export. (The one call that records the pin overrides
+# OPENREPOSHAPE_REF alone, below; its REPO stays the sentinel.)
 ESTATE_SENTINEL="pinned-by-workBenches-no-fetch"
 export OPENREPOSHAPE_REPO="$ESTATE_SENTINEL"
 export OPENREPOSHAPE_REF="$ESTATE_SENTINEL"
@@ -394,7 +416,33 @@ export OPENREPOTOOLS_REF="$ESTATE_SENTINEL"
 # (unchanged)`, `updated`, or `installed`. That per-file report is relayed
 # unchanged below -- this script adds no version logic and no flags of its
 # own to either shim (ruling 4).
-if ! "$SHAPE_SHIM" --install; then
+#
+# THE RECORD (opensoft/workBenches#159, the host half of #153, which gave the
+# image `/usr/local/bin/openRepoShape.ref`). From v1.0.1 the launcher reads the
+# ref it runs at from `openRepoShape.ref` beside the installed command, and
+# stays on it: it fetches setup.sh at that ref, setup.sh clones the standard at
+# it, and `--doctor` checks its clone out at it. Its `--install` writes that
+# record only when $OPENREPOSHAPE_RECORD_REF is 1, from $OPENREPOSHAPE_REF; with
+# neither it records nothing and REMOVES a record already there, which left a
+# host command following openRepoShape's main while the image's command stayed
+# on the release. So the call below names both, as assignments on that one
+# command and nowhere else, so neither becomes part of this script's own
+# environment for the openRepoTools install after it:
+#   - OPENREPOSHAPE_REF is the pin's commit ($shape_commit, read above through
+#     `update-upstream.py list`, which `check` has already proven is 40
+#     lowercase hex), the same commit the Dockerfile writes into the image's
+#     record, not the sentinel exported above;
+#   - OPENREPOSHAPE_RECORD_REF is 1, never whatever the caller's shell held. An
+#     inherited 1 used to make the install record the SENTINEL, and the host
+#     command then reported `@ pinned-by-workBenches-no-fetch` and fetched at a
+#     ref that does not exist.
+# NO FETCH IS ADDED: run as a file, as it is here, the launcher installs the
+# bytes beside it (`collect_commands`, which the checks above proved are there)
+# and only reads $OPENREPOSHAPE_REF as a string (`checked_ref`), so the install
+# still touches no network for it; and $OPENREPOSHAPE_REPO is still the sentinel,
+# so a fetch reached anyway would still name a repository that cannot resolve.
+# A launcher too old to record is caught by `verify_record` below, not here.
+if ! OPENREPOSHAPE_REF="$shape_commit" OPENREPOSHAPE_RECORD_REF=1 "$SHAPE_SHIM" --install; then
     echo "openRepoShape --install failed; estate command install refused." >&2
     exit 1
 fi
@@ -429,7 +477,25 @@ verify_installed() {
     fi
 }
 
+# The record is checked by what it SAYS, not only that it exists: it is the one
+# file here whose bytes are decided by an environment this script sets and a
+# launcher it does not own, and a record that holds the sentinel, a branch or
+# nothing would leave the host command following main or fetching at a ref that
+# does not exist while every file above verified. The launcher writes
+# `<commit>\n` and reads it back with `$(< file)`, which drops the newline.
+verify_record() {
+    local record="$1" held
+    if [ -L "$record" ] || [ ! -f "$record" ]; then
+        refuse_postverify "$record is not a regular file after install, so openRepoShape is not held on the pin ($shape_commit)."
+    fi
+    held="$(< "$record")"
+    if [ "$held" != "$shape_commit" ]; then
+        refuse_postverify "$record holds '$held' after install, expected the pinned openRepoShape commit $shape_commit."
+    fi
+}
+
 verify_installed "$shape_bin_dir/openRepoShape" "$SHAPE_SHIM"
+verify_record "$shape_bin_dir/openRepoShape.ref"
 for name in "${TOOLS_FILES[@]}"; do
     verify_installed "$tools_bin_dir/$name" "$BASE_IMAGE_DIR/files/openrepotools/$name"
 done
