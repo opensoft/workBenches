@@ -877,6 +877,22 @@ done
 assert_contains "$OUTPUT_R" 'SessionStart hook: already installed in' 'a second start reports the SessionStart hook unchanged'
 assert_contains "$OUTPUT_R" 'UserPromptSubmit guard: already installed in' 'a second start reports the guard hook unchanged'
 
+# Exercise the INSTALLED payload after repeat startup, not only the source
+# guard: a correct launcher and source tree did not prevent an old image from
+# restoring a guard that ignored the profile-only marker.
+mkdir -p "$HOME_Q/projects"
+PROFILE_GUARD_INPUT="$(printf '{"session_id":"profile-only","cwd":"%s/projects","prompt":"status","hook_event_name":"UserPromptSubmit"}' "$HOME_Q")"
+PROFILE_GUARD_RC=0
+PROFILE_GUARD_OUTPUT="$(env HOME="$HOME_Q" AGENT_PROTOCOL_ROOT="$HOME_Q/missing-agents" \
+    CLAUDE_NO_LANE=1 bash "$BIN_Q/lanes-edit.sh" guard <<< "$PROFILE_GUARD_INPUT" 2>&1)" || PROFILE_GUARD_RC=$?
+assert_equal '0' "$PROFILE_GUARD_RC" 'after repeat startup, installed guard permits profile-only sessions without lane infrastructure'
+assert_equal '' "$PROFILE_GUARD_OUTPUT" 'profile-only installed hook is silent'
+LANE_GUARD_RC=0
+LANE_GUARD_OUTPUT="$(env HOME="$HOME_Q" AGENT_PROTOCOL_ROOT="$HOME_Q/missing-agents" \
+    CLAUDE_NO_LANE=0 bash "$BIN_Q/lanes-edit.sh" guard <<< "$PROFILE_GUARD_INPUT" 2>&1)" || LANE_GUARD_RC=$?
+assert_equal '2' "$LANE_GUARD_RC" 'after repeat startup, installed guard still refuses an unverifiable lane session'
+assert_contains "$LANE_GUARD_OUTPUT" 'THE NAME GUARD REFUSES' 'lane enforcement survives the profile-only exemption'
+
 printf '%s\n' '--- Scenario (s): no ~/.agents/workspace.yaml (a fresh workstation before `openRepoTools wip init`) does not fail container start ---'
 assert_absent "$HOME_Q/.agents/workspace.yaml" 'scenario (s) precondition: the sandbox has no workspace.yaml'
 assert_contains "$OUTPUT_Q" 'openRepoTools wip init' 'the linking half relays link-estates'"'"' own refusal, which names the one command that ends it'
