@@ -5,7 +5,8 @@ Test harness for `dev-bench-base:$USER` - the Layer 3 user image built on top of
 ## What This Tests
 
 Layer 1a adds developer tools on top of Layer 0:
-- Python 3.x with pip and development tools (black, flake8, isort, pylint, pytest, ipython)
+- Python 3.x with pip and development tools (black, flake8, isort, pylint, pytest, ipython, git-filter-repo)
+- `openRepoShape` held at the release its `/usr/local/bin/openRepoShape.ref` record names
 - Node.js LTS with npm and yarn
 - Python package managers (uv)
 - Spec-driven tools (`specify`, `openspec`)

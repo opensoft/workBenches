@@ -16,9 +16,19 @@ kind: project-manifest
 # that declines this schema is reviewed identically to this one, because the
 # authority travels in the grants rather than in the layout. A consumer
 # deriving a permission from `role:` is defective.
+#
+# THE TRIAD IS THE PREFERRED SHAPE, AND THAT CHANGES NONE OF THE ABOVE. This
+# file is how a Triad — an assembly root with a spec leg and a code leg, also
+# called a three-leg or three-repository project — is declared, and the Triad
+# is the recommended default for a new project and the recommended target for
+# an existing single repository: ruled by Brett Heap on 2026-10-06, "ratify
+# 1249 as recommended" (openxFactory `prefer-triad-project-shape`). Preferred
+# is not required. Electing it is still a human's act per project, it
+# confers nothing, and a project kept in one repository is reviewed
+# identically and owes no declaration.
 # ===========================================================================
 
-id: {{PROJECT_ID}}
+id: "{{PROJECT_ID}}"
 name: "{{PROJECT_NAME}}"
 
 # The elected schema, and the document the election followed. For a project
@@ -34,7 +44,7 @@ reference: "{{REFERENCE}}"
 # Electing the shape is a human's act (a `PA` decision, `CA`-constrained and
 # `PM`-sequenced), so the manifest records whose act it was and when.
 elected_by: "{{ELECTED_BY}}"
-elected_on: {{ELECTED_ON}}
+elected_on: "{{ELECTED_ON}}"
 
 # The GitHub topic every one of this project's repositories carries. Names
 # carry the human eye, topics carry the organisation's search, and the
@@ -49,12 +59,12 @@ topic: {{TOPIC}}
 # in-place adoption it is the value the two NEW legs were created with — the
 # assembly root IS the adopted source and keeps whatever visibility it
 # already had on GitHub, unchanged by this tool.
-visibility: {{VISIBILITY}}
+visibility: "{{VISIBILITY}}"
 
 # The branch `scripts/bootstrap.py` places each leg on, AT its pinned commit.
 # The pin stays exact: `.gitmodules` carries no `branch=`, so there is exactly
 # one authoritative answer to "what commit is this project".
-tracking_branch: {{TRACKING_BRANCH}}
+tracking_branch: "{{TRACKING_BRANCH}}"
 
 # The openRepoShape revision this project was scaffolded from, pinned by
 # commit and digest under the same rule the family's neutral products use: a
@@ -146,9 +156,9 @@ legs:
 {{ASSEMBLY_NAMING}}
   - role: spec
     repository: {{SPEC_REPOSITORY}}
-    path: {{SPEC_PATH}}
+    path: "{{SPEC_PATH}}"
 {{SPEC_NAMING}}
   - role: code
     repository: {{CODE_REPOSITORY}}
-    path: {{CODE_PATH}}
+    path: "{{CODE_PATH}}"
 {{CODE_NAMING}}

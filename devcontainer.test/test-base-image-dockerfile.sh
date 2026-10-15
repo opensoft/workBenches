@@ -122,6 +122,38 @@ for needed in skills/handoff/SKILL.md commands/handoff.md link-estates openRepoT
     }
 done
 
+# THE RECORD NAMES THE PIN'S OWN COMMIT (opensoft/workBenches#153). The
+# openRepoShape launcher stays on the ref `/usr/local/bin/openRepoShape.ref`
+# names, and the image writes that file with one RUN line. A re-pin moves
+# ../upstream-pin.yaml and the vendored bytes through `update-upstream.py
+# apply`, which never touches the Dockerfile, so a record left behind would
+# run the NEW launcher against the OLD release's setup.sh and standard. The
+# pin is read through the tool's own reader, `list`, exactly as
+# scripts/setup-estate-commands.sh reads it, never with a pattern of its own.
+pin_list="$(python3 "$repo_root/devBenches/base-image/update-upstream.py" list)" || {
+    echo "FAIL: devBenches/base-image/update-upstream.py list failed, so the pin's openreposhape commit cannot be read" >&2
+    exit 1
+}
+shape_pin_commit="$(awk '/^openreposhape$/{f=1;next} f&&/^  commit /{print $2;exit}' <<<"$pin_list")"
+[[ "$shape_pin_commit" =~ ^[0-9a-f]{40}$ ]] || {
+    echo "FAIL: could not read the openreposhape commit from update-upstream.py list (got '$shape_pin_commit')" >&2
+    exit 1
+}
+record_lines="$(grep -E '^RUN printf .* > /usr/local/bin/openRepoShape\.ref$' "$dev_dockerfile" || true)"
+[ "$(grep -c . <<<"$record_lines")" -eq 1 ] || {
+    echo "FAIL: devBenches/base-image/Dockerfile must write /usr/local/bin/openRepoShape.ref with exactly one RUN printf line; found: [$record_lines]" >&2
+    exit 1
+}
+[ "$record_lines" = "RUN printf '%s\\n' $shape_pin_commit > /usr/local/bin/openRepoShape.ref" ] || {
+    echo "FAIL: devBenches/base-image/Dockerfile's openRepoShape record [$record_lines] does not name the pin's openreposhape commit $shape_pin_commit — re-pinning moved the launcher but not the ref it runs at" >&2
+    exit 1
+}
+grep -Fq 'COPY files/openreposhape/openRepoShape /usr/local/bin/openRepoShape' "$dev_dockerfile" || {
+    echo "FAIL: devBenches/base-image/Dockerfile no longer COPYs the vendored openRepoShape to /usr/local/bin/openRepoShape, the file the record sits beside" >&2
+    exit 1
+}
+printf 'devBenches/base-image/Dockerfile records openRepoShape.ref beside the command at %s, the pin'"'"'s own openreposhape commit\n' "$shape_pin_commit"
+
 grep -Fq "COPY files/estate/estate-commands-start $start_dest" "$dev_dockerfile" || {
     echo "FAIL: devBenches/base-image/Dockerfile does not COPY files/estate/estate-commands-start to $start_dest (the path workbench-entrypoint runs)" >&2
     exit 1

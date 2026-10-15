@@ -43,14 +43,18 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 # Enable Corepack shims (requires root for /usr/bin)
 RUN corepack enable || true
 
-# Install Python development tools
+# Install Python development tools, and git-filter-repo: openRepoShape's
+# adopt-project.py refuses with `filter-repo-missing` when it is not on PATH,
+# and does not vendor it, on purpose. 2.47.0 is the version openRepoShape's CI
+# and its one-line installer (install.sh) pin (opensoft/workBenches#153).
 RUN pip install --break-system-packages \
     black \
     flake8 \
     isort \
     pylint \
     pytest \
-    ipython
+    ipython \
+    git-filter-repo==2.47.0
 
 # Install Node.js development tools and cross-repo workflow CLIs.
 RUN npm install -g \
@@ -206,14 +210,18 @@ RUN chmod 0755 /usr/local/bin/speckit-worktree-enable && \
 # container shell SHADOWS these pinned copies with whatever the upstream main
 # holds. A non-interactive `docker exec` uses this image's own ENV PATH, where
 # these win. Accepted, not fixed: fetching at build time is what the network
-# constraint above forbids.
+# constraint above forbids. One exception: an `openRepoShape --install` run
+# FROM this copy places these same bytes and writes the same record beside
+# them (THE RECORD, below), so that shadowing copy stays on the release too.
 #
 # `openRepoShape --version` prints `openRepoShape (opensoft/openRepoShape @
-# main)` and `openRepoTools --version` prints `openRepoTools
-# (opensoft/openRepoTools @ main)` — neither the pinned commit: each shim's
-# own `_REF` defaults to `main` upstream and this image sets neither override.
-# The identity of these bytes is ../upstream-pin.yaml, not what either command
-# says about itself.
+# 8cda13970f2cb03fb3e2d4d4d6f79bd895ef40d4)`: the ref its record names, which
+# is the commit ../upstream-pin.yaml pins, unless `$OPENREPOSHAPE_REF` is set
+# for the run, which wins. `openRepoTools --version` still prints
+# `openRepoTools (opensoft/openRepoTools @ main)`, not its pinned commit: that
+# shim's own `_REF` defaults to `main` upstream and this image sets no
+# override. The identity of these bytes is ../upstream-pin.yaml, not what
+# either command says about itself.
 COPY files/openreposhape/openRepoShape /usr/local/bin/openRepoShape
 COPY files/openrepotools/openRepoTools /usr/local/bin/openRepoTools
 COPY files/openrepotools/park /usr/local/bin/park
@@ -237,6 +245,21 @@ RUN chmod 0755 /usr/local/bin/openRepoShape /usr/local/bin/openRepoTools \
     /usr/local/bin/lane-start /usr/local/bin/lane-end /usr/local/bin/link-estates \
     /usr/local/bin/repos.tsv \
     /usr/local/bin/claude-current /usr/local/bin/claude-restart-check
+
+# THE RECORD (opensoft/workBenches#153). From v1.0.1 the openRepoShape launcher
+# reads the ref it runs at from `<command>.ref` beside itself and stays on it:
+# it fetches setup.sh at that ref, setup.sh clones the standard at it
+# (`--shape-ref`), and `--doctor` checks its clone out at it. With no record it
+# follows main, so the v1.0.1 bytes above would scaffold from whatever main
+# holds. The record is written HERE, not vendored: every file under
+# files/openreposhape/ is a pinned copy with a row in ../upstream-pin.yaml,
+# and this one is not upstream's. It names the 40-hex commit the pin's
+# `openreposhape` block names, the v1.0.1 release commit that tag v1.0.1
+# points to on release/v1.0, rather than the tag, because a tag can be moved
+# and a commit cannot; the launcher's own ref check accepts either.
+# devcontainer.test/test-base-image-dockerfile.sh fails when this commit and
+# the pin's differ, so a re-pin that forgets this line is caught.
+RUN printf '%s\n' 8cda13970f2cb03fb3e2d4d4d6f79bd895ef40d4 > /usr/local/bin/openRepoShape.ref
 
 # THE WHOLE VENDORED TREE, A SECOND TIME, UNDER /usr/local/share — and the two
 # are not redundant (opensoft/workBenches#90). The fifteen copies above are
