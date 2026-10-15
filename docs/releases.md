@@ -12,6 +12,7 @@ Use patch releases for fixes (`1.5.1`), minor releases for compatible features
 (`1.6.0`), and major releases for breaking changes (`2.0.0`). Existing Tools,
 Vault, and shared-image recipe tags have their own identities; do not rename
 them just because the product version changes.
+Shared-image artifact releases do not replace the latest product release.
 
 ## Freeze and validate
 
@@ -62,7 +63,7 @@ Wait for the tag's Release source freeze and Workstation Setup workflows to
 succeed, then publish the GitHub release:
 
 ```bash
-gh release create v1.5.0 --verify-tag --title 'workBenches 1.5.0' --notes-file RELEASE_NOTES.md
+gh release create v1.5.0 --verify-tag --latest --title 'workBenches 1.5.0' --notes-file RELEASE_NOTES.md
 ```
 
 Prepare `RELEASE_NOTES.md` with the final tested changes and validation evidence

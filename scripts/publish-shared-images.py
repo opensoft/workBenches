@@ -141,6 +141,7 @@ def main():
                 raise RuntimeError('Anonymous access failed. Make the workbenches-base and workbenches-dev-base GHCR packages public, then rerun this workflow.') from None
     release = github(f'repos/{repository}/releases', {'tag_name': shared.release_tag(),
         'target_commitish': os.environ['GITHUB_SHA'], 'name': shared.release_tag(),
+        'make_latest': 'false',
         'body': 'Validated shared images for anonymous workstation installation. Manifest pins source fingerprints, architecture and image digests.'})
     upload = release['upload_url'].split('{', 1)[0].replace('https://uploads.github.com/', '')
     request = urllib.request.Request('https://uploads.github.com/' + upload + '?name=shared-images.json',
