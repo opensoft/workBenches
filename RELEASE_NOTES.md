@@ -23,6 +23,8 @@ Draft: publication is pending the remaining gates in
 - GitHub cloning prefers configured SSH access and falls back to HTTPS.
 - Shared-service readiness checks correctly locate Vibe Annotations while
   setup runs through Tools, avoiding a false unhealthy-service warning.
+- Native installers honor their requested timeouts, including long bench builds;
+  project setup can use the host-command bridge from isolated Python.
 
 ## Validation and platforms
 

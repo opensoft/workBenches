@@ -64,7 +64,10 @@ while [[ -f "$session/alive" ]]; do
         ) < "$request/input" > "$request/stdout" 2> "$request/stderr" &
         command_pid=$!
         started=$SECONDS
-        IFS= read -r deadline < "$request/timeout" || deadline=30
+        # Older Tools images omit a trailing newline. read still sets the
+        # value at EOF; do not replace a valid long installer deadline with 30s.
+        deadline=''
+        IFS= read -r deadline < "$request/timeout" || true
         [[ "$deadline" =~ ^[0-9]+$ ]] || deadline=30
         while kill -0 "$command_pid" 2>/dev/null; do
             if [[ -f "$request/cancel" ]] || (( SECONDS - started > deadline )); then

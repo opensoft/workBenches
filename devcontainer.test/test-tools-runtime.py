@@ -133,6 +133,7 @@ for tool in python3 jq git curl; do ! command -v "$tool" || exit 31; done
 ensure_workstation_requirements || exit "$?"
 python3 -c 'import os, pwd; assert pwd.getpwuid(os.getuid()).pw_name == os.environ["USER"]'
 python3 --version
+python3 -I -c 'import workbenches_host as host; assert host.which("native-fixture")'
 jq -n 'true'
 git --version
 curl --version
@@ -148,10 +149,16 @@ except OSError:
 else:
     raise AssertionError('Native path probe accepted a missing parent')
 print('Native command boundary passed')
+long = host.run(['bash', '-c', 'sleep 31; printf long-native-command-completed'],
+                capture_output=True, text=True, timeout=60)
+assert long.returncode == 0 and long.stdout == 'long-native-command-completed', long
+short = host.run(['sleep', '4'], capture_output=True, timeout=1)
+assert short.returncode != 0, 'Native command ignored the requested short deadline'
+print('Native long/short deadlines passed')
 NATIVE
 '''
             output = run(['/bin/bash', '-c', driver, 'runtime', str(ROOT)], env=env, cwd=ROOT)
-            for expected in ('Python 3.', 'true', 'git version', 'curl ', 'Native command boundary passed'):
+            for expected in ('Python 3.', 'true', 'git version', 'curl ', 'Native command boundary passed', 'Native long/short deadlines passed'):
                 assert expected in output, output
             prefix = home / '.local'
             package = prefix / 'lib/node_modules/@openai/codex'

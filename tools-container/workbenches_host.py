@@ -38,7 +38,7 @@ def run(argv, *, capture_output=False, text=False, timeout=30, env=None, input=N
         if any('\0' in value for value in fields):
             raise ValueError('NUL in workstation command arguments')
         (directory / 'request').write_bytes(('\0'.join(fields) + '\0').encode())
-        (directory / 'timeout').write_text(str(int(timeout)))
+        (directory / 'timeout').write_text(str(int(timeout)) + '\n')
         (directory / 'input').write_bytes(input.encode() if isinstance(input, str) else input or b'')
         (directory / 'ready').touch()
         deadline = time.monotonic() + timeout + 5

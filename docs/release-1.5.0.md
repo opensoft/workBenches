@@ -47,6 +47,10 @@ Local development evidence already recorded:
   Annotations is queried from its own container with a bounded HTTP request.
   Six focused readiness checks plus actual status and new-service startup
   checks passed in the isolated workstation engine.
+- [x] Fresh-install QA found and fixed a native-command timeout that stopped
+  bench builds after 30 seconds, and an isolated-Python import failure in project
+  setup. Declared Tools runtime acceptance passed, including a 31-second native
+  command, a short-deadline cancellation, and isolated-Python host discovery.
 
 These results precede the release commit. The following remain required:
 
