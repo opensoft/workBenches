@@ -125,7 +125,8 @@
 # set it on a real host.
 #
 # Exit codes when run directly: 0 ok; 1 refused (a target -- openRepoShape's
-# record included -- is a symlink, a non-regular file, or not writable;
+# record included -- is a symlink, a non-regular file, or not writable (the
+# record: or not readable);
 # update-upstream.py check found drift; one of the two installers itself
 # failed; or a placed file, or the record, failed verification after
 # install); 2 tooling or configuration missing (no
@@ -356,6 +357,23 @@ refuse_postverify() {
     exit 1
 }
 
+# The record's own refusal (`verify_record`), and not `refuse_postverify`'s: the
+# shared text above is about the fifteen openRepoTools files, which this script
+# has not re-checked yet when the record is, and it tells the person to re-run
+# -- which cannot help, because the vendored launcher writes the same record
+# every time. What is wrong here is that openRepoShape is placed but not held
+# on the pin, and what fixes it is the pin or the vendored launcher.
+refuse_record() {
+    echo "Estate command install refused: $1" >&2
+    echo "openRepoShape is placed but is NOT held on the pin ($shape_commit), so the host" >&2
+    echo "command does not run at the release the pin names. Both installers ran and this" >&2
+    echo "script stopped before it re-checked the openRepoTools files. Re-running cannot" >&2
+    echo "change the record: the vendored launcher writes it. The fix is the pin" >&2
+    echo "($PIN_FILE)" >&2
+    echo "or the vendored launcher ($SHAPE_SHIM)." >&2
+    exit 1
+}
+
 # D1/D2/most of D4: every bin-directory target either shim is about to write
 # to is checked BEFORE either of them runs, so a bad target refuses before
 # anything at all is placed -- never after only some of the fifteen are done.
@@ -383,6 +401,12 @@ check_target_preflight "$shape_bin_dir/openRepoShape" "$shape_bin_dir"
 # too (see "THE RECORD" below): the launcher would write through a symlink
 # there, or remove one, exactly as `cp` writes through one for the files above.
 check_target_preflight "$shape_bin_dir/openRepoShape.ref" "$shape_bin_dir"
+# And READABLE: the launcher reads the ref a record already holds before it
+# replaces it, and does so only after it has placed openRepoShape, so a record
+# it cannot read would fail the install half-way and say only "Permission denied".
+if [ -e "$shape_bin_dir/openRepoShape.ref" ] && [ ! -r "$shape_bin_dir/openRepoShape.ref" ]; then
+    refuse_preflight "$shape_bin_dir/openRepoShape.ref exists and is not readable, and the launcher reads the ref it holds before it replaces it."
+fi
 for name in "${TOOLS_FILES[@]}"; do
     check_target_preflight "$tools_bin_dir/$name" "$tools_bin_dir"
 done
@@ -486,11 +510,11 @@ verify_installed() {
 verify_record() {
     local record="$1" held
     if [ -L "$record" ] || [ ! -f "$record" ]; then
-        refuse_postverify "$record is not a regular file after install, so openRepoShape is not held on the pin ($shape_commit)."
+        refuse_record "$record is not a regular file after install."
     fi
     held="$(< "$record")"
     if [ "$held" != "$shape_commit" ]; then
-        refuse_postverify "$record holds '$held' after install, expected the pinned openRepoShape commit $shape_commit."
+        refuse_record "$record holds '$held' after install, expected the pinned openRepoShape commit $shape_commit."
     fi
 }
 
