@@ -4,7 +4,8 @@
 
     python3 devBenches/base-image/update-upstream.py check [--source <id>]
     python3 devBenches/base-image/update-upstream.py apply --source <id> \
-        --at <40-hex commit> --yes [--add <path>]... [--remove <path>]...
+        --at <40-hex commit> --yes [--add <path>]... [--remove <path>]... \
+        [--tag <release tag> --branch <upstream branch>]
     python3 devBenches/base-image/update-upstream.py list
 
 THE REFLECTION OF openRepoShape's `update-shape.py`, from the consumer's side
@@ -51,9 +52,10 @@ WHAT `apply` REFUSES, because a pin it cannot justify must not be recorded:
   * a `--source` the pin does not name: a new source is a new block in that
     file and a human's decision, not a flag;
   * a commit that is NOT reachable from the source repository's default
-    branch. openRepoShape squash-merges, so a commit on a pull-request branch
-    is orphaned by the merge and a raw fetch of it 404s for the next person. A
-    pin the rest of the world cannot fetch is a pin nobody can reproduce;
+    branch, unless it is a RELEASE named as one (below). openRepoShape
+    squash-merges, so a commit on a pull-request branch is orphaned by the
+    merge and a raw fetch of it 404s for the next person. A pin the rest of
+    the world cannot fetch is a pin nobody can reproduce;
   * a fetch that failed for ANY file in the set: NOTHING is written, no
     vendored copy is replaced, and every file it could not get is named, with
     both forms it tried. All the bytes in hand before any one of them is
@@ -68,6 +70,43 @@ WHAT `apply` REFUSES, because a pin it cannot justify must not be recorded:
     deleting its block, by hand and on purpose;
   * a repeated `--add` or `--remove` value, and a destination that is a link
     or resolves outside the vendor directory.
+
+A RELEASE CUT OFF THE DEFAULT BRANCH IS NAMED, NEVER GUESSED (opensoft/
+workBenches#153). A source that cuts patch releases on a release branch tags
+commits its default branch never carries: openRepoShape v1.0.1 is `8cda139`,
+cut on `release/v1.0`, while `main` moved on without it. `--tag <tag>
+--branch <branch>` takes such a commit, and only when BOTH hold:
+
+  * `refs/tags/<tag>` exists on the source repository and peels to exactly
+    `--at`, directly for a lightweight tag or through every annotated tag
+    object in between;
+  * `compare/<branch>...<commit>` answers `identical` or `behind`: the commit
+    is on that upstream branch, the one the person named.
+
+WHY A TAGGED RELEASE COMMIT IS SAFE where a squash-orphaned pull-request
+commit is not. The default-branch rule exists because a squash merge leaves
+the pull-request branch's commits held by no ref once that branch is deleted,
+so the next fetch of one 404s. A release commit is held by two refs the
+upstream keeps ON PURPOSE, the tag that publishes it and the branch its
+releases are cut from, so the next person fetches it exactly as `apply` did,
+which is all the default-branch rule ever asked. A tag alone is not enough: it
+can be pushed onto any stray commit, and the branch check is what says the
+commit was landed upstream at all.
+
+NEITHER IS RECORDED IN THE PIN. Its row still names the COMMIT, because a tag
+can be moved and a commit cannot, and `check`, which needs no network, could
+never confirm that a recorded tag still peels where it did. A row no run
+checks is decoration, as the pin's own header says of a tree digest. So a tag
+moved later changes nothing the pin says; it changes only what the next
+`apply --tag` accepts.
+
+Each condition that fails is a refusal of its own, naming which:
+`upstream-tag-not-found`, `upstream-tag-elsewhere`, `upstream-tag-not-a-commit`,
+`upstream-not-on-branch`, `upstream-branch-unreadable`. `--tag` and `--branch`
+come together or not at all (`upstream-tag-without-branch`,
+`upstream-branch-without-tag`), and each must be a ref name that cannot bend
+the REST path it is spliced into (`upstream-bad-ref`). Without them, the
+default-branch path is exactly what it was.
 
 THE FETCH ORDER IS THE SHIMS'. `gh api …/contents/<path>?ref=<sha>` with
 `Accept: application/vnd.github.raw` first, because it is authenticated and so
@@ -170,6 +209,16 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 MODE_RE = re.compile(r"^(?:100644|100755)$")
 SOURCE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+#: A tag or branch NAME as `apply --tag` / `--branch` takes one: the
+#: characters openRepoShape's own launcher accepts in a ref. The value is
+#: spliced into a REST path (`git/ref/tags/<tag>`, `compare/<branch>...`),
+#: where a `?`, a `#`, a space or a `..` would change which resource is asked.
+#: `_checked_ref_name` adds the rules a pattern says badly.
+REF_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+#: How many annotated tag objects `peel_tag` follows before it gives up. Git
+#: sets no limit, so this one only has to be finite: a tag of a tag is rare,
+#: and a chain longer than this is a repository to look at by hand.
+TAG_PEEL_LIMIT = 10
 
 #: Every key a `sources:` block must carry. `files:` is checked separately,
 #: because it is a block and not a scalar.
@@ -914,6 +963,141 @@ def assert_on_default_branch(repository: str, commit: str) -> str:
     return branch
 
 
+def _checked_ref_name(value: str, flag: str) -> None:
+    """A tag or branch NAME, refused before it reaches a REST path.
+
+    THREE CHECKS, IN THIS ORDER, openRepoShape's own order for a ref: the
+    LENGTH and a CONTROL CHARACTER first, refused without echoing the value,
+    because an over-long one is noise and a newline in one could forge a line
+    of output; only then the SHAPE, which is safe to echo by then.
+    """
+    if len(value) > 255:
+        raise Refusal("upstream-bad-ref",
+                      f"{flag} is {len(value)} characters long; a tag or "
+                      f"branch name is at most 255.")
+    if not value.isprintable():
+        raise Refusal("upstream-bad-ref",
+                      f"{flag} carries a control character, which no tag or "
+                      f"branch name does.")
+    segments = value.split("/")
+    if (not REF_NAME_RE.match(value) or ".." in value
+            or any(not part or part.startswith(".") or part.endswith(".")
+                   or part.endswith(".lock") for part in segments)):
+        raise Refusal(
+            "upstream-bad-ref",
+            f"{flag} {value!r} is not a tag or branch name this tool will "
+            f"put in a GitHub API\npath: one starts with a letter or digit, "
+            f"uses only letters, digits, '.', '_', '/', '-',\nhas no '..' and "
+            f"no empty segment, and no segment starts with '.' or ends in "
+            f"'.' or '.lock'.")
+
+
+def _gh_or_refuse(code: int, err: str, repository: str, what: str) -> None:
+    """The one refusal for a `gh` that is not on PATH at all (exit 127)."""
+    if code == 127:
+        raise Refusal(
+            "upstream-no-gh",
+            f"`apply --tag` needs the `gh` CLI to read {what} on "
+            f"{repository}, and it is not on PATH: {err}\n`check` needs no "
+            f"network and no `gh` at all.")
+
+
+def peel_tag(repository: str, tag: str) -> str:
+    """The commit `refs/tags/<tag>` names on the upstream, peeled.
+
+    `git/ref/tags/<tag>` is the EXACT-MATCH endpoint: it answers 404 for a
+    name that is only a prefix of real tags (`v1.0` when `v1.0.1` exists),
+    and the `ref` it answers is compared anyway. A LIGHTWEIGHT tag's object
+    is the commit itself; an ANNOTATED tag's object is a tag object, read
+    with `git/tags/<sha>` and followed, at most TAG_PEEL_LIMIT deep, because
+    a tag may tag a tag. Whatever is left must be a commit: a tag on a tree
+    or a blob names no revision a pin could record.
+    """
+    code, out, err = gh_api(
+        f"repos/{repository}/git/ref/tags/{tag}",
+        r'.ref + "\t" + .object.type + "\t" + .object.sha')
+    _gh_or_refuse(code, err, repository, f"tag '{tag}'")
+    if code != 0:
+        if "HTTP 404" in err:
+            raise Refusal(
+                "upstream-tag-not-found",
+                f"{repository} has no tag '{tag}' (`git/ref/tags/{tag}` "
+                f"answers 404).\nA commit off the default branch is taken "
+                f"only as a release its tag names;\nname the tag the "
+                f"upstream published, exactly.")
+        raise Refusal("upstream-tag-unreadable",
+                      f"could not read tag '{tag}' on {repository}: "
+                      f"{err or code}")
+    parts = out.split("\t")
+    if (len(parts) != 3 or parts[0] != f"refs/tags/{tag}"
+            or not COMMIT_RE.match(parts[2])):
+        raise Refusal("upstream-tag-unreadable",
+                      f"tag '{tag}' on {repository}: `git/ref/tags/{tag}` "
+                      f"answered {out!r}, which names no ref and object")
+    kind, sha = parts[1], parts[2]
+    hops = 0
+    while kind == "tag":
+        hops += 1
+        if hops > TAG_PEEL_LIMIT:
+            raise Refusal(
+                "upstream-tag-unreadable",
+                f"tag '{tag}' on {repository} is more than {TAG_PEEL_LIMIT} "
+                f"annotated tag objects deep;\npeel it by hand and pin the "
+                f"commit it names.")
+        code, out, err = gh_api(f"repos/{repository}/git/tags/{sha}",
+                                r'.object.type + "\t" + .object.sha')
+        _gh_or_refuse(code, err, repository, f"tag object {sha[:12]}")
+        parts = out.split("\t")
+        if code != 0 or len(parts) != 2 or not COMMIT_RE.match(parts[1]):
+            raise Refusal("upstream-tag-unreadable",
+                          f"could not peel tag '{tag}' on {repository} "
+                          f"through tag object {sha[:12]}: "
+                          f"{err or out or code}")
+        kind, sha = parts
+    if kind != "commit":
+        raise Refusal(
+            "upstream-tag-not-a-commit",
+            f"tag '{tag}' on {repository} names a {kind} ({sha[:12]}), not "
+            f"a commit, so it names\nno revision a pin could record.")
+    return sha
+
+
+def assert_on_tagged_branch(repository: str, commit: str, tag: str,
+                            branch: str) -> None:
+    """Take a commit off the default branch ONLY AS A NAMED RELEASE.
+
+    Both conditions, in this order, each its own refusal: the tag peels to
+    exactly `commit`, and `compare/<branch>...<commit>` says the named
+    upstream branch carries it — `identical` when the commit is the
+    branch tip, `behind` when the branch has moved on past it, the same two
+    answers the default-branch rule accepts. Why that is enough is in this
+    file's docstring, under A RELEASE CUT OFF THE DEFAULT BRANCH.
+    """
+    peeled = peel_tag(repository, tag)
+    if peeled != commit:
+        raise Refusal(
+            "upstream-tag-elsewhere",
+            f"tag '{tag}' on {repository} peels to {peeled},\nnot to --at "
+            f"{commit}.\nPin the commit the tag names, or name the tag that "
+            f"names this commit.")
+    code, out, err = gh_api(
+        f"repos/{repository}/compare/{branch}...{commit}", ".status")
+    _gh_or_refuse(code, err, repository, f"branch '{branch}'")
+    if code != 0 or not out:
+        raise Refusal(
+            "upstream-branch-unreadable",
+            f"could not compare {commit[:12]} against {repository}'s "
+            f"'{branch}': {err or code}\nName the upstream branch the "
+            f"release was cut from; it must exist and carry the commit.")
+    if out not in ("identical", "behind"):
+        raise Refusal(
+            "upstream-not-on-branch",
+            f"{commit[:12]} is not on {repository}'s '{branch}'; `compare` "
+            f"says '{out}'.\nTag '{tag}' names it, but a tag can be pushed "
+            f"onto any commit: a release is\ntaken only from a branch the "
+            f"upstream keeps. Name the branch it was cut from.")
+
+
 def fetch_file(repository: str, commit: str, path: str) -> bytes | None:
     """The shims' order: the API first, the raw URL second.
 
@@ -1018,6 +1202,27 @@ def cmd_apply(args: argparse.Namespace) -> int:
             f"--at {args.at!r} is not a commit. `apply` takes a full "
             f"40-character\nlowercase commit; a tag can be moved and a commit "
             f"cannot.")
+    # A RELEASE IS NAMED WHOLE OR NOT AT ALL, and both names are judged here,
+    # before the pin is read and before anything reaches the network.
+    if args.tag is not None and args.branch is None:
+        raise Refusal(
+            "upstream-tag-without-branch",
+            f"--tag {args.tag!r} without --branch. A commit off the default "
+            f"branch is taken only\nas a release: the tag that names it AND "
+            f"the upstream branch it was cut from,\nboth checked:\n"
+            f"    python3 {TOOL} apply --source <id> --at <40-hex> "
+            f"--tag <tag> --branch <branch> --yes")
+    if args.branch is not None and args.tag is None:
+        raise Refusal(
+            "upstream-branch-without-tag",
+            f"--branch {args.branch!r} without --tag. A branch alone can be "
+            f"rewritten or deleted;\na commit off the default branch is taken "
+            f"only as a release its tag names:\n"
+            f"    python3 {TOOL} apply --source <id> --at <40-hex> "
+            f"--tag <tag> --branch <branch> --yes")
+    if args.tag is not None:
+        _checked_ref_name(args.tag, "--tag")
+        _checked_ref_name(args.branch, "--branch")
     top, sources, lines = read_pin(pin_path)
     validate_pin(pin_path, top, sources, digests_required=False)
     source = selected(sources, args.source, pin_path)[0]
@@ -1061,10 +1266,15 @@ def cmd_apply(args: argparse.Namespace) -> int:
             f"pin — `check` refuses one. Delete the\nblock from "
             f"{display(pin_path)} by hand, on purpose, instead.")
 
-    branch = assert_on_default_branch(repository, args.at)
+    if args.tag is None:
+        branch = assert_on_default_branch(repository, args.at)
+        where = f"on {branch}"
+    else:
+        assert_on_tagged_branch(repository, args.at, args.tag, args.branch)
+        where = f"tag {args.tag}, on {args.branch}"
     print(f"source      {source.id} ({repository})")
     print(f"pinned      {source.value('commit')[:12]}")
-    print(f"target      {args.at[:12]} (on {branch})")
+    print(f"target      {args.at[:12]} ({where})")
     print(f"vendor      {source.value('vendor_dir')}")
     print()
 
@@ -1220,6 +1430,13 @@ def build_parser() -> argparse.ArgumentParser:
     apply_.add_argument("--remove", action="append", default=[],
                         metavar="PATH",
                         help="drop a row and delete its vendored copy")
+    apply_.add_argument("--tag", default=None, metavar="TAG",
+                        help="take a commit off the default branch as a "
+                             "release: this upstream tag must peel to --at "
+                             "(needs --branch)")
+    apply_.add_argument("--branch", default=None, metavar="BRANCH",
+                        help="the upstream branch the --tag release was cut "
+                             "from; it must carry --at (needs --tag)")
     apply_.set_defaults(func=cmd_apply)
 
     listing = subparsers.add_parser("list", help="what the pin names")
