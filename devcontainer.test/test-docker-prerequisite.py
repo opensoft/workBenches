@@ -246,9 +246,10 @@ exit 1
                 actions = self.actions.read_text().splitlines()
                 self.assertEqual(result.returncode, docker_status, result.stderr.decode())
                 if docker_status:
-                    self.assertTrue(all(action.startswith("docker ") for action in actions), actions)
+                    self.assertEqual(actions[0], 'selected')
+                    self.assertTrue(all(action.startswith("docker ") for action in actions[1:]), actions)
                 else:
-                    self.assertEqual(actions, ["docker info", "selected", "recovery", "shell", "estate", "workspace", "workflow",
+                    self.assertEqual(actions, ["selected", "docker info", "recovery", "estate",
                                                "image acquisition", "build", "apply"])
 
 

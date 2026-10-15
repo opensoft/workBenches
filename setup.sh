@@ -18,6 +18,7 @@ trap 'exit 143' TERM
 LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/setup-$(date +%Y%m%d-%H%M%S).log"
+export WORKBENCHES_SETUP_LOG_FILE="$LOG_FILE"
 export WORKBENCH_LOG_FILE="$LOG_FILE"
 
 # Log helper: writes to log file only (does not affect stdout/stderr/stdin).
@@ -117,6 +118,22 @@ if [ "$USERNAME" = "--user" ]; then
     USERNAME="${2:-$(whoami)}"
 fi
 
+# Required workstation setup precedes component selection and all account work.
+ensure_setup_platform || exit "$?"
+ensure_setup_dependencies || exit "$?"
+ensure_workstation_requirements || exit "$?"
+selection_file="$(mktemp "${TMPDIR:-/tmp}/workbenches-selection.XXXXXX")" || exit 1
+trap 'rm -f "$selection_file"' EXIT
+"${SCRIPT_DIR}/scripts/interactive-setup.sh" --select-only "$selection_file" || exit "$?"
+python3 "$SCRIPT_DIR/scripts/setup_selection.py" rows "$selection_file" >/dev/null || exit "$?"
+if python3 "$SCRIPT_DIR/scripts/setup_selection.py" empty "$selection_file"; then
+    echo "No components selected. Setup complete."
+    exit 0
+fi
+selected_bench_paths="$(python3 "$SCRIPT_DIR/scripts/setup_selection.py" benches "$selection_file")" || exit "$?"
+export WORKBENCHES_SELECTED_PROVIDERS="$(python3 "$SCRIPT_DIR/scripts/setup_selection.py" providers "$selection_file")"
+export WORKBENCHES_PROFILE_PROVIDERS="$(python3 -c 'import os; print(",".join(p for p in os.environ["WORKBENCHES_SELECTED_PROVIDERS"].split(",") if p in ("claude", "openai")))')"
+
 # Verify local prerequisites before host installers, account onboarding,
 # credential recovery or any image build can run.
 log_header "DOCKER CHECK"
@@ -131,44 +148,17 @@ else
     exit "$prerequisite_status"
 fi
 
-# Select components before profile/host changes and before any image build.
-ensure_setup_dependencies || exit "$?"
-selection_file="$(mktemp "${TMPDIR:-/tmp}/workbenches-selection.XXXXXX")" || exit 1
-trap 'rm -f "$selection_file"' EXIT
-"${SCRIPT_DIR}/scripts/interactive-setup.sh" --select-only "$selection_file" || exit "$?"
-python3 "$SCRIPT_DIR/scripts/setup_selection.py" rows "$selection_file" >/dev/null || exit "$?"
-if python3 "$SCRIPT_DIR/scripts/setup_selection.py" empty "$selection_file"; then
-    echo "No components selected. Setup complete."
-    exit 0
-fi
-selected_bench_paths="$(python3 "$SCRIPT_DIR/scripts/setup_selection.py" benches "$selection_file")" || exit "$?"
-export WORKBENCHES_SELECTED_PROVIDERS="$(python3 "$SCRIPT_DIR/scripts/setup_selection.py" providers "$selection_file")"
-export WORKBENCHES_PROFILE_PROVIDERS="$(python3 -c 'import os; print(",".join(p for p in os.environ["WORKBENCHES_SELECTED_PROVIDERS"].split(",") if p in ("claude", "openai")))')"
 
-# Confirm the complete plan before dependency installation, credential/profile
-# writes, or host configuration. Recovery prompts then execute the approved plan.
+# Enter in the TUI authorizes the selected changes. Account setup is opt-in.
 python3 "$SCRIPT_DIR/scripts/setup_selection.py" review "$selection_file" || exit "$?"
-if [[ -n "$WORKBENCHES_SELECTED_PROVIDERS" ]]; then
-    python3 "$SCRIPT_DIR/scripts/profile_credentials.py" summary || true
-fi
-echo "Setup also configures the shell and shared workBenches commands."
-echo "Selected tools may need dependency installation or a writable user npm location."
-if [[ -t 0 ]]; then
-    setup_read "Apply these changes? [Y/n]" apply_choice
-    case "${apply_choice,,}" in ""|y|yes) ;; *) exit 130 ;; esac
-fi
-auth_route_file="$(mktemp "${TMPDIR:-/tmp}/workbenches-route.XXXXXX")" || exit 1
-export WORKBENCHES_AUTH_ROUTE_FILE="$auth_route_file"
-trap 'rm -f "$selection_file" "$auth_route_file"' EXIT
+export WORKBENCHES_AUTH_ROUTE=later
+unset WORKBENCHES_AUTH_ROUTE_FILE
 "${SCRIPT_DIR}/scripts/interactive-setup.sh" --dependencies-plan "$selection_file" || exit "$?"
 if python3 "$SCRIPT_DIR/scripts/setup_selection.py" node "$selection_file"; then
     ensure_npm_install_location || exit "$?"
 fi
 
-# Apply existing provider profiles or obtain consent and collect the user's
-# work/personal ownership model on first setup. Standard provider credential
-# homes are detected and preserved; credentials are never copied implicitly.
-log_header "AI PROFILE SETUP"
+# Reuse existing profiles. New account onboarding runs only through AI accounts.
 run_ai_profile_setup() {
     if "${SCRIPT_DIR}/scripts/setup-ai-profiles.sh" "$@"; then
         return 0
@@ -179,9 +169,7 @@ run_ai_profile_setup() {
     fi
 }
 profile_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/workbenches"
-if [[ -z "$WORKBENCHES_SELECTED_PROVIDERS" ]]; then
-    echo "No AI tools selected; profile setup skipped."
-elif [[ -n "$WORKBENCHES_PROFILE_PROVIDERS" ]] && python3 - "$profile_config_dir" "$WORKBENCHES_PROFILE_PROVIDERS" <<'PROFILES'
+if [[ -n "$WORKBENCHES_PROFILE_PROVIDERS" ]] && python3 - "$profile_config_dir" "$WORKBENCHES_PROFILE_PROVIDERS" <<'PROFILES'
 import json, pathlib, sys
 try:
     root = pathlib.Path(sys.argv[1])
@@ -192,26 +180,9 @@ except (OSError, ValueError, TypeError):
 sys.exit(0 if ready else 1)
 PROFILES
 then
+    # Reuse approved profile configuration without opening vaults or onboarding.
+    echo "Reusing configured AI profiles."
     run_ai_profile_setup --apply-existing
-elif [ -t 0 ] && [ -t 1 ]; then
-    run_ai_profile_setup --interactive
-else
-    echo "AI profile onboarding skipped because no interactive terminal is available."
-fi
-route_choice="$(cat "$auth_route_file")"
-export WORKBENCHES_AUTH_ROUTE="${route_choice%%:*}"
-if [[ "$route_choice" == vault:* ]]; then export WORKBENCHES_VAULT_SERVICE="${route_choice#vault:}"; fi
-echo ""
-
-if [[ -n "$WORKBENCHES_SELECTED_PROVIDERS" ]]; then
-    python3 "$SCRIPT_DIR/scripts/profile_credentials.py" summary || true
-fi
-
-# Shell environment setup (zsh + Powerlevel10k + Oh My Zsh)
-log_header "SHELL SETUP"
-if [ -x "${SCRIPT_DIR}/scripts/setup-shell.sh" ]; then
-    "${SCRIPT_DIR}/scripts/setup-shell.sh"
-    echo ""
 fi
 persist_npm_user_path
 
@@ -219,60 +190,27 @@ persist_npm_user_path
 # workBenches' own vendored pin and are placed by their own installers; see
 # scripts/setup-estate-commands.sh. Best-effort, like the other host-user
 # steps here: it never fails setup.sh. WORKBENCHES_SKIP_ESTATE_COMMANDS=1 skips it.
-log_header "ESTATE COMMANDS"
-if [ -x "${SCRIPT_DIR}/scripts/setup-estate-commands.sh" ]; then
+if [[ -n "$selected_bench_paths" ]] && [ -x "${SCRIPT_DIR}/scripts/setup-estate-commands.sh" ]; then
+    log_header "ESTATE COMMANDS"
     "${SCRIPT_DIR}/scripts/setup-estate-commands.sh" || echo "⚠ Estate command install skipped or failed; continuing workBenches setup."
     echo ""
 fi
 
-# The workspace repository, AFTER the estate commands and nowhere else:
-# `openRepoTools wip init` is a subcommand of the openRepoTools the step above
-# just placed, so the chain of lane-collision-protocol Amendment 9(e) is
-# `--install` and then this. It asks nothing -- the login comes from
-# `gh api user -q .login` and the organisation from the amendment's own rule --
-# and it does nothing at all on a host that already has one. Best-effort, like
-# every host-user step here: it never fails setup.sh, and an openRepoTools with
-# no `wip` subcommand yet prints what to run instead of refusing.
-# WORKBENCHES_SKIP_WORKSPACE_REPO=1 skips it.
-#
-# Run through run_logged (RV-W6), not a bare invocation: this step relays
-# `openRepoTools wip init`'s own stdout/stderr rather than summarising it (see
-# its own header), so those bytes are this step's only account of an
-# administrator block or a refusal. A bare invocation sends them to the
-# terminal only -- log_header alone writes just the banner/timestamp lines --
-# so the SETUP COMPLETE hint below (`grep -n "WORKSPACE REPOSITORY"
-# "$LOG_FILE"`) would find that banner and nothing else. run_logged both
-# writes the "WORKSPACE REPOSITORY" header AND tees the step's own output into
-# $LOG_FILE, so the hint finds the real content.
-if [ -x "${SCRIPT_DIR}/scripts/setup-workspace-repo.sh" ]; then
-    run_logged "WORKSPACE REPOSITORY" "${SCRIPT_DIR}/scripts/setup-workspace-repo.sh" || echo "⚠ Workspace repository step skipped or refused; continuing workBenches setup."
-    echo ""
-fi
+# Organization workspace initialization runs only when selected in the TUI.
 
 # The project command is authored in openRepoProject and distributed at a pin.
-if command -v python3 >/dev/null 2>&1; then
+if [[ -n "$selected_bench_paths" ]] && command -v python3 >/dev/null 2>&1; then
     run_logged "PROJECT COMMAND" python3 -I "${SCRIPT_DIR}/scripts/setup-project-command.py" \
         || echo "Project command installation failed; see the refusal above."
 fi
 
 # Claude workflow setup is host-user state. The benches bind-mount ~/.claude, so
 # seed it before any container build without overwriting existing user workflows.
-log_header "CLAUDE WORKFLOW SETUP"
-if [[ ",$WORKBENCHES_SELECTED_PROVIDERS," == *,claude,* ]] && [ -x "${SCRIPT_DIR}/scripts/setup-claude-workflows.sh" ]; then
-    "${SCRIPT_DIR}/scripts/setup-claude-workflows.sh" || echo "⚠ Claude workflow setup skipped or failed"
-    echo ""
-fi
-
-# Workstation VPN setup is offered in the interactive selector so users can
-# choose AmneziaVPN and 0dcloud independently.
-log_header "VPN SETUP"
-echo "VPN client setup is available from the interactive selector." >> "$LOG_FILE"
+# Claude account workflows are configured by the optional AI accounts step.
 
 # Wave Terminal widgets are host-user state. Install them before any image
 # builds so the desktop terminal shortcuts track the current checkout.
-log_header "WAVE TERMINAL WIDGET SETUP"
 if python3 "$SCRIPT_DIR/scripts/setup_selection.py" rows "$selection_file" | grep -q $'wave\tinstall'; then install_wave_terminal_widgets; fi
-echo ""
 
 # Ensure Layer 0 base image exists
 log_header "LAYER 0 BUILD"
@@ -371,7 +309,7 @@ echo ""
 # check placed after it would never run on that path -- silently dropping the
 # one reminder a person most needs when the run did not go cleanly end to end.
 workspace_repo_marker="${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/.workspace-step-needs-attention"
-if [ -e "$workspace_repo_marker" ]; then
+if python3 "$SCRIPT_DIR/scripts/setup_selection.py" selected "$selection_file" workspace_repo && [ -e "$workspace_repo_marker" ]; then
     echo "⚠ Workspace repository step needs attention: grep -n \"WORKSPACE REPOSITORY\" \"$LOG_FILE\""
 fi
 

@@ -6,11 +6,13 @@ test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT
 mkdir -p "$test_root/scripts/lib" "$test_root/config" "$test_root/devBenches"
 cp "$repo_root/scripts/interactive-setup.sh" "$test_root/scripts/"
+cp "$repo_root/scripts/"{setup-components.py,setup_prompts.py} "$test_root/scripts/"
 cp "$repo_root/bootstrap.sh" "$test_root/"
 cp "$repo_root/scripts/lib/"{setup-prerequisites.sh,setup-prompts.sh,docker-prerequisite.sh} "$test_root/scripts/lib/"
 cp "$repo_root/scripts/lib/image-names.sh" "$test_root/scripts/lib/"
 printf '%s\n' '{"benches":{"testBench":{"path":"devBenches/testBench","url":"git@github.com:opensoft/testBench.git"}}}' > "$test_root/config/bench-config.json"
 source "$test_root/scripts/interactive-setup.sh"
+bench_runtime_status[testBench]=installed
 
 bench_dir="$test_root/devBenches/testBench"
 git init -q "$bench_dir"
@@ -41,15 +43,20 @@ done
 
 for remote in https://github.com/other/testBench.git https://example.com/opensoft/testBench.git; do
     git -C "$bench_dir" remote set-url origin "$remote"
-    assert_status 'not installed' "reject different repository: $remote"
+    assert_status 'needs check' "reject different repository: $remote"
 done
 
 git -C "$bench_dir" remote set-url origin https://github.com/opensoft/testBench.git
 mv "$bench_dir/.git" "$test_root/bench-git-dir"
 printf 'gitdir: %s\n' "$test_root/bench-git-dir" > "$bench_dir/.git"
 assert_status installed 'gitfile checkout (submodule layout)'
+bench_runtime_status[testBench]='needs setup'
+assert_status 'needs setup' 'cloned source without an installed image is not installed'
+bench_runtime_status[testBench]='needs check'
+assert_status 'needs check' 'unknown Docker inventory is not reported as installed'
+bench_runtime_status[testBench]=installed
 mv "$bench_dir/.devcontainer" "$test_root/bench-infrastructure"
-assert_status 'needs creds' 'checkout without bench infrastructure needs setup'
+assert_status 'needs setup' 'checkout without bench infrastructure needs setup'
 mv "$test_root/bench-infrastructure" "$bench_dir/.devcontainer"
 printf 'gitdir: %s\n' "$test_root/missing-git-dir" > "$bench_dir/.git"
 assert_status 'not installed' 'invalid gitfile is not a checkout'

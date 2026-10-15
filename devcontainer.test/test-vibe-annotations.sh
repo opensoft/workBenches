@@ -16,6 +16,7 @@ fail() {
 
 bash -n "$ENSURE_SCRIPT"
 bash -n "$LAUNCHER"
+python3 "$SCRIPT_DIR/test-vibe-annotations-readiness.py"
 
 VIBE_ANNOTATIONS_HOME_DIR="$TEST_ROOT/vibe" \
   docker compose -f "$COMPOSE_FILE" config --quiet

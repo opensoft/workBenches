@@ -100,19 +100,19 @@ From an existing checkout:
 
 This single command:
 
-1. Checks Docker access and common dependencies, offering installation when needed.
-2. Opens the TUI to select benches, AI assistants, and tools. An empty selection finishes without installs or image builds.
-3. Shows selected changes, shared host setup, and local credential readiness, then asks for confirmation before changing profiles, recovering credentials, or configuring the host.
+1. Identifies the OS and checks required Docker access, Windows/WSL 2 readiness, and common dependencies. Missing requirements open a guided setup screen before component selection.
+2. Opens the TUI to select benches, AI assistants, and tools. Press **P** for the **Requirements** section, including optional workBenches account and AI credential setup. An empty component selection finishes without component installs or image builds.
+3. Enter applies the selected changes immediately, with a compact install/update summary. Q cancels and an empty selection exits.
 4. Checks Node/npm only for selected tools that require them. A system-owned npm location falls back to `~/.local`, with PATH configured for new terminals.
-5. Reuses valid local credentials, or offers direct sign-in, guided vault recovery, or authentication later for selected AI tools, with optional personal/organization profiles.
-6. Configures the shell and installs pinned estate commands, then initializes the workspace repository if needed.
+5. Installs AI tools without requiring sign-in. Select **AI accounts** under Requirements to configure accounts after installation, using direct sign-in or guided vault recovery. Existing profiles and credentials are preserved. A workBenches account is optional; Keycloak login requires organization-provided settings.
+6. Configures host shell settings only when **Shell setup** is selected. **Org workspace** explicitly initializes the workspace repository, after installing its pinned estate-command dependencies.
 7. Installs selected tools and builds only selected bench dependencies. Wave widgets and VPN setup follow the selected tools.
 
 After setup, open any bench in VS Code → "Reopen in Container" to start developing.
 
 ### Re-running setup.sh
 
-Installed items show their status and default to no changes. Space selects an install/update and pressing it again undoes the selection. D selects removal and pressing it again undoes removal. Only explicit selections are applied; an unchanged selection exits without host setup or builds. On runs with requested changes, the estate commands (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status` and the five lane tools) are checked against workBenches' pin on every run and are re-placed only when a host copy differs from it. The workspace repository step does nothing at all once you have one: it is a file test on `~/.agents/workspace.yaml`, so that step skips an existing workspace without asking questions or contacting the network.
+Installed items show their status and default to no changes. Space selects an install/update and pressing it again undoes the selection. D selects removal and pressing it again undoes removal. Only explicit selections are applied; an unchanged selection exits without host setup or builds. Bench checkout deletion requires a focused confirmation and refuses local changes, untracked/ignored files, local-only commits, or use by a running container. Docker images, volumes, and credentials are preserved. For selected bench installs or organization workspace setup, the estate commands (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status` and the five lane tools) are checked against workBenches' pin and are re-placed only when a host copy differs from it. The optional workspace repository step does nothing at all once you have one: it is a file test on `~/.agents/workspace.yaml`, so that step skips an existing workspace without asking questions or contacting the network.
 
 ## Docker Image Layers
 
@@ -173,20 +173,18 @@ checkout unchanged.
 
 ```
 setup.sh
-  ├── Docker access + Python/jq/git/curl preflight
-  ├── Component TUI: Benches | AI Assistants | Tools
-  │     └── Q/EOF cancels; empty Enter finishes without installs/builds
-  ├── Node/npm prerequisite for selected npm tools
-  ├── Selected AI tools: direct sign-in / recover from vault / configure later
-  │     ├── Optional personal/organization profiles
-  │     └── Guided vault item mappings or advanced JSON import
-  ├── Selected changes + per-profile local credential presence
-  ├── Shell + pinned estate commands → workspace repository
-  ├── Selected Wave widgets / Claude workflows
-  ├── Layer 0 only when benches are selected
-  ├── Apply saved component selection; native login for missing credentials
-  ├── Layer 1 builds only for selected bench categories
-  └── Summary + log file path
+  ├── OS / Windows WSL 2 + Docker access + Python/jq/git/curl requirements
+  │     └── Missing requirements: guided configure / recheck / quit
+  ├── Component TUI: Benches | AI Assistants | Tools | Requirements (P)
+  │     └── Enter applies; Q/EOF cancels; empty Enter finishes
+  ├── Compact selected-change summary + selected Node/npm prerequisites
+  ├── Reuse existing profiles; preserve host shell settings
+  ├── Selected bench dependencies: shared commands → Layer 0 → family Layer 1
+  ├── Install/update selected components
+  ├── Optional Shell setup / Org workspace
+  ├── Optional workBenches account: organization Keycloak browser approval
+  ├── Optional AI accounts: profiles, direct login or confirmed vault recovery
+  └── Summary + authentication pending where applicable + log path
 ```
 
 Docker verification runs before host installers and credential onboarding.
@@ -196,12 +194,14 @@ passwords are entered into sudo. A stopped local system Docker service can be
 started with the user's agreement. Declining, cancellation, installation
 failure or inaccessible Docker stops setup before later steps. Remote/rootless
 contexts use their configured daemon and local access policy.
+See [Workstation requirements and optional accounts](docs/setup-requirements.md)
+for Windows guidance and organization Keycloak configuration.
 
 Your host's `openRepoShape`, `openRepoTools`, `park`, `resume`, `status`, `lane`, `lanes`, `lane-handoff`, `lane-rename`, `lanes-edit.sh`, `lane-start`, `lane-end`, `link-estates`, `repos.tsv`, `claude-current` and `claude-restart-check` come from workBenches' own pin (`devBenches/base-image/upstream-pin.yaml`). `setup.sh` places them from the vendored copies in `devBenches/base-image/files/openreposhape/` and `devBenches/base-image/files/openrepotools/`, and re-places them whenever a host copy differs from the pin, in either direction — behind, ahead, or hand-edited. To move them to a new upstream commit, move the pin with `update-upstream.py apply` and re-run `setup.sh`; do not edit the vendored files or the installed commands directly. The step refuses to run over a symlinked, non-regular, or read-only target, and verifies the fifteen placed openRepoTools files (and openRepoShape's own) against the vendored copies before it reports success. Set `WORKBENCHES_SKIP_ESTATE_COMMANDS=1` to skip this step.
 
 ## Your Workspace Repository
 
-After the estate commands are installed, `setup.sh` runs `openRepoTools wip init` — the fourth link in the onboarding chain of lane-collision-protocol Amendment 9(e):
+When **Org workspace** is selected, setup installs the estate commands and runs `openRepoTools wip init` — the fourth link in the onboarding chain of lane-collision-protocol Amendment 9(e):
 
 ```text
 gh repo clone opensoft/workBenches && cd workBenches && ./setup.sh   # the host, and the estate commands
@@ -292,11 +292,33 @@ step.
 
 | State | Action |
 |-------|--------|
-| Installed + images exist | `✓ up to date` — skipped |
-| Installed + Layer 3 missing | `⚠ Layer 3 missing` — hint to run ensure-layer3.sh |
-| Needs setup (repo exists, no infra) | Runs `setup.sh` or `build-layer.sh` |
-| Not installed | Clones repo, then runs setup |
-| No setup.sh or build-layer.sh | Marks as ready for VS Code |
+| Installed images/container | Space selects an update; leaving it unchecked keeps it |
+| Base bench image only, missing user runtime | Shows `image only`; Space completes setup, D removes the cached image |
+| Checkout only, missing runtime | Shows `needs setup`; Space runs bench setup |
+| Not installed | Space selects cloning and installation |
+| Selected uninstall | D removes the selected runtime and verifies its absence |
+| Docker inventory unavailable | Shows `needs docker`; install/removal selections verify Docker before applying |
+| Different checkout/runtime ownership | Shows `needs check`; restore the expected checkout and refresh |
+
+Run `./setup.sh` again to manage installed components. Use **Space** to select
+or undo an install/update, **D** to select or undo an uninstall, **R** to
+refresh the installed state, **Enter** to apply, and **Q** to cancel.
+
+Bench uninstall stops/removes only the selected bench's containers and removes
+its `latest` and current-user image tags. The checkout, local work, mounted
+projects, credentials, volumes, and shared base images remain available.
+The source checkout then shows `needs setup` and can be installed again.
+
+Host-tool removal uses the recognized native, npm, uv, Linux package, or Windows
+WinGet installation method. It preserves account/profile data and verifies
+that the tool is gone. An unknown installation or failed removal reports a
+failure with an actionable message. Saved terminal settings alone are not
+evidence that the terminal application is installed. Setup verifies required
+Docker access before selection, including host-only removal; removal does not
+install/update Node.js.
+
+Shell setup, Org workspace, and AI accounts are configuration actions; they can
+be configured again without deleting shell settings, workspaces, or credentials.
 
 ## Directory Structure
 
@@ -479,7 +501,7 @@ ordinary launch check before setup reports them ready. Existing running benches
 are preserved; stop them before applying setup changes or use Wave's explicit
 repair command when appropriate.
 
-At the authentication route prompt, use `2B` for Bitwarden, `2V` for Vaultwarden,
+Select **AI accounts** to open account setup after installation. At the authentication route prompt, use `2B` for Bitwarden, `2V` for Vaultwarden,
 `2P` for 1Password, or `2A` for Azure Key Vault. The compact password-manager flow
 uses editable email defaults and infers unambiguous credential formats. Item and
 destination confirmation remain explicit. Choose `2` for advanced imports,

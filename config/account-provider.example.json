@@ -1,0 +1,4 @@
+{
+  "issuer": "https://login.example.org/realms/workbenches",
+  "clientId": "openworkbenches-cli"
+}

@@ -622,34 +622,16 @@ run_step \
     --
 assert_contains "$OUTPUT" "$PLACED_BIN/openRepoTools" '(e2) the installed file is the one consulted, not the one on $PATH'
 
-printf '%s\n' '--- (e3) ordering, statically: setup.sh calls this AFTER the estate commands ---'
-# `|| true` on both: a grep that matches nothing exits 1, and under
-# `set -o pipefail` that would abort this suite at the assignment instead of
-# letting the emptiness be reported as the failure it is.
-estate_line="$(grep -n 'scripts/setup-estate-commands.sh" ||' "$SETUP_SH" | head -n 1 | cut -d: -f1 || true)"
-workspace_line="$(grep -n 'scripts/setup-workspace-repo.sh" ||' "$SETUP_SH" | head -n 1 | cut -d: -f1 || true)"
-# A step setup.sh never calls is not a step. Both line numbers are checked for
-# emptiness FIRST and reported as failures, because a missing call must fail
-# this suite loudly rather than crash it on the arithmetic below.
-if [ -z "$estate_line" ]; then
-    fail "(e3) setup.sh does not invoke scripts/setup-estate-commands.sh at all"
-elif [ -z "$workspace_line" ]; then
-    fail "(e3) setup.sh does not invoke scripts/setup-workspace-repo.sh at all"
-elif [ "$estate_line" -lt "$workspace_line" ]; then
-    pass "(e3) setup.sh invokes setup-estate-commands.sh (line $estate_line) before setup-workspace-repo.sh (line $workspace_line)"
-else
-    fail "(e3) setup.sh calls the workspace step (line $workspace_line) BEFORE the estate commands (line $estate_line)"
-fi
-assert_contains "$(cat "$SETUP_SH")" 'run_logged "WORKSPACE REPOSITORY"' \
-    '(e3) it runs through run_logged (RV-W6), so its own output reaches $LOG_FILE too, not just the header banner'
-if [ -n "$estate_line" ] && [ -n "$workspace_line" ] && [ "$estate_line" -lt "$workspace_line" ]; then
-    assert_contains "$(sed -n "${workspace_line}p" "$SETUP_SH")" '||' '(e3) the workspace step is best-effort in setup.sh, like the estate step'
-    # And nothing between them: the chain order of Amendment 9(e) is meant to be
-    # readable off one screen of setup.sh.
-    between="$(sed -n "$((estate_line + 1)),$((workspace_line - 1))p" "$SETUP_SH" \
-        | grep 'SCRIPT_DIR}/scripts/' | grep -cv 'setup-workspace-repo.sh' || true)"
-    assert_equal "$between" '0' '(e3) no other script runs between --install and wip init'
-fi
+printf '%s\n' '--- (e3) optional workspace setup follows estate installation and logs its output ---'
+interactive="$REPO_ROOT/scripts/interactive-setup.sh"
+assert_contains "$(cat "$interactive")" '"$SCRIPT_DIR/setup-estate-commands.sh" && "$SCRIPT_DIR/setup-workspace-repo.sh"' \
+    '(e3) the explicitly selected workspace step follows successful estate installation'
+assert_contains "$(cat "$interactive")" 'tee -a "$LOG_FILE"' \
+    '(e3) workspace output reaches the setup log as well as the terminal (RV-W6)'
+assert_contains "$(cat "$SETUP_SH")" 'export WORKBENCHES_SETUP_LOG_FILE="$LOG_FILE"' \
+    '(e3) root and component setup share the same log for the final attention hint'
+assert_contains "$(cat "$SETUP_SH")" 'selected "$selection_file" workspace_repo' \
+    '(e3) the final workspace reminder is relevant only when workspace setup was selected'
 
 printf '%s\n' '--- (e4) RV-W7: the SETUP COMPLETE marker reminder cannot be skipped by the BUILD_FAILED exit path ---'
 # setup.sh exits 1 at the BUILD_FAILED check, before the line that used to

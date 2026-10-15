@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/lib/setup-prerequisites.sh"
 source "$SCRIPT_DIR/../bootstrap.sh"
 LOG_DIR="$SCRIPT_DIR/../logs"
 mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/setup-$(date +%Y%m%d-%H%M%S).log"
+LOG_FILE="${WORKBENCHES_SETUP_LOG_FILE:-$LOG_DIR/setup-$(date +%Y%m%d-%H%M%S).log}"
 
 # Logging function
 log() {
@@ -120,17 +120,21 @@ declare -A component_checked
 declare -A component_status
 declare -A component_description
 declare -A component_action  # Empty means keep; otherwise install/update/uninstall.
+declare -A bench_runtime_status
 declare -a component_order
 
 # Current selection
 current_selection=0
 current_block=0
 
-# Three main sections: 0=Benches, 1=AI Assistants, 2=Tools
-CURRENT_SECTION=0  # 0=Benches, 1=AI Assistants, 2=Tools
+# Sections: 0=Benches, 1=AI Assistants, 2=Tools, 3=Requirements
+CURRENT_SECTION=0  # Requirements has a separate page for narrow terminals.
 declare -a bench_items
 declare -a ai_items
 declare -a tool_items
+declare -a requirement_items
+declare -A requirement_detail
+setup_os_label=""
 declare -A bench_status
 declare -A ai_status
 declare -A tool_status
@@ -206,11 +210,13 @@ init_components() {
         "wave"
         "amnezia_vpn"
         "0dcloud_vpn"
+        "host_shell"
+        "workspace_repo"
     )
 
     # Initialize tool items
     component_checked["vscode"]=false
-    component_description["vscode"]="Visual Studio Code"
+    component_description["vscode"]="VS Code"
 
     component_checked["warp"]=false
     component_description["warp"]="Warp Terminal"
@@ -223,6 +229,49 @@ init_components() {
 
     component_checked["0dcloud_vpn"]=false
     component_description["0dcloud_vpn"]="0dcloud VPN"
+    for item in host_shell workspace_repo ai_accounts; do
+        component_checked[$item]=false
+    done
+    component_description[host_shell]="Shell setup"
+    component_description[workspace_repo]="Org workspace"
+    component_description[ai_accounts]="AI accounts"
+    component_description[workbenches_account]="workBenches account"
+    component_checked[workbenches_account]=false
+    requirement_items=(docker setup_tools workbenches_account ai_accounts)
+    if is_wsl_windows; then requirement_items=(wsl "${requirement_items[@]}"); fi
+}
+
+load_requirements() {
+    local inventory key label state detail
+    inventory="$(python3 "$SCRIPT_DIR/setup-requirements.py" json)" || return "$?"
+    setup_os_label="$(jq -r '.os' <<< "$inventory")"
+    while IFS=$'\t' read -r key label state detail; do
+        component_description[$key]="$label"
+        component_status[$key]="$state"
+        requirement_detail[$key]="$detail"
+        component_checked[$key]=false
+    done < <(jq -r '.requirements[] | [.key,.label,(if .ready then "ready" else "missing" end),.detail] | @tsv' <<< "$inventory")
+    component_status[workbenches_account]="$(python3 "$SCRIPT_DIR/setup-workbenches-account.py" --status)"
+    requirement_detail[workbenches_account]='Optional Keycloak browser login / registration; organization settings required.'
+    component_status[ai_accounts]="$(check_component_status ai_accounts)"
+    requirement_detail[ai_accounts]='Optional: direct sign-in, Azure / password vault recovery, or configure later.'
+}
+
+draw_requirements() {
+    echo -e "${BOLD}${YELLOW}REQUIREMENTS${NC}  ← Back to Tools"
+    local item selected kind mark
+    for item in "${requirement_items[@]}"; do
+        selected='  '
+        [[ "$item" != "${requirement_items[$current_selection]}" ]] || selected='▶ '
+        kind=required
+        case "$item" in workbenches_account|ai_accounts) kind=optional ;; esac
+        mark='[ ]'
+        [[ "${component_checked[$item]}" != true ]] || mark='[✓]'
+        printf '%s%s %-20s (%s) — %s\n' "$selected" "$mark" "${component_description[$item]}" "$kind" "${component_status[$item]}"
+        printf '      %s\n' "${requirement_detail[$item]}"
+    done
+    echo 'Required items cannot be uninstalled here. Space configures; R rechecks.'
+    echo 'An account does not grant AI provider access or vault permissions.'
 }
 
 # Compare GitHub repository identities across HTTPS and SSH clone URLs.
@@ -243,14 +292,27 @@ normalize_bench_remote() {
     esac
 }
 
+component_binary_present() {
+    [[ "$(python3 "$SCRIPT_DIR/setup-components.py" tool-status "$1")" == installed ]]
+}
+
 # Check current installation status
 check_component_status() {
     local component="$1"
     log "Checking status: $component"
 
     case "$component" in
+        host_shell)
+            if [[ -f "$HOME/.zshrc" ]] && cmp -s "$HOME/.zshrc" "$SCRIPT_DIR/../config/shell/zshrc"; then echo configured; else echo optional; fi
+            ;;
+        workspace_repo)
+            [[ -f "${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/workspace.yaml" ]] && echo configured || echo optional
+            ;;
+        ai_accounts)
+            if compgen -G "${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/*-profiles.json" >/dev/null; then echo configured; else echo optional; fi
+            ;;
         claude_cli)
-            if command -v claude &> /dev/null; then
+            if component_binary_present claude_cli; then
                 # Check if credentials exist
                 if python3 "$SCRIPT_DIR/profile_credentials.py" status claude; then
                     echo "installed"
@@ -262,14 +324,14 @@ check_component_status() {
             fi
             ;;
         copilot_cli)
-            if command -v copilot &> /dev/null; then
+            if component_binary_present copilot_cli; then
                 echo "installed"
             else
                 echo "not installed"
             fi
             ;;
         codex_cli)
-            if command -v codex &> /dev/null; then
+            if component_binary_present codex_cli; then
                 # Check if authenticated (auth.json or API key)
                 if python3 "$SCRIPT_DIR/profile_credentials.py" status codex; then
                     echo "installed"
@@ -281,14 +343,14 @@ check_component_status() {
             fi
             ;;
         antigravity_cli)
-            if command -v agy &> /dev/null; then
+            if component_binary_present antigravity_cli; then
                 echo "installed"
             else
                 echo "not installed"
             fi
             ;;
         opencode_cli)
-            if command -v opencode &> /dev/null; then
+            if component_binary_present opencode_cli; then
                 if python3 "$SCRIPT_DIR/profile_credentials.py" status omniroute; then
                     echo "installed"
                 else
@@ -299,7 +361,7 @@ check_component_status() {
             fi
             ;;
         pi_cli)
-            if command -v pi &>/dev/null || [[ -x "$HOME/.npm-global/bin/pi" ]]; then
+            if component_binary_present pi_cli; then
                 if python3 "$SCRIPT_DIR/profile_credentials.py" status pi; then
                     echo "installed"
                 else
@@ -310,17 +372,16 @@ check_component_status() {
             fi
             ;;
         spec_kit)
-            command -v specify &> /dev/null && echo "installed" || echo "not installed"
+            python3 "$SCRIPT_DIR/setup-components.py" tool-status spec_kit
             ;;
         openspec)
-            command -v openspec &> /dev/null && echo "installed" || echo "not installed"
+            python3 "$SCRIPT_DIR/setup-components.py" tool-status openspec
             ;;
         vscode)
             # Check for VS Code - on WSL, check for Windows version
             if is_wsl_windows; then
                 # WSL: Check for Windows VS Code and WSL extension
-                if command -v code &> /dev/null ||
-                   windows_file_exists "C:\\Program Files\\Microsoft VS Code\\Code.exe" ||
+                if windows_file_exists "C:\\Program Files\\Microsoft VS Code\\Code.exe" ||
                    windows_env_file_exists "LOCALAPPDATA" "Programs\\Microsoft VS Code\\Code.exe"; then
                     # VS Code is installed, check for WSL extension by checking vscode-server directory
                     if [ -d "$HOME/.vscode-server" ]; then
@@ -341,7 +402,7 @@ check_component_status() {
                 fi
             else
                 # Native Linux: Check for Linux VS Code
-                command -v code &> /dev/null && echo "installed" || echo "not installed"
+                python3 "$SCRIPT_DIR/setup-components.py" tool-status vscode
             fi
             ;;
         warp)
@@ -356,11 +417,7 @@ check_component_status() {
                 fi
             else
                 # Native Linux: Check for Linux Warp
-                if command -v warp-terminal &> /dev/null || [ -d "$HOME/.warp" ] || [ -d "/usr/share/warp-terminal" ]; then
-                    echo "installed"
-                else
-                    echo "not installed"
-                fi
+                python3 "$SCRIPT_DIR/setup-components.py" tool-status warp
             fi
             ;;
         wave)
@@ -376,11 +433,7 @@ check_component_status() {
                 fi
             else
                 # Native Linux: Check for Linux Wave
-                if command -v wave &> /dev/null || [ -d "$HOME/.waveterm" ]; then
-                    echo "installed"
-                else
-                    echo "not installed"
-                fi
+                python3 "$SCRIPT_DIR/setup-components.py" tool-status wave
             fi
             ;;
         amnezia_vpn)
@@ -392,7 +445,7 @@ check_component_status() {
                     echo "not installed"
                 fi
             else
-                echo "not installed"
+                python3 "$SCRIPT_DIR/setup-components.py" tool-status amnezia_vpn
             fi
             ;;
         0dcloud_vpn)
@@ -403,7 +456,7 @@ check_component_status() {
                     echo "not installed"
                 fi
             else
-                echo "not installed"
+                python3 "$SCRIPT_DIR/setup-components.py" tool-status 0dcloud_vpn
             fi
             ;;
         bench_*)
@@ -439,22 +492,24 @@ check_component_status() {
                                [ -f "$full_path/setup.sh" ] || \
                                [ -f "$full_path/build-layer.sh" ] || \
                                [ -f "$full_path/scripts/build-layer.sh" ]; then
-                                echo "installed"
+                                bench_installation_status "$bench_name"
                             else
-                                echo "needs creds"  # Repo cloned but no bench infrastructure
+                                echo "needs setup"
                             fi
                         else
-                            echo "not installed"  # Wrong remote
+                            echo "needs check"  # Different checkout: never execute its setup script.
                         fi
                     else
                         # No URL configured, just check if it's a git repo
-                        echo "installed"
+                        bench_installation_status "$bench_name"
                     fi
                 else
                     echo "not installed"  # Directory exists but not a git repo
                 fi
             else
-                echo "not installed"
+                # Installed artifacts can remain after a checkout was removed.
+                local runtime="$(bench_installation_status "$bench_name")"
+                if [[ "$runtime" == 'needs setup' ]]; then echo 'not installed'; else echo "$runtime"; fi
             fi
             ;;
         *)
@@ -463,8 +518,55 @@ check_component_status() {
     esac
 }
 
+# A checkout is source availability; installed bench images/containers are runtime.
+refresh_bench_inventory() {
+    local bench state
+    bench_runtime_status=()
+    while IFS=$'\t' read -r bench state; do
+        [[ -n "$bench" ]] && bench_runtime_status[$bench]="$state"
+    done < <(python3 "$SCRIPT_DIR/setup-components.py" bench-statuses)
+}
+
+bench_installation_status() {
+    local bench="$1"
+    [[ -n "${bench_runtime_status[$bench]:-}" ]] || refresh_bench_inventory
+    echo "${bench_runtime_status[$bench]:-needs check}"
+}
+
+refresh_component_statuses() {
+    local item
+    refresh_bench_inventory
+    for item in "${!component_description[@]}"; do
+        case "$item" in docker|wsl|setup_tools|workbenches_account) continue ;; esac
+        component_status[$item]="$(check_component_status "$item")"
+    done
+    load_requirements
+}
+
+uninstall_component() {
+    local item="$1" removal_status=0
+    if is_wsl_windows && [[ "$item" =~ ^(vscode|warp|wave|amnezia_vpn|0dcloud_vpn)$ ]]; then
+        local target="$item"
+        [[ "$item" != amnezia_vpn ]] || target=amnezia
+        [[ "$item" != 0dcloud_vpn ]] || target=0dcloud
+        "$SCRIPT_DIR/setup-windows-tools.sh" --uninstall "$target" || removal_status=$?
+    else
+        python3 "$SCRIPT_DIR/setup-components.py" uninstall "$item" || removal_status=$?
+    fi
+    setup_propagate_cancel "$removal_status"
+    hash -r
+    if [[ "$item" == bench_* ]]; then refresh_bench_inventory; fi
+    component_status[$item]="$(check_component_status "$item")"
+    if [[ "$removal_status" -eq 0 && ( "${component_status[$item]}" == installed || "${component_status[$item]}" == 'needs creds' ) ]]; then
+        echo "Removal needs attention: $item is still installed."
+        return 1
+    fi
+    return "$removal_status"
+}
+
 # Load all component statuses
 load_statuses() {
+    refresh_bench_inventory
     # Load statuses for benches
     for bench in "${bench_items[@]}"; do
         local key="bench_$bench"
@@ -495,6 +597,7 @@ load_statuses() {
         component_checked["$item"]=false
         component_action["$item"]=""
     done
+    load_requirements
 }
 
 # Draw a single component line
@@ -518,7 +621,7 @@ draw_component() {
     if [[ "$status" == "installed" || "$status" == "configured" ]]; then
         status_color="$GREEN"
         status_symbol="✓"
-    elif [[ "$status" == "needs creds" ]]; then
+    elif [[ "$status" == "needs creds" || "$status" == "needs setup" || "$status" == "needs check" || "$status" == "needs docker" || "$status" == 'image only' ]]; then
         status_color="$YELLOW"
         status_symbol="⚠"
     fi
@@ -562,6 +665,9 @@ get_checked_state() {
         [[ "$item" != separator* ]] && state+="${component_checked[$item]}:${component_action[$item]},"
     done
     for item in "${tool_items[@]}"; do
+        state+="${component_checked[$item]}:${component_action[$item]},"
+    done
+    for item in workbenches_account ai_accounts; do
         state+="${component_checked[$item]}:${component_action[$item]},"
     done
     echo "$state"
@@ -716,19 +822,32 @@ draw_ui() {
 
     # Header
     echo -e "${BOLD}${BLUE}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BOLD}${BLUE}║               WorkBenches Configuration Manager                    ║${NC}"
+    echo -e "${BOLD}${BLUE}  workBenches Setup — ${setup_os_label}${NC}"
     echo -e "${BOLD}${BLUE}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${CYAN}Navigation:${NC} ↑/↓ Move  ←/→ Section  Space Install/Update (again: undo)  D Remove/Undo  Enter Review  Q Quit"
+    echo -e "${CYAN}Navigation:${NC} ↑/↓ Move  ←/→ Section  P Requirements  Space Configure  D Remove  R Refresh  Enter Apply  Q Quit"
+    echo "Requirements: Docker ${component_status[docker]} | Account ${component_status[workbenches_account]} (optional)"
     echo ""
 
     # Draw three sections side by side
-    draw_three_sections
+    if [[ "$CURRENT_SECTION" == 3 ]]; then draw_requirements; else draw_three_sections; fi
 
     echo ""
 
     # Status legend
-    echo -e "${GREEN}✓${NC} Installed  ${DIM}│${NC}  ${YELLOW}⚠${NC} Needs setup ${DIM}(repo cloned but bench commands not configured — run setup)${NC}  ${DIM}│${NC}  ${RED}✗${NC} Not installed"
+    echo -e "${GREEN}✓${NC} Installed/configured  ${DIM}│${NC}  ${YELLOW}⚠${NC} Needs setup/sign-in/check  ${DIM}│${NC}  ${RED}✗${NC} Not installed  ${DIM}│ · Optional${NC}"
+    echo "Uninstall preserves projects, credentials, and Docker volumes."
+    echo "Shell setup replaces shell settings. Org workspace may create a GitHub repo."
+    local selected_item=""
+    case "$CURRENT_SECTION" in
+        0) selected_item="bench_${bench_items[$current_selection]}" ;;
+        1) selected_item="${ai_items[$current_selection]}" ;;
+        2) selected_item="${tool_items[$current_selection]}" ;;
+        3) selected_item="${requirement_items[$current_selection]}" ;;
+    esac
+    if [[ -n "${component_description[$selected_item]:-}" ]]; then
+        echo "${component_description[$selected_item]}: ${component_status[$selected_item]}${component_action[$selected_item]:+ → ${component_action[$selected_item]}}"
+    fi
     echo ""
 
     # Show selected count
@@ -740,6 +859,9 @@ draw_ui() {
         [[ "$item" != separator* ]] && [ "${component_checked[$item]}" = true ] && ((selected_count++))
     done
     for item in "${tool_items[@]}"; do
+        [ "${component_checked[$item]}" = true ] && ((selected_count++))
+    done
+    for item in workbenches_account ai_accounts; do
         [ "${component_checked[$item]}" = true ] && ((selected_count++))
     done
 
@@ -846,9 +968,12 @@ draw_item_compact() {
     if [[ "$status" == "installed" || "$status" == "configured" ]]; then
         status_color="$GREEN"
         status_symbol="✓"
-    elif [[ "$status" == "needs creds" ]]; then
+    elif [[ "$status" == "needs creds" || "$status" == "needs setup" || "$status" == "needs check" || "$status" == "needs docker" || "$status" == 'image only' ]]; then
         status_color="$YELLOW"
         status_symbol="⚠"
+    elif [[ "$status" == optional ]]; then
+        status_color="$DIM"
+        status_symbol="·"
     fi
 
     # Selection highlight
@@ -893,8 +1018,10 @@ handle_input() {
                     max_idx=$((${#bench_items[@]} - 1))
                 elif [ $CURRENT_SECTION -eq 1 ]; then
                     max_idx=$((${#ai_items[@]} - 1))
-                else
+                elif [ $CURRENT_SECTION -eq 2 ]; then
                     max_idx=$((${#tool_items[@]} - 1))
+                else
+                    max_idx=$((${#requirement_items[@]} - 1))
                 fi
 
                 if [ $current_selection -lt $max_idx ]; then
@@ -910,7 +1037,7 @@ handle_input() {
                 fi
                 ;;
             '[C') # Right arrow - switch section right
-                if [ $CURRENT_SECTION -lt 2 ]; then
+                if [ $CURRENT_SECTION -lt 3 ]; then
                     ((CURRENT_SECTION++))
                     current_selection=0
                 fi
@@ -936,20 +1063,38 @@ handle_input() {
                         return 0  # Skip separators
                     fi
                     key="$item"
-                else
+                elif [ $CURRENT_SECTION -eq 2 ]; then
                     local item="${tool_items[$current_selection]}"
                     key="$item"
+                else
+                    key="${requirement_items[$current_selection]}"
+                    case "$key" in
+                        docker|wsl|setup_tools)
+                            [[ "$input_key" != d && "$input_key" != D ]] || return 0
+                            echo -e "${SHOW_CURSOR}"
+                            if [[ "$key" == setup_tools ]]; then ensure_setup_dependencies; else ensure_workstation_requirements; fi
+                            local requirements_status=$?
+                            setup_propagate_cancel "$requirements_status"
+                            refresh_component_statuses
+                            draw_ui
+                            return 0 ;;
+                    esac
                 fi
 
                 # Determine action based on current status
                 local status="${component_status[$key]}"
                 local is_installed=false
-                [[ "$status" == "installed" || "$status" == "needs creds" ]] && is_installed=true
+                [[ "$status" != 'needs check' ]] || return 0
+                [[ "$status" == "installed" || "$status" == "needs creds" || "$status" == 'image only' ]] && is_installed=true
 
                 local requested="install"
                 [[ "$is_installed" == true ]] && requested="update"
+                if [[ "$key" == host_shell || "$key" == workspace_repo || "$key" == ai_accounts || "$key" == workbenches_account ]]; then
+                    [[ "$input_key" != d && "$input_key" != D ]] || return 0
+                    requested=install
+                fi
                 if [[ "$input_key" == d || "$input_key" == D ]]; then
-                    [[ "$is_installed" == true ]] || return 0
+                    [[ "$is_installed" == true || ( "$key" == bench_* && "$status" == 'needs docker' ) ]] || return 0
                     requested="uninstall"
                 fi
                 if [[ "${component_action[$key]}" == "$requested" ]]; then
@@ -963,6 +1108,8 @@ handle_input() {
             ''|$'\r'|$'\n') # Enter - confirm and process
                 return 1
                 ;;
+            'r'|'R') refresh_component_statuses; draw_ui ;;
+            'p'|'P') CURRENT_SECTION=3; current_selection=0 ;;
             'q'|'Q') # Quit
                 return 2
                 ;;
@@ -1276,17 +1423,24 @@ process_selections() {
 
     local any_selected=false
     local success_count=0
-    local fail_count=0
+    local fail_count=0 active_component=""
+    local -A failed_components=()
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local config_file="$script_dir/../config/bench-config.json"
-    local -a items_needing_creds=()
 
     # Process benches
     for bench in "${bench_items[@]}"; do
         local key="bench_$bench"
         if [[ "${component_checked[$key]}" == true && -n "${component_action[$key]}" ]]; then
+            active_component="$key"
             local action="${component_action[$key]}"
             local status="${component_status[$key]}"
+            if [[ "$status" == 'needs check' || "$status" == 'needs docker' ]]; then
+                any_selected=true
+                echo "Needs attention: cannot verify $bench runtime/checkout; refresh after restoring Docker or the expected checkout."
+                failed_components[$active_component]=true; ((fail_count++))
+                continue
+            fi
 
             # Installed benches with no pending action: check Layer 2/3 images, skip if current
             if [[ "$status" == "installed" && -z "$action" ]]; then
@@ -1341,24 +1495,17 @@ process_selections() {
                 log "Uninstalling bench: $bench"
                 echo -e "${BOLD}${CYAN}▶ Uninstalling: $bench${NC}"
                 local bench_path=$(jq -r ".benches.${bench}.path // \"$bench\"" "$config_file" 2>/dev/null)
-                if [ -d "$script_dir/../$bench_path" ]; then
-                    log "Removing directory: $script_dir/../$bench_path"
-                    if rm -rf "$script_dir/../$bench_path"; then
-                        log "Successfully uninstalled $bench"
-                        echo -e "  ${GREEN}✓ Successfully uninstalled $bench${NC}"
-                        ((success_count++))
-                    else
-                        log "ERROR: Failed to uninstall $bench"
-                        echo -e "  ${RED}✗ Failed to uninstall $bench${NC}"
-                        ((fail_count++))
-                    fi
+                if uninstall_component "$key"; then
+                    ((success_count++))
                 else
-                    echo -e "  ${YELLOW}⚠ $bench not found, already uninstalled${NC}"
+                    local removal_status=$?
+                    setup_propagate_cancel "$removal_status"
+                    failed_components[$active_component]=true; ((fail_count++))
                 fi
                 echo ""
             else
                 # Check if needs setup vs install
-                if [[ "$status" == "needs creds" ]]; then
+                if [[ "$status" == "needs creds" || "$status" == "needs setup" || "$status" == "needs check" || "$status" == 'image only' ]]; then
                     # Bench is installed but not set up
                     log "Setting up bench: $bench"
                     echo -e "${BOLD}${CYAN}▶ Setting up: $bench${NC}"
@@ -1418,7 +1565,7 @@ process_selections() {
                         else
                             log "ERROR: Setup script failed for $bench"
                             echo -e "  ${RED}✗ Setup script failed${NC}"
-                            ((fail_count++))
+                            failed_components[$active_component]=true; ((fail_count++))
                         fi
                     else
                         # No setup.sh — try inline setup: look for build-layer.sh
@@ -1450,7 +1597,7 @@ process_selections() {
                             else
                                 log "ERROR: build-layer.sh failed for $bench"
                                 echo -e "  ${RED}✗ Image build failed for $bench${NC}"
-                                ((fail_count++))
+                                failed_components[$active_component]=true; ((fail_count++))
                             fi
                         else
                             # No setup.sh and no build-layer.sh — repo is cloned, that's sufficient
@@ -1497,7 +1644,7 @@ process_selections() {
                                     else
                                         log "ERROR: Failed to fetch/pull updates for $bench"
                                         echo -e "  ${RED}✗ Failed to fetch updates${NC}"
-                                        ((fail_count++))
+                                        failed_components[$active_component]=true; ((fail_count++))
                                         echo ""
                                         continue
                                     fi
@@ -1537,7 +1684,7 @@ process_selections() {
                                         if [ "$clone_status" -ne 0 ]; then
                                             log "ERROR: Failed to clone $bench"
                                             echo -e "  ${RED}✗ Failed to clone $bench${NC}"
-                                            ((fail_count++))
+                                            failed_components[$active_component]=true; ((fail_count++))
                                             echo ""
                                             continue
                                         fi
@@ -1557,7 +1704,7 @@ process_selections() {
                                         echo -e "  ${DIM}Or initialize as git repo:${NC}"
                                         echo -e "  ${DIM}cd $full_bench_path && git init && git remote add origin $bench_url && git fetch && git checkout -f origin/main${NC}"
                                         echo ""
-                                        ((fail_count++))
+                                        failed_components[$active_component]=true; ((fail_count++))
                                         echo ""
                                         continue
                                     fi
@@ -1581,7 +1728,7 @@ process_selections() {
                                 if [ "$clone_status" -ne 0 ]; then
                                     log "ERROR: Failed to clone $bench"
                                     echo -e "  ${RED}✗ Failed to clone $bench${NC}"
-                                    ((fail_count++))
+                                    failed_components[$active_component]=true; ((fail_count++))
                                     echo ""
                                     continue
                                 fi
@@ -1616,7 +1763,7 @@ process_selections() {
                                     log "ERROR: Setup failed for $bench"
                                     echo -e "  ${YELLOW}⚠ Setup failed${NC}"
                                     echo -e "  ${DIM}Inspect the build log and rerun workBenches setup after stopping this bench; Wave will display a repair command if needed.${NC}"
-                                    ((fail_count++))
+                                    failed_components[$active_component]=true; ((fail_count++))
                                 fi
                             else
                                 # No setup.sh — try inline: build-layer.sh
@@ -1659,11 +1806,11 @@ process_selections() {
                             fi
                         else
                             echo -e "  ${RED}✗ No repository URL found for $bench${NC}"
-                            ((fail_count++))
+                            failed_components[$active_component]=true; ((fail_count++))
                         fi
                     else
                         echo -e "  ${RED}✗ Config file not found${NC}"
-                        ((fail_count++))
+                        failed_components[$active_component]=true; ((fail_count++))
                     fi
                     echo ""
                 fi
@@ -1679,6 +1826,7 @@ process_selections() {
 
         if [[ "${component_checked[$item]}" == true && -n "${component_action[$item]}" ]]; then
             any_selected=true
+            active_component="$item"
             local desc="${component_description[$item]}"
             local action="${component_action[$item]}"
 
@@ -1686,52 +1834,11 @@ process_selections() {
             if [[ "$action" == "uninstall" ]]; then
                 echo -e "${BOLD}${CYAN}▶ Uninstalling: $desc${NC}"
 
-                case "$item" in
-                    claude_cli)
-                        if command -v claude &> /dev/null; then
-                            echo -e "  ${YELLOW}Uninstalling Claude Code CLI...${NC}"
-                            echo -e "  ${DIM}Note: Manual uninstall required, check Claude documentation${NC}"
-                        else
-                            echo -e "  ${YELLOW}⚠ Claude CLI not found${NC}"
-                        fi
-                        ;;
-                    copilot_cli)
-                        if command -v npm &> /dev/null; then
-                            if npm uninstall -g @github/copilot 2>/dev/null; then
-                                echo -e "  ${GREEN}✓ GitHub Copilot CLI uninstalled${NC}"
-                                ((success_count++))
-                            else
-                                echo -e "  ${RED}✗ Failed to uninstall GitHub Copilot CLI${NC}"
-                                ((fail_count++))
-                            fi
-                        fi
-                        ;;
-                    codex_cli)
-                        if command -v npm &> /dev/null; then
-                            if npm uninstall -g @openai/codex 2>/dev/null; then
-                                echo -e "  ${GREEN}✓ Codex CLI uninstalled${NC}"
-                                ((success_count++))
-                            else
-                                echo -e "  ${RED}✗ Failed to uninstall Codex CLI${NC}"
-                                ((fail_count++))
-                            fi
-                        fi
-                        ;;
-                    openspec)
-                        if command -v npm &> /dev/null; then
-                            if npm uninstall -g @fission-ai/openspec 2>/dev/null; then
-                                echo -e "  ${GREEN}✓ OpenSpec uninstalled${NC}"
-                                ((success_count++))
-                            else
-                                echo -e "  ${RED}✗ Failed to uninstall OpenSpec${NC}"
-                                ((fail_count++))
-                            fi
-                        fi
-                        ;;
-                    *)
-                        echo -e "  ${YELLOW}⚠ Uninstall not implemented for $desc${NC}"
-                        ;;
-                esac
+                if uninstall_component "$item"; then
+                    ((success_count++))
+                else
+                    failed_components[$active_component]=true; ((fail_count++))
+                fi
                 echo ""
                 continue
             fi
@@ -1774,13 +1881,12 @@ process_selections() {
                             echo -e "  ${GREEN}✓ Claude Code CLI installed${NC}"
                             echo -e "  ${DIM}Run 'claude' to start using it${NC}"
                             ((success_count++))
-                            items_needing_creds+=("claude")
                         else
                             trap 'exit 130' INT
                             log "ERROR: Claude CLI installation failed"
                             echo -e "  ${RED}✗ Failed to install Claude Code CLI${NC}"
                             echo -e "  ${DIM}Manual install: curl -fsSL https://claude.ai/install.sh | bash${NC}"
-                            ((fail_count++))
+                            failed_components[$active_component]=true; ((fail_count++))
                         fi
                     fi
                     ;;
@@ -1792,23 +1898,22 @@ process_selections() {
                             if npm_update_tool "@github/copilot" "GitHub Copilot CLI"; then
                                 ((success_count++))
                             else
-                                ((fail_count++))
+                                failed_components[$active_component]=true; ((fail_count++))
                             fi
                         else
                             echo -e "  ${YELLOW}Installing GitHub Copilot CLI...${NC}"
                             if npm install -g @github/copilot; then
                                 echo -e "  ${GREEN}✓ GitHub Copilot CLI installed${NC}"
                                 ((success_count++))
-                                items_needing_creds+=("copilot")
                             else
                                 echo -e "  ${RED}✗ Failed to install GitHub Copilot CLI${NC}"
-                                ((fail_count++))
+                                failed_components[$active_component]=true; ((fail_count++))
                             fi
                         fi
                     else
                         echo -e "  ${RED}✗ npm not found - Node.js required${NC}"
                         echo -e "  ${DIM}Install Node.js: https://nodejs.org/${NC}"
-                        ((fail_count++))
+                        failed_components[$active_component]=true; ((fail_count++))
                     fi
                     ;;
 
@@ -1822,29 +1927,28 @@ process_selections() {
                                 if npm_update_tool "@openai/codex" "Codex CLI"; then
                                     ((success_count++))
                                 else
-                                    ((fail_count++))
+                                    failed_components[$active_component]=true; ((fail_count++))
                                 fi
                             else
                                 echo -e "  ${YELLOW}Installing OpenAI Codex CLI...${NC}"
                                 if npm install -g @openai/codex; then
                                     echo -e "  ${GREEN}✓ OpenAI Codex CLI installed${NC}"
                                     ((success_count++))
-                                    items_needing_creds+=("codex")
                                 else
                                     echo -e "  ${RED}✗ Failed to install Codex CLI${NC}"
-                                    ((fail_count++))
+                                    failed_components[$active_component]=true; ((fail_count++))
                                 fi
                             fi
                         else
                             echo -e "  ${RED}✗ Node.js 18+ required (current: v$node_version)${NC}"
                             echo -e "  ${DIM}Recommended: Node.js 24+${NC}"
                             echo -e "  ${DIM}Install/Update Node.js: https://nodejs.org/${NC}"
-                            ((fail_count++))
+                            failed_components[$active_component]=true; ((fail_count++))
                         fi
                     else
                         echo -e "  ${RED}✗ npm not found - Node.js required${NC}"
                         echo -e "  ${DIM}Install Node.js 24+: https://nodejs.org/${NC}"
-                        ((fail_count++))
+                        failed_components[$active_component]=true; ((fail_count++))
                     fi
                     ;;
 
@@ -1873,19 +1977,18 @@ process_selections() {
                                 echo -e "  ${GREEN}✓ Antigravity CLI installed${NC}"
                                 echo -e "  ${DIM}Run 'agy' to start using it${NC}"
                                 ((success_count++))
-                                items_needing_creds+=("antigravity")
                             else
                                 log "ERROR: Antigravity CLI installer completed but agy is not on PATH"
                                 echo -e "  ${RED}✗ Antigravity CLI installed but 'agy' is not on PATH${NC}"
                                 echo -e "  ${DIM}Add ~/.local/bin to PATH or run: ~/.local/bin/agy${NC}"
-                                ((fail_count++))
+                                failed_components[$active_component]=true; ((fail_count++))
                             fi
                         else
                             trap 'exit 130' INT
                             log "ERROR: Antigravity CLI installation failed"
                             echo -e "  ${RED}✗ Failed to install Antigravity CLI${NC}"
                             echo -e "  ${DIM}Manual install: curl -fsSL https://antigravity.google/cli/install.sh | bash${NC}"
-                            ((fail_count++))
+                            failed_components[$active_component]=true; ((fail_count++))
                         fi
                     fi
                     ;;
@@ -1899,9 +2002,8 @@ process_selections() {
                         ((success_count++))
                     else
                         echo -e "  ${RED}✗ Failed to install OpenCode CLI${NC}"
-                        ((fail_count++))
+                        failed_components[$active_component]=true; ((fail_count++))
                     fi
-                    command -v opencode &>/dev/null && items_needing_creds+=("opencode")
                     ;;
 
                 pi_cli)
@@ -1916,9 +2018,8 @@ process_selections() {
                         ((success_count++))
                     else
                         echo -e "  ${RED}✗ Failed to install Pi Coding Agent${NC}"
-                        ((fail_count++))
+                        failed_components[$active_component]=true; ((fail_count++))
                     fi
-                    { command -v pi &>/dev/null || [[ -x "$HOME/.npm-global/bin/pi" ]]; } && items_needing_creds+=("pi")
                     ;;
 
                 spec_kit)
@@ -1963,13 +2064,13 @@ process_selections() {
                             ((success_count++))
                         else
                             echo -e "  ${RED}✗ Failed to install spec-kit${NC}"
-                            ((fail_count++))
+                            failed_components[$active_component]=true; ((fail_count++))
                         fi
                     else
                         echo -e "  ${RED}✗ uv installation failed${NC}"
                         echo -e "  ${DIM}Try manually: curl -LsSf https://astral.sh/uv/install.sh | sh${NC}"
                         echo -e "  ${DIM}Then restart your shell or run: source ~/.zshrc${NC}"
-                        ((fail_count++))
+                        failed_components[$active_component]=true; ((fail_count++))
                     fi
                     ;;
 
@@ -1980,7 +2081,7 @@ process_selections() {
                             if npm_update_tool "@fission-ai/openspec" "OpenSpec"; then
                                 ((success_count++))
                             else
-                                ((fail_count++))
+                                failed_components[$active_component]=true; ((fail_count++))
                             fi
                         else
                             echo -e "  ${YELLOW}Installing OpenSpec...${NC}"
@@ -1989,13 +2090,13 @@ process_selections() {
                                 ((success_count++))
                             else
                                 echo -e "  ${RED}✗ Failed to install OpenSpec${NC}"
-                                ((fail_count++))
+                                failed_components[$active_component]=true; ((fail_count++))
                             fi
                         fi
                     else
                         echo -e "  ${RED}✗ npm not found - Node.js required${NC}"
                         echo -e "  ${DIM}Install Node.js: https://nodejs.org/${NC}"
-                        ((fail_count++))
+                        failed_components[$active_component]=true; ((fail_count++))
                     fi
                     ;;
             esac
@@ -2007,16 +2108,36 @@ process_selections() {
     for item in "${tool_items[@]}"; do
         if [[ "${component_checked[$item]}" == true && -n "${component_action[$item]}" ]]; then
             any_selected=true
+            active_component="$item"
             local desc="${component_description[$item]}"
             local action="${component_action[$item]}"
             local status="${component_status[$item]}"
             local is_installed=false
-            [[ "$status" == "installed" ]] && is_installed=true
+            [[ "$status" == "installed" || "$status" == "needs creds" ]] && is_installed=true
+
+            if [[ "$item" == ai_accounts ]]; then continue; fi
+            if [[ "$item" == host_shell || "$item" == workspace_repo ]]; then
+                local optional_status=0
+                if [[ "$item" == host_shell ]]; then
+                    "$SCRIPT_DIR/setup-shell.sh" || optional_status=$?
+                else
+                    log "WORKSPACE REPOSITORY"
+                    { "$SCRIPT_DIR/setup-estate-commands.sh" && "$SCRIPT_DIR/setup-workspace-repo.sh"; } 2>&1 | tee -a "$LOG_FILE"
+                    optional_status=${PIPESTATUS[0]}
+                fi
+                setup_propagate_cancel "$optional_status"
+                if [[ "$optional_status" -eq 0 ]]; then ((success_count++)); else failed_components[$active_component]=true; ((fail_count++)); fi
+                continue
+            fi
 
             # Handle uninstallation
             if [[ "$action" == "uninstall" ]]; then
                 echo -e "${BOLD}${CYAN}▶ Uninstalling: $desc${NC}"
-                echo -e "  ${YELLOW}⚠ Manual uninstall required for $desc${NC}"
+                if uninstall_component "$item"; then
+                    ((success_count++))
+                else
+                    failed_components[$active_component]=true; ((fail_count++))
+                fi
                 echo ""
                 continue
             fi
@@ -2045,13 +2166,13 @@ process_selections() {
                         echo -e "  ${GREEN}✓ $desc setup completed${NC}"
                         ((success_count++))
                     else
-                        echo -e "  ${YELLOW}⚠ $desc setup completed with warnings${NC}"
+                        echo -e "  ${YELLOW}⚠ $desc setup needs attention${NC}"
                         echo -e "  ${DIM}See docs/vpn-setup.md for manual install steps${NC}"
-                        ((success_count++))
+                        failed_components[$active_component]=true; ((fail_count++))
                     fi
                 else
                     echo -e "  ${RED}✗ setup-vpn.sh not found${NC}"
-                    ((fail_count++))
+                    failed_components[$active_component]=true; ((fail_count++))
                 fi
                 echo ""
                 continue
@@ -2072,11 +2193,11 @@ process_selections() {
                                 if bash "$script_dir/setup-windows-tools.sh" vscode; then
                                     ((success_count++))
                                 else
-                                    ((fail_count++))
+                                    failed_components[$active_component]=true; ((fail_count++))
                                 fi
                             else
                                 echo -e "  ${RED}✗ setup-windows-tools.sh not found${NC}"
-                                ((fail_count++))
+                                failed_components[$active_component]=true; ((fail_count++))
                             fi
                         else
                             echo -e "  ${YELLOW}Installing Visual Studio Code for Linux...${NC}"
@@ -2087,12 +2208,12 @@ process_selections() {
                                 else
                                     echo -e "  ${RED}✗ Failed to install VS Code${NC}"
                                     echo -e "  ${DIM}Visit: https://code.visualstudio.com/${NC}"
-                                    ((fail_count++))
+                                    failed_components[$active_component]=true; ((fail_count++))
                                 fi
                             else
                                 echo -e "  ${YELLOW}snap not available${NC}"
                                 echo -e "  ${DIM}Manual install: https://code.visualstudio.com/${NC}"
-                                ((fail_count++))
+                                failed_components[$active_component]=true; ((fail_count++))
                             fi
                         fi
                         ;;
@@ -2103,18 +2224,18 @@ process_selections() {
                                 if bash "$script_dir/setup-windows-tools.sh" warp; then
                                     ((success_count++))
                                 else
-                                    ((fail_count++))
+                                    failed_components[$active_component]=true; ((fail_count++))
                                 fi
                             else
                                 echo -e "  ${RED}✗ setup-windows-tools.sh not found${NC}"
-                                ((fail_count++))
+                                failed_components[$active_component]=true; ((fail_count++))
                             fi
                         else
                             echo -e "  ${YELLOW}Installing Warp Terminal for Linux...${NC}"
                             echo -e "  ${DIM}Visit: https://warp.dev${NC}"
                             echo -e "  ${YELLOW}Download and install .deb package from website${NC}"
+                            failed_components[$active_component]=true; ((fail_count++))
                         fi
-                        items_needing_creds+=("warp")
                         ;;
                     wave)
                         # Check if running in WSL
@@ -2123,24 +2244,74 @@ process_selections() {
                                 if bash "$script_dir/setup-windows-tools.sh" wave; then
                                     ((success_count++))
                                 else
-                                    ((fail_count++))
+                                    failed_components[$active_component]=true; ((fail_count++))
                                 fi
                             else
                                 echo -e "  ${RED}✗ setup-windows-tools.sh not found${NC}"
-                                ((fail_count++))
+                                failed_components[$active_component]=true; ((fail_count++))
                             fi
                         else
                             echo -e "  ${YELLOW}Installing Wave Terminal for Linux...${NC}"
                             echo -e "  ${DIM}Visit: https://waveterm.dev${NC}"
                             echo -e "  ${YELLOW}Download and install from website${NC}"
+                            failed_components[$active_component]=true; ((fail_count++))
                         fi
-                        items_needing_creds+=("wave")
                         ;;
                 esac
             fi
             echo ""
         fi
     done
+
+    # Verify selected applications against fresh installation evidence. A
+    # successful installer exit alone must never report a missing tool as ready.
+    refresh_component_statuses
+    local verified_item final_status
+    for verified_item in "${!component_action[@]}"; do
+        [[ "${component_checked[$verified_item]}" == true ]] || continue
+        [[ "$verified_item" != host_shell && "$verified_item" != workspace_repo && "$verified_item" != ai_accounts && "$verified_item" != workbenches_account ]] || continue
+        final_status="${component_status[$verified_item]}"
+        if [[ "${component_action[$verified_item]}" == uninstall ]]; then
+            [[ "$final_status" != installed && "$final_status" != 'needs creds' && "$final_status" != 'needs check' && "$final_status" != 'needs docker' && "$final_status" != 'image only' ]] && continue
+        else
+            [[ "$final_status" == installed || "$final_status" == 'needs creds' ]] && continue
+        fi
+        echo "Needs attention: ${component_description[$verified_item]} is $final_status after ${component_action[$verified_item]}."
+        if [[ "${failed_components[$verified_item]:-}" != true ]]; then
+            failed_components[$verified_item]=true
+            ((fail_count++))
+            [[ "$success_count" -le 0 ]] || ((success_count--))
+        fi
+    done
+
+    if [[ "${component_checked[ai_accounts]}" == true ]]; then
+        any_selected=true
+        active_component=ai_accounts
+        if [[ "$fail_count" -gt 0 ]]; then
+            echo "AI accounts skipped because a selected change failed. Retry account setup after resolving it."
+        elif configure_selected_accounts; then
+            ((success_count++))
+        else
+            local account_status=$?
+            setup_propagate_cancel "$account_status"
+            echo "AI account setup needs attention; installed tools remain available."
+            failed_components[$active_component]=true; ((fail_count++))
+        fi
+    else
+        show_pending_authentication
+    fi
+
+    if [[ "${component_checked[workbenches_account]}" == true ]]; then
+        any_selected=true
+        if python3 "$SCRIPT_DIR/setup-workbenches-account.py"; then
+            if [[ "$(python3 "$SCRIPT_DIR/setup-workbenches-account.py" --status)" == 'signed in' ]]; then ((success_count++)); fi
+        else
+            local workbenches_account_status=$?
+            setup_propagate_cancel "$workbenches_account_status"
+            echo 'Optional workBenches account sign-in failed; retry from Requirements.'
+            ((fail_count++))
+        fi
+    fi
 
     # Summary
     echo ""
@@ -2149,28 +2320,66 @@ process_selections() {
     if [ "$any_selected" = false ]; then
         echo -e "${YELLOW}No items were selected.${NC}"
     else
-        echo -e "${BOLD}Installation Summary:${NC}"
+        echo -e "${BOLD}Change Summary:${NC}"
         [ $success_count -gt 0 ] && echo -e "  ${GREEN}✓ Successful: $success_count${NC}"
         [ $fail_count -gt 0 ] && echo -e "  ${RED}✗ Failed: $fail_count${NC}"
 
         if [ $success_count -gt 0 ] && [ $fail_count -eq 0 ]; then
-            echo -e "\n${GREEN}${BOLD}✓ All installations completed successfully!${NC}"
+            echo -e "\n${GREEN}${BOLD}✓ All selected changes completed successfully!${NC}"
         elif [ $success_count -gt 0 ]; then
-            echo -e "\n${YELLOW}⚠️  Some installations completed with errors.${NC}"
+            echo -e "\n${YELLOW}⚠ Some selected changes need attention.${NC}"
+        elif [ $fail_count -gt 0 ]; then
+            echo -e "\n${RED}✗ Selected changes did not complete.${NC}"
         else
-            echo -e "\n${RED}✗ All installations failed.${NC}"
+            echo 'No changes applied; optional account setup deferred.'
         fi
     fi
 
     echo ""
 
-    # Handle credential setup for newly installed CLIs
-    for item in claude_cli codex_cli; do
-        if [[ "${component_checked[$item]}" == true && "${component_action[$item]}" =~ ^(install|update)$ && "${component_status[$item]}" == "needs creds" ]]; then
-            [[ " ${items_needing_creds[*]} " == *" ${item%_cli} "* ]] || items_needing_creds+=("${item%_cli}")
+    [[ "$fail_count" -eq 0 ]]
+}
+
+configure_selected_accounts() {
+    local providers="${WORKBENCHES_SELECTED_PROVIDERS:-}" item cli choice route_file route account_status
+    local -a items_needing_creds=()
+    for item in claude_cli codex_cli pi_cli opencode_cli copilot_cli antigravity_cli warp wave; do
+        if [[ "${component_checked[$item]}" == true && "${component_action[$item]}" =~ ^(install|update)$ ]]; then
+            items_needing_creds+=("${item%_cli}")
         fi
     done
-    if [[ "${WORKBENCHES_AUTH_ROUTE:-}" == later ]]; then items_needing_creds=(); fi
+    if [[ -z "$providers" ]]; then
+        setup_read "AI assistant (codex/claude/pi/opencode/copilot/antigravity) [codex]" choice
+        cli="${choice:-codex}"
+        case "$cli" in
+            codex) providers=openai ;;
+            opencode) providers=omniroute ;;
+            claude|pi|copilot|antigravity) providers="$cli" ;;
+            *) echo "Unknown AI assistant; account setup stopped."; return 1 ;;
+        esac
+        items_needing_creds+=("$cli")
+    fi
+    export WORKBENCHES_SELECTED_PROVIDERS="$providers"
+    route_file="$(mktemp)" || return 1
+    WORKBENCHES_AUTH_ROUTE= WORKBENCHES_AUTH_ROUTE_FILE="$route_file" \
+        "$SCRIPT_DIR/setup-ai-profiles.sh" --interactive
+    account_status=$?
+    route="$(cat "$route_file")"
+    rm -f "$route_file"
+    [[ "$account_status" -eq 0 ]] || return "$account_status"
+    export WORKBENCHES_AUTH_ROUTE="${route%%:*}"
+    if [[ "$route" == vault:* ]]; then
+        export WORKBENCHES_VAULT_SERVICE="${route#vault:}"
+    else
+        unset WORKBENCHES_VAULT_SERVICE
+    fi
+    if [[ ",$providers," == *,claude,* ]] && [[ -x "$SCRIPT_DIR/setup-claude-workflows.sh" ]]; then
+        "$SCRIPT_DIR/setup-claude-workflows.sh" || return "$?"
+    fi
+    if [[ "$WORKBENCHES_AUTH_ROUTE" == later ]]; then
+        echo "Authentication pending. Select AI accounts to finish setup later."
+        return 0
+    fi
     if [ ${#items_needing_creds[@]} -gt 0 ]; then
         echo -e "${BOLD}${BLUE}────────────────────────────────────────────────────────────────────────────${NC}"
         echo -e "${BOLD}${YELLOW}Setting up Credentials${NC}"
@@ -2364,10 +2573,10 @@ process_selections() {
 
                 opencode)
                     echo -e "${CYAN}▶ Setting up OpenCode provider authentication...${NC}"
-                    if "$SCRIPT_DIR/restore-opencode-omniroute-from-kv.sh"; then
+                    if [[ "$WORKBENCHES_AUTH_ROUTE" == vault && "${WORKBENCHES_VAULT_SERVICE:-}" == azure ]] && "$SCRIPT_DIR/restore-opencode-omniroute-from-kv.sh"; then
                         echo -e "${GREEN}✓ Restored Opensoft OmniRoute authentication from approved durable storage${NC}"
                     else
-                        echo -e "${YELLOW}Automatic OmniRoute recovery was unavailable.${NC}"
+                        echo -e "${YELLOW}OpenCode sign-in is needed.${NC}"
                         setup_read "Launch 'opencode auth login' now? [Y/n]: " launch_opencode
                         if [[ ! $launch_opencode =~ ^[Nn] ]]; then
                             opencode auth login
@@ -2449,10 +2658,23 @@ process_selections() {
         echo -e "${BOLD}${BLUE}────────────────────────────────────────────────────────────────────────────${NC}"
     fi
 
-    echo -e "${BLUE}Note: You may need to restart your shell for changes to take effect.${NC}"
-    echo ""
-    setup_read "Press Enter to continue..." continue_answer
-    [[ "$fail_count" -eq 0 ]]
+    return 0
+}
+
+show_pending_authentication() {
+    local item provider
+    local -a pending=()
+    for item in claude_cli codex_cli pi_cli opencode_cli; do
+        [[ "${component_checked[$item]}" == true && "${component_action[$item]}" =~ ^(install|update)$ ]] || continue
+        provider="${item%_cli}"
+        [[ "$provider" == opencode ]] && provider=omniroute
+        if ! python3 "$SCRIPT_DIR/profile_credentials.py" status "$provider"; then
+            pending+=("${component_description[$item]}")
+        fi
+    done
+    if [[ ${#pending[@]} -gt 0 ]]; then
+        printf 'Authentication pending: %s. Select AI accounts to configure later.\n' "$(IFS=,; echo "${pending[*]}")"
+    fi
 }
 
 guide_isolated_profile_logins() {
@@ -2680,6 +2902,10 @@ main() {
     # Check and install dependencies first
     log "Checking dependencies..."
     check_and_install_dependencies
+    if [[ "$mode" == interactive ]]; then
+        ensure_setup_platform || return "$?"
+        ensure_workstation_requirements || return "$?"
+    fi
 
     # Initialize
     log "Initializing components and loading statuses..."

@@ -68,7 +68,7 @@ class GuidedFlowTests(unittest.TestCase):
         self.config.mkdir(parents=True)
         self.env = dict(os.environ, HOME=str(self.home), XDG_CONFIG_HOME=str(self.home / '.config'))
         for key in list(self.env):
-            if key.startswith(('WORKBENCHES_', 'CLAUDE_PROFILES_', 'CODEX_', 'CHATGPT_PROFILES_', 'PI_PROFILES_', 'AI_CREDENTIAL_', 'DOCKER_')):
+            if key.startswith(('WORKBENCHES_', 'CLAUDE_PROFILES_', 'CODEX_', 'CHATGPT_PROFILES_', 'PI_PROFILES_', 'AI_CREDENTIAL_', 'DOCKER_', 'OPENAI_', 'ANTHROPIC_')):
                 self.env.pop(key)
         self.addCleanup(patch.stopall)
         patch.dict(os.environ, self.env, clear=True).start()
@@ -498,7 +498,7 @@ process_selections''', input='\n', PATH=self.fake_npm(self.home, failure=13), WO
             with self.assertRaises(runtime.RecoveryError):
                 runtime.validate_mapping(dict(self.mapping, entries=[row]), 'bitwarden')
 
-    def test_root_decline_happens_before_authentication_or_profile_writes(self):
+    def test_enter_applies_selected_cli_without_host_or_account_setup(self):
         repo = self.home / 'workBenches'
         repo.mkdir()
         for directory in ('scripts', 'config', 'credential-container'):
@@ -508,14 +508,24 @@ process_selections''', input='\n', PATH=self.fake_npm(self.home, failure=13), WO
         binary = self.home / 'bin'
         binary.mkdir()
         docker = binary / 'docker'
-        docker.write_text('#!/bin/bash\nif [[ "$1" == info ]]; then exit 0; fi\nexit 1\n')
+        docker.write_text('#!/bin/bash\nif [[ "$1" == info ]]; then echo linux; exit 0; fi\nexit 1\n')
         docker.chmod(0o755)
         shell = repo / 'scripts/setup-shell.sh'
         shell.write_text('#!/bin/bash\necho unexpected > "$HOME/host-changed"\n')
+        for name, body in {
+            'npm': '#!/bin/bash\nif [[ "$*" == "config get prefix" ]]; then echo "$HOME/.local"; elif [[ "$1" == install || "$1" == update ]]; then touch "$HOME/cli-installed"; fi\n',
+            'codex': '#!/bin/bash\necho "codex-cli 1.0.0"\n',
+            'node': '#!/bin/bash\necho v24.0.0\n',
+        }.items():
+            path = binary / name; path.write_text(body); path.chmod(0o755)
         status, output = terminal_run(['bash', str(repo / 'setup.sh')],
             dict(self.env, PATH=str(binary) + ':' + self.env['PATH']),
-            [('Changes selected: 0', '\x1b[C\x1b[B\x1b[B \n'), ('Apply these changes?', 'n\n')])
-        self.assertEqual(status, 130, output)
+            [('Changes selected: 0', '\x1b[C\x1b[B\x1b[B \n')])
+        self.assertEqual(status, 0, output)
+        self.assertTrue((self.home / 'cli-installed').exists())
+        self.assertNotIn('Apply these changes?', output)
+        self.assertNotIn('Authentication requirements', output)
+        self.assertIn('Authentication pending', output)
         self.assertNotIn('Authentication route [1]', output)
         self.assertNotIn('Profile ownership', output)
         self.assertFalse((self.home / 'host-changed').exists())
@@ -536,7 +546,7 @@ process_selections''', input='\n', PATH=self.fake_npm(self.home, failure=13), WO
                 binary.mkdir()
                 docker = binary / 'docker'
                 (repo / 'scripts/shared-images.py').write_text('import sys; sys.exit(0)\n')
-                docker.write_text('#!/bin/bash\nexit 0\n')
+                docker.write_text('#!/bin/bash\nif [[ "$1" == info ]]; then echo linux; fi\nexit 0\n')
                 docker.chmod(0o755)
                 shell = repo / 'scripts/setup-shell.sh'
                 shell.write_text('#!/bin/bash\nexit 0\n')
