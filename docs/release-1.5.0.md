@@ -57,12 +57,20 @@ These results precede the release commit. The following remain required:
 - [x] Review and commit the candidate, including its version and source lock.
   Candidate PR: [#157](https://github.com/opensoft/workBenches/pull/157).
 - [x] Pass the Release source freeze and full Workstation Setup CI checks on
-  candidate `dd355a1`; the PR also passed project-command, OpenSpeckit,
+  candidate `c880e04`; the PR also passed project-command, OpenSpeckit,
   shared-image regression, and CodeQL checks.
 - [ ] Repeat required CI checks on the final merge commit.
-- [ ] Complete a fresh-workstation install using frozen-source mode.
-- [ ] Complete existing-workstation upgrade, add/remove, and cancellation
+- [x] Complete a fresh-workstation install using frozen-source mode.
+  All 11 declared workstation acceptance cases passed on `c880e04`, using a
+  fresh home and anonymous HTTPS clone in an isolated Docker engine with cached
+  shared base images. The pyBench build/install took 77.31 seconds; its Python,
+  Codex, and Wave shell startup checks passed. This validates the selected
+  pyBench/Codex path, not every repository in the source lock.
+- [x] Complete existing-workstation upgrade, add/remove, and cancellation
   checks; confirm projects, existing credentials, and unrelated resources remain.
+  Acceptance covered repeat setup, CLI update, failed CLI update, and bench
+  removal with local source work. Credentials, shared images, and source pins
+  were preserved; the separate component lifecycle acceptance also passed.
 - [x] Complete real Vaultwarden recovery using the actual server and Bitwarden
   CLI with verified TLS, a generated test account, and a generated nonbillable
   AI credential. The private profile received the expected credential bytes.
@@ -72,6 +80,7 @@ These results precede the release commit. The following remain required:
   has development coverage; Windows/WSL QA is assigned to Eagle and remains
   pending remote access. No Mac is available: macOS must be identified as
   unvalidated in 1.5.0 rather than advertised as a validated platform.
+  Eagle now answers SSH, but rejects Raven's key for the `brett` login.
 - [ ] Prepare final release notes with the tested commit, validation evidence,
   platform coverage, and known limitations.
 - [x] Protect version tags against updates/deletion: active repository ruleset

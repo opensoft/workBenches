@@ -33,8 +33,13 @@ regression, project-command, OpenSpeckit, and CodeQL checks are available on
 [release PR #157](https://github.com/opensoft/workBenches/pull/157).
 
 Linux development validation includes 10 release/version checks, 21 setup
-regression suites, and declared container/runtime/lifecycle acceptance. A fresh
-frozen-install run and live Windows/WSL testing on Eagle are still pending.
+regression suites, and declared container/runtime/lifecycle acceptance. All 11
+frozen workstation acceptance cases passed on `c880e04`, with a fresh home and
+anonymous HTTPS clone using cached shared base images in an isolated engine.
+The selected pyBench/Codex path passed installation, startup, update, cancellation,
+and removal checks with local work and credentials preserved. Other pinned
+benches are not all certified by that run. Live Windows/WSL testing on Eagle
+is still pending SSH authorization.
 The real Vaultwarden server/CLI recovery test passed with verified TLS and a
 generated, nonbillable test credential; no production credential was required.
 Real Keycloak browser approval is also pending; fixture sign-in tests do not
