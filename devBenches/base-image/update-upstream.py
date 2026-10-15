@@ -80,8 +80,13 @@ cut on `release/v1.0`, while `main` moved on without it. `--tag <tag>
   * `refs/tags/<tag>` exists on the source repository and peels to exactly
     `--at`, directly for a lightweight tag or through every annotated tag
     object in between;
-  * `compare/<branch>...<commit>` answers `identical` or `behind`: the commit
-    is on that upstream branch, the one the person named.
+  * `compare/refs/heads/<branch>...<commit>` answers `identical` or
+    `behind`: the commit is on that upstream branch, the one the person
+    named. The base is spelled as a BRANCH ref on purpose: `compare` resolves
+    any ref as its base, so a bare `compare/v1.0.1...<commit>` or
+    `compare/<commit>...<commit>` answers `identical` too, and `--branch`
+    naming the tag itself, or the commit, would wave a tag on a stray commit
+    through. Under `refs/heads/` a tag or a commit is no branch, and 404s.
 
 WHY A TAGGED RELEASE COMMIT IS SAFE where a squash-orphaned pull-request
 commit is not. The default-branch rule exists because a squash merge leaves
@@ -102,6 +107,8 @@ moved later changes nothing the pin says; it changes only what the next
 
 Each condition that fails is a refusal of its own, naming which:
 `upstream-tag-not-found`, `upstream-tag-elsewhere`, `upstream-tag-not-a-commit`,
+`upstream-tag-unreadable` (an answer that names no ref and object, a peel
+that fails, or a chain of tag objects deeper than TAG_PEEL_LIMIT),
 `upstream-not-on-branch`, `upstream-branch-unreadable`. `--tag` and `--branch`
 come together or not at all (`upstream-tag-without-branch`,
 `upstream-branch-without-tag`), and each must be a ref name that cannot bend
@@ -211,7 +218,8 @@ SOURCE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 #: A tag or branch NAME as `apply --tag` / `--branch` takes one: the
 #: characters openRepoShape's own launcher accepts in a ref. The value is
-#: spliced into a REST path (`git/ref/tags/<tag>`, `compare/<branch>...`),
+#: spliced into a REST path (`git/ref/tags/<tag>`,
+#: `compare/refs/heads/<branch>...`),
 #: where a `?`, a `#`, a space or a `..` would change which resource is asked.
 #: `_checked_ref_name` adds the rules a pattern says badly.
 REF_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
@@ -1067,11 +1075,14 @@ def assert_on_tagged_branch(repository: str, commit: str, tag: str,
     """Take a commit off the default branch ONLY AS A NAMED RELEASE.
 
     Both conditions, in this order, each its own refusal: the tag peels to
-    exactly `commit`, and `compare/<branch>...<commit>` says the named
-    upstream branch carries it — `identical` when the commit is the
+    exactly `commit`, and `compare/refs/heads/<branch>...<commit>` says the
+    named upstream branch carries it — `identical` when the commit is the
     branch tip, `behind` when the branch has moved on past it, the same two
-    answers the default-branch rule accepts. Why that is enough is in this
-    file's docstring, under A RELEASE CUT OFF THE DEFAULT BRANCH.
+    answers the default-branch rule accepts. The base is a `refs/heads/` ref
+    because `compare` takes ANY ref as its base: spelled bare, `--branch
+    v1.0.1` (the tag) or `--branch <the commit>` would answer `identical` and
+    accept a tag on a stray commit. Why the rest is enough is in this file's
+    docstring, under A RELEASE CUT OFF THE DEFAULT BRANCH.
     """
     peeled = peel_tag(repository, tag)
     if peeled != commit:
@@ -1081,14 +1092,16 @@ def assert_on_tagged_branch(repository: str, commit: str, tag: str,
             f"{commit}.\nPin the commit the tag names, or name the tag that "
             f"names this commit.")
     code, out, err = gh_api(
-        f"repos/{repository}/compare/{branch}...{commit}", ".status")
+        f"repos/{repository}/compare/refs/heads/{branch}...{commit}",
+        ".status")
     _gh_or_refuse(code, err, repository, f"branch '{branch}'")
     if code != 0 or not out:
         raise Refusal(
             "upstream-branch-unreadable",
             f"could not compare {commit[:12]} against {repository}'s "
-            f"'{branch}': {err or code}\nName the upstream branch the "
-            f"release was cut from; it must exist and carry the commit.")
+            f"branch '{branch}': {err or code}\nName the upstream BRANCH the "
+            f"release was cut from (a tag or a commit is not one); it must "
+            f"exist and carry the commit.")
     if out not in ("identical", "behind"):
         raise Refusal(
             "upstream-not-on-branch",

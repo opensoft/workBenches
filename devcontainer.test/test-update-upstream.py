@@ -46,6 +46,10 @@ OTHER = sha1("some other commit")
 TAG_OBJECT = sha1("the annotated tag object")
 INNER_TAG_OBJECT = sha1("a tag object the outer one tags")
 TREE = sha1("a tree")
+BLOB = sha1("a blob")
+#: The one compare the release path asks: the base spelled as a BRANCH
+#: ref, because `compare` takes a tag or a commit as its base too.
+RELEASE_COMPARE = f"repos/{REPO}/compare/refs/heads/release/v1.0...{NEW}"
 
 OLD_TOOL = b"#!/bin/sh\necho old\n"
 NEW_TOOL = b"#!/bin/sh\necho new\n"
@@ -175,7 +179,7 @@ class ApplyTestCase(unittest.TestCase):
             f"repos/{REPO}": {"json": {"default_branch": "main"}},
             f"repos/{REPO}/compare/main...{NEW}":
                 {"json": {"status": "diverged"}},
-            f"repos/{REPO}/compare/release/v1.0...{NEW}":
+            RELEASE_COMPARE:
                 {"json": {"status": "identical"}},
             f"repos/{REPO}/git/ref/tags/v1.0.1":
                 {"json": {"ref": "refs/tags/v1.0.1",
@@ -293,7 +297,7 @@ class ReleasePathTests(ApplyTestCase):
         self.assertEqual(calls[:3], [
             f"repos/{REPO}/git/ref/tags/v1.0.1",
             f"repos/{REPO}/git/tags/{TAG_OBJECT}",
-            f"repos/{REPO}/compare/release/v1.0...{NEW}"])
+            RELEASE_COMPARE])
         # The default-branch rule is not consulted at all on this path.
         self.assertNotIn(f"repos/{REPO}", calls)
         self.assertNotIn(f"repos/{REPO}/compare/main...{NEW}", calls)
@@ -381,7 +385,7 @@ class ReleasePathTests(ApplyTestCase):
         # sits on some other line of history than the named branch.
         for status in ("ahead", "diverged"):
             with self.subTest(status):
-                self.table[f"repos/{REPO}/compare/release/v1.0...{NEW}"] = {
+                self.table[RELEASE_COMPARE] = {
                     "json": {"status": status}}
                 done = self.release()
                 self.assertRefused(done, "upstream-not-on-branch")
@@ -391,11 +395,66 @@ class ReleasePathTests(ApplyTestCase):
                                   if "/contents/" in c])
 
     def test_a_branch_the_upstream_does_not_have_is_refused(self):
-        del self.table[f"repos/{REPO}/compare/release/v1.0...{NEW}"]
+        del self.table[RELEASE_COMPARE]
         done = self.release()
         self.assertRefused(done, "upstream-branch-unreadable")
         self.assertIn("HTTP 404", done.stderr)
         self.assertNothingWritten()
+
+    def test_a_tag_or_commit_named_as_the_branch_is_refused(self):
+        # What GitHub really answers (RV154 on #154): `compare` resolves a
+        # tag or a commit as its base as readily as a branch, so a bare
+        # `compare/v1.0.1...NEW` or `compare/NEW...NEW` says `identical`, and
+        # `--branch` naming the tag itself would pass a tag on a stray
+        # commit. Only `refs/heads/<name>` is asked, which neither is.
+        self.table[f"repos/{REPO}/compare/v1.0.1...{NEW}"] = {
+            "json": {"status": "identical"}}
+        self.table[f"repos/{REPO}/compare/{NEW}...{NEW}"] = {
+            "json": {"status": "identical"}}
+        for branch in ("v1.0.1", NEW):
+            with self.subTest(branch=branch[:12]):
+                self.log.write_text("", encoding="utf-8")
+                done = self.apply("--tag", "v1.0.1", "--branch", branch)
+                self.assertRefused(done, "upstream-branch-unreadable")
+                self.assertNothingWritten()
+                self.assertIn(
+                    f"repos/{REPO}/compare/refs/heads/{branch}...{NEW}",
+                    self.endpoints())
+
+    def test_a_tag_object_that_tags_itself_is_refused_after_the_limit(self):
+        self.table[f"repos/{REPO}/git/tags/{TAG_OBJECT}"] = {
+            "json": {"object": {"type": "tag", "sha": TAG_OBJECT}}}
+        done = self.release()
+        self.assertRefused(done, "upstream-tag-unreadable")
+        self.assertIn("more than 10 annotated tag objects deep", done.stderr)
+        self.assertNothingWritten()
+        peels = [c for c in self.endpoints() if "/git/tags/" in c]
+        self.assertEqual(len(peels), 10, peels)
+        self.assertFalse([c for c in self.endpoints() if "/compare/" in c])
+
+    def test_a_tag_whose_ref_names_a_blob_is_refused(self):
+        self.table[f"repos/{REPO}/git/ref/tags/v1.0.1"] = {
+            "json": {"ref": "refs/tags/v1.0.1",
+                     "object": {"type": "blob", "sha": BLOB}}}
+        done = self.release()
+        self.assertRefused(done, "upstream-tag-not-a-commit")
+        self.assertIn("names a blob", done.stderr)
+        self.assertNothingWritten()
+
+    def test_no_gh_on_path_is_refused_on_both_paths(self):
+        # PATH holds nothing at all: no `gh` (and no `git`, which the tool
+        # only asks for its own path and does without).
+        empty = self.base / "empty-bin"
+        empty.mkdir()
+        self.env["PATH"] = str(empty)
+        for name, extra in (("release path", ("--tag", "v1.0.1",
+                                               "--branch", "release/v1.0")),
+                            ("default-branch path", ())):
+            with self.subTest(name):
+                done = self.apply(*extra)
+                self.assertRefused(done, "upstream-no-gh")
+                self.assertNothingWritten()
+        self.assertNoGitHubCall()
 
     def test_tag_and_branch_come_together_or_not_at_all(self):
         done = self.apply("--tag", "v1.0.1")

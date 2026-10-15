@@ -148,6 +148,21 @@ record_lines="$(grep -E '^RUN printf .* > /usr/local/bin/openRepoShape\.ref$' "$
     echo "FAIL: devBenches/base-image/Dockerfile's openRepoShape record [$record_lines] does not name the pin's openreposhape commit $shape_pin_commit — re-pinning moved the launcher but not the ref it runs at" >&2
     exit 1
 }
+# AND NOTHING ELSE TOUCHES IT (RV154 on #154). A later instruction that
+# rewrites or removes the record (`RUN echo main > .../openRepoShape.ref`,
+# `rm -f .../openRepoShape.ref`) would leave the line above intact and the
+# image following main. Every non-comment line naming the record, a
+# continuation line included, must be the record line itself.
+# The record line is handed to awk through the environment, never `-v`,
+# because `-v` would turn its `\n` into a newline and match nothing.
+other_record_lines="$(RECORD_LINE="$record_lines" awk '
+    index($0, "openRepoShape.ref") && $0 !~ /^[[:space:]]*#/ && $0 != ENVIRON["RECORD_LINE"] {
+        print NR ": " $0
+    }' "$dev_dockerfile")"
+[ -z "$other_record_lines" ] || {
+    echo "FAIL: devBenches/base-image/Dockerfile touches /usr/local/bin/openRepoShape.ref outside its one record line: [$other_record_lines]" >&2
+    exit 1
+}
 grep -Fq 'COPY files/openreposhape/openRepoShape /usr/local/bin/openRepoShape' "$dev_dockerfile" || {
     echo "FAIL: devBenches/base-image/Dockerfile no longer COPYs the vendored openRepoShape to /usr/local/bin/openRepoShape, the file the record sits beside" >&2
     exit 1

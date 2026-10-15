@@ -142,7 +142,7 @@ test_tool "ct launchers use safe CLI defaults" "/test/test-ct-launchers.sh"
 
 echo ""
 echo "=== Estate Commands ==="
-test_tool "openRepoShape runs at the release its record names" "test \"\$(env -u OPENREPOSHAPE_REF -u OPENREPOSHAPE_REPO /usr/local/bin/openRepoShape --version)\" = \"openRepoShape (opensoft/openRepoShape @ \$(cat /usr/local/bin/openRepoShape.ref))\""
+test_tool "openRepoShape runs at the release its record names" "test \"\$(env -u OPENREPOSHAPE_REF -u OPENREPOSHAPE_REPO /usr/local/bin/openRepoShape --version)\" = \"openRepoShape (opensoft/openRepoShape @ \$(cat /usr/local/bin/openRepoShape.ref))\" && grep -Eqx '[0-9a-f]{40}' /usr/local/bin/openRepoShape.ref"
 
 echo ""
 echo "=== PATH Configuration ==="

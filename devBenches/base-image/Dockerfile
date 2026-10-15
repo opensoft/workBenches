@@ -217,7 +217,8 @@ RUN chmod 0755 /usr/local/bin/speckit-worktree-enable && \
 # `openRepoShape --version` prints `openRepoShape (opensoft/openRepoShape @
 # 8cda13970f2cb03fb3e2d4d4d6f79bd895ef40d4)`: the ref its record names, which
 # is the commit ../upstream-pin.yaml pins, unless `$OPENREPOSHAPE_REF` is set
-# for the run, which wins. `openRepoTools --version` still prints
+# for the run, which wins; `$OPENREPOSHAPE_REPO`, when set, also replaces the
+# `opensoft/openRepoShape` it prints. `openRepoTools --version` still prints
 # `openRepoTools (opensoft/openRepoTools @ main)`, not its pinned commit: that
 # shim's own `_REF` defaults to `main` upstream and this image sets no
 # override. The identity of these bytes is ../upstream-pin.yaml, not what
