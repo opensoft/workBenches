@@ -1,0 +1,9 @@
+{
+  "package": "opensoft-bench-access",
+  "version": "0.1.0",
+  "source_repository": "opensoft/Opensoft-Tenant",
+  "source_path": "infra/smallstep",
+  "wheel_sha256": "69f86f16932750b021fffc8d685c4e0d6778a69dcdf5647b81f70b842e3eadb2",
+  "source_status": "QA grantless bootstrap; production activation gated",
+  "source_commit": "b4f8a82f6025b4355679f6e619669065ed7a72d1"
+}
