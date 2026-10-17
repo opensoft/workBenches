@@ -62,6 +62,7 @@ test_tool "isort" "command -v isort"
 test_tool "pylint" "command -v pylint"
 test_tool "pytest" "command -v pytest"
 test_tool "ipython" "command -v ipython"
+test_tool "git-filter-repo" "git filter-repo --version"
 
 echo ""
 echo "=== Node.js Development ==="
@@ -138,6 +139,10 @@ test_tool "Speckit dashboard dependency-aware blocked markers" "bash -lc 'tmpdir
 test_tool "ct helpers in interactive zsh" "zsh -ic 'for fn in ct ctp ctlist cta ctc ctg cts; do whence -w \"\$fn\" | grep -q \"function\" || exit 1; done'"
 test_tool "ctlist outside Speckit repo errors cleanly" "bash -lc 'tmpdir=\$(mktemp -d); outfile=\$(mktemp); cd \"\$tmpdir\"; if zsh -ic \"ctlist\" >\"\$outfile\" 2>&1; then rm -rf \"\$tmpdir\" \"\$outfile\"; exit 1; fi; grep -Eq \"ct: not inside a Git repository|ct: \\.specify/ not found in repo root\" \"\$outfile\"; status=\$?; rm -rf \"\$tmpdir\" \"\$outfile\"; exit \$status'"
 test_tool "ct launchers use safe CLI defaults" "/test/test-ct-launchers.sh"
+
+echo ""
+echo "=== Estate Commands ==="
+test_tool "openRepoShape runs at the release its record names" "test \"\$(env -u OPENREPOSHAPE_REF -u OPENREPOSHAPE_REPO /usr/local/bin/openRepoShape --version)\" = \"openRepoShape (opensoft/openRepoShape @ \$(cat /usr/local/bin/openRepoShape.ref))\" && grep -Eqx '[0-9a-f]{40}' /usr/local/bin/openRepoShape.ref"
 
 echo ""
 echo "=== PATH Configuration ==="
