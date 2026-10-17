@@ -540,3 +540,31 @@ passed all four jobs: regression, Tools runtime, credential images, and
 component lifecycle. Release source freeze, shared workstation images,
 project-command, and OpenSpeckit checks also passed on that head. These CI
 results remain separate from the pending real WSL bench acceptance.
+
+The cache-assisted retry confirmed cached developer-base steps through 45 and
+advanced beyond the first attempt. At `23:09Z`, its installer process had
+exited while the native build client still waited. The QA daemon's read-only
+`/debug/pprof/goroutine?debug=2` trace showed BuildKit blocked in
+`overlay2.Driver.Put → unix.Unmount`; the blocked kernel thread was in
+`sync_inodes_sb → sync_filesystem → ovl_sync_fs → cleanup_mnt`. This confirms
+another backend filesystem wait after the transcript-I/O fix, rather than a
+mapped-user permission error or a pending vendor download. The trace does not
+identify the underlying cause. The source-lock check also passed on the clean
+QA-evidence commit `e4edb25542cc12241abdfed631a77c8a4d7d53c1`.
+
+At `23:16Z`, the native Windows guard was repeated against the clean product
+commit `7655599` using actual Git Bash `bash.exe --noprofile --norc`, with the
+QA checkout's path obtained from `wslpath -m`. Its command sourced
+`scripts/lib/setup-prerequisites.sh` and invoked `ensure_setup_platform` with
+stdin redirected from `/dev/null`. It passed: exit 1, explicit WSL 2/Linux
+container prerequisites, and the Administrator PowerShell
+`wsl --install -d Ubuntu` guidance. This noninteractive check did not request
+elevation or install/reconfigure WSL; existing WSL provisioning is a prerequisite
+for the live workstation run.
+
+Two read-only samples of the backing device's `/sys/class/block/sde/stat`
+at `23:19:34Z` and `23:20:23Z` recorded 63,693 completed writes and 1,629.70 MiB
+written over 49 seconds (33.26 MiB/s), with 96.9% I/O busy time. These counters
+show ongoing device I/O while the build waits for filesystem synchronization;
+they do not establish a complete I/O stop, physical-disk saturation, or hardware
+failure. The raw numeric samples remain in the private QA report.
