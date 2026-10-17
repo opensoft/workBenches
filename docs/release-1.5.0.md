@@ -233,3 +233,47 @@ images were also retained; original image tags were unchanged. Resume cleanup
 using only those QA project names after Docker responds normally. The existing
 configured Windows/WSL path was inspected; cold OS provisioning, WSL conversion,
 Docker Desktop installation/elevation and its settings UI were not exercised.
+
+### Tools retry at 20:15–20:17 UTC
+
+Retested source `9eb94deab50a098530bb544937a97f671e495d99`. Eagle still
+reported host user `brett` as UID/GID `1000:1000`, with Docker socket group
+`1001` and mode 0660. Docker inspection now showed the earlier corrected
+helper create had eventually completed: `workbenches-eagle150-fixed-tools`
+was **Created**, configured with user `1000:1000` and supplementary group
+`1001`. Its name resolves to `brett` through the managed identity mount;
+the container had not successfully started.
+
+`timeout 60 bash scripts/manage-setup-services.sh start tools`, targeting that
+isolated helper, expired with exit 124. The pending operation was Docker's
+`container start`; the helper remained Created. No in-container Docker access
+success is claimed.
+
+Two minimal probes used the already built Tools image, no network, a read-only
+root, dropped capabilities and only the Docker socket bind. Both commands
+began with `id` and would then query `docker info --format "Engine={{.ID}}"`;
+the mapped-user probe also checked socket metadata. They used these identities:
+
+| Probe | Docker identity arguments | Result |
+| --- | --- | --- |
+| Mapped user/socket group | `--user 1000:1000 --group-add 1001` | `docker run --rm` exceeded 30 seconds, exit 124; no `id` output. |
+| Root comparison | `--user 0:0` | Same 30-second timeout, exit 124; no `id` output. |
+
+This establishes that the observed startup stall also occurs for a minimal
+root invocation. It does not establish the Docker backend's underlying cause
+or complete live validation of the socket-group fix. Original workstation
+containers were not stopped or reconfigured.
+
+Late completion of earlier requests changed the retained-resource inventory:
+the old disposable engine and earlier regression container disappeared, while
+the two QA Tools containers and
+`workbenches-eagle150-regression-npm-integrity-run-d79fa8ea5088` appeared in
+Created state. The retry probe names are
+`workbenches-eagle150-socket-probe-2016` and
+`workbenches-eagle150-root-probe-2017`; they had not appeared in inventory when
+their clients timed out. Cleanup must account for delayed server-side request
+completion even after client cancellation, using only this run's QA names.
+The retry's QA-only removal command also exceeded its 10-second deadline,
+although it reported removal of the old Tools and remaining regression
+container. Its final inventory still showed
+`workbenches-eagle150-fixed-tools` in Created state.

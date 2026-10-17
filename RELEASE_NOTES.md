@@ -56,6 +56,10 @@ and shell/Git configuration were preserved during this attempt.
 **The Windows/WSL gate is still open.**
 QA-only engine/regression cleanup also exceeded bounded deadlines; the retained
 resource names are listed in the QA record for later cleanup.
+A subsequent retry on `9eb94de` confirmed the corrected helper identity
+`1000:1000` plus socket group `1001`, but startup exceeded 60 seconds.
+Minimal mapped-user and root probes both timed out before producing `id`
+output; changing to root did not resolve the observed startup stall.
 Exact commands, versions, failures and remaining cases are recorded in the
 [Eagle QA record](docs/release-1.5.0.md#eagle-windowswsl-acceptance--2026-10-17).
 The real Vaultwarden server/CLI recovery test passed with verified TLS and a
