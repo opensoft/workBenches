@@ -42,8 +42,10 @@ benches are not all certified by that run. Live Windows/WSL testing on Eagle
 is still pending SSH authorization.
 The real Vaultwarden server/CLI recovery test passed with verified TLS and a
 generated, nonbillable test credential; no production credential was required.
-Real Keycloak browser approval is also pending; fixture sign-in tests do not
-establish organization account login.
+Real Keycloak browser approval, local sign-out, and reconnect passed on
+Raven/Linux on 2026-10-17 using the account helper at `f7614da` against the
+OpenSoft QA realm. Both approvals confirmed identity through userinfo and
+reported signed in; local sign-out cleared the workstation session.
 
 macOS is **unvalidated for 1.5.0**: no Mac is available for live workstation QA.
 Existing macOS code paths remain present, but this release does not claim a

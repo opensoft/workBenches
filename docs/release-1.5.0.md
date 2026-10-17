@@ -74,8 +74,12 @@ These results precede the release commit. The following remain required:
 - [x] Complete real Vaultwarden recovery using the actual server and Bitwarden
   CLI with verified TLS, a generated test account, and a generated nonbillable
   AI credential. The private profile received the expected credential bytes.
-- [ ] Complete a real QA Keycloak login. Browser approval remains pending;
-  fixture sign-in responses do not establish organization account login.
+- [x] Complete a real QA Keycloak login. On Raven/Linux, 2026-10-17, the
+  account helper on candidate `f7614da` completed real browser device approval
+  against the OpenSoft QA realm, confirmed identity through userinfo, and
+  reported signed in. Local sign-out reported sign in; a second real browser
+  approval completed reconnect and restored signed-in status. This covers the
+  account helper flow; no new TUI acceptance run was performed.
 - [ ] Complete live QA for every platform advertised as supported. Raven/Linux
   has development coverage; Windows/WSL QA is assigned to Eagle and remains
   pending remote access. No Mac is available: macOS must be identified as
