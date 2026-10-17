@@ -30,7 +30,7 @@ def main():
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--sha', required=True)
     parser.add_argument('--engine', required=True, help='Disposable engine Unix socket, mounted at the same path inside it')
-    parser.add_argument('--phase', choices=('all', 'desktop', 'bench', 'services'), default='all')
+    parser.add_argument('--phase', choices=('all', 'desktop', 'bench', 'services', 'guard'), default='all')
     parser.add_argument('--resume', action='store_true', help='Continue matching evidence after correcting a QA driver or environment issue')
     args = parser.parse_args()
     home, repo, report = Path.home().resolve(), args.repo.resolve(), args.report.resolve()
@@ -38,7 +38,7 @@ def main():
     assert 'microsoft-standard' in os.uname().release.lower() and not Path('/.dockerenv').exists(), 'Requires a real WSL 2 host'
     assert os.getuid() != 0, 'Run as the normal WSL user to exercise mapped-user access'
     assert home != Path(pwd.getpwuid(os.getuid()).pw_dir).resolve(), 'Requires an isolated HOME'
-    if args.phase in ('all', 'bench'):
+    if args.phase in ('all', 'bench', 'guard'):
         assert not home.is_relative_to(Path('/tmp').resolve()), 'DinD masks /tmp; put the isolated bench home under the user cache'
     assert repo.is_relative_to(home) and not report.is_relative_to(repo), 'Use a private checkout and external report directory'
     assert args.engine.startswith('unix:///') and args.engine != 'unix:///var/run/docker.sock'
@@ -82,8 +82,8 @@ def main():
     value = 'sk-test-invalid-wsl-acceptance'
     tui.MARKERS.append(value)
     results = []
-    if args.resume or args.phase in ('bench', 'services'):
-        names = (args.phase,) if args.resume else (('bench', 'all', 'desktop') if args.phase == 'services' else ('desktop', 'all'))
+    if args.resume or args.phase in ('bench', 'services', 'guard'):
+        names = (args.phase,) if args.resume else (('bench', 'all', 'desktop') if args.phase in ('services', 'guard') else ('desktop', 'all'))
         previous = next((report / ('wsl-' + name + '-results.json') for name in names
                          if (report / ('wsl-' + name + '-results.json')).is_file()), None)
         if previous:
@@ -147,8 +147,29 @@ def main():
     def preserved():
         assert snapshot() == baseline, 'Project, credential, or prompt changed'
 
+    def frozen_guard():
+        checkout = repo / 'devBenches/pyBench'
+        note = checkout / 'wsl-acceptance-local-work.txt'
+        fixture(note, 'preserve local source work\n')
+        benches = sorted(json.loads((repo / 'config/bench-config.json').read_text())['benches'])
+        replies = [(tui.TUI, '\x1b[B' * benches.index('pyBench')),
+                   (r'pyBench · (?:needs setup|Ready|image only)', ' \n')]
+        output = terminal('frozen-local-work-guard', replies, 1)
+        assert 'has local changes; save them before using a frozen release' in output
+        assert note.read_text() == 'preserve local source work\n'
+        pinned = next(row['commit'] for row in json.loads(lock)['repositories'] if row['path'] == 'devBenches/pyBench')
+        assert run(['git', '-C', str(checkout), 'rev-parse', 'HEAD']) == pinned
+
     save()
     try:
+        if args.phase == 'guard':
+            if project.exists() and credential.exists():
+                baseline = snapshot()
+            env['DOCKER_HOST'] = args.engine
+            for variable in ('WORKBENCHES_TOOLS_CONTAINER', 'WORKBENCHES_SERVICES_NETWORK'):
+                env[variable] += '-bench'
+            assert run(['docker', 'info', '--format', '{{.ID}}']) != desktop_id, 'Guard engine must be isolated'
+            check('frozen-local-work-guard', frozen_guard)
         if args.phase == 'services':
             if project.exists() and credential.exists():
                 baseline = snapshot()
@@ -252,6 +273,8 @@ def main():
             def remove_bench():
                 terminal('bench-remove', [(tui.TUI, navigation), (r'pyBench · Ready', 'D\n')])
                 assert subprocess.run(['docker', 'inspect', 'py-bench'], env=env, capture_output=True).returncode != 0
+                for image in ('py-bench:latest', 'py-bench:' + env['USER']):
+                    assert subprocess.run(['docker', 'image', 'inspect', image], env=env, capture_output=True).returncode != 0, 'Removed bench image remains: ' + image
                 assert note.read_text() == 'preserve local source work\n'
                 run(['docker', 'image', 'inspect', 'workbench-base:latest', 'dev-bench-base:latest'])
                 assert run(['docker', 'inspect', '--format', '{{.Id}}', 'wsl-acceptance-unrelated']) == unrelated
@@ -260,12 +283,6 @@ def main():
                 if baseline:
                     preserved()
             check('bench-remove', remove_bench)
-            def frozen_guard():
-                output = terminal('frozen-local-work-guard', bench, 1)
-                assert 'has local changes; save them before using a frozen release' in output
-                assert note.read_text() == 'preserve local source work\n'
-                pinned = next(row['commit'] for row in json.loads(lock)['repositories'] if row['path'] == 'devBenches/pyBench')
-                assert run(['git', '-C', str(checkout), 'rev-parse', 'HEAD']) == pinned
             check('frozen-local-work-guard', frozen_guard)
     finally:
         def preservation():

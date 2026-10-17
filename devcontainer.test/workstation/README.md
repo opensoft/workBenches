@@ -130,6 +130,14 @@ driver correction; completed cases are retained and preservation witnesses are
 verified before another lifecycle action. Use a fresh empty engine for a new
 bench phase rather than treating existing bench artifacts as a fresh install.
 
+After a blocked bench attempt has exited, `--phase guard` independently checks
+the frozen-source refusal using the same isolated home/engine and matching
+report. It creates a local-work fixture only in the QA pyBench checkout and
+verifies that setup refuses before image building, preserving the file and pin.
+Run it after the bench attempt: its deliberate local modification would prevent
+a fresh installation in that checkout. It retains failed bench evidence and
+cannot complete the gate without the remaining lifecycle cases.
+
 The phase report records failures and cases not run, and never reports the full
 gate complete for a partial phase. Project/credential/prompt witnesses, original
 Desktop resource IDs/images/volumes, and source-lock bytes are checked. Retain
