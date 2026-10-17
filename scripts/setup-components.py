@@ -62,10 +62,10 @@ FLATPAKS = {'vscode': 'com.visualstudio.code', 'warp': 'dev.warp.Warp',
             'wave': 'dev.waveterm.waveterm', 'amnezia_vpn': 'org.amnezia.AmneziaVPN'}
 
 
-def read_command(argv, env=None):
+def read_command(argv, env=None, timeout=15):
     if host and host.active() and Path(argv[0]).name != 'docker':
-        return host.run(argv, capture_output=True, text=True, timeout=15, env=env)
-    return subprocess.run(argv, capture_output=True, text=True, timeout=15, env=env)
+        return host.run(argv, capture_output=True, text=True, timeout=timeout, env=env)
+    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, env=env)
 
 
 def apply_command(argv, env=None):
@@ -104,6 +104,19 @@ def executable_paths(component):
     return list(dict.fromkeys(result))
 
 
+def snap_packages():
+    """Read Snap once per inventory; WSL may have its client without snapd."""
+    if not native_which('snap'):
+        return set()
+    try:
+        result = read_command(['snap', 'list'], timeout=2)
+    except (OSError, subprocess.TimeoutExpired):
+        return set()
+    if result.returncode:
+        return set()
+    return {line.split()[0] for line in result.stdout.splitlines()[1:] if line.split()}
+
+
 def package_installation(component, executable=None):
     """Only known package IDs are eligible; never remove a shared dependency."""
     allowed = PACKAGES[component]
@@ -120,10 +133,10 @@ def package_installation(component, executable=None):
         for name in allowed:
             if read_command(['rpm', '-q', name]).returncode == 0:
                 return ['dnf', '--setopt=clean_requirements_on_remove=False', 'remove', name]
-    if native_which('snap'):
-        for name in allowed:
-            if read_command(['snap', 'list', name]).returncode == 0:
-                return ['snap', 'remove', name]
+    installed_snaps = snap_packages()
+    for name in allowed:
+        if name in installed_snaps:
+            return ['snap', 'remove', name]
     if component in FLATPAKS and native_which('flatpak'):
         name = FLATPAKS[component]
         for scope in ('--user', '--system'):
@@ -326,7 +339,9 @@ def tool_statuses():
     """One native callback session for the entire workstation tool inventory."""
     import profile_credentials
     original_which = globals()['native_which']
+    original_snaps = globals()['snap_packages']
     globals()['native_which'] = functools.lru_cache(maxsize=None)(original_which)
+    globals()['snap_packages'] = functools.lru_cache(maxsize=None)(original_snaps)
     providers = {'claude_cli': 'claude', 'codex_cli': 'codex', 'pi_cli': 'pi', 'opencode_cli': 'omniroute'}
     try:
         for component in COMMANDS:
@@ -339,6 +354,7 @@ def tool_statuses():
             print(component + '\t' + status, flush=True)
     finally:
         globals()['native_which'] = original_which
+        globals()['snap_packages'] = original_snaps
 
 
 def main():

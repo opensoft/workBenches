@@ -172,6 +172,26 @@ else exec bash "$(dirname "$0")/interactive-real.sh" "$@"; fi
         self.assertFalse(any('unexpected npm' in action for action in actions), actions)
 
 
+class SnapInventoryTests(unittest.TestCase):
+    def test_unavailable_snap_daemon_is_probed_once_with_a_short_deadline(self):
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(components.Path, 'home', return_value=Path(temporary)), \
+                patch.object(components, 'native_which', side_effect=lambda name: '/usr/bin/snap' if name == 'snap' else None), \
+                patch.object(components, 'read_command', side_effect=subprocess.TimeoutExpired(['snap', 'list'], 2)) as read, \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            components.tool_statuses()
+        read.assert_called_once_with(['snap', 'list'], timeout=2)
+        self.assertIn('codex_cli\tnot installed', output.getvalue())
+        self.assertEqual(len(output.getvalue().splitlines()), len(components.COMMANDS))
+
+    def test_only_exact_installed_snap_names_are_removable(self):
+        result = subprocess.CompletedProcess([], 0, 'Name Version Rev Tracking Publisher Notes\ncodex-bin 1 2 latest/stable test -\nunrelated 1 2 latest/stable test -\n')
+        with patch.object(components, 'native_which', side_effect=lambda name: '/usr/bin/snap' if name == 'snap' else None), \
+                patch.object(components, 'read_command', return_value=result):
+            self.assertEqual(components.package_installation('codex_cli'), ['snap', 'remove', 'codex-bin'])
+            self.assertIsNone(components.package_installation('claude_cli'))
+
+
 class BenchRemovalTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(); self.addCleanup(self.temporary.cleanup)
