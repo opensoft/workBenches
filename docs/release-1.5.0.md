@@ -277,3 +277,107 @@ The retry's QA-only removal command also exceeded its 10-second deadline,
 although it reported removal of the old Tools and remaining regression
 container. Its final inventory still showed
 `workbenches-eagle150-fixed-tools` in Created state.
+
+### Docker diagnosis and recovered Tools startup, 20:19–20:26 UTC
+
+Docker Desktop was running and partly responsive, with an intermittent failure
+in its container-storage lifecycle. `_ping` returned HTTP 200 in 0.042 seconds;
+inspection of the existing pyBench returned HTTP 200 in 0.017 seconds, and
+`docker exec` in that bench succeeded. The native Windows Desktop CLI reported
+`running`. Inspection of the affected QA container also stalled through the
+native Windows client, so this was not isolated to the WSL Docker CLI.
+
+Current resource checks did not show capacity exhaustion: about 47 GiB was
+available inside WSL, Docker's data filesystem had about 240 GiB free, Windows
+had about 13 GiB free memory, and sampled physical-disk queues were zero. Both
+Windows physical disks reported SSD/Healthy/OK. These samples do not establish
+conditions during every earlier stall.
+
+Local daemon Go stack dumps identified new-container requests inside
+`createContainerVolumesOS` / `prepareInitLayer`, through containerd snapshot
+handling and `unix.Unmount`. A contemporaneous kernel trace showed a dockerd
+thread in uninterruptible sleep, with this call chain:
+
+```text
+wb_wait_for_completion
+__writeback_inodes_sb_nr
+writeback_inodes_sb
+sync_filesystem
+ovl_sync_fs
+generic_shutdown_super
+cleanup_mnt
+```
+
+This identifies a filesystem-writeback wait while unmounting OverlayFS snapshots
+as the observed blocking mechanism. It does not identify the cause of that
+writeback delay or prove a specific upstream bug. Diagnostic stack collection
+was local; no diagnostics were uploaded and no daemon configuration was changed.
+See Docker's [daemon log and stack-dump guidance](https://docs.docker.com/engine/daemon/logs/).
+
+A separate cached BusyBox image reproduced the delay, excluding a failure
+specific to the Tools image: a 15-second run timed out, while a subsequent
+single run with a 60-second budget succeeded. API-proxy timestamps show its
+create request took 16.93 seconds before the container could start. Thus the
+failure was intermittent/severe latency, rather than every new container being
+permanently unable to start.
+
+The previously created mapped-user socket probe then completed with exit 0 in
+11 seconds and reported UID/GID `1000:1000`, groups `1000,1001`, socket ownership
+`0:1001` with mode 0660, and the same engine ID as the host.
+
+Finally, the declared service manager created and started a fresh full helper,
+`workbenches-eagle150-diagnosis-tools`, from the clean `9eb94de` QA checkout.
+Startup succeeded in **21 seconds**, status was **Up**, and in-container `id`
+reported `uid=1000(brett) gid=1000(brett) groups=1000(brett),1001`. Its Docker
+client reached host engine `65893114-1581-418d-a1ac-d479a9fcddad`. This **passes
+live verification of the socket-group fix** and the original version-only health
+check. A subsequent functional check exposed the packaging issue below, so that
+first success did not establish complete Tools functionality. No Docker Desktop
+restart or global settings change was needed for the recovered Docker access.
+
+### Helper permissions follow-up — `81bde3b`
+
+The protected QA checkout was created under `umask 077`: its public helper
+source files had mode 0600. Docker preserved those permissions when copying the
+files into root-owned image locations. Consequently, the mapped user could
+reach Docker but could not import the host callback helper. Component inventory
+became `needs check`; a subsequent TUI script exited without installing Codex,
+and its postcondition correctly failed. This was a separate image-packaging
+failure, not evidence of another Docker daemon failure or a passed CLI install.
+
+Candidate `81bde3b36e90ad15d8ab526aa7fb03de63becba5` explicitly normalizes public
+helper directories to 0755, the Tools command bridge to 0755, and public Python
+modules to 0644 in Tools and all credential-image stages. Tools health now
+checks bridge readability/executability and imports the callback module; Vault
+health invokes its Python helper's help path. Private runtime credentials and
+host checkout permissions are unchanged.
+
+The final Tools image was rebuilt from that same restrictive checkout through
+`scripts/manage-setup-services.sh start tools`. Live checks **passed** as
+`brett` (`1000:1000`, supplementary group `1001`): directory/file access,
+helper import, Docker engine identity, a real callback executing WSL `id`,
+and an actual `npm --version` invocation through the bridge. These checks
+establish functional Tools readiness on Eagle. All 40 focused tests also
+passed on `81bde3b`: 10 release/version, 6 service, and 24 credential-recovery
+tests, executed in the existing declared pyBench.
+
+The credential core image was built through the declared `credential-1password`
+Compose service, with a private override selecting target `core` and a QA-only
+image tag. Running its actual Python helper with `--help` as UID/GID 1000:1000,
+read-only root and dropped capabilities **passed**. This verifies module access
+from the restrictive checkout; it does not certify the provider images or
+managed Vault startup. The selected native callback resolved Node `22.22.2`
+and npm `10.9.3`; the latter differs from the separately inspected distro npm
+`10.9.7`. A further application-status probe exceeded its 30-second budget, so
+no later CLI installation or lifecycle success is claimed.
+
+After diagnosis, the temporary BusyBox/root probes and credential-test network
+were removed. The retained helper is `workbenches-eagle150-diagnosis-tools`
+(Up/healthy, isolated QA home). The three previously listed
+`workbenches-eagle150-wsl_acceptance-{data,home,tmp}` volumes remain available
+for cleanup or continued isolated QA. All original container IDs remained
+present, and the inventoried original credential and shell/Git hashes still
+matched. No original bench was stopped and no Docker/WSL restart was performed.
+
+Full Vault readiness, the selected pyBench path, CLI installation/lifecycle,
+and the remaining complete workstation acceptance cases still require execution.

@@ -60,6 +60,18 @@ A subsequent retry on `9eb94de` confirmed the corrected helper identity
 `1000:1000` plus socket group `1001`, but startup exceeded 60 seconds.
 Minimal mapped-user and root probes both timed out before producing `id`
 output; changing to root did not resolve the observed startup stall.
+Further diagnosis located the stalls in OverlayFS unmount filesystem writeback.
+Docker's API and existing benches remained available. A later fresh full Tools
+helper **passed** startup and Docker access in 21 seconds as `brett`
+(`1000:1000`, supplementary socket group `1001`), without a Docker restart.
+This verifies the socket-group fix live; full Windows/WSL acceptance remains open.
+Functional follow-up found that a private checkout's 0600 source modes made
+root-owned helper files unreadable to the mapped user. Tools and credential
+images now normalize public code permissions and check helper access in their
+health probes. On `81bde3b`, rebuilt Tools passed Docker access, Python import,
+the real WSL callback and npm bridge; 40 focused checks passed. The CLI install
+attempt before this fix made no selection because inventory was blocked, so
+CLI and full workstation lifecycle acceptance are still pending.
 Exact commands, versions, failures and remaining cases are recorded in the
 [Eagle QA record](docs/release-1.5.0.md#eagle-windowswsl-acceptance--2026-10-17).
 The real Vaultwarden server/CLI recovery test passed with verified TLS and a
