@@ -1,5 +1,11 @@
 # Keycloak-gated credential broker
 
+Design scope: this document describes the earlier SOPS-backed proposal. The
+planned v1.6 company Key Vault flow, including immutable federated identities,
+separate publication grants, workstation synchronization, and CPC maintenance,
+is specified in [Company credential synchronization](../specs/027-company-credential-sync/spec.md).
+Neither proposal should be read as an already implemented broker deployment.
+
 workBenches stores no secrets. Today the actual credential values live as SOPS
 ciphertext inside private tenant and user registries, and
 `scripts/provider-credential-escrow` restores them by reading a local clone with
