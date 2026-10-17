@@ -25,6 +25,8 @@ Draft: publication is pending the remaining gates in
   setup runs through Tools, avoiding a false unhealthy-service warning.
 - Native installers honor their requested timeouts, including long bench builds;
   project setup can use the host-command bridge from isolated Python.
+- Tools uses the actual Docker socket group on Windows/WSL Docker Desktop;
+  existing managed helpers are recreated to apply the corrected access group.
 
 ## Validation and platforms
 
@@ -38,8 +40,24 @@ frozen workstation acceptance cases passed on `c880e04`, with a fresh home and
 anonymous HTTPS clone using cached shared base images in an isolated engine.
 The selected pyBench/Codex path passed installation, startup, update, cancellation,
 and removal checks with local work and credentials preserved. Other pinned
-benches are not all certified by that run. Live Windows/WSL testing on Eagle
-is still pending SSH authorization.
+benches are not all certified by that run.
+
+Live Windows/WSL QA was attempted on Eagle (Windows 11 Pro
+`10.0.26300.9711`, WSL `2.7.14.0`, Ubuntu `24.04.4`, Docker Desktop `4.93.0`,
+engine `29.8.1`). Candidate `0367f1b` exposed a Docker socket-group permission
+failure in Tools. The fix candidate `fa7cd5a29c977a0a6f97c04a4e5fa7f849f5ccd9`
+passed the source-lock check and 54 focused tests in the declared pyBench.
+Native Windows WSL guidance and real WSL loading-screen cancellation passed;
+the latter exited 130 in 0.49 seconds. Full frozen installation, helper
+readiness, selected pyBench/Codex startup and live update/removal/preservation
+are **blocked** by Docker helper creation and image preparation that did not
+complete. Existing container IDs, image tags, volumes, inventoried credentials
+and shell/Git configuration were preserved during this attempt.
+**The Windows/WSL gate is still open.**
+QA-only engine/regression cleanup also exceeded bounded deadlines; the retained
+resource names are listed in the QA record for later cleanup.
+Exact commands, versions, failures and remaining cases are recorded in the
+[Eagle QA record](docs/release-1.5.0.md#eagle-windowswsl-acceptance--2026-10-17).
 The real Vaultwarden server/CLI recovery test passed with verified TLS and a
 generated, nonbillable test credential; no production credential was required.
 Real Keycloak browser approval, local sign-out, and reconnect passed on

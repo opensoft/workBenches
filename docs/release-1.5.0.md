@@ -81,10 +81,10 @@ These results precede the release commit. The following remain required:
   approval completed reconnect and restored signed-in status. This covers the
   account helper flow; no new TUI acceptance run was performed.
 - [ ] Complete live QA for every platform advertised as supported. Raven/Linux
-  has development coverage; Windows/WSL QA is assigned to Eagle and remains
-  pending remote access. No Mac is available: macOS must be identified as
+  has development coverage; Windows/WSL QA on Eagle is blocked by live Docker
+  operations (see below).
+  No Mac is available: macOS must be identified as
   unvalidated in 1.5.0 rather than advertised as a validated platform.
-  Eagle now answers SSH, but rejects Raven's key for the `brett` login.
 - [ ] Prepare final release notes with the tested commit, validation evidence,
   platform coverage, and known limitations.
 - [x] Protect version tags against updates/deletion: active repository ruleset
@@ -94,3 +94,142 @@ After these gates pass, follow [the release process](releases.md): merge the
 approved candidate, validate the exact final commit, create the annotated
 `v1.5.0` tag, wait for tag CI, and publish the release. Do not move a published
 tag. Post-release fixes use `1.5.1`; compatible feature additions use `1.6.0`.
+
+## Eagle Windows/WSL acceptance — 2026-10-17
+
+Initial candidate: `0367f1b70749b346762f57067bb0ad9e1599c3d9`.
+Fix candidate tested by the focused checks:
+`fa7cd5a29c977a0a6f97c04a4e5fa7f849f5ccd9`.
+The Windows/WSL release gate remains **open** until the live cases below pass.
+
+### Environment and isolation
+
+- Eagle: Windows 11 Pro `10.0.26300.9711`, Windows PowerShell
+  `5.1.26100.9711`, Windows Git `2.51.0.windows.2`, Git Bash `5.2.37`.
+- WSL `2.7.14.0`, Ubuntu-24.04 running as WSL 2, Ubuntu `24.04.4 LTS`,
+  kernel `6.18.33.2-microsoft-standard-WSL2`; Bash `5.2.21`, Zsh `5.9`,
+  Linux Git `2.43.0`, Node `22.22.2`, npm `10.9.7`.
+- Docker Desktop `4.93.0 (240920)`, Linux engine/client `29.8.1`,
+  Compose `5.5.1`, selected context `default` with a local Unix socket.
+  Windows executable interop works; Windows PATH import is disabled, so
+  Windows system executable directories were added only to the QA environment.
+- A private temporary QA home/checkout/cache and unique `workbenches-eagle150-*`
+  helper names isolate workstation data. Existing pyBench, cloudBench and
+  Docker Desktop Kubernetes resources were left running. No global Docker
+  configuration or Windows execution policy was changed.
+- The declared `acceptance-engine` service also started in the unique
+  `workbenches-eagle150-wsl` Compose project (Docker `28.5.2`). A local override
+  exposes only the QA home/socket and WSL runtime mounts at their original
+  paths, allowing bench commands to execute on the real WSL host against that
+  disposable engine. A container-only run is not Windows/WSL certification.
+
+### Commands and results
+
+Environment inspection used `wsl.exe --version`, `wsl.exe --list --verbose`,
+PowerShell `Get-CimInstance Win32_OperatingSystem` and `Get-Command`, Git/shell
+version commands, `docker version`, `docker compose version`, `docker context
+show`, and read-only Docker resource inventories. Windows executables were
+invoked using their WSL-mounted system paths.
+
+The existing clean checkout was fetched and switched to
+`codex/tui-silver-requirements-2026-10-14`; `git submodule update --init
+--recursive` retained all eight recorded pins. The separate QA checkout used:
+
+```bash
+bash bootstrap.sh --branch codex/tui-silver-requirements-2026-10-14 \
+  --directory "$QA_HOME/projects/workBenches"
+bash bootstrap.sh --submodules "$QA_HOME/projects/workBenches"
+git -C "$QA_HOME/projects/workBenches" submodule init
+WORKBENCHES_FROZEN=1 bash setup.sh --version
+bash scripts/manage-setup-services.sh start tools
+bash scripts/manage-setup-services.sh start vault
+```
+
+The bootstrap used configured SSH access. The explicit `submodule init`
+persisted registrations after the bootstrap's command-scoped transport choices;
+every populated submodule matched its gitlink. Version output was
+`workBenches v1.5.0`. Setup invocations use `WORKBENCHES_FROZEN=1`, isolated
+XDG/npm paths and the documented optional integration skip flags.
+
+| Check | Evidence/result |
+| --- | --- |
+| Actual native Windows guard | Git Bash sourced `scripts/lib/setup-prerequisites.sh` and ran `ensure_setup_platform` through PowerShell `-NoProfile -Command`. Exit 1, with WSL 2/Ubuntu guidance; no installation/elevation was requested. |
+| Live WSL first screen and cancellation | Real WSL `bash setup.sh`, driven through the existing acceptance suite's PTY helper: Windows/WSL header and WSL 2/Docker Up observed. Q during loading exited 130 in 0.49 seconds. |
+| Initial Tools startup | **Failed on `0367f1b`**: container health passed, but its Docker client received socket permission denied. The mounted socket was `root:1001`, mode 0660; the helper only had supplemental group 0. |
+| Socket fix and migration | `423c023` detects the actual Linux socket GID on Docker Desktop/WSL, retains macOS's VM group behavior, and advances the runtime fingerprint so owned helpers are recreated. The old QA helper stopped. Replacement creation selected group 1001, but did not finish; live access verification remains blocked. |
+| Source freeze and focused regression | **Passed on `fa7cd5a`** in the existing declared pyBench: source-lock check, 10 release/version tests, 6 service tests, 18 requirements tests, 6 async tests, 14 Docker prerequisite tests, and Bash syntax validation. |
+| Fresh frozen install / Tools and Vault readiness | **Blocked**: replacement helper creation and Vault image preparation did not complete. |
+| Selected pyBench/Codex install and shell startup | **Not run**: disposable engine base-image loading was incomplete; the existing fixed-name `py-bench` was preserved. |
+| Existing-install update, add/remove, cancellation with queued changes, preservation | **Not run** through the live lifecycle; loading-screen cancellation alone does not establish these cases. |
+| Existing workstation preservation during this attempt | All original container IDs, image tags/IDs and volume names remained present. All 16 inventoried credential files and the three inventoried shell/Git configuration files retained their hashes. All original submodules remained clean at recorded commits. This is evidence for this attempt, not the unexecuted lifecycle cases. |
+
+Focused checks ran with `docker exec --user "$USER" --workdir
+"$BENCH_REPO_ROOT" py-bench bash -ec '…'`, using these commands in order:
+
+```bash
+git rev-parse HEAD
+python3 scripts/release-workbenches.py check
+python3 devcontainer.test/test-release-version.py
+python3 devcontainer.test/test-setup-services.py
+python3 devcontainer.test/test-setup-requirements.py
+python3 devcontainer.test/test-setup-async.py
+python3 devcontainer.test/test-docker-prerequisite.py
+bash -n scripts/lib/tools-container.sh
+```
+
+Initial regression attempts through the declared `npm-integrity` test service
+found test fixtures assuming Linux's two requirement rows, fixed row indices,
+and a non-WSL package-manager host. These fixtures now respect WSL's third row
+or explicitly model native Linux. Running interactive fixtures against the
+service's read-only source mount also produced log-write errors; the passing
+focused run used the writable declared pyBench checkout.
+
+### Blocker and outstanding live work
+
+Docker Desktop create/stop/image operations took several minutes under existing
+workload. An initial 120-second PTY-driver deadline expired during first-use
+Tools preparation; it is not a passed install. A QA-only `stop --time 10` took
+over four minutes, and a fresh corrected helper create remained pending for
+over six minutes. The Vault build did not complete. These observations establish
+the blocking operations, not their underlying cause. A read-only Dashboard
+inspection was requested; no engine restart or interruption of existing
+workloads was authorized or performed.
+
+The declared workstation image was built with:
+
+```bash
+docker compose -p workbenches-eagle150-acceptance \
+  -f devcontainer.test/docker-compose.yml --profile workstation-acceptance \
+  build workstation-acceptance
+docker compose -p workbenches-eagle150-wsl \
+  -f devcontainer.test/docker-compose.yml -f "$QA_ROOT/wsl-engine.yml" \
+  --profile workstation-acceptance up -d --wait acceptance-engine
+docker image save workbench-base:latest dev-bench-base:latest | \
+  DOCKER_HOST="unix://$QA_ROOT/socket/docker.sock" docker image load
+```
+
+Only `workbench-base:latest` finished loading. The QA-only import was canceled
+after roughly twelve minutes, followed by cancellation of the pending helper,
+Vault-build and duplicate regression clients. No full workstation acceptance
+success is claimed. Resume with a responsive Docker engine and repeat the
+blocked live cases on the then-current exact branch commit. Windows/WSL must
+not be marked validated from the focused tests alone.
+
+Cleanup removed the QA helper containers and `workbenches-eagle150-services`
+network. Project-scoped `docker compose down --volumes --remove-orphans`
+attempts for the WSL engine and regression projects exceeded 45-second
+deadlines. A bounded QA-only force-removal attempt followed. At the last
+inventory, these task-owned resources still needed cleanup:
+
+- `workbenches-eagle150-wsl-acceptance-engine-1` and
+  `workbenches-eagle150-regression-npm-integrity-run-ff1b77d6fece` containers;
+- `workbenches-eagle150-wsl_default` and
+  `workbenches-eagle150-regression_default` networks;
+- `workbenches-eagle150-wsl_acceptance-{data,home,tmp}` volumes.
+
+QA logs and isolated checkout/home were retained locally. The newly built
+`workbenches/tools:eagle150-qa` and declared `workbenches-test:workstation`
+images were also retained; original image tags were unchanged. Resume cleanup
+using only those QA project names after Docker responds normally. The existing
+configured Windows/WSL path was inspected; cold OS provisioning, WSL conversion,
+Docker Desktop installation/elevation and its settings UI were not exercised.
