@@ -8,6 +8,9 @@ import subprocess
 import sys
 import tempfile
 import re
+import pty
+import select
+import time
 import unittest
 from unittest.mock import patch
 
@@ -121,6 +124,37 @@ handle_input
         saved = json.loads((self.root / 'profiles.json').read_text())
         self.assertEqual(saved['companies'][0]['name'], 'Example Company')
         self.assertFalse((self.root / 'account-session.json').exists())
+
+    def test_company_sync_menu_is_visible_without_enabling_or_reading_credentials(self):
+        env = dict(os.environ, HOME=str(self.directory), XDG_CONFIG_HOME=str(self.directory))
+        # Nested interactive helpers share a real terminal, not a prefetched stdin pipe.
+        steps = [('Personal email:', 'me@example.org\n'), ('Connect your personal GitHub', 'n\n'),
+            ('Add a company or organization', 'y\n'), ('Company name:', 'Example Company\n'),
+            ('Company email:', 'me@company.org\n'), ('Action [b]:', 'y\n'),
+            ('Action [b]:', 'b\n'), ('Action [b]:', 'b\n'),
+            ('Add a company or organization', 'n\n'), ('Profile or action [b]:', 'b\n')]
+        master, slave = pty.openpty()
+        process = subprocess.Popen([sys.executable, str(ROOT / 'scripts/setup-profiles.py')],
+            stdin=slave, stdout=slave, stderr=slave, env=env)
+        os.close(slave); transcript = ''; cursor = 0; stage = 0
+        try:
+            deadline = time.monotonic() + 15
+            while process.poll() is None and time.monotonic() < deadline:
+                ready, _, _ = select.select([master], [], [], .1)
+                if ready:
+                    try: transcript += os.read(master, 65536).decode(errors='replace')
+                    except OSError: break
+                if stage < len(steps) and steps[stage][0] in transcript[cursor:]:
+                    cursor = len(transcript); os.write(master, steps[stage][1].encode()); stage += 1
+            self.assertEqual(process.wait(timeout=2), 0, transcript)
+        finally:
+            if process.poll() is None: process.kill(); process.wait()
+            os.close(master)
+        self.assertEqual(stage, len(steps))
+        self.assertIn('Company credential sync — Example Company', transcript)
+        self.assertIn('Synchronization: Disabled', transcript)
+        self.assertFalse(list(self.root.rglob('credential-sync.json')))
+        self.assertFalse((self.root / 'company-sync-enabled').exists())
 
     def test_adding_company_ai_profiles_preserves_personal_and_other_companies(self):
         self.root.mkdir()

@@ -1,6 +1,22 @@
 name: workbench-test
 
 services:
+  credential-sync:
+    profiles: [credential-sync]
+    image: workbenches-test:credential-sync
+    build:
+      context: ..
+      dockerfile: credential-broker/Dockerfile
+    working_dir: /source
+    user: "${WORKBENCHES_TEST_UID:-1000}:${WORKBENCHES_TEST_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ..:/source:ro
+    tmpfs: ["/tmp:mode=1777,exec"]
+    command: [python3, devcontainer.test/test-company-credential-sync.py]
+
   image-release:
     profiles: [image-release]
     image: workbenches-test:workstation

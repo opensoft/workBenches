@@ -1,0 +1,33 @@
+services:
+  broker:
+    build:
+      context: ..
+      dockerfile: credential-broker/Dockerfile
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports: ["127.0.0.1:8080:8080"]
+    environment:
+      WORKBENCHES_BROKER_CONFIG: /config/broker.json
+    volumes:
+      - ${WORKBENCHES_BROKER_CONFIG_FILE:?Set broker config path}:/config/broker.json:ro
+      - ${WORKBENCHES_BROKER_STATE_DIR:?Set private state directory owned by UID 10001}:/state
+      - ${WORKBENCHES_BROKER_ADAPTER_DIR:?Set administrator-managed adapter directory}:/adapters:ro
+    tmpfs: [/tmp:mode=1777]
+  cpc:
+    build:
+      context: ..
+      dockerfile: credential-broker/Dockerfile
+    profiles: [maintenance]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: [python3, /app/cpc.py, --watch]
+    environment:
+      WORKBENCHES_CPC_CONFIG: /config/cpc.json
+    volumes:
+      - ${WORKBENCHES_CPC_CONFIG_FILE:-./cpc.json}:/config/cpc.json:ro
+      - ${WORKBENCHES_CPC_CLIENT_SECRET_FILE:-./cpc-client-secret}:/run/secrets/cpc-client-secret:ro
+    tmpfs: [/tmp:mode=1777]

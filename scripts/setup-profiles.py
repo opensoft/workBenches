@@ -66,6 +66,8 @@ def account(profile, action):
     # Global legacy deployment overrides must not redirect a different company.
     env.pop('WORKBENCHES_ACCOUNT_ISSUER', None)
     env.pop('WORKBENCHES_ACCOUNT_CLIENT_ID', None)
+    if (profiles.account_root(profile) / 'credential-sync.json').exists():
+        env['WORKBENCHES_ACCOUNT_OFFLINE'] = '1'
     result = subprocess.run([sys.executable, str(HERE / 'setup-workbenches-account.py'), *action], env=env)
     propagate_cancel(result.returncode)
     return result.returncode
@@ -97,6 +99,14 @@ def enrollment(profile):
         raise ValueError('Enrollment issuer must be an HTTPS realm URL.')
     client = profiles.text(data['clientId'])
     print(f'Company: {profile["name"]}\nSign-in server: {issuer}\nPublic client: {client}')
+    broker = data.get('credentialBrokerUrl')
+    organization_id = profiles.text(data['organizationId']) if data.get('organizationId') else None
+    if broker:
+        from company_sync import endpoint
+        broker = endpoint(broker)
+        print('Credential broker: ' + broker)
+    if organization_id:
+        print('Company tenant ID: ' + organization_id)
     print('Verify these settings came from your company administrator before continuing.')
     if confirm('Save these sign-in settings?'):
         root = profiles.account_root(profile)
@@ -107,7 +117,12 @@ def enrollment(profile):
         import importlib.util
         spec = importlib.util.spec_from_file_location('profile_account', HERE / 'setup-workbenches-account.py')
         module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-        module.write_private(root / 'account-provider.json', {'issuer': issuer, 'clientId': client})
+        config = {'issuer': issuer, 'clientId': client}
+        if broker:
+            config['credentialBrokerUrl'] = broker
+        if organization_id:
+            config['organizationId'] = organization_id
+        module.write_private(root / 'account-provider.json', config)
 
 
 def edit(profile, data):
@@ -122,6 +137,7 @@ def edit(profile, data):
         print('E Email/name   G Connect GitHub   U Unlink GitHub')
         if company:
             print('C Company sign-in   S Local sign-out   I Import enrollment')
+            print('Y Company credential synchronization')
         print('A AI accounts   B Back   Q Cancel')
         choice = ask('Action', 'b').lower()
         if choice == 'b':
@@ -143,6 +159,9 @@ def edit(profile, data):
             account(profile, [])
         elif choice == 'i' and company:
             enrollment(profile)
+        elif choice == 'y' and company:
+            result = subprocess.run([sys.executable, str(HERE / 'setup-company-sync.py'), profile['id']])
+            propagate_cancel(result.returncode)
         elif choice == 's' and company:
             account(profile, ['--logout'])
         elif choice == 'a':

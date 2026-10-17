@@ -4,7 +4,9 @@ Design scope: this document describes the earlier SOPS-backed proposal. The
 planned v1.6 company Key Vault flow, including immutable federated identities,
 separate publication grants, workstation synchronization, and CPC maintenance,
 is specified in [Company credential synchronization](../specs/027-company-credential-sync/spec.md).
-Neither proposal should be read as an already implemented broker deployment.
+The Key Vault flow now has a [v1.6 implementation and runbook](company-credential-sync.md);
+it has not been deployed or validated against real provider profiles. The SOPS
+proposal below remains separate.
 
 workBenches stores no secrets. Today the actual credential values live as SOPS
 ciphertext inside private tenant and user registries, and

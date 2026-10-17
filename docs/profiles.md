@@ -4,8 +4,10 @@ This feature is on `feature/profile-onboarding`, outside the v1.5 release.
 
 The broader [v1.6 plan](release-1.6.0.md) also targets broker-controlled company
 credential publication/synchronization and a scheduled CPC maintenance worker.
-Those services are documented designs, not functionality in the current Profiles
-implementation. See the [synchronization specification](../specs/027-company-credential-sync/spec.md).
+Broker/client/CPC code and company synchronization controls are implemented on
+this branch, with real deployment/provider QA pending. See the
+[synchronization guide](company-credential-sync.md) and
+[specification](../specs/027-company-credential-sync/spec.md).
 
 Setup has three pages. Components selects software; Requirements manages Docker,
 Tools, and Vault readiness; **Profiles** manages personal and company identities.
@@ -30,7 +32,9 @@ An administrator can supply a local JSON file or HTTPS URL with this content:
 ```json
 {
   "issuer": "https://identity.example.org/realms/company",
-  "clientId": "openworkbenches-cli"
+  "clientId": "openworkbenches-cli",
+  "organizationId": "company",
+  "credentialBrokerUrl": "https://credentials.example.org"
 }
 ```
 

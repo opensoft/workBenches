@@ -1,5 +1,10 @@
 # Implementation plan — target v1.6.0
 
+Implemented deployment model: Linux containers, one broker host with durable local
+SQLite state and file locks; a separate least-privilege CPC service calls the
+broker. The workstation agent uses the declared Tools runtime where native Python
+is absent. Real deployment/provider acceptance remains a release gate.
+
 1. Validate provider modes and choose the CPC runtime and broker hosting model.
    Establish whether clients support independent sessions or broker-exclusive
    refresh before enabling shared OAuth credentials.

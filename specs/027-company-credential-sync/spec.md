@@ -1,6 +1,8 @@
 # Company credential publication and synchronization
 
-Target: **v1.6.0**, after v1.5 ships. Status: design only; not implemented.
+Target: **v1.6.0**, after v1.5 ships. Status: implementation on
+`feature/profile-onboarding`; fixture validation and live deployment gates are
+tracked in [tasks](tasks.md). See the [operational guide](../../docs/company-credential-sync.md).
 This extends [Profiles onboarding](../026-profile-onboarding/spec.md).
 OpenSoft is the initial deployment, not a hardcoded tenant.
 

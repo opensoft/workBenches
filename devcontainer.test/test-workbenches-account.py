@@ -114,6 +114,15 @@ class AccountTests(unittest.TestCase):
         with self.assertRaises(ValueError): account.write_private(account.SESSION, {})
         self.assertEqual(target.read_text(), 'preserve')
 
+    def test_background_refresh_token_requires_explicit_offline_consent(self):
+        for offline in (False, True):
+            tokens = dict(self.tokens, refresh_token='fixture-offline-token')
+            env = {'WORKBENCHES_ACCOUNT_OFFLINE': '1'} if offline else {}
+            with patch.dict(os.environ, env, clear=True), patch.object(account, 'request', side_effect=[self.metadata, self.device, tokens, {'sub': 'fixture-user'}]) as request, patch.object(account.time, 'sleep'):
+                account.login(self.config)
+            self.assertEqual('refreshToken' in json.loads(account.SESSION.read_text()), offline)
+            self.assertEqual('offline_access' in request.call_args_list[1].args[1]['scope'], offline)
+
     def test_quit_does_not_write_provider_settings(self):
         with patch('builtins.input', return_value='Q'), self.assertRaises(SystemExit) as error:
             account.main()

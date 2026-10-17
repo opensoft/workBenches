@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+sync_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+sync_lib="$sync_dir/company-profile-sync.sh"
+[[ -f "$sync_lib" ]] || sync_lib="$sync_dir/lib/company-profile-sync.sh"
+[[ -f "$sync_lib" ]] || sync_lib=/usr/local/share/workbenches/company-profile-sync.sh
+if [[ -f "$sync_lib" ]]; then source "$sync_lib"; else wb_sync_before() { :; }; wb_sync_after_login() { :; }; fi
+
 manifest="${OPENCODE_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/opencode-profiles.json}"
 base="${OPENCODE_PROFILES_HOME:-$HOME/.opencode-profiles}"
 last_profile_file="${OPENCODE_LAST_PROFILE_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/workbenches/opencode-last-profile}"
@@ -79,6 +85,7 @@ export OPENCODE_DISABLE_AUTOUPDATE=1
 
 case "$action" in
   login)
+    wb_sync_before "$auth_file" login
     printf 'Starting OpenAI login for %s (%s).\n' "$profile" "$email" >&2
     login_method_args=(--method "ChatGPT Pro/Plus (browser)")
     for arg in "$@"; do
@@ -88,6 +95,7 @@ case "$action" in
       fi
     done
     "$opencode_bin" auth login --provider openai "${login_method_args[@]}" "$@"
+    wb_sync_after_login "$auth_file"
     record_last_profile
     ;;
   logout)
@@ -111,6 +119,7 @@ case "$action" in
     echo 'OpenAI login: verified'
     ;;
   run)
+    wb_sync_before "$auth_file" run
     record_last_profile
     # This profile-aware build predates the CLI --auto flag. The global
     # permission policy in opencode.json provides non-interactive operation.

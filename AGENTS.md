@@ -15,5 +15,5 @@ OpenSpec/Speckit protocol and project bootstrap contract.
 - Preserve unrelated changes in the parent checkout and in bench submodules.
 
 <!-- SPECKIT START -->
-Active implementation plan: `specs/026-profile-onboarding/plan.md` (v1.6 feature branch; keep v1.5 release fixes separate).
+Active implementation plan: `specs/027-company-credential-sync/plan.md` (v1.6 feature branch; keep v1.5 release fixes separate).
 <!-- SPECKIT END -->

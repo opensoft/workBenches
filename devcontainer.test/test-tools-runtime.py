@@ -142,6 +142,7 @@ ensure_workstation_requirements || exit "$?"
 python3 -c 'import os, pwd; assert pwd.getpwuid(os.getuid()).pw_name == os.environ["USER"]'
 python3 --version
 python3 -I -c 'import workbenches_host as host; assert host.which("native-fixture")'
+python3 "$1/scripts/credential-sync.py" --status
 jq -n 'true'
 git --version
 curl --version
@@ -166,7 +167,7 @@ print('Native long/short deadlines passed')
 NATIVE
 '''
             output = run(['/bin/bash', '-c', driver, 'runtime', str(ROOT)], env=env, cwd=ROOT)
-            for expected in ('Python 3.', 'true', 'git version', 'curl ', 'Native command boundary passed', 'Native long/short deadlines passed'):
+            for expected in ('Python 3.', '"agent"', 'true', 'git version', 'curl ', 'Native command boundary passed', 'Native long/short deadlines passed'):
                 assert expected in output, output
             prefix = home / '.local'
             package = prefix / 'lib/node_modules/@openai/codex'
