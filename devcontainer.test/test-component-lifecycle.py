@@ -34,7 +34,7 @@ def setup_tui(repo, keys, env, expected_status=0):
                 if not chunk: break
                 output += chunk
                 text = re.sub(rb'\x1b\[[0-?]*[ -/]*[@-~]', b'', output)
-                if b'Navigation:' in text and b'REQUIREMENTS \xc2\xb7 2/2 ready' in text and not submitted:
+                if b'Navigation:' in text and re.search(rb'REQUIREMENTS \xc2\xb7 (\d+)/\1 ready', text) and not submitted:
                     os.write(master, keys); submitted = True
             if process.poll() is not None and not ready: break
         if process.poll() is None:

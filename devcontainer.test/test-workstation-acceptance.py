@@ -212,7 +212,7 @@ def snapshot():
     return [(str(path), path.read_bytes(), path.stat().st_mtime_ns) for path in paths]
 
 
-TUI = r'REQUIREMENTS · 2/2 ready[\s\S]*Navigation:'
+TUI = r'REQUIREMENTS · (\d+)/\1 ready[\s\S]*Navigation:'
 CODEX = (TUI, '\x1b[C\x1b[B\x1b[B \n')
 CODEX_ACCOUNTS = (TUI, '\x1b[C\x1b[B\x1b[B P' + '\x1b[B' * 4 + ' P\n')
 EMAIL = os.environ.get('WORKBENCHES_ACCEPTANCE_EMAIL', 'acceptance@example.test')

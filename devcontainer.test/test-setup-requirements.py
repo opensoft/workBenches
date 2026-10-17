@@ -126,7 +126,10 @@ handle_input
 handle_input
 [[ "${{component_checked[docker]}}" != true ]] || exit 21
 [[ "${{component_checked[codex_cli]}}" == true ]] || exit 22
-CURRENT_SECTION=3; current_selection=3
+CURRENT_SECTION=3
+for current_selection in "${{!requirement_items[@]}}"; do
+    [[ "${{requirement_items[$current_selection]}}" != workbenches_account ]] || break
+done
 component_status[workbenches_account]='not configured'
 handle_input
 [[ "${{component_action[workbenches_account]}}" == install ]] || exit 23
@@ -156,7 +159,10 @@ printf 'authenticated:%s\\n' "$(workbenches_requirement_action vault up 'signed 
         with tempfile.TemporaryDirectory() as temporary:
             command = f'''source "{ROOT}/scripts/interactive-setup.sh"
 init_components
-CURRENT_SECTION=3; current_selection=2
+CURRENT_SECTION=3
+for current_selection in "${{!requirement_items[@]}}"; do
+    [[ "${{requirement_items[$current_selection]}}" != vault ]] || break
+done
 component_status[vault]=missing
 component_status[workbenches_account]='sign in'
 component_checked[codex_cli]=true; component_action[codex_cli]=install
@@ -182,7 +188,10 @@ handle_input || exit 22
     def test_connection_cancel_returns_to_menu_and_preserves_selections(self):
         command = f'''source "{ROOT}/scripts/interactive-setup.sh"
 init_components
-CURRENT_SECTION=3; current_selection=2
+CURRENT_SECTION=3
+for current_selection in "${{!requirement_items[@]}}"; do
+    [[ "${{requirement_items[$current_selection]}}" != vault ]] || break
+done
 component_status[vault]=up; component_status[workbenches_account]='sign in'
 component_checked[codex_cli]=true; component_action[codex_cli]=install
 refresh_component_statuses() {{ :; }}
