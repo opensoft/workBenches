@@ -40,6 +40,7 @@ die() {
 }
 
 cleanup() {
+  if declare -F azure_cli_runtime_cleanup >/dev/null; then azure_cli_runtime_cleanup; fi
     if [[ -n "$TEMP_DIR" && -d "$TEMP_DIR" ]]; then
         rm -rf -- "$TEMP_DIR"
     fi

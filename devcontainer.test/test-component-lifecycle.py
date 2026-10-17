@@ -34,7 +34,7 @@ def setup_tui(repo, keys, env, expected_status=0):
                 if not chunk: break
                 output += chunk
                 text = re.sub(rb'\x1b\[[0-?]*[ -/]*[@-~]', b'', output)
-                if b'Navigation:' in text and not submitted:
+                if b'Navigation:' in text and re.search(rb'REQUIREMENTS \xc2\xb7 (\d+)/\1 ready', text) and not submitted:
                     os.write(master, keys); submitted = True
             if process.poll() is not None and not ready: break
         if process.poll() is None:
@@ -71,7 +71,7 @@ def main():
         credential.chmod(0o600)
         env = dict(os.environ, HOME=str(home), USER='node', XDG_CONFIG_HOME=str(home / '.config'),
                    XDG_DATA_HOME=str(home / '.local/share'), AGENT_PROTOCOL_ROOT=str(home / '.agents'),
-                   PATH=str(home / '.local/bin') + ':' + os.environ['PATH'], TERM='xterm',
+                   PATH=str(home / '.local/bin') + ':' + os.environ['PATH'], TERM='xterm', WORKBENCHES_TEST_NATIVE_TOOLS='1',
                    npm_config_prefix=str(home / '.local'))
         package = directory / 'codex-fixture'; package.mkdir()
         (package / 'package.json').write_text(json.dumps({'name': '@openai/codex', 'version': '0.0.0', 'bin': {'codex': 'cli.js'}}))
@@ -101,8 +101,8 @@ def main():
         initial = statuses()
         assert initial == 'installed:installed', initial
         requirements_output = setup_tui(repo, b'PQ', env, expected_status=130)
-        for text in ('workBenches Setup', 'Linux', 'REQUIREMENTS', 'Docker', '(required)',
-                     'workBenches account', '(optional)', 'AI accounts', 'Setup cancelled'):
+        for text in ('workBenches v', 'Linux', 'REQUIREMENTS', 'Docker', 'REQUIRED SOFTWARE',
+                     'workBenches account', 'OPTIONAL VAULT & ACCOUNTS', 'AI accounts', 'Setup cancelled'):
             assert text in requirements_output, requirements_output[-3500:]
         assert statuses() == initial, 'Browsing Requirements must not change installed components'
         # Remove a running bench and the npm CLI in one real setup.sh TUI plan.

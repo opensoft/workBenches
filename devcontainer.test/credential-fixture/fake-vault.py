@@ -2,12 +2,26 @@
 """Offline fake vault. No authentication, network or real secrets."""
 import getpass
 import json
+import os
+from pathlib import Path
 import sys
 
 args = sys.argv[1:]
 command = sys.argv[0].rsplit('/', 1)[-1]
 item_id = '00000000-0000-0000-0000-000000000001'
-if command == 'bw':
+if command == 'az':
+    cache = Path(os.environ['AZURE_CONFIG_DIR'])
+    if args[0] == 'login':
+        (cache / 'fixture-session').write_text('fake-session')
+    elif args[0] == 'cancel':
+        sys.exit(130)
+    elif args[:3] == ['keyvault', 'secret', 'download']:
+        Path(args[args.index('--file') + 1]).write_text('{"OPENAI_API_KEY":"fake-only-integration-key"}')
+    elif args[:3] == ['keyvault', 'secret', 'set']:
+        assert Path(args[args.index('--file') + 1]).read_text() == 'fixture-upload'
+    else:
+        sys.exit(1)
+elif command == 'bw':
     if args[0] in ('login', 'unlock'):
         print('FAKE_SESSION_TOKEN_01234567890123456789')
     elif args[:2] == ['list', 'items']:

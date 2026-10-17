@@ -122,3 +122,29 @@ the policy. Existing native installations are not converted to npm.
 - No building occurs during testing
 - Tests run quickly (<10 seconds)
 - User must match host UID/GID in .env
+
+## Containerized setup runtime
+
+Run the Docker-only workstation test through the declared service. It removes
+Python, jq, Git, and curl from the simulated host PATH, checks host command
+routing, service readiness/restart, TUI cancellation, and Vault mount isolation.
+It creates and cleans only `workbenches-runtime-test-*` containers/networks.
+
+```bash
+export WORKBENCHES_SOURCE_ROOT="$PWD"
+export WORKBENCHES_DOCKER_GID="$(stat -c %g /var/run/docker.sock)"
+docker compose -p workbenches-runtime-test -f devcontainer.test/docker-compose.yml --profile tools-runtime run --rm --no-deps tools-runtime
+docker compose -p workbenches-runtime-test -f devcontainer.test/docker-compose.yml --profile tools-runtime down --remove-orphans
+python3 devcontainer.test/test-setup-services.py
+```
+
+`WORKBENCHES_SOURCE_ROOT` must be the absolute checkout path, also visible to
+the selected local Docker engine. The service shares `/tmp` for private fixture
+files and uses the local Docker socket; run it on a trusted development machine.
+`WORKBENCHES_TEST_VAULT=0` skips the optional public-CLI image smoke check.
+Focused installer unit fixtures use `WORKBENCHES_TEST_NATIVE_TOOLS=1` explicitly;
+the service above exercises the production container path without that setting.
+
+The credential-test fixture exercises real persistent helper containers with
+fake provider CLIs. It checks Azure payload transfer/device-session cleanup and
+Bitwarden/1Password recovery/cancellation without cloud access or real secrets.

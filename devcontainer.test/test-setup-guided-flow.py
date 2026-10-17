@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import pty
+import re
 import select
 import signal
 import shutil
@@ -44,7 +45,9 @@ def terminal_run(argv, env, replies):
                 if not chunk:
                     break
                 output += chunk
-                if pending and pending[0][0].encode() in output[last:]:
+                pattern = pending[0][0] if pending else None
+                matched = pattern.search(output[last:].decode(errors='replace')) if isinstance(pattern, re.Pattern) else pattern is not None and pattern.encode() in output[last:]
+                if matched:
                     _, reply = pending.pop(0)
                     os.write(master, reply.encode())
                     last = len(output)
@@ -70,6 +73,7 @@ class GuidedFlowTests(unittest.TestCase):
         for key in list(self.env):
             if key.startswith(('WORKBENCHES_', 'CLAUDE_PROFILES_', 'CODEX_', 'CHATGPT_PROFILES_', 'PI_PROFILES_', 'AI_CREDENTIAL_', 'DOCKER_', 'OPENAI_', 'ANTHROPIC_')):
                 self.env.pop(key)
+        self.env["WORKBENCHES_TEST_NATIVE_TOOLS"] = "1"
         self.addCleanup(patch.stopall)
         patch.dict(os.environ, self.env, clear=True).start()
         self.target = self.home / '.chatgpt-profiles/profiles/personal/personal-1/auth.json'
@@ -270,8 +274,8 @@ class GuidedFlowTests(unittest.TestCase):
         self.assertEqual(json.loads((output / '0.json').read_text()), {'OPENAI_API_KEY': 'fake-only-key'})
 
     def fake_docker(self, argv, **kwargs):
-        if argv[1] == 'run':
-            output = Path(next(arg.split('src=', 1)[1].split(',', 1)[0] for arg in argv if 'dst=/recovery/output' in arg))
+        if argv[1] == 'exec':
+            output = Path(argv[argv.index('--output') + 1])
             self.output = output
             returned = dict(self.mapping, entries=[dict(self.entry, itemId='00000000-0000-0000-0000-000000000001')])
             returned.pop('guided')
@@ -338,6 +342,9 @@ print('FAKE_SESSION_TOKEN_01234567890123456789')
         plan = self.home / 'selection.json'
         result = self.shell(f'''init_components
 check_component_status() {{ echo installed; }}
+refresh_host_tool_inventory() {{ :; }}
+refresh_bench_inventory() {{ :; }}
+load_requirements() {{ :; }}
 load_statuses
 component_checked[codex_cli]=true  # A checkbox without an action still means keep.
 selection_file="{plan}"
@@ -423,6 +430,7 @@ printf 'PREFIX:%s\\nPATH:%s\\n' "$npm_config_prefix" "$PATH"''', PATH=path, NPM_
 component_checked[{item}]=true
 component_status[{item}]=installed
 component_action[{item}]=update
+refresh_component_statuses() {{ :; }}
 process_selections''', input='\n', PATH=self.fake_npm(self.home, failure=13), WORKBENCHES_AUTH_ROUTE='later')
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn('update failed (exit 13)', result.stdout)
@@ -520,7 +528,7 @@ process_selections''', input='\n', PATH=self.fake_npm(self.home, failure=13), WO
             path = binary / name; path.write_text(body); path.chmod(0o755)
         status, output = terminal_run(['bash', str(repo / 'setup.sh')],
             dict(self.env, PATH=str(binary) + ':' + self.env['PATH']),
-            [('Changes selected: 0', '\x1b[C\x1b[B\x1b[B \n')])
+            [(re.compile(r'REQUIREMENTS · (\d+)/\1 ready'), '\x1b[C\x1b[B\x1b[B \n')])
         self.assertEqual(status, 0, output)
         self.assertTrue((self.home / 'cli-installed').exists())
         self.assertNotIn('Apply these changes?', output)
@@ -570,7 +578,7 @@ esac
                                       + (f'touch "$HOME/family-built"\nexit {code}\n' if category == 'devBenches' else 'exit 24\n'))
                     script.chmod(0o755)
                 env = dict(self.env, HOME=str(home), PATH=str(binary) + ':' + self.env['PATH'],
-                           WORKBENCHES_SKIP_ESTATE_COMMANDS='1', WORKBENCHES_SKIP_WORKSPACE_REPO='1',
+                           WORKBENCHES_TEST_NATIVE_TOOLS='1', WORKBENCHES_SKIP_ESTATE_COMMANDS='1', WORKBENCHES_SKIP_WORKSPACE_REPO='1',
                            WORKBENCHES_SKIP_PROJECT_COMMAND='1')
                 result = subprocess.run(['bash', str(repo / 'setup.sh')], env=env,
                                         capture_output=True, text=True, timeout=15)
@@ -591,6 +599,7 @@ init_components
 component_checked[bench_pyBench]=true
 component_status[bench_pyBench]=not_installed
 component_action[bench_pyBench]=install
+refresh_component_statuses() {{ :; }}
 workbenches_clone() {{ mkdir -p "$2"; printf '#!/bin/bash\\nexit 13\\n' > "$2/setup.sh"; }}
 process_selections'''
         result = subprocess.run(['bash', '-c', command], input='\n', env=self.env,

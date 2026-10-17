@@ -421,11 +421,17 @@ def vault_command(argv, env, limit=MAX_BYTES):
 
 
 def container_restore(mapping, staging):
+    # Each recovery owns its session, including on a persistent Vault runtime.
+    with tempfile.TemporaryDirectory(prefix="workbenches-session-") as session:
+        return _container_restore(mapping, staging, session)
+
+
+def _container_restore(mapping, staging, session):
     service = mapping["service"]
     entries = validate_enrollment(mapping, service) if mapping.get("guided") else validate_mapping(mapping, service)
     env = os.environ.copy()
-    env.update(HOME="/tmp/session", XDG_CONFIG_HOME="/tmp/session/config", OP_CONFIG_DIR="/tmp/session/op",
-               BITWARDENCLI_APPDATA_DIR="/tmp/session/bw", OP_BIOMETRIC_UNLOCK_ENABLED="false")
+    env.update(HOME=session, XDG_CONFIG_HOME=session + "/config", OP_CONFIG_DIR=session + "/op",
+               BITWARDENCLI_APPDATA_DIR=session + "/bw", OP_BIOMETRIC_UNLOCK_ENABLED="false")
     Path(env["HOME"]).mkdir(mode=0o700, exist_ok=True)
     try:
         if service == "bitwarden":
@@ -493,8 +499,11 @@ def container_restore(mapping, staging):
     finally:
         if service == "bitwarden":
             # Cache is tmpfs even when logout fails or the process is cancelled.
-            subprocess.run(["bw", "logout"], env=env, stdin=subprocess.DEVNULL,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                subprocess.run(["bw", "logout"], env=env, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+            except (OSError, subprocess.TimeoutExpired):
+                pass  # The per-job temporary session is still removed.
 
 
 def recover(service, manifest, guided_mapping=None):
@@ -525,10 +534,10 @@ def recover(service, manifest, guided_mapping=None):
     docker_ready()
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         raise RecoveryError("Password-manager recovery needs an interactive terminal.")
-    image = IMAGES[service]
-    checked_run(["docker", "build", "--target", "onepassword" if service == "1password" else service, "--tag", image, "--file",
-                 str(REPO / "credential-container/Dockerfile"), str(REPO / "credential-container")])
-    with tempfile.TemporaryDirectory(prefix="workbenches-credential-") as directory:
+    checked_run(["bash", str(REPO / "scripts/manage-setup-services.sh"), "start", "vault"])
+    jobs = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "workbenches/vault/jobs"
+    jobs.mkdir(parents=True, mode=0o700, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="recovery-", dir=jobs) as directory:
         work = Path(directory)
         staging = work / "output"
         staging.mkdir(mode=0o700)
@@ -536,12 +545,10 @@ def recover(service, manifest, guided_mapping=None):
         config = work / "manifest.json"
         config.write_text(json.dumps(mapping))
         config.chmod(0o600)
-        checked_run(["docker", "run", "--rm", "--interactive", "--tty", "--read-only",
-                     "--user", f"{os.getuid()}:{os.getgid()}", "--cap-drop", "ALL",
-                     "--security-opt", "no-new-privileges", "--tmpfs", "/tmp:rw,nosuid,nodev,mode=1777,size=256m",
-                     "--mount", f"type=bind,src={config},dst=/recovery/manifest.json,readonly",
-                     "--mount", f"type=bind,src={staging},dst=/recovery/output",
-                     image])
+        checked_run(["docker", "exec", "--interactive", "--tty",
+                     os.environ.get("WORKBENCHES_VAULT_CONTAINER", "workbenches-vault"),
+                     "python3", "/opt/workbenches/credential_recovery.py", "--container",
+                     "--manifest", str(config), "--output", str(staging)])
         if guided_mapping is not None:
             returned = staging / "mapping.json"
             private_file(returned)
@@ -606,10 +613,11 @@ def main():
     parser.add_argument("--container", action="store_true")
     parser.add_argument("--service", choices=tuple(IMAGES))
     parser.add_argument("--manifest", type=Path, default=Path("/recovery/manifest.json"))
+    parser.add_argument("--output", type=Path, default=Path("/recovery/output"))
     args = parser.parse_args()
     try:
         if args.container:
-            container_restore(json.loads(args.manifest.read_text()), Path("/recovery/output"))
+            container_restore(json.loads(args.manifest.read_text()), args.output)
         elif args.service:
             recover(args.service, args.manifest.expanduser())
         else:

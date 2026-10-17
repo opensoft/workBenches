@@ -139,7 +139,7 @@ class ToolRemovalTests(unittest.TestCase):
         # the engineer's real CLI installations or package-manager executables.
         for name in ('bash', 'sh', 'python3', 'git', 'jq', 'curl', 'date', 'dirname',
                      'mkdir', 'tee', 'ls', 'tail', 'xargs', 'rm', 'mktemp', 'whoami',
-                     'uname', 'tput', 'clear', 'cat', 'cmp', 'hostname', 'grep', 'head'):
+                     'id', 'sleep', 'uname', 'tput', 'clear', 'cat', 'cmp', 'hostname', 'grep', 'head'):
             # shutil.which is patched for unit probes in this class; resolve
             # the utilities through the subprocess shell instead.
             located = subprocess.check_output(['/bin/sh', '-c', 'command -v "$1"', 'sh', name], text=True).strip()
@@ -158,7 +158,7 @@ else exec bash "$(dirname "$0")/interactive-real.sh" "$@"; fi
 ''')
         interactive.chmod(0o755)
         env = {key: value for key, value in os.environ.items() if not key.startswith(('WORKBENCHES_', 'OPENAI_', 'ANTHROPIC_', 'CODEX_', 'CLAUDE_'))}
-        env.update(HOME=str(self.home), XDG_CONFIG_HOME=str(self.home / '.config'),
+        env.update(WORKBENCHES_TEST_NATIVE_TOOLS="1", HOME=str(self.home), XDG_CONFIG_HOME=str(self.home / '.config'),
                    XDG_DATA_HOME=str(self.home / '.local/share'), AGENT_PROTOCOL_ROOT=str(self.home / '.agents'),
                    PATH=str(binary) + ':' + str(prefix / 'bin'), TERM='xterm')
         result = subprocess.run(['bash', str(repo / 'setup.sh')], env=env,
@@ -170,6 +170,26 @@ else exec bash "$(dirname "$0")/interactive-real.sh" "$@"; fi
         self.assertIn('uninstall', actions)
         self.assertTrue(any('docker info' in action for action in actions), actions)
         self.assertFalse(any('unexpected npm' in action for action in actions), actions)
+
+
+class SnapInventoryTests(unittest.TestCase):
+    def test_unavailable_snap_daemon_is_probed_once_with_a_short_deadline(self):
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(components.Path, 'home', return_value=Path(temporary)), \
+                patch.object(components, 'native_which', side_effect=lambda name: '/usr/bin/snap' if name == 'snap' else None), \
+                patch.object(components, 'read_command', side_effect=subprocess.TimeoutExpired(['snap', 'list'], 2)) as read, \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            components.tool_statuses()
+        read.assert_called_once_with(['snap', 'list'], timeout=2)
+        self.assertIn('codex_cli\tnot installed', output.getvalue())
+        self.assertEqual(len(output.getvalue().splitlines()), len(components.COMMANDS))
+
+    def test_only_exact_installed_snap_names_are_removable(self):
+        result = subprocess.CompletedProcess([], 0, 'Name Version Rev Tracking Publisher Notes\ncodex-bin 1 2 latest/stable test -\nunrelated 1 2 latest/stable test -\n')
+        with patch.object(components, 'native_which', side_effect=lambda name: '/usr/bin/snap' if name == 'snap' else None), \
+                patch.object(components, 'read_command', return_value=result):
+            self.assertEqual(components.package_installation('codex_cli'), ['snap', 'remove', 'codex-bin'])
+            self.assertIsNone(components.package_installation('claude_cli'))
 
 
 class BenchRemovalTests(unittest.TestCase):

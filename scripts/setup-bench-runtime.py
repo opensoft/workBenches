@@ -11,7 +11,29 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
+try:
+    import workbenches_host as host
+except ImportError:
+    host = None
+    if os.environ.get('WORKBENCHES_HOST_RPC'):
+        raise
+
+
 def run(argv, **kwargs):
+    if argv[0] == 'bash' and host and host.active():
+        # Bench scripts inspect native WSL/GPU/desktop paths. Keep those scripts
+        # on the workstation, while their four setup commands use the shims.
+        env = dict(kwargs.get('env') or os.environ)
+        prefix = str(Path(os.environ.get('XDG_CACHE_HOME', str(Path.home() / '.cache'))) / 'workbenches/tools/bin')
+        if env.get('WORKBENCHES_REAL_DOCKER'):
+            prefix = env['PATH'].split(os.pathsep)[0] + os.pathsep + prefix
+        env['WORKBENCHES_COMMAND_PATH'] = prefix
+        env['WORKBENCHES_COMMAND_CWD'] = str(kwargs.get('cwd') or Path.cwd())
+        return host.run(['bash', '-c',
+                         'export PATH="$WORKBENCHES_COMMAND_PATH:$PATH"; cd "$WORKBENCHES_COMMAND_CWD" || exit; exec bash "$@"',
+                         'workbenches-native', *argv[1:]], env=env,
+                        capture_output=kwargs.get('capture_output', False),
+                        text=kwargs.get('text', False), timeout=3600)
     return subprocess.run(argv, **kwargs)
 
 def main():
