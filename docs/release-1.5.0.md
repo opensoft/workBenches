@@ -384,10 +384,10 @@ and the remaining complete workstation acceptance cases still require execution.
 
 ### Full native WSL test implementation and continuation
 
-Live product candidate: `76555991d8ea40d51009687fbc22ba7cd39b4748`.
-The complete native run is in progress; the Windows/WSL gate remains open until
-all required assertions pass. Subsequent driver/documentation commits do not
-change the product runtime tested at this commit.
+Product candidate for the completed attempts: `76555991d8ea40d51009687fbc22ba7cd39b4748`.
+These attempts did not complete the Windows/WSL gate. Driver/documentation
+commits through `a0ad2a3` did not change that product runtime; the image-depth
+fix below requires a new live candidate and acceptance run.
 
 Completed native host cases on this product commit:
 
@@ -568,3 +568,49 @@ written over 49 seconds (33.26 MiB/s), with 96.9% I/O busy time. These counters
 show ongoing device I/O while the build waits for filesystem synchronization;
 they do not establish a complete I/O stop, physical-disk saturation, or hardware
 failure. The raw numeric samples remain in the private QA report.
+
+### Image-depth failure and release fix
+
+The cache-assisted bench attempt returned exit 1 after `3225.86` seconds.
+Both images built successfully, but actual container creation failed with
+`Error response from daemon: max depth exceeded`. Final preservation passed
+in `9.09` seconds; the aggregate retained 12 passed cases, one failed install,
+and four not-run dependent cases. The failed report/build log were archived.
+
+Read-only `docker image inspect --format '{{len .RootFS.Layers}}' IMAGE`
+measured:
+
+| Image | Filesystem layers |
+| --- | ---: |
+| `workbench-base:latest` | 48 |
+| `dev-bench-base:latest` | 107 |
+| `py-bench:latest` | 113 |
+| `py-bench:brett` | 128 |
+
+Docker's [overlay2 implementation](https://github.com/moby/moby/blob/v28.5.2/daemon/graphdriver/overlay2/overlay.go#L60)
+limits the lower-layer stack; container creation needs additional layers beyond
+the image. This is a separate deterministic recipe defect, not a user/group
+permission error or an inference from the slow filesystem operations.
+
+The fix combines the developer base's final nine configuration operations into
+one RUN layer, preserving their order and retaining the expensive earlier build
+cache. Its source fingerprint changes automatically. The expected personalized
+pyBench depth drops by eight layers, from 128 to 120; live confirmation and the
+complete native rerun remain required. A new CI regression limits the common
+developer-stack recipes to 114 filesystem-layer instructions, leaving room for
+the upstream image, bench-specific layer, and container creation. The test
+failed before the fix (121) and passed after it (113). The merged shell block
+passed `/bin/sh -n`; 10 release/version checks and 11 install-friction checks
+also passed in the declared pyBench.
+
+The independent `--phase guard` driver mode can verify frozen-source refusal
+after a blocked bench attempt without building images. Removal assertions now
+also require both selected pyBench image tags to be absent. These driver
+changes passed Python compilation and CLI help validation; live checks remain
+required before they contribute passing evidence.
+
+The pyBench package installer also emitted OpenTelemetry dependency conflicts:
+Semgrep `1.181.0` requires the `1.37` series, while its later package installation
+selected `1.45.1`. This was not the container-create failure. Semgrep operation
+is not certified by the selected Python/Codex acceptance path; these mutable
+package dependencies remain a limitation to record separately.

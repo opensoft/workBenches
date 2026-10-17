@@ -27,6 +27,8 @@ Draft: publication is pending the remaining gates in
   project setup can use the host-command bridge from isolated Python.
 - Tools uses the actual Docker socket group on Windows/WSL Docker Desktop;
   existing managed helpers are recreated to apply the corrected access group.
+- Developer-base configuration steps share a filesystem layer so personalized
+  benches leave room for Docker's container layers.
 
 ## Validation and platforms
 
@@ -51,9 +53,12 @@ update, queued cancellation, failed-update handling, removal, reinstallation,
 host Bash/Zsh startup, and full managed Vault readiness. Codex reports `0.163.0`.
 The selected pyBench's cold-install attempt exceeded its one-hour QA deadline;
 final preservation checks passed, giving 12 passed cases, one timed-out install,
-and four dependent cases not run. A retry with retained image/build cache is
-running in the same isolated engine. **The Windows/WSL gate remains open** until
-bench installation, startup, update, removal, and the local-work guard pass.
+and four dependent cases not run. The cache-assisted retry built the selected
+images but failed container creation with `max depth exceeded`: the personalized
+image had 128 filesystem layers. The recipe fix removes eight configuration
+layers and has passed its regression check; a fresh full native acceptance run
+is required. **The Windows/WSL gate remains open** until bench installation,
+startup, update, removal, and the local-work guard pass.
 
 Release fixes correct the WSL Docker socket group, public helper-file modes,
 unavailable Snap-daemon inventory, and callback-broker cleanup. Tools runs as
