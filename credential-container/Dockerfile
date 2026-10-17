@@ -2,7 +2,8 @@
 FROM 1password/op:2.40.0 AS op-cli
 
 FROM python:3.13-alpine AS core
-COPY --chmod=0644 credential_recovery.py /opt/workbenches/credential_recovery.py
+COPY credential_recovery.py /opt/workbenches/credential_recovery.py
+RUN chmod 0755 /opt/workbenches && chmod 0644 /opt/workbenches/credential_recovery.py
 ENTRYPOINT ["python3", "/opt/workbenches/credential_recovery.py", "--container"]
 
 FROM core AS onepassword
@@ -16,7 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-cert
     && npm cache clean --force \
     && bw --version && rm -rf /root/.config
 FROM bitwarden-tools AS bitwarden
-COPY --chmod=0644 credential_recovery.py /opt/workbenches/credential_recovery.py
+COPY credential_recovery.py /opt/workbenches/credential_recovery.py
+RUN chmod 0755 /opt/workbenches && chmod 0644 /opt/workbenches/credential_recovery.py
 ENTRYPOINT ["python3", "/opt/workbenches/credential_recovery.py", "--container"]
 
 FROM bitwarden-tools AS vault
@@ -28,7 +30,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3-venv \
     && ln -s /opt/azure/bin/az /usr/local/bin/az \
     && rm -rf /root/.config \
     && az version --query '"azure-cli"' -o tsv && op --version && bw --version
-COPY --chmod=0644 credential_recovery.py /opt/workbenches/credential_recovery.py
+COPY credential_recovery.py /opt/workbenches/credential_recovery.py
+RUN chmod 0755 /opt/workbenches && chmod 0644 /opt/workbenches/credential_recovery.py
 ENV HOME=/tmp/vault-home XDG_CONFIG_HOME=/tmp/vault-home/config \
     AZURE_CORE_COLLECT_TELEMETRY=false AZURE_CORE_LOGIN_EXPERIENCE_V2=off
 HEALTHCHECK --interval=5s --timeout=8s --start-period=1s --retries=2 \
