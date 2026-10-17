@@ -226,7 +226,8 @@ def main():
             unrelated = run(['docker', 'run', '-d', '--name', 'wsl-acceptance-unrelated',
                              '--mount', 'type=volume,src=wsl-acceptance-unrelated,dst=/data',
                              'wsl-acceptance-unrelated:fixture', 'sh', '-c',
-                             'printf preserve-unrelated-volume > /data/marker; exec sleep 3600'])
+                             # Outlive the combined cold-install/update budgets.
+                             'printf preserve-unrelated-volume > /data/marker; exec sleep 86400'])
             benches = sorted(json.loads((repo / 'config/bench-config.json').read_text())['benches'])
             navigation = '\x1b[B' * benches.index('pyBench')
             bench = [(tui.TUI, navigation), (r'pyBench · (?:needs setup|Ready|image only)', ' \n')]
