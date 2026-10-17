@@ -381,3 +381,87 @@ matched. No original bench was stopped and no Docker/WSL restart was performed.
 
 Full Vault readiness, the selected pyBench path, CLI installation/lifecycle,
 and the remaining complete workstation acceptance cases still require execution.
+
+### Full native WSL test implementation and continuation
+
+Live product candidate: `76555991d8ea40d51009687fbc22ba7cd39b4748`.
+The complete native run is in progress; the Windows/WSL gate remains open until
+all required assertions pass. Subsequent driver/documentation commits do not
+change the product runtime tested at this commit.
+
+The declared native driver is
+`devcontainer.test/test-wsl-workstation-acceptance.py`, documented in
+`devcontainer.test/workstation/README.md`. It refuses container-only execution,
+root execution, the real user's home, an unexpected source SHA, an existing CLI
+on the fresh-install path, and a non-isolated bench engine. It waits for the
+selected row's actual visible status, verifies installed artifacts, and records
+failed/not-run cases. Resume requires matching source and Desktop engine
+identity; project, credential, and prompt hashes/modes/mtimes are preserved.
+
+```bash
+# QA-only HOME/XDG/TMPDIR/npm prefix and resource names, as documented in the
+# native acceptance guide; the prepared checkout is clean at TESTED_SHA.
+export TESTED_SHA=76555991d8ea40d51009687fbc22ba7cd39b4748
+export WORKBENCHES_FROZEN=1 WORKBENCHES_WSL_ACCEPTANCE=1
+python3 "$DRIVER_ROOT/devcontainer.test/test-wsl-workstation-acceptance.py" \
+  --repo "$QA_CHECKOUT" --report "$QA_ROOT/report/native-wsl" \
+  --sha "$TESTED_SHA" --engine "unix://$QA_ROOT/socket/docker.sock"
+# Following a driver-only correction, preserve matching completed assertions:
+# add --resume to the same command.
+```
+
+The bench engine uses the declared `acceptance-engine` service and a private
+Compose override retaining real WSL home/socket and GUI runtime paths. It runs
+Docker `28.5.2` inside Docker Desktop; the native host client and Desktop engine
+are `29.8.1`. Both shared base images and the public Tools image were imported
+as cache. This exercises actual WSL-native scripts, callbacks, mount paths, and
+shells while keeping the original fixed-name `py-bench` untouched.
+
+Additional findings and checks:
+
+- WSL has a Snap client but no active Snap daemon. Repeated package probes
+  delayed inventory. `209ecf8` probes the Snap inventory once with a two-second
+  deadline. The 24 component tests passed, including unavailable-daemon and
+  exact package ownership cases.
+- A native callback broker remained alive after its command finished, blocking
+  a status refresh. `7655599` closes the session and bounds broker cleanup,
+  including forced termination of an unresponsive owned broker. Seven service
+  tests passed, including a broker that ignores TERM; the subsequent live
+  frozen CLI install completed without manual broker intervention.
+- All 20 setup regression suites passed after correcting the guided-flow
+  fixtures' WSL requirement count and isolating their mocked status refreshes.
+  All 43 guided-flow checks and 10 release/version checks passed. The clean
+  candidate's source-lock check also passed.
+- Eagle's higher-priority npm `10.9.3` is broken: a registry query fails inside
+  its `cacache` dependency with `Class extends value undefined`. The distro npm
+  `10.9.7` successfully queried the public registry. A symlink only in the QA
+  prefix selected that working copy; neither original installation was changed.
+  Node is `22.22.2`; the installed host Codex reports `0.163.0`.
+- Full Vault startup succeeded as UID/GID `1000:1000`, with provider versions
+  `op 2.40.0`, `bw 2026.9.1`, and Azure CLI `2.91.0`. Its actual helper `--help`
+  and provider version commands passed as the mapped user. The build began at
+  `21:05:22Z`; container creation was recorded at `21:12:37Z`, and startup at
+  `21:24:37Z`. The twelve-minute creation delay is the observed filesystem
+  stall, not a credential or user/group failure.
+- The shared-image import eventually completed. The user explicitly requested
+  continued testing without restarting Docker Desktop. No Desktop/WSL restart,
+  global Docker configuration change, or interruption of an original bench
+  was performed.
+
+The first negative npm update encountered a real TCP SYN timeout on WSL rather
+than an immediate localhost refusal; setup correctly returned failure. Setting
+npm's fetch timeout alone did not bound that connection attempt. The driver now
+reserves a non-listening ephemeral port for the deliberately broken registry;
+a real native npm query failed with exit 1 in 0.40 seconds using this fixture.
+Test credentials are generated invalid values, and no paid AI authorization is
+claimed.
+
+The bench isolation fixture initially put its home below `/tmp`. DinD's startup
+tmpfs hid those bind mounts despite their presence in Docker inspection. The
+private home was copied below the user's cache, and only the disposable engine
+was recreated, retaining its data volume and shared-image cache. The native
+home/socket paths were then verified inside it. The driver and its guide now
+reject the hidden-mount arrangement. A separate diagnostic startup briefly
+raced the acceptance worker's QA network creation; those QA-only resources were
+reset, and the bench test was restarted serially. Neither interrupted attempt
+was counted as passed.

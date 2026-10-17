@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import pwd
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -37,6 +38,8 @@ def main():
     assert 'microsoft-standard' in os.uname().release.lower() and not Path('/.dockerenv').exists(), 'Requires a real WSL 2 host'
     assert os.getuid() != 0, 'Run as the normal WSL user to exercise mapped-user access'
     assert home != Path(pwd.getpwuid(os.getuid()).pw_dir).resolve(), 'Requires an isolated HOME'
+    if args.phase in ('all', 'bench'):
+        assert not home.is_relative_to(Path('/tmp').resolve()), 'DinD masks /tmp; put the isolated bench home under the user cache'
     assert repo.is_relative_to(home) and not report.is_relative_to(repo), 'Use a private checkout and external report directory'
     assert args.engine.startswith('unix:///') and args.engine != 'unix:///var/run/docker.sock'
     assert os.environ.get('WORKBENCHES_FROZEN') == '1'
@@ -191,11 +194,16 @@ def main():
                 assert (binary.stat().st_mtime_ns, binary.read_bytes()) == before
                 preserved()
             check('queued-cancellation', cancel_queued)
-            fault = dict(env, NPM_CONFIG_REGISTRY='http://127.0.0.1:9', NPM_CONFIG_FETCH_RETRIES='0')
-            def failed_update():
-                assert 'update failed' in terminal('failed-update', codex, 1, environment=fault)
-                preserved()
-            check('failed-update', failed_update)
+            # Reserve an unused, non-listening port. Port 9 can silently drop
+            # SYNs on WSL instead of returning a prompt connection refusal.
+            with socket.socket() as registry:
+                registry.bind(('127.0.0.1', 0))
+                fault = dict(env, NPM_CONFIG_REGISTRY=f'http://127.0.0.1:{registry.getsockname()[1]}',
+                             NPM_CONFIG_FETCH_RETRIES='0', NPM_CONFIG_FETCH_TIMEOUT='5000')
+                def failed_update():
+                    assert 'update failed' in terminal('failed-update', codex, 1, environment=fault)
+                    preserved()
+                check('failed-update', failed_update)
             def remove():
                 terminal('codex-remove', remove_codex)
                 assert not (home / '.local/bin/codex').exists(), 'Codex launcher remains'
@@ -222,7 +230,9 @@ def main():
             benches = sorted(json.loads((repo / 'config/bench-config.json').read_text())['benches'])
             navigation = '\x1b[B' * benches.index('pyBench')
             bench = [(tui.TUI, navigation), (r'pyBench · (?:needs setup|Ready|image only)', ' \n')]
-            check('bench-install', lambda: terminal('bench-install', bench, timeout=3600))
+            def install_bench():
+                assert 'pyBench is ready (launch verified)' in terminal('bench-install', bench, timeout=3600)
+            check('bench-install', install_bench)
             def bench_shells():
                 run(['bash', 'scripts/wave-container-shell.sh', '--workbenches-root', str(repo), '--shell', 'bash', '--check', 'pyBench'], timeout=300, log='wave-shell-check.log')
                 for shell in ('bash', 'zsh'):
@@ -232,7 +242,7 @@ def main():
                 # Setup deliberately preserves a running bench. Stop only this
                 # test's bench in the already verified disposable engine.
                 run(['docker', 'stop', '--time', '10', 'py-bench'])
-                terminal('bench-update', bench, timeout=3600)
+                assert 'pyBench is ready (launch verified)' in terminal('bench-update', bench, timeout=3600)
                 bench_shells()
             check('bench-update', update_bench)
             checkout = repo / 'devBenches/pyBench'
@@ -250,7 +260,8 @@ def main():
                     preserved()
             check('bench-remove', remove_bench)
             def frozen_guard():
-                terminal('frozen-local-work-guard', bench, 1)
+                output = terminal('frozen-local-work-guard', bench, 1)
+                assert 'has local changes; save them before using a frozen release' in output
                 assert note.read_text() == 'preserve local source work\n'
                 pinned = next(row['commit'] for row in json.loads(lock)['repositories'] if row['path'] == 'devBenches/pyBench')
                 assert run(['git', '-C', str(checkout), 'rev-parse', 'HEAD']) == pinned

@@ -66,6 +66,13 @@ an isolated `HOME`; set `GIT_CONFIG_GLOBAL=/dev/null` and
 verify the intended SHA. Keep reports outside the checkout. Set these variables
 only in the QA shell (all paths derive from a private `QA_ROOT`):
 
+Create `QA_ROOT` under the real user's cache **before** changing HOME, for example
+`mkdir -p "$HOME/.cache"; QA_ROOT=$(mktemp -d "$HOME/.cache/workbenches-wsl-qa.XXXXXX")`.
+The DinD entrypoint mounts a temporary filesystem over `/tmp`, hiding bind mounts
+beneath it. A QA home/socket under `/tmp` therefore cannot be reused at its
+original path by native bench commands. The driver rejects this arrangement.
+See the [Moby DinD startup script](https://github.com/moby/moby/blob/master/hack/dind).
+
 ```bash
 export HOME="$QA_ROOT/home" USER="$(id -un)"
 export XDG_CONFIG_HOME="$HOME/.config" XDG_CACHE_HOME="$HOME/.cache"
