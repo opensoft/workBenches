@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import tempfile
 import unittest
 
@@ -93,6 +94,29 @@ workbenches_runtime_docker() {{
 workbenches_tools_start 2>&1
 ''')
                 self.assertEqual(output, 'socket-group:' + expected)
+
+    def test_launcher_finishes_when_broker_ignores_term(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            scripts = home / 'repo/scripts'
+            (scripts / 'lib').mkdir(parents=True)
+            shutil.copy(ROOT / 'scripts/tools-command.sh', scripts / 'tools-command.sh')
+            (scripts / 'lib/tools-container.sh').write_text('''workbenches_tools_state() { echo up; }
+workbenches_runtime_docker() { :; }
+''')
+            (scripts / 'lib/tools-host-broker.sh').write_text('''trap '' TERM
+touch "$1/alive"
+printf '%s' "$$" > "$HOME/broker-pid"
+while :; do sleep 0.05; done
+''')
+            env = dict(os.environ, HOME=str(home), XDG_CACHE_HOME=str(home / '.cache'),
+                       WORKBENCHES_TOOLS_ROOT=str(scripts.parent), WORKBENCHES_TOOLS_CONTAINER='fixture')
+            result = subprocess.run(['bash', str(scripts / 'tools-command.sh'), 'python3', '--version'],
+                                    env=env, capture_output=True, text=True, timeout=6)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            with self.assertRaises(ProcessLookupError):
+                os.kill(int((home / 'broker-pid').read_text()), 0)
+            self.assertFalse(list((home / '.cache/workbenches/tools/sessions').iterdir()))
 
 
 if __name__ == '__main__':
