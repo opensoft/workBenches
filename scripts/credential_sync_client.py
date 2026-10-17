@@ -37,9 +37,13 @@ class Sync:
     def __init__(self, root, client=None):
         self.root = safe_path(root)
         self.config = read_json(self.root / 'credential-sync.json')
+        if type(self.config.get('enabled')) is not bool:
+            raise SyncError('synchronization_consent_must_be_boolean')
         if not isinstance(self.config.get('tenant'), str) or not self.config['tenant']:
             raise SyncError('company_tenant_id_required')
         paths = [managed_path(e['credentialPath']) for e in self.config['entries']]
+        if any(type(e.get('publishChanges', False)) is not bool for e in self.config['entries']):
+            raise SyncError('publication_consent_must_be_boolean')
         ids = [e['profileId'] for e in self.config['entries']]
         if len(paths) != len(set(paths)) or len(ids) != len(set(ids)):
             raise SyncError('duplicate_profile_mapping')

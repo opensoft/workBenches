@@ -111,6 +111,16 @@ class CompanySyncTests(unittest.TestCase):
         self.config['profiles'][self.name]['enabled'] = False
         self.assertEqual(self.broker.metadata(self.user)['profiles'], [])
         self.assertEqual(self.vault.counter, 0)
+        invalid = copy.deepcopy(self.config)
+        invalid['profiles'][self.name]['enabled'] = 'false'
+        with self.assertRaises(ValueError): Broker(invalid, self.vault)
+        invalid['profiles'][self.name].update(enabled=True, sharingApproved='false')
+        with self.assertRaises(ValueError): Broker(invalid, self.vault)
+        client, _ = self.client()
+        bad_client = copy.deepcopy(client.config)
+        bad_client['entries'][0]['publishChanges'] = 'false'
+        atomic(client.root / 'credential-sync.json', bad_client)
+        with self.assertRaises(SyncError): Sync(client.root, client.client)
 
     def test_compare_and_set_and_idempotent_retry(self):
         version = self.publish()

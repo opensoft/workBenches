@@ -82,10 +82,12 @@ class Broker:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         locations = set()
         for profile_id, profile in config['profiles'].items():
+            if 'enabled' in profile and type(profile['enabled']) is not bool:
+                raise ValueError('Profile enabled must be a JSON boolean')
             if not re.fullmatch(r'[a-zA-Z0-9_.:-]{1,180}', profile_id):
                 raise ValueError('Invalid profile ID')
-            if profile.get('enabled'):
-                if not profile.get('sharingApproved') or profile.get('mode') not in ('portable', 'broker-refresh'):
+            if profile.get('enabled') is True:
+                if profile.get('sharingApproved') is not True or profile.get('mode') not in ('portable', 'broker-refresh'):
                     raise ValueError('Sharing must be explicitly approved for an eligible mode')
                 if not profile.get('validator') or not profile.get('accountId') or not profile.get('tenant'):
                     raise ValueError('Enabled profiles require a validator, expected account and tenant')
@@ -136,7 +138,7 @@ class Broker:
 
     def grants(self, identity, name):
         profile = self.config['profiles'].get(name, {})
-        if not profile.get('enabled'):
+        if profile.get('enabled') is not True:
             return set()
         rights = set()
         for grant in self.config.get('grants', []):
