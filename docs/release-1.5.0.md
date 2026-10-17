@@ -465,3 +465,15 @@ reject the hidden-mount arrangement. A separate diagnostic startup briefly
 raced the acceptance worker's QA network creation; those QA-only resources were
 reset, and the bench test was restarted serially. Neither interrupted attempt
 was counted as passed.
+
+The native run also exposed excessive QA transcript I/O: the PTY helper rewrote
+its entire growing log for every BuildKit terminal frame, producing about
+29 GB of writes for a roughly 6 MB transcript. The helper now limits interim
+report writes to once per five seconds and still saves the complete redacted
+transcript on exit. The native driver requests plain BuildKit output. A
+30-frame PTY smoke check in the declared pyBench verified that the complete
+final transcript is retained. For the already-running cold build, only its
+private QA transcript was moved to a RAM-backed report location; it will be
+copied back after the writer exits. This avoids added QA disk traffic; it does
+not establish the cause of Docker's earlier filesystem stalls, which predated
+this native build run.

@@ -52,6 +52,7 @@ def terminal(name, replies, expected=0, env=None, timeout=1800):
                                stdin=slave, stdout=slave, stderr=slave, start_new_session=True)
     os.close(slave)
     started = time.monotonic()
+    next_report = started
     output, answered = b'', 0
     deadline = time.monotonic() + timeout
     try:
@@ -64,11 +65,18 @@ def terminal(name, replies, expected=0, env=None, timeout=1800):
                 if not chunk:
                     break
                 output += chunk
-                clean = ANSI.sub('', output.decode(errors='replace')).replace('\r', '')
-                safe = clean
-                for marker in MARKERS:
-                    safe = safe.replace(marker, '[redacted test value]')
-                (REPORT / (name + '.txt')).write_text(safe)
+                # BuildKit's terminal progress can emit many frames per second.
+                # Rewriting the entire growing transcript on every frame turns
+                # megabytes of evidence into gigabytes of disk writes on WSL.
+                # Input matching still happens on every chunk; the final report
+                # below always includes the complete redacted transcript.
+                if time.monotonic() >= next_report:
+                    clean = ANSI.sub('', output.decode(errors='replace')).replace('\r', '')
+                    safe = clean
+                    for marker in MARKERS:
+                        safe = safe.replace(marker, '[redacted test value]')
+                    (REPORT / (name + '.txt')).write_text(safe)
+                    next_report = time.monotonic() + 5
                 if answered < len(replies):
                     pattern, reply = replies[answered]
                     match = re.search(pattern, terminal_screen(output))

@@ -42,36 +42,34 @@ The selected pyBench/Codex path passed installation, startup, update, cancellati
 and removal checks with local work and credentials preserved. Other pinned
 benches are not all certified by that run.
 
-Live Windows/WSL QA was attempted on Eagle (Windows 11 Pro
+Live Windows/WSL QA is continuing on Eagle (Windows 11 Pro
 `10.0.26300.9711`, WSL `2.7.14.0`, Ubuntu `24.04.4`, Docker Desktop `4.93.0`,
-engine `29.8.1`). Candidate `0367f1b` exposed a Docker socket-group permission
-failure in Tools. The fix candidate `fa7cd5a29c977a0a6f97c04a4e5fa7f849f5ccd9`
-passed the source-lock check and 54 focused tests in the declared pyBench.
-Native Windows WSL guidance and real WSL loading-screen cancellation passed;
-the latter exited 130 in 0.49 seconds. Full frozen installation, helper
-readiness, selected pyBench/Codex startup and live update/removal/preservation
-are **blocked** by Docker helper creation and image preparation that did not
-complete. Existing container IDs, image tags, volumes, inventoried credentials
-and shell/Git configuration were preserved during this attempt.
-**The Windows/WSL gate is still open.**
-QA-only engine/regression cleanup also exceeded bounded deadlines; the retained
-resource names are listed in the QA record for later cleanup.
-A subsequent retry on `9eb94de` confirmed the corrected helper identity
-`1000:1000` plus socket group `1001`, but startup exceeded 60 seconds.
-Minimal mapped-user and root probes both timed out before producing `id`
-output; changing to root did not resolve the observed startup stall.
-Further diagnosis located the stalls in OverlayFS unmount filesystem writeback.
-Docker's API and existing benches remained available. A later fresh full Tools
-helper **passed** startup and Docker access in 21 seconds as `brett`
-(`1000:1000`, supplementary socket group `1001`), without a Docker restart.
-This verifies the socket-group fix live; full Windows/WSL acceptance remains open.
-Functional follow-up found that a private checkout's 0600 source modes made
-root-owned helper files unreadable to the mapped user. Tools and credential
-images now normalize public code permissions and check helper access in their
-health probes. On `81bde3b`, rebuilt Tools passed Docker access, Python import,
-the real WSL callback and npm bridge; 40 focused checks passed. The CLI install
-attempt before this fix made no selection because inventory was blocked, so
-CLI and full workstation lifecycle acceptance are still pending.
+engine `29.8.1`). On product commit
+`76555991d8ea40d51009687fbc22ba7cd39b4748`, the native WSL test passed Tools
+readiness, loading cancellation, an empty selection, real Codex installation,
+update, queued cancellation, failed-update handling, removal, reinstallation,
+host Bash/Zsh startup, and full managed Vault readiness. Codex reports `0.163.0`.
+The selected pyBench's frozen installation, startup, update, removal, and local
+work guard are still running in an isolated engine; **the Windows/WSL gate
+remains open** until those assertions and final preservation checks pass.
+
+Release fixes correct the WSL Docker socket group, public helper-file modes,
+unavailable Snap-daemon inventory, and callback-broker cleanup. Tools runs as
+the mapped user (`1000:1000`) with supplementary socket group `1001`; running
+as root did not resolve the separate Docker storage stalls. Full Vault now
+starts successfully as the mapped user, with `op 2.40.0`, `bw 2026.9.1`, and
+Azure CLI `2.91.0`. All 20 setup regression suites passed, and the subsequent
+clean QA-driver commit `e3f2ea3` passed the source-lock check and 41 focused
+release, service, and component checks.
+
+Docker intermittently waits in OverlayFS unmount filesystem writeback while
+its API and existing containers remain responsive. Vault creation alone took
+twelve minutes; the pyBench test fell back to a cold local shared-image build.
+Testing continues without restarting Docker Desktop or WSL, changing global
+Docker configuration, or stopping original benches. Eagle's higher-priority
+npm `10.9.3` is broken; only the QA prefix selects the working distro npm
+`10.9.7`. Original credential and shell/Git hashes matched after the completed
+host lifecycle cases; final checks follow the bench cases.
 Exact commands, versions, failures and remaining cases are recorded in the
 [Eagle QA record](docs/release-1.5.0.md#eagle-windowswsl-acceptance--2026-10-17).
 The real Vaultwarden server/CLI recovery test passed with verified TLS and a

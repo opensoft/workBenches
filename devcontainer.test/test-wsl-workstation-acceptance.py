@@ -47,7 +47,7 @@ def main():
     for variable in ('WORKBENCHES_TOOLS_CONTAINER', 'WORKBENCHES_VAULT_CONTAINER', 'WORKBENCHES_SERVICES_NETWORK'):
         assert 'qa' in os.environ.get(variable, '') or 'eagle150' in os.environ.get(variable, ''), 'Use unique QA resource names: ' + variable
     report.mkdir(parents=True, exist_ok=True)
-    env = dict(os.environ, TERM='xterm-256color')
+    env = dict(os.environ, TERM='xterm-256color', BUILDKIT_PROGRESS='plain')
     env.pop('DOCKER_CONTEXT', None)
     env.pop('DOCKER_HOST', None)
     env.pop('WORKBENCHES_DOCKER_ENDPOINT', None)
