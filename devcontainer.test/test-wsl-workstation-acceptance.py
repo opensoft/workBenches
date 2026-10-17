@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import shutil
 import subprocess
 import sys
 import time
@@ -32,6 +33,7 @@ def main():
     home, repo, report = Path.home().resolve(), args.repo.resolve(), args.report.resolve()
     assert os.environ.get('WORKBENCHES_WSL_ACCEPTANCE') == '1', 'Explicit native acceptance opt-in required'
     assert 'microsoft-standard' in os.uname().release.lower() and not Path('/.dockerenv').exists(), 'Requires a real WSL 2 host'
+    assert os.getuid() != 0, 'Run as the normal WSL user to exercise mapped-user access'
     assert home != Path(pwd.getpwuid(os.getuid()).pw_dir).resolve(), 'Requires an isolated HOME'
     assert repo.is_relative_to(home) and not report.is_relative_to(repo), 'Use a private checkout and external report directory'
     assert args.engine.startswith('unix:///') and args.engine != 'unix:///var/run/docker.sock'
@@ -59,6 +61,13 @@ def main():
     if args.phase in ('all', 'desktop'):
         assert not run(['bash', '-c', 'command -v codex || true']), 'Fresh CLI phase requires no existing Codex on PATH'
     desktop_id = run(['docker', 'info', '--format', '{{.ID}}'], environment=desktop)
+    (report / 'native-environment.json').write_text(json.dumps({
+        'sha': args.sha, 'host': os.uname().nodename, 'kernel': os.uname().release,
+        'uid': os.getuid(), 'gid': os.getgid(), 'groups': os.getgroups(),
+        'node': run(['node', '--version']), 'npm': run(['npm', '--version']),
+        'npmExecutable': shutil.which('npm'), 'desktopEngine': desktop_id,
+        'docker': run(['docker', 'version', '--format', '{{.Client.Version}}/{{.Server.Version}}'], environment=desktop),
+    }, indent=2) + '\n')
     originals = set(run(['docker', 'ps', '-aq', '--no-trunc'], environment=desktop).splitlines())
     images = set(run(['docker', 'image', 'ls', '--no-trunc', '--format', '{{.Repository}}:{{.Tag}} {{.ID}}'], environment=desktop).splitlines())
     volumes = set(run(['docker', 'volume', 'ls', '-q'], environment=desktop).splitlines())
@@ -170,6 +179,13 @@ def main():
                 env[variable] += '-bench'
             assert run(['docker', 'info', '--format', '{{.ID}}']) != desktop_id, 'Bench engine must be isolated'
             assert not run(['docker', 'ps', '-aq']), 'Bench phase requires an empty engine'
+            run(['docker', 'pull', 'busybox:1.37.0'], timeout=300, log='unrelated-image.log')
+            run(['docker', 'tag', 'busybox:1.37.0', 'wsl-acceptance-unrelated:fixture'])
+            run(['docker', 'volume', 'create', 'wsl-acceptance-unrelated'])
+            unrelated = run(['docker', 'run', '-d', '--name', 'wsl-acceptance-unrelated',
+                             '--mount', 'type=volume,src=wsl-acceptance-unrelated,dst=/data',
+                             'wsl-acceptance-unrelated:fixture', 'sh', '-c',
+                             'printf preserve-unrelated-volume > /data/marker; exec sleep 3600'])
             benches = sorted(json.loads((repo / 'config/bench-config.json').read_text())['benches'])
             navigation = '\x1b[B' * benches.index('pyBench')
             bench = [(tui.TUI, navigation), (r'pyBench · (?:needs setup|installed|image only)', ' \n')]
@@ -194,6 +210,9 @@ def main():
                 assert subprocess.run(['docker', 'inspect', 'py-bench'], env=env, capture_output=True).returncode != 0
                 assert note.read_text() == 'preserve local source work\n'
                 run(['docker', 'image', 'inspect', 'workbench-base:latest', 'dev-bench-base:latest'])
+                assert run(['docker', 'inspect', '--format', '{{.Id}}', 'wsl-acceptance-unrelated']) == unrelated
+                assert run(['docker', 'exec', 'wsl-acceptance-unrelated', 'cat', '/data/marker']) == 'preserve-unrelated-volume'
+                run(['docker', 'image', 'inspect', 'wsl-acceptance-unrelated:fixture'])
                 if baseline:
                     preserved()
             check('bench-remove', remove_bench)
