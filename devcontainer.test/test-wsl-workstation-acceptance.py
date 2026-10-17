@@ -64,7 +64,15 @@ def main():
     volumes = set(run(['docker', 'volume', 'ls', '-q'], environment=desktop).splitlines())
     lock = (repo / 'config/release-lock.json').read_bytes()
     tui.REPO, tui.REPORT, tui.ENV = repo, report, env
+    value = 'sk-test-invalid-wsl-acceptance'
+    tui.MARKERS.append(value)
     results = []
+    if args.phase == 'bench':
+        previous = report / 'wsl-desktop-results.json'
+        if previous.is_file():
+            evidence = json.loads(previous.read_text())
+            assert evidence['sha'] == args.sha and evidence['desktopEngine'] == desktop_id, 'Desktop evidence must match this candidate and engine'
+            results = [row for row in evidence['results'] if row['case'] != 'preservation']
     required = ['tools', 'loading-cancellation', 'empty', 'codex-install', 'codex-update', 'queued-cancellation',
                 'failed-update', 'codex-remove', 'codex-reinstall', 'host-shells', 'vault', 'bench-install',
                 'bench-shells', 'bench-update', 'bench-remove', 'frozen-local-work-guard', 'preservation']
@@ -127,8 +135,6 @@ def main():
             check('codex-install', install_codex)
             project.write_text('preserve WSL acceptance project\n')
             credential.parent.mkdir(exist_ok=True)
-            value = 'sk-test-invalid-wsl-acceptance'
-            tui.MARKERS.append(value)
             credential.write_text(json.dumps({'OPENAI_API_KEY': value}) + '\n')
             credential.chmod(0o600)
             baseline = snapshot()
@@ -173,7 +179,13 @@ def main():
                 for shell in ('bash', 'zsh'):
                     run(['docker', 'exec', '--user', env['USER'], 'py-bench', shell, '-ic', 'python3 --version && codex --version'], log='bench-' + shell + '.log')
             check('bench-shells', bench_shells)
-            check('bench-update', lambda: terminal('bench-update', bench, timeout=3600))
+            def update_bench():
+                # Setup deliberately preserves a running bench. Stop only this
+                # test's bench in the already verified disposable engine.
+                run(['docker', 'stop', '--time', '10', 'py-bench'])
+                terminal('bench-update', bench, timeout=3600)
+                bench_shells()
+            check('bench-update', update_bench)
             checkout = repo / 'devBenches/pyBench'
             note = checkout / 'wsl-acceptance-local-work.txt'
             note.write_text('preserve local source work\n')
