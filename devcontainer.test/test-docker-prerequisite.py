@@ -28,6 +28,8 @@ source "$TEST_HELPER"
 trap 'exit 130' INT
 trap 'exit 143' TERM
 workbenches_docker_os() { printf '%s\\n' "$TEST_OS"; }
+# These package-manager cases model native Linux even on a WSL test host.
+workbenches_is_wsl() { return 1; }
 command() {
     if [[ "${1:-}" == -v && "${2:-}" == docker ]]; then
         [[ "$TEST_INSTALLED" == 1 || -f "$TEST_STATE/installed" ]]
