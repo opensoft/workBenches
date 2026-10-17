@@ -6,6 +6,7 @@ disposable engine so fixed bench names cannot replace an existing installation.
 No generated credential is sent to an AI service.
 """
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
@@ -28,7 +29,8 @@ def main():
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--sha', required=True)
     parser.add_argument('--engine', required=True, help='Disposable engine Unix socket, mounted at the same path inside it')
-    parser.add_argument('--phase', choices=('all', 'desktop', 'bench'), default='all')
+    parser.add_argument('--phase', choices=('all', 'desktop', 'bench', 'services'), default='all')
+    parser.add_argument('--resume', action='store_true', help='Continue matching evidence after correcting a QA driver or environment issue')
     args = parser.parse_args()
     home, repo, report = Path.home().resolve(), args.repo.resolve(), args.report.resolve()
     assert os.environ.get('WORKBENCHES_WSL_ACCEPTANCE') == '1', 'Explicit native acceptance opt-in required'
@@ -44,6 +46,7 @@ def main():
     report.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, TERM='xterm-256color')
     env.pop('DOCKER_CONTEXT', None)
+    env.pop('DOCKER_HOST', None)
     env.pop('WORKBENCHES_DOCKER_ENDPOINT', None)
     desktop = dict(env)
     desktop.pop('DOCKER_HOST', None)
@@ -58,7 +61,7 @@ def main():
     assert run(['git', 'rev-parse', 'HEAD']) == args.sha, 'Unexpected tested commit'
     assert not run(['git', 'status', '--porcelain', '--ignore-submodules=all']), 'Requires a clean assembly checkout'
     assert run(['npm', 'prefix', '--global']) == str(home / '.local'), 'npm must target the private home'
-    if args.phase in ('all', 'desktop'):
+    if args.phase in ('all', 'desktop') and not args.resume:
         assert not run(['bash', '-c', 'command -v codex || true']), 'Fresh CLI phase requires no existing Codex on PATH'
     desktop_id = run(['docker', 'info', '--format', '{{.ID}}'], environment=desktop)
     (report / 'native-environment.json').write_text(json.dumps({
@@ -76,12 +79,16 @@ def main():
     value = 'sk-test-invalid-wsl-acceptance'
     tui.MARKERS.append(value)
     results = []
-    if args.phase == 'bench':
-        previous = report / 'wsl-desktop-results.json'
-        if previous.is_file():
+    if args.resume or args.phase in ('bench', 'services'):
+        names = (args.phase,) if args.resume else (('bench', 'all', 'desktop') if args.phase == 'services' else ('desktop', 'all'))
+        previous = next((report / ('wsl-' + name + '-results.json') for name in names
+                         if (report / ('wsl-' + name + '-results.json')).is_file()), None)
+        if previous:
             evidence = json.loads(previous.read_text())
             assert evidence['sha'] == args.sha and evidence['desktopEngine'] == desktop_id, 'Desktop evidence must match this candidate and engine'
             results = [row for row in evidence['results'] if row['case'] != 'preservation']
+        else:
+            assert not args.resume, 'No matching report to resume'
     required = ['tools', 'loading-cancellation', 'empty', 'codex-install', 'codex-update', 'queued-cancellation',
                 'failed-update', 'codex-remove', 'codex-reinstall', 'host-shells', 'vault', 'bench-install',
                 'bench-shells', 'bench-update', 'bench-remove', 'frozen-local-work-guard', 'preservation']
@@ -96,7 +103,11 @@ def main():
         }, indent=2) + '\n')
 
     def check(name, action):
+        if args.resume and any(row['case'] == name and row['status'] == 'passed' for row in results):
+            print('PREVIOUSLY VERIFIED ' + name, flush=True)
+            return
         started = time.monotonic()
+        results[:] = [row for row in results if row['case'] != name]
         try:
             action()
         except Exception as error:
@@ -114,14 +125,20 @@ def main():
 
     # Wait for the selected row's inventory as well as required services. A
     # ready Docker/Tools header alone does not mean the CLI/bench row is loaded.
-    codex = [(tui.TUI, '\x1b[C\x1b[B\x1b[B'), (r'Codex CLI · (?:not installed|needs creds|installed)', ' \n')]
-    remove_codex = [(tui.TUI, '\x1b[C\x1b[B\x1b[B'), (r'Codex CLI · (?:needs creds|installed)', 'D\n')]
+    codex = [(tui.TUI, '\x1b[C\x1b[B\x1b[B'), (r'Codex CLI · (?:not installed|needs creds|Ready)', ' \n')]
+    remove_codex = [(tui.TUI, '\x1b[C\x1b[B\x1b[B'), (r'Codex CLI · (?:needs creds|Ready)', 'D\n')]
     project = home / 'projects/wsl-acceptance-project.txt'
     credential = home / '.codex/auth.json'
     baseline = None
 
+    def fixture(path, content):
+        if path.exists() or path.is_symlink():
+            assert not path.is_symlink() and path.read_text() == content, 'Refusing to replace an existing QA fixture: ' + path.name
+        else:
+            path.write_text(content)
+
     def snapshot():
-        return [(path.read_bytes(), path.stat().st_mode & 0o777, path.stat().st_mtime_ns)
+        return [[hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_mode & 0o777, path.stat().st_mtime_ns]
                 for path in (project, credential, home / '.p10k.zsh')]
 
     def preserved():
@@ -129,12 +146,18 @@ def main():
 
     save()
     try:
+        if args.phase == 'services':
+            if project.exists() and credential.exists():
+                baseline = snapshot()
+            check('tools', lambda: run(['bash', 'scripts/manage-setup-services.sh', 'start', 'tools'], timeout=600, log='tools-start.log'))
+            check('vault', lambda: run(['bash', 'scripts/manage-setup-services.sh', 'start', 'vault'], timeout=1800, log='vault-start.log'))
         if args.phase in ('all', 'desktop'):
             check('tools', lambda: run(['bash', 'scripts/manage-setup-services.sh', 'start', 'tools'], timeout=600, log='tools-start.log'))
             check('loading-cancellation', lambda: terminal('loading-cancellation', [(r'workBenches v1\.5\.0', 'Q')], 130))
             check('empty', lambda: terminal('empty', [(tui.TUI, '\n')]))
-            (home / '.zshrc').write_text('# WSL acceptance custom settings\n')
-            (home / '.p10k.zsh').write_text('# WSL acceptance custom prompt\n')
+            if not args.resume:
+                fixture(home / '.zshrc', '# WSL acceptance custom settings\n')
+                fixture(home / '.p10k.zsh', '# WSL acceptance custom prompt\n')
             def install_codex():
                 output = terminal('codex-install', codex)
                 assert (home / '.local/bin/codex').is_file(), 'CLI selection did not install Codex'
@@ -142,11 +165,21 @@ def main():
                 assert '# WSL acceptance custom settings' in (home / '.zshrc').read_text()
                 run([str(home / '.local/bin/codex'), '--version'], log='codex-version.log')
             check('codex-install', install_codex)
-            project.write_text('preserve WSL acceptance project\n')
-            credential.parent.mkdir(exist_ok=True)
-            credential.write_text(json.dumps({'OPENAI_API_KEY': value}) + '\n')
-            credential.chmod(0o600)
-            baseline = snapshot()
+            if not args.resume:
+                fixture(project, 'preserve WSL acceptance project\n')
+                credential.parent.mkdir(exist_ok=True)
+                fixture(credential, json.dumps({'OPENAI_API_KEY': value}) + '\n')
+                credential.chmod(0o600)
+            witness = report / 'preservation-witness.json'
+            if args.resume and witness.is_file():
+                baseline = json.loads(witness.read_text())
+                preserved()
+            else:
+                assert project.read_text() == 'preserve WSL acceptance project\n'
+                assert json.loads(credential.read_text()) == {'OPENAI_API_KEY': value}
+                assert (home / '.p10k.zsh').read_text() == '# WSL acceptance custom prompt\n'
+                baseline = snapshot()
+                witness.write_text(json.dumps(baseline) + '\n')
             def update_codex():
                 assert 'Codex CLI updated' in terminal('codex-update', codex)
                 preserved()
@@ -188,7 +221,7 @@ def main():
                              'printf preserve-unrelated-volume > /data/marker; exec sleep 3600'])
             benches = sorted(json.loads((repo / 'config/bench-config.json').read_text())['benches'])
             navigation = '\x1b[B' * benches.index('pyBench')
-            bench = [(tui.TUI, navigation), (r'pyBench · (?:needs setup|installed|image only)', ' \n')]
+            bench = [(tui.TUI, navigation), (r'pyBench · (?:needs setup|Ready|image only)', ' \n')]
             check('bench-install', lambda: terminal('bench-install', bench, timeout=3600))
             def bench_shells():
                 run(['bash', 'scripts/wave-container-shell.sh', '--workbenches-root', str(repo), '--shell', 'bash', '--check', 'pyBench'], timeout=300, log='wave-shell-check.log')
@@ -204,9 +237,9 @@ def main():
             check('bench-update', update_bench)
             checkout = repo / 'devBenches/pyBench'
             note = checkout / 'wsl-acceptance-local-work.txt'
-            note.write_text('preserve local source work\n')
+            fixture(note, 'preserve local source work\n')
             def remove_bench():
-                terminal('bench-remove', [(tui.TUI, navigation), (r'pyBench · installed', 'D\n')])
+                terminal('bench-remove', [(tui.TUI, navigation), (r'pyBench · Ready', 'D\n')])
                 assert subprocess.run(['docker', 'inspect', 'py-bench'], env=env, capture_output=True).returncode != 0
                 assert note.read_text() == 'preserve local source work\n'
                 run(['docker', 'image', 'inspect', 'workbench-base:latest', 'dev-bench-base:latest'])

@@ -112,6 +112,17 @@ source refusal with local work. The all-phase default runs both. Every selected
 row must finish inventory before the test submits it; exit zero alone cannot
 establish that a component was installed. Assertions check actual artifacts.
 
+If Vault is blocked, `--phase bench` can continue from the same SHA/engine's
+partial all-phase report so its independent cases still run. Once the service
+blocker is resolved, `--phase services` retries Tools/Vault and combines the
+matching evidence. Failed cases remain failed until a real retry passes; partial
+reports cannot mark the complete gate passed. Reusing evidence from a different
+source commit or Desktop engine is rejected.
+`--resume` continues a partial report for the same phase/SHA/engine after a QA
+driver correction; completed cases are retained and preservation witnesses are
+verified before another lifecycle action. Use a fresh empty engine for a new
+bench phase rather than treating existing bench artifacts as a fresh install.
+
 The phase report records failures and cases not run, and never reports the full
 gate complete for a partial phase. Project/credential/prompt witnesses, original
 Desktop resource IDs/images/volumes, and source-lock bytes are checked. Retain
