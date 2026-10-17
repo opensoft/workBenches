@@ -389,6 +389,44 @@ The complete native run is in progress; the Windows/WSL gate remains open until
 all required assertions pass. Subsequent driver/documentation commits do not
 change the product runtime tested at this commit.
 
+Completed native host cases on this product commit:
+
+| Case | Result | Seconds |
+| --- | --- | ---: |
+| Tools readiness | Passed | 1.70 |
+| Loading-screen cancellation | Passed, exit 130 | 0.53 |
+| Empty selection | Passed | 31.19 |
+| Codex install | Passed | 146.31 |
+| Codex update | Passed | 115.56 |
+| Queued cancellation | Passed | 21.81 |
+| Deliberately failed update | Passed, actual npm failure preserved installation | 318.34 |
+| Codex removal | Passed | 150.68 |
+| Codex reinstall | Passed | 147.30 |
+| Host Bash/Zsh startup | Passed | 1.48 |
+| Managed Vault readiness | Passed, healthy service already started below | 1.11 |
+| Preservation after cold-install timeout | Passed | 9.48 |
+
+The separate bench phase has not yet completed; no bench lifecycle result is
+inferred from these host checks.
+
+The cold bench attempt failed after `3605.41` seconds: the 3600-second PTY
+deadline expired and its five-second process-exit grace also elapsed. Layer 0
+had completed, but developer-base Layer 1 was still at step 45 of 60. The
+aggregate report recorded 12 passed cases, one failed `bench-install`, and four
+not run: bench shells, update, removal, and frozen local-work refusal. The
+underlying wait/download cannot be attributed solely to storage at that last
+step; earlier storage waits were captured separately above and below.
+
+The complete `16,886,977`-byte transcript was copied from RAM to the ordinary
+report directory after its writer exited. Its report and failed aggregate were
+archived before retrying. QA-only container removal then completed, leaving
+the same disposable engine empty while retaining completed images/build cache.
+A second bench-phase run started at `22:50Z`, using the same clean product
+commit and the corrected driver; its result remains pending. Neither Desktop
+nor the disposable engine was restarted for this retry. Original credential
+and shell/Git hash checks still matched, and all eight QA submodule pins
+remained clean before retrying.
+
 The declared native driver is
 `devcontainer.test/test-wsl-workstation-acceptance.py`, documented in
 `devcontainer.test/workstation/README.md`. It refuses container-only execution,
@@ -477,3 +515,28 @@ private QA transcript was moved to a RAM-backed report location; it will be
 copied back after the writer exits. This avoids added QA disk traffic; it does
 not establish the cause of Docker's earlier filesystem stalls, which predated
 this native build run.
+
+At `22:19:59Z`, the cold build again waited in the disposable engine's actual
+kernel stack: `wb_wait_for_completion → sync_filesystem → ovl_sync_fs →
+cleanup_mnt`. The outer Desktop `_ping` simultaneously returned HTTP 200 in
+0.012 seconds. The installer process had already exited, distinguishing this
+wait from an ongoing package download. The layer eventually completed and
+the build advanced; the trace establishes the filesystem wait, not its root
+cause. Read-only diagnosis used `docker exec` to inspect the QA daemon's
+`/proc/PID/task/*/stack` and `curl --unix-socket` for the API ping. No restart
+was performed.
+
+Capacity inspection at `22:33Z` reported 208.5 GiB free in the QA engine's
+backing filesystem (89% used), WSL `MemAvailable` of `45,809,520 kB`,
+and Windows volume free space of 1.06 TB on C: and 757 GB on D:. Commands were
+`df -h /var/lib/docker`, reads of `/proc/meminfo` and `/proc/pressure/io`, and
+PowerShell `Get-Volume | Select-Object DriveLetter,SizeRemaining,Size`.
+These observations do not show an exhausted filesystem or memory condition;
+they do not certify storage hardware health.
+
+On QA-driver commit `635f55d382b744a931ac1c8cbc94d32d544ce33a`, the
+[Workstation Setup workflow](https://github.com/opensoft/workBenches/actions/runs/39074612502)
+passed all four jobs: regression, Tools runtime, credential images, and
+component lifecycle. Release source freeze, shared workstation images,
+project-command, and OpenSpeckit checks also passed on that head. These CI
+results remain separate from the pending real WSL bench acceptance.

@@ -49,9 +49,11 @@ engine `29.8.1`). On product commit
 readiness, loading cancellation, an empty selection, real Codex installation,
 update, queued cancellation, failed-update handling, removal, reinstallation,
 host Bash/Zsh startup, and full managed Vault readiness. Codex reports `0.163.0`.
-The selected pyBench's frozen installation, startup, update, removal, and local
-work guard are still running in an isolated engine; **the Windows/WSL gate
-remains open** until those assertions and final preservation checks pass.
+The selected pyBench's cold-install attempt exceeded its one-hour QA deadline;
+final preservation checks passed, giving 12 passed cases, one timed-out install,
+and four dependent cases not run. A retry with retained image/build cache is
+running in the same isolated engine. **The Windows/WSL gate remains open** until
+bench installation, startup, update, removal, and the local-work guard pass.
 
 Release fixes correct the WSL Docker socket group, public helper-file modes,
 unavailable Snap-daemon inventory, and callback-broker cleanup. Tools runs as
