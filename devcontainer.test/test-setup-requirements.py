@@ -126,10 +126,10 @@ handle_input
 handle_input
 [[ "${{component_checked[docker]}}" != true ]] || exit 21
 [[ "${{component_checked[codex_cli]}}" == true ]] || exit 22
-CURRENT_SECTION=3; current_selection=3
-component_status[workbenches_account]='not configured'
+CURRENT_SECTION=4; current_selection=1
+activate_profile() {{ [[ "${{profile_items[$current_selection]}}" == workbenches_account ]] || exit 23; }}
 handle_input
-[[ "${{component_action[workbenches_account]}}" == install ]] || exit 23
+[[ "${{component_checked[codex_cli]}}" == true ]] || exit 24
 '''
             env = dict(os.environ, HOME=temporary, XDG_CONFIG_HOME=temporary, WSL_DISTRO_NAME='')
             result = subprocess.run(['bash', '-c', command], input='PD ', env=env, capture_output=True, text=True, timeout=15)

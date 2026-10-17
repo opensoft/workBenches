@@ -306,7 +306,7 @@ def interactive_answers() -> dict[str, Any]:
     if os.environ.get("WORKBENCHES_REQUIRE_PROFILE") != "1" and not ask_yes_no("Set up separate AI profiles for this workstation now?", False):
         return {"consent": False}
 
-    scope = ask("Profile ownership: personal, organization, or registry (advanced)", "personal").lower()
+    scope = ask("Profile ownership: personal, organization, or registry (advanced)", os.environ.get("WORKBENCHES_IDENTITY_SCOPE", "personal")).lower()
     if scope not in ("personal", "organization", "registry"):
         raise ValueError("choose personal, organization, or registry")
     registry_mode = scope == "registry"
@@ -318,11 +318,13 @@ def interactive_answers() -> dict[str, Any]:
     if not selected:
         selected = ask("AI provider for Pi profiles (claude,gpt,gemini,grok,glm)", "gpt")
     providers = parse_providers(selected)
-    email = ask_email("AI account login email")
+    email = ask("AI account login email", os.environ.get("WORKBENCHES_IDENTITY_EMAIL", ""))
+    if not EMAIL_RE.match(email):
+        raise ValueError("Enter a valid AI account login email.")
     companies = []
     personal_accounts = []
     if scope == "organization":
-        name = ask("Organization name", company_name_from_email(email))
+        name = ask("Organization name", os.environ.get("WORKBENCHES_IDENTITY_NAME", company_name_from_email(email)))
         companies = [{"name": name, "email": email, "githubOrg": "",
                       "providers": providers, "registry": "manual"}]
     else:
@@ -578,6 +580,13 @@ def main() -> int:
             if not output[provider] and "WORKBENCHES_SELECTED_PROVIDERS" in os.environ:
                 continue
             destination = args.output_dir / filename
+            if os.environ.get('WORKBENCHES_IDENTITY_SCOPE') and destination.is_file():
+                existing = json.loads(destination.read_text())
+                existing_profiles = existing.get('profiles', [])
+                # Adding an identity must never replace another identity's AI profiles.
+                names = {p['name'] for p in existing_profiles}
+                output[provider] = existing_profiles + [p for p in output[provider] if p['name'] not in names]
+                families = list(dict.fromkeys([*existing.get('families', []), *families]))
             if "WORKBENCHES_SELECTED_PROVIDERS" in os.environ and destination.is_file():
                 existing = json.loads(destination.read_text())
                 if existing.get("profiles"):

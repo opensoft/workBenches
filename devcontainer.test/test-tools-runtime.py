@@ -81,6 +81,14 @@ else:
             elif stage == 5 and re.search(r'Vault\s+Up\s+\[V Sign out\]', plain) and 'Changes selected: 1' in plain:
                 ready = True; keys = b'v'
             elif stage == 6 and re.search(r'Vault\s+Up\s+\[V Connect\]', plain) and 'Changes selected: 1' in plain:
+                ready = True; keys = b'G'
+            elif stage == 7 and 'PERSONAL & COMPANY IDENTITIES' in plain and 'Personal & companies' in plain:
+                ready = True; keys = b'\r'
+            elif stage == 8 and 'Personal email:' in plain:
+                ready = True; keys = b'q\n'
+            elif stage == 9 and 'Profile action cancelled; saved profiles kept.' in plain:
+                ready = True; keys = b'G'
+            elif stage == 10 and re.search(r'Vault\s+Up\s+\[V Connect\]', plain) and 'Changes selected: 1' in plain:
                 ready = True; keys = b'Q'
             if ready:
                 print(f'Button-flow stage {stage} → {stage + 1}', flush=True)
@@ -89,7 +97,7 @@ else:
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             raise AssertionError((stage, transcript.decode(errors='replace')[-6000:])) from None
-        assert stage == 7 and process.returncode == 130, (stage, transcript.decode(errors='replace')[-6000:])
+        assert stage == 11 and process.returncode == 130, (stage, transcript.decode(errors='replace')[-6000:])
         assert not (home / 'fixture-account-session').exists()
         assert (home / 'fixture-account-attempts').read_text() == '2'
     finally:
@@ -97,7 +105,7 @@ else:
             os.killpg(process.pid, signal.SIGTERM)
             process.wait(timeout=5)
         os.close(master)
-    print('PASS: main-screen Vault V Install → Connect → Ctrl+C → sign in → sign out; queued bench preserved')
+    print('PASS: main-screen Vault V Install → Connect → Ctrl+C → sign in → sign out; Profiles open/cancel/back; queued bench preserved')
 
 
 def main():

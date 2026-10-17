@@ -12,7 +12,8 @@ import urllib.parse
 import urllib.request
 import webbrowser
 
-ROOT = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'workbenches'
+ROOT = Path(os.environ.get('WORKBENCHES_ACCOUNT_ROOT', str(
+    Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'workbenches')))
 CONFIG = ROOT / 'account-provider.json'
 SESSION = ROOT / 'account-session.json'
 
