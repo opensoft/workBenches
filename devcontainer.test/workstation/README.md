@@ -129,6 +129,11 @@ source commit or Desktop engine is rejected.
 driver correction; completed cases are retained and preservation witnesses are
 verified before another lifecycle action. Use a fresh empty engine for a new
 bench phase rather than treating existing bench artifacts as a fresh install.
+The fresh phase also requires the selected bench's base/personalized image tags
+to be absent; only shared base images may be seeded as cache. Preparation errors
+are recorded as failed bench installations. The two explicit QA helper image
+tags may be rebuilt during startup; all other existing Desktop images/tags,
+containers, and volumes remain protected by preservation assertions.
 
 After a blocked bench attempt has exited, `--phase guard` independently checks
 the frozen-source refusal using the same isolated home/engine and matching

@@ -29,6 +29,8 @@ Draft: publication is pending the remaining gates in
   existing managed helpers are recreated to apply the corrected access group.
 - Developer-base configuration steps share a filesystem layer so personalized
   benches leave room for Docker's container layers.
+- Selected bench setup rebuilds through its declared image builder, refreshing
+  cached bench images when the shared family base changes.
 
 ## Validation and platforms
 
@@ -57,8 +59,10 @@ and four dependent cases not run. The cache-assisted retry built the selected
 images but failed container creation with `max depth exceeded`: the personalized
 image had 128 filesystem layers. The recipe fix removes eight configuration
 layers and has passed its regression check. A fresh full native acceptance run
-is in progress on `fdbb5940d40b92f42d5499c8364a415b7ae7ffb4`; its source-lock
-and actual Windows prerequisite-guard checks passed. **The Windows/WSL gate remains open** until bench installation,
+on `fdbb5940d40b92f42d5499c8364a415b7ae7ffb4` passed all eleven host cases but
+exposed stale descendant-image reuse. The native runtime now refreshes the
+declared bench image before startup; live migration and fresh acceptance remain
+required. **The Windows/WSL gate remains open** until bench installation,
 startup, update, removal, and the local-work guard pass.
 
 Release fixes correct the WSL Docker socket group, public helper-file modes,

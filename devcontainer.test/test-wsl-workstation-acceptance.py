@@ -46,6 +46,8 @@ def main():
     assert not os.environ.get('WORKBENCHES_TEST_NATIVE_TOOLS'), 'Production Tools transport is required'
     for variable in ('WORKBENCHES_TOOLS_CONTAINER', 'WORKBENCHES_VAULT_CONTAINER', 'WORKBENCHES_SERVICES_NETWORK'):
         assert 'qa' in os.environ.get(variable, '') or 'eagle150' in os.environ.get(variable, ''), 'Use unique QA resource names: ' + variable
+    for variable in ('WORKBENCHES_TOOLS_IMAGE', 'WORKBENCHES_VAULT_IMAGE'):
+        assert 'qa' in os.environ.get(variable, '') or 'eagle150' in os.environ.get(variable, ''), 'Use explicit QA image tags: ' + variable
     report.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, TERM='xterm-256color', BUILDKIT_PROGRESS='plain')
     env.pop('DOCKER_CONTEXT', None)
@@ -75,7 +77,11 @@ def main():
         'docker': run(['docker', 'version', '--format', '{{.Client.Version}}/{{.Server.Version}}'], environment=desktop),
     }, indent=2) + '\n')
     originals = set(run(['docker', 'ps', '-aq', '--no-trunc'], environment=desktop).splitlines())
-    images = set(run(['docker', 'image', 'ls', '--no-trunc', '--format', '{{.Repository}}:{{.Tag}} {{.ID}}'], environment=desktop).splitlines())
+    # These exact managed QA tags can legitimately change when startup rebuilds
+    # its helpers. Every other existing image/tag remains protected.
+    helper_images = {env['WORKBENCHES_TOOLS_IMAGE'], env['WORKBENCHES_VAULT_IMAGE']}
+    images = {row for row in run(['docker', 'image', 'ls', '--no-trunc', '--format', '{{.Repository}}:{{.Tag}} {{.ID}}'], environment=desktop).splitlines()
+              if row.rsplit(' ', 1)[0] not in helper_images}
     volumes = set(run(['docker', 'volume', 'ls', '-q'], environment=desktop).splitlines())
     lock = (repo / 'config/release-lock.json').read_bytes()
     tui.REPO, tui.REPORT, tui.ENV = repo, report, env
@@ -239,20 +245,23 @@ def main():
             env['DOCKER_HOST'] = args.engine
             for variable in ('WORKBENCHES_TOOLS_CONTAINER', 'WORKBENCHES_SERVICES_NETWORK'):
                 env[variable] += '-bench'
-            assert run(['docker', 'info', '--format', '{{.ID}}']) != desktop_id, 'Bench engine must be isolated'
-            assert not run(['docker', 'ps', '-aq']), 'Bench phase requires an empty engine'
-            run(['docker', 'pull', 'busybox:1.37.0'], timeout=300, log='unrelated-image.log')
-            run(['docker', 'tag', 'busybox:1.37.0', 'wsl-acceptance-unrelated:fixture'])
-            run(['docker', 'volume', 'create', 'wsl-acceptance-unrelated'])
-            unrelated = run(['docker', 'run', '-d', '--name', 'wsl-acceptance-unrelated',
-                             '--mount', 'type=volume,src=wsl-acceptance-unrelated,dst=/data',
-                             'wsl-acceptance-unrelated:fixture', 'sh', '-c',
-                             # Outlive the combined cold-install/update budgets.
-                             'printf preserve-unrelated-volume > /data/marker; exec sleep 86400'])
             benches = sorted(json.loads((repo / 'config/bench-config.json').read_text())['benches'])
             navigation = '\x1b[B' * benches.index('pyBench')
             bench = [(tui.TUI, navigation), (r'pyBench · (?:needs setup|Ready|image only)', ' \n')]
+            unrelated = None
             def install_bench():
+                nonlocal unrelated
+                assert run(['docker', 'info', '--format', '{{.ID}}']) != desktop_id, 'Bench engine must be isolated'
+                assert not run(['docker', 'ps', '-aq']), 'Bench phase requires an empty engine'
+                for image in ('py-bench:latest', 'py-bench:' + env['USER']):
+                    assert subprocess.run(['docker', 'image', 'inspect', image], env=env, capture_output=True).returncode != 0, 'Fresh bench phase requires no selected bench image: ' + image
+                run(['docker', 'pull', 'busybox:1.37.0'], timeout=300, log='unrelated-image.log')
+                run(['docker', 'tag', 'busybox:1.37.0', 'wsl-acceptance-unrelated:fixture'])
+                run(['docker', 'volume', 'create', 'wsl-acceptance-unrelated'])
+                unrelated = run(['docker', 'run', '-d', '--name', 'wsl-acceptance-unrelated',
+                                 '--mount', 'type=volume,src=wsl-acceptance-unrelated,dst=/data',
+                                 'wsl-acceptance-unrelated:fixture', 'sh', '-c',
+                                 'printf preserve-unrelated-volume > /data/marker; exec sleep 86400'])
                 assert 'pyBench is ready (launch verified)' in terminal('bench-install', bench, timeout=3600)
             check('bench-install', install_bench)
             def bench_shells():

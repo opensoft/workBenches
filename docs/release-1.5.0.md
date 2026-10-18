@@ -643,3 +643,29 @@ python3 "$DRIVER_ROOT/devcontainer.test/test-wsl-workstation-acceptance.py" \
 The source-lock check and actual Windows Git Bash prerequisite guard both
 passed on this exact commit. The full native run remains in progress, and the
 Windows/WSL release gate remains open until the live assertions pass.
+
+The `fdbb594` run passed all eleven host-side cases. It built the corrected
+99-layer developer image, but bench setup reused the old 113-layer pyBench
+image and 128-layer personalized image, then failed container creation again.
+The native bench scripts checked only whether their tags existed. The parent
+runtime now invokes a bench's declared `scripts/build-layer2.sh` before setup,
+after protecting any already-running container. Docker's build cache evaluates
+the current family base instead of reusing a stale descendant by tag alone.
+A regression covers builder-before-launch ordering, propagation of builder
+failure, and preserving an existing running bench; all 12 install-friction
+checks passed after this fix.
+
+That run's preservation assertion also treated its own rebuilt QA Vault tag
+as unrelated. The driver now requires explicit QA image tags and excludes
+only the two declared managed helper tags from immutable-image comparisons;
+all other images/tags, containers, and volumes remain protected. Independent
+comparison with the workstation's original inventories confirmed all 104
+containers, 278 image/tag records, and 2,142 volumes remained present, with
+the original credential and shell/Git hashes still matching.
+
+Fresh bench preparation now requires both selected image tags to be absent,
+as well as an empty disposable engine. Preparation runs within the install
+assertion so it cannot accidentally retain an older passing install result.
+Retained failed-attempt bench images are reserved for a separate migration
+check; they must not be mistaken for a fresh installation. The failed
+`fdbb594` report is archived, and a new runtime candidate requires live testing.
