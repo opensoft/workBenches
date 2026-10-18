@@ -40,6 +40,14 @@ class ImageTests(unittest.TestCase):
             before=shared.fingerprint('dev',roots[0])
             (roots[0]/'base-image/helper.sh').write_text('changed')
             self.assertNotEqual(before,shared.fingerprint('dev',roots[0]))
+            # #106: changing only a vendored helper must invalidate the dev
+            # image even when Dockerfile and build.sh have not changed.
+            vendor = roots[1]/'devBenches/base-image/files/vendor/helper.sh'
+            vendor.parent.mkdir(parents=True)
+            vendor.write_text('old')
+            vendor_before = shared.fingerprint('dev', roots[1])
+            vendor.write_text('new')
+            self.assertNotEqual(vendor_before, shared.fingerprint('dev', roots[1]))
             cache_before=shared.fingerprint('base',roots[1])
             (roots[1]/'base-image/__pycache__').mkdir()
             (roots[1]/'base-image/__pycache__/unrelated.pyc').write_text('ignored')
