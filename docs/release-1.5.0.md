@@ -58,7 +58,8 @@ These results precede the release commit. The following remain required:
   Candidate PR: [#157](https://github.com/opensoft/workBenches/pull/157).
 - [x] Pass the Release source freeze and full Workstation Setup CI checks on
   candidate `c880e04`; the PR also passed project-command, OpenSpeckit,
-  shared-image regression, and CodeQL checks.
+  shared-image regression, and CodeQL checks. All these checks also passed on
+  the Windows/WSL runtime candidate `3cf1752`.
 - [ ] Repeat required CI checks on the final merge commit.
 - [x] Complete a fresh-workstation install using frozen-source mode.
   All 11 declared workstation acceptance cases passed on `c880e04`, using a
@@ -80,13 +81,15 @@ These results precede the release commit. The following remain required:
   reported signed in. Local sign-out reported sign in; a second real browser
   approval completed reconnect and restored signed-in status. This covers the
   account helper flow; no new TUI acceptance run was performed.
-- [ ] Complete live QA for every platform advertised as supported. Raven/Linux
-  has development coverage; Windows/WSL QA on Eagle is blocked by live Docker
-  operations (see below).
+- [x] Complete live Linux and Windows/WSL QA; identify macOS as unvalidated.
+  Raven/Linux has development coverage; all 17 live Windows/WSL cases passed
+  on Eagle at `3cf17527d94e43c429cced43f150b44d74e8c60d` on 2026-10-18 UTC
+  (see the final results below).
   No Mac is available: macOS must be identified as
   unvalidated in 1.5.0 rather than advertised as a validated platform.
-- [ ] Prepare final release notes with the tested commit, validation evidence,
-  platform coverage, and known limitations.
+- [x] Prepare release notes with the tested commit, validation evidence,
+  platform coverage, and known limitations. Publication and final merge-commit
+  validation remain separate release actions.
 - [x] Protect version tags against updates/deletion: active repository ruleset
   **Immutable workBenches releases**, covering `refs/tags/v*` without bypass actors.
 
@@ -100,7 +103,10 @@ tag. Post-release fixes use `1.5.1`; compatible feature additions use `1.6.0`.
 Initial candidate: `0367f1b70749b346762f57067bb0ad9e1599c3d9`.
 Fix candidate tested by the focused checks:
 `fa7cd5a29c977a0a6f97c04a4e5fa7f849f5ccd9`.
-The Windows/WSL release gate remains **open** until the live cases below pass.
+The Windows/WSL release gate is **complete** on product commit
+`3cf17527d94e43c429cced43f150b44d74e8c60d`: all 17 required live cases passed
+on 2026-10-18 UTC. Earlier failures and their fixes are retained below; the
+final candidate's complete results follow the investigation history.
 
 ### Environment and isolation
 
@@ -641,8 +647,8 @@ python3 "$DRIVER_ROOT/devcontainer.test/test-wsl-workstation-acceptance.py" \
 ```
 
 The source-lock check and actual Windows Git Bash prerequisite guard both
-passed on this exact commit. The full native run remains in progress, and the
-Windows/WSL release gate remains open until the live assertions pass.
+passed on this exact commit. The run finished with the failures below; it did
+not complete the Windows/WSL gate.
 
 The `fdbb594` run passed all eleven host-side cases. It built the corrected
 99-layer developer image, but bench setup reused the old 113-layer pyBench
@@ -669,3 +675,151 @@ assertion so it cannot accidentally retain an older passing install result.
 Retained failed-attempt bench images are reserved for a separate migration
 check; they must not be mistaken for a fresh installation. The failed
 `fdbb594` report is archived, and a new runtime candidate requires live testing.
+
+### Descendant refresh and fresh acceptance — 2026-10-18 UTC
+
+Product candidate: `3cf17527d94e43c429cced43f150b44d74e8c60d`.
+The source-lock check, one image-layer-budget test, and all 12 install-friction
+tests passed through the existing declared pyBench. All four
+[Workstation Setup jobs](https://github.com/opensoft/workBenches/actions/runs/39082655852)
+passed on this exact commit: regression, Tools runtime, credential images, and
+component lifecycle. Release source freeze, project-command, OpenSpeckit Bash,
+and shared workstation image workflows also passed on this head.
+
+The actual Windows Git Bash prerequisite guard was repeated with
+`bash.exe --noprofile --norc`, sourcing `scripts/lib/setup-prerequisites.sh`
+from the clean private checkout and calling `ensure_setup_platform` with
+noninteractive input. It returned the expected exit 1 and WSL 2/Ubuntu guidance,
+without requesting elevation or installing anything.
+
+A separate fresh QA home and recursive clone use unique
+`workbenches-eagle150-parentfixqa-*` helper/network names and distinct Tools/Vault
+image tags. The native desktop phase started at approximately `00:29Z`.
+Tools started in 18.25 seconds. Inspection and an actual Docker request from
+the new helper confirmed `brett`, UID/GID `1000:1000`, supplementary socket GID
+`1001`, read-only root filesystem, healthy state, and access to Desktop engine
+`29.8.1`. Its tools report Python `3.13.16`, Git `2.54.0`, jq `1.8.2`, and curl
+`8.22.0`. No root-user workaround was used.
+
+A separate migration check retains the previous 113-layer pyBench image and
+128-layer personalized image, with the corrected 99-layer family base. Its
+first direct QA invocation omitted `WORKBENCHES_TOOLS_ROOT`, which normal
+setup activation exports. The native adapter's nested Tools shim could not
+resolve its repository and the builder reported a missing base image. This
+was a QA-command error, not evidence that the engine had stopped. The retry
+exported the checkout root and completed successfully from approximately
+`00:29:31Z` to `00:36:31Z`, returning zero after the ordinary Wave launch check.
+It used the declared bench builder and setup, without deleting the old images
+before migration:
+
+```bash
+export WORKBENCHES_TOOLS_ROOT="$QA_HOME/projects/workBenches"
+export DOCKER_HOST="unix://$BENCH_QA_ROOT/socket/docker.sock"
+export BUILDKIT_PROGRESS=plain
+cd "$WORKBENCHES_TOOLS_ROOT"
+bash scripts/tools-command.sh python3 scripts/setup-bench-runtime.py \
+  --bench pyBench --setup "$WORKBENCHES_TOOLS_ROOT/devBenches/pyBench/setup.sh"
+```
+
+| Image | Before migration | After migration |
+| --- | ---: | ---: |
+| workbench-base | 48 layers | 48 layers |
+| dev-bench-base | 99 layers | 99 layers |
+| py-bench:latest | 113 layers | 105 layers |
+| py-bench:brett | 128 layers | 120 layers |
+
+The new container started successfully. Actual `docker exec --user brett`
+checks confirmed UID/GID `1000:1000`, supplementary Docker GID `1001`,
+`sudo -n id -u` returning zero, the expected native WSL project fixture mounted
+under the declared projects directory, Python `3.12.3`, Codex `0.163.0`, and
+Docker access to the isolated engine `28.5.2`. This verifies migration from the
+old excessive-depth descendants, the normal user identity, and sudo access.
+The separate fresh bench lifecycle also passed, as recorded below.
+
+The migration bench was then removed through
+`scripts/tools-command.sh python3 scripts/setup-components.py uninstall
+bench_pyBench`. The declared remover deleted only its one container and two
+selected image tags, retaining the checkout, projects, credentials, volumes,
+and shared bases. The two named disposable helper/witness containers were
+stopped and removed separately. Inspection verified an empty private engine,
+absent `py-bench:latest`/`py-bench:brett` tags, and retained 48/99-layer shared
+bases before the fresh bench phase. BuildKit cache was retained: the following
+fresh installation used cached builds. It was not a cold image-download
+benchmark; earlier cold-install limitations remain recorded.
+
+The pyBench pip install emitted existing Semgrep/OpenTelemetry dependency
+conflicts (Semgrep `1.181.0` expects OpenTelemetry `1.37.x`; the Python tools
+install resolved `1.45.1`). The install exited successfully. Semgrep's runtime
+is outside the selected Python/Codex acceptance path and is not certified by
+these checks; the warning is retained as a package-resolution limitation.
+
+#### Complete native acceptance result
+
+Both phases used the same fresh home/clean recursive checkout, frozen mode,
+private npm prefix, explicit QA helper image tags, Desktop engine, report, and
+exact product commit. The desktop phase completed first; the bench phase then
+used the empty disposable engine with the verified preconditions above:
+
+```bash
+export WORKBENCHES_FROZEN=1 WORKBENCHES_WSL_ACCEPTANCE=1
+export WORKBENCHES_ACCEPTANCE_SHA=3cf17527d94e43c429cced43f150b44d74e8c60d
+python3 "$DRIVER_ROOT/devcontainer.test/test-wsl-workstation-acceptance.py" \
+  --repo "$QA_HOME/projects/workBenches" \
+  --report "$QA_ROOT/report/native-wsl-parentfix" \
+  --sha "$WORKBENCHES_ACCEPTANCE_SHA" \
+  --engine "unix://$BENCH_QA_ROOT/socket/docker.sock" --phase desktop
+python3 "$DRIVER_ROOT/devcontainer.test/test-wsl-workstation-acceptance.py" \
+  --repo "$QA_HOME/projects/workBenches" \
+  --report "$QA_ROOT/report/native-wsl-parentfix" \
+  --sha "$WORKBENCHES_ACCEPTANCE_SHA" \
+  --engine "unix://$BENCH_QA_ROOT/socket/docker.sock" --phase bench
+```
+
+Both commands returned zero. The final `wsl-bench-results.json` records the
+exact SHA above, `complete: true`, no cases not run, and **17/17 passed**:
+
+| Required case | Seconds | Result |
+| --- | ---: | --- |
+| Tools startup/readiness | 18.25 | Passed; mapped user can reach Desktop Docker. |
+| Loading cancellation | 1.10 | Passed; exit 130. |
+| Empty selection | 110.78 | Passed; no component changes selected. |
+| Fresh Codex install | 197.56 | Passed; actual CLI `0.163.0`. |
+| Existing Codex update | 198.39 | Passed; preservation witnesses unchanged. |
+| Queued cancellation | 30.62 | Passed; CLI binary bytes/mtime and witnesses unchanged. |
+| Failed Codex update | 117.12 | Passed; real unreachable npm endpoint, expected failure, witnesses unchanged. |
+| Codex removal | 129.05 | Passed; launcher absent, data preserved. |
+| Codex reinstallation | 126.26 | Passed; subsequent shell checks find the actual CLI. |
+| Host Bash/Zsh startup | 1.19 | Passed; Codex starts in both shells. |
+| Managed Vault startup/readiness | 13.51 | Passed; mapped `1000:1000`, healthy; op `2.40.0`, bw `2026.9.1`, az `2.91.0`. |
+| Fresh pyBench install | 231.31 | Passed; frozen pin `cf62c02f18b5a5003b2927c3f2edd83fa05c08d0`, launch verified. |
+| Bench Wave/Bash/Zsh startup | 3.82 | Passed; ordinary Wave check, Python `3.12.3`, Codex `0.163.0`. |
+| Existing pyBench update | 146.75 | Passed; only the QA bench stopped, then launch and shell checks passed again. |
+| pyBench removal | 133.45 | Passed; container and both selected tags absent, local work and unrelated resources retained. |
+| Frozen local-work guard | 34.84 | Passed; expected refusal/exit 1 before building, local file and recorded pin retained. |
+| Final preservation | 6.92 | Passed; Desktop inventories, source lock, and project/credential/prompt witnesses unchanged. |
+
+The fresh installation independently produced the same 105-layer bench and
+120-layer user images as the migration check. After updating it, actual exec
+checks again verified UID/GID `1000:1000`, Docker GID `1001`, passwordless sudo,
+and the native WSL project fixture inside the bench. Vibe Annotations became
+healthy after its 32-second container startup. Final removal retained its
+shared service and the unrelated witness container, image, and volume marker.
+
+A separate final audit against the inventories taken before this QA session
+confirmed all **104 original containers, 278 image/tag records, and 2,142
+volumes**, with zero missing. All **16 original credential file hashes** and
+**three shell/Git file hashes** still matched. The parent checkout's eight
+submodules remained clean at their recorded commits. Desktop's API answered
+HTTP 200 in 0.009 seconds after the migration; original pyBench/cloudBench
+sessions retained their uptime. Neither Desktop nor WSL was restarted, no
+global Docker settings changed, and no original workload was stopped.
+
+Coverage remains the selected pyBench/Codex path on an existing WSL 2/Docker
+Desktop workstation, with shared/build cache and authorized recursive cloning.
+It does not certify cold Windows/WSL provisioning, every pinned bench, GPU
+workloads, paid AI authorization, or an entirely cold corrected-image install.
+The earlier slow OverlayFS writeback and broken higher-priority host npm remain
+environment limitations; only the private QA PATH selected distro npm `10.9.7`.
+macOS remains explicitly unvalidated. Required checks on the eventual clean
+merge commit, tagging, and publication are still outstanding release actions;
+none was performed during this QA task.

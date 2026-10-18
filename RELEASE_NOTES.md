@@ -46,44 +46,46 @@ The selected pyBench/Codex path passed installation, startup, update, cancellati
 and removal checks with local work and credentials preserved. Other pinned
 benches are not all certified by that run.
 
-Live Windows/WSL QA is continuing on Eagle (Windows 11 Pro
-`10.0.26300.9711`, WSL `2.7.14.0`, Ubuntu `24.04.4`, Docker Desktop `4.93.0`,
-engine `29.8.1`). On product commit
-`76555991d8ea40d51009687fbc22ba7cd39b4748`, the native WSL test passed Tools
-readiness, loading cancellation, an empty selection, real Codex installation,
-update, queued cancellation, failed-update handling, removal, reinstallation,
-host Bash/Zsh startup, and full managed Vault readiness. Codex reports `0.163.0`.
-The selected pyBench's cold-install attempt exceeded its one-hour QA deadline;
-final preservation checks passed, giving 12 passed cases, one timed-out install,
-and four dependent cases not run. The cache-assisted retry built the selected
-images but failed container creation with `max depth exceeded`: the personalized
-image had 128 filesystem layers. The recipe fix removes eight configuration
-layers and has passed its regression check. A fresh full native acceptance run
-on `fdbb5940d40b92f42d5499c8364a415b7ae7ffb4` passed all eleven host cases but
-exposed stale descendant-image reuse. The native runtime now refreshes the
-declared bench image before startup; live migration and fresh acceptance remain
-required. **The Windows/WSL gate remains open** until bench installation,
-startup, update, removal, and the local-work guard pass.
+**Windows/WSL acceptance passed all 17 required live cases** on Eagle,
+2026-10-18 UTC, at product commit
+`3cf17527d94e43c429cced43f150b44d74e8c60d`. The native host was Windows 11 Pro
+`10.0.26300.9711`, WSL `2.7.14.0`, Ubuntu `24.04.4`, Docker Desktop
+`4.93.0 (240920)`, client/engine `29.8.1`, and Compose `5.5.1`. Native WSL
+commands used a private home and disposable engine `28.5.2` for fixed-name
+benches, preserving the existing workstation. This was real WSL acceptance,
+with shared/build cache, rather than container-only platform evidence.
+
+Coverage includes fresh frozen-source Codex/pyBench installation, existing
+updates, ordinary Wave and Bash/Zsh startup, loading/queued cancellation, a
+real failed npm update, component removal/reinstallation, Tools/Vault readiness,
+and refusal to overwrite modified source. Fresh pyBench installation took
+231.31 seconds; bench update took 146.75 seconds. Python reports `3.12.3` and
+Codex `0.163.0`. All 104 original containers, 278 image/tag records, and 2,142
+volumes remained present; all 16 original credential hashes and three shell/Git
+hashes matched. Private project/credential/prompt witnesses also retained their
+bytes, modes, and modification times. The eight assembly submodules stayed
+clean at their recorded pins.
 
 Release fixes correct the WSL Docker socket group, public helper-file modes,
-unavailable Snap-daemon inventory, and callback-broker cleanup. Tools runs as
-the mapped user (`1000:1000`) with supplementary socket group `1001`; running
-as root did not resolve the separate Docker storage stalls. Full Vault now
-starts successfully as the mapped user, with `op 2.40.0`, `bw 2026.9.1`, and
-Azure CLI `2.91.0`. All 20 setup regression suites passed, and the subsequent
-clean QA-driver commit `e3f2ea3` passed the source-lock check and 41 focused
-release, service, and component checks.
+unavailable Snap-daemon inventory, callback-broker cleanup, image depth, and
+stale descendant reuse. A separate live migration retained the old 113/128-layer
+bench/user images and successfully replaced them with 105/120-layer images,
+then started the bench and passed its launch check. Bench exec checks confirmed
+`brett` as `1000:1000`, Docker group `1001`, passwordless sudo, and the correct
+project mount. Tools uses `1000:1000` plus socket group `1001`; Vault is healthy
+as `1000:1000`, with op `2.40.0`, bw `2026.9.1`, and Azure CLI `2.91.0`.
 
-Docker intermittently waits in OverlayFS unmount filesystem writeback while
-its API and existing containers remain responsive. Vault creation alone took
-twelve minutes; the pyBench test fell back to a cold local shared-image build.
-Testing continues without restarting Docker Desktop or WSL, changing global
-Docker configuration, or stopping original benches. Eagle's higher-priority
-npm `10.9.3` is broken; only the QA prefix selects the working distro npm
-`10.9.7`. Original credential and shell/Git hashes matched after the completed
-host lifecycle cases; final checks follow the bench cases.
-Exact commands, versions, failures and remaining cases are recorded in the
-[Eagle QA record](docs/release-1.5.0.md#eagle-windowswsl-acceptance--2026-10-17).
+The exact product commit passed the source-lock check, image-layer regression,
+12 install-friction tests, all four Workstation Setup CI jobs, Release source
+freeze, shared-image regression, project-command, OpenSpeckit, and CodeQL.
+Docker Desktop and WSL were never restarted, global Docker configuration was
+not changed, and original benches were not stopped. Earlier cold-install
+timeouts and OverlayFS writeback waits remain recorded; running as root did
+not resolve those storage waits. The successful fresh install used cached
+builds. Eagle's broken higher-priority npm `10.9.3` was left unchanged; only the
+private QA PATH selected distro npm `10.9.7` with Node `22.22.2`.
+Exact commands, per-case timings, versions, failures, and limitations are in the
+[Eagle QA record](docs/release-1.5.0.md#descendant-refresh-and-fresh-acceptance--2026-10-18-utc).
 The real Vaultwarden server/CLI recovery test passed with verified TLS and a
 generated, nonbillable test credential; no production credential was required.
 Real Keycloak browser approval, local sign-out, and reconnect passed on
@@ -108,6 +110,11 @@ can take several minutes while the TUI stays available.
 - Source revisions are frozen; external package managers, vendor installers,
   separately fetched integrations, and mutable image references are not all
   pinned. This is not a byte-identical workstation snapshot.
+- Windows/WSL coverage uses an existing WSL 2/Desktop setup and cached builds;
+  cold OS provisioning, every pinned bench, GPU workloads, and paid AI
+  authorization are not certified. macOS remains unvalidated.
+- pyBench's pip install reports Semgrep/OpenTelemetry dependency conflicts;
+  Semgrep runtime behavior is outside the validated Python/Codex path.
 - Private bench repositories require authorized GitHub access. HTTPS fallback
   does not bypass repository permissions.
 - A Keycloak login does not automatically unlock other vaults or create AI
