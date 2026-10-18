@@ -42,6 +42,39 @@ class ProfilesTests(unittest.TestCase):
         self.assertEqual(profiles.STORE.stat().st_mode & 0o777, 0o600)
         self.assertFalse((self.root / 'account-session.json').exists())
 
+    def test_connected_email_requires_current_bound_verified_private_session(self):
+        self.root.mkdir()
+        config = {'issuer': 'https://identity.example/realm', 'clientId': 'cli'}
+        (self.root / 'account-provider.json').write_text(json.dumps(config))
+        session = dict(config, subject='user-id', email='work@example.org', emailVerified=True,
+                       expiresAt=time.time() + 60, accessToken='fixture-secret')
+        path = self.root / 'account-session.json'
+        for changes, expected in (
+            ({}, 'work@example.org'), ({'emailVerified': False}, ''),
+            ({'emailVerified': 'true'}, ''), ({'expiresAt': 0}, ''),
+            ({'issuer': 'https://other.example'}, ''), ({'clientId': 'other'}, ''),
+            ({'email': 'invalid'}, ''),
+        ):
+            with self.subTest(changes=changes):
+                path.write_text(json.dumps(session | changes)); path.chmod(0o600)
+                self.assertEqual(profiles.connected_email(), expected)
+        path.chmod(0o644)
+        self.assertEqual(profiles.connected_email(), '')
+        path.unlink(); path.symlink_to(self.directory / 'elsewhere')
+        self.assertEqual(profiles.connected_email(), '')
+
+    def test_company_login_email_update_requires_confirmation_and_preserves_personal(self):
+        for consent in (True, False):
+            data = {'version': 1, 'personal': {'id': 'personal', 'name': 'Personal',
+                    'email': 'personal@example.org', 'github': None}, 'companies': []}
+            company = profiles.add_company(data, 'Company', 'entered@example.org')
+            with patch.object(ui, 'ask', side_effect=['c', 'b']), patch.object(ui, 'account', return_value=0), \
+                    patch.object(profiles, 'connected_email', return_value='signedin@example.org'), \
+                    patch.object(ui, 'confirm', return_value=consent):
+                ui.edit(company, data)
+            self.assertEqual(company['email'], 'signedin@example.org' if consent else 'entered@example.org')
+            self.assertEqual(data['personal']['email'], 'personal@example.org')
+
     def test_cancel_keeps_saved_personal_and_no_partial_company(self):
         data = profiles.load()
         with patch.object(ui, 'ask', side_effect=['me@example.org', 'Company', SystemExit(130)]), patch.object(ui, 'confirm', side_effect=[False, True]):

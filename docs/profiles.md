@@ -42,6 +42,13 @@ Choose **I Import enrollment** and review the displayed realm and public client
 before saving. Redirects are refused; use the final trusted URL. Alternatively,
 **C Company sign-in** prompts for the realm and client if none is configured.
 Passwords and MFA stay in the browser. Each company's local session is separate.
+After successful company sign-in, setup shows the email confirmed as verified by
+the sign-in server and offers to use it for that company profile. It does not
+replace your personal email or infer company membership from an email domain.
+A current existing workstation login with a retained verified email also supplies
+a suggested company email during company creation. Older sessions did not retain
+email; reconnect once to obtain it. Missing/unverified email leaves manual entry
+available. Starting the Vault container alone supplies no account identity.
 
 **A AI accounts** opens existing provider-profile setup with your identity's email
 and ownership prefilled for confirmation. Company sign-in, GitHub access, vault

@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import time
 import uuid
 
 ROOT = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'workbenches'
@@ -81,3 +82,24 @@ def account_root(profile):
     if not re.fullmatch(r'personal|company-[a-f0-9]{32}', key):
         raise ValueError('Invalid profile identity.')
     return ROOT / 'identities' / key
+
+
+def connected_email(root=None):
+    """Return only a current, provider-bound, verified email suggestion."""
+    root = ROOT if root is None else root
+    try:
+        provider, session = root / 'account-provider.json', root / 'account-session.json'
+        if root.is_symlink() or provider.is_symlink() or session.is_symlink():
+            return ''
+        if session.stat().st_mode & 0o077:
+            return ''
+        config = json.loads(provider.read_text())
+        identity = json.loads(session.read_text())
+        if (not identity.get('subject') or identity.get('emailVerified') is not True
+                or identity.get('expiresAt', 0) <= time.time()
+                or not config.get('issuer') or not config.get('clientId')
+                or any(identity.get(key) != config[key] for key in ('issuer', 'clientId'))):
+            return ''
+        return email(identity.get('email'))
+    except (OSError, ValueError, TypeError, AttributeError, KeyError):
+        return ''

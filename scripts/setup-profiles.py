@@ -156,7 +156,13 @@ def edit(profile, data):
         elif choice == 'c' and company:
             print('Use this company’s administrator-provided HTTPS realm and public client ID.')
             print('Your email domain does not grant company membership. Browser approval verifies access.')
-            account(profile, [])
+            if account(profile, []) == 0:
+                address = profiles.connected_email(profiles.account_root(profile))
+                if address:
+                    print('Company account email: ' + address + ' (verified by sign-in server)')
+                    if address != profile['email'] and confirm('Use this signed-in email for this company profile?'):
+                        profile['email'] = address
+                        profiles.save(data)
         elif choice == 'i' and company:
             enrollment(profile)
         elif choice == 'y' and company:
@@ -186,7 +192,7 @@ def wizard(data):
         connect_github(data['personal'], data)
     while confirm('Add a company or organization?'):
         name = profiles.text(ask('Company name'))
-        address = profiles.email(ask('Company email'))
+        address = profiles.email(ask('Company email', profiles.connected_email()))
         company = profiles.add_company(data, name, address)
         profiles.save(data)
         edit(company, data)
@@ -207,7 +213,7 @@ def manage(data):
             return
         if choice == 'a':
             name = profiles.text(ask('Company name'))
-            address = profiles.email(ask('Company email'))
+            address = profiles.email(ask('Company email', profiles.connected_email()))
             company = profiles.add_company(data, name, address); profiles.save(data); edit(company, data)
         elif choice == 'l':
             print('Existing workstation account (not assigned to a company profile):')

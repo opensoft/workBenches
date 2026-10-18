@@ -135,7 +135,7 @@ def login(config):
             raise ValueError('Account endpoints must use the configured server origin.')
         endpoints[name] = endpoint
     offline = os.environ.get('WORKBENCHES_ACCOUNT_OFFLINE') == '1'
-    scope = 'openid profile offline_access' if offline else 'openid profile'
+    scope = 'openid profile email offline_access' if offline else 'openid profile email'
     device = request(endpoints['device_authorization_endpoint'], {'client_id': config['clientId'], 'scope': scope})
     verification = url(device['verification_uri'])
     if urllib.parse.urlsplit(verification).netloc != origin.netloc:
@@ -176,6 +176,15 @@ def login(config):
         if lifetime <= 0:
             raise ValueError('Account session has expired; sign in again.')
         session = {**config, 'subject': user['sub'], 'accessToken': token, 'expiresAt': time.time() + lifetime}
+        # Keep verified identity metadata from the authenticated userinfo call.
+        # Email is a profile suggestion, never an authorization grant.
+        if user.get('email_verified') is True:
+            from setup_profiles import email
+            try:
+                session['email'] = email(user.get('email'))
+                session['emailVerified'] = True
+            except ValueError:
+                pass
         if offline and isinstance(tokens.get('refresh_token'), str):
             session['refreshToken'] = tokens['refresh_token']
         with session_lock():
