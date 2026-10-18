@@ -56,8 +56,9 @@ final preservation checks passed, giving 12 passed cases, one timed-out install,
 and four dependent cases not run. The cache-assisted retry built the selected
 images but failed container creation with `max depth exceeded`: the personalized
 image had 128 filesystem layers. The recipe fix removes eight configuration
-layers and has passed its regression check; a fresh full native acceptance run
-is required. **The Windows/WSL gate remains open** until bench installation,
+layers and has passed its regression check. A fresh full native acceptance run
+is in progress on `fdbb5940d40b92f42d5499c8364a415b7ae7ffb4`; its source-lock
+and actual Windows prerequisite-guard checks passed. **The Windows/WSL gate remains open** until bench installation,
 startup, update, removal, and the local-work guard pass.
 
 Release fixes correct the WSL Docker socket group, public helper-file modes,

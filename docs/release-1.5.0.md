@@ -614,3 +614,32 @@ Semgrep `1.181.0` requires the `1.37` series, while its later package installati
 selected `1.45.1`. This was not the container-create failure. Semgrep operation
 is not certified by the selected Python/Codex acceptance path; these mutable
 package dependencies remain a limitation to record separately.
+
+### Full rerun after the image-depth fix — 2026-10-17/18 UTC
+
+Live product candidate: `fdbb5940d40b92f42d5499c8364a415b7ae7ffb4`.
+A fresh QA home was created beneath the home already bind-mounted into the
+disposable engine, and a new `git clone --recurse-submodules --jobs 4 --branch
+codex/tui-silver-requirements-2026-10-14` initialized all eight recorded pins.
+Only the new test checkout's group/other permission bits were removed, matching
+the original restrictive source modes; tracked content and executable bits
+remained clean. Neither Desktop nor the disposable engine was restarted.
+
+The new PATH selects actual Node `22.22.2`, distro npm `10.9.7`, Docker/Compose,
+and Windows system executables. The private prefix initially contained no
+Codex; earlier QA credentials, profiles, and CLI installations were not copied
+into it. New helper/network names use `workbenches-eagle150-depthfixqa-*`.
+Old reports and images remain available for comparison; no previous candidate's
+passing assertions are reused in this new all-phase report.
+
+```bash
+python3 "$DRIVER_ROOT/devcontainer.test/test-wsl-workstation-acceptance.py" \
+  --repo "$QA_HOME/projects/workBenches" \
+  --report "$QA_ROOT/report/native-wsl-depthfix" \
+  --sha fdbb5940d40b92f42d5499c8364a415b7ae7ffb4 \
+  --engine "unix://$BENCH_QA_ROOT/socket/docker.sock"
+```
+
+The source-lock check and actual Windows Git Bash prerequisite guard both
+passed on this exact commit. The full native run remains in progress, and the
+Windows/WSL release gate remains open until the live assertions pass.
