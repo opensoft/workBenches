@@ -5,13 +5,10 @@ import fcntl
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
-import re
 import urllib.request
 import urllib.parse
-from datetime import datetime, timezone
 
 import setup_profiles as profiles
 from setup_prompts import prompt, cancellation_signals, propagate_cancel
@@ -34,30 +31,12 @@ def confirm(label):
     return ask(label + ' [y/N]').lower() in ('y', 'yes')
 
 
-def native(argv, capture=True):
-    run = host.run if host else subprocess.run
-    result = run(argv, capture_output=capture, text=True, timeout=600 if not capture else 30)
-    propagate_cancel(result.returncode)
-    if result.returncode:
-        raise ValueError('GitHub connection needs attention. Existing credentials were preserved; retry or skip.')
-    return result
-
-
-def connect_github(profile, data):
-    which = host.which if host else shutil.which
-    if not which('gh'):
-        print('Install GitHub CLI (gh) on the workstation, then retry Connect GitHub. You can continue without it.')
-        return
-    print('GitHub credentials stay in GitHub CLI storage. Connecting may change its active GitHub account.')
-    if confirm('Authorize a GitHub account in your browser? Choose No to reuse the active gh account'):
-        native(['gh', 'auth', 'login', '--hostname', 'github.com', '--git-protocol', 'https', '--web'], capture=False)
-    identity = json.loads(native(['gh', 'api', '--hostname', 'github.com', 'user']).stdout)
-    login = profiles.text(identity['login'], 39)
-    if not isinstance(identity['id'], int) or not re.fullmatch(r'[A-Za-z0-9-]{1,39}', login):
-        raise ValueError('GitHub did not confirm an account identity.')
-    if confirm(f'Link verified GitHub account @{login} to {profile["name"]}?'):
-        profile['github'] = {'id': identity['id'], 'login': login,
-                             'verifiedAt': datetime.now(timezone.utc).isoformat()}
+def connect_github(profile, data, identity=None):
+    from profile_github import GitHub, select_account
+    identity = identity or next(i for i in profile['identities'] if i['id'] == profile['defaultIdentityId'])
+    selected = select_account(GitHub(host), data)
+    if selected and confirm(f'Link verified GitHub account @{selected["login"]} to {identity["name"]}?'):
+        profiles.link_github(data, identity, selected)
         profiles.save(data)
 
 
@@ -126,6 +105,7 @@ def enrollment(profile):
 
 
 def edit(profile, data):
+    profiles.normalize(data)
     while True:
         print(f'\n{profile["name"]} — {profile["email"]}')
         github = profile.get('github')
@@ -148,11 +128,16 @@ def edit(profile, data):
                 probe = {'companies': [p for p in data['companies'] if p['id'] != profile['id']]}
                 profiles.add_company(probe, name, profile['email'])
             address = profiles.email(ask('Email', profile['email']))
-            profile.update(name=name, email=address); profiles.save(data)
+            profile['name'] = name
+            identity = default_identity(profile)
+            identity['email'] = address
+            profiles.save(data)
         elif choice == 'g':
             connect_github(profile, data)
         elif choice == 'u' and confirm('Remove this GitHub link? GitHub CLI credentials will be kept'):
-            profile['github'] = None; profiles.save(data)
+            identity = default_identity(profile)
+            for key in list(identity['githubIds']): profiles.unlink_github(identity, key)
+            profiles.save(data)
         elif choice == 'c' and company:
             print('Use this company’s administrator-provided HTTPS realm and public client ID.')
             print('Your email domain does not grant company membership. Browser approval verifies access.')
@@ -161,7 +146,7 @@ def edit(profile, data):
                 if address:
                     print('Company account email: ' + address + ' (verified by sign-in server)')
                     if address != profile['email'] and confirm('Use this signed-in email for this company profile?'):
-                        profile['email'] = address
+                        default_identity(profile)['email'] = address
                         profiles.save(data)
         elif choice == 'i' and company:
             enrollment(profile)
@@ -186,7 +171,7 @@ def wizard(data):
     print('Personal identity first, then any number of companies. Q cancels; saved profiles are kept.')
     if not data['personal']:
         address = profiles.email(ask('Personal email'))
-        data['personal'] = {'id': 'personal', 'name': 'Personal', 'email': address, 'github': None}
+        add_personal(data, 'Main', address)
         profiles.save(data)
     if not data['personal'].get('github') and confirm('Connect your personal GitHub account now?'):
         connect_github(data['personal'], data)
@@ -198,7 +183,7 @@ def wizard(data):
         edit(company, data)
 
 
-def manage(data):
+def manage_legacy(data):
     if not data['personal']:
         wizard(data)
     while True:
@@ -226,6 +211,180 @@ def manage(data):
             edit(entries[int(choice) - 1], data)
 
 
+def default_identity(scope):
+    return next(i for i in scope['identities'] if i['id'] == scope['defaultIdentityId'])
+
+
+def add_personal(data, name, address):
+    if data['personal'] is None:
+        identity = profiles.new_identity(name, address)
+        data['personal'] = {'id': 'personal', 'name': 'Personal', 'identities': [identity],
+                            'defaultIdentityId': identity['id']}
+    else:
+        identity = profiles.add_identity(data['personal'], name, address)
+    return identity
+
+
+def identity_form(scope, data):
+    print('\033[H\033[2JADD ' + ('PERSONAL' if scope is None or scope['id'] == 'personal' else scope['name'].upper()) + ' IDENTITY')
+    print('Name this identity, then enter its email. Q cancels; existing entries stay saved.')
+    name = profiles.text(ask('Identity name (for example Main or Consulting)'))
+    address = profiles.email(ask('Email', profiles.connected_email() if scope and scope['id'] != 'personal' else ''))
+    identity = add_personal(data, name, address) if scope is None or scope['id'] == 'personal' else profiles.add_identity(scope, name, address)
+    profiles.save(data)
+    return identity
+
+
+def ai_accounts(scope, identity):
+    print('AI provider sign-in and vault grants are separate from identity sign-in.')
+    env = dict(os.environ, WORKBENCHES_IDENTITY_EMAIL=identity['email'],
+               WORKBENCHES_IDENTITY_NAME=scope['name'] if scope['id'] != 'personal' else identity['name'],
+               WORKBENCHES_IDENTITY_SCOPE='personal' if scope['id'] == 'personal' else 'organization')
+    for key in ('WORKBENCHES_SELECTED_PROVIDERS', 'WORKBENCHES_AUTH_ROUTE', 'WORKBENCHES_AUTH_ROUTE_FILE'):
+        env.pop(key, None)
+    result = subprocess.run(['bash', str(HERE / 'setup-ai-profiles.sh'), '--interactive'], env=env)
+    propagate_cancel(result.returncode)
+
+
+def github_details(connection, data):
+    from profile_tui import choose
+    from profile_github import GitHub, LoginCancelled
+    client = GitHub(host)
+    while True:
+        links = [scope['name'] + ' / ' + identity['name'] for scope in profiles.scopes(data)
+                 for identity in scope['identities'] if connection['id'] in identity['githubIds']]
+        action, _ = choose('@' + connection['login'], [('Check connection', 'check'), ('Sign in again', 'login')],
+            lambda item: [connection['state'], 'Last checked: ' + connection.get('checkedAt', 'Not checked'),
+                          'Linked to:', *links, 'Unlink from an identity to preserve other links.'])
+        if action == 'b': return
+        if action != 'enter': continue
+        if _ == 'check':
+            client.verify(connection); profiles.save(data)
+        else:
+            try: replacement = client.login()
+            except LoginCancelled: continue
+            if replacement['id'] != connection['id']:
+                # A different browser account is retained as its own connection.
+                existing = next((a for a in data['githubAccounts'] if a['id'] == replacement['id']), None)
+                if existing: existing.update(replacement)
+                else: data['githubAccounts'].append(replacement)
+                profiles.save(data)
+                raise ValueError('A different GitHub account was connected. Existing identity links were preserved.')
+            connection.update(replacement); profiles.save(data)
+
+
+def identity_menu(scope, identity, data):
+    from profile_tui import choose
+    while True:
+        accounts = [a for a in data['githubAccounts'] if a['id'] in identity['githubIds']]
+        rows = [('@' + a['login'] + (' · Default' if a['id'] == identity['defaultGithubId'] else ''), a) for a in accounts]
+        action, selected = choose(scope['name'] + ' / ' + identity['name'], rows,
+            lambda item: [identity['email'], 'Default identity' if scope['defaultIdentityId'] == identity['id'] else 'Additional identity',
+                          '', ('@' + item['login'] + ' · ' + item['state']) if item else 'No GitHub accounts linked.',
+                          'G connects or links an existing account.', 'Defaults apply inside workBenches only.'],
+            'G Link GitHub  E Edit  D Default GitHub  U Unlink  A AI')
+        if action == 'b': return
+        if action == 'g': connect_github(scope, data, identity)
+        elif action == 'enter' and selected: github_details(selected, data)
+        elif action == 'd' and selected:
+            identity['defaultGithubId'] = selected['id']; profiles.save(data)
+        elif action == 'u' and selected and confirm('Unlink @' + selected['login'] + ' from this identity? Other links and gh credentials stay saved'):
+            profiles.unlink_github(identity, selected['id']); profiles.save(data)
+        elif action == 'e':
+            name = profiles.text(ask('Identity name', identity['name']))
+            address = profiles.email(ask('Email', identity['email']))
+            if any(i['id'] != identity['id'] and i['email'].casefold() == address.casefold() for i in scope['identities']):
+                raise ValueError('That email already belongs to an identity in this profile.')
+            identity.update(name=name, email=address); profiles.save(data)
+        elif action == 'a': ai_accounts(scope, identity)
+
+
+def scope_menu(scope, data):
+    from profile_tui import choose
+    while True:
+        rows = [(i['name'] + (' · Default' if i['id'] == scope['defaultIdentityId'] else ''), i) for i in scope['identities']]
+        company = scope['id'] != 'personal'
+        action, identity = choose(scope['name'], rows,
+            lambda item: [item['email'], f'{len(item["githubIds"])} linked GitHub accounts',
+                          'Enter to edit identity and GitHub links.',
+                          'Company sign-in is separate from GitHub.' if company else 'Your personal identities stay separate from companies.'],
+            'A Add identity  D Default' + ('  C Sign in  I Enrollment  Y Sync  S Sign out  E Rename' if company else ''))
+        if action == 'b': return
+        if action == 'enter': identity_menu(scope, identity, data)
+        elif action == 'a': identity_menu(scope, identity_form(scope, data), data)
+        elif action == 'd': scope['defaultIdentityId'] = identity['id']; profiles.save(data)
+        elif company and action == 'e':
+            name = profiles.text(ask('Company name', scope['name']))
+            profiles.add_company({'companies': [s for s in data['companies'] if s['id'] != scope['id']]}, name, scope['email'])
+            scope['name'] = name; profiles.save(data)
+        elif company and action == 'i': enrollment(scope)
+        elif company and action == 's': account(scope, ['--logout'])
+        elif company and action == 'y':
+            result = subprocess.run([sys.executable, str(HERE / 'setup-company-sync.py'), scope['id']])
+            propagate_cancel(result.returncode)
+        elif company and action == 'c' and account(scope, []) == 0:
+            address = profiles.connected_email(profiles.account_root(scope))
+            if address and not any(i['email'].casefold() == address.casefold() for i in scope['identities']):
+                if confirm('Add verified signed-in email ' + address + ' to ' + scope['name'] + '?'):
+                    profiles.add_identity(scope, 'Signed-in account', address); profiles.save(data)
+
+
+def manage(data):
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return manage_legacy(data)
+    from profile_tui import choose, clean
+    notice = ''
+    # Atomic v1->v2 migration on first interactive open; save keeps a private v1 backup.
+    profiles.save(data)
+    while True:
+        rows = []
+        for scope in profiles.scopes(data):
+            rows.append((scope['name'], ('scope', scope, None)))
+            for identity in scope['identities']:
+                rows.append(('  ' + identity['name'] + (' · Default' if identity['id'] == scope['defaultIdentityId'] else ''), ('identity', scope, identity)))
+                for connection in data['githubAccounts']:
+                    if connection['id'] in identity['githubIds']:
+                        rows.append(('    @' + connection['login'], ('github', scope, connection)))
+        rows += [('+ Add personal identity', ('personal', None, None)),
+                 ('+ Add company', ('company', None, None)), ('GitHub account library', ('library', None, None))]
+        def detail(row):
+            kind, scope, value = row
+            if kind == 'identity': return [scope['name'] + ' / ' + value['name'], value['email'], f'{len(value["githubIds"])} GitHub accounts', notice]
+            if kind == 'scope': return [scope['name'], f'{len(scope["identities"])} email identities', 'Default: ' + default_identity(scope)['email'], notice]
+            if kind == 'github': return ['@' + value['login'], value['state'], 'Connected once; reusable across profiles.', notice]
+            return ['A Add personal identity', 'C Add company', 'G Connect/link GitHub']
+        action, row = choose('PROFILES · Personal and companies', rows, lambda row: ([notice] if notice else []) + detail(row), 'A Add personal  C Add company  G GitHub accounts  L Workstation account')
+        if action == 'b': return
+        try:
+            kind, scope, value = row
+            if action == 'a' or action == 'enter' and kind == 'personal':
+                identity = identity_form(data['personal'], data); identity_menu(data['personal'], identity, data)
+            elif action == 'c' or action == 'enter' and kind == 'company':
+                name = profiles.text(ask('Company name'))
+                address = profiles.email(ask('Company email', profiles.connected_email()))
+                scope = profiles.add_company(data, name, address); profiles.save(data); scope_menu(scope, data)
+            elif action == 'g' or action == 'enter' and kind == 'library':
+                from profile_github import GitHub, select_account
+                connection = select_account(GitHub(host), data)
+                if connection:
+                    targets = [(s['name'] + ' / ' + i['name'], (s, i)) for s in profiles.scopes(data) for i in s['identities']]
+                    choice, target = choose('LINK @' + connection['login'], targets, lambda item: ['Choose the identity that uses this account.', 'B keeps it in the library without a link.'])
+                    if choice == 'enter' and target:
+                        profiles.link_github(data, target[1], connection); profiles.save(data)
+            elif action == 'l':
+                result = subprocess.run([sys.executable, str(HERE / 'setup-workbenches-account.py')])
+                propagate_cancel(result.returncode)
+            elif action == 'enter':
+                if kind == 'scope': scope_menu(scope, data)
+                elif kind == 'identity': identity_menu(scope, value, data)
+                elif kind == 'github': github_details(value, data)
+            notice = ''
+        except ValueError as error:
+            notice = clean(str(error))[:200]
+        except (OSError, KeyError, TypeError, subprocess.TimeoutExpired):
+            notice = 'Action needs attention. Check setup and retry; existing connections are kept.'
+
+
 def main():
     cancellation_signals()
     parser = argparse.ArgumentParser(description=__doc__)
@@ -234,17 +393,12 @@ def main():
     try:
         data = profiles.load()
         if args.summary:
-            if not data['personal']:
-                print('Personal identity not configured; add it in Profiles.')
-            else:
-                personal = data['personal']; github = personal.get('github')
-                print('Personal: ' + personal['email'])
-                print('GitHub: ' + ('@' + github['login'] + ' (verified when linked)' if github else 'Not connected'))
-                print(f'Company profiles: {len(data["companies"])}')
-                for company in data['companies'][:5]:
-                    print(company['name'] + ': ' + company['email'])
-                if len(data['companies']) > 5:
-                    print('Open Personal & companies to see all companies.')
+            print('Personal identities: ' + str(len(data['personal']['identities']) if data['personal'] else 0))
+            if data['personal']: print('Default: ' + default_identity(data['personal'])['email'])
+            print('GitHub accounts: ' + str(len(data['githubAccounts'])))
+            print('Company profiles: ' + str(len(data['companies'])))
+            for company in data['companies'][:5]:
+                print(company['name'] + ': ' + str(len(company['identities'])) + ' identities')
             return
         # Serialize interactive changes across setup sessions. Readers use atomic snapshots.
         profiles.ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)

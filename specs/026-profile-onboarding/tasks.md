@@ -39,3 +39,15 @@ Fixtures do not establish real provider approval. Earlier v1.5 Keycloak QA used
 the legacy workstation account and is not evidence for the new company flow.
 Project association/default selection and automatic credential routing remain
 separate follow-up integration work, as recorded in the specification.
+
+
+## Multiple identities follow-up
+
+- [x] Private version-2 migration/backup and stable company session roots.
+- [x] Multiple personal and company email identities and explicit defaults.
+- [x] Shared GitHub account library, per-identity links/defaults, scoped unlink.
+- [x] Native gh multi-account discovery/verification without active-account switch.
+- [x] Isolated native gh device sign-in with browser/code/clipboard/cancel controls.
+- [x] Keyboard tree/detail manager, narrow-terminal layout, and PTY regressions.
+- [x] Complete declared Tools-runtime and broker/client regression validation.
+- [ ] Real GitHub browser and Linux/Windows workstation acceptance.

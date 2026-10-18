@@ -5,7 +5,7 @@ v1.5 remains focused on reliable workstation setup and its existing release gate
 
 | Feature | Status |
 | --- | --- |
-| Personal email, verified GitHub linking, multiple company profiles, third TUI page | Implemented on `feature/profile-onboarding`; live provider/platform QA pending |
+| Multiple personal/company email identities, reusable verified GitHub accounts, keyboard Profiles manager | Implemented on `feature/profile-onboarding`; multi-account migration, PTY, and native Tools callback tests passed; real browser/platform QA pending |
 | Company sign-in → authorized AI profile discovery and recovery | Broker/client implemented; live managed-identity/provider QA pending |
 | Approved local login changes → versioned Key Vault updates | Publication, conflict handling, and recovery implemented; examples disabled |
 | Startup/launch/hourly workstation synchronization | Opt-in agent and managed launcher hooks implemented; platform QA pending |

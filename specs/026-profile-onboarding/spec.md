@@ -62,3 +62,31 @@ of legacy credentials and other AI identities, and Profiles navigation retaining
 component selections must pass automated checks. Render the page at narrow and
 standard terminal widths. Real provider/browser approval is a separate live QA
 step; fixture checks must not be reported as live authentication evidence.
+
+
+## v1.6 multiple-identity extension (approved 2026-10-17)
+
+The Profiles manager supports multiple named personal email identities, multiple
+companies, and multiple named email identities under each company. Each scope
+has an explicit default identity. GitHub.com accounts are verified using their
+numeric account ID and stored once, with reusable per-identity links and an
+optional default account per identity. Unlinking preserves all other links and
+native credentials.
+
+The normal TUI uses a keyboard tree/detail layout with scrolling and a compact
+narrow-terminal layout. Add/edit/default/link/unlink are direct actions. GitHub
+connection offers existing native accounts or an isolated native-gh device flow
+with a displayed URL/code, Open browser, Copy code, cancel, and confirmation of
+the resulting account before linking. Connection state and explicit check/re-auth
+actions are visible. Email-domain matching grants no company authority.
+
+Default changes do not change global Git author configuration or native gh's
+active account. New sign-ins use separate gh configuration; verification of an
+existing native account must not switch it globally. Reauthentication as a
+different numeric account ID must not repoint existing links. New and migrated
+metadata contains no tokens. Schema migration preserves company IDs, enrollment,
+and session roots and creates a private version-1 backup on first write.
+
+Company sign-in remains a separate per-company session. Multiple email identities
+do not duplicate or infer company permissions. Per-project account routing and
+GitHub Enterprise hosts are outside this increment.

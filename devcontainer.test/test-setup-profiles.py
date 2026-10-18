@@ -112,10 +112,13 @@ class ProfilesTests(unittest.TestCase):
     def test_github_identity_is_verified_and_only_metadata_saved(self):
         data = profiles.load(); profile = profiles.add_company(data, 'First', 'me@first.org')
         response = subprocess.CompletedProcess([], 0, json.dumps({'login': 'example-user', 'id': 123, 'unused': 'not-stored'}))
-        with patch.object(ui, 'host', None), patch.object(ui.shutil, 'which', return_value='/bin/gh'), patch.object(ui, 'confirm', side_effect=[False, True]), patch.object(ui, 'native', return_value=response) as run:
+        import profile_github
+        verified = {'login': 'example-user', 'id': 123, 'state': 'Connected', 'authSource': 'native'}
+        with patch.object(profile_github, 'select_account', return_value=verified), patch.object(ui, 'confirm', return_value=True):
             ui.connect_github(profile, data)
-        self.assertEqual(run.call_args.args[0], ['gh', 'api', '--hostname', 'github.com', 'user'])
-        self.assertEqual(profiles.load()['companies'][0]['github']['id'], 123)
+        saved = profiles.load()
+        self.assertEqual(saved['companies'][0]['github']['id'], 123)
+        self.assertEqual(len(saved['githubAccounts']), 1)
         self.assertNotIn('unused', profiles.STORE.read_text())
 
     def test_enrollment_import_is_confirmed_and_scoped(self):
@@ -161,11 +164,14 @@ handle_input
     def test_company_sync_menu_is_visible_without_enabling_or_reading_credentials(self):
         env = dict(os.environ, HOME=str(self.directory), XDG_CONFIG_HOME=str(self.directory))
         # Nested interactive helpers share a real terminal, not a prefetched stdin pipe.
-        steps = [('Personal email:', 'me@example.org\n'), ('Connect your personal GitHub', 'n\n'),
-            ('Add a company or organization', 'y\n'), ('Company name:', 'Example Company\n'),
-            ('Company email:', 'me@company.org\n'), ('Action [b]:', 'y\n'),
-            ('Action [b]:', 'b\n'), ('Action [b]:', 'b\n'),
-            ('Add a company or organization', 'n\n'), ('Profile or action [b]:', 'b\n')]
+        data = profiles.empty()
+        ui.add_personal(data, 'Main', 'me@example.org')
+        company = profiles.add_company(data, 'Example Company', 'me@company.org')
+        profiles.save(data)
+        # Dashboard -> company -> existing sync helper -> back to dashboard.
+        steps = [('PROFILES · Personal and companies', '\x1b[B\x1b[B\r'),
+            ('C Sign in', 'y'), ('Action [b]:', 'b\n'),
+            ('C Sign in', 'b'), ('PROFILES · Personal and companies', 'b')]
         master, slave = pty.openpty()
         process = subprocess.Popen([sys.executable, str(ROOT / 'scripts/setup-profiles.py')],
             stdin=slave, stdout=slave, stderr=slave, env=env)
