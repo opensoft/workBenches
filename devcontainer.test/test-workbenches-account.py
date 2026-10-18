@@ -22,6 +22,8 @@ class AccountTests(unittest.TestCase):
         for name, value in (('CONFIG', self.root / 'account-provider.json'), ('SESSION', self.root / 'account-session.json')):
             p = patch.object(account, name, value); p.start(); self.addCleanup(p.stop)
         p = patch.dict(os.environ, {}, clear=True); p.start(); self.addCleanup(p.stop)
+        browser = patch.object(account.webbrowser, 'open', return_value=False)
+        self.browser = browser.start(); self.addCleanup(browser.stop)
         self.config = {'issuer': 'https://identity.example/realms/workbenches', 'clientId': 'openworkbenches-cli'}
         self.metadata = {'issuer': self.config['issuer'], **{key: self.config['issuer'] + '/' + key for key in ('device_authorization_endpoint', 'token_endpoint', 'userinfo_endpoint')}}
         self.device = {'verification_uri': 'https://identity.example/device', 'user_code': 'TEST-CODE', 'device_code': 'invalid-fixture-device', 'expires_in': 60, 'interval': 1}
@@ -70,6 +72,37 @@ class AccountTests(unittest.TestCase):
             self.assertEqual(account.status(), 'sign in')
         account.SESSION.chmod(0o644)
         self.assertNotEqual(account.status(), 'signed in')
+
+    def test_browser_opens_complete_verification_url_and_headless_fallback_still_signs_in(self):
+        device = dict(self.device, verification_uri_complete='https://identity.example/device?user_code=TEST-CODE')
+        with patch.object(account, 'request', side_effect=[self.metadata, device, self.tokens, {'sub': 'fixture-user'}]), patch.object(account.time, 'sleep'):
+            self.assertEqual(account.login(self.config), 0)
+        self.browser.assert_called_once_with(device['verification_uri_complete'], new=2)
+        self.assertEqual(account.SESSION.stat().st_mode & 0o777, 0o600)
+
+    def test_browser_verification_url_cannot_leave_the_configured_origin(self):
+        device = dict(self.device, verification_uri_complete='https://other.example/device?user_code=TEST-CODE')
+        with patch.object(account, 'request', side_effect=[self.metadata, device]), self.assertRaises(ValueError):
+            account.login(self.config)
+        self.browser.assert_not_called()
+        self.assertFalse(account.SESSION.exists())
+
+    def test_local_logout_removes_only_session_and_is_idempotent(self):
+        account.write_private(account.CONFIG, self.config)
+        account.write_private(account.SESSION, dict(self.config, subject='fixture-user', expiresAt=time.time() + 60))
+        with patch.object(account, 'request', side_effect=AssertionError('unexpected network')):
+            self.assertEqual(account.logout(), 0)
+            self.assertEqual(account.logout(), 0)
+        self.assertFalse(account.SESSION.exists())
+        self.assertTrue(account.CONFIG.exists())
+        self.assertEqual(account.status(), 'sign in')
+
+    def test_logout_preserves_symlink_and_its_target(self):
+        target = self.root / 'important'; target.write_text('preserve')
+        account.SESSION.symlink_to(target)
+        with self.assertRaises(ValueError): account.logout()
+        self.assertTrue(account.SESSION.is_symlink())
+        self.assertEqual(target.read_text(), 'preserve')
 
     def test_https_is_required_and_url_credentials_are_rejected(self):
         for value in ('http://identity.example', 'https://user:password@identity.example', 'https://identity.example/#fragment'):

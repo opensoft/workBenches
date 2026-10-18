@@ -6,19 +6,15 @@ workbenches_is_wsl() {
 }
 
 workbenches_docker_info() {
-    # Preserve shell Docker wrappers. Native daemon probes have a deadline so
-    # a bad context cannot hang setup.
-    if declare -F docker >/dev/null || ! command -v python3 >/dev/null 2>&1; then
-        docker info >/dev/null 2>&1
-    else
-        python3 -c 'import subprocess, sys
-try:
-    result = subprocess.run(["docker", "info"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
-    sys.exit(result.returncode if result.returncode >= 0 else 128 - result.returncode)
-except (OSError, subprocess.TimeoutExpired):
-    sys.exit(1)
-' >/dev/null 2>&1
-    fi
+    # No Python dependency: Docker is the bootstrap prerequisite.
+    docker info >/dev/null 2>&1 &
+    local probe=$! timer status
+    (sleep 8; kill -TERM "$probe" 2>/dev/null) </dev/null >/dev/null 2>&1 &
+    timer=$!
+    wait "$probe"; status=$?
+    kill "$timer" 2>/dev/null || true
+    wait "$timer" 2>/dev/null || true
+    return "$status"
 }
 
 workbenches_docker_os() {
@@ -73,20 +69,22 @@ workbenches_install_docker() {
 }
 
 ensure_docker() {
-    local choice status endpoint
+    local choice status endpoint selected_action="${1:-}"
     if ! command -v docker >/dev/null 2>&1; then
         echo "Docker is not installed. It is required for workBenches images and container credential recovery."
         if [[ ! -t 0 ]]; then
             echo "Install Docker in an interactive terminal, then rerun ./setup.sh."
             return 1
         fi
-        if ! read -r -p "Attempt to install Docker now? [y/N] (Q to cancel): " choice; then
-            return 130
+        if [[ "$selected_action" != --install ]]; then
+            if ! read -r -p "Attempt to install Docker now? [y/N] (Q to cancel): " choice; then
+                return 130
+            fi
+            case "$choice" in
+                y|Y|yes|YES|Yes) ;;
+                *) echo "Docker installation declined; setup stopped."; return 130 ;;
+            esac
         fi
-        case "$choice" in
-            y|Y|yes|YES|Yes) ;;
-            *) echo "Docker installation declined; setup stopped."; return 130 ;;
-        esac
         # Leave local password entry to sudo; never capture it in setup.
         if workbenches_install_docker; then
             :
@@ -122,7 +120,9 @@ ensure_docker() {
        command -v systemctl >/dev/null 2>&1 &&
        [[ "$(systemctl show -p LoadState --value docker.service 2>/dev/null)" == loaded ]] &&
        ! systemctl is-active --quiet docker.service && [[ -t 0 ]]; then
-        if ! read -r -p "Start the local Docker service now? [y/N] (Q to cancel): " choice; then
+        if [[ "$selected_action" == --start ]]; then
+            choice=y
+        elif ! read -r -p "Start the local Docker service now? [y/N] (Q to cancel): " choice; then
             return 130
         fi
         case "$choice" in

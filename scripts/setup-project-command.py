@@ -16,6 +16,13 @@ import tempfile
 import urllib.error
 import urllib.request
 
+try:
+    import workbenches_host as host
+except ImportError:
+    host = None
+    if os.environ.get("WORKBENCHES_HOST_RPC"):
+        raise
+
 ROOT = Path(__file__).resolve().parents[1]
 LOCK_NAME = ".workbenches-project.lock"
 PAYLOAD_NAME = ".workbenches-project.payload"
@@ -70,9 +77,9 @@ def validate_target(path):
 
 def fetch(pin):
     resource = f"repos/{pin['repository']}/contents/project?ref={pin['commit']}"
-    if shutil.which("gh"):
+    if (host.which("gh") if host else shutil.which("gh")):
         try:
-            result = subprocess.run(["gh", "api", resource, "-H", "Accept: application/vnd.github.raw"],
+            result = (host.run if host else subprocess.run)(["gh", "api", resource, "-H", "Accept: application/vnd.github.raw"],
                                     capture_output=True, timeout=20)
             if result.returncode == 0:
                 return result.stdout

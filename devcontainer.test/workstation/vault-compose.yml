@@ -15,8 +15,8 @@ services:
   credential-tools:
     image: workbenches-credential-recovery:bitwarden-2026.9.1-v3
     build:
-      context: /home/node/projects/workBenches/credential-container
-      target: bitwarden
+      context: ${WORKBENCHES_ACCEPTANCE_VAULT_CONTEXT:-/home/node/projects/workBenches/credential-container}
+      target: ${WORKBENCHES_ACCEPTANCE_VAULT_TARGET:-bitwarden}
     entrypoint: bw
     user: "1000:1000"
     environment:

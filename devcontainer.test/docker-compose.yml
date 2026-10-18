@@ -30,13 +30,33 @@ services:
       - ..:/source:ro
     command: [bash, -ec, "bash devcontainer.test/test-claude-npm-guard.sh; bash devcontainer.test/test-layer3-claude-version.sh; bash devcontainer.test/test-wave-container-shell.sh"]
 
+  tools-runtime:
+    init: true
+    profiles: [tools-runtime]
+    image: workbenches-test:workstation
+    build:
+      context: workstation
+    user: "${WORKBENCHES_TEST_UID:-1000}:${WORKBENCHES_TEST_GID:-1000}"
+    group_add: ["${WORKBENCHES_DOCKER_GID:-0}"]
+    working_dir: ${WORKBENCHES_SOURCE_ROOT:-/source}
+    volumes:
+      - ..:${WORKBENCHES_SOURCE_ROOT:-/source}:ro
+      - /tmp:/tmp
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WORKBENCHES_RUNTIME_TEST: "1"
+      PYTHONUNBUFFERED: "1"
+      WORKBENCHES_TEST_VAULT: ${WORKBENCHES_TEST_VAULT:-1}
+      WORKBENCHES_TOOLS_BUILD_NETWORK: ${WORKBENCHES_TOOLS_BUILD_NETWORK:-host}
+    command: [python3, devcontainer.test/test-tools-runtime.py]
+
   acceptance-engine:
     profiles: [workstation-acceptance, component-lifecycle]
     image: docker:28-dind
     privileged: true
     environment:
       DOCKER_TLS_CERTDIR: ""
-    command: [dockerd, "--host=unix:///var/run/docker.sock", "--group=1000", "--bip=172.28.0.1/16", "--default-address-pool=base=172.29.0.0/16,size=24"]
+    command: [dockerd, "--host=unix:///var/run/docker.sock", "--group=1000", "--bip=172.28.0.1/16", "--default-address-pool=base=172.29.0.0/16,size=24", "--mtu=1280"]
     volumes:
       - acceptance-socket:/var/run
       - acceptance-home:/home/node
@@ -61,6 +81,8 @@ services:
       WORKBENCHES_ACCEPTANCE_REF: ${WORKBENCHES_ACCEPTANCE_REF:-main}
       WORKBENCHES_ACCEPTANCE_SHA: ${WORKBENCHES_ACCEPTANCE_SHA:-}
       WORKBENCHES_ACCEPTANCE_REQUIRE_PUBLIC: ${WORKBENCHES_ACCEPTANCE_REQUIRE_PUBLIC:-0}
+      WORKBENCHES_ACCEPTANCE_FROZEN: ${WORKBENCHES_ACCEPTANCE_FROZEN:-0}
+      WORKBENCHES_ACCEPTANCE_EMAIL: ${WORKBENCHES_ACCEPTANCE_EMAIL:-acceptance@example.test}
       TMPDIR: /acceptance/tmp
     volumes:
       - acceptance-socket:/var/run
@@ -151,6 +173,11 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     tmpfs: ["/tmp:rw,nosuid,nodev,mode=1777,size=256m"]
+
+networks:
+  default:
+    driver_opts:
+      com.docker.network.driver.mtu: "1280"
 
 volumes:
   acceptance-socket:

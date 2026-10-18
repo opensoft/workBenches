@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "version": "1.5.0",
+  "repositories": [
+    {
+      "path": "bioBenches/gentecBench",
+      "url": "https://github.com/opensoft/gentecBench.git",
+      "commit": "1c12961f2f2fd7f5226671aad4c9ee245bba961e"
+    },
+    {
+      "path": "bioBenches/simBench",
+      "url": "https://github.com/opensoft/simBench.git",
+      "commit": "b3811768f342fe0dad0d6e0a91d42da74c3c8035"
+    },
+    {
+      "path": "devBenches/cppBench",
+      "url": "https://github.com/opensoft/cppBench.git",
+      "commit": "dd7ff022b8429faac68985f62da80a415cec0731"
+    },
+    {
+      "path": "devBenches/dotNetBench",
+      "url": "https://github.com/opensoft/dotNetBench.git",
+      "commit": "28aef2202f674d15de1e8559b6e841df9f853197"
+    },
+    {
+      "path": "devBenches/flutterBench",
+      "url": "https://github.com/opensoft/flutterBench.git",
+      "commit": "e016cdb1baaf11d27ee4b17b3ce264bcd51a6a7b"
+    },
+    {
+      "path": "devBenches/frappeBench",
+      "url": "https://github.com/opensoft/frappeBench.git",
+      "commit": "be545fc1a124951d455969be45b117a128ed8dd6"
+    },
+    {
+      "path": "devBenches/goBench",
+      "url": "https://github.com/opensoft/goBench.git",
+      "commit": "ef553d72eac023dbc9157a775cf4039763b09cab"
+    },
+    {
+      "path": "devBenches/javaBench",
+      "url": "https://github.com/opensoft/javaBench.git",
+      "commit": "8c6aa973e7d27b55548a553ec401e429b1405426"
+    },
+    {
+      "path": "devBenches/pyBench",
+      "url": "https://github.com/opensoft/pyBench.git",
+      "commit": "cf62c02f18b5a5003b2927c3f2edd83fa05c08d0"
+    },
+    {
+      "path": "devBenches/rustBench",
+      "url": "https://github.com/opensoft/rustBench.git",
+      "commit": "6dff138ba8cfc697f46a3fb646dc598640f87c0c"
+    },
+    {
+      "path": "sysBenches/365Bench",
+      "url": "https://github.com/opensoft/365Bench.git",
+      "commit": "718cd32614bf5325e995654782b0c60da6e648f8"
+    },
+    {
+      "path": "sysBenches/cloudBench",
+      "url": "https://github.com/opensoft/cloudBench.git",
+      "commit": "1d4623d9772e3d2fbe48e84ef4136d8108eda66d"
+    }
+  ]
+}

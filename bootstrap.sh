@@ -1,6 +1,25 @@
 #!/usr/bin/env bash
 # Standalone fresh-workstation bootstrap and shared GitHub clone transport.
 
+workbenches_version() {
+    local version='' root="${BASH_SOURCE[0]%/*}"
+    if [[ -r "$root/VERSION" ]] && IFS= read -r version < "$root/VERSION" &&
+        [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+        printf '%s\n' "$version"
+    else
+        printf '0.0.0-dev\n'
+    fi
+}
+
+# Run only after Tools is available, never during first-paint readiness checks.
+workbenches_release_checkout() {
+    [[ "${WORKBENCHES_FROZEN:-}" != 1 ]] || return 0
+    local root="${BASH_SOURCE[0]%/*}" tagged head
+    tagged="$(git -C "$root" rev-parse --verify "refs/tags/v$(workbenches_version)^{commit}" 2>/dev/null)" || return 1
+    head="$(git -C "$root" rev-parse HEAD 2>/dev/null)" || return 1
+    [[ "$tagged" == "$head" ]]
+}
+
 workbenches_github_repo() {
     local url="$1"
     case "$url" in
@@ -70,6 +89,7 @@ workbenches_clone() {
 
 workbenches_init_submodules() {
     local root="$1" key url chosen status
+    shift
     local -a config_args=()
     while read -r key url; do
         [[ -n "$key" ]] || continue
@@ -80,7 +100,7 @@ workbenches_init_submodules() {
         fi
     done < <(git -C "$root" config -f .gitmodules --get-regexp '^submodule\..*\.url$')
     if GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="$(workbenches_ssh_command)" \
-        git "${config_args[@]}" -C "$root" submodule update --init --recursive; then
+        git "${config_args[@]}" -C "$root" submodule update --init --recursive -- "$@"; then
         return 0
     else
         status=$?
@@ -90,7 +110,7 @@ workbenches_init_submodules() {
     GIT_TERMINAL_PROMPT=0 git \
         -c 'url.https://github.com/.insteadOf=git@github.com:' \
         -c 'url.https://github.com/.insteadOf=ssh://git@github.com/' \
-        -C "$root" submodule update --init --recursive
+        -C "$root" submodule update --init --recursive -- "$@"
 }
 
 workbenches_bootstrap_main() {

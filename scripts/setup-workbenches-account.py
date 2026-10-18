@@ -10,6 +10,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import webbrowser
 
 ROOT = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'workbenches'
 CONFIG = ROOT / 'account-provider.json'
@@ -122,10 +123,18 @@ def login(config):
     verification = url(device['verification_uri'])
     if urllib.parse.urlsplit(verification).netloc != origin.netloc:
         raise ValueError('Invalid account verification URL.')
+    browser_url = url(device.get('verification_uri_complete', verification))
+    parsed_browser = urllib.parse.urlsplit(browser_url)
+    if (parsed_browser.scheme, parsed_browser.netloc) != (origin.scheme, origin.netloc):
+        raise ValueError('Invalid account verification URL.')
     print('Open this page in your browser: ' + verification, flush=True)
     print('Enter code: ' + device['user_code'], flush=True)
-    print('Sign in, or choose Register if your organization enables account creation.', flush=True)
+    print('Continue with your organization account in the browser.', flush=True)
     print('Passwords and MFA stay in your browser. Ctrl+C cancels.', flush=True)
+    try:
+        webbrowser.open(browser_url, new=2)
+    except (OSError, webbrowser.Error):
+        pass  # URL and device code above support headless workstations.
     interval = max(1, min(30, int(device.get('interval', 5))))
     deadline = time.monotonic() + min(600, max(1, int(device['expires_in'])))
     while time.monotonic() < deadline:
@@ -156,10 +165,22 @@ def login(config):
     raise ValueError('Account approval timed out; rerun optional account setup to try again.')
 
 
+def logout():
+    if SESSION.is_symlink():
+        raise ValueError('Account storage must not be a symlink.')
+    SESSION.unlink(missing_ok=True)
+    print('Signed out of workBenches on this workstation.')
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--status', action='store_true')
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument('--status', action='store_true')
+    modes.add_argument('--logout', action='store_true')
     args = parser.parse_args()
+    if args.logout:
+        return logout()
     if args.status:
         print(status())
         return 0

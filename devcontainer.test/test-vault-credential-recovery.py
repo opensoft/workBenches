@@ -55,8 +55,8 @@ class RecoveryTests(unittest.TestCase):
         self.manifest.chmod(0o600)
 
     def fake_docker(self, argv, **kwargs):
-        if argv[1] == "run":
-            output = next(value.split("src=", 1)[1].split(",", 1)[0] for value in argv if "dst=/recovery/output" in value)
+        if argv[1] == "exec":
+            output = argv[argv.index("--output") + 1]
             self.staging = Path(output)
             result = self.staging / "0.json"
             result.write_bytes(self.payload)
@@ -73,13 +73,12 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(self.target.read_bytes(), self.payload)
         self.assertEqual(self.target.stat().st_mode & 0o777, 0o600)
         self.assertFalse(self.staging.exists())
-        argv = next(call.args[0] for call in run.call_args_list if call.args[0][1] == "run")
-        for value in ("--rm", "--read-only", "--interactive", "--tty", "ALL", "no-new-privileges", f"{os.getuid()}:{os.getgid()}"):
+        argv = next(call.args[0] for call in run.call_args_list if call.args[0][1] == "exec")
+        for value in ("--interactive", "--tty", "workbenches-vault", "--container"):
             self.assertIn(value, argv)
-        mounts = [argv[i + 1] for i, value in enumerate(argv) if value == "--mount"]
-        self.assertEqual(len(mounts), 2)
-        self.assertIn("readonly", mounts[0])
-        self.assertFalse(any(str(self.target.parent) in mount or "docker.sock" in mount for mount in mounts))
+        self.assertNotIn("--mount", argv)
+        self.assertTrue(any(call.args[0][0] == 'bash' and call.args[0][-2:] == ['start', 'vault']
+                            for call in run.call_args_list))
         self.assertNotIn("--env", argv)
 
     def test_existing_credential_preserved_without_auth_or_build(self):
@@ -93,7 +92,7 @@ class RecoveryTests(unittest.TestCase):
     def test_credential_created_during_fetch_is_preserved(self):
         def fetch(argv, **kwargs):
             result = self.fake_docker(argv, **kwargs)
-            if argv[1] == "run":
+            if argv[1] == "exec":
                 self.target.parent.mkdir(parents=True)
                 self.target.write_text("another-login")
             return result
@@ -110,7 +109,7 @@ class RecoveryTests(unittest.TestCase):
     def test_cancel_never_installs_and_cleans_staging(self):
         def cancel(argv, **kwargs):
             result = self.fake_docker(argv, **kwargs)
-            if argv[1] == "run":
+            if argv[1] == "exec":
                 raise SystemExit(130)
             return result
         with self.assertRaises(SystemExit) as error:
