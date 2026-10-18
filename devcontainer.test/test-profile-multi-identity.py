@@ -167,6 +167,18 @@ esac
             self.assertTrue(client.open_browser())
             self.assertEqual(run.call_args.args[0], ['xdg-open', github.DEVICE_URL])
 
+    def test_automatic_handoff_copies_before_browser_and_keeps_fallback_available(self):
+        client = github.GitHub(); calls = []
+        with patch.object(client, 'copy_code', side_effect=lambda code: calls.append(('copy', code)) or True), \
+                patch.object(client, 'open_browser', side_effect=lambda: calls.append(('open',)) or True):
+            self.assertIn('paste the code', client.handoff('ABCD-1234'))
+        self.assertEqual(calls, [('copy', 'ABCD-1234'), ('open',)])
+        with patch.object(client, 'copy_code', side_effect=OSError('no clipboard')), \
+                patch.object(client, 'open_browser', side_effect=subprocess.TimeoutExpired('browser', 30)):
+            notice = client.handoff('ABCD-1234')
+        self.assertIn('Clipboard unavailable', notice)
+        self.assertIn('Open the displayed URL', notice)
+
     def test_frames_fit_small_and_wide_terminals_and_keep_selection_visible(self):
         rows = [('Identity ' + str(i), i) for i in range(30)]
         for width, height in ((36, 16), (60, 20), (80, 24), (100, 30)):
@@ -206,7 +218,7 @@ set -eu
 case "$1 $2" in
   'auth login')
     printf 'First copy your one-time code: ABCD-1234\\n' >&2
-    while [[ ! -f "$FAKE_APPROVAL" ]]; do sleep .05; done
+    while [[ "${FAKE_AUTO_APPROVE:-0}" != 1 || ! -f "$FAKE_BROWSER_LOG" || ! -f "$FAKE_CLIPBOARD" ]]; do sleep .05; done
     printf fixture-private-token > "$GH_CONFIG_DIR/hosts.yml"
     ;;
   'auth token') cat "$GH_CONFIG_DIR/hosts.yml" ;;
@@ -218,7 +230,7 @@ esac
         browser = fake / 'wslview'
         browser.write_text('#!/usr/bin/env bash\nprintf "%s" "$1" > "$FAKE_BROWSER_LOG"\n'); browser.chmod(0o755)
         copy = fake / 'wl-copy'
-        copy.write_text('#!/usr/bin/env bash\ncat > "$FAKE_CLIPBOARD"\ntouch "$FAKE_APPROVAL"\n'); copy.chmod(0o755)
+        copy.write_text('#!/usr/bin/env bash\ncat > "$FAKE_CLIPBOARD"\n'); copy.chmod(0o755)
         native = self.directory / 'native-gh'; native.mkdir()
         original = native / 'hosts.yml'; original.write_text('original-active-account')
         env = dict(os.environ, HOME=str(self.directory), XDG_CONFIG_HOME=str(self.directory), WORKBENCHES_HOST_RPC='',
@@ -228,10 +240,10 @@ esac
         data = profiles.empty(); ui.add_personal(data, 'Main', 'me@example.org'); profiles.save(data)
         return env, original, browser_log, clipboard
 
-    def test_pty_device_code_open_copy_and_confirm_link_preserve_native_account(self):
+    def test_pty_device_code_automatically_opens_copies_and_preserves_native_account(self):
         env, original, browser_log, clipboard = self.fake_device_flow()
+        env['FAKE_AUTO_APPROVE'] = '1'
         steps = [('PROFILES · Personal and companies', b'g'), ('GITHUB ACCOUNTS', b'n'),
-            ('Device code: ABCD-1234', b'o'), ('Browser opened.', b'c'),
             ('LINK @example', b'\r'), ('PROFILES · Personal and companies', b'b')]
         transcript = self.drive_pty(env, steps)
         saved = profiles.load()

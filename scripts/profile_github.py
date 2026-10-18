@@ -90,6 +90,19 @@ class GitHub:
             if self.which(name): return self.run([name, *args], input=code).returncode == 0
         return False
 
+    def attempt(self, action):
+        try:
+            return action()
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+
+    def handoff(self, code):
+        # Copy first so the code is ready when the browser takes focus.
+        copied = self.attempt(lambda: self.copy_code(code))
+        opened = self.attempt(self.open_browser)
+        return ('Device code copied. ' if copied else 'Clipboard unavailable; copy the displayed code. ') + (
+            'Browser opened; paste the code to continue.' if opened else 'Open the displayed URL in your browser.')
+
     def login(self):
         if not sys.stdin.isatty() or not sys.stdout.isatty():
             raise ValueError('Use an interactive terminal for GitHub browser sign-in.')
@@ -112,7 +125,9 @@ class GitHub:
                         raise ValueError('GitHub approval timed out. Retry when ready.')
                     transcript = progress.read_text(errors='replace')[-16384:]
                     match = re.search(r'\b[A-Z0-9]{4}-[A-Z0-9]{4}\b', transcript)
-                    if match: code = match.group()
+                    if match and match.group() != code:
+                        code = match.group()
+                        notice = self.handoff(code)
                     show(message('CONNECT GITHUB',
                         [DEVICE_URL, 'Device code: ' + (code or 'Waiting…'), '',
                          'O Open browser   C Copy code', notice,
@@ -120,8 +135,8 @@ class GitHub:
                          'No username, password, or token to type here.'], 'O Open browser  C Copy code  B Cancel  Q Exit Profiles'))
                     pressed = key(.15)
                     if pressed in ('b', 'back'): raise LoginCancelled()
-                    if pressed == 'o': notice = 'Browser opened.' if self.open_browser() else 'Open the URL above in your browser.'
-                    if pressed == 'c': notice = ('Code copied.' if self.copy_code(code) else 'Clipboard unavailable; use the code above.') if code else 'Waiting for a device code…'
+                    if pressed == 'o': notice = 'Browser opened.' if self.attempt(self.open_browser) else 'Open the URL above in your browser.'
+                    if pressed == 'c': notice = ('Code copied.' if self.attempt(lambda: self.copy_code(code)) else 'Clipboard unavailable; use the code above.') if code else 'Waiting for a device code…'
             status = int(exit_file.read_text().strip())
             propagate_cancel(status)
             if status: raise ValueError('GitHub sign-in did not complete. Retry when ready.')

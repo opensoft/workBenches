@@ -39,9 +39,11 @@ another GitHub account**. Existing native accounts are listed and individually
 verified without switching GitHub CLI's active account. Ambient GH_TOKEN and
 GITHUB_TOKEN overrides are not used to choose or verify the account.
 
-For a new account, the TUI displays GitHub's device URL and one-time code. Press
-**O Open browser** and **C Copy code**; if no browser/clipboard command is
-available, use the displayed URL/code manually. Select the intended account in
+For a new account, the TUI automatically copies the one-time device code to the
+native clipboard, then opens GitHub's device page in your browser. Paste the code
+and continue. It also displays the URL/code and reports when either automatic
+action is unavailable. **O Open browser** and **C Copy code** retry those actions;
+you can always use the displayed URL/code manually. Select the intended account in
 your browser. The TUI receives the verified username and numeric account ID,
 then lets you select an identity to link. It never asks you to type a username,
 password, or token. B cancels browser sign-in and returns to the account library.

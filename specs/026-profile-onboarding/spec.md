@@ -76,7 +76,8 @@ native credentials.
 The normal TUI uses a keyboard tree/detail layout with scrolling and a compact
 narrow-terminal layout. Add/edit/default/link/unlink are direct actions. GitHub
 connection offers existing native accounts or an isolated native-gh device flow
-with a displayed URL/code, Open browser, Copy code, cancel, and confirmation of
+with automatic device-code copy followed by browser opening, a displayed URL/code,
+manual Open browser/Copy code retry actions, cancel, and confirmation of
 the resulting account before linking. Connection state and explicit check/re-auth
 actions are visible. Email-domain matching grants no company authority.
 
