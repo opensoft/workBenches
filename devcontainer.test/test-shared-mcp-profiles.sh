@@ -153,6 +153,27 @@ FAKE_CLAUDE_LOG="$FAKE_CLAUDE_LOG" \
 jq -e '.mcpServers["vibe-annotations"] != null' "$CLAUDE_PROFILE/.claude.json" >/dev/null \
   || fail "Claude launcher did not retain the shared registry"
 
+# #66: an existing profile can retain the container URL from a previous
+# session. A host launch must repair that managed entry without changing
+# unrelated MCP definitions or account metadata.
+tmp="$CLAUDE_PROFILE/.claude.json.tmp"
+jq '.account = {marker:"preserve-account"}
+    | .mcpServers.personal = {type:"http",url:"https://personal.example.invalid/mcp"}' \
+  "$CLAUDE_PROFILE/.claude.json" >"$tmp"
+mv "$tmp" "$CLAUDE_PROFILE/.claude.json"
+WORKBENCHES_MCP_CONTEXT=host \
+CLAUDE_BIN="$FAKE_CLAUDE" \
+CLAUDE_PROFILES_HOME="$CLAUDE_BASE" \
+CLAUDE_PROFILES_MANIFEST="$CLAUDE_MANIFEST" \
+FAKE_CLAUDE_LOG="$FAKE_CLAUDE_LOG" \
+  "$CLAUDE_LAUNCHER" status team002 >/dev/null
+jq -e '
+  .mcpServers["vibe-annotations"].url == "http://127.0.0.1:3846/mcp"
+  and .mcpServers.personal.url == "https://personal.example.invalid/mcp"
+  and .account.marker == "preserve-account"
+' "$CLAUDE_PROFILE/.claude.json" >/dev/null \
+  || fail "host launch did not repair a stale container URL while preserving personal data"
+
 CLAUDE_BIN="$FAKE_CLAUDE" \
 CLAUDE_PROFILES_HOME="$CLAUDE_BASE" \
 CLAUDE_PROFILES_MANIFEST="$CLAUDE_MANIFEST" \

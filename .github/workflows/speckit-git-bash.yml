@@ -21,6 +21,14 @@ on:
       - devBenches/base-image/files/estate/**
       - devBenches/base-image/Dockerfile
       - base-image/files/claude-profile
+      - base-image/files/claude-statusline-command.sh
+      - devcontainer.test/test-claude-profile-lane-default.sh
+      - devcontainer.test/test-claude-profile-lane-start.sh
+      - devcontainer.test/test-claude-profile-session-start-hook.sh
+      - devcontainer.test/test-claude-profile-preserves-model.sh
+      - devcontainer.test/test-claude-tmux-statusline.sh
+      - devcontainer.test/test-claude-tmux-statusline-env-isolation.sh
+      - devcontainer.test/test-claude-statusline-snapshots.sh
       - scripts/setup-estate-commands.sh
       - devcontainer.test/test-setup-estate-commands.sh
       - devcontainer.test/test-base-image-dockerfile.sh
@@ -58,6 +66,14 @@ on:
       - devBenches/base-image/files/estate/**
       - devBenches/base-image/Dockerfile
       - base-image/files/claude-profile
+      - base-image/files/claude-statusline-command.sh
+      - devcontainer.test/test-claude-profile-lane-default.sh
+      - devcontainer.test/test-claude-profile-lane-start.sh
+      - devcontainer.test/test-claude-profile-session-start-hook.sh
+      - devcontainer.test/test-claude-profile-preserves-model.sh
+      - devcontainer.test/test-claude-tmux-statusline.sh
+      - devcontainer.test/test-claude-tmux-statusline-env-isolation.sh
+      - devcontainer.test/test-claude-statusline-snapshots.sh
       - scripts/setup-estate-commands.sh
       - devcontainer.test/test-setup-estate-commands.sh
       - devcontainer.test/test-base-image-dockerfile.sh
@@ -132,6 +148,23 @@ jobs:
       # and the profile manifest into its own sandbox and needs no tmux.
       - name: Run the base-image Dockerfile wiring test
         run: bash ./devcontainer.test/test-base-image-dockerfile.sh
+
+      # Remaining launcher suites from #105. Fakes and temporary profiles keep
+      # these independent of real accounts, tmux servers, and AI sessions.
+      - name: Run launcher, lane, and statusline regression suites
+        run: |
+          jq --version
+          script --version
+          for suite in \
+            test-claude-profile-lane-default \
+            test-claude-profile-lane-start \
+            test-claude-profile-session-start-hook \
+            test-claude-profile-preserves-model \
+            test-claude-tmux-statusline \
+            test-claude-tmux-statusline-env-isolation \
+            test-claude-statusline-snapshots; do
+            bash "./devcontainer.test/$suite.sh"
+          done
 
       - name: Run the claude-profile name-guard regression test
         run: bash ./devcontainer.test/test-claude-profile-name-guard-hook.sh
