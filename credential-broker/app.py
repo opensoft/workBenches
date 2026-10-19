@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from core import AzureVault, Broker, BrokerError, MAX_BYTES, https
+from devices import DeviceRegistry
 
 
 class OIDC:
@@ -57,10 +58,18 @@ class Application:
                 if len(raw) != length:
                     raise BrokerError(400, 'invalid_request')
                 data = json.loads(raw)
-                name = data['profileId']
-                if not isinstance(name, str) or not re.fullmatch(r'[a-zA-Z0-9_.:-]{1,180}', name):
+                if not isinstance(data, dict): raise BrokerError(400, 'invalid_request')
+                device_route = path.startswith('/v1/devices/')
+                if device_route:
+                    value = DeviceRegistry(broker).call(identity, path.removeprefix('/v1/devices/'), data)
+                    name = None
+                else:
+                    name = data['profileId']
+                if not device_route and (not isinstance(name, str) or not re.fullmatch(r'[a-zA-Z0-9_.:-]{1,180}', name)):
                     raise BrokerError(400, 'invalid_request')
-                if path == '/v1/fetch':
+                if device_route:
+                    pass
+                elif path == '/v1/fetch':
                     value = broker.fetch(identity, name)
                 elif path == '/v1/publish':
                     value = broker.publish(identity, name, data['credential'], data['expectedVersion'], data['idempotencyKey'])

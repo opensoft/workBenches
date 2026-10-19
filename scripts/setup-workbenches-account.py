@@ -135,6 +135,11 @@ def login(config):
             raise ValueError('Account endpoints must use the configured server origin.')
         endpoints[name] = endpoint
     offline = os.environ.get('WORKBENCHES_ACCOUNT_OFFLINE') == '1'
+    if CONFIG.exists():
+        offline = offline or bool(json.loads(CONFIG.read_text()).get('deviceRegistry'))
+    if (ROOT / 'device-registry.json').exists():
+        settings = json.loads((ROOT / 'device-registry.json').read_text())
+        offline = offline or settings.get('enabled') is True
     scope = 'openid profile email offline_access' if offline else 'openid profile email'
     device = request(endpoints['device_authorization_endpoint'], {'client_id': config['clientId'], 'scope': scope})
     verification = url(device['verification_uri'])
@@ -190,6 +195,8 @@ def login(config):
         with session_lock():
             write_private(SESSION, session)
         print('workBenches account signed in. AI tokens and vault permissions are configured separately.')
+        from device_trust import after_login
+        after_login(ROOT)
         return 0
     raise ValueError('Account approval timed out; rerun optional account setup to try again.')
 
@@ -197,6 +204,8 @@ def login(config):
 def logout():
     if SESSION.is_symlink():
         raise ValueError('Account storage must not be a symlink.')
+    from device_trust import signout
+    signout(ROOT)
     with session_lock():
         SESSION.unlink(missing_ok=True)
     print('Signed out of workBenches on this workstation.')

@@ -4,6 +4,7 @@ import argparse
 import fcntl
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -86,6 +87,15 @@ def enrollment(profile):
         print('Credential broker: ' + broker)
     if organization_id:
         print('Company tenant ID: ' + organization_id)
+    device_registry = data.get('deviceRegistryUrl')
+    device_context = data.get('deviceRegistryContext')
+    if device_registry:
+        from company_sync import endpoint
+        device_registry = endpoint(device_registry)
+        if not isinstance(device_context, str) or not re.fullmatch(r'company:[a-zA-Z0-9_.-]{1,100}', device_context):
+            raise ValueError('Enrollment requires an explicit company device context ID.')
+        print('Device registry: ' + device_registry + ' / ' + device_context)
+        print('Sign-in will register this user/device; incoming SSH still needs explicit approval.')
     print('Verify these settings came from your company administrator before continuing.')
     if confirm('Save these sign-in settings?'):
         root = profiles.account_root(profile)
@@ -101,6 +111,8 @@ def enrollment(profile):
             config['credentialBrokerUrl'] = broker
         if organization_id:
             config['organizationId'] = organization_id
+        if device_registry:
+            config['deviceRegistry'] = {'url': device_registry, 'context': device_context}
         module.write_private(root / 'account-provider.json', config)
 
 
@@ -192,7 +204,7 @@ def manage_legacy(data):
         for index, profile in enumerate(entries, 1):
             github = profile.get('github')
             print(f'{index}. {profile["name"]} — {profile["email"]} — GitHub: ' + ('@' + github['login'] if github else 'Not linked'))
-        print('A Add company   L Existing workstation account   B Back to setup   Q Cancel')
+        print('A Add company   L Existing workstation account   V Devices   B Back to setup   Q Cancel')
         choice = ask('Profile or action', 'b').lower()
         if choice == 'b':
             return
@@ -207,6 +219,9 @@ def manage_legacy(data):
             if confirm('Connect the existing workstation account?'):
                 result = subprocess.run([sys.executable, str(HERE / 'setup-workbenches-account.py')])
                 propagate_cancel(result.returncode)
+        elif choice == 'v':
+            from profile_devices import manage as devices
+            devices()
         elif choice.isdigit() and 1 <= int(choice) <= len(entries):
             edit(entries[int(choice) - 1], data)
 
@@ -308,10 +323,13 @@ def scope_menu(scope, data):
             lambda item: [item['email'], f'{len(item["githubIds"])} linked GitHub accounts',
                           'Enter to edit identity and GitHub links.',
                           'Company sign-in is separate from GitHub.' if company else 'Your personal identities stay separate from companies.'],
-            'A Add identity  D Default' + ('  C Sign in  I Enrollment  Y Sync  S Sign out  E Rename' if company else ''))
+            'A Add identity  D Default  V Devices' + ('  C Sign in  I Enrollment  Y Sync  S Sign out  E Rename' if company else ''))
         if action == 'b': return
         if action == 'enter': identity_menu(scope, identity, data)
         elif action == 'a': identity_menu(scope, identity_form(scope, data), data)
+        elif action == 'v':
+            from profile_devices import manage as devices
+            devices(scope)
         elif action == 'd': scope['defaultIdentityId'] = identity['id']; profiles.save(data)
         elif company and action == 'e':
             name = profiles.text(ask('Company name', scope['name']))
@@ -346,14 +364,15 @@ def manage(data):
                     if connection['id'] in identity['githubIds']:
                         rows.append(('    @' + connection['login'], ('github', scope, connection)))
         rows += [('+ Add personal identity', ('personal', None, None)),
-                 ('+ Add company', ('company', None, None)), ('GitHub account library', ('library', None, None))]
+                 ('+ Add company', ('company', None, None)), ('GitHub account library', ('library', None, None)),
+                 ('Devices', ('devices', None, None))]
         def detail(row):
             kind, scope, value = row
             if kind == 'identity': return [scope['name'] + ' / ' + value['name'], value['email'], f'{len(value["githubIds"])} GitHub accounts', notice]
             if kind == 'scope': return [scope['name'], f'{len(scope["identities"])} email identities', 'Default: ' + default_identity(scope)['email'], notice]
             if kind == 'github': return ['@' + value['login'], value['state'], 'Connected once; reusable across profiles.', notice]
             return ['A Add personal identity', 'C Add company', 'G Connect/link GitHub']
-        action, row = choose('PROFILES · Personal and companies', rows, lambda row: ([notice] if notice else []) + detail(row), 'A Add personal  C Add company  G GitHub accounts  L Workstation account')
+        action, row = choose('PROFILES · Personal and companies', rows, lambda row: ([notice] if notice else []) + detail(row), 'A Add personal  C Add company  G GitHub accounts  V Devices  L Workstation account')
         if action == 'b': return
         try:
             kind, scope, value = row
@@ -371,6 +390,11 @@ def manage(data):
                     choice, target = choose('LINK @' + connection['login'], targets, lambda item: ['Choose the identity that uses this account.', 'B keeps it in the library without a link.'])
                     if choice == 'enter' and target:
                         profiles.link_github(data, target[1], connection); profiles.save(data)
+            elif action == 'v' or action == 'enter' and kind == 'devices':
+                from profile_devices import manage as devices
+                choices = [('Personal', None)] + [(s['name'], s) for s in data['companies']]
+                picked, scope = choose('DEVICES · Choose identity context', choices)
+                if picked == 'enter': devices(scope)
             elif action == 'l':
                 result = subprocess.run([sys.executable, str(HERE / 'setup-workbenches-account.py')])
                 propagate_cancel(result.returncode)
