@@ -17,7 +17,26 @@ swap is the HANDOFF"*. One act, three names — `/handoff` here, `/swap` and `/l
 reset, a profile switch and handing the lane to someone else is only WHY, and the record's free text has
 always carried that.
 
-**THE FLAGS ARE ENDS, NOT SECOND KINDS OF RECORD.** Every one of them runs steps 1–5 first:
+**For `/ctx` or `--restart`, use this bounded legacy path instead of the ordinary
+preservation sequence below.** Resolve the lane read-only, then run
+`lanes-edit.sh legacy-restart-check <lane>` before renaming anything, updating a
+handoff, messaging writers or writing lane state. Refuse managed ownership and
+unreadable ownership; feature 001 owns those lanes. Collect the running writers'
+worktree/branch/brief facts into a temporary TSV (`<worktree><TAB><brief>`) without
+editing the canonical handoff. After the ownership check, ask those writers to
+commit and push as this skill normally requires. Invoke `lane-handoff --restart
+--lane <lane> --writers-file <temporary TSV> clear` once. Follow its refusal or
+supervisor output; do not execute steps 1–5 as independent canonical writes, and
+do not run a second tmux respawn recipe. The backend reserves `preparing` before
+all preservation writes and completes that reservation as `pending` before respawn.
+
+This compatibility path owns `restart-intent.yaml` only. It does not use PR #97's
+lifecycle snapshot as a state or counter authority, and does not mutate the managed
+JSON ledger. A failed restart recovers through the same-operation supervisor;
+ordinary lane resume refuses it. A live or unknown child leaves `starting` and
+blocks retry even if the supervisor was terminated.
+
+**The other flags run the ordinary steps 1–5 below.** Their ends differ as follows:
 
 | | what it adds after the record | when |
 |---|---|---|
@@ -182,6 +201,24 @@ Only the second branch leaves anything blank, and it leaves it blank because not
 
 ## 2. Refresh the handoff
 
+Manual preservation and restart/resume-stamp publication is serialized by `lanes-edit.sh publish-handoff`.
+Read the current file's SHA-256, write semantic updates to a temporary file, then
+publish that complete prepared file with:
+
+```sh
+"$L" publish-handoff "$lane" "$handoff_file" "$prepared_file" --expect-digest "$prior_sha256"
+```
+
+The helper checks the expected bytes and atomically replaces the resolved target
+while holding the workspace writer mutex. It refuses an active restart owned by
+another operation. Do not edit or redirect into the canonical handoff directly;
+perform the existing explicit-pathspec commit/push after successful publication.
+Legacy `rename-lane` is a separate four-file transaction under the same mutex;
+it refuses unfinished/failed restart ownership and uses EXIT rollback. Its
+stamp now atomically replaces the handoff through a temporary file beside it
+(#158), but the four-file rename itself is still not crash-atomic (#224).
+
+
 The handoff path is the row's own handoff column. Derive it; do not guess it — and read the row FETCHED,
 because this decides state (Amendment 7's read-after-fetch rule governs it; step 1's window/record probe is
 the only no-fetch read this skill makes):
@@ -267,17 +304,58 @@ block the stamps land in the middle of.
 in a container with no `LANES_WORKSTATION`, that step 4's register and object-log writes were therefore NOT
 made, and that the row still reads as it did — so the next session knows the register is behind its own
 handoff rather than believing the lane never paused. This commit is in the LANE'S OWN repository and is not
-one of the writes that stop. Commit with an explicit pathspec
-and the Rule 5 `Lane:` trailer, then pull-rebase and push:
+one of the writes that stop.
+
+**COMMIT IN THE CHECKOUT THE HANDOFF WAS PUBLISHED IN, BY ITS OWN PATH, AND NOTHING ELSE** (Amendment 4(d):
+*"with explicit pathspecs — never `git add -A`, never a bare `git commit`"*; Amendment 5(c) and (d)). The
+checkout is RESOLVED, never spelled: `$LANES_REPO` first, then the helper's own `workspace-root`, which is the
+order `lane-handoff` uses — a lane window exports `LANES_REPO` to the lane's own clone, and step 4's writes go
+there. Step 2's publication target `$handoff_file` is the same file (`$LANES_REPO/$handoff` where that exists,
+else the workspace root's), so the file published is the file committed. A STAGED ENTRY THIS HANDOFF DID NOT
+MAKE IS A REFUSAL, read before the `git add`: a bare commit would publish it, and with a pathspec the pull would
+refuse on it. So is a rebase, merge, cherry-pick or revert in progress. Then the Rule 5 `Lane:` trailer,
+pull-rebase and push:
 
 ```sh
-cd ~/projects/brett-wip
-git add "$handoff"
-git commit -m "handoff(<lane>@<ws>): PAUSED, <one-line state>" -m "Lane: <lane>"
-git pull --rebase && git push
+# THE CHECKOUT IS RESOLVED, NEVER SPELLED: `$LANES_REPO` first, then the
+# helper's own `workspace-root`, the order `lane-handoff` uses. Lane windows
+# export `LANES_REPO` to the lane's own clone, and step 4's writes go there.
+hc_root=""; hc_why=""; hc_staged=""
+for hc_base in "${LANES_REPO:-}" "$("$L" workspace-root 2>/dev/null)"; do
+  if [ -n "$hc_base" ] && [ -f "$hc_base/$handoff" ]; then hc_root="$hc_base"; break; fi
+done
+if [ -z "$hc_root" ]; then
+  hc_why="$handoff is under neither \$LANES_REPO nor the workspace root"
+else
+  hc_git="$(git -C "$hc_root" rev-parse --absolute-git-dir)"
+  for hc_op in rebase-merge rebase-apply MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD; do
+    [ ! -e "$hc_git/$hc_op" ] || hc_why="$hc_root has an operation in progress ($hc_op)"
+  done
+  # A STAGED ENTRY THIS HANDOFF DID NOT MAKE, read BEFORE the add: a bare
+  # commit would publish it, and with a pathspec the pull would refuse on it.
+  hc_staged="$(git -C "$hc_root" diff --cached --name-only | grep -vxF -- "$handoff")"
+  [ -z "$hc_staged" ] || hc_why="${hc_why:+$hc_why; }the index of $hc_root holds $(printf '%s\n' "$hc_staged" | wc -l | tr -d ' ') staged path(s) this handoff did not make"
+fi
+if [ -n "$hc_why" ]; then
+  printf 'HANDOFF NOT COMMITTED: %s. The file is written; nothing was committed or pushed. Never commit staged entries you did not make.\n' "$hc_why"
+  [ -z "$hc_staged" ] || printf '%s\n' "$hc_staged" | head -n 20 | sed 's/^/  staged: /'
+elif ! { git -C "$hc_root" add -- "$handoff" &&
+         git -C "$hc_root" commit -m "handoff(<lane>@<ws>): PAUSED, <one-line state>" -m "Lane: <lane>" -- "$handoff"; }; then
+  printf 'HANDOFF NOT COMMITTED: git refused the add or the commit in %s (its words are above).\n' "$hc_root"
+elif git -C "$hc_root" pull --rebase origin "${LANES_BRANCH:-main}" &&
+     git -C "$hc_root" push origin "${LANES_BRANCH:-main}"; then
+  echo "handoff pushed from $hc_root"
+else
+  git -C "$hc_root" rebase --abort 2>/dev/null || :
+  printf 'HANDOFF NOT PUSHED: it is a local commit in %s, any rebase is aborted, and git said why above. Never force; look first:\n  git -C %s fetch origin && git -C %s cherry -v origin/%s HEAD\n' \
+    "$hc_root" "$hc_root" "$hc_root" "${LANES_BRANCH:-main}"
+fi
 ```
 
-On a rebase conflict: abort, leave the tree clean, report it, and never force.
+A refusal, a conflict or a rejected push does not stop the swap (`R-A11-11`, *a swap is never left
+unwritten*): the handoff file is written, the block prints what it did NOT do, and the report carries that
+line. On a rebase conflict the block aborts and leaves the tree clean. Never force, and never commit staged
+entries you did not make.
 
 ## 3. Subagents and worktrees — the one question, and the sweep that fills WRITERS
 
@@ -606,8 +684,13 @@ lane-start --help 2>/dev/null | grep -q -- '--confirm' \
 # WHICH ACT REMOVES THIS LINE: none is scheduled, and that is why it is printed
 # CONDITIONALLY rather than always — it is fenced on *if its name is not the
 # lane*, and that test is the whole of it. There is no API to rename a running
-# session from inside, so wherever a session comes up outside `lane-start` the
-# operator's `/rename <lane>` is the only act there is.
+# session from inside, but a keystroke is not an API, and Amendment 12's name
+# guard sends it: the `SessionStart` hook (`lanes-edit.sh session-start`) and the
+# `UserPromptSubmit` guard (`lanes-edit.sh guard`) TYPE `/rename <lane>` into the
+# session's own tmux pane. So the session that comes up outside `lane-start` is
+# usually renamed for the person, and the operator's `/rename <lane>` is the
+# FALLBACK for where the guard has not run or could not type — hooks not
+# installed, a pane that is not running `claude`, tmux not answering.
 echo 'then, in the session that comes up: if its name is not the lane, type /rename <lane> (lane-start names every session it launches, the resume branches included, since adoption act 0 landed as opensoft/brett-wip#5 @3719d97; a session that came up WITHOUT it — a missing or refusing lane-start, a bare claude, or a workstation whose lane-start predates that commit — carries the name the harness derived, and no API renames one from inside)'
 ```
 
@@ -640,44 +723,50 @@ Steps 1–5 are the whole act for a plain `/handoff`. The two flags add ONE act 
 and both refuse where step 4's `PAUSED` line did not land: *"a `/ctx` whose record could not be written
 REFUSES before it kills anything (a pane is never respawned over an unrecorded lane)"* (Amendment 17(f)).
 
-**`/ctx` (`/handoff --restart`) — the context clear, and the person types nothing else.** The lane's own
-pane is respawned through the launcher with a NEW session of the same agent, and that session's first
-prompt is the top block step 2 just wrote:
+**`/ctx` (`/handoff --restart`) — the context clear, and the person types nothing else.** IT IS ONE COMMAND
+AND THIS STEP DOES NOT SPELL IT OUT IN SHELL:
 
 ```sh
-# the pane is the LIVE RECORD'S own `tmux` field — `<session>:<@id>.%<pane>` —
-# because that is the pane the session is really in.
-# AND IT IS ASKED WITH `<session>:<@id>`, NOT `@id` ALONE: that is the HARNESS's
-# own `tmux` field, which is what `window-session` matches a record on, and the
-# three spellings of one window are never derived from each other
-# (`lane-start:975-984`, and `lane-handoff` reads it the same way).
-pane="$("$L" window-session "$(tmux display-message -p '#{session_name}:#{window_id}')" | awk -F'\037' '{print $2}')"
-# `lane <name>` where this workstation has that word, and the launcher where it
-# does not: `lane-handoff --restart` makes exactly this choice, in code.
-if command -v lane >/dev/null 2>&1; then
-  tmux respawn-pane -k -t "$pane" "LANE_START_FRESH=1 lane $lane"
-else
-  if command -v lclaude >/dev/null 2>&1; then
-    tmux respawn-pane -k -t "$pane" "LANE_START_FRESH=1 lclaude --lane $lane ${CLAUDE_PROFILE_NAME:-<profile>}"
-  else
-    tmux respawn-pane -k -t "$pane" "LANE_START_FRESH=1 pclaude --lane $lane ${CLAUDE_PROFILE_NAME:-<profile>}"
-  fi
-fi
+lane-handoff --restart "$why"
 ```
 
-`respawn-pane -k` replaces the pane's process, so the act survives the death of the session that started it.
-`LANE_START_FRESH=1` is the one seam: it tells `lane-start` *a NEW session of this lane's agent, started with
-the top block of the handoff the row names as its first prompt* — which is what a context clear IS, and it is
-why `/ctx` does not simply resume the transcript it has just paused. It is an ENVIRONMENT seam and not an
-argument, so it survives `lane` handing the launch on to `lane-start` exactly as it survives the launcher
-doing so. **The respawn line is `lane <lane>` and never `restart <lane>`** (Amendment 18 Addendum 2, in force
-2026-09-14T16:50:32Z, clause (i-8): the respawn *"relaunches the lane's own pane with `lane <name>` (its
-parked branch is exactly Amendment 11(i)'s act), or through the launcher directly"*, and `restart` leaves the
-person's `PATH` with `opensoft/openRepoTools#43`). `lane <name>` needs no profile argument: its parked branch
-reads the record step 4 just wrote — the lane's recorded directory and profile — and asks nothing. **Where
-`lane` is not on `PATH`** (it arrives with #43, and this act shipped first) the line is `lclaude --lane
-<lane> <profile>` where installed, otherwise `pclaude --lane <lane> <profile>`: a respawn is the one act no later refusal can undo, so the
-word is used only where it can be seen on `PATH`.
+**THE TMUX RECIPE THAT USED TO BE HERE IS GONE, AND `opensoft/openRepoTools#94` IS WHY.** This step used to
+carry an executable respawn — `tmux respawn-pane -k -t "$pane" "LANE_START_FRESH=1 lane $lane"` — for a
+session to run itself. On 2026-09-15T20:59Z that is what ran, with two extra environment assignments the
+model added on the spot, and what came up in the pane was `claude --name <lane> --resume <the uuid the
+handoff had just paused>`: the same conversation resumed by id, not a fresh session primed by the block
+step 2 had just written, and no process left in the pane to notice. Two things were wrong and only one of
+them was the recipe:
+
+- **`LANE_START_FRESH=1` is an ENVIRONMENT seam and it does not cross the launcher.** `claude-profile`
+  re-creates its child through tmux, and a command tmux starts gets the tmux SERVER's environment, not the
+  caller's — the launcher's own code says so and threads six values into the command string for exactly
+  that reason. The fresh-session requirement was not one of them. It is now a RESTART INTENT written to
+  disk under the lane's own control root before anything is killed, and `lane-start` reads it back whatever
+  the environment did.
+- **A prose recipe is a second implementation of the destructive tail.** Two copies of one procedure that
+  must stay byte-equal is the rejected alternative everywhere else in this file, and the one place it was
+  allowed is the one place a session kills its own pane.
+
+So the whole of `/ctx`'s end is the one command above, and `lane-handoff` owns it: the restart intent
+written and read back as a FOURTH gate beside the `PAUSED` line, the row and the handoff; the pane
+respawned with `lane-handoff --supervise --lane <lane> --operation <id>` **by absolute path**; the
+supervisor claiming that intent, running the launch as its CHILD through the launcher, confirming the
+replacement came up, and STAYING IN THE PANE with a diagnostic and a retry when it did not.
+
+**WHAT TO DO WITH WHAT IT PRINTS.** Exit 0 is the pane handed over — this session is about to be killed by
+the command it just ran, and there is nothing after it. Exit 2 is a REFUSAL and this pane is exactly as it
+was: read the line, it names which of the four writes did not land, or says a restart is already in flight
+(`lane-handoff --restart-status --lane <lane>` reads that one), or that tmux would not take the pane. In
+every refusal the record is already written, so the fallback is the printed restart line and never a second
+`--restart`.
+
+**`lane <name>` IS STILL A PERSON'S DOOR AND IS NO LONGER THIS ONE** (Amendment 18 Addendum 2 (i-8) names
+two doors: `lane <name>`, *"or through the launcher directly"*). The supervisor takes the second, because
+`lane` is a HUMAN DISPATCHER whose valid outcomes include attaching to a live session without launching
+anything — and because it was the door #94 came through. The clause's own ground is kept: *"no word is
+kept on `PATH` for it alone"*, and none is — the supervisor is a mode of `lane-handoff`, which is already
+installed.
 
 **`/ctx` SAYS WHICH IT DID** (Addendum 1 (j)). The respawn above replaces the pane's process, so every writer
 of this lane dies with it: the kind is `respawn`, and the count the next session makes first then finds none,
@@ -709,5 +798,5 @@ honest record of the state that session holds is its own next `/handoff`.
 
 ```sh
 lane-handoff --late --at 2026-09-14T12:02:27Z "late; usage limit hit before the swap"
-lclaude <profile>      # and only then; use pclaude --lane <lane> if lclaude is unavailable
+lclaude "${CLAUDE_PROFILE_NAME:-<profile>}"      # and only then; use pclaude --lane <lane> if lclaude is unavailable
 ```

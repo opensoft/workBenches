@@ -3,14 +3,16 @@
 # scripts/setup-estate-commands.sh
 #
 # Installs the estate commands on this host from workBenches' own vendored
-# pin: openRepoShape, and openRepoTools's own TWENTY-NINE artifacts, placed by
+# pin: openRepoShape, and openRepoTools's own 29 artifacts plus two hooks once
+# the workspace target answers guard (#237), placed by
 # the vendored shims' own `--install` (devBenches/base-image/files/
 # openreposhape/openRepoShape and devBenches/base-image/files/openrepotools/
-# openRepoTools). `openRepoTools --install` places FIFTEEN files on $PATH
+# openRepoTools). `openRepoTools --install` places SEVENTEEN files on $PATH
 # (itself, park, resume, status, lane, lanes, lane-handoff, lane-rename, the
 # four lane helpers `lanes-edit.sh`, `lane-start`, `lane-end` and
 # `link-estates` with the alias table `repos.tsv` they read, and the two
 # Claude Code launch commands `claude-current` and `claude-restart-check` --
+# plus `lanes-index` and `lane-worktrees` from the complete #237 upstream pin,
 # lane-collision-protocol Amendments 11, 16, 17(a) and 18, and
 # opensoft/openRepoTools#26, #45 and opensoft/workBenches#119),
 # THREE skills (`handoff`, `lane-swap`, `restart`) at
@@ -188,7 +190,7 @@ TOOLS_SHIM="$BASE_IMAGE_DIR/files/openrepotools/openRepoTools"
 # bin-directory install is, the same reason openRepoTools's own INSTALLABLES
 # is one list there. Checked against that list itself below (`check_shim_list`),
 # not just kept in sync by a person's own care.
-TOOLS_FILES=(openRepoTools park resume status lane lanes lane-handoff lane-rename lanes-edit.sh lane-start lane-end link-estates repos.tsv claude-current claude-restart-check)
+TOOLS_FILES=(openRepoTools park resume status lane lanes lane-handoff lane-rename lanes-edit.sh lane-start lane-end link-estates repos.tsv claude-current claude-restart-check lanes-index lane-worktrees)
 # THE THREE SKILLS and THE THREE COMMAND FILES `openRepoTools --install` also
 # places (skill_source_path/command_source_path in that shim derive the two
 # paths each of these takes from the name alone, the same way this script's

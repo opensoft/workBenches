@@ -57,32 +57,32 @@ sources:
     source_repository: opensoft/openRepoTools
     materialization: copied
     revision_kind: commit
-    commit: "b1015f4672f9c107d939803c39846f8dbd3d78f3"
+    commit: "586dea25e073caadc33002e0157376788678dee0"
     vendor_dir: files/openrepotools
     files:
       - path: openRepoTools
-        sha256: "d2de987e7d6888e42c68b0352d8aea097add6ba1160fb801a9f02f4d2e21a878"
+        sha256: "a07bd7cb8d8d95345b9c7d05696946d3de4b5530bbd5824d3343f8a499591ad1"
         mode: "100755"
       - path: park
-        sha256: "7a0b3893649459694ec79b09e49dd736ec53429c504ae15faaf82643664bd956"
+        sha256: "21f0b286f9781fa7ccc83714df0e18d4f3a9151eeff2689e19787aebe15b573f"
         mode: "100755"
       - path: resume
-        sha256: "12e5a6857952ad7b2a4a4705fbf8b01c75f537c130a5e51e56a7846dd969be09"
+        sha256: "b63603d37658f8e6813936c485b14b876fb27254b5c40a3a887146ef20bdd8f0"
         mode: "100755"
       - path: status
-        sha256: "137b38f25fa30197e849876c8530a387d58da0104d8d620cb0f7b96b3289befc"
+        sha256: "b3d52923c16789f1478144756130361c92adc359843d7ea25fdf0387825c2717"
         mode: "100755"
       - path: lanes
-        sha256: "853fea05b2232aebaf739e7f3b23e0ecc4f045ccd6f3bd8293ea90829fe00fad"
+        sha256: "25b2b1affa0ed838863895ae0a788c055138a73d25fc6d9087d4fd12912b5ca2"
         mode: "100755"
       - path: lanes-edit.sh
-        sha256: "7c083a743f5f425cb8ede740d94da41ef545e44358b7673f7cb483010fc18e24"
+        sha256: "65fc8eaac75c60c489959998d7c1e2b2615f64b118ca8e31aea35bf38e8d8714"
         mode: "100755"
       - path: lane-start
-        sha256: "cae6a097df6835b456efa1cf8fc425f76cf119249d2f9514811c97c69fee7356"
+        sha256: "50e6045cd4ecbbbbdffa80024076cb1db5a35a730787f58cb1280d0ff45c05dc"
         mode: "100755"
       - path: lane-end
-        sha256: "f1fbd24350fe85d703e1a35758c264035fae7846150663db24f93f94521d2ee4"
+        sha256: "af28239129e51af98035cfa774e349315c8a51f5e785dbaa23eece072a9ebb8e"
         mode: "100755"
       - path: link-estates
         sha256: "660b087e2b9391fed637a16128ac1716ad512fc326095e623e630864cd5a0f40"
@@ -103,16 +103,16 @@ sources:
         sha256: "4f79af909fa2f1074d31ba7c497d9203ae5864692c6a1f16350ead44087f54c2"
         mode: "100755"
       - path: lane-handoff
-        sha256: "8e5782dd76076d7bdfe38ac0a385231ff91fa153f1de58a2cc35c90b2138a51b"
+        sha256: "f3fc35aebd69acccd683e2457dbd0766c0d09c6c6ebeddec846efebf80ac9c66"
         mode: "100755"
       - path: skills/handoff/SKILL.md
-        sha256: "b7f1030a3a274af0d089ed7d4f68d1e93c886dc25b9d17cfcdce3d806dba945d"
+        sha256: "930f3ac89809d34d7cd8855e01eb06277369adb3d7506ac937d99b35fec0589c"
         mode: "100644"
       - path: commands/handoff.md
         sha256: "fc7ff1127ad0581ca49e92e1513e6b56dce8c410201148d73ce84ad980f976dc"
         mode: "100644"
       - path: commands/ctx.md
-        sha256: "59ac4a2badb535e179c79a5d64ec708e8769782d6058e8d68c3118e03caf4bb6"
+        sha256: "92c1243750c2ee4d9d0523633edfb017f3c313a86b51803fc4dfa3e57e8e0314"
         mode: "100644"
       - path: lane-rename
         sha256: "81dc3297228a17e1dd1eabcb870ee583556e1ca7714f4de149e728d66524ca0f"
@@ -122,4 +122,10 @@ sources:
         mode: "100755"
       - path: claude-restart-check
         sha256: "129914d42f705587741715579e70fb52895e5fb56c40939a8b104f2f07a4c5ff"
+        mode: "100755"
+      - path: lanes-index
+        sha256: "bd861103d890e134c53b1a23e3c39f1c4f498822015b0fb41e0592da7b6d82b4"
+        mode: "100755"
+      - path: lane-worktrees
+        sha256: "c5c448b0c550ef8bf0d9f15e0c830f2e1ea79dfc6eb0468c1d26ec3824e6aef2"
         mode: "100755"

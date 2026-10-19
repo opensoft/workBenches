@@ -239,13 +239,16 @@ COPY files/openrepotools/link-estates /usr/local/bin/link-estates
 COPY files/openrepotools/repos.tsv /usr/local/bin/repos.tsv
 COPY files/openrepotools/claude-current /usr/local/bin/claude-current
 COPY files/openrepotools/claude-restart-check /usr/local/bin/claude-restart-check
+COPY files/openrepotools/lanes-index /usr/local/bin/lanes-index
+COPY files/openrepotools/lane-worktrees /usr/local/bin/lane-worktrees
 RUN chmod 0755 /usr/local/bin/openRepoShape /usr/local/bin/openRepoTools \
     /usr/local/bin/park /usr/local/bin/resume /usr/local/bin/status \
     /usr/local/bin/lane /usr/local/bin/lanes /usr/local/bin/lane-handoff /usr/local/bin/lane-rename \
     /usr/local/bin/lanes-edit.sh \
     /usr/local/bin/lane-start /usr/local/bin/lane-end /usr/local/bin/link-estates \
     /usr/local/bin/repos.tsv \
-    /usr/local/bin/claude-current /usr/local/bin/claude-restart-check
+    /usr/local/bin/claude-current /usr/local/bin/claude-restart-check \
+    /usr/local/bin/lanes-index /usr/local/bin/lane-worktrees
 
 # THE RECORD (opensoft/workBenches#153). From v1.0.1 the openRepoShape launcher
 # reads the ref it runs at from `<command>.ref` beside itself and stays on it:

@@ -49,3 +49,23 @@ company-managed broker mode must not silently fall back to direct user vault
 access when broker authorization fails. Existing credentials are not migrated or
 published merely by opening Profiles; company sync and managed paths require
 explicit opt-in.
+
+
+## Candidate follow-up: openRepoTools #237 / workBenches #107
+
+The candidate now consumes the complete openRepoTools payload at upstream merge
+`586dea25e073caadc33002e0157376788678dee0` (PR #247), taken with the vendored-copy
+updater. This includes the two additional installables `lanes-index` and
+`lane-worktrees`; host preflight and the dev-image COPY/chmod set match all 17
+upstream bin files. The earlier upstream fixes in that commit's ancestry are
+included as a consistent pinned snapshot, not hand-edited vendor files.
+
+Fresh installation defers the hook pair until its linked target answers guard.
+An old broken prompt guard is removed while unrelated settings/hooks are kept.
+Workspace initialization reconciles the pair, including a rerun after an
+interruption. Container startup invokes the same upstream installer again after
+successful workspace linking so that the first startup completes deferred hooks.
+It never retries an initial installer refusal or edits hook JSON itself.
+
+This is a post-rc.1 candidate fix. The existing tag remains unchanged; a further
+candidate needs a new version/tag and exact-commit release validation.
