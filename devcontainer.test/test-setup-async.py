@@ -130,12 +130,13 @@ draw_ui > "$1/repeated"
             files = {name: (Path(temporary) / name).read_bytes()
                      for name in ('first', 'unchanged', 'update', 'repeated')}
             self.assertEqual(files['first'].count(b'\x1b[2J'), 1)
-            self.assertIn(b'workBenches v1.5.0', files['first'])
+            version_header = f"workBenches v{(ROOT / 'VERSION').read_text().strip()}".encode()
+            self.assertIn(version_header, files['first'])
             self.assertEqual(files['unchanged'], b'')
             self.assertEqual(files['repeated'], b'')
             self.assertIn(b'Docker Up', files['update'])
             self.assertNotIn(b'\x1b[2J', files['update'])
-            self.assertNotIn(b'workBenches v1.5.0', files['update'])
+            self.assertNotIn(version_header, files['update'])
             self.assertNotIn('█▀▀█'.encode(), files['update'])
             self.assertLess(len(files['update']), len(files['first']) // 2)
 

@@ -235,7 +235,7 @@ draw_profiles; draw_setup_footer
     def test_profile_action_uses_required_readiness_not_optional_inventory_completion(self):
         command = f'''source "{ROOT}/scripts/interactive-setup.sh"
 init_components
-component_status[docker]=up; component_status[setup_tools]=up
+component_status[wsl]=up; component_status[docker]=up; component_status[setup_tools]=up
 status_checks_running=true; CURRENT_SECTION=4; current_selection=0
 component_checked[codex_cli]=true; component_action[codex_cli]=install
 stop_status_loader() {{ status_checks_running=false; }}
