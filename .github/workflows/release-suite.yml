@@ -14,6 +14,7 @@ on:
       automation_sha:
         required: true
         type: string
+cache-mode: none
 permissions:
   contents: read
 jobs:

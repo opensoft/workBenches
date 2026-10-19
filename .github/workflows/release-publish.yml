@@ -10,6 +10,7 @@ on:
         description: Successful full Release validation run for the current main commit
         required: true
         type: string
+cache-mode: none
 permissions:
   contents: read
 concurrency:

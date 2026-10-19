@@ -43,6 +43,8 @@ pushes for an already tagged stable version run that same CI profile. Nightly
 runs exercise the complete hosted fixtures; enable `WB_RELEASE_QA_NIGHTLY=true`
 only after protected workers/live adapters are provisioned to include live QA.
 No path filter can suppress a full release dispatch or new-version main run.
+Release workflows explicitly disable Actions cache access (`cache-mode: none`),
+including reusable suites, so candidate execution cannot poison main caches.
 
 ## What is required
 
