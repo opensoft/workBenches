@@ -1,6 +1,6 @@
 # v1.6.0 — identity and company credential workflows
 
-Status: scope frozen for release candidate **v1.6.0-rc.1** on 2026-10-19,
+Status: scope frozen; candidate **v1.6.0-rc.2** prepared on 2026-10-19,
 at Brett's request. This is not a stable release or a completed release gate.
 The candidate includes profile-onboarding head
 `edefc67c340603a783876cdf1b424b3d9f1093db` and stable fixes through main
@@ -9,7 +9,7 @@ The candidate includes profile-onboarding head
 The `release/1.6.0` branch accepts only candidate fixes and validation evidence;
 new feature scope continues separately. All 12 existing repository source pins
 remain unchanged in `config/release-lock.json`. See the
-[candidate notes](release-1.6.0-rc.1.md) for limitations and the remaining gates.
+[candidate notes](release-1.6.0-rc.2.md) for limitations and the remaining gates.
 Published candidate tags are immutable; further candidates receive new tags.
 v1.5.0 remains the stable release until a separately validated v1.6.0 is published.
 
