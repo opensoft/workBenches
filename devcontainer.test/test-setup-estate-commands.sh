@@ -77,7 +77,7 @@ STATUS_VENDOR="$BASE_IMAGE_DIR/files/openrepotools/status"
 # and #45, and opensoft/workBenches#119's two launch commands at the END). One
 # list, so scenarios (a), (b) and (l) cannot disagree about what a complete
 # bin-directory install is.
-TOOLS_FILES=(openRepoTools park resume status lane lanes lane-handoff lane-rename lanes-edit.sh lane-start lane-end link-estates repos.tsv claude-current claude-restart-check)
+TOOLS_FILES=(openRepoTools park resume status lane lanes lane-handoff lane-rename lanes-edit.sh lane-start lane-end link-estates repos.tsv claude-current claude-restart-check lanes-index lane-worktrees)
 tools_vendor_path() { printf '%s/files/openrepotools/%s\n' "$BASE_IMAGE_DIR" "$1"; }
 
 SKILL_NAMES=(handoff lane-swap restart)
@@ -287,6 +287,20 @@ assert_guard_hook_present() {
     assert_mode "$settings" '600' "$label: settings.json is mode 0600"
 }
 
+assert_hooks_deferred() {
+    local settings="$1/.claude/settings.json" label="$2"
+    if [ ! -e "$settings" ]; then
+        pass "$label: no settings file calling an absent target"
+    elif jq -e '[.hooks.SessionStart[]?.hooks[]?.command,
+                  .hooks.UserPromptSubmit[]?.hooks[]?.command]
+                 | all(. != "~/projects/xFactory/lanes-edit.sh guard"
+                       and . != "~/projects/xFactory/lanes-edit.sh session-start || true")' "$settings" >/dev/null; then
+        pass "$label: neither hook calls an absent target"
+    else
+        fail "$label: an unready hook was installed"
+    fi
+}
+
 printf '%s\n' '--- Scenario (a): fresh bin dir + fresh $HOME installs all TWENTY-NINE openRepoTools artifacts, plus openRepoShape ---'
 BIN_A="$TMPDIR_ROOT/bin-a"
 HOME_A="$TMPDIR_ROOT/home-a"
@@ -306,7 +320,7 @@ for name in "${TOOLS_FILES[@]}"; do
     assert_identical "$BIN_A/$name" "$(tools_vendor_path "$name")" "fresh $name is byte-identical to the vendored copy"
     assert_contains "$OUTPUT_A" "$name: installed at" "fresh install reports an installed verb for $name"
 done
-assert_contains "$OUTPUT_A" 'openRepoTools: 15 of 15 placed in' 'fresh install reports all fifteen openRepoTools bin files placed'
+assert_contains "$OUTPUT_A" 'openRepoTools: 17 of 17 placed in' 'fresh install reports all fifteen openRepoTools bin files placed'
 for name in "${SKILL_NAMES[@]}"; do
     assert_skill_pair "$HOME_A" "$name" "fresh install places the $name skill"
     assert_contains "$OUTPUT_A" "$name: installed at" "fresh install reports an installed verb for the $name skill"
@@ -315,10 +329,10 @@ for name in "${COMMAND_NAMES[@]}"; do
     assert_command_pair "$HOME_A" "$name" "fresh install places the /$name command file"
     assert_contains "$OUTPUT_A" "/$name: installed at" "fresh install reports an installed verb for /$name"
 done
-assert_hook_present "$HOME_A" 'fresh install merges the SessionStart hook'
-assert_contains "$OUTPUT_A" 'SessionStart hook: installed in' 'fresh install reports the hook as installed (new file)'
-assert_guard_hook_present "$HOME_A" 'fresh install merges the UserPromptSubmit guard hook'
-assert_contains "$OUTPUT_A" 'UserPromptSubmit guard: installed in' 'fresh install reports the guard hook as installed (new file)'
+assert_hooks_deferred "$HOME_A" 'fresh install defers the pair until workspace linking'
+assert_contains "$OUTPUT_A" 'SessionStart hook: deferred' 'fresh install reports SessionStart deferred'
+assert_hooks_deferred "$HOME_A" 'fresh install has no broken prompt hook'
+assert_contains "$OUTPUT_A" 'UserPromptSubmit guard: deferred' 'fresh install reports the prompt guard deferred'
 assert_contains "$OUTPUT_A" "openRepoShape pinned at $SHAPE_COMMIT" 'fresh install prints the openRepoShape pin commit'
 assert_contains "$OUTPUT_A" "openRepoTools pinned at $TOOLS_COMMIT" 'fresh install prints the openRepoTools pin commit'
 assert_contains "$OUTPUT_A" 'Estate commands verified against the vendored pin.' 'fresh install reports success only after post-install verification'
@@ -352,10 +366,10 @@ for name in "${COMMAND_NAMES[@]}"; do
     assert_contains "$OUTPUT_B" "/$name: already installed at" "second run reports /$name unchanged"
     assert_command_pair "$HOME_A" "$name" "second run still has the /$name command file"
 done
-assert_contains "$OUTPUT_B" 'SessionStart hook: already installed in' 'second run reports the hook unchanged'
-assert_hook_present "$HOME_A" 'second run still has the hook'
-assert_contains "$OUTPUT_B" 'UserPromptSubmit guard: already installed in' 'second run reports the guard hook unchanged'
-assert_guard_hook_present "$HOME_A" 'second run still has the guard hook'
+assert_contains "$OUTPUT_B" 'SessionStart hook: deferred' 'second run still reports SessionStart deferred'
+assert_hooks_deferred "$HOME_A" 'second run still defers the unready hook'
+assert_contains "$OUTPUT_B" 'UserPromptSubmit guard: deferred' 'second run reports the guard hook unchanged'
+assert_hooks_deferred "$HOME_A" 'second run still defers the unready guard'
 
 printf '%s\n' '--- Scenario (c): a locally-modified park is replaced and reported updated ---'
 printf '%s\n' '# a local edit, not the vendored bytes' >> "$BIN_A/park"
@@ -377,7 +391,7 @@ assert_contains "$OUTPUT_C" 'status: already installed at' 'updated-park run sti
 assert_contains "$OUTPUT_C" 'repos.tsv: already installed at' 'updated-park run still reports repos.tsv unchanged'
 assert_contains "$OUTPUT_C" 'lane-swap: already installed at' 'updated-park run still reports the lane-swap skill unchanged'
 assert_contains "$OUTPUT_C" '/swap: already installed at' 'updated-park run still reports /swap unchanged'
-assert_contains "$OUTPUT_C" 'SessionStart hook: already installed in' 'updated-park run still reports the hook unchanged'
+assert_contains "$OUTPUT_C" 'SessionStart hook: deferred' 'updated-park run still defers the unready hook'
 
 printf '%s\n' '--- Scenario (d): a corrupted vendor copy refuses to install anything ---'
 CORRUPT_BASE="$TMPDIR_ROOT/corrupt-base-image"
@@ -849,15 +863,15 @@ for name in "${TOOLS_FILES[@]}"; do
     assert_file_executable "$BIN_Q/$name" "the start step places $name, executable"
     assert_identical "$BIN_Q/$name" "$(tools_vendor_path "$name")" "the start step's $name is byte-identical to the vendored copy"
 done
-assert_contains "$OUTPUT_Q" 'openRepoTools: 15 of 15 placed in' 'the start step relays the installer'"'"'s own count line, not a summary of its own'
+assert_contains "$OUTPUT_Q" 'openRepoTools: 17 of 17 placed in' 'the start step relays the installer'"'"'s own count line, not a summary of its own'
 for name in "${SKILL_NAMES[@]}"; do
     assert_skill_pair "$HOME_Q" "$name" "the start step places the $name skill"
 done
 for name in "${COMMAND_NAMES[@]}"; do
     assert_command_pair "$HOME_Q" "$name" "the start step places the /$name command file"
 done
-assert_hook_present "$HOME_Q" 'the start step merges the SessionStart hook'
-assert_guard_hook_present "$HOME_Q" 'the start step merges the UserPromptSubmit guard hook'
+assert_hooks_deferred "$HOME_Q" 'the start step defers SessionStart without a workspace'
+assert_hooks_deferred "$HOME_Q" 'the start step defers the prompt guard without a workspace'
 # The six per-user artifacts and the two hook entries are the half the image's
 # own COPY into /usr/local/bin can never restore -- a build has no user's $HOME
 # -- which is why the step runs `--install` rather than trusting those copies.
@@ -883,8 +897,8 @@ assert_not_contains "$OUTPUT_R" ': installed at' 'a second start installs nothin
 for name in "${TOOLS_FILES[@]}"; do
     assert_contains "$OUTPUT_R" "$name: already installed at" "a second start reports $name unchanged"
 done
-assert_contains "$OUTPUT_R" 'SessionStart hook: already installed in' 'a second start reports the SessionStart hook unchanged'
-assert_contains "$OUTPUT_R" 'UserPromptSubmit guard: already installed in' 'a second start reports the guard hook unchanged'
+assert_contains "$OUTPUT_R" 'SessionStart hook: deferred' 'a second start still defers SessionStart without a workspace'
+assert_contains "$OUTPUT_R" 'UserPromptSubmit guard: deferred' 'a second start still defers the prompt guard without a workspace'
 
 # Exercise the INSTALLED payload after repeat startup, not only the source
 # guard: a correct launcher and source tree did not prevent an old image from
@@ -935,7 +949,8 @@ fi
 assert_identical "$HOME_T/projects/xFactory/lanes-edit.sh" "$BIN_T/lanes-edit.sh" 'that link resolves to the lanes-edit.sh this start step installed'
 assert_equal "$(readlink "$HOME_T/projects/xFactory/LANES.md")" "$WIP_T/lanes/LANES.md" 'the register link points into the workspace repository'
 assert_equal "$(readlink "$HOME_T/projects/xFactory/handoffs")" "$WIP_T/handoffs/xFactory" 'the handoffs link points into the workspace repository'
-assert_not_contains "$OUTPUT_T" 'openRepoTools wip init' 'nothing refuses for want of a workspace repository once there is one'
+assert_hook_present "$HOME_T" 'the first start reconciles SessionStart after successful linking'
+assert_guard_hook_present "$HOME_T" 'the first start reconciles the prompt guard after successful linking'
 
 printf '%s\n' '--- Scenario (u): WORKBENCHES_SKIP_ESTATE_COMMANDS=1 turns the step off from a bench'"'"'s own environment ---'
 BIN_U="$TMPDIR_ROOT/bin-u"
@@ -1273,8 +1288,29 @@ assert_has_line() {
         fail "$label: no line equal to: $line"
     fi
 }
+# Resolve COPY mappings, including multiple sources sharing a destination
+# directory. Every bin must still come from its exact pinned source; grouping
+# the two new files avoids spending additional OverlayFS layers.
+DEV_COPY_MAPPINGS="$(python3 - "$DEV_DOCKERFILE" <<'COPY_MAPPINGS'
+from pathlib import Path
+import shlex
+import sys
+for line in Path(sys.argv[1]).read_text().splitlines():
+    if not line.lstrip().upper().startswith('COPY '):
+        continue
+    words = shlex.split(line, comments=True)
+    if not words or words[0].upper() != 'COPY':
+        continue
+    arguments = [word for word in words[1:] if not word.startswith('--')]
+    for source in arguments[:-1]:
+        destination = arguments[-1]
+        if destination.endswith('/'):
+            destination += Path(source).name
+        print(source + ' ' + destination)
+COPY_MAPPINGS
+)"
 for name in "${SHIM_INSTALLABLES[@]}"; do
-    assert_has_line "$DEV_DOCKERFILE_TEXT" "COPY files/openrepotools/$name /usr/local/bin/$name" "the Dockerfile COPYs $name into /usr/local/bin"
+    assert_has_line "$DEV_COPY_MAPPINGS" "files/openrepotools/$name /usr/local/bin/$name" "the Dockerfile COPYs $name from its exact pinned source into /usr/local/bin"
     assert_has_line "$DEV_CHMOD_WORDS" "/usr/local/bin/$name" "the Dockerfile's chmod 0755 block lists /usr/local/bin/$name"
 done
 
@@ -1617,6 +1653,109 @@ assert_not_contains "$SCRIPT_CODE_159" 'export OPENREPOSHAPE_REF="$shape_commit"
 assert_equal '2' "$(count_occurrences "$SCRIPT_CODE_159" 'OPENREPOSHAPE_REF=')" 'OPENREPOSHAPE_REF is assigned twice in the code: the exported sentinel, and the one call'
 assert_equal '1' "$(count_occurrences "$SCRIPT_CODE_159" 'OPENREPOSHAPE_REPO=')" 'OPENREPOSHAPE_REPO is assigned once in the code: the exported sentinel, so the call'"'"'s repo is the sentinel'
 assert_has_line "$SCRIPT_CODE_159" 'export OPENREPOSHAPE_REPO="$ESTATE_SENTINEL"' 'and that one assignment is the sentinel'
+
+# #237 integration cases stay in this already-triggered CI suite. All homes,
+# receipt/config roots and repositories are disposable; no GitHub is contacted.
+python3 - "$REPO_ROOT" <<'HOOK_GATE_TESTS'
+#!/usr/bin/env python3
+"""Vendored #237 integration: disposable homes, local git only, no real accounts."""
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+
+ROOT = Path(sys.argv.pop(1)).resolve()
+SESSION = '~/projects/xFactory/lanes-edit.sh session-start || true'
+GUARD = '~/projects/xFactory/lanes-edit.sh guard'
+
+
+class EstateHookGateTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(); self.addCleanup(temporary.cleanup)
+        self.home = Path(temporary.name) / 'home'; self.home.mkdir()
+        self.bin = self.home / '.local/bin'
+        self.env = {key: value for key, value in os.environ.items()
+                    if not key.startswith(('LANES_', 'TMUX', 'CLAUDE_', 'WORKBENCHES_', 'OPENREPOTOOLS_', 'OPENREPOSHAPE_', 'GH_', 'GITHUB_', 'XDG_'))}
+        self.env.update(HOME=str(self.home), PATH=str(self.bin) + os.pathsep + os.environ['PATH'],
+            XDG_DATA_HOME=str(self.home / '.local/share'), XDG_CACHE_HOME=str(self.home / '.cache'),
+            XDG_CONFIG_HOME=str(self.home / '.config'), AGENT_PROTOCOL_ROOT=str(self.home / '.agents'),
+            PROJECTS_ROOT=str(self.home / 'projects'), OPENREPOTOOLS_BIN_DIR=str(self.bin),
+            OPENREPOSHAPE_BIN_DIR=str(self.bin), CLAUDE_USER_DIR=str(self.home / '.claude'),
+            CLAUDE_PROFILES_HOME=str(self.home / '.claude-profiles'))
+        self.settings = self.home / '.claude/settings.json'
+
+    def run_command(self, *argv, **kwargs):
+        result = subprocess.run(argv, env=self.env, cwd=ROOT, capture_output=True, text=True, timeout=40, **kwargs)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return result
+
+    def install(self):
+        return self.run_command('bash', str(ROOT / 'scripts/setup-estate-commands.sh'))
+
+    def hooks(self, event):
+        data = json.loads(self.settings.read_text()) if self.settings.exists() else {}
+        return [hook.get('command') for item in data.get('hooks', {}).get(event, []) for hook in item.get('hooks', [])]
+
+    def workspace(self):
+        checkout = self.home / 'example-wip'; checkout.mkdir()
+        self.run_command('git', 'init', '-q', str(checkout))
+        self.run_command('git', '-C', str(checkout), 'remote', 'add', 'origin', 'https://github.com/example/example-wip.git')
+        (checkout / 'lanes').mkdir(); (checkout / 'lanes/LANES.md').write_text('')
+        (checkout / 'handoffs/xFactory').mkdir(parents=True)
+        (self.home / 'projects/xFactory').mkdir(parents=True)
+        (self.home / '.agents').mkdir()
+        (self.home / '.agents/workspace.yaml').write_text('repository: example/example-wip\npath: ' + str(checkout) + '\n')
+
+    def assert_pair(self):
+        self.assertEqual(self.hooks('SessionStart').count(SESSION), 1)
+        self.assertEqual(self.hooks('UserPromptSubmit').count(GUARD), 1)
+        self.assertEqual(self.settings.stat().st_mode & 0o777, 0o600)
+
+    def test_fresh_and_interrupted_install_never_places_missing_prompt_target(self):
+        for _ in range(2):
+            result = self.install()
+            self.assertIn('UserPromptSubmit guard: deferred', result.stdout)
+            self.assertNotIn(GUARD, self.hooks('UserPromptSubmit'))
+            self.assertNotIn(SESSION, self.hooks('SessionStart'))
+        for name in ('openRepoTools', 'lanes-index', 'lane-worktrees'):
+            self.assertTrue(os.access(self.bin / name, os.X_OK))
+
+    def test_migration_removes_only_our_broken_guard_and_preserves_foreign_hooks(self):
+        self.settings.parent.mkdir()
+        self.settings.write_text(json.dumps({'custom': 'preserved', 'hooks': {
+            'SessionStart': [{'hooks': [{'type': 'command', 'command': SESSION}]}],
+            'UserPromptSubmit': [{'hooks': [{'type': 'command', 'command': GUARD},
+                                          {'type': 'command', 'command': 'echo personal-hook'}]}]}}))
+        self.settings.chmod(0o644)
+        self.install()
+        self.assertEqual(self.hooks('SessionStart'), [SESSION])
+        self.assertEqual(self.hooks('UserPromptSubmit'), ['echo personal-hook'])
+        self.assertEqual(json.loads(self.settings.read_text())['custom'], 'preserved')
+        self.assertEqual(self.settings.stat().st_mode & 0o777, 0o600)
+
+    def test_wip_init_rerun_heals_interruption_and_keeps_real_guard_refusal(self):
+        self.install(); self.workspace()
+        for _ in range(2):
+            self.run_command(str(self.bin / 'openRepoTools'), 'wip', 'init')
+            self.assert_pair()
+        result = subprocess.run(['bash', str(self.bin / 'lanes-edit.sh'), 'guard'], env=self.env,
+            input=json.dumps({'session_id': 'fixture', 'cwd': str(self.home), 'prompt': 'hello'}),
+            capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+
+    def test_container_start_completes_hooks_after_linking_on_the_first_run(self):
+        self.workspace()
+        self.env['WORKBENCHES_ESTATE_VENDOR_DIR'] = str(ROOT / 'devBenches/base-image/files/openrepotools')
+        self.run_command('bash', str(ROOT / 'devBenches/base-image/files/estate/estate-commands-start'))
+        self.assert_pair()
+        self.assertTrue((self.home / 'projects/xFactory/lanes-edit.sh').is_symlink())
+
+
+if __name__ == '__main__': unittest.main()
+HOOK_GATE_TESTS
 
 if (( failures == 0 )); then
     printf '%s\n' 'GREEN: setup-estate-commands regression test passed'

@@ -228,8 +228,8 @@ COPY files/openrepotools/openRepoTools /usr/local/bin/openRepoTools
 COPY files/openrepotools/park /usr/local/bin/park
 COPY files/openrepotools/resume /usr/local/bin/resume
 COPY files/openrepotools/status /usr/local/bin/status
-COPY files/openrepotools/lane /usr/local/bin/lane
-COPY files/openrepotools/lanes /usr/local/bin/lanes
+COPY files/openrepotools/lane files/openrepotools/lane-worktrees /usr/local/bin/
+COPY files/openrepotools/lanes files/openrepotools/lanes-index /usr/local/bin/
 COPY files/openrepotools/lane-handoff /usr/local/bin/lane-handoff
 COPY files/openrepotools/lane-rename /usr/local/bin/lane-rename
 COPY files/openrepotools/lanes-edit.sh /usr/local/bin/lanes-edit.sh
@@ -245,7 +245,8 @@ RUN chmod 0755 /usr/local/bin/openRepoShape /usr/local/bin/openRepoTools \
     /usr/local/bin/lanes-edit.sh \
     /usr/local/bin/lane-start /usr/local/bin/lane-end /usr/local/bin/link-estates \
     /usr/local/bin/repos.tsv \
-    /usr/local/bin/claude-current /usr/local/bin/claude-restart-check
+    /usr/local/bin/claude-current /usr/local/bin/claude-restart-check \
+    /usr/local/bin/lanes-index /usr/local/bin/lane-worktrees
 
 # THE RECORD (opensoft/workBenches#153). From v1.0.1 the openRepoShape launcher
 # reads the ref it runs at from `<command>.ref` beside itself and stays on it:

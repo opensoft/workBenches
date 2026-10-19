@@ -127,6 +127,7 @@ run_install() {
     scenario
     env HOME="$FAKE_HOME" \
         OPENREPOTOOLS_BIN_DIR="$TEST_ROOT/bin" \
+        XDG_DATA_HOME="$FAKE_HOME/.local/share" XDG_CACHE_HOME="$FAKE_HOME/.cache" \
         CLAUDE_PROFILES_HOME="$BASE" \
         CLAUDE_USER_DIR="$DEFAULT_CLAUDE" \
         OPENREPOTOOLS_REPO=pinned-by-workBenches-no-fetch \
@@ -210,6 +211,10 @@ jq -e '.hooks.SessionStart // empty' "$DEFAULT_SETTINGS" >/dev/null 2>&1 \
 # pinned skills/lane-swap/SKILL.md and commands/swap.md beside the shim this
 # run exits 2 having placed NOTHING: "could not fetch ... from
 # pinned-by-workBenches-no-fetch".
+# #237 only activates hooks once their linked target can answer guard. This
+# scenario tests the activated pair; fresh/deferred setup is covered separately.
+mkdir -p "$FAKE_HOME/projects/xFactory"
+ln -sfn "$TEST_ROOT/bin/lanes-edit.sh" "$FAKE_HOME/projects/xFactory/lanes-edit.sh"
 run_install
 [[ -f "$SHARED_SKILL" ]] \
     || fail "install: --install placed nothing at $SHARED_SKILL ($(cat "$TEST_ROOT/install.out"))"; assertion
