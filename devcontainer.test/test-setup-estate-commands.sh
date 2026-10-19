@@ -1288,8 +1288,29 @@ assert_has_line() {
         fail "$label: no line equal to: $line"
     fi
 }
+# Resolve COPY mappings, including multiple sources sharing a destination
+# directory. Every bin must still come from its exact pinned source; grouping
+# the two new files avoids spending additional OverlayFS layers.
+DEV_COPY_MAPPINGS="$(python3 - "$DEV_DOCKERFILE" <<'COPY_MAPPINGS'
+from pathlib import Path
+import shlex
+import sys
+for line in Path(sys.argv[1]).read_text().splitlines():
+    if not line.lstrip().upper().startswith('COPY '):
+        continue
+    words = shlex.split(line, comments=True)
+    if not words or words[0].upper() != 'COPY':
+        continue
+    arguments = [word for word in words[1:] if not word.startswith('--')]
+    for source in arguments[:-1]:
+        destination = arguments[-1]
+        if destination.endswith('/'):
+            destination += Path(source).name
+        print(source + ' ' + destination)
+COPY_MAPPINGS
+)"
 for name in "${SHIM_INSTALLABLES[@]}"; do
-    assert_has_line "$DEV_DOCKERFILE_TEXT" "COPY files/openrepotools/$name /usr/local/bin/$name" "the Dockerfile COPYs $name into /usr/local/bin"
+    assert_has_line "$DEV_COPY_MAPPINGS" "files/openrepotools/$name /usr/local/bin/$name" "the Dockerfile COPYs $name from its exact pinned source into /usr/local/bin"
     assert_has_line "$DEV_CHMOD_WORDS" "/usr/local/bin/$name" "the Dockerfile's chmod 0755 block lists /usr/local/bin/$name"
 done
 

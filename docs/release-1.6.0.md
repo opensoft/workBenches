@@ -57,7 +57,8 @@ The candidate now consumes the complete openRepoTools payload at upstream merge
 `586dea25e073caadc33002e0157376788678dee0` (PR #247), taken with the vendored-copy
 updater. This includes the two additional installables `lanes-index` and
 `lane-worktrees`; host preflight and the dev-image COPY/chmod set match all 17
-upstream bin files. The earlier upstream fixes in that commit's ancestry are
+upstream bin files. Grouped COPY instructions preserve the existing image-layer
+budget rather than adding two layers. The earlier upstream fixes in that commit's ancestry are
 included as a consistent pinned snapshot, not hand-edited vendor files.
 
 Fresh installation defers the hook pair until its linked target answers guard.
