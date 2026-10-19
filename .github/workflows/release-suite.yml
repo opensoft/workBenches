@@ -1,0 +1,57 @@
+name: Reusable release suite
+on:
+  workflow_call:
+    inputs:
+      suite:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+      source_ref:
+        required: true
+        type: string
+      automation_sha:
+        required: true
+        type: string
+cache-mode: none
+permissions:
+  contents: read
+jobs:
+  suite:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      WB_AUTOMATION_SHA: ${{ inputs.automation_sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.automation_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install the declared shell-test prerequisite
+        if: inputs.suite == 'speckit'
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends zsh
+      - name: Run the shared manifest suite
+        env:
+          SUITE: ${{ inputs.suite }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          python3 automation/scripts/release-validation.py run --root candidate \
+            --suite "$SUITE" --commit "$SOURCE_SHA" --ref "$SOURCE_REF" \
+            --reports "$RUNNER_TEMP/release-evidence"
+      - name: Upload metadata only, including failure evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-evidence-${{ inputs.suite }}
+          path: ${{ runner.temp }}/release-evidence/*.json
+          if-no-files-found: error
+          retention-days: 14

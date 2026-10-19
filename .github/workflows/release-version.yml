@@ -28,6 +28,7 @@ on:
         description: Existing release tag to validate (leave empty to check the selected ref)
         required: false
         type: string
+cache-mode: none
 permissions:
   contents: read
 jobs:

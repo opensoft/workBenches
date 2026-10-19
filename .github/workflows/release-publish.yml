@@ -1,0 +1,40 @@
+name: Publish validated release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable VERSION already committed and fully tested on main
+        required: true
+        type: string
+      validation_run:
+        description: Successful full Release validation run for the current main commit
+        required: true
+        type: string
+cache-mode: none
+permissions:
+  contents: read
+concurrency:
+  group: product-release-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: release-publish
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Revalidate evidence and publish the immutable tested source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          VALIDATION_RUN: ${{ inputs.validation_run }}
+        run: |
+          python3 scripts/publish-validated-release.py --root "$GITHUB_WORKSPACE" \
+            --version "$VERSION" --run-id "$VALIDATION_RUN" --publish

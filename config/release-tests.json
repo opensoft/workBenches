@@ -1,0 +1,963 @@
+{
+  "schemaVersion": 1,
+  "maxAgeSeconds": 86400,
+  "suites": {
+    "source": {
+      "kind": "hosted",
+      "minVersion": "1.5",
+      "commands": [
+        {
+          "id": "source-lock",
+          "argv": [
+            "python3",
+            "scripts/release-workbenches.py",
+            "check"
+          ]
+        },
+        {
+          "id": "release-regressions",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-release-version.py"
+          ]
+        }
+      ]
+    },
+    "setup": {
+      "kind": "hosted",
+      "minVersion": "1.5",
+      "commands": [
+        {
+          "id": "image-layer-budget",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-image-layer-budget.py"
+          ]
+        },
+        {
+          "id": "setup-requirements",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-setup-requirements.py"
+          ]
+        },
+        {
+          "id": "setup-async",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-setup-async.py"
+          ]
+        },
+        {
+          "id": "setup-services",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-setup-services.py"
+          ]
+        },
+        {
+          "id": "workbenches-account",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-workbenches-account.py"
+          ]
+        },
+        {
+          "id": "docker-prerequisite",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-docker-prerequisite.py"
+          ]
+        },
+        {
+          "id": "setup-components",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-setup-components.py"
+          ]
+        },
+        {
+          "id": "vibe-annotations-readiness",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-vibe-annotations-readiness.py"
+          ]
+        },
+        {
+          "id": "setup-credential-plan",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-setup-credential-plan.py"
+          ]
+        },
+        {
+          "id": "git-transport",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-git-transport.py"
+          ]
+        },
+        {
+          "id": "setup-bench-status",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-setup-bench-status.sh"
+          ]
+        },
+        {
+          "id": "compose-ai-profiles",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-compose-ai-profiles.py"
+          ]
+        },
+        {
+          "id": "ai-credential-keyvault",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-ai-credential-keyvault.sh"
+          ]
+        },
+        {
+          "id": "opencode-omniroute-credential",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-opencode-omniroute-credential.sh"
+          ]
+        },
+        {
+          "id": "vault-credential-recovery",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-vault-credential-recovery.py"
+          ]
+        },
+        {
+          "id": "setup-guided-flow",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-setup-guided-flow.py"
+          ]
+        },
+        {
+          "id": "setup-consent",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-setup-consent.py"
+          ]
+        },
+        {
+          "id": "install-friction",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-install-friction.py"
+          ]
+        },
+        {
+          "id": "azure-cli-runtime",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-azure-cli-runtime.py"
+          ]
+        },
+        {
+          "id": "setup-ai-credential-recovery",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-setup-ai-credential-recovery.sh"
+          ]
+        },
+        {
+          "id": "setup-cancel",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-setup-cancel.sh"
+          ]
+        },
+        {
+          "id": "setup-profiles",
+          "minVersion": "1.6",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-setup-profiles.py"
+          ]
+        },
+        {
+          "id": "multi-identity",
+          "minVersion": "1.6",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-profile-multi-identity.py"
+          ]
+        }
+      ]
+    },
+    "launchers": {
+      "kind": "hosted",
+      "minVersion": "1.5",
+      "commands": [
+        {
+          "id": "claude-profile-lane-default",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-claude-profile-lane-default.sh"
+          ]
+        },
+        {
+          "id": "claude-profile-lane-start",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-claude-profile-lane-start.sh"
+          ]
+        },
+        {
+          "id": "claude-profile-session-start-hook",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-claude-profile-session-start-hook.sh"
+          ]
+        },
+        {
+          "id": "claude-profile-preserves-model",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-claude-profile-preserves-model.sh"
+          ]
+        },
+        {
+          "id": "claude-profile-name-guard-hook",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-claude-profile-name-guard-hook.sh"
+          ]
+        },
+        {
+          "id": "claude-profile-binary-selection",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-claude-profile-binary-selection.sh"
+          ]
+        },
+        {
+          "id": "claude-profile-amendment-11",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-claude-profile-amendment-11.sh"
+          ]
+        },
+        {
+          "id": "claude-profile-refusal-fallback",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-claude-profile-refusal-fallback.sh"
+          ]
+        },
+        {
+          "id": "claude-profile-agent-model-hook",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-claude-profile-agent-model-hook.sh"
+          ]
+        },
+        {
+          "id": "codex-profile",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-codex-profile.sh"
+          ]
+        },
+        {
+          "id": "shared-mcp-profiles",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-shared-mcp-profiles.sh"
+          ]
+        },
+        {
+          "id": "claude-tmux-statusline",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-claude-tmux-statusline.sh"
+          ]
+        },
+        {
+          "id": "claude-tmux-statusline-env-isolation",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-claude-tmux-statusline-env-isolation.sh"
+          ]
+        },
+        {
+          "id": "claude-statusline-snapshots",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-claude-statusline-snapshots.sh"
+          ]
+        },
+        {
+          "id": "claude-profile-skill-install",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-claude-profile-skill-install.sh"
+          ]
+        }
+      ]
+    },
+    "estate": {
+      "kind": "hosted",
+      "minVersion": "1.5",
+      "commands": [
+        {
+          "id": "upstream-pin",
+          "argv": [
+            "python3",
+            "devBenches/base-image/update-upstream.py",
+            "check"
+          ]
+        },
+        {
+          "id": "upstream-regressions",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-update-upstream.py"
+          ]
+        },
+        {
+          "id": "estate-install",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-setup-estate-commands.sh"
+          ]
+        },
+        {
+          "id": "workspace-init",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-setup-workspace-repo.sh"
+          ]
+        }
+      ]
+    },
+    "tools": {
+      "kind": "hosted",
+      "minVersion": "1.5",
+      "timeoutSeconds": 2400,
+      "commands": [
+        {
+          "id": "build",
+          "argv": [
+            "docker",
+            "compose",
+            "-p",
+            "{project}",
+            "-f",
+            "devcontainer.test/docker-compose.yml",
+            "--profile",
+            "tools-runtime",
+            "build",
+            "tools-runtime"
+          ]
+        },
+        {
+          "id": "acceptance",
+          "argv": [
+            "docker",
+            "compose",
+            "-p",
+            "{project}",
+            "-f",
+            "devcontainer.test/docker-compose.yml",
+            "--profile",
+            "tools-runtime",
+            "run",
+            "--rm",
+            "tools-runtime"
+          ]
+        }
+      ],
+      "cleanup": [
+        [
+          "docker",
+          "compose",
+          "-p",
+          "{project}",
+          "-f",
+          "devcontainer.test/docker-compose.yml",
+          "--profile",
+          "tools-runtime",
+          "down",
+          "--volumes",
+          "--remove-orphans"
+        ]
+      ]
+    },
+    "lifecycle": {
+      "kind": "hosted",
+      "minVersion": "1.5",
+      "timeoutSeconds": 2400,
+      "commands": [
+        {
+          "id": "build",
+          "argv": [
+            "docker",
+            "compose",
+            "-p",
+            "{project}",
+            "-f",
+            "devcontainer.test/docker-compose.yml",
+            "--profile",
+            "component-lifecycle",
+            "build",
+            "component-lifecycle"
+          ]
+        },
+        {
+          "id": "acceptance",
+          "argv": [
+            "docker",
+            "compose",
+            "-p",
+            "{project}",
+            "-f",
+            "devcontainer.test/docker-compose.yml",
+            "--profile",
+            "component-lifecycle",
+            "run",
+            "--rm",
+            "component-lifecycle"
+          ]
+        }
+      ],
+      "cleanup": [
+        [
+          "docker",
+          "compose",
+          "-p",
+          "{project}",
+          "-f",
+          "devcontainer.test/docker-compose.yml",
+          "--profile",
+          "component-lifecycle",
+          "down",
+          "--volumes",
+          "--remove-orphans"
+        ]
+      ]
+    },
+    "broker": {
+      "kind": "hosted",
+      "minVersion": "1.6",
+      "timeoutSeconds": 2400,
+      "commands": [
+        {
+          "id": "build",
+          "argv": [
+            "docker",
+            "compose",
+            "-p",
+            "{project}",
+            "-f",
+            "devcontainer.test/docker-compose.yml",
+            "--profile",
+            "credential-sync",
+            "build",
+            "credential-sync"
+          ]
+        },
+        {
+          "id": "acceptance",
+          "argv": [
+            "docker",
+            "compose",
+            "-p",
+            "{project}",
+            "-f",
+            "devcontainer.test/docker-compose.yml",
+            "--profile",
+            "credential-sync",
+            "run",
+            "--rm",
+            "credential-sync"
+          ]
+        }
+      ],
+      "cleanup": [
+        [
+          "docker",
+          "compose",
+          "-p",
+          "{project}",
+          "-f",
+          "devcontainer.test/docker-compose.yml",
+          "--profile",
+          "credential-sync",
+          "down",
+          "--volumes",
+          "--remove-orphans"
+        ]
+      ]
+    },
+    "device-ssh": {
+      "kind": "hosted",
+      "minVersion": "1.7",
+      "timeoutSeconds": 2400,
+      "commands": [
+        {
+          "id": "build",
+          "argv": [
+            "docker",
+            "compose",
+            "-p",
+            "{project}",
+            "-f",
+            "devcontainer.test/docker-compose.yml",
+            "--profile",
+            "device-trust",
+            "build",
+            "device-trust"
+          ]
+        },
+        {
+          "id": "acceptance",
+          "argv": [
+            "docker",
+            "compose",
+            "-p",
+            "{project}",
+            "-f",
+            "devcontainer.test/docker-compose.yml",
+            "--profile",
+            "device-trust",
+            "run",
+            "--rm",
+            "device-trust"
+          ]
+        }
+      ],
+      "cleanup": [
+        [
+          "docker",
+          "compose",
+          "-p",
+          "{project}",
+          "-f",
+          "devcontainer.test/docker-compose.yml",
+          "--profile",
+          "device-trust",
+          "down",
+          "--volumes",
+          "--remove-orphans"
+        ]
+      ]
+    },
+    "credentials": {
+      "kind": "hosted",
+      "minVersion": "1.5",
+      "timeoutSeconds": 1200,
+      "commands": [
+        {
+          "id": "build",
+          "argv": [
+            "docker",
+            "compose",
+            "-p",
+            "{project}",
+            "-f",
+            "devcontainer.test/docker-compose.yml",
+            "--profile",
+            "credential-recovery",
+            "build",
+            "credential-bitwarden",
+            "credential-1password"
+          ]
+        },
+        {
+          "id": "bitwarden",
+          "argv": [
+            "docker",
+            "compose",
+            "-p",
+            "{project}",
+            "-f",
+            "devcontainer.test/docker-compose.yml",
+            "--profile",
+            "credential-recovery",
+            "run",
+            "--rm",
+            "--no-deps",
+            "credential-bitwarden"
+          ]
+        },
+        {
+          "id": "onepassword",
+          "argv": [
+            "docker",
+            "compose",
+            "-p",
+            "{project}",
+            "-f",
+            "devcontainer.test/docker-compose.yml",
+            "--profile",
+            "credential-recovery",
+            "run",
+            "--rm",
+            "--no-deps",
+            "credential-1password"
+          ]
+        },
+        {
+          "id": "credential-fixture-build",
+          "argv": [
+            "docker",
+            "compose",
+            "-p",
+            "{project}",
+            "-f",
+            "devcontainer.test/docker-compose.yml",
+            "--profile",
+            "credential-test",
+            "build",
+            "credential-fixture"
+          ]
+        },
+        {
+          "id": "guided",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-credential-container-guided.py"
+          ]
+        }
+      ],
+      "cleanup": [
+        [
+          "docker",
+          "compose",
+          "-p",
+          "{project}",
+          "-f",
+          "devcontainer.test/docker-compose.yml",
+          "--profile",
+          "credential-recovery",
+          "down",
+          "--volumes",
+          "--remove-orphans"
+        ]
+      ]
+    },
+    "fresh-install": {
+      "kind": "hosted",
+      "minVersion": "1.5",
+      "timeoutSeconds": 5400,
+      "commands": [
+        {
+          "id": "fresh-repeat-removal-preservation",
+          "argv": [
+            "docker",
+            "compose",
+            "-p",
+            "{project}",
+            "-f",
+            "devcontainer.test/docker-compose.yml",
+            "--profile",
+            "workstation-acceptance",
+            "up",
+            "--build",
+            "--abort-on-container-exit",
+            "--exit-code-from",
+            "workstation-acceptance",
+            "acceptance-engine",
+            "workstation-acceptance"
+          ]
+        }
+      ],
+      "cleanup": [
+        [
+          "docker",
+          "compose",
+          "-p",
+          "{project}",
+          "-f",
+          "devcontainer.test/docker-compose.yml",
+          "--profile",
+          "workstation-acceptance",
+          "down",
+          "--volumes",
+          "--remove-orphans"
+        ]
+      ]
+    },
+    "arch-native": {
+      "kind": "external",
+      "minVersion": "1.6",
+      "labels": [
+        "self-hosted",
+        "Linux",
+        "workbenches-qa",
+        "arch"
+      ],
+      "cases": [
+        "fresh-install",
+        "repeat-install",
+        "shell-install",
+        "shell-repeat",
+        "cancel-preserve",
+        "cleanup"
+      ],
+      "timeoutSeconds": 10800
+    },
+    "wsl-native": {
+      "kind": "external",
+      "minVersion": "1.5",
+      "labels": [
+        "self-hosted",
+        "Linux",
+        "workbenches-qa",
+        "wsl2"
+      ],
+      "cases": [
+        "desktop",
+        "bench",
+        "services",
+        "guard",
+        "preservation",
+        "cleanup"
+      ],
+      "timeoutSeconds": 10800
+    },
+    "github-live": {
+      "kind": "external",
+      "minVersion": "1.6",
+      "labels": [
+        "self-hosted",
+        "Linux",
+        "workbenches-qa",
+        "desktop"
+      ],
+      "cases": [
+        "browser-open",
+        "clipboard-code",
+        "account-a-login",
+        "account-b-login",
+        "reuse-no-switch",
+        "reauth",
+        "cancel",
+        "cleanup"
+      ],
+      "timeoutSeconds": 3600
+    },
+    "company-live": {
+      "kind": "external",
+      "minVersion": "1.6",
+      "labels": [
+        "self-hosted",
+        "Linux",
+        "workbenches-qa",
+        "desktop"
+      ],
+      "cases": [
+        "company-a-login",
+        "company-b-login",
+        "signout",
+        "reconnect",
+        "session-expiry",
+        "denied-user",
+        "tenant-isolation",
+        "cleanup"
+      ],
+      "timeoutSeconds": 3600
+    },
+    "provider-live": {
+      "kind": "external",
+      "minVersion": "1.6",
+      "labels": [
+        "self-hosted",
+        "Linux",
+        "workbenches-qa",
+        "cloud"
+      ],
+      "cases": [
+        "approved-provider-mode",
+        "managed-identity-kv",
+        "publish",
+        "recover",
+        "conflict",
+        "offline",
+        "login-required",
+        "cpc-refresh",
+        "denied-tenant",
+        "cleanup"
+      ],
+      "timeoutSeconds": 3600
+    },
+    "device-live": {
+      "kind": "external",
+      "minVersion": "1.7",
+      "labels": [
+        "self-hosted",
+        "Linux",
+        "workbenches-qa",
+        "desktop"
+      ],
+      "cases": [
+        "registration-no-access",
+        "destination-approval",
+        "wrong-owner-denied",
+        "reverse-denied",
+        "connect",
+        "revoke",
+        "offline-expiry",
+        "cleanup"
+      ],
+      "timeoutSeconds": 3600
+    },
+    "speckit": {
+      "kind": "hosted",
+      "minVersion": "1.5",
+      "timeoutSeconds": 1800,
+      "commands": [
+        {
+          "id": "openspeckit-bootstrap",
+          "argv": [
+            "bash",
+            "devBenches/devcontainer.test/test-openspeckit-bootstrap.sh"
+          ]
+        },
+        {
+          "id": "speckit-git-feature",
+          "argv": [
+            "bash",
+            "devBenches/devcontainer.test/test-speckit-git-feature.sh"
+          ]
+        },
+        {
+          "id": "speckit-git-compat",
+          "argv": [
+            "bash",
+            "devBenches/devcontainer.test/test-speckit-git-compat.sh"
+          ]
+        },
+        {
+          "id": "ct-launchers",
+          "argv": [
+            "bash",
+            "devBenches/devcontainer.test/test-ct-launchers.sh"
+          ]
+        }
+      ]
+    },
+    "images": {
+      "kind": "hosted",
+      "minVersion": "1.5",
+      "commands": [
+        {
+          "id": "image-layer-budget",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-image-layer-budget.py"
+          ]
+        },
+        {
+          "id": "cascade-image-validation",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-cascade-image-validation.sh"
+          ]
+        },
+        {
+          "id": "base-image-dockerfile",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-base-image-dockerfile.sh"
+          ]
+        },
+        {
+          "id": "ai-cli-install-summary",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-ai-cli-install-summary.sh"
+          ]
+        },
+        {
+          "id": "layer3-codex-version",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-layer3-codex-version.sh"
+          ]
+        },
+        {
+          "id": "layer3-claude-version",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-layer3-claude-version.sh"
+          ]
+        },
+        {
+          "id": "ensure-layer3-freshness",
+          "argv": [
+            "bash",
+            "devcontainer.test/test-ensure-layer3-freshness.sh"
+          ]
+        }
+      ]
+    },
+    "npm-integrity": {
+      "kind": "hosted",
+      "minVersion": "1.5",
+      "timeoutSeconds": 900,
+      "commands": [
+        {
+          "id": "build",
+          "argv": [
+            "docker",
+            "compose",
+            "-p",
+            "{project}",
+            "-f",
+            "devcontainer.test/docker-compose.yml",
+            "--profile",
+            "merge-validation",
+            "build",
+            "npm-integrity"
+          ]
+        },
+        {
+          "id": "real-npm-policy",
+          "argv": [
+            "docker",
+            "compose",
+            "-p",
+            "{project}",
+            "-f",
+            "devcontainer.test/docker-compose.yml",
+            "--profile",
+            "merge-validation",
+            "run",
+            "--rm",
+            "--no-deps",
+            "npm-integrity"
+          ]
+        }
+      ],
+      "cleanup": [
+        [
+          "docker",
+          "compose",
+          "-p",
+          "{project}",
+          "-f",
+          "devcontainer.test/docker-compose.yml",
+          "--profile",
+          "merge-validation",
+          "down",
+          "--volumes",
+          "--remove-orphans"
+        ]
+      ]
+    }
+  },
+  "supportedReleaseLines": [
+    "1.5",
+    "1.6",
+    "1.7"
+  ]
+}

@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
 import shutil
 import socket
 import subprocess
@@ -30,12 +31,18 @@ def main():
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--sha', required=True)
     parser.add_argument('--engine', required=True, help='Disposable engine Unix socket, mounted at the same path inside it')
+    parser.add_argument('--platform', choices=('wsl', 'arch'), default='wsl')
     parser.add_argument('--phase', choices=('all', 'desktop', 'bench', 'services', 'guard'), default='all')
     parser.add_argument('--resume', action='store_true', help='Continue matching evidence after correcting a QA driver or environment issue')
     args = parser.parse_args()
     home, repo, report = Path.home().resolve(), args.repo.resolve(), args.report.resolve()
     assert os.environ.get('WORKBENCHES_WSL_ACCEPTANCE') == '1', 'Explicit native acceptance opt-in required'
-    assert 'microsoft-standard' in os.uname().release.lower() and not Path('/.dockerenv').exists(), 'Requires a real WSL 2 host'
+    assert not Path('/.dockerenv').exists(), 'Requires a native QA host'
+    if args.platform == 'wsl':
+        assert 'microsoft-standard' in os.uname().release.lower(), 'Requires a real WSL 2 host'
+    else:
+        release = Path('/etc/os-release').read_text()
+        assert any(line in release.splitlines() for line in ('ID=arch', 'ID=manjaro', 'ID=endeavouros')), 'Requires native Arch-family Linux'
     assert os.getuid() != 0, 'Run as the normal WSL user to exercise mapped-user access'
     assert home != Path(pwd.getpwuid(os.getuid()).pw_dir).resolve(), 'Requires an isolated HOME'
     if args.phase in ('all', 'bench', 'guard'):
@@ -183,7 +190,7 @@ def main():
             check('vault', lambda: run(['bash', 'scripts/manage-setup-services.sh', 'start', 'vault'], timeout=1800, log='vault-start.log'))
         if args.phase in ('all', 'desktop'):
             check('tools', lambda: run(['bash', 'scripts/manage-setup-services.sh', 'start', 'tools'], timeout=600, log='tools-start.log'))
-            check('loading-cancellation', lambda: terminal('loading-cancellation', [(r'workBenches v1\.5\.0', 'Q')], 130))
+            check('loading-cancellation', lambda: terminal('loading-cancellation', [(r'workBenches v' + re.escape((repo / 'VERSION').read_text().strip()), 'Q')], 130))
             check('empty', lambda: terminal('empty', [(tui.TUI, '\n')]))
             if not args.resume:
                 fixture(home / '.zshrc', '# WSL acceptance custom settings\n')
