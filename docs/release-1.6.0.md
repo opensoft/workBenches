@@ -70,3 +70,16 @@ It never retries an initial installer refusal or edits hook JSON itself.
 
 This is a post-rc.1 candidate fix. The existing tag remains unchanged; a further
 candidate needs a new version/tag and exact-commit release validation.
+
+## Candidate follow-up: reviewed Linux bootstrap changes
+
+The advanced personal credential-registry prompt now explains that the registry
+is optional and asks for the GitHub username or organization owning its repository.
+The selected host-shell installation supports Arch, Manjaro, and EndeavourOS via
+`pacman -S --needed --noconfirm`.
+
+These selectively port the compatible pieces of the older local bootstrap work.
+GitHub connections continue through Profiles with isolated per-account sign-in;
+the older automatic global login, Git credential-helper changes, and SSH-key
+creation/upload are not part of this candidate. GitHub CLI must currently be
+installed on the workstation before connecting an account.

@@ -346,7 +346,9 @@ def interactive_answers() -> dict[str, Any]:
                 raise ValueError("registry organization is required")
             company["registry"] = choose_registry(company["name"], company["githubOrg"])
         if personal_accounts:
-            personal_org = ask("GitHub owner of your personal registry", github_user)
+            print("Your personal registry is optional. If you use one, enter the GitHub username or organization "
+                  "that owns its repository (for example, your personal GitHub username).")
+            personal_org = ask("Personal credential-registry GitHub owner", github_user)
             personal_registry = choose_registry("personal accounts", personal_org)
 
     return {
