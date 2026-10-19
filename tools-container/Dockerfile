@@ -6,7 +6,8 @@ RUN apk --timeout 20 add --no-cache bash ca-certificates curl git jq openssh-cli
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
 COPY workbenches_host.py host-command /opt/workbenches/
-RUN chmod +x /opt/workbenches/host-command \
+RUN chmod 0755 /opt/workbenches /opt/workbenches/host-command \
+    && chmod 0644 /opt/workbenches/workbenches_host.py \
     && python3 -c 'import shutil, sysconfig; shutil.copy("/opt/workbenches/workbenches_host.py", sysconfig.get_paths()["purelib"])' \
     && mkdir -p /opt/workbenches/host-bin \
     && for name in gh node npm uv wsl.exe powershell.exe pwsh.exe xdg-open open \
@@ -18,5 +19,6 @@ ENV PATH=/opt/workbenches/host-bin:$PATH \
     PYTHONPATH=/opt/workbenches \
     PYTHONDONTWRITEBYTECODE=1
 HEALTHCHECK --interval=3s --timeout=5s --start-period=1s --retries=2 \
-    CMD python3 --version && jq --version && git --version && curl --version
+    CMD test -r /opt/workbenches/host-command && test -x /opt/workbenches/host-command \
+        && python3 -c 'import workbenches_host' && jq --version && git --version && curl --version
 CMD ["sleep", "infinity"]

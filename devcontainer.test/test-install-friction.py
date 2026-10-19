@@ -40,6 +40,14 @@ class ImageTests(unittest.TestCase):
             before=shared.fingerprint('dev',roots[0])
             (roots[0]/'base-image/helper.sh').write_text('changed')
             self.assertNotEqual(before,shared.fingerprint('dev',roots[0]))
+            # #106: changing only a vendored helper must invalidate the dev
+            # image even when Dockerfile and build.sh have not changed.
+            vendor = roots[1]/'devBenches/base-image/files/vendor/helper.sh'
+            vendor.parent.mkdir(parents=True)
+            vendor.write_text('old')
+            vendor_before = shared.fingerprint('dev', roots[1])
+            vendor.write_text('new')
+            self.assertNotEqual(vendor_before, shared.fingerprint('dev', roots[1]))
             cache_before=shared.fingerprint('base',roots[1])
             (roots[1]/'base-image/__pycache__').mkdir()
             (roots[1]/'base-image/__pycache__/unrelated.pyc').write_text('ignored')
@@ -119,11 +127,14 @@ class ImageTests(unittest.TestCase):
         self.assertTrue(shared.compatible(row,'dev','recipe','linux/amd64','old'))
 
 class BenchTests(unittest.TestCase):
-    def exercise(self, existing=False, raced=False, fail_check=False):
+    def exercise(self, existing=False, raced=False, fail_check=False, builder=False, fail_build=False):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);repo=root/'repo';setup=repo/'devBenches/pyBench/setup.sh';setup.parent.mkdir(parents=True)
             compose=setup.parent/'.devcontainer/docker-compose.yml';compose.parent.mkdir();compose.write_text('services: {}')
             setup.write_text('#!/bin/bash\ndocker-compose -f .devcontainer/docker-compose.yml up -d\n')
+            if builder:
+                build_dir=setup.parent/'scripts';build_dir.mkdir()
+                (build_dir/'build-layer2.sh').write_text('#!/bin/bash\necho build-layer2 >> "$BENCH_LOG"\nexit "${FAIL_BUILD:-0}"\n')
             scripts=repo/'scripts';scripts.mkdir()
             (scripts/'wave-container-shell.sh').write_text('''#!/bin/bash
 if [[ "$*" == *--prepare-compose* ]]; then
@@ -146,11 +157,11 @@ if args[:2]==['container','inspect']:
  sys.exit(1)
 if 'config' in args: print(json.dumps({'services':{'py-bench':{'container_name':'py-bench'}}}));sys.exit(0)
 if 'up' in args:
- Path(os.environ['BENCH_LOG']).write_text(' '.join(args)+'\\n')
+ with Path(os.environ['BENCH_LOG']).open('a') as stream: stream.write(' '.join(args)+'\\n')
 sys.exit(0)
 ''');docker.chmod(0o700)
             spec=importlib.util.spec_from_file_location('bench',ROOT/'scripts/setup-bench-runtime.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-            log=root/'actions';env=dict(os.environ,HOME=str(root/'home'),PATH=str(binary)+os.pathsep+os.environ['PATH'],BENCH_LOG=str(log),COUNT=str(root/'count'),EXISTING=str(int(existing)),RACED=str(int(raced)),FAIL_CHECK=str(int(fail_check)))
+            log=root/'actions';env=dict(os.environ,HOME=str(root/'home'),PATH=str(binary)+os.pathsep+os.environ['PATH'],BENCH_LOG=str(log),COUNT=str(root/'count'),EXISTING=str(int(existing)),RACED=str(int(raced)),FAIL_CHECK=str(int(fail_check)),FAIL_BUILD='42' if fail_build else '0')
             with patch.dict(os.environ,env),patch.object(module,'ROOT',repo),patch.object(module.sys,'argv',['setup','--bench','pyBench','--setup',str(setup)]): code=module.main()
             return code,log.read_text() if log.exists() else ''
 
@@ -162,5 +173,15 @@ sys.exit(0)
     def test_existing_and_racing_live_containers_are_preserved(self):
         for kwargs in ({'existing':True},{'raced':True}):
             code,log=self.exercise(**kwargs);self.assertEqual(code,1);self.assertEqual(log,'')
+
+    def test_declared_image_builder_refreshes_before_startup(self):
+        code,log=self.exercise(builder=True)
+        self.assertEqual(code,0)
+        self.assertLess(log.index('build-layer2'),log.index('up -d'))
+        self.assertLess(log.index('up -d'),log.index('check'))
+        code,log=self.exercise(builder=True,fail_build=True)
+        self.assertEqual(code,42);self.assertEqual(log,'build-layer2\n')
+        code,log=self.exercise(builder=True,existing=True)
+        self.assertEqual(code,1);self.assertEqual(log,'')
 
 if __name__=='__main__': unittest.main()

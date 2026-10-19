@@ -1134,11 +1134,10 @@ act1_compose_child_command() {
   # cleared and assigned ends up with the assigned value (measured: `env -u X
   # X=fresh` gives `X=fresh`).
   #
-  # `LANES_WORKSTATION` is deliberately NOT cleared with them. Its rule is
-  # `R-A11-14`'s and predates this round — where no workstation is configured
-  # the writers REFUSE by name rather than falling back, so an inherited value
-  # there is a different question with a different answer, and it is filed
-  # rather than changed here.
+  # Clear LANES_WORKSTATION too (#104). Where no workstation is configured,
+  # R-A11-14 requires writers to refuse by name. A stale value inherited from
+  # the tmux server would silently attribute this session to that workstation.
+  # The assignment below restores an explicitly configured value.
   #
   # THE EXECUTABLE IS NOT RESOLVED ON THIS SIDE (opensoft/workBenches#119,
   # design.md Decision 4). This process only wraps tmux, and running the
@@ -1149,7 +1148,7 @@ act1_compose_child_command() {
   # CLAUDE_VERIFIED_VERSION are cleared with it, so a pair the tmux server
   # captured from an earlier session cannot turn a pin into an inherited
   # resolution, and no stale version is handed on.
-  env_prefix=(env -u LANES_HOST -u LANES_OS -u LANES_CONTAINER -u CLAUDE_BIN
+  env_prefix=(env -u LANES_WORKSTATION -u LANES_HOST -u LANES_OS -u LANES_CONTAINER -u CLAUDE_BIN
     -u CLAUDE_RESOLVED_BIN -u CLAUDE_VERIFIED_VERSION
     -u CLAUDE_NO_LANE -u CLAUDE_LANE -u CLAUDE_LANE_DIR
     WORKBENCHES_CLAUDE_TMUX_CHILD=1 "CLAUDE_BIN=$claude_bin")

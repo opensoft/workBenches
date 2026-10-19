@@ -23,6 +23,11 @@ on:
       - devcontainer.test/test-release-version.py
       - .github/workflows/release-version.yml
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to validate (leave empty to check the selected ref)
+        required: false
+        type: string
 permissions:
   contents: read
 jobs:
@@ -31,13 +36,20 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          # Explicit ref prevents checkout from replacing an annotated tag with
+          # the peeled event commit in its local refs/tags namespace.
+          ref: ${{ inputs.release_tag || github.ref }}
           fetch-depth: 0
           persist-credentials: false
       - run: python3 devcontainer.test/test-release-version.py
       - name: Verify committed release source lock
         shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          if [[ -n "$RELEASE_TAG" ]]; then
+            python3 scripts/release-workbenches.py check --tag "$RELEASE_TAG"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             python3 scripts/release-workbenches.py check --tag "${GITHUB_REF#refs/tags/}"
           else
             python3 scripts/release-workbenches.py check

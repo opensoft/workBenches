@@ -355,9 +355,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # usable without libsecret.
 COPY files/sonarqube/sonarqube-cli-env.sh /usr/local/share/sonarqube/sonarqube-cli-env.sh
 COPY files/sonarqube/sonar-env /usr/local/bin/sonar-env
-RUN chmod 0644 /usr/local/share/sonarqube/sonarqube-cli-env.sh \
-    && chmod 0755 /usr/local/bin/sonar-env \
-    && ln -sfn /usr/local/share/sonarqube/sonarqube-cli-env.sh /etc/profile.d/sonarqube-cli.sh
+# Keep these small configuration operations in one filesystem layer. Separate
+# RUN instructions exhausted overlay2's depth budget after bench personalization.
+RUN <<'DEVELOPER_SETUP'
+set -eu
+chmod 0644 /usr/local/share/sonarqube/sonarqube-cli-env.sh
+chmod 0755 /usr/local/bin/sonar-env
+ln -sfn /usr/local/share/sonarqube/sonarqube-cli-env.sh /etc/profile.d/sonarqube-cli.sh
 
 # ========================================
 # ZSH PLUGINS (into /etc/skel)
@@ -368,21 +372,22 @@ RUN chmod 0644 /usr/local/share/sonarqube/sonarqube-cli-env.sh \
 # route github.com through a VPN tunnel whose MTU breaks TLS during the clone,
 # while the apt mirror is direct and reliable. Symlink the packaged scripts
 # into the layout Oh My Zsh expects (<plugin>/<plugin>.plugin.zsh).
-RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
-    && apt-get -y install --no-install-recommends \
+apt-get update
+export DEBIAN_FRONTEND=noninteractive
+apt-get -y install --no-install-recommends \
     zsh-autosuggestions \
-    zsh-syntax-highlighting \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /etc/skel/.oh-my-zsh/plugins/zsh-autosuggestions \
-               /etc/skel/.oh-my-zsh/plugins/zsh-syntax-highlighting \
-    && ln -sf /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh \
-              /etc/skel/.oh-my-zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.plugin.zsh \
-    && ln -sf /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh \
-              /etc/skel/.oh-my-zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.plugin.zsh
+    zsh-syntax-highlighting
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+mkdir -p /etc/skel/.oh-my-zsh/plugins/zsh-autosuggestions \
+         /etc/skel/.oh-my-zsh/plugins/zsh-syntax-highlighting
+ln -sf /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh \
+       /etc/skel/.oh-my-zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.plugin.zsh
+ln -sf /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh \
+       /etc/skel/.oh-my-zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.plugin.zsh
 
 # Ensure .zshrc exists (Layer 0 should provide it, but handle missing/stale cache)
-RUN if [ ! -f /etc/skel/.zshrc ]; then \
+if [ ! -f /etc/skel/.zshrc ]; then \
         echo 'export ZSH="$HOME/.oh-my-zsh"' > /etc/skel/.zshrc && \
         echo 'ZSH_THEME="powerlevel10k/powerlevel10k"' >> /etc/skel/.zshrc && \
         echo 'plugins=(git)' >> /etc/skel/.zshrc && \
@@ -390,19 +395,19 @@ RUN if [ ! -f /etc/skel/.zshrc ]; then \
     fi
 
 # Update /etc/skel/.zshrc to include plugins
-RUN sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' /etc/skel/.zshrc
+sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' /etc/skel/.zshrc
 
 # Source Speckit worktree helpers from global shell startup so they remain
 # available even when benches mount a host ~/.zshrc over the generated one.
-RUN printf '\n# DevBench Speckit worktree helpers\n[[ -f /usr/local/share/ct/ct-functions.zsh ]] && source /usr/local/share/ct/ct-functions.zsh\n' >> /etc/zsh/zshrc && \
+printf '\n# DevBench Speckit worktree helpers\n[[ -f /usr/local/share/ct/ct-functions.zsh ]] && source /usr/local/share/ct/ct-functions.zsh\n' >> /etc/zsh/zshrc && \
     printf '\n# DevBench Speckit worktree helpers\n[ -f /usr/local/share/ct/ct-functions.zsh ] && . /usr/local/share/ct/ct-functions.zsh\n' >> /etc/bash.bashrc
 
 # Source SonarQube CLI env defaults from global interactive shell startup.
-RUN printf '\n# DevBench SonarQube CLI environment\n[ -f /usr/local/share/sonarqube/sonarqube-cli-env.sh ] && . /usr/local/share/sonarqube/sonarqube-cli-env.sh\n' >> /etc/zsh/zshrc && \
+printf '\n# DevBench SonarQube CLI environment\n[ -f /usr/local/share/sonarqube/sonarqube-cli-env.sh ] && . /usr/local/share/sonarqube/sonarqube-cli-env.sh\n' >> /etc/zsh/zshrc && \
     printf '\n# DevBench SonarQube CLI environment\n[ -f /usr/local/share/sonarqube/sonarqube-cli-env.sh ] && . /usr/local/share/sonarqube/sonarqube-cli-env.sh\n' >> /etc/bash.bashrc
 
 # Make Grok available in zsh and bash shells created from /etc/skel.
-RUN if ! grep -q '/opt/grok/bin' /etc/skel/.zshrc; then \
+if ! grep -q '/opt/grok/bin' /etc/skel/.zshrc; then \
         echo '' >> /etc/skel/.zshrc && \
         echo '# Grok CLI' >> /etc/skel/.zshrc && \
         echo 'export PATH="/opt/grok/bin:$HOME/.grok/bin:$PATH"' >> /etc/skel/.zshrc && \
@@ -417,7 +422,7 @@ RUN if ! grep -q '/opt/grok/bin' /etc/skel/.zshrc; then \
     fi
 
 # Add bash_profile to /etc/skel (force zsh when bash is requested)
-RUN echo '# Force zsh when bash is requested' > /etc/skel/.bash_profile && \
+echo '# Force zsh when bash is requested' > /etc/skel/.bash_profile && \
     echo 'if [ -n "$PS1" ] && [ -z "$ZSH_VERSION" ]; then' >> /etc/skel/.bash_profile && \
     echo '    exec /bin/zsh -l' >> /etc/skel/.bash_profile && \
     echo 'fi' >> /etc/skel/.bash_profile && \
@@ -426,7 +431,8 @@ RUN echo '# Force zsh when bash is requested' > /etc/skel/.bash_profile && \
     echo '[ -f ~/.bashrc ] && source ~/.bashrc' >> /etc/skel/.bash_profile
 
 # Add git credential helper to /etc/skel/.gitconfig
-RUN git config --system credential.helper gh
+git config --system credential.helper gh
+DEVELOPER_SETUP
 
 # Default command. It is the ARGUMENT LIST of the ENTRYPOINT wired in the
 # ESTATE COMMANDS section above, which runs the start-up step and then execs

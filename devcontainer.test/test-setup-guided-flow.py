@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import pty
+import re
 import select
 import signal
 import shutil
@@ -44,7 +45,9 @@ def terminal_run(argv, env, replies):
                 if not chunk:
                     break
                 output += chunk
-                if pending and pending[0][0].encode() in output[last:]:
+                pattern = pending[0][0] if pending else None
+                matched = pattern.search(output[last:].decode(errors='replace')) if isinstance(pattern, re.Pattern) else pattern is not None and pattern.encode() in output[last:]
+                if matched:
                     _, reply = pending.pop(0)
                     os.write(master, reply.encode())
                     last = len(output)
@@ -339,6 +342,9 @@ print('FAKE_SESSION_TOKEN_01234567890123456789')
         plan = self.home / 'selection.json'
         result = self.shell(f'''init_components
 check_component_status() {{ echo installed; }}
+refresh_host_tool_inventory() {{ :; }}
+refresh_bench_inventory() {{ :; }}
+load_requirements() {{ :; }}
 load_statuses
 component_checked[codex_cli]=true  # A checkbox without an action still means keep.
 selection_file="{plan}"
@@ -424,6 +430,7 @@ printf 'PREFIX:%s\\nPATH:%s\\n' "$npm_config_prefix" "$PATH"''', PATH=path, NPM_
 component_checked[{item}]=true
 component_status[{item}]=installed
 component_action[{item}]=update
+refresh_component_statuses() {{ :; }}
 process_selections''', input='\n', PATH=self.fake_npm(self.home, failure=13), WORKBENCHES_AUTH_ROUTE='later')
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn('update failed (exit 13)', result.stdout)
@@ -521,7 +528,7 @@ process_selections''', input='\n', PATH=self.fake_npm(self.home, failure=13), WO
             path = binary / name; path.write_text(body); path.chmod(0o755)
         status, output = terminal_run(['bash', str(repo / 'setup.sh')],
             dict(self.env, PATH=str(binary) + ':' + self.env['PATH']),
-            [('REQUIREMENTS · 2/2 ready', '\x1b[C\x1b[B\x1b[B \n')])
+            [(re.compile(r'REQUIREMENTS · (\d+)/\1 ready'), '\x1b[C\x1b[B\x1b[B \n')])
         self.assertEqual(status, 0, output)
         self.assertTrue((self.home / 'cli-installed').exists())
         self.assertNotIn('Apply these changes?', output)
@@ -592,6 +599,7 @@ init_components
 component_checked[bench_pyBench]=true
 component_status[bench_pyBench]=not_installed
 component_action[bench_pyBench]=install
+refresh_component_statuses() {{ :; }}
 workbenches_clone() {{ mkdir -p "$2"; printf '#!/bin/bash\\nexit 13\\n' > "$2/setup.sh"; }}
 process_selections'''
         result = subprocess.run(['bash', '-c', command], input='\n', env=self.env,

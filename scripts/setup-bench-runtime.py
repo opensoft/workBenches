@@ -109,6 +109,15 @@ os.execv(real,[real]+args)
                    WORKBENCHES_REAL_DOCKER=docker, WORKBENCHES_NATIVE_COMPOSE=str(compose),
                    WORKBENCHES_BENCH_CONTAINER=container, WORKBENCHES_WAVE_OVERRIDE=str(override),
                    WORKBENCHES_INITIAL_CONTAINER_ID=initial['Id'] if initial else '')
+        # An existing Layer 2 tag can still inherit an obsolete family base.
+        # Use the bench's declared builder so Docker evaluates its current FROM
+        # image instead of letting an existence-only check reuse stale layers.
+        builder = setup.parent / 'scripts/build-layer2.sh'
+        if builder.is_file():
+            print(f'Refreshing {args.bench} image from its declared sources...', flush=True)
+            result = run(['bash', str(builder)], cwd=setup.parent, env=env)
+            if result.returncode:
+                return result.returncode
         result = run(['bash', str(setup)], cwd=setup.parent, env=env)
         if result.returncode:
             return result.returncode

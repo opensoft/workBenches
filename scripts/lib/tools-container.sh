@@ -148,7 +148,7 @@ workbenches_tools_image_fingerprint() {
 
 workbenches_tools_fingerprint() {
     local checksum rest
-    IFS=' ' read -r checksum rest < <({ cksum "$WORKBENCHES_TOOLS_ROOT/tools-container/"{Dockerfile,workbenches_host.py,host-command}; printf '%s\n' 'runtime-v2' "$HOME" "$WORKBENCHES_TOOLS_ROOT" "${TMPDIR:-/tmp}" "${SSH_AUTH_SOCK:-}" "${XDG_CONFIG_HOME:-}" "${XDG_CACHE_HOME:-}" "${XDG_DATA_HOME:-}"; } | cksum)
+    IFS=' ' read -r checksum rest < <({ cksum "$WORKBENCHES_TOOLS_ROOT/tools-container/"{Dockerfile,workbenches_host.py,host-command}; printf '%s\n' 'runtime-v3' "$HOME" "$WORKBENCHES_TOOLS_ROOT" "${TMPDIR:-/tmp}" "${SSH_AUTH_SOCK:-}" "${XDG_CONFIG_HOME:-}" "${XDG_CACHE_HOME:-}" "${XDG_DATA_HOME:-}"; } | cksum)
     printf '%s\n' "$checksum"
 }
 
@@ -195,6 +195,11 @@ workbenches_tools_start() {
         if [[ "$system" == *'Docker Desktop'* ]]; then
             socket=/var/run/docker.sock
             socket_group=0
+            # WSL exposes Desktop's real Linux socket group, which need not
+            # be root. macOS's host socket group does not describe the VM socket.
+            if [[ "$(uname -s)" == Linux ]]; then
+                socket_group="$(stat -c %g "${WORKBENCHES_DOCKER_ENDPOINT#unix://}")" || return 1
+            fi
         else
             socket_group="$(stat -c %g "$socket" 2>/dev/null || stat -f %g "$socket" 2>/dev/null)" || return 1
         fi

@@ -10,6 +10,9 @@ on:
       - scripts/workbenches-mcp-sync
       - scripts/wave-container-shell.sh
       - base-image/files/workbenches-mcp-sync
+      - base-image/files/claude-profile
+      - base-image/files/codex-profile
+      - devcontainer.test/test-shared-mcp-profiles.sh
       - devcontainer.test/test-wave-container-shell.sh
   pull_request:
     paths:
@@ -20,6 +23,9 @@ on:
       - scripts/workbenches-mcp-sync
       - scripts/wave-container-shell.sh
       - base-image/files/workbenches-mcp-sync
+      - base-image/files/claude-profile
+      - base-image/files/codex-profile
+      - devcontainer.test/test-shared-mcp-profiles.sh
       - devcontainer.test/test-wave-container-shell.sh
   workflow_dispatch:
 
@@ -45,3 +51,6 @@ jobs:
 
       - name: Run Wave container lifecycle suite
         run: bash ./devcontainer.test/test-wave-container-shell.sh
+
+      - name: Run shared MCP profile synchronization suite
+        run: bash ./devcontainer.test/test-shared-mcp-profiles.sh

@@ -80,7 +80,7 @@ init_components --loading
 bench_items=(pyBench); CURRENT_SECTION=0; current_selection=0
 component_description[bench_pyBench]=pyBench
 component_checked[bench_pyBench]=true; component_action[bench_pyBench]=uninstall
-component_status[docker]=up; component_status[setup_tools]=up
+component_status[wsl]=up; component_status[docker]=up; component_status[setup_tools]=up
 status_loader_dir="$1"; status_checks_running=true
 sleep 5 & status_loader_pid=$!
 poll_status_loader

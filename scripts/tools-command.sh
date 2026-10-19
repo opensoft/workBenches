@@ -15,7 +15,22 @@ umask 077
 mkdir -p "$session_root" || exit 1
 session="$(mktemp -d "$session_root/command.XXXXXX")" || exit 1
 broker=''
-cleanup() { [[ -z "$broker" ]] || { kill "$broker" 2>/dev/null || true; wait "$broker" 2>/dev/null || true; }; rm -rf -- "$session"; }
+cleanup() {
+    if [[ -n "$broker" ]]; then
+        # Close the session before signalling: a broker between requests can
+        # leave its loop normally even if a TERM trap races with child reaping.
+        rm -f "$session/alive"
+        kill "$broker" 2>/dev/null || true
+        local attempt
+        for ((attempt=0; attempt<40; attempt++)); do
+            kill -0 "$broker" 2>/dev/null || break
+            sleep 0.05
+        done
+        kill -KILL "$broker" 2>/dev/null || true
+        wait "$broker" 2>/dev/null || true
+    fi
+    rm -rf -- "$session"
+}
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
