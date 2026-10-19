@@ -122,7 +122,7 @@ def main():
         for name in ('bash', 'sh', 'docker', 'uname', 'id', 'dirname', 'basename', 'stat',
                      'ps', 'touch', 'cksum', 'readlink', 'mkdir', 'mktemp', 'sleep', 'ln', 'rm', 'mv',
                      'cat', 'chmod', 'date', 'whoami', 'hostname', 'ls', 'tail', 'xargs',
-                     'tee', 'tput', 'clear', 'grep', 'tr', 'head', 'find', 'sort', 'sed', 'cut', 'wc'):
+                     'tee', 'tput', 'clear', 'ssh-keygen', 'grep', 'tr', 'head', 'find', 'sort', 'sed', 'cut', 'wc'):
             located = shutil.which(name)
             assert located, name
             (binary / name).symlink_to(located)
@@ -232,6 +232,36 @@ GITHUB
             assert 'Native GitHub boundary passed' in output
             assert 'fixture-private-token' not in output
             print('PASS: native GitHub account discovery/verification and browser/clipboard through Tools')
+            command = """set -e
+source "$1/scripts/lib/setup-prerequisites.sh"
+ensure_workstation_requirements
+python3 - "$1" <<'DEVICES'
+import json, pathlib, sys
+sys.path.insert(0, sys.argv[1] + '/scripts')
+from company_sync import atomic
+from device_trust import Devices
+root = pathlib.Path.home() / 'device-callback-fixture'
+atomic(root / 'account-provider.json', {'issuer':'https://fixture.example', 'clientId':'devices'})
+atomic(root / 'account-session.json', {'issuer':'https://fixture.example', 'clientId':'devices', 'subject':'fixture-brett'})
+atomic(root / 'device-registry.json', {'enabled':True, 'context':'personal', 'url':'https://fixture-broker.example'})
+class Transport:
+    def call(self, route, data):
+        assert route == 'devices/register'
+        assert data['metadata']['publicKey'].startswith('ssh-ed25519 ')
+        assert 'PRIVATE KEY' not in json.dumps(data)
+        return {'ok':True}
+client = Devices(root, Transport()).register()
+private = pathlib.Path(client.state['keyPath'])
+assert private.is_file() and private.stat().st_mode & 0o777 == 0o600
+assert client.state['username'] != 'root'
+# The key was created and derived by native SSH through the host RPC, with no
+# host Python available. No actual broker or user authorization was changed.
+print('Native Devices boundary passed')
+DEVICES
+"""
+            output = run(['/bin/bash', '-c', command, 'native-devices', str(ROOT)], env=env, cwd=ROOT)
+            assert 'Native Devices boundary passed' in output
+            print('PASS: native user/device SSH key registration through Tools without workstation Python')
             prefix = home / '.local'
             package = prefix / 'lib/node_modules/@openai/codex'
             package.mkdir(parents=True)

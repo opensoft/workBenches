@@ -1,6 +1,15 @@
 name: workbench-test
 
 services:
+  device-trust:
+    profiles: [device-trust]
+    build:
+      context: ..
+      dockerfile: devcontainer.test/device-trust/Dockerfile
+    volumes:
+      - ..:/source:ro
+    network_mode: none
+
   credential-sync:
     profiles: [credential-sync]
     image: workbenches-test:credential-sync

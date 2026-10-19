@@ -500,5 +500,13 @@ assert type(application.broker.vault).__name__ == 'AzureVault'
         self.assertEqual(result.returncode, 0, result.stderr)
 
 
+def load_tests(loader, suite, pattern):
+    # Keep new registry coverage in the existing declared broker CI entrypoint.
+    spec = importlib.util.spec_from_file_location('device_tests', ROOT / 'devcontainer.test/test-device-trust.py')
+    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    suite.addTests(loader.loadTestsFromModule(module))
+    return suite
+
+
 if __name__ == '__main__':
     unittest.main()

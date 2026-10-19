@@ -132,3 +132,11 @@ write or migrate the file on disk. Migrated GitHub links are kept but show
 Sign-in required until checked against the native GitHub CLI. The old code should
 not be used to edit the new version-2 metadata. Piped/nonterminal use retains a
 line-oriented fallback; the normal setup flow uses the terminal manager.
+
+## Devices (v1.7)
+
+Profiles → Personal & companies → V Devices selects the personal or company
+context. The master list registers a signed-in user on each workstation; incoming
+SSH approvals are explicit and directional. Private SSH keys remain local. See
+[Devices](device-trust.md) for enrollment, approvals, revocation and limitations.
+This feature is on the v1.7 branch and is not part of v1.6.
