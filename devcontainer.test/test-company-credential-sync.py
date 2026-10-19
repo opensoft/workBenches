@@ -337,7 +337,9 @@ class CompanySyncTests(unittest.TestCase):
         class Quiet(WSGIRequestHandler):
             def log_message(self, *args): pass
         server = make_server('127.0.0.1', 0, Application(self.broker, auth), handler_class=Quiet)
-        tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); tls.load_cert_chain(cert, key)
+        tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        tls.minimum_version = ssl.TLSVersion.TLSv1_2
+        tls.load_cert_chain(cert, key)
         server.socket = tls.wrap_socket(server.socket, server_side=True)
         thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
         public = type('Key', (), {'key': private.public_key()})()
