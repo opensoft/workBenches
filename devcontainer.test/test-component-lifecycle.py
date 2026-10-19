@@ -23,20 +23,29 @@ def setup_tui(repo, keys, env, expected_status=0):
     process = subprocess.Popen(['bash', str(repo / 'setup.sh')], cwd=repo, env=env,
                                stdin=slave, stdout=slave, stderr=slave, start_new_session=True)
     os.close(slave)
-    output = b''; submitted = False
+    output = b''; submitted = False; terminal_closed = False
     deadline = time.monotonic() + 90
     try:
         while time.monotonic() < deadline:
             ready, _, _ = select.select([master], [], [], 0.2)
             if ready:
                 try: chunk = os.read(master, 65536)
-                except OSError: break
-                if not chunk: break
+                except OSError:
+                    terminal_closed = True
+                    break
+                if not chunk:
+                    terminal_closed = True
+                    break
                 output += chunk
                 text = re.sub(rb'\x1b\[[0-?]*[ -/]*[@-~]', b'', output)
                 if b'Navigation:' in text and re.search(rb'REQUIREMENTS \xc2\xb7 (\d+)/\1 ready', text) and not submitted:
                     os.write(master, keys); submitted = True
             if process.poll() is not None and not ready: break
+        # PTY EOF can arrive before the kernel reports the child exit. Reap it
+        # before deciding that setup hung; keep the bounded wait for real hangs.
+        if terminal_closed and process.poll() is None:
+            try: process.wait(timeout=5)
+            except subprocess.TimeoutExpired: pass
         if process.poll() is None:
             process.kill()
             raise AssertionError('Setup did not finish: ' + output.decode(errors='replace')[-2500:])
