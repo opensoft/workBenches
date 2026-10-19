@@ -111,6 +111,7 @@ class Devices:
             raise ValueError('Sign into the configured account before using Devices.')
         self.storage = state_root(root, session, self.settings)
         self.storage.mkdir(mode=0o700, parents=True, exist_ok=True)
+        secure_directory(self.storage)
         self.namespace = self.storage.name
         self.path = self.storage / 'registration.json'
         self.client = client or Client(endpoint(self.settings['url']), lambda: account_token(self.root))

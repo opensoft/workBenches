@@ -207,6 +207,9 @@ class DeviceTrustTests(unittest.TestCase):
 
     def test_exposed_local_capability_and_session_files_are_refused(self):
         client = self.local_client(); atomic(client.path, {'id': self.a, 'token': self.tokens[self.a]})
+        client.storage.chmod(0o777)
+        with self.assertRaises(ValueError): Devices(client.root, client.client)
+        client.storage.chmod(0o700)
         client.path.chmod(0o644)
         with self.assertRaises(ValueError): Devices(client.root, client.client)
         client.path.chmod(0o600); (client.root / 'account-session.json').chmod(0o644)
