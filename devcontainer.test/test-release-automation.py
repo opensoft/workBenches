@@ -237,27 +237,27 @@ class ReleaseAutomationTests(unittest.TestCase):
 
     def test_native_ciphertext_survives_plaintext_cleanup(self):
         import tarfile
-        secret = b'private-native-fixture-value'
+        fixture_value = b'private-native-fixture-value'
         cert, key = self.certificate()
-        logs = self.root / 'logs'; logs.mkdir(); setup = logs / 'setup-test.log'; setup.write_bytes(secret)
-        terminal = self.reports / 'wsl-bench-install.txt'; terminal.write_bytes(secret)
+        logs = self.root / 'logs'; logs.mkdir(); setup = logs / 'setup-test.log'; setup.write_bytes(fixture_value)
+        terminal = self.reports / 'wsl-bench-install.txt'; terminal.write_bytes(fixture_value)
         result = self.reports / 'wsl-all-results.json'
-        rv.atomic(result, {'results': [{'case':'bench-install', 'status':'failed', 'private':secret.decode()}]})
+        rv.atomic(result, {'results': [{'case':'bench-install', 'status':'failed', 'private':fixture_value.decode()}]})
         destination = Path(self.temp.name) / 'encrypted-native'
         with tempfile.TemporaryFile() as output:
-            output.write(secret)
+            output.write(fixture_value)
             metadata = native.native_diagnostics(self.root, self.reports, output, 'arch-native', destination, cert.read_text())
         self.assertEqual(metadata['case'], 'bench-install')
-        self.assertNotIn(secret.decode(), json.dumps(metadata))
+        self.assertNotIn(fixture_value.decode(), json.dumps(metadata))
         encrypted = destination / metadata['encryptedDiagnostics']['file']
-        self.assertNotIn(secret, encrypted.read_bytes())
+        self.assertNotIn(fixture_value, encrypted.read_bytes())
         for path in (setup, terminal, result, self.reports / 'driver-failure.log'): path.unlink()
         decoded = Path(self.temp.name) / 'native-decoded.tgz'
         subprocess.run(['openssl', 'cms', '-decrypt', '-binary', '-inform', 'DER', '-in', str(encrypted),
                         '-inkey', str(key), '-recip', str(cert), '-out', str(decoded)], check=True, capture_output=True)
         with tarfile.open(decoded) as archive:
             self.assertEqual(set(archive.getnames()), {'native-driver.log', 'driver-results.json', 'setup.log', 'bench-terminal.txt'})
-            self.assertEqual(archive.extractfile('setup.log').read(), secret)
+            self.assertEqual(archive.extractfile('setup.log').read(), fixture_value)
         public = dict(phase='workstation-driver', **metadata)
         self.assertEqual(rv.native_failure_location(('NATIVE_QA_FAILURE '+json.dumps(public)).encode()), public)
 
