@@ -156,6 +156,28 @@ runner into the restricted group, and destroy the job disk on any outcome.
 This image preparation is not a replacement for that controller, organization
 policy, live adapters or QA identities, and does not enable `WB_QA_CONFIGURED`.
 
+## One-use native Arch acceptance controller
+
+`run-native-arch.py` uses a validated stopped golden disk but creates a separate
+job disk, reset ID and both SSH identities for each execution. It transfers exact
+candidate/automation git commits by bundle, runs the root-pinned native adapter,
+and records its exact-source JSON report. No local report upload can become a
+release pass; release jobs must still execute the approved adapter under the
+protected workflow. Failed disks stay private for investigation. Passing jobs
+stop the VM and remove their disk/operator key. No GitHub runner is registered.
+
+```sh
+python3 qa/release/run-native-arch.py --golden /private/arch-golden \
+  --state /private/new-native-job --candidate /path/to/candidate-git \
+  --automation /path/to/trusted-automation-git
+```
+
+The shell installer and workstation preservation scenarios use separate private
+homes so that intentional shell configuration does not overwrite another test's
+custom-settings fixture. Their existing assertions remain enabled. The preserved
+Raven provisioning VM has its release marker removed and must not be substituted
+for this fresh per-job lifecycle.
+
 ## Optional encrypted fixture failure diagnosis
 
 Public release evidence remains allowlisted metadata only. For fresh-install

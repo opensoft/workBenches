@@ -154,12 +154,29 @@ def failure_location(raw):
     failed_case = re.findall(rb"AssertionError: \('" + case_names + rb"', (-?[0-9]{1,3})\)", raw)
     if failed_case:
         result.update(case=failed_case[-1][0].decode('ascii'), exitCode=int(failed_case[-1][1]))
-    frames = re.findall(rb'File "[^"\n]*(test-workstation-acceptance\.py|test-component-lifecycle\.py)", line ([0-9]{1,7})', raw)
+    frames = re.findall(rb'File "[^"\n]*(test-workstation-acceptance\.py|test-wsl-workstation-acceptance\.py|test-component-lifecycle\.py)", line ([0-9]{1,7})', raw)
     if frames:
         result.update(file=frames[-1][0].decode('ascii'), line=int(frames[-1][1]))
     if re.search(rb'no space left on device|disk quota exceeded|\bENOSPC\b', raw, re.I):
         result['category'] = 'disk_full'
     return result
+
+
+def native_failure_location(raw):
+    result = {}
+    for match in re.findall(rb'NATIVE_QA_FAILURE (\{[^\n]{1,2048}\})', raw):
+        try: value = json.loads(match)
+        except ValueError: continue
+        if value.get('phase') not in ('native-command', 'shell-install', 'shell-repeat', 'workstation-driver'): continue
+        result['phase'] = value['phase']
+        if type(value.get('exitCode')) is int and -255 <= value['exitCode'] <= 255: result['exitCode'] = value['exitCode']
+        if value.get('file') in ('test-workstation-acceptance.py', 'test-wsl-workstation-acceptance.py', 'test-component-lifecycle.py'):
+            result['file'] = value['file']
+            if type(value.get('line')) is int and 0 < value['line'] < 10000000: result['line'] = value['line']
+        if value.get('exception') in ('AssertionError', 'RuntimeError', 'ValueError', 'KeyError', 'TypeError', 'FileNotFoundError', 'PermissionError', 'TimeoutExpired', 'CalledProcessError', 'HTTPError', 'URLError', 'SSLError'):
+            result['exception'] = value['exception']
+    return result
+
 
 
 def build_failure_hints(raw):
@@ -397,6 +414,9 @@ def run_external(root, suite, report, config_path):
             report.update(status='failed', reason='adapter_failed'); return
         output.seek(0, 2)
         if process.returncode or output.tell() > 65536:
+            error.seek(0, 2); size = error.tell(); error.seek(max(0, size - 65536))
+            diagnostic = native_failure_location(error.read())
+            if diagnostic: report['runner']['failure'] = diagnostic
             report.update(status='failed', reason='adapter_failed'); return
         output.seek(0); raw = output.read()
     value = json.loads(raw)

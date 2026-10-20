@@ -196,6 +196,13 @@ class ReleaseAutomationTests(unittest.TestCase):
         self.assertEqual(rv.failure_location(b"AssertionError: ('failed-npm-update', 0)"), {'exception':'AssertionError', 'case':'failed-npm-update', 'exitCode':0})
         self.assertEqual(rv.failure_location(b"AssertionError: ('PRIVATE-PASSWORD', 1)"), {'exception':'AssertionError'})
 
+    def test_native_failure_diagnostics_allow_identifiers_only(self):
+        raw = b'NATIVE_QA_FAILURE {"phase":"workstation-driver","exitCode":1,"file":"test-wsl-workstation-acceptance.py","line":196,"exception":"AssertionError","secret":"DO_NOT_EXPOSE"}'
+        value = rv.native_failure_location(raw)
+        self.assertEqual(value, dict(phase='workstation-driver', exitCode=1, file='test-wsl-workstation-acceptance.py', line=196, exception='AssertionError'))
+        self.assertNotIn('DO_NOT_EXPOSE', json.dumps(value))
+        self.assertEqual(rv.native_failure_location(raw.replace(b'workstation-driver', b'DO_NOT_EXPOSE')), {})
+
     def test_private_build_logs_emit_only_allowlisted_hints(self):
         secret = 'NEVER_EXPOSE_PRIVATE_BUILD_TOKEN'
         raw = f'ERROR: OpenRepoTools failed: {secret}\nmax depth exceeded\ncurl: (22) requested URL error: 502'.encode()
