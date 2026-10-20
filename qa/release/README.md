@@ -177,3 +177,66 @@ homes so that intentional shell configuration does not overwrite another test's
 custom-settings fixture. Their existing assertions remain enabled. The preserved
 Raven provisioning VM has its release marker removed and must not be substituted
 for this fresh per-job lifecycle.
+
+## Optional encrypted fixture failure diagnosis
+
+Public release evidence remains allowlisted metadata only. For fresh-install
+fixtures, an operator may set repository variable `OPENBENCHES_QA_FAILURE_CERT_PEM`
+to a public X.509 encryption certificate. Before cleanup, the trusted automation
+can envelope the latest private setup log and bench transcript with OpenSSL CMS
+AES-256-GCM and upload only `fresh-install-debug.cms` as a separate diagnostic
+artifact, retained for two days. Plaintext temporary copies are deleted. Invalid
+certificates, unavailable encryption, and command failures never cause plaintext
+upload. The decryption key is never installed in CI. These files are not release
+attestations and contain only disposable fixture diagnostics, not live QA logs.
+
+For the initial investigation, the private key is protected on Raven under its QA
+cache and escrowed as `qa-fixture-diagnostics-private-key` in `kv-openbenches-qa`.
+Neither the scheduled session coordinator nor the broker workload identity has
+access to that secret. Rotate/remove the public certificate variable after the
+investigation. Decrypt only in private local storage and do not publish decrypted
+logs. OpenSSL CMS authenticated decryption rejects tampered envelopes.
+
+## Team001 provider QA sessions
+
+`config/qa-provider-slots.json` records the four requested provider slots without
+credentials. Claude and Codex use `Team-001@opensoft.one`, profile `Team001`.
+DeepSeek and GLM reserve that same profile but remain pending user configuration;
+select and verify their API model identifiers and free-tier limits at setup time.
+Each provider has independent credentials and results. Pending slots do not count
+as passed provider coverage.
+
+Bootstrap a separate QA session through each official native CLI on Raven:
+
+```bash
+python3 qa/release/provision-provider-qa.py --provider claude
+python3 qa/release/provision-provider-qa.py --provider codex
+```
+
+Complete the browser/MFA consent once as Team001. Paste any authorization code
+only into the local native login terminal. The helper uses private isolated
+HOME/config directories, checks the selected account and expiry, then stores the
+result in `kv-openbenches-qa` as `qa-claude-team001-session` or
+`qa-codex-team001-session`. It never imports or rotates the expired production
+backup session. Vault bootstrap uses the operator's existing Azure CLI session;
+this is not proof of workload-identity access or a successful provider request.
+`--collect-existing-login` is only for collecting an official CLI login already
+started in that helper's private directory. Never copy an arbitrary credential
+file into it. Login status/cache presence alone does not prove server validity.
+
+Run account-auth automation only from trusted private infrastructure. The
+[official Codex CI/CD auth guidance](https://learn.chatgpt.com/docs/auth/ci-cd-auth)
+requires one machine or serialized job stream per credential copy, persistence of
+native CLI token updates, and excludes this workflow in public repositories.
+The public Actions workflow added here runs only synthetic bootstrap contract
+tests. A private coordinator must own the real login cache, run the provider's
+native validation/refresh, persist changed credentials after each invocation, and
+stop for reauthentication on revocation. Do not fan out a refresh token to
+concurrent workers or claim that the generic RFC 7662 adapter supports these
+subscription sessions.
+
+Neither bootstrap nor a successful native prompt alone satisfies `provider-live`:
+the release gate still requires the approved mode, managed-identity KV path,
+publish/recover/conflict/offline/login-required/CPC refresh/tenant denial and
+cleanup cases against the exact release source. Those cases remain incomplete
+until their real adapters and identities are provisioned and observed.

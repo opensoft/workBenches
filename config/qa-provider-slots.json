@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "profile": "Team001",
+  "email": "Team-001@opensoft.one",
+  "vault": "kv-openbenches-qa",
+  "providers": {
+    "claude": {"mode": "native-account", "setup": "login-required", "sessionSecret": "qa-claude-team001-session"},
+    "codex": {"mode": "native-account", "setup": "login-required", "sessionSecret": "qa-codex-team001-session"},
+    "deepseek": {"mode": "api", "setup": "awaiting-user", "model": null},
+    "glm": {"mode": "api", "setup": "awaiting-user", "model": null}
+  }
+}

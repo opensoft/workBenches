@@ -203,6 +203,51 @@ class ReleaseAutomationTests(unittest.TestCase):
         self.assertNotIn('DO_NOT_EXPOSE', json.dumps(value))
         self.assertEqual(rv.native_failure_location(raw.replace(b'workstation-driver', b'DO_NOT_EXPOSE')), {})
 
+    def test_private_build_logs_emit_only_allowlisted_hints(self):
+        secret = 'NEVER_EXPOSE_PRIVATE_BUILD_TOKEN'
+        raw = f'ERROR: OpenRepoTools failed: {secret}\nmax depth exceeded\ncurl: (22) requested URL error: 502'.encode()
+        value = rv.build_failure_hints(raw)
+        self.assertEqual(value, dict(hints=['image_layer_depth'], httpStatus=502, installers=['OpenRepoTools']))
+        self.assertNotIn(secret, json.dumps(value))
+        seen = []
+        def copy_logs(argv, **kwargs):
+            directory = Path(argv[-1]); seen.append(directory)
+            if argv[-2].endswith('/report/bench-install.txt'):
+                directory.write_text('Layer 0 build failed\n' + secret)
+                return subprocess.CompletedProcess(argv, 0)
+            older = directory / 'old.log'; older.write_text('no space left on device')
+            latest = directory / 'current.log'; latest.write_bytes(raw)
+            os.utime(older, (1, 1)); os.utime(latest, (2, 2))
+            return subprocess.CompletedProcess(argv, 0)
+        with patch.object(rv.subprocess, 'run', side_effect=copy_logs):
+            result = rv.workstation_diagnostics(self.root, 'private-fixture-project', {})
+        self.assertEqual(result, dict(logsRead=1, terminal={'hints': ['layer_zero_failure']}, **value))
+        self.assertNotIn(secret, json.dumps(result))
+        self.assertFalse(seen[0].exists(), 'Private copies must be deleted after parsing')
+
+    def test_optional_diagnosis_is_encrypted_and_tamper_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp); key = directory / 'key.pem'; cert = directory / 'cert.pem'
+            subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:3072', '-nodes', '-keyout', str(key),
+                '-out', str(cert), '-days', '1', '-subj', '/CN=fixture-test'], check=True, capture_output=True)
+            plain = directory / 'private.log'; plain.write_bytes(b'NEVER_PUBLISH_FIXTURE_PLAINTEXT')
+            encrypted = directory / 'fresh-install-debug.cms'
+            metadata = rv.encrypt_fixture_diagnostics([('setup.log', plain)], cert.read_text(), encrypted)
+            self.assertEqual(metadata['file'], 'fresh-install-debug.cms')
+            self.assertNotIn(plain.read_bytes(), encrypted.read_bytes())
+            decoded = directory / 'decoded.tgz'
+            argv = ['openssl', 'cms', '-decrypt', '-binary', '-inform', 'DER', '-in', str(encrypted),
+                    '-inkey', str(key), '-recip', str(cert), '-out', str(decoded)]
+            subprocess.run(argv, check=True, capture_output=True)
+            import tarfile
+            with tarfile.open(decoded) as archive:
+                self.assertEqual(archive.getnames(), ['setup.log'])
+                self.assertEqual(archive.extractfile('setup.log').read(), plain.read_bytes())
+            raw = bytearray(encrypted.read_bytes()); raw[-1] ^= 1; encrypted.write_bytes(raw)
+            self.assertNotEqual(subprocess.run(argv, capture_output=True).returncode, 0)
+            self.assertEqual(rv.encrypt_fixture_diagnostics([('setup.log', plain)], 'invalid certificate', encrypted), {})
+            self.assertFalse(encrypted.exists())
+
     def test_command_failure_still_cleans_up_and_cannot_pass(self):
         self.config['suites']['source']['cleanup'] = [[sys.executable, '-c', 'pass']]
         rv.atomic(self.manifest_path, self.config)
