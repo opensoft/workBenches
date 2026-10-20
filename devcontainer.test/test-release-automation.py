@@ -301,6 +301,37 @@ class ReleaseAutomationTests(unittest.TestCase):
                 with self.assertRaises(rv.ValidationError): publisher.main()
             self.assertEqual(writes, [])
 
+    def test_arch_vm_configuration_has_no_passwords_or_runner_registration(self):
+        vm = module('arch_vm', 'qa/release/prepare-arch-vm.py')
+        config = json.loads(vm.cloud_config('ssh-ed25519 PUBLIC_FIXTURE', 'reset-fixture', b'wrapper').split('\n', 1)[1])
+        self.assertFalse(config['ssh_pwauth'])
+        self.assertTrue(config['disable_root'])
+        self.assertEqual(len(config['users']), 1)
+        self.assertTrue(config['users'][0]['lock_passwd'])
+        self.assertEqual(config['users'][0]['ssh_authorized_keys'], ['ssh-ed25519 PUBLIC_FIXTURE'])
+        self.assertTrue(all(f['owner'] == 'root:root' for f in config['write_files']))
+        self.assertNotIn('token', json.dumps(config).lower())
+        self.assertNotIn('config.sh', json.dumps(config))
+        self.assertEqual(config['power_state']['mode'], 'reboot')
+
+    def test_arch_vm_refuses_unpinned_image_without_creating_state(self):
+        vm = module('arch_vm', 'qa/release/prepare-arch-vm.py')
+        image = Path(self.temp.name) / 'image'; image.write_bytes(b'untrusted-image')
+        state = Path(self.temp.name) / 'vm-state'
+        with self.assertRaisesRegex(ValueError, 'checksum'):
+            vm.prepare(image, state)
+        self.assertFalse(state.exists())
+
+    def test_arch_vm_never_overwrites_an_existing_disk_directory(self):
+        vm = module('arch_vm', 'qa/release/prepare-arch-vm.py')
+        sentinel = self.reports / 'existing-disk'; sentinel.write_text('preserve')
+        with patch.object(vm, 'digest', return_value=vm.IMAGE_SHA256), \
+             patch.object(vm.subprocess, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'must be new'):
+                vm.prepare(self.root / 'image', self.reports)
+        run.assert_not_called()
+        self.assertEqual(sentinel.read_text(), 'preserve')
+
     def test_publisher_requires_trusted_main_successful_exact_workflow_run(self):
         value = dict(path='.github/workflows/release-validation.yml', head_branch='main', event='workflow_dispatch',
                      conclusion='success', status='completed', head_sha='a'*40, head_repository={'full_name':'o/r'}, id=7, run_attempt=1)
