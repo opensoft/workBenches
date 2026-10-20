@@ -32,6 +32,16 @@ image_source = module('image_source', 'scripts/release-qa-image-source.py')
 
 
 class ReleaseAutomationTests(unittest.TestCase):
+    def test_image_plan_is_data_and_must_match_exact_expected_commit(self):
+        path = Path(self.temp.name) / 'image-plan.json'
+        identity = dict(commit='a' * 40, version='1.6.0-rc.3')
+        rv.atomic(path, {'source': identity})
+        self.assertEqual(image_source.planned_identity(path, 'a' * 40), identity)
+        for expected in ('b' * 40, 'main', 'a' * 40 + '\n'):
+            with self.assertRaises(rv.ValidationError): image_source.planned_identity(path, expected)
+        rv.atomic(path, {'source': dict(identity, version='../../other')})
+        with self.assertRaises(rv.ValidationError): image_source.planned_identity(path, 'a' * 40)
+
     def test_image_publication_requires_current_main_or_exact_protected_release(self):
         identity = dict(commit='a' * 40, version='1.6.0-rc.3')
         for main, release, expected in (
