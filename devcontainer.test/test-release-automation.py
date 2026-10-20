@@ -161,6 +161,22 @@ class ReleaseAutomationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(rv.read(self.reports / 'source.json')['status'], 'passed')
 
+    def test_lifecycle_waits_for_child_exit_after_terminal_eof(self):
+        lifecycle = module('lifecycle', 'devcontainer.test/test-component-lifecycle.py')
+        class Child:
+            returncode = None
+            def poll(self): return self.returncode
+            def wait(self, timeout=None): self.returncode = 0; return 0
+            def kill(self): raise AssertionError('Successful child killed before reaping')
+        child = Child()
+        frame = 'REQUIREMENTS · 2/2 ready Navigation:'.encode()
+        with patch.object(lifecycle.subprocess, 'Popen', return_value=child), \
+             patch.object(lifecycle.select, 'select', return_value=([1], [], [])), \
+             patch.object(lifecycle.os, 'read', side_effect=[frame, OSError()]), \
+             patch.object(lifecycle.os, 'write'):
+            self.assertIn('Navigation:', lifecycle.setup_tui(self.root, b'\n', {}))
+        self.assertEqual(child.returncode, 0)
+
     def test_command_failure_still_cleans_up_and_cannot_pass(self):
         self.config['suites']['source']['cleanup'] = [[sys.executable, '-c', 'pass']]
         rv.atomic(self.manifest_path, self.config)
