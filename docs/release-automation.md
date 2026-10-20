@@ -53,6 +53,14 @@ It supports explicit release lines 1.5/1.6/1.7; unknown lines fail until the
 manifest is updated. Ordinary Workstation Setup CI and release testing use the
 same setup suite; required case lists cannot silently diverge.
 
+Suite selection uses the candidate's VERSION, never a feature-branch name. Set
+VERSION and the lock version to the intended development/release line before
+testing future features (for example `1.7.0-dev.1` enables device SSH). A named
+`release/1.7.0` branch must have that core version, and a version tag must match
+VERSION exactly. Planning and execution reject mismatches instead of silently
+testing an inherited older line. Development stamping does not create a tag or
+publish a release, and source repository pins remain unchanged.
+
 Hosted suites cover source freezing, setup, launcher/estate regressions, Speckit,
 image wiring, native Tools bridge, credential tooling, broker/CPC fixtures and
 component lifecycle. The fresh-install suite uses the declared separate Docker

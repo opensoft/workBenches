@@ -14,7 +14,8 @@ def trusted_source(plan, fetch):
     if main['commit']['sha'] == plan['source']['commit']: return True
     core = plan['source']['version'].split('-', 1)[0]
     candidate = fetch('branches/' + urllib.parse.quote('release/' + core, safe=''))
-    return candidate.get('protected') is True
+    return (candidate.get('protected') is True
+            and candidate.get('commit', {}).get('sha') == plan['source']['commit'])
 
 
 def readiness(plan, runners, configured, blocked_reason=None):
