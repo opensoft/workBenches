@@ -75,6 +75,9 @@ def manage(profile):
                 rows = [r for r in client.call('profiles')['profiles'] if 'use' in r['permissions'] and r['tenant'] == config['tenant']]
                 for index, row in enumerate(rows, 1):
                     print(f'{index}. {row["provider"]}/{row["profile"]} — {row["state"]} — {", ".join(row["permissions"])}')
+                if not rows:
+                    print('No approved profiles are available for this company identity. Ask your administrator to check profile grants and required GitHub team membership.')
+                    continue
                 selection = ask('Profile number (Enter skips)')
                 if not selection:
                     continue

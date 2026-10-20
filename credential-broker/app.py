@@ -43,7 +43,8 @@ class Application:
                 config = json.loads(Path(self.config_path).read_text())
                 # A deployment identity change requires restart; grant revocation
                 # and profile disabling take effect on the very next request.
-                if any(config[k] != broker.config[k] for k in ('issuer', 'audience', 'jwksUrl', 'database')):
+                if (any(config[k] != broker.config[k] for k in ('issuer', 'audience', 'jwksUrl', 'database'))
+                        or any(config.get(k) != broker.config.get(k) for k in ('identityMode', 'managedIdentityClientId'))):
                     raise BrokerError(503, 'deployment_configuration_changed')
                 broker = Broker(config, broker.vault)
             identity = self.authenticate(env.get('HTTP_AUTHORIZATION', ''))
@@ -100,4 +101,4 @@ class Application:
 def create_app():
     os.umask(0o077)
     config = json.loads(Path(os.environ['WORKBENCHES_BROKER_CONFIG']).read_text())
-    return Application(Broker(config, AzureVault(config.get('managedIdentityClientId'))), OIDC(config), os.environ['WORKBENCHES_BROKER_CONFIG'])
+    return Application(Broker(config, AzureVault(config.get('managedIdentityClientId'), config.get('identityMode', 'managed'))), OIDC(config), os.environ['WORKBENCHES_BROKER_CONFIG'])
