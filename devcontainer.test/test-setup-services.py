@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Service readiness and ownership checks without touching a Docker engine."""
 import os
+import importlib.util
+import sys
 from pathlib import Path
 import subprocess
 import shutil
@@ -12,6 +14,50 @@ LIB = ROOT / 'scripts/lib/tools-container.sh'
 
 
 class ServiceTests(unittest.TestCase):
+    def test_acceptance_opens_ai_accounts_in_profiles_and_cancels_without_vault(self):
+        # Use the production renderer/input/profile action; isolate discovery and
+        # the external credential helper so this regression needs no Docker/login.
+        sys.path.insert(0, str(ROOT / 'devcontainer.test'))
+        spec = importlib.util.spec_from_file_location('acceptance', ROOT / 'devcontainer.test/test-workstation-acceptance.py')
+        acceptance = importlib.util.module_from_spec(spec); spec.loader.exec_module(acceptance)
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            acceptance.REPO = home
+            acceptance.REPORT = home
+            script = r'''source "$WB_TEST_SETUP"
+init_components --loading
+for key in "${!component_description[@]}"; do component_status[$key]=installed; done
+component_status[docker]=up; component_status[setup_tools]=up
+setup_os_label=Linux
+refresh_component_statuses() { :; }
+activate_requirement() { echo UNEXPECTED_VAULT_ACTION; exit 99; }
+configure_selected_accounts() {
+    local choice
+    setup_read 'AI assistant (codex/claude) [codex]' choice || return "$?"
+    setup_read 'Authentication route [1]: ' choice || return "$?"
+    [[ "$choice" != Q ]] || return 130
+    return 99
+}
+draw_ui
+while true; do
+    handle_input; result=$?
+    [[ "$result" != 2 ]] || exit 130
+    [[ "$result" != 1 ]] || exit 99
+    draw_ui
+done
+'''
+            (home / 'setup.sh').write_text(script)
+            env = dict(os.environ, HOME=temporary, XDG_CONFIG_HOME=str(home / '.config'),
+                       WB_TEST_SETUP=str(ROOT / 'scripts/interactive-setup.sh'), TERM='xterm-256color')
+            try:
+                output = acceptance.terminal('profiles-cancel', acceptance.account_setup_replies(
+                    [(r'Authentication route \[1\]: ', 'Q\n')], cancel=True), expected=130, env=env, timeout=10)
+            except subprocess.TimeoutExpired:
+                self.fail((home / 'profiles-cancel.txt').read_text()[-5000:])
+            self.assertIn('Profile action cancelled; saved profiles kept.', output)
+            self.assertNotIn('UNEXPECTED_VAULT_ACTION', output)
+            self.assertFalse((home / '.config/workbenches/openai-profiles.json').exists())
+
     def shell(self, body):
         result = subprocess.run(['bash', '-c', f'source "$1"\n{body}', 'test', str(LIB)],
                                 capture_output=True, text=True, timeout=10)

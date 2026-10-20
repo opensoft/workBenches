@@ -222,7 +222,22 @@ def snapshot():
 
 TUI = r'REQUIREMENTS · (\d+)/\1 ready[\s\S]*Navigation:'
 CODEX = (TUI, '\x1b[C\x1b[B\x1b[B \n')
-CODEX_ACCOUNTS = (TUI, '\x1b[C\x1b[B\x1b[B P' + '\x1b[B' * 4 + ' P\n')
+PROFILES = r'PERSONAL & COMPANY IDENTITIES[\s\S]*AI accounts[\s\S]*G Back[^\n]*Q Quit'
+
+
+def account_setup_replies(authentication, *, cancel=False):
+    # Accounts moved out of Requirements in v1.6. Follow the visible Profiles
+    # screen instead of clamping an obsolete row index onto the Vault button.
+    assert len(authentication) <= 8, 'simple recovery flow grew beyond eight account responses'
+    return [
+        (TUI, '\x1b[C\x1b[B\x1b[B G'),
+        (PROFILES, '\x1b[B\x1b[B\n'),
+        (r'AI assistant .*\[codex\]', '\n'),
+        *authentication,
+        (r'Profile action cancelled; saved profiles kept\.[\s\S]*G Back[^\n]*Q Quit' if cancel
+         else r'Profile action completed\.[\s\S]*G Back[^\n]*Q Quit', 'Q' if cancel else 'G'),
+        *([] if cancel else [(TUI, '\n')]),
+    ]
 EMAIL = os.environ.get('WORKBENCHES_ACCEPTANCE_EMAIL', 'acceptance@example.test')
 MASTER = secrets.token_urlsafe(32)
 API_VALUE = 'sk-test-invalid-' + secrets.token_hex(24)  # Invalid, nonbillable AI test value.
@@ -263,15 +278,14 @@ def main():
     assert '# custom shell settings' in (HOME / '.zshrc').read_text()
     assert (HOME / '.p10k.zsh').read_text() == '# custom prompt settings\n'
     ENV['PATH'] = str(HOME / '.local/bin') + ':' + ENV['PATH']
-    terminal('cancel-account-setup', [CODEX_ACCOUNTS, (r'Authentication route \[1\]: ', 'Q\n')], 130)
+    terminal('cancel-account-setup', account_setup_replies([(r'Authentication route \[1\]: ', 'Q\n')], cancel=True), 130)
     assert not (HOME / '.config/workbenches/openai-profiles.json').exists()
     server = seed_vault()
-    replies = [CODEX_ACCOUNTS, (r'Authentication route \[1\]: ', '2V\n'),
+    replies = account_setup_replies([(r'Authentication route \[1\]: ', '2V\n'),
                (r'Profile ownership:.*: ', '\n'), (r'AI account login email: ', EMAIL + '\n'),
                (r'Vault HTTPS server.*: ', server + '\n'),
                (r'Bitwarden login email.*: ', '\n'),
-               (r'Vault master password: ', MASTER + '\n'), (r'Confirm \[y/N\]: ', 'y\n')]
-    assert len(replies) <= 8, 'simple recovery flow grew beyond eight responses'
+               (r'Vault master password: ', MASTER + '\n'), (r'Confirm \[y/N\]: ', 'y\n')])
     output = terminal('live-vault-cli-install', replies)
     credential = HOME / '.chatgpt-profiles/profiles/personal/personal-1/auth.json'
     assert json.loads(credential.read_text())['OPENAI_API_KEY'] == API_VALUE
