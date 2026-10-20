@@ -507,7 +507,8 @@ draw_requirement_item() {
             fi
             detail="${detail:${#line}}"
             detail="${detail# }"
-            printf '%b│%b     %b%-*s %b│%b\n' "$SILVER_EDGE" "$NC" "$SILVER_MUTED" "$((width - 4))" "$line" "$SILVER_EDGE" "$NC"
+            # Pad by characters; printf widths count bytes and misalign "…".
+            printf '%b│%b     %b%s%*s %b│%b\n' "$SILVER_EDGE" "$NC" "$SILVER_MUTED" "$line" "$((width - 4 - ${#line}))" '' "$SILVER_EDGE" "$NC"
         done
     fi
 }
