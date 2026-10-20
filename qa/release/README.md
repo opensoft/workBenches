@@ -155,3 +155,22 @@ host keys and root-owned matching markers/configuration, register an ephemeral
 runner into the restricted group, and destroy the job disk on any outcome.
 This image preparation is not a replacement for that controller, organization
 policy, live adapters or QA identities, and does not enable `WB_QA_CONFIGURED`.
+
+## Optional encrypted fixture failure diagnosis
+
+Public release evidence remains allowlisted metadata only. For fresh-install
+fixtures, an operator may set repository variable `OPENBENCHES_QA_FAILURE_CERT_PEM`
+to a public X.509 encryption certificate. Before cleanup, the trusted automation
+can envelope the latest private setup log and bench transcript with OpenSSL CMS
+AES-256-GCM and upload only `fresh-install-debug.cms` as a separate diagnostic
+artifact, retained for two days. Plaintext temporary copies are deleted. Invalid
+certificates, unavailable encryption, and command failures never cause plaintext
+upload. The decryption key is never installed in CI. These files are not release
+attestations and contain only disposable fixture diagnostics, not live QA logs.
+
+For the initial investigation, the private key is protected on Raven under its QA
+cache and escrowed as `qa-fixture-diagnostics-private-key` in `kv-openbenches-qa`.
+Neither the scheduled session coordinator nor the broker workload identity has
+access to that secret. Rotate/remove the public certificate variable after the
+investigation. Decrypt only in private local storage and do not publish decrypted
+logs. OpenSSL CMS authenticated decryption rejects tampered envelopes.

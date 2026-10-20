@@ -1,6 +1,7 @@
 """Commit-bound release suites and fail-closed evidence validation (stdlib only)."""
 import argparse
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import tarfile
 import time
 import uuid
 
@@ -198,12 +200,47 @@ def build_failure_hints(raw):
     return result
 
 
-def workstation_diagnostics(root, project, environment):
+def encrypt_fixture_diagnostics(files, certificate, output):
+    """Optional CMS envelope: only ciphertext may leave the fixture worker.
+
+    The decryption key is never available to CI. Generated fixture logs are not
+    release evidence, and are never uploaded as plaintext on encryption failure.
+    """
+    if not certificate or output is None or output.is_symlink(): return {}
+    if len(certificate) > 16384: return {}
+    try:
+        with tempfile.TemporaryDirectory(prefix='fixture-envelope-') as temporary:
+            private = Path(temporary)
+            cert = private / 'recipient.pem'; cert.write_text(certificate)
+            plain = private / 'fixture.tgz'
+            with tarfile.open(plain, 'w:gz') as archive:
+                for name, path in files:
+                    if path.is_symlink() or not path.is_file(): continue
+                    with path.open('rb') as stream:
+                        stream.seek(0, 2); stream.seek(max(0, stream.tell() - 8 * 1024 * 1024))
+                        data = stream.read()
+                    info = tarfile.TarInfo(name); info.size = len(data); info.mode = 0o600
+                    archive.addfile(info, io.BytesIO(data))
+            output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            with tempfile.TemporaryFile() as log:
+                result = subprocess.run(['openssl', 'cms', '-encrypt', '-binary', '-aes-256-gcm',
+                    '-in', str(plain), '-out', str(output), '-outform', 'DER', '-recip', str(cert)],
+                    stdout=log, stderr=log, timeout=30)
+            if result.returncode or not output.is_file():
+                output.unlink(missing_ok=True); return {}
+            return {'file': 'fresh-install-debug.cms',
+                    'certificateSha256': hashlib.sha256(certificate.encode()).hexdigest()}
+    except (OSError, subprocess.TimeoutExpired):
+        output.unlink(missing_ok=True)
+        return {}
+
+
+def workstation_diagnostics(root, project, environment, encrypted_output=None):
     # Private snapshots are deleted, including the terminal transcript. Only
     # fixed categories/headers and numeric statuses can enter public evidence.
     with tempfile.TemporaryDirectory(prefix='workstation-private-logs-') as temporary:
         directory = Path(temporary)
-        result = {}
+        result = {}; envelope_files = []
         def copy(source, destination):
             with tempfile.TemporaryFile() as output:
                 try:
@@ -222,16 +259,22 @@ def workstation_diagnostics(root, project, environment):
                 files = [p for p in logs.rglob('*.log') if p.is_file() and not p.is_symlink()
                          and p.resolve().is_relative_to(logs)]
                 if files:
-                    raw = tail(max(files, key=lambda p:p.stat().st_mtime))
+                    latest = max(files, key=lambda p:p.stat().st_mtime)
+                    envelope_files.append(('setup.log', latest))
+                    raw = tail(latest)
                     result.update(logsRead=1, **build_failure_hints(raw))
                     headers = re.findall(rb'\[(SETUP STARTED|DOCKER CHECK|LAYER 0 BUILD|LAYER 1 BUILDS|INTERACTIVE SETUP|SETUP COMPLETE|SETUP CANCELLED)\]', raw)
                     if headers: result['lastSetupSection'] = headers[-1].decode('ascii')
             terminal = directory / 'bench-terminal.txt'
             if copy('workstation-acceptance:/report/bench-install.txt', terminal) and terminal.is_file() and not terminal.is_symlink():
                 result['terminal'] = build_failure_hints(tail(terminal))
+                envelope_files.append(('bench-terminal.txt', terminal))
         except OSError:
             # Optional diagnosis must never mask the original failing case.
             pass
+        if envelope_files and encrypted_output is not None:
+            encrypted = encrypt_fixture_diagnostics(envelope_files, environment.get('OPENBENCHES_QA_FAILURE_CERT_PEM'), encrypted_output)
+            if encrypted: result['encryptedDiagnostics'] = encrypted
         return result
 
 
@@ -285,7 +328,7 @@ def run_suite(root, manifest_path, name, output, expected=None, ref=None, extern
                     print(name + '/' + command['id'] + ': ' + ('passed' if passed else 'failed'), flush=True)
                     if not passed:
                         if name == 'fresh-install':
-                            component = workstation_diagnostics(root, project, environment)
+                            component = workstation_diagnostics(root, project, environment, Path(output) / 'fresh-install-debug.cms')
                             if component: diagnostic['component'] = component
                         if diagnostic:
                             report['runner']['failure'] = diagnostic

@@ -218,6 +218,29 @@ class ReleaseAutomationTests(unittest.TestCase):
         self.assertNotIn(secret, json.dumps(result))
         self.assertFalse(seen[0].exists(), 'Private copies must be deleted after parsing')
 
+    def test_optional_diagnosis_is_encrypted_and_tamper_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp); key = directory / 'key.pem'; cert = directory / 'cert.pem'
+            subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:3072', '-nodes', '-keyout', str(key),
+                '-out', str(cert), '-days', '1', '-subj', '/CN=fixture-test'], check=True, capture_output=True)
+            plain = directory / 'private.log'; plain.write_bytes(b'NEVER_PUBLISH_FIXTURE_PLAINTEXT')
+            encrypted = directory / 'fresh-install-debug.cms'
+            metadata = rv.encrypt_fixture_diagnostics([('setup.log', plain)], cert.read_text(), encrypted)
+            self.assertEqual(metadata['file'], 'fresh-install-debug.cms')
+            self.assertNotIn(plain.read_bytes(), encrypted.read_bytes())
+            decoded = directory / 'decoded.tgz'
+            argv = ['openssl', 'cms', '-decrypt', '-binary', '-inform', 'DER', '-in', str(encrypted),
+                    '-inkey', str(key), '-recip', str(cert), '-out', str(decoded)]
+            subprocess.run(argv, check=True, capture_output=True)
+            import tarfile
+            with tarfile.open(decoded) as archive:
+                self.assertEqual(archive.getnames(), ['setup.log'])
+                self.assertEqual(archive.extractfile('setup.log').read(), plain.read_bytes())
+            raw = bytearray(encrypted.read_bytes()); raw[-1] ^= 1; encrypted.write_bytes(raw)
+            self.assertNotEqual(subprocess.run(argv, capture_output=True).returncode, 0)
+            self.assertEqual(rv.encrypt_fixture_diagnostics([('setup.log', plain)], 'invalid certificate', encrypted), {})
+            self.assertFalse(encrypted.exists())
+
     def test_command_failure_still_cleans_up_and_cannot_pass(self):
         self.config['suites']['source']['cleanup'] = [[sys.executable, '-c', 'pass']]
         rv.atomic(self.manifest_path, self.config)
