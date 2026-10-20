@@ -228,3 +228,154 @@ No real Azure vault, company identity, or provider credentials are used by these
 Live managed-identity KV deployment, approved provider-mode validation, alert routing,
 and platform acceptance remain required before the feature is enabled for a company
 or included as validated functionality in the v1.6 release.
+
+## Optional GitHub team restriction (v1.6)
+
+A profile can additionally set `githubTeam` to an object with `organization` and
+`team`. Its existing issuer/subject grants remain mandatory. The broker removes
+`use` and `publish` unless the caller's administrator-bound GitHub account is an
+active member of that team. This affects `/v1/profiles`, `/v1/fetch` and
+`/v1/publish`, including background sync and the TUI's existing company profile
+selection. CPC `maintain`/reconciliation service permissions remain governed by
+their separate OIDC grants, not a human's team membership. No team membership
+creates a grant or enables a disabled profile.
+
+Configure `githubIdentities` on the server with `issuer`, immutable OIDC `subject`,
+GitHub numeric `githubId`, and `login`. Obtain the subject from the verified QA
+sign-in; never bind from a typed email or client-supplied username. The numeric
+ID is checked against GitHub to prevent a renamed/reused login inheriting access.
+Every request checks fresh membership; pending memberships, missing bindings and
+nonmembers are denied. GitHub outages/rate limits or unreadable token files fail
+closed, without returning credentials. Existing local credentials cannot be
+recalled merely by revoking future broker access.
+
+Use `config/credential-broker.github-qa.example.json` as the disabled QA template.
+Both accounts have ordinary `use` grants, while only User 1 belongs to the allowed
+team. Replace placeholder OIDC subjects, vault location, validator and expected
+provider account before enabling only a fictional/nonproduction profile. Never
+use production vendor tokens for this test. Keep server config administrator-owned.
+
+Set `githubMembershipTokenFile` to a server-only private file containing a GitHub
+App installation token or fine-grained token restricted to Opensoft-Testing with
+organization Members read permission. It must be readable by broker UID 10001,
+regular, nonsymlink and mode 0600/0400. Rotate expiring App tokens externally.
+Do not use the operator's broad gh token in deployment. The optional
+`credential-broker/compose.github-qa.yml` override mounts this secret only into
+the broker; set `WORKBENCHES_GITHUB_MEMBERSHIP_TOKEN_FILE` to its host path.
+Neither the client nor CPC needs this token, a GitHub password, or direct vault
+access. GitHub API reference: https://docs.github.com/en/rest/teams/members#get-team-membership-for-a-user
+
+### Unattended live QA
+
+Recurring tests must never pause for browser login. Provision the two QA company
+OIDC sessions once in the isolated worker's private account directories, with
+refresh/offline access and the broker's audience. Configure the broker bindings
+to those exact subjects. Passwords and recovery codes remain in the password
+manager. Provider-required consent/MFA is a provisioning or reauthorization step;
+a revoked/expired session fails the job instead of invoking an interactive fallback.
+
+`qa/release/test-broker-team-live.py --config /private/qa-broker-test.json` runs
+without prompts. The private JSON config contains `qaOnly: true`, `brokerUrl`, a
+`qa:`-prefixed `profileId`, `tenant`, `expectedAccountId`, the SHA256
+`expectedCredentialDigest` of canonical JSON for the seeded fictional credential,
+and `users` in order: objects with `login` and `sessionRoot` for
+Opensoft-Test-User-1 and Opensoft-Test-User-2. Each sessionRoot holds the existing
+private account-provider.json/account-session.json files. Their session roots
+must differ. The client renews sessions through the normal company sync code.
+The runner asserts profile visibility and a matching credential for User 1,
+then hidden metadata plus HTTP 403 on direct fetch for User 2. Unexpected errors,
+401s, credentials or account selection fail. Output contains decisions only.
+
+This is the actual broker authorization boundary used by the TUI. It does not
+certify browser opening, clipboard, cancellation or Microsoft initial sign-in;
+those distinct release cases still require their own automated UI adapters. Do
+not enable all live QA gates on the strength of this probe alone.
+
+### Raven isolated Arch QA host
+
+`qa/release/raven-qa-vm.py` provisions a separate writable clone of the validated
+stopped Arch golden image. It uses KVM, a private state directory, strict SSH host
+key pinning from the golden image, loopback-only SSH forwarding, and no host home,
+agent or Docker socket mounts. This provisioning host inherits the golden SSH
+identity; it is explicitly **not** a fresh per-job release worker and cannot be
+registered as one. It does not register a GitHub runner or enable live QA.
+
+```sh
+python3 qa/release/raven-qa-vm.py start --golden /private/arch-golden --state /private/raven-broker-qa
+python3 qa/release/raven-qa-vm.py stage --state /private/raven-broker-qa
+python3 qa/release/raven-qa-vm.py smoke --state /private/raven-broker-qa
+python3 qa/release/raven-qa-vm.py status --state /private/raven-broker-qa
+python3 qa/release/raven-qa-vm.py stop --state /private/raven-broker-qa
+python3 qa/release/raven-qa-vm.py resume --state /private/raven-broker-qa
+```
+
+Stage requires a clean committed source checkout and transfers only `git archive`
+of that exact commit. The smoke action builds/runs the declared credential-sync
+Compose service entirely inside the guest. Logs remain private under state;
+only the commit, VM status, and smoke result enter its manifest. A passing smoke
+result is fixture evidence, never a live GitHub/OIDC/vault acceptance claim.
+
+Before starting the live broker, configure an isolated QA issuer/client, bind the
+two verified OIDC subjects, install renewable sessions and a narrowly scoped
+GitHub membership credential, and seed a fictional QA credential in an isolated
+vault reachable by the broker's managed identity. Raven KVM does not itself
+supply Azure managed identity: an approved managed-identity hosting/relay plan is
+required for real Azure vault access. Do not fall back to the host's Azure CLI,
+GitHub credentials, production Keycloak realm, or daily workstation sessions.
+The VM can remain staged with `liveConfigured: false` until those prerequisites
+are supplied. Stop it when not in use; resume preserves its private QA disk.
+The controller removes the inherited native release-worker marker in the clone
+and creates `/etc/workbenches/provisioning-only`; native release adapters must
+therefore reject this persistent provisioning host. Smoke evidence records its
+exact staged commit and is cleared when staging another revision.
+
+### Dedicated openBenches QA OAuth vault
+
+The dedicated storage target is `kv-openbenches-qa`, in `rg-openbenches-qa`,
+subscription `sub-opensoft-platform-aks-qa` (West US). RBAC and purge protection
+are enabled. Initial provisioning uses the operator's vault-scoped Secrets
+Officer assignment; no test user receives Azure vault permissions. Worker access
+must use a separate least-privilege workload identity, not the operator's CLI
+session. No production vault is used for these sessions.
+
+`python3 qa/release/provision-github-qa-sessions.py` starts device flows for both
+designated test users (or pass `--user Opensoft-Test-User-1` to retry just one).
+It uses the public GitHub CLI OAuth client ID and requests only `read:org` plus
+`offline_access`. The browser consent screen identifies the GitHub CLI app, not
+a newly registered openBenches app. These QA-only tokens are separate from the
+operator's gh login. The provisioner verifies both immutable numeric account ID
+and login, rejects broader returned scopes, then writes the full OAuth result to
+`github-opensoft-test-user-1-oauth` / `github-opensoft-test-user-2-oauth`.
+
+Temporary device codes are shown only to the operator and are not saved to the
+vault. Only verified resulting tokens, refresh tokens if supplied, expiry data,
+and identity metadata are stored. Secret values never appear in command arguments
+or results. Uploads use a private temporary RAM-backed file, removed on completion
+or failure. No passwords or recovery codes are collected. Token renewal and
+workload identity deployment are separate from initial consent; provisioned GitHub
+OAuth sessions are not Microsoft/Keycloak company OIDC sessions and do not by
+themselves satisfy the company broker's audience/subject requirements.
+
+The single-writer QA coordinator can run
+`python3 qa/release/github-vault-sessions.py` to retrieve sessions, renew those
+near expiry, and verify live identity and allow/deny team membership. `--refresh`
+forces a rotation proof. On 2026-10-20 both real test tokens were successfully
+rotated and saved back to the dedicated vault, and live membership checks returned
+User 1 allowed / User 2 denied. Only metadata is emitted.
+
+The coordinator currently uses the operator's Azure CLI **explicitly as a
+provisioning transport**. Do not copy its Azure cache into the VM or a runner.
+A deployed coordinator needs least-privilege workload identity and a single
+writer across workers/workflows (the local lock alone is not distributed). Before
+consuming a one-use refresh token it saves a nonreplayable renewal-intent version.
+An ambiguous refresh/save failure leaves the latest state blocked and requires
+recovery/reauthorization; the coordinator never retries an old consumed token.
+Device-flow tokens can be renewed with the public client ID without a client
+secret: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#refreshing-an-access-token-with-a-refresh-token
+
+An AKS broker explicitly sets `identityMode: "workload"` and uses the platform's
+projected workload-identity token. The default `"managed"` mode retains IMDS
+managed identity for suitable Azure hosts. Neither mode uses
+DefaultAzureCredential or falls back to Azure CLI. Invalid modes or missing
+federation fail closed. This distinction matters because Raven KVM supplies
+neither Azure IMDS nor AKS projected workload identity by itself.
