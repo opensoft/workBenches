@@ -355,3 +355,20 @@ or failure. No passwords or recovery codes are collected. Token renewal and
 workload identity deployment are separate from initial consent; provisioned GitHub
 OAuth sessions are not Microsoft/Keycloak company OIDC sessions and do not by
 themselves satisfy the company broker's audience/subject requirements.
+
+The single-writer QA coordinator can run
+`python3 qa/release/github-vault-sessions.py` to retrieve sessions, renew those
+near expiry, and verify live identity and allow/deny team membership. `--refresh`
+forces a rotation proof. On 2026-10-20 both real test tokens were successfully
+rotated and saved back to the dedicated vault, and live membership checks returned
+User 1 allowed / User 2 denied. Only metadata is emitted.
+
+The coordinator currently uses the operator's Azure CLI **explicitly as a
+provisioning transport**. Do not copy its Azure cache into the VM or a runner.
+A deployed coordinator needs least-privilege workload identity and a single
+writer across workers/workflows (the local lock alone is not distributed). Before
+consuming a one-use refresh token it saves a nonreplayable renewal-intent version.
+An ambiguous refresh/save failure leaves the latest state blocked and requires
+recovery/reauthorization; the coordinator never retries an old consumed token.
+Device-flow tokens can be renewed with the public client ID without a client
+secret: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#refreshing-an-access-token-with-a-refresh-token

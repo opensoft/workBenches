@@ -219,6 +219,38 @@ class CompanySyncTests(unittest.TestCase):
         self.assertTrue(paths)
         self.assertTrue(all(not path.exists() for path in paths))
 
+    def qa_vault_sessions(self):
+        spec = importlib.util.spec_from_file_location('qa_vault_sessions', ROOT / 'qa/release/github-vault-sessions.py')
+        value = importlib.util.module_from_spec(spec); spec.loader.exec_module(value)
+        return value
+
+    def test_qa_renewal_persists_intent_and_verified_rotated_session(self):
+        sessions = self.qa_vault_sessions(); login, user_id = sessions.PROVISION.USERS[0]
+        bundle = {'provider': 'github', 'clientId': sessions.PROVISION.CLIENT_ID, 'login': login,
+                  'githubId': user_id, 'oauth': {'scope': 'read:org', 'refresh_token': 'fixture-old'}}
+        tokens = {'scope': 'read:org', 'access_token': 'fixture-new', 'refresh_token': 'fixture-rotated',
+                  'expires_in': 28800, 'refresh_token_expires_in': 100000}
+        with patch.object(sessions.PROVISION, 'store') as store, patch.object(sessions.PROVISION, 'request',
+                side_effect=[tokens, {'id': user_id, 'login': login}]):
+            result, rotated = sessions.renew(bundle, login, user_id, force=True)
+        self.assertTrue(rotated)
+        self.assertEqual(store.call_count, 2)
+        intent = store.call_args_list[0].args[1]
+        self.assertEqual(intent['state'], 'renewal-in-progress')
+        self.assertNotIn('refresh_token', intent['oauth'])
+        self.assertEqual(result['oauth']['refresh_token'], 'fixture-rotated')
+        self.assertEqual(bundle['oauth']['refresh_token'], 'fixture-old')
+        with self.assertRaises(sessions.SessionError): sessions.validate(intent, login, user_id)
+
+    def test_qa_renewal_failure_leaves_no_replayable_latest_refresh_token(self):
+        sessions = self.qa_vault_sessions(); login, user_id = sessions.PROVISION.USERS[0]
+        bundle = {'provider': 'github', 'clientId': sessions.PROVISION.CLIENT_ID, 'login': login,
+                  'githubId': user_id, 'oauth': {'scope': 'read:org', 'refresh_token': 'fixture-old'}}
+        with patch.object(sessions.PROVISION, 'store') as store, patch.object(sessions.PROVISION, 'request', return_value={'error': 'bad_refresh_token'}):
+            with self.assertRaises(sessions.SessionError): sessions.renew(bundle, login, user_id, True)
+        self.assertEqual(store.call_count, 1)
+        self.assertNotIn('refresh_token', store.call_args.args[1]['oauth'])
+
     def test_host_and_image_hook_sources_match(self):
         self.assertEqual((ROOT / 'scripts/lib/company-profile-sync.sh').read_bytes(), (ROOT / 'base-image/files/company-profile-sync.sh').read_bytes())
         self.assertEqual((ROOT / 'scripts/opencode-profile').read_bytes(), (ROOT / 'base-image/files/opencode-profile').read_bytes())
