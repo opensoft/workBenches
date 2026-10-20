@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tempfile
 
-from release_validation import ValidationError, read
+from release_validation import ValidationError, read, failure_location
 
 HERE = Path(__file__).resolve().parents[1]
 
@@ -61,11 +61,15 @@ def main():
             env.pop(variable, None)
         Path(env['TMPDIR']).mkdir()
         env['PATH'] = str(home / '.local/bin') + ':' + settings['cleanPath']
-        def run(argv, timeout=600, environment=None):
+        def run(argv, timeout=600, environment=None, phase="native-command"):
             # All native diagnostic bytes stay private and are deleted with QA HOME.
             with tempfile.TemporaryFile() as output:
                 result = subprocess.run(argv, env=environment or env, stdout=output, stderr=output, timeout=timeout)
-            if result.returncode: raise ValidationError('native_acceptance_failed')
+                if result.returncode:
+                    output.seek(0, 2); size = output.tell(); output.seek(max(0, size - 256 * 1024))
+                    diagnostic = dict(phase=phase, exitCode=result.returncode, **failure_location(output.read()))
+                    print('NATIVE_QA_FAILURE ' + json.dumps(diagnostic), file=sys.stderr, flush=True)
+                    raise ValidationError('native_acceptance_failed')
         run(['git', 'clone', '--no-hardlinks', '--no-checkout', request['root'], str(repo)])
         run(['git', '-C', str(repo), 'checkout', '--detach', request['source']['commit']])
         socket = directory / 'socket'; socket.mkdir()
@@ -91,14 +95,14 @@ def main():
                     AGENT_PROTOCOL_ROOT=str(shell_home / '.agents'),
                     NPM_CONFIG_USERCONFIG=str(shell_home / '.npmrc'),
                     npm_config_prefix=str(shell_home / '.local'))
-                run(['bash', str(repo / 'scripts/setup-shell.sh')], 1200, shell_env)
+                run(['bash', str(repo / 'scripts/setup-shell.sh')], 1200, shell_env, 'shell-install')
                 cases.append('shell-install')
-                run(['bash', str(repo / 'scripts/setup-shell.sh')], 1200, shell_env)
+                run(['bash', str(repo / 'scripts/setup-shell.sh')], 1200, shell_env, 'shell-repeat')
                 cases.append('shell-repeat')
             run([*compose, 'up', '-d', 'acceptance-engine'])
             run(['python3', str(HERE / 'devcontainer.test/test-wsl-workstation-acceptance.py'),
                  '--platform', kind, '--repo', str(repo), '--report', str(report), '--sha', request['source']['commit'],
-                 '--engine', 'unix://' + str(socket / 'docker.sock'), '--phase', 'all'], 5400)
+                 '--engine', 'unix://' + str(socket / 'docker.sock'), '--phase', 'all'], 5400, phase='workstation-driver')
             result = read(report / 'wsl-all-results.json')
             if result.get('sha') != request['source']['commit'] or result.get('complete') is not True or result.get('notRun'):
                 raise ValidationError('native_driver_incomplete')
