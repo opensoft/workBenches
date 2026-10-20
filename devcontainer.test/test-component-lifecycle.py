@@ -115,7 +115,7 @@ def main():
             assert text in requirements_output, requirements_output[-3500:]
         assert statuses() == initial, 'Browsing Requirements must not change installed components'
         # Remove a running bench and the npm CLI in one real setup.sh TUI plan.
-        output = setup_tui(repo, b'D\x1b[C\x1b[B\x1b[BD\n', env)
+        output = setup_tui(repo, b'\x1b[CD\x1b[C\x1b[B\x1b[BD\n\n', env)
         assert 'pyBench uninstalled' in output, output[-2500:]
         assert 'All selected changes completed successfully' in output
         assert statuses() == 'needs setup:not installed'
@@ -126,7 +126,7 @@ def main():
         assert note.read_text() == 'preserve local work' and project.read_text() == 'preserve project'
         run(['docker', 'image', 'inspect', 'workbench-base:latest', 'dev-bench-base:latest'])
         assert run(['docker', 'run', '--rm', '--mount', f'type=volume,src={volume},dst=/data', 'busybox:1.37.0', 'cat', '/data/marker']) == 'preserve-volume'
-        setup_tui(repo, b'\n', env)  # No selection remains a no-op.
+        setup_tui(repo, b'\x1b[C\x1b[C\x1b[C\x1b[C\n', env)  # No selection remains a no-op.
         install_runtime()
         run(['npm', 'install', '--global', '--ignore-scripts', str(package)], env=env)
         assert statuses() == 'installed:installed'

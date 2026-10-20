@@ -82,9 +82,22 @@ SILVER_MUTED='\033[38;5;245m'
 SILVER_EDGE='\033[38;5;239m'
 SILVER_FOCUS='\033[48;5;235m\033[38;5;255m'
 setup_ui_width=87
+# Terminal rows; empty means unknown, and an unknown height never clips.
+setup_ui_height=''
 setup_ui_painted=false
 setup_ui_frame_columns=0
+setup_ui_frame_rows=''
 declare -a setup_ui_previous_lines=()
+
+setup_ui_rows_known() {
+    [[ "$setup_ui_height" =~ ^[1-9][0-9]*$ ]]
+}
+
+# Short terminals drop blank spacer lines and the wordmark's padding: always
+# at 24 rows or fewer, and whenever the roomy layout would scroll a list.
+setup_ui_tight() {
+    [[ "${wizard_force_tight:-}" == true ]] || { setup_ui_rows_known && (( setup_ui_height <= 24 )); }
+}
 
 setup_ui_rule() {
     local rule
@@ -111,8 +124,13 @@ draw_setup_banner() {
     )
     local -a tones=(255 252 250 246)
     local line char tone index position
+    if setup_ui_tight; then
+        printf '  %bOpensoft%b\n' "$SILVER" "$NC"
+        return
+    fi
     printf '\n'
-    if (( setup_ui_width < 42 )); then
+    # The wordmark needs four rows; shorter terminals keep the one-line form.
+    if (( setup_ui_width < 42 )) || { setup_ui_rows_known && (( setup_ui_height < 40 )); }; then
         printf '  %bOpensoft%b\n\n' "$SILVER" "$NC"
         return
     fi
@@ -146,9 +164,21 @@ setup_requirement_counts() {
 }
 
 setup_panel_top() {
-    local label="$1" right="${2:-}" line
-    line="$(setup_ui_pair "$label" "$right" "$((setup_ui_width - 6))")"
-    printf '%b╭─ %b%s%b ─╮%b\n' "$SILVER_EDGE" "$SILVER" "$line" "$SILVER_EDGE" "$NC"
+    local label="$1" right="${2:-}" width=$((setup_ui_width - 6)) fill
+    # A narrow panel keeps its title whole and drops the secondary label.
+    [[ -z "$right" ]] || (( ${#label} + ${#right} + 4 <= width )) || right=''
+    label="${label:0:$width}"
+    [[ -z "$right" ]] || right=" $right"
+    fill=$((width - ${#label} - ${#right}))
+    if (( fill >= 2 )) && [[ -z "$right" ]]; then
+        printf -v fill '%*s' "$fill" ''
+        printf '%b╭─ %b%s %b%s─╮%b\n' "$SILVER_EDGE" "$SILVER" "$label" "$SILVER_EDGE" "${fill// /─}" "$NC"
+    elif (( fill >= 2 )); then
+        printf -v fill '%*s' "$((fill - 1))" ''
+        printf '%b╭─ %b%s %b%s%b%s%b ─╮%b\n' "$SILVER_EDGE" "$SILVER" "$label" "$SILVER_EDGE" "${fill// /─}" "$SILVER" "$right" "$SILVER_EDGE" "$NC"
+    else
+        printf '%b╭─ %b%s%*s%s%b ─╮%b\n' "$SILVER_EDGE" "$SILVER" "$label" "$fill" '' "$right" "$SILVER_EDGE" "$NC"
+    fi
 }
 
 setup_panel_bottom() {
@@ -159,7 +189,8 @@ draw_requirements_summary() {
     setup_requirement_counts
     local title="REQUIREMENTS · $requirements_ready/$requirements_total ready"
     [[ "$status_checks_running" != true ]] || title="REQUIREMENTS · Loading…"
-    setup_panel_top "$title" 'P Manage'
+    # On the Workstation step itself, P leads back to the step it came from.
+    if [[ "$CURRENT_SECTION" == 3 ]]; then setup_panel_top "$title" 'P Back'; else setup_panel_top "$title" 'P Manage'; fi
     local key label action color plain='' styled='' separator='' width=$((setup_ui_width - 4))
     for key in "${requirement_items[@]}"; do
         case "$key" in workbenches_account|ai_accounts) continue ;; esac
@@ -183,7 +214,8 @@ draw_requirements_summary() {
     done
     printf '%b│%b %b%*s %b│%b\n' "$SILVER_EDGE" "$NC" "$styled" "$((width - ${#plain}))" '' "$SILVER_EDGE" "$NC"
     setup_panel_bottom
-    [[ -z "$requirements_notice" ]] || printf '\n%b%s%b\n' "$YELLOW" "${requirements_notice:0:$setup_ui_width}" "$NC"
+    [[ -z "$requirements_notice" ]] || setup_ui_tight || printf '\n'
+    [[ -z "$requirements_notice" ]] || printf '%b%s%b\n' "$YELLOW" "${requirements_notice:0:$setup_ui_width}" "$NC"
 }
 
 setup_status_label() {
@@ -1054,37 +1086,633 @@ draw_row() {
     echo -e "${left_content}      ${middle_content}      ${right_content}"
 }
 
-# Build a complete frame off-screen; discovery never runs in the renderer.
-render_setup_frame() {
-    local os_label
+# --- Guided setup wizard -----------------------------------------------------
+# One step per screen, in the order a new workstation needs them. Steps map onto
+# the existing sections, so CURRENT_SECTION/current_selection stay the canonical
+# focus: Workstation=3, Benches=0, AI assistants=1, Tools=2 and Review=4.
+wizard_step_names=(Workstation Benches 'AI assistants' Tools Review)
+wizard_step_notes=(
+    'Required software first; the vault and accounts are optional.'
+    'Development containers for your projects.'
+    'Coding assistants and spec tools for this workstation.'
+    'Editors, terminals, VPN clients and workspace setup.'
+    ''
+)
+# Rows are assembled from real escape bytes, so names are never reinterpreted.
+# State colors are foreground-only to keep a focused row's background intact.
+printf -v WZ_NC '%b' "$NC"
+printf -v WZ_BOLD '%b' "$BOLD"
+printf -v WZ_EDGE '%b' "$SILVER_EDGE"
+printf -v WZ_SILVER '%b' "$SILVER"
+printf -v WZ_MUTED '%b' "$SILVER_MUTED"
+printf -v WZ_FOCUS '%b' "$SILVER_FOCUS"
+printf -v WZ_GREEN '%b' '\033[32m'
+printf -v WZ_RED '%b' '\033[31m'
+printf -v WZ_YELLOW '%b' "$YELLOW"
+printf -v WZ_LOADING '%b' "$LOADING_COLOR"
+printf -v WZ_DIM '%b' "$DIM"
+
+wizard_step_of() {
+    case "$1" in 3) wizard_step=0 ;; 0) wizard_step=1 ;; 1) wizard_step=2 ;; 2) wizard_step=3 ;; *) wizard_step=4 ;; esac
+}
+
+# Component keys owned by a step index (Review owns none).
+wizard_step_keys() {
+    local item
+    wizard_keys=()
+    case "$1" in
+        0) for item in "${requirement_items[@]}"; do wizard_keys+=("$item"); done ;;
+        1) for item in "${bench_items[@]}"; do wizard_keys+=("bench_$item"); done ;;
+        2) for item in "${ai_items[@]}"; do [[ "$item" == separator* ]] || wizard_keys+=("$item"); done ;;
+        3) for item in "${tool_items[@]}"; do wizard_keys+=("$item"); done ;;
+    esac
+}
+
+wizard_queued_count() {
+    local key
+    wizard_count=0
+    wizard_step_keys "$1"
+    for key in "${wizard_keys[@]}"; do
+        if [[ -n "$key" && "${component_checked[$key]:-}" == true && -n "${component_action[$key]:-}" ]]; then
+            wizard_count=$((wizard_count + 1))
+        fi
+    done
+}
+
+# Pad or cut text to exactly N characters; Bash printf widths count bytes.
+wizard_cell() {
+    local text=$1 width=$2
+    if (( width <= 0 )); then wizard_cell=''; return; fi
+    (( ${#text} <= width )) || text="${text:0:$((width - 1))}…"
+    printf -v wizard_cell '%s%*s' "$text" "$((width - ${#text}))" ''
+}
+
+wizard_wrap() {
+    local text=$1 width=$2 line
+    wizard_wrapped=()
+    (( width > 0 )) || return 0
+    while [[ -n "$text" ]]; do
+        line="${text:0:$width}"
+        if (( ${#text} > width )) && [[ "$line" == *' '* && -n "${line% *}" ]]; then line="${line% *}"; fi
+        text="${text:${#line}}"
+        text="${text# }"
+        wizard_wrapped+=("$line")
+    done
+}
+
+wizard_count_lines() {
+    local newlines="${1//[!$'\n']/}"
+    wizard_lines=0
+    [[ -z "$1" ]] || wizard_lines=$((${#newlines} + 1))
+}
+
+wizard_status_label() {
+    case "$1" in
+        installed) wizard_label=Installed ;;
+        'not installed') wizard_label='Not installed' ;;
+        'needs creds') wizard_label='Needs credentials' ;;
+        'needs setup') wizard_label='Needs setup' ;;
+        'needs check') wizard_label='Needs check' ;;
+        'needs docker') wizard_label='Needs Docker' ;;
+        'image only') wizard_label='Image only' ;;
+        configured) wizard_label=Configured ;;
+        optional) wizard_label=Optional ;;
+        loading|'') wizard_label='Loading…' ;;
+        *) wizard_label="${1^}" ;;
+    esac
+}
+
+# One line: done steps ✓, the current step highlighted, upcoming steps ○.
+draw_wizard_stepper() {
+    local index current label marker connector plain styled dots dots_styled separator=' ' gap
+    local -a counts=(0 0 0 0 0)
+    wizard_step_of "$CURRENT_SECTION"
+    current=$wizard_step
+    for index in 0 1 2 3; do wizard_queued_count "$index"; counts[index]=$wizard_count; done
+    wizard_stepper_compact=true
+    if (( setup_ui_width >= 70 )); then
+        for connector in ' ── ' ' ─ '; do
+            plain=''; styled=''
+            for index in 0 1 2 3 4; do
+                label="${wizard_step_names[index]}"
+                (( counts[index] == 0 )) || label+=" ${counts[index]}"
+                if (( index > 0 )); then plain+="$connector"; styled+="$WZ_EDGE$connector"; fi
+                if (( index == current )); then
+                    plain+=" ● $label "
+                    styled+="$WZ_FOCUS$WZ_BOLD ● $label $WZ_NC"
+                else
+                    marker='○'
+                    (( index > current )) || marker='✓'
+                    plain+="$marker $label"
+                    styled+="$WZ_MUTED$marker $label"
+                fi
+            done
+            if (( ${#plain} < setup_ui_width )); then
+                wizard_stepper_compact=false
+                printf ' %s%s\n' "$styled" "$WZ_NC"
+                return
+            fi
+        done
+    fi
+    # Narrow terminals name the step and show progress as five dots.
+    label="Step $((current + 1)) of 5 · ${wizard_step_names[current]}"
+    (( ${#label} + 10 <= setup_ui_width )) || separator=''
+    dots=''; dots_styled=''
+    for index in 0 1 2 3 4; do
+        if (( index > 0 )); then dots+="$separator"; dots_styled+="$separator"; fi
+        if (( index < current )); then dots+='●'; dots_styled+="$WZ_MUTED●"
+        elif (( index == current )); then dots+='◉'; dots_styled+="$WZ_SILVER$WZ_BOLD◉$WZ_NC"
+        else dots+='○'; dots_styled+="$WZ_EDGE○"; fi
+    done
+    label="${label:0:$((setup_ui_width - ${#dots} - 1))}"
+    gap=$((setup_ui_width - ${#label} - ${#dots}))
+    printf '%s%s%s%s%*s%s%s\n' "$WZ_SILVER" "$WZ_BOLD" "$label" "$WZ_NC" "$gap" '' "$dots_styled" "$WZ_NC"
+}
+
+# Explain the focused component: its state and what Space or D would queue.
+wizard_component_detail() {
+    local key=$1 status="${component_status[$1]:-}" action='' installed=false requested=install
+    [[ -n "$status" ]] || status=loading
+    [[ "${component_checked[$key]:-}" != true ]] || action="${component_action[$key]:-}"
+    wizard_status_label "$status"
+    wizard_detail=$wizard_label
+    case "$key" in
+        host_shell) wizard_detail+=' · Replaces shell settings' ;;
+        workspace_repo) wizard_detail+=' · May create a GitHub repository' ;;
+    esac
+    case "$status" in
+        loading) wizard_detail+=' · Checks are still running'; return ;;
+        'needs check') wizard_detail+=' · R checks again'; return ;;
+        installed|'needs creds'|'image only') installed=true; requested=update ;;
+    esac
+    case "$key" in host_shell|workspace_repo) installed=false; requested=install ;; esac
+    if [[ "$action" == "$requested" ]]; then wizard_detail+=" · Space undoes $requested"; else wizard_detail+=" · Space queues $requested"; fi
+    if [[ "$installed" == true || ( "$key" == bench_* && "$status" == 'needs docker' ) ]]; then
+        if [[ "$action" == uninstall ]]; then wizard_detail+=' · D undoes removal'; else wizard_detail+=' · D queues removal'; fi
+    fi
+}
+
+# Build a component row (wizard_row) and, when focused, its muted detail lines.
+wizard_component_row() {
+    local key=$1 focused=$2 iw=$((setup_ui_width - 4)) name status action='' symbol='✗' color="$WZ_RED"
+    local box=' ' box_color='' queued='' queued_color='' label_color="$WZ_MUTED" surface="$WZ_SILVER" marker=' '
+    local name_w tail_w=0 line detail
+    name="${component_description[$key]:-$key}"
+    status="${component_status[$key]:-}"
+    [[ -n "$status" ]] || status=loading
+    if [[ "${component_checked[$key]:-}" == true ]]; then
+        action="${component_action[$key]:-}"
+        if [[ "$action" == uninstall ]]; then box='✗'; box_color="$WZ_RED"; else box='✓'; box_color="$WZ_GREEN"; fi
+        case "$action" in
+            install) queued='→ Install'; queued_color="$WZ_GREEN" ;;
+            update) queued='→ Update'; queued_color="$WZ_GREEN" ;;
+            uninstall) queued='→ Remove'; queued_color="$WZ_RED" ;;
+        esac
+    fi
+    # The same status symbols and colors as the compact three-column rows.
+    if [[ "$status" == loading ]]; then
+        color="$WZ_LOADING"; symbol='…'; label_color="$WZ_LOADING"
+    elif [[ "$status" == installed || "$status" == configured ]]; then
+        color="$WZ_GREEN"; symbol='✓'
+    elif [[ "$status" == 'needs creds' || "$status" == 'needs setup' || "$status" == 'needs check' || "$status" == 'needs docker' || "$status" == 'image only' ]]; then
+        color="$WZ_YELLOW"; symbol='⚠'; label_color="$WZ_YELLOW"
+    elif [[ "$status" == optional ]]; then
+        color="$WZ_DIM"; symbol='·'
+    fi
+    [[ "$focused" != true ]] || { marker='›'; surface="$WZ_FOCUS"; }
+    wizard_status_label "$status"
+    # Status labels need 60 columns; narrower rows keep only the queued action.
+    if (( setup_ui_width >= 60 )); then tail_w=29; elif [[ -n "$queued" ]]; then tail_w=10; fi
+    name_w=$((iw - 8 - tail_w))
+    wizard_cell "$name" "$name_w"
+    line="$WZ_EDGE│$WZ_NC $surface$marker [$box_color$box$WZ_NC$surface] $color$symbol$WZ_NC$surface $wizard_cell"
+    if (( setup_ui_width >= 60 )); then
+        wizard_cell "$wizard_label" 17
+        line+=" $label_color$wizard_cell$WZ_NC$surface  "
+        wizard_cell "$queued" 9
+        line+="$queued_color$wizard_cell$WZ_NC$surface"
+    elif [[ -n "$queued" ]]; then
+        wizard_cell "$queued" 9
+        line+=" $queued_color$wizard_cell$WZ_NC$surface"
+    fi
+    wizard_row="$line $WZ_NC$WZ_EDGE│$WZ_NC"
+    wizard_row_detail=''
+    [[ "$focused" == true ]] || return 0
+    wizard_component_detail "$key"
+    wizard_wrap "$wizard_detail" "$((iw - 8))"
+    for detail in "${wizard_wrapped[@]}"; do
+        wizard_cell "$detail" "$((iw - 8))"
+        [[ -z "$wizard_row_detail" ]] || wizard_row_detail+=$'\n'
+        wizard_row_detail+="$WZ_EDGE│$WZ_NC         $WZ_MUTED$wizard_cell $WZ_EDGE│$WZ_NC"
+    done
+}
+
+# Panels are collected first, then laid out in the rows the frame has left.
+wizard_panels_reset() {
+    wizard_panel_label=(); wizard_panel_right=(); wizard_panel_first=(); wizard_panel_size=()
+    wizard_entry_row=(); wizard_entry_detail=(); wizard_focus_entry=-1
+}
+
+wizard_panel_add() {
+    wizard_panel_label+=("$1"); wizard_panel_right+=("${2:-}")
+    wizard_panel_first+=("${#wizard_entry_row[@]}"); wizard_panel_size+=(0)
+}
+
+wizard_entry_add() {
+    local last=$((${#wizard_panel_size[@]} - 1))
+    [[ "${3:-false}" != true ]] || wizard_focus_entry=${#wizard_entry_row[@]}
+    wizard_entry_row+=("$1"); wizard_entry_detail+=("${2:-}")
+    wizard_panel_size[last]=$((wizard_panel_size[last] + 1))
+}
+
+wizard_more_row() {
+    wizard_cell "$1 $2 more" "$((setup_ui_width - 6))"
+    printf '%s│%s   %s%s %s│%s\n' "$WZ_EDGE" "$WZ_NC" "$WZ_MUTED" "$wizard_cell" "$WZ_EDGE" "$WZ_NC"
+}
+
+# Print an entry with at most N detail lines (-1 prints them all).
+wizard_print_entry() {
+    local index=$1 limit=$2 detail
+    local -a details=()
+    printf '%s\n' "${wizard_entry_row[index]}"
+    [[ -n "${wizard_entry_detail[index]}" ]] || return 0
+    mapfile -t details <<< "${wizard_entry_detail[index]}"
+    (( limit >= 0 )) || limit=${#details[@]}
+    for detail in "${details[@]:0:limit}"; do printf '%s\n' "$detail"; done
+}
+
+wizard_entry_height() {
+    wizard_count_lines "${wizard_entry_detail[$1]}"
+    wizard_height=$((1 + wizard_lines))
+}
+
+# Lay out the collected panels within $1 rows (empty: unlimited). When the
+# frame is too tall, other panels collapse to a "N more" row and the focused
+# panel scrolls to keep its focused row visible between ▲/▼ rows.
+wizard_draw_panels() {
+    local budget=$1 panels=${#wizard_panel_first[@]} index panel first last total=0 used
+    local focus=$wizard_focus_entry focus_panel=0 anchor focus_limit=-1 start end grew cost avail up down
+    local -a full=() mode=()
+    (( panels > 0 )) || return 0
+    for ((panel=0; panel<panels; panel++)); do
+        full[panel]=2
+        first=${wizard_panel_first[panel]}
+        for ((index=first; index<first+wizard_panel_size[panel]; index++)); do
+            wizard_entry_height "$index"
+            full[panel]=$((full[panel] + wizard_height))
+        done
+        total=$((total + full[panel]))
+        mode[panel]=full
+        (( focus < first || focus >= first + wizard_panel_size[panel] )) || focus_panel=$panel
+    done
+    if [[ -n "$budget" ]] && (( total > budget )); then
+        # Collapse every other panel, then restore the nearest ones that fit.
+        used=${full[focus_panel]}
+        for ((panel=0; panel<panels; panel++)); do
+            (( panel == focus_panel )) || { mode[panel]=collapsed; used=$((used + 3)); }
+        done
+        for ((index=1; index<panels; index++)); do
+            for panel in $((focus_panel - index)) $((focus_panel + index)); do
+                (( panel >= 0 && panel < panels )) || continue
+                (( used - 3 + full[panel] <= budget )) || continue
+                mode[panel]=full; used=$((used - 3 + full[panel]))
+            done
+        done
+        (( used <= budget )) || mode[focus_panel]=window
+    fi
+    for ((panel=0; panel<panels; panel++)); do
+        setup_panel_top "${wizard_panel_label[panel]}" "${wizard_panel_right[panel]}"
+        first=${wizard_panel_first[panel]}
+        last=$((first + wizard_panel_size[panel] - 1))
+        case "${mode[panel]}" in
+            full)
+                for ((index=first; index<=last; index++)); do wizard_print_entry "$index" -1; done ;;
+            collapsed)
+                if (( panel < focus_panel )); then wizard_more_row '▲' "${wizard_panel_size[panel]}"
+                else wizard_more_row '▼' "${wizard_panel_size[panel]}"; fi ;;
+            window)
+                avail=$((budget - 2))
+                for ((index=0; index<panels; index++)); do
+                    (( index == panel )) || avail=$((avail - 3))
+                done
+                anchor=$focus
+                (( anchor >= first && anchor <= last )) || anchor=$first
+                up=0; down=0
+                (( anchor == first )) || up=1
+                (( anchor == last )) || down=1
+                wizard_entry_height "$anchor"
+                used=$wizard_height
+                if (( used + up + down > avail )); then
+                    focus_limit=$((avail - 1 - up - down))
+                    (( focus_limit >= 0 )) || focus_limit=0
+                    used=$((1 + focus_limit))
+                fi
+                start=$anchor; end=$anchor
+                # Grow alternately below and above, keeping the focus centered.
+                while true; do
+                    grew=false
+                    if (( end < last )); then
+                        wizard_entry_height "$((end + 1))"; cost=$wizard_height
+                        up=0; down=0
+                        (( start == first )) || up=1
+                        (( end + 1 == last )) || down=1
+                        if (( used + cost + up + down <= avail )); then end=$((end + 1)); used=$((used + cost)); grew=true; fi
+                    fi
+                    if (( start > first )); then
+                        wizard_entry_height "$((start - 1))"; cost=$wizard_height
+                        up=0; down=0
+                        (( start - 1 == first )) || up=1
+                        (( end == last )) || down=1
+                        if (( used + cost + up + down <= avail )); then start=$((start - 1)); used=$((used + cost)); grew=true; fi
+                    fi
+                    [[ "$grew" == true ]] || break
+                done
+                # With almost no room, the focused row wins over the ▲/▼ rows.
+                up=0; down=0
+                (( start == first )) || up=1
+                (( end == last )) || down=1
+                (( used + up + down <= avail )) || up=0
+                (( used + up + down <= avail )) || down=0
+                (( up == 0 )) || wizard_more_row '▲' "$((start - first))"
+                for ((index=start; index<=end; index++)); do
+                    if (( index == anchor )); then wizard_print_entry "$index" "$focus_limit"; else wizard_print_entry "$index" -1; fi
+                done
+                (( down == 0 )) || wizard_more_row '▼' "$((last - end))" ;;
+        esac
+        setup_panel_bottom
+    done
+}
+
+# Rows the collected panels need without scrolling, plus Review's notes.
+wizard_model_height() {
+    local panel index
+    wizard_natural=${#wizard_review_notes[@]}
+    for ((panel=0; panel<${#wizard_panel_first[@]}; panel++)); do
+        wizard_natural=$((wizard_natural + 2))
+        for ((index=wizard_panel_first[panel]; index<wizard_panel_first[panel]+wizard_panel_size[panel]; index++)); do
+            wizard_entry_height "$index"
+            wizard_natural=$((wizard_natural + wizard_height))
+        done
+    done
+}
+
+# Step 1 reuses the Requirements rows and their focused-row explanation.
+wizard_build_workstation() {
+    local item output row detail
+    setup_requirement_counts
+    wizard_panels_reset
+    wizard_panel_add 'REQUIRED SOFTWARE' "$requirements_ready/$requirements_total ready"
+    for item in "${requirement_items[@]}" '' vault workbenches_account ai_accounts; do
+        if [[ -z "$item" ]]; then wizard_panel_add 'OPTIONAL VAULT & ACCOUNTS' 'Now or later'; continue; fi
+        if (( ${#wizard_panel_first[@]} == 1 )); then
+            case "$item" in vault|workbenches_account|ai_accounts) continue ;; esac
+            output="$(draw_requirement_item "$item" required)"
+        else
+            output="$(draw_requirement_item "$item" optional)"
+        fi
+        row="${output%%$'\n'*}"; detail=''
+        [[ "$output" != *$'\n'* ]] || detail="${output#*$'\n'}"
+        if [[ "$item" == "${requirement_items[$current_selection]:-}" ]]; then
+            wizard_entry_add "$row" "$detail" true
+        else
+            wizard_entry_add "$row" "$detail"
+        fi
+    done
+}
+
+# Steps 2-4: one panel per group; AI assistants split at the separator.
+wizard_build_components() {
+    local index item key focused
+    local -a items=()
+    wizard_panels_reset
+    case "$CURRENT_SECTION" in
+        0) for item in "${bench_items[@]}"; do items+=("bench_$item"); done ;;
+        1) items=("${ai_items[@]}") ;;
+        2) items=("${tool_items[@]}") ;;
+    esac
+    for index in "${!items[@]}"; do
+        key="${items[index]}"
+        if (( index == 0 )) || [[ "$key" == separator* ]]; then
+            case "$CURRENT_SECTION:$key" in
+                0:*) wizard_panel_add BENCHES ;;
+                1:separator*) wizard_panel_add 'SPEC TOOLS' ;;
+                1:*) wizard_panel_add ASSISTANTS ;;
+                *) wizard_panel_add TOOLS ;;
+            esac
+            [[ "$key" != separator* ]] || continue
+        fi
+        focused=false
+        (( index != current_selection )) || focused=true
+        wizard_component_row "$key" "$focused"
+        wizard_entry_add "$wizard_row" "$wizard_row_detail" "$focused"
+    done
+    wizard_panel_counts "${items[@]}"
+}
+
+# Set "<n> of <total> installed" on each component panel (Loading… while checking).
+wizard_panel_counts() {
+    local panel=-1 key installed=0 total=0 loading=false
+    for key in "$@" ''; do
+        if [[ -z "$key" || "$key" == separator* ]] || (( panel < 0 )); then
+            if (( panel >= 0 )); then
+                if [[ "$loading" == true ]]; then wizard_panel_right[panel]='Loading…'
+                else wizard_panel_right[panel]="$installed of $total installed"; fi
+            fi
+            [[ -n "$key" ]] || break
+            panel=$((panel + 1)); installed=0; total=0; loading=false
+            [[ "$key" != separator* ]] || continue
+        fi
+        total=$((total + 1))
+        case "${component_status[$key]:-loading}" in
+            installed|configured) installed=$((installed + 1)) ;;
+            loading) loading=true ;;
+        esac
+    done
+}
+
+# Apply waits for the same conditions handle_input enforces.
+wizard_apply_blocker() {
+    wizard_blocker=''
+    [[ "$status_async_ui" == true ]] || return 0
+    if [[ "$status_checks_running" == true ]]; then
+        wizard_blocker='Waiting for checks to finish…'
+    elif ! setup_required_ready; then
+        wizard_blocker='Resolve workstation requirements first (P).'
+    fi
+}
+
+# Queued changes in step order, as "key<TAB>step" rows grouped by action.
+wizard_review_rows() {
+    local step key
+    wizard_review_install=(); wizard_review_update=(); wizard_review_remove=()
+    for step in 0 1 2 3; do
+        wizard_step_keys "$step"
+        for key in "${wizard_keys[@]}"; do
+            [[ -n "$key" && "${component_checked[$key]:-}" == true ]] || continue
+            case "${component_action[$key]:-}" in
+                install) wizard_review_install+=("$key"$'\t'"$step") ;;
+                update) wizard_review_update+=("$key"$'\t'"$step") ;;
+                uninstall) wizard_review_remove+=("$key"$'\t'"$step") ;;
+            esac
+        done
+    done
+}
+
+wizard_review_add() {
+    local color=$1 symbol=$2 row name iw=$((setup_ui_width - 4))
+    shift 2
+    for row in "$@"; do
+        wizard_cell "${component_description[${row%%$'\t'*}]:-${row%%$'\t'*}}" "$((iw - 17))"
+        name=$wizard_cell
+        wizard_cell "${wizard_step_names[${row#*$'\t'}]}" 14
+        wizard_entry_add "$WZ_EDGE│$WZ_NC $color$symbol$WZ_NC $WZ_SILVER$name $WZ_MUTED$wizard_cell$WZ_NC $WZ_EDGE│$WZ_NC"
+    done
+}
+
+# Step 5 is read-only: what Enter will install, update and remove. Within
+# $1 rows (empty: unlimited); the warnings go to wizard_review_notes.
+wizard_build_review() {
+    local budget=$1 note installs=0 grouped=0 combined=false kept=''
+    local -a notes=()
+    wizard_review_rows
+    installs=${#wizard_review_install[@]}
+    wizard_review_notes=()
+    if [[ "${component_checked[host_shell]:-}" == true && -n "${component_action[host_shell]:-}" ]]; then
+        notes+=('⚠ Shell setup replaces your shell settings.')
+    fi
+    if [[ "${component_checked[workspace_repo]:-}" == true && -n "${component_action[workspace_repo]:-}" ]]; then
+        notes+=('⚠ Org workspace may create a GitHub repository.')
+    fi
+    for note in "${notes[@]}"; do
+        wizard_wrap "$note" "$setup_ui_width"
+        wizard_review_notes+=("${wizard_wrapped[@]}")
+    done
+    [[ -z "$budget" ]] || budget=$((budget - ${#wizard_review_notes[@]}))
+    # Grouped panels cost two rows each; a short terminal gets one list instead.
+    for note in "$installs" "${#wizard_review_update[@]}" "${#wizard_review_remove[@]}"; do
+        (( note == 0 )) || grouped=$((grouped + 2 + note))
+    done
+    (( grouped == 0 )) || [[ -z "$budget" ]] || (( grouped <= budget )) || combined=true
+    (( ${#wizard_review_remove[@]} == 0 )) || kept='projects and credentials are kept'
+    wizard_panels_reset
+    if [[ "$combined" == true ]]; then
+        wizard_panel_add "CHANGES · $((installs + ${#wizard_review_update[@]} + ${#wizard_review_remove[@]}))" "$kept"
+    elif (( installs )); then
+        wizard_panel_add "INSTALL · $installs"
+    fi
+    (( installs == 0 )) || wizard_review_add "$WZ_GREEN" '+' "${wizard_review_install[@]}"
+    if (( ${#wizard_review_update[@]} )); then
+        [[ "$combined" == true ]] || wizard_panel_add "UPDATE · ${#wizard_review_update[@]}"
+        wizard_review_add "$WZ_GREEN" '↻' "${wizard_review_update[@]}"
+    fi
+    if (( ${#wizard_review_remove[@]} )); then
+        [[ "$combined" == true ]] || wizard_panel_add "REMOVE · ${#wizard_review_remove[@]}" "$kept"
+        wizard_review_add "$WZ_RED" '−' "${wizard_review_remove[@]}"
+    fi
+}
+
+# Draw the collected panels within $1 rows, then any Review warnings.
+wizard_draw_body() {
+    local budget=$1 line
+    [[ -z "$budget" ]] || budget=$((budget - ${#wizard_review_notes[@]}))
+    wizard_draw_panels "$budget"
+    for line in "${wizard_review_notes[@]}"; do printf '%s%s%s\n' "$WZ_YELLOW" "$line" "$WZ_NC"; done
+}
+
+# Banner, stepper, status strip and the step's title, note or blocker.
+wizard_draw_head() {
+    local os_label title line tight=false
+    ! setup_ui_tight || tight=true
     draw_setup_banner
     os_label="${setup_os_label:0:$((setup_ui_width - 20))}"
     printf '%b%s%b\n' "$SILVER" "$(setup_ui_pair "workBenches v$setup_version" "$os_label" "$setup_ui_width")" "$NC"
-    printf '%b%s%b\n\n' "$SILVER_EDGE" "$(setup_ui_rule "$setup_ui_width")" "$NC"
-
-    if [[ "$CURRENT_SECTION" == 3 ]]; then
-        draw_requirements
-    else
-        draw_requirements_summary
-        printf '\n'
-        draw_three_sections
+    printf '%b%s%b\n' "$SILVER_EDGE" "$(setup_ui_rule "$setup_ui_width")" "$NC"
+    draw_wizard_stepper
+    draw_requirements_summary
+    [[ "$tight" == true ]] || printf '\n'
+    wizard_step_of "$CURRENT_SECTION"
+    title="STEP $((wizard_step + 1)) OF 5 · ${wizard_step_names[wizard_step]^^}"
+    # In a short, narrow terminal the compact stepper already names the step.
+    if [[ "$tight" != true || "$wizard_stepper_compact" != true ]]; then
+        printf '%s%s%s%s\n' "$WZ_SILVER" "$WZ_BOLD" "${title:0:$setup_ui_width}" "$WZ_NC"
     fi
-    draw_setup_footer
+    if (( wizard_step == 4 )); then
+        wizard_review_rows
+        if (( ${#wizard_review_install[@]} + ${#wizard_review_update[@]} + ${#wizard_review_remove[@]} > 0 )); then
+            wizard_wrap 'Nothing has changed yet. Enter applies these changes.' "$setup_ui_width"
+        else
+            wizard_wrap 'No changes selected. ← Back to choose, or Enter to finish without changes.' "$setup_ui_width"
+        fi
+        for line in "${wizard_wrapped[@]}"; do printf '%s%s%s\n' "$WZ_MUTED" "$line" "$WZ_NC"; done
+        wizard_apply_blocker
+        [[ -z "$wizard_blocker" ]] || printf '%s%s%s\n' "$WZ_YELLOW" "${wizard_blocker:0:$setup_ui_width}" "$WZ_NC"
+    elif [[ "$tight" != true ]]; then
+        wizard_wrap "${wizard_step_notes[wizard_step]}" "$setup_ui_width"
+        for line in "${wizard_wrapped[@]}"; do printf '%s%s%s\n' "$WZ_MUTED" "$line" "$WZ_NC"; done
+    fi
+    [[ "$tight" == true ]] || printf '\n'
+}
+
+wizard_render_head() {
+    head="$(wizard_draw_head; printf x)"
+    head="${head%x}"; head="${head%$'\n'}"
+    wizard_count_lines "$head"
+    wizard_head_lines=$wizard_lines
+}
+
+# Build a complete frame off-screen; discovery never runs in the renderer.
+# Lists get whatever rows the head and footer leave in a known-height terminal;
+# spacers go first, so a list scrolls only when the compact layout is full too.
+render_setup_frame() {
+    local head body foot budget='' foot_lines
+    local -a frame=()
+    wizard_force_tight=false
+    wizard_review_notes=()
+    case "$CURRENT_SECTION" in
+        3) wizard_build_workstation ;;
+        4) wizard_build_review '' ;;
+        *) wizard_build_components ;;
+    esac
+    foot="$(draw_setup_footer)"
+    wizard_render_head
+    if setup_ui_rows_known; then
+        wizard_count_lines "$foot"; foot_lines=$wizard_lines
+        wizard_model_height
+        if ! setup_ui_tight && (( wizard_head_lines + wizard_natural + foot_lines > setup_ui_height )); then
+            wizard_force_tight=true
+            wizard_render_head
+        fi
+        budget=$((setup_ui_height - wizard_head_lines - foot_lines))
+        [[ "$CURRENT_SECTION" != 4 ]] || wizard_build_review "$budget"
+    fi
+    body="$(wizard_draw_body "$budget")"
+    mapfile -t frame <<< "$head"
+    [[ -z "$body" ]] || mapfile -t -O "${#frame[@]}" frame <<< "$body"
+    mapfile -t -O "${#frame[@]}" frame <<< "$foot"
+    # Below the supported size, drop banner rows rather than overprint the footer.
+    if setup_ui_rows_known; then
+        while (( ${#frame[@]} > setup_ui_height )); do frame=("${frame[@]:1}"); done
+    fi
+    wizard_force_tight=false
+    printf '%s\n' "${frame[@]}"
 }
 
 # Commit only changed lines in one write, without blanking the screen first.
 draw_ui() {
-    local columns frame output='' cursor index count
+    local columns rows frame output='' cursor index count
     local -a lines=()
     columns="$(tput cols 2>/dev/null)"
     [[ "$columns" =~ ^[0-9]+$ ]] || columns=88
+    rows="$(tput lines 2>/dev/null)"
+    [[ "$rows" =~ ^[1-9][0-9]*$ ]] || rows=''
     setup_ui_width=$((columns - 1))
     (( setup_ui_width <= 87 )) || setup_ui_width=87
     (( setup_ui_width >= 36 )) || setup_ui_width=36
+    setup_ui_height=$rows
     frame="$(render_setup_frame)"
     mapfile -t lines <<< "$frame"
 
-    if [[ "$setup_ui_painted" != true || "$setup_ui_frame_columns" != "$columns" ]]; then
+    if [[ "$setup_ui_painted" != true || "$setup_ui_frame_columns" != "$columns" || "$setup_ui_frame_rows" != "$rows" ]]; then
         output=$'\033[?25l\033[0m\033[2J'
         setup_ui_previous_lines=()
     fi
@@ -1101,12 +1729,15 @@ draw_ui() {
     [[ -z "$output" ]] || printf '%s' "$output"
     setup_ui_previous_lines=("${lines[@]}")
     setup_ui_frame_columns=$columns
+    setup_ui_frame_rows=$rows
     setup_ui_painted=true
 }
 
 # Keep action hints together and show detail only for the focused component.
 draw_setup_footer() {
-    local selected_item='' selected_count=0 item bench context action space_hint='Select'
+    local selected_item='' selected_count=0 item context='' action space_hint='Select' enter_hint=Review
+    local changes hint plain styled separator=' ' fresh=true
+    local -a hints=()
     case "$CURRENT_SECTION" in
         0) selected_item="bench_${bench_items[$current_selection]}" ;;
         1) selected_item="${ai_items[$current_selection]}" ;;
@@ -1116,35 +1747,54 @@ draw_setup_footer() {
     for item in "${!component_checked[@]}"; do
         [[ "${component_checked[$item]}" != true ]] || selected_count=$((selected_count + 1))
     done
-    context="${component_description[$selected_item]} · $(setup_status_label "${component_status[$selected_item]}")"
-    action="${component_action[$selected_item]}"
-    if [[ -n "$action" ]]; then
-        case "$action" in
-            uninstall) context="${component_description[$selected_item]} · Remove; projects and credentials kept" ;;
-            *) context+=" → $action" ;;
-        esac
-    fi
-    case "$selected_item" in
-        host_shell) context='Shell setup · Replaces shell settings' ;;
-        workspace_repo) context='Org workspace · May create a GitHub repository' ;;
-    esac
-    printf '\n%b%s%b\n' "$SILVER_EDGE" "$(setup_ui_rule "$setup_ui_width")" "$NC"
-    printf '%b%s%b\n' "$SILVER" "$(setup_ui_pair "$context" "Changes selected: $selected_count" "$setup_ui_width")" "$NC"
-    if [[ "$CURRENT_SECTION" == 3 ]]; then
+    if [[ "$CURRENT_SECTION" == 4 ]]; then
+        wizard_apply_blocker
+        if [[ -n "$wizard_blocker" ]]; then context='Review · Apply is waiting'
+        elif (( selected_count > 0 )); then context='Review · Nothing applied yet'
+        else context='Review · No changes'; fi
+    elif [[ -n "$selected_item" ]]; then
+        context="${component_description[$selected_item]} · $(setup_status_label "${component_status[$selected_item]}")"
+        action="${component_action[$selected_item]}"
+        if [[ -n "$action" ]]; then
+            case "$action" in
+                uninstall) context="${component_description[$selected_item]} · Remove; projects and credentials kept" ;;
+                *) context+=" → $action" ;;
+            esac
+        fi
         case "$selected_item" in
-            docker|wsl|setup_tools|vault)
-                space_hint="$(workbenches_requirement_action "$selected_item" "${component_status[$selected_item]}" "${component_status[workbenches_account]}")" ;;
-            *) [[ "${component_checked[$selected_item]}" != true ]] || space_hint='Undo' ;;
+            host_shell) context='Shell setup · Replaces shell settings' ;;
+            workspace_repo) context='Org workspace · May create a GitHub repository' ;;
         esac
-        printf '%bNavigation:%b ↑↓ Move  Space %s  ← Tools  P Back\n' "$SILVER_MUTED" "$NC" "$space_hint"
-    else
-        printf '%bNavigation:%b ↑↓ Move  ←→ Section  Space Select  D Remove  P Requirements\n' "$SILVER_MUTED" "$NC"
     fi
-    if [[ "$CURRENT_SECTION" == 3 && "$selected_item" =~ ^(docker|wsl|setup_tools|vault)$ ]]; then
-        printf '%b            Enter %s  R Refresh  Q Quit%b\n' "$SILVER_MUTED" "$space_hint" "$NC"
-    else
-        printf '%b            R Refresh  Enter Apply  Q Quit%b\n' "$SILVER_MUTED" "$NC"
-    fi
+    changes="Changes selected: $selected_count"
+    (( setup_ui_width >= 60 )) || changes="Changes: $selected_count"
+    printf '%b%s%b\n' "$SILVER_EDGE" "$(setup_ui_rule "$setup_ui_width")" "$NC"
+    printf '%b%s%b\n' "$SILVER" "$(setup_ui_pair "$context" "$changes" "$setup_ui_width")" "$NC"
+    # Hints follow the step: service rows act at once, Review applies.
+    case "$CURRENT_SECTION" in
+        3)
+            case "$selected_item" in
+                docker|wsl|setup_tools|vault)
+                    space_hint="$(workbenches_requirement_action "$selected_item" "${component_status[$selected_item]}" "${component_status[workbenches_account]}")"
+                    enter_hint=$space_hint ;;
+                '') ;;
+                *) [[ "${component_checked[$selected_item]}" != true ]] || space_hint='Undo' ;;
+            esac
+            hints=('↑↓ Move' '→ Next' "Space $space_hint" 'P Back' 'R Refresh' "Enter $enter_hint" 'Q Quit') ;;
+        4) hints=('← Back' 'Enter Apply' 'P Workstation' 'R Refresh' 'Q Quit') ;;
+        *) hints=('↑↓ Move' '← Back' '→ Next' 'Space Select' 'D Remove' 'P Workstation' 'R Refresh' 'Enter Review' 'Q Quit') ;;
+    esac
+    plain='Navigation:'
+    printf -v styled '%bNavigation:%b' "$SILVER_MUTED" "$NC"
+    for hint in "${hints[@]}"; do
+        if [[ "$fresh" != true ]] && (( ${#plain} + 2 + ${#hint} > setup_ui_width )); then
+            printf '%s\n' "$styled"
+            plain='           '; styled=$plain; separator=' '
+        fi
+        plain+="$separator$hint"; styled+="$separator$hint"
+        separator='  '; fresh=false
+    done
+    printf '%s\n' "$styled"
 }
 
 
@@ -1285,8 +1935,8 @@ handle_input() {
     if [[ $key == $'\x1b' ]]; then
         read -rsn2 -t 0.1 key
         case "$key" in
-            '[A') # Up arrow - move up in current section
-                if [ $current_selection -gt 0 ]; then
+            '[A') # Up arrow - move up in current section (Review has no rows)
+                if [ $CURRENT_SECTION -ne 4 ] && [ $current_selection -gt 0 ]; then
                     ((current_selection--))
                     # Skip separators in AI section
                     if [ $CURRENT_SECTION -eq 1 ]; then
@@ -1306,8 +1956,10 @@ handle_input() {
                     max_idx=$((${#ai_items[@]} - 1))
                 elif [ $CURRENT_SECTION -eq 2 ]; then
                     max_idx=$((${#tool_items[@]} - 1))
-                else
+                elif [ $CURRENT_SECTION -eq 3 ]; then
                     max_idx=$((${#requirement_items[@]} - 1))
+                else
+                    max_idx=0  # Review is read-only.
                 fi
 
                 if [ $current_selection -lt $max_idx ]; then
@@ -1322,26 +1974,29 @@ handle_input() {
                     fi
                 fi
                 ;;
-            '[C') # Right arrow - switch section right
-                if [ $CURRENT_SECTION -lt 3 ]; then
-                    if [[ "$CURRENT_SECTION" == 2 ]]; then
-                        requirements_return_section=$CURRENT_SECTION
-                        requirements_return_selection=$current_selection
-                    fi
-                    ((CURRENT_SECTION++))
-                    current_selection=0
-                fi
+            '[C') # Right arrow - next wizard step: Workstation, Benches, AI, Tools, Review
+                case "$CURRENT_SECTION" in
+                    3) CURRENT_SECTION=0; current_selection=0 ;;
+                    0|1) ((CURRENT_SECTION++)); current_selection=0 ;;
+                    2) CURRENT_SECTION=4; current_selection=0 ;;
+                esac
                 ;;
-            '[D') # Left arrow - switch section left
-                if [ $CURRENT_SECTION -gt 0 ]; then
-                    ((CURRENT_SECTION--))
-                    current_selection=0
-                fi
+            '[D') # Left arrow - previous wizard step (no wrap)
+                case "$CURRENT_SECTION" in
+                    4) CURRENT_SECTION=2; current_selection=0 ;;
+                    1|2) ((CURRENT_SECTION--)); current_selection=0 ;;
+                    0)
+                        # Like P, remember where Workstation should return to.
+                        requirements_return_section=0
+                        requirements_return_selection=$current_selection
+                        CURRENT_SECTION=3; current_selection=0 ;;
+                esac
                 ;;
         esac
     else
         case "$key" in
             ' '|d|D) # Space toggles install/update; D toggles explicit removal.
+                [[ "$CURRENT_SECTION" != 4 ]] || return 0  # Review is read-only.
                 local input_key="$key"
                 local key=""
                 if [ $CURRENT_SECTION -eq 0 ]; then
@@ -1396,6 +2051,11 @@ handle_input() {
                     case "$requirement" in
                         docker|wsl|setup_tools|vault) activate_requirement "$requirement"; return "$?" ;;
                     esac
+                fi
+                # Every other step opens Review; only Review applies.
+                if [[ "$CURRENT_SECTION" != 4 ]]; then
+                    CURRENT_SECTION=4; current_selection=0
+                    return 0
                 fi
                 if [[ "$status_async_ui" == true ]] && { [[ "$status_checks_running" == true ]] || ! setup_required_ready; }; then
                     requirements_notice='Wait for checks and resolve workstation requirements before Apply.'
@@ -3211,6 +3871,11 @@ main() {
     done
 
     ensure_setup_platform || return "$?"
+    if [[ "$mode" == interactive || "$mode" == --select-only ]]; then
+        # The wizard opens on its first step; P from there leads on to Benches.
+        CURRENT_SECTION=3; current_selection=0
+        requirements_return_section=0; requirements_return_selection=0
+    fi
     if [[ ( "$mode" == interactive || "$mode" == --select-only ) && -t 0 && -t 1 ]]; then
         status_async_ui=true
         init_components --loading
