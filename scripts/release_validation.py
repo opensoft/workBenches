@@ -103,8 +103,18 @@ def source(root, manifest_path, expected=None, ref=None):
     product = (root / 'VERSION').read_text().strip(); version(product)
     lock = read(root / 'config/release-lock.json')
     if lock.get('version') != product: raise ValidationError('version_lock_mismatch')
+    label = ref or commit
+    # A future release branch with an inherited old VERSION would otherwise
+    # silently omit its version-gated suites (for example v1.7 device SSH).
+    branch = re.fullmatch(r'(?:refs/heads/)?release/(\d+\.\d+(?:\.\d+)?)', label)
+    tag = re.fullmatch(r'(?:refs/tags/)?v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)', label)
+    if branch:
+        width = len(branch[1].split('.'))
+        if version(branch[1])[:width] != version(product)[:width]:
+            raise ValidationError('release_ref_version_mismatch')
+    if tag and tag[1] != product: raise ValidationError('release_ref_version_mismatch')
     return dict(commit=commit, version=product, lockSha256=digest(root / 'config/release-lock.json'),
-                manifestSha256=digest(manifest_path), ref=ref or commit)
+                manifestSha256=digest(manifest_path), ref=label)
 
 
 def context():

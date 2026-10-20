@@ -121,6 +121,28 @@ class ReleaseAutomationTests(unittest.TestCase):
         (self.root / 'untracked').touch()
         with self.assertRaises(rv.ValidationError): rv.source(self.root, self.manifest_path)
 
+    def test_release_ref_cannot_hide_future_version_suites(self):
+        for ref in ('release/1.7.0', 'refs/heads/release/1.7.0', 'release/1.6.1',
+                    'v1.7.0', 'refs/tags/v1.7.0', 'v1.6.0-rc.3'):
+            with self.subTest(ref=ref), self.assertRaisesRegex(rv.ValidationError, 'release_ref_version_mismatch'):
+                rv.source(self.root, self.manifest_path, ref=ref)
+
+    def test_matching_release_refs_and_feature_refs_keep_source_version(self):
+        for ref in ('release/1.6.0', 'refs/heads/release/1.6.0', 'release/1.6',
+                    'v1.6.0', 'refs/tags/v1.6.0', 'main', 'feature/1.7-device-qa'):
+            with self.subTest(ref=ref):
+                value = rv.source(self.root, self.manifest_path, ref=ref)
+                self.assertEqual(value['version'], '1.6.0')
+                self.assertEqual(value['ref'], ref)
+
+    def test_development_version_selects_future_suite_on_matching_branch(self):
+        (self.root / 'VERSION').write_text('1.7.0-dev.1\n')
+        rv.atomic(self.root / 'config/release-lock.json', {'version': '1.7.0-dev.1'})
+        self.commit()
+        value = rv.source(self.root, self.manifest_path, ref='release/1.7.0')
+        manifest = rv.load_manifest()
+        self.assertIn('device-ssh', rv.selected(manifest, value['version'], 'fixtures'))
+
     def test_unknown_release_line_cannot_get_empty_success(self):
         manifest = rv.load_manifest(self.manifest_path)
         for product in ('0.0.1', '9.0.0'):
