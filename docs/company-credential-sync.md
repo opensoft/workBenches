@@ -290,3 +290,37 @@ This is the actual broker authorization boundary used by the TUI. It does not
 certify browser opening, clipboard, cancellation or Microsoft initial sign-in;
 those distinct release cases still require their own automated UI adapters. Do
 not enable all live QA gates on the strength of this probe alone.
+
+### Raven isolated Arch QA host
+
+`qa/release/raven-qa-vm.py` provisions a separate writable clone of the validated
+stopped Arch golden image. It uses KVM, a private state directory, strict SSH host
+key pinning from the golden image, loopback-only SSH forwarding, and no host home,
+agent or Docker socket mounts. This provisioning host inherits the golden SSH
+identity; it is explicitly **not** a fresh per-job release worker and cannot be
+registered as one. It does not register a GitHub runner or enable live QA.
+
+```sh
+python3 qa/release/raven-qa-vm.py start --golden /private/arch-golden --state /private/raven-broker-qa
+python3 qa/release/raven-qa-vm.py stage --state /private/raven-broker-qa
+python3 qa/release/raven-qa-vm.py smoke --state /private/raven-broker-qa
+python3 qa/release/raven-qa-vm.py status --state /private/raven-broker-qa
+python3 qa/release/raven-qa-vm.py stop --state /private/raven-broker-qa
+python3 qa/release/raven-qa-vm.py resume --state /private/raven-broker-qa
+```
+
+Stage requires a clean committed source checkout and transfers only `git archive`
+of that exact commit. The smoke action builds/runs the declared credential-sync
+Compose service entirely inside the guest. Logs remain private under state;
+only the commit, VM status, and smoke result enter its manifest. A passing smoke
+result is fixture evidence, never a live GitHub/OIDC/vault acceptance claim.
+
+Before starting the live broker, configure an isolated QA issuer/client, bind the
+two verified OIDC subjects, install renewable sessions and a narrowly scoped
+GitHub membership credential, and seed a fictional QA credential in an isolated
+vault reachable by the broker's managed identity. Raven KVM does not itself
+supply Azure managed identity: an approved managed-identity hosting/relay plan is
+required for real Azure vault access. Do not fall back to the host's Azure CLI,
+GitHub credentials, production Keycloak realm, or daily workstation sessions.
+The VM can remain staged with `liveConfigured: false` until those prerequisites
+are supplied. Stop it when not in use; resume preserves its private QA disk.
