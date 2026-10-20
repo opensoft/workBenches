@@ -181,6 +181,44 @@ class CompanySyncTests(unittest.TestCase):
         link = self.root / 'token-link'; link.symlink_to(path)
         with self.assertRaises(BrokerError): token_file(str(link))
 
+    def qa_provisioner(self):
+        spec = importlib.util.spec_from_file_location('qa_provisioner', ROOT / 'qa/release/provision-github-qa-sessions.py')
+        value = importlib.util.module_from_spec(spec); spec.loader.exec_module(value)
+        return value
+
+    def test_qa_oauth_verifies_identity_and_scope_before_storing(self):
+        provision = self.qa_provisioner()
+        device = {'expires_in': 900, 'interval': 5, 'device_code': 'fixture-device-code'}
+        token = {'access_token': 'fixture-oauth-secret', 'scope': 'read:org', 'expires_in': 100,
+                 'refresh_token': 'fixture-refresh-secret'}
+        user = {'login': 'Opensoft-Test-User-1', 'id': 345520656}
+        with patch.object(provision.time, 'sleep'), patch.object(provision, 'request', side_effect=[token, user]), \
+             patch.object(provision, 'store', return_value='qa-secret') as store, patch('builtins.print') as output:
+            provision.finish(user['login'], user['id'], device)
+            self.assertEqual(store.call_args.args[1]['githubId'], user['id'])
+            text = str(output.call_args_list)
+            for secret in ('fixture-oauth-secret', 'fixture-refresh-secret', 'fixture-device-code'):
+                self.assertNotIn(secret, text)
+        for identity, scopes in [(dict(user, id=123), 'read:org'), (user, 'read:org,repo')]:
+            with patch.object(provision.time, 'sleep'), patch.object(provision, 'request', side_effect=[dict(token, scope=scopes), identity]), \
+                 patch.object(provision, 'store') as store:
+                with self.assertRaises(provision.ProvisionError): provision.finish(user['login'], user['id'], device)
+                store.assert_not_called()
+
+    def test_qa_oauth_upload_never_puts_token_in_command_or_leaves_local_file(self):
+        provision = self.qa_provisioner(); paths = []
+        def upload(argv, **kwargs):
+            path = Path(argv[argv.index('--file') + 1]); paths.append(path)
+            self.assertEqual(path.stat().st_mode & 0o077, 0)
+            self.assertIn('fixture-oauth-secret', path.read_text())
+            self.assertNotIn('fixture-oauth-secret', str(argv))
+            self.assertNotIn('env', kwargs)
+            return subprocess.CompletedProcess(argv, 0, b'https://qa/secret/version', b'')
+        with patch.object(provision.subprocess, 'run', side_effect=upload):
+            provision.store('Opensoft-Test-User-1', {'oauth': {'access_token': 'fixture-oauth-secret'}})
+        self.assertTrue(paths)
+        self.assertTrue(all(not path.exists() for path in paths))
+
     def test_host_and_image_hook_sources_match(self):
         self.assertEqual((ROOT / 'scripts/lib/company-profile-sync.sh').read_bytes(), (ROOT / 'base-image/files/company-profile-sync.sh').read_bytes())
         self.assertEqual((ROOT / 'scripts/opencode-profile').read_bytes(), (ROOT / 'base-image/files/opencode-profile').read_bytes())

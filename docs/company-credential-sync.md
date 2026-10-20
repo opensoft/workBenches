@@ -328,3 +328,30 @@ The controller removes the inherited native release-worker marker in the clone
 and creates `/etc/workbenches/provisioning-only`; native release adapters must
 therefore reject this persistent provisioning host. Smoke evidence records its
 exact staged commit and is cleared when staging another revision.
+
+### Dedicated openBenches QA OAuth vault
+
+The dedicated storage target is `kv-openbenches-qa`, in `rg-openbenches-qa`,
+subscription `sub-opensoft-platform-aks-qa` (West US). RBAC and purge protection
+are enabled. Initial provisioning uses the operator's vault-scoped Secrets
+Officer assignment; no test user receives Azure vault permissions. Worker access
+must use a separate least-privilege workload identity, not the operator's CLI
+session. No production vault is used for these sessions.
+
+`python3 qa/release/provision-github-qa-sessions.py` starts device flows for both
+designated test users (or pass `--user Opensoft-Test-User-1` to retry just one).
+It uses the public GitHub CLI OAuth client ID and requests only `read:org` plus
+`offline_access`. The browser consent screen identifies the GitHub CLI app, not
+a newly registered openBenches app. These QA-only tokens are separate from the
+operator's gh login. The provisioner verifies both immutable numeric account ID
+and login, rejects broader returned scopes, then writes the full OAuth result to
+`github-opensoft-test-user-1-oauth` / `github-opensoft-test-user-2-oauth`.
+
+Temporary device codes are shown only to the operator and are not saved to the
+vault. Only verified resulting tokens, refresh tokens if supplied, expiry data,
+and identity metadata are stored. Secret values never appear in command arguments
+or results. Uploads use a private temporary RAM-backed file, removed on completion
+or failure. No passwords or recovery codes are collected. Token renewal and
+workload identity deployment are separate from initial consent; provisioned GitHub
+OAuth sessions are not Microsoft/Keycloak company OIDC sessions and do not by
+themselves satisfy the company broker's audience/subject requirements.
