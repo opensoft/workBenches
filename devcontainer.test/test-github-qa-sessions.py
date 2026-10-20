@@ -35,6 +35,29 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(store.call_count, 1)
         self.assertNotIn('refresh_token', store.call_args.args[1]['oauth'])
 
+    def test_default_rotation_covers_the_next_four_hour_schedule(self):
+        # This token is valid now but will be dead when the next job runs.
+        # The old ten-minute window skipped it and left an availability gap.
+        self.bundle['expiresAt'] = 1000 + 3 * 3600
+        tokens = {'scope': 'read:org', 'access_token': 'fixture-new', 'refresh_token': 'fixture-rotated',
+                  'expires_in': 28800, 'refresh_token_expires_in': 100000}
+        with patch.object(sessions.time, 'time', return_value=1000), \
+                patch.object(sessions.PROVISION, 'store') as store, \
+                patch.object(sessions.PROVISION, 'request', side_effect=[tokens, {'id': self.user_id, 'login': self.login}]):
+            result, rotated = sessions.renew(self.bundle, self.login, self.user_id)
+        self.assertTrue(rotated)
+        self.assertEqual(result['expiresAt'], 1000 + 28800)
+        self.assertEqual(store.call_count, 2)
+
+    def test_healthy_session_outside_the_next_run_window_is_not_rotated(self):
+        self.bundle['expiresAt'] = 1000 + 8 * 3600
+        with patch.object(sessions.time, 'time', return_value=1000), \
+                patch.object(sessions.PROVISION, 'store') as store, patch.object(sessions.PROVISION, 'request') as request:
+            result, rotated = sessions.renew(self.bundle, self.login, self.user_id)
+        self.assertFalse(rotated)
+        self.assertIs(result, self.bundle)
+        store.assert_not_called(); request.assert_not_called()
+
     def test_wrong_identity_or_broad_scope_rejected(self):
         for value in [dict(self.bundle, githubId=1), dict(self.bundle, oauth={'scope': 'read:org,repo'})]:
             with self.assertRaises(sessions.SessionError): sessions.validate(value, self.login, self.user_id)

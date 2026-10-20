@@ -23,7 +23,8 @@ not saved to the vault. Initial GitHub consent can require a person; recurring
 runs do not invoke it.
 
 `qa/release/github-vault-sessions.py` reads the private bundles through Azure CLI
-already authenticated by azure/login's workload identity. It rotates near expiry,
+already authenticated by azure/login's workload identity. It rotates when expiry
+is within the next four-hour schedule plus a fifteen-minute scheduling margin,
 revalidates immutable identity and scopes, writes back the new token pair, then
 checks fresh paginated GitHub membership. User 1 must belong to
 Opensoft-Testing/workbenches-qa-allowed and User 2 must not. A wrong identity,
