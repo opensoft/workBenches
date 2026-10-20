@@ -57,6 +57,31 @@ class BootstrapTests(unittest.TestCase):
             with self.assertRaises(ValueError): bootstrap.collect('codex')
             run.assert_not_called()
 
+    def test_access_only_sessions_cannot_be_marked_refresh_ready(self):
+        for provider, section, name in [('codex', 'tokens', 'refresh_token'), ('claude', 'claudeAiOauth', 'refreshToken')]:
+            for refresh in (None, '', '   ', 123):
+                path = self.credential(provider); value = json.loads(path.read_text())
+                value[section][name] = refresh; path.write_text(json.dumps(value))
+                with patch.object(bootstrap.subprocess, 'run') as run:
+                    with self.assertRaises(ValueError): bootstrap.collect(provider)
+                    run.assert_not_called()
+
+    def test_codex_api_key_cannot_satisfy_native_account_slot(self):
+        path = self.credential('codex'); value = json.loads(path.read_text())
+        value['OPENAI_API_KEY'] = 'fixture-api-key'; path.write_text(json.dumps(value))
+        with patch.object(bootstrap.subprocess, 'run') as run:
+            with self.assertRaises(ValueError): bootstrap.collect('codex')
+            run.assert_not_called()
+
+    def test_malformed_cache_cannot_be_marked_ready(self):
+        for provider in ('codex', 'claude'):
+            section = 'tokens' if provider == 'codex' else 'claudeAiOauth'
+            for value in (None, [], {section: None}, {section: []}):
+                path = self.credential(provider); path.write_text(json.dumps(value))
+                with patch.object(bootstrap.subprocess, 'run') as run:
+                    with self.assertRaises(ValueError): bootstrap.collect(provider)
+                    run.assert_not_called()
+
     def test_codex_upload_private_file_and_metadata_only_output(self):
         self.credential('codex')
         uploaded = []
