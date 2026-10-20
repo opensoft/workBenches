@@ -142,6 +142,25 @@ class ReleaseAutomationTests(unittest.TestCase):
         value = rv.run_suite(self.root, self.manifest_path, 'source', self.reports)
         self.assertEqual(value['status'], 'passed'); self.assertEqual(value['cases'], [dict(id='unit', status='passed')])
 
+    def test_relative_candidate_checkout_resolves_helper_files_from_child_cwd(self):
+        helpers = {
+            'CT_FUNCTIONS_FILE': 'devBenches/base-image/files/ct/ct-functions.zsh',
+            'SPECKIT_WORKTREE_FALLBACK_FILE': 'devBenches/base-image/files/speckit-worktree/templates/specify/shell/worktrees.sh',
+        }
+        for name, relative in helpers.items():
+            path = self.root / relative; path.parent.mkdir(parents=True, exist_ok=True); path.write_text(name)
+        self.commit()
+        code = 'import os; from pathlib import Path; ' + '; '.join(
+            f'assert Path(os.environ[{name!r}]).read_text() == {name!r}' for name in helpers)
+        self.config['suites']['source']['commands'][0]['argv'] = [sys.executable, '-c', code]
+        rv.atomic(self.manifest_path, self.config)
+        env = {k:v for k,v in os.environ.items() if k not in helpers}
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts/release-validation.py'), 'run',
+            '--root', 'source', '--manifest', str(self.manifest_path), '--suite', 'source',
+            '--reports', str(self.reports)], cwd=self.temp.name, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(rv.read(self.reports / 'source.json')['status'], 'passed')
+
     def test_command_failure_still_cleans_up_and_cannot_pass(self):
         self.config['suites']['source']['cleanup'] = [[sys.executable, '-c', 'pass']]
         rv.atomic(self.manifest_path, self.config)
