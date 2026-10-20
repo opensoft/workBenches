@@ -67,7 +67,7 @@ def main():
                 result = subprocess.run(argv, env=environment or env, stdout=output, stderr=output, timeout=timeout)
                 if result.returncode:
                     output.seek(0, 2); size = output.tell(); output.seek(max(0, size - 256 * 1024))
-                    diagnostic = dict(phase=phase, exitCode=result.returncode, **failure_location(output.read()))
+                    diagnostic = dict(failure_location(output.read()), phase=phase, exitCode=result.returncode)
                     print('NATIVE_QA_FAILURE ' + json.dumps(diagnostic), file=sys.stderr, flush=True)
                     raise ValidationError('native_acceptance_failed')
         run(['git', 'clone', '--no-hardlinks', '--no-checkout', request['root'], str(repo)])
