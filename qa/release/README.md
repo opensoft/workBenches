@@ -199,6 +199,23 @@ access to that secret. Rotate/remove the public certificate variable after the
 investigation. Decrypt only in private local storage and do not publish decrypted
 logs. OpenSSL CMS authenticated decryption rejects tampered envelopes.
 
+Native fixture failures use the same optional public certificate. Before removing
+the private test HOME, the adapter encrypts the failed driver's output, last setup
+log, bench transcript and driver case results into `arch-native-debug.cms` or
+`wsl-native-debug.cms`. Only an allowlisted failed-case identifier and ciphertext
+descriptor enter public evidence. The protected workflow uploads ciphertext as a
+separate two-day diagnostic artifact; absence or encryption failure never falls
+back to plaintext. This applies to disposable native fixtures, not live QA logs.
+
+For a local one-use Arch run, pass
+`--diagnostic-certificate /private/public-certificate.pem`. The controller forwards
+only the public X.509 certificate, retrieves any ciphertext before stopping the
+VM, and keeps it in the private job-state directory. The decryption key stays on
+the operator host/in the dedicated vault. A failed VM's retained disk does not
+preserve its deleted test HOME, so collect this envelope before disposal when
+investigating failures. The controller's outer wait follows the manifest's native
+suite timeout plus shutdown margin rather than imposing a shorter fixed limit.
+
 ## Team001 provider QA sessions
 
 `config/qa-provider-slots.json` records the four requested provider slots without

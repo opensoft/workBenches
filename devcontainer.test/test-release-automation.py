@@ -26,6 +26,8 @@ def module(name, path):
 publisher = module('publisher', 'scripts/publish-validated-release.py')
 preflight = module('preflight', 'scripts/release-qa-preflight.py')
 watchdog = module('watchdog', 'scripts/release-qa-watchdog.py')
+native = module('native', 'scripts/release-qa-native.py')
+native_controller = module('native_controller', 'qa/release/run-native-arch.py')
 
 
 class ReleaseAutomationTests(unittest.TestCase):
@@ -225,6 +227,59 @@ class ReleaseAutomationTests(unittest.TestCase):
         self.assertEqual(value, dict(phase='workstation-driver', exitCode=1, file='test-wsl-workstation-acceptance.py', line=196, exception='AssertionError'))
         self.assertNotIn('DO_NOT_EXPOSE', json.dumps(value))
         self.assertEqual(rv.native_failure_location(raw.replace(b'workstation-driver', b'DO_NOT_EXPOSE')), {})
+
+    def certificate(self):
+        cert = Path(self.temp.name) / 'native-cert.pem'; key = cert.with_name('native-key.pem')
+        subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
+                        '-subj', '/CN=QA fixture/', '-keyout', str(key), '-out', str(cert)],
+                       check=True, capture_output=True)
+        return cert, key
+
+    def test_native_ciphertext_survives_plaintext_cleanup(self):
+        import tarfile
+        fixture_value = b'private-native-fixture-value'
+        cert, key = self.certificate()
+        logs = self.root / 'logs'; logs.mkdir(); setup = logs / 'setup-test.log'; setup.write_bytes(fixture_value)
+        terminal = self.reports / 'wsl-bench-install.txt'; terminal.write_bytes(fixture_value)
+        result = self.reports / 'wsl-all-results.json'
+        rv.atomic(result, {'results': [{'case':'bench-install', 'status':'failed', 'private':fixture_value.decode()}]})
+        destination = Path(self.temp.name) / 'encrypted-native'
+        with tempfile.TemporaryFile() as output:
+            output.write(fixture_value)
+            metadata = native.native_diagnostics(self.root, self.reports, output, 'arch-native', destination, cert.read_text())
+        self.assertEqual(metadata['case'], 'bench-install')
+        self.assertNotIn(fixture_value.decode(), json.dumps(metadata))
+        encrypted = destination / metadata['encryptedDiagnostics']['file']
+        self.assertNotIn(fixture_value, encrypted.read_bytes())
+        for path in (setup, terminal, result, self.reports / 'driver-failure.log'): path.unlink()
+        decoded = Path(self.temp.name) / 'native-decoded.tgz'
+        subprocess.run(['openssl', 'cms', '-decrypt', '-binary', '-inform', 'DER', '-in', str(encrypted),
+                        '-inkey', str(key), '-recip', str(cert), '-out', str(decoded)], check=True, capture_output=True)
+        with tarfile.open(decoded) as archive:
+            self.assertEqual(set(archive.getnames()), {'native-driver.log', 'driver-results.json', 'setup.log', 'bench-terminal.txt'})
+            self.assertEqual(archive.extractfile('setup.log').read(), fixture_value)
+        public = dict(phase='workstation-driver', **metadata)
+        self.assertEqual(rv.native_failure_location(('NATIVE_QA_FAILURE '+json.dumps(public)).encode()), public)
+
+    def test_native_diagnostics_have_no_plaintext_or_unknown_field_fallback(self):
+        rv.atomic(self.reports / 'wsl-all-results.json', {'results':[{'case':'DO_NOT_EXPOSE', 'status':'failed'}]})
+        destination = Path(self.temp.name) / 'no-diagnostics'
+        with tempfile.TemporaryFile() as output:
+            output.write(b'DO_NOT_EXPOSE')
+            self.assertEqual(native.native_diagnostics(self.root, self.reports, output, 'arch-native', destination, None), {})
+            self.assertEqual(native.native_diagnostics(self.root, self.reports, output, 'arch-native', destination, 'invalid cert'), {})
+        self.assertFalse(list(destination.glob('*.cms')))
+        raw = b'NATIVE_QA_FAILURE {"phase":"workstation-driver","case":"DO_NOT_EXPOSE","encryptedDiagnostics":{"file":"../../private","certificateSha256":"private"}}'
+        self.assertEqual(rv.native_failure_location(raw), {'phase':'workstation-driver'})
+        self.assertEqual(rv.native_failure_location(raw.replace(b'"case":"DO_NOT_EXPOSE"', b'"case":[]')), {'phase':'workstation-driver'})
+
+    def test_controller_forwards_only_public_certificate_from_pem_bundle(self):
+        cert, key = self.certificate()
+        bundle = cert.with_name('bundle.pem'); bundle.write_bytes(cert.read_bytes()+key.read_bytes())
+        public = native_controller.public_certificate(bundle)
+        self.assertEqual(public, cert.read_text())
+        self.assertNotIn('PRIVATE KEY', public)
+        with self.assertRaises(ValueError): native_controller.public_certificate(key)
 
     def test_private_build_logs_emit_only_allowlisted_hints(self):
         secret = 'NEVER_EXPOSE_PRIVATE_BUILD_TOKEN'

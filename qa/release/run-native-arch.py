@@ -65,7 +65,20 @@ subprocess.run(['systemctl','reload','sshd'],check=True)
     subprocess.run([*VM.ssh(state, manifest), 'true'], check=True, timeout=15)
 
 
-def run(golden, state, candidate, automation):
+def public_certificate(path):
+    if path is None: return None
+    # Re-encode the certificate only: never forward a private key accidentally
+    # included in a PEM bundle supplied to this optional diagnostic argument.
+    result = subprocess.run(['openssl', 'x509', '-in', str(path), '-outform', 'PEM'], capture_output=True, timeout=15)
+    if result.returncode or len(result.stdout) > 16384:
+        raise ValueError('Public diagnostic certificate required')
+    return result.stdout.decode('ascii')
+
+
+def run(golden, state, candidate, automation, certificate_path=None):
+    certificate = public_certificate(certificate_path)
+    timeout = json.loads((automation / 'config/release-tests.json').read_text())['suites']['arch-native']['timeoutSeconds']
+    if type(timeout) is not int or timeout <= 0: raise ValueError('Native suite timeout required')
     if state.exists() or any(p.is_symlink() for p in [state, *state.parents]) or any(c in str(state) for c in ',\n'):
         raise ValueError('New private nonsymlink state path required')
     prepared = json.loads((golden / 'prepared.json').read_text())
@@ -96,11 +109,27 @@ def run(golden, state, candidate, automation):
         stage(state, manifest, automation, 'automation')
         manifest['state'] = 'native-adapter-running'; VM.write(state / 'vm.json', manifest)
         command = ('export WB_AUTOMATION_ROOT=/home/qa/automation WB_AUTOMATION_SHA=' + manifest['automationCommit'] +
+                   (' OPENBENCHES_QA_FAILURE_CERT_PEM=' + shlex.quote(certificate) if certificate else '') +
+                   ' WB_QA_DIAGNOSTICS_DIR=/home/qa/evidence' +
                    '; python3 /home/qa/automation/scripts/release-validation.py run --root /home/qa/candidate '
                    '--suite arch-native --commit ' + manifest['candidateCommit'] +
                    ' --ref local-native-candidate --qa-config /etc/workbenches/release-qa.json --reports /home/qa/evidence')
         with (state / 'adapter.log').open('wb') as log:
-            result = subprocess.run([*VM.ssh(state, manifest), command], stdout=log, stderr=log, timeout=8000)
+            result = subprocess.run([*VM.ssh(state, manifest), command], stdout=log, stderr=log, timeout=timeout + 300)
+        encrypted = state / 'arch-native-debug.cms'
+        copied = None
+        try:
+            with encrypted.open('wb') as output:
+                encrypted.chmod(0o600)
+                copied = subprocess.run([*VM.ssh(state, manifest),
+                    'test -f /home/qa/evidence/arch-native-debug.cms && cat /home/qa/evidence/arch-native-debug.cms'],
+                    stdout=output, stderr=subprocess.DEVNULL, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        if copied is None or copied.returncode or not encrypted.stat().st_size:
+            encrypted.unlink(missing_ok=True)
+        else:
+            manifest['encryptedDiagnostics'] = encrypted.name
         report = subprocess.run([*VM.ssh(state, manifest), 'cat /home/qa/evidence/arch-native.json'], capture_output=True, timeout=15)
         if report.returncode: raise ValueError('Native adapter report missing')
         value = json.loads(report.stdout)
@@ -131,9 +160,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('golden', 'state', 'candidate', 'automation'):
         parser.add_argument('--' + name, required=True, type=Path)
+    parser.add_argument('--diagnostic-certificate', type=Path, help='Public X.509 certificate only; never a decryption key')
     args = parser.parse_args()
     return run(args.golden.expanduser().resolve(), args.state.expanduser().absolute(),
-               args.candidate.resolve(), args.automation.resolve())
+               args.candidate.resolve(), args.automation.resolve(), args.diagnostic_certificate)
 
 
 if __name__ == '__main__':
