@@ -22,6 +22,10 @@ on:
       - scripts/release-qa-*.py
       - scripts/publish-validated-release.py
       - devcontainer.test/test-release-automation.py
+      - devcontainer.test/test-github-profile-authorization.py
+      - scripts/github_profile_authorization.py
+      - qa/release/github-profile-policy.json
+      - qa/release/test-github-authorization.py
   push:
     branches: [main, 'release/**']
   schedule:

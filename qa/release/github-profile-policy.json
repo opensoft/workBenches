@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "qa/github-team-check": {
+      "organization": "Opensoft-Testing",
+      "team": "workbenches-qa-allowed"
+    }
+  }
+}

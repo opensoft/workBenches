@@ -356,4 +356,10 @@ class ReleaseAutomationTests(unittest.TestCase):
             with self.assertRaises(rv.ValidationError): publisher.run_identity(dict(value, **{key:bad}), 'o/r', 'a'*40)
 
 
+def load_tests(loader, tests, pattern):
+    tests.addTests(loader.loadTestsFromModule(module(
+        'github_authorization_tests', 'devcontainer.test/test-github-profile-authorization.py')))
+    return tests
+
+
 if __name__ == '__main__': unittest.main()
