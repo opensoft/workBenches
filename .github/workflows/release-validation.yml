@@ -24,6 +24,7 @@ on:
       - devcontainer.test/test-release-automation.py
       - devcontainer.test/test-native-acceptance-prompts.py
       - devcontainer.test/test-wsl-workstation-acceptance.py
+      - .github/workflows/shared-images.yml
   push:
     branches: [main, 'release/**']
   schedule:
@@ -71,8 +72,41 @@ jobs:
         with:
           name: release-plan
           path: ${{ runner.temp }}/release-plan.json
-  fixtures:
+  image-source:
+    if: github.ref == 'refs/heads/main' && needs.plan.outputs.mode != 'ci' && contains(fromJSON(needs.plan.outputs.hosted), 'fresh-install')
     needs: plan
+    runs-on: ubuntu-24.04
+    outputs:
+      trusted: ${{ steps.source.outputs.trusted }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.plan.outputs.automation }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - id: source
+        env:
+          WB_SOURCE_READ_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.plan.outputs.sha }}
+        run: python3 automation/scripts/release-qa-image-source.py --root candidate --commit "$SOURCE_SHA"
+  images:
+    needs: [plan, image-source]
+    if: needs.image-source.outputs.trusted == 'true'
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/shared-images.yml
+    with:
+      source_sha: ${{ needs.plan.outputs.sha }}
+  fixtures:
+    needs: [plan, image-source, images]
+    if: always() && needs.plan.result == 'success' && (needs.image-source.result == 'success' || needs.image-source.result == 'skipped') && (needs.images.result == 'success' || needs.images.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
@@ -150,7 +184,7 @@ jobs:
         run: python3 scripts/release-qa-watchdog.py
   evidence-gate:
     if: always() && needs.plan.result == 'success'
-    needs: [plan, fixtures, qa-preflight, qa, qa-watchdog]
+    needs: [plan, image-source, images, fixtures, qa-preflight, qa, qa-watchdog]
     runs-on: ubuntu-24.04
     env:
       WB_AUTOMATION_SHA: ${{ needs.plan.outputs.automation }}
