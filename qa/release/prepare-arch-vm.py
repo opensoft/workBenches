@@ -65,6 +65,15 @@ class PrivateHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *_): pass
 
 
+def power_off(process, ssh):
+    result = subprocess.run([*ssh, 'sudo systemctl poweroff'], capture_output=True, timeout=30)
+    # SSH may lose its channel before receiving exit status during shutdown.
+    # Accept that only if QEMU subsequently confirms the guest actually exited.
+    if result.returncode not in (0, 255): raise ValueError('Guest shutdown request failed')
+    process.wait(timeout=90)
+    if process.returncode: raise ValueError('QA VM shutdown failed')
+
+
 def prepare(image, state, memory=4096, cpus=2, timeout=1800):
     if digest(image) != IMAGE_SHA256: raise ValueError('Pinned Arch image checksum mismatch')
     state = state.absolute()
@@ -140,9 +149,7 @@ def prepare(image, state, memory=4096, cpus=2, timeout=1800):
                 with (state / 'validation.log').open('wb') as log:
                     result = subprocess.run([*ssh, 'sudo cloud-init status --wait --long && sudo docker info >/dev/null && docker buildx version && python --version && git --version && node --version && npm --version && zsh --version && test "$(df --output=size -k / | tail -1)" -gt 60000000'], stdout=log, stderr=log, timeout=120)
                 if result.returncode: raise ValueError('Guest configuration failed; see private validation.log')
-                subprocess.run([*ssh, 'sudo systemctl poweroff'], capture_output=True, timeout=30, check=True)
-                process.wait(timeout=90)
-                if process.returncode: raise ValueError('QA VM shutdown failed')
+                power_off(process, ssh)
                 manifest = dict(schemaVersion=1, state='prepared-not-registered', imageSha256=IMAGE_SHA256,
                     resetId=reset_id, disk=str(disk), memoryMiB=memory, cpus=cpus,
                     registeredRunner=False, cleanup='vm-stopped', createdAt=int(time.time()))

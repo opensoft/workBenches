@@ -332,6 +332,19 @@ class ReleaseAutomationTests(unittest.TestCase):
         run.assert_not_called()
         self.assertEqual(sentinel.read_text(), 'preserve')
 
+    def test_arch_vm_shutdown_requires_vm_exit_even_when_ssh_disconnects(self):
+        vm = module('arch_vm', 'qa/release/prepare-arch-vm.py')
+        class Guest:
+            returncode = 0
+            def wait(self, timeout): pass
+        guest = Guest()
+        with patch.object(vm.subprocess, 'run', return_value=subprocess.CompletedProcess([], 255)):
+            vm.power_off(guest, ['ssh'])
+            with patch.object(guest, 'wait', side_effect=subprocess.TimeoutExpired('qemu', 90)):
+                with self.assertRaises(subprocess.TimeoutExpired): vm.power_off(guest, ['ssh'])
+            guest.returncode = 1
+            with self.assertRaises(ValueError): vm.power_off(guest, ['ssh'])
+
     def test_publisher_requires_trusted_main_successful_exact_workflow_run(self):
         value = dict(path='.github/workflows/release-validation.yml', head_branch='main', event='workflow_dispatch',
                      conclusion='success', status='completed', head_sha='a'*40, head_repository={'full_name':'o/r'}, id=7, run_attempt=1)
