@@ -160,6 +160,81 @@ def failure_location(raw):
     return result
 
 
+def build_failure_hints(raw):
+    """Known error categories only; arbitrary log text never leaves the worker."""
+    patterns = {
+        'image_layer_depth': rb'max depth exceeded|too many layers|layer limit',
+        'disk_full': rb'no space left on device|disk quota exceeded|\bENOSPC\b',
+        'out_of_memory': rb'out of memory|OOMKilled|exit code: 137',
+        'illegal_instruction': rb'illegal instruction',
+        'dns_failure': rb'could not resolve host|temporary failure in name resolution|\bENOTFOUND\b|\bEAI_AGAIN\b',
+        'network_timeout': rb'connection timed out|\bETIMEDOUT\b|operation timed out',
+        'tls_failure': rb'certificate verify failed|SSL certificate problem',
+        'permission_denied': rb'permission denied|\bEACCES\b',
+        'missing_executable': rb'command not found|executable file not found',
+        'python_dependency': rb'no matching distribution found|requires a different Python',
+        'git_ref_unavailable': rb'not our ref|reference is not a tree|couldn.t find remote ref',
+        'invalid_runtime': rb'\bEBADENGINE\b|unsupported engine',
+        'apt_failure': rb'(?:^|\n)E: (?:Unable to locate|Failed to fetch|The repository|Unable to correct)',
+        'docker_build_failure': rb'failed to solve:|did not complete successfully: exit code:',
+        'image_pull_failure': rb'failed to resolve source metadata|pull access denied|toomanyrequests',
+        'frozen_source_failure': rb'Release stopped:',
+        'layer_zero_failure': rb'Layer 0 build failed',
+        'layer_one_failure': rb'Layer 1a .* build failed',
+        'bench_setup_failure': rb'Failed to (?:setup|install)|bench setup failed',
+    }
+    hints = [name for name, pattern in patterns.items() if re.search(pattern, raw, re.I)]
+    result = {'hints': hints} if hints else {}
+    codes = re.findall(rb'curl: \(22\)[^\n]*?([45][0-9]{2})\b', raw)
+    if codes: result['httpStatus'] = int(codes[-1])
+    exits = re.findall(rb'did not complete successfully: exit code: ([0-9]{1,3})', raw)
+    if exits: result['buildExitCode'] = int(exits[-1])
+    installers = []
+    for line in raw.splitlines():
+        if not re.search(rb'\b(?:error|failed|failure)\b', line, re.I): continue
+        for name in ('OpenRepoTools', 'OpenRepoShape', 'Codex', 'Claude', 'OpenCode', 'Copilot', 'NotebookLM', 'Letta', 'Playwright', 'Hadolint', 'actionlint'):
+            if name.lower().encode() in line.lower() and name not in installers: installers.append(name)
+    if installers: result['installers'] = installers
+    return result
+
+
+def workstation_diagnostics(root, project, environment):
+    # Private snapshots are deleted, including the terminal transcript. Only
+    # fixed categories/headers and numeric statuses can enter public evidence.
+    with tempfile.TemporaryDirectory(prefix='workstation-private-logs-') as temporary:
+        directory = Path(temporary)
+        result = {}
+        def copy(source, destination):
+            with tempfile.TemporaryFile() as output:
+                try:
+                    done = subprocess.run(['docker', 'compose', '-p', project, '-f', 'devcontainer.test/docker-compose.yml',
+                        'cp', source, str(destination)], cwd=root, env=environment,
+                        stdout=output, stderr=output, timeout=60)
+                    return done.returncode == 0
+                except (OSError, subprocess.TimeoutExpired): return False
+        def tail(path):
+            with path.open('rb') as stream:
+                stream.seek(0, 2); stream.seek(max(0, stream.tell() - 256 * 1024))
+                return stream.read()
+        try:
+            logs = directory / 'logs'; logs.mkdir()
+            if copy('workstation-acceptance:/home/node/projects/workBenches/logs/.', logs):
+                files = [p for p in logs.rglob('*.log') if p.is_file() and not p.is_symlink()
+                         and p.resolve().is_relative_to(logs)]
+                if files:
+                    raw = tail(max(files, key=lambda p:p.stat().st_mtime))
+                    result.update(logsRead=1, **build_failure_hints(raw))
+                    headers = re.findall(rb'\[(SETUP STARTED|DOCKER CHECK|LAYER 0 BUILD|LAYER 1 BUILDS|INTERACTIVE SETUP|SETUP COMPLETE|SETUP CANCELLED)\]', raw)
+                    if headers: result['lastSetupSection'] = headers[-1].decode('ascii')
+            terminal = directory / 'bench-terminal.txt'
+            if copy('workstation-acceptance:/report/bench-install.txt', terminal) and terminal.is_file() and not terminal.is_symlink():
+                result['terminal'] = build_failure_hints(tail(terminal))
+        except OSError:
+            # Optional diagnosis must never mask the original failing case.
+            pass
+        return result
+
+
 def execute(argv, root, environment, timeout, diagnostic=None):
     # Raw stdout/stderr can contain generated credentials. Keep them in a
     # private temporary file and delete after execution; upload metadata only.
@@ -209,6 +284,9 @@ def run_suite(root, manifest_path, name, output, expected=None, ref=None, extern
                     report['cases'].append({'id': command['id'], 'status': 'passed' if passed else 'failed'})
                     print(name + '/' + command['id'] + ': ' + ('passed' if passed else 'failed'), flush=True)
                     if not passed:
+                        if name == 'fresh-install':
+                            component = workstation_diagnostics(root, project, environment)
+                            if component: diagnostic['component'] = component
                         if diagnostic:
                             report['runner']['failure'] = diagnostic
                             print(name + ': safe failure location ' + json.dumps(diagnostic), flush=True)
