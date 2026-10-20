@@ -1,5 +1,12 @@
 # Dedicated release QA workers
 
+Full hosted runs from main prepare compatible public base/developer images before
+starting fixtures. The publisher accepts only current main or the exact current
+protected canonical release head, rechecks that source before running its code,
+and reuses existing verified images. Candidate image provenance uses the candidate
+SHA, independently of the automation SHA. PR/CI and unprotected candidate runs do
+not receive publishing permissions; their fixture path retains local builds.
+
 Do not install a runner on Brett's normal Raven/Eagle account. The repository is
 public: an unrestricted self-hosted runner can execute an attacker's PR even if
 our own workflow avoids it. Before any worker starts, an organization administrator

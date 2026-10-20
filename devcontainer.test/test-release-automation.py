@@ -28,9 +28,43 @@ preflight = module('preflight', 'scripts/release-qa-preflight.py')
 watchdog = module('watchdog', 'scripts/release-qa-watchdog.py')
 native = module('native', 'scripts/release-qa-native.py')
 native_controller = module('native_controller', 'qa/release/run-native-arch.py')
+image_source = module('image_source', 'scripts/release-qa-image-source.py')
 
 
 class ReleaseAutomationTests(unittest.TestCase):
+    def test_image_plan_is_data_and_must_match_exact_expected_commit(self):
+        path = Path(self.temp.name) / 'image-plan.json'
+        identity = dict(commit='a' * 40, version='1.6.0-rc.3')
+        rv.atomic(path, {'source': identity})
+        self.assertEqual(image_source.planned_identity(path, 'a' * 40), identity)
+        for expected in ('b' * 40, 'main', 'a' * 40 + '\n'):
+            with self.assertRaises(rv.ValidationError): image_source.planned_identity(path, expected)
+        rv.atomic(path, {'source': dict(identity, version='../../other')})
+        with self.assertRaises(rv.ValidationError): image_source.planned_identity(path, 'a' * 40)
+
+    def test_image_publication_requires_current_main_or_exact_protected_release(self):
+        identity = dict(commit='a' * 40, version='1.6.0-rc.3')
+        for main, release, expected in (
+            ('a' * 40, {}, True),
+            ('b' * 40, {'protected': True, 'commit': {'sha': 'a' * 40}}, True),
+            ('b' * 40, {'protected': False, 'commit': {'sha': 'a' * 40}}, False),
+            ('b' * 40, {'protected': True, 'commit': {'sha': 'c' * 40}}, False),
+            ('b' * 40, {}, False),
+        ):
+            with self.subTest(main=main, release=release):
+                calls = []
+                def fetch(path):
+                    calls.append(path)
+                    return {'commit': {'sha': main}} if path == 'branches/main' else release
+                self.assertEqual(image_source.authorize(identity, fetch), expected)
+                self.assertEqual(calls, ['branches/main'] if main == identity['commit'] else
+                                 ['branches/main', 'branches/release%2F1.6.0'])
+
+    def test_image_source_lookup_failure_cannot_authorize_publication(self):
+        def unavailable(path): raise OSError('unavailable')
+        with self.assertRaises(OSError):
+            image_source.authorize(dict(commit='a' * 40, version='1.6.0'), unavailable)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / 'source'; self.root.mkdir()
