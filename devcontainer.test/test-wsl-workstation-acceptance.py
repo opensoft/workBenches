@@ -24,6 +24,10 @@ spec = importlib.util.spec_from_file_location('workstation_acceptance', Path(__f
 tui = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tui)
 
+# A fresh frozen assembly has no populated bench submodule or runtime yet.
+# Its actual TUI state is "not installed", before setup can prepare the source.
+BENCH_SELECTABLE = r'pyBench · (?:not installed|needs setup|Ready|image only)'
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -254,7 +258,7 @@ def main():
                 env[variable] += '-bench'
             benches = sorted(json.loads((repo / 'config/bench-config.json').read_text())['benches'])
             navigation = '\x1b[B' * benches.index('pyBench')
-            bench = [(tui.TUI, navigation), (r'pyBench · (?:needs setup|Ready|image only)', ' \n')]
+            bench = [(tui.TUI, navigation), (BENCH_SELECTABLE, ' \n')]
             unrelated = None
             def install_bench():
                 nonlocal unrelated
