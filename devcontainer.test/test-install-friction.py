@@ -15,6 +15,42 @@ shared = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(shared)
 
 class ImageTests(unittest.TestCase):
+    def setUp(self):
+        # Docker mocks must not replace the real Git index query as a side effect.
+        original = shared.tracked_context_paths
+        tracked = original(ROOT)
+        guard = patch.object(shared, 'tracked_context_paths',
+                             side_effect=lambda root: tracked if root == ROOT else original(root))
+        guard.start()
+        self.addCleanup(guard.stop)
+
+    def test_private_checkout_reuses_recipe_but_tracks_exec_and_local_permissions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(['git', 'init', '-q', str(root)], check=True)
+            for name in ('base-image/Dockerfile', 'base-image/helper.sh',
+                         'devBenches/base-image/Dockerfile', 'scripts/lib/image-names.sh'):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(name)
+                path.chmod(0o755 if name.endswith('.sh') else 0o644)
+            subprocess.run(['git', '-C', str(root), 'add', '.'], check=True)
+            canonical = shared.fingerprint('dev', root)
+            for path in root.rglob('*'):
+                if path.is_file() and '.git' not in path.relative_to(root).parts:
+                    path.chmod(0o700 if path.suffix == '.sh' else 0o600)
+            self.assertEqual(canonical, shared.fingerprint('dev', root))
+            helper = root / 'base-image/helper.sh'
+            helper.chmod(0o600)
+            self.assertNotEqual(canonical, shared.fingerprint('dev', root))
+            helper.chmod(0o700)
+            local = root / 'base-image/local-input'
+            local.write_text('local input')
+            local.chmod(0o600)
+            private = shared.fingerprint('dev', root)
+            local.chmod(0o644)
+            self.assertNotEqual(private, shared.fingerprint('dev', root))
+
     def test_publisher_loads_the_same_shared_image_contract(self):
         spec=importlib.util.spec_from_file_location('publisher',ROOT/'scripts/publish-shared-images.py')
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
@@ -25,7 +61,8 @@ class ImageTests(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('publisher',ROOT/'scripts/publish-shared-images.py')
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         row={'Id':'base-id','Os':'linux','Architecture':'amd64','Config':{'Labels':{shared.LABEL:shared.fingerprint('base')}}}
-        with patch.object(module.shared,'inspect',return_value=row), patch.object(module.subprocess,'run',return_value=subprocess.CompletedProcess([],0)) as command:
+        tracked = module.shared.tracked_context_paths(ROOT)
+        with patch.object(module.shared,'tracked_context_paths',return_value=tracked), patch.object(module.shared,'inspect',return_value=row), patch.object(module.subprocess,'run',return_value=subprocess.CompletedProcess([],0)) as command:
             module.prepare_image('base','linux/amd64')
         self.assertFalse(any(call.args[0][0]=='bash' for call in command.call_args_list))
         self.assertTrue(any(call.args[0][:2]==['docker','tag'] for call in command.call_args_list))
@@ -66,7 +103,8 @@ class ImageTests(unittest.TestCase):
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         base={'RepoDigests':[shared.REGISTRIES['base']+'@sha256:'+'b'*64]}
         wrong={'Os':'linux','Architecture':'amd64','Config':{'Labels':{shared.LABEL:shared.fingerprint('dev'),'io.workbenches.parent':'wrong'}}}
-        with patch.object(module.shared,'inspect',side_effect=[base,wrong]), patch.object(module.subprocess,'run',return_value=subprocess.CompletedProcess([],0)) as command:
+        tracked = module.shared.tracked_context_paths(ROOT)
+        with patch.object(module.shared,'tracked_context_paths',return_value=tracked), patch.object(module.shared,'inspect',side_effect=[base,wrong]), patch.object(module.subprocess,'run',return_value=subprocess.CompletedProcess([],0)) as command:
             with self.assertRaisesRegex(RuntimeError,'parent validation'):
                 module.build_dev_image('release-tag','expected','linux/amd64')
         calls=[call.args[0] for call in command.call_args_list]
