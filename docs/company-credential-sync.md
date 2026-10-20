@@ -324,3 +324,7 @@ required for real Azure vault access. Do not fall back to the host's Azure CLI,
 GitHub credentials, production Keycloak realm, or daily workstation sessions.
 The VM can remain staged with `liveConfigured: false` until those prerequisites
 are supplied. Stop it when not in use; resume preserves its private QA disk.
+The controller removes the inherited native release-worker marker in the clone
+and creates `/etc/workbenches/provisioning-only`; native release adapters must
+therefore reject this persistent provisioning host. Smoke evidence records its
+exact staged commit and is cleared when staging another revision.

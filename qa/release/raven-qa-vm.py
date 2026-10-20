@@ -44,6 +44,12 @@ def running(manifest):
         return False
 
 
+def provisioning_only(state, manifest):
+    # The golden marker must not certify a persistent clone as a reset worker.
+    command = "sudo sh -c 'if test -e /etc/workbenches/disposable-qa-id; then mv /etc/workbenches/disposable-qa-id /etc/workbenches/provisioning-golden-id; fi; install -m 644 /dev/null /etc/workbenches/provisioning-only'"
+    subprocess.run([*ssh(state, manifest), command], check=True, timeout=30)
+
+
 def launch(state, manifest):
     disk = state / 'qa.qcow2'
     command = ['qemu-system-x86_64', '-name', manifest['vmName'], '-accel', 'kvm', '-cpu', 'host',
@@ -88,6 +94,7 @@ def start(golden, state):
             raise ValueError('VM exited; inspect private logs')
         result = subprocess.run([*ssh(state, manifest), 'true'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if result.returncode == 0:
+            provisioning_only(state, manifest)
             manifest['state'] = 'ready-not-configured'
             write(state / 'vm.json', manifest)
             return manifest
@@ -109,6 +116,8 @@ def stage(state, manifest):
             subprocess.run([*ssh(state, manifest), 'mkdir -m 700 ' + shlex.quote(target) + ' && tar -xf - -C ' + shlex.quote(target)], stdin=source, check=True, timeout=120)
     finally:
         archive.unlink(missing_ok=True)
+    manifest.pop('smoke', None)
+    manifest.pop('smokeCommit', None)
     manifest.update(sourceCommit=commit, sourcePath=target)
     write(state / 'vm.json', manifest)
     return manifest
@@ -121,7 +130,7 @@ def smoke(state, manifest):
                '--profile credential-sync run --build --rm --no-deps credential-sync')
     with (state / 'smoke.log').open('wb') as output:
         result = subprocess.run([*ssh(state, manifest), command], stdout=output, stderr=output, timeout=1800)
-    manifest.update(smoke='passed' if result.returncode == 0 else 'failed', liveConfigured=False)
+    manifest.update(smoke='passed' if result.returncode == 0 else 'failed', smokeCommit=manifest['sourceCommit'], liveConfigured=False)
     write(state / 'vm.json', manifest)
     if result.returncode:
         raise ValueError('Guest smoke failed; inspect private smoke.log')
@@ -168,6 +177,7 @@ def main():
             while time.monotonic() < deadline:
                 if process.poll() is not None: raise ValueError('VM exited')
                 if subprocess.run([*ssh(state, result), 'true'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                    provisioning_only(state, result)
                     result['state'] = 'ready-not-configured'
                     write(state / 'vm.json', result)
                     break
