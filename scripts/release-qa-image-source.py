@@ -42,10 +42,13 @@ def main():
     trusted = authorize(identity, fetch)
     if args.require_trusted and not trusted:
         raise ValidationError('untrusted_image_source')
+    # Emit constants for the authorization decision. API response objects and
+    # request headers must never flow into logs or workflow output files.
+    decision = 'true' if trusted else 'false'
     if os.environ.get('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
-            stream.write('trusted=' + str(trusted).lower() + '\nsha=' + identity['commit'] + '\n')
-    print(json.dumps(dict(trusted=trusted, sha=identity['commit'])))
+            stream.write('trusted=' + decision + '\n')
+    print('Image source authorized.' if trusted else 'Image source is not authorized for publication.')
 
 
 if __name__ == '__main__':
