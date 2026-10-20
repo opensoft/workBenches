@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -141,14 +142,37 @@ def tool_versions():
     return result
 
 
-def execute(argv, root, environment, timeout):
+def failure_location(raw):
+    """Extract identifiers only; never exception messages, paths or log lines."""
+    result = {}
+    classes = rb'(AssertionError|RuntimeError|ValueError|KeyError|TypeError|FileNotFoundError|PermissionError|TimeoutExpired|CalledProcessError|HTTPError|URLError|SSLError)'
+    found = re.findall(rb'(?:^|\n)(?:[^\n|]*\|\s*)?(?:subprocess\.|urllib\.error\.|ssl\.)?' + classes + rb'(?::|\r?$)', raw, re.M)
+    if found: result['exception'] = found[-1].decode('ascii')
+    frames = re.findall(rb'File "[^"\n]*(test-workstation-acceptance\.py|test-component-lifecycle\.py)", line ([0-9]{1,7})', raw)
+    if frames:
+        result.update(file=frames[-1][0].decode('ascii'), line=int(frames[-1][1]))
+    if re.search(rb'no space left on device|disk quota exceeded|\bENOSPC\b', raw, re.I):
+        result['category'] = 'disk_full'
+    return result
+
+
+def execute(argv, root, environment, timeout, diagnostic=None):
     # Raw stdout/stderr can contain generated credentials. Keep them in a
     # private temporary file and delete after execution; upload metadata only.
     with tempfile.TemporaryFile() as log:
         try:
             process = subprocess.run(argv, cwd=root, env=environment, stdout=log, stderr=log, timeout=timeout)
-            return process.returncode == 0
-        except (OSError, subprocess.TimeoutExpired): return False
+            passed = process.returncode == 0
+            if not passed and diagnostic is not None:
+                log.seek(0, 2); size = log.tell(); log.seek(max(0, size - 256 * 1024))
+                diagnostic.update(failure_location(log.read()))
+                try: diagnostic['workspaceFreeBytes'] = shutil.disk_usage(root).free
+                except OSError: pass
+            return passed
+        except (OSError, subprocess.TimeoutExpired) as error:
+            if diagnostic is not None:
+                diagnostic['exception'] = 'TimeoutExpired' if isinstance(error, subprocess.TimeoutExpired) else 'OSError'
+            return False
 
 
 def run_suite(root, manifest_path, name, output, expected=None, ref=None, external_config=None):
@@ -176,10 +200,15 @@ def run_suite(root, manifest_path, name, output, expected=None, ref=None, extern
             try:
                 for command in suite['commands']:
                     if command['id'] not in cases(suite, identity['version']): continue
-                    passed = execute(argv(command['argv']), root, environment, suite.get('timeoutSeconds', 900))
+                    diagnostic = {}
+                    passed = execute(argv(command['argv']), root, environment, suite.get('timeoutSeconds', 900), diagnostic)
                     report['cases'].append({'id': command['id'], 'status': 'passed' if passed else 'failed'})
                     print(name + '/' + command['id'] + ': ' + ('passed' if passed else 'failed'), flush=True)
-                    if not passed: break
+                    if not passed:
+                        if diagnostic:
+                            report['runner']['failure'] = diagnostic
+                            print(name + ': safe failure location ' + json.dumps(diagnostic), flush=True)
+                        break
             finally:
                 # Evaluate every cleanup, even after another cleanup fails.
                 cleaned = [execute(argv(c), root, environment, 180) for c in suite.get('cleanup', [])]

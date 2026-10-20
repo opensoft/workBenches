@@ -177,6 +177,23 @@ class ReleaseAutomationTests(unittest.TestCase):
             self.assertIn('Navigation:', lifecycle.setup_tui(self.root, b'\n', {}))
         self.assertEqual(child.returncode, 0)
 
+    def test_failure_diagnostics_never_include_messages_or_private_paths(self):
+        secret = 'NEVER_SERIALIZE_THIS_PASSWORD'
+        raw = (f'workstation-acceptance-1 | File "/private/{secret}/test-workstation-acceptance.py", line 276, in main\n'
+               f'workstation-acceptance-1 | RuntimeError: {secret}\n').encode()
+        detail = rv.failure_location(raw)
+        self.assertEqual(detail, dict(exception='RuntimeError', file='test-workstation-acceptance.py', line=276))
+        self.assertNotIn(secret, json.dumps(detail))
+        diagnostic = {}
+        passed = rv.execute([sys.executable, '-c', f'raise RuntimeError({secret!r})'], self.root, dict(os.environ), 10, diagnostic)
+        self.assertFalse(passed)
+        self.assertEqual(diagnostic['exception'], 'RuntimeError')
+        self.assertIsInstance(diagnostic['workspaceFreeBytes'], int)
+        self.assertNotIn(secret, json.dumps(diagnostic))
+        self.assertEqual(rv.failure_location(b'no space left on device'), {'category':'disk_full'})
+        self.assertEqual(rv.failure_location(b'subprocess.CalledProcessError: private-value'), {'exception':'CalledProcessError'})
+        self.assertEqual(rv.failure_location(b'UnknownException: private-value'), {})
+
     def test_command_failure_still_cleans_up_and_cannot_pass(self):
         self.config['suites']['source']['cleanup'] = [[sys.executable, '-c', 'pass']]
         rv.atomic(self.manifest_path, self.config)
