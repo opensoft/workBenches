@@ -99,8 +99,8 @@ def finish(login, user_id, device):
             value['expiresAt'] = now + int(tokens['expires_in'])
         if tokens.get('refresh_token_expires_in'):
             value['refreshExpiresAt'] = now + int(tokens['refresh_token_expires_in'])
-        secret = store(login, value)
-        print(json.dumps({'login': login, 'status': 'stored', 'vault': VAULT, 'secret': secret,
+        store(login, value)
+        print(json.dumps({'login': login, 'status': 'stored', 'vault': VAULT,
                           'hasRefreshToken': bool(tokens.get('refresh_token')), 'scopes': sorted(scopes)}), flush=True)
         return login
     raise ProvisionError('device_authorization_expired')

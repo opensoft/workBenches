@@ -40,9 +40,16 @@ def has_refresh(value):
 
 class AzureVault:
     """Managed identity only: never fall back to a user's Azure CLI credentials."""
-    def __init__(self, client_id=None):
-        from azure.identity import ManagedIdentityCredential
-        self.credential = ManagedIdentityCredential(client_id=client_id) if client_id else ManagedIdentityCredential()
+    def __init__(self, client_id=None, identity_mode='managed'):
+        from azure.identity import ManagedIdentityCredential, WorkloadIdentityCredential
+        if identity_mode == 'managed':
+            self.credential = ManagedIdentityCredential(client_id=client_id) if client_id else ManagedIdentityCredential()
+        elif identity_mode == 'workload':
+            # AKS projected service-account federation is explicit. Never use
+            # DefaultAzureCredential or fall back to a workstation Azure cache.
+            self.credential = WorkloadIdentityCredential(client_id=client_id)
+        else:
+            raise ValueError('Unsupported broker identity mode')
         self.clients = {}
 
     def client(self, profile):

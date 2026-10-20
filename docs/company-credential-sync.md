@@ -372,3 +372,10 @@ An ambiguous refresh/save failure leaves the latest state blocked and requires
 recovery/reauthorization; the coordinator never retries an old consumed token.
 Device-flow tokens can be renewed with the public client ID without a client
 secret: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#refreshing-an-access-token-with-a-refresh-token
+
+An AKS broker explicitly sets `identityMode: "workload"` and uses the platform's
+projected workload-identity token. The default `"managed"` mode retains IMDS
+managed identity for suitable Azure hosts. Neither mode uses
+DefaultAzureCredential or falls back to Azure CLI. Invalid modes or missing
+federation fail closed. This distinction matters because Raven KVM supplies
+neither Azure IMDS nor AKS projected workload identity by itself.

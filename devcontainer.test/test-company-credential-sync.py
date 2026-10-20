@@ -251,6 +251,26 @@ class CompanySyncTests(unittest.TestCase):
         self.assertEqual(store.call_count, 1)
         self.assertNotIn('refresh_token', store.call_args.args[1]['oauth'])
 
+    def test_broker_workload_identity_is_explicit_and_never_falls_back(self):
+        from core import AzureVault
+        with patch('azure.identity.ManagedIdentityCredential') as managed, patch('azure.identity.WorkloadIdentityCredential') as workload:
+            AzureVault('fixture-client', 'workload')
+            workload.assert_called_once_with(client_id='fixture-client')
+            managed.assert_not_called()
+        with patch('azure.identity.ManagedIdentityCredential') as managed, patch('azure.identity.WorkloadIdentityCredential', side_effect=RuntimeError('fixture identity unavailable')):
+            with self.assertRaises(RuntimeError): AzureVault('fixture-client', 'workload')
+            managed.assert_not_called()
+        with self.assertRaises(ValueError): AzureVault(identity_mode='azure-cli')
+
+    def test_changing_vault_identity_requires_broker_restart(self):
+        config_path = self.root / 'server-identity.json'
+        changed = dict(self.config, identityMode='workload'); atomic(config_path, changed)
+        app = Application(self.broker, lambda _: self.user, config_path)
+        status = []
+        raw = b''.join(app({'REQUEST_METHOD': 'GET', 'PATH_INFO': '/v1/profiles'}, lambda value, _: status.append(value)))
+        self.assertTrue(status[0].startswith('503'))
+        self.assertEqual(json.loads(raw)['error'], 'deployment_configuration_changed')
+
     def test_host_and_image_hook_sources_match(self):
         self.assertEqual((ROOT / 'scripts/lib/company-profile-sync.sh').read_bytes(), (ROOT / 'base-image/files/company-profile-sync.sh').read_bytes())
         self.assertEqual((ROOT / 'scripts/opencode-profile').read_bytes(), (ROOT / 'base-image/files/opencode-profile').read_bytes())
