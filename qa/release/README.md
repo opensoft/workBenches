@@ -155,3 +155,49 @@ host keys and root-owned matching markers/configuration, register an ephemeral
 runner into the restricted group, and destroy the job disk on any outcome.
 This image preparation is not a replacement for that controller, organization
 policy, live adapters or QA identities, and does not enable `WB_QA_CONFIGURED`.
+
+## GitHub team authorization QA
+
+The designated accounts are `Opensoft-Test-User-1` and `Opensoft-Test-User-2`,
+active members of `Opensoft-Testing` as verified on 2026-10-20. Both have the
+ordinary Member organization role. The `workbenches-qa-allowed` team contains
+User 1 and its administrator `brettheap`, and excludes User 2. No production
+membership or repository access is required. Recheck these conditions before
+running the test; a prior test may have changed membership.
+
+`qa/release/github-profile-policy.json` defines the nonproduction logical profile
+`qa/github-team-check`. It contains no vendor credential and grants access only
+to that team's members. `scripts/github_profile_authorization.py` implements the
+server-side decision: verify the token's actual `/user` identity and fresh,
+paginated `/user/teams` membership through GitHub. Wrong organization, missing
+team, and unknown profile are denied; API failures and incomplete pagination
+fail closed. No caller-supplied username or team assertion is trusted.
+
+A deployed credential broker must load this policy from administrator-controlled
+storage and call `authorize` before reading or releasing a credential. A client
+calling this helper is not an enforcement boundary. The broker and its delegated
+GitHub identity integration are not deployed by this change. Entra/Keycloak
+company authorization and tenant contexts are separate from this GitHub policy.
+Do not treat a GitHub login as proof of Microsoft sign-in.
+
+Run the attended probe in the disposable Eagle QA account:
+
+```sh
+python3 qa/release/test-github-authorization.py
+```
+
+It opens a GitHub device/browser login for each designated account using an
+isolated temporary `gh` configuration (not the operator's saved account), requests
+`read:org`, verifies the returned identity, and asserts User 1 is allowed and
+User 2 denied. Browser consent/MFA remain attended. Login material is temporarily
+stored in a private directory and removed on exit; do not record the terminal
+or device codes. This removal does not revoke the GitHub OAuth authorization.
+The probe prints only username, decision, and pass/fail metadata. A wrong account,
+canceled login, API failure, or incorrect decision fails the probe.
+
+This probe exercises real GitHub membership and the authorization component,
+not the openWorkBenches TUI or a deployed broker credential-release endpoint.
+It deliberately emits no release adapter attestation. Existing `github-live`
+browser/clipboard/reuse/reauth/cancel cases and `company-live` cases remain blocked
+until their actual end-to-end adapters are implemented. Keep `WB_QA_CONFIGURED`
+false. Source, releases, and restricted release runners remain in `opensoft`.
