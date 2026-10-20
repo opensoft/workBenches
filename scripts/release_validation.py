@@ -148,6 +148,10 @@ def failure_location(raw):
     classes = rb'(AssertionError|RuntimeError|ValueError|KeyError|TypeError|FileNotFoundError|PermissionError|TimeoutExpired|CalledProcessError|HTTPError|URLError|SSLError)'
     found = re.findall(rb'(?:^|\n)(?:[^\n|]*\|\s*)?(?:subprocess\.|urllib\.error\.|ssl\.)?' + classes + rb'(?::|\r?$)', raw, re.M)
     if found: result['exception'] = found[-1].decode('ascii')
+    case_names = rb'(quit|empty|default-cli-install|cancel-account-setup|live-vault-cli-install|repeat-unchanged|repeat-update|failed-npm-update|bench-install|repeat-installed-bench|bench-uninstall-preserves-local-work)'
+    failed_case = re.findall(rb"AssertionError: \('" + case_names + rb"', (-?[0-9]{1,3})\)", raw)
+    if failed_case:
+        result.update(case=failed_case[-1][0].decode('ascii'), exitCode=int(failed_case[-1][1]))
     frames = re.findall(rb'File "[^"\n]*(test-workstation-acceptance\.py|test-component-lifecycle\.py)", line ([0-9]{1,7})', raw)
     if frames:
         result.update(file=frames[-1][0].decode('ascii'), line=int(frames[-1][1]))
