@@ -228,3 +228,65 @@ No real Azure vault, company identity, or provider credentials are used by these
 Live managed-identity KV deployment, approved provider-mode validation, alert routing,
 and platform acceptance remain required before the feature is enabled for a company
 or included as validated functionality in the v1.6 release.
+
+## Optional GitHub team restriction (v1.6)
+
+A profile can additionally set `githubTeam` to an object with `organization` and
+`team`. Its existing issuer/subject grants remain mandatory. The broker removes
+`use` and `publish` unless the caller's administrator-bound GitHub account is an
+active member of that team. This affects `/v1/profiles`, `/v1/fetch` and
+`/v1/publish`, including background sync and the TUI's existing company profile
+selection. CPC `maintain`/reconciliation service permissions remain governed by
+their separate OIDC grants, not a human's team membership. No team membership
+creates a grant or enables a disabled profile.
+
+Configure `githubIdentities` on the server with `issuer`, immutable OIDC `subject`,
+GitHub numeric `githubId`, and `login`. Obtain the subject from the verified QA
+sign-in; never bind from a typed email or client-supplied username. The numeric
+ID is checked against GitHub to prevent a renamed/reused login inheriting access.
+Every request checks fresh membership; pending memberships, missing bindings and
+nonmembers are denied. GitHub outages/rate limits or unreadable token files fail
+closed, without returning credentials. Existing local credentials cannot be
+recalled merely by revoking future broker access.
+
+Use `config/credential-broker.github-qa.example.json` as the disabled QA template.
+Both accounts have ordinary `use` grants, while only User 1 belongs to the allowed
+team. Replace placeholder OIDC subjects, vault location, validator and expected
+provider account before enabling only a fictional/nonproduction profile. Never
+use production vendor tokens for this test. Keep server config administrator-owned.
+
+Set `githubMembershipTokenFile` to a server-only private file containing a GitHub
+App installation token or fine-grained token restricted to Opensoft-Testing with
+organization Members read permission. It must be readable by broker UID 10001,
+regular, nonsymlink and mode 0600/0400. Rotate expiring App tokens externally.
+Do not use the operator's broad gh token in deployment. The optional
+`credential-broker/compose.github-qa.yml` override mounts this secret only into
+the broker; set `WORKBENCHES_GITHUB_MEMBERSHIP_TOKEN_FILE` to its host path.
+Neither the client nor CPC needs this token, a GitHub password, or direct vault
+access. GitHub API reference: https://docs.github.com/en/rest/teams/members#get-team-membership-for-a-user
+
+### Unattended live QA
+
+Recurring tests must never pause for browser login. Provision the two QA company
+OIDC sessions once in the isolated worker's private account directories, with
+refresh/offline access and the broker's audience. Configure the broker bindings
+to those exact subjects. Passwords and recovery codes remain in the password
+manager. Provider-required consent/MFA is a provisioning or reauthorization step;
+a revoked/expired session fails the job instead of invoking an interactive fallback.
+
+`qa/release/test-broker-team-live.py --config /private/qa-broker-test.json` runs
+without prompts. The private JSON config contains `qaOnly: true`, `brokerUrl`, a
+`qa:`-prefixed `profileId`, `tenant`, `expectedAccountId`, the SHA256
+`expectedCredentialDigest` of canonical JSON for the seeded fictional credential,
+and `users` in order: objects with `login` and `sessionRoot` for
+Opensoft-Test-User-1 and Opensoft-Test-User-2. Each sessionRoot holds the existing
+private account-provider.json/account-session.json files. Their session roots
+must differ. The client renews sessions through the normal company sync code.
+The runner asserts profile visibility and a matching credential for User 1,
+then hidden metadata plus HTTP 403 on direct fetch for User 2. Unexpected errors,
+401s, credentials or account selection fail. Output contains decisions only.
+
+This is the actual broker authorization boundary used by the TUI. It does not
+certify browser opening, clipboard, cancellation or Microsoft initial sign-in;
+those distinct release cases still require their own automated UI adapters. Do
+not enable all live QA gates on the strength of this probe alone.

@@ -101,6 +101,86 @@ class CompanySyncTests(unittest.TestCase):
             self.assertEqual(error.exception.status, 403)
         self.assertEqual(version, '1')
 
+    def test_github_team_gate_reaches_metadata_fetch_publish_and_revocation(self):
+        self.publish()
+        self.config['profiles'][self.name]['githubTeam'] = {
+            'organization': 'Opensoft-Testing', 'team': 'workbenches-qa-allowed'}
+        self.config['githubIdentities'] = [
+            {'issuer': self.user['iss'], 'subject': self.user['sub'], 'login': 'Opensoft-Test-User-1', 'githubId': 345520656},
+            {'issuer': self.reader['iss'], 'subject': self.reader['sub'], 'login': 'Opensoft-Test-User-2', 'githubId': 345521882}]
+        active = True
+        def api(path, token):
+            if path.startswith('/users/'):
+                return {'id': 345520656 if path.endswith('User-1') else 345521882}
+            return {'state': 'active'} if active and path.endswith('User-1') else {}
+        with patch('github_team.token_file', return_value='fixture-read-only'), patch('github_team.get', side_effect=api):
+            self.assertEqual(len(self.broker.metadata(self.user)['profiles']), 1)
+            self.assertEqual(self.broker.metadata(self.reader), {'profiles': []})
+            self.assertEqual(self.broker.fetch(self.user, self.name)['credential'], self.value)
+            app = Application(self.broker, lambda _: self.reader)
+            for route in ('fetch', 'publish'):
+                data = {'profileId': self.name, 'credential': self.value, 'expectedVersion': '1', 'idempotencyKey': 'denied-at-http'}
+                body = json.dumps(data).encode(); status = []
+                raw = b''.join(app({'REQUEST_METHOD': 'POST', 'PATH_INFO': '/v1/' + route,
+                    'CONTENT_LENGTH': str(len(body)), 'wsgi.input': io.BytesIO(body)}, lambda value, _: status.append(value)))
+                self.assertTrue(status[0].startswith('403'))
+                self.assertNotIn(b'fixture-first', raw)
+            active = False
+            self.assertEqual(self.broker.metadata(self.user), {'profiles': []})
+            with self.assertRaises(BrokerError) as error: self.broker.fetch(self.user, self.name)
+            self.assertEqual(error.exception.status, 403)
+            # Maintenance remains governed by its separate service OIDC grant.
+            self.broker.authorize(self.cpc, self.name, 'maintain')
+
+    def test_github_binding_and_api_failures_never_release_credentials(self):
+        self.publish()
+        self.config['profiles'][self.name]['githubTeam'] = {'organization': 'qa', 'team': 'allowed'}
+        self.assertEqual(self.broker.metadata(self.user), {'profiles': []})
+        self.config['githubIdentities'] = [{'issuer': self.user['iss'], 'subject': self.user['sub'],
+                                         'login': 'test-user', 'githubId': 123}]
+        with patch('github_team.token_file', return_value='fixture'), patch('github_team.get', return_value={'id': 456}):
+            with self.assertRaises(BrokerError) as error: self.broker.fetch(self.user, self.name)
+            self.assertEqual(error.exception.status, 403)
+        with patch('github_team.token_file', side_effect=BrokerError(503, 'github_membership_unavailable')):
+            with self.assertRaises(BrokerError) as error: self.broker.fetch(self.user, self.name)
+            self.assertEqual(error.exception.status, 503)
+        self.config['githubIdentities'].append(dict(self.config['githubIdentities'][0]))
+        self.assertEqual(self.broker.metadata(self.user), {'profiles': []})
+
+    def test_unattended_live_probe_rejects_wrong_status_or_credential(self):
+        spec = importlib.util.spec_from_file_location('live_team_probe', ROOT / 'qa/release/test-broker-team-live.py')
+        probe = importlib.util.module_from_spec(spec); spec.loader.exec_module(probe)
+        from company_sync import digest
+        config = {'qaOnly': True, 'brokerUrl': 'https://qa.example', 'profileId': 'qa:test', 'tenant': 'qa',
+                  'expectedAccountId': 'fixture', 'expectedCredentialDigest': digest({'accountId': 'fixture'}),
+                  'users': [{'login': 'Opensoft-Test-User-1', 'sessionRoot': str(self.root / 'a')},
+                            {'login': 'Opensoft-Test-User-2', 'sessionRoot': str(self.root / 'b')}]}
+        def client(denial):
+            class Client:
+                def __init__(self, url, token): self.allowed = token() == 'a'
+                def call(self, route, data=None):
+                    if route == 'profiles': return {'profiles': [{'id': 'qa:test', 'tenant': 'qa', 'permissions': ['use']}] if self.allowed else []}
+                    if not self.allowed: raise SyncError('denied', denial)
+                    return {'credential': {'accountId': 'fixture'}}
+            return Client
+        with patch.object(probe, 'account_token', side_effect=lambda root: root.name):
+            with patch.object(probe, 'Client', client(403)):
+                probe.run(config)
+                bad = dict(config, expectedCredentialDigest='wrong')
+                with self.assertRaises(SyncError): probe.run(bad)
+            with patch.object(probe, 'Client', client(401)):
+                with self.assertRaises(SyncError): probe.run(config)
+
+    def test_github_membership_token_file_is_private_and_not_symlinked(self):
+        from github_team import token_file
+        path = self.root / 'membership-token'; path.write_text('fixture-token'); path.chmod(0o600)
+        self.assertEqual(token_file(str(path)), 'fixture-token')
+        path.chmod(0o644)
+        with self.assertRaises(BrokerError): token_file(str(path))
+        path.chmod(0o600)
+        link = self.root / 'token-link'; link.symlink_to(path)
+        with self.assertRaises(BrokerError): token_file(str(link))
+
     def test_host_and_image_hook_sources_match(self):
         self.assertEqual((ROOT / 'scripts/lib/company-profile-sync.sh').read_bytes(), (ROOT / 'base-image/files/company-profile-sync.sh').read_bytes())
         self.assertEqual((ROOT / 'scripts/opencode-profile').read_bytes(), (ROOT / 'base-image/files/opencode-profile').read_bytes())

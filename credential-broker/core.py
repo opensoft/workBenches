@@ -145,6 +145,13 @@ class Broker:
             # Both values come from a verified token, never an entered email.
             if grant['issuer'] == identity['iss'] and grant['subject'] == identity['sub']:
                 rights.update(grant.get('profiles', {}).get(name, []))
+        # Optional profile-level restriction applies even when multiple direct
+        # grants exist. Never trust a GitHub name supplied by a client or token
+        # claim: the administrator binds immutable OIDC subjects to GitHub IDs.
+        if 'githubTeam' in profile and rights & {'use', 'publish'}:
+            from github_team import permitted
+            if not permitted(self.config, identity, profile['githubTeam']):
+                rights -= {'use', 'publish'}
         return rights
 
     def authorize(self, identity, name, right):
