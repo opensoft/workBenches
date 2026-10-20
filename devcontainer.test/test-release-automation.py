@@ -187,7 +187,11 @@ class ReleaseAutomationTests(unittest.TestCase):
         diagnostic = {}
         passed = rv.execute([sys.executable, '-c', f'raise RuntimeError({secret!r})'], self.root, dict(os.environ), 10, diagnostic)
         self.assertFalse(passed)
-        self.assertEqual(diagnostic, dict(exception='RuntimeError'))
+        self.assertEqual(diagnostic['exception'], 'RuntimeError')
+        self.assertIsInstance(diagnostic['workspaceFreeBytes'], int)
+        self.assertNotIn(secret, json.dumps(diagnostic))
+        self.assertEqual(rv.failure_location(b'no space left on device'), {'category':'disk_full'})
+        self.assertEqual(rv.failure_location(b'subprocess.CalledProcessError: private-value'), {'exception':'CalledProcessError'})
         self.assertEqual(rv.failure_location(b'UnknownException: private-value'), {})
 
     def test_command_failure_still_cleans_up_and_cannot_pass(self):

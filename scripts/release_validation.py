@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -145,11 +146,13 @@ def failure_location(raw):
     """Extract identifiers only; never exception messages, paths or log lines."""
     result = {}
     classes = rb'(AssertionError|RuntimeError|ValueError|KeyError|TypeError|FileNotFoundError|PermissionError|TimeoutExpired|CalledProcessError|HTTPError|URLError|SSLError)'
-    found = re.findall(rb'(?:^|\n)(?:[^\n|]*\|\s*)?' + classes + rb'(?::|\r?$)', raw, re.M)
+    found = re.findall(rb'(?:^|\n)(?:[^\n|]*\|\s*)?(?:subprocess\.|urllib\.error\.|ssl\.)?' + classes + rb'(?::|\r?$)', raw, re.M)
     if found: result['exception'] = found[-1].decode('ascii')
     frames = re.findall(rb'File "[^"\n]*(test-workstation-acceptance\.py|test-component-lifecycle\.py)", line ([0-9]{1,7})', raw)
     if frames:
         result.update(file=frames[-1][0].decode('ascii'), line=int(frames[-1][1]))
+    if re.search(rb'no space left on device|disk quota exceeded|\bENOSPC\b', raw, re.I):
+        result['category'] = 'disk_full'
     return result
 
 
@@ -163,6 +166,8 @@ def execute(argv, root, environment, timeout, diagnostic=None):
             if not passed and diagnostic is not None:
                 log.seek(0, 2); size = log.tell(); log.seek(max(0, size - 256 * 1024))
                 diagnostic.update(failure_location(log.read()))
+                try: diagnostic['workspaceFreeBytes'] = shutil.disk_usage(root).free
+                except OSError: pass
             return passed
         except (OSError, subprocess.TimeoutExpired) as error:
             if diagnostic is not None:
