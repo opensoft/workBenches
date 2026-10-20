@@ -205,13 +205,17 @@ class ReleaseAutomationTests(unittest.TestCase):
         seen = []
         def copy_logs(argv, **kwargs):
             directory = Path(argv[-1]); seen.append(directory)
+            if argv[-2].endswith('/report/bench-install.txt'):
+                directory.write_text('Layer 0 build failed\n' + secret)
+                return subprocess.CompletedProcess(argv, 0)
             older = directory / 'old.log'; older.write_text('no space left on device')
             latest = directory / 'current.log'; latest.write_bytes(raw)
             os.utime(older, (1, 1)); os.utime(latest, (2, 2))
             return subprocess.CompletedProcess(argv, 0)
         with patch.object(rv.subprocess, 'run', side_effect=copy_logs):
             result = rv.workstation_diagnostics(self.root, 'private-fixture-project', {})
-        self.assertEqual(result, dict(logsRead=1, **value))
+        self.assertEqual(result, dict(logsRead=1, terminal={'hints': ['layer_zero_failure']}, **value))
+        self.assertNotIn(secret, json.dumps(result))
         self.assertFalse(seen[0].exists(), 'Private copies must be deleted after parsing')
 
     def test_command_failure_still_cleans_up_and_cannot_pass(self):
