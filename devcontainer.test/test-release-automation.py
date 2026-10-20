@@ -193,6 +193,8 @@ class ReleaseAutomationTests(unittest.TestCase):
         self.assertEqual(rv.failure_location(b'no space left on device'), {'category':'disk_full'})
         self.assertEqual(rv.failure_location(b'subprocess.CalledProcessError: private-value'), {'exception':'CalledProcessError'})
         self.assertEqual(rv.failure_location(b'UnknownException: private-value'), {})
+        self.assertEqual(rv.failure_location(b"AssertionError: ('failed-npm-update', 0)"), {'exception':'AssertionError', 'case':'failed-npm-update', 'exitCode':0})
+        self.assertEqual(rv.failure_location(b"AssertionError: ('PRIVATE-PASSWORD', 1)"), {'exception':'AssertionError'})
 
     def test_command_failure_still_cleans_up_and_cannot_pass(self):
         self.config['suites']['source']['cleanup'] = [[sys.executable, '-c', 'pass']]
