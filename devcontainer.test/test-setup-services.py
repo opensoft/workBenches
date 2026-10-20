@@ -34,7 +34,8 @@ activate_requirement() { echo UNEXPECTED_VAULT_ACTION; exit 99; }
 configure_selected_accounts() {
     local choice
     setup_read 'AI assistant (codex/claude) [codex]' choice || return "$?"
-    setup_read 'Authentication route [1]: ' choice || return "$?"
+    printf 'Authentication route [1]: '
+    IFS= read -r choice || return 130
     [[ "$choice" != Q ]] || return 130
     return 99
 }
