@@ -152,6 +152,8 @@ def execute(argv, root, environment, timeout):
 
 
 def run_suite(root, manifest_path, name, output, expected=None, ref=None, external_config=None):
+    # Workflow checkouts use relative paths; children run inside that checkout.
+    root = Path(root).resolve()
     manifest = load_manifest(manifest_path)
     identity = source(root, manifest_path, expected, ref)
     suite = manifest['suites'].get(name)
