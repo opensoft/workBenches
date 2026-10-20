@@ -215,7 +215,8 @@ python3 qa/release/provision-provider-qa.py --provider codex
 
 Complete the browser/MFA consent once as Team001. Paste any authorization code
 only into the local native login terminal. The helper uses private isolated
-HOME/config directories, checks the selected account and expiry, then stores the
+HOME/config directories, checks the selected account, expiry and presence of a
+refresh token, then stores the
 result in `kv-openbenches-qa` as `qa-claude-team001-session` or
 `qa-codex-team001-session`. It never imports or rotates the expired production
 backup session. Vault bootstrap uses the operator's existing Azure CLI session;

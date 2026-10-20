@@ -57,7 +57,9 @@ def claims(token):
     parts = token.split('.')
     if len(parts) != 3: raise ValueError('Official CLI identity token required')
     part = parts[1]
-    return json.loads(base64.urlsafe_b64decode(part + '=' * (-len(part) % 4)))
+    value = json.loads(base64.urlsafe_b64decode(part + '=' * (-len(part) % 4)))
+    if not isinstance(value, dict): raise ValueError('Official CLI identity token required')
+    return value
 
 
 def collect(provider):
@@ -67,12 +69,19 @@ def collect(provider):
     if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
         raise ValueError('Credential file must be private')
     credential = json.loads(path.read_bytes())
+    if not isinstance(credential, dict): raise ValueError('Native account credential object required')
+    session = credential.get('tokens' if provider == 'codex' else 'claudeAiOauth')
+    if not isinstance(session, dict): raise ValueError('Native account session required')
+    refresh = session.get('refresh_token' if provider == 'codex' else 'refreshToken')
+    if not isinstance(refresh, str) or not refresh.strip():
+        raise ValueError('Refreshable native account session required')
     account = tenant = subject = None
     if provider == 'codex':
+        if credential.get('OPENAI_API_KEY'): raise ValueError('Native account session required')
         # This cache must come from the trusted native CLI login started here;
         # decoded claims are a selection guard, not general JWT authentication.
         proof = claims(credential['tokens']['id_token'])
-        if credential.get('auth_mode') != 'chatgpt' or proof.get('email', '').casefold() != EMAIL:
+        if credential.get('auth_mode') != 'chatgpt' or str(proof.get('email') or '').casefold() != EMAIL:
             raise ValueError('Wrong Team001 Codex identity')
         if proof.get('exp', 0) <= time.time(): raise ValueError('Fresh login required')
         account = credential['tokens'].get('account_id')
@@ -82,7 +91,8 @@ def collect(provider):
                                 capture_output=True, timeout=30)
         if result.returncode: raise ValueError('Claude identity verification failed')
         proof = json.loads(result.stdout)
-        if proof.get('loggedIn') is not True or proof.get('email', '').casefold() != EMAIL:
+        if not isinstance(proof, dict): raise ValueError('Claude identity verification failed')
+        if proof.get('loggedIn') is not True or str(proof.get('email') or '').casefold() != EMAIL:
             raise ValueError('Wrong Team001 Claude identity')
         if credential['claudeAiOauth']['expiresAt'] / 1000 <= time.time(): raise ValueError('Fresh login required')
         # Organization identity is not the user's account identity.
