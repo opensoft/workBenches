@@ -528,7 +528,7 @@ process_selections''', input='\n', PATH=self.fake_npm(self.home, failure=13), WO
             path = binary / name; path.write_text(body); path.chmod(0o755)
         status, output = terminal_run(['bash', str(repo / 'setup.sh')],
             dict(self.env, PATH=str(binary) + ':' + self.env['PATH']),
-            [(re.compile(r'REQUIREMENTS · (\d+)/\1 ready'), '\x1b[C\x1b[B\x1b[B \n')])
+            [(re.compile(r'REQUIREMENTS · (\d+)/\1 ready'), '\x1b[D\x1b[D\x1b[B\x1b[C\x1b[B\x1b[B \n')])
         self.assertEqual(status, 0, output)
         self.assertTrue((self.home / 'cli-installed').exists())
         self.assertNotIn('Apply these changes?', output)

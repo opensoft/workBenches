@@ -82,6 +82,7 @@ SILVER_MUTED='\033[38;5;245m'
 SILVER_EDGE='\033[38;5;239m'
 SILVER_FOCUS='\033[48;5;235m\033[38;5;255m'
 setup_ui_width=87
+setup_ui_height=''  # Terminal rows when known; empty never clips the frame.
 setup_ui_painted=false
 setup_ui_frame_columns=0
 declare -a setup_ui_previous_lines=()
@@ -112,7 +113,8 @@ draw_setup_banner() {
     local -a tones=(255 252 250 246)
     local line char tone index position
     printf '\n'
-    if (( setup_ui_width < 42 )); then
+    # Short terminals keep their rows for the component tree.
+    if (( setup_ui_width < 42 )) || { [[ "$setup_ui_height" =~ ^[0-9]+$ ]] && (( setup_ui_height < 40 )); }; then
         printf '  %bOpensoft%b\n\n' "$SILVER" "$NC"
         return
     fi
@@ -157,9 +159,11 @@ setup_panel_bottom() {
 
 draw_requirements_summary() {
     setup_requirement_counts
-    local title="REQUIREMENTS · $requirements_ready/$requirements_total ready"
+    local title="REQUIREMENTS · $requirements_ready/$requirements_total ready" manage='P Manage'
     [[ "$status_checks_running" != true ]] || title="REQUIREMENTS · Loading…"
-    setup_panel_top "$title" 'P Manage'
+    # Narrow panels keep the readiness count whole; the footer still lists P.
+    (( ${#title} + ${#manage} + 1 <= setup_ui_width - 6 )) || manage=''
+    setup_panel_top "$title" "$manage"
     local key label action color plain='' styled='' separator='' width=$((setup_ui_width - 4))
     for key in "${requirement_items[@]}"; do
         case "$key" in workbenches_account|ai_accounts) continue ;; esac
@@ -465,33 +469,42 @@ activate_requirement() {
     return 0
 }
 
-draw_requirement_item() {
-    local item="$1" kind="$2" marker=' ' icon='✓' color="$GREEN" surface="$SILVER"
-    local status detail line action width=$((setup_ui_width - 4))
-    status="$(setup_status_label "${component_status[$item]}")"
+# Icon, colour and state text for one requirement row; shared by the
+# Requirements panel rows and the category tree.
+requirement_item_state() {
+    local item="$1" kind="$2" action
+    requirement_icon='✓'; requirement_color="$GREEN"
+    requirement_status="$(setup_status_label "${component_status[$item]}")"
     if [[ "$kind" == optional && "$item" != vault ]]; then
-        icon='[ ]'; color="$SILVER_MUTED"
+        requirement_icon='[ ]'; requirement_color="$SILVER_MUTED"
         case "${component_status[$item]}" in
-            configured|installed) status='Connected'; color="$GREEN" ;;
-            'signed in') status='Signed in'; color="$GREEN" ;;
-            *) status='Not connected' ;;
+            configured|installed) requirement_status='Connected'; requirement_color="$GREEN" ;;
+            'signed in') requirement_status='Signed in'; requirement_color="$GREEN" ;;
+            *) requirement_status='Not connected' ;;
         esac
         if [[ "${component_checked[$item]}" == true ]]; then
-            icon='[✓]'; status='Selected'; color="$GREEN"
+            requirement_icon='[✓]'; requirement_status='Selected'; requirement_color="$GREEN"
         fi
     elif [[ "${component_status[$item]}" == loading ]]; then
-        icon='…'; color="$LOADING_COLOR"
+        requirement_icon='…'; requirement_color="$LOADING_COLOR"
     elif [[ "${component_status[$item]}" != up ]]; then
-        icon='!'; color="$YELLOW"
+        requirement_icon='!'; requirement_color="$YELLOW"
     fi
     case "$item" in
         docker|wsl|setup_tools|vault)
             action="$(workbenches_requirement_action "$item" "${component_status[$item]}" "${component_status[workbenches_account]}")"
             if [[ "$item" == vault && "${component_status[$item]}" == up ]]; then
-                if [[ "${component_status[workbenches_account]}" == 'signed in' ]]; then status+=' · Signed in'; else status+=' · Signed out'; fi
+                if [[ "${component_status[workbenches_account]}" == 'signed in' ]]; then requirement_status+=' · Signed in'; else requirement_status+=' · Signed out'; fi
             fi
-            [[ "${component_status[$item]}" == loading ]] || status+="  [$action]" ;;
+            [[ "${component_status[$item]}" == loading ]] || requirement_status+="  [$action]" ;;
     esac
+}
+
+draw_requirement_item() {
+    local item="$1" kind="$2" marker=' ' icon color surface="$SILVER"
+    local status detail line width=$((setup_ui_width - 4))
+    requirement_item_state "$item" "$kind"
+    icon=$requirement_icon; color=$requirement_color; status=$requirement_status
     if [[ "$item" == "${requirement_items[$current_selection]}" ]]; then
         marker='›'; surface="$SILVER_FOCUS"
     fi
@@ -1053,33 +1066,50 @@ draw_row() {
     echo -e "${left_content}      ${middle_content}      ${right_content}"
 }
 
-# Build a complete frame off-screen; discovery never runs in the renderer.
-render_setup_frame() {
+# Banner, version line and the Requirements status strip above the tree.
+render_setup_frame_top() {
     local os_label
     draw_setup_banner
     os_label="${setup_os_label:0:$((setup_ui_width - 20))}"
     printf '%b%s%b\n' "$SILVER" "$(setup_ui_pair "workBenches v$setup_version" "$os_label" "$setup_ui_width")" "$NC"
-    printf '%b%s%b\n\n' "$SILVER_EDGE" "$(setup_ui_rule "$setup_ui_width")" "$NC"
+    printf '%b%s%b\n' "$SILVER_EDGE" "$(setup_ui_rule "$setup_ui_width")" "$NC"
+    setup_ui_short || printf '\n'
+    draw_requirements_summary
+    setup_ui_short || printf '\n'
+}
 
-    if [[ "$CURRENT_SECTION" == 3 ]]; then
-        draw_requirements
-    else
-        draw_requirements_summary
-        printf '\n'
-        draw_three_sections
-    fi
-    draw_setup_footer
+# Short terminals drop the blank spacer rows around the tree.
+setup_ui_short() {
+    [[ "$setup_ui_height" =~ ^[0-9]+$ ]] && (( setup_ui_height < 30 ))
+}
+
+# Build a complete frame off-screen; discovery never runs in the renderer.
+# Only the category tree scrolls; the chrome around it stays put.
+render_setup_frame() {
+    local top footer
+    top="$(render_setup_frame_top; printf x)"; top="${top%x}"
+    footer="$(draw_setup_footer; printf x)"; footer="${footer%x}"
+    tree_frame_budget "$top" "$footer"
+    tree_render_lines
+    tree_viewport "${#tree_lines[@]}" "$tree_focus_first" "$tree_focus_last" "$tree_budget" "$tree_scroll"
+    printf '%s' "$top"
+    draw_category_tree
+    printf '%s' "$footer"
 }
 
 # Commit only changed lines in one write, without blanking the screen first.
 draw_ui() {
-    local columns frame output='' cursor index count
+    local columns rows frame output='' cursor index count
     local -a lines=()
     columns="$(tput cols 2>/dev/null)"
     [[ "$columns" =~ ^[0-9]+$ ]] || columns=88
     setup_ui_width=$((columns - 1))
     (( setup_ui_width <= 87 )) || setup_ui_width=87
     (( setup_ui_width >= 36 )) || setup_ui_width=36
+    rows="$(tput lines 2>/dev/null)"
+    setup_ui_height=''
+    [[ ! "$rows" =~ ^[0-9]+$ ]] || setup_ui_height=$rows
+    tree_follow_focus
     frame="$(render_setup_frame)"
     mapfile -t lines <<< "$frame"
 
@@ -1103,47 +1133,665 @@ draw_ui() {
     setup_ui_painted=true
 }
 
-# Keep action hints together and show detail only for the focused component.
+# Keep action hints together and describe only the focused row.
 draw_setup_footer() {
-    local selected_item='' selected_count=0 item bench context action space_hint='Select'
-    case "$CURRENT_SECTION" in
-        0) selected_item="bench_${bench_items[$current_selection]}" ;;
-        1) selected_item="${ai_items[$current_selection]}" ;;
-        2) selected_item="${tool_items[$current_selection]}" ;;
-        3) selected_item="${requirement_items[$current_selection]}" ;;
-    esac
+    local selected_item='' selected_count=0 item context='' action space_hint='Select' p_hint='P Requirements'
+    local -a primary=('↑↓ Move') secondary=('R Refresh' 'Enter Apply' 'Q Quit')
+    tree_focus_info
     for item in "${!component_checked[@]}"; do
         [[ "${component_checked[$item]}" != true ]] || selected_count=$((selected_count + 1))
     done
-    context="${component_description[$selected_item]} · $(setup_status_label "${component_status[$selected_item]}")"
-    action="${component_action[$selected_item]}"
-    if [[ -n "$action" ]]; then
-        case "$action" in
-            uninstall) context="${component_description[$selected_item]} · Remove; projects and credentials kept" ;;
-            *) context+=" → $action" ;;
-        esac
+    [[ "$CURRENT_SECTION" != 3 ]] || p_hint='P Back'
+    if [[ -n "$tree_header" ]]; then
+        tree_category_summary "$tree_header" full
+        context="${tree_category_label[$tree_header]}"
+        [[ -z "$tree_summary" ]] || context+=" · $tree_summary"
+        if tree_is_expanded "$tree_header"; then primary+=('← Collapse'); else primary+=('→ Expand'); fi
+        primary+=("$p_hint")
+    else
+        tree_row_key "$CURRENT_SECTION" "$current_selection"
+        selected_item=$tree_key
+        primary+=('← Category')
+        if [[ -z "$selected_item" ]]; then
+            primary+=("$p_hint")
+        elif [[ "$CURRENT_SECTION" == 3 ]]; then
+            case "$selected_item" in
+                docker|wsl|setup_tools|vault)
+                    context="${component_description[$selected_item]} · $(setup_status_label "${component_status[$selected_item]}")"
+                    action="$(workbenches_requirement_action "$selected_item" "${component_status[$selected_item]}" "${component_status[workbenches_account]}")"
+                    if [[ "$action" != Loading && "${component_status[$selected_item]}" != loading ]]; then
+                        context+=" · $action now"
+                        primary+=("Enter $action")
+                    fi
+                    primary+=("$p_hint")
+                    secondary=('R Refresh' 'Q Quit') ;;
+                *)
+                    requirement_item_state "$selected_item" optional
+                    context="${component_description[$selected_item]} · $requirement_status"
+                    if [[ "${component_checked[$selected_item]}" == true ]]; then context+=' → set up'; space_hint=Undo; fi
+                    primary+=("Space $space_hint" "$p_hint") ;;
+            esac
+        else
+            # Same wording as before the tree; acceptance runs wait on it.
+            context="${component_description[$selected_item]} · $(setup_status_label "${component_status[$selected_item]}")"
+            action="${component_action[$selected_item]:-}"
+            case "$action" in
+                '') ;;
+                uninstall) context="${component_description[$selected_item]} · Remove; projects and credentials kept" ;;
+                *) context+=" → $action" ;;
+            esac
+            case "$selected_item" in
+                host_shell) context='Shell setup · Replaces shell settings' ;;
+                workspace_repo) context='Org workspace · May create a GitHub repository' ;;
+            esac
+            [[ "${component_checked[$selected_item]:-}" != true ]] || space_hint=Undo
+            primary+=("Space $space_hint" 'D Remove' "$p_hint")
+        fi
     fi
-    case "$selected_item" in
-        host_shell) context='Shell setup · Replaces shell settings' ;;
-        workspace_repo) context='Org workspace · May create a GitHub repository' ;;
+    item="Changes selected: $selected_count"
+    (( setup_ui_width >= 60 )) || item="Changes: $selected_count"
+    setup_ui_short || printf '\n'
+    printf '%b%s%b\n' "$SILVER_EDGE" "$(setup_ui_rule "$setup_ui_width")" "$NC"
+    printf '%b%s%b\n' "$SILVER" "$(setup_ui_pair "$context" "$item" "$setup_ui_width")" "$NC"
+    setup_hint_rows "${#primary[@]}" "${primary[@]}" "${secondary[@]}"
+}
+
+# Footer hints after "Navigation:", wrapped within the frame. The first $1
+# hints are the focused row's keys; the rest (muted) start their own row
+# unless the row's keys already wrapped.
+setup_hint_rows() {
+    local count=$1 index=0 token color plain='' styled='' indent='            ' lead=12 wrapped=false first=true
+    shift
+    (( setup_ui_width >= 60 )) || indent='  '
+    for token in "$@"; do
+        color=''
+        (( index < count )) || color=$SILVER_MUTED
+        if [[ -n "$plain" ]] && { (( lead + ${#plain} + 2 + ${#token} > setup_ui_width )) ||
+                { (( index == count )) && [[ "$wrapped" == false ]]; }; }; then
+            setup_hint_row
+            (( index >= count )) || wrapped=true
+        fi
+        [[ -z "$plain" ]] || { plain+='  '; styled+='  '; }
+        plain+=$token
+        styled+="${color}${token}${color:+$NC}"
+        index=$((index + 1))
+    done
+    [[ -z "$plain" ]] || setup_hint_row
+}
+
+# Emits setup_hint_rows' pending row; it shares that function's locals.
+setup_hint_row() {
+    if [[ "$first" == true ]]; then
+        printf '%bNavigation:%b %b\n' "$SILVER_MUTED" "$NC" "$styled"
+    else
+        printf '%s%b\n' "$indent" "$styled"
+    fi
+    first=false; lead=${#indent}; plain=''; styled=''
+}
+
+# ---------------------------------------------------------------------------
+# Collapsible category tree. CURRENT_SECTION/current_selection remain the
+# canonical focus for item rows; header focus, expansion and scrolling are
+# layered on top of them. Nothing here runs discovery.
+# ---------------------------------------------------------------------------
+tree_categories=(benches ai tools required optional)
+declare -A tree_category_label=([benches]='BENCHES' [ai]='AI ASSISTANTS' [tools]='TOOLS'
+    [required]='REQUIRED SOFTWARE' [optional]='OPTIONAL VAULT & ACCOUNTS')
+declare -A tree_category_section=([benches]=0 [ai]=1 [tools]=2 [required]=3 [optional]=3)
+declare -A tree_expanded=()      # true/false once chosen; unset uses the first-paint default.
+tree_focus=''                    # Category whose header row has focus; empty for item rows.
+tree_focus_anchor=''             # CURRENT_SECTION:current_selection when the header took focus.
+tree_scroll=0                    # First visible tree line when the terminal is too short.
+requirements_return_focus=''     # Header focus that P returns to.
+requirements_return_expanded=''  # Requirement categories' expansion before P, when P opened them.
+requirements_return_scroll=0
+declare -a tree_rows=() tree_lines=()
+
+tree_optional_key() {
+    case "$1" in vault|workbenches_account|ai_accounts) return 0 ;; esac
+    return 1
+}
+
+# Sets tree_header (the focused header, while still valid) or tree_item_cat
+# (the category of the focused item row). When anything else moves focus,
+# such as the status loader jumping to a requirement, the item row wins.
+tree_focus_info() {
+    tree_header=''; tree_item_cat=''
+    if [[ -n "$tree_focus" && "$CURRENT_SECTION:$current_selection" == "$tree_focus_anchor" ]]; then
+        tree_header=$tree_focus
+        return 0
+    fi
+    case "$CURRENT_SECTION" in
+        0) tree_item_cat=benches ;;
+        1) tree_item_cat=ai ;;
+        2) tree_item_cat=tools ;;
+        *)
+            tree_item_cat=required
+            if tree_optional_key "${requirement_items[$current_selection]:-}"; then tree_item_cat=optional; fi ;;
     esac
-    printf '\n%b%s%b\n' "$SILVER_EDGE" "$(setup_ui_rule "$setup_ui_width")" "$NC"
-    printf '%b%s%b\n' "$SILVER" "$(setup_ui_pair "$context" "Changes selected: $selected_count" "$setup_ui_width")" "$NC"
-    if [[ "$CURRENT_SECTION" == 3 ]]; then
-        case "$selected_item" in
-            docker|wsl|setup_tools|vault)
-                space_hint="$(workbenches_requirement_action "$selected_item" "${component_status[$selected_item]}" "${component_status[workbenches_account]}")" ;;
-            *) [[ "${component_checked[$selected_item]}" != true ]] || space_hint='Undo' ;;
+}
+
+# Persist tree_focus_info's verdict, keeping a replaced header for P when the
+# status loader carried the user into the Requirements.
+tree_sync_focus() {
+    if [[ -n "$tree_focus" && "$CURRENT_SECTION:$current_selection" != "$tree_focus_anchor" ]]; then
+        if [[ "$CURRENT_SECTION" == 3 && "$requirements_return_section:$requirements_return_selection" == "$tree_focus_anchor" ]]; then
+            requirements_return_focus=$tree_focus
+        fi
+        tree_focus=''
+    fi
+    if [[ "$CURRENT_SECTION" != 3 ]]; then
+        requirements_return_focus=''; requirements_return_expanded=''
+    fi
+}
+
+# Required software opens by default once checks finish with something not Up.
+tree_required_attention() {
+    local key
+    [[ "$status_checks_running" != true ]] || return 1
+    for key in "${requirement_items[@]}"; do
+        tree_optional_key "$key" && continue
+        [[ "${component_status[$key]:-}" != loading ]] || return 1
+    done
+    ! setup_required_ready
+}
+
+# Call after tree_focus_info. A category holding the focused item row is
+# always open, so focus set from outside the tree is never hidden.
+tree_is_expanded() {
+    [[ "$tree_item_cat" != "$1" ]] || return 0
+    case "${tree_expanded[$1]:-}" in true) return 0 ;; false) return 1 ;; esac
+    case "$1" in
+        benches|ai|tools) return 0 ;;
+        required) tree_required_attention ;;
+        *) return 1 ;;
+    esac
+}
+
+# Visible rows: "h <category>", "i <category> <section> <index>", or
+# "s <category> <section> <index>" for the non-focusable spec-tools rule.
+# tree_focus_row is the focused row's index, or -1 when it is not visible.
+tree_build_rows() {
+    local category index key
+    tree_rows=(); tree_focus_row=-1
+    tree_focus_info
+    for category in "${tree_categories[@]}"; do
+        [[ "$category" != "$tree_header" ]] || tree_focus_row=${#tree_rows[@]}
+        tree_rows+=("h $category")
+        tree_is_expanded "$category" || continue
+        case "$category" in
+            benches) for index in "${!bench_items[@]}"; do tree_rows+=("i benches 0 $index"); done ;;
+            ai)
+                for index in "${!ai_items[@]}"; do
+                    if [[ "${ai_items[$index]}" == separator* ]]; then tree_rows+=("s ai 1 $index"); else tree_rows+=("i ai 1 $index"); fi
+                done ;;
+            tools) for index in "${!tool_items[@]}"; do tree_rows+=("i tools 2 $index"); done ;;
+            *)
+                for index in "${!requirement_items[@]}"; do
+                    key="${requirement_items[$index]}"
+                    if tree_optional_key "$key"; then
+                        [[ "$category" == optional ]] || continue
+                    else
+                        [[ "$category" == required ]] || continue
+                    fi
+                    tree_rows+=("i $category 3 $index")
+                done ;;
         esac
-        printf '%bNavigation:%b ↑↓ Move  Space %s  ← Tools  P Back\n' "$SILVER_MUTED" "$NC" "$space_hint"
+    done
+    [[ -z "$tree_header" ]] || return 0
+    for index in "${!tree_rows[@]}"; do
+        if [[ "${tree_rows[$index]}" == "i $tree_item_cat $CURRENT_SECTION $current_selection" ]]; then
+            tree_focus_row=$index
+            break
+        fi
+    done
+}
+
+# Component key for an item row in tree_key; empty when there is none.
+tree_row_key() {
+    tree_key=''
+    case "$1" in
+        0) [[ -z "${bench_items[$2]:-}" ]] || tree_key="bench_${bench_items[$2]}" ;;
+        1) [[ "${ai_items[$2]:-}" == separator* ]] || tree_key="${ai_items[$2]:-}" ;;
+        2) tree_key="${tool_items[$2]:-}" ;;
+        3) tree_key="${requirement_items[$2]:-}" ;;
+    esac
+}
+
+# Focus a row from tree_build_rows. Leaving an item keeps its visibly open
+# category open; entering the Requirements from elsewhere remembers where P
+# returns, as the former → into Requirements did.
+tree_focus_on() {
+    local kind category section index old_section=$CURRENT_SECTION old_selection=$current_selection old_header=$tree_header
+    read -r kind category section index <<< "$1"
+    [[ -z "$tree_item_cat" ]] || tree_expanded[$tree_item_cat]=true
+    if [[ "$kind" == h ]]; then
+        tree_focus=$category
+        CURRENT_SECTION=${tree_category_section[$category]}
+        current_selection=0
+        tree_focus_anchor="$CURRENT_SECTION:0"
     else
-        printf '%bNavigation:%b ↑↓ Move  ←→ Section  Space Select  D Remove  P Requirements\n' "$SILVER_MUTED" "$NC"
+        tree_focus=''
+        CURRENT_SECTION=$section
+        current_selection=$index
     fi
-    if [[ "$CURRENT_SECTION" == 3 && "$selected_item" =~ ^(docker|wsl|setup_tools|vault)$ ]]; then
-        printf '%b            Enter %s  R Refresh  Q Quit%b\n' "$SILVER_MUTED" "$space_hint" "$NC"
+    if [[ "$CURRENT_SECTION" == 3 && "$old_section" != 3 ]]; then
+        requirements_return_section=$old_section
+        requirements_return_selection=$old_selection
+        requirements_return_focus=$old_header
+        requirements_return_expanded=''
+    fi
+    status_ui_dirty=true
+}
+
+# Arrow keys: ↑↓ walk the visible rows; → opens a header, then enters it;
+# ← leaves an item for its header, then closes the header.
+tree_move() {
+    local target
+    tree_build_rows
+    if (( tree_focus_row < 0 )); then
+        [[ -z "$tree_item_cat" ]] || tree_focus_on "h $tree_item_cat"
+        return 0
+    fi
+    case "$1" in
+        up|down)
+            target=$tree_focus_row
+            while :; do
+                if [[ "$1" == up ]]; then target=$((target - 1)); else target=$((target + 1)); fi
+                (( target >= 0 && target < ${#tree_rows[@]} )) || return 0
+                [[ "${tree_rows[$target]}" == s* ]] || break
+            done
+            tree_focus_on "${tree_rows[$target]}" ;;
+        right)
+            [[ -n "$tree_header" ]] || return 0
+            if ! tree_is_expanded "$tree_header"; then
+                tree_expanded[$tree_header]=true
+                status_ui_dirty=true
+            elif [[ "${tree_rows[$((tree_focus_row + 1))]:-}" == "i $tree_header "* ]]; then
+                tree_focus_on "${tree_rows[$((tree_focus_row + 1))]}"
+            fi ;;
+        left)
+            if [[ -n "$tree_header" ]]; then
+                tree_is_expanded "$tree_header" || return 0
+                tree_expanded[$tree_header]=false
+                status_ui_dirty=true
+            else
+                tree_focus_on "h $tree_item_cat"
+            fi ;;
+    esac
+}
+
+tree_toggle() {
+    if tree_is_expanded "$1"; then tree_expanded[$1]=false; else tree_expanded[$1]=true; fi
+    status_ui_dirty=true
+}
+
+tree_restore_expanded() {
+    if [[ "$2" == unset ]]; then unset "tree_expanded[$1]"; else tree_expanded[$1]=$2; fi
+}
+
+# P opens both requirement categories at their first row; P again restores
+# the exact previous focus, and the expansion and scroll that P changed.
+tree_toggle_requirements() {
+    local required optional
+    tree_focus_info
+    if [[ "$CURRENT_SECTION" == 3 ]]; then
+        CURRENT_SECTION=$requirements_return_section
+        current_selection=$requirements_return_selection
+        tree_focus=''
+        if [[ -n "$requirements_return_focus" && "${tree_category_section[$requirements_return_focus]}" == "$CURRENT_SECTION" ]]; then
+            tree_focus=$requirements_return_focus
+            current_selection=0
+            tree_focus_anchor="$CURRENT_SECTION:0"
+        fi
+        if [[ -n "$requirements_return_expanded" ]]; then
+            read -r required optional <<< "$requirements_return_expanded"
+            tree_restore_expanded required "$required"
+            tree_restore_expanded optional "$optional"
+            tree_scroll=$requirements_return_scroll
+        fi
+        requirements_return_focus=''; requirements_return_expanded=''
     else
-        printf '%b            R Refresh  Enter Apply  Q Quit%b\n' "$SILVER_MUTED" "$NC"
+        requirements_return_section=$CURRENT_SECTION
+        requirements_return_selection=$current_selection
+        requirements_return_focus=$tree_header
+        requirements_return_expanded="${tree_expanded[required]:-unset} ${tree_expanded[optional]:-unset}"
+        requirements_return_scroll=$tree_scroll
+        tree_expanded[required]=true; tree_expanded[optional]=true
+        tree_focus=''
+        CURRENT_SECTION=3
+        current_selection=0
+        tree_scroll=999999  # The requirements close the tree; show them whole when they fit.
     fi
+    status_ui_dirty=true
+}
+
+tree_label_for() {
+    case "$1" in
+        installed) tree_label='Installed' ;;
+        'not installed') tree_label='Not installed' ;;
+        'needs creds') tree_label='Needs credentials' ;;
+        'needs setup') tree_label='Needs setup' ;;
+        'needs check') tree_label='Needs check' ;;
+        'needs docker') tree_label='Needs Docker' ;;
+        'image only') tree_label='Image only' ;;
+        configured) tree_label='Configured' ;;
+        optional) tree_label='Optional' ;;
+        loading|'') tree_label='Loading…' ;;
+        *) tree_label="${1^}" ;;
+    esac
+}
+
+# The same status symbols and colours as draw_item_compact.
+tree_status_symbol() {
+    local status="${component_status[$1]:-}"
+    [[ -n "$status" ]] || status=loading
+    tree_symbol='✗'; tree_symbol_color=$RED
+    case "$status" in
+        loading) tree_symbol='…'; tree_symbol_color=$LOADING_COLOR ;;
+        installed|configured) tree_symbol='✓'; tree_symbol_color=$GREEN ;;
+        'needs creds'|'needs setup'|'needs check'|'needs docker'|'image only') tree_symbol='⚠'; tree_symbol_color=$YELLOW ;;
+        optional) tree_symbol='·'; tree_symbol_color=$DIM ;;
+    esac
+}
+
+# Header summary in tree_summary/tree_summary_color; compact suits narrow rows.
+tree_category_summary() {
+    local category=$1 style=$2 key installed=0 total=0 queued=0 loading=false
+    local -a keys=()
+    tree_summary=''; tree_summary_color=$SILVER_MUTED
+    case "$category" in
+        benches) for key in "${bench_items[@]}"; do keys+=("bench_$key"); done ;;
+        ai) for key in "${ai_items[@]}"; do [[ "$key" == separator* ]] || keys+=("$key"); done ;;
+        tools) keys=("${tool_items[@]}") ;;
+        required)
+            setup_requirement_counts
+            tree_summary="$requirements_ready/$requirements_total ready"
+            [[ "$style" != compact ]] || tree_summary="$requirements_ready/$requirements_total"
+            (( requirements_ready == requirements_total )) || tree_summary_color=$YELLOW
+            [[ "$status_checks_running" != true ]] || loading=true
+            for key in "${requirement_items[@]}"; do
+                tree_optional_key "$key" || [[ "${component_status[$key]:-}" != loading ]] || loading=true
+            done
+            if [[ "$loading" == true ]]; then tree_summary='Loading…'; tree_summary_color=$LOADING_COLOR; fi
+            return 0 ;;
+        optional)
+            if [[ "${component_status[vault]:-loading}" == loading ]]; then
+                tree_summary='Loading…'; tree_summary_color=$LOADING_COLOR
+                return 0
+            fi
+            tree_summary="Vault $(setup_status_label "${component_status[vault]}")"
+            [[ "$style" == full ]] || return 0
+            case "${component_status[workbenches_account]:-}" in
+                'signed in') tree_summary+=' · Signed in' ;;
+                loading) ;;
+                *) tree_summary+=' · Signed out' ;;
+            esac
+            for key in vault workbenches_account ai_accounts; do
+                [[ "${component_checked[$key]:-}" != true ]] || queued=$((queued + 1))
+            done
+            (( queued == 0 )) || tree_summary+=" · $queued queued"
+            return 0 ;;
+    esac
+    for key in "${keys[@]}"; do
+        total=$((total + 1))
+        case "${component_status[$key]:-loading}" in
+            loading) loading=true ;;
+            installed|configured) installed=$((installed + 1)) ;;
+        esac
+        [[ "${component_checked[$key]:-}" != true ]] || queued=$((queued + 1))
+    done
+    if [[ "$loading" == true ]]; then
+        tree_summary='Loading…'; tree_summary_color=$LOADING_COLOR
+    elif [[ "$style" == compact ]]; then
+        tree_summary="$installed/$total installed"
+        (( queued == 0 )) || tree_summary="$installed/$total · $queued queued"
+    else
+        tree_summary="$installed of $total installed"
+        (( queued == 0 )) || tree_summary+=" · $queued queued"
+    fi
+}
+
+# Rows are assembled as plain text (for width) and styled text side by side.
+tree_row_begin() {
+    tree_plain=''; tree_styled=''; tree_surface=''
+    [[ "$1" != true ]] || tree_surface=$SILVER_FOCUS
+}
+
+# Append text in a colour; a focused row keeps its highlight across colours.
+tree_put() {
+    local color=$1
+    [[ -n "$2" ]] || return 0
+    [[ -z "$tree_surface" ]] || color="${color//\[0;/[}"
+    tree_plain+=$2
+    if [[ -z "$tree_surface$color" ]]; then tree_styled+=$2; else tree_styled+="${tree_surface}${color}${2}${NC}"; fi
+}
+
+tree_pad_to() {
+    local gap=$(( $1 - ${#tree_plain} ))
+    (( gap > 0 )) || return 0
+    printf -v gap '%*s' "$gap" ''
+    tree_put '' "$gap"
+}
+
+tree_row_end() {
+    tree_pad_to "$setup_ui_width"
+    tree_lines+=("$tree_styled")
+}
+
+# Fit text into a width, marking a cut with an ellipsis, in tree_fitted.
+tree_fit() {
+    if (( ${#1} <= $2 )); then tree_fitted=$1
+    elif (( $2 <= 1 )); then tree_fitted=''
+    else tree_fitted="${1:0:$(($2 - 1))}…"; fi
+}
+
+tree_header_row() {
+    local category=$1 focused=$2 marker=' ' arrow='▸' label="${tree_category_label[$1]}" avail
+    [[ "$focused" != true ]] || marker='›'
+    ! tree_is_expanded "$category" || arrow='▾'
+    avail=$((setup_ui_width - 4 - ${#label} - 3))
+    tree_category_summary "$category" full
+    (( ${#tree_summary} <= avail )) || tree_category_summary "$category" compact
+    if (( ${#tree_summary} > avail )); then
+        tree_fit "$tree_summary" "$avail"
+        tree_summary=$tree_fitted
+        (( avail >= 6 )) || tree_summary=''
+    fi
+    tree_row_begin "$focused"
+    tree_put "$SILVER" "$marker $arrow "
+    tree_put "$BOLD$SILVER" "$label"
+    tree_pad_to $((setup_ui_width - ${#tree_summary} - 1))
+    tree_put "$tree_summary_color" "$tree_summary"
+    tree_row_end
+}
+
+# Indent, focus marker, checkbox and status symbol shared by item rows.
+tree_item_start() {
+    local marker=' '
+    [[ "$1" != true ]] || marker='›'
+    tree_row_begin "$1"
+    tree_put '' "$tree_indent"
+    tree_put "$SILVER" "$marker "
+    tree_put "$3" "$2"
+    tree_put '' ' '
+    tree_put "$5" "$4"
+    tree_put '' ' '
+}
+
+# Component row: checkbox, symbol, name, status label and queued action.
+# Below 60 columns the status label column is dropped.
+tree_item_row() {
+    local key=$1 focused=$2 box='[ ]' box_color=$SILVER_MUTED queued='' queued_color='' label_color=$SILVER_MUTED right=10
+    if [[ "${component_checked[$key]:-}" == true ]]; then
+        box='[✓]'; box_color=$GREEN; queued_color=$GREEN
+        case "${component_action[$key]:-}" in
+            install) queued='→ Install' ;;
+            update) queued='→ Update' ;;
+            uninstall) box='[✗]'; box_color=$RED; queued='→ Remove'; queued_color=$RED ;;
+        esac
+    fi
+    tree_status_symbol "$key"
+    tree_label_for "${component_status[$key]:-}"
+    [[ "$tree_label" != 'Loading…' ]] || label_color=$LOADING_COLOR
+    (( setup_ui_width < 60 )) || right=28
+    tree_item_start "$focused" "$box" "$box_color" "$tree_symbol" "$tree_symbol_color"
+    tree_fit "${component_description[$key]:-$key}" $((setup_ui_width - ${#tree_plain} - right - 1))
+    tree_put "$SILVER" "$tree_fitted"
+    tree_pad_to $((setup_ui_width - right))
+    if (( setup_ui_width >= 60 )); then
+        tree_put "$label_color" "$tree_label"
+        tree_pad_to $((setup_ui_width - 10))
+    fi
+    tree_put "$queued_color" "$queued"
+    tree_row_end
+}
+
+# Requirement row with what the Requirements panel shows, plus the focused
+# requirement's explanation beneath it.
+tree_requirement_row() {
+    local key=$1 focused=$2 kind=required box='   ' box_color='' symbol symbol_color status status_color
+    local detail line width
+    if tree_optional_key "$key"; then kind=optional; fi
+    requirement_item_state "$key" "$kind"
+    symbol=$requirement_icon; symbol_color=$requirement_color
+    status=$requirement_status; status_color=$requirement_color
+    if [[ "$kind" == optional && "$key" != vault ]]; then
+        box=$requirement_icon; box_color=$SILVER_MUTED
+        [[ "$box" != '[✓]' ]] || box_color=$GREEN
+        symbol='·'; symbol_color=$SILVER_MUTED
+        case "${component_status[$key]:-}" in
+            configured|installed|'signed in') symbol='✓'; symbol_color=$GREEN ;;
+            loading) symbol='…'; symbol_color=$LOADING_COLOR; status='Loading…'; status_color=$LOADING_COLOR ;;
+        esac
+    fi
+    # Narrow rows keep the service button and drop the identity note.
+    if (( setup_ui_width < 60 )); then status="${status/ · Signed in/}"; status="${status/ · Signed out/}"; fi
+    tree_item_start "$focused" "$box" "$box_color" "$symbol" "$symbol_color"
+    tree_fit "${component_description[$key]:-$key}" $((setup_ui_width - ${#tree_plain} - ${#status} - 2))
+    tree_put "$SILVER" "$tree_fitted"
+    tree_pad_to $((setup_ui_width - ${#status} - 1))
+    tree_put "$status_color" "$status"
+    tree_row_end
+    [[ "$focused" == true ]] || return 0
+    detail="${requirement_detail[$key]:-}"
+    width=$((setup_ui_width - ${#tree_indent} - 9))
+    while [[ -n "$detail" ]]; do
+        line="${detail:0:$width}"
+        if (( ${#detail} > width )) && [[ "$line" == *' '* ]]; then line="${line% *}"; fi
+        [[ -n "$line" ]] || line="${detail:0:$width}"
+        detail="${detail:${#line}}"
+        detail="${detail# }"
+        tree_row_begin false
+        tree_put '' "$tree_indent        "
+        tree_put "$SILVER_MUTED" "$line"
+        tree_lines+=("$tree_styled")
+    done
+}
+
+tree_separator_row() {
+    local rule=$((setup_ui_width - ${#tree_indent} - 17))
+    (( rule > 0 )) || rule=1
+    printf -v rule '%*s' "$rule" ''
+    tree_row_begin false
+    tree_put '' "$tree_indent  "
+    tree_put "$DIM" "── spec tools ${rule// /─}"
+    tree_lines+=("$tree_styled")
+}
+
+# Render every visible row into tree_lines; the focused row spans lines
+# tree_focus_first..tree_focus_last (a focused requirement adds its detail).
+tree_render_lines() {
+    local index kind category section item focused
+    tree_lines=(); tree_focus_first=0; tree_focus_last=0
+    tree_indent='    '
+    (( setup_ui_width >= 60 )) || tree_indent='  '
+    tree_build_rows
+    for index in "${!tree_rows[@]}"; do
+        read -r kind category section item <<< "${tree_rows[$index]}"
+        focused=false
+        if (( index == tree_focus_row )); then focused=true; tree_focus_first=${#tree_lines[@]}; fi
+        case "$kind" in
+            h) tree_header_row "$category" "$focused" ;;
+            s) tree_separator_row ;;
+            *)
+                tree_row_key "$section" "$item"
+                if [[ "$section" == 3 ]]; then tree_requirement_row "$tree_key" "$focused"
+                else tree_item_row "$tree_key" "$focused"; fi ;;
+        esac
+        [[ "$focused" != true ]] || tree_focus_last=$(( ${#tree_lines[@]} - 1 ))
+    done
+}
+
+# Tree rows left once the chrome is drawn, in tree_budget; empty when the
+# terminal height is unknown, which never clips.
+tree_frame_budget() {
+    local newlines="$1$2"
+    tree_budget=''
+    [[ "$setup_ui_height" =~ ^[0-9]+$ ]] || return 0
+    newlines="${newlines//[!$'\n']/}"
+    tree_budget=$((setup_ui_height - ${#newlines}))
+    (( tree_budget >= 3 )) || tree_budget=3
+}
+
+# Lines tree_window shows from tree_offset, given room for ▲/▼ markers.
+tree_viewport_window() {
+    tree_window=$2
+    (( $1 == 0 )) || tree_window=$((tree_window - 1))
+    (( $1 >= $3 )) || tree_window=$((tree_window - 1))
+}
+
+# Choose the first visible tree line: keep the focused row, and a line of
+# context either side when there is room, in view while moving as little as
+# possible from the previous position (the hint).
+tree_viewport() {
+    local total=$1 first=$2 last=$3 budget=$4 offset=${5:-0} max
+    tree_offset=0; tree_window=$total
+    [[ -n "$budget" ]] && (( total > budget )) || return 0
+    max=$((total - budget + 1))
+    if (( last - first + 3 <= budget - 2 )); then
+        (( first == 0 )) || first=$((first - 1))
+        (( last == total - 1 )) || last=$((last + 1))
+    fi
+    (( offset >= 0 )) || offset=0
+    (( offset <= max )) || offset=$max
+    (( first >= offset )) || offset=$first
+    tree_viewport_window "$offset" "$budget" "$max"
+    if (( last >= offset + tree_window )); then
+        offset=$((last - budget + 3))
+        (( offset <= max )) || offset=$max
+        (( offset >= 0 )) || offset=0
+        (( first >= offset )) || offset=$first
+    fi
+    tree_offset=$offset
+    tree_viewport_window "$offset" "$budget" "$max"
+}
+
+tree_more_row() {
+    printf '%b%s  %s %d more%b\n' "$SILVER_MUTED" "$tree_indent" "$1" "$2" "$NC"
+}
+
+draw_category_tree() {
+    local index end=$((tree_offset + tree_window))
+    (( end <= ${#tree_lines[@]} )) || end=${#tree_lines[@]}
+    (( tree_offset == 0 )) || tree_more_row '▲' "$tree_offset"
+    for ((index=tree_offset; index<end; index++)); do
+        printf '%b\n' "${tree_lines[$index]}"
+    done
+    (( end >= ${#tree_lines[@]} )) || tree_more_row '▼' "$(( ${#tree_lines[@]} - end ))"
+}
+
+# The renderer runs in a subshell, so draw_ui settles the scroll position
+# here first; the next frame starts from it.
+tree_follow_focus() {
+    local top footer
+    if [[ ! "$setup_ui_height" =~ ^[0-9]+$ ]]; then tree_scroll=0; return 0; fi
+    top="$(render_setup_frame_top; printf x)"; top="${top%x}"
+    footer="$(draw_setup_footer; printf x)"; footer="${footer%x}"
+    tree_frame_budget "$top" "$footer"
+    tree_render_lines
+    tree_viewport "${#tree_lines[@]}" "$tree_focus_first" "$tree_focus_last" "$tree_budget" "$tree_scroll"
+    tree_scroll=$tree_offset
 }
 
 
@@ -1279,68 +1927,26 @@ handle_input() {
         if [[ "$status_checks_running" == true && "$read_status" -gt 128 ]]; then return 3; fi
         return 2
     fi
+    tree_sync_focus
 
     # Handle escape sequences (arrow keys, etc.)
     if [[ $key == $'\x1b' ]]; then
         read -rsn2 -t 0.1 key
         case "$key" in
-            '[A') # Up arrow - move up in current section
-                if [ $current_selection -gt 0 ]; then
-                    ((current_selection--))
-                    # Skip separators in AI section
-                    if [ $CURRENT_SECTION -eq 1 ]; then
-                        local item="${ai_items[$current_selection]}"
-                        while [[ "$item" == separator* ]] && [ $current_selection -gt 0 ]; do
-                            ((current_selection--))
-                            item="${ai_items[$current_selection]}"
-                        done
-                    fi
-                fi
-                ;;
-            '[B') # Down arrow - move down in current section
-                local max_idx
-                if [ $CURRENT_SECTION -eq 0 ]; then
-                    max_idx=$((${#bench_items[@]} - 1))
-                elif [ $CURRENT_SECTION -eq 1 ]; then
-                    max_idx=$((${#ai_items[@]} - 1))
-                elif [ $CURRENT_SECTION -eq 2 ]; then
-                    max_idx=$((${#tool_items[@]} - 1))
-                else
-                    max_idx=$((${#requirement_items[@]} - 1))
-                fi
-
-                if [ $current_selection -lt $max_idx ]; then
-                    ((current_selection++))
-                    # Skip separators in AI section
-                    if [ $CURRENT_SECTION -eq 1 ]; then
-                        local item="${ai_items[$current_selection]}"
-                        while [[ "$item" == separator* ]] && [ $current_selection -lt $max_idx ]; do
-                            ((current_selection++))
-                            item="${ai_items[$current_selection]}"
-                        done
-                    fi
-                fi
-                ;;
-            '[C') # Right arrow - switch section right
-                if [ $CURRENT_SECTION -lt 3 ]; then
-                    if [[ "$CURRENT_SECTION" == 2 ]]; then
-                        requirements_return_section=$CURRENT_SECTION
-                        requirements_return_selection=$current_selection
-                    fi
-                    ((CURRENT_SECTION++))
-                    current_selection=0
-                fi
-                ;;
-            '[D') # Left arrow - switch section left
-                if [ $CURRENT_SECTION -gt 0 ]; then
-                    ((CURRENT_SECTION--))
-                    current_selection=0
-                fi
-                ;;
+            '[A') tree_move up ;;     # Previous visible row, headers included.
+            '[B') tree_move down ;;   # Next visible row, headers included.
+            '[C') tree_move right ;;  # Expand a header, then enter it.
+            '[D') tree_move left ;;   # Item to its header, then collapse.
         esac
     else
         case "$key" in
             ' '|d|D) # Space toggles install/update; D toggles explicit removal.
+                tree_focus_info
+                if [[ -n "$tree_header" ]]; then
+                    # On a category header Space opens or closes it; D does nothing.
+                    [[ "$key" != ' ' ]] || tree_toggle "$tree_header"
+                    return 0
+                fi
                 local input_key="$key"
                 local key=""
                 if [ $CURRENT_SECTION -eq 0 ]; then
@@ -1390,7 +1996,8 @@ handle_input() {
                 fi
                 ;;
             ''|$'\r'|$'\n') # Enter activates a focused service button.
-                if [[ "$CURRENT_SECTION" == 3 ]]; then
+                tree_focus_info
+                if [[ -z "$tree_header" && "$CURRENT_SECTION" == 3 ]]; then
                     local requirement="${requirement_items[$current_selection]}"
                     case "$requirement" in
                         docker|wsl|setup_tools|vault) activate_requirement "$requirement"; return "$?" ;;
@@ -1404,16 +2011,7 @@ handle_input() {
                 return 1
                 ;;
             'r'|'R') requirements_notice=''; refresh_component_statuses; draw_ui ;;
-            'p'|'P')
-                if [[ "$CURRENT_SECTION" == 3 ]]; then
-                    CURRENT_SECTION=$requirements_return_section
-                    current_selection=$requirements_return_selection
-                else
-                    requirements_return_section=$CURRENT_SECTION
-                    requirements_return_selection=$current_selection
-                    CURRENT_SECTION=3
-                    current_selection=0
-                fi ;;
+            'p'|'P') tree_toggle_requirements ;;
             'v'|'V') # Vault action is available beside its main-screen status.
                 activate_requirement vault || return "$?" ;;
             'q'|'Q') # Quit

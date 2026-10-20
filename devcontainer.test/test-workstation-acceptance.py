@@ -233,8 +233,8 @@ def snapshot():
 
 
 TUI = r'REQUIREMENTS · (\d+)/\1 ready[\s\S]*Navigation:'
-CODEX = (TUI, '\x1b[C\x1b[B\x1b[B \n')
-CODEX_ACCOUNTS = (TUI, '\x1b[C\x1b[B\x1b[B P' + '\x1b[B' * 4 + ' P\n')
+CODEX = (TUI, '\x1b[D\x1b[D\x1b[B\x1b[C\x1b[B\x1b[B \n')
+CODEX_ACCOUNTS = (TUI, '\x1b[D\x1b[D\x1b[B\x1b[C\x1b[B\x1b[B P' + '\x1b[B' * 5 + ' P\n')
 EMAIL = os.environ.get('WORKBENCHES_ACCEPTANCE_EMAIL', 'acceptance@example.test')
 MASTER = secrets.token_urlsafe(32)
 API_VALUE = 'sk-test-invalid-' + secrets.token_hex(24)  # Invalid, nonbillable AI test value.
