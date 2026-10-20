@@ -18,9 +18,23 @@ TAGS = {'base': 'workbench-base:latest', 'dev': 'dev-bench-base:latest'}
 REGISTRIES = {'base': 'ghcr.io/opensoft/workbenches-base', 'dev': 'ghcr.io/opensoft/workbenches-dev-base'}
 LABEL = 'io.workbenches.source'
 
+def tracked_context_paths(root):
+    """Use Git's file-mode contract for tracked recipes, independent of umask."""
+    try:
+        result = subprocess.run(
+            ['git', '-c', f'safe.directory={root}', '-c', 'core.fsmonitor=false',
+             '-C', str(root), 'ls-files', '-z', '--', *CONTEXTS.values()],
+            capture_output=True, check=True, timeout=10)
+        return {os.fsdecode(name) for name in result.stdout.split(b'\0') if name}
+    except (OSError, subprocess.SubprocessError):
+        # Exported source trees have no index. Keep their real permissions in
+        # the cache key rather than treating arbitrary local files as tracked.
+        return set()
+
 def fingerprint(layer, root=ROOT):
     digest = hashlib.sha256()
     context = root / CONTEXTS[layer]
+    tracked = tracked_context_paths(root)
     for path in sorted(context.rglob('*')):
         relative = path.relative_to(context)
         if '.git' in relative.parts or '__pycache__' in relative.parts or path.suffix == '.pyc':
@@ -31,7 +45,10 @@ def fingerprint(layer, root=ROOT):
             payload = path.read_bytes()
         else:
             continue
-        digest.update(str(relative).encode() + b'\0' + str(path.lstat().st_mode & 0o777).encode() + b'\0')
+        mode = path.lstat().st_mode & 0o777
+        if not path.is_symlink() and path.relative_to(root).as_posix() in tracked:
+            mode = 0o755 if mode & 0o100 else 0o644
+        digest.update(str(relative).encode() + b'\0' + str(mode).encode() + b'\0')
         digest.update(hashlib.sha256(payload).digest())
     if layer == 'dev':
         digest.update(fingerprint('base', root).encode())
