@@ -7,8 +7,10 @@ must configure a runner group restricted to this repository and the selected
 workflow `opensoft/workBenches/.github/workflows/release-qa-suite.yml@refs/heads/main`.
 The `release-qa` environment must allow deployments from main only. Candidate
 release branches must also be protected by the organization's reviewed-change
-policy before privileged testing is enabled. Preflight permits current main or
-a protected release branch; it blocks unprotected candidate refs. Branch-creation
+policy before privileged testing is enabled. Preflight permits the current main
+commit or the exact current commit of the protected canonical release branch;
+the mere existence of a protected branch cannot authorize a different source
+SHA. It blocks unprotected, unrelated and stale candidate commits. Branch-creation
 and administrator bypass permissions remain restricted to trusted release owners. If your GitHub
 plan cannot enforce this boundary, keep these jobs in a private controller repo;
 do not substitute an unrestricted public-repository runner.

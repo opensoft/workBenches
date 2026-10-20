@@ -106,7 +106,7 @@ def source(root, manifest_path, expected=None, ref=None):
     label = ref or commit
     # A future release branch with an inherited old VERSION would otherwise
     # silently omit its version-gated suites (for example v1.7 device SSH).
-    branch = re.fullmatch(r'(?:refs/heads/)?release/(\d+\.\d+(?:\.\d+)?)', label)
+    branch = re.fullmatch(r'(?:refs/heads/|refs/remotes/origin/|origin/)?release/(\d+\.\d+(?:\.\d+)?)', label)
     tag = re.fullmatch(r'(?:refs/tags/)?v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)', label)
     if branch:
         width = len(branch[1].split('.'))

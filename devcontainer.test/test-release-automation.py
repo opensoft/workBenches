@@ -122,13 +122,14 @@ class ReleaseAutomationTests(unittest.TestCase):
         with self.assertRaises(rv.ValidationError): rv.source(self.root, self.manifest_path)
 
     def test_release_ref_cannot_hide_future_version_suites(self):
-        for ref in ('release/1.7.0', 'refs/heads/release/1.7.0', 'release/1.6.1',
+        for ref in ('release/1.7.0', 'refs/heads/release/1.7.0', 'origin/release/1.7.0',
+                    'refs/remotes/origin/release/1.7.0', 'release/1.6.1',
                     'v1.7.0', 'refs/tags/v1.7.0', 'v1.6.0-rc.3'):
             with self.subTest(ref=ref), self.assertRaisesRegex(rv.ValidationError, 'release_ref_version_mismatch'):
                 rv.source(self.root, self.manifest_path, ref=ref)
 
     def test_matching_release_refs_and_feature_refs_keep_source_version(self):
-        for ref in ('release/1.6.0', 'refs/heads/release/1.6.0', 'release/1.6',
+        for ref in ('release/1.6.0', 'refs/heads/release/1.6.0', 'origin/release/1.6.0', 'release/1.6',
                     'v1.6.0', 'refs/tags/v1.6.0', 'main', 'feature/1.7-device-qa'):
             with self.subTest(ref=ref):
                 value = rv.source(self.root, self.manifest_path, ref=ref)
@@ -322,10 +323,20 @@ class ReleaseAutomationTests(unittest.TestCase):
 
     def test_private_workers_require_main_or_a_protected_candidate_branch(self):
         plan = {'source':dict(commit='a'*40,version='1.6.0-rc.3')}
-        with patch('builtins.print'):
-            self.assertTrue(preflight.trusted_source(plan,lambda path:{'commit':{'sha':'a'*40}}))
-            self.assertTrue(preflight.trusted_source(plan,lambda path:{'commit':{'sha':'b'*40},'protected':True}))
-            self.assertFalse(preflight.trusted_source(plan,lambda path:{'commit':{'sha':'b'*40},'protected':False}))
+        self.assertTrue(preflight.trusted_source(plan, lambda path: {'commit': {'sha': 'a'*40}}))
+        def fetch(path, candidate):
+            if path == 'branches/main': return {'commit': {'sha': 'b'*40}}
+            self.assertEqual(path, 'branches/release%2F1.6.0')
+            return candidate
+        self.assertTrue(preflight.trusted_source(plan, lambda path: fetch(path, {'commit': {'sha':'a'*40}, 'protected':True})))
+        self.assertFalse(preflight.trusted_source(plan, lambda path: fetch(path, {'commit': {'sha':'a'*40}, 'protected':False})))
+
+    def test_protected_branch_does_not_authorize_an_unrelated_or_stale_sha(self):
+        plan = {'source':dict(commit='a'*40,version='1.6.0-rc.3')}
+        for candidate in ({'commit': {'sha':'c'*40}, 'protected':True}, {'protected':True}):
+            def fetch(path):
+                return {'commit': {'sha':'b'*40}} if path == 'branches/main' else candidate
+            self.assertFalse(preflight.trusted_source(plan, fetch))
 
     def test_watchdog_distinguishes_intentional_serial_queue_from_stall(self):
         self.assertEqual(watchdog.stalled([]), 'waiting')
