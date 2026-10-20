@@ -10,9 +10,45 @@ import subprocess
 import sys
 import tempfile
 
-from release_validation import ValidationError, read, failure_location
+from release_validation import ValidationError, read, failure_location, encrypt_fixture_diagnostics, NATIVE_CASES
 
 HERE = Path(__file__).resolve().parents[1]
+
+
+def native_diagnostics(repo, report, output, suite, destination, certificate):
+    """Keep a safe case identifier and optional ciphertext before HOME cleanup."""
+    result = {}
+    results_file = report / 'wsl-all-results.json'
+    try:
+        value = read(results_file)
+        failed = [row['case'] for row in value.get('results', [])
+                  if row.get('status') == 'failed' and row.get('case') in NATIVE_CASES]
+        if failed: result['case'] = failed[-1]
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        pass
+    if not certificate or suite not in ('arch-native', 'wsl-native'): return result
+    try:
+        if (not destination.is_absolute() or any(p.is_symlink() for p in [destination, *destination.parents])
+                or destination.resolve().is_relative_to(repo.resolve())):
+            return result
+        destination.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if destination.stat().st_uid != os.getuid() or destination.stat().st_mode & 0o077:
+            return result
+        driver = report / 'driver-failure.log'
+        output.seek(0, 2); output.seek(max(0, output.tell() - 8 * 1024 * 1024))
+        driver.write_bytes(output.read()); driver.chmod(0o600)
+        files = [('native-driver.log', driver), ('driver-results.json', results_file)]
+        logs = [p for p in (repo / 'logs').glob('setup*.log') if p.is_file() and not p.is_symlink()]
+        if logs: files.append(('setup.log', max(logs, key=lambda p: p.stat().st_mtime)))
+        files.append(('bench-terminal.txt', report / 'wsl-bench-install.txt'))
+        path = destination / (suite + '-debug.cms')
+        encrypted = encrypt_fixture_diagnostics(files, certificate, path)
+        if encrypted:
+            result['encryptedDiagnostics'] = dict(encrypted, file=path.name)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        # Optional diagnosis never replaces the actual acceptance failure.
+        pass
+    return result
 
 
 def main():
@@ -61,15 +97,28 @@ def main():
             env.pop(variable, None)
         Path(env['TMPDIR']).mkdir()
         env['PATH'] = str(home / '.local/bin') + ':' + settings['cleanPath']
+        diagnostic_snapshot = {}
         def run(argv, timeout=600, environment=None, phase="native-command"):
-            # All native diagnostic bytes stay private and are deleted with QA HOME.
+            # Plaintext is deleted with HOME; only operator-encrypted fixtures
+            # may survive a failed native run in the separate diagnostics path.
             with tempfile.TemporaryFile() as output:
-                result = subprocess.run(argv, env=environment or env, stdout=output, stderr=output, timeout=timeout)
-                if result.returncode:
-                    output.seek(0, 2); size = output.tell(); output.seek(max(0, size - 256 * 1024))
-                    diagnostic = dict(failure_location(output.read()), phase=phase, exitCode=result.returncode)
-                    print('NATIVE_QA_FAILURE ' + json.dumps(diagnostic), file=sys.stderr, flush=True)
-                    raise ValidationError('native_acceptance_failed')
+                try:
+                    result = subprocess.run(argv, env=environment or env, stdout=output, stderr=output, timeout=timeout)
+                    if not result.returncode: return
+                    diagnostic = dict(phase=phase, exitCode=result.returncode)
+                except subprocess.TimeoutExpired:
+                    diagnostic = dict(phase=phase, exception='TimeoutExpired')
+                output.seek(0, 2); size = output.tell(); output.seek(max(0, size - 256 * 1024))
+                diagnostic.update(failure_location(output.read()))
+                # A subsequent cleanup failure must not overwrite the first
+                # failed command's encrypted diagnostic bytes.
+                if not diagnostic_snapshot.get('encryptedDiagnostics'):
+                    diagnostic_snapshot.update(native_diagnostics(repo, report, output, request['suite'],
+                        Path(os.environ.get('WB_QA_DIAGNOSTICS_DIR', str(base / 'diagnostics'))),
+                        os.environ.get('OPENBENCHES_QA_FAILURE_CERT_PEM')))
+                diagnostic.update(diagnostic_snapshot)
+                print('NATIVE_QA_FAILURE ' + json.dumps(diagnostic), file=sys.stderr, flush=True)
+                raise ValidationError('native_acceptance_failed')
         run(['git', 'clone', '--no-hardlinks', '--no-checkout', request['root'], str(repo)])
         run(['git', '-C', str(repo), 'checkout', '--detach', request['source']['commit']])
         socket = directory / 'socket'; socket.mkdir()

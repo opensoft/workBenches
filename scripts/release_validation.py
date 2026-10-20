@@ -172,6 +172,12 @@ def failure_location(raw):
     return result
 
 
+NATIVE_CASES = {'tools', 'loading-cancellation', 'empty', 'codex-install', 'codex-update',
+    'queued-cancellation', 'failed-update', 'codex-remove', 'codex-reinstall', 'host-shells',
+    'vault', 'bench-install', 'bench-shells', 'bench-update', 'bench-remove',
+    'frozen-local-work-guard', 'preservation'}
+
+
 def native_failure_location(raw):
     result = {}
     for match in re.findall(rb'NATIVE_QA_FAILURE (\{[^\n]{1,2048}\})', raw):
@@ -185,6 +191,12 @@ def native_failure_location(raw):
             if type(value.get('line')) is int and 0 < value['line'] < 10000000: result['line'] = value['line']
         if value.get('exception') in ('AssertionError', 'RuntimeError', 'ValueError', 'KeyError', 'TypeError', 'FileNotFoundError', 'PermissionError', 'TimeoutExpired', 'CalledProcessError', 'HTTPError', 'URLError', 'SSLError'):
             result['exception'] = value['exception']
+        if isinstance(value.get('case'), str) and value['case'] in NATIVE_CASES:
+            result['case'] = value['case']
+        encrypted = value.get('encryptedDiagnostics', {})
+        if (isinstance(encrypted, dict) and encrypted.get('file') in ('arch-native-debug.cms', 'wsl-native-debug.cms')
+                and re.fullmatch(r'[0-9a-f]{64}', str(encrypted.get('certificateSha256', '')))):
+            result['encryptedDiagnostics'] = {key: encrypted[key] for key in ('file', 'certificateSha256')}
     return result
 
 

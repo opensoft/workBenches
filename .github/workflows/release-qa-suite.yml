@@ -46,6 +46,8 @@ jobs:
           SOURCE_REF: ${{ inputs.source_ref }}
           QA_CONFIG: ${{ vars.WB_QA_CONFIG_PATH || '/etc/workbenches/release-qa.json' }}
           WB_AUTOMATION_ROOT: ${{ github.workspace }}/automation
+          OPENBENCHES_QA_FAILURE_CERT_PEM: ${{ vars.OPENBENCHES_QA_FAILURE_CERT_PEM }}
+          WB_QA_DIAGNOSTICS_DIR: ${{ runner.temp }}/release-evidence
         run: |
           python3 automation/scripts/release-validation.py run --root candidate \
             --suite "$SUITE" --commit "$SOURCE_SHA" --ref "$SOURCE_REF" \
@@ -58,3 +60,11 @@ jobs:
           path: ${{ runner.temp }}/release-evidence/*.json
           if-no-files-found: error
           retention-days: 14
+      - name: Upload optional operator-encrypted native diagnosis
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: encrypted-native-diagnosis-${{ inputs.suite }}
+          path: ${{ runner.temp }}/release-evidence/*-native-debug.cms
+          if-no-files-found: ignore
+          retention-days: 2
