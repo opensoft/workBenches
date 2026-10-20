@@ -119,3 +119,39 @@ read only), and optionally enable repository variable `WB_RELEASE_QA_NIGHTLY=tru
 Keep credentials out of repository files, command arguments, recordings and
 artifact logs. The environment variables contain only readiness/path settings;
 the workers' protected local store holds actual browser/provider credentials.
+
+## Preparing an isolated Arch image on a KVM host
+
+`prepare-arch-vm.py` prepares a stopped golden image without registering a runner.
+It requires QEMU/KVM, SSH, Python and GNU cp on the provisioner host. It does not
+install host packages, alter desktop settings, mount a host home/socket in the VM,
+or write to the global SSH configuration. State must be a new private directory.
+The guest receives a separate QA key and root-owned native adapter configuration.
+SSH is pinned from the VM's private serial channel; verification is never disabled.
+
+Download the pinned official image from
+https://fastly.mirror.pkgbuild.com/images/v20261015.611680/Arch-Linux-x86_64-cloudimg-20261015.611680.qcow2
+and verify its signed checksum using the CI key published in the
+[official Arch Boxes README](https://github.com/archlinux/arch-boxes#releases).
+The image SHA-256 is pinned in the preparer. The signing primary key is
+`1B9A16984A4E8CB448712D2AE0B78BF4326C6F8F` (signing subkey
+`656E4C5AC1CC3B86E539D97E343635A6859A9174`).
+
+```bash
+python3 qa/release/prepare-arch-vm.py --image /private/verified-arch.qcow2 \
+  --state "$HOME/.cache/workbenches-release-qa/arch-golden-UNIQUE"
+```
+
+The preparer copies the image, expands only that private disk to 80 GiB using
+QMP, installs QA tools, reboots into the upgraded Arch kernel, verifies Docker,
+Buildx and root disk capacity, and powers off. `prepared.json` is written only
+after successful validation and shutdown. Failed attempts are stopped and retain
+private diagnostics; they never become ready workers. Its HTTP metadata server
+is loopback-only and is stopped on completion/failure.
+
+Copy/reset the golden disk for each job; never run acceptance jobs on the golden
+disk itself. The per-job controller must assign a new instance/reset ID, recreate
+host keys and root-owned matching markers/configuration, register an ephemeral
+runner into the restricted group, and destroy the job disk on any outcome.
+This image preparation is not a replacement for that controller, organization
+policy, live adapters or QA identities, and does not enable `WB_QA_CONFIGURED`.
