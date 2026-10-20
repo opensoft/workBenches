@@ -61,10 +61,10 @@ def main():
             env.pop(variable, None)
         Path(env['TMPDIR']).mkdir()
         env['PATH'] = str(home / '.local/bin') + ':' + settings['cleanPath']
-        def run(argv, timeout=600):
+        def run(argv, timeout=600, environment=None):
             # All native diagnostic bytes stay private and are deleted with QA HOME.
             with tempfile.TemporaryFile() as output:
-                result = subprocess.run(argv, env=env, stdout=output, stderr=output, timeout=timeout)
+                result = subprocess.run(argv, env=environment or env, stdout=output, stderr=output, timeout=timeout)
             if result.returncode: raise ValidationError('native_acceptance_failed')
         run(['git', 'clone', '--no-hardlinks', '--no-checkout', request['root'], str(repo)])
         run(['git', '-C', str(repo), 'checkout', '--detach', request['source']['commit']])
@@ -79,9 +79,21 @@ def main():
             if kind == 'arch':
                 # This is the disposable account's OS shell, never Brett's home.
                 run(['sudo', '-n', 'true'])
-                run(['bash', str(repo / 'scripts/setup-shell.sh')], 1200)
+                # Shell setup intentionally creates .zshrc/.p10k links. The
+                # workstation driver seeds its own custom settings and refuses
+                # to overwrite existing links. Exercise both flows with separate
+                # private homes, preserving both sets of assertions.
+                shell_home = directory / 'shell-home'; shell_home.mkdir()
+                shell_env = dict(env, HOME=str(shell_home),
+                    XDG_CONFIG_HOME=str(shell_home / '.config'),
+                    XDG_CACHE_HOME=str(shell_home / '.cache'),
+                    XDG_DATA_HOME=str(shell_home / '.local/share'),
+                    AGENT_PROTOCOL_ROOT=str(shell_home / '.agents'),
+                    NPM_CONFIG_USERCONFIG=str(shell_home / '.npmrc'),
+                    npm_config_prefix=str(shell_home / '.local'))
+                run(['bash', str(repo / 'scripts/setup-shell.sh')], 1200, shell_env)
                 cases.append('shell-install')
-                run(['bash', str(repo / 'scripts/setup-shell.sh')], 1200)
+                run(['bash', str(repo / 'scripts/setup-shell.sh')], 1200, shell_env)
                 cases.append('shell-repeat')
             run([*compose, 'up', '-d', 'acceptance-engine'])
             run(['python3', str(HERE / 'devcontainer.test/test-wsl-workstation-acceptance.py'),
