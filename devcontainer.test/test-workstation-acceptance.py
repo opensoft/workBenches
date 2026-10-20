@@ -84,6 +84,18 @@ def terminal(name, replies, expected=0, env=None, timeout=1800):
                         os.write(master, reply.encode())
                         answered += 1
             if process.poll() is not None:
+                # A child's final error can still be buffered in the PTY after
+                # its parent exits. Drain that tail before writing the private
+                # transcript; otherwise hosted build failures lose their cause.
+                drain_until = time.monotonic() + 2
+                while time.monotonic() < drain_until and select.select([master], [], [], .1)[0]:
+                    try:
+                        chunk = os.read(master, 65536)
+                    except OSError:
+                        break
+                    if not chunk:
+                        break
+                    output += chunk
                 break
         process.wait(timeout=5)
         assert process.returncode == expected, (name, process.returncode)
