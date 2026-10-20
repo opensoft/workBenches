@@ -160,6 +160,56 @@ def failure_location(raw):
     return result
 
 
+def build_failure_hints(raw):
+    """Known error categories only; arbitrary log text never leaves the worker."""
+    patterns = {
+        'image_layer_depth': rb'max depth exceeded|too many layers|layer limit',
+        'disk_full': rb'no space left on device|disk quota exceeded|\bENOSPC\b',
+        'out_of_memory': rb'out of memory|OOMKilled|exit code: 137',
+        'illegal_instruction': rb'illegal instruction',
+        'dns_failure': rb'could not resolve host|temporary failure in name resolution|\bENOTFOUND\b|\bEAI_AGAIN\b',
+        'network_timeout': rb'connection timed out|\bETIMEDOUT\b|operation timed out',
+        'tls_failure': rb'certificate verify failed|SSL certificate problem',
+        'permission_denied': rb'permission denied|\bEACCES\b',
+        'missing_executable': rb'command not found|executable file not found',
+        'python_dependency': rb'no matching distribution found|requires a different Python',
+        'git_ref_unavailable': rb'not our ref|reference is not a tree|couldn.t find remote ref',
+        'invalid_runtime': rb'\bEBADENGINE\b|unsupported engine',
+    }
+    hints = [name for name, pattern in patterns.items() if re.search(pattern, raw, re.I)]
+    result = {'hints': hints} if hints else {}
+    codes = re.findall(rb'curl: \(22\)[^\n]*?([45][0-9]{2})\b', raw)
+    if codes: result['httpStatus'] = int(codes[-1])
+    installers = []
+    for line in raw.splitlines():
+        if not re.search(rb'\b(?:error|failed|failure)\b', line, re.I): continue
+        for name in ('OpenRepoTools', 'OpenRepoShape', 'Codex', 'Claude', 'OpenCode', 'Copilot', 'NotebookLM', 'Letta', 'Playwright', 'Hadolint', 'actionlint'):
+            if name.lower().encode() in line.lower() and name not in installers: installers.append(name)
+    if installers: result['installers'] = installers
+    return result
+
+
+def workstation_diagnostics(root, project, environment):
+    # Copy only this disposable service's logs before down removes its volumes.
+    # cp works for stopped containers too; private bytes are never artifacts.
+    with tempfile.TemporaryDirectory(prefix='workstation-private-logs-') as temporary:
+        directory = Path(temporary)
+        with tempfile.TemporaryFile() as output:
+            try:
+                done = subprocess.run(['docker', 'compose', '-p', project, '-f', 'devcontainer.test/docker-compose.yml',
+                    'cp', 'workstation-acceptance:/home/node/projects/workBenches/logs/.', str(directory)],
+                    cwd=root, env=environment, stdout=output, stderr=output, timeout=60)
+            except (OSError, subprocess.TimeoutExpired): return {}
+        if done.returncode: return {}
+        files = [p for p in directory.rglob('*.log') if p.is_file() and not p.is_symlink()
+                 and p.resolve().is_relative_to(directory)]
+        if not files: return {}
+        latest = max(files, key=lambda p:p.stat().st_mtime)
+        with latest.open('rb') as stream:
+            stream.seek(0, 2); stream.seek(max(0, stream.tell() - 256 * 1024))
+            return dict(logsRead=1, **build_failure_hints(stream.read()))
+
+
 def execute(argv, root, environment, timeout, diagnostic=None):
     # Raw stdout/stderr can contain generated credentials. Keep them in a
     # private temporary file and delete after execution; upload metadata only.
@@ -209,6 +259,9 @@ def run_suite(root, manifest_path, name, output, expected=None, ref=None, extern
                     report['cases'].append({'id': command['id'], 'status': 'passed' if passed else 'failed'})
                     print(name + '/' + command['id'] + ': ' + ('passed' if passed else 'failed'), flush=True)
                     if not passed:
+                        if name == 'fresh-install':
+                            component = workstation_diagnostics(root, project, environment)
+                            if component: diagnostic['component'] = component
                         if diagnostic:
                             report['runner']['failure'] = diagnostic
                             print(name + ': safe failure location ' + json.dumps(diagnostic), flush=True)
