@@ -1,0 +1,5 @@
+# Optional server-only membership credential; never mount into client/CPC containers.
+services:
+  broker:
+    volumes:
+      - ${WORKBENCHES_GITHUB_MEMBERSHIP_TOKEN_FILE:?Set private read-only GitHub membership credential file}:/run/secrets/github-membership-token:ro

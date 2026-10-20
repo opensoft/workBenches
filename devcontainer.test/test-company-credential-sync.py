@@ -101,6 +101,176 @@ class CompanySyncTests(unittest.TestCase):
             self.assertEqual(error.exception.status, 403)
         self.assertEqual(version, '1')
 
+    def test_github_team_gate_reaches_metadata_fetch_publish_and_revocation(self):
+        self.publish()
+        self.config['profiles'][self.name]['githubTeam'] = {
+            'organization': 'Opensoft-Testing', 'team': 'workbenches-qa-allowed'}
+        self.config['githubIdentities'] = [
+            {'issuer': self.user['iss'], 'subject': self.user['sub'], 'login': 'Opensoft-Test-User-1', 'githubId': 345520656},
+            {'issuer': self.reader['iss'], 'subject': self.reader['sub'], 'login': 'Opensoft-Test-User-2', 'githubId': 345521882}]
+        active = True
+        def api(path, token):
+            if path.startswith('/users/'):
+                return {'id': 345520656 if path.endswith('User-1') else 345521882}
+            return {'state': 'active'} if active and path.endswith('User-1') else {}
+        with patch('github_team.token_file', return_value='fixture-read-only'), patch('github_team.get', side_effect=api):
+            self.assertEqual(len(self.broker.metadata(self.user)['profiles']), 1)
+            self.assertEqual(self.broker.metadata(self.reader), {'profiles': []})
+            self.assertEqual(self.broker.fetch(self.user, self.name)['credential'], self.value)
+            app = Application(self.broker, lambda _: self.reader)
+            for route in ('fetch', 'publish'):
+                data = {'profileId': self.name, 'credential': self.value, 'expectedVersion': '1', 'idempotencyKey': 'denied-at-http'}
+                body = json.dumps(data).encode(); status = []
+                raw = b''.join(app({'REQUEST_METHOD': 'POST', 'PATH_INFO': '/v1/' + route,
+                    'CONTENT_LENGTH': str(len(body)), 'wsgi.input': io.BytesIO(body)}, lambda value, _: status.append(value)))
+                self.assertTrue(status[0].startswith('403'))
+                self.assertNotIn(b'fixture-first', raw)
+            active = False
+            self.assertEqual(self.broker.metadata(self.user), {'profiles': []})
+            with self.assertRaises(BrokerError) as error: self.broker.fetch(self.user, self.name)
+            self.assertEqual(error.exception.status, 403)
+            # Maintenance remains governed by its separate service OIDC grant.
+            self.broker.authorize(self.cpc, self.name, 'maintain')
+
+    def test_github_binding_and_api_failures_never_release_credentials(self):
+        self.publish()
+        self.config['profiles'][self.name]['githubTeam'] = {'organization': 'qa', 'team': 'allowed'}
+        self.assertEqual(self.broker.metadata(self.user), {'profiles': []})
+        self.config['githubIdentities'] = [{'issuer': self.user['iss'], 'subject': self.user['sub'],
+                                         'login': 'test-user', 'githubId': 123}]
+        with patch('github_team.token_file', return_value='fixture'), patch('github_team.get', return_value={'id': 456}):
+            with self.assertRaises(BrokerError) as error: self.broker.fetch(self.user, self.name)
+            self.assertEqual(error.exception.status, 403)
+        with patch('github_team.token_file', side_effect=BrokerError(503, 'github_membership_unavailable')):
+            with self.assertRaises(BrokerError) as error: self.broker.fetch(self.user, self.name)
+            self.assertEqual(error.exception.status, 503)
+        self.config['githubIdentities'].append(dict(self.config['githubIdentities'][0]))
+        self.assertEqual(self.broker.metadata(self.user), {'profiles': []})
+
+    def test_unattended_live_probe_rejects_wrong_status_or_credential(self):
+        spec = importlib.util.spec_from_file_location('live_team_probe', ROOT / 'qa/release/test-broker-team-live.py')
+        probe = importlib.util.module_from_spec(spec); spec.loader.exec_module(probe)
+        from company_sync import digest
+        config = {'qaOnly': True, 'brokerUrl': 'https://qa.example', 'profileId': 'qa:test', 'tenant': 'qa',
+                  'expectedAccountId': 'fixture', 'expectedCredentialDigest': digest({'accountId': 'fixture'}),
+                  'users': [{'login': 'Opensoft-Test-User-1', 'sessionRoot': str(self.root / 'a')},
+                            {'login': 'Opensoft-Test-User-2', 'sessionRoot': str(self.root / 'b')}]}
+        def client(denial):
+            class Client:
+                def __init__(self, url, token): self.allowed = token() == 'a'
+                def call(self, route, data=None):
+                    if route == 'profiles': return {'profiles': [{'id': 'qa:test', 'tenant': 'qa', 'permissions': ['use']}] if self.allowed else []}
+                    if not self.allowed: raise SyncError('denied', denial)
+                    return {'credential': {'accountId': 'fixture'}}
+            return Client
+        with patch.object(probe, 'account_token', side_effect=lambda root: root.name):
+            with patch.object(probe, 'Client', client(403)):
+                probe.run(config)
+                bad = dict(config, expectedCredentialDigest='wrong')
+                with self.assertRaises(SyncError): probe.run(bad)
+            with patch.object(probe, 'Client', client(401)):
+                with self.assertRaises(SyncError): probe.run(config)
+
+    def test_github_membership_token_file_is_private_and_not_symlinked(self):
+        from github_team import token_file
+        path = self.root / 'membership-token'; path.write_text('fixture-token'); path.chmod(0o600)
+        self.assertEqual(token_file(str(path)), 'fixture-token')
+        path.chmod(0o644)
+        with self.assertRaises(BrokerError): token_file(str(path))
+        path.chmod(0o600)
+        link = self.root / 'token-link'; link.symlink_to(path)
+        with self.assertRaises(BrokerError): token_file(str(link))
+
+    def qa_provisioner(self):
+        spec = importlib.util.spec_from_file_location('qa_provisioner', ROOT / 'qa/release/provision-github-qa-sessions.py')
+        value = importlib.util.module_from_spec(spec); spec.loader.exec_module(value)
+        return value
+
+    def test_qa_oauth_verifies_identity_and_scope_before_storing(self):
+        provision = self.qa_provisioner()
+        device = {'expires_in': 900, 'interval': 5, 'device_code': 'fixture-device-code'}
+        token = {'access_token': 'fixture-oauth-secret', 'scope': 'read:org', 'expires_in': 100,
+                 'refresh_token': 'fixture-refresh-secret'}
+        user = {'login': 'Opensoft-Test-User-1', 'id': 345520656}
+        with patch.object(provision.time, 'sleep'), patch.object(provision, 'request', side_effect=[token, user]), \
+             patch.object(provision, 'store', return_value='qa-secret') as store, patch('builtins.print') as output:
+            provision.finish(user['login'], user['id'], device)
+            self.assertEqual(store.call_args.args[1]['githubId'], user['id'])
+            text = str(output.call_args_list)
+            for secret in ('fixture-oauth-secret', 'fixture-refresh-secret', 'fixture-device-code'):
+                self.assertNotIn(secret, text)
+        for identity, scopes in [(dict(user, id=123), 'read:org'), (user, 'read:org,repo')]:
+            with patch.object(provision.time, 'sleep'), patch.object(provision, 'request', side_effect=[dict(token, scope=scopes), identity]), \
+                 patch.object(provision, 'store') as store:
+                with self.assertRaises(provision.ProvisionError): provision.finish(user['login'], user['id'], device)
+                store.assert_not_called()
+
+    def test_qa_oauth_upload_never_puts_token_in_command_or_leaves_local_file(self):
+        provision = self.qa_provisioner(); paths = []
+        def upload(argv, **kwargs):
+            path = Path(argv[argv.index('--file') + 1]); paths.append(path)
+            self.assertEqual(path.stat().st_mode & 0o077, 0)
+            self.assertIn('fixture-oauth-secret', path.read_text())
+            self.assertNotIn('fixture-oauth-secret', str(argv))
+            self.assertNotIn('env', kwargs)
+            return subprocess.CompletedProcess(argv, 0, b'https://qa/secret/version', b'')
+        with patch.object(provision.subprocess, 'run', side_effect=upload):
+            provision.store('Opensoft-Test-User-1', {'oauth': {'access_token': 'fixture-oauth-secret'}})
+        self.assertTrue(paths)
+        self.assertTrue(all(not path.exists() for path in paths))
+
+    def qa_vault_sessions(self):
+        spec = importlib.util.spec_from_file_location('qa_vault_sessions', ROOT / 'qa/release/github-vault-sessions.py')
+        value = importlib.util.module_from_spec(spec); spec.loader.exec_module(value)
+        return value
+
+    def test_qa_renewal_persists_intent_and_verified_rotated_session(self):
+        sessions = self.qa_vault_sessions(); login, user_id = sessions.PROVISION.USERS[0]
+        bundle = {'provider': 'github', 'clientId': sessions.PROVISION.CLIENT_ID, 'login': login,
+                  'githubId': user_id, 'oauth': {'scope': 'read:org', 'refresh_token': 'fixture-old'}}
+        tokens = {'scope': 'read:org', 'access_token': 'fixture-new', 'refresh_token': 'fixture-rotated',
+                  'expires_in': 28800, 'refresh_token_expires_in': 100000}
+        with patch.object(sessions.PROVISION, 'store') as store, patch.object(sessions.PROVISION, 'request',
+                side_effect=[tokens, {'id': user_id, 'login': login}]):
+            result, rotated = sessions.renew(bundle, login, user_id, force=True)
+        self.assertTrue(rotated)
+        self.assertEqual(store.call_count, 2)
+        intent = store.call_args_list[0].args[1]
+        self.assertEqual(intent['state'], 'renewal-in-progress')
+        self.assertNotIn('refresh_token', intent['oauth'])
+        self.assertEqual(result['oauth']['refresh_token'], 'fixture-rotated')
+        self.assertEqual(bundle['oauth']['refresh_token'], 'fixture-old')
+        with self.assertRaises(sessions.SessionError): sessions.validate(intent, login, user_id)
+
+    def test_qa_renewal_failure_leaves_no_replayable_latest_refresh_token(self):
+        sessions = self.qa_vault_sessions(); login, user_id = sessions.PROVISION.USERS[0]
+        bundle = {'provider': 'github', 'clientId': sessions.PROVISION.CLIENT_ID, 'login': login,
+                  'githubId': user_id, 'oauth': {'scope': 'read:org', 'refresh_token': 'fixture-old'}}
+        with patch.object(sessions.PROVISION, 'store') as store, patch.object(sessions.PROVISION, 'request', return_value={'error': 'bad_refresh_token'}):
+            with self.assertRaises(sessions.SessionError): sessions.renew(bundle, login, user_id, True)
+        self.assertEqual(store.call_count, 1)
+        self.assertNotIn('refresh_token', store.call_args.args[1]['oauth'])
+
+    def test_broker_workload_identity_is_explicit_and_never_falls_back(self):
+        from core import AzureVault
+        with patch('azure.identity.ManagedIdentityCredential') as managed, patch('azure.identity.WorkloadIdentityCredential') as workload:
+            AzureVault('fixture-client', 'workload')
+            workload.assert_called_once_with(client_id='fixture-client')
+            managed.assert_not_called()
+        with patch('azure.identity.ManagedIdentityCredential') as managed, patch('azure.identity.WorkloadIdentityCredential', side_effect=RuntimeError('fixture identity unavailable')):
+            with self.assertRaises(RuntimeError): AzureVault('fixture-client', 'workload')
+            managed.assert_not_called()
+        with self.assertRaises(ValueError): AzureVault(identity_mode='azure-cli')
+
+    def test_changing_vault_identity_requires_broker_restart(self):
+        config_path = self.root / 'server-identity.json'
+        changed = dict(self.config, identityMode='workload'); atomic(config_path, changed)
+        app = Application(self.broker, lambda _: self.user, config_path)
+        status = []
+        raw = b''.join(app({'REQUEST_METHOD': 'GET', 'PATH_INFO': '/v1/profiles'}, lambda value, _: status.append(value)))
+        self.assertTrue(status[0].startswith('503'))
+        self.assertEqual(json.loads(raw)['error'], 'deployment_configuration_changed')
+
     def test_host_and_image_hook_sources_match(self):
         self.assertEqual((ROOT / 'scripts/lib/company-profile-sync.sh').read_bytes(), (ROOT / 'base-image/files/company-profile-sync.sh').read_bytes())
         self.assertEqual((ROOT / 'scripts/opencode-profile').read_bytes(), (ROOT / 'base-image/files/opencode-profile').read_bytes())

@@ -40,9 +40,16 @@ def has_refresh(value):
 
 class AzureVault:
     """Managed identity only: never fall back to a user's Azure CLI credentials."""
-    def __init__(self, client_id=None):
-        from azure.identity import ManagedIdentityCredential
-        self.credential = ManagedIdentityCredential(client_id=client_id) if client_id else ManagedIdentityCredential()
+    def __init__(self, client_id=None, identity_mode='managed'):
+        from azure.identity import ManagedIdentityCredential, WorkloadIdentityCredential
+        if identity_mode == 'managed':
+            self.credential = ManagedIdentityCredential(client_id=client_id) if client_id else ManagedIdentityCredential()
+        elif identity_mode == 'workload':
+            # AKS projected service-account federation is explicit. Never use
+            # DefaultAzureCredential or fall back to a workstation Azure cache.
+            self.credential = WorkloadIdentityCredential(client_id=client_id)
+        else:
+            raise ValueError('Unsupported broker identity mode')
         self.clients = {}
 
     def client(self, profile):
@@ -145,6 +152,13 @@ class Broker:
             # Both values come from a verified token, never an entered email.
             if grant['issuer'] == identity['iss'] and grant['subject'] == identity['sub']:
                 rights.update(grant.get('profiles', {}).get(name, []))
+        # Optional profile-level restriction applies even when multiple direct
+        # grants exist. Never trust a GitHub name supplied by a client or token
+        # claim: the administrator binds immutable OIDC subjects to GitHub IDs.
+        if 'githubTeam' in profile and rights & {'use', 'publish'}:
+            from github_team import permitted
+            if not permitted(self.config, identity, profile['githubTeam']):
+                rights -= {'use', 'publish'}
         return rights
 
     def authorize(self, identity, name, right):
