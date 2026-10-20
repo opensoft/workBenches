@@ -22,6 +22,8 @@ on:
       - scripts/release-qa-*.py
       - scripts/publish-validated-release.py
       - devcontainer.test/test-release-automation.py
+      - devcontainer.test/test-native-acceptance-prompts.py
+      - devcontainer.test/test-wsl-workstation-acceptance.py
   push:
     branches: [main, 'release/**']
   schedule:
@@ -51,7 +53,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Test the evidence gate itself
-        run: python3 automation/devcontainer.test/test-release-automation.py
+        run: |
+          python3 automation/devcontainer.test/test-release-automation.py
+          python3 automation/devcontainer.test/test-native-acceptance-prompts.py
       - name: Resolve exact source and select every applicable suite
         id: plan
         env:
