@@ -78,7 +78,7 @@ def public_certificate(path):
 def native_capacity_available():
     for line in Path('/proc/meminfo').read_text().splitlines():
         if line.startswith('MemAvailable:'):
-            return int(line.split()[1]) >= (8192 + 2048) * 1024
+            return int(line.split()[1]) >= (16384 + 2048) * 1024
     return False
 
 
@@ -125,7 +125,7 @@ def run(golden, state, candidate, automation, certificate_path=None):
     if not os.access('/dev/kvm', os.R_OK | os.W_OK):
         raise ValueError('KVM access required')
     if not native_capacity_available():
-        raise ValueError('Native QA requires 8 GiB RAM plus 2 GiB host headroom')
+        raise ValueError('Native QA requires 16 GiB RAM plus 2 GiB host headroom')
     state.mkdir(mode=0o700, parents=True)
     for source, target in [('golden.qcow2', 'qa.qcow2'), ('ssh-key', 'ssh-key')]:
         subprocess.run(['cp', '--reflink=auto', str(golden / source), str(state / target)], check=True)
@@ -136,7 +136,7 @@ def run(golden, state, candidate, automation, certificate_path=None):
     reset_id = str(uuid.uuid4())
     manifest = dict(state='starting', vmName='wb-arch-job-' + reset_id, sshPort=port,
                     resetId=reset_id, kind='one-shot-native', registeredRunner=False,
-                    memoryMiB=8192, swapMiB=8192)
+                    memoryMiB=16384, swapMiB=8192)
     process = VM.launch(state, manifest)
     try:
         deadline = time.monotonic() + 180
