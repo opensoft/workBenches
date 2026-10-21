@@ -94,14 +94,23 @@ directory=Path('/var/lib/workbenches')
 directory.mkdir(exist_ok=True,mode=0o755)
 if directory.is_symlink() or directory.stat().st_uid!=0 or directory.stat().st_mode&0o022:raise SystemExit(1)
 path=directory/'native-qa.swap'
-fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600);os.close(fd)
-subprocess.run(['fallocate','-l','8G',str(path)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-subprocess.run(['mkswap',str(path)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-subprocess.run(['swapon',str(path)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+if path.exists() or path.is_symlink():raise SystemExit(1)
+filesystem=subprocess.run(['findmnt','--noheadings','--output','FSTYPE','--target',str(directory)],capture_output=True,text=True,check=True).stdout.strip()
+if filesystem=='btrfs':
+ subprocess.run(['btrfs','filesystem','mkswapfile','--size','8G',str(path)],check=True,stdout=subprocess.DEVNULL)
+ path.chmod(0o600)
+else:
+ fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600);os.close(fd)
+ subprocess.run(['fallocate','-l','8G',str(path)],check=True,stdout=subprocess.DEVNULL)
+ subprocess.run(['mkswap',str(path)],check=True,stdout=subprocess.DEVNULL)
+subprocess.run(['swapon',str(path)],check=True,stdout=subprocess.DEVNULL)
 '''
     result = subprocess.run([*VM.ssh(state, manifest), 'sudo python3 -c ' + shlex.quote(code)],
         input=json.dumps({'resetId': manifest['resetId']}).encode(), capture_output=True, timeout=60)
-    if result.returncode: raise ValueError('Disposable native swap provisioning failed')
+    if result.returncode:
+        log = state / 'swap-provision.private.log'
+        log.write_bytes(result.stderr); log.chmod(0o600)
+        raise ValueError('Disposable native swap provisioning failed; private diagnosis saved')
 
 
 def run(golden, state, candidate, automation, certificate_path=None):
