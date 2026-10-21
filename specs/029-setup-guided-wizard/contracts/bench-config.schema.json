@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/opensoft/workBenches/specs/029-setup-guided-wizard/contracts/bench-config.schema.json",
+  "title": "workBenches bench catalog (config/bench-config.json) after feature 029",
+  "description": "Structural contract for the bench catalog. Rules a JSON Schema cannot express are enforced by devcontainer.test/test-bench-catalog.py and listed in $comment fields: the catalog matches config/release-lock.json in both directions (FR-054); Electrical Engineering has no benches and the other three categories at least one (FR-052); copy fields contain only single-column printable characters and no version-like token outside the allow-list (FR-053); simBench names OpenMM and ESM and not AlphaFold or ESMFold (FR-055). Readers ignore unknown fields; all new fields are additive.",
+  "type": "object",
+  "required": ["categories", "benches"],
+  "properties": {
+    "categories": {
+      "type": "object",
+      "description": "Bench categories keyed by id (FR-052).",
+      "propertyNames": { "pattern": "^[a-z0-9][a-z0-9-]*$" },
+      "required": ["software-engineering", "science", "system-administration", "electrical-engineering"],
+      "additionalProperties": false,
+      "properties": {
+        "software-engineering": { "$ref": "#/$defs/category" },
+        "science": { "$ref": "#/$defs/category" },
+        "system-administration": { "$ref": "#/$defs/category" },
+        "electrical-engineering": { "$ref": "#/$defs/category" }
+      }
+    },
+    "benches": {
+      "type": "object",
+      "description": "Catalogued benches keyed by name. Names may begin with a digit (365Bench); every consumer looks them up as data (FR-056).",
+      "propertyNames": { "pattern": "^[a-zA-Z0-9_+-]+$" },
+      "additionalProperties": { "$ref": "#/$defs/bench" },
+      "$comment": "Key set equals the bench repositories in config/release-lock.json, matched by path and URL (FR-054)."
+    },
+    "infrastructure": {
+      "type": "object",
+      "description": "Unchanged by this feature (1.7: specKit).",
+      "propertyNames": { "pattern": "^[a-zA-Z0-9_+-]+$" }
+    }
+  },
+  "$defs": {
+    "line": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$",
+      "not": { "const": "-" },
+      "$comment": "Single line, no control characters (FR-048 range); '-' alone is the worker's empty-field sentinel (research R3). Wide, fullwidth, combining, zero-width and bidi formatting characters are rejected by the catalog test (FR-053, NB-6)."
+    },
+    "copyItem": {
+      "allOf": [{ "$ref": "#/$defs/line" }],
+      "$comment": "No version-like token: a standalone number (not joined to a letter), dotted or not, or v<N> / version-<N>; allow-list 'Microsoft 365', 'Dynamics 365' (FR-053)."
+    },
+    "category": {
+      "type": "object",
+      "required": ["label", "order", "summary"],
+      "additionalProperties": false,
+      "properties": {
+        "label": { "$ref": "#/$defs/line" },
+        "order": { "type": "integer" },
+        "summary": { "$ref": "#/$defs/line" }
+      }
+    },
+    "bench": {
+      "type": "object",
+      "required": ["url", "path", "description", "category", "tagline", "usedFor", "contains"],
+      "properties": {
+        "url": { "type": "string", "minLength": 1 },
+        "path": {
+          "type": "string",
+          "pattern": "^(devBenches|sysBenches|bioBenches)/[^/]+$",
+          "not": { "pattern": "(^|/)\\.\\.(/|$)" },
+          "$comment": "Same rule as setup_selection.py benches and the fail-closed apply check (FR-058)."
+        },
+        "description": { "$ref": "#/$defs/line" },
+        "category": {
+          "type": "string",
+          "enum": ["software-engineering", "science", "system-administration"],
+          "$comment": "Must name a defined category; electrical-engineering has no benches (FR-052)."
+        },
+        "tagline": {
+          "allOf": [{ "$ref": "#/$defs/copyItem" }],
+          "maxLength": 35
+        },
+        "usedFor": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/copyItem" } },
+        "contains": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/copyItem" } },
+        "ai_keywords": { "type": "array", "items": { "type": "string" }, "$comment": "1.7 field, preserved." },
+        "project_scripts": { "type": "array", "$comment": "1.7 field, preserved." }
+      },
+      "$comment": "Other fields are tolerated (readers ignore unknown fields) but the draft-only 'draft' and 'evidence' fields of bench-copy-draft.json are not copied into the catalog."
+    }
+  }
+}
