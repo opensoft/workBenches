@@ -12,7 +12,7 @@ class QueueTests(unittest.TestCase):
             selected=controller.queued(self.config())
             self.assertEqual(selected[3:],('example/project',3,7))
     def test_unrelated_labels_and_waiting_jobs_do_not_take_capacity(self):
-        for status,labels in [('waiting',['eagle-linux-ubuntu24']),('queued',['windows-latest']),('in_progress',['eagle-linux-ubuntu24'])]:
+        for status,labels in [('waiting',['eagle-linux-ubuntu24']),('queued',['windows-latest']),('queued',['self-hosted','eagle-linux-ubuntu24']),('in_progress',['eagle-linux-ubuntu24'])]:
             def api(path):
                 if '/jobs?' in path: return dict(jobs=[dict(id=7,status=status,labels=labels)])
                 return dict(workflow_runs=[dict(id=3,created_at='2026-10-21T00:00:00Z')])
@@ -22,5 +22,9 @@ class QueueTests(unittest.TestCase):
         state=dict(runner='eagle-fleet-123',organization='example')
         with patch.object(controller,'registrations',return_value=[dict(name=state['runner'],busy=True)]),patch.object(controller.backend,'call') as call:
             self.assertFalse(controller.retire(state));call.assert_not_called()
+    def test_repository_pages_are_collected(self):
+        with patch.object(controller,'api',side_effect=[dict(repositories=[dict(id=i) for i in range(100)]),dict(repositories=[dict(id=100)])]) as api:
+            self.assertEqual(len(controller.pages('example/repositories','repositories')),101)
+            self.assertIn('page=2',api.call_args.args[0])
 
 if __name__=='__main__': unittest.main()

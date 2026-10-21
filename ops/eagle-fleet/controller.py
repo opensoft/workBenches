@@ -28,8 +28,18 @@ def api(path,method='GET',data=None):
     result=backend.call(args,data=json.dumps(data) if data is not None else None,timeout=90)
     return json.loads(result.stdout) if result.stdout.strip() else None
 
+def pages(path,key):
+    result=[]
+    separator='&' if '?' in path else '?'
+    page=1
+    while True:
+        items=api(path+separator+f'per_page=100&page={page}')[key]
+        result.extend(items)
+        if len(items)<100: return result
+        page+=1
+
 def registrations(state):
-    return api(f"orgs/{state['organization']}/actions/runner-groups/{state['group_id']}/runners?per_page=100")['runners']
+    return pages(f"orgs/{state['organization']}/actions/runner-groups/{state['group_id']}/runners",'runners')
 
 def retire(state):
     # DELETE is the assignment race barrier: GitHub refuses a busy registration.
@@ -69,18 +79,18 @@ def queued(config):
                 runs=api(f'repos/{repo}/actions/runs?status={status}&per_page=20')['workflow_runs']
                 for run in runs:
                     # Do not occupy capacity for a pending environment approval.
-                    jobs=api(f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100")['jobs']
+                    jobs=pages(f"repos/{repo}/actions/runs/{run['id']}/jobs",'jobs')
                     for job in jobs:
                         if job['status'] != 'queued': continue
                         for profile in config['profiles']:
-                            if set(profile['labels']) <= set(job['labels']):
+                            if job['labels'] and set(job['labels']) <= set(profile['labels']) and any(label.startswith('eagle-') for label in job['labels']):
                                 candidates.append((job.get('created_at') or run['created_at'],pool,profile,repo,run['id'],job['id']))
     return min(candidates,key=lambda c:c[0]) if candidates else None
 
 def validate_pool(pool):
     path=f"orgs/{pool['organization']}/actions/runner-groups/{pool['group_id']}"
     group=api(path)
-    repos=api(path+'/repositories?per_page=100')['repositories']
+    repos=pages(path+'/repositories','repositories')
     if (group['name'] != pool['group'] or group['visibility'] != 'selected' or
         group['restricted_to_workflows'] or group['allows_public_repositories'] != pool['allows_public_repositories'] or
         {r['full_name'].lower() for r in repos} != {r.lower() for r in pool['repositories']}):

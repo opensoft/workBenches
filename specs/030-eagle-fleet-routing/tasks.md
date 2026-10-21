@@ -1,12 +1,12 @@
 # Tasks
 
-- [x] T001 Inventory organizations, personal repositories and active workflow selectors.
-- [x] T002 Create isolated governed feature worktree and record scope/constraints.
-- [ ] T003 Read affected repository instructions and classify job compatibility.
-- [ ] T004 Prove rootless general-worker sudo, Docker actions, service ports and isolation.
-- [ ] T005 Implement fleet scheduling, profiles, repository groups and cleanup/recovery.
-- [ ] T006 Prepare narrow per-repository workflow patches preserving tests and matrices.
-- [ ] T007 Open routing PRs, request Codex review and resolve findings.
-- [ ] T008 Activate compatible routes through repository policy and verify actual jobs.
-- [ ] T009 Resolve or report exact Windows/macOS/ARM/hardware/access blockers.
-- [ ] T010 Reconcile fleet manifest, rollback instructions and final evidence.
+- [x] T001 [O] Inventory organizations, personal repositories and active workflow selectors — files: `specs/030-eagle-fleet-routing/` — verify: `python3 ops/eagle-fleet/prepare_routes.py "$EAGLE_INVENTORY" "$EAGLE_ROUTE_PLAN"`
+- [x] T002 [O] Create isolated governed feature worktree and record scope/constraints — files: `openspec/changes/route-github-fleet-to-eagle/`, `specs/030-eagle-fleet-routing/` — verify: `openspec validate route-github-fleet-to-eagle --strict`
+- [ ] T003 [O] Read affected repository instructions and classify compatibility, pinned copies and reusable consumers — files: `specs/030-eagle-fleet-routing/` — verify: `python3 ops/eagle-fleet/prepare_routes.py "$EAGLE_INVENTORY" "$EAGLE_ROUTE_PLAN"`
+- [x] T004 [O] Prove rootless general-worker sudo, Docker actions, service ports and isolation; evidence in validation.md — files: `ops/eagle-fleet/`, `specs/030-eagle-fleet-routing/validation.md` — verify: `python3 -m unittest discover -s ops/eagle-fleet -p 'test_*.py'`
+- [ ] T005 [O] Implement fleet scheduling, profiles, repository groups and cleanup/recovery — files: `ops/eagle-fleet/`, `specs/030-eagle-fleet-routing/validation.md` — verify: `python3 -m unittest discover -s ops/eagle-fleet -p 'test_*.py'`
+- [ ] T006 [O] Prepare narrow per-repository workflow patches preserving tests and matrices through each repository's owning feature — files: `ops/eagle-fleet/routing.py`, `ops/eagle-fleet/prepare_routes.py`, `.github/workflows/`, `.github/actionlint.yaml`, `specs/030-eagle-fleet-routing/` — verify: `python3 -m unittest discover -s ops/eagle-fleet -p test_routing.py`
+- [ ] T007 [O] Open routing PRs, request Codex review and resolve findings — files: `specs/030-eagle-fleet-routing/` — verify: `gh pr view 208 --repo opensoft/workBenches --json reviews,statusCheckRollup`
+- [ ] T008 [O] Activate compatible routes through repository policy and verify actual jobs — files: `specs/030-eagle-fleet-routing/validation.md` — verify: `gh run view 39654023739 --repo opensoft/workBenches --json jobs,status,conclusion`
+- [ ] T009 [O] Resolve or report exact Windows/macOS/ARM/hardware/access blockers — files: `specs/030-eagle-fleet-routing/validation.md` — verify: `python3 ops/eagle-fleet/prepare_routes.py "$EAGLE_INVENTORY" "$EAGLE_ROUTE_PLAN"`
+- [ ] T010 [O] Reconcile fleet manifest, rollback instructions and final evidence — files: `specs/030-eagle-fleet-routing/`, `ops/eagle-fleet/README.md` — verify: `git diff --check`

@@ -12,7 +12,8 @@ def call(args, data=None, timeout=300, optional=False):
     result = subprocess.run(args, input=data, text=True, encoding='utf-8', errors='replace',
                             capture_output=True, timeout=timeout, creationflags=FLAGS)
     if result.returncode and not optional:
-        raise RuntimeError(f'{args[0]} {args[1]} failed ({result.returncode})')
+        detail=result.stderr.strip()[-500:] if args[0]=='docker' else ''
+        raise RuntimeError(f'{args[0]} {args[1]} failed ({result.returncode}): {detail}')
     return result
 
 def inspect(name, kind=None):

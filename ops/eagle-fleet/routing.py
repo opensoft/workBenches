@@ -1,5 +1,6 @@
 """Preserve workflow bytes, job graph and matrix while changing runner selection."""
 import re
+import json
 import yaml
 
 LABELS={'ubuntu-latest':'eagle-linux-ubuntu24','ubuntu-24.04':'eagle-linux-ubuntu24',
@@ -8,35 +9,30 @@ LABELS={'ubuntu-latest':'eagle-linux-ubuntu24','ubuntu-24.04':'eagle-linux-ubunt
 def route(source):
     root=yaml.compose(source)
     changes=[]
-    def walk(node):
-        if isinstance(node,yaml.MappingNode):
-            for key,value in node.value:
+    jobs=next((value for key,value in root.value if key.value=='jobs'),None) if isinstance(root,yaml.MappingNode) else None
+    if isinstance(jobs,yaml.MappingNode):
+        for _,job in jobs.value:
+            if not isinstance(job,yaml.MappingNode): continue
+            for key,value in job.value:
                 if key.value=='runs-on' and isinstance(value,yaml.ScalarNode):
                     original=value.value
                     if original in LABELS:
                         replacement=LABELS[original]
-                    elif re.fullmatch(r'\$\{\{\s*matrix\.[a-zA-Z_.]+\s*\}\}',original):
+                    elif original.startswith('${{') and original.endswith('}}') and ('matrix.' in original or 'ubuntu' in original):
                         expression=original[3:-2].strip()
-                        replacement='${{ '+''.join(f"{expression} == '{a}' && '{b}' || " for a,b in LABELS.items())+expression+' }}'
-                    elif original.startswith('${{') and 'ubuntu' in original:
-                        replacement=original
-                        for a,b in LABELS.items(): replacement=replacement.replace("'"+a+"'","'"+b+"'")
+                        mapping=json.dumps(LABELS,separators=(',',':'))
+                        replacement="${{ fromJSON('"+mapping+"')[("+expression+")] || ("+expression+") }}"
                     else:
                         continue
                     if replacement!=original:
                         # runs-on expressions contain no YAML colon; keep other bytes intact.
                         changes.append((value.start_mark.index,value.end_mark.index,replacement))
-                else: walk(value)
-        elif isinstance(node,yaml.SequenceNode):
-            for value in node.value: walk(value)
-    walk(root)
     result=source
     for start,end,replacement in sorted(changes,reverse=True): result=result[:start]+replacement+result[end:]
     # Round-trip proof: every non-routing value, including permissions/triggers and tests, is unchanged.
     before=yaml.safe_load(source);after=yaml.safe_load(result)
-    def erase(value):
-        if isinstance(value,dict): return {k:erase(v) for k,v in value.items() if k!='runs-on'}
-        if isinstance(value,list): return [erase(v) for v in value]
-        return value
-    if erase(before)!=erase(after): raise ValueError('Non-routing workflow value changed')
+    for document in (before,after):
+        for job in document.get('jobs',{}).values():
+            job.pop('runs-on',None)
+    if before!=after: raise ValueError('Non-routing workflow value changed')
     return result,len(changes)
