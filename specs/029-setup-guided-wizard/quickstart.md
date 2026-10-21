@@ -15,7 +15,7 @@ Editing over the `\\wsl.localhost\…` UNC path from Windows drops the executabl
 ```bash
 git diff --cached --summary | grep -E 'mode change' && echo "MODE CHANGED: restore with chmod +x" || echo "modes ok"
 git diff --cached --name-only | xargs -r grep -l $'\r' && echo "CR FOUND" || echo "no CR"
-bash -n scripts/interactive-setup.sh scripts/lib/setup-status-loader.sh scripts/setup-workbenches.sh scripts/update-project.sh scripts/launchBench scripts/update-bench-config.sh scripts/new-bench.sh
+for f in scripts/interactive-setup.sh scripts/lib/setup-status-loader.sh scripts/setup-workbenches.sh scripts/update-project.sh scripts/launchBench scripts/update-bench-config.sh scripts/new-bench.sh; do bash -n "$f" || echo "SYNTAX $f"; done   # bash -n checks only its first file argument
 git ls-files -s scripts/interactive-setup.sh scripts/launchBench setup.sh | awk '{print $1, $4}'   # expect 100755
 ```
 
@@ -97,7 +97,10 @@ bash devcontainer.test/test-setup-cancel.sh
 ```bash
 python3 devcontainer.test/test-release-version.py        # sources interactive-setup.sh
 python3 devcontainer.test/test-project-command.py        # reads bench-config.json
+bash devcontainer.test/test-setup-workspace-repo.sh       # asserts process_selections lines (CI runs it only in speckit-git-bash)
 ```
+
+On a WSL host `test-setup-services.py` times out until task T002 stubs the WSL requirement item (it passes on the CI Ubuntu runner).
 
 ### New suites (this feature)
 
@@ -122,7 +125,7 @@ fail=0
 for t in devcontainer.test/test-{acceptance-pty-drain,image-layer-budget,setup-requirements,setup-async,setup-services,workbenches-account,setup-profiles,profile-multi-identity,docker-prerequisite,setup-components,vibe-annotations-readiness,setup-credential-plan,git-transport,compose-ai-profiles,vault-credential-recovery,setup-guided-flow,setup-consent,install-friction,azure-cli-runtime,release-version,project-command,bench-catalog,bench-catalog-lookups,setup-wizard,setup-wizard-layout}.py; do
   python3 "$t" >/tmp/suite.log 2>&1 && echo "PASS $t" || { echo "FAIL $t"; tail -20 /tmp/suite.log; fail=1; }
 done
-for t in devcontainer.test/test-{setup-bench-status,ai-credential-keyvault,opencode-omniroute-credential,setup-ai-credential-recovery,setup-cancel,bench-catalog-maintenance}.sh; do
+for t in devcontainer.test/test-{setup-bench-status,ai-credential-keyvault,opencode-omniroute-credential,setup-ai-credential-recovery,setup-cancel,setup-workspace-repo,bench-catalog-maintenance}.sh; do
   bash "$t" >/tmp/suite.log 2>&1 && echo "PASS $t" || { echo "FAIL $t"; tail -20 /tmp/suite.log; fail=1; }
 done
 python3 -m py_compile devcontainer.test/test-workstation-acceptance.py devcontainer.test/test-wsl-workstation-acceptance.py || fail=1

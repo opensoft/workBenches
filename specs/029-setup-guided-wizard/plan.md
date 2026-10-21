@@ -35,7 +35,7 @@ The approach, from [research.md](research.md):
 
 **Constraints**: "look only, same behaviour" plus three deliberate changes (Enter → Review → Apply, category/About browsing, catalog additions); setup modes and selection file unchanged (FR-015); 1.7 section numbers kept (D1); no `jq`/`python3`/`docker`/`git` while rendering; outside text sanitised (FR-048); only single-column glyphs; one PR into `release/1.7.0` (fallback 1.8); bench copy approved by Brett in the running TUI before merge (merge gate).
 
-**Scale/Scope**: 12 benches in 4 categories (3 with benches), 8 agent items, 7 tool items, 4 workstation rows, 3 Profiles rows; `interactive-setup.sh` is 3,384 lines on 1.7, and about 40 of its render and input functions change; 4 shell + 4 Python catalog consumers; 9 existing suites change and 5 more are re-verified; 5 new suites and 1 local timing harness.
+**Scale/Scope**: 12 benches in 4 categories (3 with benches), 8 agent items, 7 tool items, 4 workstation rows, 3 Profiles rows; `interactive-setup.sh` is 3,384 lines on 1.7, and about 40 of its render and input functions change; 4 shell + 4 Python catalog consumers; 10 existing suites change and 6 more are re-verified; 5 new suites and 1 local timing harness.
 
 No item is NEEDS CLARIFICATION: the spec has none, and every open technical choice is decided in [research.md](research.md) R1–R11.
 
@@ -76,7 +76,9 @@ specs/029-setup-guided-wizard/
 │   ├── worker-metadata-files.md
 │   ├── key-map.md
 │   └── setup-contracts-unchanged.md
-├── tasks.md                   # next: /speckit-tasks
+├── tasks.md                   # /speckit-tasks: 45 tiered tasks
+├── analysis.md                # /speckit-analyze report
+├── handoff.md                 # build-lane hand-off
 └── release-qa.md              # later: timing, real-host results, glyph check, walkthrough, copy approval
 ```
 
@@ -109,6 +111,7 @@ devcontainer.test/
 ├── test-setup-requirements.py            # strip format, notice wording if asserted
 ├── test-setup-profiles.py                # Profiles step shims
 ├── test-setup-guided-flow.py             # keys
+├── test-setup-services.py                # host-independent WSL item; start on Workstation (shared acceptance helpers)
 └── test-setup-cancel.sh                  # piped keys
 docs/
 ├── setup-script-ui.md              # rewritten for the wizard
@@ -116,7 +119,9 @@ docs/
 ├── profiles.md                     # Profiles as a wizard step
 ├── setup-credential-requirements.md
 ├── newBench.md                     # a new bench needs a lock entry and copy first
+├── credential-recovery.md          # "Enter applies" → Enter → Review → Apply
 └── release-1.7.0.md                # scope note
+README.md                           # setup steps and the TUI outline name the six steps; Enter → Review → Apply
 CHANGELOG.md                        # breaking interaction change; three new benches
 .github/workflows/credential-recovery.yml   # "Workstation Setup": run and trigger on the new suites (always governed)
 openspec/changes/setup-guided-wizard/tasks.md  # tick tasks as they complete (always governed)
@@ -197,6 +202,7 @@ Lands, as its own commits, **before** any catalog entry for 365Bench exists in `
 ### Phase 8 — Documentation and release notes (OpenSpec 6.1, 6.2)
 
 - Rewrite `docs/setup-script-ui.md` for the wizard (steps named Workstation, Benches, Agents, Tools, Profiles, Review; keys; Enter → Review → Apply; sizes); update `docs/setup-requirements.md` (strip on Workstation, keys) and `docs/profiles.md` (Profiles as a step).
+- Update the passages of `README.md` and `docs/credential-recovery.md` that still describe the three-column screen, "AI assistants" as a section, or Enter applying at once (analysis E1).
 - Add the wizard to the 1.7 scope in `docs/release-1.7.0.md` and entries to `CHANGELOG.md` and the 1.7 release notes calling out the breaking interaction change (Enter opens Review; only Enter on Review applies) and the three newly offered benches. If 1.7 has frozen, move the note to the 1.8 plan.
 - Exit: docs name every step consistently ("Agents", never "AI assistants" as a step name); a doc check greps for the old three-column wording.
 - Tier hint: `[S]`.
@@ -229,7 +235,9 @@ Lands, as its own commits, **before** any catalog entry for 365Bench exists in `
 | `test-setup-requirements.py` | CI `regression` | strip renders unboxed; Profiles refusal wording if asserted | `draw_requirements_summary` shim prints the strip; `Vault <State> [V <Action>]` and width assertions unchanged; navigation tests start from the sourced section 0 (R2) and pass unchanged | 5 |
 | `test-setup-profiles.py` | CI `regression` | `draw_profiles; draw_setup_footer` render | shims print the Profiles step; widths 36/60/80/100 and no-discovery assertions unchanged; G G round trip unchanged | 5 |
 | `test-setup-components.py`, `test-setup-bench-status.sh`, `test-setup-credential-plan.py`, `test-release-version.py`, `test-project-command.py` | CI / local | indirect: lookup rewrite, catalog fields, array literal format | expected to pass unchanged; `ai_items=(…)`/`tool_items=(…)` literal layout is kept (R10); verify in Phases 1–2 | 1–2 |
-| `test-setup-consent.py`, `test-docker-prerequisite.py`, `test-install-friction.py`, `test-setup-services.py` | CI `regression` | none expected: they replace `interactive-setup.sh` with a stub or do not drive the TUI | none; run in the regression list | — |
+| `test-setup-services.py` | CI `regression` | its first test drives the production TUI in a PTY through `test-workstation-acceptance.py`'s `account_setup_replies`, `TUI` and `PROFILES` (analysis E2); on a WSL host it also times out at `0680f10` because the WSL requirement item is not stubbed (analysis E3) | set the WSL item Up (task T002); set `CURRENT_SECTION=3` as `main()` does, and move the shared helpers to `READY`, `→ → ↓ ↓ Space G` and the widened `PROFILES` in the same tasks that change the flow (T017, T018) | 1, 5 |
+| `test-setup-workspace-repo.sh` | CI `speckit-git-bash` (paths exclude `interactive-setup.sh`) | asserts literal lines of `process_selections` | none expected; keep those lines; run it in the verify of tasks that touch `process_selections` (analysis E4) | 1, 5 |
+| `test-setup-consent.py`, `test-docker-prerequisite.py`, `test-install-friction.py` | CI `regression` | none expected: they replace `interactive-setup.sh` with a stub or do not drive the TUI | none; run in the regression list | — |
 
 ## Governance notes
 
@@ -304,6 +312,7 @@ bash devcontainer.test/test-setup-cancel.sh
 # Also affected
 python3 devcontainer.test/test-release-version.py
 python3 devcontainer.test/test-project-command.py
+bash devcontainer.test/test-setup-workspace-repo.sh
 # New (this feature)
 python3 devcontainer.test/test-bench-catalog.py
 python3 devcontainer.test/test-bench-catalog-lookups.py
