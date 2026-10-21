@@ -17,3 +17,7 @@ OpenSpec/Speckit protocol and project bootstrap contract.
 <!-- SPECKIT START -->
 Active implementation plan: `specs/025-container-setup-runtime/plan.md`
 <!-- SPECKIT END -->
+
+## Tenant system connections
+
+For access to tenant-managed systems, read `.agents/skills/system-access/SKILL.md` and discover the `bench-access` capability. Environment enrollment and target grants are separate from installing the CLI.

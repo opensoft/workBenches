@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "capability": "opensoft-system-access",
+  "command": "bench-access",
+  "version": "0.1.0",
+  "configuration": "/etc/workbenches/access.json",
+  "identity_modes": [
+    "human-device-login",
+    "wallet-client-assertion"
+  ],
+  "default_agent_grants": [],
+  "environment_required": true,
+  "environments": {
+    "qa": {
+      "enabled": false
+    },
+    "prod": {
+      "enabled": false
+    }
+  }
+}

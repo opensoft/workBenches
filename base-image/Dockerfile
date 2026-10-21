@@ -457,3 +457,7 @@ RUN mkdir -p /workspace
 
 # Default command
 CMD ["sleep", "infinity"]
+
+# Tenant SSH access client. No keys, tokens, role grants or active endpoints in images.
+COPY bench-access /tmp/bench-access
+RUN /tmp/bench-access/install.sh && rm -rf /tmp/bench-access
