@@ -188,9 +188,11 @@ def main():
                 # directories in these two private bind mounts. Repair only
                 # this job's mounts, without following symlinks, using the
                 # declared disposable engine image with no daemon entrypoint.
-                run([*compose, 'run', '--rm', '--no-deps', '--entrypoint', 'chown',
-                     'acceptance-engine', '-R', '-h', f'{os.getuid()}:{os.getgid()}',
-                     str(home), str(socket)])
+                run([*compose, 'run', '--rm', '--no-deps', '--entrypoint', 'sh',
+                     'acceptance-engine', '-ec',
+                     'chown -R -h "$1" "$2" "$3"; '
+                     'find "$2" "$3" -xdev -type d -exec chmod u+rwx {} +',
+                     'native-qa-cleanup', f'{os.getuid()}:{os.getgid()}', str(home), str(socket)])
                 run([*compose, 'down', '--volumes', '--remove-orphans'])
                 # Count cleanup as passed only after the actual private home
                 # and socket tree have been removed. Keep the report available

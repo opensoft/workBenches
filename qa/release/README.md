@@ -303,7 +303,8 @@ fixed phase/reason identifiers; no report contents or arbitrary exception text.
 Native cleanup stops the job's Tools/Vault helpers, then uses a one-off command
 from the declared acceptance-engine image to restore QA ownership of only the
 job's private HOME and socket bind mounts. Recursive chown does not follow
-symlinks. The engine/volumes are removed and both private trees must actually
+symlinks; directory-only chmod restores owner traversal/write permission, including
+daemon directories created with mode 0600. File contents and file modes are unchanged. The engine/volumes are removed and both private trees must actually
 be deleted before cleanup can pass; the separate report remains available for
 encrypted diagnosis on failure. This handles root-owned daemon artifacts that
 otherwise make TemporaryDirectory removal fail after all 17 driver cases pass.
