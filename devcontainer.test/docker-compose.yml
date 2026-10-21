@@ -72,6 +72,10 @@ services:
     privileged: true
     environment:
       DOCKER_TLS_CERTDIR: ""
+      # Large SDK exports can OOM-kill dockerd even with host swap. Keep
+      # this disposable engine's Go heap target and CPU concurrency modest.
+      GOMEMLIMIT: 4GiB
+      GOMAXPROCS: "2"
     command: [dockerd, "--host=unix:///var/run/docker.sock", "--group=1000", "--bip=172.28.0.1/16", "--default-address-pool=base=172.29.0.0/16,size=24", "--mtu=1280"]
     volumes:
       - acceptance-socket:/var/run
