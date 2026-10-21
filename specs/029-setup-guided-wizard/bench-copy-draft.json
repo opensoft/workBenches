@@ -62,13 +62,13 @@
         "Cross-tenant mailbox migration"
       ],
       "contains": [
-        "PowerShell 7, Microsoft.Graph and Microsoft.Entra",
+        "PowerShell, Microsoft.Graph and Microsoft.Entra",
         "Exchange Online, Teams and PnP PowerShell modules",
         "CLI for Microsoft 365 (m365)",
         "Microsoft Graph CLI (mgc) and Teams CLI",
         "Power Platform CLI (pac)",
         "Business Central AL tools and AL:Go templates",
-        ".NET SDKs 8 and 10",
+        ".NET SDKs",
         "Azure CLI plus sops, age, Doppler and csvkit"
       ],
       "draft": false,
@@ -91,7 +91,7 @@
         "Static analysis and unit testing"
       ],
       "contains": [
-        "GCC 14 and Clang 19 with LLVM tools",
+        "GCC and Clang with LLVM tools",
         "CMake, Ninja, Make and Autotools",
         "vcpkg and Conan package managers",
         "GDB, LLDB, Valgrind and heaptrack",
@@ -117,7 +117,7 @@
         "Profiling and diagnostics"
       ],
       "contains": [
-        ".NET 10 SDK with ASP.NET Core runtime",
+        ".NET SDK with ASP.NET Core runtime",
         "Aspire and wasm-tools workloads",
         "EF Core, LibMan and ASP.NET code generator",
         "dotnet-trace, dump, counters and monitor",
@@ -143,9 +143,9 @@
         "Firebase-backed app development"
       ],
       "contains": [
-        "Flutter stable SDK and pinned 3.27 LTS",
+        "Flutter stable SDK and a pinned LTS release",
         "Android SDK, NDK, emulator and adb",
-        "OpenJDK 17 and Gradle",
+        "OpenJDK and Gradle",
         "FVM, Melos, Mason and Very Good CLI",
         "Firebase CLI and FlutterFire CLI",
         "Fastlane, CocoaPods and Shorebird",
@@ -169,10 +169,10 @@
         "Debugging and profiling Frappe code"
       ],
       "contains": [
-        "Frappe, ERPNext and Payments (version-15)",
+        "Frappe, ERPNext and Payments",
         "bench CLI (frappe-bench)",
-        "Node.js 20 and Python 3",
-        "MariaDB 10.6 and three Redis instances",
+        "Node.js and Python",
+        "MariaDB and three Redis instances",
         "Workers, scheduler, SocketIO and Nginx",
         "MariaDB client, Redis tools and wkhtmltopdf",
         "py-spy, web-pdb, ruff and pre-commit",
@@ -197,7 +197,7 @@
         "Local Kubernetes with kind and ko"
       ],
       "contains": [
-        "Go 1.26 toolchain",
+        "Go toolchain",
         "gopls language server and Delve debugger",
         "golangci-lint, staticcheck and errcheck",
         "goimports, gofumpt and golines",
@@ -223,7 +223,7 @@
         "Load testing with JMeter or Gatling"
       ],
       "contains": [
-        "OpenJDK 25 with SDKMAN",
+        "OpenJDK with SDKMAN",
         "Maven and Gradle",
         "Spring Boot, Quarkus and Micronaut CLIs",
         "Kotlin, Groovy and Scala",
@@ -249,7 +249,7 @@
         "AMD ROCm GPU workloads on WSL"
       ],
       "contains": [
-        "Python 3.12 with venv and pip",
+        "Python with venv and pip",
         "Poetry and pipx",
         "Django, Flask and FastAPI with uvicorn",
         "pandas and NumPy",
@@ -283,7 +283,7 @@
         "cargo-audit, cargo-deny and cargo-vet",
         "wasm-pack, wasm-bindgen and trunk",
         "cross, cargo-zigbuild and Zig",
-        "Tauri v2 Linux build prerequisites",
+        "Tauri Linux build prerequisites",
         "LLDB, GDB, Valgrind and heaptrack"
       ],
       "draft": false,
@@ -330,7 +330,7 @@
         "Protein language models (ESM)"
       ],
       "contains": [
-        "Python 3.11 in a Conda env named sim",
+        "Python in a Conda env named sim",
         "JupyterLab with an IPython kernel",
         "OpenMM, MDTraj and PDBFixer",
         "MMseqs2, Foldseek and HMMER",

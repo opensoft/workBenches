@@ -8,9 +8,10 @@ The setup TUI puts benches, AI assistants and tools in three fixed 24-column lis
 
 - Replace the three-column main screen and the separate Requirements and Profiles
   pages with a guided wizard, one step per screen, in the order a new workstation
-  needs: **Workstation → Benches → AI assistants → Tools → Profiles → Review**.
-  A top nav bar shows every step, progress, queued-change counts and workstation
-  readiness. ←/→ move between steps; ↑/↓ move within a step.
+  needs: **Workstation → Benches → Agents → Tools → Profiles → Review** (the
+  former AI assistants section is named Agents). A top nav bar shows every step,
+  progress, queued-change counts and workstation readiness, and fits an
+  80-column terminal. ←/→ move between steps; ↑/↓ move within a step.
 - **BREAKING (interaction):** Enter on a component no longer applies. Enter opens
   Review, which lists every queued install, update and removal by step; Enter on
   Review applies with today's gating. Enter on a Workstation service row or a
@@ -50,7 +51,7 @@ discovery, immediate first paint, partial redraw of changed lines, blinking
 ### New Capabilities
 
 - `setup-wizard-flow`: wizard steps and order, nav bar, step and jump keys,
-  Enter→Review→Apply, the Workstation, AI assistants, Tools, Profiles and Review
+  Enter→Review→Apply, the Workstation, Agents, Tools, Profiles and Review
   steps, readiness handling, and the preserved setup contracts.
 - `setup-wizard-layout`: frame composition, the per-step selector area, width and
   height bounds, banner collapse, first paint without discovery, partial redraw
@@ -131,6 +132,14 @@ Brett Heap's decisions, quoted from the design sessions:
 - Approval and target: "lets go with this design" → "1.7 is fine. we can target
   that" / "we can even use 1.8 if we need to".
 - Profiles: its own wizard step before Review (decision, paraphrased).
+- Clarification (`/speckit-clarify`, 2026-10-21): Brett answered the 20 questions
+  in `specs/029-setup-guided-wizard/clarify-questions.md`. On the nav fit:
+  "use Agents instead of ai or ai assistants". The other answers confirm the
+  design or set rules folded into the deltas: the `G Profiles` pointer on the
+  Workstation step, a two-line hint cap and `Changes: N` below 60 columns, no
+  version numbers in bench copy, a 100 ms key-response budget, a catalog that
+  matches the release lock exactly, and the bench copy approved in the running
+  TUI before merge.
 
 The approved scope was "look only"; the deliberate behaviour changes are
 Enter→Review→Apply, the category/About browsing on the Benches step, and the
@@ -141,4 +150,4 @@ catalog additions needed to show every locked bench.
 - The disabled OpenTUI app (`scripts/setup-ui`).
 - Profiles internals (`scripts/setup-profiles.py` and its manager screens).
 - New Electrical Engineering benches, or chemistry/physics Science benches.
-- Categories or About panels for the AI assistants and Tools steps.
+- Categories or About panels for the Agents and Tools steps.

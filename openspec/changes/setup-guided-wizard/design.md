@@ -62,15 +62,16 @@ for behaviour and test impact, not code to port.
 - The disabled OpenTUI app (`scripts/setup-ui`).
 - Profiles internals (`scripts/setup-profiles.py` and its manager screens).
 - New Electrical Engineering benches or Science sub-groups (chemistry, physics).
-- Categories or About panels for AI assistants and Tools.
+- Categories or About panels for Agents and Tools.
 - Changes to Docker, Tools or Vault service behaviour.
 
 ## Decisions
 
 ### D1. Steps map onto the existing sections; Review becomes section 5
 
-Keep `CURRENT_SECTION` values 0–4 as they are (Benches, AI assistants, Tools,
-Workstation = the former Requirements, Profiles) and add Review as 5. The step
+Keep `CURRENT_SECTION` values 0–4 as they are (Benches, Agents = the former AI
+assistants, Tools, Workstation = the former Requirements, Profiles) and add
+Review as 5. The step
 order is a separate map: `3 → 0 → 1 → 2 → 4 → 5`.
 
 - *Alternative:* the prototype's Review = 4. Rejected: 1.7 already uses 4 for
@@ -86,7 +87,8 @@ blinking rows that `test-tools-runtime.py` and `test-setup-async.py` look for on
 first paint. P's default return target is Benches. The readiness jump (D13) still
 lands on Workstation when checks end unresolved. *Alternative:* open on Benches as
 1.7 does. Rejected: it contradicts the step order and, with the strip now shown
-only on Workstation, would hide readiness at startup.
+only on Workstation, would hide readiness at startup. Confirmed by Brett
+(clarify Q2, 2026-10-21).
 
 ### D3. Enter opens Review; only Review applies
 
@@ -98,14 +100,15 @@ With nothing queued, Enter on Review finishes without changes (exit 0, nothing
 applied or built), as today's empty Enter does. *Alternative:* a confirmation
 prompt after Enter. Rejected: `test-setup-guided-flow.py` asserts there is no
 "Apply these changes?" prompt, and a full Review step shows removals and warnings
-that a yes/no prompt would not.
+that a yes/no prompt would not. Enter on a Workstation row running its action
+(rather than opening Review) is confirmed by Brett (clarify Q3, 2026-10-21).
 
 ### D4. Head, selector area and notices
 
 Head: banner → version/OS line → nav → one rule. No per-step title or
 description lines ("too busy"). Directly under the rule is the step's selector
 area: the requirements strip on Workstation, the CATEGORY block on Benches, the
-identities line on Profiles, nothing on AI assistants and Tools; Review starts
+identities line on Profiles, nothing on Agents and Tools; Review starts
 with its instruction line. Notices (from V, a Profiles action, a blocked Apply or
 the readiness check) appear after the selector area on the current step, because
 the strip that used to carry them is no longer on every screen.
@@ -115,11 +118,23 @@ the strip that used to carry them is no longer on every screen.
 Steps before the current one show `✓`, the current step a highlighted `●`, later
 steps `○`, each followed by its queued-change count when non-zero. The Workstation
 item shows readiness instead: green `✓`, yellow `⚠`, or a blinking `…` while
-checks run. The approved mockup has five steps with ` ── ` connectors (75
-columns). With Profiles added, six steps need 91 columns with ` ── ` and 86 with
-` ─ `, so at the 87-column maximum the nav uses short connectors and fits only
-while every count is a single digit. When neither form fits, the nav collapses to
+checks run. Profiles never shows a count: its rows run actions at once, so
+nothing there is queued (clarify Q19).
+
+The approved mockup has five steps with ` ── ` connectors (75 columns). With
+Profiles added and the label "AI assistants", six steps needed 86 columns with
+` ─ `, so a standard 80-column terminal (79-column frame) would always have shown
+the compact form. Brett resolved this in clarify Q1 (2026-10-21): "use Agents
+instead of ai or ai assistants". The step is named **Agents** wherever it is
+named (nav, Review step names, footer, hints, docs), and the nav uses short
+` ─ ` connectors. Measured with the current step's highlight padding, the nav is
+73 columns with nothing queued and 79 with three single-digit counts (Benches,
+Agents, Tools; the other steps never have counts), so it fits an 80-column
+terminal; a two-digit count makes it 80 columns, which needs an 81-column
+terminal. Only when the full nav does not fit the frame does it collapse to
 `Step N of 6 · <Name>` plus one mark per step (the first is the readiness mark).
+*Alternatives:* "AI" in the nav only (75 columns) and keeping "AI assistants"
+with the compact form at 80 columns; both rejected in favour of Brett's label.
 
 ### D6. Benches: categories, order and arrival
 
@@ -132,7 +147,9 @@ Categories without benches are listed dim as "coming soon" and skipped by focus.
 Arriving on Benches by ← or → focuses the category zone on the first category
 that has benches, matching 1.7's ←/→, which reset focus to a section's first
 row. P/G returns and the readiness jump restore the exact zone, category and
-bench.
+bench. Brett confirmed name order, "coming soon" categories and this arrival
+rule, and kept Science flat until chemistry or physics benches exist (clarify
+Q8, Q12, Q13, Q17, 2026-10-21).
 
 ### D7. Two focus zones on Benches
 
@@ -248,19 +265,60 @@ appear for Shell setup and Org workspace; a yellow blocker line appears while
 Apply is blocked. If the grouped panels do not fit, one combined CHANGES list is
 shown; if that does not fit either, ↑/↓ scroll it with `▲/▼ N more`, so every
 queued change can be read before applying. The scrolling is an addition to the
-prototype, which could hide items on short terminals.
+prototype, which could hide items on short terminals. Review is read-only: no
+key on it queues or unqueues a change; that is done on the item's own step
+(clarify Q4, 2026-10-21).
 
-### D16. AI assistants, Tools and the footer
+### D16. Agents, Tools and the footer
 
-AI assistants and Tools keep 1.7's items, order, separator and Space/D rules in
-single-column panels (ASSISTANTS and SPEC TOOLS; TOOLS) titled
-`I of N installed`; rows show the checkbox, status symbol, name, status label (60+
-columns) and queued action. The footer keeps 1.7's context line,
-`<Name> · <State>[ → <action>]` (or the category summary in the category zone),
-with `Changes selected: N` on the right; acceptance suites wait on that format
-(`Codex CLI · (not installed|needs creds|Ready)`, `pyBench · …`). Hints are
-per-step and split over two lines at 80+ columns; V is advertised only on
-Workstation.
+Agents (the former AI assistants section) and Tools keep 1.7's items, order,
+separator and Space/D rules in single-column panels (AGENTS and SPEC TOOLS;
+TOOLS) titled `I of N installed`; rows show the checkbox, status symbol, name,
+status label (60+ columns) and queued action. The footer keeps 1.7's context
+line, `<Name> · <State>[ → <action>]` (or the category summary in the category
+zone), with `Changes selected: N` on the right; acceptance suites wait on that
+format (`Codex CLI · (not installed|needs creds|Ready)`, `pyBench · …`). Below 60
+columns the right-hand total reads `Changes: N` and a context line too long for
+the remaining width is cut with `…` (clarify Q20). Hints are per-step and split
+over two lines at 80+ columns; V is advertised only on Workstation. Below 60
+columns hints take at most two lines: the step's own keys (on Profiles,
+`G Back`) plus `←→`, `Enter` and `Q`; P, G, R, V and PgUp/PgDn keep working but
+are listed only at 60+ columns, and About's bottom border still shows
+`PgUp/PgDn scroll`. At 36×24 this gives the About panel about four more lines
+than the prototype's six-line hints left it (clarify Q7).
+
+### D17. Workstation step
+
+The Workstation step keeps 1.7's Requirements panels: REQUIRED SOFTWARE (WSL 2 on
+WSL, Docker, Tools) and OPTIONAL VAULT (Vault alone), each row with its state and
+`[Action]`, and a one-line explanation under the focused row only. OPTIONAL VAULT
+keeps 1.7's `G Profiles` label at the right of its title as the pointer to
+account setup; the workBenches account and AI accounts rows live only on
+Profiles. *Alternatives:* show the account rows read-only on Workstation (the
+prototype did, because it predates Profiles), or move the explanation into an
+About panel; both rejected by Brett (clarify Q9, Q18, 2026-10-21).
+
+### D18. Bench copy: no versions, approved in the running TUI
+
+Catalog copy describes only what an image provides (simBench: OpenMM and ESM, no
+AlphaFold/ESMFold). Taglines, `usedFor` and `contains` name no version numbers,
+because versions go stale on every image bump; the catalog test rejects
+standalone numbers (dotted or not) and `v<N>`/`version-<N>` tokens, with an
+allow-list for product names (`Microsoft 365`, `Dynamics 365`) (clarify Q14).
+The catalog lists exactly the benches in the release lock; local-only clones
+such as phpBench and opsBench stay out (clarify Q10). Implementation uses the
+evidence-based draft in `specs/029-setup-guided-wizard/bench-copy-draft.json`
+(versions removed); Brett approves or edits the copy in the running TUI before
+the pull request merges, and that approval is recorded in the Speckit feature
+as a merge gate (clarify Q5).
+
+### D19. Key-response budget
+
+Each key press redraws within 100 ms, measured as the median of repeated
+key-driven redraws at 87×40 on a developer workstation (clarify Q15). The test
+replays ↑, ↓, Tab and PgDn on Benches with all 12 benches and long About text,
+the most expensive frame, and runs locally rather than as a hard CI gate, where
+shared runners make timings noisy.
 
 ## Mockups
 
@@ -268,7 +326,7 @@ Workstation.
 
 ```
 workBenches v1.6.0                                                 Ubuntu 24.04 · WSL 2
- ✓ Workstation ── ● Benches 2 ── ○ AI assistants 1 ── ○ Tools 1 ── ○ Review
+ ✓ Workstation ─  ● Benches 2  ─ ○ Agents 1 ─ ○ Tools 1 ─ ○ Profiles ─ ○ Review
 ───────────────────────────────────────────────────────────────────────────────────────
  CATEGORY                                                                Tab ⇄ benches
    ● Software Engineering       8 benches · 4 installed · 1 queued
@@ -297,10 +355,11 @@ Navigation: ↑↓ Move  Tab Category  Space Select  D Remove  PgUp/PgDn About
 
 Notes on the approved mockup:
 
-- It predates the Profiles decision: the final nav also lists Profiles before
-  Review, which at 87 columns needs short connectors (D5).
+- Its nav line has been updated to the final six-step form (Agents, Profiles,
+  short ` ─ ` connectors, D5); as approved it showed five steps, "AI assistants"
+  and ` ── ` connectors, before the Profiles decision.
 - The About text and taglines are placeholder copy; the catalog uses the drafted,
-  evidence-based copy once Brett approves it.
+  evidence-based copy, which Brett approves in the running TUI before merge (D18).
 - Bench order and counts are illustrative (D6).
 - The version line reads v1.6.0 because the mockup was drawn before 1.7.
 
@@ -311,7 +370,7 @@ current nav item is highlighted on screen, shown here by its padding.
 
 ```
 workBenches v1.7.0                                                 Ubuntu 24.04 · WSL 2
-  ✓ Workstation  ─ ○ Benches 2 ─ ○ AI assistants 1 ─ ○ Tools 1 ─ ○ Profiles ─ ○ Review
+  ✓ Workstation  ─ ○ Benches 2 ─ ○ Agents 1 ─ ○ Tools 1 ─ ○ Profiles ─ ○ Review
 ───────────────────────────────────────────────────────────────────────────────────────
  REQUIREMENTS · 3/3 ready   WSL 2 Up   Docker Up   Tools Up   Vault Up [V Connect]
 
@@ -322,7 +381,7 @@ workBenches v1.7.0                                                 Ubuntu 24.04 
 │   ✓ Tools                                                               Up  [Check] │
 ╰─────────────────────────────────────────────────────────────────────────────────────╯
 
-╭─ OPTIONAL VAULT ────────────────────────────────────────────────────────────────────╮
+╭─ OPTIONAL VAULT ─────────────────────────────────────────────────────── G Profiles ─╮
 │   ✓ Vault                                                Up · Signed out  [Connect] │
 ╰─────────────────────────────────────────────────────────────────────────────────────╯
 ───────────────────────────────────────────────────────────────────────────────────────
@@ -333,7 +392,7 @@ Navigation: ↑↓ Move  Enter Check  V Vault
 
 ```
 workBenches v1.7.0                                                 Ubuntu 24.04 · WSL 2
- ✓ Workstation ─ ✓ Benches 2 ─ ✓ AI assistants 1 ─ ✓ Tools 1 ─ ✓ Profiles ─  ● Review
+ ✓ Workstation ─ ✓ Benches 2 ─ ✓ Agents 1 ─ ✓ Tools 1 ─ ✓ Profiles ─  ● Review
 ───────────────────────────────────────────────────────────────────────────────────────
 Nothing has changed yet. Enter applies these changes.
 
@@ -343,7 +402,7 @@ Nothing has changed yet. Enter applies these changes.
 ╰─────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ UPDATE · 2 ────────────────────────────────────────────────────────────────────────╮
 │ ↻ javaBench                                                          Benches        │
-│ ↻ Codex CLI                                                          AI assistants  │
+│ ↻ Codex CLI                                                          Agents         │
 ╰─────────────────────────────────────────────────────────────────────────────────────╯
 ⚠ Shell setup replaces your shell settings.
 ───────────────────────────────────────────────────────────────────────────────────────
@@ -353,7 +412,7 @@ Navigation: ↑↓ Scroll  ← Back  Enter Apply  P Workstation  R Refresh  Q Qu
 
 ```
 workBenches v1.7.0                                                 Ubuntu 24.04 · WSL 2
- ✓ Workstation ─ ✓ Benches 2 ─ ✓ AI assistants 1 ─ ✓ Tools 1 ─  ● Profiles  ─ ○ Review
+ ✓ Workstation ─ ✓ Benches 2 ─ ✓ Agents 1 ─ ✓ Tools 1 ─  ● Profiles  ─ ○ Review
 ───────────────────────────────────────────────────────────────────────────────────────
  IDENTITIES  Personal identities: 1 · Default: me@example.org · GitHub accounts: 2 · C…
 
@@ -374,7 +433,7 @@ Navigation: ↑↓ Move  Enter Open  PgUp/PgDn About
 
 ## Key Map
 
-| Key | Workstation | Benches: category zone | Benches: bench zone | AI assistants, Tools | Profiles | Review |
+| Key | Workstation | Benches: category zone | Benches: bench zone | Agents, Tools | Profiles | Review |
 |---|---|---|---|---|---|---|
 | ← / → | previous / next step; no wrap at Workstation or Review | same | same | same | same | same |
 | ↑ / ↓ | move between service rows | change category (preview); ↓ on the last enters benches | move within the category; ↑ on the first returns to categories | move; skip the separator | move | scroll the list when it does not fit |
@@ -412,12 +471,13 @@ Navigation: ↑↓ Move  Enter Open  PgUp/PgDn About
 | Spacers | one blank line between selector area and panels | none |
 | Panels | full | scroll with `▲/▼ N more`; focused row stays visible |
 | About (Benches, Profiles) | 2–8 lines from spare rows | 2+ lines if room, otherwise hidden |
-| Footer | rule, context line, hints (two lines at 80+ columns) | same |
+| Footer | rule, context line, hints (two lines at 80+ columns; at most two lines below 60 columns, D16) | same |
 
-Width: frame width is the terminal width less one, clamped to 36–87; panels
-drop the tagline below 70 columns and the status label below 50 (60 on AI
-assistants and Tools); panel titles drop their right-hand label before the title
-is cut.
+Width: frame width is the terminal width less one, clamped to 36–87; the minimum
+supported size is 36×24, and narrower terminals get the 36-column frame on a
+best-effort basis (lines may wrap). Panels drop the tagline below 70 columns and
+the status label below 50 (60 on Agents and Tools); panel titles drop their
+right-hand label before the title is cut.
 
 ## Data Flow
 
@@ -448,17 +508,19 @@ render_setup_frame / draw_ui (in-memory state only; no jq, python3, docker, git)
   changed yet; footer hints and docs say "Enter Review" and "Enter Apply". On the
   first screen Enter now runs the focused service action (Check when everything
   is Up), which only re-checks readiness.
-- **Six-step nav width.** → Short connectors at 87 columns, then the compact form
-  (D5); flagged as an open question.
+- **Six-step nav width.** → Resolved: the step is named Agents and the nav uses
+  short connectors, so the full nav fits an 80-column terminal with single-digit
+  counts; the compact form remains for narrower frames (D5).
 - **Rendering cost in Bash.** Height budgeting and About wrapping run on every
-  frame. → Use in-memory arrays only, keep partial redraw, and measure frame time
-  at 87×40 in tests so key response stays immediate.
+  frame. → Use in-memory arrays only, keep partial redraw, and hold each key
+  press to 100 ms at 87×40 (D19).
 - **Glyph width differences across terminals** (`⚠`, `●`, `▼`). → Use
   single-column glyphs only, pad by characters (D10), and check Windows Terminal
   and the VS Code terminal manually.
-- **Copy drifts from bench images.** → Copy is evidence-based and reviewed by
-  Brett; catalog tests enforce presence and length; review copy when a bench
-  image changes.
+- **Copy drifts from bench images.** → Copy is evidence-based, names no version
+  numbers, and is approved by Brett in the running TUI before merge (D18);
+  catalog tests enforce presence, length and the no-version rule; review copy
+  when a bench image changes what it contains.
 - **Newly offered benches reach users.** goBench, rustBench and 365Bench become
   installable from the TUI. → Release QA installs at least 365Bench through the
   TUI on a disposable workstation, which also exercises the digit-leading path.
@@ -472,7 +534,7 @@ render_setup_frame / draw_ui (in-memory state only; no jq, python3, docker, git)
 
 | Suite | Today | With the wizard |
 |---|---|---|
-| `test-workstation-acceptance.py` | waits for `REQUIREMENTS · N/N ready … Navigation:`; `\x1b[C\x1b[B\x1b[B \n` queues Codex and applies; Profiles via G; `\n` for an empty run | start on Workstation: `→ →` reaches AI assistants; `Enter Enter` reviews and applies; an empty run is `→ Enter Enter`; benches use `→ Tab` and index within the bench's category; after leaving Workstation, wait for the nav's `✓ Workstation` mark plus `Navigation:` instead of the strip; Profiles regex follows the new selector label |
+| `test-workstation-acceptance.py` | waits for `REQUIREMENTS · N/N ready … Navigation:`; `\x1b[C\x1b[B\x1b[B \n` queues Codex and applies; Profiles via G; `\n` for an empty run | start on Workstation: `→ →` reaches Agents; `Enter Enter` reviews and applies; an empty run is `→ Enter Enter`; benches use `→ Tab` and index within the bench's category; after leaving Workstation, wait for the nav's `✓ Workstation` mark plus `Navigation:` instead of the strip; Profiles regex follows the new selector label |
 | `test-wsl-workstation-acceptance.py` | same patterns, plus frozen-source and bench install/remove | same changes; outcomes (local work preserved, images removed) unchanged |
 | `test-component-lifecycle.py` | `PQ` and `GQ` assert page text; `D→↓↓D\n` removes pyBench and Codex | text assertions follow the new panels and labels; `→ Tab D → ↓ ↓ D Enter Enter` |
 | `test-tools-runtime.py` | queues a bench with Space on the main screen, then uses the strip's V button | `→ Tab Space ←` queues the first bench and returns to Workstation, where `[V …]` is visible |
@@ -492,17 +554,22 @@ render_setup_frame / draw_ui (in-memory state only; no jq, python3, docker, git)
 
 ## Open Questions
 
-For `/speckit-clarify` in `specs/029-setup-guided-wizard`:
+None remain. Brett answered all of them through `/speckit-clarify` on 2026-10-21;
+the full record, with the 12 further questions asked in the same round, is in
+`specs/029-setup-guided-wizard/clarify-questions.md`.
 
-1. Should `phpBench` and `opsBench` (local, gitignored clones outside the release
-   lock) be catalogued?
-2. Science sub-groups (bio, chemistry, physics): now, or when those benches exist?
-3. Should AI assistants and Tools adopt categories and an About panel now?
-4. Should the Workstation step's focused-row detail move into an About panel?
-5. Review and approval of the drafted copy for all 12 benches.
-6. Where do queued counts appear for Profiles (its rows are actions, so nothing
-   there is queued in the TUI today)?
-7. Six-step nav at 87 columns: accept short connectors (and the compact form for
-   two-digit counts), or shorten a label?
-8. Bench order within a category: catalog-name order (D6), or a curated order as
-   the mockup suggests?
+1. Catalogue `phpBench` and `opsBench`? **No**: the catalog matches the release
+   lock exactly (clarify Q10; bench-catalog › Complete catalog).
+2. Science sub-groups? **Later**, when chemistry or physics benches exist
+   (clarify Q17; D6).
+3. Categories or About for Agents and Tools? **Not now** (clarify Q11; Non-Goals).
+4. Workstation detail into an About panel? **No**: it stays under the focused
+   row (clarify Q18; D17).
+5. Drafted copy for the 12 benches? **Build with the draft; Brett approves or
+   edits it in the running TUI before merge**, as a recorded merge gate, and the
+   copy names no version numbers (clarify Q5, Q14; D18).
+6. Queued counts for Profiles? **None, ever** (clarify Q19; D5).
+7. Six-step nav fit? **Rename the step Agents** ("use Agents instead of ai or ai
+   assistants") with short connectors; the full nav fits 80 columns (clarify Q1;
+   D5).
+8. Bench order? **Catalog-name order** (clarify Q12; D6).

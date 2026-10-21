@@ -4,7 +4,7 @@
 
 Defines how every wizard frame is composed and bounded: the head, the per-step
 selector area, notices, width and height limits, banner collapse, first paint
-without discovery, partial redraw and loading indicators.
+without discovery, partial redraw, key response time and loading indicators.
 
 ## ADDED Requirements
 
@@ -20,12 +20,12 @@ Every wizard frame SHALL begin with the banner, the version and OS line, the nav
 - **THEN** the frame contains no `STEP n OF m` title and no per-step description sentence
 
 ### Requirement: Step selector area
-The rows directly under the rule SHALL be the current step's selector area: the requirements strip on Workstation, the CATEGORY block on Benches and the identities summary line on Profiles. AI assistants and Tools SHALL start directly with their panels, and Review SHALL start with its instruction line.
+The rows directly under the rule SHALL be the current step's selector area: the requirements strip on Workstation, the CATEGORY block on Benches and the identities summary line on Profiles. Agents and Tools SHALL start directly with their panels, and Review SHALL start with its instruction line.
 
 #### Scenario: Strip only on Workstation
 - **WHEN** Workstation is shown
 - **THEN** the first row under the rule begins with `REQUIREMENTS ·`
-- **AND** when Benches, AI assistants, Tools, Profiles or Review is shown, no `REQUIREMENTS ·` strip appears
+- **AND** when Benches, Agents, Tools, Profiles or Review is shown, no `REQUIREMENTS ·` strip appears
 
 #### Scenario: Category block on Benches
 - **WHEN** Benches is shown after the catalog has loaded
@@ -49,12 +49,12 @@ The Workstation strip SHALL read `REQUIREMENTS · N/N ready`, or `REQUIREMENTS �
 ### Requirement: Notices on the current step
 A notice produced by the Vault action, a Profiles action, a blocked Apply or the readiness check SHALL be shown on the current step, after its selector area, cut to the frame width.
 
-#### Scenario: Notice after V on AI assistants
-- **WHEN** the user presses V on AI assistants and the action reports that Vault needs attention
-- **THEN** the notice appears on the AI assistants step below the rule and no wider than the frame
+#### Scenario: Notice after V on Agents
+- **WHEN** the user presses V on Agents and the action reports that Vault needs attention
+- **THEN** the notice appears on the Agents step below the rule and no wider than the frame
 
 ### Requirement: Width bounds
-For terminals at least 36 columns wide, no rendered line SHALL be wider than the terminal; the frame SHALL be at most 87 columns wide, and padding SHALL be computed from character counts, not bytes.
+The minimum supported terminal size SHALL be 36 columns by 24 rows. For terminals at least 36 columns wide, no rendered line SHALL be wider than the terminal; the frame SHALL be at most 87 columns wide, and padding SHALL be computed from character counts, not bytes. Narrower terminals are below the supported size: setup SHALL still run there, drawing its 36-column frame, and lines MAY wrap.
 
 #### Scenario: Width matrix
 - **WHEN** each step is rendered at 36, 60 and 87 terminal columns, with long names and every status present
@@ -123,6 +123,13 @@ After the first paint, a status update or key press SHALL rewrite only the lines
 #### Scenario: Resize
 - **WHEN** the terminal height changes between two draws
 - **THEN** the second draw clears the screen and repaints the whole frame
+
+### Requirement: Key response time
+Each key press SHALL update the screen within 100 ms, measured as the median of repeated key-driven redraws of any step at 87×40 on a developer workstation.
+
+#### Scenario: Benches at 87×40
+- **WHEN** a test renders the Benches step at 87×40 with all 12 benches catalogued and long About text, and replays ↑, ↓, Tab and PgDn repeatedly
+- **THEN** the median time from key to completed redraw is at most 100 ms
 
 ### Requirement: Loading indicators
 An item whose state is not yet known SHALL show the word `Loading` in the blinking loading style, and SHALL NOT be selectable until its state is known.

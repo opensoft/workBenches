@@ -4,18 +4,18 @@
 
 Defines the interactive setup TUI as a guided wizard: its steps and their order,
 the top nav bar, step and jump keys, the Enter→Review→Apply flow, the content of
-the Workstation, AI assistants, Tools, Profiles and Review steps, readiness
+the Workstation, Agents, Tools, Profiles and Review steps, readiness
 handling, and the setup contracts the wizard must leave unchanged.
 
 ## ADDED Requirements
 
 ### Requirement: Guided wizard steps
-The interactive setup TUI SHALL present one step per screen in this fixed order: Workstation, Benches, AI assistants, Tools, Profiles, Review. It SHALL open on the Workstation step and SHALL NOT show benches, AI assistants and tools side by side.
+The interactive setup TUI SHALL present one step per screen in this fixed order: Workstation, Benches, Agents, Tools, Profiles, Review. The step that offers AI coding assistants and spec tools SHALL be named Agents wherever the step is named (nav bar, Review step names, footer, hints and documentation). The TUI SHALL open on the Workstation step and SHALL NOT show benches, agents and tools side by side.
 
 #### Scenario: Startup opens on Workstation
 - **WHEN** `./setup.sh` starts the interactive TUI on a terminal
 - **THEN** the first frame shows the Workstation step
-- **AND** the nav bar lists Workstation, Benches, AI assistants, Tools, Profiles and Review in that order
+- **AND** the nav bar lists Workstation, Benches, Agents, Tools, Profiles and Review in that order
 
 #### Scenario: One step per screen
 - **WHEN** any step is displayed
@@ -34,7 +34,7 @@ The interactive setup TUI SHALL present one step per screen in this fixed order:
 - **THEN** the step does not change
 
 #### Scenario: Vertical keys stay within the step
-- **WHEN** the user presses ↓ repeatedly on AI assistants
+- **WHEN** the user presses ↓ repeatedly on Agents
 - **THEN** focus moves through its rows, skipping the separator, and stops at the last row without changing step
 
 #### Scenario: Arriving on Benches
@@ -42,12 +42,16 @@ The interactive setup TUI SHALL present one step per screen in this fixed order:
 - **THEN** Benches is shown with the category zone focused on the first category that has benches
 
 ### Requirement: Top nav bar
-The nav bar SHALL show every step in order, marking steps before the current one `✓`, the current step a highlighted `●` and later steps `○`, each followed by its number of queued changes when that number is not zero. The Workstation item SHALL show readiness in place of its step marker: a green `✓` when every required item is Up, a yellow `⚠` when one is not, and a blinking `…` while checks run.
+The nav bar SHALL show every step in order by name, joined by short ` ─ ` connectors, marking steps before the current one `✓`, the current step a highlighted `●` and later steps `○`, each followed by its number of queued changes when that number is not zero. Profiles rows run their actions immediately, so Profiles SHALL never show a count. The full nav SHALL be shown whenever it fits the frame width; with three single-digit counts it is 79 columns including the current step's highlight, so it fits an 80-column terminal. The Workstation item SHALL show readiness in place of its step marker: a green `✓` when every required item is Up, a yellow `⚠` when one is not, and a blinking `…` while checks run.
 
 #### Scenario: Queued counts per step
-- **WHEN** two benches and one AI assistant are queued and nothing else
-- **THEN** the nav shows `Benches 2` and `AI assistants 1`
+- **WHEN** two benches and one agent are queued and nothing else
+- **THEN** the nav shows `Benches 2` and `Agents 1`
 - **AND** Tools, Profiles and Review show no count
+
+#### Scenario: Full nav on an 80-column terminal
+- **WHEN** the terminal is 80 columns wide and two benches, one agent and one tool are queued
+- **THEN** the nav is one line naming all six steps, with `Benches 2`, `Agents 1` and `Tools 1`, joined by ` ─ `
 
 #### Scenario: Readiness on every step
 - **WHEN** checks are running
@@ -55,14 +59,14 @@ The nav bar SHALL show every step in order, marking steps before the current one
 - **AND** when checks finish with Docker Down it shows a yellow `⚠`, and when every required item is Up it shows a green `✓`
 
 #### Scenario: Compact nav on a narrow terminal
-- **WHEN** the full nav does not fit the frame width
+- **WHEN** the full nav does not fit the frame width, as at 60 columns, or at 80 columns with a two-digit count
 - **THEN** the nav is one line naming the current step as `Step N of 6 · <Name>` with one progress mark per step, the first being the Workstation readiness mark
 
 ### Requirement: Enter opens Review
 Enter SHALL run the focused row's action when the focus is a Workstation service row (WSL 2, Docker, Tools, Vault) or a Profiles row. Everywhere else Enter SHALL open the Review step without applying, installing or removing anything.
 
 #### Scenario: Enter on a component opens Review
-- **WHEN** Codex CLI is queued for update and the user presses Enter on the AI assistants step
+- **WHEN** Codex CLI is queued for update and the user presses Enter on the Agents step
 - **THEN** the Review step is shown
 - **AND** nothing is installed or updated and the queued change is unchanged
 
@@ -76,11 +80,11 @@ Enter SHALL run the focused row's action when the focus is a Workstation service
 - **AND** queued changes are unchanged and Review is not opened
 
 ### Requirement: Review lists every queued change
-The Review step SHALL list every queued change under INSTALL, UPDATE and REMOVE groups, each item with the step it belongs to, and SHALL state that nothing has changed yet and that Enter applies the changes. It SHALL show a yellow warning when Shell setup (replaces shell settings) or Org workspace (may create a GitHub repository) is queued, and SHALL let the user see every item even when the list is taller than its rows.
+The Review step SHALL list every queued change under INSTALL, UPDATE and REMOVE groups, each item with the step it belongs to, and SHALL state that nothing has changed yet and that Enter applies the changes. It SHALL show a yellow warning when Shell setup (replaces shell settings) or Org workspace (may create a GitHub repository) is queued, and SHALL let the user see every item even when the list is taller than its rows. Review SHALL be read-only: no key on Review queues or unqueues a change, which is done on the step the item belongs to.
 
 #### Scenario: Grouped changes
 - **WHEN** rustBench is queued for install, javaBench and Codex CLI for update, and pyBench for removal
-- **THEN** Review shows rustBench under INSTALL with step Benches, javaBench (Benches) and Codex CLI (AI assistants) under UPDATE, and pyBench under REMOVE
+- **THEN** Review shows rustBench under INSTALL with step Benches, javaBench (Benches) and Codex CLI (Agents) under UPDATE, and pyBench under REMOVE
 - **AND** it shows the line "Nothing has changed yet. Enter applies these changes."
 
 #### Scenario: Risky optional changes are flagged
@@ -137,9 +141,9 @@ P SHALL move from any other step to Workstation, remembering that step and its e
 ### Requirement: Profiles jump
 G SHALL move from any other step to Profiles, remembering that step and its exact focus. G on Profiles SHALL return to the step and focus remembered when Profiles was entered by G, by → from Tools or by ← from Review, or to the Benches category zone when none is remembered.
 
-#### Scenario: Round trip from AI assistants
-- **WHEN** Codex CLI is focused on AI assistants and the user presses G, then G again
-- **THEN** Profiles is shown, and then AI assistants is shown again with Codex CLI focused
+#### Scenario: Round trip from Agents
+- **WHEN** Codex CLI is focused on Agents and the user presses G, then G again
+- **THEN** Profiles is shown, and then Agents is shown again with Codex CLI focused
 
 #### Scenario: Return to Tools after moving right
 - **WHEN** the user moves → from Tools to Profiles and presses G
@@ -177,7 +181,7 @@ Q SHALL quit from every step, including while checks run, SHALL stop pending che
 - **THEN** setup prints "Setup cancelled.", exits with status 130 within two seconds, and leaves no check process running
 
 ### Requirement: Readiness jump
-When background checks finish with a required workstation item not Up, the TUI SHALL show the Workstation step, remember the previous step and focus for P, focus the first required item that is not Up, and show "Resolve workstation requirements to continue.".
+When a run of background checks finishes with a required workstation item not Up, including a run started by R, the TUI SHALL show the Workstation step, remember the previous step and focus for P, focus the first required item that is not Up, and show "Resolve workstation requirements to continue.".
 
 #### Scenario: Docker down after loading
 - **WHEN** the user is in the Benches bench zone while checks finish with Docker Down
@@ -185,12 +189,12 @@ When background checks finish with a required workstation item not Up, the TUI S
 - **AND** pressing P returns to the same bench in the bench zone
 
 ### Requirement: Workstation step
-The Workstation step SHALL show, below its requirements strip, a REQUIRED SOFTWARE panel and an OPTIONAL VAULT panel whose rows show each service's state and `[Action]` button, with an explanation under the focused row only. Space and Enter SHALL run the focused row's action, and D SHALL do nothing.
+The Workstation step SHALL show, below its requirements strip, a REQUIRED SOFTWARE panel and an OPTIONAL VAULT panel whose rows show each service's state and `[Action]` button, with an explanation under the focused row only. The OPTIONAL VAULT panel SHALL list Vault alone and SHALL show `G Profiles` at the right of its title, as in 1.7, pointing to the Profiles step; the workBenches account and AI accounts rows SHALL appear only on Profiles. Space and Enter SHALL run the focused row's action, and D SHALL do nothing.
 
 #### Scenario: Service panels
 - **WHEN** Workstation is shown on WSL with every service Up and the user signed out
 - **THEN** REQUIRED SOFTWARE lists WSL 2, Docker and Tools with `Up  [Check]`
-- **AND** OPTIONAL VAULT lists Vault with `Up · Signed out  [Connect]`
+- **AND** OPTIONAL VAULT lists Vault with `Up · Signed out  [Connect]`, shows `G Profiles` in its title, and lists no account rows
 
 #### Scenario: Space acts like Enter on a service row
 - **WHEN** the Tools row offers Start and the user presses Space on it
@@ -212,8 +216,8 @@ The Profiles step SHALL show the identities summary line, the rows Personal & co
 - **WHEN** the user cancels a Profiles action
 - **THEN** Profiles shows "Profile action cancelled; saved profiles kept." and queued changes are unchanged
 
-### Requirement: AI assistants and Tools steps
-The AI assistants and Tools steps SHALL offer the same items, order and selection rules as before this change: Space SHALL queue or unqueue install (or update, when installed), D SHALL queue or unqueue removal of an installed item, items still loading or needing a check SHALL NOT be selectable, and Shell setup and Org workspace SHALL only be configurable, never removable.
+### Requirement: Agents and Tools steps
+The Agents and Tools steps SHALL offer the same items, order and selection rules as before this change: Space SHALL queue or unqueue install (or update, when installed), D SHALL queue or unqueue removal of an installed item, items still loading or needing a check SHALL NOT be selectable, and Shell setup and Org workspace SHALL only be configurable, never removable.
 
 #### Scenario: Queue an update
 - **WHEN** Codex CLI is installed and the user presses Space on it
@@ -228,11 +232,20 @@ The AI assistants and Tools steps SHALL offer the same items, order and selectio
 - **THEN** nothing is queued
 
 ### Requirement: Footer context and hints
-Every step SHALL end with a rule, a context line and the key hints for that step. The context line SHALL show the focused item as `<Name> · <State>` followed by `→ <action>` when one is queued (or the category summary when the Benches category zone has focus) and the total number of queued changes as `Changes selected: N` at widths of 60 columns or more.
+Every step SHALL end with a rule, a context line and the key hints for that step. The context line SHALL show the focused item as `<Name> · <State>` followed by `→ <action>` when one is queued (or the category summary when the Benches category zone has focus) and the total number of queued changes at its right: `Changes selected: N` at widths of 60 columns or more, and `Changes: N` below 60 columns, where a context line too long for the remaining width SHALL be cut with `…`. Below 60 columns the hints SHALL take at most two lines, listing the step's own keys (on Profiles, `G Back`) plus `←→`, `Enter` and `Q`; P, G, R, V and PgUp/PgDn SHALL keep working on every step but SHALL be listed only at 60 columns or more.
 
 #### Scenario: Context for a queued update
 - **WHEN** javaBench is installed, queued for update and focused, with two changes queued in total
 - **THEN** the context line reads `javaBench · Ready → update` with `Changes selected: 2` at its right
+
+#### Scenario: Narrow context line
+- **WHEN** the frame is 36 columns wide and javaBench is installed, queued for update and focused, with four changes queued in total
+- **THEN** the context line ends with `Changes: 4`, and the part before it is cut with `…` where it does not fit
+
+#### Scenario: Narrow hints
+- **WHEN** the Benches bench zone is shown in a 36×24 terminal
+- **THEN** the hints take at most two lines and list Space, D, `←→`, Enter and Q
+- **AND** P, R and PgUp/PgDn are not listed, and pressing P still shows Workstation
 
 #### Scenario: Profiles hints
 - **WHEN** the Profiles step is shown

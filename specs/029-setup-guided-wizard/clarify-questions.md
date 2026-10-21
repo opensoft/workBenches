@@ -1,8 +1,8 @@
 # Clarification Questions: Guided setup wizard
 
 **Feature**: [spec.md](spec.md) · **OpenSpec change**: [`openspec/changes/setup-guided-wizard/`](../../openspec/changes/setup-guided-wizard/)
-**Round**: 1 of `/speckit-clarify` — 20 questions (cap 25), ordered by impact
-**Prepared**: 2026-10-21 · **Status**: awaiting Brett Heap's answers; nothing encoded yet
+**Round**: 1 of `/speckit-clarify` — 20 questions (cap 25), ordered by impact — **complete**
+**Prepared**: 2026-10-21 · **Status**: all 20 answered by Brett Heap on 2026-10-21 and encoded in `spec.md` (`## Clarifications` › Session 2026-10-21), the OpenSpec deltas, `design.md` (open questions closed) and `tasks.md`
 
 ## How to answer
 
@@ -34,6 +34,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 
 **Recommended: B** — the most common terminal width gets the full nav for the cost of one shortened label.
 
+**Answer:** other — "use Agents instead of ai or ai assistants". The step is named Agents wherever a step is named (nav, Review step names, footer, hints, specs and docs). The nav uses short ` ─ ` connectors and is 79 columns with three single-digit counts (77 without the current step's highlight padding), so it fits an 80-column terminal; the compact `Step N of 6 · <Name>` form remains only for frames too narrow for the full nav. This replaces option B's "AI". (Brett Heap, 2026-10-21)
+
 ### Q2. Which step should setup open on?
 
 **Source**: author decision D2 · **Affects**: FR-002; every acceptance suite's opening keystrokes · **OpenSpec**: setup-wizard-flow › Guided wizard steps
@@ -45,6 +47,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 - **C** — Workstation, then move to Benches automatically once checks finish ready if the user has not pressed a key (adds an auto-advance rule).
 
 **Recommended: A** — it follows the wizard order and keeps readiness visible at startup.
+
+**Answer:** A — open on Workstation (as designed). (Brett Heap, 2026-10-21)
 
 ### Q3. What should Enter do on the Workstation step?
 
@@ -58,6 +62,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 
 **Recommended: A** — keeps 1.7's Requirements behaviour, and a habitual Enter only re-checks.
 
+**Answer:** A — Enter runs the focused service action, like Space (as designed). (Brett Heap, 2026-10-21)
+
 ### Q4. How should Review behave when it does not fit, and can it edit the queue?
 
 **Source**: author decision D15; spec scan · **Affects**: FR-012 · **OpenSpec**: setup-wizard-flow › Review lists every queued change
@@ -69,6 +75,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 - **C** — No scrolling; show `N more` and leave the rest unseen until the terminal is enlarged (prototype behaviour).
 
 **Recommended: A** — every item can be read, and editing stays on the steps that own the items.
+
+**Answer:** A — Review is read-only; ↑/↓ scroll with `▲/▼ N more` when it does not fit (as designed). (Brett Heap, 2026-10-21)
 
 ### Q5. Do you approve the drafted copy for all 12 benches?
 
@@ -90,6 +98,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 
 **Recommended: C** — you judge the copy where users will see it, planning is not blocked, and nothing merges unapproved.
 
+**Answer:** C — build with the draft; Brett approves or edits the copy in the running TUI before merge, and that approval is a recorded merge gate (OpenSpec tasks.md 7.2). (Brett Heap, 2026-10-21)
+
 ### Q6. What is the minimum supported terminal size?
 
 **Source**: your request; spec scan · **Affects**: FR-033 (marker), FR-036, SC-002 · **OpenSpec**: setup-wizard-layout › Width bounds; Height bounds
@@ -102,6 +112,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 - **D** — 80×24; only standard terminal sizes are supported.
 
 **Recommended: A** — keeps today's 36-column clamp and side-pane use, and setup stays operable when cramped.
+
+**Answer:** A — 36×24; below it best effort (lines drop from the top; below 36 columns lines may wrap). (Brett Heap, 2026-10-21)
 
 ### Q7. How should footer hints fit at narrow widths?
 
@@ -116,6 +128,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 
 **Recommended: B** — roughly triples About's room at 36 columns without adding a key; the keys it stops listing work on every step.
 
+**Answer:** B — below 60 columns at most two hint lines: the step's own keys plus ←→, Enter and Q; P, G, R, V and PgUp/PgDn keep working but are listed only at 60+ columns. (Brett Heap, 2026-10-21)
+
 ### Q8. Where should focus land when arriving on Benches with ← or →?
 
 **Source**: author decision D6 · **Affects**: FR-004 · **OpenSpec**: setup-wizard-flow › Step navigation
@@ -127,6 +141,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 - **C** — The category zone on the category last viewed (the first visit behaves as A).
 
 **Recommended: A** — consistent with every other step; P and G already restore exact focus.
+
+**Answer:** A — the category zone on the first category that has benches, every time (as designed). (Brett Heap, 2026-10-21)
 
 ### Q9. Should the Workstation step show the workBenches account and AI accounts?
 
@@ -140,6 +156,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 
 **Recommended: B** — no duplication and no extra rows, and the only place G is advertised outside Profiles survives.
 
+**Answer:** B — no account rows; keep 1.7's `G Profiles` label on the OPTIONAL VAULT panel as the pointer. (Brett Heap, 2026-10-21)
+
 ### Q10. Should phpBench and opsBench be catalogued?
 
 **Source**: design open question 1 · **Affects**: FR-054, SC-003 · **OpenSpec**: bench-catalog › Complete catalog
@@ -151,6 +169,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 - **C** — List them only when a local clone exists, marked local and not installable from setup.
 
 **Recommended: A** — keeps "offered means locked" true; revisit when they join the lock.
+
+**Answer:** A — not catalogued; the catalog matches the release lock exactly. (Brett Heap, 2026-10-21)
 
 ### Q11. Should AI assistants and Tools get categories or an About panel now?
 
@@ -164,6 +184,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 
 **Recommended: A** — the lists are short; an About panel can follow if users ask what an item is.
 
+**Answer:** A — not now. (Brett Heap, 2026-10-21)
+
 ### Q12. In what order should benches appear within a category?
 
 **Source**: design open question 8; author decision D6 · **Affects**: FR-044 · **OpenSpec**: setup-bench-browser › Bench panel
@@ -175,6 +197,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 - **C** — Installed benches first, then the rest, each group by name (order shifts as benches are installed).
 
 **Recommended: A** — predictable, no schema change, and how 1.7 lists benches.
+
+**Answer:** A — catalog-name order (as designed). (Brett Heap, 2026-10-21)
 
 ### Q13. Should categories without benches be shown as "coming soon"?
 
@@ -188,6 +212,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 
 **Recommended: A** — matches how you described the categories, and costs nothing in the tight layout, where the block is one line.
 
+**Answer:** A — show dim with `coming soon`, never focusable (as designed). (Brett Heap, 2026-10-21)
+
 ### Q14. Should the bench copy name tool versions?
 
 **Source**: spec scan (copy accuracy) · **Affects**: FR-053, FR-055 · **OpenSpec**: bench-catalog › Accurate bench descriptions
@@ -199,6 +225,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 - **C** — Keep only versions that identify the product line a bench targets (Frappe version-15, .NET 10, OpenJDK 25); drop the rest.
 
 **Recommended: B** — the copy stays true across image bumps; bench READMEs and images remain the source for versions.
+
+**Answer:** B — no version numbers in taglines, `usedFor` or `contains`; the catalog test rejects version-like tokens (allow-list: Microsoft 365, Dynamics 365). `bench-copy-draft.json` has been de-versioned; the scratch copy is unchanged. (Brett Heap, 2026-10-21)
 
 ### Q15. What key-response budget should the tests enforce?
 
@@ -212,6 +240,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 
 **Recommended: A** — 100 ms is the usual threshold for a response that feels immediate.
 
+**Answer:** A — 100 ms per key press (median of repeated renders at 87×40 on a developer workstation). (Brett Heap, 2026-10-21)
+
 ### Q16. When should the readiness jump fire?
 
 **Source**: spec scan · **Affects**: FR-028; Edge Cases · **OpenSpec**: setup-wizard-flow › Readiness jump
@@ -222,6 +252,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 - **B** — Only after the startup check run; later runs update the nav mark and Review's blocker line without moving the user.
 
 **Recommended: A** — keeps 1.7 behaviour and its tests, and after a refresh the jump lands on the item that still needs attention.
+
+**Answer:** A — after every completed check run, including runs started by R, as in 1.7. (Brett Heap, 2026-10-21)
 
 ### Q17. Science sub-groups (biology, chemistry, physics): now or later?
 
@@ -234,6 +266,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 
 **Recommended: A** — there are no benches to fill them yet.
 
+**Answer:** A — later, when chemistry or physics benches exist. (Brett Heap, 2026-10-21)
+
 ### Q18. Should the Workstation explanation move into an About panel?
 
 **Source**: design open question 4 · **Affects**: FR-016 · **OpenSpec**: setup-wizard-flow › Workstation step
@@ -244,6 +278,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 - **B** — Move it into an About panel: consistent across steps, but at least three more rows, which matters at 24 rows.
 
 **Recommended: A** — the explanations are one line, and the strip already fills the selector area.
+
+**Answer:** A — keep the explanation under the focused row (as designed). (Brett Heap, 2026-10-21)
 
 ### Q19. Should the Profiles step ever show a count in the nav?
 
@@ -257,6 +293,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 
 **Recommended: A** — nav counts mean "queued", and nothing on Profiles is queued.
 
+**Answer:** A — no count, ever (as designed). (Brett Heap, 2026-10-21)
+
 ### Q20. Below 60 columns, how should the footer show the queued total?
 
 **Source**: spec scan · **Affects**: FR-021 · **OpenSpec**: setup-wizard-flow › Footer context and hints
@@ -267,6 +305,8 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 - **B** — Omit the total; the nav counts remain.
 
 **Recommended: A** — the total stays visible and the cut is marked.
+
+**Answer:** A — `Changes: N` at the right, with the context line cut with `…`. (Brett Heap, 2026-10-21)
 
 ---
 
@@ -285,4 +325,6 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 | Terminology | Clear | — |
 | Completion signals | Clear | — |
 
-Awaiting answers: reply with `Q1: …, Q2: …`; skipped questions take the recommendation.
+After the answers every Partial or Missing area above is Resolved.
+
+Round complete: all 20 questions answered by Brett Heap and encoded on 2026-10-21.

@@ -22,7 +22,7 @@ preservation of the metadata by catalog maintenance scripts.
 - **THEN** `electrical-engineering` has no benches and `software-engineering`, `science` and `system-administration` each have at least one
 
 ### Requirement: Bench presentation fields
-Every catalogued bench SHALL have a `category`, a `tagline` of at most 35 characters, a non-empty `description`, and non-empty `usedFor` and `contains` lists of single-line strings, and none of these values SHALL contain control characters.
+Every catalogued bench SHALL have a `category`, a `tagline` of at most 35 characters, a non-empty `description`, and non-empty `usedFor` and `contains` lists of single-line strings, and none of these values SHALL contain control characters. A bench's `tagline`, `usedFor` and `contains` SHALL NOT name version numbers, because they go stale when bench images are updated: the catalog test SHALL reject a version-like token — a standalone number, dotted or not (`1.26`, `25`), or a number prefixed by `v` or `version-` (`v2`, `version-15`) — except numbers on an explicit allow-list of product names (`Microsoft 365`, `Dynamics 365`).
 
 #### Scenario: Complete presentation fields
 - **WHEN** the catalog test checks every bench
@@ -32,12 +32,21 @@ Every catalogued bench SHALL have a `category`, a `tagline` of at most 35 charac
 - **WHEN** a bench's `tagline` is 36 characters long
 - **THEN** the catalog test fails and names that bench
 
+#### Scenario: Version number in copy
+- **WHEN** a bench's `contains` lists `Go 1.26 toolchain` or `OpenJDK 25 with SDKMAN`
+- **THEN** the catalog test fails and names the bench and the token
+
+#### Scenario: Product names with numbers
+- **WHEN** 365Bench's `tagline` reads `Microsoft 365 and Dynamics`
+- **THEN** the catalog test accepts it
+
 ### Requirement: Complete catalog
-The catalog SHALL contain an entry, with matching `path` and `url`, for every bench repository recorded in `config/release-lock.json`, including goBench (`devBenches/goBench`), rustBench (`devBenches/rustBench`) and 365Bench (`sysBenches/365Bench`). Each entry SHALL be offered by the setup TUI, accepted in selection files, and listed as a TUI option in `config/credential-requirements.json`.
+The catalog SHALL contain an entry, with matching `path` and `url`, for every bench repository recorded in `config/release-lock.json`, including goBench (`devBenches/goBench`), rustBench (`devBenches/rustBench`) and 365Bench (`sysBenches/365Bench`), and SHALL NOT contain a bench the lock does not record, such as local-only clones (phpBench, opsBench). Each entry SHALL be offered by the setup TUI, accepted in selection files, and listed as a TUI option in `config/credential-requirements.json`.
 
 #### Scenario: Lock and catalog agree
 - **WHEN** the catalog test compares catalog paths and URLs with the repositories in `config/release-lock.json`
 - **THEN** every locked bench repository has a catalog entry with the same path and URL
+- **AND** every catalogued bench is a locked bench repository
 
 #### Scenario: New bench in a selection file
 - **WHEN** a private selection file requests `bench_365Bench` with action `install`
