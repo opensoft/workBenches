@@ -51,6 +51,16 @@ def native_diagnostics(repo, report, output, suite, destination, certificate):
     return result
 
 
+def native_completion_diagnostics(reason, repo, report, suite, destination, certificate):
+    phases = {'native_driver_incomplete': 'driver-completion',
+              'native_cleanup_or_cases_incomplete': 'cleanup-verification'}
+    if reason not in phases: raise ValueError('Unknown native completion failure')
+    with tempfile.TemporaryFile() as output:
+        output.write((reason + '\n').encode())
+        metadata = native_diagnostics(repo, report, output, suite, destination, certificate)
+    return dict(phase=phases[reason], reason=reason, **metadata)
+
+
 def main():
     def terminate(*_): raise SystemExit(143)
     signal.signal(signal.SIGTERM, terminate)
@@ -119,6 +129,13 @@ def main():
                 diagnostic.update(diagnostic_snapshot)
                 print('NATIVE_QA_FAILURE ' + json.dumps(diagnostic), file=sys.stderr, flush=True)
                 raise ValidationError('native_acceptance_failed')
+        def fail_completion(reason):
+            diagnostic = native_completion_diagnostics(reason, repo, report, request['suite'],
+                Path(os.environ.get('WB_QA_DIAGNOSTICS_DIR', str(base / 'diagnostics'))),
+                os.environ.get('OPENBENCHES_QA_FAILURE_CERT_PEM'))
+            diagnostic_snapshot.update(diagnostic)
+            print('NATIVE_QA_FAILURE ' + json.dumps(diagnostic), file=sys.stderr, flush=True)
+            raise ValidationError(reason)
         run(['git', 'clone', '--no-hardlinks', '--no-checkout', request['root'], str(repo)])
         run(['git', '-C', str(repo), 'checkout', '--detach', request['source']['commit']])
         socket = directory / 'socket'; socket.mkdir()
@@ -152,9 +169,12 @@ def main():
             run(['python3', str(HERE / 'devcontainer.test/test-wsl-workstation-acceptance.py'),
                  '--platform', kind, '--repo', str(repo), '--report', str(report), '--sha', request['source']['commit'],
                  '--engine', 'unix://' + str(socket / 'docker.sock'), '--phase', 'all'], 5400, phase='workstation-driver')
-            result = read(report / 'wsl-all-results.json')
+            try:
+                result = read(report / 'wsl-all-results.json')
+            except (OSError, ValueError, TypeError):
+                fail_completion('native_driver_incomplete')
             if result.get('sha') != request['source']['commit'] or result.get('complete') is not True or result.get('notRun'):
-                raise ValidationError('native_driver_incomplete')
+                fail_completion('native_driver_incomplete')
             cases += ['fresh-install', 'repeat-install', 'cancel-preserve'] if kind == 'arch' else ['desktop', 'bench', 'services', 'guard', 'preservation']
         finally:
             try:
@@ -168,7 +188,8 @@ def main():
                 cleanup = 'passed'; cases.append('cleanup')
             except (OSError, ValueError, subprocess.TimeoutExpired): cleanup = 'failed'
         expected = request['requiredCases']
-        if cleanup != 'passed' or set(cases) != set(expected): raise ValidationError('native_cleanup_or_cases_incomplete')
+        if cleanup != 'passed' or set(cases) != set(expected):
+            fail_completion('native_cleanup_or_cases_incomplete')
         print(json.dumps(dict(source=request['source'], run=request['run'], suite=request['suite'], resetId=request['resetId'],
             cases=[dict(id=name, status='passed') for name in expected], cleanup='passed', status='passed')))
 

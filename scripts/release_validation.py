@@ -183,8 +183,10 @@ def native_failure_location(raw):
     for match in re.findall(rb'NATIVE_QA_FAILURE (\{[^\n]{1,2048}\})', raw):
         try: value = json.loads(match)
         except ValueError: continue
-        if value.get('phase') not in ('native-command', 'shell-install', 'shell-repeat', 'workstation-driver'): continue
+        if value.get('phase') not in ('native-command', 'shell-install', 'shell-repeat', 'workstation-driver', 'driver-completion', 'cleanup-verification'): continue
         result['phase'] = value['phase']
+        if value.get('reason') in ('native_driver_incomplete', 'native_cleanup_or_cases_incomplete'):
+            result['reason'] = value['reason']
         if type(value.get('exitCode')) is int and -255 <= value['exitCode'] <= 255: result['exitCode'] = value['exitCode']
         if value.get('file') in ('test-workstation-acceptance.py', 'test-wsl-workstation-acceptance.py', 'test-component-lifecycle.py'):
             result['file'] = value['file']

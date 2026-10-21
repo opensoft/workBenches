@@ -294,3 +294,8 @@ the release gate still requires the approved mode, managed-identity KV path,
 publish/recover/conflict/offline/login-required/CPC refresh/tenant denial and
 cleanup cases against the exact release source. Those cases remain incomplete
 until their real adapters and identities are provisioned and observed.
+
+Native completion and cleanup verification failures retain the private driver report
+in the optional encrypted bundle before HOME cleanup, including when the driver
+exits successfully but its report is incomplete. Public evidence contains only
+fixed phase/reason identifiers; no report contents or arbitrary exception text.
