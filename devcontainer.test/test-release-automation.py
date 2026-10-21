@@ -32,6 +32,64 @@ image_source = module('image_source', 'scripts/release-qa-image-source.py')
 
 
 class ReleaseAutomationTests(unittest.TestCase):
+    def test_native_capacity_refusal_preserves_host_and_does_not_create_job(self):
+        golden = Path(self.temp.name) / 'golden'; golden.mkdir()
+        rv.atomic(golden / 'prepared.json', {'state': 'prepared-not-registered', 'cleanup': 'vm-stopped'})
+        state = Path(self.temp.name) / 'new-native-job'
+        with patch.object(native_controller.os, 'access', return_value=True), \
+             patch.object(native_controller, 'native_capacity_available', return_value=False), \
+             patch.object(native_controller.VM, 'launch') as launch:
+            with self.assertRaisesRegex(ValueError, 'host headroom'):
+                native_controller.run(golden, state, self.root, ROOT)
+        launch.assert_not_called()
+        self.assertFalse(state.exists())
+
+    def test_invalid_vm_memory_cannot_start_a_process(self):
+        with patch.object(native_controller.VM.subprocess, 'Popen') as launch:
+            for memory in (True, 0, 32769, '8192'):
+                with self.assertRaises(ValueError):
+                    native_controller.VM.launch(self.reports, {'memoryMiB': memory})
+        launch.assert_not_called()
+
+    def test_signal_failure_reports_exit_and_resource_delta_without_private_output(self):
+        fixture_value = 'fixture-process-output'
+        diagnostic = {}
+        with patch.object(rv, 'host_resources', side_effect=[{'oomKills': 3}, {'oomKills': 3}]):
+            passed = rv.execute([sys.executable, '-c',
+                f'import os,signal; print({fixture_value!r},flush=True); os.kill(os.getpid(),signal.SIGKILL)'],
+                self.root, dict(os.environ), 10, diagnostic)
+        self.assertFalse(passed)
+        self.assertEqual(diagnostic['exitCode'], -9)
+        self.assertEqual(diagnostic['resources']['oomKillDelta'], 0)
+        self.assertNotIn(fixture_value, json.dumps(diagnostic))
+
+    def test_failed_fixture_command_output_is_encrypted_before_log_closes(self):
+        import tarfile
+        fixture_value = 'private-fixture-driver-output'
+        cert, key = self.certificate()
+        encrypted = self.reports / 'fresh-install-debug.cms'
+        real_run = subprocess.run
+        def command(argv, **kwargs):
+            if argv[:2] == ['docker', 'compose']:
+                return subprocess.CompletedProcess(argv, 1)
+            return real_run(argv, **kwargs)
+        diagnostic = {}
+        with patch.object(rv.subprocess, 'run', side_effect=command):
+            capture = lambda log: rv.workstation_diagnostics(self.root, 'fixture',
+                                                             dict(os.environ, OPENBENCHES_QA_FAILURE_CERT_PEM=cert.read_text()),
+                                                             encrypted, log)
+            self.assertFalse(rv.execute([sys.executable, '-c', f'print({fixture_value!r}); raise SystemExit(7)'],
+                                       self.root, dict(os.environ), 10, diagnostic, capture))
+        self.assertEqual(diagnostic['exitCode'], 7)
+        self.assertNotIn(fixture_value, json.dumps(diagnostic))
+        self.assertNotIn(fixture_value.encode(), encrypted.read_bytes())
+        decoded = self.reports / 'decoded.tgz'
+        subprocess.run(['openssl', 'cms', '-decrypt', '-binary', '-inform', 'DER', '-in', str(encrypted),
+                        '-inkey', str(key), '-recip', str(cert), '-out', str(decoded)], check=True, capture_output=True)
+        with tarfile.open(decoded) as archive:
+            self.assertEqual(archive.getnames(), ['fixture-driver.log'])
+            self.assertIn(fixture_value.encode(), archive.extractfile('fixture-driver.log').read())
+
     def test_image_plan_is_data_and_must_match_exact_expected_commit(self):
         path = Path(self.temp.name) / 'image-plan.json'
         identity = dict(commit='a' * 40, version='1.6.0-rc.3')

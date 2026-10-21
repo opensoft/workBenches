@@ -52,8 +52,11 @@ def provisioning_only(state, manifest):
 
 def launch(state, manifest):
     disk = state / 'qa.qcow2'
+    memory = manifest.get('memoryMiB', 4096)
+    if type(memory) is not int or not 1024 <= memory <= 32768:
+        raise ValueError('Invalid QA VM memory limit')
     command = ['qemu-system-x86_64', '-name', manifest['vmName'], '-accel', 'kvm', '-cpu', 'host',
-               '-m', '4096', '-smp', '2', '-display', 'none', '-monitor', 'none',
+               '-m', str(memory), '-smp', '2', '-display', 'none', '-monitor', 'none',
                '-serial', 'file:' + str(state / 'serial.log'),
                '-drive', 'file=' + str(disk) + ',format=qcow2,if=virtio',
                '-netdev', 'user,id=qa,hostfwd=tcp:127.0.0.1:' + str(manifest['sshPort']) + '-:22',
