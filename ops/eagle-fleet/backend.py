@@ -79,9 +79,23 @@ def load(engine,image):
     finally:
         for proc in (receiver,save):
             if proc.poll() is None: proc.kill(); proc.wait()
+    # Docker Desktop's containerd store identifies OCI indexes by index digest;
+    # the classic rootless store imports the same archive by config digest.
+    # Resolve the imported identity and prove its config and layer identities.
+    identities=set(inner(engine,'image','ls','--no-trunc','--quiet').stdout.split())
+    if len(identities)!=1: raise RuntimeError('Unexpected image set in fresh backend')
+    runtime=identities.pop()
+    original=inspect(image)
+    imported=json.loads(inner(engine,'image','inspect',runtime).stdout)[0]
+    # Inspect APIs omit optional null config fields differently across stores.
+    original_config={key:value for key,value in original['Config'].items() if value is not None}
+    imported_config={key:value for key,value in imported['Config'].items() if value is not None}
+    if original_config!=imported_config or any(original[key]!=imported[key] for key in ('RootFS','Architecture','Os')):
+        raise RuntimeError('Imported worker differs from pinned source image')
+    return runtime
 
 def prepare(engine,image,address,runner):
-    load(engine,image)
+    image=load(engine,image)
     call(['docker','exec','--user','0',engine,'sh','-c',
           'mkdir -p /home/runner/_work /opt/hostedtoolcache; chmod 1777 /home/runner /home/runner/_work /opt/hostedtoolcache; ln -sf /run/user/1000/docker.sock /var/run/docker.sock'])
     inner(engine,'run','--rm','--user','0','-v','/home/runner:/seed','--entrypoint','sh',image,

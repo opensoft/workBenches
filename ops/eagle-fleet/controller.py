@@ -1,5 +1,6 @@
 """One-job fleet controller. Host auth never enters a job container."""
 import datetime
+import concurrent.futures
 import json
 import os
 from pathlib import Path
@@ -72,19 +73,25 @@ def available(config):
     return values['MemAvailable'] >= config['minimum_available_bytes']
 
 def queued(config):
-    candidates=[]
-    for pool in config['pools']:
-        for repo in pool['repositories']:
-            for status in ('queued','in_progress'):
-                runs=api(f'repos/{repo}/actions/runs?status={status}&per_page=20')['workflow_runs']
-                for run in runs:
-                    # Do not occupy capacity for a pending environment approval.
-                    jobs=pages(f"repos/{repo}/actions/runs/{run['id']}/jobs",'jobs')
-                    for job in jobs:
-                        if job['status'] != 'queued': continue
-                        for profile in config['profiles']:
-                            if job['labels'] and set(job['labels']) <= set(profile['labels']) and any(label.startswith('eagle-') for label in job['labels']):
-                                candidates.append((job.get('created_at') or run['created_at'],pool,profile,repo,run['id'],job['id']))
+    def scan(item):
+        pool,repo=item
+        result=[]
+        for status in ('queued','in_progress'):
+            runs=api(f'repos/{repo}/actions/runs?status={status}&per_page=20')['workflow_runs']
+            for run in runs:
+                # Do not occupy capacity for a pending environment approval.
+                jobs=pages(f"repos/{repo}/actions/runs/{run['id']}/jobs",'jobs')
+                for job in jobs:
+                    if job['status'] != 'queued': continue
+                    for profile in config['profiles']:
+                        requested={label.lower() for label in job['labels']}
+                        offered={label.lower() for label in profile['labels']}
+                        if requested and requested <= offered and any(label.startswith('eagle-') for label in requested):
+                            result.append((job.get('created_at') or run['created_at'],pool,profile,repo,run['id'],job['id']))
+        return result
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        results=list(executor.map(scan,[(pool,repo) for pool in config['pools'] for repo in pool.get('scan_repositories',pool['repositories'])]))
+    candidates=[candidate for result in results for candidate in result]
     return min(candidates,key=lambda c:c[0]) if candidates else None
 
 def validate_pool(pool):
@@ -161,6 +168,7 @@ def main():
     lock.seek(0)
     try: msvcrt.locking(lock.fileno(),msvcrt.LK_NBLCK,1)
     except OSError: return
+    event('controller-started',pid=os.getpid())
     while True:
         try:
             recover()
