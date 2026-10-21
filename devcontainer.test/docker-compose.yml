@@ -115,6 +115,7 @@ services:
     command: [bash, -ec, "mkdir -p /acceptance/tmp; chown -R node:node /home/node /acceptance; exec runuser -u node -- python3 /source/devcontainer.test/test-component-lifecycle.py"]
 
   test:
+    init: true
     image: workbench-base:${USER:-brett}
     container_name: workbench-test
     

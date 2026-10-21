@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   test:
+    init: true
     image: sys-bench-base:${USER:-brett}
     container_name: sysbench-test
     command: sleep infinity
