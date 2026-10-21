@@ -178,13 +178,25 @@ def main():
             cases += ['fresh-install', 'repeat-install', 'cancel-preserve'] if kind == 'arch' else ['desktop', 'bench', 'services', 'guard', 'preservation']
         finally:
             try:
-                run([*compose, 'down', '--volumes', '--remove-orphans'])
                 run(['docker', 'rm', '-f', project + '-tools'])
                 # Vault is not always created; inspect before removing.
                 found = subprocess.run(['docker', 'inspect', project + '-vault'], env=env, capture_output=True).returncode == 0
                 if found: run(['docker', 'rm', '-f', project + '-vault'])
                 network = subprocess.run(['docker', 'network', 'inspect', project + '-services'], env=env, capture_output=True).returncode == 0
                 if network: run(['docker', 'network', 'rm', project + '-services'])
+                # The daemon and root Tools operations leave root-owned
+                # directories in these two private bind mounts. Repair only
+                # this job's mounts, without following symlinks, using the
+                # declared disposable engine image with no daemon entrypoint.
+                run([*compose, 'run', '--rm', '--no-deps', '--entrypoint', 'chown',
+                     'acceptance-engine', '-R', '-h', f'{os.getuid()}:{os.getgid()}',
+                     str(home), str(socket)])
+                run([*compose, 'down', '--volumes', '--remove-orphans'])
+                # Count cleanup as passed only after the actual private home
+                # and socket tree have been removed. Keep the report available
+                # for encrypted diagnosis if either operation fails.
+                shutil.rmtree(home)
+                shutil.rmtree(socket)
                 cleanup = 'passed'; cases.append('cleanup')
             except (OSError, ValueError, subprocess.TimeoutExpired): cleanup = 'failed'
         expected = request['requiredCases']
