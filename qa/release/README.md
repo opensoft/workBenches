@@ -1,5 +1,12 @@
 # Dedicated release QA workers
 
+Hosted fresh-install jobs provision 8 GiB of swap on their disposable runners for
+large SDK-image exports. Failed commands record their actual numeric exit code,
+available memory/swap and the change in the kernel OOM-kill counter. A signal exit
+alone does not prove OOM. Optional encrypted fixture diagnosis also captures the
+failed command's output before its private log is deleted; plaintext is never
+uploaded. Native worker capacity and native results remain separate evidence.
+
 Full hosted runs from main prepare compatible public base/developer images before
 starting fixtures. The publisher accepts only current main or the exact current
 protected canonical release head, rechecks that source before running its code,

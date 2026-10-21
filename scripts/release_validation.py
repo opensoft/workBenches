@@ -274,12 +274,18 @@ def encrypt_fixture_diagnostics(files, certificate, output):
         return {}
 
 
-def workstation_diagnostics(root, project, environment, encrypted_output=None):
+def workstation_diagnostics(root, project, environment, encrypted_output=None, command_output=None):
     # Private snapshots are deleted, including the terminal transcript. Only
     # fixed categories/headers and numeric statuses can enter public evidence.
     with tempfile.TemporaryDirectory(prefix='workstation-private-logs-') as temporary:
         directory = Path(temporary)
         result = {}; envelope_files = []
+        if command_output is not None:
+            command_output.seek(0, 2)
+            command_output.seek(max(0, command_output.tell() - 8 * 1024 * 1024))
+            driver = directory / 'fixture-driver.log'
+            driver.write_bytes(command_output.read()); driver.chmod(0o600)
+            envelope_files.append(('fixture-driver.log', driver))
         def copy(source, destination):
             with tempfile.TemporaryFile() as output:
                 try:
@@ -317,20 +323,52 @@ def workstation_diagnostics(root, project, environment, encrypted_output=None):
         return result
 
 
-def execute(argv, root, environment, timeout, diagnostic=None):
+def host_resources():
+    """Numeric Linux resource counters only; unavailable elsewhere is normal."""
+    result = {}
+    try:
+        for line in Path('/proc/meminfo').read_text().splitlines():
+            key, value = line.split(':', 1)
+            if key in ('MemAvailable', 'SwapTotal', 'SwapFree'):
+                result[key] = int(value.split()[0]) * 1024
+        for line in Path('/proc/vmstat').read_text().splitlines():
+            key, value = line.split()
+            if key == 'oom_kill': result['oomKills'] = int(value)
+    except (OSError, ValueError):
+        pass
+    return result
+
+
+def execute(argv, root, environment, timeout, diagnostic=None, failure_capture=None):
     # Raw stdout/stderr can contain generated credentials. Keep them in a
     # private temporary file and delete after execution; upload metadata only.
     with tempfile.TemporaryFile() as log:
+        before = host_resources() if diagnostic is not None else {}
+        def capture_failure(returncode=None):
+            if diagnostic is None: return
+            if returncode is not None: diagnostic['exitCode'] = returncode
+            after = host_resources()
+            if before or after:
+                diagnostic['resources'] = {'before': before, 'after': after}
+                if 'oomKills' in before and 'oomKills' in after:
+                    diagnostic['resources']['oomKillDelta'] = max(0, after['oomKills'] - before['oomKills'])
+            log.seek(0, 2); size = log.tell(); log.seek(max(0, size - 256 * 1024))
+            diagnostic.update(failure_location(log.read()))
+            try: diagnostic['workspaceFreeBytes'] = shutil.disk_usage(root).free
+            except OSError: pass
+            if failure_capture is not None:
+                try:
+                    component = failure_capture(log)
+                    if component: diagnostic['component'] = component
+                except (OSError, ValueError, subprocess.SubprocessError):
+                    pass
         try:
             process = subprocess.run(argv, cwd=root, env=environment, stdout=log, stderr=log, timeout=timeout)
             passed = process.returncode == 0
-            if not passed and diagnostic is not None:
-                log.seek(0, 2); size = log.tell(); log.seek(max(0, size - 256 * 1024))
-                diagnostic.update(failure_location(log.read()))
-                try: diagnostic['workspaceFreeBytes'] = shutil.disk_usage(root).free
-                except OSError: pass
+            if not passed: capture_failure(process.returncode)
             return passed
         except (OSError, subprocess.TimeoutExpired) as error:
+            capture_failure()
             if diagnostic is not None:
                 diagnostic['exception'] = 'TimeoutExpired' if isinstance(error, subprocess.TimeoutExpired) else 'OSError'
             return False
@@ -362,13 +400,12 @@ def run_suite(root, manifest_path, name, output, expected=None, ref=None, extern
                 for command in suite['commands']:
                     if command['id'] not in cases(suite, identity['version']): continue
                     diagnostic = {}
-                    passed = execute(argv(command['argv']), root, environment, suite.get('timeoutSeconds', 900), diagnostic)
+                    capture = (lambda log: workstation_diagnostics(root, project, environment,
+                               Path(output) / 'fresh-install-debug.cms', log)) if name == 'fresh-install' else None
+                    passed = execute(argv(command['argv']), root, environment, suite.get('timeoutSeconds', 900), diagnostic, capture)
                     report['cases'].append({'id': command['id'], 'status': 'passed' if passed else 'failed'})
                     print(name + '/' + command['id'] + ': ' + ('passed' if passed else 'failed'), flush=True)
                     if not passed:
-                        if name == 'fresh-install':
-                            component = workstation_diagnostics(root, project, environment, Path(output) / 'fresh-install-debug.cms')
-                            if component: diagnostic['component'] = component
                         if diagnostic:
                             report['runner']['failure'] = diagnostic
                             print(name + ': safe failure location ' + json.dumps(diagnostic), flush=True)

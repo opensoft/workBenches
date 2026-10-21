@@ -38,6 +38,16 @@ jobs:
       - name: Install the declared shell-test prerequisite
         if: inputs.suite == 'speckit'
         run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends zsh
+      - name: Prepare memory headroom for the disposable installer
+        if: inputs.suite == 'fresh-install'
+        run: |
+          free -h
+          df -h / /mnt
+          sudo fallocate -l 8G /mnt/openbenches-fixture.swap
+          sudo chmod 600 /mnt/openbenches-fixture.swap
+          sudo mkswap /mnt/openbenches-fixture.swap
+          sudo swapon /mnt/openbenches-fixture.swap
+          free -h
       - name: Run the shared manifest suite
         env:
           SUITE: ${{ inputs.suite }}
