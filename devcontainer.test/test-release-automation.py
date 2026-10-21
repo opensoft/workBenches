@@ -353,6 +353,33 @@ class ReleaseAutomationTests(unittest.TestCase):
         public = dict(phase='workstation-driver', **metadata)
         self.assertEqual(rv.native_failure_location(('NATIVE_QA_FAILURE '+json.dumps(public)).encode()), public)
 
+    def test_native_completion_failure_preserves_private_report_after_cleanup(self):
+        import tarfile
+        fixture_value = 'private-completion-report'
+        cert, key = self.certificate()
+        report = self.reports / 'wsl-all-results.json'
+        report.write_text(json.dumps({'complete': False, 'notRun': ['bench-remove'],
+                                     'private': fixture_value, 'results': []}))
+        destination = Path(self.temp.name) / 'completion-diagnostics'
+        metadata = native.native_completion_diagnostics('native_driver_incomplete', self.root,
+            self.reports, 'arch-native', destination, cert.read_text())
+        encrypted = destination / metadata['encryptedDiagnostics']['file']
+        report.unlink()
+        (self.reports / 'driver-failure.log').unlink()
+        decoded = Path(self.temp.name) / 'completion-decoded.tgz'
+        subprocess.run(['openssl', 'cms', '-decrypt', '-binary', '-inform', 'DER', '-in', str(encrypted),
+                        '-inkey', str(key), '-recip', str(cert), '-out', str(decoded)], check=True, capture_output=True)
+        with tarfile.open(decoded) as archive:
+            self.assertEqual(json.loads(archive.extractfile('driver-results.json').read())['private'], fixture_value)
+        self.assertNotIn(fixture_value, json.dumps(metadata))
+        self.assertEqual(metadata['reason'], 'native_driver_incomplete')
+        self.assertEqual(rv.native_failure_location(('NATIVE_QA_FAILURE '+json.dumps(metadata)).encode()), metadata)
+        with self.assertRaises(ValueError):
+            native.native_completion_diagnostics(fixture_value, self.root, self.reports,
+                                                  'arch-native', destination, None)
+        raw = b'NATIVE_QA_FAILURE {"phase":"cleanup-verification","reason":"private-value","private":"private-value"}'
+        self.assertEqual(rv.native_failure_location(raw), {'phase': 'cleanup-verification'})
+
     def test_native_diagnostics_have_no_plaintext_or_unknown_field_fallback(self):
         rv.atomic(self.reports / 'wsl-all-results.json', {'results':[{'case':'DO_NOT_EXPOSE', 'status':'failed'}]})
         destination = Path(self.temp.name) / 'no-diagnostics'
