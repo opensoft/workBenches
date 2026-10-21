@@ -22,7 +22,7 @@ preservation of the metadata by catalog maintenance scripts.
 - **THEN** `electrical-engineering` has no benches and `software-engineering`, `science` and `system-administration` each have at least one
 
 ### Requirement: Bench presentation fields
-Every catalogued bench SHALL have a `category`, a `tagline` of at most 35 characters, a non-empty `description`, and non-empty `usedFor` and `contains` lists of single-line strings, and none of these values SHALL contain control characters. A bench's `tagline`, `usedFor` and `contains` SHALL NOT name version numbers, because they go stale when bench images are updated: the catalog test SHALL reject a version-like token — a standalone number, dotted or not (`1.26`, `25`), or a number prefixed by `v` or `version-` (`v2`, `version-15`) — except numbers on an explicit allow-list of product names (`Microsoft 365`, `Dynamics 365`).
+Every catalogued bench SHALL have a `category`, a `tagline` of at most 35 characters, a non-empty `description`, and non-empty `usedFor` and `contains` lists of single-line strings, and none of these values SHALL contain control characters (U+0000–U+001F and U+007F–U+009F). A bench's `tagline`, `usedFor` and `contains` SHALL NOT name version numbers, because they go stale when bench images are updated: the catalog test SHALL reject a version-like token — a standalone number, dotted or not (`1.26`, `25`), or a number prefixed by `v` or `version-` (`v2`, `version-15`) — except numbers on an explicit allow-list of product names (`Microsoft 365`, `Dynamics 365`). A number is standalone when it is not joined to a letter, so names such as `ARM64`, `MMseqs2`, `py3Dmol` and `m365` are accepted.
 
 #### Scenario: Complete presentation fields
 - **WHEN** the catalog test checks every bench
@@ -75,7 +75,7 @@ Every shell consumer of the catalog SHALL look a bench up by passing its name to
 - **THEN** no jq filter builds a `.benches.` or `.infrastructure.` path from a shell variable
 
 ### Requirement: Unresolved bench paths fail closed
-When a selected bench's catalog path cannot be resolved to a directory under `devBenches/`, `sysBenches/` or `bioBenches/`, setup SHALL report that bench as failed and SHALL NOT run git, a clone or a setup script for it, and SHALL never use the workBenches root as a bench directory.
+When a selected bench's catalog path cannot be resolved to a relative path that starts with `devBenches/`, `sysBenches/` or `bioBenches/` and has no `..` segment (the rule `setup_selection.py` already applies), setup SHALL report that bench as failed, like any other failed component, and SHALL NOT run git, a clone or a setup script for it, and SHALL never use the workBenches root as a bench directory.
 
 #### Scenario: Lookup failure does not touch the root
 - **WHEN** a selected bench's path lookup returns nothing during apply

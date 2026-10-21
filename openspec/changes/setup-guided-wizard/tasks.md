@@ -31,12 +31,12 @@
 
 - [ ] 5.1 Update keystroke-driven and text-asserting suites (`test-workstation-acceptance.py`, `test-wsl-workstation-acceptance.py`, `test-component-lifecycle.py`, `test-tools-runtime.py`, `test-setup-async.py`, `test-setup-requirements.py`, `test-setup-profiles.py`, `test-setup-guided-flow.py`, `test-setup-cancel.sh`) to the wizard's keys and markers; keep every asserted outcome.
 - [ ] 5.2 Run the full local regression set and the Workstation Setup workflow jobs; all pass.
-- [ ] 5.3 Run the real-host acceptance suites (native workstation and WSL) on the candidate commit, including a TUI install of 365Bench on a disposable workstation; record results in the feature.
+- [ ] 5.3 Run the real-host acceptance suites (native workstation and WSL) on the candidate commit, including a TUI install of 365Bench on a disposable workstation, the hand check of glyphs in Windows Terminal and the VS Code terminal, and Brett's fresh-workstation walkthrough (SC-012); record results in the feature.
 
 ## 6. Documentation and release notes
 
 - [ ] 6.1 Update `docs/setup-requirements.md` (strip location, keys, Enter→Review→Apply), `docs/profiles.md` (Profiles as a wizard step) and rewrite `docs/setup-script-ui.md` for the wizard, naming the steps Workstation, Benches, Agents, Tools, Profiles and Review.
-- [ ] 6.2 Add the wizard to the 1.7 scope in `docs/release-1.7.0.md` (or the 1.8 plan if 1.7 has frozen), and add entries to `CHANGELOG.md` and the 1.7 release notes.
+- [ ] 6.2 Add the wizard to the 1.7 scope in `docs/release-1.7.0.md` (or the 1.8 plan if 1.7 has frozen), and add entries to `CHANGELOG.md` and the 1.7 release notes that call out the breaking interaction change (Enter opens Review; only Enter on Review applies) and the three newly offered benches (goBench, rustBench, 365Bench).
 
 ## 7. Verification and landing
 

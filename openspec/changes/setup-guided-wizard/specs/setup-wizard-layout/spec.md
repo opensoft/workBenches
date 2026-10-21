@@ -36,7 +36,7 @@ The rows directly under the rule SHALL be the current step's selector area: the 
 - **THEN** the first row under the rule is one line summarizing the cached personal and company identities, cut with `…` when it is wider than the frame
 
 ### Requirement: Requirements strip
-The Workstation strip SHALL read `REQUIREMENTS · N/N ready`, or `REQUIREMENTS · Loading…` while checks run, followed by each required service and Vault with its state, with Vault followed by `[V <Action>]`. Items SHALL be green when Up, yellow otherwise and blinking while loading, and the strip SHALL wrap only between items so Vault's action is never split.
+The Workstation strip SHALL read `REQUIREMENTS · R/N ready`, where R of the N required services are Up and optional Vault is not counted (as in 1.7), or `REQUIREMENTS · Loading…` while checks run, followed by each required service and Vault with its state, with Vault followed by `[V <Action>]`. Items SHALL be green when Up, yellow otherwise and blinking while loading, and the strip SHALL wrap only between items so Vault's action is never split.
 
 #### Scenario: Ready strip on WSL
 - **WHEN** WSL 2, Docker, Tools and Vault are Up and the user is signed out
@@ -47,14 +47,14 @@ The Workstation strip SHALL read `REQUIREMENTS · N/N ready`, or `REQUIREMENTS �
 - **THEN** the strip wraps between items and `[V Connect]` appears whole on one line
 
 ### Requirement: Notices on the current step
-A notice produced by the Vault action, a Profiles action, a blocked Apply or the readiness check SHALL be shown on the current step, after its selector area, cut to the frame width.
+A notice produced by the Vault action, a Profiles action, a blocked Apply or the readiness check SHALL be shown on the current step, after its selector area, cut to the frame width. As in 1.7, a notice SHALL stay, on whichever step is current, until a later notice replaces it, a Workstation service action (V included) starts, or R clears it.
 
 #### Scenario: Notice after V on Agents
 - **WHEN** the user presses V on Agents and the action reports that Vault needs attention
 - **THEN** the notice appears on the Agents step below the rule and no wider than the frame
 
 ### Requirement: Width bounds
-The minimum supported terminal size SHALL be 36 columns by 24 rows. For terminals at least 36 columns wide, no rendered line SHALL be wider than the terminal; the frame SHALL be at most 87 columns wide, and padding SHALL be computed from character counts, not bytes. Narrower terminals are below the supported size: setup SHALL still run there, drawing its 36-column frame, and lines MAY wrap.
+The minimum supported terminal size SHALL be 36 columns by 24 rows. For terminals at least 36 columns wide, no rendered line SHALL be wider than the terminal; the frame SHALL be one column narrower than the terminal, clamped to 36–87 columns (as in 1.7), and padding SHALL be computed from character counts, not bytes. Narrower terminals are below the supported size: setup SHALL still run there, drawing its 36-column frame, and lines MAY wrap.
 
 #### Scenario: Width matrix
 - **WHEN** each step is rendered at 36, 60 and 87 terminal columns, with long names and every status present
@@ -88,7 +88,7 @@ When the terminal height is known, the frame SHALL never be taller than the term
 - **THEN** the frame drops lines from its top and is still no taller than the terminal
 
 ### Requirement: Banner collapse
-The four-row OpenSoft wordmark SHALL be drawn only when the frame is at least 42 columns wide and the terminal height is unknown or at least 40 rows; otherwise a one-line `Opensoft` banner SHALL be drawn.
+The four-row OpenSoft wordmark SHALL be drawn only in the roomy layout, when the frame is at least 42 columns wide and the terminal height is unknown or at least 40 rows; otherwise a one-line `Opensoft` banner SHALL be drawn.
 
 #### Scenario: Tall terminal
 - **WHEN** the terminal is 88×40
@@ -125,14 +125,14 @@ After the first paint, a status update or key press SHALL rewrite only the lines
 - **THEN** the second draw clears the screen and repaints the whole frame
 
 ### Requirement: Key response time
-Each key press SHALL update the screen within 100 ms, measured as the median of repeated key-driven redraws of any step at 87×40 on a developer workstation.
+The median time from a key press to the completed redraw SHALL be at most 100 ms, measured over repeated key-driven redraws of any step at 87×40 on a developer workstation.
 
 #### Scenario: Benches at 87×40
 - **WHEN** a test renders the Benches step at 87×40 with all 12 benches catalogued and long About text, and replays ↑, ↓, Tab and PgDn repeatedly
 - **THEN** the median time from key to completed redraw is at most 100 ms
 
 ### Requirement: Loading indicators
-An item whose state is not yet known SHALL show the word `Loading` in the blinking loading style, and SHALL NOT be selectable until its state is known.
+An item whose state is not yet known SHALL show the word `Loading` in the blinking loading style, and SHALL NOT be selectable until its state is known. An item whose check ends without a state SHALL be treated as needing a check and stay unselectable, as in 1.7.
 
 #### Scenario: First frame while loading
 - **WHEN** the first frame is drawn

@@ -22,7 +22,7 @@ The interactive setup TUI SHALL present one step per screen in this fixed order:
 - **THEN** the frame shows only that step's content, with no three-column component screen
 
 ### Requirement: Step navigation
-→ SHALL move to the next step and ← to the previous step without wrapping, and ↑/↓ SHALL move only within the current step. Arriving at a step by ← or → SHALL focus that step's first row; on Benches it SHALL focus the category zone on the first category that has benches.
+→ SHALL move to the next step and ← to the previous step without wrapping, and ↑/↓ SHALL move only within the current step, stopping at its first and last rows without wrapping, as in 1.7 (the Benches zones define their own moves between zones). Arriving at a step by ← or → SHALL focus that step's first row; on Benches it SHALL focus the category zone on the first category that has benches. The focused row SHALL be marked `›` on every step that has rows (on Benches only in the bench zone).
 
 #### Scenario: Next and previous step
 - **WHEN** the Tools step is shown and the user presses →
@@ -42,7 +42,7 @@ The interactive setup TUI SHALL present one step per screen in this fixed order:
 - **THEN** Benches is shown with the category zone focused on the first category that has benches
 
 ### Requirement: Top nav bar
-The nav bar SHALL show every step in order by name, joined by short ` ─ ` connectors, marking steps before the current one `✓`, the current step a highlighted `●` and later steps `○`, each followed by its number of queued changes when that number is not zero. Profiles rows run their actions immediately, so Profiles SHALL never show a count. The full nav SHALL be shown whenever it fits the frame width; with three single-digit counts it is 79 columns including the current step's highlight, so it fits an 80-column terminal. The Workstation item SHALL show readiness in place of its step marker: a green `✓` when every required item is Up, a yellow `⚠` when one is not, and a blinking `…` while checks run.
+The nav bar SHALL show every step in order by name, joined by short ` ─ ` connectors, marking steps before the current one `✓`, the current step a highlighted `●` and later steps `○`, each followed by its number of queued changes when that number is not zero. Profiles rows run their actions immediately, so Profiles SHALL never show a count. The full nav SHALL be shown whenever it fits the frame width; with three single-digit counts it is 79 columns including the current step's highlight, so it fits an 80-column terminal. The Workstation item SHALL show readiness in place of its step marker: a green `✓` when every required item is Up, a yellow `⚠` when one is not, and a blinking `…` while checks run. When Workstation is the current step, its item takes the current-step highlight and keeps the readiness mark.
 
 #### Scenario: Queued counts per step
 - **WHEN** two benches and one agent are queued and nothing else
@@ -80,7 +80,7 @@ Enter SHALL run the focused row's action when the focus is a Workstation service
 - **AND** queued changes are unchanged and Review is not opened
 
 ### Requirement: Review lists every queued change
-The Review step SHALL list every queued change under INSTALL, UPDATE and REMOVE groups, each item with the step it belongs to, and SHALL state that nothing has changed yet and that Enter applies the changes. It SHALL show a yellow warning when Shell setup (replaces shell settings) or Org workspace (may create a GitHub repository) is queued, and SHALL let the user see every item even when the list is taller than its rows. Review SHALL be read-only: no key on Review queues or unqueues a change, which is done on the step the item belongs to.
+The Review step SHALL list every queued change under INSTALL, UPDATE and REMOVE groups, in step order, each item with the step it belongs to, with the REMOVE group noting that projects and credentials are kept, and SHALL state that nothing has changed yet and that Enter applies the changes. It SHALL show a yellow warning when Shell setup (replaces shell settings) or Org workspace (may create a GitHub repository) is queued, and SHALL let the user see every item even when the list is taller than its rows. Review SHALL be read-only: no key on Review queues or unqueues a change, which is done on the step the item belongs to.
 
 #### Scenario: Grouped changes
 - **WHEN** rustBench is queued for install, javaBench and Codex CLI for update, and pyBench for removal
@@ -101,7 +101,7 @@ The Review step SHALL list every queued change under INSTALL, UPDATE and REMOVE 
 - **AND** ↑/↓ scroll the list so every queued item can be displayed
 
 ### Requirement: Apply from Review
-Enter on Review SHALL apply the queued changes, or with `--select-only` write the selection file, only when no readiness checks are running and every required workstation item is Up. Otherwise it SHALL apply nothing and show on Review why Apply is waiting.
+Enter on Review SHALL apply the queued changes, or with `--select-only` write the selection file, only when no readiness checks are running and every required workstation item is Up. Otherwise it SHALL apply nothing, and while Apply is blocked Review SHALL show a yellow blocker line saying why Apply is waiting. With nothing queued the same gating applies, and Enter on Review finishes without changes, exiting with status 0 (with `--select-only`, after writing a selection file with no components), as the previous TUI's empty Enter did.
 
 #### Scenario: Apply when ready
 - **WHEN** every required item is Up, checks have finished, Codex CLI is queued for update and the user presses Enter on Review
@@ -124,7 +124,7 @@ Enter on Review SHALL apply the queued changes, or with `--select-only` write th
 - **THEN** setup exits with status 0 without applying anything or building any image
 
 ### Requirement: Workstation jump
-P SHALL move from any other step to Workstation, remembering that step and its exact focus (row, and on Benches the zone, category and bench). P on Workstation SHALL return to the remembered step and focus, or to the Benches category zone when none is remembered. Moving ← from Benches to Workstation and the automatic readiness jump SHALL remember focus the same way.
+P SHALL move from any other step to Workstation, focusing its first row and remembering that step and its exact focus (row, and on Benches the zone, category and bench). P on Workstation SHALL return to the remembered step and focus, or to the Benches category zone on the first category that has benches when none is remembered. Moving ← from Benches to Workstation and the automatic readiness jump SHALL remember focus the same way.
 
 #### Scenario: Round trip from the bench zone
 - **WHEN** javaBench is focused in the Software Engineering bench zone and the user presses P, then P again
@@ -139,7 +139,7 @@ P SHALL move from any other step to Workstation, remembering that step and its e
 - **THEN** Benches is shown with Science focused in the category zone
 
 ### Requirement: Profiles jump
-G SHALL move from any other step to Profiles, remembering that step and its exact focus. G on Profiles SHALL return to the step and focus remembered when Profiles was entered by G, by → from Tools or by ← from Review, or to the Benches category zone when none is remembered.
+G SHALL move from any other step to Profiles, focusing its first row and remembering that step and its exact focus. G on Profiles SHALL return to the step and focus remembered when Profiles was entered by G, by → from Tools or by ← from Review, or to the Benches category zone on the first category that has benches when none is remembered.
 
 #### Scenario: Round trip from Agents
 - **WHEN** Codex CLI is focused on Agents and the user presses G, then G again
@@ -181,7 +181,7 @@ Q SHALL quit from every step, including while checks run, SHALL stop pending che
 - **THEN** setup prints "Setup cancelled.", exits with status 130 within two seconds, and leaves no check process running
 
 ### Requirement: Readiness jump
-When a run of background checks finishes with a required workstation item not Up, including a run started by R, the TUI SHALL show the Workstation step, remember the previous step and focus for P, focus the first required item that is not Up, and show "Resolve workstation requirements to continue.".
+When a run of background checks finishes with a required workstation item not Up, including a run started by R, the TUI SHALL show the Workstation step, remember the previous step and focus for P, focus the first required item that is not Up, and show "Resolve workstation requirements to continue.". When Workstation is already shown, the remembered P target SHALL be kept.
 
 #### Scenario: Docker down after loading
 - **WHEN** the user is in the Benches bench zone while checks finish with Docker Down
@@ -189,7 +189,7 @@ When a run of background checks finishes with a required workstation item not Up
 - **AND** pressing P returns to the same bench in the bench zone
 
 ### Requirement: Workstation step
-The Workstation step SHALL show, below its requirements strip, a REQUIRED SOFTWARE panel and an OPTIONAL VAULT panel whose rows show each service's state and `[Action]` button, with an explanation under the focused row only. The OPTIONAL VAULT panel SHALL list Vault alone and SHALL show `G Profiles` at the right of its title, as in 1.7, pointing to the Profiles step; the workBenches account and AI accounts rows SHALL appear only on Profiles. Space and Enter SHALL run the focused row's action, and D SHALL do nothing.
+The Workstation step SHALL show, below its requirements strip, a REQUIRED SOFTWARE panel and an OPTIONAL VAULT panel whose rows show each service's state and `[Action]` button, with an explanation under the focused row only. The OPTIONAL VAULT panel SHALL list Vault alone and SHALL show `G Profiles` at the right of its title, as in 1.7, pointing to the Profiles step; the workBenches account and AI accounts rows SHALL appear only on Profiles. Space and Enter SHALL run the focused row's action, and D SHALL do nothing; while the focused row is still Loading, no action SHALL run and the step SHALL say checks are still loading, as in 1.7.
 
 #### Scenario: Service panels
 - **WHEN** Workstation is shown on WSL with every service Up and the user signed out
@@ -201,7 +201,7 @@ The Workstation step SHALL show, below its requirements strip, a REQUIRED SOFTWA
 - **THEN** the Tools Start action runs and queued changes are unchanged
 
 ### Requirement: Profiles step
-The Profiles step SHALL show the identities summary line, the rows Personal & companies, Workstation account and AI accounts, and an About panel for the focused row. Enter or Space SHALL open the focused row's existing Profiles action; that action SHALL be refused with a notice until every required workstation item is Up, and returning from it SHALL keep every queued change.
+The Profiles step SHALL show the identities summary line, the rows Personal & companies, Workstation account and AI accounts, and an About panel for the focused row, from fixed text, sized and scrolled like the Benches About panel. Enter or Space SHALL open the focused row's existing Profiles action; that action SHALL be refused with a notice until every required workstation item is Up, and returning from it SHALL keep every queued change.
 
 #### Scenario: Open AI accounts
 - **WHEN** every required item is Up and the user presses Enter on AI accounts
@@ -232,7 +232,7 @@ The Agents and Tools steps SHALL offer the same items, order and selection rules
 - **THEN** nothing is queued
 
 ### Requirement: Footer context and hints
-Every step SHALL end with a rule, a context line and the key hints for that step. The context line SHALL show the focused item as `<Name> · <State>` followed by `→ <action>` when one is queued (or the category summary when the Benches category zone has focus) and the total number of queued changes at its right: `Changes selected: N` at widths of 60 columns or more, and `Changes: N` below 60 columns, where a context line too long for the remaining width SHALL be cut with `…`. Below 60 columns the hints SHALL take at most two lines, listing the step's own keys (on Profiles, `G Back`) plus `←→`, `Enter` and `Q`; P, G, R, V and PgUp/PgDn SHALL keep working on every step but SHALL be listed only at 60 columns or more.
+Every step SHALL end with a rule, a context line and the key hints for that step; the hints SHALL begin with `Navigation:`, as in 1.7. The context line SHALL show the focused item as `<Name> · <State>` followed by `→ <action>` when one is queued (or the category summary when the Benches category zone has focus) and the total number of queued changes at its right: `Changes selected: N` at widths of 60 columns or more, and `Changes: N` below 60 columns, where a context line too long for the remaining width SHALL be cut with `…`. Below 60 columns the hints SHALL take at most two lines, listing the step's own keys (on Profiles, `G Back`) plus `←→`, `Enter` and `Q`; P, G, R, V and PgUp/PgDn SHALL keep working on every step but SHALL be listed only at 60 columns or more.
 
 #### Scenario: Context for a queued update
 - **WHEN** javaBench is installed, queued for update and focused, with two changes queued in total
@@ -252,7 +252,7 @@ Every step SHALL end with a rule, a context line and the key hints for that step
 - **THEN** its hints include `G Back` and `Q Quit` on the same line
 
 ### Requirement: Setup contracts unchanged
-The wizard SHALL leave the `setup.sh` modes `--select-only`, `--dependencies-plan` and `--apply-plan`, the selection-file JSON (`schemaVersion` 1 with `components` of `key` and `action`) and the apply and plan semantics unchanged, and the non-interactive modes SHALL NOT draw the wizard.
+The wizard SHALL leave the `setup.sh` modes `--select-only`, `--dependencies-plan` and `--apply-plan`, the selection-file JSON (`schemaVersion` 1 with `components` of `key` and `action`), how the selection file is written (private to the user, never through a symlink) and the apply and plan semantics unchanged, and the non-interactive modes SHALL NOT draw the wizard.
 
 #### Scenario: Same selection, same file
 - **WHEN** the user queues pyBench for install and Codex CLI for update and confirms on Review in a `--select-only` run
