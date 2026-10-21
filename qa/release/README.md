@@ -17,6 +17,16 @@ and 8.5 GiB swapped memory; the memory target is not a hard process limit.
 Arch v4's retained serial
 log confirmed a kernel OOM kill of dockerd with the old 4 GiB/512 MiB profile.
 
+Before starting acceptance, the controller disables the overlay module's
+`metacopy` and `redirect_dir` runtime defaults only inside the new guest, after
+checking its root-owned, non-writable matching reset marker. This changes neither
+Raven's kernel settings nor the golden image. Arch's enabled defaults made the
+isolated Docker engine report `Native Overlay Diff=false`; a retained daemon stack
+showed concurrent `NaiveDiffDriver` whole-directory scans during SDK export. A
+separate declared-Compose experiment on the same Arch image confirmed that both
+defaults disabled produce `Using metacopy=false` and `Native Overlay Diff=true`.
+Full acceptance still must pass; the probe alone is not release evidence.
+
 Full hosted runs from main prepare compatible public base/developer images before
 starting fixtures. The publisher accepts only current main or the exact current
 protected canonical release head, rechecks that source before running its code,

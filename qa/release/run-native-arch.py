@@ -82,6 +82,29 @@ def native_capacity_available():
     return False
 
 
+def prepare_native_overlay(state, manifest):
+    # Arch enables metacopy/redirect_dir by default. Docker then falls back to
+    # concurrent whole-tree diffs, exhausting memory on our large SDK images.
+    # Only change runtime defaults inside this new job's disposable guest.
+    code = """import json,sys
+from pathlib import Path
+job=json.load(sys.stdin)
+marker=Path('/etc/workbenches/disposable-qa-id')
+if marker.is_symlink() or marker.stat().st_uid!=0 or marker.stat().st_mode&0o022 or marker.read_text().strip()!=job['resetId']:raise SystemExit(1)
+parameters=Path('/sys/module/overlay/parameters')
+for name in ('metacopy','redirect_dir'):
+ path=parameters/name
+ path.write_text('N')
+ if path.read_text().strip()!='N':raise SystemExit(1)
+"""
+    result = subprocess.run([*VM.ssh(state, manifest), 'sudo python3 -c ' + shlex.quote(code)],
+        input=json.dumps({'resetId': manifest['resetId']}).encode(), capture_output=True, timeout=30)
+    if result.returncode:
+        raise ValueError('Disposable native overlay preparation failed')
+    manifest['overlayDefaults'] = {'metacopy': False, 'redirect_dir': False}
+    VM.write(state / 'vm.json', manifest)
+
+
 def prepare_native_swap(state, manifest):
     # Only a new one-use guest carrying this job's root-owned reset marker is
     # eligible. Never change Raven's swap or the reusable golden disk.
@@ -146,6 +169,7 @@ def run(golden, state, candidate, automation, certificate_path=None):
             time.sleep(2)
         else: raise ValueError('QA SSH readiness timed out')
         fresh_identity(state, manifest)
+        prepare_native_overlay(state, manifest)
         prepare_native_swap(state, manifest)
         stage(state, manifest, candidate, 'candidate')
         stage(state, manifest, automation, 'automation')
