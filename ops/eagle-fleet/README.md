@@ -60,3 +60,11 @@ permissions, environment approvals and matrix rows. Matrix values remain origina
 so platform conditionals retain their meaning. Pinned reusable workflow providers
 must land before consumers advance coherent pins through their declared tooling.
 Never edit a shape-copy digest just to silence its drift gate.
+
+The Ubuntu 24 worker also supplies Azure CLI, PowerShell and zstd. SSH uses the
+public-address gateway for remote hosts and direct transport for localhost.
+No SSH keys are baked into the image. Retain each configured worker image under
+a unique immutable tag before rebuilding the convenience tag; Docker Desktop
+may discard the old index when its last tag is replaced. Verify the new digest,
+qualify its tools and transport, then atomically change the host configuration.
+Existing disposable workers finish on their original imported image.

@@ -1,0 +1,5 @@
+Host localhost 127.0.0.1 ::1
+    ProxyCommand none
+
+Host *
+    ProxyCommand /usr/local/bin/eagle-ssh-proxy %h %p

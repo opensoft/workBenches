@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+proxy=${https_proxy:-${HTTPS_PROXY:-}}
+case "$proxy" in http://*) proxy=${proxy#http://} ;; *) echo 'Eagle SSH proxy is unavailable' >&2; exit 1 ;; esac
+exec nc -X connect -x "$proxy" "$1" "$2"

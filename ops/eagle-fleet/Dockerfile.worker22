@@ -18,6 +18,8 @@ COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/ /usr/local/libexec/docker/cli-plugins/
 COPY --from=runner --chown=1001:1001 /home/runner/ /home/runner/
 COPY --chmod=755 job-started.sh /opt/eagle/job-started.sh
+COPY --chmod=755 eagle-ssh-proxy /usr/local/bin/eagle-ssh-proxy
+COPY --chown=1001:1001 ssh_config /home/runner/.ssh/config
 ENV RUNNER_TOOL_CACHE=/opt/hostedtoolcache AGENT_TOOLSDIRECTORY=/opt/hostedtoolcache PIP_BREAK_SYSTEM_PACKAGES=1 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 ACTIONS_RUNNER_HOOK_JOB_STARTED=/opt/eagle/job-started.sh
 WORKDIR /home/runner
 USER runner

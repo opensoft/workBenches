@@ -25,3 +25,14 @@ COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/
 RUN docker compose version
 COPY --chmod=755 job-started.sh /opt/eagle/job-started.sh
 ENV ACTIONS_RUNNER_HOOK_JOB_STARTED=/opt/eagle/job-started.sh
+USER root
+RUN curl -fsSL https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -o /tmp/microsoft-prod.deb \
+    && dpkg -i /tmp/microsoft-prod.deb && rm /tmp/microsoft-prod.deb \
+    && printf 'deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/repos/azure-cli/ noble main\n' > /etc/apt/sources.list.d/azure-cli.list \
+    && apt-get update && apt-get install -y --no-install-recommends azure-cli powershell zstd \
+    && rm -rf /var/lib/apt/lists/*
+COPY --chmod=755 eagle-ssh-proxy /usr/local/bin/eagle-ssh-proxy
+COPY --chown=1001:1001 ssh_config /home/runner/.ssh/config
+ENV AZURE_CORE_COLLECT_TELEMETRY=0 POWERSHELL_TELEMETRY_OPTOUT=1
+USER runner
+RUN az version --output json >/dev/null && pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' && zstd --version
