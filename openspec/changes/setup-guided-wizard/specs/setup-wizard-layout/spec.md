@@ -1,0 +1,136 @@
+# Spec Delta: setup-wizard-layout
+
+## Purpose
+
+Defines how every wizard frame is composed and bounded: the head, the per-step
+selector area, notices, width and height limits, banner collapse, first paint
+without discovery, partial redraw and loading indicators.
+
+## ADDED Requirements
+
+### Requirement: Frame head
+Every wizard frame SHALL begin with the banner, the version and OS line, the nav bar and one rule, in that order, and SHALL NOT contain a per-step title line or a step description line.
+
+#### Scenario: Head order
+- **WHEN** any step is displayed
+- **THEN** the version line (`workBenches v<VERSION>` with the OS label at its right) is followed by the nav bar and then a single rule
+
+#### Scenario: No step titles
+- **WHEN** any step is displayed
+- **THEN** the frame contains no `STEP n OF m` title and no per-step description sentence
+
+### Requirement: Step selector area
+The rows directly under the rule SHALL be the current step's selector area: the requirements strip on Workstation, the CATEGORY block on Benches and the identities summary line on Profiles. AI assistants and Tools SHALL start directly with their panels, and Review SHALL start with its instruction line.
+
+#### Scenario: Strip only on Workstation
+- **WHEN** Workstation is shown
+- **THEN** the first row under the rule begins with `REQUIREMENTS ·`
+- **AND** when Benches, AI assistants, Tools, Profiles or Review is shown, no `REQUIREMENTS ·` strip appears
+
+#### Scenario: Category block on Benches
+- **WHEN** Benches is shown after the catalog has loaded
+- **THEN** the first row under the rule begins with `CATEGORY`
+
+#### Scenario: Identities line on Profiles
+- **WHEN** Profiles is shown
+- **THEN** the first row under the rule is one line summarizing the cached personal and company identities, cut with `…` when it is wider than the frame
+
+### Requirement: Requirements strip
+The Workstation strip SHALL read `REQUIREMENTS · N/N ready`, or `REQUIREMENTS · Loading…` while checks run, followed by each required service and Vault with its state, with Vault followed by `[V <Action>]`. Items SHALL be green when Up, yellow otherwise and blinking while loading, and the strip SHALL wrap only between items so Vault's action is never split.
+
+#### Scenario: Ready strip on WSL
+- **WHEN** WSL 2, Docker, Tools and Vault are Up and the user is signed out
+- **THEN** the strip shows `REQUIREMENTS · 3/3 ready`, `WSL 2 Up`, `Docker Up`, `Tools Up` and `Vault Up [V Connect]`
+
+#### Scenario: Narrow strip
+- **WHEN** the frame is 36 columns wide
+- **THEN** the strip wraps between items and `[V Connect]` appears whole on one line
+
+### Requirement: Notices on the current step
+A notice produced by the Vault action, a Profiles action, a blocked Apply or the readiness check SHALL be shown on the current step, after its selector area, cut to the frame width.
+
+#### Scenario: Notice after V on AI assistants
+- **WHEN** the user presses V on AI assistants and the action reports that Vault needs attention
+- **THEN** the notice appears on the AI assistants step below the rule and no wider than the frame
+
+### Requirement: Width bounds
+For terminals at least 36 columns wide, no rendered line SHALL be wider than the terminal; the frame SHALL be at most 87 columns wide, and padding SHALL be computed from character counts, not bytes.
+
+#### Scenario: Width matrix
+- **WHEN** each step is rendered at 36, 60 and 87 terminal columns, with long names and every status present
+- **THEN** no line is wider than the terminal
+
+#### Scenario: Wide terminal
+- **WHEN** the terminal is 120 columns wide
+- **THEN** the frame is 87 columns wide
+
+#### Scenario: Multibyte text stays aligned
+- **WHEN** a focused Workstation row's explanation reads "Checking workstation readiness…"
+- **THEN** that line's right border is in the same column as the panel's other borders
+
+### Requirement: Height bounds
+When the terminal height is known, the frame SHALL never be taller than the terminal. A tight layout without blank spacer lines and with a one-line banner SHALL apply at 24 rows or fewer and whenever the roomy layout would not fit. Lists SHALL scroll inside their panels with `▲ N more` and `▼ N more` rows, keeping the focused row visible, and when the height is unknown nothing SHALL be clipped.
+
+#### Scenario: Standard 24-row terminal
+- **WHEN** each step is rendered at 80×24 and 37×24 with all 12 benches catalogued
+- **THEN** each frame has at most 24 lines and shows the nav bar, the focused row and the whole footer
+
+#### Scenario: Long list scrolls
+- **WHEN** a panel has more rows than fit and focus moves to a row below the visible ones
+- **THEN** the panel scrolls so the focused row is visible and shows how many rows are hidden above and below
+
+#### Scenario: Unknown height
+- **WHEN** the terminal height cannot be read
+- **THEN** every row of the step is rendered and no `N more` row appears
+
+#### Scenario: Below the supported height
+- **WHEN** the terminal is shorter than the tight layout needs
+- **THEN** the frame drops lines from its top and is still no taller than the terminal
+
+### Requirement: Banner collapse
+The four-row OpenSoft wordmark SHALL be drawn only when the frame is at least 42 columns wide and the terminal height is unknown or at least 40 rows; otherwise a one-line `Opensoft` banner SHALL be drawn.
+
+#### Scenario: Tall terminal
+- **WHEN** the terminal is 88×40
+- **THEN** the four-row wordmark is drawn
+
+#### Scenario: Shorter terminal
+- **WHEN** the terminal is 88×39
+- **THEN** the banner is the one line `Opensoft`
+
+### Requirement: First paint without discovery
+The first frame SHALL be drawn before any Docker, jq, Python, Git or network check runs, and rendering any step SHALL read only in-memory state, never running a discovery command.
+
+#### Scenario: First paint with a slow Docker probe
+- **WHEN** setup starts while the Docker probe blocks
+- **THEN** a frame containing `Navigation:` and `Loading` is drawn before the probe returns
+
+#### Scenario: Rendering runs no tools
+- **WHEN** every step is rendered with `jq`, `python3`, `docker` and `git` replaced by commands that record any call
+- **THEN** no call is recorded
+
+### Requirement: Partial redraw
+After the first paint, a status update or key press SHALL rewrite only the lines that changed. The screen SHALL be cleared only on the first paint, after an interactive helper returns, or when the terminal width or height changes.
+
+#### Scenario: Status update
+- **WHEN** Docker's status changes from Loading to Up
+- **THEN** the output contains no clear-screen sequence and does not rewrite the banner or version line
+
+#### Scenario: Unchanged state
+- **WHEN** the frame is drawn twice with no state change
+- **THEN** the second draw writes nothing
+
+#### Scenario: Resize
+- **WHEN** the terminal height changes between two draws
+- **THEN** the second draw clears the screen and repaints the whole frame
+
+### Requirement: Loading indicators
+An item whose state is not yet known SHALL show the word `Loading` in the blinking loading style, and SHALL NOT be selectable until its state is known.
+
+#### Scenario: First frame while loading
+- **WHEN** the first frame is drawn
+- **THEN** it contains `Loading` and the blink attribute sequence `ESC [5m`
+
+#### Scenario: Loading item cannot be queued
+- **WHEN** a bench still shows Loading and the user presses Space on it
+- **THEN** nothing is queued
