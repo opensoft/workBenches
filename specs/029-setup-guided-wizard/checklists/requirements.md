@@ -44,7 +44,7 @@
 ## Release-Gate Cross-Cutting Review
 
 **Added**: 2026-10-21 by `/speckit-checklist` with no argument (maximum coverage). The domain checklists are listed in [README.md](README.md).
-**Legend**: `[x]` satisfied, with a pointer · `[x] … Fixed:` gap closed by wording in this pass · `[ ]` open → [README](README.md) › Needs Brett (NB-n)
+**Legend**: `[x]` satisfied, with a pointer · `[x] … Fixed:` gap closed by wording · `[x] … Resolved:` closed by Brett's decision (NB-n, [README](README.md) › Needs Brett) · `[ ]` open
 
 ### Completeness
 
@@ -65,7 +65,7 @@
 ### Consistency
 
 - [x] CHK011 - Do FR wordings match their OpenSpec deltas after this pass? [Consistency] — Deltas updated in the same pass; `openspec validate setup-guided-wizard --strict` passes.
-- [ ] CHK012 - Do the success criteria and edge cases agree with the FRs? [Conflict, Spec §SC-008 vs §Edge Cases] — **Open**: SC-006 now matches FR-060, but SC-008 ("100% of queued changes") conflicts with the edge-case assumption for a bench that leaves the catalog. → NB-5.
+- [x] CHK012 - Do the success criteria and edge cases agree with the FRs? [Conflict, Spec §SC-008 vs §Edge Cases] — **Resolved** (NB-5 A, Brett Heap, 2026-10-21): SC-006 matches FR-060; SC-008 now counts queued changes for benches still catalogued, matching FR-051 and the edge case.
 - [x] CHK013 - Do design decisions agree with the spec where both speak (D5 nav widths, D9 order, D15 Review, D16 footer)? [Consistency] — Yes, after this pass's fixes (see [ux.md](ux.md), [layout.md](layout.md)).
 
 ### Acceptance Criteria Quality
@@ -76,7 +76,7 @@
 ### Dependencies & Assumptions
 
 - [x] CHK016 - Are external dependencies listed? [Dependency] — Assumptions › Dependencies.
-- [ ] CHK017 - Is every assumption either validated by a test or explicitly accepted? [Assumption] — **Open**: the vanished-bench fallback (NB-5) and the Python consumers' name-safe indexing (NB-8) are neither.
+- [x] CHK017 - Is every assumption either validated by a test or explicitly accepted? [Assumption] — **Resolved** (NB-5 A, NB-8 A, Brett Heap, 2026-10-21): the vanished-bench fallback is now FR-051 (US7-10); the Python consumers' name handling is proven by FR-057's fixture test.
 - [x] CHK018 - Is the dependency on 1.7 freezing first handled? [Dependency] — Assumptions › Release target (retarget to 1.8 without requirement changes).
 
 ### Ambiguities & Conflicts
@@ -86,4 +86,4 @@
 - [x] CHK021 - Is the status of each mockup clear, so illustrative details are not read as requirements? [Clarity] — design › Mockups (one approved Benches mockup; the others illustrative).
 - [x] CHK022 - Are the TUI's own terms (step, zone, About panel, notice, readiness, return target) used consistently? [Consistency] — Key Entities; FR-032 (notice).
 
-- Cross-cutting review: 22 items, 20 satisfied (19 as written, 1 closed by wording) and 2 open (NB-5, NB-8).
+- Cross-cutting review: 22 items, all satisfied (19 as written, 1 closed by wording, 2 resolved by Brett's decisions NB-5 and NB-8); none open.

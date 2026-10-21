@@ -6,25 +6,26 @@
 
 ## Summary
 
-| Checklist | Domain | Items | Passed as written | Fixed by wording | Open |
-|---|---|---:|---:|---:|---:|
-| [ux.md](ux.md) | Interaction and UX flow | 83 | 59 | 17 | 7 |
-| [layout.md](layout.md) | Terminal layout and rendering bounds | 46 | 40 | 3 | 3 |
-| [catalog.md](catalog.md) | Bench catalog data | 40 | 34 | 4 | 2 |
-| [performance.md](performance.md) | Performance (100 ms budget, first paint, redraw) | 21 | 19 | 2 | 0 |
-| [reliability.md](reliability.md) | Reliability, degraded metadata, recovery, idempotency | 36 | 27 | 4 | 5 |
-| [security.md](security.md) | Security and safety | 30 | 23 | 4 | 3 |
-| [contracts.md](contracts.md) | Setup-contract compatibility | 25 | 24 | 1 | 0 |
-| [testing.md](testing.md) | Testing and acceptance | 25 | 22 | 3 | 0 |
-| [release.md](release.md) | Documentation, release and rollback | 18 | 16 | 1 | 1 |
-| [accessibility.md](accessibility.md) | Accessibility and terminal usability | 15 | 14 | 1 | 0 |
-| [requirements.md](requirements.md) | Cross-cutting review (appended) | 22 | 19 | 1 | 2 |
-| **Total** | | **361** | **297** | **41** | **23** |
+| Checklist | Domain | Items | Passed as written | Fixed by wording | Resolved by Brett | Open |
+|---|---|---:|---:|---:|---:|---:|
+| [ux.md](ux.md) | Interaction and UX flow | 83 | 59 | 17 | 7 | 0 |
+| [layout.md](layout.md) | Terminal layout and rendering bounds | 46 | 40 | 3 | 3 | 0 |
+| [catalog.md](catalog.md) | Bench catalog data | 40 | 34 | 4 | 2 | 0 |
+| [performance.md](performance.md) | Performance (100 ms budget, first paint, redraw) | 21 | 19 | 2 | 0 | 0 |
+| [reliability.md](reliability.md) | Reliability, degraded metadata, recovery, idempotency | 36 | 27 | 4 | 5 | 0 |
+| [security.md](security.md) | Security and safety | 30 | 23 | 4 | 3 | 0 |
+| [contracts.md](contracts.md) | Setup-contract compatibility | 25 | 24 | 1 | 0 | 0 |
+| [testing.md](testing.md) | Testing and acceptance | 25 | 22 | 3 | 0 | 0 |
+| [release.md](release.md) | Documentation, release and rollback | 18 | 16 | 1 | 1 | 0 |
+| [accessibility.md](accessibility.md) | Accessibility and terminal usability | 15 | 14 | 1 | 0 | 0 |
+| [requirements.md](requirements.md) | Cross-cutting review (appended) | 22 | 19 | 1 | 2 | 0 |
+| **Total** | | **361** | **297** | **41** | **23** | **0** |
 
+- Final counts: all 361 items are satisfied.
 - `requirements.md` also keeps its original spec-quality list (16/16, not counted above).
 - "Passed as written" includes items satisfied by a fix recorded in another checklist (each such item says where).
-- The 23 open items reduce to **15 decisions** (NB-1 to NB-15 below); several items point at the same decision.
-- `openspec validate setup-guided-wizard --strict` passes after the edits.
+- The 23 items once open reduced to **15 decisions** (NB-1 to NB-15 below). Brett answered all 15 on 2026-10-21. The answers are folded into `spec.md` (Clarifications › Session 2026-10-21 (checklist decisions), FRs, SCs, scenarios, edge cases and assumptions), the four OpenSpec deltas, `design.md` and `tasks.md`.
+- `openspec validate setup-guided-wizard --strict` passes after the edits, and traceability is still 45/45; no FR was added.
 
 ### Domains skipped or folded in
 
@@ -76,7 +77,7 @@ Each fix states behaviour that was already decided — by 1.7 under the approved
 
 ## Needs Brett
 
-Each item below needs a product decision; nothing was assumed. Reply on one line, e.g. `NB-1: A, NB-2: A, …`, or `all recommended`. Answers will be folded into `spec.md`, the matching OpenSpec delta and the checklists, and `openspec validate --strict` re-run.
+**Round complete.** Brett Heap answered all 15 decisions interactively on 2026-10-21, choosing the recommended option each time (`NB-1: A` to `NB-15: A`). Each answer is recorded under its item. The answers are folded into `spec.md`, the matching OpenSpec deltas, `design.md` and `tasks.md`, and the 23 checklist items they resolve are ticked. `openspec validate --strict` was re-run.
 
 ### NB-1. Context line where nothing is focused or a row has no state
 
@@ -90,6 +91,8 @@ FR-021 defines `<Name> · <State>`. Review has no focused row, Profiles rows hav
 
 **Recommended: A** — it is what `design.md` already shows and keeps the `<Name> · <State>` pattern wherever a state exists.
 
+**Answer:** A — Review shows `Review · Nothing applied yet`, a Profiles row its name alone and Benches `Loading benches…`, with the total at the right; encoded in FR-021, US1-21 and delta › Footer context and hints (Brett Heap, 2026-10-21)
+
 ### NB-2. What "the category summary" on the context line means
 
 **Items**: ux CHK058 · **Affects**: FR-021; delta › Footer context and hints
@@ -102,6 +105,8 @@ FR-021 shows "the category summary" when the category zone has focus; FR-045 and
 
 **Recommended: A** — About already shows the catalog summary; the counts fit the `<Name> · <State>` pattern and narrow frames.
 
+**Answer:** A — the category name and its counts as in the category block (`Science · 2 benches · 1 installed`); encoded in FR-021, US1-21 and delta › Footer context and hints (Brett Heap, 2026-10-21)
+
 ### NB-3. Queued counts in the compact nav
 
 **Items**: ux CHK016 · **Affects**: FR-007; delta › Top nav bar
@@ -111,6 +116,8 @@ FR-021 shows "the category summary" when the category zone has focus; FR-045 and
 - **C** — Each step's count beside its mark.
 
 **Recommended: A** — the compact form exists for tight frames, and the footer already carries the total.
+
+**Answer:** A — no queued counts in the compact nav; the footer keeps the total; encoded in FR-007, US4-13, delta › Top nav bar and design D5 (Brett Heap, 2026-10-21)
 
 ### NB-4. Hint lines between 60 and 79 columns
 
@@ -124,6 +131,8 @@ Design D16 fixes two hint lines at 80+ columns and FR-022 caps them at two below
 
 **Recommended: A** — Q7 lists those keys "only at 60+ columns", so they are listed in full there, and the budget fits.
 
+**Answer:** A — at 60 columns or more the full per-step hint list wraps over as many lines as it needs, within SC-002's bounds; encoded in FR-022, delta › Footer context and hints and design D16 and the layout table (Brett Heap, 2026-10-21)
+
 ### NB-5. A bench that leaves the catalog on refresh
 
 **Items**: ux CHK045, ux CHK079, reliability CHK017, requirements CHK012, CHK017 · **Affects**: FR-046, FR-051, SC-008, Edge Cases; delta › Focus survives catalog updates
@@ -135,6 +144,8 @@ The edge case records an *assumed* fallback and keeps queued changes "for benche
 - **C** — As A, plus a notice naming any dropped change.
 
 **Recommended: A** — Review shows exactly what will apply before Enter, so a dropped change is visible; B queues work that can only fail.
+
+**Answer:** A — focus and return targets fall back to the category zone on the same category (or the first with benches), the vanished bench's queued change is dropped, SC-008 counts queued changes for benches still catalogued, and About keeps its offset (clamped) on a same-bench refresh; encoded in FR-026, FR-046, FR-051, SC-008, Edge Cases and US7-10, deltas › Refresh keeps state, About scrolling and Focus survives catalog updates, and design D8 and the Focus Model (Brett Heap, 2026-10-21)
 
 ### NB-6. Characters allowed in bench copy
 
@@ -148,6 +159,8 @@ The catalog test rejects control characters only. Wide, combining, zero-width or
 
 **Recommended: A** — it matches the TUI's single-column assumption without banning accented letters.
 
+**Answer:** A — the catalog test rejects wide, fullwidth, combining, zero-width and bidi formatting characters in bench copy and in category labels and summaries; encoded in FR-053, US5-2, Edge Cases, delta › Bench presentation fields, design D18 and `tasks.md` 2.3 (Brett Heap, 2026-10-21)
+
 ### NB-7. Sanitising all outside text, not only catalog text
 
 **Items**: security CHK015 · **Affects**: FR-048, SC-011; delta › Metadata delivery without discovery
@@ -156,6 +169,8 @@ The catalog test rejects control characters only. Wide, combining, zero-width or
 - **B** — Keep the rule to bench and category details, as written; other text keeps 1.7's handling.
 
 **Recommended: A** — one rule at no extra cost, and SC-011's guarantee then covers the whole screen.
+
+**Answer:** A — every text the TUI shows but did not write (status details, identities summary, helper results) gets the control-character rule; encoded in FR-048, SC-011, US7-7, Edge Cases, delta › Metadata delivery without discovery, design D12 and `tasks.md` 3.1 (Brett Heap, 2026-10-21)
 
 ### NB-8. Digit-leading proof for the Python consumers
 
@@ -167,6 +182,8 @@ Only `setup_selection.py` is exercised (US5-4); `setup-components.py`, `release-
 - **B** — Accept the assumption, citing US5-4 and the real-host TUI install of 365Bench (SC-010), and say so in Assumptions.
 
 **Recommended: A** — a small fixture test removes the last unproven consumer, and 365Bench is what makes the hazard live.
+
+**Answer:** A — the digit-leading fixture test covers the four Python consumers too, and SC-004 counts 8 of 8 consumers; encoded in FR-057, SC-004, US5-6, Assumptions › No data migration, delta › Name-safe catalog lookups, design D13 and `tasks.md` 2.1 (Brett Heap, 2026-10-21)
 
 ### NB-9. Catalog maintenance scripts and the lock-only catalog
 
@@ -180,6 +197,8 @@ Only `setup_selection.py` is exercised (US5-4); `setup-components.py`, `release-
 
 **Recommended: A** — regeneration can no longer bring local clones back in (Q10), and creating a new bench still works.
 
+**Answer:** A — `update-bench-config.sh` skips, with a warning, benches the release lock does not record; `new-bench.sh` still adds entries; the bench-creation docs say a lock entry and copy come first; encoded in FR-059, US5-9, Edge Cases, delta › Maintenance scripts preserve metadata, design › Risks and `tasks.md` 2.5 (Brett Heap, 2026-10-21)
+
 ### NB-10. Degraded details
 
 **Items**: reliability CHK008, CHK009, CHK011 · **Affects**: FR-050; delta › Degraded metadata
@@ -192,6 +211,8 @@ Open points: (a) the label "derived from" an unknown category id, and the order 
 
 **Recommended: A** — every catalogued bench stays visible and selectable, and each case gets a testable outcome.
 
+**Answer:** A — title-cased labels for unknown ids, ordered by id; `Other benches` for uncategorised benches outside the bench roots; placement by path when categories arrive without bench details; present fields shown, with `No details for this bench yet.` when description, uses and contents are all missing; `Other benches` About lists its benches; encoded in FR-050, US7-9, Edge Cases, delta › Degraded metadata, design D12 and `tasks.md` 3.1 (Brett Heap, 2026-10-21)
+
 ### NB-11. What counts as "installed"
 
 **Items**: layout CHK038 · **Affects**: FR-041, FR-044; deltas › Category block, Bench panel
@@ -202,6 +223,8 @@ Open points: (a) the label "derived from" an unknown category id, and the order 
 - **B** — Only benches whose status is `installed`.
 
 **Recommended: A** — the counts then agree with the `→ Update` or `→ Install` the user sees on Space.
+
+**Answer:** A — a bench counts as installed when Space would queue an update rather than an install (`installed`, `needs creds`, `image only`); encoded in FR-041, FR-044, deltas › Category block and Bench panel, design D6 and `tasks.md` 4.6 (Brett Heap, 2026-10-21)
 
 ### NB-12. Spare rows on Benches: bench list or About first
 
@@ -215,6 +238,8 @@ FR-047 sets minimums (at least three bench rows, two to eight About lines). At 8
 
 **Recommended: A** — the list is what the user acts on, and About scrolls.
 
+**Answer:** A — spare rows go to bench rows first, up to every bench of the current category, then to About, up to eight lines; encoded in FR-047, delta › Height-aware Benches layout, design D9 and `tasks.md` 4.6 (Brett Heap, 2026-10-21)
+
 ### NB-13. Benches when no bench list ever arrives
 
 **Items**: reliability CHK006 · **Affects**: FR-049; delta › Metadata delivery without discovery
@@ -226,6 +251,8 @@ If checks finish, or cannot start, without publishing a bench list, FR-049 would
 
 **Recommended: A** — 1.7 already says "Could not start readiness checks. R retries." for the start failure.
 
+**Answer:** A — Benches says the bench list could not be loaded and that R retries, and nothing can be queued; encoded in FR-049, US7-8, Edge Cases, delta › Metadata delivery without discovery, design D12 and `tasks.md` 3.1 (Brett Heap, 2026-10-21)
+
 ### NB-14. Review's scroll position when it opens
 
 **Items**: ux CHK008 · **Affects**: FR-004, FR-012
@@ -234,6 +261,8 @@ If checks finish, or cannot start, without publishing a bench list, FR-049 would
 - **B** — Review always opens at its first item, including after P or G returns.
 
 **Recommended: A** — consistent with FR-023 and FR-024's exact-focus restore.
+
+**Answer:** A — Review opens at its first item by Enter or ←/→, and a P or G return restores the remembered position; encoded in FR-012, US1-21, delta › Review lists every queued change, design D15 and `tasks.md` 4.2 (Brett Heap, 2026-10-21)
 
 ### NB-15. Recording approval of the OpenSpec change
 
@@ -245,3 +274,5 @@ If checks finish, or cannot start, without publishing a bench list, FR-049 would
 - **B** — Hold 1.1 until the plan review.
 
 **Recommended: A** — the plan should start from a recorded approval.
+
+**Answer:** A — Brett approves the OpenSpec change (proposal, design and the four deltas); `tasks.md` 1.1 is ticked "approved by Brett Heap, 2026-10-21" (Brett Heap, 2026-10-21)

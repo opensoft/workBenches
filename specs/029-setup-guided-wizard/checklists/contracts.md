@@ -6,7 +6,7 @@
 **Depth**: release gate, maximum coverage (no item cap) · **Audience**: reviewers before `/speckit-plan`
 **Scenario classes**: Primary, Alternate, Exception/Error, Recovery, Non-Functional
 
-**Legend**: `[x]` satisfied, with a pointer · `[x] … Fixed:` gap closed by wording in this pass (spec and delta updated) · `[ ]` open, needs a decision → [README](README.md) › Needs Brett (NB-n)
+**Legend**: `[x]` satisfied, with a pointer · `[x] … Fixed:` gap closed by wording (spec and delta updated) · `[x] … Resolved:` closed by Brett's decision (NB-n, [README](README.md) › Needs Brett) · `[ ]` open
 
 ## Requirement Completeness — Setup modes and the selection file
 

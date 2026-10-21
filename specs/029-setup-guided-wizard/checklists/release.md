@@ -6,7 +6,7 @@
 **Depth**: release gate, maximum coverage (no item cap) · **Audience**: reviewers before `/speckit-plan`
 **Scenario classes**: Primary, Alternate, Exception/Error, Recovery, Non-Functional
 
-**Legend**: `[x]` satisfied, with a pointer · `[x] … Fixed:` gap closed by wording in this pass (spec and delta updated) · `[ ]` open, needs a decision → [README](README.md) › Needs Brett (NB-n)
+**Legend**: `[x]` satisfied, with a pointer · `[x] … Fixed:` gap closed by wording (spec and delta updated) · `[x] … Resolved:` closed by Brett's decision (NB-n, [README](README.md) › Needs Brett) · `[ ]` open
 
 ## Requirement Completeness — Target and landing
 
@@ -14,7 +14,7 @@
 - [x] CHK002 - Is landing in a single pull request, carrying both the OpenSpec change and this feature, specified? [Completeness] — spec header; design › Migration Plan 1; OpenSpec `tasks.md` 7.3.
 - [x] CHK003 - Are all merge gates listed (copy approval, Brett's word, real-host acceptance, full regression, validate, analyze)? [Completeness] — FR-053; OpenSpec `tasks.md` 1.3, 5.2, 5.3, 7.1–7.3.
 - [x] CHK004 - Is the copy-approval record specified? [Clarity, Spec §SC-013] — SC-013 (fixed in [catalog.md](catalog.md) CHK013).
-- [ ] CHK005 - Is Brett's approval of the OpenSpec change itself recorded, as `tasks.md` 1.1 asks? [Gap] — **Open**: 1.1 is still unticked, although the change is described as approved. → NB-15.
+- [x] CHK005 - Is Brett's approval of the OpenSpec change itself recorded, as `tasks.md` 1.1 asks? [Gap] — **Resolved** (NB-15 A, Brett Heap, 2026-10-21): OpenSpec `tasks.md` 1.1 ticked "approved by Brett Heap, 2026-10-21"; spec › Clarifications › Session 2026-10-21 (checklist decisions).
 - [x] CHK006 - Is the 1.6 boundary stated? [Scope] — Assumptions › Release target.
 - [x] CHK007 - Is the version shown in the head line during this release specified? [Clarity, Spec §FR-029] — FR-029; Assumptions (`VERSION` `1.7.0-dev.1`).
 
@@ -37,5 +37,5 @@
 
 ## Notes
 
-- 18 items: 17 satisfied — 16 as written, 1 closed by wording in this pass — and 1 open (NB-15).
+- 18 items, all satisfied: 16 as written, 1 closed by wording, 1 resolved by Brett's decision (NB-15); none open.
 - Fixes recorded in other checklists and only referenced here: CHK004, CHK018.

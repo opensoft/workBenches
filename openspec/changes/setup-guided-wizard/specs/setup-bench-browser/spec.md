@@ -10,7 +10,7 @@ discovery, including fallbacks when metadata is missing.
 ## ADDED Requirements
 
 ### Requirement: Category block
-The Benches step SHALL list every catalog category in catalog `order` (then by id) under a `CATEGORY` label with a `Tab ⇄ benches` hint, marking the current category `●` and the others `○`, each followed by `N benches · I installed · Q queued` with zero parts omitted and `bench` for one. A category with no benches SHALL be shown dim as `coming soon` and SHALL NOT be focusable.
+The Benches step SHALL list every catalog category in catalog `order` (then by id) under a `CATEGORY` label with a `Tab ⇄ benches` hint, marking the current category `●` and the others `○`, each followed by `N benches · I installed · Q queued` with zero parts omitted and `bench` for one. A bench SHALL count as installed when Space would queue an update rather than an install (status `installed`, `needs creds` or `image only`, as 1.7 treats them). A category with no benches SHALL be shown dim as `coming soon` and SHALL NOT be focusable.
 
 #### Scenario: Category counts
 - **WHEN** Software Engineering has 8 benches with 4 installed and 1 queued, and Science has 2 benches with 1 installed and none queued
@@ -56,7 +56,7 @@ In the bench zone ↑/↓ SHALL move only within the current category's benches.
 - **THEN** rustBench is queued for install and its row shows `→ Install`
 
 ### Requirement: Bench panel
-The bench panel SHALL be titled with the current category and `I of N installed` (`Loading…` while any of its statuses is unknown) and SHALL show one row per bench, in catalog-name order (code-point order of the bench names, as 1.7 lists them), with checkbox, status symbol, name, tagline, status label and queued action. Below 70 columns it SHALL drop the tagline and below 50 columns the status label; the focused row SHALL be marked `›` only in the bench zone, and when the rows do not fit the panel SHALL show `▲ N more` or `▼ N more` and keep the focused row visible.
+The bench panel SHALL be titled with the current category and `I of N installed` (installed as in the category block; `Loading…` while any of its statuses is unknown) and SHALL show one row per bench, in catalog-name order (code-point order of the bench names, as 1.7 lists them), with checkbox, status symbol, name, tagline, status label and queued action. Below 70 columns it SHALL drop the tagline and below 50 columns the status label; the focused row SHALL be marked `›` only in the bench zone, and when the rows do not fit the panel SHALL show `▲ N more` or `▼ N more` and keep the focused row visible.
 
 #### Scenario: Full row at 87 columns
 - **WHEN** javaBench is installed, queued for update and focused in the bench zone
@@ -82,7 +82,7 @@ The About panel SHALL describe the current focus. In the bench zone it SHALL be 
 - **THEN** the About panel shows the category summary and the names 365Bench and cloudBench
 
 ### Requirement: About scrolling
-When the About text is longer than its window, the panel SHALL show `a–b of n` in its top border, `▼ more` on the last visible line while text remains below, `▲ more` on the first visible line once scrolled, and a `PgUp/PgDn scroll` hint in its bottom border. PgUp/PgDn and `[`/`]` SHALL scroll by the window height less one line, clamped to the text, and the offset SHALL return to the first line whenever the zone, category or focused bench changes.
+When the About text is longer than its window, the panel SHALL show `a–b of n` in its top border, `▼ more` on the last visible line while text remains below, `▲ more` on the first visible line once scrolled, and a `PgUp/PgDn scroll` hint in its bottom border. PgUp/PgDn and `[`/`]` SHALL scroll by the window height less one line, clamped to the text, and the offset SHALL return to the first line whenever the zone, category or focused bench changes, and SHALL be kept, clamped to the new text, when the same bench's details are refreshed.
 
 #### Scenario: Page down
 - **WHEN** the About window shows lines 1–4 of 9 and the user presses PgDn
@@ -101,7 +101,7 @@ When the About text is longer than its window, the panel SHALL show `a–b of n`
 - **THEN** no range, `more` marker or scroll hint is shown
 
 ### Requirement: Height-aware Benches layout
-With a known terminal height the Benches step SHALL give rows first to the category block, then to at least three bench rows (or all of them when fewer), then to between two and eight About lines. When that does not fit, the category block SHALL collapse to one line naming the current category; with an unknown height nothing SHALL be clipped.
+With a known terminal height the Benches step SHALL give rows first to the category block, then to at least three bench rows (or all of them when fewer), then to between two and eight About lines. Rows left over SHALL go first to more bench rows, up to every bench of the current category, and then to About, up to eight lines. When the minimums do not fit, the category block SHALL collapse to one line naming the current category; with an unknown height nothing SHALL be clipped.
 
 #### Scenario: Roomy terminal
 - **WHEN** Benches is rendered at 88×40 with Software Engineering current
@@ -116,7 +116,7 @@ With a known terminal height the Benches step SHALL give rows first to the categ
 - **THEN** every category, every bench of the current category and the whole About text are rendered
 
 ### Requirement: Metadata delivery without discovery
-The background status worker SHALL publish bench and category metadata beside its catalog file, each file written atomically, and the foreground SHALL read it with Bash builtins only, ignoring bench names and category ids that fail validation and replacing control characters (U+0000–U+001F and U+007F–U+009F, including ESC and tab) with spaces. Until the metadata arrives, or checks finish without it (see Degraded metadata), the Benches step SHALL show `Loading benches…`.
+The background status worker SHALL publish bench and category metadata beside its catalog file, each file written atomically, and the foreground SHALL read it with Bash builtins only, ignoring bench names and category ids that fail validation and replacing control characters (U+0000–U+001F and U+007F–U+009F, including ESC and tab) with spaces. Until the metadata arrives, or checks finish without it (see Degraded metadata), the Benches step SHALL show `Loading benches…`; when checks finish, or cannot start, without publishing a bench list, it SHALL instead say that the bench list could not be loaded and that R retries, and no bench SHALL be queueable. The same control-character replacement SHALL apply to every other text the TUI shows but did not write: status details from the worker, the identities summary and the results of interactive helpers.
 
 #### Scenario: Metadata arrives from the worker
 - **WHEN** the worker finishes reading the catalog inside Tools
@@ -130,12 +130,29 @@ The background status worker SHALL publish bench and category metadata beside it
 - **WHEN** Benches is shown before the worker has published the catalog and its metadata
 - **THEN** the step shows `Loading benches…` and no bench can be queued
 
+#### Scenario: No bench list
+- **WHEN** checks finish without the worker publishing a bench list
+- **THEN** the Benches step says the bench list could not be loaded and that R retries
+- **AND** no bench can be queued
+
+#### Scenario: Control characters in other outside text
+- **WHEN** a status detail from the worker or the identities summary contains `ESC [2J`
+- **THEN** the TUI shows the text without the escape character and the screen is not cleared
+
 ### Requirement: Degraded metadata
-A bench without a `category` SHALL be placed by its path: `devBenches/` under Software Engineering, `bioBenches/` under Science and `sysBenches/` under System Administration. An unknown category id SHALL be listed after the known categories with a label derived from its id. When checks finish without any metadata, every catalogued bench SHALL be listed in one `Other benches` group with About text `No details for this bench yet.` and SHALL remain selectable.
+A bench without a `category` SHALL be placed by its path: `devBenches/` under Software Engineering, `bioBenches/` under Science, `sysBenches/` under System Administration and any other path under `Other benches`. An unknown category id SHALL be listed after the known categories, ordered by id, with a label made by title-casing its hyphen-separated words. When categories arrive without per-bench metadata, benches SHALL still be placed by path into them. A bench SHALL show the metadata fields that exist, and its About text SHALL be `No details for this bench yet.` when its description, uses and contents are all missing. When checks finish without any metadata (neither categories nor bench details), every catalogued bench SHALL be listed in one `Other benches` group with that About text, and the group's About SHALL list its bench names. Every such bench SHALL remain selectable.
 
 #### Scenario: Missing category field
 - **WHEN** a catalogued bench at `sysBenches/testBench` has no `category`
 - **THEN** it is listed under System Administration
+
+#### Scenario: Unknown category id
+- **WHEN** a bench names the unknown category id `quantum-computing`
+- **THEN** it is listed under `Quantum Computing`, after the known categories
+
+#### Scenario: Categories without bench details
+- **WHEN** checks finish after the worker published categories but no bench details
+- **THEN** each bench is listed under the category its path gives, with About text `No details for this bench yet.`
 
 #### Scenario: No metadata at all
 - **WHEN** checks finish and the worker published the catalog but no metadata
@@ -143,8 +160,13 @@ A bench without a `category` SHALL be placed by its path: `devBenches/` under So
 - **AND** Space still queues a bench that is not installed
 
 ### Requirement: Focus survives catalog updates
-When the catalog or its metadata arrives or is refreshed, the Benches step SHALL keep the focused bench (matched by name), the zone, the current category and every queued change, and a bench remembered by the P or G return target SHALL be kept by name the same way. When the bench list first arrives while Benches shows `Loading benches…`, focus SHALL go to the category zone on the first category that has benches.
+When the catalog or its metadata arrives or is refreshed, the Benches step SHALL keep the focused bench (matched by name), the zone, the current category and every queued change, and a bench remembered by the P or G return target SHALL be kept by name the same way. When the focused or a remembered bench is no longer catalogued, that focus SHALL fall back to the category zone on the same category (or the first category that has benches), and the bench's queued change SHALL be dropped, so Review lists only changes that can apply. When the bench list first arrives while Benches shows `Loading benches…`, focus SHALL go to the category zone on the first category that has benches.
 
 #### Scenario: Catalog arrives while browsing
 - **WHEN** the user has focused pyBench in the bench zone and refreshed metadata arrives
 - **THEN** pyBench stays focused in the Software Engineering bench zone and queued changes are unchanged
+
+#### Scenario: Focused bench leaves the catalog
+- **WHEN** goBench is focused and queued for install and a refreshed catalog no longer lists it
+- **THEN** the category zone has focus on Software Engineering
+- **AND** goBench's queued change is gone

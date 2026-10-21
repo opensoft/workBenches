@@ -22,7 +22,7 @@ preservation of the metadata by catalog maintenance scripts.
 - **THEN** `electrical-engineering` has no benches and `software-engineering`, `science` and `system-administration` each have at least one
 
 ### Requirement: Bench presentation fields
-Every catalogued bench SHALL have a `category`, a `tagline` of at most 35 characters, a non-empty `description`, and non-empty `usedFor` and `contains` lists of single-line strings, and none of these values SHALL contain control characters (U+0000–U+001F and U+007F–U+009F). A bench's `tagline`, `usedFor` and `contains` SHALL NOT name version numbers, because they go stale when bench images are updated: the catalog test SHALL reject a version-like token — a standalone number, dotted or not (`1.26`, `25`), or a number prefixed by `v` or `version-` (`v2`, `version-15`) — except numbers on an explicit allow-list of product names (`Microsoft 365`, `Dynamics 365`). A number is standalone when it is not joined to a letter, so names such as `ARM64`, `MMseqs2`, `py3Dmol` and `m365` are accepted.
+Every catalogued bench SHALL have a `category`, a `tagline` of at most 35 characters, a non-empty `description`, and non-empty `usedFor` and `contains` lists of single-line strings, and none of these values SHALL contain control characters (U+0000–U+001F and U+007F–U+009F). These values, and each category's `label` and `summary`, SHALL contain only single-column printable characters: the catalog test SHALL also reject East Asian wide or fullwidth characters, combining marks, and zero-width or bidi formatting characters. A bench's `tagline`, `usedFor` and `contains` SHALL NOT name version numbers, because they go stale when bench images are updated: the catalog test SHALL reject a version-like token — a standalone number, dotted or not (`1.26`, `25`), or a number prefixed by `v` or `version-` (`v2`, `version-15`) — except numbers on an explicit allow-list of product names (`Microsoft 365`, `Dynamics 365`). A number is standalone when it is not joined to a letter, so names such as `ARM64`, `MMseqs2`, `py3Dmol` and `m365` are accepted.
 
 #### Scenario: Complete presentation fields
 - **WHEN** the catalog test checks every bench
@@ -30,6 +30,10 @@ Every catalogued bench SHALL have a `category`, a `tagline` of at most 35 charac
 
 #### Scenario: Over-long tagline
 - **WHEN** a bench's `tagline` is 36 characters long
+- **THEN** the catalog test fails and names that bench
+
+#### Scenario: Character wider or narrower than one column
+- **WHEN** a bench's `tagline` contains a fullwidth or zero-width character
 - **THEN** the catalog test fails and names that bench
 
 #### Scenario: Version number in copy
@@ -64,11 +68,15 @@ Catalog text SHALL describe only what a bench's image provides. simBench SHALL b
 - **THEN** they mention OpenMM and ESM and do not mention AlphaFold or ESMFold
 
 ### Requirement: Name-safe catalog lookups
-Every shell consumer of the catalog SHALL look a bench up by passing its name to jq as an argument (`--arg`) and indexing `.benches[$name]`, never by interpolating the name into a jq path, so that bench names beginning with a digit resolve correctly.
+Every shell consumer of the catalog SHALL look a bench up by passing its name to jq as an argument (`--arg`) and indexing `.benches[$name]`, never by interpolating the name into a jq path, so that bench names beginning with a digit resolve correctly. The Python consumers (`setup_selection.py`, `setup-components.py`, `release-workbenches.py`, `remove-bench-checkout.py`) SHALL be proven by the same digit-leading fixture to resolve such names.
 
 #### Scenario: Digit-leading bench resolves everywhere
 - **WHEN** a fixture catalog contains `365Bench` at `sysBenches/365Bench` and each consumer looks it up (`interactive-setup.sh` status and apply paths, `scripts/setup-workbenches.sh`, `scripts/update-project.sh`, `scripts/launchBench`)
 - **THEN** each resolves `sysBenches/365Bench` and its description and URL from the catalog
+
+#### Scenario: Python consumers resolve a digit-leading bench
+- **WHEN** the same fixture catalog is read by `setup_selection.py`, `setup-components.py`, `release-workbenches.py` and `remove-bench-checkout.py`
+- **THEN** each resolves `365Bench` to `sysBenches/365Bench`
 
 #### Scenario: No interpolated lookups remain
 - **WHEN** the static check scans the repository's shell scripts
@@ -83,7 +91,7 @@ When a selected bench's catalog path cannot be resolved to a relative path that 
 - **AND** no git fetch, pull or clone runs in the workBenches root and the root `setup.sh` is not run for it
 
 ### Requirement: Maintenance scripts preserve metadata
-`scripts/update-bench-config.sh` and `scripts/new-bench.sh` SHALL keep the top-level `categories` and every existing per-bench field when they rewrite the catalog, and a bench they add SHALL receive a `category` derived from its path.
+`scripts/update-bench-config.sh` and `scripts/new-bench.sh` SHALL keep the top-level `categories` and every existing per-bench field when they rewrite the catalog, and a bench they add SHALL receive a `category` derived from its path. `update-bench-config.sh` SHALL skip, with a warning, any bench `config/release-lock.json` does not record, so local-only clones never enter the catalog; `new-bench.sh` SHALL still add its entry, and the bench-creation documentation SHALL say that a new bench needs a release-lock entry and its copy before the catalog test passes.
 
 #### Scenario: Regeneration keeps presentation fields
 - **WHEN** `update-bench-config.sh` regenerates a catalog whose benches have `category`, `tagline`, `usedFor`, `contains` and `ai_keywords`
@@ -92,3 +100,7 @@ When a selected bench's catalog path cannot be resolved to a relative path that 
 #### Scenario: New bench gets a category
 - **WHEN** `new-bench.sh` adds a bench under `devBenches/`
 - **THEN** the new entry has `category` `software-engineering`
+
+#### Scenario: Regeneration skips unlocked clones
+- **WHEN** `update-bench-config.sh` runs on a workstation with a local phpBench clone that the release lock does not record
+- **THEN** it warns that phpBench is skipped and the rewritten catalog has no phpBench entry

@@ -141,6 +141,11 @@ Brett Heap's decisions, quoted from the design sessions:
   matches the release lock exactly, and the bench copy approved in the running
   TUI before merge.
 
+- Checklist decisions and approval (2026-10-21): Brett answered the 15 decisions
+  raised by the release-gate checklists (`specs/029-setup-guided-wizard/checklists/README.md`,
+  NB-1 to NB-15) with the recommended option each time, and approved this change
+  (proposal, design and the four deltas) as NB-15; `tasks.md` 1.1 records it.
+
 The approved scope was "look only"; the deliberate behaviour changes are
 Enter→Review→Apply, the category/About browsing on the Benches step, and the
 catalog additions needed to show every locked bench.

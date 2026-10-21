@@ -42,7 +42,7 @@ The interactive setup TUI SHALL present one step per screen in this fixed order:
 - **THEN** Benches is shown with the category zone focused on the first category that has benches
 
 ### Requirement: Top nav bar
-The nav bar SHALL show every step in order by name, joined by short ` ─ ` connectors, marking steps before the current one `✓`, the current step a highlighted `●` and later steps `○`, each followed by its number of queued changes when that number is not zero. Profiles rows run their actions immediately, so Profiles SHALL never show a count. The full nav SHALL be shown whenever it fits the frame width; with three single-digit counts it is 79 columns including the current step's highlight, so it fits an 80-column terminal. The Workstation item SHALL show readiness in place of its step marker: a green `✓` when every required item is Up, a yellow `⚠` when one is not, and a blinking `…` while checks run. When Workstation is the current step, its item takes the current-step highlight and keeps the readiness mark.
+The nav bar SHALL show every step in order by name, joined by short ` ─ ` connectors, marking steps before the current one `✓`, the current step a highlighted `●` and later steps `○`, each followed by its number of queued changes when that number is not zero. Profiles rows run their actions immediately, so Profiles SHALL never show a count. The full nav SHALL be shown whenever it fits the frame width; with three single-digit counts it is 79 columns including the current step's highlight, so it fits an 80-column terminal. The compact form used when it does not fit SHALL show no queued counts; the footer keeps the total. The Workstation item SHALL show readiness in place of its step marker: a green `✓` when every required item is Up, a yellow `⚠` when one is not, and a blinking `…` while checks run. When Workstation is the current step, its item takes the current-step highlight and keeps the readiness mark.
 
 #### Scenario: Queued counts per step
 - **WHEN** two benches and one agent are queued and nothing else
@@ -60,7 +60,7 @@ The nav bar SHALL show every step in order by name, joined by short ` ─ ` conn
 
 #### Scenario: Compact nav on a narrow terminal
 - **WHEN** the full nav does not fit the frame width, as at 60 columns, or at 80 columns with a two-digit count
-- **THEN** the nav is one line naming the current step as `Step N of 6 · <Name>` with one progress mark per step, the first being the Workstation readiness mark
+- **THEN** the nav is one line naming the current step as `Step N of 6 · <Name>` with one progress mark per step, the first being the Workstation readiness mark, and no queued counts
 
 ### Requirement: Enter opens Review
 Enter SHALL run the focused row's action when the focus is a Workstation service row (WSL 2, Docker, Tools, Vault) or a Profiles row. Everywhere else Enter SHALL open the Review step without applying, installing or removing anything.
@@ -80,7 +80,7 @@ Enter SHALL run the focused row's action when the focus is a Workstation service
 - **AND** queued changes are unchanged and Review is not opened
 
 ### Requirement: Review lists every queued change
-The Review step SHALL list every queued change under INSTALL, UPDATE and REMOVE groups, in step order, each item with the step it belongs to, with the REMOVE group noting that projects and credentials are kept, and SHALL state that nothing has changed yet and that Enter applies the changes. It SHALL show a yellow warning when Shell setup (replaces shell settings) or Org workspace (may create a GitHub repository) is queued, and SHALL let the user see every item even when the list is taller than its rows. Review SHALL be read-only: no key on Review queues or unqueues a change, which is done on the step the item belongs to.
+The Review step SHALL list every queued change under INSTALL, UPDATE and REMOVE groups, in step order, each item with the step it belongs to, with the REMOVE group noting that projects and credentials are kept, and SHALL state that nothing has changed yet and that Enter applies the changes. It SHALL show a yellow warning when Shell setup (replaces shell settings) or Org workspace (may create a GitHub repository) is queued, and SHALL let the user see every item even when the list is taller than its rows. Reached by Enter or by ←/→, Review SHALL open at its first item; a P or G return SHALL restore the remembered position. Review SHALL be read-only: no key on Review queues or unqueues a change, which is done on the step the item belongs to.
 
 #### Scenario: Grouped changes
 - **WHEN** rustBench is queued for install, javaBench and Codex CLI for update, and pyBench for removal
@@ -99,6 +99,10 @@ The Review step SHALL list every queued change under INSTALL, UPDATE and REMOVE 
 - **WHEN** more changes are queued than Review has rows for
 - **THEN** Review shows how many items are hidden above or below
 - **AND** ↑/↓ scroll the list so every queued item can be displayed
+
+#### Scenario: Review opens at the top
+- **WHEN** more changes are queued than Review has rows and the user presses Enter on Benches
+- **THEN** Review shows its first item at the top of the list
 
 ### Requirement: Apply from Review
 Enter on Review SHALL apply the queued changes, or with `--select-only` write the selection file, only when no readiness checks are running and every required workstation item is Up. Otherwise it SHALL apply nothing, and while Apply is blocked Review SHALL show a yellow blocker line saying why Apply is waiting. With nothing queued the same gating applies, and Enter on Review finishes without changes, exiting with status 0 (with `--select-only`, after writing a selection file with no components), as the previous TUI's empty Enter did.
@@ -166,7 +170,7 @@ V SHALL run the Vault service action for its current state (Install, Start, Conn
 - **THEN** no `V` hint or `[V <Action>]` button appears on it
 
 ### Requirement: Refresh keeps state
-R SHALL re-run readiness and component checks while keeping the current step, the focus (including the Benches zone, category and focused bench) and every queued change.
+R SHALL re-run readiness and component checks while keeping the current step, the focus (including the Benches zone, category and focused bench) and every queued change, except for a bench that leaves the catalog (setup-bench-browser › Focus survives catalog updates).
 
 #### Scenario: Refresh on Benches
 - **WHEN** javaBench is queued and focused in the bench zone and the user presses R
@@ -232,11 +236,19 @@ The Agents and Tools steps SHALL offer the same items, order and selection rules
 - **THEN** nothing is queued
 
 ### Requirement: Footer context and hints
-Every step SHALL end with a rule, a context line and the key hints for that step; the hints SHALL begin with `Navigation:`, as in 1.7. The context line SHALL show the focused item as `<Name> · <State>` followed by `→ <action>` when one is queued (or the category summary when the Benches category zone has focus) and the total number of queued changes at its right: `Changes selected: N` at widths of 60 columns or more, and `Changes: N` below 60 columns, where a context line too long for the remaining width SHALL be cut with `…`. Below 60 columns the hints SHALL take at most two lines, listing the step's own keys (on Profiles, `G Back`) plus `←→`, `Enter` and `Q`; P, G, R, V and PgUp/PgDn SHALL keep working on every step but SHALL be listed only at 60 columns or more.
+Every step SHALL end with a rule, a context line and the key hints for that step; the hints SHALL begin with `Navigation:`, as in 1.7. The context line SHALL show the focused item as `<Name> · <State>` followed by `→ <action>` when one is queued; when the Benches category zone has focus, the category name and its counts as in the category block; where nothing is focused or the row has no state, `Review · Nothing applied yet` on Review, the row name alone on Profiles and `Loading benches…` on Benches while it loads. The total number of queued changes SHALL be at its right in every case: `Changes selected: N` at widths of 60 columns or more, and `Changes: N` below 60 columns, where a context line too long for the remaining width SHALL be cut with `…`. Below 60 columns the hints SHALL take at most two lines, listing the step's own keys (on Profiles, `G Back`) plus `←→`, `Enter` and `Q`; P, G, R, V and PgUp/PgDn SHALL keep working on every step but SHALL be listed only at 60 columns or more. At 60 columns or more the step's full hint list SHALL be shown, wrapped over as many lines as it needs (two at 80 columns or more), within the frame's height bounds.
 
 #### Scenario: Context for a queued update
 - **WHEN** javaBench is installed, queued for update and focused, with two changes queued in total
 - **THEN** the context line reads `javaBench · Ready → update` with `Changes selected: 2` at its right
+
+#### Scenario: Context without a focused item
+- **WHEN** Review is shown with four changes queued
+- **THEN** the context line reads `Review · Nothing applied yet` with `Changes selected: 4` at its right
+
+#### Scenario: Context in the category zone
+- **WHEN** Science is current in the Benches category zone and has two benches, one installed
+- **THEN** the context line begins `Science · 2 benches · 1 installed`
 
 #### Scenario: Narrow context line
 - **WHEN** the frame is 36 columns wide and javaBench is installed, queued for update and focused, with four changes queued in total

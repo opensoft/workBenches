@@ -6,7 +6,7 @@
 **Depth**: release gate, maximum coverage (no item cap) · **Audience**: reviewers before `/speckit-plan`
 **Scenario classes**: Primary, Alternate, Exception/Error, Recovery, Non-Functional
 
-**Legend**: `[x]` satisfied, with a pointer · `[x] … Fixed:` gap closed by wording in this pass (spec and delta updated) · `[ ]` open, needs a decision → [README](README.md) › Needs Brett (NB-n)
+**Legend**: `[x]` satisfied, with a pointer · `[x] … Fixed:` gap closed by wording (spec and delta updated) · `[x] … Resolved:` closed by Brett's decision (NB-n, [README](README.md) › Needs Brett) · `[ ]` open
 
 ## Requirement Completeness — Frame head, selector area and notices
 
@@ -26,7 +26,7 @@
 - [x] CHK011 - Is the minimum supported size specified, with behaviour below it? [Completeness, Spec §FR-033] — FR-033; Q6; Edge Cases.
 - [x] CHK012 - Is character-based (not byte-based) alignment specified and tested with multibyte text? [Completeness, Spec §FR-033] — FR-033; US4-3; design D10.
 - [x] CHK013 - Is the single-column glyph assumption for the TUI's own glyphs stated? [Assumption] — Assumptions › Users and terminals; design D10.
-- [ ] CHK014 - Is alignment protected against wide, combining or zero-width characters arriving in catalog text? [Gap, Spec §FR-033, §FR-053] — **Open**: the catalog test rejects control characters only. → NB-6.
+- [x] CHK014 - Is alignment protected against wide, combining or zero-width characters arriving in catalog text? [Gap, Spec §FR-033, §FR-053] — **Resolved** (NB-6 A, Brett Heap, 2026-10-21): FR-053 and delta › Bench presentation fields: single-column printable characters only; the catalog test rejects the rest.
 - [x] CHK015 - Are the width thresholds for bench rows specified (tagline below 70 columns, status label below 50)? [Completeness, Spec §FR-044] — FR-044; US4-12.
 - [x] CHK016 - Are the width thresholds for Agents and Tools rows specified? [Completeness] — design D16 and › Layout and Height Rules (status label at 60+ columns); FR-018 keeps 1.7's items and rules.
 - [x] CHK017 - Is truncation specified for every variable-length text (names, panel titles, notices, identities line, context line)? [Completeness, Spec §FR-033] — Every line is bounded by FR-033; `…` is required where the user must know text is cut (context line FR-021, identities FR-030); panel titles drop their right-hand label before the title is cut (design › Layout and Height Rules); notices are cut to the frame (FR-032).
@@ -44,7 +44,7 @@
 - [x] CHK026 - Is behaviour below the tight layout's height specified? [Exception, Spec §FR-036] — FR-036; US4-9.
 - [x] CHK027 - Is what every 24-row frame must still show specified? [Measurability, Spec §SC-002] — US4-4; SC-002 (nav bar, focused row, whole footer).
 - [x] CHK028 - Is the Benches height budget specified with its priorities and minimums? [Completeness, Spec §FR-047] — FR-047; design D9.
-- [ ] CHK029 - Is the use of rows beyond the minimums specified (more bench rows or more About lines first)? [Gap, Spec §FR-047] — **Open**: at 80×24 the 11 spare rows can go either way. → NB-12.
+- [x] CHK029 - Is the use of rows beyond the minimums specified (more bench rows or more About lines first)? [Gap, Spec §FR-047] — **Resolved** (NB-12 A, Brett Heap, 2026-10-21): FR-047 and delta › Height-aware Benches layout: bench rows first, up to every bench of the category, then About up to eight lines; design D9.
 - [x] CHK030 - Is the collapsed category-block format specified? [Clarity, Spec §FR-047] — FR-047; US4-5; design D9 example line.
 - [x] CHK031 - Is Review's layout under height pressure specified? [Completeness, Spec §FR-012] — FR-012; design D15 (grouped panels, then one CHANGES list, then scrolling).
 - [x] CHK032 - Is About's two-line minimum (FR-047) consistent with the design's "otherwise hidden"? [Consistency, Spec §FR-047] — Consistent: at supported sizes the budget leaves About at least two lines; hiding happens only below the supported size, where FR-036 drops lines from the top (design D9 steps 4–5).
@@ -56,7 +56,7 @@
 - [x] CHK035 - Is it specified when the repaint happens after a resize with no other input? [Clarity, Spec §Edge Cases] — Edge Cases › Terminal resized ("the next draw"), as in 1.7, which has no resize signal handler.
 - [x] CHK036 - Is the `Loading` style specified? [Completeness, Spec §FR-040] — FR-040; delta scenario "First frame while loading" (`ESC [5m`).
 - [x] CHK037 - Are the panel-border formats specified (`I of N installed`, `a–b of n`, `PgUp/PgDn scroll`)? [Completeness, Spec §FR-044, §FR-046] — FR-044, FR-046; US2-9.
-- [ ] CHK038 - Is "installed" defined for `I of N installed` and the category counts (do `needs creds` or `image only` count)? [Gap, Spec §FR-041, §FR-044] — **Open**: these counts are new in the wizard. → NB-11.
+- [x] CHK038 - Is "installed" defined for `I of N installed` and the category counts (do `needs creds` or `image only` count)? [Gap, Spec §FR-041, §FR-044] — **Resolved** (NB-11 A, Brett Heap, 2026-10-21): FR-041, FR-044 and deltas › Category block, Bench panel: installed when Space would queue an update (`installed`, `needs creds`, `image only`).
 
 ## Requirement Consistency
 
@@ -74,5 +74,5 @@
 
 ## Notes
 
-- 46 items: 43 satisfied — 40 as written, 3 closed by wording in this pass — and 3 open (NB-6, NB-11, NB-12).
-- The hint-line count between 60 and 79 columns also affects the height budget; it is tracked once, in [ux.md](ux.md) CHK062 (NB-4).
+- 46 items, all satisfied: 40 as written, 3 closed by wording, 3 resolved by Brett's decisions (NB-6, NB-11, NB-12); none open.
+- The hint-line count between 60 and 79 columns also affects the height budget; it is tracked once, in [ux.md](ux.md) CHK062 (NB-4, resolved).

@@ -6,7 +6,7 @@
 **Depth**: release gate, maximum coverage (no item cap) · **Audience**: reviewers before `/speckit-plan`
 **Scenario classes**: Primary, Alternate, Exception/Error, Recovery, Non-Functional
 
-**Legend**: `[x]` satisfied, with a pointer · `[x] … Fixed:` gap closed by wording in this pass (spec and delta updated) · `[ ]` open, needs a decision → [README](README.md) › Needs Brett (NB-n)
+**Legend**: `[x]` satisfied, with a pointer · `[x] … Fixed:` gap closed by wording (spec and delta updated) · `[x] … Resolved:` closed by Brett's decision (NB-n, [README](README.md) › Needs Brett) · `[ ]` open
 
 ## Requirement Completeness — Loading and arrival
 
@@ -15,15 +15,15 @@
 - [x] CHK003 - Is the Benches step specified before the bench list and its details arrive? [Completeness, Spec §FR-049] — FR-049; US7-3.
 - [x] CHK004 - Is "details complete" defined so a half-written file is never read? [Clarity, Spec §FR-048] — FR-048 (each file complete before it becomes visible); design D12 (categories first; `bench-meta` marks completion).
 - [x] CHK005 - Is focus specified when the bench list first arrives while Benches shows `Loading benches…`? [Gap, Spec §FR-051] — **Fixed**: FR-051 and delta › Focus survives catalog updates: the category zone on the first category that has benches, as on arrival (FR-004).
-- [ ] CHK006 - Is the Benches step specified when checks finish, or fail to start, without publishing a bench list at all? [Gap, Spec §FR-049] — **Open**: FR-049 would show `Loading benches…` indefinitely. → NB-13.
+- [x] CHK006 - Is the Benches step specified when checks finish, or fail to start, without publishing a bench list at all? [Gap, Spec §FR-049] — **Resolved** (NB-13 A, Brett Heap, 2026-10-21): FR-049 and delta › Metadata delivery: the step says the bench list could not be loaded and that R retries; nothing queueable; US7-8.
 
 ## Requirement Completeness — Degraded metadata
 
 - [x] CHK007 - Is placement specified for a bench without a category under each bench root? [Completeness, Spec §FR-050] — FR-050; US7-4.
-- [ ] CHK008 - Is the label rule for an unknown category id ("derived from its id") and the order among several unknown ids specified? [Clarity, Spec §FR-050] — **Open**: → NB-10.
-- [ ] CHK009 - Is placement specified for a bench without a category whose path is outside the three bench roots? [Gap, Spec §FR-050] — **Open**: → NB-10.
+- [x] CHK008 - Is the label rule for an unknown category id ("derived from its id") and the order among several unknown ids specified? [Clarity, Spec §FR-050] — **Resolved** (NB-10 A, Brett Heap, 2026-10-21): FR-050 and delta › Degraded metadata: title-cased hyphen-separated words, ordered by id; US7-9.
+- [x] CHK009 - Is placement specified for a bench without a category whose path is outside the three bench roots? [Gap, Spec §FR-050] — **Resolved** (NB-10 A, Brett Heap, 2026-10-21): FR-050 and delta: `Other benches`.
 - [x] CHK010 - Is the no-details fallback specified (group name, About text, selectability)? [Completeness, Spec §FR-050] — FR-050; US7-5.
-- [ ] CHK011 - Is behaviour specified when categories arrive without per-bench details, or a bench lacks only some fields? [Gap, Spec §FR-050] — **Open**: FR-050 covers "without any details" only. → NB-10.
+- [x] CHK011 - Is behaviour specified when categories arrive without per-bench details, or a bench lacks only some fields? [Gap, Spec §FR-050] — **Resolved** (NB-10 A, Brett Heap, 2026-10-21): FR-050 and delta: benches still placed by path; present fields shown; `No details for this bench yet.` when description, uses and contents are all missing; `Other benches` About lists its benches; US7-9; delta scenario "Categories without bench details".
 - [x] CHK012 - Is "no bench queueable until details arrive" consistent with "selectable without details"? [Consistency, Spec §FR-049, §FR-050] — FR-049 now ends the wait when checks finish without details (fixed in [ux.md](ux.md) CHK068).
 - [x] CHK013 - Is handling of invalid bench names and category ids specified? [Completeness, Spec §FR-048] — FR-048 (ignored); Edge Cases.
 
@@ -32,7 +32,7 @@
 - [x] CHK014 - Is state preserved across R (step, focus, zone, category, bench, queue)? [Completeness, Spec §FR-026] — FR-026; SC-008; US3-9.
 - [x] CHK015 - Is state preserved across catalog and details arrival? [Completeness, Spec §FR-051] — FR-051; US7-6.
 - [x] CHK016 - Are the P and G return targets preserved by bench name across a refresh? [Gap, Spec §FR-023, §FR-051] — **Fixed**: FR-051 and delta: a remembered bench is kept by name the same way (FR-023 remembers the bench, not a list position).
-- [ ] CHK017 - Is behaviour decided when a focused or remembered bench, or a bench with a queued change, leaves the catalog, and does it agree with SC-008's "100% of queued changes"? [Conflict, Spec §Edge Cases vs §SC-008] — **Open**: the edge case keeps queued changes only for benches still catalogued. → NB-5.
+- [x] CHK017 - Is behaviour decided when a focused or remembered bench, or a bench with a queued change, leaves the catalog, and does it agree with SC-008's "100% of queued changes"? [Conflict, Spec §Edge Cases vs §SC-008] — **Resolved** (NB-5 A, Brett Heap, 2026-10-21): FR-051, FR-026 and deltas › Focus survives, Refresh keeps state: focus falls back and the change is dropped; SC-008 now counts "queued changes for benches still catalogued"; US7-10.
 
 ## Exception and Error Flows
 
@@ -63,9 +63,9 @@
 
 - [x] CHK034 - Do the layout and timing bounds also hold in degraded states? [Non-Functional] — FR-033 to FR-036 and FR-060 apply to every frame.
 - [x] CHK035 - Is untrusted text prevented from changing terminal state in degraded cases? [Non-Functional, Spec §FR-048] — FR-048; SC-011.
-- [x] CHK036 - Is the dependency on the status worker running inside Tools stated? [Dependency] — Assumptions › Dependencies; design D12. Its failure case is CHK006 (NB-13).
+- [x] CHK036 - Is the dependency on the status worker running inside Tools stated? [Dependency] — Assumptions › Dependencies; design D12. Its failure case is CHK006 (NB-13, resolved).
 
 ## Notes
 
-- 36 items: 31 satisfied — 27 as written, 4 closed by wording in this pass — and 5 open (NB-5, NB-10 ×3, NB-13).
+- 36 items, all satisfied: 27 as written, 4 closed by wording, 5 resolved by Brett's decisions (NB-5, NB-10 ×3, NB-13); none open.
 - Fixes recorded in other checklists and only referenced here: CHK012, CHK019, CHK021, CHK032, CHK033.

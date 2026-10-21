@@ -6,7 +6,7 @@
 **Depth**: release gate, maximum coverage (no item cap) · **Audience**: reviewers before `/speckit-plan`
 **Scenario classes**: Primary, Alternate, Exception/Error, Recovery, Non-Functional
 
-**Legend**: `[x]` satisfied, with a pointer · `[x] … Fixed:` gap closed by wording in this pass (spec and delta updated) · `[ ]` open, needs a decision → [README](README.md) › Needs Brett (NB-n)
+**Legend**: `[x]` satisfied, with a pointer · `[x] … Fixed:` gap closed by wording (spec and delta updated) · `[x] … Resolved:` closed by Brett's decision (NB-n, [README](README.md) › Needs Brett) · `[ ]` open
 
 ## Requirement Completeness — Name-safe lookups
 
@@ -14,7 +14,7 @@
 - [x] CHK002 - Are the affected consumers enumerated, with a rule covering consumers found later? [Coverage, Spec §FR-056] — FR-056 names four consumers and says "every script"; OpenSpec `tasks.md` 2.1 adds "any other shell consumer found".
 - [x] CHK003 - Is the static guard precise enough to fail on a reintroduced interpolation? [Measurability, Spec §FR-057] — FR-057; delta scenario (no jq filter builds a `.benches.` or `.infrastructure.` path from a shell variable).
 - [x] CHK004 - Is a behavioural proof required for each shell consumer? [Measurability, Spec §FR-057, §SC-004] — FR-057; SC-004 (4 of 4); US5-6.
-- [ ] CHK005 - Is digit-leading coverage extended to the Python consumers, or the assumption that they already index by name explicitly accepted? [Assumption, Spec §Assumptions] — **Open**: only `setup_selection.py` is exercised (US5-4); `setup-components.py`, `release-workbenches.py` and `remove-bench-checkout.py` rest on the assumption. → NB-8.
+- [x] CHK005 - Is digit-leading coverage extended to the Python consumers, or the assumption that they already index by name explicitly accepted? [Assumption, Spec §Assumptions] — **Resolved** (NB-8 A, Brett Heap, 2026-10-21): FR-057 and delta › Name-safe catalog lookups extend the fixture test to the four Python consumers; SC-004 counts 8 of 8; US5-6.
 - [x] CHK006 - Is it required that the safe lookups land with or before the new benches are offered? [Dependency] — US5 priority note; design › Risks; OpenSpec `tasks.md` § 2 heading.
 
 ## Requirement Completeness — Fail-closed bench paths
@@ -30,8 +30,8 @@
 - [x] CHK012 - Is "control characters" defined, including C1 controls that some terminals act on? [Clarity, Spec §FR-048, §FR-053] — **Fixed**: FR-048 and delta › Metadata delivery: U+0000–U+001F and U+007F–U+009F, including ESC and tab; FR-053 and delta › Bench presentation fields use the same definition.
 - [x] CHK013 - Is sanitising required both in the catalog test (reject) and at display (replace)? [Completeness, Spec §FR-053, §FR-048] — FR-053, FR-048.
 - [x] CHK014 - Is the escape-sequence outcome measurable? [Measurability, Spec §SC-011] — US7-2; SC-011 (never cleared or restyled).
-- [ ] CHK015 - Is the sanitising rule's scope decided for other external text the TUI shows (status details from the worker, the identities summary)? [Gap, Spec §FR-048] — **Open**: FR-048 covers bench and category details only. → NB-7.
-- [ ] CHK016 - Are wide, combining, zero-width and bidi characters addressed (misaligned or misleading display)? [Gap, Spec §FR-053] — **Open**: → NB-6.
+- [x] CHK015 - Is the sanitising rule's scope decided for other external text the TUI shows (status details from the worker, the identities summary)? [Gap, Spec §FR-048] — **Resolved** (NB-7 A, Brett Heap, 2026-10-21): FR-048, SC-011 and delta › Metadata delivery: every text the TUI did not write; US7-7.
+- [x] CHK016 - Are wide, combining, zero-width and bidi characters addressed (misaligned or misleading display)? [Gap, Spec §FR-053] — **Resolved** (NB-6 A, Brett Heap, 2026-10-21): FR-053 and delta › Bench presentation fields: the catalog test rejects them.
 - [x] CHK017 - Are validation rules for bench names and category ids specified? [Clarity, Spec §FR-048] — FR-048; patterns in design D12.
 - [x] CHK018 - Is it specified that the foreground never evaluates catalog text? [Completeness, Spec §FR-048] — FR-048 (read without external tools); design D12 (read into arrays; renderer reads only those).
 
@@ -58,5 +58,5 @@
 
 ## Notes
 
-- 30 items: 27 satisfied — 23 as written, 4 closed by wording in this pass — and 3 open (NB-6, NB-7, NB-8).
+- 30 items, all satisfied: 23 as written, 4 closed by wording, 3 resolved by Brett's decisions (NB-6, NB-7, NB-8); none open.
 - Fixes recorded in other checklists and only referenced here: CHK025.

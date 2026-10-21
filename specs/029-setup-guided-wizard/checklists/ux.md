@@ -6,7 +6,7 @@
 **Depth**: release gate, maximum coverage (no item cap) · **Audience**: reviewers before `/speckit-plan`
 **Scenario classes**: Primary, Alternate, Exception/Error, Recovery, Non-Functional
 
-**Legend**: `[x]` satisfied, with a pointer · `[x] … Fixed:` gap closed by wording in this pass (spec and delta updated) · `[ ]` open, needs a decision → [README](README.md) › Needs Brett (NB-n)
+**Legend**: `[x]` satisfied, with a pointer · `[x] … Fixed:` gap closed by wording (spec and delta updated) · `[x] … Resolved:` closed by Brett's decision (NB-n, [README](README.md) › Needs Brett) · `[ ]` open
 
 ## Requirement Completeness — Steps and navigation
 
@@ -17,7 +17,7 @@
 - [x] CHK005 - Is separator skipping specified for steps that have separators? [Completeness, Spec §FR-003] — FR-003; delta scenario "Vertical keys stay within the step".
 - [x] CHK006 - Is the focus on arrival by ← or → specified for every step, including the Benches zone and category? [Completeness, Spec §FR-004] — FR-004; Q8.
 - [x] CHK007 - Is the focus on arrival by P (Workstation) and by G (Profiles) specified? [Gap, Spec §FR-023, §FR-024] — **Fixed**: FR-023/FR-024 and both jump deltas now focus the first row, as 1.7's P and G do.
-- [ ] CHK008 - Is Review's starting scroll position specified when Review is reached by Enter or by a P/G return? [Gap, Spec §FR-004, §FR-012] — **Open**: FR-004 covers ←/→ arrival only. → NB-14.
+- [x] CHK008 - Is Review's starting scroll position specified when Review is reached by Enter or by a P/G return? [Gap, Spec §FR-004, §FR-012] — **Resolved** (NB-14 A, Brett Heap, 2026-10-21): FR-012 and delta › Review: opens at the first item by Enter or ←/→; a P or G return restores the position; US1-21.
 - [x] CHK009 - Is a focus indicator specified for the focused row on every step that has rows? [Gap, Spec §FR-004, §FR-044] — Fixed in [accessibility.md](accessibility.md) CHK005 (FR-004 now requires `›`).
 
 ## Requirement Completeness — Nav bar
@@ -28,7 +28,7 @@
 - [x] CHK013 - Is the Workstation item's look specified when Workstation is itself the current step (current-step highlight or readiness mark)? [Clarity, Spec §FR-005, §FR-006] — **Fixed**: FR-006 and delta › Top nav bar: the item takes the highlight and keeps the readiness mark (design D5 measures the nav with the highlight; Workstation mockup).
 - [x] CHK014 - Is "every required item" (the services that decide readiness) defined? [Clarity, Spec §Key Entities] — Key Entities › Workstation readiness (WSL 2 on WSL, Docker, Tools; Vault optional).
 - [x] CHK015 - Is the switch between the full and compact nav defined by a measurable condition? [Measurability, Spec §FR-007] — FR-007 ("whenever it fits the frame"; 79 columns with three single-digit counts, 80 with a two-digit count); SC-002; US4-15.
-- [ ] CHK016 - Does the compact nav say whether queued counts appear in it? [Gap, Spec §FR-007] — **Open**: FR-007 and D5 define `Step N of 6 · <Name>` plus marks only. → NB-3.
+- [x] CHK016 - Does the compact nav say whether queued counts appear in it? [Gap, Spec §FR-007] — **Resolved** (NB-3 A, Brett Heap, 2026-10-21): FR-007 and delta › Top nav bar: no counts; the footer keeps the total; US4-13.
 
 ## Requirement Completeness — Enter, Review and Apply
 
@@ -66,7 +66,7 @@
 - [x] CHK042 - Are the focus rules for coming-soon categories specified? [Completeness, Spec §FR-041] — FR-041; US2-3.
 - [x] CHK043 - Is the About panel's content defined for both zones? [Completeness, Spec §FR-045] — FR-045; US2-8.
 - [x] CHK044 - Are About's scroll keys, step size, clamping, markers and reset triggers specified? [Completeness, Spec §FR-046] — FR-046; US2-9, US2-10.
-- [ ] CHK045 - Is it specified whether About keeps its scroll offset when the same bench's details are refreshed? [Gap, Spec §FR-046, §FR-051] — **Open**: FR-046 resets on zone, category or bench change only. → NB-5.
+- [x] CHK045 - Is it specified whether About keeps its scroll offset when the same bench's details are refreshed? [Gap, Spec §FR-046, §FR-051] — **Resolved** (NB-5 A, Brett Heap, 2026-10-21): FR-046 and delta › About scrolling: the offset is kept, clamped to the new text.
 
 ## Requirement Completeness — Jumps and global keys
 
@@ -84,12 +84,12 @@
 ## Requirement Completeness — Footer and hints
 
 - [x] CHK056 - Is the context-line format specified for a focused item with and without a queued action? [Completeness, Spec §FR-021] — FR-021; US1-18.
-- [ ] CHK057 - Is the context line specified where nothing is focused or the focused row has no state (Review, Profiles rows, Benches while `Loading benches…`)? [Gap, Spec §FR-021] — **Open**: only illustrative mockups show it. → NB-1.
-- [ ] CHK058 - Is "the category summary" on the context line unambiguous (the counts shown in the category block, or the catalog's `summary` text)? [Ambiguity, Spec §FR-021 vs §FR-052] — **Open**: FR-052 and FR-045 use "summary" for the catalog text. → NB-2.
+- [x] CHK057 - Is the context line specified where nothing is focused or the focused row has no state (Review, Profiles rows, Benches while `Loading benches…`)? [Gap, Spec §FR-021] — **Resolved** (NB-1 A, Brett Heap, 2026-10-21): FR-021 and delta › Footer: `Review · Nothing applied yet`, the Profiles row name, `Loading benches…`; total at the right; US1-21, delta scenario "Context without a focused item".
+- [x] CHK058 - Is "the category summary" on the context line unambiguous (the counts shown in the category block, or the catalog's `summary` text)? [Ambiguity, Spec §FR-021 vs §FR-052] — **Resolved** (NB-2 A, Brett Heap, 2026-10-21): FR-021 and delta › Footer: the category name and its counts as in the block (`Science · 2 benches · 1 installed`); delta scenario "Context in the category zone".
 - [x] CHK059 - Is the queued-total label specified for both width bands, with the cut marker? [Completeness, Spec §FR-021] — FR-021; Q20; US4-16.
 - [x] CHK060 - Is the hints' leading label, which acceptance suites wait on, specified? [Gap, Spec §FR-022] — **Fixed**: FR-022 and delta › Footer: hints begin with `Navigation:` on every step, as in 1.7 (design › Acceptance-suite impact).
 - [x] CHK061 - Are the hints specified per step and per width band (60+ columns vs below 60)? [Completeness, Spec §FR-022] — FR-022; Q7; design D16 and mockups for the full lists.
-- [ ] CHK062 - Is the number of hint lines specified between 60 and 79 columns? [Gap, Spec §FR-022] — **Open**: two lines are fixed at 80+ (D16) and at most two below 60 (FR-022); 60–79 is undefined. → NB-4.
+- [x] CHK062 - Is the number of hint lines specified between 60 and 79 columns? [Gap, Spec §FR-022] — **Resolved** (NB-4 A, Brett Heap, 2026-10-21): FR-022 and delta › Footer: the full list, wrapped over as many lines as it needs, within SC-002's height bounds; design D16 and layout table.
 
 ## Requirement Consistency
 
@@ -118,7 +118,7 @@
 ## Edge Case Coverage
 
 - [x] CHK078 - Are "Enter twice with nothing queued" and "more changes than rows" covered? [Edge Case] — Edge Cases; US1-9, US1-14.
-- [ ] CHK079 - Is the behaviour decided when the focused or remembered bench leaves a refreshed catalog? [Assumption, Spec §Edge Cases] — **Open**: the spec records an "assumed fallback" only. → NB-5.
+- [x] CHK079 - Is the behaviour decided when the focused or remembered bench leaves a refreshed catalog? [Assumption, Spec §Edge Cases] — **Resolved** (NB-5 A, Brett Heap, 2026-10-21): FR-051 and delta › Focus survives: fall back to the category zone on the same category (or the first with benches) and drop that bench's queued change; Edge Cases; US7-10.
 - [x] CHK080 - Is it accepted that the readiness jump can take the user off Review after R? [Edge Case, Spec §FR-028] — Q16; Assumptions › The readiness jump.
 - [x] CHK081 - Is the TUI's state on return from an interactive helper specified? [Edge Case, Spec §FR-020, §FR-025, §FR-039] — Focus and queue kept (FR-020, FR-025); whole-frame repaint (FR-039).
 
@@ -129,5 +129,5 @@
 
 ## Notes
 
-- 83 items: 76 satisfied — 59 as written, 17 closed by wording in this pass — and 7 open (NB-1, NB-2, NB-3, NB-4, NB-5 ×2, NB-14).
+- 83 items, all satisfied: 59 as written, 17 closed by wording, 7 resolved by Brett's decisions (NB-1, NB-2, NB-3, NB-4, NB-5 ×2, NB-14); none open.
 - Fixes recorded in other checklists and only referenced here: CHK009 ([accessibility.md](accessibility.md) CHK005).

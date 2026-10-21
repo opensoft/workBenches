@@ -132,7 +132,8 @@ named (nav, Review step names, footer, hints, docs), and the nav uses short
 Agents, Tools; the other steps never have counts), so it fits an 80-column
 terminal; a two-digit count makes it 80 columns, which needs an 81-column
 terminal. Only when the full nav does not fit the frame does it collapse to
-`Step N of 6 · <Name>` plus one mark per step (the first is the readiness mark).
+`Step N of 6 · <Name>` plus one mark per step (the first is the readiness mark),
+with no queued counts; the footer keeps the total (checklist NB-3).
 *Alternatives:* "AI" in the nav only (75 columns) and keeping "AI assistants"
 with the compact form at 80 columns; both rejected in favour of Brett's label.
 
@@ -144,6 +145,9 @@ in catalog-name order (code-point order, as `jq keys` and 1.7 list them), so
 Software Engineering reads cppBench, dotNetBench, flutterBench, frappeBench,
 goBench, javaBench, pyBench, rustBench; the mockup's order is illustrative.
 Categories without benches are listed dim as "coming soon" and skipped by focus.
+In the category counts and `I of N installed`, a bench counts as installed when
+Space would queue an update rather than an install (`installed`, `needs creds`
+or `image only`) (checklist NB-11).
 Arriving on Benches by ← or → focuses the category zone on the first category
 that has benches, matching 1.7's ←/→, which reset focus to a section's first
 row. P/G returns and the readiness jump restore the exact zone, category and
@@ -175,7 +179,8 @@ lines of spare rows. When the text is longer than the window, the top border
 shows `a–b of n`, the window's last line `▼ more` (first line `▲ more` once
 scrolled), and the bottom border `PgUp/PgDn scroll`; PgUp/PgDn (`ESC [5~`,
 `ESC [6~`, trailing `~` consumed) and `[`/`]` move by the window less one line,
-clamped. The offset resets when the zone, category or focused bench changes.
+clamped. The offset resets when the zone, category or focused bench changes, and
+is kept (clamped) when the same bench's details are refreshed (checklist NB-5).
 *Alternative:* a separate full-screen details view. Rejected: Brett asked for a
 small scrolling window on the same screen.
 
@@ -193,6 +198,9 @@ the rows the head and footer leave. Space is given up in this order:
 4. About shrinks (never below two lines unless hidden).
 5. Below the supported size, lines are dropped from the top of the frame rather
    than overprinting the footer.
+
+Rows left over after the minimums go first to more bench rows, up to every bench
+of the current category, and then to About, up to eight lines (checklist NB-12).
 
 The four-row wordmark is drawn only at 42+ columns when the height is unknown or
 at least 40 rows. An unknown height never clips. A width or height change repaints
@@ -228,6 +236,18 @@ When a TTY is absent (keys piped by tests), interactive and `--select-only` runs
 load the same arrays synchronously after `init_components`; `--apply-plan` and
 `--dependencies-plan` never load them.
 
+The control-character rule also applies to every other text the TUI shows but
+did not write: worker status details, the identities summary and helper results
+(checklist NB-7). Degraded metadata (checklist NB-10): a bench without a
+`category` outside the three bench roots goes to `Other benches`; an unknown id is
+listed after the known categories, by id, with its hyphen-separated words
+title-cased; when `bench-categories` arrives without `bench-meta`, benches are
+still placed by path; a bench shows the fields that exist and reads `No details
+for this bench yet.` when description, uses and contents are all missing; the
+`Other benches` About lists its benches. When checks finish, or cannot start,
+without a `catalog` file, Benches says the bench list could not be loaded and that
+R retries (checklist NB-13).
+
 - *Alternative:* run jq in the foreground at startup. Rejected: jq lives in
   Tools, and first paint must not wait for Docker or Tools.
 - *Alternative:* publish a JSON snapshot. Rejected: Bash cannot parse it without
@@ -244,7 +264,10 @@ or not under `devBenches/`, `sysBenches/` or `bioBenches/` (the rule
 `setup_selection.py` and `release-workbenches.py` already apply) and records it as
 failed; no git, clone or setup script runs. A static test rejects any shell file
 that interpolates a name into a `.benches.` path, and a behaviour test with a
-digit-leading fixture bench proves each consumer resolves the right directory.
+digit-leading fixture bench proves each consumer resolves the right directory:
+the four shell consumers and the four Python consumers (`setup_selection.py`,
+`setup-components.py`, `release-workbenches.py`, `remove-bench-checkout.py`)
+(checklist NB-8).
 *Alternative:* rename 365Bench. Rejected: the name is used by its repository, the
 `m365-bench` image mapping, `wave-container-shell.sh` and the release lock.
 
@@ -265,7 +288,9 @@ appear for Shell setup and Org workspace; a yellow blocker line appears while
 Apply is blocked. If the grouped panels do not fit, one combined CHANGES list is
 shown; if that does not fit either, ↑/↓ scroll it with `▲/▼ N more`, so every
 queued change can be read before applying. The scrolling is an addition to the
-prototype, which could hide items on short terminals. Review is read-only: no
+prototype, which could hide items on short terminals. Reached by Enter or ←/→,
+Review opens at its first item; a P or G return restores the remembered
+position (checklist NB-14). Review is read-only: no
 key on it queues or unqueues a change; that is done on the item's own step
 (clarify Q4, 2026-10-21).
 
@@ -275,12 +300,16 @@ Agents (the former AI assistants section) and Tools keep 1.7's items, order,
 separator and Space/D rules in single-column panels (AGENTS and SPEC TOOLS;
 TOOLS) titled `I of N installed`; rows show the checkbox, status symbol, name,
 status label (60+ columns) and queued action. The footer keeps 1.7's context
-line, `<Name> · <State>[ → <action>]` (or the category summary in the category
-zone), with `Changes selected: N` on the right; acceptance suites wait on that
+line, `<Name> · <State>[ → <action>]` (in the category zone, the category name
+and its counts as in the category block, e.g. `Science · 2 benches · 1 installed`,
+checklist NB-2; with nothing focused or no state, `Review · Nothing applied yet`
+on Review, the row name on Profiles and `Loading benches…` on Benches, checklist
+NB-1), with `Changes selected: N` on the right; acceptance suites wait on that
 format (`Codex CLI · (not installed|needs creds|Ready)`, `pyBench · …`). Below 60
 columns the right-hand total reads `Changes: N` and a context line too long for
 the remaining width is cut with `…` (clarify Q20). Hints are per-step and split
-over two lines at 80+ columns; V is advertised only on Workstation. Below 60
+over two lines at 80+ columns; between 60 and 79 columns the full list wraps over
+as many lines as it needs (checklist NB-4); V is advertised only on Workstation. Below 60
 columns hints take at most two lines: the step's own keys (on Profiles,
 `G Back`) plus `←→`, `Enter` and `Q`; P, G, R, V and PgUp/PgDn keep working but
 are listed only at 60+ columns, and About's bottom border still shows
@@ -305,6 +334,9 @@ AlphaFold/ESMFold). Taglines, `usedFor` and `contains` name no version numbers,
 because versions go stale on every image bump; the catalog test rejects
 standalone numbers (dotted or not) and `v<N>`/`version-<N>` tokens, with an
 allow-list for product names (`Microsoft 365`, `Dynamics 365`) (clarify Q14).
+Copy and category text use single-column printable characters only; the test
+also rejects wide, fullwidth, combining, zero-width and bidi formatting
+characters (checklist NB-6).
 The catalog lists exactly the benches in the release lock; local-only clones
 such as phpBench and opsBench stay out (clarify Q10). Implementation uses the
 evidence-based draft in `specs/029-setup-guided-wizard/bench-copy-draft.json`
@@ -457,7 +489,11 @@ Navigation: ↑↓ Move  Enter Open  PgUp/PgDn About
   (written by G, by → from Tools, and by ← from Review). The defaults are Benches'
   category zone and its first category.
 - Catalog arrival and refresh keep the focused bench by name, as 1.7's
-  `poll_status_loader` does, plus the zone and category.
+  `poll_status_loader` does, plus the zone and category; return targets keep
+  their bench by name too. When a focused or remembered bench is no longer
+  catalogued, that focus falls back to the category zone on the same category (or
+  the first category with benches) and the bench's queued change is dropped
+  (checklist NB-5).
 - The main loop redraws when any part of the focus or queued state changes;
   `draw_ui` still writes only the changed lines.
 
@@ -471,7 +507,7 @@ Navigation: ↑↓ Move  Enter Open  PgUp/PgDn About
 | Spacers | one blank line between selector area and panels | none |
 | Panels | full | scroll with `▲/▼ N more`; focused row stays visible |
 | About (Benches, Profiles) | 2–8 lines from spare rows | 2+ lines if room, otherwise hidden |
-| Footer | rule, context line, hints (two lines at 80+ columns; at most two lines below 60 columns, D16) | same |
+| Footer | rule, context line, hints (two lines at 80+ columns; the full list wrapped at 60–79; at most two lines below 60 columns, D16) | same |
 
 Width: frame width is the terminal width less one, clamped to 36–87; the minimum
 supported size is 36×24, and narrower terminals get the 36-column frame on a
@@ -527,6 +563,10 @@ render_setup_frame / draw_ui (in-memory state only; no jq, python3, docker, git)
 - **Catalog rewrites drop metadata.** `update-bench-config.sh` regenerates the file
   from scratch and already drops `ai_keywords`. → It and `new-bench.sh` must
   preserve existing fields (bench-catalog spec).
+- **Regeneration pulls in local clones.** `update-bench-config.sh` discovers every
+  directory with a `.git` directory, including local-only phpBench and opsBench.
+  → It skips, with a warning, benches the release lock does not record; the docs
+  say a new bench needs a lock entry and copy first (checklist NB-9).
 - **The prototype is not a base.** It predates Profiles and numbers Review 4. →
   Implement on 1.7 from these specs; use the prototype only as a reference.
 
@@ -573,3 +613,10 @@ the full record, with the 12 further questions asked in the same round, is in
    assistants") with short connectors; the full nav fits 80 columns (clarify Q1;
    D5).
 8. Bench order? **Catalog-name order** (clarify Q12; D6).
+
+The release-gate checklists (`specs/029-setup-guided-wizard/checklists/`) raised 15
+further decisions (NB-1 to NB-15). Brett answered them on 2026-10-21, choosing the
+recommended option each time; they are recorded in that folder's `README.md` and
+in `spec.md` › Clarifications › Session 2026-10-21 (checklist decisions), and
+folded into D5, D6, D8, D9, D12, D13, D15, D16, D18, the Focus Model, the layout
+table and Risks above. NB-15 is Brett's approval of this change (`tasks.md` 1.1).

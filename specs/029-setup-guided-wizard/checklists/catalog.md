@@ -6,7 +6,7 @@
 **Depth**: release gate, maximum coverage (no item cap) · **Audience**: reviewers before `/speckit-plan`
 **Scenario classes**: Primary, Alternate, Exception/Error, Recovery, Non-Functional
 
-**Legend**: `[x]` satisfied, with a pointer · `[x] … Fixed:` gap closed by wording in this pass (spec and delta updated) · `[ ]` open, needs a decision → [README](README.md) › Needs Brett (NB-n)
+**Legend**: `[x]` satisfied, with a pointer · `[x] … Fixed:` gap closed by wording (spec and delta updated) · `[x] … Resolved:` closed by Brett's decision (NB-n, [README](README.md) › Needs Brett) · `[ ]` open
 
 ## Requirement Completeness — Categories
 
@@ -24,7 +24,7 @@
 - [x] CHK009 - Is the version-token rule deterministic and consistent with the approved draft, which contains `ARM64`, `MMseqs2`, `py3Dmol` and `m365`? [Clarity, Conflict, Spec §FR-053] — **Fixed**: FR-053 and delta › Bench presentation fields: a number is standalone when it is not joined to a letter, so those names are accepted (FR-053 also requires building from the draft).
 - [x] CHK010 - Is the product-name allow-list specified and closed? [Completeness, Spec §FR-053] — FR-053 (`Microsoft 365`, `Dynamics 365`); US5-2.
 - [x] CHK011 - Is the catalog test's failure output specified (bench and token named)? [Measurability, Spec §FR-053] — FR-053; US5-2.
-- [ ] CHK012 - Is the allowed character repertoire for presentation text specified (single-column only; no combining, zero-width or bidi characters)? [Gap, Spec §FR-053] — **Open**: → NB-6.
+- [x] CHK012 - Is the allowed character repertoire for presentation text specified (single-column only; no combining, zero-width or bidi characters)? [Gap, Spec §FR-053] — **Resolved** (NB-6 A, Brett Heap, 2026-10-21): FR-053 and delta › Bench presentation fields (bench copy and category label and summary); US5-2; delta scenario "Character wider or narrower than one column".
 - [x] CHK013 - Are the copy's source, its approval gate and how that approval is recorded specified? [Completeness, Spec §FR-053, §SC-013] — **Fixed**: FR-053 and SC-013 now say the approval records who, date and commit in this feature (OpenSpec `tasks.md` 7.2).
 - [x] CHK014 - Is it specified which draft fields enter the catalog (and that `draft` and `evidence` do not)? [Clarity, Spec §FR-053] — FR-053's field list; OpenSpec `tasks.md` 2.3.
 - [x] CHK015 - Is the accuracy rule specified with a testable instance? [Measurability, Spec §FR-055] — FR-055; US5-5 (simBench).
@@ -44,7 +44,7 @@
 
 - [x] CHK024 - Is preservation of `categories` and every existing per-bench field specified for both scripts? [Completeness, Spec §FR-059] — FR-059; US5-9.
 - [x] CHK025 - Is category derivation for an added bench specified for every bench root? [Completeness, Spec §FR-059, §FR-050] — FR-059 with FR-050's path map.
-- [ ] CHK026 - Is it specified how the scripts meet the lock-only rule (regeneration discovers local clones such as phpBench; `new-bench.sh` adds a bench before it has a lock entry or copy)? [Conflict, Spec §FR-054 vs §FR-059] — **Open**: `update-bench-config.sh` discovers any directory with a `.git`, and a new bench lacks the FR-053 fields, so the catalog test fails until both are added. → NB-9.
+- [x] CHK026 - Is it specified how the scripts meet the lock-only rule (regeneration discovers local clones such as phpBench; `new-bench.sh` adds a bench before it has a lock entry or copy)? [Conflict, Spec §FR-054 vs §FR-059] — **Resolved** (NB-9 A, Brett Heap, 2026-10-21): FR-059 and delta › Maintenance scripts: regeneration skips unlocked benches with a warning; `new-bench.sh` still adds its entry, and the docs say a lock entry and copy come first; US5-9; delta scenario "Regeneration skips unlocked clones".
 - [x] CHK027 - Does regeneration preserve `ai_keywords` and `project_scripts`, which it used to drop? [Completeness, Spec §FR-059] — FR-059 ("every existing per-bench field"); US5-9 names `ai_keywords`; design › Risks.
 
 ## Requirement Completeness — Data contract
@@ -52,7 +52,7 @@
 - [x] CHK028 - Are the catalogued bench's fields listed as an entity? [Completeness, Spec §Key Entities] — Key Entities › Catalogued bench.
 - [x] CHK029 - Is the bench-name format part of the contract? [Clarity, Spec §FR-048] — FR-048 (names failing validation are ignored); pattern `^[a-zA-Z0-9_+-]+$` in design D12; SC-003 requires all 12 to be offered.
 - [x] CHK030 - Is the category-id format part of the contract? [Clarity, Spec §FR-048] — FR-048; pattern `^[a-z0-9][a-z0-9-]*$` in design D12.
-- [x] CHK031 - Is additive compatibility stated (existing consumers ignore the new fields)? [Assumption] — Assumptions › No data migration; design D11. Proof for the Python consumers is tracked in [security.md](security.md) CHK005.
+- [x] CHK031 - Is additive compatibility stated (existing consumers ignore the new fields)? [Assumption] — Assumptions › No data migration; design D11. The Python consumers' name handling is now proven by test ([security.md](security.md) CHK005, NB-8).
 - [x] CHK032 - Is the metadata format published by the worker specified? [Completeness, Spec §FR-048] — FR-048 (atomic, complete before visible); design D12 and › Data Flow (TSV, `-` for empty, `|` between list items).
 - [x] CHK033 - Is escaping specified for a `|` inside a list item? [Edge Case] — design D12 (it becomes `/`).
 - [x] CHK034 - Is bench order within a category precise (case and digits)? [Clarity, Spec §FR-044] — **Fixed**: FR-044 and delta › Bench panel: code-point order of bench names, as 1.7 lists them, so 365Bench precedes cloudBench (design D6; Q12).
@@ -68,5 +68,5 @@
 
 ## Notes
 
-- 40 items: 38 satisfied — 34 as written, 4 closed by wording in this pass — and 2 open (NB-6, NB-9).
+- 40 items, all satisfied: 34 as written, 4 closed by wording, 2 resolved by Brett's decisions (NB-6, NB-9); none open.
 - Fixes recorded in other checklists and only referenced here: CHK008 ([security.md](security.md) CHK012).
