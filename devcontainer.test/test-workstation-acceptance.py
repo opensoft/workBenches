@@ -233,8 +233,9 @@ def snapshot():
 
 
 TUI = r'REQUIREMENTS · (\d+)/\1 ready[\s\S]*Navigation:'
-CODEX = (TUI, '\x1b[C\x1b[B\x1b[B \n')
-CODEX_ACCOUNTS = (TUI, '\x1b[C\x1b[B\x1b[B P' + '\x1b[B' * 4 + ' P\n')
+CODEX = (TUI, '\x1b[C\x1b[C\x1b[B\x1b[B \n\n')
+CODEX_ACCOUNTS = (TUI, '\x1b[C\x1b[C\x1b[B\x1b[B P' + '\x1b[B' * 4 + ' P\n\n')
+NO_CHANGES = (TUI, '\x1b[C\x1b[C\x1b[C\x1b[C\n')
 EMAIL = os.environ.get('WORKBENCHES_ACCEPTANCE_EMAIL', 'acceptance@example.test')
 MASTER = secrets.token_urlsafe(32)
 API_VALUE = 'sk-test-invalid-' + secrets.token_hex(24)  # Invalid, nonbillable AI test value.
@@ -265,7 +266,7 @@ def main():
         'credentials': 'generated test account and invalid AI key', 'hostSocketMounted': False,
         'tls': 'verified private test CA; appended only to disposable credential Dockerfile'}, indent=2) + '\n')
     terminal('quit', [(TUI, 'Q')], 130)
-    terminal('empty', [(TUI, '\n')])
+    terminal('empty', [NO_CHANGES])
     (HOME / '.zshrc').write_text('# custom shell settings\n')
     (HOME / '.p10k.zsh').write_text('# custom prompt settings\n')
     output = terminal('default-cli-install', [CODEX])
@@ -291,7 +292,7 @@ def main():
     run([str(HOME / '.local/bin/codex'), '--version'])
     ENV['PATH'] = str(HOME / '.local/bin') + ':' + ENV['PATH']
     before = snapshot()
-    terminal('repeat-unchanged', [(TUI, '\n')])
+    terminal('repeat-unchanged', [NO_CHANGES])
     assert snapshot() == before, 'unchanged selection modified installed configuration'
     output = terminal('repeat-update', [CODEX])
     assert 'Reusing configured AI profiles' in output and 'Authentication route [1]' not in output
@@ -299,8 +300,10 @@ def main():
     fault_env = dict(ENV, NPM_CONFIG_REGISTRY='http://127.0.0.1:9', NPM_CONFIG_FETCH_RETRIES='0')
     output = terminal('failed-npm-update', [CODEX], 1, env=fault_env)
     assert 'update failed' in output and 'Codex CLI updated' not in output
-    benches = sorted(json.loads((REPO / 'config/bench-config.json').read_text())['benches'])
-    selection = (TUI, '\x1b[B' * benches.index('pyBench') + ' \n')
+    catalog = json.loads((REPO / 'config/bench-config.json').read_text())['benches']
+    # → opens pyBench's category (the first); Tab enters its benches in catalog order.
+    benches = sorted(name for name in catalog if catalog[name].get('category') == catalog['pyBench'].get('category'))
+    selection = (TUI, '\x1b[C\t' + '\x1b[B' * benches.index('pyBench') + ' \n\n')
     output = terminal('bench-install', [selection], timeout=3600)
     if require_public:
         logs = '\n'.join(path.read_text() for path in (REPO / 'logs').glob('*.log'))
@@ -317,13 +320,13 @@ def main():
     run(['docker', 'exec', '--user', 'node', 'py-bench', 'python3', '--version'])
     run(['docker', 'exec', '--user', 'node', 'py-bench', 'codex', '--version'])
     before = snapshot()
-    terminal('repeat-installed-bench', [(TUI, '\n')])
+    terminal('repeat-installed-bench', [NO_CHANGES])
     assert snapshot() == before
     checkout = REPO / 'devBenches/pyBench'
     local_note = checkout / 'acceptance-local-work.txt'
     local_note.write_text('preserve this local work')
     container_id = subprocess.check_output(['docker', 'inspect', '--format', '{{.Id}}', 'py-bench'], text=True)
-    removal = (TUI, '\x1b[B' * benches.index('pyBench') + 'D\n')
+    removal = (TUI, '\x1b[C\t' + '\x1b[B' * benches.index('pyBench') + 'D\n\n')
     output = terminal('bench-uninstall-preserves-local-work', [removal])
     assert 'pyBench uninstalled' in output and local_note.read_text() == 'preserve this local work'
     assert subprocess.run(['docker', 'inspect', 'py-bench'], capture_output=True).returncode != 0

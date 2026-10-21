@@ -118,6 +118,7 @@ init_components --loading
 initialize_loading_statuses
 status_checks_running=true
 setup_os_label=Linux
+CURRENT_SECTION=3
 tput() {{ if [[ "$1" == cols ]]; then echo 88; fi; }}
 draw_ui > "$1/first"
 draw_ui > "$1/unchanged"

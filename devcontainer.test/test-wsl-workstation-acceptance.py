@@ -145,8 +145,8 @@ def main():
 
     # Wait for the selected row's inventory as well as required services. A
     # ready Docker/Tools header alone does not mean the CLI/bench row is loaded.
-    codex = [(tui.TUI, '\x1b[C\x1b[B\x1b[B'), (r'Codex CLI · (?:not installed|needs creds|Ready)', ' \n')]
-    remove_codex = [(tui.TUI, '\x1b[C\x1b[B\x1b[B'), (r'Codex CLI · (?:needs creds|Ready)', 'D\n')]
+    codex = [(tui.TUI, '\x1b[C\x1b[C\x1b[B\x1b[B'), (r'Codex CLI · (?:not installed|needs creds|Ready)', ' \n\n')]
+    remove_codex = [(tui.TUI, '\x1b[C\x1b[C\x1b[B\x1b[B'), (r'Codex CLI · (?:needs creds|Ready)', 'D\n\n')]
     project = home / 'projects/wsl-acceptance-project.txt'
     credential = home / '.codex/auth.json'
     baseline = None
@@ -168,9 +168,11 @@ def main():
         checkout = repo / 'devBenches/pyBench'
         note = checkout / 'wsl-acceptance-local-work.txt'
         fixture(note, 'preserve local source work\n')
-        benches = sorted(json.loads((repo / 'config/bench-config.json').read_text())['benches'])
-        replies = [(tui.TUI, '\x1b[B' * benches.index('pyBench')),
-                   (r'pyBench · (?:needs setup|Ready|image only)', ' \n')]
+        catalog = json.loads((repo / 'config/bench-config.json').read_text())['benches']
+        # → opens pyBench's category (the first); Tab enters its benches in catalog order.
+        benches = sorted(name for name in catalog if catalog[name].get('category') == catalog['pyBench'].get('category'))
+        replies = [(tui.TUI, '\x1b[C\t' + '\x1b[B' * benches.index('pyBench')),
+                   (r'pyBench · (?:needs setup|Ready|image only)', ' \n\n')]
         output = terminal('frozen-local-work-guard', replies, 1)
         assert 'has local changes; save them before using a frozen release' in output
         assert note.read_text() == 'preserve local source work\n'
@@ -195,7 +197,7 @@ def main():
         if args.phase in ('all', 'desktop'):
             check('tools', lambda: run(['bash', 'scripts/manage-setup-services.sh', 'start', 'tools'], timeout=600, log='tools-start.log'))
             check('loading-cancellation', lambda: terminal('loading-cancellation', [(r'workBenches v' + re.escape((repo / 'VERSION').read_text().strip()), 'Q')], 130))
-            check('empty', lambda: terminal('empty', [(tui.TUI, '\n')]))
+            check('empty', lambda: terminal('empty', [(tui.TUI, '\x1b[C\x1b[C\x1b[C\x1b[C\n')]))
             if not args.resume:
                 fixture(home / '.zshrc', '# WSL acceptance custom settings\n')
                 fixture(home / '.p10k.zsh', '# WSL acceptance custom prompt\n')
@@ -256,9 +258,11 @@ def main():
             env['DOCKER_HOST'] = args.engine
             for variable in ('WORKBENCHES_TOOLS_CONTAINER', 'WORKBENCHES_SERVICES_NETWORK'):
                 env[variable] += '-bench'
-            benches = sorted(json.loads((repo / 'config/bench-config.json').read_text())['benches'])
-            navigation = '\x1b[B' * benches.index('pyBench')
-            bench = [(tui.TUI, navigation), (BENCH_SELECTABLE, ' \n')]
+            catalog = json.loads((repo / 'config/bench-config.json').read_text())['benches']
+            # → opens pyBench's category (the first); Tab enters its benches in catalog order.
+            benches = sorted(name for name in catalog if catalog[name].get('category') == catalog['pyBench'].get('category'))
+            navigation = '\x1b[C\t' + '\x1b[B' * benches.index('pyBench')
+            bench = [(tui.TUI, navigation), (BENCH_SELECTABLE, ' \n\n')]
             unrelated = None
             def install_bench():
                 nonlocal unrelated
@@ -291,7 +295,7 @@ def main():
             note = checkout / 'wsl-acceptance-local-work.txt'
             fixture(note, 'preserve local source work\n')
             def remove_bench():
-                terminal('bench-remove', [(tui.TUI, navigation), (r'pyBench · Ready', 'D\n')])
+                terminal('bench-remove', [(tui.TUI, navigation), (r'pyBench · Ready', 'D\n\n')])
                 assert subprocess.run(['docker', 'inspect', 'py-bench'], env=env, capture_output=True).returncode != 0
                 for image in ('py-bench:latest', 'py-bench:' + env['USER']):
                     assert subprocess.run(['docker', 'image', 'inspect', image], env=env, capture_output=True).returncode != 0, 'Removed bench image remains: ' + image

@@ -6,6 +6,11 @@ status_ui_dirty=false
 status_loader_pid=''
 status_loader_dir=''
 declare -A host_tool_status
+# Bench catalog presentation for the Benches step, keyed by bench name or
+# category id. Rendering only reads these; jq runs in the loader or in main().
+declare -A bench_meta_category bench_meta_tagline bench_meta_description bench_meta_used_for bench_meta_contains
+declare -A bench_category_label bench_category_order bench_category_summary
+bench_meta_loaded=false
 
 initialize_loading_statuses() {
     local key
@@ -41,12 +46,97 @@ refresh_host_tool_inventory() {
     done < <(python3 "$SCRIPT_DIR/setup-components.py" tool-statuses)
 }
 
+# Bench metadata as TSV from config/bench-config.json: "meta" rows are name,
+# category id, tagline, description, usedFor and contains (lists joined by "|");
+# "categories" rows are id, order, label and summary. Tabs, newlines and other
+# control characters never reach a value, and an empty value travels as "-"
+# because Bash's tab splitting would merge it with the next field. A bench
+# without a category takes one from its path.
+bench_metadata_rows() {
+    local kind=$1 config="${2:-$SCRIPT_DIR/../config/bench-config.json}"
+    jq -r --arg kind "$kind" '
+        def clean: tostring | gsub("[[:cntrl:]]"; " ") | gsub("^ +| +$"; "");
+        def cell: clean | if . == "" then "-" else . end;
+        def items: if type == "array" then map(clean | gsub("[|]"; "/") | select(. != "")) | join("|") else "" end;
+        if $kind == "categories" then
+            (.categories // {}) | to_entries[] | select(.value | type == "object")
+            | [.key, (.value.order // 999), (.value.label // .key), (.value.summary // "")]
+        else
+            (.benches // {}) | to_entries[] | select(.value | type == "object")
+            | .key as $name | .value as $bench | ($bench.path // "" | tostring) as $path
+            | [$name,
+               ($bench.category // (if ($path | startswith("devBenches/")) then "software-engineering"
+                   elif ($path | startswith("bioBenches/")) then "science"
+                   elif ($path | startswith("sysBenches/")) then "system-administration"
+                   else "other" end)),
+               ($bench.tagline // ""), ($bench.description // ""),
+               ($bench.usedFor | items), ($bench.contains | items)]
+        end
+        | map(cell) | join("\t")' "$config"
+}
+
+# Read "meta" rows into the bench_meta_* arrays; names match the catalog's rule.
+bench_meta_apply() {
+    local name category tagline description used contains
+    bench_meta_category=(); bench_meta_tagline=(); bench_meta_description=()
+    bench_meta_used_for=(); bench_meta_contains=()
+    while IFS=$'\t' read -r name category tagline description used contains; do
+        [[ "$name" =~ ^[a-zA-Z0-9_+-]+$ ]] || continue
+        [[ "$category" =~ ^[a-z0-9][a-z0-9-]*$ ]] || category=other
+        [[ "$tagline" != - ]] || tagline=''
+        [[ "$description" != - ]] || description=''
+        [[ "$used" != - ]] || used=''
+        [[ "$contains" != - ]] || contains=''
+        bench_meta_category[$name]=$category
+        bench_meta_tagline[$name]=$tagline
+        bench_meta_description[$name]=$description
+        bench_meta_used_for[$name]=$used
+        bench_meta_contains[$name]=$contains
+    done
+}
+
+# Read "categories" rows into the bench_category_* arrays.
+bench_categories_apply() {
+    local id order label summary
+    bench_category_label=(); bench_category_order=(); bench_category_summary=()
+    while IFS=$'\t' read -r id order label summary; do
+        [[ "$id" =~ ^[a-z0-9][a-z0-9-]*$ ]] || continue
+        [[ "$order" =~ ^[0-9]{1,6}$ ]] || order=999
+        [[ "$label" != - ]] || label=$id
+        [[ "$summary" != - ]] || summary=''
+        bench_category_label[$id]=$label
+        bench_category_order[$id]=$((10#$order))
+        bench_category_summary[$id]=$summary
+    done
+}
+
+# Worker side: publish both files atomically, categories first, so the TUI
+# treats bench-meta as the signal that the catalog's metadata is complete.
+bench_metadata_publish() {
+    local kind file
+    for kind in categories meta; do
+        file="$status_worker_dir/bench-$kind"
+        bench_metadata_rows "$kind" > "$file.tmp" 2>/dev/null || : > "$file.tmp"
+        mv "$file.tmp" "$file"
+    done
+}
+
+# Synchronous path (no TTY): the same arrays straight from the config.
+load_bench_metadata() {
+    local config="$SCRIPT_DIR/../config/bench-config.json"
+    [[ -f "$config" ]] && command -v jq >/dev/null 2>&1 || return 0
+    bench_categories_apply < <(bench_metadata_rows categories "$config" 2>/dev/null)
+    bench_meta_apply < <(bench_metadata_rows meta "$config" 2>/dev/null)
+    bench_meta_loaded=true
+}
+
 status_collect_inventory() {
     local key label state detail name
     bench_items=()
     init_components
     printf '%s\n' "${bench_items[@]}" > "$status_worker_dir/catalog.tmp"
     mv "$status_worker_dir/catalog.tmp" "$status_worker_dir/catalog"
+    bench_metadata_publish
     status_publish workbenches_account "$(python3 "$SCRIPT_DIR/setup-workbenches-account.py" --status)"
     for key in host_shell workspace_repo ai_accounts; do status_publish "$key" "$(check_component_status "$key")"; done
     refresh_bench_inventory
@@ -128,7 +218,7 @@ start_status_loader() {
 
 poll_status_loader() {
     [[ "$status_checks_running" == true && -n "$status_loader_dir" ]] || return 0
-    local key state detail file reading name selected='' index endpoint
+    local key state detail file reading name selected='' index endpoint catalog_changed=false
     if [[ -f "$status_loader_dir/tools-ready" ]]; then
         IFS= read -r endpoint < "$status_loader_dir/tools-ready"
         if [[ "$endpoint" == unix:///* || "${WORKBENCHES_TEST_NATIVE_TOOLS:-}" == 1 ]]; then
@@ -137,7 +227,18 @@ poll_status_loader() {
         fi
         rm -f "$status_loader_dir/tools-ready"
     fi
+    if [[ -f "$status_loader_dir/bench-categories" ]]; then
+        bench_categories_apply < "$status_loader_dir/bench-categories"
+        rm -f "$status_loader_dir/bench-categories"
+        catalog_changed=true; status_ui_dirty=true
+    fi
+    if [[ -f "$status_loader_dir/bench-meta" ]]; then
+        bench_meta_apply < "$status_loader_dir/bench-meta"
+        rm -f "$status_loader_dir/bench-meta"
+        bench_meta_loaded=true; catalog_changed=true; status_ui_dirty=true
+    fi
     if [[ -f "$status_loader_dir/catalog" ]]; then
+        catalog_changed=true
         [[ "$CURRENT_SECTION" != 0 ]] || selected="${bench_items[$current_selection]}"
         bench_items=()
         while IFS= read -r name; do
@@ -154,6 +255,10 @@ poll_status_loader() {
         fi
         rm -f "$status_loader_dir/catalog"
         status_ui_dirty=true
+    fi
+    # Keep the Benches step's zone, category and focus consistent with the new data.
+    if [[ "$catalog_changed" == true && "$CURRENT_SECTION" == 0 ]] && declare -F wizard_bench_sync >/dev/null; then
+        wizard_bench_sync
     fi
     for file in "$status_loader_dir"/*.row; do
         [[ -f "$file" ]] || continue
@@ -191,6 +296,7 @@ poll_status_loader() {
             requirements_notice='Resolve workstation requirements to continue.'
             if [[ "$CURRENT_SECTION" != 3 ]]; then
                 requirements_return_section=$CURRENT_SECTION; requirements_return_selection=$current_selection
+                requirements_return_zone=${wizard_bench_zone:-benches}; requirements_return_category=${wizard_category:-}
                 CURRENT_SECTION=3; current_selection=0
             fi
             for index in "${!requirement_items[@]}"; do

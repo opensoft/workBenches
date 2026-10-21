@@ -115,7 +115,7 @@ def main():
             assert text in requirements_output, requirements_output[-3500:]
         assert statuses() == initial, 'Browsing Requirements must not change installed components'
         # Remove a running bench and the npm CLI in one real setup.sh TUI plan.
-        output = setup_tui(repo, b'\x1b[CD\x1b[C\x1b[B\x1b[BD\n\n', env)
+        output = setup_tui(repo, b'\x1b[C\tD\x1b[C\x1b[B\x1b[BD\n\n', env)
         assert 'pyBench uninstalled' in output, output[-2500:]
         assert 'All selected changes completed successfully' in output
         assert statuses() == 'needs setup:not installed'

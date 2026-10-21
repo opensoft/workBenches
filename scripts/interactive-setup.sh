@@ -185,13 +185,22 @@ setup_panel_bottom() {
     printf '%b╰%s╯%b\n' "$SILVER_EDGE" "$(setup_ui_rule "$((setup_ui_width - 2))")" "$NC"
 }
 
+# A bottom edge with a muted hint at its right end, when the hint fits.
+setup_panel_bottom_label() {
+    local label=$1 fill=$((setup_ui_width - ${#1} - 5))
+    if (( fill < 2 )); then setup_panel_bottom; return; fi
+    printf '%b╰%s %b%s%b ─╯%b\n' "$SILVER_EDGE" "$(setup_ui_rule "$fill")" "$SILVER_MUTED" "$label" "$SILVER_EDGE" "$NC"
+}
+
+# The Workstation step's readiness line, unboxed. It wraps between services, so
+# Vault's action stays whole and no line is wider than the frame. Wrapping four
+# columns short of the frame (the old box's inner width) keeps the line count
+# steady while statuses load, so an update rewrites only the lines it changes.
 draw_requirements_summary() {
     setup_requirement_counts
     local title="REQUIREMENTS · $requirements_ready/$requirements_total ready"
     [[ "$status_checks_running" != true ]] || title="REQUIREMENTS · Loading…"
-    # On the Workstation step itself, P leads back to the step it came from.
-    if [[ "$CURRENT_SECTION" == 3 ]]; then setup_panel_top "$title" 'P Back'; else setup_panel_top "$title" 'P Manage'; fi
-    local key label action color plain='' styled='' separator='' width=$((setup_ui_width - 4))
+    local key label action color plain=" $title" styled=" ${SILVER}${BOLD}${title}${NC}" separator width=$((setup_ui_width - 4))
     for key in "${requirement_items[@]}"; do
         case "$key" in workbenches_account|ai_accounts) continue ;; esac
         label="${component_description[$key]} $(setup_status_label "${component_status[$key]}")"
@@ -203,17 +212,15 @@ draw_requirements_summary() {
         [[ "${component_status[$key]}" == up ]] || color="$YELLOW"
         [[ "${component_status[$key]}" != loading ]] || color="$LOADING_COLOR"
         # Wrap between services, preserving Vault's action even in narrow terminals.
-        separator=''
-        [[ -z "$plain" ]] || separator='   '
+        separator='   '
         if (( ${#plain} + ${#separator} + ${#label} > width )); then
-            printf '%b│%b %b%*s %b│%b\n' "$SILVER_EDGE" "$NC" "$styled" "$((width - ${#plain}))" '' "$SILVER_EDGE" "$NC"
-            plain=''; styled=''; separator=''
+            printf '%b\n' "$styled"
+            plain=' '; styled=' '; separator=''
         fi
         plain+="$separator$label"
         styled+="$separator${color}${label}${NC}"
     done
-    printf '%b│%b %b%*s %b│%b\n' "$SILVER_EDGE" "$NC" "$styled" "$((width - ${#plain}))" '' "$SILVER_EDGE" "$NC"
-    setup_panel_bottom
+    printf '%b\n' "$styled"
     [[ -z "$requirements_notice" ]] || setup_ui_tight || printf '\n'
     [[ -z "$requirements_notice" ]] || printf '%b%s%b\n' "$YELLOW" "${requirements_notice:0:$setup_ui_width}" "$NC"
 }
@@ -291,6 +298,10 @@ CURRENT_SECTION=0  # Requirements has a separate page for narrow terminals.
 requirements_notice=""
 requirements_return_section=0
 requirements_return_selection=0
+# The Benches step's zone and category to return to ("categories" with no
+# category starts on the first category, as →/← onto the step do).
+requirements_return_zone=benches
+requirements_return_category=''
 declare -a bench_items
 declare -a ai_items
 declare -a tool_items
@@ -1091,13 +1102,6 @@ draw_row() {
 # the existing sections, so CURRENT_SECTION/current_selection stay the canonical
 # focus: Workstation=3, Benches=0, AI assistants=1, Tools=2 and Review=4.
 wizard_step_names=(Workstation Benches 'AI assistants' Tools Review)
-wizard_step_notes=(
-    'Required software first; the vault and accounts are optional.'
-    'Development containers for your projects.'
-    'Coding assistants and spec tools for this workstation.'
-    'Editors, terminals, VPN clients and workspace setup.'
-    ''
-)
 # Rows are assembled from real escape bytes, so names are never reinterpreted.
 # State colors are foreground-only to keep a focused row's background intact.
 printf -v WZ_NC '%b' "$NC"
@@ -1182,12 +1186,22 @@ wizard_status_label() {
     esac
 }
 
-# One line: done steps ✓, the current step highlighted, upcoming steps ○.
+# Workstation readiness, shown in the stepper on every step: … while checks
+# run, ✓ when every required item is Up, ⚠ when one is not.
+wizard_workstation_mark() {
+    if [[ "$status_checks_running" == true ]]; then wizard_mark='…'; wizard_mark_color=$WZ_LOADING
+    elif setup_required_ready; then wizard_mark='✓'; wizard_mark_color=$WZ_GREEN
+    else wizard_mark='⚠'; wizard_mark_color=$WZ_YELLOW; fi
+}
+
+# One line: Workstation's readiness, then done steps ✓, the current step
+# highlighted and upcoming steps ○.
 draw_wizard_stepper() {
     local index current label marker connector plain styled dots dots_styled separator=' ' gap
     local -a counts=(0 0 0 0 0)
     wizard_step_of "$CURRENT_SECTION"
     current=$wizard_step
+    wizard_workstation_mark
     for index in 0 1 2 3; do wizard_queued_count "$index"; counts[index]=$wizard_count; done
     wizard_stepper_compact=true
     if (( setup_ui_width >= 70 )); then
@@ -1197,7 +1211,13 @@ draw_wizard_stepper() {
                 label="${wizard_step_names[index]}"
                 (( counts[index] == 0 )) || label+=" ${counts[index]}"
                 if (( index > 0 )); then plain+="$connector"; styled+="$WZ_EDGE$connector"; fi
-                if (( index == current )); then
+                if (( index == 0 && index == current )); then
+                    plain+=" $wizard_mark $label "
+                    styled+="$WZ_FOCUS$WZ_BOLD $wizard_mark_color$wizard_mark$WZ_NC$WZ_FOCUS$WZ_BOLD $label $WZ_NC"
+                elif (( index == 0 )); then
+                    plain+="$wizard_mark $label"
+                    styled+="$wizard_mark_color$wizard_mark$WZ_NC$WZ_MUTED $label"
+                elif (( index == current )); then
                     plain+=" ● $label "
                     styled+="$WZ_FOCUS$WZ_BOLD ● $label $WZ_NC"
                 else
@@ -1214,13 +1234,15 @@ draw_wizard_stepper() {
             fi
         done
     fi
-    # Narrow terminals name the step and show progress as five dots.
+    # Narrow terminals name the step and show progress as five dots; the first
+    # is Workstation's readiness mark.
     label="Step $((current + 1)) of 5 · ${wizard_step_names[current]}"
     (( ${#label} + 10 <= setup_ui_width )) || separator=''
     dots=''; dots_styled=''
     for index in 0 1 2 3 4; do
         if (( index > 0 )); then dots+="$separator"; dots_styled+="$separator"; fi
-        if (( index < current )); then dots+='●'; dots_styled+="$WZ_MUTED●"
+        if (( index == 0 )); then dots+=$wizard_mark; dots_styled+="$wizard_mark_color$wizard_mark$WZ_NC"
+        elif (( index < current )); then dots+='●'; dots_styled+="$WZ_MUTED●"
         elif (( index == current )); then dots+='◉'; dots_styled+="$WZ_SILVER$WZ_BOLD◉$WZ_NC"
         else dots+='○'; dots_styled+="$WZ_EDGE○"; fi
     done
@@ -1443,10 +1465,11 @@ wizard_draw_panels() {
     done
 }
 
-# Rows the collected panels need without scrolling, plus Review's notes.
+# Rows the collected panels need without scrolling, plus Review's notes and
+# the Benches step's category list and About panel.
 wizard_model_height() {
     local panel index
-    wizard_natural=${#wizard_review_notes[@]}
+    wizard_natural=$((${#wizard_review_notes[@]} + ${wizard_extra_natural:-0}))
     for ((panel=0; panel<${#wizard_panel_first[@]}; panel++)); do
         wizard_natural=$((wizard_natural + 2))
         for ((index=wizard_panel_first[panel]; index<wizard_panel_first[panel]+wizard_panel_size[panel]; index++)); do
@@ -1528,6 +1551,539 @@ wizard_panel_counts() {
             loading) loading=true ;;
         esac
     done
+}
+
+# --- Benches step --------------------------------------------------------------
+# A category selector, the current category's benches and an About panel for
+# the focused bench. wizard_bench_zone says where ↑↓ act: "categories" or
+# "benches". It defaults to benches, so a caller that only sets CURRENT_SECTION
+# and current_selection acts on that bench; current_selection stays an index
+# into bench_items in both zones.
+wizard_bench_zone=benches
+wizard_category=''
+wizard_about_offset=0
+wizard_about_anchor=''
+wizard_benches_loading=false
+wizard_cat_current=''
+declare -A wizard_cat_name wizard_cat_note wizard_cat_members
+declare -a wizard_cat_ids wizard_cat_focus wizard_bench_cat wizard_about_lead wizard_about_text
+
+# Label and order for a category id the config does not describe.
+wizard_category_default() {
+    case "$1" in
+        software-engineering) wizard_default_label='Software Engineering'; wizard_default_order=10 ;;
+        science) wizard_default_label=Science; wizard_default_order=20 ;;
+        system-administration) wizard_default_label='System Administration'; wizard_default_order=30 ;;
+        electrical-engineering) wizard_default_label='Electrical Engineering'; wizard_default_order=40 ;;
+        other) wizard_default_label='Other benches'; wizard_default_order=2000000 ;;
+        *) wizard_default_label="${1//-/ }"; wizard_default_label="${wizard_default_label^}"; wizard_default_order=1000000 ;;
+    esac
+}
+
+# Group bench_items by category, in category order. Until the catalog and its
+# metadata arrive (or the checks end without them) the step shows loading rows.
+wizard_bench_model() {
+    local index id name other rank_id rank_other
+    local -a ids=()
+    local -A rank=()
+    wizard_cat_ids=(); wizard_cat_focus=(); wizard_bench_cat=()
+    wizard_cat_name=(); wizard_cat_note=(); wizard_cat_members=()
+    wizard_benches_loading=false
+    if (( ${#bench_items[@]} == 0 )) || [[ "${bench_items[*]}" == loading ]] ||
+        [[ "$status_checks_running" == true && "$bench_meta_loaded" != true ]]; then
+        wizard_benches_loading=true
+        return 0
+    fi
+    for id in "${!bench_category_label[@]}"; do ids+=("$id"); done
+    for index in "${!bench_items[@]}"; do
+        name=${bench_items[index]}
+        id=${bench_meta_category[$name]:-other}
+        wizard_bench_cat[index]=$id
+        if [[ -z "${wizard_cat_members[$id]:-}" && -z "${bench_category_label[$id]:-}" ]]; then ids+=("$id"); fi
+        wizard_cat_members[$id]+="${wizard_cat_members[$id]:+ }$index"
+    done
+    for id in "${ids[@]}"; do
+        wizard_category_default "$id"
+        wizard_cat_name[$id]=${bench_category_label[$id]:-$wizard_default_label}
+        wizard_cat_note[$id]=${bench_category_summary[$id]:-}
+        rank[$id]=${bench_category_order[$id]:-$wizard_default_order}
+    done
+    # Insertion sort by order, then id: there are only a handful of categories.
+    for id in "${ids[@]}"; do
+        index=${#wizard_cat_ids[@]}
+        rank_id=${rank[$id]}
+        while (( index > 0 )); do
+            other=${wizard_cat_ids[index - 1]}
+            rank_other=${rank[$other]}
+            if (( rank_other > rank_id )) || { (( rank_other == rank_id )) && [[ "$other" > "$id" ]]; }; then
+                wizard_cat_ids[index]=$other
+                index=$((index - 1))
+            else
+                break
+            fi
+        done
+        wizard_cat_ids[index]=$id
+    done
+    for id in "${wizard_cat_ids[@]}"; do
+        [[ -z "${wizard_cat_members[$id]:-}" ]] || wizard_cat_focus+=("$id")
+    done
+}
+
+# The category on screen: the focused bench's in the bench zone, else the
+# chosen one, else the first category that has benches. Empty while loading.
+wizard_bench_current() {
+    local id=''
+    wizard_cat_current=''
+    [[ "$wizard_benches_loading" != true ]] || return 0
+    if [[ "$wizard_bench_zone" != categories ]]; then
+        id=${wizard_bench_cat[current_selection]:-}
+    else
+        id=$wizard_category
+    fi
+    if [[ -n "$id" ]] && [[ -n "${wizard_cat_members[$id]:-}" ]]; then
+        wizard_cat_current=$id
+    else
+        wizard_cat_current=${wizard_cat_focus[0]:-}
+    fi
+}
+
+# After any change of zone, category, focus or data: the category follows the
+# focused bench in the bench zone, and the category zone previews its
+# category from the first bench.
+wizard_bench_sync() {
+    wizard_bench_model
+    wizard_bench_current
+    [[ -n "$wizard_cat_current" ]] || return 0
+    wizard_category=$wizard_cat_current
+    if [[ "$wizard_bench_zone" == categories ]]; then
+        current_selection=${wizard_cat_members[$wizard_category]%% *}
+    fi
+}
+
+# ←/→ onto the Benches step: the category list, on the first category with benches.
+wizard_enter_benches() {
+    CURRENT_SECTION=0; current_selection=0
+    wizard_bench_zone=categories; wizard_category=''
+    wizard_bench_sync
+}
+
+# The About offset belongs to one zone, category and bench; any change resets it.
+wizard_about_track() {
+    local anchor="$wizard_bench_zone|$wizard_category|$current_selection"
+    [[ "$anchor" != "$wizard_about_anchor" ]] || return 0
+    wizard_about_anchor=$anchor
+    wizard_about_offset=0
+}
+
+# PgUp/PgDn ($1 = -1/1): move the About text by its window less one line. The
+# window's size comes from the same layout the frame uses.
+wizard_about_page() {
+    local metrics visible=0 total=0 limit step
+    wizard_about_track
+    metrics="$(wizard_metrics_only=true render_setup_frame 2>/dev/null)"
+    read -r visible total <<< "$metrics"
+    [[ "$visible" =~ ^[0-9]+$ && "$total" =~ ^[0-9]+$ ]] || return 0
+    limit=$((total - visible))
+    if (( visible == 0 || limit <= 0 )); then wizard_about_offset=0; return 0; fi
+    step=$((visible - 1))
+    (( step >= 1 )) || step=1
+    wizard_about_offset=$((wizard_about_offset + $1 * step))
+    (( wizard_about_offset >= 0 )) || wizard_about_offset=0
+    (( wizard_about_offset <= limit )) || wizard_about_offset=$limit
+    status_ui_dirty=true
+}
+
+# Benches-step keys: ↑↓ within the zone, Tab/Shift+Tab between zones, Space
+# opens a category's benches, PgUp/PgDn (or [ and ]) scroll About. Returns 1
+# for keys the common handler owns: ←→, Space/D on a bench, Enter, P, V, R, Q.
+wizard_bench_key() {
+    local key=$1 index position=-1
+    local -a list=()
+    wizard_bench_sync
+    case "$key" in
+        $'\e[5'|'[') wizard_about_page -1; return 0 ;;
+        $'\e[6'|']') wizard_about_page 1; return 0 ;;
+    esac
+    # While the catalog loads, the plain list rules apply.
+    [[ -n "$wizard_cat_current" ]] || return 1
+    if [[ "$wizard_bench_zone" == categories ]]; then
+        list=("${wizard_cat_focus[@]}")
+        for index in "${!list[@]}"; do [[ "${list[index]}" != "$wizard_category" ]] || position=$index; done
+        case "$key" in
+            $'\e[A') (( position <= 0 )) || wizard_category=${list[position - 1]} ;;
+            $'\e[B')
+                if (( position < ${#list[@]} - 1 )); then wizard_category=${list[position + 1]}; else wizard_bench_zone=benches; fi ;;
+            $'\t'|$'\e[Z'|' ') wizard_bench_zone=benches ;;
+            d|D) ;;
+            *) return 1 ;;
+        esac
+        # Moving and switching zones both start from the category's first bench.
+        current_selection=${wizard_cat_members[$wizard_category]%% *}
+    else
+        read -ra list <<< "${wizard_cat_members[$wizard_category]}"
+        for index in "${!list[@]}"; do [[ "${list[index]}" != "$current_selection" ]] || position=$index; done
+        case "$key" in
+            $'\e[A')
+                if (( position > 0 )); then current_selection=${list[position - 1]}; else wizard_bench_zone=categories; fi ;;
+            $'\e[B') (( position < 0 || position >= ${#list[@]} - 1 )) || current_selection=${list[position + 1]} ;;
+            $'\t'|$'\e[Z') wizard_bench_zone=categories ;;
+            *) return 1 ;;
+        esac
+    fi
+    wizard_bench_sync
+    wizard_about_track
+    status_ui_dirty=true
+}
+
+# Bench and status counts for category $1.
+wizard_category_counts() {
+    local index key
+    wizard_cc_total=0; wizard_cc_installed=0; wizard_cc_queued=0; wizard_cc_loading=false
+    [[ -n "$1" ]] || return 0
+    for index in ${wizard_cat_members[$1]:-}; do
+        key="bench_${bench_items[index]}"
+        wizard_cc_total=$((wizard_cc_total + 1))
+        case "${component_status[$key]:-loading}" in
+            installed|configured) wizard_cc_installed=$((wizard_cc_installed + 1)) ;;
+            loading) wizard_cc_loading=true ;;
+        esac
+        if [[ "${component_checked[$key]:-}" == true && -n "${component_action[$key]:-}" ]]; then
+            wizard_cc_queued=$((wizard_cc_queued + 1))
+        fi
+    done
+}
+
+# "N benches · I installed · Q queued" without its zero parts, shortened to
+# fit $2 columns, starting from detail level $3 (0 full … 3 just N); sets
+# wizard_summary_level. A category without benches is "coming soon".
+wizard_category_summary() {
+    local noun=benches installed full level
+    local -a candidates=()
+    wizard_category_counts "$1"
+    if (( wizard_cc_total == 0 )); then
+        candidates=('coming soon' 'coming soon' soon soon)
+    else
+        (( wizard_cc_total != 1 )) || noun=bench
+        installed="$wizard_cc_total $noun"
+        (( wizard_cc_installed == 0 )) || installed+=" · $wizard_cc_installed installed"
+        full=$installed
+        (( wizard_cc_queued == 0 )) || full+=" · $wizard_cc_queued queued"
+        candidates=("$full" "$installed" "$wizard_cc_total $noun" "$wizard_cc_total")
+    fi
+    wizard_summary=''; wizard_summary_level=3
+    for ((level=${3:-0}; level<${#candidates[@]}; level++)); do
+        if (( ${#candidates[level]} <= $2 )); then wizard_summary=${candidates[level]}; wizard_summary_level=$level; return 0; fi
+    done
+}
+
+# Footer context in the category zone: "<Category> · N benches · …".
+wizard_bench_context() {
+    wizard_bench_model
+    wizard_bench_current
+    [[ -n "$wizard_cat_current" ]] || return 1
+    wizard_category_summary "$wizard_cat_current" 1000
+    wizard_context="${wizard_cat_name[$wizard_cat_current]} · $wizard_summary"
+}
+
+# A bench row (wizard_row): checkbox, status, name, tagline, status label and
+# queued action. Narrow frames drop the tagline (<70) and status label (<50).
+wizard_bench_row() {
+    local key=$1 focused=$2 iw=$((setup_ui_width - 4)) status action='' symbol='✗' color="$WZ_RED"
+    local box=' ' box_color='' queued='' queued_color='' label_color="$WZ_MUTED" surface="$WZ_SILVER" marker=' '
+    local name_w tag_w=0 tail=10 line
+    status="${component_status[$key]:-}"
+    [[ -n "$status" ]] || status=loading
+    if [[ "${component_checked[$key]:-}" == true ]]; then
+        action="${component_action[$key]:-}"
+        if [[ "$action" == uninstall ]]; then box='✗'; box_color="$WZ_RED"; else box='✓'; box_color="$WZ_GREEN"; fi
+        case "$action" in
+            install) queued='→ Install'; queued_color="$WZ_GREEN" ;;
+            update) queued='→ Update'; queued_color="$WZ_GREEN" ;;
+            uninstall) queued='→ Remove'; queued_color="$WZ_RED" ;;
+        esac
+    fi
+    if [[ "$status" == loading ]]; then
+        color="$WZ_LOADING"; symbol='…'; label_color="$WZ_LOADING"
+    elif [[ "$status" == installed || "$status" == configured ]]; then
+        color="$WZ_GREEN"; symbol='✓'
+    elif [[ "$status" == 'needs creds' || "$status" == 'needs setup' || "$status" == 'needs check' || "$status" == 'needs docker' || "$status" == 'image only' ]]; then
+        color="$WZ_YELLOW"; symbol='⚠'; label_color="$WZ_YELLOW"
+    elif [[ "$status" == optional ]]; then
+        color="$WZ_DIM"; symbol='·'
+    fi
+    [[ "$focused" != true ]] || { marker='›'; surface="$WZ_FOCUS"; }
+    wizard_status_label "$status"
+    (( setup_ui_width < 50 )) || tail=25
+    name_w=$((iw - 8 - tail))
+    # The loading placeholder has no tagline; its name takes the whole column.
+    if (( setup_ui_width >= 70 )) && [[ "$key" != bench_loading ]]; then name_w=15; tag_w=$((iw - 8 - 15 - tail)); fi
+    wizard_cell "${component_description[$key]:-${key#bench_}}" "$((name_w - 1))"
+    line="$WZ_EDGE│$WZ_NC $surface$marker [$box_color$box$WZ_NC$surface] $color$symbol$WZ_NC$surface $wizard_cell "
+    if (( tag_w > 0 )); then
+        wizard_cell "${bench_meta_tagline[${key#bench_}]:-}" "$tag_w"
+        line+="$WZ_MUTED$wizard_cell$WZ_NC$surface"
+    fi
+    if (( setup_ui_width >= 50 )); then
+        wizard_cell "$wizard_label" 13
+        line+=" $label_color$wizard_cell$WZ_NC$surface  "
+    else
+        line+=' '
+    fi
+    wizard_cell "$queued" 9
+    wizard_row="$line$queued_color$wizard_cell$WZ_NC$surface $WZ_NC$WZ_EDGE│$WZ_NC"
+}
+
+wizard_about_add() { wizard_about_lead+=("$1"); wizard_about_text+=("$2"); }
+
+wizard_about_paragraph() {
+    local line
+    [[ -n "$1" ]] || return 0
+    wizard_wrap "$1" "$2"
+    for line in "${wizard_wrapped[@]}"; do wizard_about_add '' "$line"; done
+}
+
+# "Use it for   a · b · c": items packed per line under a 13-column label;
+# an item wider than the column wraps by words.
+wizard_about_list() {
+    local lead width=$(($2 - 13)) line='' item count piece
+    local indent='             '
+    printf -v lead '%-13s' "$1"
+    shift 2
+    for item in "$@"; do
+        [[ -n "$item" ]] || continue
+        if [[ -n "$line" ]] && (( ${#line} + 3 + ${#item} <= width )); then line+=" · $item"; continue; fi
+        if [[ -n "$line" ]]; then wizard_about_add "$lead" "$line"; lead=$indent; fi
+        wizard_wrap "$item" "$width"
+        count=${#wizard_wrapped[@]}
+        for piece in "${wizard_wrapped[@]:0:count-1}"; do wizard_about_add "$lead" "$piece"; lead=$indent; done
+        line=${wizard_wrapped[count - 1]}
+    done
+    [[ -z "$line" ]] || wizard_about_add "$lead" "$line"
+}
+
+# The About text wrapped to $1 columns: the chosen category's summary and
+# benches in the category zone; otherwise the focused bench's description,
+# then "Use it for" and "Contains" lines.
+wizard_about_build() {
+    local width=$1 name text index
+    local -a names=() used=() contains=()
+    wizard_about_lead=(); wizard_about_text=(); wizard_about_title=''
+    [[ -n "$wizard_cat_current" ]] || return 0
+    if [[ "$wizard_bench_zone" == categories ]]; then
+        wizard_about_title="ABOUT ${wizard_cat_name[$wizard_cat_current]^^}"
+        wizard_about_paragraph "${wizard_cat_note[$wizard_cat_current]:-}" "$width"
+        for index in ${wizard_cat_members[$wizard_cat_current]}; do names+=("${bench_items[index]}"); done
+        (( ${#wizard_about_text[@]} == 0 )) || wizard_about_add '' ''
+        if (( ${#names[@]} )); then
+            wizard_about_list Benches "$width" "${names[@]}"
+        else
+            wizard_about_paragraph 'No benches yet — coming soon.' "$width"
+        fi
+        return 0
+    fi
+    name=${bench_items[current_selection]:-}
+    [[ -n "$name" ]] || return 0
+    wizard_about_title="ABOUT ${name^^}"
+    text=${bench_meta_description[$name]:-${bench_meta_tagline[$name]:-}}
+    [[ -z "${bench_meta_used_for[$name]:-}" ]] || IFS='|' read -ra used <<< "${bench_meta_used_for[$name]}"
+    [[ -z "${bench_meta_contains[$name]:-}" ]] || IFS='|' read -ra contains <<< "${bench_meta_contains[$name]}"
+    [[ -n "$text" ]] || (( ${#used[@]} + ${#contains[@]} > 0 )) || text='No details for this bench yet.'
+    wizard_about_paragraph "$text" "$width"
+    if [[ -n "$text" ]] && (( ${#used[@]} + ${#contains[@]} > 0 )); then wizard_about_add '' ''; fi
+    (( ${#used[@]} == 0 )) || wizard_about_list 'Use it for' "$width" "${used[@]}"
+    (( ${#contains[@]} == 0 )) || wizard_about_list Contains "$width" "${contains[@]}"
+}
+
+# Step 2: collect the bench panel for the current category (every bench while
+# loading) and add the selector and About panel to the frame's height model.
+wizard_build_benches() {
+    local index current focused about
+    local -a members=()
+    wizard_bench_model
+    wizard_bench_current
+    current=$wizard_cat_current
+    wizard_panels_reset
+    if [[ -z "$current" ]]; then
+        wizard_panel_add BENCHES 'Loading…'
+        members=("${!bench_items[@]}")
+        wizard_cat_rows=1
+    else
+        wizard_category_counts "$current"
+        if [[ "$wizard_cc_loading" == true ]]; then
+            wizard_panel_add "${wizard_cat_name[$current]^^}" 'Loading…'
+        else
+            wizard_panel_add "${wizard_cat_name[$current]^^}" "$wizard_cc_installed of $wizard_cc_total installed"
+        fi
+        read -ra members <<< "${wizard_cat_members[$current]}"
+        wizard_cat_rows=${#wizard_cat_ids[@]}
+    fi
+    for index in "${members[@]}"; do
+        if (( index == current_selection )); then
+            focused=false
+            [[ "$wizard_bench_zone" == categories && -n "$current" ]] || focused=true
+            wizard_bench_row "bench_${bench_items[index]}" "$focused"
+            wizard_entry_add "$wizard_row" '' true
+        else
+            wizard_bench_row "bench_${bench_items[index]}" false
+            wizard_entry_add "$wizard_row" ''
+        fi
+    done
+    wizard_about_build "$((setup_ui_width - 4))"
+    about=${#wizard_about_text[@]}
+    (( about <= 8 )) || about=8
+    (( about == 0 )) || about=$((about + 2))
+    wizard_extra_natural=$((1 + wizard_cat_rows + about))
+    setup_ui_tight || wizard_extra_natural=$((wizard_extra_natural + 1))
+}
+
+# Share a known height: the category list first, then the bench panel (at
+# least three rows), then About (2-8 lines). A short frame collapses the
+# category list to one line before anything shrinks further. An unknown height
+# never clips: every category and bench, and the whole About text.
+wizard_benches_layout() {
+    local budget=$1 rows=${#wizard_entry_row[@]} total mode cat_h rest bench_full bench_min about_min bench_h visible offset=0
+    wizard_spacer=1
+    ! setup_ui_tight || wizard_spacer=0
+    wizard_cat_mode=full; wizard_bench_budget=''; wizard_about_scroll=false; wizard_about_first=0
+    wizard_about_build "$((setup_ui_width - 4))"
+    total=${#wizard_about_text[@]}
+    wizard_about_visible=$total
+    if [[ -n "$budget" ]]; then
+        bench_full=$((2 + rows))
+        bench_min=$((2 + (rows < 3 ? rows : 3)))
+        about_min=0
+        (( total == 0 )) || about_min=$((2 + (total < 2 ? total : 2)))
+        for mode in full collapsed; do
+            wizard_cat_mode=$mode
+            cat_h=$((1 + wizard_spacer))
+            [[ "$mode" != full ]] || cat_h=$((cat_h + wizard_cat_rows))
+            rest=$((budget - cat_h))
+            bench_h=$((rest - about_min))
+            (( bench_h <= bench_full )) || bench_h=$bench_full
+            (( bench_h < bench_min )) || break
+        done
+        (( bench_h >= 3 )) || bench_h=3
+        wizard_bench_budget=$bench_h
+        visible=$((rest - bench_h - 2))
+        (( visible <= 8 )) || visible=8
+        (( visible <= total )) || visible=$total
+        (( visible >= 1 )) || visible=0
+        wizard_about_visible=$visible
+        if (( visible > 0 && total > visible )); then
+            # Make room for "▼ more" at the right end of the window's lines.
+            wizard_about_scroll=true
+            wizard_about_build "$((setup_ui_width - 11))"
+            total=${#wizard_about_text[@]}
+            [[ "$wizard_about_anchor" != "$wizard_bench_zone|$wizard_category|$current_selection" ]] || offset=$wizard_about_offset
+            (( offset <= total - visible )) || offset=$((total - visible))
+            (( offset >= 0 )) || offset=0
+            wizard_about_first=$offset
+        fi
+    fi
+    wizard_about_total=$total
+}
+
+# The selector's first row: " CATEGORY" and its hint.
+wizard_category_label_row() {
+    local hint=$1 gap
+    (( 9 + 2 + ${#hint} <= setup_ui_width )) || hint=''
+    gap=$((setup_ui_width - 9 - ${#hint}))
+    printf ' %s%sCATEGORY%s%*s%s%s%s\n' "$WZ_SILVER" "$WZ_BOLD" "$WZ_NC" "$gap" '' "$WZ_MUTED" "$hint" "$WZ_NC"
+}
+
+# The selector in one line for short frames: " CATEGORY  ● Name · N benches".
+wizard_category_line() {
+    local hint=$1 id=$wizard_cat_current noun=benches avail text='' surface=$WZ_SILVER try candidate gap
+    wizard_category_counts "$id"
+    (( wizard_cc_total != 1 )) || noun=bench
+    avail=$((setup_ui_width - 11))
+    for try in "$hint" ''; do
+        for candidate in "● ${wizard_cat_name[$id]} · $wizard_cc_total $noun" "● ${wizard_cat_name[$id]}"; do
+            if (( ${#candidate} + (${#try} > 0 ? ${#try} + 2 : 0) <= avail )); then text=$candidate; hint=$try; break 2; fi
+        done
+    done
+    if [[ -z "$text" ]]; then hint=''; wizard_cell "● ${wizard_cat_name[$id]}" "$avail"; text=$wizard_cell; fi
+    [[ "$wizard_bench_zone" != categories ]] || surface=$WZ_FOCUS
+    gap=$((avail - ${#text} - ${#hint}))
+    printf ' %s%sCATEGORY%s  %s%s%s%*s%s%s%s\n' "$WZ_SILVER" "$WZ_BOLD" "$WZ_NC" "$surface" "$text" "$WZ_NC" "$gap" '' "$WZ_MUTED" "$hint" "$WZ_NC"
+}
+
+# The selector: one row per category in order. The current category is ●,
+# focused with › in the category zone; a category without benches is dim.
+wizard_draw_categories() {
+    local width=$setup_ui_width hint='Tab ⇄ benches' id longest=0 label_w summary_w label summary marker bullet surface level=0
+    if [[ -z "$wizard_cat_current" ]]; then
+        wizard_category_label_row "$hint"
+        printf '   %s%s%s\n' "$WZ_LOADING" 'Loading benches…' "$WZ_NC"
+        return 0
+    fi
+    if [[ "$wizard_cat_mode" == collapsed ]]; then wizard_category_line "$hint"; return 0; fi
+    wizard_category_label_row "$hint"
+    for id in "${wizard_cat_ids[@]}"; do
+        (( ${#wizard_cat_name[$id]} <= longest )) || longest=${#wizard_cat_name[$id]}
+    done
+    # Summaries share a column; narrow frames move it left, then every row
+    # drops to the same shorter form.
+    label_w=$((longest + 5))
+    (( 5 + label_w + 23 <= width )) || label_w=$((width - 28))
+    if (( label_w < longest + 2 )); then
+        label_w=$((longest + 2))
+        (( 5 + label_w + 9 <= width )) || label_w=$((longest + 1))
+    fi
+    summary_w=$((width - 5 - label_w))
+    for id in "${wizard_cat_focus[@]}"; do
+        wizard_category_summary "$id" "$summary_w" "$level"
+        level=$wizard_summary_level
+    done
+    for id in "${wizard_cat_ids[@]}"; do
+        wizard_category_summary "$id" "$summary_w" "$level"
+        wizard_cell "$wizard_summary" "$summary_w"; summary=$wizard_cell
+        wizard_cell "${wizard_cat_name[$id]}" "$label_w"; label=$wizard_cell
+        if [[ -z "${wizard_cat_members[$id]:-}" ]]; then
+            printf '%s   ○ %s%s%s\n' "$WZ_DIM" "$label" "$summary" "$WZ_NC"
+            continue
+        fi
+        marker=' '; surface=$WZ_SILVER; bullet="$WZ_MUTED○"
+        [[ "$id" != "$wizard_cat_current" ]] || bullet="$WZ_SILVER$WZ_BOLD●"
+        if [[ "$wizard_bench_zone" == categories && "$id" == "$wizard_cat_current" ]]; then marker='›'; surface=$WZ_FOCUS; fi
+        printf '%s %s %s%s%s %s%s%s%s\n' "$surface" "$marker" "$bullet" "$WZ_NC" "$surface" "$label" "$WZ_MUTED" "$summary" "$WZ_NC"
+    done
+}
+
+# The About window: "a–b of n" and PgUp/PgDn only when the text scrolls, with
+# ▲/▼ more at the ends of the window.
+wizard_draw_about() {
+    local iw=$((setup_ui_width - 4)) width first=$wizard_about_first last index marker right='' lead line
+    local total=${#wizard_about_text[@]}
+    width=$iw
+    last=$((first + wizard_about_visible - 1))
+    if [[ "$wizard_about_scroll" == true ]]; then
+        width=$((iw - 7))
+        right="$((first + 1))–$((last + 1)) of $total"
+    fi
+    setup_panel_top "$wizard_about_title" "$right"
+    for ((index=first; index<=last; index++)); do
+        lead=${wizard_about_lead[index]}
+        wizard_cell "${wizard_about_text[index]}" "$((width - ${#lead}))"
+        line="$WZ_EDGE│$WZ_NC $WZ_MUTED$lead$WZ_SILVER$wizard_cell"
+        if [[ "$wizard_about_scroll" == true ]]; then
+            marker='      '
+            if (( index == last && last < total - 1 )); then marker='▼ more'
+            elif (( index == first && first > 0 )); then marker='▲ more'; fi
+            line+=" $WZ_MUTED$marker"
+        fi
+        printf '%s %s│%s\n' "$line" "$WZ_EDGE" "$WZ_NC"
+    done
+    if [[ "$wizard_about_scroll" == true ]]; then setup_panel_bottom_label 'PgUp/PgDn scroll'; else setup_panel_bottom; fi
+}
+
+# Step 2's body within $1 rows (empty: unlimited).
+wizard_draw_benches() {
+    wizard_benches_layout "$1"
+    wizard_draw_categories
+    (( wizard_spacer == 0 )) || printf '\n'
+    wizard_draw_panels "$wizard_bench_budget"
+    (( wizard_about_visible == 0 )) || wizard_draw_about
 }
 
 # Apply waits for the same conditions handle_input enforces.
@@ -1614,43 +2170,47 @@ wizard_build_review() {
 # Draw the collected panels within $1 rows, then any Review warnings.
 wizard_draw_body() {
     local budget=$1 line
+    if [[ "$CURRENT_SECTION" == 0 ]]; then wizard_draw_benches "$budget"; return; fi
     [[ -z "$budget" ]] || budget=$((budget - ${#wizard_review_notes[@]}))
     wizard_draw_panels "$budget"
     for line in "${wizard_review_notes[@]}"; do printf '%s%s%s\n' "$WZ_YELLOW" "$line" "$WZ_NC"; done
 }
 
-# Banner, stepper, status strip and the step's title, note or blocker.
+# Banner, version line, stepper and one rule. Below it, Workstation shows its
+# requirements line and Review its instruction and blocker; Benches, AI
+# assistants and Tools start straight away with their lists.
 wizard_draw_head() {
-    local os_label title line tight=false
+    local os_label line tight=false
     ! setup_ui_tight || tight=true
     draw_setup_banner
     os_label="${setup_os_label:0:$((setup_ui_width - 20))}"
     printf '%b%s%b\n' "$SILVER" "$(setup_ui_pair "workBenches v$setup_version" "$os_label" "$setup_ui_width")" "$NC"
-    printf '%b%s%b\n' "$SILVER_EDGE" "$(setup_ui_rule "$setup_ui_width")" "$NC"
     draw_wizard_stepper
-    draw_requirements_summary
-    [[ "$tight" == true ]] || printf '\n'
+    printf '%b%s%b\n' "$SILVER_EDGE" "$(setup_ui_rule "$setup_ui_width")" "$NC"
     wizard_step_of "$CURRENT_SECTION"
-    title="STEP $((wizard_step + 1)) OF 5 · ${wizard_step_names[wizard_step]^^}"
-    # In a short, narrow terminal the compact stepper already names the step.
-    if [[ "$tight" != true || "$wizard_stepper_compact" != true ]]; then
-        printf '%s%s%s%s\n' "$WZ_SILVER" "$WZ_BOLD" "${title:0:$setup_ui_width}" "$WZ_NC"
-    fi
-    if (( wizard_step == 4 )); then
-        wizard_review_rows
-        if (( ${#wizard_review_install[@]} + ${#wizard_review_update[@]} + ${#wizard_review_remove[@]} > 0 )); then
-            wizard_wrap 'Nothing has changed yet. Enter applies these changes.' "$setup_ui_width"
-        else
-            wizard_wrap 'No changes selected. ← Back to choose, or Enter to finish without changes.' "$setup_ui_width"
-        fi
-        for line in "${wizard_wrapped[@]}"; do printf '%s%s%s\n' "$WZ_MUTED" "$line" "$WZ_NC"; done
-        wizard_apply_blocker
-        [[ -z "$wizard_blocker" ]] || printf '%s%s%s\n' "$WZ_YELLOW" "${wizard_blocker:0:$setup_ui_width}" "$WZ_NC"
-    elif [[ "$tight" != true ]]; then
-        wizard_wrap "${wizard_step_notes[wizard_step]}" "$setup_ui_width"
-        for line in "${wizard_wrapped[@]}"; do printf '%s%s%s\n' "$WZ_MUTED" "$line" "$WZ_NC"; done
-    fi
-    [[ "$tight" == true ]] || printf '\n'
+    case "$wizard_step" in
+        0)
+            draw_requirements_summary
+            [[ "$tight" == true ]] || printf '\n' ;;
+        4)
+            wizard_review_rows
+            if (( ${#wizard_review_install[@]} + ${#wizard_review_update[@]} + ${#wizard_review_remove[@]} > 0 )); then
+                wizard_wrap 'Nothing has changed yet. Enter applies these changes.' "$setup_ui_width"
+            else
+                wizard_wrap 'No changes selected. ← Back to choose, or Enter to finish without changes.' "$setup_ui_width"
+            fi
+            for line in "${wizard_wrapped[@]}"; do printf '%s%s%s\n' "$WZ_MUTED" "$line" "$WZ_NC"; done
+            wizard_apply_blocker
+            if [[ -n "$wizard_blocker" ]]; then
+                printf '%s%s%s\n' "$WZ_YELLOW" "${wizard_blocker:0:$setup_ui_width}" "$WZ_NC"
+            elif [[ -n "$requirements_notice" ]]; then
+                printf '%s%s%s\n' "$WZ_YELLOW" "${requirements_notice:0:$setup_ui_width}" "$WZ_NC"
+            fi
+            [[ "$tight" == true ]] || printf '\n' ;;
+        *)
+            # A notice (from V, say) stays visible now the requirements line is on step 1 only.
+            [[ -z "$requirements_notice" ]] || printf '%s%s%s\n' "$WZ_YELLOW" "${requirements_notice:0:$setup_ui_width}" "$WZ_NC" ;;
+    esac
 }
 
 wizard_render_head() {
@@ -1668,9 +2228,11 @@ render_setup_frame() {
     local -a frame=()
     wizard_force_tight=false
     wizard_review_notes=()
+    wizard_extra_natural=0
     case "$CURRENT_SECTION" in
         3) wizard_build_workstation ;;
         4) wizard_build_review '' ;;
+        0) wizard_build_benches ;;
         *) wizard_build_components ;;
     esac
     foot="$(draw_setup_footer)"
@@ -1684,6 +2246,15 @@ render_setup_frame() {
         fi
         budget=$((setup_ui_height - wizard_head_lines - foot_lines))
         [[ "$CURRENT_SECTION" != 4 ]] || wizard_build_review "$budget"
+    fi
+    # PgUp/PgDn ask for the About window's size instead of a frame.
+    if [[ "${wizard_metrics_only:-}" == true ]]; then
+        if [[ "$CURRENT_SECTION" == 0 ]]; then
+            wizard_benches_layout "$budget"
+            printf '%s %s\n' "$wizard_about_visible" "$wizard_about_total"
+        fi
+        wizard_force_tight=false
+        return 0
     fi
     body="$(wizard_draw_body "$budget")"
     mapfile -t frame <<< "$head"
@@ -1752,6 +2323,8 @@ draw_setup_footer() {
         if [[ -n "$wizard_blocker" ]]; then context='Review · Apply is waiting'
         elif (( selected_count > 0 )); then context='Review · Nothing applied yet'
         else context='Review · No changes'; fi
+    elif [[ "$CURRENT_SECTION" == 0 && "$wizard_bench_zone" == categories ]] && wizard_bench_context; then
+        context=$wizard_context
     elif [[ -n "$selected_item" ]]; then
         context="${component_description[$selected_item]} · $(setup_status_label "${component_status[$selected_item]}")"
         action="${component_action[$selected_item]}"
@@ -1770,23 +2343,40 @@ draw_setup_footer() {
     (( setup_ui_width >= 60 )) || changes="Changes: $selected_count"
     printf '%b%s%b\n' "$SILVER_EDGE" "$(setup_ui_rule "$setup_ui_width")" "$NC"
     printf '%b%s%b\n' "$SILVER" "$(setup_ui_pair "$context" "$changes" "$setup_ui_width")" "$NC"
-    # Hints follow the step: service rows act at once, Review applies.
+    # Hints follow the step: service rows act at once, Review applies. A
+    # newline entry puts the step keys on a second line in wide frames.
     case "$CURRENT_SECTION" in
         3)
+            hints=('↑↓ Move' '←→ Steps')
             case "$selected_item" in
                 docker|wsl|setup_tools|vault)
-                    space_hint="$(workbenches_requirement_action "$selected_item" "${component_status[$selected_item]}" "${component_status[workbenches_account]}")"
-                    enter_hint=$space_hint ;;
+                    enter_hint="$(workbenches_requirement_action "$selected_item" "${component_status[$selected_item]}" "${component_status[workbenches_account]}")" ;;
                 '') ;;
-                *) [[ "${component_checked[$selected_item]}" != true ]] || space_hint='Undo' ;;
+                *)
+                    [[ "${component_checked[$selected_item]}" != true ]] || space_hint='Undo'
+                    hints+=("Space $space_hint") ;;
             esac
-            hints=('↑↓ Move' '→ Next' "Space $space_hint" 'P Back' 'R Refresh' "Enter $enter_hint" 'Q Quit') ;;
+            hints+=("Enter $enter_hint" 'V Vault' 'R Refresh' 'Q Quit') ;;
         4) hints=('← Back' 'Enter Apply' 'P Workstation' 'R Refresh' 'Q Quit') ;;
-        *) hints=('↑↓ Move' '← Back' '→ Next' 'Space Select' 'D Remove' 'P Workstation' 'R Refresh' 'Enter Review' 'Q Quit') ;;
+        0)
+            if [[ "$wizard_bench_zone" == categories ]]; then
+                hints=('↑↓ Move' 'Tab Benches' 'PgUp/PgDn About')
+            else
+                hints=('↑↓ Move' 'Tab Category' 'Space Select' 'D Remove' 'PgUp/PgDn About')
+            fi
+            hints+=($'\n' '←→ Steps' 'P Workstation' 'R Refresh' 'Enter Review' 'Q Quit') ;;
+        *) hints=('↑↓ Move' 'Space Select' 'D Remove' $'\n' '←→ Steps' 'P Workstation' 'R Refresh' 'Enter Review' 'Q Quit') ;;
     esac
     plain='Navigation:'
     printf -v styled '%bNavigation:%b' "$SILVER_MUTED" "$NC"
     for hint in "${hints[@]}"; do
+        if [[ "$hint" == $'\n' ]]; then
+            if [[ "$fresh" != true ]] && (( setup_ui_width >= 80 )); then
+                printf '%s\n' "$styled"
+                plain='           '; styled=$plain; separator=' '; fresh=true
+            fi
+            continue
+        fi
         if [[ "$fresh" != true ]] && (( ${#plain} + 2 + ${#hint} > setup_ui_width )); then
             printf '%s\n' "$styled"
             plain='           '; styled=$plain; separator=' '
@@ -1934,6 +2524,9 @@ handle_input() {
     # Handle escape sequences (arrow keys, etc.)
     if [[ $key == $'\x1b' ]]; then
         read -rsn2 -t 0.1 key
+        # Page Up/Down end in "~"; consume it so it is not read as a key.
+        if [[ "$key" == '[5' || "$key" == '[6' ]]; then local tilde; read -rsn1 -t 0.1 tilde; fi
+        if [[ "$CURRENT_SECTION" == 0 ]] && wizard_bench_key $'\e'"$key"; then return 0; fi
         case "$key" in
             '[A') # Up arrow - move up in current section (Review has no rows)
                 if [ $CURRENT_SECTION -ne 4 ] && [ $current_selection -gt 0 ]; then
@@ -1976,7 +2569,7 @@ handle_input() {
                 ;;
             '[C') # Right arrow - next wizard step: Workstation, Benches, AI, Tools, Review
                 case "$CURRENT_SECTION" in
-                    3) CURRENT_SECTION=0; current_selection=0 ;;
+                    3) wizard_enter_benches ;;
                     0|1) ((CURRENT_SECTION++)); current_selection=0 ;;
                     2) CURRENT_SECTION=4; current_selection=0 ;;
                 esac
@@ -1984,16 +2577,20 @@ handle_input() {
             '[D') # Left arrow - previous wizard step (no wrap)
                 case "$CURRENT_SECTION" in
                     4) CURRENT_SECTION=2; current_selection=0 ;;
-                    1|2) ((CURRENT_SECTION--)); current_selection=0 ;;
+                    2) CURRENT_SECTION=1; current_selection=0 ;;
+                    1) wizard_enter_benches ;;
                     0)
                         # Like P, remember where Workstation should return to.
                         requirements_return_section=0
                         requirements_return_selection=$current_selection
+                        requirements_return_zone=$wizard_bench_zone
+                        requirements_return_category=$wizard_category
                         CURRENT_SECTION=3; current_selection=0 ;;
                 esac
                 ;;
         esac
     else
+        if [[ "$CURRENT_SECTION" == 0 ]] && wizard_bench_key "$key"; then return 0; fi
         case "$key" in
             ' '|d|D) # Space toggles install/update; D toggles explicit removal.
                 [[ "$CURRENT_SECTION" != 4 ]] || return 0  # Review is read-only.
@@ -2069,9 +2666,17 @@ handle_input() {
                 if [[ "$CURRENT_SECTION" == 3 ]]; then
                     CURRENT_SECTION=$requirements_return_section
                     current_selection=$requirements_return_selection
+                    if [[ "$CURRENT_SECTION" == 0 ]]; then
+                        # Back to the same zone and focus on the Benches step.
+                        wizard_bench_zone=${requirements_return_zone:-benches}
+                        wizard_category=$requirements_return_category
+                        wizard_bench_sync
+                    fi
                 else
                     requirements_return_section=$CURRENT_SECTION
                     requirements_return_selection=$current_selection
+                    requirements_return_zone=$wizard_bench_zone
+                    requirements_return_category=$wizard_category
                     CURRENT_SECTION=3
                     current_selection=0
                 fi ;;
@@ -3875,6 +4480,7 @@ main() {
         # The wizard opens on its first step; P from there leads on to Benches.
         CURRENT_SECTION=3; current_selection=0
         requirements_return_section=0; requirements_return_selection=0
+        requirements_return_zone=categories; requirements_return_category=''
     fi
     if [[ ( "$mode" == interactive || "$mode" == --select-only ) && -t 0 && -t 1 ]]; then
         status_async_ui=true
@@ -3889,6 +4495,8 @@ main() {
     else
         ensure_workstation_requirements || return "$?"
         init_components
+        # Only the selection screen shows categories and About text.
+        if [[ "$mode" == interactive || "$mode" == --select-only ]]; then load_bench_metadata; fi
         if [[ "$mode" != --dependencies-plan ]]; then load_statuses; fi
     fi
     if [[ "$mode" == --apply-plan || "$mode" == --dependencies-plan ]]; then

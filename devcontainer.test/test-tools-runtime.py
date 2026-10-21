@@ -69,7 +69,7 @@ else:
             ready = False; keys = b''
             if stage == 0 and 'Navigation:' in plain and re.search(r'REQUIREMENTS · (\d+)/\1 ready', plain):
                 # Queue a bench; use only the Vault button on the main screen.
-                ready = True; keys = b' '
+                ready = True; keys = b'\x1b[C\t \x1b[D'
             elif stage == 1 and re.search(r'Vault\s+Missing\s+\[V Install\]', plain) and 'Changes selected: 1' in plain:
                 ready = True; keys = b'V'
             elif stage == 2 and re.search(r'Vault\s+Up\s+\[V Connect\]', plain) and 'Changes selected: 1' in plain:
