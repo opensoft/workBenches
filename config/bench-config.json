@@ -6,17 +6,75 @@
       "description": "GitHub Spec Kit - installed via uvx (always fetches latest)"
     }
   },
+  "categories": {
+    "software-engineering": {
+      "label": "Software Engineering",
+      "order": 1,
+      "summary": "Language and framework toolchains for building, testing and shipping software."
+    },
+    "science": {
+      "label": "Science",
+      "order": 2,
+      "summary": "Bioinformatics and molecular simulation on a shared Conda base."
+    },
+    "system-administration": {
+      "label": "System Administration",
+      "order": 3,
+      "summary": "Cloud, Kubernetes and Microsoft 365 administration tooling."
+    },
+    "electrical-engineering": {
+      "label": "Electrical Engineering",
+      "order": 4,
+      "summary": "Circuit and electronics tooling; no benches are available yet."
+    }
+  },
   "benches": {
     "cloudBench": {
       "url": "https://github.com/opensoft/cloudBench.git",
       "path": "sysBenches/cloudBench",
+      "category": "system-administration",
+      "tagline": "Cloud and Kubernetes ops",
       "description": "Cloud infrastructure and operations tools",
+      "usedFor": [
+        "Infrastructure as code changes",
+        "Kubernetes and GitOps operations",
+        "Secrets, scanning and access control",
+        "Cluster backup and cost review"
+      ],
+      "contains": [
+        "Terraform, OpenTofu, Terragrunt and Pulumi",
+        "kubectl, Helm, k9s and stern",
+        "Flux CLI, Azure kubelogin and Velero",
+        "Azure CLI, AWS CLI and Google Cloud CLI",
+        "Ansible and Prometheus promtool",
+        "Trivy, Vault CLI, SOPS and age",
+        "Infracost and Teleport (tsh, tctl)",
+        "lazydocker, nmap and DNS tools"
+      ],
       "ai_keywords": ["cloud", "infrastructure", "devops", "kubernetes", "docker", "deployment", "admin", "monitoring", "logging"]
     },
     "pyBench": {
       "url": "https://github.com/opensoft/pyBench.git",
       "path": "devBenches/pyBench",
+      "category": "software-engineering",
+      "tagline": "Python apps and data work",
       "description": "Python development environment and tools",
+      "usedFor": [
+        "Django, Flask and FastAPI apps",
+        "Data analysis with pandas and NumPy",
+        "Notebooks and scripting",
+        "AMD ROCm GPU workloads on WSL"
+      ],
+      "contains": [
+        "Python 3.12 with venv and pip",
+        "Poetry and pipx",
+        "Django, Flask and FastAPI with uvicorn",
+        "pandas and NumPy",
+        "Jupyter and IPython",
+        "pytest, coverage, mypy, black and flake8",
+        "GitLab CLI (glab)",
+        "Optional AMD ROCm GPU passthrough on WSL"
+      ],
       "ai_keywords": ["python", "django", "flask", "fastapi", "pandas", "numpy", "machine learning", "ml", "data science", "AI", "artificial intelligence", "web scraping"],
       "project_scripts": [
         {
@@ -30,7 +88,25 @@
     "javaBench": {
       "url": "https://github.com/opensoft/javaBench.git",
       "path": "devBenches/javaBench",
+      "category": "software-engineering",
+      "tagline": "Java and JVM languages",
       "description": "Java development environment and tools",
+      "usedFor": [
+        "Spring Boot and Quarkus services",
+        "Maven and Gradle builds",
+        "Java code quality and coverage",
+        "Load testing with JMeter or Gatling"
+      ],
+      "contains": [
+        "OpenJDK 25 with SDKMAN",
+        "Maven and Gradle",
+        "Spring Boot, Quarkus and Micronaut CLIs",
+        "Kotlin, Groovy and Scala",
+        "Checkstyle, SpotBugs and PMD",
+        "JaCoCo coverage and SonarCloud helpers",
+        "JMeter and Gatling load testing",
+        "Docker CLI and database clients"
+      ],
       "ai_keywords": ["java", "spring", "springboot", "hibernate", "maven", "gradle", "jvm", "enterprise", "microservices"],
       "project_scripts": [
         {
@@ -44,7 +120,25 @@
     "dotNetBench": {
       "url": "https://github.com/opensoft/dotNetBench.git",
       "path": "devBenches/dotNetBench",
+      "category": "software-engineering",
+      "tagline": ".NET, C# and ASP.NET Core",
       "description": ".NET development environment and tools",
+      "usedFor": [
+        "ASP.NET Core and Blazor apps",
+        "Database work with EF Core",
+        "Cloud-native apps with Aspire",
+        "Profiling and diagnostics"
+      ],
+      "contains": [
+        ".NET 10 SDK with ASP.NET Core runtime",
+        "Aspire and wasm-tools workloads",
+        "EF Core, LibMan and ASP.NET code generator",
+        "dotnet-trace, dump, counters and monitor",
+        "Stryker, coverlet, ReportGenerator, SonarScanner",
+        "PowerShell",
+        "Azure CLI, AWS CLI, kubectl, Helm and Docker CLI",
+        "psql, mysql, sqlite3, redis-cli and sqlcmd"
+      ],
       "ai_keywords": ["dotnet", ".net", "c#", "csharp", "asp.net", "core", "blazor", "entity framework", "microsoft", "visual studio"],
       "project_scripts": [
         {
@@ -58,7 +152,25 @@
     "flutterBench": {
       "url": "https://github.com/opensoft/flutterBench.git",
       "path": "devBenches/flutterBench",
+      "category": "software-engineering",
+      "tagline": "Flutter and Dart apps",
       "description": "Flutter/Dart development environment and tools",
+      "usedFor": [
+        "Flutter apps for Android and web",
+        "Android builds and device testing",
+        "Release automation with Fastlane",
+        "Firebase-backed app development"
+      ],
+      "contains": [
+        "Flutter stable SDK and pinned 3.27 LTS",
+        "Android SDK, NDK, emulator and adb",
+        "OpenJDK 17 and Gradle",
+        "FVM, Melos, Mason and Very Good CLI",
+        "Firebase CLI and FlutterFire CLI",
+        "Fastlane, CocoaPods and Shorebird",
+        "Sentry CLI and Figma Code Connect",
+        "Google Chrome for Flutter web"
+      ],
       "ai_keywords": ["flutter", "dart", "mobile app", "android", "ios", "cross-platform", "widget", "material design", "cupertino"],
       "project_scripts": [
         {
@@ -90,7 +202,25 @@
     "cppBench": {
       "url": "https://github.com/opensoft/cppBench.git",
       "path": "devBenches/cppBench",
+      "category": "software-engineering",
+      "tagline": "C++ native development",
       "description": "C++ development environment and tools",
+      "usedFor": [
+        "Native C++ applications and libraries",
+        "CMake builds with vcpkg or Conan",
+        "Debugging and memory profiling",
+        "Static analysis and unit testing"
+      ],
+      "contains": [
+        "GCC 14 and Clang 19 with LLVM tools",
+        "CMake, Ninja, Make and Autotools",
+        "vcpkg and Conan package managers",
+        "GDB, LLDB, Valgrind and heaptrack",
+        "clang-tidy, clang-format and cppcheck",
+        "GoogleTest, GoogleMock and Google Benchmark",
+        "Boost, Eigen, OpenSSL and libcurl headers",
+        "ccache, mold, gcovr and lcov"
+      ],
       "ai_keywords": ["c++", "cpp", "cmake", "makefile", "gcc", "clang", "system programming", "embedded", "game development", "native performance"],
       "project_scripts": [
         {
@@ -104,7 +234,25 @@
     "frappeBench": {
       "url": "https://github.com/opensoft/frappeBench.git",
       "path": "devBenches/frappeBench",
+      "category": "software-engineering",
+      "tagline": "Frappe and ERPNext apps",
       "description": "Frappe/ERPNext development environment and tools",
+      "usedFor": [
+        "Building custom Frappe apps",
+        "ERPNext customization",
+        "Running a full Frappe stack locally",
+        "Debugging and profiling Frappe code"
+      ],
+      "contains": [
+        "Frappe, ERPNext and Payments (version-15)",
+        "bench CLI (frappe-bench)",
+        "Node.js 20 and Python 3",
+        "MariaDB 10.6 and three Redis instances",
+        "Workers, scheduler, SocketIO and Nginx",
+        "MariaDB client, Redis tools and wkhtmltopdf",
+        "py-spy, web-pdb, ruff and pre-commit",
+        "Docker CLI and multitail"
+      ],
       "ai_keywords": ["frappe", "erpnext", "erp", "business software", "python", "mariadb", "redis", "web framework", "accounting", "crm", "hrms"],
       "project_scripts": [
         {
@@ -115,16 +263,99 @@
         }
       ]
     },
+    "goBench": {
+      "url": "https://github.com/opensoft/goBench.git",
+      "path": "devBenches/goBench",
+      "category": "software-engineering",
+      "tagline": "Go services and CLIs",
+      "description": "Go development environment with cloud-native tools",
+      "usedFor": [
+        "Go microservices and APIs",
+        "gRPC and Protocol Buffers services",
+        "Command-line tools in Go",
+        "Local Kubernetes with kind and ko"
+      ],
+      "contains": [
+        "Go 1.26 toolchain",
+        "gopls language server and Delve debugger",
+        "golangci-lint, staticcheck and errcheck",
+        "goimports, gofumpt and golines",
+        "air live reload, swag and wire",
+        "protoc, protoc-gen-go and grpcurl",
+        "ko, kind and Tekton CLI (tkn)",
+        "goreleaser, yq and hey"
+      ],
+      "ai_keywords": ["go", "golang", "grpc", "protobuf", "microservices", "cloud native", "api", "cli"]
+    },
+    "rustBench": {
+      "url": "https://github.com/opensoft/rustBench.git",
+      "path": "devBenches/rustBench",
+      "category": "software-engineering",
+      "tagline": "Rust, Tauri and WebAssembly",
+      "description": "Rust, Tauri and WebAssembly development environment and tools",
+      "usedFor": [
+        "Rust services and CLI tools",
+        "Tauri desktop applications",
+        "WebAssembly modules and web apps",
+        "Cross-compiling to ARM64 and musl"
+      ],
+      "contains": [
+        "Rust stable and nightly via rustup",
+        "Clippy, rustfmt, rust-analyzer and Miri",
+        "cargo-nextest, llvm-cov and tarpaulin",
+        "cargo-audit, cargo-deny and cargo-vet",
+        "wasm-pack, wasm-bindgen and trunk",
+        "cross, cargo-zigbuild and Zig",
+        "Tauri v2 Linux build prerequisites",
+        "LLDB, GDB, Valgrind and heaptrack"
+      ],
+      "ai_keywords": ["rust", "cargo", "tauri", "webassembly", "wasm", "cross-compilation", "desktop app", "cli"]
+    },
     "gentecBench": {
       "url": "https://github.com/opensoft/gentecBench.git",
       "path": "bioBenches/gentecBench",
+      "category": "science",
+      "tagline": "Genetics and genomics",
       "description": "Genetics and genomics workbench with BaseSpace CLI",
+      "usedFor": [
+        "Sequencing data QC and alignment",
+        "Variant calling and VCF filtering",
+        "Nextflow and nf-core pipelines",
+        "Downloading runs from BaseSpace"
+      ],
+      "contains": [
+        "Illumina BaseSpace CLI (bs)",
+        "Miniconda with bioconda and conda-forge",
+        "Conda envs: bfx (analysis) and nf (pipelines)",
+        "samtools, bcftools, bedtools and seqtk",
+        "BWA and minimap2 aligners",
+        "FastQC, MultiQC and mosdepth",
+        "Nextflow and nf-core"
+      ],
       "ai_keywords": ["genetics", "genomics", "bioinformatics", "sequencing", "illumina", "basespace", "dna", "rna", "variant calling"]
     },
     "simBench": {
       "url": "https://github.com/opensoft/simBench.git",
       "path": "bioBenches/simBench",
-      "description": "Molecular simulation workbench with ESMFold and AlphaFold",
+      "category": "science",
+      "tagline": "Molecular simulation",
+      "description": "Molecular simulation and protein structure workbench with OpenMM and ESM",
+      "usedFor": [
+        "Molecular dynamics with OpenMM",
+        "Protein structure analysis",
+        "Sequence and structure search",
+        "Protein language models (ESM)"
+      ],
+      "contains": [
+        "Python 3.11 in a Conda env named sim",
+        "JupyterLab with an IPython kernel",
+        "OpenMM, MDTraj and PDBFixer",
+        "MMseqs2, Foldseek and HMMER",
+        "Biopython and Biotite",
+        "fair-esm with CPU-only PyTorch",
+        "py3Dmol structure viewer",
+        "NumPy, SciPy, pandas and scikit-learn"
+      ],
       "ai_keywords": ["simulation", "protein", "esm", "esmfold", "alphafold", "molecular dynamics", "structure prediction", "folding"]
     }
   }
