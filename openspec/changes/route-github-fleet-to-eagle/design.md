@@ -13,6 +13,7 @@ The first inventory found 280 active repositories, 238 active workflow definitio
 5. Inventory and select repository access explicitly per organization. Preserve public-fork approval controls and deployment environments. Keep existing specialized self-hosted groups intact.
 6. Poll repositories with a bounded interval and API budget, then provision only demanded pool/profile capacity. Bound aggregate resources and verify worker/backend/private-volume/registration cleanup before reuse.
 7. Prepare narrow workflow PRs, read repository instructions, preserve non-routing content and matrix coverage, request Codex review and merge through repository policy. No protected deployment is approved by the migration.
+8. Track the exact detached once-listener exec. Unregister only after its exit; GitHub's forced-delete endpoint is not a busy-job barrier. A root-owned pre-job hook waits for the Windows controller to persist a job deadline before services or action code start. Recovery observes the same exec. STOP stops replenishment and lets an existing listener finish one job; a registered idle listener is not forcibly retired merely because a busy read is false. Recheck the queued candidate before starting a listener so a cancelled demand does not intentionally leave idle capacity.
 
 ## Risks and gates
 

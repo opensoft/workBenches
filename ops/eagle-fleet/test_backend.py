@@ -3,6 +3,11 @@ from unittest.mock import Mock,patch
 import backend
 
 class ImageIdentityTests(unittest.TestCase):
+    def test_host_command_boundary_rejects_shell_executables(self):
+        with patch.object(backend.subprocess,'run') as execute:
+            for args in (['powershell','-Command','anything'],['cmd','/c','anything'],'docker info',[]):
+                with self.subTest(args=args),self.assertRaises(ValueError): backend.call(args)
+            execute.assert_not_called()
     def test_oci_index_is_resolved_to_verified_runtime_config_identity(self):
         expected=dict(Config={'User':'runner'},RootFS={'Layers':['sha256:layer']},Architecture='amd64',Os='linux')
         original=dict(expected,Config=dict(expected['Config'],OnBuild=None))

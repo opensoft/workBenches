@@ -21,3 +21,7 @@ ENV RUNNER_TOOL_CACHE=/opt/hostedtoolcache \
     DOTNET_NOLOGO=1
 USER runner
 RUN python3 --version && node --version && npm --version && gh --version && docker --version
+COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
+RUN docker compose version
+COPY --chmod=755 job-started.sh /opt/eagle/job-started.sh
+ENV ACTIONS_RUNNER_HOOK_JOB_STARTED=/opt/eagle/job-started.sh

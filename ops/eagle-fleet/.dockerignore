@@ -2,3 +2,4 @@
 !Dockerfile*
 !proxy.py
 !guard.sh
+!job-started.sh

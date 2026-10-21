@@ -43,7 +43,10 @@ def registrations(state):
     return pages(f"orgs/{state['organization']}/actions/runner-groups/{state['group_id']}/runners",'runners')
 
 def retire(state):
-    # DELETE is the assignment race barrier: GitHub refuses a busy registration.
+    # Forced deletion is permitted only after local listener/worker exit. A busy
+    # read is an extra settling check, never an assignment-race barrier.
+    if not state.get('listener_stopped'):
+        raise RuntimeError('Listener exit must be proven before unregistering')
     for runner in registrations(state):
         if runner['name'] != state['runner']: continue
         if runner['busy']: return False
@@ -77,7 +80,7 @@ def queued(config):
         pool,repo=item
         result=[]
         for status in ('queued','in_progress'):
-            runs=api(f'repos/{repo}/actions/runs?status={status}&per_page=20')['workflow_runs']
+            runs=pages(f'repos/{repo}/actions/runs?status={status}','workflow_runs')
             for run in runs:
                 # Do not occupy capacity for a pending environment approval.
                 jobs=pages(f"repos/{repo}/actions/runs/{run['id']}/jobs",'jobs')
@@ -109,16 +112,23 @@ def execute(candidate,config):
     suffix=uuid.uuid4().hex[:12]
     state=dict(phase='creating-guard',runner='eagle-fleet-'+suffix,engine='eagle-fleet-engine-'+suffix,
                guard='eagle-fleet-guard-'+suffix,organization=pool['organization'],group_id=pool['group_id'],
-               created=time.time(),deadline=time.time()+config['maximum_lifetime_seconds'],
+               created=time.time(),deadline=None,job_assigned=False,
+               maximum_job_seconds=config['maximum_lifetime_seconds'],
                repository=repo,run_id=run,job_id=job)
     save(state);event('creating',runner=state['runner'],repository=repo,job=job)
-    address=backend.infrastructure()
+    address=backend.infrastructure(config['gateway_image'])
     def before_engine():
         state['phase']='creating-engine';save(state)
     backend.create(state['guard'],state['engine'],address,config['gateway_image'],
-                   config['memory_limit'],config['maximum_lifetime_seconds'],before_engine)
+                   config['backend_image'],config['memory_limit'],before_engine)
     state['phase']='preparing';save(state)
     backend.prepare(state['engine'],profile['image'],address,state['runner'])
+    pending=api(f'repos/{repo}/actions/jobs/{job}')
+    if (ROOT/'STOP').exists() or pending['status']!='queued':
+        state['listener_stopped']=True;save(state)
+        if not retire(state): raise RuntimeError('Unexpected assignment before listener start')
+        cleanup(state)
+        return
     state['phase']='configuring';save(state)
     registration=api(f"orgs/{pool['organization']}/actions/runners/registration-token",'POST')
     configure="""import os,sys,subprocess
@@ -130,24 +140,56 @@ sys.exit(subprocess.run(args,capture_output=True).returncode)
                   'https://github.com/'+pool['organization'],state['runner'],pool['group'],','.join(profile['labels']),
                   data=registration['token']+'\n',timeout=180)
     registration=None
-    logs=ROOT/'logs';logs.mkdir(exist_ok=True)
-    with (logs/(state['runner']+'.log')).open('w',encoding='utf-8') as stream:
-        listener=subprocess.Popen(['docker','exec',state['engine'],'docker','-H',backend.SOCKET,
-                                   'exec',state['runner'],'./run.sh','--once'],stdout=stream,stderr=subprocess.STDOUT,creationflags=backend.FLAGS)
-        state['phase']='listening';save(state);event('listening',runner=state['runner'])
-        idle=time.time()+900
-        while listener.poll() is None:
-            if time.time() >= state['deadline']:
-                event('hard-deadline',runner=state['runner'])
-                # External lifetime enforcement cannot be disabled by private Docker API.
-                backend.remove(state['engine']);listener.wait(timeout=60)
-                break
-            if ((ROOT/'STOP').exists() or time.time() >= idle) and retire(state):
-                backend.remove(state['engine']);listener.wait(timeout=60);break
-            time.sleep(15)
+    state['exec_id']=backend.listener_create(state['engine'],state['runner'])
+    state['phase']='starting-listener';save(state)
+    backend.listener_start(state['engine'],state['runner'],state['exec_id'])
+    state['phase']='listening';save(state);event('listening',runner=state['runner'])
+    monitor(state)
     state['phase']='retiring';save(state)
     if not retire(state): raise RuntimeError('Waiting for GitHub registration to settle')
     cleanup(state)
+
+def monitor(state):
+    """Wait for the exact once-listener; STOP never cancels its assigned job."""
+    while True:
+        # Enforce persisted job limits even if the private daemon becomes faulty.
+        if state.get('job_assigned') and time.time()>=state['deadline']:
+            event('hard-job-deadline',runner=state['runner'])
+            backend.remove(state['engine']);state['listener_stopped']=True;save(state);return
+        obj=backend.inspect(state['engine'])
+        if not obj or not obj['State']['Running']:
+            state['listener_stopped']=True;save(state);return
+        if not state.get('hook_acknowledged'):
+            marker=backend.inner(state['engine'],'exec',state['runner'],'test','-e','/home/runner/.eagle-job-started',optional=True)
+            if marker.returncode==0:
+                if not state.get('job_assigned'):
+                    state.update(job_assigned=True,deadline=time.time()+state['maximum_job_seconds']);save(state)
+                backend.inner(state['engine'],'exec',state['runner'],'touch','/home/runner/.eagle-job-start-ack')
+                state['hook_acknowledged']=True;save(state)
+        registered=registrations(state)
+        if any(r['name']==state['runner'] and r['busy'] for r in registered) and not state.get('job_assigned'):
+            state.update(job_assigned=True,deadline=time.time()+state['maximum_job_seconds']);save(state)
+        worker=backend.inner(state['engine'],'inspect',state['runner'],optional=True)
+        if worker.returncode:
+            if 'no such' not in worker.stderr.lower(): raise RuntimeError('Worker inspection unavailable')
+            backend.remove(state['engine']);state['listener_stopped']=True;save(state);return
+        status=backend.listener_status(state['engine'],state['runner'],state['exec_id'])
+        if not status['Running']:
+            state['listener_stopped']=True;save(state)
+            event('listener-exited',runner=state['runner'],returncode=status['ExitCode'])
+            logs=ROOT/'logs';logs.mkdir(exist_ok=True)
+            result=backend.inner(state['engine'],'exec',state['runner'],'tail','-c','200000','/home/runner/eagle-listener.log',optional=True)
+            if not result.returncode: (logs/(state['runner']+'.log')).write_text(result.stdout,encoding='utf-8')
+            return
+        assigned=any(r['name']==state['runner'] and r['busy'] for r in registered)
+        if assigned and not state.get('job_assigned'):
+            state.update(job_assigned=True,deadline=time.time()+state['maximum_job_seconds']);save(state)
+        if state.get('job_assigned') and time.time()>=state['deadline']:
+            event('hard-job-deadline',runner=state['runner'])
+            backend.remove(state['engine']);state['listener_stopped']=True;save(state);return
+        # An idle registered once-listener remains until it exits naturally. It
+        # may claim one final job while draining; no new sandbox is provisioned.
+        time.sleep(15)
 
 def recover():
     if not STATE.exists(): return
@@ -156,8 +198,16 @@ def recover():
     pending={'creating-guard':state['guard'],'creating-engine':state['engine']}.get(state['phase'])
     if pending and not backend.inspect(pending):
         raise RuntimeError('Uncertain create; reconcile exact container before retry')
-    if time.time() >= state['deadline']:
-        backend.remove(state['engine'])
+    if state.get('exec_id'):
+        if state['phase']=='starting-listener':
+            status=backend.listener_status(state['engine'],state['runner'],state['exec_id'])
+            if not status['Running'] and status['ExitCode']==0 and any(r['name']==state['runner'] for r in registrations(state)):
+                raise RuntimeError('Uncertain listener start; preserve exact exec until reconciled')
+        monitor(state)
+    elif state['phase']=='listening':
+        if any(r['name']==state['runner'] for r in registrations(state)):
+            raise RuntimeError('Preserving legacy listener until its ephemeral registration disappears')
+    state['listener_stopped']=True;save(state)
     if not retire(state): raise RuntimeError('Existing assigned job is preserved')
     cleanup(state)
 

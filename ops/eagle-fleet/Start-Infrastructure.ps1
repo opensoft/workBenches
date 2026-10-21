@@ -1,5 +1,13 @@
+param([string]$GatewayImage)
 $ErrorActionPreference='Stop'
 Set-Location $PSScriptRoot
+if(!$GatewayImage){
+    if(Test-Path -LiteralPath (Join-Path $PSScriptRoot 'config.json')){
+        $GatewayImage=(Get-Content -LiteralPath (Join-Path $PSScriptRoot 'config.json') -Raw|ConvertFrom-Json).gateway_image
+    } else {$GatewayImage='eagle-fleet-gateway:local'}
+}
+$desired=(docker image inspect $GatewayImage|ConvertFrom-Json)[0]
+if($LASTEXITCODE -or !$desired){throw 'Pinned gateway image unavailable'}
 foreach($name in @('eagle-fleet-private','eagle-fleet-egress')) {
     $existing=docker network ls --filter "name=^$name`$" --format '{{.Name}}'
     if(!$existing){
@@ -13,11 +21,12 @@ foreach($name in @('eagle-fleet-private','eagle-fleet-egress')) {
 }
 $existing=docker ps -a --filter 'name=^eagle-fleet-proxy$' --format '{{.Names}}'
 if(!$existing){
-    docker run -d --name eagle-fleet-proxy --restart unless-stopped --label eagle.fleet=true --network eagle-fleet-private --user 65534:65534 --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 512m eagle-fleet-gateway:local
+    docker run -d --name eagle-fleet-proxy --restart unless-stopped --label eagle.fleet=true --network eagle-fleet-private --user 65534:65534 --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 512m $desired.Id
     if($LASTEXITCODE){throw 'Proxy create uncertain; inspect exact name before retry'}
 } else {
     $obj=(docker inspect eagle-fleet-proxy|ConvertFrom-Json)[0]
     if($obj.Config.Labels.'eagle.fleet' -ne 'true'){throw 'Proxy name collision'}
+    if($obj.Image -ne $desired.Id){throw 'Gateway image drift: drain fleet, then recreate the owned proxy from the pinned image'}
     if(!$obj.State.Running){docker start eagle-fleet-proxy|Out-Null}
 }
 $obj=(docker inspect eagle-fleet-proxy|ConvertFrom-Json)[0]

@@ -19,24 +19,30 @@ kernel; this architecture does not provide a VM boundary.
 
 One fleet worker runs at a time, with an 8 GiB backend limit and four CPUs.
 Admission requires 10 GiB of Linux MemAvailable. No bench is stopped or restarted.
-The host enforces a 7.5-hour maximum lifetime independently of code running inside
-the sandbox; GitHub's original job timeout still applies. Idle listeners retire
-after 15 minutes. Runner deletion precedes normal teardown and fails closed on
-assignment races. Container/volume names are journaled before deletion. An
+The host enforces a 7.5-hour job deadline independently of code running inside
+the sandbox; GitHub's original job timeout still applies. A root-owned pre-job
+hook waits for the Windows controller to persist that deadline before any service
+container or action code starts. The outer engine's root-owned Python supports
+supervision even if a job replaces its own toolchain. The exact detached listener
+exec must finish before unregistering. GitHub's forced-delete
+endpoint is not an assignment-race barrier. Container/volume names are journaled before deletion. An
 uncertain create is reconciled by its exact identity, never repeated blindly.
 
 Deploy this directory to a host-local service directory. Keep `config.json`,
 `pools.json`, DPAPI authentication, state, locks and logs outside Git. Build the
 gateway and worker images from their declared Dockerfiles and pin their image
-IDs in configuration. Provision selected-repository groups before enabling any
+IDs in configuration, including `backend_image` built with Dockerfile.engine.
+Provision selected-repository groups before enabling any
 workflow. Start-Infrastructure.ps1 touches only owned fleet infrastructure.
 Run Watch-Fleet.ps1 with an explicit Python executable from a current-user
 interactive AtLogon task. Authentication uses a same-user DPAPI file and exists
 only in the host controller environment; registration tokens go to config.sh over
 stdin, never arguments or logs.
 
-Put an empty `STOP` file in the service directory to drain: an assigned job
-continues, while an idle runner retires and the controller exits. Resume by
+Put an empty `STOP` file in the service directory to drain: no new sandbox is
+provisioned, and an existing registered once-listener may accept its one final job
+and finish naturally. An unassigned listener can keep that pool occupied until
+it exits; STOP never uses forced deregistration to prove it is idle. Resume by
 removing STOP and starting the scheduled task. Recover a stale create by first
 inspecting the exact journaled names and GitHub assignment. Never use global
 Docker prune, WSL shutdown or a Docker restart as runner cleanup.
