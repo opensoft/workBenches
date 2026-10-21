@@ -75,6 +75,35 @@ def public_certificate(path):
     return result.stdout.decode('ascii')
 
 
+def native_capacity_available():
+    for line in Path('/proc/meminfo').read_text().splitlines():
+        if line.startswith('MemAvailable:'):
+            return int(line.split()[1]) >= (8192 + 2048) * 1024
+    return False
+
+
+def prepare_native_swap(state, manifest):
+    # Only a new one-use guest carrying this job's root-owned reset marker is
+    # eligible. Never change Raven's swap or the reusable golden disk.
+    code = '''import json,os,subprocess,sys
+from pathlib import Path
+job=json.load(sys.stdin)
+marker=Path('/etc/workbenches/disposable-qa-id')
+if marker.stat().st_uid!=0 or marker.read_text().strip()!=job['resetId']:raise SystemExit(1)
+directory=Path('/var/lib/workbenches')
+directory.mkdir(exist_ok=True,mode=0o755)
+if directory.is_symlink() or directory.stat().st_uid!=0 or directory.stat().st_mode&0o022:raise SystemExit(1)
+path=directory/'native-qa.swap'
+fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600);os.close(fd)
+subprocess.run(['fallocate','-l','8G',str(path)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+subprocess.run(['mkswap',str(path)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+subprocess.run(['swapon',str(path)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+'''
+    result = subprocess.run([*VM.ssh(state, manifest), 'sudo python3 -c ' + shlex.quote(code)],
+        input=json.dumps({'resetId': manifest['resetId']}).encode(), capture_output=True, timeout=60)
+    if result.returncode: raise ValueError('Disposable native swap provisioning failed')
+
+
 def run(golden, state, candidate, automation, certificate_path=None):
     certificate = public_certificate(certificate_path)
     timeout = json.loads((automation / 'config/release-tests.json').read_text())['suites']['arch-native']['timeoutSeconds']
@@ -86,6 +115,8 @@ def run(golden, state, candidate, automation, certificate_path=None):
         raise ValueError('Validated stopped golden image required')
     if not os.access('/dev/kvm', os.R_OK | os.W_OK):
         raise ValueError('KVM access required')
+    if not native_capacity_available():
+        raise ValueError('Native QA requires 8 GiB RAM plus 2 GiB host headroom')
     state.mkdir(mode=0o700, parents=True)
     for source, target in [('golden.qcow2', 'qa.qcow2'), ('ssh-key', 'ssh-key')]:
         subprocess.run(['cp', '--reflink=auto', str(golden / source), str(state / target)], check=True)
@@ -95,7 +126,8 @@ def run(golden, state, candidate, automation, certificate_path=None):
     (state / 'known_hosts').write_text(f'[127.0.0.1]:{port} {match[1]}\n')
     reset_id = str(uuid.uuid4())
     manifest = dict(state='starting', vmName='wb-arch-job-' + reset_id, sshPort=port,
-                    resetId=reset_id, kind='one-shot-native', registeredRunner=False)
+                    resetId=reset_id, kind='one-shot-native', registeredRunner=False,
+                    memoryMiB=8192, swapMiB=8192)
     process = VM.launch(state, manifest)
     try:
         deadline = time.monotonic() + 180
@@ -105,6 +137,7 @@ def run(golden, state, candidate, automation, certificate_path=None):
             time.sleep(2)
         else: raise ValueError('QA SSH readiness timed out')
         fresh_identity(state, manifest)
+        prepare_native_swap(state, manifest)
         stage(state, manifest, candidate, 'candidate')
         stage(state, manifest, automation, 'automation')
         manifest['state'] = 'native-adapter-running'; VM.write(state / 'vm.json', manifest)

@@ -6,6 +6,11 @@ available memory/swap and the change in the kernel OOM-kill counter. A signal ex
 alone does not prove OOM. Optional encrypted fixture diagnosis also captures the
 failed command's output before its private log is deleted; plaintext is never
 uploaded. Native worker capacity and native results remain separate evidence.
+The one-use Arch controller allocates 8 GiB RAM and provisions 8 GiB swap only
+inside the new disposable guest after verifying its reset marker. It requires
+another 2 GiB of available host headroom before starting. The small persistent
+broker-provisioning VM keeps its existing 4 GiB default. Arch v4's retained serial
+log confirmed a kernel OOM kill of dockerd with the old 4 GiB/512 MiB profile.
 
 Full hosted runs from main prepare compatible public base/developer images before
 starting fixtures. The publisher accepts only current main or the exact current

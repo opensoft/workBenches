@@ -32,6 +32,25 @@ image_source = module('image_source', 'scripts/release-qa-image-source.py')
 
 
 class ReleaseAutomationTests(unittest.TestCase):
+    def test_native_capacity_refusal_preserves_host_and_does_not_create_job(self):
+        golden = Path(self.temp.name) / 'golden'; golden.mkdir()
+        rv.atomic(golden / 'prepared.json', {'state': 'prepared-not-registered', 'cleanup': 'vm-stopped'})
+        state = Path(self.temp.name) / 'new-native-job'
+        with patch.object(native_controller.os, 'access', return_value=True), \
+             patch.object(native_controller, 'native_capacity_available', return_value=False), \
+             patch.object(native_controller.VM, 'launch') as launch:
+            with self.assertRaisesRegex(ValueError, 'host headroom'):
+                native_controller.run(golden, state, self.root, ROOT)
+        launch.assert_not_called()
+        self.assertFalse(state.exists())
+
+    def test_invalid_vm_memory_cannot_start_a_process(self):
+        with patch.object(native_controller.VM.subprocess, 'Popen') as launch:
+            for memory in (True, 0, 32769, '8192'):
+                with self.assertRaises(ValueError):
+                    native_controller.VM.launch(self.reports, {'memoryMiB': memory})
+        launch.assert_not_called()
+
     def test_signal_failure_reports_exit_and_resource_delta_without_private_output(self):
         fixture_value = 'fixture-process-output'
         diagnostic = {}
