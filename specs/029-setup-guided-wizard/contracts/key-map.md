@@ -26,7 +26,7 @@
 | Space | run the focused row's action | enter the bench zone (queues nothing) | queue/unqueue install or update | queue/unqueue install or update | open the row | — |
 | D | — | — | queue/unqueue removal | queue/unqueue removal | — | — |
 | Enter | run the focused row's action | open Review | open Review | open Review | open the row | apply (gated) |
-| PgUp/PgDn, `[` / `]` | — | scroll About | scroll About | — | scroll About | — |
+| PgUp/PgDn, `[` / `]` | scroll About | scroll About | scroll About | — | scroll About | — |
 | P | return to the remembered step and focus (default: Benches category zone, first category with benches) | go to Workstation, remember focus | same | same | same | same (remembers the Review offset) |
 | G | go to Profiles, remember focus | same | same | same | return to the remembered step and focus (same default) | go to Profiles, remember the offset |
 | V | Vault action (advertised) | Vault action | Vault action | Vault action | Vault action | Vault action |
@@ -66,8 +66,8 @@ Every hint block begins with `Navigation:`. V is listed only on Workstation. Pro
 Full lists (from the approved Benches mockup and the illustrative Workstation, Review and Profiles mockups; Harness and Tools follow the Benches bench-zone pattern without Tab and About):
 
 ```text
-Workstation   Navigation: ↑↓ Move  Enter <Action>  V Vault
-                          ←→ Steps  P Back  R Refresh  Q Quit
+Workstation   Navigation: ↑↓ Move  Enter <Action>  V Vault  PgUp/PgDn About
+                          ←→ Steps  P Back  G Profiles  R Refresh  Q Quit
 Benches       Navigation: ↑↓ Move  Tab Category  Space Select  D Remove  PgUp/PgDn About
                           ←→ Steps  P Workstation  R Refresh  Enter Review  Q Quit
 Harness/Tools  Navigation: ↑↓ Move  Space Select  D Remove

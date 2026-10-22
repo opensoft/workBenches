@@ -21,8 +21,10 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout
 
-    def frame(self, section, columns=88, rows=40):
-        text = self.shell(f'''init_components --loading
+    def frame(self, section, columns=88, rows=40, wsl=False):
+        text = self.shell(f'''is_wsl_windows() {{ return {0 if wsl else 1}; }}
+init_components --loading
+initialize_loading_statuses
 setup_os_label='Linux — Omarchy'
 CURRENT_SECTION={section}
 tput() {{ case $1 in cols) echo {columns};; lines) echo {rows};; esac; }}
@@ -160,16 +162,25 @@ setup_about_offset=2; setup_update_ui_signature
         self.assertEqual(output, '')
 
     def test_workstation_render_matrix(self):
-        for columns in (36,60,88):
+        for columns in (36,60,61,88):
             for rows in (24,40,0):
-                with self.subTest(columns=columns, rows=rows):
-                    lines=self.frame(3,columns,rows)
-                    self.assert_bounds(lines,max(columns,36),rows or None)
-                    text='\n'.join(lines)
-                    self.assertIn('Workstation',text)
-                    self.assertIn('REQUIRED SOFTWARE',text)
-                    self.assertIn('OPTIONAL VAULT',text)
-                    self.assertIn('Navigation:',text)
+                for wsl in (False,True):
+                    with self.subTest(columns=columns, rows=rows, wsl=wsl):
+                        lines=self.frame(3,columns,rows,wsl)
+                        self.assert_bounds(lines,max(columns,36),rows or None)
+                        text='\n'.join(lines)
+                        self.assertIn('Workstation',text)
+                        self.assertEqual(sum('╭─ Containers' in line for line in lines),1)
+                        self.assertNotIn('REQUIRED SOFTWARE',text)
+                        self.assertNotIn('OPTIONAL VAULT',text)
+                        self.assertIn('ABOUT WSL 2' if wsl else 'ABOUT DOCKER',text)
+                        self.assertIn('Vault',text)
+                        if wsl:self.assertIn('WSL 2',text)
+                        self.assertIn('Navigation:',text)
+                        nav_index=next(i for i,line in enumerate(lines) if 'Workstation' in line)
+                        self.assertEqual(lines[nav_index+2],'')
+                        self.assertIn('REQUIREMENTS ·',lines[nav_index+3])
+                        if columns-1>=60:self.assertIn('G Profiles',text)
 
     def test_agents_and_tools_render_matrix(self):
         for section in (1,2):

@@ -20,11 +20,11 @@ Every wizard frame SHALL begin with the Opensoft banner and `openBenches v1.7` t
 - **THEN** the frame contains no `STEP n OF m` title and no per-step description sentence
 
 ### Requirement: Step selector area
-The rows under the rule SHALL be the current step's selector area: the requirements strip on Workstation, the CATEGORY block on Benches and the identities summary line on Profiles. Harness and Tools SHALL start directly with their panels, and Review SHALL start with its instruction line.
+The rows under the rule SHALL be the current step's selector area: the requirements strip after one blank row on Workstation, the CATEGORY block on Benches and the identities summary line on Profiles. Harness and Tools SHALL start directly with their panels, and Review SHALL start with its instruction line.
 
 #### Scenario: Strip only on Workstation
 - **WHEN** Workstation is shown
-- **THEN** the first row under the rule begins with `REQUIREMENTS ·`
+- **THEN** one blank row follows the rule and the next row begins with `REQUIREMENTS ·`
 - **AND** when Benches, Harness, Tools, Profiles or Review is shown, no `REQUIREMENTS ·` strip appears
 
 #### Scenario: Category block on Benches
@@ -65,11 +65,11 @@ The minimum supported terminal size SHALL be 36 columns by 24 rows. For terminal
 - **THEN** the frame is 87 columns wide
 
 #### Scenario: Multibyte text stays aligned
-- **WHEN** a focused Workstation row's explanation reads "Checking workstation readiness…"
+- **WHEN** a focused Workstation service's About detail reads "Checking workstation readiness…"
 - **THEN** that line's right border is in the same column as the panel's other borders
 
 ### Requirement: Height bounds
-When the terminal height is known, the frame SHALL never be taller than the terminal. A tight layout with one blank row below the one-line banner and no other blank spacer lines SHALL apply at 24 rows or fewer and whenever the roomy layout would not fit. Lists SHALL scroll inside their panels with `▲ N more` and `▼ N more` rows, keeping the focused row visible, and when the height is unknown nothing SHALL be clipped.
+When the terminal height is known, the frame SHALL never be taller than the terminal. A tight layout with one blank row below the one-line banner, one blank row after the Workstation navigation divider, and no other blank spacer lines SHALL apply at 24 rows or fewer and whenever the roomy layout would not fit. Lists SHALL scroll inside their panels with `▲ N more` and `▼ N more` rows, keeping the focused row visible, and when the height is unknown nothing SHALL be clipped.
 
 #### Scenario: Standard 24-row terminal
 - **WHEN** each step is rendered at 80×24 and 37×24 with all 12 benches catalogued

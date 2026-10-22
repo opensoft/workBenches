@@ -48,8 +48,10 @@ current user to its Docker group. Group changes require signing out and back in;
 Docker group membership grants administrator-equivalent machine access.
 Remote and rootless context failures do not start the system Docker service.
 
-Workstation groups **REQUIRED SOFTWARE** (WSL 2 when applicable, Docker,
-Tools) and **OPTIONAL VAULT**. The focused row has an explanation beneath it.
+Workstation lists WSL 2 when applicable, Docker, Tools and optional Vault in
+one **Containers** panel. Its **About** panel explains the selected service
+and its current check details; PgUp/PgDn or [/] pages long text. Vault remains
+optional. Use **G Profiles** for account setup.
 The strip shows each service as Up, Down or Missing. Up means accessible and
 healthy; Down includes stopped, unhealthy or inaccessible services. Missing
 means no installation/container exists. Vault Up does not mean signed in or

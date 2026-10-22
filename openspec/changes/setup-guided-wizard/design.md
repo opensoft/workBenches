@@ -632,3 +632,7 @@ Brett renamed the Agents step to Harness and requested blank rows between the ca
 ## Accepted live-review revision 029-A03 (2026-10-22)
 
 Brett requested the header brand `openBenches v1.7` beside the Opensoft logo and the detected OS inside the separator below navigation. T039C removes the standalone version/OS row, preserves the blank row below the logo, and puts the brand on the third row of the full wordmark or beside compact Opensoft. Full wordmarks need 59 columns to fit the adjacent brand; narrower frames use the compact form. The freed row increases the 80×24 About window from three to four lines, while retaining all eight benches. Repository VERSION and non-wizard product identifiers are unchanged. This revision supersedes the earlier header composition only.
+
+## Accepted live-review revision 029-A04 (2026-10-22)
+
+Brett requested a Workstation layout matching the Benches pattern: one blank row after the navigation divider, a single Containers panel replacing Required Software/Optional Vault, and a focused-service About panel. T039E preserves the requirements strip/readiness markers and service order/actions, keeps Vault optional, moves inline detail into About, enables shared About paging/reset/clamping, and puts G Profiles in the full footer. About gets two to eight spare rows (all text at unknown height); only roomy layouts add the gap before About. This supersedes the earlier two-panel/inline-explanation layout.

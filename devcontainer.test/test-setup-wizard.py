@@ -374,6 +374,33 @@ printf '%s offset=%s\n' "${setup_about_lines[*]}" "$setup_about_offset"
         self.assertIn('Organization sign-in.',output)
         self.assertIn('offset=0',output)
 
+    def test_workstation_about_pages_and_follows_focus_without_actions(self):
+        output=self.shell(r'''
+is_wsl_windows() { return 1; }
+init_components --loading
+CURRENT_SECTION=3; setup_ui_width=36; setup_ui_height=24; setup_ui_layout=tight
+requirement_detail[docker]=''
+for ((i=0;i<40;i++)); do requirement_detail[docker]+='Long current check detail. '; done
+component_checked[codex_cli]=true; component_action[codex_cli]=install
+activate_requirement() { echo UNEXPECTED_ACTION; return 99; }
+setup_frame_footer_prepare; setup_frame_lines=(); setup_frame_head; setup_frame_selector; setup_frame_workstation
+handle_input <<< ']'; printf 'bracket=%s\n' "$setup_about_offset"
+handle_input <<< '['; printf 'top=%s\n' "$setup_about_offset"
+handle_input <<< $'\e[6~'; printf 'page=%s\n' "$setup_about_offset"
+handle_input <<< $'\e[5~'; printf 'top=%s\n' "$setup_about_offset"
+current_selection=1; setup_about_offset=2
+setup_frame_lines=(); setup_frame_workstation
+printf '%s offset=%s\n' "$setup_about_anchor" "$setup_about_offset"
+printf '%s\n' "${setup_about_lines[*]}" "queue=${component_action[codex_cli]}"
+''')
+        self.assertRegex(output,r'bracket=[1-9][0-9]*')
+        self.assertRegex(output,r'page=[1-9][0-9]*')
+        self.assertEqual(output.count('top=0'),2)
+        self.assertIn('workstation:setup_tools offset=0',output)
+        self.assertIn('Provides the shared tools',output)
+        self.assertIn('queue=install',output)
+        self.assertNotIn('UNEXPECTED_ACTION',output)
+
     def test_bench_zones_keep_global_indices_and_do_not_select_category(self):
         output=self.shell(r'''
 init_components; setup_load_bench_metadata_sync

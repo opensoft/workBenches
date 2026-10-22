@@ -42,6 +42,14 @@ Workstation service rows and Profiles rows are the exceptions: Enter or Space
 opens their action immediately, without applying the queued component changes.
 Profiles actions require workstation readiness.
 
+## Workstation containers
+
+A blank line below the navigation divider separates the Workstation content.
+The requirements strip stays above one **Containers** panel containing WSL 2
+where applicable, Docker, Tools and optional Vault. About follows the selected
+service and shows its purpose and current check details. Long About text uses
+the same paging keys as Benches. Enter/Space still runs the service action.
+
 ## Benches and About
 
 The CATEGORY block lists Software Engineering, Science, System Administration
@@ -68,7 +76,7 @@ benches usable with a fallback description; R retries an unavailable catalog.
 | G | Visit Profiles; G Back restores the remembered step and focus. |
 | V | Run Vault's current action from any step; advertised on Workstation. |
 | R | Refresh checks while preserving focus and queued changes. |
-| PgUp / PgDn, [ / ] | Page About on Benches and Profiles. |
+| PgUp / PgDn, [ / ] | Page About on Workstation, Benches and Profiles. |
 | Q | Cancel without applying; stop pending checks and remove their private snapshots. |
 
 The footer shows the focused item and total changes. Below 60 columns it uses

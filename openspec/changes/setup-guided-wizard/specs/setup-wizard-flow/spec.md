@@ -193,12 +193,17 @@ When a run of background checks finishes with a required workstation item not Up
 - **AND** pressing P returns to the same bench in the bench zone
 
 ### Requirement: Workstation step
-The Workstation step SHALL show, below its requirements strip, a REQUIRED SOFTWARE panel and an OPTIONAL VAULT panel whose rows show each service's state and `[Action]` button, with an explanation under the focused row only. The OPTIONAL VAULT panel SHALL list Vault alone and SHALL show `G Profiles` at the right of its title, as in 1.7, pointing to the Profiles step; the workBenches account and AI accounts rows SHALL appear only on Profiles. Space and Enter SHALL run the focused row's action, and D SHALL do nothing; while the focused row is still Loading, no action SHALL run and the step SHALL say checks are still loading, as in 1.7.
+The Workstation step SHALL show one blank row after the navigation divider, its existing requirements strip and one `Containers` panel listing WSL 2 where applicable, Docker, Tools and optional Vault in their existing service order. Each row SHALL show its state and `[Action]` without an inline explanation. The title SHALL show required readiness only; Vault SHALL remain optional. A separate About panel SHALL show the focused service's purpose and current check detail, with shared word wrapping, paging, focus-reset and same-service refresh clamping. It SHALL use two to eight spare content rows when height is known and show all content at unknown height. Roomy layouts SHALL put one blank row between Containers and About. G Profiles SHALL appear in the full Workstation footer; account rows SHALL remain only on Profiles. Space and Enter SHALL run the focused service action and D SHALL do nothing; loading rows SHALL run nothing and report that checks are still loading.
 
 #### Scenario: Service panels
 - **WHEN** Workstation is shown on WSL with every service Up and the user signed out
-- **THEN** REQUIRED SOFTWARE lists WSL 2, Docker and Tools with `Up  [Check]`
-- **AND** OPTIONAL VAULT lists Vault with `Up · Signed out  [Connect]`, shows `G Profiles` in its title, and lists no account rows
+- **THEN** one Containers panel lists WSL 2, Docker and Tools with `Up  [Check]`
+- **AND** that same panel lists optional Vault with `Up · Signed out  [Connect]`, the full footer shows `G Profiles`, and no account rows appear
+
+#### Scenario: Service About follows focus
+- **WHEN** Workstation focus moves from Docker to Tools
+- **THEN** About changes from Docker purpose/check details to Tools purpose/check details and resets its scroll
+- **AND** PgUp/PgDn and [/] page long About content without running actions or changing the queue
 
 #### Scenario: Space acts like Enter on a service row
 - **WHEN** the Tools row offers Start and the user presses Space on it

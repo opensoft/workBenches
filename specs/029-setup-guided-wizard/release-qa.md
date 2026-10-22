@@ -267,3 +267,39 @@ responsive/locale matrix and no-fork guard, and six async/partial-redraw tests).
 Visual verification: refreshed maximized Benches preview on Raven, workspace 14,
 with the brand centered between the logo and the frame's right edge.
 T040 copy approval remains pending; no remote changes were made.
+
+## Live-review adjustment 029-A04 — 2026-10-22
+
+Brett requested Workstation follow the Benches layout, with a blank row below
+the divider, one Containers panel combining required services and optional
+Vault, and a focused About panel. T039E implements this after baseline
+`8227a1b`; implementation/evidence are in the commit containing this section.
+See `features/029-setup-guided-wizard/openspec/029-A04.md`.
+
+- One Containers panel lists WSL 2 where applicable, Docker, Tools and Vault
+  in their existing order. States and immediate action buttons are retained.
+  The required count excludes optional Vault. The readiness strip/markers,
+  Apply/Profile gates, service actions and serialized queue are unchanged.
+- Inline focused-row explanations move into About, alongside a short purpose
+  description. About follows focus, resets on service change, clamps on
+  same-service refresh and pages with PgUp/PgDn or [/]. It uses the existing
+  fork-free wrapping/paging renderer. Full footer hints include G Profiles.
+- Workstation has a blank row after its navigation divider. Roomy layouts
+  also separate Containers and About; tight layouts preserve content space.
+- PASS: exact T039E verification: Bash syntax, 25 wizard tests, 18 layout
+  tests including the complete size/locale matrix and native/WSL Workstation
+  cases at 36/60/61/88 columns × 24/40/unknown rows, six async tests,
+  18 requirements tests, eight service tests, timing, component-lifecycle
+  compilation and strict OpenSpec validation. The new About test verifies
+  both paging key forms, reset, unchanged queue and no service action.
+- PASS: all 32 quickstart suites and native/WSL acceptance compilation after
+  the adjustment. No Docker-backed or real-host acceptance was executed.
+- Full Benches timing: median 3.256 ms, p90 4.666 ms, max 5.892 ms. Per-step
+  medians: Workstation 2.288, Benches 2.453, Harness 2.377, Tools 2.134,
+  Profiles 1.865, Review 2.077 ms.
+- Visual check: refreshed maximized live Workstation preview on Raven,
+  workspace 14, with Tools focused. Containers, the selected-service About
+  purpose/current details, divider gap and full footer are visible.
+
+Bench copy is unchanged and T040 remains pending. No push, PR, merge or archive
+was performed.

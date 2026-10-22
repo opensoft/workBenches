@@ -1412,7 +1412,10 @@ setup_frame_head() {
     setup_frame_append "$head_line"
 }
 setup_frame_selector() {
-    [[ "$CURRENT_SECTION" != 3 ]] || setup_frame_requirements_strip
+    if [[ "$CURRENT_SECTION" == 3 ]]; then
+        setup_frame_append ''
+        setup_frame_requirements_strip
+    fi
     [[ "$CURRENT_SECTION" != 4 ]] || setup_frame_identities
     [[ "$CURRENT_SECTION" != 0 ]] || setup_frame_categories
     return 0
@@ -1475,7 +1478,7 @@ setup_frame_footer_prepare() {
         esac
     else
         case "$CURRENT_SECTION" in
-            3) footer_hints=("Navigation: ↑↓ Move  Enter $footer_action  V Vault" '←→ Steps  P Back  R Refresh  Q Quit') ;;
+            3) footer_hints=("Navigation: ↑↓ Move  Enter $footer_action  V Vault  PgUp/PgDn About" '←→ Steps  P Back  G Profiles  R Refresh  Q Quit') ;;
             4) footer_hints=('Navigation: ↑↓ Move  Enter Open  PgUp/PgDn About' '←→ Steps  G Back  P Workstation  R Refresh  Q Quit') ;;
             5) footer_hints=('Navigation: ↑↓ Scroll  ← Back  Enter Apply' 'P Workstation  R Refresh  Q Quit') ;;
             0)
@@ -1538,9 +1541,6 @@ setup_frame_service_row() {
     [[ "${component_status[$service_key]}" == up ]] || service_color="$YELLOW"
     if [[ "${component_status[$service_key]}" == loading ]]; then service_color="$LOADING_COLOR"; service_right="$service_state"; fi
     setup_frame_row "$service_left" "$service_right" "$service_color"
-    if [[ "$service_marker" == › ]]; then
-        setup_frame_row "  ${requirement_detail[$service_key]}"
-    fi
 }
 
 setup_frame_component_row() {
@@ -1563,6 +1563,13 @@ setup_frame_component_row() {
     fi
     setup_frame_row "$component_marker $component_box $component_icon ${component_description[$component_key]}" "$component_right" "$component_color"
 }
+
+declare -A workstation_about=(
+    [wsl]='Runs the Linux environment for your containers on Windows. WSL 2 is required on Windows.'
+    [docker]='Runs the Linux containers used by your benches. Docker must be Up before setup can apply changes.'
+    [setup_tools]='Provides the shared tools used by setup and your benches. These tools are required before setup can apply changes.'
+    [vault]='Optional credential storage for connected accounts. You can set up benches without Vault. Use G Profiles to manage sign-in and credentials.'
+)
 
 declare -A profile_about=(
     [personal_profiles]='Personal identity, GitHub and company accounts. Company, GitHub and AI access are authorized separately.'
@@ -1725,18 +1732,27 @@ setup_frame_components() {
 
 
 setup_frame_workstation() {
-    local workstation_line workstation_key
+    local workstation_line workstation_key workstation_text workstation_window=8
     setup_requirement_counts
-    setup_panel_top_v workstation_line 'REQUIRED SOFTWARE' "$requirements_ready/$requirements_total ready"
+    setup_panel_top_v workstation_line Containers "$requirements_ready/$requirements_total ready"
     setup_frame_append "$workstation_line"
     for workstation_key in "${requirement_items[@]}"; do
-        if [[ "$workstation_key" == vault || "$workstation_key" == workbenches_account || "$workstation_key" == ai_accounts ]]; then continue; fi
+        if [[ "$workstation_key" == workbenches_account || "$workstation_key" == ai_accounts ]]; then continue; fi
         setup_frame_service_row "$workstation_key"
     done
     setup_panel_bottom_v workstation_line; setup_frame_append "$workstation_line"
-    setup_panel_top_v workstation_line 'OPTIONAL VAULT' 'G Profiles'; setup_frame_append "$workstation_line"
-    setup_frame_service_row vault
-    setup_panel_bottom_v workstation_line; setup_frame_append "$workstation_line"
+    [[ "$setup_ui_layout" != roomy ]] || setup_frame_append ''
+    workstation_key="${requirement_items[$current_selection]}"
+    workstation_text="${workstation_about[$workstation_key]}"
+    if [[ -n "${requirement_detail[$workstation_key]}" ]]; then
+        workstation_text+=$'\n'"Current check: ${requirement_detail[$workstation_key]}"
+    fi
+    if [[ -n "$setup_ui_height" ]]; then
+        workstation_window=$((setup_ui_height - ${#setup_frame_lines[@]} - setup_footer_height - 2))
+        ((workstation_window <= 8)) || workstation_window=8
+        ((workstation_window >= 2)) || workstation_window=2
+    fi
+    setup_frame_about "workstation:$workstation_key" "ABOUT ${component_description[$workstation_key]^^}" "$workstation_text" "$workstation_window"
 }
 
 setup_frame_review() {
@@ -1894,8 +1910,8 @@ handle_input() {
     setup_input_key="$key"
     case "$key" in
         $'\t') setup_input_key=tab; [[ "$CURRENT_SECTION" != 0 ]] || setup_benches_key tab; return 0 ;;
-        '[') setup_input_key=pageup; if [[ "$CURRENT_SECTION" == 4 || "$CURRENT_SECTION" == 0 ]]; then setup_about_scroll -1; fi; return 0 ;;
-        ']') setup_input_key=pagedown; if [[ "$CURRENT_SECTION" == 4 || "$CURRENT_SECTION" == 0 ]]; then setup_about_scroll 1; fi; return 0 ;;
+        '[') setup_input_key=pageup; if [[ "$CURRENT_SECTION" == 4 || "$CURRENT_SECTION" == 0 || "$CURRENT_SECTION" == 3 ]]; then setup_about_scroll -1; fi; return 0 ;;
+        ']') setup_input_key=pagedown; if [[ "$CURRENT_SECTION" == 4 || "$CURRENT_SECTION" == 0 || "$CURRENT_SECTION" == 3 ]]; then setup_about_scroll 1; fi; return 0 ;;
     esac
     # Consume every byte of supported escape sequences before dispatch.
     if [[ $key == $'\x1b' ]]; then
@@ -1910,7 +1926,7 @@ handle_input() {
                     setup_input_key=pageup
                     [[ "$key" != '[6' ]] || setup_input_key=pagedown
                 fi
-                if [[ "$CURRENT_SECTION" == 4 || "$CURRENT_SECTION" == 0 ]]; then
+                if [[ "$CURRENT_SECTION" == 4 || "$CURRENT_SECTION" == 0 || "$CURRENT_SECTION" == 3 ]]; then
                     [[ "$setup_input_key" != pageup ]] || setup_about_scroll -1
                     [[ "$setup_input_key" != pagedown ]] || setup_about_scroll 1
                 fi

@@ -33,8 +33,8 @@ setup_section_step=([3]=0 [0]=1 [1]=2 [2]=3 [4]=4 [5]=5)
 | `current_selection` *(1.7)* | int | focused row; on Benches always an index into `bench_items` (D7), so Space/D, the footer and `get_checked_state` keep working |
 | `setup_bench_zone` | `category` \| `bench` | Benches focus zone |
 | `setup_bench_category` | category id | current category (both zones) |
-| `setup_about_offset` | int ≥ 0 | first visible About line (Benches and Profiles) |
-| `setup_about_anchor` | string | what About describes: `bench:<name>`, `category:<id>` or `profile:<key>`; a change of anchor resets the offset to 0 (FR-046) |
+| `setup_about_offset` | int ≥ 0 | first visible About line (Workstation, Benches and Profiles) |
+| `setup_about_anchor` | string | what About describes: `bench:<name>`, `category:<id>`, `profile:<key>` or `workstation:<key>`; a change of anchor resets the offset to 0 (FR-046) |
 | `setup_bench_offset[<category id>]` | assoc int | first visible bench row per category (edge-triggered scrolling, R5) |
 | `setup_list_offset` | int | first visible row on Workstation, Harness, Tools, Profiles |
 | `setup_review_offset` | int ≥ 0 | first visible Review item |
