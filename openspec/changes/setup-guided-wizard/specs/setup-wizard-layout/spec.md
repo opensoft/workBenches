@@ -36,11 +36,11 @@ The rows under the rule SHALL be the current step's selector area: the requireme
 - **THEN** the first row under the rule is one line summarizing the cached personal and company identities, cut with `…` when it is wider than the frame
 
 ### Requirement: Requirements strip
-The Workstation strip SHALL read `REQUIREMENTS · R/N ready`, where R of the N required services are Up and optional Vault is not counted (as in 1.7), or `REQUIREMENTS · Loading…` while checks run, followed by each required service and Vault with its state, with Vault followed by `[V <Action>]`. Items SHALL be green when Up, yellow otherwise and blinking while loading, and the strip SHALL wrap only between items so Vault's action is never split.
+The Workstation strip SHALL read `REQUIREMENTS · R/N ready` excluding optional Vault, or `REQUIREMENTS · Loading…` while checks run, followed by one blank row. All per-service states and controls SHALL appear in Containers instead of a duplicate strip, under the accepted setup-workstation-lifecycle extension.
 
 #### Scenario: Ready strip on WSL
 - **WHEN** WSL 2, Docker, Tools and Vault are Up and the user is signed out
-- **THEN** the strip shows `REQUIREMENTS · 3/3 ready`, `WSL 2 Up`, `Docker Up`, `Tools Up` and `Vault Up [V Connect]`
+- **THEN** Requirements shows `3/3 ready` and a blank row, and Containers shows each service's installation/runtime status
 
 #### Scenario: Narrow strip
 - **WHEN** the frame is 36 columns wide

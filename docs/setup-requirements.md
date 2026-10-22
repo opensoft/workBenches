@@ -1,7 +1,7 @@
 # Workstation requirements and optional accounts
 
 `./setup.sh` opens on **Workstation**, the first step of the guided wizard,
-before checking Docker or starting Tools. The requirements strip appears on
+before checking Docker or connecting to installed Tools. The requirements strip appears on
 Workstation only; the navigation readiness mark remains visible on every step.
 It blinks while checks run, shows `✓` when all required items are Up and `⚠`
 when one needs attention. Optional Vault does not count toward readiness.
@@ -18,12 +18,12 @@ and exact focus. From another step P visits Workstation; P again returns.
 stops pending checks and removes the private status snapshot. Existing services
 stay running. Piped/noninteractive runs retain synchronous prerequisite checks.
 
-Background work never asks for a password or signs in. Privileged service actions
-and account sign-in require explicit foreground actions. **Enter → Review → Apply**
-is the component flow: Enter opens Review from a component step, and only Enter
-on Review applies. Apply remains blocked until checks finish and all required
-services are Up. Workstation service rows instead run their action immediately
-on Enter or Space; they do not apply the component queue.
+Background work never installs or starts a missing/stopped Tools container.
+Space selects install/start and D selects uninstall; Enter opens Review and only
+Review Apply runs the plan. Selected prerequisites install before other work;
+removals run last after successful work. V remains the explicit Vault account
+shortcut. Required readiness is retained for component work, with exceptions for
+selected prerequisite installs and service-only removal plans.
 
 Required:
 
@@ -52,30 +52,22 @@ Workstation lists WSL 2 when applicable, Docker, Tools and optional Vault in
 one **Containers** panel. Its **About** panel explains the selected service
 and its current check details; PgUp/PgDn or [/] pages long text. Vault remains
 optional. Use **G Profiles** for account setup.
-The strip shows each service as Up, Down or Missing. Up means accessible and
-healthy; Down includes stopped, unhealthy or inaccessible services. Missing
-means no installation/container exists. Vault Up does not mean signed in or
-unlocked. Its current `[V Install]`, `[V Start]`, `[V Connect]` or `[V Sign out]`
-action stays together when the strip wraps.
+The Requirements count is followed by a blank line; all service information is
+in Containers. Rows have left selection boxes and right statuses such as
+**Installed · Up**, **Installed · Down**, or **Not installed**. Unreachable
+managed services say Unavailable when their installation cannot be verified.
+Vault Up describes container health, separately from account sign-in.
 
-V runs Vault's action from any step without losing the focus or queue; the hint
-is advertised on Workstation only. `G Profiles` on the optional panel points to
-the fifth step, which holds account actions. See [Profiles](profiles.md).
+V runs Vault's account action; G Profiles opens account setup. Check buttons
+are replaced by the same Space/D → Review → Apply selection pattern as Benches.
+All entries, including Docker and WSL, can be selected. Managed removal retains
+images, volumes, credentials and projects, and refuses foreign ownership. Native
+Linux Docker Engine removal retains its data/config and avoids purge/autoremove.
+Docker Desktop uninstall deletes data, so the wizard refuses automatic removal
+and points to host backup/uninstall steps. WSL removal must happen outside the
+running distribution; the wizard never unregisters, shuts down or restarts WSL.
+These manual cases are reported as incomplete, never as successful removals.
 
-Service buttons follow the current state:
-
-| Service | Missing | Down | Up |
-|---|---|---|---|
-| Docker | Install | Start | Check |
-| Tools | Install | Start | Check |
-| Vault | Install | Start | Connect, or Sign out when signed in |
-
-Focus a service and press Enter or Space to activate its button immediately.
-This does not apply queued bench/tool changes. Install/Start resolves required
-Docker/Tools dependencies before starting Vault. Selecting Docker Install or
-Start already approves that action, so setup does not ask the same question
-again; local sudo/password and access-configuration prompts still apply.
-Q cancels prerequisite setup.
 Connect opens the configured Keycloak browser approval page, prefilling the
 device code when supported. The URL/code remain visible for a headless machine.
 Canceling Connect returns to the TUI with queued changes preserved. Signed in

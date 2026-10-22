@@ -27,7 +27,7 @@ git ls-files -s scripts/interactive-setup.sh scripts/launchBench setup.sh | awk 
 scripts/interactive-setup.sh --select-only /tmp/wizard-preview.json
 ```
 
-This is the TUI stage of `./setup.sh` alone: it paints at once, runs the background readiness and component checks (as setup does, which may start the managed Tools container when Docker is up), and on Enter on Review writes `/tmp/wizard-preview.json` and exits 0. It never applies, installs, builds or removes anything; Q exits 130. Inspect what Review would have applied with `cat /tmp/wizard-preview.json`.
+This is the TUI stage of `./setup.sh` alone: it paints at once, runs the background readiness and component checks (as setup does, which connect to already-running Tools; missing/stopped Tools requires explicit selection), and on Enter on Review writes `/tmp/wizard-preview.json` and exits 0. It never applies, installs, builds or removes anything; Q exits 130. Inspect what Review would have applied with `cat /tmp/wizard-preview.json`.
 
 Check sizes by resizing the terminal, or in a fixed-size tmux pane:
 
@@ -184,3 +184,7 @@ The builder hands over a pushed candidate commit (the PR head) and this checklis
 5. **Fresh-workstation walkthrough** (SC-012): from the first screen to a completed apply using only the on-screen nav and hints; every queued change visible on Review first.
 6. **Bench copy approval** (FR-053, SC-013, merge gate): read every bench's tagline and About in the running TUI; approve or give edits. The builder applies edits, and the approval is recorded with who, date and commit before the PR merges.
 7. **Timing** (section 3) on the developer workstation, recorded with the commit.
+
+## Workstation lifecycle extension
+
+Run `python3 devcontainer.test/test-workstation-lifecycle.py` for the additional native-plan, queue, ordering, ownership and data-preservation fixtures. The existing requirements suite loads these tests too, so CI covers them. Workstation uses Space/D → Review → Apply; --select-only saves without applying. Docker Desktop/WSL removals require manual host steps; fixture tests never change the real host.

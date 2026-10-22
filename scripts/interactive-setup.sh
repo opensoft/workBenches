@@ -437,7 +437,7 @@ load_requirements() {
         component_status[$key]="$state"
         setup_sanitize_text detail "$detail"
         requirement_detail[$key]="$detail"
-        component_checked[$key]=false
+        component_checked[$key]=${component_checked[$key]:-false}
     done < <(workbenches_requirement_rows)
     component_status[workbenches_account]="$(python3 "$SCRIPT_DIR/setup-workbenches-account.py" --status)"
     requirement_detail[workbenches_account]='Organization sign-in. AI and vault access are managed separately.'
@@ -1371,7 +1371,8 @@ setup_frame_head() {
     local -a nav_counts=(0 0 0 0 0 0)
     for nav_key in "${!component_checked[@]}"; do
         [[ "${component_checked[$nav_key]}" == true && -n "${component_action[$nav_key]}" ]] || continue
-        if [[ "$nav_key" == bench_* ]]; then ((nav_counts[1]++))
+        if workstation_service_key "$nav_key"; then ((nav_counts[0]++))
+        elif [[ "$nav_key" == bench_* ]]; then ((nav_counts[1]++))
         else
             for nav_item in "${ai_items[@]}"; do [[ "$nav_item" != "$nav_key" ]] || ((nav_counts[2]++)); done
             for nav_item in "${tool_items[@]}"; do [[ "$nav_item" != "$nav_key" ]] || ((nav_counts[3]++)); done
@@ -1468,7 +1469,7 @@ setup_frame_footer_prepare() {
     if [[ "$CURRENT_SECTION" == 3 && -n "$footer_key" ]]; then workbenches_requirement_action_v footer_action "$footer_key" "${component_status[$footer_key]}" "${component_status[workbenches_account]}"; fi
     if ((setup_ui_width < 60)); then
         case "$CURRENT_SECTION" in
-            3) footer_hints=("Navigation: ↑↓ Move  Enter $footer_action" '←→ Steps  Q Quit') ;;
+            3) footer_hints=('Navigation: Space Select  D Remove' '←→ Steps  Enter Review  Q Quit') ;;
             4) footer_hints=('Navigation: Enter Open' '←→ Steps  G Back  Q Quit') ;;
             5) footer_hints=('Navigation: ↑↓ Scroll' '←→ Steps  Enter Apply  Q Quit') ;;
             0)
@@ -1478,7 +1479,7 @@ setup_frame_footer_prepare() {
         esac
     else
         case "$CURRENT_SECTION" in
-            3) footer_hints=("Navigation: ↑↓ Move  Enter $footer_action  V Vault  PgUp/PgDn About" '←→ Steps  P Back  G Profiles  R Refresh  Q Quit') ;;
+            3) footer_hints=('Navigation: ↑↓ Move  Space Select  D Remove  PgUp/PgDn About' '←→ Steps  Enter Review  P Back  G Profiles  V Vault  R Refresh  Q Quit') ;;
             4) footer_hints=('Navigation: ↑↓ Move  Enter Open  PgUp/PgDn About' '←→ Steps  G Back  P Workstation  R Refresh  Q Quit') ;;
             5) footer_hints=('Navigation: ↑↓ Scroll  ← Back  Enter Apply' 'P Workstation  R Refresh  Q Quit') ;;
             0)
@@ -1503,43 +1504,33 @@ setup_review_rows=()
 setup_review_window=1
 
 setup_frame_requirements_strip() {
-    local strip_title strip_key strip_label strip_action strip_state strip_line='' strip_styled='' strip_separator strip_color strip_item
+    local strip_title
     setup_requirement_counts
     strip_title="REQUIREMENTS · $requirements_ready/$requirements_total ready"
     [[ "$status_checks_running" != true ]] || strip_title='REQUIREMENTS · Loading…'
     setup_frame_append "$strip_title"
-    for strip_key in "${requirement_items[@]}"; do
-        if [[ "$strip_key" == workbenches_account || "$strip_key" == ai_accounts ]]; then continue; fi
-        setup_status_label_v strip_state "${component_status[$strip_key]}"
-        strip_label="${component_description[$strip_key]} $strip_state"
-        if [[ "$strip_key" == vault && "${component_status[$strip_key]}" != loading ]]; then
-            workbenches_requirement_action_v strip_action vault "${component_status[vault]}" "${component_status[workbenches_account]}"
-            [[ "$strip_action" == Loading ]] || strip_label+=" [V $strip_action]"
-        fi
-        strip_color="$GREEN"
-        [[ "${component_status[$strip_key]}" == up ]] || strip_color="$YELLOW"
-        [[ "${component_status[$strip_key]}" != loading ]] || strip_color="$LOADING_COLOR"
-        strip_separator=''
-        [[ -z "$strip_line" ]] || strip_separator='   '
-        if (( ${#strip_line} + ${#strip_separator} + ${#strip_label} > setup_ui_width )) && [[ -n "$strip_line" ]]; then
-            setup_frame_append "$strip_styled"; strip_line=''; strip_styled=''; strip_separator=''
-        fi
-        strip_line+="$strip_separator$strip_label"
-        printf -v strip_item '%b%s%b' "$strip_color" "$strip_label" "$NC"
-        strip_styled+="$strip_separator$strip_item"
-    done
-    [[ -z "$strip_styled" ]] || setup_frame_append "$strip_styled"
+    setup_frame_append ''
 }
 
 setup_frame_service_row() {
-    local service_key="$1" service_marker=' ' service_state service_action service_left service_right service_index service_color="$GREEN"
+    local service_key="$1" service_marker=' ' service_box='[ ]' service_icon=○ service_state service_left service_right service_color="$SILVER" service_queued=''
     [[ "${requirement_items[$current_selection]}" != "$service_key" ]] || service_marker=›
-    setup_status_label_v service_state "${component_status[$service_key]}"
-    workbenches_requirement_action_v service_action "$service_key" "${component_status[$service_key]}" "${component_status[workbenches_account]}"
-    service_left="$service_marker ${component_description[$service_key]}"
-    service_right="$service_state  [$service_action]"
-    [[ "${component_status[$service_key]}" == up ]] || service_color="$YELLOW"
-    if [[ "${component_status[$service_key]}" == loading ]]; then service_color="$LOADING_COLOR"; service_right="$service_state"; fi
+    [[ "${component_checked[$service_key]}" != true ]] || service_box='[✓]'
+    case "${component_status[$service_key]}" in
+        up) service_state='Installed · Up'; service_icon=✓; service_color="$GREEN" ;;
+        down) service_state='Installed · Down'; service_icon=⚠; service_color="$YELLOW"
+            if [[ "$service_key" == setup_tools || "$service_key" == vault ]] && [[ "${component_status[docker]}" != up ]]; then service_state=Unavailable; fi ;;
+        missing) service_state='Not installed' ;;
+        loading) service_state='Loading…'; service_icon=…; service_color="$LOADING_COLOR" ;;
+        *) service_state='Needs check'; service_icon=⚠; service_color="$YELLOW" ;;
+    esac
+    service_left="$service_marker $service_box $service_icon ${component_description[$service_key]}"
+    service_right=$service_state
+    if [[ "${component_checked[$service_key]}" == true && -n "${component_action[$service_key]}" ]]; then
+        service_queued="→ ${component_action[$service_key]^}"
+        if ((setup_ui_width >= 50)); then service_right+="  $service_queued"
+        else service_right=$service_queued; fi
+    fi
     setup_frame_row "$service_left" "$service_right" "$service_color"
 }
 
@@ -1755,6 +1746,24 @@ setup_frame_workstation() {
     setup_frame_about "workstation:$workstation_key" "ABOUT ${component_description[$workstation_key]^^}" "$workstation_text" "$workstation_window"
 }
 
+setup_apply_allowed() {
+    local key only_removals=true only_services=true any=false
+    [[ "$status_checks_running" != true ]] || return 1
+    setup_required_ready && return 0
+    for key in "${!component_checked[@]}"; do
+        [[ "${component_checked[$key]}" == true && -n "${component_action[$key]}" ]] || continue
+        any=true
+        workstation_service_key "$key" || only_services=false
+        if ! workstation_service_key "$key" || [[ "${component_action[$key]}" != uninstall ]]; then only_removals=false; fi
+    done
+    [[ "$any" == true && "$only_removals" == true ]] && return 0
+    [[ "$only_services" == true ]] || return 1
+    for key in "${requirement_items[@]}"; do
+        [[ "$key" != vault ]] || continue
+        [[ "${component_status[$key]}" == up || ( "${component_checked[$key]}" == true && "${component_action[$key]}" == install ) ]] || return 1
+    done
+}
+
 setup_frame_review() {
     local review_action review_label review_step review_item review_key review_text review_index review_budget review_offset_local review_total=0 review_last_action=''
     local -a review_items=()
@@ -1763,15 +1772,16 @@ setup_frame_review() {
     if [[ "$status_checks_running" == true ]]; then
         printf -v review_text '%b%s%b' "$YELLOW" 'Apply waiting for checks.' "$NC"
         setup_frame_append "$review_text"
-    elif ! setup_required_ready; then
+    elif ! setup_apply_allowed; then
         setup_ui_wrap 'Apply waiting: resolve workstation requirements first.' "$setup_ui_width"
         for review_text in "${setup_wrapped_lines[@]}"; do setup_frame_append "$review_text"; done
     fi
     setup_review_rows=()
     for review_action in install update uninstall; do
         review_items=()
-        for review_step in 0 1 2; do
+        for review_step in 3 0 1 2; do
             case "$review_step" in
+                3) review_label="${setup_step_names[0]}"; review_items=("${requirement_items[@]}") ;;
                 0) review_label="${setup_step_names[1]}"; review_items=("${bench_items[@]}") ;;
                 1) review_label="${setup_step_names[2]}"; review_items=("${ai_items[@]}") ;;
                 2) review_label="${setup_step_names[3]}"; review_items=("${tool_items[@]}") ;;
@@ -1786,6 +1796,10 @@ setup_frame_review() {
                 fi
                 setup_review_rows+=("  ${component_description[$review_key]:-$review_item} ($review_label)")
                 ((review_total++))
+                if workstation_service_key "$review_key" && [[ "$review_action" == uninstall ]]; then
+                    setup_review_rows+=('Warning: removes a workstation prerequisite; dependent benches may stop working.')
+                    [[ "$review_key" != wsl ]] || setup_review_rows+=('Warning: WSL removal requires Windows host steps; distributions will not be deleted.')
+                fi
                 if [[ "$review_key" == host_shell ]]; then setup_review_rows+=('Warning: Shell setup replaces shell settings.'); fi
                 if [[ "$review_key" == workspace_repo ]]; then setup_review_rows+=('Warning: Org workspace may create a GitHub repository.'); fi
             done
@@ -2016,8 +2030,15 @@ handle_input() {
                     key="${requirement_items[$current_selection]}"
                     case "$key" in
                         docker|wsl|setup_tools|vault)
-                            [[ "$input_key" != d && "$input_key" != D ]] || return 0
-                            activate_requirement "$key" || return "$?"
+                            case "${component_status[$key]}" in up|down|missing) ;; *) return 0 ;; esac
+                            local service_request=install
+                            if [[ "$input_key" == d || "$input_key" == D ]]; then
+                                [[ "${component_status[$key]}" != missing ]] || return 0
+                                service_request=uninstall
+                            fi
+                            if [[ "${component_checked[$key]}" == true && "${component_action[$key]}" == "$service_request" ]]; then
+                                component_checked[$key]=false; component_action[$key]=''
+                            else component_checked[$key]=true; component_action[$key]=$service_request; fi
                             return 0 ;;
                     esac
                 fi
@@ -2050,17 +2071,11 @@ handle_input() {
                 ;;
             ''|$'\r'|$'\n') # Enter activates a focused service button.
                 if [[ "$CURRENT_SECTION" == 4 ]]; then activate_profile; return "$?"; fi
-                if [[ "$CURRENT_SECTION" == 3 ]]; then
-                    local requirement="${requirement_items[$current_selection]}"
-                    case "$requirement" in
-                        docker|wsl|setup_tools|vault) activate_requirement "$requirement"; return "$?" ;;
-                    esac
-                fi
                 if [[ "$CURRENT_SECTION" != 5 ]]; then
                     setup_arrive_step 5
                     return 0
                 fi
-                if [[ "$status_checks_running" == true ]] || ! setup_required_ready; then
+                if ! setup_apply_allowed; then
                     requirements_notice='Wait for checks and resolve workstation requirements before Apply.'
                     return 0
                 fi
@@ -3244,6 +3259,7 @@ process_selections() {
     local verified_item final_status
     for verified_item in "${!component_action[@]}"; do
         [[ "${component_checked[$verified_item]}" == true ]] || continue
+        workstation_service_key "$verified_item" && continue
         [[ "$verified_item" != host_shell && "$verified_item" != workspace_repo && "$verified_item" != ai_accounts && "$verified_item" != workbenches_account ]] || continue
         final_status="${component_status[$verified_item]}"
         if [[ "${component_action[$verified_item]}" == uninstall ]]; then
@@ -3831,25 +3847,7 @@ ensure_selected_dependencies() {
 }
 
 save_selection() {
-    local item action
-    local -a rows=()
-    for item in "${!component_checked[@]}"; do
-        if [[ "${component_checked[$item]}" == true ]]; then
-            action="${component_action[$item]}"
-            [[ -n "$action" ]] || continue
-            rows+=("$item" "$action")
-        fi
-    done
-    python3 - "$selection_file" "${rows[@]}" <<'PLAN'
-import json, os, pathlib, sys
-os.umask(0o077)
-path = pathlib.Path(sys.argv[1])
-# Root setup creates this temporary file; never follow a caller's symlink.
-fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-with os.fdopen(fd, 'w') as stream:
-    json.dump({'schemaVersion': 1, 'components': [{'key': key, 'action': action}
-              for key, action in zip(sys.argv[2::2], sys.argv[3::2])]}, stream)
-PLAN
+    workstation_save_selection "$selection_file"
 }
 
 load_selection() {
@@ -3895,12 +3893,19 @@ main() {
     fi
     if [[ "$mode" == --apply-plan || "$mode" == --dependencies-plan ]]; then
         load_selection
+        workstation_plan_from_ui
+        if [[ "$mode" == --apply-plan && "${WORKBENCHES_DEFER_WORKSTATION_REMOVE:-}" != 1 ]]; then
+            workstation_plan_prepare || return "$?"
+        fi
         if [[ "$mode" == --apply-plan ]] && workbenches_release_checkout; then
             export WORKBENCHES_FROZEN=1
             python3 "$SCRIPT_DIR/release-workbenches.py" prepare --selection "$selection_file" || return "$?"
         fi
         ensure_selected_dependencies "$mode"
-        if [[ "$mode" == --apply-plan ]]; then process_selections || return "$?"; fi
+        if [[ "$mode" == --apply-plan ]]; then
+            [[ "$workstation_plan_only" == true ]] || process_selections || return "$?"
+            if [[ "${WORKBENCHES_DEFER_WORKSTATION_REMOVE:-}" != 1 ]]; then workstation_plan_finish || return "$?"; fi
+        fi
         return
     fi
 
@@ -3940,8 +3945,14 @@ main() {
             if [[ "$mode" == --select-only ]]; then
                 save_selection || exit "$?"
             else
-                ensure_selected_dependencies
-                process_selections || return "$?"
+                stop_status_loader
+                workstation_plan_from_ui
+                workstation_plan_prepare || return "$?"
+                if [[ "$workstation_plan_only" != true ]]; then
+                    ensure_selected_dependencies || return "$?"
+                    process_selections || return "$?"
+                fi
+                workstation_plan_finish || return "$?"
             fi
             break
         elif [ $result -eq 2 ]; then

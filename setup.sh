@@ -129,9 +129,17 @@ if [[ ! -t 0 || ! -t 1 ]]; then ensure_workstation_requirements || exit "$?"; fi
 selection_file="$(mktemp "${TMPDIR:-/tmp}/workbenches-selection.XXXXXX")" || exit 1
 trap 'rm -f "$selection_file"' EXIT
 "${SCRIPT_DIR}/scripts/interactive-setup.sh" --select-only "$selection_file" || exit "$?"
+workstation_plan_read "$selection_file" || { echo 'Invalid private workstation selection; nothing applied.' >&2; exit 2; }
+if [[ "$workstation_plan_only" == true ]]; then
+    workstation_plan_prepare || exit "$?"
+    workstation_plan_finish || exit "$?"
+    echo 'Selected workstation changes completed.'
+    exit 0
+fi
 # The child TUI owns startup checks; adopt its ready runtime for applying the plan.
 if [[ -t 0 && -t 1 ]]; then ensure_workstation_requirements || exit "$?"; fi
 python3 "$SCRIPT_DIR/scripts/setup_selection.py" rows "$selection_file" >/dev/null || exit "$?"
+workstation_plan_prepare || exit "$?"
 {
     printf 'Assembly commit: '
     git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || printf 'unavailable\n'
@@ -247,7 +255,7 @@ fi
 # NOTE: OpenTUI (TypeScript) UI is disabled — keyboard handling is broken and
 # requires Bun upgrade. Using Bash UI directly. See docs/setup-input-troubleshooting.md
 run_interactive_setup() {
-    "${SCRIPT_DIR}/scripts/interactive-setup.sh" --apply-plan "$selection_file"
+    WORKBENCHES_DEFER_WORKSTATION_REMOVE=1 "${SCRIPT_DIR}/scripts/interactive-setup.sh" --apply-plan "$selection_file"
 }
 
 # Build the selected family layers before any bench setup consumes them.
@@ -333,6 +341,7 @@ if [ "$BUILD_FAILED" = true ]; then
     echo "  Full log: $LOG_FILE"
     exit 1
 else
+    workstation_plan_finish || exit "$?"
     echo "✓ Setup complete."
 fi
 echo "  Log saved to: $LOG_FILE"

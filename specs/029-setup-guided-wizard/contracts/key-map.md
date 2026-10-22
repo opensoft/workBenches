@@ -23,9 +23,9 @@
 | ← / → | previous / next step; no wrap at Workstation or Review | same | same | same | same | same |
 | ↑ / ↓ | move between service rows; stop at ends | change current category among those with benches (preview; no row mark); ↓ on the last focusable category enters the bench zone | move within the category; ↑ on the first bench returns to the category zone (same category); ↓ on the last bench does nothing | move; skip the separator; stop at ends | move; stop at ends | scroll the list when it does not fit; otherwise nothing |
 | Tab / Shift+Tab | — | enter the bench zone on the category's first bench | return to the category zone | — | — | — |
-| Space | run the focused row's action | enter the bench zone (queues nothing) | queue/unqueue install or update | queue/unqueue install or update | open the row | — |
-| D | — | — | queue/unqueue removal | queue/unqueue removal | — | — |
-| Enter | run the focused row's action | open Review | open Review | open Review | open the row | apply (gated) |
+| Space | queue/unqueue install/start | enter the bench zone (queues nothing) | queue/unqueue install or update | queue/unqueue install or update | open the row | — |
+| D | queue/unqueue uninstall | — | queue/unqueue removal | queue/unqueue removal | — | — |
+| Enter | open Review | open Review | open Review | open Review | open the row | apply (gated) |
 | PgUp/PgDn, `[` / `]` | scroll About | scroll About | scroll About | — | scroll About | — |
 | P | return to the remembered step and focus (default: Benches category zone, first category with benches) | go to Workstation, remember focus | same | same | same | same (remembers the Review offset) |
 | G | go to Profiles, remember focus | same | same | same | return to the remembered step and focus (same default) | go to Profiles, remember the offset |
@@ -66,8 +66,8 @@ Every hint block begins with `Navigation:`. V is listed only on Workstation. Pro
 Full lists (from the approved Benches mockup and the illustrative Workstation, Review and Profiles mockups; Harness and Tools follow the Benches bench-zone pattern without Tab and About):
 
 ```text
-Workstation   Navigation: ↑↓ Move  Enter <Action>  V Vault  PgUp/PgDn About
-                          ←→ Steps  P Back  G Profiles  R Refresh  Q Quit
+Workstation   Navigation: ↑↓ Move  Space Select  D Remove  PgUp/PgDn About
+                          ←→ Steps  Enter Review  P Back  G Profiles  V Vault  R Refresh  Q Quit
 Benches       Navigation: ↑↓ Move  Tab Category  Space Select  D Remove  PgUp/PgDn About
                           ←→ Steps  P Workstation  R Refresh  Enter Review  Q Quit
 Harness/Tools  Navigation: ↑↓ Move  Space Select  D Remove

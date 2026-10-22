@@ -1,6 +1,6 @@
-# Contract: setup interfaces this feature must not change
+# Contract: setup interfaces and accepted lifecycle extension
 
-**Requirement**: FR-015, SC-009 — modes, selection-file format, how the file is written, apply and plan semantics are unchanged; the same queued changes produce the same selection file as the 1.7 TUI; non-interactive modes draw no wizard frame. Restated from `release/1.7.0` at `ccc9eac` so the implementation and `devcontainer.test/test-setup-wizard.py` can check against it.
+**Requirement**: FR-015, SC-009 — existing mode names, schemaVersion and old component payloads stay compatible; the approved setup-workstation-lifecycle extension below adds service keys and prerequisite ordering; existing component queues preserve their schema/payload meaning from the 1.7 TUI; non-interactive modes draw no wizard frame. Restated from `release/1.7.0` at `ccc9eac` so the implementation and `devcontainer.test/test-setup-wizard.py` can check against it.
 
 ## `setup.sh` (root launcher)
 
@@ -14,7 +14,7 @@ The interactive TUI is one stage of `setup.sh`, which then validates and applies
 6. `scripts/interactive-setup.sh --dependencies-plan "$selection_file"`.
 7. `scripts/interactive-setup.sh --apply-plan "$selection_file"`.
 
-No step of `setup.sh` changes. The wizard only changes what happens inside stage 1 before the selection file is written.
+Accepted extension: after the TUI saves the private plan, a strict native reader validates the generated JSON before service preflight/install. Selected prerequisites install first; service-only plans skip unrelated component setup. All removals run last, only after successful work. Unsupported host removals and foreign containers refuse before mutation. Other component validation/planning remains as listed above.
 
 ## `scripts/interactive-setup.sh` modes
 
@@ -30,9 +30,9 @@ With a TTY on stdin and stdout, interactive and `--select-only` runs paint first
 
 ## Selection file
 
-Written by `save_selection` (unchanged):
+Written by `save_selection`:
 
-- created with `umask 077`, opened with `O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW` and mode `0600` — never through a symlink;
+- created in a private mode-0600 temporary file and atomically renamed over an owned regular destination; caller symlinks are rejected, never followed. The native writer needs no Python/Docker;
 - JSON:
 
 ```json
@@ -42,7 +42,8 @@ Written by `save_selection` (unchanged):
 | Field | Rule (`setup_selection.py load`) |
 |---|---|
 | `schemaVersion` | exactly `1` |
-| `components[]` | each `{key, action}` once; `key` is a known tool key or `bench_<catalog name>`; `action` is `install`, `update` or `uninstall` |
+| `components[]` | each `{key, action}` once; `key` is a known tool key, `wsl`, `docker`, `setup_tools`, `vault`, or `bench_<catalog name>`; `action` is `install`, `update` or `uninstall` |
+| service keys | wsl/docker/setup_tools/vault accept install/uninstall only |
 | config-only keys | `host_shell`, `workspace_repo`, `ai_accounts`, `workbenches_account` accept `install` only |
 | file | private regular file of the current user, not a symlink, at most 64 KiB |
 

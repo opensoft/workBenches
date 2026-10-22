@@ -303,3 +303,64 @@ See `features/029-setup-guided-wizard/openspec/029-A04.md`.
 
 Bench copy is unchanged and T040 remains pending. No push, PR, merge or archive
 was performed.
+
+## Approved Workstation lifecycle extension T039F — 2026-10-22
+
+Brett requested replacing the duplicate Requirements service row with a blank
+row, moving service information into Containers, and adopting the Benches
+selection pattern with Installed/Up status. He explicitly chose all entries,
+including Docker/WSL, and subsequently instructed “then commit and push” and
+“get this repo in sync with remote.” That newer instruction authorizes branch
+publication before the pending bench-copy gate; it does not approve a merge,
+archive, or the bench wording.
+
+The accepted full OpenSpec extension is setup-workstation-lifecycle, handed to
+feature 029/task T039F. It explicitly extends the former immediate-service and
+allowed-plan-key contracts. The implementation/evidence are in the commit
+containing this record, after baseline `aa6b4d1`.
+
+- Containers rows show selection boxes on the left and installation/runtime
+  state on the right, including Installed · Up. Space selects install/start,
+  D selects uninstall, Enter opens Review, and only Review Apply authorizes
+  execution. The Requirements heading/count remains, with a blank next row.
+- Selected services appear in Review with Workstation counts/warnings. Normal
+  component readiness is retained; missing prerequisites are installed using
+  a service-only plan before returning for component setup. Service-only
+  teardown does not require the services being removed to be Up.
+- Selection-only mode writes private schemaVersion-1 JSON natively/atomically,
+  without Python or Docker. The strict native prerequisite reader rejects
+  malformed, duplicate, unknown-service, non-private and symlink plans. Mixed
+  component plans receive Python/catalog validation before selected service
+  changes. Service-only plans skip unrelated onboarding/build steps.
+- Managed removal checks role/uid/HOME and pins the verified container ID,
+  preserving volumes, images, credentials and projects. Native Linux Engine
+  package removal avoids purge/autoremove and preserves Docker data/config.
+  All removal preflights occur before service mutation; removals execute last
+  after successful work. Component failure prevents later removal.
+- Docker Desktop uninstall is data-destructive by default and WSL teardown
+  must occur outside the running distro. These cases refuse with manual
+  host steps before mutation and are never reported completed. No WSL
+  unregister/shutdown/restart or real host removal was executed in this build.
+- Background checks adopt healthy installed Tools and do not start/install
+  missing/stopped Tools. Refresh preserves selected service actions.
+- PASS: exact T039F verification; all 32 quickstart suites; 11 lifecycle
+  fixtures (also loaded by the CI requirements suite, now 29 tests); the
+  full responsive/locale matrix, async/partial redraw, cancellation, ownership,
+  native selection security, service-only root path and failure-order checks.
+  Native/WSL acceptance and component-lifecycle compile. Docker-backed and
+  real-host acceptance remain pending. Both OpenSpec changes validate strict.
+- Timing and visual evidence: timing remains below the engineering target;
+  the latest live Workstation preview on Raven/workspace 14 shows the requested
+  boxes, Installed · Up labels, blank row and About panel. Latest timing: engine-only median 0.799 ms; full median 3.197 ms, p90
+  4.525 ms, max 4.831 ms; Workstation step median 2.088 ms.
+
+Fixture-scope corrections: the new sourced lifecycle helper was added to the
+selective Docker prerequisite/bench-status/cancellation fixtures, and stat/wc
+to the isolated component fixture PATH. All their prior assertions remain.
+The existing immediate-row/strip expectations were updated to the explicitly
+approved queue/status behavior; V's account shortcut/cancellation coverage stays.
+
+Before publication, fetch confirmed origin/029-setup-guided-wizard was an
+ancestor (44 local commits ahead, zero behind), release/1.7.0 remained
+`ccc9eaca2c492db27ea262b90eaf30d506c55ef3`, and VERSION remained 1.7.0-dev.1.
+T040 copy approval, remote/real-host QA, merge and archive remain pending.

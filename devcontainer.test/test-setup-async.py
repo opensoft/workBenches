@@ -137,7 +137,7 @@ draw_ui > "$1/repeated"
             self.assertIn(version_header, files['first'])
             self.assertEqual(files['unchanged'], b'')
             self.assertEqual(files['repeated'], b'')
-            self.assertIn(b'Docker Up', files['update'])
+            self.assertIn('Installed · Up'.encode(), files['update'])
             self.assertNotIn(b'\x1b[2J', files['update'])
             self.assertNotIn(version_header, files['update'])
             self.assertNotIn('█▀▀█'.encode(), files['update'])

@@ -180,6 +180,9 @@ setup_about_offset=2; setup_update_ui_signature
                         nav_index=next(i for i,line in enumerate(lines) if 'Workstation' in line)
                         self.assertEqual(lines[nav_index+2],'')
                         self.assertIn('REQUIREMENTS ·',lines[nav_index+3])
+                        self.assertEqual(lines[nav_index+4], '')
+                        self.assertIn('[ ]', text)
+                        self.assertNotIn('[Check]', text)
                         if columns-1>=60:self.assertIn('G Profiles',text)
 
     def test_agents_and_tools_render_matrix(self):

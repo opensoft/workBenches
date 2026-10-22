@@ -305,9 +305,14 @@ status_worker_bootstrap() {
         [[ "$key" != wsl || "$state" == up ]] || wsl_ready=false
     done < <(workbenches_requirement_rows)
     if [[ "$docker_state" == up && "$wsl_ready" == true ]]; then
-        status_publish setup_tools loading 'Starting Tools; first-time image preparation may take a few minutes.'
-        if ! workbenches_tools_activate; then
-            status_publish setup_tools down 'Tools could not start. Select Start to retry; details are in the setup log.'
+        if [[ "${WORKBENCHES_TEST_NATIVE_TOOLS:-}" != 1 && "$(workbenches_tools_state "$docker_state")" != up ]]; then
+            status_publish setup_tools "$(workbenches_tools_state "$docker_state")" 'Select Tools for install/start, then Review and Apply.'
+            touch "$status_worker_dir/done"
+            return
+        fi
+        status_publish setup_tools loading 'Connecting to the installed Tools container.'
+        if [[ "${WORKBENCHES_TEST_NATIVE_TOOLS:-}" != 1 ]] && ! { workbenches_pin_docker && workbenches_tools_use_shims; }; then
+            status_publish setup_tools down 'Tools connection failed. Select Tools for install/start, then Review and Apply.'
             touch "$status_worker_dir/done"
             return
         fi

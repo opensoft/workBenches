@@ -348,3 +348,7 @@ Brett requested the header brand `openBenches v1.7` beside the Opensoft logo and
 ## Accepted live-review revision 029-A04 (2026-10-22)
 
 Brett requested a Workstation layout matching the Benches pattern: one blank row after the navigation divider, a single Containers panel replacing Required Software/Optional Vault, and a focused-service About panel. T039E preserves the requirements strip/readiness markers and service order/actions, keeps Vault optional, moves inline detail into About, enables shared About paging/reset/clamping, and puts G Profiles in the full footer. About gets two to eight spare rows (all text at unknown height); only roomy layouts add the gap before About. This supersedes the earlier two-panel/inline-explanation layout.
+
+## Accepted lifecycle extension (2026-10-22)
+
+Brett explicitly selected install/uninstall for all Workstation entries and then authorized commit/push. OpenSpec setup-workstation-lifecycle extends the former service-action/allowed-key contracts. T039F implements the new queue and guarded lifecycle. Existing presentation refinements remain; unsupported data-destructive Desktop/WSL removal is refused with manual instructions. Bench-copy approval remains a merge gate, while the newer instruction authorizes publishing before that gate.

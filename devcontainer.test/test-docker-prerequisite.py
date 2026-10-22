@@ -213,7 +213,7 @@ if ensure_docker "${TEST_SELECTED_ACTION:-}"; then exit 0; else exit $?; fi
         (self.directory / "home/.config/workbenches/claude-profiles.json").write_text('{"profiles":[{}]}')
         for name in ("setup.sh", "bootstrap.sh"):
             shutil.copy(ROOT / name, fixture / name)
-        for name in ("docker-prerequisite.sh", "setup-prerequisites.sh", "setup-prompts.sh", "tools-container.sh", "setup-status-loader.sh"):
+        for name in ("docker-prerequisite.sh", "setup-prerequisites.sh", "setup-prompts.sh", "tools-container.sh", "setup-status-loader.sh", "setup-workstation-lifecycle.sh"):
             shutil.copy(ROOT / "scripts/lib" / name, fixture / "scripts/lib")
         shutil.copy(ROOT / "scripts/setup_selection.py", fixture / "scripts")
         (fixture / "config/bench-config.json").write_text('{"benches":{"dev":{"path":"devBenches/testBench"}}}')

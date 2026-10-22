@@ -63,7 +63,7 @@ The nav bar SHALL show every step in order by name, joined by short ` ─ ` conn
 - **THEN** the nav is one line naming the current step as `Step N of 6 · <Name>` with one progress mark per step, the first being the Workstation readiness mark, and no queued counts
 
 ### Requirement: Enter opens Review
-Enter SHALL run the focused row's action when the focus is a Workstation service row (WSL 2, Docker, Tools, Vault) or a Profiles row. Everywhere else Enter SHALL open the Review step without applying, installing or removing anything.
+Enter SHALL run the focused Profiles action on Profiles. Everywhere else except Review, including Workstation, Enter SHALL open the Review step without applying, installing or removing anything.
 
 #### Scenario: Enter on a component opens Review
 - **WHEN** Codex CLI is queued for update and the user presses Enter on the Harness step
@@ -74,10 +74,10 @@ Enter SHALL run the focused row's action when the focus is a Workstation service
 - **WHEN** the Benches category zone has focus and the user presses Enter
 - **THEN** the Review step is shown
 
-#### Scenario: Enter on a service row acts immediately
-- **WHEN** the Docker row on Workstation offers Start and the user presses Enter on it
-- **THEN** the Docker Start action runs at once
-- **AND** queued changes are unchanged and Review is not opened
+#### Scenario: Enter on a service row opens Review
+- **WHEN** Docker install/start is selected on Workstation and Enter is pressed
+- **THEN** Review opens without running the action
+- **AND** the action remains queued until Review Apply
 
 ### Requirement: Review lists every queued change
 The Review step SHALL list every queued change under INSTALL, UPDATE and REMOVE groups, in step order, each item with the step it belongs to, with the REMOVE group noting that projects and credentials are kept, and SHALL state that nothing has changed yet and that Enter applies the changes. It SHALL show a yellow warning when Shell setup (replaces shell settings) or Org workspace (may create a GitHub repository) is queued, and SHALL let the user see every item even when the list is taller than its rows. Reached by Enter or by ←/→, Review SHALL open at its first item; a P or G return SHALL restore the remembered position. Review SHALL be read-only: no key on Review queues or unqueues a change, which is done on the step the item belongs to.
@@ -193,21 +193,21 @@ When a run of background checks finishes with a required workstation item not Up
 - **AND** pressing P returns to the same bench in the bench zone
 
 ### Requirement: Workstation step
-The Workstation step SHALL show one blank row after the navigation divider, its existing requirements strip and one `Containers` panel listing WSL 2 where applicable, Docker, Tools and optional Vault in their existing service order. Each row SHALL show its state and `[Action]` without an inline explanation. The title SHALL show required readiness only; Vault SHALL remain optional. A separate About panel SHALL show the focused service's purpose and current check detail, with shared word wrapping, paging, focus-reset and same-service refresh clamping. It SHALL use two to eight spare content rows when height is known and show all content at unknown height. Roomy layouts SHALL put one blank row between Containers and About. G Profiles SHALL appear in the full Workstation footer; account rows SHALL remain only on Profiles. Space and Enter SHALL run the focused service action and D SHALL do nothing; loading rows SHALL run nothing and report that checks are still loading.
+The Workstation step SHALL show one blank row after the navigation divider, its existing requirements strip and one `Containers` panel listing WSL 2 where applicable, Docker, Tools and optional Vault in their existing service order. Each row SHALL show a selection box and installation/runtime status without an inline explanation. The title SHALL show required readiness only; Vault SHALL remain optional. A separate About panel SHALL show the focused service's purpose and current check detail, with shared word wrapping, paging, focus-reset and same-service refresh clamping. It SHALL use two to eight spare content rows when height is known and show all content at unknown height. Roomy layouts SHALL put one blank row between Containers and About. G Profiles SHALL appear in the full Workstation footer; account rows SHALL remain only on Profiles. Space SHALL queue install/start, D SHALL queue uninstall and Enter SHALL open Review under setup-workstation-lifecycle; loading rows SHALL queue nothing.
 
 #### Scenario: Service panels
 - **WHEN** Workstation is shown on WSL with every service Up and the user signed out
-- **THEN** one Containers panel lists WSL 2, Docker and Tools with `Up  [Check]`
-- **AND** that same panel lists optional Vault with `Up · Signed out  [Connect]`, the full footer shows `G Profiles`, and no account rows appear
+- **THEN** one Containers panel lists WSL 2, Docker and Tools with checkboxes and `Installed · Up`
+- **AND** that same panel lists optional Vault with its installation/runtime status, the full footer shows `G Profiles`, and no account rows appear
 
 #### Scenario: Service About follows focus
 - **WHEN** Workstation focus moves from Docker to Tools
 - **THEN** About changes from Docker purpose/check details to Tools purpose/check details and resets its scroll
 - **AND** PgUp/PgDn and [/] page long About content without running actions or changing the queue
 
-#### Scenario: Space acts like Enter on a service row
-- **WHEN** the Tools row offers Start and the user presses Space on it
-- **THEN** the Tools Start action runs and queued changes are unchanged
+#### Scenario: Service selection waits for Review
+- **WHEN** the Tools row is Down and the user presses Space
+- **THEN** install/start is queued without running it, and Enter opens Review
 
 ### Requirement: Profiles step
 The Profiles step SHALL show the identities summary line, the rows Personal & companies, Workstation account and AI accounts, and an About panel for the focused row, from fixed text, sized and scrolled like the Benches About panel. Enter or Space SHALL open the focused row's existing Profiles action; that action SHALL be refused with a notice until every required workstation item is Up, and returning from it SHALL keep every queued change.
@@ -278,3 +278,5 @@ The wizard SHALL leave the `setup.sh` modes `--select-only`, `--dependencies-pla
 #### Scenario: Apply plan without drawing
 - **WHEN** `interactive-setup.sh --apply-plan <file>` runs with a valid selection file
 - **THEN** it applies the selection without drawing any wizard frame
+
+Accepted lifecycle extension: setup-workstation-lifecycle governs added service keys, prerequisite-install/removal-last ordering, selected-install and service-only-removal readiness exceptions, and manual unsupported host teardown. Earlier immediate-service scenarios are superseded by that change.

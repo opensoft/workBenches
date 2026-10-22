@@ -139,7 +139,7 @@ class ToolRemovalTests(unittest.TestCase):
         # the engineer's real CLI installations or package-manager executables.
         for name in ('bash', 'sh', 'python3', 'git', 'jq', 'curl', 'date', 'dirname',
                      'mkdir', 'tee', 'ls', 'tail', 'xargs', 'rm', 'mktemp', 'whoami',
-                     'id', 'sleep', 'uname', 'tput', 'clear', 'cat', 'cmp', 'hostname', 'grep', 'head'):
+                     'id', 'sleep', 'uname', 'tput', 'clear', 'cat', 'cmp', 'hostname', 'grep', 'head', 'stat', 'wc'):
             # shutil.which is patched for unit probes in this class; resolve
             # the utilities through the subprocess shell instead.
             located = subprocess.check_output(['/bin/sh', '-c', 'command -v "$1"', 'sh', name], text=True).strip()

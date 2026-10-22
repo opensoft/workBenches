@@ -33,22 +33,29 @@ projects and credentials. Warnings explain that Shell setup replaces shell
 settings and Org workspace may create a GitHub repository. Review is read-only;
 return to an item's step to edit its action.
 
-Apply waits until checks finish and every required workstation service is Up.
+Apply waits until checks finish. Component work requires every required service
+Up. When prerequisites are missing, apply a service-only install plan first,
+then reopen setup for components. Service-only removal does not require the
+services being removed to be Up.
 An empty Review finishes without component changes. In selection-only mode the
 applying Enter writes the private selection file; dependency-plan and apply-plan
 modes retain their existing non-interactive contracts and draw no wizard.
 
-Workstation service rows and Profiles rows are the exceptions: Enter or Space
-opens their action immediately, without applying the queued component changes.
-Profiles actions require workstation readiness.
+Profiles rows open their action immediately on Enter/Space and require readiness.
+Workstation uses the same selection and Review pattern as Benches: Space selects
+install/start, D selects uninstall, and Enter opens Review. V remains the explicit
+Vault account shortcut.
 
 ## Workstation containers
 
 A blank line below the navigation divider separates the Workstation content.
-The requirements strip stays above one **Containers** panel containing WSL 2
+The Requirements count is followed by a blank row above one **Containers** panel containing WSL 2
 where applicable, Docker, Tools and optional Vault. About follows the selected
 service and shows its purpose and current check details. Long About text uses
-the same paging keys as Benches. Enter/Space still runs the service action.
+the same paging keys as Benches. Rows show selection boxes and states such as
+**Installed · Up**, with no Check buttons. Selected prerequisites install first;
+removals run after successful component work. Docker Desktop and in-distro WSL
+removal require manual host steps and are not automatically performed.
 
 ## Benches and About
 
@@ -70,8 +77,8 @@ benches usable with a fallback description; R retries an unavailable catalog.
 | ← / → | Previous/next step; stop at the ends. |
 | ↑ / ↓ | Move within the step; scroll Review. In Benches, move within the current zone. |
 | Tab / Shift+Tab | Switch Benches category/list zones. ↑ on the first bench returns to categories. |
-| Space / D | Queue/unqueue install or update / removal; Space opens service/profile actions. |
-| Enter | Open Review, apply from Review, or open a service/profile row. |
+| Space / D | Queue/unqueue install or update / removal; Space opens Profiles actions. |
+| Enter | Open Review, apply from Review, or open a Profiles row. |
 | P | Visit Workstation and return to the remembered step and focus. |
 | G | Visit Profiles; G Back restores the remembered step and focus. |
 | V | Run Vault's current action from any step; advertised on Workstation. |

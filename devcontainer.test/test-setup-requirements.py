@@ -116,15 +116,17 @@ echo menu >> "$HOME/actions"
                     if process.poll() is None: process.kill(); process.wait()
                     os.close(master)
 
-    def test_requirements_navigation_preserves_selections_and_blocks_required_removal(self):
+    def test_requirements_navigation_preserves_other_selections_and_queues_removal(self):
         with tempfile.TemporaryDirectory() as temporary:
             command = f'''source "{ROOT}/scripts/interactive-setup.sh"
+is_wsl_windows() {{ return 1; }}
 init_components
+component_status[docker]=up
 component_checked[codex_cli]=true; component_action[codex_cli]=install
 handle_input
 [[ "$CURRENT_SECTION" == 3 ]] || exit 20
 handle_input
-[[ "${{component_checked[docker]}}" != true ]] || exit 21
+[[ "${{component_checked[docker]}}" == true && "${{component_action[docker]}}" == uninstall ]] || exit 21
 [[ "${{component_checked[codex_cli]}}" == true ]] || exit 22
 CURRENT_SECTION=4; current_selection=1
 activate_profile() {{ [[ "${{profile_items[$current_selection]}}" == workbenches_account ]] || exit 23; }}
@@ -152,7 +154,7 @@ printf 'authenticated:%s\\n' "$(workbenches_requirement_action vault up 'signed 
             'docker:down:Start', 'setup_tools:down:Start', 'vault:down:Start',
             'docker:up:Check', 'setup_tools:up:Check', 'vault:up:Connect', 'authenticated:Sign out'])
 
-    def test_vault_enter_installs_then_connects_immediately_without_applying_selections(self):
+    def test_explicit_vault_shortcut_installs_connects_and_signs_out_without_component_apply(self):
         with tempfile.TemporaryDirectory() as temporary:
             command = f'''source "{ROOT}/scripts/interactive-setup.sh"
 init_components
@@ -178,7 +180,7 @@ handle_input || exit 21
 handle_input || exit 22
 [[ "${{component_checked[codex_cli]}}" == true && "${{component_action[codex_cli]}}" == install ]] || exit 23
 '''
-            result = subprocess.run(['bash', '-c', command], input='\n\n\n', env=dict(os.environ, HOME=temporary, WSL_DISTRO_NAME=''), capture_output=True, text=True, timeout=10)
+            result = subprocess.run(['bash', '-c', command], input='VVV', env=dict(os.environ, HOME=temporary, WSL_DISTRO_NAME=''), capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual((Path(temporary) / 'actions').read_text().splitlines(), ['prerequisites', 'vault-start', 'account login', 'account --logout'])
 
@@ -200,7 +202,7 @@ handle_input || exit 20
 handle_input
 [[ "$?" == 2 ]] || exit 23
 '''
-        result = subprocess.run(['bash', '-c', command], input=' Q', capture_output=True, text=True, timeout=10)
+        result = subprocess.run(['bash', '-c', command], input='VQ', capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_install_and_start_resolve_dependencies_without_connecting_or_applying(self):
@@ -225,7 +227,7 @@ done
         self.assertEqual(result.stdout.count('vault-start'), 2)
         self.assertNotIn('unexpected-login', result.stdout)
 
-    def test_main_status_strip_keeps_vault_action_visible_at_all_widths(self):
+    def test_duplicate_strip_is_blank_and_vault_status_is_in_containers(self):
         import re
         for columns in (36, 60, 80, 100):
             for state, identity, action in (('missing', 'sign in', 'Install'),
@@ -235,17 +237,23 @@ done
                 with self.subTest(columns=columns, state=state, identity=identity):
                     command = f'''source "{ROOT}/scripts/interactive-setup.sh"
 init_components
-setup_ui_width={columns}
+setup_ui_width={columns}; CURRENT_SECTION=3
 component_description[docker]=Docker; component_status[docker]=up
 component_description[setup_tools]=Tools; component_status[setup_tools]=up
 component_description[vault]=Vault; component_status[vault]={state}
 component_status[workbenches_account]='{identity}'
 draw_requirements_summary
+draw_requirements
+draw_setup_footer
 '''
                     result = subprocess.run(['bash', '-c', command], capture_output=True, text=True, timeout=10)
                     self.assertEqual(result.returncode, 0, result.stderr)
                     plain = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', result.stdout)
-                    self.assertIn(f'Vault {state.title()} [V {action}]', plain)
+                    self.assertIn('Vault', plain)
+                    self.assertIn({'missing':'Not installed','down':'Installed · Down','up':'Installed · Up'}[state], plain)
+                    self.assertEqual(plain.splitlines()[1], '')
+                    self.assertNotIn('[Check]', plain)
+                    self.assertIn('[ ]', plain)
                     self.assertTrue(all(len(line) <= columns for line in plain.splitlines()), plain)
 
     def test_vault_shortcut_activates_main_screen_button_and_preserves_focus(self):
@@ -299,6 +307,14 @@ handle_input
 '''
         result = subprocess.run(['bash', '-c', command], input='PP', capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+def load_tests(loader, tests, pattern):
+    lifecycle_spec = importlib.util.spec_from_file_location('workstation_lifecycle', ROOT / 'devcontainer.test/test-workstation-lifecycle.py')
+    module = importlib.util.module_from_spec(lifecycle_spec)
+    lifecycle_spec.loader.exec_module(module)
+    tests.addTests(loader.loadTestsFromModule(module))
+    return tests
 
 
 if __name__ == '__main__':

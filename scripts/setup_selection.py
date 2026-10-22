@@ -8,6 +8,7 @@ REPO = Path(__file__).resolve().parents[1]
 TOOLS = {'claude_cli', 'copilot_cli', 'codex_cli', 'antigravity_cli', 'opencode_cli',
          'pi_cli', 'spec_kit', 'openspec', 'vscode', 'warp', 'wave', 'amnezia_vpn', '0dcloud_vpn',
          'host_shell', 'workspace_repo', 'ai_accounts', 'workbenches_account'}
+SERVICES = {'wsl', 'docker', 'setup_tools', 'vault'}
 AI = {'claude_cli': 'claude', 'codex_cli': 'openai', 'pi_cli': 'pi', 'opencode_cli': 'omniroute',
       'copilot_cli': 'copilot', 'antigravity_cli': 'antigravity'}
 NODE = {'codex_cli', 'copilot_cli', 'pi_cli', 'openspec'}
@@ -20,7 +21,7 @@ def load(path):
         raise ValueError('selection must be a private regular file')
     data = json.loads(path.read_text())
     benches = json.loads((REPO / 'config/bench-config.json').read_text())['benches']
-    known = TOOLS | {'bench_' + name for name in benches}
+    known = TOOLS | SERVICES | {'bench_' + name for name in benches}
     if not isinstance(data, dict) or data.get('schemaVersion') != 1 or not isinstance(data.get('components'), list):
         raise ValueError('invalid selection')
     seen = set()
@@ -29,6 +30,8 @@ def load(path):
             raise ValueError('invalid or duplicate component')
         if entry['key'] in ('host_shell', 'workspace_repo', 'ai_accounts', 'workbenches_account') and entry['action'] != 'install':
             raise ValueError('optional setup entries only support configuration')
+        if entry['key'] in SERVICES and entry['action'] == 'update':
+            raise ValueError('workstation entries support install or uninstall')
         seen.add(entry['key'])
     return data['components'], benches
 
@@ -58,7 +61,8 @@ def main():
     elif command == 'selected':
         return 0 if sys.argv[3] in keys else 1
     elif command == 'review':
-        labels = {'host_shell': 'Shell setup', 'workspace_repo': 'Org workspace',
+        labels = {'wsl': 'WSL 2', 'docker': 'Docker', 'setup_tools': 'Tools', 'vault': 'Vault',
+                  'host_shell': 'Shell setup', 'workspace_repo': 'Org workspace',
                   'ai_accounts': 'AI accounts', 'workbenches_account': 'workBenches account', 'codex_cli': 'Codex', 'claude_cli': 'Claude',
                   'copilot_cli': 'Copilot', 'pi_cli': 'Pi', 'opencode_cli': 'OpenCode'}
         for action, title in (('install', 'Installing'), ('update', 'Updating'), ('uninstall', 'Removing')):
