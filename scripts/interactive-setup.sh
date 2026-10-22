@@ -1350,6 +1350,37 @@ setup_bench_zone=category
 setup_bench_category=''
 setup_review_offset=0
 
+requirements_return_set=false
+profiles_return_set=false
+
+setup_remember_target() {
+    local target_prefix="$1" target_bench=''
+    if [[ "$CURRENT_SECTION" == 0 && "$setup_bench_zone" == bench ]]; then target_bench="${bench_items[$current_selection]}"; fi
+    printf -v "${target_prefix}_return_section" '%s' "$CURRENT_SECTION"
+    printf -v "${target_prefix}_return_selection" '%s' "$current_selection"
+    printf -v "${target_prefix}_return_zone" '%s' "$setup_bench_zone"
+    printf -v "${target_prefix}_return_category" '%s' "$setup_bench_category"
+    printf -v "${target_prefix}_return_bench" '%s' "$target_bench"
+    printf -v "${target_prefix}_return_review_offset" '%s' "$setup_review_offset"
+    printf -v "${target_prefix}_return_set" '%s' true
+}
+
+setup_restore_target() {
+    local target_prefix="$1" target_field="${1}_return_set" target_bench target_index
+    if [[ "${!target_field}" != true ]]; then setup_arrive_step 0; return; fi
+    target_field="${target_prefix}_return_section"; CURRENT_SECTION=${!target_field}
+    target_field="${target_prefix}_return_selection"; current_selection=${!target_field}
+    target_field="${target_prefix}_return_zone"; setup_bench_zone=${!target_field}
+    target_field="${target_prefix}_return_category"; setup_bench_category=${!target_field}
+    target_field="${target_prefix}_return_review_offset"; setup_review_offset=${!target_field}
+    target_field="${target_prefix}_return_bench"; target_bench=${!target_field}
+    if [[ "$CURRENT_SECTION" == 0 && -n "$target_bench" ]]; then
+        for target_index in "${!bench_items[@]}"; do
+            [[ "${bench_items[target_index]}" != "$target_bench" ]] || current_selection=$target_index
+        done
+    fi
+}
+
 setup_arrive_step() {
     CURRENT_SECTION=$1; current_selection=0; setup_list_offset=0; setup_about_offset=0
     if [[ "$CURRENT_SECTION" == 0 ]]; then
@@ -1364,10 +1395,10 @@ setup_move_step() {
     step_next=$((step_index+$1))
     ((step_next >= 0 && step_next < 6)) || return 0
     if [[ "$CURRENT_SECTION" == 0 && "$1" == -1 ]]; then
-        requirements_return_section=$CURRENT_SECTION; requirements_return_selection=$current_selection
+        setup_remember_target requirements
     fi
     if [[ ( "$CURRENT_SECTION" == 2 && "$1" == 1 ) || ( "$CURRENT_SECTION" == 5 && "$1" == -1 ) ]]; then
-        profiles_return_section=$CURRENT_SECTION; profiles_return_selection=$current_selection
+        setup_remember_target profiles
     fi
     setup_arrive_step "${setup_step_sections[step_next]}"
 }
@@ -1905,25 +1936,11 @@ handle_input() {
                 ;;
             'r'|'R') requirements_notice=''; refresh_component_statuses; draw_ui ;;
             'p'|'P')
-                if [[ "$CURRENT_SECTION" == 3 ]]; then
-                    CURRENT_SECTION=$requirements_return_section
-                    current_selection=$requirements_return_selection
-                else
-                    requirements_return_section=$CURRENT_SECTION
-                    requirements_return_selection=$current_selection
-                    CURRENT_SECTION=3
-                    current_selection=0
-                fi ;;
+                if [[ "$CURRENT_SECTION" == 3 ]]; then setup_restore_target requirements
+                else setup_remember_target requirements; setup_arrive_step 3; fi ;;
             'g'|'G')
-                if [[ "$CURRENT_SECTION" == 4 ]]; then
-                    CURRENT_SECTION=$profiles_return_section
-                    current_selection=$profiles_return_selection
-                else
-                    profiles_return_section=$CURRENT_SECTION
-                    profiles_return_selection=$current_selection
-                    CURRENT_SECTION=4
-                    current_selection=0
-                fi ;;
+                if [[ "$CURRENT_SECTION" == 4 ]]; then setup_restore_target profiles
+                else setup_remember_target profiles; setup_arrive_step 4; fi ;;
             'v'|'V') # Vault action is available beside its main-screen status.
                 activate_requirement vault || return "$?" ;;
             'q'|'Q') # Quit

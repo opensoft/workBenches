@@ -277,5 +277,42 @@ render_setup_frame
                          {('codex_cli','update'), ('host_shell','install'), ('workspace_repo','install')})
         self.assertEqual((self.root/'selection.json').stat().st_mode & 0o777, 0o600)
 
+    def test_jump_roundtrips_restore_exact_focus(self):
+        for section in (0,1,2,3,4,5):
+            for jump, target in (('P',3),('G',4)):
+                if section == target: continue
+                output = self.shell(r'''
+init_components --loading
+bench_items=(365Bench cloudBench); setup_bench_categories_focusable=(system-administration)
+CURRENT_SECTION=''' + str(section) + r'''; current_selection=1
+setup_bench_zone=bench; setup_bench_category=system-administration; setup_review_offset=7
+handle_input <<< ''' + jump + r'''
+printf 'target=%s\n' "$CURRENT_SECTION"
+handle_input <<< ''' + jump + r'''
+printf '%s:%s:%s:%s:%s\n' "$CURRENT_SECTION" "$current_selection" "$setup_bench_zone" "$setup_bench_category" "$setup_review_offset"
+''')
+                self.assertIn(f'target={target}', output)
+                self.assertIn(f'{section}:1:bench:system-administration:7', output)
+
+    def test_unset_jump_defaults_and_readiness_return(self):
+        output = self.shell(r'''
+init_components --loading
+setup_bench_categories_focusable=(software-engineering)
+CURRENT_SECTION=3; handle_input <<< P
+printf 'default=%s:%s:%s\n' "$CURRENT_SECTION" "$setup_bench_zone" "$setup_bench_category"
+CURRENT_SECTION=5; setup_review_offset=8
+status_loader_dir="$FIXTURE/status"; status_checks_running=true; status_loader_pid=$$
+component_status[docker]=down; component_status[setup_tools]=up
+touch "$status_loader_dir/done"
+stop_status_loader() { status_checks_running=false; status_loader_dir=''; }
+poll_status_loader
+printf 'jump=%s\n' "$CURRENT_SECTION"
+handle_input <<< P
+printf 'return=%s:%s\n' "$CURRENT_SECTION" "$setup_review_offset"
+''')
+        self.assertIn('default=0:category:software-engineering', output)
+        self.assertIn('jump=3', output)
+        self.assertIn('return=5:8', output)
+
 
 if __name__ == '__main__': unittest.main()

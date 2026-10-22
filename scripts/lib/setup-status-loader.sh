@@ -439,8 +439,8 @@ poll_status_loader() {
         if ! setup_required_ready; then
             requirements_notice='Resolve workstation requirements to continue.'
             if [[ "$CURRENT_SECTION" != 3 ]]; then
-                requirements_return_section=$CURRENT_SECTION; requirements_return_selection=$current_selection
-                CURRENT_SECTION=3; current_selection=0
+                setup_remember_target requirements
+                setup_arrive_step 3
             fi
             for index in "${!requirement_items[@]}"; do
                 key="${requirement_items[$index]}"
