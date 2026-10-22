@@ -9,7 +9,7 @@ Branch `029-setup-guided-wizard`, cut from `origin/release/1.7.0` at `ccc9eac`. 
 - `0680f10` plan, research R1–R11, data model, contracts, quickstart.
 - The latest commit: `tasks.md` (45 tasks: 13 `[S]`, 32 `[O]`, no `[H]`), this note, and analysis fixes to `plan.md` and `quickstart.md`.
 
-Approved: the change, the spec and every clarification. Still to come: the bench copy (T040, merge gate) and Brett's review of the governed CI edit (T033) in the PR. Open decisions D1–D5 are in `analysis.md`, each with a recommendation; tasks already follow them.
+Approved: the change, the spec, every clarification, and decisions D1–D5 in `analysis.md` (Brett Heap accepted all five as recommended on 2026-10-21; the tasks follow them). Still to come: the bench copy (T040, merge gate) and Brett's review of the governed CI edit (T033) in the PR.
 
 ## How to start
 
