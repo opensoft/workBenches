@@ -164,5 +164,17 @@ setup_about_offset=2; setup_update_ui_signature
                     self.assertIn('OPTIONAL VAULT',text)
                     self.assertIn('Navigation:',text)
 
+    def test_agents_and_tools_render_matrix(self):
+        for section in (1,2):
+            for columns in (36,60,88):
+                for rows in (24,40,0):
+                    with self.subTest(section=section,columns=columns,rows=rows):
+                        lines=self.frame(section,columns,rows)
+                        self.assert_bounds(lines,max(columns,36),rows or None)
+                        text='\n'.join(lines)
+                        self.assertIn('Navigation:',text)
+                        self.assertNotIn('AI ASSISTANTS',text)
+                        self.assertNotIn('REQUIREMENTS ·',text)
+
 
 if __name__ == '__main__': unittest.main()

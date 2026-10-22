@@ -346,5 +346,19 @@ render_setup_frame
         self.assertGreater(output.index('A notice with'), output.index('REQUIREMENTS ·'))
         self.assertEqual(output.count('A notice with'), 1)
 
+    def test_component_selection_rules_and_separator(self):
+        output=self.shell(r'''
+init_components --loading
+CURRENT_SECTION=1; current_selection=2; component_status[codex_cli]=installed
+handle_input <<< ' '; printf '%s\n' "${component_action[codex_cli]}"
+handle_input <<< D; printf '%s\n' "${component_action[codex_cli]}"
+handle_input <<< D; printf '%s:%s\n' "${component_checked[codex_cli]}" "${component_action[codex_cli]}"
+component_status[codex_cli]=loading; handle_input <<< ' '
+printf 'loading=%s\n' "${component_checked[codex_cli]}"
+CURRENT_SECTION=2; current_selection=5; component_status[host_shell]=configured
+handle_input <<< D; printf 'shell=%s\n' "${component_action[host_shell]}"
+''')
+        self.assertEqual(output.splitlines(),['update','uninstall','false:','loading=false','shell='])
+
 
 if __name__ == '__main__': unittest.main()

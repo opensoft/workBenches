@@ -1467,6 +1467,73 @@ setup_frame_service_row() {
     fi
 }
 
+setup_frame_component_row() {
+    local component_key="$1" component_focus="$2" component_marker=' ' component_box='[ ]' component_icon=○ component_state component_right='' component_color="$SILVER" component_action_label=''
+    [[ "$component_focus" != true ]] || component_marker=›
+    [[ "${component_checked[$component_key]}" != true ]] || component_box='[✓]'
+    setup_status_label_v component_state "${component_status[$component_key]}"
+    if [[ "${component_status[$component_key]}" == installed || "${component_status[$component_key]}" == 'needs creds' || "${component_status[$component_key]}" == 'image only' ]]; then component_icon=✓; component_color="$GREEN"; fi
+    if [[ "${component_status[$component_key]}" == loading || -z "${component_status[$component_key]}" ]]; then
+        component_icon=…; component_state='Loading…'; component_color="$LOADING_COLOR"
+    fi
+    if [[ "${component_checked[$component_key]}" == true && -n "${component_action[$component_key]}" ]]; then
+        component_action_label="${component_action[$component_key]^}"
+        [[ "$component_action_label" != Uninstall ]] || component_action_label=Remove
+        component_right="→ $component_action_label"
+    fi
+    if ((setup_ui_width >= 50)); then
+        [[ -z "$component_right" ]] || component_right="  $component_right"
+        component_right="$component_state$component_right"
+    fi
+    setup_frame_row "$component_marker $component_box $component_icon ${component_description[$component_key]}" "$component_right" "$component_color"
+}
+
+setup_frame_components() {
+    local component_line component_index component_key component_focus component_budget=0
+    local -a component_items=()
+    if [[ "$CURRENT_SECTION" == 1 ]]; then component_items=("${ai_items[@]}")
+    else component_items=("${tool_items[@]}"); fi
+    setup_panel_top_v component_line "${setup_step_names[${setup_section_step[$CURRENT_SECTION]}]}" ''
+    setup_frame_append "$component_line"
+    if [[ -n "$setup_ui_height" ]]; then
+        component_budget=$((setup_ui_height - ${#setup_frame_lines[@]} - 5))
+        ((component_budget > 2)) || component_budget=3
+    fi
+    setup_ui_list_window "${#component_items[@]}" "$current_selection" "$component_budget" setup_list_offset
+    if ((setup_window_above > 0)); then setup_frame_row "▲ $setup_window_above more"; fi
+    for ((component_index=setup_window_start; component_index<setup_window_start+setup_window_count; component_index++)); do
+        component_key="${component_items[component_index]}"
+        if [[ "$component_key" == separator* ]]; then
+            setup_ui_rule_v component_line "$((setup_ui_width - 4))"; setup_frame_row "$component_line"
+            continue
+        fi
+        component_focus=false; ((component_index != current_selection)) || component_focus=true
+        setup_frame_component_row "$component_key" "$component_focus"
+    done
+    if ((setup_window_below > 0)); then setup_frame_row "▼ $setup_window_below more"; fi
+    setup_panel_bottom_v component_line; setup_frame_append "$component_line"
+}
+
+setup_frame_component_footer() {
+    local footer_line footer_state footer_key footer_count=0 footer_total footer_context footer_action
+    if [[ "$CURRENT_SECTION" == 1 ]]; then footer_key="${ai_items[$current_selection]}"
+    else footer_key="${tool_items[$current_selection]}"; fi
+    for footer_action in "${!component_checked[@]}"; do [[ "${component_checked[$footer_action]}" != true ]] || ((footer_count++)); done
+    setup_status_label_v footer_state "${component_status[$footer_key]}"
+    footer_context="${component_description[$footer_key]} · $footer_state"
+    [[ -z "${component_action[$footer_key]}" ]] || footer_context+=" → ${component_action[$footer_key]}"
+    footer_total="Changes selected: $footer_count"; ((setup_ui_width >= 60)) || footer_total="Changes: $footer_count"
+    setup_ui_rule_v footer_line "$setup_ui_width"; setup_frame_append "$footer_line"
+    setup_ui_pair_v footer_line "$footer_context" "$footer_total" "$setup_ui_width"; setup_frame_append "$footer_line"
+    if ((setup_ui_width < 60)); then
+        setup_frame_append 'Navigation: Space Select  D Remove'
+        setup_frame_append '←→ Steps  Enter Review  Q Quit'
+    else
+        setup_frame_append 'Navigation: ↑↓ Move  Space Select  D Remove'
+        setup_frame_append '←→ Steps  P Workstation  R Refresh  Enter Review  Q Quit'
+    fi
+}
+
 setup_frame_workstation_footer() {
     local footer_line footer_state footer_action footer_count=0 footer_key footer_total
     for footer_key in "${!component_checked[@]}"; do
@@ -1619,6 +1686,9 @@ setup_frame_build() {
     if [[ "$CURRENT_SECTION" == 3 ]]; then
         setup_frame_workstation
         setup_frame_workstation_footer
+    elif [[ "$CURRENT_SECTION" == 1 || "$CURRENT_SECTION" == 2 ]]; then
+        setup_frame_components
+        setup_frame_component_footer
     else setup_frame_legacy_bridge; fi
     setup_frame_footer
     setup_frame_fit
