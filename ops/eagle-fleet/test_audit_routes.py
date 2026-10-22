@@ -3,6 +3,10 @@ from audit_routes import audit
 
 
 class AuditTests(unittest.TestCase):
+    def test_dynamic_label_array_requires_manual_provider_review(self):
+        record=audit([dict(repository='example/consumer',path='workflow.yml',source='jobs:\n  qa:\n    runs-on: ${{ fromJSON(inputs.labels) }}\n')])[0]
+        self.assertIn('structured-runner-expression',record['flags'])
+
     def test_windows_arm_and_xcode_are_native_requirements(self):
         record=audit([dict(repository='example/consumer',path='workflow.yml',source='jobs:\n  a:\n    runs-on: windows-11-arm\n')])[0]
         self.assertIn('native-platform',record['flags']);self.assertIn('arm-platform',record['flags'])

@@ -15,6 +15,9 @@ def audit(workflows):
             match=re.fullmatch(r'([\w.-]+/[\w.-]+/\.github/workflows/[^\s@]+)@([0-9a-f]{40})',reference)
             if match: pins.append(match.groups())
         flags=[]
+        if any(isinstance(job.get('runs-on'),str) and re.match(r'^\$\{\{\s*fromJSON\s*\(',job['runs-on'],re.I)
+               for job in document.get('jobs',{}).values()):
+            flags.append('structured-runner-expression')
         for name,pattern in [('native-platform',r'windows-(?:latest|\d+)|macos-\d+|macos-latest|xcode-\d+'),
                              ('arm-platform',r'(?:ubuntu|windows)-\S*(?:arm|aarch64)'),
                              ('kvm',r'/dev/kvm|KERNEL=="kvm"'),('host-swap',r'\bswapon\b|\bmkswap\b'),

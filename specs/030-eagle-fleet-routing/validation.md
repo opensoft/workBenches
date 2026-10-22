@@ -168,3 +168,9 @@ same five baseline diagnostics, with zero new diagnostics: one existing SC2155
 warning and four parser errors for the now-supported GitHub `cache-mode` key.
 The cache restrictions and existing scripts were preserved. Current GitHub
 workflow syntax documents this key; the local linter's parser predates it.
+
+The inventory contains one raw `fromJSON` runner selector: the protected QA
+label array. The transformer now preserves such structured expressions and
+the audit flags them for owning-provider review instead of treating arrays as
+scalar map keys. Known generated scalar mappings still upgrade idempotently.
+All 38 fleet tests pass, including structured-selector preservation/audit cases.

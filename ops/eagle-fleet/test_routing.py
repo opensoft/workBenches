@@ -2,6 +2,10 @@ import unittest
 from routing import route
 
 class RoutingTests(unittest.TestCase):
+    def test_dynamic_label_array_is_left_for_owning_provider_review(self):
+        source='jobs:\n  qa:\n    runs-on: ${{ fromJSON(inputs.labels) }}\n'
+        self.assertEqual(route(source),(source,0))
+
     def test_quoted_expressions_keep_yaml_sensitive_text(self):
         import json,yaml
         for expression in ["inputs.runner || 'ubuntu # backup'", "format('{0}: {1}', inputs.os, inputs.variant)"]:

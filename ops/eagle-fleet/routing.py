@@ -45,10 +45,16 @@ def route(source):
                     elif original.startswith('${{') and original.endswith('}}'):
                         expression=original[3:-2].strip()
                         generated=re.fullmatch(r"fromJSON\('(?P<mapping>[^']+)'\)\[\((?P<expression>.*)\)\] \|\| \((?P=expression)\)",expression)
+                        # A raw fromJSON selector may return a label array. It
+                        # needs an owning-provider/input update, not scalar indexing.
+                        if re.match(r'^fromJSON\s*\(',expression,re.I) and not generated:
+                            continue
                         if generated:
                             previous=json.loads(generated['mapping'])
                             if all(LABELS.get(k)==v for k,v in previous.items()):
                                 expression=generated['expression']
+                            else:
+                                continue
                         mapping=json.dumps(LABELS,separators=(',',':'))
                         replacement="${{ fromJSON('"+mapping+"')[("+expression+")] || ("+expression+") }}"
                     else:
