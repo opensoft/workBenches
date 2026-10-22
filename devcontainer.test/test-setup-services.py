@@ -28,6 +28,9 @@ class ServiceTests(unittest.TestCase):
 init_components --loading
 for key in "${!component_description[@]}"; do component_status[$key]=installed; done
 component_status[docker]=up; component_status[setup_tools]=up
+for key in "${requirement_items[@]}"; do
+    [[ "$key" != wsl ]] || component_status[$key]=up
+done
 setup_os_label=Linux
 refresh_component_statuses() { :; }
 activate_requirement() { echo UNEXPECTED_VAULT_ACTION; exit 99; }
