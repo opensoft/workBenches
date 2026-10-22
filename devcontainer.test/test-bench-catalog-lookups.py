@@ -87,14 +87,14 @@ class CatalogLookups(unittest.TestCase):
                     continue
                 start = line.index('jq -r ')
                 command = line[start:]
-                command = re.split(r'\s+"\$(?:config_file|CONFIG_FILE)"', command)[0]
+                command = re.split(r'\s+"\$(?:config_file|CONFIG_FILE|catalog_file)"', command)[0]
                 field = re.search(r'\.(path|url|description)\b', command)
                 if not field:
                     continue
                 sites.append(command)
                 expected = {'path': self.path, 'url': self.url, 'description': self.description}[field[1]]
                 with self.subTest(file=filename, command=command):
-                    output = self.shell('bench_name=365Bench; bench=365Bench; infra_name=365Bench\n' +
+                    output = self.shell('bench_name=365Bench; bench=365Bench; infra_name=365Bench; catalog_name=365Bench\n' +
                                         command + ' "$FIXTURE/config/bench-config.json"')
                     self.assertEqual(output, expected)
             self.assertTrue(sites, filename)
@@ -124,6 +124,36 @@ class CatalogLookups(unittest.TestCase):
                                'if ' + function + ' 365Bench; then exit 91; fi')
                 finally:
                     (self.root / self.path).mkdir()
+
+    def test_unresolved_paths_fail_closed_before_any_apply(self):
+        shutil.copytree(ROOT / 'scripts', self.root / 'scripts', dirs_exist_ok=True)
+        shutil.copy2(ROOT / 'bootstrap.sh', self.root / 'bootstrap.sh')
+        for path in ('', '/tmp/outside', 'elsewhere/365Bench', 'sysBenches/../365Bench'):
+            self.catalog['benches']['365Bench']['path'] = path
+            (self.root / 'config/bench-config.json').write_text(json.dumps(self.catalog))
+            for action in ('install', 'update', 'uninstall'):
+                with self.subTest(path=path, action=action):
+                    output = self.shell(r'''source "$FIXTURE/scripts/interactive-setup.sh"
+clear() { :; }; log() { :; }
+refresh_component_statuses() { :; }; show_pending_authentication() { :; }
+git() { printf 'git %s\n' "$PWD" >> "$FIXTURE/calls"; return 90; }
+docker() { printf 'docker %s\n' "$PWD" >> "$FIXTURE/calls"; return 90; }
+bash() { printf 'bash %s\n' "$PWD" >> "$FIXTURE/calls"; return 90; }
+python3() { printf 'python3 %s\n' "$PWD" >> "$FIXTURE/calls"; return 90; }
+uninstall_component() { printf 'uninstall %s\n' "$PWD" >> "$FIXTURE/calls"; return 90; }
+bench_items=(365Bench); ai_items=(); tool_items=()
+component_checked[bench_365Bench]=true
+component_action[bench_365Bench]=''' + action + r'''
+component_status[bench_365Bench]='needs setup'
+component_description[bench_365Bench]=365Bench
+if process_selections; then echo UNEXPECTED_SUCCESS; exit 92; fi
+''')
+                    self.assertIn('cannot resolve 365Bench in the bench catalog', output)
+                    self.assertIn('Failed: 1', output)
+                    self.assertFalse((self.root / 'calls').exists())
+            output = self.shell('source "$FIXTURE/scripts/interactive-setup.sh"\n'
+                                'bench_runtime_status[365Bench]=installed\ncheck_component_status bench_365Bench')
+            self.assertEqual(output, 'needs check')
 
     def test_python_selection_reader(self):
         m = module('setup_selection'); m.REPO = self.root

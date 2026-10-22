@@ -589,6 +589,20 @@ component_binary_present() {
     [[ "$(python3 "$SCRIPT_DIR/setup-components.py" tool-status "$1")" == installed ]]
 }
 
+# Resolve only catalogued paths beneath supported bench roots.
+bench_checkout_path() {
+    local catalog_name="$1" catalog_output="$2" catalog_path
+    local catalog_file="$SCRIPT_DIR/../config/bench-config.json"
+    printf -v "$catalog_output" '%s' ''
+    catalog_path=$(jq -r --arg n "$catalog_name" '.benches[$n].path // empty' "$catalog_file" 2>/dev/null) || return 1
+    case "$catalog_path" in
+        devBenches/?*|sysBenches/?*|bioBenches/?*) ;;
+        *) return 1 ;;
+    esac
+    [[ "/$catalog_path/" != */../* ]] || return 1
+    printf -v "$catalog_output" '%s' "$catalog_path"
+}
+
 # Check current installation status
 check_component_status() {
     local component="$1"
@@ -762,13 +776,12 @@ check_component_status() {
             local config_file="$script_dir/../config/bench-config.json"
 
             # Get the path and URL from config
-            local bench_path=$(jq -r --arg n "$bench_name" '.benches[$n].path // empty' "$config_file" 2>/dev/null)
-            local bench_url=$(jq -r --arg n "$bench_name" '.benches[$n].url // empty' "$config_file" 2>/dev/null)
-
-            if [ -z "$bench_path" ] || [ "$bench_path" = "null" ]; then
-                # Fallback: check root directory
-                bench_path="$bench_name"
+            local bench_path
+            if ! bench_checkout_path "$bench_name" bench_path; then
+                echo "needs check"
+                return
             fi
+            local bench_url=$(jq -r --arg n "$bench_name" '.benches[$n].url // empty' "$config_file" 2>/dev/null)
 
             local full_path="$script_dir/../$bench_path"
 
@@ -1825,6 +1838,13 @@ process_selections() {
             active_component="$key"
             local action="${component_action[$key]}"
             local status="${component_status[$key]}"
+            local bench_path
+            if ! bench_checkout_path "$bench" bench_path; then
+                any_selected=true
+                echo "Needs attention: cannot resolve $bench in the bench catalog"
+                failed_components[$active_component]=true; ((fail_count++))
+                continue
+            fi
             if [[ "$status" == 'needs check' || "$status" == 'needs docker' ]]; then
                 any_selected=true
                 echo "Needs attention: cannot verify $bench runtime/checkout; refresh after restoring Docker or the expected checkout."
@@ -1834,7 +1854,6 @@ process_selections() {
 
             # Installed benches with no pending action: check Layer 2/3 images, skip if current
             if [[ "$status" == "installed" && -z "$action" ]]; then
-                local bench_path=$(jq -r --arg n "$bench" '.benches[$n].path // empty' "$config_file" 2>/dev/null)
                 local full_bench_path="$script_dir/../$bench_path"
                 local image_repo
                 image_repo=$(bench_dir_to_image_repo "$bench")
@@ -1884,7 +1903,6 @@ process_selections() {
             if [[ "$action" == "uninstall" ]]; then
                 log "Uninstalling bench: $bench"
                 echo -e "${BOLD}${CYAN}▶ Uninstalling: $bench${NC}"
-                local bench_path=$(jq -r --arg n "$bench" '.benches[$n].path // empty' "$config_file" 2>/dev/null)
                 if uninstall_component "$key"; then
                     ((success_count++))
                 else
@@ -1899,7 +1917,6 @@ process_selections() {
                     # Bench is installed but not set up
                     log "Setting up bench: $bench"
                     echo -e "${BOLD}${CYAN}▶ Setting up: $bench${NC}"
-                    local bench_path=$(jq -r --arg n "$bench" '.benches[$n].path // empty' "$config_file" 2>/dev/null)
                     local full_bench_path="$script_dir/../$bench_path"
                     local setup_script="$full_bench_path/setup.sh"
 
@@ -2005,7 +2022,6 @@ process_selections() {
                     # Get bench info from config
                     if [ -f "$config_file" ]; then
                         local bench_url=$(jq -r --arg n "$bench" '.benches[$n].url // empty' "$config_file")
-                        local bench_path=$(jq -r --arg n "$bench" '.benches[$n].path // empty' "$config_file")
                         local full_bench_path="$script_dir/../$bench_path"
 
                         if [ -n "$bench_url" ] && [ "$bench_url" != "null" ]; then
