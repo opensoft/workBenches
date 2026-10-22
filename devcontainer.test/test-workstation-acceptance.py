@@ -235,9 +235,14 @@ def snapshot():
 STRIP_READY = r'REQUIREMENTS · (\d+)/\1 ready[\s\S]*Navigation:'
 READY = r'✓ Workstation[^\n]*\n[\s\S]*Navigation:'
 REVIEW = r'Nothing has changed yet\. Enter applies these changes\.[\s\S]*Navigation:'
-TUI = STRIP_READY
-CODEX = (TUI, '\x1b[C\x1b[B\x1b[B \n')
+CODEX = (STRIP_READY, '\x1b[C\x1b[C\x1b[B\x1b[B \n')
 PROFILES = r'IDENTITIES[\s\S]*AI accounts[\s\S]*G Back[^\n]*Q Quit'
+
+
+def bench_navigation(root, name):
+    catalog = json.loads((root / 'config/bench-config.json').read_text())['benches']
+    names = sorted(n for n, item in catalog.items() if item['category'] == catalog[name]['category'])
+    return '\x1b[C\t' + '\x1b[B' * names.index(name)
 
 
 def account_setup_replies(authentication, *, cancel=False):
@@ -282,11 +287,11 @@ def main():
         'frozenSourceMode': ENV.get('WORKBENCHES_FROZEN') == '1',
         'credentials': 'generated test account and invalid AI key', 'hostSocketMounted': False,
         'tls': 'verified private test CA; appended only to disposable credential Dockerfile'}, indent=2) + '\n')
-    terminal('quit', [(TUI, 'Q')], 130)
-    terminal('empty', [(TUI, '\n')])
+    terminal('quit', [(STRIP_READY, 'Q')], 130)
+    terminal('empty', [(STRIP_READY, '\x1b[C\n'), (REVIEW, '\n')])
     (HOME / '.zshrc').write_text('# custom shell settings\n')
     (HOME / '.p10k.zsh').write_text('# custom prompt settings\n')
-    output = terminal('default-cli-install', [CODEX])
+    output = terminal('default-cli-install', [CODEX, (REVIEW, '\n')])
     assert 'Authentication pending' in output and 'Apply these changes?' not in output
     assert 'Authentication route' not in output and 'Profile ownership' not in output
     assert 'Using ' + str(HOME / '.local') in output, 'global npm permission fallback missing'
@@ -308,17 +313,16 @@ def main():
     run([str(HOME / '.local/bin/codex'), '--version'])
     ENV['PATH'] = str(HOME / '.local/bin') + ':' + ENV['PATH']
     before = snapshot()
-    terminal('repeat-unchanged', [(TUI, '\n')])
+    terminal('repeat-unchanged', [(STRIP_READY, '\x1b[C\n'), (REVIEW, '\n')])
     assert snapshot() == before, 'unchanged selection modified installed configuration'
-    output = terminal('repeat-update', [CODEX])
+    output = terminal('repeat-update', [CODEX, (REVIEW, '\n')])
     assert 'Reusing configured AI profiles' in output and 'Authentication route [1]' not in output
     assert credential.read_bytes() == dict((row[0], row[1]) for row in before)[str(credential)]
     fault_env = dict(ENV, NPM_CONFIG_REGISTRY='http://127.0.0.1:9', NPM_CONFIG_FETCH_RETRIES='0')
-    output = terminal('failed-npm-update', [CODEX], 1, env=fault_env)
+    output = terminal('failed-npm-update', [CODEX, (REVIEW, '\n')], 1, env=fault_env)
     assert 'update failed' in output and 'Codex CLI updated' not in output
-    benches = sorted(json.loads((REPO / 'config/bench-config.json').read_text())['benches'])
-    selection = (TUI, '\x1b[B' * benches.index('pyBench') + ' \n')
-    output = terminal('bench-install', [selection], timeout=3600)
+    selection = (STRIP_READY, bench_navigation(REPO, 'pyBench') + ' \n')
+    output = terminal('bench-install', [selection, (REVIEW, '\n')], timeout=3600)
     if require_public:
         logs = '\n'.join(path.read_text() for path in (REPO / 'logs').glob('*.log'))
         for layer in ('base', 'dev'):
@@ -334,14 +338,14 @@ def main():
     run(['docker', 'exec', '--user', 'node', 'py-bench', 'python3', '--version'])
     run(['docker', 'exec', '--user', 'node', 'py-bench', 'codex', '--version'])
     before = snapshot()
-    terminal('repeat-installed-bench', [(TUI, '\n')])
+    terminal('repeat-installed-bench', [(STRIP_READY, '\x1b[C\n'), (REVIEW, '\n')])
     assert snapshot() == before
     checkout = REPO / 'devBenches/pyBench'
     local_note = checkout / 'acceptance-local-work.txt'
     local_note.write_text('preserve this local work')
     container_id = subprocess.check_output(['docker', 'inspect', '--format', '{{.Id}}', 'py-bench'], text=True)
-    removal = (TUI, '\x1b[B' * benches.index('pyBench') + 'D\n')
-    output = terminal('bench-uninstall-preserves-local-work', [removal])
+    removal = (STRIP_READY, bench_navigation(REPO, 'pyBench') + 'D\n')
+    output = terminal('bench-uninstall-preserves-local-work', [removal, (REVIEW, '\n')])
     assert 'pyBench uninstalled' in output and local_note.read_text() == 'preserve this local work'
     assert subprocess.run(['docker', 'inspect', 'py-bench'], capture_output=True).returncode != 0
     assert subprocess.run(['docker', 'image', 'inspect', 'py-bench:latest'], capture_output=True).returncode != 0

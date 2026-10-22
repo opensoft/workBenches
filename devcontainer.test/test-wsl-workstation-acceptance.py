@@ -134,8 +134,8 @@ def main():
 
     # Wait for the selected row's inventory as well as required services. A
     # ready Docker/Tools header alone does not mean the CLI/bench row is loaded.
-    codex = [(tui.TUI, '\x1b[C\x1b[B\x1b[B'), (r'Codex CLI · (?:not installed|needs creds|Ready)', ' \n')]
-    remove_codex = [(tui.TUI, '\x1b[C\x1b[B\x1b[B'), (r'Codex CLI · (?:needs creds|Ready)', 'D\n')]
+    codex = [(tui.STRIP_READY, '\x1b[C\x1b[C\x1b[B\x1b[B'), (r'Codex CLI · (?:not installed|needs creds|Ready)', ' \n'), (tui.REVIEW, '\n')]
+    remove_codex = [(tui.STRIP_READY, '\x1b[C\x1b[C\x1b[B\x1b[B'), (r'Codex CLI · (?:needs creds|Ready)', 'D\n'), (tui.REVIEW, '\n')]
     project = home / 'projects/wsl-acceptance-project.txt'
     credential = home / '.codex/auth.json'
     baseline = None
@@ -158,8 +158,8 @@ def main():
         note = checkout / 'wsl-acceptance-local-work.txt'
         fixture(note, 'preserve local source work\n')
         benches = sorted(json.loads((repo / 'config/bench-config.json').read_text())['benches'])
-        replies = [(tui.TUI, '\x1b[B' * benches.index('pyBench')),
-                   (r'pyBench · (?:needs setup|Ready|image only)', ' \n')]
+        replies = [(tui.STRIP_READY, tui.bench_navigation(repo, 'pyBench')),
+                   (r'pyBench · (?:needs setup|Ready|image only)', ' \n'), (tui.REVIEW, '\n')]
         output = terminal('frozen-local-work-guard', replies, 1)
         assert 'has local changes; save them before using a frozen release' in output
         assert note.read_text() == 'preserve local source work\n'
@@ -184,7 +184,7 @@ def main():
         if args.phase in ('all', 'desktop'):
             check('tools', lambda: run(['bash', 'scripts/manage-setup-services.sh', 'start', 'tools'], timeout=600, log='tools-start.log'))
             check('loading-cancellation', lambda: terminal('loading-cancellation', [(r'workBenches v1\.5\.0', 'Q')], 130))
-            check('empty', lambda: terminal('empty', [(tui.TUI, '\n')]))
+            check('empty', lambda: terminal('empty', [(tui.STRIP_READY, '\x1b[C\n'), (tui.REVIEW, '\n')]))
             if not args.resume:
                 fixture(home / '.zshrc', '# WSL acceptance custom settings\n')
                 fixture(home / '.p10k.zsh', '# WSL acceptance custom prompt\n')
@@ -246,8 +246,8 @@ def main():
             for variable in ('WORKBENCHES_TOOLS_CONTAINER', 'WORKBENCHES_SERVICES_NETWORK'):
                 env[variable] += '-bench'
             benches = sorted(json.loads((repo / 'config/bench-config.json').read_text())['benches'])
-            navigation = '\x1b[B' * benches.index('pyBench')
-            bench = [(tui.TUI, navigation), (r'pyBench · (?:needs setup|Ready|image only)', ' \n')]
+            navigation = tui.bench_navigation(repo, 'pyBench')
+            bench = [(tui.STRIP_READY, navigation), (r'pyBench · (?:needs setup|Ready|image only)', ' \n'), (tui.REVIEW, '\n')]
             unrelated = None
             def install_bench():
                 nonlocal unrelated
@@ -280,7 +280,7 @@ def main():
             note = checkout / 'wsl-acceptance-local-work.txt'
             fixture(note, 'preserve local source work\n')
             def remove_bench():
-                terminal('bench-remove', [(tui.TUI, navigation), (r'pyBench · Ready', 'D\n')])
+                terminal('bench-remove', [(tui.STRIP_READY, navigation), (r'pyBench · Ready', 'D\n'), (tui.REVIEW, '\n')])
                 assert subprocess.run(['docker', 'inspect', 'py-bench'], env=env, capture_output=True).returncode != 0
                 for image in ('py-bench:latest', 'py-bench:' + env['USER']):
                     assert subprocess.run(['docker', 'image', 'inspect', image], env=env, capture_output=True).returncode != 0, 'Removed bench image remains: ' + image
