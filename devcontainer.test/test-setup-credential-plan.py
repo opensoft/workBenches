@@ -23,6 +23,11 @@ SPEC.loader.exec_module(MODULE)
 
 
 class CredentialPlanTests(unittest.TestCase):
+    def test_new_locked_benches_are_tui_options(self):
+        for name in ('goBench', 'rustBench', '365Bench'):
+            self.assertEqual(CATALOG['options'][name]['source'], 'tui', name)
+            self.assertFalse(CATALOG['options'][name]['notes'], name)
+
     def test_covers_live_bench_tui_submodule_and_base_image_options(self):
         options = CATALOG["options"]
         aliases = {alias for option in options.values() for alias in option["aliases"]}

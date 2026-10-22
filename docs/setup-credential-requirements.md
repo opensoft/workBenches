@@ -57,9 +57,8 @@ alternatives are not a shopping list of tokens to collect.
 | `amnezia_vpn` | Client installation needs no VPN secret. Connecting needs an authorized imported client configuration/access key. Self-hosting a new server additionally needs server SSH access. |
 | `0dcloud_vpn` | Client installation is separate from access. Connecting needs the user's provider account/subscription configuration or URL; treat subscription URLs as secrets. |
 
-The nine selectable benches come from `config/bench-config.json`. Three more
-benches are Git submodules but are absent from that catalog: `goBench`,
-`rustBench`, and `365Bench`. Go/Rust need no language-tool credentials; private
+The twelve selectable TUI benches come from `config/bench-config.json`, including
+`goBench`, `rustBench`, and `365Bench`. Go/Rust need no language-tool credentials; private
 packages, publishing, signing and Sonar remain conditional. Microsoft 365 needs
 tenant identity and the specific Graph/M365/Power Platform/Business Central
 delegated permissions or application identity for the workload. Admin consent
