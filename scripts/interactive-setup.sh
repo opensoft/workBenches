@@ -1406,7 +1406,81 @@ setup_frame_notice() {
     printf -v notice_line '%b%s%b' "$YELLOW" "${requirements_notice:0:setup_ui_width}" "$NC"
     setup_frame_append "$notice_line"
 }
-setup_frame_footer() { :; }
+declare -a setup_footer_lines=()
+setup_footer_height=4
+
+setup_frame_footer_prepare() {
+    local footer_key='' footer_name='' footer_state footer_context footer_total footer_count=0 footer_item footer_action footer_line footer_left_width footer_category_count footer_installed footer_queued footer_hint footer_width
+    local -a footer_hints=()
+    for footer_item in "${!component_checked[@]}"; do
+        if [[ "${component_checked[$footer_item]}" == true && -n "${component_action[$footer_item]}" ]]; then ((footer_count++)); fi
+    done
+    case "$CURRENT_SECTION" in
+        0) footer_key="bench_${bench_items[$current_selection]}" ;;
+        1) footer_key="${ai_items[$current_selection]}" ;;
+        2) footer_key="${tool_items[$current_selection]}" ;;
+        3) footer_key="${requirement_items[$current_selection]}" ;;
+        4) footer_key="${profile_items[$current_selection]}" ;;
+    esac
+    if [[ -n "$footer_key" ]]; then footer_name="${component_description[$footer_key]}"; fi
+    footer_context=$footer_name
+    if [[ "$CURRENT_SECTION" == 5 ]]; then footer_context='Review · Nothing applied yet'
+    elif [[ "$CURRENT_SECTION" == 0 && "$setup_benches_state" != ready ]]; then footer_context='Loading benches…'
+    elif [[ "$CURRENT_SECTION" == 0 && "$setup_bench_zone" == category && -n "$setup_bench_category" ]]; then
+        footer_context="${bench_category_label[$setup_bench_category]}"
+        footer_category_count=${setup_bench_totals[$setup_bench_category]:-0}
+        footer_installed=${setup_bench_installed[$setup_bench_category]:-0}; footer_queued=${setup_bench_queued[$setup_bench_category]:-0}
+        footer_context+=" · $footer_category_count bench"; ((footer_category_count == 1)) || footer_context+='es'
+        ((footer_installed == 0)) || footer_context+=" · $footer_installed installed"
+        ((footer_queued == 0)) || footer_context+=" · $footer_queued queued"
+    elif [[ "$CURRENT_SECTION" != 4 && -n "$footer_key" ]]; then
+        setup_status_label_v footer_state "${component_status[$footer_key]}"
+        footer_context+=" · $footer_state"
+        [[ -z "${component_action[$footer_key]}" ]] || footer_context+=" → ${component_action[$footer_key]}"
+    fi
+    if [[ -n "$footer_key" && "${component_action[$footer_key]}" == uninstall ]]; then footer_context="$footer_name · Remove; projects and credentials kept"; fi
+    if [[ "$footer_key" == host_shell ]]; then footer_context='Shell setup · Replaces shell settings'; fi
+    if [[ "$footer_key" == workspace_repo ]]; then footer_context='Org workspace · May create a GitHub repository'; fi
+    footer_total="Changes selected: $footer_count"; ((setup_ui_width >= 60)) || footer_total="Changes: $footer_count"
+    footer_left_width=$((setup_ui_width - ${#footer_total} - 1))
+    setup_ui_cut_v footer_context "$footer_context" "$footer_left_width"
+    setup_footer_lines=()
+    setup_ui_rule_v footer_line "$setup_ui_width"; setup_footer_lines+=("$footer_line")
+    setup_ui_pair_v footer_line "$footer_context" "$footer_total" "$setup_ui_width"; setup_footer_lines+=("$footer_line")
+    footer_action=Check
+    if [[ "$CURRENT_SECTION" == 3 && -n "$footer_key" ]]; then workbenches_requirement_action_v footer_action "$footer_key" "${component_status[$footer_key]}" "${component_status[workbenches_account]}"; fi
+    if ((setup_ui_width < 60)); then
+        case "$CURRENT_SECTION" in
+            3) footer_hints=("Navigation: ↑↓ Move  Enter $footer_action" '←→ Steps  Q Quit') ;;
+            4) footer_hints=('Navigation: Enter Open' '←→ Steps  G Back  Q Quit') ;;
+            5) footer_hints=('Navigation: ↑↓ Scroll' '←→ Steps  Enter Apply  Q Quit') ;;
+            0)
+                if [[ "$setup_bench_zone" == category ]]; then footer_hints=('Navigation: Tab Benches' '←→ Steps  Enter Review  Q Quit')
+                else footer_hints=('Navigation: Space Select  D Remove' '←→ Steps  Enter Review  Q Quit'); fi ;;
+            *) footer_hints=('Navigation: Space Select  D Remove' '←→ Steps  Enter Review  Q Quit') ;;
+        esac
+    else
+        case "$CURRENT_SECTION" in
+            3) footer_hints=("Navigation: ↑↓ Move  Enter $footer_action  V Vault" '←→ Steps  P Back  R Refresh  Q Quit') ;;
+            4) footer_hints=('Navigation: ↑↓ Move  Enter Open  PgUp/PgDn About' '←→ Steps  G Back  P Workstation  R Refresh  Q Quit') ;;
+            5) footer_hints=('Navigation: ↑↓ Scroll  ← Back  Enter Apply' 'P Workstation  R Refresh  Q Quit') ;;
+            0)
+                footer_action=Category; [[ "$setup_bench_zone" != category ]] || footer_action=Benches
+                footer_hints=("Navigation: ↑↓ Move  Tab $footer_action  Space Select  D Remove  PgUp/PgDn About" '←→ Steps  P Workstation  R Refresh  Enter Review  Q Quit') ;;
+            *) footer_hints=('Navigation: ↑↓ Move  Space Select  D Remove' '←→ Steps  P Workstation  R Refresh  Enter Review  Q Quit') ;;
+        esac
+    fi
+    for footer_hint in "${footer_hints[@]}"; do
+        setup_ui_wrap "$footer_hint" "$setup_ui_width"
+        setup_footer_lines+=("${setup_wrapped_lines[@]}")
+    done
+    setup_footer_height=${#setup_footer_lines[@]}
+}
+
+setup_frame_footer() {
+    local footer_output_line
+    for footer_output_line in "${setup_footer_lines[@]}"; do setup_frame_append "$footer_output_line"; done
+}
 
 # Temporary 1.7 body capture, removed when the wizard bodies are complete.
 setup_review_rows=()
@@ -1505,7 +1579,7 @@ setup_frame_profiles() {
     done
     setup_panel_bottom_v profile_line; setup_frame_append "$profile_line"
     if [[ -n "$setup_ui_height" ]]; then
-        profile_window=$((setup_ui_height - ${#setup_frame_lines[@]} - 6))
+        profile_window=$((setup_ui_height - ${#setup_frame_lines[@]} - setup_footer_height - 2))
         ((profile_window <= 8)) || profile_window=8
         ((profile_window >= 2)) || profile_window=2
     fi
@@ -1537,7 +1611,7 @@ setup_frame_components() {
     setup_panel_top_v component_line "${setup_step_names[${setup_section_step[$CURRENT_SECTION]}]}" ''
     setup_frame_append "$component_line"
     if [[ -n "$setup_ui_height" ]]; then
-        component_budget=$((setup_ui_height - ${#setup_frame_lines[@]} - 5))
+        component_budget=$((setup_ui_height - ${#setup_frame_lines[@]} - setup_footer_height - 1))
         ((component_budget > 2)) || component_budget=3
     fi
     setup_ui_list_window "${#component_items[@]}" "$current_selection" "$component_budget" setup_list_offset
@@ -1656,7 +1730,7 @@ setup_frame_review() {
     fi
     review_budget=0
     if [[ -n "$setup_ui_height" ]]; then
-        review_budget=$((setup_ui_height - ${#setup_frame_lines[@]} - 5))
+        review_budget=$((setup_ui_height - ${#setup_frame_lines[@]} - setup_footer_height - 1))
         ((review_budget > 2)) || review_budget=3
     fi
     review_offset_local=$setup_review_offset
@@ -1708,6 +1782,7 @@ setup_frame_legacy_bridge() {
             setup_frame_notice; bridge_notice_shown=true
         fi
     done
+    if [[ "${1:-}" == body ]]; then return; fi
     if [[ "$CURRENT_SECTION" == 5 ]]; then bridge_frame='Navigation: ←→ Steps  Enter Apply  Q Quit'
     else bridge_frame="$(draw_setup_footer)"; fi
     mapfile -t bridge_lines <<< "$bridge_frame"
@@ -1724,16 +1799,12 @@ setup_frame_build() {
     setup_frame_head
     setup_frame_selector
     setup_frame_notice
-    if [[ "$CURRENT_SECTION" == 3 ]]; then
-        setup_frame_workstation
-        setup_frame_workstation_footer
-    elif [[ "$CURRENT_SECTION" == 1 || "$CURRENT_SECTION" == 2 ]]; then
-        setup_frame_components
-        setup_frame_component_footer
-    elif [[ "$CURRENT_SECTION" == 4 ]]; then
-        setup_frame_profiles
-        setup_frame_profiles_footer
-    else setup_frame_legacy_bridge; fi
+    setup_frame_footer_prepare
+    if [[ "$CURRENT_SECTION" == 3 ]]; then setup_frame_workstation
+    elif [[ "$CURRENT_SECTION" == 1 || "$CURRENT_SECTION" == 2 ]]; then setup_frame_components
+    elif [[ "$CURRENT_SECTION" == 4 ]]; then setup_frame_profiles
+    elif [[ "$CURRENT_SECTION" == 5 ]]; then setup_frame_review
+    else setup_frame_legacy_bridge body; fi
     setup_frame_footer
     setup_frame_fit
 }
@@ -1786,53 +1857,11 @@ draw_ui() {
 
 # Keep action hints together and show detail only for the focused component.
 draw_setup_footer() {
-    if [[ "$CURRENT_SECTION" == 4 ]]; then
-        local -a setup_frame_lines=()
-        local setup_frame_region_height=0
-        setup_frame_profiles_footer
-        printf '%s\n' "${setup_frame_lines[@]}"
-        return
-    fi
-    local selected_item='' selected_count=0 item bench context action space_hint='Select'
-    case "$CURRENT_SECTION" in
-        0) selected_item="bench_${bench_items[$current_selection]}" ;;
-        1) selected_item="${ai_items[$current_selection]}" ;;
-        2) selected_item="${tool_items[$current_selection]}" ;;
-        3) selected_item="${requirement_items[$current_selection]}" ;;
-    esac
-    for item in "${!component_checked[@]}"; do
-        [[ "${component_checked[$item]}" != true ]] || selected_count=$((selected_count + 1))
-    done
-    context="${component_description[$selected_item]} · $(setup_status_label "${component_status[$selected_item]}")"
-    action="${component_action[$selected_item]}"
-    if [[ -n "$action" ]]; then
-        case "$action" in
-            uninstall) context="${component_description[$selected_item]} · Remove; projects and credentials kept" ;;
-            *) context+=" → $action" ;;
-        esac
-    fi
-    case "$selected_item" in
-        host_shell) context='Shell setup · Replaces shell settings' ;;
-        workspace_repo) context='Org workspace · May create a GitHub repository' ;;
-    esac
-    printf '\n%b%s%b\n' "$SILVER_EDGE" "$(setup_ui_rule "$setup_ui_width")" "$NC"
-    printf '%b%s%b\n' "$SILVER" "$(setup_ui_pair "$context" "Changes selected: $selected_count" "$setup_ui_width")" "$NC"
-    if [[ "$CURRENT_SECTION" == 3 ]]; then
-        case "$selected_item" in
-            docker|wsl|setup_tools|vault)
-                space_hint="$(workbenches_requirement_action "$selected_item" "${component_status[$selected_item]}" "${component_status[workbenches_account]}")" ;;
-            *) [[ "${component_checked[$selected_item]}" != true ]] || space_hint='Undo' ;;
-        esac
-        printf '%bNavigation:%b ↑↓ Move  Space %s  ← Tools  G Profiles  P Back\n' "$SILVER_MUTED" "$NC" "$space_hint"
-    else
-        printf '%bNavigation:%b ↑↓ Move  ←→ Section  Space Select  D Remove\n' "$SILVER_MUTED" "$NC"
-        printf '%b            P Requirements  G Profiles%b\n' "$SILVER_MUTED" "$NC"
-    fi
-    if [[ "$CURRENT_SECTION" == 3 && "$selected_item" =~ ^(docker|wsl|setup_tools|vault)$ ]]; then
-        printf '%b            Enter %s  R Refresh  Q Quit%b\n' "$SILVER_MUTED" "$space_hint" "$NC"
-    else
-        printf '%b            R Refresh  Enter Apply  Q Quit%b\n' "$SILVER_MUTED" "$NC"
-    fi
+    local -a setup_frame_lines=()
+    local setup_frame_region_height=0
+    setup_frame_footer_prepare
+    setup_frame_footer
+    printf '%s\n' "${setup_frame_lines[@]}"
 }
 
 

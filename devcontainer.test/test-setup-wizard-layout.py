@@ -187,5 +187,21 @@ setup_about_offset=2; setup_update_ui_signature
                 self.assertIn('AI accounts',text)
                 self.assertIn('G Back',text)
 
+    def test_footer_contract_at_each_width_and_step(self):
+        for section in (0,1,2,3,4,5):
+            for width in (36,60,80,87):
+                text=self.shell(f'''init_components --loading
+CURRENT_SECTION={section}; setup_ui_width={width}
+setup_frame_lines=(); setup_frame_footer_prepare; setup_frame_footer
+printf '%s\\n' "${{setup_frame_lines[@]}}"
+''')
+                lines=ANSI.sub('',text).splitlines()
+                self.assert_bounds(lines,width)
+                self.assertTrue(any('Changes:' in line or 'Changes selected:' in line for line in lines))
+                self.assertTrue(any(line.startswith('Navigation:') for line in lines))
+                if width<60:self.assertLessEqual(len(lines),4)
+                if section!=3:self.assertNotIn('V Vault',text)
+                if section==4:self.assertTrue(any('G Back' in line and 'Q Quit' in line for line in lines))
+
 
 if __name__ == '__main__': unittest.main()
