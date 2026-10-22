@@ -360,5 +360,19 @@ handle_input <<< D; printf 'shell=%s\n' "${component_action[host_shell]}"
 ''')
         self.assertEqual(output.splitlines(),['update','uninstall','false:','loading=false','shell='])
 
+    def test_profiles_about_changes_with_focus(self):
+        output=self.shell(r'''
+init_components --loading
+CURRENT_SECTION=4; setup_ui_width=60; setup_ui_height=24
+setup_frame_lines=(); setup_frame_profiles
+printf '%s\n' "${setup_about_lines[*]}"
+current_selection=1; setup_about_offset=2
+setup_frame_lines=(); setup_frame_profiles
+printf '%s offset=%s\n' "${setup_about_lines[*]}" "$setup_about_offset"
+''')
+        self.assertIn('Personal identity, GitHub and company accounts.',output)
+        self.assertIn('Organization sign-in.',output)
+        self.assertIn('offset=0',output)
+
 
 if __name__ == '__main__': unittest.main()

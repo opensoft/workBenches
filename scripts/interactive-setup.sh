@@ -448,24 +448,11 @@ draw_requirements() {
 
 # Cached profile summary only: rendering never reads files or probes accounts.
 draw_profiles() {
-    local line item width=$((setup_ui_width - 4))
-    printf '%bPROFILES%b\n\n' "$SILVER" "$NC"
-    setup_panel_top 'PERSONAL & COMPANY IDENTITIES' 'Now or later'
-    while IFS= read -r line; do
-        while [[ -n "$line" ]]; do
-            printf '%b│%b %-*s %b│%b\n' "$SILVER_EDGE" "$NC" "$width" "${line:0:$width}" "$SILVER_EDGE" "$NC"
-            line="${line:$width}"
-        done
-    done <<< "$profiles_summary"
-    setup_panel_bottom
-    printf '\n'
-    for item in "${!profile_items[@]}"; do
-        line="${component_description[${profile_items[$item]}]}"
-        [[ "$item" != "$current_selection" ]] || line="› $line"
-        printf '  %s\n' "$line"
-    done
-    printf '\nCompany, GitHub, and AI access\nare authorized separately.\n'
-    [[ -z "$requirements_notice" ]] || printf '%s\n' "${requirements_notice:0:$setup_ui_width}"
+    local -a setup_frame_lines=()
+    local setup_frame_region_height=0
+    setup_frame_identities
+    setup_frame_profiles
+    printf '%s\n' "${setup_frame_lines[@]}"
 }
 
 activate_profile() {
@@ -1410,6 +1397,8 @@ setup_frame_head() {
 }
 setup_frame_selector() {
     [[ "$CURRENT_SECTION" != 3 ]] || setup_frame_requirements_strip
+    [[ "$CURRENT_SECTION" != 4 ]] || setup_frame_identities
+    return 0
 }
 setup_frame_notice() {
     local notice_line
@@ -1486,6 +1475,58 @@ setup_frame_component_row() {
         component_right="$component_state$component_right"
     fi
     setup_frame_row "$component_marker $component_box $component_icon ${component_description[$component_key]}" "$component_right" "$component_color"
+}
+
+declare -A profile_about=(
+    [personal_profiles]='Personal identity, GitHub and company accounts. Company, GitHub and AI access are authorized separately.'
+    [workbenches_account]='Organization sign-in. AI and vault access are managed separately.'
+    [ai_accounts]='Sign in, restore assistant profiles, or recover credentials from a vault.'
+)
+
+setup_ui_cut_v() {
+    local cut_text="$2" cut_width=$3
+    if (( ${#cut_text} > cut_width )); then cut_text="${cut_text:0:cut_width-1}…"; fi
+    printf -v "$1" '%s' "$cut_text"
+}
+
+setup_frame_identities() {
+    local identity_line="${profiles_summary//$'\n'/ · }"
+    setup_ui_cut_v identity_line "IDENTITIES · $identity_line" "$setup_ui_width"
+    setup_frame_append "$identity_line"
+}
+
+setup_frame_profiles() {
+    local profile_line profile_index profile_key profile_marker profile_window=8
+    setup_panel_top_v profile_line 'PROFILES' ''; setup_frame_append "$profile_line"
+    for profile_index in "${!profile_items[@]}"; do
+        profile_key="${profile_items[profile_index]}"; profile_marker=' '
+        (( profile_index != current_selection )) || profile_marker=›
+        setup_frame_row "$profile_marker ${component_description[$profile_key]}"
+    done
+    setup_panel_bottom_v profile_line; setup_frame_append "$profile_line"
+    if [[ -n "$setup_ui_height" ]]; then
+        profile_window=$((setup_ui_height - ${#setup_frame_lines[@]} - 6))
+        ((profile_window <= 8)) || profile_window=8
+        ((profile_window >= 2)) || profile_window=2
+    fi
+    profile_key="${profile_items[$current_selection]}"
+    setup_frame_about "profile:$profile_key" "ABOUT ${component_description[$profile_key]}" "${profile_about[$profile_key]}" "$profile_window"
+}
+
+setup_frame_profiles_footer() {
+    local profile_footer profile_count=0 profile_key profile_total
+    for profile_key in "${!component_checked[@]}"; do [[ "${component_checked[$profile_key]}" != true ]] || ((profile_count++)); done
+    profile_key="${profile_items[$current_selection]}"
+    profile_total="Changes selected: $profile_count"; ((setup_ui_width >= 60)) || profile_total="Changes: $profile_count"
+    setup_ui_rule_v profile_footer "$setup_ui_width"; setup_frame_append "$profile_footer"
+    setup_ui_pair_v profile_footer "${component_description[$profile_key]}" "$profile_total" "$setup_ui_width"; setup_frame_append "$profile_footer"
+    if ((setup_ui_width < 60)); then
+        setup_frame_append 'Navigation: Enter Open'
+        setup_frame_append '←→ Steps  G Back  Q Quit'
+    else
+        setup_frame_append 'Navigation: ↑↓ Move  Enter Open  PgUp/PgDn About'
+        setup_frame_append '←→ Steps  G Back  P Workstation  R Refresh  Q Quit'
+    fi
 }
 
 setup_frame_components() {
@@ -1689,6 +1730,9 @@ setup_frame_build() {
     elif [[ "$CURRENT_SECTION" == 1 || "$CURRENT_SECTION" == 2 ]]; then
         setup_frame_components
         setup_frame_component_footer
+    elif [[ "$CURRENT_SECTION" == 4 ]]; then
+        setup_frame_profiles
+        setup_frame_profiles_footer
     else setup_frame_legacy_bridge; fi
     setup_frame_footer
     setup_frame_fit
@@ -1743,8 +1787,10 @@ draw_ui() {
 # Keep action hints together and show detail only for the focused component.
 draw_setup_footer() {
     if [[ "$CURRENT_SECTION" == 4 ]]; then
-        printf '\nNavigation: ↑↓ Move  Enter Open\n'
-        printf '← Requirements  G Back  Q Quit\n'
+        local -a setup_frame_lines=()
+        local setup_frame_region_height=0
+        setup_frame_profiles_footer
+        printf '%s\n' "${setup_frame_lines[@]}"
         return
     fi
     local selected_item='' selected_count=0 item bench context action space_hint='Select'
@@ -1928,8 +1974,8 @@ handle_input() {
     setup_input_key="$key"
     case "$key" in
         $'\t') setup_input_key=tab; return 0 ;;
-        '[') setup_input_key=pageup; return 0 ;;
-        ']') setup_input_key=pagedown; return 0 ;;
+        '[') setup_input_key=pageup; [[ "$CURRENT_SECTION" != 4 ]] || setup_about_scroll -1; return 0 ;;
+        ']') setup_input_key=pagedown; [[ "$CURRENT_SECTION" != 4 ]] || setup_about_scroll 1; return 0 ;;
     esac
     # Consume every byte of supported escape sequences before dispatch.
     if [[ $key == $'\x1b' ]]; then
@@ -1943,6 +1989,10 @@ handle_input() {
                 if [[ "$suffix" == '~' ]]; then
                     setup_input_key=pageup
                     [[ "$key" != '[6' ]] || setup_input_key=pagedown
+                fi
+                if [[ "$CURRENT_SECTION" == 4 ]]; then
+                    [[ "$setup_input_key" != pageup ]] || setup_about_scroll -1
+                    [[ "$setup_input_key" != pagedown ]] || setup_about_scroll 1
                 fi
                 return 0 ;;
             '[A') setup_input_key=up ;;

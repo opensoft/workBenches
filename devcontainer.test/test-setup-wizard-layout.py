@@ -176,5 +176,16 @@ setup_about_offset=2; setup_update_ui_signature
                         self.assertNotIn('AI ASSISTANTS',text)
                         self.assertNotIn('REQUIREMENTS ·',text)
 
+    def test_profiles_render_matrix(self):
+        for columns in (36,60,88):
+            for rows in (24,40,0):
+                lines=self.frame(4,columns,rows)
+                self.assert_bounds(lines,max(columns,36),rows or None)
+                text='\n'.join(lines)
+                self.assertIn('IDENTITIES',text)
+                self.assertIn('Personal & companies',text)
+                self.assertIn('AI accounts',text)
+                self.assertIn('G Back',text)
+
 
 if __name__ == '__main__': unittest.main()
