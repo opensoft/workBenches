@@ -98,5 +98,47 @@ printf '%s:%s:%s\n' "$setup_ui_width" "$setup_ui_height" "${#SILVER}"
 ''')
         self.assertTrue(output.startswith('87::'))
 
+    def test_list_window_is_edge_triggered(self):
+        output = self.shell(r'''
+offset=0
+setup_ui_list_window 12 0 5 offset
+printf '%s:%s\n' "$offset" "$setup_window_count"
+setup_ui_list_window 12 1 5 offset
+printf '%s\n' "$offset"
+setup_ui_list_window 12 7 5 offset
+printf '%s:%s:%s\n' "$offset" "$setup_window_above" "$setup_window_below"
+setup_ui_height=''; setup_ui_list_window 12 7 0 offset
+printf '%s:%s:%s\n' "$setup_window_start" "$setup_window_count" "$setup_window_below"
+''')
+        self.assertEqual(output.splitlines()[:2], ['0:4', '0'])
+        start, above, below = map(int, output.splitlines()[2].split(':'))
+        self.assertGreater(start, 0); self.assertGreater(above, 0); self.assertGreater(below, 0)
+        self.assertEqual(output.splitlines()[3], '0:12:0')
+
+    def test_about_wrap_scroll_reset_and_top_clipping(self):
+        output = self.shell(r'''
+setup_ui_width=36; setup_ui_height=24; setup_frame_lines=()
+setup_frame_about bench:one ABOUT 'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty' 2
+printf 'lines=%s offset=%s\n' "${#setup_about_lines[@]}" "$setup_about_offset"
+setup_about_scroll 1
+setup_frame_lines=(); setup_frame_about bench:one ABOUT 'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty' 2
+printf 'scrolled=%s\n' "$setup_about_offset"
+printf '%s\n' "${setup_frame_lines[@]}"
+setup_frame_about bench:two ABOUT 'short text' 2
+printf 'reset=%s\n' "$setup_about_offset"
+setup_frame_lines=(one two three four five); setup_ui_height=3; setup_frame_fit
+printf 'fit=%s\n' "${setup_frame_lines[*]}"
+''')
+        self.assertIn('scrolled=1', output)
+        self.assertIn('▲ more', output)
+        self.assertIn('PgUp/PgDn scroll', output)
+        self.assertIn('reset=0', output)
+        self.assertIn('fit=three four five', output)
+
+    def test_banner_collapses_below_forty_rows(self):
+        for rows, full in ((24, False), (39, False), (40, True)):
+            text = '\n'.join(self.frame(3, 88, rows))
+            self.assertEqual('█▀▀█' in text, full)
+
 
 if __name__ == '__main__': unittest.main()

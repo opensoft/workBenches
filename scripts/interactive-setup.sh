@@ -102,8 +102,11 @@ declare -a setup_ui_previous_lines=()
 
 setup_ui_rule_v() {
     local ui_rule
-    printf -v ui_rule '%*s' "$2" ''
-    printf -v "$1" '%s' "${ui_rule// /─}"
+    if [[ -z "${setup_rule_cache[$2]}" ]]; then
+        printf -v ui_rule '%*s' "$2" ''
+        setup_rule_cache[$2]="${ui_rule// /─}"
+    fi
+    printf -v "$1" '%s' "${setup_rule_cache[$2]}"
 }
 
 setup_ui_rule() {
@@ -126,38 +129,45 @@ setup_ui_pair() {
     printf '%s' "$result"
 }
 
-draw_setup_banner() {
-    # Original OpenSoft wordmark, with inset half-block shading inspired by
-    # https://github.com/anomalyco/opencode/blob/dev/packages/tui/src/component/logo.tsx
-    local -a logo=(
+setup_ui_banner() {
+    local banner_key="$setup_ui_width:$setup_ui_layout:$setup_ui_height" banner_line banner_index banner_char banner_position banner_tone banner_result
+    [[ "$setup_banner_cache_key" != "$banner_key" ]] || return 0
+    setup_banner_cache_key="$banner_key"
+    setup_banner_lines=()
+    if (( setup_ui_width < 42 )) || [[ "$setup_ui_layout" == tight ]] || { [[ -n "$setup_ui_height" ]] && ((setup_ui_height < 40)); }; then
+        printf -v banner_result '  %bOpensoft%b' "$SILVER" "$NC"
+        setup_banner_lines=("$banner_result")
+        return
+    fi
+    local -a banner_logo=(
         '                                    ▄ '
         '█▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀▀ ▀█▀▀'
         '█__█ █__█ █^^^ █__█ ▀▀▀█ █__█ █^^   █__'
         '▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀~~▀ ▀▀▀▀ ▀▀▀▀ ▀     ▀▀▀'
     )
-    local -a tones=(255 252 250 246)
-    local line char tone index position
-    printf '\n'
-    if (( setup_ui_width < 42 )); then
-        printf '  %bOpensoft%b\n\n' "$SILVER" "$NC"
-        return
-    fi
-    for index in "${!logo[@]}"; do
-        line="${logo[$index]}"
-        tone="\033[38;5;${tones[$index]}m"
-        printf '  %b' "$tone"
-        for ((position=0; position<${#line}; position++)); do
-            char="${line:$position:1}"
-            case "$char" in
-                _) printf '\033[48;5;237m %b%b' "$NC" "$tone" ;;
-                '^') printf '\033[48;5;237m▀%b%b' "$NC" "$tone" ;;
-                '~') printf '%b▀%b' "$SILVER_EDGE" "$tone" ;;
-                *) printf '%s' "$char" ;;
+    local -a banner_tones=(255 252 250 246)
+    for banner_index in "${!banner_logo[@]}"; do
+        banner_line="${banner_logo[banner_index]}"
+        printf -v banner_tone '\033[38;5;%sm' "${banner_tones[banner_index]}"
+        banner_result="  $banner_tone"
+        for ((banner_position=0; banner_position<${#banner_line}; banner_position++)); do
+            banner_char="${banner_line:banner_position:1}"
+            case "$banner_char" in
+                _) banner_result+=$'\033[48;5;237m '$'\033[0m'"$banner_tone" ;;
+                '^') banner_result+=$'\033[48;5;237m▀'$'\033[0m'"$banner_tone" ;;
+                '~') banner_result+=$'\033[38;5;239m▀'"$banner_tone" ;;
+                *) banner_result+="$banner_char" ;;
             esac
         done
-        printf '%b\n' "$NC"
+        setup_banner_lines+=("$banner_result"$'\033[0m')
     done
+}
+
+draw_setup_banner() {
+    setup_ui_banner
     printf '\n'
+    printf '%s\n' "${setup_banner_lines[@]}"
+    [[ "$setup_ui_layout" == tight ]] || printf '\n'
 }
 
 setup_requirement_counts() {
@@ -172,9 +182,13 @@ setup_requirement_counts() {
 }
 
 setup_panel_top_v() {
-    local panel_line
-    setup_ui_pair_v panel_line "$2" "${3:-}" "$((setup_ui_width - 6))"
-    printf -v "$1" '%b╭─ %b%s%b ─╮%b' "$SILVER_EDGE" "$SILVER" "$panel_line" "$SILVER_EDGE" "$NC"
+    local panel_line panel_key="top:$setup_ui_width:$setup_ui_layout:$2:${3:-}"
+    if [[ -z "${setup_panel_cache[$panel_key]}" ]]; then
+        setup_ui_pair_v panel_line "$2" "${3:-}" "$((setup_ui_width - 6))"
+        printf -v panel_line '%b╭─ %b%s%b ─╮%b' "$SILVER_EDGE" "$SILVER" "$panel_line" "$SILVER_EDGE" "$NC"
+        setup_panel_cache[$panel_key]=$panel_line
+    fi
+    printf -v "$1" '%s' "${setup_panel_cache[$panel_key]}"
 }
 
 setup_panel_bottom_v() {
@@ -1191,6 +1205,129 @@ render_legacy_setup_frame() {
     draw_setup_footer
 }
 
+# Arrival-independent layout primitives; every frame path uses Bash builtins.
+setup_ui_layout=roomy
+setup_list_offset=0
+setup_about_offset=0
+setup_about_anchor=''
+setup_about_window=2
+setup_about_cache_key=''
+declare -a setup_about_lines=()
+declare -A setup_bench_offset setup_rule_cache setup_panel_cache
+setup_banner_cache_key=''
+declare -a setup_banner_lines=()
+
+setup_frame_append() {
+    setup_frame_lines+=("$1")
+    setup_frame_region_height=$((setup_frame_region_height + 1))
+}
+
+setup_frame_row() {
+    local frame_row
+    setup_ui_pair_v frame_row "$1" "${2:-}" "$((setup_ui_width - 4))"
+    printf -v frame_row '%b│%b %s %b│%b' "$SILVER_EDGE" "$NC" "$frame_row" "$SILVER_EDGE" "$NC"
+    setup_frame_append "$frame_row"
+}
+
+setup_ui_list_window() {
+    local window_total=$1 window_focus=$2 window_budget=$3 window_offset=${!4:-0} window_count window_try
+    setup_window_above=0; setup_window_below=0
+    if (( window_budget <= 0 || window_total <= window_budget )); then
+        window_offset=0; window_count=$window_total
+    else
+        window_count=$((window_budget - 2)); ((window_count > 0)) || window_count=1
+        for ((window_try=0; window_try<4; window_try++)); do
+            (( window_offset <= window_focus )) || window_offset=$window_focus
+            (( window_focus < window_offset + window_count )) || window_offset=$((window_focus - window_count + 1))
+            (( window_offset >= 0 )) || window_offset=0
+            (( window_offset + window_count <= window_total )) || window_offset=$((window_total - window_count))
+            setup_window_above=$window_offset
+            setup_window_below=$((window_total - window_offset - window_count))
+            window_count=$window_budget
+            (( setup_window_above == 0 )) || ((window_count--))
+            (( setup_window_below == 0 )) || ((window_count--))
+            ((window_count > 0)) || window_count=1
+        done
+        setup_window_above=$window_offset
+        setup_window_below=$((window_total - window_offset - window_count))
+    fi
+    setup_window_start=$window_offset; setup_window_count=$window_count
+    printf -v "$4" '%s' "$window_offset"
+}
+
+setup_ui_wrap() {
+    local wrap_text="$1" wrap_width=$2 wrap_line='' wrap_word wrap_paragraph
+    local -a wrap_words=()
+    setup_wrapped_lines=()
+    while IFS= read -r wrap_paragraph; do
+        IFS=' ' read -r -a wrap_words <<< "$wrap_paragraph"
+        wrap_line=''
+        for wrap_word in "${wrap_words[@]}"; do
+            if (( ${#wrap_line} + ${#wrap_word} + 1 > wrap_width )) && [[ -n "$wrap_line" ]]; then
+                setup_wrapped_lines+=("$wrap_line"); wrap_line=''
+            fi
+            while (( ${#wrap_word} > wrap_width )); do
+                setup_wrapped_lines+=("${wrap_word:0:wrap_width}"); wrap_word="${wrap_word:wrap_width}"
+            done
+            [[ -z "$wrap_line" ]] || wrap_line+=' '
+            wrap_line+="$wrap_word"
+        done
+        setup_wrapped_lines+=("$wrap_line")
+    done <<< "$wrap_text"
+}
+
+setup_about_scroll() {
+    local about_step=$((setup_about_window - 1))
+    ((about_step > 0)) || about_step=1
+    setup_about_offset=$((setup_about_offset + $1 * about_step))
+    ((setup_about_offset >= 0)) || setup_about_offset=0
+    local about_max=$(( ${#setup_about_lines[@]} - setup_about_window ))
+    ((about_max >= 0)) || about_max=0
+    ((setup_about_offset <= about_max)) || setup_about_offset=$about_max
+}
+
+setup_frame_about() {
+    local about_anchor="$1" about_title="$2" about_text="$3" about_window=$4
+    local about_key="$1:$setup_ui_width:$3" about_total about_max about_range='' about_line about_index about_hint=''
+    if [[ "$setup_about_anchor" != "$about_anchor" ]]; then setup_about_offset=0; fi
+    setup_about_anchor="$about_anchor"
+    if [[ "$setup_about_cache_key" != "$about_key" ]]; then
+        setup_ui_wrap "$about_text" "$((setup_ui_width - 4))"
+        setup_about_lines=("${setup_wrapped_lines[@]}")
+        setup_about_cache_key="$about_key"
+    fi
+    about_total=${#setup_about_lines[@]}
+    [[ -n "$setup_ui_height" ]] || about_window=$about_total
+    ((about_window > 0)) || about_window=1
+    setup_about_window=$about_window
+    about_max=$((about_total - about_window)); ((about_max >= 0)) || about_max=0
+    ((setup_about_offset <= about_max)) || setup_about_offset=$about_max
+    if ((about_max > 0)); then
+        about_range="$((setup_about_offset+1))–$((setup_about_offset+about_window)) of $about_total"
+        about_hint='PgUp/PgDn scroll'
+    fi
+    setup_panel_top_v about_line "$about_title" "$about_range"; setup_frame_append "$about_line"
+    for ((about_index=setup_about_offset; about_index<about_total && about_index<setup_about_offset+about_window; about_index++)); do
+        about_line="${setup_about_lines[about_index]}"
+        if (( about_index == setup_about_offset && setup_about_offset > 0 )); then about_line="▲ more $about_line"; fi
+        if (( about_index == setup_about_offset+about_window-1 && about_index+1 < about_total )); then about_line="▼ more $about_line"; fi
+        setup_frame_row "$about_line"
+    done
+    if [[ -n "$about_hint" ]]; then
+        setup_panel_top_v about_line "$about_hint" ''
+        about_line="${about_line//╭/╰}"; about_line="${about_line//╮/╯}"
+    else
+        setup_panel_bottom_v about_line
+    fi
+    setup_frame_append "$about_line"
+}
+
+setup_frame_fit() {
+    if [[ -n "$setup_ui_height" ]] && (( ${#setup_frame_lines[@]} > setup_ui_height )); then
+        setup_frame_lines=("${setup_frame_lines[@]:${#setup_frame_lines[@]}-setup_ui_height}")
+    fi
+}
+
 declare -a setup_frame_lines=()
 setup_frame_region_height=0
 
@@ -1209,11 +1346,14 @@ setup_frame_legacy_bridge() {
 
 setup_frame_build() {
     setup_frame_lines=()
+    setup_ui_layout=roomy
+    if [[ -n "$setup_ui_height" ]] && (( setup_ui_height < 40 )); then setup_ui_layout=tight; fi
     setup_frame_head
     setup_frame_selector
     setup_frame_notice
     setup_frame_legacy_bridge
     setup_frame_footer
+    setup_frame_fit
 }
 
 render_setup_frame() {
