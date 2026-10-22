@@ -78,6 +78,7 @@ class AsyncSetupTests(unittest.TestCase):
             command = f'''source "{ROOT}/scripts/interactive-setup.sh"
 init_components --loading
 bench_items=(pyBench); CURRENT_SECTION=0; current_selection=0
+setup_benches_seen_catalog=true; setup_bench_zone=bench
 component_description[bench_pyBench]=pyBench
 component_checked[bench_pyBench]=true; component_action[bench_pyBench]=uninstall
 component_status[wsl]=up; component_status[docker]=up; component_status[setup_tools]=up

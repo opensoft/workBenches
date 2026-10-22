@@ -410,5 +410,32 @@ printf '%s\n' "${setup_frame_lines[@]}"
             self.assertIn('Contains',output)
             if width<50:self.assertNotIn('Installed',output)
 
+    def test_refresh_preserves_bench_focus_and_prunes_return_target(self):
+        output=self.shell(r'''
+init_components; setup_load_bench_metadata_sync
+setup_arrive_step 0; setup_bench_zone=bench; setup_focus_bench_name 365Bench
+setup_remember_target profiles
+component_checked[bench_365Bench]=true; component_action[bench_365Bench]=install
+status_loader_dir="$FIXTURE/status"; status_checks_running=true; status_loader_pid=$$
+printf 'alphaBench\tdevBenches/alphaBench\n365Bench\tsysBenches/365Bench\n' > "$status_loader_dir/catalog"
+poll_status_loader
+printf 'kept=%s:%s:%s\n' "${bench_items[$current_selection]}" "$setup_bench_zone" "${component_action[bench_365Bench]}"
+printf 'alphaBench\tdevBenches/alphaBench\n' > "$status_loader_dir/catalog"
+poll_status_loader
+printf 'gone=%s:%s:%s\n' "$setup_bench_zone" "$profiles_return_zone" "$profiles_return_bench"
+''')
+        self.assertIn('kept=365Bench:bench:install',output)
+        self.assertIn('gone=category:category:',output)
+
+    def test_unavailable_screen_is_actionable_and_not_selectable(self):
+        output=self.shell(r'''
+init_components --loading
+setup_benches_state=unavailable; CURRENT_SECTION=0
+handle_input <<< ' '
+setup_frame_lines=(); setup_frame_benches
+printf '%s\n' "${setup_frame_lines[@]}"
+''')
+        self.assertIn('The bench list could not be loaded. R retries.',output)
+
 
 if __name__ == '__main__': unittest.main()

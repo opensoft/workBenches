@@ -187,17 +187,26 @@ setup_load_bench_metadata_sync() {
         setup_benches_state=unavailable
         return 1
     fi
-    local name path
-    setup_bench_path=()
+    local name path old_name focus_name="${bench_items[$current_selection]}"
+    local -a old_benches=("${bench_items[@]}")
+    local -A sync_present=()
+    setup_bench_path=(); bench_items=()
     while IFS=$'\t' read -r name path; do
         [[ "$name" =~ ^[a-zA-Z0-9_+-]+$ ]] || continue
+        bench_items+=("$name"); sync_present[$name]=true
+        component_description[bench_$name]=$name
+        component_checked[bench_$name]="${component_checked[bench_$name]:-false}"
         case "$path" in devBenches/?*|sysBenches/?*|bioBenches/?*)
             [[ "/$path/" == */../* ]] || setup_bench_path[$name]=$path ;; esac
     done < "$metadata_directory/catalog"
+    for old_name in "${old_benches[@]}"; do
+        [[ "${sync_present[$old_name]}" == true ]] || unset 'component_checked[bench_'"$old_name"']' 'component_action[bench_'"$old_name"']'
+    done
     setup_catalog_loaded=true
     setup_read_bench_metadata "$metadata_directory"
     setup_update_benches_state
     setup_derive_bench_categories
+    setup_reconcile_bench_focus "$focus_name"
     rm -rf "$metadata_directory"
 }
 
@@ -358,6 +367,7 @@ poll_status_loader() {
     local key state detail file reading name path selected='' index endpoint old_name
     local -a old_benches=()
     local -A present_benches=()
+    local focus_name="${bench_items[$current_selection]}"
     if [[ -f "$status_loader_dir/tools-ready" ]]; then
         IFS= read -r endpoint < "$status_loader_dir/tools-ready"
         if [[ "$endpoint" == unix:///* || "${WORKBENCHES_TEST_NATIVE_TOOLS:-}" == 1 ]]; then
@@ -396,7 +406,10 @@ poll_status_loader() {
     fi
     setup_read_bench_metadata "$status_loader_dir"
     setup_update_benches_state
-    if [[ "$status_ui_dirty" == true ]]; then setup_derive_bench_categories; fi
+    if [[ "$status_ui_dirty" == true ]]; then
+        setup_derive_bench_categories
+        setup_reconcile_bench_focus "$focus_name"
+    fi
     for file in "$status_loader_dir"/*.row; do
         [[ -f "$file" ]] || continue
         key="${file##*/}"; key="${key%.row}"
@@ -435,6 +448,7 @@ poll_status_loader() {
         stop_status_loader
         setup_update_benches_state
         setup_derive_bench_categories
+        setup_reconcile_bench_focus "$focus_name"
         status_ui_dirty=true
         if ! setup_required_ready; then
             requirements_notice='Resolve workstation requirements to continue.'

@@ -861,6 +861,7 @@ refresh_component_statuses() {
     if [[ "$status_async_ui" == true ]]; then start_status_loader; return; fi
     refresh_host_tool_inventory
     local item
+    setup_load_bench_metadata_sync
     refresh_bench_inventory
     for item in "${!component_description[@]}"; do
         case "$item" in docker|wsl|setup_tools|workbenches_account) continue ;; esac
@@ -1332,6 +1333,53 @@ setup_restore_target() {
     fi
 }
 
+setup_benches_seen_catalog=false
+
+setup_reconcile_bench_focus() {
+    local focus_name="$1" focus_prefix focus_field focus_return_name focus_category focus_index focus_found=false
+    [[ "$setup_catalog_loaded" == true ]] || return 0
+    if [[ "$CURRENT_SECTION" == 0 ]]; then
+        if [[ "$setup_benches_seen_catalog" != true ]]; then
+            setup_bench_zone=category; setup_bench_category="${setup_bench_categories_focusable[0]:-}"
+        elif [[ "$setup_bench_zone" == bench && -n "$focus_name" ]]; then
+            if setup_focus_bench_name "$focus_name"; then
+                setup_bench_category="${setup_bench_category_of[$focus_name]}"; focus_found=true
+            else setup_bench_zone=category; fi
+        fi
+        if [[ "$focus_found" != true ]]; then
+            if [[ -z "$setup_bench_category" || "${setup_bench_totals[$setup_bench_category]:-0}" == 0 ]]; then
+                setup_bench_category="${setup_bench_categories_focusable[0]:-}"
+            fi
+            if [[ -n "$setup_bench_category" ]]; then
+                local -a focus_members=()
+                IFS=' ' read -r -a focus_members <<< "${setup_bench_members[$setup_bench_category]}"
+                [[ -z "${focus_members[0]}" ]] || setup_focus_bench_name "${focus_members[0]}"
+            fi
+        fi
+    fi
+    for focus_prefix in requirements profiles; do
+        focus_field="${focus_prefix}_return_bench"; focus_return_name=${!focus_field}
+        [[ -n "$focus_return_name" ]] || continue
+        focus_found=false
+        for focus_index in "${!bench_items[@]}"; do
+            if [[ "${bench_items[focus_index]}" == "$focus_return_name" ]]; then
+                printf -v "${focus_prefix}_return_selection" '%s' "$focus_index"
+                printf -v "${focus_prefix}_return_category" '%s' "${setup_bench_category_of[$focus_return_name]}"
+                focus_found=true; break
+            fi
+        done
+        if [[ "$focus_found" != true ]]; then
+            focus_field="${focus_prefix}_return_category"; focus_category=${!focus_field}
+            if [[ -z "$focus_category" || "${setup_bench_totals[$focus_category]:-0}" == 0 ]]; then focus_category="${setup_bench_categories_focusable[0]:-}"; fi
+            printf -v "${focus_prefix}_return_zone" '%s' category
+            printf -v "${focus_prefix}_return_category" '%s' "$focus_category"
+            printf -v "${focus_prefix}_return_bench" '%s' ''
+            printf -v "${focus_prefix}_return_selection" '%s' 0
+        fi
+    done
+    setup_benches_seen_catalog=true
+}
+
 setup_focus_bench_name() {
     local focus_index
     for focus_index in "${!bench_items[@]}"; do
@@ -1724,7 +1772,13 @@ setup_frame_bench_row() {
 setup_frame_benches() {
     local bench_line bench_name bench_index bench_focus_index=0 bench_focused=false bench_budget=0 bench_offset_local=0 bench_about_window=8 bench_any_loading=false bench_about_text='' bench_about_title bench_about_anchor bench_part bench_field
     local -a bench_members=() bench_parts=()
-    if [[ "$setup_benches_state" != ready ]]; then setup_frame_append 'Loading benches…'; return; fi
+    if [[ "$setup_benches_state" != ready ]]; then
+        if [[ "$setup_benches_state" == unavailable ]]; then
+            setup_ui_wrap 'The bench list could not be loaded. R retries.' "$setup_ui_width"
+            for bench_line in "${setup_wrapped_lines[@]}"; do setup_frame_append "$bench_line"; done
+        else setup_frame_append 'Loading benches…'; fi
+        return
+    fi
     if [[ -z "$setup_bench_category" ]]; then setup_bench_category="${setup_bench_categories_focusable[0]}"; fi
     [[ -n "$setup_bench_category" ]] || { setup_frame_append 'No benches available.'; return; }
     IFS=' ' read -r -a bench_members <<< "${setup_bench_members[$setup_bench_category]}"
