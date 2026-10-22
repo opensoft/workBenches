@@ -7,7 +7,7 @@ The first inventory found 280 active repositories, 238 active workflow definitio
 ## Decisions
 
 1. Use explicit self-hosted Eagle selectors. Do not rely on collision with GitHub-hosted labels or fallback, which can return jobs to the billing-blocked pool.
-2. Keep OS/architecture requirements truthful. Portable Linux jobs migrate first; native Windows/macOS/hardware jobs require compatible execution. User choices about Windows VM and Mac capacity are pending independently of Linux work.
+2. Keep OS/architecture requirements truthful. Portable Linux jobs migrate first; native Windows/macOS/hardware jobs require compatible execution. The user authorized a disposable Windows VM only without restarting Eagle, Docker or WSL, and confirmed there is no Mac. Native selectors use distinct platform labels; unavailable platforms remain queued.
 3. Run general Linux workers inside a fresh rootless Docker backend. Provide only private workspace paths inside that backend for Docker actions/service containers. Sudo and Docker privilege remain within the user namespace, not Eagle's host.
 4. Keep host authentication in the Windows controller. No host mounts, shared host Docker socket, bench credentials or private/LAN/metadata access enter general jobs. A separate fleet gateway supports public package endpoints; existing midNet isolation remains intact during migration.
 5. Inventory and select repository access explicitly per organization. Preserve public-fork approval controls and deployment environments. Keep existing specialized self-hosted groups intact.

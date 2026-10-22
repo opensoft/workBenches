@@ -52,4 +52,24 @@ class QueueTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'after ack'): controller.monitor(state)
         self.assertEqual(order[:2],['save','ack']);self.assertTrue(state['hook_acknowledged'])
 
+    def test_get_retries_a_transient_cli_failure(self):
+        with patch.object(controller.backend,'call',side_effect=[Mock(returncode=1),Mock(returncode=0,stdout='{"ok":true}')]) as call,patch.object(controller.time,'sleep'):
+            self.assertEqual(controller.api('example'),{'ok':True})
+            self.assertEqual(call.call_count,2)
+
+    def test_mutation_is_never_retried_after_uncertain_response(self):
+        with patch.object(controller.backend,'call',return_value=Mock(returncode=1)) as call,patch.object(controller.time,'sleep'):
+            with self.assertRaises(controller.ApiUnavailable):controller.api('example','POST',{})
+            call.assert_called_once()
+
+    def test_unavailable_repository_does_not_hide_other_queued_jobs(self):
+        config=self.config();config['pools'][0]['repositories'].append('example/unavailable')
+        def api(path):
+            if 'example/unavailable' in path:raise controller.ApiUnavailable('unavailable')
+            if '/jobs?' in path:return dict(jobs=[dict(id=7,status='queued',labels=['eagle-linux-ubuntu24'])])
+            return dict(workflow_runs=[dict(id=3,created_at='2026-10-21T00:00:00Z')]) if 'status=queued' in path else dict(workflow_runs=[])
+        with patch.object(controller,'api',side_effect=api),patch.object(controller,'event') as event:
+            self.assertEqual(controller.queued(config)[-1],7)
+            event.assert_called_with('repository-scan-unavailable',repository='example/unavailable')
+
 if __name__=='__main__': unittest.main()

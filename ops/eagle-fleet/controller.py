@@ -23,11 +23,24 @@ def save(state):
     path=STATE.with_suffix('.tmp')
     path.write_text(json.dumps(state,indent=2),encoding='utf-8');path.replace(STATE)
 
+class ApiUnavailable(RuntimeError):
+    pass
+
 def api(path,method='GET',data=None):
     args=['gh','api','--method',method,path]
     if data is not None: args+=['--input','-']
-    result=backend.call(args,data=json.dumps(data) if data is not None else None,timeout=90)
-    return json.loads(result.stdout) if result.stdout.strip() else None
+    attempts=3 if method=='GET' else 1
+    for attempt in range(attempts):
+        try:
+            result=backend.call(args,data=json.dumps(data) if data is not None else None,
+                                timeout=30 if method=='GET' else 90,optional=True)
+        except subprocess.TimeoutExpired:
+            result=None
+        if result is not None and result.returncode==0:
+            return json.loads(result.stdout) if result.stdout.strip() else None
+        if attempt+1<attempts: time.sleep(attempt+1)
+    # Do not expose response bodies or credentials; mutations are never retried.
+    raise ApiUnavailable('GitHub API unavailable: '+method+' '+path)
 
 def pages(path,key):
     result=[]
@@ -77,21 +90,25 @@ def available(config):
 
 def queued(config):
     def scan(item):
-        pool,repo=item
-        result=[]
-        for status in ('queued','in_progress'):
-            runs=pages(f'repos/{repo}/actions/runs?status={status}','workflow_runs')
-            for run in runs:
-                # Do not occupy capacity for a pending environment approval.
-                jobs=pages(f"repos/{repo}/actions/runs/{run['id']}/jobs",'jobs')
-                for job in jobs:
-                    if job['status'] != 'queued': continue
-                    for profile in config['profiles']:
-                        requested={label.lower() for label in job['labels']}
-                        offered={label.lower() for label in profile['labels']}
-                        if requested and requested <= offered and any(label.startswith('eagle-') for label in requested):
-                            result.append((job.get('created_at') or run['created_at'],pool,profile,repo,run['id'],job['id']))
-        return result
+        try:
+            pool,repo=item
+            result=[]
+            for status in ('queued','in_progress'):
+                runs=pages(f'repos/{repo}/actions/runs?status={status}','workflow_runs')
+                for run in runs:
+                    # Do not occupy capacity for a pending environment approval.
+                    jobs=pages(f"repos/{repo}/actions/runs/{run['id']}/jobs",'jobs')
+                    for job in jobs:
+                        if job['status'] != 'queued': continue
+                        for profile in config['profiles']:
+                            requested={label.lower() for label in job['labels']}
+                            offered={label.lower() for label in profile['labels']}
+                            if requested and requested <= offered and any(label.startswith('eagle-') for label in requested):
+                                result.append((job.get('created_at') or run['created_at'],pool,profile,repo,run['id'],job['id']))
+            return result
+        except ApiUnavailable:
+            event('repository-scan-unavailable',repository=item[1])
+            return []
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         results=list(executor.map(scan,[(pool,repo) for pool in config['pools'] for repo in pool.get('scan_repositories',pool['repositories'])]))
     candidates=[candidate for result in results for candidate in result]
