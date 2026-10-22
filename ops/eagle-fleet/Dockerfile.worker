@@ -1,0 +1,38 @@
+FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS node
+FROM docker:28-cli@sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d AS dockercli
+FROM ghcr.io/actions/actions-runner@sha256:4ffadc0002b2581327e06101fc8c06cd189232baf79fe561fac9caeb76f5e807
+USER root
+COPY --from=node /usr/local /usr/local
+COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    sudo python3-pip python3-venv python3-yaml build-essential pkg-config jq zsh shellcheck \
+    netcat-openbsd openssh-client git-lfs rsync zip unzip xz-utils bubblewrap curl ca-certificates gnupg && \
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /usr/share/keyrings/githubcli-archive-keyring.gpg && \
+    echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main' > /etc/apt/sources.list.d/github-cli.list && \
+    apt-get update && apt-get install -y --no-install-recommends gh && \
+    mkdir -p /opt/hostedtoolcache /opt/eagle && chmod 1777 /opt/hostedtoolcache && \
+    printf 'Defaults env_keep += "http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY"\n' > /etc/sudoers.d/eagle-proxy && \
+    chmod 440 /etc/sudoers.d/eagle-proxy && rm -rf /var/lib/apt/lists/*
+ENV RUNNER_TOOL_CACHE=/opt/hostedtoolcache \
+    AGENT_TOOLSDIRECTORY=/opt/hostedtoolcache \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_NOLOGO=1
+USER runner
+RUN python3 --version && node --version && npm --version && gh --version && docker --version
+COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
+RUN docker compose version
+COPY --chmod=755 job-started.sh /opt/eagle/job-started.sh
+ENV ACTIONS_RUNNER_HOOK_JOB_STARTED=/opt/eagle/job-started.sh
+USER root
+RUN curl -fsSL https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -o /tmp/microsoft-prod.deb \
+    && dpkg -i /tmp/microsoft-prod.deb && rm /tmp/microsoft-prod.deb \
+    && printf 'deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/repos/azure-cli/ noble main\n' > /etc/apt/sources.list.d/azure-cli.list \
+    && apt-get update && apt-get install -y --no-install-recommends azure-cli powershell zstd \
+    && rm -rf /var/lib/apt/lists/*
+COPY --chmod=755 eagle-ssh-proxy /usr/local/bin/eagle-ssh-proxy
+COPY --chown=1001:1001 ssh_config /home/runner/.ssh/config
+ENV AZURE_CORE_COLLECT_TELEMETRY=0 POWERSHELL_TELEMETRY_OPTOUT=1
+USER runner
+RUN az version --output json >/dev/null && pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' && zstd --version

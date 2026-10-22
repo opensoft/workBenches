@@ -1,0 +1,5 @@
+self-hosted-runner:
+  labels:
+    - eagle-linux-ubuntu24
+    - eagle-linux-ubuntu22
+    - eagle-linux-host-admin

@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   unit:
-    runs-on: ubuntu-24.04
+    runs-on: eagle-linux-ubuntu24
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -31,7 +31,7 @@ jobs:
   live:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: unit
-    runs-on: ubuntu-24.04
+    runs-on: eagle-linux-ubuntu24
     environment: release-qa
     timeout-minutes: 15
     permissions:

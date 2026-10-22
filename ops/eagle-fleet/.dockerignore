@@ -1,0 +1,7 @@
+*
+!Dockerfile*
+!proxy.py
+!guard.sh
+!job-started.sh
+!eagle-ssh-proxy
+!ssh_config

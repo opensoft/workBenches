@@ -34,7 +34,7 @@ permissions:
   contents: read
 jobs:
   plan:
-    runs-on: ubuntu-24.04
+    runs-on: eagle-linux-ubuntu24
     outputs:
       hosted: ${{ steps.plan.outputs.hosted }}
       sha: ${{ steps.plan.outputs.sha }}
@@ -75,7 +75,7 @@ jobs:
   image-source:
     if: github.ref == 'refs/heads/main' && needs.plan.outputs.mode != 'ci' && contains(fromJSON(needs.plan.outputs.hosted), 'fresh-install')
     needs: plan
-    runs-on: ubuntu-24.04
+    runs-on: eagle-linux-ubuntu24
     outputs:
       trusted: ${{ steps.source.outputs.trusted }}
     steps:
@@ -118,7 +118,7 @@ jobs:
   qa-preflight:
     if: needs.plan.outputs.mode == 'release'
     needs: plan
-    runs-on: ubuntu-24.04
+    runs-on: eagle-linux-ubuntu24
     environment: release-qa
     outputs:
       matrix: ${{ steps.ready.outputs.matrix }}
@@ -167,7 +167,7 @@ jobs:
   qa-watchdog:
     if: needs.qa-preflight.outputs.has_ready == 'true'
     needs: [plan, qa-preflight]
-    runs-on: ubuntu-24.04
+    runs-on: eagle-linux-ubuntu24
     timeout-minutes: 360
     permissions:
       actions: write
@@ -183,7 +183,7 @@ jobs:
   evidence-gate:
     if: always() && needs.plan.result == 'success'
     needs: [plan, image-source, images, fixtures, qa-preflight, qa, qa-watchdog]
-    runs-on: ubuntu-24.04
+    runs-on: eagle-linux-ubuntu24
     env:
       WB_AUTOMATION_SHA: ${{ needs.plan.outputs.automation }}
     steps:

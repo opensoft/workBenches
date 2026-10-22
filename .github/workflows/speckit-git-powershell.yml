@@ -29,7 +29,7 @@ jobs:
         os:
           - ubuntu-24.04
           - windows-latest
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ fromJSON('{"ubuntu-latest":"eagle-linux-ubuntu24","ubuntu-24.04":"eagle-linux-ubuntu24","ubuntu-22.04":"eagle-linux-ubuntu22","blacksmith-4vcpu-ubuntu-2404":"eagle-linux-ubuntu24","windows-latest":"eagle-windows-2025","windows-2025":"eagle-windows-2025","windows-2022":"eagle-windows-2022","windows-2019":"eagle-windows-2019","macos-latest":"eagle-macos-latest","macos-15":"eagle-macos-15","macos-14":"eagle-macos-14","macos-13":"eagle-macos-13"}')[(matrix.os)] || (matrix.os) }}
     timeout-minutes: 10
     steps:
       - name: Check out repository
