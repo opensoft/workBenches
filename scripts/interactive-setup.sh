@@ -210,34 +210,10 @@ setup_panel_bottom() {
 }
 
 draw_requirements_summary() {
-    setup_requirement_counts
-    local title="REQUIREMENTS · $requirements_ready/$requirements_total ready"
-    [[ "$status_checks_running" != true ]] || title="REQUIREMENTS · Loading…"
-    setup_panel_top "$title" 'P Manage'
-    local key label action color plain='' styled='' separator='' width=$((setup_ui_width - 4))
-    for key in "${requirement_items[@]}"; do
-        case "$key" in workbenches_account|ai_accounts) continue ;; esac
-        label="${component_description[$key]} $(setup_status_label "${component_status[$key]}")"
-        if [[ "$key" == vault && "${component_status[$key]}" != loading ]]; then
-            action="$(workbenches_requirement_action vault "${component_status[vault]}" "${component_status[workbenches_account]}")"
-            if [[ "$action" == Loading ]]; then label+=" · Loading…"; else label+=" [V $action]"; fi
-        fi
-        color="$GREEN"
-        [[ "${component_status[$key]}" == up ]] || color="$YELLOW"
-        [[ "${component_status[$key]}" != loading ]] || color="$LOADING_COLOR"
-        # Wrap between services, preserving Vault's action even in narrow terminals.
-        separator=''
-        [[ -z "$plain" ]] || separator='   '
-        if (( ${#plain} + ${#separator} + ${#label} > width )); then
-            printf '%b│%b %b%*s %b│%b\n' "$SILVER_EDGE" "$NC" "$styled" "$((width - ${#plain}))" '' "$SILVER_EDGE" "$NC"
-            plain=''; styled=''; separator=''
-        fi
-        plain+="$separator$label"
-        styled+="$separator${color}${label}${NC}"
-    done
-    printf '%b│%b %b%*s %b│%b\n' "$SILVER_EDGE" "$NC" "$styled" "$((width - ${#plain}))" '' "$SILVER_EDGE" "$NC"
-    setup_panel_bottom
-    [[ -z "$requirements_notice" ]] || printf '\n%b%s%b\n' "$YELLOW" "${requirements_notice:0:$setup_ui_width}" "$NC"
+    local -a setup_frame_lines=()
+    local setup_frame_region_height=0
+    setup_frame_requirements_strip
+    printf '%s\n' "${setup_frame_lines[@]}"
 }
 
 setup_status_label_v() {
@@ -464,22 +440,10 @@ load_requirements() {
 }
 
 draw_requirements() {
-    setup_requirement_counts
-    printf '%bREQUIREMENTS%b\n\n' "$SILVER" "$NC"
-    setup_panel_top 'REQUIRED SOFTWARE' "$requirements_ready/$requirements_total ready"
-    local item
-    for item in "${requirement_items[@]}"; do
-        case "$item" in vault|workbenches_account|ai_accounts) continue ;; esac
-        draw_requirement_item "$item" required
-    done
-    setup_panel_bottom
-    printf '\n'
-    setup_panel_top 'OPTIONAL VAULT' 'G Profiles'
-    for item in vault; do
-        draw_requirement_item "$item" optional
-    done
-    setup_panel_bottom
-    [[ -z "$requirements_notice" ]] || printf '\n%b%s%b\n' "$YELLOW" "${requirements_notice:0:$setup_ui_width}" "$NC"
+    local -a setup_frame_lines=()
+    local setup_frame_region_height=0
+    setup_frame_workstation
+    printf '%s\n' "${setup_frame_lines[@]}"
 }
 
 # Cached profile summary only: rendering never reads files or probes accounts.
@@ -1237,7 +1201,7 @@ setup_frame_append() {
 setup_frame_row() {
     local frame_row
     setup_ui_pair_v frame_row "$1" "${2:-}" "$((setup_ui_width - 4))"
-    printf -v frame_row '%b│%b %s %b│%b' "$SILVER_EDGE" "$NC" "$frame_row" "$SILVER_EDGE" "$NC"
+    printf -v frame_row '%b│%b %s%b %b│%b' "$SILVER_EDGE" "${3:-$NC}" "$frame_row" "$NC" "$SILVER_EDGE" "$NC"
     setup_frame_append "$frame_row"
 }
 
@@ -1444,7 +1408,9 @@ setup_frame_head() {
     setup_frame_append "$head_line"
     setup_ui_rule_v head_line "$setup_ui_width"; setup_frame_append "$head_line"
 }
-setup_frame_selector() { :; }
+setup_frame_selector() {
+    [[ "$CURRENT_SECTION" != 3 ]] || setup_frame_requirements_strip
+}
 setup_frame_notice() {
     local notice_line
     [[ -n "$requirements_notice" ]] || return 0
@@ -1456,6 +1422,87 @@ setup_frame_footer() { :; }
 # Temporary 1.7 body capture, removed when the wizard bodies are complete.
 setup_review_rows=()
 setup_review_window=1
+
+setup_frame_requirements_strip() {
+    local strip_title strip_key strip_label strip_action strip_state strip_line='' strip_styled='' strip_separator strip_color strip_item
+    setup_requirement_counts
+    strip_title="REQUIREMENTS · $requirements_ready/$requirements_total ready"
+    [[ "$status_checks_running" != true ]] || strip_title='REQUIREMENTS · Loading…'
+    setup_frame_append "$strip_title"
+    for strip_key in "${requirement_items[@]}"; do
+        if [[ "$strip_key" == workbenches_account || "$strip_key" == ai_accounts ]]; then continue; fi
+        setup_status_label_v strip_state "${component_status[$strip_key]}"
+        strip_label="${component_description[$strip_key]} $strip_state"
+        if [[ "$strip_key" == vault && "${component_status[$strip_key]}" != loading ]]; then
+            workbenches_requirement_action_v strip_action vault "${component_status[vault]}" "${component_status[workbenches_account]}"
+            [[ "$strip_action" == Loading ]] || strip_label+=" [V $strip_action]"
+        fi
+        strip_color="$GREEN"
+        [[ "${component_status[$strip_key]}" == up ]] || strip_color="$YELLOW"
+        [[ "${component_status[$strip_key]}" != loading ]] || strip_color="$LOADING_COLOR"
+        strip_separator=''
+        [[ -z "$strip_line" ]] || strip_separator='   '
+        if (( ${#strip_line} + ${#strip_separator} + ${#strip_label} > setup_ui_width )) && [[ -n "$strip_line" ]]; then
+            setup_frame_append "$strip_styled"; strip_line=''; strip_styled=''; strip_separator=''
+        fi
+        strip_line+="$strip_separator$strip_label"
+        printf -v strip_item '%b%s%b' "$strip_color" "$strip_label" "$NC"
+        strip_styled+="$strip_separator$strip_item"
+    done
+    [[ -z "$strip_styled" ]] || setup_frame_append "$strip_styled"
+}
+
+setup_frame_service_row() {
+    local service_key="$1" service_marker=' ' service_state service_action service_left service_right service_index service_color="$GREEN"
+    [[ "${requirement_items[$current_selection]}" != "$service_key" ]] || service_marker=›
+    setup_status_label_v service_state "${component_status[$service_key]}"
+    workbenches_requirement_action_v service_action "$service_key" "${component_status[$service_key]}" "${component_status[workbenches_account]}"
+    service_left="$service_marker ${component_description[$service_key]}"
+    service_right="$service_state  [$service_action]"
+    [[ "${component_status[$service_key]}" == up ]] || service_color="$YELLOW"
+    if [[ "${component_status[$service_key]}" == loading ]]; then service_color="$LOADING_COLOR"; service_right="$service_state"; fi
+    setup_frame_row "$service_left" "$service_right" "$service_color"
+    if [[ "$service_marker" == › ]]; then
+        setup_frame_row "  ${requirement_detail[$service_key]}"
+    fi
+}
+
+setup_frame_workstation_footer() {
+    local footer_line footer_state footer_action footer_count=0 footer_key footer_total
+    for footer_key in "${!component_checked[@]}"; do
+        [[ "${component_checked[$footer_key]}" != true ]] || ((footer_count++))
+    done
+    footer_key="${requirement_items[$current_selection]}"
+    setup_status_label_v footer_state "${component_status[$footer_key]}"
+    workbenches_requirement_action_v footer_action "$footer_key" "${component_status[$footer_key]}" "${component_status[workbenches_account]}"
+    setup_ui_rule_v footer_line "$setup_ui_width"; setup_frame_append "$footer_line"
+    footer_total="Changes selected: $footer_count"
+    ((setup_ui_width >= 60)) || footer_total="Changes: $footer_count"
+    setup_ui_pair_v footer_line "${component_description[$footer_key]} · $footer_state" "$footer_total" "$setup_ui_width"
+    setup_frame_append "$footer_line"
+    if ((setup_ui_width < 60)); then
+        setup_frame_append "Navigation: ↑↓ Move  Enter $footer_action"
+        setup_frame_append '←→ Steps  Q Quit'
+    else
+        setup_frame_append "Navigation: ↑↓ Move  Enter $footer_action  V Vault"
+        setup_frame_append '←→ Steps  P Back  R Refresh  Q Quit'
+    fi
+}
+
+setup_frame_workstation() {
+    local workstation_line workstation_key
+    setup_requirement_counts
+    setup_panel_top_v workstation_line 'REQUIRED SOFTWARE' "$requirements_ready/$requirements_total ready"
+    setup_frame_append "$workstation_line"
+    for workstation_key in "${requirement_items[@]}"; do
+        if [[ "$workstation_key" == vault || "$workstation_key" == workbenches_account || "$workstation_key" == ai_accounts ]]; then continue; fi
+        setup_frame_service_row "$workstation_key"
+    done
+    setup_panel_bottom_v workstation_line; setup_frame_append "$workstation_line"
+    setup_panel_top_v workstation_line 'OPTIONAL VAULT' 'G Profiles'; setup_frame_append "$workstation_line"
+    setup_frame_service_row vault
+    setup_panel_bottom_v workstation_line; setup_frame_append "$workstation_line"
+}
 
 setup_frame_review() {
     local review_action review_label review_step review_item review_key review_text review_index review_budget review_offset_local review_total=0 review_last_action=''
@@ -1521,6 +1568,19 @@ setup_frame_legacy_bridge() {
     local bridge_frame bridge_line bridge_notice="$requirements_notice" bridge_notice_shown=false
     local requirements_notice=''
     local -a bridge_lines=()
+    if [[ "${1:-}" == footer ]]; then
+        bridge_frame="$(draw_setup_footer)"
+        mapfile -t bridge_lines <<< "$bridge_frame"
+        local bridge_wrapped
+        for bridge_line in "${bridge_lines[@]}"; do
+            [[ -n "$bridge_line" ]] || continue
+            if [[ "$bridge_line" == Navigation:* || "$bridge_line" == '            '* ]]; then
+                setup_ui_wrap "$bridge_line" "$setup_ui_width"
+                for bridge_wrapped in "${setup_wrapped_lines[@]}"; do setup_frame_append "$bridge_wrapped"; done
+            else setup_frame_append "$bridge_line"; fi
+        done
+        return
+    fi
     if [[ "$CURRENT_SECTION" == 3 ]]; then
         bridge_frame="$(draw_requirements_summary; draw_requirements)"
     elif [[ "$CURRENT_SECTION" == 4 ]]; then bridge_frame="$(draw_profiles)"
@@ -1555,8 +1615,11 @@ setup_frame_build() {
     if [[ -n "$setup_ui_height" ]] && (( setup_ui_height < 40 )); then setup_ui_layout=tight; fi
     setup_frame_head
     setup_frame_selector
-    [[ "$CURRENT_SECTION" == 3 ]] || setup_frame_notice
-    setup_frame_legacy_bridge
+    setup_frame_notice
+    if [[ "$CURRENT_SECTION" == 3 ]]; then
+        setup_frame_workstation
+        setup_frame_workstation_footer
+    else setup_frame_legacy_bridge; fi
     setup_frame_footer
     setup_frame_fit
 }

@@ -152,5 +152,17 @@ setup_about_offset=2; setup_update_ui_signature
 ''')
         self.assertEqual(output, '')
 
+    def test_workstation_render_matrix(self):
+        for columns in (36,60,88):
+            for rows in (24,40,0):
+                with self.subTest(columns=columns, rows=rows):
+                    lines=self.frame(3,columns,rows)
+                    self.assert_bounds(lines,max(columns,36),rows or None)
+                    text='\n'.join(lines)
+                    self.assertIn('Workstation',text)
+                    self.assertIn('REQUIRED SOFTWARE',text)
+                    self.assertIn('OPTIONAL VAULT',text)
+                    self.assertIn('Navigation:',text)
+
 
 if __name__ == '__main__': unittest.main()
