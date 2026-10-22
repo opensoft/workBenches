@@ -67,4 +67,42 @@ status_collect_inventory
             self.assertNotIn('\u009b', content)
 
 
+    def test_outside_text_sanitized_in_any_locale(self):
+        for locale in ('C', 'C.UTF-8'):
+            with self.subTest(locale=locale):
+                output = self.shell(r'''
+input=$'hello\e[2J\302\233tab\tend\036tail'
+setup_sanitize_text result "$input"
+printf '%s\n' "$result"
+''', locale)
+                self.assertEqual(output, 'hello [2J tab end tail\n')
+                self.assertNotIn('\x1b', output)
+                self.assertNotIn('\u009b', output)
+
+    def test_worker_details_and_identities_sanitized(self):
+        for locale in ('C', 'C.UTF-8'):
+            output = self.shell(r'''
+init_components --loading
+status_loader_dir="$FIXTURE/status"; status_checks_running=true; status_loader_pid=$$
+printf 'up\tbad\033[2J\302\233\ttext\036tail\n' > "$status_loader_dir/docker.row"
+printf 'optional\tfirst\033[2J\036second\302\233\n' > "$status_loader_dir/personal_profiles.row"
+poll_status_loader
+printf '%s\n%s\n' "${requirement_detail[docker]}" "$profiles_summary"
+''', locale)
+            self.assertEqual(output, 'bad [2J  text tail\nfirst [2J\nsecond \n')
+
+    def test_profile_helper_summary_sanitized(self):
+        for locale in ('C', 'C.UTF-8'):
+            output = self.shell(r'''
+init_components --loading
+for key in "${requirement_items[@]}"; do component_status[$key]=up; done
+current_selection=0
+python3() { [[ "$*" != *--summary* ]] || printf 'helper\033[2J\302\233\ttext\036tail\n'; }
+refresh_component_statuses() { :; }
+activate_profile >/dev/null
+printf '%s\n' "$profiles_summary"
+''', locale)
+            self.assertEqual(output, 'helper [2J  text\ntail\n')
+
+
 if __name__ == '__main__': unittest.main()

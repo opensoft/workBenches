@@ -392,6 +392,7 @@ load_requirements() {
     while IFS=$'\t' read -r key label state detail; do
         component_description[$key]="$label"
         component_status[$key]="$state"
+        setup_sanitize_text detail "$detail"
         requirement_detail[$key]="$detail"
         component_checked[$key]=false
     done < <(workbenches_requirement_rows)
@@ -465,6 +466,7 @@ activate_profile() {
         *) requirements_notice='Profile action needs attention. Open it to retry.' ;;
     esac
     profiles_summary="$(python3 "$SCRIPT_DIR/setup-profiles.py" --summary 2>/dev/null)" || profiles_summary='Profile metadata needs attention.'
+    setup_sanitize_identities profiles_summary "$profiles_summary"
     refresh_component_statuses
 }
 
@@ -515,6 +517,7 @@ activate_requirement() {
             setup_propagate_cancel "$result"
             [[ "$result" == 0 ]] || requirements_notice="$action failed. Check Docker access and try again." ;;
     esac
+    setup_sanitize_text requirements_notice "$requirements_notice"
     refresh_component_statuses
     draw_ui
     return 0

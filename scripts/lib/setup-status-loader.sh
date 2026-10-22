@@ -7,6 +7,34 @@ status_loader_pid=''
 status_loader_dir=''
 declare -A host_tool_status
 
+# Outside text is never terminal control data. Byte rules also work in LANG=C.
+setup_sanitize_text() {
+    local LC_ALL=C
+    local sanitize_value="$2" sanitize_char sanitize_next sanitize_result='' sanitize_index
+    for ((sanitize_index=0; sanitize_index<${#sanitize_value}; sanitize_index++)); do
+        sanitize_char="${sanitize_value:sanitize_index:1}"
+        sanitize_next="${sanitize_value:sanitize_index+1:1}"
+        if [[ "$sanitize_char" == $'\302' && "$sanitize_next" == [$'\200'-$'\237'] ]]; then
+            sanitize_result+=' '; ((sanitize_index++))
+        elif [[ "$sanitize_char" == [$'\001'-$'\037'$'\177'] ]]; then
+            sanitize_result+=' '
+        else
+            sanitize_result+="$sanitize_char"
+        fi
+    done
+    printf -v "$1" '%s' "$sanitize_result"
+}
+
+setup_sanitize_identities() {
+    local identities_text="${2//$'\036'/$'\n'}" identities_line identities_result='' identities_clean
+    while IFS= read -r identities_line; do
+        setup_sanitize_text identities_clean "$identities_line"
+        [[ -z "$identities_result" ]] || identities_result+=$'\n'
+        identities_result+="$identities_clean"
+    done <<< "$identities_text"
+    printf -v "$1" '%s' "$identities_result"
+}
+
 initialize_loading_statuses() {
     local key
     for key in "${!component_description[@]}"; do component_status[$key]=loading; done
@@ -203,11 +231,14 @@ poll_status_loader() {
             component_status[$key]=$state
             status_ui_dirty=true
         fi
+        if [[ "$key" == personal_profiles ]]; then
+            setup_sanitize_identities profiles_summary "$detail"
+        fi
+        setup_sanitize_text detail "$detail"
         if [[ -n "$detail" && "${requirement_detail[$key]:-}" != "$detail" ]]; then
             requirement_detail[$key]=$detail
             status_ui_dirty=true
         fi
-        [[ "$key" != personal_profiles ]] || profiles_summary="${detail//$'\036'/$'\n'}"
         rm -f "$reading"
     done
     if [[ -f "$status_loader_dir/done" ]] || ! kill -0 "$status_loader_pid" 2>/dev/null; then
