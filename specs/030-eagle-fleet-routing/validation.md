@@ -154,3 +154,17 @@ fleet tests and actionlint pass. The Windows-only proxy has this fix and update
 downloads are making progress. Linux gateway replacement and the updated
 controller/backend wait for natural completion of the active shape test.
 Windows evaluation activation succeeded; no Windows runner is registered yet.
+
+The remaining sixteen literal hosted selectors in this repository's cascade,
+credential, release and shared-image workflows now route to Eagle. Protected QA
+continues to use its existing explicit self-hosted label arrays. Fresh-install
+release suites and the shared-image publisher retain their host-swap commands
+and select the unavailable `eagle-linux-host-admin` label until an appropriate
+isolated host is qualified. Other release suites select Ubuntu 24 normally.
+All non-routing workflow values were compared before and after the edits.
+
+All 51 release-automation tests pass. The expanded actionlint check reports the
+same five baseline diagnostics, with zero new diagnostics: one existing SC2155
+warning and four parser errors for the now-supported GitHub `cache-mode` key.
+The cache restrictions and existing scripts were preserved. Current GitHub
+workflow syntax documents this key; the local linter's parser predates it.

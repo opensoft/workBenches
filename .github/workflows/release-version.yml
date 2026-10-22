@@ -33,7 +33,7 @@ permissions:
   contents: read
 jobs:
   source-freeze:
-    runs-on: ubuntu-24.04
+    runs-on: eagle-linux-ubuntu24
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:

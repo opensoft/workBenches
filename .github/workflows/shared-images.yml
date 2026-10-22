@@ -28,7 +28,7 @@ permissions:
   contents: read
 jobs:
   regression:
-    runs-on: ubuntu-24.04
+    runs-on: eagle-linux-ubuntu24
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - run: python3 devcontainer.test/test-install-friction.py
@@ -38,7 +38,7 @@ jobs:
     concurrency:
       group: shared-workstation-images-${{ inputs.source_sha || github.sha }}
       cancel-in-progress: false
-    runs-on: ubuntu-24.04
+    runs-on: eagle-linux-host-admin
     timeout-minutes: 90
     permissions:
       contents: write

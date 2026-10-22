@@ -50,7 +50,7 @@ permissions:
 
 jobs:
   regression:
-    runs-on: ubuntu-24.04
+    runs-on: eagle-linux-ubuntu24
     timeout-minutes: 10
     steps:
       - name: Check out repository
@@ -60,7 +60,7 @@ jobs:
         run: bash devcontainer.test/test-cascade-image-validation.sh
 
   claude-npm-integrity:
-    runs-on: ubuntu-24.04
+    runs-on: eagle-linux-ubuntu24
     container: node:24-bookworm
     timeout-minutes: 10
     steps:

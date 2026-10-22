@@ -19,7 +19,7 @@ permissions:
   contents: read
 jobs:
   suite:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.suite == 'fresh-install' && 'eagle-linux-host-admin' || 'eagle-linux-ubuntu24' }}
     timeout-minutes: 100
     env:
       WB_AUTOMATION_SHA: ${{ inputs.automation_sha }}
