@@ -15,5 +15,5 @@ OpenSpec/Speckit protocol and project bootstrap contract.
 - Preserve unrelated changes in the parent checkout and in bench submodules.
 
 <!-- SPECKIT START -->
-Active implementation plan: `specs/028-device-trust/plan.md` (v1.7 device trust; keep v1.6 candidate fixes and publication separate).
+Active implementation plan: `specs/029-setup-guided-wizard/plan.md` (v1.7 guided setup wizard).
 <!-- SPECKIT END -->
