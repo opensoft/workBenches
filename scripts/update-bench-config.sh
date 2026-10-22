@@ -124,95 +124,36 @@ discover_project_scripts() {
 
 # Generate new configuration
 generate_config() {
-    local discovered_benches
-    mapfile -t discovered_benches < <(discover_benches)
-    
-    echo -e "${BLUE}📝 Generating configuration...${NC}"
-    
-    # Start with infrastructure (preserved from existing config or default)
-    local infrastructure='{
-  "specKit": {
-    "install": "uv tool install specify-cli --from git+https://github.com/github/spec-kit.git",
-    "run": "uvx --from git+https://github.com/github/spec-kit.git specify init --here",
-    "description": "GitHub Spec Kit - installed via uvx (always fetches latest)"
-  }
-}'
-    
-    # Try to preserve existing infrastructure config
-    if [ -f "$CONFIG_FILE" ]; then
-        local existing_infra
-        existing_infra=$(jq -r '.infrastructure // {}' "$CONFIG_FILE" 2>/dev/null)
-        if [ "$existing_infra" != "null" ] && [ "$existing_infra" != "{}" ]; then
-            infrastructure="$existing_infra"
+    local root="$SCRIPT_DIR/.." lock="$SCRIPT_DIR/../config/release-lock.json"
+    local merged='{"benches":{},"infrastructure":{}}'
+    [[ ! -f "$CONFIG_FILE" ]] || merged=$(jq '.' "$CONFIG_FILE")
+    [[ -f "$lock" ]] || { echo "Missing release lock; catalog preserved." >&2; return 1; }
+    local git_dir bench_path bench_name relative category remote_url entry existing
+    while IFS= read -r -d '' git_dir; do
+        bench_path="${git_dir%/.git}"
+        relative="${bench_path#"$root/"}"
+        bench_name="${relative##*/}"
+        case "$relative" in
+            devBenches/*) category=software-engineering ;;
+            bioBenches/*) category=science ;;
+            sysBenches/*) category=system-administration ;;
+            *) continue ;;
+        esac
+        if ! jq -e --arg p "$relative" '.repositories | any(.path == $p)' "$lock" >/dev/null; then
+            echo "Warning: skipping unlocked bench $bench_name ($relative)" >&2
+            continue
         fi
-    fi
-    
-    # Build benches configuration
-    local benches_config="{"
-    local first_bench=true
-    
-    for bench_info in "${discovered_benches[@]}"; do
-        local bench_path="${bench_info%%|*}"
-        local remote_url="${bench_info##*|}"
-        local bench_name="$(basename "$bench_path")"
-        
-        if [ "$first_bench" = true ]; then
-            first_bench=false
-        else
-            benches_config+=","
-        fi
-        
-        benches_config+="
-    \"$bench_name\": {
-      \"url\": \"$remote_url\",
-      \"path\": \"$bench_path\",
-      \"description\": \"$(get_bench_description "$bench_name")\""
-        
-        # Check for project scripts
-        local project_scripts
-        mapfile -t project_scripts < <(discover_project_scripts "$bench_path")
-        
-        if [ ${#project_scripts[@]} -gt 0 ]; then
-            benches_config+=",
-      \"project_scripts\": ["
-            
-            local first_script=true
-            for script_info in "${project_scripts[@]}"; do
-                IFS='|' read -r script_type script_path script_desc includes_speckit <<< "$script_info"
-                
-                if [ "$first_script" = true ]; then
-                    first_script=false
-                else
-                    benches_config+=","
-                fi
-                
-                benches_config+="
-        {
-          \"name\": \"$script_type\",
-          \"script\": \"$script_path\",
-          \"description\": \"$script_desc\",
-          \"includes_speckit\": $includes_speckit
-        }"
-            done
-            
-            benches_config+="
-      ]"
-        fi
-        
-        benches_config+="
-    }"
-    done
-    
-    benches_config+="
-  }"
-    
-    # Combine into final config
-    local final_config="{
-  \"infrastructure\": $infrastructure,
-  \"benches\": $benches_config
-}"
-    
-    echo "$final_config"
+        remote_url=$(git -C "$bench_path" remote get-url origin 2>/dev/null || :)
+        existing=$(jq -c --arg n "$bench_name" '.benches[$n] // {}' <<< "$merged")
+        # Existing fields win, including curated copy and future metadata.
+        entry=$(jq -n --arg path "$relative" --arg url "$remote_url" \
+            --arg category "$category" --arg description "$(get_bench_description "$bench_name")" \
+            --argjson existing "$existing" \
+            '{path:$path,url:$url,description:$description,category:$category} + $existing')
+        merged=$(jq --arg n "$bench_name" --argjson entry "$entry" '.benches[$n] = $entry' <<< "$merged")
+    done < <(find "$root/devBenches" "$root/bioBenches" "$root/sysBenches" \
+        -name .git \( -type d -o -type f \) -print0 -prune 2>/dev/null)
+    printf '%s\n' "$merged"
 }
 
 # Get description for a bench
