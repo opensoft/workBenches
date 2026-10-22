@@ -72,7 +72,7 @@ check_dependencies() {
 is_bench_installed() {
     local bench_name="$1"
     local bench_path
-    bench_path=$(jq -r ".benches.${bench_name}.path" "$CONFIG_FILE" 2>/dev/null)
+    bench_path=$(jq -r --arg n "$bench_name" '.benches[$n].path // empty' "$CONFIG_FILE" 2>/dev/null)
     
     if [ "$bench_path" != "null" ] && [ -d "$(dirname "$SCRIPT_DIR")/$bench_path" ]; then
         return 0
@@ -400,7 +400,7 @@ get_available_benches_for_ai() {
     while IFS= read -r bench_name; do
         if is_bench_installed "$bench_name"; then
             local description
-            description=$(jq -r ".benches.${bench_name}.description" "$CONFIG_FILE")
+            description=$(jq -r --arg n "$bench_name" '.benches[$n].description // empty' "$CONFIG_FILE")
             
             bench_list+="- $bench_name: $description\n"
         fi
@@ -427,7 +427,7 @@ preview_update_script() {
     
     # Find update script for this bench
     local bench_path
-    bench_path=$(jq -r ".benches.${bench_name}.path" "$CONFIG_FILE")
+    bench_path=$(jq -r --arg n "$bench_name" '.benches[$n].path // empty' "$CONFIG_FILE")
     
     if [ "$bench_path" = "null" ]; then
         echo -e "${RED}Error: Bench path not found for $bench_name${NC}"

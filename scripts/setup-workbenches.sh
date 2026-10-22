@@ -246,7 +246,7 @@ init_installed_file() {
 is_installed() {
     local bench_name="$1"
     local bench_path
-    bench_path=$(jq -r ".benches.${bench_name}.path // .infrastructure.${bench_name}.path" "$CONFIG_FILE" 2>/dev/null)
+    bench_path=$(jq -r --arg n "$bench_name" '.benches[$n].path // .infrastructure[$n].path // empty' "$CONFIG_FILE" 2>/dev/null)
     
     if [ "$bench_path" != "null" ] && [ -d "$SCRIPT_DIR/../$bench_path" ]; then
         return 0
@@ -385,9 +385,9 @@ setup_infrastructure() {
             echo -e "${GREEN}✓ $infra_name is already installed${NC}"
         else
             local url description path
-            url=$(jq -r ".infrastructure.${infra_name}.url" "$CONFIG_FILE")
-            description=$(jq -r ".infrastructure.${infra_name}.description" "$CONFIG_FILE")
-            path=$(jq -r ".infrastructure.${infra_name}.path" "$CONFIG_FILE")
+            url=$(jq -r --arg n "$infra_name" '.infrastructure[$n].url // empty' "$CONFIG_FILE")
+            description=$(jq -r --arg n "$infra_name" '.infrastructure[$n].description // empty' "$CONFIG_FILE")
+            path=$(jq -r --arg n "$infra_name" '.infrastructure[$n].path // empty' "$CONFIG_FILE")
             
             clone_repo "$infra_name" "$url" "$path" "$description"
         fi
@@ -406,7 +406,7 @@ prompt_bench_selection() {
     # Show available benches with descriptions
     for bench in "${bench_names[@]}"; do
         local description status
-        description=$(jq -r ".benches.${bench}.description" "$CONFIG_FILE")
+        description=$(jq -r --arg n "$bench" '.benches[$n].description // empty' "$CONFIG_FILE")
         
         if is_installed "$bench"; then
             status="${GREEN}[INSTALLED]${NC}"
@@ -457,9 +457,9 @@ install_all_benches() {
             echo -e "${GREEN}✓ $bench is already installed${NC}"
         else
             local url description path
-            url=$(jq -r ".benches.${bench}.url" "$CONFIG_FILE")
-            description=$(jq -r ".benches.${bench}.description" "$CONFIG_FILE")
-            path=$(jq -r ".benches.${bench}.path" "$CONFIG_FILE")
+            url=$(jq -r --arg n "$bench" '.benches[$n].url // empty' "$CONFIG_FILE")
+            description=$(jq -r --arg n "$bench" '.benches[$n].description // empty' "$CONFIG_FILE")
+            path=$(jq -r --arg n "$bench" '.benches[$n].path // empty' "$CONFIG_FILE")
             
             clone_repo "$bench" "$url" "$path" "$description"
         fi
@@ -479,15 +479,15 @@ select_benches_individually() {
         fi
         
         local description
-        description=$(jq -r ".benches.${bench}.description" "$CONFIG_FILE")
+        description=$(jq -r --arg n "$bench" '.benches[$n].description // empty' "$CONFIG_FILE")
         
         while true; do
             read -p "Install $bench ($description)? [y/N]: " answer
             case $answer in
                 [Yy]* )
                     local url path
-                    url=$(jq -r ".benches.${bench}.url" "$CONFIG_FILE")
-                    path=$(jq -r ".benches.${bench}.path" "$CONFIG_FILE")
+                    url=$(jq -r --arg n "$bench" '.benches[$n].url // empty' "$CONFIG_FILE")
+                    path=$(jq -r --arg n "$bench" '.benches[$n].path // empty' "$CONFIG_FILE")
                     clone_repo "$bench" "$url" "$path" "$description"
                     break
                     ;;
