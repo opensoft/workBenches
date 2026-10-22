@@ -42,6 +42,96 @@ bench_categories_loaded=false
 bench_meta_loaded=false
 setup_benches_state=loading
 
+declare -a setup_bench_categories=() setup_bench_categories_focusable=()
+declare -A setup_bench_category_of setup_bench_members setup_bench_totals setup_bench_installed setup_bench_queued
+setup_bench_counts_signature=''
+
+setup_refresh_bench_counts() {
+    local name category key signature='' state
+    for name in "${bench_items[@]}"; do
+        key="bench_$name"
+        signature+="$name:${component_status[$key]}:${component_checked[$key]}:${component_action[$key]};"
+    done
+    [[ "$signature" != "$setup_bench_counts_signature" ]] || return 0
+    setup_bench_counts_signature="$signature"
+    setup_bench_totals=(); setup_bench_installed=(); setup_bench_queued=()
+    setup_bench_categories_focusable=()
+    for name in "${bench_items[@]}"; do
+        category="${setup_bench_category_of[$name]:-other-benches}"; key="bench_$name"
+        setup_bench_totals[$category]=$(( ${setup_bench_totals[$category]:-0} + 1 ))
+        state="${component_status[$key]}"
+        if [[ "$state" == installed || "$state" == 'needs creds' || "$state" == 'image only' ]]; then
+            setup_bench_installed[$category]=$(( ${setup_bench_installed[$category]:-0} + 1 ))
+        fi
+        if [[ "${component_checked[$key]}" == true && -n "${component_action[$key]}" ]]; then
+            setup_bench_queued[$category]=$(( ${setup_bench_queued[$category]:-0} + 1 ))
+        fi
+    done
+    for category in "${setup_bench_categories[@]}"; do
+        [[ "${setup_bench_totals[$category]:-0}" == 0 ]] || setup_bench_categories_focusable+=("$category")
+    done
+}
+
+setup_derive_bench_categories() {
+    local LC_ALL=C
+    local name category candidate previous order previous_order index word label
+    local -a names=() categories=() words=()
+    local -A known=()
+    setup_bench_category_of=(); setup_bench_members=()
+    if [[ "$bench_categories_loaded" == true ]]; then
+        for category in "${!bench_category_order[@]}"; do known[$category]=true; done
+    fi
+    # Insertion sorts keep this arrival-time derivation inside Bash.
+    for name in "${bench_items[@]}"; do
+        index=${#names[@]}
+        while (( index > 0 )) && [[ "${names[index-1]}" > "$name" ]]; do
+            names[index]="${names[index-1]}"; ((index--))
+        done
+        names[index]=$name
+    done
+    for name in "${names[@]}"; do
+        category="${bench_meta_category[$name]}"
+        if [[ "$bench_categories_loaded" != true && "$bench_meta_loaded" != true ]]; then
+            category=other-benches
+        elif [[ -z "$category" ]]; then
+            case "${setup_bench_path[$name]}" in
+                devBenches/*) category=software-engineering ;;
+                bioBenches/*) category=science ;;
+                sysBenches/*) category=system-administration ;;
+                *) category=other-benches ;;
+            esac
+        fi
+        setup_bench_category_of[$name]=$category
+        [[ -z "${setup_bench_members[$category]}" ]] || setup_bench_members[$category]+=' '
+        setup_bench_members[$category]+="$name"
+        if [[ -z "${bench_category_label[$category]}" ]]; then
+            label=''; IFS=- read -r -a words <<< "$category"
+            for word in "${words[@]}"; do
+                [[ -z "$label" ]] || label+=' '
+                label+="${word^}"
+            done
+            [[ "$category" != other-benches ]] || label='Other benches'
+            bench_category_label[$category]=$label
+        fi
+    done
+    for category in "${!bench_category_label[@]}"; do
+        if [[ "${known[$category]}" != true && -z "${setup_bench_members[$category]}" ]]; then continue; fi
+        order=1000000
+        [[ "${known[$category]}" != true ]] || order=$((10#${bench_category_order[$category]:-999}))
+        index=${#categories[@]}
+        while (( index > 0 )); do
+            previous="${categories[index-1]}"; previous_order=1000000
+            [[ "${known[$previous]}" != true ]] || previous_order=$((10#${bench_category_order[$previous]:-999}))
+            if (( previous_order < order )) || { (( previous_order == order )) && [[ "$previous" < "$category" ]]; }; then break; fi
+            categories[index]=$previous; ((index--))
+        done
+        categories[index]=$category
+    done
+    setup_bench_categories=("${categories[@]}")
+    setup_bench_counts_signature='!'
+    setup_refresh_bench_counts
+}
+
 setup_read_bench_metadata() {
     local directory="$1" id order label summary name category tagline description uses contents field
     if [[ -f "$directory/bench-categories" ]]; then
@@ -104,6 +194,7 @@ setup_load_bench_metadata_sync() {
     setup_catalog_loaded=true
     setup_read_bench_metadata "$metadata_directory"
     setup_update_benches_state
+    setup_derive_bench_categories
     rm -rf "$metadata_directory"
 }
 
@@ -261,7 +352,9 @@ start_status_loader() {
 
 poll_status_loader() {
     [[ "$status_checks_running" == true && -n "$status_loader_dir" ]] || return 0
-    local key state detail file reading name path selected='' index endpoint
+    local key state detail file reading name path selected='' index endpoint old_name
+    local -a old_benches=()
+    local -A present_benches=()
     if [[ -f "$status_loader_dir/tools-ready" ]]; then
         IFS= read -r endpoint < "$status_loader_dir/tools-ready"
         if [[ "$endpoint" == unix:///* || "${WORKBENCHES_TEST_NATIVE_TOOLS:-}" == 1 ]]; then
@@ -272,16 +365,23 @@ poll_status_loader() {
     fi
     if [[ -f "$status_loader_dir/catalog" ]]; then
         [[ "$CURRENT_SECTION" != 0 ]] || selected="${bench_items[$current_selection]}"
+        old_benches=("${bench_items[@]}")
         bench_items=(); setup_bench_path=()
         while IFS=$'\t' read -r name path; do
             [[ "$name" =~ ^[a-zA-Z0-9_+-]+$ ]] || continue
             case "$path" in devBenches/?*|sysBenches/?*|bioBenches/?*)
                 [[ "/$path/" == */../* ]] || setup_bench_path[$name]=$path ;; esac
+            present_benches[$name]=true
             bench_items+=("$name"); key="bench_$name"
             component_description[$key]=$name
             component_status[$key]=loading
             component_checked[$key]="${component_checked[$key]:-false}"
         done < "$status_loader_dir/catalog"
+        for old_name in "${old_benches[@]}"; do
+            [[ "${present_benches[$old_name]}" == true ]] || {
+                unset 'component_checked[bench_'"$old_name"']' 'component_action[bench_'"$old_name"']'
+            }
+        done
         unset 'component_description[bench_loading]' 'component_status[bench_loading]' 'component_checked[bench_loading]'
         if [[ "$CURRENT_SECTION" == 0 ]]; then
             current_selection=0
@@ -293,6 +393,7 @@ poll_status_loader() {
     fi
     setup_read_bench_metadata "$status_loader_dir"
     setup_update_benches_state
+    if [[ "$status_ui_dirty" == true ]]; then setup_derive_bench_categories; fi
     for file in "$status_loader_dir"/*.row; do
         [[ -f "$file" ]] || continue
         key="${file##*/}"; key="${key%.row}"
@@ -320,6 +421,7 @@ poll_status_loader() {
         fi
         rm -f "$reading"
     done
+    setup_refresh_bench_counts
     if [[ -f "$status_loader_dir/done" ]] || ! kill -0 "$status_loader_pid" 2>/dev/null; then
         # Drain any newer rows published while an earlier version was consumed.
         local -a remaining=("$status_loader_dir"/*.row)
@@ -329,6 +431,7 @@ poll_status_loader() {
         done
         stop_status_loader
         setup_update_benches_state
+        setup_derive_bench_categories
         status_ui_dirty=true
         if ! setup_required_ready; then
             requirements_notice='Resolve workstation requirements to continue.'

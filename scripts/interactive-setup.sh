@@ -1477,6 +1477,7 @@ handle_input() {
                     component_checked["$key"]=true
                     component_action["$key"]="$requested"
                 fi
+                setup_refresh_bench_counts
                 ;;
             ''|$'\r'|$'\n') # Enter activates a focused service button.
                 if [[ "$CURRENT_SECTION" == 4 ]]; then activate_profile; return "$?"; fi

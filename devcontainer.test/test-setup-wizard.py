@@ -160,5 +160,37 @@ printf '%s\n' "$setup_benches_state"
 ''')
                 self.assertEqual(output.strip(), expected)
 
+    def test_derived_categories_counts_and_vanished_queue(self):
+        output = self.shell(r'''
+init_components --loading
+status_loader_dir="$FIXTURE/status"; status_checks_running=true; status_loader_pid=$$
+printf 'cloudBench\tsysBenches/cloudBench\n365Bench\tsysBenches/365Bench\nquantumBench\tdevBenches/quantumBench\notherBench\toutside/otherBench\n' > "$status_loader_dir/catalog"
+printf 'science\t2\tScience\tScience summary\nsoftware-engineering\t1\tSoftware Engineering\tSoftware summary\nelectrical-engineering\t4\tElectrical Engineering\t-\nsystem-administration\t3\tSystem Administration\t-\n' > "$status_loader_dir/bench-categories"
+printf 'quantumBench\tquantum-computing\t-\t-\t-\t-\n' > "$status_loader_dir/bench-meta"
+poll_status_loader
+component_status[bench_365Bench]=installed; component_status[bench_cloudBench]='image only'
+component_checked[bench_365Bench]=true; component_action[bench_365Bench]=update
+setup_refresh_bench_counts
+printf '%s\n' "${setup_bench_categories[*]}" "${setup_bench_members[system-administration]}" \
+ "${bench_category_label[quantum-computing]}" "${setup_bench_category_of[otherBench]}" \
+ "${setup_bench_installed[system-administration]}" "${setup_bench_queued[system-administration]}"
+printf 'cloudBench\tsysBenches/cloudBench\n' > "$status_loader_dir/catalog"
+poll_status_loader
+printf 'vanished=%s:%s\n' "${component_checked[bench_365Bench]-false}" "${component_action[bench_365Bench]-}"
+''')
+        self.assertEqual(output, 'software-engineering science system-administration electrical-engineering other-benches quantum-computing\n365Bench cloudBench\nQuantum Computing\nother-benches\n2\n1\nvanished=false:\n')
+
+    def test_no_metadata_degrades_to_one_other_group(self):
+        output = self.shell(r'''
+init_components --loading
+status_loader_dir="$FIXTURE/status"; status_checks_running=true; status_loader_pid=$$
+printf '365Bench\tsysBenches/365Bench\n' > "$status_loader_dir/catalog"
+touch "$status_loader_dir/done"
+stop_status_loader() { status_checks_running=false; status_loader_dir=''; }
+poll_status_loader
+printf '%s\n' "${setup_bench_category_of[365Bench]}" "${setup_bench_members[other-benches]}"
+''')
+        self.assertEqual(output, 'other-benches\n365Bench\n')
+
 
 if __name__ == '__main__': unittest.main()
