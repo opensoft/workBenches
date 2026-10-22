@@ -1,5 +1,6 @@
 """Report platform and immutable reusable-workflow dependencies before activation."""
 import argparse,json,re
+import yaml
 from pathlib import Path
 
 def audit(workflows):
@@ -7,9 +8,14 @@ def audit(workflows):
     for workflow in workflows:
         source=workflow.get('source')
         if not source: continue
-        pins=re.findall(r'(?m)^\s*(?:-\s*)?uses:\s*([\w.-]+/[\w.-]+/\.github/workflows/[^\s@]+)@([0-9a-f]{40})\s*(?:#.*)?$',source)
+        document=yaml.safe_load(source) or {}
+        pins=[]
+        for job in document.get('jobs',{}).values():
+            reference=job.get('uses','')
+            match=re.fullmatch(r'([\w.-]+/[\w.-]+/\.github/workflows/[^\s@]+)@([0-9a-f]{40})',reference)
+            if match: pins.append(match.groups())
         flags=[]
-        for name,pattern in [('native-platform',r'windows-latest|macos-\d+|macos-latest'),
+        for name,pattern in [('native-platform',r'windows-(?:latest|20\d{2})|macos-\d+|macos-latest'),
                              ('arm-platform',r'ubuntu-\S*arm|ubuntu-\S*aarch64'),
                              ('kvm',r'/dev/kvm|KERNEL=="kvm"'),('host-swap',r'\bswapon\b|\bmkswap\b'),
                              ('host-sysctl',r'\bsysctl\b'),('cloud-cli',r'\baz\s|shell:\s*pwsh'),

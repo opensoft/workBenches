@@ -2,6 +2,16 @@ import unittest
 from routing import route
 
 class RoutingTests(unittest.TestCase):
+    def test_input_expression_and_array_are_routed(self):
+        for selector in ['${{ inputs.runner }}','${{ vars.CI_RUNNER }}','${{ needs.build.outputs.runner }}']:
+            with self.subTest(selector=selector):
+                result,count=route('jobs:\n  a:\n    runs-on: '+selector+'\n')
+                self.assertEqual(count,1)
+                self.assertIn(selector[3:-2].strip(),result)
+                self.assertEqual(route(result),(result,0))
+        source='jobs:\n  a:\n    runs-on: [ubuntu-latest]\n  b:\n    runs-on: [self-hosted, gpu]\n'
+        self.assertEqual(route(source),(source.replace('[ubuntu-latest]','[eagle-linux-ubuntu24]'),1))
+
     def test_direct_preserves_comments_and_steps(self):
         source='jobs:\n  test:\n    runs-on: ubuntu-latest # platform\n    steps:\n      - run: echo ubuntu-latest\n'
         result,count=route(source)

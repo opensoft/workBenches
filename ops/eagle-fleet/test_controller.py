@@ -3,6 +3,13 @@ from unittest.mock import patch,Mock
 import controller
 
 class QueueTests(unittest.TestCase):
+    def test_gateway_validation_failure_does_not_persist_uncertain_create(self):
+        config=dict(gateway_image='gateway')
+        with patch.object(controller,'validate_pool'),patch.object(controller.backend,'infrastructure',side_effect=RuntimeError('gateway drift')),patch.object(controller,'save') as save,patch.object(controller.backend,'create') as create:
+            with self.assertRaisesRegex(RuntimeError,'gateway drift'):
+                controller.execute((None,{}, {},'example/project',1,2),config)
+            save.assert_not_called();create.assert_not_called()
+
     def config(self): return dict(pools=[dict(repositories=['example/project'])],profiles=[dict(labels=['eagle-linux-ubuntu24'],image='immutable')])
     def test_only_matching_queued_jobs_are_selected(self):
         def api(path):

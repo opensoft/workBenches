@@ -140,7 +140,7 @@ def prepare(engine,image,address,runner):
           '-e','DOCKER_HOST=unix:///var/run/docker.sock','-e',f'http_proxy={proxy}',
           '-e',f'https_proxy={proxy}','-e','no_proxy=localhost,127.0.0.1',
           '-e','Papertrail__Host=','-e','Papertrail__Port=0',
-          '--entrypoint','sleep',image,'26000')
+          '--entrypoint','sleep',image,'infinity')
     proof=inner(engine,'exec',runner,'bash','-lc',
                 "test $(id -u) = 1001 && test -x /opt/eagle/job-started.sh && sudo -n true && docker compose version >/dev/null && docker info --format '{{json .SecurityOptions}}'")
     if 'name=rootless' not in json.loads(proof.stdout): raise RuntimeError('Worker rootless proof failed')

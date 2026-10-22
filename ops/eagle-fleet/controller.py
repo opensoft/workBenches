@@ -126,6 +126,9 @@ def validate_pool(pool):
 def execute(candidate,config):
     _,pool,profile,repo,run,job=candidate
     validate_pool(pool)
+    # Validation cannot create a job sandbox. Persist uncertain-create state only
+    # after it succeeds, immediately before the first container mutation.
+    address=backend.infrastructure(config['gateway_image'])
     suffix=uuid.uuid4().hex[:12]
     state=dict(phase='creating-guard',runner='eagle-fleet-'+suffix,engine='eagle-fleet-engine-'+suffix,
                guard='eagle-fleet-guard-'+suffix,organization=pool['organization'],group_id=pool['group_id'],
@@ -133,7 +136,6 @@ def execute(candidate,config):
                maximum_job_seconds=config['maximum_lifetime_seconds'],
                repository=repo,run_id=run,job_id=job)
     save(state);event('creating',runner=state['runner'],repository=repo,job=job)
-    address=backend.infrastructure(config['gateway_image'])
     def before_engine():
         state['phase']='creating-engine';save(state)
     backend.create(state['guard'],state['engine'],address,config['gateway_image'],

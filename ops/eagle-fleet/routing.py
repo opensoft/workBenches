@@ -21,11 +21,14 @@ def route(source):
         for _,job in jobs.value:
             if not isinstance(job,yaml.MappingNode): continue
             for key,value in job.value:
-                if key.value=='runs-on' and isinstance(value,yaml.ScalarNode):
+                if key.value!='runs-on': continue
+                values=value.value if isinstance(value,yaml.SequenceNode) else [value]
+                for value in values:
+                    if not isinstance(value,yaml.ScalarNode): continue
                     original=value.value
                     if original in LABELS:
                         replacement=LABELS[original]
-                    elif original.startswith('${{') and original.endswith('}}') and ('matrix.' in original or 'ubuntu' in original):
+                    elif original.startswith('${{') and original.endswith('}}'):
                         expression=original[3:-2].strip()
                         generated=re.fullmatch(r"fromJSON\('(?P<mapping>[^']+)'\)\[\((?P<expression>.*)\)\] \|\| \((?P=expression)\)",expression)
                         if generated:

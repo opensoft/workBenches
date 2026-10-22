@@ -88,3 +88,29 @@ requirements through qualified execution rather than deleting tests; resolve
 native Windows/macOS capacity; land pinned providers before coherent consumer
 pin advancement; preserve shape-copy and CI integrity gates; perform and verify
 each repository's actual migration. Broad fleet completion is not claimed.
+
+October 22 progress: nine routing PRs have merged after actual CI success:
+flutterBench, goBench, phpBench, frappeBench, model-paddle, cloudBench,
+gentecBench, simBench and lablinc-zeus-app-spa. The shape provider's full Linux
+suite remains running; all thirteen approved consumer updates wait for its
+successful merge. Designer has one application assertion failure, admin SPA
+fails its production dependency audit, and AdxFactory requires human review.
+These gates remain enforced.
+
+The isolated Windows Server 2025 evaluation guest boots with Git 2.56.0,
+Python 3.13.17, PowerShell 7.6.7 and Bash 5.3.15 installed. No host restart or
+bench restart was required. It is not registered: guest proxy connectivity,
+updates, image sealing and disposable-job lifecycle qualification are pending.
+The required narrow host firewall rule is prepared but administrator elevation
+was rejected by automatic approval policy. Guest public connectivity currently
+fails; host-local proxy success is not guest network proof. macOS remains
+blocked because no Mac is available. Authorized unused build-cache cleanup
+reported 22.04 GB reclaimed without removing running containers or volumes.
+
+Review regression checks now cover arbitrary input/variable runner expressions,
+sequence selectors, quoted reusable-workflow pins, versioned Windows audits,
+and a gateway validation failure before sandbox creation. Worker PID 1 sleeps
+indefinitely until controller cleanup, so the persisted job deadline determines
+the maximum runtime. All 31 fleet unit tests pass. Runtime controller refresh
+waits for the current job to exit naturally; these source changes do not imply
+that the active controller has refreshed.
