@@ -314,5 +314,37 @@ printf 'return=%s:%s\n' "$CURRENT_SECTION" "$setup_review_offset"
         self.assertIn('jump=3', output)
         self.assertIn('return=5:8', output)
 
+    def test_global_vault_refresh_and_quit_preserve_state(self):
+        for section in (0,1,2,3,4,5):
+            output = self.shell(r'''
+init_components --loading
+for key in "${requirement_items[@]}"; do component_status[$key]=up; done
+component_status[workbenches_account]='sign in'
+CURRENT_SECTION=''' + str(section) + r'''; current_selection=1
+setup_bench_zone=bench; setup_bench_category=science
+component_checked[codex_cli]=true; component_action[codex_cli]=update
+refresh_component_statuses() { printf 'refresh\n'; }
+python3() { return 130; }
+draw_ui() { :; }
+handle_input <<< V
+printf '%s:%s:%s:%s:%s\n' "$CURRENT_SECTION" "$current_selection" "$setup_bench_zone" "$setup_bench_category" "$requirements_notice"
+handle_input <<< R
+printf 'queue=%s notice=%s\n' "${component_action[codex_cli]}" "$requirements_notice"
+handle_input <<< Q; printf 'quit=%s\n' "$?"
+''')
+            self.assertIn(f'{section}:1:bench:science:Connection cancelled.', output)
+            self.assertIn('queue=update notice=', output)
+            self.assertIn('quit=2', output)
+
+    def test_notice_is_bounded_and_shown_after_selector(self):
+        output = self.shell(r'''
+init_components --loading
+CURRENT_SECTION=3; requirements_notice='A notice with a long explanation that must be cut at the frame edge.'
+tput() { case $1 in cols) echo 37;; lines) echo 40;; esac; }
+render_setup_frame
+''')
+        self.assertGreater(output.index('A notice with'), output.index('REQUIREMENTS ·'))
+        self.assertEqual(output.count('A notice with'), 1)
+
 
 if __name__ == '__main__': unittest.main()

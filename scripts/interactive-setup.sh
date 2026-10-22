@@ -1445,7 +1445,12 @@ setup_frame_head() {
     setup_ui_rule_v head_line "$setup_ui_width"; setup_frame_append "$head_line"
 }
 setup_frame_selector() { :; }
-setup_frame_notice() { :; }
+setup_frame_notice() {
+    local notice_line
+    [[ -n "$requirements_notice" ]] || return 0
+    printf -v notice_line '%b%s%b' "$YELLOW" "${requirements_notice:0:setup_ui_width}" "$NC"
+    setup_frame_append "$notice_line"
+}
 setup_frame_footer() { :; }
 
 # Temporary 1.7 body capture, removed when the wizard bodies are complete.
@@ -1513,21 +1518,27 @@ setup_frame_review() {
 }
 
 setup_frame_legacy_bridge() {
-    local bridge_frame bridge_line
+    local bridge_frame bridge_line bridge_notice="$requirements_notice" bridge_notice_shown=false
+    local requirements_notice=''
     local -a bridge_lines=()
     if [[ "$CURRENT_SECTION" == 3 ]]; then
         bridge_frame="$(draw_requirements_summary; draw_requirements)"
     elif [[ "$CURRENT_SECTION" == 4 ]]; then bridge_frame="$(draw_profiles)"
     elif [[ "$CURRENT_SECTION" == 5 ]]; then
+        requirements_notice=$bridge_notice
         setup_frame_review
         setup_frame_append 'Navigation: ↑↓ Scroll  ← Back'
         setup_frame_append 'Enter Apply  P Workstation  Q Quit'
         return
     else bridge_frame="$(draw_three_sections)"; fi
     mapfile -t bridge_lines <<< "$bridge_frame"
+    requirements_notice=$bridge_notice
     for bridge_line in "${bridge_lines[@]}"; do
         [[ -n "$bridge_line" ]] || continue
         setup_frame_append "$bridge_line"
+        if [[ "$CURRENT_SECTION" == 3 && "$bridge_notice_shown" == false && "$bridge_line" == *╰* ]]; then
+            setup_frame_notice; bridge_notice_shown=true
+        fi
     done
     if [[ "$CURRENT_SECTION" == 5 ]]; then bridge_frame='Navigation: ←→ Steps  Enter Apply  Q Quit'
     else bridge_frame="$(draw_setup_footer)"; fi
@@ -1544,7 +1555,7 @@ setup_frame_build() {
     if [[ -n "$setup_ui_height" ]] && (( setup_ui_height < 40 )); then setup_ui_layout=tight; fi
     setup_frame_head
     setup_frame_selector
-    setup_frame_notice
+    [[ "$CURRENT_SECTION" == 3 ]] || setup_frame_notice
     setup_frame_legacy_bridge
     setup_frame_footer
     setup_frame_fit
@@ -1941,8 +1952,11 @@ handle_input() {
             'g'|'G')
                 if [[ "$CURRENT_SECTION" == 4 ]]; then setup_restore_target profiles
                 else setup_remember_target profiles; setup_arrive_step 4; fi ;;
-            'v'|'V') # Vault action is available beside its main-screen status.
-                activate_requirement vault || return "$?" ;;
+            'v'|'V') # Vault remains available from every step.
+                local vault_section=$CURRENT_SECTION vault_selection=$current_selection vault_zone=$setup_bench_zone vault_category=$setup_bench_category
+                activate_requirement vault || return "$?"
+                CURRENT_SECTION=$vault_section; current_selection=$vault_selection
+                setup_bench_zone=$vault_zone; setup_bench_category=$vault_category ;;
             'q'|'Q') # Quit
                 return 2
                 ;;
