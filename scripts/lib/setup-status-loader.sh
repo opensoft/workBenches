@@ -41,12 +41,39 @@ refresh_host_tool_inventory() {
     done < <(python3 "$SCRIPT_DIR/setup-components.py" tool-statuses)
 }
 
+# Publish complete metadata snapshots before any per-bench status row.
+setup_publish_bench_metadata() {
+    local catalog_file="$SCRIPT_DIR/../config/bench-config.json"
+    jq -r '
+        def clean: tostring | gsub("[[:cntrl:]]"; " ") | sub("^ +"; "") | sub(" +$"; "");
+        def field: if . == null then "-" else clean | if . == "" then "-" else . end end;
+        .benches | to_entries | sort_by(.key)[] | [.key, (.value.path | field)] | join("\t")
+    ' "$catalog_file" > "$status_worker_dir/catalog.tmp" || return
+    mv "$status_worker_dir/catalog.tmp" "$status_worker_dir/catalog"
+    jq -r '
+        def clean: tostring | gsub("[[:cntrl:]]"; " ") | sub("^ +"; "") | sub(" +$"; "");
+        def field: if . == null then "-" else clean | if . == "" then "-" else . end end;
+        (.categories // {}) | to_entries | sort_by(.value.order // 999, .key)[] |
+        [.key, ((.value.order // 999) | tostring), ((.value.label // .key) | field),
+         (.value.summary | field)] | join("\t")
+    ' "$catalog_file" > "$status_worker_dir/bench-categories.tmp" || return
+    mv "$status_worker_dir/bench-categories.tmp" "$status_worker_dir/bench-categories"
+    jq -r '
+        def clean: tostring | gsub("[[:cntrl:]]"; " ") | sub("^ +"; "") | sub(" +$"; "");
+        def field: if . == null then "-" else clean | if . == "" then "-" else . end end;
+        def items: (. // []) | map(clean | gsub("\\|"; "/")) | map(select(. != "")) | join("|") | field;
+        .benches | to_entries | sort_by(.key)[] |
+        [.key, (.value.category | field), (.value.tagline | field), (.value.description | field),
+         (.value.usedFor | items), (.value.contains | items)] | join("\t")
+    ' "$catalog_file" > "$status_worker_dir/bench-meta.tmp" || return
+    mv "$status_worker_dir/bench-meta.tmp" "$status_worker_dir/bench-meta"
+}
+
 status_collect_inventory() {
     local key label state detail name
     bench_items=()
     init_components
-    printf '%s\n' "${bench_items[@]}" > "$status_worker_dir/catalog.tmp"
-    mv "$status_worker_dir/catalog.tmp" "$status_worker_dir/catalog"
+    setup_publish_bench_metadata || return
     status_publish workbenches_account "$(python3 "$SCRIPT_DIR/setup-workbenches-account.py" --status)"
     local profile_summary
     profile_summary="$(python3 "$SCRIPT_DIR/setup-profiles.py" --summary 2>/dev/null)" || profile_summary='Profile metadata needs attention.'
