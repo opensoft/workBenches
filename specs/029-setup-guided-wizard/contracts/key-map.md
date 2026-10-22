@@ -18,7 +18,7 @@
 
 ## Behaviour by step
 
-| Key | Workstation | Benches: category zone | Benches: bench zone | Agents, Tools | Profiles | Review |
+| Key | Workstation | Benches: category zone | Benches: bench zone | Harness, Tools | Profiles | Review |
 |---|---|---|---|---|---|---|
 | ← / → | previous / next step; no wrap at Workstation or Review | same | same | same | same | same |
 | ↑ / ↓ | move between service rows; stop at ends | change current category among those with benches (preview; no row mark); ↓ on the last focusable category enters the bench zone | move within the category; ↑ on the first bench returns to the category zone (same category); ↓ on the last bench does nothing | move; skip the separator; stop at ends | move; stop at ends | scroll the list when it does not fit; otherwise nothing |
@@ -63,14 +63,14 @@ Every hint block begins with `Navigation:`. V is listed only on Workstation. Pro
 | 60–79 columns | as many as needed | the step's full list, wrapped between hints |
 | below 60 columns | at most 2 | the step's own keys plus `←→`, `Enter` and `Q`; P, G, R, V and PgUp/PgDn still work but are not listed |
 
-Full lists (from the approved Benches mockup and the illustrative Workstation, Review and Profiles mockups; Agents and Tools follow the Benches bench-zone pattern without Tab and About):
+Full lists (from the approved Benches mockup and the illustrative Workstation, Review and Profiles mockups; Harness and Tools follow the Benches bench-zone pattern without Tab and About):
 
 ```text
 Workstation   Navigation: ↑↓ Move  Enter <Action>  V Vault
                           ←→ Steps  P Back  R Refresh  Q Quit
 Benches       Navigation: ↑↓ Move  Tab Category  Space Select  D Remove  PgUp/PgDn About
                           ←→ Steps  P Workstation  R Refresh  Enter Review  Q Quit
-Agents/Tools  Navigation: ↑↓ Move  Space Select  D Remove
+Harness/Tools  Navigation: ↑↓ Move  Space Select  D Remove
                           ←→ Steps  P Workstation  R Refresh  Enter Review  Q Quit
 Profiles      Navigation: ↑↓ Move  Enter Open  PgUp/PgDn About
                           ←→ Steps  G Back  P Workstation  R Refresh  Q Quit

@@ -12,7 +12,7 @@ cannot discover an organization's secret store or grant access to its secrets.
 ## Select credential stores during setup
 
 Setup opens Workstation and checks Docker and the managed Python/jq/Git/curl
-Tools environment in the background. Queue components on Benches, Agents and
+Tools environment in the background. Queue components on Benches, Harness and
 Tools. Enter opens Review; only Enter on Review applies after required services
 are ready. An empty Review finishes without changes. Node/npm are checked only
 for selected npm-based tools.

@@ -66,7 +66,7 @@ translation, and MCP authentication boundaries.
 
 ## Browser extension
 
-Install **Vibe Annotations - Visual Feedback for AI Coding Agents** from the
+Install **Vibe Annotations - Visual Feedback for AI Coding Harness** from the
 Chrome Web Store in the Windows-hosted Chromium browser. The extension talks
 only to the loopback-published shared service; it does not connect directly to
 individual benches.

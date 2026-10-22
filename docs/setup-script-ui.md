@@ -6,14 +6,14 @@
 |---|---|
 | Workstation | Check WSL 2 when applicable, Docker and Tools; manage optional Vault. |
 | Benches | Browse categories, inspect each bench and queue changes. |
-| Agents | Queue coding CLI and specification-tool changes. |
+| Harness | Queue coding CLI and specification-tool changes. |
 | Tools | Queue desktop tools, Shell setup and Org workspace changes. |
 | Profiles | Manage personal/company identities, the workstation account and AI accounts. |
 | Review | Inspect the complete queue before applying it. |
 
 Setup opens on Workstation. Its navigation mark blinks while checks run, becomes
 `✓` when required services are Up, and `⚠` when they need attention. Benches,
-Agents and Tools show their queued counts. Profiles has no queued count because
+Harness and Tools show their queued counts. Profiles has no queued count because
 its rows open actions immediately. A narrow frame uses `Step N of 6` and six
 progress marks instead of the full navigation line.
 

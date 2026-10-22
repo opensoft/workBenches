@@ -624,3 +624,7 @@ table and Risks above. NB-15 is Brett's approval of this change (`tasks.md` 1.1)
 ### Accepted live-review revision: 029-A01 (2026-10-22)
 
 Brett's live-preview feedback supersedes the spacing and Benches footer details in D5/D16 and the illustrative mockups above: reserve one blank row below either logo form, add one blank row above CATEGORY only in roomy layouts, and omit the duplicate category/bench context row below About. Put the queued total at the right of the Benches footer rule. Other footer contexts, keys, actions, and height/width limits are unchanged. In tight Benches the removed row pays for logo spacing. See feature amendment 029-A01 and task T039A.
+
+## Accepted live-review revision 029-A02 (2026-10-22)
+
+Brett renamed the Agents step to Harness and requested blank rows between the category block, bench panel and About. Task T039B applies the label consistently in navigation, panel headings, Review and current documentation. Roomy Benches gains the two blank rows; tight layouts omit them and retain all eight Software Engineering benches and three About lines at 80×24. The nav highlight loses one trailing padding character to keep the longer Harness label and three single-digit queued counts within the 79-column frame. Keys and actions are unchanged. Historical naming decisions above are superseded by this revision.

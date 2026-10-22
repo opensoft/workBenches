@@ -186,3 +186,37 @@ refinement. See `features/029-setup-guided-wizard/openspec/029-A01.md`.
 
 T040 remains pending: this layout feedback does not approve the twelve benches'
 wording. No push, PR, merge or archive is authorized by this adjustment.
+
+## Live-review adjustment 029-A02 — 2026-10-22
+
+Brett requested renaming Agents to Harness and adding a blank line between the
+category list and bench panel, and another between the bench panel and About.
+Task T039B implements that feedback after baseline `bd32ec1`; its implementation
+and evidence are in the commit containing this section. The accepted amendment
+is `features/029-setup-guided-wizard/openspec/029-A02.md`.
+
+- Harness is the consistent label in navigation, its panel, Review, working
+  feature contracts and current user documentation. Historical decisions and
+  earlier verification records keep their original wording.
+- Roomy Benches has both new section gaps. The height calculation reserves
+  their rows before assigning space to lists and About. Tight views omit the
+  extra gaps, preserving all eight Software Engineering benches and three About
+  lines at 80×24.
+- The current nav item's trailing highlight padding is removed to accommodate
+  the extra character in Harness; the full nav with three single-digit queued
+  counts still fits the 79-column frame at an 80-column terminal.
+- PASS: exact T039B verify command; 24 wizard and 18 layout tests, including
+  the full size/locale matrix, updated name/spacing checks and no-fork guard;
+  Bash syntax and strict OpenSpec validation. Existing behavioral assertions
+  remain intact.
+- PASS: all 32 quickstart suites and native/WSL acceptance compilation after
+  the change. No Docker-backed real-host acceptance was run.
+- Full Benches timing: median 3.319 ms, p90 4.707 ms, max 5.927 ms. Per-step
+  medians: Workstation 2.091, Benches 2.463, Harness 2.371, Tools 2.200,
+  Profiles 1.874, Review 2.064 ms.
+- Visual check: refreshed live preview on Raven, workspace 14, maximized to
+  show the full layout with cppBench focused. Harness and both new section
+  gaps are visible. Compact rendering was also inspected.
+
+All twelve benches' wording is unchanged and T040 approval remains pending.
+No push, PR, merge or archive was performed.

@@ -66,7 +66,7 @@ assert len(samples)==100, result.stdout
 median = statistics.median(samples)
 print(('Engine-only' if args.engine_only else 'Full Benches') +
       f': median={median:.3f}ms p90={sorted(samples)[89]:.3f}ms max={max(samples):.3f}ms')
-for section, name in ((3,'Workstation'),(0,'Benches'),(1,'Agents'),(2,'Tools'),(4,'Profiles'),(5,'Review')):
+for section, name in ((3,'Workstation'),(0,'Benches'),(1,'Harness'),(2,'Tools'),(4,'Profiles'),(5,'Review')):
     values=[int(line.split()[2])/1000 for line in result.stdout.splitlines() if line.startswith(f'step {section} ')]
     print(f'{name}: median={statistics.median(values):.3f}ms')
 sys.exit(0 if median <= (25 if args.engine_only else 100) else 1)

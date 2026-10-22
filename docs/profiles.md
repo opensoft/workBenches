@@ -9,7 +9,7 @@ this branch, with real deployment/provider QA pending. See the
 [synchronization guide](company-credential-sync.md) and
 [specification](../specs/027-company-credential-sync/spec.md).
 
-**Profiles** is the fifth wizard step, after Workstation, Benches, Agents and
+**Profiles** is the fifth wizard step, after Workstation, Benches, Harness and
 Tools and before Review. Its identities line summarizes cached personal/company
 identities. The three rows are **Personal & companies**, **Workstation account**
 and **AI accounts**; an About panel explains the focused row. PgUp/PgDn or [ / ]

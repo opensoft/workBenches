@@ -113,7 +113,7 @@ From an existing checkout:
 This single command:
 
 1. Identifies the OS and checks required Docker access, Windows/WSL 2 readiness, and common dependencies. Missing requirements open a guided setup screen before component selection.
-2. Opens the six-step wizard: **Workstation → Benches → Agents → Tools → Profiles → Review**. Press **P** to visit Workstation and return, or **G** for Profiles, including personal/company identities and AI account setup. Browse benches by category and inspect their About panels before selecting changes.
+2. Opens the six-step wizard: **Workstation → Benches → Harness → Tools → Profiles → Review**. Press **P** to visit Workstation and return, or **G** for Profiles, including personal/company identities and AI account setup. Browse benches by category and inspect their About panels before selecting changes.
 3. Enter opens **Review**; only Enter on Review applies the component queue after readiness passes. Q cancels; an empty Review finishes without component installs or image builds. Enter on a service or Profiles row opens that action immediately.
 4. Checks Node/npm only for selected tools that require them. A system-owned npm location falls back to `~/.local`, with PATH configured for new terminals.
 5. Installs AI tools without requiring sign-in. Open **Profiles** to configure identity-specific AI accounts or select **AI accounts** for existing account setup, using direct sign-in or guided vault recovery. Existing profiles and credentials are preserved. Organization sign-in is optional; Keycloak login requires organization-provided settings.
@@ -189,7 +189,7 @@ setup.sh
   ├── Background OS / WSL 2 + Docker + Tools checks (containerized Python/jq/Git/curl)
   │     └── Results update live; missing requirements offer Install / Start
   ├── Optional Vault Up: credential-access tools; provider sign-in when needed
-  ├── Wizard: Workstation → Benches → Agents → Tools → Profiles → Review
+  ├── Wizard: Workstation → Benches → Harness → Tools → Profiles → Review
   │     └── Enter opens Review; Enter on Review applies; Q/EOF cancels
   ├── Compact selected-change summary + selected Node/npm prerequisites
   ├── Reuse existing profiles; preserve host shell settings

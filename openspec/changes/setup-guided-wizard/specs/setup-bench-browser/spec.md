@@ -56,7 +56,7 @@ In the bench zone ↑/↓ SHALL move only within the current category's benches.
 - **THEN** rustBench is queued for install and its row shows `→ Install`
 
 ### Requirement: Bench panel
-The bench panel SHALL be titled with the current category and `I of N installed` (installed as in the category block; `Loading…` while any of its statuses is unknown) and SHALL show one row per bench, in catalog-name order (code-point order of the bench names, as 1.7 lists them), with checkbox, status symbol, name, tagline, status label and queued action. Below 70 columns it SHALL drop the tagline and below 50 columns the status label; the focused row SHALL be marked `›` only in the bench zone, and when the rows do not fit the panel SHALL show `▲ N more` or `▼ N more` and keep the focused row visible.
+The bench panel SHALL be titled with the current category and `I of N installed` (installed as in the category block; `Loading…` while any of its statuses is unknown) and SHALL show one row per bench, in catalog-name order (code-point order of the bench names, as 1.7 lists them), with checkbox, status symbol, name, tagline, status label and queued action. Below 70 columns it SHALL drop the tagline and below 50 columns the status label; the focused row SHALL be marked `›` only in the bench zone, and when the rows do not fit the panel SHALL show `▲ N more` or `▼ N more` and keep the focused row visible. In roomy layouts, one blank row SHALL separate categories from the bench panel, and another SHALL separate the bench panel from About. Tight layouts SHALL omit these extra gaps so the existing bench/About content budget is preserved.
 
 #### Scenario: Full row at 87 columns
 - **WHEN** javaBench is installed, queued for update and focused in the bench zone

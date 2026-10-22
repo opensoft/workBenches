@@ -8,8 +8,8 @@ The setup TUI puts benches, AI assistants and tools in three fixed 24-column lis
 
 - Replace the three-column main screen and the separate Requirements and Profiles
   pages with a guided wizard, one step per screen, in the order a new workstation
-  needs: **Workstation → Benches → Agents → Tools → Profiles → Review** (the
-  former AI assistants section is named Agents). A top nav bar shows every step,
+  needs: **Workstation → Benches → Harness → Tools → Profiles → Review** (the
+  former AI assistants section is named Harness). A top nav bar shows every step,
   progress, queued-change counts and workstation readiness, and fits an
   80-column terminal. ←/→ move between steps; ↑/↓ move within a step.
 - **BREAKING (interaction):** Enter on a component no longer applies. Enter opens
@@ -51,7 +51,7 @@ discovery, immediate first paint, partial redraw of changed lines, blinking
 ### New Capabilities
 
 - `setup-wizard-flow`: wizard steps and order, nav bar, step and jump keys,
-  Enter→Review→Apply, the Workstation, Agents, Tools, Profiles and Review
+  Enter→Review→Apply, the Workstation, Harness, Tools, Profiles and Review
   steps, readiness handling, and the preserved setup contracts.
 - `setup-wizard-layout`: frame composition, the per-step selector area, width and
   height bounds, banner collapse, first paint without discovery, partial redraw
@@ -134,7 +134,7 @@ Brett Heap's decisions, quoted from the design sessions:
 - Profiles: its own wizard step before Review (decision, paraphrased).
 - Clarification (`/speckit-clarify`, 2026-10-21): Brett answered the 20 questions
   in `specs/029-setup-guided-wizard/clarify-questions.md`. On the nav fit:
-  "use Agents instead of ai or ai assistants". The other answers confirm the
+  "use Harness instead of ai or ai assistants". The other answers confirm the
   design or set rules folded into the deltas: the `G Profiles` pointer on the
   Workstation step, a two-line hint cap and `Changes: N` below 60 columns, no
   version numbers in bench copy, a 100 ms key-response budget, a catalog that
@@ -155,4 +155,4 @@ catalog additions needed to show every locked bench.
 - The disabled OpenTUI app (`scripts/setup-ui`).
 - Profiles internals (`scripts/setup-profiles.py` and its manager screens).
 - New Electrical Engineering benches, or chemistry/physics Science benches.
-- Categories or About panels for the Agents and Tools steps.
+- Categories or About panels for the Harness and Tools steps.

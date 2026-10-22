@@ -26,7 +26,7 @@ and every claimed client platform. Company membership grants no implicit SSH.
 ## Guided setup wizard
 
 The 1.7 scope also includes the six-step setup wizard: Workstation → Benches →
-Agents → Tools → Profiles → Review. This is a breaking interaction change:
+Harness → Tools → Profiles → Review. This is a breaking interaction change:
 **Enter opens Review; only Enter on Review applies** the component queue.
 Workstation and Profiles rows still run their explicit actions immediately.
 

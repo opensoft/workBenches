@@ -4,18 +4,18 @@
 
 Defines the interactive setup TUI as a guided wizard: its steps and their order,
 the top nav bar, step and jump keys, the Enter→Review→Apply flow, the content of
-the Workstation, Agents, Tools, Profiles and Review steps, readiness
+the Workstation, Harness, Tools, Profiles and Review steps, readiness
 handling, and the setup contracts the wizard must leave unchanged.
 
 ## ADDED Requirements
 
 ### Requirement: Guided wizard steps
-The interactive setup TUI SHALL present one step per screen in this fixed order: Workstation, Benches, Agents, Tools, Profiles, Review. The step that offers AI coding assistants and spec tools SHALL be named Agents wherever the step is named (nav bar, Review step names, footer, hints and documentation). The TUI SHALL open on the Workstation step and SHALL NOT show benches, agents and tools side by side.
+The interactive setup TUI SHALL present one step per screen in this fixed order: Workstation, Benches, Harness, Tools, Profiles, Review. The step that offers AI coding assistants and spec tools SHALL be named Harness wherever the step is named (nav bar, Review step names, footer, hints and documentation). The TUI SHALL open on the Workstation step and SHALL NOT show benches, agents and tools side by side.
 
 #### Scenario: Startup opens on Workstation
 - **WHEN** `./setup.sh` starts the interactive TUI on a terminal
 - **THEN** the first frame shows the Workstation step
-- **AND** the nav bar lists Workstation, Benches, Agents, Tools, Profiles and Review in that order
+- **AND** the nav bar lists Workstation, Benches, Harness, Tools, Profiles and Review in that order
 
 #### Scenario: One step per screen
 - **WHEN** any step is displayed
@@ -34,7 +34,7 @@ The interactive setup TUI SHALL present one step per screen in this fixed order:
 - **THEN** the step does not change
 
 #### Scenario: Vertical keys stay within the step
-- **WHEN** the user presses ↓ repeatedly on Agents
+- **WHEN** the user presses ↓ repeatedly on Harness
 - **THEN** focus moves through its rows, skipping the separator, and stops at the last row without changing step
 
 #### Scenario: Arriving on Benches
@@ -46,12 +46,12 @@ The nav bar SHALL show every step in order by name, joined by short ` ─ ` conn
 
 #### Scenario: Queued counts per step
 - **WHEN** two benches and one agent are queued and nothing else
-- **THEN** the nav shows `Benches 2` and `Agents 1`
+- **THEN** the nav shows `Benches 2` and `Harness 1`
 - **AND** Tools, Profiles and Review show no count
 
 #### Scenario: Full nav on an 80-column terminal
 - **WHEN** the terminal is 80 columns wide and two benches, one agent and one tool are queued
-- **THEN** the nav is one line naming all six steps, with `Benches 2`, `Agents 1` and `Tools 1`, joined by ` ─ `
+- **THEN** the nav is one line naming all six steps, with `Benches 2`, `Harness 1` and `Tools 1`, joined by ` ─ `
 
 #### Scenario: Readiness on every step
 - **WHEN** checks are running
@@ -66,7 +66,7 @@ The nav bar SHALL show every step in order by name, joined by short ` ─ ` conn
 Enter SHALL run the focused row's action when the focus is a Workstation service row (WSL 2, Docker, Tools, Vault) or a Profiles row. Everywhere else Enter SHALL open the Review step without applying, installing or removing anything.
 
 #### Scenario: Enter on a component opens Review
-- **WHEN** Codex CLI is queued for update and the user presses Enter on the Agents step
+- **WHEN** Codex CLI is queued for update and the user presses Enter on the Harness step
 - **THEN** the Review step is shown
 - **AND** nothing is installed or updated and the queued change is unchanged
 
@@ -84,7 +84,7 @@ The Review step SHALL list every queued change under INSTALL, UPDATE and REMOVE 
 
 #### Scenario: Grouped changes
 - **WHEN** rustBench is queued for install, javaBench and Codex CLI for update, and pyBench for removal
-- **THEN** Review shows rustBench under INSTALL with step Benches, javaBench (Benches) and Codex CLI (Agents) under UPDATE, and pyBench under REMOVE
+- **THEN** Review shows rustBench under INSTALL with step Benches, javaBench (Benches) and Codex CLI (Harness) under UPDATE, and pyBench under REMOVE
 - **AND** it shows the line "Nothing has changed yet. Enter applies these changes."
 
 #### Scenario: Risky optional changes are flagged
@@ -145,9 +145,9 @@ P SHALL move from any other step to Workstation, focusing its first row and reme
 ### Requirement: Profiles jump
 G SHALL move from any other step to Profiles, focusing its first row and remembering that step and its exact focus. G on Profiles SHALL return to the step and focus remembered when Profiles was entered by G, by → from Tools or by ← from Review, or to the Benches category zone on the first category that has benches when none is remembered.
 
-#### Scenario: Round trip from Agents
-- **WHEN** Codex CLI is focused on Agents and the user presses G, then G again
-- **THEN** Profiles is shown, and then Agents is shown again with Codex CLI focused
+#### Scenario: Round trip from Harness
+- **WHEN** Codex CLI is focused on Harness and the user presses G, then G again
+- **THEN** Profiles is shown, and then Harness is shown again with Codex CLI focused
 
 #### Scenario: Return to Tools after moving right
 - **WHEN** the user moves → from Tools to Profiles and presses G
@@ -220,8 +220,8 @@ The Profiles step SHALL show the identities summary line, the rows Personal & co
 - **WHEN** the user cancels a Profiles action
 - **THEN** Profiles shows "Profile action cancelled; saved profiles kept." and queued changes are unchanged
 
-### Requirement: Agents and Tools steps
-The Agents and Tools steps SHALL offer the same items, order and selection rules as before this change: Space SHALL queue or unqueue install (or update, when installed), D SHALL queue or unqueue removal of an installed item, items still loading or needing a check SHALL NOT be selectable, and Shell setup and Org workspace SHALL only be configurable, never removable.
+### Requirement: Harness and Tools steps
+The Harness and Tools steps SHALL offer the same items, order and selection rules as before this change: Space SHALL queue or unqueue install (or update, when installed), D SHALL queue or unqueue removal of an installed item, items still loading or needing a check SHALL NOT be selectable, and Shell setup and Org workspace SHALL only be configurable, never removable.
 
 #### Scenario: Queue an update
 - **WHEN** Codex CLI is installed and the user presses Space on it

@@ -12,14 +12,14 @@ The wizard keeps all state in Bash globals inside `scripts/interactive-setup.sh`
 |---:|---:|---|---|---|---|
 | 3 *(1.7 Requirements)* | 0 | Workstation | `requirement_items` *(1.7)*: `wsl` (WSL only), `docker`, `setup_tools`, `vault` | requirements strip | none; readiness mark instead |
 | 0 *(1.7)* | 1 | Benches | category zone: `setup_bench_categories_focusable`; bench zone: `bench_items` index | `CATEGORY` block | changes with key `bench_*` |
-| 1 *(1.7 AI assistants)* | 2 | Agents | `ai_items` *(1.7)*, separator skipped | none | changes on `ai_items` keys |
+| 1 *(1.7 AI assistants)* | 2 | Harness | `ai_items` *(1.7)*, separator skipped | none | changes on `ai_items` keys |
 | 2 *(1.7)* | 3 | Tools | `tool_items` *(1.7)* | none | changes on `tool_items` keys |
 | 4 *(1.7)* | 4 | Profiles | `profile_items` *(1.7)*: `personal_profiles`, `workbenches_account`, `ai_accounts` | identities line | never |
 | **5** *(new)* | 5 | Review | none (read-only list, `setup_review_offset`) | instruction line | never |
 
 ```text
 setup_step_sections=(3 0 1 2 4 5)
-setup_step_names=(Workstation Benches Agents Tools Profiles Review)
+setup_step_names=(Workstation Benches Harness Tools Profiles Review)
 setup_section_step=([3]=0 [0]=1 [1]=2 [2]=3 [4]=4 [5]=5)
 ```
 
@@ -36,7 +36,7 @@ setup_section_step=([3]=0 [0]=1 [1]=2 [2]=3 [4]=4 [5]=5)
 | `setup_about_offset` | int ≥ 0 | first visible About line (Benches and Profiles) |
 | `setup_about_anchor` | string | what About describes: `bench:<name>`, `category:<id>` or `profile:<key>`; a change of anchor resets the offset to 0 (FR-046) |
 | `setup_bench_offset[<category id>]` | assoc int | first visible bench row per category (edge-triggered scrolling, R5) |
-| `setup_list_offset` | int | first visible row on Workstation, Agents, Tools, Profiles |
+| `setup_list_offset` | int | first visible row on Workstation, Harness, Tools, Profiles |
 | `setup_review_offset` | int ≥ 0 | first visible Review item |
 | `setup_benches_state` | `loading` \| `ready` \| `unavailable` | Benches content state (FR-049) |
 
@@ -141,7 +141,7 @@ Rules *(1.7, FR-018, FR-043)*: Space queues `install`, or `update` when the item
 
 Views:
 
-- **Step of a change**: `bench_*` → Benches, `ai_items` → Agents, `tool_items` → Tools. Profiles and Workstation never hold queued changes.
+- **Step of a change**: `bench_*` → Benches, `ai_items` → Harness, `tool_items` → Tools. Profiles and Workstation never hold queued changes.
 - **Nav counts**: per step, the number of checked keys with a non-empty action.
 - **Category counts** (FR-041): `benches` = members; `installed` = members whose status counts as installed; `queued` = members with a queued change.
 - **Review groups** (FR-009): INSTALL (`install`), UPDATE (`update`), REMOVE (`uninstall`); within a group, step order then the step's row order; each item shows the step name; warnings for `host_shell` and `workspace_repo`.

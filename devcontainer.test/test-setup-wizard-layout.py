@@ -235,6 +235,10 @@ printf 'ABOUT-WINDOW=%s\\n' "$setup_about_window"
                 self.assertNotIn('cppBench · Ready',text)
                 category_index = next(i for i, line in enumerate(lines) if 'CATEGORY' in line)
                 self.assertEqual(lines[category_index - 1] == '', rows==0 or rows>=40)
+                bench_index = next(i for i, line in enumerate(lines) if line.startswith('╭─ ') and 'ABOUT' not in line)
+                about_index = next(i for i, line in enumerate(lines) if line.startswith('╭─ ABOUT'))
+                for index in (bench_index, about_index):
+                    self.assertEqual(lines[index - 1] == '', rows==0 or rows>=40)
                 if columns==80:
                     for name in ('cppBench','dotNetBench','flutterBench','frappeBench','goBench','javaBench','pyBench','rustBench'):
                         self.assertIn(name,text)
@@ -279,7 +283,7 @@ render_setup_frame
                             if section!=5:self.assertIn('›','\n'.join(lines))
                         if columns==80:
                             nav=next(line for line in lines if 'Workstation' in line and 'Benches' in line)
-                            for name in ('Benches 1','Agents 1','Tools 1','Profiles','Review'):self.assertIn(name,nav)
+                            for name in ('Benches 1','Harness 1','Tools 1','Profiles','Review'):self.assertIn(name,nav)
                         if columns==120:self.assertTrue(any(len(line)==87 for line in lines))
                         if columns==88:self.assertEqual('█▀▀█' in text,rows==40)
 

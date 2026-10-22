@@ -8,7 +8,7 @@
 
 ## Summary
 
-Replace the 1.7 setup TUI's three-column main screen and its separate Requirements and Profiles pages with a six-step wizard — Workstation → Benches → Agents → Tools → Profiles → Review — in `scripts/interactive-setup.sh`, where Enter opens Review and only Enter on Review applies; browse benches by category with a scrolling About panel; fit 36–87+ columns and any known height; and make the bench catalog complete (goBench, rustBench, 365Bench) and safely read by every consumer.
+Replace the 1.7 setup TUI's three-column main screen and its separate Requirements and Profiles pages with a six-step wizard — Workstation → Benches → Harness → Tools → Profiles → Review — in `scripts/interactive-setup.sh`, where Enter opens Review and only Enter on Review applies; browse benches by category with a scrolling About panel; fit 36–87+ columns and any known height; and make the bench catalog complete (goBench, rustBench, 365Bench) and safely read by every consumer.
 
 The approach, from [research.md](research.md):
 
@@ -179,7 +179,7 @@ Lands, as its own commits, **before** any catalog entry for 365Bench exists in `
 - Step map and Review as section 5 (R2); opening on Workstation in `main()`; ←/→ without wrap and arrival rules; nav bar with readiness mark, counts, full/compact form by measured width (R6).
 - Enter → Review → Apply: Review groups in step order with step names, REMOVE note, Shell setup/Org workspace warnings, empty state, blocker line, read-only scrolling with hidden counts, opening at the first item; unchanged gating, `--select-only` and empty-run behaviour (FR-014).
 - P and G targets with exact focus (row, zone, category, bench by name, Review offset); readiness jump after every completed check run; V from every step with notices on the current step; R keeping focus and queued changes; Q exiting 130 from every step.
-- Workstation (strip on Workstation only; REQUIRED SOFTWARE and OPTIONAL VAULT with `G Profiles`; detail under the focused row only), Agents and Tools (single-column panels, 1.7 items and rules), Profiles (identities line cut with `…`, three rows, About from `profile_about`, R7; refusal and result notices), per-step footers (context line, `Changes selected: N`/`Changes: N`, hint rules of [contracts/key-map.md](contracts/key-map.md)).
+- Workstation (strip on Workstation only; REQUIRED SOFTWARE and OPTIONAL VAULT with `G Profiles`; detail under the focused row only), Harness and Tools (single-column panels, 1.7 items and rules), Profiles (identities line cut with `…`, three rows, About from `profile_about`, R7; refusal and result notices), per-step footers (context line, `Changes selected: N`/`Changes: N`, hint rules of [contracts/key-map.md](contracts/key-map.md)).
 - Update in the same tasks the local suites these changes break (rule S1): `test-setup-cancel.sh`, `test-setup-guided-flow.py`, `test-setup-async.py`, `test-setup-requirements.py`, `test-setup-profiles.py` (see the impact table).
 - Exit: flow and layout tests pass for every non-Benches step at the render matrix sizes; the local regression list passes; the timing harness's per-step medians are within target.
 - Tier hints: step map, Review and Apply gate, jumps `[O]`; per-step bodies and footers `[S]` once the engine exists.
@@ -201,10 +201,10 @@ Lands, as its own commits, **before** any catalog entry for 365Bench exists in `
 
 ### Phase 8 — Documentation and release notes (OpenSpec 6.1, 6.2)
 
-- Rewrite `docs/setup-script-ui.md` for the wizard (steps named Workstation, Benches, Agents, Tools, Profiles, Review; keys; Enter → Review → Apply; sizes); update `docs/setup-requirements.md` (strip on Workstation, keys) and `docs/profiles.md` (Profiles as a step).
+- Rewrite `docs/setup-script-ui.md` for the wizard (steps named Workstation, Benches, Harness, Tools, Profiles, Review; keys; Enter → Review → Apply; sizes); update `docs/setup-requirements.md` (strip on Workstation, keys) and `docs/profiles.md` (Profiles as a step).
 - Update the passages of `README.md` and `docs/credential-recovery.md` that still describe the three-column screen, "AI assistants" as a section, or Enter applying at once (analysis E1).
 - Add the wizard to the 1.7 scope in `docs/release-1.7.0.md` and entries to `CHANGELOG.md` and the 1.7 release notes calling out the breaking interaction change (Enter opens Review; only Enter on Review applies) and the three newly offered benches. If 1.7 has frozen, move the note to the 1.8 plan.
-- Exit: docs name every step consistently ("Agents", never "AI assistants" as a step name); a doc check greps for the old three-column wording.
+- Exit: docs name every step consistently ("Harness", never "AI assistants" as a step name); a doc check greps for the old three-column wording.
 - Tier hint: `[S]`.
 
 ### Phase 9 — Verification and landing (OpenSpec 7.1–7.4)
@@ -221,7 +221,7 @@ Lands, as its own commits, **before** any catalog entry for 365Bench exists in `
 
 **PTY size.** The suites' PTYs have no window size, so `tput` reports 80×24: every PTY-driven suite runs the **79-column, 24-row tight layout** (research R5). The full nav fits there with single-digit counts (R6); Software Engineering's eight benches all fit with a three-line About (NB-12).
 
-**The `REQUIREMENTS · N/N ready` wait-marker problem after Profiles.** Four suites wait for the strip title as "checks done, workstation ready". The wizard opens on Workstation, so startup waits still match, but the strip no longer appears on other steps. In `test-workstation-acceptance.py` › `account_setup_replies`, G from the component step, the AI accounts action and G back return the user to **Agents**, and the next wait `(TUI, '\n')` never matches — `terminal_screen()` sees only the current screen — so the suite would hang to its timeout. Decision (research R8): wait on the nav's readiness mark `✓ Workstation` (same meaning, on every step) after the first key; keep the strip wait for the first frame; wait for Review's "Nothing has changed yet" line before the applying Enter.
+**The `REQUIREMENTS · N/N ready` wait-marker problem after Profiles.** Four suites wait for the strip title as "checks done, workstation ready". The wizard opens on Workstation, so startup waits still match, but the strip no longer appears on other steps. In `test-workstation-acceptance.py` › `account_setup_replies`, G from the component step, the AI accounts action and G back return the user to **Harness**, and the next wait `(TUI, '\n')` never matches — `terminal_screen()` sees only the current screen — so the suite would hang to its timeout. Decision (research R8): wait on the nav's readiness mark `✓ Workstation` (same meaning, on every step) after the first key; keep the strip wait for the first frame; wait for Review's "Nothing has changed yet" line before the applying Enter.
 
 | Suite | Where it runs | What breaks | Change (outcome kept) | Phase |
 |---|---|---|---|---|
@@ -336,3 +336,7 @@ No constitution violations to justify (see Constitution Check).
 ## Accepted live-review adjustment (2026-10-22)
 
 Brett requested removing the duplicate Benches footer status, separating the category block from the header, and adding space below the Opensoft logo. Task T039A implements amendment 029-A01: one blank row below every banner, an extra gap above categories in roomy layouts, and the Benches queued total in its footer divider. Tight Benches spends the removed context row on logo spacing, preserving all eight Software Engineering benches and three About lines at 80×24. Other footer contexts and all keys/actions remain unchanged.
+
+## Accepted live-review revision 029-A02 (2026-10-22)
+
+Brett renamed the Agents step to Harness and requested blank rows between the category block, bench panel and About. Task T039B applies the label consistently in navigation, panel headings, Review and current documentation. Roomy Benches gains the two blank rows; tight layouts omit them and retain all eight Software Engineering benches and three About lines at 80×24. The nav highlight loses one trailing padding character to keep the longer Harness label and three single-digit queued counts within the 79-column frame. Keys and actions are unchanged. Historical naming decisions above are superseded by this revision.

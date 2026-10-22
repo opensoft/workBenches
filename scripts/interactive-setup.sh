@@ -1157,7 +1157,7 @@ declare -a setup_frame_lines=()
 setup_frame_region_height=0
 
 setup_step_sections=(3 0 1 2 4 5)
-setup_step_names=(Workstation Benches Agents Tools Profiles Review)
+setup_step_names=(Workstation Benches Harness Tools Profiles Review)
 setup_section_step=([3]=0 [0]=1 [1]=2 [2]=3 [4]=4 [5]=5)
 setup_bench_zone=category
 setup_bench_category=''
@@ -1316,6 +1316,7 @@ setup_frame_categories() {
     local category_min_benches=${setup_bench_totals[$setup_bench_category]:-0} category_needed
     ((category_min_benches <= 3)) || category_min_benches=3
     category_needed=$(( ${#setup_frame_lines[@]} + 1 + ${#setup_bench_categories[@]} + category_min_benches + 6 + setup_footer_height ))
+    [[ "$setup_ui_layout" != roomy ]] || ((category_needed+=2))
     [[ -z "$requirements_notice" ]] || ((category_needed++))
     if [[ -n "$setup_ui_height" ]] && { ((setup_ui_height <= 24)) || ((category_needed > setup_ui_height)); }; then
         setup_categories_collapsed=true
@@ -1389,7 +1390,7 @@ setup_frame_head() {
         nav_count=${nav_counts[nav_index]}
         ((nav_count == 0)) || nav_item+=" $nav_count"
         if ((nav_index == nav_current)); then
-            nav_item=" $nav_item "
+            nav_item=" $nav_item"
             printf -v head_line '%b%b%s%b' "$SILVER_FOCUS" "$nav_color" "$nav_item" "$NC"
         else printf -v head_line '%b%s%b' "$nav_color" "$nav_item" "$NC"; fi
         if [[ -n "$nav_plain" ]]; then nav_plain+=' ─ '; nav_styled+=' ─ '; fi
@@ -1633,10 +1634,12 @@ setup_frame_benches() {
     done
     bench_line="${setup_bench_installed[$setup_bench_category]:-0} of ${#bench_members[@]} installed"
     [[ "$bench_any_loading" != true ]] || bench_line='Loading…'
+    [[ "$setup_ui_layout" != roomy ]] || setup_frame_append ''
     setup_panel_top_v bench_line "${bench_category_label[$setup_bench_category]}" "$bench_line"
     setup_frame_append "$bench_line"
     if [[ -n "$setup_ui_height" ]]; then
         bench_budget=$((setup_ui_height - ${#setup_frame_lines[@]} - setup_footer_height - 5))
+        [[ "$setup_ui_layout" != roomy ]] || ((bench_budget--))
         ((bench_budget >= 3)) || bench_budget=3
     fi
     bench_offset_local=${setup_bench_offset[$setup_bench_category]:-0}
@@ -1650,6 +1653,7 @@ setup_frame_benches() {
     done
     if ((setup_window_below > 0)); then setup_frame_row "▼ $setup_window_below more"; fi
     setup_panel_bottom_v bench_line; setup_frame_append "$bench_line"
+    [[ "$setup_ui_layout" != roomy ]] || setup_frame_append ''
     if [[ "$setup_bench_zone" == bench ]]; then
         bench_name="${bench_items[$current_selection]}"
         bench_about_anchor="bench:$bench_name"; bench_about_title="ABOUT ${bench_name^^}"

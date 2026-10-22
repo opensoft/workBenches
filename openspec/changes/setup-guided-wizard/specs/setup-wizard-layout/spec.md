@@ -20,12 +20,12 @@ Every wizard frame SHALL begin with the banner, one blank row, the version and O
 - **THEN** the frame contains no `STEP n OF m` title and no per-step description sentence
 
 ### Requirement: Step selector area
-The rows under the rule SHALL be the current step's selector area: the requirements strip on Workstation, the CATEGORY block on Benches and the identities summary line on Profiles. Agents and Tools SHALL start directly with their panels, and Review SHALL start with its instruction line.
+The rows under the rule SHALL be the current step's selector area: the requirements strip on Workstation, the CATEGORY block on Benches and the identities summary line on Profiles. Harness and Tools SHALL start directly with their panels, and Review SHALL start with its instruction line.
 
 #### Scenario: Strip only on Workstation
 - **WHEN** Workstation is shown
 - **THEN** the first row under the rule begins with `REQUIREMENTS ·`
-- **AND** when Benches, Agents, Tools, Profiles or Review is shown, no `REQUIREMENTS ·` strip appears
+- **AND** when Benches, Harness, Tools, Profiles or Review is shown, no `REQUIREMENTS ·` strip appears
 
 #### Scenario: Category block on Benches
 - **WHEN** Benches is shown after the catalog has loaded
@@ -49,9 +49,9 @@ The Workstation strip SHALL read `REQUIREMENTS · R/N ready`, where R of the N r
 ### Requirement: Notices on the current step
 A notice produced by the Vault action, a Profiles action, a blocked Apply or the readiness check SHALL be shown on the current step, after its selector area, cut to the frame width. As in 1.7, a notice SHALL stay, on whichever step is current, until a later notice replaces it, a Workstation service action (V included) starts, or R clears it.
 
-#### Scenario: Notice after V on Agents
-- **WHEN** the user presses V on Agents and the action reports that Vault needs attention
-- **THEN** the notice appears on the Agents step below the rule and no wider than the frame
+#### Scenario: Notice after V on Harness
+- **WHEN** the user presses V on Harness and the action reports that Vault needs attention
+- **THEN** the notice appears on the Harness step below the rule and no wider than the frame
 
 ### Requirement: Width bounds
 The minimum supported terminal size SHALL be 36 columns by 24 rows. For terminals at least 36 columns wide, no rendered line SHALL be wider than the terminal; the frame SHALL be one column narrower than the terminal, clamped to 36–87 columns (as in 1.7), and padding SHALL be computed from character counts, not bytes. Narrower terminals are below the supported size: setup SHALL still run there, drawing its 36-column frame, and lines MAY wrap.

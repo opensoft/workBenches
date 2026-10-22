@@ -15,7 +15,7 @@ The owner of an identity determines its source repository:
 | Opensoft-owned account | `opensoft/Opensoft-Tenant` |
 | FarHeap-owned account | `FarHeap/FarHeap-Tenant` |
 | Engineer-owned personal account | `<engineer>/AI-Credentials` |
-| Personal agent definition or stack | `<engineer>/Agents` |
+| Personal agent definition or stack | `<engineer>/Harness` |
 | Local OAuth session | Workstation or approved runtime only |
 
 Product repositories declare credential requirements and bindings, not tenant
@@ -177,7 +177,7 @@ committed without proving it can be recovered.
 An agent stack may bind one credential to several surfaces, but the encrypted
 credential has one owner and one source of truth. For example, a personal model
 credential can be materialized for `pclaude` on a workstation and injected into
-a personal VPS agent runtime without being copied into the Agents repository.
+a personal VPS agent runtime without being copied into the Harness repository.
 
 For teams that want to stop distributing the age recovery identity to
 workstations, the optional
