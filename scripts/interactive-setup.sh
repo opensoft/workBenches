@@ -1036,6 +1036,18 @@ prev_selection=-1
 prev_section=-1
 prev_checked_state=""
 
+# A variable-returning signature avoids a subshell for every key and idle tick.
+setup_update_ui_signature() {
+    local signature_key
+    setup_ui_signature="$CURRENT_SECTION:$current_selection:${setup_bench_zone:-category}:${setup_bench_category:-}:${setup_about_offset:-0}:${setup_review_offset:-0}:${setup_list_offset:-0}:$setup_ui_width:$setup_ui_height:$requirements_notice:$profiles_summary"
+    for signature_key in "${!component_description[@]}"; do
+        setup_ui_signature+=";$signature_key:${component_status[$signature_key]}:${component_checked[$signature_key]}:${component_action[$signature_key]}:${requirement_detail[$signature_key]}"
+    done
+    for signature_key in "${!setup_bench_offset[@]}"; do
+        setup_ui_signature+=";offset:$signature_key:${setup_bench_offset[$signature_key]}"
+    done
+}
+
 # Get current checked state as string (for change detection)
 get_checked_state() {
     local state=""
@@ -3601,7 +3613,8 @@ main() {
     # Store initial state
     local prev_sel=$current_selection
     local prev_sect=$CURRENT_SECTION
-    local prev_state=$(get_checked_state)
+    setup_update_ui_signature
+    local prev_state="$setup_ui_signature"
 
     while true; do
         handle_input
@@ -3609,7 +3622,8 @@ main() {
         poll_status_loader
 
         # Render changed state; draw_ui commits only the lines that differ.
-        local current_state=$(get_checked_state)
+        setup_update_ui_signature
+        local current_state="$setup_ui_signature"
 
         # Check if anything changed (selection or checkboxes)
         if [[ "$status_ui_dirty" == true || "$setup_ui_size_stale" == true ]] || [ $current_selection -ne $prev_sel ] || [ $CURRENT_SECTION -ne $prev_sect ] || [ "$current_state" != "$prev_state" ]; then

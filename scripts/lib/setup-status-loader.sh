@@ -134,6 +134,7 @@ setup_derive_bench_categories() {
 
 setup_read_bench_metadata() {
     local directory="$1" id order label summary name category tagline description uses contents field
+    local -a consumed_metadata=()
     if [[ -f "$directory/bench-categories" ]]; then
         bench_category_label=(); bench_category_order=(); bench_category_summary=()
         while IFS=$'\t' read -r id order label summary; do
@@ -145,7 +146,7 @@ setup_read_bench_metadata() {
             bench_category_order[$id]=$order; bench_category_label[$id]=$label; bench_category_summary[$id]=$summary
         done < "$directory/bench-categories"
         bench_categories_loaded=true; status_ui_dirty=true
-        rm -f "$directory/bench-categories"
+        consumed_metadata+=("$directory/bench-categories")
     fi
     if [[ -f "$directory/bench-meta" ]]; then
         bench_meta_category=(); bench_meta_tagline=(); bench_meta_description=()
@@ -161,8 +162,10 @@ setup_read_bench_metadata() {
             bench_meta_description[$name]=$description; bench_meta_used_for[$name]=$uses; bench_meta_contains[$name]=$contents
         done < "$directory/bench-meta"
         bench_meta_loaded=true; status_ui_dirty=true
-        rm -f "$directory/bench-meta"
+        consumed_metadata+=("$directory/bench-meta")
     fi
+    (( ${#consumed_metadata[@]} == 0 )) || rm -f -- "${consumed_metadata[@]}"
+    return 0
 }
 
 setup_update_benches_state() {

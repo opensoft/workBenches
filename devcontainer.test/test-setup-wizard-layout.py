@@ -140,5 +140,17 @@ printf 'fit=%s\n' "${setup_frame_lines[*]}"
             text = '\n'.join(self.frame(3, 88, rows))
             self.assertEqual('█▀▀█' in text, full)
 
+    def test_main_loop_uses_variable_signature(self):
+        text = (ROOT / 'scripts/interactive-setup.sh').read_text()
+        main = text.split('main() {', 1)[1]
+        self.assertNotIn('$(get_checked_state)', main)
+        output = self.shell(r'''
+init_components --loading
+setup_update_ui_signature; before=$setup_ui_signature
+setup_about_offset=2; setup_update_ui_signature
+[[ "$before" != "$setup_ui_signature" ]] || exit 91
+''')
+        self.assertEqual(output, '')
+
 
 if __name__ == '__main__': unittest.main()
