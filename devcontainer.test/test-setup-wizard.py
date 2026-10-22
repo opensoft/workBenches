@@ -236,5 +236,46 @@ render_setup_frame
             self.assertRegex(frame, markers.READY, f'section {section}')
             if section==3: self.assertRegex(frame, markers.STRIP_READY)
 
+    def test_enter_reviews_before_apply_and_gate_is_enforced(self):
+        output = self.shell(r'''
+init_components --loading
+for key in "${requirement_items[@]}"; do component_status[$key]=up; done
+CURRENT_SECTION=1; component_status[codex_cli]=installed; current_selection=2
+handle_input <<< ' '
+handle_input <<< ''; printf 'review=%s action=%s\n' "$CURRENT_SECTION" "${component_action[codex_cli]}"
+handle_input <<< ''; printf 'apply=%s\n' "$?"
+status_checks_running=true
+handle_input <<< ''; printf 'blocked=%s\n' "$?"
+status_checks_running=false; component_status[docker]=down
+handle_input <<< ''; printf 'down=%s\n' "$?"
+''')
+        self.assertIn('review=5 action=update', output)
+        self.assertIn('apply=1', output)
+        self.assertIn('blocked=0', output)
+        self.assertIn('down=0', output)
+
+    def test_review_is_read_only_and_selection_contract_unchanged(self):
+        output = self.shell(r'''
+init_components --loading
+for key in "${requirement_items[@]}"; do component_status[$key]=up; done
+component_checked[codex_cli]=true; component_action[codex_cli]=update
+component_checked[host_shell]=true; component_action[host_shell]=install
+component_checked[workspace_repo]=true; component_action[workspace_repo]=install
+CURRENT_SECTION=5
+handle_input <<< ' '; handle_input <<< D
+selection_file="$FIXTURE/selection.json"; save_selection
+setup_ui_height=40
+render_setup_frame
+''')
+        self.assertIn('Nothing has changed yet. Enter applies these changes.', output)
+        self.assertIn('INSTALL', output); self.assertIn('UPDATE', output)
+        self.assertIn('replaces shell settings', output)
+        self.assertIn('may create a GitHub repository', output)
+        data = json.loads((self.root/'selection.json').read_text())
+        self.assertEqual(data['schemaVersion'], 1)
+        self.assertEqual({(e['key'], e['action']) for e in data['components']},
+                         {('codex_cli','update'), ('host_shell','install'), ('workspace_repo','install')})
+        self.assertEqual((self.root/'selection.json').stat().st_mode & 0o777, 0o600)
+
 
 if __name__ == '__main__': unittest.main()

@@ -251,7 +251,7 @@ def account_setup_replies(authentication, *, cancel=False):
         *authentication,
         (r'Profile action cancelled; saved profiles kept\.[\s\S]*G Back[^\n]*Q Quit' if cancel
          else r'Profile action completed\.[\s\S]*G Back[^\n]*Q Quit', 'Q' if cancel else 'G'),
-        *([] if cancel else [(TUI, '\n')]),
+        *([] if cancel else [(READY, '\n'), (REVIEW, '\n')]),
     ]
 EMAIL = os.environ.get('WORKBENCHES_ACCEPTANCE_EMAIL', 'acceptance@example.test')
 MASTER = secrets.token_urlsafe(32)

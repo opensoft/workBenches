@@ -1418,13 +1418,80 @@ setup_frame_notice() { :; }
 setup_frame_footer() { :; }
 
 # Temporary 1.7 body capture, removed when the wizard bodies are complete.
+setup_review_rows=()
+setup_review_window=1
+
+setup_frame_review() {
+    local review_action review_label review_step review_item review_key review_text review_index review_budget review_offset_local review_total=0 review_last_action=''
+    local -a review_items=()
+    setup_ui_wrap 'Nothing has changed yet. Enter applies these changes.' "$setup_ui_width"
+    for review_text in "${setup_wrapped_lines[@]}"; do setup_frame_append "$review_text"; done
+    if [[ "$status_checks_running" == true ]]; then
+        printf -v review_text '%b%s%b' "$YELLOW" 'Apply waiting for checks.' "$NC"
+        setup_frame_append "$review_text"
+    elif ! setup_required_ready; then
+        setup_ui_wrap 'Apply waiting: resolve workstation requirements first.' "$setup_ui_width"
+        for review_text in "${setup_wrapped_lines[@]}"; do setup_frame_append "$review_text"; done
+    fi
+    setup_review_rows=()
+    for review_action in install update uninstall; do
+        review_items=()
+        for review_step in 0 1 2; do
+            case "$review_step" in
+                0) review_label="${setup_step_names[1]}"; review_items=("${bench_items[@]}") ;;
+                1) review_label="${setup_step_names[2]}"; review_items=("${ai_items[@]}") ;;
+                2) review_label="${setup_step_names[3]}"; review_items=("${tool_items[@]}") ;;
+            esac
+            for review_item in "${review_items[@]}"; do
+                review_key=$review_item
+                [[ "$review_step" != 0 ]] || review_key="bench_$review_item"
+                [[ "${component_checked[$review_key]}" == true && "${component_action[$review_key]}" == "$review_action" ]] || continue
+                if (( review_total == 0 )) || [[ "$review_last_action" != "$review_action" ]]; then
+                    case "$review_action" in install) review_text=INSTALL;; update) review_text=UPDATE;; uninstall) review_text='REMOVE · projects and credentials kept';; esac
+                    setup_review_rows+=("$review_text"); review_last_action=$review_action
+                fi
+                setup_review_rows+=("  ${component_description[$review_key]:-$review_item} ($review_label)")
+                ((review_total++))
+                if [[ "$review_key" == host_shell ]]; then setup_review_rows+=('Warning: Shell setup replaces shell settings.'); fi
+                if [[ "$review_key" == workspace_repo ]]; then setup_review_rows+=('Warning: Org workspace may create a GitHub repository.'); fi
+            done
+        done
+    done
+    if ((review_total == 0)); then
+        setup_ui_wrap 'No changes selected. Enter finishes without changes.' "$setup_ui_width"
+        for review_text in "${setup_wrapped_lines[@]}"; do setup_frame_append "$review_text"; done
+        setup_review_window=0
+        return
+    fi
+    review_budget=0
+    if [[ -n "$setup_ui_height" ]]; then
+        review_budget=$((setup_ui_height - ${#setup_frame_lines[@]} - 5))
+        ((review_budget > 2)) || review_budget=3
+    fi
+    review_offset_local=$setup_review_offset
+    setup_ui_list_window "${#setup_review_rows[@]}" "$setup_review_offset" "$review_budget" review_offset_local
+    setup_review_window=$setup_window_count
+    if ((setup_window_above > 0)); then setup_frame_append "▲ $setup_window_above more"; fi
+    for ((review_index=setup_window_start; review_index<setup_window_start+setup_window_count; review_index++)); do
+        review_text="${setup_review_rows[review_index]}"
+        review_text="${review_text:0:setup_ui_width}"
+        if [[ "$review_text" == Warning:* ]]; then printf -v review_text '%b%s%b' "$YELLOW" "$review_text" "$NC"; fi
+        setup_frame_append "$review_text"
+    done
+    if ((setup_window_below > 0)); then setup_frame_append "▼ $setup_window_below more"; fi
+}
+
 setup_frame_legacy_bridge() {
     local bridge_frame bridge_line
     local -a bridge_lines=()
     if [[ "$CURRENT_SECTION" == 3 ]]; then
         bridge_frame="$(draw_requirements_summary; draw_requirements)"
     elif [[ "$CURRENT_SECTION" == 4 ]]; then bridge_frame="$(draw_profiles)"
-    elif [[ "$CURRENT_SECTION" == 5 ]]; then bridge_frame='Review'
+    elif [[ "$CURRENT_SECTION" == 5 ]]; then
+        setup_frame_review
+        setup_frame_append 'Navigation: ↑↓ Scroll  ← Back'
+        setup_frame_append 'Enter Apply  P Workstation  Q Quit'
+        return
     else bridge_frame="$(draw_three_sections)"; fi
     mapfile -t bridge_lines <<< "$bridge_frame"
     for bridge_line in "${bridge_lines[@]}"; do
@@ -1711,6 +1778,10 @@ handle_input() {
         esac
         case "$key" in
             '[A') # Up arrow - move up in current section
+                if [[ "$CURRENT_SECTION" == 5 ]]; then
+                    ((setup_review_offset <= 0)) || ((setup_review_offset--))
+                    return 0
+                fi
                 if [ $current_selection -gt 0 ]; then
                     ((current_selection--))
                     # Skip separators in AI section
@@ -1724,6 +1795,10 @@ handle_input() {
                 fi
                 ;;
             '[B') # Down arrow - move down in current section
+                if [[ "$CURRENT_SECTION" == 5 ]]; then
+                    ((setup_review_offset >= ${#setup_review_rows[@]} - 1)) || ((setup_review_offset++))
+                    return 0
+                fi
                 local max_idx
                 if [ $CURRENT_SECTION -eq 0 ]; then
                     max_idx=$((${#bench_items[@]} - 1))
@@ -1755,6 +1830,7 @@ handle_input() {
     else
         case "$key" in
             ' '|d|D) # Space toggles install/update; D toggles explicit removal.
+                [[ "$CURRENT_SECTION" != 5 ]] || return 0
                 if [[ "$CURRENT_SECTION" == 4 ]]; then
                     [[ "$key" != ' ' ]] || activate_profile || return "$?"
                     return 0
@@ -1817,9 +1893,12 @@ handle_input() {
                         docker|wsl|setup_tools|vault) activate_requirement "$requirement"; return "$?" ;;
                     esac
                 fi
-                if [[ "$status_async_ui" == true ]] && { [[ "$status_checks_running" == true ]] || ! setup_required_ready; }; then
+                if [[ "$CURRENT_SECTION" != 5 ]]; then
+                    setup_arrive_step 5
+                    return 0
+                fi
+                if [[ "$status_checks_running" == true ]] || ! setup_required_ready; then
                     requirements_notice='Wait for checks and resolve workstation requirements before Apply.'
-                    draw_ui
                     return 0
                 fi
                 return 1
