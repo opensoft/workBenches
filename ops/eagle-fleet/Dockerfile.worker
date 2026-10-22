@@ -6,7 +6,7 @@ COPY --from=node /usr/local /usr/local
 COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    sudo python3-pip python3-venv build-essential pkg-config jq zsh shellcheck \
+    sudo python3-pip python3-venv python3-yaml build-essential pkg-config jq zsh shellcheck \
     netcat-openbsd openssh-client git-lfs rsync zip unzip xz-utils bubblewrap curl ca-certificates gnupg && \
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /usr/share/keyrings/githubcli-archive-keyring.gpg && \
     echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main' > /etc/apt/sources.list.d/github-cli.list && \

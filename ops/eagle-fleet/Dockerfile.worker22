@@ -3,7 +3,7 @@ FROM docker:28-cli@sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c
 FROM ghcr.io/actions/actions-runner@sha256:4ffadc0002b2581327e06101fc8c06cd189232baf79fe561fac9caeb76f5e807 AS runner
 FROM ubuntu:22.04@sha256:0a9887931b0e38af2e3487ed39e29436b0535c4f3f52e57745baaf79d1898956
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends sudo python3 python3-pip python3-venv build-essential pkg-config jq zsh shellcheck netcat-openbsd openssh-client git git-lfs rsync zip unzip xz-utils bubblewrap curl ca-certificates gnupg libicu70 libkrb5-3 liblttng-ust1 libssl3 libunwind8 zlib1g \
+RUN apt-get update && apt-get install -y --no-install-recommends sudo python3 python3-pip python3-venv python3-yaml build-essential pkg-config jq zsh shellcheck netcat-openbsd openssh-client git git-lfs rsync zip unzip xz-utils bubblewrap curl ca-certificates gnupg libicu70 libkrb5-3 liblttng-ust1 libssl3 libunwind8 zlib1g \
     && useradd --create-home --uid 1001 --user-group --shell /bin/bash runner \
     && usermod -aG sudo runner \
     && printf 'runner ALL=(ALL) NOPASSWD:ALL\nDefaults env_keep += "http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY"\n' > /etc/sudoers.d/eagle-runner \
