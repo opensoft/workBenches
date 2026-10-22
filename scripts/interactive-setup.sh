@@ -1332,6 +1332,89 @@ setup_restore_target() {
     fi
 }
 
+setup_focus_bench_name() {
+    local focus_index
+    for focus_index in "${!bench_items[@]}"; do
+        [[ "${bench_items[focus_index]}" != "$1" ]] || { current_selection=$focus_index; return 0; }
+    done
+    return 1
+}
+
+setup_benches_key() {
+    local zone_key="$1" zone_index=0 zone_name zone_bench_index=0
+    local -a zone_members=()
+    if [[ "$setup_benches_state" != ready ]]; then
+        case "$zone_key" in up) return 0;; down) return 0;; tab) return 0;; backtab) return 0;; ' ') return 0;; d) return 0;; D) return 0;; esac
+        return 1
+    fi
+    for zone_index in "${!setup_bench_categories_focusable[@]}"; do
+        [[ "${setup_bench_categories_focusable[zone_index]}" != "$setup_bench_category" ]] && continue
+        break
+    done
+    IFS=' ' read -r -a zone_members <<< "${setup_bench_members[$setup_bench_category]}"
+    if [[ "$setup_bench_zone" == category ]]; then
+        case "$zone_key" in
+            up) ((zone_index <= 0)) || ((zone_index--)) ;;
+            down)
+                if ((zone_index + 1 < ${#setup_bench_categories_focusable[@]})); then ((zone_index++))
+                else setup_bench_zone=bench; fi ;;
+            tab) setup_bench_zone=bench ;;
+            backtab) setup_bench_zone=bench ;;
+            ' ') setup_bench_zone=bench ;;
+            d) return 0 ;;
+            D) return 0 ;;
+            *) return 1 ;;
+        esac
+        setup_bench_category="${setup_bench_categories_focusable[zone_index]}"
+        IFS=' ' read -r -a zone_members <<< "${setup_bench_members[$setup_bench_category]}"
+        [[ -z "${zone_members[0]}" ]] || setup_focus_bench_name "${zone_members[0]}"
+        setup_about_offset=0
+        return 0
+    fi
+    for zone_bench_index in "${!zone_members[@]}"; do
+        [[ "${zone_members[zone_bench_index]}" != "${bench_items[$current_selection]}" ]] && continue
+        break
+    done
+    case "$zone_key" in
+        up) if ((zone_bench_index > 0)); then ((zone_bench_index--)); else setup_bench_zone=category; fi ;;
+        down) ((zone_bench_index + 1 >= ${#zone_members[@]})) || ((zone_bench_index++)) ;;
+        tab) setup_bench_zone=category ;;
+        backtab) setup_bench_zone=category ;;
+        pageup) setup_about_scroll -1; return 0 ;;
+        pagedown) setup_about_scroll 1; return 0 ;;
+        *) return 1 ;;
+    esac
+    [[ -z "${zone_members[zone_bench_index]}" ]] || setup_focus_bench_name "${zone_members[zone_bench_index]}"
+    setup_about_offset=0
+    return 0
+}
+
+setup_category_summary_v() {
+    local category_id="$2" category_text="${bench_category_label[$2]}" category_n=${setup_bench_totals[$2]:-0} category_installed=${setup_bench_installed[$2]:-0} category_queued=${setup_bench_queued[$2]:-0}
+    if ((category_n == 0)); then category_text+=' · coming soon'
+    else
+        category_text+=" · $category_n bench"; ((category_n == 1)) || category_text+='es'
+        ((category_installed == 0)) || category_text+=" · $category_installed installed"
+        ((category_queued == 0)) || category_text+=" · $category_queued queued"
+    fi
+    printf -v "$1" '%s' "$category_text"
+}
+
+setup_frame_categories() {
+    local category_id category_line category_marker category_color
+    [[ "$setup_benches_state" == ready ]] || return 0
+    setup_ui_pair_v category_line CATEGORY 'Tab ⇄ benches' "$setup_ui_width"; setup_frame_append "$category_line"
+    for category_id in "${setup_bench_categories[@]}"; do
+        category_marker=○; category_color="$SILVER"
+        [[ "$category_id" != "$setup_bench_category" ]] || category_marker=●
+        (( ${setup_bench_totals[$category_id]:-0} > 0 )) || category_color="$SILVER_MUTED"
+        setup_category_summary_v category_line "$category_id"
+        setup_ui_cut_v category_line "$category_marker $category_line" "$setup_ui_width"
+        printf -v category_line '%b%s%b' "$category_color" "$category_line" "$NC"
+        setup_frame_append "$category_line"
+    done
+}
+
 setup_arrive_step() {
     CURRENT_SECTION=$1; current_selection=0; setup_list_offset=0; setup_about_offset=0
     if [[ "$CURRENT_SECTION" == 0 ]]; then
@@ -1398,6 +1481,7 @@ setup_frame_head() {
 setup_frame_selector() {
     [[ "$CURRENT_SECTION" != 3 ]] || setup_frame_requirements_strip
     [[ "$CURRENT_SECTION" != 4 ]] || setup_frame_identities
+    [[ "$CURRENT_SECTION" != 0 ]] || setup_frame_categories
     return 0
 }
 setup_frame_notice() {
@@ -2002,7 +2086,7 @@ handle_input() {
 
     setup_input_key="$key"
     case "$key" in
-        $'\t') setup_input_key=tab; return 0 ;;
+        $'\t') setup_input_key=tab; [[ "$CURRENT_SECTION" != 0 ]] || setup_benches_key tab; return 0 ;;
         '[') setup_input_key=pageup; [[ "$CURRENT_SECTION" != 4 ]] || setup_about_scroll -1; return 0 ;;
         ']') setup_input_key=pagedown; [[ "$CURRENT_SECTION" != 4 ]] || setup_about_scroll 1; return 0 ;;
     esac
@@ -2010,7 +2094,7 @@ handle_input() {
     if [[ $key == $'\x1b' ]]; then
         IFS= read -rsn2 -t 0.1 key
         case "$key" in
-            '[Z') setup_input_key=backtab; return 0 ;;
+            '[Z') setup_input_key=backtab; [[ "$CURRENT_SECTION" != 0 ]] || setup_benches_key backtab; return 0 ;;
             '[5'|'[6')
                 local suffix
                 IFS= read -rsn1 -t 0.1 suffix
@@ -2030,6 +2114,7 @@ handle_input() {
             '[D') setup_input_key=left ;;
             *) setup_input_key=unknown; return 0 ;;
         esac
+        if [[ "$CURRENT_SECTION" == 0 ]] && setup_benches_key "$setup_input_key"; then return 0; fi
         case "$key" in
             '[A') # Up arrow - move up in current section
                 if [[ "$CURRENT_SECTION" == 5 ]]; then
@@ -2085,6 +2170,7 @@ handle_input() {
         case "$key" in
             ' '|d|D) # Space toggles install/update; D toggles explicit removal.
                 [[ "$CURRENT_SECTION" != 5 ]] || return 0
+                if [[ "$CURRENT_SECTION" == 0 ]] && setup_benches_key "$key"; then return 0; fi
                 if [[ "$CURRENT_SECTION" == 4 ]]; then
                     [[ "$key" != ' ' ]] || activate_profile || return "$?"
                     return 0

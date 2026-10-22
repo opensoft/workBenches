@@ -374,5 +374,23 @@ printf '%s offset=%s\n' "${setup_about_lines[*]}" "$setup_about_offset"
         self.assertIn('Organization sign-in.',output)
         self.assertIn('offset=0',output)
 
+    def test_bench_zones_keep_global_indices_and_do_not_select_category(self):
+        output=self.shell(r'''
+init_components; setup_load_bench_metadata_sync
+component_status[bench_365Bench]='not installed'
+setup_arrive_step 0
+handle_input <<< ' '
+printf '%s:%s:%s\n' "$setup_bench_zone" "${bench_items[$current_selection]}" "${component_checked[bench_365Bench]}"
+handle_input <<< ' '
+printf 'queued=%s\n' "${component_action[bench_365Bench]}"
+handle_input < <(printf '\e[A')
+printf 'up=%s\n' "$setup_bench_zone"
+handle_input < <(printf '\e[Z')
+printf 'tab=%s\n' "$setup_bench_zone"
+handle_input < <(printf '\t')
+printf 'back=%s\n' "$setup_bench_zone"
+''')
+        self.assertEqual(output.splitlines(),['bench:365Bench:false','queued=install','up=category','tab=bench','back=category'])
+
 
 if __name__ == '__main__': unittest.main()
