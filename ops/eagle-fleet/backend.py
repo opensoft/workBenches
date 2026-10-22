@@ -141,6 +141,16 @@ def prepare(engine,image,address,runner):
           '-e',f'https_proxy={proxy}','-e','no_proxy=localhost,127.0.0.1',
           '-e','Papertrail__Host=','-e','Papertrail__Port=0',
           '--entrypoint','sleep',image,'infinity')
+    # Docker CLI supplies these defaults to child containers and build steps.
+    # Daemon proxy variables alone cover image pulls, not container processes.
+    configure_proxy="""import json,pathlib,sys
+directory=pathlib.Path.home()/'.docker';directory.mkdir(exist_ok=True)
+target=directory/'config.json'
+if target.exists(): raise RuntimeError('Unexpected fresh-worker Docker configuration')
+target.write_text(json.dumps({'proxies':{'default':{'httpProxy':sys.argv[1],'httpsProxy':sys.argv[1],'noProxy':'localhost,127.0.0.1'}}}))
+target.chmod(0o600)
+"""
+    inner(engine,'exec',runner,'python3','-c',configure_proxy,proxy)
     proof=inner(engine,'exec',runner,'bash','-lc',
                 "test $(id -u) = 1001 && test -x /opt/eagle/job-started.sh && sudo -n true && docker compose version >/dev/null && docker info --format '{{json .SecurityOptions}}'")
     if 'name=rootless' not in json.loads(proof.stdout): raise RuntimeError('Worker rootless proof failed')

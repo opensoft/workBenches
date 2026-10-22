@@ -139,3 +139,18 @@ All 34 fleet unit tests pass. Label inventory was checked against the
 [GitHub standard runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 Guest proxy settings follow the
 [Microsoft WinHTTP command reference](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-winhttp).
+
+The extended Ubuntu 22 probe also verified public HTTP and HTTPS from a child
+Docker container using the client's generated proxy defaults. Its workspace
+round trip, sandboxing, private-destination rejection and cleanup passed again.
+The remaining three Speckit Bash selectors now use the matching Eagle Ubuntu
+24/22 profiles; the original Git 2.34.1 and Bash 3.2 checks remain intact.
+
+Windows Update download diagnosis found legitimate GET requests carrying
+`Content-Length: 0`. The proxy now accepts and strips exactly that empty-body
+header; nonzero/ambiguous lengths and all transfer encoding remain denied.
+Regression tests cover both allowed GET/HEAD and denied body encodings. All 36
+fleet tests and actionlint pass. The Windows-only proxy has this fix and update
+downloads are making progress. Linux gateway replacement and the updated
+controller/backend wait for natural completion of the active shape test.
+Windows evaluation activation succeeded; no Windows runner is registered yet.

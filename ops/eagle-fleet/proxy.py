@@ -51,8 +51,10 @@ class Handler(socketserver.StreamRequestHandler):
                 if url.scheme != 'http' or url.port not in (None, 80) or url.username or url.password:
                     raise ValueError('Only public HTTP downloads supported')
                 host, port = url.hostname, 80
-                if not host or any(k.lower() in (b'content-length', b'transfer-encoding') for k, _ in headers):
+                if not host or any(k.lower()==b'transfer-encoding' or
+                                   (k.lower()==b'content-length' and v!=b'0') for k,v in headers):
                     raise ValueError('Unexpected body')
+                headers=[(k,v) for k,v in headers if k.lower()!=b'content-length']
                 path = (url.path or '/') + ('?' + url.query if url.query else '')
                 request = f'{method} {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n'.encode('ascii')
                 request += b''.join(k+b': '+v+b'\r\n' for k,v in headers) + b'\r\n'
