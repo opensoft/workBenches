@@ -1403,6 +1403,18 @@ setup_category_summary_v() {
 setup_frame_categories() {
     local category_id category_line category_marker category_color
     [[ "$setup_benches_state" == ready ]] || return 0
+    local category_min_benches=${setup_bench_totals[$setup_bench_category]:-0} category_needed
+    ((category_min_benches <= 3)) || category_min_benches=3
+    category_needed=$(( ${#setup_frame_lines[@]} + 1 + ${#setup_bench_categories[@]} + category_min_benches + 6 + setup_footer_height ))
+    [[ -z "$requirements_notice" ]] || ((category_needed++))
+    if [[ -n "$setup_ui_height" ]] && { ((setup_ui_height <= 24)) || ((category_needed > setup_ui_height)); }; then
+        setup_categories_collapsed=true
+        setup_category_summary_v category_line "$setup_bench_category"
+        setup_ui_cut_v category_line "CATEGORY · $category_line" "$setup_ui_width"
+        setup_frame_append "$category_line"
+        return
+    fi
+    setup_categories_collapsed=false
     setup_ui_pair_v category_line CATEGORY 'Tab ⇄ benches' "$setup_ui_width"; setup_frame_append "$category_line"
     for category_id in "${setup_bench_categories[@]}"; do
         category_marker=○; category_color="$SILVER"
@@ -1967,9 +1979,9 @@ setup_frame_build() {
     setup_ui_layout=roomy
     if [[ -n "$setup_ui_height" ]] && (( setup_ui_height < 40 )); then setup_ui_layout=tight; fi
     setup_frame_head
+    setup_frame_footer_prepare
     setup_frame_selector
     setup_frame_notice
-    setup_frame_footer_prepare
     if [[ "$CURRENT_SECTION" == 3 ]]; then setup_frame_workstation
     elif [[ "$CURRENT_SECTION" == 1 || "$CURRENT_SECTION" == 2 ]]; then setup_frame_components
     elif [[ "$CURRENT_SECTION" == 4 ]]; then setup_frame_profiles

@@ -203,5 +203,37 @@ printf '%s\\n' "${{setup_frame_lines[@]}}"
                 if section!=3:self.assertNotIn('V Vault',text)
                 if section==4:self.assertTrue(any('G Back' in line and 'Q Quit' in line for line in lines))
 
+    def real_benches_frame(self, columns, rows):
+        text=self.shell(f'''init_components; setup_load_bench_metadata_sync
+for key in "${{!component_description[@]}}"; do component_status[$key]=installed; done
+for key in "${{requirement_items[@]}}"; do component_status[$key]=up; done
+status_checks_running=false; setup_refresh_bench_counts
+setup_arrive_step 0; setup_bench_zone=bench
+setup_focus_bench_name cppBench
+tput() {{ case $1 in cols) echo {columns};; lines) echo {rows};; esac; }}
+render_setup_frame
+printf 'ABOUT-WINDOW=%s\\n' "$setup_about_window"
+''')
+        return ANSI.sub('',text).splitlines()
+
+    def test_bench_height_budget_gives_benches_priority(self):
+        for columns,rows in ((80,24),(37,24),(88,40),(88,0)):
+            with self.subTest(columns=columns,rows=rows):
+                lines=self.real_benches_frame(columns,rows)
+                about=lines.pop()
+                self.assert_bounds(lines,max(columns,36),rows or None)
+                text='\n'.join(lines)
+                self.assertIn('Navigation:',text)
+                self.assertIn('›',text)
+                if columns==80:
+                    for name in ('cppBench','dotNetBench','flutterBench','frappeBench','goBench','javaBench','pyBench','rustBench'):
+                        self.assertIn(name,text)
+                    self.assertEqual(about,'ABOUT-WINDOW=3')
+                    self.assertEqual(sum('CATEGORY' in line for line in lines),1)
+                if rows==0:self.assertNotIn('more',text)
+                if rows==40:
+                    for label in ('Software Engineering','Science','System Administration','Electrical Engineering'):
+                        self.assertIn(label,text)
+
 
 if __name__ == '__main__': unittest.main()
