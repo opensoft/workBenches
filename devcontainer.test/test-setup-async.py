@@ -144,7 +144,7 @@ draw_ui > "$1/repeated"
         with tempfile.TemporaryDirectory() as temporary:
             command = f'''source "{ROOT}/scripts/interactive-setup.sh"
 tput() {{ if [[ "$1" == cols ]]; then echo 88; fi; }}
-render_setup_frame() {{ printf '%s\\n' "$content"; }}
+setup_frame_build() {{ mapfile -t setup_frame_lines <<< "$content"; }}
 content=$'header\\nlong status\\nold footer'
 draw_ui > "$1/first"
 content=$'header\\nup'

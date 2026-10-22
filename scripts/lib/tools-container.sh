@@ -65,6 +65,30 @@ workbenches_requirement_action() {
     esac
 }
 
+# Variable-returning sibling for the fork-free TUI renderer.
+workbenches_requirement_action_v() {
+    local action_key="$2" action_state="$3" action_account="${4:-}" action_value
+    if [[ "$action_key" == wsl ]]; then
+        action_value=Configure
+        [[ "$action_state" != up ]] || action_value=Check
+    else
+        case "$action_state" in
+            missing) action_value=Install ;;
+            down) action_value=Start ;;
+            loading) action_value=Loading ;;
+            up)
+                action_value=Check
+                if [[ "$action_key" == vault ]]; then
+                    action_value=Connect
+                    [[ "$action_account" != 'signed in' ]] || action_value='Sign out'
+                    [[ "$action_account" != loading ]] || action_value=Loading
+                fi ;;
+            *) action_value=Check ;;
+        esac
+    fi
+    printf -v "$1" '%s' "$action_value"
+}
+
 workbenches_requirement_rows() {
     local state label
     label="$(workbenches_setup_os)"

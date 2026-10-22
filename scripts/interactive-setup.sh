@@ -86,18 +86,30 @@ setup_ui_painted=false
 setup_ui_frame_columns=0
 declare -a setup_ui_previous_lines=()
 
+setup_ui_rule_v() {
+    local ui_rule
+    printf -v ui_rule '%*s' "$2" ''
+    printf -v "$1" '%s' "${ui_rule// /─}"
+}
+
 setup_ui_rule() {
-    local rule
-    printf -v rule '%*s' "$1" ''
-    printf '%s' "${rule// /─}"
+    local result
+    setup_ui_rule_v result "$1"
+    printf '%s' "$result"
+}
+
+setup_ui_pair_v() {
+    local ui_left="$2" ui_right="$3" ui_width="$4" ui_gap
+    ui_right="${ui_right:0:$((ui_width - 1))}"
+    ui_left="${ui_left:0:$((ui_width - ${#ui_right} - 1))}"
+    ui_gap=$((ui_width - ${#ui_left} - ${#ui_right}))
+    printf -v "$1" '%s%*s%s' "$ui_left" "$ui_gap" '' "$ui_right"
 }
 
 setup_ui_pair() {
-    local left="$1" right="$2" width="$3" gap
-    right="${right:0:$((width - 1))}"
-    left="${left:0:$((width - ${#right} - 1))}"
-    gap=$((width - ${#left} - ${#right}))
-    printf '%s%*s%s' "$left" "$gap" '' "$right"
+    local result
+    setup_ui_pair_v result "$1" "$2" "$3"
+    printf '%s' "$result"
 }
 
 draw_setup_banner() {
@@ -145,14 +157,28 @@ setup_requirement_counts() {
     done
 }
 
+setup_panel_top_v() {
+    local panel_line
+    setup_ui_pair_v panel_line "$2" "${3:-}" "$((setup_ui_width - 6))"
+    printf -v "$1" '%b╭─ %b%s%b ─╮%b' "$SILVER_EDGE" "$SILVER" "$panel_line" "$SILVER_EDGE" "$NC"
+}
+
+setup_panel_bottom_v() {
+    local panel_rule
+    setup_ui_rule_v panel_rule "$((setup_ui_width - 2))"
+    printf -v "$1" '%b╰%s╯%b' "$SILVER_EDGE" "$panel_rule" "$NC"
+}
+
 setup_panel_top() {
-    local label="$1" right="${2:-}" line
-    line="$(setup_ui_pair "$label" "$right" "$((setup_ui_width - 6))")"
-    printf '%b╭─ %b%s%b ─╮%b\n' "$SILVER_EDGE" "$SILVER" "$line" "$SILVER_EDGE" "$NC"
+    local result
+    setup_panel_top_v result "$1" "${2:-}"
+    printf '%s\n' "$result"
 }
 
 setup_panel_bottom() {
-    printf '%b╰%s╯%b\n' "$SILVER_EDGE" "$(setup_ui_rule "$((setup_ui_width - 2))")" "$NC"
+    local result
+    setup_panel_bottom_v result
+    printf '%s\n' "$result"
 }
 
 draw_requirements_summary() {
@@ -186,17 +212,24 @@ draw_requirements_summary() {
     [[ -z "$requirements_notice" ]] || printf '\n%b%s%b\n' "$YELLOW" "${requirements_notice:0:$setup_ui_width}" "$NC"
 }
 
-setup_status_label() {
-    case "$1" in
-        loading) printf 'Loading…' ;;
-        up) printf 'Up' ;;
-        down) printf 'Down' ;;
-        installed|ready) printf 'Ready' ;;
-        configured) printf 'Configured' ;;
-        missing) printf 'Missing' ;;
-        optional|'not configured') printf 'Not configured' ;;
-        *) printf '%s' "$1" ;;
+setup_status_label_v() {
+    local status_text="$2"
+    case "$status_text" in
+        loading) status_text='Loading…' ;;
+        up) status_text=Up ;;
+        down) status_text=Down ;;
+        installed|ready) status_text=Ready ;;
+        configured) status_text=Configured ;;
+        missing) status_text=Missing ;;
+        optional|'not configured') status_text='Not configured' ;;
     esac
+    printf -v "$1" '%s' "$status_text"
+}
+
+setup_status_label() {
+    local result
+    setup_status_label_v result "$1"
+    printf '%s' "$result"
 }
 
 # Spinner for long operations
@@ -1125,7 +1158,7 @@ draw_row() {
 }
 
 # Build a complete frame off-screen; discovery never runs in the renderer.
-render_setup_frame() {
+render_legacy_setup_frame() {
     local os_label
     draw_setup_banner
     os_label="${setup_os_label:0:$((setup_ui_width - 20))}"
@@ -1144,35 +1177,65 @@ render_setup_frame() {
     draw_setup_footer
 }
 
-# Commit only changed lines in one write, without blanking the screen first.
-draw_ui() {
-    local columns frame output='' cursor index count
-    local -a lines=()
-    columns="$(tput cols 2>/dev/null)"
-    [[ "$columns" =~ ^[0-9]+$ ]] || columns=88
-    setup_ui_width=$((columns - 1))
+declare -a setup_frame_lines=()
+setup_frame_region_height=0
+
+setup_frame_head() { :; }
+setup_frame_selector() { :; }
+setup_frame_notice() { :; }
+setup_frame_footer() { :; }
+
+# Temporary 1.7 body capture, removed when the wizard bodies are complete.
+setup_frame_legacy_bridge() {
+    local bridge_frame
+    bridge_frame="$(render_legacy_setup_frame)"
+    mapfile -t setup_frame_lines <<< "$bridge_frame"
+    setup_frame_region_height=${#setup_frame_lines[@]}
+}
+
+setup_frame_build() {
+    setup_frame_lines=()
+    setup_frame_head
+    setup_frame_selector
+    setup_frame_notice
+    setup_frame_legacy_bridge
+    setup_frame_footer
+}
+
+render_setup_frame() {
+    setup_frame_build
+    printf '%s\n' "${setup_frame_lines[@]}"
+}
+
+# Size discovery is outside the fork-free builder and line-diff engine.
+setup_measure_terminal() {
+    setup_terminal_columns="$(tput cols 2>/dev/null)"
+    [[ "$setup_terminal_columns" =~ ^[0-9]+$ ]] || setup_terminal_columns=88
+    setup_ui_width=$((setup_terminal_columns - 1))
     (( setup_ui_width <= 87 )) || setup_ui_width=87
     (( setup_ui_width >= 36 )) || setup_ui_width=36
-    frame="$(render_setup_frame)"
-    mapfile -t lines <<< "$frame"
+}
 
-    if [[ "$setup_ui_painted" != true || "$setup_ui_frame_columns" != "$columns" ]]; then
+# Commit only changed lines in one write, without blanking the screen first.
+draw_ui() {
+    local output='' cursor index count
+    setup_measure_terminal
+    setup_frame_build
+    if [[ "$setup_ui_painted" != true || "$setup_ui_frame_columns" != "$setup_terminal_columns" ]]; then
         output=$'\033[?25l\033[0m\033[2J'
         setup_ui_previous_lines=()
     fi
-    count=${#lines[@]}
+    count=${#setup_frame_lines[@]}
     (( count >= ${#setup_ui_previous_lines[@]} )) || count=${#setup_ui_previous_lines[@]}
     for ((index=0; index<count; index++)); do
-        if [[ "${lines[$index]:-}" != "${setup_ui_previous_lines[$index]:-}" ]]; then
+        if [[ "${setup_frame_lines[$index]:-}" != "${setup_ui_previous_lines[$index]:-}" ]]; then
             printf -v cursor '\033[%d;1H' "$((index + 1))"
-            # Erase after writing, so shortening a row removes stale text
-            # without first flashing a blank line. Removed rows are erased too.
-            output+="${cursor}"$'\033[0m'"${lines[$index]:-}"$'\033[0m\033[K'
+            output+="${cursor}"$'\033[0m'"${setup_frame_lines[$index]:-}"$'\033[0m\033[K'
         fi
     done
     [[ -z "$output" ]] || printf '%s' "$output"
-    setup_ui_previous_lines=("${lines[@]}")
-    setup_ui_frame_columns=$columns
+    setup_ui_previous_lines=("${setup_frame_lines[@]}")
+    setup_ui_frame_columns=$setup_terminal_columns
     setup_ui_painted=true
 }
 
