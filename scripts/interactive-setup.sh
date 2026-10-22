@@ -1687,6 +1687,92 @@ setup_frame_profiles_footer() {
     fi
 }
 
+setup_frame_bench_row() {
+    local row_name="$1" row_focused="$2" row_key="bench_$1" row_marker=' ' row_box='[ ]' row_icon=○ row_state row_action='' row_right='' row_left row_color="$SILVER"
+    [[ "$row_focused" != true ]] || row_marker=›
+    [[ "${component_checked[$row_key]}" != true ]] || row_box='[✓]'
+    setup_status_label_v row_state "${component_status[$row_key]}"
+    if [[ "${component_status[$row_key]}" == installed || "${component_status[$row_key]}" == 'needs creds' || "${component_status[$row_key]}" == 'image only' ]]; then row_icon=✓; row_color="$GREEN"; fi
+    [[ "${component_status[$row_key]}" != installed ]] || row_state=Installed
+    if [[ "${component_status[$row_key]}" == loading || -z "${component_status[$row_key]}" ]]; then row_icon=…; row_state='Loading…'; row_color="$LOADING_COLOR"; fi
+    row_left="$row_marker $row_box $row_icon $row_name"
+    if ((setup_ui_width >= 70)) && [[ -n "${bench_meta_tagline[$row_name]}" ]]; then row_left+=" · ${bench_meta_tagline[$row_name]}"; fi
+    if [[ "${component_checked[$row_key]}" == true && -n "${component_action[$row_key]}" ]]; then
+        row_action="${component_action[$row_key]^}"
+        [[ "$row_action" != Uninstall ]] || row_action=Remove
+        row_right="→ $row_action"
+    fi
+    if ((setup_ui_width >= 50)); then
+        [[ -z "$row_right" ]] || row_right="  $row_right"
+        row_right="$row_state$row_right"
+    fi
+    setup_frame_row "$row_left" "$row_right" "$row_color"
+}
+
+setup_frame_benches() {
+    local bench_line bench_name bench_index bench_focus_index=0 bench_focused=false bench_budget=0 bench_offset_local=0 bench_about_window=8 bench_any_loading=false bench_about_text='' bench_about_title bench_about_anchor bench_part bench_field
+    local -a bench_members=() bench_parts=()
+    if [[ "$setup_benches_state" != ready ]]; then setup_frame_append 'Loading benches…'; return; fi
+    if [[ -z "$setup_bench_category" ]]; then setup_bench_category="${setup_bench_categories_focusable[0]}"; fi
+    [[ -n "$setup_bench_category" ]] || { setup_frame_append 'No benches available.'; return; }
+    IFS=' ' read -r -a bench_members <<< "${setup_bench_members[$setup_bench_category]}"
+    for bench_index in "${!bench_members[@]}"; do
+        bench_name="${bench_members[bench_index]}"
+        [[ "$bench_name" != "${bench_items[$current_selection]}" ]] || bench_focus_index=$bench_index
+        if [[ "${component_status[bench_$bench_name]}" == loading || -z "${component_status[bench_$bench_name]}" ]]; then bench_any_loading=true; fi
+    done
+    bench_line="${setup_bench_installed[$setup_bench_category]:-0} of ${#bench_members[@]} installed"
+    [[ "$bench_any_loading" != true ]] || bench_line='Loading…'
+    setup_panel_top_v bench_line "${bench_category_label[$setup_bench_category]}" "$bench_line"
+    setup_frame_append "$bench_line"
+    if [[ -n "$setup_ui_height" ]]; then
+        bench_budget=$((setup_ui_height - ${#setup_frame_lines[@]} - setup_footer_height - 5))
+        ((bench_budget >= 3)) || bench_budget=3
+    fi
+    bench_offset_local=${setup_bench_offset[$setup_bench_category]:-0}
+    setup_ui_list_window "${#bench_members[@]}" "$bench_focus_index" "$bench_budget" bench_offset_local
+    setup_bench_offset[$setup_bench_category]=$bench_offset_local
+    if ((setup_window_above > 0)); then setup_frame_row "▲ $setup_window_above more"; fi
+    for ((bench_index=setup_window_start; bench_index<setup_window_start+setup_window_count; bench_index++)); do
+        bench_name="${bench_members[bench_index]}"; bench_focused=false
+        if [[ "$setup_bench_zone" == bench && "$bench_name" == "${bench_items[$current_selection]}" ]]; then bench_focused=true; fi
+        setup_frame_bench_row "$bench_name" "$bench_focused"
+    done
+    if ((setup_window_below > 0)); then setup_frame_row "▼ $setup_window_below more"; fi
+    setup_panel_bottom_v bench_line; setup_frame_append "$bench_line"
+    if [[ "$setup_bench_zone" == bench ]]; then
+        bench_name="${bench_items[$current_selection]}"
+        bench_about_anchor="bench:$bench_name"; bench_about_title="ABOUT ${bench_name^^}"
+        bench_about_text="${bench_meta_description[$bench_name]}"
+        for bench_field in used_for contains; do
+            if [[ "$bench_field" == used_for ]]; then bench_part="${bench_meta_used_for[$bench_name]}"; bench_line='Use it for'
+            else bench_part="${bench_meta_contains[$bench_name]}"; bench_line=Contains; fi
+            [[ -n "$bench_part" ]] || continue
+            IFS=$'\174' read -r -a bench_parts <<< "$bench_part"
+            [[ -z "$bench_about_text" ]] || bench_about_text+=$'\n'
+            bench_about_text+="$bench_line: "
+            bench_line=''
+            for bench_part in "${bench_parts[@]}"; do
+                [[ -z "$bench_line" ]] || bench_line+='; '
+                bench_line+="$bench_part"
+            done
+            bench_about_text+="$bench_line"
+        done
+        [[ -n "$bench_about_text" ]] || bench_about_text='No details for this bench yet.'
+    else
+        bench_about_anchor="category:$setup_bench_category"; bench_about_title="ABOUT ${bench_category_label[$setup_bench_category]^^}"
+        bench_about_text="${bench_category_summary[$setup_bench_category]}"
+        [[ -z "$bench_about_text" ]] || bench_about_text+=$'\n'
+        bench_about_text+="Benches: ${setup_bench_members[$setup_bench_category]}"
+    fi
+    if [[ -n "$setup_ui_height" ]]; then
+        bench_about_window=$((setup_ui_height - ${#setup_frame_lines[@]} - setup_footer_height - 2))
+        ((bench_about_window <= 8)) || bench_about_window=8
+        ((bench_about_window >= 2)) || bench_about_window=2
+    fi
+    setup_frame_about "$bench_about_anchor" "$bench_about_title" "$bench_about_text" "$bench_about_window"
+}
+
 setup_frame_components() {
     local component_line component_index component_key component_focus component_budget=0
     local -a component_items=()
@@ -1888,7 +1974,7 @@ setup_frame_build() {
     elif [[ "$CURRENT_SECTION" == 1 || "$CURRENT_SECTION" == 2 ]]; then setup_frame_components
     elif [[ "$CURRENT_SECTION" == 4 ]]; then setup_frame_profiles
     elif [[ "$CURRENT_SECTION" == 5 ]]; then setup_frame_review
-    else setup_frame_legacy_bridge body; fi
+    else setup_frame_benches; fi
     setup_frame_footer
     setup_frame_fit
 }
@@ -2087,8 +2173,8 @@ handle_input() {
     setup_input_key="$key"
     case "$key" in
         $'\t') setup_input_key=tab; [[ "$CURRENT_SECTION" != 0 ]] || setup_benches_key tab; return 0 ;;
-        '[') setup_input_key=pageup; [[ "$CURRENT_SECTION" != 4 ]] || setup_about_scroll -1; return 0 ;;
-        ']') setup_input_key=pagedown; [[ "$CURRENT_SECTION" != 4 ]] || setup_about_scroll 1; return 0 ;;
+        '[') setup_input_key=pageup; if [[ "$CURRENT_SECTION" == 4 || "$CURRENT_SECTION" == 0 ]]; then setup_about_scroll -1; fi; return 0 ;;
+        ']') setup_input_key=pagedown; if [[ "$CURRENT_SECTION" == 4 || "$CURRENT_SECTION" == 0 ]]; then setup_about_scroll 1; fi; return 0 ;;
     esac
     # Consume every byte of supported escape sequences before dispatch.
     if [[ $key == $'\x1b' ]]; then
@@ -2103,7 +2189,7 @@ handle_input() {
                     setup_input_key=pageup
                     [[ "$key" != '[6' ]] || setup_input_key=pagedown
                 fi
-                if [[ "$CURRENT_SECTION" == 4 ]]; then
+                if [[ "$CURRENT_SECTION" == 4 || "$CURRENT_SECTION" == 0 ]]; then
                     [[ "$setup_input_key" != pageup ]] || setup_about_scroll -1
                     [[ "$setup_input_key" != pagedown ]] || setup_about_scroll 1
                 fi

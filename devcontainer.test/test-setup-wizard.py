@@ -392,5 +392,23 @@ printf 'back=%s\n' "$setup_bench_zone"
 ''')
         self.assertEqual(output.splitlines(),['bench:365Bench:false','queued=install','up=category','tab=bench','back=category'])
 
+    def test_bench_panel_about_and_responsive_columns(self):
+        for width in (87,69,49,40):
+            output=self.shell(r'''
+init_components; setup_load_bench_metadata_sync
+component_status[bench_365Bench]=installed
+setup_refresh_bench_counts
+setup_arrive_step 0; setup_bench_zone=bench
+setup_ui_width=''' + str(width) + r'''; setup_ui_height=40
+setup_frame_lines=(); setup_frame_benches
+printf '%s\n' "${setup_frame_lines[@]}"
+''')
+            self.assertIn('365Bench',output)
+            self.assertIn('ABOUT',output)
+            self.assertIn('Desc [2J',output)
+            self.assertIn('Use it for',output)
+            self.assertIn('Contains',output)
+            if width<50:self.assertNotIn('Installed',output)
+
 
 if __name__ == '__main__': unittest.main()
