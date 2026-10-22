@@ -1,29 +1,29 @@
 # Workstation requirements and optional accounts
 
-On the v1.6 `feature/profile-onboarding` branch, account entry points move to the
-third **Profiles** page (**G**). Requirements keeps Docker, Tools, and Vault service
-controls. See [Profiles](profiles.md) for personal-first onboarding, multiple
-companies, and compatibility with the legacy workstation account described below.
+`./setup.sh` opens on **Workstation**, the first step of the guided wizard,
+before checking Docker or starting Tools. The requirements strip appears on
+Workstation only; the navigation readiness mark remains visible on every step.
+It blinks while checks run, shows `✓` when all required items are Up and `⚠`
+when one needs attention. Optional Vault does not count toward readiness.
 
-`./setup.sh` opens the interactive TUI before checking Docker or starting Tools.
-Requirements and unverified components initially show yellow, blinking
-**Loading…** indicators. Read-only checks run in the background and update each
-item as it becomes known. P opens Requirements and Q exits while checks run.
-No JSON helper or container check runs as part of drawing the first frame.
-Updates replace only changed lines; the header and unchanged rows stay in place.
-The screen is cleared once on entry, after an interactive helper returns, or
-when its width changes, rather than on every status or keyboard update.
+Read-only checks update the cached state in the background. Unknown components
+show blinking Loading indicators and cannot be selected. Drawing the first
+frame runs no JSON helper or container check, and later redraws update only
+changed lines. A helper return or a terminal width/height change repaints.
 
-Docker/WSL checks and automatic Tools startup happen behind this screen. Missing
-requirements open the Requirements page after the initial check; Enter or Space
-activates the indicated Install/Start action. Background work never asks for a
-password or logs into an account. Privileged installation/configuration and
-account sign-in happen only through explicit foreground actions.
+After each check run, an unresolved requirement takes setup to Workstation and
+focuses the first item needing attention. **P** returns to the previous step
+and exact focus. From another step P visits Workstation; P again returns.
+**R** refreshes without losing queued changes. **Q** cancels without applying,
+stops pending checks and removes the private status snapshot. Existing services
+stay running. Piped/noninteractive runs retain synchronous prerequisite checks.
 
-Unknown items cannot be selected, and Apply waits for required checks to finish.
-Refresh preserves queued changes and focus. Canceling the TUI stops its pending
-checks and removes the private status snapshot; existing services stay running.
-Piped/noninteractive runs retain the synchronous prerequisite checks.
+Background work never asks for a password or signs in. Privileged service actions
+and account sign-in require explicit foreground actions. **Enter → Review → Apply**
+is the component flow: Enter opens Review from a component step, and only Enter
+on Review applies. Apply remains blocked until checks finish and all required
+services are Up. Workstation service rows instead run their action immediately
+on Enter or Space; they do not apply the component queue.
 
 Required:
 
@@ -48,17 +48,17 @@ current user to its Docker group. Group changes require signing out and back in;
 Docker group membership grants administrator-equivalent machine access.
 Remote and rootless context failures do not start the system Docker service.
 
-The main TUI has a **Requirements** page: press P, or move right from Tools.
-The status strip shows **Docker**, **Tools**, and optional **Vault** as **Up**,
-**Down**, or **Missing**. Up means the daemon/container is accessible and healthy.
-Down means stopped, unhealthy, inaccessible, or blocked by Docker. Missing means
-no installation/container exists. Vault Up does not mean signed in or unlocked. The page groups required
-software separately from optional accounts and shows help for the focused row.
-Press P again to return to the previous component, keeping your selections.
-The main status strip also shows Vault’s current action: **[V Install]**,
-**[V Start]**, **[V Connect]**, or **[V Sign out]**. Press V from any section
-to activate it without leaving the current selection. This action remains
-visible when the status strip wraps on a narrow terminal.
+Workstation groups **REQUIRED SOFTWARE** (WSL 2 when applicable, Docker,
+Tools) and **OPTIONAL VAULT**. The focused row has an explanation beneath it.
+The strip shows each service as Up, Down or Missing. Up means accessible and
+healthy; Down includes stopped, unhealthy or inaccessible services. Missing
+means no installation/container exists. Vault Up does not mean signed in or
+unlocked. Its current `[V Install]`, `[V Start]`, `[V Connect]` or `[V Sign out]`
+action stays together when the strip wraps.
+
+V runs Vault's action from any step without losing the focus or queue; the hint
+is advertised on Workstation only. `G Profiles` on the optional panel points to
+the fifth step, which holds account actions. See [Profiles](profiles.md).
 
 Service buttons follow the current state:
 
@@ -82,22 +82,15 @@ removes the local workBenches session; it does not sign out the browser's Micros
 account. Keycloak must be federated with the organization Microsoft tenant to
 provide Microsoft sign-in. Provider-vault authorization remains separate.
 
-It includes three optional entries:
+Vault is the optional credential-access container for Azure Key Vault,
+Bitwarden (including Vaultwarden servers), and 1Password. It is not a vault server.
+The **Personal & companies**, **Workstation account** and **AI accounts** rows
+live on Profiles, not Workstation. They open their existing actions immediately,
+are gated on workstation readiness and never queue account settings for Apply.
 
-- **Vault**: the credential-access container for Azure Key Vault, Bitwarden
-  (including Vaultwarden servers), and 1Password. Space creates/starts it now;
-  recovery also starts it when needed. It is not a vault server.
-
-- **workBenches account**: Keycloak browser sign-in or registration when the
-  organization's realm allows it. An account is not required to install benches.
-- **AI accounts**: existing profile setup, direct provider sign-in, or credential
-  recovery from a supported vault; this can be configured later.
-
-The separate account/profile entries retain their selection checkboxes for
-application with Enter. Enter on a service row activates its service button. D cannot
-remove required software or account/credential settings. R refreshes readiness
-without losing selected component changes. Installation and removal through
-`setup.sh` require Docker; standalone removal helpers retain their own checks.
+D cannot remove workstation services or account/credential settings. R refreshes
+readiness without losing queued component changes. Installation and removal
+through `setup.sh` require Docker; standalone removal helpers retain their checks.
 
 ## Managed containers
 
