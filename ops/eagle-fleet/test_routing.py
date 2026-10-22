@@ -2,6 +2,28 @@ import unittest
 from routing import route
 
 class RoutingTests(unittest.TestCase):
+    def test_quoted_expressions_keep_yaml_sensitive_text(self):
+        import json,yaml
+        for expression in ["inputs.runner || 'ubuntu # backup'", "format('{0}: {1}', inputs.os, inputs.variant)"]:
+            with self.subTest(expression=expression):
+                source='jobs:\n  a:\n    runs-on: '+json.dumps('${{ '+expression+' }}')+'\n'
+                result,count=route(source)
+                self.assertEqual(count,1)
+                self.assertIn(expression,yaml.safe_load(result)['jobs']['a']['runs-on'])
+                self.assertEqual(route(result),(result,0))
+
+    def test_current_hosted_versions_and_architectures_have_explicit_routes(self):
+        from routing import LABELS
+        labels=['ubuntu-slim','ubuntu-26.04','ubuntu-22.04-arm','ubuntu-24.04-arm','ubuntu-26.04-arm',
+                'windows-2025-vs2026','windows-11-arm','windows-11-vs2026-arm',
+                'macos-15-intel','macos-26-intel','macos-26','xcode-27']
+        for label in labels:
+            with self.subTest(label=label):
+                result,count=route('jobs:\n  a:\n    runs-on: '+label+'\n')
+                self.assertEqual(count,1)
+                self.assertIn('runs-on: '+LABELS[label],result)
+                if 'arm' in label:self.assertNotEqual(LABELS[label],'eagle-linux-ubuntu24')
+
     def test_input_expression_and_array_are_routed(self):
         for selector in ['${{ inputs.runner }}','${{ vars.CI_RUNNER }}','${{ needs.build.outputs.runner }}']:
             with self.subTest(selector=selector):

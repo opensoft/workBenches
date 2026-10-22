@@ -114,3 +114,28 @@ indefinitely until controller cleanup, so the persisted job deadline determines
 the maximum runtime. All 31 fleet unit tests pass. Runtime controller refresh
 waits for the current job to exit naturally; these source changes do not imply
 that the active controller has refreshed.
+
+Follow-up qualification: the Ubuntu 22 image with system PyYAML passed nested
+rootless execution, Python 3.10/PyYAML import, Node 22, Compose, bwrap, shared
+workspace/container action, public HTTPS, metadata rejection and direct-egress
+denial. Its owned engine, guard and anonymous volumes were verified absent
+afterward. That immutable image is now enabled as the Ubuntu 22 profile; this
+is local qualification, not a completed GitHub job on that profile.
+
+The Windows proxy firewall rule is now present. After assigning a guest-only
+static switch address without a default gateway, guest GitHub HTTPS returned
+200; LAN CONNECT and metadata HTTP returned 403. Direct TCP to host SMB, LAN
+and public internet was denied. Windows Update required explicit machine-level
+advanced WinHTTP proxy settings; its scan then succeeded with five security
+updates available. Installation and sealed-image/disposable-job checks remain
+pending. The native PowerShell suite passed all five Windows state scenarios
+inside this guest.
+
+The routing table now includes the current standard hosted labels, keeping
+Ubuntu 26, Windows ARM, VS2026 and macOS/Xcode requirements on distinct labels
+until those capabilities exist. Quoted scalar expressions retain YAML-sensitive
+content, with regressions for hash comments, colon-space text and flow arrays.
+All 34 fleet unit tests pass. Label inventory was checked against the
+[GitHub standard runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+Guest proxy settings follow the
+[Microsoft WinHTTP command reference](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-winhttp).

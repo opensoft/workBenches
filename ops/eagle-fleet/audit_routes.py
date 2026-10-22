@@ -15,8 +15,8 @@ def audit(workflows):
             match=re.fullmatch(r'([\w.-]+/[\w.-]+/\.github/workflows/[^\s@]+)@([0-9a-f]{40})',reference)
             if match: pins.append(match.groups())
         flags=[]
-        for name,pattern in [('native-platform',r'windows-(?:latest|20\d{2})|macos-\d+|macos-latest'),
-                             ('arm-platform',r'ubuntu-\S*arm|ubuntu-\S*aarch64'),
+        for name,pattern in [('native-platform',r'windows-(?:latest|\d+)|macos-\d+|macos-latest|xcode-\d+'),
+                             ('arm-platform',r'(?:ubuntu|windows)-\S*(?:arm|aarch64)'),
                              ('kvm',r'/dev/kvm|KERNEL=="kvm"'),('host-swap',r'\bswapon\b|\bmkswap\b'),
                              ('host-sysctl',r'\bsysctl\b'),('cloud-cli',r'\baz\s|shell:\s*pwsh'),
                              ('blacksmith-actions',r'uses:\s*useblacksmith/')]:

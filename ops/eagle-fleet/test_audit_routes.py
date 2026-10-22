@@ -3,6 +3,12 @@ from audit_routes import audit
 
 
 class AuditTests(unittest.TestCase):
+    def test_windows_arm_and_xcode_are_native_requirements(self):
+        record=audit([dict(repository='example/consumer',path='workflow.yml',source='jobs:\n  a:\n    runs-on: windows-11-arm\n')])[0]
+        self.assertIn('native-platform',record['flags']);self.assertIn('arm-platform',record['flags'])
+        record=audit([dict(repository='example/consumer',path='workflow.yml',source='jobs:\n  a:\n    runs-on: xcode-27\n')])[0]
+        self.assertIn('native-platform',record['flags'])
+
     def test_quoted_pins_and_versioned_windows_are_reported(self):
         reference='example/project/.github/workflows/build.yml@'+'a'*40
         for quote in ['', "'", '"']:

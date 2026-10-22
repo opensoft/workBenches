@@ -9,6 +9,17 @@ LABELS={'ubuntu-latest':'eagle-linux-ubuntu24','ubuntu-24.04':'eagle-linux-ubunt
         'windows-2022':'eagle-windows-2022','windows-2019':'eagle-windows-2019',
         'macos-latest':'eagle-macos-latest','macos-15':'eagle-macos-15',
         'macos-14':'eagle-macos-14','macos-13':'eagle-macos-13'}
+# Unsupported versions and architectures queue on truthful, unavailable labels.
+LABELS.update({'ubuntu-slim':'eagle-linux-ubuntu24','ubuntu-26.04':'eagle-linux-ubuntu26',
+               'ubuntu-22.04-arm':'eagle-linux-ubuntu22-arm64',
+               'ubuntu-24.04-arm':'eagle-linux-ubuntu24-arm64',
+               'ubuntu-26.04-arm':'eagle-linux-ubuntu26-arm64',
+               'windows-2025-vs2026':'eagle-windows-2025-vs2026',
+               'windows-11-arm':'eagle-windows-11-arm64',
+               'windows-11-vs2026-arm':'eagle-windows-11-vs2026-arm64',
+               'macos-15-intel':'eagle-macos-15-intel','macos-26-intel':'eagle-macos-26-intel',
+               'macos-26':'eagle-macos-26','xcode-27':'eagle-macos-xcode27',
+               'blacksmith-4vcpu-windows-2025':'eagle-windows-2025'})
 
 def route(source):
     root=yaml.compose(source)
@@ -16,6 +27,8 @@ def route(source):
     # Scalar tokens exclude anchor/tag prefixes; aliases share the original span.
     scalar_spans={token.end_mark.index:(token.start_mark.index,token.end_mark.index)
                   for token in yaml.scan(source) if isinstance(token,yaml.ScalarToken)}
+    scalar_styles={token.end_mark.index:token.style for token in yaml.scan(source)
+                   if isinstance(token,yaml.ScalarToken)}
     jobs=next((value for key,value in root.value if key.value=='jobs'),None) if isinstance(root,yaml.MappingNode) else None
     if isinstance(jobs,yaml.MappingNode):
         for _,job in jobs.value:
@@ -43,8 +56,9 @@ def route(source):
                     if replacement!=original:
                         # runs-on expressions contain no YAML colon; keep other bytes intact.
                         start,end=scalar_spans[value.end_mark.index]
-                        # Flow arrays require quoting the JSON mapping's commas.
-                        rendered=json.dumps(replacement) if sequence and replacement.startswith('${{') else replacement
+                        # Preserve quoted contexts and protect YAML-sensitive text.
+                        quoted=sequence or scalar_styles[value.end_mark.index] or ' #' in replacement or ': ' in replacement
+                        rendered=json.dumps(replacement) if quoted and replacement.startswith('${{') else replacement
                         changes.add((start,end,rendered))
     result=source
     for start,end,replacement in sorted(changes,reverse=True): result=result[:start]+replacement+result[end:]
