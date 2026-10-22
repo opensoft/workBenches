@@ -241,3 +241,10 @@ Include:
 - **javaBench** — bench-specific tool caches (Maven/Gradle named volumes), SDKMAN usage
 - **dotNetBench** — .NET global tools, Docker socket mount
 - **frappeBench** — exception: uses docker-compose (multi-service with MariaDB, Redis, Nginx)
+
+## Catalog readiness
+
+A new bench needs an entry in `config/release-lock.json` and catalog copy
+(tagline, description, uses in `usedFor`, and contents in `contains`) before
+`python3 devcontainer.test/test-bench-catalog.py` passes. The catalog writer
+derives its category from its bench root and preserves existing curated fields.

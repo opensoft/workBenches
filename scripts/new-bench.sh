@@ -852,23 +852,24 @@ update_bench_config() {
     
     echo -e "${CYAN}📝 Updating bench-config.json...${NC}"
     
-    # Create new bench entry
-    local new_bench_entry="{
-        \"url\": \"$repo_url\",
-        \"path\": \"$bench_path\",
-        \"description\": \"$description\",
-        \"project_scripts\": [
-            {
-                \"name\": \"$tech_name\",
-                \"script\": \"scripts/new-${tech_name}-project.sh\",
-                \"description\": \"Create a new $display_name project with DevContainer setup\",
-                \"includes_speckit\": true
-            }
-        ]
-    }"
-    
-    # Update config file
-    local updated_config=$(jq --arg key "$bench_name" --argjson value "$new_bench_entry" '.benches[$key] = $value' "$CONFIG_FILE")
+    local category
+    case "$bench_path" in
+        devBenches/*) category=software-engineering ;;
+        bioBenches/*) category=science ;;
+        sysBenches/*) category=system-administration ;;
+        *) echo "Unsupported bench root: $bench_path" >&2; return 1 ;;
+    esac
+    # Pass copy as data; curated existing fields take precedence.
+    local new_bench_entry
+    new_bench_entry=$(jq -n --arg url "$repo_url" --arg path "$bench_path" \
+        --arg description "$description" --arg category "$category" \
+        --arg tech "$tech_name" --arg display "$display_name" \
+        '{url:$url,path:$path,description:$description,category:$category,
+          project_scripts:[{name:$tech,script:("scripts/new-"+$tech+"-project.sh"),
+          description:("Create a new "+$display+" project with DevContainer setup"),includes_speckit:true}]}')
+    local updated_config
+    updated_config=$(jq --arg key "$bench_name" --argjson value "$new_bench_entry" \
+        '.benches[$key] = ($value + (.benches[$key] // {}))' "$CONFIG_FILE")
     echo "$updated_config" > "$CONFIG_FILE"
     
     echo -e "${GREEN}✓ Configuration updated${NC}"

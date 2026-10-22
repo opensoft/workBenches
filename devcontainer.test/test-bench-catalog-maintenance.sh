@@ -30,3 +30,28 @@ assert 'unlockedBench' not in after['benches']
 assert 'unlockedBench' in (root/'output').read_text()
 print('PASS: preserve metadata, derive categories, and skip unlocked clones')
 PY
+# Load only the production catalog writer; do not execute bench creation.
+python3 - "$repo_root" "$test_root" <<'PY'
+import re,sys
+from pathlib import Path
+source=(Path(sys.argv[1])/'scripts/new-bench.sh').read_text()
+function=re.search(r'^update_bench_config\(\) \{.*?^\}',source,re.M|re.S).group()
+(Path(sys.argv[2])/'writer.sh').write_text(function+'\n')
+PY
+(
+    CYAN= GREEN= NC= YELLOW=
+    source "$test_root/writer.sh"
+    CONFIG_FILE="$test_root/config/bench-config.json"
+    update_bench_config devBenches/fixtureBench '{"name":"fixture","display_name":"Fixture","description":"Replacement description"}' https://example.com/replacement.git
+    update_bench_config devBenches/newBench '{"name":"new","display_name":"New","description":"A new bench"}' https://example.com/new.git
+) > "$test_root/writer-output" 2>&1
+python3 - "$test_root" <<'PY'
+import json,sys
+from pathlib import Path
+root=Path(sys.argv[1]);before=json.loads((root/'before.json').read_text());after=json.loads((root/'config/bench-config.json').read_text())
+assert before['categories']==after['categories']
+assert before['benches']['fixtureBench']==after['benches']['fixtureBench']
+assert after['benches']['newBench']['category']=='software-engineering'
+assert after['benches']['newBench']['path']=='devBenches/newBench'
+print('PASS: new-bench writer preserves fields and derives category')
+PY
