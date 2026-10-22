@@ -1,381 +1,92 @@
-# Setup Script UI Flow
-
-The workBenches setup script provides a clear, status-driven interface that shows you exactly what's installed and what's available.
-
-## UI Flow
-
-### 1. Dependencies Check
-```
-Checking Required Dependencies
-
-  ✓ git - installed (version: 2.43.0)
-  ✓ jq - installed (version: 1.7)
-  ✓ curl - installed (version: 8.5.0)
-```
-
-Shows all required dependencies with:
-- ✓ Green checkmark for installed
-- ✗ Red X for not installed
-- Version numbers for installed tools
-
-If dependencies are missing, script offers to auto-install them based on your OS.
-
-### 2. AI Credentials Status
-```
-AI Credentials Status
-  ✗ OpenAI API Key - not configured
-  ✗ Anthropic API Key - not configured
-  ✗ Claude Session Token - not configured
-```
-
-Shows configuration status for all AI services:
-- **OpenAI API Key** - For GPT-4 powered features
-- **Anthropic API Key** - For Claude API access
-- **Claude Session Token** - For Claude CLI access (browser-based auth)
-
-### 3. AI Coding Assistant CLIs
-```
-AI Coding Assistant CLIs
-  ✗ Claude Code CLI - not installed
-  ✗ GitHub Copilot CLI - not installed
-  ✗ Codex CLI - not installed
-  ✗ Gemini CLI - not installed
-  ✗ OpenCode CLI - not installed
-```
-
-Shows installation status of AI coding assistant command-line interfaces:
-- **Claude Code CLI** - Anthropic's terminal-based coding assistant
-- **GitHub Copilot CLI** - GitHub's AI pair programmer for terminal
-- **Codex CLI** - OpenAI Codex command-line interface
-- **Gemini CLI** - Google's Gemini AI coding assistant
-- **OpenCode CLI** - Open-source AI coding assistant
-
-### 4. Spec-Driven Development Tools
-```
-Spec-Driven Development Tools
-  ✗ spec-kit (GitHub Spec Kit) - not installed
-  ✗ OpenSpec - not installed
-```
-
-Shows installation status of spec-driven development tools:
-- **spec-kit** - GitHub's spec-driven development framework
-- **OpenSpec** - Fission AI's lightweight spec framework
-
-### 5. Interactive Menu
-```
-=== WorkBenches Setup Menu ===
-1) Interactive Selection (TUI) - Select multiple components
-2) Install/update benches
-3) Setup/update AI credentials
-4) Install spec-driven development tools
-5) Install commands (onp, launchBench, workbench)
-6) View setup summary
-7) Exit setup
-```
-
-Choose what you want to do - no need to run through everything every time!
-
-## Menu Options Explained
-
-### Option 1: Interactive Selection (TUI)
-**NEW: Visual keyboard-driven interface for selecting multiple components at once**
-
-Launches a full-screen interactive text user interface with:
-- **Visual navigation** with arrow keys and Tab
-- **Multi-select** with spacebar
-- **Real-time status** indicators (✓ installed, ✗ not installed)
-- **Organized blocks**: AI Credentials, AI Assistants, Spec Tools, Benches
-
-**Keyboard Controls**:
-- `↑/↓` - Move selection up/down
-- `Tab` - Jump to next block
-- `Space` - Toggle selection checkbox
-- `Enter` - Confirm and process selected items
-- `Q` - Quit without changes
-
-**Features**:
-- Select multiple components from different categories
-- Visual feedback with highlighted current block
-- See installation status while selecting
-- Counter shows number of selected items
-- Process all selections with one Enter
-
-**Example UI**:
-```
-╔════════════════════════════════════════════════════════════════╗
-║          WorkBenches Interactive Setup Selector           ║
-╚════════════════════════════════════════════════════════════════╝
-
-Navigation: ↑/↓ Move  Tab: Next Block  Space: Select  Enter: Confirm  Q: Quit
-
-┌─ AI Credentials ─┐
-▶ [✓] ✗ OpenAI API Key - For GPT-4 features
-  [ ] ✗ Anthropic API Key - For Claude API
-  [✓] ✗ Claude Session Token - Browser-based auth
-└─────────────────┘
-
-┌─ AI Coding Assistants ─┐
-  [✓] ✗ Claude Code CLI - Terminal coding assistant
-  [ ] ✗ GitHub Copilot CLI - AI pair programmer
-  ...
-└─────────────────┘
-
-Selected items: 3
-```
-
-### Option 2: Install/update benches
-- View available benches (flutterBench, javaBench, etc.)
-- Install all benches at once
-- Select benches individually
-- Skip if already installed
-
-### Option 2: Setup/update AI credentials
-Shows current status, then offers:
-- **OpenAI API Key** - Test and validate key
-- **Anthropic Claude API** - Test and validate key  
-- **Claude Session Token** - Browser-based authentication
-- **All services** - Set up everything at once
-- **Skip** - Configure later
-
-API keys are:
-- Validated before saving
-- Stored in your shell profile (~/.zshrc or ~/.bashrc)
-- Exported for immediate use
-
-### Option 3: Install spec-driven development tools
-Shows current installation status, then offers to install:
-- **spec-kit** - Automatically installs `uv` if needed
-- **OpenSpec** - Requires Node.js/npm
-
-Prerequisites are checked and installed automatically when possible.
-
-### Option 4: Install commands
-Installs global commands:
-- **onp** (opensoft new project) - Quick project creation
-- **launchBench** - Launch development benches
-- **workbench** - Workbench management utilities
-
-Commands are installed to `~/.local/bin` and added to PATH.
-
-### Option 5: View setup summary
-Shows complete status of:
-- Infrastructure components
-- Installed benches
-- Total component count
-
-### Option 6: Exit setup
-Saves progress and exits. You can re-run anytime to make changes.
-
-## Status Indicators
-
-Throughout the UI, consistent status indicators are used:
-
-| Symbol | Color | Meaning |
-|--------|-------|---------|
-| ✓ | Green | Installed/Configured |
-| ✗ | Red | Not installed/Not configured |
-| ⚠️ | Yellow | Warning/Action needed |
-
-## Example: Fresh Installation
-
-```
-WorkBenches Setup Script
-==========================
-
-Checking Required Dependencies
-
-  ✓ git - installed (version: 2.43.0)
-  ✓ jq - installed (version: 1.7)
-  ✓ curl - installed (version: 8.5.0)
-
-AI Credentials Status
-  ✗ OpenAI API Key - not configured
-  ✗ Anthropic API Key - not configured
-  ✗ Claude Session Token - not configured
-
-AI Coding Assistant CLIs
-  ✗ Claude Code CLI - not installed
-  ✗ GitHub Copilot CLI - not installed
-  ✗ Codex CLI - not installed
-  ✗ Gemini CLI - not installed
-  ✗ OpenCode CLI - not installed
-
-Spec-Driven Development Tools
-  ✗ spec-kit (GitHub Spec Kit) - not installed
-  ✗ OpenSpec - not installed
-
-
-=== WorkBenches Setup Menu ===
-1) Install/update benches
-2) Setup/update AI credentials
-3) Install spec-driven development tools
-4) Install commands (onp, launchBench, workbench)
-5) View setup summary
-6) Exit setup
-
-Enter your choice (1-6): 2
-
-AI Credentials Status
-  ✗ OpenAI API Key - not configured
-  ✗ Anthropic API Key - not configured
-  ✗ Claude Session Token - not configured
-
-AI-Powered Features Setup
-WorkBenches supports AI-powered bench creation with current tech stack information.
-
-AI Features include:
-• Current technology and framework discovery
-• Up-to-date best practices and tools
-• Smart bench generation with latest versions
-
-Would you like to setup or update AI credentials now? [y/N]:
-```
-
-## Example: Partially Configured System
-
-```
-WorkBenches Setup Script
-==========================
-
-Checking Required Dependencies
-
-  ✓ git - installed (version: 2.43.0)
-  ✓ jq - installed (version: 1.7)
-  ✓ curl - installed (version: 8.5.0)
-
-AI Credentials Status
-  ✓ OpenAI API Key - configured
-  ✗ Anthropic API Key - not configured
-  ✓ Claude Session Token - configured
-
-AI Coding Assistant CLIs
-  ✓ Claude Code CLI - installed (version: 2.1.0)
-  ✗ GitHub Copilot CLI - not installed
-  ✗ Codex CLI - not installed
-  ✗ Gemini CLI - not installed
-  ✓ OpenCode CLI - installed (version: 0.5.2)
-
-Spec-Driven Development Tools
-  ✗ spec-kit (GitHub Spec Kit) - not installed
-  ✓ OpenSpec - installed (version: 1.2.3)
-
-
-=== WorkBenches Setup Menu ===
-1) Install/update benches
-2) Setup/update AI credentials
-3) Install spec-driven development tools
-4) Install commands (onp, launchBench, workbench)
-5) View setup summary
-6) Exit setup
-
-Enter your choice (1-6):
-```
-
-## Benefits of New UI
-
-### 1. Immediate Status Visibility
-See exactly what's installed before making any choices.
-
-### 2. Non-Destructive
-Shows what you have without changing anything until you choose an action.
-
-### 3. Selective Operations
-Update just what you need - no need to run through full setup each time.
-
-### 4. Clear Feedback
-Every operation shows:
-- What's being done
-- Success/failure status
-- Next steps if needed
-
-### 5. Version Information
-Know exactly which versions are installed:
-- git 2.43.0
-- jq 1.7
-- OpenSpec 1.2.3
-
-### 6. Re-runnable
-Run the script anytime to:
-- Check current status
-- Add new components
-- Update credentials
-- Install missing tools
-
-## Quick Actions
-
-Common tasks made easy:
-
-**Update AI credentials only:**
+# Guided setup wizard
+
+`./setup.sh` opens a six-step wizard in this order:
+
+| Step | Purpose |
+|---|---|
+| Workstation | Check WSL 2 when applicable, Docker and Tools; manage optional Vault. |
+| Benches | Browse categories, inspect each bench and queue changes. |
+| Agents | Queue coding CLI and specification-tool changes. |
+| Tools | Queue desktop tools, Shell setup and Org workspace changes. |
+| Profiles | Manage personal/company identities, the workstation account and AI accounts. |
+| Review | Inspect the complete queue before applying it. |
+
+Setup opens on Workstation. Its navigation mark blinks while checks run, becomes
+`✓` when required services are Up, and `⚠` when they need attention. Benches,
+Agents and Tools show their queued counts. Profiles has no queued count because
+its rows open actions immediately. A narrow frame uses `Step N of 6` and six
+progress marks instead of the full navigation line.
+
+## Review before Apply
+
+Space queues an install, or an update for an installed component. D queues a
+removal where supported. Repeat the same action to unqueue it. Unknown/Loading
+items cannot be selected; Shell setup and Org workspace cannot be removed.
+
+**Enter opens Review; only Enter on Review applies.** Review groups every queued
+change under INSTALL, UPDATE and REMOVE, with its step name. Removal preserves
+projects and credentials. Warnings explain that Shell setup replaces shell
+settings and Org workspace may create a GitHub repository. Review is read-only;
+return to an item's step to edit its action.
+
+Apply waits until checks finish and every required workstation service is Up.
+An empty Review finishes without component changes. In selection-only mode the
+applying Enter writes the private selection file; dependency-plan and apply-plan
+modes retain their existing non-interactive contracts and draw no wizard.
+
+Workstation service rows and Profiles rows are the exceptions: Enter or Space
+opens their action immediately, without applying the queued component changes.
+Profiles actions require workstation readiness.
+
+## Benches and About
+
+The CATEGORY block lists Software Engineering, Science, System Administration
+and Electrical Engineering, with bench, installed and queued counts. Empty
+categories say `coming soon` and cannot receive focus. Choose a category first;
+Tab, Shift+Tab or Space enters its bench list without selecting an install.
+
+The bench zone shows names, states, queued actions and taglines where space
+permits. About describes the focused bench, its uses and contents. In the category
+zone it describes that category and lists its benches. Long About text pages
+inside its panel; changing the focus resets its position. Missing details leave
+benches usable with a fallback description; R retries an unavailable catalog.
+
+## Keys
+
+| Key | Action |
+|---|---|
+| ← / → | Previous/next step; stop at the ends. |
+| ↑ / ↓ | Move within the step; scroll Review. In Benches, move within the current zone. |
+| Tab / Shift+Tab | Switch Benches category/list zones. ↑ on the first bench returns to categories. |
+| Space / D | Queue/unqueue install or update / removal; Space opens service/profile actions. |
+| Enter | Open Review, apply from Review, or open a service/profile row. |
+| P | Visit Workstation and return to the remembered step and focus. |
+| G | Visit Profiles; G Back restores the remembered step and focus. |
+| V | Run Vault's current action from any step; advertised on Workstation. |
+| R | Refresh checks while preserving focus and queued changes. |
+| PgUp / PgDn, [ / ] | Page About on Benches and Profiles. |
+| Q | Cancel without applying; stop pending checks and remove their private snapshots. |
+
+The footer shows the focused item and total changes. Below 60 columns it uses
+`Changes: N` and at most two hint lines. Unlisted global keys continue to work.
+
+## Terminal sizes and updates
+
+The minimum supported terminal is **36×24**. The frame is one column narrower
+than the terminal, clamped to 36–87 columns. Lists scroll with hidden-row counts;
+short frames collapse the banner and category block before clipping from the top.
+Unknown height shows all rows. Below 36 columns the wizard still runs with a
+36-column frame, which may wrap.
+
+The first frame appears before discovery checks. Rendering uses cached state;
+updates rewrite only changed lines. A resize or returning helper triggers a full
+repaint. The four-line wordmark appears only when width and height permit it.
+
+For a selection-only preview, run:
+
 ```bash
-./scripts/setup-workbenches.sh
-# Choose option 2
+scripts/interactive-setup.sh --select-only /tmp/wizard-preview.json
 ```
 
-**Install spec tools only:**
-```bash
-./scripts/setup-workbenches.sh
-# Choose option 3
-```
-
-**Check what's installed:**
-```bash
-./scripts/setup-workbenches.sh
-# Review status display, then choose option 6 (exit)
-```
-
-**Full setup:**
-```bash
-./scripts/setup-workbenches.sh
-# Choose options 1, 2, 3, 4 in sequence
-```
-
-## Design Principles
-
-The UI follows these principles:
-
-1. **Status First** - Show state before asking for changes
-2. **Non-Invasive** - Display information without modifying system
-3. **Incremental** - Make one change at a time
-4. **Reversible** - Easy to modify or undo choices
-5. **Informative** - Clear feedback at every step
-6. **Accessible** - Color coding + text indicators for clarity
-
-## First-run AI profile onboarding
-
-When `./setup.sh` finds no provider profile manifests, it first explains that
-standard provider logins may already exist and asks for consent to create
-isolated work and personal profiles. If accepted, it collects company and
-personal subscription identities, GitHub ownership, and registry selection.
-
-The discovery sequence is:
-
-1. Ask for the personal GitHub username.
-2. Ask how many companies the user works for using this workstation.
-3. For each company, ask its name, the user's company email, AI providers, and
-   GitHub organization.
-4. Ask for each personal AI subscription email and its providers.
-5. Ask which personal GitHub user or org owns the personal registry.
-6. Search each owner for repositories that look like credential registries and
-   verify that `ai/source.json` exists.
-7. Let the user select a result, enter a URL/local path, or fill profile
-   metadata manually.
-8. Slug each entered company name and use it as that company's profile and
-   shared-state root.
-9. Create `team`, `max`, and `xfactor` profile groups for every company, plus
-   the separate `personal` group.
-10. Compose and install Claude, Codex, Pi, Gemini, Grok, and GLM profiles.
-
-No password, OAuth token, API key, or decrypted SOPS value is requested.
-Existing standard CLI logins are detected and preserved; their OAuth caches
-are never copied into a profile. When the installer later reaches Claude or
-Codex authentication, it lists the isolated profiles and can walk through
-their logins with `pclaude login <profile>` or `pcodex login <profile>`.
-The legacy unprofiled login prompt appears only when no matching manifest
-exists.
-
-## Additional Resources
-
-- **AI Harness Account Management**: Set `AI_HARNESS_ACCOUNT_REPO` to a private
-  account-registry clone, then run `./scripts/check-ai-credentials.sh`.
-- **Spec Tools Guide**: See [docs/spec-driven-development.md](spec-driven-development.md)
-- **Claude Session Setup**: See [docs/claude-session-setup.md](claude-session-setup.md)
+This runs readiness checks and may start managed Tools. Service/profile actions
+still run when explicitly opened; Q cancels the preview without applying a queue.
