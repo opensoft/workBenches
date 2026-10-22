@@ -35,6 +35,78 @@ setup_sanitize_identities() {
     printf -v "$1" '%s' "$identities_result"
 }
 
+declare -A setup_bench_path bench_category_label bench_category_order bench_category_summary
+declare -A bench_meta_category bench_meta_tagline bench_meta_description bench_meta_used_for bench_meta_contains
+setup_catalog_loaded=false
+bench_categories_loaded=false
+bench_meta_loaded=false
+setup_benches_state=loading
+
+setup_read_bench_metadata() {
+    local directory="$1" id order label summary name category tagline description uses contents field
+    if [[ -f "$directory/bench-categories" ]]; then
+        bench_category_label=(); bench_category_order=(); bench_category_summary=()
+        while IFS=$'\t' read -r id order label summary; do
+            [[ "$id" =~ ^[a-z0-9][a-z0-9-]*$ ]] || continue
+            [[ "$order" =~ ^[0-9]{1,6}$ ]] || order=999
+            [[ "$label" != - && -n "$label" ]] || label="$id"
+            [[ "$summary" != - ]] || summary=''
+            setup_sanitize_text label "$label"; setup_sanitize_text summary "$summary"
+            bench_category_order[$id]=$order; bench_category_label[$id]=$label; bench_category_summary[$id]=$summary
+        done < "$directory/bench-categories"
+        bench_categories_loaded=true; status_ui_dirty=true
+        rm -f "$directory/bench-categories"
+    fi
+    if [[ -f "$directory/bench-meta" ]]; then
+        bench_meta_category=(); bench_meta_tagline=(); bench_meta_description=()
+        bench_meta_used_for=(); bench_meta_contains=()
+        while IFS=$'\t' read -r name category tagline description uses contents; do
+            [[ "$name" =~ ^[a-zA-Z0-9_+-]+$ ]] || continue
+            [[ "$category" =~ ^[a-z0-9][a-z0-9-]*$ ]] || category=''
+            for field in tagline description uses contents; do
+                [[ "${!field}" != - ]] || printf -v "$field" '%s' ''
+                setup_sanitize_text "$field" "${!field}"
+            done
+            bench_meta_category[$name]=$category; bench_meta_tagline[$name]=$tagline
+            bench_meta_description[$name]=$description; bench_meta_used_for[$name]=$uses; bench_meta_contains[$name]=$contents
+        done < "$directory/bench-meta"
+        bench_meta_loaded=true; status_ui_dirty=true
+        rm -f "$directory/bench-meta"
+    fi
+}
+
+setup_update_benches_state() {
+    if [[ "$setup_catalog_loaded" == true && ( "$bench_meta_loaded" == true || "$status_checks_running" != true ) ]]; then
+        setup_benches_state=ready
+    elif [[ "$status_checks_running" == true ]]; then
+        setup_benches_state=loading
+    else
+        setup_benches_state=unavailable
+    fi
+}
+
+setup_load_bench_metadata_sync() {
+    local status_worker_dir metadata_directory
+    metadata_directory=$(mktemp -d "${TMPDIR:-/tmp}/workbenches-metadata.XXXXXX") || return 1
+    status_worker_dir="$metadata_directory"
+    if ! setup_publish_bench_metadata; then
+        rm -rf "$metadata_directory"
+        setup_benches_state=unavailable
+        return 1
+    fi
+    local name path
+    setup_bench_path=()
+    while IFS=$'\t' read -r name path; do
+        [[ "$name" =~ ^[a-zA-Z0-9_+-]+$ ]] || continue
+        case "$path" in devBenches/?*|sysBenches/?*|bioBenches/?*)
+            [[ "/$path/" == */../* ]] || setup_bench_path[$name]=$path ;; esac
+    done < "$metadata_directory/catalog"
+    setup_catalog_loaded=true
+    setup_read_bench_metadata "$metadata_directory"
+    setup_update_benches_state
+    rm -rf "$metadata_directory"
+}
+
 initialize_loading_statuses() {
     local key
     for key in "${!component_description[@]}"; do component_status[$key]=loading; done
@@ -176,10 +248,12 @@ stop_status_loader() {
 start_status_loader() {
     stop_status_loader
     initialize_loading_statuses
+    setup_catalog_loaded=false; bench_categories_loaded=false; bench_meta_loaded=false
+    setup_benches_state=loading
     status_checks_running=true
     status_ui_dirty=true
     status_loader_dir="$(mktemp -d "${TMPDIR:-/tmp}/workbenches-status.XXXXXX")" || {
-        status_checks_running=false; requirements_notice='Could not start readiness checks. R retries.'; return 1;
+        status_checks_running=false; setup_benches_state=unavailable; requirements_notice='Could not start readiness checks. R retries.'; return 1;
     }
     status_worker_bootstrap "$status_loader_dir" </dev/null > "$status_loader_dir/worker.log" 2>&1 &
     status_loader_pid=$!
@@ -187,7 +261,7 @@ start_status_loader() {
 
 poll_status_loader() {
     [[ "$status_checks_running" == true && -n "$status_loader_dir" ]] || return 0
-    local key state detail file reading name selected='' index endpoint
+    local key state detail file reading name path selected='' index endpoint
     if [[ -f "$status_loader_dir/tools-ready" ]]; then
         IFS= read -r endpoint < "$status_loader_dir/tools-ready"
         if [[ "$endpoint" == unix:///* || "${WORKBENCHES_TEST_NATIVE_TOOLS:-}" == 1 ]]; then
@@ -198,9 +272,11 @@ poll_status_loader() {
     fi
     if [[ -f "$status_loader_dir/catalog" ]]; then
         [[ "$CURRENT_SECTION" != 0 ]] || selected="${bench_items[$current_selection]}"
-        bench_items=()
-        while IFS= read -r name; do
+        bench_items=(); setup_bench_path=()
+        while IFS=$'\t' read -r name path; do
             [[ "$name" =~ ^[a-zA-Z0-9_+-]+$ ]] || continue
+            case "$path" in devBenches/?*|sysBenches/?*|bioBenches/?*)
+                [[ "/$path/" == */../* ]] || setup_bench_path[$name]=$path ;; esac
             bench_items+=("$name"); key="bench_$name"
             component_description[$key]=$name
             component_status[$key]=loading
@@ -212,8 +288,11 @@ poll_status_loader() {
             for index in "${!bench_items[@]}"; do [[ "${bench_items[$index]}" != "$selected" ]] || current_selection=$index; done
         fi
         rm -f "$status_loader_dir/catalog"
+        setup_catalog_loaded=true
         status_ui_dirty=true
     fi
+    setup_read_bench_metadata "$status_loader_dir"
+    setup_update_benches_state
     for file in "$status_loader_dir"/*.row; do
         [[ -f "$file" ]] || continue
         key="${file##*/}"; key="${key%.row}"
@@ -249,6 +328,7 @@ poll_status_loader() {
             [[ "${component_status[$key]}" != loading ]] || component_status[$key]='needs check'
         done
         stop_status_loader
+        setup_update_benches_state
         status_ui_dirty=true
         if ! setup_required_ready; then
             requirements_notice='Resolve workstation requirements to continue.'

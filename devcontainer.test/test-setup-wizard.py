@@ -104,5 +104,61 @@ printf '%s\n' "$profiles_summary"
 ''', locale)
             self.assertEqual(output, 'helper [2J  text\ntail\n')
 
+    def test_foreground_metadata_reader_uses_builtins_and_validates(self):
+        output = self.shell(r'''
+init_components --loading
+status_loader_dir="$FIXTURE/status"; status_checks_running=true; status_loader_pid=$$
+printf '365Bench\tsysBenches/365Bench\nbad name\t../outside\n' > "$status_loader_dir/catalog"
+printf 'science\t2\tScience\tHostile\033[2J\nbad id\t1\tBad\tBad\nunknown\twrong\t-\t-\n' > "$status_loader_dir/bench-categories"
+printf '365Bench\tscience\t-\tDesc\033[2J\tOne|Two\tTools\nbad name\tscience\t-\t-\t-\t-\n' > "$status_loader_dir/bench-meta"
+jq() { echo UNEXPECTED_JQ; return 91; }; python3() { echo UNEXPECTED_PYTHON; return 91; }
+poll_status_loader
+printf '%s\n' "${bench_items[*]}" "${setup_bench_path[365Bench]}" \
+ "${bench_category_label[science]}" "${bench_category_summary[science]}" \
+ "${bench_category_order[unknown]}" "${bench_category_label[unknown]}" \
+ "${bench_meta_description[365Bench]}" "${bench_meta_tagline[365Bench]}" "$setup_benches_state"
+''')
+        self.assertEqual(output, '365Bench\nsysBenches/365Bench\nScience\nHostile [2J\n999\nunknown\nDesc [2J\n\nready\n')
+
+    def test_sync_metadata_matches_worker_format_and_modes_skip_loading(self):
+        output = self.shell(r'''
+init_components() { bench_items=(365Bench); }
+setup_load_bench_metadata_sync
+printf '%s\n' "${bench_meta_description[365Bench]}" "${bench_category_label[science]}" "$setup_benches_state"
+''')
+        self.assertEqual(output, 'Desc [2J\nScience [2J\nready\n')
+        for mode in ('--apply-plan', '--dependencies-plan'):
+            output = self.shell(r'''
+ensure_setup_platform() { :; }; ensure_workstation_requirements() { :; }
+init_components() { :; }; load_statuses() { :; }; load_selection() { :; }
+ensure_selected_dependencies() { :; }; process_selections() { :; }
+workbenches_release_checkout() { return 1; }
+setup_load_bench_metadata_sync() { echo UNEXPECTED_METADATA; return 99; }
+main ''' + mode + ' "$FIXTURE/selection.json"')
+            self.assertNotIn('UNEXPECTED_METADATA', output)
+
+    def test_bench_metadata_readiness_states(self):
+        for catalog, meta, done, expected in ((False, False, False, 'loading'),
+                                             (True, False, False, 'loading'),
+                                             (True, True, False, 'ready'),
+                                             (True, False, True, 'ready'),
+                                             (False, False, True, 'unavailable')):
+            with self.subTest(catalog=catalog, meta=meta, done=done):
+                directory = self.root / 'status'
+                for p in directory.iterdir(): p.unlink()
+                if catalog: (directory / 'catalog').write_text('365Bench\tsysBenches/365Bench\n')
+                if meta: (directory / 'bench-meta').write_text('365Bench\t-\t-\t-\t-\t-\n')
+                if done: (directory / 'done').touch()
+                output = self.shell(r'''
+init_components --loading
+for key in "${requirement_items[@]}"; do component_status[$key]=up; done
+status_loader_dir="$FIXTURE/status"; status_checks_running=true; status_loader_pid=$$
+# Keep this process alive; stop must not signal its own PID.
+stop_status_loader() { status_checks_running=false; status_loader_dir=''; }
+poll_status_loader
+printf '%s\n' "$setup_benches_state"
+''')
+                self.assertEqual(output.strip(), expected)
+
 
 if __name__ == '__main__': unittest.main()

@@ -3326,6 +3326,7 @@ main() {
     else
         ensure_workstation_requirements || return "$?"
         init_components
+        if [[ "$mode" == interactive || "$mode" == --select-only ]]; then setup_load_bench_metadata_sync; fi
         if [[ "$mode" != --dependencies-plan ]]; then load_statuses; fi
     fi
     if [[ "$mode" == --apply-plan || "$mode" == --dependencies-plan ]]; then
