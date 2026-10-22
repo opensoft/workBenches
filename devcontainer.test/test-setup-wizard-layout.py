@@ -10,13 +10,13 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
-BRIDGES = {'setup_frame_legacy_bridge'}
+BRIDGES = set()
 
 
 class LayoutTests(unittest.TestCase):
-    def shell(self, body):
+    def shell(self, body, locale='C.UTF-8'):
         result = subprocess.run(['bash', '-c', 'source scripts/interactive-setup.sh\n' + body], cwd=ROOT,
-                                env=dict(os.environ, WORKBENCHES_SETUP_LOG_FILE='/dev/null', LC_ALL='C.UTF-8'),
+                                env=dict(os.environ, WORKBENCHES_SETUP_LOG_FILE='/dev/null', LC_ALL=locale),
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout
@@ -234,6 +234,69 @@ printf 'ABOUT-WINDOW=%s\\n' "$setup_about_window"
                 if rows==40:
                     for label in ('Software Engineering','Science','System Administration','Electrical Engineering'):
                         self.assertIn(label,text)
+
+    def test_complete_render_matrix_and_no_discovery(self):
+        cases=[(c,r) for c in (36,60,87) for r in (24,40,0)]
+        cases += [(37,24),(80,24),(88,39),(88,40),(120,40),(30,24)]
+        for locale in ('C.UTF-8','C'):
+            for columns,rows in cases:
+                for section in (3,0,1,2,4,5):
+                    with self.subTest(locale=locale,columns=columns,rows=rows,section=section):
+                        text=self.shell(f'''init_components; setup_load_bench_metadata_sync
+for key in "${{!component_description[@]}}"; do component_status[$key]=installed; done
+for key in "${{requirement_items[@]}}"; do component_status[$key]=up; done
+status_checks_running=false
+for key in bench_cppBench codex_cli vscode; do component_checked[$key]=true; component_action[$key]=update; done
+setup_refresh_bench_counts
+setup_arrive_step {section}
+if [[ "$CURRENT_SECTION" == 0 ]]; then setup_bench_zone=bench; setup_focus_bench_name cppBench; fi
+if [[ "$CURRENT_SECTION" == 1 ]]; then current_selection=2; fi
+setup_os_label=Linux
+tput() {{ case $1 in cols) echo {columns};; lines) echo {rows};; esac; }}
+jq() {{ echo UNEXPECTED_DISCOVERY; return 99; }}
+python3() {{ echo UNEXPECTED_DISCOVERY; return 99; }}
+docker() {{ echo UNEXPECTED_DISCOVERY; return 99; }}
+git() {{ echo UNEXPECTED_DISCOVERY; return 99; }}
+render_setup_frame
+''',locale)
+                        self.assertNotIn('UNEXPECTED_DISCOVERY',text)
+                        lines=ANSI.sub('',text).splitlines()
+                        self.assert_bounds(lines,max(columns,36),rows or None)
+                        if columns>=36:
+                            self.assertTrue(any('Navigation:' in line for line in lines),text)
+                            self.assertTrue(any('Step ' in line or 'Workstation' in line for line in lines),text)
+                            self.assertTrue(any('Changes:' in line or 'Changes selected:' in line for line in lines),text)
+                            if section!=5:self.assertIn('›','\n'.join(lines))
+                        if columns==80:
+                            nav=next(line for line in lines if 'Workstation' in line and 'Benches' in line)
+                            for name in ('Benches 1','Agents 1','Tools 1','Profiles','Review'):self.assertIn(name,nav)
+                        if columns==120:self.assertTrue(any(len(line)==87 for line in lines))
+                        if columns==88:self.assertEqual('█▀▀█' in text,rows==40)
+
+    def test_no_legacy_renderer_remains(self):
+        text=(ROOT/'scripts/interactive-setup.sh').read_text()
+        for name in ('draw_three_sections','draw_item_compact','setup_frame_legacy_bridge'):
+            self.assertNotIn(name,text)
+
+    def test_all_twelve_benches_have_visible_copy_in_their_category(self):
+        import json
+        catalog=json.loads((ROOT/'config/bench-config.json').read_text())
+        for name,entry in catalog['benches'].items():
+            text=self.shell(f'''init_components; setup_load_bench_metadata_sync
+for key in "${{!component_description[@]}}"; do component_status[$key]=installed; done
+setup_refresh_bench_counts
+setup_ui_width=87; setup_ui_height=''
+setup_bench_zone=bench; setup_bench_category={entry['category']}
+setup_focus_bench_name {name}
+setup_frame_lines=(); setup_frame_benches
+printf '%s\\n' "${{setup_frame_lines[@]}}"
+''')
+            plain=ANSI.sub('',text)
+            self.assertIn(name,plain)
+            self.assertIn(entry['tagline'],plain)
+            self.assertIn('ABOUT '+name.upper(),plain)
+            self.assertIn('Use it for',plain)
+            self.assertIn('Contains',plain)
 
 
 if __name__ == '__main__': unittest.main()

@@ -1019,155 +1019,16 @@ get_checked_state() {
 }
 
 # Update only the section headers line
-update_section_headers() {
-    # Position cursor at header line (banner=7, header box=3, nav=2 = line 13)
-    tput cup 13 0
-    tput el  # Clear to end of line
-
-    local benches_active=$( [ $CURRENT_SECTION -eq 0 ] && echo "true" || echo "false" )
-    local ai_active=$( [ $CURRENT_SECTION -eq 1 ] && echo "true" || echo "false" )
-    local tools_active=$( [ $CURRENT_SECTION -eq 2 ] && echo "true" || echo "false" )
-
-    local bench_header="${DIM}┌────── BENCHES ────────┐${NC}"
-    local ai_header="${DIM}┌─── AI ASSISTANTS ─────┐${NC}"
-    local tools_header="${DIM}┌─────── TOOLS ─────────┐${NC}"
-
-    [ "$benches_active" = "true" ] && bench_header="${BOLD}${YELLOW}┌────── BENCHES ────────┐${NC}"
-    [ "$ai_active" = "true" ] && ai_header="${BOLD}${YELLOW}┌─── AI ASSISTANTS ─────┐${NC}"
-    [ "$tools_active" = "true" ] && tools_header="${BOLD}${YELLOW}┌─────── TOOLS ─────────┐${NC}"
-
-    echo -e "${bench_header}      ${ai_header}      ${tools_header}"
-}
 
 # Redraw just the three sections content (not the whole UI)
-draw_three_sections_only() {
-    # Position cursor at first content line after header (line 14)
-    tput cup 14 0
-
-    draw_three_sections
-}
 
 # Update only the lines affected by cursor movement
-update_selection_lines() {
-    local old_sel=$1
-    local old_sect=$2
-    local new_sel=$3
-    local new_sect=$4
-
-    # Calculate base line offset (banner=7, header=4, nav=2 = 13 lines)
-    local base_line=14
-
-    # If section changed, just update headers and cursor lines
-    if [ $old_sect -ne $new_sect ]; then
-        update_section_headers
-        # Need to redraw the old line in old section and new line in new section
-        # For simplicity when switching sections, just do full redraw
-        # Could optimize further but sections changes are less frequent
-        draw_three_sections_only
-        return
-    fi
-
-    # For vertical movement within same section, redraw both affected rows
-    # Since we have 3 columns, we need to redraw the entire row
-
-    # Redraw old row
-    if [ $old_sel -ge 0 ]; then
-        tput cup $((base_line + old_sel)) 0
-        tput el  # Clear to end of line
-        echo -ne "$(draw_row $old_sel)"
-    fi
-
-    # Redraw new row
-    if [ $new_sel -ge 0 ]; then
-        tput cup $((base_line + new_sel)) 0
-        tput el  # Clear to end of line
-        echo -ne "$(draw_row $new_sel)"
-    fi
-
-    # Return cursor to invisible position
-    tput cup $((base_line + new_sel + 5)) 0
-}
 
 # Draw a single item line for a section
-draw_item_for_section() {
-    local sect=$1
-    local idx=$2
-    local selected=$3
-
-    local key=""
-    if [ $sect -eq 0 ]; then
-        local bench="${bench_items[$idx]}"
-        key="bench_$bench"
-    elif [ $sect -eq 1 ]; then
-        local item="${ai_items[$idx]}"
-        [[ "$item" == separator* ]] && echo "" && return
-        key="$item"
-    else
-        local item="${tool_items[$idx]}"
-        key="$item"
-    fi
-
-    draw_item_compact "$key" "$selected" "true"
-}
 
 # Draw a complete row (all 3 columns) for a given index
-draw_row() {
-    local i=$1
-
-    local benches_active=$( [ $CURRENT_SECTION -eq 0 ] && echo "true" || echo "false" )
-    local ai_active=$( [ $CURRENT_SECTION -eq 1 ] && echo "true" || echo "false" )
-    local tools_active=$( [ $CURRENT_SECTION -eq 2 ] && echo "true" || echo "false" )
-
-    # Left column (Benches) - 24 chars wide
-    local left_content="                        "
-    if [ $i -lt ${#bench_items[@]} ]; then
-        local bench="${bench_items[$i]}"
-        local is_selected=$( [ $CURRENT_SECTION -eq 0 ] && [ $i -eq $current_selection ] && echo "true" || echo "false" )
-        left_content=$(draw_item_compact "bench_$bench" "$is_selected" "$benches_active")
-    fi
-
-    # Middle column (AI) - 24 chars wide
-    local middle_content="                        "
-    if [ $i -lt ${#ai_items[@]} ]; then
-        local item="${ai_items[$i]}"
-        if [[ "$item" == separator* ]]; then
-            middle_content="${DIM}────────────────────────${NC}"
-        else
-            local is_selected=$( [ $CURRENT_SECTION -eq 1 ] && [ $i -eq $current_selection ] && echo "true" || echo "false" )
-            middle_content=$(draw_item_compact "$item" "$is_selected" "$ai_active")
-        fi
-    fi
-
-    # Right column (Tools) - 24 chars wide
-    local right_content="                        "
-    if [ $i -lt ${#tool_items[@]} ]; then
-        local item="${tool_items[$i]}"
-        local is_selected=$( [ $CURRENT_SECTION -eq 2 ] && [ $i -eq $current_selection ] && echo "true" || echo "false" )
-        right_content=$(draw_item_compact "$item" "$is_selected" "$tools_active")
-    fi
-
-    echo -e "${left_content}      ${middle_content}      ${right_content}"
-}
 
 # Build a complete frame off-screen; discovery never runs in the renderer.
-render_legacy_setup_frame() {
-    local os_label
-    draw_setup_banner
-    os_label="${setup_os_label:0:$((setup_ui_width - 20))}"
-    printf '%b%s%b\n' "$SILVER" "$(setup_ui_pair "workBenches v$setup_version" "$os_label" "$setup_ui_width")" "$NC"
-    printf '%b%s%b\n\n' "$SILVER_EDGE" "$(setup_ui_rule "$setup_ui_width")" "$NC"
-
-    if [[ "$CURRENT_SECTION" == 3 ]]; then
-        draw_requirements
-    elif [[ "$CURRENT_SECTION" == 4 ]]; then
-        draw_profiles
-    else
-        draw_requirements_summary
-        printf '\n'
-        draw_three_sections
-    fi
-    draw_setup_footer
-}
 
 # Arrival-independent layout primitives; every frame path uses Bash builtins.
 setup_ui_layout=roomy
@@ -1626,7 +1487,6 @@ setup_frame_footer() {
     for footer_output_line in "${setup_footer_lines[@]}"; do setup_frame_append "$footer_output_line"; done
 }
 
-# Temporary 1.7 body capture, removed when the wizard bodies are complete.
 setup_review_rows=()
 setup_review_window=1
 
@@ -1731,21 +1591,6 @@ setup_frame_profiles() {
     setup_frame_about "profile:$profile_key" "ABOUT ${component_description[$profile_key]}" "${profile_about[$profile_key]}" "$profile_window"
 }
 
-setup_frame_profiles_footer() {
-    local profile_footer profile_count=0 profile_key profile_total
-    for profile_key in "${!component_checked[@]}"; do [[ "${component_checked[$profile_key]}" != true ]] || ((profile_count++)); done
-    profile_key="${profile_items[$current_selection]}"
-    profile_total="Changes selected: $profile_count"; ((setup_ui_width >= 60)) || profile_total="Changes: $profile_count"
-    setup_ui_rule_v profile_footer "$setup_ui_width"; setup_frame_append "$profile_footer"
-    setup_ui_pair_v profile_footer "${component_description[$profile_key]}" "$profile_total" "$setup_ui_width"; setup_frame_append "$profile_footer"
-    if ((setup_ui_width < 60)); then
-        setup_frame_append 'Navigation: Enter Open'
-        setup_frame_append '←→ Steps  G Back  Q Quit'
-    else
-        setup_frame_append 'Navigation: ↑↓ Move  Enter Open  PgUp/PgDn About'
-        setup_frame_append '←→ Steps  G Back  P Workstation  R Refresh  Q Quit'
-    fi
-}
 
 setup_frame_bench_row() {
     local row_name="$1" row_focused="$2" row_key="bench_$1" row_marker=' ' row_box='[ ]' row_icon=○ row_state row_action='' row_right='' row_left row_color="$SILVER"
@@ -1865,47 +1710,7 @@ setup_frame_components() {
     setup_panel_bottom_v component_line; setup_frame_append "$component_line"
 }
 
-setup_frame_component_footer() {
-    local footer_line footer_state footer_key footer_count=0 footer_total footer_context footer_action
-    if [[ "$CURRENT_SECTION" == 1 ]]; then footer_key="${ai_items[$current_selection]}"
-    else footer_key="${tool_items[$current_selection]}"; fi
-    for footer_action in "${!component_checked[@]}"; do [[ "${component_checked[$footer_action]}" != true ]] || ((footer_count++)); done
-    setup_status_label_v footer_state "${component_status[$footer_key]}"
-    footer_context="${component_description[$footer_key]} · $footer_state"
-    [[ -z "${component_action[$footer_key]}" ]] || footer_context+=" → ${component_action[$footer_key]}"
-    footer_total="Changes selected: $footer_count"; ((setup_ui_width >= 60)) || footer_total="Changes: $footer_count"
-    setup_ui_rule_v footer_line "$setup_ui_width"; setup_frame_append "$footer_line"
-    setup_ui_pair_v footer_line "$footer_context" "$footer_total" "$setup_ui_width"; setup_frame_append "$footer_line"
-    if ((setup_ui_width < 60)); then
-        setup_frame_append 'Navigation: Space Select  D Remove'
-        setup_frame_append '←→ Steps  Enter Review  Q Quit'
-    else
-        setup_frame_append 'Navigation: ↑↓ Move  Space Select  D Remove'
-        setup_frame_append '←→ Steps  P Workstation  R Refresh  Enter Review  Q Quit'
-    fi
-}
 
-setup_frame_workstation_footer() {
-    local footer_line footer_state footer_action footer_count=0 footer_key footer_total
-    for footer_key in "${!component_checked[@]}"; do
-        [[ "${component_checked[$footer_key]}" != true ]] || ((footer_count++))
-    done
-    footer_key="${requirement_items[$current_selection]}"
-    setup_status_label_v footer_state "${component_status[$footer_key]}"
-    workbenches_requirement_action_v footer_action "$footer_key" "${component_status[$footer_key]}" "${component_status[workbenches_account]}"
-    setup_ui_rule_v footer_line "$setup_ui_width"; setup_frame_append "$footer_line"
-    footer_total="Changes selected: $footer_count"
-    ((setup_ui_width >= 60)) || footer_total="Changes: $footer_count"
-    setup_ui_pair_v footer_line "${component_description[$footer_key]} · $footer_state" "$footer_total" "$setup_ui_width"
-    setup_frame_append "$footer_line"
-    if ((setup_ui_width < 60)); then
-        setup_frame_append "Navigation: ↑↓ Move  Enter $footer_action"
-        setup_frame_append '←→ Steps  Q Quit'
-    else
-        setup_frame_append "Navigation: ↑↓ Move  Enter $footer_action  V Vault"
-        setup_frame_append '←→ Steps  P Back  R Refresh  Q Quit'
-    fi
-}
 
 setup_frame_workstation() {
     local workstation_line workstation_key
@@ -1982,51 +1787,6 @@ setup_frame_review() {
     if ((setup_window_below > 0)); then setup_frame_append "▼ $setup_window_below more"; fi
 }
 
-setup_frame_legacy_bridge() {
-    local bridge_frame bridge_line bridge_notice="$requirements_notice" bridge_notice_shown=false
-    local requirements_notice=''
-    local -a bridge_lines=()
-    if [[ "${1:-}" == footer ]]; then
-        bridge_frame="$(draw_setup_footer)"
-        mapfile -t bridge_lines <<< "$bridge_frame"
-        local bridge_wrapped
-        for bridge_line in "${bridge_lines[@]}"; do
-            [[ -n "$bridge_line" ]] || continue
-            if [[ "$bridge_line" == Navigation:* || "$bridge_line" == '            '* ]]; then
-                setup_ui_wrap "$bridge_line" "$setup_ui_width"
-                for bridge_wrapped in "${setup_wrapped_lines[@]}"; do setup_frame_append "$bridge_wrapped"; done
-            else setup_frame_append "$bridge_line"; fi
-        done
-        return
-    fi
-    if [[ "$CURRENT_SECTION" == 3 ]]; then
-        bridge_frame="$(draw_requirements_summary; draw_requirements)"
-    elif [[ "$CURRENT_SECTION" == 4 ]]; then bridge_frame="$(draw_profiles)"
-    elif [[ "$CURRENT_SECTION" == 5 ]]; then
-        requirements_notice=$bridge_notice
-        setup_frame_review
-        setup_frame_append 'Navigation: ↑↓ Scroll  ← Back'
-        setup_frame_append 'Enter Apply  P Workstation  Q Quit'
-        return
-    else bridge_frame="$(draw_three_sections)"; fi
-    mapfile -t bridge_lines <<< "$bridge_frame"
-    requirements_notice=$bridge_notice
-    for bridge_line in "${bridge_lines[@]}"; do
-        [[ -n "$bridge_line" ]] || continue
-        setup_frame_append "$bridge_line"
-        if [[ "$CURRENT_SECTION" == 3 && "$bridge_notice_shown" == false && "$bridge_line" == *╰* ]]; then
-            setup_frame_notice; bridge_notice_shown=true
-        fi
-    done
-    if [[ "${1:-}" == body ]]; then return; fi
-    if [[ "$CURRENT_SECTION" == 5 ]]; then bridge_frame='Navigation: ←→ Steps  Enter Apply  Q Quit'
-    else bridge_frame="$(draw_setup_footer)"; fi
-    mapfile -t bridge_lines <<< "$bridge_frame"
-    for bridge_line in "${bridge_lines[@]}"; do
-        [[ -n "$bridge_line" ]] || continue
-        setup_frame_append "$bridge_line"
-    done
-}
 
 setup_frame_build() {
     setup_frame_lines=()
@@ -2101,124 +1861,7 @@ draw_setup_footer() {
 }
 
 
-# Draw three sections side by side
-draw_three_sections() {
-    local benches_active=$( [ $CURRENT_SECTION -eq 0 ] && echo "true" || echo "false" )
-    local ai_active=$( [ $CURRENT_SECTION -eq 1 ] && echo "true" || echo "false" )
-    local tools_active=$( [ $CURRENT_SECTION -eq 2 ] && echo "true" || echo "false" )
 
-    # Section headers (borders adjusted to match content)
-    local bench_header="${DIM}┌────── BENCHES ────────┐${NC}"
-    local ai_header="${DIM}┌─── AI ASSISTANTS ─────┐${NC}"
-    local tools_header="${DIM}┌─────── TOOLS ─────────┐${NC}"
-
-    [ "$benches_active" = "true" ] && bench_header="${BOLD}${YELLOW}┌────── BENCHES ────────┐${NC}"
-    [ "$ai_active" = "true" ] && ai_header="${BOLD}${YELLOW}┌─── AI ASSISTANTS ─────┐${NC}"
-    [ "$tools_active" = "true" ] && tools_header="${BOLD}${YELLOW}┌─────── TOOLS ─────────┐${NC}"
-
-    echo -e "${bench_header}      ${ai_header}      ${tools_header}"
-
-    # Draw items in all three columns
-    local max_items=${#bench_items[@]}
-    [ ${#ai_items[@]} -gt $max_items ] && max_items=${#ai_items[@]}
-    [ ${#tool_items[@]} -gt $max_items ] && max_items=${#tool_items[@]}
-
-    for ((i=0; i<$max_items; i++)); do
-        # Left column (Benches) - 24 chars wide
-        local left_content="                        "
-        if [ $i -lt ${#bench_items[@]} ]; then
-            local bench="${bench_items[$i]}"
-            local is_selected=$( [ $CURRENT_SECTION -eq 0 ] && [ $i -eq $current_selection ] && echo "true" || echo "false" )
-            left_content=$(draw_item_compact "bench_$bench" "$is_selected" "$benches_active")
-        fi
-
-        # Middle column (AI) - 24 chars wide
-        local middle_content="                        "
-        if [ $i -lt ${#ai_items[@]} ]; then
-            local item="${ai_items[$i]}"
-            if [[ "$item" == separator* ]]; then
-                middle_content="${DIM}────────────────────────${NC}"
-            else
-                local is_selected=$( [ $CURRENT_SECTION -eq 1 ] && [ $i -eq $current_selection ] && echo "true" || echo "false" )
-                middle_content=$(draw_item_compact "$item" "$is_selected" "$ai_active")
-            fi
-        fi
-
-        # Right column (Tools) - 24 chars wide
-        local right_content="                        "
-        if [ $i -lt ${#tool_items[@]} ]; then
-            local item="${tool_items[$i]}"
-            local is_selected=$( [ $CURRENT_SECTION -eq 2 ] && [ $i -eq $current_selection ] && echo "true" || echo "false" )
-            right_content=$(draw_item_compact "$item" "$is_selected" "$tools_active")
-        fi
-
-        echo -e "${left_content}      ${middle_content}      ${right_content}"
-    done
-
-    # Section footers (borders adjusted to match content)
-    local bench_footer="${DIM}└───────────────────────┘${NC}"
-    local ai_footer="${DIM}└───────────────────────┘${NC}"
-    local tools_footer="${DIM}└───────────────────────┘${NC}"
-
-    [ "$benches_active" = "true" ] && bench_footer="${BOLD}${YELLOW}└───────────────────────┘${NC}"
-    [ "$ai_active" = "true" ] && ai_footer="${BOLD}${YELLOW}└───────────────────────┘${NC}"
-    [ "$tools_active" = "true" ] && tools_footer="${BOLD}${YELLOW}└───────────────────────┘${NC}"
-
-    echo -e "${bench_footer}      ${ai_footer}      ${tools_footer}"
-}
-
-# Draw a single item (compact version for 3-column layout)
-draw_item_compact() {
-    local key="$1"
-    local is_selected="$2"
-    local section_active="$3"
-
-    local checked="${component_checked[$key]}"
-    local desc="${component_description[$key]}"
-    local status="${component_status[$key]}"
-    [[ -n "$status" ]] || status=loading
-
-    # Checkbox with action indicator
-    local checkbox="[ ]"
-    local action="${component_action[$key]}"
-
-    if [ "$checked" = true ]; then
-        if [[ "$action" == "uninstall" ]]; then
-            checkbox="[${RED}X${NC}]"
-        else
-            checkbox="[${GREEN}✓${NC}]"
-        fi
-    fi
-
-    # Status indicator
-    local status_color="$RED"
-    local status_symbol="✗"
-
-    if [[ "$status" == loading ]]; then
-        status_color="$LOADING_COLOR"
-        status_symbol="…"
-    elif [[ "$status" == "installed" || "$status" == "configured" ]]; then
-        status_color="$GREEN"
-        status_symbol="✓"
-    elif [[ "$status" == "needs creds" || "$status" == "needs setup" || "$status" == "needs check" || "$status" == "needs docker" || "$status" == 'image only' ]]; then
-        status_color="$YELLOW"
-        status_symbol="⚠"
-    elif [[ "$status" == optional ]]; then
-        status_color="$DIM"
-        status_symbol="·"
-    fi
-
-    # Selection highlight
-    local prefix="  "
-    if [ "$is_selected" = "true" ] && [ "$section_active" = "true" ]; then
-        prefix="${CYAN}▶ "
-    fi
-
-    # Format with proper width (24 chars total for each column)
-    # Using 16 chars for description to reach total of 24 visible chars
-    # Breakdown: prefix(2) + checkbox(3) + space(1) + status(1) + space(1) + desc(16) = 24
-    printf "%b%s %b%s%b %-16s" "$prefix" "$checkbox" "$status_color" "$status_symbol" "$NC" "${desc:0:16}"
-}
 
 # Handle keyboard input
 handle_input() {

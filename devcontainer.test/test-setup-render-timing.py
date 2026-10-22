@@ -20,7 +20,7 @@ status_checks_running=false
 setup_refresh_bench_counts
 tput() { case $1 in cols) echo 88;; lines) echo 40;; esac; }
 setup_os_label=Linux
-CURRENT_SECTION=0; setup_bench_zone=bench; current_selection=0
+setup_arrive_step 0; setup_bench_zone=bench; setup_focus_bench_name cppBench
 '''
 if args.engine_only:
     script += r'''
