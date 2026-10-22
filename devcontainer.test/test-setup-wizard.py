@@ -192,5 +192,14 @@ printf '%s\n' "${setup_bench_category_of[365Bench]}" "${setup_bench_members[othe
 ''')
         self.assertEqual(output, 'other-benches\n365Bench\n')
 
+    def test_input_sequences_consume_full_key(self):
+        for sequence, expected in [(r'\e[Z', 'backtab'), (r'\e[5~', 'pageup'),
+                                   (r'\e[6~', 'pagedown'), (r'\t', 'tab'),
+                                   ('[', 'pageup'), (']', 'pagedown'), (r'\e[9~', 'unknown')]:
+            output = self.shell('init_components --loading\n' +
+                                "handle_input < <(printf '" + sequence + "Q')\n" +
+                                'printf \'%s\\n\' "$setup_input_key"\n')
+            self.assertEqual(output.strip(), expected)
+
 
 if __name__ == '__main__': unittest.main()

@@ -3,6 +3,15 @@
 # Interactive Setup UI for workBenches
 # Provides keyboard-driven selection interface for installing components
 
+# Character-based layout needs a UTF-8 locale, including on minimal hosts.
+case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+    *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*) ;;
+    *) if locale -a 2>/dev/null | grep -qiE '^C\.utf-?8$'; then
+           export LC_CTYPE=C.UTF-8
+           [[ -z "${LC_ALL:-}" ]] || export LC_ALL=C.UTF-8
+       fi ;;
+esac
+
 # Setup logging
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/image-names.sh"
@@ -84,6 +93,11 @@ SILVER_FOCUS='\033[48;5;235m\033[38;5;255m'
 setup_ui_width=87
 setup_ui_painted=false
 setup_ui_frame_columns=0
+setup_ui_frame_rows=''
+setup_ui_height=''
+setup_ui_size_stale=true
+setup_terminal_columns=88
+setup_input_key=''
 declare -a setup_ui_previous_lines=()
 
 setup_ui_rule_v() {
@@ -1203,6 +1217,7 @@ setup_frame_build() {
 }
 
 render_setup_frame() {
+    if [[ "$setup_ui_painted" != true || "$setup_ui_size_stale" == true ]]; then setup_ui_read_size; fi
     setup_frame_build
     printf '%s\n' "${setup_frame_lines[@]}"
 }
@@ -1210,18 +1225,25 @@ render_setup_frame() {
 # Size discovery is outside the fork-free builder and line-diff engine.
 setup_measure_terminal() {
     setup_terminal_columns="$(tput cols 2>/dev/null)"
+    setup_ui_height="$(tput lines 2>/dev/null)"
     [[ "$setup_terminal_columns" =~ ^[0-9]+$ ]] || setup_terminal_columns=88
+    [[ "$setup_ui_height" =~ ^[1-9][0-9]*$ ]] || setup_ui_height=''
     setup_ui_width=$((setup_terminal_columns - 1))
     (( setup_ui_width <= 87 )) || setup_ui_width=87
     (( setup_ui_width >= 36 )) || setup_ui_width=36
 }
 
+setup_ui_read_size() {
+    setup_measure_terminal
+    setup_ui_size_stale=false
+}
+
 # Commit only changed lines in one write, without blanking the screen first.
 draw_ui() {
     local output='' cursor index count
-    setup_measure_terminal
+    if [[ "$setup_ui_painted" != true || "$setup_ui_size_stale" == true ]]; then setup_ui_read_size; fi
     setup_frame_build
-    if [[ "$setup_ui_painted" != true || "$setup_ui_frame_columns" != "$setup_terminal_columns" ]]; then
+    if [[ "$setup_ui_painted" != true || "$setup_ui_frame_columns" != "$setup_terminal_columns" || "$setup_ui_frame_rows" != "$setup_ui_height" ]]; then
         output=$'\033[?25l\033[0m\033[2J'
         setup_ui_previous_lines=()
     fi
@@ -1236,6 +1258,7 @@ draw_ui() {
     [[ -z "$output" ]] || printf '%s' "$output"
     setup_ui_previous_lines=("${setup_frame_lines[@]}")
     setup_ui_frame_columns=$setup_terminal_columns
+    setup_ui_frame_rows=$setup_ui_height
     setup_ui_painted=true
 }
 
@@ -1414,17 +1437,42 @@ handle_input() {
 
     # Read single character
     local read_status
-    local -a read_options=(-rsn1)
-    [[ "$status_checks_running" != true ]] || read_options+=(-t 0.15)
+    # Some Bash builds restart an untimed read after WINCH. Bound the idle
+    # wait too, so resize is noticed even when no checks or keys are pending.
+    local -a read_options=(-rsn1 -t 0.15)
     if IFS= read "${read_options[@]}" key; then :; else
         read_status=$?
-        if [[ "$status_checks_running" == true && "$read_status" -gt 128 ]]; then return 3; fi
+        if [[ "$read_status" -gt 128 && "$setup_ui_size_stale" == true ]]; then return 3; fi
+        if [[ "$read_status" -gt 128 ]]; then return 3; fi
         return 2
     fi
 
-    # Handle escape sequences (arrow keys, etc.)
+    setup_input_key="$key"
+    case "$key" in
+        $'\t') setup_input_key=tab; return 0 ;;
+        '[') setup_input_key=pageup; return 0 ;;
+        ']') setup_input_key=pagedown; return 0 ;;
+    esac
+    # Consume every byte of supported escape sequences before dispatch.
     if [[ $key == $'\x1b' ]]; then
-        read -rsn2 -t 0.1 key
+        IFS= read -rsn2 -t 0.1 key
+        case "$key" in
+            '[Z') setup_input_key=backtab; return 0 ;;
+            '[5'|'[6')
+                local suffix
+                IFS= read -rsn1 -t 0.1 suffix
+                setup_input_key=unknown
+                if [[ "$suffix" == '~' ]]; then
+                    setup_input_key=pageup
+                    [[ "$key" != '[6' ]] || setup_input_key=pagedown
+                fi
+                return 0 ;;
+            '[A') setup_input_key=up ;;
+            '[B') setup_input_key=down ;;
+            '[C') setup_input_key=right ;;
+            '[D') setup_input_key=left ;;
+            *) setup_input_key=unknown; return 0 ;;
+        esac
         case "$key" in
             '[A') # Up arrow - move up in current section
                 if [ $current_selection -gt 0 ]; then
@@ -3424,7 +3472,7 @@ main() {
         local current_state=$(get_checked_state)
 
         # Check if anything changed (selection or checkboxes)
-        if [[ "$status_ui_dirty" == true ]] || [ $current_selection -ne $prev_sel ] || [ $CURRENT_SECTION -ne $prev_sect ] || [ "$current_state" != "$prev_state" ]; then
+        if [[ "$status_ui_dirty" == true || "$setup_ui_size_stale" == true ]] || [ $current_selection -ne $prev_sel ] || [ $CURRENT_SECTION -ne $prev_sect ] || [ "$current_state" != "$prev_state" ]; then
             draw_ui
             status_ui_dirty=false
             prev_sel=$current_selection
@@ -3461,6 +3509,7 @@ main() {
 # Cleanup on exit
 trap 'echo -e "${SHOW_CURSOR}"; exit 130' INT
 trap 'echo -e "${SHOW_CURSOR}"; exit 143' TERM
+trap 'setup_ui_size_stale=true' WINCH
 
 # Run if executed directly
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then

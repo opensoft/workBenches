@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import signal
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,6 +56,47 @@ render_setup_frame''')
             self.assertNotRegex(body, r'(?<!\|)\|(?!\|)', name)
         self.assertIn('setup_frame_build', checked)
         self.assertIn('draw_ui', checked)
+
+    def test_size_cache_and_height_repaint(self):
+        output = self.shell(r'''
+setup_frame_build() { setup_frame_lines=(hello); }
+tput() { printf '%s\n' "$1" >> "$TMP_SIZE_CALLS"; case $1 in cols) echo 88;; lines) echo "$height";; esac; }
+TMP_SIZE_CALLS=$(mktemp); height=40
+draw_ui > /dev/null
+draw_ui > /dev/null
+[[ $(wc -l < "$TMP_SIZE_CALLS") == 2 ]] || exit 91
+height=24; setup_ui_size_stale=true
+draw_ui
+rm "$TMP_SIZE_CALLS"
+''')
+        self.assertIn('\x1b[2J', output)
+
+    def test_resize_interrupt_returns_redraw_not_quit(self):
+        for running in ('true', 'false'):
+            command = ('source scripts/interactive-setup.sh\nstatus_checks_running=' + running +
+                       '\necho READY\nhandle_input; result=$?; echo result=$result stale=$setup_ui_size_stale')
+            proc = subprocess.Popen(['bash', '-c', command], cwd=ROOT, stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                    env=dict(os.environ, WORKBENCHES_SETUP_LOG_FILE='/dev/null'))
+            try:
+                self.assertEqual(proc.stdout.readline().strip(), 'READY')
+                time.sleep(0.03)
+                os.kill(proc.pid, signal.SIGWINCH)
+                proc.wait(timeout=3)
+                output = proc.stdout.read()
+                self.assertEqual(proc.returncode, 0, proc.stderr.read())
+                self.assertIn('result=3 stale=true', output)
+            finally:
+                if proc.poll() is None: proc.kill(); proc.wait()
+                proc.stdin.close(); proc.stdout.close(); proc.stderr.close()
+
+    def test_invalid_size_defaults_and_locale_is_utf8(self):
+        output = self.shell(r'''
+tput() { case $1 in cols) echo invalid;; lines) echo 0;; esac; }
+setup_ui_read_size
+printf '%s:%s:%s\n' "$setup_ui_width" "$setup_ui_height" "${#SILVER}"
+''')
+        self.assertTrue(output.startswith('87::'))
 
 
 if __name__ == '__main__': unittest.main()
