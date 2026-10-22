@@ -232,9 +232,12 @@ def snapshot():
     return [(str(path), path.read_bytes(), path.stat().st_mtime_ns) for path in paths]
 
 
-TUI = r'REQUIREMENTS · (\d+)/\1 ready[\s\S]*Navigation:'
+STRIP_READY = r'REQUIREMENTS · (\d+)/\1 ready[\s\S]*Navigation:'
+READY = r'✓ Workstation[^\n]*\n[\s\S]*Navigation:'
+REVIEW = r'Nothing has changed yet\. Enter applies these changes\.[\s\S]*Navigation:'
+TUI = STRIP_READY
 CODEX = (TUI, '\x1b[C\x1b[B\x1b[B \n')
-PROFILES = r'PERSONAL & COMPANY IDENTITIES[\s\S]*AI accounts[\s\S]*G Back[^\n]*Q Quit'
+PROFILES = r'IDENTITIES[\s\S]*AI accounts[\s\S]*G Back[^\n]*Q Quit'
 
 
 def account_setup_replies(authentication, *, cancel=False):
@@ -242,7 +245,7 @@ def account_setup_replies(authentication, *, cancel=False):
     # screen instead of clamping an obsolete row index onto the Vault button.
     assert len(authentication) <= 8, 'simple recovery flow grew beyond eight account responses'
     return [
-        (TUI, '\x1b[C\x1b[B\x1b[B G'),
+        (READY, '\x1b[C\x1b[C\x1b[B\x1b[B G'),
         (PROFILES, '\x1b[B\x1b[B\n'),
         (r'AI assistant .*\[codex\]', '\n'),
         *authentication,

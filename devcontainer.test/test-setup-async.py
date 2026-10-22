@@ -97,6 +97,7 @@ poll_status_loader
     def test_rendering_never_runs_discovery(self):
         command = f'''source "{ROOT}/scripts/interactive-setup.sh"
 init_components --loading
+CURRENT_SECTION=3
 initialize_loading_statuses
 status_checks_running=true
 setup_os_label=Linux
@@ -115,6 +116,7 @@ draw_ui
         with tempfile.TemporaryDirectory() as temporary:
             command = f'''source "{ROOT}/scripts/interactive-setup.sh"
 init_components --loading
+CURRENT_SECTION=3
 initialize_loading_statuses
 status_checks_running=true
 setup_os_label=Linux

@@ -1343,17 +1343,101 @@ setup_frame_fit() {
 declare -a setup_frame_lines=()
 setup_frame_region_height=0
 
-setup_frame_head() { :; }
+setup_step_sections=(3 0 1 2 4 5)
+setup_step_names=(Workstation Benches Agents Tools Profiles Review)
+setup_section_step=([3]=0 [0]=1 [1]=2 [2]=3 [4]=4 [5]=5)
+setup_bench_zone=category
+setup_bench_category=''
+setup_review_offset=0
+
+setup_arrive_step() {
+    CURRENT_SECTION=$1; current_selection=0; setup_list_offset=0; setup_about_offset=0
+    if [[ "$CURRENT_SECTION" == 0 ]]; then
+        setup_bench_zone=category
+        setup_bench_category="${setup_bench_categories_focusable[0]:-}"
+    fi
+    [[ "$CURRENT_SECTION" != 5 ]] || setup_review_offset=0
+}
+
+setup_move_step() {
+    local step_index=${setup_section_step[$CURRENT_SECTION]} step_next
+    step_next=$((step_index+$1))
+    ((step_next >= 0 && step_next < 6)) || return 0
+    if [[ "$CURRENT_SECTION" == 0 && "$1" == -1 ]]; then
+        requirements_return_section=$CURRENT_SECTION; requirements_return_selection=$current_selection
+    fi
+    if [[ ( "$CURRENT_SECTION" == 2 && "$1" == 1 ) || ( "$CURRENT_SECTION" == 5 && "$1" == -1 ) ]]; then
+        profiles_return_section=$CURRENT_SECTION; profiles_return_selection=$current_selection
+    fi
+    setup_arrive_step "${setup_step_sections[step_next]}"
+}
+
+setup_frame_head() {
+    local head_line nav_plain='' nav_styled='' nav_item nav_mark nav_index nav_current=${setup_section_step[$CURRENT_SECTION]} nav_count nav_key nav_section nav_marks='' nav_color
+    local -a nav_counts=(0 0 0 0 0 0)
+    for nav_key in "${!component_checked[@]}"; do
+        [[ "${component_checked[$nav_key]}" == true && -n "${component_action[$nav_key]}" ]] || continue
+        if [[ "$nav_key" == bench_* ]]; then ((nav_counts[1]++))
+        else
+            for nav_item in "${ai_items[@]}"; do [[ "$nav_item" != "$nav_key" ]] || ((nav_counts[2]++)); done
+            for nav_item in "${tool_items[@]}"; do [[ "$nav_item" != "$nav_key" ]] || ((nav_counts[3]++)); done
+        fi
+    done
+    setup_ui_banner
+    for head_line in "${setup_banner_lines[@]}"; do setup_frame_append "$head_line"; done
+    setup_ui_pair_v head_line "workBenches v$setup_version" "${setup_os_label:-}" "$setup_ui_width"
+    setup_frame_append "$head_line"
+    for ((nav_index=0; nav_index<6; nav_index++)); do
+        nav_mark=○; nav_color="$SILVER_MUTED"
+        if ((nav_index < nav_current)); then nav_mark=✓; fi
+        if ((nav_index == nav_current)); then nav_mark=●; fi
+        if ((nav_index == 0)); then
+            if [[ "$status_checks_running" == true ]]; then nav_mark=…; nav_color="$LOADING_COLOR"
+            elif setup_required_ready; then nav_mark=✓; nav_color="$GREEN"
+            else nav_mark=⚠; nav_color="$YELLOW"; fi
+        fi
+        nav_marks+="$nav_mark"
+        nav_item="$nav_mark ${setup_step_names[nav_index]}"
+        nav_count=${nav_counts[nav_index]}
+        ((nav_count == 0)) || nav_item+=" $nav_count"
+        if ((nav_index == nav_current)); then
+            nav_item=" $nav_item "
+            printf -v head_line '%b%b%s%b' "$SILVER_FOCUS" "$nav_color" "$nav_item" "$NC"
+        else printf -v head_line '%b%s%b' "$nav_color" "$nav_item" "$NC"; fi
+        if [[ -n "$nav_plain" ]]; then nav_plain+=' ─ '; nav_styled+=' ─ '; fi
+        nav_plain+="$nav_item"; nav_styled+="$head_line"
+    done
+    if (( ${#nav_plain} > setup_ui_width )); then
+        head_line="Step $((nav_current+1)) of 6 · ${setup_step_names[nav_current]} $nav_marks"
+    else head_line=$nav_styled; fi
+    setup_frame_append "$head_line"
+    setup_ui_rule_v head_line "$setup_ui_width"; setup_frame_append "$head_line"
+}
 setup_frame_selector() { :; }
 setup_frame_notice() { :; }
 setup_frame_footer() { :; }
 
 # Temporary 1.7 body capture, removed when the wizard bodies are complete.
 setup_frame_legacy_bridge() {
-    local bridge_frame
-    bridge_frame="$(render_legacy_setup_frame)"
-    mapfile -t setup_frame_lines <<< "$bridge_frame"
-    setup_frame_region_height=${#setup_frame_lines[@]}
+    local bridge_frame bridge_line
+    local -a bridge_lines=()
+    if [[ "$CURRENT_SECTION" == 3 ]]; then
+        bridge_frame="$(draw_requirements_summary; draw_requirements)"
+    elif [[ "$CURRENT_SECTION" == 4 ]]; then bridge_frame="$(draw_profiles)"
+    elif [[ "$CURRENT_SECTION" == 5 ]]; then bridge_frame='Review'
+    else bridge_frame="$(draw_three_sections)"; fi
+    mapfile -t bridge_lines <<< "$bridge_frame"
+    for bridge_line in "${bridge_lines[@]}"; do
+        [[ -n "$bridge_line" ]] || continue
+        setup_frame_append "$bridge_line"
+    done
+    if [[ "$CURRENT_SECTION" == 5 ]]; then bridge_frame='Navigation: ←→ Steps  Enter Apply  Q Quit'
+    else bridge_frame="$(draw_setup_footer)"; fi
+    mapfile -t bridge_lines <<< "$bridge_frame"
+    for bridge_line in "${bridge_lines[@]}"; do
+        [[ -n "$bridge_line" ]] || continue
+        setup_frame_append "$bridge_line"
+    done
 }
 
 setup_frame_build() {
@@ -1417,7 +1501,7 @@ draw_ui() {
 # Keep action hints together and show detail only for the focused component.
 draw_setup_footer() {
     if [[ "$CURRENT_SECTION" == 4 ]]; then
-        printf '\n↑↓ Move  Enter/Space Open\n'
+        printf '\nNavigation: ↑↓ Move  Enter Open\n'
         printf '← Requirements  G Back  Q Quit\n'
         return
     fi
@@ -1665,25 +1749,8 @@ handle_input() {
                     fi
                 fi
                 ;;
-            '[C') # Right arrow - switch section right
-                if [ $CURRENT_SECTION -lt 4 ]; then
-                    if [[ "$CURRENT_SECTION" == 2 ]]; then
-                        requirements_return_section=$CURRENT_SECTION
-                        requirements_return_selection=$current_selection
-                    elif [[ "$CURRENT_SECTION" == 3 ]]; then
-                        profiles_return_section=$CURRENT_SECTION
-                        profiles_return_selection=$current_selection
-                    fi
-                    ((CURRENT_SECTION++))
-                    current_selection=0
-                fi
-                ;;
-            '[D') # Left arrow - switch section left
-                if [ $CURRENT_SECTION -gt 0 ]; then
-                    ((CURRENT_SECTION--))
-                    current_selection=0
-                fi
-                ;;
+            '[C') setup_move_step 1 ;;
+            '[D') setup_move_step -1 ;;
         esac
     else
         case "$key" in
@@ -3580,6 +3647,7 @@ main() {
     if [[ ( "$mode" == interactive || "$mode" == --select-only ) && -t 0 && -t 1 ]]; then
         status_async_ui=true
         init_components --loading
+        CURRENT_SECTION=3
         setup_os_label="$(workbenches_setup_os)"
         initialize_loading_statuses
         status_checks_running=true
@@ -3590,6 +3658,7 @@ main() {
     else
         ensure_workstation_requirements || return "$?"
         init_components
+        if [[ "$mode" == interactive || "$mode" == --select-only ]]; then CURRENT_SECTION=3; fi
         if [[ "$mode" == interactive || "$mode" == --select-only ]]; then setup_load_bench_metadata_sync; fi
         if [[ "$mode" != --dependencies-plan ]]; then load_statuses; fi
     fi

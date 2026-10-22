@@ -32,6 +32,7 @@ for key in "${requirement_items[@]}"; do
     [[ "$key" != wsl ]] || component_status[$key]=up
 done
 setup_os_label=Linux
+CURRENT_SECTION=3
 refresh_component_statuses() { :; }
 activate_requirement() { echo UNEXPECTED_VAULT_ACTION; exit 99; }
 configure_selected_accounts() {

@@ -201,5 +201,40 @@ printf '%s\n' "${setup_bench_category_of[365Bench]}" "${setup_bench_members[othe
                                 'printf \'%s\\n\' "$setup_input_key"\n')
             self.assertEqual(output.strip(), expected)
 
+    def test_step_order_clamps_and_arrival_focus(self):
+        output = self.shell(r'''
+init_components --loading
+CURRENT_SECTION=3
+for ((i=0;i<7;i++)); do
+    printf '%s ' "$CURRENT_SECTION"
+    handle_input < <(printf '\e[C')
+done
+printf '\n'
+for ((i=0;i<7;i++)); do
+    printf '%s ' "$CURRENT_SECTION"
+    handle_input < <(printf '\e[D')
+done
+''')
+        self.assertEqual(output.splitlines(), ['3 0 1 2 4 5 5 ', '5 4 2 1 0 3 3 '])
+
+    def test_shared_ready_markers_on_every_step(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('acceptance_markers', ROOT/'devcontainer.test/test-workstation-acceptance.py')
+        markers = importlib.util.module_from_spec(spec); spec.loader.exec_module(markers)
+        import re
+        for section in (3,0,1,2,4,5):
+            frame = self.shell(r'''
+init_components --loading
+for key in "${!component_description[@]}"; do component_status[$key]=installed; done
+for key in "${requirement_items[@]}"; do component_status[$key]=up; done
+tput() { case $1 in cols) echo 80;; lines) echo 24;; esac; }
+status_checks_running=false
+CURRENT_SECTION=''' + str(section) + r'''
+render_setup_frame
+''')
+            frame = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', frame)
+            self.assertRegex(frame, markers.READY, f'section {section}')
+            if section==3: self.assertRegex(frame, markers.STRIP_READY)
+
 
 if __name__ == '__main__': unittest.main()

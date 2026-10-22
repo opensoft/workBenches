@@ -87,9 +87,9 @@ run_case 'lowercase q cancels without applying or building' q 130 ''
 run_case 'closed input cancels without applying or building' '' 130 ''
 run_case 'UI failure stops setup' '' 7 '' 7
 run_case 'terminated UI stops setup' '' 143 '' 143
-run_case 'cancelled credential recovery stops the entire setup' $'\n' 130 '' '' 130
-run_case 'Enter builds required families before applying selections' $'\n' 0 $'build\nbuild\napply'
+run_case 'cancelled credential recovery stops the entire setup' $'\e[C\n' 130 '' '' 130
+run_case 'Enter builds required families before applying selections' $'\e[C\n' 0 $'build\nbuild\napply'
 
-TEST_EMPTY_SELECTION=1 run_case 'empty Enter exits without applying or building' $'\n' 0 ''
+TEST_EMPTY_SELECTION=1 run_case 'empty Enter exits without applying or building' $'\e[C\n' 0 ''
 
-TEST_APPLY_EXIT=9 run_case 'failed selected install preserves its error after base builds' $'\n' 9 $'build\nbuild\napply'
+TEST_APPLY_EXIT=9 run_case 'failed selected install preserves its error after base builds' $'\e[C\n' 9 $'build\nbuild\napply'
