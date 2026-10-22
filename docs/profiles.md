@@ -1,4 +1,4 @@
-# Profiles (v1.6 development)
+# Profiles
 
 This feature is on `feature/profile-onboarding`, outside the v1.5 release.
 
@@ -9,10 +9,18 @@ this branch, with real deployment/provider QA pending. See the
 [synchronization guide](company-credential-sync.md) and
 [specification](../specs/027-company-credential-sync/spec.md).
 
-Setup has three pages. Components selects software; Requirements manages Docker,
-Tools, and Vault readiness; **Profiles** manages personal and company identities.
-Press **G** to open Profiles and **Enter** on **Personal & companies**. Resolve
-required software readiness first. Profiles actions do not apply queued installs.
+**Profiles** is the fifth wizard step, after Workstation, Benches, Agents and
+Tools and before Review. Its identities line summarizes cached personal/company
+identities. The three rows are **Personal & companies**, **Workstation account**
+and **AI accounts**; an About panel explains the focused row. PgUp/PgDn or [ / ]
+scroll long About text, and moving focus resets it.
+
+Press **G** from any other step to visit Profiles. **G Back** returns to the
+remembered step and exact focus; entering from Tools or Review remembers that
+place too. Enter or Space opens the selected row's existing action immediately.
+Resolve required workstation services first: profile actions are refused until
+they are ready. Returning preserves all queued component changes and displays
+a completion, cancellation or retry notice. Profile actions do not apply that queue.
 
 The **Personal & companies** entry opens a keyboard-driven manager. At normal
 terminal widths it shows a profile tree on the left and selected details on the
