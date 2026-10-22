@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.0 — Unreleased
+
+- Guided setup wizard: Workstation, Benches, Agents, Tools, Profiles and Review.
+- **Breaking interaction change:** Enter opens Review; only Enter on Review applies
+  queued component changes. Service and profile actions remain immediate.
+- Category browsing, scrolling About panels and narrow/short terminal layouts.
+- Offer the locked goBench, rustBench and 365Bench with validated catalog copy
+  and name-safe, fail-closed catalog lookups.
+
 ## 1.6.0-rc.1 — 2026-10-19
 
 Frozen release candidate, not a stable release. See the
