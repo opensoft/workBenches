@@ -220,3 +220,35 @@ is `features/029-setup-guided-wizard/openspec/029-A02.md`.
 
 All twelve benches' wording is unchanged and T040 approval remains pending.
 No push, PR, merge or archive was performed.
+
+## Live-review adjustment 029-A03 — 2026-10-22
+
+Brett requested `openBenches v1.7` beside the Opensoft logo and the detected OS
+inside the separator bar. T039C implements this after baseline `2e627e1`; the
+implementation/evidence are in the commit containing this section. See
+`features/029-setup-guided-wizard/openspec/029-A03.md`.
+
+- The display brand sits beside the full logo on its third row, or beside
+  compact Opensoft when height/width requires it. Full logos require a
+  59-column frame to fit both.
+- The separator below navigation carries the detected OS at its right; Raven
+  shows `Linux — Omarchy`. There is no standalone version/OS row.
+- One blank row remains below the banner. The freed version row gives About
+  four lines instead of three at 80×24, retaining all eight benches.
+- Repository VERSION and non-wizard product identities are unchanged.
+- PASS: exact T039C verification, including 24 wizard tests, 18 responsive
+  layout tests/full size-locale matrix, six async tests, no-fork and partial
+  redraw guards, Bash syntax, strict OpenSpec validation, and compilation of
+  component-lifecycle/WSL acceptance. Header-specific markers were updated;
+  cancellation and lifecycle assertions remain in place.
+- PASS: all 32 quickstart suites and native/WSL acceptance compilation.
+  Docker-backed real-host acceptance remains unexecuted.
+- Full Benches timing: median 3.354 ms, p90 4.784 ms, max 5.055 ms. Per-step
+  medians: Workstation 2.107, Benches 2.434, Harness 2.420, Tools 2.135,
+  Profiles 1.852, Review 2.081 ms.
+- Visual check: refreshed and maximized live Benches preview on Raven,
+  workspace 14, cppBench focused. The requested adjacent brand and OS divider
+  are visible with the prior section spacing retained.
+
+Bench copy is unchanged; T040 approval remains pending. Nothing was pushed,
+opened as a PR, merged or archived.

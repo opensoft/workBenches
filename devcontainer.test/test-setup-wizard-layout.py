@@ -23,7 +23,7 @@ class LayoutTests(unittest.TestCase):
 
     def frame(self, section, columns=88, rows=40):
         text = self.shell(f'''init_components --loading
-setup_os_label=Linux
+setup_os_label='Linux — Omarchy'
 CURRENT_SECTION={section}
 tput() {{ case $1 in cols) echo {columns};; lines) echo {rows};; esac; }}
 render_setup_frame''')
@@ -35,7 +35,7 @@ render_setup_frame''')
 
     def test_frame_keeps_legacy_content_while_engine_is_bridged(self):
         lines = self.frame(0)
-        self.assertTrue(any('workBenches v' in line for line in lines))
+        self.assertTrue(any('openBenches v1.7' in line for line in lines))
         self.assertTrue(any('Navigation:' in line for line in lines))
         self.assert_bounds(lines, 88)
 
@@ -140,8 +140,12 @@ printf 'fit=%s\n' "${setup_frame_lines[*]}"
             lines = self.frame(3, 88, rows)
             text = '\n'.join(lines)
             self.assertEqual('█▀▀█' in text, full)
-            version_index = next(i for i, line in enumerate(lines) if 'workBenches v' in line)
-            self.assertEqual(lines[version_index - 1], '')
+            brand_index = next(i for i, line in enumerate(lines) if 'openBenches v1.7' in line)
+            self.assertIn('█' if full else 'Opensoft', lines[brand_index])
+            nav_index = next(i for i, line in enumerate(lines) if 'Workstation' in line)
+            self.assertEqual(lines[nav_index - 1], '')
+            self.assertTrue(lines[nav_index + 1].endswith(' Linux — Omarchy ─'))
+            self.assertNotIn('workBenches v', text)
 
     def test_main_loop_uses_variable_signature(self):
         text = (ROOT / 'scripts/interactive-setup.sh').read_text()
@@ -242,7 +246,7 @@ printf 'ABOUT-WINDOW=%s\\n' "$setup_about_window"
                 if columns==80:
                     for name in ('cppBench','dotNetBench','flutterBench','frappeBench','goBench','javaBench','pyBench','rustBench'):
                         self.assertIn(name,text)
-                    self.assertEqual(about,'ABOUT-WINDOW=3')
+                    self.assertEqual(about,'ABOUT-WINDOW=4')
                     self.assertEqual(sum('CATEGORY' in line for line in lines),1)
                 if rows==0:self.assertNotIn('more',text)
                 if rows==40:
@@ -265,7 +269,7 @@ setup_refresh_bench_counts
 setup_arrive_step {section}
 if [[ "$CURRENT_SECTION" == 0 ]]; then setup_bench_zone=bench; setup_focus_bench_name cppBench; fi
 if [[ "$CURRENT_SECTION" == 1 ]]; then current_selection=2; fi
-setup_os_label=Linux
+setup_os_label='Linux — Omarchy'
 tput() {{ case $1 in cols) echo {columns};; lines) echo {rows};; esac; }}
 jq() {{ echo UNEXPECTED_DISCOVERY; return 99; }}
 python3() {{ echo UNEXPECTED_DISCOVERY; return 99; }}

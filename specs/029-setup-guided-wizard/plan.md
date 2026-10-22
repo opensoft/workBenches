@@ -340,3 +340,7 @@ Brett requested removing the duplicate Benches footer status, separating the cat
 ## Accepted live-review revision 029-A02 (2026-10-22)
 
 Brett renamed the Agents step to Harness and requested blank rows between the category block, bench panel and About. Task T039B applies the label consistently in navigation, panel headings, Review and current documentation. Roomy Benches gains the two blank rows; tight layouts omit them and retain all eight Software Engineering benches and three About lines at 80×24. The nav highlight loses one trailing padding character to keep the longer Harness label and three single-digit queued counts within the 79-column frame. Keys and actions are unchanged. Historical naming decisions above are superseded by this revision.
+
+## Accepted live-review revision 029-A03 (2026-10-22)
+
+Brett requested the header brand `openBenches v1.7` beside the Opensoft logo and the detected OS inside the separator below navigation. T039C removes the standalone version/OS row, preserves the blank row below the logo, and puts the brand on the third row of the full wordmark or beside compact Opensoft. Full wordmarks need 59 columns to fit the adjacent brand; narrower frames use the compact form. The freed row increases the 80×24 About window from three to four lines, while retaining all eight benches. Repository VERSION and non-wizard product identifiers are unchanged. This revision supersedes the earlier header composition only.

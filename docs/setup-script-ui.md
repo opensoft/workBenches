@@ -17,6 +17,10 @@ Harness and Tools show their queued counts. Profiles has no queued count because
 its rows open actions immediately. A narrow frame uses `Step N of 6` and six
 progress marks instead of the full navigation line.
 
+The header shows **openBenches v1.7** beside the Opensoft logo. The detected OS
+is at the right of the divider below navigation. Narrow or short terminals use
+the compact logo so both brand and navigation fit.
+
 ## Review before Apply
 
 Space queues an install, or an update for an installed component. D queues a

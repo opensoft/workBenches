@@ -19,6 +19,7 @@ source "$SCRIPT_DIR/lib/setup-prerequisites.sh"
 source "$SCRIPT_DIR/lib/setup-status-loader.sh"
 source "$SCRIPT_DIR/../bootstrap.sh"
 setup_version="$(workbenches_version)"
+setup_ui_brand='openBenches v1.7'
 LOG_DIR="$SCRIPT_DIR/../logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="${WORKBENCHES_SETUP_LOG_FILE:-$LOG_DIR/setup-$(date +%Y%m%d-%H%M%S).log}"
@@ -134,8 +135,8 @@ setup_ui_banner() {
     [[ "$setup_banner_cache_key" != "$banner_key" ]] || return 0
     setup_banner_cache_key="$banner_key"
     setup_banner_lines=()
-    if (( setup_ui_width < 42 )) || [[ "$setup_ui_layout" == tight ]] || { [[ -n "$setup_ui_height" ]] && ((setup_ui_height < 40)); }; then
-        printf -v banner_result '  %bOpensoft%b' "$SILVER" "$NC"
+    if (( setup_ui_width < 43 + ${#setup_ui_brand} )) || [[ "$setup_ui_layout" == tight ]] || { [[ -n "$setup_ui_height" ]] && ((setup_ui_height < 40)); }; then
+        printf -v banner_result '  %bOpensoft%b  %b%s%b' "$SILVER" "$NC" "$SILVER" "$setup_ui_brand" "$NC"
         setup_banner_lines=("$banner_result")
         return
     fi
@@ -159,6 +160,9 @@ setup_ui_banner() {
                 *) banner_result+="$banner_char" ;;
             esac
         done
+        if ((banner_index == 2)); then
+            printf -v banner_result '%s  %b%s%b' "$banner_result" "$SILVER" "$setup_ui_brand" "$NC"
+        fi
         setup_banner_lines+=("$banner_result"$'\033[0m')
     done
 }
@@ -1361,7 +1365,7 @@ setup_move_step() {
 }
 
 setup_frame_head() {
-    local head_line nav_plain='' nav_styled='' nav_item nav_mark nav_index nav_current=${setup_section_step[$CURRENT_SECTION]} nav_count nav_key nav_section nav_marks='' nav_color
+    local head_line head_os nav_plain='' nav_styled='' nav_item nav_mark nav_index nav_current=${setup_section_step[$CURRENT_SECTION]} nav_count nav_key nav_section nav_marks='' nav_color
     local -a nav_counts=(0 0 0 0 0 0)
     for nav_key in "${!component_checked[@]}"; do
         [[ "${component_checked[$nav_key]}" == true && -n "${component_action[$nav_key]}" ]] || continue
@@ -1374,8 +1378,6 @@ setup_frame_head() {
     setup_ui_banner
     for head_line in "${setup_banner_lines[@]}"; do setup_frame_append "$head_line"; done
     setup_frame_append ''
-    setup_ui_pair_v head_line "workBenches v$setup_version" "${setup_os_label:-}" "$setup_ui_width"
-    setup_frame_append "$head_line"
     for ((nav_index=0; nav_index<6; nav_index++)); do
         nav_mark=○; nav_color="$SILVER_MUTED"
         if ((nav_index < nav_current)); then nav_mark=✓; fi
@@ -1400,7 +1402,12 @@ setup_frame_head() {
         head_line="Step $((nav_current+1)) of 6 · ${setup_step_names[nav_current]} $nav_marks"
     else head_line=$nav_styled; fi
     setup_frame_append "$head_line"
-    setup_ui_rule_v head_line "$setup_ui_width"; setup_frame_append "$head_line"
+    if [[ -n "${setup_os_label:-}" ]]; then
+        setup_ui_cut_v head_os "$setup_os_label" "$((setup_ui_width - 4))"
+        setup_ui_rule_v head_line "$((setup_ui_width - ${#head_os} - 3))"
+        head_line+=" $head_os ─"
+    else setup_ui_rule_v head_line "$setup_ui_width"; fi
+    setup_frame_append "$head_line"
 }
 setup_frame_selector() {
     [[ "$CURRENT_SECTION" != 3 ]] || setup_frame_requirements_strip

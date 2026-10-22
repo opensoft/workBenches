@@ -9,11 +9,11 @@ without discovery, partial redraw, key response time and loading indicators.
 ## ADDED Requirements
 
 ### Requirement: Frame head
-Every wizard frame SHALL begin with the banner, one blank row, the version and OS line, the nav bar and one rule, in that order, and SHALL NOT contain a per-step title line or a step description line.
+Every wizard frame SHALL begin with the Opensoft banner and `openBenches v1.7` to its right on the same row, one blank row, the nav bar and one separator rule with the detected OS right-aligned within it. There SHALL be no separate version/OS row, per-step title or description sentence. This display brand SHALL NOT change the repository VERSION or other product identifiers.
 
 #### Scenario: Head order
 - **WHEN** any step is displayed
-- **THEN** the version line (`workBenches v<VERSION>` with the OS label at its right) is followed by the nav bar and then a single rule
+- **THEN** `openBenches v1.7` appears beside the logo, followed by one blank row, the nav bar and a single rule with the detected OS at its right
 
 #### Scenario: No step titles
 - **WHEN** any step is displayed
@@ -88,9 +88,9 @@ When the terminal height is known, the frame SHALL never be taller than the term
 - **THEN** the frame drops lines from its top and is still no taller than the terminal
 
 ### Requirement: Banner collapse
-Every banner SHALL be followed by one blank row before the version/OS line.
+Every banner/brand block SHALL be followed by one blank row before navigation.
 
-The four-row OpenSoft wordmark SHALL be drawn only in the roomy layout, when the frame is at least 42 columns wide and the terminal height is unknown or at least 40 rows; otherwise a one-line `Opensoft` banner SHALL be drawn.
+The four-row OpenSoft wordmark SHALL be drawn only in the roomy layout, when the frame is at least 59 columns wide so the brand fits beside it and the terminal height is unknown or at least 40 rows; otherwise a one-line `Opensoft` banner with `openBenches v1.7` to its right SHALL be drawn.
 
 #### Scenario: Tall terminal
 - **WHEN** the terminal is 88×40
@@ -98,7 +98,7 @@ The four-row OpenSoft wordmark SHALL be drawn only in the roomy layout, when the
 
 #### Scenario: Shorter terminal
 - **WHEN** the terminal is 88×39
-- **THEN** the banner is the one line `Opensoft`
+- **THEN** one line shows `Opensoft` with `openBenches v1.7` beside it
 
 ### Requirement: First paint without discovery
 The first frame SHALL be drawn before any Docker, jq, Python, Git or network check runs, and rendering any step SHALL read only in-memory state, never running a discovery command.
@@ -116,7 +116,7 @@ After the first paint, a status update or key press SHALL rewrite only the lines
 
 #### Scenario: Status update
 - **WHEN** Docker's status changes from Loading to Up
-- **THEN** the output contains no clear-screen sequence and does not rewrite the banner or version line
+- **THEN** the output contains no clear-screen sequence and does not rewrite the banner/brand or OS separator
 
 #### Scenario: Unchanged state
 - **WHEN** the frame is drawn twice with no state change

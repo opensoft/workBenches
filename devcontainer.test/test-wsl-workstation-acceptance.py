@@ -183,7 +183,7 @@ def main():
             check('vault', lambda: run(['bash', 'scripts/manage-setup-services.sh', 'start', 'vault'], timeout=1800, log='vault-start.log'))
         if args.phase in ('all', 'desktop'):
             check('tools', lambda: run(['bash', 'scripts/manage-setup-services.sh', 'start', 'tools'], timeout=600, log='tools-start.log'))
-            check('loading-cancellation', lambda: terminal('loading-cancellation', [(r'workBenches v1\.5\.0', 'Q')], 130))
+            check('loading-cancellation', lambda: terminal('loading-cancellation', [(r'openBenches v1\.7', 'Q')], 130))
             check('empty', lambda: terminal('empty', [(tui.STRIP_READY, '\x1b[C\n'), (tui.REVIEW, '\n')]))
             if not args.resume:
                 fixture(home / '.zshrc', '# WSL acceptance custom settings\n')
