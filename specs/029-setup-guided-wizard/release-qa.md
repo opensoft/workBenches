@@ -155,3 +155,34 @@ approve the copy or provide exact edits. Service rows and V still run real actio
 use category/bench navigation and About paging for copy review. Q cancels.
 Record approval with the reviewed commit before requesting separate push/PR
 permission at T041. Do not push, open a PR, merge or archive at the T039 stop.
+
+## Live-review adjustment 029-A01 — 2026-10-22
+
+Brett requested removing the duplicate status row beneath About, separating the
+category section from the header, and adding space below the Opensoft logo.
+Task T039A implements this feedback after baseline `3a3cbb3`; its implementation
+and evidence are in the commit containing this section. The working spec, plan,
+acceptance criteria, footer contract and OpenSpec deltas reflect the accepted
+refinement. See `features/029-setup-guided-wizard/openspec/029-A01.md`.
+
+- Benches omits its focused-bench/category footer context row. Its divider keeps
+  the queued changes total, followed directly by navigation hints.
+- Every logo has one blank row below it. Roomy Benches also has one blank row
+  between the header rule and CATEGORY. Tight Benches uses the removed footer
+  row for logo spacing, preserving all eight benches and three About lines at
+  80×24.
+- PASS: task T039A's exact verify command, including the 24 wizard tests,
+  18 layout tests/full locale-size matrix, no-fork guard, syntax and strict
+  OpenSpec validation. The existing assertions remain; spacing/footer checks
+  extend them.
+- PASS: all 32 quickstart suites and native/WSL acceptance compilation after
+  the adjustment. No Docker-backed real-host tests were run.
+- Full Benches timing: median 3.373 ms, p90 4.645 ms, max 5.105 ms. Per-step
+  medians: Workstation 2.098, Benches 2.436, Agents 2.428, Tools 2.146,
+  Profiles 1.878, Review 2.047 ms.
+- Visual check: updated live preview on Raven, Benches/Software Engineering
+  with cppBench focused. Logo/category gaps, complete bench and About content,
+  and the footer divider total are visible without a duplicate status row.
+
+T040 remains pending: this layout feedback does not approve the twelve benches'
+wording. No push, PR, merge or archive is authorized by this adjustment.

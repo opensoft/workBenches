@@ -332,3 +332,7 @@ Skipped. The user-global `speckit-plan` skill updates the plan reference between
 ## Complexity Tracking
 
 No constitution violations to justify (see Constitution Check).
+
+## Accepted live-review adjustment (2026-10-22)
+
+Brett requested removing the duplicate Benches footer status, separating the category block from the header, and adding space below the Opensoft logo. Task T039A implements amendment 029-A01: one blank row below every banner, an extra gap above categories in roomy layouts, and the Benches queued total in its footer divider. Tight Benches spends the removed context row on logo spacing, preserving all eight Software Engineering benches and three About lines at 80×24. Other footer contexts and all keys/actions remain unchanged.

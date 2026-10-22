@@ -137,8 +137,11 @@ printf 'fit=%s\n' "${setup_frame_lines[*]}"
 
     def test_banner_collapses_below_forty_rows(self):
         for rows, full in ((24, False), (39, False), (40, True)):
-            text = '\n'.join(self.frame(3, 88, rows))
+            lines = self.frame(3, 88, rows)
+            text = '\n'.join(lines)
             self.assertEqual('█▀▀█' in text, full)
+            version_index = next(i for i, line in enumerate(lines) if 'workBenches v' in line)
+            self.assertEqual(lines[version_index - 1], '')
 
     def test_main_loop_uses_variable_signature(self):
         text = (ROOT / 'scripts/interactive-setup.sh').read_text()
@@ -199,6 +202,10 @@ printf '%s\\n' "${{setup_frame_lines[@]}}"
                 self.assert_bounds(lines,width)
                 self.assertTrue(any('Changes:' in line or 'Changes selected:' in line for line in lines))
                 self.assertTrue(any(line.startswith('Navigation:') for line in lines))
+                if section==0:
+                    self.assertIn('Changes:' if width<60 else 'Changes selected:',lines[0])
+                    self.assertTrue(lines[1].startswith('Navigation:'))
+                    self.assertNotIn('Loading benches',text)
                 if width<60:self.assertLessEqual(len(lines),4)
                 if section!=3:self.assertNotIn('V Vault',text)
                 if section==4:self.assertTrue(any('G Back' in line and 'Q Quit' in line for line in lines))
@@ -225,6 +232,9 @@ printf 'ABOUT-WINDOW=%s\\n' "$setup_about_window"
                 text='\n'.join(lines)
                 self.assertIn('Navigation:',text)
                 self.assertIn('›',text)
+                self.assertNotIn('cppBench · Ready',text)
+                category_index = next(i for i, line in enumerate(lines) if 'CATEGORY' in line)
+                self.assertEqual(lines[category_index - 1] == '', rows==0 or rows>=40)
                 if columns==80:
                     for name in ('cppBench','dotNetBench','flutterBench','frappeBench','goBench','javaBench','pyBench','rustBench'):
                         self.assertIn(name,text)

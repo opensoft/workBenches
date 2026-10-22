@@ -81,4 +81,6 @@ Review        Navigation: ↑↓ Scroll  ← Back  Enter Apply  P Workstation  R
 
 ## Context line (footer)
 
-`<Name> · <State>[ → <action>]` with the queued total at the right: `Changes selected: N` at 60+ columns, `Changes: N` below 60 (the left part cut with `…`). Special cases: category zone → `<Category> · N benches · I installed · Q queued` (zero parts omitted); Review → `Review · Nothing applied yet`; Profiles → the row name; Benches while loading → `Loading benches…`. Removal and the Shell setup / Org workspace explanations keep 1.7's wording.
+Benches omits the duplicate category/bench context line. Its queued total is at the right of the footer divider, followed directly by navigation hints. The following context-line rules apply to the other steps.
+
+`<Name> · <State>[ → <action>]` with the queued total at the right: `Changes selected: N` at 60+ columns, `Changes: N` below 60 (the left part cut with `…`). Special cases: Review → `Review · Nothing applied yet`; Profiles → the row name. Removal and the Shell setup / Org workspace explanations keep 1.7's wording.

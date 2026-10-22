@@ -620,3 +620,7 @@ recommended option each time; they are recorded in that folder's `README.md` and
 in `spec.md` › Clarifications › Session 2026-10-21 (checklist decisions), and
 folded into D5, D6, D8, D9, D12, D13, D15, D16, D18, the Focus Model, the layout
 table and Risks above. NB-15 is Brett's approval of this change (`tasks.md` 1.1).
+
+### Accepted live-review revision: 029-A01 (2026-10-22)
+
+Brett's live-preview feedback supersedes the spacing and Benches footer details in D5/D16 and the illustrative mockups above: reserve one blank row below either logo form, add one blank row above CATEGORY only in roomy layouts, and omit the duplicate category/bench context row below About. Put the queued total at the right of the Benches footer rule. Other footer contexts, keys, actions, and height/width limits are unchanged. In tight Benches the removed row pays for logo spacing. See feature amendment 029-A01 and task T039A.

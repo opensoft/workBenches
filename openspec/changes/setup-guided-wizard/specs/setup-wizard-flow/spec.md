@@ -236,23 +236,23 @@ The Agents and Tools steps SHALL offer the same items, order and selection rules
 - **THEN** nothing is queued
 
 ### Requirement: Footer context and hints
-Every step SHALL end with a rule, a context line and the key hints for that step; the hints SHALL begin with `Navigation:`, as in 1.7. The context line SHALL show the focused item as `<Name> · <State>` followed by `→ <action>` when one is queued; when the Benches category zone has focus, the category name and its counts as in the category block; where nothing is focused or the row has no state, `Review · Nothing applied yet` on Review, the row name alone on Profiles and `Loading benches…` on Benches while it loads. The total number of queued changes SHALL be at its right in every case: `Changes selected: N` at widths of 60 columns or more, and `Changes: N` below 60 columns, where a context line too long for the remaining width SHALL be cut with `…`. Below 60 columns the hints SHALL take at most two lines, listing the step's own keys (on Profiles, `G Back`) plus `←→`, `Enter` and `Q`; P, G, R, V and PgUp/PgDn SHALL keep working on every step but SHALL be listed only at 60 columns or more. At 60 columns or more the step's full hint list SHALL be shown, wrapped over as many lines as it needs (two at 80 columns or more), within the frame's height bounds.
+Every step SHALL end with a rule and the key hints for that step; all steps except Benches SHALL retain the context line between them; the hints SHALL begin with `Navigation:`, as in 1.7. The context line SHALL show the focused item as `<Name> · <State>` followed by `→ <action>` when one is queued; where nothing is focused or the row has no state, `Review · Nothing applied yet` on Review, the row name alone on Profiles. Benches SHALL omit the duplicate focused-bench/category context line and show the total number of queued changes at the right of its footer rule; other steps SHALL show that total at the right of the context line: `Changes selected: N` at widths of 60 columns or more, and `Changes: N` below 60 columns, where a context line too long for the remaining width SHALL be cut with `…`. Below 60 columns the hints SHALL take at most two lines, listing the step's own keys (on Profiles, `G Back`) plus `←→`, `Enter` and `Q`; P, G, R, V and PgUp/PgDn SHALL keep working on every step but SHALL be listed only at 60 columns or more. At 60 columns or more the step's full hint list SHALL be shown, wrapped over as many lines as it needs (two at 80 columns or more), within the frame's height bounds.
 
-#### Scenario: Context for a queued update
+#### Scenario: No duplicate bench context
 - **WHEN** javaBench is installed, queued for update and focused, with two changes queued in total
-- **THEN** the context line reads `javaBench · Ready → update` with `Changes selected: 2` at its right
+- **THEN** its status and queued action appear in the bench list, the footer rule ends with `Changes selected: 2`, and no context line repeats the bench below About
 
 #### Scenario: Context without a focused item
 - **WHEN** Review is shown with four changes queued
 - **THEN** the context line reads `Review · Nothing applied yet` with `Changes selected: 4` at its right
 
-#### Scenario: Context in the category zone
+#### Scenario: No duplicate category context
 - **WHEN** Science is current in the Benches category zone and has two benches, one installed
-- **THEN** the context line begins `Science · 2 benches · 1 installed`
+- **THEN** the category block shows those counts and no footer context line repeats them
 
-#### Scenario: Narrow context line
+#### Scenario: Narrow Benches total
 - **WHEN** the frame is 36 columns wide and javaBench is installed, queued for update and focused, with four changes queued in total
-- **THEN** the context line ends with `Changes: 4`, and the part before it is cut with `…` where it does not fit
+- **THEN** the footer rule ends with `Changes: 4` and no focused-bench context line is drawn
 
 #### Scenario: Narrow hints
 - **WHEN** the Benches bench zone is shown in a 36×24 terminal

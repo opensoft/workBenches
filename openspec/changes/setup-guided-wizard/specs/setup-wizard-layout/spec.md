@@ -9,7 +9,7 @@ without discovery, partial redraw, key response time and loading indicators.
 ## ADDED Requirements
 
 ### Requirement: Frame head
-Every wizard frame SHALL begin with the banner, the version and OS line, the nav bar and one rule, in that order, and SHALL NOT contain a per-step title line or a step description line.
+Every wizard frame SHALL begin with the banner, one blank row, the version and OS line, the nav bar and one rule, in that order, and SHALL NOT contain a per-step title line or a step description line.
 
 #### Scenario: Head order
 - **WHEN** any step is displayed
@@ -20,7 +20,7 @@ Every wizard frame SHALL begin with the banner, the version and OS line, the nav
 - **THEN** the frame contains no `STEP n OF m` title and no per-step description sentence
 
 ### Requirement: Step selector area
-The rows directly under the rule SHALL be the current step's selector area: the requirements strip on Workstation, the CATEGORY block on Benches and the identities summary line on Profiles. Agents and Tools SHALL start directly with their panels, and Review SHALL start with its instruction line.
+The rows under the rule SHALL be the current step's selector area: the requirements strip on Workstation, the CATEGORY block on Benches and the identities summary line on Profiles. Agents and Tools SHALL start directly with their panels, and Review SHALL start with its instruction line.
 
 #### Scenario: Strip only on Workstation
 - **WHEN** Workstation is shown
@@ -29,7 +29,7 @@ The rows directly under the rule SHALL be the current step's selector area: the 
 
 #### Scenario: Category block on Benches
 - **WHEN** Benches is shown after the catalog has loaded
-- **THEN** the first row under the rule begins with `CATEGORY`
+- **THEN** the category block begins with `CATEGORY`, after one blank row in the roomy layout and directly under the rule in the tight layout
 
 #### Scenario: Identities line on Profiles
 - **WHEN** Profiles is shown
@@ -69,7 +69,7 @@ The minimum supported terminal size SHALL be 36 columns by 24 rows. For terminal
 - **THEN** that line's right border is in the same column as the panel's other borders
 
 ### Requirement: Height bounds
-When the terminal height is known, the frame SHALL never be taller than the terminal. A tight layout without blank spacer lines and with a one-line banner SHALL apply at 24 rows or fewer and whenever the roomy layout would not fit. Lists SHALL scroll inside their panels with `▲ N more` and `▼ N more` rows, keeping the focused row visible, and when the height is unknown nothing SHALL be clipped.
+When the terminal height is known, the frame SHALL never be taller than the terminal. A tight layout with one blank row below the one-line banner and no other blank spacer lines SHALL apply at 24 rows or fewer and whenever the roomy layout would not fit. Lists SHALL scroll inside their panels with `▲ N more` and `▼ N more` rows, keeping the focused row visible, and when the height is unknown nothing SHALL be clipped.
 
 #### Scenario: Standard 24-row terminal
 - **WHEN** each step is rendered at 80×24 and 37×24 with all 12 benches catalogued
@@ -88,6 +88,8 @@ When the terminal height is known, the frame SHALL never be taller than the term
 - **THEN** the frame drops lines from its top and is still no taller than the terminal
 
 ### Requirement: Banner collapse
+Every banner SHALL be followed by one blank row before the version/OS line.
+
 The four-row OpenSoft wordmark SHALL be drawn only in the roomy layout, when the frame is at least 42 columns wide and the terminal height is unknown or at least 40 rows; otherwise a one-line `Opensoft` banner SHALL be drawn.
 
 #### Scenario: Tall terminal

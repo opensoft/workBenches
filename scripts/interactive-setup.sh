@@ -1312,6 +1312,7 @@ setup_category_summary_v() {
 setup_frame_categories() {
     local category_id category_line category_marker category_color
     [[ "$setup_benches_state" == ready ]] || return 0
+    [[ "$setup_ui_layout" != roomy ]] || setup_frame_append ''
     local category_min_benches=${setup_bench_totals[$setup_bench_category]:-0} category_needed
     ((category_min_benches <= 3)) || category_min_benches=3
     category_needed=$(( ${#setup_frame_lines[@]} + 1 + ${#setup_bench_categories[@]} + category_min_benches + 6 + setup_footer_height ))
@@ -1371,6 +1372,7 @@ setup_frame_head() {
     done
     setup_ui_banner
     for head_line in "${setup_banner_lines[@]}"; do setup_frame_append "$head_line"; done
+    setup_frame_append ''
     setup_ui_pair_v head_line "workBenches v$setup_version" "${setup_os_label:-}" "$setup_ui_width"
     setup_frame_append "$head_line"
     for ((nav_index=0; nav_index<6; nav_index++)); do
@@ -1415,13 +1417,12 @@ declare -a setup_footer_lines=()
 setup_footer_height=4
 
 setup_frame_footer_prepare() {
-    local footer_key='' footer_name='' footer_state footer_context footer_total footer_count=0 footer_item footer_action footer_line footer_left_width footer_category_count footer_installed footer_queued footer_hint footer_width
+    local footer_key='' footer_name='' footer_state footer_context footer_total footer_count=0 footer_item footer_action footer_line footer_left_width footer_hint footer_width
     local -a footer_hints=()
     for footer_item in "${!component_checked[@]}"; do
         if [[ "${component_checked[$footer_item]}" == true && -n "${component_action[$footer_item]}" ]]; then ((footer_count++)); fi
     done
     case "$CURRENT_SECTION" in
-        0) footer_key="bench_${bench_items[$current_selection]}" ;;
         1) footer_key="${ai_items[$current_selection]}" ;;
         2) footer_key="${tool_items[$current_selection]}" ;;
         3) footer_key="${requirement_items[$current_selection]}" ;;
@@ -1430,14 +1431,6 @@ setup_frame_footer_prepare() {
     if [[ -n "$footer_key" ]]; then footer_name="${component_description[$footer_key]}"; fi
     footer_context=$footer_name
     if [[ "$CURRENT_SECTION" == 5 ]]; then footer_context='Review · Nothing applied yet'
-    elif [[ "$CURRENT_SECTION" == 0 && "$setup_benches_state" != ready ]]; then footer_context='Loading benches…'
-    elif [[ "$CURRENT_SECTION" == 0 && "$setup_bench_zone" == category && -n "$setup_bench_category" ]]; then
-        footer_context="${bench_category_label[$setup_bench_category]}"
-        footer_category_count=${setup_bench_totals[$setup_bench_category]:-0}
-        footer_installed=${setup_bench_installed[$setup_bench_category]:-0}; footer_queued=${setup_bench_queued[$setup_bench_category]:-0}
-        footer_context+=" · $footer_category_count bench"; ((footer_category_count == 1)) || footer_context+='es'
-        ((footer_installed == 0)) || footer_context+=" · $footer_installed installed"
-        ((footer_queued == 0)) || footer_context+=" · $footer_queued queued"
     elif [[ "$CURRENT_SECTION" != 4 && -n "$footer_key" ]]; then
         setup_status_label_v footer_state "${component_status[$footer_key]}"
         footer_context+=" · $footer_state"
@@ -1450,8 +1443,14 @@ setup_frame_footer_prepare() {
     footer_left_width=$((setup_ui_width - ${#footer_total} - 1))
     setup_ui_cut_v footer_context "$footer_context" "$footer_left_width"
     setup_footer_lines=()
-    setup_ui_rule_v footer_line "$setup_ui_width"; setup_footer_lines+=("$footer_line")
-    setup_ui_pair_v footer_line "$footer_context" "$footer_total" "$setup_ui_width"; setup_footer_lines+=("$footer_line")
+    if [[ "$CURRENT_SECTION" == 0 ]]; then
+        setup_ui_rule_v footer_line "$footer_left_width"
+        setup_ui_pair_v footer_line "$footer_line" "$footer_total" "$setup_ui_width"
+        setup_footer_lines+=("$footer_line")
+    else
+        setup_ui_rule_v footer_line "$setup_ui_width"; setup_footer_lines+=("$footer_line")
+        setup_ui_pair_v footer_line "$footer_context" "$footer_total" "$setup_ui_width"; setup_footer_lines+=("$footer_line")
+    fi
     footer_action=Check
     if [[ "$CURRENT_SECTION" == 3 && -n "$footer_key" ]]; then workbenches_requirement_action_v footer_action "$footer_key" "${component_status[$footer_key]}" "${component_status[workbenches_account]}"; fi
     if ((setup_ui_width < 60)); then
