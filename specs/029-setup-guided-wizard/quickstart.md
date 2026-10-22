@@ -5,7 +5,7 @@
 For the builders of the tasks in this feature and for Brett's real-host QA. Commands run **inside WSL** (or on Linux) from the feature worktree root; never run Git or the suites from Windows.
 
 ```bash
-cd /home/brett/projects/speckit-worktrees/029-setup-guided-wizard
+cd "$(git worktree list | awk '/\[029-setup-guided-wizard\]/ {print $1}')"   # from your workBenches checkout
 ```
 
 ## 0. Before every commit

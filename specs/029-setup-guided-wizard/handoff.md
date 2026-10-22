@@ -14,7 +14,7 @@ Approved: the change, the spec, every clarification, and decisions D1–D5 in `a
 ## How to start
 
 ```bash
-cd /home/brett/projects/speckit-worktrees/029-setup-guided-wizard     # inside a claude-profile lane
+cd "$(git worktree list | awk '/\[029-setup-guided-wizard\]/ {print $1}')"   # from your workBenches checkout, inside a claude-profile lane
 export SPECIFY_FEATURE=029-setup-guided-wizard SPECIFY_FEATURE_DIRECTORY=specs/029-setup-guided-wizard
 ```
 

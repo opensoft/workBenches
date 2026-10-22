@@ -84,7 +84,7 @@ Each question gives its **Source** (design open question, a decision the OpenSpe
 
 **Why it matters**: Every user reads this text in the bench rows and the About panel, and the catalog test enforces it once it is encoded.
 
-**File**: [`bench-copy-draft.json`](bench-copy-draft.json) — a snapshot of the evidence-based draft; each bench lists the files its claims come from. Working copy: `C:\Users\Brett\AppData\Local\Temp\claude\--wsl-localhost-Ubuntu-24-04-home-brett-projects-workBenches\d57c6441-6979-4788-a698-b3f7086bccba\scratchpad\bench-content.json`.
+**File**: [`bench-copy-draft.json`](bench-copy-draft.json) — a snapshot of the evidence-based draft; each bench lists the files its claims come from. (The drafting working copy lived outside the repository and is not needed.)
 
 **Notable points**:
 - **simBench corrected**: "Molecular simulation workbench with ESMFold and AlphaFold" becomes "Molecular simulation and protein structure workbench with OpenMM and ESM". No AlphaFold or ESMFold models or weights are claimed; the image has OpenMM, MDTraj, PDBFixer, MMseqs2, Foldseek, HMMER and fair-esm on CPU-only PyTorch.
