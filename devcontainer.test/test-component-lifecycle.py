@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from terminal_screen import terminal_screen
 
 SOURCE = Path('/source')
 
@@ -37,8 +38,8 @@ def setup_tui(repo, keys, env, expected_status=0):
                     terminal_closed = True
                     break
                 output += chunk
-                text = re.sub(rb'\x1b\[[0-?]*[ -/]*[@-~]', b'', output)
-                if b'Navigation:' in text and re.search(rb'REQUIREMENTS \xc2\xb7 (\d+)/\1 ready', text) and not submitted:
+                text = terminal_screen(output)
+                if 'Navigation:' in text and re.search(r'REQUIREMENTS · (\d+)/\1 ready', text) and not submitted:
                     os.write(master, keys); submitted = True
             if process.poll() is not None and not ready: break
         # PTY EOF can arrive before the kernel reports the child exit. Reap it
@@ -109,17 +110,17 @@ def main():
         install_runtime()
         initial = statuses()
         assert initial == 'installed:installed', initial
-        requirements_output = setup_tui(repo, b'PQ', env, expected_status=130)
+        requirements_output = setup_tui(repo, b'\x1b[CPQ', env, expected_status=130)
         for text in ('workBenches v', 'Linux', 'REQUIREMENTS', 'Docker', 'REQUIRED SOFTWARE',
                      'OPTIONAL VAULT', 'Vault', 'G Profiles', 'Setup cancelled'):
             assert text in requirements_output, requirements_output[-3500:]
         profiles_output = setup_tui(repo, b'GQ', env, expected_status=130)
-        for text in ('PERSONAL & COMPANY IDENTITIES', 'Personal & companies',
+        for text in ('IDENTITIES', 'Personal & companies',
                      'Workstation account', 'AI accounts', 'Setup cancelled'):
             assert text in profiles_output, profiles_output[-3500:]
         assert statuses() == initial, 'Browsing Requirements/Profiles must not change installed components'
         # Remove a running bench and the npm CLI in one real setup.sh TUI plan.
-        output = setup_tui(repo, b'D\x1b[C\x1b[B\x1b[BD\n', env)
+        output = setup_tui(repo, b'\x1b[C\tD\x1b[C\x1b[B\x1b[BD\n\n', env)
         assert 'pyBench uninstalled' in output, output[-2500:]
         assert 'All selected changes completed successfully' in output
         assert statuses() == 'needs setup:not installed'
@@ -130,7 +131,7 @@ def main():
         assert note.read_text() == 'preserve local work' and project.read_text() == 'preserve project'
         run(['docker', 'image', 'inspect', 'workbench-base:latest', 'dev-bench-base:latest'])
         assert run(['docker', 'run', '--rm', '--mount', f'type=volume,src={volume},dst=/data', 'busybox:1.37.0', 'cat', '/data/marker']) == 'preserve-volume'
-        setup_tui(repo, b'\n', env)  # No selection remains a no-op.
+        setup_tui(repo, b'\x1b[C\n\n', env)  # No selection remains a no-op.
         install_runtime()
         run(['npm', 'install', '--global', '--ignore-scripts', str(package)], env=env)
         assert statuses() == 'installed:installed'
