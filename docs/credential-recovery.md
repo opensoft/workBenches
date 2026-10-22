@@ -11,9 +11,11 @@ cannot discover an organization's secret store or grant access to its secrets.
 
 ## Select credential stores during setup
 
-Setup checks Docker and Python/jq/git/curl, then opens component selection.
-Enter applies the selected changes without a second install confirmation; an
-unchanged selection exits. Node/npm are checked only for selected npm-based tools.
+Setup opens Workstation and checks Docker and the managed Python/jq/Git/curl
+Tools environment in the background. Queue components on Benches, Agents and
+Tools. Enter opens Review; only Enter on Review applies after required services
+are ready. An empty Review finishes without changes. Node/npm are checked only
+for selected npm-based tools.
 AI CLI installation succeeds without account setup and reports authentication
 pending when needed. Select **AI accounts** to configure profiles and choose
 **sign in directly**, **recover from a vault**, or **configure later** after

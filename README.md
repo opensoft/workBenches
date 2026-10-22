@@ -75,10 +75,10 @@ A layered Docker-based development environment system. Each "bench" is a self-co
 
 ## Quick Start
 
-On the v1.6 development branch, setup adds a third **Profiles** page (**G**):
+The 1.7 guided setup wizard includes **Profiles** as its fifth step (**G**):
 personal email and verified GitHub linking, then any number of company profiles
 with separate organization sign-ins. See [Profiles onboarding](docs/profiles.md).
-This feature is outside the v1.5 release scope.
+The wizard is in the 1.7 development scope; real-host release validation remains pending.
 
 These commands follow `main`. For a frozen deployment, use the version-specific
 bootstrap in [the release guide](docs/releases.md#install-a-published-release).
@@ -113,8 +113,8 @@ From an existing checkout:
 This single command:
 
 1. Identifies the OS and checks required Docker access, Windows/WSL 2 readiness, and common dependencies. Missing requirements open a guided setup screen before component selection.
-2. Opens the TUI to select benches, AI assistants, and tools. Press **P** for **Requirements**, or **G** for **Profiles**, including personal/company identities and AI credential setup. An empty component selection finishes without component installs or image builds.
-3. Enter applies the selected changes immediately, with a compact install/update summary. Q cancels and an empty selection exits.
+2. Opens the six-step wizard: **Workstation → Benches → Agents → Tools → Profiles → Review**. Press **P** to visit Workstation and return, or **G** for Profiles, including personal/company identities and AI account setup. Browse benches by category and inspect their About panels before selecting changes.
+3. Enter opens **Review**; only Enter on Review applies the component queue after readiness passes. Q cancels; an empty Review finishes without component installs or image builds. Enter on a service or Profiles row opens that action immediately.
 4. Checks Node/npm only for selected tools that require them. A system-owned npm location falls back to `~/.local`, with PATH configured for new terminals.
 5. Installs AI tools without requiring sign-in. Open **Profiles** to configure identity-specific AI accounts or select **AI accounts** for existing account setup, using direct sign-in or guided vault recovery. Existing profiles and credentials are preserved. Organization sign-in is optional; Keycloak login requires organization-provided settings.
 6. Configures host shell settings only when **Shell setup** is selected. **Org workspace** explicitly initializes the workspace repository, after installing its pinned estate-command dependencies.
@@ -189,8 +189,8 @@ setup.sh
   ├── Background OS / WSL 2 + Docker + Tools checks (containerized Python/jq/Git/curl)
   │     └── Results update live; missing requirements offer Install / Start
   ├── Optional Vault Up: credential-access tools; provider sign-in when needed
-  ├── Component TUI: Benches | AI Assistants | Tools | Requirements (P)
-  │     └── Enter applies; Q/EOF cancels; empty Enter finishes
+  ├── Wizard: Workstation → Benches → Agents → Tools → Profiles → Review
+  │     └── Enter opens Review; Enter on Review applies; Q/EOF cancels
   ├── Compact selected-change summary + selected Node/npm prerequisites
   ├── Reuse existing profiles; preserve host shell settings
   ├── Selected bench dependencies: shared commands → Layer 0 → family Layer 1
@@ -316,7 +316,8 @@ step.
 
 Run `./setup.sh` again to manage installed components. Use **Space** to select
 or undo an install/update, **D** to select or undo an uninstall, **R** to
-refresh the installed state, **Enter** to apply, and **Q** to cancel.
+refresh the installed state, **Enter** to open Review, then **Enter** on Review
+to apply, and **Q** to cancel.
 
 Bench uninstall stops/removes only the selected bench's containers and removes
 its `latest` and current-user image tags. The checkout, local work, mounted
