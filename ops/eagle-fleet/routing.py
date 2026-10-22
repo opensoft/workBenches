@@ -22,7 +22,8 @@ def route(source):
             if not isinstance(job,yaml.MappingNode): continue
             for key,value in job.value:
                 if key.value!='runs-on': continue
-                values=value.value if isinstance(value,yaml.SequenceNode) else [value]
+                sequence=isinstance(value,yaml.SequenceNode)
+                values=value.value if sequence else [value]
                 for value in values:
                     if not isinstance(value,yaml.ScalarNode): continue
                     original=value.value
@@ -42,7 +43,9 @@ def route(source):
                     if replacement!=original:
                         # runs-on expressions contain no YAML colon; keep other bytes intact.
                         start,end=scalar_spans[value.end_mark.index]
-                        changes.add((start,end,replacement))
+                        # Flow arrays require quoting the JSON mapping's commas.
+                        rendered=json.dumps(replacement) if sequence and replacement.startswith('${{') else replacement
+                        changes.add((start,end,rendered))
     result=source
     for start,end,replacement in sorted(changes,reverse=True): result=result[:start]+replacement+result[end:]
     # Round-trip proof: every non-routing value, including permissions/triggers and tests, is unchanged.

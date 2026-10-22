@@ -11,6 +11,12 @@ class RoutingTests(unittest.TestCase):
                 self.assertEqual(route(result),(result,0))
         source='jobs:\n  a:\n    runs-on: [ubuntu-latest]\n  b:\n    runs-on: [self-hosted, gpu]\n'
         self.assertEqual(route(source),(source.replace('[ubuntu-latest]','[eagle-linux-ubuntu24]'),1))
+        source='jobs:\n  a:\n    runs-on: ["${{ inputs.runner }}"]\n'
+        result,count=route(source)
+        self.assertEqual(count,1)
+        self.assertEqual(route(result),(result,0))
+        import yaml
+        self.assertTrue(yaml.safe_load(result)['jobs']['a']['runs-on'][0].startswith('${{ fromJSON'))
 
     def test_direct_preserves_comments_and_steps(self):
         source='jobs:\n  test:\n    runs-on: ubuntu-latest # platform\n    steps:\n      - run: echo ubuntu-latest\n'
