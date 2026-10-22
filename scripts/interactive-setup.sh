@@ -131,12 +131,13 @@ setup_ui_pair() {
 }
 
 setup_ui_banner() {
-    local banner_key="$setup_ui_width:$setup_ui_layout:$setup_ui_height" banner_line banner_index banner_char banner_position banner_tone banner_result
+    local banner_key="$setup_ui_width:$setup_ui_layout:$setup_ui_height" banner_line banner_index banner_char banner_position banner_tone banner_result banner_gap
     [[ "$setup_banner_cache_key" != "$banner_key" ]] || return 0
     setup_banner_cache_key="$banner_key"
     setup_banner_lines=()
     if (( setup_ui_width < 43 + ${#setup_ui_brand} )) || [[ "$setup_ui_layout" == tight ]] || { [[ -n "$setup_ui_height" ]] && ((setup_ui_height < 40)); }; then
-        printf -v banner_result '  %bOpensoft%b  %b%s%b' "$SILVER" "$NC" "$SILVER" "$setup_ui_brand" "$NC"
+        banner_gap=$(( (setup_ui_width - 10 - ${#setup_ui_brand}) / 2 ))
+        printf -v banner_result '  %bOpensoft%b%*s%b%s%b' "$SILVER" "$NC" "$banner_gap" '' "$SILVER" "$setup_ui_brand" "$NC"
         setup_banner_lines=("$banner_result")
         return
     fi
@@ -161,7 +162,8 @@ setup_ui_banner() {
             esac
         done
         if ((banner_index == 2)); then
-            printf -v banner_result '%s  %b%s%b' "$banner_result" "$SILVER" "$setup_ui_brand" "$NC"
+            banner_gap=$(( (setup_ui_width - 2 - ${#banner_line} - ${#setup_ui_brand}) / 2 ))
+            printf -v banner_result '%s%*s%b%s%b' "$banner_result" "$banner_gap" '' "$SILVER" "$setup_ui_brand" "$NC"
         fi
         setup_banner_lines+=("$banner_result"$'\033[0m')
     done

@@ -252,3 +252,18 @@ implementation/evidence are in the commit containing this section. See
 
 Bench copy is unchanged; T040 approval remains pending. Nothing was pushed,
 opened as a PR, merged or archived.
+
+## Live-review alignment polish T039D — 2026-10-22
+
+Brett requested centering the existing brand within the space to the logo's
+right. After baseline `8003efc`, T039D computes the available horizontal space
+from visible character widths for both full and compact banners, with balanced
+left/right spacing to within one character. The approved header composition,
+wordmark row and collapse thresholds are unchanged. This is implementation-only
+alignment polish under FR-029/037.
+
+PASS: the exact T039D command (Bash syntax, 18 layout tests including the full
+responsive/locale matrix and no-fork guard, and six async/partial-redraw tests).
+Visual verification: refreshed maximized Benches preview on Raven, workspace 14,
+with the brand centered between the logo and the frame's right edge.
+T040 copy approval remains pending; no remote changes were made.
