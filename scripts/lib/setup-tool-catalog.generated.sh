@@ -68,6 +68,463 @@ declare -A setup_cli_group_members=(
     [combo_commercial]='cursor_cli amp_cli droid_cli auggie_cli junie_cli tabnine_cli mentat_cli ante_cli thegitai_cli qoder_cli'
     [specialized]='openhands_cli swe_agent mini_swe_agent autocoderover devon_cli ra_aid deep_agents_code pydantic_deep_agents tau_cli dexto_cli atomic_agent bitfun_cli maki_cli vt_code hax_cli agentty_cli cecli every_code open_codex nori_cli prime_agent open_interpreter'
 )
+declare -a setup_cli_filter_rows=(frontier region access native via group)
+declare -A setup_cli_filter_labels=(
+    [frontier]=Frontier
+    [region]=Region
+    [access]=Access
+    [native]=Native
+    [via]='Via models/plugins'
+    [group]=Group
+)
+declare -A setup_cli_filter_summaries=(
+    [frontier]='Curated model-maker labs. Provider access alone does not make an independent harness a frontier-lab product.'
+    [region]='Developer region from the existing qualified inventory; independent from frontier membership.'
+    [access]='Supported access methods. Subscription and API can both apply. This does not inspect your account, sign-in or billing.'
+    [native]='Capabilities exposed by the shipped harness. Image includes documented input or generation, voice includes speech input/output; About records direction. Classifier means a documented classification workflow, not general LLM potential.'
+    [via]='Optional external model/plugin/tool routes, distinct from bundled/native support. Required integration and access are described in About; a supported route is not proof it is installed.'
+    [group]='Existing ownership/group quick views. All removes this constraint. OR within a filter row, AND across active rows; C clears every filter.'
+)
+declare -A setup_cli_filter_options=(
+    [frontier]='frontier unknown'
+    [region]='usa china other unknown'
+    [access]='subscription api local unknown'
+    [native]='llm image video voice classifier unknown'
+    [via]='llm image video voice classifier unknown'
+    [group]='all model_usa model_china model_other combo_open combo_commercial specialized'
+)
+declare -A setup_cli_filter_option_labels=(
+    [frontier:frontier]=Frontier
+    [frontier:unknown]=Unclassified
+    [region:usa]=USA
+    [region:china]=China
+    [region:other]=Other
+    [region:unknown]=Unknown
+    [access:subscription]=Subscription
+    [access:api]=API
+    [access:local]=Local
+    [access:unknown]=Unknown
+    [native:llm]=LLM
+    [native:image]=Image
+    [native:video]=Video
+    [native:voice]=Voice
+    [native:classifier]=Classifier
+    [native:unknown]=Unknown
+    [via:llm]=LLM
+    [via:image]=Image
+    [via:video]=Video
+    [via:voice]=Voice
+    [via:classifier]=Classifier
+    [via:unknown]=Unknown
+    [group:all]='All CLI harnesses'
+    [group:model_usa]='Model-maker — USA'
+    [group:model_china]='Model-maker — China'
+    [group:model_other]='Model-maker — Other'
+    [group:combo_open]='Combo — Open / BYOK'
+    [group:combo_commercial]='Combo — Commercial / managed'
+    [group:specialized]='Specialized / research / minimal'
+)
+declare -A setup_cli_filter_values=(
+    [claude_cli:frontier]=frontier
+    [claude_cli:region]=usa
+    [claude_cli:access]='subscription api unknown'
+    [claude_cli:native]='llm unknown'
+    [claude_cli:via]=unknown
+    [copilot_cli:frontier]=unknown
+    [copilot_cli:region]=usa
+    [copilot_cli:access]=unknown
+    [copilot_cli:native]='llm unknown'
+    [copilot_cli:via]=unknown
+    [codex_cli:frontier]=frontier
+    [codex_cli:region]=usa
+    [codex_cli:access]='subscription api unknown'
+    [codex_cli:native]='llm image unknown'
+    [codex_cli:via]='image voice unknown'
+    [antigravity_cli:frontier]=frontier
+    [antigravity_cli:region]=usa
+    [antigravity_cli:access]=unknown
+    [antigravity_cli:native]='llm unknown'
+    [antigravity_cli:via]=unknown
+    [opencode_cli:frontier]=unknown
+    [opencode_cli:region]=unknown
+    [opencode_cli:access]='subscription api local unknown'
+    [opencode_cli:native]='llm unknown'
+    [opencode_cli:via]=unknown
+    [pi_cli:frontier]=unknown
+    [pi_cli:region]=unknown
+    [pi_cli:access]=unknown
+    [pi_cli:native]='llm unknown'
+    [pi_cli:via]=unknown
+    [gemini_cli:frontier]=frontier
+    [gemini_cli:region]=usa
+    [gemini_cli:access]=unknown
+    [gemini_cli:native]='llm unknown'
+    [gemini_cli:via]=unknown
+    [jules_tools:frontier]=frontier
+    [jules_tools:region]=usa
+    [jules_tools:access]=unknown
+    [jules_tools:native]='llm unknown'
+    [jules_tools:via]=unknown
+    [grok_build:frontier]=frontier
+    [grok_build:region]=usa
+    [grok_build:access]=unknown
+    [grok_build:native]='llm unknown'
+    [grok_build:via]=unknown
+    [muse_code:frontier]=frontier
+    [muse_code:region]=usa
+    [muse_code:access]=unknown
+    [muse_code:native]='llm unknown'
+    [muse_code:via]=unknown
+    [kiro_cli:frontier]=unknown
+    [kiro_cli:region]=usa
+    [kiro_cli:access]=unknown
+    [kiro_cli:native]='llm unknown'
+    [kiro_cli:via]=unknown
+    [bob_shell:frontier]=unknown
+    [bob_shell:region]=usa
+    [bob_shell:access]=unknown
+    [bob_shell:native]='llm unknown'
+    [bob_shell:via]=unknown
+    [devin_cli:frontier]=unknown
+    [devin_cli:region]=usa
+    [devin_cli:access]=unknown
+    [devin_cli:native]='llm unknown'
+    [devin_cli:via]=unknown
+    [pool_cli:frontier]=unknown
+    [pool_cli:region]=usa
+    [pool_cli:access]=unknown
+    [pool_cli:native]='llm unknown'
+    [pool_cli:via]=unknown
+    [qwen_cli:frontier]=frontier
+    [qwen_cli:region]=china
+    [qwen_cli:access]='api local unknown'
+    [qwen_cli:native]='llm unknown'
+    [qwen_cli:via]='voice unknown'
+    [kimi_code:frontier]=frontier
+    [kimi_code:region]=china
+    [kimi_code:access]='api unknown'
+    [kimi_code:native]='llm video unknown'
+    [kimi_code:via]=unknown
+    [kimi_legacy:frontier]=frontier
+    [kimi_legacy:region]=china
+    [kimi_legacy:access]=unknown
+    [kimi_legacy:native]='llm unknown'
+    [kimi_legacy:via]=unknown
+    [zcode_cli:frontier]=frontier
+    [zcode_cli:region]=china
+    [zcode_cli:access]=unknown
+    [zcode_cli:native]='llm unknown'
+    [zcode_cli:via]=unknown
+    [codebuddy_cli:frontier]=unknown
+    [codebuddy_cli:region]=china
+    [codebuddy_cli:access]=unknown
+    [codebuddy_cli:native]='llm unknown'
+    [codebuddy_cli:via]=unknown
+    [trae_agent:frontier]=frontier
+    [trae_agent:region]=china
+    [trae_agent:access]=unknown
+    [trae_agent:native]='llm unknown'
+    [trae_agent:via]=unknown
+    [mimo_code:frontier]=frontier
+    [mimo_code:region]=china
+    [mimo_code:access]=unknown
+    [mimo_code:native]='llm unknown'
+    [mimo_code:via]=unknown
+    [qoder_cn_cli:frontier]=frontier
+    [qoder_cn_cli:region]=china
+    [qoder_cn_cli:access]=unknown
+    [qoder_cn_cli:native]='llm unknown'
+    [qoder_cn_cli:via]=unknown
+    [vibe_cli:frontier]=frontier
+    [vibe_cli:region]=other
+    [vibe_cli:access]=unknown
+    [vibe_cli:native]='llm unknown'
+    [vibe_cli:via]=unknown
+    [iflow_cli:frontier]=unknown
+    [iflow_cli:region]=china
+    [iflow_cli:access]=unknown
+    [iflow_cli:native]='llm unknown'
+    [iflow_cli:via]=unknown
+    [neovate_code:frontier]=unknown
+    [neovate_code:region]=china
+    [neovate_code:access]=unknown
+    [neovate_code:native]='llm unknown'
+    [neovate_code:via]=unknown
+    [crush_cli:frontier]=unknown
+    [crush_cli:region]=unknown
+    [crush_cli:access]='api local unknown'
+    [crush_cli:native]='llm unknown'
+    [crush_cli:via]=unknown
+    [aider_cli:frontier]=unknown
+    [aider_cli:region]=unknown
+    [aider_cli:access]=unknown
+    [aider_cli:native]='llm unknown'
+    [aider_cli:via]=unknown
+    [goose_cli:frontier]=unknown
+    [goose_cli:region]=unknown
+    [goose_cli:access]=unknown
+    [goose_cli:native]='llm unknown'
+    [goose_cli:via]=unknown
+    [cline_cli:frontier]=unknown
+    [cline_cli:region]=unknown
+    [cline_cli:access]=unknown
+    [cline_cli:native]='llm unknown'
+    [cline_cli:via]=unknown
+    [continue_cli:frontier]=unknown
+    [continue_cli:region]=unknown
+    [continue_cli:access]=unknown
+    [continue_cli:native]='llm unknown'
+    [continue_cli:via]=unknown
+    [kilo_cli:frontier]=unknown
+    [kilo_cli:region]=unknown
+    [kilo_cli:access]=unknown
+    [kilo_cli:native]='llm unknown'
+    [kilo_cli:via]=unknown
+    [roo_cli:frontier]=unknown
+    [roo_cli:region]=unknown
+    [roo_cli:access]=unknown
+    [roo_cli:native]='llm unknown'
+    [roo_cli:via]=unknown
+    [plandex_cli:frontier]=unknown
+    [plandex_cli:region]=unknown
+    [plandex_cli:access]=unknown
+    [plandex_cli:native]='llm unknown'
+    [plandex_cli:via]=unknown
+    [codebuff_cli:frontier]=unknown
+    [codebuff_cli:region]=unknown
+    [codebuff_cli:access]=unknown
+    [codebuff_cli:native]='llm unknown'
+    [codebuff_cli:via]=unknown
+    [forgecode_cli:frontier]=unknown
+    [forgecode_cli:region]=unknown
+    [forgecode_cli:access]=unknown
+    [forgecode_cli:native]='llm unknown'
+    [forgecode_cli:via]=unknown
+    [gptme_cli:frontier]=unknown
+    [gptme_cli:region]=unknown
+    [gptme_cli:access]=unknown
+    [gptme_cli:native]='llm unknown'
+    [gptme_cli:via]=unknown
+    [letta_code:frontier]=unknown
+    [letta_code:region]=unknown
+    [letta_code:access]=unknown
+    [letta_code:native]='llm unknown'
+    [letta_code:via]=unknown
+    [nanocoder_cli:frontier]=unknown
+    [nanocoder_cli:region]=unknown
+    [nanocoder_cli:access]=unknown
+    [nanocoder_cli:native]='llm unknown'
+    [nanocoder_cli:via]=unknown
+    [kode_cli:frontier]=unknown
+    [kode_cli:region]=unknown
+    [kode_cli:access]=unknown
+    [kode_cli:native]='llm unknown'
+    [kode_cli:via]=unknown
+    [codewhale_cli:frontier]=unknown
+    [codewhale_cli:region]=unknown
+    [codewhale_cli:access]=unknown
+    [codewhale_cli:native]='llm unknown'
+    [codewhale_cli:via]=unknown
+    [jcode_cli:frontier]=unknown
+    [jcode_cli:region]=unknown
+    [jcode_cli:access]=unknown
+    [jcode_cli:native]='llm unknown'
+    [jcode_cli:via]=unknown
+    [reasonix_cli:frontier]=unknown
+    [reasonix_cli:region]=unknown
+    [reasonix_cli:access]=unknown
+    [reasonix_cli:native]='llm unknown'
+    [reasonix_cli:via]=unknown
+    [oh_my_pi:frontier]=unknown
+    [oh_my_pi:region]=unknown
+    [oh_my_pi:access]=unknown
+    [oh_my_pi:native]='llm unknown'
+    [oh_my_pi:via]=unknown
+    [cursor_cli:frontier]=unknown
+    [cursor_cli:region]=unknown
+    [cursor_cli:access]=unknown
+    [cursor_cli:native]='llm unknown'
+    [cursor_cli:via]=unknown
+    [amp_cli:frontier]=unknown
+    [amp_cli:region]=unknown
+    [amp_cli:access]=unknown
+    [amp_cli:native]='llm unknown'
+    [amp_cli:via]=unknown
+    [droid_cli:frontier]=unknown
+    [droid_cli:region]=unknown
+    [droid_cli:access]=unknown
+    [droid_cli:native]='llm unknown'
+    [droid_cli:via]=unknown
+    [auggie_cli:frontier]=unknown
+    [auggie_cli:region]=unknown
+    [auggie_cli:access]=unknown
+    [auggie_cli:native]='llm unknown'
+    [auggie_cli:via]=unknown
+    [junie_cli:frontier]=unknown
+    [junie_cli:region]=unknown
+    [junie_cli:access]=unknown
+    [junie_cli:native]='llm unknown'
+    [junie_cli:via]=unknown
+    [tabnine_cli:frontier]=unknown
+    [tabnine_cli:region]=unknown
+    [tabnine_cli:access]=unknown
+    [tabnine_cli:native]='llm unknown'
+    [tabnine_cli:via]=unknown
+    [mentat_cli:frontier]=unknown
+    [mentat_cli:region]=unknown
+    [mentat_cli:access]=unknown
+    [mentat_cli:native]='llm unknown'
+    [mentat_cli:via]=unknown
+    [ante_cli:frontier]=unknown
+    [ante_cli:region]=unknown
+    [ante_cli:access]=unknown
+    [ante_cli:native]='llm unknown'
+    [ante_cli:via]=unknown
+    [thegitai_cli:frontier]=unknown
+    [thegitai_cli:region]=unknown
+    [thegitai_cli:access]=unknown
+    [thegitai_cli:native]='llm unknown'
+    [thegitai_cli:via]=unknown
+    [qoder_cli:frontier]=unknown
+    [qoder_cli:region]=other
+    [qoder_cli:access]=unknown
+    [qoder_cli:native]='llm unknown'
+    [qoder_cli:via]=unknown
+    [openhands_cli:frontier]=unknown
+    [openhands_cli:region]=unknown
+    [openhands_cli:access]=unknown
+    [openhands_cli:native]='llm unknown'
+    [openhands_cli:via]=unknown
+    [swe_agent:frontier]=unknown
+    [swe_agent:region]=unknown
+    [swe_agent:access]=unknown
+    [swe_agent:native]='llm unknown'
+    [swe_agent:via]=unknown
+    [mini_swe_agent:frontier]=unknown
+    [mini_swe_agent:region]=unknown
+    [mini_swe_agent:access]=unknown
+    [mini_swe_agent:native]='llm unknown'
+    [mini_swe_agent:via]=unknown
+    [autocoderover:frontier]=unknown
+    [autocoderover:region]=unknown
+    [autocoderover:access]=unknown
+    [autocoderover:native]='llm unknown'
+    [autocoderover:via]=unknown
+    [devon_cli:frontier]=unknown
+    [devon_cli:region]=unknown
+    [devon_cli:access]=unknown
+    [devon_cli:native]='llm unknown'
+    [devon_cli:via]=unknown
+    [ra_aid:frontier]=unknown
+    [ra_aid:region]=unknown
+    [ra_aid:access]=unknown
+    [ra_aid:native]='llm unknown'
+    [ra_aid:via]=unknown
+    [deep_agents_code:frontier]=unknown
+    [deep_agents_code:region]=unknown
+    [deep_agents_code:access]=unknown
+    [deep_agents_code:native]='llm unknown'
+    [deep_agents_code:via]=unknown
+    [pydantic_deep_agents:frontier]=unknown
+    [pydantic_deep_agents:region]=unknown
+    [pydantic_deep_agents:access]=unknown
+    [pydantic_deep_agents:native]='llm unknown'
+    [pydantic_deep_agents:via]=unknown
+    [tau_cli:frontier]=unknown
+    [tau_cli:region]=unknown
+    [tau_cli:access]=unknown
+    [tau_cli:native]='llm unknown'
+    [tau_cli:via]=unknown
+    [dexto_cli:frontier]=unknown
+    [dexto_cli:region]=unknown
+    [dexto_cli:access]=unknown
+    [dexto_cli:native]='llm unknown'
+    [dexto_cli:via]=unknown
+    [atomic_agent:frontier]=unknown
+    [atomic_agent:region]=unknown
+    [atomic_agent:access]=unknown
+    [atomic_agent:native]='llm unknown'
+    [atomic_agent:via]=unknown
+    [bitfun_cli:frontier]=unknown
+    [bitfun_cli:region]=unknown
+    [bitfun_cli:access]=unknown
+    [bitfun_cli:native]='llm unknown'
+    [bitfun_cli:via]=unknown
+    [maki_cli:frontier]=unknown
+    [maki_cli:region]=unknown
+    [maki_cli:access]=unknown
+    [maki_cli:native]='llm unknown'
+    [maki_cli:via]=unknown
+    [vt_code:frontier]=unknown
+    [vt_code:region]=unknown
+    [vt_code:access]=unknown
+    [vt_code:native]='llm unknown'
+    [vt_code:via]=unknown
+    [hax_cli:frontier]=unknown
+    [hax_cli:region]=unknown
+    [hax_cli:access]=unknown
+    [hax_cli:native]='llm unknown'
+    [hax_cli:via]=unknown
+    [agentty_cli:frontier]=unknown
+    [agentty_cli:region]=unknown
+    [agentty_cli:access]=unknown
+    [agentty_cli:native]='llm unknown'
+    [agentty_cli:via]=unknown
+    [cecli:frontier]=unknown
+    [cecli:region]=unknown
+    [cecli:access]=unknown
+    [cecli:native]='llm unknown'
+    [cecli:via]=unknown
+    [every_code:frontier]=unknown
+    [every_code:region]=unknown
+    [every_code:access]=unknown
+    [every_code:native]='llm unknown'
+    [every_code:via]=unknown
+    [open_codex:frontier]=unknown
+    [open_codex:region]=unknown
+    [open_codex:access]=unknown
+    [open_codex:native]='llm unknown'
+    [open_codex:via]=unknown
+    [nori_cli:frontier]=unknown
+    [nori_cli:region]=unknown
+    [nori_cli:access]=unknown
+    [nori_cli:native]='llm unknown'
+    [nori_cli:via]=unknown
+    [hermes_agent:frontier]=unknown
+    [hermes_agent:region]=usa
+    [hermes_agent:access]=unknown
+    [hermes_agent:native]='llm unknown'
+    [hermes_agent:via]=unknown
+    [prime_agent:frontier]=unknown
+    [prime_agent:region]=unknown
+    [prime_agent:access]=unknown
+    [prime_agent:native]='llm unknown'
+    [prime_agent:via]=unknown
+    [open_interpreter:frontier]=unknown
+    [open_interpreter:region]=unknown
+    [open_interpreter:access]=unknown
+    [open_interpreter:native]='llm unknown'
+    [open_interpreter:via]=unknown
+    [dsh_cli:frontier]=frontier
+    [dsh_cli:region]=china
+    [dsh_cli:access]=unknown
+    [dsh_cli:native]='llm unknown'
+    [dsh_cli:via]=unknown
+)
+declare -A setup_cli_filter_lab_labels=(
+    [anthropic]=Anthropic
+    [openai]=OpenAI
+    [google]=Google
+    [meta]=Meta
+    [xai]=xAI
+    [deepseek]=DeepSeek
+    [alibaba]='Alibaba / Qwen'
+    [moonshot]='Moonshot AI'
+    [zai]='Z.ai / Zhipu'
+    [bytedance]=ByteDance
+    [xiaomi]=Xiaomi
+    [mistral]='Mistral AI'
+)
 declare -A setup_catalog_labels=(
     [claude_cli]='Claude Code'
     [copilot_cli]='GitHub Copilot CLI'
@@ -275,6 +732,7 @@ declare -A setup_reference_labels=(
 )
 declare -A component_about=(
     [claude_cli]='User inventory · First-party Claude coding agent; terminal is one of several surfaces.
+Filter tags: Frontier (curated) · USA · Access: subscription/api · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Anthropic
@@ -300,8 +758,19 @@ Can be invoked externally: CLI and Anthropic Agent SDK
 Delegation model: Native subagents; cross-product handoff not yet verified.
 State exchange: Project/shared files; cross-product structured messaging and live-session transfer are not yet verified.
 Parallel execution: Not yet verified
+
+Filter Frontier: anthropic (curated lab membership, not a model ranking)
+Filter region: USA
+Access methods: subscription, api [primary-source; partial]
+Scope: Claude subscription access and Console/API-based access are documented; plan entitlement and local configuration are not checked.
+Filter evidence: https://code.claude.com/docs/en/authentication
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is cataloged. Image and other native modalities await a current direct CLI capability reference.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
 Capability evidence: https://code.claude.com/docs/en/headless'
     [copilot_cli]='User inventory · Platform-led multi-provider coding CLI; maker relationship follows corporate ownership.
+Filter tags: Frontier unclassified · USA · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: GitHub / Microsoft
@@ -327,8 +796,18 @@ Can be invoked externally: Not yet verified
 Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
+
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: USA
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [codex_cli]='User inventory · Local terminal coding harness with interactive and noninteractive execution.
+Filter tags: Frontier (curated) · USA · Access: subscription/api · Native: llm/image · Via: image/voice
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: OpenAI
@@ -354,9 +833,23 @@ Can be invoked externally: CLI, official SDK and app-server
 Delegation model: Not yet verified
 State exchange: Project/shared files; cross-product structured messaging and live-session transfer are not yet verified.
 Parallel execution: Not yet verified
+
+Filter Frontier: openai (curated lab membership, not a model ranking)
+Filter region: USA
+Access methods: subscription, api [primary-source; partial]
+Scope: ChatGPT subscription sign-in and usage-based API-key sign-in are supported. Local credentials and feature entitlements are not checked.
+Filter evidence: https://learn.chatgpt.com/docs/auth
+Native workloads: llm, image [primary-source; partial]
+Scope: CLI image/screenshot input through -i/--image alongside language/code interaction. This tag establishes image input, not every image-generation or audiovisual workflow.
+Filter evidence: https://learn.chatgpt.com/docs/image-inputs?surface=cli
+Via models/plugins: image, voice [documented-route; partial]
+Scope: External OpenAI CLI invoked through permitted shell tools can generate image and speech artifacts. Requires separate CLI installation, API authentication and applicable model access; not a bundled Codex voice feature or a claim that this route is configured locally.
+Filter evidence: https://developers.openai.com/api/docs/libraries/openai-cli
+Filter evidence: https://developers.openai.com/learn/developers-codex-plugin
 Capability evidence: https://learn.chatgpt.com/docs/non-interactive-mode
 Capability evidence: https://developers.openai.com/blog/codex-as-a-platform'
     [antigravity_cli]='User inventory · Terminal interface sharing the Antigravity agent core; separate from the IDE.
+Filter tags: Frontier (curated) · USA · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Google
@@ -382,8 +875,18 @@ Can be invoked externally: Not yet verified
 Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
+
+Filter Frontier: google (curated lab membership, not a model ranking)
+Filter region: USA
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [opencode_cli]='User inventory · Multi-provider coding harness with TUI; desktop and editor integration are separate surfaces.
+Filter tags: Frontier unclassified · unverified · Access: subscription/api/local · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Anomaly / OpenCode
@@ -409,8 +912,19 @@ Can be invoked externally: CLI; serve HTTP API; SDK/ACP surfaces documented sepa
 Delegation model: Not yet verified
 State exchange: Project/shared files; cross-product structured messaging and live-session transfer are not yet verified.
 Parallel execution: Not yet verified
+
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: subscription, api, local [primary-source; partial]
+Scope: Provider documentation includes subscription connections, API keys and local providers such as Ollama. Availability depends on the selected provider and supported authentication.
+Filter evidence: https://opencode.ai/docs/providers/
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
 Capability evidence: https://opencode.ai/docs/cli/'
     [pi_cli]='User inventory · Minimal extensible terminal coding harness with provider abstraction.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Pi / pi-mono
@@ -436,8 +950,18 @@ Can be invoked externally: Not yet verified
 Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
+
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [gemini_cli]='User inventory · Open-source terminal agent. Separate product from Antigravity CLI.
+Filter tags: Frontier (curated) · USA · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Google
@@ -464,10 +988,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: google (curated lab membership, not a model ranking)
+Filter region: USA
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://github.com/google-gemini/gemini-cli'
     [jules_tools]='User inventory · CLI controls remotely executed Jules tasks; not a local coding-agent runtime.
+Filter tags: Frontier (curated) · USA · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Google
@@ -494,10 +1028,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: google (curated lab membership, not a model ranking)
+Filter region: USA
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [grok_build]='User inventory · Grok-centered coding harness/TUI with configurable endpoints; distinct from community Grok CLI projects.
+Filter tags: Frontier (curated) · USA · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: xAI
@@ -524,10 +1068,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: xai (curated lab membership, not a model ranking)
+Filter region: USA
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [muse_code]='User inventory · Terminal/CI coding agent centered on Meta Muse models.
+Filter tags: Frontier (curated) · USA · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Meta
@@ -554,10 +1108,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: meta (curated lab membership, not a model ranking)
+Filter region: USA
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [kiro_cli]='User inventory · Multi-model client under Amazon ownership; not a Nova-only client.
+Filter tags: Frontier unclassified · USA · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: AWS / Amazon
@@ -584,10 +1148,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: USA
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://kiro.dev/docs/cli/'
     [bob_shell]='User inventory · Terminal surface of IBM Bob, supporting Granite and other providers; separate from the Bob IDE.
+Filter tags: Frontier unclassified · USA · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: IBM
@@ -614,10 +1188,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: USA
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [devin_cli]='User inventory · Hybrid coding product with frontier models and Cognition SWE-2.
+Filter tags: Frontier unclassified · USA · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Cognition
@@ -644,10 +1228,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: USA
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [pool_cli]='User inventory · First-party terminal agent using Laguna models, with TUI and headless execution.
+Filter tags: Frontier unclassified · USA · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Poolside
@@ -674,10 +1268,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: USA
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [qwen_cli]='User inventory · Official Qwen coding CLI; also supports third-party or local endpoints.
+Filter tags: Frontier (curated) · China · Access: api/local · Native: llm · Via: voice
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Alibaba / Qwen
@@ -704,10 +1308,22 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: alibaba (curated lab membership, not a model ranking)
+Filter region: China
+Access methods: api, local [primary-source; partial]
+Scope: Official README documents provider/API-key configuration and local model endpoints such as Ollama/vLLM. Subscription entitlements are not established by this record.
+Filter evidence: https://github.com/QwenLM/qwen-code/blob/main/README.md
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: voice [documented-route; partial]
+Scope: Optional qwen-audio-agent frontend is listed by Qwen Code for realtime voice over ACP. Requires that separate frontend and audio/model setup; it is not a native CLI voice feature or proof the integration is installed.
+Filter evidence: https://github.com/QwenLM/qwen-code/blob/main/README.md
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://github.com/QwenLM/qwen-code'
     [kimi_code]='User inventory · Current coding-agent product; keep separate from the earlier Kimi CLI project.
+Filter tags: Frontier (curated) · China · Access: api · Native: llm/video · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Moonshot AI
@@ -734,10 +1350,22 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: moonshot (curated lab membership, not a model ranking)
+Filter region: China
+Access methods: api [primary-source; partial]
+Scope: Official README documents Moonshot API-key login alongside Kimi Code OAuth. OAuth alone is not treated as proof of a paid subscription plan.
+Filter evidence: https://github.com/MoonshotAI/kimi-code/blob/main/README.md
+Native workloads: llm, video [primary-source; partial]
+Scope: Official Kimi Code CLI README documents video/clip input in its TUI. This establishes video input, not video generation; other modalities remain partial/unverified.
+Filter evidence: https://github.com/MoonshotAI/kimi-code/blob/main/README.md
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://github.com/MoonshotAI/kimi-code'
     [kimi_legacy]='User inventory · Separate earlier project transitioning toward Kimi Code. A kimi executable alone cannot identify which project is installed.
+Filter tags: Frontier (curated) · China · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login. A shared kimi command is deliberately not used as legacy-product installation evidence.
 Developer: Moonshot AI
@@ -764,10 +1392,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: moonshot (curated lab membership, not a model ranking)
+Filter region: China
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [zcode_cli]='User inventory · Terminal surface alongside ZCode desktop; GLM-centered with optional third-party endpoints.
+Filter tags: Frontier (curated) · China · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Z.ai / Zhipu
@@ -794,10 +1432,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: zai (curated lab membership, not a model ranking)
+Filter region: China
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [codebuddy_cli]='User inventory · Tencent/Hunyuan platform CLI; distinct from CodeBuddy IDE, plugins and WorkBuddy.
+Filter tags: Frontier unclassified · China · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Tencent
@@ -824,10 +1472,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: China
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [trae_agent]='User inventory · Research software-engineering CLI; distinct from the commercial TRAE IDE.
+Filter tags: Frontier (curated) · China · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: ByteDance
@@ -854,10 +1512,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: bytedance (curated lab membership, not a model ranking)
+Filter region: China
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [mimo_code]='User inventory · Terminal agent with TUI and noninteractive modes, supporting MiMo and other providers.
+Filter tags: Frontier (curated) · China · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Xiaomi
@@ -884,10 +1552,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: xiaomi (curated lab membership, not a model ranking)
+Filter region: China
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [qoder_cn_cli]='User inventory · Chinese regional SKU; distinct operator/terms from international Qoder and distinct from Qwen Code.
+Filter tags: Frontier (curated) · China · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Alibaba Cloud
@@ -914,10 +1592,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: alibaba (curated lab membership, not a model ranking)
+Filter region: China
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [vibe_cli]='User inventory · Mistral-centered terminal agent with configurable providers; Vibe also names a broader product family.
+Filter tags: Frontier (curated) · Other · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Mistral AI (France)
@@ -944,10 +1632,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: mistral (curated lab membership, not a model ranking)
+Filter region: Other
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [iflow_cli]='User inventory · China-associated combo CLI. Ownership and current availability need primary-source verification.
+Filter tags: Frontier unclassified · China · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Alibaba / Xinliu association (unverified)
@@ -974,10 +1672,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: China
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [neovate_code]='User inventory · China-associated multi-model CLI with plugins, MCP and headless automation; developer attribution is user-provided.
+Filter tags: Frontier unclassified · China · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Ant Group
@@ -1004,10 +1712,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: China
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [crush_cli]='User inventory · Multi-provider terminal-first coding TUI.
+Filter tags: Frontier unclassified · unverified · Access: api/local · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Charmbracelet
@@ -1034,10 +1752,21 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: api, local [primary-source; partial]
+Scope: Provider API keys and Ollama/local provider configuration are documented; subscription support is not established by this record.
+Filter evidence: https://github.com/charmbracelet/crush/blob/main/README.md
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://github.com/charmbracelet/crush'
     [aider_cli]='User inventory · Git-oriented terminal pair programming and multi-file editing.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Aider project
@@ -1064,10 +1793,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [goose_cli]='User inventory · Extensible local agent with CLI, multiple providers and MCP integration; organizational attribution is user-provided.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: AAIF / Linux Foundation (originated at Block)
@@ -1094,10 +1833,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [cline_cli]='User inventory · Model-agnostic terminal agent with file, command and browser tools; editor integration is a separate entry.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Cline
@@ -1124,10 +1873,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [continue_cli]='User inventory · Terminal coding agent with multi-model and local-model options; separate from its editor extension.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Continue
@@ -1154,10 +1913,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [kilo_cli]='User inventory · CLI with orchestration, skills and checkpoints.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Kilo
@@ -1184,10 +1953,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [roo_cli]='User inventory · Terminal agent with architect, code, debug and orchestration modes.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Roo Code
@@ -1214,10 +1993,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [plandex_cli]='User inventory · Plan-first terminal agent for larger multi-file work.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Plandex
@@ -1244,10 +2033,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [codebuff_cli]='User inventory · Multi-agent coding assistant with a CLI.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Codebuff
@@ -1274,10 +2073,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [forgecode_cli]='User inventory · Multi-model CLI with task management and custom agents.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: ForgeCode
@@ -1304,10 +2113,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [gptme_cli]='User inventory · Terminal agent for file edits, code execution and persistent workflows.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: gptme
@@ -1334,10 +2153,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [letta_code]='User inventory · Memory-first coding CLI with model-agnostic execution.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Letta
@@ -1364,10 +2193,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [nanocoder_cli]='User inventory · Local-first CLI using Ollama, OpenRouter and compatible APIs.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Nanocoder
@@ -1394,10 +2233,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [kode_cli]='User inventory · Multi-provider terminal coding agent.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: ShareAI
@@ -1424,10 +2273,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [codewhale_cli]='User inventory · Bring-your-own-model Rust coding agent with TUI and headless modes.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Codewhale
@@ -1454,10 +2313,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [jcode_cli]='User inventory · Rust coding TUI with multiple providers and parallel-agent features.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: jcode
@@ -1484,10 +2353,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [reasonix_cli]='User inventory · Coding engine with terminal, desktop, browser and editor surfaces.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Reasonix
@@ -1514,10 +2393,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [oh_my_pi]='User inventory · Separate Pi-related terminal implementation; not upstream Pi.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: OH-MY-PI project
@@ -1544,10 +2433,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [cursor_cli]='User inventory · Terminal agent connected to Cursor model catalog/ecosystem; distinct from Cursor editor.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Cursor
@@ -1574,10 +2473,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [amp_cli]='User inventory · Coding CLI selecting different models by operating mode.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Amp (Sourcegraph origin)
@@ -1604,10 +2513,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [droid_cli]='User inventory · Multi-model coding CLI with custom agents and headless execution.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Factory
@@ -1634,10 +2553,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [auggie_cli]='User inventory · Interactive CLI with noninteractive automation.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Augment Code
@@ -1664,10 +2593,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [junie_cli]='User inventory · Multi-model CLI with planning/headless workflows; early access.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: JetBrains
@@ -1694,10 +2633,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [tabnine_cli]='User inventory · Enterprise terminal assistant distributed through a container.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Tabnine
@@ -1724,10 +2673,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [mentat_cli]='User inventory · Terminal control surface for remote coding agents; not solely a local runtime.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Mentat
@@ -1754,10 +2713,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [ante_cli]='User inventory · Terminal agent supporting multiple providers and local inference; research preview.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Antigma Labs
@@ -1784,10 +2753,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [thegitai_cli]='User inventory · Hosted multi-model coding agent accessed through a terminal client.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: TheGitAI
@@ -1814,10 +2793,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [qoder_cli]='User inventory · International SKU/operator with regional terms distinct from Alibaba Cloud Qoder CN.
+Filter tags: Frontier unclassified · Other · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Bright Zenith (Singapore)
@@ -1844,10 +2833,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: Other
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [openhands_cli]='User inventory · CLI entry into an autonomous software-engineering environment.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: OpenHands project
@@ -1874,10 +2873,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [swe_agent]='User inventory · Repository issue-resolution agent used in research/evaluation.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: SWE-agent project
@@ -1904,10 +2913,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [mini_swe_agent]='User inventory · Small inspectable command-line coding-agent implementation.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: mini-SWE-agent project
@@ -1934,10 +2953,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [autocoderover]='User inventory · Automated issue-resolution agent using code search/analysis.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: AutoCodeRover project
@@ -1964,10 +2993,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [devon_cli]='User inventory · Terminal pair-programming TUI with planning, implementation and debugging.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Devon project
@@ -1994,10 +3033,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [ra_aid]='User inventory · Autonomous research/plan/implement pipeline with optional Aider integration.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: RA.Aid project
@@ -2024,10 +3073,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [deep_agents_code]='User inventory · Framework-derived terminal agent with tools, subagents and headless execution.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: LangChain
@@ -2054,10 +3113,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [pydantic_deep_agents]='User inventory · Coding agent and Python library with configurable models and optional sandboxing.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Pydantic project
@@ -2084,10 +3153,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [tau_cli]='User inventory · Small provider-neutral educational Python CLI/TUI.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Tau project
@@ -2114,10 +3193,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [dexto_cli]='User inventory · General agent/coding runtime with CLI, web, API and delegation.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Dexto project
@@ -2144,10 +3233,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [atomic_agent]='User inventory · Local-first coding agent with TUI, noninteractive modes and local/cloud model support.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Atomic Agent project
@@ -2174,10 +3273,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [bitfun_cli]='User inventory · Multi-surface agent with TUI/headless CLI alongside an independently built desktop app.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: BitFun project
@@ -2204,10 +3313,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [maki_cli]='User inventory · Extensible Rust coding TUI with Lua plugins and structured tools.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Maki project
@@ -2234,10 +3353,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [vt_code]='User inventory · Multi-provider terminal coding agent with shell-safety features.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: VT Code project
@@ -2264,10 +3393,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [hax_cli]='User inventory · Minimal C implementation with local-model/compatible-endpoint support.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: hax project
@@ -2294,10 +3433,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [agentty_cli]='User inventory · Native C++ terminal agent with model abstraction and sandboxing.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: agentty project
@@ -2324,10 +3473,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [cecli]='User inventory · Community continuation/fork of Aider.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: cecli project
@@ -2354,10 +3513,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [every_code]='User inventory · Codex-derived CLI with multi-provider orchestration and automation.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Every Code project
@@ -2384,10 +3553,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [open_codex]='User inventory · Lightweight multi-provider Codex fork.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: open-codex project
@@ -2414,10 +3593,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [nori_cli]='User inventory · Codex-derived unified terminal interface for several providers.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: nori-cli project
@@ -2444,10 +3633,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [hermes_agent]='User inventory · General-purpose model-maker agent that can code; not a coding-only or Nous-only client.
+Filter tags: Frontier unclassified · USA · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Nous Research
@@ -2474,10 +3673,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: USA
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [prime_agent]='User inventory · Model-maker-associated coding/research agent with persistent Python execution, built on Pi; developer region unverified.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Prime Intellect
@@ -2504,10 +3713,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [open_interpreter]='User inventory · General-purpose execution agent; not a coding-first harness.
+Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Open Interpreter project
@@ -2534,10 +3753,20 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 
+Filter Frontier: Unclassified (curated lab membership, not a model ranking)
+Filter region: unverified
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
     [dsh_cli]='User inventory · Plugin-oriented harness with CLI launch/configuration tools. Optional dsh-TUI frontend is a separate plugin; terminal modes belong to this one harness entry.
+Filter tags: Frontier (curated) · China · Access: Unknown · Native: llm · Via: Unknown
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: DeepSeek
@@ -2563,6 +3792,15 @@ Can be invoked externally: Not yet verified
 Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
+
+Filter Frontier: deepseek (curated lab membership, not a model ranking)
+Filter region: China
+Access methods: Unknown [unverified; partial]
+Scope: Supported access methods are not yet cataloged; unknown is not unavailable.
+Native workloads: llm [user-provided; partial]
+Scope: LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.
+Via models/plugins: Unknown [unverified; partial]
+Scope: No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.
 
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.

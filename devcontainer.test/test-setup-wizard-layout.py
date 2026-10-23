@@ -47,7 +47,7 @@ render_setup_frame''')
         self.assertEqual(output, '12:héllo      ✓\n─────\n')
 
     def test_render_engine_has_no_forks(self):
-        text = (ROOT/'scripts/interactive-setup.sh').read_text()
+        text = (ROOT/'scripts/interactive-setup.sh').read_text() + '\n' + (ROOT/'scripts/lib/setup-cli-filters.sh').read_text()
         functions = re.findall(r'^(\w+)\(\) \{\n(.*?)^\}', text, re.M|re.S)
         checked = []
         for name, body in functions:
@@ -443,7 +443,7 @@ for key in "${!component_description[@]}"; do component_status[$key]=installed; 
 setup_arrive_step 1; setup_harness_zone=harness; setup_focus_harness_key dsh_cli
 setup_ui_width=87; setup_ui_height=40; setup_frame_build
 [[ "$setup_about_window" -ge 5 ]] || exit 30
-[[ "${setup_harness_offsets[tui:all]}" -gt 0 ]] || exit 31
+[[ "${setup_harness_offsets[tui:$setup_cli_filter_cache_key]}" -gt 0 ]] || exit 31
 printf '%s\n' "${setup_frame_lines[@]}"
 ''')
         self.assertIn('›',ANSI.sub('',output))
@@ -461,7 +461,7 @@ for setup_ui_width in 36 60 87; do
         for setup_cli_group in "${setup_cli_groups[@]}"; do
             IFS=' ' read -r -a members <<< "${setup_cli_group_members[$setup_cli_group]}"
             setup_focus_harness_key "${members[${#members[@]}-1]}"
-            for setup_harness_zone in group harness; do
+            for setup_harness_zone in filter harness; do
                 setup_frame_build
                 printf 'GROUPCASE:%s:%s:%s:%s\n' "$setup_ui_width" "$setup_ui_height" "$setup_cli_group" "$setup_harness_zone"
                 printf '%s\n' "${setup_frame_lines[@]}"
@@ -476,8 +476,9 @@ done
                 marker,*lines=ANSI.sub('',case).splitlines(); width,height,group,zone=marker.split(':')
                 self.assert_bounds(lines,int(width),int(height) if height else None)
                 text='\n'.join(lines)
-                for label in ('GROUP','F Groups','ABOUT','Navigation:','›'):self.assertIn(label,text)
-                if zone=='group' and not height:self.assertIn('Ownership is separate',text)
+                for label in ('FILTERS','ABOUT','Navigation:','›'):self.assertIn(label,text)
+                if zone=='harness':self.assertIn('F Filters',text) if int(width)>=60 else self.assertIn('F/C',text)
+                if zone=='filter' and not height:self.assertIn('OR within each row',text)
 
     def test_all_twelve_benches_have_visible_copy_in_their_category(self):
         import json

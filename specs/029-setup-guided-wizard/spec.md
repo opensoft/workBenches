@@ -461,3 +461,8 @@ FR-018 is extended to give Harness the Benches category/list pattern: TUI AI Too
 ## Accepted product catalog extension (2026-10-23)
 
 OpenSpec setup-agent-tool-catalog extends FR-018 display/catalog scope using Brett's supplied taxonomy and product inventory. Harness contains GUI Agent Harnesses, CLI/TUI Agent Harnesses, IDE/Editor Extensions, Workflow & Specification Tools. Tools contains IDEs & Editors, Terminals & Terminal Workspaces, Networking and Workstation setup. CLI groups distinguish ownership/region from provider policy. Structured About metadata qualifies user-provided vs documented capabilities, with interoperability fields rather than a category. All new entries remain manual references; managed IDs/plans remain unchanged. F optionally selects a CLI ownership group without altering existing Tab-to-list behavior. P/G/refresh preserve group, category, zone, item and scroll state.
+
+
+## Accepted faceted-filter extension (2026-10-23)
+
+FR-018 is extended by setup-harness-filters: replace the single F group picker with independent Frontier/Region/Access/Native/Via/Group facets, OR within each dimension and AND across active dimensions. Frontier means an editable curated lab set; native and integrated capabilities are separate and provenance-bearing. Unknown is explicit. Preserve queues and exact P/G/refresh state, support clear/empty results safely, and retain responsive builtins-only rendering and unchanged install plans.

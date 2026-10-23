@@ -62,6 +62,30 @@ class CatalogTests(unittest.TestCase):
             self.assertIn('does not imply', e['interoperability']['invokesAgents'])
             self.assertIn('not yet verified', e['interoperability']['stateExchange'])
 
+    def test_filter_metadata_separates_curation_access_and_native_routes(self):
+        catalog.validate(self.data)
+        self.assertEqual(self.data['schemaVersion'],2)
+        self.assertEqual(len(self.data['frontierLabs']),12)
+        self.assertEqual(self.entries['codex_cli']['filters']['frontierLab'],'openai')
+        self.assertIsNone(self.entries['opencode_cli']['filters']['frontierLab'])
+        self.assertIn('image',catalog.filter_values(self.entries['codex_cli'],'native'))
+        self.assertNotIn('voice',catalog.filter_values(self.entries['codex_cli'],'native'))
+        self.assertIn('voice',catalog.filter_values(self.entries['codex_cli'],'via'))
+        self.assertIn('subscription',catalog.filter_values(self.entries['codex_cli'],'access'))
+        self.assertIn('api',catalog.filter_values(self.entries['codex_cli'],'access'))
+        self.assertIn('unknown',catalog.filter_values(self.entries['codex_cli'],'access'))
+        self.assertEqual(self.entries['codex_cli']['filters']['via']['basis'],'documented-route')
+        self.assertEqual({e['id'] for e in self.data['entries'] if e['filters'] and 'video' in e['filters']['native']['values']},{'kimi_code'})
+        for field,value in (('native','classifier'),):
+            self.assertFalse(any(value in e['filters'][field]['values'] for e in self.data['entries'] if e['filters']))
+        mutations=[lambda e:e['filters'].update(frontierLab='fake-lab'),
+                   lambda e:e['filters']['native'].update(values=['telepathy']),
+                   lambda e:e['filters']['access'].update(basis='unverified',values=['api']),
+                   lambda e:e['filters']['via'].update(sources=[])]
+        for mutate in mutations:
+            data=copy.deepcopy(self.data); entry=next(e for e in data['entries'] if e['id']=='codex_cli'); mutate(entry)
+            with self.assertRaises(ValueError):catalog.validate(data)
+
     def test_runtime_snapshots_match_canonical_data_and_preserve_old_reference_indexes(self):
         shell, python = catalog.snapshots(catalog.validate(self.data))
         self.assertEqual(catalog.BASH.read_text(), shell)

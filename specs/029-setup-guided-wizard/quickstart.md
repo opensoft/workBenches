@@ -200,3 +200,10 @@ Harness now starts on categories. Tab enters TUI AI Tools before selecting an ex
 The product inventory is governed by setup-agent-tool-catalog. Check or regenerate its static snapshots with `python3 scripts/setup-tool-catalog.py --check` / `--write`. Run `python3 devcontainer.test/test-tool-catalog.py` directly; the wizard suite also loads these tests so the existing CI job checks catalog coverage and snapshot drift without a workflow change.
 
 Preview Harness → CLI/TUI Agent Harnesses, press F, choose an ownership group with up/down and Tab into its list. Check a long About and return via P/G, then refresh: group/item/list/About position and all selected managed changes stay intact. Browse GUI agents separately from IDEs/editors and extensions. Confirm product source qualifications and manual-only controls, including separate Kimi/Qoder identities. Do not infer model access, agent cooperation or active-session transfer from installation evidence.
+
+
+### CLI facet review (T039K)
+
+The former F group picker is now Filters. Open Harness → CLI/TUI Agent Harnesses and press F. Up/Down chooses a row, Tab/Shift+Tab focuses an option, Space toggles it, F returns to results, C clears all filter constraints. Rows are Frontier (curated labs), Region, Access, Native, Via models/plugins and Group. Select several values in one row for OR; active rows combine with AND. Examples: Frontier + USA + API + Native Image; Frontier + China + API + Native Video. About qualifies image/video input versus generation and the required setup for external routes. Partial/unknown is explicit.
+
+Run `python3 devcontainer.test/test-cli-filters.py` directly; the existing wizard CI suite loads it too. Review a zero-result classifier combination and press Space/D: no hidden item action may change. Clear restores the list/queue. Visit Profiles/Workstation from both results and filter panel, refresh, then return: selections, focus and About/list state stay intact. A normal step return must reconcile the focused product with the filtered list.

@@ -366,3 +366,8 @@ T039H generalizes the Tools category/list primitives for Harness without changin
 ## Expanded catalog implementation (T039I/T039J)
 
 Governed by setup-agent-tool-catalog, accepted from Brett's 2026-10-23 taxonomy and full inventory. T039I adds validated canonical metadata and deterministic Bash/Python snapshots; T039J integrates them into existing category/list/About primitives and adds a compact optional CLI group picker. Reference detection remains read-only, conservative and independent of capability claims. No new installer or credential-plan keys. Runtime rendering/first paint never invokes a compiler or JSON parser. Test source coverage, stable identities, snapshot synchronization, safe shell quoting, manual/ambiguous detection, filtering/focus/return/refresh state, responsive bounds, no-fork timing and existing regressions.
+
+
+## Accepted faceted-filter extension (2026-10-23)
+
+T039K governs internal catalog schema 2 and the pure-Bash CLI facet library. Compile qualified facet maps at development time. Cache membership and per-result windows; add a responsive F panel with keyboard option viewport, live counts and About. Guard all stale-item paths for empty results. Extend no-fork and locale/size tests to the library and exercise intersections, OR choices, provenance boundaries, empty actions, queues and P/G/refresh state.

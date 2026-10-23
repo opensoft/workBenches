@@ -525,3 +525,55 @@ No provider API calls, agent launches, installers, removals, Docker builds,
 account actions or host configuration changes were executed. Human bench-copy
 approval, remote CI, real-host installation QA, PR/merge and archive gates remain
 pending. Catalog claims without primary evidence remain user-provided/unverified.
+
+## Combinable CLI harness filters T039K — 2026-10-23
+
+Authority: Brett's filter request and clarified choices: Frontier means a curated
+set of frontier model-maker labs; modalities track both native capabilities and
+capabilities available through models/plugins, with separate labels. Governance:
+`openspec/changes/setup-harness-filters/`.
+
+The internal catalog schema is now 2. The 108 product identities, 77 CLI entries,
+managed IDs, flat indexes, installer order and schema-1 private selection and
+credential-plan contracts are unchanged. F opens six filter rows: Frontier,
+Region, Access, Native, Via models/plugins and the existing ownership Group.
+Up/Down selects a row, Tab/Shift+Tab selects an option, Space toggles, C clears
+only filters and F returns to results. Matching is OR within a row and AND
+between rows, with live counts and an explicit empty result state.
+
+Curated ownership is independent of model access. Native input capabilities and
+external routes retain their direction, setup requirements and source evidence
+in About. Partial metadata remains Unknown even when some positive tags are
+known; missing evidence is not evidence of absence. The initial records do not
+claim comprehensive modality or subscription coverage. User-provided inventory
+claims remain qualified separately from primary-source facet evidence.
+
+Verification on Raven / native Linux:
+
+- Exact T039K verification: PASS, 53.90 seconds. Filters 7 tests, catalog 6,
+  wizard 46 (including catalog and filter tests in the existing CI entry point),
+  layout 23, async 6, guided flow 43 and components 31. Both isolated shell
+  fixtures, generated snapshot checks, Bash syntax, render timing and all three
+  governed strict OpenSpec validations pass.
+- All 32 quickstart regression suites: PASS.
+- Added 126 filter/empty frames under C and C.UTF-8 across 36/60/87 columns and
+  24/40/unknown height; retained existing 252 ownership-group frames and 144
+  category-zone frames. The no-fork renderer guard includes the new library
+  without exemptions. Runtime discovery stubs remain uncalled by filtering.
+- Tests cover OR/AND combinations, native versus routed versus Unknown,
+  no stale About or hidden action on empty results, focus reconciliation on
+  cache hits, independent result windows, queue preservation and exact P/G,
+  refresh and ordinary step-navigation state. Global step/Review keys retain
+  their behavior; install/removal actions do not run in the filter panel.
+- Full Benches timing median 4.511 ms, p90 5.871 ms, max 6.066 ms. Step medians:
+  Workstation 2.737, Benches 3.005, Harness 7.657, Tools 4.202,
+  Profiles 2.457 and Review 4.219 ms.
+- Visually inspected the selection-only preview on workspace 14: all six filter
+  rows at 77/77, then Frontier + China + API + Native Video returned Kimi Code
+  at 1/77 with its qualified About and zero queued changes. Cleared the filters
+  and left the panel open for review.
+- Scope, LF, modes and whitespace checks pass. Release base remains `ccc9eac`.
+
+No provider calls, agent launches, installers, removals, Docker builds, account
+actions or host configuration changes were executed. Human bench-copy approval,
+remote CI, real-host installation QA, PR/merge and archive gates remain pending.

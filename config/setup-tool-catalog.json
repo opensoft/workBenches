@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "legacyReferenceOrder": {
     "harness": [
       "opencode_desktop",
@@ -158,6 +158,40 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": "anthropic",
+        "access": {
+          "values": [
+            "subscription",
+            "api"
+          ],
+          "complete": false,
+          "basis": "primary-source",
+          "note": "Claude subscription access and Console/API-based access are documented; plan entitlement and local configuration are not checked.",
+          "sources": [
+            "https://code.claude.com/docs/en/authentication"
+          ],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is cataloged. Image and other native modalities await a current direct CLI capability reference.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -209,6 +243,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -267,6 +330,49 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": "openai",
+        "access": {
+          "values": [
+            "subscription",
+            "api"
+          ],
+          "complete": false,
+          "basis": "primary-source",
+          "note": "ChatGPT subscription sign-in and usage-based API-key sign-in are supported. Local credentials and feature entitlements are not checked.",
+          "sources": [
+            "https://learn.chatgpt.com/docs/auth"
+          ],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm",
+            "image"
+          ],
+          "complete": false,
+          "basis": "primary-source",
+          "note": "CLI image/screenshot input through -i/--image alongside language/code interaction. This tag establishes image input, not every image-generation or audiovisual workflow.",
+          "sources": [
+            "https://learn.chatgpt.com/docs/image-inputs?surface=cli"
+          ],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [
+            "image",
+            "voice"
+          ],
+          "complete": false,
+          "basis": "documented-route",
+          "note": "External OpenAI CLI invoked through permitted shell tools can generate image and speech artifacts. Requires separate CLI installation, API authentication and applicable model access; not a bundled Codex voice feature or a claim that this route is configured locally.",
+          "sources": [
+            "https://developers.openai.com/api/docs/libraries/openai-cli",
+            "https://developers.openai.com/learn/developers-codex-plugin"
+          ],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -318,6 +424,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": "google",
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -376,6 +511,41 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [
+            "subscription",
+            "api",
+            "local"
+          ],
+          "complete": false,
+          "basis": "primary-source",
+          "note": "Provider documentation includes subscription connections, API keys and local providers such as Ollama. Availability depends on the selected provider and supported authentication.",
+          "sources": [
+            "https://opencode.ai/docs/providers/"
+          ],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -427,6 +597,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -484,6 +683,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": "google",
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -535,6 +763,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": "google",
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -586,6 +843,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": "xai",
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -637,6 +923,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": "meta",
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -692,6 +1007,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -743,6 +1087,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -794,6 +1167,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -846,6 +1248,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -903,6 +1334,44 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": "alibaba",
+        "access": {
+          "values": [
+            "api",
+            "local"
+          ],
+          "complete": false,
+          "basis": "primary-source",
+          "note": "Official README documents provider/API-key configuration and local model endpoints such as Ollama/vLLM. Subscription entitlements are not established by this record.",
+          "sources": [
+            "https://github.com/QwenLM/qwen-code/blob/main/README.md"
+          ],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [
+            "voice"
+          ],
+          "complete": false,
+          "basis": "documented-route",
+          "note": "Optional qwen-audio-agent frontend is listed by Qwen Code for realtime voice over ACP. Requires that separate frontend and audio/model setup; it is not a native CLI voice feature or proof the integration is installed.",
+          "sources": [
+            "https://github.com/QwenLM/qwen-code/blob/main/README.md"
+          ],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -960,6 +1429,42 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": "@moonshot-ai/kimi-code"
+      },
+      "filters": {
+        "frontierLab": "moonshot",
+        "access": {
+          "values": [
+            "api"
+          ],
+          "complete": false,
+          "basis": "primary-source",
+          "note": "Official README documents Moonshot API-key login alongside Kimi Code OAuth. OAuth alone is not treated as proof of a paid subscription plan.",
+          "sources": [
+            "https://github.com/MoonshotAI/kimi-code/blob/main/README.md"
+          ],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm",
+            "video"
+          ],
+          "complete": false,
+          "basis": "primary-source",
+          "note": "Official Kimi Code CLI README documents video/clip input in its TUI. This establishes video input, not video generation; other modalities remain partial/unverified.",
+          "sources": [
+            "https://github.com/MoonshotAI/kimi-code/blob/main/README.md"
+          ],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1012,6 +1517,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": "moonshot",
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1065,6 +1599,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": "zai",
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1116,6 +1679,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1167,6 +1759,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": "bytedance",
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1219,6 +1840,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": "xiaomi",
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1271,6 +1921,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": "alibaba",
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1324,6 +2003,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": "mistral",
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1377,6 +2085,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1431,6 +2168,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1486,6 +2252,40 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [
+            "api",
+            "local"
+          ],
+          "complete": false,
+          "basis": "primary-source",
+          "note": "Provider API keys and Ollama/local provider configuration are documented; subscription support is not established by this record.",
+          "sources": [
+            "https://github.com/charmbracelet/crush/blob/main/README.md"
+          ],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1537,6 +2337,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1588,6 +2417,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1639,6 +2497,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1690,6 +2577,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1741,6 +2657,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1792,6 +2737,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1843,6 +2817,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1894,6 +2897,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1945,6 +2977,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -1996,6 +3057,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2047,6 +3137,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2098,6 +3217,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2149,6 +3297,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2201,6 +3378,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2252,6 +3458,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2307,6 +3542,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2358,6 +3622,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2409,6 +3702,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2460,6 +3782,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2512,6 +3863,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2564,6 +3944,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2616,6 +4025,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2667,6 +4105,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2718,6 +4185,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2769,6 +4265,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2820,6 +4345,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2873,6 +4427,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2925,6 +4508,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -2977,6 +4589,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3029,6 +4670,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3081,6 +4751,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3133,6 +4832,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3185,6 +4913,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3238,6 +4995,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3290,6 +5076,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3342,6 +5157,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3398,6 +5242,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3451,6 +5324,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3506,6 +5408,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3558,6 +5489,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3610,6 +5570,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3662,6 +5651,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3714,6 +5732,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3766,6 +5813,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3818,6 +5894,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3870,6 +5975,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3922,6 +6056,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -3974,6 +6137,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -4026,6 +6218,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -4079,6 +6300,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": null,
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -4135,6 +6385,35 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
+      },
+      "filters": {
+        "frontierLab": "deepseek",
+        "access": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported access methods are not yet cataloged; unknown is not unavailable.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "native": {
+          "values": [
+            "llm"
+          ],
+          "complete": false,
+          "basis": "user-provided",
+          "note": "LLM/code interaction is the baseline of the supplied coding-harness inventory. Other native modalities and classification workflows remain unverified.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "via": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        }
       }
     },
     {
@@ -4190,7 +6469,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "qwen_desktop",
@@ -4245,7 +6525,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "kimi_desktop",
@@ -4300,7 +6581,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "zcode_desktop",
@@ -4355,7 +6637,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "codex_gui",
@@ -4412,7 +6695,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "claude_desktop",
@@ -4467,7 +6751,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "copilot_vscode",
@@ -4523,7 +6808,8 @@
           "github.copilot-chat"
         ],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "cline_vscode",
@@ -4578,7 +6864,8 @@
           "saoudrizwan.claude-dev"
         ],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "continue_vscode",
@@ -4633,7 +6920,8 @@
           "continue.continue"
         ],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "codex_vscode",
@@ -4688,7 +6976,8 @@
           "openai.chatgpt"
         ],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "spec_kit",
@@ -4740,7 +7029,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "openspec",
@@ -4792,7 +7082,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "omnigent",
@@ -4848,7 +7139,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "agenttower",
@@ -4904,7 +7196,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "vscode",
@@ -4955,7 +7248,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "cursor_ide",
@@ -5010,7 +7304,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "kiro_ide",
@@ -5065,7 +7360,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "antigravity_ide",
@@ -5121,7 +7417,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "comate_ide",
@@ -5176,7 +7473,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "neovim",
@@ -5231,7 +7529,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "abacus_editor",
@@ -5290,7 +7589,8 @@
         ],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "warp",
@@ -5342,7 +7642,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "wave",
@@ -5393,7 +7694,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "herder",
@@ -5449,7 +7751,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "foot",
@@ -5504,7 +7807,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "tmux",
@@ -5559,7 +7863,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "amnezia_vpn",
@@ -5610,7 +7915,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "0dcloud_vpn",
@@ -5661,7 +7967,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "host_shell",
@@ -5712,7 +8019,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "workspace_repo",
@@ -5763,7 +8071,8 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
     },
     {
       "id": "mise",
@@ -5818,7 +8127,207 @@
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
-      }
+      },
+      "filters": null
+    }
+  ],
+  "frontierLabs": [
+    {
+      "id": "anthropic",
+      "label": "Anthropic",
+      "recorded": "2026-10-23",
+      "note": "Initial editorial frontier-lab set. Membership is a curated catalog label, not a model-performance ranking; unlisted makers remain unclassified."
+    },
+    {
+      "id": "openai",
+      "label": "OpenAI",
+      "recorded": "2026-10-23",
+      "note": "Initial editorial frontier-lab set. Membership is a curated catalog label, not a model-performance ranking; unlisted makers remain unclassified."
+    },
+    {
+      "id": "google",
+      "label": "Google",
+      "recorded": "2026-10-23",
+      "note": "Initial editorial frontier-lab set. Membership is a curated catalog label, not a model-performance ranking; unlisted makers remain unclassified."
+    },
+    {
+      "id": "meta",
+      "label": "Meta",
+      "recorded": "2026-10-23",
+      "note": "Initial editorial frontier-lab set. Membership is a curated catalog label, not a model-performance ranking; unlisted makers remain unclassified."
+    },
+    {
+      "id": "xai",
+      "label": "xAI",
+      "recorded": "2026-10-23",
+      "note": "Initial editorial frontier-lab set. Membership is a curated catalog label, not a model-performance ranking; unlisted makers remain unclassified."
+    },
+    {
+      "id": "deepseek",
+      "label": "DeepSeek",
+      "recorded": "2026-10-23",
+      "note": "Initial editorial frontier-lab set. Membership is a curated catalog label, not a model-performance ranking; unlisted makers remain unclassified."
+    },
+    {
+      "id": "alibaba",
+      "label": "Alibaba / Qwen",
+      "recorded": "2026-10-23",
+      "note": "Initial editorial frontier-lab set. Membership is a curated catalog label, not a model-performance ranking; unlisted makers remain unclassified."
+    },
+    {
+      "id": "moonshot",
+      "label": "Moonshot AI",
+      "recorded": "2026-10-23",
+      "note": "Initial editorial frontier-lab set. Membership is a curated catalog label, not a model-performance ranking; unlisted makers remain unclassified."
+    },
+    {
+      "id": "zai",
+      "label": "Z.ai / Zhipu",
+      "recorded": "2026-10-23",
+      "note": "Initial editorial frontier-lab set. Membership is a curated catalog label, not a model-performance ranking; unlisted makers remain unclassified."
+    },
+    {
+      "id": "bytedance",
+      "label": "ByteDance",
+      "recorded": "2026-10-23",
+      "note": "Initial editorial frontier-lab set. Membership is a curated catalog label, not a model-performance ranking; unlisted makers remain unclassified."
+    },
+    {
+      "id": "xiaomi",
+      "label": "Xiaomi",
+      "recorded": "2026-10-23",
+      "note": "Initial editorial frontier-lab set. Membership is a curated catalog label, not a model-performance ranking; unlisted makers remain unclassified."
+    },
+    {
+      "id": "mistral",
+      "label": "Mistral AI",
+      "recorded": "2026-10-23",
+      "note": "Initial editorial frontier-lab set. Membership is a curated catalog label, not a model-performance ranking; unlisted makers remain unclassified."
+    }
+  ],
+  "filterFacets": [
+    {
+      "id": "frontier",
+      "label": "Frontier",
+      "summary": "Curated model-maker labs. Provider access alone does not make an independent harness a frontier-lab product.",
+      "options": [
+        {
+          "id": "frontier",
+          "label": "Frontier"
+        },
+        {
+          "id": "unknown",
+          "label": "Unclassified"
+        }
+      ]
+    },
+    {
+      "id": "region",
+      "label": "Region",
+      "summary": "Developer region from the existing qualified inventory; independent from frontier membership.",
+      "options": [
+        {
+          "id": "usa",
+          "label": "USA"
+        },
+        {
+          "id": "china",
+          "label": "China"
+        },
+        {
+          "id": "other",
+          "label": "Other"
+        },
+        {
+          "id": "unknown",
+          "label": "Unknown"
+        }
+      ]
+    },
+    {
+      "id": "access",
+      "label": "Access",
+      "summary": "Supported access methods. Subscription and API can both apply. This does not inspect your account, sign-in or billing.",
+      "options": [
+        {
+          "id": "subscription",
+          "label": "Subscription"
+        },
+        {
+          "id": "api",
+          "label": "API"
+        },
+        {
+          "id": "local",
+          "label": "Local"
+        },
+        {
+          "id": "unknown",
+          "label": "Unknown"
+        }
+      ]
+    },
+    {
+      "id": "native",
+      "label": "Native",
+      "summary": "Capabilities exposed by the shipped harness. Image includes documented input or generation, voice includes speech input/output; About records direction. Classifier means a documented classification workflow, not general LLM potential.",
+      "options": [
+        {
+          "id": "llm",
+          "label": "LLM"
+        },
+        {
+          "id": "image",
+          "label": "Image"
+        },
+        {
+          "id": "video",
+          "label": "Video"
+        },
+        {
+          "id": "voice",
+          "label": "Voice"
+        },
+        {
+          "id": "classifier",
+          "label": "Classifier"
+        },
+        {
+          "id": "unknown",
+          "label": "Unknown"
+        }
+      ]
+    },
+    {
+      "id": "via",
+      "label": "Via models/plugins",
+      "summary": "Optional external model/plugin/tool routes, distinct from bundled/native support. Required integration and access are described in About; a supported route is not proof it is installed.",
+      "options": [
+        {
+          "id": "llm",
+          "label": "LLM"
+        },
+        {
+          "id": "image",
+          "label": "Image"
+        },
+        {
+          "id": "video",
+          "label": "Video"
+        },
+        {
+          "id": "voice",
+          "label": "Voice"
+        },
+        {
+          "id": "classifier",
+          "label": "Classifier"
+        },
+        {
+          "id": "unknown",
+          "label": "Unknown"
+        }
+      ]
     }
   ]
 }

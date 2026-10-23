@@ -96,3 +96,7 @@ Harness now shares Tools category/list keys: Up/Down choose categories; Tab/Shif
 
 ### Product catalog extension (T039J)
 CLI/TUI Agent Harnesses adds an optional F group selector (All, model-maker USA/China/Other, combo open/BYOK, combo commercial/managed, specialized/research/minimal). Up/down chooses the group while it has focus; Tab/Space enters its list, Shift+Tab returns to categories, F toggles group/list. Existing Tab from categories still enters the list directly. Each group has its own list offset. P/G remembers CLI group along with category/zone/item/About; R retains group and queued actions. No F action is dispatched outside the CLI category. Left/right remain step navigation. Manual references ignore Space/D actions in every group.
+
+
+### Combinable filters (T039K; supersedes the F group-picker keys above)
+F opens/closes CLI Filters. Up/Down chooses Frontier/Region/Access/Native/Via/Group, Tab/Shift+Tab focuses its next/previous option, and Space toggles it (Group chooses one value). C clears only filters/group, not queued installation actions. Left/Right remain steps and Enter remains Review. No choices means All for that dimension. OR within each row, AND across active rows. Empty results expose no hidden product/action. P/G remembers all selections/cursors/result/About state; refresh and step navigation retain filters.

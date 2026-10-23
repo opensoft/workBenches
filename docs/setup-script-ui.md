@@ -98,17 +98,49 @@ Kimi CLI remain distinct, as do international Qoder/Bright Zenith and Qoder CN/
 Alibaba Cloud. DeepSeek Harness lists dsh-TUI as an optional frontend plugin,
 rather than duplicating the harness for each execution mode.
 
-### CLI ownership groups
+### CLI filters
 
-Tab still enters the terminal list directly. **F** focuses a compact group
-selector; up/down chooses a group, Tab/Space enters its list, Shift+Tab returns
-to categories, and F toggles back to the list. Left/right continues changing
-steps. Groups are All, Model-maker — USA/China/Other, Combo — Open/BYOK,
-Combo — Commercial/managed, and Specialized/research/minimal. The main list
-shows only the active group's products. Model-maker describes ownership, while
-model policy describes flexibility; Qwen can therefore be in Model-maker China
-and still have selectable providers. China-associated/uncertain ownership stays
-qualified in product metadata. Each group retains its own list window.
+Press **F** to open Filters. It replaces the result list while you edit it:
+
+```text
+Harnesses · Filters                         1/77
+› Frontier   [✓] Frontier  [ ] Unclassified
+  Region     [✓] USA  [ ] China  [ ] Other
+  Access     [✓] Subscription  [✓] API  [ ] Local
+  Native     [ ] LLM  [✓] Image  [ ] Video  …
+  Via        [ ] LLM  [ ] Image  [ ] Voice  …
+  Group      [✓] All  [ ] Maker USA  …
+```
+
+The numbers above illustrate the layout; counts update from current tags.
+Up/down chooses the filter row; Tab/Shift+Tab focuses its next/previous option;
+Space toggles it. Group is a single-choice radio row retaining the original
+ownership quick views. F returns to results; C clears filters and group only.
+Left/right still changes steps and Enter still opens Review. On narrow screens,
+rows scroll and an option viewport keeps the focused checkbox visible.
+
+| Filter | Meaning |
+|---|---|
+| Frontier | Explicit editable set of frontier model-maker labs; independent harnesses do not inherit it from model access. The initial 12-lab set is listed in About and the catalog; unlisted makers remain unclassified. This is a curated label, not a performance ranking. |
+| Region | USA, China, Other, Unknown, using the existing qualified developer-region metadata. |
+| Access | Subscription, API, Local, Unknown. A product can support more than one access method; account/plan entitlement is not probed. |
+| Native | Shipped-interface LLM, Image, Video, Voice, Classifier workflows. Image/video can mean input or generation; inspect the recorded scope. Classifier requires a documented classification workflow, not general LLM potential. |
+| Via models/plugins | The same workload options for separately documented external routes. About names required model/plugin/tool setup; these are not bundled/native feature claims. |
+| Group | All, model-maker USA/China/Other, combo open/BYOK, combo commercial/managed, specialized/research/minimal. |
+
+Selections use **OR within a row, AND across active rows**. No choices in a row
+means All. For example, USA+China accepts either region, then API and Native Image
+must also match if selected in other rows. Unknown includes partial metadata;
+missing tags do not establish that a capability is unavailable. Positive tags
+carry separate source/basis/date and direction/route notes. All coding-harness
+entries have a user-inventory LLM baseline; additional tags are added from evidence.
+
+The collapsed filter bar shows the match count and active dimension count.
+Results retain the focused product when possible, otherwise select the first
+match. Each result set keeps its own scroll window. Zero results show an explicit
+empty state; Space/D cannot change an old hidden product. Queued changes remain
+in Review even when filtered out. P/G preserves selections, row/option focus and
+list/About state; refresh and ordinary step navigation retain filters.
 
 ### About metadata and evidence
 
@@ -138,9 +170,9 @@ installers, credential options or selection-plan keys are added.
 The compiler validates metadata and generates static Bash/Python snapshots:
 `python3 scripts/setup-tool-catalog.py --write`; `--check` rejects drift.
 Rendering uses only cached data/Bash builtins, with no runtime JSON parsing.
-PgUp/PgDn or [/] pages About. P/G restores category, CLI group, zone, item and
+PgUp/PgDn or [/] pages About. P/G restores category, CLI filters/group, zone, item and
 list/About offsets. Refresh retains these and every queued change. Narrow frames
-use a two-row group selector and compact manual-status labels so names stay
+use scrollable filter rows, visible option focus and compact manual-status labels so names stay
 readable. Large lists reserve room for capability About text (at least five lines in an 87×40 frame). Lists scroll while retaining the focused row and About/footer.
 
 ## Keys
@@ -150,7 +182,8 @@ readable. Large lists reserve room for capability About text (at least five line
 | ← / → | Previous/next step; stop at the ends. |
 | ↑ / ↓ | Move within the step; scroll Review. In Benches, move within the current zone. |
 | Tab / Shift+Tab | Switch category/list zones; on the CLI group selector, enter the list / return to categories. |
-| F | Focus/toggle the CLI ownership group selector; up/down chooses its group. |
+| F | Open/close CLI Filters. Within Filters, Tab focuses options and Space toggles. |
+| C | Clear CLI filter constraints and group without changing queued actions. |
 | Space / D | Queue/unqueue install or update / removal; Space opens Profiles actions. |
 | Enter | Open Review, apply from Review, or open a Profiles row. |
 | P | Visit Workstation and return to the remembered step and focus. |

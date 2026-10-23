@@ -215,3 +215,8 @@ setup_reference_labels marks browse-only entries; their About includes setup sou
 ## Product catalog extension
 
 Canonical schemaVersion-1 setup-tool-catalog.json stores stable IDs, home category, developer relationship/region, independent model policy, interface/execution modes, status/lineage, extra surfaces, multiple tags, capability/interoperability fields and source qualifications. Read-only detection is independent metadata. Build-time generation emits static Bash UI maps and Python detection data. Existing flat arrays keep old indexes and append references. CLI group state adds setup_cli_group and optional group focus, with per-group list offsets and saved P/G return fields. Unknown facts never become unsupported/absent by default.
+
+
+## Accepted faceted-filter extension (2026-10-23)
+
+CLI facet selections (Frontier/region/access/native/via) are ordered multi-select token strings; group remains one value. Filter panel row/option cursor and viewport are separate from the global component index. Cached match key/members/count and per-result list offsets drive the view. P/G stores all facets and cursors with the existing target; refresh retains them. Empty matches expose no focused component/action. Schema-2 catalog facet records separate curated lab membership, access and native/integrated capabilities with provenance.

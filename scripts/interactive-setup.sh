@@ -1015,7 +1015,10 @@ prev_checked_state=""
 # A variable-returning signature avoids a subshell for every key and idle tick.
 setup_update_ui_signature() {
     local signature_key
-    setup_ui_signature="$setup_cli_group:$setup_harness_zone:$setup_harness_category:$setup_tool_zone:$setup_tool_category:$CURRENT_SECTION:$current_selection:${setup_bench_zone:-category}:${setup_bench_category:-}:${setup_about_offset:-0}:${setup_review_offset:-0}:${setup_list_offset:-0}:$setup_ui_width:$setup_ui_height:$requirements_notice:$profiles_summary"
+    local signature_filters signature_facet
+    setup_cli_filter_key_v signature_filters
+    for signature_facet in "${setup_cli_filter_rows[@]}"; do signature_filters+=":$signature_facet:${setup_cli_filter_cursor[$signature_facet]:-0}"; done
+    setup_ui_signature="$signature_filters:$setup_cli_filter_row:$setup_cli_group:$setup_harness_zone:$setup_harness_category:$setup_tool_zone:$setup_tool_category:$CURRENT_SECTION:$current_selection:${setup_bench_zone:-category}:${setup_bench_category:-}:${setup_about_offset:-0}:${setup_review_offset:-0}:${setup_list_offset:-0}:$setup_ui_width:$setup_ui_height:$requirements_notice:$profiles_summary"
     for signature_key in "${!component_description[@]}"; do
         setup_ui_signature+=";$signature_key:${component_status[$signature_key]}:${component_checked[$signature_key]}:${component_action[$signature_key]}:${requirement_detail[$signature_key]}"
     done
@@ -1209,6 +1212,13 @@ setup_remember_target() {
     printf -v "${target_prefix}_return_zone" '%s' "$setup_bench_zone"
     printf -v "${target_prefix}_return_category" '%s' "$setup_bench_category"
     printf -v "${target_prefix}_return_bench" '%s' "$target_bench"
+    local target_facet
+    printf -v "${target_prefix}_return_filter_row" '%s' "$setup_cli_filter_row"
+    printf -v "${target_prefix}_return_filter_offset" '%s' "$setup_cli_filter_offset"
+    for target_facet in "${setup_cli_filter_rows[@]}"; do
+        printf -v "${target_prefix}_return_filter_${target_facet}" '%s' "${setup_cli_filter_selected[$target_facet]:-}"
+        printf -v "${target_prefix}_return_filter_cursor_${target_facet}" '%s' "${setup_cli_filter_cursor[$target_facet]:-0}"
+    done
     printf -v "${target_prefix}_return_cli_group" '%s' "$setup_cli_group"
     printf -v "${target_prefix}_return_harness_zone" '%s' "$setup_harness_zone"
     printf -v "${target_prefix}_return_harness_category" '%s' "$setup_harness_category"
@@ -1229,6 +1239,14 @@ setup_restore_target() {
     target_field="${target_prefix}_return_zone"; setup_bench_zone=${!target_field}
     target_field="${target_prefix}_return_category"; setup_bench_category=${!target_field}
     target_field="${target_prefix}_return_review_offset"; setup_review_offset=${!target_field}
+    local target_facet
+    target_field="${target_prefix}_return_filter_row"; setup_cli_filter_row=${!target_field:-0}
+    target_field="${target_prefix}_return_filter_offset"; setup_cli_filter_offset=${!target_field:-0}
+    for target_facet in "${setup_cli_filter_rows[@]}"; do
+        target_field="${target_prefix}_return_filter_${target_facet}"; setup_cli_filter_selected[$target_facet]=${!target_field:-}
+        target_field="${target_prefix}_return_filter_cursor_${target_facet}"; setup_cli_filter_cursor[$target_facet]=${!target_field:-0}
+    done
+    setup_cli_filter_cache_key=''
     target_field="${target_prefix}_return_cli_group"; setup_cli_group=${!target_field:-all}
     target_field="${target_prefix}_return_harness_zone"; setup_harness_zone=${!target_field:-category}
     target_field="${target_prefix}_return_harness_category"; setup_harness_category=${!target_field:-tui}
@@ -1395,39 +1413,11 @@ setup_catalog_members_v() {
     local members_value
     local -n members_map="setup_${2}_members"
     members_value="${members_map[$3]}"
-    if [[ "$2" == harness && "$3" == tui ]]; then members_value="${setup_cli_group_members[$setup_cli_group]}"; fi
+    if [[ "$2" == harness && "$3" == tui ]]; then setup_cli_filters_refresh; members_value=$setup_cli_filter_members; fi
     printf -v "$1" '%s' "$members_value"
 }
 
-setup_cli_group_key() {
-    local cli_key="$1" cli_index=0 cli_members
-    local -a cli_group_items=()
-    [[ "$CURRENT_SECTION" == 1 && "$setup_harness_category" == tui ]] || return 1
-    if [[ "$cli_key" == f || "$cli_key" == F ]]; then
-        if [[ "$setup_harness_zone" == group ]]; then setup_harness_zone=harness
-        else setup_harness_zone=group; fi
-        setup_about_offset=0
-        return 0
-    fi
-    [[ "$setup_harness_zone" == group ]] || return 1
-    for cli_index in "${!setup_cli_groups[@]}"; do [[ "${setup_cli_groups[cli_index]}" != "$setup_cli_group" ]] || break; done
-    case "$cli_key" in
-        up) ((cli_index <= 0)) || ((cli_index--)) ;;
-        down) ((cli_index+1 >= ${#setup_cli_groups[@]})) || ((cli_index++)) ;;
-        tab|' ') setup_harness_zone=harness ;;
-        backtab) setup_harness_zone=category ;;
-        d|D) return 0 ;;
-        *) return 1 ;;
-    esac
-    if [[ "$setup_cli_group" != "${setup_cli_groups[cli_index]}" ]]; then
-        setup_cli_group=${setup_cli_groups[cli_index]}
-        setup_catalog_members_v cli_members harness tui
-        IFS=' ' read -r -a cli_group_items <<< "$cli_members"
-        setup_focus_harness_key "${cli_group_items[0]}"
-    fi
-    setup_about_offset=0
-    return 0
-}
+setup_cli_group_key() { setup_cli_filters_key "$1"; }
 
 setup_focus_catalog_key() {
     local catalog_family="$1" catalog_key="$2" catalog_index
@@ -1456,6 +1446,13 @@ setup_catalog_key() {
     done
     setup_catalog_members_v catalog_member_text "$catalog_family" "$catalog_category"
     IFS=' ' read -r -a catalog_current_members <<< "$catalog_member_text"
+    if [[ "$catalog_family" == harness && "$catalog_category" == tui && ${#catalog_current_members[@]} == 0 && "$catalog_zone" != category ]]; then
+        case "$catalog_key" in
+            up|tab|backtab) setup_harness_zone=category; setup_about_offset=0; return 0 ;;
+            down|' '|d|D) return 0 ;;
+            *) return 1 ;;
+        esac
+    fi
     if [[ "$catalog_zone" == category ]]; then
         case "$catalog_key" in
             up) ((catalog_category_index <= 0)) || ((catalog_category_index--)) ;;
@@ -1467,7 +1464,7 @@ setup_catalog_key() {
         catalog_category=${catalog_categories[catalog_category_index]}
         setup_catalog_members_v catalog_member_text "$catalog_family" "$catalog_category"
         IFS=' ' read -r -a catalog_current_members <<< "$catalog_member_text"
-        setup_focus_catalog_key "$catalog_family" "${catalog_current_members[0]}"
+        ((${#catalog_current_members[@]} == 0)) || setup_focus_catalog_key "$catalog_family" "${catalog_current_members[0]}"
     else
         for catalog_member_index in "${!catalog_current_members[@]}"; do
             [[ "${catalog_current_members[catalog_member_index]}" != "${catalog_items[$current_selection]}" ]] || break
@@ -1535,7 +1532,7 @@ setup_arrive_step() {
         setup_bench_zone=category
         setup_bench_category="${setup_bench_categories_focusable[0]:-}"
     fi
-    if [[ "$CURRENT_SECTION" == 1 ]]; then setup_harness_zone=category; setup_harness_category=tui; setup_cli_group=all; fi
+    if [[ "$CURRENT_SECTION" == 1 ]]; then setup_harness_zone=category; setup_harness_category=tui; fi
     if [[ "$CURRENT_SECTION" == 2 ]]; then setup_tool_zone=category; setup_tool_category=editors; fi
     [[ "$CURRENT_SECTION" != 5 ]] || setup_review_offset=0
 }
@@ -1619,13 +1616,14 @@ declare -a setup_footer_lines=()
 setup_footer_height=4
 
 setup_frame_footer_prepare() {
+    if [[ "$CURRENT_SECTION" == 1 && "$setup_harness_category" == tui ]]; then setup_cli_filters_refresh; fi
     local footer_key='' footer_name='' footer_state footer_context footer_total footer_count=0 footer_item footer_action footer_line footer_left_width footer_hint footer_width
     local -a footer_hints=()
     for footer_item in "${!component_checked[@]}"; do
         if [[ "${component_checked[$footer_item]}" == true && -n "${component_action[$footer_item]}" ]]; then ((footer_count++)); fi
     done
     case "$CURRENT_SECTION" in
-        1) [[ "$setup_harness_zone" != harness ]] || footer_key="${ai_items[$current_selection]}" ;;
+        1) if [[ "$setup_harness_zone" == harness ]] && { [[ "$setup_harness_category" != tui ]] || ((setup_cli_filter_count > 0)); }; then footer_key="${ai_items[$current_selection]}"; fi ;;
         2) [[ "$setup_tool_zone" != tool ]] || footer_key="${tool_items[$current_selection]}" ;;
         3) footer_key="${requirement_items[$current_selection]}" ;;
         4) footer_key="${profile_items[$current_selection]}" ;;
@@ -1633,8 +1631,8 @@ setup_frame_footer_prepare() {
     if [[ -n "$footer_key" ]]; then footer_name="${component_description[$footer_key]}"; fi
     footer_context=$footer_name
     if [[ "$CURRENT_SECTION" == 5 ]]; then footer_context='Review · Nothing applied yet'
-    elif [[ "$CURRENT_SECTION" == 1 && "$setup_harness_zone" == group ]]; then
-        footer_context="GROUP · ${setup_cli_group_labels[$setup_cli_group]}"
+    elif [[ "$CURRENT_SECTION" == 1 && "$setup_harness_zone" == filter ]]; then
+        footer_context="FILTERS · $setup_cli_filter_count/$setup_cli_filter_total matches"
     elif [[ "$CURRENT_SECTION" == 1 && "$setup_harness_zone" == category ]]; then
         setup_catalog_group_summary_v footer_context harness "$setup_harness_category"
     elif [[ "$CURRENT_SECTION" == 2 && "$setup_tool_zone" == category ]]; then
@@ -1644,6 +1642,7 @@ setup_frame_footer_prepare() {
         footer_context+=" · $footer_state"
         [[ -z "${component_action[$footer_key]}" ]] || footer_context+=" → ${component_action[$footer_key]}"
     fi
+    if [[ "$CURRENT_SECTION" == 1 && "$setup_harness_category" == tui && "$setup_harness_zone" == harness && "$setup_cli_filter_count" == 0 ]]; then footer_context='No matches · C clears filters'; fi
     if [[ -n "$footer_key" && "${component_action[$footer_key]}" == uninstall ]]; then footer_context="$footer_name · Remove; projects and credentials kept"; fi
     if [[ "$footer_key" == host_shell ]]; then footer_context='Shell setup · Replaces shell settings'; fi
     if [[ "$footer_key" == workspace_repo ]]; then footer_context='Org workspace · May create a GitHub repository'; fi
@@ -1701,19 +1700,15 @@ setup_frame_footer_prepare() {
     fi
     if [[ "$CURRENT_SECTION" == 1 && "$setup_harness_category" == tui ]]; then
         if ((setup_ui_width < 60)); then
-            case "$setup_harness_zone" in
-                category) footer_hints=('Navigation: Tab List  F Groups' '←→ Steps  Enter Review  Q Quit') ;;
-                group) footer_hints=('Navigation: ↑↓ Group  Tab List' '←→ Steps  Enter Review  Q Quit') ;;
-                *) footer_hints=('Navigation: Space/D  F Groups' '←→ Steps  Enter Review  Q Quit')
-                   [[ -z "${setup_reference_labels[$footer_key]:-}" ]] || footer_hints[0]='Navigation: F Groups  [/] About' ;;
-            esac
+            if [[ "$setup_harness_zone" == filter ]]; then footer_hints=('Navigation: ↑↓ Tab Space  F/C' '←→ Steps  Enter Review  Q Quit')
+            else footer_hints=('Navigation: Tab  Space/D  F/C' '←→ Steps  Enter Review  Q Quit'); fi
         else
-            case "$setup_harness_zone" in
-                category) footer_hints[0]='Navigation: ↑↓ Category  Tab List  F Groups  PgUp/PgDn About' ;;
-                group) footer_hints[0]='Navigation: ↑↓ Group  Tab List  Shift+Tab Category  F Back' ;;
-                *) footer_hints[0]='Navigation: ↑↓ Move  Tab Category  Space/D Select  F Groups  [/] About'
-                   [[ -z "${setup_reference_labels[$footer_key]:-}" ]] || footer_hints[0]='Navigation: ↑↓ Move  Tab Category  F Groups  [/] About' ;;
-            esac
+            if [[ "$setup_harness_zone" == filter ]]; then footer_hints=('Navigation: ↑↓ Filter  Tab Option  Space Toggle  C Clear  F Results' '←→ Steps  Enter Review  PgUp/PgDn About  Q Quit')
+            else
+                footer_hints[0]='Navigation: ↑↓ Move  Tab Category  Space/D Select  F Filters  C Clear'
+                if [[ "$setup_harness_zone" == category ]]; then footer_hints[0]='Navigation: ↑↓ Category  Tab List  F Filters  C Clear  [/] About'
+                elif [[ -n "$footer_key" && -n "${setup_reference_labels[$footer_key]:-}" ]]; then footer_hints[0]='Navigation: ↑↓ Move  Tab Category  F Filters  C Clear  [/] About'; fi
+            fi
         fi
     fi
     for footer_hint in "${footer_hints[@]}"; do
@@ -1808,6 +1803,7 @@ declare -A workstation_about=(
 
 # Generated static metadata: startup and rendering need no JSON/tool probes.
 source "$SCRIPT_DIR/lib/setup-tool-catalog.generated.sh"
+source "$SCRIPT_DIR/lib/setup-cli-filters.sh"
 
 declare -A profile_about=(
     [personal_profiles]='Personal identity, GitHub and company accounts. Company, GitHub and AI access are authorized separately.'
@@ -1944,33 +1940,21 @@ setup_frame_benches() {
 setup_frame_components() {
     local component_line component_index component_key component_focus component_budget=0 component_focus_index=0 component_offset component_title component_about_title component_about_text component_anchor component_window=8 component_family=tool component_array=tool_items component_member_text component_offset_key
     [[ "$CURRENT_SECTION" != 1 ]] || { component_family=harness; component_array=ai_items; }
+    if [[ "$component_family" == harness && "$setup_harness_category" == tui && "$setup_harness_zone" == filter ]]; then setup_frame_cli_filter_panel; return; fi
     local -n component_categories="setup_${component_family}_members" component_category="setup_${component_family}_category" component_zone="setup_${component_family}_zone"
     local -n component_labels="setup_${component_family}_labels" component_offsets="setup_${component_family}_offsets" component_summaries="setup_${component_family}_summaries" component_flat="$component_array"
     local -a component_items=()
     setup_catalog_members_v component_member_text "$component_family" "$component_category"
     IFS=' ' read -r -a component_items <<< "$component_member_text"
     component_offset_key=$component_category
-    if [[ "$component_family" == harness && "$component_category" == tui ]]; then component_offset_key="tui:$setup_cli_group"; fi
+    if [[ "$component_family" == harness && "$component_category" == tui ]]; then component_offset_key="tui:$setup_cli_filter_cache_key"; fi
     component_title="${component_labels[$component_category]}"; component_offset=${component_offsets[$component_offset_key]:-0}
     [[ "$component_family" != harness ]] || component_title="Harnesses · $component_title"
     for component_index in "${!component_items[@]}"; do
         [[ "${component_items[component_index]}" != "${component_flat[$current_selection]}" ]] || component_focus_index=$component_index
     done
     [[ "$setup_ui_layout" != roomy ]] || setup_frame_append ''
-    if [[ "$component_family" == harness && "$component_category" == tui ]]; then
-        if ((setup_ui_width < 60)); then
-            setup_ui_pair_v component_line GROUP 'F Groups' "$setup_ui_width"
-            setup_frame_append "$component_line"
-            component_line="  ${setup_cli_group_labels[$setup_cli_group]}"
-            [[ "$component_zone" != group ]] || component_line="› ${setup_cli_group_labels[$setup_cli_group]}"
-            setup_ui_cut_v component_line "$component_line" "$setup_ui_width"
-        else
-            component_line="GROUP · ${setup_cli_group_labels[$setup_cli_group]}"
-            [[ "$component_zone" != group ]] || component_line="› $component_line"
-            setup_ui_pair_v component_line "$component_line" 'F Groups' "$setup_ui_width"
-        fi
-        setup_frame_append "$component_line"
-    fi
+    if [[ "$component_family" == harness && "$component_category" == tui ]]; then setup_frame_cli_filter_bar; fi
     setup_panel_top_v component_line "$component_title" ''; setup_frame_append "$component_line"
     if [[ -n "$setup_ui_height" ]]; then
         component_budget=$((setup_ui_height - ${#setup_frame_lines[@]} - setup_footer_height - 9))
@@ -1979,6 +1963,7 @@ setup_frame_components() {
     fi
     setup_ui_list_window "${#component_items[@]}" "$component_focus_index" "$component_budget" component_offset
     component_offsets[$component_offset_key]=$component_offset
+    if ((${#component_items[@]} == 0)); then setup_frame_row 'No matching harnesses. F Filters · C Clear'; fi
     if ((setup_window_above > 0)); then setup_frame_row "▲ $setup_window_above more"; fi
     for ((component_index=setup_window_start; component_index<setup_window_start+setup_window_count; component_index++)); do
         component_key="${component_items[component_index]}"; component_focus=false
@@ -1988,10 +1973,9 @@ setup_frame_components() {
     if ((setup_window_below > 0)); then setup_frame_row "▼ $setup_window_below more"; fi
     setup_panel_bottom_v component_line; setup_frame_append "$component_line"
     [[ "$setup_ui_layout" != roomy ]] || setup_frame_append ''
-    if [[ "$component_zone" == group ]]; then
-        component_anchor="harness-group:$setup_cli_group"
-        component_about_title="ABOUT ${setup_cli_group_labels[$setup_cli_group]^^}"
-        component_about_text="${setup_cli_group_summaries[$setup_cli_group]}"$'\nOwnership is separate from model flexibility. Product claims carry their own verification notes; unknown does not mean unsupported.'
+    if [[ "$component_family" == harness && "$component_category" == tui && ${#component_items[@]} == 0 ]]; then
+        component_anchor='harness-empty'; component_about_title='ABOUT · NO MATCHING HARNESSES'
+        component_about_text='No known entries match these filters. Some capability/access metadata is partial or unverified. F edits filters; C clears them. Queued changes stay in Review.'
     elif [[ "$component_zone" == category ]]; then
         component_anchor="$component_family-category:$component_category"; component_about_title="ABOUT ${component_labels[$component_category]^^}"
         component_about_text="${component_summaries[$component_category]}"$'\nIncludes: '
@@ -2217,7 +2201,7 @@ handle_input() {
 
     setup_input_key="$key"
     case "$key" in
-        f|F) setup_input_key=group; setup_cli_group_key "$key" || :; return 0 ;;
+        f|F|c|C) setup_input_key=filter; setup_cli_filters_key "$key" || :; return 0 ;;
         $'\t') setup_input_key=tab; [[ "$CURRENT_SECTION" != 0 ]] || setup_benches_key tab; [[ "$CURRENT_SECTION" != 2 ]] || setup_tools_key tab; [[ "$CURRENT_SECTION" != 1 ]] || setup_harnesses_key tab; return 0 ;;
         '[') setup_input_key=pageup; if [[ "$CURRENT_SECTION" != 5 ]]; then setup_about_scroll -1; fi; return 0 ;;
         ']') setup_input_key=pagedown; if [[ "$CURRENT_SECTION" != 5 ]]; then setup_about_scroll 1; fi; return 0 ;;
@@ -2344,6 +2328,10 @@ handle_input() {
 
                 # Determine action based on current status
                 [[ -n "$key" ]] || return 0
+                if [[ "$CURRENT_SECTION" == 1 && "$setup_harness_category" == tui ]]; then
+                    setup_cli_filters_refresh
+                    ((setup_cli_filter_count > 0)) && [[ " $setup_cli_filter_members " == *" $key "* ]] || return 0
+                fi
                 [[ -z "${setup_reference_labels[$key]:-}" ]] || return 0
                 local status="${component_status[$key]}"
                 local is_installed=false
