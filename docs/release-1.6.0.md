@@ -1,85 +1,58 @@
-# v1.6.0 — identity and company credential workflows
+# workBenches 1.6.0
 
-Status: scope frozen; candidate **v1.6.0-rc.3** prepared on 2026-10-19,
-at Brett's request. This is not a stable release or a completed release gate.
-The candidate includes profile-onboarding head
-`edefc67c340603a783876cdf1b424b3d9f1093db` and stable fixes through main
-`5880c09bf019f3166316d957e8fa26cd98c2ed54`.
+Final release preparation for the profile and company credential workflows
+merged in [PR #167](https://github.com/opensoft/workBenches/pull/167).
+Publication remains subject to the [release validation gate](release-automation.md).
+The existing v1.6.0-rc.1 through rc.3 tags are unchanged.
 
-The `release/1.6.0` branch accepts only candidate fixes and validation evidence;
-new feature scope continues separately. All 12 existing repository source pins
-remain unchanged in `config/release-lock.json`. See the
-[candidate notes](release-1.6.0-rc.3.md) for limitations and the remaining gates.
-Published candidate tags are immutable; further candidates receive new tags.
-v1.5.0 remains the stable release until a separately validated v1.6.0 is published.
+## Included
 
-| Feature | Status |
-| --- | --- |
-| Multiple personal/company email identities, reusable verified GitHub accounts, keyboard Profiles manager | Implemented on `feature/profile-onboarding`; multi-account migration, PTY, and native Tools callback tests passed; real browser/platform QA pending |
-| Company sign-in → authorized AI profile discovery and recovery | Broker/client implemented; live managed-identity/provider QA pending |
-| Approved local login changes → versioned Key Vault updates | Publication, conflict handling, and recovery implemented; examples disabled |
-| Startup/launch/hourly workstation synchronization | Opt-in agent and managed launcher hooks implemented; platform QA pending |
-| CPC weekly profile health sweep and expiry-driven supported refreshes | Container worker, broker scheduling, and attention alerts implemented; live provider QA pending |
+- Multiple personal and company identities, reusable verified GitHub account
+  links, and keyboard Profiles management with independent company sessions.
+- Opt-in company credential discovery, versioned publication and recovery,
+  workstation synchronization, and CPC health and refresh maintenance.
+- Recovery of interrupted credential publication and local writes, retryable
+  maintenance outages, and collision-safe profiles for multiple identities.
+- Managed Claude launch synchronization before lane startup, retaining the
+  managed credential lease in the launched session.
+- The complete pinned openRepoTools payload, deferred prompt-hook installation
+  and reconciliation, and Arch-family host-shell installation support.
 
-See [Profiles](profiles.md), the
-[profile onboarding specification](../specs/026-profile-onboarding/spec.md), and
-the [company credential synchronization specification](../specs/027-company-credential-sync/spec.md).
-Deployment/configuration instructions are in [Company credential synchronization](company-credential-sync.md).
+All 12 bench source revisions remain identical to the tested candidate. This
+release preparation changes version metadata and notes only; the guided wizard
+and Harness/Tools catalog work continue separately in v1.7.
 
-The company flow uses administrator-controlled profile grants. Entra/Keycloak
-establish identity; the broker enforces profile use/publication/maintenance rights.
-Only the server-side broker has ordinary application access to Key Vault. The
-CPC and workstations call the broker, not the vault directly.
+## Validation evidence
 
-Hourly metadata checks are the default background synchronization interval, with
-additional startup/resume, launch, and authentication-error checks. CPC performs
-a weekly health sweep, but actual token refresh schedules follow each provider's
-expiry and rotation requirements. Neither cadence guarantees that a copied OAuth
-session is safe to share; eligibility must be established per provider mode.
+Brett tested the merged setup on Raven at
+`5407ee97d7fb17a697c22ff1b7bad6d26f9a8afd` on 2026-10-23 and reported
+“this passes test.” That acceptance covers the setup flow he exercised.
 
-Before shipping the credential features, validate at least one provider mode end
-to end with real test profiles, including tenant isolation, publication grants,
-concurrent update/refresh conflicts, offline recovery, and login-required states.
-Unsupported modes remain disabled. New provider modes can follow in later
-compatible feature releases; unresolved broker security must not be bypassed to
-meet a version target.
+The integrated fixes passed 46 broker/client credential-sync tests without
+skips, the Profiles and multi-identity regressions, and all 15 launcher suites.
+[Main CI run 40017716135](https://github.com/opensoft/workBenches/actions/runs/40017716135)
+passed the source, setup, launcher and estate CI suites. This was CI-mode
+evidence, not a full protected release run. The final version-stamped commit
+requires its own source-lock checks and release evidence.
 
-Existing Key Vault direct-user recovery remains a separate compatibility path;
-company-managed broker mode must not silently fall back to direct user vault
-access when broker authorization fails. Existing credentials are not migrated or
-published merely by opening Profiles; company sync and managed paths require
-explicit opt-in.
+Full native Arch/WSL, two-account browser authentication, company tenant
+isolation, and approved live provider/broker/Key Vault/CPC acceptance remain
+required by the publication gate. Fixture tests and manual setup acceptance
+do not establish that these live cases passed.
 
+## Credential deployment boundaries
 
-## Candidate follow-up: openRepoTools #237 / workBenches #107
+Company synchronization and managed credential paths require explicit opt-in.
+Opening Profiles does not migrate or publish existing credentials. The broker
+enforces administrator-controlled use, publication and maintenance grants;
+workstations and CPC call the broker rather than accessing Key Vault directly.
+Company broker authorization failures do not fall back to direct-user vault
+access. Unsupported provider modes and disabled examples remain disabled.
 
-The candidate now consumes the complete openRepoTools payload at upstream merge
-`586dea25e073caadc33002e0157376788678dee0` (PR #247), taken with the vendored-copy
-updater. This includes the two additional installables `lanes-index` and
-`lane-worktrees`; host preflight and the dev-image COPY/chmod set match all 17
-upstream bin files. Grouped COPY instructions preserve the existing image-layer
-budget rather than adding two layers. The earlier upstream fixes in that commit's ancestry are
-included as a consistent pinned snapshot, not hand-edited vendor files.
+Hourly workstation metadata checks and weekly CPC health sweeps are defaults;
+actual token refresh follows provider expiry and rotation requirements. These
+cadences do not certify that a provider permits sharing an OAuth session.
+Validate each approved provider mode before deploying it.
 
-Fresh installation defers the hook pair until its linked target answers guard.
-An old broken prompt guard is removed while unrelated settings/hooks are kept.
-Workspace initialization reconciles the pair, including a rerun after an
-interruption. Container startup invokes the same upstream installer again after
-successful workspace linking so that the first startup completes deferred hooks.
-It never retries an initial installer refusal or edits hook JSON itself.
-
-This is a post-rc.1 candidate fix. The existing tag remains unchanged; a further
-candidate needs a new version/tag and exact-commit release validation.
-
-## Candidate follow-up: reviewed Linux bootstrap changes
-
-The advanced personal credential-registry prompt now explains that the registry
-is optional and asks for the GitHub username or organization owning its repository.
-The selected host-shell installation supports Arch, Manjaro, and EndeavourOS via
-`pacman -S --needed --noconfirm`.
-
-These selectively port the compatible pieces of the older local bootstrap work.
-GitHub connections continue through Profiles with isolated per-account sign-in;
-the older automatic global login, Git credential-helper changes, and SSH-key
-creation/upload are not part of this candidate. GitHub CLI must currently be
-installed on the workstation before connecting an account.
+See [Profiles](profiles.md), [company credential synchronization](company-credential-sync.md),
+and [the release process](releases.md) for configuration and installation.
