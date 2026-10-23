@@ -472,7 +472,7 @@ def tool_statuses():
     try:
         for component in (*COMMANDS, *REFERENCES, *sorted(MANAGED_HARNESSES)):
             try:
-                status = harness_installer.status(component) if component in MANAGED_HARNESSES else reference_status(component) if component in REFERENCES else ('installed' if tool_installed(component) else 'not installed')
+                status = harness_installer.workstation_status(component) if component in MANAGED_HARNESSES else reference_status(component) if component in REFERENCES else ('installed' if tool_installed(component) else 'not installed')
                 if status == 'installed' and component in providers and profile_credentials.status(providers[component]) != 0:
                     status = 'needs creds'
             except (OSError, ValueError, subprocess.TimeoutExpired):
@@ -498,7 +498,7 @@ def main():
     elif args.action == 'bench-statuses':
         bench_statuses()
     elif args.action == 'tool-status':
-        print(reference_status(args.component) if args.component in REFERENCES else ('installed' if tool_installed(args.component) else 'not installed'))
+        print(Installer().workstation_status(args.component) if args.component in MANAGED_HARNESSES else reference_status(args.component) if args.component in REFERENCES else ('installed' if tool_installed(args.component) else 'not installed'))
     elif args.component.startswith('bench_'):
         uninstall_bench(args.component[6:])
     else:

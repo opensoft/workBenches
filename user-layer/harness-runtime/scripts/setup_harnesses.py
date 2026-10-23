@@ -545,6 +545,23 @@ class Installer:
             return 'needs check'
         return 'installed'
 
+    def workstation_status(self, key):
+        state = self.status(key)
+        if state != 'installed':
+            return state
+        command = self.rows[key]['command']
+        # Query the native command search, not the Tools container's PATH.
+        self.runner.tools.pop(command, None)
+        located = self.runner.which(command)
+        if not located or Path(located).resolve() != (self.bin / command).resolve():
+            return 'needs path'
+        return state
+
+    def report_path_setup(self, key):
+        command = self.rows[key]['command']
+        print(f'{key}: PATH setup needed; verified launcher retained at {self.bin / command}.')
+        print('Add export PATH="$HOME/.local/bin:$PATH" to your shell startup file, then open a new terminal.')
+
     def uninstall(self, key):
         row = self.recipe(key)
         with self.locked(key):

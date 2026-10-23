@@ -38,13 +38,20 @@ def main():
     from setup_harness_targets import prepare, apply
     prepared = prepare(args.bench) if args.action in ('install', 'update', 'uninstall') else None
     installer = Installer(rows, home=args.home, runner=Runner(local=args.local))
+    workstation = not args.local and args.home is None
     if args.action == 'status':
-        print(installer.status(args.component))
+        print(installer.workstation_status(args.component) if workstation else installer.status(args.component))
     elif args.action == 'uninstall':
         installer.uninstall(args.component)
     else:
-        installer.install(args.component)
-    if prepared and apply(args.action, args.component, prepared):
+        # An install retry for PATH alone need not redownload a valid payload.
+        if not (args.action == 'install' and workstation and installer.workstation_status(args.component) == 'needs path'):
+            installer.install(args.component)
+    pending = apply(args.action, args.component, prepared) if prepared else []
+    if args.action in ('install', 'update') and workstation and installer.workstation_status(args.component) == 'needs path':
+        installer.report_path_setup(args.component)
+        return 2
+    if pending:
         return 2
     return 0
 

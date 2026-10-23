@@ -11,7 +11,10 @@ atomic activation. Native installer scripts run in a staging home; do not edit
 the user's shell/account files. Unsupported distributions fail before mutation.
 
 Derive the managed catalog/selection/dependency data from that registry. Preserve
-flat ordering and existing manual GUI rows. Installed status verifies owned
+flat ordering and existing manual GUI rows. Workstation readiness additionally
+requires native command lookup to resolve the owned launcher. Missing/shadowed
+PATH entries produce a distinct configuration-needed state and explicit startup
+guidance; retain the verified payload and preserve user shell files. Installed status verifies owned
 payload/provenance rather than assuming any same-named binary is this SKU.
 
 Apply reviewed target lists to exact local bench resources using existing Docker

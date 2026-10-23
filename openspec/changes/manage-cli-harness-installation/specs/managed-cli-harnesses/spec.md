@@ -42,3 +42,16 @@ existing managed CLI behavior SHALL remain separate and compatible.
 #### Scenario: Filter an already queued harness
 - **WHEN** filters hide a selected terminal harness and the user opens Review
 - **THEN** its queued action and reviewed targets remain visible and correct
+
+### Requirement: Native workstation command readiness
+A verified payload SHALL NOT be reported Ready when its owned launcher is absent
+from the native command search or shadowed by an external installation. Setup
+SHALL retain the payload, report PATH setup needed with explicit shell-startup
+guidance and return a nonzero apply result without rewriting user shell files.
+
+#### Scenario: Install on a workstation without the launcher directory on PATH
+- **WHEN** a Python, script or npm harness installs successfully into its owned prefix
+- **AND** the workstation does not resolve its public launcher by name
+- **THEN** status is PATH setup needed rather than Ready
+- **AND** the user receives the launcher location and the required PATH export
+- **AND** adding the directory first on PATH makes the next readiness check succeed

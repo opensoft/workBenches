@@ -188,7 +188,8 @@ def about(entry):
     if entry['id'] in INSTALLERS:
         recipe = INSTALLERS[entry['id']]
         lines += ['', ('Automatic install/update/removal available; command: ' + recipe.get('command', '') if recipe['kind'] != 'unavailable' else 'Unavailable: ' + recipe['note']),
-                  'Installation does not establish login or account access.', 'Installer source: ' + recipe['source']]
+                  'Installation does not establish login or account access.',
+                  'Launcher directory: ~/.local/bin. PATH setup needed means add this directory first in your shell PATH; setup keeps shell files unchanged.', 'Installer source: ' + recipe['source']]
     if not entry['managed']:
         lines += ['', 'Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.',
                   'Presence does not establish login, account access or documented feature availability.']

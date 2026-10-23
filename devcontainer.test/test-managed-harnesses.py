@@ -124,6 +124,34 @@ class InstallTests(unittest.TestCase):
         self.installer.uninstall('sample')
         self.assertEqual(foreign.read_text(), 'unrelated external copy')
 
+    def test_workstation_readiness_requires_the_owned_launcher_on_path(self):
+        self.installer.install('sample')
+        with patch.dict(os.environ, PATH='/usr/bin:/bin'):
+            self.assertEqual(self.installer.status('sample'), 'installed')
+            self.assertEqual(self.installer.workstation_status('sample'), 'needs path')
+            profiles = [self.home / name for name in ('.profile', '.bashrc', '.zshrc')]
+            self.installer.report_path_setup('sample')
+            self.assertFalse(any(path.exists() for path in profiles))
+        with patch.dict(os.environ, PATH=str(self.installer.bin) + ':/usr/bin:/bin'):
+            self.assertEqual(self.installer.workstation_status('sample'), 'installed')
+        # An older nvm/system copy earlier on PATH must not look like this
+        # verified managed installation, even with a writable npm prefix.
+        external = self.home / 'nvm/bin'; external.mkdir(parents=True)
+        binary = external / 'sample'; binary.write_text('#!/bin/sh\nexit 0\n'); binary.chmod(0o755)
+        with patch.dict(os.environ, PATH=str(external) + ':' + str(self.installer.bin) + ':/usr/bin:/bin', npm_config_prefix=str(external.parent)):
+            self.assertEqual(self.installer.workstation_status('sample'), 'needs path')
+        self.installer.uninstall('sample')
+        self.assertTrue(binary.exists())
+
+    def test_workstation_path_probe_uses_native_lookup_not_tools_path(self):
+        self.installer.install('sample')
+        from unittest.mock import Mock
+        native = Mock(); native.which.return_value = None
+        self.installer.runner.host = native
+        with patch.dict(os.environ, PATH=str(self.installer.bin) + ':/usr/bin:/bin'):
+            self.assertEqual(self.installer.workstation_status('sample'), 'needs path')
+        native.which.assert_called_with('sample')
+
     def test_tampering_and_forged_receipt_block_removal(self):
         self.installer.install('sample')
         active = self.installer.base / 'sample/current'

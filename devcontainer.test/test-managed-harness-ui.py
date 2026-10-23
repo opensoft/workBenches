@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """The same trusted recipes must control both native and Python plan paths."""
 import json
+import importlib.util
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
@@ -86,6 +88,33 @@ handle_input <<< D
         result = subprocess.run(['bash', '-c', script], cwd=ROOT, text=True, capture_output=True,
                                 env=dict(os.environ, WORKBENCHES_SETUP_LOG_FILE='/dev/null'))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_path_pending_is_not_ready_and_can_be_removed(self):
+        script = '''source scripts/interactive-setup.sh
+init_components --loading
+setup_cli_filters_clear
+setup_arrive_step 1; setup_harness_zone=harness; setup_focus_harness_key qwen_cli
+component_status[qwen_cli]='needs path'
+setup_status_label_v label 'needs path'
+[[ "$label" == 'PATH setup needed' ]] || exit 1
+handle_input <<< D
+[[ "${component_action[qwen_cli]}" == uninstall ]] || exit 2
+'''
+        result = subprocess.run(['bash', '-c', script], cwd=ROOT, text=True, capture_output=True,
+                                env=dict(os.environ, WORKBENCHES_SETUP_LOG_FILE='/dev/null'))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_path_only_install_retry_reports_configuration_without_downloading(self):
+        spec = importlib.util.spec_from_file_location('harness_cli', ROOT / 'scripts/setup-harnesses.py')
+        cli = importlib.util.module_from_spec(spec); spec.loader.exec_module(cli)
+        installer = Mock(); installer.workstation_status.return_value = 'needs path'
+        with patch.object(cli, 'Installer', return_value=installer), patch.object(cli.signal, 'signal'), \
+             patch.object(sys, 'argv', ['setup-harnesses.py', 'install', 'qwen_cli']), \
+             patch('setup_harness_targets.prepare', return_value=(None, None, [])), \
+             patch('setup_harness_targets.apply', return_value=[]):
+            self.assertEqual(cli.main(), 2)
+        installer.install.assert_not_called()
+        installer.report_path_setup.assert_called_once_with('qwen_cli')
 
 
 if __name__ == '__main__': unittest.main()

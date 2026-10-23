@@ -81,3 +81,14 @@ mounts. Its old button-label expectations now match Containers rows and wait for
 the new frame plus completed async inventory before sending the next shortcut.
 Test image tags are private per run and removed alongside its private containers
 and network. This is a second additional live suite beyond the 41 fixture suites.
+
+The 5ad1c6b Codex review identified native PATH readiness as a usability gap.
+Workstation status now distinguishes payload integrity from command discovery:
+missing/shadowed launchers report `needs path`/PATH setup needed, and Apply returns
+nonzero with exact startup-file instructions. Payloads remain installed, removal
+works in that state, and an Install retry avoids re-downloading solely for PATH.
+Tests cover a Python/script-style launcher with the directory missing, an older
+copy earlier on PATH with a writable nvm-style prefix, native lookup differing
+from Tools PATH, shell-file preservation, UI handling and the CLI retry result.
+The 24 installer and 8 UI integration tests, status/catalog/target checks, async
+first-paint suite and full wizard/layout matrix passed; strict OpenSpec passed.

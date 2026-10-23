@@ -48,7 +48,13 @@ Managed payloads live beneath `~/.local/share/workbenches/harnesses/<id>/version
 that owned prefix. Each component has a lock and a private receipt recording
 publisher source, executable hash and installed package version, source commit,
 or publisher version output. Status checks these files; it does not log in or
-run an agent. An external installation does not count as a managed installation.
+run an agent. Workstation readiness also checks native command lookup. If the
+launcher directory is missing from PATH, or another copy shadows it, the wizard
+shows **PATH setup needed** and Apply returns nonzero with the exact launcher
+location and `export PATH="$HOME/.local/bin:$PATH"` startup-file guidance. The
+verified installation is retained; setup does not rewrite shell files. Open a
+new terminal after configuring PATH. D still removes the owned copy, and an
+Install retry for PATH alone does not download the same payload again. An external installation does not count as a managed installation.
 A foreign file occupying the public command is preserved and reported, so it
 must be relocated using its original installer before creating that launcher.
 

@@ -230,6 +230,7 @@ setup_status_label_v() {
         up) status_text=Up ;;
         down) status_text=Down ;;
         installed|ready) status_text=Ready ;;
+        'needs path') status_text='PATH setup needed' ;;
         configured) status_text=Configured ;;
         missing) status_text=Missing ;;
         optional|'not configured') status_text='Not configured' ;;
@@ -2356,6 +2357,7 @@ handle_input() {
                 fi
                 if [[ "$input_key" == d || "$input_key" == D ]]; then
                     local can_remove="$is_installed" remove_bench_key
+                    [[ "$status" != 'needs path' || -z "${setup_managed_harnesses[$key]:-}" ]] || can_remove=true
                     if [[ "$can_remove" != true && -n "${setup_managed_harnesses[$key]:-}" ]]; then
                         for remove_bench_key in "${bench_items[@]}"; do
                             if [[ "${component_checked[bench_$remove_bench_key]}" == true && "${component_action[bench_$remove_bench_key]}" =~ ^(install|update)$ ]]; then can_remove=true; fi
