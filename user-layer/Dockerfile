@@ -159,6 +159,11 @@ RUN if [ -n "$EXTRA_CHOWN_DIRS" ]; then \
 
 USER $USERNAME
 
+# Optional, reviewed CLI selection. These files contain code and product IDs,
+# never account credentials. An empty selection performs no downloads.
+COPY --chown=${USERNAME}:${USERNAME} harness-runtime/ /opt/workbenches/harnesses/
+ENV PATH=/home/${USERNAME}/.local/bin:${PATH}
+
 # User-owned Codex overlay. Keep the shared Layer 0 package root-owned while
 # allowing the runtime user to run `codex update` against this writable prefix.
 ENV NPM_CONFIG_PREFIX=/home/${USERNAME}/.npm-global
@@ -195,10 +200,10 @@ RUN test -n "$CLAUDE_CODE_VERSION" \
 # runtime user's ownership instead of becoming root-only.
 RUN mkdir -p \
         /home/$USERNAME/.vscode-server/extensions \
-        /home/$USERNAME/.cargo
-
-# Configure git credential helper
-RUN git config --global credential.helper gh
+        /home/$USERNAME/.cargo \
+    && git config --global credential.helper gh \
+    && chmod 600 /opt/workbenches/harnesses/selection.list \
+    && HOME=/home/${USERNAME} python3 /opt/workbenches/harnesses/scripts/setup-harnesses.py install --local --selection /opt/workbenches/harnesses/selection.list
 
 # Avoid first-run Flutter telemetry prompts in images that include Flutter.
 RUN if command -v flutter >/dev/null 2>&1; then \

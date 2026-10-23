@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Selected workstation changes only. Rendering never calls these helpers.
+if ! declare -p setup_managed_harnesses >/dev/null 2>&1; then
+    source "$(dirname "${BASH_SOURCE[0]}")/setup-tool-catalog.generated.sh"
+fi
 declare -A workstation_plan_actions=()
 declare -A workstation_service_labels=([wsl]='WSL 2' [docker]=Docker [setup_tools]=Tools [vault]=Vault)
 workstation_managed_id=''
@@ -11,6 +14,7 @@ workstation_service_key() {
 }
 
 workstation_known_key() {
+    [[ -z "${setup_managed_harnesses[$1]:-}" ]] || return 0
     case "$1" in
         wsl|docker|setup_tools|vault|claude_cli|copilot_cli|codex_cli|antigravity_cli|opencode_cli|pi_cli|spec_kit|openspec|vscode|warp|wave|amnezia_vpn|0dcloud_vpn|host_shell|workspace_repo|ai_accounts|workbenches_account) return 0 ;;
         bench_?*) [[ "$1" =~ ^bench_[a-zA-Z0-9_+-]+$ ]] ;;

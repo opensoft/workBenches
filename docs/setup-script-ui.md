@@ -212,3 +212,8 @@ scripts/interactive-setup.sh --select-only /tmp/wizard-preview.json
 
 This runs readiness checks and may start managed Tools. Service/profile actions
 still run when explicitly opened; Q cancels the preview without applying a queue.
+
+Managed terminal entries use the normal Space/D action queue. Review shows the
+workstation plus benches queued for install/update as their exact targets. See
+[managed CLI harnesses](managed-cli-harnesses.md); pending stopped targets retain
+rebuild intent and do not count as a successful live install.

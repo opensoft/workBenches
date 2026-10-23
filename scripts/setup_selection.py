@@ -3,15 +3,18 @@ import json
 import os
 from pathlib import Path
 import sys
+from setup_harnesses import registry
 
 REPO = Path(__file__).resolve().parents[1]
 TOOLS = {'claude_cli', 'copilot_cli', 'codex_cli', 'antigravity_cli', 'opencode_cli',
          'pi_cli', 'spec_kit', 'openspec', 'vscode', 'warp', 'wave', 'amnezia_vpn', '0dcloud_vpn',
          'host_shell', 'workspace_repo', 'ai_accounts', 'workbenches_account'}
+INSTALLERS = registry()
+TOOLS |= {key for key, row in INSTALLERS.items() if row['kind'] != 'unavailable'}
 SERVICES = {'wsl', 'docker', 'setup_tools', 'vault'}
 AI = {'claude_cli': 'claude', 'codex_cli': 'openai', 'pi_cli': 'pi', 'opencode_cli': 'omniroute',
       'copilot_cli': 'copilot', 'antigravity_cli': 'antigravity'}
-NODE = {'codex_cli', 'copilot_cli', 'pi_cli', 'openspec'}
+NODE = {'codex_cli', 'copilot_cli', 'pi_cli', 'openspec'} | {key for key, row in INSTALLERS.items() if row['kind'] in {'npm', 'git-node'} or row.get('shell') == 'node' or row.get('tuiPackage')}
 
 
 def load(path):
@@ -65,6 +68,7 @@ def main():
                   'host_shell': 'Shell setup', 'workspace_repo': 'Org workspace',
                   'ai_accounts': 'AI accounts', 'workbenches_account': 'workBenches account', 'codex_cli': 'Codex', 'claude_cli': 'Claude',
                   'copilot_cli': 'Copilot', 'pi_cli': 'Pi', 'opencode_cli': 'OpenCode'}
+        labels.update({key: row['label'] for key, row in INSTALLERS.items()})
         for action, title in (('install', 'Installing'), ('update', 'Updating'), ('uninstall', 'Removing')):
             names = [labels.get(entry['key'], entry['key'].removeprefix('bench_'))
                      for entry in entries if entry['action'] == action]

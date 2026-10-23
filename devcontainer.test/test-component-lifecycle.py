@@ -120,10 +120,13 @@ def main():
             assert text in profiles_output, profiles_output[-3500:]
         assert statuses() == initial, 'Browsing Requirements/Profiles must not change installed components'
         # Remove a running bench and the npm CLI in one real setup.sh TUI plan.
-        output = setup_tui(repo, b'\x1b[C\tD\x1b[C\x1b[B\x1b[BD\n\n', env)
+        # Both screens arrive on Category. Tab into CLI results; the default
+        # Frontier filter hides Copilot, so Codex is one row below Claude.
+        output = setup_tui(repo, b'\x1b[C\tD\x1b[C\t\x1b[BD\n\n', env)
         assert 'pyBench uninstalled' in output, output[-2500:]
         assert 'All selected changes completed successfully' in output
-        assert statuses() == 'needs setup:not installed'
+        removed = statuses()
+        assert removed == 'needs setup:not installed', removed + '\n' + output[-10000:]
         assert not run(['docker', 'ps', '-aq'])
         for tag in ('latest', 'node'):
             assert subprocess.run(['docker', 'image', 'inspect', 'py-bench:' + tag], capture_output=True).returncode != 0

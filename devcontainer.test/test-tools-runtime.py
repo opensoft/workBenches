@@ -57,7 +57,7 @@ else:
                                stdin=slave, stdout=slave, stderr=slave, close_fds=True,
                                start_new_session=True)
     os.close(slave)
-    transcript = b''; stage = 0
+    transcript = b''; stage = 0; action_offset = 0
     deadline = time.monotonic() + 240
     try:
         while process.poll() is None and time.monotonic() < deadline:
@@ -67,21 +67,26 @@ else:
                 except OSError: break
                 transcript += chunk
             plain = terminal_screen(transcript)
+            # A fixture account file can change before its helper returns and
+            # the async inventory is repainted. Wait for this action's new
+            # frame and completed checks before submitting the next shortcut.
+            refreshed = b'\x1b[2J' in transcript[action_offset:]
+            workstation_ready = bool(re.search(r'REQUIREMENTS · (\d+)/\1 ready', plain))
             ready = False; keys = b''
             if stage == 0 and 'Navigation:' in plain and re.search(r'REQUIREMENTS · (\d+)/\1 ready', plain):
                 # Queue a bench, then return to Workstation for Vault actions.
                 ready = True; keys = b'\x1b[C\t \x1b[D'
-            elif stage == 1 and re.search(r'Vault\s+Missing\s+\[V Install\]', plain) and 'Changes selected: 1' in plain:
+            elif stage == 1 and re.search(r'Vault\s+Not installed', plain) and 'Changes selected: 1' in plain:
                 ready = True; keys = b'V'
-            elif stage == 2 and re.search(r'Vault\s+Up\s+\[V Connect\]', plain) and 'Changes selected: 1' in plain:
+            elif stage == 2 and refreshed and workstation_ready and re.search(r'Vault\s+Installed\s*·\s*Up', plain) and 'Changes selected: 1' in plain:
                 ready = True; keys = b'V'
             elif stage == 3 and 'Fixture waiting for approval' in plain:
                 ready = True; keys = b'\x03'
-            elif stage == 4 and 'Connection cancelled.' in plain and '[V Connect]' in plain and 'Changes selected: 1' in plain:
+            elif stage == 4 and refreshed and workstation_ready and 'Connection cancelled.' in plain and re.search(r'Vault\s+Installed\s*·\s*Up', plain) and 'Changes selected: 1' in plain:
                 ready = True; keys = b'V'
-            elif stage == 5 and re.search(r'Vault\s+Up\s+\[V Sign out\]', plain) and 'Changes selected: 1' in plain:
+            elif stage == 5 and refreshed and workstation_ready and (home / 'fixture-account-session').exists() and re.search(r'Vault\s+Installed\s*·\s*Up', plain) and 'Changes selected: 1' in plain:
                 ready = True; keys = b'v'
-            elif stage == 6 and re.search(r'Vault\s+Up\s+\[V Connect\]', plain) and 'Changes selected: 1' in plain:
+            elif stage == 6 and refreshed and workstation_ready and not (home / 'fixture-account-session').exists() and re.search(r'Vault\s+Installed\s*·\s*Up', plain) and 'Changes selected: 1' in plain:
                 ready = True; keys = b'G'
             elif stage == 7 and 'IDENTITIES' in plain and 'Personal & companies' in plain:
                 ready = True; keys = b'\r'
@@ -89,10 +94,11 @@ else:
                 ready = True; keys = b'q'
             elif stage == 9 and 'Profile action cancelled; saved profiles kept.' in plain:
                 ready = True; keys = b'G'
-            elif stage == 10 and re.search(r'Vault\s+Up\s+\[V Connect\]', plain) and 'Changes selected: 1' in plain:
+            elif stage == 10 and re.search(r'Vault\s+Installed\s*·\s*Up', plain) and 'Changes selected: 1' in plain:
                 ready = True; keys = b'Q'
             if ready:
                 print(f'Button-flow stage {stage} → {stage + 1}', flush=True)
+                action_offset = len(transcript)
                 os.write(master, keys); stage += 1
         try:
             process.wait(timeout=5)
@@ -115,6 +121,8 @@ def main():
     tools = 'workbenches-runtime-test-tools-' + suffix
     vault = 'workbenches-runtime-test-vault-' + suffix
     network = 'workbenches-runtime-test-' + suffix
+    tools_image = 'workbenches-runtime-test-tools:' + suffix
+    vault_image = 'workbenches-runtime-test-vault:' + suffix
     with tempfile.TemporaryDirectory(prefix='workbenches-runtime-test-') as temporary:
         home = Path(temporary)
         binary = home / 'minimal-bin'; binary.mkdir()
@@ -152,6 +160,7 @@ esac
                    XDG_CONFIG_HOME=str(home / '.config'), XDG_DATA_HOME=str(home / '.local/share'),
                    PATH=str(binary), TERM='xterm', WORKBENCHES_TOOLS_ROOT=str(ROOT),
                    WORKBENCHES_TOOLS_CONTAINER=tools, WORKBENCHES_VAULT_CONTAINER=vault,
+                   WORKBENCHES_TOOLS_IMAGE=tools_image, WORKBENCHES_VAULT_IMAGE=vault_image,
                    WORKBENCHES_SERVICES_NETWORK=network)
         env.pop('WORKBENCHES_TEST_NATIVE_TOOLS', None)
         try:
@@ -388,6 +397,8 @@ python3 "$2" "$1" "$3"
             for container in (tools, vault):
                 subprocess.run(['docker', 'rm', '-f', container], capture_output=True)
             subprocess.run(['docker', 'network', 'rm', network], capture_output=True)
+            for image in (tools_image, vault_image):
+                subprocess.run(['docker', 'image', 'rm', image], capture_output=True)
     return 0
 
 

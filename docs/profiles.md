@@ -1,5 +1,11 @@
 # Profiles
 
+The 1.7 scope also specifies
+[Kimi/GLM profile credentials](kimi-glm-profile-credentials.md): isolated Kimi
+accounts, persistent bench homes and qualified recovery/sync for both providers.
+That addition is planned, not implemented; the guide distinguishes current
+support from the new requirements.
+
 This feature is on `feature/profile-onboarding`, outside the v1.5 release.
 
 The broader [v1.6 plan](release-1.6.0.md) also targets broker-controlled company

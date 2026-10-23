@@ -1,0 +1,1301 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "gemini_cli",
+      "label": "Gemini CLI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@google/gemini-cli",
+      "command": "gemini",
+      "executable": "gemini",
+      "source": "https://github.com/google-gemini/gemini-cli",
+      "observedVersion": "0.65.0"
+    },
+    {
+      "id": "jules_tools",
+      "label": "Jules Tools",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@google/jules",
+      "command": "jules",
+      "executable": "jules",
+      "source": "https://jules.google/docs/cli/reference",
+      "observedVersion": "0.1.42"
+    },
+    {
+      "id": "grok_build",
+      "label": "Grok Build",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@xai-official/grok",
+      "command": "grok",
+      "executable": "grok",
+      "source": "https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/npm/grok/README.md",
+      "observedVersion": "1.0.67"
+    },
+    {
+      "id": "muse_code",
+      "label": "Muse Code",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "muse",
+      "executable": "muse",
+      "url": "https://dev.meta.ai/install.sh",
+      "source": "https://dev.meta.ai/docs/muse-code"
+    },
+    {
+      "id": "kiro_cli",
+      "label": "Kiro CLI",
+      "platforms": [
+        "linux"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "kiro-cli",
+      "executable": "kiro-cli",
+      "url": "https://cli.kiro.dev/install",
+      "source": "https://kiro.dev/docs/cli/",
+      "arguments": [
+        "--force"
+      ]
+    },
+    {
+      "id": "bob_shell",
+      "label": "Bob Shell",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@ibm/bob",
+      "command": "bob",
+      "executable": "bob",
+      "source": "https://bob.ibm.com/docs/shell/getting-started/install-and-setup",
+      "observedVersion": "2.0.9"
+    },
+    {
+      "id": "devin_cli",
+      "label": "Devin CLI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "devin",
+      "executable": "devin",
+      "url": "https://cli.devin.ai/install.sh",
+      "source": "https://docs.devin.ai/"
+    },
+    {
+      "id": "pool_cli",
+      "label": "pool",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "pool",
+      "executable": "pool",
+      "url": "https://downloads.poolside.ai/pool/install.sh",
+      "source": "https://github.com/poolsideai/pool"
+    },
+    {
+      "id": "qwen_cli",
+      "label": "Qwen Code",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@qwen-code/qwen-code",
+      "command": "qwen",
+      "executable": "qwen",
+      "source": "https://github.com/QwenLM/qwen-code",
+      "observedVersion": "0.26.0"
+    },
+    {
+      "id": "kimi_code",
+      "label": "Kimi Code",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@moonshot-ai/kimi-code",
+      "command": "kimi",
+      "executable": "kimi",
+      "source": "https://github.com/MoonshotAI/kimi-code",
+      "observedVersion": "2.3.1"
+    },
+    {
+      "id": "kimi_legacy",
+      "label": "Kimi CLI (legacy project)",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "python",
+      "package": "kimi-cli",
+      "command": "kimi-legacy",
+      "executable": "kimi",
+      "python": "3.12",
+      "source": "https://github.com/MoonshotAI/kimi-cli"
+    },
+    {
+      "id": "zcode_cli",
+      "label": "ZCode CLI/TUI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--help"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "git-node",
+      "url": "https://github.com/zai-org/ZCode.git",
+      "source": "https://github.com/zai-org/ZCode",
+      "command": "zcode",
+      "executable": "zcode",
+      "entry": "apps/zcode-cli/packages/cli/dist/zcode.cjs",
+      "interpreter": "node"
+    },
+    {
+      "id": "codebuddy_cli",
+      "label": "CodeBuddy Code / CLI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@tencent-ai/codebuddy-code",
+      "command": "codebuddy",
+      "executable": "codebuddy",
+      "source": "https://www.codebuddy.cn/docs/cli/installation",
+      "observedVersion": "2.174.0"
+    },
+    {
+      "id": "trae_agent",
+      "label": "Trae Agent",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--help"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "git-python",
+      "url": "https://github.com/bytedance/trae-agent.git",
+      "source": "https://github.com/bytedance/trae-agent",
+      "package": "trae-agent",
+      "command": "trae-cli",
+      "executable": "trae-cli",
+      "python": "3.12"
+    },
+    {
+      "id": "mimo_code",
+      "label": "MiMo Code",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@mimo-ai/cli",
+      "command": "mimo",
+      "executable": "mimo",
+      "source": "https://github.com/XiaomiMiMo/MiMo-Code",
+      "observedVersion": "0.1.15"
+    },
+    {
+      "id": "qoder_cn_cli",
+      "label": "Qoder CN CLI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@qodercn-ai/qoderclicn",
+      "command": "qodercn",
+      "executable": "qodercn",
+      "source": "https://docs.qoder.cn/cli/installation",
+      "observedVersion": "1.1.78"
+    },
+    {
+      "id": "vibe_cli",
+      "label": "Mistral Vibe / Vibe Code CLI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "python",
+      "package": "mistral-vibe",
+      "command": "vibe",
+      "executable": "vibe",
+      "python": "3.12",
+      "source": "https://github.com/mistralai/mistral-vibe"
+    },
+    {
+      "id": "iflow_cli",
+      "label": "iFlow CLI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@iflow-ai/iflow-cli",
+      "command": "iflow",
+      "executable": "iflow",
+      "source": "https://github.com/iflow-ai/iflow-cli",
+      "observedVersion": "0.5.19"
+    },
+    {
+      "id": "neovate_code",
+      "label": "Neovate Code",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@neovate/code",
+      "command": "neovate",
+      "executable": "neovate",
+      "source": "https://github.com/neovateai/neovate-code",
+      "observedVersion": "0.28.5"
+    },
+    {
+      "id": "crush_cli",
+      "label": "Crush",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@charmland/crush",
+      "command": "crush",
+      "executable": "crush",
+      "source": "https://github.com/charmbracelet/crush",
+      "observedVersion": "0.98.2"
+    },
+    {
+      "id": "aider_cli",
+      "label": "Aider",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "python",
+      "package": "aider-chat",
+      "command": "aider",
+      "executable": "aider",
+      "python": "3.12",
+      "source": "https://github.com/Aider-AI/aider"
+    },
+    {
+      "id": "goose_cli",
+      "label": "Goose",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "goose",
+      "executable": "goose",
+      "url": "https://github.com/aaif-goose/goose/releases/download/stable/download_cli.sh",
+      "source": "https://github.com/aaif-goose/goose"
+    },
+    {
+      "id": "cline_cli",
+      "label": "Cline CLI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "cline",
+      "command": "cline",
+      "executable": "cline",
+      "source": "https://github.com/cline/cline",
+      "observedVersion": "3.0.73"
+    },
+    {
+      "id": "continue_cli",
+      "label": "Continue CLI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@continuedev/cli",
+      "command": "cn",
+      "executable": "cn",
+      "source": "https://github.com/continuedev/continue",
+      "observedVersion": "1.5.47"
+    },
+    {
+      "id": "kilo_cli",
+      "label": "Kilo Code CLI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@kilocode/cli",
+      "command": "kilo",
+      "executable": "kilo",
+      "source": "https://github.com/Kilo-Org/kilocode",
+      "observedVersion": "7.8.17"
+    },
+    {
+      "id": "roo_cli",
+      "label": "Roo Code CLI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "roo",
+      "executable": "roo",
+      "url": "https://raw.githubusercontent.com/RooCodeInc/Roo-Code/main/apps/cli/install.sh",
+      "source": "https://github.com/RooCodeInc/Roo-Code/blob/main/.github/workflows/cli-release.yml"
+    },
+    {
+      "id": "plandex_cli",
+      "label": "Plandex",
+      "platforms": [
+        "linux"
+      ],
+      "verify": [
+        "version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "release",
+      "command": "plandex",
+      "executable": "plandex",
+      "source": "https://github.com/plandex-ai/plandex",
+      "repository": "plandex-ai/plandex",
+      "asset": "plandex_[0-9.]+_linux_{arch}\\.tar\\.gz",
+      "tagPrefix": "cli/",
+      "archMapping": {
+        "x86_64": "amd64",
+        "aarch64": "arm64"
+      }
+    },
+    {
+      "id": "codebuff_cli",
+      "label": "Codebuff",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "codebuff",
+      "command": "codebuff",
+      "executable": "codebuff",
+      "source": "https://github.com/CodebuffAI/codebuff",
+      "observedVersion": "1.0.688"
+    },
+    {
+      "id": "forgecode_cli",
+      "label": "ForgeCode",
+      "platforms": [
+        "linux"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "release",
+      "command": "forge",
+      "executable": "forge",
+      "source": "https://github.com/antinomyhq/forge",
+      "repository": "tailcallhq/forgecode",
+      "asset": "forge-{arch}-unknown-linux-musl",
+      "format": "binary"
+    },
+    {
+      "id": "gptme_cli",
+      "label": "gptme",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "python",
+      "package": "gptme[tui]",
+      "command": "gptme",
+      "executable": "gptme",
+      "python": "3.12",
+      "source": "https://github.com/gptme/gptme"
+    },
+    {
+      "id": "letta_code",
+      "label": "Letta Code",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@letta-ai/letta-code",
+      "command": "letta",
+      "executable": "letta",
+      "source": "https://github.com/letta-ai/letta-code",
+      "observedVersion": "0.34.23"
+    },
+    {
+      "id": "nanocoder_cli",
+      "label": "Nanocoder",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@nanocollective/nanocoder",
+      "command": "nanocoder",
+      "executable": "nanocoder",
+      "source": "https://github.com/Nano-Collective/nanocoder",
+      "observedVersion": "1.31.0"
+    },
+    {
+      "id": "kode_cli",
+      "label": "Kode CLI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@shareai-lab/kode",
+      "command": "kode",
+      "executable": "kode",
+      "source": "https://github.com/shareAI-lab/kode",
+      "observedVersion": "2.2.1"
+    },
+    {
+      "id": "codewhale_cli",
+      "label": "Codewhale",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "codewhale",
+      "command": "codew",
+      "executable": "codew",
+      "source": "https://github.com/codewhale-hq/Codewhale/blob/main/docs/INSTALL.md",
+      "observedVersion": "0.10.1"
+    },
+    {
+      "id": "jcode_cli",
+      "label": "jcode",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "jcode",
+      "executable": "jcode",
+      "url": "https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.sh",
+      "source": "https://github.com/1jehuang/jcode"
+    },
+    {
+      "id": "reasonix_cli",
+      "label": "Reasonix",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "reasonix",
+      "command": "reasonix",
+      "executable": "reasonix",
+      "source": "https://reasonix.io/docs/",
+      "observedVersion": "2.50.0"
+    },
+    {
+      "id": "oh_my_pi",
+      "label": "OH-MY-PI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "omp",
+      "executable": "omp",
+      "url": "https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.sh",
+      "source": "https://github.com/can1357/oh-my-pi",
+      "arguments": [
+        "--binary"
+      ]
+    },
+    {
+      "id": "cursor_cli",
+      "label": "Cursor CLI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "agent",
+      "executable": "agent",
+      "url": "https://cursor.com/install",
+      "source": "https://cursor.com/docs/cli/installation"
+    },
+    {
+      "id": "amp_cli",
+      "label": "Amp",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "amp",
+      "executable": "amp",
+      "url": "https://ampcode.com/install.sh",
+      "source": "https://ampcode.com/docs/cli"
+    },
+    {
+      "id": "droid_cli",
+      "label": "Droid",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "droid",
+      "executable": "droid",
+      "url": "https://app.factory.ai/cli",
+      "source": "https://docs.factory.com/cli/getting-started/quickstart"
+    },
+    {
+      "id": "auggie_cli",
+      "label": "Auggie",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@augmentcode/auggie",
+      "command": "auggie",
+      "executable": "auggie",
+      "source": "https://docs.augmentcode.com/cli/setup-auggie/install-auggie-cli",
+      "observedVersion": "0.36.0"
+    },
+    {
+      "id": "junie_cli",
+      "label": "Junie CLI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "junie",
+      "executable": "junie",
+      "url": "https://junie.jetbrains.com/install.sh",
+      "source": "https://junie.jetbrains.com/docs/junie-cli.html",
+      "search": [
+        "installer-home/.local/share/junie/current/Applications/junie.app/Contents/MacOS/junie",
+        "installer-home/.local/share/junie/current/junie/bin/junie",
+        "installer-home/.local/share/junie/current/junie"
+      ],
+      "cwdVariable": "EJ_RUNNER_PWD"
+    },
+    {
+      "id": "tabnine_cli",
+      "label": "Tabnine CLI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Legacy Tabnine CLI; upstream maintenance through 2026-12-31. Requires access to the configured Tabnine host; separate command preserves newer Tabnine/OpenCode integration.",
+      "kind": "script",
+      "command": "tabnine-cli",
+      "executable": "tabnine",
+      "shell": "node",
+      "url": "https://console.tabnine.com/update/cli/installer.mjs",
+      "arguments": [
+        "https://console.tabnine.com"
+      ],
+      "source": "https://docs.tabnine.com/main/getting-started/tabnine-cli/getting-started/installation"
+    },
+    {
+      "id": "mentat_cli",
+      "label": "Mentat CLI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Current remote-agent Mentat CLI installer identity not verified. The old AbanteAI repository is unavailable; npm mentat is unrelated. Awaiting the intended publisher install URL.",
+      "kind": "unavailable",
+      "source": "https://github.com/AbanteAI/mentat"
+    },
+    {
+      "id": "ante_cli",
+      "label": "Ante",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "ante",
+      "executable": "ante",
+      "url": "https://ante.run/install.sh",
+      "source": "https://github.com/AntigmaLabs/ante",
+      "environment": {
+        "ANTE_INSTALL_DIR": "{home}/.local/bin"
+      }
+    },
+    {
+      "id": "thegitai_cli",
+      "label": "TheGitAI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@thegitai/cli",
+      "command": "thegitai",
+      "executable": "thegitai",
+      "source": "https://thegit.ai/docs/getting-started/installation",
+      "observedVersion": "1.0.0-preview.62"
+    },
+    {
+      "id": "qoder_cli",
+      "label": "Qoder CLI \u2014 international",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@qoder-ai/qodercli",
+      "command": "qoder",
+      "executable": "qoder",
+      "source": "https://docs.qoder.com/cli/installation",
+      "observedVersion": "1.1.78"
+    },
+    {
+      "id": "openhands_cli",
+      "label": "OpenHands CLI",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "python",
+      "package": "openhands",
+      "command": "openhands",
+      "executable": "openhands",
+      "python": "3.12",
+      "source": "https://github.com/OpenHands/software-agent-sdk"
+    },
+    {
+      "id": "swe_agent",
+      "label": "SWE-agent",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--help"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "git-python",
+      "url": "https://github.com/SWE-agent/SWE-agent.git",
+      "source": "https://github.com/SWE-agent/SWE-agent",
+      "package": "sweagent",
+      "command": "sweagent",
+      "executable": "sweagent",
+      "python": "3.12"
+    },
+    {
+      "id": "mini_swe_agent",
+      "label": "mini-SWE-agent",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--help"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "python",
+      "package": "mini-swe-agent",
+      "command": "mini",
+      "executable": "mini",
+      "python": "3.12",
+      "source": "https://github.com/SWE-agent/mini-swe-agent"
+    },
+    {
+      "id": "autocoderover",
+      "label": "AutoCodeRover",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--help"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "git-requirements",
+      "url": "https://github.com/nus-apr/auto-code-rover.git",
+      "source": "https://github.com/nus-apr/auto-code-rover",
+      "command": "acr",
+      "executable": "acr",
+      "python": "3.11",
+      "entry": "app/main.py"
+    },
+    {
+      "id": "devon_cli",
+      "label": "Devon",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--help"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "git-python",
+      "url": "https://github.com/entropy-research/Devon.git",
+      "source": "https://github.com/entropy-research/Devon",
+      "package": "devon-agent",
+      "command": "devon-tui",
+      "executable": "devon-tui",
+      "python": "3.12",
+      "tuiPackage": "devon-tui"
+    },
+    {
+      "id": "ra_aid",
+      "label": "RA.Aid",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "python",
+      "package": "ra-aid",
+      "command": "ra-aid",
+      "executable": "ra-aid",
+      "python": "3.12",
+      "source": "https://github.com/ai-christianson/RA.Aid"
+    },
+    {
+      "id": "deep_agents_code",
+      "label": "Deep Agents Code",
+      "platforms": [
+        "linux"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "dcode",
+      "executable": "dcode",
+      "url": "https://langch.in/dcode",
+      "source": "https://github.com/langchain-ai/deepagents",
+      "search": [
+        "uv-bin/dcode",
+        "installer-home/.local/bin/dcode"
+      ]
+    },
+    {
+      "id": "pydantic_deep_agents",
+      "label": "Pydantic Deep Agents",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "python",
+      "package": "pydantic-deep[cli]",
+      "command": "pydantic-deep",
+      "executable": "pydantic-deep",
+      "python": "3.12",
+      "source": "https://github.com/vstorm-co/pydantic-deepagents"
+    },
+    {
+      "id": "tau_cli",
+      "label": "Tau",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "python",
+      "package": "ffwf-tau",
+      "command": "tau",
+      "executable": "tau",
+      "python": "3.12",
+      "source": "https://github.com/jmccardle/tau"
+    },
+    {
+      "id": "dexto_cli",
+      "label": "Dexto",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "dexto",
+      "command": "dexto",
+      "executable": "dexto",
+      "source": "https://github.com/truffle-ai/dexto",
+      "observedVersion": "1.14.2"
+    },
+    {
+      "id": "atomic_agent",
+      "label": "Atomic Agent",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "atomic-agent",
+      "executable": "atomic-agent",
+      "url": "https://atomicagent.io/install",
+      "source": "https://github.com/AtomicBot-ai/atomic-agent"
+    },
+    {
+      "id": "bitfun_cli",
+      "label": "BitFun",
+      "platforms": [
+        "linux"
+      ],
+      "verify": [
+        "--help"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "release",
+      "repository": "GCWing/OpenBitFun",
+      "source": "https://github.com/GCWing/OpenBitFun",
+      "command": "openbitfun",
+      "executable": "openbitfun",
+      "asset": "openbitfun-cli-.*-{arch}-unknown-linux-gnu\\.tar\\.gz"
+    },
+    {
+      "id": "maki_cli",
+      "label": "Maki",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "maki",
+      "executable": "maki",
+      "url": "https://raw.githubusercontent.com/tontinton/maki/main/install.sh",
+      "source": "https://github.com/tontinton/maki"
+    },
+    {
+      "id": "vt_code",
+      "label": "VT Code",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "vtcode",
+      "executable": "vtcode",
+      "url": "https://raw.githubusercontent.com/vinhnx/VTCode/main/scripts/install.sh",
+      "source": "https://github.com/vinhnx/VTCode"
+    },
+    {
+      "id": "hax_cli",
+      "label": "hax",
+      "platforms": [
+        "linux"
+      ],
+      "verify": [
+        "--help"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "release",
+      "repository": "OleksandrChekhovskyi/hax",
+      "source": "https://github.com/OleksandrChekhovskyi/hax",
+      "command": "hax",
+      "executable": "hax",
+      "asset": "hax-.*-linux-{arch}\\.tar\\.gz",
+      "checksums": "SHA256SUMS"
+    },
+    {
+      "id": "agentty_cli",
+      "label": "agentty",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "agentty",
+      "executable": "agentty",
+      "url": "https://raw.githubusercontent.com/agentty-org/agentty/master/install.sh",
+      "source": "https://github.com/agentty-org/agentty",
+      "environment": {
+        "PREFIX": "{home}/.local"
+      }
+    },
+    {
+      "id": "cecli",
+      "label": "cecli",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "python",
+      "package": "cecli-dev",
+      "command": "cecli",
+      "executable": "cecli",
+      "python": "3.12",
+      "source": "https://github.com/dwash96/cecli"
+    },
+    {
+      "id": "every_code",
+      "label": "Every Code",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@just-every/code",
+      "command": "coder",
+      "executable": "coder",
+      "source": "https://github.com/just-every/code",
+      "observedVersion": "0.6.196"
+    },
+    {
+      "id": "open_codex",
+      "label": "open-codex",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "open-codex",
+      "command": "open-codex",
+      "executable": "open-codex",
+      "source": "https://github.com/ymichael/codex",
+      "observedVersion": "0.1.31"
+    },
+    {
+      "id": "nori_cli",
+      "label": "nori-cli",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "nori-ai-cli",
+      "command": "nori",
+      "executable": "nori",
+      "source": "https://github.com/tilework-tech/nori-cli",
+      "observedVersion": "0.29.0"
+    },
+    {
+      "id": "hermes_agent",
+      "label": "Hermes Agent",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "hermes",
+      "executable": "hermes",
+      "url": "https://hermes-agent.nousresearch.com/install.sh",
+      "source": "https://github.com/NousResearch/hermes-agent",
+      "arguments": [
+        "--non-interactive",
+        "--skip-browser",
+        "--skip-computer-use"
+      ]
+    },
+    {
+      "id": "prime_agent",
+      "label": "Prime Agent",
+      "platforms": [
+        "linux"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "prime-agent",
+      "executable": "prime-agent",
+      "url": "https://raw.githubusercontent.com/PrimeIntellect-ai/prime-agent/main/install-rust.sh",
+      "source": "https://github.com/PrimeIntellect-ai/prime-agent",
+      "environment": {
+        "PRIME_AGENT_DEFER_DAEMON_STOP": "1",
+        "PRIME_AGENT_PRESERVE_NPM_BRIDGE": "1"
+      }
+    },
+    {
+      "id": "open_interpreter",
+      "label": "Open Interpreter",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "script",
+      "command": "interpreter",
+      "executable": "interpreter",
+      "url": "https://www.openinterpreter.com/install",
+      "source": "https://github.com/openinterpreter/openinterpreter",
+      "environment": {
+        "OPEN_INTERPRETER_NONINTERACTIVE": "true"
+      }
+    },
+    {
+      "id": "dsh_cli",
+      "label": "DeepSeek Harness (dsh)",
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "verify": [
+        "--version"
+      ],
+      "note": "Publisher source audited 2026-10-23; installation and account authentication are separate.",
+      "kind": "npm",
+      "package": "@deepseek-ai/dsh",
+      "command": "dsh",
+      "executable": "dsh",
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "observedVersion": "0.2.1-rc.2"
+    }
+  ]
+}

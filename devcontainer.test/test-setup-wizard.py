@@ -536,7 +536,7 @@ handle_input <<< F; setup_frame_build
 handle_input <<< $'\e[B'; setup_frame_build
 [[ "${setup_cli_filter_selected[region]}" == china && "${ai_items[$current_selection]}" == qwen_cli ]] || exit 39
 handle_input <<< F; handle_input <<< ' '; handle_input <<< D
-[[ "${component_action[qwen_cli]}" == '' && "${component_action[codex_cli]}" == update ]] || exit 40
+[[ "${component_action[qwen_cli]}" == uninstall && "${component_action[codex_cli]}" == update ]] || exit 40
 handle_input <<< F; handle_input <<< $'\e[A'; handle_input <<< F
 setup_focus_harness_key muse_code; setup_frame_build
 [[ "${setup_harness_offsets[$result_key]}" == "$saved_list" ]] || exit 41

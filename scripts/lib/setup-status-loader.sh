@@ -425,7 +425,7 @@ poll_status_loader() {
         mv "$file" "$reading" 2>/dev/null || continue
         IFS=$'\t' read -r state detail < "$reading"
         case "$state" in
-            up|down|missing|loading|installed|'not installed'|'needs check'|'needs creds'|'needs setup'|'needs docker'|'image only'|configured|optional|'sign in'|'signed in'|'not configured'|'needs configuration') ;;
+            up|down|missing|loading|installed|'not installed'|'needs check'|'needs path'|'needs creds'|'needs setup'|'needs docker'|'image only'|configured|optional|'sign in'|'signed in'|'not configured'|'needs configuration') ;;
             *) state='needs check' ;;
         esac
         if [[ "${component_status[$key]}" != "$state" ]]; then
