@@ -117,7 +117,7 @@ class Sync:
                 raise SyncError('local_change_not_published')
             if remote['mode'] == 'broker-refresh' and not after_login and not local.get('pending', {}).get('login'):
                 raise SyncError('interactive_login_publication_required')
-            if not (after_login or adopt):
+            if not (after_login or adopt or local.get('pending')):
                 if local.get('observedHash') != fingerprint:
                     local.update(observedHash=fingerprint, observedAt=time.time(), state='local_change_detected')
                     return
@@ -147,8 +147,6 @@ class Sync:
                 atomic(self.state_path, state)
             result = self.client.call('publish', {'profileId': name, 'credential': value,
                 'expectedVersion': expected, 'idempotencyKey': pending['id']})
-            local.update(version=result['version'], hash=fingerprint, state='published', lastSync=time.time())
-            local.pop('pending', None); local.pop('loginBase', None)
             remote['version'] = result['version']; state.setdefault('metadata', {})[name] = remote
             if remote['mode'] == 'broker-refresh':
                 # Remove the newly logged-in refresh token from the local shared
@@ -157,7 +155,12 @@ class Sync:
                 if credential(path) != value:
                     raise SyncError('local_writer_conflict')
                 atomic(path, downloaded['credential'])
-                local.update(version=downloaded['version'], hash=digest(downloaded['credential']))
+                result = downloaded
+                fingerprint = digest(downloaded['credential'])
+            # Keep the durable operation and old baseline until cleanup succeeds.
+            # A failed fetch can then replay publication idempotently and retry.
+            local.update(version=result['version'], hash=fingerprint, state='published', lastSync=time.time())
+            local.pop('pending', None); local.pop('loginBase', None)
             return
         if value is None and baseline is not None:
             # Local logout/deletion is intentional; do not silently sign the user back in.

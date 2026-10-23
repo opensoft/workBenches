@@ -367,6 +367,59 @@ class CompanySyncTests(unittest.TestCase):
             result = client.run(True)
         self.assertEqual(result['entries'][self.name]['state'], 'another_sync_is_running')
 
+    def refresh_login(self):
+        self.config['profiles'][self.name]['mode'] = 'broker-refresh'
+        self.publish(dict(self.value, refresh_token='fixture-old-refresh', expiresAt=time.time() + 6000))
+        client, path = self.client()
+        client.run(True)
+        baseline = read_json(client.state_path)['entries'][self.name].copy()
+        client.run(True, before_login=True)
+        logged_in = dict(self.value, access_token='fixture-new-login', refresh_token='fixture-new-refresh', expiresAt=time.time() + 6000)
+        atomic(path, logged_in)
+        return client, path, logged_in, baseline
+
+    def test_broker_refresh_retries_cleanup_after_fetch_failure_and_restart(self):
+        client, path, logged_in, baseline = self.refresh_login()
+        original = client.client.call
+        def offline_fetch(route, data=None):
+            if route == 'fetch': raise SyncError('service_unavailable')
+            return original(route, data)
+        client.client.call = offline_fetch
+        failed = client.run(True, after_login=True)['entries'][self.name]
+        self.assertEqual(failed['state'], 'service_unavailable')
+        self.assertEqual(failed['hash'], baseline['hash'])
+        self.assertIn('pending', failed)
+        self.assertEqual(read_json(path), logged_in)
+        self.assertEqual(self.vault.counter, 2)
+        self.assertNotIn('fixture-new-refresh', client.state_path.read_text())
+        restarted = Sync(client.root, Transport(self.broker, self.user))
+        recovered = restarted.run()['entries'][self.name]
+        self.assertEqual(recovered['state'], 'published')
+        self.assertNotIn('pending', recovered)
+        self.assertNotIn('refresh_token', read_json(path))
+        self.assertEqual(read_json(path)['access_token'], 'fixture-new-login')
+        self.assertEqual(self.vault.counter, 2)
+
+    def test_broker_refresh_cleanup_preserves_a_concurrent_local_login(self):
+        client, path, logged_in, baseline = self.refresh_login()
+        original = client.client.call
+        changed = dict(logged_in, access_token='fixture-concurrent-login')
+        def changed_during_fetch(route, data=None):
+            result = original(route, data)
+            if route == 'fetch': atomic(path, changed)
+            return result
+        client.client.call = changed_during_fetch
+        failed = client.run(True, after_login=True)['entries'][self.name]
+        self.assertEqual(failed['state'], 'local_writer_conflict')
+        self.assertEqual(failed['hash'], baseline['hash'])
+        self.assertIn('pending', failed)
+        self.assertEqual(read_json(path), changed)
+        restarted = Sync(client.root, Transport(self.broker, self.user))
+        failed = restarted.run()['entries'][self.name]
+        self.assertEqual(failed['state'], 'unresolved_publication_local_changed')
+        self.assertEqual(read_json(path), changed)
+        self.assertEqual(self.vault.counter, 2)
+
     def test_cpc_expiry_driven_refresh_never_releases_refresh_token(self):
         self.config['profiles'][self.name]['mode'] = 'broker-refresh'
         initial = dict(self.value, refresh_token='fixture-old', expiresAt=time.time() + 60)

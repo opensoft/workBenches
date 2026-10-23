@@ -47,3 +47,7 @@ automatically replayed. See the [runbook](../../docs/company-credential-sync.md)
   and test-created containers/networks were cleaned up.
 - Python compilation, Bash syntax, YAML/JSON parsing, documentation links and
   `git diff --check` passed. No real provider tokens or cloud resources were used.
+
+## Premerge review correction — 2026-10-23
+
+- [x] T001 [O] Preserve broker-refresh publication intent until sanitized credential installation succeeds; prove transient fetch failure/restart recovery, idempotency and concurrent writer preservation. — files: `scripts/credential_sync_client.py`, `devcontainer.test/test-company-credential-sync.py`, `specs/027-company-credential-sync/tasks.md`, `openspec/changes/fix-v1-6-premerge-recovery/` — verify: `docker compose -p workbenches-16-review -f devcontainer.test/docker-compose.yml --profile credential-sync run --rm --no-deps credential-sync`
