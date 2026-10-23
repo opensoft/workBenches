@@ -456,3 +456,8 @@ Every OpenSpec requirement in the change maps to at least one FR, and every FR d
 ## Accepted refinement 029-A06 (2026-10-23)
 
 FR-018 is extended to give Harness the Benches category/list pattern: TUI AI Tools, GUI AI Tools, IDE extensions, Workflow. About follows category or item focus, panel title is Harnesses with its category, and only members of that category appear. Tools Editors becomes Editors & IDEs. See amendment 029-A06 for the exact initial catalog. New reference entries are manual-only, clearly lack action checkboxes, show setup sources and optional read-only presence evidence, and never enter Review or plans. Existing managed IDs/order/actions remain stable. Presence never implies login. Both steps preserve category/zone/item/list/About state through P/G and refresh, and use builtins-only responsive rendering.
+
+
+## Accepted product catalog extension (2026-10-23)
+
+OpenSpec setup-agent-tool-catalog extends FR-018 display/catalog scope using Brett's supplied taxonomy and product inventory. Harness contains GUI Agent Harnesses, CLI/TUI Agent Harnesses, IDE/Editor Extensions, Workflow & Specification Tools. Tools contains IDEs & Editors, Terminals & Terminal Workspaces, Networking and Workstation setup. CLI groups distinguish ownership/region from provider policy. Structured About metadata qualifies user-provided vs documented capabilities, with interoperability fields rather than a category. All new entries remain manual references; managed IDs/plans remain unchanged. F optionally selects a CLI ownership group without altering existing Tab-to-list behavior. P/G/refresh preserve group, category, zone, item and scroll state.

@@ -361,3 +361,8 @@ Task T039G titles the Harness list Harnesses, adds cached per-item About for Har
 ## Accepted UI revision 029-A06 (2026-10-23)
 
 T039H generalizes the Tools category/list primitives for Harness without changing existing global indexes or installable IDs. Add static manual reference metadata for the agreed desktop apps, VS Code extensions, workflow tools and editors/IDEs; read-only inventory runs in the worker using native-host probes, never during rendering. Manual references are excluded from actions; existing plan validators continue rejecting their IDs. Save/restore both category states and list/About offsets. Update every affected interaction assertion and real-host script key sequence (Tab into TUI AI Tools before choosing Codex). See amendment 029-A06 for bounds and catalog.
+
+
+## Expanded catalog implementation (T039I/T039J)
+
+Governed by setup-agent-tool-catalog, accepted from Brett's 2026-10-23 taxonomy and full inventory. T039I adds validated canonical metadata and deterministic Bash/Python snapshots; T039J integrates them into existing category/list/About primitives and adds a compact optional CLI group picker. Reference detection remains read-only, conservative and independent of capability claims. No new installer or credential-plan keys. Runtime rendering/first paint never invokes a compiler or JSON parser. Test source coverage, stable identities, snapshot synchronization, safe shell quoting, manual/ambiguous detection, filtering/focus/return/refresh state, responsive bounds, no-fork timing and existing regressions.
