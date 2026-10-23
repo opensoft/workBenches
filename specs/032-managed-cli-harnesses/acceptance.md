@@ -64,3 +64,11 @@ shim, and all nine public smoke checks passed the stricter launcher verification
 114-layer budget rather than raising the limit. Release version, source locks,
 1.7 human review/merge/publication gates and feature 031 credential runtime are
 unchanged.
+
+GitHub's first live component-lifecycle run exposed an outdated TUI key sequence
+from before the category column and default Frontier filter: it never selected
+Codex for removal. The fixture now tabs into results and moves one row from
+Claude to Codex (Copilot is filtered out). The declared isolated Docker
+component-lifecycle service passed install/uninstall/reinstall with unchanged
+assertions preserving account data, source work, projects, shared bases and
+volumes. This is an additional live suite beyond the 41 local fixture suites.
