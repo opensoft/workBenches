@@ -3371,6 +3371,8 @@ case "$action" in
         # handed over. A launch that starts a conversation runs the update
         # check; one that starts none resolves offline.
         require_claude_bin "$(claude_launch_mode "$@")"
+        # Both lane handoff and bare exec need the managed check and lease.
+        wb_sync_before "$config_dir/.credentials.json" run
         # THE HAND-OFF (scenario "The launch says what launched"): lane-start
         # gets the path as CLAUDE_BIN below, the CLAUDE_RESOLVED_BIN marker
         # resolve_claude_bin exported beside it, and the resolver's version as
@@ -3673,7 +3675,6 @@ case "$action" in
         # This path starts Claude without a lane, including a refused handoff's
         # bare fallback. Hooks must see the mode of this actual launch.
         export CLAUDE_NO_LANE=1
-        wb_sync_before "$config_dir/.credentials.json" run
         CLAUDE_CONFIG_DIR="$config_dir" exec "$claude_bin" "${claude_flags[@]}" "$@"
         ;;
     esac
