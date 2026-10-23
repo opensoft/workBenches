@@ -1,0 +1,222 @@
+name: Release validation
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Candidate branch or immutable tag to test
+        required: true
+        default: main
+        type: string
+      mode:
+        description: Fixtures cannot authorize publication; release requires every native/live gate
+        required: true
+        default: fixtures
+        type: choice
+        options: [fixtures, release]
+  pull_request:
+    paths:
+      - .github/workflows/release-*.yml
+      - config/release-tests.json
+      - scripts/release_validation.py
+      - scripts/release-validation.py
+      - scripts/release-qa-*.py
+      - scripts/publish-validated-release.py
+      - devcontainer.test/test-release-automation.py
+      - devcontainer.test/test-native-acceptance-prompts.py
+      - devcontainer.test/test-wsl-workstation-acceptance.py
+      - .github/workflows/shared-images.yml
+  push:
+    branches: [main, 'release/**']
+  schedule:
+    - cron: '0 4 * * *'
+cache-mode: none
+permissions:
+  contents: read
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      hosted: ${{ steps.plan.outputs.hosted }}
+      sha: ${{ steps.plan.outputs.sha }}
+      ref: ${{ steps.plan.outputs.ref }}
+      automation: ${{ steps.plan.outputs.automation }}
+      mode: ${{ steps.plan.outputs.mode }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test the evidence gate itself
+        run: |
+          python3 automation/devcontainer.test/test-release-automation.py
+          python3 automation/devcontainer.test/test-native-acceptance-prompts.py
+      - name: Resolve exact source and select every applicable suite
+        id: plan
+        env:
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_REF: ${{ inputs.ref }}
+          EVENT: ${{ github.event_name }}
+          WORKFLOW_REF: ${{ github.ref }}
+          QA_NIGHTLY: ${{ vars.WB_RELEASE_QA_NIGHTLY }}
+        run: |
+          python3 automation/scripts/release-qa-plan.py --root candidate --automation automation \
+            --output "$RUNNER_TEMP/release-plan.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-plan
+          path: ${{ runner.temp }}/release-plan.json
+  image-source:
+    if: github.ref == 'refs/heads/main' && needs.plan.outputs.mode != 'ci' && contains(fromJSON(needs.plan.outputs.hosted), 'fresh-install')
+    needs: plan
+    runs-on: ubuntu-24.04
+    outputs:
+      trusted: ${{ steps.source.outputs.trusted }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-plan
+          path: ${{ runner.temp }}/image-source-plan
+      - id: source
+        env:
+          WB_SOURCE_READ_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.plan.outputs.sha }}
+        run: python3 automation/scripts/release-qa-image-source.py --plan "$RUNNER_TEMP/image-source-plan/release-plan.json" --commit "$SOURCE_SHA"
+  images:
+    needs: [plan, image-source]
+    if: needs.image-source.outputs.trusted == 'true'
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/shared-images.yml
+    with:
+      source_sha: ${{ needs.plan.outputs.sha }}
+  fixtures:
+    needs: [plan, image-source, images]
+    if: always() && needs.plan.result == 'success' && (needs.image-source.result == 'success' || needs.image-source.result == 'skipped') && (needs.images.result == 'success' || needs.images.result == 'skipped')
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.plan.outputs.hosted) }}
+    uses: ./.github/workflows/release-suite.yml
+    with:
+      suite: ${{ matrix.suite }}
+      source_sha: ${{ needs.plan.outputs.sha }}
+      source_ref: ${{ needs.plan.outputs.ref }}
+      automation_sha: ${{ needs.plan.outputs.automation }}
+  qa-preflight:
+    if: needs.plan.outputs.mode == 'release'
+    needs: plan
+    runs-on: ubuntu-24.04
+    environment: release-qa
+    outputs:
+      matrix: ${{ steps.ready.outputs.matrix }}
+      has_ready: ${{ steps.ready.outputs.has_ready }}
+    env:
+      WB_AUTOMATION_SHA: ${{ needs.plan.outputs.automation }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.plan.outputs.automation }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-plan
+          path: ${{ runner.temp }}/plan
+      - id: ready
+        name: Fail closed when protected workers/configuration are unavailable
+        env:
+          WB_QA_INVENTORY_TOKEN: ${{ secrets.RELEASE_RUNNER_INVENTORY_TOKEN }}
+          WB_SOURCE_READ_TOKEN: ${{ github.token }}
+          WB_QA_CONFIGURED: ${{ vars.WB_QA_CONFIGURED }}
+        run: |
+          python3 automation/scripts/release-qa-preflight.py --plan "$RUNNER_TEMP/plan/release-plan.json" \
+            --reports "$RUNNER_TEMP/blocked-evidence"
+      - if: steps.ready.outputs.has_blocked == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-evidence-blocked
+          path: ${{ runner.temp }}/blocked-evidence/*.json
+  qa:
+    name: Protected QA (${{ matrix.suite }})
+    if: needs.qa-preflight.outputs.has_ready == 'true'
+    needs: [plan, qa-preflight]
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.qa-preflight.outputs.matrix) }}
+    uses: ./.github/workflows/release-qa-suite.yml
+    with:
+      suite: ${{ matrix.suite }}
+      labels: ${{ toJSON(matrix.labels) }}
+      source_sha: ${{ needs.plan.outputs.sha }}
+      source_ref: ${{ needs.plan.outputs.ref }}
+      automation_sha: ${{ needs.plan.outputs.automation }}
+  qa-watchdog:
+    if: needs.qa-preflight.outputs.has_ready == 'true'
+    needs: [plan, qa-preflight]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.plan.outputs.automation }}
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release-qa-watchdog.py
+  evidence-gate:
+    if: always() && needs.plan.result == 'success'
+    needs: [plan, image-source, images, fixtures, qa-preflight, qa, qa-watchdog]
+    runs-on: ubuntu-24.04
+    env:
+      WB_AUTOMATION_SHA: ${{ needs.plan.outputs.automation }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.plan.outputs.automation }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-evidence-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/release-evidence
+      - name: Require complete fresh evidence for this commit and run
+        env:
+          MODE: ${{ needs.plan.outputs.mode }}
+          SOURCE_SHA: ${{ needs.plan.outputs.sha }}
+          SOURCE_REF: ${{ needs.plan.outputs.ref }}
+          JOB_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 automation/scripts/release-validation.py gate --root candidate \
+            --commit "$SOURCE_SHA" --ref "$SOURCE_REF" --mode "$MODE" \
+            --reports "$RUNNER_TEMP/release-evidence"
+          python3 -c 'import json,os; n=json.loads(os.environ["JOB_RESULTS"]); assert n["fixtures"]["result"]=="success"; assert os.environ["MODE"]!="release" or (n["qa-preflight"]["result"]=="success" and n["qa"]["result"]=="success" and n["qa-watchdog"]["result"]=="success")'
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-summary
+          path: ${{ runner.temp }}/release-evidence/summary.report
+          if-no-files-found: error

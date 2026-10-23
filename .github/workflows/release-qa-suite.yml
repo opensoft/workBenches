@@ -1,0 +1,70 @@
+name: Reusable protected QA suite
+on:
+  workflow_call:
+    inputs:
+      suite:
+        required: true
+        type: string
+      labels:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+      source_ref:
+        required: true
+        type: string
+      automation_sha:
+        required: true
+        type: string
+cache-mode: none
+permissions:
+  contents: read
+jobs:
+  qa:
+    runs-on: ${{ fromJSON(inputs.labels) }}
+    environment: release-qa
+    timeout-minutes: 190
+    env:
+      WB_AUTOMATION_SHA: ${{ inputs.automation_sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.automation_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Execute approved native or live adapter
+        env:
+          SUITE: ${{ inputs.suite }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          QA_CONFIG: ${{ vars.WB_QA_CONFIG_PATH || '/etc/workbenches/release-qa.json' }}
+          WB_AUTOMATION_ROOT: ${{ github.workspace }}/automation
+          OPENBENCHES_QA_FAILURE_CERT_PEM: ${{ vars.OPENBENCHES_QA_FAILURE_CERT_PEM }}
+          WB_QA_DIAGNOSTICS_DIR: ${{ runner.temp }}/release-evidence
+        run: |
+          python3 automation/scripts/release-validation.py run --root candidate \
+            --suite "$SUITE" --commit "$SOURCE_SHA" --ref "$SOURCE_REF" \
+            --qa-config "$QA_CONFIG" --reports "$RUNNER_TEMP/release-evidence"
+      - name: Upload allowlisted results only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-evidence-${{ inputs.suite }}
+          path: ${{ runner.temp }}/release-evidence/*.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload optional operator-encrypted native diagnosis
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: encrypted-native-diagnosis-${{ inputs.suite }}
+          path: ${{ runner.temp }}/release-evidence/*-native-debug.cms
+          if-no-files-found: ignore
+          retention-days: 2

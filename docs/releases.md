@@ -101,3 +101,11 @@ validating the remaining external artifacts as a further release requirement.
 Rolling back source means selecting the older release in a fresh checkout.
 It does not automatically downgrade installed tools, containers, or user data;
 those need a tested migration or restore procedure.
+
+## Automated release path
+
+Use the [release automation](release-automation.md) orchestrator for new releases.
+It reuses the declared fixture suites, requires version-specific native/live
+acceptance and commit-bound evidence, and guards stable publication. Fixture-only
+success cannot authorize a release. Initial QA runner/account/adapter provisioning
+is documented separately; unconfigured live gates remain blocked.

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Install this wrapper root-owned into the disposable QA image, then pin its hash.
+set -euo pipefail
+: "${WB_AUTOMATION_ROOT:?Trusted workflow must provide the automation checkout}"
+: "${WB_AUTOMATION_SHA:?Trusted workflow must provide its exact commit}"
+[[ "$(git -C "$WB_AUTOMATION_ROOT" rev-parse HEAD)" == "$WB_AUTOMATION_SHA" ]] || exit 1
+exec python3 "$WB_AUTOMATION_ROOT/scripts/release-qa-native.py"

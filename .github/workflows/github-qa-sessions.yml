@@ -1,0 +1,56 @@
+name: GitHub QA session renewal and team authorization
+on:
+  pull_request:
+    paths:
+      - .github/workflows/github-qa-sessions.yml
+      - qa/release/github-vault-sessions.py
+      - qa/release/provision-github-qa-sessions.py
+      - devcontainer.test/test-github-qa-sessions.py
+  workflow_dispatch:
+    inputs:
+      force_refresh:
+        description: Verify real refresh-token rotation
+        type: boolean
+        default: false
+  schedule:
+    - cron: '17 */4 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: openbenches-qa-github-session-writer
+  cancel-in-progress: false
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: python3 devcontainer.test/test-github-qa-sessions.py
+  live:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: unit
+    runs-on: ubuntu-24.04
+    environment: release-qa
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Sign in with QA workload identity
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+        with:
+          client-id: ${{ vars.OPENBENCHES_QA_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.OPENBENCHES_QA_AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.OPENBENCHES_QA_AZURE_SUBSCRIPTION_ID }}
+      - name: Renew if needed and verify real account membership
+        env:
+          FORCE_REFRESH: ${{ inputs.force_refresh }}
+        run: |
+          args=()
+          if [[ "$FORCE_REFRESH" == true ]]; then args+=(--refresh); fi
+          python3 qa/release/github-vault-sessions.py "${args[@]}"

@@ -18,6 +18,11 @@ SPEC = importlib.util.spec_from_file_location('provision', Path(__file__).with_n
 PROVISION = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PROVISION)
 
+# The workflow runs every four hours. A ten-minute expiry threshold can skip a
+# session which expires before the next run, leaving unattended QA with a dead
+# token between scheduled checks. Include the interval and scheduling margin.
+REFRESH_AHEAD_SECONDS = 4 * 60 * 60 + 15 * 60
+
 
 class SessionError(Exception):
     pass
@@ -50,7 +55,7 @@ def validate(bundle, login, user_id):
 
 def renew(bundle, login, user_id, force=False):
     tokens = validate(bundle, login, user_id)
-    if not force and bundle.get('expiresAt', 0) > time.time() + 600:
+    if not force and bundle.get('expiresAt', 0) > time.time() + REFRESH_AHEAD_SECONDS:
         return bundle, False
     if not tokens.get('refresh_token'):
         raise SessionError('reauthorization_required')

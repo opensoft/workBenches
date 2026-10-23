@@ -19,6 +19,11 @@ on:
       - 'devBenches/base-image/**'
       - 'devcontainer.test/test-install-friction.py'
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
 permissions:
   contents: read
 jobs:
@@ -28,8 +33,11 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - run: python3 devcontainer.test/test-install-friction.py
   publish:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: inputs.source_sha != '' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     needs: regression
+    concurrency:
+      group: shared-workstation-images-${{ inputs.source_sha || github.sha }}
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
@@ -38,7 +46,23 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ github.sha }}
+          path: automation
           persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Recheck protected source before executing its publisher
+        if: inputs.source_sha != ''
+        env:
+          WB_SOURCE_READ_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          python3 automation/scripts/release-qa-image-source.py --root candidate --commit "$SOURCE_SHA" --require-trusted
       - name: Prepare disk space on the disposable publisher runner
         run: |
           df -h /
@@ -51,9 +75,11 @@ jobs:
           free -h
           df -h /
       - name: Build and verify anonymous shared images through the declared bench
+        working-directory: candidate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REGISTRY_USER: ${{ github.actor }}
         run: |
           mkdir -p artifacts/shared-image-release
-          docker compose -f devcontainer.test/docker-compose.yml --profile image-release run --build --rm --no-deps image-release
+          SOURCE_SHA=$(git rev-parse HEAD)
+          docker compose -f devcontainer.test/docker-compose.yml --profile image-release run --build --rm --no-deps --env GITHUB_SHA="$SOURCE_SHA" image-release
