@@ -185,7 +185,12 @@ docker compose -f credential-broker/compose.yml --profile maintenance up -d --bu
 
 Each five-minute scheduler tick asks the broker to inspect authorized profiles.
 The broker skips recent healthy entries, refreshes supported near-expiry entries,
-and performs an otherwise weekly health sweep. `refreshMarginSeconds` must exceed
+and performs an otherwise weekly health sweep. A transient vault read or health-adapter
+transport failure before any refresh attempt reports `maintenance_unavailable`
+and retains the prior usable version and health timestamp for retry on a later
+scheduler tick. Fetch still reads and validates the credential before use.
+Explicit invalid/expired credentials require login; an attempted or uncertain
+refresh retains its no-replay/reconciliation guard. `refreshMarginSeconds` must exceed
 the CPC interval plus expected request time. No provider supports perpetual login
 merely because this process exists; revoked sessions or MFA still need a person.
 

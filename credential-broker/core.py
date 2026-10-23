@@ -333,20 +333,31 @@ class Broker:
                 return {'state': 'ready', 'checked': False}
             operation = uuid.uuid4().hex
             db.execute("UPDATE profiles SET state='refreshing',operation=?,checked=? WHERE id=?", (operation, now, name))
+        phase, refresh_attempted = 'read', False
         try:
             credential = self.vault.get(profile, row['version'])
             if due and profile['mode'] == 'broker-refresh':
                 # Never automatically repeat a consumed/ambiguous provider refresh.
+                refresh_attempted = True
                 credential = self.adapter(profile, 'refresh', credential)['credential']
                 return self.publish(identity, name, credential, row['version'], operation, 'refresh', operation)
+            phase = 'health'
             self.validate(profile, credential)
             with self.db() as db:
-                db.execute("UPDATE profiles SET state='ready',operation=NULL,checked=? WHERE id=? AND operation=?",
+                db.execute("UPDATE profiles SET state='ready',operation=NULL,checked=?,reason=NULL WHERE id=? AND operation=?",
                            (now, name, operation))
                 self.audit(db, identity, name, 'health', 'valid', row['version'])
             return {'state': 'ready', 'checked': True}
-        except Exception:
+        except Exception as error:
             with self.db() as db:
+                if not refresh_attempted and (phase == 'read' or
+                        isinstance(error, BrokerError) and error.code == 'provider_validation_or_refresh_failed'):
+                    # No token was consumed. Keep the previous health timestamp so
+                    # the next scheduler tick retries; fetch still validates use.
+                    db.execute("UPDATE profiles SET state='ready',operation=NULL,checked=?,reason=? WHERE id=? AND operation=?",
+                               (row['checked'], 'maintenance_unavailable', name, operation))
+                    self.audit(db, identity, name, 'maintenance', 'maintenance_unavailable')
+                    return {'state': 'maintenance_unavailable', 'reason': 'maintenance_unavailable'}
                 # Preserve any pending vault publication for explicit recovery.
                 current = db.execute('SELECT state FROM profiles WHERE id=?', (name,)).fetchone()
                 state = 'refresh_uncertain' if current['state'] == 'publishing' else 'login_required'

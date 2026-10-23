@@ -456,6 +456,46 @@ class CompanySyncTests(unittest.TestCase):
         self.assertEqual(self.vault.values[row['version']]['refresh_token'], 'fixture-rotated')
         tick(Transport(self.broker, self.cpc)); self.assertEqual(self.vault.counter, 2)
 
+    def expire_health_check(self):
+        with self.broker.db() as db:
+            db.execute('UPDATE profiles SET checked=? WHERE id=?', (time.time() - 604801, self.name))
+
+    def test_transient_maintenance_vault_read_recovers_without_login(self):
+        self.publish(); self.expire_health_check()
+        with patch.object(self.vault, 'get', side_effect=OSError('fixture transient vault outage')):
+            result = self.broker.maintain(self.cpc, self.name)
+        self.assertEqual(result['state'], 'maintenance_unavailable')
+        self.assertEqual(self.broker.metadata(self.user)['profiles'][0]['state'], 'ready')
+        self.assertEqual(self.broker.fetch(self.reader, self.name)['credential'], self.value)
+        self.assertTrue(self.broker.maintain(self.cpc, self.name)['checked'])
+        row = self.broker.metadata(self.user)['profiles'][0]
+        self.assertEqual(row['state'], 'ready'); self.assertIsNone(row['reason'])
+        self.assertEqual(self.vault.counter, 1)
+
+    def test_vault_read_failure_does_not_consume_or_block_a_due_refresh(self):
+        self.config['profiles'][self.name]['mode'] = 'broker-refresh'
+        self.publish(dict(self.value, refresh_token='fixture-old', expiresAt=time.time() + 60))
+        with patch.object(self.broker, 'adapter', wraps=self.broker.adapter) as adapter:
+            with patch.object(self.vault, 'get', side_effect=OSError('fixture transient vault outage')):
+                result = self.broker.maintain(self.cpc, self.name)
+            self.assertEqual(result['state'], 'maintenance_unavailable')
+            self.assertFalse(any(call.args[1] == 'refresh' for call in adapter.call_args_list))
+            self.assertEqual(self.broker.maintain(self.cpc, self.name)['version'], '2')
+            self.assertEqual(sum(call.args[1] == 'refresh' for call in adapter.call_args_list), 1)
+        self.assertEqual(self.vault.counter, 2)
+
+    def test_transient_health_adapter_failure_retries_but_invalid_credentials_do_not(self):
+        self.publish(); self.expire_health_check()
+        with patch.object(self.broker, 'adapter', side_effect=BrokerError(422, 'provider_validation_or_refresh_failed')):
+            result = self.broker.maintain(self.cpc, self.name)
+        self.assertEqual(result['state'], 'maintenance_unavailable')
+        self.assertTrue(self.broker.maintain(self.cpc, self.name)['checked'])
+        self.expire_health_check()
+        with patch.object(self.broker, 'adapter', return_value={'valid':False,'accountId':'wrong'}) as adapter:
+            self.assertEqual(self.broker.maintain(self.cpc, self.name)['state'], 'login_required')
+            self.assertEqual(self.broker.maintain(self.cpc, self.name)['state'], 'login_required')
+            self.assertEqual(adapter.call_count, 1)
+
     def test_cpc_failure_requires_login_and_does_not_repeat_refresh(self):
         self.config['profiles'][self.name]['mode'] = 'broker-refresh'
         self.publish(dict(self.value, refresh_token='fixture-denied', expiresAt=time.time() + 60))
