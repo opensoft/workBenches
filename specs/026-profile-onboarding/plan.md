@@ -54,3 +54,12 @@ production Tools/native-gh bridge checked out locked revision
 `1d4623d9772e3d2fbe48e84ef4136d8108eda66d` and completed submodule preparation;
 the temporary checkout was removed. This is source-preparation evidence, not
 full bench installation, browser-login or protected release acceptance.
+
+CI follow-up: hosted Ubuntu already provides gh, exposing a retry-test fixture
+that mistook executable availability for authentication. Reproduced with an
+unauthed system gh stub in the declared test container. The fixture now keeps
+gh installed throughout, explicitly denies credentials on the first clone,
+then returns synthetic credentials for the retry. No production change is
+needed for this correction.
+All 19 transport and 13 source/version tests passed with the unauthenticated
+system gh stub present after the fixture correction.

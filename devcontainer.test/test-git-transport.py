@@ -26,7 +26,7 @@ class GitTransportTests(unittest.TestCase):
                     "TEST_LOG": str(self.log)}
         git = self.bin / "git"
         git.write_text(f"#!{sys.executable}\n" + '''
-import json, os, pathlib, sys
+import json, os, pathlib, subprocess, sys
 args = sys.argv[1:]
 config_args = []
 while args[:1] == ["-c"]:
@@ -42,6 +42,10 @@ if args[:1] == ["clone"]:
     if url.startswith("https://github.com/") and os.environ.get("TEST_HTTPS_FAIL"): sys.exit(128)
     if url.startswith("https://github.com/") and os.environ.get("TEST_REQUIRE_GH_HELPER"):
         if "credential.https://github.com.helper=!gh auth git-credential" not in config_args:
+            sys.exit(128)
+        credential = subprocess.run(["gh", "auth", "git-credential", "get"],
+            input="protocol=https\\nhost=github.com\\n\\n", capture_output=True, text=True)
+        if credential.returncode or "password=fixture-private-token" not in credential.stdout:
             sys.exit(128)
     path = pathlib.Path(dest)
     if path.exists() and any(path.iterdir()): sys.exit(128)
@@ -144,10 +148,13 @@ printf 'username=fixture-account\\npassword=fixture-private-token\\n'
         self.assertFalse(any('--global' in call['args'] for call in self.calls))
 
     def test_private_clone_retries_after_authentication_is_available(self):
-        self.env.update(TEST_PROBE_STATUS='128', TEST_REQUIRE_GH_HELPER='1')
+        # gh may already be installed (as on hosted CI). Model missing
+        # authentication explicitly, rather than depending on its absence.
+        self.fake_gh()
+        self.env.update(TEST_PROBE_STATUS='128', TEST_REQUIRE_GH_HELPER='1', TEST_GH_DENIED='1')
         self.assertEqual(self.clone().returncode, 128)
         self.assertFalse(self.dest.exists())
-        self.fake_gh()
+        self.env.pop('TEST_GH_DENIED')
         self.assertEqual(self.clone().returncode, 0)
 
     def test_real_git_uses_native_gh_after_broken_absolute_helper(self):
