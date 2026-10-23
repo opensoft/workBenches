@@ -220,3 +220,7 @@ Canonical schemaVersion-1 setup-tool-catalog.json stores stable IDs, home catego
 ## Accepted faceted-filter extension (2026-10-23)
 
 CLI facet selections (Frontier/region/access/native/via) are ordered multi-select token strings; group remains one value. Filter panel row/option cursor and viewport are separate from the global component index. Cached match key/members/count and per-result list offsets drive the view. P/G stores all facets and cursors with the existing target; refresh retains them. Empty matches expose no focused component/action. Schema-2 catalog facet records separate curated lab membership, access and native/integrated capabilities with provenance.
+
+## Four-column filter state
+
+Brett's 2026-10-23 follow-up supersedes T039K's six-row checkbox UI: expose only Type, Region, Access and Native as single-choice columns above live results. New sessions default Type to Frontier and others to All; C clears all to All. In filter focus Left/Right or Tab chooses a column and Up/Down cycles values immediately; F returns to results. Type Open/Closed records supported model weight availability, never the harness source license. Preserve qualified native/routed evidence in About, queue safety, empty guards and navigation state. See `openspec/changes/setup-harness-filters/design.md` and T039L.

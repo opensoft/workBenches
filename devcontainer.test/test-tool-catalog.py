@@ -66,6 +66,13 @@ class CatalogTests(unittest.TestCase):
         catalog.validate(self.data)
         self.assertEqual(self.data['schemaVersion'],2)
         self.assertEqual(len(self.data['frontierLabs']),12)
+        self.assertEqual([f['id'] for f in self.data['filterFacets']], ['type','region','access','native'])
+        self.assertIn('open', catalog.filter_values(self.entries['codex_cli'],'type'))
+        self.assertIn('closed', catalog.filter_values(self.entries['codex_cli'],'type'))
+        self.assertIn('frontier', catalog.filter_values(self.entries['codex_cli'],'type'))
+        self.assertNotIn('frontier', catalog.filter_values(self.entries['opencode_cli'],'type'))
+        self.assertEqual(self.entries['claude_cli']['filters']['models']['values'], ['closed'])
+        self.assertIn('unknown', catalog.filter_values(self.entries['pi_cli'],'type'))
         self.assertEqual(self.entries['codex_cli']['filters']['frontierLab'],'openai')
         self.assertIsNone(self.entries['opencode_cli']['filters']['frontierLab'])
         self.assertIn('image',catalog.filter_values(self.entries['codex_cli'],'native'))
@@ -79,6 +86,8 @@ class CatalogTests(unittest.TestCase):
         for field,value in (('native','classifier'),):
             self.assertFalse(any(value in e['filters'][field]['values'] for e in self.data['entries'] if e['filters']))
         mutations=[lambda e:e['filters'].update(frontierLab='fake-lab'),
+                   lambda e:e['filters']['models'].update(values=['open-source-harness']),
+                   lambda e:e['filters']['models'].update(sources=[]),
                    lambda e:e['filters']['native'].update(values=['telepathy']),
                    lambda e:e['filters']['access'].update(basis='unverified',values=['api']),
                    lambda e:e['filters']['via'].update(sources=[])]

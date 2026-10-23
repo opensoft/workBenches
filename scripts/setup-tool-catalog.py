@@ -76,10 +76,10 @@ def validate(data):
             options.add(option['id']); safe_text(option['label'], 'facet option label')
         require('unknown' in options, 'facet must expose unknown metadata')
         facets[facet['id']] = options
-    require(set(facets) == {'frontier', 'region', 'access', 'native', 'via'}, 'invalid facet dimensions')
-    require(facets['frontier'] == {'frontier', 'unknown'} and facets['region'] == {'usa', 'china', 'other', 'unknown'}, 'invalid frontier/region options')
-    require(facets['access'] == {'subscription', 'api', 'local', 'unknown'}, 'invalid access options')
-    require(facets['native'] == facets['via'] == {'llm', 'image', 'video', 'voice', 'classifier', 'unknown'}, 'invalid capability options')
+    require(list(facets) == ['type', 'region', 'access', 'native'], 'invalid facet dimensions/order')
+    require(facets['type'] == {'frontier', 'open', 'closed', 'all', 'unknown'} and facets['region'] == {'all', 'usa', 'china', 'other', 'unknown'}, 'invalid type/region options')
+    require(facets['access'] == {'all', 'subscription', 'api', 'local', 'unknown'}, 'invalid access options')
+    require(facets['native'] == {'all', 'llm', 'image', 'video', 'voice', 'classifier', 'unknown'}, 'invalid capability options')
     entries = data['entries']; require(isinstance(entries, list) and entries, 'empty catalog')
     ids = set(); labels = set(); managed = set(); by_id = {}
     for entry in entries:
@@ -93,13 +93,14 @@ def validate(data):
         if not is_cli:
             require(facts is None, key + ': filters are CLI-only')
         else:
-            require(isinstance(facts, dict) and set(facts) == {'frontierLab', 'access', 'native', 'via'}, key + ': invalid filter facts')
+            require(isinstance(facts, dict) and set(facts) == {'frontierLab', 'access', 'native', 'via', 'models'}, key + ': invalid filter facts')
             require(facts['frontierLab'] is None or facts['frontierLab'] in lab_ids, key + ': unknown frontier lab')
-            for facet in ('access', 'native', 'via'):
+            for facet in ('access', 'native', 'via', 'models'):
                 record = facts[facet]
                 require(isinstance(record, dict) and set(record) == {'values', 'complete', 'basis', 'note', 'sources', 'recorded'}, key + ': invalid facet record')
                 text_list(record['values'], key + ':' + facet)
-                require(set(record['values']) <= facets[facet] - {'unknown'}, key + ': invalid facet value')
+                allowed = {'open', 'closed'} if facet == 'models' else facets['native' if facet == 'via' else facet] - {'unknown', 'all'}
+                require(set(record['values']) <= allowed, key + ': invalid facet value')
                 require(type(record['complete']) is bool, key + ': invalid completeness')
                 require(record['basis'] in {'primary-source', 'user-provided', 'documented-route', 'unverified'}, key + ': invalid filter provenance')
                 require(record['basis'] != 'unverified' or not record['values'], key + ': unverified positive filter values')
@@ -170,10 +171,11 @@ def about(entry):
         filter_summary = 'Filter tags: ' + ('Frontier (curated)' if facts['frontierLab'] else 'Frontier unclassified') + ' · ' + entry['developerRegion']
         for facet, label in (('access', 'Access'), ('native', 'Native'), ('via', 'Via')):
             filter_summary += ' · ' + label + ': ' + ('/'.join(facts[facet]['values']) or 'Unknown')
+        filter_summary += ' · Models: ' + ('/'.join(facts['models']['values']) or 'Unknown')
         lines.insert(1, filter_summary)
         lines += ['', 'Filter Frontier: ' + (facts['frontierLab'] or 'Unclassified') + ' (curated lab membership, not a model ranking)',
                   'Filter region: ' + entry['developerRegion']]
-        for facet, label in (('access', 'Access methods'), ('native', 'Native workloads'), ('via', 'Via models/plugins')):
+        for facet, label in (('access', 'Access methods'), ('native', 'Native workloads'), ('via', 'Via models/plugins'), ('models', 'Model weights')):
             record = facts[facet]
             lines.append(label + ': ' + (', '.join(record['values']) or 'Unknown') + ' [' + record['basis'] + ('; partial' if not record['complete'] else '') + ']')
             lines.append('Scope: ' + record['note'])
@@ -191,6 +193,8 @@ def about(entry):
 def filter_values(entry, facet):
     facts = entry['filters']
     if facet == 'frontier': return 'frontier' if facts['frontierLab'] else 'unknown'
+    if facet == 'type':
+        return ' '.join((['frontier'] if facts['frontierLab'] else []) + facts['models']['values'] + ([] if facts['models']['complete'] else ['unknown']))
     if facet == 'region': return {'USA': 'usa', 'China': 'china', 'Other': 'other'}.get(entry['developerRegion'], 'unknown')
     record = facts[facet]
     return ' '.join(record['values'] + ([] if record['complete'] else ['unknown']))
@@ -217,14 +221,14 @@ def snapshots(data):
     mapping('setup_cli_group_labels', {r['id']: r['label'] for r in groups})
     mapping('setup_cli_group_summaries', {r['id']: r['summary'] for r in groups})
     mapping('setup_cli_group_members', {r['id']: ' '.join(e['id'] for e in entries if e['category'] == 'tui' and e['section'] == 'harness' and (r['id'] == 'all' or e['cliGroup'] == r['id'])) for r in groups})
-    facet_rows = data['filterFacets'] + [{'id': 'group', 'label': 'Group', 'summary': 'Existing ownership/group quick views. All removes this constraint. OR within a filter row, AND across active rows; C clears every filter.', 'options': data['cliGroups']}]
+    facet_rows = data['filterFacets']
     array('setup_cli_filter_rows', [r['id'] for r in facet_rows])
     mapping('setup_cli_filter_labels', {r['id']: r['label'] for r in facet_rows})
     mapping('setup_cli_filter_summaries', {r['id']: r['summary'] for r in facet_rows})
     mapping('setup_cli_filter_options', {r['id']: ' '.join(o['id'] for o in r['options']) for r in facet_rows})
     mapping('setup_cli_filter_option_labels', {r['id'] + ':' + o['id']: o['label'] for r in facet_rows for o in r['options']})
     cli_entries = [e for e in entries if e['section'] == 'harness' and e['category'] == 'tui']
-    mapping('setup_cli_filter_values', {e['id'] + ':' + facet: filter_values(e, facet) for e in cli_entries for facet in ('frontier', 'region', 'access', 'native', 'via')})
+    mapping('setup_cli_filter_values', {e['id'] + ':' + facet: filter_values(e, facet) for e in cli_entries for facet in ('type', 'region', 'access', 'native', 'via')})
     mapping('setup_cli_filter_lab_labels', {r['id']: r['label'] for r in data['frontierLabs']})
     mapping('setup_catalog_labels', {e['id']: e['label'] for e in entries})
     mapping('setup_reference_labels', {e['id']: e['label'] for e in entries if not e['managed']})

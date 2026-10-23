@@ -316,7 +316,7 @@ render_setup_frame
 
     def test_every_catalog_item_has_about_and_categories_are_isolated(self):
         output=self.shell(r'''
-init_components --loading
+init_components --loading; setup_cli_filters_clear
 setup_ui_width=87; setup_ui_height=''
 for key in "${ai_items[@]}" "${tool_items[@]}"; do
     [[ "$key" != separator* ]] || continue
@@ -449,7 +449,7 @@ printf '%s\n' "${setup_frame_lines[@]}"
         self.assertIn('›',ANSI.sub('',output))
         self.assertIn('ABOUT DEEPSEEK HARNESS',output)
 
-    def test_all_cli_ownership_groups_fit_and_keep_focus_in_both_locales(self):
+    def test_all_cli_type_views_fit_and_keep_focus_in_both_locales(self):
         for locale in ('C.UTF-8','C'):
             output=self.shell(r'''
 init_components --loading
@@ -458,12 +458,13 @@ for key in "${requirement_items[@]}"; do component_status[$key]=up; done
 CURRENT_SECTION=1; setup_harness_category=tui
 for setup_ui_width in 36 60 87; do
     for setup_ui_height in 24 40 ''; do
-        for setup_cli_group in "${setup_cli_groups[@]}"; do
-            IFS=' ' read -r -a members <<< "${setup_cli_group_members[$setup_cli_group]}"
+        for type_value in ${setup_cli_filter_options[type]}; do
+            setup_cli_filter_toggle type "$type_value"
+            IFS=' ' read -r -a members <<< "$setup_cli_filter_members"
             setup_focus_harness_key "${members[${#members[@]}-1]}"
             for setup_harness_zone in filter harness; do
                 setup_frame_build
-                printf 'GROUPCASE:%s:%s:%s:%s\n' "$setup_ui_width" "$setup_ui_height" "$setup_cli_group" "$setup_harness_zone"
+                printf 'GROUPCASE:%s:%s:%s:%s\n' "$setup_ui_width" "$setup_ui_height" "$type_value" "$setup_harness_zone"
                 printf '%s\n' "${setup_frame_lines[@]}"
             done
         done
@@ -471,14 +472,14 @@ for setup_ui_width in 36 60 87; do
 done
 ''',locale)
             cases=output.split('GROUPCASE:')[1:]
-            self.assertEqual(len(cases),126)
+            self.assertEqual(len(cases),90)
             for case in cases:
                 marker,*lines=ANSI.sub('',case).splitlines(); width,height,group,zone=marker.split(':')
                 self.assert_bounds(lines,int(width),int(height) if height else None)
                 text='\n'.join(lines)
                 for label in ('FILTERS','ABOUT','Navigation:','›'):self.assertIn(label,text)
                 if zone=='harness':self.assertIn('F Filters',text) if int(width)>=60 else self.assertIn('F/C',text)
-                if zone=='filter' and not height:self.assertIn('OR within each row',text)
+                if zone=='filter' and not height:self.assertIn('Columns combine with AND',text)
 
     def test_all_twelve_benches_have_visible_copy_in_their_category(self):
         import json

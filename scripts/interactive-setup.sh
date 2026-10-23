@@ -1015,10 +1015,9 @@ prev_checked_state=""
 # A variable-returning signature avoids a subshell for every key and idle tick.
 setup_update_ui_signature() {
     local signature_key
-    local signature_filters signature_facet
+    local signature_filters
     setup_cli_filter_key_v signature_filters
-    for signature_facet in "${setup_cli_filter_rows[@]}"; do signature_filters+=":$signature_facet:${setup_cli_filter_cursor[$signature_facet]:-0}"; done
-    setup_ui_signature="$signature_filters:$setup_cli_filter_row:$setup_cli_group:$setup_harness_zone:$setup_harness_category:$setup_tool_zone:$setup_tool_category:$CURRENT_SECTION:$current_selection:${setup_bench_zone:-category}:${setup_bench_category:-}:${setup_about_offset:-0}:${setup_review_offset:-0}:${setup_list_offset:-0}:$setup_ui_width:$setup_ui_height:$requirements_notice:$profiles_summary"
+    setup_ui_signature="$signature_filters:$setup_cli_filter_row:$setup_harness_zone:$setup_harness_category:$setup_tool_zone:$setup_tool_category:$CURRENT_SECTION:$current_selection:${setup_bench_zone:-category}:${setup_bench_category:-}:${setup_about_offset:-0}:${setup_review_offset:-0}:${setup_list_offset:-0}:$setup_ui_width:$setup_ui_height:$requirements_notice:$profiles_summary"
     for signature_key in "${!component_description[@]}"; do
         setup_ui_signature+=";$signature_key:${component_status[$signature_key]}:${component_checked[$signature_key]}:${component_action[$signature_key]}:${requirement_detail[$signature_key]}"
     done
@@ -1194,7 +1193,6 @@ setup_bench_zone=category
 setup_bench_category=''
 setup_harness_zone=category
 setup_harness_category=tui
-setup_cli_group=all
 declare -A setup_harness_offsets=()
 setup_tool_zone=category
 setup_tool_category=editors
@@ -1214,12 +1212,9 @@ setup_remember_target() {
     printf -v "${target_prefix}_return_bench" '%s' "$target_bench"
     local target_facet
     printf -v "${target_prefix}_return_filter_row" '%s' "$setup_cli_filter_row"
-    printf -v "${target_prefix}_return_filter_offset" '%s' "$setup_cli_filter_offset"
     for target_facet in "${setup_cli_filter_rows[@]}"; do
         printf -v "${target_prefix}_return_filter_${target_facet}" '%s' "${setup_cli_filter_selected[$target_facet]:-}"
-        printf -v "${target_prefix}_return_filter_cursor_${target_facet}" '%s' "${setup_cli_filter_cursor[$target_facet]:-0}"
     done
-    printf -v "${target_prefix}_return_cli_group" '%s' "$setup_cli_group"
     printf -v "${target_prefix}_return_harness_zone" '%s' "$setup_harness_zone"
     printf -v "${target_prefix}_return_harness_category" '%s' "$setup_harness_category"
     printf -v "${target_prefix}_return_tool_zone" '%s' "$setup_tool_zone"
@@ -1241,13 +1236,10 @@ setup_restore_target() {
     target_field="${target_prefix}_return_review_offset"; setup_review_offset=${!target_field}
     local target_facet
     target_field="${target_prefix}_return_filter_row"; setup_cli_filter_row=${!target_field:-0}
-    target_field="${target_prefix}_return_filter_offset"; setup_cli_filter_offset=${!target_field:-0}
     for target_facet in "${setup_cli_filter_rows[@]}"; do
-        target_field="${target_prefix}_return_filter_${target_facet}"; setup_cli_filter_selected[$target_facet]=${!target_field:-}
-        target_field="${target_prefix}_return_filter_cursor_${target_facet}"; setup_cli_filter_cursor[$target_facet]=${!target_field:-0}
+        target_field="${target_prefix}_return_filter_${target_facet}"; setup_cli_filter_selected[$target_facet]=${!target_field:-all}
     done
     setup_cli_filter_cache_key=''
-    target_field="${target_prefix}_return_cli_group"; setup_cli_group=${!target_field:-all}
     target_field="${target_prefix}_return_harness_zone"; setup_harness_zone=${!target_field:-category}
     target_field="${target_prefix}_return_harness_category"; setup_harness_category=${!target_field:-tui}
     target_field="${target_prefix}_return_tool_zone"; setup_tool_zone=${!target_field:-category}
@@ -1700,10 +1692,10 @@ setup_frame_footer_prepare() {
     fi
     if [[ "$CURRENT_SECTION" == 1 && "$setup_harness_category" == tui ]]; then
         if ((setup_ui_width < 60)); then
-            if [[ "$setup_harness_zone" == filter ]]; then footer_hints=('Navigation: ↑↓ Tab Space  F/C' '←→ Steps  Enter Review  Q Quit')
+            if [[ "$setup_harness_zone" == filter ]]; then footer_hints=('Navigation: ←→ Column  ↑↓ Cycle' 'F Results  C All  Enter Review Q Quit')
             else footer_hints=('Navigation: Tab  Space/D  F/C' '←→ Steps  Enter Review  Q Quit'); fi
         else
-            if [[ "$setup_harness_zone" == filter ]]; then footer_hints=('Navigation: ↑↓ Filter  Tab Option  Space Toggle  C Clear  F Results' '←→ Steps  Enter Review  PgUp/PgDn About  Q Quit')
+            if [[ "$setup_harness_zone" == filter ]]; then footer_hints=('Navigation: ←→/Tab Column  ↑↓ Cycle  F Results  C Clear' 'Enter Review  PgUp/PgDn About  Q Quit')
             else
                 footer_hints[0]='Navigation: ↑↓ Move  Tab Category  Space/D Select  F Filters  C Clear'
                 if [[ "$setup_harness_zone" == category ]]; then footer_hints[0]='Navigation: ↑↓ Category  Tab List  F Filters  C Clear  [/] About'
@@ -1940,7 +1932,6 @@ setup_frame_benches() {
 setup_frame_components() {
     local component_line component_index component_key component_focus component_budget=0 component_focus_index=0 component_offset component_title component_about_title component_about_text component_anchor component_window=8 component_family=tool component_array=tool_items component_member_text component_offset_key
     [[ "$CURRENT_SECTION" != 1 ]] || { component_family=harness; component_array=ai_items; }
-    if [[ "$component_family" == harness && "$setup_harness_category" == tui && "$setup_harness_zone" == filter ]]; then setup_frame_cli_filter_panel; return; fi
     local -n component_categories="setup_${component_family}_members" component_category="setup_${component_family}_category" component_zone="setup_${component_family}_zone"
     local -n component_labels="setup_${component_family}_labels" component_offsets="setup_${component_family}_offsets" component_summaries="setup_${component_family}_summaries" component_flat="$component_array"
     local -a component_items=()
@@ -1995,7 +1986,11 @@ setup_frame_components() {
         ((component_window <= 8)) || component_window=8
         ((component_window >= 2)) || component_window=2
     fi
-    setup_frame_about "$component_anchor" "$component_about_title" "$component_about_text" "$component_window"
+    if [[ "$component_family" == harness && "$component_category" == tui && "$component_zone" == filter ]]; then
+        setup_frame_cli_filter_about "$component_window"
+    else
+        setup_frame_about "$component_anchor" "$component_about_title" "$component_about_text" "$component_window"
+    fi
 }
 
 

@@ -134,8 +134,8 @@ def main():
 
     # Wait for the selected row's inventory as well as required services. A
     # ready Docker/Tools header alone does not mean the CLI/bench row is loaded.
-    codex = [(tui.STRIP_READY, '\x1b[C\x1b[C\t\x1b[B\x1b[B'), (r'Codex CLI/TUI · (?:not installed|needs creds|Ready)', ' \n'), (tui.REVIEW, '\n')]
-    remove_codex = [(tui.STRIP_READY, '\x1b[C\x1b[C\t\x1b[B\x1b[B'), (r'Codex CLI/TUI · (?:needs creds|Ready)', 'D\n'), (tui.REVIEW, '\n')]
+    codex = [(tui.STRIP_READY, '\x1b[C\x1b[C\t\x1b[B'), (r'Codex CLI/TUI · (?:not installed|needs creds|Ready)', ' \n'), (tui.REVIEW, '\n')]
+    remove_codex = [(tui.STRIP_READY, '\x1b[C\x1b[C\t\x1b[B'), (r'Codex CLI/TUI · (?:needs creds|Ready)', 'D\n'), (tui.REVIEW, '\n')]
     project = home / 'projects/wsl-acceptance-project.txt'
     credential = home / '.codex/auth.json'
     baseline = None

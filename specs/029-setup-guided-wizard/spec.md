@@ -466,3 +466,7 @@ OpenSpec setup-agent-tool-catalog extends FR-018 display/catalog scope using Bre
 ## Accepted faceted-filter extension (2026-10-23)
 
 FR-018 is extended by setup-harness-filters: replace the single F group picker with independent Frontier/Region/Access/Native/Via/Group facets, OR within each dimension and AND across active dimensions. Frontier means an editable curated lab set; native and integrated capabilities are separate and provenance-bearing. Unknown is explicit. Preserve queues and exact P/G/refresh state, support clear/empty results safely, and retain responsive builtins-only rendering and unchanged install plans.
+
+## Four-column Harness filters
+
+Brett's 2026-10-23 follow-up supersedes T039K's six-row checkbox UI: expose only Type, Region, Access and Native as single-choice columns above live results. New sessions default Type to Frontier and others to All; C clears all to All. In filter focus Left/Right or Tab chooses a column and Up/Down cycles values immediately; F returns to results. Type Open/Closed records supported model weight availability, never the harness source license. Preserve qualified native/routed evidence in About, queue safety, empty guards and navigation state. See `openspec/changes/setup-harness-filters/design.md` and T039L.

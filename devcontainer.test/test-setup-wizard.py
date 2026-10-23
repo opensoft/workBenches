@@ -437,7 +437,7 @@ echo restored
         output=self.shell(r'''
 init_components --loading
 for key in "${ai_items[@]}" "${tool_items[@]}"; do component_status[$key]=installed; done
-setup_arrive_step 1
+setup_arrive_step 1; setup_cli_filters_clear
 handle_input <<< D; handle_input <<< ' '
 [[ "$setup_harness_zone" == harness && "${component_checked[claude_cli]}" != true ]] || exit 30
 handle_input <<< $'\e[B'; handle_input <<< $'\e[B'; handle_input <<< ' '
@@ -501,7 +501,7 @@ echo restored
 ''')
         self.assertEqual(output.strip(),'restored')
 
-    def test_cli_group_filter_preserves_queue_focus_and_independent_scroll_on_jumps(self):
+    def test_cli_column_filter_preserves_queue_focus_and_independent_scroll_on_jumps(self):
         output=self.shell(r'''
 init_components --loading
 for key in "${requirement_items[@]}"; do component_status[$key]=up; done
@@ -509,13 +509,12 @@ for key in "${ai_items[@]}"; do component_status[$key]=installed; done
 component_checked[codex_cli]=true; component_action[codex_cli]=update
 setup_arrive_step 1
 handle_input <<< F; [[ "$setup_harness_zone" == filter ]] || exit 30
-for ((i=0;i<5;i++)); do handle_input <<< $'\e[B'; done
-handle_input <<< $'\t'; handle_input <<< ' '
-[[ "$setup_cli_group" == model_usa ]] || exit 31
+handle_input <<< $'\e[C'; handle_input <<< $'\e[B'
+[[ "${setup_cli_filter_selected[region]}" == usa ]] || exit 31
 handle_input <<< F; [[ "$setup_harness_zone" == harness && "${component_action[claude_cli]}" == '' ]] || exit 32
-setup_focus_harness_key hermes_agent
-component_about[hermes_agent]=''
-for ((i=0;i<60;i++)); do component_about[hermes_agent]+='Long capability and interoperability detail. '; done
+setup_focus_harness_key muse_code
+component_about[muse_code]=''
+for ((i=0;i<60;i++)); do component_about[muse_code]+='Long capability and interoperability detail. '; done
 setup_ui_width=36; setup_ui_height=24; setup_frame_build
 result_key="tui:$setup_cli_filter_cache_key"
 saved_list=${setup_harness_offsets[$result_key]}
@@ -524,33 +523,33 @@ handle_input <<< ']'; saved_about=$setup_about_offset
 [[ "$saved_about" -gt 0 ]] || exit 34
 for jump in G P; do
     handle_input <<< "$jump"; setup_frame_build; handle_input <<< "$jump"; setup_frame_build
-    [[ "$CURRENT_SECTION" == 1 && "$setup_cli_group" == model_usa && "$setup_harness_zone" == harness && "${ai_items[$current_selection]}" == hermes_agent ]] || exit 35
+    [[ "$CURRENT_SECTION" == 1 && "${setup_cli_filter_selected[region]}" == usa && "$setup_harness_zone" == harness && "${ai_items[$current_selection]}" == muse_code ]] || exit 35
     [[ "${setup_harness_offsets[$result_key]}" == "$saved_list" && "$setup_about_offset" == "$saved_about" ]] || exit 36
 done
 status_async_ui=false
 refresh_host_tool_inventory() { :; }; setup_load_bench_metadata_sync() { :; }; refresh_bench_inventory() { :; }
 check_component_status() { echo installed; }; load_requirements() { :; }; draw_ui() { setup_frame_build; }
 handle_input <<< R
-[[ "$setup_cli_group" == model_usa && "$setup_about_offset" == "$saved_about" ]] || exit 37
+[[ "${setup_cli_filter_selected[region]}" == usa && "$setup_about_offset" == "$saved_about" ]] || exit 37
 handle_input <<< F; setup_frame_build
-[[ "$setup_about_anchor" == harness-filter:group:model_usa && "$setup_about_offset" == 0 ]] || exit 38
-handle_input <<< $'\t'; handle_input <<< ' '; setup_frame_build
-[[ "$setup_cli_group" == model_china && "${ai_items[$current_selection]}" == qwen_cli ]] || exit 39
+[[ "$setup_about_anchor" == harness-filter:region:usa && "$setup_about_offset" == 0 ]] || exit 38
+handle_input <<< $'\e[B'; setup_frame_build
+[[ "${setup_cli_filter_selected[region]}" == china && "${ai_items[$current_selection]}" == qwen_cli ]] || exit 39
 handle_input <<< F; handle_input <<< ' '; handle_input <<< D
 [[ "${component_action[qwen_cli]}" == '' && "${component_action[codex_cli]}" == update ]] || exit 40
-handle_input <<< F; handle_input <<< $'\e[Z'; handle_input <<< ' '; handle_input <<< F
-setup_focus_harness_key hermes_agent; setup_frame_build
+handle_input <<< F; handle_input <<< $'\e[A'; handle_input <<< F
+setup_focus_harness_key muse_code; setup_frame_build
 [[ "${setup_harness_offsets[$result_key]}" == "$saved_list" ]] || exit 41
 handle_input <<< $'\t'
-[[ "$setup_harness_zone" == category && "$setup_cli_group" == model_usa ]] || exit 42
-echo grouped
+[[ "$setup_harness_zone" == category && "${setup_cli_filter_selected[region]}" == usa ]] || exit 42
+echo columns
 ''')
-        self.assertEqual(output.strip(),'grouped')
+        self.assertEqual(output.strip(),'columns')
 
     def test_all_new_reference_products_ignore_action_keys_even_when_present(self):
         output=self.shell(r'''
 init_components --loading
-setup_cli_group=all
+setup_cli_filters_clear
 for family in harness tool; do
     CURRENT_SECTION=1; [[ "$family" != tool ]] || CURRENT_SECTION=2
     declare -n cats="setup_${family}_categories" cat="setup_${family}_category" zone="setup_${family}_zone" members="setup_${family}_members"
@@ -575,7 +574,7 @@ echo manual
 
     def test_harness_about_pages_and_resets_on_selected_harness_change(self):
         output=self.shell(r'''
-init_components --loading; CURRENT_SECTION=1; setup_harness_zone=harness
+init_components --loading; setup_cli_filters_clear; CURRENT_SECTION=1; setup_harness_zone=harness
 setup_ui_width=36; setup_ui_height=24
 component_about[claude_cli]=''
 for ((i=0;i<40;i++)); do component_about[claude_cli]+='Long harness details for paging. '; done

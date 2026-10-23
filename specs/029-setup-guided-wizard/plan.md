@@ -371,3 +371,7 @@ Governed by setup-agent-tool-catalog, accepted from Brett's 2026-10-23 taxonomy 
 ## Accepted faceted-filter extension (2026-10-23)
 
 T039K governs internal catalog schema 2 and the pure-Bash CLI facet library. Compile qualified facet maps at development time. Cache membership and per-result windows; add a responsive F panel with keyboard option viewport, live counts and About. Guard all stale-item paths for empty results. Extend no-fork and locale/size tests to the library and exercise intersections, OR choices, provenance boundaries, empty actions, queues and P/G/refresh state.
+
+## T039L design
+
+Brett's 2026-10-23 follow-up supersedes T039K's six-row checkbox UI: expose only Type, Region, Access and Native as single-choice columns above live results. New sessions default Type to Frontier and others to All; C clears all to All. In filter focus Left/Right or Tab chooses a column and Up/Down cycles values immediately; F returns to results. Type Open/Closed records supported model weight availability, never the harness source license. Preserve qualified native/routed evidence in About, queue safety, empty guards and navigation state. See `openspec/changes/setup-harness-filters/design.md` and T039L.

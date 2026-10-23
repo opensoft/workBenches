@@ -577,3 +577,60 @@ Verification on Raven / native Linux:
 No provider calls, agent launches, installers, removals, Docker builds, account
 actions or host configuration changes were executed. Human bench-copy approval,
 remote CI, real-host installation QA, PR/merge and archive gates remain pending.
+
+## Four cycling Harness filter columns T039L — 2026-10-23
+
+Authority: Brett's four-column follow-up and multiple-choice clarification that
+Type Open/Closed describes supported open-weight/closed models, not the harness
+source. This supersedes T039K's six-row checkbox interaction. Governance remains
+`openspec/changes/setup-harness-filters/`.
+
+Exactly Type, Region, Access and Native stay above live results. New sessions
+start Frontier/All/All/All (16/77 matches). F moves focus between the columns and
+results; Left/Right or Tab/Shift+Tab wraps columns, Up/Down wraps values and
+applies immediately, Space also advances and D does nothing in filter focus.
+C sets all columns to All without changing queues. Outside filters Left/Right
+retains step navigation; Enter retains Review. Via/plugin and ownership-group
+records remain metadata/About rather than extra controls. Open and Closed can
+both apply to a harness; curated Frontier ownership remains independent.
+
+The canonical schema-2 CLI filter records gain qualified models metadata,
+with current primary-source routes for Claude, Codex, OpenCode and Qwen.
+Unclassified and partial records remain Unknown. This is support metadata,
+not the currently configured model, entitlement or installed-version assurance.
+All 108 identities, 77 CLI entries, managed IDs/order, detection inventory and
+schema-1 installer/credential plans remain unchanged.
+
+Verification on Raven / native Linux:
+
+- Exact T039L verification: PASS, 59.64 seconds. Filters 7 tests, catalog 6,
+  wizard 46, layout 23, async 6, guided flow 43, components 31; isolated shell
+  fixtures, native/WSL acceptance compilation, generated snapshot checks, Bash
+  syntax, render timing and all three governed strict OpenSpec checks pass.
+- All 32 quickstart regression suites: PASS, 88.33 seconds.
+- The initial guided-flow run exposed a stale Codex key sequence: Frontier
+  hides Copilot, so Codex is now one Down from Claude instead of two. Corrected
+  this sequence in the fake lifecycle test and both real-host acceptance
+  scripts; no behavioral assertions were removed. T039L's files/verify fields
+  were extended to cover these necessary navigation updates and compilation.
+- Replaced the obsolete multi-select/ownership-picker interactions with
+  single-choice replacement, model-weight overlap, default/clear, column/value
+  wrap, queue safety and exact navigation/refresh state assertions. Added 414
+  frames covering every value of every column plus empty results, under C and
+  C.UTF-8 at 36/60/87 columns and 24/40/unknown height. Type-view result/filter
+  focus adds 180 frames; the earlier 144 category-zone frames remain.
+  Column separator positions must match on heading/value rows, Frontier must
+  remain fully visible at 36 columns, and result lists remain visible while
+  filters have focus. The no-fork renderer guard retains all checks.
+- Full Benches timing median 4.649 ms, p90 5.975 ms, max 6.352 ms. Step medians:
+  Workstation 2.790, Benches 3.142, Harness 6.634, Tools 4.276,
+  Profiles 2.578 and Review 4.345 ms.
+- Visually inspected the final selection-only preview on workspace 14:
+  Frontier/All/All/All, 16/77 matches, four aligned columns, highlight only on
+  the focused Type heading, live results below, filter About and zero queued
+  changes. The panel is left open for Brett's review.
+- Scope, LF, modes and whitespace checks pass; release base remains `ccc9eac`.
+
+No provider calls, agent launches, installers, removals, Docker builds, account
+actions or host configuration changes were executed. Human bench-copy approval,
+remote CI, real-host installation QA, PR/merge and archive gates remain pending.

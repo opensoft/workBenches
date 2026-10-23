@@ -191,6 +191,18 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [
+            "closed"
+          ],
+          "complete": false,
+          "basis": "primary-source",
+          "note": "Documents hosted Claude model aliases and provider deployments. This positive closed-model route does not assert that every custom gateway/model configuration is classified.",
+          "sources": [
+            "https://code.claude.com/docs/en/model-config"
+          ],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -269,6 +281,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -372,6 +392,20 @@
             "https://developers.openai.com/learn/developers-codex-plugin"
           ],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [
+            "open",
+            "closed"
+          ],
+          "complete": false,
+          "basis": "primary-source",
+          "note": "Supports hosted OpenAI models and open-weight models through --oss with Ollama/LM Studio; model/server setup is separate. This describes supported routes, not the currently selected model.",
+          "sources": [
+            "https://learn.chatgpt.com/docs/developer-commands?surface=cli",
+            "https://openai.com/open-models/"
+          ],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -450,6 +484,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -545,6 +587,19 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [
+            "open",
+            "closed"
+          ],
+          "complete": false,
+          "basis": "primary-source",
+          "note": "Documents hosted Anthropic/OpenAI and local open-weight model providers; actual availability depends on model, provider and configuration.",
+          "sources": [
+            "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/providers.mdx"
+          ],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -623,6 +678,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -711,6 +774,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -789,6 +860,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -871,6 +950,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -949,6 +1036,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -1035,6 +1130,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -1113,6 +1216,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -1195,6 +1306,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -1274,6 +1393,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -1371,6 +1498,19 @@
             "https://github.com/QwenLM/qwen-code/blob/main/README.md"
           ],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [
+            "open",
+            "closed"
+          ],
+          "complete": false,
+          "basis": "primary-source",
+          "note": "Documents open Qwen models plus OpenAI/Anthropic/Gemini protocols and local Ollama/vLLM endpoints. Protocol compatibility requires a supported model/provider configuration.",
+          "sources": [
+            "https://github.com/QwenLM/qwen-code/blob/main/README.md"
+          ],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -1464,6 +1604,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -1543,6 +1691,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -1627,6 +1783,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -1707,6 +1871,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -1785,6 +1957,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -1868,6 +2048,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -1947,6 +2135,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -2031,6 +2227,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -2111,6 +2315,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -2194,6 +2406,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -2285,6 +2505,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -2363,6 +2591,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -2445,6 +2681,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -2523,6 +2767,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -2605,6 +2857,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -2683,6 +2943,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -2765,6 +3033,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -2843,6 +3119,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -2925,6 +3209,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -3003,6 +3295,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -3085,6 +3385,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -3163,6 +3471,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -3245,6 +3561,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -3323,6 +3647,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -3406,6 +3738,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -3484,6 +3824,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -3570,6 +3918,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -3648,6 +4004,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -3730,6 +4094,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -3808,6 +4180,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -3891,6 +4271,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -3970,6 +4358,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -4053,6 +4449,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -4131,6 +4535,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -4213,6 +4625,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -4293,6 +4713,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -4371,6 +4799,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -4455,6 +4891,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -4534,6 +4978,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -4617,6 +5069,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -4696,6 +5156,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -4779,6 +5247,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -4860,6 +5336,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -4939,6 +5423,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -5023,6 +5515,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -5104,6 +5604,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -5183,6 +5691,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -5270,6 +5786,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -5350,6 +5874,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -5436,6 +5968,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -5515,6 +6055,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -5598,6 +6146,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -5677,6 +6233,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -5760,6 +6324,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -5839,6 +6411,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -5922,6 +6502,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -6001,6 +6589,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -6084,6 +6680,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -6163,6 +6767,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -6246,6 +6858,14 @@
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
           "sources": [],
           "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
+          "sources": [],
+          "recorded": "2026-10-23"
         }
       }
     },
@@ -6326,6 +6946,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -6411,6 +7039,14 @@
           "complete": false,
           "basis": "unverified",
           "note": "No specific external modality route has been documented for this entry. Generic shell/plugin availability does not establish a working integration.",
+          "sources": [],
+          "recorded": "2026-10-23"
+        },
+        "models": {
+          "values": [],
+          "complete": false,
+          "basis": "unverified",
+          "note": "Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.",
           "sources": [],
           "recorded": "2026-10-23"
         }
@@ -8207,17 +8843,29 @@
   ],
   "filterFacets": [
     {
-      "id": "frontier",
-      "label": "Frontier",
-      "summary": "Curated model-maker labs. Provider access alone does not make an independent harness a frontier-lab product.",
+      "id": "type",
+      "label": "Type",
+      "summary": "Frontier is curated model-maker lab ownership. Open/Closed describe supported open-weight/closed model families, not the harness source license. A harness can match both; Unknown includes incomplete metadata. These views can overlap Frontier.",
       "options": [
         {
           "id": "frontier",
           "label": "Frontier"
         },
         {
+          "id": "open",
+          "label": "Open"
+        },
+        {
+          "id": "closed",
+          "label": "Closed"
+        },
+        {
+          "id": "all",
+          "label": "All"
+        },
+        {
           "id": "unknown",
-          "label": "Unclassified"
+          "label": "Unknown"
         }
       ]
     },
@@ -8226,6 +8874,10 @@
       "label": "Region",
       "summary": "Developer region from the existing qualified inventory; independent from frontier membership.",
       "options": [
+        {
+          "id": "all",
+          "label": "All"
+        },
         {
           "id": "usa",
           "label": "USA"
@@ -8250,6 +8902,10 @@
       "summary": "Supported access methods. Subscription and API can both apply. This does not inspect your account, sign-in or billing.",
       "options": [
         {
+          "id": "all",
+          "label": "All"
+        },
+        {
           "id": "subscription",
           "label": "Subscription"
         },
@@ -8273,36 +8929,9 @@
       "summary": "Capabilities exposed by the shipped harness. Image includes documented input or generation, voice includes speech input/output; About records direction. Classifier means a documented classification workflow, not general LLM potential.",
       "options": [
         {
-          "id": "llm",
-          "label": "LLM"
+          "id": "all",
+          "label": "All"
         },
-        {
-          "id": "image",
-          "label": "Image"
-        },
-        {
-          "id": "video",
-          "label": "Video"
-        },
-        {
-          "id": "voice",
-          "label": "Voice"
-        },
-        {
-          "id": "classifier",
-          "label": "Classifier"
-        },
-        {
-          "id": "unknown",
-          "label": "Unknown"
-        }
-      ]
-    },
-    {
-      "id": "via",
-      "label": "Via models/plugins",
-      "summary": "Optional external model/plugin/tool routes, distinct from bundled/native support. Required integration and access are described in About; a supported route is not proof it is installed.",
-      "options": [
         {
           "id": "llm",
           "label": "LLM"

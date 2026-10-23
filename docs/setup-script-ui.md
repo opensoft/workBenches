@@ -100,47 +100,43 @@ rather than duplicating the harness for each execution mode.
 
 ### CLI filters
 
-Press **F** to open Filters. It replaces the result list while you edit it:
+The four columns stay above the result list. A new session starts with Type
+**Frontier** and the other values **All**:
 
 ```text
-Harnesses · Filters                         1/77
-› Frontier   [✓] Frontier  [ ] Unclassified
-  Region     [✓] USA  [ ] China  [ ] Other
-  Access     [✓] Subscription  [✓] API  [ ] Local
-  Native     [ ] LLM  [✓] Image  [ ] Video  …
-  Via        [ ] LLM  [ ] Image  [ ] Voice  …
-  Group      [✓] All  [ ] Maker USA  …
+FILTERS                                      16/77 F/C
+›Type           │Region        │Access        │Native
+Frontier        │All           │All           │All
 ```
 
-The numbers above illustrate the layout; counts update from current tags.
-Up/down chooses the filter row; Tab/Shift+Tab focuses its next/previous option;
-Space toggles it. Group is a single-choice radio row retaining the original
-ownership quick views. F returns to results; C clears filters and group only.
-Left/right still changes steps and Enter still opens Review. On narrow screens,
-rows scroll and an option viewport keeps the focused checkbox visible.
+Press **F** to focus the filters. **Left/Right** (or Tab/Shift+Tab) wraps between
+columns; **Up/Down** wraps through the current column's choices and updates the
+list immediately. Space also advances a value. F returns to results. **C** sets
+all four columns to All and keeps queued actions. Outside filter focus,
+Left/Right still changes steps; Enter still opens Review. Compact labels such
+as Subscr. and Class. keep all four columns visible at 36 columns.
 
-| Filter | Meaning |
+| Filter | Choices and meaning |
 |---|---|
-| Frontier | Explicit editable set of frontier model-maker labs; independent harnesses do not inherit it from model access. The initial 12-lab set is listed in About and the catalog; unlisted makers remain unclassified. This is a curated label, not a performance ranking. |
-| Region | USA, China, Other, Unknown, using the existing qualified developer-region metadata. |
-| Access | Subscription, API, Local, Unknown. A product can support more than one access method; account/plan entitlement is not probed. |
-| Native | Shipped-interface LLM, Image, Video, Voice, Classifier workflows. Image/video can mean input or generation; inspect the recorded scope. Classifier requires a documented classification workflow, not general LLM potential. |
-| Via models/plugins | The same workload options for separately documented external routes. About names required model/plugin/tool setup; these are not bundled/native feature claims. |
-| Group | All, model-maker USA/China/Other, combo open/BYOK, combo commercial/managed, specialized/research/minimal. |
+| Type | Frontier, Open, Closed, All, Unknown. Frontier is curated lab ownership, not a performance ranking. Open/Closed describe supported model weight availability, not the harness source license. A harness can match both Open and Closed, and either can overlap Frontier. The initial 12-lab set is listed in filter About and the catalog. |
+| Region | All, USA, China, Other, Unknown, using qualified developer-region metadata. |
+| Access | All, Subscription, API, Local, Unknown. A product can support several methods, but the column chooses one at a time; account entitlement is not probed. |
+| Native | All, LLM, Image, Video, Voice, Classifier, Unknown. Image/video can mean input or generation; inspect About for direction. Classifier requires a documented workflow, not general LLM potential. |
 
-Selections use **OR within a row, AND across active rows**. No choices in a row
-means All. For example, USA+China accepts either region, then API and Native Image
-must also match if selected in other rows. Unknown includes partial metadata;
-missing tags do not establish that a capability is unavailable. Positive tags
-carry separate source/basis/date and direction/route notes. All coding-harness
-entries have a user-inventory LLM baseline; additional tags are added from evidence.
+Each column has one choice and columns combine with **AND**. Unknown includes
+partial metadata; missing tags do not establish absence. Model-weight tags
+record supported routes, not the installed or currently active model. Positive
+tags carry source/basis/date and scope notes. All coding-harness entries have
+a user-inventory LLM baseline; additional tags need evidence. Separately routed
+model/plugin capabilities and ownership groups remain in About/catalog data;
+they are no longer additional filter controls.
 
-The collapsed filter bar shows the match count and active dimension count.
-Results retain the focused product when possible, otherwise select the first
-match. Each result set keeps its own scroll window. Zero results show an explicit
-empty state; Space/D cannot change an old hidden product. Queued changes remain
-in Review even when filtered out. P/G preserves selections, row/option focus and
-list/About state; refresh and ordinary step navigation retain filters.
+The strip shows the match count and highlights the focused column. Live results
+retain the selected product when possible, otherwise focus the first match.
+Each result set keeps its own scroll window. Zero results have an explicit empty
+state; Space/D cannot change an old hidden product. Queued changes remain in
+Review even when filtered out. P/G preserves values, column focus and list/About
+state; refresh and ordinary step navigation retain filters.
 
 ### About metadata and evidence
 
@@ -170,21 +166,21 @@ installers, credential options or selection-plan keys are added.
 The compiler validates metadata and generates static Bash/Python snapshots:
 `python3 scripts/setup-tool-catalog.py --write`; `--check` rejects drift.
 Rendering uses only cached data/Bash builtins, with no runtime JSON parsing.
-PgUp/PgDn or [/] pages About. P/G restores category, CLI filters/group, zone, item and
+PgUp/PgDn or [/] pages About. P/G restores category, CLI filter values/column, zone, item and
 list/About offsets. Refresh retains these and every queued change. Narrow frames
-use scrollable filter rows, visible option focus and compact manual-status labels so names stay
+use four compact filter columns, visible focus and compact manual-status labels so names stay
 readable. Large lists reserve room for capability About text (at least five lines in an 87×40 frame). Lists scroll while retaining the focused row and About/footer.
 
 ## Keys
 
 | Key | Action |
 |---|---|
-| ← / → | Previous/next step; stop at the ends. |
-| ↑ / ↓ | Move within the step; scroll Review. In Benches, move within the current zone. |
-| Tab / Shift+Tab | Switch category/list zones; on the CLI group selector, enter the list / return to categories. |
-| F | Open/close CLI Filters. Within Filters, Tab focuses options and Space toggles. |
-| C | Clear CLI filter constraints and group without changing queued actions. |
-| Space / D | Queue/unqueue install or update / removal; Space opens Profiles actions. |
+| ← / → | Previous/next step; in CLI filter focus, choose the previous/next column. |
+| ↑ / ↓ | Move within the step; scroll Review; in CLI filters, cycle the focused value. |
+| Tab / Shift+Tab | Switch category/list zones; in CLI filters, choose the next/previous column. |
+| F | Move focus between CLI filter columns and results. |
+| C | Set all CLI filter columns to All without changing queued actions. |
+| Space / D | Queue/unqueue install or update / removal; in CLI filters Space cycles the value and D does nothing. Space opens Profiles actions. |
 | Enter | Open Review, apply from Review, or open a Profiles row. |
 | P | Visit Workstation and return to the remembered step and focus. |
 | G | Visit Profiles; G Back restores the remembered step and focus. |
