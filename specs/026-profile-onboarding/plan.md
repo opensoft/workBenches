@@ -35,3 +35,22 @@ browser/clipboard callbacks, Vault lifecycle, and Profiles cancel/back with a
 queued bench retained. Syntax/compile, workflow YAML, and whitespace checks pass.
 No real GitHub account was authorized by automated tests. Real browser approval
 and Windows/WSL acceptance remain required before release.
+
+## v1.6.1 private bench authentication repair (#210)
+
+Preserve the existing native GitHub credential boundary during bench source
+preparation: Git inside Tools appends a GitHub-scoped, command-local gh helper
+resolved through the native bridge. Existing helpers and native account choice
+remain authoritative; Profiles defaults do not route Git commands. Keep SSH
+preference, anonymous public access, immutable source pins and destination
+preservation. Add actionable failure guidance and verify authentication fallback,
+missing/denied access, retry, submodules, and exact frozen revision checkout.
+
+Verification on Raven, 2026-10-23: all 19 transport tests, all 13 source/version
+tests and all 23 setup manifest commands passed in the declared workstation
+test container. Five new transport cases and the interrupted submodule retry
+case failed before their fixes. A real private cloudBench clone through the
+production Tools/native-gh bridge checked out locked revision
+`1d4623d9772e3d2fbe48e84ef4136d8108eda66d` and completed submodule preparation;
+the temporary checkout was removed. This is source-preparation evidence, not
+full bench installation, browser-login or protected release acceptance.
