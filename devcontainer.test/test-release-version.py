@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('release', ROOT / 'scripts/release-workbenches.py')
@@ -96,6 +97,53 @@ class ReleaseTests(unittest.TestCase):
         release.prepare(self.root, self.selection)
         self.assertEqual(self.git(self.checkout, 'rev-parse', 'HEAD'), self.pin)
         self.assertEqual((self.checkout / 'source').read_text(), 'frozen')
+
+    def test_clone_access_failure_is_actionable_and_retry_keeps_frozen_pin(self):
+        self.freeze()
+        shutil.rmtree(self.checkout)
+        original_run = subprocess.run
+        def deny_clone(arguments, **kwargs):
+            if '--clone' in arguments:
+                raise subprocess.CalledProcessError(128, arguments)
+            return original_run(arguments, **kwargs)
+        with patch.object(release.subprocess, 'run', side_effect=deny_clone):
+            with self.assertRaisesRegex(ValueError, r'Could not clone .*fixtureBench; .*retry setup'):
+                release.prepare(self.root, self.selection)
+        self.assertFalse(self.checkout.exists())
+        release.prepare(self.root, self.selection)
+        self.assertEqual(self.git(self.checkout, 'rev-parse', 'HEAD'), self.pin)
+
+    def test_source_preparation_preserves_clone_cancellation_status(self):
+        self.freeze()
+        shutil.rmtree(self.checkout)
+        original_run = subprocess.run
+        def cancel_clone(arguments, **kwargs):
+            if '--clone' in arguments:
+                raise subprocess.CalledProcessError(130, arguments)
+            return original_run(arguments, **kwargs)
+        with patch.object(release.subprocess, 'run', side_effect=cancel_clone):
+            with self.assertRaises(SystemExit) as stopped:
+                release.prepare(self.root, self.selection)
+        self.assertEqual(stopped.exception.code, 130)
+
+    def test_retry_finishes_submodules_after_clone_already_completed(self):
+        self.freeze()
+        shutil.rmtree(self.checkout)
+        original_run = subprocess.run
+        attempts = []
+        def submodules_need_auth(arguments, **kwargs):
+            if '--submodules' in arguments:
+                attempts.append(arguments)
+                if len(attempts) == 1:
+                    raise subprocess.CalledProcessError(128, arguments)
+            return original_run(arguments, **kwargs)
+        with patch.object(release.subprocess, 'run', side_effect=submodules_need_auth):
+            with self.assertRaisesRegex(ValueError, r'Could not initialize submodules .*retry setup'):
+                release.prepare(self.root, self.selection)
+            self.assertEqual(self.git(self.checkout, 'rev-parse', 'HEAD'), self.pin)
+            release.prepare(self.root, self.selection)
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(self.git(self.checkout, 'rev-parse', 'HEAD'), self.pin)
 
     def test_existing_local_work_or_revision_drift_is_preserved(self):
         self.freeze()
