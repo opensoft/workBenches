@@ -216,6 +216,42 @@ handle_input
         self.assertEqual(saved['profiles'][:2], existing['profiles'])
         self.assertEqual([p['name'] for p in saved['profiles']], ['personal-1', 'work-other', 'work-new-company'])
 
+    def test_same_scope_identities_keep_distinct_ai_profiles_and_repeat_safely(self):
+        for scope in ('personal', 'organization'):
+            with self.subTest(scope=scope):
+                output = self.directory / scope
+                answers = self.directory / (scope + '-answers.json')
+                env = dict(os.environ, HOME=str(self.directory), XDG_CONFIG_HOME=str(self.directory),
+                           WORKBENCHES_IDENTITY_SCOPE=scope)
+                for key in ('WORKBENCHES_SELECTED_PROVIDERS', 'WORKBENCHES_PROFILE_PROVIDERS'):
+                    env.pop(key, None)
+                command = [sys.executable, str(ROOT / 'scripts/onboard-ai-profiles.py'),
+                           '--answers', str(answers), '--output-dir', str(output)]
+                first = None
+                for email in ('me@first.example', 'me@second.example', 'me@second.example', 'me@first.example'):
+                    account = {'email': email, 'providers': ['openai']}
+                    data = {'consent': True, 'githubUser': '', 'companies': [],
+                            'personal': {'accounts': [], 'registry': 'manual'}}
+                    if scope == 'personal': data['personal']['accounts'] = [account]
+                    else: data['companies'] = [dict(account, name='Same Company', registry='manual')]
+                    answers.write_text(json.dumps(data))
+                    # Identity additions must still work when an installer chose providers.
+                    if first is not None: env['WORKBENCHES_SELECTED_PROVIDERS'] = 'openai'
+                    result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=15)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    saved = json.loads((output / 'openai-profiles.json').read_text())['profiles']
+                    if first is None:
+                        first = saved[0]
+                        continue
+                    self.assertEqual(saved[0], first)
+                    self.assertEqual(len(saved), 2)
+                    self.assertEqual({p['email'] for p in saved}, {'me@first.example','me@second.example'})
+                    self.assertEqual(len({p['name'] for p in saved}), 2)
+                    self.assertEqual(len({p['profilePath'] for p in saved}), 2)
+                    self.assertTrue(saved[1]['profilePath'].endswith('/' + saved[1]['name']))
+                    names_and_aliases = [value for p in saved for value in (p['name'],*p.get('aliases',[]))]
+                    self.assertEqual(len(names_and_aliases), len(set(names_and_aliases)))
+
     def test_profiles_panel_fits_narrow_and_standard_widths_without_discovery(self):
         for width in (36, 60, 80, 100):
             command = f'''source "{ROOT}/scripts/interactive-setup.sh"

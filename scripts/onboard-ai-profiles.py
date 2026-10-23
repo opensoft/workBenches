@@ -480,6 +480,31 @@ def apply_scope_layout(
                 target["profilePath"] = f"{family}/{category}/{target['name']}"
 
 
+def merge_identity_profiles(existing: list[dict[str, Any]], incoming: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged = list(existing)
+    used = {value: profile for profile in merged for value in (profile['name'], *profile.get('aliases', []))}
+    def identity(profile: dict[str, Any]) -> tuple[str, str]:
+        return (profile.get('email', '').strip().casefold(), profile.get('family', ''))
+    for profile in incoming:
+        preferred = profile['name']
+        name, suffix = preferred, 1
+        while name in used:
+            # Rerunning this identity reuses its existing name/path and credentials.
+            if identity(profile)[0] and identity(used[name]) == identity(profile):
+                break
+            suffix += 1
+            name = f'{preferred}-{suffix}'
+        else:
+            added = dict(profile, name=name)
+            if name != preferred:
+                prefix = profile['profilePath'].rsplit('/', 1)[0]
+                added['profilePath'] = f'{prefix}/{name}'
+            added['aliases'] = [alias for alias in profile.get('aliases', []) if alias != name and alias not in used]
+            merged.append(added)
+            used.update({value: added for value in (name, *added['aliases'])})
+    return merged
+
+
 def main() -> int:
     cancellation_signals()
     parser = argparse.ArgumentParser(description=__doc__)
@@ -586,10 +611,9 @@ def main() -> int:
                 existing = json.loads(destination.read_text())
                 existing_profiles = existing.get('profiles', [])
                 # Adding an identity must never replace another identity's AI profiles.
-                names = {p['name'] for p in existing_profiles}
-                output[provider] = existing_profiles + [p for p in output[provider] if p['name'] not in names]
+                output[provider] = merge_identity_profiles(existing_profiles, output[provider])
                 families = list(dict.fromkeys([*existing.get('families', []), *families]))
-            if "WORKBENCHES_SELECTED_PROVIDERS" in os.environ and destination.is_file():
+            if "WORKBENCHES_SELECTED_PROVIDERS" in os.environ and not os.environ.get('WORKBENCHES_IDENTITY_SCOPE') and destination.is_file():
                 existing = json.loads(destination.read_text())
                 if existing.get("profiles"):
                     print(f"Preserving configured {provider} profiles.")

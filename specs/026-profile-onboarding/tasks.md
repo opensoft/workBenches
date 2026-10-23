@@ -51,3 +51,7 @@ separate follow-up integration work, as recorded in the specification.
 - [x] Keyboard tree/detail manager, narrow-terminal layout, and PTY regressions.
 - [x] Complete declared Tools-runtime and broker/client regression validation.
 - [ ] Real GitHub browser and Linux/Windows workstation acceptance.
+
+## Premerge review correction — 2026-10-23
+
+- [x] T001 [O] Preserve separate AI profiles for different identities in one scope; allocate unique names/paths/aliases and retain idempotent reruns, including provider-selection context. — files: `scripts/onboard-ai-profiles.py`, `devcontainer.test/test-setup-profiles.py`, `specs/026-profile-onboarding/tasks.md` — verify: `docker compose -p workbenches-16-review -f devcontainer.test/docker-compose.yml --profile merge-validation run --rm --no-deps --env WORKBENCHES_SETUP_LOG_FILE=/tmp/workbenches-review-setup.log --entrypoint python3 npm-integrity devcontainer.test/test-setup-profiles.py`
