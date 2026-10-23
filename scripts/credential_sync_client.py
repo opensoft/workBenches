@@ -107,6 +107,12 @@ class Sync:
             local.update(version=downloaded['version'], hash=digest(downloaded['credential']), state='up_to_date', lastSync=time.time())
             return
         fingerprint = digest(value) if value is not None else None
+        pending = local.get('pending')
+        if value is not None and pending and pending.get('publicHash') == fingerprint:
+            # Cleanup finished before a restart interrupted the baseline save.
+            local.update(version=pending['publicVersion'], hash=fingerprint, state='published', lastSync=time.time())
+            local.pop('pending', None); local.pop('loginBase', None)
+            return
         baseline = local.get('hash')
         dirty = value is not None and fingerprint != baseline
         if dirty:
@@ -154,6 +160,8 @@ class Sync:
                 downloaded = self.client.call('fetch', {'profileId': name})
                 if credential(path) != value:
                     raise SyncError('local_writer_conflict')
+                pending.update(publicHash=digest(downloaded['credential']), publicVersion=downloaded['version'])
+                atomic(self.state_path, state)
                 atomic(path, downloaded['credential'])
                 result = downloaded
                 fingerprint = digest(downloaded['credential'])

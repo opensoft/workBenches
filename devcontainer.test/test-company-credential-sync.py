@@ -400,6 +400,29 @@ class CompanySyncTests(unittest.TestCase):
         self.assertEqual(read_json(path)['access_token'], 'fixture-new-login')
         self.assertEqual(self.vault.counter, 2)
 
+    def test_broker_refresh_recovers_after_projection_write_before_baseline_save(self):
+        client, path, logged_in, baseline = self.refresh_login()
+        def interrupted_write(destination, value):
+            atomic(destination, value)
+            if destination == path: raise OSError('fixture interrupted after public projection install')
+        with patch('credential_sync_client.atomic', side_effect=interrupted_write):
+            client.run(True, after_login=True)
+        self.assertNotIn('refresh_token', read_json(path))
+        self.assertIn('pending', read_json(client.state_path)['entries'][self.name])
+        restarted = Sync(client.root, Transport(self.broker, self.user))
+        with patch.object(restarted.client, 'call', wraps=restarted.client.call) as calls:
+            recovered = restarted.run()['entries'][self.name]
+        self.assertNotIn('pending', recovered)
+        self.assertEqual(recovered['state'], 'published')
+        self.assertFalse(any(call.args[0] == 'publish' for call in calls.call_args_list))
+        self.assertEqual(self.vault.counter, 2)
+        # A later explicitly approved login must not inherit a stale operation.
+        restarted.run(True, before_login=True)
+        atomic(path, dict(logged_in, access_token='fixture-next-approved-login'))
+        self.assertEqual(restarted.run(True, after_login=True)['entries'][self.name]['state'], 'published')
+        self.assertEqual(self.vault.counter, 3)
+        self.assertNotIn('refresh_token', read_json(path))
+
     def test_broker_refresh_cleanup_preserves_a_concurrent_local_login(self):
         client, path, logged_in, baseline = self.refresh_login()
         original = client.client.call
