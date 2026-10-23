@@ -72,3 +72,12 @@ Claude to Codex (Copilot is filtered out). The declared isolated Docker
 component-lifecycle service passed install/uninstall/reinstall with unchanged
 assertions preserving account data, source work, projects, shared bases and
 volumes. This is an additional live suite beyond the 41 local fixture suites.
+
+The full declared Tools runtime acceptance service also passed locally, including
+native GitHub/SSH fixture boundaries, Docker-only bootstrap, version/deadline
+checks, immediate TUI paint, Tools restart, Vault install/cancel/sign-in/sign-out,
+Profiles open/cancel/back, queue preservation, Vault health/restart and narrow
+mounts. Its old button-label expectations now match Containers rows and wait for
+the new frame plus completed async inventory before sending the next shortcut.
+Test image tags are private per run and removed alongside its private containers
+and network. This is a second additional live suite beyond the 41 fixture suites.
