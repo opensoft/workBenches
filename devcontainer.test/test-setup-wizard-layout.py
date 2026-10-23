@@ -345,8 +345,7 @@ done
         tool_groups=[{e['id'] for e in catalog['entries'] if e['section']=='tool' and e['category']==c['id']} for c in catalog['categories']['tool']]
         labels={e['id']:e['label'] for e in catalog['entries']}
         entries={e['id']:e for e in catalog['entries']}
-        managed={'claude_cli','copilot_cli','codex_cli','antigravity_cli','opencode_cli','pi_cli',
-                 'spec_kit','openspec','vscode','warp','wave','amnezia_vpn','0dcloud_vpn','host_shell','workspace_repo'}
+        managed={e['id'] for e in catalog['entries'] if e['managed']}
         chunks=output.split('ITEM:')[1:]
         self.assertEqual(len(chunks),108)
         self.assertEqual({chunk.split(':',1)[0] for chunk in chunks},set(labels))

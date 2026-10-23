@@ -87,7 +87,7 @@ fi
 
 echo -e "${CYAN}ensure-layer3: Checking ${USER_IMAGE}...${NC}"
 
-LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256 "$LAYER3_RECIPE_DIR")"
+LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256 "$LAYER3_RECIPE_DIR" "$BASE_NAME")"
 if ! BASE_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$BASE_IMAGE" 2>/dev/null)" \
     || [[ ! "$BASE_IMAGE_ID" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
     echo -e "${RED}✗ Could not resolve ${BASE_IMAGE} to an immutable image ID${NC}" >&2

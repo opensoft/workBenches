@@ -235,7 +235,7 @@ class ReferenceCatalogTests(unittest.TestCase):
         self.assertFalse(components.reference_installed('kimi_code'))
         with patch.object(components,'reference_installed') as probe:
             for key in ('kimi_legacy','qoder_cli','qoder_cn_cli','grok_build'):
-                self.assertEqual(components.reference_status(key),'needs check')
+                self.assertEqual(components.reference_status(key),'not installed')
             probe.assert_not_called()
 
     def test_mise_package_wrappers_require_a_matching_export_and_payload(self):
@@ -298,7 +298,7 @@ class SnapInventoryTests(unittest.TestCase):
             components.tool_statuses()
         read.assert_called_once_with(['snap', 'list'], timeout=2)
         self.assertIn('codex_cli\tnot installed', output.getvalue())
-        self.assertEqual(len(output.getvalue().splitlines()), len(components.COMMANDS) + len(components.REFERENCES))
+        self.assertEqual(len(output.getvalue().splitlines()), len(components.COMMANDS) + len(components.REFERENCES) + len(components.MANAGED_HARNESSES))
 
     def test_only_exact_installed_snap_names_are_removable(self):
         result = subprocess.CompletedProcess([], 0, 'Name Version Rev Tracking Publisher Notes\ncodex-bin 1 2 latest/stable test -\nunrelated 1 2 latest/stable test -\n')

@@ -7,14 +7,18 @@ import pprint
 import re
 import shlex
 import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from setup_harnesses import registry
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / 'config/setup-tool-catalog.json'
 BASH = ROOT / 'scripts/lib/setup-tool-catalog.generated.sh'
 PYTHON = ROOT / 'scripts/setup_tool_catalog_data.py'
-MANAGED = {'claude_cli', 'copilot_cli', 'codex_cli', 'antigravity_cli', 'opencode_cli', 'pi_cli',
+BASE_MANAGED = {'claude_cli', 'copilot_cli', 'codex_cli', 'antigravity_cli', 'opencode_cli', 'pi_cli',
            'spec_kit', 'openspec', 'vscode', 'warp', 'wave', 'amnezia_vpn', '0dcloud_vpn', 'host_shell', 'workspace_repo'}
+INSTALLERS = registry()
+MANAGED = BASE_MANAGED | {key for key, row in INSTALLERS.items() if row['kind'] != 'unavailable'}
 IDENTIFIER = re.compile(r'^[a-z0-9][a-z0-9_]*$')
 COMMAND = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9._+-]*$')
 CAPABILITIES = {'interactive', 'noninteractive', 'scriptableIO', 'modelSupport', 'autonomy', 'permissions'}
@@ -141,11 +145,12 @@ def validate(data):
             for value in d[field]: require(COMMAND.fullmatch(value), key + ': detection must be an identifier, not a shell command/path')
         require(all(v.endswith('.desktop') for v in d['desktopIds']), key + ': invalid desktop ID')
         require(d['npmPackage'] is None or re.fullmatch(r'(?:@[a-z0-9-]+/)?[a-z0-9.-]+', d['npmPackage']), key + ': invalid package ID')
+    require(set(INSTALLERS) == {e['id'] for e in entries if e['section'] == 'harness' and e['category'] == 'tui' and e['id'] not in BASE_MANAGED}, 'installer registry must cover only the additional terminal inventory')
     require(managed == MANAGED, 'managed plan keys cannot change with catalog metadata')
     require(set(data['legacyReferenceOrder']) == {'harness', 'tool'}, 'missing legacy reference order')
     for family, order in data['legacyReferenceOrder'].items():
         text_list(order, 'legacy refs')
-        for key in order: require(key in by_id and by_id[key]['section'] == family and not by_id[key]['managed'], 'invalid legacy reference order')
+        for key in order: require(key in by_id and by_id[key]['section'] == family and key not in BASE_MANAGED, 'invalid legacy reference order')
     for family, category_ids in categories.items():
         for category in category_ids: require(any(e['section'] == family and e['category'] == category for e in entries), 'empty category')
     for group in groups - {'all'}: require(any(e['cliGroup'] == group for e in entries), 'empty CLI group')
@@ -180,6 +185,10 @@ def about(entry):
             lines.append(label + ': ' + (', '.join(record['values']) or 'Unknown') + ' [' + record['basis'] + ('; partial' if not record['complete'] else '') + ']')
             lines.append('Scope: ' + record['note'])
             for source in record['sources']: lines.append('Filter evidence: ' + source)
+    if entry['id'] in INSTALLERS:
+        recipe = INSTALLERS[entry['id']]
+        lines += ['', ('Automatic install/update/removal available; command: ' + recipe.get('command', '') if recipe['kind'] != 'unavailable' else 'Unavailable: ' + recipe['note']),
+                  'Installation does not establish login or account access.', 'Installer source: ' + recipe['source']]
     if not entry['managed']:
         lines += ['', 'Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.',
                   'Presence does not establish login, account access or documented feature availability.']
@@ -209,7 +218,7 @@ def snapshots(data):
         shell.append(')')
     for family in ('harness', 'tool'):
         refs = data['legacyReferenceOrder'][family][:]
-        refs += [e['id'] for e in entries if e['section'] == family and not e['managed'] and e['id'] not in refs]
+        refs += [e['id'] for e in entries if e['section'] == family and e['id'] not in BASE_MANAGED and e['id'] not in refs]
         array('setup_catalog_' + family + '_refs', refs)
         rows = data['categories'][family]
         array('setup_' + family + '_categories', [r['id'] for r in rows])
@@ -232,8 +241,10 @@ def snapshots(data):
     mapping('setup_cli_filter_lab_labels', {r['id']: r['label'] for r in data['frontierLabs']})
     mapping('setup_catalog_labels', {e['id']: e['label'] for e in entries})
     mapping('setup_reference_labels', {e['id']: e['label'] for e in entries if not e['managed']})
+    mapping('setup_managed_harnesses', {key: row['command'] for key, row in INSTALLERS.items() if row['kind'] != 'unavailable'})
+    mapping('setup_harness_node_dependencies', {key: 'true' for key, row in INSTALLERS.items() if row['kind'] in {'npm', 'git-node'} or row.get('shell') == 'node' or row.get('tuiPackage')})
     mapping('component_about', {e['id']: about(e) for e in entries})
-    detection = {e['id']: e['detection'] for e in entries if not e['managed']}
+    detection = {e['id']: e['detection'] for e in entries if e['id'] not in BASE_MANAGED}
     python = '# Generated by scripts/setup-tool-catalog.py; edit config/setup-tool-catalog.json.\nREFERENCE_DETECTION = ' + pprint.pformat(detection, sort_dicts=False, width=100) + '\n'
     return '\n'.join(shell) + '\n', python
 
@@ -247,6 +258,16 @@ def main():
     for path, expected in zip((BASH, PYTHON), snapshots(data)):
         if args.check: require(path.exists() and path.read_text() == expected, 'stale generated catalog: ' + str(path.relative_to(ROOT)))
         else: path.write_text(expected)
+    for relative in ('scripts/setup_harnesses.py', 'scripts/setup_harness_targets.py', 'scripts/setup-harnesses.py', 'scripts/harness-native-command.sh', 'config/harness-installers.json'):
+        source = ROOT / relative
+        target = ROOT / 'user-layer/harness-runtime' / relative
+        if args.check: require(target.exists() and target.read_bytes() == source.read_bytes(), 'stale image harness runtime: ' + relative)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(source.read_bytes())
+    selection = ROOT / 'user-layer/harness-runtime/selection.list'
+    if args.check: require(selection.exists() and selection.read_bytes() == b'', 'default image harness selection must be empty')
+    else: selection.write_bytes(b'')
     print('Tool catalog valid: ' + str(len(data['entries'])) + ' distinct products; snapshots ' + ('match' if args.check else 'written'))
 
 

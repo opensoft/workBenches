@@ -73,27 +73,27 @@
     },
     {
       "id": "model_usa",
-      "label": "Model-maker — USA",
+      "label": "Model-maker \u2014 USA",
       "summary": "Model-maker ownership/affiliation in the USA; provider flexibility varies independently."
     },
     {
       "id": "model_china",
-      "label": "Model-maker — China",
+      "label": "Model-maker \u2014 China",
       "summary": "Model-maker ownership/affiliation in China, with regional SKU and lineage distinctions preserved."
     },
     {
       "id": "model_other",
-      "label": "Model-maker — Other",
+      "label": "Model-maker \u2014 Other",
       "summary": "Other model-maker origins; current supplied inventory identifies Mistral from France."
     },
     {
       "id": "combo_open",
-      "label": "Combo — Open / BYOK",
+      "label": "Combo \u2014 Open / BYOK",
       "summary": "Provider-flexible harnesses. Open/BYOK grouping does not imply a verified license, region or unrestricted provider access."
     },
     {
       "id": "combo_commercial",
-      "label": "Combo — Commercial / managed",
+      "label": "Combo \u2014 Commercial / managed",
       "summary": "Commercial/platform clients with managed routing or a selectable model catalog. Regional operator/SKU remains explicit."
     },
     {
@@ -697,7 +697,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_usa",
-      "managed": false,
+      "managed": true,
       "developer": "Google",
       "developerRelationship": "model-maker",
       "developerRegion": "USA",
@@ -745,7 +745,7 @@
         ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@google/gemini-cli"
       },
       "filters": {
         "frontierLab": "google",
@@ -791,7 +791,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_usa",
-      "managed": false,
+      "managed": true,
       "developer": "Google",
       "developerRelationship": "model-maker",
       "developerRegion": "USA",
@@ -825,15 +825,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://jules.google/docs/cli/reference"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "jules"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@google/jules"
       },
       "filters": {
         "frontierLab": "google",
@@ -879,7 +883,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_usa",
-      "managed": false,
+      "managed": true,
       "developer": "xAI",
       "developerRelationship": "model-maker",
       "developerRegion": "USA",
@@ -913,15 +917,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/npm/grok/README.md"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "grok"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@xai-official/grok"
       },
       "filters": {
         "frontierLab": "xai",
@@ -967,7 +975,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_usa",
-      "managed": false,
+      "managed": true,
       "developer": "Meta",
       "developerRelationship": "model-maker",
       "developerRegion": "USA",
@@ -1001,12 +1009,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://dev.meta.ai/docs/muse-code"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "muse"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -1055,7 +1067,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_usa",
-      "managed": false,
+      "managed": true,
       "developer": "AWS / Amazon",
       "developerRelationship": "corporate-affiliate",
       "developerRegion": "USA",
@@ -1147,7 +1159,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_usa",
-      "managed": false,
+      "managed": true,
       "developer": "IBM",
       "developerRelationship": "model-maker",
       "developerRegion": "USA",
@@ -1181,15 +1193,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://bob.ibm.com/docs/shell/getting-started/install-and-setup"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "bob"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@ibm/bob"
       },
       "filters": {
         "frontierLab": null,
@@ -1235,7 +1251,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_usa",
-      "managed": false,
+      "managed": true,
       "developer": "Cognition",
       "developerRelationship": "model-maker",
       "developerRegion": "USA",
@@ -1269,12 +1285,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://docs.devin.ai/"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "devin"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -1323,7 +1343,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_usa",
-      "managed": false,
+      "managed": true,
       "developer": "Poolside",
       "developerRelationship": "model-maker",
       "developerRegion": "USA",
@@ -1358,12 +1378,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/poolsideai/pool"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "pool"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -1412,7 +1436,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_china",
-      "managed": false,
+      "managed": true,
       "developer": "Alibaba / Qwen",
       "developerRelationship": "model-maker",
       "developerRegion": "China",
@@ -1460,7 +1484,7 @@
         ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@qwen-code/qwen-code"
       },
       "filters": {
         "frontierLab": "alibaba",
@@ -1520,7 +1544,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_china",
-      "managed": false,
+      "managed": true,
       "developer": "Moonshot AI",
       "developerRelationship": "model-maker",
       "developerRegion": "China",
@@ -1621,7 +1645,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_china",
-      "managed": false,
+      "managed": true,
       "developer": "Moonshot AI",
       "developerRelationship": "model-maker",
       "developerRegion": "China",
@@ -1656,12 +1680,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login. A shared kimi command is deliberately not used as legacy-product installation evidence.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/MoonshotAI/kimi-cli"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "kimi-legacy"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -1710,7 +1738,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_china",
-      "managed": false,
+      "managed": true,
       "developer": "Z.ai / Zhipu",
       "developerRelationship": "model-maker",
       "developerRegion": "China",
@@ -1746,12 +1774,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/zai-org/ZCode"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "zcode"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -1800,7 +1832,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_china",
-      "managed": false,
+      "managed": true,
       "developer": "Tencent",
       "developerRelationship": "model-maker",
       "developerRegion": "China",
@@ -1834,15 +1866,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://www.codebuddy.cn/docs/cli/installation"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "codebuddy"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@tencent-ai/codebuddy-code"
       },
       "filters": {
         "frontierLab": null,
@@ -1888,7 +1924,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_china",
-      "managed": false,
+      "managed": true,
       "developer": "ByteDance",
       "developerRelationship": "model-maker",
       "developerRegion": "China",
@@ -1922,12 +1958,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/bytedance/trae-agent"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "trae-cli"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -1976,7 +2016,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_china",
-      "managed": false,
+      "managed": true,
       "developer": "Xiaomi",
       "developerRelationship": "model-maker",
       "developerRegion": "China",
@@ -2011,15 +2051,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/XiaomiMiMo/MiMo-Code"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "mimo"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@mimo-ai/cli"
       },
       "filters": {
         "frontierLab": "xiaomi",
@@ -2065,7 +2109,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_china",
-      "managed": false,
+      "managed": true,
       "developer": "Alibaba Cloud",
       "developerRelationship": "model-maker",
       "developerRegion": "China",
@@ -2100,15 +2144,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://docs.qoder.cn/cli/installation"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "qodercn"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@qodercn-ai/qoderclicn"
       },
       "filters": {
         "frontierLab": "alibaba",
@@ -2154,7 +2202,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_other",
-      "managed": false,
+      "managed": true,
       "developer": "Mistral AI (France)",
       "developerRelationship": "model-maker",
       "developerRegion": "Other",
@@ -2190,12 +2238,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/mistralai/mistral-vibe"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "vibe"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -2244,7 +2296,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "Alibaba / Xinliu association (unverified)",
       "developerRelationship": "unverified",
       "developerRegion": "China",
@@ -2280,15 +2332,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/iflow-ai/iflow-cli"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "iflow"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@iflow-ai/iflow-cli"
       },
       "filters": {
         "frontierLab": null,
@@ -2334,7 +2390,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "Ant Group",
       "developerRelationship": "corporate-affiliate",
       "developerRegion": "China",
@@ -2371,15 +2427,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/neovateai/neovate-code"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "neovate"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@neovate/code"
       },
       "filters": {
         "frontierLab": null,
@@ -2425,7 +2485,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "Charmbracelet",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -2471,7 +2531,7 @@
         ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@charmland/crush"
       },
       "filters": {
         "frontierLab": null,
@@ -2522,7 +2582,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "Aider project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -2556,12 +2616,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/Aider-AI/aider"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "aider"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -2610,7 +2674,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "AAIF / Linux Foundation (originated at Block)",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -2644,12 +2708,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/aaif-goose/goose"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "goose"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -2698,7 +2766,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "Cline",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -2732,15 +2800,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/cline/cline"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "cline"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "cline"
       },
       "filters": {
         "frontierLab": null,
@@ -2786,7 +2858,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "Continue",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -2820,15 +2892,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/continuedev/continue"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "cn"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@continuedev/cli"
       },
       "filters": {
         "frontierLab": null,
@@ -2874,7 +2950,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "Kilo",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -2908,15 +2984,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/Kilo-Org/kilocode"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "kilo"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@kilocode/cli"
       },
       "filters": {
         "frontierLab": null,
@@ -2962,7 +3042,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "Roo Code",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -2996,12 +3076,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/RooCodeInc/Roo-Code/blob/main/.github/workflows/cli-release.yml"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "roo"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -3050,7 +3134,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "Plandex",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -3084,12 +3168,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/plandex-ai/plandex"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "plandex"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -3138,7 +3226,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "Codebuff",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -3172,15 +3260,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/CodebuffAI/codebuff"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "codebuff"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "codebuff"
       },
       "filters": {
         "frontierLab": null,
@@ -3226,7 +3318,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "ForgeCode",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -3260,12 +3352,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/antinomyhq/forge"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "forge"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -3314,7 +3410,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "gptme",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -3348,12 +3444,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/gptme/gptme"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "gptme"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -3402,7 +3502,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "Letta",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -3436,15 +3536,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/letta-ai/letta-code"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "letta"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@letta-ai/letta-code"
       },
       "filters": {
         "frontierLab": null,
@@ -3490,7 +3594,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "Nanocoder",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -3524,15 +3628,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/Nano-Collective/nanocoder"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "nanocoder"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@nanocollective/nanocoder"
       },
       "filters": {
         "frontierLab": null,
@@ -3578,7 +3686,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "ShareAI",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -3612,15 +3720,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/shareAI-lab/kode"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "kode"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@shareai-lab/kode"
       },
       "filters": {
         "frontierLab": null,
@@ -3666,7 +3778,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "Codewhale",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -3701,15 +3813,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/codewhale-hq/Codewhale/blob/main/docs/INSTALL.md"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "codew"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "codewhale"
       },
       "filters": {
         "frontierLab": null,
@@ -3755,7 +3871,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "jcode",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -3789,12 +3905,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/1jehuang/jcode"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "jcode"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -3843,7 +3963,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "Reasonix",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -3881,15 +4001,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://reasonix.io/docs/"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "reasonix"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "reasonix"
       },
       "filters": {
         "frontierLab": null,
@@ -3935,7 +4059,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_open",
-      "managed": false,
+      "managed": true,
       "developer": "OH-MY-PI project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -3969,12 +4093,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/can1357/oh-my-pi"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "omp"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -4023,7 +4151,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_commercial",
-      "managed": false,
+      "managed": true,
       "developer": "Cursor",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -4057,12 +4185,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://cursor.com/docs/cli/installation"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "agent"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -4111,7 +4243,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_commercial",
-      "managed": false,
+      "managed": true,
       "developer": "Amp (Sourcegraph origin)",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -4145,12 +4277,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://ampcode.com/docs/cli"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "amp"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -4199,7 +4335,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_commercial",
-      "managed": false,
+      "managed": true,
       "developer": "Factory",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -4234,12 +4370,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://docs.factory.com/cli/getting-started/quickstart"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "droid"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -4288,7 +4428,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_commercial",
-      "managed": false,
+      "managed": true,
       "developer": "Augment Code",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -4323,15 +4463,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://docs.augmentcode.com/cli/setup-auggie/install-auggie-cli"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "auggie"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@augmentcode/auggie"
       },
       "filters": {
         "frontierLab": null,
@@ -4377,7 +4521,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_commercial",
-      "managed": false,
+      "managed": true,
       "developer": "JetBrains",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -4412,12 +4556,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://junie.jetbrains.com/docs/junie-cli.html"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "junie"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -4466,7 +4614,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_commercial",
-      "managed": false,
+      "managed": true,
       "developer": "Tabnine",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -4500,12 +4648,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://docs.tabnine.com/main/getting-started/tabnine-cli/getting-started/installation"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "tabnine-cli"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -4588,7 +4740,9 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/AbanteAI/mentat"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
@@ -4642,7 +4796,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_commercial",
-      "managed": false,
+      "managed": true,
       "developer": "Antigma Labs",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -4676,12 +4830,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/AntigmaLabs/ante"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "ante"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -4730,7 +4888,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_commercial",
-      "managed": false,
+      "managed": true,
       "developer": "TheGitAI",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -4764,15 +4922,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://thegit.ai/docs/getting-started/installation"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "thegitai"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@thegitai/cli"
       },
       "filters": {
         "frontierLab": null,
@@ -4814,11 +4976,11 @@
     },
     {
       "id": "qoder_cli",
-      "label": "Qoder CLI — international",
+      "label": "Qoder CLI \u2014 international",
       "section": "harness",
       "category": "tui",
       "cliGroup": "combo_commercial",
-      "managed": false,
+      "managed": true,
       "developer": "Bright Zenith (Singapore)",
       "developerRelationship": "independent",
       "developerRegion": "Other",
@@ -4854,15 +5016,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://docs.qoder.com/cli/installation"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "qoder"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@qoder-ai/qodercli"
       },
       "filters": {
         "frontierLab": null,
@@ -4908,7 +5074,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "OpenHands project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -4943,12 +5109,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/OpenHands/software-agent-sdk"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "openhands"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -4997,7 +5167,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "SWE-agent project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -5032,12 +5202,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/SWE-agent/SWE-agent"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "sweagent"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -5086,7 +5260,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "mini-SWE-agent project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -5121,12 +5295,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/SWE-agent/mini-swe-agent"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "mini"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -5175,7 +5353,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "AutoCodeRover project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -5210,12 +5388,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/nus-apr/auto-code-rover"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "acr"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -5264,7 +5446,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "Devon project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -5299,12 +5481,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/entropy-research/Devon"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "devon-tui"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -5353,7 +5539,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "RA.Aid project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -5388,12 +5574,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/ai-christianson/RA.Aid"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "ra-aid"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -5442,7 +5632,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "LangChain",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -5478,12 +5668,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/langchain-ai/deepagents"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "dcode"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -5532,7 +5726,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "Pydantic project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -5567,12 +5761,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/vstorm-co/pydantic-deepagents"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "pydantic-deep"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -5621,7 +5819,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "Tau project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -5656,12 +5854,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/jmccardle/tau"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "tau"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -5710,7 +5912,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "Dexto project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -5749,15 +5951,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/truffle-ai/dexto"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "dexto"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "dexto"
       },
       "filters": {
         "frontierLab": null,
@@ -5803,7 +6009,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "Atomic Agent project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -5839,12 +6045,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/AtomicBot-ai/atomic-agent"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "atomic-agent"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -5893,7 +6103,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "BitFun project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -5931,12 +6141,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/GCWing/OpenBitFun"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "openbitfun"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -5985,7 +6199,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "Maki project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -6020,12 +6234,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/tontinton/maki"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "maki"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -6074,7 +6292,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "VT Code project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -6109,12 +6327,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/vinhnx/VTCode"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "vtcode"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -6163,7 +6385,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "hax project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -6198,12 +6420,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/OleksandrChekhovskyi/hax"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "hax"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -6252,7 +6478,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "agentty project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -6287,12 +6513,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/agentty-org/agentty"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "agentty"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -6341,7 +6571,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "cecli project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -6376,12 +6606,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/dwash96/cecli"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "cecli"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -6430,7 +6664,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "Every Code project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -6465,15 +6699,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/just-every/code"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "coder"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@just-every/code"
       },
       "filters": {
         "frontierLab": null,
@@ -6519,7 +6757,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "open-codex project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -6554,15 +6792,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/ymichael/codex"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "open-codex"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "open-codex"
       },
       "filters": {
         "frontierLab": null,
@@ -6608,7 +6850,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "nori-cli project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -6643,15 +6885,19 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/tilework-tech/nori-cli"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "nori"
+        ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "nori-ai-cli"
       },
       "filters": {
         "frontierLab": null,
@@ -6697,7 +6943,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_usa",
-      "managed": false,
+      "managed": true,
       "developer": "Nous Research",
       "developerRelationship": "model-maker",
       "developerRegion": "USA",
@@ -6732,12 +6978,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/NousResearch/hermes-agent"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "hermes"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -6786,7 +7036,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "Prime Intellect",
       "developerRelationship": "corporate-affiliate",
       "developerRegion": "unverified",
@@ -6821,12 +7071,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/PrimeIntellect-ai/prime-agent"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "prime-agent"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -6875,7 +7129,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "specialized",
-      "managed": false,
+      "managed": true,
       "developer": "Open Interpreter project",
       "developerRelationship": "independent",
       "developerRegion": "unverified",
@@ -6911,12 +7165,16 @@
       "verification": {
         "basis": "user-provided",
         "note": "Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.",
-        "evidence": [],
+        "evidence": [
+          "https://github.com/openinterpreter/openinterpreter"
+        ],
         "capabilityEvidence": [],
         "recorded": "2026-10-23"
       },
       "detection": {
-        "commands": [],
+        "commands": [
+          "interpreter"
+        ],
         "desktopIds": [],
         "extensionIds": [],
         "npmPackage": null
@@ -6965,7 +7223,7 @@
       "section": "harness",
       "category": "tui",
       "cliGroup": "model_china",
-      "managed": false,
+      "managed": true,
       "developer": "DeepSeek",
       "developerRelationship": "model-maker",
       "developerRegion": "China",
@@ -7012,7 +7270,7 @@
         ],
         "desktopIds": [],
         "extensionIds": [],
-        "npmPackage": null
+        "npmPackage": "@deepseek-ai/dsh"
       },
       "filters": {
         "frontierLab": "deepseek",
@@ -7392,7 +7650,7 @@
     },
     {
       "id": "copilot_vscode",
-      "label": "GitHub Copilot — VS Code",
+      "label": "GitHub Copilot \u2014 VS Code",
       "section": "harness",
       "category": "extensions",
       "cliGroup": null,
@@ -7449,7 +7707,7 @@
     },
     {
       "id": "cline_vscode",
-      "label": "Cline — VS Code",
+      "label": "Cline \u2014 VS Code",
       "section": "harness",
       "category": "extensions",
       "cliGroup": null,
@@ -7505,7 +7763,7 @@
     },
     {
       "id": "continue_vscode",
-      "label": "Continue — VS Code",
+      "label": "Continue \u2014 VS Code",
       "section": "harness",
       "category": "extensions",
       "cliGroup": null,
@@ -7561,7 +7819,7 @@
     },
     {
       "id": "codex_vscode",
-      "label": "Codex — VS Code",
+      "label": "Codex \u2014 VS Code",
       "section": "harness",
       "category": "extensions",
       "cliGroup": null,

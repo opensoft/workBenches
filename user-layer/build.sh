@@ -36,9 +36,11 @@ CODEX_VERSION_PROBE_TIMEOUT_SECONDS="${WORKBENCHES_CODEX_VERSION_PROBE_TIMEOUT_S
 CLAUDE_CODE_VERSION=""
 CLAUDE_VERSION_PROBE_TIMEOUT_SECONDS="${WORKBENCHES_CLAUDE_VERSION_PROBE_TIMEOUT_SECONDS:-30}"
 PINNED_BASE_IMAGE=""
+HARNESS_CONTEXT=""
 
 cleanup_pinned_base_image() {
     local status=$?
+    [[ -z "$HARNESS_CONTEXT" ]] || rm -rf -- "$HARNESS_CONTEXT"
     if [[ -n "$PINNED_BASE_IMAGE" ]]; then
         docker image rm "$PINNED_BASE_IMAGE" >/dev/null 2>&1 || \
             echo "⚠ Warning: could not remove temporary base tag '$PINNED_BASE_IMAGE'" >&2
@@ -161,9 +163,17 @@ if [[ -z "$PINNED_BASE_IMAGE" ]]; then
     exit 1
 fi
 
-if [ -z "$LAYER3_RECIPE_SHA256" ]; then
-    LAYER3_RECIPE_SHA256="$(layer3_recipe_sha256 "$SCRIPT_DIR")"
+# Only trusted runtime code and validated, secret-free IDs enter this context.
+# Never mutate the shared source context while concurrent benches build.
+HARNESS_CONTEXT=$(mktemp -d)
+cp -R "$SCRIPT_DIR/." "$HARNESS_CONTEXT/"
+layer3_harness_selection "${BASE_IMAGE%:*}" > "$HARNESS_CONTEXT/harness-runtime/selection.list"
+actual_recipe_sha=$(layer3_recipe_sha256 "$SCRIPT_DIR" '' "$(cat "$HARNESS_CONTEXT/harness-runtime/selection.list")")
+if [[ -n "$LAYER3_RECIPE_SHA256" && "$LAYER3_RECIPE_SHA256" != "$actual_recipe_sha" ]]; then
+    echo 'Layer 3 selection or recipe changed during preparation; retry the build.' >&2
+    exit 1
 fi
+LAYER3_RECIPE_SHA256=$actual_recipe_sha
 
 # Resolve the default from the exact base image rather than npm's mutable
 # latest dist-tag. The resulting build argument also invalidates Docker's
@@ -241,14 +251,16 @@ docker build \
     --build-arg CODEX_VERSION="$CODEX_VERSION" \
     --build-arg CLAUDE_CODE_VERSION="$CLAUDE_CODE_VERSION" \
     -t "$OUTPUT_IMAGE" \
-    -f "$SCRIPT_DIR/Dockerfile" \
-    "$SCRIPT_DIR"
+    -f "$HARNESS_CONTEXT/Dockerfile" \
+    "$HARNESS_CONTEXT"
 
 if ! docker image rm "$PINNED_BASE_IMAGE" >/dev/null; then
     echo "❌ Error: could not remove temporary base tag '$PINNED_BASE_IMAGE'" >&2
     exit 1
 fi
 PINNED_BASE_IMAGE=""
+rm -rf -- "$HARNESS_CONTEXT"
+HARNESS_CONTEXT=""
 trap - EXIT
 
 echo ""

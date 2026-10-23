@@ -424,6 +424,7 @@ init_components() {
     done
     for item in "${!setup_catalog_labels[@]}"; do
         component_description[$item]="${setup_catalog_labels[$item]}"
+        [[ -z "${setup_managed_harnesses[$item]:-}" ]] || { component_checked[$item]=false; component_action[$item]=''; }
     done
     component_description[host_shell]="Shell setup"
     component_description[workspace_repo]="Org workspace"
@@ -647,6 +648,10 @@ check_component_status() {
     if [[ -n "${setup_reference_labels[$component]:-}" ]]; then
         if is_wsl_windows; then echo 'needs check'
         else python3 "$SCRIPT_DIR/setup-components.py" tool-status "$component"; fi
+        return
+    fi
+    if [[ -n "${setup_managed_harnesses[$component]:-}" ]]; then
+        python3 "$SCRIPT_DIR/setup-components.py" tool-status "$component"
         return
     fi
     case "$component" in
@@ -2068,6 +2073,16 @@ setup_frame_review() {
                     setup_review_rows+=("$review_text"); review_last_action=$review_action
                 fi
                 setup_review_rows+=("  ${component_description[$review_key]:-$review_item} ($review_label)")
+                if [[ -n "${setup_managed_harnesses[$review_key]:-}" ]]; then
+                    local harness_target_names='Workstation' harness_bench_key
+                    for harness_bench_key in "${bench_items[@]}"; do
+                        if [[ "${component_checked[bench_$harness_bench_key]}" == true ]] && [[ "${component_action[bench_$harness_bench_key]}" == install || "${component_action[bench_$harness_bench_key]}" == update ]]; then
+                            harness_target_names+=", $harness_bench_key"
+                        fi
+                    done
+                    setup_ui_wrap "    Targets: $harness_target_names" "$setup_ui_width"
+                    setup_review_rows+=("${setup_wrapped_lines[@]}")
+                fi
                 ((review_total++))
                 if workstation_service_key "$review_key" && [[ "$review_action" == uninstall ]]; then
                     setup_review_rows+=('Warning: removes a workstation prerequisite; dependent benches may stop working.')
@@ -2340,7 +2355,13 @@ handle_input() {
                     requested=install
                 fi
                 if [[ "$input_key" == d || "$input_key" == D ]]; then
-                    [[ "$is_installed" == true || ( "$key" == bench_* && "$status" == 'needs docker' ) ]] || return 0
+                    local can_remove="$is_installed" remove_bench_key
+                    if [[ "$can_remove" != true && -n "${setup_managed_harnesses[$key]:-}" ]]; then
+                        for remove_bench_key in "${bench_items[@]}"; do
+                            if [[ "${component_checked[bench_$remove_bench_key]}" == true && "${component_action[bench_$remove_bench_key]}" =~ ^(install|update)$ ]]; then can_remove=true; fi
+                        done
+                    fi
+                    [[ "$can_remove" == true || ( "$key" == bench_* && "$status" == 'needs docker' ) ]] || return 0
                     requested="uninstall"
                 fi
                 if [[ "${component_action[$key]}" == "$requested" ]]; then
@@ -3102,6 +3123,25 @@ process_selections() {
             active_component="$item"
             local desc="${component_description[$item]}"
             local action="${component_action[$item]}"
+
+            if [[ -n "${setup_managed_harnesses[$item]:-}" ]]; then
+                local -a harness_targets=()
+                local bench_key
+                for bench_key in "${!component_checked[@]}"; do
+                    if [[ "$bench_key" == bench_* && "${component_checked[$bench_key]}" == true && "${component_action[$bench_key]}" =~ ^(install|update)$ ]]; then
+                        harness_targets+=(--bench "${bench_key#bench_}")
+                    fi
+                done
+                echo "▶ $action: $desc (workstation and selected bench containers)"
+                if python3 "$SCRIPT_DIR/setup-harnesses.py" "$action" "$item" "${harness_targets[@]}"; then
+                    ((success_count++))
+                else
+                    setup_propagate_cancel "$?"
+                    failed_components[$active_component]=true; ((fail_count++))
+                fi
+                echo ""
+                continue
+            fi
 
             # Handle uninstallation
             if [[ "$action" == "uninstall" ]]; then
@@ -4107,21 +4147,24 @@ check_and_install_dependencies() {
 }
 
 ensure_selected_dependencies() {
-    local item needs_node=false choice major minor
-    for item in codex_cli copilot_cli pi_cli openspec; do
+    local item needs_node=false choice major minor minimum_major=20 minimum_minor=19
+    for item in codex_cli copilot_cli pi_cli openspec "${!setup_harness_node_dependencies[@]}"; do
         if [[ "${component_checked[$item]}" == true && "${component_action[$item]}" =~ ^(install|update)$ ]]; then needs_node=true; fi
+    done
+    for item in "${!setup_harness_node_dependencies[@]}"; do
+        if [[ "${component_checked[$item]}" == true && "${component_action[$item]}" =~ ^(install|update)$ ]]; then minimum_major=24; minimum_minor=0; fi
     done
     [[ "$needs_node" == true ]] || return 0
     IFS=. read -r major minor _ <<< "$(node --version 2>/dev/null)"
     major="${major#v}"
-    if ! { [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]] && (( major > 20 || (major == 20 && minor >= 19) )) && command -v npm >/dev/null 2>&1; }; then
-        echo "The selected tools require Node.js 20.19+ and npm."
+    if ! { [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]] && (( major > minimum_major || (major == minimum_major && minor >= minimum_minor) )) && command -v npm >/dev/null 2>&1; }; then
+        echo "The selected tools require Node.js ${minimum_major}.${minimum_minor}+ and npm."
         setup_read "Install/update Node.js now? [y/N]" choice
         [[ "${choice,,}" == y || "${choice,,}" == yes ]] || exit 130
         install_nodejs || { setup_propagate_cancel "$?"; exit 1; }
     fi
     IFS=. read -r major minor _ <<< "$(node --version 2>/dev/null)"; major="${major#v}"
-    [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]] && (( major > 20 || (major == 20 && minor >= 19) )) && command -v npm >/dev/null 2>&1 || exit 1
+    [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]] && (( major > minimum_major || (major == minimum_major && minor >= minimum_minor) )) && command -v npm >/dev/null 2>&1 || exit 1
     # The root launcher exports the chosen location to all child installers.
     if [[ "${1:-}" != --dependencies-plan ]]; then
         ensure_npm_install_location || exit "$?"

@@ -15,6 +15,7 @@ OpenSpec/Speckit protocol and project bootstrap contract.
 - Preserve unrelated changes in the parent checkout and in bench submodules.
 
 <!-- SPECKIT START -->
-Active implementation plan: `specs/029-setup-guided-wizard/plan.md` (v1.7 guided setup wizard).
+Active implementation plan: `specs/032-managed-cli-harnesses/plan.md` (v1.7 managed CLI installation).
+Guided wizard baseline: `specs/029-setup-guided-wizard/plan.md`.
 Provider credential addition for v1.7: `specs/031-kimi-glm-profile-credentials/plan.md` (specified; runtime tasks not started).
 <!-- SPECKIT END -->

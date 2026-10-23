@@ -53,3 +53,12 @@ CPC refresh remain disabled until qualified per mode. Existing release gates,
 including exact-head native/live acceptance, remain required. See the
 [planned user guide](kimi-glm-profile-credentials.md) and
 [implementation tasks](../specs/031-kimi-glm-profile-credentials/tasks.md).
+
+## Managed CLI installer addition (032)
+
+Feature 032 adds reviewed automatic CLI recipes to Harnesses, with workstation
+and explicitly selected bench targets, preserved account data, transactional
+updates and desired tool replay on personalized image rebuilds. See
+[managed CLI harnesses](managed-cli-harnesses.md) for coverage and qualifications.
+Mentat is explicitly unavailable until its current publisher distribution is
+verified. This does not implement feature 031's profile credential runtime.

@@ -29,7 +29,7 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(self.entries['qwen_cli']['modelPolicy'], 'selectable-providers')
         self.assertNotEqual(self.entries['qoder_cn_cli']['developer'], self.entries['qoder_cli']['developer'])
         self.assertEqual(self.entries['kimi_legacy']['productStatus'], 'transitioning')
-        self.assertFalse(self.entries['kimi_legacy']['detection']['commands'])
+        self.assertEqual(self.entries['kimi_legacy']['detection']['commands'], ['kimi-legacy'])
         self.assertEqual(self.entries['kimi_code']['detection']['npmPackage'], '@moonshot-ai/kimi-code')
         self.assertEqual(self.entries['jules_tools']['executionLocation'], 'remote')
         self.assertEqual(self.entries['codex_gui']['category'], 'gui')

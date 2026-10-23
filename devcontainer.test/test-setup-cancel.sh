@@ -12,6 +12,8 @@ cp "$repo_root/setup.sh" "$fixture/"
 cp "$repo_root/bootstrap.sh" "$fixture/"
 cp "$repo_root/scripts/lib/"{setup-cli-filters.sh,setup-tool-catalog.generated.sh,docker-prerequisite.sh,tools-container.sh,setup-status-loader.sh,setup-prerequisites.sh,setup-workstation-lifecycle.sh,setup-prompts.sh} "$fixture/scripts/lib/"
 cp "$repo_root/scripts/setup_selection.py" "$fixture/scripts/"
+cp "$repo_root/scripts/setup_harnesses.py" "$fixture/scripts/"
+cp "$repo_root/config/harness-installers.json" "$fixture/config/"
 cp "$repo_root/scripts/setup-bench-home.py" "$fixture/scripts/"
 cp "$repo_root/scripts/shared-images.py" "$fixture/scripts/"
 export WORKBENCHES_BUILD_LOCAL=1

@@ -14,6 +14,8 @@ import subprocess
 import sys
 
 from setup_prompts import cancellation_signals
+from setup_harnesses import Installer, registry
+MANAGED_HARNESSES = {key for key, row in registry().items() if row['kind'] != 'unavailable'}
 
 try:
     import workbenches_host as host
@@ -68,7 +70,7 @@ FLATPAKS = {'vscode': 'com.visualstudio.code', 'warp': 'dev.warp.Warp',
 # allowlist or package-removal table. Desktop launchers are distinct from CLIs.
 from setup_tool_catalog_data import REFERENCE_DETECTION
 
-REFERENCES = {key: tuple(row['commands']) for key, row in REFERENCE_DETECTION.items()}
+REFERENCES = {key: tuple(row['commands']) for key, row in REFERENCE_DETECTION.items() if key not in MANAGED_HARNESSES}
 EXTENSIONS = {key: tuple(row['extensionIds']) for key, row in REFERENCE_DETECTION.items() if row['extensionIds']}
 
 
@@ -148,7 +150,7 @@ def reference_installed(component):
             raise ValueError('VS Code extension inventory failed')
         return bool(set(EXTENSIONS[component]) & installed)
     metadata = REFERENCE_DETECTION[component]
-    for command in REFERENCES[component]:
+    for command in REFERENCE_DETECTION[component]['commands']:
         located = native_which(command)
         if not located:
             local = Path.home() / '.local/bin' / command
@@ -166,6 +168,8 @@ def reference_is_wsl():
 
 
 def reference_status(component):
+    if component in MANAGED_HARNESSES:
+        return Installer().status(component)
     metadata = REFERENCE_DETECTION[component]
     if not any(metadata[key] for key in ('commands', 'desktopIds', 'extensionIds')):
         return 'needs check'
@@ -259,6 +263,8 @@ def package_installation(component, executable=None):
 
 
 def tool_installed(component):
+    if component in MANAGED_HARNESSES:
+        return Installer().status(component) == 'installed'
     if component in REFERENCES:
         return reference_installed(component)
     return bool(executable_paths(component) or package_installation(component))
@@ -315,6 +321,8 @@ def native_removal(component, path):
 
 
 def uninstall_tool(component):
+    if component in MANAGED_HARNESSES:
+        return Installer().uninstall(component)
     if component in REFERENCES:
         raise ValueError('Manual setup entry: use its original installer; no changes were made')
     # Remove all recognized copies, then verify actual absence. A successful
@@ -460,10 +468,11 @@ def tool_statuses():
     globals()['native_which'] = functools.lru_cache(maxsize=None)(original_which)
     globals()['snap_packages'] = functools.lru_cache(maxsize=None)(original_snaps)
     providers = {'claude_cli': 'claude', 'codex_cli': 'codex', 'pi_cli': 'pi', 'opencode_cli': 'omniroute'}
+    harness_installer = Installer()
     try:
-        for component in (*COMMANDS, *REFERENCES):
+        for component in (*COMMANDS, *REFERENCES, *sorted(MANAGED_HARNESSES)):
             try:
-                status = reference_status(component) if component in REFERENCES else ('installed' if tool_installed(component) else 'not installed')
+                status = harness_installer.status(component) if component in MANAGED_HARNESSES else reference_status(component) if component in REFERENCES else ('installed' if tool_installed(component) else 'not installed')
                 if status == 'installed' and component in providers and profile_credentials.status(providers[component]) != 0:
                     status = 'needs creds'
             except (OSError, ValueError, subprocess.TimeoutExpired):

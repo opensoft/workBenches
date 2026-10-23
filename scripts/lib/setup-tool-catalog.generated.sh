@@ -623,77 +623,7 @@ declare -A setup_catalog_labels=(
     [mise]=mise
 )
 declare -A setup_reference_labels=(
-    [gemini_cli]='Gemini CLI'
-    [jules_tools]='Jules Tools'
-    [grok_build]='Grok Build'
-    [muse_code]='Muse Code'
-    [kiro_cli]='Kiro CLI'
-    [bob_shell]='Bob Shell'
-    [devin_cli]='Devin CLI'
-    [pool_cli]=pool
-    [qwen_cli]='Qwen Code'
-    [kimi_code]='Kimi Code'
-    [kimi_legacy]='Kimi CLI (legacy project)'
-    [zcode_cli]='ZCode CLI/TUI'
-    [codebuddy_cli]='CodeBuddy Code / CLI'
-    [trae_agent]='Trae Agent'
-    [mimo_code]='MiMo Code'
-    [qoder_cn_cli]='Qoder CN CLI'
-    [vibe_cli]='Mistral Vibe / Vibe Code CLI'
-    [iflow_cli]='iFlow CLI'
-    [neovate_code]='Neovate Code'
-    [crush_cli]=Crush
-    [aider_cli]=Aider
-    [goose_cli]=Goose
-    [cline_cli]='Cline CLI'
-    [continue_cli]='Continue CLI'
-    [kilo_cli]='Kilo Code CLI'
-    [roo_cli]='Roo Code CLI'
-    [plandex_cli]=Plandex
-    [codebuff_cli]=Codebuff
-    [forgecode_cli]=ForgeCode
-    [gptme_cli]=gptme
-    [letta_code]='Letta Code'
-    [nanocoder_cli]=Nanocoder
-    [kode_cli]='Kode CLI'
-    [codewhale_cli]=Codewhale
-    [jcode_cli]=jcode
-    [reasonix_cli]=Reasonix
-    [oh_my_pi]=OH-MY-PI
-    [cursor_cli]='Cursor CLI'
-    [amp_cli]=Amp
-    [droid_cli]=Droid
-    [auggie_cli]=Auggie
-    [junie_cli]='Junie CLI'
-    [tabnine_cli]='Tabnine CLI'
     [mentat_cli]='Mentat CLI'
-    [ante_cli]=Ante
-    [thegitai_cli]=TheGitAI
-    [qoder_cli]='Qoder CLI — international'
-    [openhands_cli]='OpenHands CLI'
-    [swe_agent]=SWE-agent
-    [mini_swe_agent]=mini-SWE-agent
-    [autocoderover]=AutoCodeRover
-    [devon_cli]=Devon
-    [ra_aid]=RA.Aid
-    [deep_agents_code]='Deep Agents Code'
-    [pydantic_deep_agents]='Pydantic Deep Agents'
-    [tau_cli]=Tau
-    [dexto_cli]=Dexto
-    [atomic_agent]='Atomic Agent'
-    [bitfun_cli]=BitFun
-    [maki_cli]=Maki
-    [vt_code]='VT Code'
-    [hax_cli]=hax
-    [agentty_cli]=agentty
-    [cecli]=cecli
-    [every_code]='Every Code'
-    [open_codex]=open-codex
-    [nori_cli]=nori-cli
-    [hermes_agent]='Hermes Agent'
-    [prime_agent]='Prime Agent'
-    [open_interpreter]='Open Interpreter'
-    [dsh_cli]='DeepSeek Harness (dsh)'
     [opencode_desktop]='OpenCode GUI'
     [qwen_desktop]='Qwen Code Desktop'
     [kimi_desktop]='Kimi Code Desktop'
@@ -716,6 +646,112 @@ declare -A setup_reference_labels=(
     [foot]=Foot
     [tmux]=tmux
     [mise]=mise
+)
+declare -A setup_managed_harnesses=(
+    [gemini_cli]=gemini
+    [jules_tools]=jules
+    [grok_build]=grok
+    [muse_code]=muse
+    [kiro_cli]=kiro-cli
+    [bob_shell]=bob
+    [devin_cli]=devin
+    [pool_cli]=pool
+    [qwen_cli]=qwen
+    [kimi_code]=kimi
+    [kimi_legacy]=kimi-legacy
+    [zcode_cli]=zcode
+    [codebuddy_cli]=codebuddy
+    [trae_agent]=trae-cli
+    [mimo_code]=mimo
+    [qoder_cn_cli]=qodercn
+    [vibe_cli]=vibe
+    [iflow_cli]=iflow
+    [neovate_code]=neovate
+    [crush_cli]=crush
+    [aider_cli]=aider
+    [goose_cli]=goose
+    [cline_cli]=cline
+    [continue_cli]=cn
+    [kilo_cli]=kilo
+    [roo_cli]=roo
+    [plandex_cli]=plandex
+    [codebuff_cli]=codebuff
+    [forgecode_cli]=forge
+    [gptme_cli]=gptme
+    [letta_code]=letta
+    [nanocoder_cli]=nanocoder
+    [kode_cli]=kode
+    [codewhale_cli]=codew
+    [jcode_cli]=jcode
+    [reasonix_cli]=reasonix
+    [oh_my_pi]=omp
+    [cursor_cli]=agent
+    [amp_cli]=amp
+    [droid_cli]=droid
+    [auggie_cli]=auggie
+    [junie_cli]=junie
+    [tabnine_cli]=tabnine-cli
+    [ante_cli]=ante
+    [thegitai_cli]=thegitai
+    [qoder_cli]=qoder
+    [openhands_cli]=openhands
+    [swe_agent]=sweagent
+    [mini_swe_agent]=mini
+    [autocoderover]=acr
+    [devon_cli]=devon-tui
+    [ra_aid]=ra-aid
+    [deep_agents_code]=dcode
+    [pydantic_deep_agents]=pydantic-deep
+    [tau_cli]=tau
+    [dexto_cli]=dexto
+    [atomic_agent]=atomic-agent
+    [bitfun_cli]=openbitfun
+    [maki_cli]=maki
+    [vt_code]=vtcode
+    [hax_cli]=hax
+    [agentty_cli]=agentty
+    [cecli]=cecli
+    [every_code]=coder
+    [open_codex]=open-codex
+    [nori_cli]=nori
+    [hermes_agent]=hermes
+    [prime_agent]=prime-agent
+    [open_interpreter]=interpreter
+    [dsh_cli]=dsh
+)
+declare -A setup_harness_node_dependencies=(
+    [gemini_cli]=true
+    [jules_tools]=true
+    [grok_build]=true
+    [bob_shell]=true
+    [qwen_cli]=true
+    [kimi_code]=true
+    [zcode_cli]=true
+    [codebuddy_cli]=true
+    [mimo_code]=true
+    [qoder_cn_cli]=true
+    [iflow_cli]=true
+    [neovate_code]=true
+    [crush_cli]=true
+    [cline_cli]=true
+    [continue_cli]=true
+    [kilo_cli]=true
+    [codebuff_cli]=true
+    [letta_code]=true
+    [nanocoder_cli]=true
+    [kode_cli]=true
+    [codewhale_cli]=true
+    [reasonix_cli]=true
+    [auggie_cli]=true
+    [tabnine_cli]=true
+    [thegitai_cli]=true
+    [qoder_cli]=true
+    [devon_cli]=true
+    [dexto_cli]=true
+    [every_code]=true
+    [open_codex]=true
+    [nori_cli]=true
+    [dsh_cli]=true
 )
 declare -A component_about=(
     [claude_cli]='User inventory · First-party Claude coding agent; terminal is one of several surfaces.
@@ -1002,8 +1038,9 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
+Automatic install/update/removal available; command: gemini
+Installation does not establish login or account access.
+Installer source: https://github.com/google-gemini/gemini-cli
 Setup/source: https://github.com/google-gemini/gemini-cli'
     [jules_tools]='User inventory · CLI controls remotely executed Jules tasks; not a local coding-agent runtime.
 Filter tags: Frontier (curated) · USA · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
@@ -1044,9 +1081,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: jules
+Installation does not establish login or account access.
+Installer source: https://jules.google/docs/cli/reference
+Setup/source: https://jules.google/docs/cli/reference'
     [grok_build]='User inventory · Grok-centered coding harness/TUI with configurable endpoints; distinct from community Grok CLI projects.
 Filter tags: Frontier (curated) · USA · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1086,9 +1124,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: grok
+Installation does not establish login or account access.
+Installer source: https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/npm/grok/README.md
+Setup/source: https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/npm/grok/README.md'
     [muse_code]='User inventory · Terminal/CI coding agent centered on Meta Muse models.
 Filter tags: Frontier (curated) · USA · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1128,9 +1167,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: muse
+Installation does not establish login or account access.
+Installer source: https://dev.meta.ai/docs/muse-code
+Setup/source: https://dev.meta.ai/docs/muse-code'
     [kiro_cli]='User inventory · Multi-model client under Amazon ownership; not a Nova-only client.
 Filter tags: Frontier unclassified · USA · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1170,8 +1210,9 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
+Automatic install/update/removal available; command: kiro-cli
+Installation does not establish login or account access.
+Installer source: https://kiro.dev/docs/cli/
 Setup/source: https://kiro.dev/docs/cli/'
     [bob_shell]='User inventory · Terminal surface of IBM Bob, supporting Granite and other providers; separate from the Bob IDE.
 Filter tags: Frontier unclassified · USA · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
@@ -1212,9 +1253,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: bob
+Installation does not establish login or account access.
+Installer source: https://bob.ibm.com/docs/shell/getting-started/install-and-setup
+Setup/source: https://bob.ibm.com/docs/shell/getting-started/install-and-setup'
     [devin_cli]='User inventory · Hybrid coding product with frontier models and Cognition SWE-2.
 Filter tags: Frontier unclassified · USA · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1254,9 +1296,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: devin
+Installation does not establish login or account access.
+Installer source: https://docs.devin.ai/
+Setup/source: https://docs.devin.ai/'
     [pool_cli]='User inventory · First-party terminal agent using Laguna models, with TUI and headless execution.
 Filter tags: Frontier unclassified · USA · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1296,9 +1339,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: pool
+Installation does not establish login or account access.
+Installer source: https://github.com/poolsideai/pool
+Setup/source: https://github.com/poolsideai/pool'
     [qwen_cli]='User inventory · Official Qwen coding CLI; also supports third-party or local endpoints.
 Filter tags: Frontier (curated) · China · Access: api/local · Native: llm · Via: voice · Models: open/closed
 
@@ -1341,8 +1385,9 @@ Model weights: open, closed [primary-source; partial]
 Scope: Documents open Qwen models plus OpenAI/Anthropic/Gemini protocols and local Ollama/vLLM endpoints. Protocol compatibility requires a supported model/provider configuration.
 Filter evidence: https://github.com/QwenLM/qwen-code/blob/main/README.md
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
+Automatic install/update/removal available; command: qwen
+Installation does not establish login or account access.
+Installer source: https://github.com/QwenLM/qwen-code
 Setup/source: https://github.com/QwenLM/qwen-code'
     [kimi_code]='User inventory · Current coding-agent product; keep separate from the earlier Kimi CLI project.
 Filter tags: Frontier (curated) · China · Access: api · Native: llm/video · Via: Unknown · Models: Unknown
@@ -1385,8 +1430,9 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
+Automatic install/update/removal available; command: kimi
+Installation does not establish login or account access.
+Installer source: https://github.com/MoonshotAI/kimi-code
 Setup/source: https://github.com/MoonshotAI/kimi-code'
     [kimi_legacy]='User inventory · Separate earlier project transitioning toward Kimi Code. A kimi executable alone cannot identify which project is installed.
 Filter tags: Frontier (curated) · China · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
@@ -1427,9 +1473,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: kimi-legacy
+Installation does not establish login or account access.
+Installer source: https://github.com/MoonshotAI/kimi-cli
+Setup/source: https://github.com/MoonshotAI/kimi-cli'
     [zcode_cli]='User inventory · Terminal surface alongside ZCode desktop; GLM-centered with optional third-party endpoints.
 Filter tags: Frontier (curated) · China · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1469,9 +1516,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: zcode
+Installation does not establish login or account access.
+Installer source: https://github.com/zai-org/ZCode
+Setup/source: https://github.com/zai-org/ZCode'
     [codebuddy_cli]='User inventory · Tencent/Hunyuan platform CLI; distinct from CodeBuddy IDE, plugins and WorkBuddy.
 Filter tags: Frontier unclassified · China · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1511,9 +1559,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: codebuddy
+Installation does not establish login or account access.
+Installer source: https://www.codebuddy.cn/docs/cli/installation
+Setup/source: https://www.codebuddy.cn/docs/cli/installation'
     [trae_agent]='User inventory · Research software-engineering CLI; distinct from the commercial TRAE IDE.
 Filter tags: Frontier (curated) · China · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1553,9 +1602,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: trae-cli
+Installation does not establish login or account access.
+Installer source: https://github.com/bytedance/trae-agent
+Setup/source: https://github.com/bytedance/trae-agent'
     [mimo_code]='User inventory · Terminal agent with TUI and noninteractive modes, supporting MiMo and other providers.
 Filter tags: Frontier (curated) · China · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1595,9 +1645,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: mimo
+Installation does not establish login or account access.
+Installer source: https://github.com/XiaomiMiMo/MiMo-Code
+Setup/source: https://github.com/XiaomiMiMo/MiMo-Code'
     [qoder_cn_cli]='User inventory · Chinese regional SKU; distinct operator/terms from international Qoder and distinct from Qwen Code.
 Filter tags: Frontier (curated) · China · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1637,9 +1688,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: qodercn
+Installation does not establish login or account access.
+Installer source: https://docs.qoder.cn/cli/installation
+Setup/source: https://docs.qoder.cn/cli/installation'
     [vibe_cli]='User inventory · Mistral-centered terminal agent with configurable providers; Vibe also names a broader product family.
 Filter tags: Frontier (curated) · Other · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1679,9 +1731,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: vibe
+Installation does not establish login or account access.
+Installer source: https://github.com/mistralai/mistral-vibe
+Setup/source: https://github.com/mistralai/mistral-vibe'
     [iflow_cli]='User inventory · China-associated combo CLI. Ownership and current availability need primary-source verification.
 Filter tags: Frontier unclassified · China · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1721,9 +1774,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: iflow
+Installation does not establish login or account access.
+Installer source: https://github.com/iflow-ai/iflow-cli
+Setup/source: https://github.com/iflow-ai/iflow-cli'
     [neovate_code]='User inventory · China-associated multi-model CLI with plugins, MCP and headless automation; developer attribution is user-provided.
 Filter tags: Frontier unclassified · China · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1763,9 +1817,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: neovate
+Installation does not establish login or account access.
+Installer source: https://github.com/neovateai/neovate-code
+Setup/source: https://github.com/neovateai/neovate-code'
     [crush_cli]='User inventory · Multi-provider terminal-first coding TUI.
 Filter tags: Frontier unclassified · unverified · Access: api/local · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1806,8 +1861,9 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
+Automatic install/update/removal available; command: crush
+Installation does not establish login or account access.
+Installer source: https://github.com/charmbracelet/crush
 Setup/source: https://github.com/charmbracelet/crush'
     [aider_cli]='User inventory · Git-oriented terminal pair programming and multi-file editing.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
@@ -1848,9 +1904,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: aider
+Installation does not establish login or account access.
+Installer source: https://github.com/Aider-AI/aider
+Setup/source: https://github.com/Aider-AI/aider'
     [goose_cli]='User inventory · Extensible local agent with CLI, multiple providers and MCP integration; organizational attribution is user-provided.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1890,9 +1947,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: goose
+Installation does not establish login or account access.
+Installer source: https://github.com/aaif-goose/goose
+Setup/source: https://github.com/aaif-goose/goose'
     [cline_cli]='User inventory · Model-agnostic terminal agent with file, command and browser tools; editor integration is a separate entry.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1932,9 +1990,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: cline
+Installation does not establish login or account access.
+Installer source: https://github.com/cline/cline
+Setup/source: https://github.com/cline/cline'
     [continue_cli]='User inventory · Terminal coding agent with multi-model and local-model options; separate from its editor extension.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -1974,9 +2033,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: cn
+Installation does not establish login or account access.
+Installer source: https://github.com/continuedev/continue
+Setup/source: https://github.com/continuedev/continue'
     [kilo_cli]='User inventory · CLI with orchestration, skills and checkpoints.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2016,9 +2076,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: kilo
+Installation does not establish login or account access.
+Installer source: https://github.com/Kilo-Org/kilocode
+Setup/source: https://github.com/Kilo-Org/kilocode'
     [roo_cli]='User inventory · Terminal agent with architect, code, debug and orchestration modes.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2058,9 +2119,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: roo
+Installation does not establish login or account access.
+Installer source: https://github.com/RooCodeInc/Roo-Code/blob/main/.github/workflows/cli-release.yml
+Setup/source: https://github.com/RooCodeInc/Roo-Code/blob/main/.github/workflows/cli-release.yml'
     [plandex_cli]='User inventory · Plan-first terminal agent for larger multi-file work.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2100,9 +2162,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: plandex
+Installation does not establish login or account access.
+Installer source: https://github.com/plandex-ai/plandex
+Setup/source: https://github.com/plandex-ai/plandex'
     [codebuff_cli]='User inventory · Multi-agent coding assistant with a CLI.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2142,9 +2205,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: codebuff
+Installation does not establish login or account access.
+Installer source: https://github.com/CodebuffAI/codebuff
+Setup/source: https://github.com/CodebuffAI/codebuff'
     [forgecode_cli]='User inventory · Multi-model CLI with task management and custom agents.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2184,9 +2248,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: forge
+Installation does not establish login or account access.
+Installer source: https://github.com/antinomyhq/forge
+Setup/source: https://github.com/antinomyhq/forge'
     [gptme_cli]='User inventory · Terminal agent for file edits, code execution and persistent workflows.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2226,9 +2291,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: gptme
+Installation does not establish login or account access.
+Installer source: https://github.com/gptme/gptme
+Setup/source: https://github.com/gptme/gptme'
     [letta_code]='User inventory · Memory-first coding CLI with model-agnostic execution.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2268,9 +2334,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: letta
+Installation does not establish login or account access.
+Installer source: https://github.com/letta-ai/letta-code
+Setup/source: https://github.com/letta-ai/letta-code'
     [nanocoder_cli]='User inventory · Local-first CLI using Ollama, OpenRouter and compatible APIs.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2310,9 +2377,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: nanocoder
+Installation does not establish login or account access.
+Installer source: https://github.com/Nano-Collective/nanocoder
+Setup/source: https://github.com/Nano-Collective/nanocoder'
     [kode_cli]='User inventory · Multi-provider terminal coding agent.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2352,9 +2420,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: kode
+Installation does not establish login or account access.
+Installer source: https://github.com/shareAI-lab/kode
+Setup/source: https://github.com/shareAI-lab/kode'
     [codewhale_cli]='User inventory · Bring-your-own-model Rust coding agent with TUI and headless modes.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2394,9 +2463,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: codew
+Installation does not establish login or account access.
+Installer source: https://github.com/codewhale-hq/Codewhale/blob/main/docs/INSTALL.md
+Setup/source: https://github.com/codewhale-hq/Codewhale/blob/main/docs/INSTALL.md'
     [jcode_cli]='User inventory · Rust coding TUI with multiple providers and parallel-agent features.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2436,9 +2506,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: jcode
+Installation does not establish login or account access.
+Installer source: https://github.com/1jehuang/jcode
+Setup/source: https://github.com/1jehuang/jcode'
     [reasonix_cli]='User inventory · Coding engine with terminal, desktop, browser and editor surfaces.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2478,9 +2549,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: reasonix
+Installation does not establish login or account access.
+Installer source: https://reasonix.io/docs/
+Setup/source: https://reasonix.io/docs/'
     [oh_my_pi]='User inventory · Separate Pi-related terminal implementation; not upstream Pi.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2520,9 +2592,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: omp
+Installation does not establish login or account access.
+Installer source: https://github.com/can1357/oh-my-pi
+Setup/source: https://github.com/can1357/oh-my-pi'
     [cursor_cli]='User inventory · Terminal agent connected to Cursor model catalog/ecosystem; distinct from Cursor editor.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2562,9 +2635,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: agent
+Installation does not establish login or account access.
+Installer source: https://cursor.com/docs/cli/installation
+Setup/source: https://cursor.com/docs/cli/installation'
     [amp_cli]='User inventory · Coding CLI selecting different models by operating mode.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2604,9 +2678,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: amp
+Installation does not establish login or account access.
+Installer source: https://ampcode.com/docs/cli
+Setup/source: https://ampcode.com/docs/cli'
     [droid_cli]='User inventory · Multi-model coding CLI with custom agents and headless execution.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2646,9 +2721,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: droid
+Installation does not establish login or account access.
+Installer source: https://docs.factory.com/cli/getting-started/quickstart
+Setup/source: https://docs.factory.com/cli/getting-started/quickstart'
     [auggie_cli]='User inventory · Interactive CLI with noninteractive automation.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2688,9 +2764,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: auggie
+Installation does not establish login or account access.
+Installer source: https://docs.augmentcode.com/cli/setup-auggie/install-auggie-cli
+Setup/source: https://docs.augmentcode.com/cli/setup-auggie/install-auggie-cli'
     [junie_cli]='User inventory · Multi-model CLI with planning/headless workflows; early access.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2730,9 +2807,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: junie
+Installation does not establish login or account access.
+Installer source: https://junie.jetbrains.com/docs/junie-cli.html
+Setup/source: https://junie.jetbrains.com/docs/junie-cli.html'
     [tabnine_cli]='User inventory · Enterprise terminal assistant distributed through a container.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2772,9 +2850,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: tabnine-cli
+Installation does not establish login or account access.
+Installer source: https://docs.tabnine.com/main/getting-started/tabnine-cli/getting-started/installation
+Setup/source: https://docs.tabnine.com/main/getting-started/tabnine-cli/getting-started/installation'
     [mentat_cli]='User inventory · Terminal control surface for remote coding agents; not solely a local runtime.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2814,9 +2893,13 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
+Unavailable: Current remote-agent Mentat CLI installer identity not verified. The old AbanteAI repository is unavailable; npm mentat is unrelated. Awaiting the intended publisher install URL.
+Installation does not establish login or account access.
+Installer source: https://github.com/AbanteAI/mentat
+
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Setup/source: https://github.com/AbanteAI/mentat'
     [ante_cli]='User inventory · Terminal agent supporting multiple providers and local inference; research preview.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2856,9 +2939,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: ante
+Installation does not establish login or account access.
+Installer source: https://github.com/AntigmaLabs/ante
+Setup/source: https://github.com/AntigmaLabs/ante'
     [thegitai_cli]='User inventory · Hosted multi-model coding agent accessed through a terminal client.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2898,9 +2982,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: thegitai
+Installation does not establish login or account access.
+Installer source: https://thegit.ai/docs/getting-started/installation
+Setup/source: https://thegit.ai/docs/getting-started/installation'
     [qoder_cli]='User inventory · International SKU/operator with regional terms distinct from Alibaba Cloud Qoder CN.
 Filter tags: Frontier unclassified · Other · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2940,9 +3025,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: qoder
+Installation does not establish login or account access.
+Installer source: https://docs.qoder.com/cli/installation
+Setup/source: https://docs.qoder.com/cli/installation'
     [openhands_cli]='User inventory · CLI entry into an autonomous software-engineering environment.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -2982,9 +3068,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: openhands
+Installation does not establish login or account access.
+Installer source: https://github.com/OpenHands/software-agent-sdk
+Setup/source: https://github.com/OpenHands/software-agent-sdk'
     [swe_agent]='User inventory · Repository issue-resolution agent used in research/evaluation.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3024,9 +3111,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: sweagent
+Installation does not establish login or account access.
+Installer source: https://github.com/SWE-agent/SWE-agent
+Setup/source: https://github.com/SWE-agent/SWE-agent'
     [mini_swe_agent]='User inventory · Small inspectable command-line coding-agent implementation.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3066,9 +3154,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: mini
+Installation does not establish login or account access.
+Installer source: https://github.com/SWE-agent/mini-swe-agent
+Setup/source: https://github.com/SWE-agent/mini-swe-agent'
     [autocoderover]='User inventory · Automated issue-resolution agent using code search/analysis.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3108,9 +3197,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: acr
+Installation does not establish login or account access.
+Installer source: https://github.com/nus-apr/auto-code-rover
+Setup/source: https://github.com/nus-apr/auto-code-rover'
     [devon_cli]='User inventory · Terminal pair-programming TUI with planning, implementation and debugging.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3150,9 +3240,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: devon-tui
+Installation does not establish login or account access.
+Installer source: https://github.com/entropy-research/Devon
+Setup/source: https://github.com/entropy-research/Devon'
     [ra_aid]='User inventory · Autonomous research/plan/implement pipeline with optional Aider integration.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3192,9 +3283,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: ra-aid
+Installation does not establish login or account access.
+Installer source: https://github.com/ai-christianson/RA.Aid
+Setup/source: https://github.com/ai-christianson/RA.Aid'
     [deep_agents_code]='User inventory · Framework-derived terminal agent with tools, subagents and headless execution.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3234,9 +3326,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: dcode
+Installation does not establish login or account access.
+Installer source: https://github.com/langchain-ai/deepagents
+Setup/source: https://github.com/langchain-ai/deepagents'
     [pydantic_deep_agents]='User inventory · Coding agent and Python library with configurable models and optional sandboxing.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3276,9 +3369,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: pydantic-deep
+Installation does not establish login or account access.
+Installer source: https://github.com/vstorm-co/pydantic-deepagents
+Setup/source: https://github.com/vstorm-co/pydantic-deepagents'
     [tau_cli]='User inventory · Small provider-neutral educational Python CLI/TUI.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3318,9 +3412,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: tau
+Installation does not establish login or account access.
+Installer source: https://github.com/jmccardle/tau
+Setup/source: https://github.com/jmccardle/tau'
     [dexto_cli]='User inventory · General agent/coding runtime with CLI, web, API and delegation.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3360,9 +3455,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: dexto
+Installation does not establish login or account access.
+Installer source: https://github.com/truffle-ai/dexto
+Setup/source: https://github.com/truffle-ai/dexto'
     [atomic_agent]='User inventory · Local-first coding agent with TUI, noninteractive modes and local/cloud model support.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3402,9 +3498,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: atomic-agent
+Installation does not establish login or account access.
+Installer source: https://github.com/AtomicBot-ai/atomic-agent
+Setup/source: https://github.com/AtomicBot-ai/atomic-agent'
     [bitfun_cli]='User inventory · Multi-surface agent with TUI/headless CLI alongside an independently built desktop app.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3444,9 +3541,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: openbitfun
+Installation does not establish login or account access.
+Installer source: https://github.com/GCWing/OpenBitFun
+Setup/source: https://github.com/GCWing/OpenBitFun'
     [maki_cli]='User inventory · Extensible Rust coding TUI with Lua plugins and structured tools.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3486,9 +3584,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: maki
+Installation does not establish login or account access.
+Installer source: https://github.com/tontinton/maki
+Setup/source: https://github.com/tontinton/maki'
     [vt_code]='User inventory · Multi-provider terminal coding agent with shell-safety features.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3528,9 +3627,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: vtcode
+Installation does not establish login or account access.
+Installer source: https://github.com/vinhnx/VTCode
+Setup/source: https://github.com/vinhnx/VTCode'
     [hax_cli]='User inventory · Minimal C implementation with local-model/compatible-endpoint support.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3570,9 +3670,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: hax
+Installation does not establish login or account access.
+Installer source: https://github.com/OleksandrChekhovskyi/hax
+Setup/source: https://github.com/OleksandrChekhovskyi/hax'
     [agentty_cli]='User inventory · Native C++ terminal agent with model abstraction and sandboxing.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3612,9 +3713,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: agentty
+Installation does not establish login or account access.
+Installer source: https://github.com/agentty-org/agentty
+Setup/source: https://github.com/agentty-org/agentty'
     [cecli]='User inventory · Community continuation/fork of Aider.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3654,9 +3756,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: cecli
+Installation does not establish login or account access.
+Installer source: https://github.com/dwash96/cecli
+Setup/source: https://github.com/dwash96/cecli'
     [every_code]='User inventory · Codex-derived CLI with multi-provider orchestration and automation.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3696,9 +3799,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: coder
+Installation does not establish login or account access.
+Installer source: https://github.com/just-every/code
+Setup/source: https://github.com/just-every/code'
     [open_codex]='User inventory · Lightweight multi-provider Codex fork.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3738,9 +3842,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: open-codex
+Installation does not establish login or account access.
+Installer source: https://github.com/ymichael/codex
+Setup/source: https://github.com/ymichael/codex'
     [nori_cli]='User inventory · Codex-derived unified terminal interface for several providers.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3780,9 +3885,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: nori
+Installation does not establish login or account access.
+Installer source: https://github.com/tilework-tech/nori-cli
+Setup/source: https://github.com/tilework-tech/nori-cli'
     [hermes_agent]='User inventory · General-purpose model-maker agent that can code; not a coding-only or Nous-only client.
 Filter tags: Frontier unclassified · USA · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3822,9 +3928,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: hermes
+Installation does not establish login or account access.
+Installer source: https://github.com/NousResearch/hermes-agent
+Setup/source: https://github.com/NousResearch/hermes-agent'
     [prime_agent]='User inventory · Model-maker-associated coding/research agent with persistent Python execution, built on Pi; developer region unverified.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3864,9 +3971,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: prime-agent
+Installation does not establish login or account access.
+Installer source: https://github.com/PrimeIntellect-ai/prime-agent
+Setup/source: https://github.com/PrimeIntellect-ai/prime-agent'
     [open_interpreter]='User inventory · General-purpose execution agent; not a coding-first harness.
 Filter tags: Frontier unclassified · unverified · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3906,9 +4014,10 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
-Source: user-supplied inventory; independent publisher/setup link not yet verified.'
+Automatic install/update/removal available; command: interpreter
+Installation does not establish login or account access.
+Installer source: https://github.com/openinterpreter/openinterpreter
+Setup/source: https://github.com/openinterpreter/openinterpreter'
     [dsh_cli]='User inventory · Plugin-oriented harness with CLI launch/configuration tools. Optional dsh-TUI frontend is a separate plugin; terminal modes belong to this one harness entry.
 Filter tags: Frontier (curated) · China · Access: Unknown · Native: llm · Via: Unknown · Models: Unknown
 
@@ -3948,8 +4057,9 @@ Scope: No specific external modality route has been documented for this entry. G
 Model weights: Unknown [unverified; partial]
 Scope: Supported model weight availability has not yet been verified. Do not infer it from the harness license, price or developer ownership.
 
-Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
-Presence does not establish login, account access or documented feature availability.
+Automatic install/update/removal available; command: dsh
+Installation does not establish login or account access.
+Installer source: https://github.com/deepseek-ai/deepseek-harness
 Setup/source: https://github.com/deepseek-ai/deepseek-harness
 Setup/source: https://github.com/ccch1mneyyy/dsh-TUI'
     [opencode_desktop]='Catalog entry · Desktop AI coding workspace. Use it for project conversations and code changes. The OpenCode CLI is a separate installation.
