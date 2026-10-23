@@ -16,4 +16,5 @@ OpenSpec/Speckit protocol and project bootstrap contract.
 
 <!-- SPECKIT START -->
 Active implementation plan: `specs/029-setup-guided-wizard/plan.md` (v1.7 guided setup wizard).
+Provider credential addition for v1.7: `specs/031-kimi-glm-profile-credentials/plan.md` (specified; runtime tasks not started).
 <!-- SPECKIT END -->

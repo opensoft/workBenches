@@ -37,3 +37,19 @@ paths fail closed. The existing setup modes and private selection format remain.
 
 Bench copy approval in the running preview, CI and real-host QA remain release
 gates. See [the wizard verification handoff](../specs/029-setup-guided-wizard/quickstart.md).
+
+## Kimi and GLM profile credentials — planned addition
+
+Brett requested this 1.7 scope on 2026-10-23. It is specified in
+[feature 031](../specs/031-kimi-glm-profile-credentials/spec.md), with runtime
+implementation still pending. Kimi gains named isolated accounts, a pkimi
+launcher and persistent profile mounts; GLM retains pglm/pzai. Both gain qualified
+credential recovery and company-sync adapters, with accurate access/freshness
+status and preservation of unrelated accounts and provider records.
+
+Initial Kimi compatibility testing targets CLI 2.3.1 and entitled k3.1-pro use;
+installing a CLI does not grant model access. Remote OAuth custody/sharing and
+CPC refresh remain disabled until qualified per mode. Existing release gates,
+including exact-head native/live acceptance, remain required. See the
+[planned user guide](kimi-glm-profile-credentials.md) and
+[implementation tasks](../specs/031-kimi-glm-profile-credentials/tasks.md).

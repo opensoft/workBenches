@@ -6,6 +6,13 @@
 
 **Status**: Draft
 
+**Related 1.7 addition (2026-10-23)**: Brett requested
+[Kimi/GLM profile credentials](../031-kimi-glm-profile-credentials/spec.md).
+Feature 031 owns those new profile, persistence and custody contracts; they are
+planned separately and are not evidence that this wizard's completed UI work
+implemented credential support. Preserve the wizard queue/navigation contracts
+when integrating that feature.
+
 **Input**: User description: "Replace the setup TUI's three-column main screen and its separate Requirements and Profiles pages with a guided wizard (Workstation → Benches → Agents → Tools → Profiles → Review) for workBenches 1.7, as decided in the approved OpenSpec change `setup-guided-wizard`: benches browsed by category with a small scrolling About panel, Enter opening Review before anything is applied, a layout that fits 36–87+ columns and any known height, and a complete, safely-read bench catalog."
 
 **Source of decision**: OpenSpec change [`openspec/changes/setup-guided-wizard/`](../../openspec/changes/setup-guided-wizard/) —

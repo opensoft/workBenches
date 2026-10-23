@@ -19,7 +19,7 @@ The supported harness families are:
 | `chatgpt` | ChatGPT account used by Codex CLI | `codex` | One `CODEX_HOME` per account | Login and verification |
 | `gemini` | Google Gemini CLI | `gemini` | One `GEMINI_CLI_HOME` per account | Login and local credential presence |
 | `grok` | Grok Build | `grok` | One `GROK_HOME` per account | Login and verification |
-| `glm` | Z.AI GLM Coding Plan through OpenCode | `opencode` | Profile-specific XDG directories | Login and verification |
+| `glm` | Z.AI GLM Coding Plan through OpenCode | `opencode` | Profile-specific XDG directories | Profile launchers; dashboard sign-in guidance |
 | `kimi-code` | Kimi Code CLI (Moonshot AI, Kimi K3) | `kimi` | One `KIMI_CODE_HOME` per account | Inventory and manual verification |
 | `qwen` | Qwen Code CLI (Alibaba) | `qwen` | Profile-specific `~/.qwen` config | Inventory and manual verification |
 | `minimax` | MiniMax Code CLI | `mcode` | Region-aware login (`global`/`cn`) | Inventory and manual verification |
@@ -288,8 +288,15 @@ KIMI_CODE_HOME="$HOME/.kimi-code-profiles/personal" kimi
 Inside the CLI, `/login` opens a chooser for Kimi Code OAuth (device-code flow)
 or a Moonshot AI Open Platform API key; `/logout` clears the active profile's
 credentials. Do not confuse this current TypeScript CLI with the legacy Python
-`kimi-cli` package (distributed on PyPI as `kimi-cli`); check `kimi --version`
-and expect a `0.x` release for the current tool.
+`kimi-cli` package (distributed on PyPI as `kimi-cli`). Check `kimi --version`
+and package identity rather than assuming a `0.x` version: the current
+TypeScript client observed on 2026-10-23 is 2.3.1. See the
+[official release](https://github.com/MoonshotAI/kimi-code/releases/tag/%40moonshot-ai/kimi-code%402.3.1).
+
+First-class Kimi profile management, persistent bench homes, and Kimi/GLM
+credential recovery/company-sync are specified for 1.7 but not implemented yet.
+See [the planned credential guide](kimi-glm-profile-credentials.md) and
+[feature 031](../specs/031-kimi-glm-profile-credentials/spec.md).
 
 ### Qwen Code CLI
 
