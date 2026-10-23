@@ -6,8 +6,8 @@
 |---|---|
 | Workstation | Check WSL 2 when applicable, Docker and Tools; manage optional Vault. |
 | Benches | Browse categories, inspect each bench and queue changes. |
-| Harness | Queue coding CLI and specification-tool changes. |
-| Tools | Queue desktop tools, Shell setup and Org workspace changes. |
+| Harness | Browse Harnesses, inspect About and queue coding CLI/specification-tool changes. |
+| Tools | Browse tool categories, inspect About and queue changes. |
 | Profiles | Manage personal/company identities, the workstation account and AI accounts. |
 | Review | Inspect the complete queue before applying it. |
 
@@ -70,20 +70,47 @@ zone it describes that category and lists its benches. Long About text pages
 inside its panel; changing the focus resets its position. Missing details leave
 benches usable with a fallback description; R retries an unavailable catalog.
 
+## Harnesses and categorized Tools
+
+The Harness step has a **Harnesses** list and an About panel for the selected
+coding CLI or specification tool. Up/down moves through the existing list,
+skipping the separator. The navigation step remains **Harness**.
+
+Tools uses the same category/list pattern as Benches:
+
+| Category | Tools |
+|---|---|
+| Editors | VS Code |
+| Terminals | Warp Terminal, Wave Terminal |
+| Networking | AmneziaVPN, 0dcloud VPN |
+| Workstation setup | Shell setup, Org workspace |
+
+Choose a category with up/down, then Tab, Shift+Tab or Space enters its tools
+without selecting a change. Tab/Shift+Tab or up on the first tool returns to
+categories. Only that category's tools appear. About describes the category
+while it has focus, then each selected tool when its list has focus.
+Space/D keeps the existing install/update/removal rules; configuration-only
+Shell setup and Org workspace cannot be removed.
+
+Both About panels use PgUp/PgDn or [/] for paging, reset when focus changes,
+and retain/clamp the page on refresh. P/G restores the exact Tools category,
+zone, item and About page. Short terminals collapse categories and scroll the
+list while preserving the selected row, About and navigation footer.
+
 ## Keys
 
 | Key | Action |
 |---|---|
 | ← / → | Previous/next step; stop at the ends. |
 | ↑ / ↓ | Move within the step; scroll Review. In Benches, move within the current zone. |
-| Tab / Shift+Tab | Switch Benches category/list zones. ↑ on the first bench returns to categories. |
+| Tab / Shift+Tab | Switch Benches or Tools category/list zones. ↑ on the first item returns to categories. |
 | Space / D | Queue/unqueue install or update / removal; Space opens Profiles actions. |
 | Enter | Open Review, apply from Review, or open a Profiles row. |
 | P | Visit Workstation and return to the remembered step and focus. |
 | G | Visit Profiles; G Back restores the remembered step and focus. |
 | V | Run Vault's current action from any step; advertised on Workstation. |
 | R | Refresh checks while preserving focus and queued changes. |
-| PgUp / PgDn, [ / ] | Page About on Workstation, Benches and Profiles. |
+| PgUp / PgDn, [ / ] | Page About on Workstation, Benches, Harness, Tools and Profiles. |
 | Q | Cancel without applying; stop pending checks and remove their private snapshots. |
 
 The footer shows the focused item and total changes. Below 60 columns it uses

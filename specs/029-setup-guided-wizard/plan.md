@@ -352,3 +352,7 @@ Brett requested a Workstation layout matching the Benches pattern: one blank row
 ## Accepted lifecycle extension (2026-10-22)
 
 Brett explicitly selected install/uninstall for all Workstation entries and then authorized commit/push. OpenSpec setup-workstation-lifecycle extends the former service-action/allowed-key contracts. T039F implements the new queue and guarded lifecycle. Existing presentation refinements remain; unsupported data-destructive Desktop/WSL removal is refused with manual instructions. Bench-copy approval remains a merge gate, while the newer instruction authorizes publishing before that gate.
+
+## Accepted UI revision 029-A05 (2026-10-23)
+
+Task T039G titles the Harness list Harnesses, adds cached per-item About for Harness and Tools, and gives Tools the Benches category/list navigation pattern. Keep flat installer arrays and IDs unchanged. Use Editors, Terminals, Networking and Workstation setup categories, shared About primitives, responsive budgets and saved tool-zone/category/list/About state for P/G returns. See amendment 029-A05.

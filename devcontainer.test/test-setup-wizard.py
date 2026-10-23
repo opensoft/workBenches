@@ -374,6 +374,95 @@ printf '%s offset=%s\n' "${setup_about_lines[*]}" "$setup_about_offset"
         self.assertIn('Organization sign-in.',output)
         self.assertIn('offset=0',output)
 
+    def test_tools_category_navigation_preserves_global_selection_and_queue(self):
+        output=self.shell(r'''
+init_components --loading
+for key in "${tool_items[@]}"; do component_status[$key]=installed; done
+setup_arrive_step 2
+handle_input <<< ' '
+[[ "$setup_tool_zone" == tool && "${component_checked[vscode]}" != true ]] || exit 30
+handle_input <<< $'\e[Z'; handle_input <<< $'\e[B'; handle_input <<< $'\t'
+[[ "$setup_tool_category" == terminals && "${tool_items[$current_selection]}" == warp ]] || exit 31
+handle_input <<< $'\e[B'; handle_input <<< ' '
+[[ "$current_selection" == 2 && "${component_action[wave]}" == update ]] || exit 32
+handle_input <<< $'\e[B'; [[ "$current_selection" == 2 ]] || exit 33
+handle_input <<< $'\e[A'; handle_input <<< D
+[[ "$current_selection" == 1 && "${component_action[warp]}" == uninstall ]] || exit 34
+handle_input <<< $'\e[A'
+[[ "$setup_tool_zone" == category && "$setup_tool_category" == terminals ]] || exit 35
+handle_input <<< D
+[[ "${component_action[wave]}" == update && "${component_action[warp]}" == uninstall ]] || exit 36
+handle_input <<< $'\t'
+printf '%s:%s:%s\n' "$setup_tool_zone" "$setup_tool_category" "${tool_items[$current_selection]}"
+''')
+        self.assertEqual(output.strip(),'tool:terminals:warp')
+
+    def test_tools_about_paging_and_jump_refresh_restore_exact_focus(self):
+        output=self.shell(r'''
+init_components --loading
+for key in "${requirement_items[@]}"; do component_status[$key]=up; done
+for key in "${tool_items[@]}"; do component_status[$key]=installed; done
+CURRENT_SECTION=2; setup_tool_zone=tool; setup_tool_category=terminals; current_selection=1
+component_about[warp]=''
+for ((i=0;i<50;i++)); do component_about[warp]+='Long terminal details for paging. '; done
+component_checked[wave]=true; component_action[wave]=update
+setup_ui_width=36; setup_ui_height=24; setup_frame_build
+handle_input <<< $'\e[6~'; [[ "$setup_about_offset" -gt 0 ]] || exit 30
+saved_offset=$setup_about_offset
+handle_input <<< G; setup_frame_build
+handle_input <<< G; setup_frame_build
+[[ "$CURRENT_SECTION" == 2 && "$setup_tool_zone" == tool && "$setup_tool_category" == terminals && "$current_selection" == 1 ]] || exit 31
+[[ "$setup_about_offset" == "$saved_offset" ]] || exit 32
+handle_input <<< P; setup_frame_build
+handle_input <<< P; setup_frame_build
+[[ "$CURRENT_SECTION" == 2 && "$setup_about_offset" == "$saved_offset" ]] || exit 33
+status_async_ui=false
+refresh_host_tool_inventory() { :; }; setup_load_bench_metadata_sync() { :; }; refresh_bench_inventory() { :; }
+check_component_status() { echo installed; }; load_requirements() { :; }; draw_ui() { setup_frame_build; }
+handle_input <<< R
+[[ "$setup_tool_zone" == tool && "$setup_tool_category" == terminals && "$current_selection" == 1 && "$setup_about_offset" == "$saved_offset" ]] || exit 34
+[[ "${component_action[wave]}" == update ]] || exit 35
+handle_input <<< $'\e[5~'; [[ "$setup_about_offset" == 0 ]] || exit 36
+handle_input <<< ']'; handle_input <<< $'\e[B'; setup_frame_build
+[[ "$setup_about_anchor" == tool:wave && "$setup_about_offset" == 0 ]] || exit 37
+echo restored
+''')
+        self.assertEqual(output.strip(),'restored')
+
+    def test_harness_about_pages_and_resets_on_selected_harness_change(self):
+        output=self.shell(r'''
+init_components --loading; CURRENT_SECTION=1
+setup_ui_width=36; setup_ui_height=24
+component_about[claude_cli]=''
+for ((i=0;i<40;i++)); do component_about[claude_cli]+='Long harness details for paging. '; done
+setup_frame_build
+handle_input <<< ']'; [[ "$setup_about_offset" -gt 0 ]] || exit 30
+handle_input <<< '['; [[ "$setup_about_offset" == 0 ]] || exit 31
+handle_input <<< $'\e[6~'; [[ "$setup_about_offset" -gt 0 ]] || exit 32
+handle_input <<< $'\e[B'; setup_frame_build
+[[ "$setup_about_anchor" == harness:copilot_cli && "$setup_about_offset" == 0 ]] || exit 33
+[[ "${component_checked[claude_cli]}" != true && "${component_checked[copilot_cli]}" != true ]] || exit 34
+echo paged
+''')
+        self.assertEqual(output.strip(),'paged')
+
+    def test_tools_setup_category_retains_configuration_only_actions(self):
+        self.shell(r'''
+init_components --loading
+setup_arrive_step 2
+for ((i=0;i<3;i++)); do handle_input <<< $'\e[B'; done
+handle_input <<< $'\t'
+[[ "$current_selection" == 5 && "${tool_items[$current_selection]}" == host_shell ]] || exit 30
+component_status[host_shell]=configured
+handle_input <<< ' '; handle_input <<< D
+[[ "${component_action[host_shell]}" == install ]] || exit 31
+handle_input <<< $'\e[B'
+[[ "$current_selection" == 6 && "${tool_items[$current_selection]}" == workspace_repo ]] || exit 32
+component_status[workspace_repo]=optional
+handle_input <<< ' '; handle_input <<< D
+[[ "${component_action[workspace_repo]}" == install ]] || exit 33
+''')
+
     def test_workstation_about_pages_and_follows_focus_without_actions(self):
         output=self.shell(r'''
 is_wsl_windows() { return 1; }

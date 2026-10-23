@@ -636,3 +636,7 @@ Brett requested the header brand `openBenches v1.7` beside the Opensoft logo and
 ## Accepted live-review revision 029-A04 (2026-10-22)
 
 Brett requested a Workstation layout matching the Benches pattern: one blank row after the navigation divider, a single Containers panel replacing Required Software/Optional Vault, and a focused-service About panel. T039E preserves the requirements strip/readiness markers and service order/actions, keeps Vault optional, moves inline detail into About, enables shared About paging/reset/clamping, and puts G Profiles in the full footer. About gets two to eight spare rows (all text at unknown height); only roomy layouts add the gap before About. This supersedes the earlier two-panel/inline-explanation layout.
+
+## Accepted review revision 029-A05 (2026-10-23)
+
+Harness has a Harnesses panel and focused About. Tools has cached categories and a category/list zone matching Benches, with category or tool About. Editors: VS Code; Terminals: Warp/Wave; Networking: AmneziaVPN/0dcloud VPN; Workstation setup: Shell setup/Org workspace. Keep installer arrays/global selection indexes stable. Shared About and responsive primitives apply to both steps; preserve category/zone/item/list/About state through P/G and refresh. This supersedes the earlier flat Tools/no-About layout.

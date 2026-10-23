@@ -20,7 +20,7 @@ Every wizard frame SHALL begin with the Opensoft banner and `openBenches v1.7` t
 - **THEN** the frame contains no `STEP n OF m` title and no per-step description sentence
 
 ### Requirement: Step selector area
-The rows under the rule SHALL be the current step's selector area: the requirements strip after one blank row on Workstation, the CATEGORY block on Benches and the identities summary line on Profiles. Harness and Tools SHALL start directly with their panels, and Review SHALL start with its instruction line.
+The rows under the rule SHALL be the current step's selector area: the requirements strip after one blank row on Workstation, the CATEGORY block on Benches and the identities summary line on Profiles. Harness SHALL start with its Harnesses panel and Tools with its category block, and Review SHALL start with its instruction line.
 
 #### Scenario: Strip only on Workstation
 - **WHEN** Workstation is shown

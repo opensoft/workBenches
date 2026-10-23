@@ -997,7 +997,7 @@ prev_checked_state=""
 # A variable-returning signature avoids a subshell for every key and idle tick.
 setup_update_ui_signature() {
     local signature_key
-    setup_ui_signature="$CURRENT_SECTION:$current_selection:${setup_bench_zone:-category}:${setup_bench_category:-}:${setup_about_offset:-0}:${setup_review_offset:-0}:${setup_list_offset:-0}:$setup_ui_width:$setup_ui_height:$requirements_notice:$profiles_summary"
+    setup_ui_signature="$setup_tool_zone:$setup_tool_category:$CURRENT_SECTION:$current_selection:${setup_bench_zone:-category}:${setup_bench_category:-}:${setup_about_offset:-0}:${setup_review_offset:-0}:${setup_list_offset:-0}:$setup_ui_width:$setup_ui_height:$requirements_notice:$profiles_summary"
     for signature_key in "${!component_description[@]}"; do
         setup_ui_signature+=";$signature_key:${component_status[$signature_key]}:${component_checked[$signature_key]}:${component_action[$signature_key]}:${requirement_detail[$signature_key]}"
     done
@@ -1167,6 +1167,18 @@ setup_step_names=(Workstation Benches Harness Tools Profiles Review)
 setup_section_step=([3]=0 [0]=1 [1]=2 [2]=3 [4]=4 [5]=5)
 setup_bench_zone=category
 setup_bench_category=''
+setup_tool_zone=category
+setup_tool_category=editors
+setup_tool_categories=(editors terminals networking workstation)
+declare -A setup_tool_labels=( [editors]=Editors [terminals]=Terminals [networking]=Networking [workstation]='Workstation setup' )
+declare -A setup_tool_members=( [editors]='vscode' [terminals]='warp wave' [networking]='amnezia_vpn 0dcloud_vpn' [workstation]='host_shell workspace_repo' )
+declare -A setup_tool_summaries=(
+    [editors]='Code editors for working with projects.'
+    [terminals]='Terminal applications for local and remote development.'
+    [networking]='VPN clients for access to your configured networks.'
+    [workstation]='Shell settings and organization workspace configuration.'
+)
+declare -A setup_tool_offsets=()
 setup_review_offset=0
 
 requirements_return_set=false
@@ -1180,6 +1192,11 @@ setup_remember_target() {
     printf -v "${target_prefix}_return_zone" '%s' "$setup_bench_zone"
     printf -v "${target_prefix}_return_category" '%s' "$setup_bench_category"
     printf -v "${target_prefix}_return_bench" '%s' "$target_bench"
+    printf -v "${target_prefix}_return_tool_zone" '%s' "$setup_tool_zone"
+    printf -v "${target_prefix}_return_tool_category" '%s' "$setup_tool_category"
+    printf -v "${target_prefix}_return_list_offset" '%s' "$setup_list_offset"
+    printf -v "${target_prefix}_return_about_offset" '%s' "$setup_about_offset"
+    printf -v "${target_prefix}_return_about_anchor" '%s' "$setup_about_anchor"
     printf -v "${target_prefix}_return_review_offset" '%s' "$setup_review_offset"
     printf -v "${target_prefix}_return_set" '%s' true
 }
@@ -1192,6 +1209,11 @@ setup_restore_target() {
     target_field="${target_prefix}_return_zone"; setup_bench_zone=${!target_field}
     target_field="${target_prefix}_return_category"; setup_bench_category=${!target_field}
     target_field="${target_prefix}_return_review_offset"; setup_review_offset=${!target_field}
+    target_field="${target_prefix}_return_tool_zone"; setup_tool_zone=${!target_field:-category}
+    target_field="${target_prefix}_return_tool_category"; setup_tool_category=${!target_field:-editors}
+    target_field="${target_prefix}_return_list_offset"; setup_list_offset=${!target_field:-0}
+    target_field="${target_prefix}_return_about_offset"; setup_about_offset=${!target_field:-0}
+    target_field="${target_prefix}_return_about_anchor"; setup_about_anchor=${!target_field:-}
     target_field="${target_prefix}_return_bench"; target_bench=${!target_field}
     if [[ "$CURRENT_SECTION" == 0 && -n "$target_bench" ]]; then
         for target_index in "${!bench_items[@]}"; do
@@ -1344,12 +1366,92 @@ setup_frame_categories() {
     done
 }
 
+setup_focus_tool_key() {
+    local tool_index
+    for tool_index in "${!tool_items[@]}"; do
+        [[ "${tool_items[tool_index]}" != "$1" ]] || { current_selection=$tool_index; return 0; }
+    done
+    return 1
+}
+
+setup_tools_key() {
+    local tool_key="$1" tool_category_index=0 tool_member_index=0
+    local -a tool_members=()
+    for tool_category_index in "${!setup_tool_categories[@]}"; do
+        [[ "${setup_tool_categories[tool_category_index]}" != "$setup_tool_category" ]] || break
+    done
+    IFS=' ' read -r -a tool_members <<< "${setup_tool_members[$setup_tool_category]}"
+    if [[ "$setup_tool_zone" == category ]]; then
+        case "$tool_key" in
+            up) ((tool_category_index <= 0)) || ((tool_category_index--)) ;;
+            down) if ((tool_category_index+1 < ${#setup_tool_categories[@]})); then ((tool_category_index++)); else setup_tool_zone=tool; fi ;;
+            tab|backtab|' ') setup_tool_zone=tool ;;
+            d|D) return 0 ;;
+            *) return 1 ;;
+        esac
+        setup_tool_category=${setup_tool_categories[tool_category_index]}
+        IFS=' ' read -r -a tool_members <<< "${setup_tool_members[$setup_tool_category]}"
+        setup_focus_tool_key "${tool_members[0]}"
+    else
+        for tool_member_index in "${!tool_members[@]}"; do
+            [[ "${tool_members[tool_member_index]}" != "${tool_items[$current_selection]}" ]] || break
+        done
+        case "$tool_key" in
+            up) if ((tool_member_index > 0)); then ((tool_member_index--)); else setup_tool_zone=category; fi ;;
+            down) ((tool_member_index+1 >= ${#tool_members[@]})) || ((tool_member_index++)) ;;
+            tab|backtab) setup_tool_zone=category ;;
+            *) return 1 ;;
+        esac
+        setup_focus_tool_key "${tool_members[tool_member_index]}"
+    fi
+    setup_about_offset=0
+    return 0
+}
+
+setup_tool_group_summary_v() {
+    local group_key="$2" group_item group_count=0 group_ready=0 group_queued=0 group_text
+    local -a group_members=()
+    IFS=' ' read -r -a group_members <<< "${setup_tool_members[$group_key]}"
+    group_count=${#group_members[@]}
+    for group_item in "${group_members[@]}"; do
+        if [[ "${component_status[$group_item]}" == installed || "${component_status[$group_item]}" == 'needs creds' || "${component_status[$group_item]}" == 'image only' ]]; then ((group_ready++)); fi
+        [[ "${component_checked[$group_item]}" != true || -z "${component_action[$group_item]}" ]] || ((group_queued++))
+    done
+    group_text="${setup_tool_labels[$group_key]} · $group_count tool"
+    ((group_count == 1)) || group_text+=s
+    ((group_ready == 0)) || group_text+=" · $group_ready installed"
+    ((group_queued == 0)) || group_text+=" · $group_queued queued"
+    printf -v "$1" '%s' "$group_text"
+}
+
+setup_frame_tool_categories() {
+    local group_line group_key group_mark group_needed group_min=1
+    [[ "$setup_ui_layout" != roomy ]] || setup_frame_append ''
+    group_needed=$(( ${#setup_frame_lines[@]} + 1 + ${#setup_tool_categories[@]} + group_min + 6 + setup_footer_height ))
+    [[ -z "$requirements_notice" ]] || ((group_needed++))
+    [[ "$setup_ui_layout" != roomy ]] || ((group_needed+=2))
+    if [[ -n "$setup_ui_height" ]] && { ((setup_ui_height <= 24)) || ((group_needed > setup_ui_height)); }; then
+        setup_tool_group_summary_v group_line "$setup_tool_category"
+        setup_ui_cut_v group_line "CATEGORY · $group_line" "$setup_ui_width"
+        setup_frame_append "$group_line"
+        return
+    fi
+    setup_ui_pair_v group_line CATEGORY 'Tab ⇄ tools' "$setup_ui_width"; setup_frame_append "$group_line"
+    for group_key in "${setup_tool_categories[@]}"; do
+        group_mark=○; [[ "$group_key" != "$setup_tool_category" ]] || group_mark=●
+        setup_tool_group_summary_v group_line "$group_key"
+        setup_ui_cut_v group_line "$group_mark $group_line" "$setup_ui_width"
+        setup_frame_append "$group_line"
+    done
+}
+
 setup_arrive_step() {
     CURRENT_SECTION=$1; current_selection=0; setup_list_offset=0; setup_about_offset=0
     if [[ "$CURRENT_SECTION" == 0 ]]; then
         setup_bench_zone=category
         setup_bench_category="${setup_bench_categories_focusable[0]:-}"
     fi
+    if [[ "$CURRENT_SECTION" == 2 ]]; then setup_tool_zone=category; setup_tool_category=editors; fi
     [[ "$CURRENT_SECTION" != 5 ]] || setup_review_offset=0
 }
 
@@ -1419,6 +1521,7 @@ setup_frame_selector() {
     fi
     [[ "$CURRENT_SECTION" != 4 ]] || setup_frame_identities
     [[ "$CURRENT_SECTION" != 0 ]] || setup_frame_categories
+    [[ "$CURRENT_SECTION" != 2 ]] || setup_frame_tool_categories
     return 0
 }
 setup_frame_notice() {
@@ -1438,13 +1541,15 @@ setup_frame_footer_prepare() {
     done
     case "$CURRENT_SECTION" in
         1) footer_key="${ai_items[$current_selection]}" ;;
-        2) footer_key="${tool_items[$current_selection]}" ;;
+        2) [[ "$setup_tool_zone" != tool ]] || footer_key="${tool_items[$current_selection]}" ;;
         3) footer_key="${requirement_items[$current_selection]}" ;;
         4) footer_key="${profile_items[$current_selection]}" ;;
     esac
     if [[ -n "$footer_key" ]]; then footer_name="${component_description[$footer_key]}"; fi
     footer_context=$footer_name
     if [[ "$CURRENT_SECTION" == 5 ]]; then footer_context='Review · Nothing applied yet'
+    elif [[ "$CURRENT_SECTION" == 2 && "$setup_tool_zone" == category ]]; then
+        setup_tool_group_summary_v footer_context "$setup_tool_category"
     elif [[ "$CURRENT_SECTION" != 4 && -n "$footer_key" ]]; then
         setup_status_label_v footer_state "${component_status[$footer_key]}"
         footer_context+=" · $footer_state"
@@ -1470,6 +1575,9 @@ setup_frame_footer_prepare() {
     if ((setup_ui_width < 60)); then
         case "$CURRENT_SECTION" in
             3) footer_hints=('Navigation: Space Select  D Remove' '←→ Steps  Enter Review  Q Quit') ;;
+            2)
+                if [[ "$setup_tool_zone" == category ]]; then footer_hints=('Navigation: Tab Tools' '←→ Steps  Enter Review  Q Quit')
+                else footer_hints=('Navigation: Space Select  D Remove' '←→ Steps  Enter Review  Q Quit'); fi ;;
             4) footer_hints=('Navigation: Enter Open' '←→ Steps  G Back  Q Quit') ;;
             5) footer_hints=('Navigation: ↑↓ Scroll' '←→ Steps  Enter Apply  Q Quit') ;;
             0)
@@ -1480,6 +1588,10 @@ setup_frame_footer_prepare() {
     else
         case "$CURRENT_SECTION" in
             3) footer_hints=('Navigation: ↑↓ Move  Space Select  D Remove  PgUp/PgDn About' '←→ Steps  Enter Review  P Back  G Profiles  V Vault  R Refresh  Q Quit') ;;
+            1) footer_hints=('Navigation: ↑↓ Move  Space Select  D Remove  PgUp/PgDn About' '←→ Steps  P Workstation  R Refresh  Enter Review  Q Quit') ;;
+            2)
+                footer_action=Category; [[ "$setup_tool_zone" != category ]] || footer_action=Tools
+                footer_hints=("Navigation: ↑↓ Move  Tab $footer_action  Space Select  D Remove  PgUp/PgDn About" '←→ Steps  P Workstation  R Refresh  Enter Review  Q Quit') ;;
             4) footer_hints=('Navigation: ↑↓ Move  Enter Open  PgUp/PgDn About' '←→ Steps  G Back  P Workstation  R Refresh  Q Quit') ;;
             5) footer_hints=('Navigation: ↑↓ Scroll  ← Back  Enter Apply' 'P Workstation  R Refresh  Q Quit') ;;
             0)
@@ -1560,6 +1672,24 @@ declare -A workstation_about=(
     [docker]='Runs the Linux containers used by your benches. Docker must be Up before setup can apply changes.'
     [setup_tools]='Provides the shared tools used by setup and your benches. These tools are required before setup can apply changes.'
     [vault]='Optional credential storage for connected accounts. You can set up benches without Vault. Use G Profiles to manage sign-in and credentials.'
+)
+
+declare -A component_about=(
+    [claude_cli]=$'Claude coding assistant in your terminal.\nUse it for: working on project changes and understanding code.\nManage sign-in and account profiles from Profiles.'
+    [copilot_cli]=$'GitHub Copilot coding assistant in your terminal.\nUse it for: assisted development tasks in your projects.\nManage sign-in and account access from Profiles.'
+    [codex_cli]=$'Codex coding assistant in your terminal.\nUse it for: exploring code, making project changes and running development tasks.\nManage sign-in and account profiles from Profiles.'
+    [antigravity_cli]=$'Antigravity command-line coding workflow.\nUse it for: terminal access to the configured development assistant.\nAccount setup is separate from installing the CLI.'
+    [opencode_cli]=$'OpenCode coding assistant in your terminal.\nUse it for: working on code with your configured provider.\nManage provider credentials from Profiles.'
+    [pi_cli]=$'Pi coding agent in your terminal.\nUse it for: interactive development work with your configured provider.\nManage sign-in and credentials from Profiles.'
+    [spec_kit]=$'Specification and implementation planning toolkit.\nUse it for: defining requirements, plans and executable development tasks.'
+    [openspec]=$'Change proposals and specification workflow.\nUse it for: recording intended behavior and tracking approved changes.'
+    [vscode]=$'Visual Studio Code editor.\nUse it for: editing project files and using your configured development extensions.\nEditor sign-in and extensions are configured separately.'
+    [warp]=$'Warp terminal application.\nUse it for: running local command-line development workflows.\nConfigure its account and preferences in the application.'
+    [wave]=$'Wave terminal application.\nUse it for: terminal sessions and project workspaces, including configured remote connections.'
+    [amnezia_vpn]=$'AmneziaVPN client.\nUse it for: connecting to your configured VPN networks.\nNetwork profiles and authorization are managed separately.'
+    [0dcloud_vpn]=$'0dcloud VPN client.\nUse it for: access through your configured 0dcloud network.\nConnection details and authorization are configured separately.'
+    [host_shell]=$'Configure your workstation shell environment.\nUse it for: applying the shared shell setup.\nThis replaces shell settings; it is a configuration action and cannot be uninstalled here.'
+    [workspace_repo]=$'Configure your organization workspace repository.\nUse it for: organizing the repositories used by your workstation.\nThis may create a GitHub repository; it is a configuration action and cannot be uninstalled here.'
 )
 
 declare -A profile_about=(
@@ -1695,29 +1825,62 @@ setup_frame_benches() {
 }
 
 setup_frame_components() {
-    local component_line component_index component_key component_focus component_budget=0
+    local component_line component_index component_key component_focus component_budget=0 component_focus_index=$current_selection component_offset component_title component_about_title component_about_text component_anchor component_window=8
     local -a component_items=()
-    if [[ "$CURRENT_SECTION" == 1 ]]; then component_items=("${ai_items[@]}")
-    else component_items=("${tool_items[@]}"); fi
-    setup_panel_top_v component_line "${setup_step_names[${setup_section_step[$CURRENT_SECTION]}]}" ''
-    setup_frame_append "$component_line"
-    if [[ -n "$setup_ui_height" ]]; then
-        component_budget=$((setup_ui_height - ${#setup_frame_lines[@]} - setup_footer_height - 1))
-        ((component_budget > 2)) || component_budget=3
+    if [[ "$CURRENT_SECTION" == 1 ]]; then
+        component_items=("${ai_items[@]}"); component_title=Harnesses; component_offset=$setup_list_offset
+    else
+        IFS=' ' read -r -a component_items <<< "${setup_tool_members[$setup_tool_category]}"
+        component_title="${setup_tool_labels[$setup_tool_category]}"; component_offset=${setup_tool_offsets[$setup_tool_category]:-0}
+        component_focus_index=0
+        for component_index in "${!component_items[@]}"; do
+            [[ "${component_items[component_index]}" != "${tool_items[$current_selection]}" ]] || component_focus_index=$component_index
+        done
     fi
-    setup_ui_list_window "${#component_items[@]}" "$current_selection" "$component_budget" setup_list_offset
+    [[ "$setup_ui_layout" != roomy ]] || setup_frame_append ''
+    setup_panel_top_v component_line "$component_title" ''; setup_frame_append "$component_line"
+    if [[ -n "$setup_ui_height" ]]; then
+        component_budget=$((setup_ui_height - ${#setup_frame_lines[@]} - setup_footer_height - 5))
+        [[ "$setup_ui_layout" != roomy ]] || ((component_budget--))
+        ((component_budget >= 3)) || component_budget=3
+    fi
+    setup_ui_list_window "${#component_items[@]}" "$component_focus_index" "$component_budget" component_offset
+    if [[ "$CURRENT_SECTION" == 1 ]]; then setup_list_offset=$component_offset
+    else setup_tool_offsets[$setup_tool_category]=$component_offset; fi
     if ((setup_window_above > 0)); then setup_frame_row "▲ $setup_window_above more"; fi
     for ((component_index=setup_window_start; component_index<setup_window_start+setup_window_count; component_index++)); do
         component_key="${component_items[component_index]}"
         if [[ "$component_key" == separator* ]]; then
-            setup_ui_rule_v component_line "$((setup_ui_width - 4))"; setup_frame_row "$component_line"
-            continue
+            setup_ui_rule_v component_line "$((setup_ui_width - 4))"; setup_frame_row "$component_line"; continue
         fi
-        component_focus=false; ((component_index != current_selection)) || component_focus=true
+        component_focus=false
+        if ((component_index == component_focus_index)) && { [[ "$CURRENT_SECTION" == 1 ]] || [[ "$setup_tool_zone" == tool ]]; }; then component_focus=true; fi
         setup_frame_component_row "$component_key" "$component_focus"
     done
     if ((setup_window_below > 0)); then setup_frame_row "▼ $setup_window_below more"; fi
     setup_panel_bottom_v component_line; setup_frame_append "$component_line"
+    [[ "$setup_ui_layout" != roomy ]] || setup_frame_append ''
+    if [[ "$CURRENT_SECTION" == 2 && "$setup_tool_zone" == category ]]; then
+        component_anchor="tool-category:$setup_tool_category"; component_about_title="ABOUT ${setup_tool_labels[$setup_tool_category]^^}"
+        component_about_text="${setup_tool_summaries[$setup_tool_category]}"$'\nTools: '
+        component_line=''
+        for component_key in "${component_items[@]}"; do
+            [[ -z "$component_line" ]] || component_line+=', '
+            component_line+="${component_description[$component_key]}"
+        done
+        component_about_text+="$component_line"
+    else
+        if [[ "$CURRENT_SECTION" == 1 ]]; then component_key="${ai_items[$current_selection]}"; component_anchor="harness:$component_key"
+        else component_key="${tool_items[$current_selection]}"; component_anchor="tool:$component_key"; fi
+        component_about_title="ABOUT ${component_description[$component_key]^^}"
+        component_about_text="${component_about[$component_key]:-Select an item to see its details.}"
+    fi
+    if [[ -n "$setup_ui_height" ]]; then
+        component_window=$((setup_ui_height - ${#setup_frame_lines[@]} - setup_footer_height - 2))
+        ((component_window <= 8)) || component_window=8
+        ((component_window >= 2)) || component_window=2
+    fi
+    setup_frame_about "$component_anchor" "$component_about_title" "$component_about_text" "$component_window"
 }
 
 
@@ -1923,15 +2086,15 @@ handle_input() {
 
     setup_input_key="$key"
     case "$key" in
-        $'\t') setup_input_key=tab; [[ "$CURRENT_SECTION" != 0 ]] || setup_benches_key tab; return 0 ;;
-        '[') setup_input_key=pageup; if [[ "$CURRENT_SECTION" == 4 || "$CURRENT_SECTION" == 0 || "$CURRENT_SECTION" == 3 ]]; then setup_about_scroll -1; fi; return 0 ;;
-        ']') setup_input_key=pagedown; if [[ "$CURRENT_SECTION" == 4 || "$CURRENT_SECTION" == 0 || "$CURRENT_SECTION" == 3 ]]; then setup_about_scroll 1; fi; return 0 ;;
+        $'\t') setup_input_key=tab; [[ "$CURRENT_SECTION" != 0 ]] || setup_benches_key tab; [[ "$CURRENT_SECTION" != 2 ]] || setup_tools_key tab; return 0 ;;
+        '[') setup_input_key=pageup; if [[ "$CURRENT_SECTION" != 5 ]]; then setup_about_scroll -1; fi; return 0 ;;
+        ']') setup_input_key=pagedown; if [[ "$CURRENT_SECTION" != 5 ]]; then setup_about_scroll 1; fi; return 0 ;;
     esac
     # Consume every byte of supported escape sequences before dispatch.
     if [[ $key == $'\x1b' ]]; then
         IFS= read -rsn2 -t 0.1 key
         case "$key" in
-            '[Z') setup_input_key=backtab; [[ "$CURRENT_SECTION" != 0 ]] || setup_benches_key backtab; return 0 ;;
+            '[Z') setup_input_key=backtab; [[ "$CURRENT_SECTION" != 0 ]] || setup_benches_key backtab; [[ "$CURRENT_SECTION" != 2 ]] || setup_tools_key backtab; return 0 ;;
             '[5'|'[6')
                 local suffix
                 IFS= read -rsn1 -t 0.1 suffix
@@ -1940,7 +2103,7 @@ handle_input() {
                     setup_input_key=pageup
                     [[ "$key" != '[6' ]] || setup_input_key=pagedown
                 fi
-                if [[ "$CURRENT_SECTION" == 4 || "$CURRENT_SECTION" == 0 || "$CURRENT_SECTION" == 3 ]]; then
+                if [[ "$CURRENT_SECTION" != 5 ]]; then
                     [[ "$setup_input_key" != pageup ]] || setup_about_scroll -1
                     [[ "$setup_input_key" != pagedown ]] || setup_about_scroll 1
                 fi
@@ -1952,6 +2115,7 @@ handle_input() {
             *) setup_input_key=unknown; return 0 ;;
         esac
         if [[ "$CURRENT_SECTION" == 0 ]] && setup_benches_key "$setup_input_key"; then return 0; fi
+        if [[ "$CURRENT_SECTION" == 2 ]] && setup_tools_key "$setup_input_key"; then return 0; fi
         case "$key" in
             '[A') # Up arrow - move up in current section
                 if [[ "$CURRENT_SECTION" == 5 ]]; then
@@ -2008,6 +2172,7 @@ handle_input() {
             ' '|d|D) # Space toggles install/update; D toggles explicit removal.
                 [[ "$CURRENT_SECTION" != 5 ]] || return 0
                 if [[ "$CURRENT_SECTION" == 0 ]] && setup_benches_key "$key"; then return 0; fi
+                if [[ "$CURRENT_SECTION" == 2 ]] && setup_tools_key "$key"; then return 0; fi
                 if [[ "$CURRENT_SECTION" == 4 ]]; then
                     [[ "$key" != ' ' ]] || activate_profile || return "$?"
                     return 0

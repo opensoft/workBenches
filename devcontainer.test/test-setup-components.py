@@ -299,7 +299,7 @@ printf '%s:%s:%s' "${{component_checked[codex_cli]}}" "${{component_action[codex
             command = f'''source "{ROOT}/scripts/interactive-setup.sh"
 init_components
 component_status[host_shell]=configured
-CURRENT_SECTION=2; current_selection=5
+CURRENT_SECTION=2; current_selection=5; setup_tool_zone=tool; setup_tool_category=workstation
 handle_input; handle_input
 printf '%s:%s' "${{component_checked[host_shell]}}" "${{component_action[host_shell]}}"
 '''

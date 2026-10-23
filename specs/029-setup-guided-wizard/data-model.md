@@ -33,7 +33,7 @@ setup_section_step=([3]=0 [0]=1 [1]=2 [2]=3 [4]=4 [5]=5)
 | `current_selection` *(1.7)* | int | focused row; on Benches always an index into `bench_items` (D7), so Space/D, the footer and `get_checked_state` keep working |
 | `setup_bench_zone` | `category` \| `bench` | Benches focus zone |
 | `setup_bench_category` | category id | current category (both zones) |
-| `setup_about_offset` | int ≥ 0 | first visible About line (Workstation, Benches and Profiles) |
+| `setup_about_offset` | int ≥ 0 | first visible About line (Workstation, Benches, Harness, Tools and Profiles) |
 | `setup_about_anchor` | string | what About describes: `bench:<name>`, `category:<id>`, `profile:<key>` or `workstation:<key>`; a change of anchor resets the offset to 0 (FR-046) |
 | `setup_bench_offset[<category id>]` | assoc int | first visible bench row per category (edge-triggered scrolling, R5) |
 | `setup_list_offset` | int | first visible row on Workstation, Harness, Tools, Profiles |
@@ -199,3 +199,7 @@ Enter on Review:
 | Bench name `^[a-zA-Z0-9_+-]+$`, category id `^[a-z0-9][a-z0-9-]*$` on read | `poll_status_loader` / metadata readers | FR-048 |
 | Control characters → space in all outside text | foreground sanitiser | FR-048, SC-011 |
 | Selection file: `schemaVersion` 1, known keys, actions, private file | `scripts/setup_selection.py` *(1.7, unchanged)* | FR-015 |
+
+## Tools/Harness About refinement 029-A05
+
+Tools uses setup_tool_zone (category/tool), setup_tool_category, static group members/labels/summaries, and per-category list offsets. current_selection remains a global tool_items index. Harness uses the existing global ai_items index; separator rows remain nonfocusable. Cached About anchors add harness:<key>, tool:<key> and tool-category:<id>. P/G saves tool zone/category and list/About offsets alongside the existing targets.

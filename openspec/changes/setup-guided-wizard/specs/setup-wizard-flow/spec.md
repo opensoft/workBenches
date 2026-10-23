@@ -226,7 +226,15 @@ The Profiles step SHALL show the identities summary line, the rows Personal & co
 - **THEN** Profiles shows "Profile action cancelled; saved profiles kept." and queued changes are unchanged
 
 ### Requirement: Harness and Tools steps
-The Harness and Tools steps SHALL offer the same items, order and selection rules as before this change: Space SHALL queue or unqueue install (or update, when installed), D SHALL queue or unqueue removal of an installed item, items still loading or needing a check SHALL NOT be selectable, and Shell setup and Org workspace SHALL only be configurable, never removable.
+The Harness list SHALL be titled Harnesses and SHALL show the existing harness/specification-tool rows, with a focused-item About panel. Tools SHALL show Editors, Terminals, Networking and Workstation setup categories using the Benches category/list key pattern, then only the selected category's tools and a focused-item About panel. Category focus SHALL show category details. Component IDs, flat global indexes, installer order, selection rules and configuration-only restrictions SHALL remain unchanged. About SHALL use shared wrapping, paging, reset and same-item refresh clamping; P/G and refresh SHALL preserve the Tools category/zone/item and queue.
+
+#### Scenario: Tool categories isolate lists
+- **WHEN** Networking is current
+- **THEN** the list contains AmneziaVPN and 0dcloud VPN, and no editor, terminal or workstation-setup rows
+
+#### Scenario: Focused harness details
+- **WHEN** selection moves from Claude Code CLI to GitHub Copilot CLI
+- **THEN** About changes to the selected harness and resets its page
 
 #### Scenario: Queue an update
 - **WHEN** Codex CLI is installed and the user presses Space on it

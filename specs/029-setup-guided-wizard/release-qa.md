@@ -364,3 +364,45 @@ Before publication, fetch confirmed origin/029-setup-guided-wizard was an
 ancestor (44 local commits ahead, zero behind), release/1.7.0 remained
 `ccc9eaca2c492db27ea262b90eaf30d506c55ef3`, and VERSION remained 1.7.0-dev.1.
 T040 copy approval, remote/real-host QA, merge and archive remain pending.
+
+## Review refinement 029-A05 / T039G — 2026-10-23
+
+Brett requested the Harnesses panel title, About for each selected harness/tool,
+and Tools categories matching the Benches browsing pattern. Amendment 029-A05
+records the accepted refinement after baseline `de43627`. Implementation and
+evidence are in the commit containing this record.
+
+- The nav/Review step remains Harness; its list is titled Harnesses. All eight
+  harness/specification entries and all seven tools have cached About text.
+- Tools groups are Editors (VS Code), Terminals (Warp/Wave), Networking
+  (AmneziaVPN/0dcloud VPN), and Workstation setup (Shell setup/Org workspace).
+  Category/list zones use the Benches keys; only the current category's tools
+  appear. Space enters a category list without queuing, and Space/D selects
+  changes only in the tool zone. Existing flat IDs, installer order and
+  configuration-only restrictions remain unchanged.
+- Shared About paging/reset/clamping applies to both steps. P/G saves and
+  restores tool zone/category/global item plus list/About offsets and anchor.
+  Refresh preserves these and queued actions. Categories collapse at short
+  heights, and lists/About reserve footer space without renderer subprocesses.
+- PASS: exact T039G command (29 wizard tests, 19 layout tests, six async tests,
+  43 guided-flow tests, syntax, timing and strict OpenSpec validation). The
+  complete size/locale matrix retains its focus/bounds/no-discovery assertions;
+  Tools item cases explicitly enter the tool zone. New coverage renders all
+  15 item descriptions, proves category isolation, tests keyboard selection,
+  both paging forms, jump/refresh restoration and configuration-only actions.
+- PASS: all 32 quickstart suites and native/WSL acceptance compilation. The
+  component reconfiguration fixture now identifies the selected Workstation
+  setup category/tool zone; its true:install assertion is unchanged. That
+  fixture was added to T039G's files field to reflect the new focus model.
+- Full Benches timing: median 3.306 ms, p90 4.700 ms, max 5.310 ms. Step
+  medians: Workstation 2.195, Benches 2.524, Harness 2.960, Tools 2.580,
+  Profiles 1.933, Review 2.224 ms.
+- Visual review: Raven/workspace 14, Harnesses with Claude Code CLI About;
+  Tools with Terminals selected and its Warp/Wave list/category About.
+  Individual tool About rendering is covered for all seven entries by the
+  fixture checks. The live preview remains available for Brett's review.
+
+No installer, real Docker build, service removal, or WSL restart was executed.
+Bench copy approval and real-host/remote release gates remain pending. This
+review iteration continues the existing authorization to commit/push updates
+to the same feature branch; no merge or archive is authorized.

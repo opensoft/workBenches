@@ -18,7 +18,7 @@
 
 ## Behaviour by step
 
-| Key | Workstation | Benches: category zone | Benches: bench zone | Harness, Tools | Profiles | Review |
+| Key | Workstation | Benches: category zone | Benches: bench zone | Harness | Profiles | Review |
 |---|---|---|---|---|---|---|
 | ← / → | previous / next step; no wrap at Workstation or Review | same | same | same | same | same |
 | ↑ / ↓ | move between service rows; stop at ends | change current category among those with benches (preview; no row mark); ↓ on the last focusable category enters the bench zone | move within the category; ↑ on the first bench returns to the category zone (same category); ↓ on the last bench does nothing | move; skip the separator; stop at ends | move; stop at ends | scroll the list when it does not fit; otherwise nothing |
@@ -63,14 +63,14 @@ Every hint block begins with `Navigation:`. V is listed only on Workstation. Pro
 | 60–79 columns | as many as needed | the step's full list, wrapped between hints |
 | below 60 columns | at most 2 | the step's own keys plus `←→`, `Enter` and `Q`; P, G, R, V and PgUp/PgDn still work but are not listed |
 
-Full lists (from the approved Benches mockup and the illustrative Workstation, Review and Profiles mockups; Harness and Tools follow the Benches bench-zone pattern without Tab and About):
+Full lists (from the approved Benches mockup and the illustrative Workstation, Review and Profiles mockups; Harness follows the Benches item pattern without Tab; Tools follows the Benches category/list pattern):
 
 ```text
 Workstation   Navigation: ↑↓ Move  Space Select  D Remove  PgUp/PgDn About
                           ←→ Steps  Enter Review  P Back  G Profiles  V Vault  R Refresh  Q Quit
 Benches       Navigation: ↑↓ Move  Tab Category  Space Select  D Remove  PgUp/PgDn About
                           ←→ Steps  P Workstation  R Refresh  Enter Review  Q Quit
-Harness/Tools  Navigation: ↑↓ Move  Space Select  D Remove
+Harness        Navigation: ↑↓ Move  Space Select  D Remove
                           ←→ Steps  P Workstation  R Refresh  Enter Review  Q Quit
 Profiles      Navigation: ↑↓ Move  Enter Open  PgUp/PgDn About
                           ←→ Steps  G Back  P Workstation  R Refresh  Q Quit
@@ -84,3 +84,7 @@ Review        Navigation: ↑↓ Scroll  ← Back  Enter Apply  P Workstation  R
 Benches omits the duplicate category/bench context line. Its queued total is at the right of the footer divider, followed directly by navigation hints. The following context-line rules apply to the other steps.
 
 `<Name> · <State>[ → <action>]` with the queued total at the right: `Changes selected: N` at 60+ columns, `Changes: N` below 60 (the left part cut with `…`). Special cases: Review → `Review · Nothing applied yet`; Profiles → the row name. Removal and the Shell setup / Org workspace explanations keep 1.7's wording.
+
+## Accepted Harness/Tools refinement 029-A05
+
+Harness retains its item navigation and selection keys, with About paging via PgUp/PgDn or [/]. Its panel title is Harnesses. Tools uses the Benches category/list behavior: ↑/↓ choose categories, Tab/Shift+Tab or Space enters the category list without selecting; ↑ on the first tool or Tab/Shift+Tab returns to categories. Space/D select changes only in the tool zone. About pages in either zone; changing focus resets scroll. P/G return to the exact tool category, zone and item; R preserves these and the queue.

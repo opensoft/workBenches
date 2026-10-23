@@ -196,6 +196,8 @@ setup_about_offset=2; setup_update_ui_signature
                         self.assertIn('Navigation:',text)
                         self.assertNotIn('AI ASSISTANTS',text)
                         self.assertNotIn('REQUIREMENTS ·',text)
+                        self.assertIn('ABOUT',text)
+                        self.assertIn('Harnesses' if section==1 else 'CATEGORY',text)
 
     def test_profiles_render_matrix(self):
         for columns in (36,60,88):
@@ -283,6 +285,7 @@ setup_refresh_bench_counts
 setup_arrive_step {section}
 if [[ "$CURRENT_SECTION" == 0 ]]; then setup_bench_zone=bench; setup_focus_bench_name cppBench; fi
 if [[ "$CURRENT_SECTION" == 1 ]]; then current_selection=2; fi
+if [[ "$CURRENT_SECTION" == 2 ]]; then setup_tool_zone=tool; fi
 setup_os_label='Linux — Omarchy'
 tput() {{ case $1 in cols) echo {columns};; lines) echo {rows};; esac; }}
 jq() {{ echo UNEXPECTED_DISCOVERY; return 99; }}
@@ -309,6 +312,55 @@ render_setup_frame
         text=(ROOT/'scripts/interactive-setup.sh').read_text()
         for name in ('draw_three_sections','draw_item_compact','setup_frame_legacy_bridge'):
             self.assertNotIn(name,text)
+
+    def test_every_harness_and_tool_has_about_and_tool_categories_are_isolated(self):
+        output=self.shell(r'''
+init_components --loading
+setup_ui_width=87; setup_ui_height=''
+for key in "${ai_items[@]}" "${tool_items[@]}"; do
+    [[ "$key" != separator* ]] || continue
+    [[ -n "${component_about[$key]}" ]] || exit 30
+    component_status[$key]=installed
+done
+CURRENT_SECTION=1
+for current_selection in "${!ai_items[@]}"; do
+    [[ "${ai_items[$current_selection]}" != separator* ]] || continue
+    setup_frame_lines=(); setup_frame_components
+    printf 'ITEM:%s:%s\n' "${ai_items[$current_selection]}" "$setup_about_anchor"
+    printf '%s\n' "${setup_frame_lines[@]}"
+done
+CURRENT_SECTION=2; setup_tool_zone=tool
+for setup_tool_category in "${setup_tool_categories[@]}"; do
+    IFS=' ' read -r -a members <<< "${setup_tool_members[$setup_tool_category]}"
+    for key in "${members[@]}"; do
+        setup_focus_tool_key "$key"
+        setup_frame_lines=(); setup_frame_components
+        printf 'ITEM:%s:%s\n' "$key" "$setup_about_anchor"
+        printf '%s\n' "${setup_frame_lines[@]}"
+    done
+done
+''')
+        chunks=output.split('ITEM:')[1:]
+        self.assertEqual(len(chunks),15)
+        names={'vscode':'VS Code','warp':'Warp Terminal','wave':'Wave Terminal',
+               'amnezia_vpn':'AmneziaVPN','0dcloud_vpn':'0dcloud VPN',
+               'host_shell':'Shell setup','workspace_repo':'Org workspace'}
+        groups=[{'vscode'},{'warp','wave'},{'amnezia_vpn','0dcloud_vpn'},{'host_shell','workspace_repo'}]
+        for chunk in chunks:
+            key,anchor=chunk.splitlines()[0].split(':',1)
+            plain=ANSI.sub('',chunk)
+            self.assertIn('ABOUT',plain)
+            self.assertNotIn('Select an item to see its details.',plain)
+            if key in names:
+                self.assertEqual(anchor,'tool:'+key)
+                group=next(group for group in groups if key in group)
+                rows=[line for line in plain.splitlines() if '[ ]' in line]
+                self.assertEqual(len(rows),len(group))
+                for other in names:
+                    if other not in group:self.assertFalse(any(names[other] in line for line in rows))
+            else:
+                self.assertEqual(anchor,'harness:'+key)
+                self.assertIn('Harnesses',plain)
 
     def test_all_twelve_benches_have_visible_copy_in_their_category(self):
         import json
