@@ -1,5 +1,10 @@
 # Workstation requirements and optional accounts
 
+On the v1.6 `feature/profile-onboarding` branch, account entry points move to the
+third **Profiles** page (**G**). Requirements keeps Docker, Tools, and Vault service
+controls. See [Profiles](profiles.md) for personal-first onboarding, multiple
+companies, and compatibility with the legacy workstation account described below.
+
 `./setup.sh` opens the interactive TUI before checking Docker or starting Tools.
 Requirements and unverified components initially show yellow, blinking
 **Loading…** indicators. Read-only checks run in the background and update each

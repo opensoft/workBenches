@@ -1,0 +1,14 @@
+{
+  "introspectionEndpoint": "https://provider.example.org/oauth/introspect",
+  "tokenEndpoint": "https://provider.example.org/oauth/token",
+  "clientId": "company-approved-server-client",
+  "clientSecretFile": "/adapters/private/provider-client-secret",
+  "expectedAudience": "provider-api",
+  "requiredScopes": ["provider:use"],
+  "accountClaim": "sub",
+  "accessTokenPath": ["tokens", "access_token"],
+  "refreshTokenPath": ["tokens", "refresh_token"],
+  "expiresAtPath": ["tokens", "expires_at"],
+  "expiresAtScale": 1,
+  "rotatesRefreshToken": true
+}

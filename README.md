@@ -75,6 +75,11 @@ A layered Docker-based development environment system. Each "bench" is a self-co
 
 ## Quick Start
 
+On the v1.6 development branch, setup adds a third **Profiles** page (**G**):
+personal email and verified GitHub linking, then any number of company profiles
+with separate organization sign-ins. See [Profiles onboarding](docs/profiles.md).
+This feature is outside the v1.5 release scope.
+
 These commands follow `main`. For a frozen deployment, use the version-specific
 bootstrap in [the release guide](docs/releases.md#install-a-published-release).
 
@@ -108,10 +113,10 @@ From an existing checkout:
 This single command:
 
 1. Identifies the OS and checks required Docker access, Windows/WSL 2 readiness, and common dependencies. Missing requirements open a guided setup screen before component selection.
-2. Opens the TUI to select benches, AI assistants, and tools. Press **P** for the **Requirements** section, including optional workBenches account and AI credential setup. An empty component selection finishes without component installs or image builds.
+2. Opens the TUI to select benches, AI assistants, and tools. Press **P** for **Requirements**, or **G** for **Profiles**, including personal/company identities and AI credential setup. An empty component selection finishes without component installs or image builds.
 3. Enter applies the selected changes immediately, with a compact install/update summary. Q cancels and an empty selection exits.
 4. Checks Node/npm only for selected tools that require them. A system-owned npm location falls back to `~/.local`, with PATH configured for new terminals.
-5. Installs AI tools without requiring sign-in. Select **AI accounts** under Requirements to configure accounts after installation, using direct sign-in or guided vault recovery. Existing profiles and credentials are preserved. A workBenches account is optional; Keycloak login requires organization-provided settings.
+5. Installs AI tools without requiring sign-in. Open **Profiles** to configure identity-specific AI accounts or select **AI accounts** for existing account setup, using direct sign-in or guided vault recovery. Existing profiles and credentials are preserved. Organization sign-in is optional; Keycloak login requires organization-provided settings.
 6. Configures host shell settings only when **Shell setup** is selected. **Org workspace** explicitly initializes the workspace repository, after installing its pinned estate-command dependencies.
 7. Installs selected tools and builds only selected bench dependencies. Wave widgets and VPN setup follow the selected tools.
 

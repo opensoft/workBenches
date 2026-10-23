@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import uuid
 from terminal_screen import terminal_screen
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -81,6 +82,14 @@ else:
             elif stage == 5 and re.search(r'Vault\s+Up\s+\[V Sign out\]', plain) and 'Changes selected: 1' in plain:
                 ready = True; keys = b'v'
             elif stage == 6 and re.search(r'Vault\s+Up\s+\[V Connect\]', plain) and 'Changes selected: 1' in plain:
+                ready = True; keys = b'G'
+            elif stage == 7 and 'PERSONAL & COMPANY IDENTITIES' in plain and 'Personal & companies' in plain:
+                ready = True; keys = b'\r'
+            elif stage == 8 and 'PROFILES · Personal and companies' in plain:
+                ready = True; keys = b'q'
+            elif stage == 9 and 'Profile action cancelled; saved profiles kept.' in plain:
+                ready = True; keys = b'G'
+            elif stage == 10 and re.search(r'Vault\s+Up\s+\[V Connect\]', plain) and 'Changes selected: 1' in plain:
                 ready = True; keys = b'Q'
             if ready:
                 print(f'Button-flow stage {stage} → {stage + 1}', flush=True)
@@ -89,7 +98,7 @@ else:
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             raise AssertionError((stage, transcript.decode(errors='replace')[-6000:])) from None
-        assert stage == 7 and process.returncode == 130, (stage, transcript.decode(errors='replace')[-6000:])
+        assert stage == 11 and process.returncode == 130, (stage, transcript.decode(errors='replace')[-6000:])
         assert not (home / 'fixture-account-session').exists()
         assert (home / 'fixture-account-attempts').read_text() == '2'
     finally:
@@ -97,12 +106,12 @@ else:
             os.killpg(process.pid, signal.SIGTERM)
             process.wait(timeout=5)
         os.close(master)
-    print('PASS: main-screen Vault V Install → Connect → Ctrl+C → sign in → sign out; queued bench preserved')
+    print('PASS: main-screen Vault V Install → Connect → Ctrl+C → sign in → sign out; Profiles open/cancel/back; queued bench preserved')
 
 
 def main():
     assert os.environ.get('WORKBENCHES_RUNTIME_TEST') == '1', 'Use the tools-runtime Compose service'
-    suffix = str(os.getpid())
+    suffix = str(os.getpid()) + '-' + uuid.uuid4().hex[:8]
     tools = 'workbenches-runtime-test-tools-' + suffix
     vault = 'workbenches-runtime-test-vault-' + suffix
     network = 'workbenches-runtime-test-' + suffix
@@ -120,6 +129,25 @@ def main():
         # Native probe must distinguish a host tool from the guest's binaries.
         native = binary / 'native-fixture'
         native.write_text('#!/bin/bash\nprintf "host:%s" "$1"\n'); native.chmod(0o755)
+        github = binary / 'gh'
+        github.write_text('''#!/bin/bash
+set -eu
+case "$1 $2" in
+  'auth status') printf '[{"login":"fixture-user","active":false,"state":"success"}]' ;;
+  'auth token') [[ "$5" == --user && "$6" == fixture-user ]]; printf fixture-private-token ;;
+  'auth login')
+    printf 'First copy your one-time code: ABCD-1234\\n' >&2
+    while [[ ! -f "$HOME/github-device-approved" ]]; do sleep .05; done
+    printf fixture-private-token > "$GH_CONFIG_DIR/hosts.yml"
+    ;;
+  'api --hostname') printf '{"id":101,"login":"fixture-user"}' ;;
+  *) exit 99 ;;
+esac
+'''); github.chmod(0o755)
+        browser = binary / 'wslview'
+        browser.write_text('#!/bin/bash\nprintf "%s" "$1" > "$HOME/github-browser-url"\n'); browser.chmod(0o755)
+        clipboard = binary / 'wl-copy'
+        clipboard.write_text('#!/bin/bash\ncat > "$HOME/github-device-code"\n'); clipboard.chmod(0o755)
         env = dict(os.environ, HOME=str(home), XDG_CACHE_HOME=str(home / '.cache'),
                    XDG_CONFIG_HOME=str(home / '.config'), XDG_DATA_HOME=str(home / '.local/share'),
                    PATH=str(binary), TERM='xterm', WORKBENCHES_TOOLS_ROOT=str(ROOT),
@@ -134,6 +162,7 @@ ensure_workstation_requirements || exit "$?"
 python3 -c 'import os, pwd; assert pwd.getpwuid(os.getuid()).pw_name == os.environ["USER"]'
 python3 --version
 python3 -I -c 'import workbenches_host as host; assert host.which("native-fixture")'
+python3 "$1/scripts/credential-sync.py" --status
 jq -n 'true'
 git --version
 curl --version
@@ -158,8 +187,51 @@ print('Native long/short deadlines passed')
 NATIVE
 '''
             output = run(['/bin/bash', '-c', driver, 'runtime', str(ROOT)], env=env, cwd=ROOT)
-            for expected in ('Python 3.', 'true', 'git version', 'curl ', 'Native command boundary passed', 'Native long/short deadlines passed'):
+            for expected in ('Python 3.', '"agent"', 'true', 'git version', 'curl ', 'Native command boundary passed', 'Native long/short deadlines passed'):
                 assert expected in output, output
+            command = '''set -e
+source "$1/scripts/lib/setup-prerequisites.sh"
+ensure_workstation_requirements
+python3 - "$1" <<'GITHUB'
+import sys
+sys.path.insert(0, sys.argv[1] + '/scripts')
+from profile_github import GitHub, DEVICE_URL
+import workbenches_host as host
+client = GitHub(host)
+assert client.discover()[0]['login'] == 'fixture-user'
+connection = {'id': 101, 'login': 'fixture-user', 'authSource': 'native'}
+assert client.verify(connection) and connection['state'] == 'Connected'
+assert client.open_browser()
+assert client.copy_code('ABCD-1234')
+# A long-running approval must not occupy the native RPC dispatcher.
+import pathlib, time
+config = pathlib.Path.home() / '.config/workbenches/github-auth/fixture'
+config.mkdir(parents=True, mode=0o700)
+progress = config / 'progress'
+progress.touch(mode=0o600)
+assert client.command('start-login', config, str(progress)).returncode == 0
+for _ in range(100):
+    if 'ABCD-1234' in progress.read_text(): break
+    time.sleep(.05)
+else: raise AssertionError('No native device code')
+assert client.open_browser()  # This RPC must return while gh is pending.
+assert client.copy_code('ABCD-1234')
+(pathlib.Path.home() / 'github-device-approved').touch()
+for _ in range(100):
+    if pathlib.Path(str(progress) + '.exit').exists(): break
+    time.sleep(.05)
+else: raise AssertionError('Native login did not finish')
+assert pathlib.Path(str(progress) + '.exit').read_text().strip() == '0'
+assert client.command('current', config).returncode == 0
+print('Native GitHub boundary passed')
+GITHUB
+[[ "$(cat "$HOME/github-browser-url")" == https://github.com/login/device ]]
+[[ "$(cat "$HOME/github-device-code")" == ABCD-1234 ]]
+'''
+            output = run(['/bin/bash', '-c', command, 'native-github', str(ROOT)], env=env, cwd=ROOT)
+            assert 'Native GitHub boundary passed' in output
+            assert 'fixture-private-token' not in output
+            print('PASS: native GitHub account discovery/verification and browser/clipboard through Tools')
             prefix = home / '.local'
             package = prefix / 'lib/node_modules/@openai/codex'
             package.mkdir(parents=True)

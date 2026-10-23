@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+sync_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+sync_lib="$sync_dir/company-profile-sync.sh"
+[[ -f "$sync_lib" ]] || sync_lib="$sync_dir/lib/company-profile-sync.sh"
+[[ -f "$sync_lib" ]] || sync_lib=/usr/local/share/workbenches/company-profile-sync.sh
+if [[ -f "$sync_lib" ]]; then source "$sync_lib"; else wb_sync_before() { :; }; wb_sync_after_login() { :; }; fi
+
 manifest="${CODEX_PROFILES_MANIFEST:-${CHATGPT_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/openai-profiles.json}}"
 base="${CODEX_PROFILES_HOME:-${CHATGPT_PROFILES_HOME:-$HOME/.chatgpt-profiles}}"
 command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
@@ -136,8 +142,10 @@ case "$action" in
 
     case "$action" in
       login)
+        wb_sync_before "$config_dir/auth.json" login
         printf 'Starting ChatGPT login for %s (%s).\n' "$profile" "$email" >&2
         CODEX_HOME="$config_dir" "$codex_bin" "${codex_auth_config[@]}" login "$@"
+        wb_sync_after_login "$config_dir/auth.json"
         ;;
       status)
         CODEX_HOME="$config_dir" "$codex_bin" "${codex_auth_config[@]}" login status "$@"
@@ -176,6 +184,7 @@ case "$action" in
           fi
           exit "$command_status"
         fi
+        wb_sync_before "$config_dir/auth.json" run
         CODEX_HOME="$config_dir" exec "$codex_bin" \
           "${codex_auth_config[@]}" \
           "${codex_runtime_config[@]}" \

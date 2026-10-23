@@ -263,4 +263,17 @@ if [ "$link_status" -ne 0 ]; then
     say "link-estates exited $link_status — its own lines are above. On a workstation that has no ~/.agents/workspace.yaml yet this is the expected refusal and \`openRepoTools wip init\` ends it. Container start continues."
 fi
 
+# The upstream #237 installer defers hooks until their linked target answers.
+# A recreate can install the commands before link-estates repairs that target.
+# Reconcile through the SAME upstream installer after successful linking; this
+# wrapper never writes hook settings. Do not retry an installer that refused.
+if [ "$install_status" -eq 0 ] && [ "$link_status" -eq 0 ]; then
+    reconcile_status=0
+    OPENREPOTOOLS_REPO="$ESTATE_SENTINEL" OPENREPOTOOLS_REF="$ESTATE_SENTINEL" \
+        "$ESTATE_VENDOR_DIR/openRepoTools" --install || reconcile_status=$?
+    if [ "$reconcile_status" -ne 0 ]; then
+        say "hook reconciliation exited $reconcile_status — its own refusal is above. Container start continues."
+    fi
+fi
+
 exit 0

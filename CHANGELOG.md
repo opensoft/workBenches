@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.0-rc.1 — 2026-10-19
+
+Frozen release candidate, not a stable release. See the
+[candidate notes](docs/release-1.6.0-rc.1.md).
+
+- Personal/company identity management and reusable verified GitHub account links.
+- Opt-in company credential broker, workstation synchronization, and CPC maintenance.
+- Current stable setup/launcher fixes merged without advancing bench source pins.
+- Live browser/platform and managed-identity/provider validation remain release gates;
+  unsupported provider modes and example profiles remain disabled.
+
 ## 1.5.0 — Unreleased
 
 **Reliable workstation setup.** [Scope approved; release gates pending](docs/release-1.5.0.md).

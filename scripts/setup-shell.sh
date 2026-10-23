@@ -34,6 +34,9 @@ detect_package_manager() {
         alpine)
             PKG_INSTALL="sudo apk add"
             ;;
+        arch|manjaro|endeavouros)
+            PKG_INSTALL="sudo pacman -S --needed --noconfirm"
+            ;;
         *)
             PKG_INSTALL=""
             ;;

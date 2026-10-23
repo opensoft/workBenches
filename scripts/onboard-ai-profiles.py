@@ -306,7 +306,7 @@ def interactive_answers() -> dict[str, Any]:
     if os.environ.get("WORKBENCHES_REQUIRE_PROFILE") != "1" and not ask_yes_no("Set up separate AI profiles for this workstation now?", False):
         return {"consent": False}
 
-    scope = ask("Profile ownership: personal, organization, or registry (advanced)", "personal").lower()
+    scope = ask("Profile ownership: personal, organization, or registry (advanced)", os.environ.get("WORKBENCHES_IDENTITY_SCOPE", "personal")).lower()
     if scope not in ("personal", "organization", "registry"):
         raise ValueError("choose personal, organization, or registry")
     registry_mode = scope == "registry"
@@ -318,11 +318,13 @@ def interactive_answers() -> dict[str, Any]:
     if not selected:
         selected = ask("AI provider for Pi profiles (claude,gpt,gemini,grok,glm)", "gpt")
     providers = parse_providers(selected)
-    email = ask_email("AI account login email")
+    email = ask("AI account login email", os.environ.get("WORKBENCHES_IDENTITY_EMAIL", ""))
+    if not EMAIL_RE.match(email):
+        raise ValueError("Enter a valid AI account login email.")
     companies = []
     personal_accounts = []
     if scope == "organization":
-        name = ask("Organization name", company_name_from_email(email))
+        name = ask("Organization name", os.environ.get("WORKBENCHES_IDENTITY_NAME", company_name_from_email(email)))
         companies = [{"name": name, "email": email, "githubOrg": "",
                       "providers": providers, "registry": "manual"}]
     else:
@@ -344,7 +346,9 @@ def interactive_answers() -> dict[str, Any]:
                 raise ValueError("registry organization is required")
             company["registry"] = choose_registry(company["name"], company["githubOrg"])
         if personal_accounts:
-            personal_org = ask("GitHub owner of your personal registry", github_user)
+            print("Your personal registry is optional. If you use one, enter the GitHub username or organization "
+                  "that owns its repository (for example, your personal GitHub username).")
+            personal_org = ask("Personal credential-registry GitHub owner", github_user)
             personal_registry = choose_registry("personal accounts", personal_org)
 
     return {
@@ -476,6 +480,31 @@ def apply_scope_layout(
                 target["profilePath"] = f"{family}/{category}/{target['name']}"
 
 
+def merge_identity_profiles(existing: list[dict[str, Any]], incoming: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged = list(existing)
+    used = {value: profile for profile in merged for value in (profile['name'], *profile.get('aliases', []))}
+    def identity(profile: dict[str, Any]) -> tuple[str, str]:
+        return (profile.get('email', '').strip().casefold(), profile.get('family', ''))
+    for profile in incoming:
+        preferred = profile['name']
+        name, suffix = preferred, 1
+        while name in used:
+            # Rerunning this identity reuses its existing name/path and credentials.
+            if identity(profile)[0] and identity(used[name]) == identity(profile):
+                break
+            suffix += 1
+            name = f'{preferred}-{suffix}'
+        else:
+            added = dict(profile, name=name)
+            if name != preferred:
+                prefix = profile['profilePath'].rsplit('/', 1)[0]
+                added['profilePath'] = f'{prefix}/{name}'
+            added['aliases'] = [alias for alias in profile.get('aliases', []) if alias != name and alias not in used]
+            merged.append(added)
+            used.update({value: added for value in (name, *added['aliases'])})
+    return merged
+
+
 def main() -> int:
     cancellation_signals()
     parser = argparse.ArgumentParser(description=__doc__)
@@ -578,7 +607,13 @@ def main() -> int:
             if not output[provider] and "WORKBENCHES_SELECTED_PROVIDERS" in os.environ:
                 continue
             destination = args.output_dir / filename
-            if "WORKBENCHES_SELECTED_PROVIDERS" in os.environ and destination.is_file():
+            if os.environ.get('WORKBENCHES_IDENTITY_SCOPE') and destination.is_file():
+                existing = json.loads(destination.read_text())
+                existing_profiles = existing.get('profiles', [])
+                # Adding an identity must never replace another identity's AI profiles.
+                output[provider] = merge_identity_profiles(existing_profiles, output[provider])
+                families = list(dict.fromkeys([*existing.get('families', []), *families]))
+            if "WORKBENCHES_SELECTED_PROVIDERS" in os.environ and not os.environ.get('WORKBENCHES_IDENTITY_SCOPE') and destination.is_file():
                 existing = json.loads(destination.read_text())
                 if existing.get("profiles"):
                     print(f"Preserving configured {provider} profiles.")

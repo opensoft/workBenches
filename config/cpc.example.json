@@ -1,0 +1,7 @@
+{
+  "brokerUrl": "https://credentials.example.org",
+  "tokenEndpoint": "https://identity.example.org/realms/company/protocol/openid-connect/token",
+  "clientId": "workbenches-cpc",
+  "clientSecretFile": "/run/secrets/cpc-client-secret",
+  "intervalSeconds": 300
+}

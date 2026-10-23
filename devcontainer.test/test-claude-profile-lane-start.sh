@@ -109,6 +109,10 @@ cat > "$FAKE_LANE_START" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" > "${FAKE_LANE_START_LOG:?}"
+if [[ -n "${FIXTURE_EXPECT_SYNC_LEASE:-}" ]]; then
+    if flock -n "$FIXTURE_SYNC_LEASE" true; then exit 87; fi
+    printf '%s\n' lease-held > "$FIXTURE_EXPECT_SYNC_LEASE"
+fi
 {
     printf 'CLAUDE_BIN=%s\n' "${CLAUDE_BIN:-}"
     printf 'CLAUDE_CONFIG_DIR=%s\n' "${CLAUDE_CONFIG_DIR:-}"
@@ -179,6 +183,39 @@ grep -Fxq "CLAUDE_BIN=$FAKE_CLAUDE" "$FAKE_LANE_START_ENV" \
 grep -Fxq "CLAUDE_CONFIG_DIR=$PROFILE_DIR" "$FAKE_LANE_START_ENV" \
     || fail "--lane: lane-start did not see CLAUDE_CONFIG_DIR=$PROFILE_DIR ($(cat "$FAKE_LANE_START_ENV"))"; assertion
 rm -f "$FAKE_LANE_START_LOG" "$FAKE_LANE_START_ENV"
+
+# Managed launch synchronization covers lane handoff and refuses before startup.
+MANAGED_HOME="$TEST_ROOT/managed-home"
+mkdir -p "$MANAGED_HOME/.config/workbenches"
+touch "$MANAGED_HOME/.config/workbenches/company-sync-enabled"
+SYNC_ACTIONS="$TEST_ROOT/sync-actions"
+SYNC_LEASE="$TEST_ROOT/sync-lease"
+SYNC_HELD="$TEST_ROOT/sync-held"
+cat > "$FAKE_BIN/workbenches-credential-sync" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$1" >> "$FIXTURE_SYNC_ACTIONS"
+case "$1" in
+    --lease-path) printf '%s\n' "$FIXTURE_SYNC_LEASE" ;;
+    --before-launch) exit "${FIXTURE_SYNC_STATUS:-0}" ;;
+esac
+EOF
+chmod +x "$FAKE_BIN/workbenches-credential-sync"
+managed_env=("${common_env[@]}" "HOME=$MANAGED_HOME" "XDG_CONFIG_HOME=$MANAGED_HOME/.config"
+             "FIXTURE_SYNC_ACTIONS=$SYNC_ACTIONS" "FIXTURE_SYNC_LEASE=$SYNC_LEASE" "FIXTURE_EXPECT_SYNC_LEASE=$SYNC_HELD")
+env "${managed_env[@]}" "$LAUNCHER" --lane openRepoShape-2 run team002 --resume managed-session >/dev/null
+[[ -f "$SYNC_HELD" ]] || fail "managed lane: credential lease was not held by lane-start"; assertion
+[[ "$(grep -c -- '--before-launch' "$SYNC_ACTIONS")" == 1 ]] || fail "managed lane: synchronization did not run exactly once"; assertion
+flock -n "$SYNC_LEASE" true || fail "managed lane: credential lease was not released after exit"; assertion
+rm -f "$FAKE_LANE_START_LOG" "$FAKE_LANE_START_ENV" "$SYNC_ACTIONS" "$SYNC_HELD" "$FAKE_CLAUDE_LOG"
+env "${managed_env[@]}" "$LAUNCHER" run team002 --resume managed-bare-session >/dev/null
+[[ "$(grep -c -- '--before-launch' "$SYNC_ACTIONS")" == 1 ]] || fail "managed bare: synchronization did not run exactly once"; assertion
+rm -f "$FAKE_CLAUDE_LOG" "$SYNC_ACTIONS"
+managed_status=0
+env "${managed_env[@]}" FIXTURE_SYNC_STATUS=23 "$LAUNCHER" --lane openRepoShape-2 run team002 --resume denied-session >/dev/null 2>&1 || managed_status=$?
+[[ "$managed_status" == 23 ]] || fail "managed lane: synchronization refusal was not preserved"; assertion
+[[ ! -e "$FAKE_LANE_START_LOG" && ! -e "$FAKE_CLAUDE_LOG" ]] || fail "managed lane: session started despite failed synchronization"; assertion
+rm -f "$FAKE_BIN/workbenches-credential-sync" "$SYNC_ACTIONS"
 
 # ---------------------------------------------------------------------------
 # 3. Missing lane-start refuses (exit 2, names the fix) before any tmux

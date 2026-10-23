@@ -48,6 +48,10 @@ status_collect_inventory() {
     printf '%s\n' "${bench_items[@]}" > "$status_worker_dir/catalog.tmp"
     mv "$status_worker_dir/catalog.tmp" "$status_worker_dir/catalog"
     status_publish workbenches_account "$(python3 "$SCRIPT_DIR/setup-workbenches-account.py" --status)"
+    local profile_summary
+    profile_summary="$(python3 "$SCRIPT_DIR/setup-profiles.py" --summary 2>/dev/null)" || profile_summary='Profile metadata needs attention.'
+    profile_summary="${profile_summary//$'\n'/$'\036'}"
+    status_publish personal_profiles optional "$profile_summary"
     for key in host_shell workspace_repo ai_accounts; do status_publish "$key" "$(check_component_status "$key")"; done
     refresh_bench_inventory
     for name in "${bench_items[@]}"; do
@@ -176,6 +180,7 @@ poll_status_loader() {
             requirement_detail[$key]=$detail
             status_ui_dirty=true
         fi
+        [[ "$key" != personal_profiles ]] || profiles_summary="${detail//$'\036'/$'\n'}"
         rm -f "$reading"
     done
     if [[ -f "$status_loader_dir/done" ]] || ! kill -0 "$status_loader_pid" 2>/dev/null; then

@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+sync_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+sync_lib="$sync_dir/company-profile-sync.sh"
+[[ -f "$sync_lib" ]] || sync_lib="$sync_dir/lib/company-profile-sync.sh"
+[[ -f "$sync_lib" ]] || sync_lib=/usr/local/share/workbenches/company-profile-sync.sh
+if [[ -f "$sync_lib" ]]; then source "$sync_lib"; else wb_sync_before() { :; }; wb_sync_after_login() { :; }; fi
+
 manifest="${CLAUDE_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/claude-profiles.json}"
 base="${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}"
 command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
@@ -3279,7 +3285,10 @@ case "$action" in
       "$mcp_sync" sync-claude-profile "$family" "$config_dir/.claude.json"
     fi
     case "$action" in
-      login) CLAUDE_CONFIG_DIR="$config_dir" "$claude_bin" auth login --claudeai --email "$email" "$@" ;;
+      login)
+        wb_sync_before "$config_dir/.credentials.json" login
+        CLAUDE_CONFIG_DIR="$config_dir" "$claude_bin" auth login --claudeai --email "$email" "$@"
+        wb_sync_after_login "$config_dir/.credentials.json" ;;
       status) CLAUDE_CONFIG_DIR="$config_dir" "$claude_bin" auth status "${@---text}" ;;
       run)
         if [[ -n "${lane:-}" ]]; then
@@ -3362,6 +3371,8 @@ case "$action" in
         # handed over. A launch that starts a conversation runs the update
         # check; one that starts none resolves offline.
         require_claude_bin "$(claude_launch_mode "$@")"
+        # Both lane handoff and bare exec need the managed check and lease.
+        wb_sync_before "$config_dir/.credentials.json" run
         # THE HAND-OFF (scenario "The launch says what launched"): lane-start
         # gets the path as CLAUDE_BIN below, the CLAUDE_RESOLVED_BIN marker
         # resolve_claude_bin exported beside it, and the resolver's version as

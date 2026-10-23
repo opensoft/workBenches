@@ -254,11 +254,15 @@ declare -a component_order
 current_selection=0
 current_block=0
 
-# Sections: 0=Benches, 1=AI Assistants, 2=Tools, 3=Requirements
+# Sections: 0=Benches, 1=AI Assistants, 2=Tools, 3=Requirements, 4=Profiles
 CURRENT_SECTION=0  # Requirements has a separate page for narrow terminals.
 requirements_notice=""
 requirements_return_section=0
 requirements_return_selection=0
+profiles_return_section=0
+profiles_return_selection=0
+profiles_summary='Personal identity, GitHub, and company accounts'
+profile_items=(personal_profiles workbenches_account ai_accounts)
 declare -a bench_items
 declare -a ai_items
 declare -a tool_items
@@ -375,7 +379,10 @@ init_components() {
     component_description[setup_tools]=Tools
     component_description[vault]=Vault
     component_description[wsl]="WSL 2"
-    requirement_items=(docker setup_tools vault workbenches_account ai_accounts)
+    component_description[personal_profiles]='Personal & companies'
+    component_description[workbenches_account]='Workstation account'
+    component_status[personal_profiles]=optional
+    requirement_items=(docker setup_tools vault)
     if is_wsl_windows; then requirement_items=(wsl "${requirement_items[@]}"); fi
 }
 
@@ -405,12 +412,60 @@ draw_requirements() {
     done
     setup_panel_bottom
     printf '\n'
-    setup_panel_top 'OPTIONAL VAULT & ACCOUNTS' 'Now or later'
-    for item in vault workbenches_account ai_accounts; do
+    setup_panel_top 'OPTIONAL VAULT' 'G Profiles'
+    for item in vault; do
         draw_requirement_item "$item" optional
     done
     setup_panel_bottom
     [[ -z "$requirements_notice" ]] || printf '\n%b%s%b\n' "$YELLOW" "${requirements_notice:0:$setup_ui_width}" "$NC"
+}
+
+# Cached profile summary only: rendering never reads files or probes accounts.
+draw_profiles() {
+    local line item width=$((setup_ui_width - 4))
+    printf '%bPROFILES%b\n\n' "$SILVER" "$NC"
+    setup_panel_top 'PERSONAL & COMPANY IDENTITIES' 'Now or later'
+    while IFS= read -r line; do
+        while [[ -n "$line" ]]; do
+            printf '%b│%b %-*s %b│%b\n' "$SILVER_EDGE" "$NC" "$width" "${line:0:$width}" "$SILVER_EDGE" "$NC"
+            line="${line:$width}"
+        done
+    done <<< "$profiles_summary"
+    setup_panel_bottom
+    printf '\n'
+    for item in "${!profile_items[@]}"; do
+        line="${component_description[${profile_items[$item]}]}"
+        [[ "$item" != "$current_selection" ]] || line="› $line"
+        printf '  %s\n' "$line"
+    done
+    printf '\nCompany, GitHub, and AI access\nare authorized separately.\n'
+    [[ -z "$requirements_notice" ]] || printf '%s\n' "${requirements_notice:0:$setup_ui_width}"
+}
+
+activate_profile() {
+    local item="${profile_items[$current_selection]}" result=0
+    if ! setup_required_ready; then
+        requirements_notice='Resolve Requirements before opening profile actions.'
+        return 0
+    fi
+    stop_status_loader
+    printf '%b\033[%d;1H' "$SHOW_CURSOR" "$(( ${#setup_ui_previous_lines[@]} + 1 ))"
+    setup_ui_painted=false
+    trap ':' INT
+    case "$item" in
+        personal_profiles) python3 "$SCRIPT_DIR/setup-profiles.py" || result=$? ;;
+        workbenches_account) python3 "$SCRIPT_DIR/setup-workbenches-account.py" || result=$? ;;
+        ai_accounts) configure_selected_accounts || result=$? ;;
+    esac
+    trap 'echo -e "${SHOW_CURSOR}"; exit 130' INT
+    case "$result" in
+        0) requirements_notice='Profile action completed.' ;;
+        130) requirements_notice='Profile action cancelled; saved profiles kept.' ;;
+        143) exit 143 ;;
+        *) requirements_notice='Profile action needs attention. Open it to retry.' ;;
+    esac
+    profiles_summary="$(python3 "$SCRIPT_DIR/setup-profiles.py" --summary 2>/dev/null)" || profiles_summary='Profile metadata needs attention.'
+    refresh_component_statuses
 }
 
 # Service buttons act immediately; installation selections remain untouched.
@@ -1063,6 +1118,8 @@ render_setup_frame() {
 
     if [[ "$CURRENT_SECTION" == 3 ]]; then
         draw_requirements
+    elif [[ "$CURRENT_SECTION" == 4 ]]; then
+        draw_profiles
     else
         draw_requirements_summary
         printf '\n'
@@ -1105,6 +1162,11 @@ draw_ui() {
 
 # Keep action hints together and show detail only for the focused component.
 draw_setup_footer() {
+    if [[ "$CURRENT_SECTION" == 4 ]]; then
+        printf '\n↑↓ Move  Enter/Space Open\n'
+        printf '← Requirements  G Back  Q Quit\n'
+        return
+    fi
     local selected_item='' selected_count=0 item bench context action space_hint='Select'
     case "$CURRENT_SECTION" in
         0) selected_item="bench_${bench_items[$current_selection]}" ;;
@@ -1135,9 +1197,10 @@ draw_setup_footer() {
                 space_hint="$(workbenches_requirement_action "$selected_item" "${component_status[$selected_item]}" "${component_status[workbenches_account]}")" ;;
             *) [[ "${component_checked[$selected_item]}" != true ]] || space_hint='Undo' ;;
         esac
-        printf '%bNavigation:%b ↑↓ Move  Space %s  ← Tools  P Back\n' "$SILVER_MUTED" "$NC" "$space_hint"
+        printf '%bNavigation:%b ↑↓ Move  Space %s  ← Tools  G Profiles  P Back\n' "$SILVER_MUTED" "$NC" "$space_hint"
     else
-        printf '%bNavigation:%b ↑↓ Move  ←→ Section  Space Select  D Remove  P Requirements\n' "$SILVER_MUTED" "$NC"
+        printf '%bNavigation:%b ↑↓ Move  ←→ Section  Space Select  D Remove\n' "$SILVER_MUTED" "$NC"
+        printf '%b            P Requirements  G Profiles%b\n' "$SILVER_MUTED" "$NC"
     fi
     if [[ "$CURRENT_SECTION" == 3 && "$selected_item" =~ ^(docker|wsl|setup_tools|vault)$ ]]; then
         printf '%b            Enter %s  R Refresh  Q Quit%b\n' "$SILVER_MUTED" "$space_hint" "$NC"
@@ -1305,6 +1368,8 @@ handle_input() {
                     max_idx=$((${#ai_items[@]} - 1))
                 elif [ $CURRENT_SECTION -eq 2 ]; then
                     max_idx=$((${#tool_items[@]} - 1))
+                elif [ $CURRENT_SECTION -eq 4 ]; then
+                    max_idx=$((${#profile_items[@]} - 1))
                 else
                     max_idx=$((${#requirement_items[@]} - 1))
                 fi
@@ -1322,10 +1387,13 @@ handle_input() {
                 fi
                 ;;
             '[C') # Right arrow - switch section right
-                if [ $CURRENT_SECTION -lt 3 ]; then
+                if [ $CURRENT_SECTION -lt 4 ]; then
                     if [[ "$CURRENT_SECTION" == 2 ]]; then
                         requirements_return_section=$CURRENT_SECTION
                         requirements_return_selection=$current_selection
+                    elif [[ "$CURRENT_SECTION" == 3 ]]; then
+                        profiles_return_section=$CURRENT_SECTION
+                        profiles_return_selection=$current_selection
                     fi
                     ((CURRENT_SECTION++))
                     current_selection=0
@@ -1341,6 +1409,10 @@ handle_input() {
     else
         case "$key" in
             ' '|d|D) # Space toggles install/update; D toggles explicit removal.
+                if [[ "$CURRENT_SECTION" == 4 ]]; then
+                    [[ "$key" != ' ' ]] || activate_profile || return "$?"
+                    return 0
+                fi
                 local input_key="$key"
                 local key=""
                 if [ $CURRENT_SECTION -eq 0 ]; then
@@ -1366,6 +1438,7 @@ handle_input() {
                 fi
 
                 # Determine action based on current status
+                [[ -n "$key" ]] || return 0
                 local status="${component_status[$key]}"
                 local is_installed=false
                 [[ "$status" != 'needs check' && "$status" != loading ]] || return 0
@@ -1390,6 +1463,7 @@ handle_input() {
                 fi
                 ;;
             ''|$'\r'|$'\n') # Enter activates a focused service button.
+                if [[ "$CURRENT_SECTION" == 4 ]]; then activate_profile; return "$?"; fi
                 if [[ "$CURRENT_SECTION" == 3 ]]; then
                     local requirement="${requirement_items[$current_selection]}"
                     case "$requirement" in
@@ -1412,6 +1486,16 @@ handle_input() {
                     requirements_return_section=$CURRENT_SECTION
                     requirements_return_selection=$current_selection
                     CURRENT_SECTION=3
+                    current_selection=0
+                fi ;;
+            'g'|'G')
+                if [[ "$CURRENT_SECTION" == 4 ]]; then
+                    CURRENT_SECTION=$profiles_return_section
+                    current_selection=$profiles_return_selection
+                else
+                    profiles_return_section=$CURRENT_SECTION
+                    profiles_return_selection=$current_selection
+                    CURRENT_SECTION=4
                     current_selection=0
                 fi ;;
             'v'|'V') # Vault action is available beside its main-screen status.

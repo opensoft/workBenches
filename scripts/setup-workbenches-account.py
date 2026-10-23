@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Optional Keycloak account sign-in through a public-client device flow."""
 import argparse
+import contextlib
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -12,7 +14,8 @@ import urllib.parse
 import urllib.request
 import webbrowser
 
-ROOT = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'workbenches'
+ROOT = Path(os.environ.get('WORKBENCHES_ACCOUNT_ROOT', str(
+    Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'workbenches')))
 CONFIG = ROOT / 'account-provider.json'
 SESSION = ROOT / 'account-session.json'
 
@@ -71,6 +74,18 @@ def write_private(path, data):
             temporary.unlink(missing_ok=True)
 
 
+@contextlib.contextmanager
+def session_lock():
+    root = SESSION.parent
+    if root.is_symlink():
+        raise ValueError('Account storage must not be a symlink.')
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor = os.open(root / 'account-sync.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, 'w') as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        yield
+
+
 def configuration():
     data = json.loads(CONFIG.read_text()) if CONFIG.exists() else {}
     issuer = os.environ.get('WORKBENCHES_ACCOUNT_ISSUER', data.get('issuer', '')).rstrip('/')
@@ -119,7 +134,9 @@ def login(config):
         if (parsed.scheme, parsed.netloc) != (origin.scheme, origin.netloc):
             raise ValueError('Account endpoints must use the configured server origin.')
         endpoints[name] = endpoint
-    device = request(endpoints['device_authorization_endpoint'], {'client_id': config['clientId'], 'scope': 'openid profile'})
+    offline = os.environ.get('WORKBENCHES_ACCOUNT_OFFLINE') == '1'
+    scope = 'openid profile email offline_access' if offline else 'openid profile email'
+    device = request(endpoints['device_authorization_endpoint'], {'client_id': config['clientId'], 'scope': scope})
     verification = url(device['verification_uri'])
     if urllib.parse.urlsplit(verification).netloc != origin.netloc:
         raise ValueError('Invalid account verification URL.')
@@ -158,8 +175,20 @@ def login(config):
         lifetime = int(tokens['expires_in'])
         if lifetime <= 0:
             raise ValueError('Account session has expired; sign in again.')
-        write_private(SESSION, {**config, 'subject': user['sub'], 'accessToken': token,
-                               'expiresAt': time.time() + lifetime})
+        session = {**config, 'subject': user['sub'], 'accessToken': token, 'expiresAt': time.time() + lifetime}
+        # Keep verified identity metadata from the authenticated userinfo call.
+        # Email is a profile suggestion, never an authorization grant.
+        if user.get('email_verified') is True:
+            from setup_profiles import email
+            try:
+                session['email'] = email(user.get('email'))
+                session['emailVerified'] = True
+            except ValueError:
+                pass
+        if offline and isinstance(tokens.get('refresh_token'), str):
+            session['refreshToken'] = tokens['refresh_token']
+        with session_lock():
+            write_private(SESSION, session)
         print('workBenches account signed in. AI tokens and vault permissions are configured separately.')
         return 0
     raise ValueError('Account approval timed out; rerun optional account setup to try again.')
@@ -168,7 +197,8 @@ def login(config):
 def logout():
     if SESSION.is_symlink():
         raise ValueError('Account storage must not be a symlink.')
-    SESSION.unlink(missing_ok=True)
+    with session_lock():
+        SESSION.unlink(missing_ok=True)
     print('Signed out of workBenches on this workstation.')
     return 0
 

@@ -31,11 +31,12 @@ branches. v1.5.0 stays immutable; this document does not announce a new release.
   Direct bench start still refreshes Layer 3 only; rebuilding shared images
   remains a setup operation. Do not claim automatic shared-source refresh on
   every launch or close that broader expectation without a separate decision.
-- #107: the pinned openRepoTools installer still places the bare-user name-guard
+- #107 (historical patch triage; now addressed on the v1.6 candidate): the
+  previous pinned openRepoTools installer placed the bare-user name-guard
   hook before workspace linking supplies its target. Its canonical exact hook
-  strings and all-or-nothing install contract are upstream-owned. This remains
-  open: implement and validate the upstream installer change, then deliberately
-  update the vendored pin and rerun estate/workspace install acceptance. Do not
+  strings and all-or-nothing install contract are upstream-owned. The upstream fix landed in openRepoTools PR #247 at `586dea2`; the v1.6
+  candidate updates the complete vendored payload and tests the host/container
+  integration. This does not add the change to the immutable v1.5.0 release. Do not
   patch the vendored copy or introduce another settings writer in workBenches.
 
 ## Validation and release gates

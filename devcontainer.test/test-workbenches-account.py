@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import sys
 from pathlib import Path
 import tempfile
 import time
@@ -10,6 +11,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
 spec = importlib.util.spec_from_file_location('account', ROOT / 'scripts/setup-workbenches-account.py')
 account = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(account)
@@ -46,6 +48,23 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(account.SESSION.stat().st_mode & 0o777, 0o600)
         account.write_private(account.CONFIG, self.config)
         self.assertEqual(account.status(), 'signed in')
+
+    def test_only_verified_valid_email_is_retained(self):
+        for claims, expected in (
+            ({'email': 'work@example.org', 'email_verified': True}, 'work@example.org'),
+            ({'email': 'work@example.org', 'email_verified': False}, None),
+            ({'email': 'work@example.org', 'email_verified': 'true'}, None),
+            ({'email': 'bad\n@example.org', 'email_verified': True}, None),
+            ({}, None),
+        ):
+            with self.subTest(claims=claims), patch.object(account, 'request', side_effect=[
+                    self.metadata, self.device, self.tokens, dict(sub='fixture-user', **claims)
+            ]) as request, patch.object(account.time, 'sleep'):
+                account.login(self.config)
+                self.assertIn('email', request.call_args_list[1].args[1]['scope'].split())
+                session = json.loads(account.SESSION.read_text())
+                self.assertEqual(session.get('email'), expected)
+                self.assertEqual(session.get('emailVerified', False), expected is not None)
 
     def test_issuer_mismatch_or_cross_origin_endpoints_never_get_tokens(self):
         for metadata in (dict(self.metadata, issuer='https://wrong.example'), dict(self.metadata, token_endpoint='https://wrong.example/token')):
@@ -113,6 +132,15 @@ class AccountTests(unittest.TestCase):
         account.SESSION.symlink_to(target)
         with self.assertRaises(ValueError): account.write_private(account.SESSION, {})
         self.assertEqual(target.read_text(), 'preserve')
+
+    def test_background_refresh_token_requires_explicit_offline_consent(self):
+        for offline in (False, True):
+            tokens = dict(self.tokens, refresh_token='fixture-offline-token')
+            env = {'WORKBENCHES_ACCOUNT_OFFLINE': '1'} if offline else {}
+            with patch.dict(os.environ, env, clear=True), patch.object(account, 'request', side_effect=[self.metadata, self.device, tokens, {'sub': 'fixture-user'}]) as request, patch.object(account.time, 'sleep'):
+                account.login(self.config)
+            self.assertEqual('refreshToken' in json.loads(account.SESSION.read_text()), offline)
+            self.assertEqual('offline_access' in request.call_args_list[1].args[1]['scope'], offline)
 
     def test_quit_does_not_write_provider_settings(self):
         with patch('builtins.input', return_value='Q'), self.assertRaises(SystemExit) as error:

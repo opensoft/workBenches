@@ -1,0 +1,13 @@
+# Correct v1.6 premerge recovery and identity preservation
+
+Authority: Brett requested merging v1.6 and resolving its conflicts (2026-10-23). Exact-head Codex review of PR #167 found violations of the existing approved company-sync recovery and identity-isolation requirements. Correct these within the existing v1.6 features before merging; no new provider mode, public schema, permission or release gate is introduced.
+
+For broker-refresh publication, retain the durable publication intent and previous baseline until the sanitized credential projection is fetched and safely installed. Retry an approved pending publication idempotently after a transient fetch failure, including after process restart; preserve a concurrently changed local credential. Before installing the sanitized projection, persist its hash/version in the pending operation so a restart can recognize a completed write even if baseline persistence was interrupted. Pending state contains metadata/hashes, never credential bodies.
+
+For identity-scoped AI onboarding, preserve existing profiles and allocate distinct names, paths and aliases when another identity occupies the preferred name. Repeating the same identity's onboarding reuses its existing entry without duplicates. Personal and same-company identities must both remain distinct. Harness-selected provider preservation must not discard an explicitly requested identity addition.
+
+The TLS fixture already sets a TLS-1.2 minimum; confirm current source rather than weakening or suppressing scanner checks. Implementation ownership remains specs/027-company-credential-sync and specs/026-profile-onboarding. Their appended review tasks own executable verification; this proposal does not duplicate their task lists. Stable publication remains a separate gated action.
+
+Exact-head follow-up review also identified a lane handoff bypassing the approved managed-launch synchronization/lease hook. Move the existing hook before lane/bare launch divergence, after executable/lane resolution, so managed failures refuse before either launch and the same lease covers the child session. Preserve tmux re-exec and unrelated lane behavior.
+
+Further exact-head review identified maintenance treating a pre-refresh vault outage as a permanently consumed token. Restore the prior usable reservation/health timestamp for retryable failures before any refresh attempt, report maintenance unavailability, and retry on a later scheduler tick. Explicit invalid/expired credentials still require login; attempted refresh or pending publication retains its existing no-replay/reconciliation boundary.
