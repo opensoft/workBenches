@@ -406,3 +406,48 @@ No installer, real Docker build, service removal, or WSL restart was executed.
 Bench copy approval and real-host/remote release gates remain pending. This
 review iteration continues the existing authorization to commit/push updates
 to the same feature branch; no merge or archive is authorized.
+
+
+## Review refinement 029-A06 / T039H — 2026-10-23
+
+Source: this T039H commit, based on `6d471b2d4f5eff4a5421cb7529c21182d9d0924a`.
+Brett requested implementation of the categorized Harness catalog and combined
+Editors & IDEs group. Both steps now share category/list navigation and About,
+with four Harness categories, seventeen harness entries and eleven Tools entries.
+Existing managed flat indexes, installer order, credential options and allowed
+plan keys stay stable. Thirteen new references explicitly require manual setup,
+show setup sources, lack action boxes, and cannot be queued or accepted as plan
+keys. Presence checks distinguish desktop launchers from CLIs, use exact local
+VS Code default-profile extension IDs, cache failed as well as successful
+extension inventory, and leave Windows/WSL references for manual checking.
+Installation evidence does not establish sign-in.
+
+Long setup links revealed body-column/paging-marker truncation. Body-only rows
+now retain the full interior width, and About reserves room for paging markers.
+A round-trip fixture preserves the complete link through wrapping and paging.
+
+Verification on Raven / native Linux, using fixtures only:
+
+- Exact T039H verify: PASS, 34.29 seconds; Bash syntax, wizard 31, layout 21,
+  components 28, guided flow 43 and async 6 tests; native/WSL acceptance compile;
+  render timing and strict guided-wizard OpenSpec validation.
+- All 32 quickstart suites: PASS, 66.46 seconds. The final extension-inventory
+  caching adjustment also passed the component suite and the complete exact
+  T039H verify afterward.
+- Both guided-wizard and workstation-lifecycle OpenSpec changes validate strictly.
+- Existing locale/size matrix retained, plus all Harness categories in both zones
+  at 36/60/87 columns and 24/40/unknown height under C and C.UTF-8 (144 frames).
+  Every catalog member has About; category membership and manual action/plan
+  rejection are covered. P/G/refresh preserve focus and About pages.
+- Full Benches timing median 3.447 ms, p90 4.820 ms, max 5.218 ms. Step medians:
+  Workstation 2.227, Benches 2.508, Harness 3.411, Tools 3.298,
+  Profiles 1.978, Review 2.460 ms. No renderer subprocess exemptions.
+- Live selection-only preview refreshed on workspace 14; visually inspected the
+  Harness categories/TUI list/About and Editors & IDEs category/list/About.
+  Actual native package naming prompted adding the distinct antigravity-ide
+  launcher as desktop evidence, without treating agy as a desktop install.
+- Scope, LF, modes and diff whitespace checks pass; release base remains `ccc9eac`.
+
+No installers, removals, Docker builds, account actions or host configuration
+changes were executed. Human bench-copy approval, remote CI, real-host install
+QA, PR/merge and archive gates remain pending.

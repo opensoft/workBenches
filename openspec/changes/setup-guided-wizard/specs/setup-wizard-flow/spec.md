@@ -226,7 +226,7 @@ The Profiles step SHALL show the identities summary line, the rows Personal & co
 - **THEN** Profiles shows "Profile action cancelled; saved profiles kept." and queued changes are unchanged
 
 ### Requirement: Harness and Tools steps
-The Harness list SHALL be titled Harnesses and SHALL show the existing harness/specification-tool rows, with a focused-item About panel. Tools SHALL show Editors, Terminals, Networking and Workstation setup categories using the Benches category/list key pattern, then only the selected category's tools and a focused-item About panel. Category focus SHALL show category details. Component IDs, flat global indexes, installer order, selection rules and configuration-only restrictions SHALL remain unchanged. About SHALL use shared wrapping, paging, reset and same-item refresh clamping; P/G and refresh SHALL preserve the Tools category/zone/item and queue.
+The Harness list SHALL be titled Harnesses and SHALL group the existing harness/specification-tool rows and manual references as specified by refinement 029-A06, with a category/item About panel. Tools SHALL show Editors & IDEs, Terminals, Networking and Workstation setup categories using the Benches category/list key pattern, then only the selected category's tools and a focused-item About panel. Category focus SHALL show category details. Component IDs, flat global indexes, installer order, selection rules and configuration-only restrictions SHALL remain unchanged. About SHALL use shared wrapping, paging, reset and same-item refresh clamping; P/G and refresh SHALL preserve the Tools category/zone/item and queue.
 
 #### Scenario: Tool categories isolate lists
 - **WHEN** Networking is current
@@ -288,3 +288,16 @@ The wizard SHALL leave the `setup.sh` modes `--select-only`, `--dependencies-pla
 - **THEN** it applies the selection without drawing any wizard frame
 
 Accepted lifecycle extension: setup-workstation-lifecycle governs added service keys, prerequisite-install/removal-last ordering, selected-install and service-only-removal readiness exceptions, and manual unsupported host teardown. Earlier immediate-service scenarios are superseded by that change.
+
+
+### Requirement: Categorized Harness browsing
+The Harness step SHALL browse TUI AI Tools, GUI AI Tools, IDE extensions and Workflow using the Benches category/list keys. It SHALL show a Harnesses panel with only the active category's members and category/item About. Tools SHALL group Editors & IDEs together. The catalog SHALL include the reference entries listed in amendment 029-A06. Existing managed IDs, install order and plan contracts SHALL remain stable. Reference entries SHALL be marked Manual setup, lack action checkboxes, expose setup sources, and be excluded from Review/apply. Presence evidence SHALL NOT imply authentication. P/G and refresh SHALL preserve category, zone, item and scroll state for both steps.
+
+#### Scenario: Browse a desktop harness
+- **WHEN** the user chooses GUI AI Tools and enters its list
+- **THEN** only desktop harness entries appear, with per-item About and manual setup guidance
+- **AND** Space/D cannot queue a manual reference entry
+
+#### Scenario: Return to a selected workflow tool
+- **WHEN** the user pages a Workflow About panel, jumps to Profiles or Workstation and returns
+- **THEN** category, zone, selected item, list window and About page are restored

@@ -235,7 +235,7 @@ def snapshot():
 STRIP_READY = r'REQUIREMENTS · (\d+)/\1 ready[\s\S]*Navigation:'
 READY = r'✓ Workstation[^\n]*\n[\s\S]*Navigation:'
 REVIEW = r'Nothing has changed yet\. Enter applies these changes\.[\s\S]*Navigation:'
-CODEX = (STRIP_READY, '\x1b[C\x1b[C\x1b[B\x1b[B \n')
+CODEX = (STRIP_READY, '\x1b[C\x1b[C\t\x1b[B\x1b[B \n')
 PROFILES = r'IDENTITIES[\s\S]*AI accounts[\s\S]*G Back[^\n]*Q Quit'
 
 
@@ -250,7 +250,7 @@ def account_setup_replies(authentication, *, cancel=False):
     # screen instead of clamping an obsolete row index onto the Vault button.
     assert len(authentication) <= 8, 'simple recovery flow grew beyond eight account responses'
     return [
-        (READY, '\x1b[C\x1b[C\x1b[B\x1b[B G'),
+        (READY, '\x1b[C\x1b[C\t\x1b[B\x1b[B G'),
         (PROFILES, '\x1b[B\x1b[B\n'),
         (r'AI assistant .*\[codex\]', '\n'),
         *authentication,

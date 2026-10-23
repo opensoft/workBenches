@@ -62,6 +62,58 @@ FLATPAKS = {'vscode': 'com.visualstudio.code', 'warp': 'dev.warp.Warp',
             'wave': 'dev.waveterm.waveterm', 'amnezia_vpn': 'org.amnezia.AmneziaVPN'}
 
 
+# Reference-only catalog entries. They deliberately do not extend the selection
+# allowlist or package-removal table. Desktop launchers are distinct from CLIs.
+REFERENCES = {
+    'opencode_desktop': ('opencode-desktop',),
+    'qwen_desktop': ('qwen-code-desktop',),
+    'kimi_desktop': ('kimi-code-desktop',), 'zcode_desktop': ('zcode',),
+    'omnigent': ('omnigent',), 'agenttower': ('agenttower',),
+    'cursor_ide': ('cursor',), 'kiro_ide': ('kiro',),
+    'antigravity_ide': ('antigravity-ide', 'antigravity'), 'comate_ide': ('comate',),
+    'copilot_vscode': (), 'cline_vscode': (), 'continue_vscode': (),
+}
+EXTENSIONS = {'copilot_vscode': ('github.copilot', 'github.copilot-chat'),
+              'cline_vscode': ('saoudrizwan.claude-dev',),
+              'continue_vscode': ('continue.continue',)}
+
+
+@functools.lru_cache(maxsize=1)
+def vscode_extensions():
+    """Only the local code CLI default profile; never infer other editors."""
+    code = native_which('code')
+    if not code:
+        return set()
+    try:
+        row = read_command([code, '--list-extensions'], timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if row.returncode:
+        return None
+    return {line.strip().lower() for line in row.stdout.splitlines()}
+
+
+def reference_installed(component):
+    if component in EXTENSIONS:
+        installed = vscode_extensions()
+        if installed is None:
+            raise ValueError('VS Code extension inventory failed')
+        return bool(set(EXTENSIONS[component]) & installed)
+    for command in REFERENCES[component]:
+        if native_which(command) or native_access(Path.home() / '.local/bin' / command, os.X_OK):
+            return True
+    return False
+
+
+def reference_status(component):
+    # Windows desktop apps and remote editor profiles need their own inventory;
+    # don't report Linux-side command wrappers as Windows installation evidence.
+    release = native_read_text(Path('/proc/sys/kernel/osrelease')).lower() if sys.platform.startswith('linux') else ''
+    if os.environ.get('WSL_DISTRO_NAME') or 'microsoft' in release:
+        return 'needs check'
+    return 'installed' if reference_installed(component) else 'not installed'
+
+
 def read_command(argv, env=None, timeout=15):
     if host and host.active() and Path(argv[0]).name != 'docker':
         return host.run(argv, capture_output=True, text=True, timeout=timeout, env=env)
@@ -146,6 +198,8 @@ def package_installation(component, executable=None):
 
 
 def tool_installed(component):
+    if component in REFERENCES:
+        return reference_installed(component)
     return bool(executable_paths(component) or package_installation(component))
 
 
@@ -200,6 +254,8 @@ def native_removal(component, path):
 
 
 def uninstall_tool(component):
+    if component in REFERENCES:
+        raise ValueError('Manual setup entry: use its original installer; no changes were made')
     # Remove all recognized copies, then verify actual absence. A successful
     # package command against an empty/wrong prefix is not an uninstall.
     for _ in range(8):
@@ -344,9 +400,9 @@ def tool_statuses():
     globals()['snap_packages'] = functools.lru_cache(maxsize=None)(original_snaps)
     providers = {'claude_cli': 'claude', 'codex_cli': 'codex', 'pi_cli': 'pi', 'opencode_cli': 'omniroute'}
     try:
-        for component in COMMANDS:
+        for component in (*COMMANDS, *REFERENCES):
             try:
-                status = 'installed' if tool_installed(component) else 'not installed'
+                status = reference_status(component) if component in REFERENCES else ('installed' if tool_installed(component) else 'not installed')
                 if status == 'installed' and component in providers and profile_credentials.status(providers[component]) != 0:
                     status = 'needs creds'
             except (OSError, ValueError, subprocess.TimeoutExpired):
@@ -355,6 +411,7 @@ def tool_statuses():
     finally:
         globals()['native_which'] = original_which
         globals()['snap_packages'] = original_snaps
+        vscode_extensions.cache_clear()
 
 
 def main():
@@ -370,7 +427,7 @@ def main():
     elif args.action == 'bench-statuses':
         bench_statuses()
     elif args.action == 'tool-status':
-        print('installed' if tool_installed(args.component) else 'not installed')
+        print(reference_status(args.component) if args.component in REFERENCES else ('installed' if tool_installed(args.component) else 'not installed'))
     elif args.component.startswith('bench_'):
         uninstall_bench(args.component[6:])
     else:

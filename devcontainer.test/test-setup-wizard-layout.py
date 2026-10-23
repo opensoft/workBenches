@@ -284,7 +284,7 @@ for key in bench_cppBench codex_cli vscode; do component_checked[$key]=true; com
 setup_refresh_bench_counts
 setup_arrive_step {section}
 if [[ "$CURRENT_SECTION" == 0 ]]; then setup_bench_zone=bench; setup_focus_bench_name cppBench; fi
-if [[ "$CURRENT_SECTION" == 1 ]]; then current_selection=2; fi
+if [[ "$CURRENT_SECTION" == 1 ]]; then setup_harness_zone=harness; current_selection=2; fi
 if [[ "$CURRENT_SECTION" == 2 ]]; then setup_tool_zone=tool; fi
 setup_os_label='Linux — Omarchy'
 tput() {{ case $1 in cols) echo {columns};; lines) echo {rows};; esac; }}
@@ -313,7 +313,7 @@ render_setup_frame
         for name in ('draw_three_sections','draw_item_compact','setup_frame_legacy_bridge'):
             self.assertNotIn(name,text)
 
-    def test_every_harness_and_tool_has_about_and_tool_categories_are_isolated(self):
+    def test_every_catalog_item_has_about_and_categories_are_isolated(self):
         output=self.shell(r'''
 init_components --loading
 setup_ui_width=87; setup_ui_height=''
@@ -322,45 +322,122 @@ for key in "${ai_items[@]}" "${tool_items[@]}"; do
     [[ -n "${component_about[$key]}" ]] || exit 30
     component_status[$key]=installed
 done
-CURRENT_SECTION=1
-for current_selection in "${!ai_items[@]}"; do
-    [[ "${ai_items[$current_selection]}" != separator* ]] || continue
-    setup_frame_lines=(); setup_frame_components
-    printf 'ITEM:%s:%s\n' "${ai_items[$current_selection]}" "$setup_about_anchor"
-    printf '%s\n' "${setup_frame_lines[@]}"
-done
-CURRENT_SECTION=2; setup_tool_zone=tool
-for setup_tool_category in "${setup_tool_categories[@]}"; do
-    IFS=' ' read -r -a members <<< "${setup_tool_members[$setup_tool_category]}"
-    for key in "${members[@]}"; do
-        setup_focus_tool_key "$key"
-        setup_frame_lines=(); setup_frame_components
-        printf 'ITEM:%s:%s\n' "$key" "$setup_about_anchor"
-        printf '%s\n' "${setup_frame_lines[@]}"
+for CURRENT_SECTION in 1 2; do
+    family=tool; [[ "$CURRENT_SECTION" != 1 ]] || family=harness
+    declare -n categories="setup_${family}_categories" members_map="setup_${family}_members" category="setup_${family}_category" zone="setup_${family}_zone"
+    zone=$family
+    for catalog_test_category in "${categories[@]}"; do
+        category=$catalog_test_category
+        IFS=' ' read -r -a members <<< "${members_map[$category]}"
+        for key in "${members[@]}"; do
+            setup_focus_catalog_key "$family" "$key"
+            setup_frame_lines=(); setup_frame_components
+            printf 'ITEM:%s:%s\n' "$key" "$setup_about_anchor"
+            printf '%s\n' "${setup_frame_lines[@]}"
+        done
     done
+    unset -n categories members_map category zone
 done
 ''')
+        harness_groups=[{'claude_cli','copilot_cli','codex_cli','antigravity_cli','opencode_cli','pi_cli'},
+                        {'opencode_desktop','qwen_desktop','kimi_desktop','zcode_desktop'},
+                        {'copilot_vscode','cline_vscode','continue_vscode'},
+                        {'spec_kit','openspec','omnigent','agenttower'}]
+        tool_groups=[{'vscode','cursor_ide','kiro_ide','antigravity_ide','comate_ide'},
+                     {'warp','wave'},{'amnezia_vpn','0dcloud_vpn'},{'host_shell','workspace_repo'}]
+        labels={'claude_cli':'Claude Code CLI','copilot_cli':'GitHub Copilot CLI','codex_cli':'Codex CLI',
+                'antigravity_cli':'Antigravity CLI','opencode_cli':'OpenCode CLI','pi_cli':'Pi Coding Agent',
+                'opencode_desktop':'OpenCode Desktop','qwen_desktop':'Qwen Code Desktop','kimi_desktop':'Kimi Code Desktop',
+                'zcode_desktop':'ZCode','copilot_vscode':'GitHub Copilot — VS Code','cline_vscode':'Cline — VS Code',
+                'continue_vscode':'Continue — VS Code','spec_kit':'spec-kit','openspec':'OpenSpec','omnigent':'Omnigent','agenttower':'AgentTower',
+                'vscode':'VS Code','cursor_ide':'Cursor','kiro_ide':'Kiro IDE','antigravity_ide':'Antigravity IDE','comate_ide':'Comate IDE',
+                'warp':'Warp Terminal','wave':'Wave Terminal','amnezia_vpn':'AmneziaVPN','0dcloud_vpn':'0dcloud VPN',
+                'host_shell':'Shell setup','workspace_repo':'Org workspace'}
+        managed={'claude_cli','copilot_cli','codex_cli','antigravity_cli','opencode_cli','pi_cli',
+                 'spec_kit','openspec','vscode','warp','wave','amnezia_vpn','0dcloud_vpn','host_shell','workspace_repo'}
         chunks=output.split('ITEM:')[1:]
-        self.assertEqual(len(chunks),15)
-        names={'vscode':'VS Code','warp':'Warp Terminal','wave':'Wave Terminal',
-               'amnezia_vpn':'AmneziaVPN','0dcloud_vpn':'0dcloud VPN',
-               'host_shell':'Shell setup','workspace_repo':'Org workspace'}
-        groups=[{'vscode'},{'warp','wave'},{'amnezia_vpn','0dcloud_vpn'},{'host_shell','workspace_repo'}]
+        self.assertEqual(len(chunks),28)
+        self.assertEqual({chunk.split(':',1)[0] for chunk in chunks},set(labels))
         for chunk in chunks:
             key,anchor=chunk.splitlines()[0].split(':',1)
             plain=ANSI.sub('',chunk)
+            groups=harness_groups if any(key in group for group in harness_groups) else tool_groups
+            family='harness' if groups is harness_groups else 'tool'
+            self.assertEqual(anchor,family+':'+key)
             self.assertIn('ABOUT',plain)
             self.assertNotIn('Select an item to see its details.',plain)
-            if key in names:
-                self.assertEqual(anchor,'tool:'+key)
-                group=next(group for group in groups if key in group)
-                rows=[line for line in plain.splitlines() if '[ ]' in line]
-                self.assertEqual(len(rows),len(group))
-                for other in names:
-                    if other not in group:self.assertFalse(any(names[other] in line for line in rows))
-            else:
-                self.assertEqual(anchor,'harness:'+key)
-                self.assertIn('Harnesses',plain)
+            if family=='harness':self.assertIn('Harnesses',plain)
+            group=next(group for group in groups if key in group)
+            body=plain.split('ABOUT',1)[0]
+            for member in group:
+                self.assertIn(labels[member],body)
+            for other in set(labels)-group:
+                # Match whole row labels: VS Code alone is a suffix of extension names.
+                self.assertNotRegex(body,r'(?:\[ \]|·)\s+[✓○…]\s+'+re.escape(labels[other])+r'\s{2,}')
+            self.assertEqual(body.count('[ ]'),len(group & managed))
+            if key not in managed:
+                self.assertIn('Manual setup:',plain)
+                self.assertIn('Setup:',plain)
+                self.assertIn('https://',plain)
+                self.assertIn('Presence does not establish login',plain)
+
+    def test_long_setup_link_survives_wrap_and_paging_markers(self):
+        output=self.shell(r'''
+setup_ui_width=36; setup_ui_height=24
+url='https://docs.example.test/a-very-long-installation-path/with-no-spaces/extension'
+setup_frame_about link ABOUT "$url" 2
+printf 'WRAPPED:%s\n' "${setup_about_lines[@]}"
+total=${#setup_about_lines[@]}
+for ((i=0;i<total-1;i++)); do
+    setup_about_offset=$i; setup_frame_lines=()
+    setup_frame_about link ABOUT "$url" 2
+    printf 'PAGE:%s\n' "$i"
+    printf '%s\n' "${setup_frame_lines[@]}"
+done
+''')
+        wrapped=[line.removeprefix('WRAPPED:') for line in output.splitlines() if line.startswith('WRAPPED:')]
+        self.assertEqual(''.join(wrapped),'https://docs.example.test/a-very-long-installation-path/with-no-spaces/extension')
+        for page in output.split('PAGE:')[1:]:
+            index=int(page.splitlines()[0])
+            lines=ANSI.sub('',page).splitlines()[2:4]
+            content=[line[2:-2].strip().removeprefix('▲ more ').removeprefix('▼ more ') for line in lines]
+            self.assertEqual(content,wrapped[index:index+2])
+
+    def test_all_harness_categories_keep_focus_and_about_in_size_locale_matrix(self):
+        for locale in ('C.UTF-8','C'):
+            output=self.shell(r'''
+init_components --loading
+for key in "${!component_description[@]}"; do component_status[$key]=installed; done
+for key in "${requirement_items[@]}"; do component_status[$key]=up; done
+setup_ui_painted=true; setup_ui_size_stale=false
+for setup_ui_width in 36 60 87; do
+    for setup_ui_height in 24 40 ''; do
+        for setup_harness_category in "${setup_harness_categories[@]}"; do
+            IFS=' ' read -r -a members <<< "${setup_harness_members[$setup_harness_category]}"
+            for setup_harness_zone in category harness; do
+                CURRENT_SECTION=1
+                setup_focus_harness_key "${members[${#members[@]}-1]}"
+                setup_frame_build
+                printf 'CASE:%s:%s:%s:%s\n' "$setup_ui_width" "$setup_ui_height" "$setup_harness_category" "$setup_harness_zone"
+                printf '%s\n' "${setup_frame_lines[@]}"
+            done
+        done
+    done
+done
+''',locale)
+            cases=output.split('CASE:')[1:]
+            self.assertEqual(len(cases),72)
+            for case in cases:
+                marker,*lines=ANSI.sub('',case).splitlines()
+                width,height,category,zone=marker.split(':')
+                self.assert_bounds(lines,int(width),int(height) if height else None)
+                text='\n'.join(lines)
+                self.assertIn('CATEGORY',text)
+                self.assertIn('Harnesses',text)
+                self.assertIn('ABOUT',text)
+                self.assertIn('Navigation:',text)
+                if zone=='harness':self.assertIn('›',text)
+                self.assertNotIn('separator',text)
 
     def test_all_twelve_benches_have_visible_copy_in_their_category(self):
         import json

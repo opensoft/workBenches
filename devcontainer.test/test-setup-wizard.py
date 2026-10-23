@@ -240,7 +240,7 @@ render_setup_frame
         output = self.shell(r'''
 init_components --loading
 for key in "${requirement_items[@]}"; do component_status[$key]=up; done
-CURRENT_SECTION=1; component_status[codex_cli]=installed; current_selection=2
+CURRENT_SECTION=1; setup_harness_zone=harness; component_status[codex_cli]=installed; current_selection=2
 handle_input <<< ' '
 handle_input <<< ''; printf 'review=%s action=%s\n' "$CURRENT_SECTION" "${component_action[codex_cli]}"
 handle_input <<< ''; printf 'apply=%s\n' "$?"
@@ -349,7 +349,7 @@ render_setup_frame
     def test_component_selection_rules_and_separator(self):
         output=self.shell(r'''
 init_components --loading
-CURRENT_SECTION=1; current_selection=2; component_status[codex_cli]=installed
+CURRENT_SECTION=1; setup_harness_zone=harness; current_selection=2; component_status[codex_cli]=installed
 handle_input <<< ' '; printf '%s\n' "${component_action[codex_cli]}"
 handle_input <<< D; printf '%s\n' "${component_action[codex_cli]}"
 handle_input <<< D; printf '%s:%s\n' "${component_checked[codex_cli]}" "${component_action[codex_cli]}"
@@ -429,9 +429,77 @@ echo restored
 ''')
         self.assertEqual(output.strip(),'restored')
 
+    def test_harness_categories_keep_managed_indexes_and_block_manual_actions(self):
+        output=self.shell(r'''
+init_components --loading
+for key in "${ai_items[@]}" "${tool_items[@]}"; do component_status[$key]=installed; done
+setup_arrive_step 1
+handle_input <<< D; handle_input <<< ' '
+[[ "$setup_harness_zone" == harness && "${component_checked[claude_cli]}" != true ]] || exit 30
+handle_input <<< $'\e[B'; handle_input <<< $'\e[B'; handle_input <<< ' '
+[[ "$current_selection" == 2 && "${component_action[codex_cli]}" == update ]] || exit 31
+handle_input <<< $'\t'; handle_input <<< $'\e[B'; handle_input <<< $'\t'
+[[ "$setup_harness_category" == gui && "${ai_items[$current_selection]}" == opencode_desktop ]] || exit 32
+handle_input <<< ' '; handle_input <<< D
+[[ "${component_checked[opencode_desktop]}" != true && -z "${component_action[opencode_desktop]}" ]] || exit 33
+handle_input <<< $'\e[Z'; handle_input <<< $'\e[B'; handle_input <<< $'\e[B'; handle_input <<< $'\t'
+[[ "$setup_harness_category" == workflow && "$current_selection" == 7 ]] || exit 34
+handle_input <<< ' '; handle_input <<< $'\e[B'; handle_input <<< D
+[[ "${component_action[spec_kit]}" == update && "${component_action[openspec]}" == uninstall ]] || exit 35
+handle_input <<< $'\e[B'; handle_input <<< ' '; handle_input <<< D
+[[ "${ai_items[$current_selection]}" == omnigent && "${component_checked[omnigent]}" != true ]] || exit 36
+handle_input <<< $'\e[B'; handle_input <<< $'\e[B'
+[[ "${ai_items[$current_selection]}" == agenttower ]] || exit 37
+handle_input <<< $'\t'; handle_input <<< D
+[[ "$setup_harness_zone" == category && "${component_action[codex_cli]}" == update ]] || exit 38
+setup_arrive_step 2; setup_tools_key tab; setup_tools_key down
+[[ "${tool_items[$current_selection]}" == cursor_ide ]] || exit 39
+handle_input <<< ' '; handle_input <<< D
+[[ "${component_checked[cursor_ide]}" != true ]] || exit 40
+selection_file="$FIXTURE/selection.json"; save_selection
+for key in "${!setup_reference_labels[@]}"; do
+    ! workstation_known_key "$key" || exit 41
+done
+printf '%s\n' "${component_action[codex_cli]}:${component_action[spec_kit]}:${component_action[openspec]}"
+''')
+        self.assertEqual(output.strip(),'update:update:uninstall')
+        keys={entry['key'] for entry in json.loads((self.root/'selection.json').read_text())['components']}
+        self.assertEqual(keys,{'codex_cli','spec_kit','openspec'})
+
+    def test_harness_category_jump_refresh_and_about_restore(self):
+        output=self.shell(r'''
+init_components --loading
+for key in "${requirement_items[@]}"; do component_status[$key]=up; done
+setup_arrive_step 1; setup_harnesses_key down; setup_harnesses_key down; setup_harnesses_key down; setup_harnesses_key tab
+setup_harnesses_key down; setup_harnesses_key down; setup_harnesses_key down
+component_about[agenttower]=''
+for ((i=0;i<50;i++)); do component_about[agenttower]+='Long workflow details for paging. '; done
+setup_ui_width=36; setup_ui_height=24; setup_frame_build
+handle_input <<< ']'; saved_offset=$setup_about_offset
+[[ "$saved_offset" -gt 0 ]] || exit 30
+for jump in G P; do
+    handle_input <<< "$jump"; setup_frame_build
+    handle_input <<< "$jump"; setup_frame_build
+    [[ "$CURRENT_SECTION" == 1 && "$setup_harness_zone" == harness && "$setup_harness_category" == workflow && "${ai_items[$current_selection]}" == agenttower && "$setup_about_offset" == "$saved_offset" ]] || exit 31
+done
+status_async_ui=false
+refresh_host_tool_inventory() { :; }; setup_load_bench_metadata_sync() { :; }; refresh_bench_inventory() { :; }
+check_component_status() { echo installed; }; load_requirements() { :; }; draw_ui() { setup_frame_build; }
+handle_input <<< R
+[[ "$setup_harness_category" == workflow && "${ai_items[$current_selection]}" == agenttower && "$setup_about_offset" == "$saved_offset" ]] || exit 32
+handle_input <<< $'\t'; setup_frame_build
+[[ "$setup_about_anchor" == harness-category:workflow && "$setup_about_offset" == 0 ]] || exit 33
+handle_input <<< G; setup_frame_build; handle_input <<< G; setup_frame_build
+[[ "$setup_harness_zone" == category && "$setup_harness_category" == workflow ]] || exit 34
+handle_input <<< $'\e[A'; setup_frame_build
+[[ "$setup_harness_category" == extensions && "$setup_about_anchor" == harness-category:extensions ]] || exit 35
+echo restored
+''')
+        self.assertEqual(output.strip(),'restored')
+
     def test_harness_about_pages_and_resets_on_selected_harness_change(self):
         output=self.shell(r'''
-init_components --loading; CURRENT_SECTION=1
+init_components --loading; CURRENT_SECTION=1; setup_harness_zone=harness
 setup_ui_width=36; setup_ui_height=24
 component_about[claude_cli]=''
 for ((i=0;i<40;i++)); do component_about[claude_cli]+='Long harness details for paging. '; done

@@ -203,3 +203,10 @@ Enter on Review:
 ## Tools/Harness About refinement 029-A05
 
 Tools uses setup_tool_zone (category/tool), setup_tool_category, static group members/labels/summaries, and per-category list offsets. current_selection remains a global tool_items index. Harness uses the existing global ai_items index; separator rows remain nonfocusable. Cached About anchors add harness:<key>, tool:<key> and tool-category:<id>. P/G saves tool zone/category and list/About offsets alongside the existing targets.
+
+
+## Categorized Harness refinement 029-A06
+
+Harness adds setup_harness_zone (category/harness), setup_harness_category, static category labels/members/summaries and per-category list offsets. Shared catalog helpers operate on either step by name reference while current_selection remains the original flat array index. References are appended after existing managed indexes; the legacy separator is not a member of any category. About adds harness-category:<id>; P/G stores Harness category/zone along with the existing Tools fields. Offsets remain in each step's category map while visiting another step. The signature includes both categories/zones.
+
+setup_reference_labels marks browse-only entries; their About includes setup sources and manual-management bounds. Worker-side reference inventory probes distinct native desktop launchers and exact local VS Code extension IDs, with a single extension-list read per inventory and explicit failure/WSL needs-check state. Reference rows cannot select actions; selection allowlists remain unchanged and reject their keys. Presence is separate from authentication. Shared About wrapping reserves space for paging markers and keeps full body-only row width, preserving long setup links.

@@ -72,28 +72,43 @@ benches usable with a fallback description; R retries an unavailable catalog.
 
 ## Harnesses and categorized Tools
 
-The Harness step has a **Harnesses** list and an About panel for the selected
-coding CLI or specification tool. Up/down moves through the existing list,
-skipping the separator. The navigation step remains **Harness**.
+Harness and Tools use the same category → list → About pattern as Benches.
+The navigation step stays **Harness**; its list is titled **Harnesses** with the
+active category. Choose a category with up/down, then Tab, Shift+Tab or Space
+enters its list without selecting a change. Tab/Shift+Tab or up on the first
+item returns to categories. Only that category's items appear. About describes
+the category while it has focus and the selected item while its list has focus.
 
-Tools uses the same category/list pattern as Benches:
-
-| Category | Tools |
+| Harness category | Entries |
 |---|---|
-| Editors | VS Code |
+| TUI AI Tools | Claude Code CLI, GitHub Copilot CLI, Codex CLI, Antigravity CLI, OpenCode CLI, Pi Coding Agent |
+| GUI AI Tools | OpenCode Desktop, Qwen Code Desktop, Kimi Code Desktop, ZCode |
+| IDE extensions | GitHub Copilot — VS Code, Cline — VS Code, Continue — VS Code |
+| Workflow | spec-kit, OpenSpec, Omnigent, AgentTower |
+
+| Tools category | Entries |
+|---|---|
+| Editors & IDEs | VS Code, Cursor, Kiro IDE, Antigravity IDE, Comate IDE |
 | Terminals | Warp Terminal, Wave Terminal |
 | Networking | AmneziaVPN, 0dcloud VPN |
 | Workstation setup | Shell setup, Org workspace |
 
-Choose a category with up/down, then Tab, Shift+Tab or Space enters its tools
-without selecting a change. Tab/Shift+Tab or up on the first tool returns to
-categories. Only that category's tools appear. About describes the category
-while it has focus, then each selected tool when its list has focus.
-Space/D keeps the existing install/update/removal rules; configuration-only
-Shell setup and Org workspace cannot be removed.
+Existing managed entries keep Space/D → Review → Apply. Shell setup and Org
+workspace remain configuration-only. New desktop apps, extensions, Omnigent,
+AgentTower and additional editors are **Manual setup** reference entries:
+they have a dot instead of a checkbox, cannot be queued, and include setup
+sources in About. Manage these through their original installer. This catalog
+expansion adds no automated installers or new allowed plan keys.
+
+Read-only presence checks distinguish desktop launchers from CLI installations.
+Extension checks use only `code --list-extensions` for the local VS Code CLI
+default profile; they do not establish installation in Cursor, Kiro, other
+editors or other profiles. WSL reference entries say Check manually until native
+Windows inventory is integrated. Installed presence never establishes login,
+subscription access, running services or restored sessions.
 
 Both About panels use PgUp/PgDn or [/] for paging, reset when focus changes,
-and retain/clamp the page on refresh. P/G restores the exact Tools category,
+and retain/clamp the page on refresh. P/G restores each step's exact category,
 zone, item and About page. Short terminals collapse categories and scroll the
 list while preserving the selected row, About and navigation footer.
 
@@ -103,7 +118,7 @@ list while preserving the selected row, About and navigation footer.
 |---|---|
 | ← / → | Previous/next step; stop at the ends. |
 | ↑ / ↓ | Move within the step; scroll Review. In Benches, move within the current zone. |
-| Tab / Shift+Tab | Switch Benches or Tools category/list zones. ↑ on the first item returns to categories. |
+| Tab / Shift+Tab | Switch Benches, Harness or Tools category/list zones. ↑ on the first item returns to categories. |
 | Space / D | Queue/unqueue install or update / removal; Space opens Profiles actions. |
 | Enter | Open Review, apply from Review, or open a Profiles row. |
 | P | Visit Workstation and return to the remembered step and focus. |

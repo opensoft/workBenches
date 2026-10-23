@@ -357,7 +357,7 @@ ensure_selected_dependencies
     def test_space_updates_and_undoes_and_remove_has_a_separate_undo(self):
         result = self.shell('''init_components
 component_status[codex_cli]=installed
-CURRENT_SECTION=1; current_selection=2
+CURRENT_SECTION=1; setup_harness_zone=harness; current_selection=2
 for step in 1 2 3 4 5 6; do
   handle_input
   printf '%s:%s\\n' "${component_checked[codex_cli]}" "${component_action[codex_cli]}"
@@ -368,7 +368,7 @@ done''', input='  DD D')
     def test_new_item_space_undoes_install_and_remove_is_ignored(self):
         result = self.shell('''init_components
 component_status[codex_cli]='not installed'
-CURRENT_SECTION=1; current_selection=2
+CURRENT_SECTION=1; setup_harness_zone=harness; current_selection=2
 for step in 1 2 3; do
   handle_input
   printf '%s:%s\\n' "${component_checked[codex_cli]}" "${component_action[codex_cli]}"
@@ -528,7 +528,7 @@ process_selections''', input='\n', PATH=self.fake_npm(self.home, failure=13), WO
             path = binary / name; path.write_text(body); path.chmod(0o755)
         status, output = terminal_run(['bash', str(repo / 'setup.sh')],
             dict(self.env, PATH=str(binary) + ':' + self.env['PATH']),
-            [(re.compile(r'REQUIREMENTS · (\d+)/\1 ready'), '\x1b[C\x1b[C\x1b[B\x1b[B \n\n')])
+            [(re.compile(r'REQUIREMENTS · (\d+)/\1 ready'), '\x1b[C\x1b[C\t\x1b[B\x1b[B \n\n')])
         self.assertEqual(status, 0, output)
         self.assertTrue((self.home / 'cli-installed').exists())
         self.assertNotIn('Apply these changes?', output)

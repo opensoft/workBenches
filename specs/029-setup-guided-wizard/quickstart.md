@@ -188,3 +188,8 @@ The builder hands over a pushed candidate commit (the PR head) and this checklis
 ## Workstation lifecycle extension
 
 Run `python3 devcontainer.test/test-workstation-lifecycle.py` for the additional native-plan, queue, ordering, ownership and data-preservation fixtures. The existing requirements suite loads these tests too, so CI covers them. Workstation uses Space/D → Review → Apply; --select-only saves without applying. Docker Desktop/WSL removals require manual host steps; fixture tests never change the real host.
+
+
+### Harness category review (029-A06)
+
+Harness now starts on categories. Tab enters TUI AI Tools before selecting an existing CLI; real-host Codex sequences add Tab between the second Right and the two Down keys. Browse GUI AI Tools, IDE extensions and Workflow with the same category/list controls as Benches. Tools groups Editors & IDEs together. New reference entries are manual-only: About supplies setup sources, presence is not login, and Space/D cannot queue them. Extension status targets only the local VS Code CLI default profile; Windows/WSL references require manual checking.

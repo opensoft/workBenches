@@ -356,3 +356,8 @@ Brett explicitly selected install/uninstall for all Workstation entries and then
 ## Accepted UI revision 029-A05 (2026-10-23)
 
 Task T039G titles the Harness list Harnesses, adds cached per-item About for Harness and Tools, and gives Tools the Benches category/list navigation pattern. Keep flat installer arrays and IDs unchanged. Use Editors, Terminals, Networking and Workstation setup categories, shared About primitives, responsive budgets and saved tool-zone/category/list/About state for P/G returns. See amendment 029-A05.
+
+
+## Accepted UI revision 029-A06 (2026-10-23)
+
+T039H generalizes the Tools category/list primitives for Harness without changing existing global indexes or installable IDs. Add static manual reference metadata for the agreed desktop apps, VS Code extensions, workflow tools and editors/IDEs; read-only inventory runs in the worker using native-host probes, never during rendering. Manual references are excluded from actions; existing plan validators continue rejecting their IDs. Save/restore both category states and list/About offsets. Update every affected interaction assertion and real-host script key sequence (Tab into TUI AI Tools before choosing Codex). See amendment 029-A06 for bounds and catalog.

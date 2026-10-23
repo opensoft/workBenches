@@ -63,14 +63,14 @@ Every hint block begins with `Navigation:`. V is listed only on Workstation. Pro
 | 60–79 columns | as many as needed | the step's full list, wrapped between hints |
 | below 60 columns | at most 2 | the step's own keys plus `←→`, `Enter` and `Q`; P, G, R, V and PgUp/PgDn still work but are not listed |
 
-Full lists (from the approved Benches mockup and the illustrative Workstation, Review and Profiles mockups; Harness follows the Benches item pattern without Tab; Tools follows the Benches category/list pattern):
+Full lists (from the approved Benches mockup and the illustrative Workstation, Review and Profiles mockups; Harness and Tools follow the Benches category/list pattern):
 
 ```text
 Workstation   Navigation: ↑↓ Move  Space Select  D Remove  PgUp/PgDn About
                           ←→ Steps  Enter Review  P Back  G Profiles  V Vault  R Refresh  Q Quit
 Benches       Navigation: ↑↓ Move  Tab Category  Space Select  D Remove  PgUp/PgDn About
                           ←→ Steps  P Workstation  R Refresh  Enter Review  Q Quit
-Harness        Navigation: ↑↓ Move  Space Select  D Remove
+Harness       Navigation: ↑↓ Move  Tab Category  Space Select  D Remove  PgUp/PgDn About
                           ←→ Steps  P Workstation  R Refresh  Enter Review  Q Quit
 Profiles      Navigation: ↑↓ Move  Enter Open  PgUp/PgDn About
                           ←→ Steps  G Back  P Workstation  R Refresh  Q Quit
@@ -85,6 +85,10 @@ Benches omits the duplicate category/bench context line. Its queued total is at 
 
 `<Name> · <State>[ → <action>]` with the queued total at the right: `Changes selected: N` at 60+ columns, `Changes: N` below 60 (the left part cut with `…`). Special cases: Review → `Review · Nothing applied yet`; Profiles → the row name. Removal and the Shell setup / Org workspace explanations keep 1.7's wording.
 
-## Accepted Harness/Tools refinement 029-A05
+## Accepted Harness/Tools refinement 029-A05 (historical; extended by 029-A06)
 
 Harness retains its item navigation and selection keys, with About paging via PgUp/PgDn or [/]. Its panel title is Harnesses. Tools uses the Benches category/list behavior: ↑/↓ choose categories, Tab/Shift+Tab or Space enters the category list without selecting; ↑ on the first tool or Tab/Shift+Tab returns to categories. Space/D select changes only in the tool zone. About pages in either zone; changing focus resets scroll. P/G return to the exact tool category, zone and item; R preserves these and the queue.
+
+
+### Refinement 029-A06
+Harness now shares Tools category/list keys: Up/Down choose categories; Tab/Shift+Tab/Space enters the list without selecting; Tab/Shift+Tab or Up on the first item returns. Item Space/D queues only existing managed components. Manual reference rows have no checkbox and ignore action keys. Preserve each step's category, zone, global item index and per-category list offset plus shared About page/anchor across P/G; refresh retains these and the queue. Left/right remains step navigation. Harness defaults to TUI AI Tools; Tools defaults to Editors & IDEs.

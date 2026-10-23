@@ -172,6 +172,69 @@ else exec bash "$(dirname "$0")/interactive-real.sh" "$@"; fi
         self.assertFalse(any('unexpected npm' in action for action in actions), actions)
 
 
+class ReferenceCatalogTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
+        self.home = Path(self.temp.name)
+        self.addCleanup(patch.stopall)
+        patch.object(components.Path, 'home', return_value=self.home).start()
+        self.which = patch.object(components, 'native_which', return_value=None).start()
+        components.vscode_extensions.cache_clear()
+        self.addCleanup(components.vscode_extensions.cache_clear)
+
+    def test_terminal_installations_do_not_imply_desktop_installations(self):
+        self.which.side_effect = lambda name: '/fixture/' + name if name in ('opencode', 'qwen', 'kimi', 'kiro-cli', 'agy') else None
+        for key in ('opencode_desktop', 'qwen_desktop', 'kimi_desktop', 'kiro_ide', 'antigravity_ide'):
+            self.assertFalse(components.reference_installed(key), key)
+        self.which.side_effect = lambda name: '/fixture/antigravity-ide' if name == 'antigravity-ide' else None
+        self.assertTrue(components.reference_installed('antigravity_ide'))
+        launcher = self.home / '.local/bin/opencode-desktop'
+        launcher.parent.mkdir(parents=True); launcher.write_text('fixture'); launcher.chmod(0o755)
+        self.assertTrue(components.reference_installed('opencode_desktop'))
+        launcher.unlink(); launcher.symlink_to(self.home / 'missing-payload')
+        self.assertFalse(components.reference_installed('opencode_desktop'))
+
+    def test_extensions_are_exact_ids_in_the_target_editor_inventory(self):
+        self.which.side_effect = lambda name: '/fixture/code' if name == 'code' else None
+        row = subprocess.CompletedProcess([], 0, 'Saoudrizwan.Claude-dev\nContinue.continue-extra\nGitHub.copilot-chat\n')
+        with patch.object(components, 'read_command', return_value=row) as read:
+            self.assertTrue(components.reference_installed('cline_vscode'))
+            self.assertTrue(components.reference_installed('copilot_vscode'))
+            self.assertFalse(components.reference_installed('continue_vscode'))
+        read.assert_called_once_with(['/fixture/code', '--list-extensions'], timeout=10)
+        components.vscode_extensions.cache_clear()
+        self.which.side_effect = lambda name: '/fixture/cursor' if name == 'cursor' else None
+        with patch.object(components, 'read_command') as read:
+            self.assertFalse(components.reference_installed('cline_vscode'))
+            read.assert_not_called()
+
+    def test_failed_extension_inventory_and_wsl_are_not_installed(self):
+        self.which.return_value = '/fixture/code'
+        for failure in (subprocess.CompletedProcess([], 1, ''), subprocess.TimeoutExpired(['code'], 10)):
+            components.vscode_extensions.cache_clear()
+            with patch.object(components, 'read_command', **({'side_effect': failure} if isinstance(failure, Exception) else {'return_value': failure})) as read:
+                for key in components.EXTENSIONS:
+                    with self.assertRaisesRegex(ValueError, 'inventory failed'):
+                        components.reference_installed(key)
+                self.assertEqual(read.call_count, 1)
+        with patch.dict(os.environ, {'WSL_DISTRO_NAME': 'fixture'}), patch.object(components, 'native_read_text', return_value='Linux'), patch.object(components, 'reference_installed') as probe:
+            self.assertEqual(components.reference_status('cursor_ide'), 'needs check')
+            probe.assert_not_called()
+
+    def test_manual_references_cannot_be_removed_or_accepted_as_plan_keys(self):
+        import setup_selection
+        with patch.object(components, 'apply_command') as apply:
+            for key in components.REFERENCES:
+                with self.subTest(key=key):
+                    with self.assertRaisesRegex(ValueError, 'Manual setup'):
+                        components.uninstall_tool(key)
+                    plan = self.home / 'plan.json'
+                    plan.write_text(json.dumps({'schemaVersion': 1, 'components': [{'key': key, 'action': 'install'}]})); plan.chmod(0o600)
+                    with self.assertRaisesRegex(ValueError, 'invalid or duplicate'):
+                        setup_selection.load(plan)
+            apply.assert_not_called()
+
+
 class SnapInventoryTests(unittest.TestCase):
     def test_unavailable_snap_daemon_is_probed_once_with_a_short_deadline(self):
         with tempfile.TemporaryDirectory() as temporary, \
@@ -182,7 +245,7 @@ class SnapInventoryTests(unittest.TestCase):
             components.tool_statuses()
         read.assert_called_once_with(['snap', 'list'], timeout=2)
         self.assertIn('codex_cli\tnot installed', output.getvalue())
-        self.assertEqual(len(output.getvalue().splitlines()), len(components.COMMANDS))
+        self.assertEqual(len(output.getvalue().splitlines()), len(components.COMMANDS) + len(components.REFERENCES))
 
     def test_only_exact_installed_snap_names_are_removable(self):
         result = subprocess.CompletedProcess([], 0, 'Name Version Rev Tracking Publisher Notes\ncodex-bin 1 2 latest/stable test -\nunrelated 1 2 latest/stable test -\n')

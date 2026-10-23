@@ -1,0 +1,13 @@
+# 029-A06 — Categorized Harness catalog
+
+- Governing change: `openspec/changes/setup-guided-wizard/`.
+- Immutable reviewed baseline: `6d471b2d4f5eff4a5421cb7529c21182d9d0924a`.
+- Decision authority: Brett Heap, 2026-10-23 chat: categorize Harness as TUI AI Tools, GUI AI Tools, IDE extensions and Workflow; put spec-kit, OpenSpec, Omnigent and AgentTower in Workflow; group editors/IDEs together in Tools; subsequent “implement”.
+- Classification: bounded catalog/navigation refinement. No new installable plan keys, dependencies, model routing or credential integration.
+- Executable task: T039H, after T039G and before T040.
+- Interpretation: both steps use category → list → About with Benches keys, list scrolling and saved category/zone/item/About state. Harness panel remains Harnesses and identifies its active category. Existing eight managed harness IDs and seven tool IDs retain flat indexes and apply order; the legacy separator is not displayed in categories.
+- Catalog: six existing TUI harnesses; GUI OpenCode Desktop/Qwen Code Desktop/Kimi Code Desktop/ZCode; IDE extensions GitHub Copilot/Cline/Continue targeting the local VS Code CLI default profile; Workflow spec-kit/OpenSpec/Omnigent/AgentTower. Tools Editors & IDEs lists VS Code/Cursor/Kiro/Antigravity IDE/Comate IDE. Existing remaining Tools categories remain.
+- Bounds: new reference entries are explicitly Manual setup, without selection boxes, and cannot be queued or serialized/applied. About includes purpose, target, setup source and the manual-management limitation. Read-only native executable/extension inventory may report Installed (manual); this is presence evidence, never account/session authentication. WSL reference inventory remains needs-check/manual because native Windows application and extension profiles are not integrated. Existing installers, plan allowlists and account flow remain unchanged.
+- Verification: category isolation/keys, all About content, reference action guards and private-plan rejection, CLI/Desktop distinction, editor-specific extension status, jump/refresh/paging state, full locale/size matrix and no-fork/timing checks. Long setup links exposed an existing empty-right-column and paging-marker clipping issue; wrap reserves marker space and body-only rows retain their full width, with round-trip link coverage. Fixture suites only; no host installers.
+- Reconciliation: working spec/plan/contracts and OpenSpec deltas updated before implementation; no issue creation requested, reconciliation issue remains deferred as in A05.
+- Disposition: implemented and locally verified; evidence recorded in release-qa.md. Existing copy/release gates remain pending.

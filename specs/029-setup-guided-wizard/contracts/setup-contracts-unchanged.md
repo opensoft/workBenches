@@ -67,3 +67,6 @@ A component is written when `component_checked[key]` is `true` and `component_ac
 - Rendering any step runs no `jq`, `python3`, `docker` or `git` (FR-038).
 - After first paint only changed lines are written; an unchanged frame writes nothing; the screen is cleared only on first paint, after a helper returns, or on a width or height change (FR-039).
 - Q exits 130 within two seconds and leaves no check process running (FR-027, SC-007).
+
+
+Refinement 029-A06 adds manual reference rows to the browsing catalog only. They have no actions or credential-plan options and are not valid serialized selection keys. Existing native and Python allowlists reject these IDs; no desktop installation is inferred from the corresponding CLI. Presence inventory does not check login.
